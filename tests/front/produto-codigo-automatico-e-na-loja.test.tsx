@@ -8,10 +8,10 @@
 // formulário (LocalBufferedInput tem debounce de 200 ms).
 import { ContextoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { act } from "react";
-import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { escolherAtributo } from "./helpers/atributo-da-variacao";
+import { escolherCategoriaDoProduto } from "./helpers/escolher-categoria-do-produto";
 import { BOTAO_GERAR_GRADE, casaOTexto } from "./helpers/gerar-grade";
 
 const addProduct = vi.fn();
@@ -50,38 +50,6 @@ vi.mock("@/contexts/StoreContext", () => ({
 
 vi.mock("@/lib/supabase", () => ({
   supabase: { rpc: rpcDoSupabase },
-}));
-
-vi.mock("@/components/ui/select", () => ({
-  Select: ({
-    value,
-    onValueChange,
-    children,
-  }: {
-    value: string;
-    onValueChange: (v: string) => void;
-    children: ReactNode;
-  }) => (
-    <select
-      id="product-category"
-      data-testid="select-category"
-      value={value}
-      onChange={(e) => onValueChange(e.target.value)}
-    >
-      <option value="" />
-      {children}
-    </select>
-  ),
-  SelectTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
-  SelectValue: () => null,
-  SelectContent: ({ children }: { children: ReactNode }) => <>{children}</>,
-  SelectItem: ({
-    value,
-    children,
-  }: {
-    value: string;
-    children: ReactNode;
-  }) => <option value={value}>{children}</option>,
 }));
 
 vi.mock("sonner", () => ({
@@ -254,14 +222,7 @@ describe("AdminProductFormView — código automático e Na loja", () => {
       digitar("product-description", "Descrição de teste");
       digitar("product-sale-price", "1000");
       digitar("product-stock", "5");
-      const categoria = document.querySelector(
-        '[data-testid="select-category"]',
-      ) as HTMLSelectElement;
-      Object.getOwnPropertyDescriptor(
-        globalThis.HTMLSelectElement.prototype,
-        "value",
-      )?.set?.call(categoria, "Geral");
-      categoria.dispatchEvent(new Event("change", { bubbles: true }));
+      escolherCategoriaDoProduto("Geral");
       await esperar(300);
     });
   }
@@ -538,14 +499,18 @@ describe("AdminProductFormView — código automático e Na loja", () => {
   describe("campo de categoria", () => {
     it("mostra as categorias e as duas portas em letra normal, não em CAIXA-ALTA", async () => {
       await montar();
-      const select = document.querySelector(
-        '[data-testid="select-category"]',
-      ) as HTMLSelectElement;
-      const textos = [...select.options].map((o) => o.textContent);
+      await act(async () => {
+        document.getElementById("product-category")?.click();
+      });
+      const folha = document.querySelector('[role="dialog"]');
+      expect(folha).not.toBeNull();
+      const textos = [...(folha?.querySelectorAll("button") ?? [])].map((b) =>
+        (b.textContent ?? "").trim(),
+      );
       expect(textos).toContain("Geral");
-      expect(textos).toContain("➕ Criar nova categoria");
-      expect(textos).toContain("✏️ Renomear, esconder ou apagar");
-      expect(textos.join(" ")).not.toMatch(/GERAL|CRIAR NOVA|RENOMEAR/);
+      expect(textos).toContain("Nova categoria");
+      expect(textos).toContain("Organizar categorias");
+      expect(textos.join(" ")).not.toMatch(/GERAL|NOVA CATEGORIA|ORGANIZAR/);
     });
 
     it("continua gravando o nome da categoria escolhida", async () => {

@@ -688,6 +688,20 @@ async function conferirSkusDasVariacoes(
   }
 }
 
+// O produto como a conferência do TruthGate o enxerga ao EDITAR: o gravado com
+// o patch por cima. O teto de estoque vale para o estoque que o patch MANDA;
+// o que já está gravado (grade que soma mais de 10.000) não reprova uma edição
+// que não mexe nele.
+function produtoParaConferir(
+  atual: Partial<Product> | null | undefined,
+  updates: Partial<Product>,
+): Partial<Product> {
+  const mesclado = { ...(atual ?? {}), ...updates };
+  return updates.stock === undefined
+    ? { ...mesclado, stock: undefined }
+    : mesclado;
+}
+
 function atualizacoesDoProdutoParaBanco(updates: Partial<Product>) {
   const dbUpdates: any = {};
   if (updates.name !== undefined) dbUpdates.nome = updates.name;
@@ -1441,7 +1455,9 @@ export function useProducts({ autoFetch = true } = {}) {
         // patch, para que margem e estoque sejam checados contra os valores
         // reais do produto e não contra os campos ausentes do update.
         try {
-          TruthGate.verifyProductAxiom(optimisticProduct ?? updates);
+          TruthGate.verifyProductAxiom(
+            produtoParaConferir(oldProduct, updates),
+          );
         } catch (err: any) {
           console.error("[useProducts] Offline validation failed:", err);
           toast.error(mensagemAmigavelErroProduto(err, "atualizar"));
@@ -1522,7 +1538,7 @@ export function useProducts({ autoFetch = true } = {}) {
         // aviso, porque `costPrice` não vem no update.
         const currentProduct = products.find((p) => p.id === id);
         TruthGate.verifyProductAxiom(
-          currentProduct ? { ...currentProduct, ...updates } : updates,
+          produtoParaConferir(currentProduct, updates),
         );
 
         let oldImages: string[] = [];
@@ -1630,7 +1646,7 @@ export function useProducts({ autoFetch = true } = {}) {
         const atual =
           products.find((p) => p.id === id) || (await fetchProduct(id));
         const mesclado = atual ? { ...atual, ...updates } : updates;
-        TruthGate.verifyProductAxiom(mesclado);
+        TruthGate.verifyProductAxiom(produtoParaConferir(atual, updates));
         for (const variante of variantes) {
           TruthGate.verifyVariantAxiom(variante, {
             costPrice: mesclado.costPrice,
@@ -1897,6 +1913,9 @@ export function useProducts({ autoFetch = true } = {}) {
       );
       setLocalProducts((prev) => prev.filter((p) => !ids.includes(p.id)));
 
+      // Os que o banco JÁ excluiu: se o lote falhar no meio, eles não voltam
+      // para a lista (tocar neles dava "Produto não encontrado").
+      const excluidos: string[] = [];
       try {
         // #99 (ADMIN-070): mesma correção do `deleteProduct` unitário —
         // soft-delete de CADA produto primeiro, mídia depois. Antes, a mídia
@@ -1916,6 +1935,7 @@ export function useProducts({ autoFetch = true } = {}) {
             .eq("id", id);
 
           if (error) throw error;
+          excluidos.push(id);
 
           // Mídia best-effort, depois do soft-delete confirmado deste
           // produto — mesma função usada por `deleteProduct`.
@@ -1931,9 +1951,13 @@ export function useProducts({ autoFetch = true } = {}) {
         return true;
       } catch (err) {
         console.error("Error deleting products:", err);
-        cachedAdminProducts = originalCache;
-        cachedAdminProductsTotal = originalTotal;
-        setLocalProducts(originalProducts);
+        const aindaExiste = (p: { id: string }) => !excluidos.includes(p.id);
+        cachedAdminProducts = originalCache?.filter(aindaExiste) ?? null;
+        cachedAdminProductsTotal = Math.max(
+          0,
+          originalTotal - excluidos.length,
+        );
+        setLocalProducts(originalProducts.filter(aindaExiste));
         toast.error("Erro ao excluir produtos");
         return false;
       }

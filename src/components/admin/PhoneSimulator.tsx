@@ -5,10 +5,14 @@ import {
   CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
   CLASSE_SELO_DESCONTO,
 } from "@/lib/cor-do-preco-promocional";
+import {
+  fraseDoSeloDeFreteGratis,
+  promessasDeFrete,
+} from "@/lib/estrategias-de-frete";
 import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
 import { cn } from "@/lib/utils";
 import type { ProductVariant } from "@/types";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   ArrowLeft,
   Check,
@@ -66,10 +70,13 @@ export const PhoneSimulator = memo(function PhoneSimulator({
   setPreviewImgIndex,
   previewSelectedVariants,
   setPreviewSelectedVariants,
-  activeDetailTab,
-  setActiveDetailTab,
 }: PhoneSimulatorProps) {
   const { config } = useStore();
+  // Mesma regra do card da loja: o selo só afirma o que a loja dá hoje.
+  const seloDeFrete = fraseDoSeloDeFreteGratis(
+    promessasDeFrete(config),
+    formData.freeShipping,
+  );
 
   const [failedImages, setFailedImages] = React.useState<
     Record<string, boolean>
@@ -298,10 +305,10 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                         <p className="max-w-[65%] truncate text-[8px] font-bold uppercase tracking-widest text-zinc-500">
                           {formData.category || "Categoria"}
                         </p>
-                        {formData.freeShipping && (
+                        {seloDeFrete && (
                           <div className="flex shrink-0 items-center gap-1 rounded-md border border-emerald-50/20 bg-emerald-50/10 px-1.5 py-0.5 text-[7px] font-black text-emerald-400">
                             <Truck className="size-2 shrink-0" />
-                            <span className="truncate">Frete Grátis</span>
+                            <span className="truncate">{seloDeFrete}</span>
                           </div>
                         )}
                       </div>
@@ -309,10 +316,6 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                       <h3 className="line-clamp-2 min-h-8 text-xs font-black leading-snug text-white">
                         {formData.name || "Nome do produto"}
                       </h3>
-
-                      <div className="flex items-center text-[9px] text-amber-400">
-                        ★★★★★
-                      </div>
                     </div>
 
                     {/* Price */}
@@ -485,10 +488,10 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                           EM ALTA
                         </span>
                       )}
-                      {formData.freeShipping && (
+                      {seloDeFrete && (
                         <span className="flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-emerald-700 shadow-sm">
                           <Truck className="size-2.5 text-emerald-600" />
-                          FRETE GRÁTIS
+                          {seloDeFrete}
                         </span>
                       )}
                     </div>
@@ -497,12 +500,6 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                     <h1 className="text-sm font-black leading-snug tracking-tight text-zinc-900">
                       {formData.name || "Nome do produto"}
                     </h1>
-
-                    {/* Stars rating */}
-                    <div className="flex items-center gap-1 text-[9px] font-bold text-zinc-500">
-                      <span className="text-xs text-amber-400">★★★★★</span>
-                      <span>5.0 (15 avaliações)</span>
-                    </div>
 
                     {/* Price Details */}
                     {formData.originalPrice &&
@@ -716,162 +713,41 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                       </div>
                     </div>
 
-                    {/* Tabbed view iOS style */}
-                    <div className="mx-auto mt-3 flex w-full max-w-xs shrink-0 items-center gap-0.5 rounded-xl bg-zinc-100/60 p-1">
-                      {[
-                        { id: "description", label: "Detalhes" },
-                        { id: "reviews", label: "Avaliações (15)" },
-                        { id: "questions", label: "Chat" },
-                      ].map((tab) => {
-                        const isActive = activeDetailTab === tab.id;
-                        return (
-                          <button
-                            key={tab.id}
-                            type="button"
-                            onClick={() => setActiveDetailTab(tab.id as any)}
-                            className={cn(
-                              "flex-1 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all cursor-pointer",
-                              isActive
-                                ? "bg-white text-zinc-950 shadow-sm"
-                                : "text-zinc-400 hover:text-zinc-600",
-                            )}
-                          >
-                            {tab.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Tab Content */}
+                    {/* Só a descrição: avaliações e perguntas de exemplo saíram,
+                        porque um produto novo não tem nenhuma. */}
                     <div className="shrink-0 pb-4">
-                      <AnimatePresence mode="wait">
-                        {activeDetailTab === "description" && (
-                          <motion.div
-                            key="desc"
-                            initial={{ opacity: 0, y: 3 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -3 }}
-                            transition={{ duration: 0.12 }}
-                            className="mt-1 text-[9px] font-medium leading-relaxed text-zinc-600"
-                          >
-                            {formData.description ? (
-                              <div className="whitespace-pre-line">
-                                {formData.description}
-                              </div>
-                            ) : (
-                              <p className="italic text-zinc-400">
-                                Nenhuma descrição informada.
-                              </p>
-                            )}
-                            {/* Espelha o bloco de beneficios da pagina real
+                      <div className="mt-1 text-[9px] font-medium leading-relaxed text-zinc-600">
+                        {formData.description ? (
+                          <div className="whitespace-pre-line">
+                            {formData.description}
+                          </div>
+                        ) : (
+                          <p className="italic text-zinc-400">
+                            Nenhuma descrição informada.
+                          </p>
+                        )}
+                        {/* Espelha o bloco de beneficios da pagina real
                                 (ProductView.tsx): "Troca garantida" saiu de
                                 la porque nao existe fluxo de troca/devolucao
                                 neste app (issues #46 e #108 seguem abertas),
                                 e o selo de entrega usa a cidade da loja, se
                                 configurada -- nunca "local" numa loja com
                                 cobertura nacional (#571). */}
-                            <div className="mt-3 space-y-1.5 border-t border-zinc-100 pt-3">
-                              {config.storeCity &&
-                                config.shippingCoverage === "local" && (
-                                  <div className="flex items-center gap-1.5 text-[8px] text-zinc-500">
-                                    <Truck className="size-3.5 text-zinc-400" />
-                                    <span>
-                                      Entrega em {config.storeCity}
-                                      {config.storeState
-                                        ? `, ${config.storeState}`
-                                        : ""}
-                                    </span>
-                                  </div>
-                                )}
+                        <div className="mt-3 space-y-1.5 border-t border-zinc-100 pt-3">
+                          {config.storeCity &&
+                            config.shippingCoverage === "local" && (
                               <div className="flex items-center gap-1.5 text-[8px] text-zinc-500">
-                                <ShoppingCart className="size-3.5 text-zinc-400" />
-                                <span>Produto em estoque - Envio rápido</span>
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-
-                        {activeDetailTab === "reviews" && (
-                          <motion.div
-                            key="reviews"
-                            initial={{ opacity: 0, y: 3 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -3 }}
-                            transition={{ duration: 0.12 }}
-                            className="mt-1 space-y-2"
-                          >
-                            <div className="flex flex-col gap-2 rounded-xl bg-zinc-950 p-3 text-white">
-                              <div className="flex items-center gap-2">
-                                <span className="text-2xl font-black">5.0</span>
-                                <div className="flex flex-col">
-                                  <span className="text-[10px] text-amber-400">
-                                    ★★★★★
-                                  </span>
-                                  <span className="text-[6px] font-black uppercase tracking-widest text-zinc-500">
-                                    Baseado em 15 reviews
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="space-y-1 border-t border-admin-border pt-1">
-                                {[5, 4, 3, 2, 1].map((star) => (
-                                  <div
-                                    key={star}
-                                    className="flex items-center gap-1 text-[7px] font-black text-zinc-400"
-                                  >
-                                    <span className="w-2">{star}</span>
-                                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/5">
-                                      <div
-                                        className="h-full rounded-full bg-white"
-                                        style={{
-                                          width: star === 5 ? "100%" : "0%",
-                                        }}
-                                      />
-                                    </div>
-                                    <span className="w-3 text-right">
-                                      {star === 5 ? "15" : "0"}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                            <div className="space-y-0.5 rounded-xl border border-zinc-100 bg-zinc-50/50 p-2">
-                              <div className="flex items-center justify-between text-[7px] font-black">
-                                <span>Gabriel M.</span>
-                                <span className="text-amber-400">★★★★★</span>
-                              </div>
-                              <p className="text-[8px] leading-normal text-zinc-500">
-                                Excelente produto, acabamento de altíssima
-                                qualidade. Recomendo muito!
-                              </p>
-                            </div>
-                          </motion.div>
-                        )}
-
-                        {activeDetailTab === "questions" && (
-                          <motion.div
-                            key="questions"
-                            initial={{ opacity: 0, y: 3 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -3 }}
-                            transition={{ duration: 0.12 }}
-                            className="mt-1 space-y-2"
-                          >
-                            <div className="space-y-1 rounded-xl border border-zinc-100 bg-zinc-50/50 p-2">
-                              <div className="flex items-center gap-1 text-[7px] font-black uppercase tracking-wider text-zinc-400">
-                                <span>P: Vocês entregam hoje?</span>
-                              </div>
-                              <div className="rounded-lg border border-zinc-100 bg-white p-1.5 text-[8px] text-zinc-600">
-                                <span className="mb-0.5 block text-[7px] font-bold uppercase tracking-wider text-zinc-800">
-                                  Resposta do Vendedor:
+                                <Truck className="size-3.5 text-zinc-400" />
+                                <span>
+                                  Entrega em {config.storeCity}
+                                  {config.storeState
+                                    ? `, ${config.storeState}`
+                                    : ""}
                                 </span>
-                                Sim! Se o pedido for realizado até as 18h
-                                entregamos hoje mesmo.
                               </div>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                            )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -96,12 +96,12 @@ describe("PhoneSimulator — a previa nao promete o que o app nao cumpre", () =>
 
     expect(document.body.textContent).not.toContain("Troca garantida");
     expect(document.body.textContent).not.toContain("Entrega local rápida");
-    // Os dois beneficios verdadeiros continuam de pe, iguais aos da pagina
-    // real: entrega com a cidade da loja e estoque.
+    // O beneficio verdadeiro continua de pe, igual ao da pagina real: entrega
+    // com a cidade da loja. "Envio rapido" saiu (a pagina real tambem tirou);
+    // o estoque aparece na faixa propria, acima.
     expect(document.body.textContent).toContain("Entrega em Sao Paulo, SP");
-    expect(document.body.textContent).toContain(
-      "Produto em estoque - Envio rápido",
-    );
+    expect(document.body.textContent).not.toContain("Envio rápido");
+    expect(document.body.textContent).toContain("Em estoque (10 un.)");
   });
 
   it("loja com cobertura NACIONAL e cidade configurada nao mostra 'Entrega em' (#571)", async () => {
@@ -132,9 +132,7 @@ describe("PhoneSimulator — a previa nao promete o que o app nao cumpre", () =>
 
     expect(document.body.textContent).not.toContain("Entrega em");
     // O que sumiu foi SÓ o bloco de entrega — o estoque continua de pé.
-    expect(document.body.textContent).toContain(
-      "Produto em estoque - Envio rápido",
-    );
+    expect(document.body.textContent).toContain("Em estoque (10 un.)");
   });
 
   it("o fundo do formulario fica FOSCO (veu translucido com blur) e a barra do simulador nítida", async () => {

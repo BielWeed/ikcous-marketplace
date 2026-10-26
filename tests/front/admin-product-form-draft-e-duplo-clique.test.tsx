@@ -23,9 +23,9 @@
 // (useProducts, useCategories, useOnlineStatus, useStore) mockados para
 // isolar exatamente o estado do componente que tem o bug.
 import { act } from "react";
-import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherCategoriaDoProduto } from "./helpers/escolher-categoria-do-produto";
 
 const addProduct = vi.fn();
 const updateProduct = vi.fn();
@@ -64,38 +64,6 @@ vi.mock("@/contexts/StoreContext", () => ({
 // arquivo testa é o ciclo de vida do formulário, não o componente de select.
 // Um <select> nativo tem a mesma interface observável (value + onChange) que
 // o handleSubmit e o auto-save precisam.
-vi.mock("@/components/ui/select", () => ({
-  Select: ({
-    value,
-    onValueChange,
-    children,
-  }: {
-    value: string;
-    onValueChange: (v: string) => void;
-    name?: string;
-    children: ReactNode;
-  }) => (
-    <select
-      data-testid="select-category"
-      value={value}
-      onChange={(e) => onValueChange(e.target.value)}
-    >
-      <option value="" />
-      {children}
-    </select>
-  ),
-  SelectTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
-  SelectValue: () => null,
-  SelectContent: ({ children }: { children: ReactNode }) => <>{children}</>,
-  SelectItem: ({
-    value,
-    children,
-  }: {
-    value: string;
-    children: ReactNode;
-  }) => <option value={value}>{children}</option>,
-}));
-
 const toastInfo = vi.fn();
 const toastSuccess = vi.fn();
 const toastError = vi.fn();
@@ -158,15 +126,7 @@ function digitarTextarea(id: string, valor: string) {
 }
 
 function selecionarCategoria(valor: string) {
-  const el = document.querySelector(
-    '[data-testid="select-category"]',
-  ) as HTMLSelectElement;
-  const setter = Object.getOwnPropertyDescriptor(
-    globalThis.HTMLSelectElement.prototype,
-    "value",
-  )!.set!;
-  setter.call(el, valor);
-  el.dispatchEvent(new Event("change", { bubbles: true }));
+  escolherCategoriaDoProduto(valor);
 }
 
 describe("AdminProductFormView — #98 duplo clique cria produto duplicado", () => {

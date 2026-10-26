@@ -227,7 +227,7 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     expect(variantesNaTela()).toEqual(["Cor / Tamanho: Branca / PP"]);
     // O estoque digitado é DA COMBINAÇÃO — a branca PP tem 3, e é esse o
     // número que o pedido vai consumir da linha.
-    expect(document.body.textContent).toContain("3 UND");
+    expect(document.body.textContent).toContain("3 un.");
   });
 
   it("o botão '+ Atributo' sugere a outra metade da dupla, com o tamanho primeiro", async () => {
