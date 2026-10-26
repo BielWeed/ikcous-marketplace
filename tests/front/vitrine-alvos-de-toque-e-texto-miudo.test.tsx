@@ -41,7 +41,9 @@ const produto: Product = {
   reviewCount: 0,
 };
 
-const fonte = (caminho: string) => readFileSync(caminho, "utf-8");
+const fonte = (caminho: string) =>
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo do próprio repositório
+  readFileSync(caminho, "utf-8");
 
 describe("vitrine — alvos de toque de 44 px e texto miúdo legível", () => {
   let raiz: Root;

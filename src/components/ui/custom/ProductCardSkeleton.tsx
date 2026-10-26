@@ -19,7 +19,7 @@ export function ProductCardSkeleton() {
           <Skeleton className="h-3 w-12" />
           <Skeleton className="h-5 w-20" />
         </div>
-        <Skeleton className="h-8 w-16 flex-shrink-0 rounded-xl" />
+        <Skeleton className="h-11 w-16 flex-shrink-0 rounded-xl" />
       </div>
     </div>
   );
