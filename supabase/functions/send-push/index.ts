@@ -96,6 +96,34 @@ const TAMANHO_DA_PAGINA_DE_LEITURA = 200;
 const TAMANHO_DO_LOTE_DE_ENVIO = 20;
 const ORCAMENTO_DE_TEMPO_MS = 50_000;
 
+// ---------------------------------------------------------------------------
+// Validade do aviso (TTL, RFC 8030 §5.2) por tipo — lote 204, 26/10/2026
+//
+// O push service guarda o aviso enquanto o aparelho está desligado e o entrega
+// quando ele volta. Sem TTL a biblioteca manda 28 dias: a cliente que ligava o
+// celular dias depois recebia "Saiu para entrega" de um pedido já entregue, e
+// a campanha de um fim de semana chegava semanas depois. O status do pedido
+// vale 24 h; a campanha (e todo aviso sem o tipo do pedido, como o teste do
+// aparelho) vale 3 dias. A urgência NÃO muda (fica a normal de sempre), e o
+// formato do que vai ao aparelho também não. Os avisos de DINHEIRO ao lojista
+// não passam por aqui (`OPCOES_DE_AVISO_AO_LOJISTA`, em `_shared/webpush.ts`,
+// seguem com o TTL padrão de 28 dias, de propósito).
+// ---------------------------------------------------------------------------
+
+export const TTL_DO_STATUS_DO_PEDIDO_S = 24 * 60 * 60;
+export const TTL_DA_CAMPANHA_S = 3 * 24 * 60 * 60;
+
+/** `data.type === "order_status"` (o que o painel de pedidos manda) vale 24 h; o resto, 3 dias. */
+export function opcoesDeEnvioDoAviso(data: unknown): { ttl: number } {
+  const tipo =
+    data !== null && typeof data === "object" && !Array.isArray(data)
+      ? (data as { type?: unknown }).type
+      : undefined;
+  return {
+    ttl: tipo === "order_status" ? TTL_DO_STATUS_DO_PEDIDO_S : TTL_DA_CAMPANHA_S,
+  };
+}
+
 /**
  * Chama `buscarPagina(offset, tamanho)` até ela devolver uma página vazia ou
  * menor que `tamanho` (fim dos dados), acumulando tudo num array só.
@@ -142,6 +170,9 @@ export async function enviarComOrcamentoDeTempo({
   orcamentoMs = ORCAMENTO_DE_TEMPO_MS,
   tempoLimitePorEnvioMs = 10_000,
   agora = () => Date.now(),
+  // Repassado a cada envio (`pushTextMessage(mensagem, opcoesDeEnvio)`);
+  // `{}` é o padrão de sempre da biblioteca (normal, 28 dias).
+  opcoesDeEnvio = {},
 }: any): Promise<{ itens: any[]; naoTentados: number }> {
   const inicio = agora();
   const prazoFinalMs = Date.now() + orcamentoMs;
@@ -163,6 +194,7 @@ export async function enviarComOrcamentoDeTempo({
       tamanhoDoLote: lote.length,
       tempoLimitePorEnvioMs,
       prazoFinalMs: Math.min(prazoFinalMs, Date.now() + restanteMs),
+      opcoesDeEnvio,
     });
     itens.push(...itensDoLote);
   }
@@ -298,6 +330,7 @@ export async function handler(req: Request): Promise<Response> {
       rotulo: "send-push",
       tamanhoDoLote: TAMANHO_DO_LOTE_DE_ENVIO,
       orcamentoMs: ORCAMENTO_DE_TEMPO_MS,
+      opcoesDeEnvio: opcoesDeEnvioDoAviso(data),
       aoDetectarMorta: (endpoint: string) =>
         supabaseClient
           .from("push_subscriptions")
