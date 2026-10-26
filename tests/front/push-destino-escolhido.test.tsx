@@ -96,7 +96,9 @@ vi.mock("@/lib/supabase", () => ({
         return {
           select: () => ({
             eq: () => ({
-              order: () => Promise.resolve({ data: PRODUTOS, error: null }),
+              order: () => ({
+                range: () => Promise.resolve({ data: PRODUTOS, error: null }),
+              }),
             }),
           }),
         };
@@ -134,26 +136,37 @@ vi.mock("@/lib/supabase", () => ({
             limit: () => Promise.resolve({ data: [], error: null }),
           }),
           eq: () => ({
-            order: () => Promise.resolve({ data: [], error: null }),
+            order: () =>
+              Object.assign(Promise.resolve({ data: [], error: null }), {
+                range: () => Promise.resolve({ data: [], error: null }),
+              }),
           }),
         }),
       };
     },
-    rpc: (nome: string) => {
-      if (nome === "get_segmented_push_count") {
-        return Promise.resolve({ data: 1, error: null });
-      }
-      return Promise.resolve({
-        data: [
-          {
-            user_id: "u1",
-            endpoint: "https://push.example/1",
-            p256dh: "p1",
-            auth: "a1",
-          },
-        ],
-        error: null,
-      });
+    rpc: (...a: any[]) => {
+      // O envio lê os aparelhos em páginas de 1.000 (`.order().range()`).
+      const r = Reflect.apply(
+        (nome: string) => {
+          if (nome === "get_segmented_push_count") {
+            return Promise.resolve({ data: 1, error: null });
+          }
+          return Promise.resolve({
+            data: [
+              {
+                user_id: "u1",
+                endpoint: "https://push.example/1",
+                p256dh: "p1",
+                auth: "a1",
+              },
+            ],
+            error: null,
+          });
+        },
+        null,
+        a,
+      );
+      return Object.assign(r, { order: () => r, range: () => r });
     },
     functions: { invoke: invokeSendPush },
   },

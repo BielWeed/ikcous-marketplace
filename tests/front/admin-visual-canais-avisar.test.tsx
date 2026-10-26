@@ -173,7 +173,10 @@ vi.mock("@/lib/supabase", () => ({
               }),
           }),
           eq: () => ({
-            order: () => Promise.resolve({ data: [], error: null }),
+            order: () =>
+              Object.assign(Promise.resolve({ data: [], error: null }), {
+                range: () => Promise.resolve({ data: [], error: null }),
+              }),
           }),
         }),
       };
@@ -424,7 +427,7 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
     await act(async () => {
       await esperar(50);
     });
-    expect(textoDaTela()).toContain("Testar Recebimento Neste Aparelho");
+    expect(textoDaTela()).toContain("Ligar avisos neste aparelho");
     expect(
       hospedeiro.querySelector("#realtime-sales-alerts-switch"),
     ).toBeNull();

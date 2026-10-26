@@ -21,11 +21,16 @@ import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useVOR } from "@/hooks/useVOR";
-import { destinoDaUrl, urlDoDestino } from "@/lib/destino-do-aviso";
+import {
+  destinoDaUrl,
+  nomeDoDestino,
+  urlDoDestino,
+} from "@/lib/destino-do-aviso";
 import {
   LIMITE_DA_BUSCA_DO_HISTORICO,
   somenteCampanhasReais,
 } from "@/lib/historico-de-campanhas";
+import { lerEmPaginas } from "@/lib/ler-em-paginas";
 import {
   type CupomDaLoja,
   MARCADOR_DO_CUPOM,
@@ -473,11 +478,14 @@ export const AdminPushView = memo(function AdminPushView({
     const loadProducts = async () => {
       setLoadingProducts(true);
       try {
-        const { data, error } = await supabase
-          .from("vw_produtos_public")
-          .select("id, nome")
-          .eq("ativo", true)
-          .order("nome", { ascending: true });
+        const { data, error } = await lerEmPaginas((de, ate) =>
+          supabase
+            .from("vw_produtos_public")
+            .select("id, nome")
+            .eq("ativo", true)
+            .order("nome", { ascending: true })
+            .range(de, ate),
+        );
         if (!error && data) {
           const validProducts = (data as any[])
             .filter((p) => p.id && p.nome)
@@ -783,7 +791,7 @@ export const AdminPushView = memo(function AdminPushView({
       });
       return;
     }
-    if (!notification.title || !notification.body) {
+    if (!notification.title.trim() || !notification.body.trim()) {
       toast.error("Preencha título e mensagem");
       return;
     }
@@ -826,11 +834,16 @@ export const AdminPushView = memo(function AdminPushView({
         }
       }
 
-      const { data: targets, error: targetError } = await (supabase.rpc as any)(
-        "get_segmented_push_targets",
-        {
-          p_segment: segment,
-        },
+      // A RPC devolve no máximo 1.000 linhas por chamada: pagina, senão o
+      // envio para quem passa disso cortava o resto em silêncio. A ordem fixa
+      // por `endpoint` mantém as páginas sem repetir nem pular aparelho.
+      const { data: targets, error: targetError } = await lerEmPaginas(
+        (de, ate) =>
+          (supabase.rpc as any)("get_segmented_push_targets", {
+            p_segment: segment,
+          })
+            .order("endpoint", { ascending: true })
+            .range(de, ate),
       );
 
       if (targetError) throw targetError;
@@ -1460,7 +1473,7 @@ export const AdminPushView = memo(function AdminPushView({
                       {
                         id: "all",
                         label: "Todos os clientes",
-                        detalhe: "Toda a base da loja",
+                        detalhe: "Quem aceitou receber avisos",
                         count: subCount,
                         motivoDoZero: "nenhum aparelho cadastrado ainda",
                       },
@@ -1806,8 +1819,8 @@ export const AdminPushView = memo(function AdminPushView({
                     {item.body}
                   </p>
                   <div className="mt-1.5 flex items-center justify-between border-t border-admin-border pt-1 text-[11px]">
-                    <span className="min-w-0 flex-1 font-mono text-zinc-400 truncate">
-                      Ao clicar: {item.url}
+                    <span className="min-w-0 flex-1 text-zinc-400 truncate">
+                      Ao clicar: {nomeDoDestino(item.url)}
                     </span>
                     {/* Achado 11 da auditoria de 20/08/2026: o registro
                             nasce com `recipient_count: 0` até a edge function
@@ -1845,8 +1858,8 @@ export const AdminPushView = memo(function AdminPushView({
             titulo="Ajustes"
             descricao={
               MOSTRAR_AVISOS_DE_COMPRAS
-                ? "Prova social e teste de recebimento"
-                : "Teste de recebimento"
+                ? "Prova social e avisos neste aparelho"
+                : "Avisos neste aparelho"
             }
             icone={Settings}
           >
@@ -1940,8 +1953,9 @@ export const AdminPushView = memo(function AdminPushView({
                 </div>
               )}
 
-              {/* Teste de recebimento — o mesmo botão do cartão métrico, na
-                mesma condição (`isSupported && !isTestSubscribed`). */}
+              {/* Liga os avisos NESTE aparelho (só inscreve — não manda aviso
+                de teste; quem manda é o cartão do Início). Some depois de
+                ligado, na mesma condição `isSupported && !isTestSubscribed`. */}
               {isSupported && !isTestSubscribed && (
                 <button
                   onClick={handleTestSubscription}
@@ -1949,7 +1963,7 @@ export const AdminPushView = memo(function AdminPushView({
                   className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-solid border-admin-border bg-white/5 min-h-12 py-2 text-xs font-bold uppercase tracking-wider text-zinc-300 hover:bg-white/10 motion-safe:active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <Zap className="size-3 text-zinc-300" />
-                  Testar Recebimento Neste Aparelho
+                  Ligar avisos neste aparelho
                 </button>
               )}
             </div>

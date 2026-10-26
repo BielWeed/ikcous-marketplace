@@ -87,13 +87,20 @@ vi.mock("@/lib/supabase", () => ({
       return {
         select: () => ({
           eq: () => ({
-            order: () => Promise.resolve({ data: [], error: null }),
+            order: () =>
+              Object.assign(Promise.resolve({ data: [], error: null }), {
+                range: () => Promise.resolve({ data: [], error: null }),
+              }),
           }),
         }),
       };
     },
-    rpc: (nome: string) =>
-      nome === "get_segmented_push_count" ? contarAlcance() : buscarAlvos(),
+    rpc: (nome: string) => {
+      // O envio lê os aparelhos em páginas de 1.000 (`.order().range()`).
+      const r =
+        nome === "get_segmented_push_count" ? contarAlcance() : buscarAlvos();
+      return Object.assign(r, { order: () => r, range: () => r });
+    },
     functions: { invoke: enviarPush },
   },
 }));

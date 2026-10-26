@@ -146,7 +146,7 @@ export function PushNotificationBanner({
         transition={{ type: "spring", stiffness: 380, damping: 28 }}
         className={cn(
           "fixed left-4 right-4 z-[999] mx-auto max-w-md",
-          "bottom-20 md:bottom-6", // Posicionado de forma elegante acima da BottomNav
+          "bottom-[calc(80px+var(--safe-area-bottom,0px))] md:bottom-6", // acima da BottomNav, mais a área segura do iPhone
         )}
       >
         <div className="relative overflow-hidden rounded-2xl border border-secondary/25 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur-2xl text-white">
@@ -166,9 +166,9 @@ export function PushNotificationBanner({
           <div className="flex items-start gap-3.5 pr-8">
             {/* Icone de sino animado com tema secondary e glow */}
             <div className="relative flex-shrink-0">
-              <div className="absolute inset-0 animate-ping rounded-xl bg-secondary/20 blur-sm" />
+              <div className="absolute inset-0 rounded-xl bg-secondary/20 blur-sm motion-safe:animate-ping" />
               <div className="relative flex size-11 items-center justify-center rounded-xl border border-secondary/30 bg-secondary/10 text-secondary shadow-inner">
-                <BellRing className="size-5 animate-bounce" />
+                <BellRing className="size-5 motion-safe:animate-bounce" />
               </div>
             </div>
 

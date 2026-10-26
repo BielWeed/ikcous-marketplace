@@ -18,6 +18,19 @@ interface NotificationsViewProps {
 
 type TabType = "todas" | "avisos";
 
+// Os tipos que o banco grava de fato: a campanha do painel e as respostas da
+// loja gravam "aviso"; os avisos de pedido (trigger do status) gravam
+// "info" (em preparo, a caminho), "success" (entregue) e "warning"
+// (cancelado). Todos eles são "avisos" da aba Avisos.
+const TIPOS_DA_ABA_AVISOS = new Set([
+  "system",
+  "aviso",
+  "sucesso",
+  "info",
+  "success",
+  "warning",
+]);
+
 /**
  * Laudo 02/09 #9 (onda 2): a decisão de destino a partir de `action_url` é
  * pura e virou função própria — o clique precisa navegar ANTES de qualquer
@@ -101,9 +114,13 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
     markAllAsRead,
     deleteNotification,
     markAsRead,
+    semConta,
   } = useNotificationCenter();
 
   const [activeTab, setActiveTab] = useState<TabType>("todas");
+  // Visitante sem conta nunca receberá aviso de pedido: a caixa vazia dele
+  // não pode dizer "tudo em ordem".
+  const visitante = semConta === true;
 
   // Format date/time to be user friendly
   const formatNotificationTime = useCallback((dateStr: string) => {
@@ -174,10 +191,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
     const unread = notifications.filter((n) => !n.read);
     return {
       todas: unread.length,
-      avisos: unread.filter(
-        (n) =>
-          n.type === "system" || n.type === "aviso" || n.type === "sucesso",
-      ).length,
+      avisos: unread.filter((n) => TIPOS_DA_ABA_AVISOS.has(n.type)).length,
     };
   }, [notifications]);
 
@@ -185,18 +199,18 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
   const filteredNotifications = useMemo(() => {
     switch (activeTab) {
       case "avisos":
-        return notifications.filter(
-          (n) =>
-            n.type === "system" || n.type === "aviso" || n.type === "sucesso",
-        );
+        return notifications.filter((n) => TIPOS_DA_ABA_AVISOS.has(n.type));
       default:
         return notifications;
     }
   }, [notifications, activeTab]);
 
   // Type styling details: cor só no glifo (significado), nunca bloco pintado
-  const getTypeConfig = useCallback((type: string) => {
-    switch (type) {
+  const getTypeConfig = useCallback((type: string, temPedido: boolean) => {
+    // "info" do trigger de pedido (em preparo, a caminho) é o caminhão;
+    // "success" (entregue) é o "sucesso"; "warning" (cancelado) fica no sino
+    // neutro.
+    switch (type === "info" && temPedido ? "order" : type) {
       case "order":
       case "delivery":
         return {
@@ -210,6 +224,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
           glyphClass: "text-amber-700 dark:text-amber-400",
           actionText: "Aproveitar Cupom",
         };
+      case "success":
       case "sucesso":
         return {
           icon: Sparkles,
@@ -226,25 +241,30 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
   }, []);
 
   const emptyStateConfig = useMemo(() => {
+    if (visitante) {
+      return {
+        title: "Avisos dos seus pedidos",
+        desc: "Entre na sua conta para receber os avisos dos seus pedidos.",
+      };
+    }
     switch (activeTab) {
       case "avisos":
         return {
           title: "Sem avisos ou comunicados",
-          desc: "Qualquer informativo importante da plataforma ou alertas de segurança serão listados aqui.",
+          desc: "Quando a loja enviar um comunicado ou atualizar um pedido seu, ele aparece aqui.",
         };
       default:
         return {
           title: "Sua caixa está limpa!",
-          // A frase antiga prometia "promoções, cupons e atualizações dos seus
-          // pedidos" -- as MESMAS três coisas que as abas removidas prometiam e
-          // que o banco proíbe: o CHECK de `notificacoes` não aceita esses tipos,
-          // e o único escritor do produto grava sempre "aviso". Este é o estado
-          // vazio da aba PADRÃO, então era a primeira frase que toda cliente nova
-          // lia -- mais visível que as abas que saíram.
+          // Estado vazio da aba PADRÃO: a primeira frase que toda cliente nova
+          // lê. Promete só o que chega de fato: comunicado da loja (tipo
+          // "aviso") e andamento do pedido (tipos "info", "success" e
+          // "warning", gravados pelo trigger de status do pedido). Nunca
+          // promoção/cupom como tipo próprio, que o banco não aceita.
           desc: "Tudo em ordem. Quando a loja enviar um aviso ou comunicado, ele aparece aqui.",
         };
     }
-  }, [activeTab]);
+  }, [activeTab, visitante]);
 
   const hasUnreadNotifications = useMemo(
     () => notifications.some((n) => !n.read),
@@ -329,7 +349,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
           <motion.div layout role="list">
             <AnimatePresence mode="popLayout">
               {filteredNotifications.map((notif: any) => {
-                const config = getTypeConfig(notif.type);
+                const config = getTypeConfig(notif.type, !!notif.order_id);
                 const Icon = config.icon;
                 const showAction = notif.action_url || notif.order_id;
 
@@ -482,10 +502,10 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
             </p>
 
             <Button
-              onClick={() => onNavigate?.("home")}
+              onClick={() => onNavigate?.(visitante ? "auth" : "home")}
               className="h-[52px] rounded-2xl bg-foreground px-6 text-[15px] font-semibold text-background hover:bg-foreground/90"
             >
-              Explorar Ofertas
+              {visitante ? "Entrar" : "Explorar Ofertas"}
             </Button>
           </div>
         )}
