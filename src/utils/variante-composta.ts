@@ -64,11 +64,18 @@ export {
  * recusa é a trava, que não muda.
  */
 export function alinharPelaOrdemGravada(
-  pares: ParDeAtributo[],
+  paresDoFormulario: ParDeAtributo[],
   nomeGravado: string | undefined,
 ): ParDeAtributo[] {
+  // Sobras de cliques em "+ Atributo" (nome e valor vazios) nunca entram na
+  // identidade da linha: `juntarAtributos` também as ignora.
+  const pares = paresDoFormulario.filter(
+    (par) => par.name.trim() !== "" || par.value.trim() !== "",
+  );
   const gravados = (nomeGravado ?? "").split(SEPARADOR_DE_ATRIBUTOS);
-  if (gravados.length < 2 || gravados.length !== pares.length) return pares;
+  if (gravados.length < 2 || gravados.length !== pares.length) {
+    return paresDoFormulario;
+  }
   const usados = new Set<number>();
   const alinhados: ParDeAtributo[] = [];
   for (const gravado of gravados) {
@@ -76,7 +83,7 @@ export function alinharPelaOrdemGravada(
       (par, i) => !usados.has(i) && dobrar(par.name) === dobrar(gravado),
     );
     const par = pares.at(indice);
-    if (indice < 0 || !par) return pares;
+    if (indice < 0 || !par) return paresDoFormulario;
     usados.add(indice);
     alinhados.push({ ...par, name: gravado });
   }

@@ -164,6 +164,17 @@ describe("alinharPelaOrdemGravada", () => {
       { name: "tamanho", value: "P" },
     ]);
   });
+  it("par vazio sobrando (clique a mais em '+ Atributo') não impede o alinhamento", () => {
+    expect(
+      alinharPelaOrdemGravada(
+        [...tamanhoDepoisCor, { name: "", value: "" }],
+        "Cor / Tamanho",
+      ),
+    ).toEqual([
+      { name: "Cor", value: "Azul" },
+      { name: "Tamanho", value: "P" },
+    ]);
+  });
   it("já na ordem gravada, devolve igual", () => {
     const certa = [...tamanhoDepoisCor].reverse();
     expect(alinharPelaOrdemGravada(certa, "Cor / Tamanho")).toEqual(certa);
