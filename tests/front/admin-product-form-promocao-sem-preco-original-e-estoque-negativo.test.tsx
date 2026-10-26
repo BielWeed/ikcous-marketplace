@@ -195,7 +195,7 @@ describe("AdminProductFormView — promoção sem preço original e estoque nega
 
       expect(botaoPorTexto("Salvar alterações")?.disabled).toBe(true);
       expect(motivo()).toContain(
-        "Escreva o preço original (De:) ou desligue a promoção",
+        'Escreva o preço de antes ("De") ou desligue a promoção',
       );
       expect(updateProduct).not.toHaveBeenCalled();
     });

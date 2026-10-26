@@ -257,6 +257,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
     status: order.status,
     payment_status: order.paymentStatus,
     cancelledAfterShipping: order.cancelledAfterShipping,
+    returnedToSellerAt: order.returnedToSellerAt,
     valorEstornado: order.valorEstornado,
   });
 

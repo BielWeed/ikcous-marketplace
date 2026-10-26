@@ -2225,6 +2225,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "9567454f17698f3f0624cca0b06458cd",
           versao: "20261380000000",
         },
+        // 26/10/2026: a busca de pedido pelo número não vira busca de telefone (regra do telefone e ORDER BY da página).
+        {
+          fn: "get_admin_orders_paged",
+          h: "f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6",
+          versao: "20261387000000",
+        },
         {
           fn: "painel_inicio",
           h: "f11d22d076c59ab54d1beb280954dd15",
@@ -3615,12 +3621,12 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
     });
   }
   await t.step(
-    "quem é o dono do corpo: 60..66 só para as duas que nenhuma migration posterior redefine; buscar_por_codigo_barras é da 20261381 (a guarda passa a exigir o admin atual, na hora); get_admin_orders_paged é da 20261199, get_admin_orders_cancelados_recentes é da 20261380 (o aviso de cancelados antigos conta só pendência real), registrar_venda_presencial é da 20261280 e upsert_store_config é da 20261244 (a loja escolhe como entrega na cidade; antes, a 20261239, a identidade legal da loja)",
+    "quem é o dono do corpo: 60..66 só para as duas que nenhuma migration posterior redefine; buscar_por_codigo_barras é da 20261381 (a guarda passa a exigir o admin atual, na hora); get_admin_orders_paged é da 20261387 (a busca de pedido pelo número não vira busca de telefone), get_admin_orders_cancelados_recentes é da 20261380 (o aviso de cancelados antigos conta só pendência real), registrar_venda_presencial é da 20261280 e upsert_store_config é da 20261244 (a loja escolhe como entrega na cidade; antes, a 20261239, a identidade legal da loja)",
     () => {
       assertEquals(dono, {
         buscar_por_codigo_barras: "20261381000000",
         get_admin_orders_cancelados_recentes: "20261380000000",
-        get_admin_orders_paged: "20261199000000",
+        get_admin_orders_paged: "20261387000000",
         get_product_recommendations: "20261160000000",
         limpar_cotacoes_fora_da_janela: "20261166000000",
         registrar_venda_presencial: "20261280000000",

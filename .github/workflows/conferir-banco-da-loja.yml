@@ -258,6 +258,12 @@ on:
           - 90b-antes-busca-do-painel-por-codigo-base-vigente
           - 91a-conferir-o-preco-do-produto-deixa-historico-aplicado
           - 91b-antes-o-preco-do-produto-deixa-historico-ausente
+          - 92a-conferir-a-busca-de-pedido-pelo-numero-aplicado
+          - 92b-antes-a-busca-de-pedido-pelo-numero-base-vigente
+          - 95a-conferir-o-frete-tem-limite-de-cotacoes-aplicado
+          - 95b-antes-o-frete-tem-limite-de-cotacoes-ausente
+          - 96a-conferir-o-estoque-que-volta-tranca-na-mesma-ordem-aplicado
+          - 96b-antes-o-estoque-que-volta-tranca-na-mesma-ordem-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

@@ -150,7 +150,20 @@ export const PhoneSimulator = memo(function PhoneSimulator({
           </div>
           <div className="min-w-0">
             <h3 className="line-clamp-2 text-sm font-semibold leading-4 text-foreground sm:leading-5">
-              Simulador do Aplicativo
+              {/* No celular só cabe "Simulador" ao lado das duas abas e do
+                  fechar: a frase inteira era cortada em "Simulador do…". */}
+              <span
+                data-testid="titulo-curto-do-simulador"
+                className="sm:hidden"
+              >
+                Simulador
+              </span>
+              <span
+                data-testid="titulo-longo-do-simulador"
+                className="hidden sm:inline"
+              >
+                Simulador do Aplicativo
+              </span>
             </h3>
             <p className="hidden truncate text-xs leading-4 text-muted-foreground sm:block">
               Prévia em Tempo Real

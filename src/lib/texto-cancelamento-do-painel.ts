@@ -16,6 +16,10 @@ export interface PedidoParaConfirmarCancelamento {
   cancelledAfterShipping?: boolean | null;
   /** `Order.valorEstornado`: devolução já CONCLUÍDA pelo Mercado Pago. */
   valorEstornado?: number | null;
+  /** `Order.returnedToSellerAt`: a loja confirmou ("O produto voltou") que a
+   * mercadoria que tinha saído está de volta. O carimbo nunca é apagado: um
+   * pedido que voltou, foi reativado e vai ser cancelado de novo ainda o traz. */
+  returnedToSellerAt?: string | null;
 }
 
 const PAGOS = new Set(["pago", "pago_apos_expirar", "recebido_na_entrega"]);
@@ -69,6 +73,24 @@ function cancelarDevolveSozinho(pedido: PedidoParaConfirmarCancelamento) {
 // revisão adversária do PR #397.)
 const EM_ROTA = new Set(["shipping"]);
 
+/**
+ * O produto que já tinha saído (`cancelledAfterShipping`) voltou para a loja e
+ * o pedido NÃO está na estrada de novo. Em `shipping` o carimbo de retorno é
+ * da viagem anterior e não diz nada sobre a atual — a mercadoria está fora.
+ *
+ * É a mesma pergunta que `baldeDeEstorno` (AdminOrdersView) faz depois do
+ * cancelamento: com o produto de volta o pedido vai para "Devolver agora"; sem
+ * ele, para "Esperando o produto voltar". O texto tem de prometer a lista
+ * onde o pedido de fato vai cair.
+ */
+function produtoJaVoltouParaALoja(pedido: PedidoParaConfirmarCancelamento) {
+  return (
+    pedido.cancelledAfterShipping === true &&
+    Boolean(pedido.returnedToSellerAt) &&
+    !(pedido.status && EM_ROTA.has(pedido.status))
+  );
+}
+
 export function textoCancelamentoDoPainel(
   pedido: PedidoParaConfirmarCancelamento,
 ): string {
@@ -76,6 +98,17 @@ export function textoCancelamentoDoPainel(
   // alguns minutos", nunca um número que o código não garante.
   if (cancelarDevolveSozinho(pedido)) {
     return 'Este pedido está PAGO e ainda não saiu para entrega. Ao cancelar, o app pede sozinho ao Mercado Pago, em alguns minutos, que devolva o valor ao cliente. NÃO devolva o dinheiro por outro meio (PIX, dinheiro, transferência): o cliente receberia duas vezes. Se você já devolveu por fora, toque em "Já estornei no Mercado Pago" na lista "Devolver agora" logo depois de cancelar. Cancelar mesmo assim?';
+  }
+  // Pago que JÁ SAIU e o produto JÁ VOLTOU (enviado, cancelado, devolvido,
+  // reativado): o servidor não abre devolução automática (o carimbo de envio
+  // fica), mas o produto está na loja — o pedido vai direto para "Devolver
+  // agora" (AdminOrdersView.baldeDeEstorno), sem esperar volta nenhuma.
+  if (
+    pedido.payment_status &&
+    PAGOS.has(pedido.payment_status) &&
+    produtoJaVoltouParaALoja(pedido)
+  ) {
+    return 'Este pedido está PAGO e o produto que tinha saído já voltou para a loja. Cancelar não devolve o dinheiro automaticamente: o pedido entra na lista "Devolver agora" e você devolve o valor ao cliente por ali. Cancelar mesmo assim?';
   }
   // Pago que JÁ SAIU (em trânsito, ou enviado, cancelado e reativado): o
   // servidor marca `cancelled_after_shipping` ao cancelar, e o pedido vai
@@ -95,8 +128,20 @@ export function textoCancelamentoDoPainel(
   if (pedido.payment_status && PAGOS.has(pedido.payment_status)) {
     return 'Este pedido está PAGO. Cancelar não devolve o dinheiro automaticamente: você precisa combinar a devolução com o cliente, e o pedido entra na lista "Devolver agora" até o estorno ser registrado. Cancelar mesmo assim?';
   }
-  if (pedido.status && EM_ROTA.has(pedido.status)) {
+  // Sem pagamento: enviado, cancelado e reativado também tem a peça fora, e o
+  // cancelamento não a devolve ao estoque (o servidor só credita estoque de
+  // pedido que nunca saiu; o resto volta em "O produto voltou").
+  if (
+    (pedido.status && EM_ROTA.has(pedido.status)) ||
+    (pedido.cancelledAfterShipping === true &&
+      !produtoJaVoltouParaALoja(pedido))
+  ) {
     return "Este pedido já saiu para entrega. Cancelar agora não traz a mercadoria de volta sozinho — fale com o cliente. Cancelar mesmo assim?";
+  }
+  // Sem pagamento, enviado, devolvido e reativado: o estoque já foi acertado
+  // quando a loja confirmou o retorno — cancelar não o credita de novo.
+  if (produtoJaVoltouParaALoja(pedido)) {
+    return "O produto que tinha saído deste pedido já voltou para a loja e o estoque já foi acertado. O cliente é avisado no aplicativo. Cancelar?";
   }
   return "Tem certeza que deseja cancelar este pedido? O estoque volta para o produto e o cliente é avisado no aplicativo. Cancelar?";
 }

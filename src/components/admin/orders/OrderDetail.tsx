@@ -1977,6 +1977,8 @@ export const OrderDetail = memo(function OrderDetail({
       // L3e: pedido enviado e reativado não gera a devolução automática —
       // sem este campo o confirm prometeria um estorno que não vai existir.
       cancelledAfterShipping: order.cancelledAfterShipping,
+      // Enviado, devolvido à loja e reativado: o texto fala da lista certa.
+      returnedToSellerAt: order.returnedToSellerAt,
       // G4: devolução parcial já concluída também impede a linha nova.
       valorEstornado: order.valorEstornado,
     });
