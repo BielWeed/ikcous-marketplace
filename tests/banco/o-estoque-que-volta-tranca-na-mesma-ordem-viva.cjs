@@ -358,6 +358,16 @@ async function main() {
   const c = await novoCliente();
   try {
     // ---------- 1. Antes: o corpo vivo é o da 20261175000000 ----------
+    // Dois pontos de partida, a prova vale nos dois: no clone de base a migration ainda não veio (corpo da 175); no CI ("Migrations do
+    // zero") ela já veio no apply, e o estado de ANTES se obtém desfazendo com o rollback-manual, que devolve o corpo da 175 byte a byte.
+    // Qualquer outro corpo (nem o da 175 nem o desta migration) NÃO é desfeito: a asserção abaixo reprova, sem afrouxar.
+    if ((await corpoVivo(c)) === H_NOVO) {
+      assert.equal(
+        await aplicar(c, rollback),
+        null,
+        "o rollback-manual desfaz o corpo já aplicado",
+      );
+    }
     assert.equal(await corpoVivo(c), H_VIGENTE);
     const antes = (
       await c.query(
