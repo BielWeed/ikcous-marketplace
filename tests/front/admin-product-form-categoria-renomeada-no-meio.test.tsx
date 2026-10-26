@@ -9,9 +9,12 @@
 // esvazia o campo, para a lojista escolher outra), e que a tela abre pelo
 // formulário.
 import { act } from "react";
-import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  categoriaMostradaNoCampo,
+  escolherCategoriaDoProduto,
+} from "./helpers/escolher-categoria-do-produto";
 
 const fetchProduct = vi.fn();
 const updateProduct = vi.fn();
@@ -48,32 +51,6 @@ vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: { shippingCoverage: "national" } }),
 }));
-vi.mock("@/components/ui/select", () => ({
-  Select: ({
-    value,
-    onValueChange,
-    children,
-  }: {
-    value: string;
-    onValueChange: (v: string) => void;
-    children: ReactNode;
-  }) => (
-    <select
-      data-testid="select-category"
-      value={value}
-      onChange={(e) => onValueChange(e.target.value)}
-    >
-      <option value="" />
-      {children}
-    </select>
-  ),
-  SelectTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
-  SelectValue: () => null,
-  SelectContent: ({ children }: { children: ReactNode }) => <>{children}</>,
-  SelectItem: ({ value, children }: { value: string; children: ReactNode }) => (
-    <option value={value}>{children}</option>
-  ),
-}));
 vi.mock("sonner", () => ({
   toast: {
     info: vi.fn(),
@@ -102,19 +79,11 @@ function digitar(id: string, valor: string) {
   el.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-const selectDaCategoria = () =>
-  document.querySelector(
-    '[data-testid="select-category"]',
-  ) as HTMLSelectElement;
-
-function escolher(valor: string) {
-  const el = selectDaCategoria();
-  Object.getOwnPropertyDescriptor(
-    globalThis.HTMLSelectElement.prototype,
-    "value",
-  )?.set?.call(el, valor);
-  el.dispatchEvent(new Event("change", { bubbles: true }));
-}
+/** O que o campo "Categoria" mostra agora ("" quando está sem categoria). */
+const categoriaDoCampo = () => {
+  const mostrada = categoriaMostradaNoCampo();
+  return mostrada === "Escolher categoria" ? "" : mostrada;
+};
 
 const espera = (ms = 0) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -210,7 +179,7 @@ describe("AdminProductFormView — a categoria renomeada no meio da edição nã
 
   it("o formulário abre com a categoria do produto", async () => {
     await montar();
-    expect(selectDaCategoria().value).toBe("Geral");
+    expect(categoriaDoCampo()).toBe("Geral");
   });
 
   it("categoria RENOMEADA em outro lugar: o campo vira o nome novo, e o Salvar grava o nome novo", async () => {
@@ -230,7 +199,7 @@ describe("AdminProductFormView — a categoria renomeada no meio da edição nã
         para: "Geral e Mais",
       });
     });
-    expect(selectDaCategoria().value).toBe("Geral e Mais");
+    expect(categoriaDoCampo()).toBe("Geral e Mais");
 
     digitar("product-sale-price", "60,00");
     await act(async () => {
@@ -259,7 +228,7 @@ describe("AdminProductFormView — a categoria renomeada no meio da edição nã
         para: "Cama e Banho",
       });
     });
-    expect(selectDaCategoria().value).toBe("Geral");
+    expect(categoriaDoCampo()).toBe("Geral");
   });
 
   it("categoria escolhida APAGADA: o campo esvazia (a lojista escolhe outra), e a outra é intocada", async () => {
@@ -271,25 +240,29 @@ describe("AdminProductFormView — a categoria renomeada no meio da edição nã
       categoriasDoBanco.lista = [{ id: "cat-2", name: "Cama", slug: "cama" }];
       publicarMudancaDeCategoria({ tipo: "apagada", nome: "geral" });
     });
-    expect(selectDaCategoria().value).toBe("");
+    expect(categoriaDoCampo()).toBe("");
     await act(async () => {
-      escolher("Cama");
+      escolherCategoriaDoProduto("Cama");
     });
-    expect(selectDaCategoria().value).toBe("Cama");
+    expect(categoriaDoCampo()).toBe("Cama");
   });
 
-  it("a opção 'Renomear, esconder ou apagar' abre a tela de gerenciar, e NÃO troca a categoria do produto", async () => {
+  it("o botão 'Organizar categorias' abre a tela de gerenciar, e NÃO troca a categoria do produto", async () => {
     await montar();
     expect(rpcMock).not.toHaveBeenCalled();
     await act(async () => {
-      escolher("MANAGE_CATEGORIES");
+      // Pelo caminho da lojista: abre o campo e toca em "Organizar categorias".
+      document.getElementById("product-category")?.click();
+    });
+    await act(async () => {
+      botaoPorTexto("Organizar categorias")?.click();
     });
     // A tela é baixada sob demanda (lazy): espera pelo que ela mostra, não por um tempo fixo.
     await esperarAte(() => {
       expect(rpcMock).toHaveBeenCalledWith("categorias_com_uso");
       expect(document.body.textContent).toMatch(/Renomeie, esconda da vitrine/);
     });
-    expect(selectDaCategoria().value).toBe("Geral");
+    expect(categoriaDoCampo()).toBe("Geral");
   });
 
   describe("rascunho de produto NOVO guardado no aparelho", () => {
@@ -339,7 +312,7 @@ describe("AdminProductFormView — a categoria renomeada no meio da edição nã
       expect(
         (document.getElementById("product-name") as HTMLInputElement).value,
       ).toBe("Vestido");
-      expect(selectDaCategoria().value).toBe("");
+      expect(categoriaDoCampo()).toBe("");
       expect(document.querySelector(AVISO)?.textContent).toContain("Brinquedo");
       const { toast } = await import("sonner");
       expect(toast.warning).toHaveBeenCalledWith(
@@ -348,9 +321,9 @@ describe("AdminProductFormView — a categoria renomeada no meio da edição nã
 
       // escolher outra tira o aviso e o campo fica com a escolha
       await act(async () => {
-        escolher("Cama");
+        escolherCategoriaDoProduto("Cama");
       });
-      expect(selectDaCategoria().value).toBe("Cama");
+      expect(categoriaDoCampo()).toBe("Cama");
       expect(document.querySelector(AVISO)).toBeNull();
     });
 
@@ -358,7 +331,7 @@ describe("AdminProductFormView — a categoria renomeada no meio da edição nã
       await guardarRascunho("Cama");
       await montarProdutoNovo();
 
-      expect(selectDaCategoria().value).toBe("Cama");
+      expect(categoriaDoCampo()).toBe("Cama");
       expect(document.querySelector(AVISO)).toBeNull();
       const { toast } = await import("sonner");
       expect(toast.warning).not.toHaveBeenCalled();
@@ -377,7 +350,7 @@ describe("AdminProductFormView — a categoria renomeada no meio da edição nã
       categoriasDoBanco.lista = [{ id: "cat-2", name: "Cama", slug: "cama" }];
       categoriasDoBanco.carregando = false;
       await montarProdutoNovo();
-      expect(selectDaCategoria().value).toBe("");
+      expect(categoriaDoCampo()).toBe("");
       expect(document.querySelector(AVISO)?.textContent).toContain("Brinquedo");
     });
   });

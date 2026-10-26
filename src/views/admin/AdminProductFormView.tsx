@@ -59,9 +59,11 @@ import {
 } from "@/lib/gestao-de-categorias";
 import {
   AVISO_ESTOQUE_NAO_RESTAURADO,
+  AVISO_PRODUTO_ALTERADO_DEPOIS,
   chaveDoRascunhoDoProduto,
   estoqueDoRascunhoDifereDoBanco,
   lerRascunhoVigenteDoProduto,
+  rascunhoSobreOBancoDeHoje,
   serializarRascunhoDoProduto,
   variacoesDoRascunhoComEstoqueDoBanco,
 } from "@/lib/rascunho-do-produto";
@@ -83,6 +85,7 @@ import {
   recadoDoTetoDeVariacoes,
 } from "@/utils/grade-de-combinacoes";
 import {
+  camposQueFaltam,
   motivoDoBloqueioDoProduto,
   motivoDoEnvioDeFotos,
 } from "@/utils/motivo-do-bloqueio-do-produto";
@@ -235,13 +238,20 @@ interface FotoComFalha {
 // `compressImage` em `src/utils/avatars.ts` (assinatura incompatível,
 // `string` → `Promise<string>`), e o TypeScript pega o auto-import errado
 // quando os dois se chamam igual.
+/** A foto não pôde ser lida (formato que o aparelho não abre, arquivo ruim). */
+class FotoIlegivel extends Error {}
+
+/** HEIC/HEIF (iPhone/Samsung): o navegador não abre, então não dá para reduzir. */
+const ehHeic = (f: File) =>
+  /^image\/hei[cf]/i.test(f.type) || /\.hei[cf]$/i.test(f.name);
+
 export const compressProductImage = (
   file: File,
   maxWidth = 1200,
   maxHeight = 1200,
   quality = 0.85,
 ): Promise<File> => {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     if (!file.type.startsWith("image/") || file.size < 100 * 1024) {
       resolve(file);
       return;
@@ -308,7 +318,7 @@ export const compressProductImage = (
 
     img.onerror = () => {
       URL.revokeObjectURL(objectUrl);
-      resolve(file);
+      reject(new FotoIlegivel());
     };
 
     img.src = objectUrl;
@@ -334,6 +344,8 @@ interface AdminProductFormViewProps {
   productId?: string;
   onNavigate: (view: View, id?: string, bypassDirtyCheck?: boolean) => void;
   onSetDirty?: (dirty: boolean) => void;
+  /** Registra o que o Voltar do celular faz (fechar a camada aberta). */
+  onSetBackOverride?: (fn: (() => void) | null) => void;
   /**
    * L10 — uid de quem está no formulário: o rascunho (com custo e margem do
    * produto) vive em `ikcous_product_form_draft:<uid>` /
@@ -342,6 +354,9 @@ interface AdminProductFormViewProps {
    */
   userId?: string;
 }
+
+const ESTOQUE_MAXIMO_DO_PRODUTO = 10000;
+const ID_DO_AVISO_DA_GRADE_PENDENTE = "rascunho-da-grade-pendente";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -552,15 +567,20 @@ function dadosDoProdutoDoFormulario(
   return { dados, estoque: pStock };
 }
 
+// Dinheiro compara pelo valor: tocar no campo e sair devolve "100.00" onde o
+// produto abriu como "100" — o mesmo preço, que não é alteração.
+const mesmoDinheiro = (a: string, b: string) =>
+  a === b || (a !== "" && b !== "" && Number(a) === Number(b));
+
 function isProductFormDirty(
   a: ProductFormFields,
   b: ProductFormFields,
 ): boolean {
   if (a.name !== b.name) return true;
   if (a.description !== b.description) return true;
-  if (a.price !== b.price) return true;
-  if (a.costPrice !== b.costPrice) return true;
-  if (a.originalPrice !== b.originalPrice) return true;
+  if (!mesmoDinheiro(a.price, b.price)) return true;
+  if (!mesmoDinheiro(a.costPrice, b.costPrice)) return true;
+  if (!mesmoDinheiro(a.originalPrice, b.originalPrice)) return true;
   if (a.stock !== b.stock) return true;
   if (a.estoqueMinimo !== b.estoqueMinimo) return true;
   if (a.category !== b.category) return true;
@@ -608,6 +628,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   productId,
   onNavigate,
   onSetDirty,
+  onSetBackOverride,
   userId,
 }: AdminProductFormViewProps) {
   const {
@@ -855,7 +876,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           | "excellent"
           | "warning_aspect"
           | "warning_res"
-          | "good";
+          | "good"
+          | "erro";
       }
     >
   >({});
@@ -884,6 +906,22 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // mais escrever na chave de produto novo: recuperaria o rascunho sem id e o
   // próximo "Publicar" criaria um segundo produto idêntico.
   const produtoNovoJaCriadoRef = useRef(false);
+  // O produto foi criado, mas as variações não gravaram: elas só existem no
+  // rascunho. Enquanto não restaura (ou descarta), Salvar não finge sucesso e o
+  // salvamento automático não troca o rascunho por um sem a grade.
+  const [variacoesPendentes, setVariacoesPendentes] = useState(false);
+  const restaurarPendenteRef = useRef<(() => void) | null>(null);
+  // A grade do rascunho pendente AINDA não está no banco, mesmo depois de
+  // "Restaurar" (que só a devolve ao formulário). Enquanto o formulário tiver
+  // variação nova (`temp-…`) vinda dela, o salvamento automático regrava o
+  // rascunho com a marca `variacoesPendentes`; sem isso, sair sem salvar e voltar
+  // (ou tocar Salvar sem restaurar) perdia a grade. Cai ao descartar ou quando a
+  // grade grava (o salvar apaga o rascunho e a tela segue).
+  const gradeDoRascunhoPendenteRef = useRef(false);
+  // A chave do rascunho que o salvamento automático gravou NESTA abertura: só
+  // ele pode apagá-la ao voltar ao que está no banco (o rascunho que já estava
+  // lá antes fica esperando a decisão dela).
+  const gravouRascunhoRef = useRef<string | null>(null);
   // Um salvar desta tela JÁ gravou o produto no caminho de duas etapas (produto,
   // depois grade) e pode ter terminado pela metade. O banco então já tem valores
   // que a tela não registrou em `initialData`: voltar um campo ao valor de
@@ -898,6 +936,101 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
   const [showPhotoGuide, setShowPhotoGuide] = useState(false);
   const [expandedHelp, setExpandedHelp] = useState<Record<string, boolean>>({});
+
+  // Voltar do celular com leitor, prévia, recorte ou ajuda abertos fecha SÓ a
+  // camada (mesmo esquema da tela de Banners): ao abrir empurra uma entrada de
+  // histórico na mesma URL; fechar por qualquer caminho a consome, a não ser
+  // que o próprio navegador já tenha feito isso (Voltar físico).
+  const camadaAberta =
+    leitorAberto !== null || isPreviewOpen || isAdjusterOpen || showHelpModal;
+  const entradaDaCamadaRef = useRef(false);
+  // Fechar pelo botão da camada devolve a entrada com `history.back()`, e o
+  // `popstate` dele chega DEPOIS. Se o desvio do Voltar já tivesse sido zerado,
+  // o App trataria esse Voltar como "sair do cadastro" e, com o formulário
+  // mexido, abriria "Alterações Não Salvas" (cujo "Descartar" apaga o rascunho).
+  // Por isso, até o `popstate` chegar fica registrado um desvio de uso único que
+  // só engole esse Voltar e se desfaz. `engolidorRef` guarda qual é o vigente:
+  // o prazo e a reabertura só desfazem ELE, nunca um desvio de camada nova.
+  const engolidorRef = useRef<(() => void) | null>(null);
+  const prazoDoEngolidorRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const onSetBackOverrideRef = useRef(onSetBackOverride);
+  onSetBackOverrideRef.current = onSetBackOverride;
+  const soltarEngolidor = useCallback(() => {
+    if (prazoDoEngolidorRef.current !== null) {
+      clearTimeout(prazoDoEngolidorRef.current);
+      prazoDoEngolidorRef.current = null;
+    }
+    engolidorRef.current = null;
+  }, []);
+  useEffect(() => {
+    if (camadaAberta) {
+      // Reabriu antes do `popstate` da devolução anterior: o desvio da camada
+      // nova (abaixo) toma o lugar do engolidor, que não pode mais agir.
+      soltarEngolidor();
+      if (!entradaDaCamadaRef.current) {
+        window.history.pushState(
+          { ...window.history.state, modal: "produto" },
+          "",
+          window.location.pathname + window.location.search,
+        );
+        entradaDaCamadaRef.current = true;
+      }
+      onSetBackOverride?.(() => () => {
+        // A de cima primeiro: leitor, recorte, prévia, ajuda.
+        if (leitorAberto !== null) setLeitorAberto(null);
+        else if (isAdjusterOpen) {
+          setIsAdjusterOpen(false);
+          setAdjustingImgIndex(null);
+        } else if (isPreviewOpen) setIsPreviewOpen(false);
+        else setShowHelpModal(false);
+      });
+      return;
+    }
+    if (entradaDaCamadaRef.current) {
+      entradaDaCamadaRef.current = false;
+      if (window.history.state?.modal === "produto") {
+        // A entrada ainda é nossa: devolvê-la com o desvio que engole o Voltar.
+        if (onSetBackOverride) {
+          const engolidor = () => {
+            soltarEngolidor();
+            onSetBackOverride(null);
+          };
+          engolidorRef.current = engolidor;
+          onSetBackOverride(() => engolidor);
+          // Rede de segurança: se o `popstate` nunca chegar, o engolidor não
+          // pode ficar preso para engolir um Voltar FUTURO.
+          prazoDoEngolidorRef.current = setTimeout(() => {
+            prazoDoEngolidorRef.current = null;
+            if (engolidorRef.current !== engolidor) return;
+            engolidorRef.current = null;
+            onSetBackOverride(null);
+          }, 1500);
+        }
+        window.history.back();
+        return;
+      }
+      // O Voltar físico já consumiu a entrada (e o desvio da camada rodou):
+      // nada a devolver, é só desfazer o desvio.
+    }
+    onSetBackOverride?.(null);
+  }, [
+    camadaAberta,
+    leitorAberto,
+    isAdjusterOpen,
+    isPreviewOpen,
+    onSetBackOverride,
+    soltarEngolidor,
+  ]);
+  // Sair da tela: nada de desvio (nem engolidor) sobrando no App.
+  useEffect(
+    () => () => {
+      soltarEngolidor();
+      onSetBackOverrideRef.current?.(null);
+    },
+    [soltarEngolidor],
+  );
 
   const toggleHelp = (key: string) => {
     setExpandedHelp((prev) => ({
@@ -980,7 +1113,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       img.onerror = () => {
         setImageMetadata((prev) => ({
           ...prev,
-          [url]: { width: 0, height: 0, status: "good" },
+          [url]: { width: 0, height: 0, status: "erro" },
         }));
       };
       img.src = url;
@@ -1212,7 +1345,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         : null;
       if (savedDraft && draftKey) {
         try {
-          const parsed = JSON.parse(savedDraft);
+          // O que ela não editou fica como está no banco de hoje (ver
+          // `rascunhoSobreOBancoDeHoje`): restaurar não desfaz o que outra
+          // pessoa mudou depois.
+          const { campos: parsed, bancoMudou } = rascunhoSobreOBancoDeHoje(
+            JSON.parse(savedDraft),
+            initialData,
+          );
 
           // ESTOQUE NÃO SE RESTAURA. O número de estoque (do produto e de cada
           // variação) que o rascunho guardou ficou velho no dia em que uma
@@ -1268,44 +1407,58 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           const isDraftDifferent = isProductFormDirty(draftFields, initialData);
 
           if (isDraftDifferent) {
+            // Grade que só existe neste rascunho (o produto foi criado e as
+            // variações não gravaram): o aviso fica até ela decidir.
+            const pendente = parsed.variacoesPendentes === true;
+            const restaurar = () => {
+              setVariacoesPendentes(false);
+              restaurarPendenteRef.current = null;
+              setFormData(draftFields);
+              // A categoria que o rascunho trouxe e o produto já não tem: confere.
+              if (
+                draftFields.category &&
+                !mesmaCategoria(draftFields.category, initialData.category)
+              ) {
+                setCategoriaDoRascunho(draftFields.category);
+              }
+              setIsPromoActive(!!draftFields.originalPrice);
+              if (draftFields.variants.length > 0) {
+                setChaveDasVariacoes((chave) => chave + 1);
+              }
+              toast.success(
+                "Rascunho restaurado!",
+                estoqueDoRascunhoDiferia
+                  ? { description: AVISO_ESTOQUE_NAO_RESTAURADO }
+                  : undefined,
+              );
+            };
+            setVariacoesPendentes(pendente);
+            gradeDoRascunhoPendenteRef.current = pendente;
+            restaurarPendenteRef.current = pendente ? restaurar : null;
             toast.info("Rascunho não salvo encontrado para este produto", {
-              description: estoqueDoRascunhoDiferia
-                ? `Deseja restaurar as alterações que você fez anteriormente? ${AVISO_ESTOQUE_NAO_RESTAURADO}`
-                : "Deseja restaurar as alterações que você fez anteriormente?",
-              action: {
-                label: "Restaurar",
-                onClick: () => {
-                  setFormData(draftFields);
-                  // A categoria que o rascunho trouxe e o produto já não tem: confere.
-                  if (
-                    draftFields.category &&
-                    !mesmaCategoria(draftFields.category, initialData.category)
-                  ) {
-                    setCategoriaDoRascunho(draftFields.category);
-                  }
-                  setIsPromoActive(!!draftFields.originalPrice);
-                  if (draftFields.variants.length > 0) {
-                    setChaveDasVariacoes((chave) => chave + 1);
-                  }
-                  toast.success(
-                    "Rascunho restaurado!",
-                    estoqueDoRascunhoDiferia
-                      ? { description: AVISO_ESTOQUE_NAO_RESTAURADO }
-                      : undefined,
-                  );
-                },
-              },
+              description: `Deseja restaurar as alterações que você fez anteriormente?${
+                estoqueDoRascunhoDiferia
+                  ? ` ${AVISO_ESTOQUE_NAO_RESTAURADO}`
+                  : ""
+              }${bancoMudou ? ` ${AVISO_PRODUTO_ALTERADO_DEPOIS}` : ""}`,
+              action: { label: "Restaurar", onClick: restaurar },
               cancel: {
                 label: "Descartar",
                 onClick: () => {
+                  setVariacoesPendentes(false);
+                  gradeDoRascunhoPendenteRef.current = false;
+                  restaurarPendenteRef.current = null;
                   localStorage.removeItem(draftKey);
                   toast.info("Rascunho descartado.");
                 },
               },
-              duration: 10000,
+              duration: pendente ? Number.POSITIVE_INFINITY : 10000,
+              ...(pendente ? { id: ID_DO_AVISO_DA_GRADE_PENDENTE } : {}),
             });
           } else {
             // Draft matches database state, clean it up
+            setVariacoesPendentes(false);
+            gradeDoRascunhoPendenteRef.current = false;
             localStorage.removeItem(draftKey);
           }
         } catch (e) {
@@ -1318,6 +1471,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       setDraftChecked(true);
     }
   }, [productId, isLoading, initialData, userId]);
+
+  // O aviso que não some sozinho (grade pendente) não sobrevive à tela.
+  useEffect(
+    () => () => {
+      if (restaurarPendenteRef.current) {
+        toast.dismiss(ID_DO_AVISO_DA_GRADE_PENDENTE);
+      }
+    },
+    [],
+  );
 
   // Prevent leaving with unsaved changes
   useEffect(() => {
@@ -1456,6 +1619,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       // mas só na direção certa: um código que já é o do PRODUTO não deixa
       // de ser duplicado só porque estamos conferindo o campo da VARIAÇÃO
       // (e vice-versa). Ver pdv-c5.json, decisão (c).
+      // A variação que ela acabou de apagar nesta tela ainda existe no banco
+      // até o salvar. No campo de uma VARIAÇÃO ela não conta como dona do código
+      // (o salvar a apaga antes de gravar as variações). No campo do PRODUTO
+      // conta: a função de salvar grava o produto ANTES de apagar variações, e o
+      // gatilho do banco recusa um código de produto que ainda é de variação.
+      if (
+        alvo === "variacao" &&
+        resposta.origem === "variante" &&
+        deletedVariantIds.includes(resposta.variante?.variant_id ?? "")
+      ) {
+        setErroDeRede("");
+        return "";
+      }
+
       const idDoProprio = alvo === "produto" ? productId : idDaVariacao;
       const ehOProprio =
         alvo === "produto"
@@ -1581,10 +1758,19 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         stock < 0)
     ) {
       setStockError("O estoque deve ser maior ou igual a zero.");
+    } else if (
+      stock > ESTOQUE_MAXIMO_DO_PRODUTO &&
+      (!productId || estoqueDoProdutoFoiMexido(formData, initialData))
+    ) {
+      // O mesmo teto do salvar. Produto que já está acima dele e cujo estoque
+      // ela não mexeu segue editável: só o estoque NOVO esbarra no teto.
+      setStockError(
+        "O estoque total não pode passar de 10.000 unidades. Reduza o estoque do produto ou das variações.",
+      );
     } else {
       setStockError("");
     }
-  }, [formData.stock]);
+  }, [formData, initialData, productId]);
 
   // Sync stock dynamically if there are active variants
   useEffect(() => {
@@ -1602,8 +1788,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
   // Draft auto-save on changes
   //
-  // #98 (ADMIN-060): este efeito NUNCA remove a chave do rascunho — só
-  // decide se salva (quando o formulário está sujo). Antes do conserto, o
+  // #98 (ADMIN-060): este efeito NÃO remove o rascunho que já estava lá ao
+  // abrir — só o que ELE mesmo gravou (`gravouRascunhoRef`), quando o formulário
+  // volta a ser igual ao banco. Antes do conserto, o
   // `else` chamava `localStorage.removeItem(draftKey)` sempre que
   // formData === initialData — que é EXATAMENTE o estado em que o formulário
   // nasce ao abrir um produto para edição (os dois vêm do mesmo `product`
@@ -1639,11 +1826,30 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       // Salvar em andamento: o formulário ainda não é o que vai ficar (pode
       // ser trocado pela releitura do banco), então nada dele vira rascunho.
       if (isSubmitting) return;
+      // A grade que não gravou só existe no rascunho: não troca por outro.
+      if (variacoesPendentes) return;
       const isDirty = isProductFormDirty(formData, initialData);
       const draftKey = chaveDoRascunhoDoProduto(userId, productId);
       if (isDirty && draftKey) {
-        // Com o carimbo de quando foi guardado: o rascunho vence em 7 dias.
-        localStorage.setItem(draftKey, serializarRascunhoDoProduto(formData));
+        // Com o carimbo de quando foi guardado: o rascunho vence em 7 dias. Na
+        // edição, com o produto-base: restaurar depois só usa o que ela editou.
+        const gradePendente =
+          gradeDoRascunhoPendenteRef.current &&
+          formData.variants.some((v) => v.id.startsWith("temp-"));
+        localStorage.setItem(
+          draftKey,
+          serializarRascunhoDoProduto({
+            ...formData,
+            ...(productId ? { baseDoRascunho: initialData } : {}),
+            ...(gradePendente ? { variacoesPendentes: true } : {}),
+          }),
+        );
+        gravouRascunhoRef.current = draftKey;
+      } else if (draftKey && gravouRascunhoRef.current === draftKey) {
+        // Voltou a ser igual ao banco: o rascunho que ESTA abertura gravou não
+        // tem mais o que oferecer.
+        gravouRascunhoRef.current = null;
+        localStorage.removeItem(draftKey);
       }
     }, 1000);
 
@@ -1657,40 +1863,42 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     userId,
     precisaRecarregar,
     isSubmitting,
+    variacoesPendentes,
   ]);
 
   const processAndUploadImages = useCallback(
-    async (files: File[]) => {
+    async (arquivos: File[]) => {
+      let files = arquivos;
       if (files.length === 0) return;
 
-      const currentImagesCount = formData.images.length;
-      if (currentImagesCount + files.length > 10) {
-        toast.error(
-          `Limite de imagens excedido. Você já possui ${currentImagesCount} imagens e tentou adicionar mais ${files.length}. O máximo permitido são 10 imagens.`,
-        );
-        return;
-      }
-
       const MAX_SINGLE_SIZE = 12 * 1024 * 1024; // 12 MB
-      const MAX_TOTAL_SIZE = 30 * 1024 * 1024; // 30 MB
-      let totalSize = 0;
-
-      for (const file of files) {
+      // O tamanho conta por foto ORIGINAL; o total não, porque cada uma é
+      // reduzida antes de subir. A quantidade entra até o máximo de 10.
+      const legiveis = files.filter((file) => {
+        if (ehHeic(file)) {
+          toast.error(
+            `Não conseguimos abrir a foto "${file.name}". Salve como JPG ou PNG e tente de novo.`,
+          );
+          return false;
+        }
         if (file.size > MAX_SINGLE_SIZE) {
           toast.error(
             `O arquivo "${file.name}" excede o tamanho limite de 12 MB. Envie uma imagem menor.`,
           );
-          return;
+          return false;
         }
-        totalSize += file.size;
-      }
-
-      if (totalSize > MAX_TOTAL_SIZE) {
+        return true;
+      });
+      const vagas = Math.max(0, 10 - formData.images.length);
+      if (legiveis.length > vagas) {
         toast.error(
-          `O tamanho total das imagens selecionadas (${(totalSize / (1024 * 1024)).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB) excede o limite de 30 MB por envio.`,
+          vagas === 0
+            ? "Limite de imagens atingido: o produto já tem 10 fotos. Remova uma para adicionar outra."
+            : `${legiveis.length - vagas} ${legiveis.length - vagas === 1 ? "foto ficou" : "fotos ficaram"} de fora: o máximo é 10 fotos por produto.`,
         );
-        return;
       }
+      files = legiveis.slice(0, vagas);
+      if (files.length === 0) return;
 
       setIsUploadingImages(true);
       setImageUploadStep("compressing");
@@ -1744,6 +1952,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             enviadas += 1;
           } catch (error) {
             console.error("[Upload] Process error:", error, file.name);
+            if (error instanceof FotoIlegivel) {
+              toast.error(
+                `Não conseguimos abrir a foto "${file.name}". Salve como JPG ou PNG e tente de novo.`,
+              );
+              continue;
+            }
             falhas.push({
               id: `${Date.now()}-${indice}-${file.name}`,
               file,
@@ -1822,10 +2036,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     [processAndUploadImages, isOffline],
   );
 
-  const removeImage = useCallback((index: number) => {
+  // Pela foto, não pela posição: no 2º toque rápido o cartão que está saindo
+  // ainda existe na tela, e a posição dele já é de outra foto.
+  const removeImage = useCallback((imagem: string) => {
     setFormData((prev) => ({
       ...prev,
-      images: prev.images.filter((_, i) => i !== index),
+      images: prev.images.filter((u) => u !== imagem),
     }));
   }, []);
 
@@ -2201,6 +2417,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     return null;
   };
 
+  // Para onde a frase "falta preencher" e o Publicar cinza levam: o primeiro
+  // obrigatório vazio, na ordem da tela; sem vazio, o primeiro com erro.
+  const idDoCampoDoBloqueio = (): string | null =>
+    camposQueFaltam(formData)[0]?.id ?? idDoPrimeiroCampoComErro();
+
   // Mostra o campo e põe o foco nele. Se está dentro de uma SecaoRecolhivel
   // que a lojista FECHOU com o erro lá dentro, o `temErro` dela já era
   // verdadeiro (não muda, então não reabre sozinha): a gente aperta o
@@ -2236,6 +2457,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     if (isSubmitting || showSuccess || precisaRecarregar) return;
     if (isOffline) {
       toast.error("Não é possível salvar alterações em modo offline.");
+      return;
+    }
+    // Produto criado, variações ainda só no rascunho: salvar agora não grava
+    // nada e apagaria o rascunho com a grade.
+    if (variacoesPendentes) {
+      toast.error(
+        "As variações ainda não foram salvas. Restaure o rascunho para tentar de novo.",
+        {
+          action: {
+            label: "Restaurar",
+            onClick: () => restaurarPendenteRef.current?.(),
+          },
+        },
+      );
       return;
     }
     // Rede de segurança: com erro bloqueante num campo não grava e leva até ele
@@ -2556,7 +2791,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             if (chaveDeEdicao) {
               localStorage.setItem(
                 chaveDeEdicao,
-                serializarRascunhoDoProduto(formData),
+                serializarRascunhoDoProduto({
+                  ...formData,
+                  variacoesPendentes: true,
+                }),
               );
             }
           } catch (erroDeCota) {
@@ -2855,6 +3093,28 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const costPriceVal = Number.parseFloat(formData.costPrice) || 0;
   const marginPct =
     priceVal > 0 ? ((priceVal - costPriceVal) / priceVal) * 100 : 0;
+  // Quatro rótulos em palavras simples: prejuízo, sem lucro, lucro baixo
+  // (< 30%) e lucro bom.
+  const [analiseDoLucro, corDoLucro] =
+    marginPct < 0
+      ? ["Prejuízo", "text-rose-300"]
+      : marginPct === 0
+        ? ["Sem lucro", "text-amber-300"]
+        : marginPct < 30
+          ? ["Lucro baixo (menos de 30%)", "text-amber-300"]
+          : ["Lucro bom", "text-emerald-300"];
+  // Frete (PAC/SEDEX) vai até 30 kg: acima disso, quem pensa em gramas digitou 350.
+  const pesoVal = Number.parseFloat(formData.weightKg);
+  const pesoEmGramasTalvez =
+    pesoVal > 30
+      ? {
+          kg: (pesoVal / 1000).toLocaleString("pt-BR", {
+            minimumFractionDigits: 3,
+            maximumFractionDigits: 3,
+          }),
+          g: pesoVal.toLocaleString("pt-BR"),
+        }
+      : null;
   const hasActiveVariants = formData.variants.some((v) => v.active);
   // Indicadores de apresentação, a partir dos mesmos campos da validação.
   const preenchidos = [
@@ -3748,22 +4008,24 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             <div className="mt-3 text-[11px] font-bold text-white">
                               {isCover ? "Principal" : `Foto ${index + 1}`}
                             </div>
-                            {meta && meta.status !== "loading" && (
-                              <p
-                                className={`mt-1 text-xs ${meta.status === "warning_aspect" || meta.status === "warning_res" ? "text-orange-300" : "text-zinc-400"}`}
-                              >
-                                {meta.status === "excellent"
-                                  ? "Excelente!"
-                                  : meta.status === "warning_aspect"
-                                    ? "Ajuste para 4:5."
-                                    : meta.status === "warning_res"
-                                      ? "Resolução baixa."
-                                      : "Boa qualidade."}
-                                <span className="block text-[11px] text-zinc-400">
-                                  {meta.width} × {meta.height} px
-                                </span>
-                              </p>
-                            )}
+                            {meta &&
+                              meta.status !== "loading" &&
+                              meta.status !== "erro" && (
+                                <p
+                                  className={`mt-1 text-xs ${meta.status === "warning_aspect" || meta.status === "warning_res" ? "text-orange-300" : "text-zinc-400"}`}
+                                >
+                                  {meta.status === "excellent"
+                                    ? "Excelente!"
+                                    : meta.status === "warning_aspect"
+                                      ? "Ajuste para 4:5."
+                                      : meta.status === "warning_res"
+                                        ? "Resolução baixa."
+                                        : "Boa qualidade."}
+                                  <span className="block text-[11px] text-zinc-400">
+                                    {meta.width} × {meta.height} px
+                                  </span>
+                                </p>
+                              )}
                             <details className="mt-3">
                               <summary className="flex min-h-11 cursor-pointer list-none items-center justify-center rounded-2xl border border-admin-border bg-admin-raised px-3 text-sm font-bold [&::-webkit-details-marker]:hidden">
                                 Opções da foto {index + 1}
@@ -3780,7 +4042,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => removeImage(index)}
+                                  onClick={() => removeImage(image)}
                                   className="flex min-h-11 w-full items-center gap-2 rounded-xl bg-rose-400/10 px-3 text-xs text-rose-300"
                                   title="Excluir"
                                 >
@@ -3823,8 +4085,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     </AnimatePresence>
                   </div>
 
-                  {formData.images.length > 1 && (
-                    <span className="ml-1 mt-1 block flex animate-pulse select-none items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                  {formData.images.length > 2 && (
+                    <span className="ml-1 mt-1 block flex select-none items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
                       ↔ Deslize para o lado para ver mais fotos
                     </span>
                   )}
@@ -3913,8 +4175,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               </div>
             )}
             <p className="mt-3 text-[11px] text-zinc-400">
-              Máx. 10 fotos · 12 MB cada · 30 MB por envio. A ordem não muda por
-              arraste.
+              Máx. 10 fotos · 12 MB cada. A ordem não muda por arraste.
             </p>
           </div>
           <button
@@ -4130,12 +4391,19 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               />
             </div>
 
-            {/* PONTO DE INTEGRAÇÃO DA CATEGORIA: o seletor novo (galeria de
-                ícones) entra trocando este componente — contrato no
-                comentário de `CampoDeCategoria`. */}
+            {/* Galeria de categorias: só as que aparecem na loja (as escondidas
+                saem da escolha; o produto que já tem uma delas continua com o
+                nome à vista). Contrato no comentário de `CampoDeCategoria`. */}
             <CampoDeCategoria
               valor={formData.category || ""}
-              nomes={dbCategories.map((c) => ({ id: c.id, nome: c.name }))}
+              nomes={dbCategories
+                .filter((c) => c.isActive !== false)
+                .map((c) => ({
+                  id: c.id,
+                  nome: c.name,
+                  icone: c.icone,
+                  iconeForma: c.iconeForma,
+                }))}
               aoEscolher={(nome) =>
                 setFormData((prev) => ({ ...prev, category: nome }))
               }
@@ -4214,7 +4482,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 htmlFor="product-stock"
                 className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
               >
-                Quantidade em Estoque *
+                Estoque *
               </label>
               <div className="group relative">
                 <LocalBufferedInput
@@ -4260,6 +4528,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     {stockError}
                   </span>
                 )
+              )}
+              {hasActiveVariants && stockError && (
+                <span
+                  id="product-stock-error"
+                  role="alert"
+                  className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
+                >
+                  {stockError}
+                </span>
               )}
             </div>
 
@@ -4313,7 +4590,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 resumo={
                   formData.variants.length === 0
                     ? "Tamanho, cor ou voltagem — opcional"
-                    : `${variacoesAtivas} ativas · ${formData.stock} un. · ${formData.variants.length - variacoesAtivas} offline`
+                    : `${variacoesAtivas} ${variacoesAtivas === 1 ? "ativa" : "ativas"} · ${formData.stock} un. · ${formData.variants.length - variacoesAtivas} ${formData.variants.length - variacoesAtivas === 1 ? "desligada" : "desligadas"}`
                 }
                 abertaInicial={formData.variants.length > 0}
               >
@@ -4540,13 +4817,24 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           type="number"
                           step="0.001"
                           min="0"
-                          placeholder="Ex: 0.350"
+                          placeholder="Ex.: 0,350"
                           value={formData.weightKg}
                           onFlush={(val) =>
                             setFormData((prev) => ({ ...prev, weightKg: val }))
                           }
                           className="w-full rounded-lg border border-admin-border bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
                         />
+                        {pesoEmGramasTalvez && (
+                          <span
+                            id="product-weight-aviso"
+                            role="status"
+                            className="ml-1 block text-[11px] font-medium text-amber-300"
+                          >
+                            Isso é mais de 30 kg. Se você quis dizer gramas,
+                            digite {pesoEmGramasTalvez.kg} para{" "}
+                            {pesoEmGramasTalvez.g} g.
+                          </span>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <label
@@ -4613,7 +4901,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       * O peso e as dimensões da embalagem individual são
                       utilizados para a cotação de frete automática
                       (Correios/Melhor Envio/Frenet). Se não informados, o
-                      sistema utilizará valores padrão (0.3 kg e 15x15x15 cm).
+                      sistema utilizará valores padrão (0,3 kg e 15x15x15 cm).
                     </span>
                   </div>
                 </SecaoDoProduto>
@@ -4635,7 +4923,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           resumo={
             priceVal > 0 && costPriceVal > 0
               ? `Lucro ${formatCurrency(priceVal - costPriceVal)} · margem ${percentualComUmaCasa(marginPct)}`
-              : "Opcional · só você vê"
+              : isPromoActive
+                ? `Promoção${Number(formData.originalPrice) > 0 ? `: De ${formatCurrency(Number(formData.originalPrice))}` : ""} · o cliente vê o preço De/Por`
+                : "Custo e promoção · opcional"
           }
           temErro={
             (!!costError && !costError.startsWith("Aviso")) ||
@@ -4720,9 +5010,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             Painel de Lucratividade:
                           </b>{" "}
                           O sistema analisa a diferença entre o preço de venda e
-                          o preço de custo. É recomendada uma margem de lucro
-                          líquida de pelo menos 30%. O sistema emitirá um alerta
-                          caso a margem esteja zerada ou negativa.
+                          o preço de custo. É recomendada uma margem de lucro de
+                          pelo menos 30%. Abaixo disso aparece “Lucro baixo”;
+                          com custo igual ao preço, “Sem lucro”; com custo maior
+                          que o preço, “Prejuízo”.
                         </span>
                       </li>
                     </ul>
@@ -4751,6 +5042,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     }
                     name="costPrice"
                     mask="currency"
+                    zeroVazio
                     value={formData.costPrice}
                     onFlush={(val) =>
                       setFormData((prev) => ({ ...prev, costPrice: val }))
@@ -4856,7 +5148,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <div
                   className={cn(
                     "flex flex-wrap items-end justify-between gap-3",
-                    marginPct <= 0 ? "text-rose-300" : "text-emerald-300",
+                    corDoLucro,
                   )}
                 >
                   <div>
@@ -4877,17 +5169,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   aria-hidden="true"
                 >
                   <div
-                    className={`h-full rounded-full ${marginPct > 30 ? "bg-emerald-400" : "bg-orange-400"}`}
+                    className={`h-full rounded-full ${marginPct >= 30 ? "bg-emerald-400" : "bg-orange-400"}`}
                     style={{
                       width: `${Math.min(100, Math.max(0, marginPct))}%`,
                     }}
                   />
                 </div>
-                <p
-                  className={`text-xs ${marginPct <= 0 ? "text-rose-300" : "text-emerald-300"}`}
-                >
-                  Análise do Sistema ·{" "}
-                  {marginPct <= 0 ? "Margem Negativa" : "Alta Performance"}
+                <p className={`text-xs ${corDoLucro}`}>
+                  Análise do Sistema · {analiseDoLucro}
                 </p>
               </div>
             )}
@@ -5099,9 +5388,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         </SecaoDoProduto>
         {/* O guia "Como cadastrar um produto" já tem o botão "?" do
             cabeçalho (o mesmo `setShowHelpModal`): aqui só resta o ID. */}
-        <p className="break-all text-xs text-zinc-400">
-          ID do Sistema · {productId || "NEW_ENTRY"}
-        </p>
+        {productId && (
+          <p className="break-all text-[11px] text-zinc-400">
+            Número no sistema · {productId}
+          </p>
+        )}
       </motion.form>
 
       {/* Image Cropper Modal */}
@@ -5122,7 +5413,24 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
       <AcaoDaBarra aria-label="Ações do produto">
         <div className="produto-acoes mx-auto w-full max-w-3xl space-y-2">
-          {motivoDoBloqueio && (
+          {precisaRecarregar && (
+            <p
+              data-testid="precisa-recarregar"
+              role="status"
+              className="produto-status flex flex-wrap items-center gap-x-2 px-1 text-xs font-medium text-amber-300"
+            >
+              <AlertTriangle className="size-4 shrink-0 text-amber-400" />
+              <span>Recarregue a tela antes de salvar de novo.</span>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="min-h-11 rounded-full bg-admin-raised px-4 text-xs font-bold text-white"
+              >
+                Recarregar
+              </button>
+            </p>
+          )}
+          {motivoDoBloqueio && !precisaRecarregar && (
             <p
               data-testid="motivo-do-bloqueio"
               role="status"
@@ -5133,11 +5441,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 de texto que leva até o campo — abre a seção recolhida onde o
                 erro ficou escondido e põe o foco nele. O botão de salvar
                 continua desligado; isto só mostra o caminho. */}
-              {!isImageUploading && idDoPrimeiroCampoComErro() ? (
+              {!isImageUploading && idDoCampoDoBloqueio() ? (
                 <button
                   type="button"
                   onClick={() => {
-                    const id = idDoPrimeiroCampoComErro();
+                    const id = idDoCampoDoBloqueio();
                     if (id) mostrarEFocarCampo(id);
                   }}
                   className="min-h-11 text-left font-bold underline underline-offset-2"
@@ -5149,7 +5457,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               )}
             </p>
           )}
-          {!motivoDoBloqueio && !isOffline && (
+          {!motivoDoBloqueio && !isOffline && !precisaRecarregar && (
             <p
               className="produto-status flex items-center gap-2 px-1 text-xs text-zinc-400"
               role="status"
@@ -5166,38 +5474,51 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             </p>
           )}
           <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-2">
-            <button
-              type="button"
-              onClick={() => handleSubmit()}
-              disabled={botaoDeSalvarDesligado}
-              className="produto-salvar flex min-h-14 min-w-11 items-center justify-center gap-2 rounded-full p-3 text-base font-bold transition-colors"
+            {/* O botão cinza não recebe toque (pointer-events: none): o toque
+                cai neste invólucro e leva ao primeiro campo que falta. Pelo
+                teclado, o caminho é a frase acima (botão de verdade). */}
+            <div
+              role="presentation"
+              className="min-w-0"
+              onClick={() => {
+                if (!botaoDeSalvarDesligado || isImageUploading) return;
+                const id = idDoCampoDoBloqueio();
+                if (id) mostrarEFocarCampo(id);
+              }}
             >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="size-5 animate-spin" />
-                  Salvando...
-                </>
-              ) : showSuccess ? (
-                <>
-                  <Check className="size-5" />
-                  Salvo
-                </>
-              ) : isOffline ? (
-                <>
-                  <AlertTriangle className="size-5" />
-                  Offline
-                </>
-              ) : (
-                <>
-                  {productId ? (
-                    <Edit2 className="size-5" />
-                  ) : (
-                    <Plus className="size-5" />
-                  )}
-                  {productId ? "Salvar" : "Publicar"}
-                </>
-              )}
-            </button>
+              <button
+                type="button"
+                onClick={() => handleSubmit()}
+                disabled={botaoDeSalvarDesligado}
+                className="produto-salvar flex min-h-14 w-full min-w-11 items-center justify-center gap-2 rounded-full p-3 text-base font-bold transition-colors disabled:pointer-events-none"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="size-5 animate-spin" />
+                    Salvando...
+                  </>
+                ) : showSuccess ? (
+                  <>
+                    <Check className="size-5" />
+                    Salvo
+                  </>
+                ) : isOffline ? (
+                  <>
+                    <AlertTriangle className="size-5" />
+                    Offline
+                  </>
+                ) : (
+                  <>
+                    {productId ? (
+                      <Edit2 className="size-5" />
+                    ) : (
+                      <Plus className="size-5" />
+                    )}
+                    {productId ? "Salvar" : "Publicar"}
+                  </>
+                )}
+              </button>
+            </div>
             <button
               type="button"
               onClick={() => setIsPreviewOpen(true)}
@@ -5241,7 +5562,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-blue-400 pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-blue-400 pl-2 text-xs font-bold text-zinc-400">
               Estrutura do Formulário
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -5264,19 +5585,19 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <DollarSign className="size-4 text-emerald-300" />
-                  Precificação & Custos
+                  Custo e lucro
                 </div>
                 <p className="text-xs text-zinc-400">
                   Configure o preço de venda e o custo unitário. O sistema
-                  calcula automaticamente o lucro líquido e a margem de
-                  contribuição.
+                  calcula automaticamente o lucro (preço de venda menos custo) e
+                  a margem.
                 </p>
               </div>
 
               <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Layers className="size-4 text-sky-500" />
-                  Grade de Variações
+                  Variações
                 </div>
                 <p className="text-xs text-zinc-400">
                   Adicione variantes (como cores, tamanhos ou voltagens) com
@@ -5288,7 +5609,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               <div className="space-y-1 rounded-2xl border border-admin-border bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <ShieldCheck className="size-4 text-purple-500" />
-                  Galeria de Mídia
+                  Fotos
                 </div>
                 <p className="text-xs text-zinc-400">
                   Adicione fotos e organize a galeria de imagens para a vitrine
@@ -5299,13 +5620,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           </div>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-blue-400 pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-blue-400 pl-2 text-xs font-bold text-zinc-400">
               Dicas para um Cadastro de Sucesso
             </h4>
             <ul className="list-inside list-disc space-y-2 text-xs text-zinc-400">
               <li>
-                Use fotos de alta qualidade com fundo claro ou neutro
-                (idealmente quadradas ou 1:1).
+                Use fotos de alta qualidade com fundo claro ou neutro (formato
+                4:5; use o recorte Vitrine).
               </li>
               <li>
                 Descreva detalhadamente o produto, incluindo dimensões,
@@ -5339,22 +5660,22 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       >
         <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
-              Excluir Variante?
+            <AlertDialogTitle className="text-lg font-bold text-white">
+              Excluir variante?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-xs text-zinc-400">
               Tem certeza que deseja excluir esta variante? Ela será removida da
-              lista. Para salvar essa alteração permanentemente no banco de
-              dados, você precisa salvar o formulário do produto.
+              lista. Para guardar essa alteração no sistema, você precisa salvar
+              o formulário do produto.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="mt-4 gap-2">
-            <AlertDialogCancel className="rounded-xl border border-0 border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+            <AlertDialogCancel className="min-h-11 rounded-xl border border-0 border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDeleteVariant}
-              className="bg-rose-650 rounded-xl border-0 px-4 py-2 text-xs font-bold text-white hover:bg-rose-700"
+              className="min-h-11 rounded-xl border-0 bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700"
             >
               Excluir Variante
             </AlertDialogAction>
@@ -5440,7 +5761,7 @@ const VariantItem = React.memo(function VariantItem({
             </span>
             {!variant.active && (
               <span className="rounded border border-admin-border bg-zinc-800 px-1.5 py-0.5 text-[11px] font-black uppercase text-zinc-500">
-                Offline
+                Desligada
               </span>
             )}
             {variant.active && (
@@ -5451,7 +5772,7 @@ const VariantItem = React.memo(function VariantItem({
             <span className="flex items-center gap-1.5 rounded-md border border-admin-border bg-white/5 px-2 py-1">
               <Package className="size-3 text-zinc-400" />
               <span className="text-zinc-300">
-                {variant.stockIncrement} UND
+                {variant.stockIncrement} un.
               </span>
             </span>
             {/* `!= null`, não verdade: o 0 é um preço próprio (brinde) e

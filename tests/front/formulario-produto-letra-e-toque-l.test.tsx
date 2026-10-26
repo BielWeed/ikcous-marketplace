@@ -71,9 +71,9 @@ describe("AdminProductFormView — letra e toque (onda L, L5)", () => {
     expect(achados).toEqual([]);
   });
 
-  it("b. o seletor de setor tem min-h-11", () => {
+  it("b. o botão da categoria tem alvo de toque de pelo menos 44 px", () => {
     // O campo de categoria mora em `CampoDeCategoria` (o ponto de integração
-    // do formulário); o gatilho é a tag entre `<SelectTrigger` e `<SelectValue`.
+    // do formulário); o gatilho é o `<button>` que leva o id do campo.
     const fonteDaCategoria = readFileSync(
       join(
         __dirname,
@@ -83,13 +83,17 @@ describe("AdminProductFormView — letra e toque (onda L, L5)", () => {
       ),
       "utf8",
     );
-    const inicio = fonteDaCategoria.indexOf("<SelectTrigger");
-    const fim = fonteDaCategoria.indexOf("<SelectValue");
+    // O `<button>` do campo é o que leva o id (o comentário do topo do arquivo
+    // também cita o id, por isso a busca parte da tag).
+    const inicio = fonteDaCategoria.search(
+      /<button\s+ref=\{botaoRef\}\s+id="product-category"/,
+    );
     expect(inicio).toBeGreaterThan(-1);
+    const fim = fonteDaCategoria.indexOf("</button>", inicio);
     expect(fim).toBeGreaterThan(inicio);
     const gatilho = fonteDaCategoria.slice(inicio, fim);
-    expect(gatilho).toContain('id="product-category"');
-    expect(gatilho).toContain("min-h-11");
+    // 68 px de altura mínima (> os 44 px da régua de toque).
+    expect(gatilho).toContain("min-h-[68px]");
   });
 
   it("c. 'Tirar Foto' do estado vazio com min-h-11 e 11px; ações da galeria com 44px e largura inteira", () => {

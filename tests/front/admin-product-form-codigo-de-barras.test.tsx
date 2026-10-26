@@ -13,10 +13,10 @@
 // @testing-library/react; LocalBufferedInput com debounce de 200ms; RPC do
 // PDV mockada em @/lib/supabase).
 import { act } from "react";
-import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { escolherAtributo } from "./helpers/atributo-da-variacao";
+import { escolherCategoriaDoProduto } from "./helpers/escolher-categoria-do-produto";
 
 const addProduct = vi.fn();
 const updateProduct = vi.fn();
@@ -57,38 +57,6 @@ vi.mock("@/contexts/StoreContext", () => ({
 // importação tardia do mesmo jeito que interceptaria um import estático.
 vi.mock("@/lib/supabase", () => ({
   supabase: { rpc: rpcDoSupabase },
-}));
-
-vi.mock("@/components/ui/select", () => ({
-  Select: ({
-    value,
-    onValueChange,
-    children,
-  }: {
-    value: string;
-    onValueChange: (v: string) => void;
-    name?: string;
-    children: ReactNode;
-  }) => (
-    <select
-      data-testid="select-category"
-      value={value}
-      onChange={(e) => onValueChange(e.target.value)}
-    >
-      <option value="" />
-      {children}
-    </select>
-  ),
-  SelectTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
-  SelectValue: () => null,
-  SelectContent: ({ children }: { children: ReactNode }) => <>{children}</>,
-  SelectItem: ({
-    value,
-    children,
-  }: {
-    value: string;
-    children: ReactNode;
-  }) => <option value={value}>{children}</option>,
 }));
 
 const toastInfo = vi.fn();
@@ -160,15 +128,7 @@ function digitarTextarea(id: string, valor: string) {
 }
 
 function selecionarCategoria(valor: string) {
-  const el = document.querySelector(
-    '[data-testid="select-category"]',
-  ) as HTMLSelectElement;
-  const setter = Object.getOwnPropertyDescriptor(
-    globalThis.HTMLSelectElement.prototype,
-    "value",
-  )!.set!;
-  setter.call(el, valor);
-  el.dispatchEvent(new Event("change", { bubbles: true }));
+  escolherCategoriaDoProduto(valor);
 }
 
 // O onBlur do campo de código de barras (que dispara a RPC de duplicidade) é

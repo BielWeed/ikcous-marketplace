@@ -274,15 +274,15 @@ describe("AdminProductFormView — letra, toque e avisos (K-B)", () => {
       expect(mensagem).not.toMatch(/\d(MB)/);
     });
 
-    it("três fotos de 11 MB: o aviso diz '(33,0 MB)' e '30 MB'", async () => {
+    it("três fotos de 11 MB: nenhuma passa de 12 MB e o total não conta (cada uma é reduzida antes de subir)", async () => {
       await montar();
       await enviar(foto("a.jpg", 11), foto("b.jpg", 11), foto("c.jpg", 11));
 
-      expect(toast.error).toHaveBeenCalledTimes(1);
-      const mensagem = vi.mocked(toast.error).mock.calls[0][0] as string;
-      expect(mensagem).toContain("(33,0 MB)");
-      expect(mensagem).toContain("30 MB");
-      expect(mensagem).not.toMatch(/\d(MB)/);
+      const avisosDeTamanho = vi
+        .mocked(toast.error)
+        .mock.calls.map((c) => String(c[0]))
+        .filter((m) => /MB/.test(m));
+      expect(avisosDeTamanho).toEqual([]);
     });
   });
 
