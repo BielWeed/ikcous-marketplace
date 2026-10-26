@@ -28,7 +28,7 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
       update: () => ({
-        eq: () => Promise.resolve(h.resultadoUpdate),
+        eq: () => ({ select: () => Promise.resolve(h.resultadoUpdate) }),
       }),
     }),
   },
@@ -104,7 +104,7 @@ describe("useReviews.aprovarReview — devolve booleano (Frente F, F10)", () => 
   }
 
   it("banco confirma a publicação: resolve true e canta sucesso", async () => {
-    h.resultadoUpdate = { data: null, error: null };
+    h.resultadoUpdate = { data: [{ id: "rev-1" }], error: null };
 
     await montarHook();
     let resposta: boolean | undefined;

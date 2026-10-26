@@ -66,6 +66,14 @@ interface EtiquetaDoPedidoCardProps {
    * AGORA — o card não pode garantir isso sozinho depois de desmontado.
    */
   onTrackingAtualizado?: (orderId: string, codigo: string) => void;
+  /**
+   * O código de rastreio que a LINHA da ficha (OrderDetail) mostra agora.
+   * `onTrackingAtualizado` só leva o código do cartão para a ficha; sem esta
+   * via de volta, quem corrige o código na linha seguia vendo o antigo aqui.
+   * Só uma MUDANÇA dele é aplicada (a leitura do pedido ao abrir continua
+   * sendo a verdade do primeiro desenho).
+   */
+  trackingCodeDaFicha?: string;
 }
 
 // ── Travas de reentrada em escopo de MÓDULO (não de instância/useRef) ──────
@@ -136,6 +144,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
   orderId,
   isOffline,
   onTrackingAtualizado,
+  trackingCodeDaFicha,
 }: Readonly<EtiquetaDoPedidoCardProps>) {
   const [cargaFase, setCargaFase] = useState<CargaFase>("carregando");
   const [pedido, setPedido] = useState<PedidoParaEtiqueta | null>(null);
@@ -220,6 +229,17 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
     setConsultandoRastreio(false);
     fetchPedido();
   }, [fetchPedido]);
+
+  // O código salvo/apagado na linha da ficha chega aqui. Pedido ainda não lido
+  // (`null`): nada a aplicar, a leitura que vem já traz o código gravado.
+  useEffect(() => {
+    if (trackingCodeDaFicha === undefined) return;
+    setPedido((prev) =>
+      prev && (prev.tracking_code ?? "") !== trackingCodeDaFicha
+        ? { ...prev, tracking_code: trackingCodeDaFicha || null }
+        : prev,
+    );
+  }, [trackingCodeDaFicha]);
 
   const elegibilidade: ElegibilidadeDaEtiqueta | null = pedido
     ? elegibilidadeDaEtiqueta(pedido)

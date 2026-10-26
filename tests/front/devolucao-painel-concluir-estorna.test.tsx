@@ -145,7 +145,7 @@ beforeEach(() => {
   rpc.mockImplementation((nome: string) =>
     Promise.resolve({ data: respostas.get(nome) ?? null, error: null }),
   );
-  invoke.mockResolvedValue({ data: { ok: true }, error: null });
+  invoke.mockResolvedValue({ data: { status: "concluido" }, error: null });
   createSignedUrl.mockResolvedValue({
     data: { signedUrl: "https://assinada/a.jpg" },
     error: null,

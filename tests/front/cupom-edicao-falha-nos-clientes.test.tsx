@@ -41,11 +41,13 @@ vi.mock("@/lib/supabase", () => ({
         },
       }),
       update: (patch: Record<string, unknown>) => ({
-        eq: async () => {
-          const resposta = await gravarCupom(patch);
-          if (!resposta.error) cupomNoBanco = { ...cupomNoBanco, ...patch };
-          return resposta;
-        },
+        eq: () => ({
+          select: async () => {
+            const resposta = await gravarCupom(patch);
+            if (!resposta.error) cupomNoBanco = { ...cupomNoBanco, ...patch };
+            return { data: [{ id: "c1" }], ...resposta };
+          },
+        }),
       }),
     }),
     rpc: async (nome: string, args: { p_clientes?: string[] }) => {

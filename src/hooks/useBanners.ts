@@ -513,12 +513,16 @@ export function useBanners(adminMode = false) {
       if (updates.showTextOverlay !== undefined)
         dbUpdates.show_text_overlay = updates.showTextOverlay;
 
-      const { error } = await supabase
+      // `.select("id")`: o banco responde sucesso com 0 linhas quando a
+      // política de acesso barra o UPDATE (ou o banner não existe mais).
+      const { data: gravadas, error } = await supabase
         .from("banners")
         .update(dbUpdates)
-        .eq("id", id);
+        .eq("id", id)
+        .select("id");
 
       if (error) throw error;
+      if (!gravadas?.length) throw new Error("Nenhum banner foi alterado.");
 
       // If image changed, clean up old file from storage
       if (
@@ -641,9 +645,15 @@ export function useBanners(adminMode = false) {
         "Acesso negado: Apenas administradores podem excluir banners.",
       );
     try {
-      const { error } = await supabase.from("banners").delete().eq("id", id);
+      // `.select("id")`: 0 linhas apagadas também vem como sucesso.
+      const { data: apagadas, error } = await supabase
+        .from("banners")
+        .delete()
+        .eq("id", id)
+        .select("id");
 
       if (error) throw error;
+      if (!apagadas?.length) throw new Error("Nenhum banner foi apagado.");
 
       const deletedBanner = banners.find((b) => b.id === id);
 

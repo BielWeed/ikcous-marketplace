@@ -32,7 +32,9 @@ vi.mock("@/lib/supabase", () => ({
     from: () => ({
       update: (payload: unknown) => {
         update(payload);
-        return { eq: (...args: unknown[]) => eq(...args) };
+        return {
+          eq: (...args: unknown[]) => ({ select: () => eq(...args) }),
+        };
       },
       select: () => ({
         order: () => Promise.resolve({ data: [], error: null }),
@@ -57,7 +59,7 @@ describe("useCoupons.updateCoupon — limpar campo persiste como null (#96)", ()
   beforeEach(() => {
     update.mockClear();
     eq.mockClear();
-    eq.mockResolvedValue({ error: null });
+    eq.mockResolvedValue({ data: [{ id: "c" }], error: null });
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);

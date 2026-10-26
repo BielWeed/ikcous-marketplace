@@ -10,6 +10,16 @@ import {
   Selo,
 } from "@/components/admin/coupons/apresentacao";
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -90,6 +100,9 @@ function FormularioDoCupom({
     formasPagamentoNaEntregaValidas(config.formasPagamentoEntrega).length === 0;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [previaAberta, setPreviaAberta] = useState(false);
+  // Validade que já passou: pergunta antes de salvar (como o editor de banner).
+  const [confirmarVencido, setConfirmarVencido] = useState(false);
+  const vencidoConfirmadoRef = useRef(false);
   const previaBotaoRef = useRef<HTMLButtonElement>(null);
 
   const [formData, setFormData] = useState<Partial<Coupon>>({
@@ -262,6 +275,10 @@ function FormularioDoCupom({
   }, [formData, initialData, onSetDirty, clientesMudaram]);
 
   const handleSubmit = async () => {
+    // "Salvar mesmo assim" vale só para ESTA chamada: lida e zerada antes de
+    // qualquer retorno antecipado.
+    const jaConfirmouVencido = vencidoConfirmadoRef.current;
+    vencidoConfirmadoRef.current = false;
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description: "Você precisa estar online para salvar ou alterar cupons.",
@@ -312,6 +329,18 @@ function FormularioDoCupom({
     }
     if (alcanceSuportado && alcance === "exclusivo" && clientes.length === 0) {
       toast.error("Escolha pelo menos um cliente para o cupom exclusivo.");
+      return;
+    }
+
+    // Validade escolhida que já passou: o cupom nasceria vencido. Quem não
+    // mexeu na data (cupom que já estava vencido) não é perguntada de novo.
+    if (
+      formData.validUntil &&
+      formData.validUntil !== initialData.validUntil &&
+      new Date(formData.validUntil).getTime() < Date.now() &&
+      !jaConfirmouVencido
+    ) {
+      setConfirmarVencido(true);
       return;
     }
 
@@ -587,6 +616,9 @@ function FormularioDoCupom({
                       }))
                     }
                     placeholder="EX: VERAO10"
+                    normalizarAoSair={(val) =>
+                      codigoDoCupomParaSalvar(val, initialData.code)
+                    }
                     useShadcn={true}
                     disabled={isOffline || isSubmitting}
                     className={CAMPO}
@@ -915,6 +947,37 @@ function FormularioDoCupom({
           </Button>
         </AcaoDaBarra>
       </div>
+      <AlertDialog
+        open={confirmarVencido}
+        onOpenChange={(open) => !open && setConfirmarVencido(false)}
+      >
+        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-admin-surface">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
+              Essa data já passou
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-zinc-400">
+              A validade escolhida já passou, então o cupom nasceria vencido e
+              ninguém conseguiria usar. Salvar mesmo assim?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel className="min-h-11 rounded-xl border-0 bg-admin-raised px-4 py-2 text-xs font-bold text-zinc-200 hover:bg-admin-hover hover:text-white dark:bg-admin-raised dark:hover:bg-admin-hover">
+              Voltar e ajustar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                vencidoConfirmadoRef.current = true;
+                setConfirmarVencido(false);
+                handleSubmit();
+              }}
+              className="min-h-11 rounded-xl border-0 bg-white px-4 py-2 text-xs font-bold text-black ring-1 ring-inset ring-admin-border-strong hover:bg-white"
+            >
+              Salvar mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

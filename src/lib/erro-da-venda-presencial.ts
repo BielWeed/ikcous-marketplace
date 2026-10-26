@@ -33,9 +33,11 @@ export interface FalhaDaVendaTraduzida {
 /** Mensagem honesta de D3: sem rede (ou sem forma de saber o motivo), a
  * venda é RECUSADA e o cupom fica salvo — nunca "tente de novo" escondendo
  * um erro que não vai se resolver sozinho, e nunca "deu erro" seco. */
+export const MENSAGEM_DE_REDE_DA_VENDA =
+  "Não consegui falar com o servidor. O cupom está salvo aqui; tente de novo quando a conexão voltar.";
+
 const FALHA_DE_REDE: FalhaDaVendaTraduzida = {
-  mensagem:
-    "Não consegui falar com o servidor. O cupom está salvo aqui; tente de novo quando a conexão voltar.",
+  mensagem: MENSAGEM_DE_REDE_DA_VENDA,
   podeTentarDeNovo: true,
   precisaEntrarDeNovo: false,
 };
@@ -49,7 +51,10 @@ function codigoDoErro(erro: unknown): string | null {
     return null;
   }
   const codigo = (erro as { code: unknown }).code;
-  return typeof codigo === "string" ? codigo : null;
+  // `code: ""` é o que o postgrest-js devolve quando o `fetch` falhou (rede
+  // caiu, prazo, aborto) — não veio resposta do servidor, então não há código.
+  // Resposta de servidor sempre traz SQLSTATE ou PGRST.
+  return typeof codigo === "string" && codigo !== "" ? codigo : null;
 }
 
 function mensagemDoErro(erro: unknown): string | null {

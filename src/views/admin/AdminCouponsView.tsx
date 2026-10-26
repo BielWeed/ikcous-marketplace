@@ -220,7 +220,10 @@ export const AdminCouponsView = memo(function AdminCouponsView({
   ).length;
   const totalUsage = coupons.reduce((sum, c) => sum + (c.usageCount || 0), 0);
   const averageDiscount = (() => {
-    const percentageCoupons = coupons.filter((c) => c.type === "percentage");
+    // Só os que o checkout ainda aceita (mesma leitura do selo "Ativo").
+    const percentageCoupons = coupons.filter(
+      (c) => c.type === "percentage" && rotuloDoCupom(c) === "Ativo",
+    );
     if (percentageCoupons.length === 0) return 0;
     const sum = percentageCoupons.reduce((acc, c) => acc + (c.value || 0), 0);
     return Math.round(sum / percentageCoupons.length);

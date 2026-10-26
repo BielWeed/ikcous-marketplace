@@ -980,8 +980,8 @@ function HeroOfertaEsqueleto() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Skeleton className="h-[35px] flex-[2] rounded-full" />
-            <Skeleton className="h-[35px] flex-1 rounded-full" />
+            <Skeleton className="h-11 flex-[2] rounded-full" />
+            <Skeleton className="h-11 flex-1 rounded-full" />
           </div>
         </div>
       </div>

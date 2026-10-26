@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { mensagemDoErro } from "@/lib/devolucao";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
   AVISO_DE_DOBRO,
@@ -101,6 +102,8 @@ const ESTADOS_EM_CURSO: readonly StatusEstorno[] = [
 ];
 
 const INTERVALO_DE_RECARGA_MS = 15_000;
+
+const ERRO_GENERICO = "Não foi possível concluir agora. Tente de novo.";
 
 /** Os avisos de `solicitarEstorno` são toasts GLOBAIS: se o lojista trocar de
  *  ficha antes da resposta, o aviso do pedido anterior apareceria sobre o
@@ -259,9 +262,12 @@ export function useEstornosDoPedido(
           p_motivo: motivo,
         });
 
-        // A RPC já devolve mensagem leiga — não se traduz de novo aqui.
+        // A RPC já devolve mensagem leiga e ela passa como veio; só a falha de
+        // rede, que o navegador entrega em inglês ("Failed to fetch"), vira frase.
         if (error) {
-          toast.error(`Devolução do pedido #${numero}: ${error.message}`);
+          toast.error(
+            `Devolução do pedido #${numero}: ${mensagemDoErro(error, ERRO_GENERICO)}`,
+          );
           // AC 3 do laudo 08/09: a recusa prova que o snapshot em tela está
           // velho — recarrega mesmo no erro.
           await carregar();
@@ -312,8 +318,10 @@ export function useEstornosDoPedido(
           parametrosPorForaAposEspera.pedido(orderId, refundId),
         );
         if (error) {
-          // A RPC fala com o leigo (mensagem da migration).
-          toast.error(`Devolução do pedido #${numero}: ${error.message}`);
+          // A RPC fala com o leigo (mensagem da migration); rede vira frase.
+          toast.error(
+            `Devolução do pedido #${numero}: ${mensagemDoErro(error, ERRO_GENERICO)}`,
+          );
           await carregar();
           return false;
         }

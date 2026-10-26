@@ -61,6 +61,11 @@ vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({ products: estado.produtos }),
 }));
 
+// A busca confere quais categorias a lojista escondeu; aqui não há nenhuma.
+vi.mock("@/hooks/useCategories", () => ({
+  useCategories: () => ({ categories: [], isLoading: false }),
+}));
+
 vi.mock("@/hooks/useSearch", () => ({
   useSearch: () => ({
     query: "",

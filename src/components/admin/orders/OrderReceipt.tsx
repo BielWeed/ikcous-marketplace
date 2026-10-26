@@ -1,4 +1,5 @@
 import { branding } from "@/config/branding";
+import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
 import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import type { Order } from "@/types";
@@ -50,6 +51,8 @@ export const OrderReceipt = memo(function OrderReceipt({
   variacoes,
 }: OrderReceiptProps) {
   const storeName = storeNameProp ?? branding.appName;
+  // Venda de balcão: não tem frete, e o papel diz como a cliente pagou.
+  const presencial = order.canal === "presencial";
   return (
     <>
       <div
@@ -66,16 +69,20 @@ export const OrderReceipt = memo(function OrderReceipt({
           </p>
         </div>
 
-        <div className="mb-4">
-          <p className="mb-1 border-b border-black font-bold">CLIENTE:</p>
-          <p>{order.customer.name}</p>
-          <p>{order.customer.whatsapp}</p>
-          {linhasDoEndereco(order.customer).map((linha) => (
-            <p key={linha} className="text-xs">
-              {linha}
-            </p>
-          ))}
-        </div>
+        {/* Venda de balcão sem cliente chega aqui com o nome vazio: o papel
+            não imprime o título "CLIENTE:" sozinho. */}
+        {(!presencial || order.customer.name) && (
+          <div className="mb-4">
+            <p className="mb-1 border-b border-black font-bold">CLIENTE:</p>
+            <p>{order.customer.name}</p>
+            <p>{order.customer.whatsapp}</p>
+            {linhasDoEndereco(order.customer).map((linha) => (
+              <p key={linha} className="text-xs">
+                {linha}
+              </p>
+            ))}
+          </div>
+        )}
 
         {order.retiradaNaLoja && (
           <div className="mb-4">
@@ -112,10 +119,12 @@ export const OrderReceipt = memo(function OrderReceipt({
             <span>Subtotal</span>
             <span>R$ {reais(order?.subtotal || 0)}</span>
           </div>
-          <div className="flex justify-between">
-            <span>Frete</span>
-            <span>R$ {reais(order?.shipping || 0)}</span>
-          </div>
+          {!presencial && (
+            <div className="flex justify-between">
+              <span>Frete</span>
+              <span>R$ {reais(order?.shipping || 0)}</span>
+            </div>
+          )}
           {(order?.discount || 0) > 0 && (
             // Achado 1 do lote 1 (caça-defeitos): sem esta linha, a conta do
             // papel não fechava — subtotal + frete não batia com o TOTAL, e
@@ -132,6 +141,11 @@ export const OrderReceipt = memo(function OrderReceipt({
             <span>TOTAL</span>
             <span>R$ {reais(order?.total || 0)}</span>
           </div>
+          {presencial && (
+            <p className="mt-2 text-xs">
+              Pagamento: {rotuloDaFormaDoPedido(order)}
+            </p>
+          )}
         </div>
 
         <div className="mt-8 border-t border-dashed border-black pt-4 text-center">

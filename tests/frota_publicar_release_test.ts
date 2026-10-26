@@ -3099,6 +3099,8 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "95a-conferir-o-frete-tem-limite-de-cotacoes-aplicado",
     "96a-conferir-o-estoque-que-volta-tranca-na-mesma-ordem-aplicado",
     "97a-conferir-o-lucro-do-inicio-conta-o-mes-inteiro-aplicado",
+    "98a-conferir-a-foto-da-devolucao-e-a-pergunta-tem-teto-aplicado",
+    "100a-conferir-o-financeiro-descreve-a-venda-do-balcao-aplicado",
   ]);
 });
 
