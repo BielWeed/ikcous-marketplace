@@ -4,8 +4,8 @@ import {
   type CSSProperties,
   type PointerEvent as EventoDePonteiro,
   type ReactNode,
-  useEffect,
   useContext,
+  useEffect,
   useRef,
   useState,
 } from "react";

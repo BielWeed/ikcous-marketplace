@@ -23,7 +23,6 @@ import { AbaExtrato } from "@/components/admin/financeiro/AbaExtrato";
 import { AbaPrevistos } from "@/components/admin/financeiro/AbaPrevistos";
 import { AbaVisao } from "@/components/admin/financeiro/AbaVisao";
 import { FolhaFinanceira } from "@/components/admin/financeiro/FolhaFinanceira";
-import { ContextoDoDescarte } from "@/components/admin/financeiro/descarte";
 import {
   CategoriaFolha,
   ContaFolha,
@@ -44,6 +43,7 @@ import {
   PeriodoPersonalizadoFolha,
   SeletorDePeriodo,
 } from "@/components/admin/financeiro/SeletorDePeriodo";
+import { ContextoDoDescarte } from "@/components/admin/financeiro/descarte";
 import type {
   AbaDoFinanceiro,
   FolhaDoFinanceiro,
