@@ -1,3 +1,5 @@
+import { IMAGEM_ILEGIVEL } from "./avatars";
+
 export interface PredefinedCover {
   id: string;
   label: string;
@@ -161,7 +163,7 @@ export const compressCoverImage = (
   maxWidth = 800,
   maxHeight = 300,
 ): Promise<string> => {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const img = new Image();
     img.src = base64Str;
     img.onload = () => {
@@ -195,7 +197,7 @@ export const compressCoverImage = (
       resolve(canvas.toDataURL("image/jpeg", 0.85)); // 85% quality
     };
     img.onerror = () => {
-      resolve(base64Str);
+      reject(new Error(IMAGEM_ILEGIVEL));
     };
   });
 };
