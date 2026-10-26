@@ -96,6 +96,8 @@ const NOMES = [
   // O pedido pago pelo app exige conta: create_marketplace_order_v24 sucede o corpo da 350 (a CADEIA 229/236 -> 244 -> 350 -> 384: o
   // `hashVigente` da 384 e o `hashDesta` da 350). Nao e um dos 42 da 99, mas o rollback da 350 recusa com o corpo novo no ar: ela cai antes.
   "20261384000000_o_pedido_pelo_app_exige_conta_e_nao_prende_estoque_de_visitante.sql",
+  // A busca de pedido pelo numero: get_admin_orders_paged sucede o corpo da 99 (so a regra do telefone e o ORDER BY mudam).
+  "20261387000000_a_busca_de_pedido_pelo_numero_nao_vira_busca_de_telefone.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).

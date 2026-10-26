@@ -2651,6 +2651,13 @@ const ROL_DA_91B = [
   "produtos: id uuid e preco_venda numeric existem e a tabela tem RLS ligada",
   "rls_admin_atual() existe com o corpo da 20261197000000 (md5) e e executavel pelo authenticated",
 ];
+// Lote 92 (20261387000000, a busca de pedido pelo numero nao vira busca de telefone: get_admin_orders_paged).
+const ROL_DA_92 = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_orders_paged: corpo exato (md5)",
+  "get_admin_orders_paged: assinatura e atributos conhecidos",
+  "get_admin_orders_paged: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "90a-conferir-busca-do-painel-por-codigo-aplicado": [
     "controle: funcoes de public visiveis a este papel",
@@ -2679,6 +2686,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "89a-conferir-o-pedido-pelo-app-exige-conta-aplicado": ROL_DA_89,
   "89b-antes-o-pedido-pelo-app-exige-conta-base-vigente": ROL_DA_89,
   "91a-conferir-o-preco-do-produto-deixa-historico-aplicado": ROL_DA_91A,
+  "92a-conferir-a-busca-de-pedido-pelo-numero-aplicado": ROL_DA_92,
+  "92b-antes-a-busca-de-pedido-pelo-numero-base-vigente": ROL_DA_92,
   "91b-antes-o-preco-do-produto-deixa-historico-ausente": ROL_DA_91B,
   "88a-conferir-so-o-dono-define-cargo-aplicado": ROL_DA_88A,
   "88b-antes-so-o-dono-define-cargo-ausente": ROL_DA_88B,

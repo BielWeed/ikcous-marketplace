@@ -194,6 +194,8 @@ on:
       - "scripts/publicacao/consultas/90b-antes-busca-do-painel-por-codigo-base-vigente.sql"
       - "scripts/publicacao/consultas/91a-conferir-o-preco-do-produto-deixa-historico-aplicado.sql"
       - "scripts/publicacao/consultas/91b-antes-o-preco-do-produto-deixa-historico-ausente.sql"
+      - "scripts/publicacao/consultas/92a-conferir-a-busca-de-pedido-pelo-numero-aplicado.sql"
+      - "scripts/publicacao/consultas/92b-antes-a-busca-de-pedido-pelo-numero-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -357,6 +359,8 @@ on:
       - "scripts/publicacao/consultas/90b-antes-busca-do-painel-por-codigo-base-vigente.sql"
       - "scripts/publicacao/consultas/91a-conferir-o-preco-do-produto-deixa-historico-aplicado.sql"
       - "scripts/publicacao/consultas/91b-antes-o-preco-do-produto-deixa-historico-ausente.sql"
+      - "scripts/publicacao/consultas/92a-conferir-a-busca-de-pedido-pelo-numero-aplicado.sql"
+      - "scripts/publicacao/consultas/92b-antes-a-busca-de-pedido-pelo-numero-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -524,6 +528,13 @@ jobs:
       - name: Prova viva do historico de precos do produto (20261386)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-preco-do-produto-deixa-historico-viva.cjs
+      # Migration 20261387000000 (a busca de pedido pelo numero nao vira busca de telefone): get_admin_orders_paged so procura
+      # telefone quando o texto parece telefone ("3884BE" acha o pedido e nao o telefone de outra pessoa) e o pedido do
+      # numero vem primeiro; telefone, nome, rastreio, cupom, contagem, paginacao e filtros seguem; mutantes, reaplicar,
+      # rollback byte a byte, preflight e consultas 92a/92b. CLONE proprio.
+      - name: Prova viva da busca de pedido pelo numero (migration 20261387000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-busca-de-pedido-pelo-numero-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs
