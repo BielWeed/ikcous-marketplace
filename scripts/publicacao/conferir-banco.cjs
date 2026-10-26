@@ -2651,6 +2651,13 @@ const ROL_DA_91B = [
   "produtos: id uuid e preco_venda numeric existem e a tabela tem RLS ligada",
   "rls_admin_atual() existe com o corpo da 20261197000000 (md5) e e executavel pelo authenticated",
 ];
+// Lote 92 (20261387000000, a busca de pedido pelo numero nao vira busca de telefone: get_admin_orders_paged).
+const ROL_DA_92 = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_orders_paged: corpo exato (md5)",
+  "get_admin_orders_paged: assinatura e atributos conhecidos",
+  "get_admin_orders_paged: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
+];
 // Lote 95 (20261389000000, o frete tem limite de cotacoes por origem: tabela frete_cota_por_origem e a funcao frete_consumir_cota, o contador que a
 // edge calculate-shipping consulta). A 95a prova o que ficou; a 95b prova a ausencia e as premissas. A 95a negativa (antes do apply)
 // responde "nao" em tudo menos no controle, nunca erro. Nenhuma das duas le linha de tabela.
@@ -2709,6 +2716,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "89a-conferir-o-pedido-pelo-app-exige-conta-aplicado": ROL_DA_89,
   "89b-antes-o-pedido-pelo-app-exige-conta-base-vigente": ROL_DA_89,
   "91a-conferir-o-preco-do-produto-deixa-historico-aplicado": ROL_DA_91A,
+  "92a-conferir-a-busca-de-pedido-pelo-numero-aplicado": ROL_DA_92,
+  "92b-antes-a-busca-de-pedido-pelo-numero-base-vigente": ROL_DA_92,
   "91b-antes-o-preco-do-produto-deixa-historico-ausente": ROL_DA_91B,
   "95a-conferir-o-frete-tem-limite-de-cotacoes-aplicado": ROL_DA_95A,
   "95b-antes-o-frete-tem-limite-de-cotacoes-ausente": ROL_DA_95B,

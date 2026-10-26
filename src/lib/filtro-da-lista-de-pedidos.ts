@@ -14,6 +14,9 @@
  * 2. **"#" na busca.** O app mostra o número do pedido como "#3884BE" em toda
  *    parte; quem busca copiando isso mandava o "#" junto, e os dígitos "3884"
  *    caíam na regra de busca por telefone, mostrando o pedido de OUTRA pessoa.
+ *    (Tirar o "#" só resolvia o número sem letra. "3884BE" ainda tem os dígitos
+ *    "3884": o banco só deixou de tratá-lo como telefone na migration
+ *    20261387, que também põe o pedido do número em primeiro na lista.)
  *
  * O fuso é o da casa: Brasília, UTC-03:00 o ano todo (sem horário de verão
  * desde 2019) — o mesmo calendário `America/Sao_Paulo` do restante do painel

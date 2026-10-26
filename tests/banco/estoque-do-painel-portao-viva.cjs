@@ -1274,6 +1274,12 @@ async function main() {
         "20261384000000_o_pedido_pelo_app_exige_conta_e_nao_prende_estoque_de_visitante.sql",
         "public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
       ],
+      // A 20261387 (a busca de pedido pelo numero nao vira busca de telefone): get_admin_orders_paged sobre o corpo da
+      // 20261199 (sucessora da 99), funcao de fora destas tres que a 17a nao le. O rollback dela devolve o corpo da 20261199.
+      [
+        "20261387000000_a_busca_de_pedido_pelo_numero_nao_vira_busca_de_telefone.sql",
+        "public.get_admin_orders_paged(text,text,text,text,integer,integer,text,text)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );
