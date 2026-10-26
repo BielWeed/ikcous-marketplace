@@ -1,4 +1,23 @@
 {
+  "1.5.78": {
+    "titulo": "Menos tropeços na conta da cliente e nos pedidos do painel",
+    "novidades": [],
+    "correcoes": [
+      "Painel, pedidos: ao cancelar um pedido pago que ainda não saiu, o cartão de devolução agora se atualiza e mostra a devolução em andamento. Antes ele seguia mostrando o valor disponível e o botão Devolver, o que podia levar a devolver o dinheiro duas vezes.",
+      "Painel, pedidos: pedido cancelado e já devolvido por inteiro deixa de aparecer como \"precisa de atenção\" e de piscar em vermelho. Fica só como Estornado.",
+      "Painel, pedidos: numa loja nova, depois da primeira venda, a lista deixa de dizer que os pedidos ainda vão aparecer.",
+      "Painel, pedidos: o aviso de cancelar um pedido pago que já saiu agora manda para a lista certa (Esperando o produto voltar) e lembra que o produto não volta por conta própria.",
+      "Painel, pedidos: com o filtro de pagamento ligado, o pedido que muda de situação de pagamento sai da lista e os totais acompanham.",
+      "Loja: o convite para receber notificações não cobre mais o botão Salvar endereço nem o Publicar avaliação.",
+      "Loja, minha conta: o WhatsApp colado com +55 ou com 0 na frente é aceito e salvo no formato certo.",
+      "Loja, cadastro: o WhatsApp precisa ter DDD e 10 ou 11 dígitos; antes aceitava um número curto demais.",
+      "Loja, perguntas ao vendedor: quem entra na conta por ali volta para o produto, em vez de cair no Perfil."
+    ],
+    "melhorias": [
+      "Loja, celular: os campos de comentário da avaliação e de pergunta ao vendedor não fazem mais o iPhone dar zoom ao tocar.",
+      "Loja, endereço: o estado (UF) é salvo em letras maiúsculas."
+    ]
+  },
   "1.5.77": {
     "titulo": "Tamanho, voltagem, capacidade e material tão fáceis de escolher quanto a cor",
     "novidades": [

@@ -1155,6 +1155,18 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         }, 3000);
       }
 
+      // Chegou pedido novo: a loja deixou de ser "vazia". A contagem absoluta
+      // (medida só quando a lista aparece vazia) volta a ser medida, senão a
+      // tela de loja nova seguia dizendo "Seus pedidos vão aparecer aqui"
+      // depois da primeira venda — que nasce "Finalizado" no balcão e não
+      // aparece no filtro "Em aberto".
+      if (payload.eventType === "INSERT") {
+        setTotalAbsolutoNaLoja((atual) => (atual === 0 ? null : atual));
+        // Medição que ainda estava no ar foi pedida ANTES do pedido existir:
+        // a rodada nova a descarta e mede de novo.
+        setRodadaDaMedicaoAbsoluta((n) => n + 1);
+      }
+
       // Dispara aviso Toast
       if (payload.eventType === "INSERT") {
         const newId = payload.new?.id;
@@ -1284,6 +1296,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   const [totalAbsolutoNaLoja, setTotalAbsolutoNaLoja] = useState<number | null>(
     null,
   );
+  const [rodadaDaMedicaoAbsoluta, setRodadaDaMedicaoAbsoluta] = useState(0);
   const listaVazia = active && isLoaded && paginatedOrders.length === 0;
   useEffect(() => {
     if (!listaVazia || totalAbsolutoNaLoja !== null) return;
@@ -1313,7 +1326,15 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     } catch {
       // Sem medição, as mensagens existentes seguem valendo.
     }
-  }, [listaVazia, totalAbsolutoNaLoja]);
+  }, [listaVazia, totalAbsolutoNaLoja, rodadaDaMedicaoAbsoluta]);
+  // Lista que passou a ter pedidos desmente o "0": solta a medição velha, e a
+  // próxima lista vazia mede de novo (a loja já tem pedido).
+  const listaTemPedidos = active && isLoaded && paginatedOrders.length > 0;
+  useEffect(() => {
+    if (listaTemPedidos && totalAbsolutoNaLoja === 0) {
+      setTotalAbsolutoNaLoja(null);
+    }
+  }, [listaTemPedidos, totalAbsolutoNaLoja]);
 
   // `silent` é código morto HOJE: o único chamador real é `OrderDetail`
   // (`onStatusChange={handleStatusChange}` logo abaixo), e `OrderDetailProps.

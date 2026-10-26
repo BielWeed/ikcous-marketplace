@@ -150,7 +150,21 @@ function juntar(
  * `supabase_realtime`. Recarrega ao montar, depois de cada ação, e — ENQUANTO
  * existir linha em `solicitado`/`em_processamento` — a cada 15s.
  */
-export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
+export function useEstornosDoPedido(
+  orderId: string,
+  status?: string,
+  paymentStatus?: string | null,
+): EstornosDoPedido {
+  // "Foto" do pedido que importa para o saldo. Cancelar um pedido PAGO grava a
+  // devolução total no banco na hora, com a ficha aberta: se o saldo só fosse
+  // lido ao abrir, o cartão seguiria dizendo "Disponível R$ X" com o botão
+  // ligado. Mudou o status ou o pagamento -> lê de novo.
+  const fotoDoPedido = `${status ?? ""}|${paymentStatus ?? ""}`;
+  const fotoDoPedidoRef = useRef(fotoDoPedido);
+  fotoDoPedidoRef.current = fotoDoPedido;
+  // Em que foto o saldo em tela foi pedido. Se a foto do pedido já é outra, o
+  // saldo está velho: o cartão volta a "Carregando…" até a nova leitura.
+  const [fotoDoSaldo, setFotoDoSaldo] = useState<string | null>(null);
   const [detalhes, setDetalhes] = useState<DetalheDaLinha[]>([]);
   const [saldo, setSaldo] = useState<ReembolsosESaldo | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -168,6 +182,7 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
   const carregar = useCallback(async () => {
     const rodada = ++rodadaRef.current;
     const valeAinda = () => ativoRef.current && rodada === rodadaRef.current;
+    const fotoDaLeitura = fotoDoPedidoRef.current;
     setCarregando(true);
     try {
       const [respostaLinhas, respostaSaldo] = await Promise.all([
@@ -197,6 +212,7 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
 
       setDetalhes((respostaLinhas.data ?? []) as unknown as DetalheDaLinha[]);
       setSaldo(lido);
+      setFotoDoSaldo(fotoDaLeitura);
       setErro(false);
     } catch {
       if (valeAinda()) setErro(true);
@@ -211,7 +227,7 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
     return () => {
       ativoRef.current = false;
     };
-  }, [carregar]);
+  }, [carregar, fotoDoPedido]);
 
   const linhas = juntar(detalhes, saldo?.linhas ?? []);
   // O valor da linha no aviso da saída parcial (a mesma que a tela mostrava).
@@ -338,7 +354,7 @@ export function useEstornosDoPedido(orderId: string): EstornosDoPedido {
     disponivel: saldo?.disponivel ?? 0,
     reservadoPorFora: saldo?.reservado_por_fora ?? 0,
     carregando,
-    pedidoCarregado: saldo !== null,
+    pedidoCarregado: saldo !== null && fotoDoSaldo === fotoDoPedido,
     erro,
     recarregar: () => void carregar(),
     solicitarEstorno,

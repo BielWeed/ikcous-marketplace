@@ -136,8 +136,40 @@ describe("textoCancelamentoDoPainel — casos SEM linha automática continuam co
     },
   ];
 
-  it("pedido pago que já saiu / reativado / pago na entrega: NÃO diz que o app devolve sozinho", () => {
-    for (const pedido of casosSemLinhaAutomatica) {
+  // Pago que JÁ SAIU (em trânsito, ou enviado/cancelado/reativado): o servidor
+  // marca `cancelled_after_shipping` e o pedido vai para "Esperando o produto
+  // voltar" (AdminOrdersView.baldeDeEstorno) — NÃO para "Devolver agora". O
+  // dinheiro só sai depois que o produto voltar, e ele não volta sozinho.
+  const jaSaiu = (pedido: (typeof casosSemLinhaAutomatica)[number]) =>
+    pedido.status === "shipping" || pedido.cancelledAfterShipping === true;
+
+  it("pedido pago que já saiu: manda para 'Esperando o produto voltar' e avisa que o produto não volta por conta própria", () => {
+    const casos = casosSemLinhaAutomatica.filter(jaSaiu);
+    expect(casos.length).toBeGreaterThan(0);
+    for (const pedido of casos) {
+      const texto = textoCancelamentoDoPainel(pedido);
+      const rotulo = JSON.stringify(pedido);
+      expect(texto, rotulo).toContain("PAGO");
+      expect(texto, rotulo).toContain(FRASE_ANTIGA);
+      expect(texto, rotulo).not.toContain("Devolver agora");
+      expect(texto, rotulo).toContain("Esperando o produto voltar");
+      expect(texto, rotulo).toContain("não volta por conta própria");
+      expect(texto, rotulo).not.toMatch(/o app (pede|devolve|estorna)/i);
+      expect(texto.endsWith("?"), rotulo).toBe(true);
+    }
+  });
+
+  it("o caso do aviso: shipping + pago não cita 'Devolver agora' e fala do produto", () => {
+    const texto = textoCancelamentoDoPainel({
+      status: "shipping",
+      payment_status: "pago",
+    });
+    expect(texto).not.toContain("Devolver agora");
+    expect(texto).toMatch(/produto/);
+  });
+
+  it("pedido pago que NÃO saiu e não tem linha automática (pago na entrega): continua em 'Devolver agora'", () => {
+    for (const pedido of casosSemLinhaAutomatica.filter((c) => !jaSaiu(c))) {
       const texto = textoCancelamentoDoPainel(pedido);
       const rotulo = JSON.stringify(pedido);
       expect(texto, rotulo).toContain("PAGO");

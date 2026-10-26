@@ -31,6 +31,9 @@ const VIEWS_REDIRECIONAVEIS = new Set<string>([
   "account-settings",
   "address-form",
   "admin-orders",
+  // Quem pediu login pelas "Perguntas ao vendedor" volta ao produto. Como o
+  // "user-profile", só vale COM o id do produto no state (ver abaixo).
+  "product-detail",
 ]);
 
 /**
@@ -117,11 +120,14 @@ export function destinoPosLogin(state: unknown): View | null {
   if (typeof requested === "string" && VIEWS_REDIRECIONAVEIS.has(requested)) {
     // `user-profile` sem id utilizável é tela morta: a view só desenha com
     // `userId`, e honrar o pedido sem id trocaria o login por um skeleton
-    // eterno. Sem id, ignora o `requested` e segue para as regras
+    // eterno (o "product-detail" idem: produto sem id). Sem id, ignora o `requested` e segue para as regras
     // seguintes — o pior caso volta a ser o comportamento de antes. As
     // outras três views não carregam id.
     const idUtilizavel = typeof registro?.id === "string" && registro.id !== "";
-    if (requested !== "user-profile" || idUtilizavel) {
+    if (
+      (requested !== "user-profile" && requested !== "product-detail") ||
+      idUtilizavel
+    ) {
       return requested as View;
     }
   }

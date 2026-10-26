@@ -195,7 +195,7 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
     solicitarEstorno,
     registrarPorForaAposEspera,
     enviando,
-  } = useEstornosDoPedido(order.id);
+  } = useEstornosDoPedido(order.id, order.status, order.paymentStatus);
 
   const [campoAberto, setCampoAberto] = useState(false);
   const [valorCampo, setValorCampo] = useState("");
