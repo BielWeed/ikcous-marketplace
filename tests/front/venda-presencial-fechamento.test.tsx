@@ -210,6 +210,22 @@ describe("mensagemDaFalhaDaVenda (função pura, C3.4)", () => {
     });
   });
 
+  it("`code` vazio (formato do postgrest-js quando o fetch falha) é falha de rede, não código desconhecido", () => {
+    expect(
+      mensagemDaFalhaDaVenda({
+        code: "",
+        message: "TypeError: Failed to fetch",
+        details: "",
+        hint: "",
+      }),
+    ).toEqual({
+      mensagem:
+        "Não consegui falar com o servidor. O cupom está salvo aqui; tente de novo quando a conexão voltar.",
+      podeTentarDeNovo: true,
+      precisaEntrarDeNovo: false,
+    });
+  });
+
   it("DOMException nunca aparece crua na tela", () => {
     const dom = new DOMException("The operation was aborted.", "AbortError");
     const r = mensagemDaFalhaDaVenda(dom);
@@ -1102,8 +1118,20 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
   const NAO_FOI_REGISTRADA = /n[ãa]o foi registrada/i;
 
   it("caso 12 — rede caiu na resposta: a tela não afirma 'não foi registrada' e diz que o recibo aparece se já entrou", async () => {
-    registrarImplRef.atual = async () => {
-      throw new TypeError("Failed to fetch");
+    // O formato REAL do supabase-js/postgrest-js quando o fetch falha: não
+    // lança, devolve `error` com `code: ""` (nunca um TypeError solto).
+    const chaves: string[] = [];
+    registrarImplRef.atual = async (params: any) => {
+      chaves.push(params.p_idempotency_key);
+      return {
+        data: null,
+        error: {
+          code: "",
+          message: "TypeError: Failed to fetch",
+          details: "",
+          hint: "",
+        },
+      };
     };
     await montarAtePagamentoEscolhido();
     await act(async () => {
@@ -1118,6 +1146,23 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     );
     expect(aviso.textContent).toContain("recibo");
     expect(aviso.textContent).toContain("tente de novo");
+
+    // A saída é TENTAR DE NOVO com a mesma chave — nunca "Começar uma venda
+    // nova", que giraria a chave e poderia duplicar a venda.
+    const registrar = localizarBotaoPorTexto(
+      hospedeiro,
+      "Registrar venda",
+    ) as HTMLButtonElement;
+    expect(registrar.disabled).toBe(false);
+    expect(localizarBotaoPorTexto(hospedeiro, "Começar uma venda nova")).toBe(
+      undefined,
+    );
+    await act(async () => {
+      registrar.click();
+    });
+    await avancar();
+    expect(chaves).toHaveLength(2);
+    expect(chaves[1]).toBe(chaves[0]);
   });
 
   it("caso 12b — o prazo de 20 s estourou: mesma frase honesta, e o botão segue liberado para tentar de novo", async () => {
