@@ -79,7 +79,7 @@ export function FolhaNovaVitrine({
             key={sugestao}
             type="button"
             onClick={() => aoMudarTitulo(sugestao)}
-            className="h-8 rounded-[10px] border border-admin-border bg-zinc-900 px-3 text-[13px] font-semibold text-zinc-300 transition-colors hover:border-admin-gold/40 hover:text-admin-gold"
+            className="min-h-11 rounded-[10px] border border-admin-border bg-zinc-900 px-3 text-[13px] font-semibold text-zinc-300 transition-colors hover:border-admin-gold/40 hover:text-admin-gold"
           >
             {sugestao}
           </button>

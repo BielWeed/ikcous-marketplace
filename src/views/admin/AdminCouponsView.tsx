@@ -3,6 +3,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   FOCO,
   INTERRUPTOR,
+  PERIGO,
   PRIMARIO,
   SECUNDARIO,
   Selo,
@@ -676,7 +677,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                               )}
                             </>
                           ) : (
-                            "Aproveitamento"
+                            "Sem validade"
                           )}
                         </span>
                         <span className="tabular-nums">
@@ -931,7 +932,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
           <AlertDialogHeader>
             <Selo icone={Trash} matiz="#FF6868" />
             <AlertDialogTitle className="text-2xl font-bold text-zinc-50">
-              Excluir Cupom?
+              Excluir cupom?
             </AlertDialogTitle>
             <p className="break-all text-sm font-bold text-zinc-400">
               {coupons.find((coupon) => coupon.id === couponToDelete)?.code}
@@ -945,11 +946,8 @@ export const AdminCouponsView = memo(function AdminCouponsView({
             <AlertDialogCancel className={SECUNDARIO}>
               Cancelar
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDeleteCoupon}
-              className={SECUNDARIO}
-            >
-              Excluir Cupom
+            <AlertDialogAction onClick={confirmDeleteCoupon} className={PERIGO}>
+              Excluir cupom
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

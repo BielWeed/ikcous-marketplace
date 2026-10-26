@@ -150,6 +150,8 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   const replyText = replyingTo ? (rascunhos[replyingTo] ?? "") : "";
   const editorAtualRef = useRef<string | null>(null);
   const envioDeRespostaRef = useRef(false);
+  const publicandoRef = useRef<Set<string>>(new Set());
+  const [publicando, setPublicando] = useState<ReadonlySet<string>>(new Set());
   const [isSubmittingReply, setIsSubmittingReply] = useState(false);
   const [globalVerifiedCount, setGlobalVerifiedCount] = useState(0);
   const [globalRepliedCount, setGlobalRepliedCount] = useState(0);
@@ -394,15 +396,28 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       });
       return;
     }
+    // Toque duplo: a segunda chamada chegaria antes de o React repintar o
+    // botão parado, então a trava é um ref (síncrono), não só o estado.
+    if (publicandoRef.current.has(reviewId)) return;
+    publicandoRef.current.add(reviewId);
+    setPublicando(new Set(publicandoRef.current));
     haptic.light();
     try {
-      await aprovarReview(reviewId);
+      const ok = await aprovarReview(reviewId);
+      if (!ok) {
+        // O hook já deu o toast de erro; aqui só não comemora nem recarrega.
+        haptic.error();
+        return;
+      }
       haptic.success();
       triggerRefresh();
     } catch (err) {
       haptic.error();
       console.error("Erro ao publicar avaliação:", err);
       toast.error("Erro ao publicar avaliação.");
+    } finally {
+      publicandoRef.current.delete(reviewId);
+      setPublicando(new Set(publicandoRef.current));
     }
   };
 
@@ -675,7 +690,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                   onClick={() => {
                     handleAprovar(review.id);
                   }}
-                  disabled={isOffline}
+                  disabled={isOffline || publicando.has(review.id)}
                   aria-label="Aprovar e Publicar"
                   title="Aprovar e Publicar"
                   className={cn(BOTAO_NEUTRO, "min-w-0 flex-1")}

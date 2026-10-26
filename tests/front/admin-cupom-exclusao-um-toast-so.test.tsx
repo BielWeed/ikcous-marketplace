@@ -133,9 +133,9 @@ describe("AdminCouponsView — excluir cupom falho dá UM toast só (laudo 0109,
       lixeira!.click();
     });
 
-    // AlertDialog de confirmação: o botão "Excluir Cupom" dispara o fluxo.
+    // AlertDialog de confirmação: o botão "Excluir cupom" dispara o fluxo.
     const confirmar = Array.from(document.body.querySelectorAll("button")).find(
-      (b) => b.textContent?.trim() === "Excluir Cupom",
+      (b) => b.textContent?.trim() === "Excluir cupom",
     );
     expect(confirmar).toBeTruthy();
 
@@ -163,7 +163,7 @@ describe("AdminCouponsView — excluir cupom falho dá UM toast só (laudo 0109,
       lixeira!.click();
     });
     const confirmar = Array.from(document.body.querySelectorAll("button")).find(
-      (b) => b.textContent?.trim() === "Excluir Cupom",
+      (b) => b.textContent?.trim() === "Excluir cupom",
     );
     await act(async () => {
       confirmar!.click();

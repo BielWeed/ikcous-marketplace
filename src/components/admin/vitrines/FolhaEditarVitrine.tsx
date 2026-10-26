@@ -199,7 +199,7 @@ export function FolhaEditarVitrine({
       </p>
       <fieldset
         aria-label="Quantos produtos mostrar"
-        className="grid auto-cols-fr grid-flow-col gap-1 rounded-[14px] border border-admin-border bg-zinc-900 p-1"
+        className="grid auto-cols-fr grid-flow-col gap-1 rounded-[14px] border border-admin-border bg-zinc-900 p-0.5"
       >
         {OPCOES_MAX_ITENS_CARROSSEL.map((quantidade) => (
           <button
@@ -208,7 +208,7 @@ export function FolhaEditarVitrine({
             aria-pressed={maximo === quantidade}
             onClick={() => aoMudarQuantidade(quantidade)}
             className={cn(
-              "h-9 rounded-[11px] text-[13px] font-semibold transition-colors",
+              "min-h-11 rounded-[11px] text-[13px] font-semibold transition-colors",
               maximo === quantidade
                 ? "bg-zinc-50 font-bold text-zinc-950"
                 : "text-zinc-400 hover:text-white",
@@ -224,14 +224,14 @@ export function FolhaEditarVitrine({
       </p>
       <fieldset
         aria-label="Quais produtos"
-        className="grid auto-cols-fr grid-flow-col gap-1 rounded-[14px] border border-admin-border bg-zinc-900 p-1"
+        className="grid auto-cols-fr grid-flow-col gap-1 rounded-[14px] border border-admin-border bg-zinc-900 p-0.5"
       >
         <button
           type="button"
           aria-pressed={!manual}
           onClick={aoVoltarAoAutomatico}
           className={cn(
-            "flex h-9 items-center justify-center gap-1.5 rounded-[11px] text-[13px] font-semibold transition-colors",
+            "flex min-h-11 items-center justify-center gap-1.5 rounded-[11px] text-[13px] font-semibold transition-colors",
             !manual
               ? "bg-zinc-50 font-bold text-zinc-950"
               : "text-zinc-400 hover:text-white",
@@ -245,7 +245,7 @@ export function FolhaEditarVitrine({
           aria-pressed={manual}
           onClick={aoEscolherManualmente}
           className={cn(
-            "flex h-9 items-center justify-center gap-1.5 rounded-[11px] text-[13px] font-semibold transition-colors",
+            "flex min-h-11 items-center justify-center gap-1.5 rounded-[11px] text-[13px] font-semibold transition-colors",
             manual
               ? "bg-zinc-50 font-bold text-zinc-950"
               : "text-zinc-400 hover:text-white",
@@ -255,7 +255,7 @@ export function FolhaEditarVitrine({
           Escolher
         </button>
       </fieldset>
-      <p className="mt-2 px-0.5 text-xs leading-snug text-zinc-500">
+      <p className="mt-2 px-0.5 text-xs leading-snug text-zinc-400">
         {manual
           ? 'Aparecem na ordem em que você marcar. "Automático" volta a loja a escolher sozinha.'
           : idsEmExibicao.length === 0 && produtos.length > 0
@@ -287,7 +287,7 @@ export function FolhaEditarVitrine({
 
       <div className="mt-1">
         {lista.length === 0 ? (
-          <p className="py-8 text-center text-sm text-zinc-500">
+          <p className="py-8 text-center text-sm text-zinc-400">
             Nenhum produto encontrado na busca.
           </p>
         ) : (
@@ -320,7 +320,7 @@ export function FolhaEditarVitrine({
                   <span className="block truncate text-sm font-semibold text-white">
                     {produto.name}
                   </span>
-                  <span className="block text-xs tabular-nums text-zinc-500">
+                  <span className="block text-xs tabular-nums text-zinc-400">
                     <span className="font-semibold text-zinc-300">
                       {formatCurrency(produto.price)}
                     </span>

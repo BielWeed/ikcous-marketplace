@@ -295,7 +295,7 @@ function capturar(tela: () => ReactNode, movel = true) {
     ).toBeGreaterThan(0);
     expect(container.querySelectorAll("#categorias li")).toHaveLength(3);
     expect(container.querySelector("#categorias")?.textContent).toContain(
-      "50.0%",
+      "50,0%",
     );
     expect(container.querySelector("#categorias")?.textContent).toContain(
       "300,00",

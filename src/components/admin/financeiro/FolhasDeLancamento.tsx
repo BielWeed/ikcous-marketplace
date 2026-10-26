@@ -247,6 +247,7 @@ export function BaixarLancamentoFolha({
   alvo,
   hoje,
   contas,
+  aoMudarEnviando,
   aoFechar,
   aoSalvar,
   aoMudarSujo,
@@ -254,6 +255,8 @@ export function BaixarLancamentoFolha({
   readonly alvo: AlvoDaBaixa;
   readonly hoje: DataIso;
   readonly contas: readonly ContaFinanceira[];
+  /** Avisa a view que há gravação no ar: enquanto dura, a folha não fecha. */
+  readonly aoMudarEnviando?: (enviando: boolean) => void;
   readonly aoFechar: () => void;
   readonly aoSalvar: (mensagem: string) => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
@@ -285,6 +288,7 @@ export function BaixarLancamentoFolha({
     }
     setErroData(null);
     enviandoRef.current = true;
+    aoMudarEnviando?.(true);
     setEnviando(true);
     setErroDoServidor(null);
     const fim = marcarOperacaoSensivel("baixa-financeira");
@@ -322,6 +326,7 @@ export function BaixarLancamentoFolha({
     } finally {
       fim();
       enviandoRef.current = false;
+      aoMudarEnviando?.(false);
       setEnviando(false);
     }
   }
@@ -339,6 +344,7 @@ export function BaixarLancamentoFolha({
       icone={alvo.lado === "entrada" ? ArrowDownLeft : ArrowUpRight}
       matiz={alvo.lado === "entrada" ? "#2DD4BF" : "#FF9F5A"}
       aoFechar={aoFechar}
+      fecharBloqueado={enviando}
       rodape={
         <div className="flex flex-col gap-3">
           {erroDoServidor ? <EstadoDeErro mensagem={erroDoServidor} /> : null}
@@ -417,11 +423,14 @@ export function BaixarLancamentoFolha({
 /** Cancelar um lançamento manual — sempre com motivo (trilha de auditoria). */
 export function CancelarLancamentoDialogo({
   alvo,
+  aoMudarEnviando,
   aoFechar,
   aoSalvar,
   aoMudarSujo,
 }: {
   readonly alvo: AlvoDoCancelamento;
+  /** Avisa a view que há gravação no ar: enquanto dura, a janela não fecha. */
+  readonly aoMudarEnviando?: (enviando: boolean) => void;
   readonly aoFechar: () => void;
   readonly aoSalvar: (mensagem: string) => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
@@ -448,6 +457,7 @@ export function CancelarLancamentoDialogo({
     setTentou(true);
     if (motivoLimpo.length < 3) return;
     enviandoRef.current = true;
+    aoMudarEnviando?.(true);
     setEnviando(true);
     setErroDoServidor(null);
     try {
@@ -464,6 +474,7 @@ export function CancelarLancamentoDialogo({
       setErroDoServidor(mensagemDeErroFinanceiro(erro));
     } finally {
       enviandoRef.current = false;
+      aoMudarEnviando?.(false);
       setEnviando(false);
     }
   }
@@ -504,6 +515,7 @@ export function CancelarLancamentoDialogo({
         <AlertDialogFooter className="gap-2">
           <button
             type="button"
+            disabled={enviando}
             onClick={aoFechar}
             className={CLASSE_BOTAO_SECUNDARIO}
           >

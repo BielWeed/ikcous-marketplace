@@ -263,6 +263,12 @@ describe("FechamentoDaVenda (C3.2)", () => {
     await avancar();
 
     expect(hospedeiro.textContent).toContain("Sem internet agora");
+    // O título não pode afirmar "Venda salva": sem internet a venda ainda NÃO
+    // foi registrada no banco; só o cupom continua na tela.
+    expect(hospedeiro.textContent).not.toContain("Venda salva");
+    expect(hospedeiro.textContent).toContain(
+      "A venda ainda não foi registrada",
+    );
     const botao = localizarBotaoPorTexto(
       hospedeiro,
       "Registrar venda",

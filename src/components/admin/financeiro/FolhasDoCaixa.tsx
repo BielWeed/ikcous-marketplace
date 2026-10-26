@@ -122,12 +122,14 @@ function useEnvio(
 export function AbrirCaixaFolha({
   contas,
   aoReconciliar,
+  aoMudarEnviando,
   aoFechar,
   aoSalvar,
   aoMudarSujo,
 }: {
   readonly contas: readonly ContaFinanceira[];
   readonly aoReconciliar: (mensagem: string) => Promise<void>;
+  readonly aoMudarEnviando?: (enviando: boolean) => void;
   readonly aoFechar: () => void;
   readonly aoSalvar: (mensagem: string) => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
@@ -138,14 +140,17 @@ export function AbrirCaixaFolha({
   const saldoDoSistema = contaDoCaixa?.saldo ?? null;
   const [valor, setValor] = useState("");
   const [tentou, setTentou] = useState(false);
-  const { enviando, erro, enviar } = useEnvio(undefined, async (falha) => {
-    // 23505 cai na frase genérica de "dados recusados"; aqui o motivo é um só.
-    await aoReconciliar(
-      ehCaixaJaAberto(falha)
-        ? "Este caixa já está aberto."
-        : mensagemDeErroFinanceiro(falha),
-    );
-  });
+  const { enviando, erro, enviar } = useEnvio(
+    aoMudarEnviando,
+    async (falha) => {
+      // 23505 cai na frase genérica de "dados recusados"; aqui o motivo é um só.
+      await aoReconciliar(
+        ehCaixaJaAberto(falha)
+          ? "Este caixa já está aberto."
+          : mensagemDeErroFinanceiro(falha),
+      );
+    },
+  );
 
   useEffect(() => {
     aoMudarSujo(valor !== "");
@@ -197,6 +202,7 @@ export function AbrirCaixaFolha({
       matiz="#2DD4BF"
       descricao="Antes de vender, conte o dinheiro da gaveta."
       aoFechar={aoFechar}
+      fecharBloqueado={enviando}
       rodape={
         <RodapeDeAcao
           erro={erro}
@@ -434,6 +440,7 @@ export function MovimentarCaixaFolha({
           : "Colocar troco na gaveta."
       }
       aoFechar={aoFechar}
+      fecharBloqueado={enviando}
       rodape={
         <RodapeDeAcao
           erro={erro}
@@ -635,6 +642,7 @@ export function FecharCaixaFolha({
       matiz="#2DD4BF"
       descricao={`${caixa.contaNome} — conte a gaveta e informe o total.`}
       aoFechar={aoFechar}
+      fecharBloqueado={enviando}
       rodape={
         <RodapeDeAcao
           erro={erro}
