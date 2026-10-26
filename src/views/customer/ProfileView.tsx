@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { AddressList } from "@/components/ui/custom/AddressList";
+import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
 import { OrderTimeline } from "@/components/ui/custom/OrderTimeline";
 import { ProfileSkeleton } from "@/components/ui/custom/Skeletons";
@@ -640,13 +641,13 @@ export function ProfileView({
                           Ver detalhes
                         </Button>
                         {lojaTemWhatsappAgora && (
-                          <Button
-                            variant="outline"
+                          <BotaoWhatsapp
                             onClick={() => handleWhatsAppSupport(order.id)}
-                            className="h-12 flex-1 rounded-2xl border border-solid border-border bg-background text-base font-semibold text-foreground hover:bg-muted"
+                            aria-label={`Falar pelo WhatsApp sobre o pedido #${numeroDoPedido(order.id)}`}
+                            className="flex-1"
                           >
                             WhatsApp
-                          </Button>
+                          </BotaoWhatsapp>
                         )}
                       </div>
                     </div>

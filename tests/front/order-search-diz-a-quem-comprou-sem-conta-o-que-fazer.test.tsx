@@ -112,12 +112,14 @@ describe("OrderSearch — aviso para quem comprou sem conta", () => {
     expect(recursos).toBe("noopener,noreferrer");
   });
 
-  it("o botão do WhatsApp tem área de toque de pelo menos 44px (min-h-11)", async () => {
+  it("o botão do WhatsApp tem área de toque de pelo menos 44px (min-h-12 = 48px)", async () => {
     await abrirRastrearSemConta("34999998888");
 
     const botao = botaoPorTexto(host, BOTAO);
     expect(botao).not.toBeUndefined();
-    expect(botao?.className.split(/\s+/)).toContain("min-h-11");
+    // 48px (>= 44px): o rótulo é longo e quebra em duas linhas em 320px, então
+    // a altura é MÍNIMA (min-h-12), nunca fixa — o texto nunca é cortado.
+    expect(botao?.className.split(/\s+/)).toContain("min-h-12");
   });
 
   it("loja SEM WhatsApp: instrução honesta, nunca um botão morto", async () => {

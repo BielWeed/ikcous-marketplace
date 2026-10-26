@@ -24,6 +24,7 @@ import { FraseDeAceite } from "@/components/politicas/LinksDasPoliticas";
 import { Button } from "@/components/ui/button";
 import { AddressForm } from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
+import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { HEADER_CENTER_SLOT_ID } from "@/components/ui/custom/Header";
 import { SaidaDaRecusa } from "@/components/ui/custom/SaidaDaRecusa";
 import {
@@ -5003,13 +5004,12 @@ export function CheckoutViewDaConta({
               // cancelar por lá esbarra na MESMA guarda P0001 com a mesma
               // mensagem.
               lojaTemWhatsappNoCheckout ? (
-                <Button
+                <BotaoWhatsapp
                   onClick={handleFalarComALojaSobreCartao}
-                  variant="outline"
-                  className="w-full rounded-xl border-amber-300 text-amber-900 hover:bg-amber-100"
+                  className="rounded-xl"
                 >
                   Falar com a loja
-                </Button>
+                </BotaoWhatsapp>
               ) : (
                 <Button
                   onClick={() => onNavigate("orders")}
@@ -5155,13 +5155,12 @@ export function CheckoutViewDaConta({
                   Ver meus pedidos
                 </Button>
               ) : lojaTemWhatsappNoCheckout ? (
-                <Button
+                <BotaoWhatsapp
                   onClick={handleFalarComALojaSobreCartao}
-                  variant="outline"
-                  className="w-full rounded-xl"
+                  className="rounded-xl"
                 >
                   Falar com a loja
-                </Button>
+                </BotaoWhatsapp>
               ) : (
                 <Button
                   onClick={() => onNavigate("orders")}
@@ -5173,13 +5172,12 @@ export function CheckoutViewDaConta({
               )
             ) : cancelamentoBloqueadoPelaGuardaDoCartao ? (
               lojaTemWhatsappNoCheckout ? (
-                <Button
+                <BotaoWhatsapp
                   onClick={handleFalarComALojaSobreCartao}
-                  variant="outline"
-                  className="w-full rounded-xl"
+                  className="rounded-xl"
                 >
                   Falar com a loja
-                </Button>
+                </BotaoWhatsapp>
               ) : (
                 <Button
                   onClick={() => onNavigate("orders")}
@@ -7434,12 +7432,12 @@ function SuccessView({
             Ver Meus Pedidos
           </button>
         ) : lojaTemWhatsappAgora ? (
-          <button
+          <BotaoWhatsapp
             onClick={handleFalarComALoja}
-            className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
+            className="h-16 whitespace-normal text-[11px] font-black uppercase leading-snug tracking-[0.3em]"
           >
             Acompanhar pelo WhatsApp
-          </button>
+          </BotaoWhatsapp>
         ) : (
           <p className="text-xs leading-relaxed text-zinc-500">
             Guarde o identificador acima — é por ele que a loja localiza o seu
@@ -7604,12 +7602,12 @@ function PagamentoForaDoPrazoView({
 
       <div className="flex w-full max-w-xs flex-col gap-4 duration-1000 animate-in slide-in-from-bottom-12">
         {numeroLimpo && (
-          <button
+          <BotaoWhatsapp
             onClick={handleFalarComALoja}
-            className="shadow-3xl flex h-16 items-center justify-center gap-3 rounded-2xl bg-amber-500 text-[11px] font-black uppercase tracking-[0.3em] text-white shadow-black/10 transition-all hover:bg-amber-500/90 active:scale-95"
+            className="h-16 text-[11px] font-black uppercase tracking-[0.3em]"
           >
             Falar com a Loja
-          </button>
+          </BotaoWhatsapp>
         )}
         <button
           onClick={() => onNavigate("orders")}
