@@ -202,10 +202,12 @@ describe("item 6 — B9: aviso do topo do Header alcançável por teclado", () =
     expect(aberturaDoBotao).toContain("dispensarToast()");
   });
 
+  // 26/10/2026 (caça 8): só o `whitespace-nowrap` saiu, para o texto do aviso
+  // poder quebrar em 2 linhas em vez de ser cortado.
   it("classes visuais do card do aviso preservadas byte a byte", () => {
     const src = fonte(HEADER);
     expect(src).toContain(
-      'className="flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden whitespace-nowrap rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95"',
+      'className="flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95"',
     );
   });
 });

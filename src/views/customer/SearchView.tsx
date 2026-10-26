@@ -279,7 +279,7 @@ export const SearchView = React.memo(function SearchView({
               // Laudo 05/09, M5: botão de voltar só-ícone era "botão" para
               // o leitor de tela — sem nome, voltar ficava sem significado.
               aria-label="Voltar"
-              className="flex size-10 items-center justify-center rounded-2xl border border-zinc-100 bg-zinc-50 transition-all hover:bg-zinc-100 active:scale-90"
+              className="flex size-11 items-center justify-center rounded-2xl border border-zinc-100 bg-zinc-50 transition-all hover:bg-zinc-100 active:scale-90"
             >
               <ArrowLeft className="size-5 text-zinc-900" />
             </button>
@@ -290,7 +290,7 @@ export const SearchView = React.memo(function SearchView({
           <div className="no-scrollbar flex items-center gap-2 overflow-x-auto pb-1">
             <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
               <SheetTrigger asChild>
-                <button className="flex items-center gap-2 whitespace-nowrap rounded-full bg-primary px-4 py-2 text-[10px] font-black uppercase tracking-widest text-primary-foreground shadow-xl shadow-black/10 transition-all hover:bg-primary/90 active:scale-95">
+                <button className="flex min-h-11 items-center gap-2 whitespace-nowrap rounded-full bg-primary px-4 py-2 text-[10px] font-black uppercase tracking-widest text-primary-foreground shadow-xl shadow-black/10 transition-all hover:bg-primary/90 active:scale-95">
                   <SlidersHorizontal className="size-3" />
                   Filtros {activeFiltersCount > 0 && `(${activeFiltersCount})`}
                 </button>
@@ -307,7 +307,7 @@ export const SearchView = React.memo(function SearchView({
                     {activeFiltersCount > 0 && (
                       <button
                         onClick={handleClearFilters}
-                        className="text-[10px] font-black uppercase tracking-widest text-red-500"
+                        className="-mr-2 min-h-11 px-2 text-[10px] font-black uppercase tracking-widest text-red-500"
                       >
                         Limpar Tudo
                       </button>
@@ -325,7 +325,8 @@ export const SearchView = React.memo(function SearchView({
                         <button
                           key={catName}
                           onClick={() => setCategory(catName)}
-                          className={`rounded-2xl border px-5 py-2.5 text-[11px] font-bold transition-all ${
+                          aria-pressed={category === catName}
+                          className={`min-h-11 rounded-2xl border px-5 py-2.5 text-[11px] font-bold transition-all ${
                             category === catName
                               ? "scale-105 border-primary bg-primary text-primary-foreground shadow-lg shadow-black/10"
                               : "border-zinc-100 bg-zinc-50 text-zinc-600 hover:border-zinc-300"
@@ -351,7 +352,8 @@ export const SearchView = React.memo(function SearchView({
                         <button
                           key={option.value}
                           onClick={() => setSort(option.value as any)}
-                          className={`rounded-2xl border px-4 py-3 text-[11px] font-bold transition-all ${
+                          aria-pressed={sort === option.value}
+                          className={`min-h-11 rounded-2xl border px-4 py-3 text-[11px] font-bold transition-all ${
                             sort === option.value
                               ? "border-primary bg-primary text-primary-foreground"
                               : "border-zinc-100 bg-zinc-50 text-zinc-600 hover:border-zinc-300"
@@ -379,7 +381,8 @@ export const SearchView = React.memo(function SearchView({
               <button
                 key={catName}
                 onClick={() => setCategory(catName)}
-                className={`whitespace-nowrap rounded-full border px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-all ${
+                aria-pressed={category === catName}
+                className={`min-h-11 whitespace-nowrap rounded-full border px-4 py-2 text-[10px] font-bold uppercase tracking-widest transition-all ${
                   category === catName
                     ? "border-primary bg-primary text-primary-foreground"
                     : "border-zinc-100 bg-zinc-50 text-zinc-500 hover:border-primary hover:text-primary"
@@ -418,7 +421,7 @@ export const SearchView = React.memo(function SearchView({
         ) : filteredProducts.length > 0 ? (
           <div className="space-y-8">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
+              <div role="status" className="flex items-center gap-2">
                 <Sparkles className="size-4 text-zinc-900" />
                 <h2 className="text-xl font-black tracking-tighter">
                   Encontramos {totalResults}{" "}
@@ -475,7 +478,7 @@ export const SearchView = React.memo(function SearchView({
               <h2 className="text-2xl font-black tracking-tighter text-zinc-900">
                 Ué, nenhum resultado?
               </h2>
-              <p className="mt-2 text-xs font-medium leading-relaxed text-zinc-400">
+              <p className="mt-2 text-xs font-medium leading-relaxed text-zinc-600">
                 Não encontramos o que você buscou com esses filtros. <br />
                 <span className="font-black text-zinc-900">
                   Que tal dar uma olhada no que é tendência?

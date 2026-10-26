@@ -268,7 +268,7 @@ describe("area de toque invisivel >= 44px", () => {
   });
 
   it("botao Remover do carrinho: size-7 (28px) + after/before -inset-2", () => {
-    const i = ITENS.indexOf('aria-label="Remover item"');
+    const i = ITENS.indexOf("aria-label={`Remover ${");
     const tag = ITENS.slice(ITENS.lastIndexOf("<button", i), i);
     expect(tag).toMatch(/\bsize-7\b/);
     expect(px("7") + 2 * px("2")).toBeGreaterThanOrEqual(44);

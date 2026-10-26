@@ -6,6 +6,8 @@ interface QuantitySelectorProps {
   maxQuantity: number;
   onChange: (quantity: number) => void;
   size?: "sm" | "md" | "folha" | "pill";
+  /** Nome do produto: o grupo passa a dizer "Quantidade de X" ao leitor de tela. */
+  produto?: string;
 }
 
 export function QuantitySelector({
@@ -13,6 +15,7 @@ export function QuantitySelector({
   maxQuantity,
   onChange,
   size = "md",
+  produto,
 }: QuantitySelectorProps) {
   // sm: botao visual de 28px; o `before` invisivel de -inset-2 leva a area de
   // toque a 44px (8px por lado). Cabe sem sobrepor o vizinho: o numero entre
@@ -42,7 +45,7 @@ export function QuantitySelector({
   return (
     <div
       role="group"
-      aria-label="Quantidade"
+      aria-label={produto ? `Quantidade de ${produto}` : "Quantidade"}
       className={
         size === "folha"
           ? "flex h-12 w-[116px] shrink-0 items-center rounded-[14px] bg-zinc-100"

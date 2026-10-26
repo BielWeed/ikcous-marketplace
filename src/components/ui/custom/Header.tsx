@@ -326,6 +326,15 @@ export const Header = memo(function Header({
           )}
         >
           <IlhaDeAtualizacao />
+          {/* No celular o Sonner some e a cápsula é o único aviso: a fala mora
+              FORA do AnimatePresence, com o texto completo (a cápsula visível
+              só mostra 2 linhas). Some junto com a cápsula quando a ilha de
+              atualização assume. */}
+          {!atualizacaoAtiva && (
+            <span role="status" aria-live="polite" className="sr-only">
+              {activeToast?.message}
+            </span>
+          )}
           {/* Desmonta o canal comum imediatamente: seu exit não deve
               competir com a atualização nem deixar duas cápsulas juntas. */}
           {!atualizacaoAtiva && (
@@ -357,7 +366,7 @@ export const Header = memo(function Header({
                       dispensarToast();
                     }
                   }}
-                  className="flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden whitespace-nowrap rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95"
+                  className="flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95"
                 >
                   <motion.div
                     initial={{ scale: 0.4, opacity: 0 }}
@@ -371,7 +380,7 @@ export const Header = memo(function Header({
                     initial={{ opacity: 0, x: 8 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.2, ease: "easeOut" }}
-                    className="max-w-[115px] truncate text-[11px] font-bold tracking-tight text-white/95 xs:max-w-[155px] xs:text-xs sm:max-w-[220px]"
+                    className="line-clamp-2 max-w-[100px] whitespace-normal break-words text-left text-[11px] font-bold leading-tight tracking-tight text-white/95 xs:max-w-[155px] xs:text-xs sm:max-w-[220px]"
                   >
                     {activeToast.message}
                   </motion.span>

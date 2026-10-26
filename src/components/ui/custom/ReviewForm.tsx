@@ -111,7 +111,9 @@ export function ReviewForm({
                         key={star}
                         type="button"
                         disabled={isSubmitting}
-                        className="relative p-0.5 transition-all active:scale-90"
+                        aria-label={`${star} de 5 estrelas`}
+                        aria-pressed={field.value >= star}
+                        className="relative -m-2 p-2.5 transition-all active:scale-90"
                         onMouseEnter={() => setHoverRating(star)}
                         onMouseLeave={() => setHoverRating(0)}
                         onClick={() => field.onChange(star)}

@@ -471,7 +471,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                   type="button"
                   onClick={handleResendConfirmation}
                   disabled={reenviandoConfirmacao}
-                  className="text-amber-600 hover:underline"
+                  className="relative text-amber-800 after:absolute after:-inset-x-2 after:-inset-y-3.5 after:content-[''] hover:underline"
                 >
                   {reenviandoConfirmacao ? "Reenviando..." : "Reenviar link"}
                 </button>
@@ -628,7 +628,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                   >
                     <label
                       htmlFor="fullName"
-                      className="ml-1 block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                      className="ml-1 block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600"
                     >
                       NOME COMPLETO
                     </label>
@@ -659,7 +659,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                   >
                     <label
                       htmlFor="phone"
-                      className="ml-1 block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                      className="ml-1 block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600"
                     >
                       WHATSAPP
                     </label>
@@ -691,7 +691,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                   >
                     <label
                       htmlFor="cpf"
-                      className="ml-1 block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                      className="ml-1 block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600"
                     >
                       CPF (OPCIONAL)
                     </label>
@@ -733,7 +733,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                 <motion.div variants={itemVariants} className="space-y-2">
                   <label
                     htmlFor="email"
-                    className="ml-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                    className="ml-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600"
                   >
                     Email
                   </label>
@@ -765,7 +765,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                   <div className="ml-1 flex items-center justify-between">
                     <label
                       htmlFor="password"
-                      className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                      className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600"
                     >
                       Senha
                     </label>
@@ -781,7 +781,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                           if (emailNaoConfirmado) setEmailNaoConfirmado(false);
                           setViewMode("forgot");
                         }}
-                        className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 transition-colors hover:text-zinc-900"
+                        className="relative text-[10px] font-bold uppercase tracking-widest text-zinc-700 transition-colors after:absolute after:-inset-x-2 after:-inset-y-3.5 after:content-[''] hover:text-zinc-900"
                       >
                         Esqueceu?
                       </button>
@@ -906,7 +906,15 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                 className="group mt-2 flex h-14 w-full items-center justify-center gap-3 rounded-2xl bg-zinc-900 text-xs font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-zinc-200/50 disabled:opacity-70 sm:mt-4 sm:rounded-3xl"
               >
                 {isLoading ? (
-                  <Loader2 className="size-5 animate-spin" />
+                  <>
+                    <Loader2 className="size-5 animate-spin" />
+                    <span className="sr-only">
+                      {viewMode === "login" && "Entrando…"}
+                      {viewMode === "signup" && "Criando sua conta…"}
+                      {viewMode === "forgot" && "Enviando o link…"}
+                      {viewMode === "new-password" && "Atualizando a senha…"}
+                    </span>
+                  </>
                 ) : (
                   <>
                     {viewMode === "login" && "ENTRAR AGORA"}
@@ -941,7 +949,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                   setIsPasswordRecovery(false);
                 } else setViewMode(isLogin ? "signup" : "login");
               }}
-              className="border-b-2 border-zinc-900/10 text-[11px] font-black uppercase tracking-widest text-zinc-900 transition-colors hover:border-zinc-900 sm:text-sm"
+              className="relative border-b-2 border-zinc-900/10 text-[11px] font-black uppercase tracking-widest text-zinc-900 transition-colors after:absolute after:-inset-x-2 after:-inset-y-3.5 after:content-[''] hover:border-zinc-900 sm:text-sm"
             >
               {viewMode === "login"
                 ? "CADASTRO"
