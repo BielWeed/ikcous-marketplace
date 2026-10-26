@@ -62,7 +62,7 @@ describe("OrderSearch — teclado do código de 6 dígitos", () => {
     await act(async () => {
       digitar(host, "SEU E-MAIL", "cliente@teste.com");
       digitar(host, "SEU WHATSAPP", "34999999999");
-      digitar(host, "ÚLTIMOS 6 DÍGITOS DO ID DO PEDIDO", "abcdef");
+      digitar(host, "6 FINAIS DO ID DO PEDIDO", "abcdef");
     });
     await act(async () => {
       host.querySelector<HTMLFormElement>("form")?.requestSubmit();
