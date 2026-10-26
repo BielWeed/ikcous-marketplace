@@ -44,6 +44,7 @@ import { useProducts } from "@/hooks/useProducts";
 import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
+import { CLASSE_PRECO_PROMOCIONAL_FUNDO_ESCURO } from "@/lib/cor-do-preco-promocional";
 import { descartarFotosDoProduto } from "@/lib/descartar-fotos-do-produto";
 import {
   type ConfigDeFrete,
@@ -52,9 +53,7 @@ import {
 } from "@/lib/estrategias-de-frete";
 import { soFotosReais } from "@/lib/foto-do-produto";
 import {
-  ErroDeCategoria,
   categoriaExisteNaLista,
-  categoriaParecida,
   mesmaCategoria,
 } from "@/lib/gestao-de-categorias";
 import {
@@ -115,7 +114,7 @@ import {
   Barcode,
   Camera,
   Check,
-  ChevronRight,
+  ChevronDown,
   DollarSign,
   Edit2,
   HelpCircle,
@@ -197,6 +196,14 @@ const GerenciarCategorias = lazy(() =>
   import("@/components/admin/categorias/GerenciarCategorias").then(
     (modulo) => ({ default: modulo.GerenciarCategorias }),
   ),
+);
+
+// A folha "Nova categoria" (com a galeria de ícones) só é baixada quando a
+// lojista a abre, como a tela acima: o formulário não paga por ela no pacote.
+const FolhaDeNovaCategoria = lazy(() =>
+  import("@/components/admin/products/FolhaDeNovaCategoria").then((modulo) => ({
+    default: modulo.FolhaDeNovaCategoria,
+  })),
 );
 
 // C5.3 — sem câmera (desktop sem webcam, navegador sem suporte) o botão
@@ -659,6 +666,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const {
     categories: dbCategories,
     addCategory,
+    updateCategory,
     isLoading: carregandoCategorias,
   } = useCategories();
   const isOffline = useOnlineStatus();
@@ -755,12 +763,6 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const [currentProduct, setCurrentProduct] = useState<any>(null);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
-  // "Criar categoria" em andamento: o botão fica desligado e um segundo toque
-  // (no mesmo instante, antes de a tela se atualizar) não cria outra. O `ref`
-  // fecha a janela entre o toque e a tela refletir o estado.
-  const [criandoCategoria, setCriandoCategoria] = useState(false);
-  const criandoCategoriaRef = useRef(false);
   // A lojista renomeou ou apagou a categoria que está escolhida AQUI: o campo
   // acompanha. O banco já trocou o nome no produto salvo; sem isto, salvar com o
   // nome velho no campo devolveria o produto à categoria que não existe mais.
@@ -2397,7 +2399,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   };
 
   // Primeiro campo com erro que BLOQUEIA o salvar, na ordem em que a tela os
-  // mostra (básico, depois "Custo e lucro", depois "Avançado"). O AVISO de
+  // mostra (básico, com a promoção logo abaixo de preço e estoque; depois
+  // "Custo e lucro", depois "Avançado"). O AVISO de
   // custo maior que o preço não entra: não bloqueia. Mesma lista do `isValid`.
   // Promoção ligada e o "De:" vazio: o salvar gravaria o produto SEM promoção
   // (preço original nulo) e diria "Salvo". Bloqueia e diz o que fazer.
@@ -2407,10 +2410,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const idDoPrimeiroCampoComErro = (): string | null => {
     if (priceError) return "product-sale-price";
     if (stockError) return "product-stock";
-    if (costError && !costError.startsWith("Aviso"))
-      return "product-cost-price";
     if (originalPriceError || promocaoSemPrecoOriginal)
       return "product-original-price";
+    if (costError && !costError.startsWith("Aviso"))
+      return "product-cost-price";
     if (skuError) return "product-sku";
     if (codigoBarrasError) return "product-codigo-barras";
     if (estoqueMinimoError) return "product-estoque-minimo";
@@ -3091,6 +3094,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
   const priceVal = Number.parseFloat(formData.price) || 0;
   const costPriceVal = Number.parseFloat(formData.costPrice) || 0;
+  const originalPriceVal = Number.parseFloat(formData.originalPrice) || 0;
+  // O selo "-X%" da prévia da promoção: a mesma conta do selo "% OFF" do
+  // card da loja (`ProductCard`), arredondada.
+  const descontoDaPromocao =
+    originalPriceVal > priceVal
+      ? Math.round(((originalPriceVal - priceVal) / originalPriceVal) * 100)
+      : 0;
   const marginPct =
     priceVal > 0 ? ((priceVal - costPriceVal) / priceVal) * 100 : 0;
   // Quatro rótulos em palavras simples: prejuízo, sem lucro, lucro baixo
@@ -3125,9 +3135,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     formData.stock,
   ].filter(Boolean).length;
   const variacoesAtivas = formData.variants.filter((v) => v.active).length;
+  // O aviso da seção "Custo e lucro" é só do custo. O erro do "De" aparece
+  // junto do campo, no básico, e entra à parte na frase "há avisos" do topo.
   const avisoDeCusto =
-    (costError && !costError.startsWith("Aviso") ? costError : "") ||
-    originalPriceError;
+    costError && !costError.startsWith("Aviso") ? costError : "";
   const avisoAvancado = skuError || codigoBarrasError || estoqueMinimoError;
 
   return (
@@ -3141,147 +3152,19 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         </Suspense>
       )}
 
-      {typeof document !== "undefined" &&
-        createPortal(
-          <AnimatePresence>
-            {showCategoryForm && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-              >
-                <motion.div
-                  initial={{ scale: 0.9, y: 20 }}
-                  animate={{ scale: 1, y: 0 }}
-                  role="dialog"
-                  aria-modal="true"
-                  aria-labelledby="titulo-da-categoria"
-                  className="produto-modal gpu-accelerated relative max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-3xl border border-admin-border p-5 shadow-2xl"
-                >
-                  <div className="pointer-events-none absolute right-0 top-0 p-8 opacity-5">
-                    <Layers className="size-24 text-white" />
-                  </div>
-
-                  <div className="relative z-10 mb-8 flex items-center gap-4">
-                    <div className="flex size-12 items-center justify-center rounded-2xl border border-violet-400/20 bg-violet-400/10">
-                      <Layers className="size-6 text-violet-300" />
-                    </div>
-                    <div>
-                      <h3
-                        id="titulo-da-categoria"
-                        className="text-xl font-bold"
-                      >
-                        Nova Categoria
-                      </h3>
-                      <p className="mt-1 text-[11px] font-bold uppercase leading-none tracking-wider text-zinc-500">
-                        Nova categoria para organizar a loja
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="relative z-10 space-y-6">
-                    <div className="space-y-2">
-                      <label
-                        htmlFor="cat-name"
-                        className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
-                      >
-                        Nome da categoria
-                      </label>
-                      <LocalBufferedInput
-                        id="cat-name"
-                        name="categoryName"
-                        type="text"
-                        delay={150}
-                        value={newCategoryName}
-                        onFlush={setNewCategoryName}
-                        className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                        placeholder="Ex: Vestuário"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="relative z-10 flex gap-4 pt-8">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowCategoryForm(false);
-                        setNewCategoryName("");
-                        setFormData((prev) => ({
-                          ...prev,
-                          category: formData.category || "",
-                        }));
-                      }}
-                      className="min-h-14 flex-1 rounded-2xl border border-admin-border bg-admin-raised px-3 text-sm font-bold text-white"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="button"
-                      disabled={criandoCategoria}
-                      onClick={async () => {
-                        if (criandoCategoriaRef.current) return;
-                        if (newCategoryName.trim()) {
-                          // O banco tem nome único e endereço único: "Vestuário"
-                          // e "vestuario" colidem. Avisa ANTES, com o nome da que
-                          // já existe, em vez do erro genérico depois.
-                          const parecida = categoriaParecida(
-                            newCategoryName.trim(),
-                            dbCategories,
-                          );
-                          if (parecida) {
-                            toast.error(
-                              `Já existe uma categoria parecida: ${parecida.name}`,
-                            );
-                            return;
-                          }
-                          criandoCategoriaRef.current = true;
-                          setCriandoCategoria(true);
-                          const loadingId = toast.loading(
-                            "Criando categoria...",
-                          );
-                          try {
-                            await addCategory(
-                              {
-                                name: newCategoryName.trim(),
-                                description: "",
-                                isActive: true,
-                              },
-                              true,
-                            );
-                            setFormData((prev) => ({
-                              ...prev,
-                              category: newCategoryName.trim(),
-                            }));
-                            toast.success("Categoria criada com sucesso!", {
-                              id: loadingId,
-                            });
-                            setShowCategoryForm(false);
-                            setNewCategoryName("");
-                          } catch (e) {
-                            toast.error(
-                              e instanceof ErroDeCategoria
-                                ? e.message
-                                : "Erro ao salvar categoria",
-                              { id: loadingId },
-                            );
-                          } finally {
-                            criandoCategoriaRef.current = false;
-                            setCriandoCategoria(false);
-                          }
-                        }
-                      }}
-                      className="min-h-14 flex-[2] rounded-2xl bg-gradient-to-b from-[#f8d658] to-[#e3ac16] px-3 text-sm font-bold text-[#211a07] disabled:opacity-60"
-                    >
-                      Criar categoria
-                    </button>
-                  </div>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>,
-          document.body,
-        )}
+      {showCategoryForm && (
+        <Suspense fallback={null}>
+          <FolhaDeNovaCategoria
+            categoriasDaLoja={dbCategories}
+            adicionar={addCategory}
+            atualizarIcone={updateCategory}
+            aoCriada={(nome) =>
+              setFormData((prev) => ({ ...prev, category: nome }))
+            }
+            aoFechar={() => setShowCategoryForm(false)}
+          />
+        </Suspense>
+      )}
 
       {typeof document !== "undefined" &&
         createPortal(
@@ -3629,7 +3512,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         <span className="text-sm font-normal text-zinc-500">
                           Opcional
                         </span>
-                        <ChevronRight className="size-5 text-zinc-500 transition-transform group-open:rotate-90" />
+                        <ChevronDown className="size-5 text-zinc-500 transition-transform group-open:rotate-180" />
                       </summary>
                       <div className="space-y-4 p-3 pt-0">
                         <div className="space-y-2">
@@ -3806,7 +3689,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               className="mt-2 text-xs text-zinc-400"
             >
               {preenchidos} de 5 preenchidos
-              {avisoDeCusto || avisoAvancado || priceError || stockError
+              {avisoDeCusto ||
+              originalPriceError ||
+              avisoAvancado ||
+              priceError ||
+              stockError
                 ? " · há avisos"
                 : ""}
             </p>
@@ -4344,6 +4231,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         este campo fica travado.
                       </span>
                     </li>
+                    <li className="flex items-start gap-2.5">
+                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
+                      <span>
+                        <b className="text-zinc-350">Em promoção:</b> Ligue para
+                        mostrar na loja o preço de antes, riscado, ao lado do
+                        preço de venda (ex: de R$ 100,00 por R$ 79,90). A loja
+                        também mostra o desconto em porcentagem. A prévia logo
+                        abaixo mostra como o cliente vai ver.
+                      </span>
+                    </li>
                   </ul>
                 </div>
               </AdminHelpModal>
@@ -4537,6 +4434,121 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 >
                   {stockError}
                 </span>
+              )}
+            </div>
+
+            {/* Promoção (De/Por): a única parte do preço que o CLIENTE vê, por
+                isso mora aqui, junto do Preço de venda, e não no cartão
+                privado "Custo e lucro". Preço e Estoque dividem a linha de
+                cima; este bloco ocupa a linha inteira logo abaixo deles. O
+                estado (`isPromoActive`), o `id` e a validação
+                (`originalPriceError`) são os de sempre: só mudou de lugar. */}
+            <div className="col-span-2 space-y-3">
+              <label
+                htmlFor="product-promo-active"
+                className="flex min-h-11 cursor-pointer select-none items-center justify-between gap-3 rounded-xl border border-admin-border bg-zinc-900/40 p-2.5 transition-all hover:border-emerald-500/10 sm:rounded-2xl sm:p-3.5"
+              >
+                <div className="min-w-0 space-y-0.5">
+                  <span className="block text-sm font-bold text-white">
+                    Em promoção
+                  </span>
+                  <span className="block text-[11px] font-medium text-zinc-500">
+                    Mostra na loja o preço de antes, riscado
+                  </span>
+                </div>
+                <input
+                  id="product-promo-active"
+                  name="isPromoActive"
+                  type="checkbox"
+                  aria-label="Produto em Promoção"
+                  checked={isPromoActive}
+                  onChange={(e) => {
+                    setIsPromoActive(e.target.checked);
+                    if (!e.target.checked) {
+                      setFormData((prev) => ({
+                        ...prev,
+                        originalPrice: "",
+                      }));
+                    }
+                  }}
+                  className="size-5 cursor-pointer rounded border-admin-border bg-zinc-950 text-emerald-500 transition-all focus:ring-emerald-500/20"
+                />
+              </label>
+
+              {isPromoActive && (
+                <div className="produto-campo space-y-1 duration-300 animate-in fade-in slide-in-from-top-2">
+                  <label
+                    htmlFor="product-original-price"
+                    className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
+                  >
+                    Preço de antes ("De")
+                  </label>
+                  <div className="group relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600 sm:left-6">
+                      R$
+                    </span>
+                    <LocalBufferedInput
+                      id="product-original-price"
+                      aria-invalid={!!originalPriceError}
+                      aria-describedby={
+                        originalPriceError
+                          ? "product-original-error"
+                          : undefined
+                      }
+                      name="originalPrice"
+                      mask="currency"
+                      value={formData.originalPrice}
+                      onFlush={(val) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          originalPrice: val,
+                        }))
+                      }
+                      placeholder="Ex: 99.90"
+                      className="w-full rounded-xl border border-admin-border bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
+                    />
+                  </div>
+                  {originalPriceError && (
+                    <span
+                      id="product-original-error"
+                      className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
+                    >
+                      {originalPriceError}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* A prévia sai dos MESMOS números do card da loja (mesma
+                  conta do selo: `Math.round((De - Por) / De * 100)`); sem
+                  "De" maior que o preço, não há promoção para mostrar. */}
+              {isPromoActive && priceVal > 0 && originalPriceVal > priceVal && (
+                <div
+                  data-testid="previa-promocao"
+                  className="rounded-xl border border-admin-border bg-admin-raised px-3 py-2.5"
+                >
+                  <p className="text-[11px] font-medium text-zinc-500">
+                    Na loja o cliente vai ver
+                  </p>
+                  <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span
+                      className={cn(
+                        "text-xl font-bold tabular-nums",
+                        CLASSE_PRECO_PROMOCIONAL_FUNDO_ESCURO,
+                      )}
+                    >
+                      {formatCurrency(priceVal)}
+                    </span>
+                    <span className="text-sm tabular-nums text-zinc-500 line-through">
+                      {formatCurrency(originalPriceVal)}
+                    </span>
+                    {descontoDaPromocao > 0 && (
+                      <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-300">
+                        -{descontoDaPromocao}%
+                      </span>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
 
@@ -4911,7 +4923,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         </section>
 
         {/* Custo e lucro (H1): o Preço de venda subiu para o básico; aqui
-            ficam o custo, o preço "de" e a análise de lucro. MONTADA e
+            ficam só o custo e a análise de lucro (a promoção De/Por, que o
+            CLIENTE vê, mora junto do Preço de venda). MONTADA e
             FECHADA; um erro de validação dentro dela a abre sozinha. O AVISO
             de custo maior que o preço não é erro (não bloqueia o salvar), por
             isso não força a abertura. */}
@@ -4923,14 +4936,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           resumo={
             priceVal > 0 && costPriceVal > 0
               ? `Lucro ${formatCurrency(priceVal - costPriceVal)} · margem ${percentualComUmaCasa(marginPct)}`
-              : isPromoActive
-                ? `Promoção${Number(formData.originalPrice) > 0 ? `: De ${formatCurrency(Number(formData.originalPrice))}` : ""} · o cliente vê o preço De/Por`
-                : "Custo e promoção · opcional"
+              : "Custo · opcional"
           }
-          temErro={
-            (!!costError && !costError.startsWith("Aviso")) ||
-            !!originalPriceError
-          }
+          temErro={!!costError && !costError.startsWith("Aviso")}
         >
           <div className="relative space-y-4">
             <div className="flex items-center justify-between">
@@ -4996,16 +5004,6 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       <li className="flex items-start gap-2.5">
                         <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
                         <span>
-                          <b className="text-zinc-350">Produto em Promoção:</b>{" "}
-                          Ative para indicar um preço promocional riscado (ex:
-                          De: R$ 100,00 por R$ 79,90). No aplicativo do cliente,
-                          isso criará etiquetas com o percentual de desconto
-                          (ex: 20% OFF), incentivando a compra impulsiva.
-                        </span>
-                      </li>
-                      <li className="flex items-start gap-2.5">
-                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                        <span>
                           <b className="text-zinc-350">
                             Painel de Lucratividade:
                           </b>{" "}
@@ -5062,83 +5060,6 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   >
                     {costError}
                   </span>
-                )}
-              </div>
-
-              <div className="space-y-3.5">
-                <label
-                  htmlFor="product-promo-active"
-                  className="flex cursor-pointer select-none items-center justify-between rounded-xl border border-admin-border bg-zinc-900/40 p-2.5 transition-all hover:border-emerald-500/10 sm:rounded-2xl sm:p-3.5"
-                >
-                  <div className="space-y-0.5">
-                    <span className="text-[11px] font-black uppercase italic tracking-tight text-white transition-colors group-hover:text-emerald-400">
-                      Produto em Promoção
-                    </span>
-                    <span className="block text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-                      Ativar preço cortado (De/Por)
-                    </span>
-                  </div>
-                  <input
-                    id="product-promo-active"
-                    name="isPromoActive"
-                    type="checkbox"
-                    aria-label="Produto em Promoção"
-                    checked={isPromoActive}
-                    onChange={(e) => {
-                      setIsPromoActive(e.target.checked);
-                      if (!e.target.checked) {
-                        setFormData((prev) => ({
-                          ...prev,
-                          originalPrice: "",
-                        }));
-                      }
-                    }}
-                    className="size-5 cursor-pointer rounded border-admin-border bg-zinc-950 text-emerald-500 transition-all focus:ring-emerald-500/20"
-                  />
-                </label>
-
-                {isPromoActive && (
-                  <div className="space-y-1.5 duration-300 animate-in fade-in slide-in-from-top-2 md:space-y-3">
-                    <label
-                      htmlFor="product-original-price"
-                      className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
-                    >
-                      Preço Original ("De:")
-                    </label>
-                    <div className="group relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600 sm:left-6">
-                        R$
-                      </span>
-                      <LocalBufferedInput
-                        id="product-original-price"
-                        aria-invalid={!!originalPriceError}
-                        aria-describedby={
-                          originalPriceError
-                            ? "product-original-error"
-                            : undefined
-                        }
-                        name="originalPrice"
-                        mask="currency"
-                        value={formData.originalPrice}
-                        onFlush={(val) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            originalPrice: val,
-                          }))
-                        }
-                        placeholder="Ex: 99.90"
-                        className="w-full rounded-xl border border-admin-border bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-zinc-600 transition-all focus:outline-none sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
-                      />
-                    </div>
-                    {originalPriceError && (
-                      <span
-                        id="product-original-error"
-                        className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
-                      >
-                        {originalPriceError}
-                      </span>
-                    )}
-                  </div>
                 )}
               </div>
             </div>
@@ -5510,7 +5431,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 ) : (
                   <>
                     {productId ? (
-                      <Edit2 className="size-5" />
+                      <Check className="size-5" />
                     ) : (
                       <Plus className="size-5" />
                     )}

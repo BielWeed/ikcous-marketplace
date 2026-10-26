@@ -209,7 +209,6 @@
 :where(html.admin-mode:not([data-admin-tema])) .disabled\:text-zinc-400:disabled:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode[data-admin-tema]) .disabled\:text-zinc-600:disabled:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
 :where(html.admin-mode:not([data-admin-tema])) .disabled\:text-zinc-600:disabled:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text-soft))}
-:where(html.admin-mode[data-admin-tema="claro"]) .group:hover .group-hover\:text-emerald-400:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#065f46}
 :where(html.admin-mode[data-admin-tema="claro"]) .group:hover .group-hover\:text-purple-300:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:#7e22ce}
 :where(html.admin-mode[data-admin-tema]) .group:hover .group-hover\:text-white:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text))}
 :where(html.admin-mode[data-admin-tema]) .group:hover .group-hover\:text-zinc-200:where(:not([data-tema-fixo], [data-tema-fixo] *)){color:hsl(var(--admin-text))}

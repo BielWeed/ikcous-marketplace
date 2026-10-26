@@ -90,6 +90,12 @@
   box-shadow: none;
 }
 
+/* O botão da categoria não é input: sem isto o rótulo flutuante "Categoria *"
+   ficava por baixo de "Escolher categoria". */
+.produto-formulario .produto-campo > #product-category {
+  padding-top: 30px;
+}
+
 .produto-formulario
   .produto-campo
   :is(input[name="price"], input[name="stock"]) {
@@ -221,11 +227,15 @@
   appearance: none;
 }
 
-.produto-formulario .produto-campo:has(input[name="costPrice"]) input {
+.produto-formulario
+  .produto-campo:has(:is(input[name="costPrice"], input[name="originalPrice"]))
+  input {
   padding-left: 44px;
 }
 
-.produto-formulario .produto-campo:has(input[name="costPrice"]) .absolute {
+.produto-formulario
+  .produto-campo:has(:is(input[name="costPrice"], input[name="originalPrice"]))
+  .absolute {
   top: 30px;
   left: 16px;
   transform: none;

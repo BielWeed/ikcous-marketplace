@@ -26,7 +26,7 @@ import {
   validarEmailNovo,
 } from "@/lib/pedidos-de-privacidade";
 import { cn } from "@/lib/utils";
-import { ChevronRight, Loader2, Minus } from "lucide-react";
+import { ChevronDown, Loader2 } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 
 // ⚠️ Os TEXTOS desta área moram em src/config/textos-de-privacidade.ts e
@@ -145,7 +145,6 @@ function LinhaDaSanfona({
   primeira: boolean;
   children: ReactNode;
 }) {
-  const Seta = aberta ? Minus : ChevronRight;
   return (
     <div
       className={cn(
@@ -177,9 +176,12 @@ function LinhaDaSanfona({
               </span>
             )}
           </span>
-          <Seta
+          <ChevronDown
             aria-hidden="true"
-            className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+            className={cn(
+              "mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform",
+              aberta && "rotate-180",
+            )}
           />
         </button>
       </h3>

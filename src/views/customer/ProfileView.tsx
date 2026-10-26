@@ -28,6 +28,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Camera,
   Check,
+  ChevronDown,
   ChevronRight,
   CreditCard,
   Loader2,
@@ -667,9 +668,9 @@ export function ProfileView({
                   : `Ver mais (${activeOrders.length - 1} ${
                       activeOrders.length - 1 === 1 ? "outro" : "outros"
                     })`}
-                <ChevronRight
+                <ChevronDown
                   aria-hidden="true"
-                  className={`size-4 ${isOrdersExpanded ? "-rotate-90" : ""}`}
+                  className={`size-4 transition-transform ${isOrdersExpanded ? "rotate-180" : ""}`}
                 />
               </button>
             )}
@@ -805,9 +806,9 @@ export function ProfileView({
                       {isAddressesExpanded
                         ? "Ver menos detalhes"
                         : "Ver detalhes dos endereços"}
-                      <ChevronRight
+                      <ChevronDown
                         aria-hidden="true"
-                        className={`size-4 ${isAddressesExpanded ? "-rotate-90" : ""}`}
+                        className={`size-4 transition-transform ${isAddressesExpanded ? "rotate-180" : ""}`}
                       />
                     </button>
                   </div>

@@ -51,9 +51,9 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   Check,
+  ChevronRight,
   Copy,
   CreditCard,
-  ExternalLink,
   HelpCircle,
   MapPin,
   Package,
@@ -1079,7 +1079,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                       aria-label={`Abrir o pedido ${numeroDoPedido(order.id)}`}
                                       className="size-11 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white"
                                     >
-                                      <ExternalLink className="size-4" />
+                                      <ChevronRight className="size-4" />
                                     </Button>
                                   </TableCell>
                                 </TableRow>
