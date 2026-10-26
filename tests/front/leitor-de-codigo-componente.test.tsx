@@ -182,6 +182,18 @@ describe("LeitorDeCodigo (componente)", () => {
     expect(lerCodigoDigitado).toHaveBeenCalledWith("7891000315507");
   });
 
+  it("16b. o campo de digitar pede teclado de TEXTO: o código aceita letras e hífen, não só número", async () => {
+    // O cadastro de produto aceita [A-Za-z0-9-]{4,64}; o teclado numérico do
+    // celular não deixava digitar um código interno como "CAM-001".
+    await montar({ aberto: true, aoLer: vi.fn(), entradaManual: true });
+
+    const campo = document.querySelector(
+      "#codigo-de-barras-manual",
+    ) as HTMLInputElement;
+    expect(campo).not.toBeNull();
+    expect(campo.getAttribute("inputmode")).toBe("text");
+  });
+
   it("17. 'Fechar' chama aoFechar", async () => {
     const aoFechar = vi.fn();
     await montar({ aberto: true, aoLer: vi.fn(), aoFechar });

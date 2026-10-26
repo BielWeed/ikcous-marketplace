@@ -156,7 +156,7 @@ export function LeitorDeCodigo({
             </label>
             <input
               id="codigo-de-barras-manual"
-              inputMode="numeric"
+              inputMode="text"
               autoComplete="off"
               value={valorManual}
               onChange={(evento) => setValorManual(evento.target.value)}

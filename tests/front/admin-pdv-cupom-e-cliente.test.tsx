@@ -444,4 +444,96 @@ describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
 
     expect(hospedeiro.textContent).toContain("Cliente: Fulano de Tal");
   });
+
+  // Defeito 8 da caçada do balcão: apagar o nome do avulso e tocar em "Voltar
+  // à venda" deixava o cliente antigo na venda (o chip seguia "Cliente: Maria"
+  // e a venda gravava Maria).
+  async function abrirCliente(): Promise<void> {
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Cliente")!.click();
+    });
+    await avancar();
+  }
+
+  async function confirmarAvulso(nome: string): Promise<void> {
+    await abrirCliente();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Cliente avulso")!.click();
+    });
+    await avancar();
+    await act(async () => {
+      digitarInput("nome-do-cliente-avulso", nome);
+    });
+    await avancar(200);
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Confirmar cliente avulso")!.click();
+    });
+    await avancar();
+  }
+
+  it("caso 8 — apagar o nome do cliente avulso e voltar à venda tira o cliente (o chip volta a 'opcional')", async () => {
+    await montar();
+    await confirmarAvulso("Maria");
+    expect(hospedeiro.textContent).toContain("Cliente: Maria");
+
+    // Reabre pelo chip: o campo vem com "Maria"; o balconista apaga o nome.
+    await abrirCliente();
+    expect(
+      (document.getElementById("nome-do-cliente-avulso") as HTMLInputElement)
+        .value,
+    ).toBe("Maria");
+    await act(async () => {
+      digitarInput("nome-do-cliente-avulso", "");
+    });
+    await avancar(200);
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Voltar à venda")!.click();
+    });
+    await avancar();
+
+    expect(hospedeiro.textContent).not.toContain("Cliente: Maria");
+    expect(hospedeiro.textContent).toContain("Cliente (opcional)");
+  });
+
+  it("caso 8b — mexer na aba de avulso NÃO derruba um cliente CADASTRADO já escolhido", async () => {
+    await montar();
+    await abrirCliente();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Buscar cliente")!.click();
+    });
+    await avancar();
+    await act(async () => {
+      digitarInput("busca-de-cliente-do-balcao", "maria");
+    });
+    await avancar(300);
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Maria Cliente")!.click();
+    });
+    await avancar();
+    expect(hospedeiro.textContent).toContain("Cliente: Maria Cliente");
+
+    // Reabre e abre a aba de avulso (campo vazio): só focar e sair do campo já
+    // faz o campo mandar o valor vazio (flush no blur).
+    await abrirCliente();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Cliente avulso")!.click();
+    });
+    await avancar();
+    await act(async () => {
+      const campo = document.getElementById(
+        "nome-do-cliente-avulso",
+      ) as HTMLInputElement;
+      campo.focus();
+      campo.blur();
+    });
+    await avancar(200);
+    // Um campo de avulso vazio que NÃO é o cliente da venda não pode tirar a
+    // Maria.
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Voltar à venda")!.click();
+    });
+    await avancar();
+
+    expect(hospedeiro.textContent).toContain("Cliente: Maria Cliente");
+  });
 });

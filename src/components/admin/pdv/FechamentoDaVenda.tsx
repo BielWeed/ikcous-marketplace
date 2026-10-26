@@ -31,6 +31,7 @@ import {
 } from "@/hooks/useVendaPresencial";
 import {
   type FalhaDaVendaTraduzida,
+  MENSAGEM_DE_REDE_DA_VENDA,
   mensagemDaFalhaDaVenda,
 } from "@/lib/erro-da-venda-presencial";
 import {
@@ -182,6 +183,12 @@ export function FechamentoDaVenda({
     }
   }
 
+  // Falha de rede ou prazo estourado (erro sem código): a resposta pode ter
+  // se perdido DEPOIS de o banco gravar. A mesma chave de idempotência faz a
+  // nova tentativa devolver o recibo da venda que já entrou, então a frase
+  // não pode afirmar que ela não foi registrada.
+  const talvezTenhaEntrado = estado.erro === MENSAGEM_DE_REDE_DA_VENDA;
+
   const corpoRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // A falha nasce no início do corpo; não role a página nem a barra de ações.
@@ -195,10 +202,14 @@ export function FechamentoDaVenda({
           <div role="alert" className="pdv-notice">
             <p className="pdv-heading">
               <AlertTriangle aria-hidden="true" className="pdv-icon pdv-red" />
-              Não foi possível registrar a venda
+              {talvezTenhaEntrado
+                ? "Não sabemos se a venda foi registrada"
+                : "Não foi possível registrar a venda"}
             </p>
             <p className="pdv-muted">
               {estado.erro}
+              {talvezTenhaEntrado &&
+                " Se a venda já tinha entrado, o recibo aparece ao tentar de novo."}
               {ultimaFalha?.precisaEntrarDeNovo &&
                 " Saia e entre de novo na conta."}
             </p>
@@ -219,11 +230,12 @@ export function FechamentoDaVenda({
           <div role="alert" className="pdv-notice">
             <p className="pdv-heading">
               <WifiOff aria-hidden="true" className="pdv-icon pdv-red" />
-              Sem internet. A venda ainda não foi registrada.
+              Sem internet
             </p>
             <p className="pdv-muted">
               Sem internet agora. A venda fica salva aqui; registre a venda
-              quando a conexão voltar.
+              quando a conexão voltar. Se você já tinha tocado em Registrar, ela
+              pode ter entrado: o recibo aparece ao tentar de novo.
             </p>
           </div>
         )}
