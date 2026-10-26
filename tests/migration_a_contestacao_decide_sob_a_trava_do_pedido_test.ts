@@ -620,9 +620,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.
     "tests/banco/receita-uma-regua-viva.cjs",
     "tests/banco/estoque-minimo-editavel-viva.cjs",
-    // Lote 199: teto da foto/pergunta, analise sem escrita pela API e extrato do balcao fiel ao app.
+    // Lote 199: teto da foto/pergunta e extrato do balcao fiel ao app (a prova da analise sem escrita pela API fica no ramo
+    // fix-199-abuso-do-banco ate o dono aprovar a migration).
     "tests/banco/a-foto-da-devolucao-e-a-pergunta-tem-teto-viva.cjs",
-    "tests/banco/ninguem-grava-evento-de-analise-pela-api-viva.cjs",
     "tests/banco/o-financeiro-descreve-a-venda-do-balcao-viva.cjs",
     // Lote 204: a lista de clientes nao repete ninguem entre as paginas e a busca do CRM acha o numero com o +55.
     "tests/banco/a-lista-de-clientes-nao-repete-ninguem-viva.cjs",
