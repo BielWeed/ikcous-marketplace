@@ -2761,7 +2761,7 @@ const AppContent = () => {
               index={0}
               activeIndex={activeTabIdx}
             >
-              <LocalErrorBoundary>
+              <LocalErrorBoundary variante="cliente">
                 <DeferredTabContent active={currentView === "home"}>
                   <PreloadedOrLazy
                     component={HomeView}
@@ -2796,7 +2796,7 @@ const AppContent = () => {
               index={1}
               activeIndex={activeTabIdx}
             >
-              <LocalErrorBoundary>
+              <LocalErrorBoundary variante="cliente">
                 <DeferredTabContent active={currentView === "favorites"}>
                   <PreloadedOrLazy
                     component={FavoritesView}
@@ -2826,7 +2826,7 @@ const AppContent = () => {
               index={2}
               activeIndex={activeTabIdx}
             >
-              <LocalErrorBoundary>
+              <LocalErrorBoundary variante="cliente">
                 <DeferredTabContent
                   active={currentView === "cart" || currentView === "orders"}
                 >
@@ -2853,7 +2853,7 @@ const AppContent = () => {
               index={3}
               activeIndex={activeTabIdx}
             >
-              <LocalErrorBoundary>
+              <LocalErrorBoundary variante="cliente">
                 <DeferredTabContent active={currentView === "profile"}>
                   <PreloadedOrLazy
                     component={ProfileView}
@@ -2884,7 +2884,7 @@ const AppContent = () => {
                 index={0}
                 activeIndex={activeTabIdx}
               >
-                <LocalErrorBoundary>
+                <LocalErrorBoundary variante="cliente">
                   <DeferredTabContent active={currentView === "home"}>
                     <PreloadedOrLazy
                       component={HomeView}
@@ -2917,7 +2917,7 @@ const AppContent = () => {
                 index={1}
                 activeIndex={activeTabIdx}
               >
-                <LocalErrorBoundary>
+                <LocalErrorBoundary variante="cliente">
                   <DeferredTabContent active={currentView === "favorites"}>
                     <PreloadedOrLazy
                       component={FavoritesView}
@@ -2945,7 +2945,7 @@ const AppContent = () => {
                 index={2}
                 activeIndex={activeTabIdx}
               >
-                <LocalErrorBoundary>
+                <LocalErrorBoundary variante="cliente">
                   <DeferredTabContent
                     active={currentView === "cart" || currentView === "orders"}
                   >
@@ -2973,7 +2973,7 @@ const AppContent = () => {
                 index={3}
                 activeIndex={activeTabIdx}
               >
-                <LocalErrorBoundary>
+                <LocalErrorBoundary variante="cliente">
                   <DeferredTabContent active={currentView === "profile"}>
                     <PreloadedOrLazy
                       component={ProfileView}
