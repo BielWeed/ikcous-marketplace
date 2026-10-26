@@ -73,11 +73,15 @@ function Unico({
   valorInicial = "",
   aoMudar,
   compacto = false,
+  sugestoes,
+  valoresEmUso,
 }: {
   nomeInicial?: string;
   valorInicial?: string;
   aoMudar?: (nome: string, valor: string) => void;
   compacto?: boolean;
+  sugestoes?: string[];
+  valoresEmUso?: string[];
 }) {
   // Um estado só, com atualização funcional: como o pai de verdade (o formulário
   // guarda nome e valor no mesmo objeto), nome e valor mudam no mesmo toque sem
@@ -100,6 +104,8 @@ function Unico({
       onNome={(n) => mudar({ nome: n })}
       valor={par.valor}
       onValor={(v) => mudar({ valor: v })}
+      sugestoes={sugestoes}
+      valoresEmUso={valoresEmUso}
     />
   );
 }
@@ -701,6 +707,196 @@ describe("SeletorDeAtributo — não convida para o que a trava de um grupo por 
     });
     expect(nomesDasPecas()).toEqual(["Cor", "Tamanho", "Outro"]);
     expect(peca("Tamanho")?.getAttribute("aria-pressed")).toBe("true");
+  });
+});
+
+describe("SeletorDeAtributo — a GRAFIA que o produto já usa vence a canônica (a loja compara o texto exato)", () => {
+  it("peça Cor num produto que já tem 'cor' grava 'cor', não 'Cor' (senão a loja mostra dois grupos)", async () => {
+    const aoMudar = vi.fn();
+    await act(async () => {
+      raiz.render(<Unico sugestoes={["cor"]} aoMudar={aoMudar} />);
+    });
+    await clicar(peca("Cor"));
+    expect(aoMudar).toHaveBeenLastCalledWith("cor", "");
+  });
+
+  it("sem nada em uso, grava o nome canônico", async () => {
+    const aoMudar = vi.fn();
+    await act(async () => {
+      raiz.render(<Unico aoMudar={aoMudar} />);
+    });
+    await clicar(peca("Voltagem"));
+    expect(aoMudar).toHaveBeenLastCalledWith("Voltagem", "");
+  });
+
+  it("na combinação já gravada como 'cor / TAMANHO', cada par grava a grafia da sua parte", async () => {
+    const aoMudar = vi.fn();
+    await act(async () => {
+      raiz.render(<Unico sugestoes={["cor / TAMANHO"]} aoMudar={aoMudar} />);
+    });
+    await clicar(peca("Tamanho"));
+    expect(aoMudar).toHaveBeenLastCalledWith("TAMANHO", "");
+    await clicar(peca("Cor"));
+    expect(aoMudar).toHaveBeenLastCalledWith("cor", "");
+  });
+});
+
+describe("SeletorDeAtributo — o VALOR já gravado vence o da paleta", () => {
+  it("tocar a bolinha Azul num produto que já tem 'azul' usa 'azul'", async () => {
+    const aoMudar = vi.fn();
+    await act(async () => {
+      raiz.render(
+        <Unico nomeInicial="Cor" valoresEmUso={["azul"]} aoMudar={aoMudar} />,
+      );
+    });
+    await clicar(porRotulo("Azul"));
+    expect(aoMudar).toHaveBeenLastCalledWith("Cor", "azul");
+    expect(porRotulo("Azul")?.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("digitar 'AZUL' num produto que já tem 'azul' também usa 'azul'", async () => {
+    const aoMudar = vi.fn();
+    await act(async () => {
+      raiz.render(
+        <Unico nomeInicial="Cor" valoresEmUso={["azul"]} aoMudar={aoMudar} />,
+      );
+    });
+    await digitarEEsperar("variant-value", "AZUL");
+    expect(aoMudar).toHaveBeenLastCalledWith("Cor", "azul");
+  });
+
+  it("focar e sair do campo SEM editar não troca 'azul' por 'Azul' nem avisa o pai", async () => {
+    const aoMudar = vi.fn();
+    await act(async () => {
+      raiz.render(
+        <Unico nomeInicial="Cor" valorInicial="azul" aoMudar={aoMudar} />,
+      );
+    });
+    const entrada = campo("variant-value");
+    await act(async () => {
+      entrada?.focus();
+    });
+    await act(async () => {
+      entrada?.blur();
+    });
+    expect(aoMudar).not.toHaveBeenCalled();
+    expect(campo("variant-value")?.value).toBe("azul");
+  });
+
+  it("o mesmo vale para o campo do nome em 'Outro'", async () => {
+    const aoMudar = vi.fn();
+    await act(async () => {
+      raiz.render(
+        <Unico
+          nomeInicial="Material"
+          valorInicial="Algodão"
+          aoMudar={aoMudar}
+        />,
+      );
+    });
+    const entrada = campo("variant-name");
+    expect(entrada).toBeTruthy();
+    await act(async () => {
+      entrada?.focus();
+    });
+    await act(async () => {
+      entrada?.blur();
+    });
+    expect(aoMudar).not.toHaveBeenCalled();
+  });
+
+  it("na grade, tocar a bolinha Azul com o chip 'azul' (já usado) alterna 'azul'", async () => {
+    const aoAlternar = vi.fn();
+    function Grade() {
+      const [rascunho, setRascunho] = useState("");
+      return (
+        <SeletorDeAtributo
+          modo="multiplo"
+          numero={1}
+          idDoNome="grade-nome-0"
+          idDoValor="grade-valor-0"
+          nome="Cor"
+          onNome={() => {}}
+          selecionados={[]}
+          chips={[{ valor: "azul", usado: true }]}
+          onAlternar={aoAlternar}
+          rascunho={rascunho}
+          onRascunho={setRascunho}
+          onAdicionar={() => {}}
+          onLimpar={() => {}}
+        />
+      );
+    }
+    await act(async () => {
+      raiz.render(<Grade />);
+    });
+    await clicar(porRotulo("Azul"));
+    expect(aoAlternar).toHaveBeenCalledWith("azul");
+  });
+});
+
+describe("SeletorDeAtributo — telas estreitas e acessibilidade", () => {
+  it("a 320 px a paleta cai para 5 colunas e o nome da cor não quebra no meio da palavra", async () => {
+    await act(async () => {
+      raiz.render(<Unico nomeInicial="Cor" />);
+    });
+    const grade = porRotulo("Preto")?.parentElement;
+    expect(grade?.className).toContain("grid-cols-6");
+    expect(grade?.className).toContain("max-[359px]:grid-cols-5");
+    const legenda = porRotulo("Vermelho")?.querySelector("span:last-child");
+    expect(legenda?.className).not.toContain("break-words");
+    expect(legenda?.className).toContain("hyphens-none");
+  });
+
+  it("cada atributo tem o número no nome do grupo de peças", async () => {
+    await act(async () => {
+      raiz.render(
+        <SeletorDeAtributo
+          modo="unico"
+          numero={2}
+          idDoNome="variant-name-1"
+          idDoValor="variant-value-1"
+          nome=""
+          onNome={() => {}}
+          valor=""
+          onValor={() => {}}
+        />,
+      );
+    });
+    expect(
+      hospedeiro.querySelector('[role="group"]')?.getAttribute("aria-label"),
+    ).toBe("O que muda, atributo 2");
+  });
+
+  it("todo botão com contorno tem border-solid (o reset global apaga o contorno do botão)", async () => {
+    await act(async () => {
+      raiz.render(
+        <SeletorDeAtributo
+          modo="multiplo"
+          numero={1}
+          idDoNome="grade-nome-0"
+          idDoValor="grade-valor-0"
+          nome="Tamanho"
+          onNome={() => {}}
+          selecionados={["M"]}
+          chips={[{ valor: "46", usado: true }]}
+          onAlternar={() => {}}
+          rascunho=""
+          onRascunho={() => {}}
+          onAdicionar={() => {}}
+          onLimpar={() => {}}
+          sugestoes={["Material"]}
+          aoRemover={() => {}}
+        />,
+      );
+    });
+    const comContorno = botoes().filter((b) => b.classList.contains("border"));
+    // controle: há botões com contorno para conferir (peças, tamanhos, chip, atalho, ×).
+    expect(comContorno.length).toBeGreaterThan(8);
+    const semSolido = comContorno
+      .filter((b) => !b.classList.contains("border-solid"))
+      .map((b) => b.getAttribute("aria-label") ?? b.textContent?.trim());
+    expect(semSolido).toEqual([]);
   });
 });
 

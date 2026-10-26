@@ -120,6 +120,10 @@ interface Unico extends Comum {
   modo: "unico";
   valor: string;
   onValor: (valor: string) => void;
+  /** Valores que o produto já grava para ESTE atributo. A loja compara o texto
+   *  exato, então "azul" e "Azul" seriam duas cores: quem escolhe ou digita um
+   *  valor que já existe (em qualquer caixa) recebe a grafia que está gravada. */
+  valoresEmUso?: string[];
 }
 
 interface Multiplo extends Comum {
@@ -232,8 +236,6 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
       : props.selecionados;
   const marcado = (item: string) =>
     selecionadosDoModo.some((s) => dobrar(s) === dobrar(item));
-  const escolher = (item: string) =>
-    props.modo === "unico" ? props.onValor(item) : props.onAlternar(item);
 
   // Trocar de Cor para Tamanho com "Azul" ainda escolhido geraria "Tamanho:
   // Azul". Só vale quando já havia um nome: quem digitou o valor antes de tocar
@@ -246,6 +248,11 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
     else props.onLimpar();
   };
 
+  const emUso = (props.sugestoes ?? [])
+    .flatMap((n) => n.split(SEPARADOR_DE_ATRIBUTOS))
+    .map((n) => n.trim())
+    .filter((n) => n !== "");
+
   const tocarNaPeca = (alvo: TipoDoAtributo) => {
     if (alvo === tipo) return;
     if (alvo === "Outro") {
@@ -255,13 +262,30 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
       return;
     }
     setOutroAberto(false);
-    if (dobrar(nome) !== dobrar(alvo)) trocarDeTipo(alvo);
+    // A loja agrupa pelo nome EXATO: num produto que já grava "cor", a peça Cor
+    // grava "cor" (e não "Cor", que viraria um segundo grupo na vitrine).
+    const grafia = emUso.find((n) => tipoDoNome(n) === alvo) ?? alvo;
+    if (nome !== grafia) trocarDeTipo(grafia);
   };
 
-  const emUso = (props.sugestoes ?? [])
-    .flatMap((n) => n.split(SEPARADOR_DE_ATRIBUTOS))
-    .map((n) => n.trim())
-    .filter((n) => n !== "");
+  // O valor que o produto já grava vence o da paleta: "azul" gravado + toque na
+  // bolinha Azul = "azul". Fora disso, a paleta ("azul marinho" → "Azul marinho").
+  const valoresGravados =
+    props.modo === "unico"
+      ? (props.valoresEmUso ?? [])
+      : props.chips.filter((chip) => chip.usado).map((chip) => chip.valor);
+  const casarValor = (texto: string): string => {
+    const doTipo = valorDaPaleta(nome, texto);
+    return (
+      valoresGravados.find((gravado) => dobrar(gravado) === dobrar(doTipo)) ??
+      doTipo
+    );
+  };
+  const escolher = (item: string) => {
+    const valor = casarValor(item);
+    if (props.modo === "unico") props.onValor(valor);
+    else props.onAlternar(valor);
+  };
   const atalhos = emUso
     .filter((n) => tipoDoNome(n) === "Outro")
     .filter(
@@ -308,7 +332,7 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
             type="button"
             aria-label={props.rotuloDoRemover ?? `Remover atributo ${numero}`}
             onClick={props.aoRemover}
-            className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-admin-bg text-zinc-500 transition-all hover:border-red-500/30 hover:text-red-500 active:scale-95"
+            className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-solid border-admin-border bg-admin-bg text-zinc-500 transition-all hover:border-red-500/30 hover:text-red-500 active:scale-95"
           >
             <X className="size-4" />
           </button>
@@ -317,7 +341,7 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
 
       <div
         role="group"
-        aria-label="O que muda"
+        aria-label={`O que muda, atributo ${numero}`}
         className="grid auto-cols-fr grid-flow-col gap-2"
       >
         {pecasVisiveis.map(({ tipo: peca, icone }) => {
@@ -329,9 +353,9 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
               aria-pressed={ativa}
               onClick={() => tocarNaPeca(peca)}
               className={cn(
-                "flex min-h-11 min-w-0 flex-col items-center justify-center gap-1.5 rounded-2xl border px-1 py-2.5 text-xs font-bold transition-all active:scale-95",
+                "flex min-h-11 min-w-0 flex-col items-center justify-center gap-1.5 rounded-2xl border border-solid px-1 py-2.5 text-xs font-bold transition-all active:scale-95",
                 ativa
-                  ? "border-solid border-foreground bg-admin-hover text-foreground ring-1 ring-inset ring-foreground"
+                  ? "border-foreground bg-admin-hover text-foreground ring-1 ring-inset ring-foreground"
                   : "border-admin-border bg-admin-bg text-zinc-400 hover:border-admin-border-strong",
               )}
             >
@@ -355,9 +379,9 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
               aria-pressed={dobrar(nome) === dobrar(atalho)}
               onClick={() => trocarDeTipo(atalho)}
               className={cn(
-                "min-h-11 rounded-full border px-3 text-xs font-bold transition-all active:scale-95",
+                "min-h-11 rounded-full border border-solid px-3 text-xs font-bold transition-all active:scale-95",
                 dobrar(nome) === dobrar(atalho)
-                  ? "border-solid border-foreground bg-admin-hover text-foreground"
+                  ? "border-foreground bg-admin-hover text-foreground"
                   : "border-admin-border bg-admin-bg text-zinc-400 hover:border-admin-border-strong",
               )}
             >
@@ -374,7 +398,11 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
           type="text"
           aria-label={`Nome do atributo ${numero}`}
           value={nome}
-          onFlush={onNome}
+          // Sair do campo sem editar não pode regravar o nome (nem marcar a
+          // variação como alterada): só avisa o pai quando o texto mudou.
+          onFlush={(texto) => {
+            if (texto !== nome) onNome(texto);
+          }}
           className={CAMPO}
           placeholder="Ex: Material"
         />
@@ -407,7 +435,7 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
       )}
 
       {ehPaleta && (
-        <div className="grid grid-cols-6 gap-x-0.5 gap-y-3">
+        <div className="grid grid-cols-6 gap-x-0.5 gap-y-3 max-[359px]:grid-cols-5 max-[359px]:gap-x-0">
           {PALETA_DE_CORES.map((cor) => {
             const ativa = marcado(cor.nome);
             return (
@@ -423,7 +451,7 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
                 {!compacto && (
                   <span
                     className={cn(
-                      "w-full break-words text-center text-[11px] leading-tight",
+                      "w-full hyphens-none text-center text-[11px] leading-tight [overflow-wrap:normal]",
                       ativa ? "font-bold text-foreground" : "text-zinc-400",
                     )}
                   >
@@ -447,9 +475,9 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
                 aria-pressed={ativa}
                 onClick={() => escolher(item)}
                 className={cn(
-                  "relative flex min-h-11 items-center justify-center rounded-xl border px-2 text-sm font-bold transition-all active:scale-95",
+                  "relative flex min-h-11 items-center justify-center rounded-xl border border-solid px-2 text-sm font-bold transition-all active:scale-95",
                   ativa
-                    ? "border-solid border-foreground bg-admin-hover text-foreground ring-1 ring-inset ring-foreground"
+                    ? "border-foreground bg-admin-hover text-foreground ring-1 ring-inset ring-foreground"
                     : "border-admin-border bg-admin-bg text-zinc-300 hover:border-admin-border-strong",
                 )}
               >
@@ -483,9 +511,9 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
                   aria-pressed={ativa}
                   onClick={() => props.onAlternar(chip.valor)}
                   className={cn(
-                    "min-h-11 rounded-full border px-3 py-2 text-xs font-bold transition-all active:scale-95",
+                    "min-h-11 rounded-full border border-solid px-3 py-2 text-xs font-bold transition-all active:scale-95",
                     ativa
-                      ? "border-solid border-foreground bg-admin-hover text-foreground"
+                      ? "border-foreground bg-admin-hover text-foreground"
                       : "border-admin-border bg-admin-bg text-zinc-400 hover:border-admin-border-strong",
                   )}
                 >
@@ -514,7 +542,7 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
                   type="button"
                   aria-label={`Tirar ${valor}`}
                   onClick={() => props.onAlternar(valor)}
-                  className="flex min-h-11 items-center gap-2 rounded-full border border-admin-border bg-admin-bg px-3 text-xs font-bold text-foreground transition-all active:scale-95"
+                  className="flex min-h-11 items-center gap-2 rounded-full border border-solid border-admin-border bg-admin-bg px-3 text-xs font-bold text-foreground transition-all active:scale-95"
                 >
                   {hex && <Bolinha hex={hex} tamanho="size-3" />}
                   {valor}
@@ -533,7 +561,11 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
           type="text"
           aria-label={`Valor do atributo ${numero}`}
           value={props.valor}
-          onFlush={(texto) => props.onValor(valorDaPaleta(nome, texto))}
+          // Só o que o lojista de fato mudou é reescrito: focar e sair de
+          // "azul" não vira "Azul" nem marca a variação como alterada.
+          onFlush={(texto) => {
+            if (texto !== props.valor) props.onValor(casarValor(texto));
+          }}
           className={CAMPO}
           placeholder={PLACEHOLDER[tipo ?? "Outro"]}
         />
@@ -553,7 +585,7 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
             type="button"
             aria-label={`Adicionar valor do atributo ${numero}`}
             onClick={props.onAdicionar}
-            className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
+            className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-solid border-emerald-500/20 bg-emerald-500/10 text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
           >
             <Plus className="size-4" />
           </button>

@@ -916,6 +916,18 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         : ["Cor", "Tamanho", "Voltagem"],
     ),
   ).filter(Boolean);
+  // Os valores que o produto JÁ grava para um atributo ("azul", em "cor"): o
+  // seletor casa o que o lojista toca ou digita com essa grafia, porque a loja
+  // compara o texto exato e "azul" + "Azul" viram duas cores.
+  const valoresGravadosDoAtributo = (atributo: string): string[] => {
+    const chave = atributo.trim().toLowerCase();
+    if (chave === "") return [];
+    return formData.variants
+      .flatMap((v) => dividirEmAtributos(v.name, v.value))
+      .filter((par) => par.name.trim().toLowerCase() === chave)
+      .map((par) => par.value.trim())
+      .filter((valor) => valor !== "");
+  };
   const produtoTemGrupoDemais = temGrupoDemais(formData.variants);
   // O exemplo do "+ Atributo": a outra metade da dupla mais comum.
   const exemploDoProximoAtributo =
@@ -3066,6 +3078,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             atualizarParDeAtributo(indice, "value", val)
                           }
                           sugestoes={suggestedAttributes}
+                          valoresEmUso={valoresGravadosDoAtributo(par.name)}
                           aoRemover={
                             indice > 0
                               ? () =>
@@ -3202,7 +3215,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           active: !p.active,
                         }))
                       }
-                      className="flex min-h-14 w-full select-none items-center gap-3 rounded-[22px] border border-admin-border bg-admin-surface px-4 py-3 text-left transition-all active:scale-[0.99]"
+                      className="flex min-h-14 w-full select-none items-center gap-3 rounded-[22px] border border-solid border-admin-border bg-admin-surface px-4 py-3 text-left transition-all active:scale-[0.99]"
                     >
                       <span className="flex-1 text-base font-bold text-foreground">
                         Aparece na loja
@@ -3270,7 +3283,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                     imageUrl: "",
                                   }))
                                 }
-                                className="relative size-16 shrink-0 snap-start overflow-hidden rounded-2xl border-2 border-foreground ring-2 ring-foreground transition-all"
+                                className="relative size-16 shrink-0 snap-start overflow-hidden rounded-2xl border-2 border-solid border-foreground ring-2 ring-foreground transition-all"
                               >
                                 <img
                                   src={variantFormData.imageUrl}
@@ -3303,7 +3316,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                   }))
                                 }
                                 className={cn(
-                                  "relative size-16 shrink-0 snap-start overflow-hidden rounded-2xl border transition-all",
+                                  "relative size-16 shrink-0 snap-start overflow-hidden rounded-2xl border border-solid transition-all",
                                   selecionada
                                     ? "border-2 border-foreground ring-2 ring-foreground"
                                     : "border-admin-border hover:border-admin-border-strong",

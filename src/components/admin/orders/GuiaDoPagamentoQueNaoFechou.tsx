@@ -246,14 +246,15 @@ export function GuiaDoPagamentoQueNaoFechou() {
             Para enviar o produto: o painel não reabre pedido cancelado. O envio
             fica por sua conta, fora do app: o pedido continua cancelado aqui, e
             a peça já voltou ao estoque — tire as unidades enviadas à mão no
-            cadastro do produto (campo “Quantidade em Estoque”). Esse pedido vai
-            continuar no aviso de pedidos cancelados como “Devolver ao cliente”
-            (mesmo com esse nome, não é para devolver), e a ficha dele vai
-            continuar mostrando o botão “Devolver R$ …”. Não toque nele: depois
-            de enviar, devolver é perder o produto e o dinheiro. Para quem abrir
-            o pedido depois saber, escreva em “Anotações internas” da ficha:
-            produto enviado em [data], combinado com o cliente, não devolver.
-            Não toque em “Já estornei”: nenhum dinheiro foi devolvido.
+            cadastro do produto (campo “Quantidade em Estoque”; se o produto tem
+            variações, abra a variação e use o campo “Quantidade”). Esse pedido
+            vai continuar no aviso de pedidos cancelados como “Devolver ao
+            cliente” (mesmo com esse nome, não é para devolver), e a ficha dele
+            vai continuar mostrando o botão “Devolver R$ …”. Não toque nele:
+            depois de enviar, devolver é perder o produto e o dinheiro. Para
+            quem abrir o pedido depois saber, escreva em “Anotações internas” da
+            ficha: produto enviado em [data], combinado com o cliente, não
+            devolver. Não toque em “Já estornei”: nenhum dinheiro foi devolvido.
           </li>
         </ol>
       </div>

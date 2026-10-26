@@ -324,6 +324,51 @@ describe("AdminProductFormView — grade: escolher em vez de digitar", () => {
     expect(linhasDaGrade()).toEqual(["Rosa"]);
   });
 
+  it("produto que já tem a cor 'azul' (minúscula): tocar a bolinha Azul ou digitar 'AZUL' escolhe 'azul', nunca um segundo 'Azul'", async () => {
+    await abrirGrade([
+      {
+        id: "v1",
+        productId: "prod-1",
+        name: "Cor",
+        value: "azul",
+        stockIncrement: 2,
+        active: true,
+      },
+    ]);
+    await tocar(porRotulo("Azul"));
+    expect(selecionadas()).toEqual(["azul"]);
+    // Tocar de novo tira; digitar em outra caixa também casa com o gravado.
+    await tocar(porRotulo("Azul"));
+    expect(selecionadas()).toEqual([]);
+    await digitarCampo("grade-valor-0", "AZUL");
+    await tocar(porRotulo("Adicionar valor do atributo 1"));
+    expect(selecionadas()).toEqual(["azul"]);
+    const chips = [
+      ...document.querySelectorAll('[data-testid="chip-do-produto"]'),
+    ].map((c) => c.textContent?.replace(/\s+/g, " ").trim());
+    expect(chips).toEqual(["azul"]);
+  });
+
+  it("produto que grava 'cor' minúsculo: a grade abre com a peça Cor marcada e o nome do grupo continua 'cor'", async () => {
+    await abrirGrade([
+      {
+        id: "v1",
+        productId: "prod-1",
+        name: "cor",
+        value: "Rosa",
+        stockIncrement: 2,
+        active: true,
+      },
+    ]);
+    expect(atributoMarcado(0)).toBe("Cor");
+    await tocar(porRotulo("Preto"));
+    await act(async () => {
+      clicarTexto("Gerar grade");
+    });
+    expect(toastError).not.toHaveBeenCalled();
+    expect(linhasDaGrade()).toEqual(["Preto"]);
+  });
+
   it("produto que já usa Cor não oferece a peça Tamanho (a trava de um grupo recusaria)", async () => {
     await abrirGrade([
       {

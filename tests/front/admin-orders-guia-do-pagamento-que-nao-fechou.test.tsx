@@ -433,6 +433,13 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
     expect(texto).toContain("“Estornado”");
     expect(texto).toContain("“Pagamento fora do fluxo”");
     expect(texto).toContain("“Quantidade em Estoque”");
+    // Produto COM variações: o campo do produto fica travado (é a soma), então o
+    // guia manda abrir a variação, onde o campo se chama só "Quantidade".
+    expect(texto).toContain("“Quantidade”");
+    expect(
+      lerFonte("src/views/admin/AdminProductFormView.tsx"),
+      "rótulo do estoque dentro do modal da variação",
+    ).toMatch(/htmlFor="variant-stock"[^>]*>\s*Quantidade\s*<\/label>/);
   });
 });
 

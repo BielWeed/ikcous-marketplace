@@ -175,8 +175,8 @@ describe("AdminProductFormView — escolher a variação em vez de digitar", () 
     vi.restoreAllMocks();
   });
 
-  async function montar(variants: unknown[] = []) {
-    fetchProduct.mockResolvedValue(produto(variants));
+  async function montar(variants: unknown[] = [], images: string[] = []) {
+    fetchProduct.mockResolvedValue({ ...produto(variants), images });
     const { AdminProductFormView } = await import(
       "@/views/admin/AdminProductFormView"
     );
@@ -397,6 +397,125 @@ describe("AdminProductFormView — escolher a variação em vez de digitar", () 
 
     expect(toastError).toHaveBeenCalledTimes(1);
     expect(variantesNaTela()).toEqual([]);
+  });
+
+  // O defeito que a revisão achou: a peça gravava "Cor" canônico, e a loja
+  // compara o nome EXATO -- um produto com "cor" virava dois grupos ("cor" e
+  // "Cor") na vitrine. A peça tem de gravar a grafia que o produto já usa.
+  const comoAVitrineVe = async () => {
+    const { fileirasDeVariacao } = await import("@/utils/fileiras-de-variacao");
+    const linhas = variantesNaTela().map((texto, i) => {
+      const [name, value] = texto.split(": ");
+      return {
+        id: `v${i}`,
+        productId: "p-1",
+        name,
+        value,
+        stockIncrement: 3,
+        active: true,
+      };
+    });
+    return fileirasDeVariacao(linhas as never, {}).fileiras;
+  };
+
+  it("produto com 'cor' minúsculo: tocar a peça Cor e a bolinha grava 'cor' e a vitrine vê UM grupo só", async () => {
+    await montar([linhaAntiga("cor", "Rosa")]);
+    await abrirNovaVariacao();
+    await tocarNaPeca(0, "Cor");
+    await clicarRotulo("Preto");
+    await clicarTexto("Salvar variação");
+
+    expect(toastError).not.toHaveBeenCalled();
+    expect(variantesNaTela()).toEqual(["cor: Rosa", "cor: Preto"]);
+    const fileiras = await comoAVitrineVe();
+    expect(fileiras.map((f) => f.nome)).toEqual(["cor"]);
+    expect(fileiras.at(0)?.valores.map((v) => v.valor)).toEqual([
+      "Rosa",
+      "Preto",
+    ]);
+  });
+
+  it("produto com 'cor / tamanho' minúsculo: cada par grava a grafia da sua parte e a vitrine vê duas fileiras, não quatro", async () => {
+    await montar([linhaAntiga("cor / tamanho", "Rosa / M")]);
+    await abrirNovaVariacao();
+    await tocarNaPeca(0, "Cor");
+    await clicarRotulo("Preto");
+    await clicarTexto("+ Atributo");
+    await tocarNaPeca(1, "Tamanho");
+    await act(async () => {
+      botaoDoAtributo(1, "G").click();
+    });
+    await clicarTexto("Salvar variação");
+
+    expect(toastError).not.toHaveBeenCalled();
+    expect(variantesNaTela()).toEqual([
+      "cor / tamanho: Rosa / M",
+      "cor / tamanho: Preto / G",
+    ]);
+    const fileiras = await comoAVitrineVe();
+    expect(fileiras.map((f) => f.nome)).toEqual(["cor", "tamanho"]);
+  });
+
+  it("produto com a cor 'azul' minúscula: tocar a bolinha Azul grava 'azul', não 'Azul' (uma só cor na vitrine)", async () => {
+    await montar([linhaAntiga("Cor", "azul")]);
+    await abrirNovaVariacao();
+    await tocarNaPeca(0, "Cor");
+    await clicarRotulo("Azul");
+    expect(valorDoCampo("variant-value")).toBe("azul");
+    expect(
+      document
+        .querySelector('[aria-label="Azul"]')
+        ?.getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("abrir a edição de 'Cor: azul' e sair do campo sem editar não troca 'azul' por 'Azul'", async () => {
+    await montar([linhaAntiga("Cor", "azul")]);
+    await abrirEdicaoDaLinha("azul");
+    const campo = document.getElementById("variant-value") as HTMLInputElement;
+    await act(async () => {
+      campo.focus();
+    });
+    await act(async () => {
+      campo.blur();
+    });
+    expect(valorDoCampo("variant-value")).toBe("azul");
+    await clicarTexto("Salvar");
+    expect(variantesNaTela()).toEqual(["Cor: azul"]);
+  });
+
+  it("todo botão do modal com contorno tem border-solid (o reset global do botão apaga o contorno)", async () => {
+    await montar(
+      [],
+      ["https://exemplo.test/a.png", "https://exemplo.test/b.png"],
+    );
+    await abrirNovaVariacao();
+    await tocarNaPeca(0, "Cor");
+    const modal = document
+      .getElementById("titulo-da-variacao")
+      ?.closest('[role="dialog"]');
+    expect(modal).toBeTruthy();
+    const comContorno = [...(modal?.querySelectorAll("button") ?? [])].filter(
+      (b) => [...b.classList].some((c) => c === "border" || c === "border-2"),
+    );
+    // controle: o modal tem de ter botões com contorno (peças, interruptor, fotos).
+    expect(comContorno.length).toBeGreaterThan(8);
+    expect(
+      document.querySelectorAll('[data-testid="foto-da-variacao"]').length,
+    ).toBe(2);
+    // "Cancelar" é o botão antigo do modal (sem contorno desde sempre); ligar o
+    // contorno nele mudaria uma tela que não faz parte deste pedido.
+    const semSolido = comContorno
+      .filter((b) => b.textContent?.trim() !== "Cancelar")
+      .filter(
+        (b) =>
+          !b.classList.contains("border-solid") &&
+          !b.classList.contains("border-dashed"),
+      )
+      .map(
+        (b) => b.id || b.getAttribute("aria-label") || b.className.slice(0, 60),
+      );
+    expect(semSolido).toEqual([]);
   });
 
   it("a bolinha e o campo livre andam juntos: escolher outra desmarca a anterior, e digitar desmarca todas", async () => {

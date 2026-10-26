@@ -243,7 +243,13 @@ export function ModalVarianteGrade({
   const adicionarValorDigitado = (grupo: GrupoNoForm) => {
     // O digitado que já existe na paleta casa pelo nome dela ("azul marinho" →
     // "Azul marinho"), e não vira um segundo valor igual.
-    const valor = valorDaPaleta(grupo.nome, grupo.rascunho);
+    // E o valor que o produto já grava vence a paleta: com "azul" gravado,
+    // digitar "AZUL" escolhe "azul" (a loja compara o texto exato).
+    const daPaleta = valorDaPaleta(grupo.nome, grupo.rascunho);
+    const gravado = valoresDoGrupo(grupo, variantesExistentes).find(
+      (chip) => chaveMinuscula(chip.valor) === chaveMinuscula(daPaleta),
+    );
+    const valor = gravado?.valor ?? daPaleta;
     if (valor === "") return;
     if (valor.includes("/")) {
       toast.error(
