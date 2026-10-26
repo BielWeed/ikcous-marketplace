@@ -78,6 +78,28 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261386: o preco do produto deixa historico. A tabela, a politica, o ACL e o gatilho nao sao conferiveis aqui (so corpo de funcao): a
+  // consulta 91a e a prova viva fazem isso. Aqui: a funcao do gatilho grava 'cadastro' no INSERT e 'mudanca' so quando o preco muda.
+  "20261386000000_o_preco_do_produto_deixa_historico.sql": {
+    funcao: "registrar_historico_de_preco",
+    esperado: [
+      { texto: "IF NEW.preco_venda IS NULL THEN", vezes: 1 },
+      {
+        texto:
+          "NEW.id, NEW.preco_venda, NULL, clock_timestamp(), auth.uid(), 'cadastro'",
+        vezes: 1,
+      },
+      {
+        texto: "ELSIF NEW.preco_venda IS DISTINCT FROM OLD.preco_venda THEN",
+        vezes: 1,
+      },
+      {
+        texto:
+          "NEW.id, NEW.preco_venda, OLD.preco_venda, clock_timestamp(), auth.uid(), 'mudanca'",
+        vezes: 1,
+      },
+    ],
+  },
   // 20261385: a busca de produtos do painel (get_admin_products_paged) acha pelo codigo de barras do produto e da variacao ativa e
   // pelo SKU da variacao ativa. O filtro entra IGUAL nos dois blocos (total_count e pagina): cada marcador vale 2 vezes. O resto e o
   // corpo da 20261381. A consulta 90a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.

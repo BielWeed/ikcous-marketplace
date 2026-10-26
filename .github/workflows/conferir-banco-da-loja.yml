@@ -256,6 +256,8 @@ on:
           - 89b-antes-o-pedido-pelo-app-exige-conta-base-vigente
           - 90a-conferir-busca-do-painel-por-codigo-aplicado
           - 90b-antes-busca-do-painel-por-codigo-base-vigente
+          - 91a-conferir-o-preco-do-produto-deixa-historico-aplicado
+          - 91b-antes-o-preco-do-produto-deixa-historico-ausente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

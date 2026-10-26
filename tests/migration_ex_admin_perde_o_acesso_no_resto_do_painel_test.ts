@@ -283,9 +283,9 @@ Deno.test("1381: inventario do aplicador, rol das consultas, canais, workflows e
     "tests/banco/pagamentos-rpc-viva.cjs",
   ]) {
     const t = lerRaiz(arq);
-    // As posteriores entram na ordem da aplicacao; a 20261383 (DEFINIR_CARGO) vem depois desta e fecha a lista.
+    // As posteriores entram na ordem da aplicacao; a 20261383 (DEFINIR_CARGO) vem depois desta e a 20261386 (PRECO_HISTORICO) fecha a lista.
     const marcaResto = "EX_ADMIN_RESTO_DO_PAINEL,\n";
-    const iFim = t.indexOf("DEFINIR_CARGO,\n];");
+    const iFim = t.indexOf("DEFINIR_CARGO,\n");
     const iResto = iFim >= 0 ? t.lastIndexOf(marcaResto, iFim) : -1;
     // Entre as duas marcas so pode haver linha em branco ou comentario.
     const entre =
@@ -297,6 +297,20 @@ Deno.test("1381: inventario do aplicador, rol das consultas, canais, workflows e
         .split("\n")
         .every((l: string) => l.trim() === "" || l.trim().startsWith("//")),
       `${arq}: EX_ADMIN_RESTO_DO_PAINEL seguido so de DEFINIR_CARGO no fim da lista`,
+    );
+    // Depois de DEFINIR_CARGO so comentario e a PRECO_HISTORICO (20261386) antes do fecho da lista.
+    const aposCargo = t
+      .slice(
+        t.indexOf("DEFINIR_CARGO,\n") + "DEFINIR_CARGO,\n".length,
+        t.indexOf("];", iFim),
+      )
+      .split("\n")
+      .map((l: string) => l.trim())
+      .filter((l: string) => l !== "" && !l.startsWith("//"));
+    assertEquals(
+      aposCargo,
+      ["PRECO_HISTORICO,"],
+      `${arq}: so a PRECO_HISTORICO (20261386) vem depois de DEFINIR_CARGO e fecha a lista`,
     );
     assertStringIncludes(
       t,
