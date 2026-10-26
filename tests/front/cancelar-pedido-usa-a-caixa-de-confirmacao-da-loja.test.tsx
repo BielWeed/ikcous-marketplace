@@ -10,6 +10,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Order } from "@/types";
+import type * as Modulo from "@/views/customer/OrderDetailsView";
 
 const pedido: Order = {
   id: "pedido-cancelar",
@@ -35,10 +36,13 @@ const pedido: Order = {
   cancelledAfterShipping: false,
 };
 
+// O pedido que a lista do hook entrega agora. O teste do texto vivo troca este
+// valor (a loja marcou "enviado" com a caixa aberta) e renderiza de novo.
+let pedidoAtual: Order = pedido;
 const updateOrderStatusMock = vi.fn();
 vi.mock("@/hooks/useOrders", () => ({
   useOrders: () => ({
-    orders: [pedido],
+    orders: [pedidoAtual],
     fetchUserOrders: vi.fn().mockResolvedValue([pedido]),
     updateOrderStatus: updateOrderStatusMock,
   }),
@@ -74,16 +78,16 @@ describe("OrderDetailsView — cancelar pedido pela caixa de confirmação da lo
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
   let confirmSpy: ReturnType<typeof vi.spyOn>;
+  let OrderDetailsView: typeof Modulo.OrderDetailsView;
 
   beforeEach(async () => {
+    pedidoAtual = pedido;
     updateOrderStatusMock.mockReset().mockResolvedValue(undefined);
     confirmSpy = vi.spyOn(globalThis, "confirm").mockReturnValue(true);
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
-    const { OrderDetailsView } = await import(
-      "@/views/customer/OrderDetailsView"
-    );
+    ({ OrderDetailsView } = await import("@/views/customer/OrderDetailsView"));
     await act(async () => {
       raiz.render(
         <OrderDetailsView
@@ -169,5 +173,115 @@ describe("OrderDetailsView — cancelar pedido pela caixa de confirmação da lo
       );
     });
     expect(updateOrderStatusMock).not.toHaveBeenCalled();
+  });
+
+  it("duplo toque no 'sim', com a caixa ainda na tela, cancela UMA vez", async () => {
+    // Na saída da caixa (200 ms de animação) o botão segue na tela e clicável.
+    // O jsdom não anima, então simulamos a animação de saída: o Radix só
+    // desmonta o conteúdo quando ela termina.
+    const original = globalThis.getComputedStyle;
+    let saindo = false;
+    const estilo = vi
+      .spyOn(globalThis, "getComputedStyle")
+      .mockImplementation((el, pseudo) => {
+        const real = original(el, pseudo);
+        return new Proxy(real, {
+          get: (alvo, prop) =>
+            prop === "animationName"
+              ? saindo
+                ? "saida-da-caixa"
+                : "none"
+              : Reflect.get(alvo, prop),
+        });
+      });
+    try {
+      await abrirACaixa();
+      const sim = botao(caixa()!, "Cancelar pedido")!;
+      saindo = true;
+      await act(async () => {
+        sim.click();
+      });
+      // Prova de que o cenário é o real: o mesmo botão continua montado.
+      expect(sim.isConnected).toBe(true);
+      await act(async () => {
+        sim.click();
+      });
+
+      expect(updateOrderStatusMock).toHaveBeenCalledTimes(1);
+    } finally {
+      estilo.mockRestore();
+    }
+  });
+
+  it("duplo toque com o servidor ainda respondendo cancela UMA vez", async () => {
+    // Mesmo cenário, mas a edge demora: o segundo toque cai com o primeiro
+    // cancelamento em andamento.
+    const original = globalThis.getComputedStyle;
+    let saindo = false;
+    const estilo = vi
+      .spyOn(globalThis, "getComputedStyle")
+      .mockImplementation((el, pseudo) => {
+        const real = original(el, pseudo);
+        return new Proxy(real, {
+          get: (alvo, prop) =>
+            prop === "animationName"
+              ? saindo
+                ? "saida-da-caixa"
+                : "none"
+              : Reflect.get(alvo, prop),
+        });
+      });
+    let terminar: () => void = () => {};
+    updateOrderStatusMock.mockReturnValue(
+      new Promise<void>((resolve) => {
+        terminar = resolve;
+      }),
+    );
+    try {
+      await abrirACaixa();
+      const sim = botao(caixa()!, "Cancelar pedido")!;
+      saindo = true;
+      await act(async () => {
+        sim.click();
+      });
+      expect(sim.isConnected).toBe(true);
+      await act(async () => {
+        sim.click();
+      });
+      expect(updateOrderStatusMock).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        terminar();
+      });
+    } finally {
+      estilo.mockRestore();
+    }
+  });
+
+  it("o texto do dinheiro acompanha o pedido enquanto a caixa está aberta", async () => {
+    await abrirACaixa();
+    expect(caixa()!.textContent).toContain("volta sozinho");
+
+    // A loja marca como enviado com a caixa aberta: o produto saiu.
+    pedidoAtual = {
+      ...pedido,
+      status: "shipping",
+      updatedAt: new Date(60_000).toISOString(),
+    };
+    await act(async () => {
+      raiz.render(
+        <OrderDetailsView
+          orderId="pedido-cancelar"
+          onBack={() => {}}
+          onNavigate={() => {}}
+        />,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(caixa()).not.toBeNull();
+    expect(caixa()!.textContent).not.toContain("volta sozinho");
+    expect(caixa()!.textContent?.toLowerCase()).toContain("produto");
   });
 });

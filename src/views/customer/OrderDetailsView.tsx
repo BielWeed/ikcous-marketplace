@@ -466,15 +466,15 @@ export function OrderDetailsView({
   }, [reviewingItem]);
 
   // UI-191 (G10): a pergunta de cancelar é a caixa de confirmação da casa
-  // (AlertDialog), não o `confirm()` do navegador. `textoDoCancelamento` é o
-  // MESMO texto de antes (`textoConfirmarCancelamento`, a fonte única do que
-  // acontece com o dinheiro em cada caso); `null` = pergunta fechada.
-  const [textoDoCancelamento, setTextoDoCancelamento] = useState<string | null>(
-    null,
-  );
+  // (AlertDialog), não o `confirm()` do navegador. O texto é o MESMO de antes
+  // (`textoConfirmarCancelamento`, a fonte única do que acontece com o
+  // dinheiro em cada caso), mas é calculado a cada render a partir do pedido
+  // VIVO: se a loja marcar "enviado" com a caixa aberta, a frase muda junto.
+  // Guardar o texto no momento do clique deixaria "o dinheiro volta sozinho"
+  // na tela de um pedido que já saiu.
+  const [perguntandoCancelar, setPerguntandoCancelar] = useState(false);
 
-  const handleCancelOrder = () => {
-    if (!order) return;
+  const textoDoCancelamentoDe = (pedido: Order): string => {
     // Regra do Gabriel (24/08/2026): o botão "Cancelar Pedido" aparece para
     // pedido 'pending', 'processing' OU 'shipping' com usuário logado — o
     // divisor é se o produto JÁ SAIU, não se foi pago. 'delivered' fica de
@@ -499,7 +499,7 @@ export function OrderDetailsView({
     // quebraria os dois `switch` deste arquivo e passaria calado AQUI —
     // `pagamentoJaEntrou` viraria `false` para sempre e quem pagou voltaria
     // a ler o texto generico. Com `===` o TypeScript reprova (TS2678).
-    const chavePagamento = paymentStatusKey(order.paymentStatus);
+    const chavePagamento = paymentStatusKey(pedido.paymentStatus);
     const pagamentoJaEntrou =
       chavePagamento === "pago" ||
       chavePagamento === "pago_apos_expirar" ||
@@ -509,16 +509,20 @@ export function OrderDetailsView({
     // cliente não tem produto para devolver — só o texto muda, a regra de
     // cancelar é a mesma.
     const retiradaPronta =
-      order.retiradaNaLoja === true && order.status === "shipping";
-    const jaFoiEnviado = order.status === "shipping" && !retiradaPronta;
+      pedido.retiradaNaLoja === true && pedido.status === "shipping";
+    const jaFoiEnviado = pedido.status === "shipping" && !retiradaPronta;
     const pagamentoNaEntrega = chavePagamento === "recebido_na_entrega";
-    const textoConfirm = textoConfirmarCancelamento({
+    return textoConfirmarCancelamento({
       pagamentoJaEntrou,
       jaFoiEnviado,
       retiradaPronta,
       pagamentoNaEntrega,
     });
-    setTextoDoCancelamento(textoConfirm);
+  };
+
+  const handleCancelOrder = () => {
+    if (!order) return;
+    setPerguntandoCancelar(true);
   };
 
   // O cancelamento de verdade: só roda depois do "sim" na caixa acima, e é
@@ -526,6 +530,10 @@ export function OrderDetailsView({
   // guardas de eco e de leitura do servidor) -- só a pergunta mudou de lugar.
   const executarCancelamento = async () => {
     if (!order) return;
+    // Duplo toque no "sim": a caixa fica ~200 ms na tela enquanto some, com o
+    // botão ainda clicável. Cancelamento em andamento = o segundo toque não
+    // faz nada (o servidor já é seguro, mas a tela não pede duas vezes).
+    if (cancelandoRef.current) return;
     cancelandoRef.current = true;
     emitidoDuranteOCancelamentoRef.current = null;
     setIsCancelling(true);
@@ -1915,10 +1923,8 @@ export function OrderDetailsView({
       </AlertDialog>
 
       <AlertDialog
-        open={textoDoCancelamento !== null}
-        onOpenChange={(aberto) => {
-          if (!aberto) setTextoDoCancelamento(null);
-        }}
+        open={perguntandoCancelar}
+        onOpenChange={setPerguntandoCancelar}
       >
         <AlertDialogContent
           overlayClassName="z-[130]"
@@ -1926,8 +1932,8 @@ export function OrderDetailsView({
         >
           <AlertDialogHeader>
             <AlertDialogTitle>Cancelar este pedido?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {textoDoCancelamento}
+            <AlertDialogDescription aria-live="polite">
+              {order ? textoDoCancelamentoDe(order) : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1937,7 +1943,13 @@ export function OrderDetailsView({
             <AlertDialogAction
               className="min-h-11"
               onClick={() => {
-                setTextoDoCancelamento(null);
+                // O primeiro "sim" fecha a pergunta. Enquanto a caixa some
+                // (~200 ms) o botão ainda está na tela: um segundo toque
+                // chega aqui já com a pergunta fechada e não faz nada --
+                // mesmo que o servidor tenha respondido rápido e a guarda
+                // de `cancelandoRef` já tenha sido solta.
+                if (!perguntandoCancelar) return;
+                setPerguntandoCancelar(false);
                 void executarCancelamento();
               }}
             >
