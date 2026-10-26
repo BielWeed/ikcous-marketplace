@@ -137,6 +137,19 @@ describe("SeletorDeAtributo — as peças de tipo", () => {
     expect(campo("variant-name")).toBeNull();
   });
 
+  it("o tamanho vem antes da cor: é por ele que a cliente começa na loja", async () => {
+    await act(async () => {
+      raiz.render(<Unico />);
+    });
+    const pecas = [
+      ...hospedeiro.querySelectorAll('[role="group"] > button[aria-pressed]'),
+    ].map((b) => b.textContent);
+    expect(pecas).toEqual(["Tamanho", "Cor", "Voltagem", "Outro"]);
+    expect(hospedeiro.textContent).toContain(
+      "Toque no que muda neste produto: tamanho, cor, voltagem ou outro.",
+    );
+  });
+
   it("alvo de toque de 44 px em cada peça", async () => {
     await act(async () => {
       raiz.render(<Unico />);
@@ -657,7 +670,7 @@ describe("SeletorDeAtributo — não convida para o que a trava de um grupo por 
     await act(async () => {
       raiz.render(<Com sugestoes={[]} />);
     });
-    expect(nomesDasPecas()).toEqual(["Cor", "Tamanho", "Voltagem", "Outro"]);
+    expect(nomesDasPecas()).toEqual(["Tamanho", "Cor", "Voltagem", "Outro"]);
   });
 
   it("produto que já usa 'Cor' (ou 'cor'): sobram Cor e Outro — Tamanho e Voltagem somem", async () => {
@@ -671,7 +684,7 @@ describe("SeletorDeAtributo — não convida para o que a trava de um grupo por 
     await act(async () => {
       raiz.render(<Com sugestoes={["Cor / Tamanho"]} />);
     });
-    expect(nomesDasPecas()).toEqual(["Cor", "Tamanho", "Outro"]);
+    expect(nomesDasPecas()).toEqual(["Tamanho", "Cor", "Outro"]);
   });
 
   it("produto com grupo livre ('Material'): só o atalho dele e Outro", async () => {
@@ -689,7 +702,7 @@ describe("SeletorDeAtributo — não convida para o que a trava de um grupo por 
     await act(async () => {
       raiz.render(<Com sugestoes={["Cor"]} nomeInicial="Tamanho" />);
     });
-    expect(nomesDasPecas()).toEqual(["Cor", "Tamanho", "Outro"]);
+    expect(nomesDasPecas()).toEqual(["Tamanho", "Cor", "Outro"]);
     expect(peca("Tamanho")?.getAttribute("aria-pressed")).toBe("true");
   });
 });

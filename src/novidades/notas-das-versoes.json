@@ -1,4 +1,15 @@
 {
+  "1.5.76": {
+    "titulo": "Tamanho primeiro, depois a cor, na escolha do produto",
+    "novidades": [],
+    "correcoes": [],
+    "melhorias": [
+      "Loja, página do produto: o tamanho (e a voltagem) aparecem antes da cor. Ao escolher o tamanho, as cores sem estoque nele ficam esmaecidas com borda tracejada, e tocar numa delas troca a escolha sem travar. O que está esgotado de vez continua riscado e não pode ser tocado.",
+      "Loja, vitrine: ao tocar em Escolher opções, a folha mostra a mesma ordem da página e nada vem marcado antes. Toque no tamanho e depois na cor.",
+      "Loja, leitor de tela: cada opção diz se está disponível, indisponível com a escolha atual ou esgotada, e avisa quando uma escolha anterior é desmarcada.",
+      "Painel, variações: Tamanho passa a vir antes de Cor nas peças e nos atalhos. Num produto que já grava \"Cor / Tamanho\", a variação nova segue essa mesma ordem sem travar, e a loja mostra o tamanho primeiro de qualquer jeito."
+    ]
+  },
   "1.5.75": {
     "titulo": "Pedido não sai em dobro ao fechar o app e voltar",
     "novidades": [],

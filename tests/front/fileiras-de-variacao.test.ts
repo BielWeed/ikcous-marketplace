@@ -1,6 +1,9 @@
 import type { ProductVariant } from "@/types";
 import { corDaVariacao } from "@/utils/cor-da-variacao";
-import { fileirasDeVariacao } from "@/utils/fileiras-de-variacao";
+import {
+  aplicarEscolhaDeVariacao,
+  fileirasDeVariacao,
+} from "@/utils/fileiras-de-variacao";
 import { describe, expect, it } from "vitest";
 
 const linha = (
@@ -38,36 +41,107 @@ describe("fileiras da variação sem mudar a identidade da linha", () => {
       valor: "P",
       estoque: 3,
       disponivel: true,
+      existe: true,
     });
     expect(resultado.variante).toBe(unica);
   });
-  it("abre duas dimensões em ordem e oculta linhas desligadas", () => {
+  it("abre duas dimensões com o tamanho primeiro, mesmo gravado como Cor / Tamanho, e oculta linhas desligadas", () => {
     const resultado = fileirasDeVariacao(variantes);
-    expect(resultado.fileiras.map((f) => f.nome)).toEqual(["Cor", "Tamanho"]);
+    expect(resultado.fileiras.map((f) => f.nome)).toEqual(["Tamanho", "Cor"]);
     expect(resultado.fileiras[0].valores.map((v) => v.valor)).toEqual([
-      "Azul",
-      "Preto",
-    ]);
-    expect(resultado.fileiras[1].valores.map((v) => v.valor)).toEqual([
       "P",
       "M",
     ]);
+    expect(resultado.fileiras[1].valores.map((v) => v.valor)).toEqual([
+      "Azul",
+      "Preto",
+    ]);
     expect(resultado.variante).toBeUndefined();
   });
-  it("tamanho depende da cor, mas cor com algum tamanho em estoque continua disponível", () => {
+  it("a linha comprável e o nome gravado não mudam com a ordem das fileiras", () => {
+    const resultado = fileirasDeVariacao(variantes, {
+      Tamanho: "P",
+      Cor: "Azul",
+    });
+    expect(resultado.variante).toBe(variantes[0]);
+    expect(resultado.variante?.name).toBe("Cor / Tamanho");
+    expect(resultado.variante?.value).toBe("Azul / P");
+  });
+  it("escolher o tamanho apaga as cores sem estoque nele", () => {
+    const resultado = fileirasDeVariacao(variantes, { Tamanho: "M" });
+    const cores = resultado.fileiras.find((f) => f.nome === "Cor");
+    expect(cores?.valores.map((v) => [v.valor, v.disponivel])).toEqual([
+      ["Azul", false],
+      ["Preto", true],
+    ]);
+    expect(resultado.variante).toBeUndefined();
+  });
+  it("sem escolha nenhuma, tamanho e cor aparecem pelo estoque total de cada valor", () => {
+    const resultado = fileirasDeVariacao(variantes);
+    const dispo = (nome: string) =>
+      resultado.fileiras
+        .find((f) => f.nome === nome)
+        ?.valores.map((v) => [v.valor, v.estoque, v.disponivel]);
+    expect(dispo("Tamanho")).toEqual([
+      ["P", 2, true],
+      ["M", 5, true],
+    ]);
+    expect(dispo("Cor")).toEqual([
+      ["Azul", 2, true],
+      ["Preto", 5, true],
+    ]);
+  });
+  it("escolher a cor apaga os tamanhos sem estoque nela, e a cor também se apaga pelo tamanho", () => {
+    const soCor = fileirasDeVariacao(variantes, { Cor: "Azul" });
+    expect(
+      soCor.fileiras[0].valores.map((v) => [v.valor, v.disponivel]),
+    ).toEqual([
+      ["P", true],
+      ["M", false],
+    ]);
     const resultado = fileirasDeVariacao(variantes, {
       Cor: "Azul",
       Tamanho: "P",
     });
+    expect(resultado.fileiras[0].valores.map((v) => v.disponivel)).toEqual([
+      true,
+      false,
+    ]);
+    // Antes a cor ignorava o tamanho: Preto aparecia disponível com o P
+    // escolhido, embora não exista Preto / P.
     expect(resultado.fileiras[1].valores.map((v) => v.disponivel)).toEqual([
       true,
       false,
     ]);
-    expect(resultado.fileiras[0].valores.map((v) => v.disponivel)).toEqual([
-      true,
-      true,
-    ]);
     expect(resultado.variante?.id).toBe("azul-p");
+  });
+  it("sem beco sem saída: qualquer sequência de toques em valores disponíveis termina numa linha com estoque", () => {
+    const [primeira, segunda] = fileirasDeVariacao(variantes).fileiras;
+    for (const [a, b] of [
+      [primeira, segunda],
+      [segunda, primeira],
+    ]) {
+      for (const va of a.valores) {
+        const depoisDoPrimeiro = fileirasDeVariacao(variantes, {});
+        const livre = depoisDoPrimeiro.fileiras
+          .find((f) => f.nome === a.nome)
+          ?.valores.find((v) => v.valor === va.valor);
+        if (!livre?.disponivel) continue;
+        const meio = fileirasDeVariacao(variantes, { [a.nome]: va.valor });
+        const aindaHa = meio.fileiras
+          .find((f) => f.nome === b.nome)
+          ?.valores.filter((v) => v.disponivel);
+        // Escolheu um valor disponível: sempre sobra pelo menos uma saída.
+        expect(aindaHa?.length, `${a.nome}=${va.valor}`).toBeGreaterThan(0);
+        for (const vb of aindaHa ?? []) {
+          const fim = fileirasDeVariacao(variantes, {
+            [a.nome]: va.valor,
+            [b.nome]: vb.valor,
+          });
+          expect(fim.variante?.stockIncrement).toBeGreaterThan(0);
+        }
+      }
+    }
   });
   it("combinação ausente, desligada, incompleta ou esgotada nunca vira id comprável", () => {
     for (const escolha of [
@@ -90,8 +164,8 @@ describe("fileiras da variação sem mudar a identidade da linha", () => {
       Tecido: "Algodão",
     });
     expect(resultado.fileiras.map((f) => f.nome)).toEqual([
-      "Cor",
       "Tamanho",
+      "Cor",
       "Tecido",
     ]);
     expect(resultado.fileiras[2].valores.map((v) => v.disponivel)).toEqual([
@@ -99,6 +173,89 @@ describe("fileiras da variação sem mudar a identidade da linha", () => {
       false,
     ]);
     expect(resultado.variante?.id).toBe("a");
+  });
+  it("três dimensões: Tamanho, Cor e depois os outros na ordem em que foram gravados", () => {
+    const nomesDe = (name: string, value: string) =>
+      fileirasDeVariacao([linha("x", value, 1, name)]).fileiras.map(
+        (f) => f.nome,
+      );
+    expect(nomesDe("Tecido / Cor / Tamanho", "Seda / Azul / P")).toEqual([
+      "Tamanho",
+      "Cor",
+      "Tecido",
+    ]);
+    expect(nomesDe("Material / Cor / Estampa", "Seda / Azul / Lisa")).toEqual([
+      "Cor",
+      "Material",
+      "Estampa",
+    ]);
+    expect(nomesDe("Estampa / Material / Cor", "Lisa / Seda / Azul")).toEqual([
+      "Cor",
+      "Estampa",
+      "Material",
+    ]);
+  });
+  it("tamanho em três dimensões apaga a cor e o outro atributo que não existem nele", () => {
+    const linhas = [
+      linha("a", "Azul / P / Algodão", 4, "Cor / Tamanho / Tecido"),
+      linha("b", "Preto / M / Seda", 3, "Cor / Tamanho / Tecido"),
+    ];
+    const resultado = fileirasDeVariacao(linhas, { Tamanho: "P" });
+    const dispo = (nome: string) =>
+      resultado.fileiras
+        .find((f) => f.nome === nome)
+        ?.valores.map((v) => [v.valor, v.disponivel]);
+    expect(dispo("Cor")).toEqual([
+      ["Azul", true],
+      ["Preto", false],
+    ]);
+    expect(dispo("Tecido")).toEqual([
+      ["Algodão", true],
+      ["Seda", false],
+    ]);
+  });
+  it("produto só com cor, só com tamanho ou só com voltagem mantém a única fileira", () => {
+    const so = (name: string, valor: string) =>
+      fileirasDeVariacao([linha("x", valor, 1, name)], { [name]: valor });
+    for (const [name, valor] of [
+      ["Cor", "Azul"],
+      ["Tamanho", "P"],
+      ["Voltagem", "220V"],
+    ]) {
+      const r = so(name, valor);
+      expect(r.fileiras.map((f) => f.nome)).toEqual([name]);
+      expect(r.variante?.id).toBe("x");
+    }
+  });
+  it("voltagem também vem antes da cor", () => {
+    const r = fileirasDeVariacao([
+      linha("v", "Preto / 220V", 2, "Cor / Voltagem"),
+    ]);
+    expect(r.fileiras.map((f) => f.nome)).toEqual(["Voltagem", "Cor"]);
+  });
+  it("nomes legados em caixa, acento e espaço diferentes são reconhecidos, e o nome gravado é mantido", () => {
+    for (const [nome, esperado] of [
+      ["COR / tamanho", ["tamanho", "COR"]],
+      ["Côr / TAMANHO", ["TAMANHO", "Côr"]],
+      [" cor / Tamanho ", ["Tamanho ", " cor"]],
+      ["cor / voltagem", ["voltagem", "cor"]],
+    ] as [string, string[]][]) {
+      const partes = nome.split(" / ");
+      const r = fileirasDeVariacao([
+        linha("x", partes.map(() => "v").join(" / "), 1, nome),
+      ]);
+      expect(
+        r.fileiras.map((f) => f.nome),
+        nome,
+      ).toEqual(esperado);
+    }
+  });
+  it("linhas independentes (um nome por linha, grade antiga) também mostram o tamanho antes da cor", () => {
+    const r = fileirasDeVariacao([
+      linha("c", "Azul", 2, "Cor"),
+      linha("t", "P", 2, "Tamanho"),
+    ]);
+    expect(r.fileiras.map((f) => f.nome)).toEqual(["Tamanho", "Cor"]);
   });
   it("contagens legadas diferentes usam uma fileira com texto cru, sem perder id", () => {
     const legada = linha("legado", "Azul / P / Extra");
@@ -138,5 +295,198 @@ describe("cor da variação", () => {
     )) {
       expect(corDaVariacao(nome), nome).toMatch(/^#[0-9a-f]{6}$/i);
     }
+  });
+});
+
+describe("valor apagado só pela combinação continua tocável; o esgotado de vez não", () => {
+  const variantes = [
+    linha("azul-p", "Azul / P", 2),
+    linha("preto-m", "Preto / M", 5),
+    linha("branco-g", "Branco / G", 0),
+  ];
+  const valorDe = (
+    r: ReturnType<typeof fileirasDeVariacao>,
+    nome: string,
+    valor: string,
+  ) =>
+    r.fileiras
+      .find((f) => f.nome === nome)
+      ?.valores.find((v) => v.valor === valor);
+
+  it("Preto some só pela combinação (existe em M); Branco/G não existe com estoque em lugar nenhum", () => {
+    const r = fileirasDeVariacao(variantes, { Tamanho: "P", Cor: "Azul" });
+    expect(valorDe(r, "Cor", "Preto")).toMatchObject({
+      disponivel: false,
+      existe: true,
+    });
+    expect(valorDe(r, "Cor", "Branco")).toMatchObject({
+      disponivel: false,
+      existe: false,
+    });
+    expect(valorDe(r, "Tamanho", "G")).toMatchObject({ existe: false });
+    expect(valorDe(r, "Tamanho", "M")).toMatchObject({ existe: true });
+  });
+  it("Azul + P escolhidos, tocar na Preta (só existe em M) escolhe a Preta e limpa o P", () => {
+    expect(
+      aplicarEscolhaDeVariacao(
+        variantes,
+        { Cor: "Azul", Tamanho: "P" },
+        "Cor",
+        "Preto",
+      ),
+    ).toEqual({ Cor: "Preto" });
+    // E o contrário: tocar no M com Azul escolhido troca o tamanho e limpa a cor.
+    expect(
+      aplicarEscolhaDeVariacao(
+        variantes,
+        { Cor: "Azul", Tamanho: "P" },
+        "Tamanho",
+        "M",
+      ),
+    ).toEqual({ Tamanho: "M" });
+  });
+  it("valor esgotado de vez ou inexistente não muda nada (devolve null)", () => {
+    const atual = { Cor: "Azul", Tamanho: "P" };
+    expect(
+      aplicarEscolhaDeVariacao(variantes, atual, "Cor", "Branco"),
+    ).toBeNull();
+    expect(
+      aplicarEscolhaDeVariacao(variantes, atual, "Tamanho", "G"),
+    ).toBeNull();
+    expect(
+      aplicarEscolhaDeVariacao(variantes, atual, "Cor", "Rosa"),
+    ).toBeNull();
+    expect(
+      aplicarEscolhaDeVariacao(variantes, atual, "Material", "X"),
+    ).toBeNull();
+  });
+  it("sem conflito o comportamento é o de antes: só soma a escolha", () => {
+    expect(
+      aplicarEscolhaDeVariacao(variantes, { Tamanho: "P" }, "Cor", "Azul"),
+    ).toEqual({
+      Tamanho: "P",
+      Cor: "Azul",
+    });
+    expect(aplicarEscolhaDeVariacao(variantes, {}, "Cor", "Preto")).toEqual({
+      Cor: "Preto",
+    });
+  });
+  it("linha desligada não faz o valor existir", () => {
+    const so = [
+      linha("a", "Azul / P", 2),
+      linha("off", "Preto / M", 9, "Cor / Tamanho", false),
+    ];
+    const r = fileirasDeVariacao(so, { Tamanho: "P" });
+    expect(
+      r.fileiras.find((f) => f.nome === "Cor")?.valores.map((v) => v.valor),
+    ).toEqual(["Azul"]);
+    expect(aplicarEscolhaDeVariacao(so, {}, "Cor", "Preto")).toBeNull();
+  });
+  it("produto só com Cor: tocar escolhe, e o esgotado segue recusado", () => {
+    const cores = [linha("a", "Azul", 3, "Cor"), linha("b", "Preto", 0, "Cor")];
+    expect(
+      aplicarEscolhaDeVariacao(cores, { Cor: "Azul" }, "Cor", "Azul"),
+    ).toEqual({ Cor: "Azul" });
+    expect(
+      aplicarEscolhaDeVariacao(cores, { Cor: "Azul" }, "Cor", "Preto"),
+    ).toBeNull();
+    expect(aplicarEscolhaDeVariacao(cores, {}, "Cor", "Azul")).toEqual({
+      Cor: "Azul",
+    });
+  });
+  it("três dimensões: guarda, na ordem Tamanho, Cor, Outro, só o que ainda combina com o valor tocado", () => {
+    const tres = [
+      linha("a", "P / Azul / Algodão", 4, "Tamanho / Cor / Tecido"),
+      linha("b", "M / Azul / Seda", 3, "Tamanho / Cor / Tecido"),
+      linha("c", "G / Preto / Lã", 2, "Tamanho / Cor / Tecido"),
+    ];
+    const atual = { Tamanho: "P", Cor: "Azul", Tecido: "Algodão" };
+    // M existe com Azul (Seda): o tecido sai, a cor fica.
+    expect(aplicarEscolhaDeVariacao(tres, atual, "Tamanho", "M")).toEqual({
+      Tamanho: "M",
+      Cor: "Azul",
+    });
+    // G só existe com Preto e Lã: nada do que estava escolhido sobra.
+    expect(aplicarEscolhaDeVariacao(tres, atual, "Tamanho", "G")).toEqual({
+      Tamanho: "G",
+    });
+    // Tocar na Seda (Azul + M): o tamanho P sai, a cor fica.
+    expect(aplicarEscolhaDeVariacao(tres, atual, "Tecido", "Seda")).toEqual({
+      Cor: "Azul",
+      Tecido: "Seda",
+    });
+  });
+});
+
+describe("a linha comprável nunca nasce de combinação sem estoque (toda sequência de toques)", () => {
+  // 2 tamanhos x 3 cores, com buracos: P/Preto sem estoque, M/Azul sem estoque,
+  // M/Verde nem existe.
+  const grade = [
+    linha("p-azul", "P / Azul", 2, "Tamanho / Cor"),
+    linha("p-preto", "P / Preto", 0, "Tamanho / Cor"),
+    linha("p-verde", "P / Verde", 1, "Tamanho / Cor"),
+    linha("m-azul", "M / Azul", 0, "Tamanho / Cor"),
+    linha("m-preto", "M / Preto", 3, "Tamanho / Cor"),
+  ];
+  const toques: [string, string][] = [
+    ["Tamanho", "P"],
+    ["Tamanho", "M"],
+    ["Cor", "Azul"],
+    ["Cor", "Preto"],
+    ["Cor", "Verde"],
+  ];
+  // Mesmo gesto do ProductView: tocar de novo desmarca; senão aplica a escolha
+  // (que recusa o valor sem estoque em qualquer combinação).
+  const tocar = (escolha: Record<string, string>, [g, v]: [string, string]) => {
+    if (new Map(Object.entries(escolha)).get(g) === v) {
+      return Object.fromEntries(
+        Object.entries(escolha).filter(([n]) => n !== g),
+      );
+    }
+    return aplicarEscolhaDeVariacao(grade, escolha, g, v) ?? escolha;
+  };
+  const conferir = (escolha: Record<string, string>, caminho: string) => {
+    const r = fileirasDeVariacao(grade, escolha);
+    // Nunca fica selecionado um valor apagado: a seleção é sempre coerente.
+    for (const f of r.fileiras) {
+      const marcado = escolha[f.nome];
+      if (marcado) {
+        expect(
+          f.valores.find((x) => x.valor === marcado)?.disponivel,
+          caminho,
+        ).toBe(true);
+      }
+    }
+    if (r.variante) {
+      expect(r.variante.stockIncrement, caminho).toBeGreaterThan(0);
+      expect(r.variante.active, caminho).toBe(true);
+      expect(`${escolha.Tamanho} / ${escolha.Cor}`, caminho).toBe(
+        r.variante.value,
+      );
+    }
+    // Tamanho e cor escolhidos e coerentes = há linha comprável.
+    if (escolha.Tamanho && escolha.Cor)
+      expect(r.variante, caminho).toBeDefined();
+  };
+  it("para toda sequência de até 5 toques a escolha fica coerente e a variante só existe com estoque", () => {
+    let visitados = 0;
+    const andar = (
+      escolha: Record<string, string>,
+      caminho: string,
+      fundo: number,
+    ) => {
+      conferir(escolha, caminho);
+      visitados += 1;
+      if (fundo === 0) return;
+      for (const toque of toques) {
+        andar(
+          tocar(escolha, toque),
+          `${caminho} > ${toque.join("=")}`,
+          fundo - 1,
+        );
+      }
+    };
+    andar({}, "início", 5);
+    expect(visitados).toBe(1 + 5 + 25 + 125 + 625 + 3125);
   });
 });

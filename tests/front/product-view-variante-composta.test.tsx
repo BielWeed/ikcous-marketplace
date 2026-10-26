@@ -5,7 +5,8 @@
 // produto, com o estoque DELA e o preço DELA — e a compra tem de levar o
 // variant_id da combinação certa, que é o que o servidor baixa do estoque.
 //
-// O redesenho separa a escolha em Cor e Tamanho, mas preserva o contrato:
+// O redesenho separa a escolha em Tamanho e Cor (o tamanho primeiro, mesmo no
+// produto gravado como "Cor / Tamanho"), mas preserva o contrato:
 // só a combinação completa entrega o MESMO id, estoque, preço e rótulo cru.
 //
 // Modelo estrutural copiado de product-view-estoque-contraste-aa.test.tsx
@@ -15,6 +16,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Product } from "@/types";
+import { opcaoDaVariacao } from "./helpers/opcao-da-variacao";
 
 vi.mock("@/hooks/useReviews", () => ({
   useReviews: () => ({
@@ -162,12 +164,12 @@ describe("ProductView — a combinação de atributos vira UMA opção com estoq
     vi.unstubAllGlobals();
   });
 
-  async function montar() {
+  async function montar(produto: Product = blusa) {
     const { ProductView } = await import("@/views/customer/ProductView");
     await act(async () => {
       raiz.render(
         <ProductView
-          product={blusa}
+          product={produto}
           isFavorite={false}
           onToggleFavorite={() => {}}
           onAddToCart={adicionarAoCarrinho}
@@ -189,7 +191,7 @@ describe("ProductView — a combinação de atributos vira UMA opção com estoq
           document.getElementById(el.getAttribute("aria-labelledby") ?? "")
             ?.textContent,
       ),
-    ).toEqual(["Cor", "Tamanho"]);
+    ).toEqual(["Tamanho", "Cor"]);
     expect(
       hospedeiro.querySelector('button[aria-label="Branca"]'),
     ).not.toBeNull();
@@ -224,5 +226,127 @@ describe("ProductView — a combinação de atributos vira UMA opção com estoq
     // É o id da LINHA branca PP — é dele que o servidor baixa o estoque.
     expect(variantId).toBe("v-pp");
     expect(nomes).toBe("Cor / Tamanho: Branca / PP");
+  });
+
+  it("o tamanho vem primeiro: escolhido o PP, a cor que só existe em outro tamanho fica apagada mas tocável, e a esgotada de vez fica travada", async () => {
+    const preta = {
+      ...blusaBrancaP,
+      id: "v-preta-p",
+      value: "Preta / P",
+      stockIncrement: 4,
+    };
+    const roxa = {
+      ...blusaBrancaP,
+      id: "v-roxa-pp",
+      value: "Roxa / PP",
+      stockIncrement: 0,
+    };
+    await montar({ ...blusa, variants: [blusaBrancaPP, preta, roxa] });
+    const botao = (rotulo: string) =>
+      opcaoDaVariacao(hospedeiro, rotulo) as HTMLButtonElement;
+    const tocar = (rotulo: string) =>
+      act(async () => {
+        botao(rotulo).click();
+      });
+
+    await tocar("PP");
+    expect(botao("Preta").disabled).toBe(false);
+    expect(botao("Preta").classList.contains("border-dashed")).toBe(true);
+    expect(botao("Branca").classList.contains("line-through")).toBe(false);
+    // Esgotada em todo tamanho: continua desabilitada e o toque não faz nada.
+    expect(botao("Roxa").disabled).toBe(true);
+    await tocar("Roxa");
+    expect(botao("Roxa").getAttribute("aria-pressed")).toBe("false");
+    expect(botao("PP").getAttribute("aria-pressed")).toBe("true");
+
+    // Tocar na Preta (só existe no P) escolhe a Preta e solta o PP.
+    await tocar("Preta");
+    expect(botao("Preta").getAttribute("aria-pressed")).toBe("true");
+    expect(botao("PP").getAttribute("aria-pressed")).toBe("false");
+    // Sem tamanho a compra não vai: falta escolher.
+    await act(async () => {
+      botaoPorTexto(hospedeiro, "Adicionar ao Carrinho")?.click();
+    });
+    expect(adicionarAoCarrinho).not.toHaveBeenCalled();
+
+    await tocar("Branca");
+    await tocar("PP");
+    await act(async () => {
+      botaoPorTexto(hospedeiro, "Adicionar ao Carrinho")?.click();
+    });
+    expect(adicionarAoCarrinho).toHaveBeenCalledExactlyOnceWith(
+      1,
+      "v-pp",
+      "Cor / Tamanho: Branca / PP",
+    );
+  });
+
+  it("sem beco sem saída: PP e Branca escolhidos deixam P e Preta apagados, e tocar neles troca a combinação até a Preta P", async () => {
+    const preta = {
+      ...blusaBrancaP,
+      id: "v-preta-p",
+      value: "Preta / P",
+      stockIncrement: 4,
+    };
+    await montar({ ...blusa, variants: [blusaBrancaPP, preta] });
+    const botao = (rotulo: string) =>
+      opcaoDaVariacao(hospedeiro, rotulo) as HTMLButtonElement;
+    const tocar = (rotulo: string) =>
+      act(async () => {
+        botao(rotulo).click();
+      });
+    await tocar("PP");
+    await tocar("Branca");
+    for (const rotulo of ["P", "Preta"]) {
+      expect(botao(rotulo).disabled).toBe(false);
+      expect(botao(rotulo).classList.contains("border-dashed")).toBe(true);
+    }
+    // Os escolhidos continuam clicáveis (desmarcam).
+    expect(botao("PP").disabled).toBe(false);
+    expect(botao("Branca").disabled).toBe(false);
+    await tocar("P");
+    expect(botao("P").getAttribute("aria-pressed")).toBe("true");
+    expect(botao("PP").getAttribute("aria-pressed")).toBe("false");
+    expect(botao("Branca").getAttribute("aria-pressed")).toBe("false");
+    await tocar("Preta");
+    await act(async () => {
+      botaoPorTexto(hospedeiro, "Adicionar ao Carrinho")?.click();
+    });
+    expect(adicionarAoCarrinho).toHaveBeenCalledExactlyOnceWith(
+      1,
+      "v-preta-p",
+      "Cor / Tamanho: Preta / P",
+    );
+  });
+  it("tocar numa opção apagada que solta a escolha do outro lado anuncia o que foi desmarcado, e o aviso some na escolha seguinte", async () => {
+    const preta = {
+      ...blusaBrancaP,
+      id: "v-preta-p",
+      value: "Preta / P",
+      stockIncrement: 4,
+    };
+    await montar({ ...blusa, variants: [blusaBrancaPP, preta] });
+    const botao = (rotulo: string) =>
+      opcaoDaVariacao(hospedeiro, rotulo) as HTMLButtonElement;
+    const tocar = (rotulo: string) =>
+      act(async () => {
+        botao(rotulo).click();
+      });
+    const avisos = () =>
+      [...hospedeiro.querySelectorAll('[role="status"]')]
+        .map((el) => el.textContent)
+        .join("|");
+    await tocar("PP");
+    await tocar("Branca");
+    expect(avisos()).not.toContain("desmarcado");
+    // Preta só existe no P: escolhê-la solta o PP.
+    expect(botao("Preta").getAttribute("aria-label")).toBe(
+      "Preta, indisponível com a sua escolha",
+    );
+    await tocar("Preta");
+    expect(avisos()).toContain("Tamanho PP desmarcado");
+    // Escolha seguinte sem soltar nada: o aviso antigo não fica.
+    await tocar("P");
+    expect(avisos()).not.toContain("desmarcado");
   });
 });

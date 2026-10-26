@@ -6,6 +6,7 @@ import {
   preselecionarCor,
   resolverSelecaoDosEixos,
 } from "@/utils/eixos-da-variacao";
+import { fileirasDeVariacao } from "@/utils/fileiras-de-variacao";
 import { describe, expect, it } from "vitest";
 
 const variante = (
@@ -29,8 +30,17 @@ const variantes = [
   variante("Preto / PP", 2),
 ];
 const modelo = () => criarEixosDaVariacao(variantes);
+// Os valores vêm na ordem em que o produto foi GRAVADO (Cor, Tamanho); a tela
+// mostra Tamanho antes, então o eixo se acha pela posição gravada (`indice`).
 const escolhas = (valores: string[]) =>
-  new Map(valores.map((v, i) => [modelo().eixos.at(i)!.chave, v]));
+  new Map(
+    valores.map((v, i) => [
+      modelo().eixos.find((e) => e.indice === i)!.chave,
+      v,
+    ]),
+  );
+const eixoDe = (m: ReturnType<typeof modelo>, nome: string) =>
+  m.eixos.find((e) => e.nome === nome)!;
 
 describe("eixos da variação — tradução sem mudar a linha entregue", () => {
   it("produto sem variante não inventa eixo nem seleção", () => {
@@ -39,14 +49,55 @@ describe("eixos da variação — tradução sem mudar a linha entregue", () => 
     expect([...resolverSelecaoDosEixos(m, new Map())]).toEqual([]);
   });
 
-  it("separa dois eixos com valores únicos na ordem cadastrada; ignora inativos", () => {
+  it("separa dois eixos com valores únicos, Tamanho antes de Cor (como a página); ignora inativos", () => {
     const m = criarEixosDaVariacao([
       ...variantes,
       variante("Rosa / GG", 10, { active: false }),
     ]);
     expect(m.eixos.map((e) => [e.nome, e.valores])).toEqual([
-      ["Cor", ["Azul", "Verde", "Preto"]],
       ["Tamanho", ["PP", "M"]],
+      ["Cor", ["Azul", "Verde", "Preto"]],
+    ]);
+  });
+
+  it("a ordem é a MESMA régua da página: Tamanho/Voltagem, Cor, depois os outros na gravação", () => {
+    const nomes = (name: string, value: string) =>
+      criarEixosDaVariacao([variante(value, 1, { name })]).eixos.map(
+        (e) => e.nome,
+      );
+    expect(nomes("Tecido / Cor / Tamanho", "Seda / Azul / P")).toEqual([
+      "Tamanho",
+      "Cor",
+      "Tecido",
+    ]);
+    expect(nomes("Material / Estampa / Cor", "Seda / Lisa / Azul")).toEqual([
+      "Cor",
+      "Material",
+      "Estampa",
+    ]);
+    expect(nomes("COR / tamanho", "Azul / P")).toEqual(["tamanho", "COR"]);
+    expect(nomes("Côr / Voltagem", "Azul / 220V")).toEqual(["Voltagem", "Côr"]);
+  });
+
+  it("a posição gravada (chave e indice) não muda com a ordem da tela", () => {
+    const m = modelo();
+    expect(eixoDe(m, "Cor")).toMatchObject({ indice: 0, chave: "0:0" });
+    expect(eixoDe(m, "Tamanho")).toMatchObject({ indice: 1, chave: "0:1" });
+  });
+
+  it("grupos legados independentes aparecem com o tamanho primeiro, mas o grupo principal (do carrinho) não troca", () => {
+    const m = criarEixosDaVariacao([
+      variante("Azul", 1, { name: "Cor", priceOverride: 99 }),
+      variante("M", 3, { name: "Tamanho" }),
+    ]);
+    expect(m.eixos.map((e) => e.nome)).toEqual(["Tamanho", "Cor"]);
+    expect(m.grupos.map((g) => g.nome)).toEqual(["Cor", "Tamanho"]);
+    const s = new Map(
+      m.eixos.map((e) => [e.chave, e.nome === "Cor" ? "Azul" : "M"]),
+    );
+    expect([...resolverSelecaoDosEixos(m, s)]).toEqual([
+      ["Cor", "Azul"],
+      ["Tamanho", "M"],
     ]);
   });
 
@@ -67,11 +118,12 @@ describe("eixos da variação — tradução sem mudar a linha entregue", () => 
       variante("Azul / M / Longa", 4, { name: "Cor / Tamanho / Manga" }),
     ]);
     const s = new Map(
-      m.eixos.map((e, i) => [e.chave, ["Azul", "M", "Longa"].at(i)!]),
+      m.eixos.map((e) => [e.chave, ["Azul", "M", "Longa"].at(e.indice)!]),
     );
     expect([
       ...resolverSelecaoDosEixos(m, new Map([...s].slice(0, 2))),
     ]).toEqual([]);
+    expect(m.eixos.map((e) => e.nome)).toEqual(["Tamanho", "Cor", "Manga"]);
     expect([...resolverSelecaoDosEixos(m, s)]).toEqual([
       ["Cor / Tamanho / Manga", "Azul / M / Longa"],
     ]);
@@ -97,7 +149,15 @@ describe("eixos da variação — tradução sem mudar a linha entregue", () => 
       variante("Verde / M", 0),
       variante("Azul / M", 2),
     ]);
-    expect([...preselecionarCor(m, new Map()).values()]).toEqual(["Azul"]);
+    // Com Tamanho na frente a pagina nao pre-marca nada; o card tambem nao.
+    expect([...preselecionarCor(m, new Map()).values()]).toEqual([]);
+    const semTamanho = criarEixosDaVariacao([
+      variante("Verde / Algodão", 0, { name: "Cor / Material" }),
+      variante("Azul / Algodão", 2, { name: "Cor / Material" }),
+    ]);
+    expect([...preselecionarCor(semTamanho, new Map()).values()]).toEqual([
+      "Azul",
+    ]);
   });
 
   it("escolha anterior vence a pré-escolha e não é mutada", () => {
@@ -114,7 +174,7 @@ describe("eixos da variação — tradução sem mudar a linha entregue", () => 
 
   it("distingue combinação que não existe, esgotada e última unidade", () => {
     const m = modelo();
-    const tamanho = m.eixos[1]!.chave;
+    const tamanho = eixoDe(m, "Tamanho").chave;
     expect(
       disponibilidadeDoValor(m, escolhas(["Preto"]), tamanho, "M"),
     ).toMatchObject({ existe: false, disponivel: false, ultima: false });
@@ -139,10 +199,10 @@ describe("eixos da variação — tradução sem mudar a linha entregue", () => 
     const m = modelo();
     const s = escolhas(["Azul", "M"]);
     expect([
-      ...escolherValorDoEixo(m, s, m.eixos[0]!.chave, "Verde").values(),
+      ...escolherValorDoEixo(m, s, eixoDe(m, "Cor").chave, "Verde").values(),
     ]).toEqual(["Verde", "M"]);
     expect([
-      ...escolherValorDoEixo(m, s, m.eixos[0]!.chave, "Preto").values(),
+      ...escolherValorDoEixo(m, s, eixoDe(m, "Cor").chave, "Preto").values(),
     ]).toEqual(["Preto"]);
     expect([...s.values()]).toEqual(["Azul", "M"]);
   });
@@ -152,9 +212,15 @@ describe("eixos da variação — tradução sem mudar a linha entregue", () => 
       variante("Azul / M", 3),
       variante("220V", 2, { name: "Voltagem" }),
     ]);
-    expect(m.eixos.map((e) => e.nome)).toEqual(["Cor / Tamanho", "Voltagem"]);
+    // Voltagem vem antes na tela (como na página); o cru "Cor / Tamanho" é
+    // "Outro" para a régua. Os grupos seguem a gravação.
+    expect(m.eixos.map((e) => e.nome)).toEqual(["Voltagem", "Cor / Tamanho"]);
+    expect(m.grupos.map((g) => g.nome)).toEqual(["Cor / Tamanho", "Voltagem"]);
     const s = new Map(
-      m.eixos.map((e, i) => [e.chave, ["Azul / M", "220V"].at(i)!]),
+      m.eixos.map((e) => [
+        e.chave,
+        e.nome === "Voltagem" ? "220V" : "Azul / M",
+      ]),
     );
     expect([...resolverSelecaoDosEixos(m, s)]).toEqual([
       ["Cor / Tamanho", "Azul / M"],
@@ -179,13 +245,13 @@ describe("eixos da variação — tradução sem mudar a linha entregue", () => 
     );
     expect([
       ...escolherValorDoEixo(m, escolhas(["Azul", "M"])).values(),
-    ]).toEqual(["Azul"]);
+    ]).toEqual(["M"]); // a ordem da tela (Tamanho primeiro) decide quem fica
     const legado = criarEixosDaVariacao([
       variante("Azul", 3, { name: "Cor" }),
       variante("M", 2, { name: "Tamanho" }),
     ]);
     const s = new Map(
-      legado.eixos.map((e, i) => [e.chave, ["Azul", "M"].at(i)!]),
+      legado.eixos.map((e) => [e.chave, e.nome === "Cor" ? "Azul" : "M"]),
     );
     const anterior = new Map([
       ["Tamanho", "M"],
@@ -201,7 +267,7 @@ describe("eixos da variação — tradução sem mudar a linha entregue", () => 
     (v) => {
       const m = modelo();
       const s = new Map(
-        m.eixos.map((e, i) => [e.chave, v.value.split(" / ").at(i)!]),
+        m.eixos.map((e) => [e.chave, v.value.split(" / ").at(e.indice)!]),
       );
       // O caminho antigo recebia diretamente a escolha do chip da combinação.
       const antiga = new Map([[v.name, v.value]]);
@@ -225,4 +291,42 @@ describe("eixos da variação — tradução sem mudar a linha entregue", () => 
       expect(item(nova).variantNames).toBe(`Cor / Tamanho: ${v.value}`);
     },
   );
+});
+
+describe("card da vitrine e página do produto resolvem a MESMA linha", () => {
+  // Tamanho x Cor com buracos: Azul/M sem estoque, Preto/PP existe, Verde/PP
+  // esgotado, Preto/M não existe.
+  it.each(
+    ["PP", "M"].flatMap((t) => ["Azul", "Verde", "Preto"].map((c) => [t, c])),
+  )("%s + %s: mesma linha (ou nenhuma) nos dois caminhos", (tamanho, cor) => {
+    const m = modelo();
+    const doCard = resolverSelecaoDosEixos(
+      m,
+      new Map([
+        [eixoDe(m, "Tamanho").chave, tamanho],
+        [eixoDe(m, "Cor").chave, cor],
+      ]),
+    );
+    const daPagina = fileirasDeVariacao(variantes, {
+      Tamanho: tamanho,
+      Cor: cor,
+    }).variante;
+    if (!daPagina) {
+      expect([...doCard]).toEqual([]);
+      return;
+    }
+    expect([...doCard]).toEqual([[daPagina.name, daPagina.value]]);
+    expect(
+      variantes.find(
+        (x) =>
+          x.name === daPagina.name && x.value === doCard.get(daPagina.name),
+      ),
+    ).toBe(daPagina);
+  });
+
+  it("a ordem dos eixos do card é a das fileiras da página", () => {
+    expect(modelo().eixos.map((e) => e.nome)).toEqual(
+      fileirasDeVariacao(variantes).fileiras.map((f) => f.nome),
+    );
+  });
 });
