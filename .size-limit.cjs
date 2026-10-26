@@ -102,7 +102,10 @@ module.exports = [
     // 25/10/2026 (regra do dono: o teto sobe, nunca se troca por codigo arriscado):
     // 576 -> 580 kB na 1.5.74 (acessibilidade da loja: rotulos, avisos falados, alvos
     // de toque e o CEP do convidado). Medido 576,02 kB: 20 B acima do teto anterior.
-    limit: "580 kB",
+    // 26/10/2026 (regra do dono: o teto sobe, nunca se troca por codigo arriscado):
+    // 580 -> 584 kB na 1.5.80 (setas e icones certos em varias telas da loja). Medido no CI
+    // 580,05 kB: 46 B acima do teto anterior; na maquina deu 579,63 kB (ruido de hash).
+    limit: "584 kB",
     webpack: false,
     // Sem `running: false` o preset tenta MEDIR TEMPO rodando o bundle em
     // Chrome headless — inútil para app de navegador e quebra em runner sem
