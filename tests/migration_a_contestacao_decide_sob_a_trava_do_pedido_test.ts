@@ -321,6 +321,8 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     "tests/banco/busca-do-painel-por-codigo-viva.cjs",
     // 20261386: o preco do produto deixa historico (trava de 5 s sem nada pela metade, a janela do salvamento no meio da migration, backfill sem data inventada, 12 caminhos do gatilho, mutantes, ACL/RLS por papel, rollbacks, consultas 91a/91b).
     "tests/banco/o-preco-do-produto-deixa-historico-viva.cjs",
+    // 20261387: a busca de pedido pelo numero nao vira busca de telefone (o numero 3884BE acha o pedido e nao o telefone de outra pessoa, o pedido do numero vem primeiro, telefone/nome/rastreio seguem, total_count/paginacao/filtros iguais, mutantes, rollback e consultas 92a/92b).
+    "tests/banco/a-busca-de-pedido-pelo-numero-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -442,6 +444,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/busca-do-painel-por-codigo-viva.cjs",
     // 20261386: o preco do produto deixa historico (trava de 5 s sem nada pela metade, a janela do salvamento no meio da migration, backfill sem data inventada, 12 caminhos do gatilho, mutantes, ACL/RLS por papel, rollbacks, consultas 91a/91b).
     "tests/banco/o-preco-do-produto-deixa-historico-viva.cjs",
+    // 20261387: a busca de pedido pelo numero nao vira busca de telefone (o numero 3884BE acha o pedido e nao o telefone de outra pessoa, o pedido do numero vem primeiro, telefone/nome/rastreio seguem, total_count/paginacao/filtros iguais, mutantes, rollback e consultas 92a/92b).
+    "tests/banco/a-busca-de-pedido-pelo-numero-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/pagamentos-rpc-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",

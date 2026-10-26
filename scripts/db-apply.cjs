@@ -78,6 +78,29 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261387: a busca de pedido pelo numero nao vira busca de telefone (get_admin_orders_paged). Os dois gates de admin, a regra "so e telefone
+  // o que parece telefone" (a variavel e a condicao nos DOIS blocos: contagem e pagina) e o pedido do numero primeiro ficam no corpo; o resto
+  // e o da 20261199. A consulta 92a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
+  "20261387000000_a_busca_de_pedido_pelo_numero_nao_vira_busca_de_telefone.sql":
+    {
+      funcao: "get_admin_orders_paged",
+      esperado: [
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        {
+          texto: "v_parece_telefone := v_clean_search ~ '^[+]?[0-9() .-]+$';",
+          vezes: 1,
+        },
+        {
+          texto: "v_parece_telefone AND length(v_search_digitos) >= 4",
+          vezes: 2,
+        },
+        {
+          texto: "AND upper(right(o.id::TEXT, 6)) = upper(v_clean_search)",
+          vezes: 1,
+        },
+      ],
+    },
   // 20261386: o preco do produto deixa historico. A tabela, a politica, o ACL e o gatilho nao sao conferiveis aqui (so corpo de funcao): a
   // consulta 91a e a prova viva fazem isso. Aqui: a funcao do gatilho grava 'cadastro' no INSERT e 'mudanca' so quando o preco muda.
   "20261386000000_o_preco_do_produto_deixa_historico.sql": {

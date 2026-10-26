@@ -3095,6 +3095,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "89a-conferir-o-pedido-pelo-app-exige-conta-aplicado",
     "90a-conferir-busca-do-painel-por-codigo-aplicado",
     "91a-conferir-o-preco-do-produto-deixa-historico-aplicado",
+    "92a-conferir-a-busca-de-pedido-pelo-numero-aplicado",
   ]);
 });
 
