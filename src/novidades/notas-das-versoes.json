@@ -6,10 +6,10 @@
     ],
     "correcoes": [],
     "melhorias": [
-      "Painel, variações: ao criar um atributo você escolhe entre Tamanho, Cor, Voltagem, Capacidade, Material ou Outro, e cada um mostra a contagem do que já marcou. Ao criar várias variações de uma vez, Marcar todos e Limpar poupam toques, e o valor que você digita continua do jeito que digitou.",
+      "Painel, variações: ao criar um atributo você escolhe entre Tamanho, Cor, Voltagem, Capacidade, Material ou Outro. Ao criar várias variações de uma vez, cada atributo mostra quantos valores já foram marcados, e Marcar todos e Limpar poupam toques. O valor que você digita continua do jeito que digitou.",
       "Painel, variações: se o produto já tem o valor gravado de outro jeito (por exemplo \"128gb\"), tocar no botão equivalente usa o que já está gravado, em vez de criar uma segunda opção.",
       "Painel, variações: o seletor cabe em celulares estreitos, e as abas podem ser trocadas pelas setas do teclado.",
-      "Loja: Capacidade (ou Armazenamento e Memória) aparece antes da cor, na mesma ordem do tamanho."
+      "Loja: Capacidade (ou Armazenamento e Memória) aparece antes da cor, na mesma ordem do tamanho. Na vitrine, em produto com capacidade, a cor não vem mais marcada de antemão: toque na capacidade e depois na cor."
     ]
   },
   "1.5.76": {
