@@ -2632,6 +2632,25 @@ const ROL_DA_89 = [
   "create_marketplace_order_v24: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)",
   "create_marketplace_order_v24: EXECUTE para anon, authenticated e service_role, sem PUBLIC",
 ];
+// Lote 91 (20261386000000, o preco do produto deixa historico: tabela produto_historico_preco, a funcao registrar_historico_de_preco e o
+// gatilho em produtos). A 91a e a 91b nao se parecem: a 91a prova o que ficou; a 91b prova a ausencia e as premissas. A 91a negativa
+// (antes do apply) responde "nao" em tudo menos no controle, nunca erro.
+const ROL_DA_91A = [
+  "controle: catalogo publico visivel",
+  "registrar_historico_de_preco: uma so, com o corpo da 20261386000000 (md5)",
+  "registrar_historico_de_preco: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path fixo, retorna trigger) e EXECUTE para ninguem de aplicacao",
+  "gatilho tr_produto_historico_de_preco em produtos: AFTER INSERT OR UPDATE OF preco_venda por linha, ligado, apontando para a funcao",
+  "produto_historico_preco: tabela comum com RLS ligada sem FORCE e uma so politica, de SELECT para authenticated, so do admin atual",
+  "produto_historico_preco: so SELECT para authenticated e service_role; nenhuma escrita para ninguem de aplicacao; anon e PUBLIC nada",
+  "produto_historico_preco: as 7 colunas com o tipo certo, chave primaria, FK para produtos ON DELETE CASCADE, CHECK de origem e o indice (produto_id, mudado_em DESC)",
+  "backfill: nenhum produto ficou sem linha de historico (conta, nao lista)",
+];
+const ROL_DA_91B = [
+  "controle: catalogo publico visivel",
+  "produto_historico_preco, registrar_historico_de_preco e tr_produto_historico_de_preco: ainda NAO existem",
+  "produtos: id uuid e preco_venda numeric existem e a tabela tem RLS ligada",
+  "rls_admin_atual() existe com o corpo da 20261197000000 (md5) e e executavel pelo authenticated",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "90a-conferir-busca-do-painel-por-codigo-aplicado": [
     "controle: funcoes de public visiveis a este papel",
@@ -2659,6 +2678,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   ],
   "89a-conferir-o-pedido-pelo-app-exige-conta-aplicado": ROL_DA_89,
   "89b-antes-o-pedido-pelo-app-exige-conta-base-vigente": ROL_DA_89,
+  "91a-conferir-o-preco-do-produto-deixa-historico-aplicado": ROL_DA_91A,
+  "91b-antes-o-preco-do-produto-deixa-historico-ausente": ROL_DA_91B,
   "88a-conferir-so-o-dono-define-cargo-aplicado": ROL_DA_88A,
   "88b-antes-so-o-dono-define-cargo-ausente": ROL_DA_88B,
   "86a-conferir-ex-admin-no-resto-do-painel-aplicado": ROL_DA_86A,
