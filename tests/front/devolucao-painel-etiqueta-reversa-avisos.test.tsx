@@ -223,6 +223,7 @@ describe("painel de devoluções — avisos da etiqueta reversa (achado A2)", ()
 
     await abrirFicha();
     await clicar(botao("Gerar código de postagem"));
+    await clicar(botao("Confirmar e gerar")); // compra: confirmação em linha
 
     expect(invoke).toHaveBeenCalledWith(
       "melhor-envio-etiqueta",
@@ -287,6 +288,7 @@ describe("painel de devoluções — avisos da etiqueta reversa (achado A2)", ()
 
     await abrirFicha();
     await clicar(botao("Gerar código de postagem"));
+    await clicar(botao("Confirmar e gerar")); // compra: confirmação em linha
 
     expect(toast.warning).toHaveBeenCalledWith(
       expect.stringContaining("venceu"),
@@ -314,6 +316,7 @@ describe("painel de devoluções — avisos da etiqueta reversa (achado A2)", ()
 
     await abrirFicha();
     await clicar(botao("Gerar código de postagem"));
+    await clicar(botao("Confirmar e gerar")); // compra: confirmação em linha
 
     expect(toast.success).toHaveBeenCalledWith(
       expect.not.stringContaining("O cliente já vê no pedido"),

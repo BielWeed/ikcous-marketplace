@@ -190,7 +190,7 @@ export function LazyImage({
           // o produto. Medido no Chromium real; jsdom não enxerga empilhamento.
           className="absolute inset-0 z-10 flex items-center justify-center border border-zinc-100 bg-zinc-50 dark:border-white/5 dark:bg-zinc-900"
         >
-          <span className="px-2 text-center text-[10px] font-medium text-zinc-400 dark:text-zinc-500">
+          <span className="px-2 text-center text-[10px] font-medium text-zinc-600 dark:text-zinc-500">
             Toque para tentar de novo
           </span>
         </button>

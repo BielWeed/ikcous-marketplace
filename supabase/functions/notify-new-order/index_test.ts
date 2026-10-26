@@ -177,6 +177,7 @@ function bancoDoAviso(opts: {
   pedidos?: any[];
   avisos?: Avisos;
   rpcComErro?: boolean;
+  leituraComErro?: { code?: string; message: string };
 } = {}) {
   const avisos: Avisos = opts.avisos ?? new Map();
   const pedidos = opts.pedidos ?? [PEDIDO_RECENTE];
@@ -196,6 +197,7 @@ function bancoDoAviso(opts: {
           if (tabela !== "marketplace_orders") {
             return Promise.resolve({ data: null, error: { message: `tabela inesperada ${tabela}` } });
           }
+          if (opts.leituraComErro) return Promise.resolve({ data: null, error: opts.leituraComErro });
           return Promise.resolve({ data: pedidos.find((p) => p.id === id) ?? null, error: null });
         },
       };
@@ -358,4 +360,59 @@ Deno.test("aviso: o push leva o texto montado do BANCO e a resposta não expõe 
   assertEquals(push.avisos[0], montarAviso(PEDIDO_RECENTE));
   assertEquals("total" in r.corpo, false);
   assertEquals("enviados" in r.corpo, false);
+});
+
+// ---------------------------------------------------------------------------
+// Caçada de 26/10/2026: a falha devolvia `error.message` cru ao navegador —
+// texto do Postgres/PostgREST (nome de tabela, coluna, valor que falhou). A
+// resposta agora é texto fixo, e o log leva só o tipo do erro (o molde da
+// `send-order-whatsapp`).
+// ---------------------------------------------------------------------------
+
+Deno.test("falha na leitura do pedido -> 400 com texto fixo, sem a mensagem do banco na resposta nem no log", async () => {
+  const segredo = 'column "telefone_do_cliente" of relation "marketplace_orders" = 5511999990000';
+  const banco = bancoDoAviso({ leituraComErro: { code: "42703", message: segredo } });
+  const push = pushContado();
+  const logs: string[] = [];
+  const original = console.error;
+  console.error = (...a: unknown[]) => {
+    logs.push(a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" "));
+  };
+  let r;
+  try {
+    r = await avisar(UUID_VALIDO, banco, push);
+  } finally {
+    console.error = original;
+  }
+  assertEquals(r.resposta.status, 400);
+  assertEquals(r.corpo, { ok: false, erro: "Falha ao processar o aviso." });
+  assertEquals(JSON.stringify(r.corpo).includes("telefone_do_cliente"), false);
+  assertEquals(logs.length, 1);
+  assertEquals(logs[0].includes("telefone_do_cliente"), false);
+  assertEquals(logs[0].includes("5511999990000"), false);
+  assertEquals(logs[0].includes("42703"), true);
+  assertEquals(push.avisos.length, 0);
+});
+
+Deno.test("falha sem código (Error comum) -> o log leva o nome do erro, a resposta o mesmo texto fixo", async () => {
+  const banco = bancoDoAviso();
+  banco.cliente.from = () => {
+    throw new TypeError("falhou em https://projeto.supabase.co com a chave sb_secret_xyz");
+  };
+  const logs: string[] = [];
+  const original = console.error;
+  console.error = (...a: unknown[]) => {
+    logs.push(a.map((x) => (typeof x === "string" ? x : String(x))).join(" "));
+  };
+  let r;
+  try {
+    r = await avisar(UUID_VALIDO, banco, pushContado());
+  } finally {
+    console.error = original;
+  }
+  assertEquals(r.resposta.status, 400);
+  assertEquals(r.corpo, { ok: false, erro: "Falha ao processar o aviso." });
+  assertEquals(logs.length, 1);
+  assertEquals(logs[0].includes("sb_secret_xyz"), false);
+  assertEquals(logs[0].includes("TypeError"), true);
 });

@@ -202,6 +202,10 @@ on:
       - "scripts/publicacao/consultas/96b-antes-o-estoque-que-volta-tranca-na-mesma-ordem-base-vigente.sql"
       - "scripts/publicacao/consultas/97a-conferir-o-lucro-do-inicio-conta-o-mes-inteiro-aplicado.sql"
       - "scripts/publicacao/consultas/97b-antes-o-lucro-do-inicio-conta-o-mes-inteiro-base-vigente.sql"
+      - "scripts/publicacao/consultas/98a-conferir-a-foto-da-devolucao-e-a-pergunta-tem-teto-aplicado.sql"
+      - "scripts/publicacao/consultas/98b-antes-a-foto-da-devolucao-e-a-pergunta-tem-teto-base-vigente.sql"
+      - "scripts/publicacao/consultas/100a-conferir-o-financeiro-descreve-a-venda-do-balcao-aplicado.sql"
+      - "scripts/publicacao/consultas/100b-antes-o-financeiro-descreve-a-venda-do-balcao-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -373,6 +377,10 @@ on:
       - "scripts/publicacao/consultas/96b-antes-o-estoque-que-volta-tranca-na-mesma-ordem-base-vigente.sql"
       - "scripts/publicacao/consultas/97a-conferir-o-lucro-do-inicio-conta-o-mes-inteiro-aplicado.sql"
       - "scripts/publicacao/consultas/97b-antes-o-lucro-do-inicio-conta-o-mes-inteiro-base-vigente.sql"
+      - "scripts/publicacao/consultas/98a-conferir-a-foto-da-devolucao-e-a-pergunta-tem-teto-aplicado.sql"
+      - "scripts/publicacao/consultas/98b-antes-a-foto-da-devolucao-e-a-pergunta-tem-teto-base-vigente.sql"
+      - "scripts/publicacao/consultas/100a-conferir-o-financeiro-descreve-a-venda-do-balcao-aplicado.sql"
+      - "scripts/publicacao/consultas/100b-antes-o-financeiro-descreve-a-venda-do-balcao-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -556,6 +564,13 @@ jobs:
       - name: Prova viva do lucro do Inicio que conta o mes inteiro (20261390)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-lucro-do-inicio-conta-o-mes-inteiro-viva.cjs
+      - name: Prova viva do teto da foto da devolucao e da pergunta (20261391000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-foto-da-devolucao-e-a-pergunta-tem-teto-viva.cjs
+      # 99 reservada para a migration de analytics_events, guardada no ramo fix-199-abuso-do-banco ate o dono aprovar.
+      - name: Prova viva da descricao da venda do balcao no Financeiro (20261391200000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-financeiro-descreve-a-venda-do-balcao-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

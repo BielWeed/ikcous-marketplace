@@ -1166,7 +1166,7 @@ export const ProductCard = memo(function ProductCard({
                   // `aria-disabled:active:scale-100`: o botão `disabled` não
                   // encolhia ao toque; aria-disabled não o desliga sozinho -- a
                   // classe mantém o visual de antes.
-                  "w-full py-2 px-3 max-[359px]:px-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider max-[359px]:tracking-normal transition-all duration-150 active:scale-95 aria-disabled:active:scale-100 shadow-[0_4px_10px_rgba(24,24,27,0.1)] flex items-center justify-center gap-1.5",
+                  "w-full min-h-11 py-2 px-3 max-[359px]:px-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider max-[359px]:tracking-normal transition-all duration-150 active:scale-95 aria-disabled:active:scale-100 shadow-[0_4px_10px_rgba(24,24,27,0.1)] flex items-center justify-center gap-1.5",
                   semEstoqueNoCard
                     ? "bg-zinc-100 text-zinc-400 cursor-not-allowed shadow-none"
                     : cartStatus === "success"

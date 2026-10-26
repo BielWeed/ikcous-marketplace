@@ -208,8 +208,12 @@ export async function handler(req: Request, deps: NotifyNewOrderDeps = {}): Prom
 
     return json({ ok: true });
   } catch (error: any) {
-    console.error("notify-new-order: erro na requisição", error);
-    return json({ ok: false, erro: error.message }, 400);
+    // Só o tipo do erro, na resposta e no log (o molde da `send-order-whatsapp`):
+    // a mensagem de uma falha de banco ou de rede pode trazer nome de tabela,
+    // coluna ou o valor que falhou. O status segue 400 — o front só registra.
+    const motivo = String(error?.code ?? error?.name ?? "erro");
+    console.error(`notify-new-order: erro na requisição: ${motivo}`);
+    return json({ ok: false, erro: "Falha ao processar o aviso." }, 400);
   }
 }
 

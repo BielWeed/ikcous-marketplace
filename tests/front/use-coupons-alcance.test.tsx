@@ -50,7 +50,9 @@ vi.mock("@/lib/supabase", () => ({
       },
       update: (payload: unknown) => {
         update(payload);
-        return { eq: (...args: unknown[]) => eq(...args) };
+        return {
+          eq: (...args: unknown[]) => ({ select: () => eq(...args) }),
+        };
       },
     }),
   },
@@ -94,7 +96,7 @@ describe("useCoupons — alcance e clientes do cupom", () => {
     insert.mockClear();
     update.mockClear();
     eq.mockReset();
-    eq.mockResolvedValue({ error: null });
+    eq.mockResolvedValue({ data: [{ id: "c" }], error: null });
     rpc.mockReset();
     sonda.mockClear();
     respostaDaSonda = () => ({ error: null });

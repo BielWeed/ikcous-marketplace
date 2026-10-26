@@ -27,6 +27,12 @@ interface LocalBufferedInputProps
    * `value`) continua sendo mostrado como está, zero inclusive.
    */
   readonly zeroVazio?: boolean;
+  /**
+   * Ao sair do campo, escreve de volta o texto já normalizado (o mesmo que o
+   * `onFlush` entrega ao pai). Sem isto, o campo seguia mostrando o que foi
+   * digitado ("verão 10") enquanto outro texto ("VERAO10") era gravado.
+   */
+  readonly normalizarAoSair?: (val: string) => string;
 }
 
 const formatPhone = (val: string, anterior?: string) => {
@@ -91,6 +97,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
   mask,
   permiteNegativo = false,
   zeroVazio = false,
+  normalizarAoSair,
   ...props
 }: LocalBufferedInputProps) {
   const formatValue = useCallback(
@@ -200,6 +207,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
   const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
     isFocusedRef.current = false;
     flushBufferedValue();
+    if (normalizarAoSair) setLocalVal(normalizarAoSair(String(localVal)));
     if (props.onBlur) {
       props.onBlur(e);
     }

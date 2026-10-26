@@ -154,6 +154,53 @@ const VERIFICACOES = {
       { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
     ],
   },
+  // 20261391000000: a foto da devolucao e a pergunta tem teto. A politica de storage e o CHECK de questions nao sao conferiveis aqui
+  // (so corpo de funcao): a consulta 98a e a prova viva fazem isso. Aqui: a funcao que a politica chama conta SO as fotos soltas da
+  // propria pasta do bucket 'devolucoes' (as que nenhuma devolucao cita) e para no teto; sem o NOT EXISTS a foto legitima passaria a contar.
+  "20261391000000_a_foto_da_devolucao_e_a_pergunta_tem_teto.sql": {
+    funcao: "devolucao__fotos_soltas_da_conta",
+    esperado: [
+      { texto: "WHERE o.bucket_id = 'devolucoes'", vezes: 1 },
+      { texto: "AND split_part(o.name, '/', 1) = p_uid::text", vezes: 1 },
+      {
+        texto:
+          "AND NOT EXISTS (SELECT 1 FROM public.devolucoes d WHERE o.name = ANY (d.fotos))",
+        vezes: 1,
+      },
+      { texto: "LIMIT p_teto", vezes: 1 },
+    ],
+  },
+  // 20261391200000: o Financeiro descreve a venda do balcao como o app mostra. fin__movimentos muda SO a coluna descricao (numero em
+  // maiuscula, balcao sem repetir 'Venda no balcão', venda do balcao anulada pelo app); as duas linhas de dinheiro que a 1b confere
+  // para a 20261177000000 continuam UMA vez cada. A consulta 100a confere o corpo exato (md5), os atributos e a ACL.
+  "20261391200000_o_financeiro_descreve_a_venda_do_balcao_como_o_app_mostra.sql":
+    {
+      funcao: "fin__movimentos",
+      esperado: [
+        { texto: "upper(right(v.id::text, 6))", vezes: 4 },
+        { texto: "upper(right(o.id::text, 6))", vezes: 1 },
+        {
+          texto:
+            "NULLIF(NULLIF(btrim(v.customer_name), ''), 'Venda no balcão')",
+          vezes: 1,
+        },
+        { texto: "'Venda do balcão anulada · #'", vezes: 1 },
+        {
+          texto: "h.payment_status_antes = 'recebido_na_entrega'",
+          vezes: 1,
+        },
+        {
+          texto:
+            "AND o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega', 'estornado')",
+          vezes: 1,
+        },
+        {
+          texto:
+            "(v.total - COALESCE(v.valor_estornado, 0) - COALESCE(dm.valor, 0))::numeric,",
+          vezes: 1,
+        },
+      ],
+    },
   // 20261386: o preco do produto deixa historico. A tabela, a politica, o ACL e o gatilho nao sao conferiveis aqui (so corpo de funcao): a
   // consulta 91a e a prova viva fazem isso. Aqui: a funcao do gatilho grava 'cadastro' no INSERT e 'mudanca' so quando o preco muda.
   "20261386000000_o_preco_do_produto_deixa_historico.sql": {

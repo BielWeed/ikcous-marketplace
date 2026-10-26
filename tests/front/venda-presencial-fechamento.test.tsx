@@ -210,6 +210,22 @@ describe("mensagemDaFalhaDaVenda (função pura, C3.4)", () => {
     });
   });
 
+  it("`code` vazio (formato do postgrest-js quando o fetch falha) é falha de rede, não código desconhecido", () => {
+    expect(
+      mensagemDaFalhaDaVenda({
+        code: "",
+        message: "TypeError: Failed to fetch",
+        details: "",
+        hint: "",
+      }),
+    ).toEqual({
+      mensagem:
+        "Não consegui falar com o servidor. O cupom está salvo aqui; tente de novo quando a conexão voltar.",
+      podeTentarDeNovo: true,
+      precisaEntrarDeNovo: false,
+    });
+  });
+
   it("DOMException nunca aparece crua na tela", () => {
     const dom = new DOMException("The operation was aborted.", "AbortError");
     const r = mensagemDaFalhaDaVenda(dom);
@@ -239,6 +255,21 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
           );
         }
         return registrarImplRef.atual(params);
+      }
+      if (nome === "get_admin_customers_paged") {
+        return {
+          data: {
+            data: [
+              {
+                id: "cliente-1",
+                full_name: "Maria Cliente",
+                whatsapp: "11999990000",
+                email: "maria@example.com",
+              },
+            ],
+          },
+          error: null,
+        };
       }
       throw new Error(`RPC inesperada no teste de fechamento: ${nome}`);
     });
@@ -918,5 +949,261 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
       "Registrar venda",
     ) as HTMLButtonElement;
     expect(botaoRegistrar.disabled).toBe(true);
+  });
+
+  // ---- Defeito 2 da caçada do balcão: o WhatsApp do cliente CADASTRADO ----
+  //
+  // O banco devolve em `customer_data.whatsapp` o que a tela mandou em
+  // `p_cliente_whatsapp`; o recibo liga o "Enviar por WhatsApp" a partir
+  // dele. Este dublê faz o mesmo eco, para provar a corrente inteira.
+  function armarRegistroQueEcoaOCliente(): void {
+    registrarImplRef.atual = async (params: any) => ({
+      data: {
+        ja_existia: false,
+        order: {
+          ...pedidoDeExemplo("88888888-8888-8888-8888-888888888888"),
+          user_id: params.p_cliente_user_id,
+          customer_name: params.p_cliente_nome ?? "Cliente do teste",
+          customer_data: { whatsapp: params.p_cliente_whatsapp },
+        },
+        items: [],
+      },
+      error: null,
+    });
+  }
+
+  async function digitarNoCampo(id: string, valor: string): Promise<void> {
+    await act(async () => {
+      const campo = document.getElementById(id) as HTMLInputElement;
+      const setter = Object.getOwnPropertyDescriptor(
+        globalThis.HTMLInputElement.prototype,
+        "value",
+      )!.set!;
+      setter.call(campo, valor);
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await avancar(300);
+  }
+
+  async function biparEAbrirCliente(): Promise<void> {
+    codigoBipadoRef.atual = PRODUTO_SIMPLES.codigo;
+    await act(async () => {
+      raiz.render(<AdminPdvView onNavigate={vi.fn()} />);
+    });
+    await avancar();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "bipar")!.click();
+    });
+    await avancar();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Cliente")!.click();
+    });
+    await avancar();
+  }
+
+  async function pagarEmDinheiroERegistrar(): Promise<void> {
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Fechar venda")!.click();
+    });
+    await avancar();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Dinheiro")!.click();
+    });
+    await avancar();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Registrar venda")!.click();
+    });
+    await avancar();
+  }
+
+  it("caso 11 — cliente CADASTRADO: o WhatsApp do perfil vai para a RPC e o recibo liga 'Enviar por WhatsApp'", async () => {
+    armarRegistroQueEcoaOCliente();
+    await biparEAbrirCliente();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Buscar cliente")!.click();
+    });
+    await avancar();
+    await digitarNoCampo("busca-de-cliente-do-balcao", "maria");
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Maria Cliente")!.click();
+    });
+    await avancar();
+    await pagarEmDinheiroERegistrar();
+
+    const params = chamadasDeRegistro()[0][1];
+    expect(params.p_cliente_user_id).toBe("cliente-1");
+    expect(params.p_cliente_nome).toBeNull();
+    expect(params.p_cliente_whatsapp).toBe("11999990000");
+
+    expect(hospedeiro.textContent).toContain("Compra na loja");
+    expect(hospedeiro.textContent).not.toContain("cliente sem WhatsApp");
+    expect(
+      localizarBotaoPorTexto(hospedeiro, "Enviar por WhatsApp")!.disabled,
+    ).toBe(false);
+  });
+
+  it("caso 11b — cliente AVULSO segue mandando nome e WhatsApp digitados (sem user_id)", async () => {
+    armarRegistroQueEcoaOCliente();
+    await biparEAbrirCliente();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Cliente avulso")!.click();
+    });
+    await avancar();
+    await digitarNoCampo("nome-do-cliente-avulso", "Fulano de Tal");
+    await digitarNoCampo("whatsapp-do-cliente-avulso", "11988887777");
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Confirmar cliente avulso")!.click();
+    });
+    await avancar();
+    await pagarEmDinheiroERegistrar();
+
+    const params = chamadasDeRegistro()[0][1];
+    expect(params.p_cliente_user_id).toBeNull();
+    expect(params.p_cliente_nome).toBe("Fulano de Tal");
+    expect(params.p_cliente_whatsapp).toBe("11988887777");
+    expect(
+      localizarBotaoPorTexto(hospedeiro, "Enviar por WhatsApp")!.disabled,
+    ).toBe(false);
+  });
+
+  it("caso 11c — cadastrado SEM WhatsApp no perfil manda null (o banco não ganha texto vazio) e o recibo explica", async () => {
+    rpcMock.mockImplementation(async (nome: string, params: any) => {
+      if (nome === "buscar_por_codigo_barras") {
+        return { data: PRODUTO_SIMPLES, error: null };
+      }
+      if (nome === "get_admin_customers_paged") {
+        return {
+          data: {
+            data: [
+              {
+                id: "cliente-2",
+                full_name: "Ana Sem Zap",
+                whatsapp: null,
+                email: "ana@example.com",
+              },
+            ],
+          },
+          error: null,
+        };
+      }
+      return registrarImplRef.atual!(params);
+    });
+    armarRegistroQueEcoaOCliente();
+    await biparEAbrirCliente();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Buscar cliente")!.click();
+    });
+    await avancar();
+    await digitarNoCampo("busca-de-cliente-do-balcao", "ana");
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Ana Sem Zap")!.click();
+    });
+    await avancar();
+    await pagarEmDinheiroERegistrar();
+
+    expect(chamadasDeRegistro()[0][1].p_cliente_whatsapp).toBeNull();
+    expect(hospedeiro.textContent).toContain(
+      "Indisponível: cliente sem WhatsApp.",
+    );
+    expect(
+      localizarBotaoPorTexto(hospedeiro, "Enviar por WhatsApp")!.disabled,
+    ).toBe(true);
+  });
+
+  // ---- Defeito 3 da caçada do balcão: falha de rede não prova "não gravou" ----
+  //
+  // O prazo de 20 s (ou a rede caindo) pode estourar DEPOIS de o banco
+  // gravar. A tela não pode afirmar que a venda não foi registrada: a mesma
+  // chave de idempotência (caso 3) faz a nova tentativa devolver o recibo.
+  const NAO_FOI_REGISTRADA = /n[ãa]o foi registrada/i;
+
+  it("caso 12 — rede caiu na resposta: a tela não afirma 'não foi registrada' e diz que o recibo aparece se já entrou", async () => {
+    // O formato REAL do supabase-js/postgrest-js quando o fetch falha: não
+    // lança, devolve `error` com `code: ""` (nunca um TypeError solto).
+    const chaves: string[] = [];
+    registrarImplRef.atual = async (params: any) => {
+      chaves.push(params.p_idempotency_key);
+      return {
+        data: null,
+        error: {
+          code: "",
+          message: "TypeError: Failed to fetch",
+          details: "",
+          hint: "",
+        },
+      };
+    };
+    await montarAtePagamentoEscolhido();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Registrar venda")!.click();
+    });
+    await avancar();
+
+    const aviso = hospedeiro.querySelector('[role="alert"]')!;
+    expect(aviso.textContent).not.toMatch(NAO_FOI_REGISTRADA);
+    expect(aviso.textContent).toContain(
+      "Não sabemos se a venda foi registrada",
+    );
+    expect(aviso.textContent).toContain("recibo");
+    expect(aviso.textContent).toContain("tente de novo");
+
+    // A saída é TENTAR DE NOVO com a mesma chave — nunca "Começar uma venda
+    // nova", que giraria a chave e poderia duplicar a venda.
+    const registrar = localizarBotaoPorTexto(
+      hospedeiro,
+      "Registrar venda",
+    ) as HTMLButtonElement;
+    expect(registrar.disabled).toBe(false);
+    expect(localizarBotaoPorTexto(hospedeiro, "Começar uma venda nova")).toBe(
+      undefined,
+    );
+    await act(async () => {
+      registrar.click();
+    });
+    await avancar();
+    expect(chaves).toHaveLength(2);
+    expect(chaves[1]).toBe(chaves[0]);
+  });
+
+  it("caso 12b — o prazo de 20 s estourou: mesma frase honesta, e o botão segue liberado para tentar de novo", async () => {
+    registrarImplRef.atual = () => new Promise(() => {});
+    await montarAtePagamentoEscolhido();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Registrar venda")!.click();
+    });
+    await avancar(20_000);
+
+    const aviso = hospedeiro.querySelector('[role="alert"]')!;
+    expect(aviso.textContent).not.toMatch(NAO_FOI_REGISTRADA);
+    expect(aviso.textContent).toContain(
+      "Não sabemos se a venda foi registrada",
+    );
+    expect(
+      (
+        localizarBotaoPorTexto(
+          hospedeiro,
+          "Registrar venda",
+        ) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+  });
+
+  it("caso 12c — recusa DEFINITIVA do banco (estoque) continua dizendo que não foi possível registrar", async () => {
+    registrarImplRef.atual = async () => ({
+      data: null,
+      error: {
+        code: "22023",
+        message: "Estoque insuficiente para o produto Camiseta Lisa",
+      },
+    });
+    await montarAtePagamentoEscolhido();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Registrar venda")!.click();
+    });
+    await avancar();
+
+    const aviso = hospedeiro.querySelector('[role="alert"]')!;
+    expect(aviso.textContent).toContain("Não foi possível registrar a venda");
+    expect(aviso.textContent).not.toContain("Não sabemos");
   });
 });
