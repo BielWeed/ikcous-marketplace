@@ -1,4 +1,21 @@
 {
+  "1.5.80": {
+    "titulo": "Nova categoria com ícones, promoção junto do preço e setas certas",
+    "novidades": [
+      "Painel, produto: ao criar uma categoria nova pela tela do produto, sobe uma folha com a galeria de ícones, no lugar da janela antiga. O ícone escolhido é salvo junto com a categoria.",
+      "Painel, produto: a promoção (o preço de antes, riscado) fica logo abaixo do preço e do estoque, com uma prévia do que o cliente vai ver na loja. Antes ela ficava escondida dentro de Custo e lucro."
+    ],
+    "correcoes": [
+      "Painel, produto: o texto Categoria * não fica mais por cima do texto Escolher categoria.",
+      "Painel: o campo de categoria e o seletor de período do Financeiro mostram seta para a direita, porque abrem uma folha e não uma lista para baixo.",
+      "Painel e loja: nas listas que abrem no lugar (busca de produto do balcão, privacidade dos clientes, ver mais pedidos e endereços, privacidade e meus dados, códigos e câmera do produto), a seta aparece para baixo e vira para cima ao abrir.",
+      "Painel: os atalhos que levam a um pedido ou a uma devolução dentro do app mostram seta para a direita, em vez do símbolo de abrir fora do app.",
+      "Painel, produto: o botão Salvar da edição mostra um visto, em vez de um lápis."
+    ],
+    "melhorias": [
+      "Painel, produto: o resumo de Custo e lucro fala só de custo e lucro."
+    ]
+  },
   "1.5.79": {
     "titulo": "Categoria em galeria e uma tela de produto mais confiável",
     "novidades": [

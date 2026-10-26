@@ -205,19 +205,13 @@ describe("AdminProductFormView — limpar campo persiste como null (#96)", () =>
   it("desmarcar 'Produto em Promoção' manda originalPrice como null, não undefined", async () => {
     await abrirProdutoEmPromocao();
 
-    const secao = document.querySelector<HTMLButtonElement>(
-      'section[aria-label="Custo e lucro"] > button[aria-expanded]',
-    );
-    expect(secao).not.toBeNull();
-    await act(async () => {
-      secao!.click();
-    });
-    expect(secao!.getAttribute("aria-expanded")).toBe("true");
-
+    // A promoção mora junto do Preço de venda (básico): está à vista sem abrir
+    // seção nenhuma.
     const marcador = document.getElementById(
       "product-promo-active",
     ) as HTMLInputElement;
     expect(marcador.closest("[hidden]")).toBeNull();
+    expect(marcador.closest("section[aria-label]")).toBeNull();
     await act(async () => {
       marcador.click();
     });

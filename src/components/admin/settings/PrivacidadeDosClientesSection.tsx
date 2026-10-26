@@ -294,7 +294,7 @@ export const PrivacidadeDosClientesSection = memo(
                       Responder pedido{" "}
                       <ChevronDown
                         aria-hidden="true"
-                        className="size-5 shrink-0"
+                        className="size-5 shrink-0 transition-transform group-open:rotate-180"
                       />
                     </summary>
                     <div className="space-y-4 pt-3">

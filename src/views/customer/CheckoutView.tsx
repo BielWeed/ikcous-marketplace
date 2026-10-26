@@ -156,6 +156,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Clock,
   CreditCard,
   FileText,
@@ -6749,7 +6750,7 @@ export function CheckoutViewDaConta({
                         // discreto do chevron.
                         className="relative flex size-7 items-center justify-center rounded-full text-zinc-400 transition-colors after:absolute after:-inset-2 after:content-[''] hover:bg-zinc-50 hover:text-zinc-600"
                       >
-                        <ChevronDown className="size-4" />
+                        <ChevronUp className="size-4" />
                       </button>
                     </div>
 

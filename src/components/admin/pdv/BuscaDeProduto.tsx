@@ -3,6 +3,7 @@ import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { Button } from "@/components/ui/button";
 import type { AcaoDaVenda, ItemDoCupom } from "@/hooks/useVendaPresencial";
 import { chaveDoItemDoCupom } from "@/hooks/useVendaPresencial";
+import { cn } from "@/lib/utils";
 import { ChevronDown, PackagePlus, Plus, Search } from "lucide-react";
 import {
   type ReactElement,
@@ -372,7 +373,10 @@ export function BuscaDeProduto({
                     {ativas.length > 0 ? (
                       <ChevronDown
                         aria-hidden="true"
-                        className="pdv-icon pdv-purple"
+                        className={cn(
+                          "pdv-icon pdv-purple transition-transform",
+                          expandido && "rotate-180",
+                        )}
                       />
                     ) : (
                       <Plus aria-hidden="true" className="pdv-icon pdv-teal" />
