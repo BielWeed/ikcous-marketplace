@@ -1,4 +1,5 @@
 import { useStore } from "@/contexts/StoreContext";
+import { useHaCamadaAberta } from "@/hooks/useHaCamadaAberta";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,11 @@ export function PushNotificationBanner({
   const appName = nomeDaLoja(config);
   const [isVisible, setIsVisible] = useState(false);
   const [isSubscribing, setIsSubscribing] = useState(false);
+  // UI-191 (G2): com uma folha/diálogo aberto o convite sai do caminho -- ele é
+  // fixo, z-[999], a 80px do fundo, e cobria o rodapé "Adicionar" da folha de
+  // opções e o "Aplicar filtros" da busca. O sinal é global (o modal trava a
+  // rolagem do <body>), então vale para toda folha, sem lista de telas.
+  const haCamadaAberta = useHaCamadaAberta();
 
   useEffect(() => {
     // 1. Suporte do navegador obrigatorio
@@ -129,7 +135,7 @@ export function PushNotificationBanner({
   // render, e não no efeito, de propósito: o relógio dos 2,5 s não reinicia
   // quando a sessão termina de carregar, então para quem TEM conta o
   // convite nasce no mesmo momento de antes.
-  if (!isVisible || isKeyboardOpen || semConta) return null;
+  if (!isVisible || isKeyboardOpen || semConta || haCamadaAberta) return null;
 
   return (
     <AnimatePresence>
@@ -150,14 +156,14 @@ export function PushNotificationBanner({
           {/* Botao de fechar (X) */}
           <button
             onClick={handleDismiss}
-            className="absolute right-3 top-3 rounded-full p-1 text-zinc-400 hover:bg-secondary/10 hover:text-secondary transition-colors"
+            className="absolute right-1 top-1 grid size-11 place-items-center rounded-full text-zinc-400 hover:bg-secondary/10 hover:text-secondary transition-colors"
             title="Fechar"
             aria-label="Fechar"
           >
             <X className="size-4" />
           </button>
 
-          <div className="flex items-start gap-3.5 pr-6">
+          <div className="flex items-start gap-3.5 pr-8">
             {/* Icone de sino animado com tema secondary e glow */}
             <div className="relative flex-shrink-0">
               <div className="absolute inset-0 animate-ping rounded-xl bg-secondary/20 blur-sm" />
@@ -173,7 +179,7 @@ export function PushNotificationBanner({
                   {appName} Novidades 🔔
                 </h4>
               </div>
-              <p className="text-[11px] leading-snug text-zinc-300">
+              <p className="text-xs leading-snug text-zinc-300">
                 Fique por dentro de{" "}
                 <strong className="text-secondary font-semibold">
                   promoções
@@ -188,32 +194,33 @@ export function PushNotificationBanner({
                 </strong>{" "}
                 direto no seu celular!
               </p>
-
-              {/* Botoes de Acao */}
-              <div className="mt-3 flex items-center gap-2 pt-1">
-                <button
-                  onClick={handleSubscribe}
-                  disabled={isSubscribing}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[10px] font-black uppercase tracking-wider text-primary-foreground shadow-lg shadow-black/25 hover:bg-primary/90 active:scale-95 transition-all disabled:opacity-50"
-                >
-                  {isSubscribing ? (
-                    <span className="animate-pulse">Ativando...</span>
-                  ) : (
-                    <>
-                      <Heart className="size-3.5 fill-white/80" />
-                      Quero Receber!
-                    </>
-                  )}
-                </button>
-
-                <button
-                  onClick={handleDismiss}
-                  className="rounded-xl border border-white/10 bg-zinc-900 px-3 py-2 text-[10px] font-bold text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
-                >
-                  Agora Não
-                </button>
-              </div>
             </div>
+          </div>
+
+          {/* Botoes de Acao: na largura toda do cartao (UI-191 G2b) -- dentro da
+              coluna do texto o "Quero Receber!" quebrava em duas linhas. */}
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              onClick={handleSubscribe}
+              disabled={isSubscribing}
+              className="flex min-h-11 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl bg-primary px-3.5 py-2 text-xs font-black uppercase tracking-wider text-primary-foreground shadow-lg shadow-black/25 hover:bg-primary/90 active:scale-95 transition-all disabled:opacity-50"
+            >
+              {isSubscribing ? (
+                <span className="animate-pulse">Ativando...</span>
+              ) : (
+                <>
+                  <Heart className="size-3.5 fill-white/80" />
+                  Quero Receber!
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleDismiss}
+              className="min-h-11 whitespace-nowrap rounded-xl border border-solid border-white/10 bg-zinc-900 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
+            >
+              Agora Não
+            </button>
           </div>
         </div>
       </motion.div>
