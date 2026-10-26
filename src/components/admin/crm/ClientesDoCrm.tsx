@@ -649,6 +649,13 @@ export function ClientesDoCrm({
       ? (segmentos.find((s) => s.segmento === grupo)?.clientes ?? 0)
       : null;
   const totalPaginas = Math.max(1, Math.ceil(total / POR_PAGINA));
+  // O grupo pode encolher depois de "Sincronizar" (um cliente sai dele): se a
+  // página aberta deixou de existir, volta para a última que existe em vez
+  // de mostrar uma página vazia.
+  useEffect(() => {
+    if (!lista || carregando || erro || pagina < totalPaginas) return;
+    setPaginacao({ chave: chaveDoFiltro, pagina: totalPaginas - 1 });
+  }, [lista, carregando, erro, pagina, totalPaginas, chaveDoFiltro]);
   const esqueleto = carregando && !lista;
   const falhaDosSegmentos =
     !carregandoSegmentos &&

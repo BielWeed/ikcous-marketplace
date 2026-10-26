@@ -193,6 +193,7 @@ function AdminAccessDenied({
 }
 import { modoManutencao } from "@/config/configuracaoDaLoja";
 import { corPrimariaEfetiva } from "@/config/cor-da-loja";
+import { NOMES_DO_PAINEL, type TelaDoPainel } from "@/config/nomes-do-painel";
 import { TELAS_DE_ENTRADA } from "@/config/rotas";
 import { CartProvider } from "@/contexts/CartContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
@@ -1357,7 +1358,7 @@ const AppContent = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Check for Ctrl + Alt + Key
       if (e.ctrlKey && e.altKey) {
-        let targetView: View | null = null;
+        let targetView: TelaDoPainel | null = null;
         switch (e.key.toLowerCase()) {
           case "d":
             targetView = "admin-dashboard";
@@ -1381,13 +1382,11 @@ const AppContent = () => {
         if (targetView) {
           e.preventDefault();
           handleNavigate(targetView);
-          toast.success(
-            `Navegando para o painel de ${targetView.replace("admin-", "").toUpperCase()}...`,
-            {
-              duration: 1000,
-              icon: "⌨️",
-            },
-          );
+          // eslint-disable-next-line security/detect-object-injection -- chave tipada (TelaDoPainel), não entrada do usuário
+          toast.success(`Abrindo ${NOMES_DO_PAINEL[targetView]}...`, {
+            duration: 1000,
+            icon: "⌨️",
+          });
         }
       }
     };

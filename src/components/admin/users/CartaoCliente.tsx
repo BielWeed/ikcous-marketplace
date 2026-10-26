@@ -256,7 +256,7 @@ export const CartaoCliente = memo(function CartaoCliente({
             className="size-3 shrink-0 text-violet-300"
           />
           {customer.last_order_date
-            ? new Date(customer.last_order_date).toLocaleDateString()
+            ? new Date(customer.last_order_date).toLocaleDateString("pt-BR")
             : "--"}
         </div>
       )}
