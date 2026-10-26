@@ -719,7 +719,7 @@ describe("ficha do pedido (redesenho 08/10/2026)", () => {
         lista?.querySelector('button[title="Copiar Código"]'),
       ).not.toBeNull();
       expect(
-        lista?.querySelector('a[title="Rastrear nos Correios"]'),
+        lista?.querySelector('a[title="Rastrear o pacote"]'),
       ).not.toBeNull();
       expect(
         lista?.querySelector('button[title="Editar Código"]'),
@@ -730,7 +730,7 @@ describe("ficha do pedido (redesenho 08/10/2026)", () => {
       await renderizar(pedidoFake({ trackingCode: "br 123 456 789 br" }));
 
       const link = porId("envio-lista")?.querySelector(
-        'a[title="Rastrear nos Correios"]',
+        'a[title="Rastrear o pacote"]',
       );
       expect(link?.getAttribute("href")).toBe(
         "https://www.melhorrastreio.com.br/rastreio/BR123456789BR",

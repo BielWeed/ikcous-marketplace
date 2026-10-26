@@ -222,6 +222,33 @@ describe("Favoritos — lista vertical por categoria", () => {
     expect(favoritos.map((p) => p.id)).toEqual(["a", "b", "c"]);
   });
 
+  it("a escolha de ordem aparece no rótulo e marca o botão; 'Ordem original' volta ao rótulo simples", () => {
+    montar();
+    const ordem = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Ordem dos favoritos"]',
+    )!;
+    const rotulo = () => ordem.parentElement!;
+    expect(rotulo().textContent).toContain("Ordem");
+    expect(rotulo().textContent).not.toContain("Ordem:");
+    expect(rotulo().getAttribute("aria-current")).toBeNull();
+    act(() => {
+      ordem.value = "nome";
+      ordem.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    // Só o texto do próprio rótulo (as <option> do select também têm texto).
+    const textoDoRotulo = Array.from(rotulo().childNodes)
+      .filter((no) => no.nodeType === Node.TEXT_NODE)
+      .map((no) => no.textContent)
+      .join("");
+    expect(textoDoRotulo).toBe("A–Z");
+    expect(rotulo().getAttribute("aria-current")).toBe("true");
+    act(() => {
+      ordem.value = "original";
+      ordem.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(rotulo().getAttribute("aria-current")).toBeNull();
+  });
+
   it("'Com desconto' está sempre à mão e filtra; tocar de novo devolve todos", () => {
     montar();
     expect(botao("Com desconto 1").getAttribute("aria-pressed")).toBe("false");

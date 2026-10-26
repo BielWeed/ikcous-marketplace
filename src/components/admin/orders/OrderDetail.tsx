@@ -1184,7 +1184,7 @@ function OrderLogisticsCard({
             Código de rastreio
           </h3>
           <p className="text-xs text-zinc-400">
-            Quando despachar, cole o código dos Correios.
+            Quando despachar, cole o código da transportadora.
           </p>
         </div>
         <Button
@@ -1230,7 +1230,7 @@ function OrderLogisticsCard({
             target="_blank"
             rel="noopener noreferrer"
             className="flex size-10 items-center justify-center rounded-xl text-zinc-300 transition-colors hover:bg-white/5 hover:text-white"
-            title="Rastrear nos Correios"
+            title="Rastrear o pacote"
           >
             <ExternalLink className="size-4" />
           </a>
@@ -2061,7 +2061,7 @@ export const OrderDetail = memo(function OrderDetail({
           (order.paymentStatus === "pago" ||
             order.paymentStatus === "pago_apos_expirar" ||
             order.paymentStatus === "estornado") && (
-            <EstornoCard key={order.id} order={order} />
+            <EstornoCard key={order.id} order={order} isOffline={isOffline} />
           )}
 
         <OrderDeliveryCard
@@ -2111,6 +2111,7 @@ export const OrderDetail = memo(function OrderDetail({
               key={order.id}
               orderId={order.id}
               isOffline={isOffline}
+              trackingCodeDaFicha={localTrackingCode}
               onTrackingAtualizado={(orderIdDaResposta, codigo) => {
                 // A resposta pode ser de um pedido que este componente não
                 // mostra mais (card desmontado com a resposta ainda em voo, ou
@@ -2196,13 +2197,13 @@ export const OrderDetail = memo(function OrderDetail({
               <AlertDialogFooter className="mt-4 gap-2">
                 <AlertDialogAction
                   onClick={confirmPendingAdvance}
-                  className="rounded-xl border border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white"
+                  className="min-h-11 rounded-xl border border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white"
                 >
                   Ainda não
                 </AlertDialogAction>
                 <AlertDialogAction
                   onClick={confirmarRecebimentoEAvancar}
-                  className="rounded-xl border-0 bg-emerald-500 px-4 py-2 text-xs font-bold text-black hover:bg-emerald-500/90"
+                  className="min-h-11 rounded-xl border-0 bg-emerald-500 px-4 py-2 text-xs font-bold text-black hover:bg-emerald-500/90"
                 >
                   Recebi
                 </AlertDialogAction>
@@ -2223,12 +2224,12 @@ export const OrderDetail = memo(function OrderDetail({
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter className="mt-4 gap-2">
-                <AlertDialogCancel className="rounded-xl border border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
-                  Cancelar
+                <AlertDialogCancel className="min-h-11 rounded-xl border border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+                  Voltar
                 </AlertDialogCancel>
                 <AlertDialogAction
                   onClick={confirmPendingAdvance}
-                  className="rounded-xl border-0 bg-foreground px-4 py-2 text-xs font-bold text-background hover:opacity-90"
+                  className="min-h-11 rounded-xl border-0 bg-foreground px-4 py-2 text-xs font-bold text-background hover:opacity-90"
                 >
                   Avançar mesmo assim
                 </AlertDialogAction>

@@ -283,21 +283,21 @@ export const AddressList = memo(function AddressList({
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="max-w-[150px] truncate text-[11px] font-bold text-zinc-900">
+                    <span className="max-w-[220px] truncate text-xs font-bold text-zinc-900">
                       {address.name}
                     </span>
                     {address.is_default && (
-                      <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wider text-emerald-700">
+                      <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-xs font-black uppercase tracking-wider text-emerald-700">
                         Principal
                       </span>
                     )}
                     {selectable && selectedId === address.id && (
-                      <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wider text-zinc-900">
+                      <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-xs font-black uppercase tracking-wider text-zinc-900">
                         Selecionado
                       </span>
                     )}
                   </div>
-                  <p className="mt-0.5 truncate text-[9px] font-medium text-zinc-400">
+                  <p className="mt-0.5 truncate text-xs font-medium text-zinc-600">
                     {address.street}, {address.number} • {address.city}
                   </p>
                 </div>

@@ -19,6 +19,7 @@ import {
   PREDEFINED_AVATARS,
   compressImage,
   getPredefinedAvatarSvg,
+  mensagemDaFalhaDeImagem,
 } from "@/utils/avatars";
 import {
   PREDEFINED_COVERS,
@@ -199,6 +200,8 @@ export function ProfileView({
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const contaDonaId = user?.id;
     const file = e.target.files?.[0];
+    // Sem zerar, escolher a MESMA foto de novo não dispara nada.
+    e.target.value = "";
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
@@ -229,6 +232,12 @@ export function ProfileView({
             toast.success("Foto de perfil atualizada!");
             setIsAvatarModalOpen(false);
           }
+          setIsUpdatingAvatar(false);
+        } catch (error) {
+          console.error("Error uploading photo:", error);
+          toast.error(
+            mensagemDaFalhaDeImagem(error, "Erro ao processar foto."),
+          );
           setIsUpdatingAvatar(false);
         } finally {
           desmarcar();
@@ -290,6 +299,8 @@ export function ProfileView({
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const contaDonaId = user?.id;
     const file = e.target.files?.[0];
+    // Sem zerar, escolher a MESMA foto de novo não dispara nada.
+    e.target.value = "";
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
@@ -309,14 +320,21 @@ export function ProfileView({
           return;
         }
 
-        const compressed = await compressCoverImage(base64);
-        const success = await updateProfile(
-          { cover_url: compressed },
-          contaDonaId,
-        );
-        if (success) {
-          toast.success("Capa de perfil personalizada atualizada!");
-          setIsCoverModalOpen(false);
+        try {
+          const compressed = await compressCoverImage(base64);
+          const success = await updateProfile(
+            { cover_url: compressed },
+            contaDonaId,
+          );
+          if (success) {
+            toast.success("Capa de perfil personalizada atualizada!");
+            setIsCoverModalOpen(false);
+          }
+        } catch (error) {
+          console.error("Error uploading cover:", error);
+          toast.error(
+            mensagemDaFalhaDeImagem(error, "Erro ao processar imagem."),
+          );
         }
         setIsUpdatingCover(false);
       };
@@ -471,7 +489,7 @@ export function ProfileView({
                 {profile?.avatar_url ? (
                   <img
                     src={profile.avatar_url}
-                    alt="Profile Avatar"
+                    alt="Sua foto de perfil"
                     className="size-full object-cover duration-300 animate-in fade-in"
                   />
                 ) : (
@@ -1278,8 +1296,8 @@ export function ProfileView({
                         Escolher Imagem do Dispositivo
                       </p>
                       <p className="px-4 text-xs leading-normal text-muted-foreground">
-                        Selecione JPEG, PNG até 5MB. A imagem será ajustada para
-                        a proporção ideal.
+                        Formatos aceitos: JPEG e PNG. A imagem será ajustada
+                        para a proporção ideal.
                       </p>
                     </div>
                   </motion.div>

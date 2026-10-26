@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { cn } from "@/lib/utils";
 import type { Address } from "@/types";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 interface AddressFormViewProps {
   addressId?: string | null;
@@ -15,11 +15,22 @@ interface AddressFormViewProps {
 export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
   const { config } = useStore();
   const { user, profile } = useAuth();
-  const { addresses, fetchAddresses, addAddress, updateAddress } =
-    useAddresses();
+  const {
+    addresses,
+    erroAoCarregar,
+    fetchAddresses,
+    addAddress,
+    updateAddress,
+  } = useAddresses();
+  // A busca já terminou (com ou sem sucesso)? Só então "não achei" é verdade.
+  const [buscou, setBuscou] = useState(false);
 
   useEffect(() => {
-    fetchAddresses();
+    let vivo = true;
+    Promise.resolve(fetchAddresses()).finally(() => vivo && setBuscou(true));
+    return () => {
+      vivo = false;
+    };
   }, [fetchAddresses]);
 
   const editingAddress = addressId
@@ -43,6 +54,31 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
       onBack();
     }
   };
+
+  // Editar um endereço que não está na lista (apagado em outro aparelho ou
+  // link antigo) não abre formulário em branco com título "Editar endereço".
+  if (addressId && !editingAddress) {
+    return (
+      <div className="pb-customer flex min-h-full flex-col items-center justify-center gap-4 bg-background p-6 text-center">
+        <p className="text-sm text-muted-foreground">
+          {!buscou
+            ? "Carregando…"
+            : erroAoCarregar
+              ? "Não conseguimos carregar este endereço."
+              : "Este endereço não existe mais."}
+        </p>
+        {buscou && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="rounded-full border border-solid border-border px-6 py-3 text-xs font-bold uppercase tracking-wider text-foreground"
+          >
+            Voltar
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="pb-customer flex min-h-full flex-col bg-background">
