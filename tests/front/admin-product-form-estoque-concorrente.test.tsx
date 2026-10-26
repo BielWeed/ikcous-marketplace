@@ -235,7 +235,7 @@ async function digitar(id: string, valor: string) {
 async function salvar() {
   await act(async () => {
     const botao = [...host.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === "Salvar",
+      (b) => b.textContent?.trim() === "Salvar alterações",
     );
     expect(botao?.disabled).toBe(false);
     botao!.click();
@@ -455,7 +455,7 @@ describe("salvar estoque confere a versão lida na abertura", () => {
       banco.toastError.mock.calls.some(([texto]) => /Recarregue/.test(texto)),
     ).toBe(true);
     const botao = [...host.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === "Salvar",
+      (b) => b.textContent?.trim() === "Salvar alterações",
     );
     expect(botao?.disabled).toBe(true);
   });

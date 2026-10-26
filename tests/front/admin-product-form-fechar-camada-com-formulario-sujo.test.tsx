@@ -233,7 +233,7 @@ describe("AdminProductFormView — fechar a camada com o formulario ja mexido", 
 
   const abrirPrevia = async () => {
     await act(async () => {
-      botaoPorTexto("Ver no app")?.click();
+      botaoPorTexto("Ver app")?.click();
     });
   };
   const fecharPeloBotao = async () => {

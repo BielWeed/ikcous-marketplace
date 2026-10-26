@@ -347,12 +347,12 @@ describe("AdminProductFormView — promoção junto do preço (u180)", () => {
     it("o resumo não cita promoção, antes nem depois de ligá-la", async () => {
       await montar();
       const antes = secao("Custo e lucro").textContent ?? "";
-      expect(antes).toContain("Custo · opcional");
+      expect(antes).toContain("opcional");
       expect(antes).not.toMatch(/romo/);
       await alternarPromocao();
       await digitarCampo("product-original-price", "9990");
       const depois = secao("Custo e lucro").textContent ?? "";
-      expect(depois).toContain("Custo · opcional");
+      expect(depois).toContain("opcional");
       expect(depois).not.toMatch(/romo/);
       expect(depois).not.toContain("De/Por");
     });

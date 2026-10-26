@@ -216,7 +216,7 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
   }
 
   async function salvar() {
-    const botao = botaoPorTexto("Salvar");
+    const botao = botaoPorTexto("Salvar alterações");
     if (!botao) throw new Error("O botão Salvar não está na tela.");
     await act(async () => {
       botao.click();
@@ -479,9 +479,9 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
     const avisos = toastError.mock.calls.map((c) => String(c[0]));
     expect(avisos.some((t) => /recarreg/i.test(t))).toBe(true);
     // O botão Salvar fica desligado: um segundo Salvar repetiria o INSERT.
-    expect(botaoPorTexto("Salvar")?.disabled).toBe(true);
+    expect(botaoPorTexto("Salvar alterações")?.disabled).toBe(true);
     await act(async () => {
-      botaoPorTexto("Salvar")?.click();
+      botaoPorTexto("Salvar alterações")?.click();
       await new Promise((r) => setTimeout(r, 50));
     });
     expect(updateProduct).toHaveBeenCalledTimes(1);
@@ -496,7 +496,7 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
 
     await salvar();
 
-    expect(botaoPorTexto("Salvar")?.disabled).toBe(false);
+    expect(botaoPorTexto("Salvar alterações")?.disabled).toBe(false);
     expect(linhasNaTela()).toHaveLength(2);
     // Sem mudar nada o segundo Salvar não tem o que gravar; com uma mudança
     // nova, ele segue liberado e grava.

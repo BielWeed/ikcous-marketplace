@@ -186,7 +186,7 @@ describe("produto veta a atualização durante fotos e gravação", () => {
     });
   }
 
-  async function salvar(texto = "Salvar") {
+  async function salvar(texto = "Salvar alterações") {
     const botao = botaoPorTexto(texto);
     if (!botao) throw new Error(`O botão ${texto} não está na tela.`);
     await act(async () => {
@@ -271,7 +271,7 @@ describe("produto veta a atualização durante fotos e gravação", () => {
         const gravar = novo ? addProduct : updateProduct;
         gravar.mockReturnValue(gravacao.promessa);
         try {
-          await salvar(novo ? "Publicar" : "Salvar");
+          await salvar(novo ? "Publicar" : "Salvar alterações");
           expect(gravar).toHaveBeenCalledTimes(1);
           expect(haOperacaoSensivel()).toBe(true);
           expect(motivosDeOperacaoSensivel()).toEqual(["salvar-produto"]);

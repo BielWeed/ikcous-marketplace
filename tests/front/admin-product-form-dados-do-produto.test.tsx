@@ -298,7 +298,7 @@ describe("AdminProductFormView — dados do produto", () => {
   }
 
   async function salvar() {
-    const botao = botaoPorTexto("Salvar");
+    const botao = botaoPorTexto("Salvar alterações");
     if (!botao) throw new Error("O botão Salvar não está na tela.");
     await act(async () => {
       botao.click();
@@ -605,9 +605,9 @@ describe("AdminProductFormView — dados do produto", () => {
       await mudarNome("Camiseta nova");
 
       expect(document.body.textContent).not.toContain("10.000");
-      expect((botaoPorTexto("Salvar") as HTMLButtonElement).disabled).toBe(
-        false,
-      );
+      expect(
+        (botaoPorTexto("Salvar alterações") as HTMLButtonElement).disabled,
+      ).toBe(false);
       await salvar();
       const atualizacao = mocks.salvarProdutoComGrade.mock.calls[0]?.[1];
       expect(atualizacao.name).toBe("Camiseta nova");

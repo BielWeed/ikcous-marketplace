@@ -270,7 +270,7 @@ describe("AdminProductFormView — rascunho x releitura do banco", () => {
     });
 
     await act(async () => {
-      botaoPorTexto("Salvar")?.click();
+      botaoPorTexto("Salvar alterações")?.click();
       await new Promise((r) => setTimeout(r, 2500));
     });
     await act(async () => {
@@ -296,7 +296,7 @@ describe("AdminProductFormView — rascunho x releitura do banco", () => {
 
     // Clica Salvar sem esperar o auto-save de 1 s que a digitação agendou.
     await act(async () => {
-      botaoPorTexto("Salvar")?.click();
+      botaoPorTexto("Salvar alterações")?.click();
       await new Promise((r) => setTimeout(r, 1500));
     });
 
@@ -358,7 +358,7 @@ describe("AdminProductFormView — rascunho x releitura do banco", () => {
 
     let existiaNoMeioDaEspera = false;
     await act(async () => {
-      botaoPorTexto("Salvar")?.click();
+      botaoPorTexto("Salvar alterações")?.click();
       await new Promise((r) => setTimeout(r, 800));
       existiaNoMeioDaEspera = armazem.has(CHAVE_DO_RASCUNHO);
       await new Promise((r) => setTimeout(r, 1500));
