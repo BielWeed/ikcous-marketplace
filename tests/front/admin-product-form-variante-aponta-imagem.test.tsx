@@ -19,6 +19,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherAtributo } from "./helpers/atributo-da-variacao";
 
 const upsertVariants = vi.fn().mockResolvedValue(undefined);
 const fetchProduct = vi.fn();
@@ -188,8 +189,8 @@ describe("AdminProductFormView — imagem da variante aponta para as imagens do 
     await act(async () => {
       clicarObrigatorio("+ Novo");
     });
+    await escolherAtributo(0, "Cor", "variant-name", digitar);
     await act(async () => {
-      digitar("variant-name", "Cor");
       digitar("variant-value", "Rosa");
       await new Promise((r) => setTimeout(r, 300));
     });
@@ -198,7 +199,7 @@ describe("AdminProductFormView — imagem da variante aponta para as imagens do 
   function miniaturas() {
     return [
       ...document.body.querySelectorAll<HTMLButtonElement>(
-        "button[aria-pressed]",
+        '[data-testid="foto-da-variacao"]',
       ),
     ];
   }

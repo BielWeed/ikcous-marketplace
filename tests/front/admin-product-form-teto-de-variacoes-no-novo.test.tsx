@@ -161,7 +161,8 @@ describe("AdminProductFormView — teto de variações no botão + Novo", () => 
     });
   }
 
-  const modalAberto = () => document.getElementById("variant-name") !== null;
+  const modalAberto = () =>
+    document.getElementById("titulo-da-variacao") !== null;
   const quantasNaTela = () =>
     document.querySelectorAll('[data-testid="variante-cadastrada"]').length;
 

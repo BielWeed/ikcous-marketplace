@@ -3,6 +3,7 @@ import { useProducts } from "@/hooks/useProducts";
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherAtributo } from "./helpers/atributo-da-variacao";
 
 const banco = vi.hoisted(() => ({
   produto: {} as Record<string, any>,
@@ -408,7 +409,7 @@ describe("salvar estoque confere a versão lida na abertura", () => {
         .find((b) => b.textContent?.includes("+ Novo"))!
         .click();
     });
-    await digitar("variant-name", "Cor");
+    await escolherAtributo(0, "Cor", "variant-name", digitar);
     await digitar("variant-value", "Azul");
     await digitar("variant-stock", "4");
     await act(async () => {

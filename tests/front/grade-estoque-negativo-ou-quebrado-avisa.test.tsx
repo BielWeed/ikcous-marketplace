@@ -83,7 +83,7 @@ function abrirNoPasso2() {
       />,
     );
   });
-  digitar(campo("#grade-nome-0"), "Tamanho");
+  clicar(botao("Tamanho"));
   for (const valor of ["P", "M", "G"]) {
     digitar(campo("#grade-valor-0"), valor);
     clicar(

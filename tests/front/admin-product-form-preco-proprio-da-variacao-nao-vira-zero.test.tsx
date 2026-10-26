@@ -18,6 +18,7 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherAtributo } from "./helpers/atributo-da-variacao";
 
 const mocks = vi.hoisted(() => ({
   fetchProduct: vi.fn(),
@@ -210,7 +211,7 @@ describe("AdminProductFormView — preço próprio da variação nunca vira zero
     await act(async () => {
       clicarObrigatorio("+ Novo");
     });
-    await digitarCampo("variant-name", "Tamanho");
+    await escolherAtributo(0, "Tamanho", "variant-name", digitarCampo);
     await digitarCampo("variant-value", valor);
   }
 
