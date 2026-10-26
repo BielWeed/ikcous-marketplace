@@ -1280,6 +1280,12 @@ async function main() {
         "20261387000000_a_busca_de_pedido_pelo_numero_nao_vira_busca_de_telefone.sql",
         "public.get_admin_orders_paged(text,text,text,text,integer,integer,text,text)",
       ],
+      // A 20261390 (o lucro do Inicio conta o mes inteiro): painel_inicio sobre o corpo da 28 (cadeia 99 -> 12 -> 28 -> 390). A 17a
+      // aceita o corpo dela (LF e CRLF) ao lado do da 12 e do da 28; o rollback dela devolve o corpo da 28 (o molde, abaixo, desfaz e mede).
+      [
+        "20261390000000_o_lucro_do_inicio_conta_o_mes_inteiro.sql",
+        "public.painel_inicio()",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

@@ -264,6 +264,8 @@ on:
           - 95b-antes-o-frete-tem-limite-de-cotacoes-ausente
           - 96a-conferir-o-estoque-que-volta-tranca-na-mesma-ordem-aplicado
           - 96b-antes-o-estoque-que-volta-tranca-na-mesma-ordem-base-vigente
+          - 97a-conferir-o-lucro-do-inicio-conta-o-mes-inteiro-aplicado
+          - 97b-antes-o-lucro-do-inicio-conta-o-mes-inteiro-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

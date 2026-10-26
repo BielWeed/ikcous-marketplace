@@ -98,6 +98,9 @@ const NOMES = [
   "20261384000000_o_pedido_pelo_app_exige_conta_e_nao_prende_estoque_de_visitante.sql",
   // A busca de pedido pelo numero: get_admin_orders_paged sucede o corpo da 99 (so a regra do telefone e o ORDER BY mudam).
   "20261387000000_a_busca_de_pedido_pelo_numero_nao_vira_busca_de_telefone.sql",
+  // O lucro do Inicio conta o mes inteiro: painel_inicio sucede o corpo da 228 (a CADEIA 99 -> 12 -> 28 -> 390: o `hashVigente` da 390 e o
+  // `hashDesta` da 228; desfazer em ordem inversa devolve cada corpo ao anterior). O rollback da 228 recusa com o corpo novo no ar: ela cai antes.
+  "20261390000000_o_lucro_do_inicio_conta_o_mes_inteiro.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).

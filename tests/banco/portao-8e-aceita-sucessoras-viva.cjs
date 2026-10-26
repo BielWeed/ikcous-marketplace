@@ -128,7 +128,11 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // sucessoras-da-99.cjs so para cair antes da 350 (a-compra-online-trava-posterior.cjs chama pedido-pelo-app-exige-conta-posterior.cjs);
     // aqui sai do rol pela mesma razao da 350.
     s.nome !==
-      "20261384000000_o_pedido_pelo_app_exige_conta_e_nao_prende_estoque_de_visitante.sql",
+      "20261384000000_o_pedido_pelo_app_exige_conta_e_nao_prende_estoque_de_visitante.sql" &&
+    // A 20261390000000 (o lucro do Inicio conta o mes inteiro) e a TERCEIRA sucessora de painel_inicio (99 -> 12 -> 28 -> 390): tem a PROVA
+    // PROPRIA do que a 8e, a 17a e a 30a fazem com ela em tests/banco/o-lucro-do-inicio-conta-o-mes-inteiro-viva.cjs e em
+    // tests/banco/numeros-do-painel-portao-viva.cjs; `noEstado` a desfaz antes (o-lucro-do-inicio-posterior.cjs), como faz com a 382.
+    s.nome !== "20261390000000_o_lucro_do_inicio_conta_o_mes_inteiro.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");
@@ -299,6 +303,10 @@ async function noEstado(montar, textos = [SQL_8E]) {
     );
     await devolverAoEstadoAnteriorAoCustoDoDia(C);
     await desfazerEntregaNaCidadeNaTransacao(C);
+    // A 20261390 (o lucro do Inicio conta o mes inteiro) sucede a 28 em painel_inicio: sai antes de qualquer montagem desta prova.
+    await require("./o-lucro-do-inicio-posterior.cjs").desfazerLucroDoInicioNaTransacao(
+      C,
+    );
     const montado = montar ? await montar(C) : undefined;
     await C.query(`SET LOCAL ROLE ${RO}`);
     await C.query("SET LOCAL transaction_read_only = on");

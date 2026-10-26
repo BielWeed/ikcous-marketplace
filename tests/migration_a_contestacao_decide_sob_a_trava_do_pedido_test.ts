@@ -327,6 +327,8 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     "tests/banco/o-frete-tem-limite-de-cotacoes-viva.cjs",
     // 20261389100000: o estoque que volta tranca na mesma ordem da compra (40P01 do corpo antigo em 3 cenarios com 2 conexoes, matriz diferencial, mutantes, rollback, consultas 96a/96b).
     "tests/banco/o-estoque-que-volta-tranca-na-mesma-ordem-viva.cjs",
+    // 20261390: o lucro estimado do Inicio conta o mes inteiro (igual ao Financeiro; fevereiro, 30 e 31 dias, virada de ano, controle com o corpo anterior, dados que ja existiam, pre-voo, rollback byte a byte, atomicidade, consultas 97a/97b e portoes 8e/17a/30a).
+    "tests/banco/o-lucro-do-inicio-conta-o-mes-inteiro-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -454,6 +456,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-frete-tem-limite-de-cotacoes-viva.cjs",
     // 20261389100000: o estoque que volta tranca na mesma ordem da compra (40P01 do corpo antigo em 3 cenarios com 2 conexoes, matriz diferencial, mutantes, rollback, consultas 96a/96b).
     "tests/banco/o-estoque-que-volta-tranca-na-mesma-ordem-viva.cjs",
+    // 20261390: o lucro estimado do Inicio conta o mes inteiro (igual ao Financeiro; fevereiro, 30 e 31 dias, virada de ano, controle com o corpo anterior, dados que ja existiam, pre-voo, rollback byte a byte, atomicidade, consultas 97a/97b e portoes 8e/17a/30a).
+    "tests/banco/o-lucro-do-inicio-conta-o-mes-inteiro-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/pagamentos-rpc-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",

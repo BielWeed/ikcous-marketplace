@@ -14,6 +14,8 @@
  *       cancelado não conta.
  *   (d) Início: hoje × semana passada, o mês bate com o CRM do mesmo período,
  *       saldo = soma das contas, pendências.
+ *   (e) Início: o lucro estimado conta o MÊS INTEIRO (20261390000000) e bate com o
+ *       fin_dre do Financeiro; despesa prevista de outro mês não entra.
  *
  * USO: node tests/banco/crm-inicio-viva.cjs
  */
@@ -293,6 +295,133 @@ PROVAS.push({
     );
     assert.equal(inicio.serie_14d.length, 14);
     assert.equal(typeof Number(inicio.mes.lucro_estimado), "number");
+  },
+});
+
+// (e) O "Lucro estimado" do Início conta o MÊS INTEIRO, do dia 1 ao ÚLTIMO dia, igual ao "Mês atual" do
+// Financeiro (fin_dre(inicioDoMes, fimDoMes), src/lib/financeiro.ts): a despesa PREVISTA com referência
+// adiante no mês pesa já (decisão do sócio; migration 20261390000000). Antes o Início cortava em HOJE
+// e divergia do Financeiro. Vendas, pedidos, ticket e os chips continuam até hoje.
+const CAIXA = "f1000000-0000-4000-8000-000000000001";
+const CAT_ALUGUEL = "f2000000-0000-4000-8000-000000000020";
+
+async function despesaPrevista(cliente, { valor, referencia, cancelada }) {
+  await cliente.query(
+    `INSERT INTO public.fin_lancamentos
+       (tipo, status, valor, conta_id, categoria_id, descricao, forma_pagamento,
+        data_competencia, data_vencimento, data_realizacao, origem, cancelado_em)
+     VALUES ('saida', $1, $2, $3, $4, 'Despesa (e) do Início', 'dinheiro', $5, $5, NULL, 'manual', $6)`,
+    [
+      cancelada ? "cancelado" : "previsto",
+      valor,
+      CAIXA,
+      CAT_ALUGUEL,
+      referencia,
+      cancelada ? new Date().toISOString() : null,
+    ],
+  );
+}
+
+// Oráculo INDEPENDENTE da função: o primeiro e o último dia do mês de `dia` (AAAA-MM-DD), calculados aqui.
+function limitesDoMes(dia) {
+  const [a, m] = dia.split("-").map(Number);
+  const pad = (n) => String(n).padStart(2, "0");
+  const ultimo = new Date(Date.UTC(a, m, 0)).getUTCDate();
+  const proximo = m === 12 ? `${a + 1}-01-01` : `${a}-${pad(m + 1)}-01`;
+  const anterior = new Date(Date.UTC(a, m - 1, 0)).toISOString().slice(0, 10);
+  return {
+    inicio: `${a}-${pad(m)}-01`,
+    fim: `${a}-${pad(m)}-${pad(ultimo)}`,
+    proximoMes: proximo,
+    ultimoDoMesAnterior: anterior,
+  };
+}
+
+// Roda UM cenário dentro de uma transação que SEMPRE desfaz. `hojeFalso` fixa o relógio da loja
+// (fin__hoje) só dentro dela; null usa o relógio de verdade.
+async function cenarioDoLucroDoMes(cliente, hojeFalso) {
+  await cliente.query("BEGIN");
+  try {
+    await logar(cliente, U_ADMIN);
+    if (hojeFalso)
+      await cliente.query(
+        `CREATE OR REPLACE FUNCTION public.fin__hoje() RETURNS date LANGUAGE sql STABLE
+           SET search_path TO 'public' AS $$ SELECT DATE '${hojeFalso}' $$`,
+      );
+    const hoje = (await cliente.query("SELECT public.fin__hoje()::text AS d"))
+      .rows[0].d;
+    const mes = limitesDoMes(hoje);
+    const lucroDoInicio = async () =>
+      num(
+        (await rpc(cliente, "SELECT public.painel_inicio() AS r")).mes
+          .lucro_estimado,
+      );
+    const lucroDoFinanceiro = async (ini, fim) =>
+      num(
+        (await rpc(cliente, "SELECT public.fin_dre($1, $2) AS r", [ini, fim]))
+          .lucro_liquido,
+      );
+
+    const antes = await lucroDoInicio();
+    // Entra: previsto com referência no ÚLTIMO dia do mês (adiante de hoje, salvo no último dia).
+    await despesaPrevista(cliente, { valor: 40, referencia: mes.fim });
+    // Não entram: referência no mês anterior, no mês seguinte, e uma prevista CANCELADA no último dia.
+    await despesaPrevista(cliente, {
+      valor: 1000,
+      referencia: mes.ultimoDoMesAnterior,
+    });
+    await despesaPrevista(cliente, {
+      valor: 7000,
+      referencia: mes.proximoMes,
+    });
+    await despesaPrevista(cliente, {
+      valor: 500,
+      referencia: mes.fim,
+      cancelada: true,
+    });
+
+    const depois = await lucroDoInicio();
+    const financeiro = await lucroDoFinanceiro(mes.inicio, mes.fim);
+    const cortadoEmHoje = await lucroDoFinanceiro(mes.inicio, hoje);
+    return { hoje, mes, antes, depois, financeiro, cortadoEmHoje };
+  } finally {
+    await cliente.query("ROLLBACK");
+  }
+}
+
+PROVAS.push({
+  nome: "(e) Início: o lucro estimado conta o mês inteiro (previsto no último dia entra; outro mês e cancelado não) e bate com o Financeiro",
+  corpo: async (cliente) => {
+    // Relógio de verdade + meses de 28, 29, 30 e 31 dias, virada de ano e o dia 1.
+    for (const hojeFalso of [
+      null,
+      "2026-02-10",
+      "2028-02-10",
+      "2026-04-10",
+      "2026-10-10",
+      "2026-12-05",
+      "2026-11-01",
+      "2026-10-31",
+    ]) {
+      const r = await cenarioDoLucroDoMes(cliente, hojeFalso);
+      const onde = `hoje=${r.hoje} (mês ${r.mes.inicio}..${r.mes.fim})`;
+      assert.equal(
+        r.depois,
+        r.financeiro,
+        `${onde}: o lucro do Início tem de ser o do Financeiro no mês inteiro`,
+      );
+      assert.equal(
+        num(r.antes - r.depois),
+        40,
+        `${onde}: só a despesa prevista do último dia entra (nem mês anterior, nem seguinte, nem cancelada)`,
+      );
+      if (r.hoje < r.mes.fim)
+        assert.notEqual(
+          r.depois,
+          r.cortadoEmHoje,
+          `${onde}: o corte em hoje deixaria a despesa de fora`,
+        );
+    }
   },
 });
 

@@ -2688,7 +2688,17 @@ const ROL_DA_96B = [
   "devolver_estoque: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path=public, retorna integer, argumento p_order_id uuid) e EXECUTE de ninguem de aplicacao (anon, authenticated, PUBLIC)",
   "marketplace_order_items (order_id, product_id, variant_id), product_variants (id, product_id) e produtos (id) existem como uuid",
 ];
+// Lote 97 (20261390000000, o lucro do Inicio conta o mes inteiro: painel_inicio redefinida, so a janela do lucro). A 97a e a 97b
+// tem o mesmo rol; a 97a espera o corpo da 20261390000000 e a 97b o da 20261228000000.
+const ROL_DA_97 = [
+  "controle: funcoes de public visiveis a este papel",
+  "painel_inicio: corpo exato (md5)",
+  "painel_inicio: assinatura e atributos conhecidos",
+  "painel_inicio: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "97a-conferir-o-lucro-do-inicio-conta-o-mes-inteiro-aplicado": ROL_DA_97,
+  "97b-antes-o-lucro-do-inicio-conta-o-mes-inteiro-base-vigente": ROL_DA_97,
   "90a-conferir-busca-do-painel-por-codigo-aplicado": [
     "controle: funcoes de public visiveis a este papel",
     "get_admin_products_paged: corpo exato (md5)",
