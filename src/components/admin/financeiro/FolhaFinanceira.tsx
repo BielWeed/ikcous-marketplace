@@ -5,6 +5,7 @@ import {
   type PointerEvent as EventoDePonteiro,
   type ReactNode,
   useEffect,
+  useContext,
   useRef,
   useState,
 } from "react";
@@ -21,6 +22,7 @@ import {
 import { useAlturaDoTeclado } from "@/hooks/useAlturaDoTeclado";
 import { useTelaLarga } from "@/hooks/useFinanceiro";
 import { cn } from "@/lib/utils";
+import { ContextoDoDescarte, PerguntaDeDescarte } from "./descarte";
 
 // Arrasto da alça: passou de 1/4 da altura OU desceu rápido (px/ms) → fecha.
 const FRACAO_PARA_FECHAR = 0.25;
@@ -53,6 +55,8 @@ function reduzMovimento(): boolean {
  * baixo e o Voltar do celular, que a view liga por `onSetBackOverride`) — a
  * folha não guarda estado próprio, só o deslocamento do dedo durante o
  * arrasto. O X é o ÚNICO botão de fechar: o rodapé leva só a ação principal.
+ * Com algo escrito, a view transforma esse pedido em pergunta ("Descartar o
+ * que você escreveu?"), que a folha desenha por dentro (`ContextoDoDescarte`).
  */
 export function FolhaFinanceira({
   titulo,
@@ -75,6 +79,7 @@ export function FolhaFinanceira({
   readonly fecharBloqueado?: boolean;
 }) {
   const larga = useTelaLarga();
+  const descarte = useContext(ContextoDoDescarte);
   const { altura: teclado, alturaVisivel } = useAlturaDoTeclado();
   const [arrasto, setArrasto] = useState(0);
   const [segurando, setSegurando] = useState(false);
@@ -115,7 +120,7 @@ export function FolhaFinanceira({
     ativo.scrollIntoView?.({ block: "nearest" });
   }, [larga, teclado]);
   const comTeclado = !larga && teclado > 0;
-  const podeArrastar = !larga && !fecharBloqueado;
+  const podeArrastar = !larga && !fecharBloqueado && !descarte.perguntando;
 
   function aoApertar(evento: EventoDePonteiro<HTMLDivElement>) {
     if (evento.button > 0) return;
@@ -164,7 +169,9 @@ export function FolhaFinanceira({
       setArrasto(0);
       return;
     }
-    if (reduzMovimento()) {
+    // Com algo escrito o arrasto vira pergunta: a folha volta ao lugar em vez
+    // de descer inteira e reaparecer por baixo da pergunta.
+    if (reduzMovimento() || descarte.sujo) {
       aoFechar();
       setArrasto(0);
       return;
@@ -219,6 +226,7 @@ export function FolhaFinanceira({
           onPointerMove={podeArrastar ? aoMover : undefined}
           onPointerUp={podeArrastar ? aoSoltar : undefined}
           onPointerCancel={podeArrastar ? aoCancelarArrasto : undefined}
+          inert={descarte.perguntando}
           className={cn("shrink-0", podeArrastar && "touch-none")}
         >
           {larga ? null : (
@@ -259,11 +267,17 @@ export function FolhaFinanceira({
             )}
           </SheetHeader>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
+        <div
+          inert={descarte.perguntando}
+          className="min-h-0 flex-1 overflow-y-auto px-5 pb-6"
+        >
           {children}
         </div>
         {rodape ? (
-          <SheetFooter className="mt-0 gap-2 border-t border-border bg-background px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-4">
+          <SheetFooter
+            inert={descarte.perguntando}
+            className="mt-0 gap-2 border-t border-border bg-background px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-4"
+          >
             {rodape}
             {larga ? null : (
               <p className="text-center text-xs text-muted-foreground">
@@ -271,6 +285,12 @@ export function FolhaFinanceira({
               </p>
             )}
           </SheetFooter>
+        ) : null}
+        {descarte.perguntando ? (
+          <PerguntaDeDescarte
+            aoContinuar={descarte.aoContinuar}
+            aoDescartar={descarte.aoDescartar}
+          />
         ) : null}
       </SheetContent>
     </Sheet>

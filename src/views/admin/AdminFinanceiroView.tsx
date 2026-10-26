@@ -23,6 +23,7 @@ import { AbaExtrato } from "@/components/admin/financeiro/AbaExtrato";
 import { AbaPrevistos } from "@/components/admin/financeiro/AbaPrevistos";
 import { AbaVisao } from "@/components/admin/financeiro/AbaVisao";
 import { FolhaFinanceira } from "@/components/admin/financeiro/FolhaFinanceira";
+import { ContextoDoDescarte } from "@/components/admin/financeiro/descarte";
 import {
   CategoriaFolha,
   ContaFolha,
@@ -164,6 +165,11 @@ export function AdminFinanceiroView({
   const geracaoDaFolha = useRef(0);
   const folhaEmEnvio = useRef(false);
   const [sujo, setSujo] = useState(false);
+  const sujoRef = useRef(false);
+  // Pergunta "Descartar o que você escreveu?" na tela. O ref espelha o estado
+  // para o Esc e o Voltar, que chegam por callbacks estáveis.
+  const [perguntando, setPerguntando] = useState(false);
+  const perguntandoRef = useRef(false);
   const [ocultos, alternarOcultos] = useValoresOcultos();
   const [confirmacao, setConfirmacao] = useState<ConfirmacaoFinanceira | null>(
     null,
@@ -176,18 +182,52 @@ export function AdminFinanceiroView({
   const caixa = useCaixaAtual(ativo, versao);
   const caixaAberto = caixa.dados?.sessao != null;
 
+  const mostrarPergunta = useCallback((mostrar: boolean) => {
+    perguntandoRef.current = mostrar;
+    setPerguntando(mostrar);
+  }, []);
+  // Fecha de verdade (depois de salvar, de escolher um período, de descartar).
   const fecharFolha = useCallback(() => {
     if (folhaEmEnvio.current) return;
+    mostrarPergunta(false);
     setFolha(null);
     setSujo(false);
-  }, []);
-  const abrirFolha = useCallback((nova: FolhaDoFinanceiro) => {
+  }, [mostrarPergunta]);
+  // Pedido de fechar de quem está olhando para a folha: X, toque no véu, arrasto
+  // para baixo, Esc e Voltar. Com algo escrito ele pergunta antes; um segundo
+  // Esc ou Voltar com a pergunta aberta vale "continuar escrevendo".
+  const pedirParaFechar = useCallback(() => {
     if (folhaEmEnvio.current) return;
-    setSujo(false);
-    geracaoDaFolha.current += 1;
-    setNumeroDaFolha(geracaoDaFolha.current);
-    setFolha(nova);
-  }, []);
+    if (perguntandoRef.current) {
+      mostrarPergunta(false);
+      return;
+    }
+    if (sujoRef.current) {
+      mostrarPergunta(true);
+      return;
+    }
+    fecharFolha();
+  }, [fecharFolha, mostrarPergunta]);
+  const descarteDaFolha = useMemo(
+    () => ({
+      sujo,
+      perguntando,
+      aoContinuar: () => mostrarPergunta(false),
+      aoDescartar: fecharFolha,
+    }),
+    [sujo, perguntando, mostrarPergunta, fecharFolha],
+  );
+  const abrirFolha = useCallback(
+    (nova: FolhaDoFinanceiro) => {
+      if (folhaEmEnvio.current) return;
+      mostrarPergunta(false);
+      setSujo(false);
+      geracaoDaFolha.current += 1;
+      setNumeroDaFolha(geracaoDaFolha.current);
+      setFolha(nova);
+    },
+    [mostrarPergunta],
+  );
   const aoMudarEnviando = useCallback(
     (enviando: boolean) => {
       if (geracaoDaFolha.current === numeroDaFolha) {
@@ -256,15 +296,22 @@ export function AdminFinanceiroView({
 
   // Formulário com digitação pendente → o roteador pergunta antes de sair.
   useEffect(() => {
+    sujoRef.current = sujo;
     onSetDirty?.(sujo);
   }, [sujo, onSetDirty]);
   useEffect(() => () => onSetDirty?.(false), [onSetDirty]);
 
-  // Folha aberta → o Voltar do celular fecha a folha, não a tela.
+  // Folha aberta → o Voltar do celular fecha a folha, não a tela (e, com algo
+  // escrito, pergunta antes). Cancelar lançamento é só um motivo de uma linha,
+  // numa janela que não é folha: fecha direto como sempre.
   useEffect(() => {
     if (!onSetBackOverride) return;
-    onSetBackOverride(folha ? () => fecharFolha : null);
-  }, [folha, fecharFolha, onSetBackOverride]);
+    onSetBackOverride(
+      folha
+        ? () => (folha.tipo === "cancelar" ? fecharFolha : pedirParaFechar)
+        : null,
+    );
+  }, [folha, fecharFolha, pedirParaFechar, onSetBackOverride]);
   useEffect(() => () => onSetBackOverride?.(null), [onSetBackOverride]);
 
   const listaDeContas = contas.dados ?? [];
@@ -317,7 +364,7 @@ export function AdminFinanceiroView({
             inicial={folha.inicial}
             aviso={contas.erro ?? categorias.erro}
             aoMudarEnviando={aoMudarEnviando}
-            aoFechar={fecharFolha}
+            aoFechar={pedirParaFechar}
             aoSalvar={aoSalvar}
             aoMudarSujo={setSujo}
           />
@@ -338,7 +385,8 @@ export function AdminFinanceiroView({
             alvo={folha.alvo}
             hoje={hoje}
             contas={listaDeContas}
-            aoFechar={fecharFolha}
+            aoMudarEnviando={aoMudarEnviando}
+            aoFechar={pedirParaFechar}
             aoSalvar={aoSalvar}
             aoMudarSujo={setSujo}
           />
@@ -347,6 +395,7 @@ export function AdminFinanceiroView({
         return (
           <CancelarLancamentoDialogo
             alvo={folha.alvo}
+            aoMudarEnviando={aoMudarEnviando}
             aoFechar={fecharFolha}
             aoSalvar={aoSalvar}
             aoMudarSujo={setSujo}
@@ -357,7 +406,8 @@ export function AdminFinanceiroView({
           <AbrirCaixaFolha
             contas={listaDeContas}
             aoReconciliar={aoReconciliarCaixa}
-            aoFechar={fecharFolha}
+            aoMudarEnviando={aoMudarEnviando}
+            aoFechar={pedirParaFechar}
             aoSalvar={aoSalvar}
             aoMudarSujo={setSujo}
           />
@@ -374,7 +424,7 @@ export function AdminFinanceiroView({
             esperado={folha.esperado}
             contaDoCaixa={folha.contaDoCaixa}
             contas={listaDeContas}
-            aoFechar={fecharFolha}
+            aoFechar={pedirParaFechar}
             aoSalvar={aoSalvar}
             aoMudarSujo={setSujo}
           />
@@ -385,7 +435,7 @@ export function AdminFinanceiroView({
             aoMudarEnviando={aoMudarEnviando}
             aoReconciliar={aoReconciliarCaixa}
             caixa={folha.caixa}
-            aoFechar={fecharFolha}
+            aoFechar={pedirParaFechar}
             aoFechado={() => {
               invalidar();
               toast.success("Caixa fechado.");
@@ -398,7 +448,7 @@ export function AdminFinanceiroView({
           <ContaFolha
             conta={folha.conta}
             hoje={hoje}
-            aoFechar={fecharFolha}
+            aoFechar={pedirParaFechar}
             aoSalvar={aoSalvar}
             aoMudarSujo={setSujo}
           />
@@ -407,7 +457,7 @@ export function AdminFinanceiroView({
         return (
           <CategoriaFolha
             categoria={folha.categoria}
-            aoFechar={fecharFolha}
+            aoFechar={pedirParaFechar}
             aoSalvar={aoSalvar}
             aoMudarSujo={setSujo}
           />
@@ -625,7 +675,9 @@ export function AdminFinanceiroView({
               ) : null}
             </div>
 
-            <div key={numeroDaFolha}>{renderizarFolha()}</div>
+            <ContextoDoDescarte.Provider value={descarteDaFolha}>
+              <div key={numeroDaFolha}>{renderizarFolha()}</div>
+            </ContextoDoDescarte.Provider>
           </div>
         </ContextoConfirmacaoFinanceira.Provider>
       </ContextoValoresOcultos.Provider>

@@ -87,6 +87,14 @@ async function clicar(el: HTMLElement) {
   await esperar();
 }
 
+// Fechar uma folha com algo escrito pergunta antes: aqui a lojista descarta.
+async function fecharDescartando(atual: HTMLElement) {
+  await clicar(botaoX(atual));
+  const pergunta = document.querySelector<HTMLElement>('[role="alertdialog"]');
+  if (!pergunta) throw new Error("a pergunta de descartar não apareceu");
+  await clicar(botaoEm(pergunta, "Descartar"));
+}
+
 async function digitarSemSair(id: string, valor: string) {
   const el = campo(id);
   await act(async () => {
@@ -402,7 +410,7 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     );
     // Outro cadastro ainda pode sair enquanto espera: exercita a defesa da
     // view contra resposta antiga, independentemente da trava do lançamento.
-    await clicar(botaoX(folha()));
+    await fecharDescartando(folha());
     await clicar(botaoEm(hospedeiro, "Novo lançamento"));
     await digitar("fin-lanc-descricao", "Lançamento B");
     const nova = folha();
@@ -428,7 +436,7 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
       return Promise.resolve({ data: [], error: null });
     });
     await clicar(botaoEm(folha(), "Salvar"));
-    await clicar(botaoX(folha()));
+    await fecharDescartando(folha());
     await abrirLancamentoValido();
     await digitar("fin-lanc-descricao", "Lançamento B");
     await clicar(botaoEm(folha(), "Salvar lançamento"));
@@ -452,7 +460,7 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     rpcFalso.mockRejectedValueOnce(new Error("Falha na conexão"));
     await clicar(botaoEm(folha(), "Salvar lançamento"));
     expect(botaoX(folha()).disabled).toBe(false);
-    await clicar(botaoX(folha()));
+    await fecharDescartando(folha());
     expect(document.querySelector('[data-slot="sheet-content"]')).toBeNull();
   });
 
@@ -487,7 +495,7 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     expect(
       rpcFalso.mock.calls.filter(([nome]) => nome === "fin_lancamento_salvar"),
     ).toHaveLength(1);
-    await clicar(botaoX(atual));
+    await fecharDescartando(atual);
     expect(document.querySelector('[data-slot="sheet-content"]')).toBeNull();
     await clicar(botaoEm(hospedeiro, "Novo lançamento"));
     expect(campo("fin-lanc-descricao").value).toBe("");
@@ -506,7 +514,7 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
-    await clicar(botaoX(folha()));
+    await fecharDescartando(folha());
     await clicar(botaoEm(hospedeiro, "Novo lançamento"));
     await digitar("fin-lanc-descricao", "Lançamento B");
     const nova = folha();

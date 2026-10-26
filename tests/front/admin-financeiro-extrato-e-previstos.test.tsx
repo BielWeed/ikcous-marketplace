@@ -366,4 +366,91 @@ describe("Financeiro — extrato e a pagar", () => {
     });
     expect(folha()).toBeNull();
   });
+
+  // Resposta que a tela espera: a gravação "no ar" até o teste soltar.
+  function gravacaoNoAr(nome: string) {
+    let soltar!: (resposta: { data: unknown; error: unknown }) => void;
+    const promessa = new Promise<{ data: unknown; error: unknown }>(
+      (resolve) => {
+        soltar = resolve;
+      },
+    );
+    const original = rpcFalso.getMockImplementation();
+    rpcFalso.mockImplementation(async (chamada: string, args?: unknown) => {
+      if (chamada === nome) return promessa;
+      return original?.(chamada, args as Record<string, unknown>);
+    });
+    return soltar;
+  }
+
+  async function tentarFechar(painel: HTMLElement) {
+    await act(async () => {
+      painel.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    await esperar();
+  }
+
+  it("a baixa não fecha enquanto grava e a falha aparece na própria folha", async () => {
+    await irPara("Pagar e receber");
+    const baixas = [...hospedeiro.querySelectorAll("button")].filter(
+      (b) => normalizar(b.textContent).trim() === "Dar baixa",
+    );
+    await clicar(baixas.at(0) as HTMLButtonElement);
+    const baixa = folha() as HTMLElement;
+    const soltar = gravacaoNoAr("fin_lancamento_baixar");
+    await clicar(botaoEm(baixa, "Confirmar baixa"));
+
+    const x = baixa.querySelector<HTMLButtonElement>('[aria-label="Fechar"]');
+    expect(x?.disabled).toBe(true);
+    await tentarFechar(baixa);
+    expect(folha()).toBe(baixa);
+
+    await act(async () =>
+      soltar({ data: null, error: { message: "Failed to fetch" } }),
+    );
+    await esperar();
+    expect(folha()).toBe(baixa);
+    expect(x?.disabled).toBe(false);
+    expect(normalizar(baixa.textContent)).toMatch(/internet|conex|tente/i);
+  });
+
+  it("o cancelamento não fecha enquanto grava e a falha aparece na própria janela", async () => {
+    await irPara("Extrato");
+    await clicar(botaoEm(hospedeiro, /^Internet de setembro/));
+    await clicar(botaoEm(folha() as HTMLElement, "Cancelar lançamento"));
+    const dialogo = document.querySelector(
+      '[role="alertdialog"]',
+    ) as HTMLElement;
+    const campo = document.getElementById(
+      "fin-cancelar-motivo",
+    ) as HTMLTextAreaElement;
+    await act(async () => {
+      campo.focus();
+      Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )?.set?.call(campo, "lançado em dobro");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      campo.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    });
+    const soltar = gravacaoNoAr("fin_lancamento_cancelar");
+    await clicar(botaoEm(dialogo, "Cancelar lançamento"));
+
+    expect(botaoEm(dialogo, "Manter").disabled).toBe(true);
+    await tentarFechar(dialogo);
+    await clicar(botaoEm(dialogo, "Manter"));
+    expect(document.querySelector('[role="alertdialog"]')).toBe(dialogo);
+
+    await act(async () =>
+      soltar({ data: null, error: { message: "Failed to fetch" } }),
+    );
+    await esperar();
+    expect(document.querySelector('[role="alertdialog"]')).toBe(dialogo);
+    expect(botaoEm(dialogo, "Manter").disabled).toBe(false);
+    expect(normalizar(dialogo.textContent)).toMatch(/internet|conex|tente/i);
+  });
 });
