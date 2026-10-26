@@ -740,15 +740,18 @@ export function OrderDetailsView({
   // negada, janela sem foco, API ausente) — mesma família do laudo 0109 (A-8)
   // que corrigiu OrderDetail.tsx (painel). `copiarParaClipboard` devolve
   // `false` quando a API recusa, e aí o aviso é de erro, não de sucesso.
+  //
+  // UI-191 (G6): copia o número que o chip ESCREVE (#3884BE, os 6 finais), não
+  // o id interno de 36 caracteres.
   const handleCopyId = async () => {
-    const ok = await copiarParaClipboard(orderId);
+    const ok = await copiarParaClipboard(numeroDoPedido(orderId));
     if (!ok) {
       toast.error(
         "Não foi possível copiar. Selecione o texto e copie manualmente.",
       );
       return;
     }
-    toast.success("ID do pedido copiado!");
+    toast.success("Número do pedido copiado");
     haptic.light();
   };
 
@@ -1047,7 +1050,10 @@ export function OrderDetailsView({
           <div
             role="button"
             tabIndex={0}
-            className="flex cursor-pointer items-center gap-1.5 rounded-full border border-zinc-100 bg-white px-3 py-1.5 text-xs font-bold text-zinc-600 shadow-sm transition-opacity hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-zinc-900/20"
+            aria-label="Copiar número do pedido"
+            // Visual de 28px; o ::after estende a área de toque a 44px (8px
+            // para cima e para baixo, dentro do espaço entre as linhas).
+            className="relative flex cursor-pointer items-center gap-1.5 rounded-full border border-solid border-zinc-100 bg-white px-3 py-1.5 text-xs font-bold text-zinc-600 shadow-sm transition-opacity after:absolute after:inset-x-0 after:-inset-y-2 after:content-[''] hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-zinc-900/20"
             onClick={handleCopyId}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {

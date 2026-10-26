@@ -280,8 +280,12 @@ export const OrderList = memo(function OrderList({
   // falhava — mesma família do laudo 0109 (A-8) que corrigiu OrderDetail.tsx
   // (painel). `copiarParaClipboard` devolve `false` quando a API recusa, e aí
   // o aviso é de erro, não de sucesso.
+  //
+  // UI-191 (G6): copia o que a tela ESCREVE (#3884BE, os 6 finais -- a mesma
+  // coisa que o cliente fala no atendimento), não o id interno de 36
+  // caracteres que ele nunca viu.
   const copyToClipboard = async (orderId: string) => {
-    const ok = await copiarParaClipboard(orderId);
+    const ok = await copiarParaClipboard(numeroDoPedido(orderId));
     if (!ok) {
       toast.error(
         "Não foi possível copiar. Selecione o texto e copie manualmente.",
@@ -289,7 +293,7 @@ export const OrderList = memo(function OrderList({
       return;
     }
     setCopiedId(orderId);
-    toast.success("ID do pedido copiado!");
+    toast.success("Número do pedido copiado");
     setTimeout(() => {
       setCopiedId(null);
     }, 2000);
