@@ -321,6 +321,10 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     "tests/banco/busca-do-painel-por-codigo-viva.cjs",
     // 20261386: o preco do produto deixa historico (trava de 5 s sem nada pela metade, a janela do salvamento no meio da migration, backfill sem data inventada, 12 caminhos do gatilho, mutantes, ACL/RLS por papel, rollbacks, consultas 91a/91b).
     "tests/banco/o-preco-do-produto-deixa-historico-viva.cjs",
+    // 20261389000000: a cotacao de frete tem limite por origem (teto e janela, 12 conexoes simultaneas, ACL, limpeza, mutantes, rollback, consultas 95a/95b).
+    "tests/banco/o-frete-tem-limite-de-cotacoes-viva.cjs",
+    // 20261389100000: o estoque que volta tranca na mesma ordem da compra (40P01 do corpo antigo em 3 cenarios com 2 conexoes, matriz diferencial, mutantes, rollback, consultas 96a/96b).
+    "tests/banco/o-estoque-que-volta-tranca-na-mesma-ordem-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -442,6 +446,10 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/busca-do-painel-por-codigo-viva.cjs",
     // 20261386: o preco do produto deixa historico (trava de 5 s sem nada pela metade, a janela do salvamento no meio da migration, backfill sem data inventada, 12 caminhos do gatilho, mutantes, ACL/RLS por papel, rollbacks, consultas 91a/91b).
     "tests/banco/o-preco-do-produto-deixa-historico-viva.cjs",
+    // 20261389000000: a cotacao de frete tem limite por origem (teto e janela, 12 conexoes simultaneas, ACL, limpeza, mutantes, rollback, consultas 95a/95b).
+    "tests/banco/o-frete-tem-limite-de-cotacoes-viva.cjs",
+    // 20261389100000: o estoque que volta tranca na mesma ordem da compra (40P01 do corpo antigo em 3 cenarios com 2 conexoes, matriz diferencial, mutantes, rollback, consultas 96a/96b).
+    "tests/banco/o-estoque-que-volta-tranca-na-mesma-ordem-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/pagamentos-rpc-viva.cjs",
     "tests/banco/admin-atual-viva.cjs",
