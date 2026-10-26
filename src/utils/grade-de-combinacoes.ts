@@ -210,6 +210,44 @@ export function gerarGrade(
   return { linhas, erro: null };
 }
 
+/**
+ * A conta ao vivo do passo 1 ("3 cores × 3 tamanhos = 9 combinações"): quantos
+ * valores distintos cada atributo tem e quantas combinações são NOVAS. Não
+ * valida nem aborta no teto (`gerarGrade` é quem recusa): só conta, para o
+ * resumo poder mostrar o número mesmo quando ele passa do limite. As que já
+ * existem no produto (ativas ou não) não entram, como em `gerarGrade`.
+ */
+export function contarCombinacoesDaGrade(
+  atributos: AtributoDaGrade[],
+  existentes: IdentidadeDeVariante[],
+): { porAtributo: number[]; novas: number } {
+  const valores = atributos.map(
+    (a) => new Set(a.valores.map(chaveMinuscula).filter((v) => v !== "")),
+  );
+  const porAtributo = valores.map((v) => v.size);
+  const total = porAtributo.reduce((produto, n) => produto * n, 1);
+  if (atributos.length === 0 || total === 0) return { porAtributo, novas: 0 };
+  const nomes = atributos.map((a) => chaveMinuscula(a.name));
+  const jaExistem = new Set<string>();
+  for (const existente of existentes) {
+    const nomesDela = existente.name
+      .split(SEPARADOR_DE_ATRIBUTOS)
+      .map(chaveMinuscula);
+    const valoresDela = existente.value
+      .split(SEPARADOR_DE_ATRIBUTOS)
+      .map(chaveMinuscula);
+    if (
+      nomesDela.length === nomes.length &&
+      valoresDela.length === nomes.length &&
+      nomesDela.every((nome, i) => nome === nomes.at(i)) &&
+      valoresDela.every((valor, i) => valores.at(i)?.has(valor))
+    ) {
+      jaExistem.add(chaveDaIdentidade(existente));
+    }
+  }
+  return { porAtributo, novas: total - jaExistem.size };
+}
+
 /** Mesma limpeza do SKU do modal unitário: caixa alta e espaço vira hífen. */
 const sanitizarSku = (texto: string): string =>
   texto.trim().toUpperCase().replace(/\s+/g, "-");

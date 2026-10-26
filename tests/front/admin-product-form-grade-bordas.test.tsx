@@ -23,6 +23,7 @@ import {
   atributoMarcado,
   escolherAtributo,
 } from "./helpers/atributo-da-variacao";
+import { BOTAO_GERAR_GRADE, casaOTexto } from "./helpers/gerar-grade";
 
 const fetchProduct = vi.fn();
 const upsertVariants = vi.fn().mockResolvedValue(undefined);
@@ -98,13 +99,13 @@ vi.mock("sonner", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function botaoPorTexto(raiz: ParentNode, texto: string) {
+function botaoPorTexto(raiz: ParentNode, texto: string | RegExp) {
   return [...raiz.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes(texto),
+    casaOTexto(b.textContent, texto),
   ) as HTMLButtonElement | undefined;
 }
 
-function clicarObrigatorio(texto: string) {
+function clicarObrigatorio(texto: string | RegExp) {
   const botao = botaoPorTexto(document.body, texto);
   if (!botao) throw new Error(`Botão "${texto}" não está na tela.`);
   botao.click();
@@ -247,7 +248,7 @@ describe("AdminProductFormView — bordas da grade", () => {
     });
     await camada(0, "Cor", ["Azul", "Verde"]);
     await act(async () => {
-      clicarObrigatorio("Gerar grade");
+      clicarObrigatorio(BOTAO_GERAR_GRADE);
     });
     expect(linhasDaGrade()).toEqual(["Azul", "Verde"]);
 
@@ -268,18 +269,20 @@ describe("AdminProductFormView — bordas da grade", () => {
     });
     await camada(0, "Cor", ["Preto"]);
     await act(async () => {
-      clicarObrigatorio("+ Atributo");
+      clicarObrigatorio("+ Adicionar outro atributo");
     });
     await camada(1, "Tamanho", ["P", "M"]);
     await act(async () => {
-      clicarObrigatorio("+ Atributo");
+      clicarObrigatorio("+ Adicionar outro atributo");
     });
     await camada(2, "Material", ["Algodão", "Linho"]);
-    // O teto é de 3 camadas: não há quarto "+ Atributo".
-    expect(botaoPorTexto(document.body, "+ Atributo")).toBeUndefined();
+    // O teto é de 3 camadas: não há quarto "+ Adicionar outro atributo".
+    expect(
+      botaoPorTexto(document.body, "+ Adicionar outro atributo"),
+    ).toBeUndefined();
 
     await act(async () => {
-      clicarObrigatorio("Gerar grade");
+      clicarObrigatorio(BOTAO_GERAR_GRADE);
     });
     expect(linhasDaGrade()).toEqual([
       "Preto / P / Algodão",
@@ -317,7 +320,7 @@ describe("AdminProductFormView — bordas da grade", () => {
       });
     }
     await act(async () => {
-      clicarObrigatorio("Gerar grade");
+      clicarObrigatorio(BOTAO_GERAR_GRADE);
     });
 
     expect(toastError).toHaveBeenCalledTimes(1);
@@ -336,7 +339,7 @@ describe("AdminProductFormView — bordas da grade", () => {
     });
     await camada(0, "Tamanho", ["P", "M"]);
     await act(async () => {
-      clicarObrigatorio("Gerar grade");
+      clicarObrigatorio(BOTAO_GERAR_GRADE);
     });
     await digitarCampo("grade-aplicar-estoque", "4");
     await act(async () => {
@@ -358,7 +361,7 @@ describe("AdminProductFormView — bordas da grade", () => {
     });
     await camada(0, "Tamanho", ["P", "G"]);
     await act(async () => {
-      clicarObrigatorio("Gerar grade");
+      clicarObrigatorio(BOTAO_GERAR_GRADE);
     });
     // A G custa mais; a P usa o preço do produto.
     await digitarCampo("grade-linha-preco-1", "109,90");

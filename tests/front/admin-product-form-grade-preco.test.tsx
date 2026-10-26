@@ -25,6 +25,7 @@ import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { escolherAtributo } from "./helpers/atributo-da-variacao";
+import { BOTAO_GERAR_GRADE, casaOTexto } from "./helpers/gerar-grade";
 
 const mocks = vi.hoisted(() => ({
   addProduct: vi.fn(),
@@ -108,13 +109,13 @@ vi.mock("sonner", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function botaoPorTexto(texto: string) {
+function botaoPorTexto(texto: string | RegExp) {
   return [...document.body.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes(texto),
+    casaOTexto(b.textContent, texto),
   ) as HTMLButtonElement | undefined;
 }
 
-function clicarObrigatorio(texto: string) {
+function clicarObrigatorio(texto: string | RegExp) {
   const botao = botaoPorTexto(texto);
   if (!botao) throw new Error(`Botão "${texto}" não está na tela.`);
   botao.click();
@@ -259,7 +260,7 @@ describe("AdminProductFormView — o preço da grade vira o Preço de Venda", ()
       });
     }
     await act(async () => {
-      clicarObrigatorio("+ Atributo");
+      clicarObrigatorio("+ Adicionar outro atributo");
     });
     await escolherAtributo(1, "Tamanho", "grade-nome-1", digitarCampo);
     for (const tam of ["P", "M"]) {
@@ -269,7 +270,7 @@ describe("AdminProductFormView — o preço da grade vira o Preço de Venda", ()
       });
     }
     await act(async () => {
-      clicarObrigatorio("Gerar grade");
+      clicarObrigatorio(BOTAO_GERAR_GRADE);
     });
   }
 
@@ -619,7 +620,7 @@ describe("AdminProductFormView — o preço da grade vira o Preço de Venda", ()
         clicarPorRotulo("Adicionar valor do atributo 2");
       });
       await act(async () => {
-        clicarObrigatorio("Gerar grade");
+        clicarObrigatorio(BOTAO_GERAR_GRADE);
       });
     }
 
