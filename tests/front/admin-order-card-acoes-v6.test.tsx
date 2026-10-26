@@ -122,7 +122,7 @@ it("a leitura segue status, identificação, cliente/produto, total/pagamento e 
 });
 
 it.each(["aguardando", "recusado", "estornado"] as const)(
-  "%s: avançar é secundário, não chama nada antes da confirmação e Cancelar só fecha",
+  "%s: avançar é secundário, não chama nada antes da confirmação e Voltar só fecha",
   async (paymentStatus) => {
     montar(pedido({ paymentStatus }));
     expect(botao("Avançar mesmo assim")?.className).not.toContain("from-[#");
@@ -131,11 +131,11 @@ it.each(["aguardando", "recusado", "estornado"] as const)(
     expect(document.body.textContent).toContain(
       "depois de finalizado, não dá mais para cancelar e devolver ao estoque",
     );
-    // Mesma orientação do aviso da ficha (OrderDetail): o "Cancelar" daqui só fecha.
+    // Mesma orientação do aviso da ficha (OrderDetail): o "Voltar" daqui só fecha.
     expect(document.body.textContent).toContain(
       "Se a cliente pagou na loja, feche este aviso, cancele o pedido (botão Cancelar pedido) e registre a venda em Vender.",
     );
-    await clicar("Cancelar");
+    await clicar("Voltar");
     expect(avancar).not.toHaveBeenCalled();
     await clicar("Avançar mesmo assim");
     await clicar("Avançar mesmo assim");
