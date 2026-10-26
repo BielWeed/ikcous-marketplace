@@ -42,7 +42,7 @@ interface FavoritesViewProps {
     quantity?: number,
     variantId?: string,
     variantNames?: string,
-  ) => number | void;
+  ) => unknown;
 }
 
 /** Quantos itens cada categoria mostra antes de "Ver todos". */

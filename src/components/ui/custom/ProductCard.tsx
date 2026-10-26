@@ -50,7 +50,7 @@ interface ProductCardProps {
    * de estoque que o carrinho já deu. Quem não informa (`void`) é tratado
    * como "entrou", o comportamento de sempre.
    */
-  onAddToCart?: (product: Product, e: React.MouseEvent) => number | void;
+  onAddToCart?: (product: Product, e: React.MouseEvent) => unknown;
   onQuickBuy?: (product: Product, e: React.MouseEvent) => void;
   /**
    * Card inteligente (pedido do Gabriel, 02/09; folha desde 13/09 — direção
@@ -67,7 +67,7 @@ interface ProductCardProps {
     variantId: string | undefined,
     variantNames: string,
     quantity?: number,
-  ) => number | void;
+  ) => unknown;
   onClick: (productId: string) => void;
   onMouseEnter?: (productId: string) => void;
   onTouchStart?: (productId: string) => void;

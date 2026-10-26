@@ -20,16 +20,6 @@ import { AnimatePresence, motion, usePresence } from "framer-motion";
 import { ArrowRight, ShieldCheck, Sparkles, Truck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-// Sub-components
-import { AddressList } from "@/components/ui/custom/AddressList";
-import { CartFooterSummary } from "@/components/ui/custom/CartFooterSummary";
-import { CartItemsList } from "@/components/ui/custom/CartItemsList";
-import { EmptyCart } from "@/components/ui/custom/EmptyCart";
-import { OrderList } from "@/components/ui/custom/OrderList";
-import { OrderSearch } from "@/components/ui/custom/OrderSearch";
-import { ShippingCalculator } from "@/components/ui/custom/ShippingCalculator";
-import type { EstadoDaBarraDeFrete } from "@/components/ui/custom/ShippingProgress";
-import { ShippingProgress } from "@/components/ui/custom/ShippingProgress";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,6 +30,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+// Sub-components
+import { AddressList } from "@/components/ui/custom/AddressList";
+import { CartFooterSummary } from "@/components/ui/custom/CartFooterSummary";
+import { CartItemsList } from "@/components/ui/custom/CartItemsList";
+import { EmptyCart } from "@/components/ui/custom/EmptyCart";
+import { OrderList } from "@/components/ui/custom/OrderList";
+import { OrderSearch } from "@/components/ui/custom/OrderSearch";
+import { ShippingCalculator } from "@/components/ui/custom/ShippingCalculator";
+import type { EstadoDaBarraDeFrete } from "@/components/ui/custom/ShippingProgress";
+import { ShippingProgress } from "@/components/ui/custom/ShippingProgress";
 import {
   Sheet,
   SheetContent,

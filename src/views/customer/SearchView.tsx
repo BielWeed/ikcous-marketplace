@@ -48,7 +48,7 @@ interface SearchViewProps {
     quantity?: number,
     variantId?: string,
     variantNames?: string,
-  ) => number | void;
+  ) => unknown;
 }
 
 interface SearchInputProps {

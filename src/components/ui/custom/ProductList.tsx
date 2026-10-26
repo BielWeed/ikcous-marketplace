@@ -23,14 +23,14 @@ interface ProductListProps {
   onToggleFavorite: (product: Product) => void;
   onProductClick: (productId: string) => void;
   /** Devolve quantas unidades entraram (0 = nada): o card só celebra se entrou. */
-  onAddToCart?: (product: Product) => number | void;
+  onAddToCart?: (product: Product) => unknown;
   /** Card inteligente (02/09): presente, o card escolhe opções nele mesmo. */
   onAddToCartWithVariants?: (
     product: Product,
     variantId: string | undefined,
     variantNames: string,
     quantity?: number,
-  ) => number | void;
+  ) => unknown;
   onQuickBuy?: (product: Product) => void;
   selectedProductId?: string;
 }

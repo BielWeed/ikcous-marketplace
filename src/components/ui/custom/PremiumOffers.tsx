@@ -39,7 +39,7 @@ export interface PremiumOffersProps {
   onToggleFavorite: (product: Product) => void;
   onProductClick: (productId: string) => void;
   /** Devolve quantas unidades entraram (0 = nada): só se entrou há "Salvo!". */
-  onAddToCart?: (product: Product) => number | void;
+  onAddToCart?: (product: Product) => unknown;
   onQuickBuy?: (product: Product) => void;
   title?: string;
 }
@@ -361,7 +361,7 @@ interface HeroOfferCardProps {
   onToggleFavorite: (product: Product) => void;
   onProductClick: (productId: string) => void;
   /** Devolve quantas unidades entraram (0 = nada): só se entrou há "Salvo!". */
-  onAddToCart?: (product: Product) => number | void;
+  onAddToCart?: (product: Product) => unknown;
   onQuickBuy?: (product: Product) => void;
   onMouseEnter?: () => void;
   onTouchStart?: () => void;

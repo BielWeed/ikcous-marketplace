@@ -112,7 +112,7 @@ interface ProductViewProps {
     quantity: number,
     variantId?: string,
     variantNames?: string,
-  ) => number | void;
+  ) => unknown;
   onQuickBuy?: (product: Product, variantId?: string) => void;
   onNavigate?: (view: View, id?: string) => void;
 }

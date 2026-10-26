@@ -59,7 +59,7 @@ interface HomeViewProps {
     quantity?: number,
     variantId?: string,
     variantNames?: string,
-  ) => number | void;
+  ) => unknown;
   onQuickBuy?: (product: Product, variantId?: string) => void;
   isLoading?: boolean;
   scrollProgress?: number;

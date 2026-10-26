@@ -1066,7 +1066,7 @@ export function OrderDetailsView({
             aria-label="Copiar número do pedido"
             // Visual de 28px; o ::after estende a área de toque a 44px (8px
             // para cima e para baixo, dentro do espaço entre as linhas).
-            className="relative flex cursor-pointer items-center gap-1.5 rounded-full border border-solid border-zinc-100 bg-white px-3 py-1.5 text-xs font-bold text-zinc-600 shadow-sm transition-opacity after:absolute after:inset-x-0 after:-inset-y-2 after:content-[''] hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-zinc-900/20"
+            className="relative flex cursor-pointer items-center gap-1.5 rounded-full border border-solid border-zinc-100 bg-white px-3 py-1.5 text-xs font-bold text-zinc-600 shadow-sm transition-opacity after:absolute after:-inset-y-2 after:inset-x-0 after:content-[''] hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-zinc-900/20"
             onClick={handleCopyId}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
@@ -1795,7 +1795,7 @@ export function OrderDetailsView({
           // botão Publicar avaliação sumia atrás dela. Ficar acima da barra,
           // e não por cima, mantém o aviso de descarte (AlertDialog, z-50)
           // na frente da folha.
-          <div className="fixed inset-x-0 top-0 bottom-[var(--folha-acima-da-barra)] z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in">
+          <div className="fixed inset-x-0 bottom-[var(--folha-acima-da-barra)] top-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in">
             <div
               className="fixed inset-0"
               onClick={fecharAvaliacaoPerguntando}

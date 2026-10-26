@@ -125,13 +125,13 @@ describe("ProductCard — só comemora quando algo entrou no carrinho", () => {
     produto: Product,
     props: {
       layout?: "card" | "linha";
-      onAddToCart?: (p: Product, e: React.MouseEvent) => number | void;
+      onAddToCart?: (p: Product, e: React.MouseEvent) => unknown;
       onAddToCartWithVariants?: (
         p: Product,
         variantId: string | undefined,
         variantNames: string,
         quantity?: number,
-      ) => number | void;
+      ) => unknown;
     },
   ) {
     const { ProductCard } = await import("@/components/ui/custom/ProductCard");
@@ -302,7 +302,7 @@ describe("Faixa de ofertas — só comemora quando algo entrou", () => {
     hospedeiro.remove();
   });
 
-  async function montar(onAddToCart: () => number | void) {
+  async function montar(onAddToCart: () => unknown) {
     const { useAcoesDaOferta } = await import(
       "@/components/ui/custom/PremiumOffers"
     );
