@@ -51,6 +51,7 @@ import {
 } from "@/utils/avisos-do-lojista";
 import { haptic } from "@/utils/haptic";
 import { consumirProdutoNovoCadastrado } from "@/utils/produto-recem-cadastrado";
+import { VISAO_SEM_CUSTO } from "@/utils/produtos-sem-custo";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -116,11 +117,18 @@ const GerenciarCategorias = lazy(() =>
 interface AdminProductsViewProps {
   onNavigate: (view: View, id?: string) => void;
   active?: boolean;
+  /**
+   * Visão com que a lista abre (o `id` de `onNavigate("admin-products", id)`):
+   * só `VISAO_SEM_CUSTO` vale; qualquer outro valor é ignorado e a lista abre
+   * como sempre.
+   */
+  visaoInicial?: string | null;
 }
 
 export const AdminProductsView = memo(function AdminProductsView({
   onNavigate,
   active,
+  visaoInicial,
 }: Readonly<AdminProductsViewProps>) {
   const {
     products,
@@ -505,6 +513,16 @@ export const AdminProductsView = memo(function AdminProductsView({
     }
     setPedidoDeRolagem((n) => n + 1);
   };
+  // Vindo do Relatórios ("Cadastrar custo"): a lista abre já na visão. Espera a
+  // tela ficar ativa e só age quando o pedido muda ou a tela volta a abrir.
+  const pedeVisaoSemCusto = visaoInicial === VISAO_SEM_CUSTO;
+  const abrirVisaoSemCustoRef = useRef(abrirVisaoSemCusto);
+  useEffect(() => {
+    abrirVisaoSemCustoRef.current = abrirVisaoSemCusto;
+  });
+  useEffect(() => {
+    if (active && pedeVisaoSemCusto) abrirVisaoSemCustoRef.current();
+  }, [active, pedeVisaoSemCusto]);
   const verTodos = () => {
     const antes = filtrosAntesDaVisao.current;
     filtrosAntesDaVisao.current = null;

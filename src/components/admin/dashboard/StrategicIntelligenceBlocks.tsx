@@ -3,6 +3,7 @@ import {
   CartaoDoCrm,
   EstadoVazioDoCrm,
 } from "@/components/admin/crm/PecasDoCrm";
+import { formatarPercentual } from "@/lib/financeiro";
 import { formatCurrency } from "@/lib/utils";
 import { memo, useMemo, useState } from "react";
 
@@ -123,7 +124,7 @@ export const StrategicIntelligenceBlocks = memo(
         ) : safeCategoryData.length === 0 || totalRevenue === 0 ? (
           <EstadoVazioDoCrm
             className="min-h-[156px] justify-center"
-            titulo="Sem Dados Registrados"
+            titulo="Sem dados registrados"
             texto="Nenhuma categoria registrou faturamento desde o início da loja."
           />
         ) : (
@@ -149,8 +150,15 @@ export const StrategicIntelligenceBlocks = memo(
                       </span>
                     </div>
                     <p className="text-admin-text-soft text-[11px]">
-                      {entry.orders != null && <>{entry.orders} pedidos · </>}
-                      {percentage}%
+                      {entry.orders != null && (
+                        <>
+                          {entry.orders === 1
+                            ? "1 pedido"
+                            : `${entry.orders} pedidos`}{" "}
+                          ·{" "}
+                        </>
+                      )}
+                      {formatarPercentual(Number(percentage))}
                       {(expandido || safeCategoryData.length <= 3) &&
                         !!entry.avg_ticket && (
                           <>

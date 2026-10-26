@@ -21,6 +21,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Order } from "@/types";
 
+import {
+  desligarCaixaDeCancelamento,
+  ligarCaixaDeCancelamento,
+} from "./duble-caixa-de-cancelamento";
 const ID = "pedido-aberto";
 
 const pedidoAguardando: Order = {
@@ -103,6 +107,7 @@ describe("OrderDetailsView — a tela acompanha o pedido quando ele muda na list
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    ligarCaixaDeCancelamento();
     lista = [pedidoAguardando];
     ordersLoadError = null;
     fetchUserOrders.mockReset();
@@ -114,6 +119,7 @@ describe("OrderDetailsView — a tela acompanha o pedido quando ele muda na list
   });
 
   afterEach(() => {
+    desligarCaixaDeCancelamento();
     act(() => {
       raiz.unmount();
     });

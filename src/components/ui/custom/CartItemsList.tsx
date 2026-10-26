@@ -216,21 +216,22 @@ export const CartItemsList = memo(function CartItemsList({
         {cartCount} {cartCount === 1 ? "Item Adicionado" : "Itens Adicionados"}
       </p>
 
+      {/* UI-191 (G8): antes este bloco dizia "Instabilidade detectada" e "o
+          carrinho excedeu o limite seguro", mas NADA limita as linhas ao
+          adicionar (nem o app nem o servidor) -- era um susto sem causa. Agora
+          é só um aviso calmo, com a saída de recomeçar do zero. */}
       {cart.length > 50 && (
-        <div className="mb-4 flex items-center justify-between gap-3 rounded-[18px] border border-red-300 p-4 dark:border-red-500/60">
-          <div className="min-w-0">
-            <p className="text-[15px] font-semibold text-foreground">
-              Instabilidade detectada
-            </p>
-            <p className="text-[13px] text-red-700 dark:text-red-400">
-              O carrinho excedeu o limite seguro.
-            </p>
-          </div>
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-[18px] border border-border p-4">
+          <p className="min-w-0 text-[13px] text-muted-foreground">
+            Seu carrinho tem {cart.length} produtos diferentes. Para recomeçar,
+            esvazie o carrinho.
+          </p>
           <button
+            type="button"
             onClick={handleClearCart}
             className="h-11 shrink-0 rounded-xl bg-foreground px-4 text-[13px] font-semibold text-background transition-colors hover:bg-foreground/90"
           >
-            Limpar Tudo
+            Esvaziar carrinho
           </button>
         </div>
       )}

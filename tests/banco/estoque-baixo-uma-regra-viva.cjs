@@ -331,6 +331,11 @@ PROVAS.push({
     await require("./ex-admin-resto-do-painel-posterior.cjs").desfazerExAdminRestoNaTransacao(
       c,
     );
+    // A 20261390000000 (o lucro do Início conta o mês inteiro) sucede a 28: sai primeiro, pelo rollback-manual dela
+    // (o rollback da 28 só aceita o corpo da 28). Não faz nada se não está no ar.
+    await require("./o-lucro-do-inicio-posterior.cjs").desfazerLucroDoInicioNaTransacao(
+      c,
+    );
     // A 20261228000000 (o Início compara até a mesma hora) sucede a 12 no mesmo corpo: o clone
     // volta ao corpo da 12 antes de medir (o rollback da 28 tem preflight próprio).
     if ((await catalogo(c, PAINEL)).hash === H28.desta) {

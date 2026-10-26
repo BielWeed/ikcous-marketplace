@@ -6,6 +6,7 @@ import {
 } from "@/components/admin/crm/PecasDoCrm";
 import type { DashboardStats } from "@/hooks/useAnalytics";
 import {
+  VISAO_SEM_CUSTO,
   avisoProdutosSemCusto,
   produtosSemCusto,
 } from "@/utils/produtos-sem-custo";
@@ -64,7 +65,7 @@ export const TopProductsList = memo(function TopProductsList({
                 <li key={item.id}>
                   <button
                     type="button"
-                    onClick={() => onNavigate("admin-products", item.id)}
+                    onClick={() => onNavigate("admin-product-form", item.id)}
                     className="flex min-h-[52px] w-full items-center gap-2 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold"
                   >
                     <span
@@ -120,7 +121,7 @@ export const TopProductsList = memo(function TopProductsList({
             <p>{avisoProdutosSemCusto(semCusto)}</p>
             <button
               type="button"
-              onClick={() => onNavigate("admin-products")}
+              onClick={() => onNavigate("admin-products", VISAO_SEM_CUSTO)}
               className="min-h-11 font-bold text-admin-gold"
             >
               Cadastrar custo

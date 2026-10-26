@@ -130,7 +130,7 @@ export function CartaoDaVitrine({
             aria-label={`Arrastar vitrine ${titulo} para reordenar`}
             onPointerDown={(evento) => controles.start(evento)}
             disabled={travado}
-            className="pointer-events-auto flex h-9 w-6 shrink-0 cursor-grab touch-none items-center justify-center text-zinc-600 active:cursor-grabbing"
+            className="pointer-events-auto relative flex h-9 w-6 shrink-0 cursor-grab touch-none items-center justify-center text-zinc-400 before:absolute before:-inset-x-2.5 before:-inset-y-1 before:content-[''] active:cursor-grabbing"
           >
             <GripVertical className="size-4" />
           </button>
@@ -158,7 +158,7 @@ export function CartaoDaVitrine({
                   {escolhidos > 0 ? `${escolhidos} escolhidos` : "automático"}
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 whitespace-nowrap text-zinc-500">
+                <span className="inline-flex items-center gap-1 whitespace-nowrap text-zinc-400">
                   <EyeOff className="size-3" />
                   oculta da loja
                 </span>
@@ -251,7 +251,7 @@ export function CartaoDaVitrine({
               disabled={travado || indice === 0}
               aria-label={`Subir vitrine ${titulo}`}
               title="Subir"
-              className="flex size-[30px] items-center justify-center rounded-[10px] border border-admin-border bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-25"
+              className="flex size-11 items-center justify-center rounded-[10px] border border-admin-border bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-25"
             >
               <ArrowUp className="size-3.5" />
             </button>
@@ -261,7 +261,7 @@ export function CartaoDaVitrine({
               disabled={travado || indice === total - 1}
               aria-label={`Descer vitrine ${titulo}`}
               title="Descer"
-              className="flex size-[30px] items-center justify-center rounded-[10px] border border-admin-border bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-25"
+              className="flex size-11 items-center justify-center rounded-[10px] border border-admin-border bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-25"
             >
               <ArrowDown className="size-3.5" />
             </button>

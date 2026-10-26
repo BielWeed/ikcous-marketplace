@@ -248,13 +248,17 @@ describe("SearchView — o botão Carrinho do card realmente adiciona", () => {
     expect(onAddToCart.mock.calls[0]).toEqual([simples]);
   });
 
-  it("'Trending' do estado vazio: produto sem variação também entra no carrinho", async () => {
+  it("sugestões do estado vazio: rótulo honesto, em português, e produto sem variação também entra no carrinho", async () => {
     estado.produtos = [simples];
     estado.filtrados = [];
     const onAddToCart = vi.fn<Carrinho>();
     await montar({ onAddToCart });
 
     expect(hospedeiro.textContent).toContain("Ué, nenhum resultado?");
+    // UI-191 (G7): são só 4 produtos da loja -- não "Editor's Choice" nem
+    // "Trending" (curadoria e tendência que a loja não mediu, em inglês).
+    expect(hospedeiro.textContent).toContain("Alguns produtos da");
+    expect(hospedeiro.textContent).not.toMatch(/Editor|Trending/);
     await tocar(botaoDoCard());
 
     expect(onAddToCart).toHaveBeenCalledTimes(1);
@@ -330,12 +334,12 @@ describe("FavoritesView — o botão Carrinho do card realmente adiciona", () =>
     expect(onAddToCart.mock.calls[0]).toEqual([simples]);
   });
 
-  it("'Mais Amados da Loja' (favoritos vazios): produto sem variação entra no carrinho", async () => {
+  it("'Alguns produtos da loja' (favoritos vazios): produto sem variação entra no carrinho", async () => {
     estado.produtos = [simples];
     const onAddToCart = vi.fn<Carrinho>();
     await montar([], { onAddToCart });
 
-    expect(hospedeiro.textContent).toContain("Mais Amados da Loja");
+    expect(hospedeiro.textContent).toContain("Alguns produtos da loja");
     await tocar(botaoDoCard());
 
     expect(onAddToCart).toHaveBeenCalledTimes(1);

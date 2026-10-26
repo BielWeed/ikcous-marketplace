@@ -104,12 +104,36 @@ function escolherFotos(arquivos: File[]) {
 const foto = (nome: string) =>
   new File(["x"], nome, { type: "image/jpeg", lastModified: 1 });
 
-/** Os botões "Tornar principal", na ordem em que aparecem na tela. */
+/** Os botões "Tornar principal" na tela: só a foto EM FOCO tem as ações dela. */
 const botoesTornarPrincipal = () => [
   ...document.body.querySelectorAll<HTMLButtonElement>(
     'button[aria-label^="Tornar principal"]',
   ),
 ];
+
+/** Toca na miniatura N (1 = a primeira) da faixa: a foto N entra em foco. */
+async function focarFoto(n: number) {
+  const miniaturas = [
+    ...document.body.querySelectorAll<HTMLButtonElement>(
+      '[aria-label="Galeria de fotos do produto"] button[aria-pressed]',
+    ),
+  ];
+  await act(async () => {
+    miniaturas[n - 1].click();
+  });
+}
+
+/** O botão que cada foto de 1 a `total` oferece ao entrar em foco. */
+async function rotulosDeCadaFoto(total: number) {
+  const achados: string[][] = [];
+  for (let n = 1; n <= total; n++) {
+    await focarFoto(n);
+    achados.push(
+      botoesTornarPrincipal().map((b) => b.getAttribute("aria-label") ?? ""),
+    );
+  }
+  return achados;
+}
 
 /** As fotos do produto na tela, na ordem do carrossel. */
 const fotosNaTela = () =>
@@ -193,20 +217,25 @@ describe("AdminProductFormView — tornar uma foto a principal", () => {
     await montarComTresFotos();
 
     expect(fotosNaTela()).toEqual([FOTO_A, FOTO_B, FOTO_C]);
-    const botoes = botoesTornarPrincipal();
-    expect(botoes.map((b) => b.getAttribute("aria-label"))).toEqual([
-      "Tornar principal: foto 2 de 3",
-      "Tornar principal: foto 3 de 3",
+    // A principal (em foco ao abrir) não tem o botão; as outras ganham o delas
+    // ao entrar em foco.
+    expect(await rotulosDeCadaFoto(3)).toEqual([
+      [],
+      ["Tornar principal: foto 2 de 3"],
+      ["Tornar principal: foto 3 de 3"],
     ]);
     // Alvo de toque confortável no celular, igual aos outros botões da foto.
-    for (const b of botoes) expect(b.className).toContain("min-h-11");
+    await focarFoto(3);
+    for (const b of botoesTornarPrincipal())
+      expect(b.className).toContain("min-h-11");
   });
 
   it("tornar a 3ª principal deixa a ordem [3, 1, 2] e Publicar grava nessa ordem", async () => {
     await montarComTresFotos();
 
+    await focarFoto(3);
     await act(async () => {
-      botoesTornarPrincipal()[1].click();
+      botoesTornarPrincipal()[0].click();
     });
 
     expect(fotosNaTela()).toEqual([FOTO_C, FOTO_A, FOTO_B]);
@@ -221,7 +250,11 @@ describe("AdminProductFormView — tornar uma foto a principal", () => {
     );
     expect(marcas).toHaveLength(1);
     // E a nova capa já não oferece o botão; as outras duas oferecem.
-    expect(botoesTornarPrincipal()).toHaveLength(2);
+    expect(await rotulosDeCadaFoto(3)).toEqual([
+      [],
+      ["Tornar principal: foto 2 de 3"],
+      ["Tornar principal: foto 3 de 3"],
+    ]);
 
     const publicar = [...document.body.querySelectorAll("button")].find((b) =>
       b.textContent?.includes("Publicar"),
@@ -248,8 +281,18 @@ describe("AdminProductFormView — tornar uma foto a principal", () => {
       escolherFotos([foto("d.jpg")]);
     });
 
-    // O cartão "Enviando…" aparece, mas só B e C (já enviadas) têm o botão.
+    // O cartão "Enviando…" aparece, mas só B e C (já enviadas) têm o botão; a
+    // que está subindo não tem miniatura nem botão (só 3 fotos na faixa).
     expect(document.body.textContent).toMatch(/Enviando|Comprimindo/);
-    expect(botoesTornarPrincipal()).toHaveLength(2);
+    expect(await rotulosDeCadaFoto(3)).toEqual([
+      [],
+      ["Tornar principal: foto 2 de 3"],
+      ["Tornar principal: foto 3 de 3"],
+    ]);
+    expect(
+      document.body.querySelectorAll(
+        '[aria-label="Galeria de fotos do produto"] button[aria-pressed]',
+      ),
+    ).toHaveLength(3);
   });
 });

@@ -460,6 +460,63 @@ describe("aba principal que falhou ao carregar - a cliente consegue se recuperar
     expect(reloadEspiao).not.toHaveBeenCalled();
     expect(localStorage.getItem(CHAVE_RECUPERACAO_CHUNK)).toBeNull();
   });
+
+  // UI-191 (G5): as abas da LOJA (Início, Favoritos, Carrinho, Perfil) usavam o
+  // cartão escuro do painel ("Falha Operacional", "bloco de controle", pilha
+  // técnica). A variante "cliente" fala como loja e não mostra rastro técnico;
+  // o painel (padrão) continua exatamente como acima.
+  it("variante cliente: texto de cliente, botão que tenta de novo e NENHUM rastro técnico", async () => {
+    definirOnLine(true);
+    const { LocalErrorBoundary } = await modulosDoApp();
+    let falhar = true;
+    function Aba() {
+      if (falhar) throw new Error("cannot read properties of undefined (x)");
+      return <div>aba voltou</div>;
+    }
+    await act(async () => {
+      raiz.render(
+        <LocalErrorBoundary variante="cliente">
+          <Aba />
+        </LocalErrorBoundary>,
+      );
+    });
+
+    const texto = hospedeiro.textContent ?? "";
+    expect(texto).toContain("Algo deu errado nesta tela");
+    expect(texto).not.toMatch(/falha operacional|bloco de controle/i);
+    expect(texto).not.toMatch(/detalhes t[ée]cnicos|stack|cannot read/i);
+    expect(texto).not.toContain("Tentar Novamente");
+    expect(hospedeiro.querySelector("pre")).toBeNull();
+    expect(hospedeiro.querySelector('[role="alert"]')).not.toBeNull();
+
+    // O botão tenta DE NOVO a mesma tela (não recarrega a página).
+    falhar = false;
+    await act(async () => {
+      botaoPorTexto("Tentar de novo")!.click();
+    });
+    expect(hospedeiro.textContent).toContain("aba voltou");
+    expect(reloadEspiao).not.toHaveBeenCalled();
+  });
+
+  it("variante cliente com tela que não baixou: segue a frase de chunk de sempre", async () => {
+    definirOnLine(true);
+    const { LocalErrorBoundary, lazyWithPreload } = await modulosDoApp();
+    const Aba = lazyWithPreload(async () => {
+      throw new TypeError("Failed to fetch dynamically imported module: x");
+    });
+    await act(async () => {
+      raiz.render(
+        <LocalErrorBoundary variante="cliente">
+          <Suspense fallback={<div>carregando</div>}>
+            <Aba />
+          </Suspense>
+        </LocalErrorBoundary>,
+      );
+    });
+    await descarregar();
+    expect(hospedeiro.textContent).toContain(TELA_NAO_BAIXOU);
+    expect(hospedeiro.textContent).not.toContain("Algo deu errado nesta tela");
+  });
 });
 
 describe("reservarRecargaDeAbaQueFalhou - a guarda de laco", () => {

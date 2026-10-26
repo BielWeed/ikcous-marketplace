@@ -3094,6 +3094,11 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "88a-conferir-so-o-dono-define-cargo-aplicado",
     "89a-conferir-o-pedido-pelo-app-exige-conta-aplicado",
     "90a-conferir-busca-do-painel-por-codigo-aplicado",
+    "91a-conferir-o-preco-do-produto-deixa-historico-aplicado",
+    "92a-conferir-a-busca-de-pedido-pelo-numero-aplicado",
+    "95a-conferir-o-frete-tem-limite-de-cotacoes-aplicado",
+    "96a-conferir-o-estoque-que-volta-tranca-na-mesma-ordem-aplicado",
+    "97a-conferir-o-lucro-do-inicio-conta-o-mes-inteiro-aplicado",
   ]);
 });
 

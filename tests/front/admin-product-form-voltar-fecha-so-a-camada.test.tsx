@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Na tela do produto, o Voltar do celular com "Ver no app" (ou a ajuda, o
+// Na tela do produto, o Voltar do celular com "Ver app" (ou a ajuda, o
 // recorte, o leitor de código) aberto tirava a lojista da tela e caía na lista
 // de produtos. Agora a camada aberta empurra uma entrada de histórico própria
 // (mesmo esquema da tela de Banners): o Voltar fecha SÓ a camada e o
@@ -145,7 +145,7 @@ describe("AdminProductFormView — Voltar do celular fecha só a camada aberta",
   const previaAberta = () =>
     document.querySelector('[data-testid="previa"]') !== null;
 
-  it("abrir 'Ver no app' empurra uma entrada própria e registra o Voltar", async () => {
+  it("abrir 'Ver app' empurra uma entrada própria e registra o Voltar", async () => {
     await montar();
     expect(overrideAtual).toBeNull();
 

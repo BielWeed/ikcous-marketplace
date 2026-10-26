@@ -139,6 +139,7 @@ rpcFalso.mockImplementation(async (nome: string) => {
         error: servidor.falhasLeituraHistorico.shift() ?? null,
       };
     case "fin_caixa_abrir": {
+      await servidor.emVoo;
       // Outro aparelho abriu antes: o banco recusa e o caixa JÁ está aberto.
       servidor.caixa = CAIXA_ABERTO;
       const error = servidor.falhasAbertura.shift() ?? null;
@@ -216,6 +217,14 @@ async function clicar(el: HTMLElement) {
   await esperar();
 }
 
+// Fechar uma folha com algo escrito pergunta antes: aqui a lojista descarta.
+async function fecharDescartando() {
+  await clicar(botaoX(folha() as HTMLElement));
+  const pergunta = document.querySelector<HTMLElement>('[role="alertdialog"]');
+  if (!pergunta) throw new Error("a pergunta de descartar não apareceu");
+  await clicar(botaoEm(pergunta, "Descartar"));
+}
+
 async function digitar(id: string, valor: string) {
   const el = document.getElementById(id) as HTMLInputElement;
   await act(async () => {
@@ -236,6 +245,16 @@ describe("Financeiro — abrir e fechar o caixa", () => {
   let hospedeiro: HTMLDivElement;
   let onSetDirty: Mock<(dirty: boolean) => void>;
   let onSetBackOverride: Mock<(fn: (() => void) | null) => void>;
+
+  // Ao fechar, a entrada de histórico da folha é devolvida com `history.back()` e o
+  // desvio do Voltar vira um de USO ÚNICO (só engole o popstate dessa devolução);
+  // quando o popstate chega, ele se desfaz e o Voltar volta a ser de ninguém.
+  async function desvioDeUsoUnicoSeDesfaz() {
+    const desvio = onSetBackOverride.mock.calls.at(-1)?.[0];
+    expect(desvio).toBeTypeOf("function");
+    await act(async () => (desvio as unknown as () => () => void)()());
+    expect(onSetBackOverride).toHaveBeenLastCalledWith(null);
+  }
 
   const guardado = new Map<string, string>();
   let armazenamento: Storage;
@@ -414,7 +433,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     });
     expect(folha()).toBeNull();
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
-    expect(onSetBackOverride).toHaveBeenLastCalledWith(null);
+    await desvioDeUsoUnicoSeDesfaz();
 
     // Depois da escrita a tela busca de novo: agora o caixa está aberto.
     const aberto = normalizar(hospedeiro.textContent);
@@ -983,7 +1002,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
         nome.includes("sessao-2"),
       ) as string;
       expect(guardado.get(enderecoS2)).toBe(primeira.p_chave);
-      await clicar(botaoX(folha() as HTMLElement));
+      await fecharDescartando();
       const leituras = rpcFalso.mock.calls.filter(([nome]) =>
         ["fin_caixa_atual", "fin_caixa_historico"].includes(nome),
       ).length;
@@ -1193,6 +1212,42 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     },
   );
 
+  it("Voltar, Esc e X ficam bloqueados enquanto o caixa abre, e a falha aparece na folha", async () => {
+    await clicar(botaoEm(hospedeiro, "Abrir caixa"));
+    await digitar("fin-caixa-abertura", "15000");
+    let liberar!: () => void;
+    servidor.emVoo = new Promise<void>((resolve) => {
+      liberar = resolve;
+    });
+    servidor.falhasAbertura.push(new TypeError("Failed to fetch"));
+    const painel = folha() as HTMLElement;
+    await clicar(botaoEm(painel, "Abrir caixa"));
+    // Pergunta de descartar não entra em cena: o envio já está no ar.
+    expect(botaoX(painel).disabled).toBe(true);
+    await clicar(botaoX(painel));
+    await act(async () => {
+      painel.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    await esperar();
+    expect(folha()).toBe(painel);
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    const atualizador = onSetBackOverride.mock.calls.at(
+      -1,
+    )?.[0] as unknown as () => () => void;
+    await act(async () => atualizador()());
+    await esperar();
+    expect(folha()).toBe(painel);
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    // A resposta chega com a folha ainda aqui: a lojista vê o que aconteceu.
+    await act(async () => liberar());
+    await esperar();
+    expect(folha()).toBe(painel);
+    expect(botaoX(painel).disabled).toBe(false);
+    expect(normalizar(painel.textContent)).toMatch(/internet|conex|tente/i);
+  });
+
   it("divergência do fechamento avisa, fecha e recarrega sem reenvio automático", async () => {
     await abrirSessao();
     await clicar(botaoEm(hospedeiro, "Fechar caixa"));
@@ -1288,7 +1343,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     await esperar();
 
     expect(folha()).toBeNull();
-    expect(onSetBackOverride).toHaveBeenLastCalledWith(null);
+    await desvioDeUsoUnicoSeDesfaz();
     expect(normalizar(hospedeiro.textContent)).toContain("Caixa fechado");
   });
 

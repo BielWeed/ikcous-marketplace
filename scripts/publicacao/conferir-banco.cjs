@@ -2632,7 +2632,73 @@ const ROL_DA_89 = [
   "create_marketplace_order_v24: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)",
   "create_marketplace_order_v24: EXECUTE para anon, authenticated e service_role, sem PUBLIC",
 ];
+// Lote 91 (20261386000000, o preco do produto deixa historico: tabela produto_historico_preco, a funcao registrar_historico_de_preco e o
+// gatilho em produtos). A 91a e a 91b nao se parecem: a 91a prova o que ficou; a 91b prova a ausencia e as premissas. A 91a negativa
+// (antes do apply) responde "nao" em tudo menos no controle, nunca erro.
+const ROL_DA_91A = [
+  "controle: catalogo publico visivel",
+  "registrar_historico_de_preco: uma so, com o corpo da 20261386000000 (md5)",
+  "registrar_historico_de_preco: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path fixo, retorna trigger) e EXECUTE para ninguem de aplicacao",
+  "gatilho tr_produto_historico_de_preco em produtos: AFTER INSERT OR UPDATE OF preco_venda por linha, ligado, apontando para a funcao",
+  "produto_historico_preco: tabela comum com RLS ligada sem FORCE e uma so politica, de SELECT para authenticated, so do admin atual",
+  "produto_historico_preco: so SELECT para authenticated e service_role; nenhuma escrita para ninguem de aplicacao; anon e PUBLIC nada",
+  "produto_historico_preco: as 7 colunas com o tipo certo, chave primaria, FK para produtos ON DELETE CASCADE, CHECK de origem e o indice (produto_id, mudado_em DESC)",
+  "backfill: nenhum produto ficou sem linha de historico (conta, nao lista)",
+];
+const ROL_DA_91B = [
+  "controle: catalogo publico visivel",
+  "produto_historico_preco, registrar_historico_de_preco e tr_produto_historico_de_preco: ainda NAO existem",
+  "produtos: id uuid e preco_venda numeric existem e a tabela tem RLS ligada",
+  "rls_admin_atual() existe com o corpo da 20261197000000 (md5) e e executavel pelo authenticated",
+];
+// Lote 92 (20261387000000, a busca de pedido pelo numero nao vira busca de telefone: get_admin_orders_paged).
+const ROL_DA_92 = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_orders_paged: corpo exato (md5)",
+  "get_admin_orders_paged: assinatura e atributos conhecidos",
+  "get_admin_orders_paged: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
+];
+// Lote 95 (20261389000000, o frete tem limite de cotacoes por origem: tabela frete_cota_por_origem e a funcao frete_consumir_cota, o contador que a
+// edge calculate-shipping consulta). A 95a prova o que ficou; a 95b prova a ausencia e as premissas. A 95a negativa (antes do apply)
+// responde "nao" em tudo menos no controle, nunca erro. Nenhuma das duas le linha de tabela.
+const ROL_DA_95A = [
+  "controle: catalogo publico visivel",
+  "frete_consumir_cota: uma so, com o corpo da 20261389000000 (md5)",
+  "frete_consumir_cota: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path fixo, retorna jsonb, 3 argumentos) e EXECUTE so para service_role",
+  "frete_cota_por_origem: tabela comum com RLS ligada sem FORCE e nenhuma politica",
+  "frete_cota_por_origem: nenhum privilegio para anon, authenticated, service_role nem PUBLIC",
+  "frete_cota_por_origem: as 3 colunas com o tipo certo, chave primaria (origem, janela_inicio), CHECK de origem e de chamadas e o indice por janela_inicio",
+];
+const ROL_DA_95B = [
+  "controle: catalogo publico visivel",
+  "frete_cota_por_origem e frete_consumir_cota: ainda NAO existem",
+  "os papeis anon, authenticated e service_role existem (o REVOKE e o GRANT da migration citam os tres)",
+];
+// Lote 96 (20261389100000, o estoque que volta tranca na mesma ordem da compra: so a funcao devolver_estoque e' redefinida, UM CREATE OR REPLACE).
+// A 96a prova o corpo novo; a 96b prova que o corpo vivo ainda e' o da 20261175000000 (o unico que a migration troca). A 96a negativa
+// (antes do apply) responde "nao" em tudo menos no controle e nos atributos, nunca erro. Nenhuma das duas le linha de tabela.
+const ROL_DA_96A = [
+  "controle: catalogo publico visivel",
+  "devolver_estoque: uma so, com o corpo da 20261389100000 (md5)",
+  "devolver_estoque: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path=public, retorna integer, argumento p_order_id uuid) e EXECUTE de ninguem de aplicacao (anon, authenticated, PUBLIC)",
+];
+const ROL_DA_96B = [
+  "controle: catalogo publico visivel",
+  "devolver_estoque: uma so, com o corpo VIGENTE da 20261175000000 (md5)",
+  "devolver_estoque: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path=public, retorna integer, argumento p_order_id uuid) e EXECUTE de ninguem de aplicacao (anon, authenticated, PUBLIC)",
+  "marketplace_order_items (order_id, product_id, variant_id), product_variants (id, product_id) e produtos (id) existem como uuid",
+];
+// Lote 97 (20261390000000, o lucro do Inicio conta o mes inteiro: painel_inicio redefinida, so a janela do lucro). A 97a e a 97b
+// tem o mesmo rol; a 97a espera o corpo da 20261390000000 e a 97b o da 20261228000000.
+const ROL_DA_97 = [
+  "controle: funcoes de public visiveis a este papel",
+  "painel_inicio: corpo exato (md5)",
+  "painel_inicio: assinatura e atributos conhecidos",
+  "painel_inicio: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "97a-conferir-o-lucro-do-inicio-conta-o-mes-inteiro-aplicado": ROL_DA_97,
+  "97b-antes-o-lucro-do-inicio-conta-o-mes-inteiro-base-vigente": ROL_DA_97,
   "90a-conferir-busca-do-painel-por-codigo-aplicado": [
     "controle: funcoes de public visiveis a este papel",
     "get_admin_products_paged: corpo exato (md5)",
@@ -2659,6 +2725,15 @@ const ROL_FECHADO_POR_CONSULTA = {
   ],
   "89a-conferir-o-pedido-pelo-app-exige-conta-aplicado": ROL_DA_89,
   "89b-antes-o-pedido-pelo-app-exige-conta-base-vigente": ROL_DA_89,
+  "91a-conferir-o-preco-do-produto-deixa-historico-aplicado": ROL_DA_91A,
+  "92a-conferir-a-busca-de-pedido-pelo-numero-aplicado": ROL_DA_92,
+  "92b-antes-a-busca-de-pedido-pelo-numero-base-vigente": ROL_DA_92,
+  "91b-antes-o-preco-do-produto-deixa-historico-ausente": ROL_DA_91B,
+  "95a-conferir-o-frete-tem-limite-de-cotacoes-aplicado": ROL_DA_95A,
+  "95b-antes-o-frete-tem-limite-de-cotacoes-ausente": ROL_DA_95B,
+  "96a-conferir-o-estoque-que-volta-tranca-na-mesma-ordem-aplicado": ROL_DA_96A,
+  "96b-antes-o-estoque-que-volta-tranca-na-mesma-ordem-base-vigente":
+    ROL_DA_96B,
   "88a-conferir-so-o-dono-define-cargo-aplicado": ROL_DA_88A,
   "88b-antes-so-o-dono-define-cargo-ausente": ROL_DA_88B,
   "86a-conferir-ex-admin-no-resto-do-painel-aplicado": ROL_DA_86A,

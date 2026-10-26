@@ -1,7 +1,7 @@
 import { Mail, MapPin } from "lucide-react";
 import { useMemo } from "react";
 
-import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
+import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { useStore } from "@/contexts/StoreContext";
 import { usePoliticaDeTrocasDaLoja } from "@/hooks/usePoliticaDeTrocasDaLoja";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
@@ -114,14 +114,9 @@ function ContatoDaLoja() {
         Contato da {nome}
       </h2>
       {temWhatsapp && (
-        <button
-          type="button"
-          onClick={falarComALoja}
-          className="flex min-h-11 w-full items-center gap-2 text-left text-sm font-semibold text-foreground underline underline-offset-2"
-        >
-          <IconeWhatsapp className="size-4 shrink-0 text-[#25D366]" />
+        <BotaoWhatsapp onClick={falarComALoja} className="mb-1">
           WhatsApp {formatarWhatsAppParaExibicao(config.whatsappNumber ?? "")}
-        </button>
+        </BotaoWhatsapp>
       )}
       {email && (
         <a

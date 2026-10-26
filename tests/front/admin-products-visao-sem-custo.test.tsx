@@ -199,9 +199,15 @@ describe("Produtos: tocar no selo 'sem custo' leva aos produtos sem custo", () =
   // A tela nunca desmonta no app (só some por CSS): reabrir é re-renderizar a
   // MESMA instância com `active` mudando.
   let Tela: typeof import("@/views/admin/AdminProductsView").AdminProductsView;
-  async function renderizar(active: boolean) {
+  async function renderizar(active: boolean, visaoInicial?: string | null) {
     await act(async () => {
-      raiz.render(<Tela onNavigate={onNavigate} active={active} />);
+      raiz.render(
+        <Tela
+          onNavigate={onNavigate}
+          active={active}
+          visaoInicial={visaoInicial}
+        />,
+      );
     });
   }
   async function montar(active = true) {
@@ -228,6 +234,34 @@ describe("Produtos: tocar no selo 'sem custo' leva aos produtos sem custo", () =
       el.textContent?.trim(),
     );
   const faixa = () => hospedeiro.querySelector("[data-visao-sem-custo]");
+
+  it("vindo do Relatórios ('Cadastrar custo'), a lista já abre na visão 'Sem custo'", async () => {
+    Tela = (await import("@/views/admin/AdminProductsView")).AdminProductsView;
+    await renderizar(true, "sem-custo");
+    await esperar(360);
+    expect(faixa()).not.toBeNull();
+    expect(nomesNaLista()).toEqual(["Produto a", "Produto b", "Produto c"]);
+    // 'Ver todos' devolve a lista normal e o pedido não a reabre sozinho.
+    await act(async () => botaoVerTodos()!.click());
+    await esperar(360);
+    expect(faixa()).toBeNull();
+    expect(nomesNaLista()).toEqual(["Produto brinde", "Produto pago"]);
+  });
+
+  it("a visão 'Sem custo' pedida de fora espera a tela ficar ativa, e um valor qualquer não abre nada", async () => {
+    Tela = (await import("@/views/admin/AdminProductsView")).AdminProductsView;
+    await renderizar(false, "sem-custo");
+    await esperar(360);
+    expect(faixa()).toBeNull();
+    await renderizar(true, "sem-custo");
+    await esperar(360);
+    expect(faixa()).not.toBeNull();
+    await act(async () => botaoVerTodos()!.click());
+    await esperar(360);
+    await renderizar(true, "outra-coisa");
+    await esperar(360);
+    expect(faixa()).toBeNull();
+  });
 
   it("com produtos sem custo e conferência feita, o selo é um botão que diz quantos são", async () => {
     await montar();

@@ -34,6 +34,10 @@ import {
 } from "@/lib/texto-estorno-do-cliente";
 import type { Order, PaymentStatus } from "@/types";
 
+import {
+  desligarCaixaDeCancelamento,
+  ligarCaixaDeCancelamento,
+} from "./duble-caixa-de-cancelamento";
 const CONFIRM_RETIRADA_PAGA =
   "Este pedido já está pronto para retirar na loja. Se cancelar, a loja cuida do reembolso do seu dinheiro e pode entrar em contato com você. Tem certeza?";
 const DEVOLUCAO_RETIRADA =
@@ -275,6 +279,7 @@ describe("OrderDetailsView — retirada pronta: cancelar e ficha do pedido cance
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    ligarCaixaDeCancelamento();
     updateOrderStatusMock.mockClear();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -282,6 +287,7 @@ describe("OrderDetailsView — retirada pronta: cancelar e ficha do pedido cance
   });
 
   afterEach(() => {
+    desligarCaixaDeCancelamento();
     act(() => {
       raiz.unmount();
     });

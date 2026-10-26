@@ -112,7 +112,7 @@ interface ProductViewProps {
     quantity: number,
     variantId?: string,
     variantNames?: string,
-  ) => void;
+  ) => unknown;
   onQuickBuy?: (product: Product, variantId?: string) => void;
   onNavigate?: (view: View, id?: string) => void;
 }
@@ -181,11 +181,9 @@ export const ProductView = React.memo(function ProductView({
   const handleAddToCartFromCard = useCallback(
     (p: Product, e?: React.MouseEvent) => {
       e?.stopPropagation();
-      if (onAddToCartProduct) {
-        onAddToCartProduct(p, 1);
-      } else {
-        onAddToCart(1, undefined);
-      }
+      if (onAddToCartProduct) return onAddToCartProduct(p, 1);
+      onAddToCart(1, undefined);
+      return undefined;
     },
     [onAddToCart, onAddToCartProduct],
   );
@@ -199,7 +197,7 @@ export const ProductView = React.memo(function ProductView({
       variantNames: string,
       quantity = 1,
     ) => {
-      onAddToCartProduct?.(p, quantity, variantId, variantNames);
+      return onAddToCartProduct?.(p, quantity, variantId, variantNames);
     },
     [onAddToCartProduct],
   );

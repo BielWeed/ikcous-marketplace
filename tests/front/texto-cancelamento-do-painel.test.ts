@@ -212,3 +212,95 @@ describe("textoCancelamentoDoPainel — a pergunta muda com o dinheiro e a rota 
     }
   });
 });
+
+// Pedido que já saiu, VOLTOU para a loja (o lojista tocou em "O produto
+// voltou"), foi reativado e agora vai ser cancelado de novo. O servidor guarda
+// o fato (`returned_to_seller_at`) e nada o apaga; a lista de dinheiro
+// (AdminOrdersView.baldeDeEstorno) já lê isso: com o produto de volta, o pedido
+// vai para "Devolver agora", não para "Esperando o produto voltar". O texto da
+// pergunta ignorava o fato e mandava o lojista combinar a volta de um produto
+// que já estava na prateleira.
+describe("textoCancelamentoDoPainel — o produto que tinha saído já voltou (returnedToSellerAt)", () => {
+  const VOLTOU = "2026-10-20T12:00:00.000Z";
+
+  it.each(["pago", "pago_apos_expirar", "recebido_na_entrega"])(
+    "pago (%s), reativado e com o produto de volta: manda para 'Devolver agora' e não pede para combinar a volta do produto",
+    (payment_status) => {
+      const texto = textoCancelamentoDoPainel({
+        status: "processing",
+        payment_status,
+        cancelledAfterShipping: true,
+        returnedToSellerAt: VOLTOU,
+      });
+      expect(texto).toContain("PAGO");
+      expect(texto).toContain("já voltou para a loja");
+      expect(texto).toContain("Devolver agora");
+      expect(texto).toContain(FRASE_ANTIGA);
+      expect(texto).not.toContain("Esperando o produto voltar");
+      expect(texto).not.toContain("não volta por conta própria");
+      expect(texto).not.toMatch(/o app (pede|devolve|estorna)/i);
+      expect(texto.endsWith("?")).toBe(true);
+    },
+  );
+
+  it("o mesmo pedido SEM o retorno confirmado segue esperando o produto (nada mudou para ele)", () => {
+    for (const returnedToSellerAt of [null, undefined, ""]) {
+      const texto = textoCancelamentoDoPainel({
+        status: "processing",
+        payment_status: "pago",
+        cancelledAfterShipping: true,
+        returnedToSellerAt,
+      });
+      expect(texto, String(returnedToSellerAt)).toContain(
+        "Esperando o produto voltar",
+      );
+      expect(texto).toContain("não volta por conta própria");
+    }
+  });
+
+  it("pedido que está na estrada de novo (shipping) não diz que o produto está na loja, mesmo com o carimbo da viagem anterior", () => {
+    const texto = textoCancelamentoDoPainel({
+      status: "shipping",
+      payment_status: "pago",
+      cancelledAfterShipping: true,
+      returnedToSellerAt: VOLTOU,
+    });
+    expect(texto).not.toContain("já voltou para a loja");
+    expect(texto).toContain("já saiu para entrega");
+  });
+
+  it("sem pagamento e reativado: com o produto ainda fora, avisa que a mercadoria não volta sozinha (e não promete estoque)", () => {
+    const texto = textoCancelamentoDoPainel({
+      status: "processing",
+      payment_status: "aguardando",
+      cancelledAfterShipping: true,
+    });
+    expect(texto).toContain("saiu para entrega");
+    expect(texto).toContain("fale com o cliente");
+    expect(texto).not.toContain("O estoque volta");
+  });
+
+  it("sem pagamento, reativado e com o produto de volta: o estoque já foi acertado, não 'volta' de novo", () => {
+    const texto = textoCancelamentoDoPainel({
+      status: "processing",
+      payment_status: null,
+      cancelledAfterShipping: true,
+      returnedToSellerAt: VOLTOU,
+    });
+    expect(texto).toContain("já voltou para a loja");
+    expect(texto).toContain("estoque já foi acertado");
+    expect(texto).not.toContain("O estoque volta");
+    expect(texto).toContain("O cliente é avisado");
+    expect(texto.endsWith("?")).toBe(true);
+  });
+
+  it("pedido que nunca saiu continua exatamente como antes (a marca de retorno solta não muda nada)", () => {
+    const texto = textoCancelamentoDoPainel({
+      status: "pending",
+      payment_status: "aguardando",
+      cancelledAfterShipping: false,
+      returnedToSellerAt: VOLTOU,
+    });
+    expect(texto).toContain("O estoque volta");
+  });
+});

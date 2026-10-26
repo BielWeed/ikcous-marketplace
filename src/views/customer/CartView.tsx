@@ -20,6 +20,16 @@ import { AnimatePresence, motion, usePresence } from "framer-motion";
 import { ArrowRight, ShieldCheck, Sparkles, Truck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 // Sub-components
 import { AddressList } from "@/components/ui/custom/AddressList";
 import { CartFooterSummary } from "@/components/ui/custom/CartFooterSummary";
@@ -607,11 +617,12 @@ export function CartView({
     );
   }, [cart, getFreeShippingEligibleProducts]);
 
-  const handleClearCart = () => {
-    if (globalThis.confirm("Deseja realmente limpar todo o carrinho?")) {
-      clearCart();
-    }
-  };
+  // UI-191 (G10): a pergunta de "esvaziar" é a caixa de confirmação da casa
+  // (AlertDialog), não o `confirm()` do navegador -- que numa loja instalada
+  // aparece com o endereço do site e o visual do sistema. Mesma ação: só
+  // `clearCart()`, só depois do "sim".
+  const [confirmandoEsvaziar, setConfirmandoEsvaziar] = useState(false);
+  const handleClearCart = () => setConfirmandoEsvaziar(true);
 
   const handleRemove = useCallback(
     (productId: string, variantId?: string) => {
@@ -1293,6 +1304,30 @@ export function CartView({
           )}
         </AnimatePresence>
       </div>
+
+      <AlertDialog
+        open={confirmandoEsvaziar}
+        onOpenChange={setConfirmandoEsvaziar}
+      >
+        <AlertDialogContent
+          overlayClassName="z-[130]"
+          className="z-[130] sm:max-w-sm"
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Esvaziar o carrinho?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Todos os produtos saem do carrinho. Você pode adicioná-los de novo
+              quando quiser.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-11">Manter</AlertDialogCancel>
+            <AlertDialogAction className="min-h-11" onClick={() => clearCart()}>
+              Esvaziar carrinho
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AnimatePresence>
         {isActive &&

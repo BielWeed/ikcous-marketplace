@@ -1,3 +1,4 @@
+import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { useOrders } from "@/hooks/useOrders";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { mascaraWhatsappBr } from "@/lib/telefone-br";
@@ -284,16 +285,15 @@ export function OrderSearch({
                         : " Use o contato da loja que você já tem."}
                     </p>
                     {lojaAtendePorWhatsapp && (
-                      <button
-                        type="button"
+                      <BotaoWhatsapp
+                        className="h-auto min-h-12 whitespace-normal text-balance px-3 py-2 text-center text-sm"
                         onClick={() => {
                           haptic.light();
                           handleFalarComALoja();
                         }}
-                        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-solid border-border py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted/40 active:scale-[0.98]"
                       >
                         Falar com a loja no WhatsApp
-                      </button>
+                      </BotaoWhatsapp>
                     )}
                   </div>
 

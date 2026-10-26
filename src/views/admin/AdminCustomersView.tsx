@@ -661,10 +661,14 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                         className="size-10 rounded-xl border border-indigo-300/20 bg-indigo-300/10 p-2 text-indigo-300"
                       />
                       <p className="text-sm font-bold text-white">
-                        Nenhum cliente retornado
+                        {temBuscaOuOrdenacao
+                          ? "Nenhum cliente retornado"
+                          : "Nenhum cliente ainda"}
                       </p>
                       <p className="text-xs text-zinc-400">
-                        Revise os filtros ou sua pesquisa.
+                        {temBuscaOuOrdenacao
+                          ? "Revise os filtros ou sua pesquisa."
+                          : "Quando alguém criar uma conta na loja, ela aparece aqui."}
                       </p>
                       {temBuscaOuOrdenacao && (
                         <button

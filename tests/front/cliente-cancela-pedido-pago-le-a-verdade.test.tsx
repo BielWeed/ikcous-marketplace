@@ -37,6 +37,10 @@ import type { Order, PaymentStatus } from "@/types";
 // ---------------------------------------------------------------------------
 // A. Testes puros — tabela inteira de texto-estorno-do-cliente.ts
 // ---------------------------------------------------------------------------
+import {
+  desligarCaixaDeCancelamento,
+  ligarCaixaDeCancelamento,
+} from "./duble-caixa-de-cancelamento";
 describe("textoConfirmarCancelamento — a tabela inteira", () => {
   it("não pago: texto original, byte a byte", () => {
     expect(
@@ -471,6 +475,7 @@ describe("OrderDetailsView — a tela do cliente diz a verdade sobre o dinheiro 
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    ligarCaixaDeCancelamento();
     updateOrderStatusMock.mockClear();
     linhasOrderRefundsMock = [];
     contadorDeLeituraOrderRefunds = 0;
@@ -480,6 +485,7 @@ describe("OrderDetailsView — a tela do cliente diz a verdade sobre o dinheiro 
   });
 
   afterEach(() => {
+    desligarCaixaDeCancelamento();
     act(() => {
       raiz.unmount();
     });

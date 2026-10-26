@@ -1,3 +1,4 @@
+import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { buildIdentity } from "@/config/buildIdentity";
 import { useStore } from "@/contexts/StoreContext";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
@@ -7,7 +8,7 @@ import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { haptic } from "@/utils/haptic";
 import DOMPurify from "dompurify";
 import { motion, useIsPresent } from "framer-motion";
-import { ArrowRight, ArrowUpRight, Clock, MapPin } from "lucide-react";
+import { ArrowUpRight, Clock, MapPin } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -321,7 +322,8 @@ export function AboutStoreView() {
 
       {/* "Falar com a loja" ANCORADO (pedido do dono, 14/09): continua sempre
           visível enquanto a pessoa rola a descrição e o mapa — agora uma
-          barra Tinta (texto simples, sem logotipo da marca do WhatsApp). Só
+          barra com o botão verde oficial do WhatsApp (glifo oficial; pedido do
+          dono, 26/10/2026 — antes era texto simples). Só
           existe se a loja configurou o número. O offset nasce ACIMA da nav do
           app (--nav-height); z sob a nav para nunca competir com ela.
 
@@ -334,19 +336,17 @@ export function AboutStoreView() {
         isPresent &&
         typeof document !== "undefined" &&
         createPortal(
-          <button
-            type="button"
+          <BotaoWhatsapp
             onClick={falarComALoja}
             aria-label="Falar com a loja no WhatsApp"
-            className="fixed left-1/2 z-[115] flex h-[52px] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-center justify-between rounded-2xl bg-foreground px-5 text-base font-semibold text-background shadow-lg transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.98]"
+            className="fixed left-1/2 z-[115] h-[52px] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 shadow-lg"
             style={{
               bottom:
                 "calc(var(--nav-height, 56px) + 16px + var(--safe-area-bottom, 0px))",
             }}
           >
             Falar com a loja
-            <ArrowRight className="size-5 shrink-0" aria-hidden="true" />
-          </button>,
+          </BotaoWhatsapp>,
           document.body,
         )}
     </div>

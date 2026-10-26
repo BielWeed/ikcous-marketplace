@@ -465,8 +465,34 @@ export function OrderDetailsView({
     avaliacaoFolhaRef.current?.focus();
   }, [reviewingItem]);
 
-  const handleCancelOrder = async () => {
-    if (!order) return;
+  // UI-191 (G10): a pergunta de cancelar é a caixa de confirmação da casa
+  // (AlertDialog), não o `confirm()` do navegador. O texto é o MESMO de antes
+  // (`textoConfirmarCancelamento`, a fonte única do que acontece com o
+  // dinheiro em cada caso), mas é calculado a cada render a partir do pedido
+  // VIVO: se a loja marcar "enviado" com a caixa aberta, a frase muda junto.
+  // Guardar o texto no momento do clique deixaria "o dinheiro volta sozinho"
+  // na tela de um pedido que já saiu.
+  const [perguntandoCancelar, setPerguntandoCancelar] = useState(false);
+
+  // O MESMO critério mostra o botão "Cancelar Pedido" e mantém a caixa aberta.
+  // Exige sessão: o convidado chega aqui pelo fallback de sessionStorage e
+  // update_order_status_atomic recusa chamador sem auth.uid() (PEDIDO-010,
+  // #115). 'pending'/'processing'/'shipping': o divisor da regra do Gabriel
+  // (24/08/2026) é se o produto SAIU, não se foi pago -- 'delivered' fica fora,
+  // é devolução, outro assunto.
+  const podeCancelarPedido =
+    Boolean(user) &&
+    order !== null &&
+    ["pending", "processing", "shipping"].includes(order.status);
+
+  // Se o pedido deixa de ser cancelável com a caixa aberta (a loja marcou como
+  // entregue), a caixa fecha junto com o botão e a pergunta é DESARMADA: sem
+  // isso ela reabriria sozinha se o pedido voltasse a ser cancelável.
+  useEffect(() => {
+    if (!podeCancelarPedido) setPerguntandoCancelar(false);
+  }, [podeCancelarPedido]);
+
+  const textoDoCancelamentoDe = (pedido: Order): string => {
     // Regra do Gabriel (24/08/2026): o botão "Cancelar Pedido" aparece para
     // pedido 'pending', 'processing' OU 'shipping' com usuário logado — o
     // divisor é se o produto JÁ SAIU, não se foi pago. 'delivered' fica de
@@ -491,7 +517,7 @@ export function OrderDetailsView({
     // quebraria os dois `switch` deste arquivo e passaria calado AQUI —
     // `pagamentoJaEntrou` viraria `false` para sempre e quem pagou voltaria
     // a ler o texto generico. Com `===` o TypeScript reprova (TS2678).
-    const chavePagamento = paymentStatusKey(order.paymentStatus);
+    const chavePagamento = paymentStatusKey(pedido.paymentStatus);
     const pagamentoJaEntrou =
       chavePagamento === "pago" ||
       chavePagamento === "pago_apos_expirar" ||
@@ -501,18 +527,36 @@ export function OrderDetailsView({
     // cliente não tem produto para devolver — só o texto muda, a regra de
     // cancelar é a mesma.
     const retiradaPronta =
-      order.retiradaNaLoja === true && order.status === "shipping";
-    const jaFoiEnviado = order.status === "shipping" && !retiradaPronta;
+      pedido.retiradaNaLoja === true && pedido.status === "shipping";
+    const jaFoiEnviado = pedido.status === "shipping" && !retiradaPronta;
     const pagamentoNaEntrega = chavePagamento === "recebido_na_entrega";
-    const textoConfirm = textoConfirmarCancelamento({
+    return textoConfirmarCancelamento({
       pagamentoJaEntrou,
       jaFoiEnviado,
       retiradaPronta,
       pagamentoNaEntrega,
+      // Enviado, cancelado e reativado: o servidor não abre a devolução
+      // automática para ele, então o texto não pode prometê-la.
+      cancelladoAposEnvio: pedido.cancelledAfterShipping === true,
+      produtoJaVoltou: Boolean(pedido.returnedToSellerAt),
+      retiradaNaLoja: pedido.retiradaNaLoja === true,
     });
-    const confirmCancel = globalThis.confirm(textoConfirm);
-    if (!confirmCancel) return;
+  };
 
+  const handleCancelOrder = () => {
+    if (!order) return;
+    setPerguntandoCancelar(true);
+  };
+
+  // O cancelamento de verdade: só roda depois do "sim" na caixa acima, e é
+  // EXATAMENTE o caminho de antes (mesma chamada `updateOrderStatus`, mesmas
+  // guardas de eco e de leitura do servidor) -- só a pergunta mudou de lugar.
+  const executarCancelamento = async () => {
+    if (!order) return;
+    // Duplo toque no "sim": a caixa fica ~200 ms na tela enquanto some, com o
+    // botão ainda clicável. Cancelamento em andamento = o segundo toque não
+    // faz nada (o servidor já é seguro, mas a tela não pede duas vezes).
+    if (cancelandoRef.current) return;
     cancelandoRef.current = true;
     emitidoDuranteOCancelamentoRef.current = null;
     setIsCancelling(true);
@@ -740,15 +784,18 @@ export function OrderDetailsView({
   // negada, janela sem foco, API ausente) — mesma família do laudo 0109 (A-8)
   // que corrigiu OrderDetail.tsx (painel). `copiarParaClipboard` devolve
   // `false` quando a API recusa, e aí o aviso é de erro, não de sucesso.
+  //
+  // UI-191 (G6): copia o número que o chip ESCREVE (#3884BE, os 6 finais), não
+  // o id interno de 36 caracteres.
   const handleCopyId = async () => {
-    const ok = await copiarParaClipboard(orderId);
+    const ok = await copiarParaClipboard(numeroDoPedido(orderId));
     if (!ok) {
       toast.error(
         "Não foi possível copiar. Selecione o texto e copie manualmente.",
       );
       return;
     }
-    toast.success("ID do pedido copiado!");
+    toast.success("Número do pedido copiado");
     haptic.light();
   };
 
@@ -1047,7 +1094,10 @@ export function OrderDetailsView({
           <div
             role="button"
             tabIndex={0}
-            className="flex cursor-pointer items-center gap-1.5 rounded-full border border-zinc-100 bg-white px-3 py-1.5 text-xs font-bold text-zinc-600 shadow-sm transition-opacity hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-zinc-900/20"
+            aria-label="Copiar número do pedido"
+            // Visual de 28px; o ::after estende a área de toque a 44px (8px
+            // para cima e para baixo, dentro do espaço entre as linhas).
+            className="relative flex cursor-pointer items-center gap-1.5 rounded-full border border-solid border-zinc-100 bg-white px-3 py-1.5 text-xs font-bold text-zinc-600 shadow-sm transition-opacity after:absolute after:-inset-y-2 after:inset-x-0 after:content-[''] hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-zinc-900/20"
             onClick={handleCopyId}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
@@ -1729,24 +1779,23 @@ export function OrderDetailsView({
               'pending'/'processing'/'shipping': o divisor da regra do
               Gabriel (24/08/2026) é se o produto SAIU, não se foi pago —
               'delivered' fica fora, é devolução, outro assunto. */}
-          {["pending", "processing", "shipping"].includes(order.status) &&
-            user && (
-              <button
-                onClick={handleCancelOrder}
-                disabled={isCancelling}
-                className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-red-600 transition-colors last:border-b-0 hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
-              >
-                <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
-                  {isCancelling ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <XCircle className="size-4" />
-                  )}
-                </span>
-                {isCancelling ? "Processando" : "Cancelar Pedido"}
-                <ChevronRight className="ml-auto size-4 flex-shrink-0 text-red-200" />
-              </button>
-            )}
+          {podeCancelarPedido && (
+            <button
+              onClick={handleCancelOrder}
+              disabled={isCancelling}
+              className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-red-600 transition-colors last:border-b-0 hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
+            >
+              <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
+                {isCancelling ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <XCircle className="size-4" />
+                )}
+              </span>
+              {isCancelling ? "Processando" : "Cancelar Pedido"}
+              <ChevronRight className="ml-auto size-4 flex-shrink-0 text-red-200" />
+            </button>
+          )}
         </motion.div>
       </div>
 
@@ -1776,7 +1825,7 @@ export function OrderDetailsView({
           // botão Publicar avaliação sumia atrás dela. Ficar acima da barra,
           // e não por cima, mantém o aviso de descarte (AlertDialog, z-50)
           // na frente da folha.
-          <div className="fixed inset-x-0 top-0 bottom-[var(--folha-acima-da-barra)] z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in">
+          <div className="fixed inset-x-0 bottom-[var(--folha-acima-da-barra)] top-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in">
             <div
               className="fixed inset-0"
               onClick={fecharAvaliacaoPerguntando}
@@ -1890,6 +1939,47 @@ export function OrderDetailsView({
               }}
             >
               Descartar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={perguntandoCancelar && podeCancelarPedido}
+        onOpenChange={setPerguntandoCancelar}
+      >
+        <AlertDialogContent
+          overlayClassName="z-[130]"
+          className="z-[130] sm:max-w-sm"
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar este pedido?</AlertDialogTitle>
+            <AlertDialogDescription aria-live="polite">
+              {/* Pedido que não é mais cancelável não ganha frase sobre o
+                  dinheiro, nem no render em que a caixa está fechando. */}
+              {order && podeCancelarPedido
+                ? textoDoCancelamentoDe(order)
+                : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-11">
+              Manter pedido
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="min-h-11"
+              onClick={() => {
+                // O primeiro "sim" fecha a pergunta. Enquanto a caixa some
+                // (~200 ms) o botão ainda está na tela: um segundo toque
+                // chega aqui já com a pergunta fechada e não faz nada --
+                // mesmo que o servidor tenha respondido rápido e a guarda
+                // de `cancelandoRef` já tenha sido solta.
+                if (!perguntandoCancelar) return;
+                setPerguntandoCancelar(false);
+                void executarCancelamento();
+              }}
+            >
+              Cancelar pedido
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

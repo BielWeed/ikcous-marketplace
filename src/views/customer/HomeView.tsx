@@ -12,6 +12,7 @@ import {
   normalizarLayoutDeOfertas,
 } from "@/lib/layout-de-ofertas";
 import { ordenacaoValida } from "@/lib/ordenacao-da-home";
+import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { cn } from "@/lib/utils";
 import { ordenarParaVitrine } from "@/lib/vitrine";
 import type { Product, SortOption, View } from "@/types";
@@ -58,7 +59,7 @@ interface HomeViewProps {
     quantity?: number,
     variantId?: string,
     variantNames?: string,
-  ) => void;
+  ) => unknown;
   onQuickBuy?: (product: Product, variantId?: string) => void;
   isLoading?: boolean;
   scrollProgress?: number;
@@ -198,7 +199,7 @@ export const HomeView = React.memo(function HomeView({
       variantNames: string,
       quantity = 1,
     ) => {
-      onAddToCart?.(product, quantity, variantId, variantNames);
+      return onAddToCart?.(product, quantity, variantId, variantNames);
     },
     [onAddToCart],
   );
@@ -238,10 +239,11 @@ export const HomeView = React.memo(function HomeView({
       }
 
       switch (sortBy) {
+        // Ordena pelo preço que o card ANUNCIA (menor das opções à venda).
         case "price-asc":
-          return a.price - b.price;
+          return precoDeVitrine(a).preco - precoDeVitrine(b).preco;
         case "price-desc":
-          return b.price - a.price;
+          return precoDeVitrine(b).preco - precoDeVitrine(a).preco;
         default:
           return 0;
       }
@@ -264,14 +266,18 @@ export const HomeView = React.memo(function HomeView({
   }, [produtosAVenda]);
 
   const offerProducts = useMemo(() => {
-    return produtosAVenda
-      .filter((p) => p.originalPrice && p.originalPrice > p.price)
-      .sort((a, b) => {
-        const aAvailable = a.stock > 0 ? 1 : 0;
-        const bAvailable = b.stock > 0 ? 1 : 0;
-        return bAvailable - aAvailable;
-      })
-      .slice(0, LIMITE_MAX_ITENS_CARROSSEL);
+    return (
+      produtosAVenda
+        // UI-191 (G3): oferta é preço de VITRINE abaixo do "De" -- o menor entre
+        // as opções à venda --, não o preço-base do produto.
+        .filter((p) => precoDeVitrine(p).precoOriginal !== null)
+        .sort((a, b) => {
+          const aAvailable = a.stock > 0 ? 1 : 0;
+          const bAvailable = b.stock > 0 ? 1 : 0;
+          return bAvailable - aAvailable;
+        })
+        .slice(0, LIMITE_MAX_ITENS_CARROSSEL)
+    );
   }, [produtosAVenda]);
 
   // Quantas ofertas a faixa de Ofertas MOSTRA (mesma conta do render: lista escolhida à mão ou derivada, cortada

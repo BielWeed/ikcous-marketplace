@@ -104,16 +104,32 @@ const botaoPorTexto = (texto: string) =>
     b.textContent?.includes(texto),
   ) as HTMLButtonElement | undefined;
 
-/** Os botões "Tornar principal", na ordem em que aparecem na tela. */
+/** Os botões "Tornar principal" na tela: só a foto EM FOCO tem as ações dela. */
 const botoesTornarPrincipal = () => [
   ...document.body.querySelectorAll<HTMLButtonElement>(
     'button[aria-label^="Tornar principal"]',
   ),
 ];
 
-/** As fotos do produto na tela, na ordem do carrossel. */
+/** Toca na miniatura N (1 = a primeira) da faixa: a foto N entra em foco. */
+async function focarFoto(n: number) {
+  const miniaturas = [
+    ...document.body.querySelectorAll<HTMLButtonElement>(
+      '[aria-label="Galeria de fotos do produto"] button[aria-pressed]',
+    ),
+  ];
+  await act(async () => {
+    miniaturas[n - 1].click();
+  });
+}
+
+/** As fotos do produto na tela, na ordem da faixa de miniaturas. */
 const fotosNaTela = () =>
-  [...document.body.querySelectorAll("img")]
+  [
+    ...document.body.querySelectorAll(
+      '[aria-label="Galeria de fotos do produto"] img',
+    ),
+  ]
     .map((i) => i.getAttribute("src"))
     .filter((src): src is string => !!src && src.startsWith("https://cdn/"));
 
@@ -235,8 +251,9 @@ describe("AdminProductFormView — foto principal na edição e cadastro que nã
       // Abrir o produto não é alteração: nada de "alterado" ainda.
       expect(onSetDirty).not.toHaveBeenCalledWith(true);
 
+      await focarFoto(3);
       await act(async () => {
-        botoesTornarPrincipal()[1].click();
+        botoesTornarPrincipal()[0].click();
       });
       await esperarAte(() => {
         expect(onSetDirty).toHaveBeenCalledWith(true);
@@ -251,8 +268,9 @@ describe("AdminProductFormView — foto principal na edição e cadastro que nã
     it("Salvar grava as fotos na nova ordem e a variação continua apontando para a mesma foto", async () => {
       await abrirProdutoComTresFotos();
 
+      await focarFoto(3);
       await act(async () => {
-        botoesTornarPrincipal()[1].click();
+        botoesTornarPrincipal()[0].click();
       });
       expect(fotosNaTela().slice(0, 3)).toEqual([FOTO_C, FOTO_A, FOTO_B]);
 

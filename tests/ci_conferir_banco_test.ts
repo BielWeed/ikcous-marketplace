@@ -2225,6 +2225,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "9567454f17698f3f0624cca0b06458cd",
           versao: "20261380000000",
         },
+        // 26/10/2026: a busca de pedido pelo número não vira busca de telefone (regra do telefone e ORDER BY da página).
+        {
+          fn: "get_admin_orders_paged",
+          h: "f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6",
+          versao: "20261387000000",
+        },
         {
           fn: "painel_inicio",
           h: "f11d22d076c59ab54d1beb280954dd15",
@@ -2234,6 +2240,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "painel_inicio",
           h: "ad5620273997ba9266f240f272bf399b",
           versao: "20261228000000",
+        },
+        // 26/10/2026: o lucro do Início conta o mês inteiro (só a janela do lucro estimado muda).
+        {
+          fn: "painel_inicio",
+          h: "b4aa318b777824bd49aab4175d9133f8",
+          versao: "20261390000000",
         },
         {
           fn: "pedido__saldo_a_estornar",
@@ -3615,12 +3627,12 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
     });
   }
   await t.step(
-    "quem é o dono do corpo: 60..66 só para as duas que nenhuma migration posterior redefine; buscar_por_codigo_barras é da 20261381 (a guarda passa a exigir o admin atual, na hora); get_admin_orders_paged é da 20261199, get_admin_orders_cancelados_recentes é da 20261380 (o aviso de cancelados antigos conta só pendência real), registrar_venda_presencial é da 20261280 e upsert_store_config é da 20261244 (a loja escolhe como entrega na cidade; antes, a 20261239, a identidade legal da loja)",
+    "quem é o dono do corpo: 60..66 só para as duas que nenhuma migration posterior redefine; buscar_por_codigo_barras é da 20261381 (a guarda passa a exigir o admin atual, na hora); get_admin_orders_paged é da 20261387 (a busca de pedido pelo número não vira busca de telefone), get_admin_orders_cancelados_recentes é da 20261380 (o aviso de cancelados antigos conta só pendência real), registrar_venda_presencial é da 20261280 e upsert_store_config é da 20261244 (a loja escolhe como entrega na cidade; antes, a 20261239, a identidade legal da loja)",
     () => {
       assertEquals(dono, {
         buscar_por_codigo_barras: "20261381000000",
         get_admin_orders_cancelados_recentes: "20261380000000",
-        get_admin_orders_paged: "20261199000000",
+        get_admin_orders_paged: "20261387000000",
         get_product_recommendations: "20261160000000",
         limpar_cotacoes_fora_da_janela: "20261166000000",
         registrar_venda_presencial: "20261280000000",
@@ -7516,6 +7528,7 @@ const MIGRACAO_242 = `${MIGRATIONS_DIR}/20261242000000_o_lucro_usa_o_custo_do_di
 const MIGRACAO_214 = `${MIGRATIONS_DIR}/20261214000000_o_lucro_do_estoque_so_conta_produto_com_custo.sql`;
 /** A SUCESSORA de painel_inicio (14/10/2026): o Início compara até a mesma hora. A 17a a aceita ao lado da 12. */
 const MIGRACAO_228 = `${MIGRATIONS_DIR}/20261228000000_o_inicio_compara_ate_a_mesma_hora.sql`;
+const MIGRACAO_390 = `${MIGRATIONS_DIR}/20261390000000_o_lucro_do_inicio_conta_o_mes_inteiro.sql`;
 const rollbackDe = (migracao: string) =>
   migracao.replace(
     "/supabase/migrations/",
@@ -7828,6 +7841,22 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       .update(corpoSucessora.replace(/\n/g, "\r\n"), "utf8")
       .digest("hex"),
   };
+  // O corpo da sucessora da sucessora de painel_inicio (a 20261390, o lucro do Início conta o mês inteiro):
+  // a 17a o aceita ao lado do da 12 e do da 28 (LF e CRLF); a 17b (o ANTES) nunca.
+  const texto390 = (await Deno.readTextFile(MIGRACAO_390)).replace(
+    /\r\n/g,
+    "\n",
+  );
+  const ini390 = texto390.indexOf(cabecalhoDepois17("painel_inicio"));
+  assert(ini390 >= 0, "a 20261390 não define painel_inicio");
+  const abre390 = texto390.indexOf("AS $$", ini390) + "AS $$".length;
+  const corpo390 = texto390.slice(abre390, texto390.indexOf("$$;", abre390));
+  const shaSucessora390 = {
+    lf: criarHash("sha256").update(corpo390, "utf8").digest("hex"),
+    crlf: criarHash("sha256")
+      .update(corpo390.replace(/\n/g, "\r\n"), "utf8")
+      .digest("hex"),
+  };
   // O corpo da sucessora de get_admin_analytics_v2 (a 20261234, o lucro só conta produto com custo):
   // a 17a o aceita ao lado do da 14 (LF e CRLF); a 17b (o ANTES) nunca.
   const textoSucessoraAn = (await Deno.readTextFile(MIGRACAO_234)).replace(
@@ -7962,7 +7991,7 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
     [NOME_17B, sql17b, "antes", "depois", "do ANTES"],
   ] as Array<[string, string, "antes" | "depois", "antes" | "depois", string]>)
     await t.step(
-      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 2 da sucessora de painel_inicio (a 20261228) e os 6 da de get_admin_analytics_v2 (a 20261234, a 20261242 e a 20261245) e os 4 da de get_admin_products_paged (a 20261381 e a 20261385)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
+      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 4 da sucessora de painel_inicio (a 20261228 e a 20261390) e os 6 da de get_admin_analytics_v2 (a 20261234, a 20261242 e a 20261245) e os 4 da de get_admin_products_paged (a 20261381 e a 20261385)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
       () => {
         const todos = FUNCOES_17.flatMap((f) => {
           const x = doLado(h.get(f.nome)!, lado);
@@ -7973,6 +8002,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
             ? [
                 shaSucessora.lf,
                 shaSucessora.crlf,
+                shaSucessora390.lf,
+                shaSucessora390.crlf,
                 shaSucessoraAn.lf,
                 shaSucessoraAn.crlf,
                 shaSucessora42.lf,
@@ -8005,7 +8036,16 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
           assertEquals(
             [...linha.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]),
             lado === "depois" && f.nome === "painel_inicio"
-              ? [x.lf, x.lf, x.crlf, shaSucessora.lf, shaSucessora.crlf, x.lf]
+              ? [
+                  x.lf,
+                  x.lf,
+                  x.crlf,
+                  shaSucessora.lf,
+                  shaSucessora.crlf,
+                  shaSucessora390.lf,
+                  shaSucessora390.crlf,
+                  x.lf,
+                ]
               : lado === "depois" && f.nome === "get_admin_analytics_v2"
                 ? [
                     x.lf,
@@ -8049,6 +8089,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
             for (const proibido of [
               shaSucessora.lf,
               shaSucessora.crlf,
+              shaSucessora390.lf,
+              shaSucessora390.crlf,
               shaSucessoraAn.lf,
               shaSucessoraAn.crlf,
               shaSucessora42.lf,
@@ -12040,6 +12082,18 @@ Deno.test("30a/30b — os md5 da 30a sao os dos corpos NOVOS que os arquivos das
   // o marcador que as duas medem e' o corte que os corpos novos escrevem (e os vigentes nao tem)
   assertStringIncludes(corpoDe(m27, "crm_visao"), "::time <= v_hora");
   assertStringIncludes(corpoDe(m28, "painel_inicio"), "::time <= v_hora");
+  // a sucessora da 28 (a 20261390, o lucro do Início conta o mês inteiro): a 30a a aceita (o `vivo` mostra o
+  // esperado) e mantém o marcador do corte na mesma hora; a 30b (o ANTES) nunca a cita.
+  const sucessoraPai = md5(
+    corpoDe(await Deno.readTextFile(MIGRACAO_390), "painel_inicio"),
+  );
+  assertEquals(sucessoraPai, "b4aa318b777824bd49aab4175d9133f8");
+  assertStringIncludes(a, `'${sucessoraPai}'`, "30a: aceita a sucessora");
+  assert(!b.includes(sucessoraPai), "30b nao cita a sucessora");
+  assertStringIncludes(
+    corpoDe(await Deno.readTextFile(MIGRACAO_390), "painel_inicio"),
+    "::time <= v_hora",
+  );
   assert(!corpoDe(r27, "crm_visao").includes("::time <= v_hora"));
   assert(!corpoDe(r28, "painel_inicio").includes("::time <= v_hora"));
   for (const sql of [a, b])
