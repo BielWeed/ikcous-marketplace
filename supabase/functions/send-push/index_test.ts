@@ -28,8 +28,11 @@ import {
   enviarParaInscritos,
   handler,
   jwkDoParVapidCru,
+  opcoesDeEnvioDoAviso,
   paginarTudo,
   resumir,
+  TTL_DA_CAMPANHA_S,
+  TTL_DO_STATUS_DO_PEDIDO_S,
 } from "./index.ts";
 
 // ---------------------------------------------------------------------------
@@ -830,7 +833,18 @@ Deno.test("porta de admin: sem Authorization -> a mesma recusa de sempre, sem ch
 // Campanha de verdade: o HANDLER, de ponta a ponta até o fio
 // ---------------------------------------------------------------------------
 
-Deno.test("handler da send-push: a campanha para clientes sai com Urgency normal e TTL de 28 dias (a urgência alta é só do aviso ao lojista)", async () => {
+// Validade do aviso (TTL, RFC 8030 §5.2) por TIPO, lote 204 (26/10/2026): o push service guarda o aviso
+// enquanto o aparelho esta desligado e entrega quando ele volta. Com o padrao da biblioteca (28 dias), a cliente
+// que ligava o celular uma semana depois recebia "Saiu para entrega" de um pedido ja entregue, e a campanha de
+// um sabado chegava no outro mes. Status de pedido vale 24 h; campanha (e qualquer aviso sem o tipo do
+// pedido, como o teste do aparelho) vale 3 dias. A urgencia NAO muda (normal): o aviso ao lojista (urgencia
+// alta, 28 dias) mora em outras functions e nao passa por aqui.
+
+/** Chama o HANDLER de ponta a ponta ate o push service local; `noBanco` responde a leitura de push_subscriptions. */
+async function enviarPeloHandler(
+  corpoDe: (inscricao: any) => Record<string, unknown>,
+  { noBanco = false } = {},
+) {
   const service = pushServiceFalso({ "/p/ok": 201 });
   const { base64url } = await parVapidDeTeste();
   const anteriores = [
@@ -845,36 +859,35 @@ Deno.test("handler da send-push: a campanha para clientes sai com Urgency normal
   Deno.env.set("SUPABASE_SECRET_KEYS", JSON.stringify({ default: "service-role-de-teste" }));
   Deno.env.set("VAPID_PUBLIC_KEY", base64url.publica);
   Deno.env.set("VAPID_PRIVATE_KEY", base64url.privada);
-  // O Auth/profiles são falsos; só o que vai para o push service local passa
-  // para o `fetch` de verdade.
+  const inscricao = await inscricaoDeTeste(`${service.base}/p/ok`);
+  // O Auth/profiles sao falsos; so o que vai para o push service local passa
+  // para o `fetch` de verdade. A tabela de inscricoes devolve UMA linha.
   const rede = fetchDePapeis("admin", "admin");
+  const lidas: string[] = [];
   const fetchReal = globalThis.fetch;
   globalThis.fetch = ((entrada: any, opcoes?: any) => {
     const url = String(entrada instanceof Request ? entrada.url : entrada);
-    return url.startsWith(service.base) ? fetchReal(entrada, opcoes) : rede.fn(entrada);
+    if (url.startsWith(service.base)) return fetchReal(entrada, opcoes);
+    if (noBanco && url.includes("/rest/v1/push_subscriptions")) {
+      lidas.push(url);
+      return Promise.resolve(
+        new Response(JSON.stringify([{ id: "s1", user_id: "cliente-1", ...inscricao }]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }
+    return rede.fn(entrada);
   }) as any;
   try {
-    const inscricao = await inscricaoDeTeste(`${service.base}/p/ok`);
     const resposta = await handler(
       new Request("http://local/send-push", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer jwt-de-teste" },
-        body: JSON.stringify({
-          title: "Promoção",
-          body: "texto",
-          tokens: [
-            { endpoint: inscricao.endpoint, keys: { p256dh: inscricao.p256dh, auth: inscricao.auth } },
-          ],
-        }),
+        body: JSON.stringify(corpoDe(inscricao)),
       }),
     );
-
-    const corpo = await resposta.json();
-    assertEquals(resposta.status, 200);
-    assertEquals(corpo.enviados, 1);
-    assertEquals(service.recebidas.length, 1);
-    assertEquals(service.recebidas[0].headers.get("urgency"), "normal");
-    assertEquals(service.recebidas[0].headers.get("ttl"), "2419200");
+    return { resposta, corpo: await resposta.json(), recebidas: service.recebidas, lidas };
   } finally {
     globalThis.fetch = fetchReal;
     for (const [chave, valor] of anteriores) {
@@ -883,4 +896,98 @@ Deno.test("handler da send-push: a campanha para clientes sai com Urgency normal
     }
     await service.encerrar();
   }
+}
+
+const tokenDe = (inscricao: any) => ({
+  endpoint: inscricao.endpoint,
+  keys: { p256dh: inscricao.p256dh, auth: inscricao.auth },
+});
+
+Deno.test("handler da send-push: a campanha para clientes sai com Urgency normal e validade de 3 dias (nao 28)", async () => {
+  const { resposta, corpo, recebidas } = await enviarPeloHandler((inscricao) => ({
+    title: "Promoção",
+    body: "texto",
+    tokens: [tokenDe(inscricao)],
+  }));
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.enviados, 1);
+  assertEquals(recebidas.length, 1);
+  assertEquals(recebidas[0].headers.get("urgency"), "normal");
+  assertEquals(recebidas[0].headers.get("ttl"), String(3 * 24 * 60 * 60));
+});
+
+Deno.test("handler da send-push: o aviso de status do pedido (data.type order_status, o que o painel manda) vale 24 h, Urgency normal", async () => {
+  const { resposta, corpo, recebidas, lidas } = await enviarPeloHandler(
+    () => ({
+      title: "Pedido #ABC123",
+      body: "Saiu para entrega",
+      targetUserId: "cliente-1",
+      url: "/order-details?id=abc",
+      data: { orderId: "abc", type: "order_status" },
+    }),
+    { noBanco: true },
+  );
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.enviados, 1);
+  assert(lidas.some((u) => u.includes("user_id=eq.cliente-1")), "le as inscricoes da cliente");
+  assertEquals(recebidas.length, 1);
+  assertEquals(recebidas[0].headers.get("urgency"), "normal");
+  assertEquals(recebidas[0].headers.get("ttl"), String(24 * 60 * 60));
+});
+
+Deno.test("handler da send-push: o teste do aparelho (tokens + url, sem data) segue a validade da campanha", async () => {
+  const { corpo, recebidas } = await enviarPeloHandler((inscricao) => ({
+    title: "Teste",
+    body: "Os avisos chegam neste aparelho",
+    url: "/admin-orders",
+    tokens: [tokenDe(inscricao)],
+  }));
+  assertEquals(corpo.enviados, 1);
+  assertEquals(recebidas[0].headers.get("ttl"), String(3 * 24 * 60 * 60));
+});
+
+Deno.test("opcoesDeEnvioDoAviso: SO data.type === 'order_status' vale 24 h; o resto (sem data, outro tipo, tipo parecido, data nao-objeto) vale 3 dias; nunca muda a urgencia", () => {
+  assertEquals(opcoesDeEnvioDoAviso({ orderId: "a", type: "order_status" }), { ttl: 86400 });
+  assertEquals(opcoesDeEnvioDoAviso({ type: "order_status" }), { ttl: 86400 });
+  for (const data of [
+    undefined,
+    null,
+    {},
+    { orderId: "a" },
+    { type: "campanha" },
+    { type: "ORDER_STATUS" },
+    { type: " order_status" },
+    "order_status",
+    ["order_status"],
+    42,
+  ]) {
+    assertEquals(opcoesDeEnvioDoAviso(data), { ttl: 259200 }, JSON.stringify(data));
+  }
+  assertEquals(TTL_DO_STATUS_DO_PEDIDO_S, 24 * 60 * 60);
+  assertEquals(TTL_DA_CAMPANHA_S, 3 * 24 * 60 * 60);
+});
+
+Deno.test("enviarComOrcamentoDeTempo repassa opcoesDeEnvio a cada envio; sem elas, passa {} (o padrao de sempre da biblioteca)", async () => {
+  const vistas: unknown[] = [];
+  const servidor = {
+    subscribe: (_sub: any) => ({
+      pushTextMessage: (_m: string, opcoes: unknown) => {
+        vistas.push(opcoes);
+        return Promise.resolve();
+      },
+    }),
+  };
+  const inscricoes = [0, 1, 2].map((i) => ({ endpoint: `https://a.example/p/${i}`, p256dh: "x", auth: "y" }));
+  await enviarComOrcamentoDeTempo({
+    servidor,
+    inscricoes,
+    mensagem: "{}",
+    tamanhoDoLote: 2,
+    agora: () => 0,
+    opcoesDeEnvio: { ttl: 86400 },
+  });
+  assertEquals(vistas, [{ ttl: 86400 }, { ttl: 86400 }, { ttl: 86400 }]);
+  vistas.length = 0;
+  await enviarComOrcamentoDeTempo({ servidor, inscricoes: inscricoes.slice(0, 1), mensagem: "{}", agora: () => 0 });
+  assertEquals(vistas, [{}]);
 });
