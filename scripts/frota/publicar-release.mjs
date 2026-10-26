@@ -618,6 +618,10 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "99b-antes-ninguem-grava-evento-de-analise-base-vigente",
   "100a-conferir-o-financeiro-descreve-a-venda-do-balcao-aplicado",
   "100b-antes-o-financeiro-descreve-a-venda-do-balcao-base-vigente",
+  "101a-conferir-a-lista-de-clientes-nao-repete-ninguem-aplicado",
+  "101b-antes-a-lista-de-clientes-nao-repete-ninguem-base-vigente",
+  "102a-conferir-a-busca-do-crm-acha-o-numero-com-mais-55-aplicado",
+  "102b-antes-a-busca-do-crm-acha-o-numero-com-mais-55-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

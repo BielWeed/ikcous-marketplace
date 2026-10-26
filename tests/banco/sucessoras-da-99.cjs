@@ -101,6 +101,12 @@ const NOMES = [
   // O lucro do Inicio conta o mes inteiro: painel_inicio sucede o corpo da 228 (a CADEIA 99 -> 12 -> 28 -> 390: o `hashVigente` da 390 e o
   // `hashDesta` da 228; desfazer em ordem inversa devolve cada corpo ao anterior). O rollback da 228 recusa com o corpo novo no ar: ela cai antes.
   "20261390000000_o_lucro_do_inicio_conta_o_mes_inteiro.sql",
+  // A lista de clientes nao repete ninguem entre as paginas: get_admin_customers_paged sucede o corpo da 230 (a CADEIA 99 -> 230 -> 392: o
+  // `hashVigente` da 392 e o `hashDesta` da 230). O rollback da 230 recusa com o corpo novo no ar: ela cai antes.
+  "20261392000000_a_lista_de_clientes_nao_repete_nem_esconde_ninguem_entre_as_paginas.sql",
+  // A busca do CRM acha o numero com o +55: crm_clientes sucede o corpo da 231 (a CADEIA 99 -> 231 -> 3921: o `hashVigente` da 3921 e o
+  // `hashDesta` da 231). O rollback da 231 recusa com o corpo novo no ar: ela cai antes.
+  "20261392100000_a_busca_do_crm_acha_o_numero_com_mais_55.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).

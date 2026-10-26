@@ -204,6 +204,49 @@ const VERIFICACOES = {
         },
       ],
     },
+  // 20261392000000: a lista de clientes nao repete nem esconde ninguem entre as paginas. get_admin_customers_paged ganha SO o desempate pelo
+  // id no fim do ORDER BY de sorted_data: o ultimo `END DESC` vira `END DESC,` (3 no corpo novo, 2 no da 230) seguido de `id`. A busca por
+  // digitos da 230 e as duas travas de admin seguem UMA vez cada. A consulta 101a confere o corpo exato (md5), os atributos e a ACL.
+  "20261392000000_a_lista_de_clientes_nao_repete_nem_esconde_ninguem_entre_as_paginas.sql":
+    {
+      funcao: "get_admin_customers_paged",
+      esperado: [
+        { texto: "END DESC,", vezes: 3 },
+        {
+          texto:
+            "-- OFFSET repete a mesma cliente em duas paginas e esconde outra (20261392000000).",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF length(v_search_digitos) IN (12, 13) AND left(v_search_digitos, 2) = '55' THEN",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  // 20261392100000: a busca do CRM acha o numero colado com o +55. crm_clientes ganha SO o corte do 55 nos digitos da busca (12 ou 13
+  // digitos que comecam por 55), a mesma regra da 20261230000000. A comparacao sem acento da 231 e as duas travas de admin seguem UMA vez
+  // cada. A consulta 102a confere o corpo exato (md5), os atributos e a ACL.
+  "20261392100000_a_busca_do_crm_acha_o_numero_com_mais_55.sql": {
+    funcao: "crm_clientes",
+    esperado: [
+      {
+        texto:
+          "IF length(v_digitos) IN (12, 13) AND left(v_digitos, 2) = '55' THEN",
+        vezes: 1,
+      },
+      { texto: "v_digitos := substr(v_digitos, 3);", vezes: 1 },
+      {
+        texto:
+          "OR public.f_unaccent(COALESCE(nome_exibido, '')) ILIKE public.f_unaccent('%' || v_busca || '%')",
+        vezes: 1,
+      },
+      { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+      { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+    ],
+  },
   // 20261386: o preco do produto deixa historico. A tabela, a politica, o ACL e o gatilho nao sao conferiveis aqui (so corpo de funcao): a
   // consulta 91a e a prova viva fazem isso. Aqui: a funcao do gatilho grava 'cadastro' no INSERT e 'mudanca' so quando o preco muda.
   "20261386000000_o_preco_do_produto_deixa_historico.sql": {

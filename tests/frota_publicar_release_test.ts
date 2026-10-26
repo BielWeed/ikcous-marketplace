@@ -3102,6 +3102,8 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "98a-conferir-a-foto-da-devolucao-e-a-pergunta-tem-teto-aplicado",
     "99a-conferir-ninguem-grava-evento-de-analise-aplicado",
     "100a-conferir-o-financeiro-descreve-a-venda-do-balcao-aplicado",
+    "101a-conferir-a-lista-de-clientes-nao-repete-ninguem-aplicado",
+    "102a-conferir-a-busca-do-crm-acha-o-numero-com-mais-55-aplicado",
   ]);
 });
 
