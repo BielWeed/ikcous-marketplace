@@ -1,10 +1,18 @@
 {
+  "1.5.85": {
+    "titulo": "Botão original do WhatsApp também no pedido e na tela do produto",
+    "novidades": [],
+    "correcoes": [],
+    "melhorias": [
+      "Loja: o botão de WhatsApp original, verde com o logotipo oficial, agora também aparece nos detalhes do pedido (no topo e na linha Falar com a loja) e na tela do produto, onde é um círculo ao lado da quantidade e do botão de comprar. O número e a mensagem continuam os mesmos de antes."
+    ]
+  },
   "1.5.84": {
     "titulo": "Mais de trinta ajustes no painel e na loja, e o botão original do WhatsApp",
     "novidades": [],
     "correcoes": [
       "Painel, Financeiro: uma folha com algo escrito não some mais sem perguntar. O X, o fundo, o Esc e o Voltar do celular perguntam se você quer descartar, e a folha não fecha enquanto o caixa ou a baixa estão sendo enviados.",
-      "Painel, Relatórios: o ranking abre o produto certo, o atalho Cadastrar custo abre a lista já na visão Sem custo, e o selo de crescimento aparece em vermelho, com sinal, dizendo que compara com os 30 dias antes. O eixo do gráfico agora mostra reais.",
+      "Painel, Relatórios: o ranking abre o produto certo, o atalho Cadastrar custo abre a lista já na visão Sem custo, e o selo de crescimento diz com sinal que compara com os 30 dias antes, ficando em vermelho na queda. O eixo do gráfico usa o mesmo formato de reais do resto do painel.",
       "Painel, Início: o Lucro estimado passa a somar o mês inteiro, com as despesas previstas, e bate com o Resultado do Financeiro no mês atual.",
       "Painel, Pedidos: buscar pelo número do pedido não vira mais busca por telefone. Se o botão Avançar falha, a tela volta ao que o servidor tem, e os avisos de cancelamento e estorno dizem direito quem devolve o dinheiro e o produto.",
       "Painel, produto: tocar duas vezes em Excluir na foto não apaga mais duas fotos. A legenda Enviando volta a aparecer quando a foto está subindo.",
