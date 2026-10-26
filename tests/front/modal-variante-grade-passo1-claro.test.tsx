@@ -392,6 +392,22 @@ describe("passo 1 da grade — faixa RESUMO", () => {
     expect(texto(botaoPorTexto("Gerar"))).toBe("Gerar 3 combinações");
   });
 
+  it.each([
+    ["Cor / Tamanho", "Preto / M", "Cor", "Tamanho"],
+    ["Tamanho / Cor", "M / Preto", "Tamanho", "Cor"],
+  ])(
+    "completar grade abre os cartões na ORDEM JÁ GRAVADA do produto (%s)",
+    async (nome, valor, primeiro, segundo) => {
+      await abrir({
+        existentes: [linha(nome, valor)],
+        grupoUnicoEmUso: nome,
+        sugestoes: [nome],
+      });
+      expect(texto(cartao(0))).toContain(`1 · ${primeiro}`);
+      expect(texto(cartao(1))).toContain(`2 · ${segundo}`);
+    },
+  );
+
   it("sem nada escolhido, ou com um atributo ainda vazio, pede ao menos uma opção em cada", async () => {
     await abrir();
     await tocarPeca(0, "Cor");

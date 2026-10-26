@@ -28,6 +28,19 @@ export type TipoDoAtributo =
 export const dobrar = (texto: string): string =>
   texto.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
 
+/** Quem escolhe o tamanho vê as cores que existem nele: Tamanho (e Voltagem e
+ *  Capacidade) vêm antes, a Cor depois e qualquer outro atributo por último. A
+ *  ordem em que o produto foi gravado ("Cor / Tamanho") não decide nada na tela
+ *  do cliente; entre iguais vale a gravação (o sort do JS é estável). A página
+ *  do produto e o card da vitrine usam esta MESMA régua. */
+export function posicaoDoAtributo(nome: string): number {
+  const tipo = tipoDoNome(nome);
+  if (tipo === "Tamanho" || tipo === "Voltagem" || tipo === "Capacidade")
+    return 0;
+  if (tipo === "Cor" || /^(cores|color)$/.test(dobrar(nome))) return 1;
+  return 2;
+}
+
 /** O tipo que o nome gravado representa. Vazio = nenhum marcado. O painel
  *  (peças do seletor) e a loja (ordem das fileiras) leem o nome igual. */
 export function tipoDoNome(nome: string): TipoDoAtributo | null {

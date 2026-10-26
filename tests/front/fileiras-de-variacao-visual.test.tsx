@@ -65,7 +65,7 @@ describe("apresentação acessível das fileiras", () => {
         const frente = hslParaRgb(bloco.match(/--foreground:\s*([^;]+);/)![1]);
         const host = montar(["Azul", cor]);
         const botao = host.querySelector<HTMLButtonElement>(
-          `button[aria-label="${cor}"]`,
+          `button[aria-label^="${cor}"]`,
         )!;
         expect(botao.getAttribute("aria-pressed")).toBe("false");
         const bolinha = botao.querySelector<HTMLElement>("[style]")!;
@@ -94,7 +94,7 @@ describe("apresentação acessível das fileiras", () => {
     const host = montar(["Azul", "Branco"]);
     const azul = host.querySelector('button[aria-label="Azul"]')!;
     const branco = host.querySelector<HTMLButtonElement>(
-      'button[aria-label="Branco"]',
+      'button[aria-label^="Branco"]',
     )!;
     expect(azul.getAttribute("aria-pressed")).toBe("true");
     expect(azul.classList.contains("min-h-11")).toBe(true);
@@ -240,20 +240,111 @@ describe("apresentação acessível das fileiras", () => {
   it("esgotado: riscado, esmaecido, desabilitado e avisado ao leitor de tela", () => {
     const host = montar(["Azul", "Branco"]);
     const branco = host.querySelector<HTMLButtonElement>(
-      'button[aria-label="Branco"]',
+      'button[aria-label^="Branco"]',
     )!;
     expect(branco.disabled).toBe(true);
     expect(branco.classList.contains("line-through")).toBe(true);
     expect(branco.className).toContain("disabled:text-muted-foreground");
     expect(branco.className).toContain("disabled:border-border/60");
     expect(branco.getAttribute("title")).toBe("Branco — Esgotado");
-    expect(branco.querySelector(".sr-only")?.textContent).toBe(" (Esgotado)");
+    // O estado vai no próprio nome acessível (um span sr-only dentro do botão
+    // nunca é lido quando há aria-label).
+    expect(branco.getAttribute("aria-label")).toBe("Branco, esgotado");
+    expect(branco.querySelector(".sr-only")).toBeNull();
     const azul = host.querySelector<HTMLButtonElement>(
       'button[aria-label="Azul"]',
     )!;
     expect(azul.getAttribute("title")).toBe("Azul");
+    expect(azul.getAttribute("aria-label")).toBe("Azul");
     expect(azul.querySelector(".sr-only")).toBeNull();
     expect(azul.classList.contains("line-through")).toBe(false);
+  });
+  it("apagado só pela combinação: NÃO parece esgotado -- sem risco, borda tracejada, tocável e dito no nome acessível", () => {
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(
+      <FileirasDeVariacao
+        fileiras={[
+          {
+            nome: "Cor",
+            valores: [
+              { valor: "Azul", disponivel: true, estoque: 2, existe: true },
+              { valor: "Preto", disponivel: false, estoque: 0, existe: true },
+              { valor: "Branco", disponivel: false, estoque: 0, existe: false },
+            ],
+          },
+        ]}
+        escolha={{}}
+        onEscolher={() => {}}
+      />,
+    );
+    const botao = (rotulo: string) =>
+      host.querySelector<HTMLButtonElement>(`button[aria-label^="${rotulo}"]`)!;
+    const preto = botao("Preto");
+    expect(preto.getAttribute("aria-label")).toBe(
+      "Preto, indisponível com a sua escolha",
+    );
+    expect(preto.getAttribute("title")).toBe(
+      "Preto — Indisponível com a sua escolha",
+    );
+    expect(preto.disabled).toBe(false);
+    expect(preto.classList.contains("line-through")).toBe(false);
+    expect(preto.classList.contains("border-dashed")).toBe(true);
+    expect(preto.classList.contains("border-solid")).toBe(false);
+    expect(preto.querySelector(".sr-only")).toBeNull();
+    // Esgotado de vez continua como era: riscado, travado, borda lisa.
+    const branco = botao("Branco");
+    expect(branco.getAttribute("aria-label")).toBe("Branco, esgotado");
+    expect(branco.disabled).toBe(true);
+    expect(branco.classList.contains("line-through")).toBe(true);
+    expect(branco.classList.contains("border-dashed")).toBe(false);
+    // O disponível não muda.
+    const azul = botao("Azul");
+    expect(azul.classList.contains("border-dashed")).toBe(false);
+    expect(azul.classList.contains("border-solid")).toBe(true);
+    // Nenhum dos dois estados tem a mesma aparência.
+    expect(
+      new Set([azul.className, preto.className, branco.className]).size,
+    ).toBe(3);
+  });
+  it("o texto do apagado mantém contraste de leitura (sem opacidade que derrube o AA)", () => {
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(
+      <FileirasDeVariacao
+        fileiras={[
+          {
+            nome: "Cor",
+            valores: [
+              { valor: "Preto", disponivel: false, estoque: 0, existe: true },
+            ],
+          },
+        ]}
+        escolha={{}}
+        onEscolher={() => {}}
+      />,
+    );
+    const preto = host.querySelector("button")!;
+    expect(preto.className).not.toMatch(/(^|\s)opacity-/);
+    expect(preto.className).toContain("text-muted-foreground");
+  });
+  it("a região de aviso é um status educado, oculto da vista, que repete o texto recebido", () => {
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(
+      <FileirasDeVariacao
+        fileiras={[
+          {
+            nome: "Tamanho",
+            valores: [{ valor: "M", disponivel: true, estoque: 2 }],
+          },
+        ]}
+        escolha={{}}
+        onEscolher={() => {}}
+        aviso="Tamanho P desmarcado"
+      />,
+    );
+    const regiao = host.querySelector('[role="status"]')!;
+    expect(regiao.getAttribute("aria-live")).toBe("polite");
+    expect(regiao.classList.contains("sr-only")).toBe(true);
+    expect(regiao.textContent).toBe("Tamanho P desmarcado");
   });
   it("esgotado que já é a opção ativa continua clicável (para poder desmarcar)", () => {
     const host = document.createElement("div");
@@ -317,7 +408,7 @@ describe("apresentação acessível das fileiras", () => {
         )!
         .click();
       raiz
-        .querySelector<HTMLButtonElement>('button[aria-label="Branco"]')!
+        .querySelector<HTMLButtonElement>('button[aria-label^="Branco"]')!
         .click();
     });
     expect(chamadas).toEqual([["Cor", "Xadrez Preto, Cinza e Branco"]]);

@@ -48,7 +48,10 @@ import { textoEstoqueBaixo, textoSoRestam } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
-import { fileirasDeVariacao } from "@/utils/fileiras-de-variacao";
+import {
+  aplicarEscolhaDeVariacao,
+  fileirasDeVariacao,
+} from "@/utils/fileiras-de-variacao";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Check,
@@ -139,6 +142,9 @@ export const ProductView = React.memo(function ProductView({
     Record<string, string>
   >({});
   const [folhaAberta, setFolhaAberta] = useState(false);
+  // O que a última escolha SOLTOU do outro lado ("Tamanho P desmarcado"), para
+  // o leitor de tela: a tela muda sozinha e quem não vê não perceberia.
+  const [avisoDaEscolha, setAvisoDaEscolha] = useState("");
   // A pessoa tocou em "Adicionar" sem escolher a opção: a linha que falta (na
   // página, na folha e no atalho da barra) fica em alerta até ela escolher.
   const [tentouSemEscolher, setTentouSemEscolher] = useState(false);
@@ -518,29 +524,28 @@ export const ProductView = React.memo(function ProductView({
   // azul (2) fica com 2 e é avisada, em vez de a tela mostrar 5 e o carrinho
   // cortar depois. Se a variação tem foto, a galeria anda até ela.
   const escolherVariante = (grupo: string, valor: string) => {
-    if (
-      !fileiras
-        .find((f) => f.nome === grupo)
-        ?.valores.some((v) => v.valor === valor && v.disponivel)
-    )
-      return;
-    let proxima = { ...selectedVariants, [grupo]: valor };
-    // Trocar a cor não fica preso ao tamanho anterior: apaga somente escolhas
-    // incompatíveis, nunca escolhe outra combinação pela cliente.
-    for (const fileira of fileirasDeVariacao(product.variants, proxima)
-      .fileiras) {
-      if (
-        fileira.nome !== grupo &&
-        proxima[fileira.nome] &&
-        !fileira.valores.some(
-          (v) => v.valor === proxima[fileira.nome] && v.disponivel,
-        )
-      ) {
-        proxima = Object.fromEntries(
-          Object.entries(proxima).filter(([nome]) => nome !== fileira.nome),
-        );
-      }
-    }
+    // Valor sem estoque em combinação nenhuma: nada muda. Valor só apagado pela
+    // combinação atual (existe em outra): entra e solta o que deixou de combinar
+    // -- a escolha nunca fica incoerente e a compra segue exigindo uma linha
+    // completa com estoque (`variante`).
+    const proxima = aplicarEscolhaDeVariacao(
+      product.variants ?? [],
+      selectedVariants,
+      grupo,
+      valor,
+    );
+    if (!proxima) return;
+    const mantidas = new Map(Object.entries(proxima));
+    const soltas = Object.entries(selectedVariants)
+      .filter(([nome]) => nome !== grupo && !mantidas.has(nome))
+      .map(([nome, escolhido]) => `${nome} ${escolhido}`);
+    setAvisoDaEscolha(
+      soltas.length === 0
+        ? ""
+        : soltas.length === 1
+          ? `${soltas[0]} desmarcado`
+          : `${soltas.join(" e ")} desmarcados`,
+    );
     setSelectedVariants(proxima);
     const fotoDaVariante = variantesDaEscolha(proxima)[0]?.imageUrl;
     if (fotoDaVariante) {
@@ -1059,6 +1064,7 @@ export const ProductView = React.memo(function ProductView({
                 escolha={selectedVariants}
                 onEscolher={alternarVariante}
                 pendentes={pendentes}
+                aviso={avisoDaEscolha}
               />
             )}
 
@@ -1635,6 +1641,7 @@ export const ProductView = React.memo(function ProductView({
             escolha={selectedVariants}
             onEscolher={alternarVariante}
             pendentes={pendentes}
+            aviso={avisoDaEscolha}
           />
           <QuantitySelector
             quantity={quantity}

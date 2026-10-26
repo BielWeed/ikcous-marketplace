@@ -278,6 +278,75 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     ]);
   });
 
+  /** Cadastra "Cor / Tamanho: Branca / PP" para o produto já ter o grupo. */
+  async function cadastrarBrancaPP() {
+    await abrirModal();
+    await digitarPar(0, "Cor", "Branca");
+    await act(async () => {
+      clicarObrigatorio("+ Atributo");
+    });
+    await digitarPar(1, "Tamanho", "PP");
+    await act(async () => {
+      clicarObrigatorio("Salvar variação");
+    });
+  }
+
+  it("produto que já grava 'Cor / Tamanho': montar Tamanho e depois Cor grava na ordem antiga e passa na trava", async () => {
+    await montar();
+    await cadastrarBrancaPP();
+
+    await abrirModal();
+    await digitarPar(0, "Tamanho", "P");
+    await act(async () => {
+      clicarObrigatorio("+ Atributo");
+    });
+    await digitarPar(1, "Cor", "Branca");
+    await digitar("variant-stock", "10");
+    await esperarFlushDosCampos();
+    await act(async () => {
+      clicarObrigatorio("Salvar variação");
+    });
+
+    expect(toastError).not.toHaveBeenCalled();
+    expect(variantesNaTela()).toEqual([
+      "Cor / Tamanho: Branca / PP",
+      "Cor / Tamanho: Branca / P",
+    ]);
+  });
+
+  it("a trava segue valendo: outro conjunto de atributos continua recusado, com o texto certo para grupo composto", async () => {
+    await montar();
+    await cadastrarBrancaPP();
+
+    await abrirModal();
+    await digitarPar(0, "Tamanho", "P");
+    await act(async () => {
+      clicarObrigatorio("+ Atributo");
+    });
+    await escolherAtributo(1, "Material", "variant-name-1", digitar, {
+      viaOutro: true,
+    });
+    await act(async () => {
+      digitar("variant-value-1", "Algodão");
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    await act(async () => {
+      clicarObrigatorio("Salvar variação");
+    });
+
+    expect(toastError).toHaveBeenCalledTimes(1);
+    const [titulo, opcoes] = toastError.mock.calls[0] as [
+      string,
+      { description?: string },
+    ];
+    expect(titulo).toContain("Cor / Tamanho");
+    // Para grupo composto o recado é usar os MESMOS atributos; o conselho de
+    // "Rosa P" dentro de um tipo só é de produto com um atributo.
+    expect(opcoes.description).toContain("mesmos atributos");
+    expect(opcoes.description).not.toMatch(/Rosa P/);
+    expect(variantesNaTela()).toEqual(["Cor / Tamanho: Branca / PP"]);
+  });
+
   it("um atributo só continua saindo CRU, sem separador nenhum", async () => {
     await montar();
 
