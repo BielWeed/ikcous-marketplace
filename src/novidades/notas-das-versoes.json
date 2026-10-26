@@ -1,4 +1,25 @@
 {
+  "1.5.84": {
+    "titulo": "Mais de trinta ajustes no painel e na loja, e o botão original do WhatsApp",
+    "novidades": [],
+    "correcoes": [
+      "Painel, Financeiro: uma folha com algo escrito não some mais sem perguntar. O X, o fundo, o Esc e o Voltar do celular perguntam se você quer descartar, e a folha não fecha enquanto o caixa ou a baixa estão sendo enviados.",
+      "Painel, Relatórios: o ranking abre o produto certo, o atalho Cadastrar custo abre a lista já na visão Sem custo, e o selo de crescimento aparece em vermelho, com sinal, dizendo que compara com os 30 dias antes. O eixo do gráfico agora mostra reais.",
+      "Painel, Início: o Lucro estimado passa a somar o mês inteiro, com as despesas previstas, e bate com o Resultado do Financeiro no mês atual.",
+      "Painel, Pedidos: buscar pelo número do pedido não vira mais busca por telefone. Se o botão Avançar falha, a tela volta ao que o servidor tem, e os avisos de cancelamento e estorno dizem direito quem devolve o dinheiro e o produto.",
+      "Painel, produto: tocar duas vezes em Excluir na foto não apaga mais duas fotos. A legenda Enviando volta a aparecer quando a foto está subindo.",
+      "Painel: Cupons sem data de fim dizem Sem validade e o botão Excluir ficou vermelho. Clientes tem texto próprio quando ainda não há ninguém. As vitrines têm botões de 44 pixels. Aprovar uma avaliação só comemora se publicou de fato, e um toque duplo publica uma vez só.",
+      "Painel, Balcão sem internet: o aviso agora diz que a venda ainda não foi registrada, em vez de dizer que foi salva.",
+      "Loja: o aviso Salvo! só aparece quando o produto entrou mesmo no carrinho. O preço de vitrine mostra o menor preço à venda, com A partir de quando as opções variam, e só risca o preço antigo se o desconto for real.",
+      "Loja: o cartão do produto não quebra mais em celulares pequenos, o convite de notificações não cobre as folhas abertas, e o número copiado do pedido é o mesmo que a loja mostra.",
+      "Loja: Cancelar pedido agora pergunta na caixa da própria loja, não cancela duas vezes e fecha sozinha se o pedido deixar de poder ser cancelado. As estrelas da avaliação funcionam com teclado e leitor de tela."
+    ],
+    "melhorias": [
+      "Loja: o botão de WhatsApp agora é o original, verde com o logotipo oficial, nos pedidos, no acompanhamento, na página Sobre a loja, nas políticas e nas telas de pagamento.",
+      "Frete: a cotação de frete passou a ter um limite de consultas por origem, que protege a loja de uso em excesso. A devolução de estoque de pedido cancelado deixou de travar quando duas vendas acontecem ao mesmo tempo.",
+      "Painel: o pacote do painel ganhou um pouco de espaço para caber essas melhorias."
+    ]
+  },
   "1.5.83": {
     "titulo": "Tela de produto mais limpa, com barra de baixo fina",
     "novidades": [],
