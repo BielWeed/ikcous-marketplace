@@ -190,23 +190,31 @@ describe("CartItemsList Tinta — a linha do carrinho continua fazendo tudo", ()
     expect(rotulo?.classList.contains("uppercase")).toBe(true);
   });
 
-  it("mais de 50 linhas: aviso de instabilidade e 'Limpar Tudo' chama handleClearCart", async () => {
+  it("mais de 50 linhas: aviso calmo (sem 'instabilidade' nem 'limite seguro') e 'Esvaziar carrinho' chama handleClearCart", async () => {
     const handleClearCart = vi.fn();
     const muitos: CartItem[] = Array.from({ length: 51 }, (_, i) => ({
       product: produto({ id: `p-${i}`, stock: 9 }),
       quantity: 1,
     }));
     await montarLista(muitos, { handleClearCart });
-    expect(texto()).toContain("Instabilidade detectada");
+    // UI-191 (G8): nada limita as linhas ao adicionar, então o aviso não pode
+    // alarmar com "instabilidade" nem "limite seguro".
+    expect(texto()).toContain("Seu carrinho tem 51 produtos diferentes");
+    expect(texto()).not.toMatch(/instabilidade|limite seguro/i);
     const limpar = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("Limpar Tudo"),
+      b.textContent?.includes("Esvaziar carrinho"),
     );
     await act(async () => limpar?.click());
     expect(handleClearCart).toHaveBeenCalledTimes(1);
 
     // 50 linhas ou menos: sem aviso
     await montarLista(muitos.slice(0, 50), { handleClearCart });
-    expect(texto()).not.toContain("Instabilidade detectada");
+    expect(texto()).not.toContain("produtos diferentes");
+    expect(
+      Array.from(hospedeiro.querySelectorAll("button")).some((b) =>
+        b.textContent?.includes("Esvaziar carrinho"),
+      ),
+    ).toBe(false);
   });
 });
 
