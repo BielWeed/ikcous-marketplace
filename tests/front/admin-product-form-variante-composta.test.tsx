@@ -230,6 +230,22 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     expect(document.body.textContent).toContain("3 UND");
   });
 
+  it("o botão '+ Atributo' sugere a outra metade da dupla, com o tamanho primeiro", async () => {
+    await montar();
+    await abrirModal();
+    const botaoAtributo = () =>
+      [...document.querySelectorAll("button")]
+        .find((b) => b.textContent?.startsWith("+ Atributo"))
+        ?.textContent?.replace(/\s+/g, " ")
+        .trim();
+    // Nada escolhido ainda: começa pelo tamanho.
+    expect(botaoAtributo()).toBe("+ Atributo (ex.: Tamanho)");
+    await escolherAtributo(0, "Tamanho", "variant-name", digitar);
+    expect(botaoAtributo()).toBe("+ Atributo (ex.: Cor)");
+    await escolherAtributo(0, "Cor", "variant-name", digitar);
+    expect(botaoAtributo()).toBe("+ Atributo (ex.: Tamanho)");
+  });
+
   it("aceita a segunda combinação do MESMO grupo (a trava não confunde combinação com grupo)", async () => {
     await montar();
 

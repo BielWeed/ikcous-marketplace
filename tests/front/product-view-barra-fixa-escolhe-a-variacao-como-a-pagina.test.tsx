@@ -479,23 +479,36 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
     }
   });
 
-  it("trocar para uma cor sem o tamanho escolhido limpa o tamanho, não compra combinação inexistente", async () => {
+  it("com Azul e P escolhidos, a Preta fica apagada: não compra combinação inexistente e desmarcar o P libera a troca", async () => {
     await montar(
       blusa([
         { ...cor("azul-p", "Azul / P", 2), name: "Cor / Tamanho" },
         { ...cor("preto-m", "Preto / M", 4), name: "Cor / Tamanho" },
       ]),
     );
-    await tocar(hospedeiro.querySelector('button[aria-label="Azul"]'));
-    await tocar(hospedeiro.querySelector('button[aria-label="P"]'));
-    expect(barra()?.textContent).toContain("Azul · P");
-    await tocar(hospedeiro.querySelector('button[aria-label="Preto"]'));
-    expect(
-      hospedeiro
-        .querySelector('button[aria-label="P"]')
-        ?.getAttribute("aria-pressed"),
-    ).toBe("false");
-    expect(barra()?.textContent).toContain("Escolher cor e tamanho");
+    const botao = (rotulo: string) =>
+      hospedeiro.querySelector<HTMLButtonElement>(
+        `button[aria-label="${rotulo}"]`,
+      );
+    // A barra e a folha seguem a ordem das fileiras: o tamanho vem primeiro.
+    expect(barra()?.textContent).toContain("Escolher tamanho e cor");
+    await tocar(botao("Azul"));
+    await tocar(botao("P"));
+    expect(barra()?.textContent).toContain("P · Azul");
+    expect(botao("Preto")?.disabled).toBe(true);
+    await tocar(botao("Preto"));
+    expect(botao("Preto")?.getAttribute("aria-pressed")).toBe("false");
+    expect(botao("Azul")?.getAttribute("aria-pressed")).toBe("true");
+    expect(botao("P")?.getAttribute("aria-pressed")).toBe("true");
+    // Sai da combinação desmarcando o tamanho; aí a Preta volta e, ao
+    // escolhê-la, o M é o tamanho que existe nela.
+    await tocar(botao("P"));
+    expect(botao("Preto")?.disabled).toBe(false);
+    await tocar(botao("Preto"));
+    expect(botao("Preto")?.getAttribute("aria-pressed")).toBe("true");
+    expect(botao("M")?.disabled).toBe(false);
+    expect(botao("P")?.disabled).toBe(true);
+    expect(barra()?.textContent).toContain("Escolher tamanho e cor");
     await comprarPelaBarra();
     expect(adicionarAoCarrinho).not.toHaveBeenCalled();
     expect(document.querySelector('[role="dialog"]')).not.toBeNull();

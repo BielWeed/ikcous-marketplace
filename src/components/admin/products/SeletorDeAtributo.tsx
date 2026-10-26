@@ -1,13 +1,18 @@
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { cn } from "@/lib/utils";
-import { SEPARADOR_DE_ATRIBUTOS } from "@/utils/atributos-da-variacao";
+import {
+  SEPARADOR_DE_ATRIBUTOS,
+  type TipoDoAtributo,
+  dobrar,
+  tipoDoNome,
+} from "@/utils/atributos-da-variacao";
 import { PALETA_DE_CORES, corDaVariacao } from "@/utils/cor-da-variacao";
 import { Check, Pencil, Plus, Ruler, X, Zap } from "lucide-react";
 import { type ReactNode, useState } from "react";
 
 /**
- * Escolher em vez de digitar: o lojista toca o que muda no produto (Cor,
- * Tamanho, Voltagem ou Outro) e, embaixo, toca a bolinha da cor, o tamanho ou
+ * Escolher em vez de digitar: o lojista toca o que muda no produto (Tamanho,
+ * Cor, Voltagem ou Outro) e, embaixo, toca a bolinha da cor, o tamanho ou
  * a voltagem. A loja já mostra a cor como bolinha; aqui o painel fala a mesma
  * língua.
  *
@@ -23,7 +28,9 @@ import { type ReactNode, useState } from "react";
  * só desenha e avisa.
  */
 
-export type TipoDoAtributo = "Cor" | "Tamanho" | "Voltagem" | "Outro";
+// A leitura do nome mora em utils (a loja usa a mesma): aqui só se repassa.
+export type { TipoDoAtributo };
+export { tipoDoNome };
 
 const TAMANHOS = [
   "PP",
@@ -42,20 +49,6 @@ const TAMANHOS = [
 ] as const;
 const VOLTAGENS = ["110V", "220V", "Bivolt"] as const;
 const NOMES_DA_PALETA = PALETA_DE_CORES.map((cor) => cor.nome);
-
-/** Minúscula, sem acento e sem as pontas: "Lilás " e "lilas" são a mesma coisa. */
-const dobrar = (texto: string): string =>
-  texto.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
-
-/** O tipo que o nome gravado representa. Vazio = nenhum marcado. */
-export function tipoDoNome(nome: string): TipoDoAtributo | null {
-  const chave = dobrar(nome);
-  if (chave === "") return null;
-  if (chave === "cor") return "Cor";
-  if (chave === "tamanho") return "Tamanho";
-  if (chave === "voltagem") return "Voltagem";
-  return "Outro";
-}
 
 function listaDoTipo(tipo: TipoDoAtributo | null): readonly string[] {
   if (tipo === "Cor") return NOMES_DA_PALETA;
@@ -138,7 +131,10 @@ interface Multiplo extends Comum {
 
 export type SeletorDeAtributoProps = Unico | Multiplo;
 
+// Tamanho primeiro: é por ele que a cliente começa na loja (escolhe o tamanho
+// e vê as cores que existem nele), e o lojista monta o produto na mesma ordem.
 const PECAS: ReadonlyArray<{ tipo: TipoDoAtributo; icone: ReactNode }> = [
+  { tipo: "Tamanho", icone: <Ruler aria-hidden="true" className="size-6" /> },
   {
     tipo: "Cor",
     icone: (
@@ -152,7 +148,6 @@ const PECAS: ReadonlyArray<{ tipo: TipoDoAtributo; icone: ReactNode }> = [
       />
     ),
   },
-  { tipo: "Tamanho", icone: <Ruler aria-hidden="true" className="size-6" /> },
   { tipo: "Voltagem", icone: <Zap aria-hidden="true" className="size-6" /> },
   { tipo: "Outro", icone: <Pencil aria-hidden="true" className="size-6" /> },
 ];
@@ -449,7 +444,7 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
       )}
       {tipo === null && (
         <p className="text-sm text-zinc-500">
-          Toque no que muda neste produto: cor, tamanho, voltagem ou outro.
+          Toque no que muda neste produto: tamanho, cor, voltagem ou outro.
         </p>
       )}
 

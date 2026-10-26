@@ -15,3 +15,20 @@ export function dividirEmAtributos(
   }
   return [{ name, value }];
 }
+
+export type TipoDoAtributo = "Cor" | "Tamanho" | "Voltagem" | "Outro";
+
+/** Minúscula, sem acento e sem as pontas: "Lilás " e "lilas" são a mesma coisa. */
+export const dobrar = (texto: string): string =>
+  texto.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+
+/** O tipo que o nome gravado representa. Vazio = nenhum marcado. O painel
+ *  (peças do seletor) e a loja (ordem das fileiras) leem o nome igual. */
+export function tipoDoNome(nome: string): TipoDoAtributo | null {
+  const chave = dobrar(nome);
+  if (chave === "") return null;
+  if (chave === "cor") return "Cor";
+  if (chave === "tamanho") return "Tamanho";
+  if (chave === "voltagem") return "Voltagem";
+  return "Outro";
+}

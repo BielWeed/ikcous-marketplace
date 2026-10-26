@@ -5,7 +5,8 @@
 // produto, com o estoque DELA e o preço DELA — e a compra tem de levar o
 // variant_id da combinação certa, que é o que o servidor baixa do estoque.
 //
-// O redesenho separa a escolha em Cor e Tamanho, mas preserva o contrato:
+// O redesenho separa a escolha em Tamanho e Cor (o tamanho primeiro, mesmo no
+// produto gravado como "Cor / Tamanho"), mas preserva o contrato:
 // só a combinação completa entrega o MESMO id, estoque, preço e rótulo cru.
 //
 // Modelo estrutural copiado de product-view-estoque-contraste-aa.test.tsx
@@ -162,12 +163,12 @@ describe("ProductView — a combinação de atributos vira UMA opção com estoq
     vi.unstubAllGlobals();
   });
 
-  async function montar() {
+  async function montar(produto: Product = blusa) {
     const { ProductView } = await import("@/views/customer/ProductView");
     await act(async () => {
       raiz.render(
         <ProductView
-          product={blusa}
+          product={produto}
           isFavorite={false}
           onToggleFavorite={() => {}}
           onAddToCart={adicionarAoCarrinho}
@@ -189,7 +190,7 @@ describe("ProductView — a combinação de atributos vira UMA opção com estoq
           document.getElementById(el.getAttribute("aria-labelledby") ?? "")
             ?.textContent,
       ),
-    ).toEqual(["Cor", "Tamanho"]);
+    ).toEqual(["Tamanho", "Cor"]);
     expect(
       hospedeiro.querySelector('button[aria-label="Branca"]'),
     ).not.toBeNull();
@@ -224,5 +225,80 @@ describe("ProductView — a combinação de atributos vira UMA opção com estoq
     // É o id da LINHA branca PP — é dele que o servidor baixa o estoque.
     expect(variantId).toBe("v-pp");
     expect(nomes).toBe("Cor / Tamanho: Branca / PP");
+  });
+
+  it("o tamanho vem primeiro: escolhido o PP, a cor que não o tem fica apagada e o toque nela não faz nada", async () => {
+    const preta = {
+      ...blusaBrancaP,
+      id: "v-preta-p",
+      value: "Preta / P",
+      stockIncrement: 4,
+    };
+    await montar({ ...blusa, variants: [blusaBrancaPP, preta] });
+    const botao = (rotulo: string) =>
+      hospedeiro.querySelector(
+        `button[aria-label="${rotulo}"]`,
+      ) as HTMLButtonElement;
+
+    await act(async () => {
+      botao("PP").click();
+    });
+    expect(botao("Preta").disabled).toBe(true);
+    expect(botao("Branca").disabled).toBe(false);
+    await act(async () => {
+      botao("Preta").click();
+    });
+    expect(botao("Preta").getAttribute("aria-pressed")).toBe("false");
+
+    await act(async () => {
+      botao("Branca").click();
+    });
+    await act(async () => {
+      botaoPorTexto(hospedeiro, "Adicionar ao Carrinho")?.click();
+    });
+    expect(adicionarAoCarrinho).toHaveBeenCalledExactlyOnceWith(
+      1,
+      "v-pp",
+      "Cor / Tamanho: Branca / PP",
+    );
+  });
+
+  it("sem beco sem saída: PP e Branca escolhidos apagam P e Preta, e desmarcar libera o caminho até a Preta P", async () => {
+    const preta = {
+      ...blusaBrancaP,
+      id: "v-preta-p",
+      value: "Preta / P",
+      stockIncrement: 4,
+    };
+    await montar({ ...blusa, variants: [blusaBrancaPP, preta] });
+    const botao = (rotulo: string) =>
+      hospedeiro.querySelector(
+        `button[aria-label="${rotulo}"]`,
+      ) as HTMLButtonElement;
+    const tocar = (rotulo: string) =>
+      act(async () => {
+        botao(rotulo).click();
+      });
+    await tocar("PP");
+    await tocar("Branca");
+    expect(botao("P").disabled).toBe(true);
+    expect(botao("Preta").disabled).toBe(true);
+    // Os escolhidos continuam clicáveis: é por eles que se sai.
+    expect(botao("PP").disabled).toBe(false);
+    expect(botao("Branca").disabled).toBe(false);
+    await tocar("Branca");
+    await tocar("PP");
+    expect(botao("P").disabled).toBe(false);
+    expect(botao("Preta").disabled).toBe(false);
+    await tocar("P");
+    await tocar("Preta");
+    await act(async () => {
+      botaoPorTexto(hospedeiro, "Adicionar ao Carrinho")?.click();
+    });
+    expect(adicionarAoCarrinho).toHaveBeenCalledExactlyOnceWith(
+      1,
+      "v-preta-p",
+      "Cor / Tamanho: Preta / P",
+    );
   });
 });

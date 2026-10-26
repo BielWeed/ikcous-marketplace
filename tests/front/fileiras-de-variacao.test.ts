@@ -41,33 +41,103 @@ describe("fileiras da variação sem mudar a identidade da linha", () => {
     });
     expect(resultado.variante).toBe(unica);
   });
-  it("abre duas dimensões em ordem e oculta linhas desligadas", () => {
+  it("abre duas dimensões com o tamanho primeiro, mesmo gravado como Cor / Tamanho, e oculta linhas desligadas", () => {
     const resultado = fileirasDeVariacao(variantes);
-    expect(resultado.fileiras.map((f) => f.nome)).toEqual(["Cor", "Tamanho"]);
+    expect(resultado.fileiras.map((f) => f.nome)).toEqual(["Tamanho", "Cor"]);
     expect(resultado.fileiras[0].valores.map((v) => v.valor)).toEqual([
-      "Azul",
-      "Preto",
-    ]);
-    expect(resultado.fileiras[1].valores.map((v) => v.valor)).toEqual([
       "P",
       "M",
     ]);
+    expect(resultado.fileiras[1].valores.map((v) => v.valor)).toEqual([
+      "Azul",
+      "Preto",
+    ]);
     expect(resultado.variante).toBeUndefined();
   });
-  it("tamanho depende da cor, mas cor com algum tamanho em estoque continua disponível", () => {
+  it("a linha comprável e o nome gravado não mudam com a ordem das fileiras", () => {
+    const resultado = fileirasDeVariacao(variantes, {
+      Tamanho: "P",
+      Cor: "Azul",
+    });
+    expect(resultado.variante).toBe(variantes[0]);
+    expect(resultado.variante?.name).toBe("Cor / Tamanho");
+    expect(resultado.variante?.value).toBe("Azul / P");
+  });
+  it("escolher o tamanho apaga as cores sem estoque nele", () => {
+    const resultado = fileirasDeVariacao(variantes, { Tamanho: "M" });
+    const cores = resultado.fileiras.find((f) => f.nome === "Cor");
+    expect(cores?.valores.map((v) => [v.valor, v.disponivel])).toEqual([
+      ["Azul", false],
+      ["Preto", true],
+    ]);
+    expect(resultado.variante).toBeUndefined();
+  });
+  it("sem escolha nenhuma, tamanho e cor aparecem pelo estoque total de cada valor", () => {
+    const resultado = fileirasDeVariacao(variantes);
+    const dispo = (nome: string) =>
+      resultado.fileiras
+        .find((f) => f.nome === nome)
+        ?.valores.map((v) => [v.valor, v.estoque, v.disponivel]);
+    expect(dispo("Tamanho")).toEqual([
+      ["P", 2, true],
+      ["M", 5, true],
+    ]);
+    expect(dispo("Cor")).toEqual([
+      ["Azul", 2, true],
+      ["Preto", 5, true],
+    ]);
+  });
+  it("escolher a cor apaga os tamanhos sem estoque nela, e a cor também se apaga pelo tamanho", () => {
+    const soCor = fileirasDeVariacao(variantes, { Cor: "Azul" });
+    expect(
+      soCor.fileiras[0].valores.map((v) => [v.valor, v.disponivel]),
+    ).toEqual([
+      ["P", true],
+      ["M", false],
+    ]);
     const resultado = fileirasDeVariacao(variantes, {
       Cor: "Azul",
       Tamanho: "P",
     });
+    expect(resultado.fileiras[0].valores.map((v) => v.disponivel)).toEqual([
+      true,
+      false,
+    ]);
+    // Antes a cor ignorava o tamanho: Preto aparecia disponível com o P
+    // escolhido, embora não exista Preto / P.
     expect(resultado.fileiras[1].valores.map((v) => v.disponivel)).toEqual([
       true,
       false,
     ]);
-    expect(resultado.fileiras[0].valores.map((v) => v.disponivel)).toEqual([
-      true,
-      true,
-    ]);
     expect(resultado.variante?.id).toBe("azul-p");
+  });
+  it("sem beco sem saída: qualquer sequência de toques em valores disponíveis termina numa linha com estoque", () => {
+    const [primeira, segunda] = fileirasDeVariacao(variantes).fileiras;
+    for (const [a, b] of [
+      [primeira, segunda],
+      [segunda, primeira],
+    ]) {
+      for (const va of a.valores) {
+        const depoisDoPrimeiro = fileirasDeVariacao(variantes, {});
+        const livre = depoisDoPrimeiro.fileiras
+          .find((f) => f.nome === a.nome)
+          ?.valores.find((v) => v.valor === va.valor);
+        if (!livre?.disponivel) continue;
+        const meio = fileirasDeVariacao(variantes, { [a.nome]: va.valor });
+        const aindaHa = meio.fileiras
+          .find((f) => f.nome === b.nome)
+          ?.valores.filter((v) => v.disponivel);
+        // Escolheu um valor disponível: sempre sobra pelo menos uma saída.
+        expect(aindaHa?.length, `${a.nome}=${va.valor}`).toBeGreaterThan(0);
+        for (const vb of aindaHa ?? []) {
+          const fim = fileirasDeVariacao(variantes, {
+            [a.nome]: va.valor,
+            [b.nome]: vb.valor,
+          });
+          expect(fim.variante?.stockIncrement).toBeGreaterThan(0);
+        }
+      }
+    }
   });
   it("combinação ausente, desligada, incompleta ou esgotada nunca vira id comprável", () => {
     for (const escolha of [
@@ -90,8 +160,8 @@ describe("fileiras da variação sem mudar a identidade da linha", () => {
       Tecido: "Algodão",
     });
     expect(resultado.fileiras.map((f) => f.nome)).toEqual([
-      "Cor",
       "Tamanho",
+      "Cor",
       "Tecido",
     ]);
     expect(resultado.fileiras[2].valores.map((v) => v.disponivel)).toEqual([
@@ -99,6 +169,89 @@ describe("fileiras da variação sem mudar a identidade da linha", () => {
       false,
     ]);
     expect(resultado.variante?.id).toBe("a");
+  });
+  it("três dimensões: Tamanho, Cor e depois os outros na ordem em que foram gravados", () => {
+    const nomesDe = (name: string, value: string) =>
+      fileirasDeVariacao([linha("x", value, 1, name)]).fileiras.map(
+        (f) => f.nome,
+      );
+    expect(nomesDe("Tecido / Cor / Tamanho", "Seda / Azul / P")).toEqual([
+      "Tamanho",
+      "Cor",
+      "Tecido",
+    ]);
+    expect(nomesDe("Material / Cor / Estampa", "Seda / Azul / Lisa")).toEqual([
+      "Cor",
+      "Material",
+      "Estampa",
+    ]);
+    expect(nomesDe("Estampa / Material / Cor", "Lisa / Seda / Azul")).toEqual([
+      "Cor",
+      "Estampa",
+      "Material",
+    ]);
+  });
+  it("tamanho em três dimensões apaga a cor e o outro atributo que não existem nele", () => {
+    const linhas = [
+      linha("a", "Azul / P / Algodão", 4, "Cor / Tamanho / Tecido"),
+      linha("b", "Preto / M / Seda", 3, "Cor / Tamanho / Tecido"),
+    ];
+    const resultado = fileirasDeVariacao(linhas, { Tamanho: "P" });
+    const dispo = (nome: string) =>
+      resultado.fileiras
+        .find((f) => f.nome === nome)
+        ?.valores.map((v) => [v.valor, v.disponivel]);
+    expect(dispo("Cor")).toEqual([
+      ["Azul", true],
+      ["Preto", false],
+    ]);
+    expect(dispo("Tecido")).toEqual([
+      ["Algodão", true],
+      ["Seda", false],
+    ]);
+  });
+  it("produto só com cor, só com tamanho ou só com voltagem mantém a única fileira", () => {
+    const so = (name: string, valor: string) =>
+      fileirasDeVariacao([linha("x", valor, 1, name)], { [name]: valor });
+    for (const [name, valor] of [
+      ["Cor", "Azul"],
+      ["Tamanho", "P"],
+      ["Voltagem", "220V"],
+    ]) {
+      const r = so(name, valor);
+      expect(r.fileiras.map((f) => f.nome)).toEqual([name]);
+      expect(r.variante?.id).toBe("x");
+    }
+  });
+  it("voltagem também vem antes da cor", () => {
+    const r = fileirasDeVariacao([
+      linha("v", "Preto / 220V", 2, "Cor / Voltagem"),
+    ]);
+    expect(r.fileiras.map((f) => f.nome)).toEqual(["Voltagem", "Cor"]);
+  });
+  it("nomes legados em caixa, acento e espaço diferentes são reconhecidos, e o nome gravado é mantido", () => {
+    for (const [nome, esperado] of [
+      ["COR / tamanho", ["tamanho", "COR"]],
+      ["Côr / TAMANHO", ["TAMANHO", "Côr"]],
+      [" cor / Tamanho ", ["Tamanho ", " cor"]],
+      ["cor / voltagem", ["voltagem", "cor"]],
+    ] as [string, string[]][]) {
+      const partes = nome.split(" / ");
+      const r = fileirasDeVariacao([
+        linha("x", partes.map(() => "v").join(" / "), 1, nome),
+      ]);
+      expect(
+        r.fileiras.map((f) => f.nome),
+        nome,
+      ).toEqual(esperado);
+    }
+  });
+  it("linhas independentes (um nome por linha, grade antiga) também mostram o tamanho antes da cor", () => {
+    const r = fileirasDeVariacao([
+      linha("c", "Azul", 2, "Cor"),
+      linha("t", "P", 2, "Tamanho"),
+    ]);
+    expect(r.fileiras.map((f) => f.nome)).toEqual(["Tamanho", "Cor"]);
   });
   it("contagens legadas diferentes usam uma fileira com texto cru, sem perder id", () => {
     const legada = linha("legado", "Azul / P / Extra");
