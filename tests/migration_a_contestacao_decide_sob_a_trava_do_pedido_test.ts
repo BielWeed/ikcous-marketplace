@@ -616,6 +616,10 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.
     "tests/banco/receita-uma-regua-viva.cjs",
     "tests/banco/estoque-minimo-editavel-viva.cjs",
+    // Lote 199: teto da foto/pergunta, analise sem escrita pela API e extrato do balcao fiel ao app.
+    "tests/banco/a-foto-da-devolucao-e-a-pergunta-tem-teto-viva.cjs",
+    "tests/banco/ninguem-grava-evento-de-analise-pela-api-viva.cjs",
+    "tests/banco/o-financeiro-descreve-a-venda-do-balcao-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",

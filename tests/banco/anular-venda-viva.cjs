@@ -564,6 +564,29 @@ async function caminhoFeliz(c) {
       fin.linhas[1].data,
       "mesmo dia no extrato",
     );
+    // 20261391200000: a saída da venda ANULADA pelo app (esta, real) tem texto próprio no extrato — não
+    // "Estorno registrado fora do app" — e o número é o que o app mostra (6 últimos, maiúsculas).
+    const textos = (
+      await c.query(
+        `SELECT origem, descricao FROM public.fin__movimentos(NULL, NULL)
+          WHERE pedido_id = $1 ORDER BY origem`,
+        [id],
+      )
+    ).rows;
+    assert.deepEqual(textos, [
+      {
+        origem: "estorno_externo",
+        descricao: `Venda do balcão anulada · #${id.slice(-6).toUpperCase()}`,
+      },
+      {
+        origem: "venda_balcao",
+        descricao: textos[1].descricao.startsWith(
+          `Venda no balcão #${id.slice(-6).toUpperCase()}`,
+        )
+          ? textos[1].descricao
+          : `Venda no balcão #${id.slice(-6).toUpperCase()}…`,
+      },
+    ]);
     // Caixa: o esperado volta ao de antes da venda.
     assert.equal(
       await esperado(),
