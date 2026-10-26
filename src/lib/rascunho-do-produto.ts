@@ -29,6 +29,10 @@ export const PRAZO_DO_RASCUNHO_DO_PRODUTO_MS = 7 * 24 * 60 * 60 * 1000;
 export const AVISO_ESTOQUE_NAO_RESTAURADO =
   "O estoque não foi restaurado: ele continua como está hoje na loja.";
 
+/** O recado quando o banco mudou depois do rascunho e parte dele não foi usada. */
+export const AVISO_PRODUTO_ALTERADO_DEPOIS =
+  "Este produto foi alterado depois deste rascunho: o que você não editou ficou como está hoje na loja.";
+
 /** Chave no `localStorage` do rascunho DO USUÁRIO (`null` sem uid). */
 export function chaveDoRascunhoDoProduto(
   userId: string | undefined,
@@ -166,4 +170,94 @@ export function estoqueDoRascunhoDifereDoBanco(
     variantesDoRascunho.some((v) => v.active);
   if (temLigada) return false;
   return rascunho.stock != null && String(rascunho.stock) !== banco.stock;
+}
+
+const CAMPOS_DO_RASCUNHO = [
+  "name",
+  "description",
+  "price",
+  "costPrice",
+  "originalPrice",
+  "estoqueMinimo",
+  "category",
+  "images",
+  "freeShipping",
+  "isBestseller",
+  "isActive",
+  "metaTitle",
+  "metaDescription",
+  "sku",
+  "codigoBarras",
+  "weightKg",
+  "widthCm",
+  "heightCm",
+  "lengthCm",
+] as const;
+
+const igual = (a: unknown, b: unknown) =>
+  JSON.stringify(a) === JSON.stringify(b);
+const semEstoque = ({
+  stock: _a,
+  stockIncrement: _b,
+  ...resto
+}: ProductVariant) => resto;
+
+/**
+ * O rascunho de EDIÇÃO por cima do produto como está no banco HOJE.
+ *
+ * O rascunho guarda o produto-base da época (`baseDoRascunho`). Campo que o
+ * rascunho tem IGUAL a essa base é campo que a lojista não editou: nele vale o
+ * banco de hoje (outra pessoa pode ter desativado o produto ou baixado o preço
+ * depois). Campo que ela editou volta como está. O mesmo vale para cada
+ * variação (o estoque não entra na conta: já vem sempre do banco). Rascunho sem
+ * base (anterior a esta regra) volta inteiro, como sempre foi.
+ * `bancoMudou` diz se algum campo não editado já era outro no banco.
+ */
+export function rascunhoSobreOBancoDeHoje<R extends Record<string, any>>(
+  rascunho: R,
+  banco: Record<string, any>,
+): { campos: R; bancoMudou: boolean } {
+  const base = rascunho.baseDoRascunho;
+  if (!base || typeof base !== "object") {
+    return { campos: rascunho, bancoMudou: false };
+  }
+  // Mapas em vez de acesso por chave variável: a lista de campos é fixa.
+  const doRascunho = new Map(Object.entries(rascunho));
+  const daBase = new Map(Object.entries(base));
+  const doBanco = new Map(Object.entries(banco));
+  const campos = new Map(doRascunho);
+  let bancoMudou = false;
+  for (const campo of CAMPOS_DO_RASCUNHO) {
+    if (
+      !daBase.has(campo) ||
+      !igual(doRascunho.get(campo), daBase.get(campo))
+    ) {
+      continue;
+    }
+    campos.set(campo, doBanco.get(campo));
+    if (!igual(doBanco.get(campo), daBase.get(campo))) bancoMudou = true;
+  }
+  const variacoes = doRascunho.get("variants");
+  const variacoesDaBase = daBase.get("variants");
+  if (Array.isArray(variacoes) && Array.isArray(variacoesDaBase)) {
+    const antesPorId = new Map<string, ProductVariant>(
+      variacoesDaBase.map((v: ProductVariant) => [v.id, v]),
+    );
+    const hojePorId = new Map<string, ProductVariant>(
+      (doBanco.get("variants") ?? []).map((v: ProductVariant) => [v.id, v]),
+    );
+    campos.set(
+      "variants",
+      variacoes.map((v: ProductVariant) => {
+        const antes = antesPorId.get(v.id);
+        const hoje = hojePorId.get(v.id);
+        if (!antes || !hoje || !igual(semEstoque(v), semEstoque(antes))) {
+          return v;
+        }
+        if (!igual(semEstoque(hoje), semEstoque(antes))) bancoMudou = true;
+        return hoje;
+      }),
+    );
+  }
+  return { campos: Object.fromEntries(campos) as R, bancoMudou };
 }

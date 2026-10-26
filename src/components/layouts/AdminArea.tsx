@@ -576,6 +576,7 @@ export function AdminArea({
                             productId: selectedProductId || undefined,
                             onNavigate: onNavigate,
                             onSetDirty: setIsAdminDirty,
+                            onSetBackOverride: setBackOverride,
                             userId,
                           }}
                         />

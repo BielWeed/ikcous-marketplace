@@ -916,6 +916,8 @@ export const AdminProductsView = memo(function AdminProductsView({
         costPrice: productToDuplicate.costPrice ?? null,
         originalPrice: productToDuplicate.originalPrice,
         stock: productToDuplicate.stock,
+        // Sem aviso próprio no original (`null`): a cópia fica com o padrão da coluna.
+        estoqueMinimo: productToDuplicate.estoqueMinimo ?? undefined,
         category: productToDuplicate.category,
         images: imagens,
         isActive: false,

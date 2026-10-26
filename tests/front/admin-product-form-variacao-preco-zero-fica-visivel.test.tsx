@@ -203,8 +203,8 @@ describe("AdminProductFormView — preço 0 da variação fica visível", () => 
         expect(texto).not.toContain("R$");
         // As ações agora têm texto depois do estoque. O contador continua
         // sem o zero solto que o curto-circuito desenhava.
-        expect(texto).toContain("1 UND");
-        expect(texto).not.toMatch(/1 UND\s*0/);
+        expect(texto).toContain("1 un.");
+        expect(texto).not.toMatch(/1 un\.\s*0/);
       }
     });
   });

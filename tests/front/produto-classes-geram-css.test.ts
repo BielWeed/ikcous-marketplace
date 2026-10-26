@@ -34,6 +34,15 @@ const CLASSES_DO_FORMULARIO = [
   "border-admin-border",
   "text-zinc-200",
   "text-zinc-300",
+  // Textos, avisos e botões (u179): fundo do "Excluir variante", faixas do
+  // lucro, aviso do peso e o botão cinza que deixa o toque passar.
+  "bg-red-600",
+  "hover:bg-red-700",
+  "min-h-11",
+  "text-amber-300",
+  "text-rose-300",
+  "text-emerald-300",
+  "disabled:pointer-events-none",
   // DicaExpansivel: as classes dependentes do estado (aberta/recolhida) e da
   // animação ficam em template string, que o leitor de `className="..."` não vê.
   "grid-rows-[1fr]",

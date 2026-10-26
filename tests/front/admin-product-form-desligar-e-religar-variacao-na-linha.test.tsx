@@ -209,7 +209,7 @@ describe("AdminProductFormView — desligar e religar variação na linha", () =
     expect(aviso).toMatch(/deixa de aparecer na loja/);
     expect(aviso).toMatch(/volta quando (você )?religar/);
     // A linha ficou marcada como desligada e o botão virou "Religar".
-    expect(document.body.textContent).toContain("Offline");
+    expect(document.body.textContent).toContain("Desligada");
     expect(botaoDaLinha("Desligar", "Rosa")).toBeNull();
     expect(botaoDaLinha("Religar", "Rosa")).not.toBeNull();
     // O estoque do produto passa a ser só o da variação que sobrou ligada.
@@ -227,7 +227,7 @@ describe("AdminProductFormView — desligar e religar variação na linha", () =
     await clicar(botaoDaLinha("Religar", "Rosa"));
 
     expect(toastInfo).not.toHaveBeenCalled();
-    expect(document.body.textContent).not.toContain("Offline");
+    expect(document.body.textContent).not.toContain("Desligada");
     expect(botaoDaLinha("Desligar", "Rosa")).not.toBeNull();
     expect(valorDoCampo("product-stock")).toBe("7");
   });
