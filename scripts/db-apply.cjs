@@ -78,6 +78,20 @@ function carregarClient() {
 
 /** Marcadores que devem existir na função depois de aplicada. */
 const VERIFICACOES = {
+  // 20261389100000: devolver_estoque tranca as linhas do pedido na ordem global da compra (variacoes por id, depois produtos por id) antes de
+  // creditar. O credito e' o da 20261175000000, sem mexer: a guarda do carimbo (UMA vez por pedido) e os dois UPDATE (variacao OU produto) ficam
+  // com a contagem exata. Sem o ORDER BY de cada grupo, ou sem um dos dois grupos, o deadlock com a compra volta (a prova viva mede).
+  "20261389100000_o_estoque_que_volta_tranca_na_mesma_ordem_da_compra.sql": {
+    funcao: "devolver_estoque",
+    esperado: [
+      { texto: "AND stock_returned_at IS NULL", vezes: 1 },
+      { texto: "ORDER BY v.id", vezes: 1 },
+      { texto: "ORDER BY p.id", vezes: 1 },
+      { texto: "PERFORM 1", vezes: 2 },
+      { texto: "SET stock_increment = stock_increment + v_credito", vezes: 1 },
+      { texto: "SET estoque = estoque + v_credito", vezes: 1 },
+    ],
+  },
   // 20261389: o frete tem limite de cotacoes por origem. A tabela, o ACL e a RLS nao sao conferiveis aqui (so corpo de funcao): a consulta 95a e a
   // prova viva fazem isso. Aqui: o contador e atomico (UM INSERT ... ON CONFLICT DO UPDATE ... WHERE abaixo do teto), nao grava quando barra e
   // valida os argumentos (22023); sem o WHERE o teto deixa de existir, sem a validacao um bug da edge vira "sem limite".
