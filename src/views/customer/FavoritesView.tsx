@@ -42,7 +42,7 @@ interface FavoritesViewProps {
     quantity?: number,
     variantId?: string,
     variantNames?: string,
-  ) => void;
+  ) => number | void;
 }
 
 /** Quantos itens cada categoria mostra antes de "Ver todos". */
@@ -316,9 +316,7 @@ export const FavoritesView = React.memo(function FavoritesView({
   // quantidade. Com opções (tamanho/cor), o card abre a folha e entrega
   // variação + quantidade escolhidas.
   const handleAddToCart = useCallback(
-    (product: Product) => {
-      onAddToCart?.(product);
-    },
+    (product: Product) => onAddToCart?.(product),
     [onAddToCart],
   );
   const handleAddToCartWithVariants = useCallback(
@@ -328,7 +326,7 @@ export const FavoritesView = React.memo(function FavoritesView({
       variantNames: string,
       quantity = 1,
     ) => {
-      onAddToCart?.(product, quantity, variantId, variantNames);
+      return onAddToCart?.(product, quantity, variantId, variantNames);
     },
     [onAddToCart],
   );

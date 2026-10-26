@@ -22,14 +22,15 @@ interface ProductListProps {
   favorites: string[];
   onToggleFavorite: (product: Product) => void;
   onProductClick: (productId: string) => void;
-  onAddToCart?: (product: Product) => void;
+  /** Devolve quantas unidades entraram (0 = nada): o card só celebra se entrou. */
+  onAddToCart?: (product: Product) => number | void;
   /** Card inteligente (02/09): presente, o card escolhe opções nele mesmo. */
   onAddToCartWithVariants?: (
     product: Product,
     variantId: string | undefined,
     variantNames: string,
     quantity?: number,
-  ) => void;
+  ) => number | void;
   onQuickBuy?: (product: Product) => void;
   selectedProductId?: string;
 }
@@ -114,8 +115,9 @@ export const ProductList = React.memo(function ProductList({
 
   const handleAddToCart = useCallback(
     (product: Product) => {
-      haptic.success();
-      onAddToCart?.(product);
+      const entrou = onAddToCart?.(product);
+      if (entrou !== 0) haptic.success();
+      return entrou;
     },
     [onAddToCart],
   );
@@ -127,10 +129,16 @@ export const ProductList = React.memo(function ProductList({
       variantNames: string,
       quantity?: number,
     ) => {
-      haptic.success();
       // A quantidade escolhida na folha de opções segue até o carrinho
       // (antes era descartada aqui e entrava sempre 1).
-      onAddToCartWithVariants?.(product, variantId, variantNames, quantity);
+      const entrou = onAddToCartWithVariants?.(
+        product,
+        variantId,
+        variantNames,
+        quantity,
+      );
+      if (entrou !== 0) haptic.success();
+      return entrou;
     },
     [onAddToCartWithVariants],
   );

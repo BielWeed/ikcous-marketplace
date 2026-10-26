@@ -42,7 +42,14 @@ interface ProductCardProps {
   product: Product;
   isFavorite: boolean;
   onToggleFavorite: (product: Product, e: React.MouseEvent) => void;
-  onAddToCart?: (product: Product, e: React.MouseEvent) => void;
+  /**
+   * Devolve quantas unidades entraram no carrinho (UI-191 G1). `0` = nada
+   * entrou (o estoque já está todo lá): o card NÃO celebra -- sem "Salvo!",
+   * sem voo da bolinha, sem aviso falado de "adicionado" -- e fica só o aviso
+   * de estoque que o carrinho já deu. Quem não informa (`void`) é tratado
+   * como "entrou", o comportamento de sempre.
+   */
+  onAddToCart?: (product: Product, e: React.MouseEvent) => number | void;
   onQuickBuy?: (product: Product, e: React.MouseEvent) => void;
   /**
    * Card inteligente (pedido do Gabriel, 02/09; folha desde 13/09 — direção
@@ -59,7 +66,7 @@ interface ProductCardProps {
     variantId: string | undefined,
     variantNames: string,
     quantity?: number,
-  ) => void;
+  ) => number | void;
   onClick: (productId: string) => void;
   onMouseEnter?: (productId: string) => void;
   onTouchStart?: (productId: string) => void;
@@ -517,9 +524,12 @@ export const ProductCard = memo(function ProductCard({
 
     if (cartStatus !== "idle") return;
 
-    setCartStatus("loading");
+    // Pede ao carrinho ANTES de comemorar: se nada entrou (estoque no teto),
+    // o botão fica como estava e o aviso de estoque do carrinho é a resposta.
+    const entrou = onAddToCart?.(product, e);
+    if (entrou === 0) return;
 
-    onAddToCart?.(product, e);
+    setCartStatus("loading");
 
     const startEl = (e.currentTarget as HTMLElement) || document.body;
     triggerFlyingCartAnimation(startEl, product.images[0]);
@@ -576,12 +586,7 @@ export const ProductCard = memo(function ProductCard({
       .join(", ");
     const imgSrc = imagemDaVariante || product.images?.[0] || "";
 
-    setCartStatus("loading");
-    // A bolinha NÃO voa agora: com a folha aberta ela cruzaria o conteúdo
-    // dela rumo a um carrinho coberto. Fica anotada e sai quando a folha
-    // terminar de fechar (ver `vooPendenteRef` e `soltarVooDoCard`).
-    vooPendenteRef.current = imgSrc;
-    onAddToCartWithVariants?.(
+    const entrou = onAddToCartWithVariants?.(
       product,
       variantId,
       variantNames,
@@ -589,6 +594,16 @@ export const ProductCard = memo(function ProductCard({
       // CartContext corta de novo, do lado de lá).
       Math.min(quantidade, estoqueAtual),
     );
+    // Nada entrou (a variação escolhida já está toda no carrinho): sem
+    // "Salvo!", sem voo e a folha segue aberta para a pessoa escolher outra
+    // opção -- o aviso de estoque já foi dado pelo carrinho.
+    if (entrou === 0) return;
+
+    setCartStatus("loading");
+    // A bolinha NÃO voa agora: com a folha aberta ela cruzaria o conteúdo
+    // dela rumo a um carrinho coberto. Fica anotada e sai quando a folha
+    // terminar de fechar (ver `vooPendenteRef` e `soltarVooDoCard`).
+    vooPendenteRef.current = imgSrc;
 
     // PEÇA 18 (14/09 — novo pedido do dono, que REVOGOU a decisão de
     // 12/09): depois do "Salvo!" a folha FECHA sozinha. O fecho é pelo

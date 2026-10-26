@@ -37,7 +37,8 @@ export interface PremiumOffersProps {
   favorites: string[];
   onToggleFavorite: (product: Product) => void;
   onProductClick: (productId: string) => void;
-  onAddToCart?: (product: Product) => void;
+  /** Devolve quantas unidades entraram (0 = nada): só se entrou há "Salvo!". */
+  onAddToCart?: (product: Product) => number | void;
   onQuickBuy?: (product: Product) => void;
   title?: string;
 }
@@ -357,7 +358,8 @@ interface HeroOfferCardProps {
   isFavorite: boolean;
   onToggleFavorite: (product: Product) => void;
   onProductClick: (productId: string) => void;
-  onAddToCart?: (product: Product) => void;
+  /** Devolve quantas unidades entraram (0 = nada): só se entrou há "Salvo!". */
+  onAddToCart?: (product: Product) => number | void;
   onQuickBuy?: (product: Product) => void;
   onMouseEnter?: () => void;
   onTouchStart?: () => void;
@@ -410,9 +412,14 @@ export function useAcoesDaOferta({
 
     if (cartStatus !== "idle") return;
 
+    // Pede ao carrinho ANTES de comemorar: com o estoque já todo lá dentro
+    // nada entra, e "Salvo!"/voo/vibração seriam mentira -- fica só o aviso
+    // de estoque que o carrinho já deu.
+    const entrou = onAddToCart?.(product);
+    if (entrou === 0) return;
+
     haptic.medium();
     setCartStatus("loading");
-    onAddToCart?.(product);
 
     const startEl = (e.currentTarget as HTMLElement) || document.body;
     triggerFlyingCartAnimation(startEl, product.images[0]);

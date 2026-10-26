@@ -58,7 +58,7 @@ interface HomeViewProps {
     quantity?: number,
     variantId?: string,
     variantNames?: string,
-  ) => void;
+  ) => number | void;
   onQuickBuy?: (product: Product, variantId?: string) => void;
   isLoading?: boolean;
   scrollProgress?: number;
@@ -198,7 +198,7 @@ export const HomeView = React.memo(function HomeView({
       variantNames: string,
       quantity = 1,
     ) => {
-      onAddToCart?.(product, quantity, variantId, variantNames);
+      return onAddToCart?.(product, quantity, variantId, variantNames);
     },
     [onAddToCart],
   );
