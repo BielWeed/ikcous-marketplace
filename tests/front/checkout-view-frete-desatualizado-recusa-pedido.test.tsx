@@ -25,6 +25,12 @@ const onSetBackOverride = vi.fn();
 const toastError = vi.fn();
 const shippingCalculatorProps: Array<{ forcarNovaCotacaoEm?: number }> = [];
 
+// A conferência da sessão antes de enviar (caça 7) tem suíte própria
+// (checkout-pedido-chave-voltar-e-sessao.test.tsx); aqui a sessão está viva.
+vi.mock("@/lib/sessao-ainda-e-do-dono", () => ({
+  sessaoAindaEhDoDono: async () => true,
+}));
+
 vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
   ShippingCalculator: (props: { forcarNovaCotacaoEm?: number }) => {
     shippingCalculatorProps.push({

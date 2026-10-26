@@ -486,8 +486,11 @@ sw.addEventListener("fetch", (event: any) => {
                   // update PENDENTE (waiting), NÃO gravar HTML novo no
                   // cache VELHO — a revalidação não pode misturar HTML
                   // novo com chunks velhos enquanto o SW novo espera
-                  // ativação (a janela de ChunkLoadError da ressalva).
-                  if (sw.registration.waiting) return;
+                  // ativação (a janela de ChunkLoadError da ressalva). O
+                  // `installing` (atualização sendo baixada AGORA) abre a mesma
+                  // janela: a guarda olha os dois (caça 7, 26/10/2026).
+                  if (sw.registration.waiting || sw.registration.installing)
+                    return;
                   try {
                     const copy = response.clone();
                     // O try/catch aqui é SÍNCRONO: ele não pega rejeição de

@@ -24,6 +24,12 @@ const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
 const propsDoPagamento: Array<Record<string, unknown>> = [];
 
+// A conferência da sessão antes de enviar (caça 7) tem suíte própria
+// (checkout-pedido-chave-voltar-e-sessao.test.tsx); aqui a sessão está viva.
+vi.mock("@/lib/sessao-ainda-e-do-dono", () => ({
+  sessaoAindaEhDoDono: async () => true,
+}));
+
 vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
   ShippingCalculator: () => null,
 }));
@@ -248,6 +254,9 @@ async function finalizar() {
 describe("CheckoutView — cartão pelo app", () => {
   beforeEach(() => {
     sessionStorage.clear();
+    // A chave do pedido mora no localStorage (por conta, 30 min): sem limpar,
+    // a chave de um teste vaza para o seguinte.
+    localStorage.clear();
     createOrder.mockReset();
     createOrder.mockResolvedValue({ id: "ped-777", totalAmount: 120 });
     onNavigate.mockClear();
@@ -414,7 +423,7 @@ describe("CheckoutView — cartão pelo app", () => {
     await finalizar();
     expect(mockCart).toEqual([]);
     expect(sessionStorage.getItem("ikcous-rascunho-do-checkout-v1")).toBeNull();
-    expect(sessionStorage.getItem("ikcous-chave-do-pedido")).toBeNull();
+    expect(localStorage.getItem("ikcous-chave-do-pedido:user-1")).toBeNull();
     expect(propsDoPagamento).toHaveLength(0);
     expect(document.body.textContent).toContain(
       "O pedido foi criado, mas não conseguimos conferir o valor final. Abra Meus pedidos e retome o pagamento.",
@@ -486,7 +495,9 @@ describe("CheckoutView — cartão pelo app", () => {
       expect(
         sessionStorage.getItem("ikcous-rascunho-do-checkout-v1"),
       ).not.toBeNull();
-      expect(sessionStorage.getItem("ikcous-chave-do-pedido")).not.toBeNull();
+      expect(
+        localStorage.getItem("ikcous-chave-do-pedido:user-1"),
+      ).not.toBeNull();
       expect(propsDoPagamento).toHaveLength(0);
     },
   );

@@ -9,6 +9,7 @@ import React, {
 import { AdminAreaGate } from "@/components/layouts/AdminAreaGate";
 import { aoIniciarAposAtualizacao } from "@/components/pwa/ao-iniciar-apos-atualizacao";
 import { applyThemeColor, branding } from "@/config/branding";
+import { esquecerChaveDoPedidoDe } from "@/lib/chave-do-pedido";
 import {
   destinoPosLogin,
   painelSemContaPedeEntrada,
@@ -654,6 +655,8 @@ const AppContent = () => {
     usuarioAnteriorDaRecargaRef.current = idDoUsuarioDaRecarga;
     if (anterior && anterior !== idDoUsuarioDaRecarga) {
       esquecerPedidoPendenteDoCheckout(anterior);
+      // A chave de idempotência do pedido de A também sai com A (caça 7).
+      esquecerChaveDoPedidoDe(anterior);
     }
   }, [idDoUsuarioDaRecarga]);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(

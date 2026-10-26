@@ -306,6 +306,25 @@ describe("AuthContext — limpeza local de sessão (issue #122)", () => {
     );
   });
 
+  it("4b. a chave de idempotência do pedido (por conta e do convidado) não sobrevive ao SIGNED_OUT", async () => {
+    const { callback } = await montarLogado();
+
+    // Caça 7: a chave mora no localStorage com a conta no nome.
+    localStorage.setItem("ikcous-chave-do-pedido:user-a", "{}");
+    localStorage.setItem("ikcous-chave-do-pedido:user-b", "{}");
+    localStorage.setItem("ikcous-chave-do-pedido:convidado", "{}");
+
+    const cb = callback();
+    await act(async () => {
+      cb("SIGNED_OUT", null);
+      await esperarMicrotarefas();
+    });
+
+    expect(
+      todasAsChaves().some((k) => k.startsWith("ikcous-chave-do-pedido:")),
+    ).toBe(false);
+  });
+
   // Revisão de contexto limpo do diff (achado 1) — o ramo de ERRO de `logout`
   // (rede caída em `signOut`) mexia em quatro `setState` e no `localStorage`,
   // mas deixava `activeUserIdRef.current` apontando para o usuário que saiu.

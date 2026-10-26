@@ -50,6 +50,12 @@ const LOCAL: ShippingOption = {
 
 // Desligado: o pedido fecha na tela de sucesso (não em "aguardando pagamento").
 let flagPagamentoOnline = false;
+// A conferência da sessão antes de enviar (caça 7) tem suíte própria
+// (checkout-pedido-chave-voltar-e-sessao.test.tsx); aqui a sessão está viva.
+vi.mock("@/lib/sessao-ainda-e-do-dono", () => ({
+  sessaoAindaEhDoDono: async () => true,
+}));
+
 vi.mock("@/lib/flags", () => ({
   pagamentoOnlineLigado: () => flagPagamentoOnline,
   lerFlagPagamentoOnline: (v: string | undefined) => v === "true",

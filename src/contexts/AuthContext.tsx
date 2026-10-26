@@ -5,6 +5,7 @@ import {
   esquecerAvaliacoesGuardadas,
   esvaziarAvaliacoesEmMemoria,
 } from "@/lib/cache-de-avaliacoes";
+import { PREFIXO_DA_CHAVE_DO_PEDIDO } from "@/lib/chave-do-pedido";
 import {
   ehLojistaPelaMarcaDoAparelho,
   esquecerCofreDeQuemSaiu,
@@ -235,6 +236,9 @@ function clearLocalUserData() {
       key?.startsWith("ikcous_orders_cache_") ||
       key?.startsWith("ikcous_addresses_cache_") ||
       key?.startsWith("ikcous_shipping_cache_") ||
+      // Caça 7: a chave de idempotência do pedido mora aqui (por conta, 30 min);
+      // quem saiu não deixa a dele para o próximo da mesma aba.
+      key?.startsWith(PREFIXO_DA_CHAVE_DO_PEDIDO) ||
       key?.startsWith(REVIEWS_CACHE_KEY_PREFIX) ||
       // L10 — rascunho de edição de produto de ANTES do desenho por usuário
       // (`…_edit_<id>`, sem `:<uid>`; o id é um UUID, nunca tem `:`).
