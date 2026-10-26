@@ -25,6 +25,7 @@ import {
   ModalVarianteGrade,
 } from "@/components/admin/products/ModalVarianteGrade";
 import { preencherComSegurado } from "@/utils/grade-valor-segurado";
+import { BOTAO_GERAR_GRADE, casaOTexto } from "./helpers/gerar-grade";
 
 vi.mock("sonner", () => ({
   toast: {
@@ -87,9 +88,11 @@ function digitar(el: HTMLInputElement, valor: string) {
   });
 }
 
-function botao(texto: string): HTMLButtonElement {
+function botao(texto: string | RegExp): HTMLButtonElement {
   const achado = [...document.body.querySelectorAll("button")].find((b) =>
-    (b.textContent ?? "").trim().startsWith(texto),
+    typeof texto === "string"
+      ? (b.textContent ?? "").trim().startsWith(texto)
+      : casaOTexto(b.textContent, texto),
   );
   if (!achado) throw new Error(`botão não achado: ${texto}`);
   return achado;
@@ -112,7 +115,7 @@ function irParaOPasso2() {
       ),
     );
   }
-  clicar(botao("Gerar grade"));
+  clicar(botao(BOTAO_GERAR_GRADE));
 }
 
 const segurarPreco = (centavos: string) =>

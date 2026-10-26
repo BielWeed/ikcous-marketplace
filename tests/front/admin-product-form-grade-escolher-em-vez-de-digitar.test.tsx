@@ -21,6 +21,7 @@ import {
   atributoMarcado,
   botaoDoAtributo,
 } from "./helpers/atributo-da-variacao";
+import { BOTAO_GERAR_GRADE, casaOTexto } from "./helpers/gerar-grade";
 
 const fetchProduct = vi.fn();
 
@@ -91,9 +92,9 @@ vi.mock("sonner", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function clicarTexto(texto: string) {
+function clicarTexto(texto: string | RegExp) {
   const botao = [...document.body.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes(texto),
+    casaOTexto(b.textContent, texto),
   );
   if (!botao) throw new Error(`Botão "${texto}" não está na tela.`);
   botao.click();
@@ -265,7 +266,7 @@ describe("AdminProductFormView — grade: escolher em vez de digitar", () => {
 
     // Sem nenhum valor a grade não gera: o aviso de sempre.
     await act(async () => {
-      clicarTexto("Gerar grade");
+      clicarTexto(BOTAO_GERAR_GRADE);
     });
     expect(toastError).toHaveBeenCalledTimes(1);
     expect(linhasDaGrade()).toEqual([]);
@@ -277,14 +278,14 @@ describe("AdminProductFormView — grade: escolher em vez de digitar", () => {
     await tocar(porRotulo("Preto"));
     await tocar(porRotulo("Rosa"));
     await act(async () => {
-      clicarTexto("+ Atributo");
+      clicarTexto("+ Adicionar outro atributo");
     });
     await tocar(botaoDoAtributo(1, "Tamanho"));
     await tocar(botaoDoAtributo(1, "P"));
     await tocar(botaoDoAtributo(1, "M"));
 
     await act(async () => {
-      clicarTexto("Gerar grade");
+      clicarTexto(BOTAO_GERAR_GRADE);
     });
     expect(toastError).not.toHaveBeenCalled();
     expect(linhasDaGrade()).toEqual([
@@ -317,7 +318,7 @@ describe("AdminProductFormView — grade: escolher em vez de digitar", () => {
     );
     await tocar(porRotulo("Rosa"));
     await act(async () => {
-      clicarTexto("Gerar grade");
+      clicarTexto(BOTAO_GERAR_GRADE);
     });
     expect(toastError).not.toHaveBeenCalled();
     // O Espacial Grey já existe: só a Rosa é combinação nova.
@@ -364,7 +365,7 @@ describe("AdminProductFormView — grade: escolher em vez de digitar", () => {
     expect(atributoMarcado(0)).toBe("Cor");
     await tocar(porRotulo("Preto"));
     await act(async () => {
-      clicarTexto("Gerar grade");
+      clicarTexto(BOTAO_GERAR_GRADE);
     });
     expect(toastError).not.toHaveBeenCalled();
     expect(linhasDaGrade()).toEqual(["Preto"]);
