@@ -49,11 +49,39 @@ export interface IdentidadeDeVariante {
  * cliente: "Branca / PP"); dentro do campo, espaços das pontas são cortados
  * antes de juntar, para " PP" não virar parte do valor gravado.
  */
-import { SEPARADOR_DE_ATRIBUTOS } from "./atributos-da-variacao";
+import { SEPARADOR_DE_ATRIBUTOS, dobrar } from "./atributos-da-variacao";
 export {
   SEPARADOR_DE_ATRIBUTOS,
   dividirEmAtributos,
 } from "./atributos-da-variacao";
+
+/**
+ * O lojista monta a combinação na ordem que quiser (Tamanho e depois Cor), mas
+ * um produto que já grava "Cor / Tamanho" só aceita esse mesmo nome (a trava de
+ * um grupo compara o nome inteiro, na ordem). Quando o CONJUNTO de atributos é
+ * igual, sem diferença de caixa ou acento, os pares seguem a ordem gravada e
+ * levam a grafia gravada do nome. Qualquer outra coisa volta como veio, e quem
+ * recusa é a trava, que não muda.
+ */
+export function alinharPelaOrdemGravada(
+  pares: ParDeAtributo[],
+  nomeGravado: string | undefined,
+): ParDeAtributo[] {
+  const gravados = (nomeGravado ?? "").split(SEPARADOR_DE_ATRIBUTOS);
+  if (gravados.length < 2 || gravados.length !== pares.length) return pares;
+  const usados = new Set<number>();
+  const alinhados: ParDeAtributo[] = [];
+  for (const gravado of gravados) {
+    const indice = pares.findIndex(
+      (par, i) => !usados.has(i) && dobrar(par.name) === dobrar(gravado),
+    );
+    const par = pares.at(indice);
+    if (indice < 0 || !par) return pares;
+    usados.add(indice);
+    alinhados.push({ ...par, name: gravado });
+  }
+  return alinhados;
+}
 
 /**
  * N pares digitados → a identidade da linha. Um par só sai CRU (o caso

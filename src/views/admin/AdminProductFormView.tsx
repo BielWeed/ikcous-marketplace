@@ -100,6 +100,8 @@ import {
 } from "@/utils/um-grupo-de-variacao";
 import {
   type ParDeAtributo,
+  SEPARADOR_DE_ATRIBUTOS,
+  alinharPelaOrdemGravada,
   dividirEmAtributos,
   juntarAtributos,
   validarAtributos,
@@ -1893,8 +1895,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     // grava name="Cor / Tamanho", value="Branca / PP", com o estoque deste
     // formulário — a branca PP tem o estoque DELA. Um par só sai cru, igual
     // ao caso simples de hoje. Ver `variante-composta.ts`.
+    // Produto que já grava "Cor / Tamanho": montar Tamanho e depois Cor grava
+    // na ordem antiga (a trava abaixo compara o nome inteiro e NÃO muda).
+    const gruposDasOutras = gruposDeVariacao(
+      formData.variants.filter((v) => v.id !== editingVariant?.id),
+    );
     const { name: nomeComposto, value: valorComposto } = juntarAtributos(
-      variantFormData.pares,
+      alinharPelaOrdemGravada(
+        variantFormData.pares,
+        gruposDasOutras.length === 1 ? gruposDasOutras[0] : undefined,
+      ),
     );
 
     // Um grupo por produto. Com dois, o estoque passa a ser somado em dobro, o
@@ -1910,10 +1920,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     );
     if (trava.bloqueia) {
       toast.error(`Este produto já usa "${trava.grupoEmUso}"`, {
-        description:
-          "Cada produto aceita um tipo de variação só. Para vender cor e " +
-          "tamanho juntos, crie as opções combinadas dentro do mesmo tipo " +
-          '(ex: "Rosa P", "Rosa M") — assim o estoque e o pedido saem certos.',
+        description: trava.grupoEmUso.includes(SEPARADOR_DE_ATRIBUTOS)
+          ? `Cada produto aceita um conjunto de atributos só. Para criar outra opção, use os mesmos atributos das que já existem (${trava.grupoEmUso}).`
+          : "Cada produto aceita um tipo de variação só. Para vender cor e " +
+            "tamanho juntos, crie as opções combinadas dentro do mesmo tipo " +
+            '(ex: "Rosa P", "Rosa M") — assim o estoque e o pedido saem certos.',
         duration: 10000,
       });
       return;

@@ -2,8 +2,7 @@ import type { ProductVariant } from "@/types";
 import {
   MAX_ATRIBUTOS_DA_GRADE,
   dividirEmAtributos,
-  dobrar,
-  tipoDoNome,
+  posicaoDoAtributo,
 } from "./atributos-da-variacao";
 
 export interface FileiraDeVariacao {
@@ -18,17 +17,6 @@ export interface FileiraDeVariacao {
      *  só pela combinação: a tela o apaga mas deixa tocar. Ausente = `disponivel`. */
     existe?: boolean;
   }[];
-}
-
-/** Quem escolhe o tamanho vê as cores que existem nele: Tamanho (e Voltagem)
- *  vêm antes, a Cor depois e qualquer outro atributo por último. A ordem em que
- *  o produto foi gravado ("Cor / Tamanho") não decide nada aqui; entre iguais
- *  vale a gravação (o sort do JS é estável). */
-function posicaoDaFileira(nome: string): number {
-  const tipo = tipoDoNome(nome);
-  if (tipo === "Tamanho" || tipo === "Voltagem") return 0;
-  if (tipo === "Cor" || /^(cores|color)$/.test(dobrar(nome))) return 1;
-  return 2;
 }
 
 /** A seleção só entrega o id da LINHA completa: carrinho e estoque não mudam de contrato. */
@@ -86,7 +74,9 @@ export function fileirasDeVariacao(
       return { valor, estoque, disponivel: estoque > 0, existe };
     }),
   }));
-  fileiras.sort((a, b) => posicaoDaFileira(a.nome) - posicaoDaFileira(b.nome));
+  fileiras.sort(
+    (a, b) => posicaoDoAtributo(a.nome) - posicaoDoAtributo(b.nome),
+  );
   const completa =
     fileiras.length > 0 && fileiras.every((f) => !!selecionadas.get(f.nome));
   const variante = completa

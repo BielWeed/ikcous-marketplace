@@ -142,6 +142,9 @@ export const ProductView = React.memo(function ProductView({
     Record<string, string>
   >({});
   const [folhaAberta, setFolhaAberta] = useState(false);
+  // O que a última escolha SOLTOU do outro lado ("Tamanho P desmarcado"), para
+  // o leitor de tela: a tela muda sozinha e quem não vê não perceberia.
+  const [avisoDaEscolha, setAvisoDaEscolha] = useState("");
   // A pessoa tocou em "Adicionar" sem escolher a opção: a linha que falta (na
   // página, na folha e no atalho da barra) fica em alerta até ela escolher.
   const [tentouSemEscolher, setTentouSemEscolher] = useState(false);
@@ -532,6 +535,17 @@ export const ProductView = React.memo(function ProductView({
       valor,
     );
     if (!proxima) return;
+    const mantidas = new Map(Object.entries(proxima));
+    const soltas = Object.entries(selectedVariants)
+      .filter(([nome]) => nome !== grupo && !mantidas.has(nome))
+      .map(([nome, escolhido]) => `${nome} ${escolhido}`);
+    setAvisoDaEscolha(
+      soltas.length === 0
+        ? ""
+        : soltas.length === 1
+          ? `${soltas[0]} desmarcado`
+          : `${soltas.join(" e ")} desmarcados`,
+    );
     setSelectedVariants(proxima);
     const fotoDaVariante = variantesDaEscolha(proxima)[0]?.imageUrl;
     if (fotoDaVariante) {
@@ -1050,6 +1064,7 @@ export const ProductView = React.memo(function ProductView({
                 escolha={selectedVariants}
                 onEscolher={alternarVariante}
                 pendentes={pendentes}
+                aviso={avisoDaEscolha}
               />
             )}
 
@@ -1626,6 +1641,7 @@ export const ProductView = React.memo(function ProductView({
             escolha={selectedVariants}
             onEscolher={alternarVariante}
             pendentes={pendentes}
+            aviso={avisoDaEscolha}
           />
           <QuantitySelector
             quantity={quantity}

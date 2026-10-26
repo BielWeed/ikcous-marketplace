@@ -20,6 +20,7 @@ export function FileirasDeVariacao({
   escolha,
   onEscolher,
   pendentes = [],
+  aviso = "",
 }: {
   fileiras: FileiraDeVariacao[];
   escolha: Record<string, string>;
@@ -27,6 +28,9 @@ export function FileirasDeVariacao({
   /** Nomes dos grupos que a pessoa tentou comprar sem escolher: o "Escolha"
    *  da linha vira cor de alerta até ela escolher. */
   pendentes?: readonly string[];
+  /** O que a escolha acabou de soltar ("Tamanho P desmarcado"): vai para uma
+   *  região de status, oculta da vista, que o leitor de tela anuncia. */
+  aviso?: string;
 }) {
   const selecionadas = new Map(Object.entries(escolha));
   const idBase = useId();
@@ -74,12 +78,19 @@ export function FileirasDeVariacao({
                 // (existe em outra): apagado, mas tocável -- tocar escolhe o
                 // valor e solta o que deixou de combinar.
                 const apagadoPelaCombinacao = !disponivel && (existe ?? false);
+                // O estado vai no PRÓPRIO nome acessível: com aria-label, um
+                // texto sr-only dentro do botão nunca seria lido.
+                const nomeAcessivel = disponivel
+                  ? valor
+                  : apagadoPelaCombinacao
+                    ? `${valor}, indisponível com a sua escolha`
+                    : `${valor}, esgotado`;
                 const amostra = fileiraDeCor ? coresDoNome(valor) : [];
                 return (
                   <button
                     key={valor}
                     type="button"
-                    aria-label={valor}
+                    aria-label={nomeAcessivel}
                     aria-pressed={ativa}
                     disabled={!disponivel && !apagadoPelaCombinacao && !ativa}
                     title={
@@ -91,13 +102,16 @@ export function FileirasDeVariacao({
                     }
                     onClick={() => onEscolher(nome, valor)}
                     className={cn(
-                      "flex min-h-11 min-w-11 max-w-full items-center justify-center gap-2 rounded-[14px] border border-solid px-3.5 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:border-border/60 disabled:bg-muted/30 disabled:text-muted-foreground",
+                      "flex min-h-11 min-w-11 max-w-full items-center justify-center gap-2 rounded-[14px] border px-3.5 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:border-border/60 disabled:bg-muted/30 disabled:text-muted-foreground",
                       ativa
                         ? "border-foreground bg-foreground text-background"
                         : apagadoPelaCombinacao
-                          ? "border-border/60 bg-muted/30 text-muted-foreground"
+                          ? // Esmaecido, borda tracejada e SEM risco: não se
+                            // confunde com o esgotado de vez (riscado, liso).
+                            "border-foreground/50 bg-muted/30 text-muted-foreground"
                           : "border-border bg-background text-foreground",
-                      !disponivel && "line-through",
+                      apagadoPelaCombinacao ? "border-dashed" : "border-solid",
+                      !disponivel && !apagadoPelaCombinacao && "line-through",
                     )}
                   >
                     {amostra.length > 0 && (
@@ -115,13 +129,6 @@ export function FileirasDeVariacao({
                     <span className="min-w-0 break-words text-left">
                       {valor}
                     </span>
-                    {!disponivel && (
-                      <span className="sr-only">
-                        {apagadoPelaCombinacao
-                          ? " (Indisponível com a sua escolha)"
-                          : " (Esgotado)"}
-                      </span>
-                    )}
                   </button>
                 );
               })}
@@ -129,6 +136,9 @@ export function FileirasDeVariacao({
           </div>
         );
       })}
+      <div role="status" aria-live="polite" className="sr-only">
+        {aviso}
+      </div>
     </div>
   );
 }
