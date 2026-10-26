@@ -121,7 +121,18 @@ export function ClienteDaVenda({
   }
 
   function atualizarAvulso(nome: string, whatsapp: string): void {
-    if (nome.trim() === "") return;
+    if (nome.trim() === "") {
+      // Nome apagado: o avulso desta venda sai. Só quando o cliente da venda
+      // É o avulso — campo vazio de uma aba que ninguém usou não derruba um
+      // cliente cadastrado.
+      if (cliente.tipo === "avulso") {
+        despachar({
+          tipo: "cliente_definido",
+          cliente: { tipo: "sem_cliente" },
+        });
+      }
+      return;
+    }
     despachar({
       tipo: "cliente_definido",
       cliente: { tipo: "avulso", nome: nome.trim(), whatsapp },
