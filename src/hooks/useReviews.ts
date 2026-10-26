@@ -644,12 +644,15 @@ export function useReviews() {
         return false;
       }
       try {
-        const { error } = await supabase
+        // `.select("id")`: 0 linhas apagadas (política de acesso) vem como sucesso.
+        const { data: apagadas, error } = await supabase
           .from("reviews" as any)
           .delete()
-          .eq("id", reviewId);
+          .eq("id", reviewId)
+          .select("id");
 
         if (error) throw error;
+        if (!apagadas?.length) throw new Error("Nenhuma avaliação apagada.");
 
         setAdminReviews((prev) => prev.filter((r) => r.id !== reviewId));
         toast.success("Avaliação removida.");
@@ -678,12 +681,16 @@ export function useReviews() {
         return false;
       }
       try {
-        const { error } = await supabase
+        // `.select("id")`: 0 linhas publicadas (política de acesso) vem como sucesso.
+        const { data: publicadas, error } = await supabase
           .from("reviews" as any)
           .update({ status: "publicada" })
-          .eq("id", reviewId);
+          .eq("id", reviewId)
+          .select("id");
 
         if (error) throw error;
+        if (!publicadas?.length)
+          throw new Error("Nenhuma avaliação publicada.");
 
         setAdminReviews((prev) =>
           prev.map((r) =>

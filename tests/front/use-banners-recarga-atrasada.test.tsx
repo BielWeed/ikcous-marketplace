@@ -67,7 +67,10 @@ describe("banners — recarga anterior à edição", () => {
     vi.resetModules();
     h.consultar.mockReset().mockResolvedValue({ data: [linha], error: null });
     h.atualizar.mockReset().mockReturnValue({
-      eq: vi.fn().mockResolvedValue({ error: null }),
+      eq: vi.fn().mockReturnValue({
+        select: () =>
+          Promise.resolve({ data: [{ id: "banner-ficticio" }], error: null }),
+      }),
     });
     h.persistir.mockReset().mockResolvedValue(undefined);
     ({ useBanners } = await import("@/hooks/useBanners"));
