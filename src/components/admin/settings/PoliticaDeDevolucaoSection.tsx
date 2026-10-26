@@ -411,7 +411,7 @@ export function PoliticaDeDevolucaoSection({
           <IconeDeAjustes icone={Clock} matiz="rosa" />
           Prazos (dias após a entrega)
         </h4>
-        <div className="grid gap-4 [&>div]:grid [&>div]:grid-cols-[1fr_76px] [&>div]:items-center [&>div]:gap-3 [&>div]:border-b [&>div]:border-admin-border-strong [&>div]:pb-4">
+        <div className="grid gap-4 [&>div>div>p]:col-span-2 [&>div>div]:contents [&>div]:grid [&>div]:grid-cols-[1fr_76px] [&>div]:items-center [&>div]:gap-3 [&>div]:border-b [&>div]:border-admin-border-strong [&>div]:pb-4">
           <div>
             <label htmlFor="politica-arrependimento" className={ROTULO}>
               Arrependimento

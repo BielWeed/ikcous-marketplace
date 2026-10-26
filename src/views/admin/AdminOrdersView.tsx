@@ -1171,6 +1171,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       if (payload.eventType === "INSERT") {
         const newId = payload.new?.id;
         toast.info(`Novo pedido recebido! #${numeroDoPedido(newId)}`, {
+          duration: 10_000,
           action: {
             label: "Ver",
             onClick: () => {

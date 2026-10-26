@@ -4,6 +4,7 @@ import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Product } from "@/types";
 import { Hand, Search, Sparkles, Tag, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { FolhaInferior } from "./FolhaInferior";
 import { QUANTIDADE_PADRAO, type SecaoDaHome, tipoDaVitrine } from "./tipos";
 
@@ -30,6 +31,7 @@ export function FolhaEditarVitrine({
   aoVoltarAoAutomatico,
   aoEscolherManualmente,
   aoPedirExclusao,
+  travado = false,
 }: {
   readonly secao: SecaoDaHome;
   readonly posicao: number;
@@ -45,6 +47,8 @@ export function FolhaEditarVitrine({
   readonly aoEscolherManualmente: () => void;
   /** Só existe para vitrine personalizada (as de fábrica não se excluem). */
   readonly aoPedirExclusao?: () => void;
+  /** Outra gravação de vitrines corre: os toques ficariam sem efeito. */
+  readonly travado?: boolean;
 }) {
   const [busca, setBusca] = useState("");
   const manual = (secao.productIds?.length ?? 0) > 0;
@@ -84,6 +88,8 @@ export function FolhaEditarVitrine({
   // (e avisar) uma segunda vez. Só o toque seguinte tenta de novo.
   const resultadoSemUso = useRef<boolean | null>(null);
   const [falhouNome, setFalhouNome] = useState(false);
+  // Muda quando o nome fica vazio: o campo volta a mostrar o nome gravado.
+  const [chaveDoCampo, setChaveDoCampo] = useState(0);
   const [salvando, setSalvando] = useState(false);
   const aberta = useRef(true);
   useEffect(() => {
@@ -175,6 +181,7 @@ export function FolhaEditarVitrine({
         Nome que o cliente vê
       </label>
       <LocalBufferedInput
+        key={chaveDoCampo}
         id={idDoCampoDeNome}
         name="title"
         value={secao.title || ""}
@@ -182,7 +189,16 @@ export function FolhaEditarVitrine({
         // campo não desmonta nem perde o foco/valor, mas nada novo entra numa
         // janela em que a folha está prestes a fechar.
         readOnly={salvando}
-        onFlush={(titulo) => void gravarNome(titulo)}
+        // Nome vazio nunca sobe (apagar para digitar outro é normal); ao sair
+        // do campo vazio, avisa e devolve o nome que já estava gravado.
+        onFlush={(titulo) => {
+          if (titulo.trim()) void gravarNome(titulo);
+        }}
+        onBlur={(evento) => {
+          if (evento.target.value.trim()) return;
+          toast.error("Informe um título para a vitrine");
+          setChaveDoCampo((chave) => chave + 1);
+        }}
         placeholder="Título da vitrine"
         useShadcn={true}
         className="h-12 rounded-[14px] border-admin-border bg-zinc-900 px-3.5 text-[15px] font-semibold text-white placeholder:text-zinc-600 focus-visible:border-admin-gold focus-visible:ring-admin-gold/20"
@@ -206,6 +222,7 @@ export function FolhaEditarVitrine({
             key={quantidade}
             type="button"
             aria-pressed={maximo === quantidade}
+            disabled={travado}
             onClick={() => aoMudarQuantidade(quantidade)}
             className={cn(
               "min-h-11 rounded-[11px] text-[13px] font-semibold transition-colors",
@@ -229,6 +246,7 @@ export function FolhaEditarVitrine({
         <button
           type="button"
           aria-pressed={!manual}
+          disabled={travado}
           onClick={aoVoltarAoAutomatico}
           className={cn(
             "flex min-h-11 items-center justify-center gap-1.5 rounded-[11px] text-[13px] font-semibold transition-colors",
@@ -243,6 +261,7 @@ export function FolhaEditarVitrine({
         <button
           type="button"
           aria-pressed={manual}
+          disabled={travado}
           onClick={aoEscolherManualmente}
           className={cn(
             "flex min-h-11 items-center justify-center gap-1.5 rounded-[11px] text-[13px] font-semibold transition-colors",
@@ -278,7 +297,7 @@ export function FolhaEditarVitrine({
             type="button"
             aria-label="Limpar busca"
             onClick={() => setBusca("")}
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
+            className="absolute right-0 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center text-zinc-400 hover:text-white"
           >
             <X className="size-4" />
           </button>
