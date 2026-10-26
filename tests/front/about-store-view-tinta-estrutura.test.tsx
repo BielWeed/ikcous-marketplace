@@ -90,28 +90,31 @@ describe("AboutStoreView Tinta: estrutura", () => {
     expect(hospedeiro.textContent).not.toContain("Nossa história");
   });
 
-  it("Falar com a loja: tinta, 52px, texto simples, sem logotipo do WhatsApp", async () => {
+  // 26/10/2026 (pedido do dono): o botão de contato por WhatsApp é o ORIGINAL do
+  // WhatsApp em toda a loja — verde oficial e glifo oficial. Antes (14/09) era
+  // uma barra Tinta preta, texto simples e sem o logotipo; a barra fixa, os 52px,
+  // o rótulo e o portal no body continuam, só a cara mudou.
+  it("Falar com a loja: verde oficial do WhatsApp, 52px, glifo oficial, rótulo simples", async () => {
     configAtual = LOJA;
     await montar();
     const botao = document.body.querySelector<HTMLButtonElement>(
       "button[aria-label='Falar com a loja no WhatsApp']",
     )!;
     expect(botao.textContent).toBe("Falar com a loja");
-    for (const c of [
-      "bg-foreground",
-      "text-background",
-      "h-[52px]",
-      "rounded-2xl",
-    ])
+    for (const c of ["bg-[#25D366]", "h-[52px]", "rounded-2xl", "fixed"])
       expect(botao.className).toContain(c);
     expect(botao.className).not.toContain("emerald");
-    // Só a seta (lucide); o logotipo do WhatsApp usa viewBox próprio, com path.
+    // Só o glifo oficial do WhatsApp (o mesmo traço de IconeWhatsapp), nenhuma seta.
     const svgs = botao.querySelectorAll("svg");
     expect(svgs).toHaveLength(1);
-    expect(svgs[0].getAttribute("class")).toContain("lucide-arrow-right");
+    expect(svgs[0].getAttribute("viewBox")).toBe("0 0 24 24");
+    expect(svgs[0].querySelector("path")?.getAttribute("d")).toMatch(
+      /^M17\.472 14\.382/,
+    );
+    expect(svgs[0].getAttribute("class") ?? "").not.toContain("lucide");
   });
 
-  it("sem cor fixa nem verde de marca: só tokens do tema", async () => {
+  it("sem cor fixa (zinc, branco, emerald): só tokens do tema, fora o verde oficial do WhatsApp", async () => {
     configAtual = LOJA;
     await montar();
     const html =
