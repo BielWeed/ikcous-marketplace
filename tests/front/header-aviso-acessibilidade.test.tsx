@@ -68,6 +68,16 @@ describe("Header — cápsula de aviso acessível", () => {
     expect(regiao!.closest("button")).toBeNull();
   });
 
+  it("no computador a região fica fora da árvore falada: o Sonner já lê o aviso lá", async () => {
+    await montarComAviso();
+    const regiao = [...hospedeiro.querySelectorAll('[role="status"]')].find(
+      (r) => r.textContent === AVISO,
+    );
+    // `display:none` a partir de 641 px, o mesmo corte do CSS do Sonner.
+    expect(regiao!.className).toContain("min-[641px]:hidden");
+    expect(regiao!.className).not.toContain("sm:hidden");
+  });
+
   it("o texto visível não é cortado em 1 linha (sem truncate nem nowrap)", async () => {
     await montarComAviso();
     const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>

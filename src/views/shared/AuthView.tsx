@@ -460,7 +460,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                   setShowConfirmation(false);
                   setIsPasswordRecovery(false);
                 }}
-                className="h-14 w-full rounded-2xl bg-zinc-900 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-zinc-200 transition-all hover:bg-black active:scale-95 sm:h-16 sm:rounded-3xl sm:text-xs"
+                className="relative h-14 w-full rounded-2xl bg-zinc-900 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-zinc-200 transition-all hover:bg-black active:scale-95 sm:h-16 sm:rounded-3xl sm:text-xs"
               >
                 Retornar ao Login
               </Button>

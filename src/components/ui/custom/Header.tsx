@@ -331,7 +331,11 @@ export const Header = memo(function Header({
               só mostra 2 linhas). Some junto com a cápsula quando a ilha de
               atualização assume. */}
           {!atualizacaoAtiva && (
-            <span role="status" aria-live="polite" className="sr-only">
+            <span
+              role="status"
+              aria-live="polite"
+              className="sr-only min-[641px]:hidden"
+            >
               {activeToast?.message}
             </span>
           )}

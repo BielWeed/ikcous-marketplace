@@ -91,6 +91,17 @@ describe("AuthView — alvos, contraste e botão de enviar falado", () => {
     expect(esqueceu!.className).not.toContain("text-zinc-400");
   });
 
+  it("o 'Retornar ao Login' tem posição própria: o alvo invisível do 'Reenviar link' não rouba o toque dele", async () => {
+    // A tela do "link enviado" só existe depois de um cadastro; o contrato é
+    // lido do fonte. Os dois são posicionados e o botão vem DEPOIS na árvore, então
+    // ele ganha a faixa de 2 px em que os alvos se encostam.
+    const { readFileSync } = await import("node:fs");
+    const fonte = readFileSync("src/views/shared/AuthView.tsx", "utf8");
+    const botao = fonte.match(/className="([^"]*)"\s*>\s*Retornar ao Login/);
+    expect(botao).not.toBeNull();
+    expect(botao![1].split(" ")).toContain("relative");
+  });
+
   it("os rótulos dos campos não usam mais zinc-400", async () => {
     await renderizar();
     const rotulos = [...document.querySelectorAll("label")];
