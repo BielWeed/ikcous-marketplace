@@ -609,7 +609,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
             </motion.h1>
             <motion.p
               variants={itemVariants}
-              className="mt-2 max-w-[280px] px-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400 dark:text-zinc-500 sm:mt-4 sm:max-w-none sm:text-sm"
+              className="mt-2 max-w-[280px] px-4 text-xs font-bold uppercase tracking-widest text-zinc-600 dark:text-zinc-400 sm:mt-4 sm:max-w-none sm:text-sm"
             >
               {viewMode === "login" && subtituloBoasVindas(config.storeName)}
               {viewMode === "signup" &&
@@ -846,7 +846,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                   {viewMode === "signup" && (
                     <p
                       id="password-dica"
-                      className="ml-1 text-[10px] font-bold uppercase tracking-widest text-zinc-400"
+                      className="ml-1 text-xs font-bold uppercase tracking-widest text-zinc-600"
                     >
                       Mínimo 8 caracteres
                     </p>
@@ -946,7 +946,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
             variants={itemVariants}
             className="mb-4 mt-6 flex flex-col items-center gap-2 sm:mb-0"
           >
-            <span className="text-[10px] font-semibold text-zinc-400 sm:text-xs">
+            <span className="text-xs font-semibold text-zinc-600">
               {viewMode === "login"
                 ? "Não possui conta?"
                 : viewMode === "signup"

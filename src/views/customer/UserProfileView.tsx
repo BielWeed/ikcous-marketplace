@@ -118,6 +118,23 @@ const itemVariants = {
   },
 } as const;
 
+// Consulta da lista falhou: não é "vazio" (a pessoa pode ter várias).
+function ErroDaLista({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center rounded-3xl border border-zinc-100 bg-white px-6 py-12 text-center shadow-sm">
+      <p className="text-sm font-bold tracking-tight text-zinc-900">
+        Não conseguimos carregar
+      </p>
+      <button
+        onClick={onRetry}
+        className="mt-3 rounded-full border border-zinc-200 px-5 py-2 text-xs font-bold uppercase tracking-wider text-zinc-900"
+      >
+        Tentar de novo
+      </button>
+    </div>
+  );
+}
+
 export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
   // ADMIN-091 (#202): esconde a nota das avaliações alheias exibidas aqui
   // quando `enableReviews` está desligado.
@@ -125,7 +142,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [reviews, setReviews] = useState<UserReview[]>([]);
   const [questions, setQuestions] = useState<UserQuestion[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!userId);
   // Falha de rede não é "usuário removido", e sub-consulta que falhou não
   // pode anunciar "0 Avaliações" — zero que quer dizer "não consegui medir".
   const [loadError, setLoadError] = useState(false);
@@ -452,7 +469,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
               {/* Falha da sub-consulta não conta zero: "—" é não sei, 0 é zero. */}
               {reviewsError ? "—" : reviews.length}
             </span>
-            <span className="mt-1 text-[9px] font-black uppercase tracking-widest text-zinc-400">
+            <span className="mt-1 text-xs font-black uppercase tracking-widest text-zinc-600">
               Avaliações
             </span>
           </div>
@@ -460,7 +477,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
             <span className="text-2xl font-black leading-none tracking-tight text-zinc-950 transition-transform duration-300 group-hover:scale-110">
               {questionsError ? "—" : questions.length}
             </span>
-            <span className="mt-1 text-[9px] font-black uppercase tracking-widest text-zinc-400">
+            <span className="mt-1 text-xs font-black uppercase tracking-widest text-zinc-600">
               Perguntas
             </span>
           </div>
@@ -516,7 +533,9 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                   transition={{ duration: 0.2 }}
                   className="space-y-4"
                 >
-                  {reviews.length === 0 ? (
+                  {reviewsError ? (
+                    <ErroDaLista onRetry={() => setTentativa((t) => t + 1)} />
+                  ) : reviews.length === 0 ? (
                     <div className="flex flex-col items-center rounded-3xl border border-zinc-100 bg-white px-6 py-12 text-center shadow-sm">
                       <div className="mb-3 flex size-12 items-center justify-center rounded-2xl border border-zinc-200/50 bg-zinc-50 text-zinc-300">
                         <Star className="size-5" />
@@ -579,7 +598,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                                 readonly
                               />
                             )}
-                            <span className="text-[9px] font-medium uppercase tracking-wider text-zinc-400">
+                            <span className="text-xs font-medium uppercase tracking-wider text-zinc-600">
                               {formatDistanceToNow(new Date(rev.created_at), {
                                 addSuffix: true,
                                 locale: ptBR,
@@ -594,7 +613,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                           )}
 
                           {rev.verified && (
-                            <div className="mt-1 flex items-center gap-0.5 text-[8px] font-bold uppercase tracking-widest text-emerald-700">
+                            <div className="mt-1 flex items-center gap-0.5 text-xs font-bold uppercase tracking-widest text-emerald-700">
                               <Check className="size-2.5" />
                               Compra verificada
                             </div>
@@ -606,7 +625,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                           <div className="relative rounded-2xl border border-zinc-100 bg-zinc-50/80 p-3.5 pl-4 text-[11px]">
                             <div className="absolute inset-y-3.5 left-0 w-1 rounded-r-full bg-zinc-950" />
                             <div className="mb-1 flex items-center gap-1.5">
-                              <span className="text-[8px] font-black uppercase tracking-wider text-zinc-900">
+                              <span className="text-xs font-black uppercase tracking-wider text-zinc-900">
                                 Resposta da Loja
                               </span>
                               <span className="flex size-3 select-none items-center justify-center rounded-full bg-zinc-950 text-[6px] font-bold text-white">
@@ -631,7 +650,9 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                   transition={{ duration: 0.2 }}
                   className="space-y-4"
                 >
-                  {questions.length === 0 ? (
+                  {questionsError ? (
+                    <ErroDaLista onRetry={() => setTentativa((t) => t + 1)} />
+                  ) : questions.length === 0 ? (
                     <div className="flex flex-col items-center rounded-3xl border border-zinc-100 bg-white px-6 py-12 text-center shadow-sm">
                       <div className="mb-3 flex size-12 items-center justify-center rounded-2xl border border-zinc-200/50 bg-zinc-50 text-zinc-300">
                         <HelpCircle className="size-5" />
@@ -683,10 +704,10 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                         {/* Question Text */}
                         <div className="space-y-1 pl-0.5">
                           <div className="flex items-center justify-between">
-                            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-400">
+                            <span className="text-xs font-black uppercase tracking-widest text-zinc-600">
                               Dúvida enviada
                             </span>
-                            <span className="text-[9px] font-medium uppercase tracking-wider text-zinc-400">
+                            <span className="text-xs font-medium uppercase tracking-wider text-zinc-600">
                               {formatDistanceToNow(new Date(q.created_at), {
                                 addSuffix: true,
                                 locale: ptBR,
@@ -709,14 +730,14 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                                 <div className="absolute inset-y-3.5 left-0 w-1 rounded-r-full bg-zinc-950" />
                                 <div className="mb-1 flex items-center justify-between gap-1.5">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="text-[8px] font-black uppercase tracking-wider text-zinc-900">
+                                    <span className="text-xs font-black uppercase tracking-wider text-zinc-900">
                                       Resposta da Equipe
                                     </span>
                                     <span className="flex size-3 select-none items-center justify-center rounded-full bg-zinc-950 text-[6px] font-bold text-white">
                                       ✓
                                     </span>
                                   </div>
-                                  <span className="text-[8px] font-medium uppercase tracking-wider text-zinc-400">
+                                  <span className="text-xs font-medium uppercase tracking-wider text-zinc-600">
                                     {formatDistanceToNow(
                                       new Date(ans.created_at),
                                       { addSuffix: true, locale: ptBR },
