@@ -940,10 +940,14 @@ function SecaoOfertasEsqueleto({ layout }: { layout?: LayoutDeOfertas }) {
             </div>
           </div>
         </div>
-        {/* Dots do real: mt-2 mb-1 + h-1.5. */}
-        <div className="mb-1 mt-2 flex items-center justify-center gap-1.5">
-          <span className="h-1.5 w-6 rounded-full bg-zinc-200" />
-          <span className="size-1.5 rounded-full bg-zinc-200" />
+        {/* Dots do real: cada bolinha mora num botao de 44 px (size-11) + mb-1. */}
+        <div className="mb-1 flex items-center justify-center">
+          <span className="flex size-11 items-center justify-center">
+            <span className="h-1.5 w-6 rounded-full bg-zinc-200" />
+          </span>
+          <span className="flex size-11 items-center justify-center">
+            <span className="size-1.5 rounded-full bg-zinc-200" />
+          </span>
         </div>
       </div>
     </div>
