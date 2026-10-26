@@ -104,6 +104,12 @@ interface Comum {
   compacto?: boolean;
   aoRemover?: () => void;
   rotuloDoRemover?: string;
+  /** Tipos (Cor, Tamanho, Voltagem) que OUTRO atributo do mesmo produto já
+   *  escolheu: a peça fica apagada e não clicável. O tipo do próprio atributo
+   *  nunca apaga, e "Outro" não conta (os nomes livres se distinguem). */
+  tiposOcupados?: TipoDoAtributo[];
+  /** O atributo nasce em "Outro" com o campo do nome aberto (o atalho "+ Outro"). */
+  iniciarEmOutro?: boolean;
 }
 
 interface Unico extends Comum {
@@ -167,6 +173,13 @@ const CHAMADA = new Map<TipoDoAtributo, [string, string]>([
   ["Voltagem", ["Escolha a voltagem", "Escolha as voltagens"]],
 ]);
 
+/** "3 selecionadas" (cores, feminino) · "3 selecionados" (o resto) · "nenhum selecionado". */
+function contagemDosSelecionados(n: number, feminino: boolean): string {
+  if (n === 0) return feminino ? "nenhuma selecionada" : "nenhum selecionado";
+  const palavra = feminino ? "selecionada" : "selecionado";
+  return `${n} ${palavra}${n === 1 ? "" : "s"}`;
+}
+
 function Marca({ clara }: { clara: boolean }) {
   return (
     <Check
@@ -215,7 +228,7 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
   // "Outro" escolhido com o nome ainda vazio não se deriva do nome: este
   // estado guarda a escolha, e a mantém enquanto o lojista digita (digitar
   // "Cor" no campo livre não pode fazer o campo sumir debaixo dos dedos).
-  const [outroAberto, setOutroAberto] = useState(false);
+  const [outroAberto, setOutroAberto] = useState(props.iniciarEmOutro ?? false);
   const tipo = outroAberto ? "Outro" : tipoDoNome(nome);
 
   const selecionadosDoModo =
@@ -312,7 +325,19 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
   return (
     <div data-testid={`atributo-${numero - 1}`} className="space-y-4">
       <div className="flex items-center gap-2">
-        <p className="flex-1 text-base font-bold text-foreground">{titulo}</p>
+        <p className="flex-1 text-base font-bold text-foreground">
+          {props.modo === "multiplo"
+            ? `${numero} · ${tipo === "Outro" ? nome.trim() || "Outro" : (tipo ?? "Escolha o tipo")}`
+            : titulo}
+        </p>
+        {props.modo === "multiplo" && (
+          <span
+            data-testid="contagem-do-atributo"
+            className="text-sm text-zinc-400"
+          >
+            {contagemDosSelecionados(props.selecionados.length, tipo === "Cor")}
+          </span>
+        )}
         {props.aoRemover && (
           <button
             type="button"
@@ -332,14 +357,22 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
       >
         {pecasVisiveis.map(({ tipo: peca, icone }) => {
           const ativa = tipo === peca;
+          const ocupada =
+            !ativa &&
+            peca !== "Outro" &&
+            (props.tiposOcupados ?? []).includes(peca);
           return (
             <button
               key={peca}
               type="button"
               aria-pressed={ativa}
-              onClick={() => tocarNaPeca(peca)}
+              aria-disabled={ocupada || undefined}
+              onClick={() => {
+                if (!ocupada) tocarNaPeca(peca);
+              }}
               className={cn(
                 "flex min-h-11 min-w-0 flex-col items-center justify-center gap-1.5 rounded-2xl border border-solid px-1 py-2.5 text-xs font-bold transition-all active:scale-95",
+                ocupada && "cursor-not-allowed opacity-40",
                 ativa
                   ? "border-foreground bg-admin-hover text-foreground ring-1 ring-inset ring-foreground"
                   : "border-admin-border bg-admin-bg text-zinc-400 hover:border-admin-border-strong",

@@ -159,7 +159,7 @@ describe("CartItemsList Tinta — a linha do carrinho continua fazendo tudo", ()
     expect(botao("Diminuir quantidade")?.disabled).toBe(true);
   });
 
-  it("Remover item continua chamando onRemove com o produto e a variação", async () => {
+  it("Remover (agora com o nome do produto) continua chamando onRemove com o produto e a variação", async () => {
     const onRemove = vi.fn();
     await montarLista(
       [
@@ -172,7 +172,7 @@ describe("CartItemsList Tinta — a linha do carrinho continua fazendo tudo", ()
       ],
       { onRemove },
     );
-    await act(async () => botao("Remover item")?.click());
+    await act(async () => botao("Remover Ventilador de teto")?.click());
     expect(onRemove).toHaveBeenCalledWith("prod-1", "var-azul");
     expect(texto()).toContain("Cor: Azul");
   });

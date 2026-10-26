@@ -899,8 +899,9 @@ export const ProductView = React.memo(function ProductView({
           >
             {/* Breadcrumbs */}
             <nav
+              aria-label="Caminho"
               className={cn(
-                "scrollbar-hide mb-3 flex items-center gap-1.5 overflow-x-auto whitespace-nowrap text-[9px] font-bold uppercase tracking-widest text-zinc-400",
+                "scrollbar-hide mb-3 flex items-center gap-1.5 overflow-x-auto whitespace-nowrap text-[11px] font-bold uppercase tracking-widest text-zinc-600",
                 "lg:mb-4 lg:gap-2 lg:text-[11px] lg:text-zinc-500",
               )}
             >
@@ -911,9 +912,8 @@ export const ProductView = React.memo(function ProductView({
                 Início
               </button>
               <ChevronRight className="size-2.5" />
-              <button
+              <span
                 className={cn(
-                  "transition-colors hover:text-zinc-900",
                   // A categoria vem do banco com caixa variada ("brinquedo",
                   // "TÊNIS FEMININO") -- o capitalize uniformiza o rastro no
                   // desktop sem tocar no dado (achado da prévia de 29/09).
@@ -921,7 +921,7 @@ export const ProductView = React.memo(function ProductView({
                 )}
               >
                 {product.category}
-              </button>
+              </span>
               <ChevronRight className="size-2.5" />
               <span
                 className={cn(

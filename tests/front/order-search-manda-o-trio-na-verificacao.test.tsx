@@ -95,7 +95,7 @@ describe("OrderSearch — a verificação manda o trio", () => {
     await act(async () => {
       digitar(host, "SEU E-MAIL", " Cliente@Teste.com ");
       digitar(host, "SEU WHATSAPP", "34999999999");
-      digitar(host, "ÚLTIMOS 6 DÍGITOS DO ID DO PEDIDO", " abcdef ");
+      digitar(host, "6 FINAIS DO ID DO PEDIDO", " abcdef ");
     });
     await enviar(host);
     expect(generateOrderOtp).toHaveBeenCalledWith(

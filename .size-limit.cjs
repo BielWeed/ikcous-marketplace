@@ -99,7 +99,10 @@ module.exports = [
     // 572 -> 576 kB na 1.5.62 (sete telas no estilo Tinta: endereco, conta, privacidade,
     // sobre a loja, notificacoes e o seletor de variantes). Medido na integracao:
     // 572,28 kB, 284 B acima do teto anterior; o painel ficou em 473,01 kB (cabe em 476).
-    limit: "576 kB",
+    // 25/10/2026 (regra do dono: o teto sobe, nunca se troca por codigo arriscado):
+    // 576 -> 580 kB na 1.5.74 (acessibilidade da loja: rotulos, avisos falados, alvos
+    // de toque e o CEP do convidado). Medido 576,02 kB: 20 B acima do teto anterior.
+    limit: "580 kB",
     webpack: false,
     // Sem `running: false` o preset tenta MEDIR TEMPO rodando o bundle em
     // Chrome headless — inútil para app de navegador e quebra em runner sem
@@ -187,8 +190,11 @@ module.exports = [
     // 476 -> 480 kB na 1.5.65 (folhas do Financeiro, Caixa na frente e barra de
     // cima do painel). Medido no CI do commit de merge: 476,02 kB, 20 B acima do
     // teto (o mesmo codigo mediu 475,97 kB no PR: o hash dos chunks oscila ~50 B).
+    // 25/10/2026 (regra do dono: o teto sobe, nunca se troca por codigo arriscado):
+    // 480 -> 484 kB na 1.5.73 (a tela de criar variacoes em grade passou a explicar
+    // cor e tamanho juntos: resumo, atalhos e contagem). Medido 480,36 kB no PR.
     path: painel.map((arquivo) => `${output}/${arquivo}`),
-    limit: "480 kB",
+    limit: "484 kB",
     webpack: false,
     running: false,
   },

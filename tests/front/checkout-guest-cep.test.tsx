@@ -243,9 +243,12 @@ describe("CheckoutView (convidado) — busca de CEP via useBuscaCep", () => {
       digitar("guest-cep", "01310100");
     });
     expect(pendentes.size).toBe(1);
-    expect(
-      (document.getElementById("guest-cep") as HTMLInputElement).disabled,
-    ).toBe(true);
+    // Trava a edição SEM tirar o foco (disabled derrubava o teclado do
+    // celular no meio da digitação): readOnly + aria-busy.
+    const cepBusca = document.getElementById("guest-cep") as HTMLInputElement;
+    expect(cepBusca.readOnly).toBe(true);
+    expect(cepBusca.getAttribute("aria-busy")).toBe("true");
+    expect(cepBusca.disabled).toBe(false);
     // O CEP formatado tem de estar gravado assim que o usuário digita, não
     // só depois da resposta do ViaCEP — é o que `ShippingCalculator.tsx` e
     // o `defaultValues`/reset deste mesmo arquivo leem de volta.
@@ -266,9 +269,9 @@ describe("CheckoutView (convidado) — busca de CEP via useBuscaCep", () => {
     const city = document.getElementById("guest-city") as HTMLInputElement;
     expect(street.value).toBe("Avenida Paulista");
     expect(city.value).toBe("São Paulo");
-    expect(
-      (document.getElementById("guest-cep") as HTMLInputElement).disabled,
-    ).toBe(false);
+    const cepLivre = document.getElementById("guest-cep") as HTMLInputElement;
+    expect(cepLivre.readOnly).toBe(false);
+    expect(cepLivre.getAttribute("aria-busy")).toBe("false");
   });
 
   it("grava o CEP no localStorage mesmo com menos de 8 dígitos, sem esperar a busca", async () => {

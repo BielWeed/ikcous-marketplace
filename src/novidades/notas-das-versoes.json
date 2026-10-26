@@ -1,4 +1,24 @@
 {
+  "1.5.74": {
+    "titulo": "Loja mais fácil de usar no celular e com leitor de tela",
+    "novidades": [],
+    "correcoes": [
+      "Avisos do topo no celular: quem usa leitor de tela passa a ouvir o aviso completo, e quem enxerga vê o texto em até 2 linhas em vez de cortado em uma.",
+      "Finalizar compra como convidado: ao buscar o endereço pelo CEP o teclado do celular não fecha mais, e o navegador passa a sugerir rua, bairro, cidade, estado e complemento."
+    ],
+    "melhorias": [
+      "Rastrear pedido, login, cadastro, avaliação por estrelas, carrinho e filtros: campos com nome claro, textos mais fortes para ler, botões de 44 px mais fáceis de tocar e o botão de fechar das janelas em português. Ainda não foi testado com leitor de tela de verdade."
+    ]
+  },
+  "1.5.73": {
+    "titulo": "Variações em grade: cor e tamanho juntos, com a conta na tela",
+    "novidades": [],
+    "correcoes": [],
+    "melhorias": [
+      "Produto, variações em grade: o passo 1 explica como juntar cor e tamanho. Cada atributo é um cartão numerado (\"1 · Cor\", \"2 · Tamanho\") que mostra quantas opções você marcou, e os atalhos \"+ Tamanho\", \"+ Voltagem\" e \"+ Outro\" criam o segundo atributo já no tipo certo.",
+      "Produto, variações em grade: uma faixa de resumo faz a conta na hora (por exemplo, \"3 cores × 3 tamanhos = 9 combinações\") e o botão passa a dizer quantas variações vai criar. Se passar do limite de 60 ou se dois atributos tiverem o mesmo nome, a faixa avisa antes de você tocar em Gerar."
+    ]
+  },
   "1.5.72": {
     "titulo": "Variações do produto: escolher a cor em vez de digitar",
     "novidades": [],

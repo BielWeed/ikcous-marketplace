@@ -92,7 +92,7 @@ describe("OrderSearch — número do pedido com '#' (como no comprovante)", () =
     await act(async () => {
       digitar(host, "SEU E-MAIL", "cliente@teste.com");
       digitar(host, "SEU WHATSAPP", "34999999999");
-      digitar(host, "ÚLTIMOS 6 DÍGITOS DO ID DO PEDIDO", fragmentoDigitado);
+      digitar(host, "6 FINAIS DO ID DO PEDIDO", fragmentoDigitado);
     });
   }
 

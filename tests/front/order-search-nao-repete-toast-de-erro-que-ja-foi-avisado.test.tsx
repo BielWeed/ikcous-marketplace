@@ -73,7 +73,7 @@ async function chegarNoPassoDeCodigo(raiz: HTMLElement) {
   await act(async () => {
     digitar(raiz, "SEU E-MAIL", "cliente@teste.com");
     digitar(raiz, "SEU WHATSAPP", "34999999999");
-    digitar(raiz, "ÚLTIMOS 6 DÍGITOS DO ID DO PEDIDO", "abcdef");
+    digitar(raiz, "6 FINAIS DO ID DO PEDIDO", "abcdef");
   });
   await act(async () => {
     raiz.querySelector<HTMLFormElement>("form")?.requestSubmit();
