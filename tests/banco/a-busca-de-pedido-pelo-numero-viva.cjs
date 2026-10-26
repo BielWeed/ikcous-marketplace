@@ -97,7 +97,8 @@ const PEDIDOS = {
 // deixado no banco clonado nao entra na conta (nem na contagem, nem na ordem).
 const JANELA_INICIO = "2001-01-01T00:00:00Z";
 const JANELA_FIM = "2001-12-31T23:59:59Z";
-const ordem = (...chaves) => chaves.map((k) => PEDIDOS[k].id);
+const PEDIDO_POR_NOME = new Map(Object.entries(PEDIDOS));
+const ordem = (...chaves) => chaves.map((k) => PEDIDO_POR_NOME.get(k).id);
 
 async function inserirPedido(c, p) {
   await c.query(
@@ -121,7 +122,7 @@ async function inserirPedido(c, p) {
 async function buscar(c, termo, extra = {}) {
   const r = (
     await c.query(
-      `SELECT public.get_admin_orders_paged($1, $2, $3, $4, $5, $6, $7, $8) AS r`,
+      "SELECT public.get_admin_orders_paged($1, $2, $3, $4, $5, $6, $7, $8) AS r",
       [
         termo,
         extra.status || "all",
@@ -232,23 +233,23 @@ async function medirTudo(c) {
 
 function exigirNovo(medidas) {
   ESPERADO_NOVO.forEach(([termo, ids], i) => {
-    assert.deepEqual(medidas[i].ids, ids, `NOVO: busca "${termo}"`);
+    assert.deepEqual(medidas.at(i).ids, ids, `NOVO: busca "${termo}"`);
     assert.equal(
-      medidas[i].total,
+      medidas.at(i).total,
       ids.length,
       `NOVO: total_count de "${termo}" tem de ser o numero de pedidos achados (contagem e pagina com a mesma regra)`,
     );
   });
   const n = ESPERADO_NOVO.length;
-  assert.deepEqual(medidas[n].ids, ordem("soDigito"), "pagina 0 de 1");
-  assert.equal(medidas[n].total, 2);
-  assert.deepEqual(medidas[n + 1].ids, ordem("fone123456"), "pagina 1 de 1");
-  assert.equal(medidas[n + 1].total, 2);
-  assert.deepEqual(medidas[n + 2].ids, ordem("rastreio"));
-  assert.deepEqual(medidas[n + 3].ids, []);
-  assert.equal(medidas[n + 3].total, 0);
-  assert.deepEqual(medidas[n + 4].ids, []);
-  assert.equal(medidas[n + 4].total, 0);
+  assert.deepEqual(medidas.at(n).ids, ordem("soDigito"), "pagina 0 de 1");
+  assert.equal(medidas.at(n).total, 2);
+  assert.deepEqual(medidas.at(n + 1).ids, ordem("fone123456"), "pagina 1 de 1");
+  assert.equal(medidas.at(n + 1).total, 2);
+  assert.deepEqual(medidas.at(n + 2).ids, ordem("rastreio"));
+  assert.deepEqual(medidas.at(n + 3).ids, []);
+  assert.equal(medidas.at(n + 3).total, 0);
+  assert.deepEqual(medidas.at(n + 4).ids, []);
+  assert.equal(medidas.at(n + 4).total, 0);
 }
 
 async function main() {

@@ -96,7 +96,7 @@ Deno.test("387: a regra do telefone vale nos DOIS blocos e mantem o limiar de 4 
   assert.ok(
     c.includes("v_parece_telefone := v_clean_search ~ '^[+]?[0-9() .-]+$';"),
   );
-  const re = new RegExp("^[+]?[0-9() .-]+$");
+  const re = /^[+]?[0-9() .-]+$/;
   for (const parece of [
     "34988887777",
     "(34) 98888-7777",
