@@ -429,7 +429,8 @@ export function AddressForm({
         complement: values.complement || "",
         neighborhood: values.neighborhood,
         city: values.city,
-        state: values.state,
+        // UF vai para a etiqueta do Melhor Envio: sempre em maiúsculas.
+        state: values.state.toUpperCase(),
         is_default: values.is_default,
         reference: values.reference || "",
         recipient_name: values.recipient_name,
@@ -851,6 +852,12 @@ export function AddressForm({
                   <input
                     id="state"
                     {...form.register("state")}
+                    onChange={(e) => {
+                      // A classe `uppercase` só muda o desenho; o valor
+                      // digitado ("mg") seguia minúsculo até o envio.
+                      e.target.value = e.target.value.toUpperCase();
+                      return form.register("state").onChange(e);
+                    }}
                     placeholder="UF"
                     disabled={loading}
                     maxLength={2}

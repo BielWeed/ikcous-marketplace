@@ -1544,7 +1544,7 @@ const AppContent = () => {
       // {view:"auth", id, requested}) e precisa ser lido AQUI, antes de
       // `handleNavigate` sobrescrever o state com o pushState do destino.
       // "user-profile" sem o repasse montaria a view sem `userId` — skeleton
-      // eterno. O repasse é SÓ para ela: id nas outras views criaria `?id`
+      // eterno; "product-detail" sem id idem. O repasse é SÓ para elas: id nas outras views criaria `?id`
       // fantasma em URL que nunca o teve.
       const idDoPedido =
         typeof estadoNoLogin === "object" &&
@@ -1554,7 +1554,9 @@ const AppContent = () => {
           : undefined;
       handleNavigate(
         destino,
-        destino === "user-profile" ? idDoPedido : undefined,
+        destino === "user-profile" || destino === "product-detail"
+          ? idDoPedido
+          : undefined,
       );
     }
   }, [handleNavigate]);

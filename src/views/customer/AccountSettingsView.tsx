@@ -18,6 +18,7 @@ import {
   mensagemFalhaCpf,
 } from "@/lib/cpf-da-conta";
 import { supabase } from "@/lib/supabase";
+import { digitosDoTelefoneDoCampo } from "@/lib/telefone-br";
 import {
   PREDEFINED_AVATARS,
   compressImage,
@@ -69,6 +70,13 @@ function iniciaisDoNome(nome: string): string {
       ? (Array.from(palavras[palavras.length - 1])[0] ?? "")
       : "";
   return (primeira + ultima).toLocaleUpperCase("pt-BR");
+}
+
+// Limpa "+55" e zero de tronco como o checkout. Se mesmo limpo passar de 11
+// dígitos, devolve o texto cru (o Salvar recusa), para não inventar número.
+function limparParaMascara(novo: string, anterior: string): string {
+  const digitos = digitosDoTelefoneDoCampo(novo, anterior);
+  return digitos.length > 11 ? novo : digitos;
 }
 
 export function AccountSettingsView() {
@@ -938,7 +946,15 @@ export function AccountSettingsView() {
                           // dígitos acima de 11 em silêncio; usar a versão
                           // com guarda para não fabricar um número
                           // diferente do que a pessoa digitou/colou.
-                          phone: formatarWhatsAppDigitando(e.target.value),
+                          //
+                          // Antes de mascarar, limpa o "+55" e o zero de
+                          // tronco ("034 ...") do mesmo jeito que o checkout
+                          // (digitação tecla a tecla nunca tira o 55; colagem
+                          // tira). O que continuar com mais de 11 dígitos
+                          // segue cru e o Salvar recusa.
+                          phone: formatarWhatsAppDigitando(
+                            limparParaMascara(e.target.value, p.phone),
+                          ),
                         }));
                       }}
                       className={CAMPO}
