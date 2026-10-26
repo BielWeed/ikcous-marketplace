@@ -27,6 +27,7 @@ const ARQUIVOS = [
   "src/components/admin/products/SeletorDeAtributo.tsx",
   "src/components/admin/products/CampoDeCategoria.tsx",
   "src/components/admin/products/FolhaDeNovaCategoria.tsx",
+  "src/components/admin/categorias/SeletorDeIcone.tsx",
 ];
 
 // `border`, `border-2`, `border-t`, `border-x-4`, com variantes (hover:, md:)

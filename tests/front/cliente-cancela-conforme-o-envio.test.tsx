@@ -244,6 +244,56 @@ describe("OrderDetailsView — o cancelamento segue se o produto SAIU, não se f
     );
   });
 
+  it("pedido enviado, cancelado e REATIVADO pela loja (processing): a pergunta não promete devolução automática", async () => {
+    // O servidor não abre a devolução automática para pedido que já saiu uma
+    // vez (`NOT v_cancelled_after_shipping`): o "volta sozinho" era falso.
+    const confirmMock = vi.fn().mockReturnValue(true);
+    vi.stubGlobal("confirm", confirmMock);
+    pedidoAtual = {
+      ...pedidoBase,
+      status: "processing",
+      paymentStatus: "pago",
+      cancelledAfterShipping: true,
+    };
+
+    await renderizar();
+    await act(async () => {
+      botaoCancelar()?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    const texto = confirmMock.mock.calls[0][0] as string;
+    expect(texto).not.toMatch(/volta sozinho/i);
+    expect(texto).toContain("devolver o produto à loja");
+  });
+
+  it("o mesmo pedido, com o produto já de volta na loja: a loja cuida do dinheiro e ninguém manda devolver produto", async () => {
+    const confirmMock = vi.fn().mockReturnValue(true);
+    vi.stubGlobal("confirm", confirmMock);
+    pedidoAtual = {
+      ...pedidoBase,
+      status: "processing",
+      paymentStatus: "pago",
+      cancelledAfterShipping: true,
+      returnedToSellerAt: "2026-10-20T12:00:00.000Z",
+    };
+
+    await renderizar();
+    await act(async () => {
+      botaoCancelar()?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    const texto = confirmMock.mock.calls[0][0] as string;
+    expect(texto).not.toMatch(/volta sozinho/i);
+    expect(texto).not.toContain("devolver o produto");
+    expect(texto).toContain("devolver o seu dinheiro");
+  });
+
   it("pedido entregue (delivered): o botão Cancelar NÃO aparece", async () => {
     pedidoAtual = { ...pedidoBase, status: "delivered" };
 

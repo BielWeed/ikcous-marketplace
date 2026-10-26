@@ -517,6 +517,11 @@ export function OrderDetailsView({
       jaFoiEnviado,
       retiradaPronta,
       pagamentoNaEntrega,
+      // Enviado, cancelado e reativado: o servidor não abre a devolução
+      // automática para ele, então o texto não pode prometê-la.
+      cancelladoAposEnvio: pedido.cancelledAfterShipping === true,
+      produtoJaVoltou: Boolean(pedido.returnedToSellerAt),
+      retiradaNaLoja: pedido.retiradaNaLoja === true,
     });
   };
 

@@ -61,16 +61,16 @@ type Catalogo =
 
 const TODOS = "Todos";
 const BOTAO =
-  "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-3.5 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40";
+  "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-solid px-3.5 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40";
 const BOTAO_SECUNDARIO = `${BOTAO} border-admin-border-strong bg-admin-raised text-foreground hover:bg-admin-hover`;
 const PECA =
-  "relative flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-1 py-2 text-center text-xs font-bold leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40";
+  "relative flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 rounded-xl border border-solid px-1 py-2 text-center text-xs font-bold leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40";
 const PECA_COMUM =
   "border-admin-border bg-admin-surface text-muted-foreground hover:bg-admin-hover hover:text-foreground";
 const PECA_ESCOLHIDA =
   "border-2 border-foreground bg-admin-raised text-foreground";
 const FICHA =
-  "min-h-11 shrink-0 whitespace-nowrap rounded-full border px-3.5 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "min-h-11 shrink-0 whitespace-nowrap rounded-full border border-solid px-3.5 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function Peca({
   rotulo,
