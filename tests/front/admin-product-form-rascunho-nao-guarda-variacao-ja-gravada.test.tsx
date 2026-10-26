@@ -18,6 +18,7 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherAtributo } from "./helpers/atributo-da-variacao";
 
 const fetchProduct = vi.fn();
 const updateProduct = vi.fn();
@@ -261,7 +262,7 @@ describe("AdminProductFormView — rascunho x releitura do banco", () => {
         ) as HTMLButtonElement
       ).click();
     });
-    await digitarCampo("variant-name", "Cor");
+    await escolherAtributo(0, "Cor", "variant-name", digitarCampo);
     await digitarCampo("variant-value", "Verde");
     await digitarCampo("variant-stock", "4");
     await act(async () => {

@@ -11,6 +11,7 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherAtributo } from "./helpers/atributo-da-variacao";
 
 const addProduct = vi.fn();
 const updateProduct = vi.fn();
@@ -302,7 +303,7 @@ describe("AdminProductFormView — código automático e Na loja", () => {
     await tocar(
       document.querySelector('[data-testid="abrir-grade"]') as HTMLElement,
     );
-    await digitarCampo("grade-nome-0", "Cor");
+    await escolherAtributo(0, "Cor", "grade-nome-0", digitarCampo);
     await digitarCampo("grade-valor-0", "Azul");
     await tocar(
       document.querySelector(

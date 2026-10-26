@@ -17,6 +17,7 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherAtributo } from "./helpers/atributo-da-variacao";
 
 const addProduct = vi.fn();
 vi.mock("@/hooks/useProducts", () => ({
@@ -181,8 +182,8 @@ describe("AdminProductFormView — variação e botão Publicar dizem o que est�
     await act(async () => {
       clicarObrigatorio("+ Novo");
     });
+    await escolherAtributo(0, atributo, "variant-name", digitar);
     await act(async () => {
-      digitar("variant-name", atributo);
       digitar("variant-value", valor);
       if (sku !== undefined) digitar("variant-sku", sku);
       await esperarDebounce();

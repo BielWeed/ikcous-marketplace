@@ -23,6 +23,7 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherAtributo } from "./helpers/atributo-da-variacao";
 
 const fetchProduct = vi.fn();
 const updateProduct = vi.fn();
@@ -408,7 +409,7 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
     await act(async () => {
       novo.click();
     });
-    await digitarCampo("variant-name", "Cor");
+    await escolherAtributo(0, "Cor", "variant-name", digitarCampo);
     await digitarCampo("variant-value", valor);
     await digitarCampo("variant-stock", estoque);
     const confirmar = botaoPorTexto("Salvar variação");

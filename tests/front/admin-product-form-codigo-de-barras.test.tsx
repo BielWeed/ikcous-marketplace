@@ -16,6 +16,7 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherAtributo } from "./helpers/atributo-da-variacao";
 
 const addProduct = vi.fn();
 const updateProduct = vi.fn();
@@ -348,8 +349,8 @@ describe("AdminProductFormView — C5.2 campo Código de barras (produto e varia
   // document inteiro, não no hospedeiro.
   async function efetivarVarianteComCodigo(codigo: string) {
     await abrirModalDeVariante();
+    await escolherAtributo(0, "Tamanho", "variant-name", digitarInput);
     await act(async () => {
-      digitarInput("variant-name", "Tamanho");
       digitarInput("variant-value", "PP");
       digitarInput("variant-codigo-barras", codigo);
       await new Promise((resolve) => setTimeout(resolve, 300));
