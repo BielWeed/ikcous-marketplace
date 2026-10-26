@@ -606,6 +606,10 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "91b-antes-o-preco-do-produto-deixa-historico-ausente",
   "92a-conferir-a-busca-de-pedido-pelo-numero-aplicado",
   "92b-antes-a-busca-de-pedido-pelo-numero-base-vigente",
+  "95a-conferir-o-frete-tem-limite-de-cotacoes-aplicado",
+  "95b-antes-o-frete-tem-limite-de-cotacoes-ausente",
+  "96a-conferir-o-estoque-que-volta-tranca-na-mesma-ordem-aplicado",
+  "96b-antes-o-estoque-que-volta-tranca-na-mesma-ordem-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

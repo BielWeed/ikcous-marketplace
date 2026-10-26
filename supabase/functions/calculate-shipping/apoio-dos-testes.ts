@@ -150,6 +150,8 @@ export type Registro = {
     leiturasDeEndereco: number
     /** Cada `.in(coluna, valores)` pedido ao banco, na ordem — prova QUE ids o handler mandou buscar. */
     filtrosIn: Array<{ tabela: string; coluna: string; valores: unknown[] }>
+    /** Cada chamada ao contador de cotações por origem (`frete_consumir_cota`), na ordem. */
+    chamadasDeCota: Array<{ nome: string; args: Record<string, unknown> }>
 }
 
 export function bancoFalso(opts: {
@@ -159,6 +161,19 @@ export function bancoFalso(opts: {
     variantes?: any[]
     cache?: Array<{ options: unknown }>
     enderecoDaLoja?: string | null
+    /**
+     * O contador de cotações por origem (RPC `frete_consumir_cota`). Sem esta
+     * opção ele existe e aplica o teto que a edge manda. Com
+     * `limite` (ou, sem ele, o `p_limite` que a edge mandou), imita a regra da
+     * função SQL: janela fixa, UM contador por origem; a chamada que passa do
+     * limite é recusada com `espereSegundos`.
+     * `falha`: o contador quebra de um dos jeitos que a rede/o banco quebram.
+     */
+    cota?: {
+        limite?: number
+        espereSegundos?: number
+        falha?: "erro" | "excecao" | "resposta_estranha" | "travado" | "ausente"
+    }
     falhas?: {
         credenciais?: "erro" | "excecao"
         revisao?: boolean
@@ -200,7 +215,9 @@ export function bancoFalso(opts: {
         cacheLinhas: (opts.cache ?? []).map((l) => structuredClone(l)),
         leiturasDeEndereco: 0,
         filtrosIn: [],
+        chamadasDeCota: [],
     }
+    const contagemPorOrigem = new Map<string, number>()
 
     const construtor = (tabela: string, operacao: string, carga?: any, opcoesUpsert?: any) => {
         const filtros: Array<[string, string, unknown]> = []
@@ -352,6 +369,28 @@ export function bancoFalso(opts: {
             update: (linha: any) => construtor(tabela, "update", linha),
             delete: () => construtor(tabela, "delete"),
         }),
+        ...(opts.cota?.falha === "ausente"
+            ? {}
+            : {
+                rpc: async (nome: string, args: Record<string, unknown> = {}) => {
+                    registro.eventos.push(`rpc:${nome}`)
+                    registro.chamadasDeCota.push({ nome, args: structuredClone(args) })
+                    const falha = opts.cota?.falha
+                    if (falha === "excecao") throw new Error("conexão perdida ao contar a cotação: detalhe privado")
+                    if (falha === "erro") return { data: null, error: { message: "falha simulada do contador", code: "XX000" } }
+                    if (falha === "resposta_estranha") return { data: "ok", error: null }
+                    if (falha === "travado") return await new Promise(() => {})
+                    const origem = String(args.p_origem ?? "")
+                    // Sem `limite` na opção vale o que a EDGE mandou (`p_limite`): é o teto de verdade.
+                    const limite = opts.cota?.limite ?? Number(args.p_limite ?? Number.POSITIVE_INFINITY)
+                    const jaFeitas = contagemPorOrigem.get(origem) ?? 0
+                    if (jaFeitas >= limite) {
+                        return { data: { permitido: false, espere_segundos: opts.cota?.espereSegundos ?? 120 }, error: null }
+                    }
+                    contagemPorOrigem.set(origem, jaFeitas + 1)
+                    return { data: { permitido: true, espere_segundos: 0 }, error: null }
+                },
+            }),
     }
     return { cliente, registro, credenciais, config }
 }
@@ -429,7 +468,7 @@ export function linhasDoLog(saida: string, evento = "cotacao_frete"): any[] {
 /** Roda o handler com o banco e as transportadoras falsas. */
 export async function rodar(
     corpoDoPedido: Record<string, unknown>,
-    ambiente: { banco?: ReturnType<typeof bancoFalso>; rotas?: Rotas; admin?: boolean } = {},
+    ambiente: { banco?: ReturnType<typeof bancoFalso>; rotas?: Rotas; admin?: boolean; cabecalhos?: Record<string, string> } = {},
 ) {
     const banco = ambiente.banco ?? bancoFalso()
     const chamadas: Chamada[] = []
@@ -449,7 +488,7 @@ export async function rodar(
             const resposta = await handler(
                 new Request("http://localhost/calculate-shipping", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json", Authorization: "Bearer jwt-ficticio" },
+                    headers: { "Content-Type": "application/json", Authorization: "Bearer jwt-ficticio", ...(ambiente.cabecalhos ?? {}) },
                     body: JSON.stringify(corpoDoPedido),
                 }),
                 { supabase: banco.cliente, verificarAdmin: () => Promise.resolve(ambiente.admin ?? true) },

@@ -2658,6 +2658,36 @@ const ROL_DA_92 = [
   "get_admin_orders_paged: assinatura e atributos conhecidos",
   "get_admin_orders_paged: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
 ];
+// Lote 95 (20261389000000, o frete tem limite de cotacoes por origem: tabela frete_cota_por_origem e a funcao frete_consumir_cota, o contador que a
+// edge calculate-shipping consulta). A 95a prova o que ficou; a 95b prova a ausencia e as premissas. A 95a negativa (antes do apply)
+// responde "nao" em tudo menos no controle, nunca erro. Nenhuma das duas le linha de tabela.
+const ROL_DA_95A = [
+  "controle: catalogo publico visivel",
+  "frete_consumir_cota: uma so, com o corpo da 20261389000000 (md5)",
+  "frete_consumir_cota: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path fixo, retorna jsonb, 3 argumentos) e EXECUTE so para service_role",
+  "frete_cota_por_origem: tabela comum com RLS ligada sem FORCE e nenhuma politica",
+  "frete_cota_por_origem: nenhum privilegio para anon, authenticated, service_role nem PUBLIC",
+  "frete_cota_por_origem: as 3 colunas com o tipo certo, chave primaria (origem, janela_inicio), CHECK de origem e de chamadas e o indice por janela_inicio",
+];
+const ROL_DA_95B = [
+  "controle: catalogo publico visivel",
+  "frete_cota_por_origem e frete_consumir_cota: ainda NAO existem",
+  "os papeis anon, authenticated e service_role existem (o REVOKE e o GRANT da migration citam os tres)",
+];
+// Lote 96 (20261389100000, o estoque que volta tranca na mesma ordem da compra: so a funcao devolver_estoque e' redefinida, UM CREATE OR REPLACE).
+// A 96a prova o corpo novo; a 96b prova que o corpo vivo ainda e' o da 20261175000000 (o unico que a migration troca). A 96a negativa
+// (antes do apply) responde "nao" em tudo menos no controle e nos atributos, nunca erro. Nenhuma das duas le linha de tabela.
+const ROL_DA_96A = [
+  "controle: catalogo publico visivel",
+  "devolver_estoque: uma so, com o corpo da 20261389100000 (md5)",
+  "devolver_estoque: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path=public, retorna integer, argumento p_order_id uuid) e EXECUTE de ninguem de aplicacao (anon, authenticated, PUBLIC)",
+];
+const ROL_DA_96B = [
+  "controle: catalogo publico visivel",
+  "devolver_estoque: uma so, com o corpo VIGENTE da 20261175000000 (md5)",
+  "devolver_estoque: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path=public, retorna integer, argumento p_order_id uuid) e EXECUTE de ninguem de aplicacao (anon, authenticated, PUBLIC)",
+  "marketplace_order_items (order_id, product_id, variant_id), product_variants (id, product_id) e produtos (id) existem como uuid",
+];
 const ROL_FECHADO_POR_CONSULTA = {
   "90a-conferir-busca-do-painel-por-codigo-aplicado": [
     "controle: funcoes de public visiveis a este papel",
@@ -2689,6 +2719,11 @@ const ROL_FECHADO_POR_CONSULTA = {
   "92a-conferir-a-busca-de-pedido-pelo-numero-aplicado": ROL_DA_92,
   "92b-antes-a-busca-de-pedido-pelo-numero-base-vigente": ROL_DA_92,
   "91b-antes-o-preco-do-produto-deixa-historico-ausente": ROL_DA_91B,
+  "95a-conferir-o-frete-tem-limite-de-cotacoes-aplicado": ROL_DA_95A,
+  "95b-antes-o-frete-tem-limite-de-cotacoes-ausente": ROL_DA_95B,
+  "96a-conferir-o-estoque-que-volta-tranca-na-mesma-ordem-aplicado": ROL_DA_96A,
+  "96b-antes-o-estoque-que-volta-tranca-na-mesma-ordem-base-vigente":
+    ROL_DA_96B,
   "88a-conferir-so-o-dono-define-cargo-aplicado": ROL_DA_88A,
   "88b-antes-so-o-dono-define-cargo-ausente": ROL_DA_88B,
   "86a-conferir-ex-admin-no-resto-do-painel-aplicado": ROL_DA_86A,
