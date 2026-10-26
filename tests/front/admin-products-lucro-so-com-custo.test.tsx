@@ -192,6 +192,26 @@ describe("Produtos: o lucro do estoque diz que só conta produto com custo", () 
     expect(tela).not.toContain("Margem Bruta");
   });
 
+  it("o líquido não calculado diz o que falta e o atalho abre a folha das despesas", async () => {
+    await montar();
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>('button[aria-expanded="false"]')!
+        .click(),
+    );
+    const atalho = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Informar despesas",
+    );
+    expect(atalho).toBeTruthy();
+    expect(document.body.textContent).not.toContain(
+      "Calcular líquido do estoque",
+    );
+    await act(async () => {
+      atalho?.click();
+    });
+    expect(document.body.textContent).toContain("Calcular líquido do estoque");
+  });
+
   it("o número do lucro é valor menos custo (R$ 90 - R$ 30 = R$ 60,00)", async () => {
     await montar();
     const tela = hospedeiro.textContent ?? "";
