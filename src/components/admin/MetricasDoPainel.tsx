@@ -2,7 +2,12 @@ import type { KpiCardConfig } from "@/components/admin/AdminKpiCarousel";
 import { type TomDeEstado, classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 
-export type MetricaDoPainel = KpiCardConfig & { readonly tom?: TomDeEstado };
+export type MetricaDoPainel = KpiCardConfig & {
+  readonly tom?: TomDeEstado;
+  /** Atalho visível no cartão aberto, para o que o cartão ainda não consegue mostrar. */
+  readonly dica?: string;
+  readonly aoToque?: () => void;
+};
 import { ChevronDown, ChevronUp, Info } from "lucide-react";
 import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import "./metricas-do-painel.css";
@@ -349,6 +354,15 @@ export function MetricasDoPainel({
                   {card.parcial && " (parcial)"}
                 </p>
                 <p className="sr-only">{card.subValue}</p>
+                {card.dica && card.aoToque ? (
+                  <button
+                    type="button"
+                    onClick={card.aoToque}
+                    className="mt-1 min-h-11 text-left text-xs font-semibold text-sky-300 underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+                  >
+                    {card.dica}
+                  </button>
+                ) : null}
               </article>
             ))}
           </div>

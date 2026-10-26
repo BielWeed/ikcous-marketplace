@@ -682,6 +682,18 @@ export const AdminProductsView = memo(function AdminProductsView({
             : "Não calculado",
         icon: Calculator,
         accent: "text-sky-300",
+        // Sem as despesas o líquido não existe: o cartão diz o que falta e abre
+        // a folha onde o lojista as informa (antes só o (i) do cabeçalho levava lá).
+        ...(liquidoEstimado === null
+          ? {
+              dica: "Informar despesas",
+              aoToque: () =>
+                setExpandedHelp((prev) => ({
+                  ...prev,
+                  "financial-values": true,
+                })),
+            }
+          : {}),
         subValue:
           liquidoEstimado !== null
             ? `Estimado${financialStats.parcial ? " · Parcial" : ""} · despesas informadas nesta tela`
