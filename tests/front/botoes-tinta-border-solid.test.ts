@@ -24,6 +24,7 @@ const ARQUIVOS = [
   "src/views/customer/NotificationsView.tsx",
   "src/views/customer/ProfileView.tsx",
   "src/views/admin/AdminNotificationsView.tsx",
+  "src/components/admin/products/SeletorDeAtributo.tsx",
 ];
 
 // `border`, `border-2`, `border-t`, `border-x-4`, com variantes (hover:, md:)

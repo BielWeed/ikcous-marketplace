@@ -16,6 +16,7 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherAtributo } from "./helpers/atributo-da-variacao";
 
 const mocks = vi.hoisted(() => ({
   addProduct: vi.fn(),
@@ -197,7 +198,7 @@ describe("AdminProductFormView — grade: preço apagado não zera as linhas", (
     await act(async () => {
       clicarObrigatorio("+ Grade");
     });
-    await digitarCampo("grade-nome-0", "Tamanho");
+    await escolherAtributo(0, "Tamanho", "grade-nome-0", digitarCampo);
     for (const tam of ["P", "M", "G"]) {
       await digitarCampo("grade-valor-0", tam);
       await act(async () => {

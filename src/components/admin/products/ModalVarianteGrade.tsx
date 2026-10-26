@@ -1,9 +1,11 @@
-import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import {
   type LinhaNoPasso2,
   LinhasDaGrade,
 } from "@/components/admin/products/LinhasDaGrade";
-import { cn } from "@/lib/utils";
+import {
+  SeletorDeAtributo,
+  tipoDoNome,
+} from "@/components/admin/products/SeletorDeAtributo";
 import type { ProductVariant } from "@/types";
 import { erroDoEstoqueDaVariacao } from "@/utils/estoque-da-variacao";
 import {
@@ -24,7 +26,7 @@ import {
   dividirEmAtributos,
 } from "@/utils/variante-composta";
 import { AnimatePresence, motion } from "framer-motion";
-import { Layers, Plus, X } from "lucide-react";
+import { Layers } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
@@ -72,7 +74,8 @@ interface ModalVarianteGradeProps {
   /** TODAS as linhas do produto — ligadas e desligadas (a desligada existe:
    *  a grade não recria em dobro nem religa por trás do lojista). */
   variantesExistentes: ProductVariant[];
-  /** Sugestões de nome de atributo (os grupos comuns da casa). */
+  /** Os grupos que o produto já usa (ou os comuns da casa, se não usa nenhum):
+   *  o seletor só oferece as peças deles. */
   sugestoesDeAtributo: string[];
   /** O grupo em uso no produto, quando ele já tem variante — a trava de um
    *  grupo compara com o nome da grade no "Gerar". */
@@ -440,10 +443,14 @@ export function ModalVarianteGrade({
   const precoDoProdutoValido =
     precoDoProdutoNumero > 0 ? precoDoProdutoNumero : undefined;
 
+  // O exemplo do "+ Atributo": a outra metade da dupla mais comum.
+  const exemploDoProximoAtributo =
+    tipoDoNome(grupos.at(-1)?.nome ?? "") === "Cor" ? "Tamanho" : "Cor";
+
   const titulo =
     variantesExistentes.length > 0
-      ? "Completar Grade"
-      : "Nova Variante em Grade";
+      ? "Completar grade"
+      : "Nova variação em grade";
   const skusPrevistos = skusDaGrade(
     skuBase,
     linhas.map((linha) => ({ name: linha.name, value: linha.value })),
@@ -478,152 +485,77 @@ export function ModalVarianteGrade({
                 </h3>
                 <p className="mt-1 text-[11px] font-bold uppercase leading-none tracking-wider text-zinc-500">
                   {passo === 1
-                    ? "passo 1 de 2 — escolha os valores de cada atributo"
-                    : `passo 2 de 2 — estoque e preço das ${linhas.length} combinações novas`}
+                    ? "grade de variações — passo 1 de 2"
+                    : `grade de variações — passo 2 de 2 · ${linhas.length} combinações novas`}
                 </p>
               </div>
             </div>
 
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
               {passo === 1 &&
-                grupos.map((grupo, indice) => {
-                  const chips = valoresDoGrupo(grupo, variantesExistentes);
-                  return (
-                    <div
-                      key={grupo.chave}
-                      className="space-y-3 rounded-[20px] border border-admin-border bg-admin-surface p-3"
-                    >
-                      <div className="flex items-center gap-2">
-                        <label
-                          htmlFor={`grade-nome-${indice}`}
-                          className="ml-1 flex-1 text-[11px] font-black uppercase tracking-wider text-zinc-500"
-                        >
-                          Atributo {indice + 1} (ex: Cor, Tamanho)
-                        </label>
-                        {grupos.length > 1 && (
-                          <button
-                            type="button"
-                            aria-label={`Remover atributo da grade ${indice + 1}`}
-                            onClick={() =>
+                grupos.map((grupo, indice) => (
+                  <div
+                    key={grupo.chave}
+                    className="rounded-[22px] border border-admin-border bg-admin-surface p-4"
+                  >
+                    <SeletorDeAtributo
+                      modo="multiplo"
+                      numero={indice + 1}
+                      idDoNome={`grade-nome-${indice}`}
+                      idDoValor={`grade-valor-${indice}`}
+                      titulo={
+                        indice === 0
+                          ? "O que muda neste produto?"
+                          : "O que mais muda?"
+                      }
+                      nome={grupo.nome}
+                      onNome={(nome) => atualizarGrupo(grupo.chave, { nome })}
+                      sugestoes={sugestoesDeAtributo}
+                      selecionados={grupo.selecionados}
+                      chips={valoresDoGrupo(grupo, variantesExistentes).map(
+                        (chip) => ({ valor: chip.valor, usado: chip.usado }),
+                      )}
+                      onAlternar={(valor) => alternarValor(grupo, valor)}
+                      rascunho={grupo.rascunho}
+                      onRascunho={(rascunho) =>
+                        atualizarGrupo(grupo.chave, { rascunho })
+                      }
+                      onAdicionar={() => adicionarValorDigitado(grupo)}
+                      onLimpar={() =>
+                        atualizarGrupo(grupo.chave, {
+                          selecionados: [],
+                          adicionados: [],
+                          rascunho: "",
+                        })
+                      }
+                      aoRemover={
+                        grupos.length > 1
+                          ? () =>
                               setGrupos((prev) =>
                                 prev.filter((g) => g.chave !== grupo.chave),
                               )
-                            }
-                            className="flex size-11 items-center justify-center rounded-xl border border-admin-border bg-zinc-950 text-zinc-500 transition-all hover:border-red-500/30 hover:text-red-500 active:scale-95"
-                          >
-                            <X className="size-4" />
-                          </button>
-                        )}
-                      </div>
-                      <LocalBufferedInput
-                        id={`grade-nome-${indice}`}
-                        name={`grade-nome-${indice}`}
-                        type="text"
-                        value={grupo.nome}
-                        onFlush={(val) =>
-                          atualizarGrupo(grupo.chave, { nome: val })
-                        }
-                        className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                        placeholder="Ex: Cor"
-                      />
-                      {sugestoesDeAtributo.length > 0 && (
-                        <div className="ml-1 mt-1.5 flex flex-wrap gap-1.5">
-                          {sugestoesDeAtributo.map((attr) => (
-                            <button
-                              key={attr}
-                              type="button"
-                              onClick={() =>
-                                atualizarGrupo(grupo.chave, { nome: attr })
-                              }
-                              className={cn(
-                                "min-h-11 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border transition-all active:scale-95",
-                                grupo.nome === attr
-                                  ? "border-solid bg-admin-hover border-foreground text-foreground"
-                                  : "bg-zinc-950 border-admin-border text-zinc-500 hover:text-zinc-300 hover:border-admin-border-strong",
-                              )}
-                            >
-                              {attr}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {chips.length > 0 && (
-                        <div className="ml-1 flex flex-wrap gap-1.5 pt-1">
-                          {chips.map((chip) => {
-                            const selecionado = grupo.selecionados.some(
-                              (s) =>
-                                chaveMinuscula(s) ===
-                                chaveMinuscula(chip.valor),
-                            );
-                            return (
-                              <button
-                                key={chip.valor}
-                                type="button"
-                                aria-pressed={selecionado}
-                                onClick={() => alternarValor(grupo, chip.valor)}
-                                className={cn(
-                                  "min-h-11 px-3 py-2 rounded-full text-xs font-bold border transition-all active:scale-95",
-                                  selecionado
-                                    ? "border-solid bg-admin-hover border-foreground text-foreground"
-                                    : "bg-zinc-950 border-admin-border text-zinc-400 hover:border-admin-border-strong",
-                                )}
-                              >
-                                {chip.valor}
-                                {chip.usado && !selecionado && (
-                                  <span className="ml-1.5 text-[11px] font-black uppercase tracking-wider text-zinc-600">
-                                    já usado
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2 pt-1">
-                        <LocalBufferedInput
-                          id={`grade-valor-${indice}`}
-                          name={`grade-valor-${indice}`}
-                          type="text"
-                          aria-label={`Novo valor do atributo ${indice + 1}`}
-                          value={grupo.rascunho}
-                          onFlush={(val) =>
-                            atualizarGrupo(grupo.chave, { rascunho: val })
-                          }
-                          className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-3.5 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                          placeholder={`Novo valor de ${grupo.nome.trim() || "atributo"}…`}
-                        />
-                        <button
-                          type="button"
-                          aria-label={`Adicionar valor do atributo ${indice + 1}`}
-                          onClick={() => adicionarValorDigitado(grupo)}
-                          className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
-                        >
-                          <Plus className="size-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+                          : undefined
+                      }
+                      rotuloDoRemover={`Remover atributo da grade ${indice + 1}`}
+                    />
+                  </div>
+                ))}
 
               {passo === 1 && grupos.length < MAX_ATRIBUTOS_DA_GRADE && (
                 <button
                   type="button"
                   onClick={() => setGrupos((prev) => [...prev, grupoNovo()])}
-                  className="min-h-11 w-full rounded-2xl border border-dashed border-admin-border bg-zinc-950/60 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:border-emerald-500/30 hover:text-emerald-500 active:scale-95"
+                  className="min-h-11 w-full rounded-2xl border border-dashed border-admin-border bg-admin-bg/60 px-5 py-3 text-sm font-bold text-zinc-400 transition-all hover:border-admin-border-strong hover:text-foreground active:scale-95"
                 >
-                  + Atributo
+                  + Atributo (ex.: {exemploDoProximoAtributo})
                 </button>
               )}
 
               {passo === 1 && (
-                <p className="ml-1 text-[11px] font-medium leading-relaxed text-zinc-500">
-                  Toque nos valores que entram na grade — os marcados
-                  <span className="mx-1 font-black uppercase tracking-widest text-zinc-400">
-                    já usado
-                  </span>
-                  vieram das variantes deste produto. Só as combinações que
-                  AINDA NÃO EXISTEM serão criadas, até {MAX_ATRIBUTOS_DA_GRADE}{" "}
-                  atributos e {MAX_LINHAS_DA_GRADE} linhas por produto.
+                <p className="px-2 text-center text-xs leading-relaxed text-zinc-500">
+                  As combinações que já existem não são recriadas. Até{" "}
+                  {MAX_ATRIBUTOS_DA_GRADE} atributos e {MAX_LINHAS_DA_GRADE}{" "}
+                  linhas.
                 </p>
               )}
 

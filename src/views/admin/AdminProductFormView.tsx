@@ -18,6 +18,10 @@ import {
   ModalVarianteGrade,
 } from "@/components/admin/products/ModalVarianteGrade";
 import {
+  SeletorDeAtributo,
+  tipoDoNome,
+} from "@/components/admin/products/SeletorDeAtributo";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -106,6 +110,7 @@ import {
   Barcode,
   Camera,
   Check,
+  ChevronRight,
   DollarSign,
   Edit2,
   HelpCircle,
@@ -113,6 +118,7 @@ import {
   Info,
   Layers,
   Loader2,
+  Minus,
   Package,
   Plus,
   Power,
@@ -122,7 +128,6 @@ import {
   Smartphone,
   Store,
   Trash2,
-  X,
 } from "lucide-react";
 import React, {
   useState,
@@ -911,7 +916,26 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         : ["Cor", "Tamanho", "Voltagem"],
     ),
   ).filter(Boolean);
+  // Os valores que OUTRAS linhas do produto já gravam para um atributo ("azul",
+  // em "cor"): ao TOCAR uma bolinha, o seletor usa essa grafia, porque a loja
+  // compara o texto exato e "azul" + "Azul" viram duas cores. A linha em edição
+  // não conta (senão não haveria caminho para corrigir a caixa dela).
+  const valoresGravadosDoAtributo = (atributo: string): string[] => {
+    const chave = atributo.trim().toLowerCase();
+    if (chave === "") return [];
+    return formData.variants
+      .filter((v) => !editingVariant || v.id !== editingVariant.id)
+      .flatMap((v) => dividirEmAtributos(v.name, v.value))
+      .filter((par) => par.name.trim().toLowerCase() === chave)
+      .map((par) => par.value.trim())
+      .filter((valor) => valor !== "");
+  };
   const produtoTemGrupoDemais = temGrupoDemais(formData.variants);
+  // O exemplo do "+ Atributo": a outra metade da dupla mais comum.
+  const exemploDoProximoAtributo =
+    tipoDoNome(variantFormData.pares.at(-1)?.name ?? "") === "Cor"
+      ? "Tamanho"
+      : "Cor";
 
   useEffect(() => {
     formData.images.forEach((url) => {
@@ -1845,6 +1869,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         i === indice ? { ...par, [campo]: valor } : par,
       ),
     }));
+  };
+
+  // O − e o + do estoque da variação. O que não é número inteiro (o lojista
+  // digitou "1,5" ou apagou) conta como 0 antes de somar, e o − para em 0.
+  const somarEstoqueDaVariacao = (passo: 1 | -1) => {
+    setVariantFormData((p) => {
+      const texto = p.stockIncrement.trim();
+      const atual = /^\d+$/.test(texto) ? Number(texto) : 0;
+      return { ...p, stockIncrement: String(Math.max(0, atual + passo)) };
+    });
   };
 
   const handleVariantSubmit = () => {
@@ -3001,132 +3035,65 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     </div>
                     <div>
                       <h3 id="titulo-da-variacao" className="text-xl font-bold">
-                        {editingVariant ? "Editar Variante" : "Nova Variante"}
+                        {editingVariant ? "Editar variação" : "Nova variação"}
                       </h3>
                       <p className="mt-1 text-[11px] font-bold uppercase leading-none tracking-wider text-zinc-500">
-                        Grade de Produto
+                        Variação única
                       </p>
                     </div>
                   </div>
 
                   <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-                    {/* Atributos da variante. Um par é o caso simples de
-                        sempre; "+ Atributo" empilha dimensões (Cor E Tamanho)
-                        que viram UMA combinação com estoque próprio — ver
-                        `variante-composta.ts`. */}
+                    {/* O que muda nesta variação. Cada par é uma dimensão
+                        (Cor, Tamanho…) que o lojista ESCOLHE tocando; "+
+                        Atributo" empilha outra e as duas viram UMA combinação
+                        com estoque próprio — ver `variante-composta.ts`. O que
+                        é gravado segue sendo o nome e o valor em texto. */}
                     {variantFormData.pares.map((par, indice) => (
-                      <div key={par.chave} className="space-y-2">
-                        {indice === 0 ? (
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="min-w-0 space-y-2">
-                              <label
-                                htmlFor="variant-name"
-                                className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
-                              >
-                                Atributo (ex: Cor, Tamanho)
-                              </label>
-                              <LocalBufferedInput
-                                id="variant-name"
-                                name="variant-name"
-                                type="text"
-                                value={par.name}
-                                onFlush={(val) =>
-                                  atualizarParDeAtributo(indice, "name", val)
-                                }
-                                className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                                placeholder="Ex: Cor"
-                              />
-                            </div>
-                            <div className="min-w-0 space-y-2">
-                              <label
-                                htmlFor="variant-value"
-                                className="ml-1 pt-2 text-[11px] font-black uppercase tracking-widest text-zinc-500"
-                              >
-                                Valor do Atributo
-                              </label>
-                              <LocalBufferedInput
-                                id="variant-value"
-                                name="variant-value"
-                                type="text"
-                                value={par.value}
-                                onFlush={(val) =>
-                                  atualizarParDeAtributo(indice, "value", val)
-                                }
-                                className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                                placeholder="Ex: Espacial Grey"
-                              />
-                            </div>
-                            <div className="col-span-2">
-                              {suggestedAttributes.length > 0 && (
-                                <div className="ml-1 mt-1.5 flex flex-wrap gap-1.5">
-                                  {suggestedAttributes.map((attr) => (
-                                    <button
-                                      key={attr}
-                                      type="button"
-                                      onClick={() =>
-                                        atualizarParDeAtributo(
-                                          indice,
-                                          "name",
-                                          attr,
-                                        )
-                                      }
-                                      className={cn(
-                                        "min-h-11 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border transition-all active:scale-95",
-                                        par.name === attr
-                                          ? "border-solid bg-admin-hover border-foreground text-foreground"
-                                          : "bg-zinc-950 border-admin-border text-zinc-500 hover:text-zinc-300 hover:border-admin-border-strong",
-                                      )}
-                                    >
-                                      {attr}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2 pt-1">
-                            <div className="grid flex-1 grid-cols-2 gap-3">
-                              <LocalBufferedInput
-                                id={`variant-name-${indice}`}
-                                name={`variant-name-${indice}`}
-                                type="text"
-                                aria-label={`Atributo ${indice + 1}`}
-                                value={par.name}
-                                onFlush={(val) =>
-                                  atualizarParDeAtributo(indice, "name", val)
-                                }
-                                className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                                placeholder="Ex: Tamanho"
-                              />
-                              <LocalBufferedInput
-                                id={`variant-value-${indice}`}
-                                name={`variant-value-${indice}`}
-                                type="text"
-                                aria-label={`Valor do atributo ${indice + 1}`}
-                                value={par.value}
-                                onFlush={(val) =>
-                                  atualizarParDeAtributo(indice, "value", val)
-                                }
-                                className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                                placeholder="Ex: PP"
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              aria-label={`Remover atributo ${indice + 1}`}
-                              onClick={() =>
-                                setVariantFormData((p) => ({
-                                  ...p,
-                                  pares: p.pares.filter((_, j) => j !== indice),
-                                }))
-                              }
-                              className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-zinc-950 text-zinc-500 transition-all hover:border-red-500/30 hover:text-red-500 active:scale-95"
-                            >
-                              <X className="size-4" />
-                            </button>
-                          </div>
-                        )}
+                      <div
+                        key={par.chave}
+                        className="rounded-[22px] border border-admin-border bg-admin-surface p-4"
+                      >
+                        <SeletorDeAtributo
+                          modo="unico"
+                          numero={indice + 1}
+                          idDoNome={
+                            indice === 0
+                              ? "variant-name"
+                              : `variant-name-${indice}`
+                          }
+                          idDoValor={
+                            indice === 0
+                              ? "variant-value"
+                              : `variant-value-${indice}`
+                          }
+                          compacto={variantFormData.pares.length > 1}
+                          titulo={
+                            indice === 0 ? "O que muda" : "O que mais muda?"
+                          }
+                          nome={par.name}
+                          onNome={(val) =>
+                            atualizarParDeAtributo(indice, "name", val)
+                          }
+                          valor={par.value}
+                          onValor={(val) =>
+                            atualizarParDeAtributo(indice, "value", val)
+                          }
+                          sugestoes={suggestedAttributes}
+                          valoresEmUso={valoresGravadosDoAtributo(par.name)}
+                          aoRemover={
+                            indice > 0
+                              ? () =>
+                                  setVariantFormData((p) => ({
+                                    ...p,
+                                    pares: p.pares.filter(
+                                      (_, j) => j !== indice,
+                                    ),
+                                  }))
+                              : undefined
+                          }
+                          rotuloDoRemover={`Remover atributo ${indice + 1}`}
+                        />
                       </div>
                     ))}
 
@@ -3141,140 +3108,165 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           pares: [...p.pares, parNovo()],
                         }))
                       }
-                      className="min-h-11 w-full rounded-2xl border border-dashed border-admin-border bg-zinc-950/60 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:border-emerald-500/30 hover:text-emerald-500 active:scale-95"
+                      className="min-h-11 w-full rounded-2xl border border-dashed border-admin-border bg-admin-bg/60 px-5 py-3 text-sm font-bold text-zinc-400 transition-all hover:border-admin-border-strong hover:text-foreground active:scale-95"
                     >
-                      + Atributo
+                      + Atributo (ex.: {exemploDoProximoAtributo})
                     </button>
 
-                    {/* Quantidade em Estoque & Sobrescrever Preço */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label
-                          htmlFor="variant-stock"
-                          className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
-                        >
-                          Quantidade em Estoque
-                        </label>
-                        <LocalBufferedInput
-                          id="variant-stock"
-                          name="variant-stock"
-                          type="number"
-                          value={variantFormData.stockIncrement}
-                          onFlush={(val) =>
-                            setVariantFormData((p) => ({
-                              ...p,
-                              stockIncrement: val,
-                            }))
-                          }
-                          className="w-full rounded-2xl border border-admin-border bg-zinc-950 px-5 py-4 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                        />
-                        <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-500">
-                          Estoque físico real para esta variação específica.
-                        </span>
-                      </div>
-                      <div className="space-y-2">
-                        <label
-                          htmlFor="variant-price"
-                          className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
-                        >
-                          Preço diferente nesta variação
-                        </label>
-                        <div className="relative flex items-center">
-                          <span className="absolute left-5 text-xs font-black text-zinc-600">
-                            R$
-                          </span>
-                          <LocalBufferedInput
-                            id="variant-price"
-                            name="variant-price"
-                            mask="currency"
-                            zeroVazio
-                            value={variantFormData.priceOverride}
-                            onFlush={(val) =>
-                              setVariantFormData((p) => ({
-                                ...p,
-                                priceOverride: val,
-                              }))
-                            }
-                            className="w-full rounded-2xl border border-admin-border bg-zinc-950 py-4 pl-11 pr-5 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                            placeholder="Auto"
-                          />
-                        </div>
-                        <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-500">
-                          Deixe em branco para usar o preço padrão.
-                          {editingVariant?.priceOverride === 0 &&
-                            " Esta variação está salva a R$ 0,00 (de graça na loja): apague o campo para voltar ao preço padrão."}
-                        </span>
-                        {/* O 0 é gravado como preço próprio e vale no lugar do
-                            preço do produto: a variação sai de graça. Só
-                            avisa; não bloqueia nem muda o valor gravado. */}
-                        {precoDaVariacaoEhZero(
-                          variantFormData.priceOverride,
-                        ) && (
-                          <span
-                            data-testid="aviso-variacao-de-graca"
-                            className="ml-1 mt-1 block text-[11px] font-bold leading-tight text-amber-400"
+                    {/* Estoque e preço desta variação. */}
+                    <div className="space-y-3 rounded-[22px] border border-admin-border bg-admin-surface p-4">
+                      <p className="text-base font-bold text-foreground">
+                        Estoque e preço
+                      </p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="min-w-0 space-y-1.5">
+                          <label
+                            htmlFor="variant-stock"
+                            className="ml-1 text-xs text-zinc-400"
                           >
-                            Com R$ 0,00 esta variação será vendida de graça.
-                            Para usar o preço do produto, deixe o campo vazio.
-                          </span>
-                        )}
+                            Quantidade
+                          </label>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              aria-label="Diminuir estoque"
+                              onClick={() => somarEstoqueDaVariacao(-1)}
+                              className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-admin-raised text-foreground transition-all active:scale-95"
+                            >
+                              <Minus className="size-4" />
+                            </button>
+                            <LocalBufferedInput
+                              id="variant-stock"
+                              name="variant-stock"
+                              type="number"
+                              value={variantFormData.stockIncrement}
+                              onFlush={(val) =>
+                                setVariantFormData((p) => ({
+                                  ...p,
+                                  stockIncrement: val,
+                                }))
+                              }
+                              className="w-full px-1 text-center text-base font-black transition-all focus:border-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                            />
+                            <button
+                              type="button"
+                              aria-label="Aumentar estoque"
+                              onClick={() => somarEstoqueDaVariacao(1)}
+                              className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-admin-raised text-foreground transition-all active:scale-95"
+                            >
+                              <Plus className="size-4" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="min-w-0 space-y-1.5">
+                          <label
+                            htmlFor="variant-price"
+                            className="ml-1 text-xs text-zinc-400"
+                          >
+                            Preço desta variação
+                          </label>
+                          <div className="relative flex items-center">
+                            <span className="absolute left-4 text-xs font-black text-zinc-600">
+                              R$
+                            </span>
+                            <LocalBufferedInput
+                              id="variant-price"
+                              name="variant-price"
+                              mask="currency"
+                              zeroVazio
+                              value={variantFormData.priceOverride}
+                              onFlush={(val) =>
+                                setVariantFormData((p) => ({
+                                  ...p,
+                                  priceOverride: val,
+                                }))
+                              }
+                              className="w-full rounded-2xl border border-admin-border bg-zinc-950 py-4 pl-10 pr-3 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                              placeholder="Auto"
+                            />
+                          </div>
+                        </div>
                       </div>
+                      <span className="ml-1 block text-xs leading-tight text-zinc-500">
+                        Em branco = preço do produto.
+                        {editingVariant?.priceOverride === 0 &&
+                          " Esta variação está salva a R$ 0,00 (de graça na loja): apague o campo para voltar ao preço padrão."}
+                      </span>
+                      {/* O 0 é gravado como preço próprio e vale no lugar do
+                          preço do produto: a variação sai de graça. Só
+                          avisa; não bloqueia nem muda o valor gravado. */}
+                      {precoDaVariacaoEhZero(variantFormData.priceOverride) && (
+                        <span
+                          data-testid="aviso-variacao-de-graca"
+                          className="ml-1 block text-[11px] font-bold leading-tight text-amber-400"
+                        >
+                          Com R$ 0,00 esta variação será vendida de graça. Para
+                          usar o preço do produto, deixe o campo vazio.
+                        </span>
+                      )}
                     </div>
 
-                    <div className="space-y-2">
-                      <label
-                        htmlFor="variant-status"
-                        className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
-                      >
-                        Aparece na loja?
-                      </label>
-                      <button
-                        id="variant-status"
-                        role="switch"
-                        aria-checked={variantFormData.active}
-                        type="button"
-                        onClick={() =>
-                          setVariantFormData((p) => ({
-                            ...p,
-                            active: !p.active,
-                          }))
-                        }
+                    <button
+                      id="variant-status"
+                      role="switch"
+                      aria-checked={variantFormData.active}
+                      type="button"
+                      onClick={() =>
+                        setVariantFormData((p) => ({
+                          ...p,
+                          active: !p.active,
+                        }))
+                      }
+                      className="flex min-h-14 w-full select-none items-center gap-3 rounded-[22px] border border-solid border-admin-border bg-admin-surface px-4 py-3 text-left transition-all active:scale-[0.99]"
+                    >
+                      <span className="flex-1 text-base font-bold text-foreground">
+                        Aparece na loja
+                      </span>
+                      <span
                         className={cn(
-                          "w-full px-5 py-4 border rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-between active:scale-95 select-none",
+                          "text-sm font-bold",
                           variantFormData.active
-                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20"
-                            : "bg-zinc-950 border-admin-border text-zinc-500 hover:bg-white/5",
+                            ? "text-emerald-400"
+                            : "text-zinc-500",
                         )}
                       >
-                        <span>
-                          {variantFormData.active ? "Ativo" : "Offline"}
-                        </span>
+                        {variantFormData.active ? "Ativo" : "Inativo"}
+                      </span>
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "flex h-8 w-14 shrink-0 items-center rounded-full p-1 transition-colors",
+                          variantFormData.active
+                            ? "bg-emerald-500"
+                            : "bg-admin-border-strong",
+                        )}
+                      >
                         <span
                           className={cn(
-                            "w-2.5 h-2.5 rounded-full shadow-[0_0_8px_currentColor] transition-all",
+                            "size-6 rounded-full bg-white shadow transition-transform",
                             variantFormData.active
-                              ? "bg-emerald-500 text-emerald-500/50 scale-100"
-                              : "bg-zinc-700 text-zinc-700/50 scale-90",
+                              ? "translate-x-6"
+                              : "translate-x-0",
                           )}
                         />
-                      </button>
-                    </div>
-                    {/* Imagem da Variante — APONTA uma das imagens do produto
+                      </span>
+                    </button>
+                    {/* Foto da variação — APONTA uma das imagens do produto
                         (pedido do Gabriel, 02/09: o upload era ineficiente;
                         a imagem já foi enviada quando o produto a recebeu, a
                         variante só referencia a URL). */}
-                    <div className="space-y-2">
-                      <span className="ml-1 block text-[11px] font-black uppercase tracking-widest text-zinc-500">
-                        Imagem da Variante (Opcional)
-                      </span>
+                    <div className="space-y-3 rounded-[22px] border border-admin-border bg-admin-surface p-4">
+                      <p className="text-base font-bold text-foreground">
+                        Foto desta variação
+                      </p>
                       {formData.images.length === 0 &&
                       !variantFormData.imageUrl ? (
-                        <p className="rounded-2xl border border-admin-border bg-zinc-950/60 px-4 py-3 text-[11px] font-bold leading-relaxed text-zinc-500">
+                        <p className="rounded-2xl border border-admin-border bg-admin-bg/60 px-4 py-3 text-[11px] font-bold leading-relaxed text-zinc-500">
                           Adicione imagens ao produto primeiro — a variante
                           aponta para uma delas em vez de enviar arquivo novo.
                         </p>
                       ) : (
-                        <div className="custom-scrollbar-hidden flex w-full snap-x gap-3 overflow-x-auto py-1">
+                        <div className="custom-scrollbar-hidden flex w-full snap-x gap-3 overflow-x-auto p-1">
                           {/* Imagem gravada na variante que não pertence mais
                               ao produto (foi removida depois): segue visível
                               para poder ser mantida ou trocada. */}
@@ -3284,6 +3276,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             ) && (
                               <button
                                 type="button"
+                                data-testid="foto-da-variacao"
                                 aria-pressed="true"
                                 title="Imagem atual da variante — toque para remover"
                                 onClick={() =>
@@ -3292,7 +3285,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                     imageUrl: "",
                                   }))
                                 }
-                                className="relative size-20 shrink-0 snap-start overflow-hidden rounded-2xl border-2 border-foreground ring-2 ring-foreground transition-all"
+                                className="relative size-16 shrink-0 snap-start overflow-hidden rounded-2xl border-2 border-solid border-foreground ring-2 ring-foreground transition-all"
                               >
                                 <img
                                   src={variantFormData.imageUrl}
@@ -3311,6 +3304,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                               <button
                                 key={url}
                                 type="button"
+                                data-testid="foto-da-variacao"
                                 aria-pressed={selecionada}
                                 title={
                                   selecionada
@@ -3324,10 +3318,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                   }))
                                 }
                                 className={cn(
-                                  "relative size-20 shrink-0 snap-start overflow-hidden rounded-2xl border transition-all",
+                                  "relative size-16 shrink-0 snap-start overflow-hidden rounded-2xl border border-solid transition-all",
                                   selecionada
                                     ? "border-2 border-foreground ring-2 ring-foreground"
-                                    : "border-admin-border hover:border-emerald-500/50",
+                                    : "border-admin-border hover:border-admin-border-strong",
                                 )}
                               >
                                 <img
@@ -3336,8 +3330,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                   className="size-full object-cover"
                                 />
                                 {selecionada && (
-                                  <span className="absolute inset-x-0 bottom-0 bg-foreground py-0.5 text-center text-[11px] font-black text-background">
-                                    Selecionada
+                                  <span className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-foreground text-background">
+                                    <Check
+                                      data-marca="selecionado"
+                                      strokeWidth={3}
+                                      className="size-3.5"
+                                    />
                                   </span>
                                 )}
                               </button>
@@ -3345,16 +3343,18 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           })}
                         </div>
                       )}
-                      <span className="ml-1 block text-[11px] leading-tight text-zinc-500">
-                        Aponta para uma das imagens do produto — nada é enviado
-                        de novo. Facilita a visualização do produto na tela de
-                        checkout e na seleção de atributos.
+                      <span className="block text-xs leading-tight text-zinc-500">
+                        Toque na foto que mostra esta variação. É uma das fotos
+                        do produto — nada é enviado de novo.
                       </span>
                     </div>
-                    <details className="rounded-2xl border border-admin-border bg-admin-surface">
-                      <summary className="flex min-h-11 cursor-pointer items-center gap-3 p-3 text-sm font-bold">
-                        <Barcode className="size-5 text-pink-300" />
-                        Códigos e câmera
+                    <details className="group rounded-[22px] border border-admin-border bg-admin-surface">
+                      <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 text-base font-bold [&::-webkit-details-marker]:hidden">
+                        <span className="flex-1">Códigos e câmera</span>
+                        <span className="text-sm font-normal text-zinc-500">
+                          Opcional
+                        </span>
+                        <ChevronRight className="size-5 text-zinc-500 transition-transform group-open:rotate-90" />
                       </summary>
                       <div className="space-y-4 p-3 pt-0">
                         <div className="space-y-2">
@@ -3499,9 +3499,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         aberto={showGradeForm}
         onFechar={() => setShowGradeForm(false)}
         variantesExistentes={formData.variants}
-        sugestoesDeAtributo={suggestedAttributes.filter(
-          (attr) => !attr.includes("/"),
-        )}
+        sugestoesDeAtributo={suggestedAttributes}
         grupoUnicoEmUso={gruposDeVariacao(formData.variants).at(0) ?? null}
         skusDaLoja={skusDaLoja}
         skuBaseSugerida={skuAutomatico ? formData.sku : ""}

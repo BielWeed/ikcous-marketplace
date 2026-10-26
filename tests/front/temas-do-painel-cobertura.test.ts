@@ -156,6 +156,10 @@ const MANTIDAS = new Map<string, string>([
   ["[html[data-admin-tema=claro]_&]:text-red-400", VERDE_SOBRE_TINTA_ESCURA],
   ["bg-zinc-100", CLARO_SOLIDO],
   ["hover:bg-zinc-200", CLARO_SOLIDO],
+  [
+    "text-zinc-900",
+    "✓ escuro sobre a bolinha de cor clara (Branco, Bege, Amarelo…) do seletor de variação: a amostra é a cor real e não muda com o tema",
+  ],
   ["bg-[#BE123C]", "ação negativa sólida com texto branco AA nos três temas"],
   [
     "hover:bg-[#BE123C]",

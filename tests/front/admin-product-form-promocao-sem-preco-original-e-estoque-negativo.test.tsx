@@ -9,6 +9,7 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherAtributo } from "./helpers/atributo-da-variacao";
 
 const fetchProduct = vi.fn();
 const addProduct = vi.fn();
@@ -242,7 +243,7 @@ describe("AdminProductFormView — promoção sem preço original e estoque nega
         if (!novo) throw new Error("O botão + Novo não está na tela.");
         novo.click();
       });
-      await digitarCampo("variant-name", "Cor");
+      await escolherAtributo(0, "Cor", "variant-name", digitarCampo);
       await digitarCampo("variant-value", "Verde");
     }
 

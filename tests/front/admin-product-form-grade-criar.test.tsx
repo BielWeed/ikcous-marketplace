@@ -17,6 +17,10 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  atributoMarcado,
+  escolherAtributo,
+} from "./helpers/atributo-da-variacao";
 
 const fetchProduct = vi.fn();
 const upsertVariants = vi.fn().mockResolvedValue(undefined);
@@ -218,7 +222,7 @@ describe("AdminProductFormView — modal Nova variante em grade (produto novo)",
 
     // Passo 1 — Cor: Amarela, Verde × Tamanho: PP, P, M (digitados; produto
     // novo não tem valores usados ainda, então nenhum chip de "já usado").
-    await digitarCampo("grade-nome-0", "Cor");
+    await escolherAtributo(0, "Cor", "grade-nome-0", digitarCampo);
     await digitarCampo("grade-valor-0", "Amarela");
     await act(async () => {
       clicarPorRotulo("Adicionar valor do atributo 1");
@@ -230,7 +234,7 @@ describe("AdminProductFormView — modal Nova variante em grade (produto novo)",
     await act(async () => {
       clicarObrigatorio("+ Atributo");
     });
-    await digitarCampo("grade-nome-1", "Tamanho");
+    await escolherAtributo(1, "Tamanho", "grade-nome-1", digitarCampo);
     await digitarCampo("grade-valor-1", "PP");
     await act(async () => {
       clicarPorRotulo("Adicionar valor do atributo 2");
@@ -318,7 +322,7 @@ describe("AdminProductFormView — modal Nova variante em grade (produto novo)",
     await act(async () => {
       clicarObrigatorio("+ Grade");
     });
-    await digitarCampo("grade-nome-0", "Cor");
+    await escolherAtributo(0, "Cor", "grade-nome-0", digitarCampo);
     await digitarCampo("grade-valor-0", "Azul");
     await act(async () => {
       clicarPorRotulo("Adicionar valor do atributo 1");
@@ -342,7 +346,7 @@ describe("AdminProductFormView — modal Nova variante em grade (produto novo)",
     await act(async () => {
       clicarObrigatorio("+ Grade");
     });
-    expect(valorDoCampo("grade-nome-0")).toBe("");
+    expect(atributoMarcado(0)).toBeNull();
     expect(valorDoCampo("grade-valor-0")).toBe("");
   });
 
@@ -351,7 +355,7 @@ describe("AdminProductFormView — modal Nova variante em grade (produto novo)",
     await act(async () => {
       clicarObrigatorio("+ Grade");
     });
-    await digitarCampo("grade-nome-0", "Cor");
+    await escolherAtributo(0, "Cor", "grade-nome-0", digitarCampo);
     await digitarCampo("grade-valor-0", "Preto/Branco");
     await act(async () => {
       clicarPorRotulo("Adicionar valor do atributo 1");
@@ -465,8 +469,8 @@ describe("AdminProductFormView — grade gravando pela RPC (produto existente)",
     });
     // Os atributos da grade do produto voltam preenchidos — é o modo
     // "Completar Grade", sem redigir Cor nem Tamanho.
-    expect(valorDoCampo("grade-nome-0")).toBe("Cor");
-    expect(valorDoCampo("grade-nome-1")).toBe("Tamanho");
+    expect(atributoMarcado(0)).toBe("Cor");
+    expect(atributoMarcado(1)).toBe("Tamanho");
     await digitarCampo("grade-valor-0", "Amarela");
     await act(async () => {
       clicarPorRotulo("Adicionar valor do atributo 1");
@@ -633,7 +637,7 @@ describe("AdminProductFormView — grade gravando pela RPC (produto existente)",
       clicarObrigatorio("+ Grade");
     });
     // O grupo legado "Cor" abre pronto — completar o MESMO grupo é permitido.
-    expect(valorDoCampo("grade-nome-0")).toBe("Cor");
+    expect(atributoMarcado(0)).toBe("Cor");
     // A grade desta tentativa: Cor {Branca — o chip já usado} × Tamanho {P}.
     await act(async () => {
       clicarChipObrigatorio("Branca");
@@ -642,7 +646,11 @@ describe("AdminProductFormView — grade gravando pela RPC (produto existente)",
     await act(async () => {
       clicarObrigatorio("+ Atributo");
     });
-    await digitarCampo("grade-nome-1", "Tamanho");
+    // O seletor já não oferece a peça Tamanho a um produto que usa Cor; o
+    // caminho que sobra é o "Outro" (nome livre), e a trava recusa igual.
+    await escolherAtributo(1, "Tamanho", "grade-nome-1", digitarCampo, {
+      viaOutro: true,
+    });
     await digitarCampo("grade-valor-1", "P");
     await act(async () => {
       clicarPorRotulo("Adicionar valor do atributo 2");
@@ -676,7 +684,7 @@ describe("AdminProductFormView — grade gravando pela RPC (produto existente)",
     await act(async () => {
       clicarObrigatorio("+ Grade");
     });
-    expect(valorDoCampo("grade-nome-0")).toBe("Cor");
+    expect(atributoMarcado(0)).toBe("Cor");
     // O grupo é o mesmo: digitar "Preta" (valor novo) e gerar é permitido —
     // a grade alimenta o grupo que o produto já tem em vez de inventar outro.
     await digitarCampo("grade-valor-0", "Preta");

@@ -31,6 +31,16 @@ export function corDaVariacao(
   return cores.get(normalizar(valor)) ?? null;
 }
 
+/**
+ * As cores que o painel mostra para TOCAR (em vez de digitar o nome). Saem do
+ * mesmo dicionário acima: o hex de cada uma é o que a loja já desenha, então a
+ * cor escolhida no painel nunca aparece sem amostra na loja.
+ */
+export const PALETA_DE_CORES: readonly { nome: string; hex: string }[] =
+  /* @__PURE__ */ "Preto,Branco,Cinza,Azul,Azul marinho,Verde,Vermelho,Vinho,Rosa,Nude,Bege,Marrom,Amarelo,Laranja,Roxo,Lilás,Dourado,Prata"
+    .split(",")
+    .map((nome) => ({ nome, hex: cores.get(normalizar(nome)) ?? "#000000" }));
+
 const MAIOR_CHAVE = Math.max(
   ...[...cores.keys()].map((chave) => chave.split(" ").length),
 );

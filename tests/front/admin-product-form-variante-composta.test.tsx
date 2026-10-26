@@ -23,6 +23,10 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  atributoMarcado,
+  escolherAtributo,
+} from "./helpers/atributo-da-variacao";
 
 const fetchProduct = vi.fn();
 vi.mock("@/hooks/useProducts", () => ({
@@ -180,11 +184,13 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
   /** Digita um par inteiro (os campos já têm de estar na tela) e espera o
    *  debounce chegar ao estado. */
   async function digitarPar(indice: number, atributo: string, valor: string) {
+    await escolherAtributo(
+      indice,
+      atributo,
+      indice === 0 ? "variant-name" : `variant-name-${indice}`,
+      digitar,
+    );
     await act(async () => {
-      digitar(
-        indice === 0 ? "variant-name" : `variant-name-${indice}`,
-        atributo,
-      );
       digitar(
         indice === 0 ? "variant-value" : `variant-value-${indice}`,
         valor,
@@ -279,8 +285,8 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     await act(async () => {
       clicarObrigatorio("+ Atributo");
     });
+    await escolherAtributo(1, "Tamanho", "variant-name-1", digitar);
     await act(async () => {
-      digitar("variant-name-1", "Tamanho");
       await new Promise((r) => setTimeout(r, 300));
     });
     await act(async () => {
@@ -346,9 +352,9 @@ describe("AdminProductFormView — variante com mais de um atributo", () => {
     });
 
     // Os DOIS pares voltam preenchidos, um por dimensão.
-    expect(valorDoCampo("variant-name")).toBe("Cor");
+    expect(atributoMarcado(0)).toBe("Cor");
     expect(valorDoCampo("variant-value")).toBe("Branca");
-    expect(valorDoCampo("variant-name-1")).toBe("Tamanho");
+    expect(atributoMarcado(1)).toBe("Tamanho");
     expect(valorDoCampo("variant-value-1")).toBe("PP");
 
     // Salvar sem mexer reproduz a mesma linha — nada se perde no round-trip.

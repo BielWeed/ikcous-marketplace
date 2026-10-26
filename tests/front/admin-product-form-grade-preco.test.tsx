@@ -24,6 +24,7 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { escolherAtributo } from "./helpers/atributo-da-variacao";
 
 const mocks = vi.hoisted(() => ({
   addProduct: vi.fn(),
@@ -250,7 +251,7 @@ describe("AdminProductFormView — o preço da grade vira o Preço de Venda", ()
     await act(async () => {
       clicarObrigatorio("+ Grade");
     });
-    await digitarCampo("grade-nome-0", "Cor");
+    await escolherAtributo(0, "Cor", "grade-nome-0", digitarCampo);
     for (const cor of ["Amarela", "Verde"]) {
       await digitarCampo("grade-valor-0", cor);
       await act(async () => {
@@ -260,7 +261,7 @@ describe("AdminProductFormView — o preço da grade vira o Preço de Venda", ()
     await act(async () => {
       clicarObrigatorio("+ Atributo");
     });
-    await digitarCampo("grade-nome-1", "Tamanho");
+    await escolherAtributo(1, "Tamanho", "grade-nome-1", digitarCampo);
     for (const tam of ["P", "M"]) {
       await digitarCampo("grade-valor-1", tam);
       await act(async () => {
