@@ -1013,6 +1013,11 @@ async function main() {
   } catch (erro) {
     falhar("INDETERMINADO", `Não conectei no banco efêmero: ${erro.message}`);
   }
+  // As sucessoras da 230 e da 231 (20261392000000 e 20261392100000) podem estar no ar: esta prova mede os corpos da 230/231 e
+  // o rollback deles (que recusa com a sucessora no ar). O clone e' descartavel; as sucessoras tem prova propria.
+  await require("./a-busca-de-clientes-posterior.cjs").desfazerBuscaDeClientesPosteriorNaTransacao(
+    cliente,
+  );
   const linhas = [];
   let falhas = 0;
   const provas = SO_COMPORTAMENTO

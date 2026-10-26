@@ -270,6 +270,10 @@ on:
           - 98b-antes-a-foto-da-devolucao-e-a-pergunta-tem-teto-base-vigente
           - 100a-conferir-o-financeiro-descreve-a-venda-do-balcao-aplicado
           - 100b-antes-o-financeiro-descreve-a-venda-do-balcao-base-vigente
+          - 101a-conferir-a-lista-de-clientes-nao-repete-ninguem-aplicado
+          - 101b-antes-a-lista-de-clientes-nao-repete-ninguem-base-vigente
+          - 102a-conferir-a-busca-do-crm-acha-o-numero-com-mais-55-aplicado
+          - 102b-antes-a-busca-do-crm-acha-o-numero-com-mais-55-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

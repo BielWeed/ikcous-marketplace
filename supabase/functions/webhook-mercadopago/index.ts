@@ -970,7 +970,19 @@ async function handler(
   // O que NÃO entra: cache/memoização da resolução de credenciais. O que
   // barateia é recusar antes, não guardar segredo em memória entre
   // requisições.
-  if (!tsDoHeader || !v1Recebido) {
+  //
+  // FORMATO, não só presença (lote 204, 26/10/2026): `ts=1,v1=0` passava
+  // daqui e pagava o SELECT para o HMAC recusar depois. O MP manda `ts` só
+  // com dígitos (o timestamp da notificação) e `v1` com 64 hex MINÚSCULOS (o
+  // `digest('hex')` do HMAC-SHA256); `avaliarAssinatura` compara o v1 byte a
+  // byte com esse hex minúsculo, então nada fora deste formato jamais
+  // passaria por ela — a decisão continua idêntica, só mais barata.
+  if (
+    !tsDoHeader ||
+    !v1Recebido ||
+    !/^\d+$/.test(tsDoHeader) ||
+    !/^[0-9a-f]{64}$/.test(v1Recebido)
+  ) {
     console.warn("webhook-mercadopago: sem x-signature utilizável — recusado antes de tocar o banco");
     return json({ error: "Assinatura inválida." }, 401);
   }

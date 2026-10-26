@@ -150,9 +150,11 @@ export const ProductCarousel = React.memo(function ProductCarousel({
             </span>
           </div>
         )}
-        <h2 className="text-3xl font-black leading-[0.9] tracking-tighter text-zinc-950 sm:text-4xl">
-          {title}
-        </h2>
+        {title?.trim() ? (
+          <h2 className="break-words text-3xl font-black leading-[0.9] tracking-tighter text-zinc-950 sm:text-4xl">
+            {title}
+          </h2>
+        ) : null}
       </div>
 
       <div className="relative -mx-6">

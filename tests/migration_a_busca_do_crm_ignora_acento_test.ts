@@ -308,7 +308,7 @@ Deno.test("a ordem de desfazer e o custo aceito estao declarados no cabecalho; a
   assert.ok(sucessoras.includes(NOME));
 });
 
-Deno.test("so a baseline, a 20261199000000 e este par definem crm_clientes com este contrato; depois da 20261199000000 ninguem mais a redefine alem deste par", () => {
+Deno.test("so a baseline, a 20261199000000 e este par definem crm_clientes com este contrato; depois da 20261199000000 ninguem mais a redefine alem deste par e da sucessora declarada (20261392100000, o corte do +55)", () => {
   const todas = [...Deno.readDirSync(new URL("supabase/migrations/", DIR))]
     .map((e) => e.name)
     .filter((n) => n.endsWith(".sql") && !n.startsWith("_"));
@@ -321,5 +321,16 @@ Deno.test("so a baseline, a 20261199000000 e este par definem crm_clientes com e
       )
     )
       posteriores.push(n);
-  assert.deepEqual(posteriores.sort(), [NOME, `rollback-manual-${NOME}`]);
+  // A sucessora (lote 204) tem o proprio teste: tests/migration_a_busca_do_crm_acha_o_numero_com_mais_55_test.ts.
+  const SUCESSORA =
+    "20261392100000_a_busca_do_crm_acha_o_numero_com_mais_55.sql";
+  assert.deepEqual(
+    posteriores.sort(),
+    [
+      NOME,
+      SUCESSORA,
+      `rollback-manual-${NOME}`,
+      `rollback-manual-${SUCESSORA}`,
+    ].sort(),
+  );
 });

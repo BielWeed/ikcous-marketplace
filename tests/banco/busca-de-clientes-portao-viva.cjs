@@ -623,6 +623,87 @@ prova(
   },
 );
 
+// (s) As SUCESSORAS (26/10/2026): a 20261392000000 (get_admin_customers_paged com o desempate pelo id) e a 20261392100000
+// (crm_clientes com o corte do +55) redefinem as duas depois deste lote. A 32a aceita o corpo delas (o `vivo` mostra o
+// `esperado`); a 32b as reprova como corpo novo; corpo estranho segue reprovando so a linha certa.
+const ARQ392 =
+  "20261392000000_a_lista_de_clientes_nao_repete_nem_esconde_ninguem_entre_as_paginas.sql";
+const ARQ3921 = "20261392100000_a_busca_do_crm_acha_o_numero_com_mais_55.sql";
+const MIG392 = lerMig(ARQ392);
+const MIG3921 = lerMig(ARQ3921);
+const sucessoras = async (c) => {
+  await depois(c);
+  await c.query(MIG392);
+  await c.query(MIG3921);
+};
+prova(
+  "(s) SUCESSORAS: com a 20261392000000 e a 20261392100000 no ar (juntas, so uma, em CRLF), a 32a segue POSITIVA e mostra o esperado; a 32b reprova como corpo novo; 1 byte a mais no corpo da sucessora reprova SO o md5 dela",
+  async () => {
+    const hCli = md5(corpoDe(MIG392, "get_admin_customers_paged"));
+    const hCrm = md5(corpoDe(MIG3921, "crm_clientes"));
+    assert.equal(hCli, "1c71829d75e3d8f17bf7fb01019c05ec");
+    assert.equal(hCrm, "39a2a6de59041e09b6f1e466a6782dca");
+    assert.ok(SQL[A].includes(`'${hCli}'`) && SQL[A].includes(`'${hCrm}'`));
+    assert.ok(!SQL[B].includes(hCli) && !SQL[B].includes(hCrm));
+    const s = await noEstado(sucessoras, [A, B]);
+    confereRol(A, s[A]);
+    confereRol(B, s[B]);
+    assert.deepEqual(reprovadas(s[A]), [], "32a positiva com as sucessoras");
+    assert.equal(s[A].find((l) => l.item === A_CLI_MD5).vivo, H.cliNovo);
+    assert.equal(s[A].find((l) => l.item === A_CRM_MD5).vivo, H.crmNovo);
+    assert.deepEqual(
+      reprovadas(s[B]),
+      [B_CLI_MD5, B_CLI_MARC, B_CRM_MD5, B_CRM_MARC].sort(),
+    );
+    for (const [rotulo, montar] of [
+      [
+        "so a 392",
+        async (c) => {
+          await depois(c);
+          await c.query(MIG392);
+        },
+      ],
+      [
+        "so a 3921",
+        async (c) => {
+          await depois(c);
+          await c.query(MIG3921);
+        },
+      ],
+      [
+        "em CRLF",
+        async (c) => {
+          await depois(c);
+          await c.query(emCRLF(MIG392));
+          await c.query(emCRLF(MIG3921));
+        },
+      ],
+    ]) {
+      const x = await noEstado(montar, [A]);
+      assert.deepEqual(reprovadas(x[A]), [], `32a positiva (${rotulo})`);
+    }
+    // 1 byte a mais no corpo da sucessora: corpo estranho, reprova SO o md5 dela.
+    for (const [fn, corpo, linha] of [
+      [FUNCOES.cli, corpoDe(MIG392, "get_admin_customers_paged"), A_CLI_MD5],
+      [FUNCOES.crm, corpoDe(MIG3921, "crm_clientes"), A_CRM_MD5],
+    ]) {
+      const x = await noEstado(
+        async (c) => {
+          await sucessoras(c);
+          await c.query(fn.cria(`${corpo} `, fn.attrs));
+        },
+        [A],
+      );
+      assert.deepEqual(reprovadas(x[A]), [linha]);
+      assert.equal(
+        x[A].find((l) => l.item === linha).vivo,
+        md5(`${corpo} `),
+        "o vivo mostra o md5 do corpo estranho",
+      );
+    }
+  },
+);
+
 prova(
   "PORTAO: o veredito do conferir-banco.cjs sobre as linhas reais (rol=ok; ok_false 0 e 4)",
   async () => {
@@ -663,6 +744,11 @@ async function main() {
   try {
     await C.query(`CREATE ROLE ${PAPEL_RO} NOLOGIN NOSUPERUSER BYPASSRLS`);
     await C.query(`GRANT pg_read_all_data TO ${PAPEL_RO}`);
+    // As sucessoras da 230 e da 231 (20261392000000 e 20261392100000) podem estar no ar: esta prova mede a 32a/32b sobre os
+    // corpos da 230/231 (o clone e' descartavel). A 32a aceitar o corpo das sucessoras e' provado na prova (s) abaixo.
+    await require("./a-busca-de-clientes-posterior.cjs").desfazerBuscaDeClientesPosteriorNaTransacao(
+      C,
+    );
     for (const { nome, corpo } of PROVAS) {
       try {
         await corpo();

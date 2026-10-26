@@ -247,6 +247,10 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     sectionId: string,
     newTitle: string,
   ): Promise<boolean> => {
+    if (!newTitle.trim()) {
+      toast.error("Informe um título para a vitrine");
+      return false;
+    }
     // O campo de nome grava ao sair dele, mesmo sem ter mudado nada: sem este
     // corte, abrir e fechar o painel regravava a vitrine (e, sem internet,
     // reclamava de uma edição que ninguém fez).
@@ -601,9 +605,14 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                         aria-label="Mais ações"
                         title="Mais ações"
                         disabled={salvandoVitrines}
-                        className="flex size-9 items-center justify-center rounded-[12px] border border-admin-border bg-zinc-900 text-zinc-300 transition-colors hover:text-white"
+                        className="group flex min-h-11 min-w-11 items-center justify-center rounded-[12px]"
                       >
-                        <MoreHorizontal className="size-[17px]" />
+                        <span
+                          aria-hidden="true"
+                          className="flex size-9 items-center justify-center rounded-[12px] border border-admin-border bg-zinc-900 text-zinc-300 transition-colors group-hover:text-white"
+                        >
+                          <MoreHorizontal className="size-[17px]" />
+                        </span>
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
@@ -711,6 +720,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           posicao={homeSections.findIndex((s) => s.id === secaoEmEdicao.id) + 1}
           produtos={products}
           idsEmExibicao={idsEmExibicaoNaEdicao}
+          travado={salvandoVitrines}
           aoFechar={() => setEditingSectionId(null)}
           aoRenomear={(titulo) => handleRenameSection(secaoEmEdicao.id, titulo)}
           aoMudarQuantidade={(quantidade) =>

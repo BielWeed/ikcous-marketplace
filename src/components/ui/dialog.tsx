@@ -48,13 +48,17 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  overlayClassName,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean;
+  /** Classes do véu: quem precisa ficar ACIMA da barra de baixo da loja
+   * (z-120) sobe véu e conteúdo juntos (`z-[130]`), como no AlertDialog. */
+  overlayClassName?: string;
 }) {
   return (
     <DialogPortal data-slot="dialog-portal">
-      <DialogOverlay />
+      <DialogOverlay className={overlayClassName} />
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
