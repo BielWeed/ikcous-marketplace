@@ -7,21 +7,33 @@ import {
   tipoDoNome,
 } from "@/utils/atributos-da-variacao";
 import { PALETA_DE_CORES, corDaVariacao } from "@/utils/cor-da-variacao";
-import { Check, Pencil, Plus, Ruler, X, Zap } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import {
+  Check,
+  Layers,
+  Package,
+  Pencil,
+  Plus,
+  Ruler,
+  X,
+  Zap,
+} from "lucide-react";
+import { type KeyboardEvent, type ReactNode, useState } from "react";
 
 /**
  * Escolher em vez de digitar: o lojista toca o que muda no produto (Tamanho,
- * Cor, Voltagem ou Outro) e, embaixo, toca a bolinha da cor, o tamanho ou
- * a voltagem. A loja já mostra a cor como bolinha; aqui o painel fala a mesma
- * língua.
+ * Cor, Voltagem, Capacidade, Material ou Outro) e, embaixo, toca a bolinha da
+ * cor ou o botão do tamanho, da voltagem, da capacidade ou do material. A loja
+ * já mostra a cor como bolinha; aqui o painel fala a mesma língua. Tamanho e
+ * Capacidade têm ABAS (Roupas | Números | Calçados | Outro; Armazenamento |
+ * Volume | Outro): a aba aberta nasce do valor que o produto já grava.
  *
  * O que é GRAVADO não muda: o nome do atributo ("Cor") e o nome do valor
  * ("Azul marinho") continuam sendo texto em `product_variants` — o seletor só
  * muda como o lojista chega neles. Por isso o tipo marcado é DERIVADO do nome
  * que já existe: produto antigo com "Cor" abre com a peça Cor marcada; qualquer
- * outro nome ("Material") abre em "Outro" com o texto preservado, e o valor
- * antigo ("Espacial Grey") segue no campo de texto, nunca se perde.
+ * outro nome ("Estampa") abre em "Outro" com o texto preservado, e o valor
+ * antigo ("Espacial Grey", "2 anos") segue no campo de texto e na aba Outro,
+ * nunca se perde.
  *
  * Dois modos: `unico` (a variação de um valor só) e `multiplo` (a grade, onde
  * vários valores entram de uma vez). O estado dos valores é do PAI — o seletor
@@ -32,35 +44,160 @@ import { type ReactNode, useState } from "react";
 export type { TipoDoAtributo };
 export { tipoDoNome };
 
-const TAMANHOS = [
-  "PP",
-  "P",
-  "M",
-  "G",
-  "GG",
-  "XG",
-  "34",
-  "36",
-  "38",
-  "40",
-  "42",
-  "44",
-  "Único",
-] as const;
-const VOLTAGENS = ["110V", "220V", "Bivolt"] as const;
 const NOMES_DA_PALETA = PALETA_DE_CORES.map((cor) => cor.nome);
 
-function listaDoTipo(tipo: TipoDoAtributo | null): readonly string[] {
-  if (tipo === "Cor") return NOMES_DA_PALETA;
-  if (tipo === "Tamanho") return TAMANHOS;
-  if (tipo === "Voltagem") return VOLTAGENS;
-  return [];
+/** "34", "36"… "56": os números como TEXTO, que é o que o produto grava. */
+const faixa = (de: number, ate: number, passo = 1): string[] =>
+  Array.from({ length: Math.floor((ate - de) / passo) + 1 }, (_, i) =>
+    String(de + i * passo),
+  );
+
+interface Aba {
+  rotulo: string;
+  /** Vazia = a aba "Outro": nada a tocar, o lojista digita. */
+  valores: readonly string[];
 }
 
-/** A régua que a grade e a trava de um grupo já usam para dizer "é o mesmo
- *  valor": sem as pontas e sem diferença de caixa. Acento NÃO se dobra: "Vovó" e
- *  "Vovô" são valores diferentes. */
-const chave = (texto: string): string => texto.trim().toLocaleLowerCase();
+/** O que cada tipo oferece para TOCAR. Mais de uma aba = a faixa de abas. */
+interface Catalogo {
+  abas: readonly Aba[];
+  /** Largura do botão decide as colunas: 4 cabem só o que tem até 5 letras. */
+  colunas: string;
+  rotuloDasAbas?: string;
+  ajuda: string;
+  /** A aba Outro explica o que fazer; o texto vale para a ação também. */
+  exemplo?: string;
+  /** "Digitar outro tamanho": atalho para a aba Outro e o campo. */
+  digitarOutro?: string;
+  /** O Material não tem aba Outro: o botão "Outro" da própria lista leva ao campo. */
+  botaoOutro?: string;
+  icone?: ReactNode;
+}
+
+const OUTRA_ABA: Aba = { rotulo: "Outro", valores: [] };
+
+const CATALOGO = new Map<TipoDoAtributo, Catalogo>([
+  [
+    "Tamanho",
+    {
+      abas: [
+        {
+          rotulo: "Roupas",
+          valores: ["PP", "P", "M", "G", "GG", "XG", "Único"],
+        },
+        { rotulo: "Números", valores: faixa(34, 56, 2) },
+        { rotulo: "Calçados", valores: faixa(33, 44) },
+        OUTRA_ABA,
+      ],
+      // Abaixo de 360 px o "Único" marcado (✓ + texto) não cabe em 4 colunas.
+      colunas: "grid-cols-4 max-[359px]:grid-cols-3",
+      rotuloDasAbas: "Sistema de medida",
+      ajuda: "Roupas: PP a XG e Único · Números: 34 a 56 · Calçados: 33 a 44",
+      exemplo: "Digite o tamanho no campo abaixo. Ex.: 2 anos, 48.",
+      digitarOutro: "Digitar outro tamanho",
+    },
+  ],
+  [
+    "Voltagem",
+    {
+      abas: [{ rotulo: "Voltagem", valores: ["110V", "220V", "Bivolt"] }],
+      colunas: "grid-cols-3",
+      ajuda: "Bivolt serve nas duas tomadas (110V e 220V).",
+      icone: <Zap aria-hidden="true" className="size-4 shrink-0" />,
+    },
+  ],
+  [
+    "Capacidade",
+    {
+      abas: [
+        {
+          rotulo: "Armazenamento",
+          valores: [
+            "16 GB",
+            "32 GB",
+            "64 GB",
+            "128 GB",
+            "256 GB",
+            "512 GB",
+            "1 TB",
+          ],
+        },
+        {
+          rotulo: "Volume",
+          valores: ["50 ml", "100 ml", "250 ml", "500 ml", "1 L", "2 L"],
+        },
+        OUTRA_ABA,
+      ],
+      colunas: "grid-cols-3",
+      rotuloDasAbas: "Tipo de capacidade",
+      ajuda: "Armazenamento: 16 GB a 1 TB · Volume: 50 ml a 2 L",
+      exemplo: "Digite a capacidade no campo abaixo. Ex.: 3 L, 750 ml.",
+      digitarOutro: "Digitar outra capacidade",
+    },
+  ],
+  [
+    "Material",
+    {
+      abas: [
+        {
+          rotulo: "Material",
+          valores: [
+            "Algodão",
+            "Poliéster",
+            "Couro",
+            "Couro sintético",
+            "Linho",
+            "Jeans",
+            "Plástico",
+            "Metal",
+            "Madeira",
+            "Vidro",
+          ],
+        },
+      ],
+      colunas: "grid-cols-3",
+      ajuda: "Não achou o seu? Toque em Outro e digite.",
+      botaoOutro: "Outro material",
+    },
+  ],
+]);
+
+/** Tudo o que o tipo oferece pronto, de todas as abas (a Cor oferece a paleta). */
+function ofertaDoTipo(tipo: TipoDoAtributo | null): readonly string[] {
+  if (tipo === "Cor") return NOMES_DA_PALETA;
+  return (
+    (tipo ? CATALOGO.get(tipo)?.abas : undefined)?.flatMap((a) => a.valores) ??
+    []
+  );
+}
+
+/** A régua do TOQUE para dizer "é o mesmo valor": sem as pontas, sem caixa, sem
+ *  acento e sem espaço no meio ("128gb" é o "128 GB" da lista, "Algodao" é o
+ *  "Algodão"). Serve só para reconhecer o botão e reaproveitar a grafia que o
+ *  produto já grava; o que o lojista DIGITA nunca passa por ela e grava como
+ *  foi digitado. */
+const chave = (texto: string): string => dobrar(texto).replace(/\s+/g, "");
+
+/** A aba que abre: a que tem MAIS dos valores já existentes (empate = a primeira,
+ *  e o que nenhuma lista tem conta para "Outro"). Sem valor nenhum, a primeira.
+ *  Quem decide é só a abertura: depois o lojista manda, e digitar um valor novo
+ *  não faz a aba pular. "38" mora em Números e em Calçados e abre em Números. */
+function abaInicial(abas: readonly Aba[], valores: string[]): string {
+  const placar = new Map<string, number>();
+  for (const v of new Set(valores.map(chave).filter((c) => c !== ""))) {
+    const dona =
+      abas.find((a) => a.valores.some((item) => chave(item) === v)) ??
+      abas.find((a) => a.valores.length === 0);
+    if (dona) placar.set(dona.rotulo, (placar.get(dona.rotulo) ?? 0) + 1);
+  }
+  let melhor = abas.at(0);
+  let maximo = 0;
+  for (const a of abas) {
+    const n = placar.get(a.rotulo) ?? 0;
+    if (n > maximo) [melhor, maximo] = [a, n];
+  }
+  return melhor?.rotulo ?? "";
+}
 
 /** Cor clara pede check escuro (e o contrário): o check nunca some na bolinha. */
 function ehClara(hex: string): boolean {
@@ -90,17 +227,21 @@ interface Comum {
    *  conta como as duas partes). Um produto aceita um grupo só (ver
    *  `um-grupo-de-variacao.ts`), então sobram as peças dessas partes e
    *  "Outro" — sugerir "Tamanho" a quem já usa "Cor" seria convidar para o
-   *  que a trava recusa. As partes que não são Cor, Tamanho nem Voltagem
-   *  (ex.: "Material") viram atalho, sem redigitar. Vazio = nada em uso. */
+   *  que a trava recusa. As partes sem peça própria (ex.: "Estampa") viram
+   *  atalho, sem redigitar. Vazio = nada em uso. */
   sugestoes?: string[];
   /** Par de uma variante composta: a mesma coisa, mais enxuta. */
   compacto?: boolean;
   aoRemover?: () => void;
   rotuloDoRemover?: string;
-  /** Tipos (Cor, Tamanho, Voltagem) que OUTRO atributo do mesmo produto já
+  /** Tipos (Cor, Tamanho, Voltagem…) que OUTRO atributo do mesmo produto já
    *  escolheu: a peça fica apagada e não clicável. O tipo do próprio atributo
    *  nunca apaga, e "Outro" não conta (os nomes livres se distinguem). */
   tiposOcupados?: TipoDoAtributo[];
+  /** Os NOMES (não os tipos) que os outros pares/cartões do mesmo produto já
+   *  usam. A peça e o atalho nunca escrevem um desses: "Memória / Memória" a
+   *  trava recusaria. Vazio = nenhum outro par. */
+  nomesOcupados?: string[];
   /** O atributo nasce em "Outro" com o campo do nome aberto (o atalho "+ Outro"). */
   iniciarEmOutro?: boolean;
 }
@@ -127,12 +268,18 @@ interface Multiplo extends Comum {
   onAdicionar: () => void;
   /** O tipo mudou de verdade: o que estava escolhido era do atributo antigo. */
   onLimpar: () => void;
+  /** Troca a lista inteira de escolhidos de uma vez. É o que "Marcar todos" e
+   *  "Limpar" usam: marcar 12 tamanhos com 12 chamadas de `onAlternar` deixaria
+   *  só o último (cada uma parte da lista velha). Sem ele, os dois botões não
+   *  aparecem. */
+  onDefinir?: (selecionados: string[]) => void;
 }
 
 export type SeletorDeAtributoProps = Unico | Multiplo;
 
 // Tamanho primeiro: é por ele que a cliente começa na loja (escolhe o tamanho
 // e vê as cores que existem nele), e o lojista monta o produto na mesma ordem.
+// Seis peças cabem em 320 px porque viram 3 colunas × 2 linhas.
 const PECAS: ReadonlyArray<{ tipo: TipoDoAtributo; icone: ReactNode }> = [
   { tipo: "Tamanho", icone: <Ruler aria-hidden="true" className="size-6" /> },
   {
@@ -149,6 +296,11 @@ const PECAS: ReadonlyArray<{ tipo: TipoDoAtributo; icone: ReactNode }> = [
     ),
   },
   { tipo: "Voltagem", icone: <Zap aria-hidden="true" className="size-6" /> },
+  {
+    tipo: "Capacidade",
+    icone: <Package aria-hidden="true" className="size-6" />,
+  },
+  { tipo: "Material", icone: <Layers aria-hidden="true" className="size-6" /> },
   { tipo: "Outro", icone: <Pencil aria-hidden="true" className="size-6" /> },
 ];
 
@@ -159,6 +311,8 @@ const PLACEHOLDER: Record<TipoDoAtributo, string> = {
   Cor: "Outra cor? Digite aqui",
   Tamanho: "Outro tamanho? Digite aqui",
   Voltagem: "Outra voltagem? Digite aqui",
+  Capacidade: "Outra capacidade? Digite aqui",
+  Material: "Outro material? Digite aqui",
   Outro: "Outro valor? Digite aqui",
 };
 
@@ -166,9 +320,11 @@ const CHAMADA = new Map<TipoDoAtributo, [string, string]>([
   ["Cor", ["Escolha a cor", "Escolha as cores"]],
   ["Tamanho", ["Escolha o tamanho", "Escolha os tamanhos"]],
   ["Voltagem", ["Escolha a voltagem", "Escolha as voltagens"]],
+  ["Capacidade", ["Escolha a capacidade", "Escolha as capacidades"]],
+  ["Material", ["Escolha o material", "Escolha os materiais"]],
 ]);
 
-/** "3 selecionadas" (cores, feminino) · "3 selecionados" (o resto) · "nenhum selecionado". */
+/** "3 selecionadas" (cores e capacidades, feminino) · "3 selecionados" (o resto) · "nenhum selecionado". */
 function contagemDosSelecionados(n: number, feminino: boolean): string {
   if (n === 0) return feminino ? "nenhuma selecionada" : "nenhum selecionado";
   const palavra = feminino ? "selecionada" : "selecionado";
@@ -207,6 +363,48 @@ function Bolinha({
     >
       {marcada && <Marca clara={ehClara(hex)} />}
     </span>
+  );
+}
+
+/** O botão grande de um valor pronto (tamanho, voltagem, capacidade, material):
+ *  marcado = fundo mais claro, borda forte e o ✓ ANTES do texto. */
+function BotaoDeValor({
+  item,
+  tipo,
+  ativa,
+  icone,
+  aoTocar,
+}: {
+  item: string;
+  tipo: TipoDoAtributo;
+  ativa: boolean;
+  icone?: ReactNode;
+  aoTocar: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={ativa}
+      aria-label={`${tipo} ${item}`}
+      onClick={aoTocar}
+      className={cn(
+        "flex min-h-[52px] min-w-0 items-center justify-center gap-1 rounded-2xl border border-solid px-0.5 text-center text-sm font-bold leading-tight transition-all active:scale-95",
+        ativa
+          ? "border-foreground bg-admin-hover text-foreground ring-1 ring-inset ring-foreground"
+          : "border-admin-border bg-admin-bg text-zinc-300 hover:border-admin-border-strong",
+      )}
+    >
+      {ativa ? (
+        <Check
+          data-marca="selecionado"
+          strokeWidth={3}
+          className="size-3.5 shrink-0"
+        />
+      ) : (
+        icone
+      )}
+      {item}
+    </button>
   );
 }
 
@@ -251,6 +449,33 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
     .map((n) => n.trim())
     .filter((n) => n !== "");
 
+  // Nomes que OUTRO par do produto já usa (sem caixa nem acento) e, entre os que
+  // o produto grava, os de cada tipo. Um produto "Memória / Armazenamento" tem
+  // DOIS nomes do tipo Capacidade: a peça sozinha não distingue, então o nome
+  // real vira atalho e a peça escolhe o que ainda não foi tomado.
+  const tomados = new Set((props.nomesOcupados ?? []).map(dobrar));
+  const unicos = (nomes: string[]) =>
+    nomes.filter(
+      (n, i) => nomes.findIndex((o) => dobrar(o) === dobrar(n)) === i,
+    );
+  const emUsoDoTipo = (alvo: TipoDoAtributo) =>
+    unicos(emUso.filter((n) => tipoDoNome(n) === alvo));
+  /** O nome que a peça escreve: o que o produto já grava e ninguém tomou; sem
+   *  nome em uso, o canônico, se o tipo e o nome estão livres. `undefined` = a
+   *  peça não tem o que escrever (fica apagada). */
+  const grafiaLivre = (alvo: TipoDoAtributo): string | undefined =>
+    emUsoDoTipo(alvo).find((n) => !tomados.has(dobrar(n))) ??
+    // O canônico só vale quando o produto não grava nome nenhum desse tipo.
+    ((props.tiposOcupados ?? []).includes(alvo) ||
+    tomados.has(dobrar(alvo)) ||
+    emUsoDoTipo(alvo).length > 0
+      ? undefined
+      : alvo);
+
+  // O atalho do nome que OUTRO par já usa não grava (o do próprio par nunca é "tomado").
+  const atalhoTomado = (atalho: string) =>
+    tomados.has(dobrar(atalho)) && dobrar(nome) !== dobrar(atalho);
+
   const tocarNaPeca = (alvo: TipoDoAtributo) => {
     if (alvo === tipo) return;
     if (alvo === "Outro") {
@@ -259,20 +484,28 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
       if (tipoDoNome(nome) !== "Outro" && nome !== "") trocarDeTipo("");
       return;
     }
-    setOutroAberto(false);
     // A loja agrupa pelo nome EXATO: num produto que já grava "cor", a peça Cor
     // grava "cor" (e não "Cor", que viraria um segundo grupo na vitrine).
-    const grafia = emUso.find((n) => tipoDoNome(n) === alvo) ?? alvo;
+    const grafia = grafiaLivre(alvo);
+    if (grafia === undefined) return;
+    setOutroAberto(false);
     if (nome !== grafia) trocarDeTipo(grafia);
   };
 
   // O que o lojista TOCA (bolinha, tamanho, chip) usa a grafia que o produto já
   // grava: "azul" gravado + toque na bolinha Azul = "azul". O que ele DIGITA
   // nunca é trocado: texto digitado grava exatamente o que foi digitado.
+  // Na grade vale também o que já está marcado (digitado nesta abertura): tocar
+  // o botão equivalente o DESMARCA em vez de criar um segundo valor.
   const valoresGravados =
     props.modo === "unico"
       ? (props.valoresEmUso ?? [])
-      : props.chips.filter((chip) => chip.usado).map((chip) => chip.valor);
+      : [
+          // O já marcado vem primeiro: com "1 L" e "1L" gravados, o toque acha o
+          // valor marcado e o desmarca, em vez de marcar o "gêmeo".
+          ...props.selecionados,
+          ...props.chips.filter((chip) => chip.usado).map((chip) => chip.valor),
+        ];
   const casarValor = (item: string): string =>
     valoresGravados.find((gravado) => chave(gravado) === chave(item)) ?? item;
   const escolher = (item: string) => {
@@ -280,11 +513,12 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
     if (props.modo === "unico") props.onValor(valor);
     else props.onAlternar(valor);
   };
-  const atalhos = emUso
-    .filter((n) => tipoDoNome(n) === "Outro")
-    .filter(
-      (n, i, todos) => todos.findIndex((o) => dobrar(o) === dobrar(n)) === i,
-    );
+  // Atalho = nome em uso que a peça não representa sozinha: os de "Outro" e os
+  // de um tipo com mais de um nome em uso.
+  const atalhos = unicos(emUso).filter((n) => {
+    const t = tipoDoNome(n);
+    return t === "Outro" || (t !== null && emUsoDoTipo(t).length > 1);
+  });
   // Sem nada em uso, as quatro peças. Com grupo em uso, só as dele: a peça do
   // que a linha em edição já é nunca some.
   const pecasVisiveis = PECAS.filter(
@@ -302,37 +536,116 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
       ? props.chips.filter(
           (chip) =>
             chip.usado ||
-            !listaDoTipo(tipo).some(
+            !ofertaDoTipo(tipo).some(
               (item) => chave(item) === chave(chip.valor),
             ),
         )
       : [];
 
   const ehPaleta = tipo === "Cor";
-  const lista =
-    tipo === "Tamanho" || tipo === "Voltagem" ? listaDoTipo(tipo) : [];
+
+  // As abas: a que abre vem do que o produto já grava; depois quem manda é o
+  // lojista. Trocar de tipo recomeça (a lista de Capacidade não é a de Tamanho).
+  const catalogo = tipo ? CATALOGO.get(tipo) : undefined;
+  const temAbas = (catalogo?.abas.length ?? 0) > 1;
+  const valoresDoProduto =
+    props.modo === "unico"
+      ? [props.valor]
+      : [...props.selecionados, ...props.chips.map((chip) => chip.valor)];
+  const abaDeAbertura = catalogo
+    ? abaInicial(catalogo.abas, valoresDoProduto)
+    : "";
+  const [escolhaDaAba, setEscolhaDaAba] = useState({
+    tipo,
+    rotulo: abaDeAbertura,
+  });
+  if (escolhaDaAba.tipo !== tipo) {
+    setEscolhaDaAba({ tipo, rotulo: abaDeAbertura });
+  }
+  const rotuloDaAba =
+    escolhaDaAba.tipo === tipo ? escolhaDaAba.rotulo : abaDeAbertura;
+  const abaAtual =
+    catalogo?.abas.find((a) => a.rotulo === rotuloDaAba) ??
+    catalogo?.abas.at(0);
+  const irParaOCampo = () => document.getElementById(idDoValor)?.focus();
+  const abrirAba = (rotulo: string, comCampo: boolean) => {
+    setEscolhaDaAba({ tipo, rotulo });
+    if (comCampo) irParaOCampo();
+  };
+  const idDaAba = (indice: number) => `${idDoValor}-aba-${indice}`;
+  const idDoPainel = `${idDoValor}-painel`;
+  // Setas, Home e End como no padrão tablist: trocam a aba e levam o foco.
+  const aoTeclarNaAba = (
+    e: KeyboardEvent<HTMLButtonElement>,
+    indice: number,
+  ) => {
+    const total = catalogo?.abas.length ?? 0;
+    const destino =
+      e.key === "ArrowRight"
+        ? (indice + 1) % total
+        : e.key === "ArrowLeft"
+          ? (indice + total - 1) % total
+          : e.key === "Home"
+            ? 0
+            : e.key === "End"
+              ? total - 1
+              : -1;
+    const aba = destino >= 0 ? catalogo?.abas.at(destino) : undefined;
+    if (!aba) return;
+    e.preventDefault();
+    abrirAba(aba.rotulo, false);
+    document.getElementById(idDaAba(destino))?.focus();
+  };
+  const abaOutro = catalogo?.abas.find((a) => a.valores.length === 0);
+  const naoMarcados = (abaAtual?.valores ?? []).filter(
+    (item) => !marcado(item),
+  );
+  const marcarTodos = () => {
+    if (props.modo !== "multiplo" || !props.onDefinir) return;
+    // A grafia que o produto já grava vence a da lista ("p" gravado fica "p").
+    props.onDefinir([...props.selecionados, ...naoMarcados.map(casarValor)]);
+  };
+  const podeDefinir = props.modo === "multiplo" && !!props.onDefinir;
   const chamada = tipo
     ? CHAMADA.get(tipo)?.at(props.modo === "unico" ? 0 : 1)
     : undefined;
   const escolhaAtual = props.modo === "unico" ? props.valor.trim() : "";
   const hexDaEscolha = escolhaAtual ? corDaVariacao(escolhaAtual) : null;
 
+  // O cartão diz o nome GRAVADO quando ele difere do tipo ("Memória",
+  // "Armazenamento"): dois cartões do mesmo tipo não podem se chamar igual.
+  const rotuloDoCartao =
+    tipo === "Outro"
+      ? nome.trim() || "Outro"
+      : tipo === null
+        ? "Escolha o tipo"
+        : nome.trim() !== "" && dobrar(nome) !== dobrar(tipo)
+          ? nome.trim()
+          : tipo;
+
   return (
     <div data-testid={`atributo-${numero - 1}`} className="space-y-4">
-      <div className="flex items-center gap-2">
-        <p className="flex-1 text-base font-bold text-foreground">
-          {props.modo === "multiplo"
-            ? `${numero} · ${tipo === "Outro" ? nome.trim() || "Outro" : (tipo ?? "Escolha o tipo")}`
-            : titulo}
-        </p>
-        {props.modo === "multiplo" && (
-          <span
-            data-testid="contagem-do-atributo"
-            className="text-sm text-zinc-400"
-          >
-            {contagemDosSelecionados(props.selecionados.length, tipo === "Cor")}
-          </span>
-        )}
+      <div className="flex items-start gap-2">
+        {/* O × fica na coluna da direita e não encolhe: a contagem é que desce
+            para baixo do título quando não cabe a 320 px. */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+          <p className="min-w-0 text-base font-bold text-foreground">
+            {props.modo === "multiplo"
+              ? `${numero} · ${rotuloDoCartao}`
+              : titulo}
+          </p>
+          {props.modo === "multiplo" && (
+            <span
+              data-testid="contagem-do-atributo"
+              className="whitespace-nowrap text-sm text-zinc-400"
+            >
+              {contagemDosSelecionados(
+                props.selecionados.length,
+                tipo === "Cor" || tipo === "Capacidade",
+              )}
+            </span>
+          )}
+        </div>
         {props.aoRemover && (
           <button
             type="button"
@@ -348,14 +661,17 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
       <div
         role="group"
         aria-label={`O que muda, atributo ${numero}`}
-        className="grid auto-cols-fr grid-flow-col gap-2"
+        className={cn(
+          "grid gap-2",
+          pecasVisiveis.length > 4
+            ? "grid-cols-3"
+            : "auto-cols-fr grid-flow-col",
+        )}
       >
         {pecasVisiveis.map(({ tipo: peca, icone }) => {
           const ativa = tipo === peca;
           const ocupada =
-            !ativa &&
-            peca !== "Outro" &&
-            (props.tiposOcupados ?? []).includes(peca);
+            !ativa && peca !== "Outro" && grafiaLivre(peca) === undefined;
           return (
             <button
               key={peca}
@@ -391,9 +707,15 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
               type="button"
               data-testid="atalho-de-atributo"
               aria-pressed={dobrar(nome) === dobrar(atalho)}
-              onClick={() => trocarDeTipo(atalho)}
+              aria-disabled={atalhoTomado(atalho) || undefined}
+              onClick={() => {
+                if (atalhoTomado(atalho)) return;
+                setOutroAberto(false);
+                trocarDeTipo(atalho);
+              }}
               className={cn(
                 "min-h-11 rounded-full border border-solid px-3 text-xs font-bold transition-all active:scale-95",
+                atalhoTomado(atalho) && "cursor-not-allowed opacity-40",
                 dobrar(nome) === dobrar(atalho)
                   ? "border-foreground bg-admin-hover text-foreground"
                   : "border-admin-border bg-admin-bg text-zinc-400 hover:border-admin-border-strong",
@@ -444,7 +766,8 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
       )}
       {tipo === null && (
         <p className="text-sm text-zinc-500">
-          Toque no que muda neste produto: tamanho, cor, voltagem ou outro.
+          Toque no que muda neste produto: tamanho, cor, voltagem, capacidade,
+          material ou outro.
         </p>
       )}
 
@@ -478,36 +801,115 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
         </div>
       )}
 
-      {lista.length > 0 && (
-        <div className="grid grid-cols-4 gap-2">
-          {lista.map((item) => {
-            const ativa = marcado(item);
-            return (
-              <button
-                key={item}
-                type="button"
-                aria-pressed={ativa}
-                onClick={() => escolher(item)}
-                className={cn(
-                  "relative flex min-h-11 items-center justify-center rounded-xl border border-solid px-2 text-sm font-bold transition-all active:scale-95",
-                  ativa
-                    ? "border-foreground bg-admin-hover text-foreground ring-1 ring-inset ring-foreground"
-                    : "border-admin-border bg-admin-bg text-zinc-300 hover:border-admin-border-strong",
-                )}
+      {catalogo && abaAtual && (
+        <div className="space-y-3">
+          {temAbas && (
+            <div
+              role="tablist"
+              aria-label={catalogo.rotuloDasAbas}
+              className="flex gap-1"
+            >
+              {catalogo.abas.map((a, indice) => {
+                const ativa = a.rotulo === abaAtual.rotulo;
+                return (
+                  <button
+                    key={a.rotulo}
+                    id={idDaAba(indice)}
+                    type="button"
+                    role="tab"
+                    aria-selected={ativa}
+                    aria-controls={idDoPainel}
+                    tabIndex={ativa ? 0 : -1}
+                    onKeyDown={(e) => aoTeclarNaAba(e, indice)}
+                    onClick={() => abrirAba(a.rotulo, a.valores.length === 0)}
+                    className={cn(
+                      "min-h-11 min-w-0 flex-auto truncate rounded-full border border-solid px-1 text-xs min-[360px]:px-2 font-bold transition-all active:scale-95",
+                      ativa
+                        ? "border-foreground bg-admin-hover text-foreground"
+                        : "border-admin-bg bg-admin-bg text-zinc-400 hover:border-admin-border-strong",
+                    )}
+                  >
+                    {a.rotulo}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div
+            id={temAbas ? idDoPainel : undefined}
+            role={temAbas ? "tabpanel" : undefined}
+            aria-labelledby={
+              temAbas ? idDaAba(catalogo.abas.indexOf(abaAtual)) : undefined
+            }
+          >
+            {abaAtual.valores.length > 0 ? (
+              <div
+                data-testid="valores-do-atributo"
+                className={cn("grid gap-2", catalogo.colunas)}
               >
-                {item}
-                {ativa && (
-                  <span className="absolute right-0.5 top-0.5 flex size-5 items-center justify-center rounded-full bg-foreground">
-                    <Check
-                      data-marca="selecionado"
-                      strokeWidth={3}
-                      className="size-3.5 text-background"
-                    />
-                  </span>
+                {abaAtual.valores.map((item) => (
+                  <BotaoDeValor
+                    key={item}
+                    item={item}
+                    tipo={tipo ?? "Outro"}
+                    ativa={marcado(item)}
+                    icone={catalogo.icone}
+                    aoTocar={() => escolher(item)}
+                  />
+                ))}
+                {catalogo.botaoOutro && (
+                  <button
+                    type="button"
+                    aria-label={catalogo.botaoOutro}
+                    onClick={irParaOCampo}
+                    className="flex min-h-[52px] min-w-0 items-center justify-center gap-1.5 rounded-2xl border border-solid border-admin-border bg-admin-bg px-1 text-sm font-bold text-zinc-300 transition-all hover:border-admin-border-strong active:scale-95"
+                  >
+                    <Pencil aria-hidden="true" className="size-4 shrink-0" />
+                    Outro
+                  </button>
                 )}
+              </div>
+            ) : (
+              <p className="text-sm text-zinc-400">{catalogo.exemplo}</p>
+            )}
+          </div>
+
+          <p className="text-[11px] text-zinc-500">{catalogo.ajuda}</p>
+
+          <div className="flex flex-wrap items-center gap-x-4">
+            {podeDefinir && naoMarcados.length > 0 && (
+              <button
+                type="button"
+                onClick={marcarTodos}
+                className="min-h-11 text-xs font-bold text-zinc-400 transition-all hover:text-foreground active:scale-95"
+              >
+                Marcar todos
               </button>
-            );
-          })}
+            )}
+            {props.modo === "multiplo" &&
+              props.onDefinir &&
+              props.selecionados.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => props.onDefinir?.([])}
+                  className="min-h-11 text-xs font-bold text-zinc-400 transition-all hover:text-foreground active:scale-95"
+                >
+                  Limpar
+                </button>
+              )}
+            {catalogo.digitarOutro && (
+              <button
+                type="button"
+                onClick={() =>
+                  abrirAba(abaOutro?.rotulo ?? abaAtual.rotulo, true)
+                }
+                className="min-h-11 text-xs font-bold text-zinc-400 transition-all hover:text-foreground active:scale-95"
+              >
+                {catalogo.digitarOutro}
+              </button>
+            )}
+          </div>
         </div>
       )}
 

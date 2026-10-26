@@ -915,7 +915,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     new Set(
       gruposJaUsados.length > 0
         ? gruposJaUsados
-        : ["Cor", "Tamanho", "Voltagem"],
+        : ["Cor", "Tamanho", "Voltagem", "Capacidade", "Material"],
     ),
   ).filter(Boolean);
   // Os valores que OUTRAS linhas do produto já gravam para um atributo ("azul",
@@ -3092,6 +3092,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             atualizarParDeAtributo(indice, "value", val)
                           }
                           sugestoes={suggestedAttributes}
+                          nomesOcupados={variantFormData.pares
+                            .filter((_, j) => j !== indice)
+                            .map((outro) => outro.name)}
                           valoresEmUso={valoresGravadosDoAtributo(par.name)}
                           aoRemover={
                             indice > 0

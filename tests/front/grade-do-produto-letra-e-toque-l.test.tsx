@@ -57,11 +57,14 @@ describe("Grade do produto — letra e toque (onda L)", () => {
 
   it("toda peça, chip e bolinha do seletor de atributo tem 44px de altura", () => {
     const fonte = semComentarios(ler(SELETOR));
-    // Os alvos de toque do seletor: a peça de tipo (card), o tamanho/voltagem,
-    // o chip arredondado e a bolinha de cor (que mora num botão com min-h-11).
+    // Os alvos de toque do seletor: a peça de tipo (card), a aba do sistema de
+    // medida, o botão grande do valor (tamanho, voltagem, capacidade, material:
+    // 52px, mais que os 44px do piso), o chip arredondado e a bolinha de cor
+    // (que mora num botão com min-h-11).
     for (const marcas of [
       ["flex-col items-center justify-center", "py-2.5"],
-      ["relative flex min-h-11", "rounded-xl"],
+      ["min-h-[52px]", "rounded-2xl", "border-solid"],
+      ["min-h-11", "flex-auto", "rounded-full"],
       ["rounded-full", "px-3"],
       ["flex-col items-center gap-1", "py-0.5"],
     ]) {
@@ -69,7 +72,7 @@ describe("Grade do produto — letra e toque (onda L)", () => {
         marcas.every((marca) => l.includes(marca)),
       );
       expect(alvos.length, marcas.join(" + ")).toBeGreaterThan(0);
-      for (const alvo of alvos) expect(alvo).toContain("min-h-11");
+      for (const alvo of alvos) expect(alvo).toMatch(/min-h-11|min-h-\[52px\]/);
     }
   });
 
