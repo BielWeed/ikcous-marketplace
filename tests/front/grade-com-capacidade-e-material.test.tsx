@@ -213,7 +213,8 @@ describe("o resumo concorda em número", () => {
       grupoUnicoEmUso: "Armazenamento",
       sugestoes: ["Armazenamento"],
     });
-    expect(texto(cartao(0))).toContain("1 · Capacidade");
+    // O cartão diz o nome que o produto grava; a peça segue sendo Capacidade.
+    expect(texto(cartao(0))).toContain("1 · Armazenamento");
     expect(botaoDoAtributo(0, "Capacidade").getAttribute("aria-pressed")).toBe(
       "true",
     );
@@ -423,5 +424,64 @@ describe("o valor digitado numa aba 'Outro' entra na grade", () => {
     const chip = cartao(0)?.querySelector('[data-testid="chip-do-produto"]');
     expect(texto(chip)).toBe("2 anos");
     expect(chip?.getAttribute("aria-pressed")).toBe("true");
+  });
+});
+
+describe("celular 'Memória / Armazenamento': dois cartões do mesmo tipo, cada um com o seu nome", () => {
+  const celular = [linha("Memória / Armazenamento", "4 GB / 64 GB")];
+  const abrirCelular = () =>
+    abrir({
+      existentes: celular,
+      grupoUnicoEmUso: "Memória / Armazenamento",
+      sugestoes: ["Memória / Armazenamento"],
+    });
+
+  it("os cartões se chamam pelo nome gravado e os dois nomes são atalhos", async () => {
+    await abrirCelular();
+    expect(texto(cartao(0))).toContain("1 · Memória");
+    expect(texto(cartao(1))).toContain("2 · Armazenamento");
+    for (const i of [0, 1]) {
+      expect(
+        [
+          ...(cartao(i)?.querySelectorAll(
+            '[data-testid="atalho-de-atributo"]',
+          ) ?? []),
+        ].map((a) => texto(a)),
+      ).toEqual(["Memória", "Armazenamento"]);
+    }
+    // O atalho do nome do OUTRO cartão fica apagado; o do próprio, marcado.
+    const doCartao0 = [
+      ...(cartao(0)?.querySelectorAll('[data-testid="atalho-de-atributo"]') ??
+        []),
+    ];
+    expect(doCartao0.map((a) => a.getAttribute("aria-pressed"))).toEqual([
+      "true",
+      "false",
+    ]);
+    expect(doCartao0.map((a) => a.getAttribute("aria-disabled"))).toEqual([
+      null,
+      "true",
+    ]);
+  });
+
+  it("a trava de nome repetido NÃO dispara à toa e a grade gera a combinação nova", async () => {
+    await abrirCelular();
+    // "4 GB" não está em nenhuma lista: o cartão abre na aba Outro.
+    await tocar(aba(0, "Armazenamento"));
+    await escolher(0, "16 GB");
+    await escolher(1, "128 GB");
+    expect(texto(resumo())).not.toContain("Dois atributos se chamam");
+    expect(texto(resumo())).toContain("1 capacidade × 1 capacidade");
+    expect(texto(botaoPorTexto("Gerar"))).toBe("Gerar 1 combinação");
+    await tocar(botaoPorTexto("Gerar"));
+    expect(toastError).not.toHaveBeenCalled();
+    expect(corpo()).toContain("passo 2 de 2 · 1 combinações novas");
+  });
+
+  it("tocar a peça Capacidade no cartão que já é Capacidade não troca o nome (nem para o do outro)", async () => {
+    await abrirCelular();
+    await tocarPeca(1, "Capacidade");
+    expect(texto(cartao(1))).toContain("2 · Armazenamento");
+    expect(texto(cartao(0))).toContain("1 · Memória");
   });
 });

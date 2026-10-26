@@ -628,6 +628,9 @@ export function ModalVarianteGrade({
                       onNome={(nome) => atualizarGrupo(grupo.chave, { nome })}
                       sugestoes={sugestoesDeAtributo}
                       iniciarEmOutro={grupo.outro && !tipoDoNome(grupo.nome)}
+                      nomesOcupados={grupos
+                        .filter((outro) => outro.chave !== grupo.chave)
+                        .map((outro) => outro.nome)}
                       tiposOcupados={grupos.flatMap((outro) => {
                         const tipo = tipoDoNome(outro.nome);
                         return outro.chave === grupo.chave || !tipo

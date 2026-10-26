@@ -786,7 +786,7 @@ describe("SeletorDeAtributo — o VALOR já gravado vence o da paleta", () => {
     expect(campo("variant-value")?.value).toBe("Vovô");
   });
 
-  it("tocar a bolinha compara só a CAIXA: com 'lilas' gravado, tocar Lilás grava 'Lilás' (acento diferente é outro valor)", async () => {
+  it("tocar a bolinha ignora caixa, acento e espaço: com 'lilas' gravado, tocar Lilás grava 'lilas' (uma cor só na loja)", async () => {
     const aoMudar = vi.fn();
     await act(async () => {
       raiz.render(
@@ -794,7 +794,7 @@ describe("SeletorDeAtributo — o VALOR já gravado vence o da paleta", () => {
       );
     });
     await clicar(porRotulo("Lilás"));
-    expect(aoMudar).toHaveBeenLastCalledWith("Cor", "Lilás");
+    expect(aoMudar).toHaveBeenLastCalledWith("Cor", "lilas");
   });
 
   it("sem valor gravado igual, tocar a bolinha grava o nome da paleta", async () => {

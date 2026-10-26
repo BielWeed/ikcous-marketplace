@@ -17,7 +17,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useState } from "react";
 
 /**
  * Escolher em vez de digitar: o lojista toca o que muda no produto (Tamanho,
@@ -62,7 +62,7 @@ interface Aba {
 interface Catalogo {
   abas: readonly Aba[];
   /** Largura do botão decide as colunas: 4 cabem só o que tem até 5 letras. */
-  colunas: "grid-cols-3" | "grid-cols-4";
+  colunas: string;
   rotuloDasAbas?: string;
   ajuda: string;
   /** A aba Outro explica o que fazer; o texto vale para a ação também. */
@@ -89,7 +89,8 @@ const CATALOGO = new Map<TipoDoAtributo, Catalogo>([
         { rotulo: "Calçados", valores: faixa(33, 44) },
         OUTRA_ABA,
       ],
-      colunas: "grid-cols-4",
+      // Abaixo de 360 px o "Único" marcado (✓ + texto) não cabe em 4 colunas.
+      colunas: "grid-cols-4 max-[359px]:grid-cols-3",
       rotuloDasAbas: "Sistema de medida",
       ajuda: "Roupas: PP a XG e Único · Números: 34 a 56 · Calçados: 33 a 44",
       exemplo: "Digite o tamanho no campo abaixo. Ex.: 2 anos, 48.",
@@ -170,10 +171,12 @@ function ofertaDoTipo(tipo: TipoDoAtributo | null): readonly string[] {
   );
 }
 
-/** A régua que a grade e a trava de um grupo já usam para dizer "é o mesmo
- *  valor": sem as pontas e sem diferença de caixa. Acento NÃO se dobra: "Vovó" e
- *  "Vovô" são valores diferentes. */
-const chave = (texto: string): string => texto.trim().toLocaleLowerCase();
+/** A régua do TOQUE para dizer "é o mesmo valor": sem as pontas, sem caixa, sem
+ *  acento e sem espaço no meio ("128gb" é o "128 GB" da lista, "Algodao" é o
+ *  "Algodão"). Serve só para reconhecer o botão e reaproveitar a grafia que o
+ *  produto já grava; o que o lojista DIGITA nunca passa por ela e grava como
+ *  foi digitado. */
+const chave = (texto: string): string => dobrar(texto).replace(/\s+/g, "");
 
 /** A aba que abre: a que tem MAIS dos valores já existentes (empate = a primeira,
  *  e o que nenhuma lista tem conta para "Outro"). Sem valor nenhum, a primeira.
@@ -235,6 +238,10 @@ interface Comum {
    *  escolheu: a peça fica apagada e não clicável. O tipo do próprio atributo
    *  nunca apaga, e "Outro" não conta (os nomes livres se distinguem). */
   tiposOcupados?: TipoDoAtributo[];
+  /** Os NOMES (não os tipos) que os outros pares/cartões do mesmo produto já
+   *  usam. A peça e o atalho nunca escrevem um desses: "Memória / Memória" a
+   *  trava recusaria. Vazio = nenhum outro par. */
+  nomesOcupados?: string[];
   /** O atributo nasce em "Outro" com o campo do nome aberto (o atalho "+ Outro"). */
   iniciarEmOutro?: boolean;
 }
@@ -381,7 +388,7 @@ function BotaoDeValor({
       aria-label={`${tipo} ${item}`}
       onClick={aoTocar}
       className={cn(
-        "flex min-h-[52px] min-w-0 items-center justify-center gap-1.5 rounded-2xl border border-solid px-1 text-center text-sm font-bold leading-tight transition-all active:scale-95",
+        "flex min-h-[52px] min-w-0 items-center justify-center gap-1 rounded-2xl border border-solid px-0.5 text-center text-sm font-bold leading-tight transition-all active:scale-95",
         ativa
           ? "border-foreground bg-admin-hover text-foreground ring-1 ring-inset ring-foreground"
           : "border-admin-border bg-admin-bg text-zinc-300 hover:border-admin-border-strong",
@@ -391,7 +398,7 @@ function BotaoDeValor({
         <Check
           data-marca="selecionado"
           strokeWidth={3}
-          className="size-4 shrink-0"
+          className="size-3.5 shrink-0"
         />
       ) : (
         icone
@@ -442,6 +449,33 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
     .map((n) => n.trim())
     .filter((n) => n !== "");
 
+  // Nomes que OUTRO par do produto já usa (sem caixa nem acento) e, entre os que
+  // o produto grava, os de cada tipo. Um produto "Memória / Armazenamento" tem
+  // DOIS nomes do tipo Capacidade: a peça sozinha não distingue, então o nome
+  // real vira atalho e a peça escolhe o que ainda não foi tomado.
+  const tomados = new Set((props.nomesOcupados ?? []).map(dobrar));
+  const unicos = (nomes: string[]) =>
+    nomes.filter(
+      (n, i) => nomes.findIndex((o) => dobrar(o) === dobrar(n)) === i,
+    );
+  const emUsoDoTipo = (alvo: TipoDoAtributo) =>
+    unicos(emUso.filter((n) => tipoDoNome(n) === alvo));
+  /** O nome que a peça escreve: o que o produto já grava e ninguém tomou; sem
+   *  nome em uso, o canônico, se o tipo e o nome estão livres. `undefined` = a
+   *  peça não tem o que escrever (fica apagada). */
+  const grafiaLivre = (alvo: TipoDoAtributo): string | undefined =>
+    emUsoDoTipo(alvo).find((n) => !tomados.has(dobrar(n))) ??
+    // O canônico só vale quando o produto não grava nome nenhum desse tipo.
+    ((props.tiposOcupados ?? []).includes(alvo) ||
+    tomados.has(dobrar(alvo)) ||
+    emUsoDoTipo(alvo).length > 0
+      ? undefined
+      : alvo);
+
+  // O atalho do nome que OUTRO par já usa não grava (o do próprio par nunca é "tomado").
+  const atalhoTomado = (atalho: string) =>
+    tomados.has(dobrar(atalho)) && dobrar(nome) !== dobrar(atalho);
+
   const tocarNaPeca = (alvo: TipoDoAtributo) => {
     if (alvo === tipo) return;
     if (alvo === "Outro") {
@@ -450,20 +484,26 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
       if (tipoDoNome(nome) !== "Outro" && nome !== "") trocarDeTipo("");
       return;
     }
-    setOutroAberto(false);
     // A loja agrupa pelo nome EXATO: num produto que já grava "cor", a peça Cor
     // grava "cor" (e não "Cor", que viraria um segundo grupo na vitrine).
-    const grafia = emUso.find((n) => tipoDoNome(n) === alvo) ?? alvo;
+    const grafia = grafiaLivre(alvo);
+    if (grafia === undefined) return;
+    setOutroAberto(false);
     if (nome !== grafia) trocarDeTipo(grafia);
   };
 
   // O que o lojista TOCA (bolinha, tamanho, chip) usa a grafia que o produto já
   // grava: "azul" gravado + toque na bolinha Azul = "azul". O que ele DIGITA
   // nunca é trocado: texto digitado grava exatamente o que foi digitado.
+  // Na grade vale também o que já está marcado (digitado nesta abertura): tocar
+  // o botão equivalente o DESMARCA em vez de criar um segundo valor.
   const valoresGravados =
     props.modo === "unico"
       ? (props.valoresEmUso ?? [])
-      : props.chips.filter((chip) => chip.usado).map((chip) => chip.valor);
+      : [
+          ...props.chips.filter((chip) => chip.usado).map((chip) => chip.valor),
+          ...props.selecionados,
+        ];
   const casarValor = (item: string): string =>
     valoresGravados.find((gravado) => chave(gravado) === chave(item)) ?? item;
   const escolher = (item: string) => {
@@ -471,11 +511,12 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
     if (props.modo === "unico") props.onValor(valor);
     else props.onAlternar(valor);
   };
-  const atalhos = emUso
-    .filter((n) => tipoDoNome(n) === "Outro")
-    .filter(
-      (n, i, todos) => todos.findIndex((o) => dobrar(o) === dobrar(n)) === i,
-    );
+  // Atalho = nome em uso que a peça não representa sozinha: os de "Outro" e os
+  // de um tipo com mais de um nome em uso.
+  const atalhos = unicos(emUso).filter((n) => {
+    const t = tipoDoNome(n);
+    return t === "Outro" || (t !== null && emUsoDoTipo(t).length > 1);
+  });
   // Sem nada em uso, as quatro peças. Com grupo em uso, só as dele: a peça do
   // que a linha em edição já é nunca some.
   const pecasVisiveis = PECAS.filter(
@@ -529,6 +570,30 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
     setEscolhaDaAba({ tipo, rotulo });
     if (comCampo) irParaOCampo();
   };
+  const idDaAba = (indice: number) => `${idDoValor}-aba-${indice}`;
+  const idDoPainel = `${idDoValor}-painel`;
+  // Setas, Home e End como no padrão tablist: trocam a aba e levam o foco.
+  const aoTeclarNaAba = (
+    e: KeyboardEvent<HTMLButtonElement>,
+    indice: number,
+  ) => {
+    const total = catalogo?.abas.length ?? 0;
+    const destino =
+      e.key === "ArrowRight"
+        ? (indice + 1) % total
+        : e.key === "ArrowLeft"
+          ? (indice + total - 1) % total
+          : e.key === "Home"
+            ? 0
+            : e.key === "End"
+              ? total - 1
+              : -1;
+    const aba = destino >= 0 ? catalogo?.abas.at(destino) : undefined;
+    if (!aba) return;
+    e.preventDefault();
+    abrirAba(aba.rotulo, false);
+    document.getElementById(idDaAba(destino))?.focus();
+  };
   const abaOutro = catalogo?.abas.find((a) => a.valores.length === 0);
   const naoMarcados = (abaAtual?.valores ?? []).filter(
     (item) => !marcado(item),
@@ -545,25 +610,40 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
   const escolhaAtual = props.modo === "unico" ? props.valor.trim() : "";
   const hexDaEscolha = escolhaAtual ? corDaVariacao(escolhaAtual) : null;
 
+  // O cartão diz o nome GRAVADO quando ele difere do tipo ("Memória",
+  // "Armazenamento"): dois cartões do mesmo tipo não podem se chamar igual.
+  const rotuloDoCartao =
+    tipo === "Outro"
+      ? nome.trim() || "Outro"
+      : tipo === null
+        ? "Escolha o tipo"
+        : nome.trim() !== "" && dobrar(nome) !== dobrar(tipo)
+          ? nome.trim()
+          : tipo;
+
   return (
     <div data-testid={`atributo-${numero - 1}`} className="space-y-4">
-      <div className="flex items-center gap-2">
-        <p className="flex-1 text-base font-bold text-foreground">
-          {props.modo === "multiplo"
-            ? `${numero} · ${tipo === "Outro" ? nome.trim() || "Outro" : (tipo ?? "Escolha o tipo")}`
-            : titulo}
-        </p>
-        {props.modo === "multiplo" && (
-          <span
-            data-testid="contagem-do-atributo"
-            className="shrink-0 whitespace-nowrap text-sm text-zinc-400"
-          >
-            {contagemDosSelecionados(
-              props.selecionados.length,
-              tipo === "Cor" || tipo === "Capacidade",
-            )}
-          </span>
-        )}
+      <div className="flex items-start gap-2">
+        {/* O × fica na coluna da direita e não encolhe: a contagem é que desce
+            para baixo do título quando não cabe a 320 px. */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+          <p className="min-w-0 text-base font-bold text-foreground">
+            {props.modo === "multiplo"
+              ? `${numero} · ${rotuloDoCartao}`
+              : titulo}
+          </p>
+          {props.modo === "multiplo" && (
+            <span
+              data-testid="contagem-do-atributo"
+              className="whitespace-nowrap text-sm text-zinc-400"
+            >
+              {contagemDosSelecionados(
+                props.selecionados.length,
+                tipo === "Cor" || tipo === "Capacidade",
+              )}
+            </span>
+          )}
+        </div>
         {props.aoRemover && (
           <button
             type="button"
@@ -589,9 +669,7 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
         {pecasVisiveis.map(({ tipo: peca, icone }) => {
           const ativa = tipo === peca;
           const ocupada =
-            !ativa &&
-            peca !== "Outro" &&
-            (props.tiposOcupados ?? []).includes(peca);
+            !ativa && peca !== "Outro" && grafiaLivre(peca) === undefined;
           return (
             <button
               key={peca}
@@ -627,9 +705,15 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
               type="button"
               data-testid="atalho-de-atributo"
               aria-pressed={dobrar(nome) === dobrar(atalho)}
-              onClick={() => trocarDeTipo(atalho)}
+              aria-disabled={atalhoTomado(atalho) || undefined}
+              onClick={() => {
+                if (atalhoTomado(atalho)) return;
+                setOutroAberto(false);
+                trocarDeTipo(atalho);
+              }}
               className={cn(
                 "min-h-11 rounded-full border border-solid px-3 text-xs font-bold transition-all active:scale-95",
+                atalhoTomado(atalho) && "cursor-not-allowed opacity-40",
                 dobrar(nome) === dobrar(atalho)
                   ? "border-foreground bg-admin-hover text-foreground"
                   : "border-admin-border bg-admin-bg text-zinc-400 hover:border-admin-border-strong",
@@ -721,19 +805,23 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
             <div
               role="tablist"
               aria-label={catalogo.rotuloDasAbas}
-              className="flex gap-1.5"
+              className="flex gap-1"
             >
-              {catalogo.abas.map((a) => {
+              {catalogo.abas.map((a, indice) => {
                 const ativa = a.rotulo === abaAtual.rotulo;
                 return (
                   <button
                     key={a.rotulo}
+                    id={idDaAba(indice)}
                     type="button"
                     role="tab"
                     aria-selected={ativa}
+                    aria-controls={idDoPainel}
+                    tabIndex={ativa ? 0 : -1}
+                    onKeyDown={(e) => aoTeclarNaAba(e, indice)}
                     onClick={() => abrirAba(a.rotulo, a.valores.length === 0)}
                     className={cn(
-                      "min-h-11 min-w-0 flex-auto rounded-full border border-solid px-2 text-xs font-bold transition-all active:scale-95",
+                      "min-h-11 min-w-0 flex-auto truncate rounded-full border border-solid px-1 text-xs min-[360px]:px-2 font-bold transition-all active:scale-95",
                       ativa
                         ? "border-foreground bg-admin-hover text-foreground"
                         : "border-admin-bg bg-admin-bg text-zinc-400 hover:border-admin-border-strong",
@@ -746,7 +834,13 @@ export function SeletorDeAtributo(props: SeletorDeAtributoProps) {
             </div>
           )}
 
-          <div role={temAbas ? "tabpanel" : undefined}>
+          <div
+            id={temAbas ? idDoPainel : undefined}
+            role={temAbas ? "tabpanel" : undefined}
+            aria-labelledby={
+              temAbas ? idDaAba(catalogo.abas.indexOf(abaAtual)) : undefined
+            }
+          >
             {abaAtual.valores.length > 0 ? (
               <div
                 data-testid="valores-do-atributo"

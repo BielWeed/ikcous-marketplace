@@ -382,6 +382,66 @@ describe("AdminProductFormView — escolher a variação em vez de digitar", () 
     expect(variantesNaTela()).toEqual(["Capacidade: 128 GB"]);
   });
 
+  it("celular 'Memória / Armazenamento' (dois nomes do mesmo tipo): a peça grava um nome em cada par e salvar reproduz a linha", async () => {
+    await montar([
+      {
+        ...linhaAntiga("Memória / Armazenamento", "4 GB / 64 GB"),
+        id: "v-cel",
+      },
+    ]);
+    await abrirNovaVariacao();
+
+    // Os dois nomes do produto viram atalhos com o nome REAL.
+    expect(
+      [...document.querySelectorAll('[data-testid="atalho-de-atributo"]')].map(
+        (a) => a.textContent?.trim(),
+      ),
+    ).toEqual(["Memória", "Armazenamento"]);
+
+    await tocarNaPeca(0, "Capacidade");
+    expect(valorDoCampo("variant-name")).toBeUndefined();
+    await clicarTexto("+ Atributo");
+    await tocarNaPeca(1, "Capacidade");
+
+    // Cada par ficou com um nome: o cartão diz o nome gravado, não "Capacidade".
+    const titulos = [
+      ...document.querySelectorAll('[data-testid^="atributo-"]'),
+    ].map(
+      (c) =>
+        c.querySelector('[role="group"] > button[aria-pressed="true"]')
+          ?.textContent,
+    );
+    expect(titulos).toEqual(["Capacidade", "Capacidade"]);
+    await clicarRotulo("Capacidade 16 GB");
+    await act(async () => {
+      botaoDoAtributo(1, "128 GB").click();
+    });
+    await clicarTexto("Salvar variação");
+
+    expect(toastError).not.toHaveBeenCalled();
+    expect(variantesNaTela()).toEqual([
+      "Memória / Armazenamento: 4 GB / 64 GB",
+      "Memória / Armazenamento: 16 GB / 128 GB",
+    ]);
+  });
+
+  it("celular 'Memória / Armazenamento': abrir a linha e salvar sem mexer reproduz o mesmo texto", async () => {
+    await montar([
+      {
+        ...linhaAntiga("Memória / Armazenamento", "4 GB / 64 GB"),
+        id: "v-cel",
+      },
+    ]);
+    await abrirEdicaoDaLinha("4 GB / 64 GB");
+    expect(valorDoCampo("variant-value")).toBe("4 GB");
+    expect(valorDoCampo("variant-value-1")).toBe("64 GB");
+    await clicarTexto("Salvar");
+    expect(toastError).not.toHaveBeenCalled();
+    expect(variantesNaTela()).toEqual([
+      "Memória / Armazenamento: 4 GB / 64 GB",
+    ]);
+  });
+
   it("'Outro' revela o campo do nome: um atributo livre continua possível", async () => {
     await montar();
     await abrirNovaVariacao();

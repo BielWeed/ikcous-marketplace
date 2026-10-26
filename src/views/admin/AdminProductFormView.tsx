@@ -3081,6 +3081,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             atualizarParDeAtributo(indice, "value", val)
                           }
                           sugestoes={suggestedAttributes}
+                          nomesOcupados={variantFormData.pares
+                            .filter((_, j) => j !== indice)
+                            .map((outro) => outro.name)}
                           valoresEmUso={valoresGravadosDoAtributo(par.name)}
                           aoRemover={
                             indice > 0
