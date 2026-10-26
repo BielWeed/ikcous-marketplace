@@ -23,6 +23,7 @@ import {
   PREDEFINED_AVATARS,
   compressImage,
   getPredefinedAvatarSvg,
+  mensagemDaFalhaDeImagem,
 } from "@/utils/avatars";
 import {
   PREDEFINED_COVERS,
@@ -186,6 +187,8 @@ export function AccountSettingsView() {
     const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
 
     const file = e.target.files?.[0];
+    // Sem zerar, escolher a MESMA foto de novo não dispara nada.
+    e.target.value = "";
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
@@ -222,7 +225,9 @@ export function AccountSettingsView() {
         } catch (error) {
           if (!contaAindaEhDona()) return;
           console.error("Error uploading photo:", error);
-          toast.error("Erro ao processar foto.");
+          toast.error(
+            mensagemDaFalhaDeImagem(error, "Erro ao processar foto."),
+          );
         } finally {
           desmarcar();
           if (contaAindaEhDona()) setIsUpdatingAvatar(false);
@@ -299,6 +304,8 @@ export function AccountSettingsView() {
     const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
 
     const file = e.target.files?.[0];
+    // Sem zerar, escolher a MESMA foto de novo não dispara nada.
+    e.target.value = "";
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
@@ -334,7 +341,9 @@ export function AccountSettingsView() {
         } catch (error) {
           if (!contaAindaEhDona()) return;
           console.error("Error uploading cover:", error);
-          toast.error("Erro ao processar imagem.");
+          toast.error(
+            mensagemDaFalhaDeImagem(error, "Erro ao processar imagem."),
+          );
         } finally {
           if (contaAindaEhDona()) setIsUpdatingCover(false);
         }
@@ -622,6 +631,9 @@ export function AccountSettingsView() {
           toast.error(mensagemFalhaCpf(resultadoCpf.motivo));
           // O resto do perfil (nome/WhatsApp) JÁ foi salvo com sucesso —
           // não desfaz; só o CPF fica pendente para uma nova tentativa.
+          // O nome novo já está no banco: atualiza o Perfil/cabeçalho também
+          // (menos se a sessão virou outra conta: o contexto já é dela).
+          if (resultadoCpf.motivo !== "conta_trocada") await fetchProfile();
           return;
         }
         setCpfOriginal(digitosCpfAtual);
@@ -818,7 +830,7 @@ export function AccountSettingsView() {
                     {profile?.avatar_url ? (
                       <img
                         src={profile.avatar_url}
-                        alt="Profile Avatar"
+                        alt="Sua foto de perfil"
                         className="size-full object-cover"
                       />
                     ) : iniciais ? (
@@ -1606,8 +1618,8 @@ export function AccountSettingsView() {
                         Escolher Imagem do Dispositivo
                       </p>
                       <p className="px-4 text-[8px] font-bold uppercase leading-normal tracking-tight text-slate-400">
-                        Selecione JPEG, PNG até 5MB. A imagem será ajustada para
-                        a proporção ideal.
+                        Formatos aceitos: JPEG e PNG. A imagem será ajustada
+                        para a proporção ideal.
                       </p>
                     </div>
                   </motion.div>

@@ -68,6 +68,12 @@ interface Secao {
   itens: Product[];
 }
 
+const ROTULO_ORDEM = new Map([
+  ["menor", "Menor preço"],
+  ["maior", "Maior preço"],
+  ["nome", "A–Z"],
+]);
+
 export const FavoritesView = React.memo(function FavoritesView({
   favorites,
   loading = false,
@@ -482,9 +488,12 @@ export const FavoritesView = React.memo(function FavoritesView({
             />
             Com desconto{descontos > 0 ? ` ${descontos}` : ""}
           </button>
-          <label className="favorites-chip relative">
+          <label
+            className="favorites-chip relative"
+            aria-current={ordem !== "original" ? "true" : undefined}
+          >
             <ArrowDownUp aria-hidden="true" className="size-4" />
-            Ordem
+            {ROTULO_ORDEM.get(ordem) ?? "Ordem"}
             <select
               aria-label="Ordem dos favoritos"
               className="absolute inset-0 size-full cursor-pointer opacity-0"

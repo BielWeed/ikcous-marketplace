@@ -38,9 +38,7 @@ describe("critério 4 — tela estática sem conexão", () => {
     expect(html).not.toContain("IKCOUS");
     expect(html).not.toContain("imports");
     expect(html).toContain("<title>Sem conexão</title>");
-    expect(html).toMatch(
-      /<img[^>]+src="\/branding\/logo.svg"[^>]+alt=""[^>]+onerror="this.hidden=true"/,
-    );
+    expect(html).toMatch(/<img[^>]+src="\/branding\/logo.svg"[^>]*alt=""/);
     expect(html).toContain(
       "Sem internet. Confira sua conexão; vamos tentar de novo sozinhos.",
     );

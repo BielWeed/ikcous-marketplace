@@ -134,12 +134,21 @@ export const getPredefinedAvatarSvg = (
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg.trim())}`;
 };
 
+// Imagem que o navegador não decodifica (ex.: HEIC no Chrome): nunca se envia o
+// arquivo cru (o banco recusa pelo teto de tamanho e a pessoa veria erro genérico).
+export const IMAGEM_ILEGIVEL =
+  "Esta imagem não pôde ser lida, escolha JPG ou PNG";
+export const mensagemDaFalhaDeImagem = (erro: unknown, padrao: string) =>
+  erro instanceof Error && erro.message === IMAGEM_ILEGIVEL
+    ? IMAGEM_ILEGIVEL
+    : padrao;
+
 export const compressImage = (
   base64Str: string,
   maxWidth = 200,
   maxHeight = 200,
 ): Promise<string> => {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const img = new Image();
     img.src = base64Str;
     img.onload = () => {
@@ -176,7 +185,7 @@ export const compressImage = (
       resolve(canvas.toDataURL("image/jpeg", 0.8)); // 80% quality
     };
     img.onerror = () => {
-      resolve(base64Str);
+      reject(new Error(IMAGEM_ILEGIVEL));
     };
   });
 };
