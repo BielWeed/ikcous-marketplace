@@ -246,6 +246,16 @@ describe("Financeiro — abrir e fechar o caixa", () => {
   let onSetDirty: Mock<(dirty: boolean) => void>;
   let onSetBackOverride: Mock<(fn: (() => void) | null) => void>;
 
+  // Ao fechar, a entrada de histórico da folha é devolvida com `history.back()` e o
+  // desvio do Voltar vira um de USO ÚNICO (só engole o popstate dessa devolução);
+  // quando o popstate chega, ele se desfaz e o Voltar volta a ser de ninguém.
+  async function desvioDeUsoUnicoSeDesfaz() {
+    const desvio = onSetBackOverride.mock.calls.at(-1)?.[0];
+    expect(desvio).toBeTypeOf("function");
+    await act(async () => (desvio as unknown as () => () => void)()());
+    expect(onSetBackOverride).toHaveBeenLastCalledWith(null);
+  }
+
   const guardado = new Map<string, string>();
   let armazenamento: Storage;
 
@@ -423,7 +433,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     });
     expect(folha()).toBeNull();
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
-    expect(onSetBackOverride).toHaveBeenLastCalledWith(null);
+    await desvioDeUsoUnicoSeDesfaz();
 
     // Depois da escrita a tela busca de novo: agora o caixa está aberto.
     const aberto = normalizar(hospedeiro.textContent);
@@ -1333,7 +1343,7 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     await esperar();
 
     expect(folha()).toBeNull();
-    expect(onSetBackOverride).toHaveBeenLastCalledWith(null);
+    await desvioDeUsoUnicoSeDesfaz();
     expect(normalizar(hospedeiro.textContent)).toContain("Caixa fechado");
   });
 

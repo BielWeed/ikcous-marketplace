@@ -414,6 +414,36 @@ describe("Financeiro — extrato e a pagar", () => {
     expect(folha()).toBe(baixa);
     expect(x?.disabled).toBe(false);
     expect(normalizar(baixa.textContent)).toMatch(/internet|conex|tente/i);
+
+    // Depois da falha a folha volta a obedecer: a tela avisou que o envio
+    // acabou, e o X (e o Esc) fecham de verdade. O botão ter voltado a funcionar
+    // não basta: o trinco do envio mora na tela, e se ele ficar armado o X
+    // clica e nada acontece.
+    await tentarFechar(baixa);
+    expect(folha()).toBeNull();
+  });
+
+  it("depois da falha da baixa, o X também fecha a folha", async () => {
+    await irPara("Pagar e receber");
+    const baixas = [...hospedeiro.querySelectorAll("button")].filter(
+      (b) => normalizar(b.textContent).trim() === "Dar baixa",
+    );
+    await clicar(baixas.at(0) as HTMLButtonElement);
+    const baixa = folha() as HTMLElement;
+    const soltar = gravacaoNoAr("fin_lancamento_baixar");
+    await clicar(botaoEm(baixa, "Confirmar baixa"));
+    await act(async () =>
+      soltar({ data: null, error: { message: "Failed to fetch" } }),
+    );
+    await esperar();
+    expect(folha()).toBe(baixa);
+
+    await clicar(
+      baixa.querySelector<HTMLButtonElement>(
+        '[aria-label="Fechar"]',
+      ) as HTMLButtonElement,
+    );
+    expect(folha()).toBeNull();
   });
 
   it("o cancelamento não fecha enquanto grava e a falha aparece na própria janela", async () => {

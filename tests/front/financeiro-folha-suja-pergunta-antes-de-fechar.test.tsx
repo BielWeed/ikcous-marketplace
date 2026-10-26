@@ -301,4 +301,46 @@ describe("Financeiro — folha com algo escrito pergunta antes de fechar", () =>
     await clicar(botaoEm(pergunta() as HTMLElement, "Descartar"));
     expect(folhaAberta()).toBeNull();
   });
+
+  // A folha aberta tem uma entrada própria no histórico; ao fechar, ela é
+  // devolvida com `history.back()`. O popstate dessa devolução chega depois do
+  // commit, então o desvio do Voltar não pode ficar `null` nesse intervalo (o App
+  // leria "sem desvio" e, com o formulário ainda marcado como sujo, abriria o
+  // aviso de alterações não salvas): fica um desvio de uso único, que só engole
+  // esse popstate e se desfaz. O teste com popstate de verdade, no App, está em
+  // financeiro-folha-suja-voltar-do-aparelho.test.tsx.
+  it("ao fechar, o desvio do Voltar vira de uso único e se desfaz quando o popstate chega", async () => {
+    await abrirNovoLancamento(true);
+    await clicar(botaoX());
+    await clicar(botaoEm(pergunta() as HTMLElement, "Descartar"));
+    expect(folhaAberta()).toBeNull();
+
+    const desvio = onSetBackOverride.mock.calls.at(-1)?.[0];
+    expect(desvio).toBeTypeOf("function");
+    await act(async () => (desvio as unknown as () => () => void)()());
+    expect(onSetBackOverride).toHaveBeenLastCalledWith(null);
+    expect(folhaAberta()).toBeNull();
+    expect(pergunta()).toBeNull();
+  });
+
+  it("se o popstate da devolução nunca chegar, o desvio de uso único se desfaz sozinho", async () => {
+    const voltar = vi
+      .spyOn(globalThis.history, "back")
+      .mockImplementation(() => {});
+    try {
+      await abrirNovoLancamento(true);
+      await clicar(botaoX());
+      await clicar(botaoEm(pergunta() as HTMLElement, "Descartar"));
+      expect(voltar).toHaveBeenCalledTimes(1);
+      expect(onSetBackOverride.mock.calls.at(-1)?.[0]).toBeTypeOf("function");
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1700));
+      });
+
+      expect(onSetBackOverride).toHaveBeenLastCalledWith(null);
+    } finally {
+      voltar.mockRestore();
+    }
+  });
 });

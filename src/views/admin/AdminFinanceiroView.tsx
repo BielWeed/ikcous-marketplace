@@ -125,6 +125,10 @@ function abaDeAbertura(valor: string | null | undefined): AbaDoFinanceiro {
   return valor && ehAba(valor) ? valor : "visao";
 }
 
+// Marca da entrada de histórico que a folha aberta empurra: é ela que o Voltar do
+// aparelho consome, em vez de tirar o lojista da tela com o rascunho dentro.
+const MARCA_DA_FOLHA = "fin-folha";
+
 export function AdminFinanceiroView({
   onNavigate,
   active = true,
@@ -170,6 +174,13 @@ export function AdminFinanceiroView({
   // para o Esc e o Voltar, que chegam por callbacks estáveis.
   const [perguntando, setPerguntando] = useState(false);
   const perguntandoRef = useRef(false);
+  // `abertaRef` espelha "há folha" de forma síncrona; `entradaDaFolha` diz que
+  // temos uma entrada de histórico empurrada e ainda não devolvida;
+  // `aoDevolver` é o que espera essa devolução (ir para o pedido).
+  const abertaRef = useRef(false);
+  const entradaDaFolha = useRef(false);
+  const aoDevolver = useRef<(() => void) | null>(null);
+  const relogioDaEntrada = useRef(0);
   const [ocultos, alternarOcultos] = useValoresOcultos();
   const [confirmacao, setConfirmacao] = useState<ConfirmacaoFinanceira | null>(
     null,
@@ -189,6 +200,7 @@ export function AdminFinanceiroView({
   // Fecha de verdade (depois de salvar, de escolher um período, de descartar).
   const fecharFolha = useCallback(() => {
     if (folhaEmEnvio.current) return;
+    abertaRef.current = false;
     mostrarPergunta(false);
     setFolha(null);
     setSujo(false);
@@ -220,6 +232,7 @@ export function AdminFinanceiroView({
   const abrirFolha = useCallback(
     (nova: FolhaDoFinanceiro) => {
       if (folhaEmEnvio.current) return;
+      abertaRef.current = true;
       mostrarPergunta(false);
       setSujo(false);
       geracaoDaFolha.current += 1;
@@ -275,8 +288,16 @@ export function AdminFinanceiroView({
   );
   const abrirPedido = useCallback(
     (pedidoId: string) => {
-      fecharFolha();
-      onNavigate("admin-orders", pedidoId);
+      const ir = () => onNavigate("admin-orders", pedidoId);
+      // Com a entrada da folha ainda no histórico, devolve ela ANTES de ir para
+      // o pedido; senão ela ficaria embaixo e o Voltar do pedido pararia nela.
+      if (entradaDaFolha.current && !folhaEmEnvio.current) {
+        aoDevolver.current = ir;
+        fecharFolha();
+      } else {
+        fecharFolha();
+        ir();
+      }
     },
     [fecharFolha, onNavigate],
   );
@@ -301,18 +322,80 @@ export function AdminFinanceiroView({
   }, [sujo, onSetDirty]);
   useEffect(() => () => onSetDirty?.(false), [onSetDirty]);
 
+  // A folha aberta tem uma entrada PRÓPRIA no histórico (mesmo padrão dos
+  // Banners e do PDV). Sem ela, o Voltar do aparelho fechava/perguntava pela
+  // folha e, logo em seguida, o App trocava de tela e o rascunho ia embora.
+  // Só existe com quem consome o Voltar (o App passa `onSetBackOverride`): sem
+  // ele a entrada ficaria no histórico sem ninguém para devolvê-la.
+  const temDesvio = onSetBackOverride !== undefined;
+  const empurrarEntrada = useCallback(() => {
+    if (
+      temDesvio &&
+      abertaRef.current &&
+      globalThis.history.state?.modal !== MARCA_DA_FOLHA
+    )
+      globalThis.history.pushState(
+        { ...globalThis.history.state, modal: MARCA_DA_FOLHA },
+        "",
+        globalThis.location.pathname + globalThis.location.search,
+      );
+  }, [temDesvio]);
+
   // Folha aberta → o Voltar do celular fecha a folha, não a tela (e, com algo
   // escrito, pergunta antes). Cancelar lançamento é só um motivo de uma linha,
-  // numa janela que não é folha: fecha direto como sempre.
+  // numa janela que não é folha: fecha direto como sempre. Se o Voltar do
+  // aparelho já consumiu a entrada e a folha continua aberta (pergunta, ou envio
+  // em andamento), empurra outra para o próximo Voltar valer de novo.
   useEffect(() => {
     if (!onSetBackOverride) return;
     onSetBackOverride(
       folha
-        ? () => (folha.tipo === "cancelar" ? fecharFolha : pedirParaFechar)
+        ? () => () => {
+            (folha.tipo === "cancelar" ? fecharFolha : pedirParaFechar)();
+            empurrarEntrada();
+          }
         : null,
     );
-  }, [folha, fecharFolha, pedirParaFechar, onSetBackOverride]);
+  }, [folha, fecharFolha, pedirParaFechar, empurrarEntrada, onSetBackOverride]);
   useEffect(() => () => onSetBackOverride?.(null), [onSetBackOverride]);
+  useEffect(() => () => clearTimeout(relogioDaEntrada.current), []);
+
+  // Abre → empurra a entrada; fecha por QUALQUER caminho (X, véu, Esc, Descartar,
+  // salvar) → devolve ela com `history.back()`, só se ainda for a nossa (no Voltar
+  // do aparelho o navegador já a consumiu). Fica DEPOIS do efeito do Voltar: o
+  // `back()` entrega o popstate depois do commit, e o desvio de uso único abaixo
+  // (que só engole esse popstate) tem de vencer o `null` que aquele efeito
+  // registra ao fechar — sem ele o App leria "sem desvio" e, com o formulário
+  // ainda marcado como sujo, abriria o aviso de alterações não salvas.
+  const folhaAberta = folha !== null;
+  useEffect(() => {
+    if (folhaAberta) {
+      empurrarEntrada();
+      entradaDaFolha.current = temDesvio;
+      return;
+    }
+    if (!entradaDaFolha.current) return;
+    entradaDaFolha.current = false;
+    const depois = () => {
+      const seguir = aoDevolver.current;
+      aoDevolver.current = null;
+      seguir?.();
+    };
+    if (globalThis.history.state?.modal !== MARCA_DA_FOLHA) {
+      depois();
+      return;
+    }
+    const concluir = () => {
+      clearTimeout(relogioDaEntrada.current);
+      if (!abertaRef.current) onSetBackOverride?.(null);
+      // Fora do tratamento do popstate: o App ainda vai conferir a rota.
+      window.setTimeout(depois, 0);
+    };
+    onSetBackOverride?.(() => concluir);
+    // Rede de segurança: se o popstate nunca chegar, não deixa o desvio preso.
+    relogioDaEntrada.current = window.setTimeout(concluir, 1500);
+    globalThis.history.back();
+  }, [folhaAberta, empurrarEntrada, temDesvio, onSetBackOverride]);
 
   const listaDeContas = contas.dados ?? [];
   const listaDeCategorias = categorias.dados ?? [];
