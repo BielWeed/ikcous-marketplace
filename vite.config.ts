@@ -233,9 +233,14 @@ export default defineConfig(async (context): Promise<UserConfig> => {
             const normalizedId = id.replace(/\\/g, "/");
             // O cn() já faz parte do boot. Fixá-lo aqui impede que o Rollup
             // o absorva no chunk do painel e leve esse chunk para a vitrine.
+            // 26/10/2026: o atalho Ctrl+Alt do App passou a ler os nomes das telas
+            // do painel; sem fixá-los aqui o Rollup os guarda no painel-ui e a
+            // vitrine passa a baixar o bloco inteiro do painel (+17 kB no teto
+            // do cliente, medido no CI).
             if (
               normalizedId.endsWith("/src/lib/utils.ts") ||
-              normalizedId.endsWith("/src/utils/atributos-da-variacao.ts")
+              normalizedId.endsWith("/src/utils/atributos-da-variacao.ts") ||
+              normalizedId.endsWith("/src/config/nomes-do-painel.ts")
             ) {
               // O parser agora é público. Não o deixar ser absorvido pelo
               // painel-ui através dos módulos de cadastro que o importam.

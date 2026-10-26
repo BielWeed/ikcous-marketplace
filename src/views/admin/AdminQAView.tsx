@@ -287,7 +287,9 @@ export const AdminQAView = memo(function AdminQAView({
     }
     if (!selectedQuestion || isSubmitting) return;
 
-    const cleanAnswer = answer.replace(/<[^>]*>/g, "").trim();
+    // Texto puro: o React escapa na exibição e a resposta não vai a nenhum
+    // HTML (tela da loja, painel e aviso do sino), então "<P>" é só texto.
+    const cleanAnswer = answer.trim();
     if (!cleanAnswer) {
       toast.error("A resposta não pode ser vazia.");
       return;

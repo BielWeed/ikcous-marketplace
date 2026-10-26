@@ -128,6 +128,20 @@ describe("paiDaTelaDoAdmin", () => {
       "admin-settings",
     );
   });
+  it("ficha do cliente volta à tela de origem (CRM, Privacidade); sem origem, Clientes", () => {
+    expect(paiDaTelaDoAdmin("admin-user-detail", "admin-crm", false)).toBe(
+      "admin-crm",
+    );
+    expect(paiDaTelaDoAdmin("admin-user-detail", "admin-settings", false)).toBe(
+      "admin-settings",
+    );
+    expect(paiDaTelaDoAdmin("admin-user-detail", "home", false)).toBe(
+      "admin-customers",
+    );
+    expect(paiDaTelaDoAdmin("admin-user-detail", null, false)).toBe(
+      "admin-customers",
+    );
+  });
   it("a tabela antiga continua de pé para as demais views", () => {
     expect(paiDaTelaDoAdmin("admin-coupon-form", null, false)).toBe(
       "admin-coupons",
