@@ -17,6 +17,7 @@ import {
   fraseDoSeloDeFreteGratis,
 } from "@/lib/estrategias-de-frete";
 import { imagemRedimensionada } from "@/lib/imageUrl";
+import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant } from "@/types";
@@ -455,15 +456,28 @@ export const ProductCard = memo(function ProductCard({
             ? `Ver produto ${product.name}`
             : `Adicionar ${product.name} ao carrinho`;
 
-  const promocional =
-    !!product.originalPrice && product.originalPrice > precoAtual;
-  // Caça 4 (V1): o "% OFF" sai do MESMO preço que o card mostra (o da
-  // variação escolhida), nunca do preço base do produto -- senão a variação
-  // mais cara/barata mostrava um selo que não bate com "De/Por".
+  // UI-191 (G3): o que o card ANUNCIA. Sem escolha feita, é o MENOR preço entre
+  // as opções à venda ("a partir de" quando elas custam coisas diferentes) --
+  // nunca o preço-base do produto, que uma variação esgotada ou com preço
+  // próprio pode desmentir. Com escolha feita na folha, é o preço dessa
+  // escolha (Caça 4/V1: o "% OFF" sai do MESMO preço que o card mostra).
+  // O riscado, o "% OFF" e a economia só existem se o preço mostrado for menor
+  // que o "De". Só exibição: o que se cobra segue o servidor, por variação.
+  const vitrine = useMemo(() => precoDeVitrine(product), [product]);
+  const escolhendo = selecionadasObjs.length > 0;
+  const precoMostrado = escolhendo ? precoAtual : vitrine.preco;
+  const aPartirDe = !escolhendo && vitrine.aPartirDe;
+  const precoOriginalMostrado = escolhendo
+    ? product.originalPrice && product.originalPrice > precoAtual
+      ? product.originalPrice
+      : null
+    : vitrine.precoOriginal;
+  const promocional = precoOriginalMostrado !== null;
   const discount =
-    promocional && product.originalPrice
+    precoOriginalMostrado !== null
       ? Math.round(
-          ((product.originalPrice - precoAtual) / product.originalPrice) * 100,
+          ((precoOriginalMostrado - precoMostrado) / precoOriginalMostrado) *
+            100,
         )
       : 0;
   const textoDoBotao = semEstoqueNoCard
@@ -800,8 +814,13 @@ export const ProductCard = memo(function ProductCard({
                 <p className="text-xs leading-tight text-muted-foreground">
                   <span>De </span>
                   <span className="line-through">
-                    {formatCurrency(product.originalPrice ?? 0)}
+                    {formatCurrency(precoOriginalMostrado)}
                   </span>
+                </p>
+              )}
+              {aPartirDe && (
+                <p className="text-xs leading-tight text-muted-foreground">
+                  A partir de
                 </p>
               )}
               <p
@@ -815,7 +834,7 @@ export const ProductCard = memo(function ProductCard({
                 )}
               >
                 {promocional && <span className="sr-only">Por </span>}
-                {formatCurrency(precoAtual)}
+                {formatCurrency(precoMostrado)}
               </p>
               <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs leading-tight">
                 {discount > 0 && !semEstoqueNoCard && (
@@ -1057,57 +1076,70 @@ export const ProductCard = memo(function ProductCard({
           `priceOverride` da escolha feita na folha, que é a promessa do
           card inteligente. */}
           <div className="flex flex-1 flex-col gap-0.5 p-2.5 pt-1">
-            {/* Price */}
-            <div className="mt-auto flex w-full items-end justify-between gap-2 pt-1">
-              <div className="flex flex-col justify-end">
+            {/* Price. UI-191 (G4): o preço fica numa linha só por linha
+            (`whitespace-nowrap`) e os selos descem para a PRÓPRIA faixa, que
+            quebra de forma controlada dentro do card. Antes, preço e selos
+            dividiam uma linha `justify-between` sem quebra: em 320/375 px o
+            preço virava 2-3 linhas e o selo saía 7-23 px para fora do card. */}
+            <div className="mt-auto flex w-full min-w-0 flex-col gap-1.5 pt-1">
+              <div className="flex min-w-0 flex-col">
                 {/* Preço DINÂMICO: com variação escolhida no card, mostra o
                 priceOverride da escolha (mesma semântica da página do
-                produto: `??` preserva override zero). */}
-                {product.originalPrice && product.originalPrice > precoAtual ? (
-                  <div className="flex flex-col">
-                    <span className="text-[9px] font-bold uppercase leading-none tracking-wider text-slate-400">
-                      De:{" "}
-                      <span className="line-through">
-                        {formatCurrency(product.originalPrice)}
-                      </span>
+                produto: `??` preserva override zero); sem escolha, o menor
+                preço das opções à venda (`precoDeVitrine`). */}
+                {precoOriginalMostrado !== null && (
+                  <span className="whitespace-nowrap text-[9px] font-bold uppercase leading-none tracking-wider text-slate-400">
+                    De:{" "}
+                    <span className="line-through">
+                      {formatCurrency(precoOriginalMostrado)}
                     </span>
-                    <span
-                      className={cn(
-                        "mt-1 text-[15px] font-black leading-none tracking-tight",
-                        CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
-                      )}
-                    >
-                      Por: {formatCurrency(precoAtual)}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col">
-                    <span className="text-[15px] font-black leading-none tracking-tight text-slate-900">
-                      {formatCurrency(precoAtual)}
-                    </span>
-                  </div>
+                  </span>
                 )}
-              </div>
-
-              {/* Badges */}
-              <div className="flex shrink-0 items-center gap-1">
-                {discount > 0 && (
+                {aPartirDe && (
                   <span
                     className={cn(
-                      "shrink-0 select-none rounded border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider",
-                      CLASSE_SELO_DESCONTO,
+                      "whitespace-nowrap text-[9px] font-bold uppercase leading-none tracking-wider text-slate-500",
+                      promocional && "mt-1",
                     )}
                   >
-                    {discount}% OFF
+                    A partir de
                   </span>
                 )}
-                {product.isBestseller && (
-                  <span className="flex shrink-0 select-none items-center gap-0.5 rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-700">
-                    <Flame className="size-2.5 shrink-0 fill-orange-500/20 text-orange-500" />
-                    <span>EM ALTA</span>
-                  </span>
-                )}
+                <span
+                  className={cn(
+                    "whitespace-nowrap text-[15px] font-black leading-none tracking-tight max-[359px]:text-sm",
+                    promocional
+                      ? CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO
+                      : "text-slate-900",
+                    (promocional || aPartirDe) && "mt-1",
+                  )}
+                >
+                  {promocional && <span className="sr-only">Por: </span>}
+                  {formatCurrency(precoMostrado)}
+                </span>
               </div>
+
+              {/* Selos */}
+              {(discount > 0 || product.isBestseller) && (
+                <div className="flex min-w-0 flex-wrap items-center gap-1">
+                  {discount > 0 && (
+                    <span
+                      className={cn(
+                        "shrink-0 select-none whitespace-nowrap rounded border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider",
+                        CLASSE_SELO_DESCONTO,
+                      )}
+                    >
+                      {discount}% OFF
+                    </span>
+                  )}
+                  {product.isBestseller && (
+                    <span className="flex shrink-0 select-none items-center gap-0.5 whitespace-nowrap rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-700">
+                      <Flame className="size-2.5 shrink-0 fill-orange-500/20 text-orange-500" />
+                      <span>EM ALTA</span>
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Action Button: com variação, o rótulo é SEMPRE "Escolher opções"
@@ -1265,7 +1297,7 @@ export const ProductCard = memo(function ProductCard({
               eixoAberto={eixoAberto}
               aviso={avisoDaEscolha}
               imagem={imagemDaVariante || fotoDaCor || product.images[0]}
-              preco={precoAtual}
+              preco={precoMostrado}
               estoque={estoqueAtual}
               quantidade={quantidade}
               indisponivel={nenhumaOpcaoDisponivel}

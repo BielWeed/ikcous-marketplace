@@ -3,7 +3,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useFavorites } from "@/hooks/useFavorites";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
-import { precoVendido } from "@/lib/preco-vendido";
+import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import "./FavoritesView.css";
 import type { Product, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -100,10 +100,9 @@ export const FavoritesView = React.memo(function FavoritesView({
   const { descontos, secoes, total } = useMemo(() => {
     const promocionais = new Set<string>();
     for (const produto of favorites) {
-      if (
-        produto.originalPrice != null &&
-        produto.originalPrice > precoVendido(produto, undefined)
-      ) {
+      // UI-191 (G3): "Com desconto" é o preço de VITRINE (menor das opções à
+      // venda) abaixo do "De" -- o mesmo que o card mostra.
+      if (precoDeVitrine(produto).precoOriginal !== null) {
         promocionais.add(produto.id);
       }
     }
@@ -116,7 +115,7 @@ export const FavoritesView = React.memo(function FavoritesView({
     } else if (ordem !== "original") {
       visiveis.sort(
         (a, b) =>
-          (precoVendido(a, undefined) - precoVendido(b, undefined)) *
+          (precoDeVitrine(a).preco - precoDeVitrine(b).preco) *
           (ordem === "maior" ? -1 : 1),
       );
     }

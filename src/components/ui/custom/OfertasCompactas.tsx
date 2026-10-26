@@ -137,6 +137,8 @@ function CartaoOfertaCompacta({
     hasActiveVariant,
     savings,
     precoAntigo,
+    preco,
+    aPartirDe,
   } = useAcoesDaOferta({
     product,
     onToggleFavorite,
@@ -251,6 +253,11 @@ function CartaoOfertaCompacta({
         <div className="min-h-3.5 text-[11px] leading-[14px] text-zinc-500 line-through">
           {precoAntigo ? `De: ${formatCurrency(precoAntigo)}` : null}
         </div>
+        {aPartirDe && (
+          <span className="text-[11px] font-medium leading-[14px] text-zinc-500">
+            A partir de
+          </span>
+        )}
         <span
           data-preco-oferta
           className={cn(
@@ -262,7 +269,7 @@ function CartaoOfertaCompacta({
                 : "text-slate-900",
           )}
         >
-          {formatCurrency(product.price)}
+          {formatCurrency(preco)}
         </span>
         {largo && savings > 0 && (
           <span
