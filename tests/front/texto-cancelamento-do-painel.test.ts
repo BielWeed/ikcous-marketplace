@@ -304,3 +304,69 @@ describe("textoCancelamentoDoPainel — o produto que tinha saído já voltou (r
     expect(texto).toContain("O estoque volta");
   });
 });
+
+// Caça 9, item 4: cancelar o pedido NÃO cancela a etiqueta já comprada no
+// Melhor Envio — o saldo continua gasto. Com etiqueta emitida
+// (`shipping_label_id`), a frase da confirmação avisa antes da pergunta.
+describe("textoCancelamentoDoPainel — etiqueta de envio já comprada (shipping_label_id)", () => {
+  const AVISO =
+    "A etiqueta de envio já foi paga. Cancele a etiqueta no Melhor Envio para recuperar o saldo.";
+
+  const pedidos = [
+    { status: "pending", payment_status: "aguardando" },
+    { status: "processing", payment_status: "pago" },
+    { status: "processing", payment_status: "pago", valorEstornado: 10 },
+    { status: "shipping", payment_status: "pago" },
+    { status: "shipping", payment_status: "aguardando" },
+    { status: "processing", payment_status: "recebido_na_entrega" },
+    {
+      status: "processing",
+      payment_status: "pago",
+      cancelledAfterShipping: true,
+      returnedToSellerAt: "2026-10-20T12:00:00.000Z",
+    },
+    {
+      status: "processing",
+      payment_status: "aguardando",
+      cancelledAfterShipping: true,
+      returnedToSellerAt: "2026-10-20T12:00:00.000Z",
+    },
+    {
+      status: "processing",
+      payment_status: "aguardando",
+      cancelledAfterShipping: true,
+    },
+    {},
+  ];
+
+  it("com etiqueta emitida, TODA frase de confirmação traz o aviso e continua terminando na pergunta", () => {
+    for (const pedido of pedidos) {
+      const sem = textoCancelamentoDoPainel(pedido);
+      const com = textoCancelamentoDoPainel({
+        ...pedido,
+        shipping_label_id: "lbl-123",
+      });
+      const rotulo = JSON.stringify(pedido);
+      expect(sem, rotulo).not.toContain("etiqueta");
+      expect(com, rotulo).toContain(AVISO);
+      expect(com.endsWith("?"), rotulo).toBe(true);
+      // O aviso vem ANTES da pergunta final, e o resto do texto não muda.
+      expect(com.indexOf(AVISO), rotulo).toBeLessThan(
+        com.lastIndexOf("Cancelar"),
+      );
+      expect(com.replace(`${AVISO} `, ""), rotulo).toBe(sem);
+    }
+  });
+
+  it("sem etiqueta (ausente, null ou vazia) o texto é exatamente o de antes", () => {
+    for (const pedido of pedidos) {
+      const base = textoCancelamentoDoPainel(pedido);
+      for (const shipping_label_id of [undefined, null, ""]) {
+        expect(
+          textoCancelamentoDoPainel({ ...pedido, shipping_label_id }),
+          JSON.stringify(pedido),
+        ).toBe(base);
+      }
+    }
+  });
+});

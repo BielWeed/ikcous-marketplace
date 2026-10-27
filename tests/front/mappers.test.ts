@@ -365,6 +365,18 @@ describe("mapVariantFromDB", () => {
 });
 
 describe("mapOrderFromDB", () => {
+  it("etiqueta de envio já comprada chega ao pedido (o aviso de cancelamento do painel precisa dela); sem etiqueta fica ausente", () => {
+    expect(
+      mapOrderFromDB(pedido({ shipping_label_id: "lbl-9" })).shippingLabelId,
+    ).toBe("lbl-9");
+    expect(
+      mapOrderFromDB(pedido({ shipping_label_id: null })).shippingLabelId,
+    ).toBeUndefined();
+    expect(
+      mapOrderFromDB(pedido({ shipping_label_id: "" })).shippingLabelId,
+    ).toBeUndefined();
+  });
+
   it("o snapshot do customer_data vence ao endereço do join (laudo #4, onda 2)", () => {
     // Era "prefere o endereço do join" — e era o defeito: o JOIN traz o
     // endereço ATUAL do perfil; deixá-lo vencer fazia editar/apagar endereço

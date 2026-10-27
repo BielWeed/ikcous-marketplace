@@ -290,7 +290,6 @@ it("contato e horário: conta dois blocos, salva uma vez cada EM SEQUÊNCIA e n�
   expect(h.update).toHaveBeenCalledTimes(1);
   expect(h.update.mock.calls[0][0]).toEqual({
     whatsappNumber: "5511988887777",
-    shareText: "Confira [nome]: [link]",
   });
   expect(h.update.mock.calls[0][0]).not.toHaveProperty("businessHours");
   await act(async () => {

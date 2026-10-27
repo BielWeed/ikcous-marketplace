@@ -154,7 +154,7 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
               type="number"
               min="0.01"
               step="5"
-              inputMode="numeric"
+              inputMode="decimal"
               value={acimaDe === 0 ? "" : acimaDe}
               onChange={(e) =>
                 onAcimaDe(e.target.value === "" ? 0 : Number(e.target.value))

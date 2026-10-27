@@ -301,6 +301,19 @@ describe("Sobre a Loja — identidade da loja pela RPC protegida", () => {
     await click("Salvar alterações");
     expect(h.save).toHaveBeenCalledTimes(1);
   });
+  it("lote 222: nome vazio diz o que falta e destaca o campo do nome", async () => {
+    await render();
+    expect(input("store-name").getAttribute("aria-invalid")).not.toBe("true");
+    expect(input("store-name").maxLength).toBe(160);
+    await type("store-name", " ");
+    expect(input("store-name").getAttribute("aria-invalid")).toBe("true");
+    await click("Salvar alterações");
+    expect(h.save).not.toHaveBeenCalled();
+    expect(host.textContent).toContain(
+      "Escreva o nome da loja (até 160 letras).",
+    );
+    expect(host.textContent).not.toContain("cidade, estado e cores");
+  });
   it("falha mantém rascunho, guarda e não diz salvo", async () => {
     h.save.mockResolvedValue({ status: "rejected", code: "permission" });
     await render();
