@@ -23,6 +23,7 @@ const sonner = vi.hoisted(() => {
     error: vi.fn(),
     warning: vi.fn(),
     info: vi.fn(),
+    dismiss: vi.fn(),
   };
   return { ...originais, originais };
 });
@@ -104,7 +105,7 @@ describe("interceptador do toast — repassa descrição e duração", () => {
 
   it("descrição que não é texto (elemento React) é ignorada, sem quebrar", async () => {
     const { toast } = await import("sonner");
-    toast.success("Pronto", { description: { nao: "texto" } });
+    toast.success("Pronto", { description: <b>elemento</b> });
     expect(recebidos[0]?.description).toBeUndefined();
     expect(recebidos[0]?.duration).toBe(2600);
   });
@@ -187,10 +188,18 @@ describe("Header — cápsula de aviso no celular", () => {
     const texto = [...cap!.querySelectorAll("span")].find((s) =>
       s.textContent?.includes(MENSAGEM),
     );
-    expect(texto!.className).toContain("max-[640px]:line-clamp-none");
-    expect(texto!.className).toContain("max-[640px]:max-w-none");
+    // Largura inteira em TODA a faixa de celular (até 640 px): o cartão longo
+    // não herda o `xs:max-w-[155px]` da pílula, que vencia entre 480 e 640 px.
+    expect(texto!.className).toContain("max-w-none");
+    expect(texto!.className).toContain("line-clamp-none");
+    expect(texto!.className).not.toMatch(/(^|\s)(xs|sm):max-w-/);
+    expect(texto!.className).not.toContain("max-w-[100px]");
+    // acima de 640 px volta à pílula de sempre
+    expect(texto!.className).toContain("min-[641px]:max-w-[220px]");
+    expect(texto!.className).toContain("min-[641px]:line-clamp-2");
     // alvo legível: 12 px no celular, não 11 px
-    expect(texto!.className).toContain("max-[640px]:text-xs");
+    expect(texto!.className).toMatch(/(^|\s)text-xs(\s|$)/);
+    expect(texto!.className).not.toContain("text-[11px]");
     // o cartão se pendura ABAIXO da barra: a altura do cabeçalho não muda
     expect(cap!.className).toContain("max-[640px]:absolute");
     expect(cap!.className).toContain("max-[640px]:rounded-2xl");
@@ -241,5 +250,127 @@ describe("Header — cápsula de aviso no celular", () => {
     expect(hospedeiro.textContent).toContain(DESCRICAO);
     act(() => dispensarToastDoHeader());
     expect(hospedeiro.textContent).not.toContain(DESCRICAO);
+  });
+});
+
+describe("toast.dismiss fecha a cápsula (aviso fixo não fica preso)", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(async () => {
+    initHeaderToastInterceptor();
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+    const { Header } = await import("@/components/ui/custom/Header");
+    await act(async () => {
+      raiz.render(<Header onNavigate={() => {}} />);
+    });
+  });
+
+  afterEach(() => {
+    act(() => dispensarToastDoHeader());
+    act(() => raiz.unmount());
+    hospedeiro.remove();
+    vi.restoreAllMocks();
+  });
+
+  const falado = () =>
+    [...hospedeiro.querySelectorAll('[role="status"]')]
+      .map((r) => r.textContent)
+      .join("|");
+
+  it("aviso fixo com id some quando o código chama toast.dismiss(id)", async () => {
+    const { toast } = await import("sonner");
+    act(() => {
+      toast.info("Rascunho não salvo encontrado", {
+        id: "rascunho",
+        duration: Number.POSITIVE_INFINITY,
+      });
+    });
+    expect(falado()).toContain("Rascunho não salvo encontrado");
+    act(() => {
+      toast.dismiss("rascunho");
+    });
+    expect(falado()).not.toContain("Rascunho não salvo encontrado");
+    // e o Sonner de verdade também recebeu o dismiss
+    expect(sonner.originais.dismiss).toHaveBeenCalledWith("rascunho");
+  });
+
+  it("dismiss de OUTRO id não derruba o aviso atual", async () => {
+    const { toast } = await import("sonner");
+    act(() => {
+      toast.info("Aviso que fica", {
+        id: "A",
+        duration: Number.POSITIVE_INFINITY,
+      });
+    });
+    act(() => {
+      toast.dismiss("B");
+    });
+    expect(falado()).toContain("Aviso que fica");
+  });
+
+  it("toast.dismiss() sem id fecha o aviso atual (como no Sonner, que fecha todos)", async () => {
+    const { toast } = await import("sonner");
+    act(() => {
+      toast.info("Qualquer aviso", { duration: Number.POSITIVE_INFINITY });
+    });
+    expect(falado()).toContain("Qualquer aviso");
+    act(() => {
+      toast.dismiss();
+    });
+    expect(falado()).not.toContain("Qualquer aviso");
+  });
+
+  it("aviso novo substitui o antigo: dismiss do id antigo não derruba o novo", async () => {
+    const { toast } = await import("sonner");
+    act(() => {
+      toast.info("Velho", { id: "velho", duration: Number.POSITIVE_INFINITY });
+      toast.info("Novo", { id: "novo", duration: Number.POSITIVE_INFINITY });
+    });
+    act(() => {
+      toast.dismiss("velho");
+    });
+    expect(falado()).toContain("Novo");
+  });
+});
+
+describe("acima de 640 px a cápsula segue com os 2600 ms de sempre", () => {
+  const recebidos: HeaderToastData[] = [];
+  const ouvinte = (e: Event) => {
+    recebidos.push((e as CustomEvent<HeaderToastData>).detail);
+  };
+
+  beforeEach(() => {
+    recebidos.length = 0;
+    initHeaderToastInterceptor();
+    globalThis.addEventListener("header-toast-event", ouvinte);
+  });
+  afterEach(() => {
+    globalThis.removeEventListener("header-toast-event", ouvinte);
+    vi.unstubAllGlobals();
+  });
+
+  it("no computador, duration explícito, Infinity e texto longo não alongam a cápsula", async () => {
+    vi.stubGlobal("matchMedia", (consulta: string) => ({
+      matches: false,
+      media: consulta,
+    }));
+    const { toast } = await import("sonner");
+    toast.warning("x".repeat(200), { duration: 12000 });
+    toast.info("fixo", { duration: Number.POSITIVE_INFINITY });
+    toast.success(MENSAGEM, { description: DESCRICAO });
+    expect(recebidos.map((r) => r.duration)).toEqual([2600, 2600, 2600]);
+  });
+
+  it("no celular (<=640 px) vale o tempo novo", async () => {
+    vi.stubGlobal("matchMedia", (consulta: string) => ({
+      matches: consulta === "(max-width: 640px)",
+      media: consulta,
+    }));
+    const { toast } = await import("sonner");
+    toast.success(MENSAGEM, { description: DESCRICAO });
+    expect(recebidos[0]?.duration).toBe(duracaoDoAviso(MENSAGEM, DESCRICAO));
   });
 });

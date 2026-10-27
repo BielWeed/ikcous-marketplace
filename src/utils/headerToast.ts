@@ -9,30 +9,48 @@ export interface HeaderToastData {
   type: "success" | "error" | "warning" | "info";
   description?: string;
   duration?: number;
+  /** `id` que o chamador deu ao toast do Sonner (para `toast.dismiss(id)`). */
+  toastId?: string | number;
 }
 
 /**
  * Tempo na tela proporcional ao que há para ler: 60 ms por letra (mensagem +
  * descrição), nunca menos que os 2600 ms de sempre e nunca mais que 9 s. Quem
- * chama o toast com `duration` explícito não passa por aqui.
+ * chama o toast com `duration` explícito não passa por aqui (só no celular).
  */
 export function duracaoDoAviso(message: string, description = ""): number {
   const letras = message.length + description.length;
   return Math.min(9000, Math.max(2600, letras * 60));
 }
 
+// Mesmo corte do CSS que esconde o Sonner (index.css): até 640 px a cápsula é o
+// ÚNICO aviso. Sem matchMedia (jsdom) vale como celular.
+function ehCelular(): boolean {
+  return (
+    typeof window.matchMedia !== "function" ||
+    window.matchMedia("(max-width: 640px)").matches
+  );
+}
+
 function triggerHeaderToast(
   message: string,
   type: "success" | "error" | "warning" | "info",
-  data?: { description?: unknown; duration?: unknown },
+  data?: { description?: unknown; duration?: unknown; id?: unknown },
 ) {
   if (typeof window !== "undefined") {
     const description =
       typeof data?.description === "string" ? data.description : undefined;
-    const duration =
-      typeof data?.duration === "number"
-        ? data.duration
-        : duracaoDoAviso(message, description);
+    // Tempo proporcional / `duration` explícito / Infinity só no celular; acima
+    // de 640 px a cápsula fica os 2600 ms fixos de sempre (o Sonner mostra o
+    // aviso completo pelo tempo dele).
+    let duration = 2600;
+    if (ehCelular()) {
+      duration =
+        typeof data?.duration === "number"
+          ? data.duration
+          : duracaoDoAviso(message, description);
+    }
+    const idDoSonner = data?.id;
     window.dispatchEvent(
       new CustomEvent<HeaderToastData>("header-toast-event", {
         detail: {
@@ -41,6 +59,10 @@ function triggerHeaderToast(
           type,
           description,
           duration,
+          toastId:
+            typeof idDoSonner === "string" || typeof idDoSonner === "number"
+              ? idDoSonner
+              : undefined,
         },
       }),
     );
@@ -61,6 +83,8 @@ export function initHeaderToastInterceptor() {
   const origError = toast.error.bind(toast);
   const origWarning = toast.warning.bind(toast);
   const origInfo = toast.info.bind(toast);
+  const origDismiss =
+    typeof toast.dismiss === "function" ? toast.dismiss.bind(toast) : null;
 
   toast.success = ((message: any, data?: any) => {
     if (typeof message === "string") {
@@ -89,6 +113,16 @@ export function initHeaderToastInterceptor() {
     }
     return origInfo(message, data);
   }) as typeof origInfo;
+
+  // Quem fecha o aviso pelo código (`toast.dismiss(id)`, ou sem id = todos)
+  // também fecha a cápsula; sem isto um aviso fixo (`duration: Infinity`)
+  // ficaria preso no cabeçalho até o toque.
+  if (origDismiss) {
+    toast.dismiss = ((id?: string | number) => {
+      dispensarToastPorId(id);
+      return origDismiss(id);
+    }) as typeof origDismiss;
+  }
 }
 
 // ── O lado LEITOR do canal: estado ÚNICO do toast do header ──────────────
@@ -146,6 +180,13 @@ export function dispensarToastDoHeader() {
   }
   toastDoHeader = null;
   avisarOuvintes();
+}
+
+/** Fecha a cápsula se `id` for o do aviso atual, ou se vier sem id (fecha todos). */
+function dispensarToastPorId(id?: string | number) {
+  if (!toastDoHeader) return;
+  if (id === undefined || id === toastDoHeader.toastId)
+    dispensarToastDoHeader();
 }
 
 function assinarToastDoHeader(avisar: () => void) {

@@ -122,7 +122,9 @@ export const Header = memo(function Header({
   // No celular a pílula (100 px, 2 linhas) só cabe aviso curtinho: com
   // descrição ou frase longa a cápsula vira um cartão que se pendura logo
   // ABAIXO da barra (absolute — a altura do cabeçalho não muda) com o texto
-  // inteiro. No computador nada muda: o Sonner mostra o aviso completo.
+  // inteiro, pelo tempo proporcional ao texto (utils/headerToast.ts). Acima de
+  // 640 px nada muda: o Sonner mostra o aviso completo e a cápsula segue com
+  // os 2600 ms de sempre.
   const avisoLongo =
     !!activeToast &&
     (!!activeToast.description || activeToast.message.length > 26);
@@ -397,10 +399,14 @@ export const Header = memo(function Header({
                     initial={{ opacity: 0, x: 8 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.2, ease: "easeOut" }}
+                    // O cartão longo NÃO herda o `xs:max-w-[155px]` da pílula (ele
+                    // vencia o `max-[640px]:max-w-none` entre 480 e 640 px): são
+                    // dois conjuntos de classes, sem sobreposição de faixa.
                     className={cn(
-                      "line-clamp-2 max-w-[100px] whitespace-normal break-words text-left text-[11px] font-bold leading-tight tracking-tight text-white/95 xs:max-w-[155px] xs:text-xs sm:max-w-[220px]",
-                      avisoLongo &&
-                        "max-[640px]:line-clamp-none max-[640px]:max-w-none max-[640px]:flex-1 max-[640px]:text-xs",
+                      "whitespace-normal break-words text-left font-bold leading-tight tracking-tight text-white/95",
+                      avisoLongo
+                        ? "line-clamp-none max-w-none flex-1 text-xs min-[641px]:line-clamp-2 min-[641px]:max-w-[220px] min-[641px]:flex-none"
+                        : "line-clamp-2 max-w-[100px] text-[11px] xs:max-w-[155px] xs:text-xs sm:max-w-[220px]",
                     )}
                   >
                     {activeToast.message}
