@@ -112,6 +112,43 @@ async function callRpcWithRetry<T>(
 let cachedAdminProducts: Product[] | null = null;
 let cachedAdminProductsTotal = 0;
 
+/**
+ * O que a exclusão precisa de um produto que não está na página carregada de
+ * `useProducts` (ex.: a visão "Sem custo", que varre o catálogo inteiro): o id
+ * e as fotos dele e das variações, para mandá-las ao backup depois do
+ * soft-delete. `undefined` = o produto não existe (ou já foi excluído). Erro de
+ * rede lança: sem saber o que guardar, a exclusão não segue.
+ */
+async function lerMidiaDoProdutoFora(
+  id: string,
+): Promise<{ id: string; images: string[]; variants: any[] } | undefined> {
+  const { data: produto, error } = await (
+    supabase.from("vw_produtos_admin") as any
+  )
+    .select("id, imagem_urls")
+    .eq("id", id)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) throw error;
+  if (!produto) return undefined;
+
+  const { data: variantes, error: erroDasVariantes } = await (
+    supabase.from("product_variants") as any
+  )
+    .select("id, image_url")
+    .eq("product_id", id);
+  if (erroDasVariantes) throw erroDasVariantes;
+
+  return {
+    id: produto.id,
+    images: produto.imagem_urls ?? [],
+    variants: (variantes ?? []).map((v: any) => ({
+      id: v.id,
+      imageUrl: v.image_url ?? undefined,
+    })),
+  };
+}
+
 /** Só para teste: o sync é privado e não tem outro ponto de entrada sem montar
  *  o hook inteiro e esperar o `setTimeout` do evento `online`. */
 export function _syncOfflineUpdatesParaTeste(userId: string): Promise<boolean> {
@@ -131,7 +168,40 @@ export function _syncOfflineUpdatesParaTeste(userId: string): Promise<boolean> {
 /** Versões que o servidor devolveu ao gravar a fila offline (id → versão). */
 const versoesAposSincronizar = new Map<string, string>();
 
+/**
+ * Trava do módulo: vários `useProducts` montados (uma tela do painel cada) pedem
+ * a sincronização da MESMA fila quase juntos ao voltar a rede. Todos leriam a
+ * fila antes de qualquer um gravar; o primeiro mudava a versão do produto no
+ * servidor e os outros, com a versão velha, recebiam 0 linhas e avisavam "sua
+ * edição offline não foi aplicada" — falso. Por dono de fila, só uma passada
+ * roda por vez; quem chega durante ela sai sem avisar (a passada em curso já
+ * leva a fila inteira, e o que entrar nela depois a próxima chamada pega).
+ * A marca nasce de forma síncrona (sem brecha entre conferir e marcar) e morre
+ * no fim da passada, dê certo ou erre. Se a passada travar de vez (rede que
+ * nunca responde), a marca vence em 2 minutos: uma travada não pode impedir
+ * para sempre a fila de sair.
+ */
+const PRAZO_DA_TRAVA_DA_FILA_MS = 120_000;
+const filasEmSincronizacao = new Map<string, { desde: number }>();
+
 async function syncOfflineUpdates(userId: string): Promise<boolean> {
+  const emCurso = filasEmSincronizacao.get(userId);
+  if (emCurso && Date.now() - emCurso.desde < PRAZO_DA_TRAVA_DA_FILA_MS) {
+    return false;
+  }
+  const minhaMarca = { desde: Date.now() };
+  filasEmSincronizacao.set(userId, minhaMarca);
+  try {
+    return await sincronizarFilaDoUsuario(userId);
+  } finally {
+    // Só solta a própria marca: a de uma passada mais nova não é minha.
+    if (filasEmSincronizacao.get(userId) === minhaMarca) {
+      filasEmSincronizacao.delete(userId);
+    }
+  }
+}
+
+async function sincronizarFilaDoUsuario(userId: string): Promise<boolean> {
   if (typeof window === "undefined" || !navigator.onLine) return false;
   const chaveDaFila = chaveDoUsuario(CHAVE_BASE_DA_FILA_DE_PRODUTOS, userId);
   const queueStr = localStorage.getItem(chaveDaFila);
@@ -171,7 +241,9 @@ async function syncOfflineUpdates(userId: string): Promise<boolean> {
     let interrompida = false;
     let naoTentados: any[] = [];
     const toastId = toast.loading(
-      `Sincronizando ${queue.length} atualizações pendentes offline...`,
+      queue.length === 1
+        ? "Sincronizando 1 atualização pendente offline..."
+        : `Sincronizando ${queue.length} atualizações pendentes offline...`,
     );
 
     for (const [indice, item] of queue.entries()) {
@@ -1249,6 +1321,10 @@ export function useProducts({ autoFetch = true } = {}) {
   const addProduct = useCallback(
     async (
       productData: Omit<Product, "id" | "createdAt" | "rating" | "reviewCount">,
+      // `avisarSucesso: false` = quem chama dá o próprio aviso de sucesso (a
+      // duplicação diz "Produto Duplicado"): sem isto saíam dois avisos. O aviso
+      // de FALHA nunca se cala.
+      opcoes?: { avisarSucesso?: boolean },
     ) => {
       if (!isAdmin) {
         toast.error("Permissão negada");
@@ -1391,7 +1467,7 @@ export function useProducts({ autoFetch = true } = {}) {
           // Não dizer "sucesso" em cima do aviso de variação falha (laudo
           // 0109, A3): dois toasts com mensagens opostas na mesma tela é o
           // ruído que ensina o lojista a ignorar os dois.
-          if (!variantesFalharam) {
+          if (!variantesFalharam && opcoes?.avisarSucesso !== false) {
             toast.success("Produto cadastrado com sucesso!");
           }
           return (
@@ -1847,7 +1923,12 @@ export function useProducts({ autoFetch = true } = {}) {
       setLocalProducts((prev) => prev.filter((p) => p.id !== id));
 
       try {
-        const product = originalProducts.find((p) => p.id === id);
+        // O produto pode não estar na página carregada (a visão "Sem custo"
+        // guarda a própria lista): então a exclusão busca por id só o que ela
+        // precisa — id e fotos — em vez de falhar com "não encontrado".
+        const product =
+          originalProducts.find((p) => p.id === id) ??
+          (await lerMidiaDoProdutoFora(id));
         if (!product) {
           throw new Error("Produto não encontrado");
         }

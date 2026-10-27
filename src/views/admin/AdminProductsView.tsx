@@ -140,7 +140,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     loadProductsSemCusto,
     copiarImagemParaDuplicacao,
   } = useProducts({ autoFetch: false });
-  const { stats, fetchExecutiveSummary } = useAnalytics();
+  const { stats, error: erroDoResumo, fetchExecutiveSummary } = useAnalytics();
   const { categories: dbCategories } = useCategories();
   const isOffline = useOnlineStatus();
   const { prefetchView } = usePrefetchOnHover();
@@ -265,6 +265,14 @@ export const AdminProductsView = memo(function AdminProductsView({
   const [productToDuplicate, setProductToDuplicate] = useState<any | null>(
     null,
   );
+  // Cópia em andamento: o botão vira "Duplicando…" e um segundo toque não cria
+  // outra. A ref é a trava de verdade (vale já no segundo toque, antes de a tela
+  // redesenhar); o estado só pinta o botão.
+  const [duplicando, setDuplicando] = useState(false);
+  const duplicandoRef = useRef(false);
+  // Exclusões/cópias cuja recarga da lista ainda não terminou: enquanto houver
+  // uma, a lista vazia é "ainda atualizando", nunca "Nenhum produto cadastrado".
+  const [atualizacoesPendentes, setAtualizacoesPendentes] = useState(0);
 
   useEffect(() => {
     localStorage.setItem("admin_products_view_mode", viewMode);
@@ -293,7 +301,8 @@ export const AdminProductsView = memo(function AdminProductsView({
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const buscandoSemCusto = modoSemCusto && semCusto === null && !loadError;
-  const effectiveLoading = loading || !hasLoadedOnce || buscandoSemCusto;
+  const effectiveLoading =
+    loading || !hasLoadedOnce || buscandoSemCusto || atualizacoesPendentes > 0;
   const shouldScrollToTop = useRef(false);
 
   // Logo depois de CADASTRAR um produto novo, a lista abre na página 1 e sem
@@ -370,6 +379,26 @@ export const AdminProductsView = memo(function AdminProductsView({
           const maxPage = Math.max(0, Math.ceil(result.total / pageSize) - 1);
           if (pageToFetch > maxPage) {
             setCurrentPage(maxPage);
+            // A página pedida já não existe (ex.: o último produto dela foi
+            // excluído): busca já a última página válida, em vez de deixar a
+            // lista vazia até a busca automática da página nova (320 ms) — e
+            // "Nenhum produto cadastrado" piscando nesse intervalo. Sem
+            // produto nenhum no filtro (total 0) o vazio é verdade: nada a buscar.
+            if (result.total > 0) {
+              const ultima = await loadProducts(maxPage, pageSize, filtros);
+              if (
+                !catalogoMontado.current ||
+                geracao !== geracaoDaRecarga.current
+              ) {
+                return;
+              }
+              if (ultima) {
+                setTotalProducts(ultima.total);
+                cachedProductsTotal = ultima.total;
+              } else {
+                setLoadError(true);
+              }
+            }
           }
         } else {
           // O null da tentativa atual continua sendo falha; o de uma busca
@@ -403,9 +432,9 @@ export const AdminProductsView = memo(function AdminProductsView({
 
   // A exclusão pode demorar: quando termina, a recarga usa a página e os
   // filtros ATUAIS, não os do clique de confirmar.
-  const recarregarAtualRef = useRef<() => void>(() => {});
+  const recarregarAtualRef = useRef<() => Promise<void>>(async () => {});
   useEffect(() => {
-    recarregarAtualRef.current = () => void loadData(currentPage);
+    recarregarAtualRef.current = () => loadData(currentPage);
   }, [loadData, currentPage]);
 
   // Renomear ou apagar categoria mexe nos produtos (o banco troca o nome neles).
@@ -609,6 +638,11 @@ export const AdminProductsView = memo(function AdminProductsView({
       totalCount: totalProducts,
     };
   }, [stats, totalProducts]);
+
+  // O resumo não chegou E a busca falhou: sem isto a nota ficava em "Conferindo
+  // custos…" para sempre. Com o resumo já conferido, um aviso de atualização que
+  // falhou não vale erro (os números na tela são verdadeiros).
+  const resumoFalhou = !!erroDoResumo && !financialStats.coberturaConferida;
 
   const [despesasDigitadas, setDespesasDigitadas] = useState("");
   // Simulação explícita desta tela, vinculada ao resumo usado na confirmação.
@@ -840,6 +874,16 @@ export const AdminProductsView = memo(function AdminProductsView({
       setProductToDelete(null);
       return;
     }
+    // Da confirmação até a recarga da lista terminar a lista está "atualizando":
+    // o hook tira o produto da tela antes de o servidor responder, e a lista
+    // vazia nesse intervalo não é "Nenhum produto cadastrado".
+    setAtualizacoesPendentes((n) => n + 1);
+    let atualizacaoEncerrada = false;
+    const terminouAtualizacao = () => {
+      if (atualizacaoEncerrada) return; // uma vez só por exclusão
+      atualizacaoEncerrada = true;
+      setAtualizacoesPendentes((n) => Math.max(0, n - 1));
+    };
     try {
       // `deleteProduct` nunca lança — captura tudo internamente e devolve
       // `true`/`false`, já mostrando o toast (sucesso OU erro) dela mesma.
@@ -856,7 +900,9 @@ export const AdminProductsView = memo(function AdminProductsView({
       if (sucesso) {
         haptic.success();
         // A recarga atualiza o total e corrige a página se ela saiu do limite.
-        recarregarAtualRef.current();
+        // Sem `await`: o `finally` abaixo (que fecha o diálogo) não pode esperar
+        // a rede; o "atualizando" termina quando a recarga termina.
+        void recarregarAtualRef.current().finally(terminouAtualizacao);
         // Achado da revisão do Achado 7: `AlertDialogAction` do Radix é
         // `Dialog.Close` e fecha o diálogo síncrono no clique, antes de
         // qualquer `await` — mas o `finally` abaixo (`setProductToDelete`)
@@ -869,8 +915,10 @@ export const AdminProductsView = memo(function AdminProductsView({
         refreshFinancialStats();
       } else {
         haptic.error();
+        terminouAtualizacao();
       }
     } catch {
+      terminouAtualizacao();
       haptic.error();
       toast.error("Erro na Exclusão", {
         description: "Não foi possível remover o produto.",
@@ -897,6 +945,7 @@ export const AdminProductsView = memo(function AdminProductsView({
 
   const confirmDuplicate = useCallback(async () => {
     if (!productToDuplicate) return;
+    if (duplicandoRef.current) return;
     if (isOffline) {
       toast.error("Você está offline", {
         description: "Não é possível confirmar a duplicação sem conexão.",
@@ -905,6 +954,8 @@ export const AdminProductsView = memo(function AdminProductsView({
       setProductToDuplicate(null);
       return;
     }
+    duplicandoRef.current = true;
+    setDuplicando(true);
     try {
       // Laudo 0109 (A2): a cópia nasce com arquivos PRÓPRIOS no storage —
       // do produto e de cada variação. Reusar as URLs do original fazia a
@@ -967,7 +1018,8 @@ export const AdminProductsView = memo(function AdminProductsView({
         variants: variantes,
       };
 
-      const copia = await addProduct(duplicateData);
+      // O aviso de sucesso é desta tela ("Produto Duplicado"): o hook cala o dele.
+      const copia = await addProduct(duplicateData, { avisarSucesso: false });
       // A cópia existe (mesmo a que ficou sem grade): recarrega a lista, como a
       // exclusão, para ela entrar na ordem e no total em vez de aparecer solta
       // na página atual. Usa a página e os filtros de AGORA.
@@ -993,6 +1045,8 @@ export const AdminProductsView = memo(function AdminProductsView({
         description: "Não foi possível duplicar o produto.",
       });
     } finally {
+      duplicandoRef.current = false;
+      setDuplicando(false);
       setProductToDuplicate(null);
     }
   }, [
@@ -1066,7 +1120,7 @@ export const AdminProductsView = memo(function AdminProductsView({
               titulo="Métricas de Produtos"
               indicesDoRodape={[4, 5]}
               onEntender={() => toggleHelp("financial-values")}
-              notaAcionavel={financialStats.parcial}
+              notaAcionavel={financialStats.parcial || resumoFalhou}
               nota={
                 <span
                   role={
@@ -1091,7 +1145,23 @@ export const AdminProductsView = memo(function AdminProductsView({
                     </>
                   )}
                   {!financialStats.coberturaConferida ? (
-                    "Conferindo custos…"
+                    resumoFalhou ? (
+                      <>
+                        <span className="text-red-300">
+                          Custos não conferidos ·{" "}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={isOffline}
+                          onClick={() => void fetchExecutiveSummary(true)}
+                          className="relative inline-flex cursor-pointer rounded-full align-middle font-semibold text-red-300 underline underline-offset-2 after:absolute after:inset-x-0 after:inset-y-[-11px] after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Tentar de novo
+                        </button>
+                      </>
+                    ) : (
+                      "Conferindo custos…"
+                    )
                   ) : financialStats.parcial ? (
                     <button
                       type="button"
@@ -2053,7 +2123,9 @@ export const AdminProductsView = memo(function AdminProductsView({
         {/* Diálogo de Confirmação de Duplicação */}
         <AlertDialog
           open={productToDuplicate !== null}
-          onOpenChange={(open) => !open && setProductToDuplicate(null)}
+          onOpenChange={(open) =>
+            !open && !duplicandoRef.current && setProductToDuplicate(null)
+          }
         >
           <AlertDialogContent className="produtos-confirmacao max-w-md rounded-3xl border border-admin-border bg-admin-raised">
             <AlertDialogHeader>
@@ -2070,16 +2142,29 @@ export const AdminProductsView = memo(function AdminProductsView({
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter className="mt-4 gap-2">
-              <AlertDialogCancel className="produto-secundario w-full">
+              <AlertDialogCancel
+                disabled={duplicando}
+                className="produto-secundario w-full"
+              >
                 Cancelar
               </AlertDialogCancel>
               <AlertDialogAction
-                onClick={confirmDuplicate}
-                aria-label="Duplicar Produto: confirmar duplicação"
+                onClick={(evento) => {
+                  // Sem isto o diálogo fecharia no toque e a lojista não veria
+                  // o "Duplicando…": ele fecha quando a cópia termina.
+                  evento.preventDefault();
+                  void confirmDuplicate();
+                }}
+                disabled={duplicando}
+                aria-label={
+                  duplicando
+                    ? "Duplicando…"
+                    : "Duplicar Produto: confirmar duplicação"
+                }
                 className="produto-principal w-full"
               >
-                <Copy aria-hidden="true" className="mr-2 size-4" /> Duplicar
-                Produto
+                <Copy aria-hidden="true" className="mr-2 size-4" />{" "}
+                {duplicando ? "Duplicando…" : "Duplicar Produto"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
