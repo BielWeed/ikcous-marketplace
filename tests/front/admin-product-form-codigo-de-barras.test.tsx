@@ -793,7 +793,23 @@ describe("AdminProductFormView — C5.2 ressalva da revisão: erro da variação
     // abre bloqueada pelo erro de outro código.
     await montarFormEdicaoComVariante();
 
-    // Salvar direto: a variação var-1 tem código que a RPC acusa duplicado.
+    // A conferência do salvar só olha código NOVO ou TROCADO (o que já estava
+    // salvo não é reconferido): troca o código da var-1, sem sair do campo.
+    await act(async () => {
+      botaoEditarDaVariante().click();
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      digitarInput("variant-codigo-barras", "7890000000077");
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    await act(async () => {
+      localizarBotaoPorTexto(document, "Salvar variação")!.click();
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+
+    // Salvar direto: o código novo da var-1 a RPC acusa duplicado.
     await act(async () => {
       localizarBotaoPorTexto(acoesDoProduto(), "Salvar")!.click();
       await esperarMicrotarefas();

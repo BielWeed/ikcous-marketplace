@@ -199,4 +199,138 @@ describe("AdminProductFormView — Voltar do celular fecha só a camada aberta",
     expect(voltar).toHaveBeenCalledTimes(1);
     expect(document.getElementById("product-name")).not.toBeNull();
   });
+  // As janelas do formulário (variação, grade, categoria) também são camadas:
+  // antes o Voltar com uma delas aberta deixava o App abrir "Alterações Não
+  // Salvas" ATRÁS da janela (z-50 < z-[100]) e o toque ficava travado.
+  const abrirVariacoes = async () => {
+    await act(async () => {
+      botaoPorTexto("Variações")?.click();
+    });
+    await esperar();
+  };
+  const voltarFisico = async () => {
+    // O navegador tira a entrada da camada sozinho, antes do override rodar.
+    window.history.replaceState({ view: "admin-product-form" }, "");
+    await act(async () => {
+      overrideAtual?.();
+    });
+    await esperar(60);
+  };
+  // A janela sai com animação de saída (framer-motion): espera ela sumir.
+  const esperarSumir = async (achar: () => unknown) => {
+    for (let i = 0; i < 40 && achar() !== null; i++) await esperar(50);
+  };
+  const janelaDeVariacao = () => document.getElementById("titulo-da-variacao");
+  const janelaDaGrade = () => document.getElementById("titulo-da-grade");
+  const folhaDeCategoria = () =>
+    [...document.body.querySelectorAll('[role="dialog"]')].find((d) =>
+      d.textContent?.includes("Onde este produto aparece na loja"),
+    ) ?? null;
+
+  it("Voltar com 'Nova variação' aberta fecha só a janela; o Voltar seguinte sai do cadastro", async () => {
+    await montar();
+    await abrirVariacoes();
+    await act(async () => {
+      botaoPorTexto("+ Novo")?.click();
+    });
+    await esperar();
+
+    expect(janelaDeVariacao()).not.toBeNull();
+    expect(window.history.state).toMatchObject({ modal: "produto" });
+    expect(overrideAtual).toBeInstanceOf(Function);
+    const voltar = vi.spyOn(window.history, "back");
+
+    await voltarFisico();
+    await esperarSumir(janelaDeVariacao);
+
+    expect(janelaDeVariacao()).toBeNull();
+    expect(document.getElementById("product-name")).not.toBeNull();
+    expect(voltar).not.toHaveBeenCalled();
+    // Sem desvio sobrando: o próximo Voltar é o do App (sair do cadastro).
+    expect(overrideAtual).toBeNull();
+  });
+
+  it("Voltar fecha a variação e, ao reabrir, a janela volta limpa e o Voltar volta a valer", async () => {
+    await montar();
+    await abrirVariacoes();
+    await act(async () => {
+      botaoPorTexto("+ Novo")?.click();
+    });
+    await esperar();
+    await voltarFisico();
+    await esperarSumir(janelaDeVariacao);
+    expect(janelaDeVariacao()).toBeNull();
+    // Reabrir depois do Voltar abre uma janela de variação NOVA e de pé.
+    await act(async () => {
+      botaoPorTexto("+ Novo")?.click();
+    });
+    await esperar();
+    expect(janelaDeVariacao()?.textContent).toBe("Nova variação");
+    expect(overrideAtual).toBeInstanceOf(Function);
+  });
+
+  it("Voltar com a grade aberta fecha só a grade e o formulário continua", async () => {
+    await montar();
+    await abrirVariacoes();
+    await act(async () => {
+      (
+        document.querySelector('[data-testid="abrir-grade"]') as HTMLElement
+      )?.click();
+    });
+    await esperar();
+
+    expect(janelaDaGrade()).not.toBeNull();
+    expect(overrideAtual).toBeInstanceOf(Function);
+    const voltar = vi.spyOn(window.history, "back");
+
+    await voltarFisico();
+    await esperarSumir(janelaDaGrade);
+
+    expect(janelaDaGrade()).toBeNull();
+    expect(document.getElementById("product-name")).not.toBeNull();
+    expect(voltar).not.toHaveBeenCalled();
+    expect(overrideAtual).toBeNull();
+  });
+
+  it("Voltar com a folha de Categoria aberta fecha só a folha", async () => {
+    await montar();
+    await act(async () => {
+      document.getElementById("product-category")?.click();
+    });
+    await esperar();
+
+    expect(folhaDeCategoria()).not.toBeNull();
+    expect(overrideAtual).toBeInstanceOf(Function);
+    const voltar = vi.spyOn(window.history, "back");
+
+    await voltarFisico();
+
+    expect(folhaDeCategoria()).toBeNull();
+    expect(document.getElementById("product-name")).not.toBeNull();
+    expect(voltar).not.toHaveBeenCalled();
+    expect(overrideAtual).toBeNull();
+  });
+
+  it("Voltar com a folha 'Nova categoria' aberta fecha só ela", async () => {
+    await montar();
+    await act(async () => {
+      document.getElementById("product-category")?.click();
+    });
+    await esperar();
+    await act(async () => {
+      botaoPorTexto("Nova categoria")?.click();
+    });
+    await esperar(100);
+
+    expect(overrideAtual).toBeInstanceOf(Function);
+    const abertas = () =>
+      [...document.body.querySelectorAll('[role="dialog"]')].length;
+    expect(abertas()).toBeGreaterThan(0);
+
+    await voltarFisico();
+
+    expect(abertas()).toBe(0);
+    expect(document.getElementById("product-name")).not.toBeNull();
+    expect(overrideAtual).toBeNull();
+  });
 });
