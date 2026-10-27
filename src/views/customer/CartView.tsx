@@ -49,6 +49,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 
 interface CartViewProps {
@@ -224,6 +225,7 @@ export function CartView({
   const { getFreeShippingEligibleProducts } = useProducts();
   const {
     cart: ctxCart,
+    isLoading: lendoOCarrinhoSalvo,
     shippingFee: ctxShippingFee,
     freteIndefinido,
     freteGratis,
@@ -748,7 +750,22 @@ export function CartView({
             >
               {cart.length === 0 ? (
                 <div className="flex flex-1 items-center justify-center">
-                  <EmptyCart onNavigate={onNavigate} />
+                  {/* Lendo o carrinho salvo da conta: ainda não dá para dizer
+                      "vazio" (caça 11-D #6). `isLoading` termina sempre — o
+                      `finally` da leitura e o tempo-limite de 8 s. */}
+                  {lendoOCarrinhoSalvo && !propCart ? (
+                    <div
+                      role="status"
+                      className="flex flex-col items-center gap-3 px-6 py-16"
+                    >
+                      <Skeleton className="h-4 w-40" />
+                      <p className="text-sm text-zinc-600">
+                        Carregando seu carrinho…
+                      </p>
+                    </div>
+                  ) : (
+                    <EmptyCart onNavigate={onNavigate} />
+                  )}
                 </div>
               ) : (
                 <div className="mx-auto flex w-full max-w-7xl flex-col items-stretch gap-6 px-4 pb-6 pt-1 min-[380px]:px-5 lg:flex-row lg:items-start lg:gap-8 lg:px-8 lg:py-6">
