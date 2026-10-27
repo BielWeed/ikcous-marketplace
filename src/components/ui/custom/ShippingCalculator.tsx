@@ -89,6 +89,27 @@ const MENSAGEM_FALHA_AO_COTAR = "Falha ao cotar frete.";
 // frase antiga ("Confira o número") apontava para um campo que não existe.
 const MENSAGEM_CEP_NAO_ENCONTRADO =
   "CEP não encontrado. Confira o CEP do endereço de entrega.";
+// Caça 10 (lote 228): a edge avisa quando a cotação saiu incompleta
+// (`cotacaoIncompleta`: só a retirada, transportadora fora do ar) ou parcial
+// (`cotacaoParcial`: uma transportadora não respondeu). Em qualquer das duas
+// a cliente vê a frase e a lista NÃO é guardada no navegador por 2 h.
+const AVISO_COTACAO_INCOMPLETA =
+  "Não conseguimos calcular a entrega agora. Tente de novo em instantes ou retire na loja.";
+const AVISO_COTACAO_PARCIAL =
+  "Algumas transportadoras não responderam agora. Toque em Tentar de novo para ver todas as opções.";
+// Recusas do servidor que têm frase própria (escolhida pelo `codigo`, nunca
+// pelo texto vindo de fora).
+const FRASE_POR_CODIGO_DA_EDGE = new Map<string, string>([
+  ["cep_invalido", MENSAGEM_CEP_NAO_ENCONTRADO],
+  [
+    "muitas_consultas",
+    "Muitas consultas de frete em pouco tempo. Aguarde alguns minutos e tente de novo.",
+  ],
+  [
+    "carrinho_grande_demais",
+    "O carrinho tem itens demais para calcular o frete de uma vez. Tire alguns itens e tente de novo.",
+  ],
+]);
 
 /**
  * CACHE V2 (release 1.5.3 — retirada na loja). O PWA atualiza por "prompt":
@@ -352,6 +373,10 @@ export function ShippingCalculator({
   const [loading, setLoading] = useState(false);
   const [options, setOptions] = useState<ShippingOption[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Aviso de cotação incompleta/parcial: aparece com "Tentar de novo" MAS não
+  // é `error` — as opções que vieram (a retirada, por exemplo) seguem
+  // escolhíveis e o status continua "pronto".
+  const [aviso, setAviso] = useState<string | null>(null);
   // HONESTIDADE (onda D-1): guarda se a ÚLTIMA cotação concluída voltou sem
   // opção nenhuma (edge devolve `options: []` — loja sem transportadora
   // conectada, frente C). É o que permite mostrar o estado "A calcular" em
@@ -448,6 +473,7 @@ export function ShippingCalculator({
     }
     setLoading(false);
     setError(null);
+    setAviso(null);
     setOptions([]);
     setCotouSemOpcoes(false);
     setOutrasExpandidas(false);
@@ -471,6 +497,7 @@ export function ShippingCalculator({
     }
     setLoading(true);
     setError(null);
+    setAviso(null);
 
     // Meu número nesta rodada. Comparado contra `reqRef.current` em todo
     // ponto que escreve resultado — se outra chamada mais nova já tirou
@@ -587,6 +614,18 @@ export function ShippingCalculator({
       setOptions(calculatedOptions);
       assinaturaCotadaRef.current = cartSignature;
       setCotouSemOpcoes(calculatedOptions.length === 0);
+      // Cotação incompleta/parcial (caça 10): a cliente vê a frase e a lista
+      // não vai para o navegador — guardar uma falha por 2 h a deixaria sem a
+      // transportadora mesmo depois de ela voltar.
+      const cotacaoSaiuIncompleta = data.cotacaoIncompleta === true;
+      const cotacaoSaiuParcial = data.cotacaoParcial === true;
+      setAviso(
+        cotacaoSaiuIncompleta
+          ? AVISO_COTACAO_INCOMPLETA
+          : cotacaoSaiuParcial
+            ? AVISO_COTACAO_PARCIAL
+            : null,
+      );
       // Resposta vazia não preserva a escolha anterior: ela é preço de
       // outra cotação.
       if (calculatedOptions.length === 0 && selecaoVivaRef.current) {
@@ -607,7 +646,9 @@ export function ShippingCalculator({
         revisaoConfig:
           typeof data.revisaoConfig === "string" ? data.revisaoConfig : null,
       };
-      gravarNoCache(cacheKey, JSON.stringify(envelope));
+      if (!cotacaoSaiuIncompleta && !cotacaoSaiuParcial) {
+        gravarNoCache(cacheKey, JSON.stringify(envelope));
+      }
       gravarNoCache("ikcous_last_shipping_cep", cepFormatado);
 
       // Auto-select: MENOR PREÇO, não o primeiro da lista (laudo 31/08,
@@ -627,17 +668,16 @@ export function ShippingCalculator({
       if (meuId !== reqRef.current) return;
       console.error("Error calculating shipping:", err);
       setError(
-        codigo === "cep_invalido"
-          ? MENSAGEM_CEP_NAO_ENCONTRADO
-          : mensagemAmigavelErroEdgeFunction(err, {
-              mensagensSeguras: [
-                MENSAGEM_SEM_CONEXAO_FRETE,
-                MENSAGEM_FALHA_AO_COTAR,
-                MENSAGEM_CONEXAO_LENTA,
-              ],
-              mensagemGenerica:
-                "Não foi possível calcular o frete agora. Tente novamente em instantes.",
-            }),
+        (codigo ? FRASE_POR_CODIGO_DA_EDGE.get(codigo) : undefined) ??
+          mensagemAmigavelErroEdgeFunction(err, {
+            mensagensSeguras: [
+              MENSAGEM_SEM_CONEXAO_FRETE,
+              MENSAGEM_FALHA_AO_COTAR,
+              MENSAGEM_CONEXAO_LENTA,
+            ],
+            mensagemGenerica:
+              "Não foi possível calcular o frete agora. Tente novamente em instantes.",
+          }),
       );
 
       // COTAÇÃO QUE FALHA NÃO VIRA PREÇO INVENTADO: nenhuma opção própria é
@@ -1374,13 +1414,13 @@ export function ShippingCalculator({
               modalidade "escondendo" o erro, ele volta a aparecer sempre que
               houver — o que é o correto: se a cotação falhou, a cliente
               precisa saber, mesmo que outra modalidade (local) já esteja OK. */}
-          {destinoValido && error && (
+          {destinoValido && (error ?? aviso) && (
             <div className="flex items-start justify-between gap-2 rounded-2xl border border-amber-100 bg-amber-50 p-2.5 text-[11px] font-medium text-amber-800">
               {/* Laudo de acessibilidade 05/09, M1: `role="alert"` fala na hora
                   — só a frase; o botão fica fora do que é anunciado. */}
               <div role="alert" className="flex items-start gap-1.5">
                 <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
-                <span>{error}</span>
+                <span>{error ?? aviso}</span>
               </div>
               <button
                 type="button"
