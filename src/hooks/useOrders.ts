@@ -844,10 +844,10 @@ function mensagemDeClienteParaLojaSemChave(corpo: unknown): string | undefined {
     cartaoSemChaveDeAssinatura?: unknown;
   } | null;
   if (c?.pixSemChaveDeAssinatura === true) {
-    return "Esta loja não está recebendo Pix pelo app agora. Fale com a loja ou escolha pagar na entrega.";
+    return "Esta loja não está recebendo Pix pelo app agora. Fale com a loja para combinar outra forma de pagamento.";
   }
   if (c?.cartaoSemChaveDeAssinatura === true) {
-    return "Esta loja não está recebendo cartão pelo app agora. Fale com a loja ou escolha pagar na entrega.";
+    return "Esta loja não está recebendo cartão pelo app agora. Fale com a loja para combinar outra forma de pagamento.";
   }
   return undefined;
 }
