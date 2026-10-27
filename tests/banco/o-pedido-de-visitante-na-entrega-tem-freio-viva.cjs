@@ -219,9 +219,7 @@ const prova = (nome, corpo) => PROVAS.push({ nome, corpo });
  */
 const instalarNova = async () => {
   await instalarAntiga();
-  await C.query(
-    MUTADO ? `${decl(NOVA[V23])}\n${decl(NOVA[V24])}` : MIGRATION,
-  );
+  await C.query(MUTADO ? `${decl(NOVA[V23])}\n${decl(NOVA[V24])}` : MIGRATION);
 };
 /** O estado ANTES: os corpos vivos de antes (CREATE OR REPLACE direto; vale como o rollback, sem depender do pre-voo). */
 const instalarAntiga = () =>
