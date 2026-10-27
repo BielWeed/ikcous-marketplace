@@ -80,9 +80,15 @@ function CartaoDoPrevisto({
   const ocultos = useValoresEstaoOcultos();
   const situacao = situacaoDoVencimento(item.vencimento, hoje);
   const editavel = previstoEhEditavel(item);
-  const parcela =
+  // O banco já grava "Aluguel (1/3)" na descrição: só acrescenta a parcela
+  // quando o texto ainda não a traz (lançamento antigo), nunca duas vezes.
+  const numeroDaParcela =
     item.parcela !== null && item.parcelas !== null && item.parcelas > 1
       ? `${item.parcela}/${item.parcelas}`
+      : null;
+  const parcela =
+    numeroDaParcela && !item.descricao.includes(`(${numeroDaParcela})`)
+      ? numeroDaParcela
       : null;
 
   return (

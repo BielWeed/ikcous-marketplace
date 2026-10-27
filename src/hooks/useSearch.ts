@@ -29,10 +29,13 @@ export function useSearch(products: Product[]) {
           product.category.toLowerCase().trim() ===
             category.toLowerCase().trim();
 
+        // A faixa vale para o preço que o card ANUNCIA (menor das opções à
+        // venda), o mesmo da ordenação -- não para o preço base.
+        const precoDoCard = precoDeVitrine(product).preco;
         const matchesMinPrice =
-          debouncedMinPrice === "" || product.price >= debouncedMinPrice;
+          debouncedMinPrice === "" || precoDoCard >= debouncedMinPrice;
         const matchesMaxPrice =
-          debouncedMaxPrice === "" || product.price <= debouncedMaxPrice;
+          debouncedMaxPrice === "" || precoDoCard <= debouncedMaxPrice;
 
         return (
           matchesQuery && matchesCategory && matchesMinPrice && matchesMaxPrice

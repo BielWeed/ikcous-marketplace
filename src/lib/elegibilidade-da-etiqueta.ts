@@ -9,7 +9,10 @@ import { ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
 //
 // A ORDEM é a própria regra de negócio, não um detalhe de implementação:
 //   1. já etiquetado          → emitida, SEMPRE (mesmo se cancelado depois —
-//                                a etiqueta paga continua visível)
+//                                a etiqueta paga continua visível); a única
+//                                exceção é a compra INDETERMINADA (lote 227):
+//                                o vínculo existe, mas o Melhor Envio não
+//                                confirmou o pagamento → conferindo
 //   2. status morto p/ envio  → indisponível
 //   3. pagamento não confirmado → indisponível (a etiqueta usa saldo REAL)
 //   4. retirada na loja       → indisponível
@@ -47,10 +50,18 @@ export interface PedidoParaEtiqueta {
    * `to.document` para inserir o frete no carrinho.
    */
   cpf: string | null;
+  /**
+   * A compra da etiqueta ficou INDETERMINADA no último evento do histórico
+   * (`compraIndeterminadaPeloHistorico`): o pagamento deu tempo esgotado ou
+   * erro do Melhor Envio, e a edge manteve o vínculo para não comprar duas
+   * vezes. Ausente em pedido antigo.
+   */
+  compra_indeterminada?: boolean;
 }
 
 export type ElegibilidadeDaEtiqueta =
   | { estado: "emitida" }
+  | { estado: "conferindo" }
   | { estado: "indisponivel"; motivo: string }
   | { estado: "precisa_cpf"; servico: string; cpfInvalido: boolean }
   | { estado: "disponivel"; servico: string };
@@ -153,8 +164,20 @@ export function elegibilidadeDaEtiqueta(
   p: PedidoParaEtiqueta,
 ): ElegibilidadeDaEtiqueta {
   // 1. já etiquetado vence QUALQUER outro motivo — a etiqueta PAGA continua
-  //    visível mesmo se o pedido foi cancelado depois.
-  if (p.shipping_label_id) return { estado: "emitida" };
+  //    visível mesmo se o pedido foi cancelado depois. Compra INDETERMINADA
+  //    (sem link de impressão e sem rastreio, que só nascem depois do
+  //    pagamento): o vínculo fica, mas a tela NUNCA afirma "emitida" sem
+  //    confirmação — nem libera a compra de novo.
+  if (p.shipping_label_id) {
+    if (
+      p.compra_indeterminada === true &&
+      !p.shipping_label_url &&
+      !p.tracking_code
+    ) {
+      return { estado: "conferindo" };
+    }
+    return { estado: "emitida" };
+  }
 
   // 2. status morto para envio.
   const status = String(p.status || "").toLowerCase();
@@ -256,4 +279,50 @@ export function elegibilidadeDaEtiqueta(
 
   // 11. disponível.
   return { estado: "disponivel", servico };
+}
+
+/**
+ * O histórico de envio do pedido (`order_shipping_events`) diz que a última
+ * compra de etiqueta ficou INDETERMINADA? Vale o evento mais recente entre:
+ *   - `etiqueta_gerada`                       → compra confirmada (falso);
+ *   - `erro` com `etapa: checkout_indeterminado` → indeterminada (verdadeiro),
+ *     a não ser que a compra tenha FECHADO e só a finalização falhou
+ *     (`pago_confirmado: true`, ou o texto antigo "Compra CONFIRMADA…" dos
+ *     eventos gravados antes dessa marca existir).
+ * Na dúvida (evento antigo sem a marca) fica indeterminada: a tela diz
+ * "conferindo", nunca "emitida". Entrada de qualquer forma: lixo vira falso.
+ */
+export function compraIndeterminadaPeloHistorico(eventos: unknown): boolean {
+  if (!Array.isArray(eventos)) return false;
+  const lista = eventos
+    .map((evento, ordem) => ({ evento, ordem }))
+    .filter(
+      (item): item is { evento: Record<string, unknown>; ordem: number } =>
+        !!item.evento && typeof item.evento === "object",
+    );
+  const quando = (evento: Record<string, unknown>): number => {
+    const ms = Date.parse(String(evento.created_at ?? ""));
+    return Number.isFinite(ms) ? ms : 0;
+  };
+  lista.sort(
+    (a, b) => quando(a.evento) - quando(b.evento) || a.ordem - b.ordem,
+  );
+
+  let indeterminada = false;
+  for (const { evento } of lista) {
+    if (evento.event_type === "etiqueta_gerada") {
+      indeterminada = false;
+      continue;
+    }
+    const payload =
+      evento.payload && typeof evento.payload === "object"
+        ? (evento.payload as Record<string, unknown>)
+        : null;
+    if (payload?.etapa !== "checkout_indeterminado") continue;
+    const compraFechou =
+      payload.pago_confirmado === true ||
+      String(evento.error_message ?? "").startsWith("Compra CONFIRMADA");
+    indeterminada = !compraFechou;
+  }
+  return indeterminada;
 }

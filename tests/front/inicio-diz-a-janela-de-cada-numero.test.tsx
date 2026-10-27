@@ -191,7 +191,8 @@ describe("Início: cada número diz o conceito e a janela", () => {
     expect(botao).toBeTruthy();
     expect(texto(botao ?? null)).toContain("Vencidas + próximos 7 dias");
     act(() => botao?.click());
-    expect(onNavigate).toHaveBeenCalledWith("admin-financeiro");
+    // Lote 224: abre direto em "Pagar e receber", não na Visão.
+    expect(onNavigate).toHaveBeenCalledWith("admin-financeiro", "previstos");
   });
 
   it("(b2) 'A pagar (vencidas + próximos 7 dias)' é um botão-linha novo (rounded-2xl, gradiente, min-h-11)", () => {

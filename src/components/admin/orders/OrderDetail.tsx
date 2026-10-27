@@ -35,7 +35,10 @@ import {
   fraseDeEsperaDoPedido,
   idadeDoPedidoPendente,
 } from "@/lib/idade-do-pedido-pendente";
-import { linkDeRastreio } from "@/lib/link-de-rastreio";
+import {
+  linkDeRastreio,
+  normalizarCodigoDeRastreio,
+} from "@/lib/link-de-rastreio";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
@@ -1875,7 +1878,7 @@ export const OrderDetail = memo(function OrderDetail({
 
   const handleSaveTracking = async () => {
     const pedidoId = order.id;
-    const codigo = trackingValue.trim();
+    const codigo = normalizarCodigoDeRastreio(trackingValue);
     const salvamento = ++salvamentoRastreioRef.current;
     const vigente = () =>
       orderIdAtualRef.current === pedidoId &&

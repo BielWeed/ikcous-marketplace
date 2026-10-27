@@ -227,7 +227,7 @@ const EXPLICACAO_METODO = new Map<MetodoDevolucao, string>([
   ],
   [
     "envio_proprio",
-    "Você posta e informa o código de rastreio; no arrependimento e no defeito a loja reembolsa o frete.",
+    "Você posta e informa o código de rastreio. O frete de volta não é devolvido sozinho: guarde o comprovante e combine com a loja.",
   ],
 ]);
 
@@ -296,6 +296,15 @@ export const ehMotivoDeProblema = (m: MotivoDevolucao | null | undefined) =>
 
 export const formatarReais = (valor: number) => formatCurrency(valor);
 
+/**
+ * O servidor monta mensagens com `numeric` cru ("R$ 120.00"). Aqui o valor
+ * vira real brasileiro ("R$ 120,00"); o que já está formatado não é tocado.
+ */
+export const reaisComVirgula = (texto: string) =>
+  texto.replace(/R\$ (\d+)\.(\d{2})(?![\d,])/g, (_, inteiro, centavos) =>
+    formatarReais(Number(`${inteiro}.${centavos}`)),
+  );
+
 /** Centavos inteiros antes de somar — `0.1 + 0.2` não pode virar dinheiro. */
 export const paraCentavos = (valor: number) => Math.round(valor * 100);
 
@@ -353,6 +362,24 @@ export function textoDoPrazo(dia: string, hoje: Date): string {
   if (dias > 1) return `faltam ${dias} dias`;
   if (dias === -1) return "venceu ontem";
   return `venceu há ${-dias} dias`;
+}
+
+/**
+ * `prazo_ate` é o limite para o CLIENTE pedir a devolução (entrega + prazo);
+ * o servidor só aceita o pedido dentro dele. Por isso o que importa é o DIA em
+ * que o pedido foi feito (calendário da loja), nunca "hoje". `null` quando
+ * alguma das datas não é legível.
+ */
+export function pedidoDentroDoPrazo(
+  criadaEm: string,
+  prazoAte: string,
+): boolean | null {
+  const quando = new Date(criadaEm);
+  if (Number.isNaN(quando.getTime()) || !RE_DIA.test(prazoAte)) return null;
+  const dia = quando.toLocaleDateString("sv-SE", {
+    timeZone: "America/Sao_Paulo",
+  });
+  return dia <= prazoAte;
 }
 
 /** Idade de um pedido de devolução em dias inteiros (para o painel). */
@@ -764,7 +791,7 @@ export function instrucaoParaOCliente(
             : "Peça o endereço de envio à loja.";
           return d.tipo === "troca"
             ? `Embale o produto, poste nos Correios ou na transportadora de sua preferência e informe o código de rastreio aqui. ${destino}`
-            : `Embale o produto, poste nos Correios ou na transportadora de sua preferência e informe o código de rastreio aqui. ${destino} Guarde o comprovante: a loja reembolsa o frete de volta.`;
+            : `Embale o produto, poste nos Correios ou na transportadora de sua preferência e informe o código de rastreio aqui. ${destino} Guarde o comprovante do frete: ele não é devolvido sozinho, combine com a loja.`;
         }
       }
     case "em_transito":

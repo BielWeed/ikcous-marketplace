@@ -484,8 +484,8 @@ describe("Início → atalho Caixa", () => {
     await act(async () => {
       linha("Contas vencidas:").click();
     });
-    // Sem 2º argumento: o contrato antigo, byte a byte.
-    expect(onNavigate.mock.lastCall).toEqual(["admin-financeiro"]);
+    // Lote 224: conta vencida abre direto em "Pagar e receber".
+    expect(onNavigate.mock.lastCall).toEqual(["admin-financeiro", "previstos"]);
 
     act(() => raiz.unmount());
     raiz = createRoot(hospedeiro);

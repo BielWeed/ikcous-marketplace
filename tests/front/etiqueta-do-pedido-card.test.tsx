@@ -25,43 +25,75 @@ import { type Root, createRoot } from "react-dom/client";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { invokeMock, pedidoState, eqChamadas, colunasPedidas } = vi.hoisted(
-  () => ({
-    invokeMock: vi.fn(),
-    pedidoState: {
-      data: null as any,
-      error: null as { message: string } | null,
-    },
-    eqChamadas: [] as string[],
-    // A STRING que `select(...)` recebeu — sem capturar isso o mock aceitaria
-    // QUALQUER coluna (inclusive nenhuma) e a suíte ficaria verde mesmo se um
-    // refator apagasse `shipping_label_id`/`payment_status`/o campo do
-    // serviço do checkout da consulta real, quebrando a elegibilidade em
-    // produção sem nenhum teste vermelho (mesmo achado do card antigo,
-    // admin-etiquetas-lista-pagina-busca-e-marca-emitidas.test.tsx).
-    colunasPedidas: [] as string[],
-  }),
-);
+const {
+  invokeMock,
+  pedidoState,
+  eventosState,
+  tabelasLidas,
+  eqChamadas,
+  colunasPedidas,
+} = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+  // O histórico de envio (`order_shipping_events`) é uma leitura À PARTE, só
+  // quando o pedido já tem vínculo com etiqueta (lote 227).
+  eventosState: {
+    data: [] as any,
+    error: null as { message: string } | null,
+    lanca: false,
+  },
+  tabelasLidas: [] as string[],
+  pedidoState: {
+    data: null as any,
+    error: null as { message: string } | null,
+  },
+  eqChamadas: [] as string[],
+  // A STRING que `select(...)` recebeu — sem capturar isso o mock aceitaria
+  // QUALQUER coluna (inclusive nenhuma) e a suíte ficaria verde mesmo se um
+  // refator apagasse `shipping_label_id`/`payment_status`/o campo do
+  // serviço do checkout da consulta real, quebrando a elegibilidade em
+  // produção sem nenhum teste vermelho (mesmo achado do card antigo,
+  // admin-etiquetas-lista-pagina-busca-e-marca-emitidas.test.tsx).
+  colunasPedidas: [] as string[],
+}));
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    from: (_table: string) => ({
-      select: (colunas: string) => {
-        colunasPedidas.push(colunas);
+    from: (tabela: string) => {
+      tabelasLidas.push(tabela);
+      if (tabela === "order_shipping_events") {
         return {
-          eq: (_coluna: string, valor: string) => {
-            eqChamadas.push(valor);
-            return {
-              maybeSingle: () =>
-                Promise.resolve({
-                  data: pedidoState.data,
-                  error: pedidoState.error,
-                }),
-            };
-          },
+          select: (_colunas: string) => ({
+            eq: (_coluna: string, valor: string) => {
+              eqChamadas.push(valor);
+              if (eventosState.lanca) {
+                return Promise.reject(new Error("rede caiu"));
+              }
+              return Promise.resolve({
+                data: eventosState.data,
+                error: eventosState.error,
+              });
+            },
+          }),
         };
-      },
-    }),
+      }
+      return {
+        select: (colunas: string) => {
+          colunasPedidas.push(colunas);
+          return {
+            eq: (_coluna: string, valor: string) => {
+              eqChamadas.push(valor);
+              return {
+                maybeSingle: () =>
+                  Promise.resolve({
+                    data: pedidoState.data,
+                    error: pedidoState.error,
+                  }),
+              };
+            },
+          };
+        },
+      };
+    },
     functions: { invoke: invokeMock },
   },
 }));
@@ -124,6 +156,10 @@ describe("EtiquetaDoPedidoCard", () => {
     colunasPedidas.length = 0;
     pedidoState.data = pedido();
     pedidoState.error = null;
+    eventosState.data = [];
+    eventosState.error = null;
+    eventosState.lanca = false;
+    tabelasLidas.length = 0;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -642,6 +678,171 @@ describe("EtiquetaDoPedidoCard", () => {
     // O erro de CONSULTA não pode derrubar o card para "confirmar"/apagar a
     // etiqueta já emitida — continua mostrando "Atualizar rastreio".
     expect(botao("Atualizar rastreio")).toBeTruthy();
+  });
+
+  // ── Lote 227: compra de etiqueta INDETERMINADA ────────────────────────────
+  // O pagamento deu tempo esgotado ou erro do Melhor Envio: o vínculo fica
+  // (impede a compra dupla), mas a tela não pode dizer "Etiqueta emitida" em
+  // verde sem confirmação.
+  const eventoIndeterminado = (extra: Record<string, unknown> = {}) => ({
+    event_type: "erro",
+    created_at: "2026-10-27T10:00:00Z",
+    error_message: "Falha indeterminada no checkout/geração da etiqueta: x",
+    payload: { etapa: "checkout_indeterminado", ...extra },
+  });
+
+  it("compra indeterminada: âmbar 'Conferindo a etiqueta no Melhor Envio' com 'Conferir de novo' — nunca 'Etiqueta emitida' em verde, nunca o botão de compra", async () => {
+    pedidoState.data = pedido({ shipping_label_id: "lbl-incerta" });
+    eventosState.data = [eventoIndeterminado({ pago_confirmado: false })];
+    await abrirCard();
+
+    // o histórico é lido À PARTE, do pedido certo, só porque já há vínculo
+    expect(tabelasLidas).toEqual([
+      "marketplace_orders",
+      "order_shipping_events",
+    ]);
+    expect(eqChamadas).toEqual([
+      "11111111-1111-1111-1111-111111111111",
+      "11111111-1111-1111-1111-111111111111",
+    ]);
+    expect(hospedeiro.textContent).toContain(
+      "Conferindo a etiqueta no Melhor Envio",
+    );
+    expect(hospedeiro.textContent).not.toContain("Etiqueta emitida");
+    expect(hospedeiro.textContent).not.toContain("Ainda sem código");
+    expect(botao("Conferir de novo")).toBeTruthy();
+    expect(botao("Gerar etiqueta")).toBeUndefined();
+    expect(botao("Confirmar e gerar")).toBeUndefined();
+    expect(botao("Atualizar rastreio")).toBeUndefined();
+    const aviso = hospedeiro.querySelector(
+      '[data-testid="etiqueta-conferindo"]',
+    );
+    expect(aviso).not.toBeNull();
+    expect(aviso?.innerHTML).toContain("text-amber-400");
+    expect(aviso?.innerHTML).not.toContain("text-emerald-400");
+    // o número da etiqueta aparece para a lojista achar no Melhor Envio
+    expect(hospedeiro.textContent).toContain("lbl-incerta");
+  });
+
+  it("compra indeterminada: 'Conferir de novo' consulta o Melhor Envio; com código de rastreio a etiqueta vira 'emitida'", async () => {
+    pedidoState.data = pedido({ shipping_label_id: "lbl-incerta" });
+    eventosState.data = [eventoIndeterminado()];
+    invokeMock.mockResolvedValue({
+      data: { success: true, tracking_code: "ME123456789BR" },
+    });
+    const onTrackingAtualizado = vi.fn();
+    await abrirCard(undefined, { onTrackingAtualizado });
+
+    await act(async () => {
+      botao("Conferir de novo")?.click();
+      await esperarMicrotarefas();
+    });
+
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).toHaveBeenCalledWith("melhor-envio-etiqueta", {
+      body: {
+        action: "consultar_rastreio",
+        orderId: "11111111-1111-1111-1111-111111111111",
+      },
+    });
+    expect(onTrackingAtualizado).toHaveBeenCalledWith(
+      "11111111-1111-1111-1111-111111111111",
+      "ME123456789BR",
+    );
+    expect(hospedeiro.textContent).toContain("Etiqueta emitida");
+    expect(hospedeiro.textContent).not.toContain("Conferindo a etiqueta");
+    expect(toast.success).toHaveBeenCalled();
+  });
+
+  it("compra indeterminada: sem código ainda, continua 'conferindo' e diz a verdade (não confirma, não libera a compra)", async () => {
+    pedidoState.data = pedido({ shipping_label_id: "lbl-incerta" });
+    eventosState.data = [eventoIndeterminado()];
+    invokeMock.mockResolvedValue({
+      data: { success: true, tracking_code: null },
+    });
+    await abrirCard();
+
+    await act(async () => {
+      botao("Conferir de novo")?.click();
+      await esperarMicrotarefas();
+    });
+
+    expect(hospedeiro.textContent).toContain(
+      "Conferindo a etiqueta no Melhor Envio",
+    );
+    expect(hospedeiro.textContent).not.toContain("Etiqueta emitida");
+    expect(botao("Gerar etiqueta")).toBeUndefined();
+    expect(toast.info).toHaveBeenCalledWith(
+      expect.stringContaining("ainda não confirmou"),
+    );
+    // só a CONSULTA foi chamada: nada que compre ou solte o vínculo
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("compra indeterminada: dois toques seguidos em 'Conferir de novo' fazem UMA consulta", async () => {
+    pedidoState.data = pedido({ shipping_label_id: "lbl-incerta" });
+    eventosState.data = [eventoIndeterminado()];
+    let resolver: (v: unknown) => void = () => {};
+    invokeMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolver = resolve;
+        }),
+    );
+    await abrirCard();
+
+    await act(async () => {
+      botao("Conferir de novo")?.click();
+      botao("Conferir de novo")?.click();
+      await esperarMicrotarefas();
+    });
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resolver({ data: { success: true, tracking_code: null } });
+      await esperarMicrotarefas();
+    });
+  });
+
+  it("compra indeterminada offline: 'Conferir de novo' fica desabilitado", async () => {
+    pedidoState.data = pedido({ shipping_label_id: "lbl-incerta" });
+    eventosState.data = [eventoIndeterminado()];
+    await abrirCard(undefined, { isOffline: true });
+    expect(botao("Conferir de novo")?.disabled).toBe(true);
+  });
+
+  it("compra CONFIRMADA (só o arquivo falhou) ou etiqueta gerada depois: segue 'Etiqueta emitida'", async () => {
+    pedidoState.data = pedido({ shipping_label_id: "lbl-paga" });
+    eventosState.data = [eventoIndeterminado({ pago_confirmado: true })];
+    await abrirCard();
+    expect(hospedeiro.textContent).toContain("Etiqueta emitida");
+    expect(hospedeiro.textContent).not.toContain("Conferindo a etiqueta");
+  });
+
+  it("sem vínculo com etiqueta o histórico nem é lido (o caminho de sempre não ganha uma consulta)", async () => {
+    pedidoState.data = pedido();
+    await abrirCard();
+    expect(tabelasLidas).toEqual(["marketplace_orders"]);
+    expect(botao("Gerar etiqueta")).toBeTruthy();
+  });
+
+  it("histórico ilegível (erro ou queda de rede): o card degrada para 'Etiqueta emitida', como sempre foi, e NUNCA reabre a compra", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    pedidoState.data = pedido({ shipping_label_id: "lbl-incerta" });
+    eventosState.error = { message: "sem permissão" };
+    await abrirCard();
+    expect(hospedeiro.textContent).toContain("Etiqueta emitida");
+    expect(botao("Gerar etiqueta")).toBeUndefined();
+    expect(botao("Tentar de novo")).toBeUndefined();
+
+    eventosState.error = null;
+    eventosState.lanca = true;
+    act(() => {
+      raiz.unmount();
+    });
+    raiz = createRoot(hospedeiro);
+    await abrirCard();
+    expect(hospedeiro.textContent).toContain("Etiqueta emitida");
+    expect(botao("Gerar etiqueta")).toBeUndefined();
   });
 
   it("offline desabilita 'Gerar etiqueta'", async () => {

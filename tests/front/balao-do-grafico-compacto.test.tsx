@@ -59,11 +59,11 @@ describe("BalaoDoGrafico - vendas", () => {
     expect(texto(zero.container)).toContain("0 pedidos");
   });
 
-  it("milhar usa o formato pt-BR sem casas", () => {
+  it("milhar usa o formato pt-BR com centavos (lote 224: R$ 1.234,60, não 1.235)", () => {
     const { container } = render(
       <BalaoDoGrafico tipo="vendas" data="d" receita={1234.6} pedidos={2} />,
     );
-    expect(texto(container).replace(/\u00a0/g, " ")).toContain("R$ 1.235");
+    expect(texto(container).replace(/\u00a0/g, " ")).toContain("R$ 1.234,60");
   });
 });
 

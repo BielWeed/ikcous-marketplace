@@ -2,12 +2,12 @@ import { ChevronRight, Clock } from "lucide-react";
 import { memo } from "react";
 
 import {
-  diasAte,
   ehStatusAberto,
+  formatarDiaCurto,
   formatarReais,
+  pedidoDentroDoPrazo,
   rotuloMotivo,
   textoDaIdade,
-  textoDoPrazo,
 } from "@/lib/devolucao";
 import { cn } from "@/lib/utils";
 import type { LinhaDevolucaoAdmin } from "@/types/devolucao";
@@ -16,8 +16,9 @@ import { SeloDoStatus, SeloDoTipo } from "./SelosDaDevolucao";
 
 /**
  * Um pedido de devolução na lista do painel: protocolo, cliente, tipo,
- * motivo, valor, prazo legal e idade. O prazo só pede atenção enquanto a
- * devolução está em andamento — encerrada, ele é só histórico.
+ * motivo, valor, prazo e idade. O prazo é o limite para o CLIENTE pedir: o que
+ * importa é se o pedido foi feito dentro dele, nunca quantos dias faltam hoje —
+ * por isso não há contagem regressiva nem vermelho para quem pediu no prazo.
  */
 export const CartaoDaDevolucao = memo(function CartaoDaDevolucao({
   linha,
@@ -31,8 +32,9 @@ export const CartaoDaDevolucao = memo(function CartaoDaDevolucao({
   onAbrir: (id: string) => void;
 }>) {
   const aberta = ehStatusAberto(linha.status);
-  const dias = linha.prazo_ate ? diasAte(linha.prazo_ate, agora) : null;
-  const prazoApertado = aberta && dias !== null && dias <= 2;
+  const dentroDoPrazo = linha.prazo_ate
+    ? pedidoDentroDoPrazo(linha.created_at, linha.prazo_ate)
+    : null;
 
   return (
     <button
@@ -65,15 +67,18 @@ export const CartaoDaDevolucao = memo(function CartaoDaDevolucao({
           <span className="tabular-nums text-zinc-300">
             {formatarReais(linha.valor_itens)}
           </span>
-          {aberta && linha.prazo_ate && (
+          {aberta && linha.prazo_ate && dentroDoPrazo !== null && (
             <span
               className={cn(
                 "inline-flex items-center gap-1 tabular-nums",
-                prazoApertado ? "text-red-300" : "text-zinc-500",
+                dentroDoPrazo ? "text-zinc-500" : "text-amber-300",
               )}
             >
               <Clock className="size-3" />
-              Prazo {textoDoPrazo(linha.prazo_ate, agora)}
+              {dentroDoPrazo
+                ? "Pedido dentro do prazo"
+                : "Pedido feito depois do prazo"}{" "}
+              (até {formatarDiaCurto(linha.prazo_ate)})
             </span>
           )}
           <span className="tabular-nums">

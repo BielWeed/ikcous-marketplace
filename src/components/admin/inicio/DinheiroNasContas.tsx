@@ -34,7 +34,7 @@ export function DinheiroNasContas({
 }: Readonly<{
   painel: PainelInicio | null;
   carregando: boolean;
-  onNavigate: (view: View) => void;
+  onNavigate: (view: View, id?: string) => void;
 }>) {
   const esqueleto = carregando && !painel;
   const vencidas = painel?.contasVencidas ?? null;
@@ -46,6 +46,8 @@ export function DinheiroNasContas({
     icone: typeof Wallet;
     tomDoIcone: TomDeEstado;
     classeDoValor: string;
+    /** Aba com que o Financeiro abre; sem ela, abre na Visão. */
+    alvo?: string;
   }[] = [
     {
       titulo: "Saldo em contas",
@@ -62,6 +64,7 @@ export function DinheiroNasContas({
     },
     {
       titulo: "A receber",
+      alvo: "previstos-entrada",
       detalhe: "Vencidas + próximos 7 dias",
       valor: painel?.aReceber7d,
       icone: ArrowDownToLine,
@@ -72,6 +75,7 @@ export function DinheiroNasContas({
     },
     {
       titulo: "A pagar",
+      alvo: "previstos",
       detalhe: "Vencidas + próximos 7 dias",
       vencidas:
         (vencidas ?? 0) > 0
@@ -100,7 +104,11 @@ export function DinheiroNasContas({
           <li key={conta.titulo}>
             <button
               type="button"
-              onClick={() => onNavigate("admin-financeiro")}
+              onClick={() =>
+                conta.alvo
+                  ? onNavigate("admin-financeiro", conta.alvo)
+                  : onNavigate("admin-financeiro")
+              }
               className={cn(LINHA_INICIO, "flex-wrap hover:bg-white/[0.02]")}
               aria-label={`${conta.titulo} — ${formatarMoeda(conta.valor)}. ${conta.detalhe}${conta.vencidas ? `, ${conta.vencidas}` : ""}. Abrir Financeiro`}
             >

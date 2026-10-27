@@ -8,6 +8,9 @@ interface WebVitalEntry {
   delta: number;
 }
 
+const INP_LIMITE_MS = 200;
+const MAX_INP_POR_VISITA = 50;
+
 function getRating(name: string, value: number): WebVitalEntry["rating"] {
   const thresholds: Record<string, [number, number]> = {
     LCP: [2500, 4000],
@@ -132,6 +135,10 @@ export function useWebVitals() {
     }
 
     // INP (Interaction to Next Paint)
+    // Só interação RUIM (acima de 200 ms, limite "needs improvement") e no
+    // máximo MAX_INP_POR_VISITA registros: gravar todo toque enchia o banco do
+    // aparelho em segundos, e ninguém lê esses registros.
+    let inpGravados = 0;
     try {
       if (PerformanceObserver.supportedEntryTypes?.includes("event")) {
         const inpObs = new PerformanceObserver((list) => {
@@ -142,8 +149,10 @@ export function useWebVitals() {
             };
             if (
               interactionEntry.interactionId &&
-              (interactionEntry.duration || 0) > 0
+              (interactionEntry.duration || 0) > INP_LIMITE_MS &&
+              inpGravados < MAX_INP_POR_VISITA
             ) {
+              inpGravados += 1;
               logVital(
                 "INP",
                 interactionEntry.duration || 0,
@@ -155,7 +164,7 @@ export function useWebVitals() {
         inpObs.observe({
           type: "event",
           buffered: true,
-          durationThreshold: 16,
+          durationThreshold: INP_LIMITE_MS,
         } as PerformanceObserverInit);
         observers.push(inpObs);
       }
