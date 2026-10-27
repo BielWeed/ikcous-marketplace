@@ -357,6 +357,11 @@ export function CartView({
   const [pedidosConvidado, setPedidosConvidado] = useState<Order[]>([]);
   const orders = user ? pedidosVivos : pedidosConvidado;
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  // A primeira busca dos pedidos da conta já respondeu? A busca só arranca
+  // depois do `useDeferredRender` (~80 ms) e `isLoadingOrders` nasce falso:
+  // sem isto, aparelho sem cache dizia "Nenhum pedido" por um instante antes
+  // de carregar. "Nenhum pedido" só vale DEPOIS da primeira resposta.
+  const [primeiraBuscaFeita, setPrimeiraBuscaFeita] = useState(false);
   const [orderViewMode, setOrderViewMode] = useState<"user" | "guest">(
     user ? "user" : "guest",
   );
@@ -372,6 +377,10 @@ export function CartView({
     setOrdersTabDirection(ordersTab === "history" ? 1 : -1);
     setPrevOrdersTab(ordersTab);
   }
+
+  // Conta logada, nada em memória e nenhuma resposta ainda: é "carregando".
+  const carregandoPrimeiraVez =
+    Boolean(user) && pedidosVivos.length === 0 && !primeiraBuscaFeita;
 
   const { activeOrdersCount, historyOrdersCount } = useMemo(() => {
     let active = 0;
@@ -405,6 +414,7 @@ export function CartView({
         // (useOrders.ts:970-977), então a lista em tela não pisca.
         fetchUserOrders().then(() => {
           setIsLoadingOrders(false);
+          setPrimeiraBuscaFeita(true);
           setOrderViewMode("user");
         });
       } else {
@@ -432,6 +442,7 @@ export function CartView({
     setIsLoadingOrders(true);
     fetchUserOrders().then(() => {
       setIsLoadingOrders(false);
+      setPrimeiraBuscaFeita(true);
     });
   }, [fetchUserOrders]);
 
@@ -1116,19 +1127,21 @@ export function CartView({
                         </div>
                       )}
 
-                      {amountToFree > 0 && !retiradaEscolhida && (
-                        <p className="flex items-start gap-2 rounded-[14px] border border-border p-3 text-[13px] leading-snug text-foreground">
-                          <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-amber-500" />
-                          <span>
-                            Adicione mais{" "}
-                            <span className="font-bold">
-                              {formatCurrency(amountToFree)}
-                            </span>{" "}
-                            para garantir{" "}
-                            <span className="font-bold">Frete Grátis</span>!
-                          </span>
-                        </p>
-                      )}
+                      {amountToFree > 0 &&
+                        !retiradaEscolhida &&
+                        !freteIndefinido && (
+                          <p className="flex items-start gap-2 rounded-[14px] border border-border p-3 text-[13px] leading-snug text-foreground">
+                            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-amber-500" />
+                            <span>
+                              Adicione mais{" "}
+                              <span className="font-bold">
+                                {formatCurrency(amountToFree)}
+                              </span>{" "}
+                              para garantir{" "}
+                              <span className="font-bold">Frete Grátis</span>!
+                            </span>
+                          </p>
+                        )}
                     </div>
 
                     <div className="flex items-end justify-between gap-3 border-t border-border pt-4">
@@ -1274,29 +1287,37 @@ export function CartView({
                     }}
                     className="flex w-full flex-1 flex-col"
                   >
-                    <OrderList
-                      orders={filteredOrders}
-                      isLoadingOrders={isLoadingOrders}
-                      onNavigate={onNavigate}
-                      isGuest={!user}
-                      loadError={user ? (erroDosPedidos ?? null) : null}
-                      onRetry={tentarCarregarPedidosDeNovo}
-                      hasAnyOrders={orders.length > 0}
-                      emptyTitle={
-                        orders.length > 0
-                          ? ordersTab === "active"
-                            ? "Nenhum pedido em andamento"
-                            : "Nenhum pedido no histórico"
-                          : undefined
-                      }
-                      emptyDescription={
-                        orders.length > 0
-                          ? ordersTab === "active"
-                            ? "Quando você comprar, o andamento do pedido aparece aqui."
-                            : "Quando um pedido for concluído ou cancelado, ele aparece aqui."
-                          : undefined
-                      }
-                    />
+                    {/* Convidado sem pedidos: quem já avisa e oferece "Entrar"
+                        é o bloco de cima (OrderSearch). O "Histórico
+                        Protegido ... Acesse" da lista repetia o aviso sem
+                        botão nenhum. */}
+                    {(user || orders.length > 0) && (
+                      <OrderList
+                        orders={filteredOrders}
+                        isLoadingOrders={
+                          isLoadingOrders || carregandoPrimeiraVez
+                        }
+                        onNavigate={onNavigate}
+                        isGuest={!user}
+                        loadError={user ? (erroDosPedidos ?? null) : null}
+                        onRetry={tentarCarregarPedidosDeNovo}
+                        hasAnyOrders={orders.length > 0}
+                        emptyTitle={
+                          orders.length > 0
+                            ? ordersTab === "active"
+                              ? "Nenhum pedido em andamento"
+                              : "Nenhum pedido no histórico"
+                            : undefined
+                        }
+                        emptyDescription={
+                          orders.length > 0
+                            ? ordersTab === "active"
+                              ? "Quando você comprar, o andamento do pedido aparece aqui."
+                              : "Quando um pedido for concluído ou cancelado, ele aparece aqui."
+                            : undefined
+                        }
+                      />
+                    )}
                   </motion.div>
                 </AnimatePresence>
               </div>
