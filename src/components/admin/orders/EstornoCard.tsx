@@ -159,6 +159,7 @@ function textoDaLinha(linha: LinhaEstornoDoPedido): TextoDaLinha {
 
 type EstadoDoCartao =
   | "bloqueado_status"
+  | "bloqueado_entregue"
   | "bloqueado_retorno"
   | "reservado"
   | "tudo_devolvido"
@@ -175,6 +176,13 @@ function estadoDoCartao(
   disponivel: number,
   reservado: number,
 ): EstadoDoCartao {
+  // Pedido ENTREGUE não se cancela: "cancele antes" mandaria a lojista para um
+  // caminho que não existe. Com saldo, o caminho é a devolução do produto
+  // (seção Devoluções da ficha); sem saldo, vale o mesmo fechamento de sempre.
+  if (order.status === "delivered") {
+    if (disponivel > 0) return "bloqueado_entregue";
+    return reservado > 0 ? "reservado" : "tudo_devolvido";
+  }
   if (order.status !== "cancelled") return "bloqueado_status";
   if (order.cancelledAfterShipping && !order.returnedToSellerAt) {
     return "bloqueado_retorno";
@@ -254,7 +262,10 @@ export function EstornoCard({
   const reservado =
     order.paymentStatus === "estornado" ? 0 : Math.max(reservadoPorFora, 0);
   const estado = estadoDoCartao(order, disponivel, reservado);
-  const mostrarBotao = estado !== "tudo_devolvido" && estado !== "reservado";
+  const mostrarBotao =
+    estado !== "tudo_devolvido" &&
+    estado !== "reservado" &&
+    estado !== "bloqueado_entregue";
   const podeAbrirCampo = estado === "normal";
 
   const valorNumericoDoCampo = paraNumero(valorCampo);
@@ -297,6 +308,12 @@ export function EstornoCard({
       {estado === "bloqueado_status" && (
         <p className="text-xs font-bold text-amber-400">
           Cancele o pedido antes de devolver o dinheiro.
+        </p>
+      )}
+      {estado === "bloqueado_entregue" && (
+        <p className="text-xs font-bold text-amber-400">
+          Para devolver o dinheiro de um pedido já entregue, registre a
+          devolução do produto em Devoluções.
         </p>
       )}
       {estado === "bloqueado_retorno" && (

@@ -622,6 +622,69 @@ describe("ficha do pedido (redesenho 08/10/2026)", () => {
       expect(itens).toMatch(/R\$\s*90,00/);
     });
 
+    // Caça 9 (polimento): retirada na loja não tem frete — "Frete: Grátis"
+    // sugeria uma entrega que não existe.
+    it("retirada na loja não diz 'Frete: Grátis': mostra 'Retirada na loja', sem valor", async () => {
+      await renderizar(
+        pedidoFake({
+          shipping: 0,
+          retiradaNaLoja: true,
+          enderecoDeRetirada: "Rua da Loja, 1",
+        }),
+      );
+
+      const itens = porId("bloco-itens")?.textContent ?? "";
+      expect(itens).toContain("Retirada na loja");
+      expect(itens).not.toContain("Grátis");
+      expect(itens).not.toContain("Frete");
+      expect(itens).toMatch(/R\$\s*100,00/);
+    });
+
+    it("entrega comum continua com 'Frete' (controle da retirada)", async () => {
+      await renderizar(pedidoFake({ shipping: 15 }));
+
+      const itens = porId("bloco-itens")?.textContent ?? "";
+      expect(itens).toContain("Frete");
+      expect(itens).not.toContain("Retirada na loja");
+    });
+
+    // Caça 9 (polimento): nome de produto comprido era cortado com "…" na
+    // ficha e a lojista não conseguia ler qual era o produto.
+    it("nome comprido do item quebra linha em vez de ser cortado", async () => {
+      class ObservadorFalso {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+      vi.stubGlobal("IntersectionObserver", ObservadorFalso);
+      try {
+        const nome =
+          "Conjunto de Moletom Premium Feminino com Capuz e Bolso Canguru Cor Verde Musgo";
+        await renderizar({
+          ...pedidoFake(),
+          items: [
+            {
+              productId: "prod-1",
+              name: nome,
+              price: 100,
+              quantity: 1,
+              image: "",
+            },
+          ],
+        });
+        const p = Array.from(hospedeiro.querySelectorAll("p")).find(
+          (el) => el.textContent === nome,
+        );
+        expect(p).toBeDefined();
+        expect(p?.className).not.toMatch(
+          /truncate|line-clamp|whitespace-nowrap/,
+        );
+        expect(p?.className).toContain("break-words");
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
     it("cupom de valor ZERO (ex.: frete grátis) continua aparecendo: a condição é `discount > 0 || couponCode`", async () => {
       await renderizar(pedidoFake({ discount: 0, couponCode: "FRETEGRATIS" }));
 

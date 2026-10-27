@@ -50,6 +50,7 @@ import {
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
+import { eAcaoPropriaDoPedido } from "@/lib/acao-propria-do-painel";
 import { caminhoDoPedidoNoAviso } from "@/lib/alvo-do-aviso";
 import { orientacaoDeDevolucao } from "@/lib/anulacao-do-balcao";
 import { consumirPedidoDePedidosSemFiltroAntigo } from "@/lib/atalho-do-inicio-para-pedidos";
@@ -1196,9 +1197,30 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         // do realtime é crua (snake_case): a regra é a MESMA do mapper.
         const retirada =
           enderecoDeRetiradaDoCustomerData(payload.new?.customer_data) !== "";
-        toast.info(
-          `Pedido #${numeroDoPedido(updatedId)} atualizado para ${statusConfig[newStatus] ? rotuloDoStatus(newStatus, retirada) : `Status: ${newStatus}`}`,
-        );
+        // Só avisa o que a lojista ainda não sabe: sem `old` (não dá para
+        // comparar) avisa como antes; com `old`, status igual não é novidade
+        // (salvar rastreio, receber pagamento…); e o que ela mesma acabou de
+        // avançar já ganhou o "Status atualizado com sucesso".
+        const antes = payload.old;
+        const pagamentoConfirmado =
+          typeof antes?.payment_status === "string" &&
+          antes.payment_status !== payload.new?.payment_status &&
+          (payload.new?.payment_status === "pago" ||
+            payload.new?.payment_status === "pago_apos_expirar");
+        const statusIgual =
+          typeof antes?.status === "string" && antes.status === newStatus;
+        if (pagamentoConfirmado) {
+          toast.info(
+            `Pagamento do pedido #${numeroDoPedido(updatedId)} confirmado`,
+          );
+        } else if (
+          !statusIgual &&
+          !eAcaoPropriaDoPedido(updatedId, newStatus)
+        ) {
+          toast.info(
+            `Pedido #${numeroDoPedido(updatedId)} atualizado para ${statusConfig[newStatus] ? rotuloDoStatus(newStatus, retirada) : `Status: ${newStatus}`}`,
+          );
+        }
       }
 
       // Atualiza apenas os KPIs (listagem já é atualizada reativamente em memória)
@@ -2439,9 +2461,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       >
         <div className="space-y-4">
           <p className="text-xs leading-relaxed text-zinc-400">
-            Esta tela exibe a Central de Transmissões e Pedidos em tempo real.
-            Aqui você pode gerenciar, auditar e atualizar o ciclo de vida dos
-            pedidos efetuados no aplicativo.
+            Esta tela mostra os pedidos da sua loja em tempo real. Aqui você
+            acompanha cada pedido, do começo até a entrega, e atualiza o
+            andamento.
           </p>
 
           <div className="space-y-3">
@@ -2451,45 +2473,80 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1 rounded-2xl border border-admin-border bg-admin-surface p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <span className="size-2.5 rounded-full bg-blue-500" />
-                  Pendente
+                  <span
+                    className={cn(
+                      "size-2.5 rounded-full",
+                      STATUS_ORDER_COLORS.get("pending"),
+                    )}
+                  />
+                  Novo Pedido
                 </div>
                 <p className="text-xs text-zinc-400">
-                  A transação foi criada pelo cliente, mas o pagamento ainda não
-                  foi processado ou verificado (aguardando aprovação).
+                  O pedido acabou de chegar. Pode estar pago ou ainda aguardando
+                  o pagamento: confira o selo de pagamento do pedido antes de
+                  separar.
                 </p>
               </div>
 
               <div className="space-y-1 rounded-2xl border border-admin-border bg-admin-surface p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <span className="size-2.5 rounded-full bg-amber-500" />
-                  Pago / Em Processamento
+                  <span
+                    className={cn(
+                      "size-2.5 rounded-full",
+                      STATUS_ORDER_COLORS.get("processing"),
+                    )}
+                  />
+                  Em Separação
                 </div>
                 <p className="text-xs text-zinc-400">
-                  O pagamento foi validado com sucesso. O pedido está pronto
-                  para separação de estoque e embalagem.
+                  Você está separando e embalando os produtos do pedido.
                 </p>
               </div>
 
               <div className="space-y-1 rounded-2xl border border-admin-border bg-admin-surface p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <span className="size-2.5 rounded-full bg-indigo-500" />
-                  Enviado
+                  <span
+                    className={cn(
+                      "size-2.5 rounded-full",
+                      STATUS_ORDER_COLORS.get("shipping"),
+                    )}
+                  />
+                  Em Trânsito ou Pronto para retirar
                 </div>
                 <p className="text-xs text-zinc-400">
-                  A mercadoria já foi despachada ou entregue ao portador/motoboy
-                  para transporte até o endereço do cliente.
+                  O pedido já saiu para entrega. Na retirada na loja, aparece
+                  como Pronto para retirar: o cliente vem buscar.
                 </p>
               </div>
 
               <div className="space-y-1 rounded-2xl border border-admin-border bg-admin-surface p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <span className="size-2.5 rounded-full bg-emerald-500" />
-                  Entregue
+                  <span
+                    className={cn(
+                      "size-2.5 rounded-full",
+                      STATUS_ORDER_COLORS.get("delivered"),
+                    )}
+                  />
+                  Finalizado
                 </div>
                 <p className="text-xs text-zinc-400">
-                  O pedido foi entregue com sucesso ao destinatário. O fluxo
-                  operacional desta compra foi finalizado.
+                  O cliente recebeu ou retirou o pedido. A compra foi concluída.
+                </p>
+              </div>
+
+              <div className="space-y-1 rounded-2xl border border-admin-border bg-admin-surface p-4">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
+                  <span
+                    className={cn(
+                      "size-2.5 rounded-full",
+                      STATUS_ORDER_COLORS.get("cancelled"),
+                    )}
+                  />
+                  Cancelado
+                </div>
+                <p className="text-xs text-zinc-400">
+                  O pedido foi cancelado e não segue adiante. Se já estava pago,
+                  veja a lista "Devolver agora".
                 </p>
               </div>
             </div>

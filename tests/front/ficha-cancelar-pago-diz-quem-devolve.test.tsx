@@ -194,4 +194,24 @@ describe("Ficha do pedido — o confirm de cancelar diz quem devolve o dinheiro 
     expect(texto).toContain("não devolve o dinheiro automaticamente");
     expect(texto).not.toContain("sozinho");
   });
+
+  // Caça 9, item 4: cancelar o pedido não cancela a etiqueta já paga no Melhor
+  // Envio. O pedido chega à ficha com `shippingLabelId` (coluna
+  // `shipping_label_id`) e o confirm avisa; sem etiqueta, nada muda.
+  it("pedido com etiqueta já comprada: o confirm avisa que o saldo do Melhor Envio continua gasto", async () => {
+    const texto = await textoDoConfirmAoCancelar(
+      pedidoPago({ status: "processing", shippingLabelId: "lbl-123" }),
+    );
+    expect(texto).toContain(
+      "A etiqueta de envio já foi paga. Cancele a etiqueta no Melhor Envio para recuperar o saldo.",
+    );
+    expect(texto.endsWith("?")).toBe(true);
+  });
+
+  it("pedido sem etiqueta: o confirm não fala de etiqueta", async () => {
+    const texto = await textoDoConfirmAoCancelar(
+      pedidoPago({ status: "processing" }),
+    );
+    expect(texto).not.toContain("etiqueta");
+  });
 });

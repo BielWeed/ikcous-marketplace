@@ -416,6 +416,47 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
     expect(botaoComTexto("Devolver R$ 100,00")?.disabled).toBe(true);
   });
 
+  // Caça 9, item 3: pedido ENTREGUE não se cancela, então "Cancele o pedido
+  // antes de devolver o dinheiro" mandava a lojista para um caminho que não
+  // existe. O caminho real é a devolução do produto (seção Devoluções).
+  it("U11b: pedido ENTREGUE e pago — aponta para Devoluções, nunca manda cancelar, e não oferece o botão que não pode funcionar", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(hookPadrao());
+
+    await montar({ ...pedidoBase, status: "delivered" });
+
+    expect(texto()).toContain(
+      "Para devolver o dinheiro de um pedido já entregue, registre a devolução do produto em Devoluções.",
+    );
+    expect(texto()).not.toContain("Cancele o pedido");
+    expect(botaoComTexto("Devolver R$")).toBeUndefined();
+  });
+
+  it("U11c: pedido ENTREGUE cujo valor já foi todo devolvido — diz que foi devolvido (e não manda cancelar)", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({ pago: 100, devolvido: 100, disponivel: 0 }),
+    );
+
+    await montar({ ...pedidoBase, status: "delivered" });
+
+    expect(texto()).toContain("Todo o valor pago já foi devolvido.");
+    expect(texto()).not.toContain("Cancele o pedido");
+    expect(texto()).not.toContain("registre a devolução do produto");
+  });
+
+  it("U11d: pedido ENTREGUE com uma devolução em andamento — o histórico continua na tela", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        disponivel: 70,
+        linhas: [linhaDeExemplo({ status: "em_processamento", tentativas: 1 })],
+      }),
+    );
+
+    await montar({ ...pedidoBase, status: "delivered" });
+
+    expect(texto()).toContain("Devolução de R$ 30,00 em andamento");
+    expect(texto()).not.toContain("Cancele o pedido");
+  });
+
   it("BLOQUEIA 2: durante a primeira carga, não afirma nada sobre saldo", async () => {
     // `pedido === null` (`pedidoCarregado: false`) + `carregando: true` —
     // ainda NÃO SEI o saldo, o que é diferente de "saldo é zero".

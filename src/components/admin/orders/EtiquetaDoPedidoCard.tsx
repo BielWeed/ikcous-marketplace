@@ -310,7 +310,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
         precisaCpf,
       } = await mensagemDeErroInvocacao(err, {
         mensagemGenerica:
-          "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
+          "Não foi possível falar com o servidor de etiquetas. Tente de novo.",
       });
       // `mensagemDeErroInvocacao` também tem `await` (lê o corpo da
       // resposta) — checa de novo antes de qualquer efeito visível.
@@ -383,7 +383,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       console.error("[EtiquetaDoPedido] Erro ao salvar CPF:", err);
       const { mensagem } = await mensagemDeErroInvocacao(err, {
         mensagemGenerica:
-          "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
+          "Não foi possível falar com o servidor de etiquetas. Tente de novo.",
       });
       if (orderIdAtualRef.current !== orderIdDoClique) return;
       setCpfErro(mensagem);
@@ -431,7 +431,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       console.error("[EtiquetaDoPedido] Erro ao consultar rastreio:", err);
       const { mensagem } = await mensagemDeErroInvocacao(err, {
         mensagemGenerica:
-          "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
+          "Não foi possível falar com o servidor de etiquetas. Tente de novo.",
       });
       if (orderIdAtualRef.current !== orderIdDoClique) return;
       toast.error(mensagem);

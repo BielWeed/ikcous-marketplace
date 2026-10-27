@@ -2,6 +2,10 @@ import { statusConfig } from "@/components/admin/orders/OrderStatusBadge";
 import { clearAnalyticsCache } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import {
+  esquecerAcaoPropriaDoPedido,
+  marcarAcaoPropriaDoPedido,
+} from "@/lib/acao-propria-do-painel";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import {
@@ -3606,6 +3610,11 @@ export function useOrders(
           return;
         }
 
+        // O aviso do realtime ("Pedido #N atualizado para…") não repete o que
+        // a própria lojista acaba de pedir (o "Status atualizado com sucesso"
+        // abaixo já falou). A marca nasce ANTES da gravação — o evento pode
+        // chegar antes da resposta — e some se a gravação falhar.
+        if (isAdmin && !silent) marcarAcaoPropriaDoPedido(orderId, status);
         const { error } =
           isAdmin && status !== "cancelled"
             ? await supabase.rpc("avancar_status_do_pedido", {
@@ -3649,6 +3658,9 @@ export function useOrders(
         }
       } catch (err: any) {
         console.error("Error updating status:", err);
+        // Gravação que falhou: nada foi feito, o aviso do realtime de uma
+        // mudança de outra pessoa continua valendo.
+        esquecerAcaoPropriaDoPedido(orderId);
         // As guardas anteriores à atualização já mostram o próprio aviso.
         // Na falha da gravação, reverta só este pedido, e só o que a
         // atualização otimista escreveu: eventos de outros pedidos, novas

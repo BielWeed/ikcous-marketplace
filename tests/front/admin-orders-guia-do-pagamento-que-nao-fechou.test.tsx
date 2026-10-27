@@ -505,4 +505,44 @@ describe("Guia do pagamento que não fechou — ligado ao modal de ajuda da tela
     expect(corpo).toContain("Guia de Controle de Pedidos");
     expect(corpo).toContain(TITULO_DO_GUIA);
   });
+
+  // Caça 9, item 13: o ciclo de vida do guia usava nomes que a tela não tem
+  // (Pendente / Pago-Em Processamento / Enviado / Entregue), dizia que "Em
+  // Processamento = pagamento validado" (falso: Novo Pedido já pode estar
+  // pago, e pedido em separação pode ser pago na entrega) e falava em
+  // "Central de Transmissões".
+  it("o ciclo de vida do guia usa os nomes REAIS da tela, sem jargão e sem afirmar o que o código não garante", async () => {
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    const { statusConfig, ROTULO_PRONTO_PARA_RETIRAR } = await import(
+      "@/components/admin/orders/OrderStatusBadge"
+    );
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
+    });
+    const botaoDeAjuda = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[title="Guia de Ajuda e Explicações"]',
+    );
+    await act(async () => {
+      botaoDeAjuda!.click();
+    });
+    const corpo = (document.body.textContent ?? "").replace(/\s+/g, " ");
+    const ciclo = corpo.slice(
+      corpo.indexOf("Ciclo de Vida do Pedido"),
+      corpo.indexOf("Recursos e Ações Rápidas"),
+    );
+    for (const { label } of Object.values(statusConfig)) {
+      expect(ciclo, label).toContain(label);
+    }
+    expect(ciclo).toContain(ROTULO_PRONTO_PARA_RETIRAR);
+    for (const inventado of [
+      "Pendente",
+      "Em Processamento",
+      "Enviado",
+      "Entregue",
+    ]) {
+      expect(ciclo, inventado).not.toContain(inventado);
+    }
+    expect(corpo).not.toContain("Central de Transmissões");
+    expect(ciclo).not.toMatch(/pagamento (foi )?validado/i);
+  });
 });

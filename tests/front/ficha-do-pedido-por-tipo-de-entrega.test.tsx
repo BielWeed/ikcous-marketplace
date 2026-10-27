@@ -123,12 +123,15 @@ describe("ficha do pedido por tipo de entrega", () => {
     expect(envio().textContent).toContain("AA123456789BR");
   });
 
-  it("retirada: mantém o cartão de entrega e o frete; esconde só o rastreio", async () => {
+  it("retirada: mantém o cartão de entrega; na conta diz 'Retirada na loja' (sem 'Frete: Grátis', que sugeria entrega); esconde só o rastreio", async () => {
     await renderizar(pedido(TIPOS.retirada));
     expect(entrega().textContent).toContain("Entrega");
     expect(entrega().textContent).toContain("Retirada na loja");
     expect(entrega().textContent).toContain("Copiar endereço");
-    expect(itens().textContent).toContain("Frete");
+    // Caça 9: retirada não tem frete — a conta do pedido não mostra "Frete".
+    expect(itens().textContent).toContain("Retirada na loja");
+    expect(itens().textContent).not.toContain("Frete");
+    expect(itens().textContent).not.toContain("Grátis");
     expect(envio().textContent).not.toContain("Código de rastreio");
   });
 
