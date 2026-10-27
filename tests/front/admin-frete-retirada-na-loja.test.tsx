@@ -592,7 +592,7 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     ).toBe("3");
     expect(
       hospedeiro.querySelector<HTMLInputElement>("#local-delivery-fee")?.value,
-    ).toBe("12");
+    ).toBe("12,00");
     expect(
       hospedeiro.querySelector<HTMLInputElement>("#local-cep-range")?.value,
     ).toBe("38500");

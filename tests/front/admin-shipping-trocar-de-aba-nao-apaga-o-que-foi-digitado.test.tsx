@@ -146,7 +146,7 @@ describe("AdminShippingView — trocar de aba não apaga o que foi digitado", ()
 
   it("o valor digitado sobrevive a sair da aba e voltar", async () => {
     await renderizar(true);
-    expect(pegarCampoValor().value).toBe("12");
+    expect(pegarCampoValor().value).toBe("12,00");
 
     await digitarNoValor("7");
     expect(pegarCampoValor().value).toBe("7");
@@ -182,6 +182,6 @@ describe("AdminShippingView — trocar de aba não apaga o que foi digitado", ()
     estadoDaLoja.atual = { ...estadoDaLoja.atual, localDeliveryFee: 25 };
     await renderizar(true);
 
-    expect(pegarCampoValor().value).toBe("25");
+    expect(pegarCampoValor().value).toBe("25,00");
   });
 });

@@ -213,9 +213,62 @@ describe("Frete — valor da entrega local aceita vírgula e ponto e nunca vira 
     expect(campo("local-delivery-fee").value).toBe("7,");
   });
 
-  it("o valor já salvo aparece no campo com vírgula", async () => {
+  it("o valor já salvo aparece no campo com vírgula e duas casas (12,50, não 12,5)", async () => {
     loja.atual = { ...loja.atual, localDeliveryFee: 12.5 };
     await montar();
-    expect(campo("local-delivery-fee").value).toBe("12,5");
+    expect(campo("local-delivery-fee").value).toBe("12,50");
+  });
+
+  it("valor inteiro salvo aparece com centavos; zero continua vazio (entrega grátis)", async () => {
+    loja.atual = { ...loja.atual, localDeliveryFee: 10 };
+    await montar();
+    expect(campo("local-delivery-fee").value).toBe("10,00");
+    act(() => raiz.unmount());
+    raiz = createRoot(hospedeiro);
+    loja.atual = { ...loja.atual, localDeliveryFee: 0 };
+    await montar();
+    expect(campo("local-delivery-fee").value).toBe("");
+  });
+
+  async function focar(id: string) {
+    await act(async () => campo(id).focus());
+  }
+  async function sair(id: string) {
+    await act(async () => campo(id).blur());
+  }
+
+  it('digitando "7," com o campo em foco NÃO mostra erro (vai digitar o 50)', async () => {
+    await montar();
+    await focar("local-delivery-fee");
+    await digitar("local-delivery-fee", "7,");
+    expect(hospedeiro.querySelector("#erro-valor-da-entrega")).toBeNull();
+    expect(campo("local-delivery-fee").getAttribute("aria-invalid")).toBe(
+      "false",
+    );
+    await digitar("local-delivery-fee", "7,5");
+    await digitar("local-delivery-fee", "7,50");
+    expect(hospedeiro.querySelector("#erro-valor-da-entrega")).toBeNull();
+    expect(campo("local-delivery-fee").value).toBe("7,50");
+  });
+
+  it('"7," que fica assim ao sair do campo passa a mostrar o aviso, e não salva', async () => {
+    await montar();
+    await focar("local-delivery-fee");
+    await digitar("local-delivery-fee", "7,");
+    await sair("local-delivery-fee");
+    expect(
+      hospedeiro.querySelector("#erro-valor-da-entrega")?.textContent,
+    ).toContain("Escreva só números");
+    await act(async () => botaoSalvar().click());
+    expect(updateConfig).not.toHaveBeenCalled();
+  });
+
+  it("texto que não é dinheiro continua avisando na hora, mesmo com o campo em foco", async () => {
+    await montar();
+    await focar("local-delivery-fee");
+    await digitar("local-delivery-fee", "abc");
+    expect(
+      hospedeiro.querySelector("#erro-valor-da-entrega")?.textContent,
+    ).toContain("Escreva só números");
   });
 });
