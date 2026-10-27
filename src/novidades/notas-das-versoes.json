@@ -1,4 +1,17 @@
 {
+  "1.5.91": {
+    "titulo": "Balcão, carrinho e avisos mais certos",
+    "novidades": [],
+    "correcoes": [
+      "Balcão: o WhatsApp da cliente cadastrada agora vai junto da venda — o botão \"Enviar por WhatsApp\" do recibo funciona e a busca mostra o telefone dela.",
+      "Balcão: se a internet cair e a venda for tentada de novo com algo diferente (itens, desconto ou forma de pagamento), o recibo avisa em vermelho que entrou a venda anterior; o botão \"Cliente\" ficou maior para o toque.",
+      "Loja, carrinho: ao voltar para o app, o carrinho confere preço, promoção e estoque de novo; o texto não promete mais compra \"sem cadastro\" quando a loja exige conta; visitante com mais de 10 unidades é avisado antes de enviar; e, depois de uma falha de rede, repetir a mesma compra tira do carrinho o que já foi comprado.",
+      "Painel, avisos: o cancelamento de um pedido sem pagamento pelo app agora também avisa o celular da lojista; o aviso amarelo \"o push não chegou\" só aparece quando havia aparelho; a campanha alterna os tipos de aparelho; e o 11º aparelho recebe uma frase clara.",
+      "Frete e e-mail: quem mora fora da área de uma loja que só entrega na cidade lê uma frase clara; o e-mail do código de verificação passou a ter acentos e o nome da loja.",
+      "Painel: o valor da entrega aceita digitar \"7,50\" sem erro no meio e aparece com duas casas; a janela de confirmação não encosta nas bordas e rola em tela pequena."
+    ],
+    "melhorias": []
+  },
   "1.5.90": {
     "titulo": "Confirmações do painel mais claras e compra de visitante com freio",
     "novidades": [],
