@@ -759,7 +759,7 @@ export function CartView({
                       className="flex flex-col items-center gap-3 px-6 py-16"
                     >
                       <Skeleton className="h-4 w-40" />
-                      <p className="text-sm text-zinc-600">
+                      <p className="text-sm text-muted-foreground">
                         Carregando seu carrinho…
                       </p>
                     </div>

@@ -7337,7 +7337,7 @@ export function CheckoutViewDaConta({
                               haptic.light();
                               onNavigate("auth");
                             }}
-                            className="flex min-h-11 items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                            className="flex min-h-11 items-center rounded-lg border border-solid border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
                           >
                             Entrar ou criar conta
                           </button>
