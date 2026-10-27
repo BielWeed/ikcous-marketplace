@@ -31,6 +31,7 @@ import {
   somenteCampanhasReais,
 } from "@/lib/historico-de-campanhas";
 import { lerEmPaginas } from "@/lib/ler-em-paginas";
+import { intercalarPorServico } from "@/lib/ordem-do-envio-de-push";
 import {
   type CupomDaLoja,
   MARCADOR_DO_CUPOM,
@@ -849,7 +850,9 @@ export const AdminPushView = memo(function AdminPushView({
 
       if (targetError) throw targetError;
 
-      const targetList = targets as any[];
+      // A leitura é por endereço (agrupa por empresa); o ENVIO intercala, para o
+      // teto de tempo da send-push não cortar sempre iPhone/Windows.
+      const targetList = intercalarPorServico(targets as any[]);
       const finalRecipientCount = targetList?.length || 0;
 
       if (finalRecipientCount === 0) {
