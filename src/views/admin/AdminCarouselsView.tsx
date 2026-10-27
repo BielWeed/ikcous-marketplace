@@ -29,12 +29,12 @@ import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import type { LayoutDeOfertas } from "@/lib/layout-de-ofertas";
+import { ordenarParaVitrine } from "@/lib/vitrine";
 import {
   destaquesDaVitrine,
   ofertasDaVitrine,
-  ordenarParaVitrine,
   produtosAVenda,
-} from "@/lib/vitrine";
+} from "@/lib/vitrine-do-painel";
 import type { View } from "@/types";
 import { Reorder } from "framer-motion";
 import {

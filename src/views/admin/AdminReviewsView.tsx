@@ -189,12 +189,13 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       return;
     }
     editorAtualRef.current = id;
-    // Editar: o campo abre com a resposta de hoje (sem pisar num rascunho).
+    // Editar: o campo abre com a resposta de hoje (sem pisar num rascunho; ""
+    // — o que fica depois de um envio — conta como sem rascunho).
     if (respostaAtual) {
       setRascunhos((anteriores) =>
-        anteriores[id] === undefined
-          ? { ...anteriores, [id]: respostaAtual }
-          : anteriores,
+        new Map(Object.entries(anteriores)).get(id)
+          ? anteriores
+          : { ...anteriores, [id]: respostaAtual },
       );
     }
     setReplyingTo(id);
@@ -203,17 +204,18 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   const fecharResposta = () => {
     if (envioDeRespostaRef.current) return;
     editorAtualRef.current = null;
-    // Cancelar uma edição que não mudou nada não deixa "alteração não salva".
+    // Cancelar uma edição que não mudou nada não deixa rascunho velho para trás.
     const emEdicao = replyingTo;
     const respostaDeHoje = adminReviews.find(
       (r) => r.id === emEdicao,
     )?.merchantReply;
-    if (emEdicao && respostaDeHoje && rascunhos[emEdicao] === respostaDeHoje) {
-      setRascunhos((anteriores) => {
-        const { [emEdicao]: _descartado, ...resto } = anteriores;
-        return resto;
-      });
-    }
+    setRascunhos((anteriores) =>
+      Object.fromEntries(
+        Object.entries(anteriores).filter(
+          ([id, texto]) => !(id === emEdicao && texto === respostaDeHoje),
+        ),
+      ),
+    );
     setReplyingTo(null);
   };
 
@@ -345,11 +347,18 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
   // Comunicar estado dirty para o roteador global
   useEffect(() => {
+    // "Sujo" = texto novo, diferente da resposta que a loja já tem.
+    const respostaDeHoje = new Map(
+      adminReviews.map((r) => [r.id, r.merchantReply ?? ""]),
+    );
     onSetDirty?.(
       active &&
-        Object.values(rascunhos).some((texto) => texto.trim().length > 0),
+        Object.entries(rascunhos).some(
+          ([id, texto]) =>
+            texto.trim().length > 0 && texto !== (respostaDeHoje.get(id) ?? ""),
+        ),
     );
-  }, [active, rascunhos, onSetDirty]);
+  }, [active, rascunhos, adminReviews, onSetDirty]);
 
   // Reset helper modals when tab becomes inactive to prevent focus traps
   useEffect(() => {

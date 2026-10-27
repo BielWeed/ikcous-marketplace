@@ -6,7 +6,7 @@ import {
   destaquesDaVitrine,
   ofertasDaVitrine,
   produtosAVenda,
-} from "@/lib/vitrine";
+} from "@/lib/vitrine-do-painel";
 import type { Product } from "@/types";
 import { describe, expect, it } from "vitest";
 

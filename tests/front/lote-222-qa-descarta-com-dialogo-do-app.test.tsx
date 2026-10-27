@@ -69,8 +69,6 @@ vi.mock("sonner", () => ({
   },
 }));
 
-import { toast } from "sonner";
-
 // jsdom não implementa IntersectionObserver/ResizeObserver -- LazyImage e o
 // AdminKpiCarousel criam um a cada montagem. Mesmo padrão do casco citado.
 class IntersectionObserverStub {
@@ -214,5 +212,29 @@ describe("lote 222 — AdminQAView descarta com diálogo do app", () => {
       confirmar[confirmar.length - 1].click();
     });
     expect(document.getElementById("merchant-answer")).toBeNull();
+  });
+
+  it("'Continuar editando' mantém o texto e a folha abertos", async () => {
+    await montar();
+    await abrirDialogoEDigitar("Resposta A");
+    const descartar = Array.from(document.body.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Descartar",
+    ) as HTMLButtonElement;
+    await act(async () => {
+      descartar.click();
+    });
+    const continuar = Array.from(document.body.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Continuar editando",
+    ) as HTMLButtonElement;
+    expect(continuar).toBeTruthy();
+    await act(async () => {
+      continuar.click();
+    });
+    const campo = document.getElementById(
+      "merchant-answer",
+    ) as HTMLTextAreaElement | null;
+    expect(campo).not.toBeNull();
+    expect(campo?.value).toBe("Resposta A");
+    expect(document.body.textContent).not.toContain("Descartar a resposta?");
   });
 });
