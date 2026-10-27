@@ -149,7 +149,6 @@ describe("Painel — o número do pedido é o mesmo que o cliente vê", () => {
       raiz.render(
         <DetalheDaDevolucao
           id="dev-1"
-          agora={new Date("2026-09-02T12:00:00Z")}
           onFechar={vi.fn()}
           onMudou={vi.fn()}
           onSujoMudou={vi.fn()}
