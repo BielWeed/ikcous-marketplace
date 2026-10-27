@@ -18,7 +18,7 @@ const servicoDe = (endpoint: string) => new URL(endpoint).hostname;
 function ordenadoPorEndereco(porServico: number[]) {
   return porServico
     .flatMap((n, s) =>
-      Array.from({ length: n }, (_, i) => ({ endpoint: `${SERVICOS[s]}${i}` })),
+      Array.from({ length: n }, (_, i) => ({ endpoint: `${SERVICOS.at(s)}${i}` })),
     )
     .sort((a, b) => (a.endpoint < b.endpoint ? -1 : 1));
 }

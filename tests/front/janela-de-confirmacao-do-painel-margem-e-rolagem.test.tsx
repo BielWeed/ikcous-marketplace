@@ -28,6 +28,8 @@ function carregarConfigDoProjeto() {
   const modulo = new (Module as any)(caminho);
   modulo.filename = caminho;
   modulo.paths = (Module as any)._nodeModulePaths(dirname(caminho));
+  // Caminho fixo do próprio projeto, não vem de fora.
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
   modulo._compile(readFileSync(caminho, "utf-8"), caminho);
   return modulo.exports;
 }

@@ -25,7 +25,8 @@ export function intercalarPorServico<T extends { endpoint?: unknown }>(
   const saida: T[] = [];
   for (let rodada = 0; saida.length < (alvos?.length ?? 0); rodada++) {
     for (const fila of filas) {
-      if (rodada < fila.length) saida.push(fila[rodada]);
+      const alvo = fila.at(rodada);
+      if (alvo !== undefined) saida.push(alvo);
     }
   }
   return saida;
