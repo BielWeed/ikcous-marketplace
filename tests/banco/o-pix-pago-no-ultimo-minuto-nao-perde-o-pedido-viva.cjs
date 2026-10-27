@@ -625,6 +625,7 @@ async function main() {
       ]);
     });
     // A prova somente leitura do publicar-functions pina o corpo DESTA migration.
+    // eslint-disable-next-line security/detect-non-literal-require -- caminho montado pelo proprio teste
     const { hashesEsperados } = require(
       path.join(
         RAIZ,

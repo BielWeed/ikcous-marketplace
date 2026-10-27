@@ -204,6 +204,7 @@ Deno.test("a busca nova: so depois de nao achar variacao ATIVA nem produto, so v
 
 Deno.test("scripts/db-apply.cjs tem entrada NOVA para a 20261393100000 (sem ela a migration sai PULADA, codigo 2), cada marcador com a contagem exata no corpo novo", () => {
   const { VERIFICACOES } = require("../scripts/db-apply.cjs");
+  // eslint-disable-next-line security/detect-object-injection -- chave vinda de lista fixa do proprio teste
   const entrada = VERIFICACOES[NOME];
   assert.ok(entrada, "sem entrada em VERIFICACOES");
   assert.equal(entrada.funcao, "buscar_por_codigo_barras");
@@ -400,9 +401,12 @@ Deno.test("as consultas 104a/104b existem, tem o rol fechado de 4 linhas, o md5 
   const {
     ROL_FECHADO_POR_CONSULTA,
   } = require("../scripts/publicacao/conferir-banco.cjs");
+  // eslint-disable-next-line security/detect-object-injection -- chave vinda de lista fixa do proprio teste
   assert.equal(ROL_FECHADO_POR_CONSULTA[C104A].length, 4);
   assert.deepEqual(
+    // eslint-disable-next-line security/detect-object-injection -- chave vinda de lista fixa do proprio teste
     ROL_FECHADO_POR_CONSULTA[C104A],
+    // eslint-disable-next-line security/detect-object-injection -- chave vinda de lista fixa do proprio teste
     ROL_FECHADO_POR_CONSULTA[C104B],
   );
   const canais = JSON.parse(lerRepo("scripts/frota/canais-de-backend.json"));

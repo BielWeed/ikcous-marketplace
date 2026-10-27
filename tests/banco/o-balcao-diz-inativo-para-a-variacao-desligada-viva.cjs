@@ -188,6 +188,7 @@ async function fixture(c) {
         o.apagado ? new Date().toISOString() : null,
       ],
     );
+    // eslint-disable-next-line security/detect-object-injection -- chave vinda de lista fixa do proprio teste
     ids[rotulo] = r.rows[0].id;
     return r.rows[0].id;
   };
@@ -205,6 +206,7 @@ async function fixture(c) {
         o.preco === undefined ? null : o.preco,
       ],
     );
+    // eslint-disable-next-line security/detect-object-injection -- chave vinda de lista fixa do proprio teste
     ids[rotulo] = r.rows[0].id;
     return r.rows[0].id;
   };
@@ -277,6 +279,7 @@ async function bateria(c, ids) {
     if (!cond) erros.push(msg);
   };
   const r = {};
+  // eslint-disable-next-line security/detect-object-injection -- chave vinda de lista fixa do proprio teste
   for (const [k, codigo] of Object.entries(EAN)) r[k] = await buscar(c, codigo);
 
   // 1. Quem ja era achado continua sendo, igual.
@@ -324,12 +327,14 @@ async function bateria(c, ids) {
     ["varZero", 0, 3],
     ["varSemPreco", 20, 2],
   ]) {
+    // eslint-disable-next-line security/detect-object-injection -- chave vinda de lista fixa do proprio teste
     const x = r[rotulo];
     confere(
       x.encontrado === true &&
         x.origem === "variante" &&
         x.produto?.ativo === false &&
         x.produto?.id === ids.tenis &&
+        // eslint-disable-next-line security/detect-object-injection -- chave vinda de lista fixa do proprio teste
         x.variante?.variant_id === ids[rotulo] &&
         Number(x.preco) === esperaPreco &&
         Number(x.estoque) === esperaEstoque &&
@@ -394,10 +399,12 @@ async function bateria(c, ids) {
   const chavesDe = (o) => JSON.stringify(Object.keys(o ?? {}).sort());
   for (const k of ["varDesligada", "varNula", "varZero", "varSemPreco"]) {
     confere(
+      // eslint-disable-next-line security/detect-object-injection -- chave vinda de lista fixa do proprio teste
       chavesDe(r[k].produto) === chavesDe(r.varLigada.produto),
       `${k}: chaves do produto diferentes das da variacao ligada`,
     );
     confere(
+      // eslint-disable-next-line security/detect-object-injection -- chave vinda de lista fixa do proprio teste
       chavesDe(r[k].variante) === chavesDe(r.varLigada.variante),
       `${k}: chaves da variante diferentes das da variacao ligada`,
     );

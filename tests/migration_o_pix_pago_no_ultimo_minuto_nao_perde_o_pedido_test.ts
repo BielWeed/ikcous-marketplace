@@ -184,6 +184,7 @@ const norm = (s) => s.replace(/\s+/g, " ").trim();
 
 Deno.test("scripts/db-apply.cjs tem entrada NOVA para a 20261393000000 (sem ela a migration sai PULADA, codigo 2), cada marcador com a contagem exata 1 no corpo novo", () => {
   const { VERIFICACOES } = require("../scripts/db-apply.cjs");
+  // eslint-disable-next-line security/detect-object-injection -- chave vinda de lista fixa do proprio teste
   const entrada = VERIFICACOES[NOME];
   assert.ok(entrada, "sem entrada em VERIFICACOES");
   assert.equal(entrada.funcao, "expirar_pedidos_vencidos");
@@ -361,9 +362,12 @@ Deno.test("as consultas 103a/103b existem, tem o rol fechado de 4 linhas, o md5 
   const {
     ROL_FECHADO_POR_CONSULTA,
   } = require("../scripts/publicacao/conferir-banco.cjs");
+  // eslint-disable-next-line security/detect-object-injection -- chave vinda de lista fixa do proprio teste
   assert.equal(ROL_FECHADO_POR_CONSULTA[C103A].length, 4);
   assert.deepEqual(
+    // eslint-disable-next-line security/detect-object-injection -- chave vinda de lista fixa do proprio teste
     ROL_FECHADO_POR_CONSULTA[C103A],
+    // eslint-disable-next-line security/detect-object-injection -- chave vinda de lista fixa do proprio teste
     ROL_FECHADO_POR_CONSULTA[C103B],
   );
   const canais = JSON.parse(
