@@ -345,6 +345,9 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     // 20261394100000: a lista de recomendacoes do produto tem teto (get_product_recommendations limita p_limit a 50 e trata NULL como 4; ate o teto a lista
     // e' a de sempre; mutantes, rollback, pre/pos-voo e consultas 107a/107b e a 9a).
     "tests/banco/a-lista-de-recomendacoes-do-produto-tem-teto-viva.cjs",
+    // 20261394200000: a v23 recusa o pagamento pelo app para todo mundo (anon e logado; pagar na entrega/retirada como antes; retentativa de pedido antigo devolve o mesmo id;
+    // mutante, rollback byte a byte, aplicar duas vezes, pre/pos-voo e consultas 111a/111b).
+    "tests/banco/a-v23-recusa-o-pagamento-pelo-app-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -647,6 +650,14 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261394100000: a lista de recomendacoes do produto tem teto (get_product_recommendations limita p_limit a 50 e trata NULL como 4; ate o teto a lista
     // e' a de sempre; mutantes, rollback, pre/pos-voo e consultas 107a/107b e a 9a).
     "tests/banco/a-lista-de-recomendacoes-do-produto-tem-teto-viva.cjs",
+    // 20261394200000: a v23 recusa o pagamento pelo app para todo mundo (anon e logado; pagar na entrega/retirada como antes; retentativa de pedido antigo devolve o mesmo id;
+    // mutante, rollback byte a byte, aplicar duas vezes, pre/pos-voo e consultas 111a/111b).
+    "tests/banco/a-v23-recusa-o-pagamento-pelo-app-viva.cjs",
+    // Provas dos lotes 108/109/110 que ja rodavam no job do dinheiro (rpc-ci.yml) e faltavam NESTA lista (o teste ja estava vermelho na base antes do lote 233):
+    // a busca de devolucao pelo numero do pedido (20261395000000), a grade antiga que nao ressuscita variacao excluida e a conclusao da devolucao que tranca na ordem da compra.
+    "tests/banco/a-busca-de-devolucao-acha-o-numero-do-pedido-viva.cjs",
+    "tests/banco/a-grade-antiga-nao-ressuscita-variacao-excluida-viva.cjs",
+    "tests/banco/a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",

@@ -288,6 +288,8 @@ on:
           - 109b-antes-a-grade-antiga-nao-ressuscita-variacao-excluida-base-vigente
           - 110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado
           - 110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente
+          - 111a-conferir-a-v23-recusa-o-pagamento-pelo-app-aplicado
+          - 111b-antes-a-v23-recusa-o-pagamento-pelo-app-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

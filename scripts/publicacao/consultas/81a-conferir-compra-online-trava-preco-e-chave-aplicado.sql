@@ -30,9 +30,10 @@ WITH alvo(nome, assinatura) AS (
   SELECT 'controle: funcoes de public visiveis a este papel', 'sim', CASE WHEN COALESCE((SELECT count(*) > 0 FROM pg_proc WHERE pronamespace = 'public'::regnamespace), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'create_marketplace_order_v23: corpo e o da 20261350000000, com a ordem global das travas, a trava do produto e a espera da mesma chave (md5)', '6b71cb823967518955407b532904ae91',
-         -- A 20261394000000 (o pedido de visitante na entrega tem freio: o mesmo corpo mais o trecho 0-quater) sucede a v23: aceita os dois
-         -- corpos EXATOS; normaliza ao esperado historico do rol. O `vivo` mostra o esperado.
-         COALESCE((SELECT CASE WHEN m IN ('6b71cb823967518955407b532904ae91', '89c99662346d47a4d6b3d13612ca4acb') THEN '6b71cb823967518955407b532904ae91' ELSE m END
+         -- A 20261394000000 (o pedido de visitante na entrega tem freio: o mesmo corpo mais o trecho 0-quater) e a 20261394200000 (a v23
+         -- recusa o pagamento pelo app: mais o trecho 0-ter) sucedem a v23: aceita os tres corpos EXATOS; normaliza ao esperado historico do
+         -- rol. O `vivo` mostra o esperado.
+         COALESCE((SELECT CASE WHEN m IN ('6b71cb823967518955407b532904ae91', '89c99662346d47a4d6b3d13612ca4acb', '86a30fe3502bbafd1a507ce03189bc2d') THEN '6b71cb823967518955407b532904ae91' ELSE m END
                      FROM fn WHERE nome = 'create_marketplace_order_v23'), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v24: corpo e o da 20261350000000, com a ordem global das travas, a trava do produto e a espera da mesma chave (md5)', 'e3c124d25632aaa9bcf1995153bc5a7e',

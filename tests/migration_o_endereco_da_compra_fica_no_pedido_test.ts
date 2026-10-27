@@ -377,6 +377,9 @@ const SUCESSORA_384 =
 // corpos da 350 e da 384. As provas vivas a desfazem antes de medir (tests/banco/o-pedido-de-visitante-na-entrega-posterior.cjs).
 const SUCESSORA_394 =
   "20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql";
+// A SEXTA SUCESSORA (27/10/2026): a 20261394200000 (a v23 recusa o pagamento pelo app) redefine SO a v23, em cima do corpo da 394000.
+// As provas vivas a desfazem antes de medir (tests/banco/a-v23-recusa-o-pagamento-pelo-app-posterior.cjs).
+const SUCESSORA_394200 = "20261394200000_a_v23_recusa_o_pagamento_pelo_app.sql";
 
 Deno.test("so a 20261174000000 define o corpo vivo de v23 e v24 antes deste par (nenhuma migration posterior a redefine); depois dele, so este par e a sucessora da v24 (20261236000000)", () => {
   const dir = new URL("supabase/migrations/", DIR);
@@ -405,6 +408,7 @@ Deno.test("so a 20261174000000 define o corpo vivo de v23 e v24 antes deste par 
       `${SUCESSORA_384}:${V24}`,
       `${SUCESSORA_394}:${V23}`,
       `${SUCESSORA_394}:${V24}`,
+      `${SUCESSORA_394200}:${V23}`,
     ].sort(),
   );
 });

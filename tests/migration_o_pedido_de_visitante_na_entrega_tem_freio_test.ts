@@ -259,9 +259,14 @@ Deno.test("394: a vigente e' a ultima redefinicao de v23 e v24 da arvore; db-app
       .filter((n) => /^\d{14}_.*\.sql$/.test(n))
       .sort()
       .filter((n) => definicao(ler(`supabase/migrations/${n}`), fn));
-    assert.equal(
-      fontes.at(-1),
-      nome,
+    // A v23 tem UMA sucessora legitima: a 20261394200000 (a v23 recusa o pagamento pelo app), que e' a ultima e vem logo
+    // depois da 394000; qualquer outra redefinicao depois da 394 reprova.
+    const SUCESSORA_V23 =
+      "20261394200000_a_v23_recusa_o_pagamento_pelo_app.sql";
+    const esperado = fn === V23 ? [nome, SUCESSORA_V23] : [nome];
+    assert.deepEqual(
+      fontes.slice(-esperado.length),
+      esperado,
       `outra migration redefine ${fn} depois da 394`,
     );
   }

@@ -212,9 +212,17 @@ let ADM; // conexao de autocommit: semeia dados COMMITADOS e observa pg_locks/pg
 const PROVAS = [];
 const prova = (nome, corpo) => PROVAS.push({ nome, corpo });
 
-/** O estado DEPOIS: a migration inteira (pre-voo, troca e conferencia) ou, no modo mutante, so os corpos do arquivo. */
-const instalarNova = () =>
-  C.query(MUTADO ? `${decl(NOVA[V23])}\n${decl(NOVA[V24])}` : MIGRATION);
+/**
+ * O estado DEPOIS: a migration inteira (pre-voo, troca e conferencia) ou, no modo mutante, so os corpos do arquivo.
+ * A arvore pode ter migrations MAIS NOVAS que redefinem a v23 (20261394200000: a v23 recusa o pagamento pelo app) e o pre-voo
+ * desta migration recusa corpo vivo que nao seja o de antes nem o dela; por isso o DEPOIS parte SEMPRE do ANTES (como diz o cabecalho).
+ */
+const instalarNova = async () => {
+  await instalarAntiga();
+  await C.query(
+    MUTADO ? `${decl(NOVA[V23])}\n${decl(NOVA[V24])}` : MIGRATION,
+  );
+};
 /** O estado ANTES: os corpos vivos de antes (CREATE OR REPLACE direto; vale como o rollback, sem depender do pre-voo). */
 const instalarAntiga = () =>
   C.query(`${decl(ANTIGA[V23])}\n${decl(ANTIGA[V24])}`);

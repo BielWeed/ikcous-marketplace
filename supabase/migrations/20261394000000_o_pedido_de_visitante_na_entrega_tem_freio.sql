@@ -89,7 +89,7 @@
 --
 -- * A v23 com p_payment_method = 'online' e sem sessão continua sendo aceita (o freio, por decisão do dono, é só fora do
 --   pagamento online, e a 20261384000000 só fechou o 'online' sem conta na v24). Nenhum caminho do app manda 'online'
---   à v23; fechar isto é migration à parte.
+--   à v23; fechar isto é migration à parte: a 20261394200000 (a v23 recusa o pagamento pelo app, para todo mundo) fecha.
 -- * get_orders_by_otp_v2 devolve o endereço por address_id sem conferir o dono: outra função, outra migration.
 --
 -- Hashes (vigente -> desta migration): v23 6b71cb823967518955407b532904ae91 -> 89c99662346d47a4d6b3d13612ca4acb; v24 f8d6ed0c3622ab41123bacb98911a98f -> 36c80a107f3ed16853c1c5b2b0cbc911.

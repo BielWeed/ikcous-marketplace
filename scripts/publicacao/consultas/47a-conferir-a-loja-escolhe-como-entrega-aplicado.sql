@@ -91,10 +91,10 @@ WITH fns AS (
   UNION ALL
   SELECT 'create_marketplace_order_v23: corpo e o da 20261244000000, com o So retiro e a retirada livre (md5)',
          '79445d64a87843be2d42bf601c7090ec',
-         -- 3 hashes aceitos: o corpo da 20261244000000 OU o da SUCESSORA dele, a 20261350000000 (a compra online trava o preco
-         -- e espera a mesma chave: o mesmo corpo com duas edicoes) OU o da 20261394000000 (o pedido de visitante na entrega tem freio).
-         -- O `vivo` mostra o esperado.
-         COALESCE((SELECT CASE WHEN f.m IN ('6b71cb823967518955407b532904ae91', '89c99662346d47a4d6b3d13612ca4acb') THEN '79445d64a87843be2d42bf601c7090ec' ELSE f.m END FROM fns f WHERE f.nome = 'create_marketplace_order_v23'), 'AUSENTE')
+         -- 4 hashes aceitos: o corpo da 20261244000000 OU o da SUCESSORA dele, a 20261350000000 (a compra online trava o preco
+         -- e espera a mesma chave: o mesmo corpo com duas edicoes) OU o da 20261394000000 (o pedido de visitante na entrega tem freio)
+         -- OU o da 20261394200000 (a v23 recusa o pagamento pelo app). O `vivo` mostra o esperado.
+         COALESCE((SELECT CASE WHEN f.m IN ('6b71cb823967518955407b532904ae91', '89c99662346d47a4d6b3d13612ca4acb', '86a30fe3502bbafd1a507ce03189bc2d') THEN '79445d64a87843be2d42bf601c7090ec' ELSE f.m END FROM fns f WHERE f.nome = 'create_marketplace_order_v23'), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v24: corpo e o da 20261244000000, com o So retiro e a retirada livre (md5)',
          '85c37af4baa2f5ce1375bdd9e943c746',

@@ -331,6 +331,17 @@ const REGRAS: ReadonlyArray<{ padrao: RegExp; acao: AcaoDeRecusa }> = [
       /^Este pedido não tem valor a pagar pelo app\. Escolha pagar na retirada ou na entrega, ou fale com a loja\.$/,
     acao: "trocar_pagamento",
   },
+  // A V23 RECUSA O PAGAMENTO PELO APP (27/10/2026 — migration 20261394200000, só a
+  // `create_marketplace_order_v23`): a porta do "pagar na entrega" não cria pedido 'online'
+  // (nasceria impagável). O checkout manda 'online' só para a v24, então no app esta recusa
+  // NUNCA deve aparecer — é rede de segurança (aba velha, chamada forjada). O pedido
+  // provadamente não nasceu (a RPC recusa antes de reservar qualquer coisa) e o que a pessoa
+  // precisa é escolher OUTRA forma de pagamento: mesma saída da forma desligada e do total zero.
+  {
+    padrao:
+      /^O pagamento pelo app é feito em outra etapa\. Para este pedido, escolha pagar na retirada ou na entrega\.$/,
+    acao: "trocar_pagamento",
+  },
   {
     padrao: /^Endereço inválido ou não pertence ao usuário\.$/,
     acao: "trocar_endereco",
