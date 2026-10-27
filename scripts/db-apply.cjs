@@ -434,6 +434,23 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261395100000: a grade antiga nao ressuscita variacao excluida. salvar_produto_com_grade troca o corpo (CREATE OR REPLACE) e a consulta 109a confere o corpo exato (md5), os atributos e a ACL; a prova viva faz o comportamento.
+  "20261395100000_a_grade_antiga_nao_ressuscita_variacao_excluida.sql": [
+    {
+      funcao: "salvar_produto_com_grade",
+      esperado: [
+        {
+          texto: "20261395100000: variacao que alguem excluiu",
+          vezes: 1,
+        },
+        {
+          texto:
+            "      CONTINUE;\n    END IF;\n    INSERT INTO public.product_variants",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   // 20261382: o resultado (fin_dre) mostra tarifa, juro e quebra como despesa. So o 'valor' das linhas do grupo financeiro ganha o
   // sinal (entrada menos saida); o resto do corpo e' o da 20261242. A consulta 87a confere o corpo exato (md5), os atributos e a ACL.
   "20261382000000_o_resultado_mostra_tarifa_juro_e_quebra_como_despesa.sql": {

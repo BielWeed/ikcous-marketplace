@@ -2786,7 +2786,18 @@ const ROL_DA_108 = [
   "admin_devolucoes_listar: o corpo traz a busca pelo numero do pedido (uma vez)",
   "admin_devolucoes_listar: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, STABLE, retorno jsonb; authenticated e service_role, sem anon e sem PUBLIC)",
 ];
+// Lote 109 (20261395100000, a grade antiga nao ressuscita variacao excluida). A 109a e a 109b tem o mesmo rol; a 109a espera o corpo da 20261395100000 e a 109b o vigente de antes.
+const ROL_DA_109 = [
+  "controle: funcoes de public visiveis a este papel",
+  "salvar_produto_com_grade: corpo exato (md5)",
+  "salvar_produto_com_grade: o corpo traz a recusa de ressuscitar variacao (uma vez)",
+  "salvar_produto_com_grade: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno jsonb; authenticated e service_role, sem anon e sem PUBLIC)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "109a-conferir-a-grade-antiga-nao-ressuscita-variacao-excluida-aplicado":
+    ROL_DA_109,
+  "109b-antes-a-grade-antiga-nao-ressuscita-variacao-excluida-base-vigente":
+    ROL_DA_109,
   "108a-conferir-a-busca-de-devolucao-acha-o-numero-do-pedido-aplicado":
     ROL_DA_108,
   "108b-antes-a-busca-de-devolucao-acha-o-numero-do-pedido-base-vigente":

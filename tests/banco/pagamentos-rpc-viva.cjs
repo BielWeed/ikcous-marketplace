@@ -1852,6 +1852,10 @@ async function desfazerPosterioresNaTransacao(c) {
   await desfazerBalcaoDizInativoNaTransacao(c);
   // A 20261385 (a busca de produtos) sucede get_admin_products_paged da 81: sai ANTES dela (o rollback da 81 exige o corpo da 81).
   await desfazerBuscaDoPainelNaTransacao(c);
+  // A 20261395100000 (a grade antiga nao ressuscita variacao excluida) sucede o corpo de salvar_produto_com_grade da 352: sai ANTES dela.
+  await require("./a-grade-antiga-posterior.cjs").desfazerGradeAntigaNaTransacao(
+    c,
+  );
   for (const { nome, noAr } of POSTERIORES_A_97) {
     const caminho = path.join(
       __dirname,

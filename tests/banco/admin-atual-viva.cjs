@@ -448,6 +448,10 @@ async function desfazerPosterioresNaTransacao(cliente) {
   await desfazerBalcaoDizInativoNaTransacao(cliente);
   // A 20261385 (a busca de produtos) sucede get_admin_products_paged da 81: sai ANTES dela (o rollback da 81 exige o corpo da 81).
   await desfazerBuscaDoPainelNaTransacao(cliente);
+  // A 20261395100000 (a grade antiga nao ressuscita variacao excluida) sucede o corpo de salvar_produto_com_grade da 352: sai ANTES dela.
+  await require("./a-grade-antiga-posterior.cjs").desfazerGradeAntigaNaTransacao(
+    cliente,
+  );
   // As sucessoras da 99 (20261212, 20261214: redefinem corpos dela) saem
   // primeiro — sem isso o rollback da 99 recusa (B1_BASELINE_DIVERGENT).
   await desfazerSucessorasDa99(cliente);
@@ -1605,6 +1609,9 @@ PROVAS.push({
       // A 20261393100000 (o balcao diz "inativo") e a 20261385 (a busca de produtos) saem antes da 81, que e' desfeita nesta pilha (o rollback da 81 exige o corpo da 81).
       await desfazerBalcaoDizInativoNaTransacao(cliente);
       await desfazerBuscaDoPainelNaTransacao(cliente);
+      await require("./a-grade-antiga-posterior.cjs").desfazerGradeAntigaNaTransacao(
+        cliente,
+      );
       // A 20261243000000 (redefine o corpo de registrar_pagamento_recebido que a 97 confere por hash) também sai antes
       // (só se no ar): sem isso a recusa por hash dela vem ANTES da recusa por dependentes que esta prova mede.
       await desfazerDesfazerRecebimentoNaTransacao(cliente);

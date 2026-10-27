@@ -220,6 +220,8 @@ on:
       - "scripts/publicacao/consultas/107b-antes-a-lista-de-recomendacoes-do-produto-tem-teto-base-vigente.sql"
       - "scripts/publicacao/consultas/108a-conferir-a-busca-de-devolucao-acha-o-numero-do-pedido-aplicado.sql"
       - "scripts/publicacao/consultas/108b-antes-a-busca-de-devolucao-acha-o-numero-do-pedido-base-vigente.sql"
+      - "scripts/publicacao/consultas/109a-conferir-a-grade-antiga-nao-ressuscita-variacao-excluida-aplicado.sql"
+      - "scripts/publicacao/consultas/109b-antes-a-grade-antiga-nao-ressuscita-variacao-excluida-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -409,6 +411,8 @@ on:
       - "scripts/publicacao/consultas/107b-antes-a-lista-de-recomendacoes-do-produto-tem-teto-base-vigente.sql"
       - "scripts/publicacao/consultas/108a-conferir-a-busca-de-devolucao-acha-o-numero-do-pedido-aplicado.sql"
       - "scripts/publicacao/consultas/108b-antes-a-busca-de-devolucao-acha-o-numero-do-pedido-base-vigente.sql"
+      - "scripts/publicacao/consultas/109a-conferir-a-grade-antiga-nao-ressuscita-variacao-excluida-aplicado.sql"
+      - "scripts/publicacao/consultas/109b-antes-a-grade-antiga-nao-ressuscita-variacao-excluida-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -633,6 +637,13 @@ jobs:
       - name: Prova viva da busca de devolucao pelo numero do pedido (20261395000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-busca-de-devolucao-acha-o-numero-do-pedido-viva.cjs
+      # Migration 20261395100000 (a grade antiga nao ressuscita variacao excluida): salvar_produto_com_grade pula o id de variacao que
+      # nao existe em lugar nenhum (antes o INSERT trazia a variacao de volta com o estoque da tela velha); variacao existente atualiza,
+      # variacao de outro produto continua recusando, variacao nova (sem id) continua inserindo; mesma resposta e mesmos erros; duas
+      # conexoes reais (a exclusao concorrente espera a trava); rollback byte a byte, pre-voo, pos-voo e consultas 109a/109b. CLONE proprio.
+      - name: Prova viva da grade antiga que nao ressuscita variacao excluida (20261395100000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-grade-antiga-nao-ressuscita-variacao-excluida-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs
