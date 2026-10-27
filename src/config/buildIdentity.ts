@@ -81,14 +81,20 @@ function pintarFichaInvalidaNoBoot(titulo: string, detalhe: string): void {
   host.append(wrapper);
 }
 
-let fichaDaLoja: ReturnType<typeof lerFichaDaLoja>;
-try {
-  fichaDaLoja = lerFichaDaLoja();
-} catch (erro) {
+// A mesma tela para os dois motivos de não confirmar a loja: ficha ilegível e
+// página sem ficha.
+function pintarLojaEmManutencao(): void {
   pintarFichaInvalidaNoBoot(
     "Loja em manutenção",
     "Não foi possível confirmar os dados desta loja agora. Recarregue em alguns instantes.",
   );
+}
+
+let fichaDaLoja: ReturnType<typeof lerFichaDaLoja>;
+try {
+  fichaDaLoja = lerFichaDaLoja();
+} catch (erro) {
+  pintarLojaEmManutencao();
   throw erro;
 }
 
@@ -110,10 +116,7 @@ if (decisaoSemFicha.tipo === "redirecionar") {
   throw new Error("INDEX_CRU_REDIRECIONANDO");
 }
 if (decisaoSemFicha.tipo === "tela-segura") {
-  pintarFichaInvalidaNoBoot(
-    "Loja em manutenção",
-    "Não foi possível confirmar os dados desta loja agora. Recarregue em alguns instantes.",
-  );
+  pintarLojaEmManutencao();
   throw new Error("BOOT_SEM_FICHA");
 }
 

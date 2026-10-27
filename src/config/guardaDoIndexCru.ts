@@ -29,18 +29,10 @@ export type DecisaoDoBootSemFicha =
   | { tipo: "redirecionar"; destino: string }
   | { tipo: "tela-segura" };
 
-// Só os nomes que o navegador entrega para a máquina do próprio dev. Sufixo
-// ".localhost" exige o ponto, para "meulocalhost.com" não passar por local.
-function enderecoLocal(hostname: string): boolean {
-  const h = hostname.toLowerCase();
-  return (
-    h === "localhost" ||
-    h === "127.0.0.1" ||
-    h === "[::1]" ||
-    h === "::1" ||
-    h.endsWith(".localhost")
-  );
-}
+// Só os nomes que o navegador entrega para a máquina do próprio dev (o
+// `location.hostname` já vem em minúsculas). O sufixo ".localhost" exige o
+// ponto: "meulocalhost.com" não passa por local.
+const ENDERECO_LOCAL = /^(localhost|127\.0\.0\.1|\[::1\]|.+\.localhost)$/;
 
 export function decidirBootSemFicha(
   entrada: EntradaDoBoot,
@@ -50,7 +42,7 @@ export function decidirBootSemFicha(
     entrada.dev ||
     entrada.ficha ||
     entrada.pathname === "" ||
-    enderecoLocal(entrada.hostname)
+    ENDERECO_LOCAL.test(entrada.hostname)
   ) {
     return { tipo: "seguir" };
   }

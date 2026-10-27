@@ -77,14 +77,7 @@ describe("decidirBootSemFicha", () => {
     }
   });
 
-  it.each([
-    "localhost",
-    "LOCALHOST",
-    "127.0.0.1",
-    "[::1]",
-    "::1",
-    "loja.localhost",
-  ])(
+  it.each(["localhost", "127.0.0.1", "[::1]", "loja.localhost"])(
     "endereço local (%s), sem ficha: segue (preview e testes de jornada)",
     (h) => {
       for (const pathname of ["/", "/404.html", "/carrinho"]) {
