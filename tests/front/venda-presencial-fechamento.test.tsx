@@ -1136,9 +1136,9 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     await avancar();
     await digitarNoCampo("busca-de-cliente-do-balcao", "maria");
     // A linha da lista mostra o TELEFONE (e não o e-mail) quando existe.
-    expect(localizarBotaoPorTexto(hospedeiro, "Maria Cliente")!.textContent).toContain(
-      "(34) 99999-1234",
-    );
+    expect(
+      localizarBotaoPorTexto(hospedeiro, "Maria Cliente")!.textContent,
+    ).toContain("(34) 99999-1234");
     await act(async () => {
       localizarBotaoPorTexto(hospedeiro, "Maria Cliente")!.click();
     });

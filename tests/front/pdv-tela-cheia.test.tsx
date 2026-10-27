@@ -182,9 +182,9 @@ it("os controles de pagamento do fechamento em tela baixa têm alvo de toque de 
 // rola, então os 8px a mais não empurram o "Fechar venda" para fora.
 it("o botão Cliente do rodapé tem alvo de toque de 44px em toda regra que fixa a altura dele", () => {
   const { css } = regrasDoCss();
-  const regras = [...css.matchAll(/(?:^|\n)([^{}@\n][^{}]*)\{([^}]*)\}/g)].filter(
-    (m) => (m[1] ?? "").includes("pdv-client-chip"),
-  );
+  const regras = [
+    ...css.matchAll(/(?:^|\n)([^{}@\n][^{}]*)\{([^}]*)\}/g),
+  ].filter((m) => (m[1] ?? "").includes("pdv-client-chip"));
   const comAltura = regras.filter((m) => /min-height:/.test(m[2] ?? ""));
   // As duas regras do botão (rodapé do cupom e barra inline) fixam a altura.
   expect(comAltura.length).toBeGreaterThanOrEqual(2);

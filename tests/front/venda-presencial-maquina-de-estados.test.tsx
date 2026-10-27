@@ -1155,11 +1155,7 @@ describe("podeIrPara e a guarda em 'etapa_pedida'", () => {
 // ============================================================================
 
 describe("venda_registrada com ja_existia — divergência entre o pedido do banco e a tela", () => {
-  function itemDe(
-    id: string,
-    preco: number,
-    quantidade: number,
-  ): ItemDoCupom {
+  function itemDe(id: string, preco: number, quantidade: number): ItemDoCupom {
     return {
       chave: chaveDoItemDoCupom(id, null),
       productId: id,
@@ -1205,10 +1201,10 @@ describe("venda_registrada com ja_existia — divergência entre o pedido do ban
     // O banco gravou 2 × R$ 50; depois o balconista tirou uma unidade ou deu
     // desconto e tentou de novo com a mesma chave.
     const noBanco = [itemDe("p1", 50, 2)];
-    const depois = reducerDaVenda(
-      telaCom([itemDe("p1", 50, 1)]),
-      { tipo: "venda_registrada", recibo: reciboDoBanco(true, noBanco, 100) },
-    );
+    const depois = reducerDaVenda(telaCom([itemDe("p1", 50, 1)]), {
+      tipo: "venda_registrada",
+      recibo: reciboDoBanco(true, noBanco, 100),
+    });
     expect(depois.etapa).toBe("recibo");
     expect(depois.recibo?.total).toBe(100);
     expect(depois.recibo?.divergenciaComATela).toEqual({
@@ -1255,13 +1251,10 @@ describe("venda_registrada com ja_existia — divergência entre o pedido do ban
 
   it("retry idêntico (duplo toque, F5 sem editar): sem divergência — só o aviso pequeno de sempre", () => {
     const itens = [itemDe("p1", 50, 2), itemDe("p2", 10.1, 3)];
-    const depois = reducerDaVenda(
-      telaCom([...itens].reverse(), "cash", 0),
-      {
-        tipo: "venda_registrada",
-        recibo: reciboDoBanco(true, itens, 130.3),
-      },
-    );
+    const depois = reducerDaVenda(telaCom([...itens].reverse(), "cash", 0), {
+      tipo: "venda_registrada",
+      recibo: reciboDoBanco(true, itens, 130.3),
+    });
     expect(depois.recibo?.jaExistia).toBe(true);
     expect(depois.recibo?.divergenciaComATela ?? null).toBeNull();
   });
