@@ -2,6 +2,7 @@ import { LazyImage } from "@/components/LazyImage";
 import { BotaoDeFavorito } from "@/components/ui/custom/BotaoDeFavorito";
 import { useStore } from "@/contexts/StoreContext";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
+import { carrosselPodeGirar } from "@/lib/carrossel-visivel";
 import {
   CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
   CLASSE_SELO_DESCONTO,
@@ -168,6 +169,8 @@ const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
     if (isPaused || !emblaApi || products.length <= 1) return;
 
     const intervalId = setInterval(() => {
+      // Home escondida (aba/tela de outra rota): não gira.
+      if (!carrosselPodeGirar(emblaApi.rootNode?.())) return;
       emblaApi.scrollNext();
     }, 6000); // Rotate every 6 seconds
 

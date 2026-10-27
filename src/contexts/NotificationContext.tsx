@@ -368,6 +368,20 @@ export function NotificationProvider({
     if (user) {
       fetchNotifications(true);
 
+      // "Marcar todas como lidas" vira uma rajada de eventos (um por aviso):
+      // junta a rajada numa só releitura, e num só aviso às outras abas.
+      let esperaDaRajada: ReturnType<typeof setTimeout> | null = null;
+      const releituraAposRajada = (avisarAsOutrasAbas: boolean) => {
+        if (esperaDaRajada) clearTimeout(esperaDaRajada);
+        esperaDaRajada = setTimeout(() => {
+          esperaDaRajada = null;
+          fetchNotifications(true);
+          if (avisarAsOutrasAbas) {
+            bc?.postMessage({ type: "notification_update" });
+          }
+        }, 500);
+      };
+
       let channel: any = null;
 
       if (isLeader) {
@@ -383,10 +397,7 @@ export function NotificationProvider({
               schema: "public",
               table: "notificacoes",
             },
-            () => {
-              fetchNotifications(true);
-              bc?.postMessage({ type: "notification_update" });
-            },
+            () => releituraAposRajada(true),
           )
           .subscribe();
       } else {
@@ -399,13 +410,14 @@ export function NotificationProvider({
               console.log(
                 "[Notifications-Secondary] Received notification ping from Leader tab, fetching...",
               );
-              fetchNotifications(true);
+              releituraAposRajada(false);
             }
           };
         }
       }
 
       return () => {
+        if (esperaDaRajada) clearTimeout(esperaDaRajada);
         if (channel) {
           supabase.removeChannel(channel);
         }

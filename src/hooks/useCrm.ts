@@ -252,6 +252,9 @@ export function useDashboardClassico(
   aoMudarNoBanco?: () => void,
 ): EstadoDoDashboardClassico {
   const { session } = useAuth();
+  // Só "há sessão ou não": o AuthContext troca o OBJETO a cada SIGNED_IN
+  // (reanunciado ao voltar ao app) e isso recriaria os 4 canais ao vivo.
+  const temSessao = Boolean(session);
   const {
     fetchExecutiveSummary,
     fetchCategoryAnalytics,
@@ -315,7 +318,7 @@ export function useDashboardClassico(
 
   // Real-time synchronization subscription for the active CRM overview
   useEffect(() => {
-    if (!session || !active) return;
+    if (!temSessao || !active) return;
 
     const bc = criarCanalDeAbas("ikcous_admin_dashboard_realtime");
     let ordersChannel: ReturnType<typeof supabase.channel> | null = null;
@@ -387,7 +390,7 @@ export function useDashboardClassico(
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [session, active, isLeader, triggerRealtimeRefresh]);
+  }, [temSessao, active, isLeader, triggerRealtimeRefresh]);
 
   const categorias = useMemo<CategoriaDoDashboard[]>(() => {
     if (!categoryData) return [];
@@ -407,13 +410,13 @@ export function useDashboardClassico(
   }, [categoryData]);
 
   useEffect(() => {
-    if (session && active) {
+    if (temSessao && active) {
       const timer = setTimeout(() => {
         loadDashboardData(false);
       }, 320);
       return () => clearTimeout(timer);
     }
-  }, [loadDashboardData, session, active]);
+  }, [loadDashboardData, temSessao, active]);
 
   return {
     stats,
