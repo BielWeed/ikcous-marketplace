@@ -113,9 +113,9 @@ const PAGAMENTO_QUE_ENTROU = ["pago", "pago_apos_expirar", "estornado"];
  * `expirado`, `recusado`) continua de fora: ele nunca entrou em "para
  * preparar", entao ninguem na loja esta separando nada.
  *
- * ATENCAO: so o ramo "pago" e' a mesma regra do push da rotina de 10 minutos
- * (supabase/functions/_shared/aviso-de-cancelamento-do-cliente.ts); o ramo
- * "sem pagamento online" existe so na TELA, o push ainda nao o conhece.
+ * ATENCAO: esta e' a mesma regra do push da rotina de 10 minutos
+ * (supabase/functions/_shared/aviso-de-cancelamento-do-cliente.ts); mudou aqui,
+ * mude la.
  *
  * Autor ausente de `admins` conta como nao-admin: so admin tem papel para
  * cancelar pedido de OUTRA pessoa, e o dono so cancela o que e dele.
