@@ -267,6 +267,8 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 const MAX_REENVIOS_APOS_FALHA = 5;
 const ESPERA_BASE_REENVIO_MS = 2_000;
 const ESPERA_MAX_REENVIO_MS = 30_000;
+// Voltar do segundo plano relê o catálogo no máximo a cada 15 s.
+const INTERVALO_MIN_RENOVAR_VISIVEL_MS = 15_000;
 const CART_STORAGE_KEY = "marketplace_cart_v1";
 const CART_TOMBSTONES_KEY = "marketplace_cart_tombstones_v1";
 // Quanto tempo o aviso da lixeira oferece "Desfazer" (o padrão do aviso, ~4 s,
@@ -868,6 +870,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   // Leitura inicial que ainda não teve sucesso: o que sobra de gatilho além da
   // espera crescente é a rede voltar ou o app voltar a ficar visível.
+  // Leitura inicial JÁ feita (ou sem conta): ao voltar do segundo plano o que
+  // pode ter mudado é o catálogo (preço, promoção, pausa, estoque) — relê só
+  // ele, no máximo a cada `INTERVALO_MIN_RENOVAR_VISIVEL_MS`.
+  const ultimaRenovacaoVisivel = useRef(0);
   useEffect(() => {
     const reler = () => {
       if (!userId || remotoMescladoRef.current) return;
@@ -876,7 +882,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       void syncFromDB(true);
     };
     const aoFicarVisivel = () => {
-      if (document.visibilityState === "visible") reler();
+      if (document.visibilityState !== "visible") return;
+      if (authLoading) return;
+      if (userId && !remotoMescladoRef.current) {
+        reler();
+        return;
+      }
+      const agora = Date.now();
+      if (
+        agora - ultimaRenovacaoVisivel.current <
+        INTERVALO_MIN_RENOVAR_VISIVEL_MS
+      ) {
+        return;
+      }
+      ultimaRenovacaoVisivel.current = agora;
+      void renovarPeloCatalogo();
     };
     window.addEventListener("online", reler);
     document.addEventListener("visibilitychange", aoFicarVisivel);
@@ -884,7 +904,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener("online", reler);
       document.removeEventListener("visibilitychange", aoFicarVisivel);
     };
-  }, [userId, syncFromDB, cancelarReleitura]);
+  }, [userId, authLoading, syncFromDB, cancelarReleitura, renovarPeloCatalogo]);
   useEffect(() => cancelarReleitura, [cancelarReleitura]);
 
   // Realtime subscription for cart updates
