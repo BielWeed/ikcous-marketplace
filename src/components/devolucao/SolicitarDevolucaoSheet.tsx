@@ -28,6 +28,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import type { DadosDaSolicitacao, Desfecho } from "@/hooks/useDevolucaoCliente";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import {
@@ -152,6 +153,19 @@ export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
   const continuarNaFolha = () => {
     setPergunta("nenhum");
   };
+  // O Voltar do aparelho faz o MESMO que o botão de fechar: sem rascunho fecha
+  // a folha; com rascunho faz a pergunta e a folha continua aberta (`false`
+  // devolve a entrada que o Voltar consumiu). Com a pergunta na tela, Voltar é
+  // "Continuar preenchendo".
+  useVoltarFechaAFolha(aberto, () => {
+    if (pergunta !== "nenhum") {
+      continuarNaFolha();
+      return false;
+    }
+    const vaiPerguntar = rascunhoRef.current !== "nenhum";
+    pedirParaMudar(false);
+    return !vaiPerguntar;
+  });
   // A pergunta aparece DENTRO da folha (não em portal): o AlertDialog fica em
   // z-50 e a folha em z-[130], e o guardião do clique pós-fecho do sheet.tsx
   // engole o clique de quem está fora do conteúdo — lá a tela travava.
@@ -279,7 +293,35 @@ function FluxoDaDevolucao({
   const [progresso, setProgresso] = useState("");
   const [resultado, setResultado] = useState<ResultadoSolicitacao | null>(null);
   const entradaDeFotoRef = useRef<HTMLInputElement>(null);
+  const areaRolavelRef = useRef<HTMLDivElement>(null);
+  const avisoRef = useRef<HTMLParagraphElement>(null);
   const fotosRef = useRef(fotos);
+
+  // A área rolável é a MESMA nos 4 passos e guarda a posição: cada passo novo
+  // (indo ou voltando) começa do topo.
+  useEffect(() => {
+    if (passo && areaRolavelRef.current) areaRolavelRef.current.scrollTop = 0;
+  }, [passo]);
+  // O aviso é o último filho da área rolável e some para baixo da dobra: ao
+  // surgir (ou mudar o texto), rola até ele e leva o foco, menos quando a
+  // pessoa está digitando num campo (não rouba o teclado).
+  useEffect(() => {
+    const aviso = avisoRef.current;
+    if (!erro || !aviso) return;
+    const reduzir =
+      typeof globalThis.matchMedia === "function" &&
+      globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    aviso.scrollIntoView?.({
+      block: "nearest",
+      behavior: reduzir ? "auto" : "smooth",
+    });
+    const ativo = document.activeElement;
+    const digitando =
+      ativo instanceof HTMLInputElement
+        ? ativo.type !== "radio" && ativo.type !== "checkbox"
+        : ativo instanceof HTMLTextAreaElement;
+    if (!digitando) aviso.focus({ preventScroll: true });
+  }, [erro]);
 
   useEffect(() => {
     fotosRef.current = fotos;
@@ -526,7 +568,10 @@ function FluxoDaDevolucao({
         </div>
       </SheetHeader>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4">
+      <div
+        ref={areaRolavelRef}
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4"
+      >
         {passo === 1 && (
           <>
             <Prazos elegibilidade={elegibilidade} />
@@ -554,7 +599,7 @@ function FluxoDaDevolucao({
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold text-zinc-900">
+                      <p className="line-clamp-2 break-words text-sm font-bold text-zinc-900">
                         {nome}
                       </p>
                       <p className="text-xs text-zinc-500">
@@ -798,7 +843,7 @@ function FluxoDaDevolucao({
                     key={item.order_item_id}
                     className="flex justify-between gap-3 text-sm"
                   >
-                    <span className="min-w-0 truncate text-zinc-700">
+                    <span className="line-clamp-2 min-w-0 break-words text-zinc-700">
                       {selecao.get(item.order_item_id)}× {item.product_name}
                     </span>
                     <span className="shrink-0 font-bold tabular-nums">
@@ -864,8 +909,10 @@ function FluxoDaDevolucao({
 
         {erro && (
           <p
+            ref={avisoRef}
             role="alert"
-            className="flex gap-2 rounded-2xl border border-red-100 bg-red-50 p-3 text-sm font-semibold text-red-700"
+            tabIndex={-1}
+            className="flex gap-2 rounded-2xl border border-red-100 bg-red-50 p-3 text-sm font-semibold text-red-700 outline-none"
           >
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
             {erro}

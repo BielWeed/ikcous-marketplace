@@ -127,7 +127,7 @@ describe("OrderList — contraste do texto no cartão do pedido (WCAG AA)", () =
     );
     expect(linha).not.toBeUndefined();
     expect(linha?.classList.contains("text-muted-foreground")).toBe(true);
-    expect(linha?.textContent).toBe("1 item · PIX");
+    expect(linha?.textContent).toBe("1 item · PIX Instantâneo");
   });
 
   // Controle negativo: o que não devia mudar não mudou.

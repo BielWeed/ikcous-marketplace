@@ -174,6 +174,8 @@ export function IdentitySettingsSection({
                 <Input
                   id={id}
                   className="h-11"
+                  maxLength={160}
+                  aria-invalid={value.trim() === ""}
                   value={value}
                   onChange={(e) => editor.setField(key, e.target.value)}
                 />

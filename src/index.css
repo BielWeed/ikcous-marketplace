@@ -287,6 +287,14 @@
     padding-top: var(--safe-area-top);
   }
 
+  /* Aparelho deitado: a barra de baixo é `fixed` e não herda o recuo lateral
+     do contêiner raiz; sem isto os botões das pontas ficam sob o entalhe.
+     Em retrato o env() vale 0. */
+  nav[aria-label="Navegação principal"] {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
   /* Havia aqui uma `.bottom-safe-navigation`: a mesma conta de
      `.bottom-docked-navigation` mais 12px. Esses 12px não eram respiro — eram
      uma fresta entre a barra e a navegação inferior, por onde o conteúdo

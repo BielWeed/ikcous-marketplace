@@ -1,4 +1,19 @@
 {
+  "1.5.88": {
+    "titulo": "Voltar do celular, avisos inteiros e pedidos do painel mais certos",
+    "novidades": [],
+    "correcoes": [
+      "Loja, celular: o botão Voltar do aparelho fecha só a janela aberta (avaliação do pedido, devolução, filtros da busca, privacidade) em vez de sair da tela e perder o que você escreveu.",
+      "Loja, avisos: aviso com explicação aparece inteiro, num cartão logo abaixo da barra, e fica na tela o tempo de ler. Sem internet, uma faixa fina avisa que a loja mostra o que já foi carregado. Com o celular deitado, as bordas respeitam o recorte da tela. Um endereço que não existe leva de volta para a Home.",
+      "Loja, pagamento: um PIX pago no último minuto antes de o pedido vencer não perde mais o pedido (há uma tolerância de 10 minutos).",
+      "Painel, produto: o Voltar do celular fecha só a janela de cima (Nova variação, Grade, Categoria), uma variação repetida é recusada, o rascunho recuperado não some e salvar um produto com código de barras nas variações ficou mais rápido.",
+      "Painel, lista de produtos: excluir na visão \"produtos sem custo\" funciona, \"Nenhum produto cadastrado\" não pisca ao excluir o último, \"Conferindo custos…\" ganha \"Tentar de novo\", uma edição feita sem internet não gera mais o aviso falso e duplicar mostra \"Duplicando…\".",
+      "Painel, Balcão: o código de barras de uma variação desligada diz que ela está inativa.",
+      "Painel, pedidos: a ficha de um pedido entregue deixa de mandar \"cancelar antes de devolver o dinheiro\" e reconhece o que já foi devolvido por fora; os avisos \"atualizado para…\" só saem quando algo mudou de verdade e o pagamento confirmado aparece como tal; cancelar um pedido com etiqueta lembra que o saldo do Melhor Envio continua gasto.",
+      "Painel, frete e vitrines: a loja que só retira não diz mais \"Ninguém de fora compra\", os campos de reais abrem o teclado com vírgula, a prévia da mensagem de compartilhar mostra o que a cliente recebe, produto pausado não aparece nas vitrines e dá para editar a resposta de uma avaliação já enviada."
+    ],
+    "melhorias": []
+  },
   "1.5.87": {
     "titulo": "Avisos, lista de clientes e telas da loja mais certos",
     "novidades": [],

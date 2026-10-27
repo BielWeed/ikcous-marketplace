@@ -79,7 +79,12 @@ import {
   notaDasEscolhas,
 } from "@/lib/escolhas-do-item";
 import { pagamentoOnlineLigado } from "@/lib/flags";
-import type { MetodoOnline } from "@/lib/forma-de-pagamento";
+import {
+  type MetodoOnline,
+  ROTULO_SEM_VALOR_A_PAGAR,
+  pedidoSemValorAPagar,
+  rotuloDaFormaDoPedido,
+} from "@/lib/forma-de-pagamento";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import {
   conferirFreteEscolhidoComACotacao,
@@ -148,6 +153,7 @@ import type {
   View,
 } from "@/types";
 import { haptic } from "@/utils/haptic";
+import { useToastDoHeader } from "@/utils/headerToast";
 import { zodResolver } from "@hookform/resolvers/zod";
 import confetti from "canvas-confetti";
 import { AnimatePresence, motion, usePresence } from "framer-motion";
@@ -1755,6 +1761,19 @@ export function CheckoutViewDaConta({
   const [valorDoPedido, setValorDoPedido] = useState(0);
   const [valorFinalDiferenteDoCarrinho, setValorFinalDiferenteDoCarrinho] =
     useState(false);
+  // Só para MOSTRAR "O valor mudou de A para B": o total que o carrinho exibia
+  // no instante do envio (`pedido.valor`). Nenhum cálculo lê isto.
+  const [valorDoCarrinhoAntes, setValorDoCarrinhoAntes] = useState<
+    number | null
+  >(null);
+  // Lote 210: o que a tela de sucesso do pedido "pago na entrega/retirada"
+  // precisa saber e que o carrinho já esqueceu quando ela abre (limpar a
+  // compra derruba a opção de frete): a forma escolhida e se era retirada,
+  // guardadas no instante do envio, a partir do próprio pedido enviado.
+  const [resumoDoPedidoNaEntrega, setResumoDoPedidoNaEntrega] = useState<{
+    paymentMethod: string | null;
+    ehRetirada: boolean;
+  } | null>(null);
   // Mesmo motivo: o submétodo (PIX ou cartão) do pedido que JÁ nasceu. Sem
   // o congelamento, um efeito que mexe em `paymentMethod` depois do submit
   // (a sessão que cai rebaixa "online" para "pix") trocaria a tela do
@@ -2646,33 +2665,11 @@ export function CheckoutViewDaConta({
   // recolhido. O Header não expõe esse estado por prop (o comentário de
   // `HEADER_CENTER_SLOT_ID` promete "sem o Header saber nada de carrinho,
   // frete ou total", e o inverso também vale: o CheckoutView não deveria
-  // precisar de uma prop nova do Header só para isto). O mesmo evento
-  // global que o Header já escuta (`header-toast-event`,
-  // src/utils/headerToast.ts) resolve sem inventar acoplamento novo —
-  // mesma duração, mesmo padrão de limpar o timer anterior.
-  const [avisoDoHeaderAtivo, setAvisoDoHeaderAtivo] = useState(false);
-  const avisoDoHeaderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  useEffect(() => {
-    const handleToastEvent = (event: Event) => {
-      const detail = (event as CustomEvent<{ duration?: number }>).detail;
-      setAvisoDoHeaderAtivo(true);
-      if (avisoDoHeaderTimerRef.current) {
-        clearTimeout(avisoDoHeaderTimerRef.current);
-      }
-      avisoDoHeaderTimerRef.current = setTimeout(() => {
-        setAvisoDoHeaderAtivo(false);
-      }, detail?.duration || 2600);
-    };
-    globalThis.addEventListener("header-toast-event", handleToastEvent);
-    return () => {
-      globalThis.removeEventListener("header-toast-event", handleToastEvent);
-      if (avisoDoHeaderTimerRef.current) {
-        clearTimeout(avisoDoHeaderTimerRef.current);
-      }
-    };
-  }, []);
+  // precisar de uma prop nova do Header só para isto).
+  // Lê o MESMO estado do Header (canal único em headerToast.ts): recolhe
+  // enquanto a cápsula está de pé e solta quando ela some — por tempo, por
+  // toque ou por `toast.dismiss` — mesmo nos avisos longos do celular.
+  const { ativo: avisoDoHeaderAtivo } = useToastDoHeader();
 
   // Solo-ninja: Reset scroll when internal views change (address form or success)
   useEffect(() => {
@@ -4335,6 +4332,7 @@ export function CheckoutViewDaConta({
       }
       setOrderId(order.id);
       setValorDoPedido(order.totalAmount);
+      setValorDoCarrinhoAntes(pedido.valor);
       setValorFinalDiferenteDoCarrinho(
         ehOnline &&
           Math.abs(
@@ -4351,6 +4349,15 @@ export function CheckoutViewDaConta({
         return;
       }
 
+      setResumoDoPedidoNaEntrega({
+        paymentMethod:
+          typeof orderData.paymentMethod === "string"
+            ? orderData.paymentMethod
+            : null,
+        ehRetirada:
+          typeof orderData.shippingOptionId === "string" &&
+          ehRetiradaNaLoja(orderData.shippingOptionId),
+      });
       setShowSuccess(true);
 
       // Trigger confetti celebration
@@ -4923,21 +4930,30 @@ export function CheckoutViewDaConta({
       );
     }
 
+    // Lote 210: o SERVIDOR já gravou o pedido como morto (expirado, ou
+    // cancelado) — "Finalize o pagamento" e "Seu pedido está reservado"
+    // passam a ser mentira. Os casos de recusa/estorno já saem pela tela de
+    // "não concluído", acima; este cobre o vencido/cancelado, e a caixa de
+    // baixo (aviso do PIX ou "não concluído" do cartão) fala por si.
+    const pedidoMortoNaTela = pedidoMortoNoServidorId === orderId;
     return (
       // Mesma coluna do formulário (`mx-auto max-w-md`): sem ela, o cliente
       // saía de uma tela de 448px de largura e caía numa que esticava o texto
       // "Seu pedido está reservado…" de ponta a ponta em tela larga.
       <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
-        <h1 className="text-lg font-bold text-zinc-900">
-          Finalize o pagamento
-        </h1>
+        {!pedidoMortoNaTela && (
+          <h1 className="text-lg font-bold text-zinc-900">
+            Finalize o pagamento
+          </h1>
+        )}
         {valorFinalDiferenteDoCarrinho && (
           <p className="text-sm font-medium text-zinc-900">
-            Valor final do pedido:{" "}
-            {formatCurrency(arredondarParaCentavos(valorDoPedido))}
+            {valorDoCarrinhoAntes === null
+              ? `Valor final do pedido: ${formatCurrency(arredondarParaCentavos(valorDoPedido))}`
+              : `O valor mudou de ${formatCurrency(arredondarParaCentavos(valorDoCarrinhoAntes))} para ${formatCurrency(arredondarParaCentavos(valorDoPedido))}`}
           </p>
         )}
-        {metodoDoPedido === "cartao" ? (
+        {pedidoMortoNaTela ? null : metodoDoPedido === "cartao" ? (
           <p className="flex items-start gap-2 rounded-xl border border-blue-200 px-3 py-2 text-xs leading-snug text-zinc-600">
             <Info
               aria-hidden="true"
@@ -4947,7 +4963,7 @@ export function CheckoutViewDaConta({
           </p>
         ) : (
           <p className="text-xs text-zinc-500">
-            Seu pedido está reservado. Se o pagamento não sair em 30 minutos, os
+            Seu pedido está reservado. Se o pagamento não sair no prazo, os
             itens voltam para o estoque e o pedido é cancelado.
           </p>
         )}
@@ -5277,6 +5293,14 @@ export function CheckoutViewDaConta({
               orderId !== "" && pedidoMortoNoServidorId === orderId
             }
             onVerMeusPedidos={() => onNavigate("orders")}
+            // Lote 210: o PIX que venceu com a tela aberta volta ao carrinho
+            // pelo MESMO mecanismo do "pagamento não concluído" — e só quando
+            // o pedido nasceu NESTA tela (há itens para devolver).
+            onVoltarAoCarrinho={
+              itensDoPedidoParaRestaurarRef.current.length > 0
+                ? voltarAoCarrinhoComItensDoPedido
+                : undefined
+            }
             // "Pagar com PIX" depois de um cartão recusado: um "Tentar de
             // novo" posterior remonta já no PIX, não de volta no cartão.
             //
@@ -5381,6 +5405,9 @@ export function CheckoutViewDaConta({
         orderId={orderId}
         appliedCoupon={appliedCoupon}
         discount={discount}
+        valor={valorDoPedido}
+        paymentMethod={resumoDoPedidoNaEntrega?.paymentMethod ?? null}
+        ehRetirada={resumoDoPedidoNaEntrega?.ehRetirada ?? false}
         onNavigate={onNavigate}
       />
     );
@@ -7335,10 +7362,27 @@ export function CheckoutViewDaConta({
 
 // Sub-components to reduce cognitive complexity
 
+/**
+ * O rótulo que o app já tem para a forma de pagamento ("Dinheiro", "Cartão na
+ * entrega"…), com uma só troca: na retirada a palavra "entrega" some do texto.
+ */
+function rotuloDaFormaNaTelaDeSucesso(
+  paymentMethod: string,
+  ehRetirada: boolean,
+): string {
+  const rotulo = rotuloDaFormaDoPedido({ paymentMethod });
+  return ehRetirada ? rotulo.replace(" na entrega", " na retirada") : rotulo;
+}
+
 interface SuccessViewProps {
   orderId: string;
   appliedCoupon: { code: string; discount: number } | null;
   discount: number;
+  /** O total do pedido que a tela já tinha (o mesmo que foi enviado). */
+  valor: number;
+  /** Forma escolhida na entrega/retirada (`cash` | `pix` | `card`). */
+  paymentMethod: string | null;
+  ehRetirada: boolean;
   onNavigate: (view: View, productId?: string) => void;
 }
 
@@ -7346,6 +7390,9 @@ function SuccessView({
   orderId,
   appliedCoupon,
   discount,
+  valor,
+  paymentMethod,
+  ehRetirada,
   onNavigate,
 }: Readonly<SuccessViewProps>) {
   // CheckoutView-3301 (16/09/2026): "Ver Meus Pedidos" leva ao OrderSearch,
@@ -7395,23 +7442,43 @@ function SuccessView({
       </div>
 
       <h2 className="mb-4 text-4xl font-black leading-tight tracking-tighter text-zinc-900 duration-700 animate-in slide-in-from-bottom-4">
-        Pedido Celebrado!
+        Pedido recebido!
       </h2>
 
       <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
         <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
-          Identificador:{" "}
+          Número do pedido:{" "}
           <span className="text-zinc-900">#{numeroDoPedido(orderId)}</span>
         </p>
+        {/* O total e a forma escolhida. Quando o pedido fechou em R$ 0,00 (cupom
+            de 100%), o rótulo é o que o app já usa nas outras telas: "Sem valor
+            a pagar" — nunca "Total a pagar: R$ 0,00". */}
+        {pedidoSemValorAPagar({ total: valor }) ? (
+          <p className="text-sm font-bold text-zinc-900">
+            {ROTULO_SEM_VALOR_A_PAGAR}
+          </p>
+        ) : (
+          <div className="space-y-1">
+            <p className="text-base font-bold text-zinc-900">
+              {`Total a pagar na ${ehRetirada ? "retirada" : "entrega"}: ${formatCurrency(valor)}`}
+            </p>
+            {paymentMethod && (
+              <p className="text-sm font-medium text-zinc-600">
+                {`Forma de pagamento: ${rotuloDaFormaNaTelaDeSucesso(paymentMethod, ehRetirada)}`}
+              </p>
+            )}
+          </div>
+        )}
         <div className="mx-auto max-w-[300px]">
           <p className="text-sm font-medium leading-relaxed text-zinc-500">
-            Sua escolha foi registrada. Agora, nossa equipe cuidará de cada
-            detalhe da logística.
+            {ehRetirada
+              ? "Recebemos o seu pedido. A loja vai separar os itens para você retirar."
+              : "Recebemos o seu pedido. A loja vai cuidar da entrega."}
           </p>
         </div>
         {appliedCoupon && (
           <div className="inline-flex items-center gap-2 rounded-lg border border-emerald-100/50 bg-emerald-50 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-emerald-700">
-            Vantagem Ativa: R$ {discount.toFixed(2).replace(".", ",")} OFF
+            {`Desconto aplicado: ${formatCurrency(discount)}`}
           </div>
         )}
       </div>
@@ -7440,8 +7507,8 @@ function SuccessView({
           </BotaoWhatsapp>
         ) : (
           <p className="text-xs leading-relaxed text-zinc-500">
-            Guarde o identificador acima — é por ele que a loja localiza o seu
-            pedido.
+            Guarde o número do pedido acima — é por ele que a loja localiza o
+            seu pedido.
           </p>
         )}
       </div>
@@ -7486,7 +7553,7 @@ function PagamentoConfirmadoView({
           <span className="text-zinc-900">#{numeroDoPedido(orderId)}</span>
         </p>
         <p className="text-lg font-black text-emerald-700">
-          R$ {valor.toFixed(2).replace(".", ",")} recebido
+          {formatCurrency(valor)} recebido
         </p>
         <div className="mx-auto max-w-[300px]">
           <p className="text-sm font-medium leading-relaxed text-zinc-500">
@@ -7590,7 +7657,7 @@ function PagamentoForaDoPrazoView({
           <span className="text-zinc-900">#{numeroDoPedido(orderId)}</span>
         </p>
         <p className="text-lg font-black text-amber-600">
-          R$ {valor.toFixed(2).replace(".", ",")} recebido
+          {formatCurrency(valor)} recebido
         </p>
         <div className="mx-auto max-w-[300px]">
           <p className="text-sm font-medium leading-relaxed text-zinc-500">

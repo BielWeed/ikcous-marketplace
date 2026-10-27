@@ -1,12 +1,13 @@
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
-import {
-  ROTULO_SEM_VALOR_A_PAGAR,
-  pedidoSemValorAPagar,
-} from "@/lib/forma-de-pagamento";
+import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import {
+  ROTULOS_DAS_ETAPAS,
+  ROTULO_RETIRADA_PRONTA_CURTO,
+} from "@/lib/rotulos-das-etapas";
 import { cn } from "@/lib/utils";
-import type { Order, OrderStatus, PaymentMethod, View } from "@/types";
+import type { Order, OrderStatus, View } from "@/types";
 import { motion } from "framer-motion";
 import {
   Check,
@@ -28,13 +29,18 @@ const statusConfig: Record<OrderStatus, { desc: string }> = {
   cancelled: { desc: "Este pedido foi cancelado" },
 };
 
-const trailSteps = ["Recebido", "Separação", "A caminho", "Entregue"];
+const trailSteps: string[] = [
+  ROTULOS_DAS_ETAPAS.recebido,
+  ROTULOS_DAS_ETAPAS.separado,
+  ROTULOS_DAS_ETAPAS.aCaminho,
+  ROTULOS_DAS_ETAPAS.entregue,
+];
 // Retirada na loja: ninguém leva o pedido, a cliente busca (só texto).
-const trailStepsRetirada = [
-  "Recebido",
-  "Separação",
-  "Pronto p/ retirar",
-  "Entregue",
+const trailStepsRetirada: string[] = [
+  ROTULOS_DAS_ETAPAS.recebido,
+  ROTULOS_DAS_ETAPAS.separado,
+  ROTULO_RETIRADA_PRONTA_CURTO,
+  ROTULOS_DAS_ETAPAS.entregue,
 ];
 
 // `Map.get` em vez de indexar o Record: mesma escolha de
@@ -46,13 +52,6 @@ const statusStep = new Map<OrderStatus, number>([
   ["delivered", 3],
   ["cancelled", -1],
 ]);
-
-const paymentConfig: Record<PaymentMethod, string> = {
-  pix: "PIX",
-  card: "Cartão",
-  cash: "Dinheiro",
-  online: "Pagamento online",
-};
 
 // Só a etapa atual ocupa uma pílula: os nomes deixam de cortar no celular.
 // Entregue e cancelado não têm mais progresso a percorrer.
@@ -433,13 +432,10 @@ export const OrderList = memo(function OrderList({
         const retirada =
           order.retiradaNaLoja === true && order.status === "shipping";
         const desc = retirada ? "Venha retirar na loja" : statusBase.desc;
-        const formaBase =
-          paymentConfig[order.paymentMethod] || paymentConfig.pix;
-        // Compra que fechou em R$ 0,00 (cupom de 100%): não há forma de
-        // pagamento a mostrar. A regra é UMA só (`pedidoSemValorAPagar`).
-        const formaDePagamento = pedidoSemValorAPagar(order)
-          ? ROTULO_SEM_VALOR_A_PAGAR
-          : formaBase;
+        // A MESMA frase da ficha do pedido (`rotuloDaFormaDoPedido`): inclui a
+        // compra que fechou em R$ 0,00 e nunca chama de "PIX" um método que a
+        // tela não conhece.
+        const formaDePagamento = rotuloDaFormaDoPedido(order);
         const total = order?.total || 0;
         const date = order?.createdAt ? new Date(order.createdAt) : new Date();
         // Cor só com significado: vermelho = cancelado, verde = entregue ou
@@ -496,7 +492,7 @@ export const OrderList = memo(function OrderList({
 
                 <div className="min-w-0 flex-1">
                   <h4 className="line-clamp-2 break-words text-base font-semibold leading-5 text-foreground">
-                    {order.items[0]?.name || "N/A"}
+                    {order.items[0]?.name || "Pedido"}
                   </h4>
                   <p className="mt-1 text-[13px] leading-[18px] text-muted-foreground">
                     {order.items.length}{" "}

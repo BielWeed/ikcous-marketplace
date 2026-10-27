@@ -203,11 +203,13 @@ describe("item 6 — B9: aviso do topo do Header alcançável por teclado", () =
   });
 
   // 26/10/2026 (caça 8): só o `whitespace-nowrap` saiu, para o texto do aviso
-  // poder quebrar em 2 linhas em vez de ser cortado.
+  // poder quebrar em 2 linhas em vez de ser cortado. 26/10 (lote 219): a
+  // classe passou a ir dentro de cn(...) (cartão longo no celular), por isso o
+  // trecho conferido é o texto das classes e não mais `className="..."`.
   it("classes visuais do card do aviso preservadas byte a byte", () => {
     const src = fonte(HEADER);
     expect(src).toContain(
-      'className="flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95"',
+      '"flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95"',
     );
   });
 });

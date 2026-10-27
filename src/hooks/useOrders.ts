@@ -2,7 +2,12 @@ import { statusConfig } from "@/components/admin/orders/OrderStatusBadge";
 import { clearAnalyticsCache } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import {
+  esquecerAcaoPropriaDoPedido,
+  marcarAcaoPropriaDoPedido,
+} from "@/lib/acao-propria-do-painel";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
+import { completarOldDoEvento } from "@/lib/aviso-de-pedido-atualizado";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import {
   CHAVE_BASE_DA_FILA_DE_PEDIDOS,
@@ -826,6 +831,30 @@ function verificacaoDoErroDePagamento(
   valor: unknown,
 ): VerificacaoDoErroDePagamento | undefined {
   return valor === "indisponivel" ? valor : undefined;
+}
+
+/**
+ * Loja sem a chave de assinatura do webhook (lote 210, caça 8): o 409 terminal
+ * da edge traz uma frase de OPERADOR ("...cadastrar a chave de assinatura do
+ * webhook do Mercado Pago") e, ao lado, um MARCADOR booleano por meio
+ * (`pixSemChaveDeAssinatura` / `cartaoSemChaveDeAssinatura`). Quem compra não
+ * tem o que fazer com a frase de operador: a tradução para a frase de cliente
+ * decide pelo MARCADOR (só o `true` literal conta, a mesma régua estrita de
+ * `terminal`/`cartaoEmAnalise`) — nunca comparando o texto da edge. Só texto:
+ * o status HTTP, `terminal` e o resto do erro seguem como a edge mandou.
+ */
+function mensagemDeClienteParaLojaSemChave(corpo: unknown): string | undefined {
+  const c = corpo as {
+    pixSemChaveDeAssinatura?: unknown;
+    cartaoSemChaveDeAssinatura?: unknown;
+  } | null;
+  if (c?.pixSemChaveDeAssinatura === true) {
+    return "Esta loja não está recebendo Pix pelo app agora. Fale com a loja para combinar outra forma de pagamento.";
+  }
+  if (c?.cartaoSemChaveDeAssinatura === true) {
+    return "Esta loja não está recebendo cartão pelo app agora. Fale com a loja para combinar outra forma de pagamento.";
+  }
+  return undefined;
 }
 
 /**
@@ -1837,6 +1866,11 @@ export function useOrders(
     };
   }, [user?.id]);
 
+  // De quem é a lista que está na tela agora. Nasce com o usuário da montagem
+  // (o estado inicial já leu o cache DELE) e só serve para reconhecer a TROCA de
+  // conta no efeito abaixo.
+  const contaDaListaRef = useRef<string | null>(user?.id ?? null);
+
   // Synchronously load cache on mount or when user changes
   useEffect(() => {
     if (isAdmin) return;
@@ -1848,15 +1882,23 @@ export function useOrders(
     // Outra conta (ou ninguém): a falha da conta anterior não é desta.
     setOrdersLoadError(null);
     if (!user?.id) {
+      contaDaListaRef.current = null;
       setOrders((atual) => (atual.length === 0 ? atual : []));
       return;
     }
+    // Troca de conta SEM passar por "sem ninguém" (a sessão da A venceu e a B
+    // entrou direto): a lista na tela é da A. Se a B não tem cache próprio, o
+    // bloco abaixo não escreve nada e os pedidos da A ficariam na tela da B.
+    const trocouDeConta = contaDaListaRef.current !== user.id;
+    contaDaListaRef.current = user.id;
     const cacheKey = `ikcous_orders_cache_${user.id}`;
+    let substituiu = false;
     try {
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
+          substituiu = true;
           setOrders((atual) =>
             JSON.stringify(atual) === JSON.stringify(parsed) ? atual : parsed,
           );
@@ -1864,6 +1906,9 @@ export function useOrders(
       }
     } catch (e) {
       console.error("Error loading cached orders:", e);
+    }
+    if (trocouDeConta && !substituiu) {
+      setOrders((atual) => (atual.length === 0 ? atual : []));
     }
   }, [user?.id, isAdmin]);
 
@@ -2932,6 +2977,16 @@ export function useOrders(
       if (isUnmounting) return;
       const newId = (payload.new as any)?.id;
       const oldId = (payload.old as any)?.id;
+      // O `old` do UPDATE chega só com a chave primária (RLS ligada): o "antes"
+      // de status/pagamento é o do pedido que a tela JÁ tinha, lido antes de o
+      // evento ser mesclado logo abaixo.
+      const paraOPainel =
+        payload.eventType === "UPDATE" && newId
+          ? completarOldDoEvento(
+              payload,
+              ordersRef.current.find((pedido) => pedido.id === newId),
+            )
+          : payload;
 
       console.log(
         "[Realtime] Order change event processed:",
@@ -2952,7 +3007,7 @@ export function useOrders(
       }
 
       if (onRealtimeEventRef.current) {
-        onRealtimeEventRef.current(payload);
+        onRealtimeEventRef.current(paraOPainel);
       }
     };
 
@@ -3566,6 +3621,11 @@ export function useOrders(
           return;
         }
 
+        // O aviso do realtime ("Pedido #N atualizado para…") não repete o que
+        // a própria lojista acaba de pedir (o "Status atualizado com sucesso"
+        // abaixo já falou). A marca nasce ANTES da gravação — o evento pode
+        // chegar antes da resposta — e some se a gravação falhar.
+        if (isAdmin && !silent) marcarAcaoPropriaDoPedido(orderId, status);
         const { error } =
           isAdmin && status !== "cancelled"
             ? await supabase.rpc("avancar_status_do_pedido", {
@@ -3609,6 +3669,9 @@ export function useOrders(
         }
       } catch (err: any) {
         console.error("Error updating status:", err);
+        // Gravação que falhou: nada foi feito, o aviso do realtime de uma
+        // mudança de outra pessoa continua valendo.
+        esquecerAcaoPropriaDoPedido(orderId);
         // As guardas anteriores à atualização já mostram o próprio aviso.
         // Na falha da gravação, reverta só este pedido, e só o que a
         // atualização otimista escreveu: eventos de outros pedidos, novas
@@ -4200,6 +4263,7 @@ export function useOrders(
         try {
           const corpo = await (error as any).context?.json?.();
           if (corpo?.error) mensagem = corpo.error;
+          mensagem = mensagemDeClienteParaLojaSemChave(corpo) ?? mensagem;
           if (typeof corpo?.terminal === "boolean") terminal = corpo.terminal;
           if (typeof corpo?.cartaoEmAnalise === "boolean") {
             cartaoEmAnalise = corpo.cartaoEmAnalise;
@@ -4229,12 +4293,14 @@ export function useOrders(
         const verificacao = verificacaoDoErroDePagamento(
           (data as any).verificacao,
         );
+        const mensagemDoErro =
+          mensagemDeClienteParaLojaSemChave(data) ?? data.error;
         // Mesma regra estrita do ramo `error` acima: só `true` literal vira
         // terminal/cartaoEmAnalise. `Boolean(...)` aceitaria "false" (string),
         // 1, `{}` — este ramo é inalcançável hoje (o supabase-js v2 sempre
         // preenche `error` numa resposta não-2xx), mas duas leituras do mesmo
         // campo lado a lado é convite para elas divergirem.
-        throw Object.assign(new Error(data.error), {
+        throw Object.assign(new Error(mensagemDoErro), {
           terminal:
             typeof (data as any).terminal === "boolean" &&
             (data as any).terminal,

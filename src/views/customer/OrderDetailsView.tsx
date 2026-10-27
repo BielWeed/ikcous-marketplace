@@ -20,6 +20,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useDevolucaoCliente } from "@/hooks/useDevolucaoCliente";
 import { useDevolucaoDoPedidoCliente } from "@/hooks/useDevolucaoDoPedidoCliente";
 import { ErroCancelamentoNaoConcluido, useOrders } from "@/hooks/useOrders";
+import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import {
@@ -33,6 +35,10 @@ import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { podeReenviarComprovante } from "@/lib/pode-reenviar-comprovante";
 import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
+import {
+  ROTULOS_DAS_ETAPAS,
+  ROTULO_RETIRADA_PRONTA,
+} from "@/lib/rotulos-das-etapas";
 import { supabase } from "@/lib/supabase";
 import { motivoDaDevolucaoIndisponivel } from "@/lib/texto-devolucao-indisponivel";
 import {
@@ -150,10 +156,22 @@ const heroTitleByStatus: Record<OrderStatus, string> = {
  * de status fica como está. Pedido de entrega não passa por aqui.
  */
 const PRONTO_PARA_RETIRAR = {
-  label: "Pronto para retirar",
+  label: ROTULO_RETIRADA_PRONTA,
   icon: Store,
   description: "Seu pedido está pronto! Venha retirar na loja.",
-  heroTitle: "Pronto para retirar",
+  heroTitle: ROTULO_RETIRADA_PRONTA,
+};
+
+/**
+ * RETIRADA JA RETIRADA (caca 8, lote 208): o ajuste de 14/10 so tratou o
+ * estado `shipping`. Pedido de retirada em `delivered` dizia "Chegou!" e "foi
+ * entregue com sucesso" -- a cliente foi BUSCAR. So o texto muda.
+ */
+const RETIRADO_NA_LOJA = {
+  label: "Retirado",
+  icon: CheckCircle,
+  description: "Pedido retirado na loja. Aproveite sua experiência!",
+  heroTitle: "Retirado",
 };
 
 /**
@@ -192,10 +210,14 @@ const TIMELINE_STEPS: Array<{
   label: string;
   icon: LucideIcon;
 }> = [
-  { status: "pending", label: "Recebido", icon: Package },
-  { status: "processing", label: "Separado", icon: Clock },
-  { status: "shipping", label: "A caminho", icon: Truck },
-  { status: "delivered", label: "Entregue", icon: CheckCircle },
+  { status: "pending", label: ROTULOS_DAS_ETAPAS.recebido, icon: Package },
+  { status: "processing", label: ROTULOS_DAS_ETAPAS.separado, icon: Clock },
+  { status: "shipping", label: ROTULOS_DAS_ETAPAS.aCaminho, icon: Truck },
+  {
+    status: "delivered",
+    label: ROTULOS_DAS_ETAPAS.entregue,
+    icon: CheckCircle,
+  },
 ];
 
 /**
@@ -413,6 +435,8 @@ export function OrderDetailsView({
   const { config } = useStore();
   const { user } = useAuth();
   const [order, setOrder] = useState<Order | null>(null);
+  // Qual cor/tamanho cada linha do pedido e (o pedido so guarda o id).
+  const rotulosDasVariacoes = useRotulosDasVariacoes(order?.items);
   const [loading, setLoading] = useState(true);
   const [isCancelling, setIsCancelling] = useState(false);
   // Espelho de `isCancelling` para o efeito que acompanha a lista (ele não
@@ -455,6 +479,19 @@ export function OrderDetailsView({
     }
     fecharAvaliacao();
   }, [fecharAvaliacao]);
+  // O Voltar do aparelho faz o MESMO que o X: sem texto fecha a folha, com texto
+  // faz a pergunta (e então a folha continua aberta: `false` devolve a entrada
+  // que o Voltar consumiu). Com a pergunta na tela, Voltar é "Continuar
+  // escrevendo".
+  useVoltarFechaAFolha(reviewingItem !== null, () => {
+    if (confirmandoDescarteAvaliacao) {
+      setConfirmandoDescarteAvaliacao(false);
+      return false;
+    }
+    const vaiPerguntar = avaliacaoTemTextoRef.current;
+    fecharAvaliacaoPerguntando();
+    return !vaiPerguntar;
+  });
   // Rodada 2 (Codex, 08/09, item 1): o foco continuava no botão "Avaliar"
   // de fora depois de abrir a folha — Esc não chegava a ela e o Tab
   // seguia percorrendo o fundo apesar do aria-modal. A folha agora se
@@ -962,9 +999,13 @@ export function OrderDetailsView({
   // fica em branco se um chegar. Mesma guarda de OrderList.tsx:209.
   const prontoParaRetirar =
     order.retiradaNaLoja === true && order.status === "shipping";
+  const jaRetirado =
+    order.retiradaNaLoja === true && order.status === "delivered";
   const currentStatus = prontoParaRetirar
     ? PRONTO_PARA_RETIRAR
-    : statusConfig[order.status as OrderStatus] || statusConfig.pending;
+    : jaRetirado
+      ? RETIRADO_NA_LOJA
+      : statusConfig[order.status as OrderStatus] || statusConfig.pending;
   const StatusIcon = currentStatus.icon;
   const statusDescription =
     order.status === "pending"
@@ -1001,6 +1042,17 @@ export function OrderDetailsView({
   // `delivered`, o cartão inteiro não existe (nada de "cartão vazio").
   const mostrarCartaoDeAvaliacao =
     !!user && config.enableReviews && order.status === "delivered";
+  // Rotulos da variacao, por produto (a avaliacao e por produto: o mesmo
+  // produto comprado em dois tamanhos mostra os dois, sem repetir).
+  const rotulosDoProduto = (productId: string): string[] => {
+    const vistos = new Set<string>();
+    for (const linha of order.items) {
+      if (linha.productId !== productId || !linha.variantId) continue;
+      const rotulo = rotulosDasVariacoes[linha.variantId];
+      if (rotulo) vistos.add(rotulo);
+    }
+    return [...vistos];
+  };
   // Um produto por `productId`, sem duplicar — o mesmo pedido pode ter mais
   // de uma linha do MESMO produto (ex.: variantes diferentes).
   const produtosParaAvaliar: OrderItem[] = [];
@@ -1017,6 +1069,7 @@ export function OrderDetailsView({
   const proximoProdutoNaoAvaliado = produtosParaAvaliar.find(
     (item) => !reviewedProductIds.has(item.productId),
   );
+  const temEnderecoDoPedido = linhasDoEndereco(order.customer).length > 0;
   const timelineIndex = TIMELINE_STATUS_ORDER.indexOf(
     order.status as OrderStatus,
   );
@@ -1047,8 +1100,10 @@ export function OrderDetailsView({
             <h1 className="mt-0.5 text-2xl font-black tracking-tighter text-zinc-900">
               {prontoParaRetirar
                 ? PRONTO_PARA_RETIRAR.heroTitle
-                : heroTitleByStatus[order.status as OrderStatus] ||
-                  heroTitleByStatus.pending}
+                : jaRetirado
+                  ? RETIRADO_NA_LOJA.heroTitle
+                  : heroTitleByStatus[order.status as OrderStatus] ||
+                    heroTitleByStatus.pending}
             </h1>
           </div>
           {lojaTemWhatsappAgora && (
@@ -1227,7 +1282,7 @@ export function OrderDetailsView({
                             : "bg-white text-zinc-900"
                           : isCurrent
                             ? "bg-white text-zinc-900 ring-4 ring-white/25"
-                            : "border border-white/25 text-white/40",
+                            : "border border-white/25 text-white/70",
                       )}
                     >
                       {isPast ? (
@@ -1238,11 +1293,16 @@ export function OrderDetailsView({
                     </div>
                     <span
                       className={cn(
-                        "text-center text-[10px] font-semibold leading-none",
-                        isPast || isCurrent ? "text-white" : "text-white/40",
+                        "text-center text-[11px] font-semibold leading-none",
+                        isPast || isCurrent ? "text-white" : "text-white/75",
                       )}
                     >
-                      {noPronto ? PRONTO_PARA_RETIRAR.label : step.label}
+                      {noPronto
+                        ? PRONTO_PARA_RETIRAR.label
+                        : order.retiradaNaLoja === true &&
+                            step.status === "delivered"
+                          ? RETIRADO_NA_LOJA.label
+                          : step.label}
                     </span>
                   </div>
                 );
@@ -1289,7 +1349,7 @@ export function OrderDetailsView({
               <div className="min-w-0 flex-1">
                 <span
                   className={cn(
-                    "block text-[10px] font-semibold",
+                    "block text-[11px] font-semibold",
                     // BLOQUEIA B2: mesmo motivo do parágrafo de descrição —
                     // `text-white/60` reprovava AA sobre o cartão entregue.
                     order.status === "cancelled"
@@ -1301,7 +1361,9 @@ export function OrderDetailsView({
                 </span>
                 <code
                   className={cn(
-                    "block truncate font-mono text-xs font-bold tracking-tight",
+                    // Codigo livre nunca e cortado: quebra em qualquer ponto e
+                    // ocupa ate 2 linhas (igual a lista de pedidos).
+                    "line-clamp-2 block break-all font-mono text-xs font-bold tracking-tight",
                     order.status === "cancelled"
                       ? "text-zinc-900"
                       : "text-white",
@@ -1351,7 +1413,7 @@ export function OrderDetailsView({
         </motion.div>
 
         {/* Cartão "O que achou da compra?" — em destaque, redesenho 25/09/2026 */}
-        {mostrarCartaoDeAvaliacao && (
+        {mostrarCartaoDeAvaliacao && produtosParaAvaliar.length > 0 && (
           <motion.div
             data-testid="cartao-avaliacao"
             initial={{ opacity: 0, y: 20 }}
@@ -1378,9 +1440,18 @@ export function OrderDetailsView({
                       <FotoDoItemDoPedido src={item.image} alt={item.name} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold text-zinc-900">
+                      <p className="line-clamp-2 break-words text-sm font-bold text-zinc-900">
                         {item.name}
                       </p>
+                      {rotulosDoProduto(item.productId).map((rotulo) => (
+                        <p
+                          key={rotulo}
+                          data-testid="variacao-do-item"
+                          className="mt-0.5 break-words text-xs font-medium text-zinc-600"
+                        >
+                          {rotulo}
+                        </p>
+                      ))}
                       {avaliado ? (
                         <span className="mt-1.5 inline-flex select-none items-center gap-1 rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700 duration-300 animate-in fade-in">
                           <Check className="size-3" />
@@ -1486,9 +1557,17 @@ export function OrderDetailsView({
                   />
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col justify-center">
-                  <h5 className="truncate text-sm font-bold leading-tight text-zinc-900 transition-colors group-hover:text-zinc-650">
+                  <h5 className="line-clamp-2 break-words text-sm font-bold leading-tight text-zinc-900 transition-colors group-hover:text-zinc-650">
                     {item.name}
                   </h5>
+                  {item.variantId && rotulosDasVariacoes[item.variantId] && (
+                    <p
+                      data-testid="variacao-do-item"
+                      className="mt-0.5 break-words text-xs font-medium text-zinc-600"
+                    >
+                      {rotulosDasVariacoes[item.variantId]}
+                    </p>
+                  )}
                   <p className="mt-0.5 text-xs font-medium text-zinc-500">
                     Qtd. {item.quantity}
                     {item.quantity > 1 &&
@@ -1536,10 +1615,16 @@ export function OrderDetailsView({
               <span
                 className={cn(
                   "font-bold",
-                  order.shipping === 0 ? "text-emerald-700" : "text-zinc-900",
+                  order.shipping === 0 && !order.retiradaNaLoja
+                    ? "text-emerald-700"
+                    : "text-zinc-900",
                 )}
               >
-                {order.shipping > 0 ? formatCurrency(order.shipping) : "Grátis"}
+                {order.shipping > 0
+                  ? formatCurrency(order.shipping)
+                  : order.retiradaNaLoja
+                    ? "Sem frete (retirada)"
+                    : "Grátis"}
               </span>
             </div>
             {order.discount > 0 && (
@@ -1598,14 +1683,20 @@ export function OrderDetailsView({
                       {avisoDaRetirada(order.status)}
                     </p>
                   )}
-                  <p className="pt-1.5 text-xs font-semibold text-zinc-500">
-                    Seu endereço
-                  </p>
+                  {temEnderecoDoPedido && (
+                    <p className="pt-1.5 text-xs font-semibold text-zinc-500">
+                      Seu endereço
+                    </p>
+                  )}
                 </div>
               )}
-              <p className="mt-1 text-sm font-bold text-zinc-900">
-                {order.customer.name}
-              </p>
+              {/* Retirada sem endereco de quem comprou: nada de rotulo
+                  "Seu endereco" sobre um nome solto. */}
+              {(temEnderecoDoPedido || !order.retiradaNaLoja) && (
+                <p className="mt-1 text-sm font-bold text-zinc-900">
+                  {order.customer.name}
+                </p>
+              )}
               {/* As mesmas linhas do recibo e da ficha da loja: rua, número e
                   complemento; bairro, cidade/UF e CEP. A cidade é a do
                   PEDIDO, nunca a da loja — é o endereço de quem comprou. */}
@@ -1676,7 +1767,9 @@ export function OrderDetailsView({
               `podeReenviarComprovante`): com PIX online ainda aguardando,
               o toque gastava a única vaga de e-mail do pedido com o texto
               de "aguardando" e o de "pago" nunca mais saía. */}
-          {podeReenviarComprovante(order) && (
+          {/* O reenvio exige sessao (a edge recusa sem ela): quem acompanha
+              por codigo, sem conta, nao ve um botao que sempre falharia. */}
+          {!!user && podeReenviarComprovante(order) && (
             <button
               onClick={handleResendReceipt}
               disabled={isResendingReceipt}
@@ -1872,7 +1965,7 @@ export function OrderDetailsView({
               {/* Header */}
               <div className="mb-6 flex items-center justify-between">
                 <div>
-                  <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                  <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
                     Avaliação do Produto
                   </span>
                   <h3

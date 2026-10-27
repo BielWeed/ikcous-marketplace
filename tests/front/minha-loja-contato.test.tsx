@@ -217,7 +217,6 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
     expect(enviado).not.toHaveProperty("businessHours");
     expect(enviado).toEqual({
       whatsappNumber: "5511987654321",
-      shareText: "Confira [nome] por [preco]: [link]",
     });
   });
 
@@ -233,7 +232,6 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
     expect(updateConfigMock).toHaveBeenCalledTimes(1);
     expect(updateConfigMock.mock.calls[0][0]).toEqual({
       whatsappNumber: "5534999991234",
-      shareText: "Confira [nome] por [preco]: [link]",
     });
   });
 
@@ -245,7 +243,6 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
     expect(updateConfigMock).toHaveBeenCalledTimes(1);
     expect(updateConfigMock.mock.calls[0][0]).toEqual({
       whatsappNumber: null,
-      shareText: "Confira [nome] por [preco]: [link]",
     });
   });
 
@@ -306,7 +303,6 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
       });
       expect(updateConfigMock.mock.calls[1][0]).toEqual({
         whatsappNumber: "5511987654321",
-        shareText: "Confira [nome] por [preco]: [link]",
       });
       expect(toast.success).toHaveBeenCalledWith("Endereço e descrição salvos");
       expect(toast.success).toHaveBeenCalledWith("Contato salvo");
@@ -359,6 +355,32 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
         ) as HTMLElement
       ).innerHTML,
     ).toContain('data-tag="preco"');
+  });
+
+  it("lote 222: mudar a mensagem de compartilhar manda shareText; só o WhatsApp não manda", async () => {
+    await abrirTela();
+    const abrirModelos = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      (b.textContent ?? "").includes("Modelos prontos"),
+    ) as HTMLButtonElement;
+    await act(async () => {
+      abrirModelos.click();
+      await esperar(100);
+    });
+    const modelo = [...document.querySelectorAll("button")].find((b) =>
+      (b.textContent ?? "").includes("Oferta Quente"),
+    ) as HTMLButtonElement;
+    await act(async () => {
+      modelo.click();
+      await esperar(100);
+    });
+    await clicarSalvarContato();
+    expect(updateConfigMock).toHaveBeenCalledTimes(1);
+    const enviado = updateConfigMock.mock.calls[0][0] as Record<
+      string,
+      unknown
+    >;
+    expect(typeof enviado.shareText).toBe("string");
+    expect(enviado.shareText).not.toBe("Confira [nome] por [preco]: [link]");
   });
 
   it("o Voltar do aparelho fecha só a folha de modelos (onSetBackOverride)", async () => {

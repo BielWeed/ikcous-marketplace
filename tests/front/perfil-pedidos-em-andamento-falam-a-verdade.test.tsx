@@ -253,7 +253,7 @@ describe("ProfileView — cartão Pedidos em Andamento fala a verdade", () => {
 
   const formas: PaymentMethod[] = ["cash", "card", "pix"];
   it.each(formas)(
-    "retirada liberada (%s): a linha do tempo diz 'Pronto para retirar', não 'Em rota'",
+    "retirada liberada (%s): a linha do tempo diz 'Pronto para retirar', não 'A caminho'",
     async (forma) => {
       await renderizar([
         pedido({
@@ -266,11 +266,11 @@ describe("ProfileView — cartão Pedidos em Andamento fala a verdade", () => {
 
       const lista = hospedeiro.querySelector("ol");
       expect(lista?.textContent).toContain("Pronto para retirar");
-      expect(lista?.textContent).not.toContain("Em rota");
+      expect(lista?.textContent).not.toContain("A caminho");
     },
   );
 
-  it("entrega a caminho: continua 'Em rota' (controle — só a retirada muda)", async () => {
+  it("entrega a caminho: continua 'A caminho' (controle — só a retirada muda)", async () => {
     await renderizar([
       pedido({
         status: "shipping",
@@ -281,7 +281,7 @@ describe("ProfileView — cartão Pedidos em Andamento fala a verdade", () => {
     ]);
 
     const lista = hospedeiro.querySelector("ol");
-    expect(lista?.textContent).toContain("Em rota");
+    expect(lista?.textContent).toContain("A caminho");
     expect(lista?.textContent).not.toContain("Pronto para retirar");
   });
 });

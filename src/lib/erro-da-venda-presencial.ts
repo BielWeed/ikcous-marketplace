@@ -67,6 +67,19 @@ function mensagemDoErro(erro: unknown): string | null {
     : null;
 }
 
+/** Frase para a falha de CONSULTAR um código no Balcão. Repetir só ajuda
+ * quando o problema é passageiro: código que o banco recusa de propósito
+ * (22023, ex.: lixo da leitora com mais de 64 caracteres) e acesso negado
+ * (42501) nunca se resolvem tentando de novo. */
+export function fraseDaFalhaDoCodigo(erro: unknown): string {
+  const codigo = codigoDoErro(erro);
+  if (codigo === "22023") {
+    return "Esse código não parece válido. Confira a etiqueta.";
+  }
+  if (codigo === "42501") return "Sem permissão para consultar produtos.";
+  return "Não consegui consultar esse código agora. Tente de novo.";
+}
+
 /** Preços da mesma conferência que recusou o total, não de uma busca posterior. */
 export interface PrecoAtualDaVenda {
   readonly product_id: string;

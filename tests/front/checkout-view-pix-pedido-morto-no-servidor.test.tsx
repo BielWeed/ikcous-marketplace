@@ -200,7 +200,7 @@ describe("CheckoutView — pedido morto no servidor chega ao PagamentoOnline", (
       );
       expect(hospedeiro.textContent).not.toContain("confirmação aparece aqui");
       expect(hospedeiro.querySelector("img, textarea, a")).toBeNull();
-      expect(hospedeiro.textContent).not.toContain("Copiar código PIX");
+      expect(hospedeiro.textContent).not.toContain("Copiar código Pix");
       expect(hospedeiro.textContent).not.toContain("Seu pedido está reservado");
       // Na retomada não há itens locais para devolver: não promete carrinho vazio.
       expect(hospedeiro.textContent).not.toContain("Voltar ao carrinho");
@@ -233,7 +233,33 @@ describe("CheckoutView — pedido morto no servidor chega ao PagamentoOnline", (
       );
       expect(hospedeiro.textContent).not.toContain("confirmação aparece aqui");
       expect(hospedeiro.querySelector("img, textarea, a")).toBeNull();
-      expect(hospedeiro.textContent).not.toContain("Copiar código PIX");
+      expect(hospedeiro.textContent).not.toContain("Copiar código Pix");
+    },
+  );
+
+  // LOTE 210: os dois testes acima cobrem recusado/estornado (tela de "não
+  // concluído"). Pedido VENCIDO ou CANCELADO fica na tela do PIX com o aviso
+  // de código morto — e o topo não pode seguir dizendo que o pedido está
+  // reservado nem pedindo para finalizar o pagamento.
+  it.each([
+    ["expirado", "pending"],
+    ["expirado", "cancelled"],
+    ["aguardando", "cancelled"],
+  ])(
+    "%s + status %s: o topo some com 'Finalize o pagamento' e 'Seu pedido está reservado'",
+    async (payment_status, status) => {
+      await montarNaTelaDoPix();
+      // CONTROLE na mesma tela: com o pedido vivo, os dois textos estão lá.
+      expect(hospedeiro.textContent).toContain("Finalize o pagamento");
+      expect(hospedeiro.textContent).toContain("Seu pedido está reservado");
+
+      await lerOServidor({ payment_status, status });
+
+      expect(propsCapturadasDoPagamento?.pedidoMortoNoServidor).toBe(true);
+      expect(hospedeiro.textContent).not.toContain("Finalize o pagamento");
+      expect(hospedeiro.textContent).not.toContain("Seu pedido está reservado");
+      // Na retomada não há itens locais para devolver: nenhuma saída muda.
+      expect(propsCapturadasDoPagamento?.onVoltarAoCarrinho).toBeUndefined();
     },
   );
 

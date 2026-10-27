@@ -5,7 +5,7 @@
 // C1 — depois do pedido fechado o carrinho esvazia, o subtotal vai a zero e o
 //   efeito que revalida o cupom rodava mesmo assim: a conferência com subtotal
 //   0 devolvia "mínimo não atingido" (o cupom saía do estado) ou desconto 0 —
-//   a tela "Pedido Celebrado!" perdia o selo "Vantagem Ativa: R$ X OFF" ou
+//   a tela "Pedido recebido!" perdia o selo "Desconto aplicado: R$ X" ou
 //   mostrava R$ 0,00. Compra concluída não confere cupom de novo.
 //
 // C4 — o cupom podia ser aplicado ou removido enquanto o pedido estava sendo
@@ -332,9 +332,12 @@ describe("CheckoutView — cupom no envio e na tela de sucesso", () => {
     expect(createOrder).toHaveBeenCalledTimes(1);
     expect(createOrder.mock.calls[0][0].couponCode).toBe("DEZ");
     // É a tela de sucesso.
-    expect(document.body.textContent).toContain("Pedido Celebrado!");
+    expect(document.body.textContent).toContain("Pedido recebido!");
     // O selo guarda o desconto do pedido, não o de uma conferência com R$ 0.
-    expect(document.body.textContent).toContain("Vantagem Ativa: R$ 10,00 OFF");
+    // formatCurrency separa "R$" do número com espaço não quebrável.
+    expect(document.body.textContent?.replace(/\s/g, " ")).toContain(
+      "Desconto aplicado: R$ 10,00",
+    );
     // Nenhuma conferência de cupom com o carrinho já vazio.
     expect(
       mockValidateCoupon.mock.calls.filter(([, subtotal]) => subtotal === 0),
@@ -413,7 +416,10 @@ describe("CheckoutView — cupom no envio e na tela de sucesso", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     await esperar(50);
-    expect(document.body.textContent).toContain("Vantagem Ativa: R$ 10,00 OFF");
+    // formatCurrency separa "R$" do número com espaço não quebrável.
+    expect(document.body.textContent?.replace(/\s/g, " ")).toContain(
+      "Desconto aplicado: R$ 10,00",
+    );
   });
 
   it("C4: com o pedido sendo enviado, aplicar um cupom (mesmo por fora do botão) não consulta nem muda nada", async () => {

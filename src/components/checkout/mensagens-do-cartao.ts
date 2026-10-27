@@ -109,7 +109,7 @@ export const TEXTOS_DO_CARTAO = {
     "Não conseguimos concluir este pagamento. Nenhum valor foi cobrado",
   cargaFalhou: "Não foi possível carregar o formulário do cartão",
   emAnalise:
-    "Seu banco está analisando. Não pague de novo. Avisamos aqui e por notificação",
+    "Seu banco está analisando. Não pague de novo. Acompanhe aqui ou em Meus pedidos",
   confirmacaoDoBanco: "Seu banco pediu uma confirmação",
   horarioPassou: "O horário previsto para pagar já passou.",
   horarioPassouDetalhe:

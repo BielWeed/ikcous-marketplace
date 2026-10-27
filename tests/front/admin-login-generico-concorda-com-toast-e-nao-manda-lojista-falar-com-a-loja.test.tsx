@@ -120,7 +120,7 @@ describe("AdminLoginView — ramo genérico concorda com o toast e não manda o 
   // @supabase/auth-js devolve quando o `fetch` falha (AuthRetryableFetchError,
   // lib/fetch.js) — não bate em nenhum `if` de mensagemDeErroAdminLogin nem
   // do `login`, então cai nos dois ramos genéricos ao mesmo tempo.
-  it("toast e banner inline dizem a MESMA frase, e ela não manda o lojista 'falar com a loja'", async () => {
+  it("o erro de login aparece UMA vez (sem toast repetindo a faixa), e a frase não manda o lojista 'falar com a loja'", async () => {
     const { AuthProvider } = await import("@/contexts/AuthContext");
     const { AdminLoginView } = await import("@/views/admin/AdminLoginView");
     const { supabase } = await import("@/lib/supabase");
@@ -166,14 +166,20 @@ describe("AdminLoginView — ramo genérico concorda com o toast e não manda o 
       await esperarMicrotarefas();
     });
 
-    const mensagemToast = (toast.error as ReturnType<typeof vi.fn>).mock
-      .calls[0][0] as string;
+    // Lote 213: o erro de login aparece UMA vez (a faixa da tela). O toast que
+    // repetia a frase por cima dela saiu; a frase do lojista é a constante
+    // única de `@/lib/mensagens-auth`, a mesma que `login` devolve em `message`.
+    expect(toast.error).not.toHaveBeenCalled();
+    const { MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA } = await import(
+      "@/lib/mensagens-auth"
+    );
+    const mensagemToast = MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA;
     const mensagemInline = document
       .querySelector(".text-red-400")
       ?.textContent?.trim();
 
-    // Invariante (I): o toast global e o banner inline concordam — a mesma
-    // frase, não duas versões diferentes do mesmo erro.
+    // Invariante (I): a faixa mostra a frase única do lojista, não outra
+    // versão do mesmo erro.
     expect(mensagemInline).toBe(mensagemToast);
 
     // Invariante (II): nenhuma das duas frases manda o dono da loja "falar

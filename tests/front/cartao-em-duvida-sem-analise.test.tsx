@@ -405,8 +405,10 @@ describe("PagamentoOnline em modo cartão — resposta sem order abre a verifica
     await enviarCartao(create);
 
     expect(hospedeiro.textContent).toContain(
-      "Seu banco está analisando. Não pague de novo. Avisamos aqui e por notificação",
+      "Seu banco está analisando. Não pague de novo. Acompanhe aqui ou em Meus pedidos",
     );
+    // LOTE 210: o painel só promete o que existe — nenhuma "notificação".
+    expect(hospedeiro.textContent?.toLowerCase()).not.toContain("notifica");
     expect(onCobrancaEmDuvida).not.toHaveBeenCalled();
   });
 });

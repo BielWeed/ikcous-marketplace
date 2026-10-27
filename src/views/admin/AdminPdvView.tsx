@@ -52,7 +52,10 @@ import type {
   RespostaDoCodigo,
 } from "@/hooks/useVendaPresencial";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
-import { precosDaVendaRecusada } from "@/lib/erro-da-venda-presencial";
+import {
+  fraseDaFalhaDoCodigo,
+  precosDaVendaRecusada,
+} from "@/lib/erro-da-venda-presencial";
 import type { Leitura } from "@/lib/leitor/decodificador";
 import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
@@ -257,7 +260,7 @@ export function AdminPdvView({
       });
     } catch (erro) {
       console.error("Erro ao consultar código de barras no balcão:", erro);
-      toast.error("Não consegui consultar esse código agora. Tente de novo.");
+      toast.error(fraseDaFalhaDoCodigo(erro));
     }
   }
 

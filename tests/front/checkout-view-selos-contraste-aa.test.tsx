@@ -4,7 +4,7 @@
 // `text-emerald-600`, que mede 3,58-3,77:1 contra o mínimo AA (4,5:1) de
 // texto normal. `text-emerald-700` mede 5,21:1 e passa.
 //
-//   - "Vantagem Ativa: R$ X OFF" (SuccessView, pedido concluído com cupom
+//   - "Desconto aplicado: R$ X" (SuccessView, pedido concluído com cupom
 //     aplicado, pagamento na entrega);
 //   - "R$ X recebido" (PagamentoConfirmadoView, pagamento online confirmado).
 //
@@ -241,7 +241,7 @@ describe("CheckoutView — selos de pagamento usam text-emerald-700 (contraste A
     vi.restoreAllMocks();
   });
 
-  it("cupom aplicado + pedido concluído (pagamento na entrega): o selo 'Vantagem Ativa' troca de tom", async () => {
+  it("cupom aplicado + pedido concluído (pagamento na entrega): o selo 'Desconto aplicado' troca de tom", async () => {
     createOrder.mockResolvedValueOnce({ id: "ped-999", totalAmount: 85 });
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
 
@@ -305,11 +305,11 @@ describe("CheckoutView — selos de pagamento usam text-emerald-700 (contraste A
 
     // A armadilha precisa estar de fato presente: sem chegar de verdade na
     // tela de sucesso com o cupom aplicado, o par abaixo não prova nada.
-    expect(hospedeiro.textContent).toContain("Pedido Celebrado!");
-    expect(hospedeiro.textContent).toContain("Vantagem Ativa");
+    expect(hospedeiro.textContent).toContain("Pedido recebido!");
+    expect(hospedeiro.textContent).toContain("Desconto aplicado");
 
     const selo = Array.from(hospedeiro.querySelectorAll("div")).find((d) =>
-      d.textContent?.startsWith("Vantagem Ativa"),
+      d.textContent?.startsWith("Desconto aplicado"),
     );
     expect(selo).not.toBeUndefined();
     expect(selo?.classList.contains("text-emerald-700")).toBe(true);

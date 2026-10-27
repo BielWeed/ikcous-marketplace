@@ -122,7 +122,7 @@ export function ReviewForm({
             name="rating"
             render={({ field }) => (
               <FormItem className="space-y-2">
-                <FormLabel className="ml-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                <FormLabel className="ml-1 text-[11px] font-bold uppercase tracking-wider text-zinc-600">
                   Sua Nota de Satisfação
                 </FormLabel>
                 <FormControl>
@@ -180,7 +180,7 @@ export function ReviewForm({
                     ))}
                   </div>
                 </FormControl>
-                <FormMessage className="text-[10px] font-bold uppercase tracking-wider text-red-500" />
+                <FormMessage className="text-[11px] font-bold uppercase tracking-wider text-red-700" />
               </FormItem>
             )}
           />
@@ -190,7 +190,7 @@ export function ReviewForm({
             name="comment"
             render={({ field }) => (
               <FormItem className="space-y-2">
-                <FormLabel className="ml-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                <FormLabel className="ml-1 text-[11px] font-bold uppercase tracking-wider text-zinc-600">
                   Detalhes da Experiência (Opcional)
                 </FormLabel>
                 <FormControl>
@@ -202,7 +202,7 @@ export function ReviewForm({
                     disabled={isSubmitting}
                   />
                 </FormControl>
-                <FormMessage className="text-[10px] font-bold uppercase tracking-wider text-red-500" />
+                <FormMessage className="text-[11px] font-bold uppercase tracking-wider text-red-700" />
               </FormItem>
             )}
           />

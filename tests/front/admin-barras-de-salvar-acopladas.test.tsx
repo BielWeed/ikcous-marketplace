@@ -284,7 +284,6 @@ it("contato na pílula mantém o estado limpo, o payload e o carregamento", asyn
   expect(h.atualizarContato).toHaveBeenCalledWith(
     {
       whatsappNumber: "5511987654321",
-      shareText: "Confira [nome]: [link]",
     },
     { silentSuccess: true },
   );

@@ -382,7 +382,7 @@ export const AddressList = memo(function AddressList({
                       }}
                       className={
                         selectable
-                          ? "relative flex size-8 items-center justify-center rounded-lg bg-white text-zinc-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-zinc-900 hover:text-white"
+                          ? "relative flex size-8 items-center justify-center rounded-lg bg-white text-zinc-600 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-zinc-900 hover:text-white"
                           : "flex size-11 items-center justify-center rounded-full text-zinc-600 transition-colors hover:bg-zinc-100"
                       }
                       aria-label={
@@ -440,7 +440,7 @@ export const AddressList = memo(function AddressList({
                 <p
                   className={
                     selectable
-                      ? "mt-1 text-[11px] font-bold text-zinc-400"
+                      ? "mt-1 text-xs font-bold text-zinc-600"
                       : "mt-1 text-sm font-bold text-zinc-600"
                   }
                 >

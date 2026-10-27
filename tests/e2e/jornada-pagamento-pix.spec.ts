@@ -26,7 +26,7 @@ import {
  */
 
 test.use({
-  // O botão "Copiar código PIX" usa a área de transferência de verdade.
+  // O botão "Copiar código Pix" usa a área de transferência de verdade.
   permissions: ["clipboard-read", "clipboard-write"],
 });
 
@@ -36,9 +36,9 @@ async function esperarQrDoPix(page: Page) {
   await expect(
     page.getByRole("heading", { name: "Pagamento via Pix" }),
   ).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByAltText("QR code do PIX")).toBeVisible();
+  await expect(page.getByAltText("QR code do Pix")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Copiar código PIX" }),
+    page.getByRole("button", { name: "Copiar código Pix" }),
   ).toBeVisible();
 }
 
@@ -63,7 +63,7 @@ test("PIX: QR e copiar aparecem, e a confirmação vem quando o banco vira pago 
   ]);
 
   // Copiar: o código vai MESMO para a área de transferência.
-  await page.getByRole("button", { name: "Copiar código PIX" }).click();
+  await page.getByRole("button", { name: "Copiar código Pix" }).click();
   await expect(
     page.getByRole("button", { name: "Copiado! Cole no app do seu banco" }),
   ).toBeVisible();
@@ -77,7 +77,7 @@ test("PIX: QR e copiar aparecem, e a confirmação vem quando o banco vira pago 
   await expect(
     page.getByRole("heading", { name: "Pagamento Confirmado!" }),
   ).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByAltText("QR code do PIX")).toHaveCount(0);
+  await expect(page.getByAltText("QR code do Pix")).toHaveCount(0);
 
   expect(sim.chamadasDoPagamento).toEqual([
     { orderId: pedido.id, metodo: "pix" },
@@ -91,7 +91,7 @@ test("PIX: QR e copiar aparecem, e a confirmação vem quando o banco vira pago 
 // App.tsx): antes dela, recarregar a aba com o PIX pendente perdia o pedido
 // (`checkoutRetomadaId` voltava a `null` e o cliente caía num checkout vazio,
 // sem QR). Controle medido em 04/10/2026: no build de 4a882a7b (sem a
-// retomada) esta jornada FALHA em "QR code do PIX" depois do reload; com a
+// retomada) esta jornada FALHA em "QR code do Pix" depois do reload; com a
 // retomada, passa.
 test("PIX PENDENTE + recarregar a aba: retoma o MESMO pedido e o MESMO QR, lido do servidor, sem criar pedido nem cobrança nova", async ({
   page,
@@ -127,7 +127,7 @@ test("PIX PENDENTE + recarregar a aba: retoma o MESMO pedido e o MESMO QR, lido 
   await esperarQrDoPix(page);
   exigirCriacaoDoPedido(sim);
   const pedido = ultimoPedido(sim);
-  const qrAntes = await page.getByAltText("QR code do PIX").getAttribute("src");
+  const qrAntes = await page.getByAltText("QR code do Pix").getAttribute("src");
 
   // Marca da conversa com a edge ANTES de recarregar: o que vier depois dela
   // é a tela PERGUNTANDO ao servidor (o QR vem da edge, não de memória
@@ -139,7 +139,7 @@ test("PIX PENDENTE + recarregar a aba: retoma o MESMO pedido e o MESMO QR, lido 
   await expect(
     page.getByText(`Pedido #${numeroDoPedido(pedido.id)}`),
   ).toBeVisible();
-  expect(await page.getByAltText("QR code do PIX").getAttribute("src")).toBe(
+  expect(await page.getByAltText("QR code do Pix").getAttribute("src")).toBe(
     qrAntes,
   );
   await expect(page.getByText(CODIGO_PIX_SIMULADO)).toBeVisible();

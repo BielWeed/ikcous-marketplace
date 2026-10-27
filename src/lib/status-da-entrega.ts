@@ -201,7 +201,10 @@ export function situacaoDaEntrega(
   semPagamento: boolean,
 ) {
   const faltaCep = !cepCompleto(config?.originCep);
-  const fora = config?.shippingCoverage !== "local";
+  // "Só retiro": quem é de fora retira na loja, então transportadora não falta.
+  const fora =
+    config?.shippingCoverage !== "local" &&
+    modoDaEntregaNaCidade(config) !== "so_retiro";
   const confirmarTransportadoras = fora && nomesLigados === null;
   const faltaTransportadora =
     fora && nomesLigados !== null && nomesLigados.length === 0;
