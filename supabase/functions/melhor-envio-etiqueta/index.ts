@@ -465,8 +465,7 @@ export function normalizarServicoEscolhidoPeloLojista(valor: unknown): string | 
  * devolução, que não faz parte do lote 227, segue assim).
  *
  * Quem manda estes volumes ao carrinho passa por
- * `volumesDoCarrinhoParaOServico`: Correios, J&T e Loggi não aceitam mais de
- * um volume por chamada.
+ * `volumesDoCarrinhoParaOServico`: só Jadlog aceita mais de um volume por chamada.
  */
 export function montarProdutosEVolumes(
     itens: Array<Record<string, any>>,
@@ -532,17 +531,21 @@ function empilharNaMenorMedida(
 }
 
 /**
- * Serviços do Melhor Envio que aceitam UM volume por chamada ao carrinho. A
- * doc oficial ("Inserir fretes no carrinho") diz que Correios, J&T e Loggi não
- * aceitam múltiplos volumes numa requisição: PAC (1), SEDEX (2), Mini Envios
- * (17) — Correios —, Express (31) — Loggi — e Standard (33) — JeT/J&T, os ids
- * que o próprio app já recebe do ME na cotação. Jadlog (3, 4) e qualquer id
- * fora desta lista seguem com um volume por linha, como sempre foi.
+ * Serviços do Melhor Envio que ACEITAM vários volumes numa chamada ao carrinho:
+ * Jadlog, ids 3 (.Package, visto nas respostas reais do ME que o app já
+ * trata) e 4 (.Com). A doc oficial ("Inserir fretes no carrinho") só diz o
+ * contrário — Correios, J&T e Loggi NÃO aceitam — e não lista ids, então a
+ * regra é invertida: todo serviço vai em UM volume, menos estes. Id que não
+ * conhecemos nunca depende de a lista estar completa.
  */
-const SERVICOS_DE_VOLUME_UNICO: ReadonlySet<string> = new Set(['1', '2', '17', '31', '33'])
+const SERVICOS_QUE_ACEITAM_VARIOS_VOLUMES: ReadonlySet<string> = new Set(['3', '4'])
 
 export function servicoExigeVolumeUnico(serviceId: unknown): boolean {
-    return typeof serviceId === 'string' && SERVICOS_DE_VOLUME_UNICO.has(serviceId)
+    return (
+        typeof serviceId === 'string' &&
+        /^\d+$/.test(serviceId) &&
+        !SERVICOS_QUE_ACEITAM_VARIOS_VOLUMES.has(serviceId)
+    )
 }
 
 /**
@@ -568,11 +571,11 @@ export function consolidarVolumesEmUm(
 }
 
 /**
- * Os volumes que vão no corpo do `POST /me/cart`. Serviço de volume único
- * (Correios, J&T, Loggi): o pedido inteiro num pacote só, com largura, altura
+ * Os volumes que vão no corpo do `POST /me/cart`. Todo serviço menos Jadlog
+ * (Correios, J&T, Loggi e qualquer id novo): o pedido inteiro num pacote só, com largura, altura
  * e comprimento INTEIROS (a doc tipa os três como `integer`; arredonda para
- * CIMA, nunca declara caixa menor que a real). Outros serviços: a lista como
- * veio, um volume por linha.
+ * CIMA, nunca declara caixa menor que a real). Jadlog: a lista como veio, um
+ * volume por linha.
  */
 export function volumesDoCarrinhoParaOServico(
     serviceId: unknown,
@@ -623,17 +626,6 @@ export function montarRemetente(meData: Record<string, any> | null | undefined):
         postal_code: postalCode,
         email: meData.email || null,
     }
-}
-
-/**
- * Valor em reais vindo do Melhor Envio (número ou texto numérico como
- * "18.90"): finito e não negativo, em centavos; qualquer outra coisa é `null`
- * — nunca um custo inventado nem 0 no lugar de "não veio".
- */
-function valorEmReais(valor: unknown): number | null {
-    const numero =
-        typeof valor === 'number' ? valor : typeof valor === 'string' && valor.trim() !== '' ? Number(valor) : Number.NaN
-    return Number.isFinite(numero) && numero >= 0 ? Number(numero.toFixed(2)) : null
 }
 
 /**
@@ -2770,8 +2762,8 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 from,
                 to,
                 products,
-                // Correios, J&T e Loggi recusam mais de um volume: o pedido
-                // inteiro num pacote só (lote 227). Outros serviços, um por linha.
+                // Todo serviço menos Jadlog recusa mais de um volume: o pedido
+                // inteiro num pacote só (lote 227). Jadlog, um por linha.
                 volumes: volumesDoCarrinhoParaOServico(service, volumes),
                 options: {
                     insurance_value: semSeguro ? 0 : subtotalItens,
@@ -3137,10 +3129,10 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                     service,
                     sandbox: isSandbox,
                     valor_declarado: subtotalItens,
-                    // O preço que o ME devolveu ao montar o carrinho e o total que a
-                    // compra cobrou (`purchase.total`): `null` quando não vieram.
-                    preco_do_carrinho: valorEmReais(cartData?.price),
-                    total_da_compra: valorEmReais(checkoutData?.purchase?.total),
+                    // NUNCA gravar aqui o preço/total que o ME cobrou pela etiqueta:
+                    // a policy de leitura desta tabela libera a linha ao DONO DO
+                    // PEDIDO (a cliente), e isso é o custo da loja (a margem do
+                    // frete). Guardar o custo pede tabela/coluna só de admin.
                 },
             })
 

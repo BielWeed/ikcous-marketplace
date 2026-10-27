@@ -1042,9 +1042,11 @@ Deno.test("quantidade na medida - a devolução continua declarando a medida de 
     assertEquals(volumes, [{ weight: 0.8, width: 10, height: 12, length: 14 }])
 })
 
-Deno.test("volume único - só Correios (1, 2, 17), Loggi (31) e J&T (33); Jadlog e id desconhecido seguem com vários volumes", () => {
-    for (const id of ['1', '2', '17', '31', '33']) assertEquals(servicoExigeVolumeUnico(id), true)
-    for (const id of ['3', '4', '12', '22', '', 'abc', null, undefined]) assertEquals(servicoExigeVolumeUnico(id as any), false)
+Deno.test("volume único - TODO serviço vai em um volume, menos Jadlog (3 e 4), que aceita vários; id desconhecido (99) consolida", () => {
+    for (const id of ['1', '2', '17', '31', '33', '12', '22', '99', '27', '1000']) assertEquals(servicoExigeVolumeUnico(id), true)
+    for (const id of ['3', '4']) assertEquals(servicoExigeVolumeUnico(id), false)
+    // sem id numérico não há serviço: não consolida
+    for (const id of ['', 'abc', null, undefined]) assertEquals(servicoExigeVolumeUnico(id as any), false)
 })
 
 Deno.test("volume único - consolida peso somado e MAIOR largura/altura/comprimento (a mesma conta da devolução); vazio vira null", () => {
@@ -1058,13 +1060,16 @@ Deno.test("volume único - consolida peso somado e MAIOR largura/altura/comprime
     assertEquals(consolidarVolumesEmUm([]), null)
 })
 
-Deno.test("volume único - Correios recebem 1 volume com medidas INTEIRAS (arredonda para cima); Jadlog recebe a lista como veio", () => {
+Deno.test("volume único - Correios e demais recebem 1 volume com medidas INTEIRAS (arredonda para cima); Jadlog recebe a lista como veio", () => {
     const lista = [
         { weight: 0.8, width: 10.5, height: 12, length: 14.2 },
         { weight: 0.3, width: 15, height: 6.01, length: 9 },
     ]
     assertEquals(volumesDoCarrinhoParaOServico('1', lista), [{ weight: 1.1, width: 15, height: 12, length: 15 }])
     assertEquals(volumesDoCarrinhoParaOServico('3', lista), lista)
+    assertEquals(volumesDoCarrinhoParaOServico('4', lista), lista)
+    // id que não conhecemos (99) também vai em UM volume, medidas inteiras
+    assertEquals(volumesDoCarrinhoParaOServico('99', lista), [{ weight: 1.1, width: 15, height: 12, length: 15 }])
     // ruído de ponto flutuante não vira +1 cm
     assertEquals(
         volumesDoCarrinhoParaOServico('2', [{ weight: 0.2, width: 20.000000000000004, height: 3, length: 3 }]),
@@ -1098,6 +1103,21 @@ Deno.test("handler - pedido com 2 produtos por PAC/SEDEX/Mini Envios manda UM vo
             assertEquals(me.registro.ultimoVolumes, [{ weight: 1.05, width: 25, height: 10, length: 35 }])
             // os produtos continuam um por linha (é a declaração do conteúdo)
             assertEquals(me.registro.ultimoProducts?.length, 2)
+        }
+    })
+})
+
+Deno.test("handler - serviço escolhido que não conhecemos (99) também manda UM volume; Jadlog .Com (4) mantém um por linha", async () => {
+    await comEnvAdmin(async () => {
+        for (const [opcao, esperado] of [['melhor-envio-99', 1], ['melhor-envio-4', 2]] as const) {
+            const supa = clienteFalso({
+                pedido: { ...PEDIDO_FELIZ, customer_data: { ...PEDIDO_FELIZ.customer_data, shipping_option_id: opcao } },
+                ...DOIS_PRODUTOS,
+            })
+            const me = buscarMeFalso()
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+            assertEquals(res.status, 200)
+            assertEquals(me.registro.ultimoVolumes?.length, esperado)
         }
     })
 })
@@ -1187,38 +1207,24 @@ Deno.test("handler - carrinho recusado por outro motivo (telefone) continua dize
     })
 })
 
-Deno.test("handler - o preço que o Melhor Envio devolve no carrinho fica gravado no evento da etiqueta", async () => {
+Deno.test("handler - o custo da etiqueta NÃO vai para o evento: a tabela é legível pela dona do pedido (a margem do frete não pode vazar)", async () => {
     await comEnvAdmin(async () => {
+        // O ME devolve preço no carrinho e total no checkout; nenhum dos dois
+        // pode aparecer em lugar algum do payload de `etiqueta_gerada` — a
+        // policy de leitura de order_shipping_events libera a linha ao dono do pedido.
         const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
         const me = buscarMeFalso({ cartPrice: 18.9, checkoutTotal: 20.4 })
         const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
         assertEquals(res.status, 200)
         const evento = supa.registro.eventos.find((e) => e.event_type === 'etiqueta_gerada')
-        assertEquals(evento.payload.preco_do_carrinho, 18.9)
-        // o que a compra de fato cobrou (purchase.total, doc do checkout) também fica
-        assertEquals(evento.payload.total_da_compra, 20.4)
-        // o valor declarado (seguro) continua separado do custo
+        const chaves = Object.keys(evento.payload)
+        assertEquals(chaves.includes('preco_do_carrinho'), false)
+        assertEquals(chaves.includes('total_da_compra'), false)
+        const texto = JSON.stringify(supa.registro.eventos)
+        assertEquals(texto.includes('18.9'), false)
+        assertEquals(texto.includes('20.4'), false)
+        // o valor declarado (seguro, subtotal dos itens) continua como sempre
         assertEquals(evento.payload.valor_declarado, 10)
-    })
-})
-
-Deno.test("handler - preço do carrinho ausente, texto ou negativo NÃO vira custo inventado (fica null) e a etiqueta sai igual", async () => {
-    await comEnvAdmin(async () => {
-        for (const preco of [undefined, 'barato', null, -3, Number.NaN]) {
-            const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
-            const me = buscarMeFalso({ cartPrice: preco })
-            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
-            assertEquals(res.status, 200)
-            const evento = supa.registro.eventos.find((e) => e.event_type === 'etiqueta_gerada')
-            assertEquals(evento.payload.preco_do_carrinho, null)
-            // sem `total` no checkout (o fake padrão não manda): também null, nunca 0
-            assertEquals(evento.payload.total_da_compra, null)
-        }
-        // preço em texto numérico (o ME às vezes devolve "18.90") é aceito
-        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
-        const me = buscarMeFalso({ cartPrice: '18.90' })
-        await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
-        assertEquals(supa.registro.eventos.find((e) => e.event_type === 'etiqueta_gerada').payload.preco_do_carrinho, 18.9)
     })
 })
 
