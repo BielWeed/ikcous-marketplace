@@ -10,9 +10,11 @@ import { describe, expect, it } from "vitest";
  * e sem aviso. Agora o painel sem conta pede entrada, e depois de entrar a
  * lojista volta para os pedidos.
  *
- * A lista de destinos aceitos do painel é FECHADA e mínima (só `admin-orders`,
- * a única tela que um aviso abre): `history.state` é gravável pela própria
- * página, então nada além dela vira destino.
+ * A lista de destinos aceitos do painel é FECHADA e mínima (`admin-orders`, a
+ * tela que um aviso abre, e `admin`, a porta do painel — a lojista cuja sessão
+ * venceu e abriu `/admin` não pode cair no Perfil de cliente ao entrar de
+ * novo): `history.state` é gravável pela própria página, então nada além delas
+ * vira destino.
  */
 describe("destinoPosLogin — painel", () => {
   it("requested admin-orders manda para admin-orders (a tela que o aviso de pedido novo abre)", () => {
@@ -31,9 +33,18 @@ describe("destinoPosLogin — painel", () => {
     ).toBe("admin-orders");
   });
 
+  it("requested admin (a porta do painel) manda para admin: sessão vencida em /admin não cai no Perfil de cliente", () => {
+    expect(destinoPosLogin({ view: "auth", requested: "admin" })).toBe("admin");
+    // Precedência igual à de admin-orders: o pedido vence o "de onde veio".
+    expect(
+      destinoPosLogin({ view: "auth", from: "cart", requested: "admin" }),
+    ).toBe("admin");
+    // Sem `requested` (login comum, sem painel no meio), nada muda.
+    expect(destinoPosLogin({ view: "auth" })).toBe("profile");
+  });
+
   it("LISTA FECHADA: nenhuma outra tela do painel vira destino — cai no from / perfil", () => {
     for (const outra of [
-      "admin",
       "admin-dashboard",
       "admin-settings",
       "admin-products",

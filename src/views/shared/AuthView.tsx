@@ -85,15 +85,24 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
     setIsPasswordRecovery,
     linkDeRecuperacaoVencido,
     limparLinkDeRecuperacaoVencido,
+    linkDeConfirmacaoVencido,
+    limparLinkDeConfirmacaoVencido,
   } = useAuth();
   // Link de "esqueci a senha" vencido ou já usado: em vez de "Nova Senha" (que
   // sem sessão nunca funciona), abre "Recuperar" com o aviso. O aviso é
   // guardado AQUI (e a flag do contexto é devolvida logo abaixo) para
   // sobreviver à digitação do e-mail e a um novo desmontar da tela.
+  //
+  // O link de CONFIRMAÇÃO de cadastro vencido (sem `type=recovery`) não é
+  // "esqueci a senha": abre a tela de ENTRAR com o aviso dele, que diz a
+  // verdade provável (já usado: é só entrar). O reenvio da confirmação já
+  // existe, no erro "e-mail ainda não confirmado" do próprio login.
   const [avisoDoLink, setAvisoDoLink] = useState<string | null>(
     linkDeRecuperacaoVencido && !isPasswordRecovery
       ? "Este link expirou ou já foi usado. Peça um novo abaixo."
-      : null,
+      : linkDeConfirmacaoVencido
+        ? "Esse link já foi usado ou venceu. Se você já confirmou seu cadastro, é só entrar."
+        : null,
   );
   const [viewMode, setViewModeAtual] = useState<
     "login" | "signup" | "forgot" | "reset-prompt" | "new-password"
@@ -115,6 +124,10 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
     if (linkDeRecuperacaoVencido) limparLinkDeRecuperacaoVencido();
   }, [linkDeRecuperacaoVencido, limparLinkDeRecuperacaoVencido]);
 
+  useEffect(() => {
+    if (linkDeConfirmacaoVencido) limparLinkDeConfirmacaoVencido();
+  }, [linkDeConfirmacaoVencido, limparLinkDeConfirmacaoVencido]);
+
   // Sync viewMode if password recovery mode is detected asynchronously
   useEffect(() => {
     if (isPasswordRecovery) {
@@ -126,6 +139,10 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   }, [isPasswordRecovery, setViewMode]);
 
   const isLogin = viewMode === "login";
+  // O aviso do link de recuperação vive na tela "Recuperar"; o do link de
+  // confirmação vencido vive na tela de entrar.
+  const avisoVisivel =
+    avisoDoLink !== null && (viewMode === "forgot" || viewMode === "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmaSenha, setConfirmaSenha] = useState("");
@@ -288,7 +305,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           // (`MENSAGEM_ERRO_LOGIN_GENERICA`, importada de
           // `@/lib/mensagens-auth.ts`, linha 6 deste arquivo — não mais de
           // AuthContext.tsx, A1-fix4 moveu a constante) —
-          // mesma constante que `AuthContext.login` usa no toast para o
+          // mesma constante que `AuthContext.login` devolve em `message` para o
           // mesmo caso, para que a pessoa nunca leia duas frases diferentes
           // para o mesmo erro).
 
@@ -884,7 +901,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                 </motion.div>
               )}
 
-              {avisoDoLink && viewMode === "forgot" && (
+              {avisoVisivel && (
                 <div
                   role="alert"
                   className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-center text-[10px] font-black uppercase tracking-widest text-amber-800"

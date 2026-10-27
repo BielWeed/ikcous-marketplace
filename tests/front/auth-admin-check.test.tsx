@@ -393,14 +393,14 @@ describe("AuthContext — verificação de admin (issues #121 e #123)", () => {
     });
 
     // Achado 2 (revisão #121/#123): o timeout NUNCA é um veredito do
-    // servidor — é a ausência de um. `adminStatus` pode virar "not-admin"
-    // em memória (esta carga trata o usuário como não-admin até a próxima
-    // checagem), mas o `localStorage` não pode ser escrito: gravar "false"
-    // aqui persistiria uma resposta que nunca chegou, e a guarda de rota do
-    // Achado 1 (App.tsx) usa exatamente esse cache, via Fast Path 2, para
-    // decidir instantaneamente nas cargas SEGUINTES — antes de qualquer
-    // rede.
-    expect(ultimoEstado(aoAtualizar)?.adminStatus).toBe("not-admin");
+    // servidor — é a ausência de um. O `localStorage` não pode ser escrito:
+    // gravar "false" aqui persistiria uma resposta que nunca chegou, e a guarda
+    // de rota do Achado 1 (App.tsx) usa exatamente esse cache, via Fast Path 2,
+    // para decidir instantaneamente nas cargas SEGUINTES — antes de qualquer
+    // rede. Lote 213: e `adminStatus` também NÃO vira "not-admin" (era o que
+    // expulsava a lojista de internet ruim com "Acesso restrito"): fica
+    // "unknown" e `isAdmin` segue falso — o painel não abre.
+    expect(ultimoEstado(aoAtualizar)?.adminStatus).toBe("unknown");
     expect(ultimoEstado(aoAtualizar)?.isAdmin).toBe(false);
     expect(localStorage.getItem("ikcous_is_admin_user-a")).toBeNull();
 
@@ -412,7 +412,7 @@ describe("AuthContext — verificação de admin (issues #121 e #123)", () => {
 
     // Nada mudou: a resposta atrasada não escreve por cima do timeout, e o
     // cache continua sem entrada nenhuma para este usuário.
-    expect(ultimoEstado(aoAtualizar)?.adminStatus).toBe("not-admin");
+    expect(ultimoEstado(aoAtualizar)?.adminStatus).toBe("unknown");
     expect(ultimoEstado(aoAtualizar)?.isAdmin).toBe(false);
     expect(localStorage.getItem("ikcous_is_admin_user-a")).toBeNull();
   });
