@@ -11,6 +11,7 @@ import {
 } from "@/lib/endereco-de-entrega";
 import type { PromessaDeCanal } from "@/lib/estrategias-de-frete";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
+import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { ehModalidadeDaLoja, ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
 import { precoVendido } from "@/lib/preco-vendido";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -217,6 +218,9 @@ export function CartView({
   onAddToCart?: (product: Product, quantity?: number) => void;
 }) {
   const { config } = useStore();
+  // Nenhuma forma na entrega/retirada: a loja só recebe pelo app (exige conta).
+  const soPeloApp =
+    formasPagamentoNaEntregaValidas(config.formasPagamentoEntrega).length === 0;
   const { getFreeShippingEligibleProducts } = useProducts();
   const {
     cart: ctxCart,
@@ -1029,8 +1033,13 @@ export function CartView({
                                 Comprar como Convidado
                               </p>
                               <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">
-                                Finalize sua compra instantaneamente sem
-                                precisar criar senha ou cadastro.
+                                {/* Só promete o que vale (caça 11-D #3): loja
+                                    sem forma na entrega só fecha pelo app, e
+                                    isso exige conta; fora da cidade também.
+                                    O checkout avisa os dois antes do envio. */}
+                                {soPeloApp
+                                  ? "Nesta loja o pagamento é feito pelo app, por isso é preciso entrar na sua conta para finalizar."
+                                  : "Você pode comprar como visitante em muitos casos; se precisar de conta, avisamos antes de finalizar."}
                               </p>
                             </div>
                           </div>
