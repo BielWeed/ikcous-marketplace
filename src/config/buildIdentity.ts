@@ -10,9 +10,11 @@
 // `codeSha`, `deliveryVersion`) continuam vindo do assado — a ficha não os
 // carrega, porque publicar código é um evento separado de configurar loja.
 //
-// Ficha AUSENTE (build de loja única, sem porteiro na frente): nada muda,
-// cai no assado — é o caminho que os 3520 testes já cobrem hoje, e continua
-// verde porque nenhuma suíte injeta `#ikcous-loja` no jsdom.
+// Ficha AUSENTE em desenvolvimento ou em endereço local (sem porteiro na
+// frente): nada muda, cai no assado — é o caminho que os 3520 testes já cobrem
+// hoje, e continua verde porque nenhuma suíte injeta `#ikcous-loja` no jsdom.
+// Ficha AUSENTE em produção, fora de endereço local: nunca cai no assado (ver
+// `decidirBootSemFicha` abaixo).
 //
 // Ficha PRESENTE e inválida: `lerFichaDaLoja()` lança `IDENTITY_FICHA_INVALID`
 // — nunca cai no assado, que num build compartilhado pode ser de OUTRA loja.
@@ -46,7 +48,7 @@
 // ausente) — os dois pintam a MESMA tela, mas por caminhos independentes,
 // de propósito.
 import { lerFichaDaLoja } from "./fichaDaLoja";
-import { destinoDoIndexCru } from "./guardaDoIndexCru";
+import { decidirBootSemFicha } from "./guardaDoIndexCru";
 
 if (typeof __STORE_IDENTITY__ === "undefined") {
   throw new Error("IDENTITY_BUILD_MISSING");
@@ -90,18 +92,29 @@ try {
   throw erro;
 }
 
-// "/index.html" cru (sem ficha) numa loja cliente: vai para "/", onde o porteiro
-// entrega a ficha certa. Interrompe o boot ANTES de criar o cliente do banco.
-const destinoCru = destinoDoIndexCru({
+// Página crua (sem ficha) em produção, fora de endereço local: nunca sobe com o
+// banco e a marca assados no build, que podem ser de OUTRA loja. Fora de "/"
+// (/index.html, /404.html, arquivo inexistente em /icons...), vai para "/", onde o
+// porteiro entrega a ficha certa; em "/" não há para onde ir, então pinta a tela
+// segura. Os dois interrompem o boot ANTES de criar o cliente do banco.
+const decisaoSemFicha = decidirBootSemFicha({
   ficha: fichaDaLoja,
   pathname: globalThis.location?.pathname ?? "",
+  hostname: globalThis.location?.hostname ?? "",
   dev: import.meta.env.DEV,
   search: globalThis.location?.search ?? "",
   hash: globalThis.location?.hash ?? "",
 });
-if (destinoCru !== null) {
-  globalThis.location.replace(destinoCru);
+if (decisaoSemFicha.tipo === "redirecionar") {
+  globalThis.location.replace(decisaoSemFicha.destino);
   throw new Error("INDEX_CRU_REDIRECIONANDO");
+}
+if (decisaoSemFicha.tipo === "tela-segura") {
+  pintarFichaInvalidaNoBoot(
+    "Loja em manutenção",
+    "Não foi possível confirmar os dados desta loja agora. Recarregue em alguns instantes.",
+  );
+  throw new Error("BOOT_SEM_FICHA");
 }
 
 export const buildIdentity: typeof __STORE_IDENTITY__ = fichaDaLoja
