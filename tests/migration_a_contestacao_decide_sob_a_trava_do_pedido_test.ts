@@ -339,6 +339,15 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     // 20261393100000: o balcao diz "inativo" para a variacao desligada (controle com o corpo anterior, precedencia, produto apagado, mutantes,
     // rollback, pre-voo, consultas 104 e a resposta lida pelo reducer do balcao).
     "tests/banco/o-balcao-diz-inativo-para-a-variacao-desligada-viva.cjs",
+    // 20261394000000: o pedido de visitante na entrega tem freio (teto de 10 unidades, teto de 10 pedidos pendentes por loja sob o advisory lock,
+    // p_address_id sem sessao recusado, retentativa nunca recusada, 14 visitantes simultaneos, mutantes, rollback, pre/pos-voo e consultas 106a/106b).
+    "tests/banco/o-pedido-de-visitante-na-entrega-tem-freio-viva.cjs",
+    // 20261394100000: a lista de recomendacoes do produto tem teto (get_product_recommendations limita p_limit a 50 e trata NULL como 4; ate o teto a lista
+    // e' a de sempre; mutantes, rollback, pre/pos-voo e consultas 107a/107b e a 9a).
+    "tests/banco/a-lista-de-recomendacoes-do-produto-tem-teto-viva.cjs",
+    // 20261394200000: a v23 recusa o pagamento pelo app para todo mundo (anon e logado; pagar na entrega/retirada como antes; retentativa de pedido antigo devolve o mesmo id;
+    // mutante, rollback byte a byte, aplicar duas vezes, pre/pos-voo e consultas 111a/111b).
+    "tests/banco/a-v23-recusa-o-pagamento-pelo-app-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -635,6 +644,29 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-busca-do-crm-acha-o-numero-com-mais-55-viva.cjs",
     "tests/banco/o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-viva.cjs",
     "tests/banco/o-balcao-diz-inativo-para-a-variacao-desligada-viva.cjs",
+    // 20261394000000: o pedido de visitante na entrega tem freio (teto de 10 unidades, teto de 10 pedidos pendentes por loja sob o advisory lock,
+    // p_address_id sem sessao recusado, retentativa nunca recusada, 14 visitantes simultaneos, mutantes, rollback, pre/pos-voo e consultas 106a/106b).
+    "tests/banco/o-pedido-de-visitante-na-entrega-tem-freio-viva.cjs",
+    // 20261394100000: a lista de recomendacoes do produto tem teto (get_product_recommendations limita p_limit a 50 e trata NULL como 4; ate o teto a lista
+    // e' a de sempre; mutantes, rollback, pre/pos-voo e consultas 107a/107b e a 9a).
+    "tests/banco/a-lista-de-recomendacoes-do-produto-tem-teto-viva.cjs",
+    // 20261394200000: a v23 recusa o pagamento pelo app para todo mundo (anon e logado; pagar na entrega/retirada como antes; retentativa de pedido antigo devolve o mesmo id;
+    // mutante, rollback byte a byte, aplicar duas vezes, pre/pos-voo e consultas 111a/111b).
+    "tests/banco/a-v23-recusa-o-pagamento-pelo-app-viva.cjs",
+    // Lote 231 (20261395000000, 20261395100000, 20261395200000): a busca de devolucao acha o numero do pedido; a grade antiga nao ressuscita variacao
+    // excluida; a conclusao da devolucao tranca o estoque na mesma ordem da compra (cada uma com mutantes, rollback, pre/pos-voo e as consultas 108 a 110).
+    "tests/banco/a-busca-de-devolucao-acha-o-numero-do-pedido-viva.cjs",
+    "tests/banco/a-grade-antiga-nao-ressuscita-variacao-excluida-viva.cjs",
+    "tests/banco/a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-viva.cjs",
+    // 20261396000000: cada conta tem no maximo 10 aparelhos com aviso ligado (gatilho BEFORE INSERT em push_subscriptions; o re-registro do mesmo aparelho por upsert nao conta;
+    // duas conexoes reais, mutantes, rollback, pre/pos-voo e consultas 112a/112b).
+    "tests/banco/cada-conta-tem-no-maximo-10-aparelhos-viva.cjs",
+    // 20261396100000: a pergunta do produto nasce com a data de agora (gatilho BEFORE INSERT em questions troca created_at por now() para cliente que nao e' administrador;
+    // admin, service_role e sessao direta gravam como vierem; mutantes, rollback, pre/pos-voo e consultas 113a/113b).
+    "tests/banco/a-pergunta-nasce-com-a-data-de-agora-viva.cjs",
+    // 20261396200000: o texto da avaliacao tem teto no banco (CHECK de 1000 caracteres NOT VALID em reviews; 1001 recusado para todos; a migration se recusa se ja
+    // houver avaliacao acima do teto (o CHECK travaria o pagamento do pedido); mutantes, rollback, pre/pos-voo e consultas 114a/114b).
+    "tests/banco/o-texto-da-avaliacao-tem-teto-no-banco-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",

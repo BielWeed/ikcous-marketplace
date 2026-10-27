@@ -1,4 +1,15 @@
 {
+  "1.5.90": {
+    "titulo": "Confirmações do painel mais claras e compra de visitante com freio",
+    "novidades": [],
+    "correcoes": [
+      "Painel, pedidos: cancelar o pedido, \"Já estornei\" e devolver o dinheiro agora pedem confirmação numa janela do próprio app, em vez da caixa do navegador; nas perguntas de dinheiro o valor aparece em destaque.",
+      "Loja, celular: o Voltar do aparelho fecha o menu de opções do produto sem sair da tela.",
+      "Painel, estorno: o resumo \"Devolvido\" passa a incluir o que você devolveu por fora (PIX ou em mãos), com a indicação \"inclui R$ X por fora\".",
+      "Loja, compra sem conta: com pagamento na entrega, o pedido aceita até 10 unidades; e, se a loja já tiver muitos pedidos de visitante esperando, o app pede para entrar na conta e explica o motivo."
+    ],
+    "melhorias": []
+  },
   "1.5.89": {
     "titulo": "Frete que recalcula, etiqueta com vários produtos e telas da loja mais certas",
     "novidades": [],

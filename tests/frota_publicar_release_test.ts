@@ -3105,6 +3105,15 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "102a-conferir-a-busca-do-crm-acha-o-numero-com-mais-55-aplicado",
     "103a-conferir-o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-aplicado",
     "104a-conferir-o-balcao-diz-inativo-para-a-variacao-desligada-aplicado",
+    "106a-conferir-o-pedido-de-visitante-na-entrega-tem-freio-aplicado",
+    "107a-conferir-a-lista-de-recomendacoes-do-produto-tem-teto-aplicado",
+    "108a-conferir-a-busca-de-devolucao-acha-o-numero-do-pedido-aplicado",
+    "109a-conferir-a-grade-antiga-nao-ressuscita-variacao-excluida-aplicado",
+    "110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado",
+    "111a-conferir-a-v23-recusa-o-pagamento-pelo-app-aplicado",
+    "112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado",
+    "113a-conferir-a-pergunta-nasce-com-a-data-de-agora-aplicado",
+    "114a-conferir-o-texto-da-avaliacao-tem-teto-no-banco-aplicado",
   ]);
 });
 

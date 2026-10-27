@@ -1,8 +1,9 @@
 -- DEPOIS da 20261352000000; SO LEITURA, somente catalogo, rol fechado de 5 linhas. A funcao nova nao muda nenhum dado ao ser aplicada.
+-- O corpo aceito e' o da 20261352000000 OU o da sucessora dela, a 20261395100000 (a grade antiga nao ressuscita variacao excluida: o mesmo corpo mais um CONTINUE).
 WITH itens(item, esperado, vivo) AS (
   SELECT 'controle: catalogo publico visivel', 'sim', CASE WHEN EXISTS (SELECT 1 FROM pg_class WHERE relnamespace = 'public'::regnamespace) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'salvar_produto_com_grade: uma so, com o corpo da 20261352000000 (md5)', 'sim', CASE WHEN COALESCE(
-    (SELECT count(*) = 1 AND bool_and(md5(replace(p.prosrc, E'\r', '')) = '09c2a4b5724acbe46fb2c2e758e96c8f')
+    (SELECT count(*) = 1 AND bool_and(md5(replace(p.prosrc, E'\r', '')) IN ('09c2a4b5724acbe46fb2c2e758e96c8f', '10fc8c0f1e305666b39e5f1f383815e2'))
        FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'salvar_produto_com_grade'), false) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'salvar_produto_com_grade: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path=public, jsonb)', 'sim', CASE WHEN COALESCE(
     (SELECT bool_and(l.lanname = 'plpgsql' AND p.prosecdef AND p.provolatile = 'v' AND NOT p.proisstrict AND NOT p.proretset

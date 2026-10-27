@@ -20,6 +20,11 @@ import { type Root, createRoot } from "react-dom/client";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  desligarDialogoDeConfirmacao,
+  ligarDialogoDeConfirmacao,
+} from "./duble-dialogo-de-confirmacao";
+
 const updateOrderStatus = vi.fn();
 
 vi.mock("@/hooks/useOrders", async () => {
@@ -122,13 +127,17 @@ describe("AdminOrdersView — cancelar pedido online pela edge (S1)", () => {
     });
     vi.stubGlobal("ResizeObserver", ObservadorStub);
     vi.stubGlobal("IntersectionObserver", ObservadorStub);
+    // Lote 230: "Cancelar pedido" pergunta pela janela do app; o dublê lê o
+    // texto dela e decide pelo `confirm` abaixo.
     vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+    ligarDialogoDeConfirmacao();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
   });
 
   afterEach(() => {
+    desligarDialogoDeConfirmacao();
     act(() => {
       raiz.unmount();
     });

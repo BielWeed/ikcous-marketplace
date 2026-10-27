@@ -5,6 +5,7 @@ import {
   SheetDescription,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO } from "@/lib/cor-do-preco-promocional";
 import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -100,6 +101,8 @@ export function FolhaDeOpcoes({
   aberta: boolean;
   onMudar: (aberta: boolean) => void;
 }) {
+  // O Voltar do celular fecha só a folha, como nas outras folhas da casa.
+  useVoltarFechaAFolha(aberta, () => onMudar(false));
   return (
     <Sheet open={aberta} onOpenChange={onMudar}>
       <SheetContent side="bottom" showCloseButton={false} {...props} />

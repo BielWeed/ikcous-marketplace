@@ -16,6 +16,11 @@ import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  desligarDialogoDeConfirmacao,
+  ligarDialogoDeConfirmacao,
+} from "./duble-dialogo-de-confirmacao";
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc: vi.fn(),
@@ -47,9 +52,15 @@ vi.mock("@/components/ui/alert-dialog", () => ({
     open: boolean;
     children: ReactNode;
   }) => (open ? <div>{children}</div> : null),
-  AlertDialogContent: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
-  ),
+  // Lote 230: a janela de confirmação do painel (`useConfirmarAcao`) se
+  // reconhece por este `data-testid` e pela descrição com `data-slot`.
+  AlertDialogContent: ({
+    children,
+    "data-testid": idDeTeste,
+  }: {
+    children: ReactNode;
+    "data-testid"?: string;
+  }) => <div data-testid={idDeTeste}>{children}</div>,
   AlertDialogHeader: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
   ),
@@ -60,7 +71,7 @@ vi.mock("@/components/ui/alert-dialog", () => ({
     <div>{children}</div>
   ),
   AlertDialogDescription: ({ children }: { children: ReactNode }) => (
-    <div>{children}</div>
+    <div data-slot="alert-dialog-description">{children}</div>
   ),
   AlertDialogAction: ({
     children,
@@ -123,6 +134,7 @@ describe("Ficha do pedido — o confirm de cancelar diz quem devolve o dinheiro 
   let confirmSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    ligarDialogoDeConfirmacao();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -133,6 +145,7 @@ describe("Ficha do pedido — o confirm de cancelar diz quem devolve o dinheiro 
   });
 
   afterEach(() => {
+    desligarDialogoDeConfirmacao();
     act(() => {
       raiz.unmount();
     });

@@ -283,7 +283,8 @@ Deno.test("1381: inventario do aplicador, rol das consultas, canais, workflows e
     "tests/banco/pagamentos-rpc-viva.cjs",
   ]) {
     const t = lerRaiz(arq);
-    // As posteriores entram na ordem da aplicacao; a 20261383 (DEFINIR_CARGO) vem depois desta e a 20261386 (PRECO_HISTORICO) fecha a lista.
+    // As posteriores entram na ordem da aplicacao; a 20261383 (DEFINIR_CARGO) vem depois desta, a 20261386 (PRECO_HISTORICO)
+    // e os gatilhos da 20261396 (LIMITES_DE_ABUSO, definicao unica em limites-de-abuso-posterior.cjs) fecham a lista.
     const marcaResto = "EX_ADMIN_RESTO_DO_PAINEL,\n";
     const iFim = t.indexOf("DEFINIR_CARGO,\n");
     const iResto = iFim >= 0 ? t.lastIndexOf(marcaResto, iFim) : -1;
@@ -298,7 +299,7 @@ Deno.test("1381: inventario do aplicador, rol das consultas, canais, workflows e
         .every((l: string) => l.trim() === "" || l.trim().startsWith("//")),
       `${arq}: EX_ADMIN_RESTO_DO_PAINEL seguido so de DEFINIR_CARGO no fim da lista`,
     );
-    // Depois de DEFINIR_CARGO so comentario e a PRECO_HISTORICO (20261386) antes do fecho da lista.
+    // Depois de DEFINIR_CARGO so comentario, a PRECO_HISTORICO (20261386) e os LIMITES_DE_ABUSO (20261396) antes do fecho da lista.
     const aposCargo = t
       .slice(
         t.indexOf("DEFINIR_CARGO,\n") + "DEFINIR_CARGO,\n".length,
@@ -309,8 +310,8 @@ Deno.test("1381: inventario do aplicador, rol das consultas, canais, workflows e
       .filter((l: string) => l !== "" && !l.startsWith("//"));
     assertEquals(
       aposCargo,
-      ["PRECO_HISTORICO,"],
-      `${arq}: so a PRECO_HISTORICO (20261386) vem depois de DEFINIR_CARGO e fecha a lista`,
+      ["PRECO_HISTORICO,", "...LIMITES_DE_ABUSO,"],
+      `${arq}: so a PRECO_HISTORICO (20261386) e os LIMITES_DE_ABUSO (20261396) vem depois de DEFINIR_CARGO e fecham a lista`,
     );
     assertStringIncludes(
       t,

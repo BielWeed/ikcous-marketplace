@@ -36,6 +36,8 @@
 --                                e, DEPOIS dela, 20261232000000 (a grade do CRM mede a recência do mesmo instante da lista);
 --   * `get_admin_customers_paged` → 20261230000000 (a busca de clientes acha pelo número do WhatsApp)
 --                                e, DEPOIS dela, 20261392000000 (a lista de clientes não repete ninguém entre as páginas);
+--   * `admin_devolucoes_listar` → 20261395000000 (a busca de devolução acha o número do pedido; ramo novo no filtro);
+--   * `admin_devolucao_concluir` → ..., 20261343000000 e, DEPOIS dela, 20261395200000 (a conclusão da devolução tranca o estoque na mesma ordem da compra);
 --   * `crm_clientes`           → 20261231000000 (a busca do CRM ignora acento)
 --                                e, DEPOIS dela, 20261392100000 (a busca do CRM acha o número com o +55);
 --   * `registrar_venda_presencial` → 20261235000000 (a venda repetida do balcão devolve a venda feita)
@@ -139,6 +141,7 @@ WITH corpos AS (
     ('upsert_store_config', '9c56a9c6953e1d774a1ee97d5d8a7e16')
 ), sucessoras(fn, h, versao) AS (VALUES
     ('get_admin_orders_paged', 'f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6', '20261387000000'),
+    ('admin_devolucoes_listar', '989a6c6151eb35efc7c834c6cce20f01', '20261395000000'),
     ('get_admin_orders_cancelados_recentes', '9567454f17698f3f0624cca0b06458cd', '20261380000000'),
     ('fin_caixa_abrir', '28ab512e291378a01d110e298af7a402', '20261370000000'),
     ('painel_inicio', 'f11d22d076c59ab54d1beb280954dd15', '20261212000000'),
@@ -161,6 +164,7 @@ WITH corpos AS (
     ('solicitar_estorno', '840de50f44958fe43b55f5222691df9b', '20261241000000'),
     ('admin_devolucao_concluir', 'ebb901efff59a53082836a13e053cd1a', '20261241000000'),
     ('admin_devolucao_concluir', 'ea651d52157521c0fe7ffccc948b4b1a', '20261343000000'),
+    ('admin_devolucao_concluir', 'a152c8dcd7cf6d1e05e5aff128d6c45e', '20261395200000'),
     ('autorizar_post_do_estorno', 'c73e48294c08f34240abc3843aa7d1f1', '20261241000000'),
     ('get_admin_analytics_v2', 'dceb62881ebf8fa404ba3ac295041691', '20261242000000'),
     ('get_admin_analytics_v2', 'ab25e738a3101cccbb0c09450b660ee0', '20261245000000'),

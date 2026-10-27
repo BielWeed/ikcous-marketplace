@@ -348,6 +348,163 @@ const VERIFICACOES = {
         ],
       },
     ],
+  // 20261394: o pedido de visitante na entrega tem freio. create_marketplace_order_v23 e v24 ganham, cada uma, o MESMO trecho 0-quater
+  // (depois da idempotencia e da forma de pagamento aceita, antes de ler o carrinho): o teto de 10 unidades por pedido, o teto de 10
+  // pedidos de visitante pendentes por loja (sob o advisory lock da loja) e a recusa do p_address_id sem sessao. Cada marcador aparece UMA
+  // vez em cada corpo. A consulta 106a confere o corpo exato (md5), os atributos e a ACL; a prova viva faz o comportamento.
+  "20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        {
+          texto:
+            "IF v_user_id IS NULL AND p_payment_method IS DISTINCT FROM 'online' THEN",
+          vezes: 1,
+        },
+        { texto: "visitante_teto_unidades:", vezes: 1 },
+        { texto: "visitante_teto_da_loja:", vezes: 1 },
+        {
+          texto:
+            "pg_catalog.hashtextextended('pedido_visitante_na_entrega', 0)",
+          vezes: 1,
+        },
+        { texto: "interval '72 hours'", vezes: 1 },
+        {
+          texto: "IF p_address_id IS NOT NULL AND v_user_id IS NULL THEN",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        {
+          texto:
+            "IF v_user_id IS NULL AND p_payment_method IS DISTINCT FROM 'online' THEN",
+          vezes: 1,
+        },
+        { texto: "visitante_teto_unidades:", vezes: 1 },
+        { texto: "visitante_teto_da_loja:", vezes: 1 },
+        {
+          texto:
+            "pg_catalog.hashtextextended('pedido_visitante_na_entrega', 0)",
+          vezes: 1,
+        },
+        { texto: "interval '72 hours'", vezes: 1 },
+        {
+          texto: "IF p_address_id IS NOT NULL AND v_user_id IS NULL THEN",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
+  // 20261394200000: a v23 recusa o pagamento pelo app. create_marketplace_order_v23 ganha o trecho 0-ter (depois da idempotencia e da forma de
+  // pagamento aceita, antes do 0-quater e de ler o carrinho): p_payment_method 'online' e' recusado para todo mundo, com o identificador
+  // pedido_online_so_na_v24 no DETAIL. Cada marcador aparece UMA vez no corpo. A consulta 111a confere o corpo exato (md5), os atributos e a
+  // ACL; a prova viva faz o comportamento.
+  "20261394200000_a_v23_recusa_o_pagamento_pelo_app.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        { texto: "IF p_payment_method = 'online' THEN", vezes: 1 },
+        { texto: "pedido_online_so_na_v24:", vezes: 1 },
+      ],
+    },
+  ],
+  // 20261394100000: a lista de recomendacoes do produto tem teto. get_product_recommendations troca SO a linha do LIMIT (o limite pedido vale no
+  // maximo 50; NULL vale o padrao 4); o filtro, a ordenacao e as 31 colunas (custo e fornecedor_id NULOS) nao mudam. A consulta 107a confere o
+  // corpo exato (md5), os atributos e a ACL; a prova viva faz o comportamento.
+  "20261394100000_a_lista_de_recomendacoes_do_produto_tem_teto.sql": [
+    {
+      funcao: "get_product_recommendations",
+      esperado: [
+        {
+          texto: "LIMIT LEAST(GREATEST(COALESCE(p_limit, 4), 1), 50);",
+          vezes: 1,
+        },
+        {
+          texto: "NULL::numeric(10,2),  -- custo: nunca sai desta funcao",
+          vezes: 1,
+        },
+        {
+          texto:
+            "NULL::uuid,           -- fornecedor_id: nunca sai desta funcao",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
+  // 20261395000000: a busca de devolucao acha o numero do pedido. admin_devolucoes_listar troca o corpo (CREATE OR REPLACE) e a consulta 108a confere o corpo exato (md5), os atributos e a ACL; a prova viva faz o comportamento.
+  "20261395000000_a_busca_de_devolucao_acha_o_numero_do_pedido.sql": [
+    {
+      funcao: "admin_devolucoes_listar",
+      esperado: [
+        {
+          texto:
+            "OR upper(right(d.order_id::text, 6)) = upper(btrim(ltrim(v_busca, '#'))))",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
+  // 20261395100000: a grade antiga nao ressuscita variacao excluida. salvar_produto_com_grade troca o corpo (CREATE OR REPLACE) e a consulta 109a confere o corpo exato (md5), os atributos e a ACL; a prova viva faz o comportamento.
+  "20261395100000_a_grade_antiga_nao_ressuscita_variacao_excluida.sql": [
+    {
+      funcao: "salvar_produto_com_grade",
+      esperado: [
+        {
+          texto: "20261395100000: variacao que alguem excluiu",
+          vezes: 1,
+        },
+        {
+          texto:
+            "      CONTINUE;\n    END IF;\n    INSERT INTO public.product_variants",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
+  // 20261395200000: a conclusao da devolucao tranca na mesma ordem da compra. admin_devolucao_concluir troca o corpo (CREATE OR REPLACE) e a consulta 110a confere o corpo exato (md5), os atributos e a ACL; a prova viva faz o comportamento.
+  "20261395200000_a_conclusao_da_devolucao_tranca_na_mesma_ordem_da_compra.sql":
+    [
+      {
+        funcao: "admin_devolucao_concluir",
+        esperado: [
+          {
+            texto: ">>> ordem global das travas (20261395200000)",
+            vezes: 1,
+          },
+          {
+            texto: "<<< ordem global das travas (20261395200000)",
+            vezes: 1,
+          },
+        ],
+      },
+    ],
+  // 20261396000000: cada conta tem no maximo 10 aparelhos com aviso ligado. A funcao NOVA do gatilho conta so o endpoint novo (o re-registro por upsert
+  // sai antes), toma a trava por conta antes de contar e so recusa quem nao e' administrador; a consulta 112a confere o corpo exato (md5), os atributos e a ACL.
+  "20261396000000_cada_conta_tem_no_maximo_10_aparelhos_com_aviso.sql": {
+    funcao: "push_inscricoes_limite_por_conta",
+    esperado: [
+      { texto: "s.endpoint = NEW.endpoint", vezes: 2 },
+      {
+        texto:
+          "pg_advisory_xact_lock(hashtextextended('push_subscriptions_limite:'",
+        vezes: 1,
+      },
+      { texto: "LIMIT v_limite", vezes: 1 },
+      { texto: "AND NOT public.rls_admin_atual() THEN", vezes: 1 },
+    ],
+  },
+  // 20261396100000: a pergunta do produto nasce com a data de agora. A funcao NOVA do gatilho troca created_at por now() so para cliente que nao e'
+  // administrador (a excecao do admin e da sessao direta); a consulta 113a confere o corpo exato (md5), os atributos e a ACL.
+  "20261396100000_a_pergunta_nasce_com_a_data_de_agora.sql": {
+    funcao: "pergunta_nasce_com_a_data_de_agora",
+    esperado: [
+      { texto: "NEW.created_at := now();", vezes: 1 },
+      { texto: "AND NOT public.rls_admin_atual() THEN", vezes: 1 },
+    ],
+  },
   // 20261382: o resultado (fin_dre) mostra tarifa, juro e quebra como despesa. So o 'valor' das linhas do grupo financeiro ganha o
   // sinal (entrada menos saida); o resto do corpo e' o da 20261242. A consulta 87a confere o corpo exato (md5), os atributos e a ACL.
   "20261382000000_o_resultado_mostra_tarifa_juro_e_quebra_como_despesa.sql": {

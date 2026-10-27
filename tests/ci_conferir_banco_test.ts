@@ -2144,6 +2144,18 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "ea651d52157521c0fe7ffccc948b4b1a",
           versao: "20261343000000",
         },
+        // 27/10/2026 (lote 231): a conclusao da devolucao tranca o estoque na mesma ordem da compra (a cadeia 241 -> 343 -> 395200).
+        {
+          fn: "admin_devolucao_concluir",
+          h: "a152c8dcd7cf6d1e05e5aff128d6c45e",
+          versao: "20261395200000",
+        },
+        // 27/10/2026 (lote 231): a busca de devolucao acha o numero do pedido (a cadeia 199 -> 395).
+        {
+          fn: "admin_devolucoes_listar",
+          h: "989a6c6151eb35efc7c834c6cce20f01",
+          versao: "20261395000000",
+        },
         {
           fn: "autorizar_post_do_estorno",
           h: "c73e48294c08f34240abc3843aa7d1f1",
@@ -3639,13 +3651,13 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
     });
   }
   await t.step(
-    "quem é o dono do corpo: 60..66 só para as duas que nenhuma migration posterior redefine; buscar_por_codigo_barras é da 20261393100000 (o balcão diz inativo para a variação desligada; antes, a 20261381, a guarda passa a exigir o admin atual, na hora); get_admin_orders_paged é da 20261387 (a busca de pedido pelo número não vira busca de telefone), get_admin_orders_cancelados_recentes é da 20261380 (o aviso de cancelados antigos conta só pendência real), registrar_venda_presencial é da 20261280 e upsert_store_config é da 20261244 (a loja escolhe como entrega na cidade; antes, a 20261239, a identidade legal da loja)",
+    "quem é o dono do corpo: 60..66 só para a que nenhuma migration posterior redefine (limpar_cotacoes_fora_da_janela); get_product_recommendations é da 20261394100000 (a lista de recomendações do produto tem teto de 50; antes, a 20261160, a coluna do código de barras); buscar_por_codigo_barras é da 20261393100000 (o balcão diz inativo para a variação desligada; antes, a 20261381, a guarda passa a exigir o admin atual, na hora); get_admin_orders_paged é da 20261387 (a busca de pedido pelo número não vira busca de telefone), get_admin_orders_cancelados_recentes é da 20261380 (o aviso de cancelados antigos conta só pendência real), registrar_venda_presencial é da 20261280 e upsert_store_config é da 20261244 (a loja escolhe como entrega na cidade; antes, a 20261239, a identidade legal da loja)",
     () => {
       assertEquals(dono, {
         buscar_por_codigo_barras: "20261393100000",
         get_admin_orders_cancelados_recentes: "20261380000000",
         get_admin_orders_paged: "20261387000000",
-        get_product_recommendations: "20261160000000",
+        get_product_recommendations: "20261394100000",
         limpar_cotacoes_fora_da_janela: "20261166000000",
         registrar_venda_presencial: "20261280000000",
         upsert_store_config: "20261310000000",
@@ -3655,10 +3667,7 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
   await t.step(
     "nenhuma migration > 20261166 redefine as funções que a 9a trata como só de 60..66",
     () => {
-      for (const fn of [
-        "get_product_recommendations",
-        "limpar_cotacoes_fora_da_janela",
-      ]) {
+      for (const fn of ["limpar_cotacoes_fora_da_janela"]) {
         for (const [arquivo, texto] of Object.entries(textos)) {
           if (arquivo.slice(0, 14) <= "20261166000000") continue;
           assert(
@@ -12458,6 +12467,8 @@ const MIGRACAO_236 = `${MIGRATIONS_DIR}/20261236000000_a_compra_que_da_zero_reai
 const MIGRACAO_244 = `${MIGRATIONS_DIR}/20261244000000_a_loja_escolhe_como_entrega_na_cidade.sql`;
 const MIGRACAO_350 = `${MIGRATIONS_DIR}/20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql`;
 const MIGRACAO_384 = `${MIGRATIONS_DIR}/20261384000000_o_pedido_pelo_app_exige_conta_e_nao_prende_estoque_de_visitante.sql`;
+const MIGRACAO_394 = `${MIGRATIONS_DIR}/20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql`;
+const MIGRACAO_394200 = `${MIGRATIONS_DIR}/20261394200000_a_v23_recusa_o_pagamento_pelo_app.sql`;
 
 for (const [nome, linhasDoRol] of [
   [NOME_31A, 9],
@@ -12628,6 +12639,7 @@ Deno.test("31a/31b — a 31a aceita o corpo SUCESSOR da 20261236000000 (a compra
   const m244 = await Deno.readTextFile(MIGRACAO_244);
   const m350 = await Deno.readTextFile(MIGRACAO_350);
   const m384 = await Deno.readTextFile(MIGRACAO_384);
+  const m394 = await Deno.readTextFile(MIGRACAO_394);
   const a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_31A}.sql`);
   const b = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_31B}.sql`);
   const v24da229 = md5(corpoDe(m229, "create_marketplace_order_v24"));
@@ -12638,25 +12650,36 @@ Deno.test("31a/31b — a 31a aceita o corpo SUCESSOR da 20261236000000 (a compra
   const v24da350 = md5(corpoDe(m350, "create_marketplace_order_v24"));
   const v23da350 = md5(corpoDe(m350, "create_marketplace_order_v23"));
   const v24da384 = md5(corpoDe(m384, "create_marketplace_order_v24"));
+  const v24da394 = md5(corpoDe(m394, "create_marketplace_order_v24"));
+  const v23da394 = md5(corpoDe(m394, "create_marketplace_order_v23"));
+  // a 20261394200000 (a v23 recusa o pagamento pelo app) redefine SO a v23, em cima do corpo da 394000
+  const m394200 = await Deno.readTextFile(MIGRACAO_394200);
+  const v23da394200 = md5(corpoDe(m394200, "create_marketplace_order_v23"));
+  assert(
+    v23da394200 !== v23da394,
+    "os corpos da v23 da 394 e da 394200 sao o mesmo",
+  );
   assert(v24da384 !== v24da350, "os corpos da v24 da 350 e da 384 sao o mesmo");
+  assert(v24da394 !== v24da384, "os corpos da v24 da 384 e da 394 sao o mesmo");
+  assert(v23da394 !== v23da350, "os corpos da v23 da 350 e da 394 sao o mesmo");
   assert(v24da229 !== v24da236, "os dois corpos da v24 sao o mesmo");
   assert(v24da244 !== v24da350, "os corpos da v24 da 244 e da 350 sao o mesmo");
   assert(v23da244 !== v23da350, "os corpos da v23 da 244 e da 350 sao o mesmo");
   assert(v24da236 !== v24da244, "os corpos da v24 da 236 e da 244 sao o mesmo");
   assert(v23da229 !== v23da244, "os corpos da v23 da 229 e da 244 sao o mesmo");
   const sa = sqlSemComentarios(a);
-  // a v24 aceita os CINCO hashes (229, 236, 244, 350 e a sucessora 384) e responde sempre com o da 20261229000000 (o rol e os rotulos nao mudam)
+  // a v24 aceita os SEIS hashes (229, 236, 244, 350, 384 e a sucessora 394) e responde sempre com o da 20261229000000 (o rol e os rotulos nao mudam)
   assertStringIncludes(
     sa,
-    `f.m IN ('${v24da229}', '${v24da236}', '${v24da244}', '${v24da350}', '${v24da384}')`,
-    "31a: a v24 aceita o corpo da 20261229000000, o da 20261236000000, o da 20261244000000, o da 20261350000000 OU o da 20261384000000",
+    `f.m IN ('${v24da229}', '${v24da236}', '${v24da244}', '${v24da350}', '${v24da384}', '${v24da394}')`,
+    "31a: a v24 aceita o corpo da 20261229000000, o da 20261236000000, o da 20261244000000, o da 20261350000000, o da 20261384000000 OU o da 20261394000000",
   );
   assertStringIncludes(sa, `THEN '${v24da229}'`);
-  // a v23 aceita os TRES (o da 229, o da 244 e o da 350) e responde sempre com o da 20261229000000
+  // a v23 aceita os CINCO (o da 229, o da 244, o da 350, a sucessora 394 e a 394200) e responde sempre com o da 20261229000000
   assertStringIncludes(
     sa,
-    `f.m IN ('${v23da229}', '${v23da244}', '${v23da350}')`,
-    "31a: a v23 aceita o corpo da 20261229000000, o da 20261244000000 OU o da 20261350000000",
+    `f.m IN ('${v23da229}', '${v23da244}', '${v23da350}', '${v23da394}', '${v23da394200}')`,
+    "31a: a v23 aceita o corpo da 20261229000000, o da 20261244000000, o da 20261350000000, o da 20261394000000 OU o da 20261394200000",
   );
   assertStringIncludes(sa, `THEN '${v23da229}'`);
   // o hash da 236 so entra na linha da v24 (uma vez); os da 244, uma vez em cada linha
@@ -12689,6 +12712,21 @@ Deno.test("31a/31b — a 31a aceita o corpo SUCESSOR da 20261236000000 (a compra
     sa.split(v24da384).length - 1,
     1,
     "31a: o hash da v24 da 384 aparece uma vez so",
+  );
+  assertEquals(
+    sa.split(v24da394).length - 1,
+    1,
+    "31a: o hash da v24 da 394 aparece uma vez so",
+  );
+  assertEquals(
+    sa.split(v23da394).length - 1,
+    1,
+    "31a: o hash da v23 da 394 aparece uma vez so",
+  );
+  assertEquals(
+    sa.split(v23da394200).length - 1,
+    1,
+    "31a: o hash da v23 da 394200 aparece uma vez so",
   );
   assert(
     !b.includes(v24da350) && !b.includes(v23da350),
