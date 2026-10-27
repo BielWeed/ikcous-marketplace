@@ -1030,7 +1030,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       // Reabriu antes do `popstate` da devolução anterior: o desvio da camada
       // nova (abaixo) toma o lugar do engolidor, que não pode mais agir.
       soltarEngolidor();
-      if (!entradaDaCamadaRef.current) {
+      // Uma entrada serve ao conjunto de camadas. Mas um Voltar físico a
+      // consome mesmo com outra camada por baixo (o leitor abre DENTRO da
+      // janela de variação): nesse caso o topo já não é nosso e a camada que
+      // sobrou precisa de entrada nova, senão o Voltar seguinte sairia da tela.
+      if (
+        !entradaDaCamadaRef.current ||
+        window.history.state?.modal !== "produto"
+      ) {
         window.history.pushState(
           { ...window.history.state, modal: "produto" },
           "",

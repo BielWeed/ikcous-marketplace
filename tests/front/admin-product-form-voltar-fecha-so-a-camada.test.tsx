@@ -67,6 +67,18 @@ vi.mock("@/components/admin/PhoneSimulator", () => ({
   ),
 }));
 
+// O leitor de câmera de verdade precisa de câmera e de módulo pesado: aqui só
+// importa se ele está aberto ou não.
+vi.mock("@/components/admin/pdv/LeitorDeCodigo", () => ({
+  LeitorDeCodigo: ({ aoFechar }: { aoFechar: () => void }) => (
+    <div data-testid="duble-leitor">
+      <button type="button" onClick={aoFechar}>
+        Fechar leitor
+      </button>
+    </div>
+  ),
+}));
+
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -227,7 +239,7 @@ describe("AdminProductFormView — Voltar do celular fecha só a camada aberta",
       d.textContent?.includes("Onde este produto aparece na loja"),
     ) ?? null;
 
-  it("Voltar com 'Nova variação' aberta fecha só a janela; o Voltar seguinte sai do cadastro", async () => {
+  it("Voltar com 'Nova variação' aberta fecha só a janela e não deixa desvio sobrando (o próximo Voltar já é do App)", async () => {
     await montar();
     await abrirVariacoes();
     await act(async () => {
@@ -331,6 +343,78 @@ describe("AdminProductFormView — Voltar do celular fecha só a camada aberta",
 
     expect(abertas()).toBe(0);
     expect(document.getElementById("product-name")).not.toBeNull();
+    expect(overrideAtual).toBeNull();
+  });
+  // O leitor de câmera abre POR DENTRO da janela de variação. Há UMA entrada de
+  // histórico para o conjunto: o 1º Voltar a consome (e fecha o leitor), então
+  // a variação que continua aberta precisa de uma entrada nova -- senão o 2º
+  // Voltar tiraria a lojista do cadastro inteiro, sem "Alterações não salvas".
+  it("variação + leitor: 1º Voltar fecha o leitor, 2º fecha a variação, e o cadastro continua", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: { getUserMedia: vi.fn() },
+      configurable: true,
+      writable: true,
+    });
+    await montar();
+    await abrirVariacoes();
+    await act(async () => {
+      botaoPorTexto("+ Novo")?.click();
+    });
+    await esperar();
+    await act(async () => {
+      botaoPorTexto("Ler com a câmera")?.click();
+    });
+    await esperar(100);
+    const leitor = () => document.querySelector('[data-testid="duble-leitor"]');
+    expect(leitor()).not.toBeNull();
+    const voltar = vi.spyOn(window.history, "back");
+
+    // 1º Voltar: fecha só o leitor; a variação segue aberta e com entrada nossa.
+    await voltarFisico();
+    expect(leitor()).toBeNull();
+    expect(janelaDeVariacao()).not.toBeNull();
+    expect(window.history.state).toMatchObject({ modal: "produto" });
+    expect(overrideAtual).toBeInstanceOf(Function);
+
+    // 2º Voltar: fecha só a variação.
+    await voltarFisico();
+    await esperarSumir(janelaDeVariacao);
+    expect(janelaDeVariacao()).toBeNull();
+    expect(document.getElementById("product-name")).not.toBeNull();
+    // O código nunca consome entrada por conta própria aqui (o Voltar físico já
+    // consumiu) e não sobra desvio: o seguinte pertence ao App.
+    expect(voltar).not.toHaveBeenCalled();
+    expect(overrideAtual).toBeNull();
+  });
+
+  it("variação + leitor, fechando o leitor pelo botão: a entrada continua sendo uma só e o Voltar seguinte fecha a variação", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: { getUserMedia: vi.fn() },
+      configurable: true,
+      writable: true,
+    });
+    await montar();
+    await abrirVariacoes();
+    await act(async () => {
+      botaoPorTexto("+ Novo")?.click();
+    });
+    await esperar();
+    const push = vi.spyOn(window.history, "pushState");
+    await act(async () => {
+      botaoPorTexto("Ler com a câmera")?.click();
+    });
+    await esperar(100);
+    await act(async () => {
+      botaoPorTexto("Fechar leitor")?.click();
+    });
+    await esperar(60);
+
+    // Abrir e fechar o leitor pelo botão não empurra entrada nenhuma.
+    expect(push).not.toHaveBeenCalled();
+    expect(janelaDeVariacao()).not.toBeNull();
+    await voltarFisico();
+    await esperarSumir(janelaDeVariacao);
+    expect(janelaDeVariacao()).toBeNull();
     expect(overrideAtual).toBeNull();
   });
 });
