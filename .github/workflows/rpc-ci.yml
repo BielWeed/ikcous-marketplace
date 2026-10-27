@@ -226,6 +226,8 @@ on:
       - "scripts/publicacao/consultas/110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente.sql"
       - "scripts/publicacao/consultas/112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado.sql"
       - "scripts/publicacao/consultas/112b-antes-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-ausente.sql"
+      - "scripts/publicacao/consultas/113a-conferir-a-pergunta-nasce-com-a-data-de-agora-aplicado.sql"
+      - "scripts/publicacao/consultas/113b-antes-a-pergunta-nasce-com-a-data-de-agora-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -421,6 +423,8 @@ on:
       - "scripts/publicacao/consultas/110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente.sql"
       - "scripts/publicacao/consultas/112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado.sql"
       - "scripts/publicacao/consultas/112b-antes-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-ausente.sql"
+      - "scripts/publicacao/consultas/113a-conferir-a-pergunta-nasce-com-a-data-de-agora-aplicado.sql"
+      - "scripts/publicacao/consultas/113b-antes-a-pergunta-nasce-com-a-data-de-agora-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -667,6 +671,13 @@ jobs:
       - name: Prova viva de cada conta com no maximo 10 aparelhos com aviso (20261396000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cada-conta-tem-no-maximo-10-aparelhos-viva.cjs
+      # Migration 20261396100000 (a pergunta do produto nasce com a data de agora): gatilho BEFORE INSERT em questions troca created_at por now() quando quem
+      # grava e' cliente que nao e' administrador de agora (a data futura fixava a pergunta no topo da vitrine); admin, service_role e sessao direta
+      # gravam a data como vier; "admin" so no JWT e' trocado; mutantes, reaplicar, rollback, pre-voo, pos-voo, atomicidade, lock_timeout e consultas
+      # 113a/113b. CLONE proprio.
+      - name: Prova viva da pergunta que nasce com a data de agora (20261396100000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-pergunta-nasce-com-a-data-de-agora-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

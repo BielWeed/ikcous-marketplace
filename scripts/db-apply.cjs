@@ -483,6 +483,15 @@ const VERIFICACOES = {
       { texto: "AND NOT public.rls_admin_atual() THEN", vezes: 1 },
     ],
   },
+  // 20261396100000: a pergunta do produto nasce com a data de agora. A funcao NOVA do gatilho troca created_at por now() so para cliente que nao e'
+  // administrador (a excecao do admin e da sessao direta); a consulta 113a confere o corpo exato (md5), os atributos e a ACL.
+  "20261396100000_a_pergunta_nasce_com_a_data_de_agora.sql": {
+    funcao: "pergunta_nasce_com_a_data_de_agora",
+    esperado: [
+      { texto: "NEW.created_at := now();", vezes: 1 },
+      { texto: "AND NOT public.rls_admin_atual() THEN", vezes: 1 },
+    ],
+  },
   // 20261382: o resultado (fin_dre) mostra tarifa, juro e quebra como despesa. So o 'valor' das linhas do grupo financeiro ganha o
   // sinal (entrada menos saida); o resto do corpo e' o da 20261242. A consulta 87a confere o corpo exato (md5), os atributos e a ACL.
   "20261382000000_o_resultado_mostra_tarifa_juro_e_quebra_como_despesa.sql": {

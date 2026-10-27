@@ -637,6 +637,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente",
   "112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado",
   "112b-antes-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-ausente",
+  "113a-conferir-a-pergunta-nasce-com-a-data-de-agora-aplicado",
+  "113b-antes-a-pergunta-nasce-com-a-data-de-agora-ausente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

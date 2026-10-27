@@ -3111,6 +3111,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "109a-conferir-a-grade-antiga-nao-ressuscita-variacao-excluida-aplicado",
     "110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado",
     "112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado",
+    "113a-conferir-a-pergunta-nasce-com-a-data-de-agora-aplicado",
   ]);
 });
 

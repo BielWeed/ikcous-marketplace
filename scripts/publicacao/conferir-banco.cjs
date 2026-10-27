@@ -2815,7 +2815,24 @@ const ROL_DA_112B = [
   "push_subscriptions: endpoint text e user_id uuid existem e a tabela tem RLS ligada",
   "rls_admin_atual() existe, devolve boolean e e a porta do administrador de agora (a excecao do gatilho depende dela)",
 ];
+// Lote 113 (20261396100000, a pergunta do produto nasce com a data de agora: funcao pergunta_nasce_com_a_data_de_agora e gatilho
+// tr_pergunta_nasce_com_a_data_de_agora em questions, objetos NOVOS). A 113a prova o estado novo; a 113b a ausencia dos dois e o que o
+// gatilho precisa (a coluna, a RLS e rls_admin_atual). Nenhuma das duas le pergunta.
+const ROL_DA_113A = [
+  "controle: funcoes de public visiveis a este papel",
+  "pergunta_nasce_com_a_data_de_agora: corpo exato (md5)",
+  "pergunta_nasce_com_a_data_de_agora: uma so, atributos conhecidos (SECURITY DEFINER, plpgsql, VOLATILE, retorno trigger, search_path=public) e fechada a PUBLIC, anon, authenticated e service_role",
+  "questions: gatilho tr_pergunta_nasce_com_a_data_de_agora BEFORE INSERT por linha, ligado, sem WHEN, chamando a funcao",
+];
+const ROL_DA_113B = [
+  "controle: catalogo publico visivel",
+  "pergunta_nasce_com_a_data_de_agora e tr_pergunta_nasce_com_a_data_de_agora: ainda NAO existem",
+  "questions: created_at timestamptz existe e a tabela tem RLS ligada",
+  "rls_admin_atual() existe, devolve boolean e e a porta do administrador de agora (a excecao do gatilho depende dela)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "113a-conferir-a-pergunta-nasce-com-a-data-de-agora-aplicado": ROL_DA_113A,
+  "113b-antes-a-pergunta-nasce-com-a-data-de-agora-ausente": ROL_DA_113B,
   "112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado":
     ROL_DA_112A,
   "112b-antes-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-ausente":

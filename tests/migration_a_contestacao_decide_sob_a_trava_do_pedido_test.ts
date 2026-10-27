@@ -655,6 +655,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261396000000: cada conta tem no maximo 10 aparelhos com aviso ligado (gatilho BEFORE INSERT em push_subscriptions; o re-registro do mesmo aparelho por upsert nao conta;
     // duas conexoes reais, mutantes, rollback, pre/pos-voo e consultas 112a/112b).
     "tests/banco/cada-conta-tem-no-maximo-10-aparelhos-viva.cjs",
+    // 20261396100000: a pergunta do produto nasce com a data de agora (gatilho BEFORE INSERT em questions troca created_at por now() para cliente que nao e' administrador;
+    // admin, service_role e sessao direta gravam como vierem; mutantes, rollback, pre/pos-voo e consultas 113a/113b).
+    "tests/banco/a-pergunta-nasce-com-a-data-de-agora-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",
