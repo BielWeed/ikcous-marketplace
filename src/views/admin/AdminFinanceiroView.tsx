@@ -117,17 +117,23 @@ const CLASSE_PONTO_DA_ABA =
 const CLASSE_CHIP_DO_TOPO =
   "relative inline-flex h-9 items-center justify-center gap-1.5 rounded-[12px] border border-solid px-2.5 text-[13px] font-semibold transition-colors before:absolute before:inset-x-0 before:-inset-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 active:scale-[0.98]";
 
+// "A receber" do Início: abre em Pagar e receber já no lado de receber.
+const ALVO_A_RECEBER = "previstos-entrada";
+
 function ehAba(valor: string): valor is AbaDoFinanceiro {
   return ABAS.some((aba) => aba.valor === valor);
 }
 
 function abaDeAbertura(valor: string | null | undefined): AbaDoFinanceiro {
+  if (valor === ALVO_A_RECEBER) return "previstos";
   return valor && ehAba(valor) ? valor : "visao";
 }
 
 // Marca da entrada de histórico que a folha aberta empurra: é ela que o Voltar do
 // aparelho consome, em vez de tirar o lojista da tela com o rascunho dentro.
 const MARCA_DA_FOLHA = "fin-folha";
+// Intervalo mínimo entre duas releituras automáticas ao voltar ao app.
+const TRAVA_DA_RELEITURA_MS = 15_000;
 
 export function AdminFinanceiroView({
   onNavigate,
@@ -152,8 +158,9 @@ export function AdminFinanceiroView({
       ?.querySelector<HTMLElement>('[role="tab"][data-state="active"]')
       ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [aba, ativo]);
-  const [ladoDosPrevistos, setLadoDosPrevistos] =
-    useState<LadoDosPrevistos>("saida");
+  const [ladoDosPrevistos, setLadoDosPrevistos] = useState<LadoDosPrevistos>(
+    abaInicial === ALVO_A_RECEBER ? "entrada" : "saida",
+  );
   const [periodo, setPeriodo] = useState<PeriodoEscolhido>({
     preset: "mes_atual",
   });
@@ -257,6 +264,27 @@ export function AdminFinanceiroView({
     [numeroDaFolha, folha, fecharFolha],
   );
   const invalidar = useCallback(() => setVersao((v) => v + 1), []);
+  // Tela aberta há tempo (tablet no balcão): ao voltar a ver o app, relê tudo
+  // (o esperado na gaveta, o saldo e o extrato ficam velhos). Nunca por cima de
+  // uma folha aberta (formulário com digitação), e com trava contra rajada
+  // (voltar à aba dispara `visibilitychange` e `focus` quase juntos).
+  useEffect(() => {
+    if (!ativo) return;
+    let ultima = Date.now();
+    const aoVoltar = () => {
+      if (document.visibilityState === "hidden" || abertaRef.current) return;
+      const agora = Date.now();
+      if (agora - ultima < TRAVA_DA_RELEITURA_MS) return;
+      ultima = agora;
+      invalidar();
+    };
+    document.addEventListener("visibilitychange", aoVoltar);
+    window.addEventListener("focus", aoVoltar);
+    return () => {
+      document.removeEventListener("visibilitychange", aoVoltar);
+      window.removeEventListener("focus", aoVoltar);
+    };
+  }, [ativo, invalidar]);
   const aoSalvar = useCallback(
     (mensagem: string, tom: "sucesso" | "informacao" = "sucesso") => {
       invalidar();

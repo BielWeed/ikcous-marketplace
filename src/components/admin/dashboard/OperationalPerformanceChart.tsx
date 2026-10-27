@@ -6,6 +6,7 @@ import {
   BalaoDoGrafico,
   MARGEM_TOPO_LUCRO,
   MARGEM_TOPO_VENDAS,
+  reais,
 } from "@/components/admin/dashboard/BalaoDoGrafico";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardStats } from "@/hooks/useAnalytics";
@@ -69,6 +70,23 @@ function SeloDeCrescimento({ valor }: { readonly valor: number }) {
       <p className="text-admin-text-soft text-[11px]">vs. 30 dias antes</p>
     </div>
   );
+}
+
+/**
+ * A RPC devolve +100 quando os 30 dias anteriores não tiveram venda e os
+ * últimos 30 tiveram ("de zero para qualquer coisa"). Isso não é crescimento:
+ * sem base, sem selo (mesmo critério dos chips de Receita/Pedidos do CRM).
+ * A base sai do próprio histórico diário: os 30 dias antes dos últimos 30.
+ */
+function semVendaNosTrintaDiasAntes(stats: DashboardStats): boolean {
+  const temVenda = (dias: readonly { revenue?: number | null }[]) =>
+    dias.some((dia) => (dia.revenue ?? 0) > 0);
+  const historico = stats.revenueHistory ?? [];
+  // growth 0 sem nenhuma venda nos 60 dias: a RPC devolve 0 quando as duas
+  // janelas são zero, e isso não é "0% de crescimento".
+  if (stats.growth === 0) return !temVenda(historico.slice(-60));
+  if (stats.growth !== 100) return false;
+  return !temVenda(historico.slice(-60, -30));
 }
 
 export const OperationalPerformanceChart = memo(
@@ -212,7 +230,8 @@ export const OperationalPerformanceChart = memo(
           </div>
           {!loading &&
             typeof stats?.growth === "number" &&
-            Number.isFinite(stats.growth) && (
+            Number.isFinite(stats.growth) &&
+            !semVendaNosTrintaDiasAntes(stats) && (
               <SeloDeCrescimento valor={stats.growth} />
             )}
           <ExplicacaoDoRelatorio titulo="Histórico da loja">
@@ -308,12 +327,10 @@ export const OperationalPerformanceChart = memo(
                   Lucro acumulado
                 </p>
                 <p className="text-admin-text text-base font-extrabold tabular-nums">
-                  R${" "}
-                  {processedRoiData[
-                    processedRoiData.length - 1
-                  ]?.cumulativeProfit.toLocaleString("pt-BR", {
-                    maximumFractionDigits: 0,
-                  }) ?? "0"}
+                  {reais(
+                    processedRoiData[processedRoiData.length - 1]
+                      ?.cumulativeProfit ?? 0,
+                  )}
                 </p>
               </div>
               {!!stats.inventory?.totalCost &&

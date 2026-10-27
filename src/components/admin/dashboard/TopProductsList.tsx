@@ -5,6 +5,7 @@ import {
   EstadoVazioDoCrm,
 } from "@/components/admin/crm/PecasDoCrm";
 import type { DashboardStats } from "@/hooks/useAnalytics";
+import { formatarMoeda } from "@/lib/crm";
 import {
   VISAO_SEM_CUSTO,
   avisoProdutosSemCusto,
@@ -95,10 +96,7 @@ export const TopProductsList = memo(function TopProductsList({
                       </p>
                     </div>
                     <span className="text-admin-text text-right text-[13px] font-extrabold tabular-nums">
-                      R${" "}
-                      {Number(item.total || 0).toLocaleString("pt-BR", {
-                        minimumFractionDigits: 2,
-                      })}
+                      {formatarMoeda(Number(item.total || 0))}
                     </span>
                   </button>
                 </li>

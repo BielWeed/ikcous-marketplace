@@ -85,6 +85,7 @@ export function ParaFazer({
       contagem: vencidas,
       pendente: (vencidas ?? 0) > 0,
       destino: "admin-financeiro",
+      alvo: "previstos",
     },
     {
       chave: "devolucoes",

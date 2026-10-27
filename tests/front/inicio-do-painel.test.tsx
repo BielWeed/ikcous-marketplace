@@ -302,17 +302,18 @@ describe("Início do painel", () => {
     await montar();
     await esperarAte(() => texto(hospedeiro).includes("pendências"));
 
-    const destinos: [string, string][] = [
+    // Lote 224: "contas vencidas" abre direto em "Pagar e receber" (2º argumento).
+    const destinos: [string, ...string[]][] = [
       ["Preparar pedidos", "admin-orders"],
       ["1 devolução aberta", "admin-devolucoes"],
-      ["2 contas vencidas", "admin-financeiro"],
+      ["2 contas vencidas", "admin-financeiro", "previstos"],
       ["3 produtos com estoque baixo", "admin-products"],
     ];
-    for (const [rotulo, destino] of destinos) {
+    for (const [rotulo, ...destino] of destinos) {
       await act(async () => {
         botaoPorTexto(hospedeiro, rotulo).click();
       });
-      expect(onNavigate).toHaveBeenLastCalledWith(destino);
+      expect(onNavigate.mock.lastCall).toEqual(destino);
     }
     // A contagem dos pedidos mora na linha âmbar acima do botão do destaque.
     expect(texto(hospedeiro)).toContain("5 pedidos esperando para preparar");
