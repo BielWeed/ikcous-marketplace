@@ -220,6 +220,26 @@ describe("pedido — rastreio não se perde", () => {
     expect(campo().disabled).toBe(false);
   });
 
+  it("código copiado com espaços no meio é salvo sem eles (a cliente copia o que vê)", async () => {
+    await mostrar(pedido());
+    clicar("Editar Código");
+    // (o campo já sobe as letras para maiúsculas; os espaços ficam como foram digitados)
+    digitar("  BR 123 456 789 BR ");
+    await act(async () => clicar("Salvar"));
+
+    expect(atualizar).toHaveBeenCalledWith({ tracking_code: "BR123456789BR" });
+    expect(hospedeiro.textContent).toContain("BR123456789BR");
+  });
+
+  it("código só com espaços limpa o rastreio (nunca grava texto em branco)", async () => {
+    await mostrar(pedido());
+    clicar("Editar Código");
+    digitar("   ");
+    await act(async () => clicar("Salvar"));
+
+    expect(atualizar).toHaveBeenCalledWith({ tracking_code: null });
+  });
+
   it("erro do servidor mostra o aviso e mantém a edição aberta para tentar de novo", async () => {
     const erro = new Error("Falha simulada");
     vi.spyOn(console, "error").mockImplementation(() => {});
