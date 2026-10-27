@@ -27,6 +27,12 @@ import {
   rotuloCondicao,
   rotuloResolucao,
 } from "@/lib/devolucao";
+import {
+  RPC_DO_REEMBOLSO_R1,
+  chamarRpcDoR1,
+  lerReembolsosESaldo,
+} from "@/lib/reembolso-em-duvida";
+import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type {
   CondicaoItemDevolvido,
@@ -52,8 +58,10 @@ const CAMPO =
 const ROTULO =
   "mb-1.5 block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500";
 
-/** O pedido foi pago pelo app (o reembolso volta pelo Mercado Pago)? */
-function pagoPeloApp(detalhe: DevolucaoDetalhe): boolean {
+/** O pedido foi pago pelo app? Se foi, o reembolso volta pelo Mercado Pago
+ * enquanto o pagamento tiver até 180 dias; depois disso o servidor registra
+ * como manual (a tela não recebe a data do pagamento, então fala das duas). */
+export function pagoPeloApp(detalhe: DevolucaoDetalhe): boolean {
   const p = detalhe.pedido;
   return (
     p?.payment_method === "online" &&
@@ -128,10 +136,16 @@ export function AcoesDaDevolucao({
 }>) {
   const acoes = acoesDoLojista(detalhe);
   const resolucoes = resolucoesDaConclusao(detalhe.tipo);
+  // O que o servidor ainda deixa devolver deste pedido (a mesma conta que ele
+  // faz ao concluir). `null` = ainda não lido, ou ilegível: aí vale o padrão.
+  const [disponivel, setDisponivel] = useState<number | null>(null);
+  const sugeridoCheio =
+    paraCentavos(detalhe.valor_itens) + paraCentavos(detalhe.valor_frete_ida);
+  const saldoEmCentavos = disponivel === null ? null : paraCentavos(disponivel);
+  const limitadoAoSaldo =
+    saldoEmCentavos !== null && saldoEmCentavos < sugeridoCheio;
   const valorPadrao = (
-    (paraCentavos(detalhe.valor_itens) +
-      paraCentavos(detalhe.valor_frete_ida)) /
-    100
+    (limitadoAoSaldo ? saldoEmCentavos : sugeridoCheio) / 100
   ).toFixed(2);
 
   const [modo, setModo] = useState<Modo>(null);
@@ -158,7 +172,10 @@ export function AcoesDaDevolucao({
       ? detalhe.resolucao_desejada
       : resolucoes[0],
   );
-  const [valor, setValor] = useState(valorPadrao);
+  // Só o que a lojista DIGITOU; sem edição o campo segue o padrão (que muda
+  // quando o saldo chega).
+  const [valorDigitado, setValorDigitado] = useState<string | null>(null);
+  const valor = valorDigitado ?? valorPadrao;
   const [observacao, setObservacao] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   // Achado 1 (rodada 6c, revisão de risco, DINHEIRO): a confirmação precisa
@@ -186,13 +203,37 @@ export function AcoesDaDevolucao({
     motivo.trim() !== "" ||
     codigo.trim() !== codigoInicial ||
     observacao.trim() !== "" ||
-    valor !== valorPadrao ||
+    valorDigitado !== null ||
     Array.from(inspecao.values()).some((i) => i.condicao !== null);
 
   useEffect(() => {
     onSujoMudou(sujo);
   }, [sujo, onSujoMudou]);
   useEffect(() => () => onSujoMudou(false), [onSujoMudou]);
+
+  const aguardaConclusao = detalhe.status === "recebida";
+  // Relê o saldo quando a ficha relê (objeto `detalhe` novo). Falha ou forma
+  // inesperada não muda nada: o servidor continua sendo a guarda.
+  useEffect(() => {
+    if (!aguardaConclusao) return;
+    let vale = true;
+    void (async () => {
+      try {
+        const { data, error } = await chamarRpcDoR1(
+          supabase,
+          RPC_DO_REEMBOLSO_R1.saldo,
+          { p_order_id: detalhe.order_id },
+        );
+        const lido = error ? null : lerReembolsosESaldo(data);
+        if (vale && lido) setDisponivel(lido.disponivel);
+      } catch {
+        // Sem leitura: fica o valor padrão.
+      }
+    })();
+    return () => {
+      vale = false;
+    };
+  }, [aguardaConclusao, detalhe]);
 
   const ocupado = ficha.emVoo !== null;
 
@@ -274,7 +315,7 @@ export function AcoesDaDevolucao({
     }
     if (resolucao === "reembolso") {
       const texto = pagoPeloApp(detalhe)
-        ? `Devolver ${formatarReais(valorNumero)} ao cliente pelo Mercado Pago? O dinheiro sai da sua conta do Mercado Pago e não dá para desfazer.`
+        ? `Devolver ${formatarReais(valorNumero)} ao cliente pelo Mercado Pago? O dinheiro sai da sua conta do Mercado Pago e não dá para desfazer. Se o pagamento tiver mais de 180 dias, o Mercado Pago não devolve: o app só registra e você devolve em mãos ou por PIX.`
         : `Registrar o reembolso de ${formatarReais(valorNumero)}? Este pedido não foi pago pelo app: você devolve o dinheiro ao cliente em mãos ou por PIX.`;
       if (!globalThis.confirm(texto)) return;
     }
@@ -699,7 +740,9 @@ export function AcoesDaDevolucao({
                     mask="currency"
                     inputMode="numeric"
                     value={valor}
-                    onFlush={setValor}
+                    onFlush={(v) =>
+                      setValorDigitado(v === valorPadrao ? null : v)
+                    }
                     className={cn(CAMPO, "h-11 py-0 tabular-nums")}
                   />
                   <p className="text-[11px] leading-relaxed text-zinc-500">
@@ -708,8 +751,10 @@ export function AcoesDaDevolucao({
                       ` + frete de ida ${formatarReais(detalhe.valor_frete_ida)} (o pedido voltou inteiro)`}
                     .{" "}
                     {pagoPeloApp(detalhe)
-                      ? "O dinheiro volta ao cliente pelo Mercado Pago (PIX ou cartão)."
+                      ? "O dinheiro volta ao cliente pelo Mercado Pago (PIX ou cartão) se o pagamento tiver até 180 dias; depois disso você devolve em mãos ou por PIX e o app registra a saída."
                       : "Pedido pago fora do app: você devolve em mãos ou por PIX e o app registra a saída."}
+                    {limitadoAoSaldo &&
+                      ` O valor sugerido é o que ainda pode ser devolvido deste pedido (${formatarReais(disponivel ?? 0)}).`}
                   </p>
                 </div>
               )}

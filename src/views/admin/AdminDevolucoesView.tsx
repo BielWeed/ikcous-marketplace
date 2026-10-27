@@ -308,7 +308,6 @@ export function AdminDevolucoesView({
               <DetalheDaDevolucao
                 key={selecionada}
                 id={selecionada}
-                agora={agora}
                 onFechar={fechar}
                 onMudou={aoMudar}
                 onSujoMudou={setSujo}
