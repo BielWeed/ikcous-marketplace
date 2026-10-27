@@ -2142,6 +2142,14 @@ const AppContent = () => {
         }
       } else {
         isTransitioningRef.current = false;
+        // Endereço que o app não conhece (/produto/abc, /product/<id>): a
+        // tela já é a Home; o endereço passa a ser o dela também. replaceState
+        // (nunca pushState) para não empilhar entrada no histórico.
+        globalThis.history.replaceState(
+          { view: "home" },
+          "",
+          caminhoDaHomeRef.current() + globalThis.location.hash,
+        );
       }
     };
 
@@ -3114,7 +3122,11 @@ const AppContent = () => {
   // renderView has been extracted to AdminArea.tsx to ensure layouts are only parsed post-verification.
 
   return (
-    <div className="flex size-full h-dvh min-h-dvh flex-col overflow-hidden bg-background text-foreground">
+    // Laterais da área segura: com o aparelho deitado o entalhe/ilha do iPhone
+    // fica na esquerda ou na direita (index.html usa viewport-fit=cover). Em
+    // retrato o env() vale 0 — nada muda. A barra de baixo é `fixed` e leva a
+    // regra dela em index.css.
+    <div className="flex size-full h-dvh min-h-dvh flex-col overflow-hidden bg-background pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)] text-foreground">
       {/* Skip link (B6 da a11y onda 3): primeiro focável do app. Invisível
           até ganhar foco (sr-only); Tab uma vez + Enter leva direto para o
           <main>, sem passar pelo cabeçalho inteiro. z-[100000] fica acima

@@ -487,12 +487,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
                 animate={{
                   rotate: [0, -8, 8, -6, 6, 0],
                 }}
-                transition={{
-                  repeat: Number.POSITIVE_INFINITY,
-                  duration: 2.2,
-                  repeatDelay: 1.5,
-                  ease: "easeInOut",
-                }}
+                transition={{ duration: 2.2, ease: "easeInOut" }}
               >
                 <Bell className="size-7 text-muted-foreground" />
               </motion.div>
