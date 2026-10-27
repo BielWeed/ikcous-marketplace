@@ -282,6 +282,8 @@ on:
           - 106b-antes-o-pedido-de-visitante-na-entrega-tem-freio-base-vigente
           - 107a-conferir-a-lista-de-recomendacoes-do-produto-tem-teto-aplicado
           - 107b-antes-a-lista-de-recomendacoes-do-produto-tem-teto-base-vigente
+          - 108a-conferir-a-busca-de-devolucao-acha-o-numero-do-pedido-aplicado
+          - 108b-antes-a-busca-de-devolucao-acha-o-numero-do-pedido-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

@@ -218,6 +218,8 @@ on:
       - "scripts/publicacao/consultas/106b-antes-o-pedido-de-visitante-na-entrega-tem-freio-base-vigente.sql"
       - "scripts/publicacao/consultas/107a-conferir-a-lista-de-recomendacoes-do-produto-tem-teto-aplicado.sql"
       - "scripts/publicacao/consultas/107b-antes-a-lista-de-recomendacoes-do-produto-tem-teto-base-vigente.sql"
+      - "scripts/publicacao/consultas/108a-conferir-a-busca-de-devolucao-acha-o-numero-do-pedido-aplicado.sql"
+      - "scripts/publicacao/consultas/108b-antes-a-busca-de-devolucao-acha-o-numero-do-pedido-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -405,6 +407,8 @@ on:
       - "scripts/publicacao/consultas/106b-antes-o-pedido-de-visitante-na-entrega-tem-freio-base-vigente.sql"
       - "scripts/publicacao/consultas/107a-conferir-a-lista-de-recomendacoes-do-produto-tem-teto-aplicado.sql"
       - "scripts/publicacao/consultas/107b-antes-a-lista-de-recomendacoes-do-produto-tem-teto-base-vigente.sql"
+      - "scripts/publicacao/consultas/108a-conferir-a-busca-de-devolucao-acha-o-numero-do-pedido-aplicado.sql"
+      - "scripts/publicacao/consultas/108b-antes-a-busca-de-devolucao-acha-o-numero-do-pedido-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -622,6 +626,13 @@ jobs:
       - name: Prova viva do teto da lista de recomendacoes do produto (20261394100000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-lista-de-recomendacoes-do-produto-tem-teto-viva.cjs
+      # Migration 20261395000000 (a busca de devolucao acha o numero do pedido): admin_devolucoes_listar ganha um ramo no filtro,
+      # igualdade nos 6 ultimos caracteres do id (o numero que o painel mostra), sem caixa e sem o # da frente; pedaco, 7 caracteres e
+      # curinga nao acham; o comeco do id, o protocolo e o nome seguem; JSON identico ao de antes nas buscas sem o ramo novo; rollback
+      # byte a byte, pre-voo que recusa sem escrever, pos-voo que desfaz tudo e consultas 108a/108b. CLONE proprio.
+      - name: Prova viva da busca de devolucao pelo numero do pedido (20261395000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-busca-de-devolucao-acha-o-numero-do-pedido-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

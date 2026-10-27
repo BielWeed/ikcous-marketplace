@@ -143,7 +143,12 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // A 20261394000000 (o pedido de visitante na entrega tem freio) so redefine a v23 e a v24, em cima da 350 e da 384; nenhuma das duas e' funcao
     // da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 384 (pedido-pelo-app-exige-conta-posterior.cjs chama
     // o-pedido-de-visitante-na-entrega-posterior.cjs); aqui sai do rol pela mesma razao da 384 e da 350.
-    s.nome !== "20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql",
+    s.nome !==
+      "20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql" &&
+    // A 20261395000000 (a busca de devolucao acha o numero do pedido) e' sucessora de admin_devolucoes_listar, que a 8e trata: sai do
+    // modelo desta prova (que conta as 15 que ele conhece) e `noEstado` a desfaz antes (a-busca-de-devolucao-posterior.cjs), como a 392/3921.
+    s.nome !==
+      "20261395000000_a_busca_de_devolucao_acha_o_numero_do_pedido.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");
@@ -320,6 +325,10 @@ async function noEstado(montar, textos = [SQL_8E]) {
     );
     // A 20261392000000 e a 20261392100000 sucedem a 230 e a 231: saem antes de qualquer montagem desta prova.
     await require("./a-busca-de-clientes-posterior.cjs").desfazerBuscaDeClientesPosteriorNaTransacao(
+      C,
+    );
+    // A 20261395000000 (a busca de devolucao acha o numero do pedido) sucede a 99 em admin_devolucoes_listar: sai antes de qualquer montagem.
+    await require("./a-busca-de-devolucao-posterior.cjs").desfazerBuscaDeDevolucaoNaTransacao(
       C,
     );
     const montado = montar ? await montar(C) : undefined;

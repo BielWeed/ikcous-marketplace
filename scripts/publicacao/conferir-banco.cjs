@@ -2779,7 +2779,18 @@ const ROL_DA_107 = [
   "get_product_recommendations: o corpo traz o teto do limite (uma vez)",
   "get_product_recommendations: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, SETOF produtos; anon, authenticated e service_role, sem PUBLIC)",
 ];
+// Lote 108 (20261395000000, a busca de devolucao acha o numero do pedido). A 108a e a 108b tem o mesmo rol; a 108a espera o corpo da 20261395000000 e a 108b o vigente de antes.
+const ROL_DA_108 = [
+  "controle: funcoes de public visiveis a este papel",
+  "admin_devolucoes_listar: corpo exato (md5)",
+  "admin_devolucoes_listar: o corpo traz a busca pelo numero do pedido (uma vez)",
+  "admin_devolucoes_listar: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, STABLE, retorno jsonb; authenticated e service_role, sem anon e sem PUBLIC)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "108a-conferir-a-busca-de-devolucao-acha-o-numero-do-pedido-aplicado":
+    ROL_DA_108,
+  "108b-antes-a-busca-de-devolucao-acha-o-numero-do-pedido-base-vigente":
+    ROL_DA_108,
   "107a-conferir-a-lista-de-recomendacoes-do-produto-tem-teto-aplicado":
     ROL_DA_107,
   "107b-antes-a-lista-de-recomendacoes-do-produto-tem-teto-base-vigente":
