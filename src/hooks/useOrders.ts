@@ -7,6 +7,7 @@ import {
   marcarAcaoPropriaDoPedido,
 } from "@/lib/acao-propria-do-painel";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
+import { completarOldDoEvento } from "@/lib/aviso-de-pedido-atualizado";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import {
   CHAVE_BASE_DA_FILA_DE_PEDIDOS,
@@ -2976,6 +2977,16 @@ export function useOrders(
       if (isUnmounting) return;
       const newId = (payload.new as any)?.id;
       const oldId = (payload.old as any)?.id;
+      // O `old` do UPDATE chega só com a chave primária (RLS ligada): o "antes"
+      // de status/pagamento é o do pedido que a tela JÁ tinha, lido antes de o
+      // evento ser mesclado logo abaixo.
+      const paraOPainel =
+        payload.eventType === "UPDATE" && newId
+          ? completarOldDoEvento(
+              payload,
+              ordersRef.current.find((pedido) => pedido.id === newId),
+            )
+          : payload;
 
       console.log(
         "[Realtime] Order change event processed:",
@@ -2996,7 +3007,7 @@ export function useOrders(
       }
 
       if (onRealtimeEventRef.current) {
-        onRealtimeEventRef.current(payload);
+        onRealtimeEventRef.current(paraOPainel);
       }
     };
 

@@ -107,6 +107,9 @@ vi.mock("@/hooks/useOrders", async () => {
     await vi.importActual<typeof import("@/hooks/useOrders")>(
       "@/hooks/useOrders",
     );
+  const { completarOldDoEvento } = await import(
+    "@/lib/aviso-de-pedido-atualizado"
+  );
   return {
     ErroPedidoMudou,
     useOrders: (
@@ -114,7 +117,19 @@ vi.mock("@/hooks/useOrders", async () => {
       _admin: boolean,
       opcoes?: { onRealtimeEvent?: (payload: unknown) => void },
     ) => {
-      eventoRealtime.atual = opcoes?.onRealtimeEvent;
+      // Faz o que o useOrders de verdade faz antes de entregar o evento ao
+      // painel (prova no hook real: use-orders-realtime-completa-o-old-do-
+      // aviso.test.tsx): o `old` do servidor traz só a chave primária, e o
+      // "antes" de status/pagamento vem do pedido que a tela já tinha.
+      eventoRealtime.atual = opcoes?.onRealtimeEvent
+        ? (payload: any) =>
+            opcoes.onRealtimeEvent?.(
+              completarOldDoEvento(
+                payload,
+                mockOrders.find((o) => o.id === payload?.new?.id),
+              ),
+            )
+        : undefined;
       return {
         orders: mockOrders,
         loadOrders: vi.fn(),
@@ -239,16 +254,30 @@ describe("Painel — aviso de pedido atualizado (realtime UPDATE)", () => {
     });
   }
 
+  // Formato REAL do evento: `old` só com a chave primária. O "antes" é o
+  // pedido que a tela já tem (`antes`); sem ele, a tela não conhece o pedido.
   async function dispararUpdate(
-    old: Record<string, unknown> | undefined,
+    antes:
+      | { status: Order["status"]; payment_status: Order["paymentStatus"] }
+      | undefined,
     novo: Record<string, unknown>,
+    old: Record<string, unknown> = { id: ID_DO_PEDIDO },
   ): Promise<string[]> {
     await montar(pedidoBase);
+    mockOrders = antes
+      ? [
+          {
+            ...pedidoBase,
+            status: antes.status,
+            paymentStatus: antes.payment_status,
+          },
+        ]
+      : [];
     vi.mocked(toast.info).mockClear();
     await act(async () => {
       eventoRealtime.atual?.({
         eventType: "UPDATE",
-        ...(old ? { old } : {}),
+        old,
         new: { id: ID_DO_PEDIDO, ...novo },
       });
       await esperar(0);
@@ -258,7 +287,7 @@ describe("Painel — aviso de pedido atualizado (realtime UPDATE)", () => {
 
   it("status igual ao anterior (salvou rastreio, etc.): NÃO gera aviso", async () => {
     const avisos = await dispararUpdate(
-      { status: "shipping", payment_status: "pago", tracking_code: null },
+      { status: "shipping", payment_status: "pago" },
       { status: "shipping", payment_status: "pago", tracking_code: "BR123" },
     );
     expect(avisos).toEqual([]);
@@ -289,9 +318,24 @@ describe("Painel — aviso de pedido atualizado (realtime UPDATE)", () => {
     expect(avisos).toEqual([]);
   });
 
-  it("sem 'old' no evento (não dá para comparar): continua avisando, nunca engole uma mudança real", async () => {
+  it("pedido que a tela não conhece (fora da página): continua avisando, nunca engole uma mudança real", async () => {
     const avisos = await dispararUpdate(undefined, { status: "shipping" });
     expect(avisos).toEqual(["Pedido #3884BE atualizado para Em Trânsito"]);
+  });
+
+  it("compatibilidade: um 'old' completo vindo do servidor também vale", async () => {
+    const igual = await dispararUpdate(
+      undefined,
+      { status: "shipping", payment_status: "pago" },
+      { id: ID_DO_PEDIDO, status: "shipping", payment_status: "pago" },
+    );
+    expect(igual).toEqual([]);
+    const mudou = await dispararUpdate(
+      undefined,
+      { status: "shipping", payment_status: "pago" },
+      { id: ID_DO_PEDIDO, status: "processing", payment_status: "pago" },
+    );
+    expect(mudou).toEqual(["Pedido #3884BE atualizado para Em Trânsito"]);
   });
 
   it("a lojista acabou de avançar este pedido para este destino: o aviso do realtime não repete", async () => {

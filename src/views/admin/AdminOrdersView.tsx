@@ -50,10 +50,10 @@ import {
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
-import { eAcaoPropriaDoPedido } from "@/lib/acao-propria-do-painel";
 import { caminhoDoPedidoNoAviso } from "@/lib/alvo-do-aviso";
 import { orientacaoDeDevolucao } from "@/lib/anulacao-do-balcao";
 import { consumirPedidoDePedidosSemFiltroAntigo } from "@/lib/atalho-do-inicio-para-pedidos";
+import { tipoDoAvisoDoPedido } from "@/lib/aviso-de-pedido-atualizado";
 import { formatarInteiro } from "@/lib/crm";
 import { recorteDaListaDePedidos } from "@/lib/filtro-da-lista-de-pedidos";
 import {
@@ -1197,26 +1197,16 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         // do realtime é crua (snake_case): a regra é a MESMA do mapper.
         const retirada =
           enderecoDeRetiradaDoCustomerData(payload.new?.customer_data) !== "";
-        // Só avisa o que a lojista ainda não sabe: sem `old` (não dá para
-        // comparar) avisa como antes; com `old`, status igual não é novidade
-        // (salvar rastreio, receber pagamento…); e o que ela mesma acabou de
-        // avançar já ganhou o "Status atualizado com sucesso".
-        const antes = payload.old;
-        const pagamentoConfirmado =
-          typeof antes?.payment_status === "string" &&
-          antes.payment_status !== payload.new?.payment_status &&
-          (payload.new?.payment_status === "pago" ||
-            payload.new?.payment_status === "pago_apos_expirar");
-        const statusIgual =
-          typeof antes?.status === "string" && antes.status === newStatus;
-        if (pagamentoConfirmado) {
+        // Só avisa o que a lojista ainda não sabe (ver tipoDoAvisoDoPedido):
+        // status igual ao que a tela tinha não é novidade, o que ela mesma
+        // acabou de avançar já ganhou o "Status atualizado com sucesso", e
+        // sem o "antes" avisa como sempre.
+        const tipoDoAviso = tipoDoAvisoDoPedido(payload);
+        if (tipoDoAviso === "pagamento") {
           toast.info(
             `Pagamento do pedido #${numeroDoPedido(updatedId)} confirmado`,
           );
-        } else if (
-          !statusIgual &&
-          !eAcaoPropriaDoPedido(updatedId, newStatus)
-        ) {
+        } else if (tipoDoAviso === "status") {
           toast.info(
             `Pedido #${numeroDoPedido(updatedId)} atualizado para ${statusConfig[newStatus] ? rotuloDoStatus(newStatus, retirada) : `Status: ${newStatus}`}`,
           );
@@ -2545,8 +2535,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   Cancelado
                 </div>
                 <p className="text-xs text-zinc-400">
-                  O pedido foi cancelado e não segue adiante. Se já estava pago,
-                  veja a lista "Devolver agora".
+                  O pedido foi cancelado e não segue adiante. Se já estava pago
+                  e ainda não tinha saído, ele vai para a lista "Devolver
+                  agora". Se já tinha saído para entrega, primeiro fica em
+                  "Esperando o produto voltar" e só passa para "Devolver agora"
+                  quando você confirma que o produto voltou.
                 </p>
               </div>
             </div>

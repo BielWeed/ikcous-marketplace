@@ -443,6 +443,30 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
     expect(texto()).not.toContain("registre a devolução do produto");
   });
 
+  it("U11e: pedido ENTREGUE com a devolução toda EM ANDAMENTO (saldo já descontado) — NÃO diz que já foi devolvido; mostra o 'em andamento' da linha", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        pago: 100,
+        devolvido: 0,
+        disponivel: 0,
+        linhas: [
+          linhaDeExemplo({
+            amount: 100,
+            status: "em_processamento",
+            tentativas: 1,
+          }),
+        ],
+      }),
+    );
+
+    await montar({ ...pedidoBase, status: "delivered" });
+
+    expect(texto()).not.toContain("Todo o valor pago já foi devolvido.");
+    expect(texto()).not.toContain("Cancele o pedido");
+    expect(texto()).toContain("Devolução de R$ 100,00 em andamento");
+    expect(botaoComTexto("Devolver R$")).toBeUndefined();
+  });
+
   it("U11d: pedido ENTREGUE com uma devolução em andamento — o histórico continua na tela", async () => {
     useEstornosDoPedidoMock.mockReturnValue(
       hookPadrao({

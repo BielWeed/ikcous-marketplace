@@ -160,6 +160,7 @@ function textoDaLinha(linha: LinhaEstornoDoPedido): TextoDaLinha {
 type EstadoDoCartao =
   | "bloqueado_status"
   | "bloqueado_entregue"
+  | "devolucao_em_andamento"
   | "bloqueado_retorno"
   | "reservado"
   | "tudo_devolvido"
@@ -175,13 +176,18 @@ function estadoDoCartao(
   order: Order,
   disponivel: number,
   reservado: number,
+  tudoDevolvido: boolean,
 ): EstadoDoCartao {
   // Pedido ENTREGUE não se cancela: "cancele antes" mandaria a lojista para um
   // caminho que não existe. Com saldo, o caminho é a devolução do produto
   // (seção Devoluções da ficha); sem saldo, vale o mesmo fechamento de sempre.
   if (order.status === "delivered") {
     if (disponivel > 0) return "bloqueado_entregue";
-    return reservado > 0 ? "reservado" : "tudo_devolvido";
+    if (reservado > 0) return "reservado";
+    // Saldo zero também é o que sobra com a devolução ainda EM ANDAMENTO (o
+    // servidor já desconta o que está em curso): só o dinheiro realmente
+    // devolvido fecha o pedido. Em curso, a linha da devolução diz o andamento.
+    return tudoDevolvido ? "tudo_devolvido" : "devolucao_em_andamento";
   }
   if (order.status !== "cancelled") return "bloqueado_status";
   if (order.cancelledAfterShipping && !order.returnedToSellerAt) {
@@ -261,11 +267,17 @@ export function EstornoCard({
   // O reservado só vale com o pedido ainda pago: estornado inteiro, a conta fechou.
   const reservado =
     order.paymentStatus === "estornado" ? 0 : Math.max(reservadoPorFora, 0);
-  const estado = estadoDoCartao(order, disponivel, reservado);
+  const estado = estadoDoCartao(
+    order,
+    disponivel,
+    reservado,
+    devolvido >= pago,
+  );
   const mostrarBotao =
     estado !== "tudo_devolvido" &&
     estado !== "reservado" &&
-    estado !== "bloqueado_entregue";
+    estado !== "bloqueado_entregue" &&
+    estado !== "devolucao_em_andamento";
   const podeAbrirCampo = estado === "normal";
 
   const valorNumericoDoCampo = paraNumero(valorCampo);

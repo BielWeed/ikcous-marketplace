@@ -534,6 +534,10 @@ describe("Guia do pagamento que não fechou — ligado ao modal de ajuda da tela
       expect(ciclo, label).toContain(label);
     }
     expect(ciclo).toContain(ROTULO_PRONTO_PARA_RETIRAR);
+    // Cancelado e pago: os DOIS baldes de dinheiro (baldeDeEstorno), cada um
+    // no caso certo.
+    expect(ciclo).toContain("Devolver agora");
+    expect(ciclo).toContain("Esperando o produto voltar");
     for (const inventado of [
       "Pendente",
       "Em Processamento",
