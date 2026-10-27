@@ -468,6 +468,21 @@ const VERIFICACOES = {
         ],
       },
     ],
+  // 20261396000000: cada conta tem no maximo 10 aparelhos com aviso ligado. A funcao NOVA do gatilho conta so o endpoint novo (o re-registro por upsert
+  // sai antes), toma a trava por conta antes de contar e so recusa quem nao e' administrador; a consulta 112a confere o corpo exato (md5), os atributos e a ACL.
+  "20261396000000_cada_conta_tem_no_maximo_10_aparelhos_com_aviso.sql": {
+    funcao: "push_inscricoes_limite_por_conta",
+    esperado: [
+      { texto: "s.endpoint = NEW.endpoint", vezes: 1 },
+      {
+        texto:
+          "pg_advisory_xact_lock(hashtextextended('push_subscriptions_limite:'",
+        vezes: 1,
+      },
+      { texto: "LIMIT v_limite", vezes: 1 },
+      { texto: "AND NOT public.rls_admin_atual() THEN", vezes: 1 },
+    ],
+  },
   // 20261382: o resultado (fin_dre) mostra tarifa, juro e quebra como despesa. So o 'valor' das linhas do grupo financeiro ganha o
   // sinal (entrada menos saida); o resto do corpo e' o da 20261242. A consulta 87a confere o corpo exato (md5), os atributos e a ACL.
   "20261382000000_o_resultado_mostra_tarifa_juro_e_quebra_como_despesa.sql": {

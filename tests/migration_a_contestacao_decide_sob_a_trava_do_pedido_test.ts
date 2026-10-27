@@ -652,6 +652,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-busca-de-devolucao-acha-o-numero-do-pedido-viva.cjs",
     "tests/banco/a-grade-antiga-nao-ressuscita-variacao-excluida-viva.cjs",
     "tests/banco/a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-viva.cjs",
+    // 20261396000000: cada conta tem no maximo 10 aparelhos com aviso ligado (gatilho BEFORE INSERT em push_subscriptions; o re-registro do mesmo aparelho por upsert nao conta;
+    // duas conexoes reais, mutantes, rollback, pre/pos-voo e consultas 112a/112b).
+    "tests/banco/cada-conta-tem-no-maximo-10-aparelhos-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",

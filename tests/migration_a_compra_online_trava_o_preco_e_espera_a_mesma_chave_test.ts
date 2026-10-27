@@ -300,7 +300,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
     "a 81a entra uma vez",
   );
   assertEquals(
-    canais.provasDeObjetos.slice(-26).map((p) => p.consulta),
+    canais.provasDeObjetos.slice(-27).map((p) => p.consulta),
     [
       A81,
       "82a-conferir-ex-admin-sem-acesso-nas-demais-tabelas",
@@ -328,8 +328,9 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "108a-conferir-a-busca-de-devolucao-acha-o-numero-do-pedido-aplicado",
       "109a-conferir-a-grade-antiga-nao-ressuscita-variacao-excluida-aplicado",
       "110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado",
+      "112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado",
     ],
-    "a 82a, a 83a, a 84a, a 85a, a 86a, a 87a, a 88a, a 89a, a 90a, a 91a, a 92a, a 95a, a 96a, a 97a, a 98a, a 100a, a 101a, a 102a, a 103a, a 104a, a 106a, a 107a, a 108a, a 109a e a 110a (a 99 reservada para a migration de analytics_events, guardada no ramo fix-199-abuso-do-banco ate o dono aprovar) sucedem a 81a no fim, sem reordenar lotes anteriores",
+    "a 82a, a 83a, a 84a, a 85a, a 86a, a 87a, a 88a, a 89a, a 90a, a 91a, a 92a, a 95a, a 96a, a 97a, a 98a, a 100a, a 101a, a 102a, a 103a, a 104a, a 106a, a 107a, a 108a, a 109a, a 110a e a 112a (a 99 reservada para a migration de analytics_events, guardada no ramo fix-199-abuso-do-banco ate o dono aprovar) sucedem a 81a no fim, sem reordenar lotes anteriores",
   );
   for (const loja of ["IKCOUS", "Savy"])
     assert(

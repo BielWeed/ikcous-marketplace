@@ -2800,7 +2800,26 @@ const ROL_DA_110 = [
   "admin_devolucao_concluir: o corpo traz a ordem global das travas (uma vez)",
   "admin_devolucao_concluir: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno jsonb; authenticated e service_role, sem anon e sem PUBLIC)",
 ];
+// Lote 112 (20261396000000, cada conta tem no maximo 10 aparelhos com aviso ligado: funcao push_inscricoes_limite_por_conta e gatilho
+// tr_push_inscricoes_limite_por_conta em push_subscriptions, objetos NOVOS). A 112a prova o estado novo; a 112b a ausencia dos dois e
+// o que o gatilho precisa (colunas, RLS e rls_admin_atual). Nenhuma das duas le inscricao.
+const ROL_DA_112A = [
+  "controle: funcoes de public visiveis a este papel",
+  "push_inscricoes_limite_por_conta: corpo exato (md5)",
+  "push_inscricoes_limite_por_conta: uma so, atributos conhecidos (SECURITY DEFINER, plpgsql, VOLATILE, retorno trigger, search_path=public) e fechada a PUBLIC, anon, authenticated e service_role",
+  "push_subscriptions: gatilho tr_push_inscricoes_limite_por_conta BEFORE INSERT por linha, ligado, sem WHEN, chamando a funcao",
+];
+const ROL_DA_112B = [
+  "controle: catalogo publico visivel",
+  "push_inscricoes_limite_por_conta e tr_push_inscricoes_limite_por_conta: ainda NAO existem",
+  "push_subscriptions: endpoint text e user_id uuid existem e a tabela tem RLS ligada",
+  "rls_admin_atual() existe, devolve boolean e e a porta do administrador de agora (a excecao do gatilho depende dela)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado":
+    ROL_DA_112A,
+  "112b-antes-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-ausente":
+    ROL_DA_112B,
   "110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado":
     ROL_DA_110,
   "110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente":

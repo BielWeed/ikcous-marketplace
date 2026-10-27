@@ -288,6 +288,8 @@ on:
           - 109b-antes-a-grade-antiga-nao-ressuscita-variacao-excluida-base-vigente
           - 110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado
           - 110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente
+          - 112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado
+          - 112b-antes-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-ausente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

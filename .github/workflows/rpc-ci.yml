@@ -224,6 +224,8 @@ on:
       - "scripts/publicacao/consultas/109b-antes-a-grade-antiga-nao-ressuscita-variacao-excluida-base-vigente.sql"
       - "scripts/publicacao/consultas/110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado.sql"
       - "scripts/publicacao/consultas/110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente.sql"
+      - "scripts/publicacao/consultas/112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado.sql"
+      - "scripts/publicacao/consultas/112b-antes-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -417,6 +419,8 @@ on:
       - "scripts/publicacao/consultas/109b-antes-a-grade-antiga-nao-ressuscita-variacao-excluida-base-vigente.sql"
       - "scripts/publicacao/consultas/110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado.sql"
       - "scripts/publicacao/consultas/110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente.sql"
+      - "scripts/publicacao/consultas/112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado.sql"
+      - "scripts/publicacao/consultas/112b-antes-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -655,6 +659,14 @@ jobs:
       - name: Prova viva da conclusao da devolucao que tranca na mesma ordem da compra (20261395200000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-viva.cjs
+      # Migration 20261396000000 (cada conta tem no maximo 10 aparelhos com aviso ligado): gatilho BEFORE INSERT em push_subscriptions recusa a 11a
+      # inscricao NOVA da conta (cliente que nao e' administrador), sem apagar nada; o re-registro do mesmo aparelho (upsert por endpoint, que
+      # dispara o gatilho antes do conflito) nao conta; conta acima de 10 de antes renova e desliga mas nao cadastra novo; duas conexoes reais
+      # (a 10a e a 11a juntas: a segunda espera a trava por conta e recusa); admin/servico/sessao direta sem limite; rollback, pre-voo,
+      # pos-voo e consultas 112a/112b. CLONE proprio.
+      - name: Prova viva de cada conta com no maximo 10 aparelhos com aviso (20261396000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cada-conta-tem-no-maximo-10-aparelhos-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs
