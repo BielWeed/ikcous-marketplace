@@ -10,9 +10,9 @@
 import { readFileSync } from "node:fs";
 import Module, { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
+import postcss from "postcss";
 import { act, createElement, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import postcss from "postcss";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
@@ -42,7 +42,14 @@ describe("Janela de confirmação do painel — margem lateral e rolagem", () =>
   let confirmarDoGancho: ReturnType<typeof useConfirmarAcao>["confirmar"];
 
   beforeEach(() => {
-    vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -107,7 +114,9 @@ describe("Janela de confirmação do painel — margem lateral e rolagem", () =>
         content: [{ raw: classes.join(" "), extension: "html" }],
       }),
     ]).process("@tailwind utilities;", { from: undefined });
-    expect(classes.filter((c) => !resultado.css.includes(`.${escapar(c)}`))).toEqual([]);
+    expect(
+      classes.filter((c) => !resultado.css.includes(`.${escapar(c)}`)),
+    ).toEqual([]);
     expect(resultado.css).toContain("max-height: calc(100dvh - 2rem)");
     expect(resultado.css).toContain("width: calc(100% - 2rem)");
   });

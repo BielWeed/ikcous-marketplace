@@ -31,7 +31,6 @@ import {
   somenteCampanhasReais,
 } from "@/lib/historico-de-campanhas";
 import { lerEmPaginas } from "@/lib/ler-em-paginas";
-import { intercalarPorServico } from "@/lib/ordem-do-envio-de-push";
 import {
   type CupomDaLoja,
   MARCADOR_DO_CUPOM,
@@ -42,6 +41,7 @@ import {
   problemaDoCupom,
   temMarcadorPendente,
 } from "@/lib/modelos-de-campanha";
+import { intercalarPorServico } from "@/lib/ordem-do-envio-de-push";
 import { supabase } from "@/lib/supabase";
 import { normalizeText } from "@/lib/utils";
 import type { View } from "@/types";
