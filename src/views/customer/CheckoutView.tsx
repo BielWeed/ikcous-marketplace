@@ -7316,29 +7316,33 @@ export function CheckoutViewDaConta({
                         </p>
                       </div>
                     )}
-                    {convidadoComUnidadesDemais && !convidadoForaDaCidade && (
-                      // Mesma porta do aviso acima (a conta resolve os dois);
-                      // um só bloco quando os dois valem.
-                      <div className="mx-auto mt-1.5 flex max-w-md flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5">
-                        <p
-                          role="alert"
-                          className="flex items-start gap-1.5 text-xs font-semibold leading-snug text-amber-800"
-                        >
-                          <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                          {FRASE_TETO_DE_UNIDADES_DO_VISITANTE}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            haptic.light();
-                            onNavigate("auth");
-                          }}
-                          className="flex min-h-11 items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
-                        >
-                          Entrar ou criar conta
-                        </button>
-                      </div>
-                    )}
+                    {convidadoComUnidadesDemais &&
+                      !convidadoForaDaCidade &&
+                      opcoesNaEntrega.length > 0 && (
+                        // Mesma porta do aviso acima (a conta resolve os dois);
+                        // um só bloco quando os dois valem. Loja só-app (nenhuma forma
+                        // na entrega) já tem o aviso "entre na sua conta": este diria
+                        // que com 10 passaria, e ali não passa.
+                        <div className="mx-auto mt-1.5 flex max-w-md flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5">
+                          <p
+                            role="alert"
+                            className="flex items-start gap-1.5 text-xs font-semibold leading-snug text-amber-800"
+                          >
+                            <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                            {FRASE_TETO_DE_UNIDADES_DO_VISITANTE}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              haptic.light();
+                              onNavigate("auth");
+                            }}
+                            className="flex min-h-11 items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                          >
+                            Entrar ou criar conta
+                          </button>
+                        </div>
+                      )}
                     {aguardandoConferenciaDaRecusa && (
                       // A única porta de saída daqui era o "X" de 16px no
                       // painel abaixo (aria-label "Fechar o aviso"), sem

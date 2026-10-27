@@ -158,6 +158,13 @@ describe("CheckoutView (visitante) — o teto de 10 unidades apaga o Finalizar",
     estado.user = null;
     estado.enderecos = [];
     estado.offline = false;
+    estado.config = {
+      shippingCoverage: "local",
+      originCep: "38500-000",
+      localCepRange: "01310-100",
+      enableCoupons: false,
+      whatsappNumber: "",
+    };
     sessionStorage.clear();
     pararABuscaDeCep();
     const armazem = new Map<string, string>();
@@ -236,5 +243,14 @@ describe("CheckoutView (visitante) — o teto de 10 unidades apaga o Finalizar",
     expect(botaoFinalizar()).toBeDefined();
     expect(botaoFinalizar()!.disabled).toBe(true);
     expect(document.body.textContent).toContain("aceita até 10 unidades");
+  });
+
+  it("loja que SÓ recebe pelo app, 11 unidades: um aviso só — o de entrar na conta; sem 'aceita até 10' (com 10 também não passaria)", async () => {
+    estado.config = { ...estado.config, formasPagamentoEntrega: [] };
+    await montarEPreencher(11);
+
+    const texto = document.body.textContent ?? "";
+    expect(texto).toContain("o pagamento é feito pelo app");
+    expect(texto).not.toContain("aceita até 10 unidades");
   });
 });
