@@ -241,10 +241,12 @@ export function CupomDaVenda({
         <div role="alert" className="pdv-notice">
           <p className="pdv-heading">
             <PackageX aria-hidden="true" className="pdv-icon pdv-red" />
-            Produto esgotado
+            {estado.aviso.estoque ? "Estoque no limite" : "Produto esgotado"}
           </p>
           <p className="pdv-muted">
-            "{estado.aviso.nome}" está esgotado. Nenhuma unidade adicionada.
+            {estado.aviso.estoque
+              ? `"${estado.aviso.nome}": só há ${estado.aviso.estoque} em estoque, e ${estado.aviso.naVenda ?? 0} já ${estado.aviso.naVenda === 1 ? "está" : "estão"} nesta venda. Nenhuma unidade adicionada.`
+              : `"${estado.aviso.nome}" está esgotado. Nenhuma unidade adicionada.`}
           </p>
           <Button
             type="button"

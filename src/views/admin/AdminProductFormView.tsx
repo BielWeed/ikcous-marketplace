@@ -49,6 +49,7 @@ import { useProducts } from "@/hooks/useProducts";
 import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
+import { normalizarCodigoBarras } from "@/lib/codigo-de-barras";
 import { CLASSE_PRECO_PROMOCIONAL_FUNDO_ESCURO } from "@/lib/cor-do-preco-promocional";
 import { descartarFotosDoProduto } from "@/lib/descartar-fotos-do-produto";
 import {
@@ -158,13 +159,6 @@ const MSG_CODIGO_BARRAS_FORMATO_INVALIDO =
   "Só letras, números e hífen, de 4 a 64 caracteres.";
 const MSG_CODIGO_BARRAS_DUPLICADO_NA_TELA =
   "Este código já está em outra variação deste produto.";
-
-/** Mesma string que vai para a RPC (btrim + igualdade exata, migration
- * 20261161000000) e para o banco — aparar as pontas e remover os espaços
- * do meio (código colado ou digitado com separador visual). */
-function normalizarCodigoBarras(valor: string): string {
-  return valor.trim().replace(/\s+/g, "");
-}
 
 /** O campo "Preço diferente nesta variação" está com um valor, e esse valor é
  * zero ("0,00", "0.00", "0"). Vazio NÃO conta: vazio é "use o preço do
