@@ -200,7 +200,7 @@
       "tipo": "volatil",
       "secdef": true,
       "situacao": "necessaria",
-      "porque": "Cria o pedido no checkout, inclusive o do convidado sem login (useOrders); e' a porta de compra da vitrine."
+      "porque": "Cria o pedido no checkout, inclusive o do convidado sem login (useOrders); e' a porta de compra da vitrine. Desde a 20261394000000 o visitante leva no maximo 10 unidades por pedido, a loja recusa o visitante quando ja tem 10 pedidos de visitante pendentes, e o p_address_id sem sessao e recusado."
     },
     {
       "funcao": "public.create_marketplace_order_v24(p_items jsonb, p_total_amount numeric, p_shipping_cost numeric, p_payment_method text, p_address_id uuid, p_coupon_code text, p_customer_name text, p_customer_phone text, p_observation text, p_address_data jsonb, p_destination_cep text, p_shipping_option_id text, p_idempotency_key uuid)",
@@ -208,7 +208,7 @@
       "tipo": "volatil",
       "secdef": true,
       "situacao": "necessaria",
-      "porque": "Cria o pedido no checkout, inclusive o do convidado sem login (useOrders), na retirada ou na entrega: o pagamento pelo app ('online') exige conta desde a 20261384000000; e' a porta de compra da vitrine."
+      "porque": "Cria o pedido no checkout, inclusive o do convidado sem login (useOrders), na retirada ou na entrega: o pagamento pelo app ('online') exige conta desde a 20261384000000; fora dele, desde a 20261394000000, o visitante leva no maximo 10 unidades por pedido, a loja recusa o visitante quando ja tem 10 pedidos de visitante pendentes, e o p_address_id sem sessao e recusado; e' a porta de compra da vitrine."
     },
     {
       "funcao": "public.crm_clientes(p_segmento text, p_busca text, p_limite integer, p_offset integer)",
@@ -560,7 +560,7 @@
       "tipo": "volatil",
       "secdef": true,
       "situacao": "necessaria",
-      "porque": "Produtos relacionados na pagina do produto, vista pelo visitante (useProducts)."
+      "porque": "Produtos relacionados na pagina do produto, vista pelo visitante (useProducts). Desde a 20261394100000 o limite pedido vale no maximo 50 (NULL vale o padrao 4)."
     },
     {
       "funcao": "public.get_retention_rate()",

@@ -13,6 +13,10 @@ const REEMBOLSO_MANUAL_RESERVA = Object.freeze({
     = 'ea651d52157521c0fe7ffccc948b4b1a', false) AS sim`,
 });
 async function desfazerReembolsoManualReservaNaTransacao(c) {
+  // A 20261395200000 (a conclusao tranca o estoque na mesma ordem da compra) sucede o corpo da 343: sai ANTES dela.
+  await require("./a-conclusao-da-devolucao-posterior.cjs").desfazerConclusaoTrancaNaTransacao(
+    c,
+  );
   if ((await c.query(REEMBOLSO_MANUAL_RESERVA.noAr)).rows[0]?.sim !== true)
     return false;
   await c.query(

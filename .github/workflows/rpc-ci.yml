@@ -214,6 +214,24 @@ on:
       - "scripts/publicacao/consultas/103b-antes-o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-base-vigente.sql"
       - "scripts/publicacao/consultas/104a-conferir-o-balcao-diz-inativo-para-a-variacao-desligada-aplicado.sql"
       - "scripts/publicacao/consultas/104b-antes-o-balcao-diz-inativo-para-a-variacao-desligada-base-vigente.sql"
+      - "scripts/publicacao/consultas/106a-conferir-o-pedido-de-visitante-na-entrega-tem-freio-aplicado.sql"
+      - "scripts/publicacao/consultas/106b-antes-o-pedido-de-visitante-na-entrega-tem-freio-base-vigente.sql"
+      - "scripts/publicacao/consultas/107a-conferir-a-lista-de-recomendacoes-do-produto-tem-teto-aplicado.sql"
+      - "scripts/publicacao/consultas/107b-antes-a-lista-de-recomendacoes-do-produto-tem-teto-base-vigente.sql"
+      - "scripts/publicacao/consultas/108a-conferir-a-busca-de-devolucao-acha-o-numero-do-pedido-aplicado.sql"
+      - "scripts/publicacao/consultas/108b-antes-a-busca-de-devolucao-acha-o-numero-do-pedido-base-vigente.sql"
+      - "scripts/publicacao/consultas/109a-conferir-a-grade-antiga-nao-ressuscita-variacao-excluida-aplicado.sql"
+      - "scripts/publicacao/consultas/109b-antes-a-grade-antiga-nao-ressuscita-variacao-excluida-base-vigente.sql"
+      - "scripts/publicacao/consultas/110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado.sql"
+      - "scripts/publicacao/consultas/110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente.sql"
+      - "scripts/publicacao/consultas/111a-conferir-a-v23-recusa-o-pagamento-pelo-app-aplicado.sql"
+      - "scripts/publicacao/consultas/111b-antes-a-v23-recusa-o-pagamento-pelo-app-base-vigente.sql"
+      - "scripts/publicacao/consultas/112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado.sql"
+      - "scripts/publicacao/consultas/112b-antes-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-ausente.sql"
+      - "scripts/publicacao/consultas/113a-conferir-a-pergunta-nasce-com-a-data-de-agora-aplicado.sql"
+      - "scripts/publicacao/consultas/113b-antes-a-pergunta-nasce-com-a-data-de-agora-ausente.sql"
+      - "scripts/publicacao/consultas/114a-conferir-o-texto-da-avaliacao-tem-teto-no-banco-aplicado.sql"
+      - "scripts/publicacao/consultas/114b-antes-o-texto-da-avaliacao-tem-teto-no-banco-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -397,6 +415,24 @@ on:
       - "scripts/publicacao/consultas/103b-antes-o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-base-vigente.sql"
       - "scripts/publicacao/consultas/104a-conferir-o-balcao-diz-inativo-para-a-variacao-desligada-aplicado.sql"
       - "scripts/publicacao/consultas/104b-antes-o-balcao-diz-inativo-para-a-variacao-desligada-base-vigente.sql"
+      - "scripts/publicacao/consultas/106a-conferir-o-pedido-de-visitante-na-entrega-tem-freio-aplicado.sql"
+      - "scripts/publicacao/consultas/106b-antes-o-pedido-de-visitante-na-entrega-tem-freio-base-vigente.sql"
+      - "scripts/publicacao/consultas/107a-conferir-a-lista-de-recomendacoes-do-produto-tem-teto-aplicado.sql"
+      - "scripts/publicacao/consultas/107b-antes-a-lista-de-recomendacoes-do-produto-tem-teto-base-vigente.sql"
+      - "scripts/publicacao/consultas/108a-conferir-a-busca-de-devolucao-acha-o-numero-do-pedido-aplicado.sql"
+      - "scripts/publicacao/consultas/108b-antes-a-busca-de-devolucao-acha-o-numero-do-pedido-base-vigente.sql"
+      - "scripts/publicacao/consultas/109a-conferir-a-grade-antiga-nao-ressuscita-variacao-excluida-aplicado.sql"
+      - "scripts/publicacao/consultas/109b-antes-a-grade-antiga-nao-ressuscita-variacao-excluida-base-vigente.sql"
+      - "scripts/publicacao/consultas/110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado.sql"
+      - "scripts/publicacao/consultas/110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente.sql"
+      - "scripts/publicacao/consultas/111a-conferir-a-v23-recusa-o-pagamento-pelo-app-aplicado.sql"
+      - "scripts/publicacao/consultas/111b-antes-a-v23-recusa-o-pagamento-pelo-app-base-vigente.sql"
+      - "scripts/publicacao/consultas/112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado.sql"
+      - "scripts/publicacao/consultas/112b-antes-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-ausente.sql"
+      - "scripts/publicacao/consultas/113a-conferir-a-pergunta-nasce-com-a-data-de-agora-aplicado.sql"
+      - "scripts/publicacao/consultas/113b-antes-a-pergunta-nasce-com-a-data-de-agora-ausente.sql"
+      - "scripts/publicacao/consultas/114a-conferir-o-texto-da-avaliacao-tem-teto-no-banco-aplicado.sql"
+      - "scripts/publicacao/consultas/114b-antes-o-texto-da-avaliacao-tem-teto-no-banco-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -419,7 +455,9 @@ jobs:
     name: Invariantes de dinheiro (Postgres efêmero) — bloqueante
     runs-on: ubuntu-latest
     # BLOQUEANTE (sem continue-on-error): prova de dinheiro vermelha barra o PR.
-    timeout-minutes: 15
+    # 30 min: com as provas dos lotes 229b/231/233/234 o job passou a gastar ~15 min e o teto antigo (15) cancelava
+    # a rodada no meio (27/10/2026, PR 1186: "cancelled" aos 15m0s, sem nenhuma prova vermelha). Teto de pior caso, nao meta.
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -599,6 +637,72 @@ jobs:
       - name: Prova viva do balcao que diz inativo para a variacao desligada (20261393100000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-balcao-diz-inativo-para-a-variacao-desligada-viva.cjs
+      # Migration 20261394000000 (o pedido de visitante na entrega tem freio): create_marketplace_order_v23 e v24 ganham o teto de 10
+      # unidades por pedido e o de 10 pedidos de visitante pendentes por loja (so sem sessao e fora do pagamento online), e recusam o
+      # p_address_id de quem nao tem sessao; a retentativa de um pedido que ja existe nunca e recusada; 14 visitantes simultaneos =
+      # exatamente 10 pedidos (advisory lock); rollback byte a byte, pre-voo que recusa sem escrever, pos-voo que desfaz tudo e
+      # consultas 106a/106b. CLONE proprio.
+      - name: Prova viva do freio do pedido de visitante na entrega (20261394000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-pedido-de-visitante-na-entrega-tem-freio-viva.cjs
+      # Migration 20261394100000 (a lista de recomendacoes do produto tem teto): get_product_recommendations limita o p_limit a 50 e
+      # trata NULL como o padrao 4 (antes, 1000000 ou NULL levavam a tabela inteira); ate o teto a lista e' a de sempre (mesmos ids,
+      # mesma ordem); custo e fornecedor seguem NULOS; rollback byte a byte, pre-voo que recusa sem escrever, pos-voo que desfaz tudo
+      # e consultas 107a/107b. CLONE proprio.
+      - name: Prova viva do teto da lista de recomendacoes do produto (20261394100000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-lista-de-recomendacoes-do-produto-tem-teto-viva.cjs
+      # Migration 20261395000000 (a busca de devolucao acha o numero do pedido): admin_devolucoes_listar ganha um ramo no filtro,
+      # igualdade nos 6 ultimos caracteres do id (o numero que o painel mostra), sem caixa e sem o # da frente; pedaco, 7 caracteres e
+      # curinga nao acham; o comeco do id, o protocolo e o nome seguem; JSON identico ao de antes nas buscas sem o ramo novo; rollback
+      # byte a byte, pre-voo que recusa sem escrever, pos-voo que desfaz tudo e consultas 108a/108b. CLONE proprio.
+      - name: Prova viva da busca de devolucao pelo numero do pedido (20261395000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-busca-de-devolucao-acha-o-numero-do-pedido-viva.cjs
+      # Migration 20261395100000 (a grade antiga nao ressuscita variacao excluida): salvar_produto_com_grade pula o id de variacao que
+      # nao existe em lugar nenhum (antes o INSERT trazia a variacao de volta com o estoque da tela velha); variacao existente atualiza,
+      # variacao de outro produto continua recusando, variacao nova (sem id) continua inserindo; mesma resposta e mesmos erros; duas
+      # conexoes reais (a exclusao concorrente espera a trava); rollback byte a byte, pre-voo, pos-voo e consultas 109a/109b. CLONE proprio.
+      - name: Prova viva da grade antiga que nao ressuscita variacao excluida (20261395100000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-grade-antiga-nao-ressuscita-variacao-excluida-viva.cjs
+      # Migration 20261395200000 (a conclusao da devolucao tranca o estoque na mesma ordem da compra): admin_devolucao_concluir tranca
+      # as variacoes dos itens por id e depois os produtos por id ANTES do laco que credita; com duas conexoes reais e COMMIT o corpo
+      # da 20261343000000 da 40P01 contra uma compra e o corpo novo nao; o credito, o reembolso e o retorno sao identicos; rollback
+      # byte a byte, pre-voo, pos-voo e consultas 110a/110b. CLONE proprio.
+      - name: Prova viva da conclusao da devolucao que tranca na mesma ordem da compra (20261395200000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-viva.cjs
+      # Migration 20261394200000 (a v23 recusa o pagamento pelo app): create_marketplace_order_v23 ganha o trecho 0-ter, que recusa
+      # p_payment_method 'online' para TODO mundo (com ou sem conta) depois da idempotencia e antes de qualquer reserva; sem ele a
+      # chamada direta com a chave publica cria um pedido impagavel (payment_status e expires_at nulos) que segura estoque e cupom. A
+      # retentativa de um pedido 'online' antigo devolve o mesmo pedido; cash/pix/card seguem; rollback byte a byte, pre-voo, pos-voo
+      # e consultas 111a/111b. CLONE proprio.
+      - name: Prova viva da v23 que recusa o pagamento pelo app (20261394200000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-v23-recusa-o-pagamento-pelo-app-viva.cjs
+      # Migration 20261396000000 (cada conta tem no maximo 10 aparelhos com aviso ligado): gatilho BEFORE INSERT em push_subscriptions recusa a 11a
+      # inscricao NOVA da conta (cliente que nao e' administrador), sem apagar nada; o re-registro do mesmo aparelho (upsert por endpoint, que
+      # dispara o gatilho antes do conflito) nao conta; conta acima de 10 de antes renova e desliga mas nao cadastra novo; duas conexoes reais
+      # (a 10a e a 11a juntas: a segunda espera a trava por conta e recusa); admin/servico/sessao direta sem limite; rollback, pre-voo,
+      # pos-voo e consultas 112a/112b. CLONE proprio.
+      - name: Prova viva de cada conta com no maximo 10 aparelhos com aviso (20261396000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cada-conta-tem-no-maximo-10-aparelhos-viva.cjs
+      # Migration 20261396100000 (a pergunta do produto nasce com a data de agora): gatilho BEFORE INSERT em questions troca created_at por now() quando quem
+      # grava e' cliente que nao e' administrador de agora (a data futura fixava a pergunta no topo da vitrine); admin, service_role e sessao direta
+      # gravam a data como vier; "admin" so no JWT e' trocado; mutantes, reaplicar, rollback, pre-voo, pos-voo, atomicidade, lock_timeout e consultas
+      # 113a/113b. CLONE proprio.
+      - name: Prova viva da pergunta que nasce com a data de agora (20261396100000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-pergunta-nasce-com-a-data-de-agora-viva.cjs
+      # Migration 20261396200000 (o texto da avaliacao tem teto no banco): CHECK reviews_comment_ate_1000_caracteres (char_length(comment) <= 1000, o teto da tela)
+      # criado NOT VALID; 1000 entra (letra, acento, emoji), 1001 e 1 milhao sao recusados para todos (admin, service_role e sessao direta tambem); avaliacao antiga
+      # acima do teto faz a migration se RECUSAR (guarda: o CHECK travaria o gatilho do pagamento do pedido; medido); mutantes, reaplicar, rollback, pre-voo, pos-voo, atomicidade, lock_timeout e
+      # consultas 114a/114b. CLONE proprio.
+      - name: Prova viva do teto do texto da avaliacao (20261396200000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-texto-da-avaliacao-tem-teto-no-banco-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

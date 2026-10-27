@@ -108,6 +108,10 @@ async function main() {
       ($1,'Admin fixture','admin'),($2,'Cliente fixture','customer')`,
       [ADMIN, CLIENTE],
     );
+    // A 20261395200000 (a conclusao tranca o estoque na mesma ordem da compra) sucede o corpo da 343: cai antes (a transacao e' desfeita no fim).
+    await require("./a-conclusao-da-devolucao-posterior.cjs").desfazerConclusaoTrancaNaTransacao(
+      C,
+    );
     const antes = await catalogo();
     assert.equal(antes.hash, "ea651d52157521c0fe7ffccc948b4b1a");
     await conferir("67a-conferir-reembolso-manual-reserva-aplicado", true);

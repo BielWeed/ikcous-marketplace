@@ -954,6 +954,11 @@ async function main() {
   ADM = new Client({ connectionString: lerDatabaseUrlEfemera() });
   await ADM.connect();
   await semearBase(ADM);
+  // A 20261395100000 (a grade antiga nao ressuscita variacao excluida) sucede o corpo da 352: o pre-voo da 352 recusa por cima dela,
+  // entao ela cai antes (a-grade-antiga-posterior.cjs). Tudo abaixo mede a 352 isolada.
+  await require("./a-grade-antiga-posterior.cjs").desfazerGradeAntigaNaTransacao(
+    ADM,
+  );
   await ADM.query(MIGRATION); // garante o estado "depois" mesmo num clone onde o rollback rodou
   let ok = 0;
   const falhas = [];
