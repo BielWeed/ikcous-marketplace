@@ -25,13 +25,13 @@ import {
 import { type ReactElement, useRef, useState } from "react";
 import "./pdv.css";
 
-/** Uma linha de `get_admin_customers_paged` (migration 20260823000000:56) —
- * só os campos que esta tela usa, medidos no consumidor
- * (AdminCustomersView.tsx). */
+/** Uma linha de `get_admin_customers_paged` — só os campos que esta tela usa.
+ * O telefone vem na chave `phone` (`COALESCE(p.whatsapp, u.phone)`, migration
+ * 20261392000000), nunca `whatsapp`. */
 export interface LinhaDeClienteEncontrado {
   readonly id: string;
   readonly full_name: string | null;
-  readonly whatsapp: string | null;
+  readonly phone: string | null;
   readonly email: string | null;
 }
 
@@ -109,7 +109,7 @@ export function ClienteDaVenda({
         tipo: "cadastrado",
         userId: linha.id,
         nome: linha.full_name || "Cliente",
-        whatsapp: linha.whatsapp,
+        whatsapp: linha.phone ?? null,
       },
     });
     despachar({ tipo: "etapa_pedida", etapa: "cupom" });
@@ -237,7 +237,7 @@ export function ClienteDaVenda({
                       <span>
                         <strong>{linha.full_name || "Cliente"}</strong>
                         <span className="pdv-muted">
-                          {linha.whatsapp || linha.email || ""}
+                          {linha.phone || linha.email || ""}
                         </span>
                       </span>
                       <ChevronRight

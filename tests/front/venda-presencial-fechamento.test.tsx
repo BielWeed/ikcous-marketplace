@@ -263,7 +263,10 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
               {
                 id: "cliente-1",
                 full_name: "Maria Cliente",
-                whatsapp: "11999990000",
+                // Forma REAL de `get_admin_customers_paged` (migration
+                // 20261392000000: `COALESCE(p.whatsapp, u.phone) as phone`) —
+                // a chave NUNCA é `whatsapp`.
+                phone: "(34) 99999-1234",
                 email: "maria@example.com",
               },
             ],
@@ -608,7 +611,11 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     await avancar();
 
     expect(hospedeiro.textContent).toContain("Compra na loja");
-    expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
+    // O banco devolveu a venda ANTIGA (R$ 120) e a tela tinha R$ 39,90: não é
+    // mais um recibo mudo — o alerta vermelho aponta a diferença (caso 8b).
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
+      "Entrou uma venda diferente da que estava na tela",
+    );
     expect(hospedeiro.textContent).toContain("120,00");
     expect(chamadasDeRegistro()[0][1].p_total_esperado).toBe(39.9);
   });
@@ -854,6 +861,110 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     expect(hospedeiro.textContent).toContain("já tinha sido registrada");
   });
 
+  it("caso 8b — rede caiu, a lojista deu desconto e tentou de novo: o banco devolve a venda ANTIGA e a tela grita a diferença (R$ 39,90 entrou × R$ 34,90 na tela)", async () => {
+    let chamadas = 0;
+    registrarImplRef.atual = async () => {
+      chamadas += 1;
+      if (chamadas === 1) {
+        return {
+          data: null,
+          error: { code: "", message: "TypeError: Failed to fetch" },
+        };
+      }
+      // Mesma chave: o banco devolve o pedido que JÁ gravou (sem desconto).
+      return {
+        data: {
+          ja_existia: true,
+          order: pedidoDeExemplo("77777777-7777-7777-7777-777777777777"),
+          items: [
+            {
+              id: "item-1",
+              product_id: "produto-1",
+              variant_id: null,
+              quantity: 1,
+              price: 39.9,
+              product_name: "Camiseta Lisa",
+            },
+          ],
+        },
+        error: null,
+      };
+    };
+
+    await montarAtePagamentoEscolhido();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Registrar venda")!.click();
+    });
+    await avancar();
+    expect(hospedeiro.textContent).toContain(
+      "Não sabemos se a venda foi registrada",
+    );
+
+    // Com a venda "talvez gravada", as edições voltam a valer (mesma chave).
+    await digitarNoCampo("desconto-da-venda", "500");
+    await digitarNoCampo("motivo-do-desconto", "Fidelidade");
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Registrar venda")!.click();
+    });
+    await avancar();
+
+    expect(chamadasDeRegistro()).toHaveLength(2);
+    expect(chamadasDeRegistro()[1][1].p_idempotency_key).toBe(
+      chamadasDeRegistro()[0][1].p_idempotency_key,
+    );
+    const alerta = hospedeiro.querySelector('[role="alert"]');
+    expect(alerta).not.toBeNull();
+    const texto = alerta!.textContent ?? "";
+    expect(texto).toContain("Entrou uma venda diferente da que estava na tela");
+    expect(texto).toContain("R$ 39,90");
+    expect(texto).toContain("R$ 34,90");
+    expect(texto).toContain("Anule esta venda e registre de novo");
+  });
+
+  it("caso 8c — rede caiu e a lojista tentou de novo SEM mudar nada: o recibo da venda que entrou, sem alerta vermelho", async () => {
+    let chamadas = 0;
+    registrarImplRef.atual = async () => {
+      chamadas += 1;
+      if (chamadas === 1) {
+        return {
+          data: null,
+          error: { code: "", message: "TypeError: Failed to fetch" },
+        };
+      }
+      return {
+        data: {
+          ja_existia: true,
+          order: pedidoDeExemplo("77777777-7777-7777-7777-777777777777"),
+          items: [
+            {
+              id: "item-1",
+              product_id: "produto-1",
+              variant_id: null,
+              quantity: 1,
+              price: 39.9,
+              product_name: "Camiseta Lisa",
+            },
+          ],
+        },
+        error: null,
+      };
+    };
+
+    await montarAtePagamentoEscolhido();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Registrar venda")!.click();
+    });
+    await avancar();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Registrar venda")!.click();
+    });
+    await avancar();
+
+    expect(hospedeiro.textContent).toContain("já tinha sido registrada");
+    expect(hospedeiro.textContent).not.toContain("Anule esta venda");
+    expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
+  });
+
   it("caso 9 — 23505 (chave queimada) desabilita 'Registrar venda' e oferece 'Começar uma venda nova' com chave nova", async () => {
     registrarImplRef.atual = async () => ({
       data: null,
@@ -1024,6 +1135,10 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     });
     await avancar();
     await digitarNoCampo("busca-de-cliente-do-balcao", "maria");
+    // A linha da lista mostra o TELEFONE (e não o e-mail) quando existe.
+    expect(
+      localizarBotaoPorTexto(hospedeiro, "Maria Cliente")!.textContent,
+    ).toContain("(34) 99999-1234");
     await act(async () => {
       localizarBotaoPorTexto(hospedeiro, "Maria Cliente")!.click();
     });
@@ -1033,7 +1148,7 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     const params = chamadasDeRegistro()[0][1];
     expect(params.p_cliente_user_id).toBe("cliente-1");
     expect(params.p_cliente_nome).toBeNull();
-    expect(params.p_cliente_whatsapp).toBe("11999990000");
+    expect(params.p_cliente_whatsapp).toBe("(34) 99999-1234");
 
     expect(hospedeiro.textContent).toContain("Compra na loja");
     expect(hospedeiro.textContent).not.toContain("cliente sem WhatsApp");
@@ -1078,7 +1193,7 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
               {
                 id: "cliente-2",
                 full_name: "Ana Sem Zap",
-                whatsapp: null,
+                phone: null,
                 email: "ana@example.com",
               },
             ],

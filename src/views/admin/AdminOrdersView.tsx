@@ -1541,8 +1541,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // `enviados` só existe na send-push depois da PUSH-010 (#80). O teste de
       // tipo é de propósito: contra a versão antiga da função, que respondia
       // `{ success: true }` sem contagem, isto não faz nada — em vez de acusar
-      // falha em todo envio.
-      if (typeof envio?.enviados === "number" && envio.enviados === 0) {
+      // falha em todo envio. `total` 0 = a cliente nunca ligou as notificações
+      // (nenhum aparelho inscrito): não é falha, então não há o que acusar.
+      if (
+        typeof envio?.enviados === "number" &&
+        envio.enviados === 0 &&
+        envio.total !== 0
+      ) {
         toast.warning("Status atualizado, mas o push não chegou", {
           description:
             envio?.falhas?.[0]?.motivo ??

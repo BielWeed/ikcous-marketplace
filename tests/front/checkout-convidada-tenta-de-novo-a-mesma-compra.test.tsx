@@ -383,6 +383,58 @@ describe("CheckoutView — convidada sem resposta do servidor tem saída: tentar
     expect(reenviado).toEqual(primeiro);
   });
 
+  // Lote 238, revisão do item 1: a releitura do catálogo ao voltar do segundo
+  // plano roda NO MEIO do "pedido sem resposta" e pode baixar a linha já comprada
+  // (o banco gravou o pedido e o estoque caiu). O reenvio devolve o pedido que já
+  // existia; a linha com quantidade MENOR OU IGUAL à comprada tem de sair do
+  // carrinho também na MESMA sessão (antes só saía após recarregar a página).
+  it("reenvio na mesma sessão: o catálogo baixou a linha de 3 para 2 -> a compra deu certo e a linha SAI do carrinho", async () => {
+    estado.cart = [{ product: { ...produto, stock: 5 }, quantity: 3 }];
+    estado.cartTotal = 300;
+    createOrder.mockRejectedValueOnce({ code: "PEDIDO_SEM_RESPOSTA" });
+    await montar();
+    await preencherEClicarFinalizar();
+    expect(createOrder.mock.calls[0][0].items[0].quantity).toBe(3);
+
+    // A releitura do catálogo (estoque restante 2) baixa a linha do carrinho.
+    estado.cart = [{ product: { ...produto, stock: 2 }, quantity: 2 }];
+    estado.cartTotal = 200;
+    await renderizarDeNovo();
+
+    createOrder.mockResolvedValueOnce({
+      id: "pedido-1234abcd",
+      totalAmount: 300,
+    });
+    await clicarTentarDeNovo();
+
+    expect(createOrder.mock.calls[1][0].items[0].quantity).toBe(3);
+    expect(estado.cart).toEqual([]);
+    expect(document.body.textContent).toContain("Pedido recebido");
+  });
+
+  it("reenvio na mesma sessão: linha com quantidade MAIOR que a comprada (a cliente somou depois) NÃO sai", async () => {
+    estado.cart = [{ product: produto, quantity: 2 }];
+    estado.cartTotal = 200;
+    createOrder.mockRejectedValueOnce({ code: "PEDIDO_SEM_RESPOSTA" });
+    await montar();
+    await preencherEClicarFinalizar();
+
+    const carrinhoNovo = [{ product: produto, quantity: 3 }];
+    estado.cart = carrinhoNovo;
+    estado.cartTotal = 300;
+    await renderizarDeNovo();
+
+    createOrder.mockResolvedValueOnce({
+      id: "pedido-1234abcd",
+      totalAmount: 200,
+    });
+    await clicarTentarDeNovo();
+
+    expect(estado.cart).toEqual(carrinhoNovo);
+    expect(removeFromCart).not.toHaveBeenCalled();
+    expect(clearCart).not.toHaveBeenCalled();
+  });
+
   it.each([
     { code: "PEDIDO_SEM_RESPOSTA", message: "Sem resposta" },
     { code: "", message: "TypeError: Failed to fetch" },

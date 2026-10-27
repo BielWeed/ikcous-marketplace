@@ -210,6 +210,15 @@ export interface ReciboDaVendaRegistrada {
    * devolveu o pedido existente em vez de criar outro (duplo toque). A
    * tela mostra o MESMO recibo, sem erro nenhum (pdv-c1.json). */
   readonly jaExistia: boolean;
+  /** Só quando `jaExistia`: o que a TELA mostrava e o pedido do banco não tem.
+   * Depois de "Não sabemos se a venda foi registrada" as edições valem de novo
+   * com a MESMA chave, e o retry devolve o pedido ANTIGO — o caixa espera o
+   * valor dele, não o da tela. Ausente = o pedido é o que a tela tinha. */
+  readonly divergenciaComATela?: {
+    readonly totalDaTela: number;
+    readonly unidadesDaTela: number;
+    readonly pagamentoDaTela: FormaDePagamentoDoBalcao;
+  };
 }
 
 /** O estado inteiro do caixa — é exatamente isto que o rascunho grava (menos
@@ -462,6 +471,34 @@ export function totalDaVenda(estado: EstadoDaVenda): number {
         Math.round(estado.desconto * 100),
     ) / 100
   );
+}
+
+/** Compara o pedido que o banco já tinha (`ja_existia`) com a tela: itens
+ * (produto, variação e quantidade), total e forma de pagamento. Cupom vazio ou
+ * sem pagamento = nada na tela para comparar. */
+function divergenciaDoPedidoJaGravado(
+  tela: EstadoDaVenda,
+  recibo: ReciboDaVendaRegistrada,
+): ReciboDaVendaRegistrada["divergenciaComATela"] {
+  if (!tela.pagamento || tela.itens.length === 0) return undefined;
+  const itensDe = (itens: readonly ItemDoCupom[]) =>
+    itens
+      .map((i) => `${i.chave}x${i.quantidade}`)
+      .sort()
+      .join("|");
+  const totalDaTela = totalDaVenda(tela);
+  if (
+    itensDe(tela.itens) === itensDe(recibo.itens) &&
+    Math.round(totalDaTela * 100) === Math.round(recibo.total * 100) &&
+    tela.pagamento === recibo.pagamento
+  ) {
+    return undefined;
+  }
+  return {
+    totalDaTela,
+    unidadesDaTela: tela.itens.reduce((n, i) => n + i.quantidade, 0),
+    pagamentoDaTela: tela.pagamento,
+  };
 }
 
 /**
@@ -897,7 +934,15 @@ export function reducerDaVenda(
         ...estado,
         enviando: false,
         erro: null,
-        recibo: acao.recibo,
+        recibo: acao.recibo.jaExistia
+          ? {
+              ...acao.recibo,
+              divergenciaComATela: divergenciaDoPedidoJaGravado(
+                estado,
+                acao.recibo,
+              ),
+            }
+          : acao.recibo,
         etapa: "recibo",
       };
 

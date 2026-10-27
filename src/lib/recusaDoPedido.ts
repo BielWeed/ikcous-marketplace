@@ -91,6 +91,16 @@ export interface RecusaDoPedido {
 const FORMATO_SQLSTATE = /^[0-9A-Z]{5}$/;
 
 /**
+ * O teto de unidades do pedido de VISITANTE (migration 20261394000000, nas duas
+ * RPCs) e a frase que o banco escreve ao recusá-lo. O checkout usa as DUAS para
+ * avisar ANTES do envio com o mesmo texto que a recusa traria. A regra de
+ * `REGRAS` abaixo casa exatamente esta frase — `checkout-convidado-passa-de-10-
+ * unidades-avisa-antes.test.tsx` prende as duas juntas.
+ */
+export const LIMITE_DE_UNIDADES_DO_VISITANTE = 10;
+export const FRASE_TETO_DE_UNIDADES_DO_VISITANTE = `Sem entrar na conta, o pedido aceita até ${LIMITE_DE_UNIDADES_DO_VISITANTE} unidades. Entre na conta para comprar mais.`;
+
+/**
  * Os três que provam que a chamada nem chegou ao Postgres. Tem de ser o MESMO
  * conjunto de `mensagemAmigavelErroPedido` — ver o cabeçalho deste arquivo.
  */
