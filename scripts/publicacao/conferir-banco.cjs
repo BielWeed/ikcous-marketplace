@@ -2830,7 +2830,21 @@ const ROL_DA_113B = [
   "questions: created_at timestamptz existe e a tabela tem RLS ligada",
   "rls_admin_atual() existe, devolve boolean e e a porta do administrador de agora (a excecao do gatilho depende dela)",
 ];
+// Lote 114 (20261396200000, o texto da avaliacao tem teto no banco: CHECK reviews_comment_ate_1000_caracteres em reviews, objeto NOVO). A 114a
+// prova a restricao (NOT VALID ou ja validada) e que nao ha outro CHECK concorrente sobre a coluna; a 114b a ausencia dela. Nenhuma das duas le avaliacao.
+const ROL_DA_114A = [
+  "controle: catalogo publico visivel",
+  "reviews: CHECK reviews_comment_ate_1000_caracteres (char_length(comment) <= 1000) existe",
+  "reviews: so existe UM CHECK sobre a coluna comment (nenhum outro teto concorrente)",
+];
+const ROL_DA_114B = [
+  "controle: catalogo publico visivel",
+  "reviews: comment e text e o CHECK reviews_comment_ate_1000_caracteres ainda NAO existe",
+  "reviews: nenhum outro CHECK limita a coluna comment hoje (o teto da tela, 1000, ainda nao esta no banco)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "114a-conferir-o-texto-da-avaliacao-tem-teto-no-banco-aplicado": ROL_DA_114A,
+  "114b-antes-o-texto-da-avaliacao-tem-teto-no-banco-ausente": ROL_DA_114B,
   "113a-conferir-a-pergunta-nasce-com-a-data-de-agora-aplicado": ROL_DA_113A,
   "113b-antes-a-pergunta-nasce-com-a-data-de-agora-ausente": ROL_DA_113B,
   "112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado":

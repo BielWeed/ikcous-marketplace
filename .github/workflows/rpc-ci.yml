@@ -228,6 +228,8 @@ on:
       - "scripts/publicacao/consultas/112b-antes-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-ausente.sql"
       - "scripts/publicacao/consultas/113a-conferir-a-pergunta-nasce-com-a-data-de-agora-aplicado.sql"
       - "scripts/publicacao/consultas/113b-antes-a-pergunta-nasce-com-a-data-de-agora-ausente.sql"
+      - "scripts/publicacao/consultas/114a-conferir-o-texto-da-avaliacao-tem-teto-no-banco-aplicado.sql"
+      - "scripts/publicacao/consultas/114b-antes-o-texto-da-avaliacao-tem-teto-no-banco-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -425,6 +427,8 @@ on:
       - "scripts/publicacao/consultas/112b-antes-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-ausente.sql"
       - "scripts/publicacao/consultas/113a-conferir-a-pergunta-nasce-com-a-data-de-agora-aplicado.sql"
       - "scripts/publicacao/consultas/113b-antes-a-pergunta-nasce-com-a-data-de-agora-ausente.sql"
+      - "scripts/publicacao/consultas/114a-conferir-o-texto-da-avaliacao-tem-teto-no-banco-aplicado.sql"
+      - "scripts/publicacao/consultas/114b-antes-o-texto-da-avaliacao-tem-teto-no-banco-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -678,6 +682,13 @@ jobs:
       - name: Prova viva da pergunta que nasce com a data de agora (20261396100000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-pergunta-nasce-com-a-data-de-agora-viva.cjs
+      # Migration 20261396200000 (o texto da avaliacao tem teto no banco): CHECK reviews_comment_ate_1000_caracteres (char_length(comment) <= 1000, o teto da tela)
+      # criado NOT VALID; 1000 entra (letra, acento, emoji), 1001 e 1 milhao sao recusados para todos (admin, service_role e sessao direta tambem); a avaliacao antiga
+      # acima do teto nao e' tocada, mas o UPDATE dela falha ate encurtar (medido); mutantes, reaplicar, rollback, pre-voo, pos-voo, atomicidade, lock_timeout e
+      # consultas 114a/114b. CLONE proprio.
+      - name: Prova viva do teto do texto da avaliacao (20261396200000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-texto-da-avaliacao-tem-teto-no-banco-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

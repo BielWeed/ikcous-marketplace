@@ -639,6 +639,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "112b-antes-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-ausente",
   "113a-conferir-a-pergunta-nasce-com-a-data-de-agora-aplicado",
   "113b-antes-a-pergunta-nasce-com-a-data-de-agora-ausente",
+  "114a-conferir-o-texto-da-avaliacao-tem-teto-no-banco-aplicado",
+  "114b-antes-o-texto-da-avaliacao-tem-teto-no-banco-ausente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
