@@ -2800,6 +2800,16 @@ const ROL_DA_110 = [
   "admin_devolucao_concluir: o corpo traz a ordem global das travas (uma vez)",
   "admin_devolucao_concluir: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno jsonb; authenticated e service_role, sem anon e sem PUBLIC)",
 ];
+// Lote 111 (20261394200000, a v23 recusa o pagamento pelo app: create_marketplace_order_v23 ganha o trecho 0-ter). A 111a e a 111b tem o mesmo rol de 5 linhas;
+// a 111a espera o corpo da 20261394200000 e a 111b o vigente de antes (o da 20261394000000). A ultima linha e' INFORMATIVA (a contagem de pedidos pelo app presos;
+// esperado = vivo, nunca reprova).
+const ROL_DA_111 = [
+  "controle: funcoes de public visiveis a este papel",
+  "create_marketplace_order_v23: corpo exato (md5)",
+  "create_marketplace_order_v23: o corpo traz a recusa do pagamento pelo app (uma vez)",
+  "create_marketplace_order_v23: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid; anon, authenticated e service_role, sem PUBLIC)",
+  "informativo: pedidos pelo app presos (online, pending, sem payment_status)",
+];
 // Lote 112 (20261396000000, cada conta tem no maximo 10 aparelhos com aviso ligado: funcao push_inscricoes_limite_por_conta e gatilho
 // tr_push_inscricoes_limite_por_conta em push_subscriptions, objetos NOVOS). A 112a prova o estado novo; a 112b a ausencia dos dois e
 // o que o gatilho precisa (colunas, RLS e rls_admin_atual). Nenhuma das duas le inscricao.
@@ -2851,6 +2861,8 @@ const ROL_FECHADO_POR_CONSULTA = {
     ROL_DA_112A,
   "112b-antes-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-ausente":
     ROL_DA_112B,
+  "111a-conferir-a-v23-recusa-o-pagamento-pelo-app-aplicado": ROL_DA_111,
+  "111b-antes-a-v23-recusa-o-pagamento-pelo-app-base-vigente": ROL_DA_111,
   "110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado":
     ROL_DA_110,
   "110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente":

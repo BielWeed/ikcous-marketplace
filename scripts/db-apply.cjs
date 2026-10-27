@@ -398,6 +398,19 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261394200000: a v23 recusa o pagamento pelo app. create_marketplace_order_v23 ganha o trecho 0-ter (depois da idempotencia e da forma de
+  // pagamento aceita, antes do 0-quater e de ler o carrinho): p_payment_method 'online' e' recusado para todo mundo, com o identificador
+  // pedido_online_so_na_v24 no DETAIL. Cada marcador aparece UMA vez no corpo. A consulta 111a confere o corpo exato (md5), os atributos e a
+  // ACL; a prova viva faz o comportamento.
+  "20261394200000_a_v23_recusa_o_pagamento_pelo_app.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        { texto: "IF p_payment_method = 'online' THEN", vezes: 1 },
+        { texto: "pedido_online_so_na_v24:", vezes: 1 },
+      ],
+    },
+  ],
   // 20261394100000: a lista de recomendacoes do produto tem teto. get_product_recommendations troca SO a linha do LIMIT (o limite pedido vale no
   // maximo 50; NULL vale o padrao 4); o filtro, a ordenacao e as 31 colunas (custo e fornecedor_id NULOS) nao mudam. A consulta 107a confere o
   // corpo exato (md5), os atributos e a ACL; a prova viva faz o comportamento.

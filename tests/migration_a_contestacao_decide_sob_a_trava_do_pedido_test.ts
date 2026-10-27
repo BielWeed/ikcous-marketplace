@@ -345,6 +345,9 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     // 20261394100000: a lista de recomendacoes do produto tem teto (get_product_recommendations limita p_limit a 50 e trata NULL como 4; ate o teto a lista
     // e' a de sempre; mutantes, rollback, pre/pos-voo e consultas 107a/107b e a 9a).
     "tests/banco/a-lista-de-recomendacoes-do-produto-tem-teto-viva.cjs",
+    // 20261394200000: a v23 recusa o pagamento pelo app para todo mundo (anon e logado; pagar na entrega/retirada como antes; retentativa de pedido antigo devolve o mesmo id;
+    // mutante, rollback byte a byte, aplicar duas vezes, pre/pos-voo e consultas 111a/111b).
+    "tests/banco/a-v23-recusa-o-pagamento-pelo-app-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -647,6 +650,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261394100000: a lista de recomendacoes do produto tem teto (get_product_recommendations limita p_limit a 50 e trata NULL como 4; ate o teto a lista
     // e' a de sempre; mutantes, rollback, pre/pos-voo e consultas 107a/107b e a 9a).
     "tests/banco/a-lista-de-recomendacoes-do-produto-tem-teto-viva.cjs",
+    // 20261394200000: a v23 recusa o pagamento pelo app para todo mundo (anon e logado; pagar na entrega/retirada como antes; retentativa de pedido antigo devolve o mesmo id;
+    // mutante, rollback byte a byte, aplicar duas vezes, pre/pos-voo e consultas 111a/111b).
+    "tests/banco/a-v23-recusa-o-pagamento-pelo-app-viva.cjs",
     // Lote 231 (20261395000000, 20261395100000, 20261395200000): a busca de devolucao acha o numero do pedido; a grade antiga nao ressuscita variacao
     // excluida; a conclusao da devolucao tranca o estoque na mesma ordem da compra (cada uma com mutantes, rollback, pre/pos-voo e as consultas 108 a 110).
     "tests/banco/a-busca-de-devolucao-acha-o-numero-do-pedido-viva.cjs",

@@ -51,6 +51,11 @@ const PEDIDO_DE_VISITANTE_TEM_FREIO = Object.freeze({
 
 /** Desfaz a 20261394000000 na transação aberta, se no ar; repetir é no-op. Devolve true se desfez. */
 async function desfazerPedidoDeVisitanteTemFreioNaTransacao(cliente) {
+  // A 20261394200000 (a v23 recusa o pagamento pelo app) sucede o corpo da v23 desta migration: cai ANTES, senao o pre-voo do rollback
+  // da 394000 recusa com o corpo dela no ar. Ver a-v23-recusa-o-pagamento-pelo-app-posterior.cjs.
+  await require("./a-v23-recusa-o-pagamento-pelo-app-posterior.cjs").desfazerV23RecusaOPagamentoPeloAppNaTransacao(
+    cliente,
+  );
   const r = await cliente.query(PEDIDO_DE_VISITANTE_TEM_FREIO.noAr);
   if (r.rows[0]?.sim !== true) return false;
   await cliente.query(

@@ -635,6 +635,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "109b-antes-a-grade-antiga-nao-ressuscita-variacao-excluida-base-vigente",
   "110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado",
   "110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente",
+  "111a-conferir-a-v23-recusa-o-pagamento-pelo-app-aplicado",
+  "111b-antes-a-v23-recusa-o-pagamento-pelo-app-base-vigente",
   "112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado",
   "112b-antes-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-ausente",
   "113a-conferir-a-pergunta-nasce-com-a-data-de-agora-aplicado",

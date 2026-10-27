@@ -1307,6 +1307,12 @@ async function main() {
         "20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql",
         "public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
       ],
+      // A 20261394200000 (a v23 recusa o pagamento pelo app): create_marketplace_order_v23 sobre o corpo da 394 (cadeia 350 -> 394 -> 394200),
+      // funcao de fora destas tres que a 17a nao le. O rollback dela devolve o corpo da 394.
+      [
+        "20261394200000_a_v23_recusa_o_pagamento_pelo_app.sql",
+        "public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
+      ],
       // A 20261395 (a busca de devolucao acha o numero do pedido): admin_devolucoes_listar sobre o corpo da 99 (cadeia 99 -> 395), funcao
       // de fora destas tres que a 17a nao le. O rollback dela devolve o corpo da 99 (o molde, abaixo, desfaz e mede).
       [

@@ -94,6 +94,9 @@ const FRASES_DO_BANCO = [
   // reescrita no SQL.
   "Sem entrar na conta, o pedido aceita até 10 unidades. Entre na conta para comprar mais.",
   "Estamos com muitos pedidos aguardando agora. Entre na conta para finalizar o seu.",
+  // A V23 RECUSA O PAGAMENTO PELO APP (27/10/2026 — migration 20261394200000, so a v23): a regra irma em
+  // recusaDoPedido.ts (trocar_pagamento) morre calada se a frase sumir ou for reescrita no SQL.
+  "O pagamento pelo app é feito em outra etapa. Para este pedido, escolha pagar na retirada ou na entrega.",
 ];
 
 const sql = Object.values(MIGRATIONS).join("\n");

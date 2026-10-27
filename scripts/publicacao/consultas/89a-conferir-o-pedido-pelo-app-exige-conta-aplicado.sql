@@ -39,8 +39,8 @@ WITH alvo(nome, assinatura) AS (
               ELSE 'DIFERENTE' END
   UNION ALL
   SELECT 'create_marketplace_order_v23: corpo inalterado, o da 20261350000000 (md5)', '6b71cb823967518955407b532904ae91',
-         -- Idem: a v23 aceita tambem o corpo da 20261394000000 (o mesmo corpo mais o trecho 0-quater).
-         COALESCE((SELECT CASE WHEN m IN ('6b71cb823967518955407b532904ae91', '89c99662346d47a4d6b3d13612ca4acb') THEN '6b71cb823967518955407b532904ae91' ELSE m END
+         -- Idem: a v23 aceita tambem o corpo da 20261394000000 (o mesmo corpo mais o trecho 0-quater) e o da 20261394200000 (mais o 0-ter).
+         COALESCE((SELECT CASE WHEN m IN ('6b71cb823967518955407b532904ae91', '89c99662346d47a4d6b3d13612ca4acb', '86a30fe3502bbafd1a507ce03189bc2d') THEN '6b71cb823967518955407b532904ae91' ELSE m END
                      FROM fn WHERE nome = 'create_marketplace_order_v23'), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v24: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)', 'sim',

@@ -219,6 +219,16 @@ const CORPUS: ReadonlyArray<{ rotulo: string; erro: unknown }> = [
     ),
   },
 
+  // A V23 RECUSA O PAGAMENTO PELO APP (migration 20261394200000): P0001 com texto, o
+  // pedido provadamente não nasceu — o painel manda ESCOLHER OUTRA FORMA DE PAGAMENTO e
+  // o toast fala a MESMA frase; o painel nunca manda "tentar de novo".
+  {
+    rotulo: "17. a v23 recusou o pagamento pelo app (rede de segurança)",
+    erro: p0001(
+      "O pagamento pelo app é feito em outra etapa. Para este pedido, escolha pagar na retirada ou na entrega.",
+    ),
+  },
+
   // SQLSTATE genérico: aborto de transação dentro do Postgres, sem ser P0001.
   {
     rotulo: "SQLSTATE genérico (deadlock 40P01)",

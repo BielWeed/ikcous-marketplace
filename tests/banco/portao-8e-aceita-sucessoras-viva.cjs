@@ -145,6 +145,10 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // o-pedido-de-visitante-na-entrega-posterior.cjs); aqui sai do rol pela mesma razao da 384 e da 350.
     s.nome !==
       "20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql" &&
+    // A 20261394200000 (a v23 recusa o pagamento pelo app) so redefine a v23, em cima da 394000; a v23 nao e' funcao da 8e. Entra em
+    // sucessoras-da-99.cjs so para cair antes da 394000 (o-pedido-de-visitante-na-entrega-posterior.cjs chama
+    // a-v23-recusa-o-pagamento-pelo-app-posterior.cjs); aqui sai do rol pela mesma razao da 394000.
+    s.nome !== "20261394200000_a_v23_recusa_o_pagamento_pelo_app.sql" &&
     // A 20261395000000 (a busca de devolucao acha o numero do pedido) e' sucessora de admin_devolucoes_listar, que a 8e trata: sai do
     // modelo desta prova (que conta as 15 que ele conhece) e `noEstado` a desfaz antes (a-busca-de-devolucao-posterior.cjs), como a 392/3921.
     s.nome !==

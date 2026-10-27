@@ -224,6 +224,8 @@ on:
       - "scripts/publicacao/consultas/109b-antes-a-grade-antiga-nao-ressuscita-variacao-excluida-base-vigente.sql"
       - "scripts/publicacao/consultas/110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado.sql"
       - "scripts/publicacao/consultas/110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente.sql"
+      - "scripts/publicacao/consultas/111a-conferir-a-v23-recusa-o-pagamento-pelo-app-aplicado.sql"
+      - "scripts/publicacao/consultas/111b-antes-a-v23-recusa-o-pagamento-pelo-app-base-vigente.sql"
       - "scripts/publicacao/consultas/112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado.sql"
       - "scripts/publicacao/consultas/112b-antes-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-ausente.sql"
       - "scripts/publicacao/consultas/113a-conferir-a-pergunta-nasce-com-a-data-de-agora-aplicado.sql"
@@ -423,6 +425,8 @@ on:
       - "scripts/publicacao/consultas/109b-antes-a-grade-antiga-nao-ressuscita-variacao-excluida-base-vigente.sql"
       - "scripts/publicacao/consultas/110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado.sql"
       - "scripts/publicacao/consultas/110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente.sql"
+      - "scripts/publicacao/consultas/111a-conferir-a-v23-recusa-o-pagamento-pelo-app-aplicado.sql"
+      - "scripts/publicacao/consultas/111b-antes-a-v23-recusa-o-pagamento-pelo-app-base-vigente.sql"
       - "scripts/publicacao/consultas/112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado.sql"
       - "scripts/publicacao/consultas/112b-antes-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-ausente.sql"
       - "scripts/publicacao/consultas/113a-conferir-a-pergunta-nasce-com-a-data-de-agora-aplicado.sql"
@@ -667,6 +671,14 @@ jobs:
       - name: Prova viva da conclusao da devolucao que tranca na mesma ordem da compra (20261395200000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-viva.cjs
+      # Migration 20261394200000 (a v23 recusa o pagamento pelo app): create_marketplace_order_v23 ganha o trecho 0-ter, que recusa
+      # p_payment_method 'online' para TODO mundo (com ou sem conta) depois da idempotencia e antes de qualquer reserva; sem ele a
+      # chamada direta com a chave publica cria um pedido impagavel (payment_status e expires_at nulos) que segura estoque e cupom. A
+      # retentativa de um pedido 'online' antigo devolve o mesmo pedido; cash/pix/card seguem; rollback byte a byte, pre-voo, pos-voo
+      # e consultas 111a/111b. CLONE proprio.
+      - name: Prova viva da v23 que recusa o pagamento pelo app (20261394200000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-v23-recusa-o-pagamento-pelo-app-viva.cjs
       # Migration 20261396000000 (cada conta tem no maximo 10 aparelhos com aviso ligado): gatilho BEFORE INSERT em push_subscriptions recusa a 11a
       # inscricao NOVA da conta (cliente que nao e' administrador), sem apagar nada; o re-registro do mesmo aparelho (upsert por endpoint, que
       # dispara o gatilho antes do conflito) nao conta; conta acima de 10 de antes renova e desliga mas nao cadastra novo; duas conexoes reais

@@ -11,7 +11,7 @@
  *    mesma ACL; o segundo rollback recusa; ida e volta termina igual;
  *  - o pre-voo recusa SEM escrever em cada estado ruim (e o rollback tambem); o pos-voo recusa cada estrago;
  *  - o pos-voo reprovando desfaz a troca (conexao SEM BEGIN: o arquivo vai como UMA mensagem);
- *  - as consultas `a`/`b`: rol fechado de 4 linhas, positivas no estado certo, desvios nos itens certos.
+ *  - as consultas `a`/`b`: rol fechado de 4 linhas (ou `consulta.linhas`), positivas no estado certo, desvios nos itens certos.
  *
  * Somente Postgres EFEMERO (rodar-isolado.cjs: clone descartavel); nunca banco de loja (efemero.cjs recusa).
  */
@@ -251,6 +251,15 @@ function criar(cfg) {
   // MIGRATION: idempotencia, CRLF, rollback, pre-voo, pos-voo, atomicidade
   // -------------------------------------------------------------------------
   const trocaVolatil = volatil === "s" ? "VOLATILE" : "STABLE";
+  // Funcao que o anon PODE executar (aclDeSempre traz `anon=X/...`, como create_marketplace_order_v23): o estrago da ACL e' TIRAR o EXECUTE do anon
+  // (conceder o que ele ja tem nao muda nada); na que o anon nao pode, o estrago e' conceder.
+  const anonPode = aclDeSempre.some((a) => a.startsWith("anon="));
+  const estragoAnon = anonPode
+    ? `REVOKE EXECUTE ON FUNCTION ${sig} FROM anon`
+    : `GRANT EXECUTE ON FUNCTION ${sig} TO anon`;
+  const rotuloAnon = anonPode
+    ? "ACL fechada (anon sem EXECUTE)"
+    : "ACL aberta (anon executa)";
   prova(
     "MIGRATION: reaplicar 2x e em CRLF = mesmo estado (hash, oid, ACL, atributos); o rollback devolve o prosrc IDENTICO (md5 e sha256) e a mesma ACL; o segundo rollback RECUSA; ida e volta termina igual",
     () =>
@@ -317,8 +326,7 @@ function criar(cfg) {
     "funcao ausente (apagada)": () => T.C.query(`DROP FUNCTION ${sig}`),
     "ACL aberta (PUBLIC executa)": () =>
       T.C.query(`GRANT EXECUTE ON FUNCTION ${sig} TO PUBLIC`),
-    "ACL aberta (anon executa)": () =>
-      T.C.query(`GRANT EXECUTE ON FUNCTION ${sig} TO anon`),
+    [rotuloAnon]: () => T.C.query(estragoAnon),
     "authenticated sem EXECUTE": () =>
       T.C.query(`REVOKE EXECUTE ON FUNCTION ${sig} FROM authenticated`),
     "service_role sem EXECUTE": () =>
@@ -427,8 +435,8 @@ function criar(cfg) {
             /ACL de/,
           ],
           [
-            "anon aberto",
-            () => T.C.query(`GRANT EXECUTE ON FUNCTION ${sig} TO anon`),
+            anonPode ? "anon sem EXECUTE" : "anon aberto",
+            () => T.C.query(estragoAnon),
             /ACL de/,
           ],
           [
@@ -517,9 +525,11 @@ function criar(cfg) {
       });
       const depois = await T.emTransacao(rodarTodas, { estado: "depois" });
       const antes = await T.emTransacao(rodarTodas, { estado: "antes" });
+      // Rol de 4 linhas por padrao; `consulta.linhas` o muda quando a consulta traz uma linha INFORMATIVA a mais (lote 233: 5).
+      const N = consulta.linhas ?? 4;
       for (const c of [depois.a, depois.b, antes.a, antes.b]) {
-        assert.equal(c.length, 4, "rol fechado de 4 linhas");
-        assert.equal(new Set(c.map((l) => l.item)).size, 4);
+        assert.equal(c.length, N, `rol fechado de ${N} linhas`);
+        assert.equal(new Set(c.map((l) => l.item)).size, N);
         assert.deepEqual(
           c.map((l) => l.item).sort(),
           [...consulta.rotulos].sort(),
@@ -545,7 +555,7 @@ function criar(cfg) {
         assert.equal(ok, consulta.fixos.includes(item), `a ANTES: ${item}`);
       const casos = [
         [`GRANT EXECUTE ON FUNCTION ${sig} TO PUBLIC`, consulta.attr],
-        [`GRANT EXECUTE ON FUNCTION ${sig} TO anon`, consulta.attr],
+        [estragoAnon, consulta.attr],
         [`REVOKE EXECUTE ON FUNCTION ${sig} FROM authenticated`, consulta.attr],
         [`REVOKE EXECUTE ON FUNCTION ${sig} FROM service_role`, consulta.attr],
         [`ALTER FUNCTION ${sig} SECURITY INVOKER`, consulta.attr],

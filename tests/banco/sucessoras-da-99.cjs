@@ -111,6 +111,9 @@ const NOMES = [
   // 244 -> 350 -> 384 -> 394: o `hashVigente` da 394 e o `hashDesta` da 350 na v23 e da 384 na v24). Nao sao dos 42 da 99, mas o rollback da
   // 384 e o da 350 recusam com o corpo novo no ar: ela cai antes. O preflight dela traz o NOME antes da assinatura (quatro colunas).
   "20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql",
+  // A v23 recusa o pagamento pelo app: create_marketplace_order_v23 sucede o corpo da 394000 (a CADEIA 350 -> 394 -> 394200: o `hashVigente` da
+  // 394200 e o `hashDesta` da 394000 na v23). O rollback da 394000 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261394200000_a_v23_recusa_o_pagamento_pelo_app.sql",
   // A busca de devolucao acha o numero do pedido: admin_devolucoes_listar sucede o corpo da 99 (a CADEIA 99 -> 395: o `hashVigente` da 395 e o
   // `hashDesta` da 99). O rollback da 99 recusa com o corpo novo no ar: ela cai antes.
   "20261395000000_a_busca_de_devolucao_acha_o_numero_do_pedido.sql",
