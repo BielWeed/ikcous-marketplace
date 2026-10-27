@@ -12,6 +12,11 @@ import { act, createElement } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  desligarDialogoDeConfirmacao,
+  ligarDialogoDeConfirmacao,
+} from "./duble-dialogo-de-confirmacao";
+
 import { instrucaoParaOCliente, lerDevolucaoDetalhe } from "@/lib/devolucao";
 import {
   acoesDaLinha,
@@ -163,12 +168,16 @@ beforeEach(() => {
   RESPOSTA_ACAO = { data: null, error: null };
   RESPOSTAS_INVOKE = [];
   STATUS_DA_LINHA_CLIENTE = null;
+  // Lote 230: "Tentar de novo" e "Já devolvi por fora" perguntam pela janela
+  // do app; o dublê lê o texto dela e decide pelo `confirm` de cada teste.
+  ligarDialogoDeConfirmacao();
   hospedeiro = document.createElement("div");
   document.body.appendChild(hospedeiro);
   raiz = createRoot(hospedeiro);
 });
 
 afterEach(() => {
+  desligarDialogoDeConfirmacao();
   act(() => raiz.unmount());
   hospedeiro.remove();
   vi.unstubAllGlobals();

@@ -3,6 +3,7 @@ import { BotaoDeFavorito } from "@/components/ui/custom/BotaoDeFavorito";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import {
   CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
   CLASSE_SELO_DESCONTO,
@@ -213,6 +214,8 @@ export const ProductCard = memo(function ProductCard({
   // por variável é o warning `security/detect-object-injection` que o teto
   // do lint reprova — e Map é a estrutura certa para a escolha.
   const [folhaOpcoesAberta, setFolhaOpcoesAberta] = useState(false);
+  // O Voltar do celular fecha só a folha de opções (como as outras folhas).
+  useVoltarFechaAFolha(folhaOpcoesAberta, () => setFolhaOpcoesAberta(false));
   const [selecionadas, setSelecionadas] = useState<Map<string, string>>(
     () => new Map(),
   );

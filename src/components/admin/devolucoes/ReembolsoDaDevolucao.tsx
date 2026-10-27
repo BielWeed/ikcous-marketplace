@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
 import {
   corpoDoErroDaEdge,
   formatarReais,
@@ -104,6 +105,7 @@ export function ReembolsoDaDevolucao({
     !detalhe.reembolso_manual &&
     refund_id !== null;
 
+  const { confirmar, dialogo } = useConfirmarAcao();
   const [linha, setLinha] = useState<LinhaDoSaldo | null>(null);
   const [erro, setErro] = useState(false);
   const [emVoo, setEmVoo] = useState(false);
@@ -173,10 +175,13 @@ export function ReembolsoDaDevolucao({
   const { podeRepetir, confirmando, porForaAposEspera, jaPorFora, reservada } =
     acoesDaLinha(linha);
 
-  const tentarDeNovo = () =>
-    globalThis.confirm(
-      `Pedir de novo ao Mercado Pago o reembolso de ${valor}? O app confere antes se o anterior não saiu.`,
-    ) &&
+  const tentarDeNovo = async () =>
+    (await confirmar({
+      titulo: "Pedir o reembolso de novo?",
+      texto: `Pedir de novo ao Mercado Pago o reembolso de ${valor}? O app confere antes se o anterior não saiu.`,
+      verbo: "Pedir de novo",
+      valor,
+    })) &&
     executar(async () => {
       const { data, error } = await supabase.functions.invoke(
         "estornar-pagamento",
@@ -199,10 +204,13 @@ export function ReembolsoDaDevolucao({
       return true;
     });
 
-  const porFora = () =>
-    globalThis.confirm(
-      `Registrar que você devolveu ${valor} por fora (PIX ou dinheiro)? O app não pede mais este reembolso ao Mercado Pago.`,
-    ) &&
+  const porFora = async () =>
+    (await confirmar({
+      titulo: "Registrar a devolução por fora?",
+      texto: `Registrar que você devolveu ${valor} por fora (PIX ou dinheiro)? O app não pede mais este reembolso ao Mercado Pago.`,
+      verbo: "Registrar devolução",
+      valor,
+    })) &&
     executar(async () => {
       const { data, error } = await supabase.rpc(
         RPC_DO_REEMBOLSO_R1.porForaDaDevolucao,
@@ -283,6 +291,7 @@ export function ReembolsoDaDevolucao({
           {BOTAO_POR_FORA_APOS_ESPERA}
         </button>
       )}
+      {dialogo}
     </section>
   );
 }

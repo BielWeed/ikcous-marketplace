@@ -449,6 +449,19 @@ vi.mock("@/components/ui/alert-dialog", async () => {
   };
 });
 
+// Lote 230: a pergunta do reembolso (concluir devolução) é a janela do app
+// (`useConfirmarAcao`), com o Radix de verdade. Este arquivo prova o Voltar do
+// App, não a janela: o dublê entrega o texto ao `confirm` do teste e devolve o
+// "sim"/"não" dele, como a caixa nativa fazia -- sem entrar na conta de
+// diálogos abertos do App (`prova.dialogoAberturas`), que aqui é só a pergunta
+// de "alterações não salvas". A janela em si tem os testes `lote-230-*`.
+vi.mock("@/hooks/useConfirmarAcao", () => ({
+  useConfirmarAcao: () => ({
+    confirmar: async (pedido: { texto: string }) =>
+      globalThis.confirm(pedido.texto),
+    dialogo: null,
+  }),
+}));
 vi.mock("@/contexts/StoreContext", () => ({
   StoreProvider: ({ children }: { readonly children?: unknown }) =>
     children as never,
