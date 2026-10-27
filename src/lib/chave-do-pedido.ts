@@ -155,6 +155,37 @@ export function esquecerChaveDoPedidoDe(
   }
 }
 
+// Vencido ou com validade absurda (além do prazo que este código dá) =
+// registro que não é nosso: não vale.
+function registroVale(registro: RegistroDaChave, hoje: number): boolean {
+  return (
+    Number.isFinite(registro.expiraEm) &&
+    registro.expiraEm > hoje &&
+    registro.expiraEm <= hoje + PRAZO_DA_RETENTATIVA_MS
+  );
+}
+
+/**
+ * Há uma compra em curso desta conta (`null` = convidado)? O registro da chave
+ * nasce ANTES do envio do pedido e só some na confirmação, então vigente
+ * significa "enviando, ou sem resposta ainda". O carrinho não pode mudar por
+ * baixo disso: mudar a impressão gira a chave e o novo "Finalizar" criaria um
+ * SEGUNDO pedido (caça 12-A #1). Só lê; qualquer falha diz "não".
+ */
+export function haChaveDoPedidoVigente(
+  dono: string | null,
+  armazenamento: ArmazenamentoSimples = armazenamentoDaChaveDoPedido(),
+): boolean {
+  try {
+    const cru = armazenamento.getItem(chaveDeArmazenamento(dono));
+    return (
+      !!cru && registroVale(JSON.parse(cru) as RegistroDaChave, Date.now())
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function criarGerenciadorDeChave(
   armazenamento: ArmazenamentoSimples,
   gerarChave: () => string = gerarUuidDaCompra,
@@ -165,15 +196,8 @@ export function criarGerenciadorDeChave(
   let registroCorrente: RegistroDaChave | null = null;
   let podeLerArmazenamento = true;
 
-  // Vencido ou com validade absurda (além do prazo que este código dá) =
-  // registro que não é nosso: não vale.
   function aindaVale(registro: RegistroDaChave): boolean {
-    const hoje = agora();
-    return (
-      Number.isFinite(registro.expiraEm) &&
-      registro.expiraEm > hoje &&
-      registro.expiraEm <= hoje + PRAZO_DA_RETENTATIVA_MS
-    );
+    return registroVale(registro, agora());
   }
 
   function lerRegistro(): RegistroDaChave | null {
