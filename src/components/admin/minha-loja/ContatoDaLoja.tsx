@@ -111,7 +111,10 @@ export const ContatoDaLoja = memo(function ContatoDaLoja({
       const salvou = await updateConfig(
         {
           whatsappNumber: paraGravar.valor,
-          shareText: texto,
+          // Só manda a frase se ela mudou: reenviar a de sempre "congelava" o
+          // nome da loja nela (a leitura só acompanha o nome enquanto o texto
+          // for o padrão).
+          ...(texto !== baseTexto ? { shareText: texto } : {}),
         },
         { silentSuccess: true },
       );

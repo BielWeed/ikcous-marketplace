@@ -59,7 +59,8 @@ export function PreviaDoFrete({
     { id: "local-delivery", price: config.localDeliveryFee ?? 10 },
     { config, subtotal, temItemMarcado: false },
   );
-  const fora = config.shippingCoverage !== "local";
+  const soRetiro = modo === "so_retiro";
+  const fora = config.shippingCoverage !== "local" && !soRetiro;
   const nacional = promessas.nacional;
   const gratisNacional =
     nacional.estrategia === "sempre" ||
@@ -124,24 +125,28 @@ export function PreviaDoFrete({
             icone={Truck}
             nome="Fora da sua região"
             detalhe={
-              !fora
-                ? "a loja não vende"
-                : nomesLigados === null
-                  ? "transportadoras sem confirmar"
-                  : nomesLigados.length
-                    ? nomesLigados.join(" ou ")
-                    : "nenhuma transportadora ligada"
+              soRetiro
+                ? "quem é de fora retira na loja"
+                : !fora
+                  ? "a loja não vende"
+                  : nomesLigados === null
+                    ? "transportadoras sem confirmar"
+                    : nomesLigados.length
+                      ? nomesLigados.join(" ou ")
+                      : "nenhuma transportadora ligada"
             }
             valor={
-              !fora
-                ? "Não vende"
-                : nomesLigados === null
-                  ? "A confirmar"
-                  : !nomesLigados.length
-                    ? "Não compra"
-                    : gratisNacional
-                      ? "Grátis"
-                      : "Na hora"
+              soRetiro
+                ? "Só retirada · Grátis"
+                : !fora
+                  ? "Não vende"
+                  : nomesLigados === null
+                    ? "A confirmar"
+                    : !nomesLigados.length
+                      ? "Não compra"
+                      : gratisNacional
+                        ? "Grátis"
+                        : "Na hora"
             }
             nota={
               !fora || !nomesLigados?.length

@@ -211,7 +211,6 @@ describe("Minha loja › Contato — formulário direto (direção B)", () => {
     expect(updateConfig).toHaveBeenCalledWith(
       {
         whatsappNumber: null,
-        shareText: "Confira [nome] por [preco]: [link]",
       },
       { silentSuccess: true },
     );

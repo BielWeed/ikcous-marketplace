@@ -232,7 +232,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
                 type="number"
                 min="0"
                 step={tipoDesconto === "percentual" ? "1" : "0.5"}
-                inputMode="numeric"
+                inputMode={tipoDesconto === "fixo" ? "decimal" : "numeric"}
                 value={valorDesconto === 0 ? "" : valorDesconto}
                 onChange={(ev) =>
                   onValorDesconto(
@@ -293,7 +293,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
               type="number"
               min={ehDesconto ? "0" : "0.01"}
               step="5"
-              inputMode="numeric"
+              inputMode="decimal"
               value={minimo === 0 ? "" : minimo}
               onChange={(ev) =>
                 onMinimo(ev.target.value === "" ? 0 : Number(ev.target.value))

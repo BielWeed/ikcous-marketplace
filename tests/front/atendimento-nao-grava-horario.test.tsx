@@ -130,7 +130,6 @@ describe("Minha loja › Contato — não grava nem edita o horário (A1)", () =
     expect(enviado).not.toHaveProperty("businessHours");
     expect(enviado).toEqual({
       whatsappNumber: "551198765432",
-      shareText: "Confira [nome] por [preco]: [link]",
     });
   });
 

@@ -109,7 +109,12 @@ module.exports = [
     // 584 -> 588 kB para os lotes 201-205 da Caca 7 (vitrine: selos, pontos das ofertas,
     // dialogos e avisos da cliente). Medido no CI com o merge: 584,01 kB (lote do painel
     // sozinho) e 584,28 kB (lote da vitrine sozinho); juntos passam de 584 kB.
-    limit: "588 kB",
+    // 26/10/2026 (mesma regra): 588 -> 592 kB para os lotes 216-222 da Caca 9 (Voltar que
+    // fecha so a folha, aviso inteiro no celular, lista de produtos, painel de frete e
+    // vitrine). Medido no CI: o lote 222 sozinho deu 588,02 kB (21 B acima do teto); os
+    // lotes 217, 219, 220 e 222 somam ~1,3 kB sobre a base de 586,82 kB. Nenhum codigo foi
+    // trocado por algo mais arriscado para caber.
+    limit: "592 kB",
     webpack: false,
     // Sem `running: false` o preset tenta MEDIR TEMPO rodando o bundle em
     // Chrome headless — inútil para app de navegador e quebra em runner sem
