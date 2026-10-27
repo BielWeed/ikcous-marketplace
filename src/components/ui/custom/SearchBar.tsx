@@ -343,7 +343,7 @@ export function SearchBar({
                       key={term}
                       type="button"
                       onClick={() => handleSuggestionClick(term)}
-                      className="shadow-2xs flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-bold text-zinc-800 transition-all hover:border-zinc-900 hover:bg-zinc-900 hover:text-white active:scale-95"
+                      className="shadow-2xs flex min-h-11 items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-bold text-zinc-800 transition-all hover:border-zinc-900 hover:bg-zinc-900 hover:text-white active:scale-95"
                     >
                       <Search className="size-3 opacity-60" />
                       <span>{term}</span>
@@ -368,7 +368,7 @@ export function SearchBar({
                       key={cat}
                       type="button"
                       onClick={() => handleSuggestionClick(cat)}
-                      className="shadow-2xs flex items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary hover:text-primary-foreground active:scale-95"
+                      className="shadow-2xs flex min-h-11 items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary hover:text-primary-foreground active:scale-95"
                     >
                       <Suspense fallback={<Tag className="size-3" />}>
                         <IconeDaCategoriaBuscada

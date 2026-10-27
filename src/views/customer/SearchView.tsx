@@ -504,13 +504,13 @@ export const SearchView = React.memo(function SearchView({
               <p className="mt-2 text-xs font-medium leading-relaxed text-zinc-600">
                 Não encontramos o que você buscou com esses filtros. <br />
                 <span className="font-black text-zinc-900">
-                  Que tal dar uma olhada no que é tendência?
+                  Que tal dar uma olhada em alguns produtos da loja?
                 </span>
               </p>
               <Button
                 variant="outline"
                 onClick={handleClearSearch}
-                className="mt-8 h-12 rounded-2xl border-zinc-200 px-8 text-[10px] font-black uppercase tracking-widest text-zinc-900"
+                className="mt-8 h-12 rounded-2xl border-zinc-200 px-8 text-xs font-black uppercase tracking-widest text-zinc-900"
               >
                 Limpar Tudo
               </Button>
@@ -521,7 +521,7 @@ export const SearchView = React.memo(function SearchView({
                 curadoria e tendência que a loja não mediu, e em inglês. */}
             <div className="border-t border-zinc-100 pt-10">
               <div className="mb-10 flex flex-col items-center text-center">
-                <span className="mb-2 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-600">
+                <span className="mb-2 text-xs font-black uppercase tracking-[0.3em] text-zinc-600">
                   Sugestões
                 </span>
                 <h3 className="text-2xl font-black tracking-tighter text-zinc-900">

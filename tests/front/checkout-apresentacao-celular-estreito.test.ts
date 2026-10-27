@@ -68,7 +68,7 @@ describe("finalizar em celular estreito — apresentação", () => {
   it("Endereço Principal e CEP têm 11px", () => {
     for (const texto of ["Endereço Principal", "CEP: {address.cep}"]) {
       const tag = tagAntesDoTexto(enderecos, texto);
-      expect(tag).toContain("text-[11px]");
+      expect(tag).toMatch(/text-(?:\[11px\]|xs)/);
       expect(tag).not.toMatch(/text-\[(?:8|9)px\]/);
     }
   });

@@ -151,7 +151,8 @@ describe("lembrete do carrinho", () => {
       260,
     );
     expect(botao).toContain("after:-inset-y-1.5");
-    expect(botao).toContain("text-[10px]");
+    // Lote 211: o texto do botao subiu de 10 px para 12 px (text-xs).
+    expect(botao).toContain("text-xs");
   });
 });
 

@@ -199,6 +199,28 @@ describe("CartContext — addToCart informa quantas unidades entraram", () => {
     );
   });
 
+  it("estoque de 1 unidade: o aviso fala no singular (linha nova)", async () => {
+    await act(async () => {
+      atual.addToCart(produto({ stock: 1 }), 5);
+    });
+    expect(toastError.mock.calls[0]?.[0]).toBe(
+      "Só resta 1 unidade disponível.",
+    );
+  });
+
+  it("estoque de 1 unidade já no carrinho: o aviso fala no singular", async () => {
+    await act(async () => {
+      atual.addToCart(produto({ stock: 1 }), 1);
+    });
+    toastError.mockClear();
+    await act(async () => {
+      atual.addToCart(produto({ stock: 1 }), 1);
+    });
+    expect(toastError.mock.calls[0]?.[0]).toBe(
+      "Só resta 1 unidade disponível em estoque.",
+    );
+  });
+
   it("produto esgotado: devolve 0 e diz que esgotou", async () => {
     let entrou: unknown;
     await act(async () => {

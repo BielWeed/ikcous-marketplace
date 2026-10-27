@@ -170,6 +170,14 @@ const CartItemCard = memo(function CartItemCard({
               )}
               <p className="text-lg font-bold leading-none tracking-tight text-foreground">
                 {formatCurrency(price)}
+                {item.quantity > 1 && (
+                  <span
+                    data-testid="cart-item-preco-cada"
+                    className="ml-1 text-xs font-medium text-muted-foreground"
+                  >
+                    cada
+                  </span>
+                )}
               </p>
             </div>
 
