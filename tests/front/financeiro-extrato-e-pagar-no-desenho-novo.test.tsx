@@ -128,7 +128,8 @@ const A_PAGAR = [
   }),
   prev({
     id: "p2",
-    descricao: "Fornecedor Alfa",
+    // Como o banco grava (fin_lancamento_salvar): a parcela já vem na descrição.
+    descricao: "Fornecedor Alfa (1/3)",
     valor: 150,
     vencimento: "2026-10-23",
     parcela: 1,
@@ -691,7 +692,9 @@ describe("Financeiro — Extrato e Pagar e receber no desenho novo", () => {
       expect(texto).toContain("Venceu há 3 dias");
       expect(texto).toContain("Vence hoje");
       expect(texto).toContain("Vence amanhã");
-      expect(texto).toContain("Fornecedor Alfa · 1/3");
+      // Uma vez só: "Fornecedor Alfa (1/3)", nunca "(1/3) · 1/3".
+      expect(texto).toContain("Fornecedor Alfa (1/3)");
+      expect(texto).not.toContain("· 1/3");
     });
 
     it("cada conta é um cartão: título + valor à direita sem quebrar, categoria · conta, situação colorida pelo que significa", () => {

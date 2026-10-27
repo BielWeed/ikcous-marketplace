@@ -71,6 +71,18 @@ function SeloDeCrescimento({ valor }: { readonly valor: number }) {
   );
 }
 
+/**
+ * A RPC devolve +100 quando os 30 dias anteriores não tiveram venda e os
+ * últimos 30 tiveram ("de zero para qualquer coisa"). Isso não é crescimento:
+ * sem base, sem selo (mesmo critério dos chips de Receita/Pedidos do CRM).
+ * A base sai do próprio histórico diário: os 30 dias antes dos últimos 30.
+ */
+function semVendaNosTrintaDiasAntes(stats: DashboardStats): boolean {
+  if (stats.growth !== 100) return false;
+  const anteriores = (stats.revenueHistory ?? []).slice(-60, -30);
+  return !anteriores.some((dia) => (dia.revenue ?? 0) > 0);
+}
+
 export const OperationalPerformanceChart = memo(
   function OperationalPerformanceChart({
     stats,
@@ -212,7 +224,8 @@ export const OperationalPerformanceChart = memo(
           </div>
           {!loading &&
             typeof stats?.growth === "number" &&
-            Number.isFinite(stats.growth) && (
+            Number.isFinite(stats.growth) &&
+            !semVendaNosTrintaDiasAntes(stats) && (
               <SeloDeCrescimento valor={stats.growth} />
             )}
           <ExplicacaoDoRelatorio titulo="Histórico da loja">
