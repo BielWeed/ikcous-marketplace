@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
 import {
   type LinhaEstornoDoPedido,
   useEstornosDoPedido,
@@ -221,6 +222,7 @@ export function EstornoCard({
     enviando,
   } = useEstornosDoPedido(order.id, order.status, order.paymentStatus);
 
+  const { confirmar, dialogo } = useConfirmarAcao();
   const [campoAberto, setCampoAberto] = useState(false);
   const [valorCampo, setValorCampo] = useState("");
   const inputValorRef = useRef<HTMLInputElement>(null);
@@ -248,6 +250,7 @@ export function EstornoCard({
         >
           Tentar carregar de novo
         </Button>
+        {dialogo}
       </div>
     );
   }
@@ -264,6 +267,7 @@ export function EstornoCard({
           Devolução de dinheiro
         </h3>
         <p className="text-xs text-zinc-400">Carregando…</p>
+        {dialogo}
       </div>
     );
   }
@@ -302,9 +306,13 @@ export function EstornoCard({
     estado !== "normal" ? true : enviando || isOffline || !campoValido;
 
   async function pedirConfirmacaoEEnviar(amount: number) {
-    const confirmado = globalThis.confirm(
-      `Devolver ${formatCurrency(amount)} ao cliente pelo Mercado Pago? O dinheiro sai da sua conta do Mercado Pago e não dá para desfazer.`,
-    );
+    const valor = formatCurrency(amount);
+    const confirmado = await confirmar({
+      titulo: "Devolver o dinheiro ao cliente?",
+      texto: `Devolver ${valor} ao cliente pelo Mercado Pago? O dinheiro sai da sua conta do Mercado Pago e não dá para desfazer.`,
+      verbo: `Devolver ${valor}`,
+      valor,
+    });
     if (!confirmado) return;
     await solicitarEstorno({ amount, motivo: "" });
   }
@@ -456,6 +464,7 @@ export function EstornoCard({
       {carregando && linhas.length === 0 && (
         <p className="text-xs text-zinc-400">Carregando…</p>
       )}
+      {dialogo}
     </div>
   );
 }

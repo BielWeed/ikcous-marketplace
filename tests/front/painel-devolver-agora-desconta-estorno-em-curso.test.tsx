@@ -31,6 +31,11 @@ import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  desligarDialogoDeConfirmacao,
+  ligarDialogoDeConfirmacao,
+} from "./duble-dialogo-de-confirmacao";
+
 interface LinhaFake {
   order_id: string;
   amount: number;
@@ -698,9 +703,16 @@ describe("'Devolver agora' desconta o que o Mercado Pago já está devolvendo (L
   describe("confirm de 'Já estornei no Mercado Pago'", () => {
     let confirmSpy: ReturnType<typeof vi.fn>;
 
+    // Lote 230: a pergunta é a janela do app; o dublê lê o texto dela e
+    // decide pelo `confirmSpy` (ver duble-dialogo-de-confirmacao.ts).
     beforeEach(() => {
       confirmSpy = vi.fn(() => false);
       vi.stubGlobal("confirm", confirmSpy);
+      ligarDialogoDeConfirmacao();
+    });
+
+    afterEach(() => {
+      desligarDialogoDeConfirmacao();
     });
 
     async function clicarJaEstornei() {
@@ -1131,6 +1143,91 @@ describe("'Devolver agora' desconta o que o Mercado Pago já está devolvendo (L
           "Não consegui registrar o estorno. Tente de novo.",
         );
       });
+    });
+  });
+
+  // Lote 230: "Já estornei" pergunta pela JANELA DO APP, sem o dublê acima.
+  describe("lote 230 — a pergunta de 'Já estornei' é a janela do app", () => {
+    let nativo: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      nativo = vi.fn(() => true);
+      vi.stubGlobal("confirm", nativo);
+      rpcMock.mockResolvedValue({ data: null, error: null });
+    });
+
+    const janela = () =>
+      document.querySelector<HTMLElement>('[data-testid="confirmar-acao"]');
+    const normal = (t: string | null | undefined) =>
+      (t ?? "").replace(/\s+/g, " ").trim();
+
+    async function abrirAJanela() {
+      mockPedidosCancelados = [pedidoCanceladoPago({ id: "ped-janela" })];
+      RESPOSTA_ORDER_REFUNDS = { data: [], error: null };
+      await montarEAbrir();
+      await esperarConferido("ped-janela");
+      const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
+        (b) => b.textContent?.trim() === "Já estornei no Mercado Pago",
+      );
+      expect(botao).toBeTruthy();
+      await act(async () => {
+        botao!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      await esperarAte(() => janela() !== null);
+    }
+
+    it("abre a janela com o valor em destaque, o texto de antes e o verbo da ação; nada é registrado ainda", async () => {
+      await abrirAJanela();
+
+      expect(nativo).not.toHaveBeenCalled();
+      const j = janela()!;
+      expect(normal(j.querySelector("p")?.textContent)).toBe("R$ 100,00");
+      expect(normal(j.textContent)).toContain(
+        "Confirma que você JÁ devolveu R$ 100,00 para Cliente Teste no painel do Mercado Pago?",
+      );
+      // A pergunta antiga não existe mais como caixa nativa; o botão de
+      // desistir chama-se "Cancelar" porque o texto de outras perguntas
+      // manda "tocar em Cancelar".
+      expect(
+        Array.from(j.querySelectorAll("button")).map((b) =>
+          normal(b.textContent),
+        ),
+      ).toEqual(["Cancelar", "Registrar estorno"]);
+      expect(rpcMock).not.toHaveBeenCalledWith(
+        "registrar_estorno_manual",
+        expect.anything(),
+      );
+    });
+
+    it("confirmar registra o estorno UMA vez, mesmo com duplo toque", async () => {
+      await abrirAJanela();
+      const botoes = Array.from(janela()!.querySelectorAll("button"));
+      const acao = botoes[botoes.length - 1];
+      await act(async () => {
+        acao.click();
+        acao.click();
+      });
+      await esperarAte(() => toastSuccessMock.mock.calls.length > 0);
+
+      expect(nativo).not.toHaveBeenCalled();
+      expect(
+        rpcMock.mock.calls.filter((c) => c[0] === "registrar_estorno_manual"),
+      ).toEqual([["registrar_estorno_manual", { p_order_id: "ped-janela" }]]);
+    });
+
+    it("'Cancelar' não registra nada", async () => {
+      await abrirAJanela();
+      const desistir = janela()!.querySelector("button")!;
+      await act(async () => {
+        desistir.click();
+      });
+
+      expect(nativo).not.toHaveBeenCalled();
+      expect(janela()).toBeNull();
+      expect(rpcMock).not.toHaveBeenCalledWith(
+        "registrar_estorno_manual",
+        expect.anything(),
+      );
     });
   });
 });

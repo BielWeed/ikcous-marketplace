@@ -14,6 +14,11 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  desligarDialogoDeConfirmacao,
+  ligarDialogoDeConfirmacao,
+} from "./duble-dialogo-de-confirmacao";
+
 import type { LinhaEstornoDoPedido } from "@/hooks/useEstornosDoPedido";
 import type { Order } from "@/types";
 
@@ -113,12 +118,16 @@ beforeEach(() => {
   registrarPorForaAposEsperaMock.mockClear();
   recarregarMock.mockClear();
   useEstornosDoPedidoMock.mockReset();
+  // Lote 230: a pergunta é a janela do app; o dublê lê o texto dela e decide
+  // pelo `confirm` deste teste (duble-dialogo-de-confirmacao.ts).
+  ligarDialogoDeConfirmacao();
   hospedeiro = document.createElement("div");
   document.body.appendChild(hospedeiro);
   raiz = createRoot(hospedeiro);
 });
 
 afterEach(() => {
+  desligarDialogoDeConfirmacao();
   act(() => {
     raiz.unmount();
   });
