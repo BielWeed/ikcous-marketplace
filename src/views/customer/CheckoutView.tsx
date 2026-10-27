@@ -130,6 +130,8 @@ import {
 import { cotacaoValeParaDestino, soDigitos } from "@/lib/reconciliacao-de-cep";
 import {
   type AcaoDeRecusa,
+  FRASE_TETO_DE_UNIDADES_DO_VISITANTE,
+  LIMITE_DE_UNIDADES_DO_VISITANTE,
   type RecusaDoPedido,
   classificarRecusaDoPedido,
 } from "@/lib/recusaDoPedido";
@@ -3513,6 +3515,15 @@ export function CheckoutViewDaConta({
     // de um app/cache antigo, ou uma transportadora) a regra segue inteira.
     !retiradaLivreParaQualquerCep(config, selectedShippingOption?.id);
 
+  // TETO DE UNIDADES DO VISITANTE (caça 11-A #2, migration 20261394000000): sem
+  // conta o pedido aceita até 10 unidades SOMADAS (o banco soma as linhas), e o
+  // visitante só descobria no último toque. Avisa antes, com a frase do banco.
+  // Quem tem conta não tem esse teto; visitante nunca paga online (P6).
+  const convidadoComUnidadesDemais =
+    !user &&
+    cart.reduce((soma, item) => soma + item.quantity, 0) >
+      LIMITE_DE_UNIDADES_DO_VISITANTE;
+
   // Achado da revisão (18/08/2026): a Tarefa 7 deste bloco fez a
   // `calculate-shipping` recusar cotar quando a loja não configurou o CEP de
   // origem — correto. Mas este botão só olhava `isValid` (validade do
@@ -3663,6 +3674,7 @@ export function CheckoutViewDaConta({
     isOffline ||
     aguardandoConferenciaDaRecusa ||
     convidadoForaDaCidade ||
+    convidadoComUnidadesDemais ||
     pagamentoIncompativel ||
     formaDePagamentoDesligada ||
     totalZero.bloqueiaFinalizar;
@@ -7300,6 +7312,29 @@ export function CheckoutViewDaConta({
                           Crie sua conta para receber em outro CEP — assim você
                           também acompanha seu pedido por aqui.
                         </p>
+                      </div>
+                    )}
+                    {convidadoComUnidadesDemais && !convidadoForaDaCidade && (
+                      // Mesma porta do aviso acima (a conta resolve os dois);
+                      // um só bloco quando os dois valem.
+                      <div className="mx-auto mt-1.5 flex max-w-md flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5">
+                        <p
+                          role="alert"
+                          className="flex items-start gap-1.5 text-xs font-semibold leading-snug text-amber-800"
+                        >
+                          <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                          {FRASE_TETO_DE_UNIDADES_DO_VISITANTE}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            haptic.light();
+                            onNavigate("auth");
+                          }}
+                          className="flex min-h-11 items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                        >
+                          Entrar ou criar conta
+                        </button>
                       </div>
                     )}
                     {aguardandoConferenciaDaRecusa && (
