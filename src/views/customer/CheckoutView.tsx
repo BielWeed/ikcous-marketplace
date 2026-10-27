@@ -4262,7 +4262,7 @@ export function CheckoutViewDaConta({
    * tentativa. Quem chama já tomou a trava (`travaDeEnvioRef`) e ligou
    * `isSubmitting`; o `finally` abaixo solta os dois.
    */
-  const enviarPedido = async (pedido: PedidoCongelado) => {
+  const enviarPedido = async (pedido: PedidoCongelado, reenvio = false) => {
     const { orderData, ehOnline, cpfParaRpc } = pedido;
     const itensEnviados = pedido.itens.map((item) => ({
       ...item,
@@ -4284,8 +4284,9 @@ export function CheckoutViewDaConta({
         onClearCart();
         itensDoPedidoParaRestaurarRef.current = itensEnviados;
       } else if (removeFromCart) {
-        // Na recarga, o catálogo pode ter reduzido uma linha já comprada.
-        // Fora dela, alterações de quantidade durante o envio ficam.
+        // No reenvio da compra congelada (na recarga OU na mesma sessão, ao
+        // voltar do segundo plano), o catálogo pode ter reduzido uma linha já
+        // comprada. Fora dele, alterações de quantidade durante o envio ficam.
         for (const item of itensEnviados) {
           const atual = carrinhoAtual.find(
             (linha) =>
@@ -4295,7 +4296,8 @@ export function CheckoutViewDaConta({
           if (
             atual &&
             (atual.quantity === item.quantity ||
-              (pedido === pedidoRestaurado && atual.quantity <= item.quantity))
+              ((reenvio || pedido === pedidoRestaurado) &&
+                atual.quantity <= item.quantity))
           ) {
             // Conclusão de compra: sem o aviso por cima da tela de sucesso.
             removeFromCart(item.product.id, chaveDaLinha(item) || undefined, {
@@ -4514,7 +4516,7 @@ export function CheckoutViewDaConta({
     if (!travaDeEnvioRef.current.tentarEntrar()) return;
     setRecusaDoUltimoClique(null);
     setIsSubmitting(true);
-    await enviarPedido(pedido);
+    await enviarPedido(pedido, true);
   };
 
   const voltarAoCarrinhoComItensDoPedido = () => {
