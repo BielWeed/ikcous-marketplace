@@ -234,18 +234,14 @@ export function textoDaPrevia(
   });
   const link = `${window.location.origin}/produtos?id=${exemplo.id || "1"}`;
 
-  // Funções no lugar de strings: um nome de produto com "$&" não vira padrão.
-  return texto
-    .replace(
-      /\[nome_produto\]|\{nome_produto\}|\[nome\]|\{nome\}/gi,
-      () => exemplo.name,
-    )
-    .replace(
-      /\[preco_produto\]|\{preco_produto\}|\[preco\]|\{preco\}/gi,
-      () => preco,
-    )
-    .replace(
-      /\[link_produto\]|\{link_produto\}|\[link\]|\{link\}/gi,
-      () => link,
-    );
+  // Só [nome], [preco] e [link] — os mesmos três que a vitrine troca ao
+  // compartilhar (ProductView). {nome}, [nome_produto] etc. a vitrine manda
+  // crus, então a prévia também os mostra crus. Uma passada, com FUNÇÃO: "$&"
+  // no nome do produto não vira padrão.
+  return texto.replace(/\[(nome|preco|link)\]/gi, (_marcador, qual: string) => {
+    const tipo = qual.toLowerCase();
+    if (tipo === "nome") return exemplo.name;
+    if (tipo === "preco") return preco;
+    return link;
+  });
 }
