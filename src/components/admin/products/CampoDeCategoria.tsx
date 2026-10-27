@@ -55,6 +55,8 @@ export function CampoDeCategoria({
   aoCriar,
   aoGerenciar,
   categoriaDoRascunhoQueSumiu,
+  aberta: abertaDeFora,
+  aoMudarAberta,
 }: {
   readonly valor: string;
   readonly nomes: ReadonlyArray<CategoriaDoCampo>;
@@ -62,8 +64,16 @@ export function CampoDeCategoria({
   readonly aoCriar: () => void;
   readonly aoGerenciar: () => void;
   readonly categoriaDoRascunhoQueSumiu: string | null;
+  /** Opcional: o formulário controla a folha para o Voltar do celular fechá-la. */
+  readonly aberta?: boolean;
+  readonly aoMudarAberta?: (aberta: boolean) => void;
 }) {
-  const [aberta, setAberta] = useState(false);
+  const [abertaPropria, setAbertaPropria] = useState(false);
+  const aberta = abertaDeFora ?? abertaPropria;
+  const setAberta = (valor: boolean) => {
+    setAbertaPropria(valor);
+    aoMudarAberta?.(valor);
+  };
   const [busca, setBusca] = useState("");
   const botaoRef = useRef<HTMLButtonElement | null>(null);
   // "Nova categoria" e "Organizar" abrem OUTRA folha no mesmo instante: devolver

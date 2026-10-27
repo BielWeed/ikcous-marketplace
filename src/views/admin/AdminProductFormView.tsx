@@ -230,6 +230,25 @@ function temCameraDisponivel(): boolean {
 const PRAZO_POR_FOTO_MS = 90_000;
 
 /**
+ * Prazo da conferência de um código de barras no SALVAR. A busca é uma consulta
+ * curta; passar disto é rede ruim, e estourar vale como "não consegui conferir"
+ * (aviso discreto, não bloqueia) -- o índice único do banco fecha a colisão real.
+ */
+const PRAZO_DO_CODIGO_NO_SALVAR_MS = 10_000;
+
+/** Um só import do cliente do banco, mesmo com várias conferências ao mesmo tempo. */
+let importDoClienteDoBanco:
+  | Promise<typeof import("@/lib/supabase")>
+  | undefined;
+function clienteDoBanco() {
+  importDoClienteDoBanco ??= import("@/lib/supabase").catch((erro) => {
+    importDoClienteDoBanco = undefined;
+    throw erro;
+  });
+  return importDoClienteDoBanco;
+}
+
+/**
  * Depois de "Excluir" ou "Tornar principal" as ações da foto em foco ficam
  * travadas por este tempo. As ações são sempre da foto que está em foco, e
  * depois do 1º toque a foto seguinte passa a ocupar o mesmo lugar da tela: um
@@ -775,6 +794,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const [currentProduct, setCurrentProduct] = useState<any>(null);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [gerenciandoCategorias, setGerenciandoCategorias] = useState(false);
+  // A folha "Categoria" (o campo a controla; o formulário só precisa saber se
+  // está aberta, para o Voltar do celular fechá-la).
+  const [escolhendoCategoria, setEscolhendoCategoria] = useState(false);
   // A lojista renomeou ou apagou a categoria que está escolhida AQUI: o campo
   // acompanha. O banco já trocou o nome no produto salvo; sem isto, salvar com o
   // nome velho no campo devolveria o produto à categoria que não existe mais.
@@ -936,6 +958,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // ele pode apagá-la ao voltar ao que está no banco (o rascunho que já estava
   // lá antes fica esperando a decisão dela).
   const gravouRascunhoRef = useRef<string | null>(null);
+  // O produto NOVO abriu com um rascunho recuperado: nesse caso `initialData`
+  // é o próprio rascunho, e "voltar a igualar initialData" quer dizer "voltou
+  // ao que foi recuperado" -- não "não tem mais nada a guardar". Enquanto ela
+  // não salva nem toca em Descartar, o rascunho fica (guardado o que está na
+  // tela, que é o recuperado).
+  const rascunhoRecuperadoRef = useRef<string | null>(null);
   // Um salvar desta tela JÁ gravou o produto no caminho de duas etapas (produto,
   // depois grade) e pode ter terminado pela metade. O banco então já tem valores
   // que a tela não registrou em `initialData`: voltar um campo ao valor de
@@ -951,12 +979,31 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const [showPhotoGuide, setShowPhotoGuide] = useState(false);
   const [expandedHelp, setExpandedHelp] = useState<Record<string, boolean>>({});
 
-  // Voltar do celular com leitor, prévia, recorte ou ajuda abertos fecha SÓ a
-  // camada (mesmo esquema da tela de Banners): ao abrir empurra uma entrada de
-  // histórico na mesma URL; fechar por qualquer caminho a consome, a não ser
-  // que o próprio navegador já tenha feito isso (Voltar físico).
+  // Voltar do celular com leitor, prévia, recorte, ajuda ou uma janela do
+  // formulário (variação, grade, categoria) aberto fecha SÓ a camada (mesmo
+  // esquema da tela de Banners): ao abrir empurra uma entrada de histórico na
+  // mesma URL; fechar por qualquer caminho a consome, a não ser que o próprio
+  // navegador já tenha feito isso (Voltar físico).
   const camadaAberta =
-    leitorAberto !== null || isPreviewOpen || isAdjusterOpen || showHelpModal;
+    leitorAberto !== null ||
+    isPreviewOpen ||
+    isAdjusterOpen ||
+    showHelpModal ||
+    showVariantForm ||
+    showGradeForm ||
+    showCategoryForm ||
+    gerenciandoCategorias ||
+    escolhendoCategoria;
+  // Fechar a janela de variação pelo Voltar é o mesmo que o botão Cancelar:
+  // o rascunho do modal permanece, mas veredito e aviso de código de barras
+  // são da checagem passada e não sobrevivem ao fechar.
+  const cancelarVariacao = useCallback(() => {
+    setVariantCodigoBarrasError("");
+    setVariantCodigoBarrasAvisoRede("");
+    setLeitorAberto(null);
+    setShowVariantForm(false);
+    setEditingVariant(null);
+  }, []);
   const entradaDaCamadaRef = useRef(false);
   // Fechar pelo botão da camada devolve a entrada com `history.back()`, e o
   // `popstate` dele chega DEPOIS. Se o desvio do Voltar já tivesse sido zerado,
@@ -983,7 +1030,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       // Reabriu antes do `popstate` da devolução anterior: o desvio da camada
       // nova (abaixo) toma o lugar do engolidor, que não pode mais agir.
       soltarEngolidor();
-      if (!entradaDaCamadaRef.current) {
+      // Uma entrada serve ao conjunto de camadas. Mas um Voltar físico a
+      // consome mesmo com outra camada por baixo (o leitor abre DENTRO da
+      // janela de variação): nesse caso o topo já não é nosso e a camada que
+      // sobrou precisa de entrada nova, senão o Voltar seguinte sairia da tela.
+      if (
+        !entradaDaCamadaRef.current ||
+        window.history.state?.modal !== "produto"
+      ) {
         window.history.pushState(
           { ...window.history.state, modal: "produto" },
           "",
@@ -992,12 +1046,18 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         entradaDaCamadaRef.current = true;
       }
       onSetBackOverride?.(() => () => {
-        // A de cima primeiro: leitor, recorte, prévia, ajuda.
+        // A de cima primeiro: leitor, recorte, prévia, as janelas do
+        // formulário e por fim a ajuda.
         if (leitorAberto !== null) setLeitorAberto(null);
         else if (isAdjusterOpen) {
           setIsAdjusterOpen(false);
           setAdjustingImgIndex(null);
         } else if (isPreviewOpen) setIsPreviewOpen(false);
+        else if (showVariantForm) cancelarVariacao();
+        else if (showGradeForm) setShowGradeForm(false);
+        else if (showCategoryForm) setShowCategoryForm(false);
+        else if (gerenciandoCategorias) setGerenciandoCategorias(false);
+        else if (escolhendoCategoria) setEscolhendoCategoria(false);
         else setShowHelpModal(false);
       });
       return;
@@ -1034,6 +1094,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     leitorAberto,
     isAdjusterOpen,
     isPreviewOpen,
+    showVariantForm,
+    showGradeForm,
+    showCategoryForm,
+    gerenciandoCategorias,
+    escolhendoCategoria,
+    cancelarVariacao,
     onSetBackOverride,
     soltarEngolidor,
   ]);
@@ -1300,6 +1366,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           };
           setFormData(draftFields);
           setInitialData(draftFields);
+          rascunhoRecuperadoRef.current = chaveDoRascunho;
           if (draftFields.category)
             setCategoriaDoRascunho(draftFields.category);
           setIsPromoActive(!!parsed.originalPrice);
@@ -1313,6 +1380,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             action: {
               label: "Descartar",
               onClick: () => {
+                rascunhoRecuperadoRef.current = null;
                 localStorage.removeItem(chaveDoRascunho);
                 const emptyFields = {
                   name: "",
@@ -1604,6 +1672,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     codigoNormalizado: string,
     alvo: "produto" | "variacao",
     idDaVariacao?: string,
+    prazoMs?: number,
   ): Promise<string> {
     const setErroDeRede =
       alvo === "produto"
@@ -1621,10 +1690,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     }
 
     try {
-      const { supabase } = await import("@/lib/supabase");
-      const { data, error } = await supabase.rpc("buscar_por_codigo_barras", {
+      const { supabase } = await clienteDoBanco();
+      const consulta = supabase.rpc("buscar_por_codigo_barras", {
         p_codigo: codigoNormalizado,
       });
+      // Com prazo, estourar cai no `catch` abaixo, igual a uma rede que falhou.
+      const { data, error } = prazoMs
+        ? await comPrazo(Promise.resolve(consulta), prazoMs)
+        : await consulta;
       if (error) throw error;
       const resposta = data as unknown as RespostaDoCodigo;
 
@@ -1867,7 +1940,19 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // Voltou a ser igual ao banco: o rascunho que ESTA abertura gravou não
         // tem mais o que oferecer.
         gravouRascunhoRef.current = null;
-        localStorage.removeItem(draftKey);
+        if (
+          rascunhoRecuperadoRef.current === draftKey &&
+          localStorage.getItem(draftKey) !== null
+        ) {
+          // ...exceto o recuperado que ainda não foi salvo nem descartado
+          // (salvar e Descartar já apagaram a chave: aí não há o que guardar).
+          localStorage.setItem(
+            draftKey,
+            serializarRascunhoDoProduto({ ...formData }),
+          );
+        } else {
+          localStorage.removeItem(draftKey);
+        }
       }
     }, 1000);
 
@@ -2214,6 +2299,27 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             "tamanho juntos, crie as opções combinadas dentro do mesmo tipo " +
             '(ex: "Rosa P", "Rosa M") — assim o estoque e o pedido saem certos.',
         duration: 10000,
+      });
+      return;
+    }
+
+    // A mesma combinação não entra duas vezes (o estoque da peça dobraria na
+    // lista): mesma chave que a grade usa. Trocar a própria variação sem mudar
+    // a combinação nunca é repetição — nem num produto que já veio repetido.
+    const identidadeNova = { name: nomeComposto, value: valorComposto };
+    const combinacaoMudou =
+      !editingVariant ||
+      chaveDaIdentidade(editingVariant) !== chaveDaIdentidade(identidadeNova);
+    if (
+      combinacaoMudou &&
+      formData.variants.some(
+        (v) =>
+          v.id !== editingVariant?.id &&
+          chaveDaIdentidade(v) === chaveDaIdentidade(identidadeNova),
+      )
+    ) {
+      toast.error("Essa combinação já existe.", {
+        description: "Mude o valor, ou edite a variação que já está na lista.",
       });
       return;
     }
@@ -2570,32 +2676,58 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     const codigoDoProdutoNoSubmit = normalizarCodigoBarras(
       formData.codigoBarras,
     );
+    // Só os códigos de variação NOVOS ou TROCADOS precisam de conferência: o
+    // que já está salvo é do próprio registro. Salvar anterior que gravou pela
+    // metade deixa `initialData` atrás do banco -- aí confere tudo.
+    const codigoSalvoDaVariacao = new Map(
+      initialData.variants.map((v) => [
+        v.id,
+        normalizarCodigoBarras(v.codigoBarras || ""),
+      ]),
+    );
+    const conferirTodos = !productId || salvarAnteriorGravouProdutoRef.current;
+    const aConferir: Array<{
+      alvo: "produto" | "variacao";
+      codigo: string;
+      id?: string;
+    }> = [];
     if (codigoDoProdutoNoSubmit) {
-      const mensagem = await conferirCodigoNoBanco(
-        codigoDoProdutoNoSubmit,
-        "produto",
-      );
-      if (mensagem) {
-        toast.error(mensagem);
-        setIsSubmitting(false);
-        return;
-      }
+      aConferir.push({ alvo: "produto", codigo: codigoDoProdutoNoSubmit });
     }
     for (const variante of formData.variants) {
       const codigoDaVariante = normalizarCodigoBarras(
         variante.codigoBarras || "",
       );
       if (!codigoDaVariante) continue;
-      const mensagem = await conferirCodigoNoBanco(
-        codigoDaVariante,
-        "variacao",
-        variante.id,
-      );
-      if (mensagem) {
-        toast.error(mensagem);
-        setIsSubmitting(false);
-        return;
+      if (
+        !conferirTodos &&
+        codigoSalvoDaVariacao.get(variante.id) === codigoDaVariante
+      ) {
+        continue;
       }
+      aConferir.push({
+        alvo: "variacao",
+        codigo: codigoDaVariante,
+        id: variante.id,
+      });
+    }
+    // Em paralelo; a primeira recusa NA ORDEM da tela (produto, depois cada
+    // variação) é a que a lojista lê, como era quando a fila era em série.
+    const mensagens = await Promise.all(
+      aConferir.map((c) =>
+        conferirCodigoNoBanco(
+          c.codigo,
+          c.alvo,
+          c.id,
+          PRAZO_DO_CODIGO_NO_SALVAR_MS,
+        ),
+      ),
+    );
+    const recusa = mensagens.find((m) => m);
+    if (recusa) {
+      toast.error(recusa);
+      setIsSubmitting(false);
+      return;
     }
 
     // O que o formulário grava no produto (campo vazio = `null`, medidas com
@@ -3704,20 +3836,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   <div className="relative z-10 flex shrink-0 gap-4 border-t border-admin-border bg-admin-surface p-5">
                     <button
                       type="button"
-                      onClick={() => {
-                        // Ressalva da revisão da C5.2: o rascunho do modal
-                        // permanece (reabrir recupera o que estava digi-
-                        // tado), mas veredito de duplicidade e aviso de rede
-                        // são da checagem passada — não sobrevivem ao
-                        // fechar. O leitor de câmera aberto também morre
-                        // aqui (sem isto, um Cancelar durante a leitura
-                        // deixaria um leitor órfão na página).
-                        setVariantCodigoBarrasError("");
-                        setVariantCodigoBarrasAvisoRede("");
-                        setLeitorAberto(null);
-                        setShowVariantForm(false);
-                        setEditingVariant(null);
-                      }}
+                      // Ressalva da revisão da C5.2: o rascunho do modal
+                      // permanece (reabrir recupera o que estava digitado),
+                      // mas veredito e aviso de rede morrem, e o leitor de
+                      // câmera aberto também (sem órfão na página).
+                      onClick={cancelarVariacao}
                       className="min-h-14 flex-1 rounded-2xl border border-admin-border bg-admin-raised p-3 text-sm font-bold text-white"
                     >
                       Cancelar
@@ -4401,6 +4524,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               aoEscolher={(nome) =>
                 setFormData((prev) => ({ ...prev, category: nome }))
               }
+              aberta={escolhendoCategoria}
+              aoMudarAberta={setEscolhendoCategoria}
               aoCriar={() => setShowCategoryForm(true)}
               aoGerenciar={() => setGerenciandoCategorias(true)}
               categoriaDoRascunhoQueSumiu={categoriaDoRascunhoSumiu}
@@ -4604,7 +4729,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           originalPrice: val,
                         }))
                       }
-                      placeholder="Ex: 99.90"
+                      placeholder="Ex: 99,90"
                       className="w-full rounded-xl border border-admin-border bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
                     />
                   </div>
