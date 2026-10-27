@@ -7,21 +7,39 @@ export interface HeaderToastData {
   id: string;
   message: string;
   type: "success" | "error" | "warning" | "info";
+  description?: string;
   duration?: number;
+}
+
+/**
+ * Tempo na tela proporcional ao que há para ler: 60 ms por letra (mensagem +
+ * descrição), nunca menos que os 2600 ms de sempre e nunca mais que 9 s. Quem
+ * chama o toast com `duration` explícito não passa por aqui.
+ */
+export function duracaoDoAviso(message: string, description = ""): number {
+  const letras = message.length + description.length;
+  return Math.min(9000, Math.max(2600, letras * 60));
 }
 
 function triggerHeaderToast(
   message: string,
-  type: "success" | "error" | "warning" | "info" = "success",
-  duration = 2600,
+  type: "success" | "error" | "warning" | "info",
+  data?: { description?: unknown; duration?: unknown },
 ) {
   if (typeof window !== "undefined") {
+    const description =
+      typeof data?.description === "string" ? data.description : undefined;
+    const duration =
+      typeof data?.duration === "number"
+        ? data.duration
+        : duracaoDoAviso(message, description);
     window.dispatchEvent(
       new CustomEvent<HeaderToastData>("header-toast-event", {
         detail: {
           id: Math.random().toString(36).substring(2, 9),
           message,
           type,
+          description,
           duration,
         },
       }),
@@ -46,28 +64,28 @@ export function initHeaderToastInterceptor() {
 
   toast.success = ((message: any, data?: any) => {
     if (typeof message === "string") {
-      triggerHeaderToast(message, "success");
+      triggerHeaderToast(message, "success", data);
     }
     return origSuccess(message, data);
   }) as typeof origSuccess;
 
   toast.error = ((message: any, data?: any) => {
     if (typeof message === "string") {
-      triggerHeaderToast(message, "error");
+      triggerHeaderToast(message, "error", data);
     }
     return origError(message, data);
   }) as typeof origError;
 
   toast.warning = ((message: any, data?: any) => {
     if (typeof message === "string") {
-      triggerHeaderToast(message, "warning");
+      triggerHeaderToast(message, "warning", data);
     }
     return origWarning(message, data);
   }) as typeof origWarning;
 
   toast.info = ((message: any, data?: any) => {
     if (typeof message === "string") {
-      triggerHeaderToast(message, "info");
+      triggerHeaderToast(message, "info", data);
     }
     return origInfo(message, data);
   }) as typeof origInfo;
@@ -104,10 +122,16 @@ function garantirCanalSobEscuta() {
     haptic.light();
     toastDoHeader = customEvent.detail;
     if (timerDoToast) clearTimeout(timerDoToast);
-    timerDoToast = setTimeout(() => {
-      toastDoHeader = null;
-      avisarOuvintes();
-    }, customEvent.detail.duration || 2600);
+    timerDoToast = null;
+    // `duration: Infinity` (aviso fixo) fica até o toque: o setTimeout trata
+    // Infinity como 0 e o aviso sumiria na hora.
+    const ms = customEvent.detail.duration || 2600;
+    if (ms !== Number.POSITIVE_INFINITY) {
+      timerDoToast = setTimeout(() => {
+        toastDoHeader = null;
+        avisarOuvintes();
+      }, ms);
+    }
     avisarOuvintes();
   });
 }
@@ -139,7 +163,7 @@ function obterToastDoHeader(): HeaderToastData | null {
 /**
  * Estado atual do canal de toast do header: `{ ativo, detalhe, dispensar }`.
  * `detalhe` carrega a mensagem/tipo enquanto a cápsula está de pé
- * (`duration || 2600`, timer único reiniciado a cada aviso novo); `ativo` é
+ * (`duration || 2600`, `Infinity` sem timer, timer único reiniciado a cada aviso novo); `ativo` é
  * o que o wrapper usa para o degrau z-[140].
  */
 export function useToastDoHeader() {
