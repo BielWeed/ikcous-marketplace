@@ -1,4 +1,19 @@
 {
+  "1.5.89": {
+    "titulo": "Frete que recalcula, etiqueta com vários produtos e telas da loja mais certas",
+    "novidades": [],
+    "correcoes": [
+      "Loja, frete: depois de \"a cotação de frete expirou\", o botão \"Calcular o frete de novo\" recalcula de verdade em vez de repetir a recusa por até 2 horas. Quando a transportadora está fora do ar, aparece \"Não conseguimos calcular a entrega agora\" com \"Tentar de novo\", e as mensagens de excesso de consultas e de carrinho grande ficaram claras.",
+      "Loja, produto: se o carrinho recusa por estoque, a tela não faz mais a animação de \"Adicionado\". Remover um favorito mostra \"Desfazer\", os botões \"Esgotado\" ficaram legíveis e o filtro de preço da busca usa o preço que o cartão mostra.",
+      "Loja, celular: a pergunta ao vendedor envia com o Enter do teclado, \"Encerrar sessão\" pede confirmação, o Voltar fecha só a janela de foto ou de capa, e sem internet a tela Sobre a loja mostra o endereço escrito.",
+      "Painel, etiqueta: pedido com 2 ou mais produtos passa a gerar a etiqueta dos Correios; uma compra sem resposta clara aparece como \"Conferindo a etiqueta no Melhor Envio\", com \"Conferir de novo\", em vez de \"Etiqueta emitida\"; o código de rastreio salvo fica sem espaços e em maiúsculas.",
+      "Painel, frete local: o \"Valor da entrega\" aceita 7,50, 7.50 e 1.234,50 e nunca grava R$ 0 por engano.",
+      "Painel, números: o selo \"vs. 30 dias antes\" some quando não houve venda, o lucro acumulado mostra centavos e sinal, e os atalhos do Financeiro levam à aba certa.",
+      "Painel, Devoluções: o valor sugerido do reembolso respeita o saldo que ainda pode ser devolvido, o prazo é mostrado pela regra da loja, e a ficha não afirma mais um motivo errado quando o reembolso vira manual.",
+      "Painel, desempenho: o CRM não refaz as conexões ao vivo à toa, os avisos \"Marcar todas como lidas\" fazem menos consultas e os carrosséis param quando a tela está escondida."
+    ],
+    "melhorias": []
+  },
   "1.5.88": {
     "titulo": "Voltar do celular, avisos inteiros e pedidos do painel mais certos",
     "novidades": [],

@@ -90,7 +90,7 @@ const imagens = [
   {
     nome: "foto",
     campo: "avatar_url",
-    abrir: "[role=button][tabindex='0']",
+    abrir: "button[aria-label='Trocar foto de perfil']",
     aba: "Foto Própria",
     inputId: "avatar_file_input_profile",
     comprimir: vi.mocked(compressImage),

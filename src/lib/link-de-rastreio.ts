@@ -14,8 +14,18 @@
  */
 const BASE_DO_RASTREIO = "https://www.melhorrastreio.com.br/rastreio/";
 
+/**
+ * A MESMA limpeza do link, para o código que se SALVA: sem espaços (inclusive
+ * do meio) e em maiúsculas. A cliente copia o código da tela e o cola em
+ * outros sites de rastreio, que recusam espaços. Devolve "" quando não sobra
+ * nada.
+ */
+export function normalizarCodigoDeRastreio(codigo: string): string {
+  return (codigo ?? "").replace(/\s+/g, "").toUpperCase();
+}
+
 export function linkDeRastreio(codigo: string): string {
-  const limpo = (codigo ?? "").replace(/\s+/g, "").toUpperCase();
+  const limpo = normalizarCodigoDeRastreio(codigo);
   if (!limpo) return "";
   return `${BASE_DO_RASTREIO}${encodeURIComponent(limpo)}`;
 }

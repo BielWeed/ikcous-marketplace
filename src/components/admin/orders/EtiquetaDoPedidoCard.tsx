@@ -8,6 +8,7 @@ import {
 import {
   type ElegibilidadeDaEtiqueta,
   type PedidoParaEtiqueta,
+  compraIndeterminadaPeloHistorico,
   elegibilidadeDaEtiqueta,
   freteEfetivoDoPedido,
 } from "@/lib/elegibilidade-da-etiqueta";
@@ -207,7 +208,36 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
         setCargaFase("vazio");
         return;
       }
-      setPedido(data as unknown as PedidoParaEtiqueta);
+      const linha = data as unknown as PedidoParaEtiqueta;
+      // A compra ficou INDETERMINADA? Só vale perguntar quando já existe
+      // vínculo com uma etiqueta, e é uma leitura À PARTE de propósito: se o
+      // histórico não puder ser lido, o card degrada para o que sempre
+      // mostrou ("Etiqueta emitida") em vez de sumir com a etiqueta.
+      let compraIndeterminada = false;
+      if (linha.shipping_label_id) {
+        try {
+          const { data: eventos, error: eventosError } = await supabase
+            .from("order_shipping_events")
+            .select("event_type, payload, error_message, created_at")
+            .eq("order_id", orderId);
+          if (geracaoRef.current !== minhaGeracao) return;
+          if (eventosError) {
+            console.error(
+              "[EtiquetaDoPedido] Erro ao ler o histórico de envio:",
+              eventosError,
+            );
+          } else {
+            compraIndeterminada = compraIndeterminadaPeloHistorico(eventos);
+          }
+        } catch (errEventos) {
+          if (geracaoRef.current !== minhaGeracao) return;
+          console.error(
+            "[EtiquetaDoPedido] Exceção ao ler o histórico de envio:",
+            errEventos,
+          );
+        }
+      }
+      setPedido({ ...linha, compra_indeterminada: compraIndeterminada });
       setCargaFase("ok");
     } catch (err) {
       if (geracaoRef.current !== minhaGeracao) return;
@@ -399,49 +429,67 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
     }
   }, [isOffline, pedido, cpfInput, orderId, fetchPedido]);
 
-  const handleConsultarRastreio = useCallback(async () => {
-    const orderIdDoClique = orderId;
-    if (isOffline || rastreioEmVoo.has(orderIdDoClique)) return;
-    rastreioEmVoo.add(orderIdDoClique);
-    setConsultandoRastreio(true);
-    try {
-      const { data, error } = await supabase.functions.invoke(
-        "melhor-envio-etiqueta",
-        { body: { action: "consultar_rastreio", orderId: orderIdDoClique } },
-      );
-      // Ficha trocou de pedido durante a consulta — o rastreio de A não
-      // pode pintar B. `onTrackingAtualizado` agora leva o `orderIdDoClique`
-      // junto: mesmo que esta checagem falhe por algum caminho não previsto,
-      // o consumidor (OrderDetail) valida de novo, sozinho, contra o pedido
-      // que está mostrando — defesa nas DUAS pontas.
-      if (orderIdAtualRef.current !== orderIdDoClique) return;
-      if (error) throw error;
-      if (data?.tracking_code) {
-        const codigo = String(data.tracking_code);
-        setPedido((prev) => (prev ? { ...prev, tracking_code: codigo } : prev));
-        onTrackingAtualizado?.(orderIdDoClique, codigo);
-        toast.success("Rastreio atualizado!");
-      } else {
-        toast.info(
-          "A transportadora ainda não publicou o código. Tente novamente mais tarde.",
+  const handleConsultarRastreio = useCallback(
+    async (modo: "rastreio" | "conferencia" = "rastreio") => {
+      const orderIdDoClique = orderId;
+      if (isOffline || rastreioEmVoo.has(orderIdDoClique)) return;
+      rastreioEmVoo.add(orderIdDoClique);
+      setConsultandoRastreio(true);
+      try {
+        const { data, error } = await supabase.functions.invoke(
+          "melhor-envio-etiqueta",
+          { body: { action: "consultar_rastreio", orderId: orderIdDoClique } },
         );
+        // Ficha trocou de pedido durante a consulta — o rastreio de A não
+        // pode pintar B. `onTrackingAtualizado` agora leva o `orderIdDoClique`
+        // junto: mesmo que esta checagem falhe por algum caminho não previsto,
+        // o consumidor (OrderDetail) valida de novo, sozinho, contra o pedido
+        // que está mostrando — defesa nas DUAS pontas.
+        if (orderIdAtualRef.current !== orderIdDoClique) return;
+        if (error) throw error;
+        if (data?.tracking_code) {
+          const codigo = String(data.tracking_code);
+          // O código de rastreio só nasce depois que a etiqueta foi paga: é a
+          // confirmação que tira o card do "conferindo" (a edge já gravou o
+          // código no pedido; a próxima leitura traz o mesmo).
+          setPedido((prev) =>
+            prev ? { ...prev, tracking_code: codigo } : prev,
+          );
+          onTrackingAtualizado?.(orderIdDoClique, codigo);
+          toast.success(
+            modo === "conferencia"
+              ? "Etiqueta confirmada no Melhor Envio!"
+              : "Rastreio atualizado!",
+          );
+        } else if (modo === "conferencia") {
+          // Sem código NÃO é prova de que não foi paga: só diz a verdade e
+          // deixa o vínculo como está (soltar abriria a compra dupla).
+          toast.info(
+            "O Melhor Envio ainda não confirmou esta etiqueta. Confira em Meus envios, na sua conta do Melhor Envio, ou toque em Conferir de novo daqui a pouco.",
+          );
+        } else {
+          toast.info(
+            "A transportadora ainda não publicou o código. Tente novamente mais tarde.",
+          );
+        }
+      } catch (err) {
+        if (orderIdAtualRef.current !== orderIdDoClique) return;
+        console.error("[EtiquetaDoPedido] Erro ao consultar rastreio:", err);
+        const { mensagem } = await mensagemDeErroInvocacao(err, {
+          mensagemGenerica:
+            "Não foi possível falar com o servidor de etiquetas. Tente de novo.",
+        });
+        if (orderIdAtualRef.current !== orderIdDoClique) return;
+        toast.error(mensagem);
+      } finally {
+        rastreioEmVoo.delete(orderIdDoClique);
+        if (orderIdAtualRef.current === orderIdDoClique) {
+          setConsultandoRastreio(false);
+        }
       }
-    } catch (err) {
-      if (orderIdAtualRef.current !== orderIdDoClique) return;
-      console.error("[EtiquetaDoPedido] Erro ao consultar rastreio:", err);
-      const { mensagem } = await mensagemDeErroInvocacao(err, {
-        mensagemGenerica:
-          "Não foi possível falar com o servidor de etiquetas. Tente de novo.",
-      });
-      if (orderIdAtualRef.current !== orderIdDoClique) return;
-      toast.error(mensagem);
-    } finally {
-      rastreioEmVoo.delete(orderIdDoClique);
-      if (orderIdAtualRef.current === orderIdDoClique) {
-        setConsultandoRastreio(false);
-      }
-    }
-  }, [isOffline, orderId, onTrackingAtualizado]);
+    },
+    [isOffline, orderId, onTrackingAtualizado],
+  );
 
   const abrirConfirmacao = useCallback(() => {
     setMensagemResultado(null);
@@ -558,7 +606,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                 )}
                 <button
                   type="button"
-                  onClick={handleConsultarRastreio}
+                  onClick={() => handleConsultarRastreio()}
                   disabled={consultandoRastreio || isOffline}
                   className="flex h-10 items-center gap-1.5 rounded-xl border border-admin-border bg-white/5 px-3 text-sm font-medium text-zinc-300 transition-colors hover:text-white active:scale-95 disabled:opacity-40"
                 >
@@ -571,6 +619,40 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
 
               <p className="text-xs leading-snug text-zinc-400">
                 Reimpressão ou cancelamento: pela sua conta no Melhor Envio.
+              </p>
+            </div>
+          )}
+
+          {elegibilidade.estado === "conferindo" && (
+            <div
+              data-testid="etiqueta-conferindo"
+              className="space-y-3 rounded-xl border border-admin-border bg-admin-surface p-3 duration-200 animate-in fade-in"
+            >
+              <p className="flex items-start gap-2 text-sm font-medium leading-snug text-amber-400">
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-400" />
+                <span>
+                  Conferindo a etiqueta no Melhor Envio
+                  <span className="mt-1 block font-normal text-zinc-300">
+                    O pagamento da etiqueta não teve resposta clara do Melhor
+                    Envio: ela pode ter sido paga ou não. Este pedido continua
+                    ligado à etiqueta {pedido.shipping_label_id} para não
+                    comprar duas vezes.
+                  </span>
+                </span>
+              </p>
+              <button
+                type="button"
+                onClick={() => handleConsultarRastreio("conferencia")}
+                disabled={consultandoRastreio || isOffline}
+                className="flex h-11 items-center gap-1.5 rounded-xl border border-admin-border bg-white/5 px-4 text-sm font-medium text-zinc-300 transition-colors hover:text-white active:scale-95 disabled:opacity-40"
+              >
+                <RefreshCw
+                  className={`size-4 ${consultandoRastreio ? "animate-spin" : ""}`}
+                />
+                <span>Conferir de novo</span>
+              </button>
+              <p className="text-xs leading-snug text-zinc-400">
+                Confira também em Meus envios, na sua conta do Melhor Envio.
               </p>
             </div>
           )}

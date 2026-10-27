@@ -8,6 +8,7 @@ import {
   transportadoraVendeForaDaCidade,
 } from "@/lib/aviso-transportadora-sem-pagamento";
 import { cepEhLocal } from "@/lib/cep-local";
+import { parseValorBR } from "@/lib/financeiro";
 import type { ModoDaEntregaNaCidade } from "@/lib/guarda-de-frete";
 import {
   alcanceEhSoPertoDaLoja,
@@ -21,6 +22,24 @@ import { cepCompleto } from "@/lib/loja-pronta";
 import { reais } from "@/lib/status-da-entrega";
 import type { View } from "@/types";
 import { memo, useEffect, useRef, useState } from "react";
+
+/**
+ * O valor da entrega é digitado como TEXTO: o campo `type="number"` devolvia
+ * vazio ao Safari do iPhone para o que ele não entendia como número ("7,50"),
+ * e vazio vira 0 = entrega grátis, sem aviso. Aqui "7,50", "7.50" e "1.234,50"
+ * valem (helper de moeda do app); vazio é grátis (a dica do campo diz isso); o
+ * que não é dinheiro vira NaN — o pai recusa o Salvar em vez de gravar 0.
+ */
+function valorDoTexto(texto: string): number {
+  if (texto.trim() === "") return 0;
+  return parseValorBR(texto) ?? Number.NaN;
+}
+
+function textoDoValor(valor: number): string {
+  return Number.isFinite(valor) && valor !== 0
+    ? String(valor).replace(".", ",")
+    : "";
+}
 
 /** A dica do texto livre: os dois formatos que o servidor lê e o que "vazio" quer dizer. */
 function dicaDoTexto(cepDaLoja: string | null | undefined): string {
@@ -149,6 +168,18 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
    * ausente = não se sabe: a tela não promete a compra. */
   readonly pagamentoPeloAppLigado?: boolean | null;
 }) {
+  // O que está escrito no campo do valor. Só é reescrito quando o valor muda
+  // POR FORA (config chegou, salvou) e o texto já não o produz — "7," digitado
+  // não vira "7" sob o dedo.
+  const [textoDaEntrega, setTextoDaEntrega] = useState(() =>
+    textoDoValor(valor),
+  );
+  useEffect(() => {
+    setTextoDaEntrega((atual) =>
+      Object.is(valorDoTexto(atual), valor) ? atual : textoDoValor(valor),
+    );
+  }, [valor]);
+  const entregaInvalida = Number.isNaN(valorDoTexto(textoDaEntrega));
   const [semEnderecoAoEscolher, setSemEnderecoAoEscolher] = useState(false);
   const [semCepAoEscolher, setSemCepAoEscolher] = useState(false);
   const soRetiro = modo === "so_retiro";
@@ -333,7 +364,15 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
       {!soRetiro && (
         <Linha
           nome="Valor da entrega"
-          dica="Valor vazio = entrega grátis. Prazo 0 = no mesmo dia."
+          dica={
+            entregaInvalida ? (
+              <span id="erro-valor-da-entrega" className="text-amber-300">
+                Escreva só números, como 7,50.
+              </span>
+            ) : (
+              "Valor vazio = entrega grátis. Prazo 0 = no mesmo dia."
+            )
+          }
         >
           {/* Mesma mecânica da tela anterior (o campo vazio lê 0 = grátis na
             cidade) — mudou a casca, não o comportamento. */}
@@ -345,14 +384,17 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
             <input
               aria-label="Valor da entrega"
               id="local-delivery-fee"
-              type="number"
-              min="0"
-              step="0.5"
+              type="text"
               inputMode="decimal"
-              value={valor === 0 ? "" : valor}
-              onChange={(e) =>
-                onValor(e.target.value === "" ? 0 : Number(e.target.value))
+              aria-invalid={entregaInvalida}
+              aria-describedby={
+                entregaInvalida ? "erro-valor-da-entrega" : undefined
               }
+              value={textoDaEntrega}
+              onChange={(e) => {
+                setTextoDaEntrega(e.target.value);
+                onValor(valorDoTexto(e.target.value));
+              }}
               placeholder="0"
               disabled={desabilitado}
               className="w-20 bg-transparent text-right text-xl font-bold tabular-nums text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-0 disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none"
@@ -462,7 +504,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
                     className={`mt-2 text-[13px] font-semibold ${entraNoTeste ? "text-emerald-300" : "text-amber-300"}`}
                   >
                     {entraNoTeste
-                      ? `Entra na sua entrega — ${valor > 0 ? `paga R$ ${reais(valor)}` : "entrega grátis"}`
+                      ? `Entra na sua entrega — ${entregaInvalida ? "confira o valor da entrega" : valor > 0 ? `paga R$ ${reais(valor)}` : "entrega grátis"}`
                       : "Fica de fora da sua entrega"}
                   </p>
                 )}

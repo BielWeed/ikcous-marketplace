@@ -133,7 +133,10 @@ import {
   type RecusaDoPedido,
   classificarRecusaDoPedido,
 } from "@/lib/recusaDoPedido";
-import { buscarRevisaoConfigFrete } from "@/lib/revisao-do-frete";
+import {
+  buscarRevisaoConfigFrete,
+  descartarCacheDeFreteDoNavegador,
+} from "@/lib/revisao-do-frete";
 import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import {
@@ -3721,6 +3724,14 @@ export function CheckoutViewDaConta({
         if (acao === "reconferir_carrinho" || acao === "ajustar_estoque") {
           irAoCarrinhoRelido(() => onNavigate("cart"));
           return;
+        }
+        // Frete recusado (cotação expirada, entrega a trocar): o carrinho serve
+        // a cotação guardada no navegador SEM consultar o servidor, e era essa
+        // cópia que já tinha sido recusada — a cliente voltava e levava a mesma
+        // recusa, em laço, por até 2 h. Apagada a cópia, o carrinho cota de
+        // verdade ao abrir.
+        if (acao === "recotar_frete" || acao === "trocar_entrega") {
+          descartarCacheDeFreteDoNavegador();
         }
         onNavigate("cart");
         return;

@@ -226,7 +226,7 @@ describe("ProfileView — redesenho aprovado", () => {
     it("sem foto, o avatar mostra a inicial do nome e o botão de trocar foto fica sempre visível", async () => {
       await renderizar();
       const avatar = hospedeiro.querySelector<HTMLElement>(
-        '[role="button"][aria-label="Trocar foto de perfil"]',
+        'button[aria-label="Trocar foto de perfil"]',
       );
       expect(avatar).not.toBeNull();
       expect(avatar!.textContent).toContain("M");
@@ -249,9 +249,7 @@ describe("ProfileView — redesenho aprovado", () => {
     it("tocar no avatar abre a escolha de foto", async () => {
       await renderizar();
       await clicar(
-        hospedeiro.querySelector(
-          '[role="button"][aria-label="Trocar foto de perfil"]',
-        )!,
+        hospedeiro.querySelector('button[aria-label="Trocar foto de perfil"]')!,
       );
       expect(document.body.textContent).toContain("Escolher Avatar ou Foto");
     });
@@ -567,7 +565,14 @@ describe("ProfileView — redesenho aprovado", () => {
       expect(sair).toBeDefined();
       expect(sair!.outerHTML).toMatch(/text-red-(600|700)/);
       expect(sair!.textContent).toContain("Sair da sua conta");
+      // Um toque só pergunta; quem encerra é o "Sim, sair" (lote 221).
       await clicar(sair);
+      expect(logout).not.toHaveBeenCalled();
+      await clicar(
+        [...document.body.querySelectorAll("button")].find((b) =>
+          b.textContent?.includes("Sim, sair"),
+        ),
+      );
       expect(logout).toHaveBeenCalledTimes(1);
     });
   });

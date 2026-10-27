@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { cpfValido, formatarCpf, somenteDigitosDoCpf } from "@/lib/cpf";
 import {
@@ -135,6 +136,12 @@ export function AccountSettingsView() {
   const [coverModalTab, setCoverModalTab] = useState<"presets" | "upload">(
     "presets",
   );
+
+  // O Voltar do celular fecha só a janela de foto, a de capa ou a seção
+  // "Privacidade" (cada uma com a sua entrada de histórico); a Conta fica.
+  useVoltarFechaAFolha(isAvatarModalOpen, () => setIsAvatarModalOpen(false));
+  useVoltarFechaAFolha(isCoverModalOpen, () => setIsCoverModalOpen(false));
+  useVoltarFechaAFolha(secao === "privacidade", () => setSecao("conta"));
 
   useEffect(() => {
     // O envio antigo não pode prender os controles da conta que entrou.

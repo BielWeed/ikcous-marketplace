@@ -1,6 +1,7 @@
 import { LazyImage } from "@/components/LazyImage";
 import { modeloDoBanner } from "@/lib/banner-modelos";
 import { classeDoScrimDoBanner } from "@/lib/banner-scrim";
+import { carrosselPodeGirar } from "@/lib/carrossel-visivel";
 import { destinoDoBanner } from "@/lib/destino-do-banner";
 import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
 import { cn } from "@/lib/utils";
@@ -90,6 +91,8 @@ export const BannerCarousel = memo(function BannerCarousel({
       return;
 
     const timer = setInterval(() => {
+      // Home escondida (aba/tela de outra rota) ou aba do navegador oculta: não gira.
+      if (!carrosselPodeGirar(emblaApi.rootNode?.())) return;
       emblaApi.scrollNext();
     }, interval);
 

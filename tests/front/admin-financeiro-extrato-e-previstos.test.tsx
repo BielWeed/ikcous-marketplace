@@ -118,7 +118,8 @@ const EXTRATO = [
 const A_PAGAR = [
   {
     id: "p1",
-    descricao: "Fornecedor de camisetas",
+    // Como o banco grava: a parcela já vem na descrição.
+    descricao: "Fornecedor de camisetas (1/2)",
     valor: 500,
     vencimento: "2026-09-01",
     vencido: true,
@@ -326,7 +327,8 @@ describe("Financeiro — extrato e a pagar", () => {
     const texto = normalizar(hospedeiro.textContent);
     expect(texto).toContain("Vencidos · 1");
     expect(texto).toMatch(/Venceu há \d+ dias/);
-    expect(texto).toContain("1/2");
+    expect(texto).toContain("Fornecedor de camisetas (1/2)");
+    expect(texto.split("1/2").length - 1).toBe(1);
     expect(texto).toContain("Estorno em andamento");
     expect(rpcFalso).toHaveBeenCalledWith("fin_previstos", { p_tipo: "saida" });
     // Só o manual tem "Dar baixa".

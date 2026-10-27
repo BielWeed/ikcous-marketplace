@@ -78,6 +78,9 @@ const {
     classificarCheckoutDaReversa,
     validadeDoCodigoDePostagem,
     montarPacoteDaDevolucao,
+    consolidarVolumesEmUm,
+    servicoExigeVolumeUnico,
+    volumesDoCarrinhoParaOServico,
     normalizarCodigoDePostagem,
     servicoDaDevolucaoReversa,
 } = await import('./index.ts')
@@ -368,8 +371,10 @@ Deno.test("produtos e volumes - leitura do banco com fallbacks da cotação", ()
   // Produto no banco: nome e medida do banco; PREÇO é o VENDIDO no pedido
   // (item.price = 10, gravado pela RPC), NUNCA o preco_venda atual do
   // catálogo (25) — correção pós-revisão Opus. Peso da LINHA (0.4 × 2).
+  // Lote 227: a medida também considera a QUANTIDADE — as 2 canecas empilham
+  // pelo menor lado (largura 10 → 20), em vez de declarar a caixa de UMA.
   assertEquals(products[0], { name: "Caneca", quantity: 2, unitary_value: 10 })
-  assertEquals(volumes[0], { weight: 0.8, width: 10, height: 12, length: 14 })
+  assertEquals(volumes[0], { weight: 0.8, width: 20, height: 12, length: 14 })
   // Produto fora do banco: fallbacks iguais aos do calculate-shipping.
   assertEquals(products[1], { name: "Produto", quantity: 1, unitary_value: 5 })
   assertEquals(volumes[1], { weight: 0.3, width: 15, height: 15, length: 15 })
@@ -713,7 +718,7 @@ function clienteFalso(configuracao: { pedido?: any; linhasReivindicadas?: any[];
  * revisor A′ da 3ª rodada) ou 'excecao' (a chamada estoura no meio —
  * timeout/queda de rede pós-reivindicação).
  */
-function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' | 'erro-5xx'; cartSemId?: boolean; cartSemIdPayload?: Record<string, unknown> } = {}) {
+function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' | 'erro-5xx'; cartSemId?: boolean; cartSemIdPayload?: Record<string, unknown>; cartPrice?: unknown; checkoutTotal?: unknown; geracao?: 'ok' | 'excecao' } = {}) {
     const registro = {
         carrinho: 0,
         remocoes: 0,
@@ -723,6 +728,8 @@ function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' | 'e
         ultimoServico: null as string | null,
         ultimoInsuranceValue: null as number | null,
         ultimoProducts: null as Array<Record<string, unknown>> | null,
+        // Os volumes do carrinho (lote 227): Correios aceitam UM por chamada.
+        ultimoVolumes: null as Array<Record<string, unknown>> | null,
         // CPF (`to.document`) — assento para o portão de CPF do destinatário.
         ultimoTo: null as Record<string, unknown> | null,
         userAgentsVistos: [] as string[],
@@ -746,11 +753,13 @@ function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' | 'e
                 registro.ultimoServico = corpo?.service ?? null
                 registro.ultimoInsuranceValue = corpo?.options?.insurance_value ?? null
                 registro.ultimoProducts = corpo?.products ?? null
+                registro.ultimoVolumes = corpo?.volumes ?? null
                 registro.ultimoTo = corpo?.to ?? null
             } catch {
                 registro.ultimoServico = null
                 registro.ultimoInsuranceValue = null
                 registro.ultimoProducts = null
+                registro.ultimoVolumes = null
                 registro.ultimoTo = null
             }
             if (opcoes.cartSemId) {
@@ -768,7 +777,7 @@ function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' | 'e
                     { status: 201, headers: { 'Content-Type': 'application/json' } },
                 )
             }
-            return new Response(JSON.stringify({ id: LABEL_ID, protocol: 'proto-1' }), {
+            return new Response(JSON.stringify({ id: LABEL_ID, protocol: 'proto-1', ...(opcoes.cartPrice !== undefined ? { price: opcoes.cartPrice } : {}) }), {
                 status: 201,
                 headers: { 'Content-Type': 'application/json' },
             })
@@ -789,13 +798,14 @@ function buscarMeFalso(opcoes: { checkout?: 'pago' | 'pendente' | 'excecao' | 'e
                 })
             }
             const status = opcoes.checkout === 'pendente' ? 'pending' : 'paid'
-            return new Response(JSON.stringify({ purchase: { id: 'pur-1', status } }), {
+            return new Response(JSON.stringify({ purchase: { id: 'pur-1', status, ...(opcoes.checkoutTotal !== undefined ? { total: opcoes.checkoutTotal } : {}) } }), {
                 status: 200,
                 headers: { 'Content-Type': 'application/json' },
             })
         }
         if (url.endsWith('/api/v2/me/shipment/generate')) {
             registro.geracoes++
+            if (opcoes.geracao === 'excecao') throw new Error('queda de rede simulada na geração')
             return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } })
         }
         if (url.endsWith('/api/v2/me/shipment/print')) {
@@ -992,13 +1002,246 @@ Deno.test('produtos e volumes - zero e medidas inválidas usam os padrões posit
             [{ product_id: 'p1', quantity: 2, price: 10 }],
             [{ id: 'p1', peso_kg: valor, largura_cm: valor, altura_cm: valor, comprimento_cm: valor }],
         )
-        assertEquals(volumes, [{ weight: 0.6, width: 15, height: 15, length: 15 }])
+        // 2 unidades de 15 cm: empilham pela ALTURA (empate: altura vence)
+        assertEquals(volumes, [{ weight: 0.6, width: 15, height: 30, length: 15 }])
     }
     const { volumes } = montarProdutosEVolumes(
         [{ product_id: 'p1', quantity: 2, price: 10 }],
         [{ id: 'p1', peso_kg: '0.4', largura_cm: 10, altura_cm: 0, comprimento_cm: 14 }],
     )
-    assertEquals(volumes, [{ weight: 0.8, width: 10, height: 15, length: 14 }])
+    // menor lado = largura (10) → 2 unidades = 20
+    assertEquals(volumes, [{ weight: 0.8, width: 20, height: 15, length: 14 }])
+})
+
+// ── Lote 227: Correios aceitam UM volume por chamada ────────────────────────
+
+Deno.test("quantidade na medida - cada linha empilha as unidades pelo MENOR lado (empate: altura, depois largura)", () => {
+    const um = (largura_cm: number, altura_cm: number, comprimento_cm: number) => [
+        { id: 'p1', nome: 'X', peso_kg: 0.5, largura_cm, altura_cm, comprimento_cm },
+    ]
+    const linha = [{ product_id: 'p1', quantity: 3, price: 10 }]
+    // menor = altura (4): 3 camisetas dobradas ficam 12 de altura
+    assertEquals(montarProdutosEVolumes(linha, um(20, 4, 30)).volumes, [{ weight: 1.5, width: 20, height: 12, length: 30 }])
+    // menor = largura
+    assertEquals(montarProdutosEVolumes(linha, um(5, 8, 30)).volumes, [{ weight: 1.5, width: 15, height: 8, length: 30 }])
+    // menor = comprimento
+    assertEquals(montarProdutosEVolumes(linha, um(20, 8, 3)).volumes, [{ weight: 1.5, width: 20, height: 8, length: 9 }])
+    // quantidade 1 NÃO muda nada (nem o desenho do caminho feliz)
+    assertEquals(
+        montarProdutosEVolumes([{ product_id: 'p1', quantity: 1, price: 10 }], um(20, 4, 30)).volumes,
+        [{ weight: 0.5, width: 20, height: 4, length: 30 }],
+    )
+})
+
+Deno.test("quantidade na medida - a devolução continua declarando a medida de UMA unidade (fora do lote 227)", () => {
+    const { volumes } = montarProdutosEVolumes(
+        [{ product_id: 'p1', quantity: 2, price: 10 }],
+        [{ id: 'p1', peso_kg: 0.4, largura_cm: 10, altura_cm: 12, comprimento_cm: 14 }],
+        { empilharQuantidade: false },
+    )
+    assertEquals(volumes, [{ weight: 0.8, width: 10, height: 12, length: 14 }])
+})
+
+Deno.test("volume único - TODO serviço vai em um volume, menos Jadlog (3 e 4), que aceita vários; id desconhecido (99) consolida", () => {
+    for (const id of ['1', '2', '17', '31', '33', '12', '22', '99', '27', '1000']) assertEquals(servicoExigeVolumeUnico(id), true)
+    for (const id of ['3', '4']) assertEquals(servicoExigeVolumeUnico(id), false)
+    // sem id numérico não há serviço: não consolida
+    for (const id of ['', 'abc', null, undefined]) assertEquals(servicoExigeVolumeUnico(id as any), false)
+})
+
+Deno.test("volume único - consolida peso somado e MAIOR largura/altura/comprimento (a mesma conta da devolução); vazio vira null", () => {
+    assertEquals(
+        consolidarVolumesEmUm([
+            { weight: 0.8, width: 10, height: 12, length: 14 },
+            { weight: 0.3, width: 15, height: 6, length: 40 },
+        ]),
+        { weight: 1.1, width: 15, height: 12, length: 40 },
+    )
+    assertEquals(consolidarVolumesEmUm([]), null)
+})
+
+Deno.test("volume único - Correios e demais recebem 1 volume com medidas INTEIRAS (arredonda para cima); Jadlog recebe a lista como veio", () => {
+    const lista = [
+        { weight: 0.8, width: 10.5, height: 12, length: 14.2 },
+        { weight: 0.3, width: 15, height: 6.01, length: 9 },
+    ]
+    assertEquals(volumesDoCarrinhoParaOServico('1', lista), [{ weight: 1.1, width: 15, height: 12, length: 15 }])
+    assertEquals(volumesDoCarrinhoParaOServico('3', lista), lista)
+    assertEquals(volumesDoCarrinhoParaOServico('4', lista), lista)
+    // id que não conhecemos (99) também vai em UM volume, medidas inteiras
+    assertEquals(volumesDoCarrinhoParaOServico('99', lista), [{ weight: 1.1, width: 15, height: 12, length: 15 }])
+    // ruído de ponto flutuante não vira +1 cm
+    assertEquals(
+        volumesDoCarrinhoParaOServico('2', [{ weight: 0.2, width: 20.000000000000004, height: 3, length: 3 }]),
+        [{ weight: 0.2, width: 20, height: 3, length: 3 }],
+    )
+    assertEquals(volumesDoCarrinhoParaOServico('1', []), [])
+})
+
+const DOIS_PRODUTOS = {
+    itens: [
+        { product_id: 'p1', quantity: 1, price: 40 },
+        { product_id: 'p2', quantity: 2, price: 30 },
+    ],
+    produtosDb: [
+        { id: 'p1', nome: 'Camiseta', preco_venda: 40, peso_kg: 0.25, largura_cm: 20, altura_cm: 4, comprimento_cm: 30 },
+        { id: 'p2', nome: 'Bermuda', preco_venda: 30, peso_kg: 0.4, largura_cm: 25, altura_cm: 5, comprimento_cm: 35 },
+    ],
+}
+
+Deno.test("handler - pedido com 2 produtos por PAC/SEDEX/Mini Envios manda UM volume ao carrinho (Correios recusam vários)", async () => {
+    await comEnvAdmin(async () => {
+        for (const opcao of ['melhor-envio-1', 'melhor-envio-2', 'melhor-envio-17', 'melhor-envio-1-ss']) {
+            const supa = clienteFalso({
+                pedido: { ...PEDIDO_FELIZ, customer_data: { ...PEDIDO_FELIZ.customer_data, shipping_option_id: opcao } },
+                ...DOIS_PRODUTOS,
+            })
+            const me = buscarMeFalso()
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+            assertEquals(res.status, 200)
+            // Camiseta (0,25 kg; 20x4x30) + 2 bermudas (0,8 kg; empilhadas pelo menor lado, altura 5 → 10)
+            assertEquals(me.registro.ultimoVolumes, [{ weight: 1.05, width: 25, height: 10, length: 35 }])
+            // os produtos continuam um por linha (é a declaração do conteúdo)
+            assertEquals(me.registro.ultimoProducts?.length, 2)
+        }
+    })
+})
+
+Deno.test("handler - serviço escolhido que não conhecemos (99) também manda UM volume; Jadlog .Com (4) mantém um por linha", async () => {
+    await comEnvAdmin(async () => {
+        for (const [opcao, esperado] of [['melhor-envio-99', 1], ['melhor-envio-4', 2]] as const) {
+            const supa = clienteFalso({
+                pedido: { ...PEDIDO_FELIZ, customer_data: { ...PEDIDO_FELIZ.customer_data, shipping_option_id: opcao } },
+                ...DOIS_PRODUTOS,
+            })
+            const me = buscarMeFalso()
+            const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+            assertEquals(res.status, 200)
+            assertEquals(me.registro.ultimoVolumes?.length, esperado)
+        }
+    })
+})
+
+Deno.test("handler - transportadora que aceita vários volumes (Jadlog, id 3) mantém um volume por linha, agora com a quantidade na medida", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({
+            pedido: { ...PEDIDO_FELIZ, customer_data: { ...PEDIDO_FELIZ.customer_data, shipping_option_id: 'melhor-envio-3' } },
+            ...DOIS_PRODUTOS,
+        })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoVolumes, [
+            { weight: 0.25, width: 20, height: 4, length: 30 },
+            { weight: 0.8, width: 25, height: 10, length: 35 },
+        ])
+    })
+})
+
+Deno.test("handler - linha com várias unidades pelos Correios: peso E medida consideram a quantidade", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({
+            pedido: PEDIDO_FELIZ,
+            itens: [{ product_id: 'p1', quantity: 4, price: 40 }],
+            produtosDb: [{ id: 'p1', nome: 'Camiseta', preco_venda: 40, peso_kg: 0.25, largura_cm: 20, altura_cm: 4, comprimento_cm: 30 }],
+        })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.ultimoVolumes, [{ weight: 1, width: 20, height: 16, length: 30 }])
+    })
+})
+
+Deno.test("handler - carrinho recusado por causa do VOLUME/pacote: a mensagem fala do pacote, nunca manda 'conferir o endereço'", async () => {
+    await comEnvAdmin(async () => {
+        for (const erros of [
+            { 'volumes': ['Correios não aceitam múltiplos volumes em uma única requisição.'] },
+            { 'volumes.0.height': ['The volumes.0.height must be an integer.'] },
+            { 'volumes.0.weight': ['O peso excede o limite da transportadora.'] },
+        ]) {
+            const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+            const base = buscarMeFalso()
+            const buscar = (async (input: any, init?: any) => {
+                const url = String(input instanceof Request ? input.url : input)
+                if (url.endsWith('/api/v2/me/cart') && String(init?.method) === 'POST') {
+                    return new Response(JSON.stringify({ message: 'The given data was invalid.', errors: erros }), {
+                        status: 422,
+                        headers: { 'Content-Type': 'application/json' },
+                    })
+                }
+                return base.buscar(input, init)
+            }) as any
+            await comConsoleErrorCapturado(async () => {
+                const r = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+                assertEquals(r.status, 502)
+                const corpo = await r.json()
+                assertEquals(/pacote|volume/i.test(corpo.error), true)
+                assertEquals(/endere[cç]o/i.test(corpo.error), false)
+                // nada foi pago: nenhuma reivindicação, nenhum checkout
+                assertEquals(base.registro.checkouts, 0)
+                assertEquals(supa.registro.reivindicacoes.length, 0)
+            })
+        }
+    })
+})
+
+Deno.test("handler - carrinho recusado por outro motivo (telefone) continua dizendo para conferir o endereço (a frase antiga não some)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const base = buscarMeFalso()
+        const buscar = (async (input: any, init?: any) => {
+            const url = String(input instanceof Request ? input.url : input)
+            if (url.endsWith('/api/v2/me/cart') && String(init?.method) === 'POST') {
+                return new Response(JSON.stringify({ message: 'The given data was invalid.', errors: { 'to.phone': ['O telefone é inválido.'] } }), {
+                    status: 422,
+                    headers: { 'Content-Type': 'application/json' },
+                })
+            }
+            return base.buscar(input, init)
+        }) as any
+        await comConsoleErrorCapturado(async () => {
+            const r = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar }))
+            const corpo = await r.json()
+            assertEquals(/endereço do pedido/.test(corpo.error), true)
+        })
+    })
+})
+
+Deno.test("handler - o custo da etiqueta NÃO vai para o evento: a tabela é legível pela dona do pedido (a margem do frete não pode vazar)", async () => {
+    await comEnvAdmin(async () => {
+        // O ME devolve preço no carrinho e total no checkout; nenhum dos dois
+        // pode aparecer em lugar algum do payload de `etiqueta_gerada` — a
+        // policy de leitura de order_shipping_events libera a linha ao dono do pedido.
+        const supa = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const me = buscarMeFalso({ cartPrice: 18.9, checkoutTotal: 20.4 })
+        const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        assertEquals(res.status, 200)
+        const evento = supa.registro.eventos.find((e) => e.event_type === 'etiqueta_gerada')
+        const chaves = Object.keys(evento.payload)
+        assertEquals(chaves.includes('preco_do_carrinho'), false)
+        assertEquals(chaves.includes('total_da_compra'), false)
+        const texto = JSON.stringify(supa.registro.eventos)
+        assertEquals(texto.includes('18.9'), false)
+        assertEquals(texto.includes('20.4'), false)
+        // o valor declarado (seguro, subtotal dos itens) continua como sempre
+        assertEquals(evento.payload.valor_declarado, 10)
+    })
+})
+
+Deno.test("handler - evento indeterminado diz se a compra FECHOU: 5xx = pago_confirmado false; queda depois do 'paid' = true", async () => {
+    await comEnvAdmin(async () => {
+        const incerto = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const meIncerto = buscarMeFalso({ checkout: 'erro-5xx' })
+        await comConsoleErrorCapturado(() => comAdminFalso(() => handler(requisicaoGerar(), { supabase: incerto.cliente, buscar: meIncerto.buscar })))
+        const eIncerto = incerto.registro.eventos.find((e) => e.payload?.etapa === 'checkout_indeterminado')
+        assertEquals(eIncerto.payload.pago_confirmado, false)
+
+        const pago = clienteFalso({ pedido: PEDIDO_FELIZ })
+        const mePago = buscarMeFalso({ geracao: 'excecao' })
+        await comConsoleErrorCapturado(() => comAdminFalso(() => handler(requisicaoGerar(), { supabase: pago.cliente, buscar: mePago.buscar })))
+        const ePago = pago.registro.eventos.find((e) => e.payload?.etapa === 'checkout_indeterminado')
+        assertEquals(ePago.payload.pago_confirmado, true)
+    })
 })
 
 Deno.test("handler - checkout recusado (200 com status pending): item sai do carrinho E reivindicação LIBERADA (o pedido volta a poder etiquetar)", async () => {
@@ -2200,7 +2443,9 @@ Deno.test("handler - CONTROLE da leitura de produtos: leitura OK segue igual —
         assertEquals(res.status, 200)
         assertEquals(me.registro.carrinho, 1)
         assertEquals(me.registro.checkouts, 1)
-        assertEquals(corposDoCarrinho[0].volumes, [{ weight: 8, width: 40, height: 30, length: 20 }])
+        // Lote 227: 2 halteres de 40x30x20 empilham pelo menor lado (comprimento 20 → 40);
+        // antes saía a caixa de UMA unidade (comprimento 20) com o peso das duas.
+        assertEquals(corposDoCarrinho[0].volumes, [{ weight: 8, width: 40, height: 30, length: 40 }])
         assertEquals(corposDoCarrinho[0].products[0].name, 'Halter')
     })
 })
