@@ -863,6 +863,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setRemotoMesclado(false);
       falhasDeLeitura.current = 0;
       cancelarReleitura();
+      // Conta nova a ler: o carrinho NÃO é "vazio" enquanto a leitura não volta
+      // (o `finally` do `syncFromDB`, ou o tempo-limite, desliga de novo).
+      if (currentUserId) setIsLoading(true);
       lastSessionUserId.current = currentUserId;
     }
 
