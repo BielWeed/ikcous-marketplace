@@ -105,6 +105,7 @@ const FRASE_POR_CODIGO_DA_EDGE = new Map<string, string>([
     "muitas_consultas",
     "Muitas consultas de frete em pouco tempo. Aguarde alguns minutos e tente de novo.",
   ],
+  ["fora_da_area", "Esta loja entrega apenas na região dela."],
   [
     "carrinho_grande_demais",
     "O carrinho tem itens demais para calcular o frete de uma vez. Tire alguns itens e tente de novo.",

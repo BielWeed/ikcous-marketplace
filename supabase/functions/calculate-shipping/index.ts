@@ -1014,7 +1014,7 @@ async function cotarUmaVez(
     // Cobertura só local: CEP de fora não é atendido.
     if (shippingCoverage === 'local') {
         if (!isLocal) {
-            if (entrega.ativa) return respostaJson({ error: 'Esta loja realiza apenas entregas locais na sua região.' }, 400)
+            if (entrega.ativa) return respostaJson({ error: 'Esta loja realiza apenas entregas locais na sua região.', codigo: 'fora_da_area' }, 400)
             // "Só retiro": a loja não entrega em lugar nenhum, então não há "só
             // entregas locais" a recusar — quem está longe ainda pode retirar.
             return respostaJson(comRevisao({
