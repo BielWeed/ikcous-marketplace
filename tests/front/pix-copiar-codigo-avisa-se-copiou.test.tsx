@@ -125,7 +125,7 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
   function botaoCopiar() {
     return [...hospedeiro.querySelectorAll("button")].find(
       (b) =>
-        b.textContent?.includes("Copiar código PIX") ||
+        b.textContent?.includes("Copiar código Pix") ||
         b.textContent?.includes("Copiado!"),
     );
   }
@@ -135,7 +135,7 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
 
     const botao = botaoCopiar();
     expect(botao).toBeTruthy();
-    expect(botao!.textContent).toContain("Copiar código PIX");
+    expect(botao!.textContent).toContain("Copiar código Pix");
 
     await act(async () => {
       botao!.click();
@@ -190,7 +190,7 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
       "Não consegui copiar sozinho. Toque no código abaixo, segure e copie.",
     );
     expect(hospedeiro.querySelector("textarea")).toBeNull();
-    expect(hospedeiro.querySelector("img[alt='QR code do PIX']")).toBeTruthy();
+    expect(hospedeiro.querySelector("img[alt='QR code do Pix']")).toBeTruthy();
     expect(
       [...hospedeiro.querySelectorAll("a")].find((a) =>
         a.textContent?.includes("Pagar pelo Mercado Pago"),
@@ -225,7 +225,7 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
     );
   });
 
-  it("depois de 2s, 'Copiado!' volta a 'Copiar código PIX'", async () => {
+  it("depois de 2s, 'Copiado!' volta a 'Copiar código Pix'", async () => {
     // Timers de verdade: `renderComPix`/`esperarMicrotarefas` dependem de
     // `setTimeout` real, e fake timers globais travariam a montagem do SDK.
     // Só o intervalo de 2s do próprio `handleCopiarPix` importa aqui.
@@ -243,7 +243,7 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
       // espera, e a folga medida com 2100 era de ~85 ms (re-revisão Opus).
       await new Promise((resolve) => setTimeout(resolve, 2500));
     });
-    expect(botaoCopiar()!.textContent).toContain("Copiar código PIX");
+    expect(botaoCopiar()!.textContent).toContain("Copiar código Pix");
   }, 10000);
 
   it("dois toques seguidos: o timer do primeiro não apaga o 'Copiado!' do segundo antes dos 2s", async () => {
@@ -273,7 +273,7 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1100);
       });
-      expect(botaoCopiar()!.textContent).toContain("Copiar código PIX");
+      expect(botaoCopiar()!.textContent).toContain("Copiar código Pix");
       expect(clipboardWriteText).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();

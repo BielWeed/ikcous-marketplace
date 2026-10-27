@@ -17,6 +17,7 @@ import {
   frasePedidoEnviado,
 } from "@/config/textos-de-privacidade";
 import { usePedidosDePrivacidade } from "@/hooks/usePedidosDePrivacidade";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import {
   type FalhaDoPedido,
   type PedidoDePrivacidade,
@@ -250,6 +251,15 @@ export function PrivacidadeEMeusDados({
     setFalha(null);
     setErroDoEmail(null);
   }
+
+  // O Voltar do aparelho fecha só a pergunta (a conta e o e-mail já digitado
+  // ficam). Com o pedido sendo gravado `fechar` não faz nada: `false` devolve a
+  // entrada que o Voltar consumiu, e a pergunta segue na tela.
+  useVoltarFechaAFolha(dialogo !== null, () => {
+    if (ocupada) return false;
+    fechar();
+    return true;
+  });
 
   async function confirmarExclusao() {
     setFalha(null);

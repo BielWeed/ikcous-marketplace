@@ -20,6 +20,9 @@ export interface PedidoParaConfirmarCancelamento {
    * mercadoria que tinha saído está de volta. O carimbo nunca é apagado: um
    * pedido que voltou, foi reativado e vai ser cancelado de novo ainda o traz. */
   returnedToSellerAt?: string | null;
+  /** `Order.shippingLabelId`: a etiqueta de envio já foi comprada no Melhor
+   * Envio. Cancelar o pedido NÃO cancela a etiqueta: o saldo continua gasto. */
+  shipping_label_id?: string | null;
 }
 
 const PAGOS = new Set(["pago", "pago_apos_expirar", "recebido_na_entrega"]);
@@ -91,7 +94,24 @@ function produtoJaVoltouParaALoja(pedido: PedidoParaConfirmarCancelamento) {
   );
 }
 
+const AVISO_DA_ETIQUETA_PAGA =
+  "A etiqueta de envio já foi paga. Cancele a etiqueta no Melhor Envio para recuperar o saldo.";
+// Toda frase abaixo fecha com a pergunta ("Cancelar?" / "Cancelar mesmo
+// assim?"); o aviso da etiqueta entra logo ANTES dela, para o lojista ler a
+// consequência e só então decidir.
+const PERGUNTA_FINAL = /\s(Cancelar(?: mesmo assim)?\?)$/;
+
 export function textoCancelamentoDoPainel(
+  pedido: PedidoParaConfirmarCancelamento,
+): string {
+  const texto = textoBaseDoCancelamento(pedido);
+  if (!pedido.shipping_label_id) return texto;
+  return PERGUNTA_FINAL.test(texto)
+    ? texto.replace(PERGUNTA_FINAL, ` ${AVISO_DA_ETIQUETA_PAGA} $1`)
+    : `${texto} ${AVISO_DA_ETIQUETA_PAGA}`;
+}
+
+function textoBaseDoCancelamento(
   pedido: PedidoParaConfirmarCancelamento,
 ): string {
   // Prazo: o cron roda a cada 10 min e pega a linha depois de 2 min — "em

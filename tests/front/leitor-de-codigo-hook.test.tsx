@@ -73,6 +73,13 @@ function Sonda(props: { readonly opcoes: OpcoesDoLeitorDeCodigo }) {
       >
         ler digitado vazio
       </button>
+      <button
+        type="button"
+        data-testid="ler-digitado-com-espacos"
+        onClick={() => lerCodigoDigitado("7 891234 567895")}
+      >
+        ler digitado com espaços
+      </button>
       {/* Alvo real de foco para o caso 11 (o buffer do leitor físico se
           cala quando o foco está num campo editável). */}
       <input type="text" data-testid="campo-de-verdade" />
@@ -526,6 +533,20 @@ describe("useLeitorDeCodigo", () => {
     });
     expect(aoLer).toHaveBeenCalledWith({
       codigo: "7891000315507",
+      formato: "desconhecido",
+    });
+  });
+
+  it("12b. lerCodigoDigitado tira também os espaços do MEIO (etiqueta EAN-13 impressa)", async () => {
+    const aoLer = vi.fn();
+    await montar({ ativo: false, aoLer });
+    await avancar(0);
+
+    act(() => {
+      clicar("ler-digitado-com-espacos");
+    });
+    expect(aoLer).toHaveBeenCalledWith({
+      codigo: "7891234567895",
       formato: "desconhecido",
     });
   });

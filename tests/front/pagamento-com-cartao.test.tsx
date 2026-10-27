@@ -937,7 +937,7 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
     await enviarCartao(create);
 
     expect(hospedeiro.textContent).toContain(
-      "Seu banco está analisando. Não pague de novo. Avisamos aqui e por notificação",
+      "Seu banco está analisando. Não pague de novo. Acompanhe aqui ou em Meus pedidos",
     );
   });
 
@@ -1022,7 +1022,7 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
       metodo: "pix",
     });
     expect(
-      hospedeiro.querySelector("img[alt='QR code do PIX']"),
+      hospedeiro.querySelector("img[alt='QR code do Pix']"),
     ).not.toBeNull();
     expect(unmounts.every((u) => u.mock.calls.length === 1)).toBe(true);
   });
@@ -1262,7 +1262,7 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
       metodo: "pix",
     });
     expect(
-      hospedeiro.querySelector("img[alt='QR code do PIX']"),
+      hospedeiro.querySelector("img[alt='QR code do Pix']"),
     ).not.toBeNull();
   });
 
@@ -1334,7 +1334,7 @@ describe("PagamentoOnline em modo cartão (render de verdade)", () => {
       await enviarCartao(create);
 
       const textoDaAnalise =
-        "Seu banco está analisando. Não pague de novo. Avisamos aqui e por notificação";
+        "Seu banco está analisando. Não pague de novo. Acompanhe aqui ou em Meus pedidos";
       expect(hospedeiro.textContent).toContain(textoDaAnalise);
       const pix = () =>
         [...hospedeiro.querySelectorAll("button")].find(

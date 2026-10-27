@@ -439,7 +439,8 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
     });
 
     expect(hospedeiro.textContent).toContain("Pagamento Confirmado");
-    expect(hospedeiro.textContent).toContain("R$ 100,00");
+    // formatCurrency usa espaço não quebrável entre "R$" e o número.
+    expect(hospedeiro.textContent?.replace(/\s/g, " ")).toContain("R$ 100,00");
     // O identificador vem do MESMO formato que numeroDoPedido() usa no
     // backend (webhook-mercadopago/index.ts) e o SuccessView já usa aqui:
     // últimos 6 caracteres do id ("ped-999" → "ed-999"), maiúsculos.
@@ -486,7 +487,8 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
     // Metade positiva: a tela própria do estado, com as três informações que
     // o Gabriel decidiu (pagamento recebido, prazo vencido, loja contata).
     expect(hospedeiro.textContent).toContain("prazo de reserva venceu");
-    expect(hospedeiro.textContent).toContain("R$ 100,00");
+    // formatCurrency usa espaço não quebrável entre "R$" e o número.
+    expect(hospedeiro.textContent?.replace(/\s/g, " ")).toContain("R$ 100,00");
     expect(hospedeiro.textContent).toContain("#ED-999");
   });
 
@@ -511,16 +513,17 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
       "a loja já está preparando seu pedido",
     );
     expect(hospedeiro.textContent).toContain("prazo de reserva venceu");
-    expect(hospedeiro.textContent).toContain("R$ 100,00");
+    // formatCurrency usa espaço não quebrável entre "R$" e o número.
+    expect(hospedeiro.textContent?.replace(/\s/g, " ")).toContain("R$ 100,00");
     expect(hospedeiro.textContent).toContain("#ED-999");
   });
 
-  it("no estado fora do prazo, o QR e o aviso de reserva de 30 minutos saem do DOM", async () => {
+  it("no estado fora do prazo, o QR e o aviso de reserva saem do DOM", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNaTelaDeAguardarPagamento(CheckoutView);
 
     expect(hospedeiro.textContent).toContain(
-      "Se o pagamento não sair em 30 minutos",
+      "Se o pagamento não sair no prazo",
     );
 
     await act(async () => {
@@ -532,7 +535,7 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
 
     expect(hospedeiro.textContent).not.toContain("Finalize o pagamento");
     expect(hospedeiro.textContent).not.toContain(
-      "Se o pagamento não sair em 30 minutos",
+      "Se o pagamento não sair no prazo",
     );
   });
 
@@ -731,12 +734,12 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
     expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado");
   });
 
-  it("depois de confirmado, o aviso de reserva de 30 minutos SOME da tela", async () => {
+  it("depois de confirmado, o aviso de reserva SOME da tela", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNaTelaDeAguardarPagamento(CheckoutView);
 
     expect(hospedeiro.textContent).toContain(
-      "Se o pagamento não sair em 30 minutos",
+      "Se o pagamento não sair no prazo",
     );
 
     await act(async () => {
@@ -747,7 +750,7 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
     });
 
     expect(hospedeiro.textContent).not.toContain(
-      "Se o pagamento não sair em 30 minutos",
+      "Se o pagamento não sair no prazo",
     );
   });
 

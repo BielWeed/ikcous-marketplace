@@ -197,7 +197,10 @@ vi.mock("@/hooks/useCart", () => ({
   useCartState: () => ({ cartCount: 0 }),
   useCartActions: () => ({ addToCart: () => {} }),
 }));
-const estadoDoLink = vi.hoisted(() => ({ vencido: false }));
+const estadoDoLink = vi.hoisted(() => ({
+  vencido: false,
+  confirmacaoVencida: false,
+}));
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
     user: null,
@@ -206,6 +209,7 @@ vi.mock("@/hooks/useAuth", () => ({
     loading: false,
     isPasswordRecovery: false,
     linkDeRecuperacaoVencido: estadoDoLink.vencido,
+    linkDeConfirmacaoVencido: estadoDoLink.confirmacaoVencida,
   }),
 }));
 vi.mock("@/views/shared/AuthView", () => ({
@@ -329,6 +333,7 @@ describe("App — link de recuperação vencido leva à tela de entrada", () => 
     catalogo.products = [{ id: "produto-A" }];
     catalogo.fetchProducts = () => {};
     estadoDoLink.vencido = false;
+    estadoDoLink.confirmacaoVencida = false;
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -389,6 +394,16 @@ describe("App — link de recuperação vencido leva à tela de entrada", () => 
 
   it("com o aviso do link vencido, a tela de entrada aparece, mesmo com o endereço na vitrine ('/')", async () => {
     estadoDoLink.vencido = true;
+    await abrir();
+
+    expect(
+      container?.querySelector('[data-testid="tela-auth"]'),
+    ).not.toBeNull();
+    expect(globalThis.location.pathname).toBe("/auth");
+  });
+
+  it("link de CONFIRMAÇÃO de cadastro vencido também leva à tela de entrada (não à vitrine)", async () => {
+    estadoDoLink.confirmacaoVencida = true;
     await abrir();
 
     expect(

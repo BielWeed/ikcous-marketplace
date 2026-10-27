@@ -119,6 +119,16 @@ export const Header = memo(function Header({
     };
   }, []);
 
+  // No celular a pílula (100 px, 2 linhas) só cabe aviso curtinho: com
+  // descrição ou frase longa a cápsula vira um cartão que se pendura logo
+  // ABAIXO da barra (absolute — a altura do cabeçalho não muda) com o texto
+  // inteiro, pelo tempo proporcional ao texto (utils/headerToast.ts). Acima de
+  // 640 px nada muda: o Sonner mostra o aviso completo e a cápsula segue com
+  // os 2600 ms de sempre.
+  const avisoLongo =
+    !!activeToast &&
+    (!!activeToast.description || activeToast.message.length > 26);
+
   // Helper to render type icon inside dynamic island toast
   const renderToastIcon = (type: HeaderToastData["type"]) => {
     switch (type) {
@@ -337,6 +347,7 @@ export const Header = memo(function Header({
               className="sr-only min-[641px]:hidden"
             >
               {activeToast?.message}
+              {activeToast?.description && ` ${activeToast.description}`}
             </span>
           )}
           {/* Desmonta o canal comum imediatamente: seu exit não deve
@@ -370,7 +381,11 @@ export const Header = memo(function Header({
                       dispensarToast();
                     }
                   }}
-                  className="flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95"
+                  className={cn(
+                    "flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95",
+                    avisoLongo &&
+                      "max-[640px]:absolute max-[640px]:inset-x-3 max-[640px]:top-[calc(100%+0.25rem)] max-[640px]:items-start max-[640px]:rounded-2xl max-[640px]:py-2.5",
+                  )}
                 >
                   <motion.div
                     initial={{ scale: 0.4, opacity: 0 }}
@@ -384,9 +399,22 @@ export const Header = memo(function Header({
                     initial={{ opacity: 0, x: 8 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.2, ease: "easeOut" }}
-                    className="line-clamp-2 max-w-[100px] whitespace-normal break-words text-left text-[11px] font-bold leading-tight tracking-tight text-white/95 xs:max-w-[155px] xs:text-xs sm:max-w-[220px]"
+                    // O cartão longo NÃO herda o `xs:max-w-[155px]` da pílula (ele
+                    // vencia o `max-[640px]:max-w-none` entre 480 e 640 px): são
+                    // dois conjuntos de classes, sem sobreposição de faixa.
+                    className={cn(
+                      "whitespace-normal break-words text-left font-bold leading-tight tracking-tight text-white/95",
+                      avisoLongo
+                        ? "line-clamp-none max-w-none flex-1 text-xs min-[641px]:line-clamp-2 min-[641px]:max-w-[220px] min-[641px]:flex-none"
+                        : "line-clamp-2 max-w-[100px] text-[11px] xs:max-w-[155px] xs:text-xs sm:max-w-[220px]",
+                    )}
                   >
                     {activeToast.message}
+                    {activeToast.description && (
+                      <span className="mt-0.5 block text-xs font-medium text-white/80 min-[641px]:hidden">
+                        {activeToast.description}
+                      </span>
+                    )}
                   </motion.span>
 
                   <motion.span
@@ -453,6 +481,22 @@ export const Header = memo(function Header({
             </AnimatePresence>
           )}
         </div>
+      </div>
+      {/* Faixa de "sem internet" da LOJA (o painel tem a ConexaoDoPainel).
+          Pendurada abaixo da barra (absolute) para não empurrar a tela quando
+          a rede cai ou volta; a região role=status fica SEMPRE montada, vazia
+          com rede, porque leitor de tela só anuncia de forma confiável texto
+          que entra numa região que já existia. Herda a área segura lateral
+          do contêiner raiz. */}
+      <div
+        role="status"
+        className="pointer-events-none absolute inset-x-0 top-full"
+      >
+        {!isOnline && (
+          <p className="border-b border-amber-200 bg-amber-50 px-3 py-1 text-center text-xs font-medium text-amber-900">
+            Sem internet — mostrando o que já foi carregado
+          </p>
+        )}
       </div>
     </header>
   );

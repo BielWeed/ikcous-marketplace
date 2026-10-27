@@ -2301,7 +2301,10 @@ export const AdminBannersView = memo(function AdminBannersView({
                   <section key={pos.value} className="space-y-3">
                     <h2 className="flex justify-between text-xs font-semibold uppercase tracking-wider">
                       <span>{pos.label}</span>
-                      <span>{lista.length} banners</span>
+                      <span>
+                        {lista.length}{" "}
+                        {lista.length === 1 ? "banner" : "banners"}
+                      </span>
                     </h2>
                     {lista.length ? (
                       lista.map((b) => (
@@ -2323,6 +2326,10 @@ export const AdminBannersView = memo(function AdminBannersView({
                           onExcluir={handleDelete}
                         />
                       ))
+                    ) : todosNaPosicao.length ? (
+                      <p className="rounded-2xl border border-dashed border-admin-border p-4 text-center text-sm">
+                        Nenhum banner com este filtro
+                      </p>
                     ) : (
                       <Button
                         variant="outline"

@@ -545,7 +545,9 @@ export function useStoreIdentityEditor(active = true) {
       publish({
         ...before,
         message:
-          "Confira nome, cidade, estado e cores no formato #RRGGBB antes de salvar.",
+          before.draft!.fields.storeName.trim() === ""
+            ? "Escreva o nome da loja (até 160 letras)."
+            : "Confira nome, cidade, estado e cores no formato #RRGGBB antes de salvar.",
       });
       return false;
     }

@@ -465,7 +465,7 @@ describe("CheckoutView — resposta atrasada, centavos e reserva por método", (
       await finalizar();
       const texto = hospedeiro.textContent?.replace(/\s+/g, " ");
       const avisoPix =
-        "Seu pedido está reservado. Se o pagamento não sair em 30 minutos, os itens voltam para o estoque e o pedido é cancelado.";
+        "Seu pedido está reservado. Se o pagamento não sair no prazo, os itens voltam para o estoque e o pedido é cancelado.";
       const avisoCartao = "Reservamos seus itens enquanto você paga.";
       expect(texto).toContain(metodo === "pix" ? avisoPix : avisoCartao);
       expect(texto).not.toContain(metodo === "pix" ? avisoCartao : avisoPix);

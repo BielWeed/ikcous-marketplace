@@ -7,7 +7,7 @@
 // Caminho usado para disparar a corrida: dois eventos "input" despachados
 // diretamente no elemento (`el.dispatchEvent(new Event("input"))`), sem
 // nenhum `await`/microtarefa entre eles. Isto NÃO é o que uma digitação de
-// usuário alcança — o input tem `disabled={loading || buscandoCep}`
+// usuário alcança — o input tem `readOnly={buscandoCep}`
 // e o `setBuscando(true)` do hook `useBuscaCep` roda de forma síncrona
 // antes do `await fetch(...)`, então o navegador já recusa gerar um segundo evento
 // "input" a partir de interação real depois do primeiro caractere: cada
@@ -199,7 +199,7 @@ describe("AddressForm — corrida na busca de CEP", () => {
       digitar("cep", "38500000"); // busca NOVA
     });
     expect(pendentes.size).toBe(2);
-    expect((document.getElementById("cep") as HTMLInputElement).disabled).toBe(
+    expect((document.getElementById("cep") as HTMLInputElement).readOnly).toBe(
       true,
     );
 
@@ -217,7 +217,7 @@ describe("AddressForm — corrida na busca de CEP", () => {
 
     // A guarda do `finally`: a resposta velha não desliga o spinner de uma
     // busca que não é dela. É esta asserção que mata o mutante.
-    expect((document.getElementById("cep") as HTMLInputElement).disabled).toBe(
+    expect((document.getElementById("cep") as HTMLInputElement).readOnly).toBe(
       true,
     );
     // E, pela guarda de sequência, ela também não escreveu no formulário: sem
@@ -237,7 +237,7 @@ describe("AddressForm — corrida na busca de CEP", () => {
       await Promise.resolve();
     });
 
-    expect((document.getElementById("cep") as HTMLInputElement).disabled).toBe(
+    expect((document.getElementById("cep") as HTMLInputElement).readOnly).toBe(
       false,
     );
     expect(cartao()).toContain("Rua Nova");

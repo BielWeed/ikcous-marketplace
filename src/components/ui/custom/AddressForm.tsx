@@ -545,7 +545,8 @@ export function AddressForm({
                   placeholder="00000-000"
                   maxLength={9}
                   inputMode="numeric"
-                  disabled={loading || buscandoCep}
+                  disabled={loading}
+                  readOnly={buscandoCep}
                   aria-invalid={cepComProblema || !!erros.cep}
                   aria-describedby="aviso-cep"
                   className={cn(
@@ -600,7 +601,7 @@ export function AddressForm({
             href={URL_DESCOBRIR_CEP}
             target="_blank"
             rel="noopener noreferrer"
-            className="ml-0.5 mt-2.5 inline-flex items-center gap-1 text-[12.5px] font-semibold text-foreground underline decoration-border underline-offset-4"
+            className="ml-0.5 mt-2.5 inline-flex min-h-11 items-center gap-1 text-[12.5px] font-semibold text-foreground underline decoration-border underline-offset-4"
           >
             Não sei meu CEP
             <ArrowUpRight className="size-3.5" />
@@ -773,7 +774,7 @@ export function AddressForm({
                   type="button"
                   onClick={() => setReferenciaAberta(true)}
                   disabled={loading}
-                  className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-foreground"
+                  className="inline-flex min-h-11 items-center gap-1.5 text-[13px] font-semibold text-foreground"
                 >
                   <Plus className="size-[15px]" />
                   Ponto de referência

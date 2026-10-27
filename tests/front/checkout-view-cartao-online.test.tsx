@@ -380,7 +380,7 @@ describe("CheckoutView — cartão pelo app", () => {
   });
 
   it.each([120.03, 119.97, 1234.56])(
-    "o pagamento usa o total gravado (%s), avisa a diferença e não o troca pelo carrinho limpo",
+    "o pagamento usa o total gravado (%s), diz 'O valor mudou de A para B' e não o troca pelo carrinho limpo",
     async (totalAmount) => {
       createOrder.mockResolvedValueOnce({ id: "ped-777", totalAmount });
       const { CheckoutView } = await import("@/views/customer/CheckoutView");
@@ -396,7 +396,10 @@ describe("CheckoutView — cartão pelo app", () => {
         [119.97, "R$ 119,97"],
         [1234.56, "R$ 1.234,56"],
       ]).get(totalAmount);
-      expect(texto).toContain(`Valor final do pedido: ${esperado}`);
+      // LOTE 210: a frase diz DE quanto PARA quanto — A é o total que o
+      // carrinho mostrava (100 + 20 de frete) e B o que o pedido gravou.
+      expect(texto).toContain(`O valor mudou de R$ 120,00 para ${esperado}`);
+      expect(texto).not.toContain("Valor final do pedido");
       await act(async () => {
         (propsDoPagamento.at(-1)!.onTrocarParaPix as (vivo: boolean) => void)(
           false,
@@ -509,7 +512,8 @@ describe("CheckoutView — cartão pelo app", () => {
     await clicar(botaoPorTexto(hospedeiro, "Cartão de crédito ou débito")!);
     await finalizar();
     expect(propsDoPagamento.at(-1)!.valor).toBe(120);
-    expect(hospedeiro.textContent).not.toContain("Valor final do pedido:");
+    expect(hospedeiro.textContent).not.toContain("Valor final do pedido");
+    expect(hospedeiro.textContent).not.toContain("O valor mudou");
   });
 
   it("a chave de idempotência não distingue PIX de cartão (mesmo eixo 'online', mesma RPC): retentativa pelo PIX repete a chave", async () => {

@@ -30,6 +30,11 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import type { LayoutDeOfertas } from "@/lib/layout-de-ofertas";
 import { ordenarParaVitrine } from "@/lib/vitrine";
+import {
+  destaquesDaVitrine,
+  ofertasDaVitrine,
+  produtosAVenda,
+} from "@/lib/vitrine-do-painel";
 import type { View } from "@/types";
 import { Reorder } from "framer-motion";
 import {
@@ -445,7 +450,9 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   // pura: nenhuma dependência mudou.
   const previewProducts = useMemo(() => {
     const map: Record<string, typeof products> = {};
-    const productMap = new Map(products.map((p) => [p.id, p]));
+    // Só o que a loja mostra: produto pausado não conta nem aparece aqui.
+    const aVenda = produtosAVenda(products);
+    const productMap = new Map(aVenda.map((p) => [p.id, p]));
 
     homeSections.forEach((sec) => {
       const max = sec.maxItems ?? QUANTIDADE_PADRAO;
@@ -456,18 +463,16 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           .filter((p): p is (typeof products)[0] => Boolean(p))
           .slice(0, max);
       } else if (sec.id === "offers") {
-        map[sec.id] = products
-          .filter((p) => p.originalPrice && p.originalPrice > p.price)
-          .slice(0, max);
+        map[sec.id] = ofertasDaVitrine(aVenda).slice(0, max);
       } else if (sec.id === "bestsellers") {
-        map[sec.id] = products.filter((p) => p.isBestseller).slice(0, max);
+        map[sec.id] = destaquesDaVitrine(aVenda).slice(0, max);
       } else {
         // new_arrivals or default custom — a MESMA ordenação da loja
         // (ordenarParaVitrine, src/lib/vitrine.ts): sem-estoque no fim antes
         // de cortar. Item 15 do laudo de 29/08: o preview ordenava só por
         // data e a lojista montava a vitrine vendo uma ordem que a loja não
         // mostrava.
-        map[sec.id] = ordenarParaVitrine(products).slice(0, max);
+        map[sec.id] = ordenarParaVitrine(aVenda).slice(0, max);
       }
     });
 

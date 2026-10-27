@@ -129,8 +129,9 @@ describe("AdminProductFormView — criar categoria de dentro do produto", () => 
     await act(async () => {
       botaoPorTexto("Nova categoria")?.click();
     });
-    // A folha é baixada sob demanda (import dinâmico): espera ela chegar.
-    for (let i = 0; i < 2; i++) {
+    // A folha é baixada sob demanda (import dinâmico): espera ela chegar (até
+    // ~3 s, para não falhar com a máquina carregada).
+    for (let i = 0; i < 60 && !botaoPorTexto("Criar categoria"); i++) {
       await act(async () => {
         await new Promise((r) => setTimeout(r, 50));
       });

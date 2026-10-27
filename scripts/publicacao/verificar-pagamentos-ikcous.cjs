@@ -50,18 +50,22 @@ function hashesEsperados() {
     ),
     "utf8",
   );
+  // O corpo vigente de expirar_pedidos_vencidos e o da 20261393000000 (o PIX pago no ultimo minuto nao perde o pedido: a folga de
+  // 10 minutos do PIX com cobranca na vaga); antes dela era o da 20261186000000. O banco tem de receber a migration ANTES desta prova.
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- Caminho fixo do repositorio, sem input externo.
-  const migration86 = fs.readFileSync(
+  const migrationExpirar = fs.readFileSync(
     path.join(
       ROOT,
-      "supabase/migrations/20261186000000_cartao_em_analise_segura_a_expiracao.sql",
+      "supabase/migrations/20261393000000_o_pix_pago_no_ultimo_minuto_nao_perde_o_pedido.sql",
     ),
     "utf8",
   );
   const liberar = migration76.match(
     /CREATE OR REPLACE FUNCTION public\.liberar_cobranca_do_pedido\([\s\S]*?AS \$\$([\s\S]*?)\$\$;/,
   );
-  const expirar = migration86.match(/AS \$expirar\$([\s\S]*?)\$expirar\$;/);
+  const expirar = migrationExpirar.match(
+    /AS \$expirar\$([\s\S]*?)\$expirar\$;/,
+  );
   if (!liberar || !expirar)
     throw new Error("Corpo esperado nao encontrado nas migrations fixas.");
   const hash = (corpo) =>

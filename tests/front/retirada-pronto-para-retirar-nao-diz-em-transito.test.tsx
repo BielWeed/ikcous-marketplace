@@ -254,7 +254,9 @@ describe("retirada na loja — 'Pronto para retirar' no lugar de 'Em Trânsito'"
 
     it("retirada entregue: nome da etapa de retirada, e nada de 'Aguarde a confirmação'", async () => {
       const texto = await telaDaCliente(await pedido("delivered", true));
-      expect(texto).toContain("Chegou!");
+      // Lote 208: retirada já retirada não diz "Chegou!" (a cliente foi buscar).
+      expect(texto).toContain("Retirado");
+      expect(texto).not.toContain("Chegou!");
       expect(texto).toContain(PRONTO);
       expect(texto).not.toContain("A caminho");
       expect(texto).not.toContain("Aguarde a confirmação da loja");

@@ -38,9 +38,9 @@ const CASA: Address = {
   is_default: true,
 };
 
-// Textos de classe EXATOS da base 383fbcd0.
+// Textos de classe EXATOS da base 383fbcd0, salvo o contraste do Editar e do CEP (zinc-600, lote 211).
 const EDITAR_BASE =
-  "relative flex size-8 items-center justify-center rounded-lg bg-white text-zinc-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-zinc-900 hover:text-white";
+  "relative flex size-8 items-center justify-center rounded-lg bg-white text-zinc-600 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-zinc-900 hover:text-white";
 const EXCLUIR_BASE =
   "relative flex size-8 items-center justify-center rounded-lg bg-white text-red-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-red-50 hover:text-red-500";
 const VAZIO_BASE =
@@ -116,7 +116,7 @@ describe("AddressList — checkout e carrinho (selectable) desenham como antes",
     const cep = [...hospedeiro.querySelectorAll("p")].find((p) =>
       p.textContent?.startsWith("CEP:"),
     );
-    expect(cep?.className).toBe("mt-1 text-[11px] font-bold text-zinc-400");
+    expect(cep?.className).toBe("mt-1 text-xs font-bold text-zinc-600");
   });
 
   it("estado vazio sem onAdd (checkout e carrinho): classes e texto da base, sem botão", () => {

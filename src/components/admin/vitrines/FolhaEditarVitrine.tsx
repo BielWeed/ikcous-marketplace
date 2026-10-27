@@ -345,6 +345,11 @@ export function FolhaEditarVitrine({
                     </span>
                     {produto.category ? ` · ${produto.category}` : ""}
                   </span>
+                  {produto.isActive ? null : (
+                    <span className="block text-xs font-semibold text-amber-300">
+                      Pausado — não aparece na loja
+                    </span>
+                  )}
                 </span>
                 <span
                   aria-hidden="true"
