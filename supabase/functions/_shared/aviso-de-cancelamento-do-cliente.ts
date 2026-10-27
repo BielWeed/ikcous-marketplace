@@ -94,7 +94,7 @@ export function montarAvisoDeCancelamento(
   const cliente = String(pedido.customer_name ?? "").trim() || "cliente sem nome";
   const jaSaiu = historico.old_status === "shipping" || pedido.cancelled_after_shipping === true;
   const frase = !pedido.payment_status && !jaSaiu
-    ? "a pagar na entrega: não separe nem envie"
+    ? "sem pagamento pelo app: não separe nem envie"
     : jaSaiu
     ? "pago, o produto já saiu: avise o transporte"
     : pedido.payment_status === "pago_apos_expirar"

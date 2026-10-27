@@ -84,7 +84,17 @@ Deno.test("handler: o assunto e o corpo levam o nome da loja lido de store_confi
     ...supabaseDoCodigo(CODIGO_GERADO),
     from: (tabela: string) => {
       assertEquals(tabela, "store_config");
-      return { select: () => ({ limit: () => ({ maybeSingle: async () => ({ data: { store_name: "Loja da Ana\r\nBcc: x@y.com" }, error: null }) }) }) };
+      return {
+        select: (colunas: string) => {
+          assertEquals(colunas, "store_name");
+          return {
+            limit: (n: number) => {
+              assertEquals(n, 1);
+              return { maybeSingle: async () => ({ data: { store_name: "Loja da Ana\r\nBcc: x@y.com" }, error: null }) };
+            },
+          };
+        },
+      };
     },
   };
   const r = await handler(pedidoDeCodigo(), {

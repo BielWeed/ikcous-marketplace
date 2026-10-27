@@ -257,7 +257,7 @@ Deno.test("pagar na entrega (pagamento nulo ou vazio) cancelado pela cliente ANT
       });
       assertEquals(r.avisos.length, 1, `${String(payment_status)}/${old_status}`);
       assertEquals(r.avisos[0].chave, "cancelado_pelo_cliente:h1");
-      assertEquals(r.avisos[0].aviso.body, "#4F5A6B · R$ 149,90 · Maria Silva — a pagar na entrega: não separe nem envie");
+      assertEquals(r.avisos[0].aviso.body, "#4F5A6B · R$ 149,90 · Maria Silva — sem pagamento pelo app: não separe nem envie");
       for (const proibido of ["pago,", "reembolso", "estorn"]) assertEquals(r.avisos[0].aviso.body.includes(proibido), false, proibido);
     }
   }
