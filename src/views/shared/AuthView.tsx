@@ -378,6 +378,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           setIsLoading(false);
           return;
         }
+        // eslint-disable-next-line security/detect-possible-timing-attacks -- as duas são o que a própria pessoa digitou, não é segredo comparado no servidor
         if (password !== confirmaSenha) {
           toast.error("As senhas não são iguais.");
           setIsLoading(false);
