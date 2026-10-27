@@ -623,6 +623,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "102b-antes-a-busca-do-crm-acha-o-numero-com-mais-55-base-vigente",
   "103a-conferir-o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-aplicado",
   "103b-antes-o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-base-vigente",
+  "104a-conferir-o-balcao-diz-inativo-para-a-variacao-desligada-aplicado",
+  "104b-antes-o-balcao-diz-inativo-para-a-variacao-desligada-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

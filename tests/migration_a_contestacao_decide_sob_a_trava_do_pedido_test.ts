@@ -336,6 +336,9 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     // 20261393000000: o PIX pago no ultimo minuto nao perde o pedido (folga de 10 min do PIX com cobranca na vaga, controle com o corpo anterior,
     // aviso tardio vira pago, SKIP LOCKED, rollback, pre-voo e consultas 103).
     "tests/banco/o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-viva.cjs",
+    // 20261393100000: o balcao diz "inativo" para a variacao desligada (controle com o corpo anterior, precedencia, produto apagado, mutantes,
+    // rollback, pre-voo, consultas 104 e a resposta lida pelo reducer do balcao).
+    "tests/banco/o-balcao-diz-inativo-para-a-variacao-desligada-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -631,6 +634,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-lista-de-clientes-nao-repete-ninguem-viva.cjs",
     "tests/banco/a-busca-do-crm-acha-o-numero-com-mais-55-viva.cjs",
     "tests/banco/o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-viva.cjs",
+    "tests/banco/o-balcao-diz-inativo-para-a-variacao-desligada-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",

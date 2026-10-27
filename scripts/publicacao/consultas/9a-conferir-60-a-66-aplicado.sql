@@ -58,8 +58,9 @@
 --     antigos conta só pendência real —: o corpo esperado é o dela, e o da 99 ainda no ar (migration
 --     não aplicada nesta loja) aparece como o dela, igual ao upsert_store_config, para não parar o backfill;
 --     buscar_por_codigo_barras foi redefinida na 20261381 — a guarda passa de is_admin() para o admin
---     atual (rls_admin_atual), o resto igual —: o corpo esperado é o dela, e o da 61 ainda no ar
---     (migration não aplicada nesta loja) aparece como o dela, pela mesma tolerância;
+--     atual (rls_admin_atual), o resto igual — e de novo na 20261393100000 — o balcão diz "inativo" para a
+--     variação desligada, só a busca nova no fim —: o corpo esperado é o dela, e o da 61 ou o da 81 ainda
+--     no ar (migration não aplicada nesta loja) aparece como o dela, pela mesma tolerância;
 --     e upsert_store_config foi redefinida de novo na
 --     20261239 — a loja declara razão social, CNPJ/CPF e e-mail de atendimento — e de novo
 --     na 20261244 — a loja escolhe como entrega na cidade e em quantos dias: as chaves
@@ -120,7 +121,7 @@ WITH corpos AS (
    WHERE ns.nspname = 'public'
    GROUP BY p.proname
 ), final(fn, h) AS (VALUES
-    ('buscar_por_codigo_barras', 'e1b93114cd9deee7eda6801ef37ff1f9'),
+    ('buscar_por_codigo_barras', '3e2276ae97a7f2aef487e55d259ba7a3'),
     ('get_admin_orders_cancelados_recentes', '9567454f17698f3f0624cca0b06458cd'),
     ('get_admin_orders_paged', 'f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6'),
     ('get_product_recommendations', '3de5b27cc17c31301249861b7921a6fe'),
@@ -292,8 +293,9 @@ WITH corpos AS (
               THEN '9567454f17698f3f0624cca0b06458cd'
               WHEN f.fn = 'get_admin_orders_paged' AND c.h = '5861dbbe0e9c007a4196f5308c17d763'
               THEN 'f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6'
-              WHEN f.fn = 'buscar_por_codigo_barras' AND c.h = '8762faab7f7efaf4bfd183499408d8df'
-              THEN 'e1b93114cd9deee7eda6801ef37ff1f9'
+              WHEN f.fn = 'buscar_por_codigo_barras'
+                   AND (c.h = '8762faab7f7efaf4bfd183499408d8df' OR c.h = 'e1b93114cd9deee7eda6801ef37ff1f9')
+              THEN '3e2276ae97a7f2aef487e55d259ba7a3'
               ELSE COALESCE(c.h, 'AUSENTE') END
     FROM final f LEFT JOIN corpos c ON c.proname = f.fn
   UNION ALL

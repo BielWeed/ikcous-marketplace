@@ -261,6 +261,29 @@ const VERIFICACOES = {
       "PERFORM public.devolver_estoque(v_pedido.id);",
     ],
   },
+  // 20261393100000: o balcao diz "inativo" para a variacao desligada. buscar_por_codigo_barras ganha SO a busca da variacao desligada no
+  // fim (depois de nao achar variacao ativa nem produto); o gate, a busca da variacao ativa e a do produto seguem UMA vez cada. A consulta
+  // 104a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
+  "20261393100000_o_balcao_diz_inativo_para_a_variacao_desligada.sql": {
+    funcao: "buscar_por_codigo_barras",
+    esperado: [
+      {
+        texto: "IF public.is_admin_atual() IS DISTINCT FROM true THEN",
+        vezes: 1,
+      },
+      { texto: "AND v.active = true", vezes: 1 },
+      { texto: "WHERE p.codigo_barras = v_codigo", vezes: 1 },
+      // A busca nova amarrada como UM bloco (da variacao nao ativa, cobrindo NULL, ate o produto nao apagado): se alguem trocar
+      // IS DISTINCT FROM por <> ou por = false, a variacao com active NULL some do terceiro caso.
+      {
+        texto:
+          "WHERE v.codigo_barras = v_codigo\n              AND v.active IS DISTINCT FROM true\n              AND p.deleted_at IS NULL;",
+        vezes: 1,
+      },
+      { texto: "'ativo', false,", vezes: 1 },
+      { texto: "v_origem := 'variante';", vezes: 2 },
+    ],
+  },
   // 20261386: o preco do produto deixa historico. A tabela, a politica, o ACL e o gatilho nao sao conferiveis aqui (so corpo de funcao): a
   // consulta 91a e a prova viva fazem isso. Aqui: a funcao do gatilho grava 'cadastro' no INSERT e 'mudanca' so quando o preco muda.
   "20261386000000_o_preco_do_produto_deixa_historico.sql": {

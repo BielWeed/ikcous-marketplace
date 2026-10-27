@@ -212,6 +212,8 @@ on:
       - "scripts/publicacao/consultas/102b-antes-a-busca-do-crm-acha-o-numero-com-mais-55-base-vigente.sql"
       - "scripts/publicacao/consultas/103a-conferir-o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-aplicado.sql"
       - "scripts/publicacao/consultas/103b-antes-o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-base-vigente.sql"
+      - "scripts/publicacao/consultas/104a-conferir-o-balcao-diz-inativo-para-a-variacao-desligada-aplicado.sql"
+      - "scripts/publicacao/consultas/104b-antes-o-balcao-diz-inativo-para-a-variacao-desligada-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -393,6 +395,8 @@ on:
       - "scripts/publicacao/consultas/102b-antes-a-busca-do-crm-acha-o-numero-com-mais-55-base-vigente.sql"
       - "scripts/publicacao/consultas/103a-conferir-o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-aplicado.sql"
       - "scripts/publicacao/consultas/103b-antes-o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-base-vigente.sql"
+      - "scripts/publicacao/consultas/104a-conferir-o-balcao-diz-inativo-para-a-variacao-desligada-aplicado.sql"
+      - "scripts/publicacao/consultas/104b-antes-o-balcao-diz-inativo-para-a-variacao-desligada-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -592,6 +596,9 @@ jobs:
       - name: Prova viva do PIX pago no ultimo minuto que nao perde o pedido (20261393000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-viva.cjs
+      - name: Prova viva do balcao que diz inativo para a variacao desligada (20261393100000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-balcao-diz-inativo-para-a-variacao-desligada-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

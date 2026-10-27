@@ -2749,7 +2749,19 @@ const ROL_DA_103 = [
   "expirar_pedidos_vencidos: assinatura e atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, uma so)",
   "expirar_pedidos_vencidos: sem EXECUTE para PUBLIC, anon nem authenticated",
 ];
+// Lote 104 (20261393100000, o balcao diz "inativo" para a variacao desligada: buscar_por_codigo_barras redefinida, so a busca da
+// variacao desligada no fim). A 104a e a 104b tem o mesmo rol; a 104a espera o corpo da 20261393100000 e a 104b o da 20261381000000.
+const ROL_DA_104 = [
+  "controle: funcoes de public visiveis a este papel",
+  "buscar_por_codigo_barras: corpo exato (md5)",
+  "buscar_por_codigo_barras: assinatura e atributos conhecidos (plpgsql, SECURITY DEFINER, STABLE, search_path=pg_catalog, pg_temp, uma so)",
+  "buscar_por_codigo_barras: EXECUTE so authenticated e service_role (sem PUBLIC nem anon)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "104a-conferir-o-balcao-diz-inativo-para-a-variacao-desligada-aplicado":
+    ROL_DA_104,
+  "104b-antes-o-balcao-diz-inativo-para-a-variacao-desligada-base-vigente":
+    ROL_DA_104,
   "103a-conferir-o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-aplicado":
     ROL_DA_103,
   "103b-antes-o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-base-vigente":
