@@ -15,9 +15,12 @@
 // Regra que estes testes prendem: numa recheca de FUNDO (a dona já foi
 // confirmada pelo servidor NESTA sessão), estouro de tempo ou erro de
 // rede/HTTP não rebaixa; só um "não" REAL do servidor (resposta bem-sucedida
-// dizendo false) rebaixa, na hora. O primeiro login sem estado prévio continua
-// como antes (estouro → não é dona), logout e troca de conta esquecem a
-// confirmação, e erro nunca grava nada no aparelho.
+// dizendo false) rebaixa, na hora. O primeiro login sem estado prévio NÃO ganha
+// o benefício da dúvida (não vira dona), mas desde o lote 213 (26/10/2026)
+// também não vira "não é dona": estouro/erro de rede = "unknown" + sinal de
+// verificação falhou (a tela oferece "Tentar de novo", em vez de "Acesso
+// restrito" e vitrine). Só um "não" REAL do servidor vira "not-admin". Logout e
+// troca de conta esquecem a confirmação, e erro nunca grava nada no aparelho.
 //
 // O banco continua protegendo as gravações por `is_admin()`; isto é só o que a
 // tela mostra. Harness copiado de auth-admin-check.test.tsx (mesmos motivos
@@ -51,6 +54,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 interface Snapshot {
   isAdmin: boolean;
   adminStatus: AdminStatus;
+  adminVerificacaoFalhou: boolean;
   userId: string | null;
 }
 
@@ -69,11 +73,13 @@ function Sonda({
   const ctx = useContext(authContext) as {
     isAdmin: boolean;
     adminStatus: AdminStatus;
+    adminVerificacaoFalhou: boolean;
     user: { id: string } | null;
   };
   aoAtualizar({
     isAdmin: ctx.isAdmin,
     adminStatus: ctx.adminStatus,
+    adminVerificacaoFalhou: ctx.adminVerificacaoFalhou,
     userId: ctx.user?.id ?? null,
   });
   return null;
@@ -350,23 +356,28 @@ describe("AuthContext — recheca de fundo não rebaixa a dona confirmada", () =
   // O que NÃO mudou: sem confirmação prévia, nada de benefício da dúvida
   // ---------------------------------------------------------------------
 
-  it("8. primeiro login com estouro de tempo: não é dona, e nada é gravado no aparelho", async () => {
+  it("8. primeiro login com estouro de tempo: não vira dona NEM 'não é dona' (verificação falhou), e nada é gravado no aparelho", async () => {
     const ctx = await montar();
     vi.useFakeTimers();
 
     await disparar(ctx, "SIGNED_IN", "primeira-vez");
+    // Já com a pessoa na tela e a pergunta no ar: "ainda não sei", nunca "não".
+    expect(ultimoEstado(ctx.aoAtualizar)?.adminStatus).toBe("unknown");
     await avancar(3100);
 
-    expect(ultimoEstado(ctx.aoAtualizar)?.adminStatus).toBe("not-admin");
+    expect(ultimoEstado(ctx.aoAtualizar)?.adminStatus).toBe("unknown");
+    expect(ultimoEstado(ctx.aoAtualizar)?.isAdmin).toBe(false);
+    expect(ultimoEstado(ctx.aoAtualizar)?.adminVerificacaoFalhou).toBe(true);
     expect(localStorage.getItem("ikcous_is_admin_primeira-vez")).toBeNull();
 
     // O "sim" atrasado do primeiro login continua descartado (como antes).
     ctx.fila[0].resolve({ data: true, error: null });
     await avancar(0);
-    expect(ultimoEstado(ctx.aoAtualizar)?.adminStatus).toBe("not-admin");
+    expect(ultimoEstado(ctx.aoAtualizar)?.isAdmin).toBe(false);
+    expect(ultimoEstado(ctx.aoAtualizar)?.adminStatus).toBe("unknown");
   });
 
-  it("9. primeiro login com RPC e plano B falhando rápido: não é dona e o aparelho NÃO grava 'false'", async () => {
+  it("9. primeiro login com RPC e plano B falhando rápido: verificação falhou (não 'não é dona') e o aparelho NÃO grava 'false'", async () => {
     const ctx = await montar();
     vi.useFakeTimers();
 
@@ -374,7 +385,9 @@ describe("AuthContext — recheca de fundo não rebaixa a dona confirmada", () =
     ctx.fila[0].resolve({ data: null, error: { message: "401", status: 401 } });
     await avancar(0);
 
-    expect(ultimoEstado(ctx.aoAtualizar)?.adminStatus).toBe("not-admin");
+    expect(ultimoEstado(ctx.aoAtualizar)?.adminStatus).toBe("unknown");
+    expect(ultimoEstado(ctx.aoAtualizar)?.isAdmin).toBe(false);
+    expect(ultimoEstado(ctx.aoAtualizar)?.adminVerificacaoFalhou).toBe(true);
     expect(localStorage.getItem("ikcous_is_admin_primeira-vez")).toBeNull();
   });
 
@@ -391,8 +404,11 @@ describe("AuthContext — recheca de fundo não rebaixa a dona confirmada", () =
     await disparar(ctx, "SIGNED_IN");
     await avancar(3100);
 
-    expect(ultimoEstado(ctx.aoAtualizar)?.adminStatus).toBe("not-admin");
+    // Sem a confirmação anterior: não vira dona (isAdmin falso) e a bandeira
+    // de verificação falhou liga — não herdou o "é dona" de antes da saída.
+    expect(ultimoEstado(ctx.aoAtualizar)?.adminStatus).toBe("unknown");
     expect(ultimoEstado(ctx.aoAtualizar)?.isAdmin).toBe(false);
+    expect(ultimoEstado(ctx.aoAtualizar)?.adminVerificacaoFalhou).toBe(true);
   });
 
   it("11. troca de conta: a outra pessoa que estoura o tempo NÃO herda o 'é dona' da anterior", async () => {
@@ -403,7 +419,8 @@ describe("AuthContext — recheca de fundo não rebaixa a dona confirmada", () =
     await avancar(3100);
 
     expect(ultimoEstado(ctx.aoAtualizar)?.userId).toBe("cliente");
-    expect(ultimoEstado(ctx.aoAtualizar)?.adminStatus).toBe("not-admin");
+    expect(ultimoEstado(ctx.aoAtualizar)?.isAdmin).toBe(false);
+    expect(ultimoEstado(ctx.aoAtualizar)?.adminStatus).toBe("unknown");
     expect(localStorage.getItem("ikcous_is_admin_cliente")).toBeNull();
   });
 
@@ -416,7 +433,8 @@ describe("AuthContext — recheca de fundo não rebaixa a dona confirmada", () =
     await avancar(3100);
 
     expect(ultimoEstado(ctx.aoAtualizar)?.userId).toBe("dona");
-    expect(ultimoEstado(ctx.aoAtualizar)?.adminStatus).toBe("not-admin");
+    expect(ultimoEstado(ctx.aoAtualizar)?.isAdmin).toBe(false);
+    expect(ultimoEstado(ctx.aoAtualizar)?.adminStatus).toBe("unknown");
   });
 
   it("13. 'false' que outra aba gravou no aparelho não rebaixa a dona confirmada numa recheca engasgada", async () => {

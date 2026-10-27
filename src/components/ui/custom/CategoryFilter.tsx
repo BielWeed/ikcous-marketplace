@@ -66,6 +66,7 @@ export const CategoryFilter = memo(function CategoryFilter({
                 onCategoryChange(category.name);
               }}
               aria-label={`Selecionar categoria ${category.name}`}
+              title={category.name}
               aria-pressed={isActive}
               className="group flex h-[80px] w-[68px] shrink-0 flex-col items-center rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-zinc-900/50 dark:focus-visible:ring-white/70"
             >

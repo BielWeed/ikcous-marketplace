@@ -8,6 +8,12 @@
  * na query — e o `?type=recovery` CONTINUA lá. Quem olha só o `type` abre a
  * tela "Nova Senha", que sem sessão nunca funciona.
  *
+ * O MESMO erro volta para o link de CONFIRMAÇÃO DE CADASTRO vencido — só que
+ * sem `type=recovery` (esse tipo só vai no link de "esqueci a senha", ver
+ * `resetPassword`). Quem trata os dois igual manda a pessoa que só queria
+ * confirmar o cadastro pedir a troca de uma senha que acabou de criar:
+ * `enderecoEhDeRecuperacao` separa os dois.
+ *
  * Este módulo só LÊ e LIMPA o endereço; a decisão do que mostrar é do
  * AuthContext/AuthView.
  */
@@ -23,6 +29,14 @@ export function enderecoTrazErroDeLink(search: string, hash: string): boolean {
   return (
     new URLSearchParams(search).has("error_code") ||
     paramsDoHash(hash).has("error_code")
+  );
+}
+
+/** O endereço é de "esqueci a senha" (`type=recovery` na query ou no hash)? */
+export function enderecoEhDeRecuperacao(search: string, hash: string): boolean {
+  return (
+    new URLSearchParams(search).get("type") === "recovery" ||
+    paramsDoHash(hash).get("type") === "recovery"
   );
 }
 

@@ -11,6 +11,17 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
 import type { Desfecho } from "@/hooks/useDevolucaoCliente";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import {
@@ -110,6 +121,7 @@ export function DevolucaoDoPedidoCard({
   const [codigo, setCodigo] = useState("");
   const [enviando, setEnviando] = useState<"cancelar" | "envio" | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
 
   const etapas = etapasDaDevolucao(atual);
   const acoes = acoesDoCliente(atual);
@@ -144,10 +156,7 @@ export function DevolucaoDoPedidoCard({
 
   async function cancelar() {
     if (enviando) return;
-    const confirmado = globalThis.confirm(
-      "Cancelar esta devolução? Se mudar de ideia, você pode pedir de novo enquanto o prazo estiver aberto.",
-    );
-    if (!confirmado) return;
+    setConfirmandoCancelar(false);
     setEnviando("cancelar");
     setErro(null);
     const r = await onCancelar(atual.id);
@@ -330,7 +339,7 @@ export function DevolucaoDoPedidoCard({
       <dl className="mt-4 space-y-1 border-t border-dashed border-zinc-200 pt-3 text-[13px]">
         {atual.itens.map((item) => (
           <div key={item.id} className="flex justify-between gap-3">
-            <dt className="min-w-0 truncate text-zinc-600">
+            <dt className="line-clamp-2 min-w-0 break-words text-zinc-600">
               {item.quantidade}× {item.product_name || "Produto"}
             </dt>
             <dd className="shrink-0 font-semibold tabular-nums text-zinc-900">
@@ -369,7 +378,7 @@ export function DevolucaoDoPedidoCard({
           </dd>
         </div>
         <div className="flex justify-between gap-3">
-          <dt className="text-zinc-600">Pedido em</dt>
+          <dt className="text-zinc-600">Solicitada em</dt>
           <dd className="font-semibold tabular-nums text-zinc-900">
             {formatarDia(atual.created_at)}
           </dd>
@@ -435,7 +444,7 @@ export function DevolucaoDoPedidoCard({
       {acoes.includes("cancelar") && (
         <button
           type="button"
-          onClick={() => void cancelar()}
+          onClick={() => setConfirmandoCancelar(true)}
           disabled={enviando !== null}
           className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:opacity-50"
         >
@@ -445,6 +454,32 @@ export function DevolucaoDoPedidoCard({
           Cancelar devolução
         </button>
       )}
+
+      <AlertDialog
+        open={confirmandoCancelar}
+        onOpenChange={setConfirmandoCancelar}
+      >
+        <AlertDialogContent overlayClassName="z-[130]" className="z-[130]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar esta devolução?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se mudar de ideia, você pode pedir de novo enquanto o prazo
+              estiver aberto.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-11">
+              Manter devolução
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="min-h-11 bg-red-600 text-white hover:bg-red-700"
+              onClick={() => void cancelar()}
+            >
+              Sim, cancelar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {anteriores.length > 0 && (
         <div className="mt-4 border-t border-zinc-100 pt-3">

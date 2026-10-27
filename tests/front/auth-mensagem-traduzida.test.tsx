@@ -94,7 +94,7 @@ interface Snapshot {
     email: string,
     senha: string,
     audience: "customer" | "admin",
-  ) => Promise<{ success: boolean; error?: any }>;
+  ) => Promise<{ success: boolean; error?: any; message?: string }>;
   signUp: (
     email: string,
     senha: string,
@@ -321,12 +321,15 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
         },
       });
 
+      let resultado: { message?: string } = {};
       await act(async () => {
-        await login("presa@example.com", "senha123", "customer");
+        resultado = await login("presa@example.com", "senha123", "customer");
       });
 
-      const mensagem = (toast.error as ReturnType<typeof vi.fn>).mock
-        .calls[0][0] as string;
+      // Lote 213: o erro de login aparece UMA vez, na faixa da tela; o toast
+      // que repetia a frase saiu. A frase traduzida volta no retorno.
+      expect(toast.error).not.toHaveBeenCalled();
+      const mensagem = resultado.message as string;
       expect(mensagem).toMatch(/ainda não foi confirmado/i);
       expect(mensagem).not.toMatch(/incorretos/i);
     });
@@ -344,12 +347,19 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
         },
       });
 
+      let resultado: { message?: string } = {};
       await act(async () => {
-        await login("alguem@example.com", "senha-errada", "customer");
+        resultado = await login(
+          "alguem@example.com",
+          "senha-errada",
+          "customer",
+        );
       });
 
-      const mensagem = (toast.error as ReturnType<typeof vi.fn>).mock
-        .calls[0][0] as string;
+      // Lote 213: o erro de login aparece UMA vez, na faixa da tela; o toast
+      // que repetia a frase saiu. A frase traduzida volta no retorno.
+      expect(toast.error).not.toHaveBeenCalled();
+      const mensagem = resultado.message as string;
       expect(mensagem).toMatch(/e-?mail ou senha incorretos/i);
       expect(mensagem).not.toMatch(/invalid login credentials/i);
     });
@@ -365,12 +375,19 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
         error: { status: 429, message: "Too many requests" },
       });
 
+      let resultado: { message?: string } = {};
       await act(async () => {
-        await login("alguem@example.com", "senha-certa", "customer");
+        resultado = await login(
+          "alguem@example.com",
+          "senha-certa",
+          "customer",
+        );
       });
 
-      const mensagem = (toast.error as ReturnType<typeof vi.fn>).mock
-        .calls[0][0] as string;
+      // Lote 213: o erro de login aparece UMA vez, na faixa da tela; o toast
+      // que repetia a frase saiu. A frase traduzida volta no retorno.
+      expect(toast.error).not.toHaveBeenCalled();
+      const mensagem = resultado.message as string;
       expect(mensagem).toMatch(/muitas tentativas/i);
       expect(mensagem).not.toMatch(/incorretos/i);
     });
@@ -393,12 +410,19 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
         error: { status: 0, message: "Failed to fetch" },
       });
 
+      let resultado: { message?: string } = {};
       await act(async () => {
-        await login("alguem@example.com", "senha-certa", "customer");
+        resultado = await login(
+          "alguem@example.com",
+          "senha-certa",
+          "customer",
+        );
       });
 
-      const mensagem = (toast.error as ReturnType<typeof vi.fn>).mock
-        .calls[0][0] as string;
+      // Lote 213: o erro de login aparece UMA vez, na faixa da tela; o toast
+      // que repetia a frase saiu. A frase traduzida volta no retorno.
+      expect(toast.error).not.toHaveBeenCalled();
+      const mensagem = resultado.message as string;
       expect(mensagem).toMatch(/não foi possível entrar/i);
       expect(mensagem).not.toMatch(/failed to fetch/i);
       // Não pode culpar a senha: a causa é rede, e afirmar "incorretos" aqui
@@ -446,12 +470,19 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
         },
       });
 
+      let resultado: { message?: string } = {};
       await act(async () => {
-        await login("banido@example.com", "senha-certa", "customer");
+        resultado = await login(
+          "banido@example.com",
+          "senha-certa",
+          "customer",
+        );
       });
 
-      const mensagem = (toast.error as ReturnType<typeof vi.fn>).mock
-        .calls[0][0] as string;
+      // Lote 213: o erro de login aparece UMA vez, na faixa da tela; o toast
+      // que repetia a frase saiu. A frase traduzida volta no retorno.
+      expect(toast.error).not.toHaveBeenCalled();
+      const mensagem = resultado.message as string;
       expect(mensagem).toMatch(/não foi possível entrar agora/i);
       expect(mensagem).not.toMatch(/incorretos/i);
       // As DUAS constantes genéricas começam com a mesma frase ("Não foi

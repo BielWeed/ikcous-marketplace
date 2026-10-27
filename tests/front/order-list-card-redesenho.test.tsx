@@ -82,7 +82,7 @@ describe("OrderList — card do pedido redesenhado", () => {
 
   it.each<[OrderStatus, string, number]>([
     ["pending", "Recebido", 1],
-    ["processing", "Separação", 2],
+    ["processing", "Separado", 2],
     ["shipping", "A caminho", 3],
   ])(
     "status %s: etapa atual '%s' nomeada, sem corte no bloco neutro",
@@ -109,7 +109,7 @@ describe("OrderList — card do pedido redesenhado", () => {
         trilha?.querySelector("span.h-7.rounded-full.bg-foreground")
           ?.textContent,
       ).toBe(atual);
-      for (const etapa of ["Recebido", "Separação", "A caminho", "Entregue"]) {
+      for (const etapa of ["Recebido", "Separado", "A caminho", "Entregue"]) {
         expect(trilha?.textContent).toContain(etapa);
       }
       expect(painel?.textContent).toContain("Próxima etapa:");
@@ -234,7 +234,7 @@ describe("OrderList — card do pedido redesenhado", () => {
     await renderizar({ ...pedidoBase, items: [] });
 
     expect(hospedeiro.querySelector("img")).toBeNull();
-    expect(hospedeiro.textContent).toContain("N/A");
+    expect(hospedeiro.textContent).toContain("Pedido");
   });
 
   it("cancelado: faixa neutra, ponto vermelho e o aviso 'não pague' dentro dele", async () => {

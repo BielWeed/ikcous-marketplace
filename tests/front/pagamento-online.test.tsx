@@ -613,9 +613,9 @@ describe("PagamentoOnline - link para o ticket_url", () => {
 
     // O QR e o botão de copiar continuam sendo o caminho principal.
     expect(
-      hospedeiro.querySelector("img[alt='QR code do PIX']"),
+      hospedeiro.querySelector("img[alt='QR code do Pix']"),
     ).not.toBeNull();
-    expect(hospedeiro.textContent).toContain("Copiar código PIX");
+    expect(hospedeiro.textContent).toContain("Copiar código Pix");
   });
 
   it("sem ticketUrl na resposta, nenhum link é renderizado — QR e botão de copiar continuam lá", async () => {
@@ -623,9 +623,9 @@ describe("PagamentoOnline - link para o ticket_url", () => {
 
     expect(hospedeiro.querySelector("a[href]")).toBeNull();
     expect(
-      hospedeiro.querySelector("img[alt='QR code do PIX']"),
+      hospedeiro.querySelector("img[alt='QR code do Pix']"),
     ).not.toBeNull();
-    expect(hospedeiro.textContent).toContain("Copiar código PIX");
+    expect(hospedeiro.textContent).toContain("Copiar código Pix");
   });
 });
 
@@ -673,6 +673,6 @@ describe("PagamentoOnline - PIX pedido com o cartão já aprovado (B4)", () => {
     expect(hospedeiro.textContent).not.toContain(
       "Não foi possível gerar o QR code do PIX.",
     );
-    expect(hospedeiro.querySelector("img[alt='QR code do PIX']")).toBeNull();
+    expect(hospedeiro.querySelector("img[alt='QR code do Pix']")).toBeNull();
   });
 });

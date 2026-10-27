@@ -407,7 +407,7 @@ describe("CheckoutView com pagamentoOnlineLigado() ligada", () => {
 
     // O front nunca declara pagamento: sem confete, sem tela de sucesso.
     expect(confettiMock).not.toHaveBeenCalled();
-    expect(hospedeiro.textContent).not.toContain("Pedido Celebrado!");
+    expect(hospedeiro.textContent).not.toContain("Pedido recebido!");
     expect(hospedeiro.textContent).toContain("Finalize o pagamento");
 
     // A prova do bloqueador da rodada de correção 1: o total é 100 (produto)

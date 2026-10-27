@@ -81,7 +81,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
       const hideTimer = setTimeout(() => {
         setIsVisible(false);
         setIsDismissed(true);
-      }, 5000); // 5 seconds for more readability
+      }, 8000); // 8 s: dá tempo de ler o aviso (era 5 s)
       return () => clearTimeout(hideTimer);
     }
   }, [isVisible]);
@@ -122,7 +122,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
                   <motion.span
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
-                    className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full border-2 border-white bg-emerald-500 px-1 text-[8px] font-black text-white shadow-lg"
+                    className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full border-2 border-white bg-emerald-500 px-1 text-[10px] font-black text-white shadow-lg"
                   >
                     {itemCount}
                   </motion.span>
@@ -133,19 +133,19 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
             {/* Middle: Compressed Info */}
             <div className="relative z-10 min-w-0 flex-1 py-0.5">
               <div className="mb-0.5 flex items-center gap-1.5">
-                <span className="text-[10px] font-black uppercase tracking-[0.15em] text-emerald-700">
+                <span className="text-xs font-black uppercase tracking-[0.15em] text-emerald-700">
                   Seu carrinho
                 </span>
                 <div className="size-1 animate-pulse rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
               </div>
               {!hasFreeShippingGoal ? (
-                <p className="text-[10px] font-semibold leading-tight text-slate-600">
+                <p className="text-xs font-semibold leading-tight text-slate-600">
                   {itemCount === 1
                     ? "1 item no seu carrinho"
                     : `${itemCount} itens no seu carrinho`}
                 </p>
               ) : isSempreGratis ? (
-                <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-tight text-emerald-700">
+                <div className="flex items-center gap-1 text-xs font-bold uppercase tracking-tight text-emerald-700">
                   <Truck className="size-3" />
                   <span>
                     {soLocal
@@ -154,14 +154,14 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
                   </span>
                 </div>
               ) : isFree ? (
-                <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-tight text-emerald-700">
+                <div className="flex items-center gap-1 text-xs font-bold uppercase tracking-tight text-emerald-700">
                   <Truck className="size-3" />
                   <span>
                     Frete Grátis{soLocal ? " na Cidade" : ""} Liberado
                   </span>
                 </div>
               ) : (
-                <p className="text-[10px] font-semibold leading-tight text-slate-600">
+                <p className="text-xs font-semibold leading-tight text-slate-600">
                   Faltam{" "}
                   <span className="font-extrabold text-primary">
                     {formatCurrency(amountToFree)}
@@ -177,7 +177,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
             {/* Right: Compact Action */}
             <button
               onClick={onAction}
-              className="group/btn relative flex h-8 flex-shrink-0 items-center gap-1 rounded-lg bg-primary px-3.5 text-[10px] font-black uppercase tracking-wider text-primary-foreground shadow-md transition-all after:absolute after:-inset-x-1 after:-inset-y-1.5 after:content-[''] hover:bg-primary/90 active:scale-95"
+              className="group/btn relative flex h-8 flex-shrink-0 items-center gap-1 rounded-lg bg-primary px-3.5 text-xs font-black uppercase tracking-wider text-primary-foreground shadow-md transition-all after:absolute after:-inset-x-1 after:-inset-y-1.5 after:content-[''] hover:bg-primary/90 active:scale-95"
             >
               Carrinho
               <ChevronRight className="size-2.5 transition-transform group-hover:translate-x-0.5" />
@@ -208,7 +208,7 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
                   strokeDasharray={87.96}
                   initial={{ strokeDashoffset: 87.96 }}
                   animate={{ strokeDashoffset: 0 }}
-                  transition={{ duration: 5, ease: "linear" }}
+                  transition={{ duration: 8, ease: "linear" }}
                 />
               </svg>
             </div>

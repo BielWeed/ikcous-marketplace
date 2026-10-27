@@ -533,6 +533,8 @@ describe("quantidade — soma, -/+, remoção e teto do estoque", () => {
     expect(estado.aviso).toEqual({
       tipo: "esgotado",
       nome: "Camiseta Estampada",
+      estoque: 1,
+      naVenda: 1,
     });
     // Apertar "−": volta a caber (quantidade 1 → 0 → remove). O aviso do
     // teto que acabou de passar não faz mais sentido nenhum.
@@ -642,6 +644,8 @@ describe("quantidade — soma, -/+, remoção e teto do estoque", () => {
     expect(estado.aviso).toEqual({
       tipo: "esgotado",
       nome: "Camiseta Estampada",
+      estoque: 1,
+      naVenda: 1,
     });
     expect(estado.itens[0].quantidade).toBe(1); // não mudou
 
@@ -658,8 +662,48 @@ describe("quantidade — soma, -/+, remoção e teto do estoque", () => {
     expect(estado.aviso).toEqual({
       tipo: "esgotado",
       nome: "Camiseta Estampada",
+      estoque: 1,
+      naVenda: 1,
     });
     expect(estado.itens[0].quantidade).toBe(1);
+  });
+});
+
+describe("aviso de teto — diz o estoque quando a peça já está na venda", () => {
+  it("2 em estoque e as 2 já na venda: o 3º bipe e o '+' avisam o número, sem dizer que acabou", () => {
+    let estado = reducerDaVenda(estadoBase(), {
+      tipo: "codigo_resolvido",
+      codigo: "7891000000011",
+      resposta: respostaVariante({ estoque: 2 }),
+      em: 0,
+    });
+    estado = reducerDaVenda(estado, {
+      tipo: "codigo_resolvido",
+      codigo: "7891000000011",
+      resposta: respostaVariante({ estoque: 2 }),
+      em: JANELA_DE_REPETICAO_MS,
+    });
+    expect(estado.itens[0].quantidade).toBe(2);
+
+    const terceiro = reducerDaVenda(estado, {
+      tipo: "codigo_resolvido",
+      codigo: "7891000000011",
+      resposta: respostaVariante({ estoque: 2 }),
+      em: JANELA_DE_REPETICAO_MS * 2,
+    });
+    expect(terceiro.aviso).toEqual({
+      tipo: "esgotado",
+      nome: "Camiseta Estampada",
+      estoque: 2,
+      naVenda: 2,
+    });
+
+    const mais = reducerDaVenda(estado, {
+      tipo: "quantidade_alterada",
+      chave: estado.itens[0].chave,
+      delta: 1,
+    });
+    expect(mais.aviso).toMatchObject({ estoque: 2, naVenda: 2 });
   });
 });
 

@@ -294,7 +294,7 @@ describe("CheckoutView — a RPC recusa por FRETE_COTACAO_DESATUALIZADA (EMENDA 
     const primeiroValor = shippingCalculatorProps[0]?.forcarNovaCotacaoEm ?? 0;
     expect(ultimoValor).toBeGreaterThan(primeiroValor);
     // Nenhum pedido nasceu: nem a tela de sucesso, nem a de pagamento online.
-    expect(hospedeiro.textContent).not.toContain("Pedido Celebrado!");
+    expect(hospedeiro.textContent).not.toContain("Pedido recebido!");
     expect(hospedeiro.textContent).not.toContain("Finalize o pagamento");
     expect(clearCart).not.toHaveBeenCalled();
   });

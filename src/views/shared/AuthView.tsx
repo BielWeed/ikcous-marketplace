@@ -85,15 +85,24 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
     setIsPasswordRecovery,
     linkDeRecuperacaoVencido,
     limparLinkDeRecuperacaoVencido,
+    linkDeConfirmacaoVencido,
+    limparLinkDeConfirmacaoVencido,
   } = useAuth();
   // Link de "esqueci a senha" vencido ou já usado: em vez de "Nova Senha" (que
   // sem sessão nunca funciona), abre "Recuperar" com o aviso. O aviso é
   // guardado AQUI (e a flag do contexto é devolvida logo abaixo) para
   // sobreviver à digitação do e-mail e a um novo desmontar da tela.
+  //
+  // O link de CONFIRMAÇÃO de cadastro vencido (sem `type=recovery`) não é
+  // "esqueci a senha": abre a tela de ENTRAR com o aviso dele, que diz a
+  // verdade provável (já usado: é só entrar). O reenvio da confirmação já
+  // existe, no erro "e-mail ainda não confirmado" do próprio login.
   const [avisoDoLink, setAvisoDoLink] = useState<string | null>(
     linkDeRecuperacaoVencido && !isPasswordRecovery
       ? "Este link expirou ou já foi usado. Peça um novo abaixo."
-      : null,
+      : linkDeConfirmacaoVencido
+        ? "Esse link já foi usado ou venceu. Se você já confirmou seu cadastro, é só entrar."
+        : null,
   );
   const [viewMode, setViewModeAtual] = useState<
     "login" | "signup" | "forgot" | "reset-prompt" | "new-password"
@@ -115,6 +124,10 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
     if (linkDeRecuperacaoVencido) limparLinkDeRecuperacaoVencido();
   }, [linkDeRecuperacaoVencido, limparLinkDeRecuperacaoVencido]);
 
+  useEffect(() => {
+    if (linkDeConfirmacaoVencido) limparLinkDeConfirmacaoVencido();
+  }, [linkDeConfirmacaoVencido, limparLinkDeConfirmacaoVencido]);
+
   // Sync viewMode if password recovery mode is detected asynchronously
   useEffect(() => {
     if (isPasswordRecovery) {
@@ -126,8 +139,13 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   }, [isPasswordRecovery, setViewMode]);
 
   const isLogin = viewMode === "login";
+  // O aviso do link de recuperação vive na tela "Recuperar"; o do link de
+  // confirmação vencido vive na tela de entrar.
+  const avisoVisivel =
+    avisoDoLink !== null && (viewMode === "forgot" || viewMode === "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmaSenha, setConfirmaSenha] = useState("");
   const [fullName, setFullName] = useState("");
 
   useEffect(() => {
@@ -287,7 +305,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           // (`MENSAGEM_ERRO_LOGIN_GENERICA`, importada de
           // `@/lib/mensagens-auth.ts`, linha 6 deste arquivo — não mais de
           // AuthContext.tsx, A1-fix4 moveu a constante) —
-          // mesma constante que `AuthContext.login` usa no toast para o
+          // mesma constante que `AuthContext.login` devolve em `message` para o
           // mesmo caso, para que a pessoa nunca leia duas frases diferentes
           // para o mesmo erro).
 
@@ -374,6 +392,12 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
         // o servidor, senão o cliente confia no app e leva recusa em inglês.
         if (!password.trim() || password.length < 8) {
           toast.error("A senha deve ter pelo menos 8 caracteres.");
+          setIsLoading(false);
+          return;
+        }
+        // eslint-disable-next-line security/detect-possible-timing-attacks -- as duas são o que a própria pessoa digitou, não é segredo comparado no servidor
+        if (password !== confirmaSenha) {
+          toast.error("As senhas não são iguais.");
           setIsLoading(false);
           return;
         }
@@ -502,7 +526,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               className="group relative flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-zinc-600 transition-colors after:absolute after:-inset-x-2 after:-inset-y-3.5 after:content-[''] hover:text-zinc-900"
             >
               <ArrowLeft className="size-3 transition-transform group-hover:-translate-x-1" />
-              Explorar marketplace
+              Explorar a loja
             </button>
           </motion.div>
         </motion.div>
@@ -612,8 +636,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               className="mt-2 max-w-[280px] px-4 text-xs font-bold uppercase tracking-widest text-zinc-600 dark:text-zinc-400 sm:mt-4 sm:max-w-none sm:text-sm"
             >
               {viewMode === "login" && subtituloBoasVindas(config.storeName)}
-              {viewMode === "signup" &&
-                "Inicie sua jornada no marketplace premium."}
+              {viewMode === "signup" && "Crie sua conta e comece a comprar."}
               {viewMode === "forgot" &&
                 "Insira seu e-mail para receber o link de recuperação."}
               {viewMode === "new-password" &&
@@ -843,6 +866,30 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                       )}
                     </button>
                   </div>
+                  {viewMode === "new-password" && (
+                    <div className="space-y-2 pt-2">
+                      <label
+                        htmlFor="password-confirmacao"
+                        className="ml-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600"
+                      >
+                        Confirmar senha
+                      </label>
+                      <div className="group/field relative">
+                        <Lock className="absolute left-5 top-1/2 size-4 -translate-y-1/2 text-zinc-300 transition-colors group-focus-within/field:text-zinc-900" />
+                        <Input
+                          id="password-confirmacao"
+                          name="password-confirmacao"
+                          type={showPassword ? "text" : "password"}
+                          autoComplete="new-password"
+                          placeholder="Repita a nova senha"
+                          value={confirmaSenha}
+                          onChange={(e) => setConfirmaSenha(e.target.value)}
+                          className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 px-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-300 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
+                          required
+                        />
+                      </div>
+                    </div>
+                  )}
                   {viewMode === "signup" && (
                     <p
                       id="password-dica"
@@ -854,7 +901,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                 </motion.div>
               )}
 
-              {avisoDoLink && viewMode === "forgot" && (
+              {avisoVisivel && (
                 <div
                   role="alert"
                   className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-center text-[10px] font-black uppercase tracking-widest text-amber-800"
@@ -965,11 +1012,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               }}
               className="relative border-b-2 border-zinc-900/10 text-[11px] font-black uppercase tracking-widest text-zinc-900 transition-colors after:absolute after:-inset-x-2 after:-inset-y-3.5 after:content-[''] hover:border-zinc-900 sm:text-sm"
             >
-              {viewMode === "login"
-                ? "CADASTRO"
-                : viewMode === "signup"
-                  ? "IDENTIFICAR-SE"
-                  : "LOGAR AGORA"}
+              {viewMode === "login" ? "CADASTRO" : "Entrar"}
             </button>
           </motion.div>
         </div>

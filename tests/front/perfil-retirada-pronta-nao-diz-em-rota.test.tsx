@@ -154,19 +154,19 @@ describe("ProfileView — o cartão do pedido pronto para retirar não diz 'Em r
     return hospedeiro.textContent ?? "";
   }
 
-  it("retirada pronta (shipping): o cartão mostra 'Pronto para retirar' e nada de 'Em rota'", async () => {
+  it("retirada pronta (shipping): o cartão mostra 'Pronto para retirar' e nada de 'A caminho'", async () => {
     estado.linhas = [linhaDoPedido(true)];
     const texto = await renderizar();
     expect(texto).toContain("Pedidos em andamento");
     expect(texto).toContain("Pronto para retirar");
-    expect(texto).not.toContain("Em rota");
+    expect(texto).not.toContain("A caminho");
   });
 
-  it("entrega a caminho (shipping): o cartão continua 'Em rota' (controle)", async () => {
+  it("entrega a caminho (shipping): o cartão continua 'A caminho' (controle)", async () => {
     estado.linhas = [linhaDoPedido(false)];
     const texto = await renderizar();
     expect(texto).toContain("Pedidos em andamento");
-    expect(texto).toContain("Em rota");
+    expect(texto).toContain("A caminho");
     expect(texto).not.toContain("Pronto para retirar");
   });
 });

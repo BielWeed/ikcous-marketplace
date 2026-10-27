@@ -477,7 +477,7 @@ describe("CheckoutView — caça 7: chave que sobrevive ao app fechado, voltar r
         await esperarMicrotarefas();
         await esperarMicrotarefas();
       });
-      expect(document.body.textContent).toContain("Pedido Celebrado");
+      expect(document.body.textContent).toContain("Pedido recebido");
       overrideAtual()!();
       expect(onNavigate).toHaveBeenCalledWith("home");
     });

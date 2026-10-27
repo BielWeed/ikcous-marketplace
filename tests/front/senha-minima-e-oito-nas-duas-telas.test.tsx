@@ -216,6 +216,7 @@ describe("A regra de senha ensinada ao cliente é a mesma do servidor (8)", () =
     expect(botaoAtualizar).toBeTruthy();
 
     digitar("password", "abdefgh");
+    digitar("password-confirmacao", "abdefgh");
     await submeterFormularioUnico();
 
     expect(updatePassword).not.toHaveBeenCalled();
@@ -234,8 +235,30 @@ describe("A regra de senha ensinada ao cliente é a mesma do servidor (8)", () =
 
     await esperarAte(() => document.getElementById("password") !== null);
     digitar("password", "abdefghi");
+    digitar("password-confirmacao", "abdefghi");
     await submeterFormularioUnico();
 
     expect(updatePassword).toHaveBeenCalledWith("abdefghi");
+  });
+
+  it("AuthView (nova senha da recuperação): senhas diferentes não chegam ao updatePassword", async () => {
+    const { AuthView } = await import("@/views/shared/AuthView");
+    const { toast } = await import("sonner");
+    updatePassword.mockResolvedValue(true);
+    await act(async () => {
+      raiz.render(<AuthView onNavigate={() => {}} onSuccess={() => {}} />);
+    });
+
+    await esperarAte(() => document.getElementById("password") !== null);
+    expect(document.getElementById("password-confirmacao")).toBeTruthy();
+    digitar("password", "abdefghi");
+    digitar("password-confirmacao", "abdefghj");
+    await submeterFormularioUnico();
+
+    expect(updatePassword).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    expect(String(vi.mocked(toast.error).mock.calls[0][0])).toBe(
+      "As senhas não são iguais.",
+    );
   });
 });

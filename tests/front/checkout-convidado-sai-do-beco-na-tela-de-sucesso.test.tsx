@@ -23,7 +23,7 @@
 // Modelo estrutural copiado de checkout-view-selos-contraste-aa.test.tsx
 // (mockUser mutável escolhe convidado x autenticado; mesmos dublês de
 // useCart/useAddresses/useOrders/useCoupons/flags) — este arquivo acrescenta
-// só o que muda: as afirmações sobre o botão da tela "Pedido Celebrado!".
+// só o que muda: as afirmações sobre o botão da tela "Pedido recebido!".
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -277,7 +277,7 @@ describe("CheckoutView — convidado sem beco na tela de sucesso (CheckoutView-3
 
     // A armadilha precisa estar de fato presente: sem chegar de verdade na
     // tela de sucesso, as afirmações abaixo não provam nada.
-    expect(hospedeiro.textContent).toContain("Pedido Celebrado!");
+    expect(hospedeiro.textContent).toContain("Pedido recebido!");
   }
 
   it("convidado com WhatsApp da loja configurado: sem 'Ver Meus Pedidos' (beco), com um caminho de acompanhamento que funciona", async () => {
@@ -313,12 +313,12 @@ describe("CheckoutView — convidado sem beco na tela de sucesso (CheckoutView-3
 
     expect(hospedeiro.textContent).not.toContain("Ver Meus Pedidos");
     expect(localizarBotaoPorTexto(hospedeiro, "WhatsApp")).toBeUndefined();
-    // O identificador já aparece acima na tela (Identificador: #ED-999) —
+    // O identificador já aparece acima na tela (Número do pedido: #ED-999) —
     // a instrução só reforça que ele é o que resta para acompanhar. A metade
     // positiva também é cobrada: sem ela o convidado fica só com "Retornar à
     // Vitrine" e nenhuma pista de como acompanhar.
     expect(hospedeiro.textContent).toContain("ED-999");
-    expect(hospedeiro.textContent).toContain("Guarde o identificador acima");
+    expect(hospedeiro.textContent).toContain("Guarde o número do pedido acima");
   });
 
   it("cliente com conta: 'Ver Meus Pedidos' continua existindo e leva para 'orders' — este caminho já funciona e não muda", async () => {
@@ -355,7 +355,7 @@ describe("CheckoutView — convidado sem beco na tela de sucesso (CheckoutView-3
       await Promise.resolve();
     });
 
-    expect(hospedeiro.textContent).toContain("Pedido Celebrado!");
+    expect(hospedeiro.textContent).toContain("Pedido recebido!");
 
     const botaoMeusPedidos = localizarBotaoPorTexto(
       hospedeiro,

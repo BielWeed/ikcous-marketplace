@@ -42,7 +42,7 @@ import {
   UploadCloud,
   User,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const containerVariants = {
@@ -148,6 +148,28 @@ export function ProfileView({
     erroAoCarregar,
   } = useAddresses();
   const { orders, fetchUserOrders } = useOrders(true, false);
+  // "Encerrar sessão" espera a limpeza do aviso (push) da conta, até 3 s: sem
+  // reação na tela a pessoa tocava de novo e a saída rodava duas vezes. O ref
+  // barra o segundo toque no mesmo instante (o estado só muda no render).
+  const [saindo, setSaindo] = useState(false);
+  const saidaEmCursoRef = useRef(false);
+  const encerrarSessao = async () => {
+    if (saidaEmCursoRef.current) return;
+    saidaEmCursoRef.current = true;
+    setSaindo(true);
+    try {
+      await logout();
+    } catch (err) {
+      // `logout` não costuma lançar (a falha do servidor vira toast lá dentro);
+      // se lançar, que não vire erro solto do clique.
+      console.error("[Profile] Erro ao encerrar a sessão:", err);
+    } finally {
+      // Normalmente a tela sai de cena com a sessão; se continuar montada
+      // (a saída falhou), o botão volta a servir.
+      saidaEmCursoRef.current = false;
+      setSaindo(false);
+    }
+  };
   const { config } = useStore();
   const [isOrdersExpanded, setIsOrdersExpanded] = useState(false);
   const [isAddressesExpanded, setIsAddressesExpanded] = useState(false);
@@ -866,11 +888,12 @@ export function ProfileView({
         <motion.div variants={itemVariants}>
           <button
             type="button"
-            onClick={logout}
-            className="flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl border border-solid border-red-300 bg-background text-base font-semibold text-red-600 transition-colors hover:bg-muted dark:text-red-400"
+            onClick={encerrarSessao}
+            disabled={saindo}
+            className="flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl border border-solid border-red-300 bg-background text-base font-semibold text-red-600 transition-colors hover:bg-muted disabled:opacity-60 dark:text-red-400"
           >
             <LogOut aria-hidden="true" className="size-4" />
-            Encerrar sessão
+            {saindo ? "Saindo…" : "Encerrar sessão"}
             <span className="sr-only">. Sair da sua conta</span>
           </button>
         </motion.div>

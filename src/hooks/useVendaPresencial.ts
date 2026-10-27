@@ -112,7 +112,15 @@ export type ClienteDaVenda =
 export type AvisoDaVenda =
   | { readonly tipo: "nao_cadastrado"; readonly codigo: string }
   | { readonly tipo: "inativo"; readonly nome: string }
-  | { readonly tipo: "esgotado"; readonly nome: string }
+  | {
+      readonly tipo: "esgotado";
+      readonly nome: string;
+      /** Só quando a peça JÁ está na venda e o estoque não é zero: a tela diz
+       * "só há N em estoque, e as N já estão nesta venda" em vez de
+       * "esgotado" (que seria falso). */
+      readonly estoque?: number;
+      readonly naVenda?: number;
+    }
   | { readonly tipo: "ignorado_repetido"; readonly codigo: string };
 
 /** Uma "opção" da folha de variação — mesma forma que a RPC devolve em
@@ -542,7 +550,16 @@ function entrarItemNoCupom(
           i.chave === item.chave ? { ...i, estoque: item.estoque } : i,
         )
       : estado.itens;
-    return { ...estado, itens, aviso: { tipo: "esgotado", nome: item.nome } };
+    const aviso: AvisoDaVenda =
+      existente && item.estoque > 0
+        ? {
+            tipo: "esgotado",
+            nome: item.nome,
+            estoque: item.estoque,
+            naVenda: existente.quantidade,
+          }
+        : { tipo: "esgotado", nome: item.nome };
+    return { ...estado, itens, aviso };
   }
 
   const itemAtualizado: ItemDoCupom = { ...item, quantidade: quantidadeFinal };
@@ -763,7 +780,18 @@ export function reducerDaVenda(
 
       const novaQuantidade = item.quantidade + acao.delta;
       if (novaQuantidade > item.estoque) {
-        return { ...estado, aviso: { tipo: "esgotado", nome: item.nome } };
+        return {
+          ...estado,
+          aviso:
+            item.estoque > 0
+              ? {
+                  tipo: "esgotado",
+                  nome: item.nome,
+                  estoque: item.estoque,
+                  naVenda: item.quantidade,
+                }
+              : { tipo: "esgotado", nome: item.nome },
+        };
       }
 
       return {

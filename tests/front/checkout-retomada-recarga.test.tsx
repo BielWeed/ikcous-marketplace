@@ -541,7 +541,10 @@ describe("CheckoutView — o pagamento pendente sobrevive à recarga da página"
     await recarregar();
 
     expect(hospedeiro.textContent).toContain("Pagamento Confirmado!");
-    expect(hospedeiro.textContent).toContain("R$ 120,00 recebido");
+    // formatCurrency usa espaço não quebrável entre "R$" e o número.
+    expect(hospedeiro.textContent?.replace(/\s/g, " ")).toContain(
+      "R$ 120,00 recebido",
+    );
     expect(hospedeiro.textContent).not.toContain(FINALIZE);
     expect(criarPagamento).not.toHaveBeenCalled();
     expect(lerPedidoPendenteDoCheckout(USUARIO.id)).toBeNull();

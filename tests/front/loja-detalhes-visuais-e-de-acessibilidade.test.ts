@@ -151,7 +151,8 @@ describe("lembrete do carrinho", () => {
       260,
     );
     expect(botao).toContain("after:-inset-y-1.5");
-    expect(botao).toContain("text-[10px]");
+    // Lote 211: o texto do botao subiu de 10 px para 12 px (text-xs).
+    expect(botao).toContain("text-xs");
   });
 });
 
@@ -167,10 +168,10 @@ describe("tela de entrada", () => {
     expect(olho).toContain("text-zinc-500");
     expect(olho).not.toContain("text-zinc-300");
   });
-  it("Explorar marketplace tem a área ampliada dos vizinhos", () => {
+  it("Explorar a loja tem a área ampliada dos vizinhos", () => {
     const botao = auth.slice(
-      auth.lastIndexOf("<button", auth.indexOf("Explorar marketplace")),
-      auth.indexOf("Explorar marketplace"),
+      auth.lastIndexOf("<button", auth.indexOf("Explorar a loja")),
+      auth.indexOf("Explorar a loja"),
     );
     expect(botao).toContain("after:-inset-y-3.5");
     expect(botao).not.toContain("text-zinc-400");

@@ -23,6 +23,7 @@ import {
   salvarPendente,
 } from "@/lib/cpf-pendente-do-cadastro";
 import {
+  enderecoEhDeRecuperacao,
   enderecoSemOErroDoLink,
   enderecoTrazErroDeLink,
 } from "@/lib/erro-no-endereco-do-link";
@@ -92,7 +93,7 @@ interface AuthContextType {
     email: string,
     senha: string,
     audience: LoginAudience,
-  ) => Promise<{ success: boolean; error?: AuthError }>;
+  ) => Promise<{ success: boolean; error?: AuthError; message?: string }>;
   signUp: (
     email: string,
     senha: string,
@@ -121,6 +122,21 @@ interface AuthContextType {
   linkDeRecuperacaoVencido: boolean;
   /** A tela que mostrou o aviso avisa que já usou (a flag volta a falso). */
   limparLinkDeRecuperacaoVencido: () => void;
+  /**
+   * O link de CONFIRMAÇÃO DE CADASTRO voltou com erro (vencido ou já usado):
+   * mesmo erro no endereço, mas sem `type=recovery`. Não é "esqueci a senha".
+   */
+  linkDeConfirmacaoVencido: boolean;
+  /** A tela que mostrou o aviso avisa que já usou (a flag volta a falso). */
+  limparLinkDeConfirmacaoVencido: () => void;
+  /**
+   * O servidor NÃO respondeu se a pessoa é dona do painel (estouro de tempo ou
+   * rede). Não é "não é dona": `adminStatus` segue "unknown" e a tela oferece
+   * `tentarVerificarAdminDeNovo` em vez de expulsar.
+   */
+  adminVerificacaoFalhou: boolean;
+  /** Refaz a pergunta "é dona?" ao servidor (botão "Tentar de novo"). */
+  tentarVerificarAdminDeNovo: () => void;
 }
 
 export const AuthContext = createContext<AuthContextType>(
@@ -208,6 +224,15 @@ function clearLocalUserData() {
   // lança), por isso fica antes do `return` sem `window`.
   esquecerTodosOsPedidosPendentesDoCheckout();
   esquecerRastreioDeConvidado();
+  esquecerDadosLocaisDaConta();
+}
+
+// A parte da limpeza que mora no `localStorage` do aparelho (carrinho, CEP,
+// pedidos e endereços guardados, rascunhos antigos). Separada de
+// `clearLocalUserData` para a TROCA DIRETA de conta (A -> B sem SIGNED_OUT)
+// aplicar exatamente esta limpeza, sem cópia: o "Sair" apagava o CEP e os
+// pedidos da A, a troca direta deixava os dois para a B.
+function esquecerDadosLocaisDaConta() {
   if (typeof window === "undefined") return;
   // L10 — as FILAS offline (`orders_`/`products_offline_updates_queue:<uid>`)
   // e os RASCUNHOS do admin (`admin_banner_form_draft:<uid>`,
@@ -298,6 +323,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // deixa de rebaixar. Esquece-se num "não" real e quando a pessoa ativa
   // muda (troca de conta, saída).
   const adminConfirmadoRef = useRef<string | null>(null);
+  // O servidor NÃO respondeu se esta pessoa é dona (estouro de tempo ou erro de
+  // rede/HTTP, sem confirmação prévia nesta sessão). NÃO é "não é dona":
+  // `adminStatus` fica "unknown" (nada se decide por ele) e esta bandeira é só
+  // o sinal para a tela oferecer "Tentar de novo" em vez de expulsar. Só um
+  // veredito (`applyResult`), a troca de pessoa ou a saída a derrubam.
+  const [adminVerificacaoFalhou, setAdminVerificacaoFalhou] = useState(false);
   const isAdmin = adminStatus === "admin";
   // Link de "esqueci a senha" VENCIDO ou já usado: o servidor devolve a pessoa
   // com o erro no endereço (`error_code=otp_expired`, no hash ou na query) e o
@@ -305,13 +336,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // nova senha (sem sessão a troca nunca funciona e a pessoa só lia "Não foi
   // possível atualizar sua senha"): a tela "Recuperar" abre com o aviso. Sem
   // `error_code` o caminho que funciona é idêntico ao de antes.
-  const [linkDeRecuperacaoVencido, setLinkDeRecuperacaoVencido] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      enderecoTrazErroDeLink(window.location.search, window.location.hash),
-  );
+  //
+  // O mesmo erro volta para o link de CONFIRMAÇÃO de cadastro vencido, e esse
+  // NÃO leva `type=recovery`: só o link de recuperação leva (ver
+  // `resetPassword`). Sem separar os dois, quem só queria confirmar o cadastro
+  // caía na tela "Recuperar senha". Um único estado guarda de que tipo é o
+  // erro; as duas bandeiras abaixo saem dele.
+  const [erroDoLinkNoEndereco, setErroDoLinkNoEndereco] = useState<
+    "recuperacao" | "confirmacao" | null
+  >(() => {
+    if (typeof window === "undefined") return null;
+    const { search, hash } = window.location;
+    if (!enderecoTrazErroDeLink(search, hash)) return null;
+    return enderecoEhDeRecuperacao(search, hash)
+      ? "recuperacao"
+      : "confirmacao";
+  });
+  const linkDeRecuperacaoVencido = erroDoLinkNoEndereco === "recuperacao";
+  const linkDeConfirmacaoVencido = erroDoLinkNoEndereco === "confirmacao";
   const limparLinkDeRecuperacaoVencido = useCallback(
-    () => setLinkDeRecuperacaoVencido(false),
+    () =>
+      setErroDoLinkNoEndereco((atual) =>
+        atual === "recuperacao" ? null : atual,
+      ),
+    [],
+  );
+  const limparLinkDeConfirmacaoVencido = useCallback(
+    () =>
+      setErroDoLinkNoEndereco((atual) =>
+        atual === "confirmacao" ? null : atual,
+      ),
     [],
   );
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => {
@@ -356,7 +410,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // O erro do link é lido uma vez (acima); aqui ele sai do endereço, para um
   // F5 não repetir o aviso nem reabrir a tela por causa de um link já tratado.
   useEffect(() => {
-    if (linkDeRecuperacaoVencido && typeof window !== "undefined") {
+    if (
+      (linkDeRecuperacaoVencido || linkDeConfirmacaoVencido) &&
+      typeof window !== "undefined"
+    ) {
       const url = new URL(window.location.href);
       window.history.replaceState(
         {},
@@ -364,7 +421,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         enderecoSemOErroDoLink(url),
       );
     }
-  }, [linkDeRecuperacaoVencido]);
+  }, [linkDeRecuperacaoVencido, linkDeConfirmacaoVencido]);
 
   // #121 — precisa existir ANTES de `checkAdmin`: é a guarda que decide, na
   // resolução de uma verificação, se o usuário que a disparou ainda é o
@@ -388,15 +445,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // entrou depois, inclusive quando chega atrasada (promise órfã do
     // timeout, ver `networkCheck`).
     //
-    // Achado 2 (revisão #121/#123) — `verified` distingue um VEREDITO real
-    // (a RPC ou o fallback em `profiles` respondeu) de um NÃO-VEREDITO
-    // (timeout de 3s ou erro de rede, ver o `catch` mais abaixo). Só um
-    // veredito pode ser persistido: gravar "false" no `localStorage` a
-    // partir de uma resposta que nunca chegou vira uma conclusão permanente
-    // — nas cargas SEGUINTES, o Fast Path 2 leria esse cache e resolveria
-    // "not-admin" antes de qualquer rede, sem chance de correção. Um
-    // não-veredito só pode mexer no estado em memória desta carga.
-    const applyResult = (isAdminResult: boolean, verified: boolean) => {
+    // Achado 2 (revisão #121/#123) — só um VEREDITO real (a RPC ou o fallback
+    // em `profiles` respondeu) chega aqui e pode ser persistido: gravar
+    // "false" no `localStorage` a partir de uma resposta que nunca chegou vira
+    // uma conclusão permanente — nas cargas SEGUINTES, o Fast Path 2 leria esse
+    // cache e resolveria "not-admin" antes de qualquer rede, sem chance de
+    // correção. O NÃO-VEREDITO (timeout de 3s ou erro de rede, ver o `catch`
+    // mais abaixo) não passa por aqui: não decide nem "sim" nem "não".
+    const applyResult = (isAdminResult: boolean) => {
       if (activeUserIdRef.current !== userId) {
         console.debug(
           "[Auth] Discarding stale admin check result for user:",
@@ -405,12 +461,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
       setAdminStatus(isAdminResult ? "admin" : "not-admin");
-      if (verified) {
-        localStorage.setItem(cacheKey, isAdminResult ? "true" : "false");
-        // Só um VEREDITO do servidor (`verified`) confirma — e só ele
-        // rebaixa: um "não" real esquece a confirmação.
-        adminConfirmadoRef.current = isAdminResult ? userId : null;
-      }
+      setAdminVerificacaoFalhou(false);
+      localStorage.setItem(cacheKey, isAdminResult ? "true" : "false");
+      // Só um VEREDITO do servidor confirma — e só ele rebaixa: um "não" real
+      // esquece a confirmação.
+      adminConfirmadoRef.current = isAdminResult ? userId : null;
     };
 
     // Recheca de FUNDO de quem o servidor já confirmou admin nesta sessão:
@@ -433,7 +488,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setAdminStatus("not-admin");
       // Run background check to sync with potential admin status updates without blocking initial load
       networkCheck()
-        .then((result) => applyResult(result, true))
+        .then((result) => applyResult(result))
         .catch((err) =>
           console.error("[Auth] background networkCheck error:", err),
         );
@@ -444,7 +499,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // nem localStorage por conta própria; quem faz isso é `applyResult`,
     // guardado pelo usuário ativo. Timeout/erro REJEITA em vez de resolver
     // `false` — quem decide o que fazer com um não-veredito é quem chama
-    // (`applyResult(..., false)` mais abaixo), não esta função.
+    // (o `catch` mais abaixo), não esta função.
     async function networkCheck(): Promise<boolean> {
       if (checkInFlight && checkInFlight.userId === userId) {
         // Mesmo usuário já tem uma verificação em voo: reaproveita a
@@ -508,7 +563,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Await the network check to prevent privilege bypass on client spoofing.
     try {
       const result = await networkCheck();
-      applyResult(result, true);
+      applyResult(result);
     } catch (err) {
       console.error("[Auth] Error/Timeout checking admin status:", err);
       if (jaConfirmadoNestaSessao()) {
@@ -517,9 +572,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // "não" REAL na próxima recheca rebaixa (applyResult acima).
         return;
       }
-      // Não-veredito (Achado 2): trata como não-admin SÓ nesta carga, sem
-      // persistir no localStorage.
-      applyResult(false, false);
+      // Não-veredito (Achado 2): o servidor NÃO respondeu, e isso não diz que
+      // a pessoa não é dona. Nada é gravado no aparelho e `adminStatus` NÃO vira
+      // "not-admin" (era o que expulsava a lojista com "Acesso restrito" por
+      // causa de internet ruim): fica "unknown" — o painel não abre, nenhuma
+      // guarda decide — e a bandeira faz a tela oferecer "Tentar de novo".
+      // `isAdmin` continua falso: nada do painel monta sem um "sim" do servidor
+      // (e o banco barra os dados por `is_admin()` de qualquer jeito).
+      if (activeUserIdRef.current !== userId) return;
+      setAdminStatus("unknown");
+      setAdminVerificacaoFalhou(true);
     }
   };
 
@@ -873,7 +935,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       activeUserIdRef.current = currentUserId;
       // Outra pessoa (ou ninguém) no lugar: a confirmação de admin era da
       // anterior. Quem voltar depois entra como primeiro login.
-      if (previousUserId !== currentUserId) adminConfirmadoRef.current = null;
+      if (previousUserId !== currentUserId) {
+        adminConfirmadoRef.current = null;
+        setAdminVerificacaoFalhou(false);
+        // Pessoa nova na tela e a pergunta "ela é dona?" ainda nem saiu:
+        // "ainda não sei", não "não é dona" (o "not-admin" que ficava aqui é o
+        // da visitante/da conta anterior). Sem isto, a janela entre a tela de
+        // carregamento sair (2,5 s) e o fim do limite da pergunta (3 s)
+        // expulsava a lojista de internet ruim com "Acesso restrito". O
+        // `checkAdmin` logo abaixo sempre decide em seguida; o atalho do
+        // aparelho (um "false" real gravado antes) volta a "not-admin" na hora.
+        if (currentUserId) setAdminStatus("unknown");
+      }
 
       // admin_cache-17 — troca de conta na MESMA aba sem passar por
       // SIGNED_OUT explícito (ex.: sessão expira e outra pessoa loga em
@@ -913,6 +986,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         void soltarInscricaoDoAparelho();
         // E o "Agora não" do cartão de avisos era da conta anterior.
         esquecerAdiamentoDosAvisos();
+        // Por último, e só aqui (outra PESSOA, nunca a mesma conta renovando
+        // o token): o que a anterior deixou no `localStorage` — o CEP do
+        // checkout, os pedidos e endereços guardados, o carrinho — é dela. É a
+        // MESMA limpeza do "Sair" (`clearLocalUserData`), que a troca direta
+        // não passava por. Vem DEPOIS de `ehLojistaPelaMarcaDoAparelho`
+        // (acima), que lê a marca da anterior que esta limpeza apaga.
+        esquecerDadosLocaisDaConta();
       }
 
       // Only set loading screen for explicit critical transitions (login/logout).
@@ -1024,6 +1104,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else {
         setProfile(null);
         setAdminStatus("not-admin");
+        setAdminVerificacaoFalhou(false);
         if (event === "SIGNED_OUT") {
           clearLocalUserData();
         }
@@ -1145,18 +1226,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       email: string,
       senha: string,
       audience: LoginAudience,
-    ): Promise<{ success: boolean; error?: AuthError }> => {
+    ): Promise<{ success: boolean; error?: AuthError; message?: string }> => {
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password: senha,
       });
       if (error) {
-        // We keep the toast for global notification, but return the error for specific UI handling
+        // O erro de login aparece UMA vez, na faixa da própria tela (AuthView e
+        // AdminLoginView mostram a faixa): o toast que existia aqui repetia a
+        // mesma frase por cima dela. A frase traduzida segue sendo calculada
+        // aqui e volta em `message`, junto do `error` inteiro.
         //
         // Mesma tradução por causa de AuthView.tsx (handleSubmit, ramo de
-        // erro de login) — o toast global e a mensagem inline da tela
-        // precisam concordar, senão o usuário lê duas frases diferentes para
-        // o mesmo erro. A ORDEM importa: o Supabase devolve status 400 tanto
+        // erro de login) — a frase calculada aqui (`message`) e a da faixa da
+        // tela precisam concordar, senão a mesma causa ganha duas frases. A
+        // ORDEM importa: o Supabase devolve status 400 tanto
         // para "Invalid login credentials" quanto para "Email not
         // confirmed" quanto para "User is banned" (conferido na fonte do
         // GoTrue), então os casos de e-mail não confirmado e de conta
@@ -1204,8 +1288,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           // ENDEREÇO IP, não por usuário — não revela se a conta existe.
           message = "Muitas tentativas. Tente novamente em alguns minutos.";
         }
-        toast.error(message);
-        return { success: false, error };
+        return { success: false, error, message };
       }
       return { success: true };
     },
@@ -1254,6 +1337,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setSession(null);
       setUser(null);
       setAdminStatus("not-admin");
+      setAdminVerificacaoFalhou(false);
       setIsPasswordRecovery(false);
       clearLocalUserData();
       if (typeof window !== "undefined") {
@@ -1269,6 +1353,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setSession(null);
       setUser(null);
       setAdminStatus("not-admin");
+      setAdminVerificacaoFalhou(false);
       setIsPasswordRecovery(false);
     }
   }, []);
@@ -1502,6 +1587,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     [fetchProfile],
   );
 
+  // `checkAdmin` é recriado a cada render (fecha sobre refs e setters); o botão
+  // "Tentar de novo" lê a versão e a pessoa mais recentes por ref.
+  const checkAdminRef = useRef(checkAdmin);
+  const usuarioAtualRef = useRef(user);
+  useEffect(() => {
+    checkAdminRef.current = checkAdmin;
+    usuarioAtualRef.current = user;
+  });
+  const tentarVerificarAdminDeNovo = useCallback(() => {
+    const quem = usuarioAtualRef.current;
+    if (!quem) return;
+    setAdminVerificacaoFalhou(false);
+    checkAdminRef
+      .current(quem)
+      .catch((err: Error) =>
+        console.error("[Auth] retry checkAdmin error:", err),
+      );
+  }, []);
+
   const value = useMemo(
     () => ({
       session,
@@ -1523,6 +1627,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsPasswordRecovery,
       linkDeRecuperacaoVencido,
       limparLinkDeRecuperacaoVencido,
+      linkDeConfirmacaoVencido,
+      limparLinkDeConfirmacaoVencido,
+      adminVerificacaoFalhou,
+      tentarVerificarAdminDeNovo,
     }),
     [
       session,
@@ -1544,6 +1652,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsPasswordRecovery,
       linkDeRecuperacaoVencido,
       limparLinkDeRecuperacaoVencido,
+      linkDeConfirmacaoVencido,
+      limparLinkDeConfirmacaoVencido,
+      adminVerificacaoFalhou,
+      tentarVerificarAdminDeNovo,
     ],
   );
 

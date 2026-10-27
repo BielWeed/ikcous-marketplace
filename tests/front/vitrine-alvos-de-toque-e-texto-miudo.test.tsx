@@ -161,7 +161,7 @@ describe("vitrine — alvos de toque de 44 px e texto miúdo legível", () => {
 
   it.each([
     ["src/components/ui/custom/SearchBar.tsx", 3],
-    ["src/views/customer/SearchView.tsx", 3],
+    ["src/views/customer/SearchView.tsx", 2], // 3 -> 2: o lote 211 subiu um rotulo de 10 para 12 px (text-xs)
     ["src/components/LazyImage.tsx", 1],
   ])(
     "%s: nenhum texto de 10 px em zinc-400 nos títulos",

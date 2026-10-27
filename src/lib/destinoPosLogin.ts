@@ -22,8 +22,12 @@ import type { View } from "@/types";
  * novo") abre — a lojista que toca nele sem sessão entra e volta para os
  * pedidos. NÃO é uma permissão: quem entra e não é admin continua barrada
  * pelo portão de admin do App (`adminStatus`) e pelo servidor (`is_admin`).
- * A lista continua FECHADA: as demais telas do painel pedem entrada, mas não
- * viram destino (cairiam em telas que dependem de `id` ou de formulário).
+ * `admin` (26/10/2026) é a porta do painel: a lojista cuja sessão venceu e
+ * abriu `/admin` entrava de novo e caía no Perfil de cliente, com o pedido
+ * guardado e ignorado. É tela sem `id` nem formulário, e a permissão continua
+ * sendo do portão do App e do servidor. A lista continua FECHADA: as demais
+ * telas do painel pedem entrada, mas não viram destino (cairiam em telas que
+ * dependem de `id` ou de formulário).
  */
 const VIEWS_REDIRECIONAVEIS = new Set<string>([
   "user-profile",
@@ -31,6 +35,7 @@ const VIEWS_REDIRECIONAVEIS = new Set<string>([
   "account-settings",
   "address-form",
   "admin-orders",
+  "admin",
   // Quem pediu login pelas "Perguntas ao vendedor" volta ao produto. Como o
   // "user-profile", só vale COM o id do produto no state (ver abaixo).
   "product-detail",
