@@ -33,6 +33,7 @@ import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
+import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
 import { useDevolucoesAbertas } from "@/hooks/useDevolucoesAdmin";
 import {
   type EstornoEmCurso,
@@ -909,6 +910,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // chegar (issue #212). Sem uma porta manual, o card ficava na tela para
   // sempre. A RPC no servidor é guarda de admin; o confirm aqui evita
   // registrar por engano um estorno que ainda não aconteceu.
+  const { confirmar, dialogo } = useConfirmarAcao();
   const [estornandoId, setEstornandoId] = useState<string | null>(null);
   // Rodada 4 (F2c): enquanto a leitura FRESCA do pedido não volta, o botão
   // mostra "Conferindo…" e fica desligado. O ref barra o clique duplo no
@@ -970,13 +972,15 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // tela para onde ele foi; por isso nomeia "Pedidos". 10 s porque ele
     // está lendo outra coisa; o sonner pausa o tempo com a aba do navegador
     // escondida.
-    if (desativacoesDaTelaRef.current !== desativacoesNoClique) {
+    const abandonou = () => {
+      if (desativacoesDaTelaRef.current === desativacoesNoClique) return false;
       toast.info(
         "Conferência interrompida: nada foi registrado. Para registrar o estorno, volte em “Pedidos” e toque de novo em “Já estornei no Mercado Pago”.",
         { duration: 10_000 },
       );
-      return;
-    }
+      return true;
+    };
+    if (abandonou()) return;
     // A lista acompanha o que acabou de ser lido.
     estornos.recarregar();
     const conferido = ledger.tipo === "conferido" ? ledger : null;
@@ -1035,9 +1039,17 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           ? `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no balcão?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`
           : `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no painel do Mercado Pago?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`;
     }
-    if (!globalThis.confirm(pergunta)) {
-      return;
-    }
+    const confirmado = await confirmar({
+      titulo: "Registrar que o dinheiro já foi devolvido?",
+      texto: pergunta,
+      verbo: "Registrar estorno",
+      valor: `R$ ${valor}`,
+      // As perguntas mandam "tocar em Cancelar" para desistir.
+      voltar: "Cancelar",
+    });
+    // A janela pode ficar aberta um tempo: se a lojista saiu da tela nesse
+    // meio-tempo, nada é registrado às cegas (mesma regra da leitura acima).
+    if (!confirmado || abandonou()) return;
     setEstornandoId(pedido.id);
     try {
       const { error } = await supabase.rpc("registrar_estorno_manual", {
@@ -1600,6 +1612,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             Aguarde um instante
           </p>
         </div>
+        {dialogo}
       </div>
     );
   }
@@ -1638,6 +1651,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             Voltar aos pedidos
           </button>
         </div>
+        {dialogo}
       </div>
     );
   }
@@ -1655,6 +1669,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             onAbrirDevolucoes={abrirDevolucoes}
           />
         </div>
+        {dialogo}
       </LocalErrorBoundary>
     );
   }
@@ -2577,6 +2592,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           <GuiaDoPagamentoQueNaoFechou />
         </div>
       </AdminHelpModal>
+      {dialogo}
     </div>
   );
 });

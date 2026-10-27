@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
+import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import {
   DEPOIS_DO_DIA_COM_CLIENTE,
@@ -1984,7 +1985,8 @@ export const OrderDetail = memo(function OrderDetail({
   // Laudo #2 (L-1): cancelar pedido deixa de ser UM clique sem guarda — a
   // ação mais destrutiva do painel pede confirmação com texto por caso
   // (pago? em rota?), na mesma régua do cancelamento pelo cliente.
-  const handleCancelarComConfirmacao = (id: string) => {
+  const { confirmar, dialogo } = useConfirmarAcao();
+  const handleCancelarComConfirmacao = async (id: string) => {
     const texto = textoCancelamentoDoPainel({
       status: order.status,
       payment_status: order.paymentStatus,
@@ -1998,8 +2000,12 @@ export const OrderDetail = memo(function OrderDetail({
       // Cancelar o pedido não cancela a etiqueta já paga no Melhor Envio.
       shipping_label_id: order.shippingLabelId,
     });
-    if (!globalThis.confirm(texto)) return;
-    void handleStatusChange(id, "cancelled");
+    const confirmado = await confirmar({
+      titulo: "Cancelar este pedido?",
+      texto,
+      verbo: "Cancelar pedido",
+    });
+    if (confirmado) void handleStatusChange(id, "cancelled");
   };
 
   // Laudo #2 (L-8): pedido pendente não expira nunca (decisão deliberada —
@@ -2254,6 +2260,7 @@ export const OrderDetail = memo(function OrderDetail({
           )}
         </AlertDialogContent>
       </AlertDialog>
+      {dialogo}
     </div>
   );
 });
