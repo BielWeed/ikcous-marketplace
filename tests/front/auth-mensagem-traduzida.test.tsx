@@ -94,7 +94,7 @@ interface Snapshot {
     email: string,
     senha: string,
     audience: "customer" | "admin",
-  ) => Promise<{ success: boolean; error?: any }>;
+  ) => Promise<{ success: boolean; error?: any; message?: string }>;
   signUp: (
     email: string,
     senha: string,

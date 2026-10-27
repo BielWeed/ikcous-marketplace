@@ -304,7 +304,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           // (`MENSAGEM_ERRO_LOGIN_GENERICA`, importada de
           // `@/lib/mensagens-auth.ts`, linha 6 deste arquivo — não mais de
           // AuthContext.tsx, A1-fix4 moveu a constante) —
-          // mesma constante que `AuthContext.login` usa no toast para o
+          // mesma constante que `AuthContext.login` devolve em `message` para o
           // mesmo caso, para que a pessoa nunca leia duas frases diferentes
           // para o mesmo erro).
 

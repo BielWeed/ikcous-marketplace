@@ -116,20 +116,10 @@ vi.mock("@/components/layouts/AdminAreaGate", () => ({
     <div data-testid="painel" data-tela={currentView} />
   ),
 }));
-vi.mock("@/views/shared/AuthView", async () => {
-  const React = await import("react");
-  return {
-    // O AuthView real dispara `onSuccess` num `useEffect` que reage ao
-    // `user` sair de `null`. O duble repete o MESMO mecanismo.
-    AuthView: ({ onSuccess }: { readonly onSuccess: () => void }) => {
-      const user = estadoAuth.user;
-      React.useEffect(() => {
-        if (user) onSuccess();
-      }, [user, onSuccess]);
-      return <div data-testid="tela-login" />;
-    },
-  };
-});
+// Aqui só importa saber se a tela de entrada apareceu.
+vi.mock("@/views/shared/AuthView", () => ({
+  AuthView: () => <div data-testid="tela-login" />,
+}));
 
 vi.mock("@/components/debug/DebugPanel", () => ({ DebugPanel: () => null }));
 vi.mock("@/components/pwa/PushNotificationBanner", () => ({
