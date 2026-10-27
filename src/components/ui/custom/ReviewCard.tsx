@@ -179,7 +179,7 @@ export function ReviewCard({
             >
               <LazyImage
                 src={image}
-                alt={`Review ${index + 1}`}
+                alt="Foto enviada pela cliente"
                 className="size-16 object-cover transition-transform duration-300 group-hover/img:scale-105"
               />
             </div>
