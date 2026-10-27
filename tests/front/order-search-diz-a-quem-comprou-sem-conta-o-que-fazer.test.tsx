@@ -17,7 +17,7 @@
  * A saída honesta (sem abrir leitura pública nova): a aba diz isso ANTES de
  * ela digitar e entrega o que funciona de verdade — falar com a loja pelo
  * WhatsApp com o identificador do pedido (o mesmo caminho já usado na tela
- * "Pedido Celebrado!"). Sem WhatsApp na loja: instrução, nunca botão morto.
+ * "Pedido recebido!"). Sem WhatsApp na loja: instrução, nunca botão morto.
  */
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";

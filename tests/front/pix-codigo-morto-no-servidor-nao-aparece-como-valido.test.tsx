@@ -55,6 +55,7 @@ afterEach(() => {
 async function renderizar(
   pedidoMortoNoServidor?: boolean,
   onVerMeusPedidos?: () => void,
+  onVoltarAoCarrinho?: () => void,
 ) {
   await act(async () => {
     raiz.render(
@@ -64,6 +65,7 @@ async function renderizar(
         onErro={() => {}}
         pedidoMortoNoServidor={pedidoMortoNoServidor}
         onVerMeusPedidos={onVerMeusPedidos}
+        onVoltarAoCarrinho={onVoltarAoCarrinho}
       />,
     );
   });
@@ -75,7 +77,7 @@ async function renderizar(
 const texto = () => hospedeiro.textContent ?? "";
 const botaoCopiar = () =>
   Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
-    (b.textContent ?? "").includes("Copiar código PIX"),
+    (b.textContent ?? "").includes("Copiar código Pix"),
   );
 
 describe("PagamentoOnline (PIX) — pedido morto no servidor", () => {
@@ -84,7 +86,7 @@ describe("PagamentoOnline (PIX) — pedido morto no servidor", () => {
     expect(botaoCopiar()).toBeDefined();
     expect(texto()).toContain("000201CODIGOCOPIAECOLA");
     expect(
-      hospedeiro.querySelector('img[alt="QR code do PIX"]'),
+      hospedeiro.querySelector('img[alt="QR code do Pix"]'),
     ).not.toBeNull();
     expect(texto()).toContain("Pagar pelo Mercado Pago");
     expect(texto()).not.toContain("Este código não vale mais");
@@ -148,5 +150,55 @@ describe("PagamentoOnline (PIX) — pedido morto no servidor", () => {
   it("CONTROLE: com o pedido vivo o botão não aparece (o PIX segue sendo pago aqui)", async () => {
     await renderizar(false, vi.fn());
     expect(texto()).not.toContain("Ver meus pedidos");
+  });
+
+  // LOTE 210 (caça 8): o PIX venceu com a tela aberta e não havia caminho de
+  // volta ao carrinho. O pai (CheckoutView) só passa a saída quando guarda os
+  // itens do pedido que nasceu NESTA tela — aqui prova-se o botão em si.
+  it("com o pedido morto e a saída do carrinho conhecida: 'Voltar ao carrinho' aparece e chama a saída", async () => {
+    const aoVoltar = vi.fn();
+    await renderizar(true, vi.fn(), aoVoltar);
+
+    const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => (b.textContent ?? "").trim() === "Voltar ao carrinho",
+    );
+    expect(botao).toBeDefined();
+    act(() => {
+      botao?.click();
+    });
+    expect(aoVoltar).toHaveBeenCalledTimes(1);
+    // O QR morto continua fora da tela e a edge não foi chamada de novo.
+    expect(botaoCopiar()).toBeUndefined();
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
+  });
+
+  it("CONTROLE: pedido morto SEM a saída do carrinho (retomada: não há itens locais) não nasce botão mudo", async () => {
+    await renderizar(true, vi.fn());
+    expect(texto()).not.toContain("Voltar ao carrinho");
+  });
+
+  it("CONTROLE: com o pedido vivo o 'Voltar ao carrinho' não aparece, mesmo com a saída conhecida", async () => {
+    await renderizar(false, vi.fn(), vi.fn());
+    expect(texto()).not.toContain("Voltar ao carrinho");
+    expect(botaoCopiar()).toBeDefined();
+  });
+
+  // LOTE 210, item 9: grafia atual ("Pix") e reticências unicode em toda a tela.
+  it("QR na tela: título, botão e texto alternativo do QR dizem 'Pix', não 'PIX'", async () => {
+    await renderizar(false);
+    expect(texto()).toContain("Pagamento via Pix");
+    expect(texto()).toContain("Copiar código Pix");
+    expect(
+      hospedeiro.querySelector('img[alt="QR code do Pix"]'),
+    ).not.toBeNull();
+    expect(texto()).not.toContain("PIX");
+  });
+
+  // ÚLTIMO de propósito: a promessa pendurada fica no cache por pedido do módulo.
+  it("espera do QR: 'Gerando o QR code do Pix…' com reticências unicode (nada de '...')", async () => {
+    criarPagamento.mockReset().mockReturnValue(new Promise(() => {}));
+    await renderizar(false);
+    expect(texto()).toContain("Gerando o QR code do Pix…");
+    expect(texto()).not.toContain("...");
   });
 });

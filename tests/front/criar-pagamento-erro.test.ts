@@ -169,3 +169,117 @@ describe("useOrders/criarPagamento propaga o campo terminal do 409, não só a m
     expect(erroCapturado.terminal).not.toBe(true);
   });
 });
+
+/**
+ * LOTE 210 (caça 8) — loja sem a chave de assinatura do webhook. A edge manda
+ * uma frase de OPERADOR ("...cadastrar a chave de assinatura do webhook do
+ * Mercado Pago") e, ao lado dela, o MARCADOR `pixSemChaveDeAssinatura` /
+ * `cartaoSemChaveDeAssinatura`. Quem compra nunca lê a frase de operador: o
+ * front troca pelo texto de cliente olhando o MARCADOR (booleano `true`
+ * exato), nunca comparando o texto da edge.
+ */
+describe("useOrders/criarPagamento traduz o marcador de 'loja sem chave de assinatura' para frase de cliente", () => {
+  beforeEach(() => {
+    vi.mocked(supabase.functions.invoke).mockClear();
+  });
+
+  /** Prepara a resposta 409 da edge (corpo no formato do supabase-js v2). */
+  function responderComErro(corpo: Record<string, unknown>) {
+    vi.mocked(supabase.functions.invoke).mockResolvedValue({
+      data: null,
+      error: erroDeInvokeComCorpo(corpo),
+    } as any);
+  }
+
+  /** O erro que a chamada lança (falha o teste se ela não lançar). */
+  async function pegarErro(chamada: () => Promise<unknown>) {
+    try {
+      await chamada();
+    } catch (err) {
+      return err as any;
+    }
+    throw new Error("criarPagamento deveria ter lançado");
+  }
+
+  it("PIX: o marcador vira a frase de cliente, sem jargão, e segue terminal", async () => {
+    responderComErro({
+      error:
+        "Para pagar com Pix, a loja precisa cadastrar a chave de assinatura do webhook do Mercado Pago.",
+      terminal: true,
+      pixSemChaveDeAssinatura: true,
+    });
+    const { criarPagamento } = useOrders(false, true);
+    const erro = await pegarErro(() => criarPagamento(ARGS_MINIMOS));
+    expect(erro.message).toBe(
+      "Esta loja não está recebendo Pix pelo app agora. Fale com a loja ou escolha pagar na entrega.",
+    );
+    expect(erro.message).not.toMatch(/webhook|assinatura|Mercado Pago/i);
+    expect(erro.terminal).toBe(true);
+  });
+
+  it("cartão: o marcador vira a frase de cliente, sem jargão, e segue terminal", async () => {
+    responderComErro({
+      error:
+        "Para pagar com cartão, a loja precisa cadastrar a chave de assinatura do webhook do Mercado Pago.",
+      terminal: true,
+      cartaoSemChaveDeAssinatura: true,
+    });
+    const { criarPagamento } = useOrders(false, true);
+    const erro = await pegarErro(() => criarPagamento(ARGS_MINIMOS));
+    expect(erro.message).toBe(
+      "Esta loja não está recebendo cartão pelo app agora. Fale com a loja ou escolha pagar na entrega.",
+    );
+    expect(erro.message).not.toMatch(/webhook|assinatura|Mercado Pago/i);
+    expect(erro.terminal).toBe(true);
+  });
+
+  it.each([
+    ["string 'true'", "true"],
+    ["número 1", 1],
+    ["objeto", {}],
+    ["false", false],
+  ])(
+    "CONTROLE: marcador que não é o booleano true exato (%s) NÃO traduz — a frase da edge segue como veio",
+    async (_nome, marcador) => {
+      responderComErro({
+        error: "Frase qualquer da edge.",
+        terminal: true,
+        pixSemChaveDeAssinatura: marcador,
+      });
+      const { criarPagamento } = useOrders(false, true);
+      const erro = await pegarErro(() => criarPagamento(ARGS_MINIMOS));
+      expect(erro.message).toBe("Frase qualquer da edge.");
+    },
+  );
+
+  it("CONTROLE: a tradução não olha o TEXTO — a mesma frase de operador SEM marcador passa como veio", async () => {
+    const frase =
+      "Para pagar com Pix, a loja precisa cadastrar a chave de assinatura do webhook do Mercado Pago.";
+    responderComErro({ error: frase, terminal: true });
+    const { criarPagamento } = useOrders(false, true);
+    const erro = await pegarErro(() => criarPagamento(ARGS_MINIMOS));
+    expect(erro.message).toBe(frase);
+  });
+
+  it("ramo data?.error (inalcançável hoje) traduz do mesmo jeito", async () => {
+    vi.mocked(supabase.functions.invoke).mockResolvedValue({
+      data: {
+        error: "Frase de operador.",
+        terminal: true,
+        cartaoSemChaveDeAssinatura: true,
+      },
+      error: null,
+    } as any);
+    const { criarPagamento } = useOrders(false, true);
+    let erro: any;
+    try {
+      await criarPagamento(ARGS_MINIMOS);
+    } catch (err) {
+      erro = err;
+    }
+    expect(erro.message).toBe(
+      "Esta loja não está recebendo cartão pelo app agora. Fale com a loja ou escolha pagar na entrega.",
+    );
+    expect(erro.terminal).toBe(true);
+  });
+});

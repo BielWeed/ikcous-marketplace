@@ -829,6 +829,30 @@ function verificacaoDoErroDePagamento(
 }
 
 /**
+ * Loja sem a chave de assinatura do webhook (lote 210, caça 8): o 409 terminal
+ * da edge traz uma frase de OPERADOR ("...cadastrar a chave de assinatura do
+ * webhook do Mercado Pago") e, ao lado, um MARCADOR booleano por meio
+ * (`pixSemChaveDeAssinatura` / `cartaoSemChaveDeAssinatura`). Quem compra não
+ * tem o que fazer com a frase de operador: a tradução para a frase de cliente
+ * decide pelo MARCADOR (só o `true` literal conta, a mesma régua estrita de
+ * `terminal`/`cartaoEmAnalise`) — nunca comparando o texto da edge. Só texto:
+ * o status HTTP, `terminal` e o resto do erro seguem como a edge mandou.
+ */
+function mensagemDeClienteParaLojaSemChave(corpo: unknown): string | undefined {
+  const c = corpo as {
+    pixSemChaveDeAssinatura?: unknown;
+    cartaoSemChaveDeAssinatura?: unknown;
+  } | null;
+  if (c?.pixSemChaveDeAssinatura === true) {
+    return "Esta loja não está recebendo Pix pelo app agora. Fale com a loja ou escolha pagar na entrega.";
+  }
+  if (c?.cartaoSemChaveDeAssinatura === true) {
+    return "Esta loja não está recebendo cartão pelo app agora. Fale com a loja ou escolha pagar na entrega.";
+  }
+  return undefined;
+}
+
+/**
  * O que a edge devolve num 200/201 — PIX e cartão falam a mesma resposta; os
  * campos de cada meio são opcionais.
  */
@@ -4200,6 +4224,7 @@ export function useOrders(
         try {
           const corpo = await (error as any).context?.json?.();
           if (corpo?.error) mensagem = corpo.error;
+          mensagem = mensagemDeClienteParaLojaSemChave(corpo) ?? mensagem;
           if (typeof corpo?.terminal === "boolean") terminal = corpo.terminal;
           if (typeof corpo?.cartaoEmAnalise === "boolean") {
             cartaoEmAnalise = corpo.cartaoEmAnalise;
@@ -4229,12 +4254,14 @@ export function useOrders(
         const verificacao = verificacaoDoErroDePagamento(
           (data as any).verificacao,
         );
+        const mensagemDoErro =
+          mensagemDeClienteParaLojaSemChave(data) ?? data.error;
         // Mesma regra estrita do ramo `error` acima: só `true` literal vira
         // terminal/cartaoEmAnalise. `Boolean(...)` aceitaria "false" (string),
         // 1, `{}` — este ramo é inalcançável hoje (o supabase-js v2 sempre
         // preenche `error` numa resposta não-2xx), mas duas leituras do mesmo
         // campo lado a lado é convite para elas divergirem.
-        throw Object.assign(new Error(data.error), {
+        throw Object.assign(new Error(mensagemDoErro), {
           terminal:
             typeof (data as any).terminal === "boolean" &&
             (data as any).terminal,

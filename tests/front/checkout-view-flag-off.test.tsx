@@ -293,7 +293,7 @@ describe("CheckoutView com pagamentoOnlineLigado() desligada", () => {
     // A garantia central: nunca a tela de "aguardando pagamento" — sempre o
     // caminho de sucesso de sempre.
     expect(hospedeiro.textContent).not.toContain("Finalize o pagamento");
-    expect(hospedeiro.textContent).toContain("Pedido Celebrado!");
+    expect(hospedeiro.textContent).toContain("Pedido recebido!");
   });
 
   // Item 3a (12/09/2026): o grupo "No app" só existe quando há algo dentro

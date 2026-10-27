@@ -652,7 +652,7 @@ describe("tela do cartão redesenhada", () => {
       await enviar(create);
 
       expect(hospedeiro.textContent).toContain(
-        "Seu banco está analisando. Não pague de novo. Avisamos aqui e por notificação",
+        "Seu banco está analisando. Não pague de novo. Acompanhe aqui ou em Meus pedidos",
       );
       expect(botao("Pagar com PIX")).toBeUndefined();
 

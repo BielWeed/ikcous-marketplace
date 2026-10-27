@@ -72,7 +72,7 @@ describe("Pix quando o relógio do celular está errado", () => {
       "Confira a validade no app do seu banco.",
     );
     expect(host.textContent).not.toMatch(/Faltam \d/);
-    expect(host.querySelector("img[alt='QR code do PIX']")).not.toBeNull();
+    expect(host.querySelector("img[alt='QR code do Pix']")).not.toBeNull();
     expect(criarPagamento).toHaveBeenCalledTimes(1);
   });
 
@@ -87,7 +87,7 @@ describe("Pix quando o relógio do celular está errado", () => {
     expect(host.textContent).not.toContain(
       "O horário previsto para pagar já passou.",
     );
-    expect(host.querySelector("img[alt='QR code do PIX']")).not.toBeNull();
+    expect(host.querySelector("img[alt='QR code do Pix']")).not.toBeNull();
     expect(criarPagamento).toHaveBeenCalledTimes(1);
   });
 

@@ -59,8 +59,8 @@ describe("finalizar em celular estreito — apresentação", () => {
     });
   }
 
-  it("selo Vantagem Ativa tem 11px, sem mudar o texto", () => {
-    const tag = tagAntesDoTexto(checkout, "Vantagem Ativa:");
+  it("selo do desconto aplicado tem 11px", () => {
+    const tag = tagAntesDoTexto(checkout, "Desconto aplicado:");
     expect(tag).toContain("text-[11px]");
     expect(tag).not.toContain("text-[10px]");
   });

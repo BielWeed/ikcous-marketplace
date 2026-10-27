@@ -249,7 +249,7 @@ describe("C6/P2 — 'Pagar com PIX' do desafio adotado, contra cada resposta do 
     expect(hospedeiro.textContent).toContain(
       "Pagamento confirmado! Finalizando seu pedido…",
     );
-    expect(hospedeiro.textContent).not.toContain("Copiar código PIX");
+    expect(hospedeiro.textContent).not.toContain("Copiar código Pix");
   });
 
   for (const [rotulo, erro] of [
