@@ -120,7 +120,7 @@ BEGIN
   END IF;
   IF v_oid IS NOT NULL THEN
     SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash FROM pg_proc WHERE oid = v_oid;
-    IF v_hash IS DISTINCT FROM 'a792c5e86b631a8e0f16928a6ab99797' THEN
+    IF v_hash IS DISTINCT FROM '4c716de5f5ccb38f93db187dcf64bf00' THEN
       RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: % já existe com corpo desconhecido (hash %) — ninguém revisou essa redefinição; capture o corpo vivo e revise antes de aplicar.', v_fn, COALESCE(v_hash, 'ausente');
     END IF;
   ELSIF EXISTS (SELECT 1 FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'push_inscricoes_limite_por_conta') THEN
@@ -166,6 +166,13 @@ BEGIN
     -- Uma conta por vez: sem a trava, a 10ª e a 11ª inscrições que chegam juntas enxergam a mesma contagem.
     PERFORM pg_advisory_xact_lock(hashtextextended('push_subscriptions_limite:' || NEW.user_id::text, 0));
 
+    -- De novo, AGORA que a trava é nossa: duas abas ativando o MESMO aparelho novo ao mesmo tempo passam juntas pela
+    -- checagem de cima (nenhuma gravou ainda); a que espera a trava acorda com o aparelho já gravado pela outra e tem
+    -- de virar atualização (ON CONFLICT DO UPDATE), não recusa por contagem. A conta com 9 aparelhos é o caso.
+    IF EXISTS (SELECT 1 FROM public.push_subscriptions s WHERE s.endpoint = NEW.endpoint) THEN
+        RETURN NEW;
+    END IF;
+
     -- Conta até o limite e para (uma conta que já passa de 10 não faz o gatilho varrer tudo). O administrador da
     -- loja (rls_admin_atual: papel de AGORA no banco, e service_role/postgres) não tem limite.
     IF (SELECT count(*) FROM (SELECT 1 FROM public.push_subscriptions s WHERE s.user_id = NEW.user_id LIMIT v_limite) c) >= v_limite
@@ -198,7 +205,7 @@ BEGIN
     RAISE EXCEPTION 'conferencia 20261396000000: push_inscricoes_limite_por_conta ficou com sobrecarga';
   END IF;
   SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash FROM pg_proc WHERE oid = v_oid;
-  IF v_hash IS DISTINCT FROM 'a792c5e86b631a8e0f16928a6ab99797' THEN
+  IF v_hash IS DISTINCT FROM '4c716de5f5ccb38f93db187dcf64bf00' THEN
     RAISE EXCEPTION 'conferencia 20261396000000: corpo vivo de % (hash %) não é o desta migration', v_fn, COALESCE(v_hash, 'ausente');
   END IF;
   IF NOT EXISTS (

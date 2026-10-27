@@ -473,7 +473,7 @@ const VERIFICACOES = {
   "20261396000000_cada_conta_tem_no_maximo_10_aparelhos_com_aviso.sql": {
     funcao: "push_inscricoes_limite_por_conta",
     esperado: [
-      { texto: "s.endpoint = NEW.endpoint", vezes: 1 },
+      { texto: "s.endpoint = NEW.endpoint", vezes: 2 },
       {
         texto:
           "pg_advisory_xact_lock(hashtextextended('push_subscriptions_limite:'",

@@ -37,7 +37,7 @@ BEGIN
   END IF;
   IF v_oid IS NOT NULL THEN
     SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash FROM pg_proc WHERE oid = v_oid;
-    IF v_hash IS DISTINCT FROM 'a792c5e86b631a8e0f16928a6ab99797' THEN
+    IF v_hash IS DISTINCT FROM '4c716de5f5ccb38f93db187dcf64bf00' THEN
       RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: corpo vivo de public.push_inscricoes_limite_por_conta() (hash %) não é o da 20261396000000 — uma redefinição posterior está no ar; revise antes de apagar.', COALESCE(v_hash, 'ausente');
     END IF;
   ELSIF EXISTS (SELECT 1 FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'push_inscricoes_limite_por_conta') THEN

@@ -1,5 +1,5 @@
 -- 112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado: DEPOIS da 20261396000000 (a funcao push_inscricoes_limite_por_conta e o gatilho
--- tr_push_inscricoes_limite_por_conta em public.push_subscriptions, md5 do corpo a792c5e86b631a8e0f16928a6ab99797).
+-- tr_push_inscricoes_limite_por_conta em public.push_subscriptions, md5 do corpo 4c716de5f5ccb38f93db187dcf64bf00).
 -- SO LEITURA, somente catalogo; rol fechado de 4 linhas. Nao le nenhuma inscricao e nao chama a funcao. Antes do apply responde "AUSENTE" ou "nao"
 -- nas linhas da migration (a 112a negativa e' esperada), nunca erro.
 WITH fn AS (
@@ -21,7 +21,7 @@ WITH fn AS (
   SELECT 'controle: funcoes de public visiveis a este papel', 'sim',
          CASE WHEN COALESCE((SELECT count(*) > 0 FROM pg_proc WHERE pronamespace = 'public'::regnamespace), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
-  SELECT 'push_inscricoes_limite_por_conta: corpo exato (md5)', 'a792c5e86b631a8e0f16928a6ab99797',
+  SELECT 'push_inscricoes_limite_por_conta: corpo exato (md5)', '4c716de5f5ccb38f93db187dcf64bf00',
          COALESCE((SELECT h FROM fn LIMIT 1), 'AUSENTE')
   UNION ALL
   SELECT 'push_inscricoes_limite_por_conta: uma so, atributos conhecidos (SECURITY DEFINER, plpgsql, VOLATILE, retorno trigger, search_path=public) e fechada a PUBLIC, anon, authenticated e service_role', 'sim',

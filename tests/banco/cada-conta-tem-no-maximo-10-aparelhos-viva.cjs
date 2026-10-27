@@ -18,7 +18,8 @@
  *              outra conta segue livre; apagar uma libera uma vaga; o endpoint de OUTRA conta continua recusado pela RLS (e nao
  *              pelo gatilho); admin, service_role e sessao direta nao tem limite; 12 linhas numa tacada recusam inteiras, 10 passam;
  *              conta com 15 linhas de antes mantem tudo, renova, desliga e so volta a cadastrar abaixo de 10; anon recusado.
- *  CONCORRENCIA duas conexoes reais cadastrando a 10a e a 11a juntas: a segunda ESPERA a primeira e recusa (10 linhas no fim);
+ *  CONCORRENCIA duas conexoes reais cadastrando a 10a e a 11a juntas: a segunda ESPERA a primeira e recusa (10 linhas no fim); e duas abas
+ *              ativando o MESMO aparelho novo (conta com 9): a segunda espera e vira atualizacao, nao recusa;
  *              sem a trava por conta (mutante) as duas passam (11).
  *  DADOS/SO NOVO/MUTANTES/MIGRATION/ATOMICIDADE/TRAVA: como as irmas (a-pergunta-nasce-com-a-data-de-agora-viva.cjs).
  *
@@ -500,10 +501,10 @@ const MUTANTES = [
     ["decimaPrimeiraRecusada", "upsertNovoRecusado", "apagarLiberaUmaVaga"],
   ],
   [
-    "sem a saida do endpoint que ja existe (conta o re-registro)",
+    "sem a saida do endpoint que ja existe, nas duas checagens (conta o re-registro)",
     (c) =>
       c.replace(
-        / {4}IF EXISTS \(SELECT 1 FROM public\.push_subscriptions s WHERE s\.endpoint = NEW\.endpoint\) THEN\n {8}RETURN NEW;\n {4}END IF;\n/,
+        / {4}IF EXISTS \(SELECT 1 FROM public\.push_subscriptions s WHERE s\.endpoint = NEW\.endpoint\) THEN\n {8}RETURN NEW;\n {4}END IF;\n/g,
         "",
       ),
     ["reinscricaoNoLimite"],
@@ -825,7 +826,7 @@ prova(
 );
 
 // ---- CONCORRENCIA, ATOMICIDADE e TRAVA (conexoes proprias, COMMIT de verdade; ficam por ULTIMO e deixam o clone no estado ANTES) --
-async function corridaDeDois(c3, corpoMutado) {
+async function corridaDeDois(c3, corpoMutado, mesmoAparelho = false) {
   // 9 inscricoes da conta U.conc ja gravadas (commit); a 10a e a 11a chegam juntas em duas conexoes reais
   await c3.query("DELETE FROM public.push_subscriptions WHERE user_id = $1", [
     U.conc,
@@ -845,12 +846,16 @@ async function corridaDeDois(c3, corpoMutado) {
       await c.query("SELECT set_config('app.rpc.user_id', $1, true)", [U.conc]);
       await c.query("SET LOCAL ROLE authenticated");
     }
-    await c1.query(SQL_NOVO, [ep("conc", 10), U.conc]); // passa e segura a trava da conta ate o COMMIT
+    // `mesmoAparelho`: as duas abas ativam o MESMO aparelho novo (upsert como o app); senao a 10a e a 11a sao aparelhos diferentes
+    const sql = mesmoAparelho ? SQL_UPSERT : SQL_NOVO;
+    await c1.query(sql, [ep("conc", 10), U.conc]); // passa e segura a trava da conta ate o COMMIT
     let terminou = false;
-    const p2 = c2.query(SQL_NOVO, [ep("conc", 11), U.conc]).then(
-      () => ({ ok: true }),
-      (e) => ({ ok: false, e }),
-    );
+    const p2 = c2
+      .query(sql, [ep("conc", mesmoAparelho ? 10 : 11), U.conc])
+      .then(
+        () => ({ ok: true }),
+        (e) => ({ ok: false, e }),
+      );
     p2.then(() => {
       terminou = true;
     });
@@ -908,6 +913,55 @@ prova(
       );
       assert.equal(mutante.segundaOk, true);
       await c3.query(comCorpo(CORPO)); // devolve o corpo certo (o mutante substituiu a funcao com COMMIT)
+    } finally {
+      await c3.query(comCorpo(CORPO)).catch(() => {});
+      await c3
+        .query("DELETE FROM public.push_subscriptions WHERE user_id = $1", [
+          U.conc,
+        ])
+        .catch(() => {});
+      await c3
+        .query("DELETE FROM auth.users WHERE id = $1", [U.conc])
+        .catch(() => {});
+      await c3.end();
+    }
+  },
+);
+
+prova(
+  "CONCORRENCIA, mesmo aparelho: conta com 9 e duas abas ativando o MESMO aparelho novo juntas — a segunda ESPERA e vira atualizacao (10 no fim, sem recusa); sem a 2a checagem de endpoint apos a trava ela e' recusada (P0001)",
+  async () => {
+    const c3 = new Client({ connectionString: lerDatabaseUrlEfemera() });
+    await c3.connect();
+    try {
+      await c3.query(
+        "INSERT INTO auth.users (id, email, raw_app_meta_data) VALUES ($1::uuid, $1::text || '@396000c.teste', '{}'::jsonb) ON CONFLICT (id) DO NOTHING",
+        [U.conc],
+      );
+      const certo = await corridaDeDois(c3, null, true);
+      assert.deepEqual(
+        certo,
+        { esperouAPrimeira: true, segundaOk: true, codigo: undefined, n: 10 },
+        JSON.stringify(certo),
+      );
+      // mutante: tira SO a checagem de endpoint que vem depois da trava (a primeira, de antes da trava, fica)
+      const iTrava = CORPO.indexOf("PERFORM pg_advisory_xact_lock(");
+      const iIf = CORPO.indexOf(
+        "IF EXISTS (SELECT 1 FROM public.push_subscriptions s WHERE s.endpoint = NEW.endpoint) THEN",
+        iTrava,
+      );
+      const iFim = CORPO.indexOf("END IF;", iIf) + "END IF;".length;
+      assert.ok(
+        iTrava > 0 && iIf > iTrava,
+        "a 2a checagem nao esta depois da trava",
+      );
+      const semSegundaChecagem = CORPO.slice(0, iIf) + CORPO.slice(iFim);
+      assert.notEqual(semSegundaChecagem, CORPO);
+      const mutante = await corridaDeDois(c3, semSegundaChecagem, true);
+      assert.equal(mutante.segundaOk, false, JSON.stringify(mutante));
+      assert.equal(mutante.codigo, "P0001");
+      assert.equal(mutante.n, 10);
+      await c3.query(comCorpo(CORPO));
     } finally {
       await c3.query(comCorpo(CORPO)).catch(() => {});
       await c3

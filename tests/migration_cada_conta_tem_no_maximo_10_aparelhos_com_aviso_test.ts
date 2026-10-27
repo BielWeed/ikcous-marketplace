@@ -33,7 +33,7 @@ const rollback = ler(`rollback-manual-${NOME}`);
 const limpo = (s) => removerRuido(s).replace(/\s+/g, " ");
 const md5 = (s) => createHash("md5").update(s).digest("hex");
 
-const H_FUNCAO = "a792c5e86b631a8e0f16928a6ab99797";
+const H_FUNCAO = "4c716de5f5ccb38f93db187dcf64bf00";
 
 function corpoDaFuncao(sql) {
   const marca =
@@ -119,7 +119,12 @@ Deno.test("1396000: a ORDEM do corpo: sessao direta e conta sem dona saem; o end
     return corpo.indexOf(t);
   };
   const direta = pos("= 'none' OR NEW.user_id IS NULL");
-  const existente = pos("s.endpoint = NEW.endpoint");
+  // a checagem do endpoint que ja existe aparece DUAS vezes: antes da trava (caminho rapido) e DE NOVO depois dela
+  // (duas abas ativando o mesmo aparelho novo, conta com 9: a que espera a trava acorda com o aparelho ja gravado)
+  const marcaExiste = "s.endpoint = NEW.endpoint";
+  assert.equal(corpo.split(marcaExiste).length - 1, 2);
+  const existente = corpo.indexOf(marcaExiste);
+  const existenteDepoisDaTrava = corpo.lastIndexOf(marcaExiste);
   const trava = pos(
     "pg_advisory_xact_lock(hashtextextended('push_subscriptions_limite:' || NEW.user_id::text, 0))",
   );
@@ -131,7 +136,8 @@ Deno.test("1396000: a ORDEM do corpo: sessao direta e conta sem dona saem; o end
   assert.ok(
     direta < existente &&
       existente < trava &&
-      trava < conta &&
+      trava < existenteDepoisDaTrava &&
+      existenteDepoisDaTrava < conta &&
       conta < admin &&
       admin < erro,
   );
