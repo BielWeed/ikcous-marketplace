@@ -185,8 +185,11 @@ function estadoDoCartao(
     if (disponivel > 0) return "bloqueado_entregue";
     if (reservado > 0) return "reservado";
     // Saldo zero também é o que sobra com a devolução ainda EM ANDAMENTO (o
-    // servidor já desconta o que está em curso): só o dinheiro realmente
-    // devolvido fecha o pedido. Em curso, a linha da devolução diz o andamento.
+    // servidor já desconta o que está em curso) ou com valor em dúvida: nesses
+    // dois casos o pedido ainda não fechou, e a linha da devolução diz o
+    // andamento. A conta fechada vem dos baldes do servidor (nada em curso,
+    // nada em dúvida), NUNCA de `valor_estornado`: ele só soma estorno aprovado
+    // pelo Mercado Pago e não vê o que a lojista devolveu por fora.
     return tudoDevolvido ? "tudo_devolvido" : "devolucao_em_andamento";
   }
   if (order.status !== "cancelled") return "bloqueado_status";
@@ -205,6 +208,7 @@ export function EstornoCard({
     linhas,
     pago,
     devolvido,
+    emCurso,
     emDuvida,
     disponivel,
     reservadoPorFora,
@@ -271,7 +275,7 @@ export function EstornoCard({
     order,
     disponivel,
     reservado,
-    devolvido >= pago,
+    emCurso === 0 && emDuvida === 0,
   );
   const mostrarBotao =
     estado !== "tudo_devolvido" &&

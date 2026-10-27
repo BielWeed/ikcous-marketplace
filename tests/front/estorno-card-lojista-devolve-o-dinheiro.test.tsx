@@ -448,6 +448,9 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
       hookPadrao({
         pago: 100,
         devolvido: 0,
+        // O servidor devolve o que está em curso em `emCurso` (em_voo): é ele
+        // que diz "ainda não acabou", não o `devolvido` (só o aprovado).
+        emCurso: 100,
         disponivel: 0,
         linhas: [
           linhaDeExemplo({
@@ -464,6 +467,55 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
     expect(texto()).not.toContain("Todo o valor pago já foi devolvido.");
     expect(texto()).not.toContain("Cancele o pedido");
     expect(texto()).toContain("Devolução de R$ 100,00 em andamento");
+    expect(botaoComTexto("Devolver R$")).toBeUndefined();
+  });
+
+  // Conta fechada pelo servidor SEM estorno aprovado: a lojista marcou "Já
+  // devolvi por fora" (reembolso manual) numa devolução concluída. O servidor
+  // desconta o manual do saldo (disponível 0, nada reservado, nada em curso,
+  // nada em dúvida), mas `valor_estornado` fica em 0 — o Mercado Pago não
+  // aprovou nada. A tela não pode dizer "devolução não concluída" (a lojista
+  // pagaria de novo): o dinheiro JÁ foi devolvido.
+  it("U11f: pedido ENTREGUE com tudo devolvido POR FORA (valor_estornado 0, nada em curso nem em dúvida) — diz que já foi devolvido", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        pago: 100,
+        devolvido: 0,
+        emCurso: 0,
+        emDuvida: 0,
+        disponivel: 0,
+        reservadoPorFora: 0,
+        linhas: [],
+      }),
+    );
+
+    await montar({ ...pedidoBase, status: "delivered" });
+
+    expect(texto()).toContain("Todo o valor pago já foi devolvido.");
+    expect(texto()).not.toContain("não foi concluída");
+    expect(texto()).not.toContain("Cancele o pedido");
+    expect(botaoComTexto("Devolver R$")).toBeUndefined();
+  });
+
+  // Valor em dúvida (parou e PODE ter saído) prende o saldo: ainda não é
+  // "tudo devolvido", mesmo com nada em curso.
+  it("U11g: pedido ENTREGUE com valor em dúvida e nada em curso — NÃO diz que já foi devolvido", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        pago: 100,
+        devolvido: 0,
+        emCurso: 0,
+        emDuvida: 100,
+        disponivel: 0,
+        reservadoPorFora: 0,
+        linhas: [],
+      }),
+    );
+
+    await montar({ ...pedidoBase, status: "delivered" });
+
+    expect(texto()).not.toContain("Todo o valor pago já foi devolvido.");
+    expect(texto()).not.toContain("Cancele o pedido");
     expect(botaoComTexto("Devolver R$")).toBeUndefined();
   });
 
