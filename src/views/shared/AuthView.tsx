@@ -128,6 +128,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   const isLogin = viewMode === "login";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmaSenha, setConfirmaSenha] = useState("");
   const [fullName, setFullName] = useState("");
 
   useEffect(() => {
@@ -377,6 +378,12 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           setIsLoading(false);
           return;
         }
+        // eslint-disable-next-line security/detect-possible-timing-attacks -- as duas são o que a própria pessoa digitou, não é segredo comparado no servidor
+        if (password !== confirmaSenha) {
+          toast.error("As senhas não são iguais.");
+          setIsLoading(false);
+          return;
+        }
         const success = await updatePassword(password);
         if (success) {
           if (onSuccess) onSuccess();
@@ -502,7 +509,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               className="group relative flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-zinc-600 transition-colors after:absolute after:-inset-x-2 after:-inset-y-3.5 after:content-[''] hover:text-zinc-900"
             >
               <ArrowLeft className="size-3 transition-transform group-hover:-translate-x-1" />
-              Explorar marketplace
+              Explorar a loja
             </button>
           </motion.div>
         </motion.div>
@@ -612,8 +619,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               className="mt-2 max-w-[280px] px-4 text-xs font-bold uppercase tracking-widest text-zinc-600 dark:text-zinc-400 sm:mt-4 sm:max-w-none sm:text-sm"
             >
               {viewMode === "login" && subtituloBoasVindas(config.storeName)}
-              {viewMode === "signup" &&
-                "Inicie sua jornada no marketplace premium."}
+              {viewMode === "signup" && "Crie sua conta e comece a comprar."}
               {viewMode === "forgot" &&
                 "Insira seu e-mail para receber o link de recuperação."}
               {viewMode === "new-password" &&
@@ -843,6 +849,30 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                       )}
                     </button>
                   </div>
+                  {viewMode === "new-password" && (
+                    <div className="space-y-2 pt-2">
+                      <label
+                        htmlFor="password-confirmacao"
+                        className="ml-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600"
+                      >
+                        Confirmar senha
+                      </label>
+                      <div className="group/field relative">
+                        <Lock className="absolute left-5 top-1/2 size-4 -translate-y-1/2 text-zinc-300 transition-colors group-focus-within/field:text-zinc-900" />
+                        <Input
+                          id="password-confirmacao"
+                          name="password-confirmacao"
+                          type={showPassword ? "text" : "password"}
+                          autoComplete="new-password"
+                          placeholder="Repita a nova senha"
+                          value={confirmaSenha}
+                          onChange={(e) => setConfirmaSenha(e.target.value)}
+                          className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 px-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-300 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
+                          required
+                        />
+                      </div>
+                    </div>
+                  )}
                   {viewMode === "signup" && (
                     <p
                       id="password-dica"
@@ -965,11 +995,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               }}
               className="relative border-b-2 border-zinc-900/10 text-[11px] font-black uppercase tracking-widest text-zinc-900 transition-colors after:absolute after:-inset-x-2 after:-inset-y-3.5 after:content-[''] hover:border-zinc-900 sm:text-sm"
             >
-              {viewMode === "login"
-                ? "CADASTRO"
-                : viewMode === "signup"
-                  ? "IDENTIFICAR-SE"
-                  : "LOGAR AGORA"}
+              {viewMode === "login" ? "CADASTRO" : "Entrar"}
             </button>
           </motion.div>
         </div>

@@ -109,7 +109,7 @@ describe("AuthView — resposta atrasada respeita o fluxo e o e-mail enviado", (
     const envio = pendente<boolean>();
     signUp.mockReturnValue(envio.promessa);
     await enviarCadastro();
-    await act(async () => botao("IDENTIFICAR-SE").click());
+    await act(async () => botao("Entrar").click());
     await act(async () => digitar("email", "b@example.com"));
     await act(async () => envio.resolver(true));
 
@@ -144,7 +144,7 @@ describe("AuthView — resposta atrasada respeita o fluxo e o e-mail enviado", (
     const envio = pendente<boolean>();
     signUp.mockReturnValue(envio.promessa);
     await enviarCadastro();
-    await act(async () => botao("IDENTIFICAR-SE").click());
+    await act(async () => botao("Entrar").click());
     await act(async () => botao("CADASTRO").click());
     await act(async () => envio.resolver(true));
 
@@ -157,7 +157,7 @@ describe("AuthView — resposta atrasada respeita o fluxo e o e-mail enviado", (
     const envio = pendente<{ success: boolean; message: string }>();
     resetPassword.mockReturnValue(envio.promessa);
     await enviarRecuperacao();
-    await act(async () => botao("LOGAR AGORA").click());
+    await act(async () => botao("Entrar").click());
     await act(async () => digitar("email", "b@example.com"));
     await act(async () =>
       envio.resolver({

@@ -1081,7 +1081,7 @@ export function AccountSettingsView() {
 
                   <div className="space-y-1.5">
                     <label htmlFor="new_password" className={ROTULO_CAMPO}>
-                      Nova chave de acesso
+                      Nova senha
                     </label>
                     <Input
                       id="new_password"
@@ -1103,7 +1103,7 @@ export function AccountSettingsView() {
 
                   <div className="space-y-1.5">
                     <label htmlFor="confirm_password" className={ROTULO_CAMPO}>
-                      Confirmar nova chave
+                      Confirmar nova senha
                     </label>
                     <Input
                       id="confirm_password"
@@ -1139,7 +1139,7 @@ export function AccountSettingsView() {
                   aria-hidden="true"
                 />
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Proteção Supabase Auth Ativa
+                  Sua conta está protegida
                 </span>
               </div>
             </motion.div>

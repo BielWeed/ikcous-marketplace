@@ -203,8 +203,10 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
                 />
                 <button
                   type="button"
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                  aria-pressed={showPassword}
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                  className="absolute right-1.5 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center text-zinc-500 hover:text-zinc-300"
                 >
                   {showPassword ? (
                     <EyeOff className="size-4" />
@@ -216,7 +218,10 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
             </div>
 
             {error && (
-              <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
+              <div
+                role="alert"
+                className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400"
+              >
                 {error}
               </div>
             )}
