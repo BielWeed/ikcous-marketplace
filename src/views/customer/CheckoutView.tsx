@@ -153,6 +153,7 @@ import type {
   View,
 } from "@/types";
 import { haptic } from "@/utils/haptic";
+import { useToastDoHeader } from "@/utils/headerToast";
 import { zodResolver } from "@hookform/resolvers/zod";
 import confetti from "canvas-confetti";
 import { AnimatePresence, motion, usePresence } from "framer-motion";
@@ -2664,33 +2665,11 @@ export function CheckoutViewDaConta({
   // recolhido. O Header não expõe esse estado por prop (o comentário de
   // `HEADER_CENTER_SLOT_ID` promete "sem o Header saber nada de carrinho,
   // frete ou total", e o inverso também vale: o CheckoutView não deveria
-  // precisar de uma prop nova do Header só para isto). O mesmo evento
-  // global que o Header já escuta (`header-toast-event`,
-  // src/utils/headerToast.ts) resolve sem inventar acoplamento novo —
-  // mesma duração, mesmo padrão de limpar o timer anterior.
-  const [avisoDoHeaderAtivo, setAvisoDoHeaderAtivo] = useState(false);
-  const avisoDoHeaderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  useEffect(() => {
-    const handleToastEvent = (event: Event) => {
-      const detail = (event as CustomEvent<{ duration?: number }>).detail;
-      setAvisoDoHeaderAtivo(true);
-      if (avisoDoHeaderTimerRef.current) {
-        clearTimeout(avisoDoHeaderTimerRef.current);
-      }
-      avisoDoHeaderTimerRef.current = setTimeout(() => {
-        setAvisoDoHeaderAtivo(false);
-      }, detail?.duration || 2600);
-    };
-    globalThis.addEventListener("header-toast-event", handleToastEvent);
-    return () => {
-      globalThis.removeEventListener("header-toast-event", handleToastEvent);
-      if (avisoDoHeaderTimerRef.current) {
-        clearTimeout(avisoDoHeaderTimerRef.current);
-      }
-    };
-  }, []);
+  // precisar de uma prop nova do Header só para isto).
+  // Lê o MESMO estado do Header (canal único em headerToast.ts): recolhe
+  // enquanto a cápsula está de pé e solta quando ela some — por tempo, por
+  // toque ou por `toast.dismiss` — mesmo nos avisos longos do celular.
+  const { ativo: avisoDoHeaderAtivo } = useToastDoHeader();
 
   // Solo-ninja: Reset scroll when internal views change (address form or success)
   useEffect(() => {
