@@ -2,6 +2,7 @@ import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { buildIdentity } from "@/config/buildIdentity";
 import { useStore } from "@/contexts/StoreContext";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
@@ -102,6 +103,9 @@ function PinDoMapa({ nome, inicial }: { nome: string; inicial: string }) {
 // banco, o campo nunca chega e o bloco fica oculto — nunca inventado aqui.
 export function AboutStoreView() {
   const { config } = useStore();
+  // Sem rede o mapa e o link do Google levam a uma página de erro: o endereço
+  // em texto e o aviso "Sem internet" tomam o lugar.
+  const semInternet = useOnlineStatus();
 
   const storeName = nomeDaLoja(config);
   const horario = config.businessHours?.trim() || "";
@@ -231,7 +235,21 @@ export function AboutStoreView() {
 
         {/* Mapa. Ordem do dono (14/09): o mapa mora na área da marca. Clicar
             em QUALQUER ponto abre o Google Maps — sem botão separado. */}
-        {queryMaps && (
+        {queryMaps && semInternet && (
+          <div className="space-y-1 rounded-[18px] border border-border p-4">
+            <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+              Sem internet
+            </p>
+            <p className="flex items-start gap-2 break-words text-base text-foreground">
+              <MapPin
+                aria-hidden="true"
+                className="mt-1 size-4 shrink-0 text-muted-foreground"
+              />
+              <span className="min-w-0 break-words">{onde}</span>
+            </p>
+          </div>
+        )}
+        {queryMaps && !semInternet && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}

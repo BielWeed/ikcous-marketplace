@@ -118,6 +118,16 @@ describe("ProfileView — Encerrar sessão mostra que está saindo", () => {
     });
   };
 
+  // Lote 221: "Encerrar sessão" agora pergunta antes; a saída roda no "Sim, sair".
+  const confirmarSaida = async () => {
+    await tocar(botaoDeSair());
+    await tocar(
+      [...document.body.querySelectorAll("button")].find((b) =>
+        b.textContent?.includes("Sim, sair"),
+      ) as HTMLElement | undefined,
+    );
+  };
+
   it("antes de tocar: botão normal, habilitado, 'Encerrar sessão'", async () => {
     await renderizar();
     const sair = botaoDeSair();
@@ -128,7 +138,7 @@ describe("ProfileView — Encerrar sessão mostra que está saindo", () => {
 
   it("com a saída pendente: mostra 'Saindo…' e o botão fica desligado", async () => {
     await renderizar();
-    await tocar(botaoDeSair());
+    await confirmarSaida();
 
     expect(logout).toHaveBeenCalledTimes(1);
     const sair = botaoDeSair();
@@ -139,7 +149,7 @@ describe("ProfileView — Encerrar sessão mostra que está saindo", () => {
 
   it("segundo toque durante a saída NÃO chama a saída outra vez", async () => {
     await renderizar();
-    await tocar(botaoDeSair());
+    await confirmarSaida();
     await tocar(botaoDeSair());
     await tocar(botaoDeSair());
 
@@ -148,7 +158,7 @@ describe("ProfileView — Encerrar sessão mostra que está saindo", () => {
 
   it("limite: se a saída termina e a tela continua montada, o botão volta ao normal", async () => {
     await renderizar();
-    await tocar(botaoDeSair());
+    await confirmarSaida();
     expect(botaoDeSair()?.disabled).toBe(true);
 
     await act(async () => {
@@ -166,14 +176,14 @@ describe("ProfileView — Encerrar sessão mostra que está saindo", () => {
     logout.mockImplementation(() => new Promise<void>(() => {}));
     await renderizar();
 
-    await tocar(botaoDeSair());
+    await confirmarSaida();
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
     });
     expect(botaoDeSair()?.disabled).toBe(false);
 
-    await tocar(botaoDeSair());
+    await confirmarSaida();
     expect(logout).toHaveBeenCalledTimes(2);
   });
 });

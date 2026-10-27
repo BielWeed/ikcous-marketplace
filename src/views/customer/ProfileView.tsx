@@ -1,3 +1,13 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { AddressList } from "@/components/ui/custom/AddressList";
 import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
@@ -14,6 +24,7 @@ import {
 import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrders } from "@/hooks/useOrders";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import type { View } from "@/types";
 import {
   PREDEFINED_AVATARS,
@@ -170,6 +181,8 @@ export function ProfileView({
       setSaindo(false);
     }
   };
+  // "Encerrar sessão" só pede a confirmação; quem encerra é o "Sim, sair".
+  const [confirmandoSaida, setConfirmandoSaida] = useState(false);
   const { config } = useStore();
   const [isOrdersExpanded, setIsOrdersExpanded] = useState(false);
   const [isAddressesExpanded, setIsAddressesExpanded] = useState(false);
@@ -183,6 +196,12 @@ export function ProfileView({
   const [coverModalTab, setCoverModalTab] = useState<"presets" | "upload">(
     "presets",
   );
+
+  // O Voltar do celular fecha só a janela aberta (foto, capa ou a pergunta de
+  // sair) e a tela de Perfil fica: cada uma ganha a sua entrada de histórico.
+  useVoltarFechaAFolha(isAvatarModalOpen, () => setIsAvatarModalOpen(false));
+  useVoltarFechaAFolha(isCoverModalOpen, () => setIsCoverModalOpen(false));
+  useVoltarFechaAFolha(confirmandoSaida, () => setConfirmandoSaida(false));
 
   const defaultCover = useMemo(
     () => getPredefinedCoverSvg("#FF512F", "#DD2476", "waves"),
@@ -494,20 +513,13 @@ export function ProfileView({
         {/* Cabeçalho: avatar sobreposto à capa, nome e e-mail legíveis */}
         <motion.div variants={itemVariants} className="relative z-10 -mt-11">
           <div className="flex items-end gap-4">
-            <div
-              role="button"
-              tabIndex={0}
+            <button
+              type="button"
               aria-label="Trocar foto de perfil"
               onClick={openAvatarModal}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  openAvatarModal();
-                }
-              }}
-              className="relative size-[88px] shrink-0 cursor-pointer rounded-[28px] focus:outline-none focus:ring-2 focus:ring-ring"
+              className="relative block size-[88px] shrink-0 cursor-pointer rounded-[28px] focus:outline-none focus:ring-2 focus:ring-ring"
             >
-              <div className="flex size-full items-center justify-center overflow-hidden rounded-[28px] border-4 border-solid border-background bg-muted">
+              <span className="flex size-full items-center justify-center overflow-hidden rounded-[28px] border-4 border-solid border-background bg-muted">
                 {profile?.avatar_url ? (
                   <img
                     src={profile.avatar_url}
@@ -523,11 +535,11 @@ export function ProfileView({
                   </span>
                 )}
                 {isUpdatingAvatar && (
-                  <div className="absolute inset-0 flex items-center justify-center rounded-[28px] bg-background/80">
+                  <span className="absolute inset-0 flex items-center justify-center rounded-[28px] bg-background/80">
                     <Loader2 className="size-6 animate-spin text-muted-foreground" />
-                  </div>
+                  </span>
                 )}
-              </div>
+              </span>
               {/* Emblema sempre visível (no celular não existe hover) */}
               <span
                 aria-hidden="true"
@@ -535,7 +547,7 @@ export function ProfileView({
               >
                 <Camera className="size-4" />
               </span>
-            </div>
+            </button>
             {clienteDesde && (
               <span className={`${ROTULO} mb-2 min-w-0 break-words`}>
                 Cliente desde {clienteDesde}
@@ -888,7 +900,7 @@ export function ProfileView({
         <motion.div variants={itemVariants}>
           <button
             type="button"
-            onClick={encerrarSessao}
+            onClick={() => setConfirmandoSaida(true)}
             disabled={saindo}
             className="flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl border border-solid border-red-300 bg-background text-base font-semibold text-red-600 transition-colors hover:bg-muted disabled:opacity-60 dark:text-red-400"
           >
@@ -898,6 +910,31 @@ export function ProfileView({
           </button>
         </motion.div>
       </motion.div>
+
+      <AlertDialog open={confirmandoSaida} onOpenChange={setConfirmandoSaida}>
+        <AlertDialogContent
+          overlayClassName="z-[130]"
+          className="z-[130] sm:max-w-sm"
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sair da sua conta?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Para ver seus pedidos de novo, você vai precisar entrar outra vez.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-11">
+              Continuar na conta
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="min-h-11"
+              onClick={() => void encerrarSessao()}
+            >
+              Sim, sair
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Custom Avatar Sheet/Dialog Modal */}
       <Dialog open={isAvatarModalOpen} onOpenChange={setIsAvatarModalOpen}>

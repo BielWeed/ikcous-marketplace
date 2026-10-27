@@ -178,7 +178,11 @@ describe.each(["perfil", "ajustes"])("foto do cliente em %s", (tela) => {
       );
     });
     await act(async () => {
-      (host.querySelector('[role="button"]') as HTMLElement).click();
+      (
+        host.querySelector(
+          '[role="button"], button[aria-label="Trocar foto de perfil"]',
+        ) as HTMLElement
+      ).click();
     });
   });
   afterEach(() => {
