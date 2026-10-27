@@ -621,6 +621,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "101b-antes-a-lista-de-clientes-nao-repete-ninguem-base-vigente",
   "102a-conferir-a-busca-do-crm-acha-o-numero-com-mais-55-aplicado",
   "102b-antes-a-busca-do-crm-acha-o-numero-com-mais-55-base-vigente",
+  "103a-conferir-o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-aplicado",
+  "103b-antes-o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

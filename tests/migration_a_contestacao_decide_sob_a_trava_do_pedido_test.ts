@@ -333,6 +333,9 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     // diferentes, controle com o corpo anterior) e a busca do CRM acha o numero com o +55 (bordas do DDD 55, mutantes); rollback e consultas 101/102.
     "tests/banco/a-lista-de-clientes-nao-repete-ninguem-viva.cjs",
     "tests/banco/a-busca-do-crm-acha-o-numero-com-mais-55-viva.cjs",
+    // 20261393000000: o PIX pago no ultimo minuto nao perde o pedido (folga de 10 min do PIX com cobranca na vaga, controle com o corpo anterior,
+    // aviso tardio vira pago, SKIP LOCKED, rollback, pre-voo e consultas 103).
+    "tests/banco/o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -627,6 +630,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // Lote 204: a lista de clientes nao repete ninguem entre as paginas e a busca do CRM acha o numero com o +55.
     "tests/banco/a-lista-de-clientes-nao-repete-ninguem-viva.cjs",
     "tests/banco/a-busca-do-crm-acha-o-numero-com-mais-55-viva.cjs",
+    "tests/banco/o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",

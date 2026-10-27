@@ -640,6 +640,20 @@ const CAMINHO_MIGRATION_86 = path.join(
   "migrations",
   "20261186000000_cartao_em_analise_segura_a_expiracao.sql",
 );
+// A sucessora (20261393000000, folga de 10 min do PIX com cobrança na vaga): o texto do rollback dela, para a prova (xp) desfazê-la
+// antes de reaplicar a 186. A prova própria dela é tests/banco/o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-viva.cjs.
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho constante do proprio repositorio (path.join de literais).
+const CAMINHO_ROLLBACK_393_SQL = fs.readFileSync(
+  path.join(
+    __dirname,
+    "..",
+    "..",
+    "supabase",
+    "migrations",
+    "rollback-manual-20261393000000_o_pix_pago_no_ultimo_minuto_nao_perde_o_pedido.sql",
+  ),
+  "utf8",
+);
 
 const IDS_X = {
   pix: [
@@ -868,7 +882,11 @@ PROVAS.push({
 
     await cliente.query("BEGIN");
     try {
-      // 1. A cadeia do zero deixou o corpo desta migration: reaplicar o ARQUIVO
+      // 0. A 20261393000000 (a folga de 10 min do PIX com cobrança na vaga) sucede
+      // esta migration: o preflight da 186 só aceita o corpo da 901 ou o dela. A
+      // sucessora sai antes, DENTRO desta transação (desfeita no fim).
+      await cliente.query(CAMINHO_ROLLBACK_393_SQL);
+      // 1. Sem a sucessora, o corpo vivo é o desta migration: reaplicar o ARQUIVO
       // inteiro passa pelo preflight (o hash embutido é o md5 real do prosrc).
       const antes = await prosrc();
       await cliente.query(sql86);
