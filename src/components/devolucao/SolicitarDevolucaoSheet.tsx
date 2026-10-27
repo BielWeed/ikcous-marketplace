@@ -28,6 +28,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import type { DadosDaSolicitacao, Desfecho } from "@/hooks/useDevolucaoCliente";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import {
@@ -152,6 +153,19 @@ export function SolicitarDevolucaoSheet(props: SolicitarDevolucaoSheetProps) {
   const continuarNaFolha = () => {
     setPergunta("nenhum");
   };
+  // O Voltar do aparelho faz o MESMO que o botão de fechar: sem rascunho fecha
+  // a folha; com rascunho faz a pergunta e a folha continua aberta (`false`
+  // devolve a entrada que o Voltar consumiu). Com a pergunta na tela, Voltar é
+  // "Continuar preenchendo".
+  useVoltarFechaAFolha(aberto, () => {
+    if (pergunta !== "nenhum") {
+      continuarNaFolha();
+      return false;
+    }
+    const vaiPerguntar = rascunhoRef.current !== "nenhum";
+    pedirParaMudar(false);
+    return !vaiPerguntar;
+  });
   // A pergunta aparece DENTRO da folha (não em portal): o AlertDialog fica em
   // z-50 e a folha em z-[130], e o guardião do clique pós-fecho do sheet.tsx
   // engole o clique de quem está fora do conteúdo — lá a tela travava.
