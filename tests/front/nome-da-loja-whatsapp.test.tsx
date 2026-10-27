@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mockConfig = {
   whatsappNumber: "",
   businessHours: "",
-  shareText: "[link] [link_produto]",
+  shareText: "[link] [link]",
 };
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
@@ -31,7 +31,7 @@ describe("critério 5 — prévia do WhatsApp usa o endereço da loja", () => {
 
   beforeEach(() => {
     vi.stubGlobal("scrollTo", vi.fn());
-    mockConfig.shareText = "[link] [link_produto]";
+    mockConfig.shareText = "[link] [link]";
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
