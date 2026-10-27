@@ -702,7 +702,7 @@ export function useDevolucaoAdmin(
         await carregar();
       } else if (r.reembolso_manual) {
         toast.warning(
-          `Devolução concluída. O Mercado Pago não devolve este valor (pedido pago fora do app, ou pagamento com mais de 180 dias): devolva ${valor} ao cliente em mãos ou por PIX.${estoque}`,
+          `Devolução concluída. O reembolso não saiu pelo Mercado Pago: combine com o cliente a devolução de ${valor}, em mãos ou por PIX.${estoque}`,
           { duration: 12_000 },
         );
       } else {

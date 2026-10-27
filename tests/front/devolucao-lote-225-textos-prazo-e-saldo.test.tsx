@@ -348,11 +348,11 @@ describe("item 2 — pagamento com mais de 180 dias não volta pelo Mercado Pago
 
     const [mensagem] = toast.warning.mock.calls[0] as [string];
     expect(mensagem).toContain("em mãos ou por PIX");
-    expect(mensagem).toContain("180 dias");
+    expect(mensagem).not.toContain("180 dias");
     expect(mensagem).not.toContain("este pedido não foi pago pelo app");
   });
 
-  it("ficha concluída como manual de pedido pago pelo app: motivo certo (180 dias), nunca 'não foi pago pelo app'", async () => {
+  it("ficha concluída como manual de pedido pago pelo app e recente: não afirma motivo (nem 180 dias, nem 'não foi pago pelo app')", async () => {
     respostas.set("devolucao_detalhe", {
       ...DETALHE,
       status: "concluida",
@@ -363,7 +363,11 @@ describe("item 2 — pagamento com mais de 180 dias não volta pelo Mercado Pago
     await abrirFicha();
     const ficha = hospedeiro.querySelector('[data-testid="detalhe-devolucao"]');
     expect(ficha?.textContent).toContain("Reembolso manual de");
-    expect(ficha?.textContent).toContain("180 dias");
+    expect(ficha?.textContent).toContain(
+      "O reembolso não saiu pelo Mercado Pago",
+    );
+    expect(ficha?.textContent).not.toContain("180 dias");
+    expect(ficha?.textContent).not.toContain("não está registrada no app");
     expect(ficha?.textContent).not.toContain("não foi pago pelo app");
   });
 
@@ -382,7 +386,7 @@ describe("item 2 — pagamento com mais de 180 dias não volta pelo Mercado Pago
     });
     await abrirFicha();
     const ficha = hospedeiro.querySelector('[data-testid="detalhe-devolucao"]');
-    expect(ficha?.textContent).toContain("não foi pago pelo app");
+    expect(ficha?.textContent).toContain("Este pedido não foi pago pelo app");
   });
 });
 

@@ -170,11 +170,10 @@ export function DetalheDaDevolucao({
             {detalhe.status === "concluida" && detalhe.reembolso_manual && (
               <p className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs font-bold leading-relaxed text-amber-200">
                 Reembolso manual de{" "}
-                {formatarReais(detalhe.valor_reembolso ?? 0)}:{" "}
+                {formatarReais(detalhe.valor_reembolso ?? 0)}.{" "}
                 {pagoPeloApp(detalhe)
-                  ? "o Mercado Pago não devolve este pagamento (passou de 180 dias ou a cobrança não está registrada no app)"
-                  : "este pedido não foi pago pelo app"}{" "}
-                — devolva ao cliente em mãos ou por PIX.
+                  ? "O reembolso não saiu pelo Mercado Pago — combine a devolução com o cliente, em mãos ou por PIX."
+                  : "Este pedido não foi pago pelo app — devolva ao cliente em mãos ou por PIX."}
               </p>
             )}
 
