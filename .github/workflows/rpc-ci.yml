@@ -455,7 +455,9 @@ jobs:
     name: Invariantes de dinheiro (Postgres efêmero) — bloqueante
     runs-on: ubuntu-latest
     # BLOQUEANTE (sem continue-on-error): prova de dinheiro vermelha barra o PR.
-    timeout-minutes: 15
+    # 30 min: com as provas dos lotes 229b/231/233/234 o job passou a gastar ~15 min e o teto antigo (15) cancelava
+    # a rodada no meio (27/10/2026, PR 1186: "cancelled" aos 15m0s, sem nenhuma prova vermelha). Teto de pior caso, nao meta.
+    timeout-minutes: 30
 
     services:
       postgres:
