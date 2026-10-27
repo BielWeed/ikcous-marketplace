@@ -647,6 +647,11 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261394100000: a lista de recomendacoes do produto tem teto (get_product_recommendations limita p_limit a 50 e trata NULL como 4; ate o teto a lista
     // e' a de sempre; mutantes, rollback, pre/pos-voo e consultas 107a/107b e a 9a).
     "tests/banco/a-lista-de-recomendacoes-do-produto-tem-teto-viva.cjs",
+    // Lote 231 (20261395000000, 20261395100000, 20261395200000): a busca de devolucao acha o numero do pedido; a grade antiga nao ressuscita variacao
+    // excluida; a conclusao da devolucao tranca o estoque na mesma ordem da compra (cada uma com mutantes, rollback, pre/pos-voo e as consultas 108 a 110).
+    "tests/banco/a-busca-de-devolucao-acha-o-numero-do-pedido-viva.cjs",
+    "tests/banco/a-grade-antiga-nao-ressuscita-variacao-excluida-viva.cjs",
+    "tests/banco/a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",
