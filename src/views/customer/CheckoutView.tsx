@@ -92,6 +92,7 @@ import {
   ehRetiradaNaLoja,
   finalizarBloqueadoPorFrete,
   formaDePagamentoDesligadaNaLoja,
+  modoDaEntregaNaCidade,
   pagamentoIncompativelComFrete,
   primeiraFormaDePagamentoDisponivel,
   retiradaLivreParaQualquerCep,
@@ -3514,6 +3515,13 @@ export function CheckoutViewDaConta({
     // Só vale com a retirada MARCADA: sem ela (ou com a "Entrega Local" velha
     // de um app/cache antigo, ou uma transportadora) a regra segue inteira.
     !retiradaLivreParaQualquerCep(config, selectedShippingOption?.id);
+
+  // Loja que só entrega na região dela (mesmo sinal da recusa `fora_da_area`
+  // da edge: cobertura local com entrega própria ligada): criar conta não muda
+  // nada, a calculadora já diz o motivo — a oferta de conta seria enganosa.
+  const lojaSoEntregaNaRegiao =
+    config.shippingCoverage === "local" &&
+    modoDaEntregaNaCidade(config) !== "so_retiro";
 
   // TETO DE UNIDADES DO VISITANTE (caça 11-A #2, migration 20261394000000): sem
   // conta o pedido aceita até 10 unidades SOMADAS (o banco soma as linhas), e o
@@ -7280,7 +7288,7 @@ export function CheckoutViewDaConta({
                         voltar para finalizar
                       </p>
                     )}
-                    {convidadoForaDaCidade && (
+                    {convidadoForaDaCidade && !lojaSoEntregaNaRegiao && (
                       // Motivo visível da regra do convidado (decisão do
                       // Gabriel, 30/08/2026): entrega para fora da cidade é
                       // só com conta — sem cadastro não há como acompanhar
