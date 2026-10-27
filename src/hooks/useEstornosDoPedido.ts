@@ -69,6 +69,9 @@ interface EstornosDoPedido {
   pago: number;
   /** = `valor_estornado` do servidor. */
   devolvido: number;
+  /** = `manual` do servidor: devolvido por FORA do Mercado Pago (reembolso
+   * manual, saída dos 7 dias). `devolvido` NÃO o inclui. */
+  manual: number;
   /** = `em_voo` do servidor (linhas `solicitado`/`em_processamento`). */
   emCurso: number;
   /** = `em_duvida` do servidor: parou e PODE ter saído — o saldo prende. */
@@ -357,6 +360,7 @@ export function useEstornosDoPedido(
     linhas,
     pago: saldo?.total ?? 0,
     devolvido: saldo?.valor_estornado ?? 0,
+    manual: saldo?.manual ?? 0,
     emCurso: saldo?.em_voo ?? 0,
     emDuvida: saldo?.em_duvida ?? 0,
     disponivel: saldo?.disponivel ?? 0,

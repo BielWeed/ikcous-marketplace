@@ -339,6 +339,21 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
     expect(atual().disponivel).toBe(0);
   });
 
+  it("L232: o dinheiro devolvido por fora (`manual` do servidor) chega ao cartão; sem ele o valor é 0", async () => {
+    RESPOSTA_SALDO = {
+      data: { ...SALDO_PADRAO, valor_estornado: 40, manual: 30 },
+      error: null,
+    };
+    const comManual = await montarSonda("pedido-manual");
+    expect((comManual.atual() as unknown as { manual: number }).manual).toBe(
+      30,
+    );
+
+    RESPOSTA_SALDO = { data: SALDO_PADRAO, error: null };
+    const semManual = await montarSonda("pedido-sem-manual");
+    expect((semManual.atual() as unknown as { manual: number }).manual).toBe(0);
+  });
+
   it("R1: o veredito (pode_ter_saido, por_fora_liberado_em, por_fora_apos_espera_liberado) chega em cada linha", async () => {
     RESPOSTA_LINHAS = {
       data: [

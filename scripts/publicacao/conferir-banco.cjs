@@ -2757,7 +2757,132 @@ const ROL_DA_104 = [
   "buscar_por_codigo_barras: assinatura e atributos conhecidos (plpgsql, SECURITY DEFINER, STABLE, search_path=pg_catalog, pg_temp, uma so)",
   "buscar_por_codigo_barras: EXECUTE so authenticated e service_role (sem PUBLIC nem anon)",
 ];
+// Lote 106 (20261394000000, o pedido de visitante na entrega tem freio: create_marketplace_order_v23 e v24 ganham o teto de 10
+// unidades, o teto de 10 pedidos pendentes de visitante por loja e a recusa do p_address_id sem sessao). A 106a e a 106b tem o
+// mesmo rol; a 106a espera os corpos da 20261394000000 e a 106b os da 20261350000000 (v23) e 20261384000000 (v24).
+const ROL_DA_106 = [
+  "controle: funcoes de public visiveis a este papel",
+  "create_marketplace_order_v23: corpo exato (md5)",
+  "create_marketplace_order_v23: o corpo traz o freio do visitante (uma vez)",
+  "create_marketplace_order_v23: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)",
+  "create_marketplace_order_v23: EXECUTE para anon, authenticated e service_role, sem PUBLIC",
+  "create_marketplace_order_v24: corpo exato (md5)",
+  "create_marketplace_order_v24: o corpo traz o freio do visitante (uma vez)",
+  "create_marketplace_order_v24: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)",
+  "create_marketplace_order_v24: EXECUTE para anon, authenticated e service_role, sem PUBLIC",
+];
+// Lote 107 (20261394100000, a lista de recomendacoes do produto tem teto: get_product_recommendations limita p_limit a 50 e trata NULL
+// como o padrao 4). A 107a e a 107b tem o mesmo rol; a 107a espera o corpo da 20261394100000 e a 107b o da 20261160000000.
+const ROL_DA_107 = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_product_recommendations: corpo exato (md5)",
+  "get_product_recommendations: o corpo traz o teto do limite (uma vez)",
+  "get_product_recommendations: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, SETOF produtos; anon, authenticated e service_role, sem PUBLIC)",
+];
+// Lote 108 (20261395000000, a busca de devolucao acha o numero do pedido). A 108a e a 108b tem o mesmo rol; a 108a espera o corpo da 20261395000000 e a 108b o vigente de antes.
+const ROL_DA_108 = [
+  "controle: funcoes de public visiveis a este papel",
+  "admin_devolucoes_listar: corpo exato (md5)",
+  "admin_devolucoes_listar: o corpo traz a busca pelo numero do pedido (uma vez)",
+  "admin_devolucoes_listar: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, STABLE, retorno jsonb; authenticated e service_role, sem anon e sem PUBLIC)",
+];
+// Lote 109 (20261395100000, a grade antiga nao ressuscita variacao excluida). A 109a e a 109b tem o mesmo rol; a 109a espera o corpo da 20261395100000 e a 109b o vigente de antes.
+const ROL_DA_109 = [
+  "controle: funcoes de public visiveis a este papel",
+  "salvar_produto_com_grade: corpo exato (md5)",
+  "salvar_produto_com_grade: o corpo traz a recusa de ressuscitar variacao (uma vez)",
+  "salvar_produto_com_grade: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno jsonb; authenticated e service_role, sem anon e sem PUBLIC)",
+];
+// Lote 110 (20261395200000, a conclusao da devolucao tranca na mesma ordem da compra). A 110a e a 110b tem o mesmo rol; a 110a espera o corpo da 20261395200000 e a 110b o vigente de antes.
+const ROL_DA_110 = [
+  "controle: funcoes de public visiveis a este papel",
+  "admin_devolucao_concluir: corpo exato (md5)",
+  "admin_devolucao_concluir: o corpo traz a ordem global das travas (uma vez)",
+  "admin_devolucao_concluir: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno jsonb; authenticated e service_role, sem anon e sem PUBLIC)",
+];
+// Lote 111 (20261394200000, a v23 recusa o pagamento pelo app: create_marketplace_order_v23 ganha o trecho 0-ter). A 111a e a 111b tem o mesmo rol de 5 linhas;
+// a 111a espera o corpo da 20261394200000 e a 111b o vigente de antes (o da 20261394000000). A ultima linha e' INFORMATIVA (a contagem de pedidos pelo app presos;
+// esperado = vivo, nunca reprova).
+const ROL_DA_111 = [
+  "controle: funcoes de public visiveis a este papel",
+  "create_marketplace_order_v23: corpo exato (md5)",
+  "create_marketplace_order_v23: o corpo traz a recusa do pagamento pelo app (uma vez)",
+  "create_marketplace_order_v23: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid; anon, authenticated e service_role, sem PUBLIC)",
+  "informativo: pedidos pelo app presos (online, pending, sem payment_status)",
+];
+// Lote 112 (20261396000000, cada conta tem no maximo 10 aparelhos com aviso ligado: funcao push_inscricoes_limite_por_conta e gatilho
+// tr_push_inscricoes_limite_por_conta em push_subscriptions, objetos NOVOS). A 112a prova o estado novo; a 112b a ausencia dos dois e
+// o que o gatilho precisa (colunas, RLS e rls_admin_atual). Nenhuma das duas le inscricao.
+const ROL_DA_112A = [
+  "controle: funcoes de public visiveis a este papel",
+  "push_inscricoes_limite_por_conta: corpo exato (md5)",
+  "push_inscricoes_limite_por_conta: uma so, atributos conhecidos (SECURITY DEFINER, plpgsql, VOLATILE, retorno trigger, search_path=public) e fechada a PUBLIC, anon, authenticated e service_role",
+  "push_subscriptions: gatilho tr_push_inscricoes_limite_por_conta BEFORE INSERT por linha, ligado, sem WHEN, chamando a funcao",
+];
+const ROL_DA_112B = [
+  "controle: catalogo publico visivel",
+  "push_inscricoes_limite_por_conta e tr_push_inscricoes_limite_por_conta: ainda NAO existem",
+  "push_subscriptions: endpoint text e user_id uuid existem e a tabela tem RLS ligada",
+  "rls_admin_atual() existe, devolve boolean e e a porta do administrador de agora (a excecao do gatilho depende dela)",
+];
+// Lote 113 (20261396100000, a pergunta do produto nasce com a data de agora: funcao pergunta_nasce_com_a_data_de_agora e gatilho
+// tr_pergunta_nasce_com_a_data_de_agora em questions, objetos NOVOS). A 113a prova o estado novo; a 113b a ausencia dos dois e o que o
+// gatilho precisa (a coluna, a RLS e rls_admin_atual). Nenhuma das duas le pergunta.
+const ROL_DA_113A = [
+  "controle: funcoes de public visiveis a este papel",
+  "pergunta_nasce_com_a_data_de_agora: corpo exato (md5)",
+  "pergunta_nasce_com_a_data_de_agora: uma so, atributos conhecidos (SECURITY DEFINER, plpgsql, VOLATILE, retorno trigger, search_path=public) e fechada a PUBLIC, anon, authenticated e service_role",
+  "questions: gatilho tr_pergunta_nasce_com_a_data_de_agora BEFORE INSERT por linha, ligado, sem WHEN, chamando a funcao",
+];
+const ROL_DA_113B = [
+  "controle: catalogo publico visivel",
+  "pergunta_nasce_com_a_data_de_agora e tr_pergunta_nasce_com_a_data_de_agora: ainda NAO existem",
+  "questions: created_at timestamptz existe e a tabela tem RLS ligada",
+  "rls_admin_atual() existe, devolve boolean e e a porta do administrador de agora (a excecao do gatilho depende dela)",
+];
+// Lote 114 (20261396200000, o texto da avaliacao tem teto no banco: CHECK reviews_comment_ate_1000_caracteres em reviews, objeto NOVO). A 114a
+// prova a restricao (NOT VALID ou ja validada) e que nao ha outro CHECK concorrente sobre a coluna; a 114b a ausencia dela. Nenhuma das duas le avaliacao.
+const ROL_DA_114A = [
+  "controle: catalogo publico visivel",
+  "reviews: CHECK reviews_comment_ate_1000_caracteres (char_length(comment) <= 1000) existe",
+  "reviews: so existe UM CHECK sobre a coluna comment (nenhum outro teto concorrente)",
+];
+const ROL_DA_114B = [
+  "controle: catalogo publico visivel",
+  "reviews: comment e text e o CHECK reviews_comment_ate_1000_caracteres ainda NAO existe",
+  "reviews: nenhum outro CHECK limita a coluna comment hoje (o teto da tela, 1000, ainda nao esta no banco)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "114a-conferir-o-texto-da-avaliacao-tem-teto-no-banco-aplicado": ROL_DA_114A,
+  "114b-antes-o-texto-da-avaliacao-tem-teto-no-banco-ausente": ROL_DA_114B,
+  "113a-conferir-a-pergunta-nasce-com-a-data-de-agora-aplicado": ROL_DA_113A,
+  "113b-antes-a-pergunta-nasce-com-a-data-de-agora-ausente": ROL_DA_113B,
+  "112a-conferir-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-aplicado":
+    ROL_DA_112A,
+  "112b-antes-cada-conta-tem-no-maximo-10-aparelhos-com-aviso-ausente":
+    ROL_DA_112B,
+  "111a-conferir-a-v23-recusa-o-pagamento-pelo-app-aplicado": ROL_DA_111,
+  "111b-antes-a-v23-recusa-o-pagamento-pelo-app-base-vigente": ROL_DA_111,
+  "110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado":
+    ROL_DA_110,
+  "110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente":
+    ROL_DA_110,
+  "109a-conferir-a-grade-antiga-nao-ressuscita-variacao-excluida-aplicado":
+    ROL_DA_109,
+  "109b-antes-a-grade-antiga-nao-ressuscita-variacao-excluida-base-vigente":
+    ROL_DA_109,
+  "108a-conferir-a-busca-de-devolucao-acha-o-numero-do-pedido-aplicado":
+    ROL_DA_108,
+  "108b-antes-a-busca-de-devolucao-acha-o-numero-do-pedido-base-vigente":
+    ROL_DA_108,
+  "107a-conferir-a-lista-de-recomendacoes-do-produto-tem-teto-aplicado":
+    ROL_DA_107,
+  "107b-antes-a-lista-de-recomendacoes-do-produto-tem-teto-base-vigente":
+    ROL_DA_107,
+  "106a-conferir-o-pedido-de-visitante-na-entrega-tem-freio-aplicado":
+    ROL_DA_106,
+  "106b-antes-o-pedido-de-visitante-na-entrega-tem-freio-base-vigente":
+    ROL_DA_106,
   "104a-conferir-o-balcao-diz-inativo-para-a-variacao-desligada-aplicado":
     ROL_DA_104,
   "104b-antes-o-balcao-diz-inativo-para-a-variacao-desligada-base-vigente":

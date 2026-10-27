@@ -202,6 +202,33 @@ const CORPUS: ReadonlyArray<{ rotulo: string; erro: unknown }> = [
     ),
   },
 
+  // O FREIO DO PEDIDO DE VISITANTE NA ENTREGA (migration 20261394000000): P0001 com
+  // texto, o pedido provadamente não nasceu — o painel manda ENTRAR NA CONTA e o
+  // toast fala a MESMA frase; o painel nunca manda "tentar de novo".
+  {
+    rotulo:
+      "15. visitante com mais de 10 unidades (sem conta, fora do pagamento pelo app)",
+    erro: p0001(
+      "Sem entrar na conta, o pedido aceita até 10 unidades. Entre na conta para comprar mais.",
+    ),
+  },
+  {
+    rotulo: "16. a loja já tem 10 pedidos de visitante esperando",
+    erro: p0001(
+      "Estamos com muitos pedidos aguardando agora. Entre na conta para finalizar o seu.",
+    ),
+  },
+
+  // A V23 RECUSA O PAGAMENTO PELO APP (migration 20261394200000): P0001 com texto, o
+  // pedido provadamente não nasceu — o painel manda ESCOLHER OUTRA FORMA DE PAGAMENTO e
+  // o toast fala a MESMA frase; o painel nunca manda "tentar de novo".
+  {
+    rotulo: "17. a v23 recusou o pagamento pelo app (rede de segurança)",
+    erro: p0001(
+      "O pagamento pelo app é feito em outra etapa. Para este pedido, escolha pagar na retirada ou na entrega.",
+    ),
+  },
+
   // SQLSTATE genérico: aborto de transação dentro do Postgres, sem ser P0001.
   {
     rotulo: "SQLSTATE genérico (deadlock 40P01)",
