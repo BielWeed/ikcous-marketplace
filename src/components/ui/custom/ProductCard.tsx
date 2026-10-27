@@ -981,7 +981,7 @@ export const ProductCard = memo(function ProductCard({
             {/* Meta: categoria, nome, avaliação/estoque */}
             <div className="space-y-0.5 p-2.5 pb-1">
               <div className="flex flex-wrap items-center gap-1.5">
-                <p className="max-w-[80%] truncate text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                <p className="max-w-[80%] truncate text-[11px] font-bold uppercase tracking-widest text-slate-600">
                   {product.category}
                 </p>
                 {/* ProductCard-520: o selo só pode afirmar o que a loja
@@ -1038,7 +1038,7 @@ export const ProductCard = memo(function ProductCard({
                 <div
                   className={cn(
                     "flex items-center gap-1 font-bold",
-                    showRating ? "text-[9px]" : "text-[10px]",
+                    showRating ? "text-[11px]" : "text-xs",
                   )}
                 >
                   <span
@@ -1090,7 +1090,7 @@ export const ProductCard = memo(function ProductCard({
                 produto: `??` preserva override zero); sem escolha, o menor
                 preço das opções à venda (`precoDeVitrine`). */}
                 {precoOriginalMostrado !== null && (
-                  <span className="whitespace-nowrap text-[9px] font-bold uppercase leading-none tracking-wider text-slate-400">
+                  <span className="whitespace-nowrap text-[11px] font-bold uppercase leading-none tracking-wider text-slate-600">
                     De:{" "}
                     <span className="line-through">
                       {formatCurrency(precoOriginalMostrado)}
@@ -1100,7 +1100,7 @@ export const ProductCard = memo(function ProductCard({
                 {aPartirDe && (
                   <span
                     className={cn(
-                      "whitespace-nowrap text-[9px] font-bold uppercase leading-none tracking-wider text-slate-500",
+                      "whitespace-nowrap text-[11px] font-bold uppercase leading-none tracking-wider text-slate-600",
                       promocional && "mt-1",
                     )}
                   >

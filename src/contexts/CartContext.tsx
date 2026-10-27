@@ -28,6 +28,7 @@ import {
   salvarRascunhoDoCheckout,
 } from "@/lib/rascunho-do-checkout";
 import { supabase } from "@/lib/supabase";
+import { textoSoRestam } from "@/lib/texto-estoque-baixo";
 import type { CartItem, Product, ShippingOption } from "@/types";
 import React, {
   createContext,
@@ -40,6 +41,14 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 const MAX_ITEM_QUANTITY = 500; // Nuclear deterrent against inflation
+
+/** "Apenas N unidades disponíveis" com concordância: "Só resta 1 unidade
+ *  disponível" no singular. */
+function unidadesDisponiveis(estoque: number): string {
+  return estoque === 1
+    ? `${textoSoRestam(1)} unidade disponível`
+    : `Apenas ${estoque} unidades disponíveis`;
+}
 
 /**
  * A regra única de "somar uma unidade ao carrinho", SEM efeito colateral: o
@@ -83,7 +92,7 @@ function somarAoCarrinho(
       nextQuantity === availableStock &&
       existing.quantity + qToAdd > availableStock
     ) {
-      aviso = `Apenas ${availableStock} unidades disponíveis em estoque.`;
+      aviso = `${unidadesDisponiveis(availableStock)} em estoque.`;
     } else if (
       nextQuantity === MAX_ITEM_QUANTITY &&
       existing.quantity + qToAdd > MAX_ITEM_QUANTITY
@@ -126,7 +135,7 @@ function somarAoCarrinho(
     entrou: validatedQuantity,
     aviso:
       qToAdd > availableStock
-        ? `Apenas ${availableStock} unidades disponíveis.`
+        ? `${unidadesDisponiveis(availableStock)}.`
         : null,
   };
 }
@@ -1316,7 +1325,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
             if (quantity > availableStock) {
               toast.error(
-                `Limite de estoque atingido (${availableStock} unidades).`,
+                `Limite de estoque atingido (${availableStock} ${availableStock === 1 ? "unidade" : "unidades"}).`,
               );
             }
 
