@@ -15,6 +15,7 @@ import { useFavorites } from "@/hooks/useFavorites";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import { useSearch } from "@/hooks/useSearch";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import type { Product, View } from "@/types";
 import {
@@ -168,6 +169,11 @@ export const SearchView = React.memo(function SearchView({
     prefetchView("product-detail");
   }, [prefetchView]);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  // O Voltar do aparelho fecha só a folha de filtros (a busca e o que foi
+  // escolhido ficam), em vez de tirar a cliente da busca.
+  useVoltarFechaAFolha(isFilterOpen, () => {
+    setIsFilterOpen(false);
+  });
   const [visibleCount, setVisibleCount] = useState(12);
   const observerRef = useRef<IntersectionObserver | null>(null);
 
