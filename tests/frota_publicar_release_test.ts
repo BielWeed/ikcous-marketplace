@@ -3109,6 +3109,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "107a-conferir-a-lista-de-recomendacoes-do-produto-tem-teto-aplicado",
     "108a-conferir-a-busca-de-devolucao-acha-o-numero-do-pedido-aplicado",
     "109a-conferir-a-grade-antiga-nao-ressuscita-variacao-excluida-aplicado",
+    "110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado",
   ]);
 });
 

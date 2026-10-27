@@ -37,6 +37,7 @@
 --   * `get_admin_customers_paged` → 20261230000000 (a busca de clientes acha pelo número do WhatsApp)
 --                                e, DEPOIS dela, 20261392000000 (a lista de clientes não repete ninguém entre as páginas);
 --   * `admin_devolucoes_listar` → 20261395000000 (a busca de devolução acha o número do pedido; ramo novo no filtro);
+--   * `admin_devolucao_concluir` → ..., 20261343000000 e, DEPOIS dela, 20261395200000 (a conclusão da devolução tranca o estoque na mesma ordem da compra);
 --   * `crm_clientes`           → 20261231000000 (a busca do CRM ignora acento)
 --                                e, DEPOIS dela, 20261392100000 (a busca do CRM acha o número com o +55);
 --   * `registrar_venda_presencial` → 20261235000000 (a venda repetida do balcão devolve a venda feita)
@@ -163,6 +164,7 @@ WITH corpos AS (
     ('solicitar_estorno', '840de50f44958fe43b55f5222691df9b', '20261241000000'),
     ('admin_devolucao_concluir', 'ebb901efff59a53082836a13e053cd1a', '20261241000000'),
     ('admin_devolucao_concluir', 'ea651d52157521c0fe7ffccc948b4b1a', '20261343000000'),
+    ('admin_devolucao_concluir', 'a152c8dcd7cf6d1e05e5aff128d6c45e', '20261395200000'),
     ('autorizar_post_do_estorno', 'c73e48294c08f34240abc3843aa7d1f1', '20261241000000'),
     ('get_admin_analytics_v2', 'dceb62881ebf8fa404ba3ac295041691', '20261242000000'),
     ('get_admin_analytics_v2', 'ab25e738a3101cccbb0c09450b660ee0', '20261245000000'),

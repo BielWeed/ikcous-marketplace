@@ -85,6 +85,9 @@ const {
   REEMBOLSO_MANUAL_RESERVA,
 } = require("./reembolso-manual-reserva-posterior.cjs");
 const {
+  CONCLUSAO_TRANCA,
+} = require("./a-conclusao-da-devolucao-posterior.cjs");
+const {
   DESFAZER_RECEBIMENTO,
 } = require("./desfazer-recebimento-posterior.cjs");
 const { MOTOTAXI } = require("./mototaxi-posterior.cjs");
@@ -1706,6 +1709,8 @@ const POSTERIORES_A_97 = [
   // 20261241000000 (o reembolso em duvida prende o saldo) redefine o reemitir e o por fora da 1226 e mais
   // cinco corpos (tests/banco/reembolso-em-duvida-posterior.cjs): com ela no ar o rollback da 1226 recusa
   // (B1_BASELINE_DIVERGENT). Sai depois da 252, antes das demais abaixo.
+  // A 20261395200000 (a conclusao tranca o estoque na mesma ordem da compra) sucede o corpo da 343: sai ANTES dela.
+  CONCLUSAO_TRANCA,
   REEMBOLSO_MANUAL_RESERVA,
   REEMBOLSO_EM_DUVIDA,
   // As sucessoras da 99 (20261212, 20261214 — redefinem corpos dela;

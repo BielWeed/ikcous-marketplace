@@ -451,6 +451,23 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261395200000: a conclusao da devolucao tranca na mesma ordem da compra. admin_devolucao_concluir troca o corpo (CREATE OR REPLACE) e a consulta 110a confere o corpo exato (md5), os atributos e a ACL; a prova viva faz o comportamento.
+  "20261395200000_a_conclusao_da_devolucao_tranca_na_mesma_ordem_da_compra.sql":
+    [
+      {
+        funcao: "admin_devolucao_concluir",
+        esperado: [
+          {
+            texto: ">>> ordem global das travas (20261395200000)",
+            vezes: 1,
+          },
+          {
+            texto: "<<< ordem global das travas (20261395200000)",
+            vezes: 1,
+          },
+        ],
+      },
+    ],
   // 20261382: o resultado (fin_dre) mostra tarifa, juro e quebra como despesa. So o 'valor' das linhas do grupo financeiro ganha o
   // sinal (entrada menos saida); o resto do corpo e' o da 20261242. A consulta 87a confere o corpo exato (md5), os atributos e a ACL.
   "20261382000000_o_resultado_mostra_tarifa_juro_e_quebra_como_despesa.sql": {

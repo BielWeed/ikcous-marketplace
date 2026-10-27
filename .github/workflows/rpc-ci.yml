@@ -222,6 +222,8 @@ on:
       - "scripts/publicacao/consultas/108b-antes-a-busca-de-devolucao-acha-o-numero-do-pedido-base-vigente.sql"
       - "scripts/publicacao/consultas/109a-conferir-a-grade-antiga-nao-ressuscita-variacao-excluida-aplicado.sql"
       - "scripts/publicacao/consultas/109b-antes-a-grade-antiga-nao-ressuscita-variacao-excluida-base-vigente.sql"
+      - "scripts/publicacao/consultas/110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado.sql"
+      - "scripts/publicacao/consultas/110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -413,6 +415,8 @@ on:
       - "scripts/publicacao/consultas/108b-antes-a-busca-de-devolucao-acha-o-numero-do-pedido-base-vigente.sql"
       - "scripts/publicacao/consultas/109a-conferir-a-grade-antiga-nao-ressuscita-variacao-excluida-aplicado.sql"
       - "scripts/publicacao/consultas/109b-antes-a-grade-antiga-nao-ressuscita-variacao-excluida-base-vigente.sql"
+      - "scripts/publicacao/consultas/110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado.sql"
+      - "scripts/publicacao/consultas/110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -644,6 +648,13 @@ jobs:
       - name: Prova viva da grade antiga que nao ressuscita variacao excluida (20261395100000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-grade-antiga-nao-ressuscita-variacao-excluida-viva.cjs
+      # Migration 20261395200000 (a conclusao da devolucao tranca o estoque na mesma ordem da compra): admin_devolucao_concluir tranca
+      # as variacoes dos itens por id e depois os produtos por id ANTES do laco que credita; com duas conexoes reais e COMMIT o corpo
+      # da 20261343000000 da 40P01 contra uma compra e o corpo novo nao; o credito, o reembolso e o retorno sao identicos; rollback
+      # byte a byte, pre-voo, pos-voo e consultas 110a/110b. CLONE proprio.
+      - name: Prova viva da conclusao da devolucao que tranca na mesma ordem da compra (20261395200000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

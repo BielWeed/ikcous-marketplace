@@ -2144,6 +2144,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "ea651d52157521c0fe7ffccc948b4b1a",
           versao: "20261343000000",
         },
+        // 27/10/2026 (lote 231): a conclusao da devolucao tranca o estoque na mesma ordem da compra (a cadeia 241 -> 343 -> 395200).
+        {
+          fn: "admin_devolucao_concluir",
+          h: "a152c8dcd7cf6d1e05e5aff128d6c45e",
+          versao: "20261395200000",
+        },
         // 27/10/2026 (lote 231): a busca de devolucao acha o numero do pedido (a cadeia 199 -> 395).
         {
           fn: "admin_devolucoes_listar",

@@ -2793,7 +2793,18 @@ const ROL_DA_109 = [
   "salvar_produto_com_grade: o corpo traz a recusa de ressuscitar variacao (uma vez)",
   "salvar_produto_com_grade: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno jsonb; authenticated e service_role, sem anon e sem PUBLIC)",
 ];
+// Lote 110 (20261395200000, a conclusao da devolucao tranca na mesma ordem da compra). A 110a e a 110b tem o mesmo rol; a 110a espera o corpo da 20261395200000 e a 110b o vigente de antes.
+const ROL_DA_110 = [
+  "controle: funcoes de public visiveis a este papel",
+  "admin_devolucao_concluir: corpo exato (md5)",
+  "admin_devolucao_concluir: o corpo traz a ordem global das travas (uma vez)",
+  "admin_devolucao_concluir: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno jsonb; authenticated e service_role, sem anon e sem PUBLIC)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado":
+    ROL_DA_110,
+  "110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente":
+    ROL_DA_110,
   "109a-conferir-a-grade-antiga-nao-ressuscita-variacao-excluida-aplicado":
     ROL_DA_109,
   "109b-antes-a-grade-antiga-nao-ressuscita-variacao-excluida-base-vigente":

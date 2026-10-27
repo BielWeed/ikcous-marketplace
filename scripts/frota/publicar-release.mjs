@@ -633,6 +633,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "108b-antes-a-busca-de-devolucao-acha-o-numero-do-pedido-base-vigente",
   "109a-conferir-a-grade-antiga-nao-ressuscita-variacao-excluida-aplicado",
   "109b-antes-a-grade-antiga-nao-ressuscita-variacao-excluida-base-vigente",
+  "110a-conferir-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-aplicado",
+  "110b-antes-a-conclusao-da-devolucao-tranca-na-mesma-ordem-da-compra-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
