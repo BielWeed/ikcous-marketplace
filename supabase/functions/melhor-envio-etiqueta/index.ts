@@ -455,13 +455,23 @@ export function normalizarServicoEscolhidoPeloLojista(valor: unknown): string | 
  * da cotação (0.3 kg / 15 cm) quando o produto não tem medição.
  *
  * Volumes: UM volume por LINHA de item, com o peso total da linha
- * (peso unitário × quantidade). Não é medição física da caixa real — é o
- * mesmo grau de aproximação que a cotação do carrinho já usa; o lojista
- * confere a etiqueta no ME antes de postar.
+ * (peso unitário × quantidade) e, desde o lote 227, a medida TAMBÉM
+ * considerando a quantidade: as unidades da linha empilham pelo MENOR lado
+ * (empate: altura, largura, comprimento) — antes o volume levava a caixa de
+ * UMA unidade com o peso de todas, e a diferença podia ser cobrada depois.
+ * Não é medição física da caixa real — é o mesmo grau de aproximação que a
+ * cotação do carrinho já usa; o lojista confere a etiqueta no ME antes de
+ * postar. `empilharQuantidade: false` mantém a medida de UMA unidade (a
+ * devolução, que não faz parte do lote 227, segue assim).
+ *
+ * Quem manda estes volumes ao carrinho passa por
+ * `volumesDoCarrinhoParaOServico`: Correios, J&T e Loggi não aceitam mais de
+ * um volume por chamada.
  */
 export function montarProdutosEVolumes(
     itens: Array<Record<string, any>>,
     produtosDb: Array<Record<string, any>>,
+    opcoes: { empilharQuantidade?: boolean } = {},
 ): { products: Array<Record<string, unknown>>; volumes: Array<Record<string, unknown>> } {
     const mapa = new Map(produtosDb.map((p) => [p.id, p]))
     const products: Array<Record<string, unknown>> = []
@@ -489,14 +499,90 @@ export function montarProdutosEVolumes(
             quantity: quantidade,
             unitary_value: preco,
         })
+        const medidas =
+            opcoes.empilharQuantidade === false
+                ? { largura, altura, comprimento }
+                : empilharNaMenorMedida({ largura, altura, comprimento }, quantidade)
         volumes.push({
             weight: Number((peso * quantidade).toFixed(3)),
-            width: largura,
-            height: altura,
-            length: comprimento,
+            width: medidas.largura,
+            height: medidas.altura,
+            length: medidas.comprimento,
         })
     }
     return { products, volumes }
+}
+
+/**
+ * As `quantidade` unidades de uma linha empilhadas pelo MENOR lado (a caixa
+ * mais compacta que as comporta sem girar o produto). Empate: altura, depois
+ * largura, depois comprimento. Quantidade 1 (ou ilegível) devolve a medida
+ * como veio.
+ */
+function empilharNaMenorMedida(
+    unidade: { largura: number; altura: number; comprimento: number },
+    quantidade: number,
+): { largura: number; altura: number; comprimento: number } {
+    if (!Number.isFinite(quantidade) || quantidade <= 1) return unidade
+    const total = (medida: number) => Number((medida * quantidade).toFixed(3))
+    const menor = Math.min(unidade.largura, unidade.altura, unidade.comprimento)
+    if (unidade.altura === menor) return { ...unidade, altura: total(unidade.altura) }
+    if (unidade.largura === menor) return { ...unidade, largura: total(unidade.largura) }
+    return { ...unidade, comprimento: total(unidade.comprimento) }
+}
+
+/**
+ * Serviços do Melhor Envio que aceitam UM volume por chamada ao carrinho. A
+ * doc oficial ("Inserir fretes no carrinho") diz que Correios, J&T e Loggi não
+ * aceitam múltiplos volumes numa requisição: PAC (1), SEDEX (2), Mini Envios
+ * (17) — Correios —, Express (31) — Loggi — e Standard (33) — JeT/J&T, os ids
+ * que o próprio app já recebe do ME na cotação. Jadlog (3, 4) e qualquer id
+ * fora desta lista seguem com um volume por linha, como sempre foi.
+ */
+const SERVICOS_DE_VOLUME_UNICO: ReadonlySet<string> = new Set(['1', '2', '17', '31', '33'])
+
+export function servicoExigeVolumeUnico(serviceId: unknown): boolean {
+    return typeof serviceId === 'string' && SERVICOS_DE_VOLUME_UNICO.has(serviceId)
+}
+
+/**
+ * UM pacote a partir de vários volumes: peso somado e a MAIOR largura, altura
+ * e comprimento. É a conta da devolução (a reversa dos Correios também é de um
+ * volume só) e agora serve a ida: uma só implementação. Lista vazia: `null`.
+ */
+export function consolidarVolumesEmUm(
+    volumes: Array<Record<string, unknown>>,
+): { weight: number; width: number; height: number; length: number } | null {
+    if (!volumes || volumes.length === 0) return null
+    let peso = 0
+    let largura = 0
+    let altura = 0
+    let comprimento = 0
+    for (const volume of volumes) {
+        peso += Number(volume.weight)
+        largura = Math.max(largura, Number(volume.width))
+        altura = Math.max(altura, Number(volume.height))
+        comprimento = Math.max(comprimento, Number(volume.length))
+    }
+    return { weight: Number(peso.toFixed(3)), width: largura, height: altura, length: comprimento }
+}
+
+/**
+ * Os volumes que vão no corpo do `POST /me/cart`. Serviço de volume único
+ * (Correios, J&T, Loggi): o pedido inteiro num pacote só, com largura, altura
+ * e comprimento INTEIROS (a doc tipa os três como `integer`; arredonda para
+ * CIMA, nunca declara caixa menor que a real). Outros serviços: a lista como
+ * veio, um volume por linha.
+ */
+export function volumesDoCarrinhoParaOServico(
+    serviceId: unknown,
+    volumes: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+    if (!servicoExigeVolumeUnico(serviceId)) return volumes
+    const unico = consolidarVolumesEmUm(volumes)
+    if (!unico) return []
+    const inteiro = (medida: number) => Math.ceil(Number(medida.toFixed(3)))
+    return [{ weight: unico.weight, width: inteiro(unico.width), height: inteiro(unico.height), length: inteiro(unico.length) }]
 }
 
 /**
@@ -540,6 +626,17 @@ export function montarRemetente(meData: Record<string, any> | null | undefined):
 }
 
 /**
+ * Valor em reais vindo do Melhor Envio (número ou texto numérico como
+ * "18.90"): finito e não negativo, em centavos; qualquer outra coisa é `null`
+ * — nunca um custo inventado nem 0 no lugar de "não veio".
+ */
+function valorEmReais(valor: unknown): number | null {
+    const numero =
+        typeof valor === 'number' ? valor : typeof valor === 'string' && valor.trim() !== '' ? Number(valor) : Number.NaN
+    return Number.isFinite(numero) && numero >= 0 ? Number(numero.toFixed(2)) : null
+}
+
+/**
  * Normaliza a resposta do checkout: devolve o estado da compra e a mensagem
  * de falha amigável quando o saldo não foi aceito. O ME responde 200 até
  * quando a compra NÃO fechou (status pending/blocked com `token` de
@@ -575,13 +672,30 @@ export function normalizarTracking(data: Record<string, any>, labelId: string): 
     return { tracking: tracking ? String(tracking) : null, status: entrada?.status ? String(entrada.status) : null }
 }
 
+const MENSAGEM_DE_VOLUME_RECUSADO =
+    'O Melhor Envio recusou o peso ou as medidas do pacote desta etiqueta. Confira o peso e as medidas dos produtos deste pedido no cadastro e tente de novo.'
+
+/**
+ * O motivo (já sanitizado por `motivoDoProvedor`) fala do volume/pacote, peso
+ * ou medida? Os nomes de campo do Laravel (`volumes.0.height`) vão no texto de
+ * cada erro, então "volume" pega os quatro campos do volume. `length` e
+ * `comprimento` soltos ficam de fora de propósito: aparecem em validação de
+ * texto (rua, complemento) e não são sinal de volume.
+ */
+function motivoEhDeVolume(motivo: string): boolean {
+    return /volume|pacote|\bpeso\b|\bweight\b|\baltura\b|\blargura\b|\bheight\b|\bwidth\b|\bdimens/i.test(motivo)
+}
+
 /**
  * Mensagem do erro HTTP do Melhor Envio para o lojista — o texto cru da API
  * (inglês/JSON de validação) não é frase de painel; o detalhe fica no console
  * dos logs da function.
  */
-function mensagemDoErroHttp(status: number, etapa: string): string {
+function mensagemDoErroHttp(status: number, etapa: string, motivo = ''): string {
     if (status === 401) return 'O Melhor Envio recusou o token (não autenticado). Gere um novo token na sua conta e atualize em Logística & Frete.'
+    // Lote 227: recusa que fala do VOLUME/peso/medida não é erro de endereço —
+    // mandar "conferir o endereço" fazia a lojista procurar o defeito no lugar errado.
+    if ((status === 422 || status === 400) && motivoEhDeVolume(motivo)) return MENSAGEM_DE_VOLUME_RECUSADO
     if (status === 422) return `O Melhor Envio recusou os dados da etiqueta (${etapa}). Confira o cadastro do remetente e o endereço do pedido.`
     if (status === 429) return 'O Melhor Envio está limitando as chamadas (muitas em pouco tempo). Tente novamente em instantes.'
     return `O Melhor Envio respondeu erro ${status} em ${etapa}. Tente novamente; se persistir, confira o status da sua conta no Melhor Envio.`
@@ -713,9 +827,9 @@ export function servicoDaDevolucaoReversa(shippingOptionId: unknown): 1 | 2 {
  * O pacote ÚNICO da devolução (a reversa dos Correios é de um volume só), a
  * partir dos itens DEVOLVIDOS e das medições do banco — pelo MESMO helper da
  * ida (`montarProdutosEVolumes`: fallbacks 0.3 kg / 15 cm, peso da linha =
- * unitário × quantidade). Agrega no mesmo grau de aproximação da ida (que
- * declara a medida de UMA unidade por linha): peso somado e a MAIOR largura,
- * altura e comprimento. Não é medição da caixa real — declarar a mais
+ * unitário × quantidade). Agrega pela mesma conta da ida
+ * (`consolidarVolumesEmUm`: peso somado e a MAIOR largura, altura e
+ * comprimento), declarando a medida de UMA unidade por linha. Não é medição da caixa real — declarar a mais
  * travaria a reversa no limite dos Correios (100 cm por lado) sem ganho; a
  * diferença de conferência métrica o ME cobra depois, como na ida.
  */
@@ -728,19 +842,10 @@ export function montarPacoteDaDevolucao(
         quantity: item.quantidade,
         price: item.valor_unitario,
     }))
-    const { volumes } = montarProdutosEVolumes(linhas, produtosDb || [])
-    if (volumes.length === 0) return null
-    let peso = 0
-    let largura = 0
-    let altura = 0
-    let comprimento = 0
-    for (const volume of volumes) {
-        peso += Number(volume.weight)
-        largura = Math.max(largura, Number(volume.width))
-        altura = Math.max(altura, Number(volume.height))
-        comprimento = Math.max(comprimento, Number(volume.length))
-    }
-    return { weight: Number(peso.toFixed(3)), width: largura, height: altura, length: comprimento }
+    // A devolução segue declarando a medida de UMA unidade por linha (o lote
+    // 227 só mexeu na ida): `empilharQuantidade: false`.
+    const { volumes } = montarProdutosEVolumes(linhas, produtosDb || [], { empilharQuantidade: false })
+    return consolidarVolumesEmUm(volumes)
 }
 
 export type VinculoReverso =
@@ -2665,7 +2770,9 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                 from,
                 to,
                 products,
-                volumes,
+                // Correios, J&T e Loggi recusam mais de um volume: o pedido
+                // inteiro num pacote só (lote 227). Outros serviços, um por linha.
+                volumes: volumesDoCarrinhoParaOServico(service, volumes),
                 options: {
                     insurance_value: semSeguro ? 0 : subtotalItens,
                     receipt: false,
@@ -2680,9 +2787,10 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             // Item 1 (3ª rodada): ver o comentário no log do `/me HTTP` acima
             // — um 4xx do cart pode ecoar o `to` inteiro (nome, rua, número,
             // CEP do destinatário) num campo qualquer do corpo de validação.
-            console.error('[melhor-envio-etiqueta] cart HTTP', cartResponse.status, motivoDoProvedor(detalhe))
+            const motivoDoCarrinho = motivoDoProvedor(detalhe)
+            console.error('[melhor-envio-etiqueta] cart HTTP', cartResponse.status, motivoDoCarrinho)
             return new Response(
-                JSON.stringify({ error: mensagemDoErroHttp(cartResponse.status, 'criação da etiqueta') }),
+                JSON.stringify({ error: mensagemDoErroHttp(cartResponse.status, 'criação da etiqueta', motivoDoCarrinho) }),
                 { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
             )
         }
@@ -2826,7 +2934,15 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                     ? `Compra CONFIRMADA no Melhor Envio, falha na finalização: ${detalheEvento}`
                     : `Falha indeterminada no checkout/geração da etiqueta: ${detalheEvento}`,
                 protocol: cartData?.protocol || null,
-                payload: { etapa: 'checkout_indeterminado', label_id: labelId, service, sandbox: isSandbox },
+                payload: {
+                    etapa: 'checkout_indeterminado',
+                    label_id: labelId,
+                    service,
+                    sandbox: isSandbox,
+                    // O painel só mostra "conferindo a etiqueta" quando a compra
+                    // NÃO foi confirmada; com `true` ela fechou e só o arquivo falhou.
+                    pago_confirmado: pagoConfirmado,
+                },
             })
             const mensagem = pagoConfirmado
                 ? `A compra da etiqueta (id ${labelId}) FOI CONFIRMADA no Melhor Envio, mas a geração do arquivo falhou. Gere e imprima a etiqueta de id ${labelId} direto na sua conta do Melhor Envio; o pedido segue vinculado a esta etiqueta.`
@@ -3021,6 +3137,10 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
                     service,
                     sandbox: isSandbox,
                     valor_declarado: subtotalItens,
+                    // O preço que o ME devolveu ao montar o carrinho e o total que a
+                    // compra cobrou (`purchase.total`): `null` quando não vieram.
+                    preco_do_carrinho: valorEmReais(cartData?.price),
+                    total_da_compra: valorEmReais(checkoutData?.purchase?.total),
                 },
             })
 
