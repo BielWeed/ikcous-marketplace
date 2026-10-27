@@ -15,7 +15,6 @@ import {
   LocalBufferedTextarea,
 } from "@/components/admin/LocalBufferedInput";
 import { Switch } from "@/components/ui/switch";
-import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
 import type { FichaDaDevolucao } from "@/hooks/useDevolucoesAdmin";
 import {
   CONDICOES,
@@ -135,7 +134,6 @@ export function AcoesDaDevolucao({
   detalhe: DevolucaoDetalhe;
   onSujoMudou: (sujo: boolean) => void;
 }>) {
-  const { confirmar, dialogo } = useConfirmarAcao();
   const acoes = acoesDoLojista(detalhe);
   const resolucoes = resolucoesDaConclusao(detalhe.tipo);
   // O que o servidor ainda deixa devolver deste pedido (a mesma conta que ele
@@ -316,19 +314,10 @@ export function AcoesDaDevolucao({
       return;
     }
     if (resolucao === "reembolso") {
-      const reais = formatarReais(valorNumero);
-      const peloApp = pagoPeloApp(detalhe);
-      const confirmouReembolso = await confirmar({
-        titulo: peloApp
-          ? "Devolver o dinheiro ao cliente?"
-          : "Registrar o reembolso?",
-        texto: peloApp
-          ? `Devolver ${reais} ao cliente pelo Mercado Pago? O dinheiro sai da sua conta do Mercado Pago e não dá para desfazer. Se o pagamento tiver mais de 180 dias, o Mercado Pago não devolve: o app só registra e você devolve em mãos ou por PIX.`
-          : `Registrar o reembolso de ${reais}? Este pedido não foi pago pelo app: você devolve o dinheiro ao cliente em mãos ou por PIX.`,
-        verbo: peloApp ? `Devolver ${reais}` : "Registrar reembolso",
-        valor: reais,
-      });
-      if (!confirmouReembolso) return;
+      const texto = pagoPeloApp(detalhe)
+        ? `Devolver ${formatarReais(valorNumero)} ao cliente pelo Mercado Pago? O dinheiro sai da sua conta do Mercado Pago e não dá para desfazer. Se o pagamento tiver mais de 180 dias, o Mercado Pago não devolve: o app só registra e você devolve em mãos ou por PIX.`
+        : `Registrar o reembolso de ${formatarReais(valorNumero)}? Este pedido não foi pago pelo app: você devolve o dinheiro ao cliente em mãos ou por PIX.`;
+      if (!globalThis.confirm(texto)) return;
     }
     setErro(null);
     await ficha.concluir({
@@ -835,7 +824,6 @@ export function AcoesDaDevolucao({
           {erro}
         </p>
       )}
-      {dialogo}
     </section>
   );
 }

@@ -1612,6 +1612,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             Aguarde um instante
           </p>
         </div>
+        {dialogo}
       </div>
     );
   }
@@ -1650,6 +1651,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             Voltar aos pedidos
           </button>
         </div>
+        {dialogo}
       </div>
     );
   }
@@ -1667,6 +1669,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             onAbrirDevolucoes={abrirDevolucoes}
           />
         </div>
+        {dialogo}
       </LocalErrorBoundary>
     );
   }

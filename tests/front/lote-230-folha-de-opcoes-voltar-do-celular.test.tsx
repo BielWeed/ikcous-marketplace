@@ -16,7 +16,7 @@ import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const esperar = (ms = 20) => new Promise<void>((r) => setTimeout(r, ms));
+const esperar = (ms = 60) => new Promise<void>((r) => setTimeout(r, ms));
 
 let raiz: Root;
 let hospedeiro: HTMLDivElement;

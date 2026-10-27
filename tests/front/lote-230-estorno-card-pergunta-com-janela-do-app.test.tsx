@@ -187,7 +187,10 @@ describe("lote 230 — Devolver R$ ... pergunta pela janela do app", () => {
 
     await act(async () => {
       globalThis.history.back();
-      await new Promise((r) => setTimeout(r, 20));
+      // O jsdom entrega o popstate numa macrotarefa: espera a janela sair.
+      for (let i = 0; i < 50 && janela() !== null; i++) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
     });
 
     expect(janela()).toBeNull();
@@ -236,5 +239,19 @@ describe("lote 230 — Devolver R$ ... pergunta pela janela do app", () => {
     await tocar(botaoDa(janela() as HTMLElement, "Devolver R$ 30,00"));
     expect(solicitarEstorno).toHaveBeenCalledTimes(1);
     expect(solicitarEstorno).toHaveBeenCalledWith({ amount: 30, motivo: "" });
+  });
+
+  it("a pergunta aberta não some se o cartão passa a mostrar erro ou 'carregando' (saídas antecipadas)", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(hookPadrao());
+    await montar();
+    await tocar(botaoDa(hospedeiro, "Devolver R$ 100,00"));
+    expect(janela()).not.toBeNull();
+
+    for (const extra of [{ erro: true }, { pedidoCarregado: false }]) {
+      useEstornosDoPedidoMock.mockReturnValue(hookPadrao(extra));
+      await montar();
+      expect(janela()).not.toBeNull();
+    }
+    expect(solicitarEstorno).not.toHaveBeenCalled();
   });
 });

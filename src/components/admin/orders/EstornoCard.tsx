@@ -250,6 +250,7 @@ export function EstornoCard({
         >
           Tentar carregar de novo
         </Button>
+        {dialogo}
       </div>
     );
   }
@@ -266,6 +267,7 @@ export function EstornoCard({
           Devolução de dinheiro
         </h3>
         <p className="text-xs text-zinc-400">Carregando…</p>
+        {dialogo}
       </div>
     );
   }

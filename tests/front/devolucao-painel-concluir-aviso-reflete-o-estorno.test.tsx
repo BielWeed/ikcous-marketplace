@@ -11,11 +11,6 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  desligarDialogoDeConfirmacao,
-  ligarDialogoDeConfirmacao,
-} from "./duble-dialogo-de-confirmacao";
-
 const { rpc, invoke, toast, respostas } = vi.hoisted(() => ({
   rpc: vi.fn(),
   invoke: vi.fn(),
@@ -139,16 +134,12 @@ beforeEach(() => {
     "confirm",
     vi.fn(() => true),
   );
-  // Lote 230: a pergunta é a janela do app; o dublê lê o texto dela e decide
-  // pelo `confirm` deste teste (duble-dialogo-de-confirmacao.ts).
-  ligarDialogoDeConfirmacao();
   hospedeiro = document.createElement("div");
   document.body.appendChild(hospedeiro);
   raiz = createRoot(hospedeiro);
 });
 
 afterEach(() => {
-  desligarDialogoDeConfirmacao();
   act(() => raiz.unmount());
   hospedeiro.remove();
   document.body.innerHTML = "";

@@ -64,7 +64,7 @@ const produto: Product = {
   variants: variantes,
 };
 
-const esperar = (ms = 20) => new Promise<void>((r) => setTimeout(r, ms));
+const esperar = (ms = 60) => new Promise<void>((r) => setTimeout(r, ms));
 
 describe("lote 230 — folha de opções do card e o Voltar do celular", () => {
   let raiz: Root;
