@@ -263,7 +263,10 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
               {
                 id: "cliente-1",
                 full_name: "Maria Cliente",
-                whatsapp: "11999990000",
+                // Forma REAL de `get_admin_customers_paged` (migration
+                // 20261392000000: `COALESCE(p.whatsapp, u.phone) as phone`) —
+                // a chave NUNCA é `whatsapp`.
+                phone: "(34) 99999-1234",
                 email: "maria@example.com",
               },
             ],
@@ -1024,6 +1027,10 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     });
     await avancar();
     await digitarNoCampo("busca-de-cliente-do-balcao", "maria");
+    // A linha da lista mostra o TELEFONE (e não o e-mail) quando existe.
+    expect(localizarBotaoPorTexto(hospedeiro, "Maria Cliente")!.textContent).toContain(
+      "(34) 99999-1234",
+    );
     await act(async () => {
       localizarBotaoPorTexto(hospedeiro, "Maria Cliente")!.click();
     });
@@ -1033,7 +1040,7 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     const params = chamadasDeRegistro()[0][1];
     expect(params.p_cliente_user_id).toBe("cliente-1");
     expect(params.p_cliente_nome).toBeNull();
-    expect(params.p_cliente_whatsapp).toBe("11999990000");
+    expect(params.p_cliente_whatsapp).toBe("(34) 99999-1234");
 
     expect(hospedeiro.textContent).toContain("Compra na loja");
     expect(hospedeiro.textContent).not.toContain("cliente sem WhatsApp");
@@ -1078,7 +1085,7 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
               {
                 id: "cliente-2",
                 full_name: "Ana Sem Zap",
-                whatsapp: null,
+                phone: null,
                 email: "ana@example.com",
               },
             ],

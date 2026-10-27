@@ -132,7 +132,7 @@ const PRODUTO_COM_VARIACOES = {
 const CLIENTE_ENCONTRADO = {
   id: "cliente-1",
   full_name: "Maria Cliente",
-  whatsapp: "11999999999",
+  phone: "11999999999",
   email: "maria@example.com",
 };
 
