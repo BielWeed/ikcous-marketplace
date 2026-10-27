@@ -88,6 +88,12 @@ const FRASES_DO_BANCO = [
   // estoque e cupom): a regra irmã em recusaDoPedido.ts (trocar_pagamento)
   // morre calada se a frase sumir ou for reescrita no SQL.
   "Este pedido não tem valor a pagar pelo app. Escolha pagar na retirada ou na entrega, ou fale com a loja.",
+  // O FREIO DO PEDIDO DE VISITANTE NA ENTREGA (27/10/2026 — migration
+  // 20261394000000, nas duas RPCs): as duas regras irmãs em recusaDoPedido.ts
+  // (entrar_na_conta ×2) morrem caladas se alguma frase sumir ou for
+  // reescrita no SQL.
+  "Sem entrar na conta, o pedido aceita até 10 unidades. Entre na conta para comprar mais.",
+  "Estamos com muitos pedidos aguardando agora. Entre na conta para finalizar o seu.",
 ];
 
 const sql = Object.values(MIGRATIONS).join("\n");

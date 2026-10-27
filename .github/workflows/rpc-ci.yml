@@ -214,6 +214,10 @@ on:
       - "scripts/publicacao/consultas/103b-antes-o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-base-vigente.sql"
       - "scripts/publicacao/consultas/104a-conferir-o-balcao-diz-inativo-para-a-variacao-desligada-aplicado.sql"
       - "scripts/publicacao/consultas/104b-antes-o-balcao-diz-inativo-para-a-variacao-desligada-base-vigente.sql"
+      - "scripts/publicacao/consultas/106a-conferir-o-pedido-de-visitante-na-entrega-tem-freio-aplicado.sql"
+      - "scripts/publicacao/consultas/106b-antes-o-pedido-de-visitante-na-entrega-tem-freio-base-vigente.sql"
+      - "scripts/publicacao/consultas/107a-conferir-a-lista-de-recomendacoes-do-produto-tem-teto-aplicado.sql"
+      - "scripts/publicacao/consultas/107b-antes-a-lista-de-recomendacoes-do-produto-tem-teto-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -397,6 +401,10 @@ on:
       - "scripts/publicacao/consultas/103b-antes-o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-base-vigente.sql"
       - "scripts/publicacao/consultas/104a-conferir-o-balcao-diz-inativo-para-a-variacao-desligada-aplicado.sql"
       - "scripts/publicacao/consultas/104b-antes-o-balcao-diz-inativo-para-a-variacao-desligada-base-vigente.sql"
+      - "scripts/publicacao/consultas/106a-conferir-o-pedido-de-visitante-na-entrega-tem-freio-aplicado.sql"
+      - "scripts/publicacao/consultas/106b-antes-o-pedido-de-visitante-na-entrega-tem-freio-base-vigente.sql"
+      - "scripts/publicacao/consultas/107a-conferir-a-lista-de-recomendacoes-do-produto-tem-teto-aplicado.sql"
+      - "scripts/publicacao/consultas/107b-antes-a-lista-de-recomendacoes-do-produto-tem-teto-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -599,6 +607,21 @@ jobs:
       - name: Prova viva do balcao que diz inativo para a variacao desligada (20261393100000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-balcao-diz-inativo-para-a-variacao-desligada-viva.cjs
+      # Migration 20261394000000 (o pedido de visitante na entrega tem freio): create_marketplace_order_v23 e v24 ganham o teto de 10
+      # unidades por pedido e o de 10 pedidos de visitante pendentes por loja (so sem sessao e fora do pagamento online), e recusam o
+      # p_address_id de quem nao tem sessao; a retentativa de um pedido que ja existe nunca e recusada; 14 visitantes simultaneos =
+      # exatamente 10 pedidos (advisory lock); rollback byte a byte, pre-voo que recusa sem escrever, pos-voo que desfaz tudo e
+      # consultas 106a/106b. CLONE proprio.
+      - name: Prova viva do freio do pedido de visitante na entrega (20261394000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-pedido-de-visitante-na-entrega-tem-freio-viva.cjs
+      # Migration 20261394100000 (a lista de recomendacoes do produto tem teto): get_product_recommendations limita o p_limit a 50 e
+      # trata NULL como o padrao 4 (antes, 1000000 ou NULL levavam a tabela inteira); ate o teto a lista e' a de sempre (mesmos ids,
+      # mesma ordem); custo e fornecedor seguem NULOS; rollback byte a byte, pre-voo que recusa sem escrever, pos-voo que desfaz tudo
+      # e consultas 107a/107b. CLONE proprio.
+      - name: Prova viva do teto da lista de recomendacoes do produto (20261394100000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-lista-de-recomendacoes-do-produto-tem-teto-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

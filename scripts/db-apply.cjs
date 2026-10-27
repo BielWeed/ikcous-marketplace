@@ -348,6 +348,79 @@ const VERIFICACOES = {
         ],
       },
     ],
+  // 20261394: o pedido de visitante na entrega tem freio. create_marketplace_order_v23 e v24 ganham, cada uma, o MESMO trecho 0-quater
+  // (depois da idempotencia e da forma de pagamento aceita, antes de ler o carrinho): o teto de 10 unidades por pedido, o teto de 10
+  // pedidos de visitante pendentes por loja (sob o advisory lock da loja) e a recusa do p_address_id sem sessao. Cada marcador aparece UMA
+  // vez em cada corpo. A consulta 106a confere o corpo exato (md5), os atributos e a ACL; a prova viva faz o comportamento.
+  "20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        {
+          texto:
+            "IF v_user_id IS NULL AND p_payment_method IS DISTINCT FROM 'online' THEN",
+          vezes: 1,
+        },
+        { texto: "visitante_teto_unidades:", vezes: 1 },
+        { texto: "visitante_teto_da_loja:", vezes: 1 },
+        {
+          texto:
+            "pg_catalog.hashtextextended('pedido_visitante_na_entrega', 0)",
+          vezes: 1,
+        },
+        { texto: "interval '72 hours'", vezes: 1 },
+        {
+          texto: "IF p_address_id IS NOT NULL AND v_user_id IS NULL THEN",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        {
+          texto:
+            "IF v_user_id IS NULL AND p_payment_method IS DISTINCT FROM 'online' THEN",
+          vezes: 1,
+        },
+        { texto: "visitante_teto_unidades:", vezes: 1 },
+        { texto: "visitante_teto_da_loja:", vezes: 1 },
+        {
+          texto:
+            "pg_catalog.hashtextextended('pedido_visitante_na_entrega', 0)",
+          vezes: 1,
+        },
+        { texto: "interval '72 hours'", vezes: 1 },
+        {
+          texto: "IF p_address_id IS NOT NULL AND v_user_id IS NULL THEN",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
+  // 20261394100000: a lista de recomendacoes do produto tem teto. get_product_recommendations troca SO a linha do LIMIT (o limite pedido vale no
+  // maximo 50; NULL vale o padrao 4); o filtro, a ordenacao e as 31 colunas (custo e fornecedor_id NULOS) nao mudam. A consulta 107a confere o
+  // corpo exato (md5), os atributos e a ACL; a prova viva faz o comportamento.
+  "20261394100000_a_lista_de_recomendacoes_do_produto_tem_teto.sql": [
+    {
+      funcao: "get_product_recommendations",
+      esperado: [
+        {
+          texto: "LIMIT LEAST(GREATEST(COALESCE(p_limit, 4), 1), 50);",
+          vezes: 1,
+        },
+        {
+          texto: "NULL::numeric(10,2),  -- custo: nunca sai desta funcao",
+          vezes: 1,
+        },
+        {
+          texto:
+            "NULL::uuid,           -- fornecedor_id: nunca sai desta funcao",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   // 20261382: o resultado (fin_dre) mostra tarifa, juro e quebra como despesa. So o 'valor' das linhas do grupo financeiro ganha o
   // sinal (entrada menos saida); o resto do corpo e' o da 20261242. A consulta 87a confere o corpo exato (md5), os atributos e a ACL.
   "20261382000000_o_resultado_mostra_tarifa_juro_e_quebra_como_despesa.sql": {

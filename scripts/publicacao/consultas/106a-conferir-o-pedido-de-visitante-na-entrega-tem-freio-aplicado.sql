@@ -1,0 +1,63 @@
+-- 106a-conferir-o-pedido-de-visitante-na-entrega-tem-freio-aplicado: DEPOIS da 20261394000000 (o pedido de visitante na entrega tem freio).
+-- SO LEITURA, so catalogo; rol fechado de 9 linhas. Nao le pedido, produto nem dado de cliente e nao chama a RPC.
+-- Hash = md5(replace(prosrc, chr(13), '')); corpo desconhecido ou ausente reprova. Reprova ANTES do apply (corpos da 20261350000000 e da 20261384000000, sem o freio); aprova depois, e reaplicar aprova de novo.
+WITH alvo(nome, assinatura) AS (
+  VALUES ('create_marketplace_order_v23', 'public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)'),
+         ('create_marketplace_order_v24', 'public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)')
+), fn AS (
+  SELECT t.nome, p.oid, md5(replace(p.prosrc, chr(13), '')) AS m,
+         (length(p.prosrc) - length(replace(p.prosrc, 'PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(''pedido_visitante_na_entrega'', 0));', '')))
+           / length('PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(''pedido_visitante_na_entrega'', 0));') AS n_freio,
+         COALESCE(p.prosecdef AND l.lanname = 'plpgsql' AND p.provolatile = 'v' AND NOT p.proretset AND NOT p.proisstrict
+           AND p.pronargs = 13
+           AND p.proconfig = ARRAY['search_path=public']::text[]
+           AND pg_get_function_arguments(p.oid) = 'p_items jsonb, p_total_amount numeric, p_shipping_cost numeric, p_payment_method text, p_address_id uuid, p_coupon_code text, p_customer_name text, p_customer_phone text, p_observation text, p_address_data jsonb, p_destination_cep text, p_shipping_option_id text, p_idempotency_key uuid DEFAULT NULL::uuid'
+           AND pg_get_function_result(p.oid) = 'uuid'
+           AND (SELECT count(*) FROM pg_proc q
+                 WHERE q.pronamespace = 'public'::regnamespace AND q.proname = t.nome) = 1, false) AS atributos_ok,
+         EXISTS (SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+                  WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE') AS public_exec,
+         CASE WHEN to_regrole('anon') IS NULL THEN false ELSE has_function_privilege('anon', p.oid, 'EXECUTE') END AS anon_exec,
+         CASE WHEN to_regrole('authenticated') IS NULL THEN false ELSE has_function_privilege('authenticated', p.oid, 'EXECUTE') END AS auth_exec,
+         CASE WHEN to_regrole('service_role') IS NULL THEN false ELSE has_function_privilege('service_role', p.oid, 'EXECUTE') END AS svc_exec
+    FROM alvo t JOIN pg_proc p ON p.oid = to_regprocedure(t.assinatura)
+    JOIN pg_language l ON l.oid = p.prolang
+), itens(item, esperado, vivo) AS (
+  SELECT 'controle: funcoes de public visiveis a este papel', 'sim',
+         CASE WHEN COALESCE((SELECT count(*) > 0 FROM pg_proc WHERE pronamespace = 'public'::regnamespace), false) THEN 'sim' ELSE 'nao' END
+  UNION ALL
+  SELECT 'create_marketplace_order_v23: corpo exato (md5)', '89c99662346d47a4d6b3d13612ca4acb',
+         COALESCE((SELECT m FROM fn WHERE nome = 'create_marketplace_order_v23'), 'AUSENTE')
+  UNION ALL
+  SELECT 'create_marketplace_order_v23: o corpo traz o freio do visitante (uma vez)', 'sim',
+         CASE WHEN NOT EXISTS (SELECT 1 FROM fn WHERE nome = 'create_marketplace_order_v23') THEN 'AUSENTE'
+              WHEN (SELECT n_freio FROM fn WHERE nome = 'create_marketplace_order_v23') = 1 THEN 'sim'
+              WHEN (SELECT n_freio FROM fn WHERE nome = 'create_marketplace_order_v23') = 0 THEN 'nao'
+              ELSE 'DIFERENTE' END
+  UNION ALL
+  SELECT 'create_marketplace_order_v23: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)', 'sim',
+         CASE WHEN NOT EXISTS (SELECT 1 FROM fn WHERE nome = 'create_marketplace_order_v23') THEN 'AUSENTE'
+              WHEN (SELECT atributos_ok FROM fn WHERE nome = 'create_marketplace_order_v23') THEN 'sim' ELSE 'nao' END
+  UNION ALL
+  SELECT 'create_marketplace_order_v23: EXECUTE para anon, authenticated e service_role, sem PUBLIC', 'sim',
+         CASE WHEN NOT EXISTS (SELECT 1 FROM fn WHERE nome = 'create_marketplace_order_v23') THEN 'AUSENTE'
+              WHEN (SELECT NOT public_exec AND anon_exec AND auth_exec AND svc_exec FROM fn WHERE nome = 'create_marketplace_order_v23') THEN 'sim' ELSE 'nao' END
+  UNION ALL
+  SELECT 'create_marketplace_order_v24: corpo exato (md5)', '36c80a107f3ed16853c1c5b2b0cbc911',
+         COALESCE((SELECT m FROM fn WHERE nome = 'create_marketplace_order_v24'), 'AUSENTE')
+  UNION ALL
+  SELECT 'create_marketplace_order_v24: o corpo traz o freio do visitante (uma vez)', 'sim',
+         CASE WHEN NOT EXISTS (SELECT 1 FROM fn WHERE nome = 'create_marketplace_order_v24') THEN 'AUSENTE'
+              WHEN (SELECT n_freio FROM fn WHERE nome = 'create_marketplace_order_v24') = 1 THEN 'sim'
+              WHEN (SELECT n_freio FROM fn WHERE nome = 'create_marketplace_order_v24') = 0 THEN 'nao'
+              ELSE 'DIFERENTE' END
+  UNION ALL
+  SELECT 'create_marketplace_order_v24: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)', 'sim',
+         CASE WHEN NOT EXISTS (SELECT 1 FROM fn WHERE nome = 'create_marketplace_order_v24') THEN 'AUSENTE'
+              WHEN (SELECT atributos_ok FROM fn WHERE nome = 'create_marketplace_order_v24') THEN 'sim' ELSE 'nao' END
+  UNION ALL
+  SELECT 'create_marketplace_order_v24: EXECUTE para anon, authenticated e service_role, sem PUBLIC', 'sim',
+         CASE WHEN NOT EXISTS (SELECT 1 FROM fn WHERE nome = 'create_marketplace_order_v24') THEN 'AUSENTE'
+              WHEN (SELECT NOT public_exec AND anon_exec AND auth_exec AND svc_exec FROM fn WHERE nome = 'create_marketplace_order_v24') THEN 'sim' ELSE 'nao' END
+)
+SELECT item, esperado, vivo, vivo = esperado AS ok FROM itens ORDER BY ok, item;

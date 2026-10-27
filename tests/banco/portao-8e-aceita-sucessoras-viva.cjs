@@ -139,7 +139,11 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // e a-busca-do-crm-acha-o-numero-com-mais-55-viva.cjs); `noEstado` as desfaz antes (a-busca-de-clientes-posterior.cjs), como faz com a 390.
     s.nome !==
       "20261392000000_a_lista_de_clientes_nao_repete_nem_esconde_ninguem_entre_as_paginas.sql" &&
-    s.nome !== "20261392100000_a_busca_do_crm_acha_o_numero_com_mais_55.sql",
+    s.nome !== "20261392100000_a_busca_do_crm_acha_o_numero_com_mais_55.sql" &&
+    // A 20261394000000 (o pedido de visitante na entrega tem freio) so redefine a v23 e a v24, em cima da 350 e da 384; nenhuma das duas e' funcao
+    // da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 384 (pedido-pelo-app-exige-conta-posterior.cjs chama
+    // o-pedido-de-visitante-na-entrega-posterior.cjs); aqui sai do rol pela mesma razao da 384 e da 350.
+    s.nome !== "20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");

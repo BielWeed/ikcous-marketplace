@@ -214,6 +214,23 @@ const REGRAS: ReadonlyArray<{ padrao: RegExp; acao: AcaoDeRecusa }> = [
       /^Compra sem conta é só com entrega na cidade da loja\. Entre na sua conta para receber em outro endereço\.$/,
     acao: "entrar_na_conta",
   },
+  // O FREIO DO PEDIDO DE VISITANTE NA ENTREGA (27/10/2026 — migration
+  // 20261394000000, nas duas RPCs): quem compra SEM CONTA e não paga pelo app
+  // leva no máximo 10 unidades por pedido, e a loja recusa o visitante quando
+  // já tem 10 pedidos de visitante esperando. Nos dois casos o pedido
+  // provadamente não nasceu (a RPC recusa antes de reservar qualquer coisa) e
+  // a saída é a mesma do gate do convidado acima: entrar na conta, onde não há
+  // esse teto. A frase vem do banco e já é a que a pessoa lê.
+  {
+    padrao:
+      /^Sem entrar na conta, o pedido aceita até 10 unidades\. Entre na conta para comprar mais\.$/,
+    acao: "entrar_na_conta",
+  },
+  {
+    padrao:
+      /^Estamos com muitos pedidos aguardando agora\. Entre na conta para finalizar o seu\.$/,
+    acao: "entrar_na_conta",
+  },
   // Fora do gate do convidado: roda para QUALQUER pessoa (com ou sem
   // conta) quando a loja tem cobertura local. Quem chega até aqui logado
   // tem endereço cadastrado fora da faixa — a saída é trocar o endereço de

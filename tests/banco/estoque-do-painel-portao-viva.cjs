@@ -1297,6 +1297,16 @@ async function main() {
         "20261392100000_a_busca_do_crm_acha_o_numero_com_mais_55.sql",
         "public.crm_clientes(text,text,integer,integer)",
       ],
+      // A 20261394 (o pedido de visitante na entrega tem freio): UMA migration, duas funcoes de fora destas tres (as duas portas de
+      // compra, que ela SUCEDE a 350 na v23 e a 384 na v24); a 17a nao as le. O rollback dela devolve os dois corpos de uma vez.
+      [
+        "20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql",
+        "public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
+      ],
+      [
+        "20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql",
+        "public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

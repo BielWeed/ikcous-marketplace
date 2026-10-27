@@ -625,6 +625,10 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "103b-antes-o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-base-vigente",
   "104a-conferir-o-balcao-diz-inativo-para-a-variacao-desligada-aplicado",
   "104b-antes-o-balcao-diz-inativo-para-a-variacao-desligada-base-vigente",
+  "106a-conferir-o-pedido-de-visitante-na-entrega-tem-freio-aplicado",
+  "106b-antes-o-pedido-de-visitante-na-entrega-tem-freio-base-vigente",
+  "107a-conferir-a-lista-de-recomendacoes-do-produto-tem-teto-aplicado",
+  "107b-antes-a-lista-de-recomendacoes-do-produto-tem-teto-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

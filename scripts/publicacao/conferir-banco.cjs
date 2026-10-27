@@ -2757,7 +2757,37 @@ const ROL_DA_104 = [
   "buscar_por_codigo_barras: assinatura e atributos conhecidos (plpgsql, SECURITY DEFINER, STABLE, search_path=pg_catalog, pg_temp, uma so)",
   "buscar_por_codigo_barras: EXECUTE so authenticated e service_role (sem PUBLIC nem anon)",
 ];
+// Lote 106 (20261394000000, o pedido de visitante na entrega tem freio: create_marketplace_order_v23 e v24 ganham o teto de 10
+// unidades, o teto de 10 pedidos pendentes de visitante por loja e a recusa do p_address_id sem sessao). A 106a e a 106b tem o
+// mesmo rol; a 106a espera os corpos da 20261394000000 e a 106b os da 20261350000000 (v23) e 20261384000000 (v24).
+const ROL_DA_106 = [
+  "controle: funcoes de public visiveis a este papel",
+  "create_marketplace_order_v23: corpo exato (md5)",
+  "create_marketplace_order_v23: o corpo traz o freio do visitante (uma vez)",
+  "create_marketplace_order_v23: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)",
+  "create_marketplace_order_v23: EXECUTE para anon, authenticated e service_role, sem PUBLIC",
+  "create_marketplace_order_v24: corpo exato (md5)",
+  "create_marketplace_order_v24: o corpo traz o freio do visitante (uma vez)",
+  "create_marketplace_order_v24: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)",
+  "create_marketplace_order_v24: EXECUTE para anon, authenticated e service_role, sem PUBLIC",
+];
+// Lote 107 (20261394100000, a lista de recomendacoes do produto tem teto: get_product_recommendations limita p_limit a 50 e trata NULL
+// como o padrao 4). A 107a e a 107b tem o mesmo rol; a 107a espera o corpo da 20261394100000 e a 107b o da 20261160000000.
+const ROL_DA_107 = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_product_recommendations: corpo exato (md5)",
+  "get_product_recommendations: o corpo traz o teto do limite (uma vez)",
+  "get_product_recommendations: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, SETOF produtos; anon, authenticated e service_role, sem PUBLIC)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "107a-conferir-a-lista-de-recomendacoes-do-produto-tem-teto-aplicado":
+    ROL_DA_107,
+  "107b-antes-a-lista-de-recomendacoes-do-produto-tem-teto-base-vigente":
+    ROL_DA_107,
+  "106a-conferir-o-pedido-de-visitante-na-entrega-tem-freio-aplicado":
+    ROL_DA_106,
+  "106b-antes-o-pedido-de-visitante-na-entrega-tem-freio-base-vigente":
+    ROL_DA_106,
   "104a-conferir-o-balcao-diz-inativo-para-a-variacao-desligada-aplicado":
     ROL_DA_104,
   "104b-antes-o-balcao-diz-inativo-para-a-variacao-desligada-base-vigente":

@@ -27,7 +27,10 @@ WITH alvo(nome, assinatura) AS (
          CASE WHEN COALESCE((SELECT count(*) > 0 FROM pg_proc WHERE pronamespace = 'public'::regnamespace), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'create_marketplace_order_v24: corpo exato (md5)', 'f8d6ed0c3622ab41123bacb98911a98f',
-         COALESCE((SELECT m FROM fn WHERE nome = 'create_marketplace_order_v24'), 'AUSENTE')
+         -- A 20261394000000 (o pedido de visitante na entrega tem freio: o mesmo corpo mais o trecho 0-quater) sucede a v24: aceita os dois
+         -- corpos EXATOS; normaliza ao esperado desta migration. O `vivo` mostra o esperado.
+         COALESCE((SELECT CASE WHEN m IN ('f8d6ed0c3622ab41123bacb98911a98f', '36c80a107f3ed16853c1c5b2b0cbc911') THEN 'f8d6ed0c3622ab41123bacb98911a98f' ELSE m END
+                     FROM fn WHERE nome = 'create_marketplace_order_v24'), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v24: o corpo recusa o pagamento pelo app sem conta (uma vez)', 'sim',
          CASE WHEN NOT EXISTS (SELECT 1 FROM fn WHERE nome = 'create_marketplace_order_v24') THEN 'AUSENTE'
@@ -36,7 +39,9 @@ WITH alvo(nome, assinatura) AS (
               ELSE 'DIFERENTE' END
   UNION ALL
   SELECT 'create_marketplace_order_v23: corpo inalterado, o da 20261350000000 (md5)', '6b71cb823967518955407b532904ae91',
-         COALESCE((SELECT m FROM fn WHERE nome = 'create_marketplace_order_v23'), 'AUSENTE')
+         -- Idem: a v23 aceita tambem o corpo da 20261394000000 (o mesmo corpo mais o trecho 0-quater).
+         COALESCE((SELECT CASE WHEN m IN ('6b71cb823967518955407b532904ae91', '89c99662346d47a4d6b3d13612ca4acb') THEN '6b71cb823967518955407b532904ae91' ELSE m END
+                     FROM fn WHERE nome = 'create_marketplace_order_v23'), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v24: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)', 'sim',
          CASE WHEN NOT EXISTS (SELECT 1 FROM fn WHERE nome = 'create_marketplace_order_v24') THEN 'AUSENTE'

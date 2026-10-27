@@ -177,9 +177,22 @@ if (!MUTADO) {
 }
 
 /** O estado DEPOIS: a migration inteira (pre-voo, troca e conferencia) ou, no modo mutante, so o corpo do arquivo. */
-const instalarNova = () => C.query(MUTADO ? decl(NOVA, NOVA.corpo) : MIGRATION);
+// A 20261394000000 (o pedido de visitante na entrega tem freio) sucede o corpo da v24 desta migration e tambem a v23 da 350: este
+// clone parte da arvore inteira, entao ela cai antes de qualquer instalacao (no-op se nao estiver no ar; sempre dentro de BEGIN).
+// Ver o-pedido-de-visitante-na-entrega-posterior.cjs.
+const semOFreioDe394 = () =>
+  require("./o-pedido-de-visitante-na-entrega-posterior.cjs").desfazerPedidoDeVisitanteTemFreioNaTransacao(
+    C,
+  );
+const instalarNova = async () => {
+  await semOFreioDe394();
+  return C.query(MUTADO ? decl(NOVA, NOVA.corpo) : MIGRATION);
+};
 /** O estado ANTES: o corpo da 20261350 (CREATE OR REPLACE direto; vale como o rollback, sem depender do pre-voo). */
-const instalarAntiga = () => C.query(decl(ANTIGA, ANTIGA.corpo));
+const instalarAntiga = async () => {
+  await semOFreioDe394();
+  return C.query(decl(ANTIGA, ANTIGA.corpo));
+};
 
 const FRASE =
   "Para pagar pelo app é preciso entrar na sua conta. Sem conta, escolha pagar na retirada ou na entrega.";
@@ -927,6 +940,11 @@ const estoque2 = async () =>
 prova(
   "CONCORRENCIA: o retry do convidado ESPERA o primeiro envio (mesma chave) e devolve o MESMO pedido quando ele conclui; se o primeiro desiste (ROLLBACK) o convidado recebe a recusa e nada existe; a recusa NAO toca a linha do produto (uma sessao que a segura nao bloqueia o convidado, e bloqueia o controle autenticado)",
   async () => {
+    // O clone commitado parte da arvore inteira (a 20261394000000 no ar nas DUAS funcoes): ela cai ANTES (a v23 volta ao corpo da
+    // 350, a v24 ao da 384), senao a troca so da v24 abaixo deixaria o clone "misto" e os estados seguintes nao montariam.
+    await require("./o-pedido-de-visitante-na-entrega-posterior.cjs").desfazerPedidoDeVisitanteTemFreioNaTransacao(
+      ADM,
+    );
     await ADM.query(decl(NOVA, NOVA.corpo));
     await semearCommitado();
     try {

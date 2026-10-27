@@ -253,6 +253,40 @@ describe("classificarRecusaDoPedido", () => {
     expect(r.acao).toBe("entrar_na_conta");
   });
 
+  // O FREIO DO PEDIDO DE VISITANTE NA ENTREGA (27/10/2026 — migration
+  // 20261394000000): o pedido provadamente não nasceu (a RPC recusa antes de
+  // reservar) e a saída é entrar na conta. Sem a regra, as duas frases caíam
+  // em `conferir_antes` ("Ver meus pedidos") sobre um pedido que não existe.
+  it("visitante com mais de 10 unidades -> entrar na conta, com a frase do banco", () => {
+    const frase =
+      "Sem entrar na conta, o pedido aceita até 10 unidades. Entre na conta para comprar mais.";
+    const r = classificarRecusaDoPedido(p0001(frase));
+    expect(r.acao).toBe("entrar_na_conta");
+    expect(r.mensagem).toBe(frase);
+  });
+
+  it("loja com muitos pedidos de visitante esperando -> entrar na conta, com a frase do banco", () => {
+    const frase =
+      "Estamos com muitos pedidos aguardando agora. Entre na conta para finalizar o seu.";
+    const r = classificarRecusaDoPedido(p0001(frase));
+    expect(r.acao).toBe("entrar_na_conta");
+    expect(r.mensagem).toBe(frase);
+  });
+
+  it("as duas frases do freio so valem inteiras: um texto parecido NAO vira entrar na conta", () => {
+    // Borda: o padrao e' ancorado. Uma frase que so COMECA igual (outra redacao, outro limite) cai em conferir_antes,
+    // o destino seguro de texto desconhecido, e nao ganha um botao que nao corresponde ao que o banco disse.
+    for (const frase of [
+      "Sem entrar na conta, o pedido aceita até 10 unidades.",
+      "Sem entrar na conta, o pedido aceita até 20 unidades. Entre na conta para comprar mais.",
+      "Estamos com muitos pedidos aguardando agora.",
+      "Estamos com muitos pedidos aguardando agora. Entre na conta para finalizar o seu pedido.",
+    ])
+      expect(classificarRecusaDoPedido(p0001(frase)).acao).toBe(
+        "conferir_antes",
+      );
+  });
+
   it("cobertura local recusa o CEP entregue -> trocar o endereço", () => {
     const r = classificarRecusaDoPedido(
       p0001(

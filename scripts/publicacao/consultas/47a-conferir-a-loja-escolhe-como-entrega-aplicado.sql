@@ -91,14 +91,15 @@ WITH fns AS (
   UNION ALL
   SELECT 'create_marketplace_order_v23: corpo e o da 20261244000000, com o So retiro e a retirada livre (md5)',
          '79445d64a87843be2d42bf601c7090ec',
-         -- 2 hashes aceitos: o corpo da 20261244000000 OU o da SUCESSORA dele, a 20261350000000 (a compra online trava o preco
-         -- e espera a mesma chave: o mesmo corpo com duas edicoes). O `vivo` mostra o esperado.
-         COALESCE((SELECT CASE WHEN f.m = '6b71cb823967518955407b532904ae91' THEN '79445d64a87843be2d42bf601c7090ec' ELSE f.m END FROM fns f WHERE f.nome = 'create_marketplace_order_v23'), 'AUSENTE')
+         -- 3 hashes aceitos: o corpo da 20261244000000 OU o da SUCESSORA dele, a 20261350000000 (a compra online trava o preco
+         -- e espera a mesma chave: o mesmo corpo com duas edicoes) OU o da 20261394000000 (o pedido de visitante na entrega tem freio).
+         -- O `vivo` mostra o esperado.
+         COALESCE((SELECT CASE WHEN f.m IN ('6b71cb823967518955407b532904ae91', '89c99662346d47a4d6b3d13612ca4acb') THEN '79445d64a87843be2d42bf601c7090ec' ELSE f.m END FROM fns f WHERE f.nome = 'create_marketplace_order_v23'), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v24: corpo e o da 20261244000000, com o So retiro e a retirada livre (md5)',
          '85c37af4baa2f5ce1375bdd9e943c746',
-         -- 3 hashes aceitos (so a v24; a v23 aceita 2): o da 20261244000000 OU o da sucessora 20261350000000 OU o da 20261384000000.
-         COALESCE((SELECT CASE WHEN f.m IN ('e3c124d25632aaa9bcf1995153bc5a7e', 'f8d6ed0c3622ab41123bacb98911a98f') THEN '85c37af4baa2f5ce1375bdd9e943c746' ELSE f.m END FROM fns f WHERE f.nome = 'create_marketplace_order_v24'), 'AUSENTE')
+         -- 4 hashes aceitos (a v23 aceita 3): o da 20261244000000 OU o da sucessora 20261350000000 OU o da 20261384000000 OU o da 20261394000000.
+         COALESCE((SELECT CASE WHEN f.m IN ('e3c124d25632aaa9bcf1995153bc5a7e', 'f8d6ed0c3622ab41123bacb98911a98f', '36c80a107f3ed16853c1c5b2b0cbc911') THEN '85c37af4baa2f5ce1375bdd9e943c746' ELSE f.m END FROM fns f WHERE f.nome = 'create_marketplace_order_v24'), 'AUSENTE')
   UNION ALL
   SELECT 'upsert_store_config: corpo e o da 20261244000000, que grava as duas chaves novas (md5)',
          '391e8e1064400df5aea579f3472b203c',

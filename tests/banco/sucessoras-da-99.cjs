@@ -107,6 +107,10 @@ const NOMES = [
   // A busca do CRM acha o numero com o +55: crm_clientes sucede o corpo da 231 (a CADEIA 99 -> 231 -> 3921: o `hashVigente` da 3921 e o
   // `hashDesta` da 231). O rollback da 231 recusa com o corpo novo no ar: ela cai antes.
   "20261392100000_a_busca_do_crm_acha_o_numero_com_mais_55.sql",
+  // O pedido de visitante na entrega tem freio: create_marketplace_order_v23 e v24 sucedem os corpos da 350 e da 384 (a CADEIA 229/236 ->
+  // 244 -> 350 -> 384 -> 394: o `hashVigente` da 394 e o `hashDesta` da 350 na v23 e da 384 na v24). Nao sao dos 42 da 99, mas o rollback da
+  // 384 e o da 350 recusam com o corpo novo no ar: ela cai antes. O preflight dela traz o NOME antes da assinatura (quatro colunas).
+  "20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
@@ -117,19 +121,26 @@ const PARES_POR_MIGRATION = new Map([
     "20261350000000_a_compra_online_trava_o_preco_e_espera_a_mesma_chave.sql",
     2,
   ],
+  ["20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql", 2],
 ]);
 
 const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");
 const RE_PAR_DE_HASHES =
   /\('(public\.[a-z_0-9]+\([^)]*\))', '([0-9a-f]{32})', '([0-9a-f]{32})'\)/g;
+// So a 20261394000000 traz o NOME antes da assinatura (quatro colunas: nome, assinatura, vigente, desta): tira-se o nome do texto, em vez de
+// tornar o grupo opcional na regex (grupo opcional com quantificador dentro e' o que o `security/detect-unsafe-regex` reprova).
+const lerParaOsPares = (nome) =>
+  ler(nome).replace(/\('[a-z_0-9]+', '(public\.)/g, "('$1");
 
 /** As 42 assinaturas que a 99 redefine (as do preflight dela, com dois hashes). */
 function assinaturasDa99() {
-  return [...ler(NOME_99).matchAll(RE_PAR_DE_HASHES)].map((m) => m[1]);
+  return [...lerParaOsPares(NOME_99).matchAll(RE_PAR_DE_HASHES)].map(
+    (m) => m[1],
+  );
 }
 
 const SUCESSORAS_DA_99 = NOMES.flatMap((nome) => {
-  const pares = [...ler(nome).matchAll(RE_PAR_DE_HASHES)];
+  const pares = [...lerParaOsPares(nome).matchAll(RE_PAR_DE_HASHES)];
   const esperados = PARES_POR_MIGRATION.get(nome) ?? 1;
   assert.equal(
     pares.length,

@@ -339,6 +339,12 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     // 20261393100000: o balcao diz "inativo" para a variacao desligada (controle com o corpo anterior, precedencia, produto apagado, mutantes,
     // rollback, pre-voo, consultas 104 e a resposta lida pelo reducer do balcao).
     "tests/banco/o-balcao-diz-inativo-para-a-variacao-desligada-viva.cjs",
+    // 20261394000000: o pedido de visitante na entrega tem freio (teto de 10 unidades, teto de 10 pedidos pendentes por loja sob o advisory lock,
+    // p_address_id sem sessao recusado, retentativa nunca recusada, 14 visitantes simultaneos, mutantes, rollback, pre/pos-voo e consultas 106a/106b).
+    "tests/banco/o-pedido-de-visitante-na-entrega-tem-freio-viva.cjs",
+    // 20261394100000: a lista de recomendacoes do produto tem teto (get_product_recommendations limita p_limit a 50 e trata NULL como 4; ate o teto a lista
+    // e' a de sempre; mutantes, rollback, pre/pos-voo e consultas 107a/107b e a 9a).
+    "tests/banco/a-lista-de-recomendacoes-do-produto-tem-teto-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
@@ -635,6 +641,12 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-busca-do-crm-acha-o-numero-com-mais-55-viva.cjs",
     "tests/banco/o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-viva.cjs",
     "tests/banco/o-balcao-diz-inativo-para-a-variacao-desligada-viva.cjs",
+    // 20261394000000: o pedido de visitante na entrega tem freio (teto de 10 unidades, teto de 10 pedidos pendentes por loja sob o advisory lock,
+    // p_address_id sem sessao recusado, retentativa nunca recusada, 14 visitantes simultaneos, mutantes, rollback, pre/pos-voo e consultas 106a/106b).
+    "tests/banco/o-pedido-de-visitante-na-entrega-tem-freio-viva.cjs",
+    // 20261394100000: a lista de recomendacoes do produto tem teto (get_product_recommendations limita p_limit a 50 e trata NULL como 4; ate o teto a lista
+    // e' a de sempre; mutantes, rollback, pre/pos-voo e consultas 107a/107b e a 9a).
+    "tests/banco/a-lista-de-recomendacoes-do-produto-tem-teto-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",
