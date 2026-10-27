@@ -241,6 +241,55 @@ describe("usePushNotifications — falha ao salvar no banco desfaz a inscrição
     expect(subscricaoFalsa.unsubscribe).toHaveBeenCalledTimes(1);
   });
 
+  // O 11º aparelho: o banco recusa com uma frase explicativa e o identificador
+  // estável `push_limite_de_aparelhos` no DETAIL (migration 20261396000000).
+  // "Tente novamente em instantes" mandava a pessoa repetir o que nunca passa.
+  it("o banco recusa o 11º aparelho (DETAIL push_limite_de_aparelhos): frase clara de limite, e a inscrição nova do navegador continua sendo desfeita", async () => {
+    const { toast, aoAtualizar } = await montar();
+    requestPermission.mockResolvedValue("granted");
+    const subscricaoFalsa = subscricaoFalsaComUnsubscribe();
+    subscribeNoNavegador.mockResolvedValue(subscricaoFalsa);
+    upsert.mockResolvedValue({
+      error: {
+        code: "P0001",
+        message:
+          "Esta conta já tem 10 aparelhos com aviso ligado. Desligue o aviso em um aparelho que você não usa mais e tente de novo.",
+        details: "push_limite_de_aparelhos",
+      },
+    });
+
+    const { subscribe } = ultimoEstado(aoAtualizar)!;
+    await expect(
+      act(async () => {
+        await subscribe();
+      }),
+    ).rejects.toThrow();
+
+    expect(toast.error).toHaveBeenCalledWith(
+      "Você já tem 10 aparelhos recebendo avisos nesta conta. Desative em um deles para ligar neste.",
+    );
+    expect(toast.error).not.toHaveBeenCalledWith(MENSAGEM_BANCO);
+    expect(subscricaoFalsa.unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("outro erro com DETAIL diferente continua sendo a frase de banco", async () => {
+    const { toast, aoAtualizar } = await montar();
+    requestPermission.mockResolvedValue("granted");
+    subscribeNoNavegador.mockResolvedValue(subscricaoFalsaComUnsubscribe());
+    upsert.mockResolvedValue({
+      error: { code: "P0001", message: "outra coisa", details: "outro_motivo" },
+    });
+
+    const { subscribe } = ultimoEstado(aoAtualizar)!;
+    await expect(
+      act(async () => {
+        await subscribe();
+      }),
+    ).rejects.toThrow();
+
+    expect(toast.error).toHaveBeenCalledWith(MENSAGEM_BANCO);
+  });
+
   // Controle negativo: o caminho de SUCESSO não pode ter passado a desfazer
   // a inscrição — só o de erro no banco chama `unsubscribe`.
   it("controle: caminho de sucesso continua inscrevendo e gravando normalmente — sem desfazer nada", async () => {

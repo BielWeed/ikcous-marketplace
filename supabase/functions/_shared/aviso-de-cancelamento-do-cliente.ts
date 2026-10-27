@@ -26,8 +26,10 @@
  * um re-cancelamento), `created_by` é o próprio DONO do pedido, esse usuário
  * não é admin (admin que compra na própria loja não é "cliente cancelando"), o
  * pedido segue cancelado, e o pagamento entrou (pago, pago depois de
- * expirar, ou já estornado). Expiração do PIX e recusa cancelam pedido NÃO
- * pago e não avisam.
+ * expirar, ou já estornado) OU o pedido não tinha pagamento online (nulo ou
+ * vazio: pagar na entrega) e o produto ainda não saiu — a mesma regra do sino
+ * do painel (`src/utils/avisos-do-lojista.ts`). Expiração do PIX e recusa
+ * cancelam pedido com pagamento online NÃO pago e não avisam.
  *
  * `estornado` conta como pago de propósito: o passo do estorno (mais abaixo,
  * na mesma rotina) pode devolver o dinheiro ANTES de uma nova rodada deste
@@ -91,7 +93,9 @@ export function montarAvisoDeCancelamento(
   const valor = pedido.total ?? pedido.total_amount;
   const cliente = String(pedido.customer_name ?? "").trim() || "cliente sem nome";
   const jaSaiu = historico.old_status === "shipping" || pedido.cancelled_after_shipping === true;
-  const frase = jaSaiu
+  const frase = !pedido.payment_status && !jaSaiu
+    ? "sem pagamento pelo app: não separe nem envie"
+    : jaSaiu
     ? "pago, o produto já saiu: avise o transporte"
     : pedido.payment_status === "pago_apos_expirar"
     ? "pago depois do cancelamento: confira o pedido"
@@ -155,12 +159,18 @@ export async function avisarCancelamentosDoCliente(args: {
   for (const linha of candidatos) {
     try {
       const pedido = pedidoPorId.get(linha.order_id);
+      // Mesma regra do sino do painel (`selecionarCancelamentosDoCliente`): sem
+      // pagamento online (nulo/vazio) so avisa se o produto ainda nao saiu.
+      const jaSaiu = linha.old_status === "shipping" || pedido?.cancelled_after_shipping === true;
+      const pagamentoOk = pedido && (pedido.payment_status
+        ? PAGAMENTO_QUE_ENTROU.includes(pedido.payment_status)
+        : !jaSaiu);
       const ehCancelamentoDoCliente = pedido &&
         linha.old_status !== "cancelled" &&
         linha.created_by === pedido.user_id &&
         !admins.has(linha.created_by) &&
         pedido.status === "cancelled" &&
-        PAGAMENTO_QUE_ENTROU.includes(pedido.payment_status);
+        pagamentoOk;
       if (!ehCancelamentoDoCliente) {
         resumo.ignorados++;
         continue;
