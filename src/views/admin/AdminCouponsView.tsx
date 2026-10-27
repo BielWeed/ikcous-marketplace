@@ -829,11 +829,9 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                                 Cupom indisponível
                               </p>
                               <p className="mt-1 leading-relaxed">
-                                A chave está ligada. Ajuste{" "}
                                 {rotulo === "Expirado"
-                                  ? "a validade"
-                                  : "o limite de uso"}{" "}
-                                para voltar a aceitar o cupom.
+                                  ? "O cupom está ativo, mas expirou. Ajuste a validade para ele voltar a valer."
+                                  : "O cupom está ativo, mas esgotou. Ajuste o limite de uso para ele voltar a valer."}
                               </p>
                             </div>
                           )}

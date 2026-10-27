@@ -180,7 +180,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     setRascunhos((anteriores) => ({ ...anteriores, [replyingTo]: texto }));
   };
 
-  const abrirResposta = (id: string) => {
+  const abrirResposta = (id: string, respostaAtual?: string | null) => {
     if (envioDeRespostaRef.current) return;
     if (isOffline) {
       toast.error("Você está offline", {
@@ -189,12 +189,31 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       return;
     }
     editorAtualRef.current = id;
+    // Editar: o campo abre com a resposta de hoje (sem pisar num rascunho).
+    if (respostaAtual) {
+      setRascunhos((anteriores) =>
+        anteriores[id] === undefined
+          ? { ...anteriores, [id]: respostaAtual }
+          : anteriores,
+      );
+    }
     setReplyingTo(id);
   };
 
   const fecharResposta = () => {
     if (envioDeRespostaRef.current) return;
     editorAtualRef.current = null;
+    // Cancelar uma edição que não mudou nada não deixa "alteração não salva".
+    const emEdicao = replyingTo;
+    const respostaDeHoje = adminReviews.find(
+      (r) => r.id === emEdicao,
+    )?.merchantReply;
+    if (emEdicao && respostaDeHoje && rascunhos[emEdicao] === respostaDeHoje) {
+      setRascunhos((anteriores) => {
+        const { [emEdicao]: _descartado, ...resto } = anteriores;
+        return resto;
+      });
+    }
     setReplyingTo(null);
   };
 
@@ -709,17 +728,15 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                   Aprovar
                 </button>
               )}
-              {!review.merchantReply && (
-                <button
-                  type="button"
-                  disabled={isOffline || isSubmittingReply}
-                  onClick={() => abrirResposta(review.id)}
-                  className={cn(BOTAO_NEUTRO, "min-w-0 flex-1")}
-                >
-                  <MessageSquare aria-hidden="true" className="size-4" />
-                  Responder
-                </button>
-              )}
+              <button
+                type="button"
+                disabled={isOffline || isSubmittingReply}
+                onClick={() => abrirResposta(review.id, review.merchantReply)}
+                className={cn(BOTAO_NEUTRO, "min-w-0 flex-1")}
+              >
+                <MessageSquare aria-hidden="true" className="size-4" />
+                {review.merchantReply ? "Editar resposta" : "Responder"}
+              </button>
               <button
                 type="button"
                 onClick={() => setConfirmDeleteId(review.id)}
