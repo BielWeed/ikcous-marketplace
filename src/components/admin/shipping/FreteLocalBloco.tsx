@@ -37,7 +37,7 @@ function valorDoTexto(texto: string): number {
 
 function textoDoValor(valor: number): string {
   return Number.isFinite(valor) && valor !== 0
-    ? String(valor).replace(".", ",")
+    ? valor.toFixed(2).replace(".", ",")
     : "";
 }
 
@@ -180,6 +180,15 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
     );
   }, [valor]);
   const entregaInvalida = Number.isNaN(valorDoTexto(textoDaEntrega));
+  // "7," no meio da digitação ainda não é erro: ela vai digitar o 50. Com o
+  // campo em foco, só o separador pendente ("7," / "7.") é perdoado; ao sair,
+  // ou ao salvar, vale a regra de sempre.
+  const [campoEmFoco, setCampoEmFoco] = useState(false);
+  const digitandoDecimal =
+    campoEmFoco &&
+    /[.,]$/.test(textoDaEntrega) &&
+    !Number.isNaN(valorDoTexto(textoDaEntrega.slice(0, -1)));
+  const mostrarErroDaEntrega = entregaInvalida && !digitandoDecimal;
   const [semEnderecoAoEscolher, setSemEnderecoAoEscolher] = useState(false);
   const [semCepAoEscolher, setSemCepAoEscolher] = useState(false);
   const soRetiro = modo === "so_retiro";
@@ -365,7 +374,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
         <Linha
           nome="Valor da entrega"
           dica={
-            entregaInvalida ? (
+            mostrarErroDaEntrega ? (
               <span id="erro-valor-da-entrega" className="text-amber-300">
                 Escreva só números, como 7,50.
               </span>
@@ -386,11 +395,13 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
               id="local-delivery-fee"
               type="text"
               inputMode="decimal"
-              aria-invalid={entregaInvalida}
+              aria-invalid={mostrarErroDaEntrega}
               aria-describedby={
-                entregaInvalida ? "erro-valor-da-entrega" : undefined
+                mostrarErroDaEntrega ? "erro-valor-da-entrega" : undefined
               }
               value={textoDaEntrega}
+              onFocus={() => setCampoEmFoco(true)}
+              onBlur={() => setCampoEmFoco(false)}
               onChange={(e) => {
                 setTextoDaEntrega(e.target.value);
                 onValor(valorDoTexto(e.target.value));

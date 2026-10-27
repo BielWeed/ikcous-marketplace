@@ -166,6 +166,8 @@ for (const cenario of CENARIOS) {
             })
             const esperado = Object.entries(cenario.esperado).find(([chave]) => chave === modo)![1]
             assertEquals(resposta.status, esperado.status, JSON.stringify(corpo))
+            // Recusa por estar fora da área: a tela escolhe a frase pelo `codigo`.
+            if (esperado.status === 400) assertEquals(corpo.codigo, "fora_da_area")
             if (esperado.status !== 200) return
             assertEquals(corpo.cotacaoIncompleta, false)
             if (esperado.ids) assertEquals(ids(corpo), esperado.ids)

@@ -236,8 +236,8 @@ Deno.test("quem cancelou NAO e o dono do pedido (outra pessoa) -> nenhum aviso",
   assertEquals(r.avisos.length, 0);
 });
 
-Deno.test("pedido NAO pago (aguardando, recusado, expirado) -> nenhum aviso", async () => {
-  for (const payment_status of ["aguardando", "recusado", "expirado", null]) {
+Deno.test("pedido com pagamento online NAO pago (aguardando, recusado, expirado) -> nenhum aviso", async () => {
+  for (const payment_status of ["aguardando", "recusado", "expirado"]) {
     const r = await rodar({
       historico: [hist("h1")],
       pedidos: [pedido({ payment_status })],
@@ -245,6 +245,41 @@ Deno.test("pedido NAO pago (aguardando, recusado, expirado) -> nenhum aviso", as
     });
     assertEquals(r.avisos.length, 0, String(payment_status));
   }
+});
+
+Deno.test("pagar na entrega (pagamento nulo ou vazio) cancelado pela cliente ANTES de sair -> 1 aviso sem falar de dinheiro devolvido", async () => {
+  for (const payment_status of [null, ""]) {
+    for (const old_status of ["pending", "processing"]) {
+      const r = await rodar({
+        historico: [hist("h1", { old_status })],
+        pedidos: [pedido({ payment_status })],
+        perfis,
+      });
+      assertEquals(r.avisos.length, 1, `${String(payment_status)}/${old_status}`);
+      assertEquals(r.avisos[0].chave, "cancelado_pelo_cliente:h1");
+      assertEquals(r.avisos[0].aviso.body, "#4F5A6B · R$ 149,90 · Maria Silva — sem pagamento pelo app: não separe nem envie");
+      for (const proibido of ["pago,", "reembolso", "estorn"]) assertEquals(r.avisos[0].aviso.body.includes(proibido), false, proibido);
+    }
+  }
+});
+
+Deno.test("pagar na entrega cancelado DEPOIS de sair (shipping) -> nenhum aviso (e' assunto do transporte; igual ao sino)", async () => {
+  const a = await rodar({ historico: [hist("h1", { old_status: "shipping" })], pedidos: [pedido({ payment_status: null })], perfis });
+  assertEquals(a.avisos.length, 0);
+  const b = await rodar({ historico: [hist("h1")], pedidos: [pedido({ payment_status: null, cancelled_after_shipping: true })], perfis });
+  assertEquals(b.avisos.length, 0);
+});
+
+Deno.test("pagar na entrega cancelado pelo ADMIN ou por outra pessoa -> nenhum aviso", async () => {
+  const a = await rodar({ historico: [hist("h1", { created_by: ADMIN })], pedidos: [pedido({ payment_status: null })], perfis });
+  assertEquals(a.avisos.length, 0);
+  const b = await rodar({ historico: [hist("h1", { created_by: OUTRO_CLIENTE })], pedidos: [pedido({ payment_status: null })], perfis });
+  assertEquals(b.avisos.length, 0);
+});
+
+Deno.test("pagar na entrega que ja estava cancelado (re-cancelamento) -> nenhum aviso", async () => {
+  const r = await rodar({ historico: [hist("h1", { old_status: "cancelled" })], pedidos: [pedido({ payment_status: null })], perfis });
+  assertEquals(r.avisos.length, 0);
 });
 
 Deno.test("pedido que a loja REATIVOU depois do cancelamento (nao esta mais cancelado) -> nenhum aviso", async () => {

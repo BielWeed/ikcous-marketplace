@@ -29,6 +29,7 @@ vi.mock("@/hooks/useCart", () => ({
   useCart: () => ({
     cart: [{ product: { id: "p1" }, quantity: 1 }],
     getCartCount: () => 2,
+    cartCount: 2,
     cartTotal: estado.cartTotal,
   }),
 }));

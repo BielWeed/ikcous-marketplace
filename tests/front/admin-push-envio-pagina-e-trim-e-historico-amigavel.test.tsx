@@ -235,6 +235,37 @@ describe("Avisar clientes: envio paginado, texto em branco e historico amigavel"
     ]);
   });
 
+  it("B3b: a lista vai para a send-push com os servicos intercalados (o teto de tempo nao corta sempre iPhone/Windows) e sem perder ninguem", async () => {
+    const servicos = [
+      "https://fcm.googleapis.com/fcm/send/",
+      "https://web.push.apple.com/",
+      "https://wns2-par02p.notify.windows.com/w/?token=",
+    ];
+    // Como o banco entrega: ordenada por endereco, agrupada por empresa.
+    estado.aparelhos = servicos.flatMap((base, s) =>
+      Array.from({ length: 30 }, (_, i) => ({
+        user_id: `u${s}-${i}`,
+        endpoint: `${base}${i}`,
+        p256dh: "p",
+        auth: "a",
+      })),
+    );
+    await abrirTela();
+    await escrever("Novidade", "Chegou colecao nova");
+    await enviar();
+
+    const { tokens } = invokeSendPush.mock.calls[0][1].body;
+    const hosts = tokens.map(
+      (t: { endpoint: string }) => new URL(t.endpoint).hostname,
+    );
+    expect(new Set(hosts.slice(0, 3)).size).toBe(3);
+    expect(new Set(hosts.slice(0, 30)).size).toBe(3);
+    expect(tokens).toHaveLength(90);
+    expect(
+      new Set(tokens.map((t: { endpoint: string }) => t.endpoint)),
+    ).toEqual(new Set(estado.aparelhos.map((t) => t.endpoint)));
+  });
+
   it("B4: o historico mostra o nome da tela, nao a rota crua, e 'Todos' nao promete a base inteira", async () => {
     estado.historico = [
       {

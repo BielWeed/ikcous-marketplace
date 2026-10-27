@@ -18,7 +18,7 @@ interface CartReminderProps {
 }
 
 export function CartReminder({ onAction, docked }: CartReminderProps) {
-  const { cart: items, getCartCount, cartTotal } = useCart();
+  const { cart: items, cartCount: itemCount, cartTotal } = useCart();
   const { config } = useStore();
   const [isVisible, setIsVisible] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
@@ -85,8 +85,6 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
       return () => clearTimeout(hideTimer);
     }
   }, [isVisible]);
-
-  const itemCount = getCartCount();
 
   return (
     <div

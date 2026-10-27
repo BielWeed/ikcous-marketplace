@@ -1148,6 +1148,135 @@ describe("podeIrPara e a guarda em 'etapa_pedida'", () => {
 });
 
 // ============================================================================
+// Venda que o banco JÁ TINHA (`ja_existia`) — a tela de antes não pode enganar
+// o caixa. Depois de "Não sabemos se a venda foi registrada" as edições voltam
+// a valer com a MESMA chave; o retry devolve o pedido ANTIGO. O recibo tem de
+// carregar a diferença entre o que entrou e o que a tela mostrava.
+// ============================================================================
+
+describe("venda_registrada com ja_existia — divergência entre o pedido do banco e a tela", () => {
+  function itemDe(id: string, preco: number, quantidade: number): ItemDoCupom {
+    return {
+      chave: chaveDoItemDoCupom(id, null),
+      productId: id,
+      variantId: null,
+      nome: id,
+      variacao: null,
+      preco,
+      quantidade,
+      estoque: 99,
+      imagem: "",
+    };
+  }
+
+  function reciboDoBanco(
+    jaExistia: boolean,
+    itens: readonly ItemDoCupom[],
+    total: number,
+    pagamento: "cash" | "pix" | "card" = "cash",
+  ) {
+    return {
+      orderId: "ped-1",
+      numero: "PED001",
+      criadoEm: new Date(0).toISOString(),
+      total,
+      subtotal: total,
+      desconto: 0,
+      pagamento,
+      cliente: { tipo: "sem_cliente" as const },
+      itens,
+      jaExistia,
+    };
+  }
+
+  function telaCom(
+    itens: readonly ItemDoCupom[],
+    pagamento: "cash" | "pix" | "card" | null = "cash",
+    desconto = 0,
+  ): EstadoDaVenda {
+    return { ...estadoBase(), itens, pagamento, desconto, enviando: true };
+  }
+
+  it("a tela mostrava R$ 50 (1 un.) e o banco tem R$ 100 (2 un.): o recibo leva o que a tela mostrava", () => {
+    // O banco gravou 2 × R$ 50; depois o balconista tirou uma unidade ou deu
+    // desconto e tentou de novo com a mesma chave.
+    const noBanco = [itemDe("p1", 50, 2)];
+    const depois = reducerDaVenda(telaCom([itemDe("p1", 50, 1)]), {
+      tipo: "venda_registrada",
+      recibo: reciboDoBanco(true, noBanco, 100),
+    });
+    expect(depois.etapa).toBe("recibo");
+    expect(depois.recibo?.total).toBe(100);
+    expect(depois.recibo?.divergenciaComATela).toEqual({
+      totalDaTela: 50,
+      unidadesDaTela: 1,
+      pagamentoDaTela: "cash",
+    });
+  });
+
+  it("desconto dado depois muda o total da tela: divergente", () => {
+    const itens = [itemDe("p1", 50, 2)];
+    const depois = reducerDaVenda(telaCom(itens, "cash", 20), {
+      tipo: "venda_registrada",
+      recibo: reciboDoBanco(true, itens, 100),
+    });
+    expect(depois.recibo?.divergenciaComATela).toEqual({
+      totalDaTela: 80,
+      unidadesDaTela: 2,
+      pagamentoDaTela: "cash",
+    });
+  });
+
+  it("forma de pagamento trocada depois (dinheiro → PIX): divergente mesmo com o mesmo total", () => {
+    const itens = [itemDe("p1", 50, 2)];
+    const depois = reducerDaVenda(telaCom(itens, "pix"), {
+      tipo: "venda_registrada",
+      recibo: reciboDoBanco(true, itens, 100, "cash"),
+    });
+    expect(depois.recibo?.divergenciaComATela).toEqual({
+      totalDaTela: 100,
+      unidadesDaTela: 2,
+      pagamentoDaTela: "pix",
+    });
+  });
+
+  it("outro produto de mesmo valor e mesma quantidade: divergente (não basta comparar o total)", () => {
+    const depois = reducerDaVenda(telaCom([itemDe("p2", 50, 2)]), {
+      tipo: "venda_registrada",
+      recibo: reciboDoBanco(true, [itemDe("p1", 50, 2)], 100),
+    });
+    expect(depois.recibo?.divergenciaComATela).not.toBeNull();
+    expect(depois.recibo?.divergenciaComATela).toBeDefined();
+  });
+
+  it("retry idêntico (duplo toque, F5 sem editar): sem divergência — só o aviso pequeno de sempre", () => {
+    const itens = [itemDe("p1", 50, 2), itemDe("p2", 10.1, 3)];
+    const depois = reducerDaVenda(telaCom([...itens].reverse(), "cash", 0), {
+      tipo: "venda_registrada",
+      recibo: reciboDoBanco(true, itens, 130.3),
+    });
+    expect(depois.recibo?.jaExistia).toBe(true);
+    expect(depois.recibo?.divergenciaComATela ?? null).toBeNull();
+  });
+
+  it("venda NOVA (ja_existia false) nunca carrega divergência, mesmo que o recibo difira da tela", () => {
+    const depois = reducerDaVenda(telaCom([itemDe("p1", 50, 1)]), {
+      tipo: "venda_registrada",
+      recibo: reciboDoBanco(false, [itemDe("p1", 50, 2)], 100),
+    });
+    expect(depois.recibo?.divergenciaComATela ?? null).toBeNull();
+  });
+
+  it("cupom já vazio quando a resposta chega (Nova venda no meio): não há o que comparar", () => {
+    const depois = reducerDaVenda(telaCom([], null), {
+      tipo: "venda_registrada",
+      recibo: reciboDoBanco(true, [itemDe("p1", 50, 2)], 100),
+    });
+    expect(depois.recibo?.divergenciaComATela ?? null).toBeNull();
+  });
+});
+
+// ============================================================================
 // Reducer puro — nenhuma das peças acima lê localStorage/Date.now/crypto/window
 // ============================================================================
 

@@ -11,6 +11,7 @@ import {
 } from "@/lib/endereco-de-entrega";
 import type { PromessaDeCanal } from "@/lib/estrategias-de-frete";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
+import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { ehModalidadeDaLoja, ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
 import { precoVendido } from "@/lib/preco-vendido";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -48,6 +49,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 
 interface CartViewProps {
@@ -217,9 +219,13 @@ export function CartView({
   onAddToCart?: (product: Product, quantity?: number) => void;
 }) {
   const { config } = useStore();
+  // Nenhuma forma na entrega/retirada: a loja só recebe pelo app (exige conta).
+  const soPeloApp =
+    formasPagamentoNaEntregaValidas(config.formasPagamentoEntrega).length === 0;
   const { getFreeShippingEligibleProducts } = useProducts();
   const {
     cart: ctxCart,
+    isLoading: lendoOCarrinhoSalvo,
     shippingFee: ctxShippingFee,
     freteIndefinido,
     freteGratis,
@@ -744,7 +750,22 @@ export function CartView({
             >
               {cart.length === 0 ? (
                 <div className="flex flex-1 items-center justify-center">
-                  <EmptyCart onNavigate={onNavigate} />
+                  {/* Lendo o carrinho salvo da conta: ainda não dá para dizer
+                      "vazio" (caça 11-D #6). `isLoading` termina sempre — o
+                      `finally` da leitura e o tempo-limite de 8 s. */}
+                  {lendoOCarrinhoSalvo && !propCart ? (
+                    <div
+                      role="status"
+                      className="flex flex-col items-center gap-3 px-6 py-16"
+                    >
+                      <Skeleton className="h-4 w-40" />
+                      <p className="text-sm text-muted-foreground">
+                        Carregando seu carrinho…
+                      </p>
+                    </div>
+                  ) : (
+                    <EmptyCart onNavigate={onNavigate} />
+                  )}
                 </div>
               ) : (
                 <div className="mx-auto flex w-full max-w-7xl flex-col items-stretch gap-6 px-4 pb-6 pt-1 min-[380px]:px-5 lg:flex-row lg:items-start lg:gap-8 lg:px-8 lg:py-6">
@@ -1029,8 +1050,13 @@ export function CartView({
                                 Comprar como Convidado
                               </p>
                               <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">
-                                Finalize sua compra instantaneamente sem
-                                precisar criar senha ou cadastro.
+                                {/* Só promete o que vale (caça 11-D #3): loja
+                                    sem forma na entrega só fecha pelo app, e
+                                    isso exige conta; fora da cidade também.
+                                    O checkout avisa os dois antes do envio. */}
+                                {soPeloApp
+                                  ? "Nesta loja o pagamento é feito pelo app, por isso é preciso entrar na sua conta para finalizar."
+                                  : "Você pode comprar como visitante em muitos casos; se precisar de conta, avisamos antes de finalizar."}
                               </p>
                             </div>
                           </div>
