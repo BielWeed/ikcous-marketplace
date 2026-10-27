@@ -713,6 +713,9 @@
   font-size: 14px;
   overflow-wrap: anywhere;
 }
+.pdv-notice-red {
+  border: 2px solid var(--lit-t-ff9999, #ff9999);
+}
 .pdv-empty {
   flex: 1;
   min-height: 0;
