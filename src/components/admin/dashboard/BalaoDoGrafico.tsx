@@ -33,7 +33,7 @@ const CAIXA =
   "bg-zinc-950/98 pointer-events-none z-30 flex w-max select-none flex-col gap-1 rounded-xl border border-admin-border px-3 py-2 text-white shadow-lg";
 
 // Centavos sempre, e o menos de verdade (U+2212) como no eixo do mesmo gráfico.
-const reais = (valor: number) =>
+export const reais = (valor: number) =>
   `${paraCentavos(valor) < 0 ? "−" : ""}${formatarBRL(valor)}`;
 
 function LinhaDeValor({

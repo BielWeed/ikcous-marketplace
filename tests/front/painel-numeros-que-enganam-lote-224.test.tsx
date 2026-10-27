@@ -144,6 +144,29 @@ describe("4. selo 'vs. 30 dias antes'", () => {
     expect(hospedeiro.textContent).not.toContain("+100,0%");
   });
 
+  it("loja sem venda nos 60 dias (growth 0 da RPC): nenhum selo", async () => {
+    await montar(0, historico(0, 0));
+    expect(selo()).toBeNull();
+  });
+
+  it("0% verdadeiro (vendeu igual nos dois períodos) continua aparecendo", async () => {
+    await montar(0, historico(25, 25));
+    expect(selo()?.textContent).toContain("0,0%");
+  });
+
+  it("aba Retorno do estoque: lucro acumulado negativo com centavos e o menos antes do R$", async () => {
+    const h = historico(0, 0);
+    h[h.length - 1].profit = -12.5;
+    await montar(0, h);
+    const aba = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Retorno do estoque"),
+    );
+    await act(async () => aba?.click());
+    const t = SEM_NBSP(hospedeiro.textContent);
+    expect(t).toContain("−R$ 12,50");
+    expect(t).not.toContain("R$ -");
+  });
+
   it("com venda antes e o dobro agora: o +100,0% é verdadeiro e aparece", async () => {
     await montar(100, historico(25, 50));
     expect(selo()?.textContent).toContain("+100,0%");
