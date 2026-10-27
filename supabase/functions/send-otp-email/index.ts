@@ -35,7 +35,8 @@
  */
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { resolverRemetente } from "../_shared/email-da-loja.ts";
+import { comTempoLimite, resolverRemetente } from "../_shared/email-da-loja.ts";
+import { escaparHtml } from "../_shared/pedido.ts";
 import { enviarEmail } from "../_shared/smtp.ts";
 // PEDIDO-07 (INFRA-260, #126): mesma migração que webhook-mercadopago,
 // reconciliar-pagamentos, notify-new-order e send-push já fizeram — lê a
@@ -60,23 +61,45 @@ export function mascarar(email: string): string {
   return `${mascarado}@${dominio}`;
 }
 
+const NOME_PADRAO_DA_LOJA = "Nossa loja";
+const BANCO_MS = 700;
+
 /**
- * O corpo do e-mail. Sem nome de loja e sem cidade de proposito: este
- * repositorio e' o molde que se clona por cliente, e qualquer coisa cravada
- * aqui viaja para toda loja que existir. Quando a identidade da loja precisar
- * aparecer no e-mail, ela vem do banco (store_config), nunca daqui.
+ * O nome da loja vem do banco (`store_config`), como no e-mail de login
+ * (`auth-send-email`): este repositorio e' o molde que se clona por cliente, e
+ * nada de loja e' cravado aqui. Sem nome (ou banco lento), "Nossa loja": a
+ * falta da identidade nunca impede o codigo de sair. Caracteres de controle
+ * viram espaco (o nome vai no assunto).
  */
-export function htmlDoCodigo(codigo: string): string {
+export async function nomeDaLoja(supabase: any): Promise<string> {
+  try {
+    const { data, error } = await comTempoLimite(
+      Promise.resolve(supabase.from("store_config").select("store_name").limit(1).maybeSingle()),
+      BANCO_MS,
+    );
+    if (!error && typeof data?.store_name === "string") {
+      const nome = Array.from(data.store_name, (c: string) =>
+        c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127 ? " " : c
+      ).join("").trim();
+      if (nome) return nome;
+    }
+  } catch { /* Identidade indisponivel nao impede o codigo. */ }
+  return NOME_PADRAO_DA_LOJA;
+}
+
+/** O corpo do e-mail. Sem cidade nem nome cravados: o nome da loja vem de fora. */
+export function htmlDoCodigo(codigo: string, nome: string = NOME_PADRAO_DA_LOJA): string {
   return `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; border: 1px solid #e4e4e7; border-radius: 24px; color: #18181b;">
+      <p style="font-size: 16px; line-height: 22px; color: #09090b; margin: 0 0 8px; font-weight: 700;">${escaparHtml(nome)}</p>
       <p style="font-size: 14px; line-height: 20px; color: #3f3f46; margin: 0 0 24px; font-weight: 500;">
-        Voce pediu para acompanhar seu pedido. Use o codigo abaixo para continuar:
+        Você pediu para acompanhar seu pedido. Use o código abaixo para continuar:
       </p>
       <div style="background-color: #f4f4f5; border: 1px solid #e4e4e7; padding: 20px; text-align: center; border-radius: 16px; font-size: 32px; font-weight: 900; letter-spacing: 8px; color: #09090b; font-family: monospace; margin-bottom: 24px;">
         ${codigo}
       </div>
       <p style="font-size: 11px; line-height: 16px; color: #a1a1aa; text-align: center; margin: 0; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">
-        Este codigo expira em 15 minutos. Se nao foi voce, ignore este e-mail.
+        Este código expira em 15 minutos. Se não foi você, ignore este e-mail.
       </p>
     </div>
   `;
@@ -174,11 +197,12 @@ export async function handler(
   }
 
   try {
+    const loja = await nomeDaLoja(supabase);
     await (deps.enviarEmail ?? enviarEmail)(
       {
         para: data.email,
-        assunto: "Seu codigo de verificacao",
-        html: htmlDoCodigo(data.otp_code),
+        assunto: `Seu código de verificação — ${loja}`,
+        html: htmlDoCodigo(data.otp_code, loja),
       },
       remetente,
     );
