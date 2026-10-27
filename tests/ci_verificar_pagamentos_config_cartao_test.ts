@@ -98,7 +98,8 @@ Deno.test("a exigência antiga de 1x/sem débito não existe mais", () => {
 // ---------------------------------------------------------------------------
 // O pin dos hashes esperados não pode envelhecer em silêncio (04/10/2026).
 // `hashesEsperados()` tira o corpo de `liberar_cobranca_do_pedido` da 20261176
-// e o de `expirar_pedidos_vencidos` da 20261186. Se uma migration POSTERIOR
+// e o de `expirar_pedidos_vencidos` da 20261393 (era a 20261186 ate 26/10/2026: a 20261393 deu
+// folga de 10 minutos ao PIX com cobranca na vaga). Se uma migration POSTERIOR
 // redefinir uma das duas, a prova somente leitura que roda ANTES do deploy
 // das edges passa a recusar um banco que está certo (ou, pior, a aceitar um
 // banco que não tem a definição nova).
@@ -111,7 +112,7 @@ import { fromFileUrl, join } from "https://deno.land/std@0.177.0/path/mod.ts";
 const PINS = {
   liberar_cobranca_do_pedido: "20261176000000_o_cartao_online_nasce.sql",
   expirar_pedidos_vencidos:
-    "20261186000000_cartao_em_analise_segura_a_expiracao.sql",
+    "20261393000000_o_pix_pago_no_ultimo_minuto_nao_perde_o_pedido.sql",
 };
 
 /** Migrations de 14 dígitos (nunca rollback-manual) POSTERIORES à fonte que

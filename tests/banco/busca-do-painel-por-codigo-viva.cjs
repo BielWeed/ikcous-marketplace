@@ -828,6 +828,11 @@ async function main() {
     assert.equal((await funcao(c)).prosrc, corpoDe(DEF_ANTES));
     // A 20261381 so se desfaz com o corpo dela: o rollback dela aceita o estado que o nosso rollback deixa.
     await c.query("SAVEPOINT rb81");
+    // A 20261393100000 (o balcao diz "inativo") e' POSTERIOR a 81 em buscar_por_codigo_barras: sai antes (ordem inversa da
+    // aplicacao). Tudo dentro do savepoint, que o ROLLBACK TO abaixo desfaz.
+    await require("./o-balcao-diz-inativo-posterior.cjs").desfazerBalcaoDizInativoNaTransacao(
+      c,
+    );
     await c.query(
       ler(
         "supabase/migrations/rollback-manual-20261381000000_ex_admin_perde_o_acesso_na_hora_no_resto_do_painel.sql",

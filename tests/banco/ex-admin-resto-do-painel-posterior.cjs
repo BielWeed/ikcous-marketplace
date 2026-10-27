@@ -13,6 +13,12 @@ const EX_ADMIN_RESTO_DO_PAINEL = Object.freeze({
   noAr: "SELECT EXISTS(SELECT 1 FROM pg_policy WHERE polname='banners_admin_select_policy' AND polrelid=to_regclass('public.banners')) sim",
 });
 async function desfazerExAdminRestoNaTransacao(c) {
+  // A 20261393100000 (o balcao diz "inativo" para a variacao desligada) e' a ULTIMA a redefinir buscar_por_codigo_barras, que
+  // esta migration (381) tambem redefine: o rollback da 81 exige o corpo DELA, entao a 393100000 sai primeiro (ordem inversa
+  // da aplicacao; nao faz nada se nao esta no ar). Definicao unica em tests/banco/o-balcao-diz-inativo-posterior.cjs.
+  await require("./o-balcao-diz-inativo-posterior.cjs").desfazerBalcaoDizInativoNaTransacao(
+    c,
+  );
   // A 20261385 (a busca de produtos acha o codigo de barras) sucede get_admin_products_paged desta: o rollback da 81 exige o
   // corpo DELA, entao a 385 sai antes (nao faz nada se nao esta no ar). Os 6 chamadores deste modulo herdam a ordem.
   await require("./busca-do-painel-por-codigo-posterior.cjs").desfazerBuscaDoPainelNaTransacao(
