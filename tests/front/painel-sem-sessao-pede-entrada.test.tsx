@@ -483,6 +483,21 @@ describe("painel sem sessão pede entrada (aviso de pedido novo)", () => {
     expect(globalThis.location.pathname).toBe("/profile");
   });
 
+  it("(a) a porta do painel (/admin) sem sessão: depois de entrar como admin a lojista chega no PAINEL, não no Perfil de cliente", async () => {
+    await abrirEm("/admin");
+    expect(globalThis.location.pathname).toBe("/auth");
+    expect(globalThis.history.state?.requested).toBe("admin");
+    expect(tela("tela-login")).not.toBeNull();
+
+    await entrarEmDoisPassos(true);
+
+    const painel = tela("painel");
+    expect(painel).not.toBeNull();
+    expect(painel?.getAttribute("data-tela")).toBe("admin");
+    expect(globalThis.location.pathname).toBe("/admin");
+    expect(tela("tela-perfil-proprio")).toBeNull();
+  });
+
   it("(b) depois de entrar como admin, a lojista chega em /admin-orders", async () => {
     await abrirEm("/admin-orders");
     esperarTelaDeEntradaComPedidoGuardado();

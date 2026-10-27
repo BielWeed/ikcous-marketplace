@@ -7,6 +7,7 @@ import React, {
 } from "react";
 
 import { AdminAreaGate } from "@/components/layouts/AdminAreaGate";
+import { TelaDeVerificacaoFalhou } from "@/components/layouts/TelaDeVerificacaoFalhou";
 import { aoIniciarAposAtualizacao } from "@/components/pwa/ao-iniciar-apos-atualizacao";
 import { applyThemeColor, branding } from "@/config/branding";
 import { esquecerChaveDoPedidoDe } from "@/lib/chave-do-pedido";
@@ -163,7 +164,13 @@ function AdminAccessDenied({
   // passa por aqui com `adminStatus === "unknown"` (o pai só troca para
   // `<AdminArea>` quando `isAdmin` vira `true`) — expulsar nesse instante
   // era exatamente o piscar que a Parte B veio resolver.
-  const { adminStatus, loading, user } = useAuth();
+  const {
+    adminStatus,
+    loading,
+    user,
+    adminVerificacaoFalhou,
+    tentarVerificarAdminDeNovo,
+  } = useAuth();
 
   useEffect(() => {
     // If auth is still loading, wait.
@@ -188,6 +195,19 @@ function AdminAccessDenied({
       onNavigate("home");
     }
   }, [onNavigate, adminStatus, loading, user]);
+
+  // O servidor NÃO respondeu se ela é dona (internet ruim): não é "acesso
+  // restrito". A mesma tela que o portão do painel mostra, com "Tentar de novo"
+  // — e nenhum dado do painel. `adminStatus` segue "unknown" (o efeito acima
+  // não expulsa), e `isAdmin` falso mantém o painel desmontado.
+  if (user && !loading && adminStatus === "unknown" && adminVerificacaoFalhou) {
+    return (
+      <TelaDeVerificacaoFalhou
+        onTentarDeNovo={tentarVerificarAdminDeNovo}
+        onVoltar={() => onNavigate("home")}
+      />
+    );
+  }
 
   return <AdminRouteLoading />;
 }
@@ -1798,7 +1818,11 @@ const AppContent = () => {
   }, []);
 
   // Sync view with URL on initial load and back/forward buttons
-  const { isPasswordRecovery, linkDeRecuperacaoVencido } = useAuth();
+  const {
+    isPasswordRecovery,
+    linkDeRecuperacaoVencido,
+    linkDeConfirmacaoVencido,
+  } = useAuth();
 
   useEffect(() => {
     if (isPasswordRecovery) {
@@ -1809,9 +1833,11 @@ const AppContent = () => {
 
   // Link de "esqueci a senha" vencido/já usado: a pessoa precisa cair na tela
   // "Recuperar" com o aviso, não na vitrine (o AuthView devolve a flag assim
-  // que mostra o aviso, então isto só dispara uma vez por link).
+  // que mostra o aviso, então isto só dispara uma vez por link). O link de
+  // CONFIRMAÇÃO de cadastro vencido também cai em /auth (na tela de entrar,
+  // com o aviso dele), pelo mesmo motivo.
   useEffect(() => {
-    if (linkDeRecuperacaoVencido) {
+    if (linkDeRecuperacaoVencido || linkDeConfirmacaoVencido) {
       // O endereço também vai para /auth: a sincronização com a URL (efeito
       // logo abaixo) lê o caminho e, fora de /auth, devolveria a vitrine.
       if (globalThis.location.pathname !== "/auth") {
@@ -1819,7 +1845,7 @@ const AppContent = () => {
       }
       setCurrentView("auth");
     }
-  }, [linkDeRecuperacaoVencido]);
+  }, [linkDeRecuperacaoVencido, linkDeConfirmacaoVencido]);
 
   useEffect(() => {
     // `origem` distingue as duas chamadas abaixo: "efeito" (o efeito reage

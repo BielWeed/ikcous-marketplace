@@ -134,7 +134,7 @@ describe("AuthView — toast global e banner inline concordam para o CLIENTE (ou
   // nenhum `if` com frase própria, então cai no ramo genérico dos DOIS
   // lados (toast em AuthContext.login, banner em AuthView.handleSubmit) ao
   // mesmo tempo — é o par que mais expõe divergência entre os dois.
-  it("toast e banner inline dizem a MESMA frase para o cliente, e ela não manda 'contate o suporte' (frase do lojista)", async () => {
+  it("o erro de login aparece UMA vez (sem toast repetindo a faixa), com a frase do cliente e não a do lojista", async () => {
     const { AuthProvider } = await import("@/contexts/AuthContext");
     const { AuthView } = await import("@/views/shared/AuthView");
     const { supabase } = await import("@/lib/supabase");
@@ -178,14 +178,20 @@ describe("AuthView — toast global e banner inline concordam para o CLIENTE (ou
       await esperarMicrotarefas();
     });
 
-    const mensagemToast = (toast.error as ReturnType<typeof vi.fn>).mock
-      .calls[0][0] as string;
+    // Lote 213: o erro de login aparece UMA vez (a faixa da tela). O toast que
+    // repetia a frase por cima dela saiu; a frase do cliente é a constante
+    // única de `@/lib/mensagens-auth`, a mesma que `login` devolve em `message`.
+    expect(toast.error).not.toHaveBeenCalled();
+    const { MENSAGEM_ERRO_LOGIN_GENERICA } = await import(
+      "@/lib/mensagens-auth"
+    );
+    const mensagemToast = MENSAGEM_ERRO_LOGIN_GENERICA;
     const mensagemInline = document
       .querySelector(".text-red-600")
       ?.textContent?.trim();
 
-    // Invariante: o toast global e o banner inline concordam — a mesma
-    // frase, não duas versões diferentes do mesmo erro na mesma tela.
+    // Invariante: a faixa mostra a frase única do cliente, não outra versão do
+    // mesmo erro.
     expect(mensagemInline).toBe(mensagemToast);
 
     // A frase é a do CLIENTE ("fale com a loja"), nunca a do LOJISTA

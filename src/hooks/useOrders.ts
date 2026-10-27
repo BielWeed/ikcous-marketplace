@@ -1837,6 +1837,11 @@ export function useOrders(
     };
   }, [user?.id]);
 
+  // De quem é a lista que está na tela agora. Nasce com o usuário da montagem
+  // (o estado inicial já leu o cache DELE) e só serve para reconhecer a TROCA de
+  // conta no efeito abaixo.
+  const contaDaListaRef = useRef<string | null>(user?.id ?? null);
+
   // Synchronously load cache on mount or when user changes
   useEffect(() => {
     if (isAdmin) return;
@@ -1848,15 +1853,23 @@ export function useOrders(
     // Outra conta (ou ninguém): a falha da conta anterior não é desta.
     setOrdersLoadError(null);
     if (!user?.id) {
+      contaDaListaRef.current = null;
       setOrders((atual) => (atual.length === 0 ? atual : []));
       return;
     }
+    // Troca de conta SEM passar por "sem ninguém" (a sessão da A venceu e a B
+    // entrou direto): a lista na tela é da A. Se a B não tem cache próprio, o
+    // bloco abaixo não escreve nada e os pedidos da A ficariam na tela da B.
+    const trocouDeConta = contaDaListaRef.current !== user.id;
+    contaDaListaRef.current = user.id;
     const cacheKey = `ikcous_orders_cache_${user.id}`;
+    let substituiu = false;
     try {
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
+          substituiu = true;
           setOrders((atual) =>
             JSON.stringify(atual) === JSON.stringify(parsed) ? atual : parsed,
           );
@@ -1864,6 +1877,9 @@ export function useOrders(
       }
     } catch (e) {
       console.error("Error loading cached orders:", e);
+    }
+    if (trocouDeConta && !substituiu) {
+      setOrders((atual) => (atual.length === 0 ? atual : []));
     }
   }, [user?.id, isAdmin]);
 
