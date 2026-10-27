@@ -531,7 +531,7 @@
 .pdv-footer .pdv-client-chip[data-slot] {
   grid-column: 1 / -1;
   justify-content: flex-start;
-  min-height: 36px;
+  min-height: 44px;
   border: 0;
   border-radius: 999px;
   padding: 6px 10px;
@@ -560,7 +560,7 @@
   border-radius: 22px;
 }
 .pdv .admin-acao-inline .pdv-client-chip {
-  min-height: 36px;
+  min-height: 44px;
 }
 .pdv-total {
   display: flex;
@@ -712,6 +712,9 @@
   color: hsl(var(--admin-text, 240 10% 96.1%));
   font-size: 14px;
   overflow-wrap: anywhere;
+}
+.pdv-notice-red {
+  border: 2px solid var(--lit-t-ff9999, #ff9999);
 }
 .pdv-empty {
   flex: 1;

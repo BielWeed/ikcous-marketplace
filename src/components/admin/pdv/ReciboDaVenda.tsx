@@ -20,6 +20,7 @@ import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order } from "@/types";
 import {
+  AlertTriangle,
   Ban,
   Banknote,
   CheckCircle2,
@@ -103,6 +104,10 @@ const ROTULO_DO_PAGAMENTO: Record<
   card: "Cartão na maquininha",
 };
 
+function resumo(total: number, unidades: number, forma: string): string {
+  return `R$ ${reais(total)} · ${unidades} un. · ${forma}`;
+}
+
 export function ReciboDaVenda({
   recibo,
   limparCupom,
@@ -147,6 +152,31 @@ export function ReciboDaVenda({
             </p>
           </div>
         </div>
+        {recibo.divergenciaComATela && (
+          <div role="alert" className="pdv-notice pdv-notice-red">
+            <p className="pdv-heading pdv-red font-bold">
+              <AlertTriangle aria-hidden="true" className="pdv-icon" />
+              Entrou uma venda diferente da que estava na tela
+            </p>
+            <p>
+              Entrou:{" "}
+              {resumo(
+                recibo.total,
+                recibo.itens.reduce((n, i) => n + i.quantidade, 0),
+                ROTULO_DO_PAGAMENTO[recibo.pagamento],
+              )}
+            </p>
+            <p>
+              A tela mostrava:{" "}
+              {resumo(
+                recibo.divergenciaComATela.totalDaTela,
+                recibo.divergenciaComATela.unidadesDaTela,
+                ROTULO_DO_PAGAMENTO[recibo.divergenciaComATela.pagamentoDaTela],
+              )}
+            </p>
+            <p className="font-bold">Anule esta venda e registre de novo.</p>
+          </div>
+        )}
         {recibo.jaExistia && (
           <p role="status" className="pdv-muted flex items-start gap-2">
             <RefreshCcw

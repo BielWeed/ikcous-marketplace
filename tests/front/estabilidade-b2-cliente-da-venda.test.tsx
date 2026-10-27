@@ -68,7 +68,7 @@ it.each(["", "a"])(
     expect(hospedeiro.textContent).not.toContain("Buscando…");
     await act(async () => {
       resolver([
-        { id: "1", full_name: "Cliente antigo", email: null, whatsapp: null },
+        { id: "1", full_name: "Cliente antigo", email: null, phone: null },
       ]);
     });
     expect(hospedeiro.textContent).not.toContain("Cliente antigo");
@@ -83,7 +83,7 @@ it("erro da busca mostra aviso e uma nova tentativa limpa o aviso", async () => 
     "Não foi possível buscar. Tente de novo.",
   );
   buscar.mockResolvedValueOnce([
-    { id: "2", full_name: "Cliente atual", email: null, whatsapp: null },
+    { id: "2", full_name: "Cliente atual", email: null, phone: null },
   ]);
   await digitar("abc");
   expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();

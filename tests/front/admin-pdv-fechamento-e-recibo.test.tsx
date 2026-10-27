@@ -372,6 +372,47 @@ describe("FechamentoDaVenda (C3.2)", () => {
     expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
   });
 
+  it("caso 6b — recibo de venda que o banco já tinha, DIFERENTE da tela: alerta vermelho com o que entrou × o que a tela mostrava e a saída 'anule e registre de novo'", async () => {
+    const recibo = reciboDeExemplo({
+      jaExistia: true,
+      total: 100,
+      subtotal: 100,
+      pagamento: "cash",
+      divergenciaComATela: {
+        totalDaTela: 50,
+        unidadesDaTela: 1,
+        pagamentoDaTela: "pix",
+      },
+      itens: [{ ...ITEM, quantidade: 2 }],
+    });
+    await act(async () => {
+      raiz.render(
+        <ReciboDaVenda
+          recibo={recibo}
+          despachar={vi.fn()}
+          limparCupom={vi.fn()}
+          storeName="Loja Teste"
+          aoAnular={vi.fn()}
+        />,
+      );
+    });
+    await avancar();
+
+    const alerta = hospedeiro.querySelector('[role="alert"]');
+    expect(alerta).not.toBeNull();
+    const texto = alerta!.textContent ?? "";
+    expect(texto).toContain("Entrou uma venda diferente da que estava na tela");
+    expect(texto).toContain("R$ 100,00");
+    expect(texto).toContain("2 un.");
+    expect(texto).toContain("Dinheiro");
+    expect(texto).toContain("R$ 50,00");
+    expect(texto).toContain("1 un.");
+    expect(texto).toContain("PIX");
+    expect(texto).toContain("Anule esta venda e registre de novo");
+    // A saída existe na MESMA tela: o botão de anular do recibo.
+    expect(hospedeiro.textContent).toContain("Anular");
+  });
+
   it("caso 7 — recibo sem WhatsApp mantém o envio indisponível e explica o motivo", async () => {
     const recibo = reciboDeExemplo({
       cliente: { tipo: "sem_cliente" },
