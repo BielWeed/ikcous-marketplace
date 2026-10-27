@@ -27,7 +27,11 @@ const mock = vi.hoisted(() => ({
   ordem: [] as Chamada[],
   /** O que a leitura do produto fora da página devolve (view do painel). */
   produtoFora: {
-    data: null as null | { id: string; imagem_urls: string[] | null },
+    data: null as null | {
+      id: string;
+      imagem_urls: string[] | null;
+      imagem_url?: string | null;
+    },
     error: null as null | { message: string },
   },
   variacoesFora: {
@@ -257,6 +261,21 @@ describe("useProducts.deleteProduct — produto fora da página carregada", () =
     expect(apiRef!.products.map((p) => p.id)).toEqual(["prod-na-pagina"]);
   });
 
+  it("produto antigo com imagem_urls nulo e capa só em imagem_url também tem a capa guardada", async () => {
+    await montarECarregar();
+    mock.produtoFora = {
+      data: { id: "prod-fora", imagem_urls: null, imagem_url: FOTO },
+      error: null,
+    };
+    mock.variacoesFora = { data: [], error: null };
+
+    await act(async () => {
+      await apiRef!.deleteProduct("prod-fora");
+    });
+
+    expect(mock.ordem.filter((c) => c.tipo === "copy")).toHaveLength(1);
+  });
+
   it("a consulta de apoio é mínima: só id e fotos, só deste produto, sem apagados", async () => {
     await montarECarregar();
     await act(async () => {
@@ -267,7 +286,7 @@ describe("useProducts.deleteProduct — produto fora da página carregada", () =
       Extract<Chamada, { tipo: "select" }>
     >;
     const doProduto = consultas.find((c) => c.tabela !== "product_variants")!;
-    expect(doProduto.colunas).toBe("id, imagem_urls");
+    expect(doProduto.colunas).toBe("id, imagem_urls, imagem_url");
     expect(doProduto.filtros).toContainEqual(["id", "prod-fora"]);
     expect(doProduto.filtros).toContainEqual(["deleted_at", null]);
     const dasVariacoes = consultas.find(

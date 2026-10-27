@@ -125,7 +125,7 @@ async function lerMidiaDoProdutoFora(
   const { data: produto, error } = await (
     supabase.from("vw_produtos_admin") as any
   )
-    .select("id, imagem_urls")
+    .select("id, imagem_urls, imagem_url")
     .eq("id", id)
     .is("deleted_at", null)
     .maybeSingle();
@@ -141,7 +141,10 @@ async function lerMidiaDoProdutoFora(
 
   return {
     id: produto.id,
-    images: produto.imagem_urls ?? [],
+    // Mesmo fallback do caminho da página (`extractProductImages`): produto
+    // antigo com `imagem_urls` nulo guarda a capa só em `imagem_url`.
+    images:
+      produto.imagem_urls ?? (produto.imagem_url ? [produto.imagem_url] : []),
     variants: (variantes ?? []).map((v: any) => ({
       id: v.id,
       imageUrl: v.image_url ?? undefined,
