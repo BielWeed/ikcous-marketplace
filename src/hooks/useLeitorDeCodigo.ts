@@ -18,6 +18,7 @@
 // (câmera e teclado) desembocam na MESMA função `processar`, que já carrega
 // o debounce de 1,5s e o bip/vibração de confirmação.
 
+import { normalizarCodigoBarras } from "@/lib/codigo-de-barras";
 import {
   type FeedbackDoLeitor,
   criarFeedbackDoLeitor,
@@ -223,7 +224,7 @@ export function useLeitorDeCodigo(
 
   const lerCodigoDigitado = useCallback(
     (codigo: string) => {
-      const codigoLimpo = codigo.trim();
+      const codigoLimpo = normalizarCodigoBarras(codigo);
       if (codigoLimpo === "") return;
       processar({ codigo: codigoLimpo, formato: "desconhecido" });
     },
