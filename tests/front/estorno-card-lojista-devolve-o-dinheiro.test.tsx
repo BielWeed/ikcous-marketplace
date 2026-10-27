@@ -253,6 +253,64 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
     expect(botaoComTexto("Devolver R$ 70,00")).toBeDefined();
   });
 
+  // Lote 232: o Devolvido do resumo (`valor_estornado`) só vê o que o Mercado
+  // Pago confirmou; o dinheiro devolvido POR FORA (reembolso manual) vem à
+  // parte, em `manual`, e antes não aparecia: a lojista que devolveu R$ 30 em
+  // mãos via "Devolvido" menor do que devolveu de verdade.
+  it("L232: R$ 100 pagos, R$ 40 pelo Mercado Pago e R$ 30 por fora — o resumo mostra R$ 70 devolvidos, dizendo que R$ 30 foram por fora, e disponível R$ 30", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({ devolvido: 40, manual: 30, disponivel: 30 }),
+    );
+
+    await montar();
+
+    expect(texto()).toContain(
+      "Pago: R$ 100,00 · Devolvido: R$ 70,00 (inclui R$ 30,00 por fora) · Disponível: R$ 30,00",
+    );
+    expect(botaoComTexto("Devolver R$ 30,00")).toBeDefined();
+  });
+
+  it("L232-controle: sem devolução por fora o resumo fica IGUAL ao de sempre (manual zero ou ausente)", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({ devolvido: 40, manual: 0, disponivel: 60 }),
+    );
+    await montar();
+    expect(texto()).toContain(
+      "Pago: R$ 100,00 · Devolvido: R$ 40,00 · Disponível: R$ 60,00",
+    );
+    expect(texto()).not.toContain("por fora)");
+  });
+
+  it("L232: o 'Todo o valor pago já foi devolvido' segue dependendo só dos baldes do servidor — dinheiro por fora com saldo zero e algo em curso NÃO fecha a conta", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({
+        pago: 100,
+        devolvido: 40,
+        manual: 30,
+        emCurso: 30,
+        disponivel: 0,
+      }),
+    );
+
+    await montar({ ...pedidoBase, status: "delivered" });
+
+    expect(texto()).toContain("Devolvido: R$ 70,00 (inclui R$ 30,00 por fora)");
+    expect(texto()).not.toContain("Todo o valor pago já foi devolvido.");
+  });
+
+  it("L232: tudo devolvido por fora, nada em curso nem em dúvida — o texto de pedido fechado aparece e o resumo soma o valor por fora", async () => {
+    useEstornosDoPedidoMock.mockReturnValue(
+      hookPadrao({ devolvido: 0, manual: 100, disponivel: 0 }),
+    );
+
+    await montar({ ...pedidoBase, status: "delivered" });
+
+    expect(texto()).toContain(
+      "Devolvido: R$ 100,00 (inclui R$ 100,00 por fora)",
+    );
+    expect(texto()).toContain("Todo o valor pago já foi devolvido.");
+  });
+
   it("U6: falhou mostra o erro e 'Tentar de novo'; recusado (sem chargeback) não tem botão", async () => {
     useEstornosDoPedidoMock.mockReturnValue(
       hookPadrao({

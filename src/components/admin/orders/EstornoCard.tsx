@@ -209,6 +209,7 @@ export function EstornoCard({
     linhas,
     pago,
     devolvido,
+    manual = 0,
     emCurso,
     emDuvida,
     disponivel,
@@ -324,7 +325,9 @@ export function EstornoCard({
       </h3>
 
       <p className="text-xs font-bold text-zinc-400">
-        Pago: {formatCurrency(pago)} · Devolvido: {formatCurrency(devolvido)} ·
+        Pago: {formatCurrency(pago)} · Devolvido:{" "}
+        {formatCurrency(devolvido + manual)}
+        {manual > 0 && ` (inclui ${formatCurrency(manual)} por fora)`} ·
         Disponível: {formatCurrency(disponivel)}
         {emDuvida > 0 && ` · Em confirmação: ${formatCurrency(emDuvida)}`}
       </p>
