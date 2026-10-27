@@ -453,6 +453,11 @@ async function exigirVermelho(c, rotulo, caso) {
 async function numaTransacao(c, fn) {
   await c.query("BEGIN");
   try {
+    // A 20261397000000 (o desconto do cupom e' arredondado ao centavo) sucede o corpo da validate_coupon_secure_v2 desta migration e o das RPCs do
+    // pedido: cada caso mede a migration ISOLADA, entao devolve antes as tres funcoes ao corpo de antes dela (a transacao termina em ROLLBACK).
+    await require("./o-desconto-do-cupom-posterior.cjs").desfazerODescontoDoCupomNaTransacao(
+      c,
+    );
     await fn();
   } finally {
     await c.query("ROLLBACK");

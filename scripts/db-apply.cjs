@@ -411,6 +411,41 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261397000000: o desconto do cupom de porcentagem e' arredondado ao centavo. As TRES funcoes (create_marketplace_order_v23/v24 e
+  // validate_coupon_secure_v2) trocam SO a linha da conta do desconto percentual: `round(<subtotal * valor / 100>, 2)` no lugar da conta crua.
+  // Cada marcador aparece UMA vez no corpo (o marcador nao admite "zero vezes": a ausencia da conta antiga e' do pos-voo da migration e da
+  // consulta 115a, que confere o corpo exato por md5, os atributos e a ACL); a prova viva faz o comportamento.
+  "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql": [
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        {
+          texto:
+            "v_discount_amount := round((v_calculated_subtotal * v_coupon_val) / 100, 2);",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        {
+          texto:
+            "v_discount_amount := round((v_calculated_subtotal * v_coupon_val) / 100, 2);",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "validate_coupon_secure_v2",
+      esperado: [
+        {
+          texto: "v_discount := round((p_subtotal * v_coupon.value) / 100, 2);",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   // 20261394100000: a lista de recomendacoes do produto tem teto. get_product_recommendations troca SO a linha do LIMIT (o limite pedido vale no
   // maximo 50; NULL vale o padrao 4); o filtro, a ordenacao e as 31 colunas (custo e fornecedor_id NULOS) nao mudam. A consulta 107a confere o
   // corpo exato (md5), os atributos e a ACL; a prova viva faz o comportamento.

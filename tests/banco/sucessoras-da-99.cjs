@@ -117,6 +117,11 @@ const NOMES = [
   // A busca de devolucao acha o numero do pedido: admin_devolucoes_listar sucede o corpo da 99 (a CADEIA 99 -> 395: o `hashVigente` da 395 e o
   // `hashDesta` da 99). O rollback da 99 recusa com o corpo novo no ar: ela cai antes.
   "20261395000000_a_busca_de_devolucao_acha_o_numero_do_pedido.sql",
+  // O desconto do cupom de porcentagem e' arredondado ao centavo: create_marketplace_order_v23 e v24 e validate_coupon_secure_v2 sucedem os
+  // corpos da 394200 (v23), da 394000 (v24) e da 208 (validate): a CADEIA 394 -> 394200 -> 397 na v23, 394 -> 397 na v24 e 208 -> 397 na validate
+  // (o `hashVigente` da 397 e o `hashDesta` da anterior). Nenhuma e' dos 42 da 99, mas os rollbacks da 394200, da 394000 e da 208 recusam com o
+  // corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro). O preflight dela traz o NOME antes da assinatura (quatro colunas).
+  "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
@@ -128,6 +133,7 @@ const PARES_POR_MIGRATION = new Map([
     2,
   ],
   ["20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql", 2],
+  ["20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql", 3],
 ]);
 
 const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");

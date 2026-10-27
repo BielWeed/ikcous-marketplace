@@ -163,17 +163,22 @@ Deno.test("384: sem BEGIN/COMMIT, pre-voo antes do CREATE, hashes e fotografia d
   assert.ok(!rb.includes("\r"));
 });
 
-Deno.test("384: so a 20261394000000 (o pedido de visitante na entrega tem freio) redefine create_marketplace_order_v24 depois dela; db-apply exige as guardas; a lista das sucessoras da 99 fecha", () => {
+Deno.test("384: so a 20261394000000 (o pedido de visitante na entrega tem freio) e a 20261397000000 (o desconto do cupom e' arredondado ao centavo) redefinem create_marketplace_order_v24 depois dela; db-apply exige as guardas; a lista das sucessoras da 99 fecha", () => {
   const fontes = [...Deno.readDirSync(dir)]
     .map((e) => e.name)
     .filter((n) => /^\d{14}_.*\.sql$/.test(n))
     .sort()
     .filter((n) => definicao(ler(`supabase/migrations/${n}`)));
-  // A 394 e' a SUCESSORA da v24 desta migration (o mesmo corpo mais o trecho 0-quater); nenhuma outra vem depois.
+  // A 394 e' a SUCESSORA da v24 desta migration (o mesmo corpo mais o trecho 0-quater) e a 397 sucede a 394 (o mesmo corpo com UMA linha
+  // trocada: o desconto do cupom de porcentagem arredondado ao centavo); nenhuma outra vem depois.
   assert.deepEqual(
-    fontes.slice(-2),
-    [nome, "20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql"],
-    "outra migration redefine create_marketplace_order_v24 depois da 384 (e da 394)",
+    fontes.slice(-3),
+    [
+      nome,
+      "20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql",
+      "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql",
+    ],
+    "outra migration redefine create_marketplace_order_v24 depois da 384 (e da 394 e da 397)",
   );
   const { VERIFICACOES, avaliarChecagem } = require("../scripts/db-apply.cjs");
   // eslint-disable-next-line security/detect-object-injection -- Nome literal desta migration, nunca entrada externa.

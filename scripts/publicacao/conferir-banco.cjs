@@ -2852,7 +2852,29 @@ const ROL_DA_114B = [
   "reviews: comment e text e o CHECK reviews_comment_ate_1000_caracteres ainda NAO existe",
   "reviews: nenhum outro CHECK limita a coluna comment hoje (o teto da tela, 1000, ainda nao esta no banco)",
 ];
+// Lote 115 (20261397000000, o desconto do cupom de porcentagem e' arredondado ao centavo: create_marketplace_order_v23/v24 e validate_coupon_secure_v2 trocam SO a linha da
+// conta do desconto percentual). A 115a e a 115b tem o mesmo rol de 13 linhas; a 115a espera os corpos da 20261397000000 e a 115b os vigentes de antes (v23 da 20261394200000,
+// v24 da 20261394000000, validate da 20261208000000).
+const ROL_DA_115 = [
+  "controle: funcoes de public visiveis a este papel",
+  "create_marketplace_order_v23: corpo exato (md5)",
+  "create_marketplace_order_v23: o corpo traz o desconto de porcentagem arredondado ao centavo (uma vez)",
+  "create_marketplace_order_v23: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)",
+  "create_marketplace_order_v23: EXECUTE para anon, authenticated e service_role, sem PUBLIC",
+  "create_marketplace_order_v24: corpo exato (md5)",
+  "create_marketplace_order_v24: o corpo traz o desconto de porcentagem arredondado ao centavo (uma vez)",
+  "create_marketplace_order_v24: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)",
+  "create_marketplace_order_v24: EXECUTE para anon, authenticated e service_role, sem PUBLIC",
+  "validate_coupon_secure_v2: corpo exato (md5)",
+  "validate_coupon_secure_v2: o corpo traz o desconto de porcentagem arredondado ao centavo (uma vez)",
+  "validate_coupon_secure_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno jsonb)",
+  "validate_coupon_secure_v2: EXECUTE para authenticated, sem PUBLIC",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "115a-conferir-o-desconto-do-cupom-e-arredondado-ao-centavo-aplicado":
+    ROL_DA_115,
+  "115b-antes-o-desconto-do-cupom-e-arredondado-ao-centavo-base-vigente":
+    ROL_DA_115,
   "114a-conferir-o-texto-da-avaliacao-tem-teto-no-banco-aplicado": ROL_DA_114A,
   "114b-antes-o-texto-da-avaliacao-tem-teto-no-banco-ausente": ROL_DA_114B,
   "113a-conferir-a-pergunta-nasce-com-a-data-de-agora-aplicado": ROL_DA_113A,

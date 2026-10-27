@@ -29,7 +29,7 @@ WITH alvo(nome, assinatura) AS (
   SELECT 'create_marketplace_order_v23: corpo exato (md5)', '89c99662346d47a4d6b3d13612ca4acb',
          -- A 20261394200000 (a v23 recusa o pagamento pelo app: o mesmo corpo mais o trecho 0-ter) sucede a v23: aceita os dois corpos EXATOS;
          -- normaliza ao esperado desta migration. O `vivo` mostra o esperado.
-         COALESCE((SELECT CASE WHEN m IN ('89c99662346d47a4d6b3d13612ca4acb', '86a30fe3502bbafd1a507ce03189bc2d') THEN '89c99662346d47a4d6b3d13612ca4acb' ELSE m END
+         COALESCE((SELECT CASE WHEN m IN ('89c99662346d47a4d6b3d13612ca4acb', '86a30fe3502bbafd1a507ce03189bc2d', '54b591dc09d67f1abbc9ab3ba5f62f5e') THEN '89c99662346d47a4d6b3d13612ca4acb' ELSE m END
                      FROM fn WHERE nome = 'create_marketplace_order_v23'), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v23: o corpo traz o freio do visitante (uma vez)', 'sim',
@@ -47,7 +47,10 @@ WITH alvo(nome, assinatura) AS (
               WHEN (SELECT NOT public_exec AND anon_exec AND auth_exec AND svc_exec FROM fn WHERE nome = 'create_marketplace_order_v23') THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'create_marketplace_order_v24: corpo exato (md5)', '36c80a107f3ed16853c1c5b2b0cbc911',
-         COALESCE((SELECT m FROM fn WHERE nome = 'create_marketplace_order_v24'), 'AUSENTE')
+         -- A 20261397000000 (o desconto do cupom e' arredondado ao centavo: o mesmo corpo com UMA linha trocada) sucede a v24: aceita os dois
+         -- corpos EXATOS; normaliza ao esperado desta migration. O `vivo` mostra o esperado.
+         COALESCE((SELECT CASE WHEN m IN ('36c80a107f3ed16853c1c5b2b0cbc911', '541a210e52ea22fe67e35f2bdd9ef444') THEN '36c80a107f3ed16853c1c5b2b0cbc911' ELSE m END
+                     FROM fn WHERE nome = 'create_marketplace_order_v24'), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v24: o corpo traz o freio do visitante (uma vez)', 'sim',
          CASE WHEN NOT EXISTS (SELECT 1 FROM fn WHERE nome = 'create_marketplace_order_v24') THEN 'AUSENTE'

@@ -189,18 +189,19 @@ Deno.test("394200: sem BEGIN/COMMIT, pre-voo antes do CREATE, hashes e fotografi
   assert.ok(!bruto.includes("\r"), "a migration em disco tem CR");
 });
 
-Deno.test("394200: e' a ultima redefinicao de create_marketplace_order_v23 da arvore (a anterior e' a 394000); db-apply exige os marcadores", () => {
+Deno.test("394200: so a 20261397000000 (o desconto do cupom e' arredondado ao centavo) redefine create_marketplace_order_v23 depois dela (a anterior e' a 394000); db-apply exige os marcadores", () => {
   const fontes = [...Deno.readDirSync(dir)]
     .map((e) => e.name)
     .filter((n) => /^\d{14}_.*\.sql$/.test(n))
     .sort()
     .filter((n) => definicao(ler(`supabase/migrations/${n}`)));
-  assert.equal(
-    fontes.at(-1),
-    nome,
-    "outra migration redefine create_marketplace_order_v23 depois desta",
+  // A 397 e' a SUCESSORA da v23 desta migration (o mesmo corpo com UMA linha trocada); nenhuma outra vem depois.
+  assert.deepEqual(
+    fontes.slice(-2),
+    [nome, "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql"],
+    "outra migration redefine create_marketplace_order_v23 depois desta (e da 397)",
   );
-  assert.equal(fontes.at(-2), nome394);
+  assert.equal(fontes.at(-3), nome394);
   const { VERIFICACOES, avaliarChecagem } = require("../scripts/db-apply.cjs");
   // eslint-disable-next-line security/detect-object-injection -- Nome literal desta migration, nunca entrada externa.
   const checagens = VERIFICACOES[nome];
