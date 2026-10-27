@@ -38,6 +38,7 @@ type PushSubscribeErrorOrigin =
   | "permissao_do_aparelho"
   | "navegador"
   | "banco"
+  | "limite_de_aparelhos"
   | "sem_conta";
 
 // `NotAllowedError`, ou `AbortError` cujo texto diz "permission denied" — o
@@ -124,6 +125,10 @@ function mensagemDaOrigem(origin: PushSubscribeErrorOrigin): string {
       return "Não foi possível ativar as notificações neste navegador. Tente novamente ou use um navegador atualizado.";
     case "banco":
       return "Não conseguimos confirmar que sua inscrição foi salva. Tente novamente em instantes.";
+    case "limite_de_aparelhos":
+      // O banco recusa o 11º aparelho com aviso ligado (20261396000000);
+      // repetir não adianta, só desligar em outro aparelho.
+      return "Você já tem 10 aparelhos recebendo avisos nesta conta. Desative em um deles para ligar neste.";
     case "sem_conta":
       // A checagem que gera esta origem roda ANTES de
       // `Notification.requestPermission()` — de propósito: se lançasse
@@ -568,7 +573,13 @@ export function usePushNotifications() {
             );
           }
         }
-        throw new PushSubscribeError("banco", error);
+        // Recusa do limite de aparelhos: o identificador estável vem no DETAIL.
+        throw new PushSubscribeError(
+          error.details === "push_limite_de_aparelhos"
+            ? "limite_de_aparelhos"
+            : "banco",
+          error,
+        );
       }
 
       inscricaoCriadaAqui.current = {
