@@ -407,6 +407,7 @@ export function PagamentoOnline({
   pedidoMortoNoServidor = false,
   onTrocarParaPix,
   onVerMeusPedidos,
+  onVoltarAoCarrinho,
   onCobrancaEmDuvida,
   onCartaoEmCurso,
   cartaoEncerrado,
@@ -435,6 +436,10 @@ export function PagamentoOnline({
   // comentário grande em `PagamentoComCartao`'s `onPagarComPix`.
   onTrocarParaPix?: (cartaoAindaVivo: boolean) => void;
   onVerMeusPedidos?: () => void;
+  // Lote 210: saída do PIX que venceu com a tela aberta — devolve os itens ao
+  // carrinho. Só o pai sabe se há itens para devolver (o pedido nasceu nesta
+  // tela); ausente = o botão não aparece (nunca um botão mudo).
+  onVoltarAoCarrinho?: () => void;
   // C5 (front B2): repassado à tela do cartão — ver `PagamentoComCartao`.
   onCobrancaEmDuvida?: (pontoDePartida: PontoDePartidaDaVerificacao) => void;
   // C6 (P1): repassados à tela do cartão — ver `CartaoEmCurso`.
@@ -574,6 +579,7 @@ export function PagamentoOnline({
       onErro={onErro}
       pedidoMortoNoServidor={pedidoMortoNoServidor}
       onVerMeusPedidos={onVerMeusPedidos}
+      onVoltarAoCarrinho={onVoltarAoCarrinho}
     />
   );
 }
@@ -651,6 +657,7 @@ function PagamentoComPix({
   onErro,
   pedidoMortoNoServidor = false,
   onVerMeusPedidos,
+  onVoltarAoCarrinho,
 }: {
   orderId: string;
   valor: number;
@@ -658,6 +665,8 @@ function PagamentoComPix({
   // Saída do aviso de pedido morto: leva à lista de pedidos. Ausente = o
   // botão não aparece (nunca um botão mudo).
   onVerMeusPedidos?: () => void;
+  // Outra saída do mesmo aviso: volta ao carrinho com os itens (lote 210).
+  onVoltarAoCarrinho?: () => void;
   // Terceiro parâmetro opcional — ver `SinalDeErroPagamento`.
   onErro: (
     msg: string,
@@ -844,6 +853,7 @@ function PagamentoComPix({
       <AvisoDePixEncerrado
         orderId={orderId}
         onVerMeusPedidos={onVerMeusPedidos}
+        onVoltarAoCarrinho={onVoltarAoCarrinho}
       />
     );
   }
@@ -972,7 +982,7 @@ function PagamentoComPix({
               <span aria-live="polite">
                 {pixCopiado
                   ? "Copiado! Cole no app do seu banco"
-                  : "Copiar código PIX"}
+                  : "Copiar código Pix"}
               </span>
             </button>
             <div className="space-y-1">
@@ -1021,7 +1031,7 @@ function PagamentoComPix({
             )}
             <img
               src={`data:image/png;base64,${pix.qrCodeBase64}`}
-              alt="QR code do PIX"
+              alt="QR code do Pix"
               aria-describedby={descritoPeloAviso}
               className="mx-auto size-60 max-w-full rounded-xl border border-zinc-100 bg-white p-2"
             />
@@ -1070,7 +1080,7 @@ function PagamentoComPix({
         aria-hidden="true"
         className="size-6 animate-spin text-zinc-400"
       />
-      <p className="text-sm text-zinc-500">Gerando o QR code do Pix...</p>
+      <p className="text-sm text-zinc-500">Gerando o QR code do Pix…</p>
     </div>
   );
 }

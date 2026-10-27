@@ -134,7 +134,7 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
   function botaoCopiar() {
     return [...hospedeiro.querySelectorAll("button")].find(
       (b) =>
-        b.textContent?.includes("Copiar código PIX") ||
+        b.textContent?.includes("Copiar código Pix") ||
         b.textContent?.includes("Copiado!"),
     );
   }
@@ -147,7 +147,7 @@ describe("PagamentoOnline — tela do Pix com prazo dinâmico e aviso estimado",
 
   function imagemQr() {
     return hospedeiro.querySelector<HTMLImageElement>(
-      "img[alt='QR code do PIX']",
+      "img[alt='QR code do Pix']",
     );
   }
 

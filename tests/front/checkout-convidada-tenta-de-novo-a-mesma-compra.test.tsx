@@ -351,7 +351,7 @@ describe("CheckoutView — convidada sem resposta do servidor tem saída: tentar
     expect(segundo[0]).toEqual(primeiro[0]);
     expect(segundo[1]).toEqual(primeiro[1]);
     expect(clearCart).toHaveBeenCalledTimes(1);
-    expect(document.body.textContent).toContain("Pedido Celebrado");
+    expect(document.body.textContent).toContain("Pedido recebido");
     // A chave cumpriu o papel: a próxima compra nasce com chave nova.
     expect(localStorage.getItem("ikcous-chave-do-pedido:convidado")).toBeNull();
   });
@@ -425,7 +425,7 @@ describe("CheckoutView — convidada sem resposta do servidor tem saída: tentar
         localStorage.getItem("ikcous-chave-do-pedido:convidado"),
       ).toBeNull();
       expect(estado.cart).toEqual([]);
-      expect(document.body.textContent).toContain("Pedido Celebrado");
+      expect(document.body.textContent).toContain("Pedido recebido");
     },
   );
 
@@ -506,7 +506,7 @@ describe("CheckoutView — convidada sem resposta do servidor tem saída: tentar
     await clicarTentarDeNovo();
     expect(createOrder).toHaveBeenCalledTimes(3);
     expect(createOrder.mock.calls[2][0].idempotencyKey).toBe(chave);
-    expect(document.body.textContent).toContain("Pedido Celebrado");
+    expect(document.body.textContent).toContain("Pedido recebido");
   });
 
   it("toque duplo em 'Tentar de novo' envia UMA vez só", async () => {

@@ -83,6 +83,18 @@ describe("frases da tela", () => {
     expect(tudo).not.toContain("certific");
   });
 
+  it("'em análise' só promete o que existe: acompanhar aqui e em Meus pedidos, sem notificação nem e-mail", () => {
+    // LOTE 210: não existe push nem e-mail para o cliente nesse momento — a
+    // frase antiga ("Avisamos aqui e por notificação") prometia o que o app
+    // não faz. O que existe é a própria tela e a lista de pedidos.
+    const frase = TEXTOS_DO_CARTAO.emAnalise.toLowerCase();
+    expect(frase).not.toContain("notifica");
+    expect(frase).not.toContain("e-mail");
+    expect(frase).not.toContain("avisamos");
+    expect(TEXTOS_DO_CARTAO.emAnalise).toContain("Não pague de novo");
+    expect(TEXTOS_DO_CARTAO.emAnalise).toContain("Meus pedidos");
+  });
+
   it("a linha de juros diz que PODE cobrar, a partir de 2x", () => {
     expect(TEXTOS_DO_CARTAO.juros).toBe(
       "No parcelado, o cartão pode cobrar juros a partir de 2x. O valor de cada parcela e o total aparecem na escolha das parcelas.",
