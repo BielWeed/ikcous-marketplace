@@ -21,6 +21,7 @@ import { useDevolucaoCliente } from "@/hooks/useDevolucaoCliente";
 import { useDevolucaoDoPedidoCliente } from "@/hooks/useDevolucaoDoPedidoCliente";
 import { ErroCancelamentoNaoConcluido, useOrders } from "@/hooks/useOrders";
 import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import {
@@ -478,6 +479,19 @@ export function OrderDetailsView({
     }
     fecharAvaliacao();
   }, [fecharAvaliacao]);
+  // O Voltar do aparelho faz o MESMO que o X: sem texto fecha a folha, com texto
+  // faz a pergunta (e então a folha continua aberta: `false` devolve a entrada
+  // que o Voltar consumiu). Com a pergunta na tela, Voltar é "Continuar
+  // escrevendo".
+  useVoltarFechaAFolha(reviewingItem !== null, () => {
+    if (confirmandoDescarteAvaliacao) {
+      setConfirmandoDescarteAvaliacao(false);
+      return false;
+    }
+    const vaiPerguntar = avaliacaoTemTextoRef.current;
+    fecharAvaliacaoPerguntando();
+    return !vaiPerguntar;
+  });
   // Rodada 2 (Codex, 08/09, item 1): o foco continuava no botão "Avaliar"
   // de fora depois de abrir a folha — Esc não chegava a ela e o Tab
   // seguia percorrendo o fundo apesar do aria-modal. A folha agora se
