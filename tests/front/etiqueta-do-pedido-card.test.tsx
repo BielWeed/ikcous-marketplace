@@ -390,6 +390,36 @@ describe("EtiquetaDoPedidoCard", () => {
     );
   });
 
+  // Caça 9 (polimento): a frase de reserva quando o servidor nem responde
+  // falava em "Edge Function" — jargão que a lojista não entende.
+  it("falha do servidor sem corpo de resposta: a frase é em português simples, sem 'Edge Function'", async () => {
+    invokeMock.mockResolvedValue({
+      data: null,
+      error: { name: "FunctionsRelayError", message: "relay" },
+    });
+    await abrirCard();
+
+    await act(async () => {
+      botao("Gerar etiqueta")?.click();
+    });
+    await act(async () => {
+      botao("Confirmar e gerar")?.click();
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    const mostrado =
+      hospedeiro.querySelector('[data-testid="erro-etiqueta"]')?.textContent ??
+      "";
+    expect(mostrado).toBe(
+      "Não foi possível falar com o servidor de etiquetas. Tente de novo.",
+    );
+    expect(mostrado).not.toContain("Edge Function");
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith(mostrado);
+  });
+
   it("409 desconhecido (endereço da conta mudou de CEP — endereco_mudou: true, SEM resgate nem precisa_cpf): mensagem aparece e a tela continua na confirmação, não trata como resgate", async () => {
     // 2ª rodada da revisão de risco (item A): a edge devolve um 409 NOVO
     // (endereço da conta mudou depois da compra) que não é `resgate` nem

@@ -828,7 +828,7 @@ function OrderItemsCard({
                 />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-white">
+                <p className="break-words text-sm font-medium text-white">
                   {item.name}
                 </p>
                 {variacao && (
@@ -883,17 +883,28 @@ function OrderItemsCard({
           </div>
         )}
 
-        {tipoDeEntregaDoPedido(order) !== "balcao" && (
+        {tipoDeEntregaDoPedido(order) === "retirada" &&
+        (order?.shipping || 0) === 0 ? (
+          // Retirada na loja não tem frete: "Frete: Grátis" sugeria uma entrega
+          // que não existe.
           <div className="flex justify-between text-zinc-300">
-            <span>Frete</span>
-            <span
-              className={(order?.shipping || 0) === 0 ? "text-emerald-400" : ""}
-            >
-              {(order?.shipping || 0) === 0
-                ? "Grátis"
-                : `R$ ${formatarValor(order?.shipping || 0)}`}
-            </span>
+            <span>Retirada na loja</span>
           </div>
+        ) : (
+          tipoDeEntregaDoPedido(order) !== "balcao" && (
+            <div className="flex justify-between text-zinc-300">
+              <span>Frete</span>
+              <span
+                className={
+                  (order?.shipping || 0) === 0 ? "text-emerald-400" : ""
+                }
+              >
+                {(order?.shipping || 0) === 0
+                  ? "Grátis"
+                  : `R$ ${formatarValor(order?.shipping || 0)}`}
+              </span>
+            </div>
+          )
         )}
 
         <div className="flex justify-between border-t border-admin-border pt-2 text-base font-semibold text-white">
@@ -1981,6 +1992,8 @@ export const OrderDetail = memo(function OrderDetail({
       returnedToSellerAt: order.returnedToSellerAt,
       // G4: devolução parcial já concluída também impede a linha nova.
       valorEstornado: order.valorEstornado,
+      // Cancelar o pedido não cancela a etiqueta já paga no Melhor Envio.
+      shipping_label_id: order.shippingLabelId,
     });
     if (!globalThis.confirm(texto)) return;
     void handleStatusChange(id, "cancelled");

@@ -398,6 +398,61 @@ describe("updateOrderStatus (admin) relê o status no servidor antes de gravar �
     expect(toast.error).not.toHaveBeenCalled();
   });
 
+  // Caça 9, item 5: o aviso do realtime ("Pedido #N atualizado para…") não
+  // deve repetir o clique da própria lojista. A marca nasce ANTES da gravação
+  // (o evento do realtime pode chegar antes da resposta), só em ação com
+  // aviso de sucesso (não silenciosa) e some se a gravação falha.
+  describe("marca a ação própria para o aviso do realtime não repetir o clique", () => {
+    it("avanço com aviso: a marca já existe DURANTE a gravação e continua depois", async () => {
+      const { eAcaoPropriaDoPedido, esquecerAcaoPropriaDoPedido } =
+        await import("@/lib/acao-propria-do-painel");
+      esquecerAcaoPropriaDoPedido("pedido-1");
+      let duranteAGravacao: boolean | undefined;
+      instalarRpc(async () => {
+        duranteAGravacao = eAcaoPropriaDoPedido("pedido-1", "shipping");
+        return { error: null };
+      });
+      const { updateOrderStatus } = await montarSondaAdmin(
+        pedidoFake("processing"),
+      );
+      await act(async () => {
+        await updateOrderStatus("pedido-1", "shipping");
+      });
+      expect(duranteAGravacao).toBe(true);
+      expect(eAcaoPropriaDoPedido("pedido-1", "shipping")).toBe(true);
+      esquecerAcaoPropriaDoPedido("pedido-1");
+    });
+
+    it("avanço silencioso (sem aviso de sucesso): NÃO marca", async () => {
+      const { eAcaoPropriaDoPedido, esquecerAcaoPropriaDoPedido } =
+        await import("@/lib/acao-propria-do-painel");
+      esquecerAcaoPropriaDoPedido("pedido-1");
+      const { updateOrderStatus } = await montarSondaAdmin(
+        pedidoFake("processing"),
+      );
+      await act(async () => {
+        await updateOrderStatus("pedido-1", "shipping", undefined, true);
+      });
+      expect(eAcaoPropriaDoPedido("pedido-1", "shipping")).toBe(false);
+    });
+
+    it("gravação que FALHA: a marca é desfeita (uma mudança de outra pessoa depois ainda avisa)", async () => {
+      const { eAcaoPropriaDoPedido, esquecerAcaoPropriaDoPedido } =
+        await import("@/lib/acao-propria-do-painel");
+      esquecerAcaoPropriaDoPedido("pedido-1");
+      instalarRpc(async () => ({
+        error: { code: "P0001", message: "pedido_status_mudou" },
+      }));
+      const { updateOrderStatus } = await montarSondaAdmin(
+        pedidoFake("processing"),
+      );
+      await act(async () => {
+        await updateOrderStatus("pedido-1", "shipping").catch(() => {});
+      });
+      expect(eAcaoPropriaDoPedido("pedido-1", "shipping")).toBe(false);
+    });
+  });
+
   it("critério 4 — admin CANCELANDO: sem releitura (o servidor já guarda esse caminho) — `from` não é chamado, a RPC é chamada normalmente", async () => {
     const { updateOrderStatus } = await montarSondaAdmin(
       pedidoFake("processing"),
