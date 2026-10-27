@@ -27,22 +27,28 @@
 -- texto (`reply_review_atomic`, `increment_helpful`, a moderação e o gatilho do selo atualizam OUTRAS colunas); o
 -- painel não edita o texto. Nada legítimo estoura 1000.
 --
--- 3. ⚠️ O QUE UM CHECK NOT VALID FAZ COM LINHA ANTIGA LONGA (leia antes de aplicar)
+-- 3. ⚠️ A GUARDA: A MIGRATION SE RECUSA A APLICAR SE JÁ HOUVER AVALIAÇÃO ACIMA DE 1000 (leia antes de aplicar)
 --
 -- NOT VALID só dispensa a conferência das linhas existentes NO MOMENTO do ADD. O Postgres confere o CHECK em TODO
--- INSERT e em TODO UPDATE da linha, mesmo que a coluna `comment` não mude. Logo, se uma loja já tiver avaliação com
--- mais de 1000 caracteres (só nasce por chamada direta à API, já que a tela barra), qualquer UPDATE dessa linha
--- passa a falhar até o texto ser encurtado: aprovar/recusar pela moderação, o voto de "útil" (`increment_helpful`)
--- e a resposta da loja (`reply_review_atomic`). A linha continua lá e legível; o DELETE (recusar apagando) segue
--- funcionando. Por isso a medição abaixo vem ANTES do apply, em cada loja. Esperado: 0.
+-- INSERT e em TODO UPDATE da linha, mesmo que a coluna `comment` não mude. Logo, uma avaliação antiga com mais de
+-- 1000 caracteres (só nasce por chamada direta à API, já que a tela barra) travaria qualquer alteração dela: a
+-- moderação (aprovar/recusar), o voto de "útil" (`increment_helpful`), a resposta da loja (`reply_review_atomic`) E,
+-- pior, o gatilho `tr_compra_verifica_avaliacoes` (20261030000000, AFTER UPDATE OF payment_status em
+-- `marketplace_orders`), que atualiza as avaliações da compradora quando o pedido é marcado como pago: com uma
+-- avaliação antiga acima de 1000, o pagamento do pedido dela FALHARIA (23514) e NÃO seria registrado (provado em
+-- Postgres 17 pela revisão).
 --
---   -- quantas avaliações já passam de 1000 caracteres (só leitura; esperado 0):
+-- Por isso a migration TEM UMA GUARDA: logo depois do ADD CONSTRAINT (a tabela já está trancada, então nenhuma
+-- avaliação nova entra entre a conferência e o fim), ela procura avaliação com mais de 1000 caracteres e, se achar,
+-- ABORTA com `B1_BASELINE_DIVERGENT` — a transação inteira desfaz, o CHECK não fica e nada muda. Nesse caso NÃO
+-- aplicar nessa loja sem decidir o que fazer com essas linhas (encurtar à mão ou apagar são decisões da lojista;
+-- esta migration não faz nenhuma das duas). Medição prévia, só leitura, em cada loja (esperado 0):
+--
 --   SELECT count(*) AS acima_de_1000, max(char_length(comment)) AS maior
 --     FROM public.reviews WHERE char_length(comment) > 1000;
 --
--- Se vier acima de 0 em alguma loja, NÃO aplicar nela sem decidir o que fazer com essas linhas (encurtar à mão ou
--- apagar são decisões da lojista; esta migration não faz nenhuma das duas). O `VALIDATE CONSTRAINT` só pode ser
--- rodado depois que a medição der 0 em cada loja — esta migration não o roda.
+-- Custo da guarda: uma varredura de `reviews` com a tabela trancada, dentro do `statement_timeout` de 30 s (a tabela
+-- é pequena numa loja). O `VALIDATE CONSTRAINT` fica de fora de propósito: esta migration não o roda.
 --
 -- 4. PRÉ-VOO (B1_BASELINE_DIVERGENT, ANTES de qualquer escrita)
 --
@@ -88,12 +94,23 @@ END $preflight_20261396200000$;
 
 -- O teto do texto da avaliação: o mesmo da tela. NOT VALID — as linhas antigas não são reprovadas no ADD.
 DO $teto_da_avaliacao_20261396200000$
+DECLARE
+  v_acima bigint;
+  v_maior integer;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint c
                   WHERE c.conrelid = 'public.reviews'::regclass
                     AND c.conname = 'reviews_comment_ate_1000_caracteres') THEN
     ALTER TABLE public.reviews
       ADD CONSTRAINT reviews_comment_ate_1000_caracteres CHECK (char_length(comment) <= 1000) NOT VALID;
+
+    -- A GUARDA (cabeçalho, seção 3): com o CHECK ativo, avaliação antiga acima de 1000 trava qualquer alteração dela,
+    -- inclusive o gatilho do pagamento do pedido (tr_compra_verifica_avaliacoes). A tabela já está trancada pelo ADD.
+    SELECT count(*), max(char_length(comment)) INTO v_acima, v_maior
+      FROM public.reviews WHERE char_length(comment) > 1000;
+    IF v_acima > 0 THEN
+      RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: há % avaliação(ões) com mais de 1000 caracteres em public.reviews (a maior tem %) — a migration NÃO foi aplicada (a transação desfaz tudo e o CHECK não fica). Com o CHECK ativo essas linhas travariam qualquer alteração delas, inclusive o registro do pagamento do pedido da compradora (tr_compra_verifica_avaliacoes). Decida o que fazer com essas avaliações (encurtar ou apagar é decisão da lojista) e aplique de novo.', v_acima, v_maior;
+    END IF;
   END IF;
 END $teto_da_avaliacao_20261396200000$;
 

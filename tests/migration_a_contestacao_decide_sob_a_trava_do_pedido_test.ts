@@ -658,8 +658,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261396100000: a pergunta do produto nasce com a data de agora (gatilho BEFORE INSERT em questions troca created_at por now() para cliente que nao e' administrador;
     // admin, service_role e sessao direta gravam como vierem; mutantes, rollback, pre/pos-voo e consultas 113a/113b).
     "tests/banco/a-pergunta-nasce-com-a-data-de-agora-viva.cjs",
-    // 20261396200000: o texto da avaliacao tem teto no banco (CHECK de 1000 caracteres NOT VALID em reviews; 1001 recusado para todos; a avaliacao antiga acima do teto
-    // fica sem UPDATE ate encurtar; mutantes, rollback, pre/pos-voo e consultas 114a/114b).
+    // 20261396200000: o texto da avaliacao tem teto no banco (CHECK de 1000 caracteres NOT VALID em reviews; 1001 recusado para todos; a migration se recusa se ja
+    // houver avaliacao acima do teto (o CHECK travaria o pagamento do pedido); mutantes, rollback, pre/pos-voo e consultas 114a/114b).
     "tests/banco/o-texto-da-avaliacao-tem-teto-no-banco-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",

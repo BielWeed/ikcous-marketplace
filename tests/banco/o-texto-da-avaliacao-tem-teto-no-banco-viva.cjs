@@ -11,9 +11,7 @@
  *  DEPOIS      1000 caracteres entram (letras, acentos, emojis), nulo e vazio entram; 1001 e 1 milhao sao recusados (23514, pela
  *              restricao certa), tambem para administrador, service_role e sessao direta; varias linhas com uma acima do teto nao
  *              gravam nenhuma; moderar e responder uma avaliacao legitima seguem funcionando.
- *  LEGADA      avaliacao antiga com mais de 1000 caracteres: o apply nao a toca (hash), a leitura e o DELETE seguem, mas QUALQUER
- *              UPDATE da linha passa a falhar ate o texto ser encurtado (e' o preco do NOT VALID, medido aqui); o rollback devolve
- *              o UPDATE; o VALIDATE so passa depois que a linha antiga some.
+ *  GUARDA      avaliacao antiga acima de 1000: a migration se RECUSA (B1_BASELINE_DIVERGENT) e nada muda (o CHECK reavaliado em todo UPDATE faria o PAGAMENTO do pedido da compradora falhar via tr_compra_verifica_avaliacoes).
  *  SO NOVO     o apply cria so a restricao: nenhuma funcao, tabela, politica, gatilho ou outra restricao muda.
  *  MUTANTES    o mesmo roteiro sobre restricoes sabotadas (teto de 1001/999/5000, bytes, exige texto, sem a regra) FICA VERMELHO
  *              na expectativa certa.
@@ -290,111 +288,203 @@ prova(
   },
 );
 
+// Pedido + item + avaliacao NAO verificada da mesma compradora: o gatilho do pagamento (tr_compra_verifica_avaliacoes) atualiza essa avaliacao.
+const PEDIDO = "b1396200-0000-4000-8000-000000000d01";
+async function semearPedidoEAvaliacao(textoDaAvaliacao, idDaAvaliacao) {
+  const c = P.conexao();
+  await c.query(
+    `INSERT INTO public.marketplace_orders (id, user_id, customer_data, customer_name, subtotal, total, payment_status, status)
+     VALUES ($1, $2, '{}'::jsonb, 'Autora Um', 100, 100, 'aguardando', 'pending')`,
+    [PEDIDO, U.autor1],
+  );
+  await c.query(
+    "INSERT INTO public.marketplace_order_items (order_id, product_id, quantity, price) VALUES ($1, $2, 1, 100)",
+    [PEDIDO, PROD],
+  );
+  await c.query(
+    "INSERT INTO public.reviews (id, product_id, user_id, rating, comment, status) VALUES ($1, $2, $3, 5, $4, 'pendente')",
+    [idDaAvaliacao, PROD, U.autor1, textoDaAvaliacao],
+  );
+}
+const marcarComoPago = () =>
+  P.tentar(
+    null,
+    "UPDATE public.marketplace_orders SET payment_status = 'pago' WHERE id = $1 RETURNING payment_status",
+    [PEDIDO],
+    { uid: "" },
+  );
+const avaliacaoVerificada = async (id) =>
+  (
+    await P.conexao().query(
+      "SELECT verified FROM public.reviews WHERE id = $1",
+      [id],
+    )
+  ).rows[0].verified;
+const E01 = "b1396200-0000-4000-8000-000000000e01";
+const E02 = "b1396200-0000-4000-8000-000000000e02";
+/** A migration SEM a guarda (mutante): tira o bloco `IF v_acima > 0 THEN ... END IF;`. */
+const SEM_A_GUARDA = MIGRATION.replace(
+  /\n {4}IF v_acima > 0 THEN[\s\S]*?\n {4}END IF;\n/,
+  "\n",
+);
+
 prova(
-  "LEGADA: avaliacao antiga acima de 1000 nao e' tocada pelo apply; ler e apagar seguem; UPDATE da linha falha ate encurtar (o preco do NOT VALID)",
+  "GUARDA: com avaliacao antiga acima de 1000 a migration se RECUSA (B1_BASELINE_DIVERGENT), o CHECK nao fica e nada muda; no limite (1000) aplica; encurtada, aplica",
   async () => {
+    assert.notEqual(SEM_A_GUARDA, MIGRATION, "o mutante nao tirou a guarda");
     await P.emTransacao(async () => {
       await semear();
       await antes();
       const c = P.conexao();
       await c.query(
-        "INSERT INTO public.reviews (id, product_id, user_id, rating, comment, status) VALUES ($1, $2, $3, 5, $4, 'publicada')",
+        "INSERT INTO public.reviews (id, product_id, user_id, rating, comment, status) VALUES ($1, $2, $3, 5, $4, 'publicada'), ($5, $2, $6, 5, $7, 'publicada')",
         [
-          "b1396200-0000-4000-8000-000000000e01",
+          E01,
           PROD,
           U.autor2,
-          "legada".padEnd(5000, "x"),
-        ],
-      );
-      await c.query(
-        "INSERT INTO public.reviews (id, product_id, user_id, rating, comment, status) VALUES ($1, $2, $3, 5, $4, 'publicada')",
-        [
-          "b1396200-0000-4000-8000-000000000e02",
-          PROD,
+          "legada".padEnd(1500, "x"),
+          E02,
           U.autor1,
-          "legada".padEnd(2500, "y"),
+          "limite".padEnd(1000, "y"),
         ],
       );
       const d0 = await dadosDasAvaliacoes();
-      await depois();
-      await depois();
+      const r0 = await P.retrato(NOVOS);
+      // so a de 1500 conta (a de exatamente 1000 esta dentro do teto)
+      await P.recusa(
+        MIGRATION,
+        /B1_BASELINE_DIVERGENT: há 1 avaliação\(ões\) com mais de 1000 caracteres em public\.reviews \(a maior tem 1500\) — a migration NÃO foi aplicada/,
+      );
+      assert.equal(await aplicado(), false, "o CHECK ficou depois da recusa");
+      assert.deepEqual(await P.retrato(NOVOS), r0, "a recusa mudou o esquema");
       assert.deepEqual(
         await dadosDasAvaliacoes(),
         d0,
-        "o apply mexeu em avaliacao",
+        "a recusa mexeu em avaliacao",
       );
-      const lida = (
-        await c.query(
-          "SELECT char_length(comment)::int AS n FROM public.reviews WHERE id = 'b1396200-0000-4000-8000-000000000e01'",
-        )
-      ).rows[0];
-      assert.equal(lida.n, 5000, "a linha antiga devia seguir legivel");
-      // o aviso do cabecalho, MEDIDO: UPDATE de OUTRA coluna da linha antiga falha (o CHECK e' reavaliado na linha inteira)
-      const upd = await P.tentar(
+      // a guarda vale para varias linhas (o texto conta todas)
+      await c.query(
+        "INSERT INTO public.reviews (product_id, user_id, rating, comment, status) VALUES ($1, $2, 5, $3, 'publicada')",
+        [PROD, U.autor2, "outra".padEnd(1001, "z")],
+      );
+      await P.recusa(MIGRATION, /há 2 avaliação\(ões\).*a maior tem 1500/);
+      // encurtadas as duas (decisao da lojista), a migration aplica
+      await c.query(
+        "UPDATE public.reviews SET comment = left(comment, 1000) WHERE char_length(comment) > 1000",
+      );
+      assert.equal(
+        await P.aplicar(MIGRATION),
         null,
-        "UPDATE public.reviews SET helpful = 7 WHERE id = 'b1396200-0000-4000-8000-000000000e01'",
-        [],
-        { uid: "" },
+        "encurtada, devia aplicar",
       );
-      assert.equal(upd.codigo, "23514", `esperava 23514: ${upd.erro}`);
-      assert.equal(upd.restricao, CK);
-      // encurtar o texto destrava a linha
-      const encurtar = await P.tentar(
-        null,
-        "UPDATE public.reviews SET comment = left(comment, 1000), helpful = 7 WHERE id = 'b1396200-0000-4000-8000-000000000e01' RETURNING helpful",
-        [],
-        { uid: "" },
-      );
-      assert.ok(encurtar.linhas, `encurtar devia passar: ${encurtar.erro}`);
-      // apagar (recusar a avaliacao) segue funcionando
-      const del = await P.tentar(
-        null,
-        "DELETE FROM public.reviews WHERE id = 'b1396200-0000-4000-8000-000000000e02' RETURNING id",
-        [],
-        { uid: "" },
-      );
-      assert.ok(del.linhas?.length === 1, `apagar devia passar: ${del.erro}`);
-      // VALIDATE e' do dono, depois da medicao: com legada falharia; sem ela passa. A migration nao o roda.
-      assert.equal((await restricao())[0].convalidated, false);
+      assert.equal(await aplicado(), true);
+      assert.equal((await restricao())[0].def, DEF_NOT_VALID);
     });
   },
 );
 
 prova(
-  "LEGADA + rollback: o UPDATE da linha antiga volta a funcionar sem o CHECK; o VALIDATE so passa sem a linha antiga",
+  "GUARDA sem linha acima de 1000 e com a restricao ja presente: aplica e reaplicar nao revarre nem reclama",
+  async () => {
+    await P.emTransacao(async () => {
+      await semear();
+      await antes();
+      await P.conexao().query(
+        "INSERT INTO public.reviews (product_id, user_id, rating, comment, status) VALUES ($1, $2, 5, $3, 'publicada')",
+        [PROD, U.autor2, "limite".padEnd(1000, "y")],
+      );
+      await depois();
+      const e1 = await restricao();
+      await depois();
+      assert.deepEqual(await restricao(), e1);
+    });
+  },
+);
+
+prova(
+  "PAGAMENTO (controle): com o CHECK aplicado e avaliacao normal, marcar o pedido como pago funciona e a compradora fica com o selo",
+  async () => {
+    await P.emTransacao(
+      async () => {
+        assert.equal(await aplicado(), true);
+        const pago = await marcarComoPago();
+        assert.ok(pago.linhas, `o pagamento devia registrar: ${pago.erro}`);
+        assert.equal(pago.linhas[0].payment_status, "pago");
+        assert.equal(await avaliacaoVerificada(E01), true);
+      },
+      async () => {
+        await semear();
+        await antes();
+        await semearPedidoEAvaliacao("chegou certinho", E01);
+        await depois();
+      },
+    );
+  },
+);
+
+prova(
+  "MUTANTE sem a guarda: a migration aplica por cima da avaliacao antiga e o PAGAMENTO do pedido da compradora FALHA (23514) - e' o que a guarda impede; sem o CHECK o pagamento registra",
+  async () => {
+    // sem o CHECK (estado ANTES) o pagamento registra mesmo com a avaliacao antiga longa
+    await P.emTransacao(async () => {
+      await semear();
+      await antes();
+      await semearPedidoEAvaliacao("legada".padEnd(1500, "x"), E01);
+      const pago = await marcarComoPago();
+      assert.ok(
+        pago.linhas,
+        `sem o CHECK o pagamento devia registrar: ${pago.erro}`,
+      );
+      assert.equal(await avaliacaoVerificada(E01), true);
+    });
+    // com a migration SEM a guarda: aplica (a guarda faria recusar) e o pagamento quebra
+    await P.emTransacao(async () => {
+      await semear();
+      await antes();
+      await semearPedidoEAvaliacao("legada".padEnd(1500, "x"), E01);
+      assert.equal(
+        await P.aplicar(SEM_A_GUARDA),
+        null,
+        "sem a guarda a migration devia aplicar (e' o defeito)",
+      );
+      const pago = await marcarComoPago();
+      assert.ok(
+        !pago.linhas,
+        "o pagamento devia falhar com o CHECK e a linha antiga",
+      );
+      assert.equal(pago.codigo, "23514", pago.erro);
+      assert.equal(pago.restricao, CK);
+      const pedido = (
+        await P.conexao().query(
+          "SELECT payment_status FROM public.marketplace_orders WHERE id = $1",
+          [PEDIDO],
+        )
+      ).rows[0].payment_status;
+      assert.equal(pedido, "aguardando", "o pagamento nao foi registrado");
+    });
+    // com a migration REAL e a mesma avaliacao antiga: recusa, nada muda, o pagamento segue registrando
+    await P.emTransacao(async () => {
+      await semear();
+      await antes();
+      await semearPedidoEAvaliacao("legada".padEnd(1500, "x"), E01);
+      await P.recusa(MIGRATION, /B1_BASELINE_DIVERGENT/);
+      assert.equal(await aplicado(), false);
+      const pago = await marcarComoPago();
+      assert.ok(
+        pago.linhas,
+        `apos a recusa o pagamento devia registrar: ${pago.erro}`,
+      );
+    });
+  },
+);
+
+prova(
+  "VALIDATE: com a restricao aplicada o VALIDATE passa (nao ha linha antiga); reaplicar sobre a validada e' no-op; o rollback aceita a validada",
   async () => {
     await P.emTransacao(async () => {
       await semear();
       await antes();
       const c = P.conexao();
-      await c.query(
-        "INSERT INTO public.reviews (id, product_id, user_id, rating, comment, status) VALUES ($1, $2, $3, 5, $4, 'publicada')",
-        [
-          "b1396200-0000-4000-8000-000000000e03",
-          PROD,
-          U.autor2,
-          "legada".padEnd(3000, "z"),
-        ],
-      );
-      await depois();
-      await c.query("SAVEPOINT validar");
-      await assert.rejects(
-        () => c.query(`ALTER TABLE public.reviews VALIDATE CONSTRAINT ${CK}`),
-        /violated by some row/,
-      );
-      await c.query("ROLLBACK TO SAVEPOINT validar");
-      await antes();
-      const upd = await P.tentar(
-        null,
-        "UPDATE public.reviews SET helpful = 3 WHERE id = 'b1396200-0000-4000-8000-000000000e03' RETURNING helpful",
-        [],
-        { uid: "" },
-      );
-      assert.ok(upd.linhas, `sem o CHECK o UPDATE devia voltar: ${upd.erro}`);
-      // sem a linha antiga, o VALIDATE passa e a migration reaplicada aceita a restricao ja validada (no-op)
-      await c.query("DELETE FROM public.reviews WHERE id = $1", [
-        "b1396200-0000-4000-8000-000000000e03",
-      ]);
       await depois();
       await c.query(`ALTER TABLE public.reviews VALIDATE CONSTRAINT ${CK}`);
       const validada = await restricao();

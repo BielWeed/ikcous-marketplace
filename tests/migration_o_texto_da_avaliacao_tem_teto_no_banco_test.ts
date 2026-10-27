@@ -98,12 +98,43 @@ Deno.test("1396200: o pre-voo aceita so a restricao como desenhada (NOT VALID ou
   );
   assert.ok(conf.includes("'CHECK ((char_length(comment) <= 1000))'"));
   // o cabecalho avisa do risco da linha antiga e traz a consulta de medicao
-  assert.ok(migration.includes("qualquer UPDATE dessa linha"));
+  assert.ok(migration.includes("tr_compra_verifica_avaliacoes"));
   assert.ok(
     migration.includes(
       "FROM public.reviews WHERE char_length(comment) > 1000;",
     ),
   );
+});
+
+Deno.test("1396200: a GUARDA — logo depois do ADD CONSTRAINT, recusa com B1_BASELINE_DIVERGENT se houver avaliacao acima de 1000 (o CHECK travaria o gatilho do pagamento)", () => {
+  const iAdd = migration.indexOf(
+    "ADD CONSTRAINT reviews_comment_ate_1000_caracteres",
+  );
+  const iGuarda = migration.indexOf("IF v_acima > 0 THEN");
+  const iFim = migration.indexOf("END $teto_da_avaliacao_20261396200000$;");
+  assert.ok(iAdd >= 0 && iAdd < iGuarda && iGuarda < iFim);
+  const bloco = migration.slice(iAdd, iFim);
+  assert.ok(
+    bloco.includes("FROM public.reviews WHERE char_length(comment) > 1000;"),
+  );
+  assert.ok(bloco.includes("RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: há %"));
+  assert.ok(bloco.includes("a migration NÃO foi aplicada"));
+  assert.ok(bloco.includes("tr_compra_verifica_avaliacoes"));
+  // o gatilho que motivou a guarda existe e atualiza reviews quando o pedido e' pago
+  const gatilho = lerRepo(
+    "supabase/migrations/20261030000000_o_selo_verificado_e_a_compra.sql",
+  );
+  assert.ok(
+    gatilho.includes(
+      "AFTER INSERT OR UPDATE OF payment_status ON public.marketplace_orders",
+    ),
+  );
+  assert.ok(gatilho.includes("UPDATE public.reviews r"));
+  // o motivo esta dito no registro de publicacao
+  const canais = JSON.parse(lerRepo("scripts/frota/canais-de-backend.json"));
+  const c = canais.provasDeObjetos.find((p) => p.consulta === A)._comentario;
+  assert.ok(c.includes("tr_compra_verifica_avaliacoes"));
+  assert.ok(c.includes("SE RECUSA"));
 });
 
 Deno.test("1396200: o teto do banco e' o da tela e o app grava o texto so por useReviews.addReview", () => {

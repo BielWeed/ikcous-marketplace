@@ -683,8 +683,8 @@ jobs:
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-pergunta-nasce-com-a-data-de-agora-viva.cjs
       # Migration 20261396200000 (o texto da avaliacao tem teto no banco): CHECK reviews_comment_ate_1000_caracteres (char_length(comment) <= 1000, o teto da tela)
-      # criado NOT VALID; 1000 entra (letra, acento, emoji), 1001 e 1 milhao sao recusados para todos (admin, service_role e sessao direta tambem); a avaliacao antiga
-      # acima do teto nao e' tocada, mas o UPDATE dela falha ate encurtar (medido); mutantes, reaplicar, rollback, pre-voo, pos-voo, atomicidade, lock_timeout e
+      # criado NOT VALID; 1000 entra (letra, acento, emoji), 1001 e 1 milhao sao recusados para todos (admin, service_role e sessao direta tambem); avaliacao antiga
+      # acima do teto faz a migration se RECUSAR (guarda: o CHECK travaria o gatilho do pagamento do pedido; medido); mutantes, reaplicar, rollback, pre-voo, pos-voo, atomicidade, lock_timeout e
       # consultas 114a/114b. CLONE proprio.
       - name: Prova viva do teto do texto da avaliacao (20261396200000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
