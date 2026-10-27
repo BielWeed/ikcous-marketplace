@@ -427,11 +427,11 @@ describe("OrderTimeline — retirada pronta não é 'Em rota'", () => {
     });
     expect(etapas()).toEqual([
       "Recebido",
-      "Preparando",
+      "Separado",
       "Pronto para retirar",
       "Entregue",
     ]);
-    expect(hospedeiro.textContent).not.toContain("Em rota");
+    expect(hospedeiro.textContent).not.toContain("A caminho");
   });
 
   it("retirada ainda em preparo: a etapa futura já tem o nome da retirada (igual à ficha do pedido)", async () => {
@@ -439,17 +439,17 @@ describe("OrderTimeline — retirada pronta não é 'Em rota'", () => {
       raiz.render(<OrderTimeline status="processing" retiradaNaLoja={true} />);
     });
     expect(etapas()[2]).toBe("Pronto para retirar");
-    expect(hospedeiro.textContent).not.toContain("Em rota");
+    expect(hospedeiro.textContent).not.toContain("A caminho");
   });
 
-  it("ENTREGA a caminho: 'Em rota', como sempre (controle)", async () => {
+  it("ENTREGA a caminho: 'A caminho', como sempre (controle)", async () => {
     await act(async () => {
       raiz.render(<OrderTimeline status="shipping" />);
     });
-    expect(etapas()).toEqual(["Recebido", "Preparando", "Em rota", "Entregue"]);
+    expect(etapas()).toEqual(["Recebido", "Separado", "A caminho", "Entregue"]);
     await act(async () => {
       raiz.render(<OrderTimeline status="shipping" retiradaNaLoja={false} />);
     });
-    expect(etapas()[2]).toBe("Em rota");
+    expect(etapas()[2]).toBe("A caminho");
   });
 });

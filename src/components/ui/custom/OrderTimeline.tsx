@@ -1,3 +1,7 @@
+import {
+  ROTULOS_DAS_ETAPAS,
+  ROTULO_RETIRADA_PRONTA,
+} from "@/lib/rotulos-das-etapas";
 import type { OrderStatus } from "@/types";
 import { Check, Home, Package, Store, Truck, XCircle } from "lucide-react";
 
@@ -18,12 +22,12 @@ export function OrderTimeline({
   compacto = false,
 }: OrderTimelineProps) {
   const steps = [
-    { key: "pending", label: "Recebido", icon: Check },
-    { key: "processing", label: "Preparando", icon: Package },
+    { key: "pending", label: ROTULOS_DAS_ETAPAS.recebido, icon: Check },
+    { key: "processing", label: ROTULOS_DAS_ETAPAS.separado, icon: Package },
     retiradaNaLoja
-      ? { key: "shipping", label: "Pronto para retirar", icon: Store }
-      : { key: "shipping", label: "Em rota", icon: Truck },
-    { key: "delivered", label: "Entregue", icon: Home },
+      ? { key: "shipping", label: ROTULO_RETIRADA_PRONTA, icon: Store }
+      : { key: "shipping", label: ROTULOS_DAS_ETAPAS.aCaminho, icon: Truck },
+    { key: "delivered", label: ROTULOS_DAS_ETAPAS.entregue, icon: Home },
   ];
 
   if (status === "cancelled") {

@@ -58,7 +58,7 @@ const customerPaymentConfig: Record<
 };
 
 /**
- * O texto do selo é 9px — bem abaixo do limiar de "texto grande" do WCAG —
+ * O texto do selo era 9px (a versão sem `variant` subiu para 11px no lote 208) — bem abaixo do limiar de "texto grande" do WCAG —
  * então o mínimo AA é 4,5:1. Medido (Tailwind v3) contra o `bgColor` de cada
  * tom: só o texto mudou de tom aqui (um degrau mais escuro na mesma escala);
  * `bgColor`, `borderColor` e `dot` continuam os mesmos, porque o fundo claro
@@ -312,7 +312,7 @@ export const CustomerPaymentBadge = memo(function CustomerPaymentBadge({
             ? "text-[11px] font-semibold"
             : variant === "perfil"
               ? "text-xs font-semibold"
-              : "text-[9px] font-black uppercase tracking-widest",
+              : "text-[11px] font-black uppercase tracking-wider",
           styles.color,
         )}
       >
