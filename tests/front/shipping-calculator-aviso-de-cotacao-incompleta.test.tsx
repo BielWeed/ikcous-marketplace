@@ -274,6 +274,12 @@ describe("ShippingCalculator — cotação incompleta avisa e não é guardada",
       { codigo: "carrinho_grande_demais", error: "texto técnico proibido" },
       "O carrinho tem itens demais para calcular o frete de uma vez. Tire alguns itens e tente de novo.",
     ],
+    [
+      "400 fora_da_area (loja que só entrega na cidade)",
+      400,
+      { codigo: "fora_da_area", error: "texto técnico proibido" },
+      "Esta loja entrega apenas na região dela.",
+    ],
   ])(
     "%s mostra a frase própria, não a genérica",
     async (_nome, status, corpo, frase) => {

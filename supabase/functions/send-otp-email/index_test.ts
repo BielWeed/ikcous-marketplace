@@ -68,6 +68,46 @@ Deno.test("htmlDoCodigo: nao crava cidade nem nome de loja nenhuma", () => {
   assertEquals(html.includes("IKCOUS"), false);
 });
 
+Deno.test("htmlDoCodigo: portugues com acento e o nome da loja (escapado)", () => {
+  const html = htmlDoCodigo("123456", "Loja <Bela> & Cia");
+  for (const frase of ["Você pediu", "o código abaixo", "Este código expira em 15 minutos", "Se não foi você"]) {
+    assertStringIncludes(html, frase);
+  }
+  assertStringIncludes(html, "Loja &lt;Bela&gt; &amp; Cia");
+  assertEquals(html.includes("<Bela>"), false);
+  assertEquals(/Voce|codigo|nao foi/.test(html), false);
+});
+
+Deno.test("handler: o assunto e o corpo levam o nome da loja lido de store_config", async () => {
+  const enviados: any[] = [];
+  const supabase = {
+    ...supabaseDoCodigo(CODIGO_GERADO),
+    from: (tabela: string) => {
+      assertEquals(tabela, "store_config");
+      return {
+        select: (colunas: string) => {
+          assertEquals(colunas, "store_name");
+          return {
+            limit: (n: number) => {
+              assertEquals(n, 1);
+              return { maybeSingle: async () => ({ data: { store_name: "Loja da Ana\r\nBcc: x@y.com" }, error: null }) };
+            },
+          };
+        },
+      };
+    },
+  };
+  const r = await handler(pedidoDeCodigo(), {
+    supabase,
+    resolverRemetente: async () => ({ origem: "ambiente", usuario: "a@b.com", senha: "x", motivo: null, reserva: null }),
+    enviarEmail: async (mensagem: unknown) => void enviados.push(mensagem),
+  });
+  assertEquals(r.status, 200);
+  assertEquals(enviados[0].assunto, "Seu código de verificação — Loja da Ana  Bcc: x@y.com");
+  assertEquals(/[\r\n]/.test(enviados[0].assunto), false);
+  assertStringIncludes(enviados[0].html, "Loja da Ana");
+});
+
 Deno.test("mascarar: o log nunca carrega o endereco inteiro de quem compra", () => {
   assertEquals(mascarar("cliente@teste.com"), "c*****e@teste.com".replace("*****", "***"));
   assertEquals(mascarar("ab@teste.com"), "***@teste.com");
@@ -200,7 +240,8 @@ Deno.test("handler: loja so' com o AMBIENTE (IKCOUS) — resolvedor REAL — env
     assertEquals(enviados.length, 1);
     const [mensagem, remetente] = enviados[0];
     assertEquals(mensagem.para, "cliente@exemplo.com");
-    assertEquals(mensagem.assunto, "Seu codigo de verificacao");
+    // O dublê não tem `from`: a leitura do nome falha e cai em "Nossa loja".
+    assertEquals(mensagem.assunto, "Seu código de verificação — Nossa loja");
     assertStringIncludes(mensagem.html, "654321");
     assertEquals(remetente.origem, "ambiente");
     assertEquals(remetente.usuario, "ambiente@exemplo.com");
