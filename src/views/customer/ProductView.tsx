@@ -104,7 +104,10 @@ interface ProductViewProps {
     quantity: number,
     variantId?: string,
     variantNames?: string,
-  ) => void;
+    // Devolve quantas unidades entraram (0 = carrinho recusou); chamadores que
+    // não informam devolvem void.
+    // biome-ignore lint/suspicious/noConfusingVoidType: contrato antigo `=> void`
+  ) => number | undefined | void;
   onBack: () => void;
   onProductClick?: (productId: string) => void;
   onAddToCartProduct?: (
@@ -655,13 +658,10 @@ export const ProductView = React.memo(function ProductView({
       .join(", ");
     const imgSrc = variantImage || product.images?.[0] || "";
 
-    setCartStatus("loading");
-
-    if (e?.currentTarget) {
-      triggerFlyingCartAnimation(e.currentTarget, imgSrc);
-    }
-
-    onAddToCart(
+    // Pede ao carrinho ANTES de comemorar (mesmo critério do ProductCard): se
+    // nada entrou (estoque já todo no carrinho), não anima nem fica verde --
+    // o aviso de estoque do carrinho é a única resposta.
+    const entrou = onAddToCart(
       quantity,
       chaveDaVariacao(
         escolhasDaLinha[0]?.id,
@@ -669,6 +669,13 @@ export const ProductView = React.memo(function ProductView({
       ) || undefined,
       variantNames,
     );
+    if (entrou === 0) return;
+
+    setCartStatus("loading");
+
+    if (e?.currentTarget) {
+      triggerFlyingCartAnimation(e.currentTarget, imgSrc);
+    }
 
     setTimeout(() => {
       setCartStatus("success");
@@ -1006,20 +1013,33 @@ export const ProductView = React.memo(function ProductView({
                 </span>
               )}
 
-              <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-2 text-[11px] font-semibold">
+              <div
+                className={cn(
+                  "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-[11px] font-semibold",
+                  isOutOfStock
+                    ? "bg-zinc-100"
+                    : isLowStock
+                      ? "bg-amber-50"
+                      : "bg-emerald-50",
+                )}
+              >
                 <span
                   aria-hidden="true"
                   className={cn(
                     "size-1.5 rounded-full",
-                    isOutOfStock ? "bg-zinc-400" : "bg-emerald-500",
+                    isOutOfStock
+                      ? "bg-zinc-500"
+                      : isLowStock
+                        ? "bg-amber-500"
+                        : "bg-emerald-500",
                   )}
                 />
                 <span
                   className={
                     isOutOfStock
-                      ? "text-zinc-500"
+                      ? "text-zinc-600"
                       : isLowStock
-                        ? "text-rose-600"
+                        ? "text-amber-800"
                         : "text-emerald-700"
                   }
                 >
@@ -1145,7 +1165,7 @@ export const ProductView = React.memo(function ProductView({
                   cartStatus === "success" &&
                     "bg-emerald-600 text-white shadow-emerald-200",
                   isOutOfStock &&
-                    "bg-zinc-100 text-zinc-300 cursor-not-allowed hover:bg-zinc-100 shadow-none active:scale-100",
+                    "bg-zinc-100 text-zinc-600 cursor-not-allowed hover:bg-zinc-100 shadow-none active:scale-100",
                 )}
               >
                 {isOutOfStock ? (
@@ -1758,7 +1778,7 @@ export const ProductView = React.memo(function ProductView({
                       : "bg-primary/80",
                     cartStatus === "success" && "bg-emerald-600 text-white",
                     isOutOfStock &&
-                      "bg-zinc-100 text-zinc-300 cursor-not-allowed hover:bg-zinc-100",
+                      "bg-zinc-100 text-zinc-600 cursor-not-allowed hover:bg-zinc-100",
                   )}
                 >
                   {isOutOfStock

@@ -1,3 +1,4 @@
+import { carrosselPodeGirar } from "@/lib/carrossel-visivel";
 import useEmblaCarousel from "embla-carousel-react";
 import {
   Children,
@@ -45,6 +46,8 @@ export function InfoBlockCarousel({
   useEffect(() => {
     if (!autoPlay || !emblaApi || childrenArray.length <= 1) return;
     const timer = setInterval(() => {
+      // Home escondida (aba/tela de outra rota) ou aba oculta: não gira.
+      if (!carrosselPodeGirar(emblaApi.rootNode?.())) return;
       emblaApi.scrollNext();
     }, interval);
     return () => clearInterval(timer);

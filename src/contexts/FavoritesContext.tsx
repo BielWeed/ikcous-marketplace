@@ -108,6 +108,9 @@ function mesclarSemDuplicar(listas: Product[][]): Product[] {
 // migração (efeito logo abaixo, no Provider) resolve isso UMA vez.
 type EntradaFavoritoLocal = string | Product;
 
+// Quanto tempo o aviso de remoção oferece "Desfazer" (mesmo tempo do carrinho).
+const DURACAO_DO_DESFAZER_MS = 6_000;
+
 function idDaEntradaLocal(entrada: EntradaFavoritoLocal): string {
   return typeof entrada === "string" ? entrada : entrada.id;
 }
@@ -739,7 +742,7 @@ export function FavoritesProvider({
 
   // 3. Actions
   const addToFavorites = useCallback(
-    async (product: Product) => {
+    async (product: Product, posicao?: number) => {
       if (user) {
         // Optimistic
         setDbFavoriteIds((prev) => [...prev, product.id]);
@@ -798,7 +801,15 @@ export function FavoritesProvider({
           ) {
             return prev;
           }
-          return [...prev, product.id];
+          // "Desfazer" devolve o item onde estava; o toque normal acrescenta.
+          if (posicao === undefined || posicao >= prev.length) {
+            return [...prev, product.id];
+          }
+          return [
+            ...prev.slice(0, posicao),
+            product.id,
+            ...prev.slice(posicao),
+          ];
         });
         toast.success("Adicionado aos favoritos");
       }
@@ -806,8 +817,33 @@ export function FavoritesProvider({
     [user, setLocalFavoritesRaw, enfileirarGravacao],
   );
 
+  // "Desfazer" do aviso de remoção (o carrinho já ensina esse gesto). Quem
+  // entra logado volta pela ordem do catálogo; o visitante volta ao índice.
+  const avisarRemovido = useCallback(
+    (produto?: Product, posicao?: number) => {
+      if (!produto) {
+        toast.success("Removido dos favoritos");
+        return;
+      }
+      // Quem removeu: se a conta mudou até o toque em "Desfazer", não devolve
+      // o item à lista de outra pessoa.
+      const dono = usuarioAtualIdRef.current;
+      toast.success("Removido dos favoritos", {
+        duration: DURACAO_DO_DESFAZER_MS,
+        action: {
+          label: "Desfazer",
+          onClick: () => {
+            if (usuarioAtualIdRef.current !== dono) return;
+            void addToFavorites(produto, posicao);
+          },
+        },
+      });
+    },
+    [addToFavorites],
+  );
+
   const removeFromFavorites = useCallback(
-    async (productId: string) => {
+    async (productId: string, produto?: Product, posicao?: number) => {
       if (user) {
         // Optimistic
         setDbFavoriteIds((prev) => prev.filter((id) => id !== productId));
@@ -850,7 +886,7 @@ export function FavoritesProvider({
           // o id "esquecido" e o gravava de novo no servidor, ressuscitando
           // algo que a pessoa removeu de propósito.
           setPendingFavorites(retirarDaFilaPendentes(user.id, [productId]));
-          toast.success("Removido dos favoritos");
+          avisarRemovido(produto, posicao);
         }
       } else {
         setLocalFavoritesRaw((prev) =>
@@ -860,10 +896,10 @@ export function FavoritesProvider({
         // continuar oferecendo o retrato antigo dele como fallback (ver o
         // cache acima).
         snapshotsSemCatalogoRef.current.delete(productId);
-        toast.success("Removido dos favoritos");
+        avisarRemovido(produto, posicao);
       }
     },
-    [user, setLocalFavoritesRaw, enfileirarGravacao],
+    [user, setLocalFavoritesRaw, enfileirarGravacao, avisarRemovido],
   );
 
   const toggleFavorite = useCallback(
@@ -872,7 +908,11 @@ export function FavoritesProvider({
         ? dbFavoriteIds.includes(product.id)
         : localFavoriteIds.includes(product.id);
       if (isFav) {
-        removeFromFavorites(product.id);
+        removeFromFavorites(
+          product.id,
+          product,
+          user ? undefined : localFavoriteIds.indexOf(product.id),
+        );
       } else {
         addToFavorites(product);
       }

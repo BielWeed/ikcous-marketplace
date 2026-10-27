@@ -586,6 +586,20 @@ export const AdminShippingView = memo(function AdminShippingView({
       return;
     }
 
+    // Texto que não é dinheiro chega aqui como NaN (ver `valorDoTexto` em
+    // FreteLocalBloco): gravar 0 seria entrega grátis sem aviso. Não salva.
+    if (
+      !soMototaxiPendente &&
+      formData.modo !== "so_retiro" &&
+      Number.isNaN(formData.localDeliveryFee)
+    ) {
+      toast.error("Confira o valor da entrega.", {
+        description:
+          "Escreva só números, como 7,50. Para entrega grátis, deixe o campo vazio.",
+      });
+      return;
+    }
+
     // O campo aceita digitar "-3" e o `Math.max(0, …)` de baixo gravava 0 =
     // entrega grátis, sem aviso. Valor negativo não salva.
     if (
@@ -661,7 +675,10 @@ export const AdminShippingView = memo(function AdminShippingView({
         : await updateConfig({
             freeShippingMin: valorDoPreset(formData.preset, acimaDeAjustado),
             shippingCoverage: formData.shippingCoverage,
-            localDeliveryFee: Math.max(0, formData.localDeliveryFee),
+            // Centavos inteiros: "7.556" gravava fração de centavo.
+            localDeliveryFee: valorDeFreteEmCentavos(
+              Math.max(0, formData.localDeliveryFee),
+            ),
             localCepRange: alcance,
             localDeliveryEnabled: formData.modo !== "so_retiro",
             localDeliveryDays: diasDoTexto(formData.diasDaEntrega),
@@ -822,7 +839,10 @@ export const AdminShippingView = memo(function AdminShippingView({
         ...config,
         freeShippingMin: valorDoPreset(formData.preset, formData.acimaDe),
         shippingCoverage: formData.shippingCoverage,
-        localDeliveryFee: formData.localDeliveryFee,
+        // NaN (texto que não é dinheiro) não vai para a prévia.
+        localDeliveryFee: Number.isNaN(formData.localDeliveryFee)
+          ? config.localDeliveryFee
+          : formData.localDeliveryFee,
         localDeliveryDays: diasDoTexto(formData.diasDaEntrega),
         localDeliveryEnabled: formData.modo !== "so_retiro",
         localCepRange: formData.localCepRange,

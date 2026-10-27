@@ -14,6 +14,7 @@ import {
   lerResultadoDeStatus,
   lerResultadoLiberacaoVinculo,
   mensagemDoErro,
+  reaisComVirgula,
   totalAbertas,
 } from "@/lib/devolucao";
 import { supabase } from "@/lib/supabase";
@@ -443,7 +444,8 @@ export function useDevolucaoAdmin(
       try {
         const { data, error } = await chamada();
         if (error) {
-          toast.error(mensagemDoErro(error, ERRO_GENERICO));
+          // O servidor escreve valores crus ("R$ 120.00"): vira real brasileiro.
+          toast.error(reaisComVirgula(mensagemDoErro(error, ERRO_GENERICO)));
           await carregar();
           return null;
         }
@@ -453,7 +455,7 @@ export function useDevolucaoAdmin(
         aoMudarRef.current?.();
         return lido;
       } catch (e) {
-        toast.error(mensagemDoErro(e, ERRO_GENERICO));
+        toast.error(reaisComVirgula(mensagemDoErro(e, ERRO_GENERICO)));
         return null;
       } finally {
         emVooRef.current = false;
@@ -700,7 +702,7 @@ export function useDevolucaoAdmin(
         await carregar();
       } else if (r.reembolso_manual) {
         toast.warning(
-          `Devolução concluída. Devolva ${valor} ao cliente em mãos ou por PIX — este pedido não foi pago pelo app.${estoque}`,
+          `Devolução concluída. O reembolso não saiu pelo Mercado Pago: combine com o cliente a devolução de ${valor}, em mãos ou por PIX.${estoque}`,
           { duration: 12_000 },
         );
       } else {

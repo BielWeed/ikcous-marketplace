@@ -1,3 +1,4 @@
+import { formatarBRL, paraCentavos } from "@/lib/financeiro";
 import { cn } from "@/lib/utils";
 
 // Balao compacto do grafico "Historico da loja" (vendas e lucro/estoque).
@@ -31,14 +32,9 @@ type PropsLucro = {
 const CAIXA =
   "bg-zinc-950/98 pointer-events-none z-30 flex w-max select-none flex-col gap-1 rounded-xl border border-admin-border px-3 py-2 text-white shadow-lg";
 
-const reais = (valor: number) =>
-  `R$ ${valor.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`;
-
-const reaisComCentavos = (valor: number) =>
-  `R$ ${valor.toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+// Centavos sempre, e o menos de verdade (U+2212) como no eixo do mesmo gráfico.
+export const reais = (valor: number) =>
+  `${paraCentavos(valor) < 0 ? "−" : ""}${formatarBRL(valor)}`;
 
 function LinhaDeValor({
   rotulo,
@@ -83,12 +79,12 @@ export function BalaoDoGrafico(props: PropsVendas | PropsLucro) {
       <span className="whitespace-nowrap text-xs font-medium">{data}</span>
       <LinhaDeValor
         rotulo="Lucro acumulado"
-        valor={reaisComCentavos(lucroAcumulado)}
+        valor={reais(lucroAcumulado)}
         cor="bg-emerald-500"
       />
       <LinhaDeValor
         rotulo="Estoque investido"
-        valor={reaisComCentavos(estoqueInvestido)}
+        valor={reais(estoqueInvestido)}
         cor="bg-amber-500"
       />
     </div>

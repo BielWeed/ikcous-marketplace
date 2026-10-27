@@ -220,9 +220,17 @@ describe("Favoritos — leitura atrasada não desfaz o toque", () => {
       await notificarOutraAba(); // A consulta automática guarda o retrato anterior ao toque.
       await tocarCoracao();
       await concluirGravacao(0);
-      expect(toast.success).toHaveBeenCalledWith(
-        jaMarcada ? "Removido dos favoritos" : "Adicionado aos favoritos",
-      );
+      // Lote 223: o aviso de remoção agora traz "Desfazer" (2º argumento).
+      if (jaMarcada) {
+        expect(toast.success).toHaveBeenCalledWith(
+          "Removido dos favoritos",
+          expect.objectContaining({
+            action: expect.objectContaining({ label: "Desfazer" }),
+          }),
+        );
+      } else {
+        expect(toast.success).toHaveBeenCalledWith("Adicionado aos favoritos");
+      }
       await responderLeitura(1);
       conferirCaneca(!jaMarcada);
       await responderLeitura(2);

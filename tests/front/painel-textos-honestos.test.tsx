@@ -107,7 +107,25 @@ describe("Início: os textos dizem a janela que o banco calcula", () => {
     );
     expect(botao).toBeTruthy();
     act(() => botao?.click());
-    expect(onNavigate).toHaveBeenCalledWith("admin-financeiro");
+    // Lote 224: abre direto em "Pagar e receber" (lado "A pagar"), não na Visão.
+    expect(onNavigate).toHaveBeenCalledWith("admin-financeiro", "previstos");
+  });
+
+  it("(b3) 'A receber' abre em Pagar e receber, no lado de receber; o saldo segue na Visão", () => {
+    const abrir = (comeco: string) => {
+      const b = Array.from(hospedeiro.querySelectorAll("button")).find((x) =>
+        (x.getAttribute("aria-label") ?? "").startsWith(comeco),
+      );
+      expect(b).toBeTruthy();
+      act(() => b?.click());
+    };
+    abrir("A receber —");
+    expect(onNavigate).toHaveBeenLastCalledWith(
+      "admin-financeiro",
+      "previstos-entrada",
+    );
+    abrir("Saldo em contas —");
+    expect(onNavigate.mock.lastCall).toEqual(["admin-financeiro"]);
   });
 });
 

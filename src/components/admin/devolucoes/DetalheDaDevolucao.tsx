@@ -13,10 +13,10 @@ import { toast } from "sonner";
 import { useDevolucaoAdmin } from "@/hooks/useDevolucoesAdmin";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import {
-  ehStatusAberto,
   formatarDataHora,
   formatarDia,
   formatarReais,
+  pedidoDentroDoPrazo,
   rotuloAtor,
   rotuloCondicao,
   rotuloMetodo,
@@ -24,14 +24,17 @@ import {
   rotuloMotivo,
   rotuloResolucao,
   rotuloStatus,
-  textoDoPrazo,
 } from "@/lib/devolucao";
 import { linkDeRastreio } from "@/lib/link-de-rastreio";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 
-import { AcoesDaDevolucao, BOTAO_SECUNDARIO } from "./AcoesDaDevolucao";
+import {
+  AcoesDaDevolucao,
+  BOTAO_SECUNDARIO,
+  pagoPeloApp,
+} from "./AcoesDaDevolucao";
 import { ReembolsoDaDevolucao } from "./ReembolsoDaDevolucao";
 import { SeloDoStatus, SeloDoTipo } from "./SelosDaDevolucao";
 
@@ -62,14 +65,12 @@ function Linha({
  */
 export function DetalheDaDevolucao({
   id,
-  agora,
   onFechar,
   onMudou,
   onSujoMudou,
   onAbrirPedido,
 }: Readonly<{
   id: string;
-  agora: Date;
   onFechar: () => void;
   onMudou: () => void;
   onSujoMudou: (sujo: boolean) => void;
@@ -80,6 +81,9 @@ export function DetalheDaDevolucao({
   const aoSujar = useCallback((s: boolean) => onSujoMudou(s), [onSujoMudou]);
 
   const whatsapp = linkWhatsappDoCliente(detalhe?.pedido?.whatsapp);
+  const dentroDoPrazo = detalhe?.prazo_ate
+    ? pedidoDentroDoPrazo(detalhe.created_at, detalhe.prazo_ate)
+    : null;
 
   async function copiar(valor: string) {
     const ok = await copiarParaClipboard(valor);
@@ -166,8 +170,10 @@ export function DetalheDaDevolucao({
             {detalhe.status === "concluida" && detalhe.reembolso_manual && (
               <p className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs font-bold leading-relaxed text-amber-200">
                 Reembolso manual de{" "}
-                {formatarReais(detalhe.valor_reembolso ?? 0)}: este pedido não
-                foi pago pelo app — devolva ao cliente em mãos ou por PIX.
+                {formatarReais(detalhe.valor_reembolso ?? 0)}.{" "}
+                {pagoPeloApp(detalhe)
+                  ? "O reembolso não saiu pelo Mercado Pago — combine a devolução com o cliente, em mãos ou por PIX."
+                  : "Este pedido não foi pago pelo app — devolva ao cliente em mãos ou por PIX."}
               </p>
             )}
 
@@ -189,11 +195,19 @@ export function DetalheDaDevolucao({
                   {formatarDataHora(detalhe.created_at)}
                 </Linha>
                 {detalhe.prazo_ate && (
-                  <Linha rotulo="Prazo legal">
+                  // `prazo_ate` é o limite para o CLIENTE pedir; na troca ele vem
+                  // da política da loja, não da lei.
+                  <Linha
+                    rotulo={
+                      detalhe.tipo === "troca"
+                        ? "Prazo da política da loja"
+                        : "Prazo legal"
+                    }
+                  >
                     <span className="tabular-nums">
                       {formatarDia(detalhe.prazo_ate)}
-                      {ehStatusAberto(detalhe.status) &&
-                        ` · ${textoDoPrazo(detalhe.prazo_ate, agora)}`}
+                      {dentroDoPrazo !== null &&
+                        ` · pedido feito ${dentroDoPrazo ? "dentro do" : "depois do"} prazo`}
                     </span>
                   </Linha>
                 )}

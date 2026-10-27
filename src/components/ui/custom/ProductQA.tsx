@@ -174,7 +174,12 @@ export function ProductQA({
 
       {/* Ask Section */}
       {user ? (
-        <div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handleAsk();
+          }}
+        >
           <div className="relative flex items-center">
             <input
               id="qa-new-question"
@@ -188,10 +193,11 @@ export function ProductQA({
               placeholder="Escreva sua dúvida sobre o produto..."
               maxLength={500}
               aria-label="Sua dúvida sobre o produto"
+              enterKeyHint="send"
               className="min-h-[52px] w-full rounded-full border border-border bg-background px-4 py-3 pr-16 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring md:text-sm"
             />
             <button
-              onClick={handleAsk}
+              type="submit"
               disabled={!newQuestion.trim() || enviandoPergunta}
               className="absolute right-1 top-1 flex size-11 items-center justify-center rounded-full bg-foreground text-background hover:opacity-90 disabled:opacity-30"
               title="Enviar pergunta"
@@ -200,7 +206,7 @@ export function ProductQA({
               <Send className="size-3.5" />
             </button>
           </div>
-        </div>
+        </form>
       ) : (
         <div className="rounded-2xl border border-border bg-muted/30 p-4">
           <h4 className="text-sm font-bold text-zinc-950">
@@ -229,7 +235,7 @@ export function ProductQA({
         {loading ? (
           <div className="py-10 text-center">
             <div className="mx-auto mb-3 size-6 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-900" />
-            <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+            <p className="text-xs font-bold uppercase tracking-widest text-zinc-600">
               Sincronizando conversas...
             </p>
           </div>
@@ -331,7 +337,7 @@ export function ProductQA({
                         {q.customerName}
                       </span>
                       {q.isVerified && (
-                        <span className="flex items-center gap-0.5 rounded-md border border-emerald-100/50 bg-emerald-50/70 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-700">
+                        <span className="flex items-center gap-0.5 rounded-md border border-emerald-100/50 bg-emerald-50/70 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-emerald-700">
                           <Check className="size-2.5" />
                           Comprador
                         </span>
@@ -341,7 +347,7 @@ export function ProductQA({
                 </div>
                 <span
                   className={cn(
-                    "text-[10px] font-medium uppercase tracking-wider text-zinc-400",
+                    "text-xs font-medium uppercase tracking-wider text-zinc-600",
                     "lg:text-[11px] lg:text-zinc-500",
                   )}
                 >
@@ -372,7 +378,7 @@ export function ProductQA({
                     >
                       <div className="flex-shrink-0">
                         <Avatar className="size-7 border border-zinc-950/10 shadow-sm">
-                          <AvatarFallback className="flex select-none items-center justify-center bg-primary text-[9px] font-black text-primary-foreground">
+                          <AvatarFallback className="flex select-none items-center justify-center bg-primary text-xs font-black text-primary-foreground">
                             {siglaDaLoja}
                           </AvatarFallback>
                         </Avatar>
@@ -380,14 +386,14 @@ export function ProductQA({
                       <div className="flex-1 space-y-1.5">
                         <div className="flex items-center justify-between gap-1.5">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[9px] font-black uppercase tracking-wider text-zinc-900">
+                            <span className="text-xs font-black uppercase tracking-wider text-zinc-900">
                               Resposta da Equipe
                             </span>
-                            <span className="flex size-3 select-none items-center justify-center rounded-full bg-primary text-[7px] font-bold text-primary-foreground">
+                            <span className="flex size-4 select-none items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
                               ✓
                             </span>
                           </div>
-                          <span className="text-[8px] font-medium uppercase tracking-wider text-zinc-400">
+                          <span className="text-xs font-medium uppercase tracking-wider text-zinc-600">
                             {formatDistanceToNow(new Date(a.createdAt), {
                               addSuffix: true,
                               locale: ptBR,
@@ -452,7 +458,7 @@ export function ProductQA({
                             setReplyingTo(null);
                             setReplyText("");
                           }}
-                          className="text-[9px] font-black uppercase tracking-widest text-zinc-400 transition-colors hover:text-red-500"
+                          className="text-xs font-black uppercase tracking-widest text-zinc-600 transition-colors hover:text-red-500"
                         >
                           Cancelar
                         </button>
@@ -461,7 +467,7 @@ export function ProductQA({
                   ) : (
                     <button
                       onClick={() => openReplyBox(q)}
-                      className="group/reply flex w-fit items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:text-zinc-900"
+                      className="group/reply flex w-fit items-center gap-1.5 text-xs font-black uppercase tracking-widest text-zinc-600 transition-all hover:text-zinc-900"
                     >
                       <Reply className="size-3 transition-transform group-hover/reply:-translate-x-0.5" />
                       {q.answers.length > 0
