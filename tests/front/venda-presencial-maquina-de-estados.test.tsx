@@ -260,6 +260,29 @@ describe("código não cadastrado, produto inativo e esgotado — três avisos d
     expect(estado.itens).toHaveLength(0);
   });
 
+  // 20261393100000: a RPC passou a responder a variação DESLIGADA com o terceiro caso (encontrado, origem "variante",
+  // produto.ativo falso, variacoes vazia). O balcão tem de ler isso como "inativo" — nunca como "não cadastrado" e nunca
+  // adicionando a peça —, mesmo com estoque e preço da variação válidos.
+  it("variação desligada (resposta nova da RPC) — aviso de inativo, cupom vazio, e nunca 'não cadastrado'", () => {
+    const base = respostaVariante();
+    const resposta = respostaVariante({
+      produto: { ...base.produto!, ativo: false },
+      estoque: 7,
+      preco: 12.34,
+    });
+    const estado = reducerDaVenda(estadoBase(), {
+      tipo: "codigo_resolvido",
+      codigo: resposta.codigo,
+      resposta,
+      em: 0,
+    });
+    expect(estado.aviso).toEqual({
+      tipo: "inativo",
+      nome: "Camiseta Estampada",
+    });
+    expect(estado.itens).toHaveLength(0);
+  });
+
   it("esgotado — produto SEM variação, estoque zero", () => {
     const resposta = respostaProdutoSemVariacao({ estoque: 0 });
     const estado = reducerDaVenda(estadoBase(), {

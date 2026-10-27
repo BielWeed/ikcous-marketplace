@@ -83,9 +83,13 @@ WITH alvo(tabela, politica, comando, papeis, qual, chk) AS (VALUES
     AND p.proowner=(SELECT proowner FROM pg_proc WHERE oid=to_regprocedure('public.is_admin_atual()'))
     -- get_admin_products_paged tem uma SUCESSORA (20261385000000, a busca acha o codigo de barras e o da variacao; so amplia o
     -- filtro de busca, o gate e o desta migration): o corpo exato dela tambem vale. Qualquer outro corpo reprova a linha.
+    -- buscar_por_codigo_barras tem outra SUCESSORA (20261393100000, o balcao diz "inativo" para a variacao desligada; so acrescenta a
+    -- busca da variacao desligada no fim, o gate e o desta migration): o corpo exato dela tambem vale.
     AND (md5(replace(p.prosrc,chr(13),''))=a.hash
          OR (a.assinatura='public.get_admin_products_paged(text,text,text,text,integer,integer)'
-             AND md5(replace(p.prosrc,chr(13),''))='39db382689def5fac3b263a66f84ede1'))
+             AND md5(replace(p.prosrc,chr(13),''))='39db382689def5fac3b263a66f84ede1')
+         OR (a.assinatura='public.buscar_por_codigo_barras(text)'
+             AND md5(replace(p.prosrc,chr(13),''))='3e2276ae97a7f2aef487e55d259ba7a3'))
     AND (SELECT count(*)=1 FROM pg_proc x WHERE x.pronamespace='public'::regnamespace AND x.proname=p.proname)
     AND has_function_privilege('authenticated',p.oid,'EXECUTE') AND has_function_privilege('service_role',p.oid,'EXECUTE')
     AND NOT has_function_privilege('anon',p.oid,'EXECUTE')

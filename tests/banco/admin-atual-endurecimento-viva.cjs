@@ -788,6 +788,11 @@ async function main() {
           [ADMIN_SEL],
         )
       ).rows[0].sim;
+    // A 20261393100000 (o balcao diz "inativo") sucede buscar_por_codigo_barras desta migration: sai primeiro (ordem inversa
+    // da aplicacao). Definicao unica em tests/banco/o-balcao-diz-inativo-posterior.cjs.
+    await require("./o-balcao-diz-inativo-posterior.cjs").desfazerBalcaoDizInativoNaTransacao(
+      c,
+    );
     // A 20261385 (a busca de produtos) sucede get_admin_products_paged desta migration: sai antes (o rollback da 81 exige o
     // corpo da 81 e a 86a mede o corpo da 81). O clone do rodar-isolado e' descartavel.
     await require("./busca-do-painel-por-codigo-posterior.cjs").desfazerBuscaDoPainelNaTransacao(

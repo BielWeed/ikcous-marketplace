@@ -150,9 +150,10 @@ async function pedidoDoApp(c, o) {
       o.paymentStatus === undefined ? "aguardando" : o.paymentStatus,
       o.gateway || null,
       o.forma && o.forma !== "online" ? null : "pix",
-      // Reserva do PIX (só para 'aguardando'): vencida há 1 minuto (o now()
-      // da transação é o mesmo da varredura) ou dentro dos 30 minutos.
-      o.vencido ? -1 : 30,
+      // Reserva do PIX (só para 'aguardando'): vencida há 11 minutos (o now()
+      // da transação é o mesmo da varredura; o PIX com cobrança na vaga só
+      // expira 10 minutos depois do vencimento, 20261393) ou dentro dos 30 minutos.
+      o.vencido ? -11 : 30,
     ],
   );
   await c.query(

@@ -3103,6 +3103,8 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "100a-conferir-o-financeiro-descreve-a-venda-do-balcao-aplicado",
     "101a-conferir-a-lista-de-clientes-nao-repete-ninguem-aplicado",
     "102a-conferir-a-busca-do-crm-acha-o-numero-com-mais-55-aplicado",
+    "103a-conferir-o-pix-pago-no-ultimo-minuto-nao-perde-o-pedido-aplicado",
+    "104a-conferir-o-balcao-diz-inativo-para-a-variacao-desligada-aplicado",
   ]);
 });
 
