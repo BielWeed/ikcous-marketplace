@@ -120,16 +120,12 @@ it("prévia recolhível e limpar validade mantêm os demais campos", async () =>
   await act(async () => acharBotao("Limpar validade")?.click());
   expect(validade.value).toBe("");
   await act(async () => acharBotao("Salvar Cupom")?.click());
-  expect(updateCoupon).toHaveBeenCalledWith(
-    "cupom-1",
-    expect.objectContaining({
-      code: "NATAL",
-      value: 25,
-      minPurchase: 50,
-      usageLimit: 10,
-      validUntil: undefined,
-    }),
-  );
+  // Edição manda só o que mudou (lote 260): vai a validade VAZIA (a chave
+  // existe, com `undefined`, e o hook grava nulo) e nada além dela.
+  expect(updateCoupon).toHaveBeenCalledTimes(1);
+  const [, enviado] = updateCoupon.mock.calls[0];
+  expect(Object.keys(enviado)).toEqual(["validUntil"]);
+  expect(enviado.validUntil).toBeUndefined();
 });
 
 async function redimir() {
@@ -232,6 +228,8 @@ describe("form de cupom — A4: a decisão é do couponId da rota", () => {
     estadoCoupons = { coupons: [cupomReal], loading: false };
     await montar("cupom-1");
     updateCoupon.mockResolvedValue(undefined);
+    // Edição manda só o que mudou (lote 260): precisa haver uma mudança.
+    await digitarValor("30");
 
     await act(async () => {
       acharBotao("Salvar Cupom")?.click();
@@ -239,6 +237,7 @@ describe("form de cupom — A4: a decisão é do couponId da rota", () => {
 
     expect(updateCoupon).toHaveBeenCalledTimes(1);
     expect(updateCoupon.mock.calls[0][0]).toBe("cupom-1");
+    expect(updateCoupon.mock.calls[0][1]).toEqual({ value: 30 });
     expect(addCoupon).not.toHaveBeenCalled();
     expect(onNavigate).toHaveBeenCalledWith("admin-coupons");
   });
@@ -265,13 +264,18 @@ describe("form de cupom — A5: a chegada tardia da carga não apaga o digitado"
       acharBotao("Salvar Cupom")?.click();
     });
 
+    // O resto TEM que ter enchido na tela (o form antigo ficaria nos zeros)...
+    const campo = (id: string) =>
+      (container?.querySelector(`#coupon-${id}`) as HTMLInputElement).value;
+    expect(campo("value")).toBe("25");
+    expect(campo("min-purchase")).toBe("50");
+    expect(campo("usage-limit")).toBe("10");
+    expect(campo("code")).toBe("NATAL");
+
+    // ...mas edição manda só o que mudou (lote 260): o tipo que ela trocou
+    // ANTES da carga chegar é mudança dela, e só ele vai.
     expect(updateCoupon).toHaveBeenCalledTimes(1);
-    const [, enviado] = updateCoupon.mock.calls[0];
-    expect(enviado.type).toBe("fixed");
-    expect(Number(enviado.value)).toBe(25);
-    expect(Number(enviado.minPurchase)).toBe(50);
-    expect(Number(enviado.usageLimit)).toBe(10);
-    expect(enviado.code).toBe("NATAL");
+    expect(updateCoupon.mock.calls[0][1]).toEqual({ type: "fixed" });
   });
 
   it("depois de inicializado, refetch nenhum re-inicializa o form", async () => {

@@ -363,6 +363,18 @@ describe("CSV de todos os pedidos do filtro", () => {
     expect(botao().disabled).toBe(false);
   });
 
+  it("com mais de 5000 pedidos no filtro a tela mostra a frase do teto, não o 'Tente de novo'", async () => {
+    exportacao = async () => resposta([pedido(1)], 5001);
+    await montarTela();
+    await act(async () => {
+      botao().click();
+    });
+    expect(mocks.erro).toHaveBeenCalledWith(
+      "O CSV permite até 5000 pedidos. Reduza o período do filtro.",
+    );
+    expect(baixar).not.toHaveBeenCalled();
+  });
+
   it("preserva página, total e loading da tela depois de buscar o filtro inteiro", async () => {
     await act(async () => {
       raiz.render(<AlvoHook />);

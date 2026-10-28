@@ -2,7 +2,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { configurarTextos } from "./helpers/editor-de-banner";
+import { abrirMaisOpcoes, configurarTextos } from "./helpers/editor-de-banner";
 
 const uploadBannerImage = vi.fn<(file: File) => Promise<string>>();
 const deleteStorageFile = vi.fn<(url: string) => Promise<void>>();
@@ -270,6 +270,58 @@ describe("uploads de banner limpam a imagem substituída e o seletor", () => {
         expect.objectContaining({ imageUrl: imagemFinal }),
       );
       expect(deleteStorageFile.mock.calls).toEqual([[imagemAnterior]]);
+    },
+  );
+
+  it("editar manda só o que mudou: ativo, ordem e datas não viajam", async () => {
+    await abrir();
+    uploadBannerImage.mockResolvedValueOnce(imagemEnviada);
+    await act(async () => selecionar());
+    await clicar("Salvar Banner");
+
+    expect(updateBanner).toHaveBeenCalledTimes(1);
+    const enviado = updateBanner.mock.calls[0][1] as Record<string, unknown>;
+    expect(enviado.imageUrl).toBe(imagemEnviada);
+    for (const chave of ["active", "order", "startDate", "endDate", "id"]) {
+      expect(Object.keys(enviado)).not.toContain(chave);
+    }
+  });
+
+  it("limpar a programação manda datas null (não texto vazio) e só elas", async () => {
+    Object.assign(banner, { endDate: "2099-01-01T00:00:00.000Z" });
+    try {
+      await abrir();
+      await abrirMaisOpcoes();
+      const chave = hospedeiro.querySelector<HTMLButtonElement>(
+        "#banner-scheduling-toggle",
+      );
+      if (!chave) throw new Error("Chave de datas ausente");
+      await act(async () => chave.click());
+      await clicar("Salvar Banner");
+
+      expect(updateBanner).toHaveBeenCalledTimes(1);
+      const enviado = updateBanner.mock.calls[0][1] as Record<string, unknown>;
+      expect(enviado.endDate).toBeNull();
+      expect(Object.keys(enviado)).not.toContain("active");
+    } finally {
+      Reflect.deleteProperty(banner, "endDate");
+    }
+  });
+
+  it.each([
+    ["a.heic", "image/heic", 10, /JPG ou PNG/],
+    ["a.pdf", "application/pdf", 10, /não é uma foto/],
+    ["grande.webp", "image/webp", 13 * 1024 * 1024, /12 MB/],
+  ] as const)(
+    "recusa %s antes de subir",
+    async (nome, tipo, tamanho, frase) => {
+      await abrir();
+      const arquivo = new File(["x"], nome, { type: tipo });
+      Object.defineProperty(arquivo, "size", { value: tamanho });
+      await act(async () => selecionar(input(), arquivo));
+      expect(uploadBannerImage).not.toHaveBeenCalled();
+      expect(String(toastError.mock.calls[0]?.[0])).toMatch(frase);
+      expect(imagem()).toBe(banner.imageUrl);
     },
   );
 
