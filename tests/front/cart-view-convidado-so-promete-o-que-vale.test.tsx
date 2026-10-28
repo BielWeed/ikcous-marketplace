@@ -156,7 +156,13 @@ describe("CartView — o convidado só lê promessa que vale", () => {
     };
     const texto = await renderizarCarrinho();
 
-    expect(texto).toContain("Continuar como Convidado");
+    // Lote 242 (caça 12-A #5): nem o título nem o botão prometem "convidado"
+    // numa loja onde o convidado não finaliza. O botão segue levando ao
+    // checkout (o pedido pode ser visto antes), mas diz isso.
+    expect(texto).toContain("Entre para finalizar");
+    expect(texto).toContain("Ver o pedido antes de entrar");
+    expect(texto).not.toContain("Comprar como Convidado");
+    expect(texto).not.toContain("Continuar como Convidado");
 
     expect(texto).not.toContain("sem precisar criar senha");
     expect(texto).not.toContain("em muitos casos");
@@ -174,5 +180,9 @@ describe("CartView — o convidado só lê promessa que vale", () => {
 
     expect(texto).toContain("Você pode comprar como visitante em muitos casos");
     expect(texto).not.toContain("o pagamento é feito pelo app");
+    // Controle do item acima: aqui o convidado pode comprar, título e botão ficam.
+    expect(texto).toContain("Comprar como Convidado");
+    expect(texto).toContain("Continuar como Convidado");
+    expect(texto).not.toContain("Entre para finalizar");
   });
 });

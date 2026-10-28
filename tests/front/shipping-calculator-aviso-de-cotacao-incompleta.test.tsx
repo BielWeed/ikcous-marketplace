@@ -297,4 +297,44 @@ describe("ShippingCalculator — cotação incompleta avisa e não é guardada",
       );
     },
   );
+
+  // Caça 12-A #6 (lote 242): "fora da área" é definitiva para aquele CEP — refazer
+  // a consulta devolve a mesma recusa e gasta a cota de consultas da cliente.
+  const botaoTentarDeNovo = () =>
+    [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Tentar de novo"),
+    );
+
+  it("fora_da_area não oferece 'Tentar de novo' (a recusa não muda com o mesmo CEP)", async () => {
+    invoke.mockResolvedValue(
+      erroHttp(
+        new Response(JSON.stringify({ codigo: "fora_da_area" }), {
+          status: 400,
+        }),
+      ),
+    );
+    await cotar();
+
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toBe(
+      "Esta loja entrega apenas na região dela.",
+    );
+    expect(botaoTentarDeNovo()).toBeUndefined();
+  });
+
+  it.each([
+    [429, { codigo: "muitas_consultas" }],
+    [400, { codigo: "carrinho_grande_demais" }],
+    [500, { error: "falha qualquer" }],
+  ])(
+    "controle: o erro %s %j mantém o 'Tentar de novo'",
+    async (status, corpo) => {
+      invoke.mockResolvedValue(
+        erroHttp(new Response(JSON.stringify(corpo), { status })),
+      );
+      await cotar();
+
+      expect(hospedeiro.querySelector('[role="alert"]')).not.toBeNull();
+      expect(botaoTentarDeNovo()).toBeDefined();
+    },
+  );
 });

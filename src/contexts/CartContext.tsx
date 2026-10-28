@@ -9,6 +9,7 @@ import {
   avisosDoCarrinho,
   montarCatalogo,
 } from "@/lib/catalogo-do-carrinho";
+import { haChaveDoPedidoVigente } from "@/lib/chave-do-pedido";
 import {
   chaveDaLinha,
   chaveDoItem,
@@ -862,6 +863,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setRemotoMesclado(false);
       falhasDeLeitura.current = 0;
       cancelarReleitura();
+      // Conta nova a ler: o carrinho NÃO é "vazio" enquanto a leitura não volta
+      // (o `finally` do `syncFromDB`, ou o tempo-limite, desliga de novo).
+      if (currentUserId) setIsLoading(true);
       lastSessionUserId.current = currentUserId;
     }
 
@@ -895,6 +899,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       ) {
         return;
       }
+      // Pedido enviado e ainda sem confirmação: o carrinho (e a chave do
+      // pedido, que nasce dele) não muda por baixo — senão o novo "Finalizar"
+      // criaria um SEGUNDO pedido. Quem confirma ou recusa libera.
+      if (haChaveDoPedidoVigente(userId ?? null)) return;
       ultimaRenovacaoVisivel.current = agora;
       void renovarPeloCatalogo();
     };
