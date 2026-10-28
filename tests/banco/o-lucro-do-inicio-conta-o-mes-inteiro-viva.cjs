@@ -215,7 +215,13 @@ async function main() {
         [id, papel],
       );
 
-    // ---- 0. O topo instalado pelo CI (todas as migrations do zero) e o desta migration; o anterior e o da 228. ----
+    // A 20261398000000 (o Inicio compara o mes anterior ate a mesma hora) sucede a 390 e esta no ar no clone: sai PRIMEIRO, pelo
+    // rollback-manual dela (o da 390 so aceita o corpo da 390). Esta prova mede a 390 isolada.
+    await require("./o-inicio-compara-o-mes-anterior-posterior.cjs").desfazerMesAnteriorNaTransacao(
+      c,
+    );
+
+    // ---- 0. O topo da 390 (a 398, que a sucede, acabou de sair) e o desta migration; o anterior e o da 228. ----
     const topo = await funcao(c);
     assert.equal(topo.prosrc, CORPO_NOVO, "o topo instalado nao e o da 390");
     assert.equal(md5(topo.prosrc), HASH_NOVO);
@@ -588,6 +594,10 @@ async function main() {
           `SELECT md5(replace(prosrc, chr(13), '')) AS h FROM pg_proc WHERE oid = '${ASSINATURA}'::regprocedure`,
         )
       ).rows[0].h;
+    // O clone tem a 398 no ar de verdade (a transacao de cima foi desfeita): sai aqui tambem, com COMMIT, antes de medir a 390.
+    await require("./o-inicio-compara-o-mes-anterior-posterior.cjs").desfazerMesAnteriorNaTransacao(
+      d,
+    );
     assert.equal(await hash(), HASH_NOVO);
     await d.query(rollback);
     assert.equal(await hash(), HASH_ANTES);

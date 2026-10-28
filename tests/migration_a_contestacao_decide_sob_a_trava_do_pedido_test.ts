@@ -670,6 +670,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261397000000: o desconto do cupom de porcentagem e' arredondado ao centavo ANTES de subtrair (v23, v24 e validate_coupon_secure_v2; contas, controle, mutantes,
     // dado antigo intacto, rollback byte a byte, aplicar duas vezes, pre/pos-voo e consultas 115a/115b).
     "tests/banco/o-desconto-do-cupom-e-arredondado-ao-centavo-viva.cjs",
+    // 20261398000000: o Inicio compara o mes anterior ate a mesma hora (o ultimo dia dos mesmos dias do mes anterior corta na hora de agora; dia 1, 15, 28 a 31,
+    // fevereiro de 28 e 29 dias, virada de ano, hora exata, corte em UTC; oraculo em JS e 12 mutantes, controle com o corpo anterior, rollback, pre/pos-voo, leitor concorrente e consultas 116a/116b).
+    "tests/banco/o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",

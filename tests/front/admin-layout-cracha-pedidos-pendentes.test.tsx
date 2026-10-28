@@ -33,31 +33,37 @@ const CONTAGEM_COM_PIX_AGUARDANDO = 7;
 // Conta da regra única "para preparar" (a mesma do Início).
 const CONTAGEM_PARA_PREPARAR = 5;
 
-let contagemDevolvidaPeloBanco = CONTAGEM_ANTIGA_SO_PENDING;
 let argumentosDoIn: unknown[] | null = null;
 let argumentoDoOr: string | null = null;
 
 function criarOrdersCountBuilder() {
+  // A conta que o "banco" devolve é DESTE builder: as seis fontes do sino
+  // saem em paralelo, e uma conta compartilhada seria pisada pelas outras.
+  let contagemDesteBuilder = CONTAGEM_ANTIGA_SO_PENDING;
+  let ehConsultaDeStatus = false;
   const builder: any = {};
   builder.select = vi.fn(() => builder);
   builder.eq = vi.fn((_coluna: string, _valor: string) => {
     // Simula o banco: filtrar só por "pending" devolve a conta antiga.
-    contagemDevolvidaPeloBanco = CONTAGEM_ANTIGA_SO_PENDING;
+    contagemDesteBuilder = CONTAGEM_ANTIGA_SO_PENDING;
     return builder;
   });
   builder.in = vi.fn((coluna: string, valores: readonly string[]) => {
     // Simula o banco: a lista ampla sem filtro de pagamento ainda conta o
     // PIX que espera a cliente.
     argumentosDoIn = [coluna, [...valores]];
-    contagemDevolvidaPeloBanco = CONTAGEM_COM_PIX_AGUARDANDO;
+    ehConsultaDeStatus = true;
+    contagemDesteBuilder = CONTAGEM_COM_PIX_AGUARDANDO;
     return builder;
   });
   builder.or = vi.fn((filtro: string) => {
     // Grava o argumento e só tira os PIX aguardando se o filtro for o da
     // regra única — um `.or` escrito à mão que divergir não ganha o 5.
-    argumentoDoOr = filtro;
+    // Só a consulta do crachá (a que filtra por status com `.in`) conta: a
+    // consulta de recebimentos também usa `.or`, com outro filtro.
+    if (ehConsultaDeStatus) argumentoDoOr = filtro;
     if (filtro === FILTRO_POSTGREST_PARA_PREPARAR) {
-      contagemDevolvidaPeloBanco = CONTAGEM_PARA_PREPARAR;
+      contagemDesteBuilder = CONTAGEM_PARA_PREPARAR;
     }
     return builder;
   });
@@ -68,7 +74,7 @@ function criarOrdersCountBuilder() {
   // usa, que é pior que o aviso da regra.
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase, ver acima
   builder.then = (resolve: any, reject?: any) =>
-    Promise.resolve({ count: contagemDevolvidaPeloBanco, error: null }).then(
+    Promise.resolve({ count: contagemDesteBuilder, error: null }).then(
       resolve,
       reject,
     );
@@ -141,7 +147,6 @@ describe("AdminLayout — crachá de Pedidos conta os pedidos para preparar", ()
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
-    contagemDevolvidaPeloBanco = CONTAGEM_ANTIGA_SO_PENDING;
     argumentosDoIn = null;
     argumentoDoOr = null;
     vi.stubGlobal(

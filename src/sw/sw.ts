@@ -94,6 +94,14 @@ async function purgarArquivosPrivadosDaGaveta(): Promise<void> {
 
 // self.__WB_MANIFEST is the injection point for the precache manifest
 // We must include it even if we handle caching manually to satisfy Workbox.
+//
+// O manifesto NÃO leva o painel da lojista (lote 252, 28/10/2026): o build
+// tira dele, pelo mesmo critério do portão de tamanho, tudo que só o painel
+// usa (telas, gráficos, leitor de código de barras e seu .wasm). O Balcão não
+// precisa funcionar sem internet (decisão do dono), então esses arquivos vão
+// pela rede: o ramo "3. STALE-WHILE-REVALIDATE" do `fetch`, mais abaixo, os
+// busca e os guarda na primeira vez que a lojista os pede. Visitante que só
+// compra nunca os baixa.
 declare const self: any;
 const precacheManifest = self.__WB_MANIFEST || [];
 console.log("[SW] Precache Manifest received:", precacheManifest.length);

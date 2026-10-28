@@ -51,6 +51,8 @@
 -- deixa o portao vermelho no lote 17.
 -- JA DECIDIDO PARA `painel_inicio` (26/10/2026): a 20261390000000 (o lucro do Inicio conta o mes inteiro) o
 -- redefine depois da 28. A mesma linha aceita tambem o corpo da 390 (LF e CRLF).
+-- JA DECIDIDO PARA `painel_inicio` (28/10/2026): a 20261398000000 (o Inicio compara o mes anterior ate a mesma
+-- hora) o redefine depois da 390. A mesma linha aceita tambem o corpo da 398 (LF e CRLF).
 -- JA DECIDIDO PARA `get_admin_analytics_v2` (14/10/2026): a 20261234000000 (o lucro so conta produto com
 -- custo) o redefine depois deste lote. A linha `get_admin_analytics_v2: corpo e o da 20261214000000` aceita
 -- o corpo da 14 OU o da 34 OU o da 42 (a 20261242000000, o lucro usa o custo do dia da venda: o corpo da 34 com
@@ -199,15 +201,18 @@ WITH alvo(nome, assinatura) AS (
   UNION ALL
   SELECT 'painel_inicio: corpo e o da 20261212000000 (sha256)',
          '5b26c34030a7de32033b53894f8da19d850bf116b31208bb5b1195dcec0925db',
-         -- 6 hashes aceitos: o corpo da 20261212000000 (LF e CRLF) OU o da SUCESSORA dele, a
+         -- 8 hashes aceitos: o corpo da 20261212000000 (LF e CRLF) OU o da SUCESSORA dele, a
          -- 20261228000000 (o Inicio compara ate a mesma hora; LF e CRLF) OU o da sucessora desta, a
-         -- 20261390000000 (o lucro do Inicio conta o mes inteiro; LF e CRLF). O `vivo` mostra o esperado.
+         -- 20261390000000 (o lucro do Inicio conta o mes inteiro; LF e CRLF) OU o da sucessora desta, a
+         -- 20261398000000 (o Inicio compara o mes anterior ate a mesma hora; LF e CRLF). O `vivo` mostra o esperado.
          COALESCE((SELECT CASE WHEN f.h IN ('5b26c34030a7de32033b53894f8da19d850bf116b31208bb5b1195dcec0925db',
                                             '77cc91fbe8e03fbd89ee163046101804abf6dbf7fc1c2b4bc9ee5a1d97df64cf',
                                             '31ba1c96a0af9c647b722ddec813e3f0105bee88bad64fed58d2b905335d12c8',
                                             'abf5c502e224295621fc273adee5c588e913ecfec644a9cda65328f346d1ab8b',
                                             '197df63f3f083a240e2e647aa3941980dcdd95aff07e4096e019c630058eb367',
-                                            'd1690297feff4610cd3cd81cad26df7b46a24bcf08785aa34c9ffdd0e4dd53d7')
+                                            'd1690297feff4610cd3cd81cad26df7b46a24bcf08785aa34c9ffdd0e4dd53d7',
+                                            'c25ad7104f7e20537a55c7ca3cea6638f433ff6cce254a834a8713b48212198f',
+                                            '61dbafff4086be102bdf968f34b21f092c1f3b44341138dc1fc6d446c895da20')
                                THEN '5b26c34030a7de32033b53894f8da19d850bf116b31208bb5b1195dcec0925db'
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'painel_inicio'), 'AUSENTE')

@@ -2271,6 +2271,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "b4aa318b777824bd49aab4175d9133f8",
           versao: "20261390000000",
         },
+        // 28/10/2026: o Início compara o mês anterior até a mesma hora (só a condição de receita_mes_anterior muda; cadeia 99 -> 12 -> 28 -> 390 -> 398).
+        {
+          fn: "painel_inicio",
+          h: "01d29aedf98b7f95851c1a1001b5c7ca",
+          versao: "20261398000000",
+        },
         {
           fn: "pedido__saldo_a_estornar",
           h: "99741b4cdbf1e8d8340f80440e6da094",
@@ -7579,6 +7585,7 @@ const MIGRACAO_214 = `${MIGRATIONS_DIR}/20261214000000_o_lucro_do_estoque_so_con
 /** A SUCESSORA de painel_inicio (14/10/2026): o Início compara até a mesma hora. A 17a a aceita ao lado da 12. */
 const MIGRACAO_228 = `${MIGRATIONS_DIR}/20261228000000_o_inicio_compara_ate_a_mesma_hora.sql`;
 const MIGRACAO_390 = `${MIGRATIONS_DIR}/20261390000000_o_lucro_do_inicio_conta_o_mes_inteiro.sql`;
+const MIGRACAO_398 = `${MIGRATIONS_DIR}/20261398000000_o_inicio_compara_o_mes_anterior_ate_a_mesma_hora.sql`;
 const rollbackDe = (migracao: string) =>
   migracao.replace(
     "/supabase/migrations/",
@@ -7907,6 +7914,22 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       .update(corpo390.replace(/\n/g, "\r\n"), "utf8")
       .digest("hex"),
   };
+  // O corpo da sucessora da sucessora da sucessora de painel_inicio (a 20261398, o Início compara o mês anterior até a mesma hora):
+  // a 17a o aceita ao lado dos de antes (LF e CRLF); a 17b (o ANTES) nunca.
+  const texto398 = (await Deno.readTextFile(MIGRACAO_398)).replace(
+    /\r\n/g,
+    "\n",
+  );
+  const ini398 = texto398.indexOf(cabecalhoDepois17("painel_inicio"));
+  assert(ini398 >= 0, "a 20261398 não define painel_inicio");
+  const abre398 = texto398.indexOf("AS $$", ini398) + "AS $$".length;
+  const corpo398 = texto398.slice(abre398, texto398.indexOf("$$;", abre398));
+  const shaSucessora398 = {
+    lf: criarHash("sha256").update(corpo398, "utf8").digest("hex"),
+    crlf: criarHash("sha256")
+      .update(corpo398.replace(/\n/g, "\r\n"), "utf8")
+      .digest("hex"),
+  };
   // O corpo da sucessora de get_admin_analytics_v2 (a 20261234, o lucro só conta produto com custo):
   // a 17a o aceita ao lado do da 14 (LF e CRLF); a 17b (o ANTES) nunca.
   const textoSucessoraAn = (await Deno.readTextFile(MIGRACAO_234)).replace(
@@ -8041,7 +8064,7 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
     [NOME_17B, sql17b, "antes", "depois", "do ANTES"],
   ] as Array<[string, string, "antes" | "depois", "antes" | "depois", string]>)
     await t.step(
-      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 4 da sucessora de painel_inicio (a 20261228 e a 20261390) e os 6 da de get_admin_analytics_v2 (a 20261234, a 20261242 e a 20261245) e os 4 da de get_admin_products_paged (a 20261381 e a 20261385)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
+      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 6 da sucessora de painel_inicio (a 20261228, a 20261390 e a 20261398) e os 6 da de get_admin_analytics_v2 (a 20261234, a 20261242 e a 20261245) e os 4 da de get_admin_products_paged (a 20261381 e a 20261385)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
       () => {
         const todos = FUNCOES_17.flatMap((f) => {
           const x = doLado(h.get(f.nome)!, lado);
@@ -8054,6 +8077,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                 shaSucessora.crlf,
                 shaSucessora390.lf,
                 shaSucessora390.crlf,
+                shaSucessora398.lf,
+                shaSucessora398.crlf,
                 shaSucessoraAn.lf,
                 shaSucessoraAn.crlf,
                 shaSucessora42.lf,
@@ -8094,6 +8119,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                   shaSucessora.crlf,
                   shaSucessora390.lf,
                   shaSucessora390.crlf,
+                  shaSucessora398.lf,
+                  shaSucessora398.crlf,
                   x.lf,
                 ]
               : lado === "depois" && f.nome === "get_admin_analytics_v2"
@@ -8141,6 +8168,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
               shaSucessora.crlf,
               shaSucessora390.lf,
               shaSucessora390.crlf,
+              shaSucessora398.lf,
+              shaSucessora398.crlf,
               shaSucessoraAn.lf,
               shaSucessoraAn.crlf,
               shaSucessora42.lf,
@@ -12142,6 +12171,22 @@ Deno.test("30a/30b — os md5 da 30a sao os dos corpos NOVOS que os arquivos das
   assert(!b.includes(sucessoraPai), "30b nao cita a sucessora");
   assertStringIncludes(
     corpoDe(await Deno.readTextFile(MIGRACAO_390), "painel_inicio"),
+    "::time <= v_hora",
+  );
+  // a sucessora da 390 (a 20261398, o Início compara o mês anterior até a mesma hora): a 30a também a aceita (o `vivo` mostra o
+  // esperado) e mantém o marcador do corte; a 30b (o ANTES) nunca a cita.
+  const sucessoraPai398 = md5(
+    corpoDe(await Deno.readTextFile(MIGRACAO_398), "painel_inicio"),
+  );
+  assertEquals(sucessoraPai398, "01d29aedf98b7f95851c1a1001b5c7ca");
+  assertStringIncludes(
+    a,
+    `'${sucessoraPai398}'`,
+    "30a: aceita a sucessora da 390",
+  );
+  assert(!b.includes(sucessoraPai398), "30b nao cita a sucessora da 390");
+  assertStringIncludes(
+    corpoDe(await Deno.readTextFile(MIGRACAO_398), "painel_inicio"),
     "::time <= v_hora",
   );
   assert(!corpoDe(r27, "crm_visao").includes("::time <= v_hora"));

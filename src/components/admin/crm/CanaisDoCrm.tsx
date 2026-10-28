@@ -295,7 +295,7 @@ export function CanaisDoCrm({
         </div>
       )}
       <MetricasDoPainel
-        titulo="App × loja física"
+        titulo="Vendas que ficaram: app × loja"
         legendasDoResumo={["App (online)", "Loja física"]}
         loading={esqueleto}
         cards={[online, presencial].map((c) => ({
@@ -341,9 +341,9 @@ export function CanaisDoCrm({
           aoTentar,
           tom: falha ? "erro" : offline ? "atencao" : undefined,
           ajuda: (
-            <ExplicacaoDoRelatorio titulo="App × loja física">
-              De onde veio o dinheiro das vendas pagas neste período. Total e
-              pedidos são os mesmos da Visão.
+            <ExplicacaoDoRelatorio titulo="Vendas que ficaram: app × loja">
+              De onde veio o dinheiro das vendas pagas, sem as canceladas nem as
+              devolvidas, neste período. Total e pedidos são os mesmos da Visão.
             </ExplicacaoDoRelatorio>
           ),
           barra: (

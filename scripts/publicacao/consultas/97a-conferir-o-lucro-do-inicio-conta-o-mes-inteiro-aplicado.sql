@@ -21,7 +21,9 @@ WITH fn AS (
     CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace) > 0 THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'painel_inicio: corpo exato (md5)', 'b4aa318b777824bd49aab4175d9133f8',
-    COALESCE((SELECT h FROM fn), 'AUSENTE')
+    -- A 20261398000000 (o Inicio compara o mes anterior ate a mesma hora: o mesmo corpo com o ultimo dia do mes anterior cortado na hora)
+    -- sucede a 390: aceita os dois corpos EXATOS; normaliza ao esperado desta migration. O `vivo` mostra o esperado (quem distingue e a 116a).
+    COALESCE((SELECT CASE WHEN h IN ('b4aa318b777824bd49aab4175d9133f8', '01d29aedf98b7f95851c1a1001b5c7ca') THEN 'b4aa318b777824bd49aab4175d9133f8' ELSE h END FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'painel_inicio: assinatura e atributos conhecidos', 'sim',
     CASE WHEN COALESCE((SELECT atributos FROM fn), false) THEN 'sim' ELSE 'nao' END

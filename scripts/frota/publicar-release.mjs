@@ -645,6 +645,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "114b-antes-o-texto-da-avaliacao-tem-teto-no-banco-ausente",
   "115a-conferir-o-desconto-do-cupom-e-arredondado-ao-centavo-aplicado",
   "115b-antes-o-desconto-do-cupom-e-arredondado-ao-centavo-base-vigente",
+  "116a-conferir-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-aplicado",
+  "116b-antes-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
