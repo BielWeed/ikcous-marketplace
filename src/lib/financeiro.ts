@@ -12,7 +12,7 @@
 // Dinheiro sempre em CENTAVOS inteiros antes de somar/subtrair — `50 - 4.23`
 // em ponto flutuante dá `45.769999…`, não `45.77`.
 
-import { reaisComVirgula } from "@/lib/devolucao";
+import { reaisComVirgula } from "@/lib/utils";
 import type {
   CaixaAtual,
   CategoriaFinanceira,

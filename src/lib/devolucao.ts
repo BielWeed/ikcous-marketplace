@@ -11,7 +11,7 @@
  * Os rótulos moram em `Map` (e não em objeto indexado por chave dinâmica)
  * pela mesma razão do resto do painel: `security/detect-object-injection`.
  */
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, reaisComVirgula } from "@/lib/utils";
 import type {
   AtorDoEvento,
   CondicaoItemDevolvido,
@@ -296,17 +296,7 @@ export const ehMotivoDeProblema = (m: MotivoDevolucao | null | undefined) =>
 
 export const formatarReais = (valor: number) => formatCurrency(valor);
 
-/**
- * O banco escreve dinheiro no formato americano: "R$ 120.00", "R$ 1,234.50" e,
- * quando apaga o zero da frente, "R$ .50". Aqui vira real brasileiro; o que já
- * está formatado não é tocado.
- */
-export const reaisComVirgula = (texto: string) =>
-  texto.replace(
-    /R\$ ([\d,]*)\.(\d{2})(?![\d,])/g,
-    (_, inteiro: string, centavos: string) =>
-      formatarReais(Number(`${inteiro.replace(/,/g, "") || "0"}.${centavos}`)),
-  );
+export { reaisComVirgula };
 
 /** Centavos inteiros antes de somar — `0.1 + 0.2` não pode virar dinheiro. */
 export const paraCentavos = (valor: number) => Math.round(valor * 100);
