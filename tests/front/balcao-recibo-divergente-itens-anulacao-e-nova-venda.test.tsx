@@ -13,7 +13,7 @@
 //      aviso, e depois da anulação há "Registrar de novo com os itens da tela"
 //      (chave nova só nesse clique, e só com a venda antiga anulada);
 //  e que a chave segue estável na retentativa de rede.
-import { act } from "react";
+import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -157,6 +157,93 @@ describe("(a) divergência carrega QUAIS peças diferem", () => {
 // (b) registrar de novo com os itens da tela — só com a venda antiga anulada
 // ----------------------------------------------------------------------------
 
+describe("(b) cupom_refeito_com_a_tela", () => {
+  const novaChave = "chave-nova-so-nesse-clique";
+
+  it("com a venda divergente ANULADA: volta ao cupom com os itens da tela, chave nova e recibo limpo", () => {
+    const registrada = registradaComDivergencia(
+      [CAMISETA, CALCA, BONE, MEIA],
+      [CAMISETA, CALCA, BONE],
+    );
+    const anulada = reducerDaVenda(registrada, { tipo: "recibo_anulado" });
+    expect(anulada.recibo?.anulada).toBe(true);
+    // A anulação sozinha NÃO gira a chave nem mexe na tela.
+    expect(anulada.chaveDeIdempotencia).toBe("chave-antiga");
+    expect(anulada.itens).toHaveLength(4);
+
+    const refeito = reducerDaVenda(anulada, {
+      tipo: "cupom_refeito_com_a_tela",
+      novaChave,
+    });
+    expect(refeito.etapa).toBe("cupom");
+    expect(refeito.recibo).toBeNull();
+    expect(refeito.itens).toEqual([CAMISETA, CALCA, BONE, MEIA]);
+    expect(refeito.pagamento).toBe("cash");
+    expect(refeito.chaveDeIdempotencia).toBe(novaChave);
+    expect(refeito.enviando).toBe(false);
+    expect(refeito.erro).toBeNull();
+  });
+
+  it("com a venda antiga AINDA ATIVA (não anulada): recusa — registrar de novo duplicaria a venda e o dinheiro", () => {
+    const registrada = registradaComDivergencia(
+      [CAMISETA, CALCA, BONE, MEIA],
+      [CAMISETA, CALCA, BONE],
+    );
+    const depois = reducerDaVenda(registrada, {
+      tipo: "cupom_refeito_com_a_tela",
+      novaChave,
+    });
+    expect(depois).toBe(registrada);
+    expect(depois.chaveDeIdempotencia).toBe("chave-antiga");
+  });
+
+  it("recibo SEM divergência (venda normal): a ação não faz nada", () => {
+    const normal = reducerDaVenda(telaCom([CAMISETA]), {
+      tipo: "venda_registrada",
+      recibo: reciboDoBanco([CAMISETA], { jaExistia: false }),
+    });
+    const anulado = reducerDaVenda(normal, { tipo: "recibo_anulado" });
+    const depois = reducerDaVenda(anulado, {
+      tipo: "cupom_refeito_com_a_tela",
+      novaChave,
+    });
+    expect(depois).toBe(anulado);
+  });
+
+  it("duplo clique: a segunda ação cai num estado sem recibo e não gira a chave de novo", () => {
+    const anulada = reducerDaVenda(
+      registradaComDivergencia([CAMISETA, MEIA], [CAMISETA]),
+      { tipo: "recibo_anulado" },
+    );
+    const uma = reducerDaVenda(anulada, {
+      tipo: "cupom_refeito_com_a_tela",
+      novaChave: "primeira",
+    });
+    const duas = reducerDaVenda(uma, {
+      tipo: "cupom_refeito_com_a_tela",
+      novaChave: "segunda",
+    });
+    expect(duas).toBe(uma);
+    expect(duas.chaveDeIdempotencia).toBe("primeira");
+  });
+
+  it("a retentativa de REDE continua com a chave estável: erro de envio e peça nova não giram a chave", () => {
+    let estado = telaCom([CAMISETA, CALCA, BONE]);
+    estado = { ...estado, enviando: false };
+    estado = reducerDaVenda(estado, {
+      tipo: "envio_falhou",
+      mensagem: "Não sabemos se a venda foi registrada",
+    });
+    estado = reducerDaVenda(estado, {
+      tipo: "item_adicionado_manualmente",
+      item: MEIA,
+      em: 1,
+    });
+    estado = reducerDaVenda(estado, { tipo: "envio_iniciado" });
+    expect(estado.chaveDeIdempotencia).toBe("chave-antiga");
+    expect(estado.itens).toHaveLength(4);
+  });
+});
 
 // ----------------------------------------------------------------------------
 // A tela do recibo
@@ -302,15 +389,212 @@ describe("recibo vermelho — texto, anulação e Nova venda", () => {
     expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
   });
 
+  it("(d) a anulação avisa a máquina (recibo_anulado) para a guarda do 'registrar de novo'", async () => {
+    const despachar = vi.fn();
+    await montar(DIVERGENTE, { despachar });
+    await anularEstaVenda();
+    expect(despachar).toHaveBeenCalledWith({ tipo: "recibo_anulado" });
+  });
 
+  it("(b) 'Nova venda' depois de divergência pede confirmação dizendo que o cupom da tela será perdido", async () => {
+    const limparCupom = vi.fn();
+    await montar(DIVERGENTE, { limparCupom });
 
+    await act(async () => {
+      botao(hospedeiro, "Nova venda")!.click();
+    });
+    expect(limparCupom).not.toHaveBeenCalled();
+    const texto = hospedeiro.textContent ?? "";
+    expect(texto).toContain(
+      "O cupom que estava na tela (4 peças) será perdido",
+    );
 
+    // Voltar desiste: nada é apagado.
+    await act(async () => {
+      botao(hospedeiro, "Voltar")!.click();
+    });
+    expect(limparCupom).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).not.toContain("será perdido");
 
+    // Confirmando, aí sim limpa.
+    await act(async () => {
+      botao(hospedeiro, "Nova venda")!.click();
+    });
+    await act(async () => {
+      botao(hospedeiro, "Sim, nova venda")!.click();
+    });
+    expect(limparCupom).toHaveBeenCalledTimes(1);
+  });
 
+  it("(b) venda SEM divergência: 'Nova venda' limpa direto, como sempre", async () => {
+    const limparCupom = vi.fn();
+    await montar(reciboDoBanco([CAMISETA], { jaExistia: false }), {
+      limparCupom,
+    });
+    await act(async () => {
+      botao(hospedeiro, "Nova venda")!.click();
+    });
+    expect(limparCupom).toHaveBeenCalledTimes(1);
+    expect(hospedeiro.textContent).not.toContain("será perdido");
+  });
 
+  it("(b) 'Registrar de novo com os itens da tela' só aparece DEPOIS de anular", async () => {
+    await montar(DIVERGENTE);
+    expect(
+      botao(hospedeiro, "Registrar de novo com os itens da tela"),
+    ).toBeUndefined();
+    await anularEstaVenda();
+    expect(
+      botao(hospedeiro, "Registrar de novo com os itens da tela"),
+    ).toBeDefined();
+  });
+
+  it("(b) o botão despacha a ação com uma chave NOVA (diferente de toda chave de antes)", async () => {
+    const despachar = vi.fn();
+    await montar(DIVERGENTE, { despachar });
+    await anularEstaVenda();
+    despachar.mockClear();
+    await act(async () => {
+      botao(hospedeiro, "Registrar de novo com os itens da tela")!.click();
+    });
+    expect(despachar).toHaveBeenCalledTimes(1);
+    const acao = despachar.mock.calls[0][0] as {
+      tipo: string;
+      novaChave: string;
+    };
+    expect(acao.tipo).toBe("cupom_refeito_com_a_tela");
+    expect(typeof acao.novaChave).toBe("string");
+    expect(acao.novaChave.length).toBeGreaterThan(8);
+  });
+
+  it("(b) venda JÁ anulada antes (duplo toque na anulação) também libera o botão", async () => {
+    await montar(DIVERGENTE, {
+      aoAnular: async () => ({ orderId: DIVERGENTE.orderId, jaAnulada: true }),
+    });
+    await anularEstaVenda();
+    expect(
+      botao(hospedeiro, "Registrar de novo com os itens da tela"),
+    ).toBeDefined();
+  });
+
+  it("os botões novos têm alvo de toque de 44px (classes pdv-*, que fixam min-height) e nenhuma cor fixa", async () => {
+    await montar(DIVERGENTE);
+    await act(async () => {
+      botao(hospedeiro, "Nova venda")!.click();
+    });
+    for (const nome of ["Voltar", "Sim, nova venda"]) {
+      const b = botao(hospedeiro, nome)!;
+      expect(b.className).toMatch(/pdv-(secondary|danger|primary)/);
+    }
+    // Só o painel novo (o papel impresso do OrderReceipt tem branco/cinza de
+    // propósito e já era assim).
+    const painel = hospedeiro.querySelector('[aria-label="Nova venda"]')!;
+    expect(painel.innerHTML).not.toMatch(
+      /\b(?:bg|text|border)-(?:white|black|gray|zinc|slate)/,
+    );
+  });
 });
 
 // ----------------------------------------------------------------------------
 // De ponta a ponta com o hook de verdade: o cupom da tela volta inteiro
 // ----------------------------------------------------------------------------
 
+describe("de ponta a ponta com o hook", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+  let ultimo: ReturnType<typeof useVendaPresencial>;
+  const armazenamento = {
+    getItem: () => null,
+    setItem: () => undefined,
+    removeItem: () => undefined,
+  };
+
+  function Caixa({ anular }: { anular: () => Promise<never> }) {
+    const venda = useVendaPresencial({
+      armazenamento,
+      gerarChave: () => "chave-antiga",
+    });
+    useEffect(() => {
+      ultimo = venda;
+    });
+    if (venda.estado.etapa === "recibo" && venda.estado.recibo) {
+      return (
+        <ReciboDaVenda
+          recibo={venda.estado.recibo}
+          despachar={venda.despachar}
+          limparCupom={venda.limparCupom}
+          aoAnular={anular as never}
+        />
+      );
+    }
+    return (
+      <p data-testid="cupom">cupom com {venda.estado.itens.length} itens</p>
+    );
+  }
+
+  beforeEach(() => {
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+  });
+
+  it("3 peças gravadas, 4ª acrescentada, anula e 'registrar de novo': a caixa volta ao cupom com as 4 peças e chave nova", async () => {
+    const anular = vi.fn(async () => ({
+      orderId: DIVERGENTE.orderId,
+      jaAnulada: false,
+    }));
+    await act(async () => {
+      raiz.render(<Caixa anular={anular as never} />);
+    });
+    for (const i of [CAMISETA, CALCA, BONE, MEIA]) {
+      await act(async () => {
+        ultimo.despachar({
+          tipo: "item_adicionado_manualmente",
+          item: i,
+          em: 1,
+        });
+      });
+    }
+    await act(async () => {
+      ultimo.despachar({ tipo: "pagamento_escolhido", pagamento: "cash" });
+    });
+    // O banco devolve a venda ANTIGA (3 peças) com a mesma chave.
+    await act(async () => {
+      ultimo.despachar({
+        tipo: "venda_registrada",
+        recibo: reciboDoBanco([CAMISETA, CALCA, BONE]),
+      });
+    });
+    expect(hospedeiro.textContent).toContain("Meia");
+    expect(ultimo.estado.chaveDeIdempotencia).toBe("chave-antiga");
+
+    await act(async () => {
+      botao(hospedeiro, "Anular venda")!.click();
+    });
+    await act(async () => digitarMotivo("peça a mais"));
+    await act(async () => {
+      botao(hospedeiro, "Confirmar anulação")!.click();
+    });
+    await act(async () => {
+      botao(hospedeiro, "Registrar de novo com os itens da tela")!.click();
+    });
+
+    expect(ultimo.estado.etapa).toBe("cupom");
+    expect(ultimo.estado.recibo).toBeNull();
+    expect(ultimo.estado.itens.map((i) => i.nome)).toEqual([
+      "Camiseta",
+      "Calça",
+      "Boné",
+      "Meia",
+    ]);
+    expect(ultimo.estado.chaveDeIdempotencia).not.toBe("chave-antiga");
+    expect(hospedeiro.textContent).toContain("cupom com 4 itens");
+  });
+});

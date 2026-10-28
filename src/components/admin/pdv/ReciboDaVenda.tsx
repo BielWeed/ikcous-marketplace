@@ -32,7 +32,7 @@ import {
   RefreshCcw,
   UserRound,
 } from "lucide-react";
-import { type ReactElement, useState } from "react";
+import { type ReactElement, useEffect, useRef, useState } from "react";
 import "./pdv.css";
 
 export interface PropsDoReciboDaVenda {
@@ -131,13 +131,29 @@ function totalDePecas(lista: readonly PecaDaDiferenca[]): number {
 
 export function ReciboDaVenda({
   recibo,
+  despachar,
   limparCupom,
   storeName,
   aoAnular,
 }: PropsDoReciboDaVenda): ReactElement {
   // Depois de anular, este recibo deixa de ser comprovante de compra: nada de
   // mandar "sua compra" por WhatsApp nem de imprimir o papel da venda.
-  const [anulada, setAnulada] = useState(false);
+  const [anuladaAqui, setAnulada] = useState(false);
+  const anulada = anuladaAqui || recibo.anulada === true;
+  // "Nova venda" apaga o cupom que estava na tela; depois de uma divergência
+  // isso só acontece com a lojista sabendo (a pergunta abaixo).
+  const [confirmandoNovaVenda, setConfirmandoNovaVenda] = useState(false);
+  const voltarDaNovaVendaRef = useRef<HTMLButtonElement>(null);
+  const novaVendaRef = useRef<HTMLButtonElement>(null);
+  const devolverFocoNovaVenda = useRef(false);
+  useEffect(() => {
+    if (confirmandoNovaVenda) {
+      voltarDaNovaVendaRef.current?.focus();
+    } else if (devolverFocoNovaVenda.current) {
+      devolverFocoNovaVenda.current = false;
+      novaVendaRef.current?.focus();
+    }
+  }, [confirmandoNovaVenda]);
   const divergencia = recibo.divergenciaComATela;
   const whatsapp = whatsappDoCliente(recibo.cliente);
   const linkWhatsapp = linkWhatsappDoCliente(whatsapp);
@@ -330,13 +346,81 @@ export function ReciboDaVenda({
           forma={recibo.pagamento}
           clienteComConta={recibo.cliente.tipo === "cadastrado"}
           aoAnular={aoAnular}
-          aoConcluir={() => setAnulada(true)}
+          aoConcluir={() => {
+            setAnulada(true);
+            despachar({ tipo: "recibo_anulado" });
+          }}
         />
       )}
-      <Button type="button" className="pdv-primary" onClick={limparCupom}>
-        <Plus aria-hidden="true" className="size-5" />
-        Nova venda
-      </Button>
+      {divergencia && anulada && (
+        <div className="pdv-stack">
+          <Button
+            type="button"
+            variant="outline"
+            className="pdv-secondary border-solid"
+            onClick={() =>
+              despachar({
+                tipo: "cupom_refeito_com_a_tela",
+                novaChave: globalThis.crypto.randomUUID(),
+              })
+            }
+          >
+            <RefreshCcw aria-hidden="true" className="pdv-blue size-5" />
+            Registrar de novo com os itens da tela
+          </Button>
+          <p className="pdv-muted text-center">
+            Volta ao cupom com as {pecas(divergencia.unidadesDaTela)} que
+            estavam na tela.
+          </p>
+        </div>
+      )}
+      {confirmandoNovaVenda ? (
+        <div role="group" aria-label="Nova venda" className="pdv-notice">
+          <p className="text-xl font-bold">
+            O cupom que estava na tela
+            {divergencia ? ` (${pecas(divergencia.unidadesDaTela)})` : ""} será
+            perdido.
+          </p>
+          <p className="pdv-muted">
+            {anulada
+              ? "Para registrar esses itens de novo, volte e toque em “Registrar de novo com os itens da tela”."
+              : "Para registrar esses itens de novo, volte, anule esta venda e depois registre de novo."}
+          </p>
+          <div className="pdv-annul-actions">
+            <Button
+              ref={voltarDaNovaVendaRef}
+              type="button"
+              variant="outline"
+              className="pdv-secondary border-solid"
+              onClick={() => {
+                devolverFocoNovaVenda.current = true;
+                setConfirmandoNovaVenda(false);
+              }}
+            >
+              Voltar
+            </Button>
+            <Button
+              type="button"
+              className="pdv-danger border-solid"
+              onClick={limparCupom}
+            >
+              Sim, nova venda
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button
+          ref={novaVendaRef}
+          type="button"
+          className="pdv-primary"
+          onClick={() =>
+            divergencia ? setConfirmandoNovaVenda(true) : limparCupom()
+          }
+        >
+          <Plus aria-hidden="true" className="size-5" />
+          Nova venda
+        </Button>
+      )}
       <OrderReceipt
         order={construirOrderParaImpressao(recibo)}
         storeName={storeName}

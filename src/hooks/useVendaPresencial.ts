@@ -225,6 +225,11 @@ export interface ReciboDaVendaRegistrada {
     /** Peças que a venda GRAVADA tem a mais do que a tela. Mesma regra. */
     readonly aMenosNaTela?: readonly PecaDaDiferenca[];
   };
+  /** `true` depois que a lojista anulou ESTA venda no recibo. É o que libera
+   * `cupom_refeito_com_a_tela`: registrar de novo com a venda antiga ainda
+   * valendo duplicaria a venda e o dinheiro. Só de sessão (o recibo não vai
+   * para o rascunho). */
+  readonly anulada?: boolean;
 }
 
 /** Uma linha da diferença entre a tela e a venda gravada, em palavras da
@@ -331,6 +336,15 @@ export type AcaoDaVenda =
       readonly tipo: "venda_registrada";
       readonly recibo: ReciboDaVendaRegistrada;
     }
+  /** A lojista anulou a venda do recibo (o recibo da tela dispara isto no fim
+   * da anulação). Não gira chave nem mexe na tela. */
+  | { readonly tipo: "recibo_anulado" }
+  /** Depois de uma divergência (`ja_existia` com a tela diferente) E da
+   * anulação da venda antiga: volta ao cupom COM os itens, o cliente, a forma
+   * de pagamento e o desconto que estavam na tela, e uma chave NOVA — só neste
+   * clique. A retentativa de rede nunca passa por aqui: ela segue com a chave
+   * de antes. `novaChave` vem de quem despacha (o reducer continua puro). */
+  | { readonly tipo: "cupom_refeito_com_a_tela"; readonly novaChave: string }
   /** O F5: o hook lê o rascunho na montagem e substitui o estado inteiro
    * por este. */
   | { readonly tipo: "rascunho_restaurado"; readonly estado: EstadoDaVenda };
@@ -1000,6 +1014,37 @@ export function reducerDaVenda(
           : acao.recibo,
         etapa: "recibo",
       };
+
+    case "recibo_anulado":
+      if (!estado.recibo || estado.recibo.anulada) return estado;
+      return { ...estado, recibo: { ...estado.recibo, anulada: true } };
+
+    case "cupom_refeito_com_a_tela": {
+      // Três fatos, todos exigidos: o recibo é de uma venda que DIVERGIU da
+      // tela, essa venda já foi ANULADA (senão a nova venda somaria à antiga) e
+      // a tela ainda tem itens. Fora disso nada acontece — inclusive no segundo
+      // toque de um duplo clique (o primeiro já tirou o recibo).
+      const recibo = estado.recibo;
+      if (
+        estado.etapa !== "recibo" ||
+        !recibo?.anulada ||
+        !recibo.divergenciaComATela ||
+        estado.itens.length === 0
+      ) {
+        return estado;
+      }
+      return {
+        ...estado,
+        etapa: "cupom",
+        chaveDeIdempotencia: acao.novaChave,
+        escolhaDeVariacao: null,
+        ultimaEntrada: null,
+        aviso: null,
+        recibo: null,
+        erro: null,
+        enviando: false,
+      };
+    }
 
     case "rascunho_restaurado":
       return acao.estado;
