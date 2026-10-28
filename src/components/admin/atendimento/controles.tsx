@@ -381,6 +381,8 @@ export function AvisoDeProblema({
 /**
  * Exclusão pedida por uma frase dentro do cartão: Cancelar (à esquerda, recebe
  * o foco — o foco não pode se perder quando a lixeira some) e Excluir.
+ * Se `aoConfirmar` devolve uma promessa, os dois botões travam até ela acabar:
+ * o segundo toque não dispara outra exclusão (nem "removida" + "erro" juntos).
  */
 export function ConfirmarExclusao({
   frase,
@@ -389,12 +391,25 @@ export function ConfirmarExclusao({
 }: {
   readonly frase: string;
   readonly aoCancelar: () => void;
-  readonly aoConfirmar: () => void;
+  readonly aoConfirmar: () => unknown;
 }) {
   const cancelar = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     cancelar.current?.focus();
   }, []);
+  const [excluindo, setExcluindo] = useState(false);
+  const travado = useRef(false);
+  async function confirmar() {
+    if (travado.current) return;
+    travado.current = true;
+    setExcluindo(true);
+    try {
+      await aoConfirmar();
+    } finally {
+      travado.current = false;
+      setExcluindo(false);
+    }
+  }
   return (
     <div>
       <p className="text-base text-zinc-100">{frase}</p>
@@ -402,6 +417,7 @@ export function ConfirmarExclusao({
         <button
           ref={cancelar}
           type="button"
+          disabled={excluindo}
           onClick={aoCancelar}
           className={cn(BOTAO_NEUTRO, "flex-1")}
         >
@@ -409,10 +425,11 @@ export function ConfirmarExclusao({
         </button>
         <button
           type="button"
-          onClick={aoConfirmar}
+          disabled={excluindo}
+          onClick={() => void confirmar()}
           className={cn(BOTAO_DE_EXCLUIR, "flex-1")}
         >
-          Excluir
+          {excluindo ? "Excluindo…" : "Excluir"}
         </button>
       </div>
     </div>
