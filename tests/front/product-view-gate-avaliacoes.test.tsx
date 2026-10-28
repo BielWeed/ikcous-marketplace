@@ -168,9 +168,9 @@ describe("ProductView — gate do interruptor de Avaliações (ADMIN-090, #101)"
 
     expect(hospedeiro.textContent).not.toContain("Avaliações (12)");
     expect(hospedeiro.querySelector("#reviews-section")).toBeNull();
-    // A nota do cabeçalho ("4.5 (12)") não pode aparecer em lugar nenhum da
+    // A nota do cabeçalho ("4,5 (12)") não pode aparecer em lugar nenhum da
     // árvore com o flag desligado.
-    expect(hospedeiro.textContent).not.toContain("4.5 (12)");
+    expect(hospedeiro.textContent).not.toContain("4,5 (12)");
 
     const ld = jsonLd();
     expect(ld).not.toBeNull();
@@ -195,7 +195,7 @@ describe("ProductView — gate do interruptor de Avaliações (ADMIN-090, #101)"
 
     expect(hospedeiro.textContent).toContain("Avaliações (12)");
     expect(hospedeiro.querySelector("#reviews-section")).not.toBeNull();
-    expect(hospedeiro.textContent).toContain("4.5 (12)");
+    expect(hospedeiro.textContent).toContain("4,5 (12)");
 
     const ld = jsonLd();
     expect(ld).not.toBeNull();
