@@ -74,6 +74,7 @@ export function CartaoDaVitrine({
   aoSoltar,
   aoAlterarLayout,
   travado,
+  catalogoFora = false,
 }: {
   readonly secao: SecaoDaHome;
   readonly indice: number;
@@ -86,6 +87,8 @@ export function CartaoDaVitrine({
   readonly aoAlterarLayout: (id: string, layout: LayoutDeOfertas) => void;
   /** Ordem sendo gravada: nada no cartão responde até o banco confirmar. */
   readonly travado: boolean;
+  /** Produtos ainda sem ler (ou erro): lista vazia não quer dizer "sem produtos". */
+  readonly catalogoFora?: boolean;
 }) {
   const controles = useDragControls();
   const titulo = tituloExibido(secao);
@@ -184,7 +187,7 @@ export function CartaoDaVitrine({
         >
           {visiveis.length === 0 ? (
             <span className="flex h-[42px] items-center rounded-[12px] border border-dashed border-admin-border-strong px-3 text-xs font-semibold text-zinc-400">
-              Sem produtos
+              {catalogoFora ? "—" : "Sem produtos"}
             </span>
           ) : (
             visiveis.map((produto) => (
