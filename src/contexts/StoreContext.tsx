@@ -321,21 +321,29 @@ function valorFoiGravado(
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 // Contrato de identidade do shareText (só na LEITURA, não é migration): o
-// texto default histórico ("Olha que achei na IKCOUS!", nunca customizado
-// pela loja) cita o nome da loja QUANDO o banco tem um (store_name). Sem
-// store_name, o texto volta cru: a igualdade byte a byte com o default é o
-// que impede o mount de gravar config "nova" no DataVault sem nada ter
-// mudado (medido: compor com branding.appName quebrava essa igualdade e
-// disparava um put a cada primeiro carregamento). Texto customizado nunca
-// é sobrescrito; o default gravado NO BANCO (dbInsert) segue o histórico.
+// texto padrão (nunca customizado pela loja) cita o nome da loja QUANDO o
+// banco tem um (store_name). Sem store_name, o texto volta neutro, sem marca
+// nenhuma: a igualdade byte a byte com o padrão é o que impede o mount de
+// gravar config "nova" no DataVault sem nada ter mudado (medido: compor com
+// branding.appName quebrava essa igualdade e disparava um put a cada
+// primeiro carregamento). O padrão ANTIGO ("...na IKCOUS!"), que lojas
+// criadas antes carregam no banco, conta como padrão. Texto customizado
+// nunca é sobrescrito.
+const SHARE_TEXT_PADRAO_ANTIGO = "Olha que achei na IKCOUS!";
 function componhaShareText(
   bruto: string | undefined,
   storeName: string | undefined,
 ): string {
   const texto = bruto ?? defaultStoreConfig.shareText;
-  if (texto !== defaultStoreConfig.shareText) return texto;
-  if (!storeName) return texto;
-  return `Olha que achei na ${storeName}!`;
+  if (
+    texto !== defaultStoreConfig.shareText &&
+    texto !== SHARE_TEXT_PADRAO_ANTIGO
+  ) {
+    return texto;
+  }
+  return storeName
+    ? `Olha que achei na ${storeName}!`
+    : defaultStoreConfig.shareText;
 }
 
 // Espera (ms) de cada nova tentativa AUTOMÁTICA do catálogo depois de uma
