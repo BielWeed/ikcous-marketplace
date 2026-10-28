@@ -381,6 +381,10 @@ const reais = (valor: number) => formatCurrency(valor).replace("\u00a0", " ");
 const MENSAGEM_SESSAO_EXPIRADA =
   "Sua sessão expirou. Entre de novo para finalizar o pedido.";
 
+/** A sessão não pôde ser conferida por falta de internet: o pedido não sai, mas a conta não caiu. */
+const MENSAGEM_SEM_CONEXAO_AO_FINALIZAR =
+  "Sem conexão agora. Seu carrinho está guardado; tente de novo em instantes.";
+
 /**
  * A frase de quem compra SEM CONTA quando não se sabe se o pedido chegou. É
  * honesta nos dois sentidos: promete o reenvio da MESMA compra e a garantia de
@@ -4256,17 +4260,30 @@ export function CheckoutViewDaConta({
     // (ou demora além do prazo) = NÃO envia — "não sei" nunca vira "pode
     // enviar". Convidada não tem conta para conferir.
     if (contaEsperada) {
+      // O que falhou NÃO muda o destino (nada é enviado), só a frase: renovar
+      // o token sem internet, ou a conferência estourar o prazo, é falta de
+      // rede ("tente de novo", a conta segue logada); sessão ausente ou de
+      // outra pessoa é "entre de novo".
+      let semRede = false;
       const sessaoVale = await aguardarComPrazo(
-        sessaoAindaEhDoDono(contaEsperada),
+        sessaoAindaEhDoDono(contaEsperada, () => {
+          semRede = true;
+        }),
         PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
         () => new Error("A conferência da sessão demorou demais."),
-      ).catch(() => false);
+      ).catch(() => {
+        semRede = true;
+        return false;
+      });
       if (!sessaoVale) {
-        toast.error(MENSAGEM_SESSAO_EXPIRADA);
-        setRecusaDoUltimoClique({
-          acao: "entrar_na_conta",
-          mensagem: MENSAGEM_SESSAO_EXPIRADA,
-        });
+        const recusa: RecusaDoPedido = semRede
+          ? {
+              acao: "tentar_de_novo",
+              mensagem: MENSAGEM_SEM_CONEXAO_AO_FINALIZAR,
+            }
+          : { acao: "entrar_na_conta", mensagem: MENSAGEM_SESSAO_EXPIRADA };
+        toast.error(recusa.mensagem);
+        setRecusaDoUltimoClique(recusa);
         setIsSubmitting(false);
         travaDeEnvioRef.current.liberar();
         return;
