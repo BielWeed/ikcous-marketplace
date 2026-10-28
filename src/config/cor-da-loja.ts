@@ -37,7 +37,10 @@ export const defaultStoreConfig: StoreConfig = {
   // caça-bugs 30/08 + migration 20261033000000). Sem valor = a loja não
   // disse; o botão só nasce quando a lojista configurar o dela.
   whatsappNumber: "",
-  shareText: "Olha que achei na IKCOUS!",
+  // Sem marca de propósito: este padrão sai para os amigos da cliente e vai
+  // para o banco de TODA loja nova. O nome da loja entra por cima quando
+  // existe (`componhaShareText`, no StoreContext).
+  shareText: "Olha que achei!",
   // businessHours NÃO tem reserva de propósito (mesmo molde da sentinela de
   // cor da linha de baixo, e do originCep). Valia "Seg-Sáb: 9h às 18h", e
   // isso fazia a vitrine publicar um expediente que ninguém digitou (item 6

@@ -135,6 +135,10 @@ export function ParaFazer({
     },
   ];
   const pendentes = itens.filter((item) => item.pendente).length;
+  // Loja que ainda não vendeu: o Início mostra "Sua loja começa por aqui"
+  // acima, então dizer "Tudo em dia" aqui contradiz a tela.
+  const semPedidosAinda =
+    painel?.mes?.pedidos === 0 && painel.hoje?.pedidos === 0;
   const esqueleto = carregando && !painel;
   const visiveis = itens.filter(
     (item) =>
@@ -181,7 +185,9 @@ export function ParaFazer({
                       classeDoTexto("positivo"),
                     )}
                   >
-                    Tudo em dia
+                    {semPedidosAinda
+                      ? "Sem pedidos por enquanto"
+                      : "Tudo em dia"}
                   </p>
                   <p className="mt-0.5 text-sm text-zinc-400">
                     Nenhuma pendência para resolver.

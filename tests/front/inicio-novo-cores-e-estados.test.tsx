@@ -191,6 +191,27 @@ describe("Para fazer", () => {
   });
 });
 
+describe("Para fazer no primeiro dia da loja", () => {
+  it("sem nenhum pedido no mês nem hoje não afirma 'Tudo em dia' (o cartão de boas-vindas pede para completar a loja)", () => {
+    const novo: PainelInicio = {
+      ...PAINEL,
+      hoje: { ...PAINEL.hoje, pedidos: 0, receita: 0 },
+      mes: { ...PAINEL.mes, pedidos: 0, receita: 0 },
+      contasVencidas: 0,
+      pendencias: {
+        ...PAINEL.pendencias,
+        pedidosParaPreparar: 0,
+        devolucoesAbertas: 0,
+        estoqueBaixo: 0,
+        caixaAberto: false,
+      },
+    };
+    montar(<ParaFazer painel={novo} carregando={false} onNavigate={vi.fn()} />);
+    expect(texto(tela)).not.toContain("Tudo em dia");
+    expect(texto(tela)).toContain("Sem pedidos por enquanto");
+  });
+});
+
 describe("Este mês e Dinheiro nas contas", () => {
   it.each([18640, 1234567.89])(
     "o layout de %s se adapta ao espaço, não a um limite fixo de caracteres",

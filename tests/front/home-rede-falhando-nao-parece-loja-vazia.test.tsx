@@ -163,6 +163,9 @@ describe("HomeView — rede falhando não parece loja vazia", () => {
     expect(hospedeiro.textContent).toContain("Nenhum produto agora");
     expect(hospedeiro.textContent).not.toContain("Não conseguimos carregar");
     expect(botaoTentar()).toBeUndefined();
+    // Sem busca nem categoria escolhida, não manda "buscar outro termo".
+    expect(hospedeiro.textContent).not.toContain("Tente buscar");
+    expect(hospedeiro.textContent).toContain("Em breve novidades por aqui");
   });
 
   it("com produtos na tela (cópia salva) o aviso NÃO aparece, mesmo com erro", async () => {
@@ -188,5 +191,7 @@ describe("HomeView — rede falhando não parece loja vazia", () => {
 
     expect(hospedeiro.textContent).toContain("Nenhum produto agora");
     expect(hospedeiro.textContent).not.toContain("Não conseguimos carregar");
+    // Com busca feita, a orientação de buscar outro termo continua valendo.
+    expect(hospedeiro.textContent).toContain("Tente buscar");
   });
 });
