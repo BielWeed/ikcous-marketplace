@@ -252,6 +252,27 @@ describe("CanaisDoCrm — desenho novo do cartão de métrica", () => {
     expect(resumo.textContent).not.toContain("Total vendido");
   });
 
+  it("o título diz a régua do CRM e não repete o do Financeiro", async () => {
+    await montar();
+    expect(
+      hospedeiro.querySelector(
+        'section[aria-label="Vendas que ficaram: app × loja"]',
+      ),
+    ).not.toBeNull();
+    expect(
+      hospedeiro.querySelector('section[aria-label="App × loja física"]'),
+    ).toBeNull();
+    // O Financeiro conta o que entrou, antes de estornos: outro nome.
+    expect(
+      hospedeiro.querySelector(
+        '[aria-label="Entender Vendas que ficaram: app × loja"]',
+      ),
+    ).not.toBeNull();
+    expect("Vendas que ficaram: app × loja").not.toBe(
+      "Recebido: app × loja (antes de estornos)",
+    );
+  });
+
   it("cada canal: dois cartões, Pedidos e Valor médio em frase normal, sem truncar dinheiro", async () => {
     await montar();
     const blocos = hospedeiro.querySelectorAll(

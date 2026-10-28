@@ -594,7 +594,7 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
 
     it("App × loja: UMA barra dividida com legenda (valor · %) e cores de ponto iguais às do trecho", async () => {
       await montar();
-      const cartao = secao("App × loja física");
+      const cartao = secao("Recebido: app × loja (antes de estornos)");
       const trechos = cartao.querySelectorAll<HTMLElement>(
         "[data-trecho-do-canal]",
       );
@@ -620,6 +620,16 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
       );
     });
 
+    it("App × loja: o título diz que é o recebido antes de estornos, com a explicação em uma linha", async () => {
+      await montar();
+      const cartao = secao("Recebido: app × loja (antes de estornos)");
+      expect(cartao).not.toBeNull();
+      expect(normalizar(cartao.querySelector("p")?.textContent)).toBe(
+        "Dinheiro que entrou no período. Se foi devolvido, o estorno aparece à parte, como saída.",
+      );
+      expect(secao("App × loja física")).toBeNull();
+    });
+
     it("blocos novos na ordem do desenho e o rodapé explicativo no fim", async () => {
       await montar();
       const ordem = [
@@ -631,7 +641,7 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
         secao("Saldo por conta"),
         secao("Fluxo de caixa · últimos 30 dias"),
         secao("Recebimentos por forma"),
-        secao("App × loja física"),
+        secao("Recebido: app × loja (antes de estornos)"),
       ];
       // Cada bloco existe e vem antes do seguinte (pares vizinhos).
       for (const [bloco, proximo] of ordem
