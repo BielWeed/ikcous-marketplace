@@ -273,6 +273,23 @@ describe("uploads de banner limpam a imagem substituída e o seletor", () => {
     },
   );
 
+  it.each([
+    ["a.heic", "image/heic", 10, /JPG ou PNG/],
+    ["a.pdf", "application/pdf", 10, /não é uma foto/],
+    ["grande.webp", "image/webp", 13 * 1024 * 1024, /12 MB/],
+  ] as const)(
+    "recusa %s antes de subir",
+    async (nome, tipo, tamanho, frase) => {
+      await abrir();
+      const arquivo = new File(["x"], nome, { type: tipo });
+      Object.defineProperty(arquivo, "size", { value: tamanho });
+      await act(async () => selecionar(input(), arquivo));
+      expect(uploadBannerImage).not.toHaveBeenCalled();
+      expect(String(toastError.mock.calls[0]?.[0])).toMatch(frase);
+      expect(imagem()).toBe(banner.imageUrl);
+    },
+  );
+
   describe.each(["Simples", "Completo"] as const)("%s", (modo) => {
     it.each(["sucesso", "erro"] as const)(
       "limpa o input após %s e permite selecionar o mesmo File de novo",

@@ -66,6 +66,7 @@ import {
   EVENTO_NOVO_BANNER,
   consumirPedidoDeNovoBanner,
 } from "@/lib/novo-banner-pendente";
+import { recusaDeFoto } from "@/lib/recusa-de-foto";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Banner, View } from "@/types";
 import { AnimatePresence } from "framer-motion";
@@ -1837,6 +1838,11 @@ export const AdminBannersView = memo(function AdminBannersView({
   };
 
   const enviarArquivo = async (file: File) => {
+    const recusa = recusaDeFoto(file);
+    if (recusa) {
+      toast.error(recusa);
+      return;
+    }
     if (
       isOffline ||
       isSubmittingRef.current ||
