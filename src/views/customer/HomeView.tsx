@@ -440,9 +440,10 @@ export const HomeView = React.memo(function HomeView({
   // Loja SEM banner no topo: o cartão aparece mesmo assim (o painel promete
   // "aparece na página inicial"). Só depois de a configuração chegar — sem
   // esqueleto, para a loja que não usa frete grátis não reservar 172px à toa.
-  const blocoFreteSemBanner = configLoaded ? (
-    <div className="mb-2 w-full">{blocoFrete}</div>
-  ) : null;
+  const blocoFreteSemBanner =
+    configLoaded && config.freeShippingMin > 0 ? (
+      <div className="mb-2 w-full">{blocoFrete}</div>
+    ) : null;
 
   return (
     <div className="pb-customer min-h-full">

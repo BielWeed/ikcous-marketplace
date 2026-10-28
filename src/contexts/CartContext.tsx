@@ -901,7 +901,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
       // Pedido enviado e ainda sem confirmação: o carrinho (e a chave do
       // pedido, que nasce dele) não muda por baixo — senão o novo "Finalizar"
-      // criaria um SEGUNDO pedido. Quem confirma ou recusa libera.
+      // criaria um SEGUNDO pedido. A confirmação libera; sem ela, a chave
+      // vence sozinha em 30 min (uma recusa também espera esse prazo).
       if (haChaveDoPedidoVigente(userId ?? null)) return;
       ultimaRenovacaoVisivel.current = agora;
       void renovarPeloCatalogo();

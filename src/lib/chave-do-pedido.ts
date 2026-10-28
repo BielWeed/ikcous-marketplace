@@ -167,8 +167,9 @@ function registroVale(registro: RegistroDaChave, hoje: number): boolean {
 
 /**
  * Há uma compra em curso desta conta (`null` = convidado)? O registro da chave
- * nasce ANTES do envio do pedido e só some na confirmação, então vigente
- * significa "enviando, ou sem resposta ainda". O carrinho não pode mudar por
+ * nasce ANTES do envio do pedido e só some na confirmação ou ao vencer (30
+ * min; uma recusa não a apaga), então vigente significa "enviando, sem
+ * resposta ainda, ou recusado há pouco". O carrinho não pode mudar por
  * baixo disso: mudar a impressão gira a chave e o novo "Finalizar" criaria um
  * SEGUNDO pedido (caça 12-A #1). Só lê; qualquer falha diz "não".
  */
