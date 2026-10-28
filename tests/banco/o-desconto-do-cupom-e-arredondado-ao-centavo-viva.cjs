@@ -583,7 +583,7 @@ prova(
           ).rows[0],
         });
         const antes = await foto();
-        assert.equal(antes.pedido.total, "26.96");
+        assert.equal(Number(antes.pedido.total), 26.96);
         assert.equal(await aplicar(MIG), null);
         await esperarHashes("depois", "apos aplicar");
         assert.deepEqual(await foto(), antes, "a migration mexeu em dado");

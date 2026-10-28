@@ -813,6 +813,10 @@ T.prova(
   "INTACTO: so a v23 muda — o OID, o dono, a ACL e os atributos da v23 e da v24 sao os mesmos; a v24 e todas as outras funcoes de public tem o mesmo corpo; as tabelas nao ganham nem perdem linha",
   async () => {
     const foto2 = async () => ({
+      // A 20261397000000 e' mais nova que a v24 da 394000: devolve a v24 e a validate ao corpo de antes dela para medir so a v23.
+      _: await require("./o-desconto-do-cupom-posterior.cjs").desfazerODescontoDoCupomNaTransacao(
+        C(),
+      ),
       funcoes: (
         await C().query(
           `SELECT p.oid::regprocedure::text AS f, md5(p.prosrc) AS h, p.proacl::text AS acl, p.proowner::regrole::text AS dono

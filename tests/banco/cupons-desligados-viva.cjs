@@ -551,6 +551,11 @@ PROVAS.push({
           "SELECT to_regprocedure('public.cupons_do_checkout(numeric)') IS NOT NULL AS e",
         )
       ).rows[0].e;
+    // A 20261397000000 (o desconto do cupom e' arredondado ao centavo) sucede a validate da 208: sai ANTES (sem transacao: e' a base das provas seguintes;
+    // o rollback da 208 recusa com o corpo dela no ar). Repetir e' no-op.
+    await require("./o-desconto-do-cupom-posterior.cjs").desfazerODescontoDoCupomNaTransacao(
+      c,
+    );
     if (await noAr()) {
       await c.query(SQL_ROLLBACK_08);
       assert.equal(await noAr(), false, "o rollback da 08 tirou a função nova");
