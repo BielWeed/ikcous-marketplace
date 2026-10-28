@@ -825,7 +825,9 @@ export const HomeView = React.memo(function HomeView({
               Nenhum produto agora
             </h3>
             <p className="mx-auto max-w-[200px] text-sm leading-relaxed text-zinc-500">
-              Tente buscar por outro termo ou mudar a categoria.
+              {searchQuery || selectedCategory !== "Todas"
+                ? "Tente buscar por outro termo ou mudar a categoria."
+                : "Em breve novidades por aqui."}
             </p>
           </div>
         ) : (

@@ -508,10 +508,15 @@ export const SearchView = React.memo(function SearchView({
                 Ué, nenhum resultado?
               </h2>
               <p className="mt-2 text-xs font-medium leading-relaxed text-zinc-600">
-                Não encontramos o que você buscou com esses filtros. <br />
-                <span className="font-black text-zinc-900">
-                  Que tal dar uma olhada em alguns produtos da loja?
-                </span>
+                Não encontramos o que você buscou com esses filtros.
+                {trendingProducts.length > 0 && (
+                  <>
+                    <br />
+                    <span className="font-black text-zinc-900">
+                      Que tal dar uma olhada em alguns produtos da loja?
+                    </span>
+                  </>
+                )}
               </p>
               <Button
                 variant="outline"
@@ -524,39 +529,42 @@ export const SearchView = React.memo(function SearchView({
 
             {/* Sugestões: são só 4 produtos da loja (os com estoque primeiro) --
                 UI-191 (G7): nada de "Editor's Choice"/"Trending", que afirmam
-                curadoria e tendência que a loja não mediu, e em inglês. */}
-            <div className="border-t border-zinc-100 pt-10">
-              <div className="mb-10 flex flex-col items-center text-center">
-                <span className="mb-2 text-xs font-black uppercase tracking-[0.3em] text-zinc-600">
-                  Sugestões
-                </span>
-                <h3 className="text-2xl font-black tracking-tighter text-zinc-900">
-                  {/* Nome do banco primeiro, branding.json como fallback —
-                      mesma preferência do Header e da Home. */}
-                  Alguns produtos da{" "}
-                  {config.storeName?.trim() || branding.appName}
-                </h3>
+                curadoria e tendência que a loja não mediu, e em inglês.
+                Sem produto à venda o bloco não existe (como nos Favoritos). */}
+            {trendingProducts.length > 0 && (
+              <div className="border-t border-zinc-100 pt-10">
+                <div className="mb-10 flex flex-col items-center text-center">
+                  <span className="mb-2 text-xs font-black uppercase tracking-[0.3em] text-zinc-600">
+                    Sugestões
+                  </span>
+                  <h3 className="text-2xl font-black tracking-tighter text-zinc-900">
+                    {/* Nome do banco primeiro, branding.json como fallback —
+                        mesma preferência do Header e da Home. */}
+                    Alguns produtos da{" "}
+                    {config.storeName?.trim() || branding.appName}
+                  </h3>
+                </div>
+                <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
+                  {trendingProducts.map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      isFavorite={isFavorite(product.id)}
+                      onToggleFavorite={toggleFavorite}
+                      onClick={handleProductClick}
+                      onAddToCart={onAddToCart ? handleAddToCart : undefined}
+                      onAddToCartWithVariants={
+                        onAddToCart ? handleAddToCartWithVariants : undefined
+                      }
+                      showRating={config.enableReviews}
+                      promessasDeFrete={promessasDaLoja}
+                      onMouseEnter={handlePrefetchProductDetail}
+                      onTouchStart={handlePrefetchProductDetail}
+                    />
+                  ))}
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
-                {trendingProducts.map((product) => (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    isFavorite={isFavorite(product.id)}
-                    onToggleFavorite={toggleFavorite}
-                    onClick={handleProductClick}
-                    onAddToCart={onAddToCart ? handleAddToCart : undefined}
-                    onAddToCartWithVariants={
-                      onAddToCart ? handleAddToCartWithVariants : undefined
-                    }
-                    showRating={config.enableReviews}
-                    promessasDeFrete={promessasDaLoja}
-                    onMouseEnter={handlePrefetchProductDetail}
-                    onTouchStart={handlePrefetchProductDetail}
-                  />
-                ))}
-              </div>
-            </div>
+            )}
           </div>
         )}
       </div>
