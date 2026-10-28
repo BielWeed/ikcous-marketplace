@@ -26,6 +26,9 @@ const controle = vi.hoisted(() => {
   return {
     criarConsulta,
     loading: true,
+    // Só o lojista troca de fonte quando a sessão termina de carregar (a 2ª
+    // consulta nasce disso). Cliente comum baixa o catálogo UMA vez só.
+    admin: false,
     consultas: [] as ReturnType<typeof criarConsulta>[],
     produtosNoCofre: [] as Product[],
     getAll: vi.fn<() => Promise<Product[]>>(),
@@ -36,7 +39,7 @@ const controle = vi.hoisted(() => {
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
-    isAdmin: false,
+    isAdmin: controle.admin,
     loading: controle.loading,
     user: null,
   }),
@@ -91,7 +94,7 @@ function construtorEncadeavel(obterResultado: () => Promise<Resposta>): any {
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (tabela: string) => {
-      if (tabela === "vw_produtos_public") {
+      if (tabela === "vw_produtos_public" || tabela === "vw_produtos_admin") {
         const consulta = controle.criarConsulta();
         controle.consultas.push(consulta);
         return construtorEncadeavel(() => consulta.promessa);
@@ -204,6 +207,7 @@ describe("StoreContext — resposta superada e catálogo vazio no cache", () => 
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
     controle.loading = true;
+    controle.admin = false;
     controle.consultas = [];
     controle.produtosNoCofre = [];
     controle.getAll.mockImplementation(async () => controle.produtosNoCofre);
@@ -314,10 +318,11 @@ describe("StoreContext — resposta superada e catálogo vazio no cache", () => 
   });
 
   it("respostas fora de ordem mantêm preço e estoque da consulta mais nova na tela e no cache", async () => {
+    controle.admin = true;
     await renderizar();
     expect(controle.consultas).toHaveLength(1);
 
-    // A conclusão da autenticação dispara a segunda consulta na inicialização.
+    // A conclusão da autenticação do lojista dispara a segunda consulta (a do painel).
     controle.loading = false;
     await renderizar();
     expect(controle.consultas).toHaveLength(2);
@@ -341,6 +346,7 @@ describe("StoreContext — resposta superada e catálogo vazio no cache", () => 
   });
 
   it("resposta superada não encerra o carregamento enquanto a consulta mais nova está pendente", async () => {
+    controle.admin = true;
     await renderizar();
     controle.loading = false;
     await renderizar();
@@ -358,6 +364,7 @@ describe("StoreContext — resposta superada e catálogo vazio no cache", () => 
   });
 
   it("consulta nova com resultado igual persiste mesmo se a gravação anterior ficou esperando o cofre", async () => {
+    controle.admin = true;
     await renderizar();
     const cofre = await DataVault.init();
     let liberarCofre!: () => void;
