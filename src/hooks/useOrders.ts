@@ -7,6 +7,7 @@ import {
   marcarAcaoPropriaDoPedido,
 } from "@/lib/acao-propria-do-painel";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
+import { aoAnularVenda } from "@/lib/avisa-anulacao-do-balcao";
 import { completarOldDoEvento } from "@/lib/aviso-de-pedido-atualizado";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import {
@@ -2653,6 +2654,27 @@ export function useOrders(
     gatilhoCanceladosSeqRef.current += 1;
     return fetchPedidosCancelados();
   }, [fetchPedidosCancelados]);
+
+  // Venda do balcão anulada pela lojista (`useAnularVendaDoBalcao`): a RPC já
+  // gravou cancelado + estornado, e a lista muda agora, como no cancelamento
+  // pela edge, em vez de esperar o tempo real (que pode atrasar ou se perder).
+  // Não mexe em `updatedAt`: a versão do servidor, quando chegar, vale.
+  useEffect(() => {
+    if (!isAdmin) return;
+    return aoAnularVenda((orderId) => {
+      const aplicar = (o: Order): Order =>
+        o.id === orderId
+          ? { ...o, status: "cancelled", paymentStatus: "estornado" }
+          : o;
+      cachedAdminOrders = cachedAdminOrders
+        ? cachedAdminOrders.map(aplicar)
+        : cachedAdminOrders;
+      setOrders((prev) => prev.map(aplicar));
+      gatilhoCanceladosSeqRef.current += 1;
+      pedidosCanceladosLocalmenteRef.current.set(orderId, Date.now());
+      fetchPedidosCancelados().catch(() => {});
+    });
+  }, [isAdmin, fetchPedidosCancelados]);
 
   /**
    * Item 5 da tarefa useOrders-cancelados-janela-e-colunas: o ramo

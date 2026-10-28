@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { aoAnularVenda } from "@/lib/avisa-anulacao-do-balcao";
 import {
   FILTRO_POSTGREST_PARA_PREPARAR,
   PAGAMENTOS_A_CONFERIR_EM_ABERTO,
@@ -142,6 +143,12 @@ export function useNumerosDosPedidos(ativo: boolean): NumerosDosPedidos {
       if (montado.current) void recarregar();
     }, ATRASO_COALESCENCIA_NUMEROS_MS);
   }, [recarregar]);
+
+  // Venda do balcão anulada: o que estava "entregue" sai das contagens.
+  useEffect(
+    () => (ativo ? aoAnularVenda(() => pedirRecarga()) : undefined),
+    [ativo, pedirRecarga],
+  );
 
   // O ÚNICO disparo automático: ao ficar ativa. Troca de filtro, busca ou
   // página NÃO recarrega — as contagens não dependem deles. Depois disso só
