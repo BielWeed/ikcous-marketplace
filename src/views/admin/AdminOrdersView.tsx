@@ -1285,8 +1285,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         // Aguarda o navegador iniciar o download antes de liberar o endereço.
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
-    } catch {
-      toast.error("Não foi possível gerar o CSV. Tente de novo.");
+    } catch (erro) {
+      toast.error(
+        (erro as { code?: string } | null)?.code === "CSV_PEDIDOS_DEMAIS"
+          ? "O CSV permite até 5000 pedidos. Reduza o período do filtro."
+          : "Não foi possível gerar o CSV. Tente de novo.",
+      );
     } finally {
       exportacaoCsvEmCursoRef.current = false;
       setGerandoCsv(false);

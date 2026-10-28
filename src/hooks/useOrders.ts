@@ -2196,8 +2196,13 @@ export function useOrders(
         const total = Number(data?.total_count);
         const linhas = data?.data;
         if (total > MAX_ORDERS) {
-          throw new Error(
-            "O CSV permite até 5000 pedidos. Reduza o período do filtro.",
+          // `code` deixa a tela mostrar esta frase (a única que a lojista
+          // resolve sozinha) sem comparar texto.
+          throw Object.assign(
+            new Error(
+              "O CSV permite até 5000 pedidos. Reduza o período do filtro.",
+            ),
+            { code: "CSV_PEDIDOS_DEMAIS" },
           );
         }
         if (

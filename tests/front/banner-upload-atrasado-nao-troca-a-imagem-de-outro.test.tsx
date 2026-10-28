@@ -3,6 +3,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { esperarEditorFechadoPorSalvar } from "./helpers/editor-de-banner";
 
 const uploadBannerImage = vi.fn<(file: File) => Promise<string>>();
 const updateBanner = vi.fn();
@@ -229,10 +230,12 @@ describe("upload de banner pertence à abertura do editor", () => {
     expect(toastError).not.toHaveBeenCalled();
     expect(toastDismiss).toHaveBeenCalledWith("toast-1");
     await clicar("Salvar Banner");
-    expect(updateBanner).toHaveBeenCalledWith(
-      "banner-b",
-      expect.objectContaining({ imageUrl: "https://loja.test/banner-b.jpg" }),
-    );
+    // B não mudou a foto: nada de foto vai no salvar, e a de A nunca aparece.
+    expect(JSON.stringify(updateBanner.mock.calls)).not.toContain("nova-a");
+    for (const [, enviado] of updateBanner.mock.calls) {
+      expect(Object.keys(enviado)).not.toContain("imageUrl");
+    }
+    esperarEditorFechadoPorSalvar();
   });
 
   it("o término de A não libera o indicador do upload de B", async () => {
