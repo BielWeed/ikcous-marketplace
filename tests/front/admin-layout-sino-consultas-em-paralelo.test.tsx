@@ -21,9 +21,12 @@ let avaliacoesFalham = false;
 
 function criarBuilder(tabela: string) {
   const builder: any = {};
-  for (const metodo of ["select", "eq", "in", "or", "is", "gte"]) {
-    builder[metodo] = vi.fn(() => builder);
-  }
+  builder.select = vi.fn(() => builder);
+  builder.eq = vi.fn(() => builder);
+  builder.in = vi.fn(() => builder);
+  builder.or = vi.fn(() => builder);
+  builder.is = vi.fn(() => builder);
+  builder.gte = vi.fn(() => builder);
   // A janela do sino (política de devolução) é lida antes da consulta de
   // recebimentos; responde na hora para não somar tempo à consulta.
   builder.maybeSingle = vi.fn(() => Promise.resolve({ data: null }));
