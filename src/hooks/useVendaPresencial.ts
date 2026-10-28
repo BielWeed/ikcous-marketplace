@@ -336,9 +336,11 @@ export type AcaoDaVenda =
       readonly tipo: "venda_registrada";
       readonly recibo: ReciboDaVendaRegistrada;
     }
-  /** A lojista anulou a venda do recibo (o recibo da tela dispara isto no fim
-   * da anulação). Não gira chave nem mexe na tela. */
-  | { readonly tipo: "recibo_anulado" }
+  /** O servidor confirmou a anulação do pedido `orderId`. Só vale se for o
+   * pedido do recibo que está na tela: uma resposta atrasada da venda A não
+   * pode marcar como anulada a venda B que a caixa registrou depois. Não gira
+   * chave nem mexe na tela. */
+  | { readonly tipo: "recibo_anulado"; readonly orderId: string }
   /** Depois de uma divergência (`ja_existia` com a tela diferente) E da
    * anulação da venda antiga: volta ao cupom COM os itens, o cliente, a forma
    * de pagamento e o desconto que estavam na tela, e uma chave NOVA — só neste
@@ -1016,7 +1018,13 @@ export function reducerDaVenda(
       };
 
     case "recibo_anulado":
-      if (!estado.recibo || estado.recibo.anulada) return estado;
+      if (
+        !estado.recibo ||
+        estado.recibo.orderId !== acao.orderId ||
+        estado.recibo.anulada
+      ) {
+        return estado;
+      }
       return { ...estado, recibo: { ...estado.recibo, anulada: true } };
 
     case "cupom_refeito_com_a_tela": {

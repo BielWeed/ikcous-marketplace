@@ -18,6 +18,7 @@ import type {
   ReciboDaVendaRegistrada,
 } from "@/hooks/useVendaPresencial";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
+import { gerarUuidV4 } from "@/lib/uuid-v4";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order } from "@/types";
 import {
@@ -138,8 +139,8 @@ export function ReciboDaVenda({
 }: PropsDoReciboDaVenda): ReactElement {
   // Depois de anular, este recibo deixa de ser comprovante de compra: nada de
   // mandar "sua compra" por WhatsApp nem de imprimir o papel da venda.
-  const [anuladaAqui, setAnulada] = useState(false);
-  const anulada = anuladaAqui || recibo.anulada === true;
+  // Quem sabe se a venda foi anulada é a máquina (`recibo.anulada`), não esta tela.
+  const anulada = recibo.anulada === true;
   // "Nova venda" apaga o cupom que estava na tela; depois de uma divergência
   // isso só acontece com a lojista sabendo (a pergunta abaixo).
   const [confirmandoNovaVenda, setConfirmandoNovaVenda] = useState(false);
@@ -346,10 +347,9 @@ export function ReciboDaVenda({
           forma={recibo.pagamento}
           clienteComConta={recibo.cliente.tipo === "cadastrado"}
           aoAnular={aoAnular}
-          aoConcluir={() => {
-            setAnulada(true);
-            despachar({ tipo: "recibo_anulado" });
-          }}
+          aoConcluir={(resultado) =>
+            despachar({ tipo: "recibo_anulado", orderId: resultado.orderId })
+          }
         />
       )}
       {divergencia && anulada && (
@@ -361,7 +361,7 @@ export function ReciboDaVenda({
             onClick={() =>
               despachar({
                 tipo: "cupom_refeito_com_a_tela",
-                novaChave: globalThis.crypto.randomUUID(),
+                novaChave: gerarUuidV4(),
               })
             }
           >
@@ -382,9 +382,10 @@ export function ReciboDaVenda({
             perdido.
           </p>
           <p className="pdv-muted">
+            Para registrar esses itens de novo, volte
             {anulada
-              ? "Para registrar esses itens de novo, volte e toque em “Registrar de novo com os itens da tela”."
-              : "Para registrar esses itens de novo, volte, anule esta venda e depois registre de novo."}
+              ? " e use “Registrar de novo com os itens da tela”."
+              : " e anule esta venda antes."}
           </p>
           <div className="pdv-annul-actions">
             <Button

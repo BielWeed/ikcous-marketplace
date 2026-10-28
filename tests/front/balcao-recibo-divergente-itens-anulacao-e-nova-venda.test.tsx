@@ -13,7 +13,7 @@
 //      aviso, e depois da anulação há "Registrar de novo com os itens da tela"
 //      (chave nova só nesse clique, e só com a venda antiga anulada);
 //  e que a chave segue estável na retentativa de rede.
-import { act, useEffect } from "react";
+import { act, useEffect, useReducer } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -51,6 +51,9 @@ function item(
   };
 }
 
+const ORDER_ID = "11111111-1111-1111-1111-111111111111";
+const OUTRO_ORDER_ID = "22222222-2222-2222-2222-222222222222";
+
 const CAMISETA = item("p1", "Camiseta", "M");
 const CALCA = item("p2", "Calça", "42");
 const BONE = item("p3", "Boné", null);
@@ -62,7 +65,7 @@ function reciboDoBanco(
 ): ReciboDaVendaRegistrada {
   const total = itens.reduce((s, i) => s + i.preco * i.quantidade, 0);
   return {
-    orderId: "11111111-1111-1111-1111-111111111111",
+    orderId: ORDER_ID,
     numero: "111111",
     criadoEm: "2026-10-27T12:00:00.000Z",
     total,
@@ -165,7 +168,10 @@ describe("(b) cupom_refeito_com_a_tela", () => {
       [CAMISETA, CALCA, BONE, MEIA],
       [CAMISETA, CALCA, BONE],
     );
-    const anulada = reducerDaVenda(registrada, { tipo: "recibo_anulado" });
+    const anulada = reducerDaVenda(registrada, {
+      tipo: "recibo_anulado",
+      orderId: ORDER_ID,
+    });
     expect(anulada.recibo?.anulada).toBe(true);
     // A anulação sozinha NÃO gira a chave nem mexe na tela.
     expect(anulada.chaveDeIdempotencia).toBe("chave-antiga");
@@ -197,12 +203,34 @@ describe("(b) cupom_refeito_com_a_tela", () => {
     expect(depois.chaveDeIdempotencia).toBe("chave-antiga");
   });
 
+  it("anulação de OUTRA venda (resposta atrasada da venda A chegando no recibo da venda B): estado intacto e 'registrar de novo' segue recusado", () => {
+    const registrada = registradaComDivergencia(
+      [CAMISETA, CALCA, BONE, MEIA],
+      [CAMISETA, CALCA, BONE],
+    );
+    const depois = reducerDaVenda(registrada, {
+      tipo: "recibo_anulado",
+      orderId: OUTRO_ORDER_ID,
+    });
+    expect(depois).toBe(registrada);
+    expect(depois.recibo?.anulada).toBeUndefined();
+    const refeito = reducerDaVenda(depois, {
+      tipo: "cupom_refeito_com_a_tela",
+      novaChave,
+    });
+    expect(refeito).toBe(registrada);
+    expect(refeito.chaveDeIdempotencia).toBe("chave-antiga");
+  });
+
   it("recibo SEM divergência (venda normal): a ação não faz nada", () => {
     const normal = reducerDaVenda(telaCom([CAMISETA]), {
       tipo: "venda_registrada",
       recibo: reciboDoBanco([CAMISETA], { jaExistia: false }),
     });
-    const anulado = reducerDaVenda(normal, { tipo: "recibo_anulado" });
+    const anulado = reducerDaVenda(normal, {
+      tipo: "recibo_anulado",
+      orderId: ORDER_ID,
+    });
     const depois = reducerDaVenda(anulado, {
       tipo: "cupom_refeito_com_a_tela",
       novaChave,
@@ -213,7 +241,7 @@ describe("(b) cupom_refeito_com_a_tela", () => {
   it("duplo clique: a segunda ação cai num estado sem recibo e não gira a chave de novo", () => {
     const anulada = reducerDaVenda(
       registradaComDivergencia([CAMISETA, MEIA], [CAMISETA]),
-      { tipo: "recibo_anulado" },
+      { tipo: "recibo_anulado", orderId: ORDER_ID },
     );
     const uma = reducerDaVenda(anulada, {
       tipo: "cupom_refeito_com_a_tela",
@@ -294,6 +322,50 @@ describe("recibo vermelho — texto, anulação e Nova venda", () => {
     hospedeiro.remove();
   });
 
+  // Hospedeiro com o reducer de VERDADE (o recibo não guarda "anulada" sozinho:
+  // quem sabe é a máquina). `espiao` vê cada ação despachada; `estadoRef`
+  // deixa o teste olhar o estado da máquina.
+  let estadoRef: EstadoDaVenda;
+  function Hospedeiro({
+    recibo,
+    espiao,
+    limparCupom,
+    aoAnular,
+  }: {
+    recibo: ReciboDaVendaRegistrada;
+    espiao: (a: unknown) => void;
+    limparCupom: () => void;
+    aoAnular: () => Promise<{ orderId: string; jaAnulada: boolean }>;
+  }) {
+    const [estado, despachar] = useReducer(
+      reducerDaVenda,
+      undefined,
+      (): EstadoDaVenda => ({
+        ...estadoInicialDaVenda(() => "chave-antiga"),
+        etapa: "recibo",
+        itens: [CAMISETA, CALCA, BONE, MEIA],
+        pagamento: "cash",
+        recibo,
+      }),
+    );
+    useEffect(() => {
+      estadoRef = estado;
+    });
+    if (!estado.recibo) return <p>cupom com {estado.itens.length} itens</p>;
+    return (
+      <ReciboDaVenda
+        recibo={estado.recibo}
+        despachar={(a) => {
+          espiao(a);
+          despachar(a);
+        }}
+        limparCupom={limparCupom}
+        storeName="Loja Teste"
+        aoAnular={aoAnular}
+      />
+    );
+  }
+
   async function montar(
     recibo: ReciboDaVendaRegistrada,
     extras: {
@@ -304,11 +376,10 @@ describe("recibo vermelho — texto, anulação e Nova venda", () => {
   ): Promise<void> {
     await act(async () => {
       raiz.render(
-        <ReciboDaVenda
+        <Hospedeiro
           recibo={recibo}
-          despachar={(extras.despachar ?? vi.fn()) as never}
+          espiao={extras.despachar ?? (() => undefined)}
           limparCupom={extras.limparCupom ?? vi.fn()}
-          storeName="Loja Teste"
           aoAnular={
             extras.aoAnular ??
             (async () => ({ orderId: recibo.orderId, jaAnulada: false }))
@@ -393,7 +464,10 @@ describe("recibo vermelho — texto, anulação e Nova venda", () => {
     const despachar = vi.fn();
     await montar(DIVERGENTE, { despachar });
     await anularEstaVenda();
-    expect(despachar).toHaveBeenCalledWith({ tipo: "recibo_anulado" });
+    expect(despachar).toHaveBeenCalledWith({
+      tipo: "recibo_anulado",
+      orderId: ORDER_ID,
+    });
   });
 
   it("(b) 'Nova venda' depois de divergência pede confirmação dizendo que o cupom da tela será perdido", async () => {
@@ -463,8 +537,31 @@ describe("recibo vermelho — texto, anulação e Nova venda", () => {
       novaChave: string;
     };
     expect(acao.tipo).toBe("cupom_refeito_com_a_tela");
-    expect(typeof acao.novaChave).toBe("string");
-    expect(acao.novaChave.length).toBeGreaterThan(8);
+    // UUID v4 de verdade, diferente da chave que já tinha ido ao banco.
+    expect(acao.novaChave).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(acao.novaChave).not.toBe("chave-antiga");
+    expect(estadoRef.chaveDeIdempotencia).toBe(acao.novaChave);
+  });
+
+  it("(b) anulação que FALHOU: nenhum recibo_anulado, nenhum 'Registrar de novo', o alerta vermelho continua", async () => {
+    const despachar = vi.fn();
+    await montar(DIVERGENTE, {
+      despachar,
+      aoAnular: async () => {
+        throw new Error("sem rede");
+      },
+    });
+    await anularEstaVenda();
+    expect(despachar).not.toHaveBeenCalled();
+    expect(
+      botao(hospedeiro, "Registrar de novo com os itens da tela"),
+    ).toBeUndefined();
+    expect(estadoRef.recibo?.anulada).toBeUndefined();
+    expect(hospedeiro.textContent).toContain(
+      "Anule esta venda e registre de novo",
+    );
   });
 
   it("(b) venda JÁ anulada antes (duplo toque na anulação) também libera o botão", async () => {
@@ -596,5 +693,80 @@ describe("de ponta a ponta com o hook", () => {
     ]);
     expect(ultimo.estado.chaveDeIdempotencia).not.toBe("chave-antiga");
     expect(hospedeiro.textContent).toContain("cupom com 4 itens");
+  });
+
+  it("anulação da venda A que responde DEPOIS de a caixa registrar a venda B: o recibo de B não vira 'anulado' e não libera 'registrar de novo' (venda duplicada)", async () => {
+    let responder!: (r: { orderId: string; jaAnulada: boolean }) => void;
+    const pendente = new Promise<{ orderId: string; jaAnulada: boolean }>(
+      (res) => {
+        responder = res;
+      },
+    );
+    await act(async () => {
+      raiz.render(<Caixa anular={(() => pendente) as never} />);
+    });
+    async function montarVendaDivergente(orderId: string) {
+      for (const i of [CAMISETA, CALCA, BONE, MEIA]) {
+        await act(async () => {
+          ultimo.despachar({
+            tipo: "item_adicionado_manualmente",
+            item: i,
+            em: 1,
+          });
+        });
+      }
+      await act(async () => {
+        ultimo.despachar({ tipo: "pagamento_escolhido", pagamento: "cash" });
+      });
+      await act(async () => {
+        ultimo.despachar({
+          tipo: "venda_registrada",
+          recibo: reciboDoBanco([CAMISETA, CALCA, BONE], { orderId }),
+        });
+      });
+    }
+
+    // Venda A divergente; a anulação dela fica pendurada na rede.
+    await montarVendaDivergente(ORDER_ID);
+    await act(async () => {
+      botao(hospedeiro, "Anular venda")!.click();
+    });
+    await act(async () => digitarMotivo("peça a mais"));
+    await act(async () => {
+      botao(hospedeiro, "Confirmar anulação")!.click();
+    });
+    expect(hospedeiro.textContent).toContain("Anulando");
+
+    // A caixa não espera: Nova venda (com a pergunta), e registra a venda B.
+    await act(async () => {
+      botao(hospedeiro, "Nova venda")!.click();
+    });
+    await act(async () => {
+      botao(hospedeiro, "Sim, nova venda")!.click();
+    });
+    expect(hospedeiro.textContent).toContain("cupom com 0 itens");
+    await montarVendaDivergente(OUTRO_ORDER_ID);
+    expect(ultimo.estado.recibo?.orderId).toBe(OUTRO_ORDER_ID);
+
+    // Só agora a resposta da anulação de A chega.
+    await act(async () => {
+      responder({ orderId: ORDER_ID, jaAnulada: false });
+    });
+
+    expect(ultimo.estado.recibo?.orderId).toBe(OUTRO_ORDER_ID);
+    expect(ultimo.estado.recibo?.anulada).toBeUndefined();
+    expect(hospedeiro.textContent).not.toContain("Venda anulada");
+    expect(botao(hospedeiro, "Enviar por WhatsApp")).toBeDefined();
+    expect(botao(hospedeiro, "Imprimir")).toBeDefined();
+    expect(
+      botao(hospedeiro, "Registrar de novo com os itens da tela"),
+    ).toBeUndefined();
+    // E a máquina continua recusando, mesmo que alguém despache direto.
+    const chaveDeB = ultimo.estado.chaveDeIdempotencia;
+    await act(async () => {
+      ultimo.despachar({ tipo: "cupom_refeito_com_a_tela", novaChave: "x" });
+    });
+    expect(ultimo.estado.recibo?.orderId).toBe(OUTRO_ORDER_ID);
+    expect(ultimo.estado.chaveDeIdempotencia).toBe(chaveDeB);
   });
 });
