@@ -1100,7 +1100,9 @@ export function useProducts({ autoFetch = true } = {}) {
             mapProductFromDB(item),
           );
           setLocalProducts(mappedProducts);
-          if (!autoFetch && isAdmin) {
+          // Leitura filtrada por estoque ou situação (Notificações) não vira a
+          // cópia que a tela Produtos desenha enquanto carrega e usa sem rede.
+          if (!autoFetch && isAdmin && !filters?.stock && !filters?.status) {
             cachedAdminProducts = mappedProducts;
             cachedAdminProductsTotal = count || 0;
           }
