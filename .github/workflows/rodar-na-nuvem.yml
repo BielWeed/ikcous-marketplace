@@ -99,7 +99,7 @@ jobs:
           esac
           echo "INICIO_JOB=$(date +%s)" >> "$GITHUB_ENV"
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ inputs.ref }}
           persist-credentials: false
