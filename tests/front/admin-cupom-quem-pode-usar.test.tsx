@@ -223,6 +223,8 @@ describe("formulário de cupom — Quem pode usar", () => {
     };
     updateCoupon.mockResolvedValue(undefined);
     await montar("cupom-1");
+    // Edição manda só o que mudou (lote 260): precisa haver outra mudança.
+    await clicar(container?.querySelector("#coupon-active") as HTMLElement);
     await clicar(botao("Salvar Cupom"));
     expect(updateCoupon).toHaveBeenCalledTimes(1);
     expect("alcance" in updateCoupon.mock.calls[0][1]).toBe(false);
@@ -469,6 +471,8 @@ describe("formulário de cupom — Quem pode usar", () => {
       updateCoupon.mockResolvedValue(undefined);
       await montar("cupom-2");
       expect(listarClientesDoCupom).not.toHaveBeenCalled();
+      // Edição manda só o que mudou (lote 260): precisa haver outra mudança.
+      await clicar(container?.querySelector("#coupon-active") as HTMLElement);
       await clicar(botao("Salvar Cupom"));
       expect(toastError).not.toHaveBeenCalled();
       expect(updateCoupon).toHaveBeenCalledTimes(1);

@@ -66,8 +66,10 @@ import {
   EVENTO_NOVO_BANNER,
   consumirPedidoDeNovoBanner,
 } from "@/lib/novo-banner-pendente";
+import { recusaDeFoto } from "@/lib/recusa-de-foto";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Banner, View } from "@/types";
+import { camposQueMudaram } from "@/utils/campos-mexidos-do-produto";
 import { AnimatePresence } from "framer-motion";
 import {
   ArrowDown,
@@ -1837,6 +1839,11 @@ export const AdminBannersView = memo(function AdminBannersView({
   };
 
   const enviarArquivo = async (file: File) => {
+    const recusa = recusaDeFoto(file);
+    if (recusa) {
+      toast.error(recusa);
+      return;
+    }
     if (
       isOffline ||
       isSubmittingRef.current ||
@@ -1969,7 +1976,28 @@ export const AdminBannersView = memo(function AdminBannersView({
       // continua limpando o upload que não virou banner (e o rascunho
       // sobrevive para o lojista recuperar o formulário).
       if (editingBanner) {
-        await updateBanner(editingBanner.id, dataToSubmit);
+        // Só o que a lojista mexeu: ativo, ordem e datas mudados em outro
+        // aparelho não voltam ao retrato de quando este editor abriu.
+        // Vazio, nulo e ausente contam como o mesmo "sem valor".
+        const semNulo = (b: object) =>
+          Object.fromEntries(Object.entries(b).map(([k, v]) => [k, v ?? ""]));
+        // `semNulo` só decide QUAIS chaves mudaram; o que viaja é o valor
+        // original (data limpa vai como null, não como "").
+        const mudou = camposQueMudaram(
+          semNulo(dataToSubmit),
+          semNulo({
+            ...Object.fromEntries(
+              Object.keys(dataToSubmit).map((k) => [k, ""]),
+            ),
+            ...editingBanner,
+          }),
+        );
+        const mexidos = Object.fromEntries(
+          Object.entries(dataToSubmit).filter(([k]) => k in mudou),
+        );
+        if (Object.keys(mexidos).length > 0) {
+          await updateBanner(editingBanner.id, mexidos);
+        }
       } else {
         const criado = await addBanner(
           dataToSubmit as Required<Omit<Banner, "id">>,

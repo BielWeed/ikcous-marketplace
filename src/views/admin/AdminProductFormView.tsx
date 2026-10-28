@@ -72,6 +72,7 @@ import {
   serializarRascunhoDoProduto,
   variacoesDoRascunhoComEstoqueDoBanco,
 } from "@/lib/rascunho-do-produto";
+import { recusaDeFoto } from "@/lib/recusa-de-foto";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import {
@@ -273,10 +274,6 @@ interface FotoComFalha {
 // quando os dois se chamam igual.
 /** A foto não pôde ser lida (formato que o aparelho não abre, arquivo ruim). */
 class FotoIlegivel extends Error {}
-
-/** HEIC/HEIF (iPhone/Samsung): o navegador não abre, então não dá para reduzir. */
-const ehHeic = (f: File) =>
-  /^image\/hei[cf]/i.test(f.type) || /\.hei[cf]$/i.test(f.name);
 
 export const compressProductImage = (
   file: File,
@@ -1974,23 +1971,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       let files = arquivos;
       if (files.length === 0) return;
 
-      const MAX_SINGLE_SIZE = 12 * 1024 * 1024; // 12 MB
       // O tamanho conta por foto ORIGINAL; o total não, porque cada uma é
       // reduzida antes de subir. A quantidade entra até o máximo de 10.
       const legiveis = files.filter((file) => {
-        if (ehHeic(file)) {
-          toast.error(
-            `Não conseguimos abrir a foto "${file.name}". Salve como JPG ou PNG e tente de novo.`,
-          );
-          return false;
-        }
-        if (file.size > MAX_SINGLE_SIZE) {
-          toast.error(
-            `O arquivo "${file.name}" excede o tamanho limite de 12 MB. Envie uma imagem menor.`,
-          );
-          return false;
-        }
-        return true;
+        const recusa = recusaDeFoto(file);
+        if (recusa) toast.error(recusa);
+        return !recusa;
       });
       const vagas = Math.max(0, 10 - formData.images.length);
       if (legiveis.length > vagas) {

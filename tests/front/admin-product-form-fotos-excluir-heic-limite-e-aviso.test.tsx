@@ -367,6 +367,27 @@ describe("AdminProductFormView — lista de fotos", () => {
     expect(textoDosAvisos()).toMatch(/JPG ou PNG/);
   });
 
+  it("PDF solto na área de fotos é recusado e não sobe", async () => {
+    await montar();
+    await enviar([foto("catalogo.pdf", "application/pdf")]);
+
+    expect(fotosNaTela()).toEqual([]);
+    expect(mocks.uploadProductImages).not.toHaveBeenCalled();
+    expect(textoDosAvisos()).toMatch(/não é uma foto/);
+  });
+
+  it("arquivos mistos: sobe só a foto e avisa do PDF", async () => {
+    await montar();
+    await enviar([
+      foto("a.jpg"),
+      foto("tabela.xlsx", "application/vnd.ms-excel"),
+    ]);
+
+    expect(mocks.uploadProductImages).toHaveBeenCalledTimes(1);
+    expect(fotosNaTela()).toEqual([url(1)]);
+    expect(textoDosAvisos()).toMatch(/não é uma foto/);
+  });
+
   it("foto que não abre (leitura falha) não é enviada nem vira 'Boa qualidade'", async () => {
     await montar();
     decodeFalha = true;

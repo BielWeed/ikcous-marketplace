@@ -235,8 +235,8 @@ describe("useCoupons — alcance e clientes do cupom", () => {
       await act(async () => {
         await hook().updateCoupon("c-secreto", { alcance: "codigo" });
       });
-      expect(update).toHaveBeenCalledTimes(1);
-      expect("alcance" in update.mock.calls[0][0]).toBe(false);
+      // Remendo vazio (lote 260): o UPDATE sem coluna não vai ao banco.
+      expect(update).not.toHaveBeenCalled();
     });
   });
 

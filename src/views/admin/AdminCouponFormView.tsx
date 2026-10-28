@@ -37,6 +37,7 @@ import {
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { ClienteDoCupom, Coupon, View } from "@/types";
+import { camposQueMudaram } from "@/utils/campos-mexidos-do-produto";
 import { haptic } from "@/utils/haptic";
 import {
   dataEscolhidaParaValidade,
@@ -61,6 +62,23 @@ interface AdminCouponFormViewProps {
   couponId?: string;
   onNavigate: (view: View, id?: string) => void;
   onSetDirty?: (dirty: boolean) => void;
+}
+
+/**
+ * O que a tela decide mandar, na mesma forma para o formulário e para o que ela
+ * leu ao abrir (`camposQueMudaram` compara os dois). Validade vazia vira `null`
+ * aqui: `undefined` seria lido como "não mexi" e limpar a validade não gravaria.
+ */
+function remendoDoCupom(c: Partial<Coupon>, code: string) {
+  return {
+    code,
+    type: c.type,
+    value: c.value ?? 0,
+    minPurchase: c.minPurchase ?? 0,
+    usageLimit: c.usageLimit ?? 0,
+    validUntil: c.validUntil ?? null,
+    active: c.active,
+  };
 }
 
 /** O banco recusou por falta de permissão (42501): administradora rebaixada. */
@@ -155,6 +173,9 @@ function FormularioDoCupom({
   // UMA vez por cupom (ref abaixo); (2) o que o lojista JÁ digitou —
   // diferente do estado vazio de partida — vence, e o resto vem do banco.
   const cupomInicializadoRef = useRef<string | null>(null);
+  // O cupom como o BANCO estava quando a tela o leu (antes da mesclagem com o
+  // que ela já digitou): é contra ele que o salvar vê o que ela mexeu.
+  const lidoAoAbrirRef = useRef<Partial<Coupon> | null>(null);
   useEffect(() => {
     if (!couponId || coupons.length === 0) return;
     if (cupomInicializadoRef.current === couponId) return;
@@ -190,6 +211,7 @@ function FormularioDoCupom({
       alcance:
         formData.alcance !== "codigo" ? formData.alcance : carregado.alcance,
     };
+    lidoAoAbrirRef.current = carregado;
     setFormData(mesclado);
     // `initialData` recebe o MESCLADO: "sujo" tem que significar mudança do
     // lojista DEPOIS da carga, nunca a mesclagem em si.
@@ -362,11 +384,33 @@ function FormularioDoCupom({
     // nem aparece, nada de alcance e nada de lista.
     const alcanceMudou =
       alcanceSuportado && alcance !== (initialData.alcance ?? "codigo");
-    const dataToSubmit: Partial<Coupon> = {
-      ...semAlcance,
-      code: cleanCode,
-      ...(alcanceMudou ? { alcance } : {}),
-    };
+    // Edição manda SÓ o que ela mexeu em relação ao que a tela leu: a tela
+    // pode estar aberta há tempo, e o que ela não tocou (ativo, limite,
+    // validade...) pode ter sido mudado em outro aparelho — mandar o
+    // formulário inteiro desfazia isso e a tela dizia "Cupom atualizado".
+    // Cupom novo manda tudo.
+    const lido = lidoAoAbrirRef.current ?? initialData;
+    const { validUntil: validadeMexida, ...mexidos } = couponId
+      ? camposQueMudaram(
+          remendoDoCupom(formData, cleanCode),
+          remendoDoCupom(lido, lido.code ?? ""),
+        )
+      : {};
+    const dataToSubmit: Partial<Coupon> = couponId
+      ? {
+          ...mexidos,
+          // `null` = ela limpou a validade: a chave vai (com `undefined`) e o
+          // hook grava vazio de verdade; chave ausente = não mexe.
+          ...(validadeMexida !== undefined
+            ? { validUntil: validadeMexida ?? undefined }
+            : {}),
+          ...(alcanceMudou ? { alcance } : {}),
+        }
+      : {
+          ...semAlcance,
+          code: cleanCode,
+          ...(alcanceMudou ? { alcance } : {}),
+        };
 
     setIsSubmitting(true);
     let idSalvo: string | null = null;
@@ -396,6 +440,15 @@ function FormularioDoCupom({
                 clientesIniciais.length > 0
               ? []
               : undefined;
+        // Nada mudou em relação ao que a tela leu: sem pedido vazio ao banco.
+        if (
+          clientesParaSalvar === undefined &&
+          Object.keys(dataToSubmit).length === 0
+        ) {
+          if (onSetDirty) onSetDirty(false);
+          onNavigate("admin-coupons");
+          return;
+        }
         if (clientesParaSalvar !== undefined) {
           await updateCoupon(
             editingCoupon.id,
