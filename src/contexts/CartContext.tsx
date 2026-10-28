@@ -579,7 +579,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         syncLocked.current = false;
         isInitialLoad.current = false;
-        void renovarPeloCatalogo();
+        // Abrir o app com pedido enviado e sem confirmação: o carrinho não muda
+        // por baixo (ver `haChaveDoPedidoVigente`, lote 249).
+        if (!haChaveDoPedidoVigente(null)) void renovarPeloCatalogo();
         return;
       }
 
@@ -713,11 +715,22 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           // quem está agora (o efeito de troca já limpou o estado).
           if (userIdAtualRef.current !== (uidDaLeitura ?? null)) return;
 
+          // Pedido enviado e ainda sem confirmação (ao abrir o app de novo, ou
+          // numa releitura qualquer): o catálogo vê o estoque que o PRÓPRIO
+          // pedido consumiu. Aplicá-lo mudaria o carrinho, a chave do pedido
+          // giraria e o novo "Finalizar" criaria um SEGUNDO pedido. A junção
+          // com o carrinho do servidor segue; o catálogo (e o aviso sobre ele)
+          // esperam a confirmação ou os 30 min da chave.
+          const catalogoEmEspera = haChaveDoPedidoVigente(uidDaLeitura ?? null);
+          if (catalogoEmEspera) avisos = [];
+
           // Na junção fica o produto NOVO (preço, estoque, situação) com a
           // quantidade que "quem escreveu por último" definiu. Antes, com o
           // carimbo igual (o caso normal), ficava a cópia local velha.
           const comOCatalogo = (itens: CartItem[]) =>
-            catalogo ? aplicarCatalogoAoCarrinho(itens, catalogo) : itens;
+            catalogo && !catalogoEmEspera
+              ? aplicarCatalogoAoCarrinho(itens, catalogo)
+              : itens;
 
           setCart((prev) => {
             const tombstones = loadTombstones();
