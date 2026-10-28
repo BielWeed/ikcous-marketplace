@@ -825,7 +825,7 @@ Deno.test("inventariar --vercel: endereço novo na Vercel entra sozinho; preview
     "os esperados pela política continuam",
   );
   assert(
-    chamadas.some((c) => c.includes("until=1790562712244")),
+    chamadas.some((c) => c.includes("until=1790562712245")),
     "seguiu a paginação",
   );
   assertEquals(inv.vercel.producaoOficial, "dpl_VELHO");
@@ -1409,6 +1409,50 @@ Deno.test("contrato da Vercel: main sai com 1 em cada resposta fora do contrato 
   } finally {
     console.log = antes;
   }
+});
+
+Deno.test("consultarVercel: alias com o MESMO createdAt do fim da página não some (empate na fronteira)", async () => {
+  // Como a Vercel de verdade: ordem decrescente por createdAt, `until` é "estritamente
+  // menor que", pagination.next = createdAt do ÚLTIMO item da página. Em 28/10/2026 o
+  // alias principal empatou com o último da 7ª página e o inventário saiu sem a loja.
+  const base = [
+    ["a.vercel.app", 30],
+    ["b.vercel.app", 20],
+    ["c.vercel.app", 10],
+    ["ickous-marketplace.vercel.app", 10],
+  ].map(([alias, createdAt]) => ({
+    alias,
+    createdAt,
+    deploymentId: "dpl_1",
+    projectId: PROJETO,
+  }));
+  const chamadas = [];
+  const r = await consultarVercel(POLITICA, [], (c) => {
+    if (c.startsWith("/v4/aliases?")) {
+      chamadas.push(c);
+      const limite = Number(/limit=(\d+)/.exec(c)[1]);
+      const ate = /until=(\d+)/.exec(c);
+      const itens = base
+        .filter((a) => (ate ? a.createdAt < Number(ate[1]) : true))
+        .slice(0, limite);
+      const cheia = itens.length === limite;
+      return Promise.resolve({
+        aliases: itens,
+        pagination: {
+          next: cheia ? itens[itens.length - 1].createdAt : null,
+        },
+      });
+    }
+    return Promise.resolve({ targets: { production: { id: "dpl_1" } } });
+  }, 3);
+  assertEquals(r.ok, true);
+  assertEquals(r.listaCompleta, true);
+  const nomes = r.aliasesProjeto.map((a) => a.alias);
+  assert(
+    nomes.includes("ickous-marketplace.vercel.app"),
+    "o alias empatado na fronteira da página tem de entrar no inventário",
+  );
+  assertEquals(nomes.length, 4, "sem duplicar o item da fronteira");
 });
 
 Deno.test("consultarVercel: falha na 1ª página = ok:false; falha depois = lista incompleta (inventário PARCIAL)", async () => {
