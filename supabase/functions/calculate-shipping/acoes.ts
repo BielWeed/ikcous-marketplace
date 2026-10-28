@@ -201,7 +201,7 @@ export async function testarCredencial(provider: string, credenciais: any, selec
                 success: true,
                 cotadas,
                 servicosTestados,
-                message: `${rotulo(provider)}: a chave funcionou — ${cotadas} serviço(s) cotaram o pacote de teste.`,
+                message: `${rotulo(provider)}: a chave funcionou — ${cotadas} ${cotadas === 1 ? "serviço cotou" : "serviços cotaram"} o pacote de teste.`,
             }
         }
         const semServicos = resultado.retornados.length === 0

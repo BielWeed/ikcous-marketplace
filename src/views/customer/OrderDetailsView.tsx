@@ -450,6 +450,11 @@ export function OrderDetailsView({
   const [reviewedProductIds, setReviewedProductIds] = useState<Set<string>>(
     new Set(),
   );
+  // A conferência de "quais itens já avaliei" falhou: sem saber, não se afirma
+  // "0 de N" nem se oferece avaliar (a cliente avaliaria o mesmo produto de
+  // novo). `tentativaDeConferir` refaz a consulta pelo botão "Tentar de novo".
+  const [conferenciaFalhou, setConferenciaFalhou] = useState(false);
+  const [tentativaDeConferir, setTentativaDeConferir] = useState(0);
   const [reviewingItem, setReviewingItem] = useState<{
     productId: string;
     productName: string;
@@ -717,10 +722,15 @@ export function OrderDetailsView({
     // Se a revalidação não achou nada mas havia algo em memória, mantém o que
     // está na tela: melhor um dado de um segundo atrás do que piscar para
     // "pedido não encontrado" por causa de uma resposta abortada.
+    // Busca que termina VAZIA (cancelada por outra busca, por exemplo) nunca
+    // apaga um pedido que a tela já tem: `novo ?? prev`. Pedido que de fato
+    // não existe chega aqui sem pedido do MESMO id e continua "não encontrado".
     if (encontrado || !emMemoria) {
       const novo = encontrado ?? null;
       setOrder((prev) =>
-        novo && prev ? escolherVersaoDoPedido(prev, novo) : novo,
+        novo && prev
+          ? escolherVersaoDoPedido(prev, novo)
+          : (novo ?? (prev?.id === orderId ? prev : null)),
       );
     }
     setLoading(false);
@@ -760,7 +770,10 @@ export function OrderDetailsView({
       return;
     }
     setOrder((prev) => {
-      if (!prev || prev.id !== doPedidoNaLista.id) return prev;
+      // Sem pedido na tela (a busca da abertura foi cancelada e voltou vazia),
+      // adota o que a lista trouxe.
+      if (!prev) return doPedidoNaLista;
+      if (prev.id !== doPedidoNaLista.id) return prev;
       const escolhida = escolherVersaoDoPedido(prev, doPedidoNaLista);
       if (escolhida !== doPedidoNaLista) return escolhida;
       // A linha do tempo real não traz itens nem endereço: o que só a
@@ -779,6 +792,7 @@ export function OrderDetailsView({
   const pedidoIdAtual = order?.id;
   useEffect(() => {
     setReviewedProductIds(new Set());
+    setConferenciaFalhou(false);
   }, [pedidoIdAtual]);
 
   useEffect(() => {
@@ -803,9 +817,15 @@ export function OrderDetailsView({
             data.map((r: any) => r.product_id),
           );
           setReviewedProductIds(reviewedSet);
+          setConferenciaFalhou(false);
+        } else {
+          setConferenciaFalhou(true);
         }
       } catch (e) {
-        if (!cancelado) console.error("Failed to check existing reviews:", e);
+        if (!cancelado) {
+          console.error("Failed to check existing reviews:", e);
+          setConferenciaFalhou(true);
+        }
       }
     };
 
@@ -814,7 +834,7 @@ export function OrderDetailsView({
     return () => {
       cancelado = true;
     };
-  }, [user, order]);
+  }, [user, order, tentativaDeConferir]);
 
   // Brief "o app não mente quando copia" (08/09/2026): copiava sem
   // await/catch e já comemorava mesmo quando a cópia falhava (permissão
@@ -1425,81 +1445,107 @@ export function OrderDetailsView({
               <h4 className="text-[15px] font-extrabold tracking-tight text-zinc-900">
                 O que achou da compra?
               </h4>
-              <span className="flex-shrink-0 text-xs font-semibold text-zinc-500">
-                {totalProdutosAvaliados} de {produtosParaAvaliar.length}{" "}
-                avaliados
-              </span>
+              {!conferenciaFalhou && (
+                <span className="flex-shrink-0 text-xs font-semibold text-zinc-500">
+                  {totalProdutosAvaliados} de {produtosParaAvaliar.length}{" "}
+                  avaliados
+                </span>
+              )}
             </div>
 
-            <div className="space-y-4">
-              {produtosParaAvaliar.map((item) => {
-                const avaliado = reviewedProductIds.has(item.productId);
-                return (
-                  <div key={item.productId} className="flex items-start gap-3">
-                    <div className="flex size-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
-                      <FotoDoItemDoPedido src={item.image} alt={item.name} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="line-clamp-2 break-words text-sm font-bold text-zinc-900">
-                        {item.name}
-                      </p>
-                      {rotulosDoProduto(item.productId).map((rotulo) => (
-                        <p
-                          key={rotulo}
-                          data-testid="variacao-do-item"
-                          className="mt-0.5 break-words text-xs font-medium text-zinc-600"
-                        >
-                          {rotulo}
-                        </p>
-                      ))}
-                      {avaliado ? (
-                        <span className="mt-1.5 inline-flex select-none items-center gap-1 rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700 duration-300 animate-in fade-in">
-                          <Check className="size-3" />
-                          Avaliado
-                        </span>
-                      ) : (
-                        <div className="mt-1.5 flex gap-1">
-                          {[1, 2, 3, 4, 5].map((nota) => (
-                            <button
-                              key={nota}
-                              type="button"
-                              aria-label={`Dar ${nota} ${nota === 1 ? "estrela" : "estrelas"} para ${item.name}`}
-                              onClick={(e) => {
-                                avaliarTriggerRef.current = e.currentTarget;
-                                setReviewingItem({
-                                  productId: item.productId,
-                                  productName: item.name,
-                                  rating: nota,
-                                });
-                              }}
-                              className="flex size-10 items-center justify-center rounded-lg text-amber-400 transition-transform active:scale-90"
-                            >
-                              <Star className="size-5 fill-amber-400" />
-                            </button>
-                          ))}
+            {conferenciaFalhou ? (
+              <div role="alert" className="space-y-3">
+                <p className="text-sm font-medium text-zinc-600">
+                  Não deu para conferir suas avaliações agora.
+                </p>
+                <button
+                  type="button"
+                  data-testid="avaliacoes-tentar-de-novo"
+                  onClick={() => setTentativaDeConferir((n) => n + 1)}
+                  className="h-11 rounded-2xl bg-zinc-900 px-6 text-sm font-bold text-white transition-all active:scale-95"
+                >
+                  Tentar de novo
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-4">
+                  {produtosParaAvaliar.map((item) => {
+                    const avaliado = reviewedProductIds.has(item.productId);
+                    return (
+                      <div
+                        key={item.productId}
+                        className="flex items-start gap-3"
+                      >
+                        <div className="flex size-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
+                          <FotoDoItemDoPedido
+                            src={item.image}
+                            alt={item.name}
+                          />
                         </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-2 break-words text-sm font-bold text-zinc-900">
+                            {item.name}
+                          </p>
+                          {rotulosDoProduto(item.productId).map((rotulo) => (
+                            <p
+                              key={rotulo}
+                              data-testid="variacao-do-item"
+                              className="mt-0.5 break-words text-xs font-medium text-zinc-600"
+                            >
+                              {rotulo}
+                            </p>
+                          ))}
+                          {avaliado ? (
+                            <span className="mt-1.5 inline-flex select-none items-center gap-1 rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700 duration-300 animate-in fade-in">
+                              <Check className="size-3" />
+                              Avaliado
+                            </span>
+                          ) : (
+                            <div className="mt-1.5 flex gap-1">
+                              {[1, 2, 3, 4, 5].map((nota) => (
+                                <button
+                                  key={nota}
+                                  type="button"
+                                  aria-label={`Dar ${nota} ${nota === 1 ? "estrela" : "estrelas"} para ${item.name}`}
+                                  onClick={(e) => {
+                                    avaliarTriggerRef.current = e.currentTarget;
+                                    setReviewingItem({
+                                      productId: item.productId,
+                                      productName: item.name,
+                                      rating: nota,
+                                    });
+                                  }}
+                                  className="flex size-10 items-center justify-center rounded-lg text-amber-400 transition-transform active:scale-90"
+                                >
+                                  <Star className="size-5 fill-amber-400" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
 
-            {proximoProdutoNaoAvaliado && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  avaliarTriggerRef.current = e.currentTarget;
-                  setReviewingItem({
-                    productId: proximoProdutoNaoAvaliado.productId,
-                    productName: proximoProdutoNaoAvaliado.name,
-                  });
-                }}
-                className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 text-sm font-bold text-white transition-all active:scale-[0.98]"
-              >
-                <Star className="size-4 fill-amber-400 text-amber-400" />
-                Escrever avaliação
-              </button>
+                {proximoProdutoNaoAvaliado && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      avaliarTriggerRef.current = e.currentTarget;
+                      setReviewingItem({
+                        productId: proximoProdutoNaoAvaliado.productId,
+                        productName: proximoProdutoNaoAvaliado.name,
+                      });
+                    }}
+                    className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 text-sm font-bold text-white transition-all active:scale-[0.98]"
+                  >
+                    <Star className="size-4 fill-amber-400 text-amber-400" />
+                    Escrever avaliação
+                  </button>
+                )}
+              </>
             )}
           </motion.div>
         )}

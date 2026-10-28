@@ -1377,6 +1377,87 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     expect(depois).not.toContain("Caixa fechado");
   });
 
+  it("rede pendurada: a folha libera no prazo e, ao fechar, a tela relê o caixa que abriu", async () => {
+    await clicar(botaoEm(hospedeiro, "Abrir caixa"));
+    await digitar("fin-caixa-abertura", "15000");
+    // O servidor gravou, mas a resposta nunca chega.
+    servidor.caixa = CAIXA_ABERTO;
+    servidor.emVoo = new Promise<void>(() => {});
+    vi.useFakeTimers();
+    const painel = folha() as HTMLElement;
+    await clicar(botaoEm(painel, "Abrir caixa"));
+    expect(botaoX(painel).disabled).toBe(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_001);
+    });
+    expect(botaoX(painel).disabled).toBe(false);
+    expect(normalizar(painel.textContent)).toMatch(/demorou demais/);
+    expect(normalizar(painel.textContent)).toMatch(/caixa foi aberto/);
+    // Ainda mostra o caixa velho: nada foi relido nem regravado sozinho.
+    expect(normalizar(hospedeiro.textContent)).toContain("Caixa fechado");
+    expect(
+      rpcFalso.mock.calls.filter(([n]) => n === "fin_caixa_abrir"),
+    ).toHaveLength(1);
+
+    const leiturasAntes = rpcFalso.mock.calls.filter(
+      ([n]) => n === "fin_caixa_atual",
+    ).length;
+    await fecharDescartando();
+    expect(folha()).toBeNull();
+    // Fechar depois de uma gravação sem desfecho relê tudo: a conferência vê o caixa aberto.
+    expect(
+      rpcFalso.mock.calls.filter(([n]) => n === "fin_caixa_atual").length,
+    ).toBeGreaterThan(leiturasAntes);
+    expect(normalizar(hospedeiro.textContent)).toContain(
+      "Esperado na gaveta agora",
+    );
+    expect(
+      rpcFalso.mock.calls.filter(([n]) => n === "fin_caixa_abrir"),
+    ).toHaveLength(1);
+  });
+
+  it("rede pendurada em Nova conta: Salvar não reabre, e ao fechar a tela relê as contas (sem 2ª conta)", async () => {
+    const original = rpcFalso.getMockImplementation() as (
+      n: string,
+      ...r: unknown[]
+    ) => unknown;
+    rpcFalso.mockImplementation((nome: string, ...resto: unknown[]) =>
+      nome === "fin_conta_salvar"
+        ? new Promise(() => {})
+        : original(nome, ...resto),
+    );
+    try {
+      await clicar(botaoEm(hospedeiro, "Contas"));
+      await clicar(botaoEm(hospedeiro, "Nova conta"));
+      await digitar("fin-conta-nome", "Nubank");
+      const leiturasDeContas = () =>
+        rpcFalso.mock.calls.filter(([n]) => n === "fin_contas_listar").length;
+      const gravacoes = () =>
+        rpcFalso.mock.calls.filter(([n]) => n === "fin_conta_salvar").length;
+      const antes = leiturasDeContas();
+      vi.useFakeTimers();
+      const painel = folha() as HTMLElement;
+      await clicar(botaoEm(painel, "Salvar"));
+      expect(gravacoes()).toBe(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_001);
+      });
+      // O servidor pode ter gravado: o Salvar não volta, só fechar.
+      expect(normalizar(painel.textContent)).toMatch(/demorou demais/);
+      expect(botaoEm(painel, "Salvar").disabled).toBe(true);
+      await clicar(botaoEm(painel, "Salvar"));
+      expect(gravacoes()).toBe(1);
+
+      await fecharDescartando();
+      expect(folha()).toBeNull();
+      expect(leiturasDeContas()).toBeGreaterThan(antes);
+      expect(gravacoes()).toBe(1);
+    } finally {
+      rpcFalso.mockImplementation(original);
+    }
+  });
+
   it("abertura sem valor não vai ao banco", async () => {
     await clicar(botaoEm(hospedeiro, "Abrir caixa"));
     await clicar(botaoEm(folha() as HTMLElement, "Abrir caixa"));

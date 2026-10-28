@@ -129,6 +129,14 @@ describe("AdminShippingView — não inventa CEP de origem", () => {
     expect(hospedeiro.textContent).toContain("CEP 38400-000");
   });
 
+  it("CEP sem máscara e sem cidade/UF: mostra só o CEP, sem barra solta", async () => {
+    mockConfig.originCep = "38500100";
+    await abrirTela();
+
+    expect(hospedeiro.textContent).toContain("CEP 38500-100");
+    expect(hospedeiro.textContent).not.toMatch(/CEP 38500-100 ·/);
+  });
+
   it("não marca o formulário como alterado só por abrir sem CEP configurado", async () => {
     mockConfig.originCep = undefined;
     await abrirTela();

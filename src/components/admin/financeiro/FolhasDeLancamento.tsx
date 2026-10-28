@@ -22,6 +22,7 @@ import { baixarLancamento, cancelarLancamento } from "@/hooks/useFinanceiro";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import {
   ehDataIso,
+  ehLancamentoJaResolvido,
   formatarData,
   mensagemDeErroFinanceiro,
   origemVemDoPedido,
@@ -52,6 +53,11 @@ import {
   corDoValor,
   useConfirmacaoFinanceira,
 } from "./partes";
+
+/** Repetiu baixa/cancelamento que já valeu: a lista é relida (via `aoSalvar`) e a frase do servidor segue. */
+function fraseDaReleitura(erro: unknown): string {
+  return `${mensagemDeErroFinanceiro(erro)} Atualizei a lista para você conferir.`;
+}
 
 /** Detalhe de uma linha do extrato, com as ações que ela permite. */
 export function DetalheDoLancamentoFolha({
@@ -258,7 +264,7 @@ export function BaixarLancamentoFolha({
   /** Avisa a view que há gravação no ar: enquanto dura, a folha não fecha. */
   readonly aoMudarEnviando?: (enviando: boolean) => void;
   readonly aoFechar: () => void;
-  readonly aoSalvar: (mensagem: string) => void;
+  readonly aoSalvar: (mensagem: string, tom?: "sucesso" | "informacao") => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
   const confirmarVisualmente = useConfirmacaoFinanceira();
@@ -322,7 +328,9 @@ export function BaixarLancamentoFolha({
           : "Pagamento registrado.",
       );
     } catch (erro) {
-      setErroDoServidor(mensagemDeErroFinanceiro(erro));
+      if (ehLancamentoJaResolvido(erro))
+        aoSalvar(fraseDaReleitura(erro), "informacao");
+      else setErroDoServidor(mensagemDeErroFinanceiro(erro));
     } finally {
       fim();
       enviandoRef.current = false;
@@ -432,7 +440,7 @@ export function CancelarLancamentoDialogo({
   /** Avisa a view que há gravação no ar: enquanto dura, a janela não fecha. */
   readonly aoMudarEnviando?: (enviando: boolean) => void;
   readonly aoFechar: () => void;
-  readonly aoSalvar: (mensagem: string) => void;
+  readonly aoSalvar: (mensagem: string, tom?: "sucesso" | "informacao") => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
   const confirmarVisualmente = useConfirmacaoFinanceira();
@@ -471,7 +479,9 @@ export function CancelarLancamentoDialogo({
       });
       aoSalvar("Lançamento cancelado.");
     } catch (erro) {
-      setErroDoServidor(mensagemDeErroFinanceiro(erro));
+      if (ehLancamentoJaResolvido(erro))
+        aoSalvar(fraseDaReleitura(erro), "informacao");
+      else setErroDoServidor(mensagemDeErroFinanceiro(erro));
     } finally {
       enviandoRef.current = false;
       aoMudarEnviando?.(false);

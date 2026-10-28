@@ -702,12 +702,15 @@ export function useQuestions() {
         return false;
       }
       try {
-        const { error } = await supabase
+        // `.select("id")`: 0 linhas apagadas (política de acesso) vem como sucesso.
+        const { data: apagadas, error } = await supabase
           .from("questions" as any)
           .delete()
-          .eq("id", questionId);
+          .eq("id", questionId)
+          .select("id");
 
         if (error) throw error;
+        if (!apagadas?.length) throw new Error("Nenhuma pergunta apagada.");
         setQuestions((prev) => prev.filter((q) => q.id !== questionId));
         // Ressalva 2 da revisão C4: pergunta excluída sai do conjunto —
         // resposta futura a ela (excluída em cascata ou órfã) não gera

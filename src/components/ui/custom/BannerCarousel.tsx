@@ -4,6 +4,7 @@ import { classeDoScrimDoBanner } from "@/lib/banner-scrim";
 import { carrosselPodeGirar } from "@/lib/carrossel-visivel";
 import { destinoDoBanner } from "@/lib/destino-do-banner";
 import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
+import { rolarAoCatalogo } from "@/lib/rolar-ao-catalogo";
 import { cn } from "@/lib/utils";
 import type { Banner } from "@/types";
 import useEmblaCarousel from "embla-carousel-react";
@@ -116,6 +117,9 @@ export const BannerCarousel = memo(function BannerCarousel({
 
         globalThis.history.pushState({ view: viewName, id }, "", link);
         globalThis.dispatchEvent(new PopStateEvent("popstate"));
+        // Toque no banner é intenção explícita: rola mesmo se a categoria
+        // já for a atual.
+        if (searchParams.has("category")) rolarAoCatalogo();
       } catch (err) {
         console.error(
           "[BannerCarousel] Navigation failed, using fallback:",

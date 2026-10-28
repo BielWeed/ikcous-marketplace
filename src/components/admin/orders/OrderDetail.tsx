@@ -789,6 +789,9 @@ interface OrderItemsCardProps {
   skus: Record<string, string>;
   variacoes: Record<string, string>;
   loadingSkus: boolean;
+  /** A leitura de tamanho/cor/código falhou: não é "item sem variação". */
+  falhaNaLeitura: boolean;
+  onTentarDeNovo: () => void;
 }
 
 // Bloco "Itens": linhas compactas e, logo abaixo, a conta do pedido
@@ -800,6 +803,8 @@ function OrderItemsCard({
   skus,
   variacoes,
   loadingSkus,
+  falhaNaLeitura,
+  onTentarDeNovo,
 }: Readonly<OrderItemsCardProps>) {
   const { items } = order;
   const totalUnits = items.reduce((acc, item) => acc + item.quantity, 0);
@@ -812,6 +817,20 @@ function OrderItemsCard({
           {totalUnits} {totalUnits === 1 ? "unidade" : "unidades"}
         </span>
       </div>
+      {falhaNaLeitura && (
+        <div
+          role="alert"
+          className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-amber-500/40 px-3 py-2 text-xs text-amber-400"
+        >
+          <p className="min-w-0 flex-1">
+            Não deu para carregar tamanho e cor desses itens. Recarregue antes
+            de separar o pedido.
+          </p>
+          <Button variant="ghost" size="sm" onClick={onTentarDeNovo}>
+            Tentar de novo
+          </Button>
+        </div>
+      )}
       <div className="mt-3 divide-y divide-admin-border">
         {items.map((item, indice) => {
           const itemSku = item.variantId
@@ -1488,6 +1507,8 @@ export const OrderDetail = memo(function OrderDetail({
   const [skus, setSkus] = useState<Record<string, string>>({});
   const [variacoes, setVariacoes] = useState<Record<string, string>>({});
   const [loadingSkus, setLoadingSkus] = useState(false);
+  const [falhaNaLeitura, setFalhaNaLeitura] = useState(false);
+  const [tentativaSkus, setTentativaSkus] = useState(0);
 
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [copiedTracking, setCopiedTracking] = useState(false);
@@ -1734,6 +1755,7 @@ export const OrderDetail = memo(function OrderDetail({
           .map((item) => item.variantId)
           .filter((id): id is string => !!id);
 
+        setFalhaNaLeitura(false);
         const missingProductIds = productIds.filter(
           (id) => !globalSkuCache[`prod-${id}`],
         );
@@ -1764,22 +1786,24 @@ export const OrderDetail = memo(function OrderDetail({
         setLoadingSkus(true);
 
         if (missingProductIds.length > 0) {
-          const { data: productsData } = await supabase
+          const { data: productsData, error: erroProdutos } = await supabase
             .from("vw_produtos_admin")
             .select("id, codigo")
             .in("id", missingProductIds);
           if (!consultaVigente) return;
+          if (erroProdutos) throw erroProdutos;
           productsData?.forEach((p) => {
             if (p.codigo) globalSkuCache[`prod-${p.id}`] = p.codigo;
           });
         }
 
         if (missingVariantIds.length > 0) {
-          const { data: variantsData } = await supabase
+          const { data: variantsData, error: erroVariantes } = await supabase
             .from("product_variants")
             .select("id, sku, name, value")
             .in("id", missingVariantIds);
           if (!consultaVigente) return;
+          if (erroVariantes) throw erroVariantes;
           variantsData?.forEach((v) => {
             if (v.sku) globalSkuCache[`var-${v.id}`] = v.sku;
             globalVariacaoCache.set(v.id, rotuloDaVariacao(v.name, v.value));
@@ -1798,7 +1822,10 @@ export const OrderDetail = memo(function OrderDetail({
         });
         setSkus(resultSkus);
       } catch (err) {
-        if (consultaVigente) console.error("Error fetching SKUs:", err);
+        if (consultaVigente) {
+          console.error("Error fetching SKUs:", err);
+          setFalhaNaLeitura(true);
+        }
       } finally {
         if (consultaVigente) setLoadingSkus(false);
       }
@@ -1808,7 +1835,7 @@ export const OrderDetail = memo(function OrderDetail({
     return () => {
       consultaVigente = false;
     };
-  }, [order.id, itemsSerialized]);
+  }, [order.id, itemsSerialized, tentativaSkus]);
 
   const nextStatus = getNextStatus(order.status);
 
@@ -2101,6 +2128,8 @@ export const OrderDetail = memo(function OrderDetail({
           skus={skus}
           variacoes={variacoes}
           loadingSkus={loadingSkus}
+          falhaNaLeitura={falhaNaLeitura}
+          onTentarDeNovo={() => setTentativaSkus((n) => n + 1)}
         />
 
         {/* Envio em linhas simples, separadas por divisores: uma linha por

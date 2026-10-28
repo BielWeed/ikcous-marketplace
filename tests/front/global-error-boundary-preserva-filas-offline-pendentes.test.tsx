@@ -112,7 +112,7 @@ afterEach(() => {
 
 function clicarRecovery() {
   const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes("Reiniciar Sessão"),
+    b.textContent?.includes("Recarregar o app"),
   ) as HTMLButtonElement | undefined;
   expect(botao).toBeDefined();
   act(() => {
@@ -139,7 +139,7 @@ describe("GlobalErrorBoundary — recovery preserva escrita pendente do lojista"
       );
     });
 
-    expect(hospedeiro.textContent).toContain("Erro Fatal Detectado");
+    expect(hospedeiro.textContent).toContain("Algo deu errado");
 
     clicarRecovery();
 

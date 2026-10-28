@@ -23,6 +23,7 @@ import {
   lerPedidoPendenteDoCheckout,
 } from "@/lib/pedido-pendente-do-checkout";
 import { descartarRascunhoDoProduto } from "@/lib/rascunho-do-produto";
+import { rolarAoCatalogo } from "@/lib/rolar-ao-catalogo";
 
 // Mesmo padrão de useUpdateCheck/recuperacao-chunk: o `define` mora no build;
 // fora dele (runner de teste), o app segue de pé.
@@ -827,6 +828,7 @@ const AppContent = () => {
     return "Todas";
   });
   const selectedCategoryRef = useRef(selectedCategory);
+  const jaSincronizouRef = useRef(false);
   // Lê a categoria atual mesmo antes de o React concluir o próximo render.
   const caminhoDaHomeRef = useRef(() => {
     const category = selectedCategoryRef.current;
@@ -1990,6 +1992,16 @@ const AppContent = () => {
         const urlParams = new URLSearchParams(globalThis.location.search);
         const categoryParam = urlParams.get("category") || "Todas";
         if (targetView === "home") {
+          // Banner ou link de categoria: leva ao Catálogo filtrado. O chip
+          // não passa por aqui (usa handleCategoryChange) e não rola.
+          if (
+            categoryParam !== "Todas" &&
+            (selectedCategoryRef.current !== categoryParam ||
+              !jaSincronizouRef.current)
+          ) {
+            rolarAoCatalogo();
+          }
+          jaSincronizouRef.current = true;
           selectedCategoryRef.current = categoryParam;
           setSelectedCategory(categoryParam);
         }
