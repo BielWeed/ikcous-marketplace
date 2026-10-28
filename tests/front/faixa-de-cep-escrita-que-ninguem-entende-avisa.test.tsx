@@ -57,7 +57,7 @@ describe("avisoDaFaixaDeCep: faixa escrita que o servidor não entende", () => {
     expect(aviso).toContain(FRASE_DO_AVISO);
     expect(aviso).toContain("nem o CEP da sua loja entra");
     // O aviso ensina o formato que funciona.
-    expect(aviso).toContain("38500-000, 38509-999");
+    expect(aviso).toContain("00000-000, 00000-999");
   });
 
   it("o formato do placeholder não avisa", () => {
@@ -183,7 +183,7 @@ describe("FreteLocalBloco mostra o aviso e o formato", () => {
   it("o placeholder e a ajuda deixam o formato explícito", () => {
     const { texto } = desenhar(CEP_DA_LOJA, "");
     const campo = host?.querySelector<HTMLInputElement>("#local-cep-range");
-    expect(campo?.placeholder).toBe("Ex: 38500-000, 38509-999");
+    expect(campo?.placeholder).toBe("Ex: 00000-000, 00000-999");
     expect(texto).toContain("dois CEPs separados por vírgula");
   });
 });

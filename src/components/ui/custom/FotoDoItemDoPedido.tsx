@@ -1,3 +1,5 @@
+import { usarImagemOriginal } from "@/lib/imageUrl";
+import { miniaturaDeCompra } from "@/lib/miniatura-de-compra";
 import { cn } from "@/lib/utils";
 import { Package } from "lucide-react";
 import { useState } from "react";
@@ -46,10 +48,13 @@ export function FotoDoItemDoPedido({
 
   return (
     <img
-      src={src}
+      src={miniaturaDeCompra(src)}
       alt={alt}
       className={cn("size-full object-cover", className)}
-      onError={() => setUrlQueFalhou(src)}
+      onError={(e) => {
+        // 1º erro: a loja pode não transformar imagem -> tenta a original.
+        if (!usarImagemOriginal(e.currentTarget, src)) setUrlQueFalhou(src);
+      }}
     />
   );
 }
