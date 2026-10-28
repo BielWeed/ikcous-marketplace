@@ -113,6 +113,10 @@ const VERSAO = "20261208000000";
 const ARQUIVO = "20261208000000_o_checkout_mostra_os_cupons_da_cliente.sql";
 const ARQ_ROLLBACK = `rollback-manual-${ARQUIVO}`;
 const ARQ_203 = "20261203000000_cupons_desligados_nao_dao_desconto.sql";
+// A 20261397000000 (o desconto do cupom e' arredondado ao centavo) redefine a validacao em cima do corpo da 208: fica DEPOIS dela. A base `pre` (sem a 208)
+// nao a leva (o pre-voo dela exige o corpo da 208 ou o dela), e a base `cheio` a desfaz (o rollback da 208 recusa com o corpo da 397 no ar).
+const ARQ_397 =
+  "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql";
 const REF_SAVY = "gnjsrucsmjkajijrakzr";
 const SHA40 = "d".repeat(40);
 const SQL = {
@@ -141,6 +145,7 @@ function corpoDoArquivo(texto, assinatura, tag) {
 }
 const M208 = lerLF(ARQUIVO);
 const M203 = lerLF(ARQ_203);
+const M397 = lerLF(ARQ_397);
 const CORPOS = {
   lista: corpoDoArquivo(
     M208,
@@ -180,6 +185,13 @@ const H = Object.fromEntries(
   ]),
 );
 const H203 = { lf: sha(CORPO_203), crlf: sha(crlfDe(CORPO_203)) };
+// A validacao da 20261397000000 (a sucessora da 208): a 15a a ACEITA (LF e CRLF) mas continua mostrando o hash da 208.
+const CORPO_397 = corpoDoArquivo(
+  M397,
+  "public.validate_coupon_secure_v2(p_code text, p_subtotal numeric)",
+  "",
+);
+const H397 = { lf: sha(CORPO_397), crlf: sha(crlfDe(CORPO_397)) };
 // Os hashes que o brief da fase B fixou para a validação (conferidos aqui contra o arquivo)
 assert.equal(
   H.val.lf,
@@ -805,9 +817,11 @@ async function main() {
     const hexA = [...SQL[A].matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]);
     assert.deepEqual(
       [...new Set(hexA)].sort(),
-      Object.values(H)
-        .flatMap((x) => [x.lf, x.crlf])
-        .sort(),
+      [
+        ...Object.values(H).flatMap((x) => [x.lf, x.crlf]),
+        H397.lf,
+        H397.crlf,
+      ].sort(),
     );
     const hexB = [...SQL[B].matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]);
     assert.deepEqual([...new Set(hexB)].sort(), [H203.lf, H203.crlf].sort());
@@ -818,8 +832,17 @@ async function main() {
 
   // ----------------------------------------------------------- as bases
   const cheio = await clonar("cheio");
+  // A arvore inteira traz a 20261397000000 por cima da 208: devolve a validacao (e a v23/v24) ao corpo de antes dela, para `cheio` ser a arvore ATE a 208
+  // (o rollback da 208, em `volta`, recusa com o corpo da 397 no ar).
+  await usar(cheio, async (c) => {
+    await c.query("BEGIN");
+    await require("./o-desconto-do-cupom-posterior.cjs").desfazerODescontoDoCupomNaTransacao(
+      c,
+    );
+    await c.query("COMMIT");
+  });
   const pre = `pv_${SUF}_pre`.slice(0, 60);
-  await montarBase(pre, (f) => f !== ARQUIVO);
+  await montarBase(pre, (f) => f !== ARQUIVO && f !== ARQ_397);
   {
     const sonda = await usar(pre, async (c) => ({
       gatilho: (

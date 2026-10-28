@@ -24,7 +24,10 @@ WITH fn AS (
          CASE WHEN COALESCE((SELECT count(*) > 0 FROM pg_proc WHERE pronamespace = 'public'::regnamespace), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'create_marketplace_order_v23: corpo exato (md5)', '86a30fe3502bbafd1a507ce03189bc2d',
-         COALESCE((SELECT h FROM fn LIMIT 1), 'AUSENTE')
+         -- A 20261397000000 (o desconto do cupom e' arredondado ao centavo: o mesmo corpo com UMA linha trocada) sucede a v23: aceita os dois
+         -- corpos EXATOS; normaliza ao esperado desta migration. O `vivo` mostra o esperado.
+         COALESCE((SELECT CASE WHEN h IN ('86a30fe3502bbafd1a507ce03189bc2d', '54b591dc09d67f1abbc9ab3ba5f62f5e') THEN '86a30fe3502bbafd1a507ce03189bc2d' ELSE h END
+                     FROM fn LIMIT 1), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v23: o corpo traz a recusa do pagamento pelo app (uma vez)', 'sim',
          CASE WHEN NOT EXISTS (SELECT 1 FROM fn) THEN 'AUSENTE'

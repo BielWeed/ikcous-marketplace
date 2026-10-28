@@ -1319,6 +1319,20 @@ async function main() {
         "20261395000000_a_busca_de_devolucao_acha_o_numero_do_pedido.sql",
         "public.admin_devolucoes_listar(text,text,integer,integer)",
       ],
+      // A 20261397 (o desconto do cupom de porcentagem e' arredondado ao centavo): v23, v24 e validate_coupon_secure_v2, funcoes de fora destas tres que a
+      // 17a nao le (ela sucede os corpos da 394200, da 394000 e da 208, nao os da 99). O rollback dela devolve os tres corpos de antes.
+      [
+        "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql",
+        "public.create_marketplace_order_v23(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
+      ],
+      [
+        "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql",
+        "public.create_marketplace_order_v24(jsonb, numeric, numeric, text, uuid, text, text, text, text, jsonb, text, text, uuid)",
+      ],
+      [
+        "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql",
+        "public.validate_coupon_secure_v2(text, numeric)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

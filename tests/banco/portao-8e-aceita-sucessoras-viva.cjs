@@ -152,7 +152,12 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // A 20261395000000 (a busca de devolucao acha o numero do pedido) e' sucessora de admin_devolucoes_listar, que a 8e trata: sai do
     // modelo desta prova (que conta as 15 que ele conhece) e `noEstado` a desfaz antes (a-busca-de-devolucao-posterior.cjs), como a 392/3921.
     s.nome !==
-      "20261395000000_a_busca_de_devolucao_acha_o_numero_do_pedido.sql",
+      "20261395000000_a_busca_de_devolucao_acha_o_numero_do_pedido.sql" &&
+    // A 20261397000000 (o desconto do cupom de porcentagem e' arredondado ao centavo) so redefine a v23, a v24 e a validate_coupon_secure_v2, em cima
+    // da 394200, da 394000 e da 208; nenhuma e' funcao da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 394200/394000/208
+    // (o-desconto-do-cupom-posterior.cjs); aqui sai do rol pela mesma razao da 394200 e da 394000.
+    s.nome !==
+      "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");
@@ -329,6 +334,10 @@ async function noEstado(montar, textos = [SQL_8E]) {
     );
     // A 20261392000000 e a 20261392100000 sucedem a 230 e a 231: saem antes de qualquer montagem desta prova.
     await require("./a-busca-de-clientes-posterior.cjs").desfazerBuscaDeClientesPosteriorNaTransacao(
+      C,
+    );
+    // A 20261397000000 (o desconto do cupom e' arredondado ao centavo) sucede a v23/v24 e a validate: sai antes de qualquer montagem (so se no ar).
+    await require("./o-desconto-do-cupom-posterior.cjs").desfazerODescontoDoCupomNaTransacao(
       C,
     );
     // A 20261395000000 (a busca de devolucao acha o numero do pedido) sucede a 99 em admin_devolucoes_listar: sai antes de qualquer montagem.
