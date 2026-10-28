@@ -342,7 +342,7 @@ export function CanaisDoCrm({
           tom: falha ? "erro" : offline ? "atencao" : undefined,
           ajuda: (
             <ExplicacaoDoRelatorio titulo="Vendas que ficaram: app × loja">
-              De onde veio o dinheiro das vendas pagas e não canceladas neste
+              De onde veio o dinheiro das vendas pagas, sem as canceladas nem as devolvidas, neste
               período. Total e pedidos são os mesmos da Visão.
             </ExplicacaoDoRelatorio>
           ),
