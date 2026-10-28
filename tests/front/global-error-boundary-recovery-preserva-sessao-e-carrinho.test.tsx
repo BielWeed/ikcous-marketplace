@@ -8,7 +8,7 @@
 // localStorage sob `marketplace_cart_v1` (CartContext.tsx) e o token de
 // sessão do Supabase também (`storage: globalThis.localStorage` em
 // src/lib/supabase.ts, chave com prefixo `sb-`). A pessoa via a tela preta
-// "Erro Fatal Detectado", tocava no único botão que existe — "Reiniciar
+// "Algo deu errado", tocava no único botão que existe — "Reiniciar
 // Sessão (Recovery)" — e voltava sem sessão e sem o que tinha montado no
 // carrinho.
 //
@@ -125,7 +125,7 @@ afterEach(() => {
 
 function clicarRecovery() {
   const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes("Reiniciar Sessão"),
+    b.textContent?.includes("Recarregar o app"),
   ) as HTMLButtonElement | undefined;
   expect(botao).toBeDefined();
   act(() => {
@@ -156,7 +156,7 @@ describe("GlobalErrorBoundary — recovery não apaga sessão nem carrinho", () 
       );
     });
 
-    expect(hospedeiro.textContent).toContain("Erro Fatal Detectado");
+    expect(hospedeiro.textContent).toContain("Algo deu errado");
 
     clicarRecovery();
 
