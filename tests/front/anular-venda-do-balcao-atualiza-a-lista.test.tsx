@@ -74,6 +74,7 @@ function Sonda() {
   return null;
 }
 
+const CONTAGENS_POR_RODADA = 4;
 const leiturasDosNumeros = () =>
   from.mock.calls.filter(([tabela]) => tabela === "marketplace_orders").length;
 
@@ -195,13 +196,20 @@ describe("anular venda do balcão atualiza a lista na hora", () => {
     const antes = leiturasDosNumeros();
     await act(async () => {
       await anular("BAL-1", "engano");
+      // Rajada: um segundo aviso dentro da janela não cria outra rodada.
+      await anular("BAL-1", "engano");
     });
     // Ainda dentro da janela: nada lido.
     expect(leiturasDosNumeros()).toBe(antes);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1001);
     });
-    expect(leiturasDosNumeros()).toBeGreaterThan(antes);
+    // UMA rodada = as 4 contagens do topo (preparar, aguardando, a caminho, a conferir).
+    expect(leiturasDosNumeros()).toBe(antes + CONTAGENS_POR_RODADA);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(leiturasDosNumeros()).toBe(antes + CONTAGENS_POR_RODADA);
   });
 
   it("falha da anulação (RPC recusou): a lista NÃO muda e os números não são relidos", async () => {

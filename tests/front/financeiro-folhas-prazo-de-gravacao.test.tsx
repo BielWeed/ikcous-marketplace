@@ -125,11 +125,16 @@ interface Caso {
   readonly rotuloEnviando: string;
   /** Pedaço da frase de prazo que identifica a operação. */
   readonly frase: RegExp;
+  /** Cadastro NOVO: depois do prazo o Salvar fica parado (poderia duplicar). */
+  readonly salvarParaDepoisDoPrazo?: boolean;
+  /** Cadastro: avisa a tela para reler a lista ao fechar. */
+  readonly avisaSemResposta?: boolean;
 }
 interface Espioes {
   aoSalvar: Mock<(mensagem: string, tom?: "sucesso" | "informacao") => void>;
   aoReconciliar: Mock<(mensagem: string) => Promise<void>>;
   aoMudarEnviando: Mock<(enviando: boolean) => void>;
+  aoSemResposta: Mock<() => void>;
 }
 
 const CASOS: Caso[] = [
@@ -241,6 +246,8 @@ const CASOS: Caso[] = [
     rotulo: "Salvar",
     rotuloEnviando: "Salvando…",
     frase: /conta foi salva/,
+    salvarParaDepoisDoPrazo: true,
+    avisaSemResposta: true,
     preencher: () => digitar("fin-conta-nome", "Banco da loja"),
     montar: (e) => (
       <ContaFolha
@@ -248,6 +255,27 @@ const CASOS: Caso[] = [
         hoje={HOJE}
         aoFechar={vi.fn()}
         aoSalvar={e.aoSalvar}
+        aoSemResposta={e.aoSemResposta}
+        aoMudarSujo={vi.fn()}
+      />
+    ),
+  },
+  {
+    // Edição tem id: o servidor atualiza a mesma linha, repetir não duplica.
+    nome: "conta existente",
+    rpc: "fin_conta_salvar",
+    rotulo: "Salvar",
+    rotuloEnviando: "Salvando…",
+    frase: /conta foi salva/,
+    avisaSemResposta: true,
+    preencher: async () => {},
+    montar: (e) => (
+      <ContaFolha
+        conta={CONTAS[0]}
+        hoje={HOJE}
+        aoFechar={vi.fn()}
+        aoSalvar={e.aoSalvar}
+        aoSemResposta={e.aoSemResposta}
         aoMudarSujo={vi.fn()}
       />
     ),
@@ -258,12 +286,15 @@ const CASOS: Caso[] = [
     rotulo: "Salvar",
     rotuloEnviando: "Salvando…",
     frase: /categoria foi salva/,
+    salvarParaDepoisDoPrazo: true,
+    avisaSemResposta: true,
     preencher: () => digitar("fin-categoria-nome", "Aluguel da loja"),
     montar: (e) => (
       <CategoriaFolha
         categoria={null}
         aoFechar={vi.fn()}
         aoSalvar={e.aoSalvar}
+        aoSemResposta={e.aoSemResposta}
         aoMudarSujo={vi.fn()}
       />
     ),
@@ -276,6 +307,7 @@ function espioes(): Espioes {
       vi.fn<(mensagem: string, tom?: "sucesso" | "informacao") => void>(),
     aoReconciliar: vi.fn<(mensagem: string) => Promise<void>>(async () => {}),
     aoMudarEnviando: vi.fn<(enviando: boolean) => void>(),
+    aoSemResposta: vi.fn<() => void>(),
   };
 }
 const chamadasDa = (rpc: string) =>
@@ -314,14 +346,15 @@ describe.each(CASOS)("rede pendurada — $nome", (caso) => {
     await passar(2_000);
     // Saiu do "Salvando…": botão de volta, destravado, com a explicação.
     expect(temBotao(caso.rotuloEnviando)).toBe(false);
-    expect(botao(caso.rotulo).disabled).toBe(false);
+    // Cadastro novo: o Salvar fica parado (poderia criar outro igual).
+    expect(botao(caso.rotulo).disabled).toBe(!!caso.salvarParaDepoisDoPrazo);
     const texto = document.body.textContent ?? "";
     expect(texto).toMatch(/demorou demais/);
     expect(texto).toMatch(caso.frase);
     expect(texto).toMatch(/confira/i);
     expect(texto).not.toMatch(/Não consegui falar com o servidor/);
     // A folha deixa de avisar "enviando" (a janela volta a poder fechar).
-    if (caso.nome !== "nova conta" && caso.nome !== "nova categoria") {
+    if (!caso.avisaSemResposta) {
       expect(e.aoMudarEnviando).toHaveBeenLastCalledWith(false);
     }
 
@@ -331,9 +364,23 @@ describe.each(CASOS)("rede pendurada — $nome", (caso) => {
     expect(e.aoSalvar).not.toHaveBeenCalled();
     expect(e.aoReconciliar).not.toHaveBeenCalled();
 
-    // Repetir é ação da pessoa: um toque, uma nova chamada.
+    if (caso.avisaSemResposta) expect(e.aoSemResposta).toHaveBeenCalledTimes(1);
+    if (caso.salvarParaDepoisDoPrazo) {
+      // Nem um toque novo grava: só fechar e conferir a lista relida.
+      await tocar(caso.rotulo);
+      expect(chamadasDa(caso.rpc)).toHaveLength(1);
+      return;
+    }
+    // Repetir é ação da pessoa: um toque, uma nova chamada, com os MESMOS dados
+    // (e, na sangria, a mesma chave de repetição).
     await tocar(caso.rotulo);
     expect(chamadasDa(caso.rpc)).toHaveLength(2);
+    const [primeira, segunda] = chamadasDa(caso.rpc);
+    expect(segunda[1]).toEqual(primeira[1]);
+    if (caso.nome === "sangria") {
+      expect(primeira[1].p_chave).toMatch(/^[0-9a-f-]{36}$/i);
+      expect(segunda[1].p_chave).toBe(primeira[1].p_chave);
+    }
   });
 });
 
