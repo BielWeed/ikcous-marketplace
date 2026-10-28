@@ -112,6 +112,12 @@ vi.mock("@/hooks/useOrders", () => ({
 vi.mock("@/lib/supabase", () => ({ supabase: {} }));
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }));
+// A home agora desenha o cartão de frete grátis também sem banner; o carrossel
+// (embla) precisa de matchMedia, que o jsdom não tem. Aqui o que se mede é o
+// og:description, então o carrossel sai de cena como nos outros testes da home.
+vi.mock("@/components/ui/custom/InfoBlockCarousel", () => ({
+  InfoBlockCarousel: () => null,
+}));
 
 // @ts-expect-error flag interna do React, sem tipo público — mesmo padrão dos
 // outros testes de checkout deste diretório.

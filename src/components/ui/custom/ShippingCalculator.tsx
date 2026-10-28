@@ -97,6 +97,8 @@ const AVISO_COTACAO_INCOMPLETA =
   "Não conseguimos calcular a entrega agora. Tente de novo em instantes ou retire na loja.";
 const AVISO_COTACAO_PARCIAL =
   "Algumas transportadoras não responderam agora. Toque em Tentar de novo para ver todas as opções.";
+// Definitiva para aquele CEP: sem "Tentar de novo" (refaz a mesma recusa).
+const FRASE_FORA_DA_AREA = "Esta loja entrega apenas na região dela.";
 // Recusas do servidor que têm frase própria (escolhida pelo `codigo`, nunca
 // pelo texto vindo de fora).
 const FRASE_POR_CODIGO_DA_EDGE = new Map<string, string>([
@@ -105,7 +107,7 @@ const FRASE_POR_CODIGO_DA_EDGE = new Map<string, string>([
     "muitas_consultas",
     "Muitas consultas de frete em pouco tempo. Aguarde alguns minutos e tente de novo.",
   ],
-  ["fora_da_area", "Esta loja entrega apenas na região dela."],
+  ["fora_da_area", FRASE_FORA_DA_AREA],
   [
     "carrinho_grande_demais",
     "O carrinho tem itens demais para calcular o frete de uma vez. Tire alguns itens e tente de novo.",
@@ -1423,15 +1425,17 @@ export function ShippingCalculator({
                 <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
                 <span>{error ?? aviso}</span>
               </div>
-              <button
-                type="button"
-                onClick={tentarDeNovo}
-                disabled={loading}
-                className="flex shrink-0 select-none items-center gap-1 rounded-xl bg-white px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-800 shadow-sm disabled:opacity-40"
-              >
-                <RefreshCw className="size-3" />
-                Tentar de novo
-              </button>
+              {error !== FRASE_FORA_DA_AREA && (
+                <button
+                  type="button"
+                  onClick={tentarDeNovo}
+                  disabled={loading}
+                  className="flex shrink-0 select-none items-center gap-1 rounded-xl bg-white px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-800 shadow-sm disabled:opacity-40"
+                >
+                  <RefreshCw className="size-3" />
+                  Tentar de novo
+                </button>
+              )}
             </div>
           )}
 

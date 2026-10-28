@@ -1047,7 +1047,9 @@ export function CartView({
                             </div>
                             <div className="min-w-0">
                               <p className="text-[13px] font-semibold text-foreground">
-                                Comprar como Convidado
+                                {soPeloApp
+                                  ? "Entre para finalizar"
+                                  : "Comprar como Convidado"}
                               </p>
                               <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">
                                 {/* Só promete o que vale (caça 11-D #3): loja
@@ -1090,7 +1092,9 @@ export function CartView({
                             }}
                             className="h-[52px] w-full rounded-2xl border border-solid border-border bg-background text-[15px] font-semibold text-foreground transition-colors hover:bg-muted active:scale-[0.98]"
                           >
-                            Continuar como Convidado
+                            {soPeloApp
+                              ? "Ver o pedido antes de entrar"
+                              : "Continuar como Convidado"}
                           </button>
                         </div>
                       </div>

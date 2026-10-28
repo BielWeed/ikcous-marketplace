@@ -1,23 +1,51 @@
-// "/index.html" não passa pelo porteiro (middleware.ts o tira do matcher, senão
-// o porteiro entraria em recursão ao baixar esse mesmo arquivo): quem abre esse
-// endereço numa loja cliente recebe o HTML CRU, sem a ficha da loja, e o app
-// cairia na marca e no banco assados no build (os da loja principal).
+// Páginas servidas CRUAS: "/index.html", "/404.html" (cópia do índice feita no
+// build) e qualquer arquivo que não existe dentro de uma pasta estática
+// (/icons, /images, /fonts...) — a Vercel responde esses caminhos com o índice
+// do build, sem passar pelo porteiro (middleware.ts os tira do matcher, senão
+// ele entraria em recursão ao baixar o próprio índice). Sem a ficha da loja,
+// o app cairia na marca e no banco assados no build (os da loja principal, ou
+// os do projeto ANTIGO dela) dentro do endereço de outra loja.
 //
-// A guarda decide, sem tocar em nada: em produção, sem ficha e em exatamente
-// "/index.html", o destino é "/" (o porteiro entrega a ficha certa ali). Em
-// qualquer outro caminho devolve null, então "/" nunca volta para "/index.html"
-// e não existe laço. Em desenvolvimento (servidor local, sem porteiro) e nos
-// testes (jsdom em "/") nada muda.
+// A guarda decide, sem tocar em nada, o que fazer com o app que sobe SEM
+// ficha em produção:
+//   - fora de "/": o destino é "/" (o porteiro entrega a ficha certa ali);
+//   - já em "/": não há para onde ir (o porteiro não entregou a ficha), então
+//     a tela segura — nunca o assado. É isso que impede o laço: "/" nunca
+//     redireciona.
+// Em desenvolvimento, em endereço local (preview e testes de jornada, sem
+// porteiro) e fora de um navegador nada muda.
 
-export function destinoDoIndexCru(entrada: {
+type EntradaDoBoot = {
   ficha: unknown;
   pathname: string;
+  hostname: string;
   dev: boolean;
   search: string;
   hash: string;
-}): string | null {
-  if (entrada.dev || entrada.ficha || entrada.pathname !== "/index.html") {
-    return null;
+};
+
+export type DecisaoDoBootSemFicha =
+  | { tipo: "seguir" }
+  | { tipo: "redirecionar"; destino: string }
+  | { tipo: "tela-segura" };
+
+// Só os nomes que o navegador entrega para a máquina do próprio dev (o
+// `location.hostname` já vem em minúsculas). O sufixo ".localhost" exige o
+// ponto: "meulocalhost.com" não passa por local.
+const ENDERECO_LOCAL = /^(localhost|127\.0\.0\.1|\[::1\]|.+\.localhost)$/;
+
+export function decidirBootSemFicha(
+  entrada: EntradaDoBoot,
+): DecisaoDoBootSemFicha {
+  // pathname vazio = não há navegador (testes em ambiente node): nada a guardar.
+  if (
+    entrada.dev ||
+    entrada.ficha ||
+    entrada.pathname === "" ||
+    ENDERECO_LOCAL.test(entrada.hostname)
+  ) {
+    return { tipo: "seguir" };
   }
-  return `/${entrada.search}${entrada.hash}`;
+  if (entrada.pathname === "/") return { tipo: "tela-segura" };
+  return { tipo: "redirecionar", destino: `/${entrada.search}${entrada.hash}` };
 }

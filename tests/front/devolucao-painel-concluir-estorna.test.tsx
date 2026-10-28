@@ -241,6 +241,39 @@ describe("AdminDevolucoesView — concluir e devolver o dinheiro", () => {
     expect(ficha?.textContent).toContain("Histórico");
   });
 
+  it("lote 244: o histórico escreve o reembolso em reais brasileiros", async () => {
+    respostas.set("devolucao_detalhe", {
+      ...DETALHE,
+      eventos: [
+        {
+          id: 2,
+          de_status: "recebida",
+          para_status: "concluida",
+          ator: "loja",
+          nota: "Reembolso de R$ 1,234.50 pelo Mercado Pago",
+          created_at: "2026-09-27T13:00:00Z",
+        },
+        {
+          id: 3,
+          de_status: "recebida",
+          para_status: "concluida",
+          ator: "loja",
+          nota: "Reembolso de R$ 120.00 pelo Mercado Pago",
+          created_at: "2026-09-27T14:00:00Z",
+        },
+      ],
+    });
+    await montar();
+    await clicar(
+      hospedeiro.querySelector<HTMLElement>('[data-devolucao="d-1"]'),
+    );
+    const ficha = hospedeiro.querySelector('[data-testid="detalhe-devolucao"]');
+    const texto = (ficha?.textContent ?? "").replace(/\s/g, " ");
+    expect(texto).toContain("Reembolso de R$ 1.234,50 pelo");
+    expect(texto).toContain("Reembolso de R$ 120,00 pelo");
+    expect(texto).not.toContain("1,234.50");
+  });
+
   it("refund_id na resposta: chama estornar-pagamento com o refund_id, depois da RPC", async () => {
     await abrirEConcluirComoNova();
 

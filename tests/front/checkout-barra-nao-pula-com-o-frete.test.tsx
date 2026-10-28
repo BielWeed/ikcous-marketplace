@@ -40,6 +40,7 @@ const { mockConfig } = vi.hoisted(() => ({
     freeShippingMin: 0.01,
     enableCoupons: false as boolean | undefined,
     formasPagamentoEntrega: ["pix", "card", "cash"] as string[],
+    whatsappNumber: "" as string,
   },
 }));
 
@@ -187,6 +188,10 @@ const STATUS_DA_CALCULADORA = new Map<EstadoDoFrete, string>([
 /** Põe o dublê do carrinho e da calculadora no estado pedido. */
 function prepararFrete(estado: EstadoDoFrete) {
   mockConfig.originCep = estado === "loja-configurando" ? "" : "38500-000";
+  // A loja sem origem de frete aqui TEM WhatsApp (o aviso traz o botão); o caso
+  // sem contato mora em checkout-loja-sem-cep-avisa-no-topo-e-oferece-contato.
+  mockConfig.whatsappNumber =
+    estado === "loja-configurando" ? "34999990000" : "";
   mockFrete.status = STATUS_DA_CALCULADORA.get(estado) ?? "ocioso";
   if (estado === "pronto") {
     mockUseCartOverrides.selectedShippingOption = LOCAL;
@@ -454,15 +459,18 @@ describe("CheckoutView — a barra de baixo não pula com o frete", () => {
     expect(botaoFinalizar().disabled).toBe(true);
   });
 
-  it("(4b) loja sem origem de frete: a frase simples mora na seção e a barra diz 'indisponível'", async () => {
+  it("(4b) loja sem origem de frete: a frase simples (com o botão de contato) mora no topo e a barra diz 'indisponível'", async () => {
     await montar("loja-configurando", { identificado: true });
 
     const motivo = document.querySelector(
       "[data-testid='checkout-motivo-frete']",
     );
-    expect(motivo?.textContent).toBe(
+    // Lote 242: o aviso subiu para o topo da tela e ganhou o botão de contato;
+    // a frase continua a mesma.
+    expect(motivo?.querySelector("p")?.textContent).toBe(
       "Esta loja ainda não calcula o frete pelo app. Fale com a loja.",
     );
+    expect(motivo?.textContent).toContain("Falar com a loja no WhatsApp");
     expect(barra().contains(motivo)).toBe(false);
     expect(linhaEntrega().textContent).toContain("indisponível");
     expect(textoVisivel(barra())).not.toContain("loja");
