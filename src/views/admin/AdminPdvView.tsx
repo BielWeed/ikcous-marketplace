@@ -4,10 +4,11 @@
 // esta view é a ÚNICA que chama Supabase, e injeta as três buscas por prop
 // nas seções de baixo.
 //
-// O NOME DO ARQUIVO NÃO É LIVRE: `vite.config.ts:99-116` mapeia
-// `src/views/admin/AdminPdvView.tsx` para o chunk `PdvBalcao`, fora do
-// precache do service worker (contexto da tarefa, fato 4) — mudar o nome ou
-// o caminho quebra esse mapa.
+// O CAMINHO DO ARQUIVO TEM UM MAPA: `vite.config.ts` (`identityEntries`) dá a
+// `src/views/admin/AdminPdvView.tsx` o nome de chunk `PdvBalcao` — mudar o
+// caminho exige mudar o mapa junto. Esta tela NÃO está no precache do service
+// worker: o balcão é do painel e vai pela rede (ele não precisa funcionar sem
+// internet — dono, 28/10/2026; ver `scripts/precacheSemPainel.ts`).
 //
 // REGISTRADA no roteador (C3.3, plano §5.3 e §5.6): os 12 pontos manuais
 // vivem em src/types/index.ts, src/config/rotas.ts, scripts/hospedagem.mjs,

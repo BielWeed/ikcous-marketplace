@@ -20,12 +20,13 @@ import {
 // prende as duas pontas: o comportamento numa amostra e a igualdade das
 // listas com o SQL que o Início roda.
 
-// A definição VIVA de `painel_inicio`: a 20261390000000 copia o corpo inteiro
-// da 20261228000000 (que copiou a 20261212000000, que já era o da 20261199000000
-// com outro `estoque_baixo`) e troca só o fim do mês do "Lucro estimado" — o
-// trecho do `pedidos_para_preparar` é o mesmo, byte a byte.
+// A definição VIVA de `painel_inicio`: a 20261398000000 copia o corpo inteiro
+// da 20261390000000 (que copiou a 20261228000000, que copiou a 20261212000000,
+// que já era o da 20261199000000 com outro `estoque_baixo`) e troca só o corte
+// do último dia do mês anterior — o trecho do `pedidos_para_preparar` é o mesmo,
+// byte a byte.
 const MIGRATION_DO_INICIO =
-  "20261390000000_o_lucro_do_inicio_conta_o_mes_inteiro.sql";
+  "20261398000000_o_inicio_compara_o_mes_anterior_ate_a_mesma_hora.sql";
 
 // O caminho sai da constante (nunca um segundo literal): as duas não divergem.
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo do próprio repositório, montado de import.meta.url e da constante acima

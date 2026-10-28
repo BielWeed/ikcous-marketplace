@@ -344,7 +344,7 @@ Deno.test("a cadeia 99 -> 12 -> 28 -> 390 esta declarada: o cabecalho cita a ord
   assert.ok(!c30b.includes(H_NOVO), "a 30b (o ANTES) nunca cita a 390");
 });
 
-Deno.test("so a baseline, a 20261199, a 20261212, a 20261228 e este par definem painel_inicio; depois da 20261228 ninguem mais a redefine", () => {
+Deno.test("so a baseline, a 20261199, a 20261212, a 20261228, este par e a 20261398 (o Inicio compara o mes anterior ate a mesma hora, par proprio) definem painel_inicio; depois da 20261228 so a 20261398 a redefine", () => {
   const todas = [...Deno.readDirSync(new URL("supabase/migrations/", DIR))]
     .map((e) => e.name)
     .filter((n) => n.endsWith(".sql") && !n.startsWith("_"));
@@ -357,7 +357,14 @@ Deno.test("so a baseline, a 20261199, a 20261212, a 20261228 e este par definem 
       )
     )
       posteriores.push(n);
-  assert.deepEqual(posteriores.sort(), [NOME, `rollback-manual-${NOME}`]);
+  const SUCESSORA_398 =
+    "20261398000000_o_inicio_compara_o_mes_anterior_ate_a_mesma_hora.sql";
+  assert.deepEqual(posteriores.sort(), [
+    NOME,
+    SUCESSORA_398,
+    `rollback-manual-${NOME}`,
+    `rollback-manual-${SUCESSORA_398}`,
+  ]);
 });
 
 Deno.test("publicacao: lote unico de apply normal (97a/97b), rol fechado de 4 linhas, consultas so leem catalogo e citam os md5 certos, registrado nos dois workflows", () => {

@@ -234,6 +234,8 @@ on:
       - "scripts/publicacao/consultas/114b-antes-o-texto-da-avaliacao-tem-teto-no-banco-ausente.sql"
       - "scripts/publicacao/consultas/115a-conferir-o-desconto-do-cupom-e-arredondado-ao-centavo-aplicado.sql"
       - "scripts/publicacao/consultas/115b-antes-o-desconto-do-cupom-e-arredondado-ao-centavo-base-vigente.sql"
+      - "scripts/publicacao/consultas/116a-conferir-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-aplicado.sql"
+      - "scripts/publicacao/consultas/116b-antes-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -437,6 +439,8 @@ on:
       - "scripts/publicacao/consultas/114b-antes-o-texto-da-avaliacao-tem-teto-no-banco-ausente.sql"
       - "scripts/publicacao/consultas/115a-conferir-o-desconto-do-cupom-e-arredondado-ao-centavo-aplicado.sql"
       - "scripts/publicacao/consultas/115b-antes-o-desconto-do-cupom-e-arredondado-ao-centavo-base-vigente.sql"
+      - "scripts/publicacao/consultas/116a-conferir-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-aplicado.sql"
+      - "scripts/publicacao/consultas/116b-antes-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -685,6 +689,14 @@ jobs:
       - name: Prova viva da v23 que recusa o pagamento pelo app (20261394200000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-v23-recusa-o-pagamento-pelo-app-viva.cjs
+      # Migration 20261398000000 (o Inicio compara o mes anterior ate a mesma hora): painel_inicio corta o ULTIMO dia dos mesmos dias do mes
+      # anterior na MESMA hora de agora (dia 1, venda de R$ 100 hoje as 05h contra R$ 100 as 18h do dia 1 anterior: o anterior vale 0, nao 100);
+      # dia 15, 28 a 31 contra fevereiro de 28 e 29 dias e meses de 30/31, virada de ano, hora exata (<=), corte em UTC e dia inexistente (o ultimo
+      # dia do mes anterior vale inteiro) reprovam em mutantes; o resto do JSON igual; rollback byte a byte, pre-voo, pos-voo atomico e consultas
+      # 116a/116b. CLONE proprio.
+      - name: Prova viva do Inicio que compara o mes anterior ate a mesma hora (20261398000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-viva.cjs
       # Migration 20261397000000 (o desconto do cupom de porcentagem e arredondado ao centavo): create_marketplace_order_v23/v24 e
       # validate_coupon_secure_v2 trocam UMA linha cada (round(..., 2) no desconto percentual, meio centavo para cima, ANTES de subtrair).
       # 29,95 x 10% -> desconto 3,00 e total 26,95 (antes 2,995 e 26,96); a ficha sempre fecha; valor fixo, teto e 100% intactos; pedido ja
