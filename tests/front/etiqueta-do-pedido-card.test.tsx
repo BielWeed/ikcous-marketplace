@@ -1112,6 +1112,18 @@ describe("EtiquetaDoPedidoCard", () => {
     expect(hospedeiro.textContent).not.toContain("52998224725");
   });
 
+  it("frete acima de mil reais sai com ponto de milhar na confirmação de compra", async () => {
+    pedidoState.data = pedido({ shipping: 1299.9 });
+    await abrirCard();
+    await act(async () => {
+      botao("Gerar etiqueta")?.click();
+    });
+    const texto = hospedeiro.textContent?.replaceAll(String.fromCharCode(160), " ") ?? "";
+    expect(texto).toContain("Frete pago pelo cliente: R$ 1.299,90");
+    expect(texto).not.toContain("1299,90");
+    expect(texto).not.toContain("R$ R$");
+  });
+
   // ── Corrida: pedido troca de A para B com uma chamada de A ainda em voo ──
   // (achado da revisão Opus sobre o commit aadbf4c: 5-20 s de geração de
   // etiqueta é tempo de sobra para o lojista trocar de ficha no meio).
