@@ -175,6 +175,9 @@ export function AdminFinanceiroView({
   const [numeroDaFolha, setNumeroDaFolha] = useState(0);
   const geracaoDaFolha = useRef(0);
   const folhaEmEnvio = useRef(false);
+  // Houve gravação sem a tela saber o desfecho (prazo estourado, rede): ao
+  // fechar a folha a lista é relida, para a conferência não olhar dado velho.
+  const gravouSemConfirmar = useRef(false);
   const [sujo, setSujo] = useState(false);
   const sujoRef = useRef(false);
   // Pergunta "Descartar o que você escreveu?" na tela. O ref espelha o estado
@@ -207,6 +210,10 @@ export function AdminFinanceiroView({
   // Fecha de verdade (depois de salvar, de escolher um período, de descartar).
   const fecharFolha = useCallback(() => {
     if (folhaEmEnvio.current) return;
+    if (gravouSemConfirmar.current) {
+      gravouSemConfirmar.current = false;
+      setVersao((v) => v + 1);
+    }
     abertaRef.current = false;
     mostrarPergunta(false);
     setFolha(null);
@@ -252,6 +259,7 @@ export function AdminFinanceiroView({
     (enviando: boolean) => {
       if (geracaoDaFolha.current === numeroDaFolha) {
         folhaEmEnvio.current = enviando;
+        if (enviando) gravouSemConfirmar.current = true;
         if (
           !enviando &&
           folha?.tipo === "caixa-movimentar" &&
@@ -263,7 +271,10 @@ export function AdminFinanceiroView({
     },
     [numeroDaFolha, folha, fecharFolha],
   );
-  const invalidar = useCallback(() => setVersao((v) => v + 1), []);
+  const invalidar = useCallback(() => {
+    gravouSemConfirmar.current = false;
+    setVersao((v) => v + 1);
+  }, []);
   // Tela aberta há tempo (tablet no balcão): ao voltar a ver o app, relê tudo
   // (o esperado na gaveta, o saldo e o extrato ficam velhos). Nunca por cima de
   // uma folha aberta (formulário com digitação), e com trava contra rajada

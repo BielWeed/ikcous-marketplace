@@ -638,6 +638,9 @@ export class ErroDeFormatoFinanceiro extends Error {
   }
 }
 
+/** A rede não respondeu no prazo; o servidor pode ter gravado. A frase já vem pronta. */
+export class ErroDePrazoFinanceiro extends Error {}
+
 type Objeto = Record<string, unknown>;
 
 function comoObjeto(valor: unknown): Objeto | null {
@@ -1795,6 +1798,19 @@ export function ehCaixaJaAberto(erro: unknown): boolean {
 }
 
 /**
+ * Baixa ou cancelamento repetido depois de uma resposta perdida: o servidor
+ * responde que o lançamento já foi baixado/cancelado (22023). Só estas duas
+ * frases contam; as outras recusas 22023 (data futura, conta inativa) são erro.
+ */
+export function ehLancamentoJaResolvido(erro: unknown): boolean {
+  const { codigo, mensagem } = codigoEMensagem(erro);
+  return (
+    codigo === "22023" &&
+    /já foi baixado ou cancelado|já está cancelado/.test(mensagem ?? "")
+  );
+}
+
+/**
  * Traduz a falha de uma RPC `fin_*`. As recusas de negócio das RPCs
  * (`RAISE EXCEPTION` com texto em português: "já existe um caixa aberto",
  * "lançamento realizado não se edita"…) chegam como P0001/22023 e são
@@ -1802,6 +1818,7 @@ export function ehCaixaJaAberto(erro: unknown): boolean {
  * texto técnico em inglês na tela.
  */
 export function mensagemDeErroFinanceiro(erro: unknown): string {
+  if (erro instanceof ErroDePrazoFinanceiro) return erro.message;
   if (erro instanceof ErroDeFormatoFinanceiro) {
     return "O servidor respondeu num formato que esta versão do app não entende. Atualize o app.";
   }
