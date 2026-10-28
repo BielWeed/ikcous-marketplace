@@ -234,7 +234,10 @@ module.exports = [
     // 28/10/2026 (mesma regra): 495 -> 496 kB na 1.5.96 (Caca 13: Financeiro com prazo de
     // gravacao, ficha do pedido que avisa quando nao carrega tamanho e cor, Avaliacoes e Vitrines
     // sem zero falso). Base 494,33 kB; os lotes somam +0,98 kB e medem 495,31 kB (310 B acima).
-    limit: "496 kB",
+    // 28/10/2026 (mesma regra): 496 -> 498 kB na 1.5.97 (Caca 14: cupom e banner salvam so o
+    // que mudou, recusa de arquivo que nao e foto, frase do teto do CSV). Base 495,31 kB; os
+    // lotes somam +0,86 kB e medem 496,17 kB (165 B acima); 498 deixa folga para o proximo lote.
+    limit: "498 kB",
     webpack: false,
     running: false,
   },
