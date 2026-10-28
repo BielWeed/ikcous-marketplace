@@ -254,13 +254,14 @@ it("Salvar Cupom na pílula chama a mesma atualização e fica travado enquanto 
     <AdminCouponFormView couponId="cupom-1" onNavigate={h.navegar} />,
   );
   const salvar = () => acoes("Ações do cupom").querySelector("button")!;
+  // Edição manda só o que mudou (lote 260): sem mexer em nada não há o que salvar.
+  await act(async () =>
+    (host.querySelector("#coupon-active") as HTMLElement).click(),
+  );
   await act(async () => salvar().click());
   expect(salvar().disabled).toBe(true);
   expect(salvar().textContent).toBe("Salvando...");
-  expect(h.salvarCupom).toHaveBeenCalledWith(
-    "cupom-1",
-    expect.objectContaining({ code: "DEZ", value: 10 }),
-  );
+  expect(h.salvarCupom).toHaveBeenCalledWith("cupom-1", { active: false });
   await act(async () => terminar());
   expect(h.navegar).toHaveBeenCalledWith("admin-coupons");
 });

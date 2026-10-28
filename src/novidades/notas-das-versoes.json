@@ -1,4 +1,15 @@
 {
+  "1.5.97": {
+    "titulo": "Salvar cupom ou banner não desfaz mais o que foi mudado em outro aparelho",
+    "novidades": [],
+    "correcoes": [
+      "Painel, Cupons: salvar um cupom aberto há tempo não religa mais um cupom que você desligou em outro aparelho, nem volta o limite e a validade ao que eram. Só vai o que você mexeu.",
+      "Painel, Banners: salvar um banner não volta mais o ativo, as datas e a ordem ao que estava antes. Foto de HEIC, arquivo que não é imagem e arquivo acima de 12 MB agora são recusados com uma frase clara.",
+      "Painel, Produtos: PDF, planilha ou vídeo não entram mais como se fossem a foto do produto.",
+      "Painel, Pedidos: ao exportar a planilha com mais de 5.000 pedidos, a tela diz para reduzir o período do filtro, em vez de pedir para tentar de novo."
+    ],
+    "melhorias": []
+  },
   "1.5.96": {
     "titulo": "Avisos claros quando a internet falha, em vez de telas que enganam",
     "novidades": [],
