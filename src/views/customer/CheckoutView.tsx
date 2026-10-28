@@ -602,6 +602,9 @@ const MAX_MINIATURAS_DO_GATILHO = 3;
  * de entrega e na região `status` da barra. */
 const FRASE_LOJA_SEM_FRETE =
   "Esta loja ainda não calcula o frete pelo app. Fale com a loja.";
+/** A mesma situação quando a loja nem cadastrou um contato: sem "Fale com a loja" solto. */
+const FRASE_LOJA_SEM_FRETE_E_SEM_CONTATO =
+  "Esta loja ainda não calcula o frete pelo app e não cadastrou um contato aqui. Procure a loja pelos canais em que você a conheceu.";
 
 interface GatilhoDoResumoDoPedidoProps {
   readonly cart: CartItem[];
@@ -3601,6 +3604,9 @@ export function CheckoutViewDaConta({
   // calculado pelo app, e quem resolve é a loja, não a cliente.
   const lojaConfigurandoOFrete =
     semFreteSelecionado && ctxFreteIndefinido && !config.originCep?.trim();
+  const fraseDaLojaSemFrete = lojaTemWhatsapp(config.whatsappNumber)
+    ? FRASE_LOJA_SEM_FRETE
+    : FRASE_LOJA_SEM_FRETE_E_SEM_CONTATO;
 
   // A BARRA DE BAIXO TEM SEMPRE O MESMO FORMATO, QUALQUER QUE SEJA O ESTADO DO
   // FRETE (pedido do dono, celular real, 22/10/2026): antes, a ESPERA da
@@ -3630,7 +3636,7 @@ export function CheckoutViewDaConta({
   // de acessibilidade 03/09, achado 9); eles saíram da barra, a voz não pode
   // sair junto. `status` (educado), nunca `alert`: espera não é falha.
   const avisoDoFreteParaLeitorDeTela = lojaConfigurandoOFrete
-    ? FRASE_LOJA_SEM_FRETE
+    ? fraseDaLojaSemFrete
     : barraCalculandoOFrete
       ? "Calculando o frete do endereço de entrega..."
       : escolhaDeFreteNaSecao
@@ -4719,6 +4725,15 @@ export function CheckoutViewDaConta({
   };
   const handleFalarComALojaSobreCartao = () =>
     falarComALojaSobreCartao(orderId);
+  // Loja sem CEP de origem: a conversa começa pelo motivo (o frete não sai pelo app).
+  const falarComALojaSobreOFrete = () => {
+    let phone = numeroLimpoDoCheckout;
+    if (phone.length === 11 || phone.length === 10) phone = `55${phone}`;
+    const mensagem =
+      "Olá! Quero comprar pelo app, mas o frete ainda não está disponível. Podem me ajudar?";
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
+    globalThis.open(url, "_blank", "noopener,noreferrer");
+  };
 
   if (retomadaBloqueadaPorSentinela && retomarPedidoId) {
     return (
@@ -5721,6 +5736,31 @@ export function CheckoutViewDaConta({
           }
         }}
       >
+        {/* Loja sem CEP de origem (caça 12-B #2): nenhuma cliente consegue fechar
+            o frete aqui, então o aviso vem ANTES dos campos (não depois de ela
+            preencher tudo), com o atalho de contato se a loja tem WhatsApp.
+            Só apresentação: o Finalizar trava pelas mesmas condições de sempre.
+            O motivo "escolha uma opção" (outro caso) fica junto da calculadora. */}
+        {cart.length > 0 && lojaConfigurandoOFrete && (
+          <div
+            data-testid="checkout-motivo-frete"
+            className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] font-medium leading-snug text-amber-900"
+          >
+            <p className="flex items-start gap-1.5">
+              <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
+              {fraseDaLojaSemFrete}
+            </p>
+            {lojaTemWhatsappNoCheckout && (
+              <BotaoWhatsapp
+                onClick={falarComALojaSobreOFrete}
+                className="rounded-xl"
+              >
+                Falar com a loja no WhatsApp
+              </BotaoWhatsapp>
+            )}
+          </div>
+        )}
+
         {/* PASSO A1 (22/10/2026): recolhida, a seção vira DOIS resumos
             compactos — "Seus dados" e "Endereço de entrega" —, cada um com o
             selo de ok quando está completo e uma ação discreta ("Editar"/
@@ -6452,18 +6492,15 @@ export function CheckoutViewDaConta({
             `status` da barra. Caixa clara PRÓPRIA (a mesma do aviso de cupom
             logo abaixo): sem fundo, em loja de tema escuro ou vidro o texto
             herdava um fundo escuro e caía para ~2,1:1 de contraste. */}
-        {cart.length > 0 &&
-          (lojaConfigurandoOFrete || escolhaDeFreteNaSecao) && (
-            <p
-              data-testid="checkout-motivo-frete"
-              className="flex items-start gap-1.5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] font-medium leading-snug text-amber-900"
-            >
-              <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
-              {lojaConfigurandoOFrete
-                ? FRASE_LOJA_SEM_FRETE
-                : "Escolha uma opção de frete para continuar"}
-            </p>
-          )}
+        {cart.length > 0 && escolhaDeFreteNaSecao && (
+          <p
+            data-testid="checkout-motivo-frete"
+            className="flex items-start gap-1.5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] font-medium leading-snug text-amber-900"
+          >
+            <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
+            Escolha uma opção de frete para continuar
+          </p>
+        )}
 
         {/* CUPONS DESLIGADOS (#645): o campo de cupom some com a chave
             desligada, então o motivo de o desconto ter saído mora FORA dele.
