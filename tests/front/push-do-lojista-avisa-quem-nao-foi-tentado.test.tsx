@@ -358,7 +358,7 @@ describe("Avisar clientes — destinatários não tentados", () => {
 
       const { toast } = await import("sonner");
       expect(toast.success).toHaveBeenCalledWith(
-        "Notificação entregue em 2 dispositivo(s)",
+        "Notificação entregue em 2 dispositivos",
       );
       expect(toast.warning).not.toHaveBeenCalled();
       expect(toast.error).not.toHaveBeenCalled();
@@ -373,7 +373,12 @@ describe("Avisar clientes — destinatários não tentados", () => {
         enviados: 2,
         falharam: 1,
         naoTentados: 3,
-        falhas: [{ quantidade: 1, motivo: "Serviço indisponível" }],
+        falhas: [
+          {
+            quantidade: 1,
+            motivo: "push service respondeu 503 Service Unavailable",
+          },
+        ],
       },
       error: null,
     });
@@ -383,7 +388,9 @@ describe("Avisar clientes — destinatários não tentados", () => {
     const { toast } = await import("sonner");
     expect(toast.warning).toHaveBeenCalledTimes(1);
     expect(toast.warning).toHaveBeenCalledWith("Entregue em 2 de 6", {
-      description: expect.stringContaining("1x Serviço indisponível"),
+      description: expect.stringContaining(
+        "1x o serviço de avisos está fora do ar agora",
+      ),
     });
     expect(toast.warning).toHaveBeenCalledWith("Entregue em 2 de 6", {
       description: expect.stringContaining(
@@ -407,7 +414,12 @@ describe("Avisar clientes — destinatários não tentados", () => {
         entregues: 2,
         falharam: 1,
         naoTentados: 3,
-        falhas: [{ quantidade: 1, motivo: "Serviço indisponível" }],
+        falhas: [
+          {
+            quantidade: 1,
+            motivo: "push service respondeu 503 Service Unavailable",
+          },
+        ],
         timestamp: expect.any(String),
       },
     );
@@ -422,12 +434,32 @@ describe("Avisar clientes — destinatários não tentados", () => {
     await enviar();
 
     const { toast } = await import("sonner");
-    expect(toast.error).toHaveBeenCalledWith(
-      "Nenhum dos 1 dispositivos recebeu",
-      {
-        description: expect.stringMatching(/reenviar.*aviso dentro do app/i),
+    expect(toast.error).toHaveBeenCalledWith("O aparelho não recebeu o aviso", {
+      description: expect.stringMatching(/reenviar.*aviso dentro do app/i),
+    });
+  });
+
+  it("zero entregas por inscrição vencida (410) explica em português, sem inglês", async () => {
+    invokeSendPush.mockResolvedValue({
+      data: {
+        enviados: 0,
+        falharam: 1,
+        falhas: [{ quantidade: 1, motivo: "push service respondeu 410 Gone" }],
       },
-    );
+      error: null,
+    });
+    await prepararCampanha();
+    await enviar();
+
+    const { toast } = await import("sonner");
+    expect(toast.error).toHaveBeenCalledWith("O aparelho não recebeu o aviso", {
+      description: expect.stringContaining(
+        "esse aparelho não recebe mais avisos",
+      ),
+    });
+    expect(toast.error).not.toHaveBeenCalledWith(expect.anything(), {
+      description: expect.stringMatching(/Gone|push service/),
+    });
   });
 
   it("zero entregas com não tentados diz quantos dispositivos nem foram tentados", async () => {
@@ -439,14 +471,11 @@ describe("Avisar clientes — destinatários não tentados", () => {
     await enviar();
 
     const { toast } = await import("sonner");
-    expect(toast.error).toHaveBeenCalledWith(
-      "Nenhum dos 1 dispositivos recebeu",
-      {
-        description: expect.stringContaining(
-          "4 dispositivos nem chegaram a ser tentados porque o envio demorou demais",
-        ),
-      },
-    );
+    expect(toast.error).toHaveBeenCalledWith("O aparelho não recebeu o aviso", {
+      description: expect.stringContaining(
+        "4 dispositivos nem chegaram a ser tentados porque o envio demorou demais",
+      ),
+    });
     expect(recordAction).toHaveBeenCalledWith(
       "PUSH_DISPATCH",
       expect.anything(),

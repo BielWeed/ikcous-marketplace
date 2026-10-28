@@ -80,6 +80,22 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 /** Selo de ícone neutro: a cor fica para o que significa algo. */
+// O motivo gravado vem em inglês técnico da função de envio (ex.: "push
+// service respondeu 410 Gone"). Aqui só se traduz para exibir; o dado não muda.
+function motivoDaFalhaEmPortugues(motivo: unknown): string {
+  const status = Number(
+    /push service respondeu (\d{3})/i.exec(String(motivo ?? ""))?.[1],
+  );
+  if (status === 404 || status === 410)
+    return "esse aparelho não recebe mais avisos (a inscrição venceu)";
+  if (status === 401 || status === 403)
+    return "o serviço de avisos recusou o envio";
+  if (status === 413) return "mensagem grande demais";
+  if (status === 429) return "muitos envios, tente daqui a pouco";
+  if (status >= 500) return "o serviço de avisos está fora do ar agora";
+  return "motivo não identificado";
+}
+
 function SeloDeIcone({
   icone: Icone,
   indisponivel = false,
@@ -1005,7 +1021,7 @@ export const AdminPushView = memo(function AdminPushView({
         !pushError && Number.isInteger(envio?.enviados) && envio.enviados >= 0;
       const primeiraFalha = envio?.falhas?.[0];
       const detalheDaFalha = primeiraFalha
-        ? `${primeiraFalha.quantidade}x ${primeiraFalha.motivo}`
+        ? `${primeiraFalha.quantidade}x ${motivoDaFalhaEmPortugues(primeiraFalha.motivo)}`
         : undefined;
 
       if (envioConfirmado && entregues > 0) {
@@ -1028,9 +1044,14 @@ export const AdminPushView = memo(function AdminPushView({
             "Sua campanha foi mantida. Alguns clientes podem ter recebido. Se enviar de novo, eles podem receber a mensagem repetida.",
         });
       } else if (entregues === 0) {
-        toast.error(`Nenhum dos ${finalRecipientCount} dispositivos recebeu`, {
-          description: `${detalheDaFalha ?? "A função não informou o motivo da falha."}${naoTentados > 0 ? ` ${naoTentados} ${naoTentados === 1 ? "dispositivo nem chegou a ser tentado" : "dispositivos nem chegaram a ser tentados"} porque o envio demorou demais.` : ""} Sua campanha foi mantida. Se reenviar, o aviso dentro do app também aparece de novo para os clientes.`,
-        });
+        toast.error(
+          finalRecipientCount === 1
+            ? "O aparelho não recebeu o aviso"
+            : `Nenhum dos ${finalRecipientCount} dispositivos recebeu`,
+          {
+            description: `${detalheDaFalha ?? "A função não informou o motivo da falha."}${naoTentados > 0 ? ` ${naoTentados} ${naoTentados === 1 ? "dispositivo nem chegou a ser tentado" : "dispositivos nem chegaram a ser tentados"} porque o envio demorou demais.` : ""} Sua campanha foi mantida. Se reenviar, o aviso dentro do app também aparece de novo para os clientes.`,
+          },
+        );
       } else if (falharam > 0 || naoTentados > 0) {
         toast.warning(
           `Entregue em ${entregues} de ${entregues + falharam + naoTentados}`,
@@ -1047,7 +1068,9 @@ export const AdminPushView = memo(function AdminPushView({
           },
         );
       } else {
-        toast.success(`Notificação entregue em ${entregues} dispositivo(s)`);
+        toast.success(
+          `Notificação entregue em ${entregues} ${entregues === 1 ? "dispositivo" : "dispositivos"}`,
+        );
       }
 
       // Segundo fato, distinto do de cima: o push é uma coisa, o aviso
