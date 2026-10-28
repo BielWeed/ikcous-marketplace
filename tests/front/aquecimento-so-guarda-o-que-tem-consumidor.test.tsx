@@ -321,10 +321,11 @@ describe("useCacheWarmer — aquece só o que tem consumidor (laudo sócio r2, F
 
     const mensagem = await montarWarmerEEsperarMensagem();
     const imagensAquecidas = mensagem.urls.filter((url) => url !== "/");
-    // Só a 1ª foto do produto, em DUAS formas com consumidor: a original
-    // (CartItemsList, ShippingProgress) e a miniatura da sugestão da busca.
-    // A foto 2 e o banner continuam de fora.
-    expect(imagensAquecidas).toHaveLength(2);
+    // Só a 1ª foto do produto, em TRÊS formas com consumidor: a original
+    // (CheckoutView, ofertas), a miniatura da sugestão da busca e a miniatura
+    // das telas de compra (carrinho, pedidos, frete). A foto 2 e o banner
+    // continuam de fora.
+    expect(imagensAquecidas).toHaveLength(3);
     expect(imagensAquecidas[0]).toBe(
       "https://xyzsupabase.co/storage/v1/object/public/produtos/prod-contrato/foto-1.jpg",
     );
@@ -373,6 +374,33 @@ describe("useCacheWarmer — aquece só o que tem consumidor (laudo sócio r2, F
     const srcDaSugestao = imgDaSugestao?.getAttribute("src") ?? "";
     expect(srcDaSugestao).toContain("/storage/v1/render/image/public/");
     expect(imagensAquecidas).toContain(srcDaSugestao);
+
+    // A miniatura das telas de compra: a MESMA string que o carrinho renderiza.
+    const { CartItemsList } = await import(
+      "@/components/ui/custom/CartItemsList"
+    );
+    const hospedeiroCarrinho = document.createElement("div");
+    document.body.appendChild(hospedeiroCarrinho);
+    const raizCarrinho = createRoot(hospedeiroCarrinho);
+    await act(async () => {
+      raizCarrinho.render(
+        createElement(CartItemsList, {
+          cart: [{ product: produtoCompartilhado, quantity: 1 }],
+          removingId: null,
+          onUpdateQuantity: () => {},
+          onRemove: () => {},
+          handleClearCart: () => {},
+        }),
+      );
+    });
+    const srcDoCarrinho =
+      hospedeiroCarrinho.querySelector("img")?.getAttribute("src") ?? "";
+    expect(srcDoCarrinho).toContain("/storage/v1/render/image/public/");
+    expect(imagensAquecidas).toContain(srcDoCarrinho);
+    act(() => {
+      raizCarrinho.unmount();
+    });
+    hospedeiroCarrinho.remove();
 
     act(() => {
       raizBusca.unmount();

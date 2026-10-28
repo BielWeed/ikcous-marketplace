@@ -1015,19 +1015,24 @@ export function StoreProvider({
     };
   }, [limparTimerDaConfig]);
 
+  // Só o lojista (papel já confirmado, sessão carregada) troca de fonte: a
+  // busca só se repete quando ESTE valor muda. Cliente comum lê a mesma
+  // consulta pública antes e depois de o `loading` virar falso.
+  const usaFontePainel = isAdmin && !loading;
+
   const buscarProdutos = useCallback(async () => {
     // Stale-While-Revalidate: IDB data already loaded in mount effect.
     // This function always fetches fresh data from Supabase (background revalidation).
 
     // Só a consulta MAIS RECENTE pode alterar o catálogo, o cache e os avisos:
-    // o efeito de montagem consulta de novo quando a sessão termina de carregar.
+    // o efeito de montagem consulta de novo quando o lojista troca de fonte.
     const minhaConsulta = ++consultaDoCatalogoRef.current;
     try {
       let data: any[] | null = null;
       let error: any = null;
 
       // Only query admin view if admin is verified and auth is not loading
-      if (isAdmin && !loading) {
+      if (usaFontePainel) {
         const res = await supabase
           .from("vw_produtos_admin")
           .select("*, product_variants(*)")
@@ -1039,7 +1044,7 @@ export function StoreProvider({
       }
 
       // Fallback to public view if not admin or if admin query failed (e.g., PGRST205 or unauthenticated)
-      if (!isAdmin || loading || error) {
+      if (!usaFontePainel || error) {
         const publicRes = await supabase
           .from("vw_produtos_public")
           .select("*, product_variants(*)")
@@ -1140,7 +1145,7 @@ export function StoreProvider({
         setLoadingProducts(false);
       }
     }
-  }, [isAdmin, loading]);
+  }, [usaFontePainel]);
 
   useEffect(() => {
     buscarProdutosRef.current = buscarProdutos;

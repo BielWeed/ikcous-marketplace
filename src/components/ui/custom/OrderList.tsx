@@ -1,6 +1,8 @@
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
+import { usarImagemOriginal } from "@/lib/imageUrl";
+import { miniaturaDeCompra } from "@/lib/miniatura-de-compra";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
   ROTULOS_DAS_ETAPAS,
@@ -475,7 +477,13 @@ export const OrderList = memo(function OrderList({
                   <div className="flex size-full items-center justify-center overflow-hidden rounded-xl bg-muted">
                     {order.items[0]?.image ? (
                       <img
-                        src={order.items[0].image}
+                        src={miniaturaDeCompra(order.items[0].image)}
+                        onError={(e) =>
+                          usarImagemOriginal(
+                            e.currentTarget,
+                            order.items[0].image,
+                          )
+                        }
                         alt={order.items[0].name || ""}
                         className="size-full object-cover"
                       />
