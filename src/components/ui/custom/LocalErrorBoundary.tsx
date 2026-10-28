@@ -202,9 +202,7 @@ export class LocalErrorBoundary extends Component<Props, State> {
                 onClick={this.toggleDetails}
                 className="text-[9px] font-black uppercase tracking-wider text-zinc-500 transition-colors hover:text-white"
               >
-                {this.state.showDetails
-                  ? "Ocultar detalhes"
-                  : "Ver detalhes"}
+                {this.state.showDetails ? "Ocultar detalhes" : "Ver detalhes"}
               </button>
 
               {this.state.showDetails && (

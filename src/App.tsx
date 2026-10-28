@@ -11,7 +11,6 @@ import { TelaDeVerificacaoFalhou } from "@/components/layouts/TelaDeVerificacaoF
 import { aoIniciarAposAtualizacao } from "@/components/pwa/ao-iniciar-apos-atualizacao";
 import { applyThemeColor, branding } from "@/config/branding";
 import { esquecerChaveDoPedidoDe } from "@/lib/chave-do-pedido";
-import { rolarAoCatalogo } from "@/lib/rolar-ao-catalogo";
 import {
   destinoPosLogin,
   painelSemContaPedeEntrada,
@@ -24,6 +23,7 @@ import {
   lerPedidoPendenteDoCheckout,
 } from "@/lib/pedido-pendente-do-checkout";
 import { descartarRascunhoDoProduto } from "@/lib/rascunho-do-produto";
+import { rolarAoCatalogo } from "@/lib/rolar-ao-catalogo";
 
 // Mesmo padrão de useUpdateCheck/recuperacao-chunk: o `define` mora no build;
 // fora dele (runner de teste), o app segue de pé.

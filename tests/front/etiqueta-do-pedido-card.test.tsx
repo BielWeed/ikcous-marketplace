@@ -1118,7 +1118,8 @@ describe("EtiquetaDoPedidoCard", () => {
     await act(async () => {
       botao("Gerar etiqueta")?.click();
     });
-    const texto = hospedeiro.textContent?.replaceAll(String.fromCharCode(160), " ") ?? "";
+    const texto =
+      hospedeiro.textContent?.replaceAll(String.fromCharCode(160), " ") ?? "";
     expect(texto).toContain("Frete pago pelo cliente: R$ 1.299,90");
     expect(texto).not.toContain("1299,90");
     expect(texto).not.toContain("R$ R$");

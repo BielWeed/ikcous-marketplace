@@ -8,8 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { rolarAoCatalogo } from "@/lib/rolar-ao-catalogo";
 
-const lerFonte = (caminho: string) => readFileSync(caminho, "utf8");
-
 describe("rolarAoCatalogo", () => {
   let rolou: ReturnType<typeof vi.fn>;
   beforeEach(() => {
@@ -49,13 +47,13 @@ describe("rolarAoCatalogo", () => {
 
 describe("ligação da rolagem", () => {
   it("a Home marca o título do Catálogo com o id que a rolagem procura", () => {
-    expect(lerFonte("src/views/customer/HomeView.tsx")).toMatch(
+    expect(readFileSync("src/views/customer/HomeView.tsx", "utf8")).toMatch(
       /<h2\s+id="catalogo"/,
     );
   });
 
   it("só a navegação por endereço rola; o chip (handleCategoryChange) não", () => {
-    const app = lerFonte("src/App.tsx");
+    const app = readFileSync("src/App.tsx", "utf8");
     expect(app).toContain("rolarAoCatalogo()");
     const chip = app.slice(
       app.indexOf("const handleCategoryChange"),

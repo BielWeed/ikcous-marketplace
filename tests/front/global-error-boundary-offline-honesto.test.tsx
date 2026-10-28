@@ -194,8 +194,12 @@ describe("GlobalErrorBoundary — offline honesto (laudo #2, P-3 e P-1)", () => 
 
     expect(hospedeiro.textContent).toContain("Algo deu errado");
     // Honesto e sem jargão: nada de "alertada" (só gravamos no aparelho).
-    expect(hospedeiro.textContent).toContain("Seus dados e seu carrinho estão guardados");
-    expect(hospedeiro.textContent).not.toMatch(/fatal|recovery|alertada|inválido|instável/i);
+    expect(hospedeiro.textContent).toContain(
+      "Seus dados e seu carrinho estão guardados",
+    );
+    expect(hospedeiro.textContent).not.toMatch(
+      /fatal|recovery|alertada|inválido|instável/i,
+    );
     expect(localStorage.getItem("pwa_reload_reason")).toBe("recuperacao-crash");
   });
 });
