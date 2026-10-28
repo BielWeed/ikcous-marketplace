@@ -7,7 +7,7 @@
 //    app está abaixo de `minAppVersion` (`checkMandatoryUpdate`), sem
 //    ninguém tocar em nada.
 //  - `GlobalErrorBoundary.tsx` (recovery): dispara quando a pessoa clica no
-//    único botão da tela de "Erro Fatal Detectado".
+//    único botão da tela de "Algo deu errado".
 //
 // Achado da revisão de contexto limpo (26/08/2026): a lista do
 // GlobalErrorBoundary já cobria escrita PENDENTE ainda não confirmada no

@@ -33,7 +33,19 @@ describe("rolarAoCatalogo", () => {
     vi.stubGlobal("matchMedia", () => ({ matches: true }));
     rolarAoCatalogo();
     vi.runAllTimers();
-    expect(rolou).toHaveBeenCalledWith({ behavior: "auto", block: "start" });
+    expect(rolou).toHaveBeenCalledWith({ behavior: "instant", block: "start" });
+  });
+
+  it("espera a Home montar: tenta de novo até o Catálogo existir", () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: false }));
+    document.body.innerHTML = "";
+    rolarAoCatalogo();
+    vi.advanceTimersByTime(700);
+    document.body.innerHTML = '<h2 id="catalogo">Catálogo</h2>';
+    document.getElementById("catalogo")!.scrollIntoView =
+      rolou as unknown as typeof Element.prototype.scrollIntoView;
+    vi.advanceTimersByTime(300);
+    expect(rolou).toHaveBeenCalledTimes(1);
   });
 
   it("não quebra quando a Home não está na tela", () => {

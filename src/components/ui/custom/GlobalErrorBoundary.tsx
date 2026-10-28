@@ -254,8 +254,8 @@ export class GlobalErrorBoundary extends Component<Props, State> {
           </h1>
 
           <p className="mb-8 max-w-sm text-sm leading-relaxed text-zinc-400">
-            Não conseguimos abrir esta tela. Seus dados e seu carrinho estão
-            guardados.
+            Não conseguimos abrir esta tela. Seu carrinho e seu login continuam
+            salvos.
           </p>
 
           <Button

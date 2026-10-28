@@ -195,7 +195,7 @@ describe("GlobalErrorBoundary — offline honesto (laudo #2, P-3 e P-1)", () => 
     expect(hospedeiro.textContent).toContain("Algo deu errado");
     // Honesto e sem jargão: nada de "alertada" (só gravamos no aparelho).
     expect(hospedeiro.textContent).toContain(
-      "Seus dados e seu carrinho estão guardados",
+      "Seu carrinho e seu login continuam salvos",
     );
     expect(hospedeiro.textContent).not.toMatch(
       /fatal|recovery|alertada|inválido|instável/i,
