@@ -151,7 +151,8 @@ describe("ProductView — avaliação em análise não entra na nota nem na cont
     await montar();
 
     const secao = textoDaSecao();
-    expect(secao).toContain("4.0");
+    expect(secao).toContain("4,0");
+    expect(secao).not.toContain("4.0");
     expect(secao).toContain("Baseado em 2 experiências");
     expect(secao).toContain("2 opiniões dos consumidores");
     expect(hospedeiro.textContent).toContain("Avaliações (2)");
@@ -163,6 +164,16 @@ describe("ProductView — avaliação em análise não entra na nota nem na cont
       hospedeiro.querySelectorAll('#reviews-section [class~="group/row"]'),
     ).map((el) => el.textContent);
     expect(linhas).toEqual(["51", "40", "31", "20", "10"]);
+  });
+
+  it("uma única avaliação: nota com vírgula (também no topo) e 'opinião' no singular", async () => {
+    avaliacoesDoHook = [avaliacao("a", 4, "publicada")];
+    await montar();
+
+    expect(textoDaSecao()).toContain("1 opinião dos consumidores");
+    expect(textoDaSecao()).not.toContain("1 opiniões");
+    expect(hospedeiro.textContent).toContain("4,0 (1)");
+    expect(hospedeiro.textContent).not.toContain("4.0");
   });
 
   it("a avaliação em análise continua na lista, com o selo 'Em análise'; as publicadas não levam o selo", async () => {

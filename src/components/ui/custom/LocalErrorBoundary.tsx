@@ -190,8 +190,8 @@ export class LocalErrorBoundary extends Component<Props, State> {
       return (
         <div className="flex w-full flex-col items-center justify-center space-y-4 duration-300 animate-in fade-in">
           <AdminErrorState
-            title="Falha Operacional"
-            message="Ocorreu um erro ao carregar este bloco de controle."
+            title="Esta parte não abriu"
+            message="Não conseguimos carregar este bloco. Tente de novo."
             onRetry={this.handleReset}
           />
 
@@ -202,9 +202,7 @@ export class LocalErrorBoundary extends Component<Props, State> {
                 onClick={this.toggleDetails}
                 className="text-[9px] font-black uppercase tracking-wider text-zinc-500 transition-colors hover:text-white"
               >
-                {this.state.showDetails
-                  ? "Ocultar Detalhes"
-                  : "Visualizar Detalhes Técnicos"}
+                {this.state.showDetails ? "Ocultar detalhes" : "Ver detalhes"}
               </button>
 
               {this.state.showDetails && (
