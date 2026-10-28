@@ -16,7 +16,7 @@
       "Painel: o CRM e o Financeiro deixam de usar o mesmo título \"App × loja física\" para números que contam de jeito diferente. O CRM mostra \"Vendas que ficaram\" (pagas, sem as canceladas nem as devolvidas) e o Financeiro mostra \"Recebido\" (o dinheiro que entrou, antes dos estornos)."
     ],
     "melhorias": [
-      "Velocidade: quem visita a loja deixa de baixar em segundo plano as peças que só a lojista usa (leitor de código de barras, gráficos e telas de configuração), perto de 40% do que o app guardava no aparelho. O painel baixa essas peças quando a lojista o abre, e o Balcão continua funcionando como antes, com internet.",
+      "Velocidade: quem visita a loja deixa de baixar em segundo plano as peças que só a lojista usa (leitor de código de barras, gráficos e telas de configuração), perto de 40% do que o app guardava no aparelho. Para a lojista, cada peça vem da internet na hora em que ela abre a tela que a usa, e o Balcão continua funcionando como antes, com internet.",
       "Velocidade: a loja não abre mais uma conexão adiantada com um site de fotos de exemplo que quase ninguém usa."
     ]
   },
