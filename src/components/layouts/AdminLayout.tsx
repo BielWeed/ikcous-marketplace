@@ -236,101 +236,134 @@ export function AdminLayout({
       // aviso de falha da rodada anterior.
       let falhouAlgumaConsulta = false;
       try {
-        // Pedidos para preparar — a regra de `painel_inicio`: status aberto
-        // e pagamento que não espera a cliente (onda F, F2).
-        const { count: ordersCount, error: ordersErr } = await supabase
-          .from("marketplace_orders")
-          .select("*", { count: "exact", head: true })
-          .in("status", STATUS_PEDIDOS_COM_ACAO_PENDENTE)
-          .or(FILTRO_POSTGREST_PARA_PREPARAR);
+        // As seis fontes são independentes: saem JUNTAS (no 3G a fila somava
+        // seis idas e voltas). Cada uma trata o próprio erro e só marca
+        // `falhouAlgumaConsulta`; uma que lança não apaga as outras.
+        const fontes: Array<() => Promise<void>> = [
+          // Pedidos para preparar — a regra de `painel_inicio`: status aberto
+          // e pagamento que não espera a cliente (onda F, F2).
+          async () => {
+            const { count: ordersCount, error: ordersErr } = await supabase
+              .from("marketplace_orders")
+              .select("*", { count: "exact", head: true })
+              .in("status", STATUS_PEDIDOS_COM_ACAO_PENDENTE)
+              .or(FILTRO_POSTGREST_PARA_PREPARAR);
 
-        if (ordersErr) {
-          falhouAlgumaConsulta = true;
-        } else if (ordersCount !== null && podeGravar()) {
-          setPendingOrdersCount(ordersCount);
-        }
-
-        // Fetch pending questions count
-        const { data: qData, error: qErr } = await (supabase.rpc as any)(
-          "get_admin_questions_paged",
-          {
-            p_search: "",
-            p_filter: "pending",
-            p_page: 0,
-            p_page_size: 1,
+            if (ordersErr) {
+              falhouAlgumaConsulta = true;
+            } else if (ordersCount !== null && podeGravar()) {
+              setPendingOrdersCount(ordersCount);
+            }
           },
+
+          // Fetch pending questions count
+          async () => {
+            const { data: qData, error: qErr } = await (supabase.rpc as any)(
+              "get_admin_questions_paged",
+              {
+                p_search: "",
+                p_filter: "pending",
+                p_page: 0,
+                p_page_size: 1,
+              },
+            );
+
+            if (qErr) {
+              falhouAlgumaConsulta = true;
+            } else if (qData && podeGravar()) {
+              setPendingQuestionsCount(qData.total_count || 0);
+            }
+          },
+
+          // Avaliação sem resposta também acende o sino: ela entra na lista
+          // da tela de Notificações e é trabalho parado esperando pelo
+          // lojista. `.is(null)` é o mesmo critério de `useAvisosDoLojista` —
+          // duas contagens diferentes para a mesma pergunta seria pior que
+          // nenhuma.
+          async () => {
+            const { count: reviewsCount, error: reviewsErr } = await supabase
+              .from("reviews")
+              .select("*", { count: "exact", head: true })
+              .is("merchant_reply", null);
+
+            if (reviewsErr) {
+              falhouAlgumaConsulta = true;
+            } else if (reviewsCount !== null && podeGravar()) {
+              setPendingReviewsCount(reviewsCount);
+            }
+          },
+
+          // Mesmo critério da lista em useAvisosDoLojista: só solicitada
+          // aguarda a resposta da loja. A contagem vem inteira, sem depender
+          // da página retornada. Resposta inválida também é falha da fonte.
+          async () => {
+            const { data: devolucoesData, error: devolucoesErr } =
+              await supabase.rpc("admin_devolucoes_listar", {
+                p_status: "solicitada",
+                p_limite: 1,
+              });
+            const devolucoes = lerListaAdmin(devolucoesData);
+            if (devolucoesErr || !devolucoes) {
+              falhouAlgumaConsulta = true;
+            } else if (podeGravar()) {
+              setDevolucoesSolicitadasCount(
+                contagemDe(devolucoes.contagem, "solicitada"),
+              );
+            }
+          },
+
+          // Mesmo critério da lista em useAvisosDoLojista: só `aberto` espera
+          // a loja. Resposta sem número (nem erro) é falha da fonte, nunca
+          // "zero": o prazo legal corre e a dúvida acende o sino como nas
+          // outras fontes.
+          async () => {
+            const { count: privacidadeCount, error: privacidadeErr } =
+              await supabase
+                .from("pedidos_de_privacidade")
+                .select("id", { count: "exact", head: true })
+                .eq("situacao", "aberto");
+            if (privacidadeErr || typeof privacidadeCount !== "number") {
+              falhouAlgumaConsulta = true;
+            } else if (podeGravar()) {
+              setPrivacidadeAbertosCount(privacidadeCount);
+            }
+          },
+
+          // Pedido entregue, pago na entrega, sem recebimento marcado
+          // (14/10): a cliente nao consegue pedir devolucao ate a lojista
+          // marcar, entao acende o sino. A MESMA regra da lista
+          // (`useAvisosDoLojista`), lida de `@/lib/recebimentos-por-marcar` —
+          // duas contagens diferentes para a mesma pergunta seria pior que
+          // nenhuma.
+          async () => {
+            const { count: recebimentosCount, error: recebimentosErr } =
+              await supabase
+                .from("marketplace_orders")
+                .select("*", { count: "exact", head: true })
+                .eq("status", "delivered")
+                .or(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA)
+                .is("payment_status", null)
+                .gte("updated_at", await inicioDaJanelaDoSino());
+
+            if (recebimentosErr) {
+              falhouAlgumaConsulta = true;
+            } else if (recebimentosCount !== null && podeGravar()) {
+              setRecebimentosPorMarcarCount(recebimentosCount);
+            }
+          },
+        ];
+
+        const resultados = await Promise.allSettled(
+          fontes.map((consultar) => consultar()),
         );
-
-        if (qErr) {
-          falhouAlgumaConsulta = true;
-        } else if (qData && podeGravar()) {
-          setPendingQuestionsCount(qData.total_count || 0);
-        }
-
-        // Avaliação sem resposta também acende o sino: ela entra na lista da
-        // tela de Notificações e é trabalho parado esperando pelo lojista.
-        // `.is(null)` é o mesmo critério de `useAvisosDoLojista` — duas
-        // contagens diferentes para a mesma pergunta seria pior que nenhuma.
-        const { count: reviewsCount, error: reviewsErr } = await supabase
-          .from("reviews")
-          .select("*", { count: "exact", head: true })
-          .is("merchant_reply", null);
-
-        if (reviewsErr) {
-          falhouAlgumaConsulta = true;
-        } else if (reviewsCount !== null && podeGravar()) {
-          setPendingReviewsCount(reviewsCount);
-        }
-
-        // Mesmo critério da lista em useAvisosDoLojista: só solicitada
-        // aguarda a resposta da loja. A contagem vem inteira, sem depender
-        // da página retornada. Resposta inválida também é falha da fonte.
-        const { data: devolucoesData, error: devolucoesErr } =
-          await supabase.rpc("admin_devolucoes_listar", {
-            p_status: "solicitada",
-            p_limite: 1,
-          });
-        const devolucoes = lerListaAdmin(devolucoesData);
-        if (devolucoesErr || !devolucoes) {
-          falhouAlgumaConsulta = true;
-        } else if (podeGravar()) {
-          setDevolucoesSolicitadasCount(
-            contagemDe(devolucoes.contagem, "solicitada"),
-          );
-        }
-
-        // Mesmo critério da lista em useAvisosDoLojista: só `aberto` espera a
-        // loja. Resposta sem número (nem erro) é falha da fonte, nunca "zero":
-        // o prazo legal corre e a dúvida acende o sino como nas outras fontes.
-        const { count: privacidadeCount, error: privacidadeErr } =
-          await supabase
-            .from("pedidos_de_privacidade")
-            .select("id", { count: "exact", head: true })
-            .eq("situacao", "aberto");
-        if (privacidadeErr || typeof privacidadeCount !== "number") {
-          falhouAlgumaConsulta = true;
-        } else if (podeGravar()) {
-          setPrivacidadeAbertosCount(privacidadeCount);
-        }
-
-        // Pedido entregue, pago na entrega, sem recebimento marcado (14/10):
-        // a cliente nao consegue pedir devolucao ate a lojista marcar, entao
-        // acende o sino. A MESMA regra da lista (`useAvisosDoLojista`), lida
-        // de `@/lib/recebimentos-por-marcar` — duas contagens diferentes para
-        // a mesma pergunta seria pior que nenhuma.
-        const { count: recebimentosCount, error: recebimentosErr } =
-          await supabase
-            .from("marketplace_orders")
-            .select("*", { count: "exact", head: true })
-            .eq("status", "delivered")
-            .or(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA)
-            .is("payment_status", null)
-            .gte("updated_at", await inicioDaJanelaDoSino());
-
-        if (recebimentosErr) {
-          falhouAlgumaConsulta = true;
-        } else if (recebimentosCount !== null && podeGravar()) {
-          setRecebimentosPorMarcarCount(recebimentosCount);
+        for (const resultado of resultados) {
+          if (resultado.status === "rejected") {
+            console.error(
+              "[AdminLayout] Error fetching initial counts:",
+              resultado.reason,
+            );
+            falhouAlgumaConsulta = true;
+          }
         }
       } catch (err) {
         console.error("[AdminLayout] Error fetching initial counts:", err);
