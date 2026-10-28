@@ -7480,6 +7480,55 @@ Deno.test("cartão — Achado S3 (W3): ADOÇÃO da vaga vazia também grava meto
   assertEquals(registro.chamadasUpdateMarketplaceOrders[0].valores.parcelas, 6);
 });
 
+// Caça 14-D (#5): o caso do DÉBITO. O teste acima só cobre crédito, então trocar
+// `=== "debit_card"` por `!==` (débito virando `null`) passava em toda a suíte: uma
+// venda no débito adotada depois de uma resposta perdida aparecia como PIX no
+// Financeiro e no comprovante. O dublê grava o UPDATE de verdade no `pedido`.
+Deno.test("cartão — Achado S3 (débito): ADOÇÃO da vaga vazia grava metodo_online='debito' (nunca PIX nem null) lido da order RECONSULTADA", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasLiberar: [], chamadasUpdateMarketplaceOrders: [] };
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 149.9,
+    total_amount: null,
+    gateway_payment_id: null,
+    metodo_online: null,
+    parcelas: null,
+  };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const ordemAprovada = {
+    id: ID_ORDER_CARTAO_MP,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "accredited",
+    total_amount: "149.90",
+    transactions: {
+      payments: [{
+        id: "PAY01DEBITO",
+        status: "processed",
+        status_detail: "accredited",
+        payment_method: { id: "debvisa", type: "debit_card", installments: 1 },
+      }],
+    },
+  };
+
+  const resposta = await handler(req, {
+    supabase,
+    fetchImpl: fetchConsulta(200, ordemAprovada),
+    enviarPush: async () => {},
+    enviarComprovante: async () => {},
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(pedido.gateway_payment_id, ID_ORDER_CARTAO_MP);
+  assertEquals(pedido.metodo_online, "debito");
+  assertEquals(pedido.parcelas, 1);
+  assertEquals(registro.chamadasUpdateMarketplaceOrders[0].valores.metodo_online, "debito");
+  assertEquals(registro.chamadasUpdateMarketplaceOrders[0].valores.parcelas, 1);
+});
+
 // Achado S5 (3ª revisão de risco, 26/09/2026, W4 do harness do 3º revisor):
 // a ADOÇÃO pode perder a corrida para OUTRA escrita (não a `confirmar_
 // pagamento` desta MESMA order — essa a RPC decide sozinha) — por exemplo,
