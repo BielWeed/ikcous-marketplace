@@ -281,7 +281,10 @@ function AppVersusLoja({ resumo }: { readonly resumo: ResumoFinanceiro }) {
   const pctApp = total > 0 ? (online / total) * 100 : 0;
   const pctLoja = total > 0 ? 100 - pctApp : 0;
   return (
-    <CartaoSecao titulo="App × loja física">
+    <CartaoSecao
+      titulo="Recebido: app × loja (antes de estornos)"
+      subtitulo="Dinheiro que entrou no período. Se foi devolvido, o estorno aparece à parte, como saída."
+    >
       {total <= 0 ? (
         <p className="text-xs text-zinc-400">
           Nenhuma venda recebida no período.
