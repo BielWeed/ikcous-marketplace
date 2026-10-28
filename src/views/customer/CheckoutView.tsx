@@ -374,9 +374,16 @@ const decidirSaidaDaTela = (error: unknown): RecusaDoPedido => {
   return classificarRecusaDoPedido(error);
 };
 
+/** Dinheiro do resumo e da barra: "R$ 1.299,90". Espaço comum depois do "R$" (o `formatCurrency` põe um espaço que não quebra linha). */
+const reais = (valor: number) => formatCurrency(valor).replace("\u00a0", " ");
+
 /** Sessão do Supabase vencida na hora de finalizar (caça 7): o pedido não sai como anônimo. */
 const MENSAGEM_SESSAO_EXPIRADA =
   "Sua sessão expirou. Entre de novo para finalizar o pedido.";
+
+/** A sessão não pôde ser conferida por falta de internet: o pedido não sai, mas a conta não caiu. */
+const MENSAGEM_SEM_CONEXAO_AO_FINALIZAR =
+  "Sem conexão agora. Seu carrinho está guardado; tente de novo em instantes.";
 
 /**
  * A frase de quem compra SEM CONTA quando não se sabe se o pedido chegou. É
@@ -959,6 +966,7 @@ export function CheckoutViewDaConta({
   const isOffline = useOnlineStatus();
   const {
     addresses,
+    erroAoCarregar: enderecosNaoCarregaram,
     fetchAddresses,
     addAddress,
     updateAddress,
@@ -4252,17 +4260,30 @@ export function CheckoutViewDaConta({
     // (ou demora além do prazo) = NÃO envia — "não sei" nunca vira "pode
     // enviar". Convidada não tem conta para conferir.
     if (contaEsperada) {
+      // O que falhou NÃO muda o destino (nada é enviado), só a frase: renovar
+      // o token sem internet, ou a conferência estourar o prazo, é falta de
+      // rede ("tente de novo", a conta segue logada); sessão ausente ou de
+      // outra pessoa é "entre de novo".
+      let semRede = false;
       const sessaoVale = await aguardarComPrazo(
-        sessaoAindaEhDoDono(contaEsperada),
+        sessaoAindaEhDoDono(contaEsperada, () => {
+          semRede = true;
+        }),
         PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
         () => new Error("A conferência da sessão demorou demais."),
-      ).catch(() => false);
+      ).catch(() => {
+        semRede = true;
+        return false;
+      });
       if (!sessaoVale) {
-        toast.error(MENSAGEM_SESSAO_EXPIRADA);
-        setRecusaDoUltimoClique({
-          acao: "entrar_na_conta",
-          mensagem: MENSAGEM_SESSAO_EXPIRADA,
-        });
+        const recusa: RecusaDoPedido = semRede
+          ? {
+              acao: "tentar_de_novo",
+              mensagem: MENSAGEM_SEM_CONEXAO_AO_FINALIZAR,
+            }
+          : { acao: "entrar_na_conta", mensagem: MENSAGEM_SESSAO_EXPIRADA };
+        toast.error(recusa.mensagem);
+        setRecusaDoUltimoClique(recusa);
         setIsSubmitting(false);
         travaDeEnvioRef.current.liberar();
         return;
@@ -5873,7 +5894,9 @@ export function CheckoutViewDaConta({
                 >
                   <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
                   <span className="min-w-0 flex-1">
-                    Cadastre um endereço de entrega
+                    {enderecosNaoCarregaram
+                      ? "Não carregamos seus endereços"
+                      : "Cadastre um endereço de entrega"}
                   </span>
                   <ChevronRight
                     aria-hidden="true"
@@ -6433,6 +6456,23 @@ export function CheckoutViewDaConta({
                       Sincronizando endereços...
                     </p>
                   </div>
+                ) : enderecosNaoCarregaram && addresses.length === 0 ? (
+                  // A leitura FALHOU: lista vazia aqui não prova que a conta
+                  // não tem endereço, e o "Nenhum endereço cadastrado" fazia
+                  // a cliente digitar tudo de novo (endereço em duplicata).
+                  <div
+                    role="alert"
+                    className="rounded-2xl border border-red-300 p-4 text-sm text-red-600 dark:text-red-400"
+                  >
+                    <p>Não conseguimos carregar seus endereços agora.</p>
+                    <button
+                      type="button"
+                      onClick={() => void fetchAddresses()}
+                      className="mt-3 min-h-11 rounded-xl border border-solid border-red-300 bg-background px-4 font-semibold hover:bg-muted"
+                    >
+                      Tentar de novo
+                    </button>
+                  </div>
                 ) : (
                   <AddressList
                     addresses={addresses}
@@ -6912,8 +6952,7 @@ export function CheckoutViewDaConta({
                               )}
                             </div>
                             <span className="shrink-0 text-xs font-semibold text-zinc-600">
-                              {item.quantity} × R${" "}
-                              {precoUnitario.toFixed(2).replace(".", ",")}
+                              {item.quantity} × {reais(precoUnitario)}
                             </span>
                           </li>
                         );
@@ -6929,7 +6968,7 @@ export function CheckoutViewDaConta({
                     <div className="sticky bottom-0 -mx-4 mt-3 space-y-1.5 border-t border-zinc-100 bg-white px-4 py-3 text-xs">
                       <div className="flex items-center justify-between text-zinc-500">
                         <span>Subtotal</span>
-                        <span>R$ {subtotal.toFixed(2).replace(".", ",")}</span>
+                        <span>{reais(subtotal)}</span>
                       </div>
                       <div className="flex items-center justify-between text-zinc-500">
                         <span>Entrega</span>
@@ -6951,15 +6990,12 @@ export function CheckoutViewDaConta({
                             // PRÓPRIA opção, nunca recalculada aqui) + final.
                             <>
                               <span className="mr-1 text-zinc-300 line-through">
-                                R${" "}
-                                {(shipping + economiaDoFrete)
-                                  .toFixed(2)
-                                  .replace(".", ",")}
+                                {reais(shipping + economiaDoFrete)}
                               </span>
-                              R$ {shipping.toFixed(2).replace(".", ",")}
+                              {reais(shipping)}
                             </>
                           ) : shipping > 0 ? (
-                            `R$ ${shipping.toFixed(2).replace(".", ",")}`
+                            reais(shipping)
                           ) : economiaDoFrete > 0 ? (
                             // Frete grátis COM economia conhecida (pedido do
                             // Gabriel, 12/09/2026): mostra o valor riscado
@@ -6967,8 +7003,7 @@ export function CheckoutViewDaConta({
                             // Total não muda (o frete grátis já entra como 0).
                             <>
                               <span className="mr-1 text-zinc-300 line-through">
-                                R${" "}
-                                {economiaDoFrete.toFixed(2).replace(".", ",")}
+                                {reais(economiaDoFrete)}
                               </span>
                               Grátis
                             </>
@@ -6982,9 +7017,7 @@ export function CheckoutViewDaConta({
                       {discount > 0 && (
                         <div className="flex items-center justify-between text-red-500">
                           <span>Desconto</span>
-                          <span>
-                            -R$ {discount.toFixed(2).replace(".", ",")}
-                          </span>
+                          <span>-{reais(discount)}</span>
                         </div>
                       )}
                       <div className="flex items-center justify-between pt-1 text-sm font-black text-zinc-900">
@@ -6995,7 +7028,7 @@ export function CheckoutViewDaConta({
                               fechado. */}
                           {totalExibido === null
                             ? "a calcular"
-                            : `R$ ${totalExibido.toFixed(2).replace(".", ",")}`}
+                            : reais(totalExibido)}
                         </span>
                       </div>
                     </div>
@@ -7061,9 +7094,7 @@ export function CheckoutViewDaConta({
                         <div>
                           <div>
                             <span>Subtotal</span>
-                            <span>
-                              R$ {subtotal.toFixed(2).replace(".", ",")}
-                            </span>
+                            <span>{reais(subtotal)}</span>
                           </div>
                           <div className="checkout-delivery">
                             <span>Entrega</span>
@@ -7091,16 +7122,13 @@ export function CheckoutViewDaConta({
                                     <>
                                       <span className="sr-only">de </span>
                                       <span className="mr-1 text-zinc-500 line-through">
-                                        R${" "}
-                                        {(shipping + economiaDoFrete)
-                                          .toFixed(2)
-                                          .replace(".", ",")}
+                                        {reais(shipping + economiaDoFrete)}
                                       </span>
                                       <span className="sr-only">por </span>
                                     </>
                                   )}
                                   {shipping > 0
-                                    ? `R$ ${shipping.toFixed(2).replace(".", ",")}`
+                                    ? reais(shipping)
                                     : ehRetirada
                                       ? "Retirada na loja"
                                       : "Grátis"}
@@ -7113,9 +7141,9 @@ export function CheckoutViewDaConta({
                               <span>Desconto</span>
                               <span
                                 className="text-emerald-700"
-                                aria-label={`Desconto de R$ ${discount.toFixed(2).replace(".", ",")}`}
+                                aria-label={`Desconto de ${reais(discount)}`}
                               >
-                                -R$ {discount.toFixed(2).replace(".", ",")}
+                                -{reais(discount)}
                               </span>
                             </div>
                           )}
@@ -7135,7 +7163,7 @@ export function CheckoutViewDaConta({
                             ) : totalExibido === null ? (
                               "a calcular"
                             ) : (
-                              `R$ ${totalExibido.toFixed(2).replace(".", ",")}`
+                              reais(totalExibido)
                             )}
                           </p>
                         </div>
