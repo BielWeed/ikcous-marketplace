@@ -14,6 +14,7 @@ import { escalasEnxutasDoGrafico } from "./scripts/escalasEnxutasDoGrafico";
 import { graficoEnxuto } from "./scripts/graficoEnxuto";
 import { helpersCompartilhadosDoGrafico } from "./scripts/helpersCompartilhadosDoGrafico";
 import { portaoDividido } from "./scripts/portaoDividido";
+import { precacheSemPainel } from "./scripts/precacheSemPainel";
 import { MANIFESTO_BASE } from "./src/config/manifestoBase";
 // Endereço público de CADA loja — MESMO corpo de `resolverEnderecoPublico`
 // em middleware.ts (docstring completa lá). Duplicado, não importado: um
@@ -55,6 +56,7 @@ export default defineConfig(async (context): Promise<UserConfig> => {
   const { createIdentityBuildConfig } = await import(
     "./scripts/identityBuildConfig"
   );
+  const semPainel = precacheSemPainel();
   const pwaOptions: Partial<VitePWAOptions> = {
     strategies: "injectManifest",
     srcDir: "src/sw",
@@ -70,9 +72,10 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       icons: [],
     },
     injectManifest: {
-      // wasm: o binário do leitor de código de barras do balcão (C2) —
-      // precisa estar disponível offline, senão o balcão para de ler.
-      globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,woff2,wasm}"],
+      // Sem `wasm`: o único .wasm do app é o leitor de código de barras do
+      // balcão, o maior arquivo do precache, e é do painel. O Balcão não
+      // precisa funcionar sem internet (dono, 28/10/2026): o painel vai pela rede.
+      globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,woff2}"],
       // Identity resources are added explicitly by role, including JPEG.
       // Originals and OG stay available but are not downloaded at installation.
       globIgnores: [
@@ -83,6 +86,10 @@ export default defineConfig(async (context): Promise<UserConfig> => {
         "assets/ImageAdjuster-*.js",
         "assets/PhoneSimulator-*.js",
       ],
+      // O resto do painel (JS, CSS, leitor) sai do precache pelo MESMO critério
+      // do portão de tamanho: o grafo real do Rollup, não uma lista de nomes.
+      // Ver scripts/precacheSemPainel.ts. O plugin vem junto do portão, abaixo.
+      manifestTransforms: [semPainel.tirarOPainel],
       maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
     },
     devOptions: {
@@ -116,11 +123,11 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       ["src/lib/uploadIdentityImage.ts", "AdminIdentityUpload"],
       ["node_modules/tus-js-client/lib/browser/index.js", "AdminIdentityTus"],
       ["node_modules/image-dimensions/index.js", "AdminIdentityDimensions"],
-      // A tela do balcão precisa estar no precache (vender offline é o
-      // ponto): com o nome padrão ela nasceria `assets/AdminPdvView-<hash>.js`
-      // e cairia na exclusão `assets/Admin*.js` do globIgnores do
-      // injectManifest. Se o lote C3 mudar o caminho do arquivo, mude aqui
-      // junto — o Map casa por caminho absoluto.
+      // Nome histórico do chunk do balcão, mantido para não mexer em hash e
+      // relatórios à toa. Já NÃO é requisito do precache: o balcão é do painel e
+      // vai pela rede, não pelo service worker (o Balcão não precisa funcionar
+      // sem internet — dono, 28/10/2026). Se o caminho do arquivo mudar, mude
+      // aqui junto — o Map casa por caminho absoluto.
       ["src/views/admin/AdminPdvView.tsx", "PdvBalcao"],
     ].map(([file, name]) => [
       path.resolve(root, file).replace(/\\/g, "/"),
@@ -173,7 +180,13 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       // `apply: "build"` deixa a intenção explícita, no mesmo espírito do
       // `isDev`/`ANALYZE` acima).
       ...(command === "build"
-        ? [portaoDividido({ root, outDir: identity.outDir })]
+        ? [
+            portaoDividido({ root, outDir: identity.outDir }),
+            // Mesma classificação, usada para tirar o painel do precache do
+            // service worker (manifestTransforms acima). Roda no generateBundle,
+            // antes de o PWA montar o manifesto no closeBundle.
+            semPainel.plugin,
+          ]
         : []),
     ],
     resolve: {
@@ -217,9 +230,9 @@ export default defineConfig(async (context): Promise<UserConfig> => {
           // Busca 45,9 -> 46,1, Produto 67,0 -> 67,0, Carrinho 69,6 -> 69,1,
           // Checkout 82,5 -> 81,9. NÃO subir para 2000: a entrega cai mais
           // 1,1 kB, mas Home/Busca/Favoritos passam a baixar ~10 kB a mais
-          // (vendor-date e telas vizinhas penduradas nelas). De brinde, o
-          // PdvBalcao deixou de importar estaticamente um `Admin*.js`, que o
-          // globIgnores `assets/Admin*.js` tira do precache (balcão offline).
+          // (vendor-date e telas vizinhas penduradas nelas). (Na época, de
+          // brinde, o PdvBalcao deixou de importar um `Admin*.js` que o
+          // globIgnores tirava do precache; hoje o painel todo fica fora dele.)
           experimentalMinChunkSize: 1000,
           chunkFileNames(chunk) {
             const id = chunk.facadeModuleId?.replace(/\\/g, "/");
@@ -255,8 +268,8 @@ export default defineConfig(async (context): Promise<UserConfig> => {
             }
             // Peças pequenas compartilham imports, minificação e dicionário
             // Brotli. Lista fechada: não absorver telas ou dependências novas
-            // por uma regra genérica de diretório. O nome sem Admin* mantém
-            // esta dependência estática do PDV no precache existente.
+            // por uma regra genérica de diretório. (O nome sem Admin* era para
+            // manter esta peça do PDV no precache; hoje o painel todo fica fora.)
             // 20/10/2026: AcaoDaBarra, erro-do-painel e variante-composta eram
             // chunks de ~0,5 kB cada, citados pelo hash por 2 a 9 chunks e nas
             // listas de pré-carga: o hash não comprime. Juntos no painel-ui,
@@ -296,11 +309,10 @@ export default defineConfig(async (context): Promise<UserConfig> => {
             }
             if (id.includes("node_modules")) {
               if (normalizedId.includes("zxing-wasm")) {
-                // O leitor do balcão: chunk com nome PRÓPRIO para (1) entrar
-                // no precache (a exclusão de vite.config.ts é
-                // `assets/Admin*.js`) e (2) ser um arquivo previsível no
-                // `npm run size`. Continua preguiçoso: só o import() do
-                // fallback (C2.5) o referencia.
+                // O leitor do balcão: chunk com nome PRÓPRIO para ser um arquivo
+                // previsível no `npm run size`. Fica FORA do precache (é do
+                // painel; ver scripts/precacheSemPainel.ts). Continua
+                // preguiçoso: só o import() do fallback (C2.5) o referencia.
                 return "leitor-zxing";
               }
               if (

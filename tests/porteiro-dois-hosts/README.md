@@ -39,6 +39,16 @@ só no job `build`.
 | `loja-trocada.localhost` | (a) caderneta dublada, hit — de PROPÓSITO ERRADO | Negativo central: a caderneta devolve o banco de B para este host; `decidirConcordancia` recusa (503 `discorda`), e o corpo não carrega nenhum byte da ficha de B |
 | `loja-desconhecida.localhost` | nenhum dos dois tem banco | Negativo: 503 `sem-loja` |
 
+## Outro ensaio da mesma pasta: o precache não leva o painel
+
+`precache-sem-painel.test.ts` (lote 252, 28/10/2026) não tem a ver com o
+porteiro: mora aqui porque também precisa do `dist-test/` e porque esta pasta
+já é a que o job `build` do CI roda DEPOIS do build e que o Deno ignora. Ele lê o
+`dist-test/sw.js` (o manifesto do Workbox) e o `.portao-tamanho/dist-test.json`
+(a classificação cliente/painel do portão de tamanho) e reprova se qualquer peça
+do painel — inclusive uma NOVA, com nome comum — entrar no precache do service
+worker, ou se algum arquivo da loja sair dele. Sem build, FALHA.
+
 ## O que este ensaio NÃO prova (fora do escopo desta tarefa)
 
 - **Nada de rede real, banco real, nem Vercel real.** `globalThis.fetch` é
