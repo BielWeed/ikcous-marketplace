@@ -57,7 +57,9 @@ o conjunto cobre, exatamente:
 - **Fechamento dos imports, sem depender do classificador:** lendo o JS gerado,
   tudo que um JS do manifesto importa estaticamente, ou pré-carrega
   (`__vite__mapDeps`, que inclui o CSS e os JS da rota) ao importar uma tela da
-  loja, está no manifesto. Só ficam de fora, por lista explícita no teste, os
+  loja, está no manifesto — inclusive a Home, que vem escrita como
+  `import(...).then(...),__vite__mapDeps(...)`; pré-carga que existe e não dá
+  para ler REPROVA em vez de ser pulada. Só ficam de fora, por lista explícita no teste, os
   `import()` das rotas do painel (`AdminArea`, `AdminLoginView`, `Admin*View`,
   `PdvBalcao`); qualquer outro alvo fora do manifesto reprova.
 

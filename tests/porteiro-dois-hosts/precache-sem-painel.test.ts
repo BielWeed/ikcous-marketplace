@@ -154,6 +154,9 @@ const IMPORT_DINAMICO_FORA_DE_PROPOSITO = [
   /^assets\/PdvBalcao-[\w-]+\.js$/,
 ];
 
+/** Quantos caracteres depois de um `import()` se procura o `__vite__mapDeps`. */
+const JANELA_DA_PRE_CARGA = 60;
+
 interface ResultadoDoFechamento {
   violacoes: string[];
   examinados: { estaticos: number; dinamicos: number; preCargas: number };
@@ -197,15 +200,34 @@ function fechamentoDosImports(
           );
         continue;
       }
-      const preCarga = texto
-        .slice(m.index + m[0].length)
-        .match(/^,__vite__mapDeps\(\[([0-9,]*)\]/);
-      if (!preCarga) continue;
-      if (!arquivos) {
-        violacoes.push(`${url} usa __vite__mapDeps mas a lista não foi lida`);
+      // A lista de pré-carga vem logo depois do import(), com um `.then(...)`
+      // opcional no meio (a Home: `import("./HomeView-x.js").then(e=>e.H),
+      // __vite__mapDeps([...])`). Avança por texto, sem regex com repetição.
+      const fimDoImport = (m.index ?? 0) + m[0].length;
+      const janela = texto.slice(
+        fimDoImport,
+        fimDoImport + JANELA_DA_PRE_CARGA,
+      );
+      const marca = janela.indexOf("__vite__mapDeps(");
+      const proximoImport = janela.indexOf("import(");
+      // Sem `__vite__mapDeps` por perto (ou só o do import() seguinte): este
+      // import não pré-carrega nada.
+      if (marca === -1 || (proximoImport !== -1 && proximoImport < marca))
+        continue;
+      // A janela só serve para ACHAR a marca; a lista é lida do texto inteiro.
+      const abre = texto.indexOf("([", fimDoImport + marca);
+      const fecha = texto.indexOf("]", abre);
+      const indices =
+        abre === -1 || fecha === -1 ? undefined : texto.slice(abre + 2, fecha);
+      // Pré-carga que existe e não dá para ler REPROVA: pular em silêncio
+      // deixaria o CSS da rota sem conferência.
+      if (indices === undefined || !/^[0-9,]*$/.test(indices) || !arquivos) {
+        violacoes.push(
+          `${url}: pré-carga de ${alvo} presente mas ilegível (${janela.slice(marca, marca + 40)})`,
+        );
         continue;
       }
-      for (const indice of preCarga[1].split(",").filter(Boolean).map(Number)) {
+      for (const indice of indices.split(",").filter(Boolean).map(Number)) {
         examinados.preCargas++;
         const dep = arquivos.at(indice);
         if (dep === undefined || !manifestoDoBuild.has(dep))
@@ -278,6 +300,52 @@ describe("fechamento dos imports do precache (sem depender do classificador)", (
     expect(violacoes).toEqual([
       expect.stringContaining(`importa assets/${balcao}`),
     ]);
+  });
+
+  it("a conferência tem dente: pré-carga escrita como import().then(...),__vite__mapDeps é lida (o CSS da Home)", () => {
+    // No build real a Home vem como
+    // `import("./HomeView-x.js").then(e=>e.H),__vite__mapDeps([15,1,16,…])`:
+    // um `.then` entre o import e a lista. Uma leitura que exigisse a vírgula
+    // colada no `)` pularia a Home em silêncio.
+    const indice = manifesto.find((url) =>
+      /^assets\/index-[\w-]+\.js$/.test(url),
+    );
+    const texto = lerDoBuild(indice ?? "");
+    const inicio = texto.search(/import\("\.\/HomeView-[\w-]+\.js"\)\.then/);
+    expect(inicio).toBeGreaterThan(-1);
+    const trecho = texto.slice(inicio, inicio + 400);
+    const lista = (texto.match(/\.f=\[("assets\/[^\]]*)\]/)?.[1] ?? "")
+      .split(",")
+      .map((item) => item.replaceAll('"', ""));
+    const indices = (trecho.match(/__vite__mapDeps\(\[([0-9,]*)\]/)?.[1] ?? "")
+      .split(",")
+      .map(Number);
+    const cssDaHome = indices
+      .map((i) => lista.at(i))
+      .find((a) => a?.endsWith(".css"));
+    expect(cssDaHome).toBeDefined();
+    const semEle = new Set(noManifesto);
+    semEle.delete(cssDaHome ?? "");
+    const { violacoes } = fechamentoDosImports(semEle, lerDoBuild);
+    expect(
+      violacoes.some(
+        (v) =>
+          v.startsWith(`${indice}:`) &&
+          v.includes("ao importar assets/HomeView-") &&
+          v.includes(`${cssDaHome}`),
+      ),
+    ).toBe(true);
+  });
+
+  it("pré-carga que existe mas não dá para ler REPROVA, não é pulada", () => {
+    const real = manifesto.find((url) => /^assets\/vendor-inicio-/.test(url));
+    expect(real).toBeDefined();
+    const { violacoes } = fechamentoDosImports(noManifesto, (url) =>
+      /^assets\/HomeView-/.test(url)
+        ? `${lerDoBuild(url)};import("./${real?.replace("assets/", "")}").then(e=>e),__vite__mapDeps([x]);`
+        : lerDoBuild(url),
+    );
+    expect(violacoes).toEqual([expect.stringContaining("ilegível")]);
   });
 
   it("import dinâmico novo para fora do manifesto e fora das exceções é reprovado", () => {
