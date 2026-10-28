@@ -215,6 +215,7 @@ function montarTelaDePedidos(aba: Aba) {
     raiz,
     avisos,
     ids: () => (ultimo?.orders ?? []).map((o) => o.id),
+    statusDe: (id: string) => ultimo?.orders.find((o) => o.id === id)?.status,
   };
 }
 
@@ -236,15 +237,20 @@ async function tornarLider(aba: Aba) {
 
 /** O banco avisa: pedido novo na tabela, entregue a cada canal VIVO. */
 async function inserirPedidoNoBanco(
-  opcoes: { id?: string; tipo?: "INSERT" | "UPDATE"; instante?: string } = {},
+  opcoes: {
+    id?: string;
+    tipo?: "INSERT" | "UPDATE";
+    instante?: string;
+    novo?: Record<string, unknown>;
+  } = {},
 ) {
-  const { id = "pedido-novo-0001", tipo = "INSERT", instante } = opcoes;
+  const { id = "pedido-novo-0001", tipo = "INSERT", instante, novo } = opcoes;
   // O Supabase carimba cada evento com o instante do commit: é o que distingue
   // "o mesmo evento chegando por dois caminhos" de "dois eventos de verdade".
   const payload = {
     eventType: tipo,
     commit_timestamp: instante ?? `2026-10-28T12:00:00.000Z#${id}#${tipo}`,
-    new: tipo === "INSERT" ? { id } : { id, status: "processing" },
+    new: novo ?? (tipo === "INSERT" ? { id } : { id, status: "processing" }),
     old: tipo === "INSERT" ? {} : { id },
   };
   await act(async () => {
@@ -330,6 +336,46 @@ describe("painel numa segunda aba — pedido novo ao vivo", () => {
     expect(tela.ids()).toEqual(
       expect.arrayContaining(["pedido-A", "pedido-B"]),
     );
+  });
+
+  it("CONTROLE: dois UPDATEs do MESMO pedido na MESMA transação (mesmo commit_timestamp, conteúdo diferente) — a seguidora processa os dois", async () => {
+    // confirmar_pagamento('recusado') e concluir_estorno fazem 2+ UPDATEs do
+    // mesmo pedido numa transação só: o commit_timestamp é o da transação,
+    // igual para todos. O que os distingue é o conteúdo da linha.
+    const lojaAba = await novaAba("loja");
+    await tornarLider(lojaAba);
+    const telaDoLider = montarTelaDePedidos(lojaAba);
+    await avancar(200);
+
+    const painelAba = await novaAba("painel");
+    const tela = montarTelaDePedidos(painelAba);
+    await avancar(1600);
+    expect(estado().canais).toHaveLength(1); // o repasse é o único caminho
+
+    const mesmaTransacao = "2026-10-28T13:00:00.000Z";
+    await inserirPedidoNoBanco({ id: "pedido-A" });
+    await inserirPedidoNoBanco({
+      id: "pedido-A",
+      tipo: "UPDATE",
+      instante: mesmaTransacao,
+      novo: { id: "pedido-A", status: "pending", payment_status: "aguardando" },
+    });
+    await inserirPedidoNoBanco({
+      id: "pedido-A",
+      tipo: "UPDATE",
+      instante: mesmaTransacao,
+      novo: { id: "pedido-A", status: "cancelled", payment_status: "recusado" },
+    });
+
+    // A líder (recebe direto do soquete) e a seguidora (pelo repasse) acabam
+    // no mesmo estado final.
+    expect(telaDoLider.statusDe("pedido-A")).toBe("cancelled");
+    expect(tela.statusDe("pedido-A")).toBe("cancelled");
+    expect(tela.avisos.map((a) => a.eventType)).toEqual([
+      "INSERT",
+      "UPDATE",
+      "UPDATE",
+    ]);
   });
 
   it("CONTROLE: o mesmo pedido com um UPDATE depois (instante diferente) continua sendo processado", async () => {

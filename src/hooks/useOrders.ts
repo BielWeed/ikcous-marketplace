@@ -3009,13 +3009,17 @@ export function useOrders(
         processarMensagemBroadcast(event.data, channelId, ligado, {
           onEvent: (payload) => {
             temServidor = true;
-            // Chave do evento: tipo + pedido + instante do commit. Sem
-            // `commit_timestamp` não há como distinguir, então não deduplica.
+            // Chave do evento: tipo + pedido + instante do commit + CONTEÚDO
+            // da linha. O instante é o da TRANSAÇÃO, igual para todas as
+            // mudanças dela (ex.: recusar um pagamento faz 2 UPDATEs do mesmo
+            // pedido) — só o conteúdo as distingue. O mesmo evento por dois
+            // soquetes chega com payload idêntico, então continua descartado.
+            // Sem `commit_timestamp` não há como distinguir: não deduplica.
             const instante = (payload as any)?.commit_timestamp;
             const idDoPedido =
               (payload as any)?.new?.id ?? (payload as any)?.old?.id;
             if (instante && idDoPedido) {
-              const chave = `${(payload as any).eventType}:${idDoPedido}:${instante}`;
+              const chave = `${(payload as any).eventType}:${idDoPedido}:${instante}:${JSON.stringify((payload as any).new)}:${JSON.stringify((payload as any).old)}`;
               const agora = Date.now();
               if (repassesJaVistos.has(chave)) return;
               for (const [k, quando] of repassesJaVistos) {
