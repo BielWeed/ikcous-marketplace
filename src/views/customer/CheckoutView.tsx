@@ -97,6 +97,7 @@ import {
   primeiraFormaDePagamentoDisponivel,
   retiradaLivreParaQualquerCep,
 } from "@/lib/guarda-de-frete";
+import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
@@ -598,6 +599,12 @@ const DESTINO_POR_ACAO = new Map(
 // última vira "+N" (pedido do Gabriel, D1 refinado, 12/09/2026).
 const MAX_MINIATURAS_DO_GATILHO = 3;
 
+/** Foto do resumo é um quadradinho de 24-48 px: o Storage manda a miniatura em vez do original. */
+const miniaturaDoResumo = (foto: string | undefined, largura: number) =>
+  foto
+    ? imagemRedimensionada(foto, { width: largura, quality: 70 })
+    : undefined;
+
 /** Loja sem CEP de origem: quem resolve é a loja. Uma frase só, usada na seção
  * de entrega e na região `status` da barra. */
 const FRASE_LOJA_SEM_FRETE =
@@ -692,7 +699,12 @@ function GatilhoDoResumoDoPedido({
               )}
             >
               {foto && (
-                <img src={foto} alt="" className="size-full object-cover" />
+                <img
+                  src={miniaturaDoResumo(foto, 96)}
+                  onError={(e) => usarImagemOriginal(e.currentTarget, foto)}
+                  alt=""
+                  className="size-full object-cover"
+                />
               )}
             </span>
           );
@@ -6353,7 +6365,9 @@ export function CheckoutViewDaConta({
                       autoComplete="address-level1"
                       maxLength={2}
                       placeholder={
-                        config.shippingCoverage === "national" ? "UF" : "MG"
+                        (config.shippingCoverage !== "national" &&
+                          config.storeState?.trim().toUpperCase()) ||
+                        "UF"
                       }
                       aria-invalid={
                         form.formState.errors.state ? true : undefined
@@ -6874,7 +6888,16 @@ export function CheckoutViewDaConta({
                             className="flex items-center gap-3"
                           >
                             <img
-                              src={item.product.images?.[0]}
+                              src={miniaturaDoResumo(
+                                item.product.images?.[0],
+                                144,
+                              )}
+                              onError={(e) =>
+                                usarImagemOriginal(
+                                  e.currentTarget,
+                                  item.product.images?.[0],
+                                )
+                              }
                               alt=""
                               className="size-12 shrink-0 rounded-xl border border-zinc-100 bg-zinc-50 object-cover"
                             />

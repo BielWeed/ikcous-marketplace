@@ -14,9 +14,11 @@ import type { ResultadoDaAnulacao } from "@/hooks/useAnularVendaDoBalcao";
 import type {
   AcaoDaVenda,
   ClienteDaVenda,
+  PecaDaDiferenca,
   ReciboDaVendaRegistrada,
 } from "@/hooks/useVendaPresencial";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
+import { gerarUuidV4 } from "@/lib/uuid-v4";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order } from "@/types";
 import {
@@ -31,7 +33,7 @@ import {
   RefreshCcw,
   UserRound,
 } from "lucide-react";
-import { type ReactElement, useState } from "react";
+import { type ReactElement, useEffect, useRef, useState } from "react";
 import "./pdv.css";
 
 export interface PropsDoReciboDaVenda {
@@ -108,15 +110,52 @@ function resumo(total: number, unidades: number, forma: string): string {
   return `R$ ${reais(total)} · ${unidades} un. · ${forma}`;
 }
 
+function pecas(quantidade: number): string {
+  return quantidade === 1 ? "1 peça" : `${quantidade} peças`;
+}
+
+/** "Camiseta M" ou, com mais de uma, "2 × Camiseta M". */
+function descreverPecas(lista: readonly PecaDaDiferenca[]): string {
+  return lista
+    .map(
+      (p) =>
+        `${p.quantidade > 1 ? `${p.quantidade} × ` : ""}${p.nome}${
+          p.variacao ? ` ${p.variacao}` : ""
+        }`,
+    )
+    .join(", ");
+}
+
+function totalDePecas(lista: readonly PecaDaDiferenca[]): number {
+  return lista.reduce((n, p) => n + p.quantidade, 0);
+}
+
 export function ReciboDaVenda({
   recibo,
+  despachar,
   limparCupom,
   storeName,
   aoAnular,
 }: PropsDoReciboDaVenda): ReactElement {
   // Depois de anular, este recibo deixa de ser comprovante de compra: nada de
   // mandar "sua compra" por WhatsApp nem de imprimir o papel da venda.
-  const [anulada, setAnulada] = useState(false);
+  // Quem sabe se a venda foi anulada é a máquina (`recibo.anulada`), não esta tela.
+  const anulada = recibo.anulada === true;
+  // "Nova venda" apaga o cupom que estava na tela; depois de uma divergência
+  // isso só acontece com a lojista sabendo (a pergunta abaixo).
+  const [confirmandoNovaVenda, setConfirmandoNovaVenda] = useState(false);
+  const voltarDaNovaVendaRef = useRef<HTMLButtonElement>(null);
+  const novaVendaRef = useRef<HTMLButtonElement>(null);
+  const devolverFocoNovaVenda = useRef(false);
+  useEffect(() => {
+    if (confirmandoNovaVenda) {
+      voltarDaNovaVendaRef.current?.focus();
+    } else if (devolverFocoNovaVenda.current) {
+      devolverFocoNovaVenda.current = false;
+      novaVendaRef.current?.focus();
+    }
+  }, [confirmandoNovaVenda]);
+  const divergencia = recibo.divergenciaComATela;
   const whatsapp = whatsappDoCliente(recibo.cliente);
   const linkWhatsapp = linkWhatsappDoCliente(whatsapp);
 
@@ -152,7 +191,7 @@ export function ReciboDaVenda({
             </p>
           </div>
         </div>
-        {recibo.divergenciaComATela && (
+        {divergencia && !anulada && (
           <div role="alert" className="pdv-notice pdv-notice-red">
             <p className="pdv-heading pdv-red font-bold">
               <AlertTriangle aria-hidden="true" className="pdv-icon" />
@@ -169,13 +208,32 @@ export function ReciboDaVenda({
             <p>
               A tela mostrava:{" "}
               {resumo(
-                recibo.divergenciaComATela.totalDaTela,
-                recibo.divergenciaComATela.unidadesDaTela,
-                ROTULO_DO_PAGAMENTO[recibo.divergenciaComATela.pagamentoDaTela],
+                divergencia.totalDaTela,
+                divergencia.unidadesDaTela,
+                ROTULO_DO_PAGAMENTO[divergencia.pagamentoDaTela],
               )}
             </p>
+            {divergencia.aMaisNaTela && (
+              <p>
+                No cupom da tela há{" "}
+                {pecas(totalDePecas(divergencia.aMaisNaTela))} a mais:{" "}
+                {descreverPecas(divergencia.aMaisNaTela)}.
+              </p>
+            )}
+            {divergencia.aMenosNaTela && (
+              <p>
+                A venda gravada tem{" "}
+                {pecas(totalDePecas(divergencia.aMenosNaTela))} a mais do que a
+                tela: {descreverPecas(divergencia.aMenosNaTela)}.
+              </p>
+            )}
             <p className="font-bold">Anule esta venda e registre de novo.</p>
           </div>
+        )}
+        {divergencia && anulada && (
+          <p role="status" className="pdv-notice font-bold">
+            Venda anulada. Registre a venda certa.
+          </p>
         )}
         {recibo.jaExistia && (
           <p role="status" className="pdv-muted flex items-start gap-2">
@@ -289,13 +347,81 @@ export function ReciboDaVenda({
           forma={recibo.pagamento}
           clienteComConta={recibo.cliente.tipo === "cadastrado"}
           aoAnular={aoAnular}
-          aoConcluir={() => setAnulada(true)}
+          aoConcluir={(resultado) =>
+            despachar({ tipo: "recibo_anulado", orderId: resultado.orderId })
+          }
         />
       )}
-      <Button type="button" className="pdv-primary" onClick={limparCupom}>
-        <Plus aria-hidden="true" className="size-5" />
-        Nova venda
-      </Button>
+      {divergencia && anulada && (
+        <div className="pdv-stack">
+          <Button
+            type="button"
+            variant="outline"
+            className="pdv-secondary border-solid"
+            onClick={() =>
+              despachar({
+                tipo: "cupom_refeito_com_a_tela",
+                novaChave: gerarUuidV4(),
+              })
+            }
+          >
+            <RefreshCcw aria-hidden="true" className="pdv-blue size-5" />
+            Registrar de novo com os itens da tela
+          </Button>
+          <p className="pdv-muted text-center">
+            Volta ao cupom com as {pecas(divergencia.unidadesDaTela)} que
+            estavam na tela.
+          </p>
+        </div>
+      )}
+      {confirmandoNovaVenda ? (
+        <div role="group" aria-label="Nova venda" className="pdv-notice">
+          <p className="text-xl font-bold">
+            O cupom que estava na tela
+            {divergencia ? ` (${pecas(divergencia.unidadesDaTela)})` : ""} será
+            perdido.
+          </p>
+          <p className="pdv-muted">
+            Para registrar esses itens de novo, volte
+            {anulada
+              ? " e use “Registrar de novo com os itens da tela”."
+              : " e anule esta venda antes."}
+          </p>
+          <div className="pdv-annul-actions">
+            <Button
+              ref={voltarDaNovaVendaRef}
+              type="button"
+              variant="outline"
+              className="pdv-secondary border-solid"
+              onClick={() => {
+                devolverFocoNovaVenda.current = true;
+                setConfirmandoNovaVenda(false);
+              }}
+            >
+              Voltar
+            </Button>
+            <Button
+              type="button"
+              className="pdv-danger border-solid"
+              onClick={limparCupom}
+            >
+              Sim, nova venda
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button
+          ref={novaVendaRef}
+          type="button"
+          className="pdv-primary"
+          onClick={() =>
+            divergencia ? setConfirmandoNovaVenda(true) : limparCupom()
+          }
+        >
+          <Plus aria-hidden="true" className="size-5" />
+          Nova venda
+        </Button>
+      )}
       <OrderReceipt
         order={construirOrderParaImpressao(recibo)}
         storeName={storeName}

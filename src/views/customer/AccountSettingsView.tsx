@@ -573,7 +573,7 @@ export function AccountSettingsView() {
       if (digitosWhatsapp.length > 0 && !validarWhatsApp(profileData.phone)) {
         toast.error("WhatsApp inválido", {
           description:
-            "Informe DDD + número, com 10 ou 11 dígitos — por exemplo (34) 3333-4444 ou (34) 99999-8888.",
+            "Informe DDD + número, com 10 ou 11 dígitos — por exemplo (DDD) 3333-4444 ou (DDD) 99999-8888.",
         });
         return;
       }

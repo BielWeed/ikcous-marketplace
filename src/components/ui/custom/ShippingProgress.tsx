@@ -1,3 +1,5 @@
+import { usarImagemOriginal } from "@/lib/imageUrl";
+import { miniaturaDeCompra } from "@/lib/miniatura-de-compra";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -269,7 +271,10 @@ export function ShippingProgress({
                 >
                   <div className="mb-2 aspect-square overflow-hidden rounded-lg bg-muted">
                     <img
-                      src={p.images[0]}
+                      src={miniaturaDeCompra(p.images[0])}
+                      onError={(e) =>
+                        usarImagemOriginal(e.currentTarget, p.images[0])
+                      }
                       alt={p.name}
                       className="size-full object-cover"
                     />
