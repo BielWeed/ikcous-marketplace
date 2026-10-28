@@ -14,6 +14,7 @@ import {
 } from "@/lib/elegibilidade-da-etiqueta";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
+import { formatCurrency } from "@/lib/utils";
 import { haptic } from "@/utils/haptic";
 import {
   AlertCircle,
@@ -743,8 +744,8 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                     Serviço: {elegibilidade.servico}
                   </span>
                   <span className="mt-1 block font-normal text-zinc-300">
-                    Frete pago pelo cliente: R${" "}
-                    {freteEfetivoDoPedido(pedido).toFixed(2).replace(".", ",")}
+                    Frete pago pelo cliente:{" "}
+                    {formatCurrency(freteEfetivoDoPedido(pedido))}
                   </span>
                   <span
                     data-testid="cpf-mascarado"

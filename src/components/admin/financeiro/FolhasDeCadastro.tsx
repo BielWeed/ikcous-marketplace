@@ -5,6 +5,7 @@ import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { Switch } from "@/components/ui/switch";
 import { salvarCategoria, salvarConta } from "@/hooks/useFinanceiro";
 import {
+  ErroDePrazoFinanceiro,
   type FormularioDaCategoria,
   type FormularioDaConta,
   TIPOS_DE_CONTA,
@@ -40,10 +41,13 @@ import {
 function Rodape({
   erro,
   enviando,
+  bloqueado = false,
   aoSalvar,
 }: {
   readonly erro: string | null;
   readonly enviando: boolean;
+  /** Cadastro NOVO sem resposta no prazo: só fechar e conferir a lista. */
+  readonly bloqueado?: boolean;
   readonly aoSalvar: () => void;
 }) {
   return (
@@ -51,7 +55,7 @@ function Rodape({
       {erro ? <EstadoDeErro mensagem={erro} /> : null}
       <button
         type="button"
-        disabled={enviando}
+        disabled={enviando || bloqueado}
         onClick={aoSalvar}
         className={CLASSE_BOTAO_PRIMARIO}
       >
@@ -114,12 +118,15 @@ export function ContaFolha({
   hoje,
   aoFechar,
   aoSalvar,
+  aoSemResposta,
   aoMudarSujo,
 }: {
   readonly conta: ContaFinanceira | null;
   readonly hoje: DataIso;
   readonly aoFechar: () => void;
   readonly aoSalvar: (mensagem: string) => void;
+  /** A gravação estourou o prazo: a tela relê a lista ao fechar a folha. */
+  readonly aoSemResposta?: () => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
   const confirmarVisualmente = useConfirmacaoFinanceira();
@@ -136,6 +143,9 @@ export function ContaFolha({
   const [enviando, setEnviando] = useState(false);
   const [erroDoServidor, setErroDoServidor] = useState<string | null>(null);
   const trava = useRef(false);
+  // Cadastro NOVO sem resposta no prazo pode ter sido criado: repetir criaria
+  // outro. O Salvar fica parado até a lojista fechar e conferir a lista.
+  const [semResposta, setSemResposta] = useState(false);
   const sistema = conta?.sistema ?? false;
 
   const sujo = JSON.stringify(form) !== JSON.stringify(inicial);
@@ -148,7 +158,7 @@ export function ContaFolha({
 
   const atualizar = (parcial: Partial<FormularioDaConta>) => {
     setForm((atual) => ({ ...atual, ...parcial }));
-    setErroDoServidor(null);
+    if (!semResposta) setErroDoServidor(null);
   };
 
   async function salvar() {
@@ -185,6 +195,10 @@ export function ContaFolha({
       });
       aoSalvar(conta ? "Conta atualizada." : "Conta criada.");
     } catch (erro) {
+      if (erro instanceof ErroDePrazoFinanceiro) {
+        aoSemResposta?.();
+        if (!conta) setSemResposta(true);
+      }
       setErroDoServidor(mensagemDeErroFinanceiro(erro));
     } finally {
       trava.current = false;
@@ -203,6 +217,7 @@ export function ContaFolha({
         <Rodape
           erro={erroDoServidor}
           enviando={enviando}
+          bloqueado={semResposta}
           aoSalvar={() => void salvar()}
         />
       }
@@ -293,11 +308,14 @@ export function CategoriaFolha({
   categoria,
   aoFechar,
   aoSalvar,
+  aoSemResposta,
   aoMudarSujo,
 }: {
   readonly categoria: CategoriaFinanceira | null;
   readonly aoFechar: () => void;
   readonly aoSalvar: (mensagem: string) => void;
+  /** A gravação estourou o prazo: a tela relê a lista ao fechar a folha. */
+  readonly aoSemResposta?: () => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
   const confirmarVisualmente = useConfirmacaoFinanceira();
@@ -313,6 +331,9 @@ export function CategoriaFolha({
   const [enviando, setEnviando] = useState(false);
   const [erroDoServidor, setErroDoServidor] = useState<string | null>(null);
   const trava = useRef(false);
+  // Cadastro NOVO sem resposta no prazo pode ter sido criado: repetir criaria
+  // outro. O Salvar fica parado até a lojista fechar e conferir a lista.
+  const [semResposta, setSemResposta] = useState(false);
   const sistema = categoria?.sistema ?? false;
   // Trocar Receita↔Despesa de categoria que já tem lançamentos os tira do
   // resultado: a natureza só é livre na criação.
@@ -329,7 +350,7 @@ export function CategoriaFolha({
 
   const atualizar = (parcial: Partial<FormularioDaCategoria>) => {
     setForm((atual) => ({ ...atual, ...parcial }));
-    setErroDoServidor(null);
+    if (!semResposta) setErroDoServidor(null);
   };
 
   function mudarNatureza(natureza: NaturezaDaCategoria) {
@@ -372,6 +393,10 @@ export function CategoriaFolha({
       });
       aoSalvar(categoria ? "Categoria atualizada." : "Categoria criada.");
     } catch (erro) {
+      if (erro instanceof ErroDePrazoFinanceiro) {
+        aoSemResposta?.();
+        if (!categoria) setSemResposta(true);
+      }
       setErroDoServidor(mensagemDeErroFinanceiro(erro));
     } finally {
       trava.current = false;
@@ -390,6 +415,7 @@ export function CategoriaFolha({
         <Rodape
           erro={erroDoServidor}
           enviando={enviando}
+          bloqueado={semResposta}
           aoSalvar={() => void salvar()}
         />
       }

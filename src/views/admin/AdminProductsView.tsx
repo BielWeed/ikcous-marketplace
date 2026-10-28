@@ -2730,7 +2730,8 @@ const AdminProductCard = memo(function AdminProductCard({
             {product.variants?.length > 0 && (
               <div className="mt-3 space-y-1">
                 <p className="font-semibold">
-                  Estoque total das variações: {product.stock} unidades
+                  Estoque total das variações: {product.stock}{" "}
+                  {product.stock === 1 ? "unidade" : "unidades"}
                 </p>
                 <p className="break-words text-zinc-400">
                   {product.variants
@@ -2852,7 +2853,8 @@ const AdminProductCard = memo(function AdminProductCard({
             </div>
             {product.variants?.length > 0 && (
               <p className="mt-1 text-[11px] text-zinc-400">
-                {product.variants.length} variações
+                {product.variants.length}{" "}
+                {product.variants.length === 1 ? "variação" : "variações"}
               </p>
             )}
             {botoes(false)}

@@ -25,6 +25,7 @@ import {
 } from "react";
 
 import {
+  ErroDePrazoFinanceiro,
   mensagemDeErroFinanceiro,
   parseCaixaAtual,
   parseCaixaHistorico,
@@ -38,6 +39,7 @@ import {
   parsePrevistos,
   parseResumo,
 } from "@/lib/financeiro";
+import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { Json } from "@/types/database.types";
 import type {
@@ -358,6 +360,26 @@ export async function conferirCaixaParaReconciliar(): Promise<void> {
 /** Os payloads são objetos simples; o supabase-js pede `Json`. */
 const comoJson = (valor: object): Json => valor as unknown as Json;
 
+/**
+ * Rede "pendurada" (conecta e não responde): a folha não fica em "Salvando…"
+ * para sempre. O prazo solta a tela, mas não cancela a gravação no servidor —
+ * por isso a frase manda conferir antes de repetir. Nunca repete sozinho.
+ */
+function comPrazo<T>(
+  requisicao: PromiseLike<T>,
+  feito: string,
+  onde: string,
+): Promise<T> {
+  return aguardarComPrazo(
+    Promise.resolve(requisicao),
+    30_000,
+    () =>
+      new ErroDePrazoFinanceiro(
+        `A internet demorou demais e não deu para confirmar se ${feito}. Feche esta tela e confira ${onde} antes de tentar de novo.`,
+      ),
+  );
+}
+
 export async function salvarLancamento(
   payload: PayloadDoLancamento,
 ): Promise<string[]> {
@@ -373,11 +395,15 @@ export async function baixarLancamento(args: {
   data: DataIso;
   contaId: string | null;
 }): Promise<void> {
-  const { error } = await supabase.rpc("fin_lancamento_baixar", {
-    p_id: args.id,
-    p_data: args.data,
-    p_conta_id: args.contaId,
-  });
+  const { error } = await comPrazo(
+    supabase.rpc("fin_lancamento_baixar", {
+      p_id: args.id,
+      p_data: args.data,
+      p_conta_id: args.contaId,
+    }),
+    "a baixa foi registrada",
+    "a lista de lançamentos",
+  );
   if (error) throw error;
 }
 
@@ -385,10 +411,14 @@ export async function cancelarLancamento(args: {
   id: string;
   motivo: string;
 }): Promise<void> {
-  const { error } = await supabase.rpc("fin_lancamento_cancelar", {
-    p_id: args.id,
-    p_motivo: args.motivo,
-  });
+  const { error } = await comPrazo(
+    supabase.rpc("fin_lancamento_cancelar", {
+      p_id: args.id,
+      p_motivo: args.motivo,
+    }),
+    "o cancelamento foi registrado",
+    "a lista de lançamentos",
+  );
   if (error) throw error;
 }
 
@@ -396,10 +426,14 @@ export async function abrirCaixa(args: {
   valorAbertura: number;
   contaId: string | null;
 }): Promise<void> {
-  const { error } = await supabase.rpc("fin_caixa_abrir", {
-    p_valor_abertura: args.valorAbertura,
-    p_conta_id: args.contaId,
-  });
+  const { error } = await comPrazo(
+    supabase.rpc("fin_caixa_abrir", {
+      p_valor_abertura: args.valorAbertura,
+      p_conta_id: args.contaId,
+    }),
+    "o caixa foi aberto",
+    "o caixa",
+  );
   if (error) throw error;
 }
 
@@ -411,14 +445,18 @@ export async function movimentarCaixa(args: {
   descricao: string;
   contaContrapartida: string | null;
 }): Promise<ResultadoDoMovimentoDeCaixa> {
-  const { data, error } = await supabase.rpc("fin_caixa_movimentar_com_chave", {
-    p_sessao_id: args.sessaoId,
-    p_chave: args.chave,
-    p_tipo: args.tipo,
-    p_valor: args.valor,
-    p_descricao: args.descricao,
-    p_conta_contrapartida: args.contaContrapartida ?? undefined,
-  });
+  const { data, error } = await comPrazo(
+    supabase.rpc("fin_caixa_movimentar_com_chave", {
+      p_sessao_id: args.sessaoId,
+      p_chave: args.chave,
+      p_tipo: args.tipo,
+      p_valor: args.valor,
+      p_descricao: args.descricao,
+      p_conta_contrapartida: args.contaContrapartida ?? undefined,
+    }),
+    "o movimento foi registrado",
+    "o caixa",
+  );
   if (error) throw error;
   return parseMovimentoDeCaixa(data);
 }
@@ -428,28 +466,36 @@ export async function fecharCaixa(args: {
   valorContado: number;
   observacao: string | null;
 }): Promise<FechamentoDeCaixa> {
-  const { data, error } = await supabase.rpc("fin_caixa_fechar_sessao", {
-    p_sessao_id: args.sessaoId,
-    p_valor_contado: args.valorContado,
-    p_observacao: args.observacao ?? undefined,
-  });
+  const { data, error } = await comPrazo(
+    supabase.rpc("fin_caixa_fechar_sessao", {
+      p_sessao_id: args.sessaoId,
+      p_valor_contado: args.valorContado,
+      p_observacao: args.observacao ?? undefined,
+    }),
+    "o caixa foi fechado",
+    "o caixa",
+  );
   if (error) throw error;
   return parseFechamento(data);
 }
 
 export async function salvarConta(payload: PayloadDaConta): Promise<void> {
-  const { error } = await supabase.rpc("fin_conta_salvar", {
-    p: comoJson(payload),
-  });
+  const { error } = await comPrazo(
+    supabase.rpc("fin_conta_salvar", { p: comoJson(payload) }),
+    "a conta foi salva",
+    "a lista de contas",
+  );
   if (error) throw error;
 }
 
 export async function salvarCategoria(
   payload: PayloadDaCategoria,
 ): Promise<void> {
-  const { error } = await supabase.rpc("fin_categoria_salvar", {
-    p: comoJson(payload),
-  });
+  const { error } = await comPrazo(
+    supabase.rpc("fin_categoria_salvar", { p: comoJson(payload) }),
+    "a categoria foi salva",
+    "a lista de categorias",
+  );
   if (error) throw error;
 }
 

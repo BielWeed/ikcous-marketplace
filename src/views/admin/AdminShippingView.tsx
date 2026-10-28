@@ -25,6 +25,7 @@ import {
   transportadoraFicaSemPagamento,
   transportadoraVendeForaDaCidade,
 } from "@/lib/aviso-transportadora-sem-pagamento";
+import { formatarCepDaLoja } from "@/lib/endereco-da-loja";
 import {
   erroDoFormularioNacional,
   estrategiaTemAlcanceEditavel,
@@ -1020,7 +1021,14 @@ export const AdminShippingView = memo(function AdminShippingView({
                 <p className="text-[13px] text-[hsl(var(--admin-text-soft))]">
                   {faltaCep
                     ? "Sem CEP: nenhum frete é calculado"
-                    : `CEP ${config?.originCep} · ${config?.storeCity ?? ""}/${config?.storeState ?? ""}`}
+                    : [
+                        `CEP ${formatarCepDaLoja(config?.originCep)}`,
+                        [config?.storeCity, config?.storeState]
+                          .filter(Boolean)
+                          .join("/"),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                 </p>
               </div>
               {onNavigate && (

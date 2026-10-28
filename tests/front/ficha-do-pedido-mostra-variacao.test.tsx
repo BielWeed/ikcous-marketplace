@@ -17,7 +17,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // O que o "banco" devolve para `product_variants` (id, sku, name, value). Um
 // id que não está na lista simula variação apagada depois da compra.
-const { variacoesNoBanco, consultasDeVariacao } = vi.hoisted(() => ({
+const { variacoesNoBanco, consultasDeVariacao, falhas } = vi.hoisted(() => ({
+  // Liga a falha de leitura por tabela: o Supabase NÃO lança, devolve
+  // `{ data: null, error }` (dublê com causalidade, como o real).
+  falhas: { product_variants: false, vw_produtos_admin: false },
   variacoesNoBanco: [] as Array<{
     id: string;
     sku?: string | null;
@@ -36,13 +39,17 @@ vi.mock("@/lib/supabase", () => {
     });
     builder.eq = vi.fn(() => builder);
     builder.in = vi.fn((_coluna: string, ids: string[]) =>
-      Promise.resolve({
-        data:
-          tabela === "product_variants"
-            ? variacoesNoBanco.filter((v) => ids.includes(v.id))
-            : [],
-        error: null,
-      }),
+      Promise.resolve(
+        falhas[tabela as keyof typeof falhas]
+          ? { data: null, error: { message: "falha de rede" } }
+          : {
+              data:
+                tabela === "product_variants"
+                  ? variacoesNoBanco.filter((v) => ids.includes(v.id))
+                  : [],
+              error: null,
+            },
+      ),
     );
     builder.maybeSingle = vi.fn(() =>
       Promise.resolve({ data: null, error: null }),
@@ -120,6 +127,8 @@ describe("ficha do pedido e recibo — mostram a variação de cada item", () =>
     vi.stubGlobal("IntersectionObserver", IntersectionObserverStub);
     variacoesNoBanco.length = 0;
     consultasDeVariacao.length = 0;
+    falhas.product_variants = false;
+    falhas.vw_produtos_admin = false;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -237,6 +246,66 @@ describe("ficha do pedido e recibo — mostram a variação de cada item", () =>
     expect(papel).toBeDefined();
     expect(papel?.textContent).toContain("1x Camiseta Básica");
     expect(papel?.textContent).toContain("Cor Preto · Tamanho G");
+  });
+
+  describe("leitura de tamanho e cor falha", () => {
+    const AVISO = "Não deu para carregar tamanho e cor desses itens";
+    const botaoTentar = () =>
+      Array.from(
+        blocoDeItens()?.querySelectorAll<HTMLButtonElement>("button") ?? [],
+      ).find((b) => b.textContent?.includes("Tentar de novo"));
+
+    it("variantes com erro: avisa na ficha, sem fingir que o item não tem tamanho", async () => {
+      falhas.product_variants = true;
+      variacoesNoBanco.push({ id: "var-falha-7", name: "Tamanho", value: "M" });
+
+      await renderizarFicha(pedidoFake([item({ variantId: "var-falha-7" })]));
+
+      expect(blocoDeItens()?.textContent).toContain(AVISO);
+      expect(blocoDeItens()?.textContent).toContain(
+        "Recarregue antes de separar",
+      );
+      expect(variacoesDaFicha()).toEqual([]);
+      expect(botaoTentar()).toBeDefined();
+    });
+
+    it("não grava vazio no cache: 'Tentar de novo' busca de novo e mostra o tamanho", async () => {
+      falhas.product_variants = true;
+      variacoesNoBanco.push({ id: "var-falha-8", name: "Tamanho", value: "G" });
+
+      await renderizarFicha(pedidoFake([item({ variantId: "var-falha-8" })]));
+      expect(blocoDeItens()?.textContent).toContain(AVISO);
+      const antes = consultasDeVariacao.length;
+
+      falhas.product_variants = false;
+      await act(async () => {
+        botaoTentar()?.click();
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0));
+      });
+
+      expect(consultasDeVariacao.length).toBeGreaterThan(antes);
+      expect(variacoesDaFicha()).toEqual(["Tamanho G"]);
+      expect(blocoDeItens()?.textContent).not.toContain(AVISO);
+    });
+
+    it("leitura do código do produto com erro também avisa", async () => {
+      falhas.vw_produtos_admin = true;
+
+      await renderizarFicha(pedidoFake([item({ productId: "prod-falha-9" })]));
+
+      expect(blocoDeItens()?.textContent).toContain(AVISO);
+    });
+
+    it("leitura ok: nenhum aviso", async () => {
+      variacoesNoBanco.push({ id: "var-ok-10", name: "Tamanho", value: "P" });
+
+      await renderizarFicha(pedidoFake([item({ variantId: "var-ok-10" })]));
+
+      expect(blocoDeItens()?.textContent).not.toContain(AVISO);
+      expect(botaoTentar()).toBeUndefined();
+    });
   });
 
   describe("OrderReceipt sozinho", () => {

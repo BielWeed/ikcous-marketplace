@@ -439,6 +439,7 @@ export const ProductView = React.memo(function ProductView({
       : reviews.length > 0
         ? 0
         : (product.rating ?? 5);
+  const notaComVirgula = averageRating.toFixed(1).replace(".", ",");
 
   const { fileiras, variante } = fileirasDeVariacao(
     product.variants,
@@ -958,7 +959,7 @@ export const ProductView = React.memo(function ProductView({
                   <div className="flex items-center gap-1">
                     <StarRating rating={averageRating} size={12} />
                     <span className="text-[11px] font-medium text-zinc-500">
-                      {averageRating.toFixed(1)} ({reviewCount})
+                      {notaComVirgula} ({reviewCount})
                     </span>
                   </div>
                 )}
@@ -1406,7 +1407,7 @@ export const ProductView = React.memo(function ProductView({
                         )}
                       >
                         {reviewCount > 0
-                          ? `${reviewCount} opiniões dos consumidores`
+                          ? `${reviewCount} ${reviewCount === 1 ? "opinião" : "opiniões"} dos consumidores`
                           : "Sem avaliações ainda"}
                       </p>
                     </div>
@@ -1466,7 +1467,7 @@ export const ProductView = React.memo(function ProductView({
                             <div className="flex flex-col items-center text-center md:items-start md:text-left">
                               <div className="flex items-baseline justify-center gap-1.5 md:justify-start">
                                 <span className="bg-gradient-to-br from-white to-zinc-400 bg-clip-text text-5xl font-extrabold tracking-tighter text-transparent">
-                                  {averageRating.toFixed(1)}
+                                  {notaComVirgula}
                                 </span>
                                 <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
                                   / 5

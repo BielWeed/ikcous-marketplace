@@ -250,13 +250,12 @@ export class GlobalErrorBoundary extends Component<Props, State> {
           </div>
 
           <h1 className="mb-2 text-2xl font-black tracking-tight text-white">
-            Erro Fatal Detectado
+            Algo deu errado
           </h1>
 
           <p className="mb-8 max-w-sm text-sm leading-relaxed text-zinc-400">
-            A aplicação encontrou um estado inválido instável na renderização.
-            Nossa equipe técnica já foi alertada silenciosamente desta falha de
-            estabilidade.
+            Não conseguimos abrir esta tela. Seu carrinho e seu login continuam
+            salvos.
           </p>
 
           <Button
@@ -264,7 +263,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
             className="h-12 rounded-full bg-white px-8 font-bold tracking-wide text-black hover:bg-zinc-200"
           >
             <RefreshCcw className="mr-2 size-4" />
-            Reiniciar Sessão (Recovery)
+            Recarregar o app
           </Button>
 
           {import.meta.env.DEV && this.state.error && (

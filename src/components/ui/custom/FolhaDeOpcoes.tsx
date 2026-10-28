@@ -439,7 +439,9 @@ export function CorpoDaFolhaDeOpcoes({
         </div>
         {!indisponivel && estoque > 0 && quantidade >= estoque && (
           <p className="pt-3 text-xs leading-4 text-zinc-600">
-            Máximo de {estoque} unidades (é o que tem em estoque).
+            {estoque === 1
+              ? "Só tem 1 unidade em estoque."
+              : `Máximo de ${estoque} unidades (é o que tem em estoque).`}
           </p>
         )}
         <span role="status" aria-live="polite" className="sr-only">

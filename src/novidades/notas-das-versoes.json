@@ -1,4 +1,19 @@
 {
+  "1.5.96": {
+    "titulo": "Avisos claros quando a internet falha, em vez de telas que enganam",
+    "novidades": [],
+    "correcoes": [
+      "Loja: tocar num banner de categoria agora leva direto à lista do Catálogo já filtrada.",
+      "Pagamento: valores a partir de mil reais aparecem com ponto (R$ 1.299,90). Se os endereços não carregarem, a tela avisa e deixa tentar de novo, em vez de dizer que não há endereço. Sem internet ao finalizar, a tela diz que está sem conexão e guarda o carrinho.",
+      "Meus pedidos e carrinho: se a conferência das avaliações ou dos preços falhar, a tela avisa em vez de mostrar \"0 avaliados\" ou ficar calada.",
+      "Painel, pedidos: se não der para carregar o tamanho e a cor dos itens, a ficha avisa para recarregar antes de separar o pedido. Vitrines e Avaliações não mostram mais \"Sem produtos\" nem zeros quando a leitura falha.",
+      "Painel, Financeiro: as janelas de baixa, caixa, sangria, conta e categoria não ficam mais em \"Salvando…\" para sempre quando a rede trava. Excluir avaliação ou pergunta não repete mais, e anular uma venda do Balcão atualiza o pedido na hora."
+    ],
+    "melhorias": [
+      "Textos mais simples: singular e plural certos (\"1 opinião\", \"1 aparelho\"), motivos de aviso que não chegou em português, tela de erro sem promessas falsas e botões com nome para leitor de tela.",
+      "CRM: o texto de \"Vendas que ficaram\" diz só o que é verdade (sem as canceladas)."
+    ]
+  },
   "1.5.95": {
     "titulo": "Escolher uma categoria não esconde mais o topo da loja",
     "novidades": [],
@@ -13,7 +28,7 @@
     "correcoes": [
       "Início do painel: no começo do mês, o cartão de vendas do mês deixa de mostrar uma queda falsa. Ele agora compara com o mês anterior só até a mesma hora de agora, como o CRM e a comparação da semana já faziam.",
       "Painel: o sino de avisos fica certo mais rápido, porque as seis conferências saem ao mesmo tempo; uma que falhar não apaga as outras.",
-      "Painel: o CRM e o Financeiro deixam de usar o mesmo título \"App × loja física\" para números que contam de jeito diferente. O CRM mostra \"Vendas que ficaram\" (pagas, sem as canceladas nem as devolvidas) e o Financeiro mostra \"Recebido\" (o dinheiro que entrou, antes dos estornos)."
+      "Painel: o CRM e o Financeiro deixam de usar o mesmo título \"App × loja física\" para números que contam de jeito diferente. O CRM mostra \"Vendas que ficaram\" (pagas, sem as canceladas) e o Financeiro mostra \"Recebido\" (o dinheiro que entrou, antes dos estornos)."
     ],
     "melhorias": [
       "Velocidade: quem visita a loja deixa de baixar em segundo plano as peças que só a lojista usa (leitor de código de barras, gráficos e telas de configuração), perto de 40% do que o app guardava no aparelho. Para a lojista, cada peça vem da internet na hora em que ela abre a tela que a usa, e o Balcão continua funcionando como antes, com internet.",

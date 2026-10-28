@@ -11,6 +11,7 @@
 // chamada pela tela — traduzir em dois lugares criaria duas verdades.
 
 import { clearAnalyticsCache } from "@/hooks/useAnalytics";
+import { avisarAnulacao } from "@/lib/avisa-anulacao-do-balcao";
 import { supabase } from "@/lib/supabase";
 import { useCallback } from "react";
 
@@ -51,6 +52,7 @@ export function useAnularVendaDoBalcao(): {
     // Pedidos) mudam com a anulação (o Financeiro desconta): sem isto o
     // painel serviria o resultado guardado em cache de módulo.
     clearAnalyticsCache();
+    avisarAnulacao(resultado.orderId);
     return resultado;
   }, []);
   return { anular };

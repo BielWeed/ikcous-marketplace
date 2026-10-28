@@ -161,12 +161,17 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   // zero antes do apply e indistinguivel de loja sem avaliacao NENHUMA
   // (CORRIGE 2 da revisao 2305 — a mesma honestidade do formatRate).
   const [globaisDisponiveis, setGlobaisDisponiveis] = useState(true);
+  // Só depois de UMA leitura bem-sucedida os números valem: antes (ou se ela
+  // falhar de cara) o topo mostra "—", nunca "0,0 · 0 avaliações".
+  const [jaLeu, setJaLeu] = useState(false);
   const [globalTotal, setGlobalTotal] = useState(0);
   const [globalAvgRating, setGlobalAvgRating] = useState("0.0");
   // Laudo 0109 (A-4): contagem REAL da fila de moderação, direto do banco —
   // a lista carrega uma página (10 por página) e não enxerga pendentes das
   // outras; o cartão que contava a página dizia "fila vazia" em plena fila.
-  const [pendentesNoBanco, setPendentesNoBanco] = useState(0);
+  // null = ainda não contou (ou a contagem falhou e não há valor anterior).
+  const [pendentesNoBanco, setPendentesNoBanco] = useState<number | null>(null);
+  const [filaFalhou, setFilaFalhou] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [viewMode, setViewMode] = useLocalStorage<"detailed" | "compact">(
     "admin_reviews_view_mode",
@@ -277,6 +282,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         });
         if (rodada !== rodadaRef.current) return;
         if (result) {
+          setJaLeu(true);
           setTotalReviews(result.total);
           setGlobalVerifiedCount(result.globalVerifiedCount || 0);
           setGlobalRepliedCount(result.globalRepliedCount || 0);
@@ -294,17 +300,19 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
         // Mesmo recarregamento da lista: aprovar/recusar/apagar passam por
         // aqui (triggerRefresh), então a contagem do cartão acompanha. Erro
-        // na contagem mantém o valor anterior — zero confiante mentiria.
+        // na contagem mantém o valor anterior — zero confiante mentiria — e,
+        // sem valor anterior, o cartão avisa que a fila não foi conferida.
         const { count, error } = await supabase
           .from("reviews" as any)
           .select("*", { count: "exact", head: true })
           .eq("status", "pendente");
         if (rodada !== rodadaRef.current) return;
-        if (!error && typeof count === "number") {
-          setPendentesNoBanco(count);
-        }
+        const contou = !error && typeof count === "number";
+        if (contou) setPendentesNoBanco(count);
+        setFilaFalhou(!contou);
       } catch (err) {
         console.error("[AdminReviewsView] Failed to load reviews:", err);
+        if (rodada === rodadaRef.current) setFilaFalhou(true);
       } finally {
         firstLoadRef.current = false;
       }
@@ -376,10 +384,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
   const totalPages = Math.ceil(totalReviews / pageSize);
 
-  const mediaGlobalExibida = globaisDisponiveis
+  const globaisProntos = jaLeu && globaisDisponiveis;
+  const mediaGlobalExibida = globaisProntos
     ? globalAvgRating.replace(".", ",")
     : "—";
-  const totalGlobalExibido = globaisDisponiveis ? globalTotal : "—";
+  const totalGlobalExibido = globaisProntos ? globalTotal : "—";
+  const semFila = pendentesNoBanco === null;
   // Global Dynamic metrics for display
   // Denominadores GLOBAIS (achado 5): as taxas usam o total sem filtro —
   // filtro vazio nunca mais fabrica "100%" de zero.
@@ -496,9 +506,10 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         {mediaGlobalExibida}
       </span>
       <span className="text-sm tabular-nums text-zinc-300">
-        · {totalGlobalExibido} avaliações
+        · {totalGlobalExibido}{" "}
+        {totalGlobalExibido === 1 ? "avaliação" : "avaliações"}
       </span>
-      {pendentesNoBanco > 0 && (
+      {pendentesNoBanco !== null && pendentesNoBanco > 0 && (
         <EstadoComPonto
           tom="atencao"
           texto={`${pendentesNoBanco} na fila`}
@@ -852,7 +863,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
             valor={
               <>
                 {mediaGlobalExibida}
-                {globaisDisponiveis && (
+                {globaisProntos && (
                   <span className="mt-0.5">
                     {renderStars(Math.round(Number(globalAvgRating) || 0))}
                   </span>
@@ -869,7 +880,13 @@ export const AdminReviewsView = memo(function AdminReviewsView({
             // Item 8 + laudo 0109 (A-4): a moderação é REAL e a contagem é do
             // BANCO — pendentesNoBanco —, não da página carregada.
             rodape={
-              pendentesNoBanco > 0 ? (
+              semFila ? (
+                filaFalhou ? (
+                  "Não deu para conferir a fila"
+                ) : (
+                  "Conferindo a fila…"
+                )
+              ) : pendentesNoBanco > 0 ? (
                 <EstadoComPonto
                   tom="atencao"
                   texto={`${pendentesNoBanco} para aprovar`}
@@ -884,13 +901,13 @@ export const AdminReviewsView = memo(function AdminReviewsView({
             rotulo="Taxa de resposta"
             valor={responseRate.text}
             extra={<BarraDeProporcao percentual={responseRate.width} />}
-            rodape={`${globalRepliedCount} respondidas no total`}
+            rodape={jaLeu ? `${globalRepliedCount} respondidas no total` : "—"}
           />
           <CartaoDeNumero
             rotulo="Compras verificadas"
             valor={verifiedRate.text}
             extra={<BarraDeProporcao percentual={verifiedRate.width} />}
-            rodape={`${globalVerifiedCount} verificadas no total`}
+            rodape={jaLeu ? `${globalVerifiedCount} verificadas no total` : "—"}
           />
         </ResumoRecolhivel>
 
@@ -958,6 +975,27 @@ export const AdminReviewsView = memo(function AdminReviewsView({
               }
             >
               {erroDaListagemAdmin} Confira a internet e tente de novo.
+            </AvisoDeProblema>
+          </div>
+        )}
+
+        {filaFalhou && !erroDaListagemAdmin && (
+          <div className="mb-3">
+            <AvisoDeProblema
+              acao={
+                <button
+                  type="button"
+                  onClick={triggerRefresh}
+                  disabled={loading}
+                  className={cn(BOTAO_NEUTRO, "self-start")}
+                >
+                  Tentar de novo
+                </button>
+              }
+            >
+              Não deu para conferir a fila de moderação: pode haver avaliações
+              esperando aprovação em outras páginas. Confira a internet e tente
+              de novo.
             </AvisoDeProblema>
           </div>
         )}

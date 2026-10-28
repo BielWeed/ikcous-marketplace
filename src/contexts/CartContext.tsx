@@ -555,9 +555,18 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const uidDaLeitura = userIdAtualRef.current;
       const ids = Array.from(new Set(cartRef.current.map((i) => i.product.id)));
       if (ids.length === 0) return;
+      // Só a ação da cliente ("Atualizar o carrinho") avisa que não deu: seguir
+      // sem travar é a regra, mas calar fazia ela cair de novo na mesma recusa.
+      // A frase é o `id`: falhas seguidas mostram UM aviso.
+      const avisarQueNaoDeu = () => {
+        if (opcoes?.respeitarPedidoPendente === true) return;
+        const frase =
+          "Não deu para conferir preços e estoque agora. Vamos conferir de novo no pagamento.";
+        toast.info(frase, { id: frase });
+      };
       try {
         const lido = await lerProdutosEVariacoes(ids);
-        if (lido.variantesFalharam) return;
+        if (lido.variantesFalharam) return avisarQueNaoDeu();
         const catalogo = montarCatalogo(ids, lido.produtos, lido.variantes);
         const avisos = await avisosDoCarrinho(cartRef.current, catalogo);
         // A conta mudou durante a leitura: o carrinho de agora não é o que foi
@@ -573,6 +582,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         avisarDoCarrinho(avisos);
       } catch (err) {
         console.error("[CartContext] ❌ Catalog refresh failed:", err);
+        avisarQueNaoDeu();
       }
     },
     [],
