@@ -987,6 +987,10 @@ async function main() {
   }
   // A sucessora da 27 (a 32) pode estar no ar: o corpo desta prova é o da 27.
   await cliente.query(ler(`rollback-manual-${NOME_32}`));
+  // A sucessora da 390 (a 20261398, o Inicio compara o mes anterior ate a mesma hora) pode estar no ar: sai ANTES da 390.
+  await require("./o-inicio-compara-o-mes-anterior-posterior.cjs").desfazerMesAnteriorNaTransacao(
+    cliente,
+  );
   // A sucessora da 28 (a 20261390, o lucro do Inicio conta o mes inteiro) pode estar no ar: o corpo de painel_inicio desta prova e o da 28.
   await require("./o-lucro-do-inicio-posterior.cjs").desfazerLucroDoInicioNaTransacao(
     cliente,

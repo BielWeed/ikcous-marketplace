@@ -26,7 +26,8 @@
 -- uma loja pode ter só uma delas):
 --   * `painel_inicio`          → 20261212000000 (o início conta estoque baixo pela regra da loja)
 --                                e, DEPOIS dela, 20261228000000 (o início compara até a mesma hora)
---                                e, DEPOIS dela, 20261390000000 (o lucro do início conta o mês inteiro);
+--                                e, DEPOIS dela, 20261390000000 (o lucro do início conta o mês inteiro)
+--                                e, DEPOIS dela, 20261398000000 (o início compara o mês anterior até a mesma hora);
 --   * `get_admin_analytics_v2` → 20261214000000 (o lucro do estoque só conta produto com custo)
 --                                e, DEPOIS dela, 20261234000000 (o lucro só conta produto com custo)
 --                                e, DEPOIS dela, 20261242000000 (o lucro usa o custo do dia da venda);
@@ -149,6 +150,7 @@ WITH corpos AS (
     ('crm_visao', 'c33073503fccc6caa5f1085265501eae', '20261227000000'),
     ('painel_inicio', 'ad5620273997ba9266f240f272bf399b', '20261228000000'),
     ('painel_inicio', 'b4aa318b777824bd49aab4175d9133f8', '20261390000000'),
+    ('painel_inicio', '01d29aedf98b7f95851c1a1001b5c7ca', '20261398000000'),
     ('get_admin_customers_paged', 'd6c092c3e0d8069891af795147d65e9e', '20261230000000'),
     ('crm_clientes', '9c4268178a50729b5f7b256b77882585', '20261231000000'),
     ('get_admin_customers_paged', '1c71829d75e3d8f17bf7fb01019c05ec', '20261392000000'),

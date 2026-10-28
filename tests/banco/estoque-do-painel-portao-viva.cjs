@@ -1333,6 +1333,12 @@ async function main() {
         "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql",
         "public.validate_coupon_secure_v2(text, numeric)",
       ],
+      // A 20261398 (o Inicio compara o mes anterior ate a mesma hora): painel_inicio sobre o corpo da 390 (cadeia 99 -> 12 -> 28 -> 390 -> 398). A 17a
+      // aceita o corpo dela (LF e CRLF) ao lado dos de antes; o rollback dela devolve o corpo da 390 (o molde, abaixo, desfaz e mede).
+      [
+        "20261398000000_o_inicio_compara_o_mes_anterior_ate_a_mesma_hora.sql",
+        "public.painel_inicio()",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

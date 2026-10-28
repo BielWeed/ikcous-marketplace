@@ -122,6 +122,9 @@ const NOMES = [
   // (o `hashVigente` da 397 e o `hashDesta` da anterior). Nenhuma e' dos 42 da 99, mas os rollbacks da 394200, da 394000 e da 208 recusam com o
   // corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro). O preflight dela traz o NOME antes da assinatura (quatro colunas).
   "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql",
+  // O Inicio compara o mes anterior ate a mesma hora: painel_inicio sucede o corpo da 390 (a CADEIA 99 -> 12 -> 28 -> 390 -> 398: o `hashVigente` da 398 e o
+  // `hashDesta` da 390). O rollback da 390 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261398000000_o_inicio_compara_o_mes_anterior_ate_a_mesma_hora.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).

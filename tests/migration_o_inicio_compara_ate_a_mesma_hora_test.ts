@@ -302,7 +302,7 @@ Deno.test("a cadeia 99 -> 12 -> 28 esta declarada: o cabecalho cita a ordem de d
   assert.ok(c17a.includes("20261228"), "a 17a cita a 20261228000000");
 });
 
-Deno.test("so a baseline, a 20261199000000, a 20261212000000, este par e a 20261390000000 (o lucro do Inicio conta o mes inteiro, par proprio) definem painel_inicio; depois da 20261212 ninguem mais a redefine", () => {
+Deno.test("so a baseline, a 20261199000000, a 20261212000000, este par, a 20261390000000 (o lucro do Inicio conta o mes inteiro, par proprio) e a 20261398000000 (o Inicio compara o mes anterior ate a mesma hora, par proprio) definem painel_inicio; depois da 20261212 ninguem mais a redefine", () => {
   const todas = [...Deno.readDirSync(new URL("supabase/migrations/", DIR))]
     .map((e) => e.name)
     .filter((n) => n.endsWith(".sql") && !n.startsWith("_"));
@@ -316,10 +316,14 @@ Deno.test("so a baseline, a 20261199000000, a 20261212000000, este par e a 20261
     )
       posteriores.push(n);
   const SUCESSORA = "20261390000000_o_lucro_do_inicio_conta_o_mes_inteiro.sql";
+  const SUCESSORA_398 =
+    "20261398000000_o_inicio_compara_o_mes_anterior_ate_a_mesma_hora.sql";
   assert.deepEqual(posteriores.sort(), [
     NOME,
     SUCESSORA,
+    SUCESSORA_398,
     `rollback-manual-${NOME}`,
     `rollback-manual-${SUCESSORA}`,
+    `rollback-manual-${SUCESSORA_398}`,
   ]);
 });

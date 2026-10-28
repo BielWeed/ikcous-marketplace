@@ -411,6 +411,43 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261398000000: o Inicio compara o mes anterior ate a mesma hora. painel_inicio troca SO a condicao de receita_mes_anterior (o ULTIMO dia dos
+  // mesmos dias do mes anterior so conta ate a hora de agora, como a semana passada da 20261228000000) e ganha a variavel v_mes_ant_tem_o_dia (dia 29,
+  // 30 ou 31 que nao existe no mes anterior nao corta: o ultimo dia dele vale inteiro). O resto do corpo e o da 20261390000000 (o lucro do mes inteiro, a
+  // semana passada cortada na hora, a regra de estoque baixo e as duas travas de admin sobrevivem). A consulta 116a confere o corpo exato (md5), os
+  // atributos e a ACL; a prova viva mede o comportamento (dia 1, 15, 28 a 31, fevereiro, virada de ano, hora exata).
+  "20261398000000_o_inicio_compara_o_mes_anterior_ate_a_mesma_hora.sql": {
+    funcao: "painel_inicio",
+    esperado: [
+      { texto: "v_mes_ant_tem_o_dia boolean;", vezes: 1 },
+      {
+        texto:
+          "v_mes_ant_tem_o_dia := v_mes_ant_inicio + (v_hoje - v_mes_inicio) <= v_mes_inicio - 1;",
+        vezes: 1,
+      },
+      {
+        texto: "AND (dia < v_mes_ant_fim OR NOT v_mes_ant_tem_o_dia",
+        vezes: 1,
+      },
+      {
+        texto: "OR (pago_em AT TIME ZONE 'America/Sao_Paulo')::time <= v_hora)",
+        vezes: 1,
+      },
+      {
+        texto:
+          "AND (pago_em AT TIME ZONE 'America/Sao_Paulo')::time <= v_hora)",
+        vezes: 1,
+      },
+      {
+        texto:
+          "v_lucro := (public.fin_dre(v_mes_inicio, v_mes_fim) ->> 'lucro_liquido')::numeric;",
+        vezes: 1,
+      },
+      { texto: "<= COALESCE(p.estoque_minimo, 5))", vezes: 1 },
+      { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+      { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+    ],
+  },
   // 20261397000000: o desconto do cupom de porcentagem e' arredondado ao centavo. As TRES funcoes (create_marketplace_order_v23/v24 e
   // validate_coupon_secure_v2) trocam SO a linha da conta do desconto percentual: `round(<subtotal * valor / 100>, 2)` no lugar da conta crua.
   // Cada marcador aparece UMA vez no corpo (o marcador nao admite "zero vezes": a ausencia da conta antiga e' do pos-voo da migration e da
