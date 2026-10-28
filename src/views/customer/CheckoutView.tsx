@@ -374,6 +374,9 @@ const decidirSaidaDaTela = (error: unknown): RecusaDoPedido => {
   return classificarRecusaDoPedido(error);
 };
 
+/** Dinheiro do resumo e da barra: "R$ 1.299,90". Espaço comum depois do "R$" (o `formatCurrency` põe um espaço que não quebra linha). */
+const reais = (valor: number) => formatCurrency(valor).replace("\u00a0", " ");
+
 /** Sessão do Supabase vencida na hora de finalizar (caça 7): o pedido não sai como anônimo. */
 const MENSAGEM_SESSAO_EXPIRADA =
   "Sua sessão expirou. Entre de novo para finalizar o pedido.";
@@ -6912,8 +6915,7 @@ export function CheckoutViewDaConta({
                               )}
                             </div>
                             <span className="shrink-0 text-xs font-semibold text-zinc-600">
-                              {item.quantity} × R${" "}
-                              {precoUnitario.toFixed(2).replace(".", ",")}
+                              {item.quantity} × {reais(precoUnitario)}
                             </span>
                           </li>
                         );
@@ -6929,7 +6931,7 @@ export function CheckoutViewDaConta({
                     <div className="sticky bottom-0 -mx-4 mt-3 space-y-1.5 border-t border-zinc-100 bg-white px-4 py-3 text-xs">
                       <div className="flex items-center justify-between text-zinc-500">
                         <span>Subtotal</span>
-                        <span>R$ {subtotal.toFixed(2).replace(".", ",")}</span>
+                        <span>{reais(subtotal)}</span>
                       </div>
                       <div className="flex items-center justify-between text-zinc-500">
                         <span>Entrega</span>
@@ -6951,15 +6953,12 @@ export function CheckoutViewDaConta({
                             // PRÓPRIA opção, nunca recalculada aqui) + final.
                             <>
                               <span className="mr-1 text-zinc-300 line-through">
-                                R${" "}
-                                {(shipping + economiaDoFrete)
-                                  .toFixed(2)
-                                  .replace(".", ",")}
+                                {reais(shipping + economiaDoFrete)}
                               </span>
-                              R$ {shipping.toFixed(2).replace(".", ",")}
+                              {reais(shipping)}
                             </>
                           ) : shipping > 0 ? (
-                            `R$ ${shipping.toFixed(2).replace(".", ",")}`
+                            reais(shipping)
                           ) : economiaDoFrete > 0 ? (
                             // Frete grátis COM economia conhecida (pedido do
                             // Gabriel, 12/09/2026): mostra o valor riscado
@@ -6967,8 +6966,7 @@ export function CheckoutViewDaConta({
                             // Total não muda (o frete grátis já entra como 0).
                             <>
                               <span className="mr-1 text-zinc-300 line-through">
-                                R${" "}
-                                {economiaDoFrete.toFixed(2).replace(".", ",")}
+                                {reais(economiaDoFrete)}
                               </span>
                               Grátis
                             </>
@@ -6982,9 +6980,7 @@ export function CheckoutViewDaConta({
                       {discount > 0 && (
                         <div className="flex items-center justify-between text-red-500">
                           <span>Desconto</span>
-                          <span>
-                            -R$ {discount.toFixed(2).replace(".", ",")}
-                          </span>
+                          <span>-{reais(discount)}</span>
                         </div>
                       )}
                       <div className="flex items-center justify-between pt-1 text-sm font-black text-zinc-900">
@@ -6995,7 +6991,7 @@ export function CheckoutViewDaConta({
                               fechado. */}
                           {totalExibido === null
                             ? "a calcular"
-                            : `R$ ${totalExibido.toFixed(2).replace(".", ",")}`}
+                            : reais(totalExibido)}
                         </span>
                       </div>
                     </div>
@@ -7061,9 +7057,7 @@ export function CheckoutViewDaConta({
                         <div>
                           <div>
                             <span>Subtotal</span>
-                            <span>
-                              R$ {subtotal.toFixed(2).replace(".", ",")}
-                            </span>
+                            <span>{reais(subtotal)}</span>
                           </div>
                           <div className="checkout-delivery">
                             <span>Entrega</span>
@@ -7091,16 +7085,13 @@ export function CheckoutViewDaConta({
                                     <>
                                       <span className="sr-only">de </span>
                                       <span className="mr-1 text-zinc-500 line-through">
-                                        R${" "}
-                                        {(shipping + economiaDoFrete)
-                                          .toFixed(2)
-                                          .replace(".", ",")}
+                                        {reais(shipping + economiaDoFrete)}
                                       </span>
                                       <span className="sr-only">por </span>
                                     </>
                                   )}
                                   {shipping > 0
-                                    ? `R$ ${shipping.toFixed(2).replace(".", ",")}`
+                                    ? reais(shipping)
                                     : ehRetirada
                                       ? "Retirada na loja"
                                       : "Grátis"}
@@ -7113,9 +7104,9 @@ export function CheckoutViewDaConta({
                               <span>Desconto</span>
                               <span
                                 className="text-emerald-700"
-                                aria-label={`Desconto de R$ ${discount.toFixed(2).replace(".", ",")}`}
+                                aria-label={`Desconto de ${reais(discount)}`}
                               >
-                                -R$ {discount.toFixed(2).replace(".", ",")}
+                                -{reais(discount)}
                               </span>
                             </div>
                           )}
@@ -7135,7 +7126,7 @@ export function CheckoutViewDaConta({
                             ) : totalExibido === null ? (
                               "a calcular"
                             ) : (
-                              `R$ ${totalExibido.toFixed(2).replace(".", ",")}`
+                              reais(totalExibido)
                             )}
                           </p>
                         </div>
