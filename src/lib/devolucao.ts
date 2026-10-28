@@ -1322,7 +1322,7 @@ const RE_REDE =
 
 /**
  * A RPC já fala pt-BR com o leigo (as mensagens moram na migration) — a tela
- * mostra como veio. Só a falha de rede, que chega em inglês do navegador,
+ * mostra como veio (o dinheiro em reais brasileiros). Só a falha de rede, que chega em inglês do navegador,
  * vira frase nossa.
  */
 export function mensagemDoErro(erro: unknown, generica: string): string {
@@ -1336,7 +1336,7 @@ export function mensagemDoErro(erro: unknown, generica: string): string {
   if (RE_REDE.test(msg)) {
     return "Sem conexão com a internet. Confira a rede e tente de novo.";
   }
-  return msg;
+  return reaisComVirgula(msg);
 }
 
 /**

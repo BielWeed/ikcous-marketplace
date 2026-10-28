@@ -199,6 +199,28 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
     expect(tabelasConsultadas.length).toBeGreaterThan(consultasAntes);
   });
 
+  it("lote 244: a recusa com dinheiro do banco chega ao toast em reais brasileiros", async () => {
+    RESPOSTA_RPC = {
+      data: null,
+      error: {
+        message:
+          "O valor pedido (R$ 1,234.50) é maior que o valor disponível para devolver (R$ .00).",
+      },
+    };
+    const { atual } = await montarSonda();
+
+    await act(async () => {
+      await atual().solicitarEstorno({ amount: 1234.5, motivo: "teste" });
+    });
+
+    const texto = String(toastMock.error.mock.calls.at(-1)?.[0]).replace(
+      /\u00a0/g,
+      " ",
+    );
+    expect(texto).toContain("(R$ 1.234,50)");
+    expect(texto).toContain("(R$ 0,00).");
+  });
+
   it("guarda !refundId: RPC devolve sem id — nenhum invoke, erro visível ao lojista", async () => {
     RESPOSTA_RPC = { data: { amount: 50 }, error: null };
     const { atual } = await montarSonda();
