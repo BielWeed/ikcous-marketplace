@@ -1051,6 +1051,34 @@ Deno.test("sentinela com cartão CAPTURADO no MP -> adota (grava id, forma e par
   assertEquals(urls.some((u) => u.includes("verificando")), false);
 });
 
+// Caça 14-D (#5): o caso do DÉBITO. O teste acima só cobre crédito, então trocar
+// `=== "debit_card"` por `!==` na adoção (débito virando `null`) passava em toda a
+// suíte: a venda no débito aparecia como PIX no Financeiro e no comprovante.
+Deno.test("sentinela com cartão de DÉBITO capturado no MP -> adota gravando metodo_online='debito' e parcelas 1", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false, adocoesPedido: [] as any[] };
+  const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: SENTINELA_1 }];
+  const supabase = clienteFalso({ candidatos, registro });
+  const urls: string[] = [];
+  const debito = orderDeCartao({
+    transactions: {
+      payments: [{ status: "processed", payment_method: { id: "debvisa", type: "debit_card", installments: 1 } }],
+    },
+  });
+  const fetchImpl = fetchSentinela({ status: 200, corpo: { results: [debito] } }, debito, urls);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.adocoesPedido.length, 1);
+  assertEquals(registro.adocoesPedido[0].valores.gateway_payment_id, "ORDTST01CARTAOCAPTURADO");
+  assertEquals(registro.adocoesPedido[0].valores.metodo_online, "debito");
+  assertEquals(registro.adocoesPedido[0].valores.parcelas, 1);
+  assertEquals(registro.adocoesPedido[0].filtros, [["id", UUID_PEDIDO_1], ["gateway_payment_id", SENTINELA_1]]);
+  assertEquals(registro.chamadasConfirmar.length, 1);
+  assertEquals(corpo.confirmados, 1);
+});
+
 Deno.test("sentinela: cartão EM ANÁLISE, busca vazia, busca falhando ou só orders mortas -> nada adotado, nada confirmado, ignorado", async () => {
   const cenarios: Array<[string, { status: number; corpo: unknown }]> = [
     ["em análise", { status: 200, corpo: { results: [orderDeCartao({ status: "processing", status_detail: "in_process" })] } }],

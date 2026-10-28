@@ -5116,6 +5116,22 @@ Deno.test("W5p - dois refunds livres de 30 para uma linha: acumulado 30 isola un
   }
 });
 
+Deno.test("W5q (caça 14-D #7) - refund livre de valor ZERO junto do ID tardio: o acumulado não é confiável, não adota e sinaliza; o zero não vira RPC", async () => {
+  const c = cenarioDeIdentidadeTardia();
+  await c.entregar(30);
+  // O acumulado (30) fecharia com o ID tardio de 30 + o refund de 0. Sem a guarda
+  // `amount <= 0` na leitura dos IDs livres, o valor zero passaria por "legível" e
+  // o handler adotaria a linha antiga como se a conta estivesse provada.
+  const zero = { id: "refund-zero", amount: 0, status: "approved" };
+  assertEquals((await c.entregar(30, [refundTardio(), zero])).status, 200);
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+  assertEquals(c.registro.chamadasExternoDoMp.map((r) => r.args.p_mp_refund_id), ["refund-30"]);
+  assertEquals(linhasDoRefund(c.registro, "refund-zero").length, 0);
+  assertEquals(c.pedido.valor_estornado, 60, "conserva a RPC externa antiga para conferência manual");
+  assert(c.logs.some((l) => (l[1] as any)?.evento === "estorno_sem_id_nao_adotado" &&
+    (l[1] as any)?.motivo === "identidade_ou_acumulado_ambiguo" && (l[1] as any)?.refundId === "refund-30"));
+});
+
 Deno.test("W6 - linha 'sistema' concluida com concluido_em NULO (crash entre INSERT e RPC) -> o passo chama concluir_estorno para ela ANTES de tudo", async () => {
   const registro = {
     chamadasRpc: [] as any[],
@@ -5781,6 +5797,59 @@ Deno.test("PROBE-E3 (rodada 3) - refund 'processed' com amount: '' -> zero inser
 
   assertEquals(resposta.status, 200);
   assertEquals(registro.insertsOrderRefunds.length, 0);
+});
+
+// Caça 14-D (#7): os PROBE-E/E2/E3 acima conferem `chamadasRpc` e `insertsOrderRefunds`,
+// mas o estorno externo vai pela RPC `registrar_estorno_externo_do_mp`, que o dublê
+// grava em `registro.chamadasExternoDoMp` — um campo que esses testes nem criam (o
+// dublê usa `?.push`). Eles passavam mesmo com a guarda `<= 0` trocada por `< 0`.
+// Aqui o campo existe, e o controle (valor 30) prova que o dublê enxerga a chamada.
+for (const [rotulo, amount] of [["0", 0], ["'0'", "0"], ["null", null], ["''", ""], ["negativo", -5]] as const) {
+  Deno.test(`Caça 14-D #7 - refund 'processed' com amount ${rotulo} -> nenhuma chamada a registrar_estorno_externo_do_mp, resposta 200`, async () => {
+    const registro = registroDoLedger();
+    const pedido = pedidoPago();
+    const supabase = clienteFalso({ pedido, registro, orderRefundsRows: [], rpcResultado: "estornado" });
+    const corpoOrder = {
+      id: ID_ORDER_TESTE,
+      external_reference: UUID_PEDIDO,
+      status: "refunded",
+      status_detail: "refunded",
+      total_amount: "100.00",
+      transactions: {
+        payments: [{ id: "PAY01XYZ", status: "processed" }],
+        refunds: [{ id: "r-sem-valor-util", amount, status: "processed" }],
+      },
+    };
+    const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+    const resposta = await semLogs(() => handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) }));
+
+    assertEquals(resposta.status, 200);
+    assertEquals(registro.chamadasExternoDoMp.length, 0);
+    assertEquals(registro.insertsOrderRefunds.length, 0);
+    assertEquals(pedido.valor_estornado, 0);
+  });
+}
+
+Deno.test("Caça 14-D #7 - controle: o MESMO refund com amount 30 chama a RPC do estorno externo (o dublê enxerga a chamada)", async () => {
+  const registro = registroDoLedger();
+  const pedido = pedidoPago();
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows: [], rpcResultado: "estornado" });
+  const corpoOrder = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "partially_refunded",
+    status_detail: "partially_refunded",
+    total_amount: "100.00",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [{ id: "r-trinta", amount: 30, status: "processed" }],
+    },
+  };
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta = await semLogs(() => handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) }));
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasExternoDoMp.map((c) => c.args.p_valor), [30]);
 });
 
 Deno.test("PROBE-F (rodada 3) - chargeback pela rota 'payment', 'in_process', transaction_amount: null -> zero inserts (guarda !valorPagoValido, :689)", async () => {
@@ -7478,6 +7547,55 @@ Deno.test("cartão — Achado S3 (W3): ADOÇÃO da vaga vazia também grava meto
   assertEquals(pedido.parcelas, 6);
   assertEquals(registro.chamadasUpdateMarketplaceOrders[0].valores.metodo_online, "credito");
   assertEquals(registro.chamadasUpdateMarketplaceOrders[0].valores.parcelas, 6);
+});
+
+// Caça 14-D (#5): o caso do DÉBITO. O teste acima só cobre crédito, então trocar
+// `=== "debit_card"` por `!==` (débito virando `null`) passava em toda a suíte: uma
+// venda no débito adotada depois de uma resposta perdida aparecia como PIX no
+// Financeiro e no comprovante. O dublê grava o UPDATE de verdade no `pedido`.
+Deno.test("cartão — Achado S3 (débito): ADOÇÃO da vaga vazia grava metodo_online='debito' (nunca PIX nem null) lido da order RECONSULTADA", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasLiberar: [], chamadasUpdateMarketplaceOrders: [] };
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 149.9,
+    total_amount: null,
+    gateway_payment_id: null,
+    metodo_online: null,
+    parcelas: null,
+  };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const ordemAprovada = {
+    id: ID_ORDER_CARTAO_MP,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "accredited",
+    total_amount: "149.90",
+    transactions: {
+      payments: [{
+        id: "PAY01DEBITO",
+        status: "processed",
+        status_detail: "accredited",
+        payment_method: { id: "debvisa", type: "debit_card", installments: 1 },
+      }],
+    },
+  };
+
+  const resposta = await handler(req, {
+    supabase,
+    fetchImpl: fetchConsulta(200, ordemAprovada),
+    enviarPush: async () => {},
+    enviarComprovante: async () => {},
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(pedido.gateway_payment_id, ID_ORDER_CARTAO_MP);
+  assertEquals(pedido.metodo_online, "debito");
+  assertEquals(pedido.parcelas, 1);
+  assertEquals(registro.chamadasUpdateMarketplaceOrders[0].valores.metodo_online, "debito");
+  assertEquals(registro.chamadasUpdateMarketplaceOrders[0].valores.parcelas, 1);
 });
 
 // Achado S5 (3ª revisão de risco, 26/09/2026, W4 do harness do 3º revisor):
