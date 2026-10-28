@@ -411,14 +411,14 @@ async function sincronizarFilaDoUsuario(userId: string): Promise<boolean> {
       toast.dismiss(toastId);
       if (discarded.length > 0) {
         toast.warning(
-          `${discarded.length} alteração(ões) offline foram descartadas por violarem os axiomas do produto.`,
+          `${discarded.length} ${discarded.length === 1 ? "alteração feita sem internet foi descartada" : "alterações feitas sem internet foram descartadas"} porque o produto não aceita esses valores (por exemplo, preço ou estoque inválido). Confira o produto.`,
         );
       }
       return syncedCount > 0;
     }
     if (remainingQueue.length > 0) {
       toast.error(
-        `Falha ao sincronizar ${remainingQueue.length} alterações. Tentando novamente mais tarde.`,
+        `Falha ao sincronizar ${remainingQueue.length} ${remainingQueue.length === 1 ? "alteração" : "alterações"}. Tentando novamente mais tarde.`,
         { id: toastId },
       );
     } else {
@@ -440,7 +440,7 @@ async function sincronizarFilaDoUsuario(userId: string): Promise<boolean> {
     // admin de que a alteração feita offline foi perdida de propósito.
     if (discarded.length > 0) {
       toast.warning(
-        `${discarded.length} alteração(ões) offline foram descartadas por violarem os axiomas do produto.`,
+        `${discarded.length} ${discarded.length === 1 ? "alteração feita sem internet foi descartada" : "alterações feitas sem internet foram descartadas"} porque o produto não aceita esses valores (por exemplo, preço ou estoque inválido). Confira o produto.`,
       );
     }
 

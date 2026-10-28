@@ -355,7 +355,7 @@ export function BuscaDeProduto({
                       <strong>{produto.nome}</strong>
                       <span className="pdv-muted">
                         {ativas.length > 0
-                          ? `${ativas.length} variação(ões)`
+                          ? `${ativas.length} ${ativas.length === 1 ? "variação" : "variações"}`
                           : `R$ ${reais(produto.preco_venda)}`}
                         {ativas.length === 0 && (
                           <span
