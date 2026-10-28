@@ -202,6 +202,36 @@ describe("AdminPushView — o histórico só mostra campanhas", () => {
     expect(texto()).not.toContain("Sua avaliacao foi respondida!");
   });
 
+  it("lote 244: a data do histórico é dia/mês/ano no horário de Brasília, em qualquer aparelho", async () => {
+    // Aparelho em inglês: sem locale explícito, o JS escreve mês antes do dia.
+    const dataOriginal = Date.prototype.toLocaleDateString;
+    const horaOriginal = Date.prototype.toLocaleTimeString;
+    vi.spyOn(Date.prototype, "toLocaleDateString").mockImplementation(function (
+      this: Date,
+      loc?: Intl.LocalesArgument,
+      o?: object,
+    ) {
+      return dataOriginal.call(this, loc ?? "en-US", o);
+    });
+    vi.spyOn(Date.prototype, "toLocaleTimeString").mockImplementation(function (
+      this: Date,
+      loc?: Intl.LocalesArgument,
+      o?: object,
+    ) {
+      return horaOriginal.call(this, loc ?? "en-US", o);
+    });
+    // 01:30 UTC de 27/10 = 22:30 de 26/10 em Brasília.
+    historicoDoBanco.linhas = [
+      {
+        ...linhaDoLog("Frete grátis hoje", 12),
+        sent_at: "2026-10-27T01:30:00Z",
+      },
+    ];
+    await abrirTela();
+    await abrirHistorico();
+    expect(texto()).toContain("26/10/2026 às 22:30");
+  });
+
   it("80 respostas recentes não empurram as campanhas para fora da lista", async () => {
     const respostas = Array.from({ length: 80 }, () =>
       linhaDoLog("Sua pergunta foi respondida!"),
