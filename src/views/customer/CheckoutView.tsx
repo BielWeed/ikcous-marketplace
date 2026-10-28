@@ -6353,7 +6353,9 @@ export function CheckoutViewDaConta({
                       autoComplete="address-level1"
                       maxLength={2}
                       placeholder={
-                        config.shippingCoverage === "national" ? "UF" : "MG"
+                        (config.shippingCoverage !== "national" &&
+                          config.storeState?.trim().toUpperCase()) ||
+                        "UF"
                       }
                       aria-invalid={
                         form.formState.errors.state ? true : undefined
