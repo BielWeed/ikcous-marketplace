@@ -16,9 +16,10 @@ import { prepareZXingModule, readBarcodes } from "zxing-wasm/reader";
 // O export de ASSET do próprio pacote (export map "./reader/
 // zxing_reader.wasm"), com o sufixo `?url` que o vite exige para binário:
 // emite o arquivo em dist/assets e aqui fica só a URL. Sem isto, o padrão
-// da lib é baixar o WASM do CDN jsDelivr — e o balcão precisa ler OFFLINE
-// (o globPatterns do workbox já precacheia *.wasm, e o app instalado não
-// depende de CDN nenhum).
+// da lib é baixar o WASM do CDN jsDelivr — e o app não depende de CDN nenhum
+// (a CSP também não o libera). O .wasm vem da própria loja, pela rede, só
+// quando a lojista abre o leitor; NÃO está no precache do service worker (o
+// Balcão não precisa funcionar sem internet — dono, 28/10/2026).
 import urlDoWasm from "zxing-wasm/reader/zxing_reader.wasm?url";
 
 import type { ModuloZxingReader } from "./decodificador";
