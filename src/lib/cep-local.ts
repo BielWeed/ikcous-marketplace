@@ -63,7 +63,7 @@ export function cepEhLocal(
       return true;
     }
 
-    // Formato do placeholder do admin ("38500-000, 38500-999"):
+    // Formato do placeholder do admin ("00000-000, 00000-999"):
     // dois CEPs completos = início e fim de uma faixa.
     if (
       faixas.length === 0 &&
