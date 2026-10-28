@@ -117,6 +117,7 @@ export function ReciboDaVenda({
   // Depois de anular, este recibo deixa de ser comprovante de compra: nada de
   // mandar "sua compra" por WhatsApp nem de imprimir o papel da venda.
   const [anulada, setAnulada] = useState(false);
+  const divergencia = recibo.divergenciaComATela;
   const whatsapp = whatsappDoCliente(recibo.cliente);
   const linkWhatsapp = linkWhatsappDoCliente(whatsapp);
 
@@ -152,7 +153,7 @@ export function ReciboDaVenda({
             </p>
           </div>
         </div>
-        {recibo.divergenciaComATela && (
+        {divergencia && !anulada && (
           <div role="alert" className="pdv-notice pdv-notice-red">
             <p className="pdv-heading pdv-red font-bold">
               <AlertTriangle aria-hidden="true" className="pdv-icon" />
@@ -169,13 +170,18 @@ export function ReciboDaVenda({
             <p>
               A tela mostrava:{" "}
               {resumo(
-                recibo.divergenciaComATela.totalDaTela,
-                recibo.divergenciaComATela.unidadesDaTela,
-                ROTULO_DO_PAGAMENTO[recibo.divergenciaComATela.pagamentoDaTela],
+                divergencia.totalDaTela,
+                divergencia.unidadesDaTela,
+                ROTULO_DO_PAGAMENTO[divergencia.pagamentoDaTela],
               )}
             </p>
             <p className="font-bold">Anule esta venda e registre de novo.</p>
           </div>
+        )}
+        {divergencia && anulada && (
+          <p role="status" className="pdv-notice font-bold">
+            Venda anulada. Registre a venda certa.
+          </p>
         )}
         {recibo.jaExistia && (
           <p role="status" className="pdv-muted flex items-start gap-2">
