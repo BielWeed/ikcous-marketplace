@@ -453,7 +453,7 @@ describe("aba principal que falhou ao carregar - a cliente consegue se recuperar
     });
     await descarregar();
 
-    expect(hospedeiro.textContent).toContain("Falha Operacional");
+    expect(hospedeiro.textContent).toContain("Esta parte não abriu");
     expect(hospedeiro.textContent).not.toContain(TELA_NAO_BAIXOU);
     expect(botaoPorTexto("Tentar Novamente")).toBeDefined();
     expect(botaoPorTexto("Tentar de novo")).toBeUndefined();

@@ -156,7 +156,11 @@ export function OrderSearch({
         },
       );
       if (foundOrders && foundOrders.length > 0) {
-        toast.success(`${foundOrders.length} pedido(s) encontrado(s)!`);
+        toast.success(
+          foundOrders.length === 1
+            ? "1 pedido encontrado!"
+            : `${foundOrders.length} pedidos encontrados!`,
+        );
         // O cache é opcional: o código já foi validado no servidor.
         try {
           sessionStorage.setItem(

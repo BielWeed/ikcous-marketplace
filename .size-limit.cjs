@@ -121,7 +121,10 @@ module.exports = [
     // 28/10/2026 (mesma regra): 593 -> 594 kB na 1.5.93 (fotos pequenas nas telas de
     // compra, pedido que sobrevive a reabrir o app, catalogo baixado uma vez). Base
     // 592,19 kB; os quatro lotes somam +1,09 kB e medem 593,28 kB (285 B acima do teto).
-    limit: "594 kB",
+    // 28/10/2026 (mesma regra): 594 -> 596 kB na 1.5.96 (Caca 13: avisos quando a leitura ou a
+    // rede falha em vez de tela que mente, dinheiro com ponto de milhar, rolagem ao Catalogo).
+    // Base 593,55 kB; os seis lotes somam +1,02 kB e medem 594,57 kB (569 B acima do teto).
+    limit: "596 kB",
     webpack: false,
     // Sem `running: false` o preset tenta MEDIR TEMPO rodando o bundle em
     // Chrome headless — inútil para app de navegador e quebra em runner sem
@@ -228,7 +231,10 @@ module.exports = [
     // 28/10/2026 (mesma regra): 494 -> 495 kB na 1.5.93 (Balcao: recibo diz quais pecas
     // diferem, "Registrar de novo" so depois de anular, fotos e Notificacoes). Base
     // 493,61 kB; o lote do Balcao sozinho deu 494,30 kB e o conjunto mede 494,13 kB.
-    limit: "495 kB",
+    // 28/10/2026 (mesma regra): 495 -> 496 kB na 1.5.96 (Caca 13: Financeiro com prazo de
+    // gravacao, ficha do pedido que avisa quando nao carrega tamanho e cor, Avaliacoes e Vitrines
+    // sem zero falso). Base 494,33 kB; os lotes somam +0,98 kB e medem 495,31 kB (310 B acima).
+    limit: "496 kB",
     webpack: false,
     running: false,
   },

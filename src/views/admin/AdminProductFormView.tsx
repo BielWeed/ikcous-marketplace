@@ -2007,7 +2007,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       setImageUploadStep("compressing");
       setProgressoDoEnvio({ atual: 1, total: files.length });
       const loadingToast = toast.loading(
-        `Comprimindo ${files.length} imagem(ns)...`,
+        `Comprimindo ${files.length} ${files.length === 1 ? "imagem" : "imagens"}...`,
       );
       const falhas: FotoComFalha[] = [];
       let enviadas = 0;

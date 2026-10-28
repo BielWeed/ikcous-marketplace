@@ -1,3 +1,4 @@
+import { AuthRetryableFetchError } from "@supabase/supabase-js";
 // @vitest-environment jsdom
 //
 // Caça 7 (26/10/2026) — três furos do caminho de finalizar o pedido do cliente:
@@ -56,6 +57,8 @@ const { estado, produto } = vi.hoisted(() => {
         whatsappNumber: "",
       } as Record<string, unknown>,
       offline: false,
+      // Lote 257: liga a conferência de sessão REAL (o dublê da lib sai do meio).
+      libReal: false,
     },
   };
 });
@@ -68,6 +71,7 @@ const onSetBackOverride = vi.fn();
 const toastError = vi.fn();
 const toastInfo = vi.fn();
 const sessaoAindaEhDoDono = vi.fn();
+const getSession = vi.fn();
 
 vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
   ShippingCalculator: () => null,
@@ -127,11 +131,22 @@ vi.mock("@/hooks/useOrders", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/sessao-ainda-e-do-dono", () => ({
-  sessaoAindaEhDoDono: (...args: unknown[]) => sessaoAindaEhDoDono(...args),
-}));
+vi.mock("@/lib/sessao-ainda-e-do-dono", async (importOriginal) => {
+  const real =
+    await importOriginal<typeof import("@/lib/sessao-ainda-e-do-dono")>();
+  return {
+    sessaoAindaEhDoDono: (...args: unknown[]) =>
+      estado.libReal
+        ? (real.sessaoAindaEhDoDono as (...a: unknown[]) => unknown)(...args)
+        : sessaoAindaEhDoDono(...args),
+  };
+});
 
-vi.mock("@/lib/supabase", () => ({ supabase: {} }));
+vi.mock("@/lib/supabase", () => ({
+  supabase: {
+    auth: { getSession: (...args: unknown[]) => getSession(...args) },
+  },
+}));
 vi.mock("@/hooks/useOnlineStatus", () => ({
   useOnlineStatus: () => estado.offline,
 }));
@@ -143,6 +158,8 @@ vi.mock("sonner", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+const FRASE_SEM_CONEXAO =
+  "Sem conexão agora. Seu carrinho está guardado; tente de novo em instantes.";
 const CHAVE_CONVIDADO = "ikcous-chave-do-pedido:convidado";
 const CHAVE_DA_CONTA_1 = "ikcous-chave-do-pedido:user-1";
 
@@ -283,6 +300,8 @@ describe("CheckoutView — caça 7: chave que sobrevive ao app fechado, voltar r
     onNavigate.mockReset();
     onSetBackOverride.mockReset();
     sessaoAindaEhDoDono.mockReset().mockResolvedValue(true);
+    getSession.mockReset();
+    estado.libReal = false;
     estado.user = null;
     estado.enderecos = [];
     estado.cart = [{ product: produto, quantity: 1 }];
@@ -521,7 +540,10 @@ describe("CheckoutView — caça 7: chave que sobrevive ao app fechado, voltar r
       await preencherComoConta();
       await clicarFinalizar();
 
-      expect(sessaoAindaEhDoDono).toHaveBeenCalledWith("user-1");
+      expect(sessaoAindaEhDoDono).toHaveBeenCalledWith(
+        "user-1",
+        expect.any(Function),
+      );
       expect(createOrder).not.toHaveBeenCalled();
       expect(String(toastError.mock.calls.at(-1)?.[0])).toContain(
         "Sua sessão expirou. Entre de novo para finalizar o pedido.",
@@ -564,7 +586,10 @@ describe("CheckoutView — caça 7: chave que sobrevive ao app fechado, voltar r
       await preencherComoConta();
       await clicarFinalizar();
 
-      expect(sessaoAindaEhDoDono).toHaveBeenCalledWith("user-1");
+      expect(sessaoAindaEhDoDono).toHaveBeenCalledWith(
+        "user-1",
+        expect.any(Function),
+      );
       expect(createOrder).toHaveBeenCalledTimes(1);
       expect(createOrder.mock.calls[0][0].addressId).toBe("addr-1");
     });
@@ -579,7 +604,7 @@ describe("CheckoutView — caça 7: chave que sobrevive ao app fechado, voltar r
       expect(botaoFinalizar()!.disabled).toBe(false);
     });
 
-    it("a conferência que nunca responde tem prazo: não envia e não prende a tela", async () => {
+    it("a conferência que nunca responde tem prazo: não envia, não prende a tela e diz que é a internet (não a sessão)", async () => {
       sessaoAindaEhDoDono.mockImplementation(() => new Promise(() => {}));
       await abrirOApp();
       await preencherComoConta();
@@ -592,8 +617,15 @@ describe("CheckoutView — caça 7: chave que sobrevive ao app fechado, voltar r
 
       expect(createOrder).not.toHaveBeenCalled();
       expect(botaoFinalizar()!.disabled).toBe(false);
+      expect(String(toastError.mock.calls.at(-1)?.[0])).toBe(FRASE_SEM_CONEXAO);
+      expect(document.querySelector('[role="alert"]')?.textContent).toContain(
+        FRASE_SEM_CONEXAO,
+      );
       expect(
         document.querySelector('button[data-acao="entrar_na_conta"]'),
+      ).toBeNull();
+      expect(
+        document.querySelector('button[data-acao="tentar_de_novo"]'),
       ).not.toBeNull();
     });
 
@@ -607,6 +639,109 @@ describe("CheckoutView — caça 7: chave que sobrevive ao app fechado, voltar r
 
       expect(sessaoAindaEhDoDono).not.toHaveBeenCalled();
       expect(createOrder).toHaveBeenCalledTimes(1);
+    });
+
+    // Lote 257 (caça 13-C, achado 4): rede caída NÃO é sessão expirada.
+    describe("internet fora ao conferir a sessão", () => {
+      const semNenhumaSessao = () => ({ data: { session: null }, error: null });
+      const semInternet = () => ({
+        data: { session: null },
+        error: new AuthRetryableFetchError("Failed to fetch", 0),
+      });
+
+      it("renovar o token sem internet: NÃO envia e diz 'Sem conexão', sem mandar entrar de novo", async () => {
+        // Cadeia inteira de verdade: o erro de rede do supabase-js -> a
+        // conferência real -> a tela. O dublê só devolve o que o servidor de
+        // autenticação devolve sem internet.
+        estado.libReal = true;
+        getSession.mockResolvedValue(semInternet());
+        await abrirOApp();
+        await preencherComoConta();
+        await clicarFinalizar();
+
+        expect(getSession).toHaveBeenCalled();
+        expect(createOrder).not.toHaveBeenCalled();
+        expect(String(toastError.mock.calls.at(-1)?.[0])).toBe(
+          FRASE_SEM_CONEXAO,
+        );
+        expect(document.querySelector('[role="alert"]')?.textContent).toContain(
+          FRASE_SEM_CONEXAO,
+        );
+        expect(document.body.textContent).not.toContain("sessão expirou");
+        expect(
+          document.querySelector('button[data-acao="entrar_na_conta"]'),
+        ).toBeNull();
+        expect(
+          document.querySelector('button[data-acao="tentar_de_novo"]'),
+        ).not.toBeNull();
+        expect(botaoFinalizar()!.disabled).toBe(false);
+        expect(onSetBackOverride.mock.calls.at(-1)?.[0] ?? null).toBeNull();
+      });
+
+      it("a internet volta: o mesmo Finalizar passa a enviar (a conta nunca caiu)", async () => {
+        estado.libReal = true;
+        getSession.mockResolvedValueOnce(semInternet()).mockResolvedValue({
+          data: { session: { user: { id: "user-1" } } },
+          error: null,
+        });
+        createOrder.mockResolvedValueOnce({ id: "pedido-1234abcd" });
+        await abrirOApp();
+        await preencherComoConta();
+        await clicarFinalizar();
+        expect(createOrder).not.toHaveBeenCalled();
+
+        await clicarFinalizar();
+        expect(createOrder).toHaveBeenCalledTimes(1);
+      });
+
+      it("sessão de fato ausente (sem erro de rede): segue 'Sua sessão expirou' e o botão Entrar, sem enviar", async () => {
+        estado.libReal = true;
+        getSession.mockResolvedValue(semNenhumaSessao());
+        await abrirOApp();
+        await preencherComoConta();
+        await clicarFinalizar();
+
+        expect(createOrder).not.toHaveBeenCalled();
+        expect(String(toastError.mock.calls.at(-1)?.[0])).toBe(
+          "Sua sessão expirou. Entre de novo para finalizar o pedido.",
+        );
+        expect(document.body.textContent).not.toContain("Sem conexão agora");
+        expect(
+          document.querySelector('button[data-acao="entrar_na_conta"]'),
+        ).not.toBeNull();
+      });
+
+      it("sessão de outra conta (sem erro de rede): segue 'Sua sessão expirou' e NÃO envia", async () => {
+        estado.libReal = true;
+        getSession.mockResolvedValue({
+          data: { session: { user: { id: "user-2" } } },
+          error: null,
+        });
+        await abrirOApp();
+        await preencherComoConta();
+        await clicarFinalizar();
+
+        expect(createOrder).not.toHaveBeenCalled();
+        expect(String(toastError.mock.calls.at(-1)?.[0])).toContain(
+          "Sua sessão expirou",
+        );
+        expect(
+          document.querySelector('button[data-acao="entrar_na_conta"]'),
+        ).not.toBeNull();
+      });
+
+      it("ler a sessão lançando exceção: NÃO envia (não sei nunca vira pode enviar) e fica a frase de sempre", async () => {
+        estado.libReal = true;
+        getSession.mockRejectedValue(new Error("armazenamento quebrado"));
+        await abrirOApp();
+        await preencherComoConta();
+        await clicarFinalizar();
+
+        expect(createOrder).not.toHaveBeenCalled();
+        expect(String(toastError.mock.calls.at(-1)?.[0])).toContain(
+          "Sua sessão expirou",
+        );
+      });
     });
   });
 });

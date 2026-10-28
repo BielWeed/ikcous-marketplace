@@ -70,7 +70,7 @@ export function useVOR() {
       return { success: true, hash: proofHash };
     } catch (error) {
       console.error("[VOR] Verification failed:", error);
-      toast.error("Falha na integridade VOR: Recibo não gerado.");
+      toast.error("Não consegui guardar o registro desta ação.");
       return { success: false, error };
     } finally {
       setLoading(false);

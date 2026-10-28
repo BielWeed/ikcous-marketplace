@@ -108,7 +108,7 @@ export function PreviaDoFrete({
                   ? "grátis se tiver produto marcado"
                   : local === 0
                     ? "entrega grátis"
-                    : `chega em ${config.localDeliveryDays ?? 1} dia(s)`
+                    : `chega em ${config.localDeliveryDays ?? 1} ${(config.localDeliveryDays ?? 1) === 1 ? "dia" : "dias"}`
               }
             />
           )}

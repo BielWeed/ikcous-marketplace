@@ -102,7 +102,7 @@ describe("OrderSearch — storage bloqueado não esconde pedidos verificados", (
 
       expect(fetchOrdersByOtp).toHaveBeenCalledTimes(1);
       expect(onOrdersFound).toHaveBeenCalledExactlyOnceWith(pedidos);
-      expect(toastSuccess).toHaveBeenCalledWith("1 pedido(s) encontrado(s)!");
+      expect(toastSuccess).toHaveBeenCalledWith("1 pedido encontrado!");
       expect(toastError).not.toHaveBeenCalled();
       expect(aviso).toHaveBeenCalledTimes(1);
       expect(erroNoConsole).not.toHaveBeenCalled();

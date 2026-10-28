@@ -910,11 +910,17 @@ function lerPaginaDeAliases(resposta) {
  * (ok:true, listaCompleta:false): o inventário sai PARCIAL e quem publica
  * tem de recusar.
  */
-export async function consultarVercel(politica, extras, executor) {
+export async function consultarVercel(
+  politica,
+  extras,
+  executor,
+  tamanhoDaPagina = 100,
+) {
   const { id, time } = politica.projetoVercel;
   // eslint-disable-next-line security/detect-non-literal-regexp -- padrões da política versionada no repositório (aliasesDePreview), revisados por PR.
   const previews = (politica.aliasesDePreview ?? []).map((p) => new RegExp(p));
   const aliasesProjeto = [];
+  const vistos = new Set();
   const avisos = [];
   let proximo = null;
   let listaCompleta = true;
@@ -922,7 +928,7 @@ export async function consultarVercel(politica, extras, executor) {
     let resposta;
     try {
       resposta = await executor(
-        `/v4/aliases?projectId=${encodeURIComponent(id)}&teamId=${encodeURIComponent(time)}&limit=100${proximo ? `&until=${encodeURIComponent(proximo)}` : ""}`,
+        `/v4/aliases?projectId=${encodeURIComponent(id)}&teamId=${encodeURIComponent(time)}&limit=${tamanhoDaPagina}${proximo ? `&until=${encodeURIComponent(proximo)}` : ""}`,
       );
     } catch (e) {
       if (pagina === 0)
@@ -940,7 +946,11 @@ export async function consultarVercel(politica, extras, executor) {
         ok: false,
         erro: `página ${pagina + 1} da lista de aliases fora do contrato: ${lida.erro}`,
       };
+    let novos = 0;
     for (const a of lida.itens) {
+      if (vistos.has(a.alias)) continue;
+      vistos.add(a.alias);
+      novos++;
       aliasesProjeto.push({
         alias: a.alias,
         deploymentId:
@@ -950,6 +960,18 @@ export async function consultarVercel(politica, extras, executor) {
     }
     proximo = lida.proximo;
     if (!proximo) break;
+    // `until` da Vercel é "estritamente menor": pedir a próxima página com o
+    // próprio `next` PERDE todo alias que empata em createdAt com o último da
+    // página (28/10/2026: o alias principal sumiu do inventário). Pedimos
+    // `next + 1` (o último item volta repetido, e `vistos` o descarta).
+    const numero = Number(proximo);
+    if (Number.isFinite(numero)) proximo = numero + 1;
+    // Página que só repete o que já veio não avança: não é "completo".
+    if (novos === 0) {
+      listaCompleta = false;
+      avisos.push(`página ${pagina + 1} dos aliases não trouxe nada novo`);
+      break;
+    }
     if (pagina === 59) listaCompleta = false;
   }
   if (aliasesProjeto.length === 0) {

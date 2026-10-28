@@ -106,8 +106,12 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   onNavigate: _onNavigate,
   onSetDirty,
 }: AdminCarouselsViewProps) {
-  const { config, updateConfig } = useStore();
+  const { config, updateConfig, loadingProducts, catalogoErro, fetchProducts } =
+    useStore();
   const { products } = useProducts();
+  // Lista vazia por não ter lido ainda (ou por erro) não é "loja sem produtos".
+  const catalogoFora =
+    products.length === 0 && (loadingProducts || catalogoErro);
   const isOffline = useOnlineStatus();
 
   // Painéis e diálogos
@@ -528,6 +532,12 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     const atual = homeSections.find((s) => s.id === sectionId);
     if (!atual || (atual.productIds?.length ?? 0) > 0) return;
     const idsHoje = (previewProducts[sectionId] || []).map((p) => p.id);
+    if (idsHoje.length === 0 && catalogoFora) {
+      toast.info("Os produtos ainda não carregaram", {
+        description: "Espere carregar ou toque em Tentar de novo na tela.",
+      });
+      return;
+    }
     if (idsHoje.length === 0) {
       toast.info("Nenhum produto aparece nesta vitrine agora", {
         description:
@@ -657,7 +667,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             </div>
             <div className="border-l border-admin-border px-4 py-3.5">
               <b className="block text-[22px] font-extrabold tabular-nums tracking-tight text-white">
-                {totalProductsInActiveVitrines}
+                {catalogoFora ? "—" : totalProductsInActiveVitrines}
               </b>
               <span className="text-xs font-medium text-zinc-400">
                 produtos em exibição
@@ -674,6 +684,28 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             Nova vitrine
           </button>
         </div>
+
+        {catalogoFora && (
+          <div
+            role={catalogoErro ? "alert" : "status"}
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-amber-500/40 px-3 py-2 text-xs text-amber-400"
+          >
+            <p className="min-w-0 flex-1">
+              {catalogoErro
+                ? "Não deu para carregar os produtos. Os números abaixo podem estar incompletos."
+                : "Carregando produtos…"}
+            </p>
+            {catalogoErro && (
+              <button
+                type="button"
+                onClick={() => void fetchProducts()}
+                className="min-h-11 rounded-lg px-3 font-semibold underline"
+              >
+                Tentar de novo
+              </button>
+            )}
+          </div>
+        )}
 
         {salvandoOrdem ? (
           <p role="status" className="px-1 text-xs font-medium text-zinc-400">
@@ -702,6 +734,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
               aoSoltar={handleSoltou}
               aoAlterarLayout={handleUpdateLayout}
               travado={salvandoVitrines}
+              catalogoFora={catalogoFora}
             />
           ))}
         </Reorder.Group>
