@@ -11,6 +11,7 @@ import { TelaDeVerificacaoFalhou } from "@/components/layouts/TelaDeVerificacaoF
 import { aoIniciarAposAtualizacao } from "@/components/pwa/ao-iniciar-apos-atualizacao";
 import { applyThemeColor, branding } from "@/config/branding";
 import { esquecerChaveDoPedidoDe } from "@/lib/chave-do-pedido";
+import { rolarAoCatalogo } from "@/lib/rolar-ao-catalogo";
 import {
   destinoPosLogin,
   painelSemContaPedeEntrada,
@@ -827,6 +828,7 @@ const AppContent = () => {
     return "Todas";
   });
   const selectedCategoryRef = useRef(selectedCategory);
+  const jaSincronizouRef = useRef(false);
   // Lê a categoria atual mesmo antes de o React concluir o próximo render.
   const caminhoDaHomeRef = useRef(() => {
     const category = selectedCategoryRef.current;
@@ -1990,6 +1992,16 @@ const AppContent = () => {
         const urlParams = new URLSearchParams(globalThis.location.search);
         const categoryParam = urlParams.get("category") || "Todas";
         if (targetView === "home") {
+          // Banner ou link de categoria: leva ao Catálogo filtrado. O chip
+          // não passa por aqui (usa handleCategoryChange) e não rola.
+          if (
+            categoryParam !== "Todas" &&
+            (selectedCategoryRef.current !== categoryParam ||
+              !jaSincronizouRef.current)
+          ) {
+            rolarAoCatalogo();
+          }
+          jaSincronizouRef.current = true;
           selectedCategoryRef.current = categoryParam;
           setSelectedCategory(categoryParam);
         }
