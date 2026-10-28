@@ -5116,6 +5116,22 @@ Deno.test("W5p - dois refunds livres de 30 para uma linha: acumulado 30 isola un
   }
 });
 
+Deno.test("W5q (caça 14-D #7) - refund livre de valor ZERO junto do ID tardio: o acumulado não é confiável, não adota e sinaliza; o zero não vira RPC", async () => {
+  const c = cenarioDeIdentidadeTardia();
+  await c.entregar(30);
+  // O acumulado (30) fecharia com o ID tardio de 30 + o refund de 0. Sem a guarda
+  // `amount <= 0` na leitura dos IDs livres, o valor zero passaria por "legível" e
+  // o handler adotaria a linha antiga como se a conta estivesse provada.
+  const zero = { id: "refund-zero", amount: 0, status: "approved" };
+  assertEquals((await c.entregar(30, [refundTardio(), zero])).status, 200);
+  assertEquals(c.registro.updatesOrderRefunds.length, 0);
+  assertEquals(c.registro.chamadasExternoDoMp.map((r) => r.args.p_mp_refund_id), ["refund-30"]);
+  assertEquals(linhasDoRefund(c.registro, "refund-zero").length, 0);
+  assertEquals(c.pedido.valor_estornado, 60, "conserva a RPC externa antiga para conferência manual");
+  assert(c.logs.some((l) => (l[1] as any)?.evento === "estorno_sem_id_nao_adotado" &&
+    (l[1] as any)?.motivo === "identidade_ou_acumulado_ambiguo" && (l[1] as any)?.refundId === "refund-30"));
+});
+
 Deno.test("W6 - linha 'sistema' concluida com concluido_em NULO (crash entre INSERT e RPC) -> o passo chama concluir_estorno para ela ANTES de tudo", async () => {
   const registro = {
     chamadasRpc: [] as any[],
@@ -5781,6 +5797,59 @@ Deno.test("PROBE-E3 (rodada 3) - refund 'processed' com amount: '' -> zero inser
 
   assertEquals(resposta.status, 200);
   assertEquals(registro.insertsOrderRefunds.length, 0);
+});
+
+// Caça 14-D (#7): os PROBE-E/E2/E3 acima conferem `chamadasRpc` e `insertsOrderRefunds`,
+// mas o estorno externo vai pela RPC `registrar_estorno_externo_do_mp`, que o dublê
+// grava em `registro.chamadasExternoDoMp` — um campo que esses testes nem criam (o
+// dublê usa `?.push`). Eles passavam mesmo com a guarda `<= 0` trocada por `< 0`.
+// Aqui o campo existe, e o controle (valor 30) prova que o dublê enxerga a chamada.
+for (const [rotulo, amount] of [["0", 0], ["'0'", "0"], ["null", null], ["''", ""], ["negativo", -5]] as const) {
+  Deno.test(`Caça 14-D #7 - refund 'processed' com amount ${rotulo} -> nenhuma chamada a registrar_estorno_externo_do_mp, resposta 200`, async () => {
+    const registro = registroDoLedger();
+    const pedido = pedidoPago();
+    const supabase = clienteFalso({ pedido, registro, orderRefundsRows: [], rpcResultado: "estornado" });
+    const corpoOrder = {
+      id: ID_ORDER_TESTE,
+      external_reference: UUID_PEDIDO,
+      status: "refunded",
+      status_detail: "refunded",
+      total_amount: "100.00",
+      transactions: {
+        payments: [{ id: "PAY01XYZ", status: "processed" }],
+        refunds: [{ id: "r-sem-valor-util", amount, status: "processed" }],
+      },
+    };
+    const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+    const resposta = await semLogs(() => handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) }));
+
+    assertEquals(resposta.status, 200);
+    assertEquals(registro.chamadasExternoDoMp.length, 0);
+    assertEquals(registro.insertsOrderRefunds.length, 0);
+    assertEquals(pedido.valor_estornado, 0);
+  });
+}
+
+Deno.test("Caça 14-D #7 - controle: o MESMO refund com amount 30 chama a RPC do estorno externo (o dublê enxerga a chamada)", async () => {
+  const registro = registroDoLedger();
+  const pedido = pedidoPago();
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows: [], rpcResultado: "estornado" });
+  const corpoOrder = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "partially_refunded",
+    status_detail: "partially_refunded",
+    total_amount: "100.00",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [{ id: "r-trinta", amount: 30, status: "processed" }],
+    },
+  };
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta = await semLogs(() => handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) }));
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasExternoDoMp.map((c) => c.args.p_valor), [30]);
 });
 
 Deno.test("PROBE-F (rodada 3) - chargeback pela rota 'payment', 'in_process', transaction_amount: null -> zero inserts (guarda !valorPagoValido, :689)", async () => {
