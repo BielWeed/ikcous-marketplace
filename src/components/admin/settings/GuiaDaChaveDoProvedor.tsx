@@ -58,7 +58,7 @@ const GUIA_POR_PROVEDOR: ReadonlyMap<ProvedorFrete, GuiaDoProvedor> = new Map([
         'No menu à esquerda, clique em "Integrações" e depois em "Permissões de Acesso".',
         'Clique no botão "GERAR NOVO TOKEN".',
         'Marque "Li e concordo com as condições descritas acima" e clique em "Avançar".',
-        'Dê um nome para o token (ex.: "IKCOUS Marketplace") no campo "Nome".',
+        'Dê um nome para o token (ex.: o nome da sua loja) no campo "Nome".',
         'Clique em "Selecionar todos" — garante que cotação e etiqueta funcionem juntas.',
         'Clique em "GERAR TOKEN".',
         'Clique em "COPIAR TOKEN" e cole aqui embaixo. Ele só aparece nesta tela, uma vez só — se sair sem copiar, precisa gerar outro.',

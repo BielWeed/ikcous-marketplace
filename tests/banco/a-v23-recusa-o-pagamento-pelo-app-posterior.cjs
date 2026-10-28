@@ -38,6 +38,12 @@ const V23_RECUSA_O_PAGAMENTO_PELO_APP = Object.freeze({
 
 /** Desfaz a 20261394200000 na transacao aberta, se no ar; repetir e' no-op. Devolve true se desfez. */
 async function desfazerV23RecusaOPagamentoPeloAppNaTransacao(cliente) {
+  // A 20261397000000 (o desconto do cupom e' arredondado ao centavo) sucede o corpo da v23 desta migration (e o da v24 da 394000 e o da
+  // validate_coupon_secure_v2 da 208): cai ANTES, senao o pre-voo do rollback da 394200 recusa com o corpo dela no ar. Ver
+  // o-desconto-do-cupom-posterior.cjs.
+  await require("./o-desconto-do-cupom-posterior.cjs").desfazerODescontoDoCupomNaTransacao(
+    cliente,
+  );
   const r = await cliente.query(V23_RECUSA_O_PAGAMENTO_PELO_APP.noAr);
   if (r.rows[0]?.sim !== true) return false;
   await cliente.query(

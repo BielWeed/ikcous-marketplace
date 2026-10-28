@@ -4964,6 +4964,9 @@ const ROLLBACK_203 = `${MIGRATIONS_DIR}/rollback-manual-20261203000000_cupons_de
 // A 20261208000000 (o checkout mostra os cupons da cliente) redefine a validação PARTINDO do corpo
 // da 203; o corpo dela (LF ou CRLF) também satisfaz a linha da validação da 10a.
 const MIGRACAO_208 = `${MIGRATIONS_DIR}/20261208000000_o_checkout_mostra_os_cupons_da_cliente.sql`;
+// A 20261397000000 (o desconto do cupom e' arredondado ao centavo) redefine a validação PARTINDO do corpo da 208, trocando uma linha;
+// o corpo dela (LF ou CRLF) também satisfaz a linha da validação da 10a e da 15a.
+const MIGRACAO_397 = `${MIGRATIONS_DIR}/20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql`;
 
 /** Os hashes (sha256 do prosrc, LF e CRLF) que a migration 203 e o rollback-manual definem, recalculados dos ARQUIVOS. */
 async function hashesDaMigration203() {
@@ -4989,7 +4992,14 @@ async function hashesDaMigration203() {
     /CREATE OR REPLACE FUNCTION public\.validate_coupon_secure_v2\(p_code text, p_subtotal numeric\)[\s\S]*?AS \$\$([\s\S]*?)\$\$;/,
   );
   assert(val208, "não achei o corpo da validação na migration 20261208000000");
+  const m397 = (await Deno.readTextFile(MIGRACAO_397)).replace(/\r\n/g, "\n");
+  const val397 = m397.match(
+    /CREATE OR REPLACE FUNCTION public\.validate_coupon_secure_v2\(p_code text, p_subtotal numeric\)[\s\S]*?AS \$\$([\s\S]*?)\$\$;/,
+  );
+  assert(val397, "não achei o corpo da validação na migration 20261397000000");
   return {
+    suc397LF: sha(val397[1]),
+    suc397CRLF: sha(crlf(val397[1])),
     suc208LF: sha(val208[1]),
     suc208CRLF: sha(crlf(val208[1])),
     gatLF: sha(gat[1]),
@@ -5143,6 +5153,8 @@ Deno.test("10a/10b — os hashes (sha256 do prosrc, LF e CRLF) são EXATAMENTE o
           h.novoCRLF,
           h.suc208LF,
           h.suc208CRLF,
+          h.suc397LF,
+          h.suc397CRLF,
         ].sort(),
       );
       // o `esperado` é o LF; o CRLF só entra na lista de aceitos (o pré-voo da migration aceita os dois)
@@ -5160,7 +5172,14 @@ Deno.test("10a/10b — os hashes (sha256 do prosrc, LF e CRLF) são EXATAMENTE o
       const i = limpo.indexOf("'validate_coupon_secure_v2: corpo (sha256)'");
       assert(i >= 0);
       const linha = limpo.slice(i, limpo.indexOf("UNION ALL", i));
-      for (const aceito of [h.novoLF, h.novoCRLF, h.suc208LF, h.suc208CRLF])
+      for (const aceito of [
+        h.novoLF,
+        h.novoCRLF,
+        h.suc208LF,
+        h.suc208CRLF,
+        h.suc397LF,
+        h.suc397CRLF,
+      ])
         assertStringIncludes(linha, `'${aceito}'`);
       assert(!linha.includes(h.baseLF) && !linha.includes(h.baseCRLF));
       assertStringIncludes(linha, `'${h.novoLF}',\n`);
@@ -5198,8 +5217,10 @@ Deno.test("10a/10b — os hashes (sha256 do prosrc, LF e CRLF) são EXATAMENTE o
           h.gatCRLF,
           h.suc208LF,
           h.suc208CRLF,
+          h.suc397LF,
+          h.suc397CRLF,
         ]).size,
-        8,
+        10,
       );
     },
   );
@@ -6514,16 +6535,24 @@ Deno.test("15a — os hashes (sha256 do prosrc, LF e CRLF) das 5 funções são 
   const todos = Object.values(hashes).flatMap((x) => [x.lf, x.crlf]);
   assertEquals(todos.length, 10);
   assertEquals(new Set(todos).size, 10, "os dez hashes são distintos");
-  assertEquals([...new Set(hex)].sort(), [...todos].sort());
+  // a validação também aceita o corpo da SUCESSORA 20261397000000 (LF e CRLF): são os dois hashes a mais
+  assertEquals(
+    [...new Set(hex)].sort(),
+    [...todos, h203.suc397LF, h203.suc397CRLF].sort(),
+  );
   // cada função: o `esperado` é o LF e a linha aceita só os dois dela
   for (const [nome, x] of Object.entries(hashes)) {
     const i = limpo.indexOf(`'${nome}: corpo (sha256)'`);
     assert(i >= 0, `falta a linha do corpo de ${nome}`);
     const linha = limpo.slice(i, limpo.indexOf("UNION ALL", i));
+    const sucessora =
+      nome === "validate_coupon_secure_v2"
+        ? [h203.suc397LF, h203.suc397CRLF]
+        : [];
     assertEquals(
       [...linha.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]),
-      [x.lf, x.lf, x.crlf, x.lf],
-      `${nome}: esperado LF, aceitos LF e CRLF, resultado LF`,
+      [x.lf, x.lf, x.crlf, ...sucessora, x.lf],
+      `${nome}: esperado LF, aceitos LF e CRLF (e, na validação, os da 20261397000000), resultado LF`,
     );
   }
   // a validação aceita SÓ o corpo da 208: o da 203 (e o do baseline antigo) reprovam aqui
@@ -12469,6 +12498,7 @@ const MIGRACAO_350 = `${MIGRATIONS_DIR}/20261350000000_a_compra_online_trava_o_p
 const MIGRACAO_384 = `${MIGRATIONS_DIR}/20261384000000_o_pedido_pelo_app_exige_conta_e_nao_prende_estoque_de_visitante.sql`;
 const MIGRACAO_394 = `${MIGRATIONS_DIR}/20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql`;
 const MIGRACAO_394200 = `${MIGRATIONS_DIR}/20261394200000_a_v23_recusa_o_pagamento_pelo_app.sql`;
+const MIGRACAO_397_CUPOM = `${MIGRATIONS_DIR}/20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql`;
 
 for (const [nome, linhasDoRol] of [
   [NOME_31A, 9],
@@ -12659,6 +12689,15 @@ Deno.test("31a/31b — a 31a aceita o corpo SUCESSOR da 20261236000000 (a compra
     v23da394200 !== v23da394,
     "os corpos da v23 da 394 e da 394200 sao o mesmo",
   );
+  // a 20261397000000 (o desconto do cupom e' arredondado ao centavo) redefine a v23 e a v24, uma linha cada
+  const m397 = await Deno.readTextFile(MIGRACAO_397_CUPOM);
+  const v23da397 = md5(corpoDe(m397, "create_marketplace_order_v23"));
+  const v24da397 = md5(corpoDe(m397, "create_marketplace_order_v24"));
+  assert(
+    v23da397 !== v23da394200,
+    "os corpos da v23 da 394200 e da 397 sao o mesmo",
+  );
+  assert(v24da397 !== v24da394, "os corpos da v24 da 394 e da 397 sao o mesmo");
   assert(v24da384 !== v24da350, "os corpos da v24 da 350 e da 384 sao o mesmo");
   assert(v24da394 !== v24da384, "os corpos da v24 da 384 e da 394 sao o mesmo");
   assert(v23da394 !== v23da350, "os corpos da v23 da 350 e da 394 sao o mesmo");
@@ -12671,15 +12710,15 @@ Deno.test("31a/31b — a 31a aceita o corpo SUCESSOR da 20261236000000 (a compra
   // a v24 aceita os SEIS hashes (229, 236, 244, 350, 384 e a sucessora 394) e responde sempre com o da 20261229000000 (o rol e os rotulos nao mudam)
   assertStringIncludes(
     sa,
-    `f.m IN ('${v24da229}', '${v24da236}', '${v24da244}', '${v24da350}', '${v24da384}', '${v24da394}')`,
-    "31a: a v24 aceita o corpo da 20261229000000, o da 20261236000000, o da 20261244000000, o da 20261350000000, o da 20261384000000 OU o da 20261394000000",
+    `f.m IN ('${v24da229}', '${v24da236}', '${v24da244}', '${v24da350}', '${v24da384}', '${v24da394}', '${v24da397}')`,
+    "31a: a v24 aceita o corpo da 20261229000000, o da 20261236000000, o da 20261244000000, o da 20261350000000, o da 20261384000000, o da 20261394000000 OU o da 20261397000000",
   );
   assertStringIncludes(sa, `THEN '${v24da229}'`);
   // a v23 aceita os CINCO (o da 229, o da 244, o da 350, a sucessora 394 e a 394200) e responde sempre com o da 20261229000000
   assertStringIncludes(
     sa,
-    `f.m IN ('${v23da229}', '${v23da244}', '${v23da350}', '${v23da394}', '${v23da394200}')`,
-    "31a: a v23 aceita o corpo da 20261229000000, o da 20261244000000, o da 20261350000000, o da 20261394000000 OU o da 20261394200000",
+    `f.m IN ('${v23da229}', '${v23da244}', '${v23da350}', '${v23da394}', '${v23da394200}', '${v23da397}')`,
+    "31a: a v23 aceita o corpo da 20261229000000, o da 20261244000000, o da 20261350000000, o da 20261394000000, o da 20261394200000 OU o da 20261397000000",
   );
   assertStringIncludes(sa, `THEN '${v23da229}'`);
   // o hash da 236 so entra na linha da v24 (uma vez); os da 244, uma vez em cada linha

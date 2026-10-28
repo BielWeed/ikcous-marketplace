@@ -127,6 +127,11 @@ async function tentar(c, sql, params = []) {
 async function numaTransacao(c, fn) {
   await c.query("BEGIN");
   try {
+    // A 20261397000000 (o desconto do cupom e' arredondado ao centavo) sucede o corpo da validate_coupon_secure_v2 desta migration e o das RPCs do
+    // pedido: cada caso mede a migration ISOLADA, entao devolve antes as tres funcoes ao corpo de antes dela (a transacao termina em ROLLBACK).
+    await require("./o-desconto-do-cupom-posterior.cjs").desfazerODescontoDoCupomNaTransacao(
+      c,
+    );
     return await fn();
   } finally {
     await c.query("ROLLBACK");
@@ -1107,65 +1112,74 @@ const PROVAS = [];
 
 PROVAS.push({
   nome: "(0) a migration 208 está no ar: coluna com default 'codigo', tabela com RLS, 4 funções com o ACL certo, gatilho ativo DEPOIS do da chave, validação com o hash do arquivo",
-  corpo: async (c) => {
-    const d = await digital(c);
-    assert.deepEqual(d.coluna, [
-      {
-        data_type: "text",
-        is_nullable: "NO",
-        column_default: "'codigo'::text",
-      },
-    ]);
-    assert.equal(d.tabela[0].rls, true, "cupom_clientes com RLS");
-    assert.equal(d.funcoes.length, 5);
-    // O ACL: lista = anon+authenticated; painel = authenticated; gatilho = ninguém.
-    const acl = new Map(d.funcoes.map((f) => [f.f, f.acl]));
-    assert.match(acl.get(OID_LISTA), /anon=X/);
-    assert.match(acl.get(OID_LISTA), /authenticated=X/);
-    for (const oid of [OID_LER, OID_DEFINIR]) {
-      assert.match(acl.get(oid), /authenticated=X/, oid);
-      assert.doesNotMatch(acl.get(oid), /anon=X|(^|,)=X/, oid);
-    }
-    assert.doesNotMatch(acl.get(OID_GATILHO), /anon=X|authenticated=X|(^|,)=X/);
-    assert.deepEqual(
-      d.gatilhos.map((g) => [g.tgname, g.tgenabled]),
-      [
-        [GATILHO_CHAVE, "O"],
-        [GATILHO, "O"],
-      ],
-      "os dois gatilhos de cupom, na ordem em que disparam (nome)",
-    );
-    assert.match(d.gatilhos[1].def, /BEFORE INSERT/);
-    assert.match(d.gatilhos[1].def, /WHEN \(\(new\.coupon_id IS NOT NULL\)\)/);
-    assert.equal(
-      sha256(await prosrcDe(c, OID_VALIDATE)),
-      sha256(CORPO_208),
-      "o corpo vivo da validação é o do ARQUIVO",
-    );
-    assert.notEqual(sha256(CORPO_208), H203);
-    // Só as colunas esperadas em cupom_clientes.
-    const cols = await c.query(
-      `SELECT column_name FROM information_schema.columns
+  // Dentro de numaTransacao: a 20261397000000 (o desconto do cupom e' arredondado ao centavo) e' mais nova que a 208 e muda o corpo da validacao;
+  // esta prova mede a 208, entao a validacao volta ao corpo de antes da 397 (a transacao termina em ROLLBACK).
+  corpo: async (c) =>
+    numaTransacao(c, async () => {
+      const d = await digital(c);
+      assert.deepEqual(d.coluna, [
+        {
+          data_type: "text",
+          is_nullable: "NO",
+          column_default: "'codigo'::text",
+        },
+      ]);
+      assert.equal(d.tabela[0].rls, true, "cupom_clientes com RLS");
+      assert.equal(d.funcoes.length, 5);
+      // O ACL: lista = anon+authenticated; painel = authenticated; gatilho = ninguém.
+      const acl = new Map(d.funcoes.map((f) => [f.f, f.acl]));
+      assert.match(acl.get(OID_LISTA), /anon=X/);
+      assert.match(acl.get(OID_LISTA), /authenticated=X/);
+      for (const oid of [OID_LER, OID_DEFINIR]) {
+        assert.match(acl.get(oid), /authenticated=X/, oid);
+        assert.doesNotMatch(acl.get(oid), /anon=X|(^|,)=X/, oid);
+      }
+      assert.doesNotMatch(
+        acl.get(OID_GATILHO),
+        /anon=X|authenticated=X|(^|,)=X/,
+      );
+      assert.deepEqual(
+        d.gatilhos.map((g) => [g.tgname, g.tgenabled]),
+        [
+          [GATILHO_CHAVE, "O"],
+          [GATILHO, "O"],
+        ],
+        "os dois gatilhos de cupom, na ordem em que disparam (nome)",
+      );
+      assert.match(d.gatilhos[1].def, /BEFORE INSERT/);
+      assert.match(
+        d.gatilhos[1].def,
+        /WHEN \(\(new\.coupon_id IS NOT NULL\)\)/,
+      );
+      assert.equal(
+        sha256(await prosrcDe(c, OID_VALIDATE)),
+        sha256(CORPO_208),
+        "o corpo vivo da validação é o do ARQUIVO",
+      );
+      assert.notEqual(sha256(CORPO_208), H203);
+      // Só as colunas esperadas em cupom_clientes.
+      const cols = await c.query(
+        `SELECT column_name FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'cupom_clientes' ORDER BY ordinal_position`,
-    );
-    assert.deepEqual(
-      cols.rows.map((r) => r.column_name),
-      ["coupon_id", "user_id", "criado_em"],
-    );
-    // A coluna duplicada morreu (#784) e NENHUM corpo novo a cita.
-    assert.equal(
-      (
-        await c.query(
-          `SELECT count(*)::int AS n FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      );
+      assert.deepEqual(
+        cols.rows.map((r) => r.column_name),
+        ["coupon_id", "user_id", "criado_em"],
+      );
+      // A coluna duplicada morreu (#784) e NENHUM corpo novo a cita.
+      assert.equal(
+        (
+          await c.query(
+            `SELECT count(*)::int AS n FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
             WHERE n.nspname = 'public' AND p.prosrc ~* 'used_count'
               AND p.oid = ANY (ARRAY[to_regprocedure('${OID_VALIDATE}'), to_regprocedure('${OID_LISTA}'),
                 to_regprocedure('${OID_LER}'), to_regprocedure('${OID_DEFINIR}'),
                 to_regprocedure('${OID_GATILHO}')]::oid[])`,
-        )
-      ).rows[0].n,
-      0,
-    );
-  },
+          )
+        ).rows[0].n,
+        0,
+      );
+    }),
 });
 
 PROVAS.push({

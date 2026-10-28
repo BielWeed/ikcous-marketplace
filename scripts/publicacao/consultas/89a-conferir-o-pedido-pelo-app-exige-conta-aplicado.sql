@@ -29,7 +29,7 @@ WITH alvo(nome, assinatura) AS (
   SELECT 'create_marketplace_order_v24: corpo exato (md5)', 'f8d6ed0c3622ab41123bacb98911a98f',
          -- A 20261394000000 (o pedido de visitante na entrega tem freio: o mesmo corpo mais o trecho 0-quater) sucede a v24: aceita os dois
          -- corpos EXATOS; normaliza ao esperado desta migration. O `vivo` mostra o esperado.
-         COALESCE((SELECT CASE WHEN m IN ('f8d6ed0c3622ab41123bacb98911a98f', '36c80a107f3ed16853c1c5b2b0cbc911') THEN 'f8d6ed0c3622ab41123bacb98911a98f' ELSE m END
+         COALESCE((SELECT CASE WHEN m IN ('f8d6ed0c3622ab41123bacb98911a98f', '36c80a107f3ed16853c1c5b2b0cbc911', '541a210e52ea22fe67e35f2bdd9ef444') THEN 'f8d6ed0c3622ab41123bacb98911a98f' ELSE m END
                      FROM fn WHERE nome = 'create_marketplace_order_v24'), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v24: o corpo recusa o pagamento pelo app sem conta (uma vez)', 'sim',
@@ -40,7 +40,7 @@ WITH alvo(nome, assinatura) AS (
   UNION ALL
   SELECT 'create_marketplace_order_v23: corpo inalterado, o da 20261350000000 (md5)', '6b71cb823967518955407b532904ae91',
          -- Idem: a v23 aceita tambem o corpo da 20261394000000 (o mesmo corpo mais o trecho 0-quater) e o da 20261394200000 (mais o 0-ter).
-         COALESCE((SELECT CASE WHEN m IN ('6b71cb823967518955407b532904ae91', '89c99662346d47a4d6b3d13612ca4acb', '86a30fe3502bbafd1a507ce03189bc2d') THEN '6b71cb823967518955407b532904ae91' ELSE m END
+         COALESCE((SELECT CASE WHEN m IN ('6b71cb823967518955407b532904ae91', '89c99662346d47a4d6b3d13612ca4acb', '86a30fe3502bbafd1a507ce03189bc2d', '54b591dc09d67f1abbc9ab3ba5f62f5e') THEN '6b71cb823967518955407b532904ae91' ELSE m END
                      FROM fn WHERE nome = 'create_marketplace_order_v23'), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v24: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)', 'sim',

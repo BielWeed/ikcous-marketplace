@@ -813,6 +813,10 @@ T.prova(
   "INTACTO: so a v23 muda — o OID, o dono, a ACL e os atributos da v23 e da v24 sao os mesmos; a v24 e todas as outras funcoes de public tem o mesmo corpo; as tabelas nao ganham nem perdem linha",
   async () => {
     const foto2 = async () => ({
+      // A 20261397000000 e' mais nova que a v24 da 394000: devolve a v24 e a validate ao corpo de antes dela para medir so a v23.
+      _: await require("./o-desconto-do-cupom-posterior.cjs").desfazerODescontoDoCupomNaTransacao(
+        C(),
+      ),
       funcoes: (
         await C().query(
           `SELECT p.oid::regprocedure::text AS f, md5(p.prosrc) AS h, p.proacl::text AS acl, p.proowner::regrole::text AS dono
@@ -991,6 +995,11 @@ T.prova(
     T.emTransacao(
       async () => {
         assert.equal(await T.hashVivo(), H_DEPOIS);
+        // A 20261397000000 (o desconto do cupom e' arredondado ao centavo) sucede a v24 da 394000 e a validate da 208: esta prova mede a cadeia
+        // 350/384 -> 394 -> 394200, entao a v24 volta ao corpo da 394000 (a v23 aqui ja e' a desta migration, montada pelo estado "depois").
+        await require("./o-desconto-do-cupom-posterior.cjs").desfazerODescontoDoCupomNaTransacao(
+          T.C,
+        );
         const hash24 = async () =>
           (
             await T.C.query(

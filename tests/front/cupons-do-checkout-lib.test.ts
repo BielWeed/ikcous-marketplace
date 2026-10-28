@@ -87,6 +87,14 @@ describe("texto do cartão", () => {
     expect(destaqueDoCupom({ tipo: "percentage", valor: 10 })).toBe("10%");
     expect(destaqueDoCupom({ tipo: "fixed", valor: 15 })).toBe("R$ 15");
     expect(destaqueDoCupom({ tipo: "fixed", valor: 9.9 })).toBe("R$ 9,90");
+    expect(destaqueDoCupom({ tipo: "fixed", valor: 999.9 })).toBe("R$ 999,90");
+    expect(destaqueDoCupom({ tipo: "fixed", valor: 1000 })).toBe("R$ 1.000");
+    expect(destaqueDoCupom({ tipo: "fixed", valor: 1299.9 })).toBe(
+      "R$ 1.299,90",
+    );
+    expect(destaqueDoCupom({ tipo: "fixed", valor: 12345.6 })).toBe(
+      "R$ 12.345,60",
+    );
   });
 
   it("validade no fuso de quem olha", () => {

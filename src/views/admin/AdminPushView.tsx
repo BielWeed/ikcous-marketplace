@@ -1805,8 +1805,12 @@ export const AdminPushView = memo(function AdminPushView({
                 >
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
                     <span className="text-zinc-400 font-mono">
-                      {new Date(item.sent_at).toLocaleDateString()} às{" "}
-                      {new Date(item.sent_at).toLocaleTimeString([], {
+                      {new Date(item.sent_at).toLocaleDateString("pt-BR", {
+                        timeZone: "America/Sao_Paulo",
+                      })}{" "}
+                      às{" "}
+                      {new Date(item.sent_at).toLocaleTimeString("pt-BR", {
+                        timeZone: "America/Sao_Paulo",
                         hour: "2-digit",
                         minute: "2-digit",
                       })}

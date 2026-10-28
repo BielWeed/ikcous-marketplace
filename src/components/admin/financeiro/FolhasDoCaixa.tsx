@@ -447,7 +447,7 @@ export function MovimentarCaixaFolha({
           rotulo={sangria ? "Registrar sangria" : "Registrar suprimento"}
           rotuloEnviando="Registrando…"
           enviando={enviando}
-          bloqueado={semOpcaoDeConta}
+          bloqueado={semOpcaoDeConta || passaDoEsperado}
           aoConfirmar={confirmar}
         />
       }

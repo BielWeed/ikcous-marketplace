@@ -232,6 +232,8 @@ on:
       - "scripts/publicacao/consultas/113b-antes-a-pergunta-nasce-com-a-data-de-agora-ausente.sql"
       - "scripts/publicacao/consultas/114a-conferir-o-texto-da-avaliacao-tem-teto-no-banco-aplicado.sql"
       - "scripts/publicacao/consultas/114b-antes-o-texto-da-avaliacao-tem-teto-no-banco-ausente.sql"
+      - "scripts/publicacao/consultas/115a-conferir-o-desconto-do-cupom-e-arredondado-ao-centavo-aplicado.sql"
+      - "scripts/publicacao/consultas/115b-antes-o-desconto-do-cupom-e-arredondado-ao-centavo-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -433,6 +435,8 @@ on:
       - "scripts/publicacao/consultas/113b-antes-a-pergunta-nasce-com-a-data-de-agora-ausente.sql"
       - "scripts/publicacao/consultas/114a-conferir-o-texto-da-avaliacao-tem-teto-no-banco-aplicado.sql"
       - "scripts/publicacao/consultas/114b-antes-o-texto-da-avaliacao-tem-teto-no-banco-ausente.sql"
+      - "scripts/publicacao/consultas/115a-conferir-o-desconto-do-cupom-e-arredondado-ao-centavo-aplicado.sql"
+      - "scripts/publicacao/consultas/115b-antes-o-desconto-do-cupom-e-arredondado-ao-centavo-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -681,6 +685,13 @@ jobs:
       - name: Prova viva da v23 que recusa o pagamento pelo app (20261394200000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-v23-recusa-o-pagamento-pelo-app-viva.cjs
+      # Migration 20261397000000 (o desconto do cupom de porcentagem e arredondado ao centavo): create_marketplace_order_v23/v24 e
+      # validate_coupon_secure_v2 trocam UMA linha cada (round(..., 2) no desconto percentual, meio centavo para cima, ANTES de subtrair).
+      # 29,95 x 10% -> desconto 3,00 e total 26,95 (antes 2,995 e 26,96); a ficha sempre fecha; valor fixo, teto e 100% intactos; pedido ja
+      # gravado nao muda; rollback byte a byte, pre-voo, pos-voo atomico e consultas 115a/115b. CLONE proprio.
+      - name: Prova viva do desconto do cupom arredondado ao centavo (20261397000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-desconto-do-cupom-e-arredondado-ao-centavo-viva.cjs
       # Migration 20261396000000 (cada conta tem no maximo 10 aparelhos com aviso ligado): gatilho BEFORE INSERT em push_subscriptions recusa a 11a
       # inscricao NOVA da conta (cliente que nao e' administrador), sem apagar nada; o re-registro do mesmo aparelho (upsert por endpoint, que
       # dispara o gatilho antes do conflito) nao conta; conta acima de 10 de antes renova e desliga mas nao cadastra novo; duas conexoes reais

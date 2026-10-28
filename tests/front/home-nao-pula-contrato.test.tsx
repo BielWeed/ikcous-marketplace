@@ -123,8 +123,10 @@ vi.mock("@/components/ui/custom/ProductList", () => ({
   ProductList: () => null,
 }));
 
+// Marcador no lugar do cartão: o que se prova aqui é ONDE a home o desenha
+// (com ou sem banner), não o texto dele.
 vi.mock("@/components/ui/custom/FreeShippingBlock", () => ({
-  FreeShippingBlock: () => null,
+  FreeShippingBlock: () => <div data-testid="cartao-frete" />,
 }));
 
 vi.mock("@/components/ui/custom/ProductCarousel", () => ({
@@ -297,7 +299,7 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
     // já visitou a loja e ela não tinha banner não ganha o esqueleto —
     // quando `bannersLoaded` confirmar o vazio, nada colapsa.
     expect(home).toMatch(
-      /memoriaDaUltimaVisita !== null &&\s*\n\s*!memoriaDaUltimaVisita\.temBanner \? null : \(/,
+      /memoriaDaUltimaVisita !== null &&\s*!memoriaDaUltimaVisita\.temBanner \?\s*\(\s*blocoFreteSemBanner\s*\) : \(/,
     );
     // E a memória é gravada quando dados e banners da visita resolveram.
     expect(home).toMatch(
@@ -667,6 +669,50 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     expect(esqueletoDeOfertas()).toBeNull();
     expect(esqueletoDeBanner()).toBeNull();
     expect(esqueletoDeCarrossel()).not.toBeNull();
+  });
+
+  it("loja SEM banner (confirmado pela rede): o cartão de frete grátis aparece na página inicial", async () => {
+    configDaLoja = { freeShippingMin: 350 };
+    bannersDaLoja = { isLoaded: true, banners: [] };
+    await montar([]);
+
+    expect(
+      hospedeiro.querySelector('[data-testid="cartao-frete"]'),
+    ).not.toBeNull();
+  });
+
+  it("loja SEM banner pela memória da última visita: o cartão aparece sem esperar a rede", async () => {
+    configDaLoja = { freeShippingMin: 350 };
+    semearMemoria({
+      temBanner: false,
+      temOfertas: false,
+      temBestsellers: false,
+    });
+    bannersDaLoja = { isLoaded: false, banners: [] };
+    await montar([], true);
+
+    expect(esqueletoDeBanner()).toBeNull();
+    expect(
+      hospedeiro.querySelector('[data-testid="cartao-frete"]'),
+    ).not.toBeNull();
+  });
+
+  it("loja SEM banner e SEM frete grátis: a página não ganha caixa vazia no lugar do cartão", async () => {
+    configDaLoja = { freeShippingMin: 0 };
+    bannersDaLoja = { isLoaded: true, banners: [] };
+    await montar([]);
+
+    expect(hospedeiro.querySelector('[data-testid="cartao-frete"]')).toBeNull();
+    expect(hospedeiro.querySelector(".mb-2.w-full:empty")).toBeNull();
+  });
+
+  it("loja SEM banner e configuração ainda não chegou: nada de cartão nem de esqueleto (a página não reserva o que talvez não exista)", async () => {
+    configCarregada = false;
+    bannersDaLoja = { isLoaded: true, banners: [] };
+    await montar([]);
+
+    expect(hospedeiro.querySelector('[data-testid="cartao-frete"]')).toBeNull();
+    expect(hospedeiro.querySelector(".animate-pulse.bg-zinc-100")).toBeNull();
   });
 
   it("volta a loja COM ofertas: esqueleto de ofertas reserva (troca 1:1, sem nascimento)", async () => {

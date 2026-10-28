@@ -106,6 +106,10 @@ const ARQUIVO = "20261203000000_cupons_desligados_nao_dao_desconto.sql";
 // prova e sobre a 20261203: `cheio` e `pre` ficam SEM a 08 (a 08 recusa um corpo vivo
 // que nao seja o da 203; sem a 203 ela nem aplica). A 08 tem bases proprias abaixo.
 const ARQ08 = "20261208000000_o_checkout_mostra_os_cupons_da_cliente.sql";
+// A 20261397000000 (o desconto do cupom e' arredondado ao centavo) redefine a validate DEPOIS da 08, em cima do corpo dela: tambem fica fora de `cheio` e
+// `pre` (o pre-voo dela exige o corpo da 08 ou o dela). `cheio08` a desfaz (o corpo vivo da validate la e' o da 08); `cheio397` e' a arvore inteira.
+const ARQ397 =
+  "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql";
 const REF_SAVY = "gnjsrucsmjkajijrakzr";
 const SHA40 = "d".repeat(40);
 const SQL = {
@@ -645,11 +649,19 @@ async function main() {
   // ----------------------------------------------------------- as bases
   // `cheio` = a arvore inteira ATE a 203 (sem a 08); `cheio08` = a arvore inteira.
   const t203 = `pv_${SUF}_t203`.slice(0, 60);
-  await montarBase(t203, (f) => f !== ARQ08);
+  await montarBase(t203, (f) => f !== ARQ08 && f !== ARQ397);
   const cheio = await clonar("cheio", t203);
   const cheio08 = await clonar("cheio08");
+  await usar(cheio08, async (c) => {
+    await c.query("BEGIN");
+    await require("./o-desconto-do-cupom-posterior.cjs").desfazerODescontoDoCupomNaTransacao(
+      c,
+    );
+    await c.query("COMMIT");
+  });
+  const cheio397 = await clonar("cheio397");
   const pre = `pv_${SUF}_pre`.slice(0, 60);
-  await montarBase(pre, (f) => f !== ARQUIVO && f !== ARQ08);
+  await montarBase(pre, (f) => f !== ARQUIVO && f !== ARQ08 && f !== ARQ397);
   {
     const sonda = await usar(pre, async (c) => ({
       gatilho: (
@@ -739,6 +751,40 @@ async function main() {
     );
     ok(
       "10a POSITIVA também com a 20261208000000 aplicada (árvore inteira, corpo LF; e a 08 aplicada em CRLF sobre a base da 203, corpo CRLF): os dois hashes novos são aceitos",
+    );
+  }
+  {
+    // A 20261397000000 reescreve a validate de novo (LF e CRLF aceitos pela 10a, que continua mostrando o hash da 203): a 10a TEM de aceitar o corpo dela.
+    const crypto = require("node:crypto");
+    const m397 = fs
+      .readFileSync(path.join(MIGRATIONS, ARQ397), "utf8")
+      .replace(/\r\n/g, "\n");
+    const ini = m397.indexOf(
+      "CREATE OR REPLACE FUNCTION public.validate_coupon_secure_v2(p_code text, p_subtotal numeric)",
+    );
+    const abre = m397.indexOf("AS $$", ini) + "AS $$".length;
+    const corpo397 = m397.slice(abre, m397.indexOf("$$;", abre));
+    const sha397 = crypto
+      .createHash("sha256")
+      .update(corpo397, "utf8")
+      .digest("hex");
+    assert.ok(
+      ini >= 0 && corpo397.length > 100 && sha397 !== HASH.v08LF,
+      "nao achei o corpo da validate na 20261397000000",
+    );
+    const rows397 = await rodar(cheio397, A);
+    await exigirPositiva(A, "10a em cheio397", rows397);
+    assert.equal(linha(rows397, L.vHash).vivo, HASH.vNovoLF);
+    assert.equal(
+      await usar(
+        cheio397,
+        async (c) => (await c.query(`SELECT ${HASH_DE(SIG_V)} AS h`)).rows[0].h,
+      ),
+      sha397,
+      "guarda: o corpo vivo da validate na arvore inteira e' o da 20261397000000 (LF)",
+    );
+    ok(
+      "10a POSITIVA também com a 20261397000000 aplicada (árvore inteira, corpo LF da validate com o round): o hash novo é aceito e a linha continua mostrando o da 203",
     );
   }
   {

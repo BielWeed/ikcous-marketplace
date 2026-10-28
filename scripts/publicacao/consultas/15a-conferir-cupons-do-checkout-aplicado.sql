@@ -328,7 +328,10 @@ WITH tab AS (
   SELECT 'validate_coupon_secure_v2: corpo (sha256)',
          'c33e930ca389b3568bd256f9363ace8fd3935f0ac73851441e0684a374b11037',
          COALESCE((SELECT CASE WHEN f.h IN ('c33e930ca389b3568bd256f9363ace8fd3935f0ac73851441e0684a374b11037',
-                                            'fdfacc20cc3bc2a691ad8961c525e5cb77071b7d5e9e590a7470e45690a2df3a')
+                                            'fdfacc20cc3bc2a691ad8961c525e5cb77071b7d5e9e590a7470e45690a2df3a',
+                                            -- a sucessora desta, a 20261397000000 (o desconto do cupom e' arredondado ao centavo), LF | CRLF
+                                            'cd7865bee8797fee5575643f749b56d1e9cc8af852cd74297f9a1f065ac44097',
+                                            '139fffba24153eff45f66a2885e1eafb92bbffcdc2e6b0203c8b0448b5c267fa')
                                THEN 'c33e930ca389b3568bd256f9363ace8fd3935f0ac73851441e0684a374b11037'
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'validate_coupon_secure_v2'), 'AUSENTE')

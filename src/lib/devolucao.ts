@@ -11,7 +11,7 @@
  * Os rótulos moram em `Map` (e não em objeto indexado por chave dinâmica)
  * pela mesma razão do resto do painel: `security/detect-object-injection`.
  */
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, reaisComVirgula } from "@/lib/utils";
 import type {
   AtorDoEvento,
   CondicaoItemDevolvido,
@@ -296,14 +296,7 @@ export const ehMotivoDeProblema = (m: MotivoDevolucao | null | undefined) =>
 
 export const formatarReais = (valor: number) => formatCurrency(valor);
 
-/**
- * O servidor monta mensagens com `numeric` cru ("R$ 120.00"). Aqui o valor
- * vira real brasileiro ("R$ 120,00"); o que já está formatado não é tocado.
- */
-export const reaisComVirgula = (texto: string) =>
-  texto.replace(/R\$ (\d+)\.(\d{2})(?![\d,])/g, (_, inteiro, centavos) =>
-    formatarReais(Number(`${inteiro}.${centavos}`)),
-  );
+export { reaisComVirgula };
 
 /** Centavos inteiros antes de somar — `0.1 + 0.2` não pode virar dinheiro. */
 export const paraCentavos = (valor: number) => Math.round(valor * 100);
@@ -1319,7 +1312,7 @@ const RE_REDE =
 
 /**
  * A RPC já fala pt-BR com o leigo (as mensagens moram na migration) — a tela
- * mostra como veio. Só a falha de rede, que chega em inglês do navegador,
+ * mostra como veio (o dinheiro em reais brasileiros). Só a falha de rede, que chega em inglês do navegador,
  * vira frase nossa.
  */
 export function mensagemDoErro(erro: unknown, generica: string): string {
@@ -1333,7 +1326,7 @@ export function mensagemDoErro(erro: unknown, generica: string): string {
   if (RE_REDE.test(msg)) {
     return "Sem conexão com a internet. Confira a rede e tente de novo.";
   }
-  return msg;
+  return reaisComVirgula(msg);
 }
 
 /**
