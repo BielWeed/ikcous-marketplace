@@ -339,16 +339,20 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     }
 
     try {
-      // `.select("id")`: o banco responde sucesso com 0 linhas quando a
-      // política de acesso barra o UPDATE (ou o cupom não existe mais).
-      const { data: gravadas, error } = await supabase
-        .from("coupons")
-        .update(dbUpdates)
-        .eq("id", id)
-        .select("id");
+      // Só a lista de clientes mudou (remendo vazio): o UPDATE sem coluna não
+      // altera linha nenhuma e viraria "Nenhum cupom foi alterado".
+      if (clientes === undefined || Object.keys(dbUpdates).length > 0) {
+        // `.select("id")`: o banco responde sucesso com 0 linhas quando a
+        // política de acesso barra o UPDATE (ou o cupom não existe mais).
+        const { data: gravadas, error } = await supabase
+          .from("coupons")
+          .update(dbUpdates)
+          .eq("id", id)
+          .select("id");
 
-      if (error) throw error;
-      if (!gravadas?.length) throw new Error("Nenhum cupom foi alterado.");
+        if (error) throw error;
+        if (!gravadas?.length) throw new Error("Nenhum cupom foi alterado.");
+      }
 
       if (clientes !== undefined) {
         await definirClientesDoCupom(id, clientes);
