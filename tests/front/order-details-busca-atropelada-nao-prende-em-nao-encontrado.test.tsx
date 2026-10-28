@@ -68,14 +68,14 @@ describe("OrderDetailsView — busca atropelada (13-C #7)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
-  async function desenhar() {
+  async function desenhar(id = "pedido-777") {
     const { OrderDetailsView } = await import(
       "@/views/customer/OrderDetailsView"
     );
     await act(async () => {
       raiz.render(
         <OrderDetailsView
-          orderId="pedido-777"
+          orderId={id}
           onBack={() => {}}
           onNavigate={() => {}}
         />,
@@ -138,5 +138,22 @@ describe("OrderDetailsView — busca atropelada (13-C #7)", () => {
 
     expect(hospedeiro.textContent).not.toContain("Pedido não encontrado");
     expect(hospedeiro.textContent).toContain("Meu pedido");
+  });
+
+  it("orderId muda para um pedido inexistente: não mostra os dados do pedido anterior", async () => {
+    estado.fetchUserOrders.mockResolvedValue([pedido]);
+    estado.lista = [pedido];
+    await desenhar("pedido-777");
+    expect(hospedeiro.textContent).toContain("Meu pedido");
+
+    // Mesmo componente, outro id que não existe em lugar nenhum.
+    estado.fetchUserOrders.mockResolvedValue([]);
+    await desenhar("pedido-inexistente");
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(hospedeiro.textContent).toContain("Pedido não encontrado");
+    expect(hospedeiro.textContent).not.toContain("Meu pedido");
   });
 });

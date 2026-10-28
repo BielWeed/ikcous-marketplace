@@ -724,11 +724,13 @@ export function OrderDetailsView({
     // "pedido não encontrado" por causa de uma resposta abortada.
     // Busca que termina VAZIA (cancelada por outra busca, por exemplo) nunca
     // apaga um pedido que a tela já tem: `novo ?? prev`. Pedido que de fato
-    // não existe chega aqui com `prev` nulo e continua "não encontrado".
+    // não existe chega aqui sem pedido do MESMO id e continua "não encontrado".
     if (encontrado || !emMemoria) {
       const novo = encontrado ?? null;
       setOrder((prev) =>
-        novo && prev ? escolherVersaoDoPedido(prev, novo) : (novo ?? prev),
+        novo && prev
+          ? escolherVersaoDoPedido(prev, novo)
+          : (novo ?? (prev?.id === orderId ? prev : null)),
       );
     }
     setLoading(false);
