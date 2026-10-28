@@ -297,12 +297,15 @@ export const ehMotivoDeProblema = (m: MotivoDevolucao | null | undefined) =>
 export const formatarReais = (valor: number) => formatCurrency(valor);
 
 /**
- * O servidor monta mensagens com `numeric` cru ("R$ 120.00"). Aqui o valor
- * vira real brasileiro ("R$ 120,00"); o que já está formatado não é tocado.
+ * O banco escreve dinheiro no formato americano: "R$ 120.00", "R$ 1,234.50" e,
+ * quando apaga o zero da frente, "R$ .50". Aqui vira real brasileiro; o que já
+ * está formatado não é tocado.
  */
 export const reaisComVirgula = (texto: string) =>
-  texto.replace(/R\$ (\d+)\.(\d{2})(?![\d,])/g, (_, inteiro, centavos) =>
-    formatarReais(Number(`${inteiro}.${centavos}`)),
+  texto.replace(
+    /R\$ (\d{1,3}(?:,\d{3})+|\d*)\.(\d{2})(?![\d,])/g,
+    (_, inteiro: string, centavos: string) =>
+      formatarReais(Number(`${inteiro.replace(/,/g, "") || "0"}.${centavos}`)),
   );
 
 /** Centavos inteiros antes de somar — `0.1 + 0.2` não pode virar dinheiro. */

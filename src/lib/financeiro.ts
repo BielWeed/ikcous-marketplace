@@ -12,6 +12,7 @@
 // Dinheiro sempre em CENTAVOS inteiros antes de somar/subtrair — `50 - 4.23`
 // em ponto flutuante dá `45.769999…`, não `45.77`.
 
+import { reaisComVirgula } from "@/lib/devolucao";
 import type {
   CaixaAtual,
   CategoriaFinanceira,
@@ -1823,7 +1824,7 @@ export function mensagemDeErroFinanceiro(erro: unknown): string {
     return "Só o administrador da loja mexe no Financeiro. Entre de novo com a conta de administrador.";
   }
   if ((codigo === "P0001" || codigo === "22023") && mensagem) {
-    return mensagem;
+    return reaisComVirgula(mensagem);
   }
   if (codigo.startsWith("23") || codigo === "22P02") {
     return "O banco recusou os dados. Confira os campos e tente de novo.";
