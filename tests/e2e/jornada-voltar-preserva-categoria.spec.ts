@@ -30,12 +30,19 @@ test("voltar da tela do produto preserva a categoria escolhida", async ({
     .getByRole("button", { name: `Selecionar categoria ${CATEGORIA_ROUPAS}` })
     .click();
   await expect(page).toHaveURL(/category=Roupas/);
+  // O topo da home (banner, vitrines) FICA com a categoria escolhida; quem
+  // filtra é só a seção "Catálogo" — por isso a conferência olha lá dentro.
+  const catalogo = page
+    .getByRole("heading", { name: "Catálogo", level: 2 })
+    .locator("..");
   await expect(
-    page.getByRole("button", { name: PRODUTO_ACESSORIOS, exact: true }),
+    catalogo.getByRole("button", { name: PRODUTO_ACESSORIOS, exact: true }),
   ).toHaveCount(0);
 
   // Entra no produto…
-  await page.getByRole("button", { name: PRODUTO_ROUPAS, exact: true }).click();
+  await catalogo
+    .getByRole("button", { name: PRODUTO_ROUPAS, exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: "Adicionar ao Carrinho" }),
   ).toBeVisible({ timeout: 30_000 });
@@ -45,10 +52,10 @@ test("voltar da tela do produto preserva a categoria escolhida", async ({
   await page.goBack();
   await expect(page).toHaveURL(/category=Roupas/);
   await expect(
-    page.getByRole("button", { name: PRODUTO_ROUPAS, exact: true }).first(),
+    catalogo.getByRole("button", { name: PRODUTO_ROUPAS, exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: PRODUTO_ACESSORIOS, exact: true }),
+    catalogo.getByRole("button", { name: PRODUTO_ACESSORIOS, exact: true }),
   ).toHaveCount(0);
 
   // A lista volta a agir como lista filtrada: trocar de categoria ainda
@@ -59,7 +66,7 @@ test("voltar da tela do produto preserva a categoria escolhida", async ({
     })
     .click();
   await expect(
-    page.getByRole("button", { name: PRODUTO_ACESSORIOS, exact: true }),
+    catalogo.getByRole("button", { name: PRODUTO_ACESSORIOS, exact: true }),
   ).toBeVisible();
   await expect(page).toHaveURL(/category=Acess%C3%B3rios/);
 
