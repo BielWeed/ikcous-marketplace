@@ -1,5 +1,6 @@
 import { DataVault } from "@/lib/dataVault";
 import { miniaturaDaSugestao } from "@/lib/imageUrl";
+import { miniaturaDeCompra } from "@/lib/miniatura-de-compra";
 import { conexaoDoNavegador, redeLenta } from "@/lib/rede-lenta";
 import { useEffect } from "react";
 
@@ -29,7 +30,9 @@ export function useCacheWarmer() {
         // banner é o preloadTopBanner (useBanners.ts:15), que passa pelo SW e
         // se auto-serve na gaveta — aquecê-lo aqui era um no-op. Só a 1ª foto
         // de cada produto tem consumidor no endereço que se aquece: a ORIGINAL
-        // (CartItemsList, ShippingProgress) e a MINIATURA da sugestão da
+        // (CheckoutView, ofertas), a MINIATURA das telas de compra
+        // (CartItemsList, OrderList, ShippingProgress, via
+        // `miniaturaDeCompra`) e a MINIATURA da sugestão da
         // busca (SearchBar, via `miniaturaDaSugestao` — a mesma string que ela
         // renderiza). Quando a loja não redimensiona (IKCOUS), a miniatura é a
         // própria original e entra uma vez só.
@@ -42,7 +45,11 @@ export function useCacheWarmer() {
               .slice(0, 15) // Limitar aos primeiros 15 produtos
               .map((p) => p.images?.[0] || p.imagem_url)
               .filter((url) => typeof url === "string" && url.trim() !== "")
-              .flatMap((url: string) => [url, miniaturaDaSugestao(url)]),
+              .flatMap((url: string) => [
+                url,
+                miniaturaDaSugestao(url),
+                miniaturaDeCompra(url),
+              ]),
           ),
         ];
 

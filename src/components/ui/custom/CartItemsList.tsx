@@ -1,6 +1,8 @@
 import { QuantitySelector } from "@/components/ui/custom/QuantitySelector";
 import { useStore } from "@/contexts/StoreContext";
 import { chaveDaLinha, estoqueDaLinha } from "@/lib/escolhas-do-item";
+import { usarImagemOriginal } from "@/lib/imageUrl";
+import { miniaturaDeCompra } from "@/lib/miniatura-de-compra";
 import { precoVendido } from "@/lib/preco-vendido";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { CartItem } from "@/types";
@@ -101,8 +103,11 @@ const CartItemCard = memo(function CartItemCard({
         <div className="size-16 flex-shrink-0 overflow-hidden rounded-xl bg-muted min-[380px]:size-20">
           <img
             src={
-              item.product.images?.[0] ||
+              miniaturaDeCompra(item.product.images?.[0]) ||
               "https://placehold.co/600x400?text=Sem+Imagem"
+            }
+            onError={(e) =>
+              usarImagemOriginal(e.currentTarget, item.product.images?.[0])
             }
             alt={item.product.name}
             className="size-full object-cover"
