@@ -4422,7 +4422,7 @@ export function useOrders(
             const restantes = (data as any).restantes;
             toast.error(
               typeof restantes === "number" && restantes > 0
-                ? `${(data as any).error} Restam ${restantes} tentativa(s).`
+                ? `${(data as any).error} Resta${restantes === 1 ? "" : "m"} ${restantes} tentativa${restantes === 1 ? "" : "s"}.`
                 : (data as any).error || "Código inválido ou expirado",
             );
             return [];

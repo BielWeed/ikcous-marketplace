@@ -282,7 +282,7 @@ describe("Avisar clientes — falha não apaga a campanha", () => {
       expect(ajustarLog).toHaveBeenCalledWith({ recipient_count: 1 });
       const { toast } = await import("sonner");
       expect(toast.success).toHaveBeenCalledWith(
-        "Notificação entregue em 1 dispositivo(s)",
+        "Notificação entregue em 1 dispositivo",
       );
     },
   );
@@ -314,7 +314,7 @@ describe("Avisar clientes — falha não apaga a campanha", () => {
     expect(ajustarLog).not.toHaveBeenCalled();
     const { toast } = await import("sonner");
     expect(toast.error).toHaveBeenCalledWith(
-      "Nenhum dos 1 dispositivos recebeu",
+      "O aparelho não recebeu o aviso",
       expect.any(Object),
     );
     expect(toast.success).not.toHaveBeenCalled();

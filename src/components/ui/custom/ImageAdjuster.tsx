@@ -1381,6 +1381,7 @@ export function ImageAdjuster({
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
+                        aria-label="Diminuir zoom"
                         onClick={() =>
                           handleZoomChange(Math.max(1, zoom - 0.25))
                         }
@@ -1407,6 +1408,7 @@ export function ImageAdjuster({
 
                       <button
                         type="button"
+                        aria-label="Aumentar zoom"
                         onClick={() =>
                           handleZoomChange(Math.min(3, zoom + 0.25))
                         }
@@ -1471,6 +1473,9 @@ export function ImageAdjuster({
                         </span>
                         <button
                           type="button"
+                          role="switch"
+                          aria-checked={showBannerSimulation}
+                          aria-label="Simular textos do banner"
                           onClick={() =>
                             setShowBannerSimulation((prev) => !prev)
                           }
