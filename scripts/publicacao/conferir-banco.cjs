@@ -2870,7 +2870,19 @@ const ROL_DA_115 = [
   "validate_coupon_secure_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno jsonb)",
   "validate_coupon_secure_v2: EXECUTE para authenticated, sem PUBLIC",
 ];
+// Lote 116 (20261398000000, o Inicio compara o mes anterior ate a mesma hora: painel_inicio redefinida, so a condicao de receita_mes_anterior). A 116a e a 116b
+// tem o mesmo rol de 4 linhas; a 116a espera o corpo da 20261398000000 e a 116b o da 20261390000000.
+const ROL_DA_116 = [
+  "controle: funcoes de public visiveis a este papel",
+  "painel_inicio: corpo exato (md5)",
+  "painel_inicio: assinatura e atributos conhecidos",
+  "painel_inicio: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "116a-conferir-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-aplicado":
+    ROL_DA_116,
+  "116b-antes-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-base-vigente":
+    ROL_DA_116,
   "115a-conferir-o-desconto-do-cupom-e-arredondado-ao-centavo-aplicado":
     ROL_DA_115,
   "115b-antes-o-desconto-do-cupom-e-arredondado-ao-centavo-base-vigente":

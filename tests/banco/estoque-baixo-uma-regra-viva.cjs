@@ -331,7 +331,12 @@ PROVAS.push({
     await require("./ex-admin-resto-do-painel-posterior.cjs").desfazerExAdminRestoNaTransacao(
       c,
     );
-    // A 20261390000000 (o lucro do Início conta o mês inteiro) sucede a 28: sai primeiro, pelo rollback-manual dela
+    // A 20261398000000 (o Início compara o mês anterior até a mesma hora) sucede a 390: sai PRIMEIRO, pelo rollback-manual dela
+    // (o rollback da 390 só aceita o corpo da 390). Não faz nada se não está no ar.
+    await require("./o-inicio-compara-o-mes-anterior-posterior.cjs").desfazerMesAnteriorNaTransacao(
+      c,
+    );
+    // A 20261390000000 (o lucro do Início conta o mês inteiro) sucede a 28: sai em seguida, pelo rollback-manual dela
     // (o rollback da 28 só aceita o corpo da 28). Não faz nada se não está no ar.
     await require("./o-lucro-do-inicio-posterior.cjs").desfazerLucroDoInicioNaTransacao(
       c,

@@ -133,6 +133,11 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // PROPRIA do que a 8e, a 17a e a 30a fazem com ela em tests/banco/o-lucro-do-inicio-conta-o-mes-inteiro-viva.cjs e em
     // tests/banco/numeros-do-painel-portao-viva.cjs; `noEstado` a desfaz antes (o-lucro-do-inicio-posterior.cjs), como faz com a 382.
     s.nome !== "20261390000000_o_lucro_do_inicio_conta_o_mes_inteiro.sql" &&
+    // A 20261398000000 (o Inicio compara o mes anterior ate a mesma hora) e a QUARTA sucessora de painel_inicio (99 -> 12 -> 28 -> 390 -> 398): tem a
+    // PROVA PROPRIA em tests/banco/o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-viva.cjs; `noEstado` a desfaz antes
+    // (o-inicio-compara-o-mes-anterior-posterior.cjs), como faz com a 390.
+    s.nome !==
+      "20261398000000_o_inicio_compara_o_mes_anterior_ate_a_mesma_hora.sql" &&
     // A 20261392000000 (a lista de clientes nao repete ninguem entre as paginas) e a 20261392100000 (a busca do CRM acha o numero
     // com o +55) sao as SEGUNDAS sucessoras de get_admin_customers_paged (99 -> 230 -> 392) e de crm_clientes (99 -> 231 -> 3921):
     // tem a PROVA PROPRIA do que as consultas 101a/101b e 102a/102b fazem com elas (a-lista-de-clientes-nao-repete-ninguem-viva.cjs
@@ -328,6 +333,10 @@ async function noEstado(montar, textos = [SQL_8E]) {
     );
     await devolverAoEstadoAnteriorAoCustoDoDia(C);
     await desfazerEntregaNaCidadeNaTransacao(C);
+    // A 20261398 (o Inicio compara o mes anterior ate a mesma hora) sucede a 390 em painel_inicio: sai PRIMEIRO, antes de qualquer montagem desta prova.
+    await require("./o-inicio-compara-o-mes-anterior-posterior.cjs").desfazerMesAnteriorNaTransacao(
+      C,
+    );
     // A 20261390 (o lucro do Inicio conta o mes inteiro) sucede a 28 em painel_inicio: sai antes de qualquer montagem desta prova.
     await require("./o-lucro-do-inicio-posterior.cjs").desfazerLucroDoInicioNaTransacao(
       C,

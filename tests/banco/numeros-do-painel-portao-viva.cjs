@@ -83,6 +83,11 @@ const RB32 = lerMig(`rollback-manual-${ARQ32}`);
 const ARQ390 = "20261390000000_o_lucro_do_inicio_conta_o_mes_inteiro.sql";
 const MIG390 = lerMig(ARQ390);
 const RB390 = lerMig(`rollback-manual-${ARQ390}`);
+// A SUCESSORA da 390 (20261398, o Inicio compara o mes anterior ate a mesma hora), por cima da 390.
+const ARQ398 =
+  "20261398000000_o_inicio_compara_o_mes_anterior_ate_a_mesma_hora.sql";
+const MIG398 = lerMig(ARQ398);
+const RB398 = lerMig(`rollback-manual-${ARQ398}`);
 const emCRLF = (s) => s.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
 const md5 = (s) => crypto.createHash("md5").update(s).digest("hex");
 
@@ -108,6 +113,7 @@ const CORPO = {
   paiVigente: corpoDe(RB28, "painel_inicio"),
   crmSucessora: corpoDe(MIG32, "crm_visao"),
   paiSucessora: corpoDe(MIG390, "painel_inicio"),
+  paiSucessora398: corpoDe(MIG398, "painel_inicio"),
 };
 const H = {
   crmNovo: md5(CORPO.crmNovo),
@@ -116,6 +122,7 @@ const H = {
   paiVigente: md5(CORPO.paiVigente),
   crmSucessora: md5(CORPO.crmSucessora),
   paiSucessora: md5(CORPO.paiSucessora),
+  paiSucessora398: md5(CORPO.paiSucessora398),
 };
 
 const CRM = "public.crm_visao(date,date)";
@@ -189,7 +196,12 @@ const desfazSucessora = async (c) => {
     "SELECT md5(replace(prosrc, E'\\r', '')) AS h FROM pg_proc WHERE oid = to_regprocedure('public.crm_visao(date,date)')",
   );
   if (r.rows[0] && r.rows[0].h === H.crmSucessora) await c.query(RB32);
-  // E a sucessora do painel_inicio (a 20261390) sai antes: o preflight da 28 e o rollback dela so aceitam o corpo da 28 ou o anterior.
+  // E a sucessora da sucessora do painel_inicio (a 20261398) sai PRIMEIRO: o rollback da 390 so aceita o corpo da 390.
+  const q = await c.query(
+    "SELECT md5(replace(prosrc, E'\\r', '')) AS h FROM pg_proc WHERE oid = to_regprocedure('public.painel_inicio()')",
+  );
+  if (q.rows[0] && q.rows[0].h === H.paiSucessora398) await c.query(RB398);
+  // E a sucessora do painel_inicio (a 20261390) sai em seguida: o preflight da 28 e o rollback dela so aceitam o corpo da 28 ou o anterior.
   const p = await c.query(
     "SELECT md5(replace(prosrc, E'\\r', '')) AS h FROM pg_proc WHERE oid = to_regprocedure('public.painel_inicio()')",
   );
@@ -225,6 +237,12 @@ const comSucessora = async (c) => {
 const comSucessoraDoPainel = async (c) => {
   await depois(c);
   await c.query(MIG390);
+};
+
+// AS DUAS + A SUCESSORA do painel_inicio (a 20261390000000) + A SUCESSORA DELA (a 20261398000000)
+const comSucessoraDa390 = async (c) => {
+  await comSucessoraDoPainel(c);
+  await c.query(MIG398);
 };
 
 const reprovadas = (linhas) =>
@@ -276,6 +294,20 @@ prova(
       MIG390.includes(`'${H.paiNovo}', '${H.paiSucessora}'`) &&
         RB390.includes(`'${H.paiNovo}', '${H.paiSucessora}'`),
       "a 390 e o rollback dela citam (vigente = o da 28, desta = o da 390)",
+    );
+    assert.equal(H.paiSucessora398, "01d29aedf98b7f95851c1a1001b5c7ca");
+    assert.ok(
+      SQL[A].includes(`'${H.paiSucessora398}'`),
+      "30a: md5 da sucessora da 390",
+    );
+    assert.ok(
+      !SQL[B].includes(H.paiSucessora398),
+      "30b nao cita a sucessora da 390",
+    );
+    assert.ok(
+      MIG398.includes(`'${H.paiSucessora}', '${H.paiSucessora398}'`) &&
+        RB398.includes(`'${H.paiSucessora}', '${H.paiSucessora398}'`),
+      "a 398 e o rollback dela citam (vigente = o da 390, desta = o da 398)",
     );
     assert.ok(
       SQL[A].includes(`'${H.crmSucessora}'`),
@@ -485,6 +517,76 @@ prova(
       await antes(C);
       await assert.rejects(
         () => C.query(MIG390),
+        /B1_BASELINE_DIVERGENT: corpo vivo de public\.painel_inicio\(\) /,
+      );
+    } finally {
+      await C.query("ROLLBACK");
+    }
+  },
+);
+
+prova(
+  "SUCESSORA (20261398): com o Inicio que compara o mes anterior ate a mesma hora por cima da 390, a 30a segue POSITIVA e mostra o esperado no vivo; a 30b reprova as mesmas 4 linhas; corpo estranho por cima reprova o md5 e mostra o md5 dele; desfazer a 398 volta ao corpo da 390 (30a positiva) e desfazer tambem a 390 volta ao da 28; o marcador do corte segue no corpo; a 398 SEM a 390 no ar (corpo da 28) e recusada",
+  async () => {
+    const s = await noEstado(comSucessoraDa390, [A, B]);
+    assert.deepEqual(reprovadas(s[A]), [], "30a toda ok com a 398");
+    assert.deepEqual(
+      reprovadas(s[B]),
+      [B_CRM_MD5, B_CRM_MARC, B_PAI_MD5, B_PAI_MARC].sort(),
+    );
+    assert.equal(s[A].find((l) => l.item === A_PAI_MD5).vivo, H.paiNovo);
+    assert.equal(s[A].find((l) => l.item === A_PAI_MARC).vivo, "sim");
+    assert.equal(
+      s[A].find((l) => l.item === A_PAI_ACL).vivo,
+      "PUBLIC=nao anon=nao authenticated=sim service_role=sim",
+    );
+    const estranho = await noEstado(
+      async (c) => {
+        await comSucessoraDa390(c);
+        await c.query(FUNCOES.pai.cria(`${CORPO.paiSucessora398} `, ATRIBUTOS));
+        await guarda(doProc(PAI, "right(prosrc, 1) = ' '"));
+      },
+      [A],
+    );
+    assert.deepEqual(reprovadas(estranho[A]), [A_PAI_MD5]);
+    assert.equal(
+      estranho[A].find((l) => l.item === A_PAI_MD5).vivo,
+      md5(`${CORPO.paiSucessora398} `),
+      "corpo estranho mostra o md5 dele, nao o esperado",
+    );
+    const desfeita398 = await noEstado(
+      async (c) => {
+        await comSucessoraDa390(c);
+        await c.query(RB398);
+        await guarda(
+          doProc(PAI, `md5(replace(prosrc, E'\\r', '')) = '${H.paiSucessora}'`),
+        );
+      },
+      [A],
+    );
+    assert.deepEqual(reprovadas(desfeita398[A]), []);
+    const desfeitaTudo = await noEstado(
+      async (c) => {
+        await comSucessoraDa390(c);
+        await c.query(RB398);
+        await c.query(RB390);
+        await guarda(
+          doProc(PAI, `md5(replace(prosrc, E'\\r', '')) = '${H.paiNovo}'`),
+        );
+      },
+      [A],
+    );
+    assert.deepEqual(reprovadas(desfeitaTudo[A]), []);
+    assert.equal(
+      desfeitaTudo[A].find((l) => l.item === A_PAI_MD5).vivo,
+      H.paiNovo,
+    );
+    // a 398 SEM a 390 no ar (corpo da 28) nao existe: o pre-voo recusa, entao nao ha estado a medir
+    await C.query("BEGIN");
+    try {
+      await depois(C);
+      await assert.rejects(
+        () => C.query(MIG398),
         /B1_BASELINE_DIVERGENT: corpo vivo de public\.painel_inicio\(\) /,
       );
     } finally {
