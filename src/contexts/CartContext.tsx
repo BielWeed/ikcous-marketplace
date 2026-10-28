@@ -546,24 +546,37 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   // "Os valores do pedido mudaram. Atualize o carrinho" a chama antes de levar
   // a cliente ao carrinho. Só mexe no carrinho local — o sync com o banco segue
   // o caminho normal (a mudança de `cart` o dispara).
-  const renovarPeloCatalogo = useCallback(async () => {
-    const uidDaLeitura = userIdAtualRef.current;
-    const ids = Array.from(new Set(cartRef.current.map((i) => i.product.id)));
-    if (ids.length === 0) return;
-    try {
-      const lido = await lerProdutosEVariacoes(ids);
-      if (lido.variantesFalharam) return;
-      const catalogo = montarCatalogo(ids, lido.produtos, lido.variantes);
-      const avisos = await avisosDoCarrinho(cartRef.current, catalogo);
-      // A conta mudou durante a leitura: o carrinho de agora não é o que foi
-      // perguntado.
-      if (userIdAtualRef.current !== uidDaLeitura) return;
-      setCart((prev) => aplicarCatalogoAoCarrinho(prev, catalogo));
-      avisarDoCarrinho(avisos);
-    } catch (err) {
-      console.error("[CartContext] ❌ Catalog refresh failed:", err);
-    }
-  }, []);
+  // `respeitarPedidoPendente` (chamadores automáticos: abertura sem conta e volta
+  // do segundo plano): se a chave do pedido nasceu enquanto a leitura estava em
+  // voo, o resultado é descartado — o catálogo já vê o estoque que o PRÓPRIO
+  // pedido consumiu. A ação explícita da recusa não passa a opção e aplica sempre.
+  const renovarPeloCatalogo = useCallback(
+    async (opcoes?: { respeitarPedidoPendente?: boolean }) => {
+      const uidDaLeitura = userIdAtualRef.current;
+      const ids = Array.from(new Set(cartRef.current.map((i) => i.product.id)));
+      if (ids.length === 0) return;
+      try {
+        const lido = await lerProdutosEVariacoes(ids);
+        if (lido.variantesFalharam) return;
+        const catalogo = montarCatalogo(ids, lido.produtos, lido.variantes);
+        const avisos = await avisosDoCarrinho(cartRef.current, catalogo);
+        // A conta mudou durante a leitura: o carrinho de agora não é o que foi
+        // perguntado.
+        if (userIdAtualRef.current !== uidDaLeitura) return;
+        if (
+          opcoes?.respeitarPedidoPendente === true &&
+          haChaveDoPedidoVigente(uidDaLeitura)
+        ) {
+          return;
+        }
+        setCart((prev) => aplicarCatalogoAoCarrinho(prev, catalogo));
+        avisarDoCarrinho(avisos);
+      } catch (err) {
+        console.error("[CartContext] ❌ Catalog refresh failed:", err);
+      }
+    },
+    [],
+  );
 
   const syncFromDB = useCallback(
     async (force = false) => {
@@ -581,7 +594,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         isInitialLoad.current = false;
         // Abrir o app com pedido enviado e sem confirmação: o carrinho não muda
         // por baixo (ver `haChaveDoPedidoVigente`, lote 249).
-        if (!haChaveDoPedidoVigente(null)) void renovarPeloCatalogo();
+        if (!haChaveDoPedidoVigente(null)) {
+          void renovarPeloCatalogo({ respeitarPedidoPendente: true });
+        }
         return;
       }
 
@@ -918,7 +933,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       // vence sozinha em 30 min (uma recusa também espera esse prazo).
       if (haChaveDoPedidoVigente(userId ?? null)) return;
       ultimaRenovacaoVisivel.current = agora;
-      void renovarPeloCatalogo();
+      void renovarPeloCatalogo({ respeitarPedidoPendente: true });
     };
     window.addEventListener("online", reler);
     document.addEventListener("visibilitychange", aoFicarVisivel);
