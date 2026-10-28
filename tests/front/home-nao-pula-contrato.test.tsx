@@ -672,6 +672,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
   });
 
   it("loja SEM banner (confirmado pela rede): o cartão de frete grátis aparece na página inicial", async () => {
+    configDaLoja = { freeShippingMin: 350 };
     bannersDaLoja = { isLoaded: true, banners: [] };
     await montar([]);
 
@@ -681,6 +682,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
   });
 
   it("loja SEM banner pela memória da última visita: o cartão aparece sem esperar a rede", async () => {
+    configDaLoja = { freeShippingMin: 350 };
     semearMemoria({
       temBanner: false,
       temOfertas: false,
@@ -693,6 +695,15 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     expect(
       hospedeiro.querySelector('[data-testid="cartao-frete"]'),
     ).not.toBeNull();
+  });
+
+  it("loja SEM banner e SEM frete grátis: a página não ganha caixa vazia no lugar do cartão", async () => {
+    configDaLoja = { freeShippingMin: 0 };
+    bannersDaLoja = { isLoaded: true, banners: [] };
+    await montar([]);
+
+    expect(hospedeiro.querySelector('[data-testid="cartao-frete"]')).toBeNull();
+    expect(hospedeiro.querySelector(".mb-2.w-full:empty")).toBeNull();
   });
 
   it("loja SEM banner e configuração ainda não chegou: nada de cartão nem de esqueleto (a página não reserva o que talvez não exista)", async () => {
