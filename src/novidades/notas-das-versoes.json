@@ -1,4 +1,12 @@
 {
+  "1.5.95": {
+    "titulo": "Escolher uma categoria não esconde mais o topo da loja",
+    "novidades": [],
+    "correcoes": [
+      "Tela inicial: ao tocar numa categoria, o banner do topo, o cartão de frete grátis e as vitrines (como \"Ofertas Imperdíveis\") continuam na tela. Só a lista de produtos do Catálogo passa a mostrar a categoria escolhida. Na busca por texto, a tela continua mostrando só os resultados."
+    ],
+    "melhorias": []
+  },
   "1.5.94": {
     "titulo": "Loja mais leve no primeiro acesso e números do mês certos",
     "novidades": [],
