@@ -165,8 +165,11 @@ describe("AdminCouponFormView — aviso do cupom que pode cobrir a compra inteir
   });
 
   it("o aviso NÃO bloqueia: o cupom de 100% salva normalmente", async () => {
-    mockCoupons = [cupom({ value: 100 })];
+    // Edição manda só o que mudou (lote 260): leva o cupom de 90 a 100.
+    mockCoupons = [cupom({ value: 90 })];
     await abrirTela("c1");
+    expect(aviso()).toBeNull();
+    await digitarNoCampo("value", "100");
     expect(aviso()).not.toBeNull();
 
     const botao = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
@@ -177,6 +180,6 @@ describe("AdminCouponFormView — aviso do cupom que pode cobrir a compra inteir
     });
 
     expect(updateCoupon).toHaveBeenCalledTimes(1);
-    expect(updateCoupon.mock.calls[0][1].value).toBe(100);
+    expect(updateCoupon.mock.calls[0][1]).toEqual({ value: 100 });
   });
 });

@@ -94,10 +94,15 @@ describe("AdminCouponFormView — código do cupom sem acento", () => {
       campoCodigo().focus();
       campoCodigo().blur();
     });
+    // Edição manda só o que mudou (lote 260): mexe em outra coisa (desliga o
+    // cupom) e o código antigo, que ela não tocou, nem viaja.
+    await act(async () => {
+      (hospedeiro.querySelector("#coupon-active") as HTMLElement).click();
+    });
     await salvar();
 
     expect(updateCoupon).toHaveBeenCalledTimes(1);
-    expect(updateCoupon.mock.calls[0][1].code).toBe("VERÃO10");
+    expect(updateCoupon.mock.calls[0][1]).toEqual({ active: false });
   });
 
   it("cupom novo digitado 'verão10' é gravado como VERAO10", async () => {

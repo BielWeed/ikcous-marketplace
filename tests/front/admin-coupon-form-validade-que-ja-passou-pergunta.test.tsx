@@ -161,9 +161,15 @@ describe("AdminCouponFormView — validade que já passou pede confirmação", (
       }),
     ];
     await abrirTela("c1");
+    // Edição manda só o que mudou (lote 260): ela desliga o cupom e a validade
+    // vencida, que não tocou, nem viaja.
+    await act(async () => {
+      (hospedeiro.querySelector("#coupon-active") as HTMLElement).click();
+    });
     await salvar();
 
     expect(document.body.textContent).not.toContain("Essa data já passou");
     expect(updateCoupon).toHaveBeenCalledTimes(1);
+    expect(updateCoupon.mock.calls[0][1]).toEqual({ active: false });
   });
 });
