@@ -13,6 +13,18 @@ const currencyFormatter = new Intl.NumberFormat("pt-BR", {
 export const formatCurrency = (value: number) =>
   currencyFormatter.format(value);
 
+/**
+ * O banco escreve dinheiro no formato americano: "R$ 120.00", "R$ 1,234.50" e,
+ * quando apaga o zero da frente, "R$ .50". Aqui vira real brasileiro; o que já
+ * está formatado não é tocado.
+ */
+export const reaisComVirgula = (texto: string) =>
+  texto.replace(
+    /R\$ ([\d,]*)\.(\d{2})(?![\d,])/g,
+    (_, inteiro: string, centavos: string) =>
+      formatCurrency(Number(`${inteiro.replace(/,/g, "") || "0"}.${centavos}`)),
+  );
+
 /** Como numeric(10,2): metade para longe do zero, tolerando ruído binário. */
 export function arredondarParaCentavos(valor: number): number {
   const centavos = Math.abs(valor) * 100;

@@ -88,9 +88,11 @@ function reaisCurtos(valor: number): string {
   // Arredonda a centavos antes de testar: 14.999 não é inteiro, então saía
   // "R$ 15,00" em vez de "R$ 15".
   const arredondado = Math.round(valor * 100) / 100;
-  return Number.isInteger(arredondado)
-    ? `R$ ${arredondado}`
-    : `R$ ${arredondado.toFixed(2).replace(".", ",")}`;
+  const casas = Number.isInteger(arredondado) ? 0 : 2;
+  return `R$ ${arredondado.toLocaleString("pt-BR", {
+    minimumFractionDigits: casas,
+    maximumFractionDigits: casas,
+  })}`;
 }
 
 /** "10%" / "12,5%". */

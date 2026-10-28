@@ -172,7 +172,12 @@ export function montarHtml(
   // prévia (decisão do dono, 11/09/2026).
   const preco =
     typeof produto.preco_venda === "number" && produto.preco_venda > 0
-      ? escaparHtml(`R$ ${produto.preco_venda.toFixed(2).replace(".", ",")}`)
+      ? escaparHtml(
+          `R$ ${produto.preco_venda.toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}`,
+        )
       : "";
   // `imagem_urls` é o DEFAULT `[]` da coluna com frequência — um array vazio
   // não pode apagar `imagem_url` (decisão do dono, 11/09/2026). Ordem: cada
