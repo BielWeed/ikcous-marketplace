@@ -173,10 +173,10 @@ export function montarHtml(
   const preco =
     typeof produto.preco_venda === "number" && produto.preco_venda > 0
       ? escaparHtml(
-          `R$ ${produto.preco_venda
-            .toFixed(2)
-            .replace(".", ",")
-            .replace(/\B(?=(\d{3})+,)/g, ".")}`,
+          `R$ ${produto.preco_venda.toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}`,
         )
       : "";
   // `imagem_urls` é o DEFAULT `[]` da coluna com frequência — um array vazio

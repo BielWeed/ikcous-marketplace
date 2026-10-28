@@ -303,7 +303,7 @@ export const formatarReais = (valor: number) => formatCurrency(valor);
  */
 export const reaisComVirgula = (texto: string) =>
   texto.replace(
-    /R\$ (\d{1,3}(?:,\d{3})+|\d*)\.(\d{2})(?![\d,])/g,
+    /R\$ ([\d,]*)\.(\d{2})(?![\d,])/g,
     (_, inteiro: string, centavos: string) =>
       formatarReais(Number(`${inteiro.replace(/,/g, "") || "0"}.${centavos}`)),
   );
