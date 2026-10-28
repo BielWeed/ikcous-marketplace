@@ -273,6 +273,18 @@ describe("CanaisDoCrm — desenho novo do cartão de métrica", () => {
     );
   });
 
+  it("a ajuda só promete o que a conta faz: tira as canceladas, não as devolvidas", async () => {
+    // A conta (`crm__vendas`) só descarta pedido cancelado; devolução
+    // reembolsada continua somando. O texto não pode dizer o contrário.
+    const { readFileSync } = await import("node:fs");
+    const fonte = readFileSync(
+      "src/components/admin/crm/CanaisDoCrm.tsx",
+      "utf8",
+    ).replace(/\s+/g, " ");
+    expect(fonte).not.toMatch(/devolvid/i);
+    expect(fonte).toContain("sem as canceladas, neste período");
+  });
+
   it("cada canal: dois cartões, Pedidos e Valor médio em frase normal, sem truncar dinheiro", async () => {
     await montar();
     const blocos = hospedeiro.querySelectorAll(
