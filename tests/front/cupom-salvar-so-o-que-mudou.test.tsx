@@ -284,6 +284,21 @@ describe("editar cupom manda SÓ o que a lojista mexeu", () => {
     expect(cachedCouponsData).not.toBeNull();
   });
 
+  it("o 'quem pode usar' que ela escolheu já está assim no banco: não manda update vazio nem erro", async () => {
+    // A aba tinha "codigo"; o outro aparelho já mudou para "vitrine" e a leitura
+    // nova chega depois de a tela abrir. Ela escolhe "Todos os clientes": o
+    // remendo do hook fica vazio (o banco já está como ela quer).
+    cupomNoBanco.alcance = "vitrine";
+    await abrir();
+    await clicar("Todos os clientes");
+    await clicar("Salvar Cupom");
+
+    expect(remendos).toHaveLength(0);
+    expect(erro).not.toHaveBeenCalled();
+    expect(sucesso).toHaveBeenCalledTimes(1);
+    expect(navegar).toHaveBeenCalledWith("admin-coupons");
+  });
+
   it("cupom NOVO continua mandando tudo", async () => {
     const inserts: Record<string, unknown>[] = [];
     const { supabase } = await import("@/lib/supabase");
