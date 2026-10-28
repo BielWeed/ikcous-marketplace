@@ -26,6 +26,7 @@ const mundo = vi.hoisted(() => ({
   itensNoBanco: [] as Array<Record<string, unknown>>,
   catalogo: [] as Array<Record<string, unknown>>,
   falhaNoCatalogo: false,
+  falhaNasVariantes: false,
   leiturasDoCatalogo: 0,
   avisos: [] as string[],
 }));
@@ -66,6 +67,9 @@ vi.mock("@/lib/supabase", () => ({
               ),
               error: null,
             };
+          }
+          if (tabela === "product_variants" && mundo.falhaNasVariantes) {
+            return { data: null, error: { message: "rede caiu" } };
           }
           return { data: [], error: null };
         },
@@ -163,6 +167,7 @@ describe("CartContext — releitura do catálogo sob demanda", () => {
     mundo.itensNoBanco = [];
     mundo.catalogo = [linha()];
     mundo.falhaNoCatalogo = false;
+    mundo.falhaNasVariantes = false;
     mundo.leiturasDoCatalogo = 0;
     mundo.avisos = [];
     hospedeiro = document.createElement("div");
@@ -200,6 +205,8 @@ describe("CartContext — releitura do catálogo sob demanda", () => {
     });
   }
 
+  const AVISO_DA_FALHA =
+    "Não deu para conferir preços e estoque agora. Vamos conferir de novo no pagamento.";
   const de = (centavos: number) => formatCurrency(centavos / 100);
 
   for (const comConta of [false, true]) {
@@ -286,11 +293,37 @@ describe("CartContext — releitura do catálogo sob demanda", () => {
 
         expect(atual.cart[0].product.price).toBe(59.9);
         expect(atual.cartTotal).toBeCloseTo(119.8, 2);
-        expect(mundo.avisos).toEqual([]);
+        // Caça 13-C #6: seguir sem travar, mas AVISAR (uma vez) em vez de
+        // calar -- senão a cliente cai de novo na recusa do checkout.
+        expect(mundo.avisos).toEqual([AVISO_DA_FALHA]);
+        erro.mockRestore();
+      });
+
+      it("a leitura das VARIAÇÕES falha (erro devolvido, não lançado): avisa e o carrinho fica como estava", async () => {
+        await montar([itemSalvo(produtoSalvo(), 2)]);
+        mundo.catalogo = [linha({ preco_venda: 69.9 })];
+        mundo.falhaNasVariantes = true;
+        const erro = vi.spyOn(console, "error").mockImplementation(() => {});
+
+        await pedirARenovacao();
+
+        expect(atual.cart[0].product.price).toBe(59.9);
+        expect(mundo.avisos).toEqual([AVISO_DA_FALHA]);
         erro.mockRestore();
       });
     });
   }
+
+  it("a releitura AUTOMÁTICA da abertura que falha segue calada (só a ação da cliente avisa)", async () => {
+    mundo.falhaNoCatalogo = true;
+    const erro = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await montar([itemSalvo(produtoSalvo(), 2)]);
+
+    expect(mundo.leiturasDoCatalogo).toBeGreaterThan(0);
+    expect(mundo.avisos).toEqual([]);
+    erro.mockRestore();
+  });
 
   it("carrinho vazio: não lê nada", async () => {
     await montar([]);
