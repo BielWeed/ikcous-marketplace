@@ -425,6 +425,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                       <>
                         <button
                           type="button"
+                          aria-label="Foto anterior"
                           onClick={(e) => {
                             e.stopPropagation();
                             setPreviewImgIndex(
@@ -439,6 +440,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                         </button>
                         <button
                           type="button"
+                          aria-label="Próxima foto"
                           onClick={(e) => {
                             e.stopPropagation();
                             setPreviewImgIndex(
