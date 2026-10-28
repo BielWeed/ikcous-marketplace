@@ -381,8 +381,10 @@ export function AvisoDeProblema({
 /**
  * Exclusão pedida por uma frase dentro do cartão: Cancelar (à esquerda, recebe
  * o foco — o foco não pode se perder quando a lixeira some) e Excluir.
- * Se `aoConfirmar` devolve uma promessa, os dois botões travam até ela acabar:
- * o segundo toque não dispara outra exclusão (nem "removida" + "erro" juntos).
+ * Se `aoConfirmar` devolve uma promessa, o Excluir trava até ela acabar: o
+ * segundo toque não dispara outra exclusão (nem "removida" + "erro" juntos).
+ * O Cancelar nunca trava: com a rede pendurada fecha a confirmação e a
+ * exclusão em voo termina sozinha (a lista é atualizada ao concluir).
  */
 export function ConfirmarExclusao({
   frase,
@@ -417,7 +419,6 @@ export function ConfirmarExclusao({
         <button
           ref={cancelar}
           type="button"
-          disabled={excluindo}
           onClick={aoCancelar}
           className={cn(BOTAO_NEUTRO, "flex-1")}
         >
