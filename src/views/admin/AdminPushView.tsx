@@ -79,15 +79,27 @@ import {
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-/** Selo de ícone neutro: a cor fica para o que significa algo. */
 // O motivo gravado vem em inglês técnico da função de envio (ex.: "push
 // service respondeu 410 Gone"). Aqui só se traduz para exibir; o dado não muda.
-function motivoDaFalhaEmPortugues(motivo: unknown): string {
-  const status = Number(
-    /push service respondeu (\d{3})/i.exec(String(motivo ?? ""))?.[1],
-  );
+function motivoDaFalhaEmPortugues(falha: {
+  status?: unknown;
+  motivo?: unknown;
+  quantidade?: unknown;
+}): string {
+  // A função de envio já manda o código numérico; o texto em inglês só serve
+  // de reserva.
+  const status =
+    typeof falha.status === "number"
+      ? falha.status
+      : Number(
+          /push service respondeu (\d{3})/i.exec(
+            String(falha.motivo ?? ""),
+          )?.[1],
+        );
   if (status === 404 || status === 410)
-    return "esse aparelho não recebe mais avisos (a inscrição venceu)";
+    return Number(falha.quantidade) > 1
+      ? "esses aparelhos não recebem mais avisos (as inscrições venceram)"
+      : "esse aparelho não recebe mais avisos (a inscrição venceu)";
   if (status === 401 || status === 403)
     return "o serviço de avisos recusou o envio";
   if (status === 413) return "mensagem grande demais";
@@ -96,6 +108,7 @@ function motivoDaFalhaEmPortugues(motivo: unknown): string {
   return "motivo não identificado";
 }
 
+/** Selo de ícone neutro: a cor fica para o que significa algo. */
 function SeloDeIcone({
   icone: Icone,
   indisponivel = false,
@@ -1021,7 +1034,7 @@ export const AdminPushView = memo(function AdminPushView({
         !pushError && Number.isInteger(envio?.enviados) && envio.enviados >= 0;
       const primeiraFalha = envio?.falhas?.[0];
       const detalheDaFalha = primeiraFalha
-        ? `${primeiraFalha.quantidade}x ${motivoDaFalhaEmPortugues(primeiraFalha.motivo)}`
+        ? `${primeiraFalha.quantidade}x ${motivoDaFalhaEmPortugues(primeiraFalha)}`
         : undefined;
 
       if (envioConfirmado && entregues > 0) {

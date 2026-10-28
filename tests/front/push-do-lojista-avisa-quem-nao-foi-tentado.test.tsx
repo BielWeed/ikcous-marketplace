@@ -462,6 +462,35 @@ describe("Avisar clientes — destinatários não tentados", () => {
     });
   });
 
+  it.each([
+    [410, 1, "esse aparelho não recebe mais avisos (a inscrição venceu)"],
+    [
+      410,
+      5,
+      "esses aparelhos não recebem mais avisos (as inscrições venceram)",
+    ],
+    [503, 1, "o serviço de avisos está fora do ar agora"],
+  ])(
+    "usa o status numérico da falha, sem depender do texto: %s x%s",
+    async (status, quantidade, frase) => {
+      invokeSendPush.mockResolvedValue({
+        data: {
+          enviados: 0,
+          falharam: quantidade,
+          falhas: [{ quantidade, status, motivo: "texto qualquer" }],
+        },
+        error: null,
+      });
+      await prepararCampanha();
+      await enviar();
+
+      const { toast } = await import("sonner");
+      expect(toast.error).toHaveBeenCalledWith(expect.any(String), {
+        description: expect.stringContaining(`${quantidade}x ${frase}`),
+      });
+    },
+  );
+
   it("zero entregas com não tentados diz quantos dispositivos nem foram tentados", async () => {
     invokeSendPush.mockResolvedValue({
       data: { enviados: 0, falharam: 1, naoTentados: 4, falhas: [] },
