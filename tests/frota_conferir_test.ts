@@ -1427,32 +1427,72 @@ Deno.test("consultarVercel: alias com o MESMO createdAt do fim da página não s
     projectId: PROJETO,
   }));
   const chamadas = [];
-  const r = await consultarVercel(POLITICA, [], (c) => {
-    if (c.startsWith("/v4/aliases?")) {
-      chamadas.push(c);
-      const limite = Number(/limit=(\d+)/.exec(c)[1]);
-      const ate = /until=(\d+)/.exec(c);
-      const itens = base
-        .filter((a) => (ate ? a.createdAt < Number(ate[1]) : true))
-        .slice(0, limite);
-      const cheia = itens.length === limite;
-      return Promise.resolve({
-        aliases: itens,
-        pagination: {
-          next: cheia ? itens[itens.length - 1].createdAt : null,
-        },
-      });
-    }
-    return Promise.resolve({ targets: { production: { id: "dpl_1" } } });
-  }, 3);
+  const r = await consultarVercel(
+    POLITICA,
+    [],
+    (c) => {
+      if (c.startsWith("/v4/aliases?")) {
+        chamadas.push(c);
+        const limite = Number(/limit=(\d+)/.exec(c)[1]);
+        const ate = /until=(\d+)/.exec(c);
+        const itens = base
+          .filter((a) => (ate ? a.createdAt < Number(ate[1]) : true))
+          .slice(0, limite);
+        const cheia = itens.length === limite;
+        return Promise.resolve({
+          aliases: itens,
+          pagination: {
+            next: cheia ? itens[itens.length - 1].createdAt : null,
+          },
+        });
+      }
+      return Promise.resolve({ targets: { production: { id: "dpl_1" } } });
+    },
+    3,
+  );
   assertEquals(r.ok, true);
   assertEquals(r.listaCompleta, true);
+  assert(
+    chamadas.some((c) => c.includes("until=11")),
+    "pediu a página seguinte com next+1 (empate incluído)",
+  );
   const nomes = r.aliasesProjeto.map((a) => a.alias);
   assert(
     nomes.includes("ickous-marketplace.vercel.app"),
     "o alias empatado na fronteira da página tem de entrar no inventário",
   );
   assertEquals(nomes.length, 4, "sem duplicar o item da fronteira");
+});
+
+Deno.test("consultarVercel: página que só repete o que já veio = lista incompleta (nunca laço nem 'completo')", async () => {
+  // 4 aliases com o MESMO createdAt e página de 3: o next+1 devolve sempre os mesmos.
+  const base = ["a", "b", "c", "d"].map((n) => ({
+    alias: `${n}.vercel.app`,
+    createdAt: 10,
+    deploymentId: "dpl_1",
+    projectId: PROJETO,
+  }));
+  let pedidos = 0;
+  const r = await consultarVercel(
+    POLITICA,
+    [],
+    (c) => {
+      if (c.startsWith("/v4/aliases?")) {
+        pedidos++;
+        const itens = base.slice(0, 3);
+        return Promise.resolve({
+          aliases: itens,
+          pagination: { next: 10 },
+        });
+      }
+      return Promise.resolve({ targets: { production: { id: "dpl_1" } } });
+    },
+    3,
+  );
+  assertEquals(r.ok, true);
+  assertEquals(r.listaCompleta, false);
+  assert(r.avisos.some((a) => a.includes("nada novo")));
+  assertEquals(pedidos, 2, "parou na página sem item novo, sem laço");
 });
 
 Deno.test("consultarVercel: falha na 1ª página = ok:false; falha depois = lista incompleta (inventário PARCIAL)", async () => {
