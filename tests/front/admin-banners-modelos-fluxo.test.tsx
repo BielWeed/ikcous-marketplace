@@ -99,6 +99,7 @@ describe("novo editor de banners prontos", () => {
         title: "Campanha anterior",
         subtitle: "Texto preservado",
         templateType: "split_left",
+        buttonText: "Ver mais",
         imageUrl: "https://loja.test/antiga.webp",
         position: "home_top",
         active: true,
@@ -430,14 +431,13 @@ describe("novo editor de banners prontos", () => {
       "Campanha anterior",
     );
     await clicar("Salvar Alterações");
-    expect(updateBanner).toHaveBeenCalledWith(
-      "antigo",
-      expect.objectContaining({
-        templateType: "split_left",
-        title: "Campanha anterior",
-        subtitle: "Texto preservado",
-      }),
-    );
+    // Nada foi mexido: o texto e o modelo antigos ficam como estão, sem serem
+    // regravados (nem trocados por "default" ou por texto vazio).
+    for (const [, enviado] of updateBanner.mock.calls) {
+      for (const chave of ["templateType", "title", "subtitle"]) {
+        expect(Object.keys(enviado)).not.toContain(chave);
+      }
+    }
   });
   it("recuperar e cancelar rascunho limpa apenas seu upload ainda não publicado", async () => {
     localStorage.setItem(

@@ -223,13 +223,12 @@ describe("recorte de banner não atravessa gerações do editor", () => {
       ["https://loja.test/recorte-a.webp"],
     ]);
     await clicar("Salvar Banner");
-    expect(updateBanner).toHaveBeenCalledWith(
-      "banner-b",
-      expect.objectContaining({
-        imageUrl: banners[1].imageUrl,
-        title: "",
-      }),
-    );
+    // B não mudou nada: salvar não leva a foto do recorte de A, nem foto nenhuma
+    // (só o que a lojista mexeu viaja).
+    expect(JSON.stringify(updateBanner.mock.calls)).not.toContain("recorte-a");
+    for (const [, enviado] of updateBanner.mock.calls) {
+      expect(Object.keys(enviado)).not.toContain("imageUrl");
+    }
   });
 
   it.each(["sucesso", "falha"] as const)(

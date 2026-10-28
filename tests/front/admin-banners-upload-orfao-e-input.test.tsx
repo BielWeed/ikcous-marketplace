@@ -273,6 +273,20 @@ describe("uploads de banner limpam a imagem substituída e o seletor", () => {
     },
   );
 
+  it("editar manda só o que mudou: ativo, ordem e datas não viajam", async () => {
+    await abrir();
+    uploadBannerImage.mockResolvedValueOnce(imagemEnviada);
+    await act(async () => selecionar());
+    await clicar("Salvar Banner");
+
+    expect(updateBanner).toHaveBeenCalledTimes(1);
+    const enviado = updateBanner.mock.calls[0][1] as Record<string, unknown>;
+    expect(enviado.imageUrl).toBe(imagemEnviada);
+    for (const chave of ["active", "order", "startDate", "endDate", "id"]) {
+      expect(Object.keys(enviado)).not.toContain(chave);
+    }
+  });
+
   it.each([
     ["a.heic", "image/heic", 10, /JPG ou PNG/],
     ["a.pdf", "application/pdf", 10, /não é uma foto/],
