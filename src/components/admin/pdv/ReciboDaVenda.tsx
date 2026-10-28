@@ -14,6 +14,7 @@ import type { ResultadoDaAnulacao } from "@/hooks/useAnularVendaDoBalcao";
 import type {
   AcaoDaVenda,
   ClienteDaVenda,
+  PecaDaDiferenca,
   ReciboDaVendaRegistrada,
 } from "@/hooks/useVendaPresencial";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
@@ -108,6 +109,26 @@ function resumo(total: number, unidades: number, forma: string): string {
   return `R$ ${reais(total)} · ${unidades} un. · ${forma}`;
 }
 
+function pecas(quantidade: number): string {
+  return quantidade === 1 ? "1 peça" : `${quantidade} peças`;
+}
+
+/** "Camiseta M" ou, com mais de uma, "2 × Camiseta M". */
+function descreverPecas(lista: readonly PecaDaDiferenca[]): string {
+  return lista
+    .map(
+      (p) =>
+        `${p.quantidade > 1 ? `${p.quantidade} × ` : ""}${p.nome}${
+          p.variacao ? ` ${p.variacao}` : ""
+        }`,
+    )
+    .join(", ");
+}
+
+function totalDePecas(lista: readonly PecaDaDiferenca[]): number {
+  return lista.reduce((n, p) => n + p.quantidade, 0);
+}
+
 export function ReciboDaVenda({
   recibo,
   limparCupom,
@@ -175,6 +196,20 @@ export function ReciboDaVenda({
                 ROTULO_DO_PAGAMENTO[divergencia.pagamentoDaTela],
               )}
             </p>
+            {divergencia.aMaisNaTela && (
+              <p>
+                No cupom da tela há{" "}
+                {pecas(totalDePecas(divergencia.aMaisNaTela))} a mais:{" "}
+                {descreverPecas(divergencia.aMaisNaTela)}.
+              </p>
+            )}
+            {divergencia.aMenosNaTela && (
+              <p>
+                A venda gravada tem{" "}
+                {pecas(totalDePecas(divergencia.aMenosNaTela))} a mais do que a
+                tela: {descreverPecas(divergencia.aMenosNaTela)}.
+              </p>
+            )}
             <p className="font-bold">Anule esta venda e registre de novo.</p>
           </div>
         )}

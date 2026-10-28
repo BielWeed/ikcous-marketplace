@@ -100,6 +100,58 @@ function registradaComDivergencia(
 // (a) o que difere, calculado pelo cérebro (reducer) — dado da divergência
 // ----------------------------------------------------------------------------
 
+describe("(a) divergência carrega QUAIS peças diferem", () => {
+  it("a tela tem uma peça a mais do que a venda gravada: lista a peça", () => {
+    const depois = registradaComDivergencia(
+      [CAMISETA, CALCA, BONE, MEIA],
+      [CAMISETA, CALCA, BONE],
+    );
+    expect(depois.recibo?.divergenciaComATela).toMatchObject({
+      aMaisNaTela: [{ nome: "Meia", variacao: null, quantidade: 1 }],
+    });
+    expect(depois.recibo?.divergenciaComATela?.aMenosNaTela).toBeUndefined();
+  });
+
+  it("a venda gravada tem peça que a tela não tem mais: lista como a menos na tela", () => {
+    const depois = registradaComDivergencia(
+      [CAMISETA],
+      [CAMISETA, item("p2", "Calça", "42", 2)],
+    );
+    expect(depois.recibo?.divergenciaComATela).toMatchObject({
+      aMenosNaTela: [{ nome: "Calça", variacao: "42", quantidade: 2 }],
+    });
+    expect(depois.recibo?.divergenciaComATela?.aMaisNaTela).toBeUndefined();
+  });
+
+  it("mesma peça com quantidade diferente: a diferença é a de quantidade", () => {
+    const depois = registradaComDivergencia(
+      [item("p1", "Camiseta", "M", 3)],
+      [item("p1", "Camiseta", "M", 1)],
+    );
+    expect(depois.recibo?.divergenciaComATela).toMatchObject({
+      aMaisNaTela: [{ nome: "Camiseta", variacao: "M", quantidade: 2 }],
+    });
+  });
+
+  it("mesmas peças, só a forma de pagamento mudou: sem listas (o aviso de forma/total continua)", () => {
+    const depois = reducerDaVenda(
+      { ...telaCom([CAMISETA]), pagamento: "pix" },
+      { tipo: "venda_registrada", recibo: reciboDoBanco([CAMISETA]) },
+    );
+    expect(depois.recibo?.divergenciaComATela).toBeDefined();
+    expect(depois.recibo?.divergenciaComATela?.aMaisNaTela).toBeUndefined();
+    expect(depois.recibo?.divergenciaComATela?.aMenosNaTela).toBeUndefined();
+  });
+
+  it("a venda gravada não traz itens: não inventa lista (fica a diferença de peças e de total)", () => {
+    const depois = registradaComDivergencia([CAMISETA, CALCA], []);
+    expect(depois.recibo?.divergenciaComATela).toMatchObject({
+      unidadesDaTela: 2,
+    });
+    expect(depois.recibo?.divergenciaComATela?.aMaisNaTela).toBeUndefined();
+    expect(depois.recibo?.divergenciaComATela?.aMenosNaTela).toBeUndefined();
+  });
+});
 
 // ----------------------------------------------------------------------------
 // (b) registrar de novo com os itens da tela — só com a venda antiga anulada
@@ -189,8 +241,49 @@ describe("recibo vermelho — texto, anulação e Nova venda", () => {
     });
   }
 
+  it("(a) o alerta diz que a tela tem 1 peça a mais e QUAL é", async () => {
+    await montar(DIVERGENTE);
+    const alerta = hospedeiro.querySelector('[role="alert"]')!;
+    expect(alerta).not.toBeNull();
+    const texto = alerta.textContent ?? "";
+    expect(texto).toContain("No cupom da tela há 1 peça a mais");
+    expect(texto).toContain("Meia");
+    expect(texto).toContain("Anule esta venda");
+  });
 
+  it("(a) o alerta diz o que a venda gravada tem a mais que a tela, com variação e quantidade", async () => {
+    await montar(
+      reciboDoBanco([CAMISETA, item("p2", "Calça", "42", 2)], {
+        divergenciaComATela: {
+          totalDaTela: 50,
+          unidadesDaTela: 1,
+          pagamentoDaTela: "cash",
+          aMenosNaTela: [{ nome: "Calça", variacao: "42", quantidade: 2 }],
+        },
+      }),
+    );
+    const texto = hospedeiro.querySelector('[role="alert"]')!.textContent ?? "";
+    expect(texto).toContain("A venda gravada tem 2 peças a mais do que a tela");
+    expect(texto).toContain("2 × Calça 42");
+  });
 
+  it("(a) sem lista (venda antiga sem itens): ainda mostra peças e total das duas pontas", async () => {
+    await montar(
+      reciboDoBanco([], {
+        total: 100,
+        divergenciaComATela: {
+          totalDaTela: 50,
+          unidadesDaTela: 2,
+          pagamentoDaTela: "cash",
+        },
+      }),
+    );
+    const texto = hospedeiro.querySelector('[role="alert"]')!.textContent ?? "";
+    expect(texto).toContain("R$ 100,00");
+    expect(texto).toContain("R$ 50,00");
+    expect(texto).toContain("2 un.");
+    expect(texto).not.toContain("a mais");
+  });
 
   it("(d) depois de anular, o alerta vermelho e o 'Anule esta venda' somem; fica o texto neutro", async () => {
     await montar(DIVERGENTE);
