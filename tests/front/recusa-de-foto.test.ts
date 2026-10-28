@@ -13,6 +13,16 @@ describe("recusaDeFoto", () => {
     expect(recusaDeFoto(arq("a.jpg", "image/jpeg"))).toBeNull();
     expect(recusaDeFoto(arq("a.webp", ""))).toBeNull();
   });
+  it("decide pela extensão quando o tipo vem vazio ou genérico", () => {
+    expect(recusaDeFoto(arq("A.JPG", ""))).toBeNull();
+    expect(recusaDeFoto(arq("a.jpg", "image/jpg"))).toBeNull();
+    expect(
+      recusaDeFoto(arq("foto.jpg", "application/octet-stream")),
+    ).toBeNull();
+    expect(recusaDeFoto(arq("a.pdf", "application/octet-stream"))).toMatch(
+      /não é uma foto/,
+    );
+  });
   it.each([
     ["a.pdf", "application/pdf"],
     ["a.xlsx", "application/vnd.ms-excel"],

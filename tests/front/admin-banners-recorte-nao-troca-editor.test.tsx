@@ -3,6 +3,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { esperarEditorFechadoPorSalvar } from "./helpers/editor-de-banner";
 
 const uploadBannerImage = vi.fn<(file: File) => Promise<string>>();
 const deleteStorageFile = vi.fn<(url: string) => Promise<void>>();
@@ -229,6 +230,8 @@ describe("recorte de banner não atravessa gerações do editor", () => {
     for (const [, enviado] of updateBanner.mock.calls) {
       expect(Object.keys(enviado)).not.toContain("imageUrl");
     }
+    esperarEditorFechadoPorSalvar();
+    expect(toastError).not.toHaveBeenCalled();
   });
 
   it.each(["sucesso", "falha"] as const)(

@@ -1981,7 +1981,9 @@ export const AdminBannersView = memo(function AdminBannersView({
         // Vazio, nulo e ausente contam como o mesmo "sem valor".
         const semNulo = (b: object) =>
           Object.fromEntries(Object.entries(b).map(([k, v]) => [k, v ?? ""]));
-        const mexidos = camposQueMudaram(
+        // `semNulo` só decide QUAIS chaves mudaram; o que viaja é o valor
+        // original (data limpa vai como null, não como "").
+        const mudou = camposQueMudaram(
           semNulo(dataToSubmit),
           semNulo({
             ...Object.fromEntries(
@@ -1989,6 +1991,9 @@ export const AdminBannersView = memo(function AdminBannersView({
             ),
             ...editingBanner,
           }),
+        );
+        const mexidos = Object.fromEntries(
+          Object.entries(dataToSubmit).filter(([k]) => k in mudou),
         );
         if (Object.keys(mexidos).length > 0) {
           await updateBanner(editingBanner.id, mexidos);

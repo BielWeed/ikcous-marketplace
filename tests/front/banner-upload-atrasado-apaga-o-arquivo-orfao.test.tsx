@@ -3,6 +3,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { esperarEditorFechadoPorSalvar } from "./helpers/editor-de-banner";
 
 const uploadBannerImage = vi.fn<(file: File) => Promise<string>>();
 const updateBanner = vi.fn();
@@ -238,6 +239,7 @@ describe("limpeza do arquivo órfão de upload atrasado de banner", () => {
     for (const [, enviado] of updateBanner.mock.calls) {
       expect(Object.keys(enviado)).not.toContain("imageUrl");
     }
+    esperarEditorFechadoPorSalvar();
     expect(deleteStorageFile).toHaveBeenCalledTimes(1);
   });
 
@@ -293,6 +295,7 @@ describe("limpeza do arquivo órfão de upload atrasado de banner", () => {
     for (const [, enviado] of updateBanner.mock.calls) {
       expect(Object.keys(enviado)).not.toContain("imageUrl");
     }
+    esperarEditorFechadoPorSalvar();
     expect(deleteStorageFile).toHaveBeenCalledTimes(1);
   });
 

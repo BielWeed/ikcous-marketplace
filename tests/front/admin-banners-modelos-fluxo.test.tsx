@@ -11,7 +11,10 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { abrirNovoBannerPelaBarra } from "./helpers/editor-de-banner";
+import {
+  abrirNovoBannerPelaBarra,
+  esperarEditorFechadoPorSalvar,
+} from "./helpers/editor-de-banner";
 
 const uploadBannerImage = vi.fn();
 const addBanner = vi.fn();
@@ -99,6 +102,8 @@ describe("novo editor de banners prontos", () => {
         title: "Campanha anterior",
         subtitle: "Texto preservado",
         templateType: "split_left",
+        // Com texto de botão de verdade, "Limpar botão" é uma mudança real e
+        // por isso viaja no salvar (campo que não mudou não viaja).
         buttonText: "Ver mais",
         imageUrl: "https://loja.test/antiga.webp",
         position: "home_top",
@@ -438,6 +443,7 @@ describe("novo editor de banners prontos", () => {
         expect(Object.keys(enviado)).not.toContain(chave);
       }
     }
+    esperarEditorFechadoPorSalvar();
   });
   it("recuperar e cancelar rascunho limpa apenas seu upload ainda não publicado", async () => {
     localStorage.setItem(

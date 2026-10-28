@@ -39,3 +39,13 @@ export async function abrirNovoBannerPelaBarra() {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
 }
+
+// Prova de que o salvar EXECUTOU até o fim (o editor fechou). Sem isto, um
+// teste que só confere "nada de foto viajou" passaria também com o salvar inerte.
+export function esperarEditorFechadoPorSalvar() {
+  const rotulos = [...document.querySelectorAll("button")].map((b) =>
+    b.textContent?.trim(),
+  );
+  expect(rotulos).not.toContain("Salvar Banner");
+  expect(rotulos).not.toContain("Salvar Alterações");
+}

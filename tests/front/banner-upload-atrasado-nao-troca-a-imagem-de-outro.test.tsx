@@ -3,6 +3,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { esperarEditorFechadoPorSalvar } from "./helpers/editor-de-banner";
 
 const uploadBannerImage = vi.fn<(file: File) => Promise<string>>();
 const updateBanner = vi.fn();
@@ -234,6 +235,7 @@ describe("upload de banner pertence à abertura do editor", () => {
     for (const [, enviado] of updateBanner.mock.calls) {
       expect(Object.keys(enviado)).not.toContain("imageUrl");
     }
+    esperarEditorFechadoPorSalvar();
   });
 
   it("o término de A não libera o indicador do upload de B", async () => {
