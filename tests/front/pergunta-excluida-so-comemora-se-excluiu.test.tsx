@@ -211,6 +211,48 @@ describe("AdminQAView — 'Pergunta excluída' só comemora se excluiu de verdad
     expect(toastSuccess).not.toHaveBeenCalledWith("Pergunta excluída");
   });
 
+  // Toque duplo (caça 13, D4): antes, o segundo "Excluir" chamava outra
+  // exclusão e a lista recarregava duas vezes.
+  it("toque duplo em Excluir: uma exclusão só, botão trava enquanto grava", async () => {
+    montarPergunta();
+    let terminar!: (ok: boolean) => void;
+    h.deleteQuestion.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          terminar = resolve;
+        }),
+    );
+
+    await montar();
+    await act(async () => {
+      clicarExcluirEConfirmar();
+    });
+    const excluir = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Excluir",
+    ) as HTMLButtonElement;
+    await act(async () => {
+      excluir.click();
+      excluir.click();
+    });
+    expect(h.deleteQuestion).toHaveBeenCalledTimes(1);
+    const gravando = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Excluindo…",
+    ) as HTMLButtonElement;
+    expect(gravando.disabled).toBe(true);
+    await act(async () => {
+      gravando.click();
+    });
+    expect(h.deleteQuestion).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      terminar(true);
+      await esperarMicrotarefas();
+    });
+    expect(h.deleteQuestion).toHaveBeenCalledTimes(1);
+    expect(toastSuccess).toHaveBeenCalledTimes(1);
+    expect(toastSuccess).toHaveBeenCalledWith("Pergunta excluída");
+  });
+
   it("controle positivo: exclusão que dá certo CONTINUA mostrando 'Pergunta excluída'", async () => {
     montarPergunta();
     h.estado.deleteQuestionResultado = true;
