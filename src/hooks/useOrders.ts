@@ -2998,6 +2998,10 @@ export function useOrders(
     let ligado = false;
     // Houve sinal de uma aba servindo esta tela desde a última pergunta?
     let temServidor = false;
+    // Repasses já processados (chave -> quando). Com mais de uma aba servindo
+    // a mesma tela (cada uma com o soquete dela), o banco entrega o MESMO evento
+    // por vários caminhos e esta aba sem canal receberia um repasse de cada.
+    const repassesJaVistos = new Map<string, number>();
     let esperaDoServidor: ReturnType<typeof setTimeout> | undefined;
     let reperguntaAoServidor: ReturnType<typeof setInterval> | undefined;
     if (bc) {
@@ -3005,6 +3009,25 @@ export function useOrders(
         processarMensagemBroadcast(event.data, channelId, ligado, {
           onEvent: (payload) => {
             temServidor = true;
+            // Chave do evento: tipo + pedido + instante do commit. Sem
+            // `commit_timestamp` não há como distinguir, então não deduplica.
+            const instante = (payload as any)?.commit_timestamp;
+            const idDoPedido =
+              (payload as any)?.new?.id ?? (payload as any)?.old?.id;
+            if (instante && idDoPedido) {
+              const chave = `${(payload as any).eventType}:${idDoPedido}:${instante}`;
+              const agora = Date.now();
+              if (repassesJaVistos.has(chave)) return;
+              for (const [k, quando] of repassesJaVistos) {
+                if (agora - quando > 60_000) repassesJaVistos.delete(k);
+              }
+              if (repassesJaVistos.size >= 50) {
+                const maisAntiga = repassesJaVistos.keys().next().value;
+                if (maisAntiga !== undefined)
+                  repassesJaVistos.delete(maisAntiga);
+              }
+              repassesJaVistos.set(chave, agora);
+            }
             onEvent(payload);
           },
           definirStatus: (id, status) => {

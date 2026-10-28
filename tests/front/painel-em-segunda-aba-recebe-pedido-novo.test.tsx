@@ -44,13 +44,17 @@ const estado = (): Estado => (globalThis as any).__t263 as Estado;
  * rótulo da primeira aba para todas, pois a fábrica dele não roda de novo). */
 function criarSupabaseDaAba(aba: string) {
   const g = globalThis as any;
+  let idPedido = "pedido-novo-0001";
   const cadeia: any = {
     select: () => cadeia,
-    eq: () => cadeia,
+    eq: (_coluna: string, valor: string) => {
+      idPedido = valor;
+      return cadeia;
+    },
     single: () =>
       Promise.resolve({
         data: {
-          id: "pedido-novo-0001",
+          id: idPedido,
           user_id: "cliente-1",
           customer_name: "Maria",
           customer_data: {},
@@ -231,11 +235,17 @@ async function tornarLider(aba: Aba) {
 }
 
 /** O banco avisa: pedido novo na tabela, entregue a cada canal VIVO. */
-async function inserirPedidoNoBanco() {
+async function inserirPedidoNoBanco(
+  opcoes: { id?: string; tipo?: "INSERT" | "UPDATE"; instante?: string } = {},
+) {
+  const { id = "pedido-novo-0001", tipo = "INSERT", instante } = opcoes;
+  // O Supabase carimba cada evento com o instante do commit: é o que distingue
+  // "o mesmo evento chegando por dois caminhos" de "dois eventos de verdade".
   const payload = {
-    eventType: "INSERT",
-    new: { id: "pedido-novo-0001" },
-    old: {},
+    eventType: tipo,
+    commit_timestamp: instante ?? `2026-10-28T12:00:00.000Z#${id}#${tipo}`,
+    new: tipo === "INSERT" ? { id } : { id, status: "processing" },
+    old: tipo === "INSERT" ? {} : { id },
   };
   await act(async () => {
     for (const canal of estado().canais.filter((c) => c.vivo)) {
@@ -269,6 +279,75 @@ afterEach(() => {
 });
 
 describe("painel numa segunda aba — pedido novo ao vivo", () => {
+  it("TRÊS ABAS: dois soquetes vivos (p1 e a líder) e uma terceira aba seguidora — o aviso toca UMA vez em cada aba", async () => {
+    const lojaAba = await novaAba("loja");
+    await tornarLider(lojaAba);
+
+    const p1Aba = await novaAba("p1");
+    const telaP1 = montarTelaDePedidos(p1Aba);
+    await avancar(1600); // ninguém serve: p1 abre o canal dela
+
+    const telaDaLoja = montarTelaDePedidos(lojaAba);
+    await avancar(200); // a líder também abre o dela
+    expect(
+      vivos()
+        .map((c) => c.aba)
+        .sort(),
+    ).toEqual(["loja", "p1"]);
+
+    const p2Aba = await novaAba("p2");
+    const telaP2 = montarTelaDePedidos(p2Aba);
+    await avancar(1600); // recebe resposta das duas e não abre canal
+    expect(vivos()).toHaveLength(2);
+
+    await inserirPedidoNoBanco();
+
+    // O banco entregou o MESMO evento aos dois soquetes; p2 o recebe pelos dois
+    // repasses e só pode avisar uma vez.
+    expect(telaP2.avisos).toHaveLength(1);
+    expect(telaP1.avisos).toHaveLength(1);
+    expect(telaDaLoja.avisos).toHaveLength(1);
+    expect(telaP2.ids().filter((i) => i === "pedido-novo-0001")).toHaveLength(
+      1,
+    );
+  });
+
+  it("CONTROLE: dois pedidos DIFERENTES seguidos chegam por repasse e tocam dois avisos — a deduplicação não engole evento legítimo", async () => {
+    const lojaAba = await novaAba("loja");
+    await tornarLider(lojaAba);
+    montarTelaDePedidos(lojaAba);
+    await avancar(200);
+
+    const painelAba = await novaAba("painel");
+    const tela = montarTelaDePedidos(painelAba);
+    await avancar(1600);
+    expect(estado().canais).toHaveLength(1); // só o da líder: o repasse é o único caminho
+
+    await inserirPedidoNoBanco({ id: "pedido-A" });
+    await inserirPedidoNoBanco({ id: "pedido-B" });
+
+    expect(tela.avisos.map((a) => a.new.id)).toEqual(["pedido-A", "pedido-B"]);
+    expect(tela.ids()).toEqual(
+      expect.arrayContaining(["pedido-A", "pedido-B"]),
+    );
+  });
+
+  it("CONTROLE: o mesmo pedido com um UPDATE depois (instante diferente) continua sendo processado", async () => {
+    const lojaAba = await novaAba("loja");
+    await tornarLider(lojaAba);
+    montarTelaDePedidos(lojaAba);
+    await avancar(200);
+
+    const painelAba = await novaAba("painel");
+    const tela = montarTelaDePedidos(painelAba);
+    await avancar(1600);
+
+    await inserirPedidoNoBanco({ id: "pedido-A" });
+    await inserirPedidoNoBanco({ id: "pedido-A", tipo: "UPDATE" });
+
+    expect(tela.avisos.map((a) => a.eventType)).toEqual(["INSERT", "UPDATE"]);
+  });
+
   it("DEFEITO: aba líder SEM a tela de pedidos; a seguidora com a tela abre o canal sozinha e recebe o pedido UMA vez", async () => {
     const lojaAba = await novaAba("loja");
     await tornarLider(lojaAba);
