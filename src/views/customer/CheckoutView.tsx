@@ -962,6 +962,7 @@ export function CheckoutViewDaConta({
   const isOffline = useOnlineStatus();
   const {
     addresses,
+    erroAoCarregar: enderecosNaoCarregaram,
     fetchAddresses,
     addAddress,
     updateAddress,
@@ -5876,7 +5877,9 @@ export function CheckoutViewDaConta({
                 >
                   <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
                   <span className="min-w-0 flex-1">
-                    Cadastre um endereço de entrega
+                    {enderecosNaoCarregaram
+                      ? "Não carregamos seus endereços"
+                      : "Cadastre um endereço de entrega"}
                   </span>
                   <ChevronRight
                     aria-hidden="true"
@@ -6435,6 +6438,23 @@ export function CheckoutViewDaConta({
                     <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                       Sincronizando endereços...
                     </p>
+                  </div>
+                ) : enderecosNaoCarregaram && addresses.length === 0 ? (
+                  // A leitura FALHOU: lista vazia aqui não prova que a conta
+                  // não tem endereço, e o "Nenhum endereço cadastrado" fazia
+                  // a cliente digitar tudo de novo (endereço em duplicata).
+                  <div
+                    role="alert"
+                    className="rounded-2xl border border-red-300 p-4 text-sm text-red-600 dark:text-red-400"
+                  >
+                    <p>Não conseguimos carregar seus endereços agora.</p>
+                    <button
+                      type="button"
+                      onClick={() => void fetchAddresses()}
+                      className="mt-3 min-h-11 rounded-xl border border-solid border-red-300 bg-background px-4 font-semibold hover:bg-muted"
+                    >
+                      Tentar de novo
+                    </button>
                   </div>
                 ) : (
                   <AddressList
