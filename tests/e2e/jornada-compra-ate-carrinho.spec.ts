@@ -28,14 +28,21 @@ test("compra: categoria filtra, tela do produto abre e o item chega ao carrinho"
     .getByRole("button", { name: `Selecionar categoria ${CATEGORIA_ROUPAS}` })
     .click();
   await expect(page.getByText(PRODUTO_ROUPAS).first()).toBeVisible();
+  // O topo da home (banner, vitrines) FICA com a categoria escolhida; quem
+  // filtra é só a seção "Catálogo" — por isso a conferência olha lá dentro.
+  const catalogo = page
+    .getByRole("heading", { name: "Catálogo", level: 2 })
+    .locator("..");
   // O produto da OUTRA categoria sai da lista (o nome no card é um botão).
   await expect(
-    page.getByRole("button", { name: PRODUTO_ACESSORIOS, exact: true }),
+    catalogo.getByRole("button", { name: PRODUTO_ACESSORIOS, exact: true }),
   ).toHaveCount(0);
   await expect(page).toHaveURL(/category=Roupas/);
 
   // 2. Categoria → produto: entrar na tela do produto pelo nome no card.
-  await page.getByRole("button", { name: PRODUTO_ROUPAS, exact: true }).click();
+  await catalogo
+    .getByRole("button", { name: PRODUTO_ROUPAS, exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: "Adicionar ao Carrinho" }),
   ).toBeVisible({ timeout: 30_000 });
