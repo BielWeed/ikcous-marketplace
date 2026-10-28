@@ -41,6 +41,9 @@ let RESPOSTA_DEVOLUCOES: unknown = {
   error: null,
 };
 let RESPOSTA_AVALIACOES: unknown = { data: [], error: null };
+// Nome do produto de cada avaliacao: lido PELO ID em `vw_produtos_admin`, sem
+// depender da lista de estoque (que traz so os produtos acabando).
+let RESPOSTA_NOMES: unknown = { data: [], error: null };
 // Sexta fonte (14/10/2026): cancelamentos do CLIENTE, lidos do historico do
 // pedido (so o administrador le a linha dos outros), mais os papeis dos
 // autores (`profiles`) para excluir o admin.
@@ -136,15 +139,17 @@ function criarBuilder(tabela: string) {
     Promise.resolve(
       tabela === "reviews"
         ? RESPOSTA_AVALIACOES
-        : tabela === "marketplace_order_history"
-          ? RESPOSTA_CANCELAMENTOS
-          : tabela === "profiles"
-            ? RESPOSTA_PERFIS
-            : tabela === "pedidos_de_privacidade"
-              ? RESPOSTA_PRIVACIDADE
-              : ehRecebimento()
-                ? RESPOSTA_RECEBIMENTOS
-                : respostaDosPedidos(),
+        : tabela === "vw_produtos_admin"
+          ? RESPOSTA_NOMES
+          : tabela === "marketplace_order_history"
+            ? RESPOSTA_CANCELAMENTOS
+            : tabela === "profiles"
+              ? RESPOSTA_PERFIS
+              : tabela === "pedidos_de_privacidade"
+                ? RESPOSTA_PRIVACIDADE
+                : ehRecebimento()
+                  ? RESPOSTA_RECEBIMENTOS
+                  : respostaDosPedidos(),
     ).then(resolve as never, reject as never);
   return builder;
 }
@@ -181,6 +186,7 @@ interface AvisoLido {
   tipo: string;
   contaNoCracha: boolean;
   titulo: string;
+  detalhe: string;
 }
 interface LeituraDoHook {
   avisos: AvisoLido[];
@@ -266,6 +272,7 @@ beforeEach(() => {
   RESPOSTA_PEDIDOS = { data: [pedidoDeExemplo()], error: null };
   RESPOSTA_PERGUNTAS = { data: { total_count: 3 }, error: null };
   RESPOSTA_AVALIACOES = { data: [avaliacaoDeExemplo()], error: null };
+  RESPOSTA_NOMES = { data: [], error: null };
   RESPOSTA_PRODUTOS = { products: [produtoDeExemplo()], total: 1 };
   RESPOSTA_DEVOLUCOES = {
     data: { total: 0, contagem: { solicitada: 0 }, itens: [] },
@@ -503,10 +510,39 @@ describe("useAvisosDoLojista", () => {
     expect(atual().carregando).toBe(false);
   });
 
-  it("catalogo maior que o teto conta como falha da fonte de estoque", async () => {
-    // 250 produtos no total e so 1 na resposta: a varredura NAO viu o
-    // catalogo inteiro. Dizer "nenhum produto acabando" seria mentira sobre
-    // 249 produtos que ninguem olhou.
+  it("pede ao servidor SO os produtos ativos com estoque baixo (nao baixa o catalogo para filtrar no aparelho)", async () => {
+    await montarSonda();
+
+    expect(loadProductsFalso).toHaveBeenCalledWith(
+      0,
+      200,
+      expect.objectContaining({ stock: "low", status: "active", silent: true }),
+    );
+  });
+
+  it("loja com 250 produtos e um so acabando: sem falha de estoque, e o aviso aparece", async () => {
+    // O servidor aplica o filtro: com `stock: "low"` o total e' o de produtos
+    // acabando (1), mesmo com 250 no catalogo. Antes a tela baixava 200 e,
+    // no 201o produto, passava a dizer "nao consegui conferir o estoque" para
+    // sempre. O dible abaixo se comporta como o servidor.
+    loadProductsFalso.mockImplementation(
+      (_pagina: number, _tamanho: number, filtros?: { stock?: string }) =>
+        Promise.resolve(
+          filtros?.stock === "low"
+            ? { products: [produtoDeExemplo()], total: 1 }
+            : { products: [produtoDeExemplo()], total: 250 },
+        ),
+    );
+
+    const { atual } = await montarSonda();
+
+    expect(atual().fontesComFalha).toEqual([]);
+    expect(atual().avisos.map((a) => a.tipo)).toContain("estoque");
+  });
+
+  it("mais produtos acabando do que o teto conta como falha da fonte de estoque", async () => {
+    // 250 produtos acabando e so 1 na resposta: a varredura NAO viu todos.
+    // Dizer "tudo em dia" seria mentira sobre os que ninguem olhou.
     RESPOSTA_PRODUTOS = { products: [produtoDeExemplo()], total: 250 };
 
     const { atual } = await montarSonda();
@@ -515,6 +551,42 @@ describe("useAvisosDoLojista", () => {
     // E o que ELA viu continua valendo: aviso incompleto e honesto e melhor
     // que lista vazia.
     expect(atual().avisos.map((a) => a.tipo)).toContain("estoque");
+  });
+
+  it("o nome do produto avaliado vem do id da avaliacao, mesmo fora da lista de estoque", async () => {
+    RESPOSTA_AVALIACOES = {
+      data: [{ ...avaliacaoDeExemplo(), product_id: "prod-201" }],
+      error: null,
+    };
+    RESPOSTA_NOMES = {
+      data: [{ id: "prod-201", nome: "Anel de prata" }],
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+
+    expect(CHAMADAS_DE_IN).toContainEqual(["id", ["prod-201"]]);
+    const aviso = atual().avisos.find((a) => a.tipo === "avaliacao");
+    expect(aviso?.detalhe).toBe("Anel de prata");
+    expect(atual().fontesComFalha).toEqual([]);
+  });
+
+  it("nome nao encontrado ou consulta do nome que cai: a avaliacao aparece com o rotulo generico, sem falha", async () => {
+    RESPOSTA_NOMES = { data: null, error: { message: "fora do ar" } };
+
+    const { atual } = await montarSonda();
+
+    const aviso = atual().avisos.find((a) => a.tipo === "avaliacao");
+    expect(aviso?.detalhe).toBe("Produto");
+    expect(atual().fontesComFalha).toEqual([]);
+  });
+
+  it("sem avaliacao sem resposta, nao consulta nome nenhum", async () => {
+    RESPOSTA_AVALIACOES = { data: [], error: null };
+
+    await montarSonda();
+
+    expect(tabelasConsultadas).not.toContain("vw_produtos_admin");
   });
 
   it("estoqueMinimo zero e escolha legitima, nao ausencia de limiar", async () => {
