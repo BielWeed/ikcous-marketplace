@@ -45,9 +45,25 @@ só no job `build`.
 porteiro: mora aqui porque também precisa do `dist-test/` e porque esta pasta
 já é a que o job `build` do CI roda DEPOIS do build e que o Deno ignora. Ele lê o
 `dist-test/sw.js` (o manifesto do Workbox) e o `.portao-tamanho/dist-test.json`
-(a classificação cliente/painel do portão de tamanho) e reprova se qualquer peça
-do painel — inclusive uma NOVA, com nome comum — entrar no precache do service
-worker, ou se algum arquivo da loja sair dele. Sem build, FALHA.
+(a classificação cliente/painel do portão de tamanho). Sem build, FALHA. O que
+o conjunto cobre, exatamente:
+
+- **Painel fora:** nenhuma peça classificada como painel — inclusive uma NOVA,
+  com nome comum —, nenhum `leitor-zxing`, nenhum `.wasm` e nenhum CSS com nome
+  de peça do painel no manifesto.
+- **Loja dentro:** todo JS classificado como `cliente` segue no manifesto
+  (exceto `AdminLoginView`, fora de propósito desde antes) e todo `/assets/`
+  citado pelo `index.html` também.
+- **Fechamento dos imports, sem depender do classificador:** lendo o JS gerado,
+  tudo que um JS do manifesto importa estaticamente, ou pré-carrega
+  (`__vite__mapDeps`, que inclui o CSS e os JS da rota) ao importar uma tela da
+  loja, está no manifesto. Só ficam de fora, por lista explícita no teste, os
+  `import()` das rotas do painel (`AdminArea`, `AdminLoginView`, `Admin*View`,
+  `PdvBalcao`); qualquer outro alvo fora do manifesto reprova.
+
+O que NÃO cobre: CSS de rota da loja que nenhuma pré-carga cita (só o
+`index.html` e o `__vite__mapDeps` são lidos), `import()` montado em texto em
+vez de literal, e a abertura offline de verdade no navegador.
 
 ## O que este ensaio NÃO prova (fora do escopo desta tarefa)
 

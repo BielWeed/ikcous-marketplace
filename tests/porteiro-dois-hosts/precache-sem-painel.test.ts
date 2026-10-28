@@ -17,7 +17,7 @@
 //
 // Sem build, FALHA (nunca pula): guarda que some em silêncio não guarda nada.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -127,5 +127,167 @@ describe("precache do service worker sem o painel da lojista", () => {
       (url) => !existsSync(path.join(RAIZ, SAIDA, url)),
     );
     expect(sumiram).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FECHAMENTO dos imports — prova que NÃO depende do classificador.
+//
+// As provas acima usam o `dist-test.json` como gabarito, e ele sai da mesma
+// `classificarBundle` que o filtro usa: se o classificador errasse (ex.: uma
+// tela da loja passa a importar ESTATICAMENTE algo de `AdminPdvView.tsx`, o
+// chunk vira "painel" e sai do precache), filtro e gabarito errariam juntos e
+// tudo ficaria verde. Aqui o gabarito é o PRÓPRIO JAVASCRIPT gerado: todo JS do
+// manifesto é lido, e tudo que ele importa estaticamente, ou pré-carrega
+// (`__vite__mapDeps`) ao importar dinamicamente uma tela da loja, tem de estar
+// no manifesto também. Sem isso a tela abre com rede e quebra sem rede.
+
+/** `import()` dinâmico para fora do precache que é de PROPÓSITO: rotas do
+ * painel (carregadas só depois do `is_admin`) e o login público da lojista,
+ * que o `assets/Admin*.js` do `globIgnores` já deixava fora. Qualquer outro
+ * alvo fora do manifesto é defeito. */
+const IMPORT_DINAMICO_FORA_DE_PROPOSITO = [
+  /^assets\/AdminArea-[\w-]+\.js$/,
+  /^assets\/AdminLoginView-[\w-]+\.js$/,
+  /^assets\/Admin[A-Za-z]+View-[\w-]+\.js$/,
+  // A tela do Balcão (rota admin) tem o nome `PdvBalcao` em vez de Admin*.
+  /^assets\/PdvBalcao-[\w-]+\.js$/,
+];
+
+interface ResultadoDoFechamento {
+  violacoes: string[];
+  examinados: { estaticos: number; dinamicos: number; preCargas: number };
+}
+
+/** Confere, para todo JS do `manifesto`, que o que ele puxa também está nele. */
+function fechamentoDosImports(
+  manifestoDoBuild: ReadonlySet<string>,
+  lerJs: (url: string) => string,
+): ResultadoDoFechamento {
+  const violacoes: string[] = [];
+  const examinados = { estaticos: 0, dinamicos: 0, preCargas: 0 };
+  for (const url of manifestoDoBuild) {
+    if (!url.endsWith(".js")) continue;
+    const texto = lerJs(url);
+
+    // import estático: `import{a}from"./x.js"`, `import"./x.js"`, `export*from"./x.js"`.
+    for (const m of texto.matchAll(
+      /(?:\bfrom|\bimport)\s*"\.\/([^"]+\.js)"/g,
+    )) {
+      examinados.estaticos++;
+      const alvo = `assets/${m[1]}`;
+      if (!manifestoDoBuild.has(alvo))
+        violacoes.push(`${url} importa ${alvo}, que não está no manifesto`);
+    }
+
+    // Lista de pré-carga deste chunk (`<f>.f=["assets/a.js","assets/b.css",…]`).
+    const lista = texto.match(/\.f=\[("assets\/[^\]]*)\]/);
+    const arquivos = lista
+      ? (JSON.parse(`[${lista[1]}]`) as string[])
+      : undefined;
+
+    // import() dinâmico: o alvo e a lista de pré-carga dele.
+    for (const m of texto.matchAll(/import\("\.\/([^"]+\.js)"\)/g)) {
+      examinados.dinamicos++;
+      const alvo = `assets/${m[1]}`;
+      if (!manifestoDoBuild.has(alvo)) {
+        if (!IMPORT_DINAMICO_FORA_DE_PROPOSITO.some((re) => re.test(alvo)))
+          violacoes.push(
+            `${url} importa dinamicamente ${alvo}, fora do manifesto e fora das exceções do painel`,
+          );
+        continue;
+      }
+      const preCarga = texto
+        .slice(m.index + m[0].length)
+        .match(/^,__vite__mapDeps\(\[([0-9,]*)\]/);
+      if (!preCarga) continue;
+      if (!arquivos) {
+        violacoes.push(`${url} usa __vite__mapDeps mas a lista não foi lida`);
+        continue;
+      }
+      for (const indice of preCarga[1].split(",").filter(Boolean).map(Number)) {
+        examinados.preCargas++;
+        const dep = arquivos.at(indice);
+        if (dep === undefined || !manifestoDoBuild.has(dep))
+          violacoes.push(
+            `${url}: ao importar ${alvo} pré-carrega ${dep ?? `#${indice} (inexistente)`}, que não está no manifesto`,
+          );
+      }
+    }
+  }
+  return { violacoes, examinados };
+}
+
+describe("fechamento dos imports do precache (sem depender do classificador)", () => {
+  const lerDoBuild = (url: string) =>
+    readFileSync(path.join(RAIZ, SAIDA, url), "utf8");
+
+  it("no build real, tudo que um JS do manifesto importa ou pré-carrega está no manifesto", () => {
+    const { violacoes, examinados } = fechamentoDosImports(
+      noManifesto,
+      lerDoBuild,
+    );
+    // Se o formato do JS gerado mudar e nada for lido, a prova seria vazia.
+    expect(examinados.estaticos).toBeGreaterThan(100);
+    expect(examinados.dinamicos).toBeGreaterThan(20);
+    expect(examinados.preCargas).toBeGreaterThan(50);
+    expect(violacoes).toEqual([]);
+  });
+
+  it("a conferência tem dente: manifesto sem o chunk que o index importa estaticamente é reprovado", () => {
+    const indice = manifesto.find((url) =>
+      /^assets\/index-[\w-]+\.js$/.test(url),
+    );
+    const importado = [
+      ...lerDoBuild(indice ?? "").matchAll(
+        /\bfrom"\.\/(vendor-inicio-[^"]+\.js)"/g,
+      ),
+    ][0]?.[1];
+    expect(importado).toBeDefined();
+    const semEle = new Set(noManifesto);
+    semEle.delete(`assets/${importado}`);
+    const { violacoes } = fechamentoDosImports(semEle, lerDoBuild);
+    expect(violacoes.some((v) => v.includes(`assets/${importado}`))).toBe(true);
+  });
+
+  it("a conferência tem dente: manifesto sem um arquivo que uma tela da loja pré-carrega é reprovado", () => {
+    // Tira do manifesto um arquivo que SÓ aparece como pré-carga (não é
+    // import estático de ninguém): o CSS de uma rota da loja.
+    const css = manifesto.find((url) =>
+      /^assets\/FavoritesView-[\w-]+\.css$/.test(url),
+    );
+    expect(css).toBeDefined();
+    const semEle = new Set(noManifesto);
+    semEle.delete(css ?? "");
+    const { violacoes } = fechamentoDosImports(semEle, lerDoBuild);
+    expect(violacoes.some((v) => v.includes(css ?? "?"))).toBe(true);
+  });
+
+  it("a conferência tem dente: tela da loja que passa a puxar o Balcão por import estático é reprovada", () => {
+    // O cenário que o gabarito do classificador não via: o chunk do Balcão
+    // vira dependência estática de um JS da loja (aqui simulado no texto).
+    const balcao = readdirSync(path.join(RAIZ, SAIDA, "assets")).find((f) =>
+      /^PdvBalcao-/.test(f),
+    );
+    expect(balcao).toBeDefined();
+    const { violacoes } = fechamentoDosImports(noManifesto, (url) =>
+      /^assets\/HomeView-/.test(url)
+        ? `${lerDoBuild(url)};import{x}from"./${balcao}";`
+        : lerDoBuild(url),
+    );
+    expect(violacoes).toEqual([
+      expect.stringContaining(`importa assets/${balcao}`),
+    ]);
+  });
+
+  it("import dinâmico novo para fora do manifesto e fora das exceções é reprovado", () => {
+    const { violacoes } = fechamentoDosImports(noManifesto, (url) =>
+      /^assets\/HomeView-/.test(url)
+        ? `${lerDoBuild(url)};import("./relatorio-novo-AAAAAAAA.js");`
+        : lerDoBuild(url),
+    );
+    expect(violacoes).toEqual([
+      expect.stringContaining("relatorio-novo-AAAAAAAA.js"),
+    ]);
   });
 });
