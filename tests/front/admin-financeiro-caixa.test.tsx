@@ -1417,6 +1417,47 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     ).toHaveLength(1);
   });
 
+  it("rede pendurada em Nova conta: Salvar não reabre, e ao fechar a tela relê as contas (sem 2ª conta)", async () => {
+    const original = rpcFalso.getMockImplementation() as (
+      n: string,
+      ...r: unknown[]
+    ) => unknown;
+    rpcFalso.mockImplementation((nome: string, ...resto: unknown[]) =>
+      nome === "fin_conta_salvar"
+        ? new Promise(() => {})
+        : original(nome, ...resto),
+    );
+    try {
+      await clicar(botaoEm(hospedeiro, "Contas"));
+      await clicar(botaoEm(hospedeiro, "Nova conta"));
+      await digitar("fin-conta-nome", "Nubank");
+      const leiturasDeContas = () =>
+        rpcFalso.mock.calls.filter(([n]) => n === "fin_contas_listar").length;
+      const gravacoes = () =>
+        rpcFalso.mock.calls.filter(([n]) => n === "fin_conta_salvar").length;
+      const antes = leiturasDeContas();
+      vi.useFakeTimers();
+      const painel = folha() as HTMLElement;
+      await clicar(botaoEm(painel, "Salvar"));
+      expect(gravacoes()).toBe(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_001);
+      });
+      // O servidor pode ter gravado: o Salvar não volta, só fechar.
+      expect(normalizar(painel.textContent)).toMatch(/demorou demais/);
+      expect(botaoEm(painel, "Salvar").disabled).toBe(true);
+      await clicar(botaoEm(painel, "Salvar"));
+      expect(gravacoes()).toBe(1);
+
+      await fecharDescartando();
+      expect(folha()).toBeNull();
+      expect(leiturasDeContas()).toBeGreaterThan(antes);
+      expect(gravacoes()).toBe(1);
+    } finally {
+      rpcFalso.mockImplementation(original);
+    }
+  });
+
   it("abertura sem valor não vai ao banco", async () => {
     await clicar(botaoEm(hospedeiro, "Abrir caixa"));
     await clicar(botaoEm(folha() as HTMLElement, "Abrir caixa"));

@@ -271,6 +271,9 @@ export function AdminFinanceiroView({
     },
     [numeroDaFolha, folha, fecharFolha],
   );
+  const marcarSemResposta = useCallback(() => {
+    gravouSemConfirmar.current = true;
+  }, []);
   const invalidar = useCallback(() => {
     gravouSemConfirmar.current = false;
     setVersao((v) => v + 1);
@@ -572,6 +575,7 @@ export function AdminFinanceiroView({
             hoje={hoje}
             aoFechar={pedirParaFechar}
             aoSalvar={aoSalvar}
+            aoSemResposta={marcarSemResposta}
             aoMudarSujo={setSujo}
           />
         );
@@ -581,6 +585,7 @@ export function AdminFinanceiroView({
             categoria={folha.categoria}
             aoFechar={pedirParaFechar}
             aoSalvar={aoSalvar}
+            aoSemResposta={marcarSemResposta}
             aoMudarSujo={setSujo}
           />
         );
