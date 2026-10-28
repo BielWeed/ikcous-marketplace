@@ -722,10 +722,13 @@ export function OrderDetailsView({
     // Se a revalidação não achou nada mas havia algo em memória, mantém o que
     // está na tela: melhor um dado de um segundo atrás do que piscar para
     // "pedido não encontrado" por causa de uma resposta abortada.
+    // Busca que termina VAZIA (cancelada por outra busca, por exemplo) nunca
+    // apaga um pedido que a tela já tem: `novo ?? prev`. Pedido que de fato
+    // não existe chega aqui com `prev` nulo e continua "não encontrado".
     if (encontrado || !emMemoria) {
       const novo = encontrado ?? null;
       setOrder((prev) =>
-        novo && prev ? escolherVersaoDoPedido(prev, novo) : novo,
+        novo && prev ? escolherVersaoDoPedido(prev, novo) : (novo ?? prev),
       );
     }
     setLoading(false);
@@ -765,7 +768,10 @@ export function OrderDetailsView({
       return;
     }
     setOrder((prev) => {
-      if (!prev || prev.id !== doPedidoNaLista.id) return prev;
+      // Sem pedido na tela (a busca da abertura foi cancelada e voltou vazia),
+      // adota o que a lista trouxe.
+      if (!prev) return doPedidoNaLista;
+      if (prev.id !== doPedidoNaLista.id) return prev;
       const escolhida = escolherVersaoDoPedido(prev, doPedidoNaLista);
       if (escolhida !== doPedidoNaLista) return escolhida;
       // A linha do tempo real não traz itens nem endereço: o que só a
