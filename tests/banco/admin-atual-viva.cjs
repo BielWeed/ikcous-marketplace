@@ -445,6 +445,10 @@ async function desfazerPosterioresNaTransacao(cliente) {
     HASH_98_REEMITIR,
     "a 98 tem de estar no ar (pelo hash do reemitir que ela deixa)",
   );
+  // A 20261397000000 (o desconto do cupom e' arredondado ao centavo; sucede a validate da 208 e a v23/v24) sai antes de todas (so se no ar).
+  await require("./o-desconto-do-cupom-posterior.cjs").desfazerODescontoDoCupomNaTransacao(
+    cliente,
+  );
   // A 20261241000000 (a mais nova; redefine corpos da 1196/1198/1201/1225/1226) sai primeiro de todas.
   await desfazerReembolsoEmDuvidaNaTransacao(cliente);
   await desfazerCaixaIntencaoNaTransacao(cliente);
@@ -1607,6 +1611,11 @@ PROVAS.push({
     };
     const desfazer = async (i) => {
       const nome = POSTERIORES_A_97[i].nome;
+      // A 20261397000000 (o desconto do cupom e' arredondado ao centavo) sucede o corpo da validate da 208 (e o da v23/v24): sai ANTES de todas
+      // (so se no ar); sem isso o rollback da 208, que esta pilha desfaz primeiro, recusa com o corpo dela.
+      await require("./o-desconto-do-cupom-posterior.cjs").desfazerODescontoDoCupomNaTransacao(
+        cliente,
+      );
       // A 20261241000000 (a mais nova de todas) sai antes de qualquer uma desta pilha (só se no ar).
       await desfazerReembolsoEmDuvidaNaTransacao(cliente);
       await desfazerCaixaIntencaoNaTransacao(cliente);

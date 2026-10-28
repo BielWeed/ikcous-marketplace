@@ -403,6 +403,25 @@ describe("worker", () => {
     expect(await r.text()).toContain("R$ 14,90");
   });
 
+  it.each([
+    [999.9, "R$ 999,90"],
+    [1299.9, "R$ 1.299,90"],
+    [12345.6, "R$ 12.345,60"],
+  ])(
+    "lote 244: preco_venda %s sai com ponto de milhar (%s)",
+    async (preco, esperado) => {
+      const { env } = ambiente();
+      const { impl } = fetchComProduto([{ ...produto, preco_venda: preco }]);
+      const r = await criarWorker(config(), { fetchImpl: impl }).fetch(
+        new Request(`https://loja.exemplo/product-detail?id=${ID}`, {
+          headers: ROBO,
+        }),
+        env,
+      );
+      expect(await r.text()).toContain(esperado);
+    },
+  );
+
   it("preco_venda negativo não aparece no og:title", async () => {
     const { env } = ambiente();
     const { impl } = fetchComProduto([{ ...produto, preco_venda: -5 }]);

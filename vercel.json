@@ -40,6 +40,13 @@
       "claude/app-major-upgrade-wmc8x2": false
     }
   },
+  "redirects": [
+    {
+      "source": "/404.html",
+      "destination": "/",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/(.*)",

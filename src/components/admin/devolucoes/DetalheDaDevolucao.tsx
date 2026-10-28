@@ -17,6 +17,7 @@ import {
   formatarDia,
   formatarReais,
   pedidoDentroDoPrazo,
+  reaisComVirgula,
   rotuloAtor,
   rotuloCondicao,
   rotuloMetodo,
@@ -424,7 +425,7 @@ export function DetalheDaDevolucao({
                     </p>
                     {evento.nota && (
                       <p className="mt-0.5 whitespace-pre-line text-[11px] leading-relaxed text-zinc-400">
-                        {evento.nota}
+                        {reaisComVirgula(evento.nota)}
                       </p>
                     )}
                   </li>

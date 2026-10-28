@@ -75,7 +75,7 @@ WITH alvo(assinatura) AS (
          -- 20261350000000 (a compra online trava o preco e espera a mesma chave) OU o da sucessora dela, a 20261384000000
          -- (o pedido pago pelo app exige conta: o mesmo corpo mais o bloco 0-ter) OU o da sucessora dela, a 20261394000000
          -- (o pedido de visitante na entrega tem freio: o mesmo corpo mais o trecho 0-quater). O `vivo` mostra o esperado.
-         COALESCE((SELECT CASE WHEN f.m IN ('6002fc8db6c1d402bc704f018a0c2621', '85c37af4baa2f5ce1375bdd9e943c746', 'e3c124d25632aaa9bcf1995153bc5a7e', 'f8d6ed0c3622ab41123bacb98911a98f', '36c80a107f3ed16853c1c5b2b0cbc911')
+         COALESCE((SELECT CASE WHEN f.m IN ('6002fc8db6c1d402bc704f018a0c2621', '85c37af4baa2f5ce1375bdd9e943c746', 'e3c124d25632aaa9bcf1995153bc5a7e', 'f8d6ed0c3622ab41123bacb98911a98f', '36c80a107f3ed16853c1c5b2b0cbc911', '541a210e52ea22fe67e35f2bdd9ef444')
                                THEN '6002fc8db6c1d402bc704f018a0c2621'
                                ELSE f.m END
                      FROM fn f), 'AUSENTE')

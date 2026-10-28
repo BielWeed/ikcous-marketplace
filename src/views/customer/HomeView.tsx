@@ -437,6 +437,14 @@ export const HomeView = React.memo(function HomeView({
     </div>
   );
 
+  // Loja SEM banner no topo: o cartão aparece mesmo assim (o painel promete
+  // "aparece na página inicial"). Só depois de a configuração chegar — sem
+  // esqueleto, para a loja que não usa frete grátis não reservar 172px à toa.
+  const blocoFreteSemBanner =
+    configLoaded && config.freeShippingMin > 0 ? (
+      <div className="mb-2 w-full">{blocoFrete}</div>
+    ) : null;
+
   return (
     <div className="pb-customer min-h-full">
       {/* Laudo de acessibilidade 05/09 (onda 3, item B1): a home começava em
@@ -453,8 +461,9 @@ export const HomeView = React.memo(function HomeView({
           // colapsa (o colapso do esqueleto em loja sem banner era o
           // defeito dominante medido: 0,33-0,53 de CLS). Sem memória
           // (1ª visita) a aposta continua a de hoje: esqueleto.
-          memoriaDaUltimaVisita !== null &&
-          !memoriaDaUltimaVisita.temBanner ? null : (
+          memoriaDaUltimaVisita !== null && !memoriaDaUltimaVisita.temBanner ? (
+            blocoFreteSemBanner
+          ) : (
             // Laudo de acessibilidade 03/09, achado 12: o banner vazio era
             // silêncio para leitor de tela — role="status" + sr-only
             // anunciam "Carregando banners" sem mudar o visual.
@@ -489,7 +498,9 @@ export const HomeView = React.memo(function HomeView({
             {/* Premium Info Carousel */}
             {blocoFrete}
           </div>
-        ) : null)}
+        ) : (
+          blocoFreteSemBanner
+        ))}
 
       {/* Recently Viewed - Removed and moved to Profile */}
 
@@ -815,7 +826,9 @@ export const HomeView = React.memo(function HomeView({
               Nenhum produto agora
             </h3>
             <p className="mx-auto max-w-[200px] text-sm leading-relaxed text-zinc-500">
-              Tente buscar por outro termo ou mudar a categoria.
+              {searchQuery || selectedCategory !== "Todas"
+                ? "Tente buscar por outro termo ou mudar a categoria."
+                : "Em breve novidades por aqui."}
             </p>
           </div>
         ) : (

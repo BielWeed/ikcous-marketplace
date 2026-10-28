@@ -33,14 +33,14 @@ WITH alvo(nome, assinatura) AS (
          -- A 20261394000000 (o pedido de visitante na entrega tem freio: o mesmo corpo mais o trecho 0-quater) e a 20261394200000 (a v23
          -- recusa o pagamento pelo app: mais o trecho 0-ter) sucedem a v23: aceita os tres corpos EXATOS; normaliza ao esperado historico do
          -- rol. O `vivo` mostra o esperado.
-         COALESCE((SELECT CASE WHEN m IN ('6b71cb823967518955407b532904ae91', '89c99662346d47a4d6b3d13612ca4acb', '86a30fe3502bbafd1a507ce03189bc2d') THEN '6b71cb823967518955407b532904ae91' ELSE m END
+         COALESCE((SELECT CASE WHEN m IN ('6b71cb823967518955407b532904ae91', '89c99662346d47a4d6b3d13612ca4acb', '86a30fe3502bbafd1a507ce03189bc2d', '54b591dc09d67f1abbc9ab3ba5f62f5e') THEN '6b71cb823967518955407b532904ae91' ELSE m END
                      FROM fn WHERE nome = 'create_marketplace_order_v23'), 'AUSENTE')
   UNION ALL
   SELECT 'create_marketplace_order_v24: corpo e o da 20261350000000, com a ordem global das travas, a trava do produto e a espera da mesma chave (md5)', 'e3c124d25632aaa9bcf1995153bc5a7e',
          -- A 20261384000000 (o pedido pago pelo app exige conta: o mesmo corpo mais o bloco 0-ter) e a 20261394000000 (o pedido de
          -- visitante na entrega tem freio: mais o trecho 0-quater) sucedem a v24: aceita os tres corpos EXATOS; normaliza ao esperado
          -- historico do rol. O `vivo` mostra o esperado.
-         COALESCE((SELECT CASE WHEN m IN ('e3c124d25632aaa9bcf1995153bc5a7e', 'f8d6ed0c3622ab41123bacb98911a98f', '36c80a107f3ed16853c1c5b2b0cbc911') THEN 'e3c124d25632aaa9bcf1995153bc5a7e' ELSE m END
+         COALESCE((SELECT CASE WHEN m IN ('e3c124d25632aaa9bcf1995153bc5a7e', 'f8d6ed0c3622ab41123bacb98911a98f', '36c80a107f3ed16853c1c5b2b0cbc911', '541a210e52ea22fe67e35f2bdd9ef444') THEN 'e3c124d25632aaa9bcf1995153bc5a7e' ELSE m END
                      FROM fn WHERE nome = 'create_marketplace_order_v24'), 'AUSENTE')
   UNION ALL
   SELECT 'as duas compras: as travas do carrinho saem em ordem global (variacoes por id, depois produtos por id) e a leitura do passo 3 tranca a variacao e o produto (ordem 2 vezes; OF v, p uma vez; nenhuma OF v sozinha)', 'v23=2/1/0 v24=2/1/0',

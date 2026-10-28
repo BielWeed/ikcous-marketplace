@@ -189,7 +189,10 @@ WITH tab AS (
          COALESCE((SELECT CASE WHEN v.h IN ('489c0cd19b3529ef2d9cf341096ee9b0048e5787ff0a2d0a918df4db580e82f3',
                                             '4b096e67be79665d70e86ff5e94953ecf5842cd64abca882abac0f6cbe328279',
                                             'c33e930ca389b3568bd256f9363ace8fd3935f0ac73851441e0684a374b11037',
-                                            'fdfacc20cc3bc2a691ad8961c525e5cb77071b7d5e9e590a7470e45690a2df3a')
+                                            'fdfacc20cc3bc2a691ad8961c525e5cb77071b7d5e9e590a7470e45690a2df3a',
+                                           -- a sucessora da 20261208000000, a 20261397000000 (o desconto do cupom e' arredondado ao centavo), LF | CRLF
+                                           'cd7865bee8797fee5575643f749b56d1e9cc8af852cd74297f9a1f065ac44097',
+                                           '139fffba24153eff45f66a2885e1eafb92bbffcdc2e6b0203c8b0448b5c267fa')
                                THEN '489c0cd19b3529ef2d9cf341096ee9b0048e5787ff0a2d0a918df4db580e82f3'
                                ELSE v.h END
                      FROM va v), 'AUSENTE')

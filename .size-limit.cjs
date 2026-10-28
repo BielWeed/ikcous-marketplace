@@ -114,7 +114,11 @@ module.exports = [
     // vitrine). Medido no CI: o lote 222 sozinho deu 588,02 kB (21 B acima do teto); os
     // lotes 217, 219, 220 e 222 somam ~1,3 kB sobre a base de 586,82 kB. Nenhum codigo foi
     // trocado por algo mais arriscado para caber.
-    limit: "592 kB",
+    // 27/10/2026 (mesma regra): 592 -> 593 kB na 1.5.92 (guarda do boot sem ficha, carrinho que
+    // nao gira a chave do pedido, marca de uma loja nao aparecendo em outra e dinheiro no
+    // formato brasileiro). Base 591,35 kB; os quatro lotes somam +0,84 kB e medem 592,19 kB
+    // (191 B acima do teto). O painel ficou em 493,61 kB e nao muda de teto.
+    limit: "593 kB",
     webpack: false,
     // Sem `running: false` o preset tenta MEDIR TEMPO rodando o bundle em
     // Chrome headless — inútil para app de navegador e quebra em runner sem

@@ -667,6 +667,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261396200000: o texto da avaliacao tem teto no banco (CHECK de 1000 caracteres NOT VALID em reviews; 1001 recusado para todos; a migration se recusa se ja
     // houver avaliacao acima do teto (o CHECK travaria o pagamento do pedido); mutantes, rollback, pre/pos-voo e consultas 114a/114b).
     "tests/banco/o-texto-da-avaliacao-tem-teto-no-banco-viva.cjs",
+    // 20261397000000: o desconto do cupom de porcentagem e' arredondado ao centavo ANTES de subtrair (v23, v24 e validate_coupon_secure_v2; contas, controle, mutantes,
+    // dado antigo intacto, rollback byte a byte, aplicar duas vezes, pre/pos-voo e consultas 115a/115b).
+    "tests/banco/o-desconto-do-cupom-e-arredondado-ao-centavo-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",

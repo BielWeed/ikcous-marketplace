@@ -533,6 +533,19 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     expect(texto).not.toContain("não impede o registro");
   });
 
+  it("sangria acima do esperado deixa o botão de registrar desativado", async () => {
+    await abrirSessao();
+    await clicar(botaoEm(hospedeiro, "Sangria"));
+    await digitar("fin-caixa-mov-valor", "50000");
+    expect(botaoEm(folha() as HTMLElement, "Registrar sangria").disabled).toBe(
+      true,
+    );
+    await digitar("fin-caixa-mov-valor", "5000");
+    expect(botaoEm(folha() as HTMLElement, "Registrar sangria").disabled).toBe(
+      false,
+    );
+  });
+
   it("aviso de sangria acima do esperado usa âmbar sem bloco pintado", async () => {
     await abrirSessao();
     await clicar(botaoEm(hospedeiro, "Sangria"));

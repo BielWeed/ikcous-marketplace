@@ -1,4 +1,16 @@
 {
+  "1.5.92": {
+    "titulo": "Loja nova sem a marca de outra loja, carrinho mais seguro e valores em reais certos",
+    "novidades": [],
+    "correcoes": [
+      "Segurança: abrir um endereço antigo da loja que não carrega a identidade dela (como /404.html) agora leva à página inicial, em vez de abrir o app ligado ao banco de outra loja.",
+      "Carrinho e compra: se a resposta de um pedido se perder e a cliente sair e voltar, o carrinho não muda por baixo enquanto o pedido não for confirmado, e o novo \"Finalizar\" repete o mesmo pedido em vez de criar outro; ao entrar na conta o carrinho não diz \"vazio\" enquanto lê.",
+      "Frete e carrinho: a recusa \"fora da área\" não oferece mais \"Tentar de novo\"; quem está fora da área de uma loja que só entrega na região não é mandada criar conta; em loja que só recebe pelo app, o carrinho do visitante pede para entrar em vez de falar em \"convidado\"; loja sem CEP de origem avisa logo no topo da entrega e oferece falar com a loja.",
+      "Loja nova: o texto de compartilhar produto não cita mais a IKCOUS; o cartão de frete grátis aparece também na página inicial de loja sem banner; a vitrine vazia não manda buscar outro termo nem promete produtos; o primeiro Início do painel não diz \"Tudo em dia\" antes do primeiro pedido; e o guia do Melhor Envio não sugere o nome de outra loja.",
+      "Painel: a sangria maior que o dinheiro da gaveta não deixa enviar, e as recusas de sangria, estorno e devolução mostram os valores em reais certos (R$ 150,00); a data dos avisos enviados é sempre dia/mês/ano no horário de Brasília; a prévia do link do produto e o selo do cupom mostram o ponto de milhar (R$ 1.299,90)."
+    ],
+    "melhorias": []
+  },
   "1.5.91": {
     "titulo": "Balcão, carrinho e avisos mais certos",
     "novidades": [],
