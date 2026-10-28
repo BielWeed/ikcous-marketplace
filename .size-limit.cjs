@@ -118,7 +118,10 @@ module.exports = [
     // nao gira a chave do pedido, marca de uma loja nao aparecendo em outra e dinheiro no
     // formato brasileiro). Base 591,35 kB; os quatro lotes somam +0,84 kB e medem 592,19 kB
     // (191 B acima do teto). O painel ficou em 493,61 kB e nao muda de teto.
-    limit: "593 kB",
+    // 28/10/2026 (mesma regra): 593 -> 594 kB na 1.5.93 (fotos pequenas nas telas de
+    // compra, pedido que sobrevive a reabrir o app, catalogo baixado uma vez). Base
+    // 592,19 kB; os quatro lotes somam +1,09 kB e medem 593,28 kB (285 B acima do teto).
+    limit: "594 kB",
     webpack: false,
     // Sem `running: false` o preset tenta MEDIR TEMPO rodando o bundle em
     // Chrome headless — inútil para app de navegador e quebra em runner sem
@@ -222,7 +225,10 @@ module.exports = [
     // 490 -> 494 kB para os lotes 202-205 da Caca 7 (avisos, clientes, cadastros do
     // painel). Medido no CI com o merge: 489,58 kB com so um lote, folga de 420 B.
     path: painel.map((arquivo) => `${output}/${arquivo}`),
-    limit: "494 kB",
+    // 28/10/2026 (mesma regra): 494 -> 495 kB na 1.5.93 (Balcao: recibo diz quais pecas
+    // diferem, "Registrar de novo" so depois de anular, fotos e Notificacoes). Base
+    // 493,61 kB; o lote do Balcao sozinho deu 494,30 kB e o conjunto mede 494,13 kB.
+    limit: "495 kB",
     webpack: false,
     running: false,
   },

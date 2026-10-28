@@ -28,13 +28,15 @@ import {
 } from "@/utils/avisos-do-lojista";
 
 /**
- * Quantos produtos a tela varre atras de estoque baixo. Nao ha paginacao aqui
- * de proposito: a tela e "o que falta fazer", nao um relatorio de catalogo.
+ * Quantos produtos COM ESTOQUE BAIXO a tela le. Quem filtra e o servidor
+ * (`stock: "low"`, a mesma conta de `precisaDeReposicao`), entao o tamanho do
+ * catalogo nao entra: so a quantidade de produtos acabando. Nao ha paginacao
+ * aqui de proposito: a tela e "o que falta fazer", nao um relatorio.
  *
- * O que o teto NAO pode fazer e virar piso silencioso: numa loja com mais
- * produtos que isto, o 201o nunca seria olhado e a tela diria "nenhum produto
- * acabando" sem ter visto. Por isso a leitura devolve `truncou`, e truncar
- * conta como FALHA da fonte de estoque — "nao consegui conferir produtos" e
+ * O que o teto NAO pode fazer e virar piso silencioso: com mais produtos
+ * acabando que isto, o seguinte nunca seria olhado e a tela diria "tudo em
+ * dia" sem ter visto. Por isso a leitura devolve `truncou`, e truncar conta
+ * como FALHA da fonte de estoque — "nao consegui conferir produtos" e
  * verdade; "tudo em dia" seria mentira.
  */
 const TETO_DE_PRODUTOS = 200;
@@ -133,14 +135,34 @@ async function buscarPedidosDePrivacidadeAbertos(): Promise<number> {
 // barram com `if (!replyText.trim()) return` (AdminReviewsView) antes de
 // chamar a RPC. Alargar a consulta por um caso que o proprio app nao produz
 // custaria um `.or` e nenhuma verdade a mais.
-async function buscarAvaliacoesSemResposta(): Promise<AvaliacaoCrua[]> {
+async function buscarAvaliacoesSemResposta(): Promise<AvaliacaoSemResposta[]> {
   const { data, error } = await supabase
     .from("reviews")
     .select("id, product_id, rating, created_at")
     .is("merchant_reply", null);
 
   if (error) throw error;
-  return (data ?? []) as unknown as AvaliacaoCrua[];
+  const avaliacoes = (data ?? []) as unknown as AvaliacaoCrua[];
+
+  // O nome vem do id da avaliacao, nao da lista de estoque (que so traz os
+  // produtos acabando). Consulta que cai ou produto que nao veio: a avaliacao
+  // continua aparecendo com o rotulo generico em vez de sumir junto. O corte em
+  // 100 ids guarda o tamanho do endereco da consulta.
+  const ids = [...new Set(avaliacoes.map((a) => a.product_id))].slice(0, 100);
+  const nomes = new Map<string, string>();
+  if (ids.length > 0) {
+    const { data: produtos } = await supabase
+      .from("vw_produtos_admin")
+      .select("id, nome")
+      .in("id", ids);
+    for (const p of (produtos ?? []) as Array<{ id: string; nome: string }>) {
+      nomes.set(p.id, p.nome);
+    }
+  }
+  return avaliacoes.map((a) => ({
+    ...a,
+    nomeDoProduto: nomes.get(a.product_id) ?? null,
+  }));
 }
 
 // 14/10/2026: o cliente cancelou um pedido que ja tinha pago, ou um pedido a
@@ -224,7 +246,14 @@ async function buscarProdutosComEstoqueBaixo(
     filtros?: Record<string, unknown>,
   ) => Promise<{ products: Product[]; total: number } | null>,
 ): Promise<LeituraDeProdutos> {
-  const resultado = await carregar(0, TETO_DE_PRODUTOS, { silent: true });
+  const resultado = await carregar(0, TETO_DE_PRODUTOS, {
+    silent: true,
+    // So os ativos com estoque baixo: a conta e a do servidor, igual a
+    // `precisaDeReposicao`. O `.filter` abaixo e `montarAvisos` continuam
+    // conferindo (a copia de offline do `loadProducts` nao e filtrada).
+    stock: "low",
+    status: "active",
+  });
 
   // `loadProducts` engole o erro e devolve `null`. `null` NAO e "zero
   // produtos", e "nao sei" — tratar como lista vazia esconderia a falha e a
@@ -333,7 +362,7 @@ export function useAvisosDoLojista(): AvisosDoLojista {
       rRecebimentos.status === "fulfilled" ? rRecebimentos.value : [];
     if (rRecebimentos.status === "rejected") falhas.push("recebimento");
 
-    const avaliacoesCruas =
+    const avaliacoes =
       rAvaliacoes.status === "fulfilled" ? rAvaliacoes.value : [];
     if (rAvaliacoes.status === "rejected") falhas.push("avaliacao");
 
@@ -345,20 +374,6 @@ export function useAvisosDoLojista(): AvisosDoLojista {
     if (rProdutos.status === "rejected" || leituraDeProdutos?.truncou) {
       falhas.push("estoque");
     }
-
-    // O nome do produto vem da lista de produtos, nao de um join: se a fonte
-    // de produtos caiu, a avaliacao continua aparecendo com o rotulo
-    // generico em vez de sumir junto.
-    const nomePorId = new Map(produtos.map((p) => [p.id, p.name]));
-    const avaliacoes: AvaliacaoSemResposta[] = avaliacoesCruas.map(
-      (avaliacao) => ({
-        id: avaliacao.id,
-        product_id: avaliacao.product_id,
-        nomeDoProduto: nomePorId.get(avaliacao.product_id) ?? null,
-        rating: avaliacao.rating,
-        created_at: avaliacao.created_at,
-      }),
-    );
 
     setAvisos(
       montarAvisos({

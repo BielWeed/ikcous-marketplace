@@ -242,7 +242,7 @@ function avisoDaFaixaNaoEntendida(
   if (!cepCompleto(originCep)) return null;
   const cepDaLoja = (originCep as string).trim();
   if (cepEhLocal(cepDaLoja, cepDaLoja, faixa)) return null;
-  return "O alcance que você escreveu não está sendo entendido: nem o CEP da sua loja entra. Escreva dois CEPs separados por vírgula, assim: 38500-000, 38509-999";
+  return "O alcance que você escreveu não está sendo entendido: nem o CEP da sua loja entra. Escreva dois CEPs separados por vírgula, assim: 00000-000, 00000-999";
 }
 
 /**

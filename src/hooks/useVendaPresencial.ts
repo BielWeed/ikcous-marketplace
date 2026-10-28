@@ -218,7 +218,26 @@ export interface ReciboDaVendaRegistrada {
     readonly totalDaTela: number;
     readonly unidadesDaTela: number;
     readonly pagamentoDaTela: FormaDePagamentoDoBalcao;
+    /** Peças que a TELA tem e a venda gravada não tem (ou tem em menor
+     * quantidade). Ausente = nenhuma, ou a venda gravada não trouxe itens para
+     * comparar (aí só valem as contagens e o total acima). */
+    readonly aMaisNaTela?: readonly PecaDaDiferenca[];
+    /** Peças que a venda GRAVADA tem a mais do que a tela. Mesma regra. */
+    readonly aMenosNaTela?: readonly PecaDaDiferenca[];
   };
+  /** `true` depois que a lojista anulou ESTA venda no recibo. É o que libera
+   * `cupom_refeito_com_a_tela`: registrar de novo com a venda antiga ainda
+   * valendo duplicaria a venda e o dinheiro. Só de sessão (o recibo não vai
+   * para o rascunho). */
+  readonly anulada?: boolean;
+}
+
+/** Uma linha da diferença entre a tela e a venda gravada, em palavras da
+ * caixa: o nome e a variação como aparecem no cupom, e quantas peças. */
+export interface PecaDaDiferenca {
+  readonly nome: string;
+  readonly variacao: string | null;
+  readonly quantidade: number;
 }
 
 /** O estado inteiro do caixa — é exatamente isto que o rascunho grava (menos
@@ -317,6 +336,17 @@ export type AcaoDaVenda =
       readonly tipo: "venda_registrada";
       readonly recibo: ReciboDaVendaRegistrada;
     }
+  /** O servidor confirmou a anulação do pedido `orderId`. Só vale se for o
+   * pedido do recibo que está na tela: uma resposta atrasada da venda A não
+   * pode marcar como anulada a venda B que a caixa registrou depois. Não gira
+   * chave nem mexe na tela. */
+  | { readonly tipo: "recibo_anulado"; readonly orderId: string }
+  /** Depois de uma divergência (`ja_existia` com a tela diferente) E da
+   * anulação da venda antiga: volta ao cupom COM os itens, o cliente, a forma
+   * de pagamento e o desconto que estavam na tela, e uma chave NOVA — só neste
+   * clique. A retentativa de rede nunca passa por aqui: ela segue com a chave
+   * de antes. `novaChave` vem de quem despacha (o reducer continua puro). */
+  | { readonly tipo: "cupom_refeito_com_a_tela"; readonly novaChave: string }
   /** O F5: o hook lê o rascunho na montagem e substitui o estado inteiro
    * por este. */
   | { readonly tipo: "rascunho_restaurado"; readonly estado: EstadoDaVenda };
@@ -473,6 +503,44 @@ export function totalDaVenda(estado: EstadoDaVenda): number {
   );
 }
 
+/** Quais peças diferem entre a tela e a venda gravada, por item do cupom
+ * (mesma `chave`). Venda gravada SEM itens = nada para comparar: devolve vazio
+ * (a caixa fica só com as contagens e o total, em vez de uma lista que diria
+ * "tudo a mais" por falta de dado). */
+function pecasQueDiferem(
+  tela: readonly ItemDoCupom[],
+  gravados: readonly ItemDoCupom[],
+): {
+  readonly aMais: readonly PecaDaDiferenca[];
+  readonly aMenos: readonly PecaDaDiferenca[];
+} {
+  if (gravados.length === 0) return { aMais: [], aMenos: [] };
+  const somar = (itens: readonly ItemDoCupom[]) => {
+    const mapa = new Map<string, { item: ItemDoCupom; quantidade: number }>();
+    for (const item of itens) {
+      const atual = mapa.get(item.chave);
+      mapa.set(item.chave, {
+        item: atual?.item ?? item,
+        quantidade: (atual?.quantidade ?? 0) + item.quantidade,
+      });
+    }
+    return mapa;
+  };
+  const daTela = somar(tela);
+  const doBanco = somar(gravados);
+  const sobra = (
+    de: Map<string, { item: ItemDoCupom; quantidade: number }>,
+    contra: Map<string, { item: ItemDoCupom; quantidade: number }>,
+  ): PecaDaDiferenca[] =>
+    [...de.entries()].flatMap(([chave, { item, quantidade }]) => {
+      const diferenca = quantidade - (contra.get(chave)?.quantidade ?? 0);
+      return diferenca > 0
+        ? [{ nome: item.nome, variacao: item.variacao, quantidade: diferenca }]
+        : [];
+    });
+  return { aMais: sobra(daTela, doBanco), aMenos: sobra(doBanco, daTela) };
+}
+
 /** Compara o pedido que o banco já tinha (`ja_existia`) com a tela: itens
  * (produto, variação e quantidade), total e forma de pagamento. Cupom vazio ou
  * sem pagamento = nada na tela para comparar. */
@@ -494,10 +562,13 @@ function divergenciaDoPedidoJaGravado(
   ) {
     return undefined;
   }
+  const { aMais, aMenos } = pecasQueDiferem(tela.itens, recibo.itens);
   return {
     totalDaTela,
     unidadesDaTela: tela.itens.reduce((n, i) => n + i.quantidade, 0),
     pagamentoDaTela: tela.pagamento,
+    ...(aMais.length > 0 ? { aMaisNaTela: aMais } : {}),
+    ...(aMenos.length > 0 ? { aMenosNaTela: aMenos } : {}),
   };
 }
 
@@ -945,6 +1016,43 @@ export function reducerDaVenda(
           : acao.recibo,
         etapa: "recibo",
       };
+
+    case "recibo_anulado":
+      if (
+        !estado.recibo ||
+        estado.recibo.orderId !== acao.orderId ||
+        estado.recibo.anulada
+      ) {
+        return estado;
+      }
+      return { ...estado, recibo: { ...estado.recibo, anulada: true } };
+
+    case "cupom_refeito_com_a_tela": {
+      // Três fatos, todos exigidos: o recibo é de uma venda que DIVERGIU da
+      // tela, essa venda já foi ANULADA (senão a nova venda somaria à antiga) e
+      // a tela ainda tem itens. Fora disso nada acontece — inclusive no segundo
+      // toque de um duplo clique (o primeiro já tirou o recibo).
+      const recibo = estado.recibo;
+      if (
+        estado.etapa !== "recibo" ||
+        !recibo?.anulada ||
+        !recibo.divergenciaComATela ||
+        estado.itens.length === 0
+      ) {
+        return estado;
+      }
+      return {
+        ...estado,
+        etapa: "cupom",
+        chaveDeIdempotencia: acao.novaChave,
+        escolhaDeVariacao: null,
+        ultimaEntrada: null,
+        aviso: null,
+        recibo: null,
+        erro: null,
+        enviando: false,
+      };
+    }
 
     case "rascunho_restaurado":
       return acao.estado;

@@ -708,7 +708,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                         type="text"
                         inputMode="numeric"
                         autoComplete="tel"
-                        placeholder="(34) 99999-9999"
+                        placeholder="(DDD) 99999-9999"
                         value={phone}
                         onChange={(e) => {
                           handlePhoneChange(e);

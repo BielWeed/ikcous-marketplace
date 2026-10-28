@@ -270,7 +270,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
       type="text"
       value={faixa}
       onChange={(e) => onFaixa(e.target.value)}
-      placeholder="Ex: 38500-000, 38509-999"
+      placeholder="Ex: 00000-000, 00000-999"
       disabled={desabilitado}
       className="h-11 w-full rounded-xl border border-admin-border bg-admin-surface px-3.5 font-mono text-[13px] text-zinc-100 placeholder-zinc-600 transition-colors focus:border-admin-accent focus:outline-none disabled:opacity-50 md:w-56"
     />
@@ -505,7 +505,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
                     d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d,
                   );
                 }}
-                placeholder="Ex: 38500-123"
+                placeholder="Ex: 00000-123"
                 disabled={desabilitado}
                 className="mt-1.5 flex h-11 w-full rounded-xl border border-admin-border bg-admin-surface px-3.5 font-mono text-[13px] text-zinc-100 placeholder-zinc-600 transition-colors focus:border-admin-accent focus:outline-none disabled:opacity-50 md:w-56"
               />

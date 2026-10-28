@@ -1207,10 +1207,13 @@ describe("venda_registrada com ja_existia — divergência entre o pedido do ban
     });
     expect(depois.etapa).toBe("recibo");
     expect(depois.recibo?.total).toBe(100);
+    // Lote 245: a divergência agora também diz QUAIS peças diferem — aqui, o
+    // banco tem 1 unidade de "p1" a mais do que a tela.
     expect(depois.recibo?.divergenciaComATela).toEqual({
       totalDaTela: 50,
       unidadesDaTela: 1,
       pagamentoDaTela: "cash",
+      aMenosNaTela: [{ nome: "p1", variacao: null, quantidade: 1 }],
     });
   });
 
