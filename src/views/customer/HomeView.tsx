@@ -453,7 +453,6 @@ export const HomeView = React.memo(function HomeView({
       <h1 className="sr-only">{nomeDaLoja}</h1>
       {/* Top Banners - Full Width */}
       {!searchQuery &&
-        selectedCategory === "Todas" &&
         (!bannersLoaded && topBanners.length === 0 ? (
           // Memória da última visita (frente cls-ressalva1-0409, laudo
           // 6ab5s4): loja cuja última visita NÃO tinha banner não ganha
@@ -506,7 +505,6 @@ export const HomeView = React.memo(function HomeView({
 
       {/* Dynamic Showcases / Carousels */}
       {!searchQuery &&
-        selectedCategory === "Todas" &&
         (
           config.homeSections ?? [
             {
@@ -618,7 +616,6 @@ export const HomeView = React.memo(function HomeView({
 
       {/* Middle Banners - Full Width */}
       {!searchQuery &&
-        selectedCategory === "Todas" &&
         (!bannersLoaded && middleBanners.length === 0 ? (
           <div className="mx-4 w-full py-4">
             <div className="h-[120px] w-[calc(100%-2rem)] animate-pulse rounded-[2rem] bg-zinc-100 sm:h-[200px]" />
@@ -847,17 +844,15 @@ export const HomeView = React.memo(function HomeView({
         )}
       </div>
 
-      {bottomBanners.length > 0 &&
-        !searchQuery &&
-        selectedCategory === "Todas" && (
-          <div className="w-full py-4">
-            <BannerCarousel
-              banners={bottomBanners}
-              autoPlay={true}
-              interval={8000}
-            />
-          </div>
-        )}
+      {bottomBanners.length > 0 && !searchQuery && (
+        <div className="w-full py-4">
+          <BannerCarousel
+            banners={bottomBanners}
+            autoPlay={true}
+            interval={8000}
+          />
+        </div>
+      )}
 
       {/* Item 6 do laudo "o que falta" (29/08): o painel promete "Informa aos
           clientes no PWA" e o horário nunca chegava — o dado existia no
