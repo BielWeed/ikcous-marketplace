@@ -168,7 +168,9 @@ export function aggregateChecks(schema) {
  * toJSONSchema(): devolvem a função que recusa a geração retirada.
  */
 export function zodSemJsonSchema(): Plugin {
-  return substituirModulos("zod", "4.6.5", [
+  // 4.6.5 -> 4.6.7 (GHSA-mrhx-c7xc-m3w5): os dois módulos abaixo têm o mesmo
+  // sha256; mudaram só compile/schemas/util (teto de tamanho antes de validar).
+  return substituirModulos("zod", "4.6.7", [
     {
       caminho: "v4/core/json-schema-processors.js",
       sha256:

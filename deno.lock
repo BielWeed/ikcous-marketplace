@@ -230,7 +230,7 @@
         "npm:vite-plugin-pwa@2",
         "npm:vite@^7.3.6",
         "npm:vitest@^4.1.10",
-        "npm:zod@^4.6.5",
+        "npm:zod@^4.6.6",
         "npm:zxing-wasm@^3.1.5"
       ],
       "overrides": {
@@ -242,7 +242,10 @@
           "ajv": "^6.15.0"
         },
         "ajv": "^8.20.0",
-        "qs": "^6.15.2"
+        "qs": "^6.15.2",
+        "estimo": {
+          "nanoid": "^5.1.11"
+        }
       }
     }
   }
