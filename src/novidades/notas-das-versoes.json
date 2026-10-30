@@ -1,4 +1,12 @@
 {
+  "1.5.100": {
+    "titulo": "Trocar de conta logo depois de mexer num aviso não bagunça a lista da conta nova",
+    "novidades": [],
+    "correcoes": [
+      "Avisos: se a pessoa marcava um aviso como lido, ou o excluía, e trocava de conta antes de a resposta voltar, a lista da conta nova podia ficar vazia com o 'carregando' preso, ou mostrar o erro da conta anterior. Agora a conta nova não é afetada."
+    ],
+    "melhorias": []
+  },
   "1.5.99": {
     "titulo": "Trocar de conta no mesmo aparelho não traz nada da conta anterior nos favoritos",
     "novidades": [],

@@ -73,6 +73,16 @@ function pendente<T>() {
   return { promessa, resolver };
 }
 
+// Datas fixas e distintas: a lista sai ordenada por created_at, e ler o relogio
+// a cada fixture inverteria a ordem esperada se ele avancasse 1 ms entre elas.
+// Relativas a UM unico "agora": a campanha so vale por 30 dias.
+const AGORA = Date.now();
+const ATRAS_MS = new Map([
+  ["aviso-a", 86_400_000],
+  ["aviso-b", 86_400_000 + 10_000],
+  ["campanha", 86_400_000 + 60_000],
+]);
+
 function aviso(id: string, usuario: string | null) {
   return {
     id,
@@ -81,8 +91,7 @@ function aviso(id: string, usuario: string | null) {
     mensagem: "Seu pedido foi atualizado.",
     tipo: "system",
     lida: false,
-    // Relativa: a campanha so vale por 30 dias para quem criou a conta antes.
-    created_at: new Date(Date.now() - 86_400_000).toISOString(),
+    created_at: new Date(AGORA - (ATRAS_MS.get(id) ?? 0)).toISOString(),
     dados: usuario ? { order_id: `pedido-${usuario}` } : null,
   };
 }
