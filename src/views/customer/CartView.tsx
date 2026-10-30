@@ -230,6 +230,7 @@ export function CartView({
     shippingFee: ctxShippingFee,
     freteIndefinido,
     freteGratis,
+    cartTotal,
     updateQuantity,
     removeFromCart,
     clearCart,
@@ -1011,7 +1012,7 @@ export function CartView({
                     {cart.length > 0 &&
                       (!user || freteIndefinido) &&
                       !ehRetiradaNaLoja(selectedShippingOption?.id) && (
-                        <AvisoDeFreteGratis cartTotal={subtotal} />
+                        <AvisoDeFreteGratis cartTotal={cartTotal} />
                       )}
 
                     {!user && cart.length > 0 && (

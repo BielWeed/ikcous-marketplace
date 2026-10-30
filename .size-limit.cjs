@@ -126,7 +126,7 @@ module.exports = [
     // Base 593,55 kB; os seis lotes somam +1,02 kB e medem 594,57 kB (569 B acima do teto).
     // 30/10/2026 (mesma regra): 596 -> 598 kB na 1.5.102 (vitrine no celular: banner sem corte,
     // erro do checkout so depois de sair do campo, frete gratis tambem no carrinho). Base 595,32
-    // kB; os tres itens somam +1,18 kB e medem 596,5 kB (501 B acima do teto).
+    // kB; os tres itens somam +1,69 kB e medem 597,01 kB no CI (1 kB acima do teto).
     limit: "598 kB",
     webpack: false,
     // Sem `running: false` o preset tenta MEDIR TEMPO rodando o bundle em

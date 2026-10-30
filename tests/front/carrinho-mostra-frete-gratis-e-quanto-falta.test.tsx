@@ -35,8 +35,7 @@ vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: estado.config, isLoaded: true }),
 }));
 
-// O bloco da HOME lê o total daqui; o carrinho NÃO precisa deste contexto
-// (recebe o total por prop) — por isso só o teste de "mesmo texto" o usa.
+// O bloco da HOME lê o total daqui; o carrinho lê o mesmo total via useCart().
 vi.mock("@/contexts/CartContext", () => ({
   useCartContext: () => ({ cartTotal: estado.total }),
 }));
@@ -69,6 +68,8 @@ vi.mock("@/hooks/useCart", () => ({
     shippingFee: 10,
     freteIndefinido: estado.freteIndefinido,
     freteGratis: false,
+    // o carrinho agora le o total do contexto (mesma fonte da home e da regra real de frete)
+    cartTotal: estado.total,
     updateQuantity: vi.fn(),
     removeFromCart: vi.fn(),
     clearCart: vi.fn(),
