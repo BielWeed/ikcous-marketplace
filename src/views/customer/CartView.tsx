@@ -36,6 +36,7 @@ import { AddressList } from "@/components/ui/custom/AddressList";
 import { CartFooterSummary } from "@/components/ui/custom/CartFooterSummary";
 import { CartItemsList } from "@/components/ui/custom/CartItemsList";
 import { EmptyCart } from "@/components/ui/custom/EmptyCart";
+import { AvisoDeFreteGratis } from "@/components/ui/custom/FreeShippingBlock";
 import { OrderList } from "@/components/ui/custom/OrderList";
 import { OrderSearch } from "@/components/ui/custom/OrderSearch";
 import { ShippingCalculator } from "@/components/ui/custom/ShippingCalculator";
@@ -229,6 +230,7 @@ export function CartView({
     shippingFee: ctxShippingFee,
     freteIndefinido,
     freteGratis,
+    cartTotal,
     updateQuantity,
     removeFromCart,
     clearCart,
@@ -995,6 +997,22 @@ export function CartView({
                           deferred={!isReady}
                           onNavigate={onNavigate}
                         />
+                      )}
+
+                    {/* Sem frete cotado (convidada, ou logada que ainda não
+                        escolheu a entrega) o cartão de progresso acima não
+                        existe — e o carrinho ficava mudo sobre frete grátis
+                        enquanto a Home dizia "Liberado" ou "Faltam R$ X"
+                        (medição de 30/10/2026). Aqui entra o MESMO aviso da
+                        Home (mesmo componente, mesma conta, limite da
+                        configuração da loja). Só informa: não mexe no frete
+                        nem no total. Com frete cotado e logada segue só o
+                        cartão de antes (sem aviso duplicado), e a retirada
+                        na loja não fala de frete grátis. */}
+                    {cart.length > 0 &&
+                      (!user || freteIndefinido) &&
+                      !ehRetiradaNaLoja(selectedShippingOption?.id) && (
+                        <AvisoDeFreteGratis cartTotal={cartTotal} />
                       )}
 
                     {!user && cart.length > 0 && (

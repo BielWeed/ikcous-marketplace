@@ -286,7 +286,15 @@ export function SearchBar({
           // para foco visível apagavam a marcação sem repor — mesmo padrão
           // do BottomNav/Header (PR #437, M3): anel visível só para quem
           // navega por teclado.
-          className="relative z-20 h-full rounded-full border-transparent bg-transparent pl-12 pr-10 text-sm font-bold tracking-tight text-zinc-900 shadow-none placeholder:font-medium placeholder:text-zinc-500 focus:outline-none focus:ring-0 focus-visible:ring-2 focus-visible:ring-zinc-900/50"
+          // 30/10/2026: no celular, com Voltar + logo + sino ao lado, o campo
+          // sobra com ~140px e o texto de apoio saía cortado ("Buscar p"). A
+          // reserva da direita (40px) só serve ao X de limpar, que só existe
+          // com texto; a da esquerda acompanha o ícone (16 + 16px). O que
+          // ainda não couber termina em reticências.
+          className={cn(
+            "relative z-20 h-full rounded-full border-transparent bg-transparent pl-10 text-sm font-bold tracking-tight text-zinc-900 shadow-none placeholder:font-medium placeholder:text-ellipsis placeholder:text-zinc-500 focus:outline-none focus:ring-0 focus-visible:ring-2 focus-visible:ring-zinc-900/50",
+            localValue ? "pr-10" : "pr-3",
+          )}
           placeholder={placeholder}
           autoComplete="off"
         />

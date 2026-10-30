@@ -154,6 +154,13 @@ const NAO_E_CLASSE = new Set([
   "checkout-name",
   "checkout-tel",
   "checkout-cpf",
+  // ids dos campos do endereco do convidado (CAMPO_DO_INPUT), nao classes
+  "guest-cep",
+  "guest-number",
+  "guest-street",
+  "guest-neighborhood",
+  "guest-city",
+  "guest-state",
   "calculate-shipping",
   "sem-destino",
   "cupom-aplicado",

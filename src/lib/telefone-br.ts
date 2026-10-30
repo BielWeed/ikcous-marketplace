@@ -109,6 +109,24 @@ export function mensagemDeWhatsappIncompleto(
 }
 
 /**
+ * WhatsApp da LOJA para mostrar na tela: "(34) 99802-8216". O número da loja
+ * costuma estar guardado com o 55 do país (13 dígitos); sem tirá-lo a máscara
+ * não cabe e o número aparecia cru. Fixo (10 dígitos) e celular (11) formatam;
+ * qualquer outro formato volta como veio — não inventa nem corta dígito.
+ * Só para exibir: o link do WhatsApp continua usando o número gravado.
+ */
+export function telefoneDaLojaParaExibicao(
+  valor: string | null | undefined,
+): string {
+  const nacional = limparTelefoneBrasileiro(valor);
+  if (nacional.length === 11)
+    return `(${nacional.slice(0, 2)}) ${nacional.slice(2, 7)}-${nacional.slice(7)}`;
+  if (nacional.length === 10)
+    return `(${nacional.slice(0, 2)}) ${nacional.slice(2, 6)}-${nacional.slice(6)}`;
+  return valor ?? "";
+}
+
+/**
  * Máscara do telefone do cadastro. Até 11 dígitos formata; acima disso
  * (número estrangeiro ou excedente da digitação) mantém o texto, cortado em
  * 15 caracteres, como sempre foi.

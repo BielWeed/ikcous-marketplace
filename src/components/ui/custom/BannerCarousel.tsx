@@ -147,8 +147,10 @@ export const BannerCarousel = memo(function BannerCarousel({
 
   return (
     <div
-      className="premium-shadow relative aspect-[2/1] w-full touch-pan-y overflow-hidden bg-zinc-100 md:aspect-[4/1]"
-      style={{ minHeight: "200px" }} // Safety for very small screens
+      // Caixa 2:1 em toda largura (a arte recomendada pelo painel é 1200x600),
+      // sem altura mínima: ela cortava a arte no celular. No computador a
+      // largura para em 1040px para o banner não ocupar a primeira tela toda.
+      className="premium-shadow relative aspect-[2/1] w-full touch-pan-y overflow-hidden bg-zinc-100 md:mx-auto md:max-w-[1040px]"
       role="region"
       aria-roledescription="carousel"
       aria-label="Destaques e Promoções"

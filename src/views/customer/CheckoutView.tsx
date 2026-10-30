@@ -319,6 +319,23 @@ const ORDEM_CAMPOS_FOCO = [
 ] as const satisfies readonly (keyof CheckoutFormValues)[];
 
 /**
+ * Qual campo do formulário cada <input> da seção "Seus dados e entrega"
+ * desenha. É por ele que o `onBlur` da seção (um só, na `<div>`) descobre de
+ * qual campo a pessoa acabou de sair.
+ */
+const CAMPO_DO_INPUT: ReadonlyMap<string, keyof CheckoutFormValues> = new Map([
+  ["checkout-name", "name"],
+  ["checkout-tel", "whatsapp"],
+  ["checkout-cpf", "cpf"],
+  ["guest-cep", "cep"],
+  ["guest-number", "number"],
+  ["guest-street", "street"],
+  ["guest-neighborhood", "neighborhood"],
+  ["guest-city", "city"],
+  ["guest-state", "state"],
+]);
+
+/**
  * Decide QUAL saída a tela oferece para a recusa que o banco deu no último
  * clique.
  *
@@ -1096,6 +1113,43 @@ export function CheckoutViewDaConta({
     },
     mode: "onChange",
   });
+
+  // QUANDO A MENSAGEM DE ERRO APARECE (30/10/2026) — só isso, nunca O QUE vale.
+  // A validação (o schema, o `isValid`, o que apaga o Finalizar) roda sobre o
+  // formulário inteiro o tempo todo e não mudou. O que mudou é a TELA: um
+  // campo só mostra o erro depois que a pessoa SAIU dele (`camposSaidos`) ou
+  // depois que ela tentou continuar (`tentouAvancar`, aí todos de uma vez).
+  // Antes, digitar só o CEP escolhia uma transportadora, o CPF virava
+  // obrigatório e a revalidação do formulário inteiro (`form.trigger()`, mais
+  // abaixo) enchia de vermelho nome, WhatsApp, CPF e número que a cliente nem
+  // tinha tocado.
+  const [camposSaidos, setCamposSaidos] = useState<
+    ReadonlySet<keyof CheckoutFormValues>
+  >(() => new Set());
+  const [tentouAvancar, setTentouAvancar] = useState(false);
+  const erroDoCampo = (campo: keyof CheckoutFormValues) => {
+    const erro = form.getFieldState(campo, form.formState).error;
+    return erro && (tentouAvancar || camposSaidos.has(campo))
+      ? erro
+      : undefined;
+  };
+  // Saiu do campo: ele passa a poder mostrar o erro. O blur não revalida no
+  // modo `onChange`, então o erro DESTE campo é calculado agora — sem isso, um
+  // campo nunca validado (nada o revalidou antes) sairia sem mensagem.
+  const sairDoCampo = (idDoInput: string) => {
+    const campo = CAMPO_DO_INPUT.get(idDoInput);
+    if (!campo) return;
+    setCamposSaidos((antes) =>
+      antes.has(campo) ? antes : new Set(antes).add(campo),
+    );
+    void form.trigger(campo);
+  };
+  // Tentou continuar: todos os erros obrigatórios aparecem, inclusive os dos
+  // campos que ainda não foram validados (por isso o `trigger` completo).
+  const mostrarTodosOsErros = () => {
+    setTentouAvancar(true);
+    void form.trigger();
+  };
 
   // CHECKOUT COMPACTO + CPF (23/09/2026): `exigeCpfDoDestinatario` entra na
   // conta do `dynamicSchema` (superRefine), mas react-hook-form só REVALIDA
@@ -3924,6 +3978,8 @@ export function CheckoutViewDaConta({
 
     if (!isFormValid) {
       travaDeEnvioRef.current.liberar();
+      // Tentou continuar: daqui em diante todo erro obrigatório aparece.
+      setTentouAvancar(true);
       // Laudo de acessibilidade 03/09, achado 1: o aviso genérico do toast
       // não diz ONDE está o erro. Levar o foco ao primeiro campo inválido faz
       // o leitor de tela anunciar o campo já marcado com `aria-invalid` e a
@@ -5971,6 +6027,9 @@ export function CheckoutViewDaConta({
               identificacaoExpandida ? undefined : "Seus dados e entrega"
             }
             hidden={!identificacaoExpandida}
+            // O blur sobe até aqui (React usa `focusout`): um gancho só para
+            // os nove campos da seção.
+            onBlur={(e) => sairDoCampo(e.target.id)}
             className="space-y-4 p-4"
           >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -5991,20 +6050,18 @@ export function CheckoutViewDaConta({
                   // precisa ser MARCADO (`aria-invalid`) e LIGADO à mensagem
                   // (`aria-describedby`) — texto vermelho sozinho o leitor de
                   // tela não anuncia.
-                  aria-invalid={form.formState.errors.name ? true : undefined}
+                  aria-invalid={erroDoCampo("name") ? true : undefined}
                   aria-describedby={
-                    form.formState.errors.name
-                      ? "erro-checkout-name"
-                      : undefined
+                    erroDoCampo("name") ? "erro-checkout-name" : undefined
                   }
                   className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                 />
-                {form.formState.errors.name && (
+                {erroDoCampo("name") && (
                   <p
                     id="erro-checkout-name"
                     className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
                   >
-                    {form.formState.errors.name.message}
+                    {erroDoCampo("name")?.message}
                   </p>
                 )}
               </div>
@@ -6038,10 +6095,10 @@ export function CheckoutViewDaConta({
                         ref={field.ref}
                         placeholder="(00) 00000-0000"
                         aria-invalid={
-                          form.formState.errors.whatsapp ? true : undefined
+                          erroDoCampo("whatsapp") ? true : undefined
                         }
                         aria-describedby={
-                          form.formState.errors.whatsapp
+                          erroDoCampo("whatsapp")
                             ? "erro-checkout-tel"
                             : undefined
                         }
@@ -6050,12 +6107,12 @@ export function CheckoutViewDaConta({
                     )}
                   />
                 </div>
-                {form.formState.errors.whatsapp && (
+                {erroDoCampo("whatsapp") && (
                   <p
                     id="erro-checkout-tel"
                     className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
                   >
-                    {form.formState.errors.whatsapp.message}
+                    {erroDoCampo("whatsapp")?.message}
                   </p>
                 )}
               </div>
@@ -6094,11 +6151,9 @@ export function CheckoutViewDaConta({
                       ref={field.ref}
                       placeholder="000.000.000-00"
                       maxLength={14}
-                      aria-invalid={
-                        form.formState.errors.cpf ? true : undefined
-                      }
+                      aria-invalid={erroDoCampo("cpf") ? true : undefined}
                       aria-describedby={
-                        form.formState.errors.cpf
+                        erroDoCampo("cpf")
                           ? "erro-checkout-cpf"
                           : "ajuda-checkout-cpf"
                       }
@@ -6106,12 +6161,12 @@ export function CheckoutViewDaConta({
                     />
                   )}
                 />
-                {form.formState.errors.cpf ? (
+                {erroDoCampo("cpf") ? (
                   <p
                     id="erro-checkout-cpf"
                     className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
                   >
-                    {form.formState.errors.cpf.message}
+                    {erroDoCampo("cpf")?.message}
                   </p>
                 ) : (
                   <p
@@ -6201,13 +6256,9 @@ export function CheckoutViewDaConta({
                         placeholder="00000-000"
                         readOnly={isSearchingCep}
                         aria-busy={isSearchingCep}
-                        aria-invalid={
-                          form.formState.errors.cep ? true : undefined
-                        }
+                        aria-invalid={erroDoCampo("cep") ? true : undefined}
                         aria-describedby={
-                          form.formState.errors.cep
-                            ? "erro-guest-cep"
-                            : undefined
+                          erroDoCampo("cep") ? "erro-guest-cep" : undefined
                         }
                         className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                         onChange={async (e) => {
@@ -6253,12 +6304,12 @@ export function CheckoutViewDaConta({
                         </div>
                       )}
                     </div>
-                    {form.formState.errors.cep && (
+                    {erroDoCampo("cep") && (
                       <p
                         id="erro-guest-cep"
                         className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
                       >
-                        {form.formState.errors.cep.message}
+                        {erroDoCampo("cep")?.message}
                       </p>
                     )}
                   </div>
@@ -6273,22 +6324,18 @@ export function CheckoutViewDaConta({
                       id="guest-number"
                       {...form.register("number")}
                       placeholder="123"
-                      aria-invalid={
-                        form.formState.errors.number ? true : undefined
-                      }
+                      aria-invalid={erroDoCampo("number") ? true : undefined}
                       aria-describedby={
-                        form.formState.errors.number
-                          ? "erro-guest-number"
-                          : undefined
+                        erroDoCampo("number") ? "erro-guest-number" : undefined
                       }
                       className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
-                    {form.formState.errors.number && (
+                    {erroDoCampo("number") && (
                       <p
                         id="erro-guest-number"
                         className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
                       >
-                        {form.formState.errors.number.message}
+                        {erroDoCampo("number")?.message}
                       </p>
                     )}
                   </div>
@@ -6304,22 +6351,18 @@ export function CheckoutViewDaConta({
                       {...registrarCampoDoEndereco("street")}
                       autoComplete="address-line1"
                       placeholder="Nome da rua"
-                      aria-invalid={
-                        form.formState.errors.street ? true : undefined
-                      }
+                      aria-invalid={erroDoCampo("street") ? true : undefined}
                       aria-describedby={
-                        form.formState.errors.street
-                          ? "erro-guest-street"
-                          : undefined
+                        erroDoCampo("street") ? "erro-guest-street" : undefined
                       }
                       className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
-                    {form.formState.errors.street && (
+                    {erroDoCampo("street") && (
                       <p
                         id="erro-guest-street"
                         className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
                       >
-                        {form.formState.errors.street.message}
+                        {erroDoCampo("street")?.message}
                       </p>
                     )}
                   </div>
@@ -6336,21 +6379,21 @@ export function CheckoutViewDaConta({
                       autoComplete="address-level3"
                       placeholder="Seu bairro"
                       aria-invalid={
-                        form.formState.errors.neighborhood ? true : undefined
+                        erroDoCampo("neighborhood") ? true : undefined
                       }
                       aria-describedby={
-                        form.formState.errors.neighborhood
+                        erroDoCampo("neighborhood")
                           ? "erro-guest-neighborhood"
                           : undefined
                       }
                       className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
-                    {form.formState.errors.neighborhood && (
+                    {erroDoCampo("neighborhood") && (
                       <p
                         id="erro-guest-neighborhood"
                         className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
                       >
-                        {form.formState.errors.neighborhood.message}
+                        {erroDoCampo("neighborhood")?.message}
                       </p>
                     )}
                   </div>
@@ -6369,9 +6412,7 @@ export function CheckoutViewDaConta({
                       // Sem mensagem renderizada para este campo, mas o erro
                       // existe no schema (convidado): `aria-invalid` + foco
                       // do handler anunciam o problema (laudo 03/09, achado 1).
-                      aria-invalid={
-                        form.formState.errors.city ? true : undefined
-                      }
+                      aria-invalid={erroDoCampo("city") ? true : undefined}
                       className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
                   </div>
@@ -6392,9 +6433,7 @@ export function CheckoutViewDaConta({
                           config.storeState?.trim().toUpperCase()) ||
                         "UF"
                       }
-                      aria-invalid={
-                        form.formState.errors.state ? true : undefined
-                      }
+                      aria-invalid={erroDoCampo("state") ? true : undefined}
                       className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
                   </div>
@@ -7215,6 +7254,10 @@ export function CheckoutViewDaConta({
                           type="button"
                           data-testid="checkout-pendencia-identificacao"
                           onClick={() => {
+                            // Tocar na pendência É tentar continuar: o botão
+                            // Finalizar apagado não recebe toque, e este aviso
+                            // é o caminho que a pessoa tem para isso.
+                            mostrarTodosOsErros();
                             flushSync(() => setIdentificacaoAbertaManual(true));
                             const campoPendente = faltaNome
                               ? "checkout-name"

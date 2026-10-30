@@ -318,6 +318,15 @@ describe("CheckoutView (convidado, cobertura LOCAL) — endereço editável", ()
       );
       expect(botaoFinalizar).toBeDefined();
       if (uf !== "SP") {
+        // O erro do campo só aparece depois que a convidada SAI dele
+        // (30/10/2026); a validade (botão apagado) já valia antes disso.
+        expect(botaoFinalizar!.disabled).toBe(true);
+        await act(async () => {
+          document.getElementById("guest-state")?.focus();
+        });
+        await act(async () => {
+          document.getElementById("guest-state")?.blur();
+        });
         expect(
           document.getElementById("guest-state")?.getAttribute("aria-invalid"),
         ).toBe("true");

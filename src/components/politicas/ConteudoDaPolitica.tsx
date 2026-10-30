@@ -12,11 +12,11 @@ import {
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import type { TipoDePolitica } from "@/lib/nomes-das-politicas";
+import { telefoneDaLojaParaExibicao } from "@/lib/telefone-br";
 import {
   type DocumentoDePolitica,
   montarPolitica,
 } from "@/lib/textos-das-politicas";
-import { formatarWhatsAppParaExibicao } from "@/utils/telefone";
 
 /**
  * O documento da política (Termos, Privacidade ou Trocas) em tela: resumo,
@@ -115,7 +115,7 @@ function ContatoDaLoja() {
       </h2>
       {temWhatsapp && (
         <BotaoWhatsapp onClick={falarComALoja} className="mb-1">
-          WhatsApp {formatarWhatsAppParaExibicao(config.whatsappNumber ?? "")}
+          WhatsApp {telefoneDaLojaParaExibicao(config.whatsappNumber)}
         </BotaoWhatsapp>
       )}
       {email && (

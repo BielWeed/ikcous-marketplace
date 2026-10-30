@@ -127,11 +127,11 @@ describe("achado 12 — carregando em silêncio: skeletons viram status", () => 
   it("skeleton do banner da home anuncia Carregando banners", () => {
     const src = fonte(HOME);
     // Frente cls-home-0409: o esqueleto ganhou a GEOMETRIA do banner real
-    // (aspect-[2/1] md:aspect-[4/1] + minHeight 200px); o contrato de
+    // (aspect-[2/1], limitado a 1040px no computador); o contrato de
     // acessibilidade deste teste (role="status" + sr-only + o texto)
     // permanece intacto.
     expect(src).toMatch(
-      /<div\s+role="status"\s+className="flex aspect-\[2\/1\] w-full animate-pulse items-center justify-center bg-zinc-100 md:aspect-\[4\/1\]"/,
+      /<div\s+role="status"\s+className="flex aspect-\[2\/1\] w-full animate-pulse items-center justify-center bg-zinc-100 md:mx-auto md:max-w-\[1040px\]"/,
     );
     expect(src).toContain("Carregando banners");
   });

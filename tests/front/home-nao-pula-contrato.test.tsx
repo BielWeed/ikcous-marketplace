@@ -199,19 +199,26 @@ describe("o glob casou os arquivos da home (nada de prova vazia)", () => {
 });
 
 describe("banner do topo: o esqueleto tem a geometria do banner real", () => {
-  it("o banner real declara aspect 2/1 (4/1 no md) com mínimo de 200px", () => {
+  // 30/10/2026 (medição da vitrine da Savy): a arte de 1200x600 (2:1, o que o
+  // painel recomenda) aparecia cortada porque a caixa era 4:1 do tablet para
+  // cima e tinha altura mínima fixa de 200px no celular. Agora a caixa é 2:1
+  // em toda largura, sem altura mínima; no computador ela para de crescer em
+  // 1040px de largura (520px de altura) para não empurrar o catálogo para fora
+  // da primeira tela.
+  it("o banner real é 2/1 em toda largura, sem altura mínima e com largura máxima no computador", () => {
     const real = fonte(BANNER_CAROUSEL);
     expect(real).toContain("aspect-[2/1]");
-    expect(real).toContain("md:aspect-[4/1]");
-    expect(real).toContain('minHeight: "200px"');
+    expect(real).toContain("md:max-w-[1040px]");
+    expect(real).not.toContain("md:aspect-[4/1]");
+    expect(real).not.toContain("minHeight");
   });
 
-  it("o esqueleto do banner na home replica as três declarações", () => {
+  it("o esqueleto do banner na home replica a mesma geometria", () => {
     const home = fonte(HOME);
     expect(home).toContain("aspect-[2/1]");
-    expect(home).toContain("md:aspect-[4/1]");
-    // O mínimo de 200px no esqueleto é inline, igual ao real.
-    expect(home).toMatch(/style=\{\{ minHeight: "200px" \}\}/);
+    expect(home).toContain("md:max-w-[1040px]");
+    expect(home).not.toContain("md:aspect-[4/1]");
+    expect(home).not.toMatch(/minHeight: "200px"/);
   });
 });
 
