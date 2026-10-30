@@ -13,6 +13,11 @@
 //
 // A fila EM DISCO de A continua sendo da conta que gravou: sincronizou -> sai
 // da fila; falhou -> continua la para a proxima retentativa dela.
+//
+// Mesma familia (#647), o que o fim da drenagem de A ainda fazia na tela de B:
+// o toast de A ("N de M" / "sincronizados!"), o `setLoading(false)` que
+// apagava o "carregando" de B com o `select` de B em voo, e o toast da
+// retentativa do evento `online`.
 import type { Context } from "react";
 import { act } from "react";
 import { useContext, useEffect } from "react";
@@ -51,6 +56,12 @@ vi.mock("@/hooks/useAuth", () => ({
 let chamadasUpsert: { user_id: string; product_id: string }[] = [];
 let liberarUpsertDeA: ((erro: { message: string } | null) => void) | null =
   null;
+// `false` = o upsert de `pAP` responde na hora com `erroImediatoDeA`.
+let retendoUpsertDeA = true;
+let erroImediatoDeA: { message: string } | null = null;
+// `select` de B retido ate `liberarSelectDeB` (janela do "carregando" de B).
+let segurarSelectDeB = false;
+let liberarSelectDeB: (() => void) | null = null;
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
@@ -62,6 +73,12 @@ vi.mock("@/lib/supabase", () => ({
         upsert: (obj: { user_id: string; product_id: string }) => {
           chamadasUpsert.push({ ...obj });
           if (obj.user_id === "userA" && obj.product_id === "pAP") {
+            if (!retendoUpsertDeA) {
+              return Promise.resolve({
+                data: erroImediatoDeA ? null : [{}],
+                error: erroImediatoDeA,
+              });
+            }
             return new Promise((resolve) => {
               liberarUpsertDeA = (erro) =>
                 resolve({ data: erro ? null : [{}], error: erro });
@@ -78,7 +95,14 @@ vi.mock("@/lib/supabase", () => ({
           return Promise.resolve({ data: [{}], error: null });
         },
         select: () => ({
-          eq: () => Promise.resolve({ data: [], error: null }),
+          eq: (_col: string, userId: string) => {
+            if (segurarSelectDeB && userId === "userB") {
+              return new Promise((resolve) => {
+                liberarSelectDeB = () => resolve({ data: [], error: null });
+              });
+            }
+            return Promise.resolve({ data: [], error: null });
+          },
         }),
         delete: () => ({
           eq: () => ({
@@ -129,6 +153,7 @@ function produto(id: string): Product {
 }
 
 type Ctx = {
+  loading: boolean;
   favorites: Product[];
   pendingCount: number;
   isFavorite: (id: string) => boolean;
@@ -165,6 +190,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   chamadasUpsert = [];
   liberarUpsertDeA = null;
+  retendoUpsertDeA = true;
+  erroImediatoDeA = null;
+  segurarSelectDeB = false;
+  liberarSelectDeB = null;
   usuarioDaVez = null;
   ultimoContexto = null;
   storageFake = criarStorageFake();
@@ -191,10 +220,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// A loga com `pAP` pendente e a drenagem (upsert) retida; troca DIRETA para B;
-// devolve o contexto de B ja com a troca assentada e o upsert de A ainda preso.
-async function logarEmAcomUpsertRetidoETrocarParaB(filaDeB: Product[]) {
-  storageFake.setItem(pendingKeyDe("userA"), JSON.stringify([produto("pAP")]));
+// A loga com `filaDeA` pendente e a drenagem (upsert de `pAP`) retida; troca
+// DIRETA para `destino` (B, ou `null` = sair); devolve o contexto ja com a
+// troca assentada e o upsert de A ainda preso.
+async function logarEmAcomUpsertRetidoETrocarPara(
+  destino: "userB" | null,
+  filaDeA: Product[],
+  filaDeB: Product[],
+) {
+  storageFake.setItem(pendingKeyDe("userA"), JSON.stringify(filaDeA));
   if (filaDeB.length > 0) {
     storageFake.setItem(pendingKeyDe("userB"), JSON.stringify(filaDeB));
   }
@@ -202,6 +236,7 @@ async function logarEmAcomUpsertRetidoETrocarParaB(filaDeB: Product[]) {
   const { FavoritesProvider, FavoritesContext } = await import(
     "@/contexts/FavoritesContext"
   );
+  const { toast } = await import("sonner");
   const montar = () => (
     <FavoritesProvider>
       <Sonda contexto={FavoritesContext} />
@@ -220,15 +255,24 @@ async function logarEmAcomUpsertRetidoETrocarParaB(filaDeB: Product[]) {
     user_id: "userA",
     product_id: "pAP",
   });
-  expect((ultimoContexto as Ctx).pendingCount).toBe(1);
+  expect((ultimoContexto as Ctx).pendingCount).toBe(filaDeA.length);
 
-  usuarioDaVez = { id: "userB" };
+  usuarioDaVez = destino ? { id: destino } : null;
   await act(async () => {
     raiz.render(montar());
   });
   await flush();
 
-  return ultimoContexto as Ctx;
+  return { ctx: ultimoContexto as Ctx, toast, montar };
+}
+
+async function logarEmAcomUpsertRetidoETrocarParaB(filaDeB: Product[]) {
+  const r = await logarEmAcomUpsertRetidoETrocarPara(
+    "userB",
+    [produto("pAP")],
+    filaDeB,
+  );
+  return r.ctx;
 }
 
 describe("FavoritesContext — a fila de A que termina de drenar depois da troca direta A->B", () => {
@@ -280,5 +324,146 @@ describe("FavoritesContext — a fila de A que termina de drenar depois da troca
       storageFake.getItem(pendingKeyDe("userB")) ?? "[]",
     ) as Product[];
     expect(filaDeB.map((p) => p.id)).toEqual(["pB"]);
+  });
+
+  it("sucesso do upsert de A depois da troca: o toast 'sincronizados!' de A nao aparece na tela de B", async () => {
+    const { toast } = await logarEmAcomUpsertRetidoETrocarPara(
+      "userB",
+      [produto("pAP")],
+      [],
+    );
+
+    await act(async () => {
+      liberarUpsertDeA?.(null);
+    });
+    await flush();
+
+    // B nao sincronizou nada: nenhum toast de sucesso e dele.
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+    // A gravacao de A em disco segue incondicional.
+    expect(storageFake.getItem(pendingKeyDe("userA"))).toBeNull();
+  });
+
+  it("sincronizacao parcial de A (1 de 2) depois da troca: o toast 'N de M' de A nao aparece na tela de B", async () => {
+    const { toast } = await logarEmAcomUpsertRetidoETrocarPara(
+      "userB",
+      [produto("pAP"), produto("pAQ")],
+      [],
+    );
+
+    // pAQ sincroniza na hora; pAP (retido) falha por ultimo.
+    await act(async () => {
+      liberarUpsertDeA?.({ message: "rede caiu" });
+    });
+    await flush();
+
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+    // pAQ saiu da fila de A, pAP continua nela.
+    const filaDeA = JSON.parse(
+      storageFake.getItem(pendingKeyDe("userA")) ?? "[]",
+    ) as Product[];
+    expect(filaDeA.map((p) => p.id)).toEqual(["pAP"]);
+  });
+
+  it("o fim da drenagem de A nao apaga o 'carregando' de B enquanto o select de B esta em voo", async () => {
+    segurarSelectDeB = true;
+    const { ctx } = await logarEmAcomUpsertRetidoETrocarPara(
+      "userB",
+      [produto("pAP")],
+      [],
+    );
+
+    // Controle: o select de B esta mesmo em voo e B esta carregando.
+    expect(liberarSelectDeB).not.toBeNull();
+    expect(ctx.loading).toBe(true);
+
+    await act(async () => {
+      liberarUpsertDeA?.(null);
+    });
+    await flush();
+    expect((ultimoContexto as Ctx).loading).toBe(true);
+
+    // B controla o proprio `loading`: termina quando o select de B volta.
+    await act(async () => {
+      liberarSelectDeB?.();
+    });
+    await flush();
+    expect((ultimoContexto as Ctx).loading).toBe(false);
+  });
+
+  it("sair (logout) com a drenagem de A em voo: loading continua zerado e nenhum toast aparece para o visitante", async () => {
+    const { ctx, toast } = await logarEmAcomUpsertRetidoETrocarPara(
+      null,
+      [produto("pAP")],
+      [],
+    );
+    expect(ctx.loading).toBe(false);
+    expect(ctx.pendingCount).toBe(0);
+
+    await act(async () => {
+      liberarUpsertDeA?.(null);
+    });
+    await flush();
+
+    expect((ultimoContexto as Ctx).loading).toBe(false);
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(storageFake.getItem(pendingKeyDe("userA"))).toBeNull();
+  });
+
+  it("retentativa 'online' de A que termina depois da troca: o toast de sucesso dela nao aparece na tela de B", async () => {
+    storageFake.setItem(
+      pendingKeyDe("userA"),
+      JSON.stringify([produto("pAP")]),
+    );
+    const { FavoritesProvider, FavoritesContext } = await import(
+      "@/contexts/FavoritesContext"
+    );
+    const { toast } = await import("sonner");
+    const montar = () => (
+      <FavoritesProvider>
+        <Sonda contexto={FavoritesContext} />
+      </FavoritesProvider>
+    );
+
+    // 1. A loga; a drenagem do login falha na hora e a fila de A fica em disco.
+    retendoUpsertDeA = false;
+    erroImediatoDeA = { message: "rede caiu" };
+    usuarioDaVez = { id: "userA" };
+    await act(async () => {
+      raiz.render(montar());
+    });
+    await flush();
+    expect((ultimoContexto as Ctx).pendingCount).toBe(1);
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(toast.error).mockClear();
+
+    // 2. A rede "volta": a retentativa de A dispara e o upsert fica RETIDO.
+    retendoUpsertDeA = true;
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+    });
+    expect(liberarUpsertDeA).not.toBeNull();
+    expect(chamadasUpsert.filter((c) => c.product_id === "pAP")).toHaveLength(
+      2,
+    );
+
+    // 3. Troca DIRETA para B (sem pendentes) com a retentativa de A em voo.
+    usuarioDaVez = { id: "userB" };
+    await act(async () => {
+      raiz.render(montar());
+    });
+    await flush();
+
+    // 4. A retentativa de A termina por ULTIMO, com sucesso.
+    await act(async () => {
+      liberarUpsertDeA?.(null);
+    });
+    await flush();
+
+    expect(toast.success).not.toHaveBeenCalled();
+    expect((ultimoContexto as Ctx).pendingCount).toBe(0);
+    expect(storageFake.getItem(pendingKeyDe("userA"))).toBeNull();
   });
 });

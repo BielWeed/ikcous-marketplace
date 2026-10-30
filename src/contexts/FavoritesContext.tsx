@@ -538,6 +538,11 @@ export function FavoritesProvider({
             candidatos,
           );
 
+          // O aviso é da conta que drenou: se a pessoa já trocou (A->B) ou
+          // saiu, o toast de A não aparece na tela de quem está agora. A fila
+          // em disco de A já foi atualizada lá dentro, incondicionalmente.
+          if (usuarioAtualIdRef.current !== user.id) return;
+
           if (sincronizados < total) {
             if (sincronizados > 0) {
               toast.error(
@@ -558,7 +563,10 @@ export function FavoritesProvider({
       } catch (err) {
         console.error("Sync failed", err);
       } finally {
-        setLoading(false);
+        // `loading` é da sessão atual: o fim da drenagem de A não pode
+        // apagar o "carregando" de B com o `select` de B ainda em voo. Quem
+        // saiu (`!user`) já zerou `loading` no ramo acima; B zera o próprio.
+        if (usuarioAtualIdRef.current === user.id) setLoading(false);
       }
     };
 
@@ -603,7 +611,11 @@ export function FavoritesProvider({
           if (sincronizados > 0) {
             fetchDbFavorites();
           }
-          if (total > 0 && sincronizados === total) {
+          if (
+            total > 0 &&
+            sincronizados === total &&
+            usuarioAtualIdRef.current === user.id
+          ) {
             toast.success("Seus favoritos pendentes foram sincronizados!");
           }
         },
