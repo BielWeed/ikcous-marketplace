@@ -468,17 +468,16 @@ export const HomeView = React.memo(function HomeView({
             // anunciam "Carregando banners" sem mudar o visual.
             //
             // CLS (frente cls-home-0409): o esqueleto usa a MESMA geometria
-            // do BannerCarousel real (`aspect-[2/1] md:aspect-[4/1]`, mínimo
-            // 200px). Antes era `h-[200px] sm:h-[400px]` — desalinhado em
-            // toda largura — e tudo abaixo pulava quando o banner chegava.
+            // do BannerCarousel real (`aspect-[2/1]`, largura máxima de
+            // 1040px no md). Antes era `h-[200px] sm:h-[400px]` — desalinhado
+            // em toda largura — e tudo abaixo pulava quando o banner chegava.
             // O wrapper `mb-2` espelha o do banner real, e o bloco de frete
             // já entra aqui (esqueleto → real sem mudar de altura), para a
             // troca banner esqueleto→real ser 1:1.
             <div data-testid="esqueleto-banner" className="mb-2 w-full">
               <div
                 role="status"
-                className="flex aspect-[2/1] w-full animate-pulse items-center justify-center bg-zinc-100 md:aspect-[4/1]"
-                style={{ minHeight: "200px" }}
+                className="flex aspect-[2/1] w-full animate-pulse items-center justify-center bg-zinc-100 md:mx-auto md:max-w-[1040px]"
               >
                 <span className="sr-only">Carregando banners</span>
                 <div className="size-8 animate-spin rounded-full border-4 border-zinc-200 border-t-primary" />

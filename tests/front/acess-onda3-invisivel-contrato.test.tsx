@@ -63,10 +63,14 @@ describe("item 1 — anel de foco do campo de busca", () => {
     expect(src).not.toMatch(/focus-visible:outline-none/);
   });
 
-  it("só o anel muda — o resto da classe do input é byte-idêntico", () => {
+  // 30/10/2026: a margem interna do campo (pl/pr) e as reticências do texto de
+  // apoio mudaram de propósito (busca cortava "Buscar p" no celular — ver
+  // busca-do-topo-cabe-texto-no-celular.test.tsx). O resto da classe, anel
+  // incluído, segue byte-idêntico.
+  it("só a margem interna e as reticências mudaram — o resto da classe do input é byte-idêntico", () => {
     const src = fonte(SEARCH_BAR);
     expect(src).toContain(
-      'className="relative z-20 h-full rounded-full border-transparent bg-transparent pl-12 pr-10 text-sm font-bold tracking-tight text-zinc-900 shadow-none placeholder:font-medium placeholder:text-zinc-500 focus:outline-none focus:ring-0 focus-visible:ring-2 focus-visible:ring-zinc-900/50"',
+      '"relative z-20 h-full rounded-full border-transparent bg-transparent pl-10 text-sm font-bold tracking-tight text-zinc-900 shadow-none placeholder:font-medium placeholder:text-ellipsis placeholder:text-zinc-500 focus:outline-none focus:ring-0 focus-visible:ring-2 focus-visible:ring-zinc-900/50"',
     );
   });
 });
