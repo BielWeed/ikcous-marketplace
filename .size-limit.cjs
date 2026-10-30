@@ -237,7 +237,11 @@ module.exports = [
     // 28/10/2026 (mesma regra): 496 -> 498 kB na 1.5.97 (Caca 14: cupom e banner salvam so o
     // que mudou, recusa de arquivo que nao e foto, frase do teto do CSV). Base 495,31 kB; os
     // lotes somam +0,86 kB e medem 496,17 kB (165 B acima); 498 deixa folga para o proximo lote.
-    limit: "498 kB",
+    // 30/10/2026 (mesma regra): 498 -> 499 kB na 1.5.101 (cartao "Loja pronta" do Inicio
+    // avisa e-mail da loja, pagamento pelo app e transportadora que faltam). Base 498 kB
+    // cabendo por poucos bytes; com o cartao novo mede 498,07 kB (73 B acima). Nenhum codigo
+    // foi trocado por algo mais arriscado para caber.
+    limit: "499 kB",
     webpack: false,
     running: false,
   },

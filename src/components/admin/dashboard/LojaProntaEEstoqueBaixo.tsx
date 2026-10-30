@@ -11,6 +11,10 @@ import {
   proximoPasso,
   seisPassosDaLojaPronta,
 } from "@/lib/loja-pronta";
+import type {
+  ChaveDoRecomendado,
+  PassoRecomendado,
+} from "@/lib/passos-recomendados";
 import { classeDoTexto } from "@/lib/tons-de-estado";
 import type { View } from "@/types";
 import {
@@ -19,6 +23,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleDashed,
+  Mail,
   MapPin,
   Package,
   Store,
@@ -74,6 +79,12 @@ interface LojaProntaEEstoqueBaixoProps {
    * busca sequer ter começado. Número em mãos sempre ganha do carregando.
    */
   readonly estoqueCarregando?: boolean;
+  /**
+   * Passos RECOMENDADOS ainda pendentes (e-mail, pagamento pelo app,
+   * transportadora — `pendentesRecomendados`). Não entram na conta "N de 6" e
+   * não bloqueiam nada: viram linhas com atalho para o ajuste. Ausente = nada.
+   */
+  readonly recomendados?: readonly PassoRecomendado[];
   readonly onNavigate: (view: View) => void;
   /** Tenta buscar `stats` de novo (Início em estado "não sei"). */
   readonly onTentarDeNovo: () => void;
@@ -92,6 +103,13 @@ const ICONE_DO_PASSO: Record<
   produto: Package,
 };
 
+/** Ícone de cada passo recomendado. */
+const ICONE_DO_RECOMENDADO: Record<ChaveDoRecomendado, typeof Wallet> = {
+  email: Mail,
+  pagamentoApp: Wallet,
+  transportadora: Truck,
+};
+
 export function LojaProntaEEstoqueBaixo({
   stats,
   config,
@@ -102,6 +120,7 @@ export function LojaProntaEEstoqueBaixo({
   configCarregando,
   produtosCarregando,
   estoqueCarregando = false,
+  recomendados = [],
   onNavigate,
   onTentarDeNovo,
   somenteBoasVindas = false,
@@ -251,6 +270,42 @@ export function LojaProntaEEstoqueBaixo({
               aria-hidden="true"
             />
           </button>
+        ) : null}
+        {recomendados.length > 0 ? (
+          <div
+            role="group"
+            aria-label="Recomendado para vender"
+            className="border-t border-admin-border"
+          >
+            <p className="pt-3 text-sm font-semibold text-zinc-300">
+              Recomendado para vender
+            </p>
+            {recomendados.map((passo) => (
+              <button
+                key={passo.chave}
+                type="button"
+                onClick={() => onNavigate(passo.destino)}
+                className={LINHA_INICIO}
+              >
+                <TileDoInicio
+                  icone={ICONE_DO_RECOMENDADO[passo.chave]}
+                  tom="atencao"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-white">
+                    {passo.rotuloPendente}
+                  </span>
+                  <span className="mt-0.5 block text-sm text-zinc-400">
+                    {passo.explicacaoPendente}
+                  </span>
+                </span>
+                <ChevronRight
+                  className="size-5 shrink-0 text-zinc-400"
+                  aria-hidden="true"
+                />
+              </button>
+            ))}
+          </div>
         ) : null}
         {listaAberta ? (
           <ul
