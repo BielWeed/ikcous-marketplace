@@ -498,3 +498,49 @@ export function gerarStandard() { return s["~standard"].jsonSchema.input({}); }
     expect(enxuto.codigo.length).toBeLessThan(original.codigo.length);
   }, 30_000);
 });
+
+describe("zod enxuto — teto de tamanho antes de validar elemento (GHSA-mrhx-c7xc-m3w5)", () => {
+  it("coleção maior que o limite falha com UM problema, sem validar cada elemento; dentro do limite nada muda", async () => {
+    const entrada = `
+import { z } from "zod";
+export function teto() {
+ const lista = z.array(z.number()).max(2);
+ const conjunto = z.set(z.number()).max(2);
+ const enorme = Array.from({ length: 5000 }, () => "nao-e-numero");
+ const enormeConjunto = new Set(enorme.map((_, i) => "x" + i));
+ const resumo = (r) => r.success ? { ok: r.data } : { codigos: r.error.issues.map((i) => i.code), caminhos: r.error.issues.map((i) => i.path.join(".")) };
+ return {
+  acima: resumo(lista.safeParse(enorme)),
+  acimaConjunto: resumo(conjunto.safeParse(enormeConjunto)),
+  dentroValido: resumo(lista.safeParse([1, 2])),
+  dentroInvalido: resumo(lista.safeParse(["a", "b"])),
+  vazio: resumo(lista.safeParse([])),
+  naoLista: resumo(lista.safeParse("texto")),
+ };
+}
+`;
+    const original = await compilar(entrada);
+    const enxuto = await compilar(entrada, [zodSemJsonSchema()]);
+    const esperado = original.api.teto() as Record<string, unknown>;
+    expect(enxuto.api.teto()).toEqual(esperado);
+    // Em 4.6.5 isto devolvia um problema por elemento (5001), não um.
+    expect(esperado.acima).toEqual({ codigos: ["too_big"], caminhos: [""] });
+    expect(esperado.acimaConjunto).toEqual({
+      codigos: ["too_big"],
+      caminhos: [""],
+    });
+    expect(esperado.dentroValido).toEqual({ ok: [1, 2] });
+    // Dentro do limite o elemento continua sendo validado, com caminho próprio.
+    expect(esperado.dentroInvalido).toEqual({
+      codigos: ["invalid_type", "invalid_type"],
+      caminhos: ["0", "1"],
+    });
+    expect(esperado.vazio).toEqual({ ok: [] });
+    // Não é lista: o teto não age (igual ao 4.6.5, que também acrescenta too_big
+    // por medir o "length" da string) e o tipo errado continua sendo o 1º problema.
+    expect(esperado.naoLista).toEqual({
+      codigos: ["invalid_type", "too_big"],
+      caminhos: ["", ""],
+    });
+  }, 30_000);
+});
