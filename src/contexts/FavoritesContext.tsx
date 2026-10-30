@@ -416,7 +416,13 @@ export function FavoritesProvider({
         .filter((r) => !r.error)
         .map((r) => r.produto.id);
       const restante = retirarDaFilaPendentes(userId, idsSincronizadosAgora);
-      setPendingFavorites(restante);
+      // A fila EM DISCO acima é da conta que drenou e é sempre atualizada.
+      // Já o estado visível só pode receber a fila de `userId` se ele ainda é
+      // a conta atual: numa troca direta A->B com o upsert de A em voo, a
+      // fila de A não pode aparecer (nem zerar a contagem) na tela de B.
+      if (usuarioAtualIdRef.current === userId) {
+        setPendingFavorites(restante);
+      }
 
       return {
         total: resultados.length,
