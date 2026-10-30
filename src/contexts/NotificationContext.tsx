@@ -252,6 +252,10 @@ export function NotificationProvider({
         return;
       }
 
+      // Resposta de A que chega depois da troca direta para B não é de B: não
+      // invalida a rodada dele, não mexe na lista e não avisa erro (igual
+      // markAllAsRead).
+      const donoDaOperacao = user?.id ?? null;
       try {
         const { error } = await supabase
           .from("notificacoes")
@@ -259,12 +263,14 @@ export function NotificationProvider({
           .eq("id", id);
 
         if (error) throw error;
+        if (usuarioAtualIdRef.current !== donoDaOperacao) return;
         // A consulta anterior à leitura não pode repor o aviso não lido.
         invalidarConsultasEmVoo();
         setNotifications((prev) =>
           prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
         );
       } catch (err) {
+        if (usuarioAtualIdRef.current !== donoDaOperacao) return;
         // Achado 4 da auditoria rodada 2: sem este aviso a cliente toca em
         // "marcar como lida", nada acontece, e nada explica o porquê — ela
         // toca de novo, e de novo. O estado da tela continua honesto (o
@@ -342,6 +348,8 @@ export function NotificationProvider({
         return;
       }
 
+      // Mesma guarda do markAsRead: resposta de A não mexe em B.
+      const donoDaOperacao = user?.id ?? null;
       try {
         const { error } = await supabase
           .from("notificacoes")
@@ -349,9 +357,11 @@ export function NotificationProvider({
           .eq("id", id);
 
         if (error) throw error;
+        if (usuarioAtualIdRef.current !== donoDaOperacao) return;
         invalidarConsultasEmVoo();
         setNotifications((prev) => prev.filter((n) => n.id !== id));
       } catch (err) {
+        if (usuarioAtualIdRef.current !== donoDaOperacao) return;
         // Achado 4 da auditoria rodada 2 — mesmo motivo do markAsRead. Este é
         // o pior dos três para quem usa: apagar é o gesto de que a pessoa mais
         // espera retorno imediato.
