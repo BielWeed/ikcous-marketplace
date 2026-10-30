@@ -1,9 +1,18 @@
 {
+  "1.5.103": {
+    "titulo": "Depois de uma atualização, o app não trava mais ao abrir",
+    "novidades": [],
+    "correcoes": [
+      "Abrir o app logo depois de uma atualização: se o aparelho ainda pedisse uma peça antiga do app que já saiu do ar, ele podia guardar uma página errada no lugar e ficar parado na tela de carregamento. Agora a peça antiga simplesmente não é encontrada, o app não guarda a página errada e se recupera sozinho.",
+      "Segurança: atualizamos peças de apoio do app que tinham avisos de segurança. Nada muda no que a cliente vê ou faz."
+    ],
+    "melhorias": []
+  },
   "1.5.102": {
     "titulo": "A vitrine fica mais certa no celular: banner inteiro, erros só na hora certa e frete grátis também no carrinho",
     "novidades": [],
     "correcoes": [
-      "Banner: a imagem do banner agora aparece inteira na proporção em que foi enviada, sem cortar o texto da arte no celular, no tablet e no computador. Na tela do painel, a dica de tamanho fala a mesma coisa (1200 x 600).",
+      "Banner: a moldura do banner agora tem a proporção de 2 por 1, então uma imagem de 1200 x 600 aparece inteira, sem cortar o texto da arte, no celular, no tablet e no computador. Imagem em outra proporção ainda pode ter as pontas cortadas. Na tela do painel, a dica de tamanho fala a mesma coisa (1200 x 600).",
       "Finalizar compra: ao digitar só o CEP, a tela não mostra mais avisos vermelhos em campos que a cliente ainda nem tocou. O aviso de cada campo aparece quando ela sai dele, e todos aparecem juntos se ela tentar continuar. As regras de preenchimento continuam as mesmas.",
       "Carrinho: quem ainda não escolheu a entrega agora vê, como na página inicial, se já ganhou frete grátis ou quanto falta para ganhar. O valor do frete e o total da compra não mudam.",
       "Páginas de política: o WhatsApp da loja aparece com DDD e traço, em vez de um número corrido.",
