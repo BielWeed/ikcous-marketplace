@@ -300,6 +300,7 @@ on:
           - 115b-antes-o-desconto-do-cupom-e-arredondado-ao-centavo-base-vigente
           - 116a-conferir-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-aplicado
           - 116b-antes-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-base-vigente
+          - 117m-medir-prontidao-da-loja-para-vender
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:
