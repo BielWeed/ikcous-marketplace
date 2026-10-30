@@ -34,6 +34,13 @@ interface SharedSubscription {
 }
 const globalOrderSubscriptions = new Map<string, SharedSubscription>();
 
+// Aba sem liderança e sem ninguém servindo a tela: quanto espera a resposta do
+// outro lado antes de abrir o canal ela mesma, e de quanto em quanto tempo
+// refaz a pergunta (para o caso de quem servia sair da tela). Ver o efeito de
+// tempo real em `useOrders`.
+const ESPERA_DO_SERVIDOR_MS = 1000;
+const REPERGUNTA_AO_SERVIDOR_MS = 15_000;
+
 const validateStatusUpdate = (
   order: Order | undefined,
   isAdmin: boolean,
@@ -2984,11 +2991,53 @@ export function useOrders(
       bc?.postMessage(mensagem);
     };
     let bcListener: ((event: MessageEvent) => void) | null = null;
+    // Esta aba TEM o próprio canal (ou entrou no que a aba já abriu)? Vale para
+    // a líder e para a seguidora que não achou quem servisse a tela. Quem tem
+    // canal próprio já recebe tudo direto: ignora o repasse das outras abas
+    // (senão o aviso tocaria duas vezes) e responde por elas.
+    let ligado = false;
+    // Houve sinal de uma aba servindo esta tela desde a última pergunta?
+    let temServidor = false;
+    // Repasses já processados (chave -> quando). Com mais de uma aba servindo
+    // a mesma tela (cada uma com o soquete dela), o banco entrega o MESMO evento
+    // por vários caminhos e esta aba sem canal receberia um repasse de cada.
+    const repassesJaVistos = new Map<string, number>();
+    let esperaDoServidor: ReturnType<typeof setTimeout> | undefined;
+    let reperguntaAoServidor: ReturnType<typeof setInterval> | undefined;
     if (bc) {
       bcListener = (event: MessageEvent) => {
-        processarMensagemBroadcast(event.data, channelId, isLeader, {
-          onEvent: (payload) => onEvent(payload),
-          definirStatus: definirStatusConexao,
+        processarMensagemBroadcast(event.data, channelId, ligado, {
+          onEvent: (payload) => {
+            temServidor = true;
+            // Chave do evento: tipo + pedido + instante do commit + CONTEÚDO
+            // da linha. O instante é o da TRANSAÇÃO, igual para todas as
+            // mudanças dela (ex.: recusar um pagamento faz 2 UPDATEs do mesmo
+            // pedido) — só o conteúdo as distingue. O mesmo evento por dois
+            // soquetes chega com payload idêntico, então continua descartado.
+            // Sem `commit_timestamp` não há como distinguir: não deduplica.
+            const instante = (payload as any)?.commit_timestamp;
+            const idDoPedido =
+              (payload as any)?.new?.id ?? (payload as any)?.old?.id;
+            if (instante && idDoPedido) {
+              const chave = `${(payload as any).eventType}:${idDoPedido}:${instante}:${JSON.stringify((payload as any).new)}:${JSON.stringify((payload as any).old)}`;
+              const agora = Date.now();
+              if (repassesJaVistos.has(chave)) return;
+              for (const [k, quando] of repassesJaVistos) {
+                if (agora - quando > 60_000) repassesJaVistos.delete(k);
+              }
+              if (repassesJaVistos.size >= 50) {
+                const maisAntiga = repassesJaVistos.keys().next().value;
+                if (maisAntiga !== undefined)
+                  repassesJaVistos.delete(maisAntiga);
+              }
+              repassesJaVistos.set(chave, agora);
+            }
+            onEvent(payload);
+          },
+          definirStatus: (id, status) => {
+            temServidor = true;
+            definirStatusConexao(id, status);
+          },
           responderStatusAtual: () => {
             const atual = globalConnectionStatus.get(channelId)?.status;
             if (atual) {
@@ -3182,7 +3231,12 @@ export function useOrders(
       );
     };
 
-    if (isLeader) {
+    // Entra no canal desta aba (reaproveitando o que já existe) ou abre um.
+    const ligarAoCanal = () => {
+      if (isUnmounting || ligado) return;
+      ligado = true;
+      clearTimeout(esperaDoServidor);
+      clearInterval(reperguntaAoServidor);
       const existing = globalOrderSubscriptions.get(channelId);
       if (existing) {
         if (existing.cleanupTimeout) {
@@ -3197,6 +3251,16 @@ export function useOrders(
       } else {
         setupRealtime();
       }
+      // Avisa as abas que estão perguntando: daqui para a frente esta aba serve
+      // a tela (o pedido de status delas pode ter chegado antes de eu ligar).
+      const atual = globalConnectionStatus.get(channelId)?.status;
+      if (atual) {
+        publicarNoBc({ type: "conn_status", channelId, status: atual });
+      }
+    };
+
+    if (isLeader || globalOrderSubscriptions.has(channelId)) {
+      ligarAoCanal();
     } else {
       console.log(
         `[Realtime-Orders] Secondary tab listening via BroadcastChannel: ${channelId}`,
@@ -3204,11 +3268,36 @@ export function useOrders(
       // C2: pede ao líder o status ATUAL logo ao montar — sem isto, uma
       // aba não-líder que abre e não vê nenhuma transição de status fica
       // em "conectando" até a próxima queda do socket do líder.
-      publicarNoBc({ type: "conn_status_request", channelId });
+      //
+      // Lote 263 (caça 14-C, item 1): a liderança é da ABA, mas o canal é
+      // aberto por quem tem a TELA montada. Líder sem esta tela = ninguém abre
+      // o canal e esta aba esperava um repasse que nunca vinha. Por isso a
+      // pergunta agora é também um teste: sem sinal de nenhuma aba servindo
+      // esta tela em ESPERA_DO_SERVIDOR_MS, esta aba abre o canal ela mesma.
+      // A pergunta se repete, porque quem servia pode sair da tela depois.
+      const perguntarAoServidor = () => {
+        if (isUnmounting || ligado) return;
+        if (globalOrderSubscriptions.has(channelId)) {
+          // Outra tela desta mesma aba já abriu o canal: é só entrar nele.
+          ligarAoCanal();
+          return;
+        }
+        temServidor = false;
+        publicarNoBc({ type: "conn_status_request", channelId });
+        clearTimeout(esperaDoServidor);
+        esperaDoServidor = setTimeout(() => {
+          if (!temServidor) ligarAoCanal();
+        }, ESPERA_DO_SERVIDOR_MS);
+      };
+      perguntarAoServidor();
+      reperguntaAoServidor = setInterval(
+        perguntarAoServidor,
+        REPERGUNTA_AO_SERVIDOR_MS,
+      );
     }
 
     const handleOnline = () => {
-      if (!isLeader) return;
+      if (!ligado) return;
       clearTimeout(onlineTimeout);
       onlineTimeout = setTimeout(() => {
         const sub = globalOrderSubscriptions.get(channelId);
@@ -3230,9 +3319,11 @@ export function useOrders(
       statusInscricao.cancelar();
       clearTimeout(reconnectTimeout);
       clearTimeout(onlineTimeout);
+      clearTimeout(esperaDoServidor);
+      clearInterval(reperguntaAoServidor);
       globalThis.removeEventListener("online", handleOnline);
 
-      if (isLeader) {
+      if (ligado) {
         const sub = globalOrderSubscriptions.get(channelId);
         if (sub) {
           sub.callbacks.delete(onEvent);

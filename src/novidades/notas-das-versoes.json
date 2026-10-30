@@ -1,4 +1,12 @@
 {
+  "1.5.98": {
+    "titulo": "Painel aberto em outra aba passa a receber pedido novo na hora",
+    "novidades": [],
+    "correcoes": [
+      "Painel, Pedidos: com a loja aberta numa aba e o painel em outra (ou o app instalado e o navegador), o pedido novo e o aviso 'Novo pedido recebido!' agora aparecem na hora na tela de Pedidos, sem precisar sair e voltar para a aba."
+    ],
+    "melhorias": []
+  },
   "1.5.97": {
     "titulo": "Salvar cupom ou banner não desfaz mais o que foi mudado em outro aparelho",
     "novidades": [],
