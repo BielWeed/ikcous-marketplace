@@ -209,9 +209,10 @@ export function emailDeContatoValido(valor: unknown): string | null {
 /**
  * Nomes das transportadoras com cotação REAL ligada, a partir da leitura da
  * edge (`buscarConfiguracaoDeFrete`): ligada, com chave salva e — quando o
- * provedor exige — e-mail de contato válido. É a régua que a tela de Frete e
- * Ajustes aplicam; o cartão "pronta para vender" do Início usa esta função em
- * vez de uma terceira cópia.
+ * provedor exige — e-mail de contato válido. É a MESMA régua que a tela de Frete
+ * e Ajustes aplicam inline (`provedoresNacional`, `nomesLigadosDeFrete`); o
+ * cartão "pronta para vender" do Início usa esta função. Mexeu numa das
+ * cópias, mexa nas três.
  */
 export function nomesDasTransportadorasLigadas(
   config: Pick<ConfiguracaoDeFrete, "ligados" | "provedores">,

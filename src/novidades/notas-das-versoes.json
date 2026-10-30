@@ -2,7 +2,7 @@
   "1.5.101": {
     "titulo": "O Início agora avisa o que falta para a loja vender de verdade",
     "novidades": [
-      "Início: o cartão \"Loja pronta\" agora mostra, em \"Recomendado para vender\", quando falta cadastrar o e-mail da loja, ligar o pagamento pelo app (PIX) ou ligar uma transportadora, com um toque para ir direto ao ajuste certo. Esses avisos não travam nada e não mudam a conta dos seis passos."
+      "Início: o cartão \"Loja pronta\" agora mostra, em \"Recomendado para vender\", quando falta cadastrar o e-mail da loja, ligar o pagamento pelo app (PIX) ou ligar uma transportadora, com um toque que leva à tela do ajuste. Esses avisos não travam nada e não mudam a conta dos seis passos."
     ],
     "correcoes": [],
     "melhorias": []

@@ -103,7 +103,7 @@ export function passosRecomendados(
             : "pendente",
       destino: "admin-settings",
       explicacaoPendente: comProblema
-        ? "O último envio falhou: seus clientes podem não receber o e-mail do pedido"
+        ? "O e-mail da loja está com problema: seus clientes podem não receber o e-mail do pedido"
         : "Sem ele, seus clientes não recebem e-mail do pedido",
     });
   }
@@ -125,7 +125,12 @@ export function passosRecomendados(
     passos.push({
       chave: "transportadora",
       rotuloPendente: "Ligar uma transportadora",
-      estado: fatos.nomesLigados.length > 0 ? "feito" : "pendente",
+      // A decisão "vende para fora?" lê a config: antes dela chegar, "não sei".
+      estado: fatos.configCarregando
+        ? "carregando"
+        : fatos.nomesLigados.length > 0
+          ? "feito"
+          : "pendente",
       destino: "admin-shipping",
       explicacaoPendente:
         "Nenhuma transportadora ligada: quem é de fora não compra",

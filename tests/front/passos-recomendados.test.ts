@@ -97,6 +97,18 @@ describe("passos recomendados — transportadora", () => {
     expect(passo("transportadora", { nomesLigados: null })).toBeUndefined();
   });
 
+  it("config ainda carregando: carregando (a cobertura da loja ainda não chegou)", () => {
+    expect(
+      passo("transportadora", { nomesLigados: [], configCarregando: true })
+        ?.estado,
+    ).toBe("carregando");
+    expect(
+      pendentesRecomendados(
+        fatos({ nomesLigados: [], configCarregando: true }),
+      ),
+    ).toEqual([]);
+  });
+
   it("loja que atende só a cidade: o passo não se aplica", () => {
     expect(
       passo("transportadora", {
