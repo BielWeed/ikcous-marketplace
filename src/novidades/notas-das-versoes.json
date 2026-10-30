@@ -1,4 +1,12 @@
 {
+  "1.5.99": {
+    "titulo": "Trocar de conta no mesmo aparelho não traz nada da conta anterior nos favoritos",
+    "novidades": [],
+    "correcoes": [
+      "Favoritos: se a pessoa trocava de conta no mesmo aparelho enquanto os favoritos da conta anterior ainda estavam sendo sincronizados, a conta nova podia ver o contador de pendentes, o aviso de 'favoritos sincronizados' e o fim do 'carregando' da conta anterior. Agora a conta nova não recebe mais nada da anterior."
+    ],
+    "melhorias": []
+  },
   "1.5.98": {
     "titulo": "Painel aberto em outra aba passa a receber pedido novo na hora",
     "novidades": [],
