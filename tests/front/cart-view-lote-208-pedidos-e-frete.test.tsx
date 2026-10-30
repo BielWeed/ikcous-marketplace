@@ -7,8 +7,9 @@
 //            primeira resposta).
 //  (item 10) Convidado: o aviso "Histórico Protegido ... Acesse" (sem botão)
 //            não repete o que o bloco de entrar/rastrear já diz e oferece.
-//  (item 11) "Adicione mais R$ X para garantir Frete Grátis!" não aparece
-//            enquanto o frete ainda está indefinido ("A calcular").
+//  (item 11) "Adicione mais R$ X para garantir Frete Grátis!" (resumo do
+//            pedido) não aparece enquanto o frete ainda está indefinido
+//            ("A calcular"). O cartão da loja, igual ao da Home, aparece.
 //
 // Harness copiado de cart-view-aba-pedidos-falha-de-carregamento.test.tsx.
 import { act } from "react";
@@ -241,8 +242,14 @@ describe("CartView — lote 208", () => {
     duble.config = lojaComMetaDeFrete;
     await montar("cart");
 
-    // A tela do carrinho montou (a âncora prova) e a meta ficou de fora.
+    // A tela do carrinho montou (a âncora prova) e o resumo do pedido, que
+    // fala do frete DESTA compra, não promete a meta enquanto o frete está
+    // "A calcular". (30/10/2026: o aviso da LOJA — o mesmo cartão da Home, que
+    // só diz a regra da loja e quanto falta — passou a aparecer no carrinho
+    // mesmo sem frete cotado; ver carrinho-mostra-frete-gratis-e-quanto-falta.
+    // A frase do resumo é "para garantir Frete Grátis!"; a do cartão é
+    // "para garantir o frete grátis!".)
     expect(texto()).toContain("A calcular");
-    expect(texto()).not.toContain("para garantir");
+    expect(texto()).not.toContain("para garantir Frete Grátis!");
   });
 });

@@ -23,9 +23,27 @@ interface FreeShippingBlockProps {
   readonly onNavigate?: (view: View) => void;
 }
 
+/** O aviso da HOME: lê o total do carrinho do contexto. */
 export function FreeShippingBlock(_props: FreeShippingBlockProps) {
-  const { config } = useStore();
   const { cartTotal } = useCartContext();
+  return <AvisoDeFreteGratis cartTotal={cartTotal} />;
+}
+
+/**
+ * O aviso de frete grátis em si — UMA conta e UM desenho para a Home e para o
+ * Carrinho (30/10/2026). O carrinho só mostrava o progresso para quem estava
+ * logada e já tinha o frete cotado; convidada, ou quem ainda não escolheu a
+ * entrega, via "Frete A calcular" enquanto a Home dizia "Liberado" ou "Faltam
+ * R$ X". Quem quer o aviso fora da Home passa o total que está mostrando,
+ * em vez de reescrever a regra: limite, "na cidade" e meta em centavos vêm
+ * daqui, da configuração da loja.
+ */
+export function AvisoDeFreteGratis({
+  cartTotal,
+}: {
+  readonly cartTotal: number;
+}) {
+  const { config } = useStore();
 
   // Regra desligada no admin: não anunciar frete grátis que a loja não oferece.
   // (Preset "por_produto" grava a sentinela -1 e cai aqui de propósito: quem
