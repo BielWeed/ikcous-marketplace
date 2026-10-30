@@ -206,6 +206,28 @@ export function emailDeContatoValido(valor: unknown): string | null {
     : null;
 }
 
+/**
+ * Nomes das transportadoras com cotação REAL ligada, a partir da leitura da
+ * edge (`buscarConfiguracaoDeFrete`): ligada, com chave salva e — quando o
+ * provedor exige — e-mail de contato válido. É a MESMA régua que a tela de Frete
+ * e Ajustes aplicam inline (`provedoresNacional`, `nomesLigadosDeFrete`); o
+ * cartão "pronta para vender" do Início usa esta função. Mexeu numa das
+ * cópias, mexa nas três.
+ */
+export function nomesDasTransportadorasLigadas(
+  config: Pick<ConfiguracaoDeFrete, "ligados" | "provedores">,
+): string[] {
+  return config.ligados
+    .filter((p) => {
+      const salvo = config.provedores.get(p);
+      const incompleta =
+        PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR.has(p) &&
+        !emailDeContatoValido(salvo?.contato_email);
+      return (salvo?.tem_chave ?? false) && !incompleta;
+    })
+    .map((p) => nomeDoProvedor(p));
+}
+
 // CONTRATO-1.5.7.md §9 R3-7 (ordem do dono, 22/09/2026): o Melhor Envio
 // também exige e-mail de contato em cada consulta — ganha o MESMO campo,
 // MESMA validação (`emailDeContatoValido`) e MESMAS mensagens que a

@@ -27,11 +27,13 @@ import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePainelInicio } from "@/hooks/usePainelInicio";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
+import { useRecomendadosDaLoja } from "@/hooks/useRecomendadosDaLoja";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { pedirPedidosSemFiltroAntigo } from "@/lib/atalho-do-inicio-para-pedidos";
 import { pagamentoOnlineLigado } from "@/lib/flags";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
+import { pendentesRecomendados } from "@/lib/passos-recomendados";
 import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -61,21 +63,24 @@ function SecaoLojaProntaEEstoqueBaixo({
   onNavigate,
   onTentarDeNovo,
   somenteBoasVindas,
+  active,
 }: Readonly<{
   estoqueBaixo: number | null;
   estoqueCarregando: boolean;
   onNavigate: (view: View, id?: string) => void;
   onTentarDeNovo: () => void;
   somenteBoasVindas?: boolean;
+  active?: boolean;
 }>) {
   const { config, isLoaded, products, loadingProducts } = useStore();
+  const chaveOk = pixConfiguradoNoBuild(chavePublicaMercadoPago() ?? undefined);
 
-  return (
+  const cartao = (recomendados?: ReturnType<typeof pendentesRecomendados>) => (
     <LojaProntaEEstoqueBaixo
       stats={estoqueBaixo == null ? null : { inventoryAlerts: estoqueBaixo }}
       config={config}
       ligado={pagamentoOnlineLigado()}
-      chaveOk={pixConfiguradoNoBuild(chavePublicaMercadoPago() ?? undefined)}
+      chaveOk={chaveOk}
       // Mesma normalização de AdminSettingsView e CheckoutView: ausente ou
       // corrompido cai no padrão das três formas.
       formasNaEntrega={formasPagamentoNaEntregaValidas(
@@ -85,10 +90,56 @@ function SecaoLojaProntaEEstoqueBaixo({
       configCarregando={!isLoaded}
       produtosCarregando={loadingProducts}
       estoqueCarregando={estoqueCarregando}
+      recomendados={recomendados}
       onNavigate={onNavigate}
       onTentarDeNovo={onTentarDeNovo}
       somenteBoasVindas={somenteBoasVindas}
     />
+  );
+
+  // Boas-vindas só mostra o próximo passo dos seis: nada de ler e-mail nem
+  // transportadora para uma tela que não os usa.
+  if (somenteBoasVindas) return cartao();
+  return (
+    <ComRecomendados
+      active={active}
+      config={config}
+      isLoaded={isLoaded}
+      chaveOk={chaveOk}
+    >
+      {cartao}
+    </ComRecomendados>
+  );
+}
+
+/**
+ * Lê o e-mail e as transportadoras (hook próprio, só no cartão completo) e
+ * entrega ao cartão os passos recomendados que ainda faltam.
+ */
+function ComRecomendados({
+  active,
+  config,
+  isLoaded,
+  chaveOk,
+  children,
+}: Readonly<{
+  active?: boolean;
+  config: ReturnType<typeof useStore>["config"];
+  isLoaded: boolean;
+  chaveOk: boolean;
+  children: (
+    recomendados: ReturnType<typeof pendentesRecomendados>,
+  ) => React.ReactNode;
+}>) {
+  const lidos = useRecomendadosDaLoja(active);
+  return children(
+    pendentesRecomendados({
+      email: lidos.email,
+      pixOk: pagamentoOnlineLigado() && chaveOk,
+      nomesLigados: lidos.nomesLigados,
+      config,
+      configCarregando: !isLoaded,
+    }),
   );
 }
 
@@ -383,6 +434,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
                     estoqueCarregando={semNumeros}
                     onNavigate={irPara}
                     onTentarDeNovo={() => void atualizar()}
+                    active={active}
                   />
                 </LocalErrorBoundary>
               </div>
