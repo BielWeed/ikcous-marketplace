@@ -421,6 +421,15 @@ describe("CheckoutView — WhatsApp só vale com celular completo (11 dígitos)"
 
     expect(valorDe("checkout-tel")).toBe("(34) 98887-777");
     expect(faltaWhatsapp()).toBe(true);
+    // O erro do campo só aparece depois que a pessoa SAI dele (30/10/2026):
+    // enquanto digita, a pendência vive no resumo, não em vermelho no campo.
+    expect(erroDoCampo()).toBeNull();
+    await act(async () => {
+      document.getElementById("checkout-tel")?.focus();
+    });
+    await act(async () => {
+      document.getElementById("checkout-tel")?.blur();
+    });
     expect(erroDoCampo()).toBe(
       "Confira o WhatsApp: faltou um número (DDD + 9 + 8 dígitos)",
     );

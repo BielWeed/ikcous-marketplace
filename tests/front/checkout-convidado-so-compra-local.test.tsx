@@ -216,6 +216,14 @@ describe("CheckoutView (convidado) — só compra com entrega local", () => {
     await act(async () => {
       await Promise.resolve();
     });
+    // O erro do campo só aparece depois que a pessoa SAI dele (30/10/2026).
+    expect(hospedeiro.textContent).not.toContain("CEP inválido");
+    await act(async () => {
+      document.getElementById("guest-cep")?.focus();
+    });
+    await act(async () => {
+      document.getElementById("guest-cep")?.blur();
+    });
 
     expect(hospedeiro.textContent).toContain("CEP inválido");
   });

@@ -78,8 +78,9 @@ describe("achado 1 — checkout: erro de preenchimento marcado e anunciado", () 
     ];
     // O id que liga campo e mensagem (ex. "erro-checkout-name") precisa
     // aparecer DENTRO do aria-describedby do campo. Substring solta de
-    // `form.formState.errors.<campo>` também casa com o aria-invalid e
-    // passaria mesmo sem o atributo.
+    // `erroDoCampo("<campo>")` também casa com o aria-invalid e passaria
+    // mesmo sem o atributo. (`erroDoCampo` é o erro DO CAMPO que já pode
+    // aparecer: depois do blur ou de tentar continuar.)
     const idDaMensagem: Record<string, string> = {
       name: "erro-checkout-name",
       whatsapp: "erro-checkout-tel",
@@ -90,14 +91,14 @@ describe("achado 1 — checkout: erro de preenchimento marcado e anunciado", () 
     };
     for (const campo of campos) {
       expect(src, `campo ${campo} sem aria-invalid`).toContain(
-        `form.formState.errors.${campo} ? true : undefined`,
+        `erroDoCampo("${campo}") ? true : undefined`,
       );
       expect(
         src,
         `campo ${campo} sem aria-describedby apontando a mensagem`,
       ).toMatch(
         new RegExp(
-          `aria-describedby=\\{\\s*form\\.formState\\.errors\\.${campo}\\s*\\?\\s*"${idDaMensagem[campo]}"`,
+          `aria-describedby=\\{\\s*erroDoCampo\\("${campo}"\\)\\s*\\?\\s*"${idDaMensagem[campo]}"`,
         ),
       );
     }
@@ -113,8 +114,8 @@ describe("achado 1 — checkout: erro de preenchimento marcado e anunciado", () 
     }
     // Cidade e Estado não têm `<p>` de erro, mas o schema os recusa para
     // convidado — o campo fica marcado e o foco anuncia.
-    expect(src).toContain("form.formState.errors.city ? true : undefined");
-    expect(src).toContain("form.formState.errors.state ? true : undefined");
+    expect(src).toContain('erroDoCampo("city") ? true : undefined');
+    expect(src).toContain('erroDoCampo("state") ? true : undefined');
   });
 
   it("a recusa por preenchimento leva o foco ao primeiro campo com erro", () => {
