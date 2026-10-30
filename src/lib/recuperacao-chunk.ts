@@ -116,6 +116,7 @@ const PADROES_DE_ERRO_DE_CHUNK = [
   "chunkloaderror",
   "importing a module script failed",
   "css chunk load failed",
+  "unable to preload css",
   "unexpected token '<'",
 ] as const;
 
