@@ -1,4 +1,16 @@
 {
+  "1.5.102": {
+    "titulo": "A vitrine fica mais certa no celular: banner inteiro, erros só na hora certa e frete grátis também no carrinho",
+    "novidades": [],
+    "correcoes": [
+      "Banner: a imagem do banner agora aparece inteira na proporção em que foi enviada, sem cortar o texto da arte no celular, no tablet e no computador. Na tela do painel, a dica de tamanho fala a mesma coisa (1200 x 600).",
+      "Finalizar compra: ao digitar só o CEP, a tela não mostra mais avisos vermelhos em campos que a cliente ainda nem tocou. O aviso de cada campo aparece quando ela sai dele, e todos aparecem juntos se ela tentar continuar. As regras de preenchimento continuam as mesmas.",
+      "Carrinho: quem ainda não escolheu a entrega agora vê, como na página inicial, se já ganhou frete grátis ou quanto falta para ganhar. O valor do frete e o total da compra não mudam.",
+      "Páginas de política: o WhatsApp da loja aparece com DDD e traço, em vez de um número corrido.",
+      "Busca do topo: na página de um produto, o campo de busca mostra mais texto antes de cortar."
+    ],
+    "melhorias": []
+  },
   "1.5.101": {
     "titulo": "O Início agora avisa o que falta para a loja vender de verdade",
     "novidades": [

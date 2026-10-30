@@ -124,7 +124,10 @@ module.exports = [
     // 28/10/2026 (mesma regra): 594 -> 596 kB na 1.5.96 (Caca 13: avisos quando a leitura ou a
     // rede falha em vez de tela que mente, dinheiro com ponto de milhar, rolagem ao Catalogo).
     // Base 593,55 kB; os seis lotes somam +1,02 kB e medem 594,57 kB (569 B acima do teto).
-    limit: "596 kB",
+    // 30/10/2026 (mesma regra): 596 -> 598 kB na 1.5.102 (vitrine no celular: banner sem corte,
+    // erro do checkout so depois de sair do campo, frete gratis tambem no carrinho). Base 595,32
+    // kB; os tres itens somam +1,18 kB e medem 596,5 kB (501 B acima do teto).
+    limit: "598 kB",
     webpack: false,
     // Sem `running: false` o preset tenta MEDIR TEMPO rodando o bundle em
     // Chrome headless — inútil para app de navegador e quebra em runner sem
