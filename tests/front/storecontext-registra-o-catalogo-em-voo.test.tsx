@@ -118,6 +118,12 @@ vi.mock("@/lib/supabase", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+// O cofre dublê é um só para todas as tabelas, e o StoreProvider também grava
+// os banners (pedidos no boot): o que este arquivo cobre é a gravação do CATÁLOGO.
+function gravacoesDoCatalogo() {
+  return controle.replaceAll.mock.calls.filter(([loja]) => loja === "products");
+}
+
 function linhaDaView() {
   return {
     id: "p1",
@@ -215,7 +221,7 @@ describe("StoreContext — registro do catálogo em voo", () => {
 
     // A vitrine já está liberada (não espera a gravação)...
     expect(carregando).toBe(false);
-    expect(controle.replaceAll).toHaveBeenCalledTimes(1);
+    expect(gravacoesDoCatalogo()).toHaveLength(1);
     // ...mas o cofre ainda não tem o catálogo: a rodada tem de continuar esperando.
     expect(catalogoEmVoo()).toBe(true);
 
@@ -233,7 +239,7 @@ describe("StoreContext — registro do catálogo em voo", () => {
     await responder(0, { data: null, error: { message: "network" } });
 
     expect(catalogoEmVoo()).toBe(false);
-    expect(controle.replaceAll).not.toHaveBeenCalled();
+    expect(gravacoesDoCatalogo()).toHaveLength(0);
   });
 
   it("consulta que lança fecha o registro", async () => {

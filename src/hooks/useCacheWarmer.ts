@@ -27,7 +27,7 @@ export function useCacheWarmer() {
         // quem os mostra (BannerCarousel via LazyImage, galeria do ProductView)
         // pede a versão TRANSFORMADA (imageUrl.ts), que a gaveta do service
         // worker não casa por endereço exato (sw.ts:176). O único pedido cru de
-        // banner é o preloadTopBanner (useBanners.ts:15), que passa pelo SW e
+        // banner é o preCarregarFotoDoTopo (banners-da-vitrine.ts), que passa pelo SW e
         // se auto-serve na gaveta — aquecê-lo aqui era um no-op. Só a 1ª foto
         // de cada produto tem consumidor no endereço que se aquece: a ORIGINAL
         // (CheckoutView, ofertas), a MINIATURA das telas de compra
