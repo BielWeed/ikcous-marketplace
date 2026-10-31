@@ -207,6 +207,9 @@ export function useBanners(adminMode = false) {
           setIsLoaded(true);
         } catch {
           /* fallback */
+          // A consulta que esta tela pegou carona falhou: sem isto a loja
+          // sem banner ficava com o esqueleto ligado para sempre.
+          setIsLoaded(true);
         }
         return;
       }

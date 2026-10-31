@@ -1,4 +1,13 @@
 {
+  "1.5.104": {
+    "titulo": "A primeira visita à loja gasta menos internet e os produtos não trocam de lugar sozinhos",
+    "novidades": [],
+    "correcoes": [
+      "Primeira visita: a loja deixava de aproveitar a lista de produtos que já estava chegando e baixava tudo uma segunda vez, o que gastava internet à toa e podia fazer os produtos trocarem de lugar na tela logo depois de aparecer. Agora ela espera a lista que já está a caminho. Nada muda no que a cliente vê ou compra.",
+      "Banners: se a busca dos banners falhasse, a página inicial de uma loja sem banner podia ficar mostrando um espaço cinza de carregamento. Agora ela termina de carregar normalmente."
+    ],
+    "melhorias": []
+  },
   "1.5.103": {
     "titulo": "Depois de uma atualização, o app não trava mais ao abrir",
     "novidades": [],

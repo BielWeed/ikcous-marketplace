@@ -20,6 +20,10 @@
 
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { DataVault, type StoreName } from "@/lib/dataVault";
+import {
+  catalogoEmVoo,
+  esperarCatalogoEmVoo,
+} from "@/lib/deposito-do-catalogo";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import {
   geracaoDoCofre,
@@ -826,6 +830,15 @@ export const RealtimeSyncEngine = {
       // A reabertura também fica sob finally para não prender a rodada se falhar.
       vault = await cofreVivo(vault);
       if (caducou()) return;
+      // 1ª visita: a config chega antes do catálogo e liga o motor; o cofre
+      // ainda está vazio porque a vitrine só grava depois de baixar. Sem esta
+      // espera a rodada baixaria o catálogo inteiro uma segunda vez, por id.
+      // Prazo estourado ou falha da vitrine = segue como sempre seguiu. Só
+      // espera (e só gasta um tique) quando há mesmo um catálogo em voo.
+      if (catalogoEmVoo()) {
+        await esperarCatalogoEmVoo();
+        if (caducou()) return;
+      }
       console.log("[RealtimeSyncEngine] 🔄 Running catchUp/reconciliation...");
       const tableSourceConfig = isAdmin ? "store_config" : "v_store_config";
       const productSource = isAdmin ? "produtos" : "vw_produtos_public";
