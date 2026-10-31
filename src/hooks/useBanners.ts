@@ -1,38 +1,22 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useSyncListener } from "@/hooks/useDataVault";
+import {
+  bannersEmCache,
+  consultaDeBannersEmVoo,
+  geracaoDasMutacoesDeBanners,
+  gravarBannersLocais,
+  horaDaUltimaConsultaDeBanners,
+  pedirBanners,
+  semearBannersDoCofre,
+} from "@/lib/banners-da-vitrine";
 import { DataVault } from "@/lib/dataVault";
-import { atributosDeImagem } from "@/lib/imageUrl";
-import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import { supabase } from "@/lib/supabase";
 import type { Banner } from "@/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-// Module-level cache to persist data across component mounts
-let globalBannersCache: Banner[] | null = null;
-let bannersFetchPromise: Promise<Banner[]> | null = null;
-let lastBannersFetchTime = 0;
-let geracaoDasMutacoesDeBanners = 0;
 const FETCH_THROTTLE = 60000; // 1 minute throttle for network checks
-
-const preloadTopBanner = (items: Banner[]) => {
-  const topBanner = items.find((b) => b.position === "home_top" && b.active);
-  if (topBanner?.imageUrl && typeof window !== "undefined") {
-    const atributos = atributosDeImagem(topBanner.imageUrl, IMAGEM_DO_BANNER);
-    const img = new Image();
-    if (atributos.src !== topBanner.imageUrl) {
-      img.onerror = () => {
-        img.onerror = null;
-        const original = new Image();
-        original.src = topBanner.imageUrl;
-      };
-    }
-    img.sizes = atributos.sizes ?? "";
-    img.srcset = atributos.srcSet ?? "";
-    img.src = atributos.src;
-  }
-};
 
 export async function normalizeBannersOrder(
   pos: "home_top" | "home_middle" | "home_bottom",
@@ -84,8 +68,8 @@ function cofreFechado(vault: DataVault): boolean {
 export function useBanners(adminMode = false) {
   const { isAdmin } = useAuth();
   const vaultRef = useRef<DataVault | null>(null);
-  const [banners, setBanners] = useState<Banner[]>(globalBannersCache || []);
-  const [isLoaded, setIsLoaded] = useState(!!globalBannersCache);
+  const [banners, setBanners] = useState<Banner[]>(bannersEmCache() || []);
+  const [isLoaded, setIsLoaded] = useState(!!bannersEmCache());
   const isFetchingRef = useRef(false);
 
   // Persist to DataVault (non-blocking helper)
@@ -119,9 +103,7 @@ export function useBanners(adminMode = false) {
   // ressuscitaria nela no mesmo intervalo.
   const applyLocalBanners = useCallback(
     (items: Banner[]) => {
-      geracaoDasMutacoesDeBanners++;
-      globalBannersCache = items;
-      lastBannersFetchTime = Date.now();
+      gravarBannersLocais(items);
       persistToVault(items);
       setBanners(items);
     },
@@ -172,12 +154,10 @@ export function useBanners(adminMode = false) {
       try {
         const vault = await DataVault.init();
         vaultRef.current = vault;
-        if (!globalBannersCache) {
+        if (!bannersEmCache()) {
           const cached = await vault.getAll<Banner>("banners");
           // A rede pode ter confirmado uma lista vazia durante a leitura.
-          if (cached.length > 0 && !cancelled && !globalBannersCache) {
-            globalBannersCache = cached;
-            preloadTopBanner(cached);
+          if (cached.length > 0 && !cancelled && semearBannersDoCofre(cached)) {
             setBanners(cached);
             setIsLoaded(true);
           }
@@ -194,15 +174,17 @@ export function useBanners(adminMode = false) {
 
   const fetchBanners = useCallback(
     async (_onlyActive = false, forceRefresh = false) => {
-      const geracao = geracaoDasMutacoesDeBanners;
-      // If a network fetch is already active, wait for it (never duplicate parallel fetches)
-      if (bannersFetchPromise) {
+      const geracao = geracaoDasMutacoesDeBanners();
+      // If a network fetch is already active (a da tela ou a do boot), wait for
+      // it (never duplicate parallel fetches)
+      const emVoo = consultaDeBannersEmVoo();
+      if (emVoo) {
         try {
-          const data = await bannersFetchPromise;
+          const data = await emVoo;
           setBanners(
-            geracao === geracaoDasMutacoesDeBanners
+            geracao === geracaoDasMutacoesDeBanners()
               ? data
-              : globalBannersCache || [],
+              : bannersEmCache() || [],
           );
           setIsLoaded(true);
         } catch {
@@ -219,92 +201,28 @@ export function useBanners(adminMode = false) {
 
       isFetchingRef.current = true;
 
-      const queryPromise = (async () => {
-        console.log("[Banners] Fetching banners...");
-        const query = supabase.from("banners").select("*");
-
-        const { data, error } = await query.order("order", { ascending: true });
-
-        // Uma edição local vence a leitura que já estava em voo.
-        if (geracao !== geracaoDasMutacoesDeBanners) {
-          return globalBannersCache || [];
-        }
-
-        if (error) {
-          console.error("[Banners] Supabase error:", error);
-          throw error;
-        }
-
-        console.log(`[Banners] Found ${data?.length || 0} banners`);
-
-        if (data) {
-          const mappedBanners: Banner[] = data
-            .filter((b: any) => b.image_url || b.imagem_url)
-            .map((b: any) => ({
-              id: b.id,
-              imageUrl: b.image_url || b.imagem_url,
-              title: b.title || "",
-              link: b.link || undefined,
-              position: b.position as
-                | "home_top"
-                | "home_middle"
-                | "home_bottom",
-              active: b.active ?? b.ativo ?? true,
-              order: b.order || 0,
-              subtitle: b.subtitle || "",
-              titleColor: b.title_color || "",
-              subtitleColor: b.subtitle_color || "",
-              buttonText: b.button_text || "",
-              buttonBgColor: b.button_bg_color || "",
-              buttonTextColor: b.button_text_color || "",
-              fontFamily: b.font_family || "",
-              overlayColor: b.overlay_color || "",
-              overlayOpacity:
-                b.overlay_opacity !== null && b.overlay_opacity !== undefined
-                  ? Number(b.overlay_opacity)
-                  : undefined,
-              badgeText: b.badge_text || "",
-              templateType: b.template_type || "default",
-              productId: b.product_id || undefined,
-              startDate: b.start_date || null,
-              endDate: b.end_date || null,
-              showTextOverlay: b.show_text_overlay ?? true,
-            }));
-
-          globalBannersCache = mappedBanners;
-          preloadTopBanner(mappedBanners);
-          lastBannersFetchTime = Date.now();
-          persistToVault(mappedBanners);
-          return mappedBanners;
-        }
-        return [];
-      })();
-
-      bannersFetchPromise = queryPromise;
-
       try {
-        const mappedBanners = await queryPromise;
+        const mappedBanners = await pedirBanners();
         setBanners(
-          geracao === geracaoDasMutacoesDeBanners
+          geracao === geracaoDasMutacoesDeBanners()
             ? mappedBanners
-            : globalBannersCache || [],
+            : bannersEmCache() || [],
         );
       } catch (error: any) {
         console.error("[Banners] Error fetching banners:", error.message);
       } finally {
         setIsLoaded(true);
         isFetchingRef.current = false;
-        bannersFetchPromise = null;
       }
     },
-    [persistToVault],
+    [],
   );
 
   useEffect(() => {
     // Only fetch from network if DataVault didn't have cached data
     if (!isLoaded) {
       fetchBanners(false, true);
-    } else if (Date.now() - lastBannersFetchTime > FETCH_THROTTLE) {
+    } else if (Date.now() - horaDaUltimaConsultaDeBanners() > FETCH_THROTTLE) {
       // Stale-While-Revalidate: cached data is shown, fetch fresh in background if throttled out
       fetchBanners(false, true);
     }

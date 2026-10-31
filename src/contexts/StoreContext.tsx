@@ -6,6 +6,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useSyncListener } from "@/hooks/useDataVault";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import { pedirBannersNoBoot } from "@/lib/banners-da-vitrine";
 import { DataVault } from "@/lib/dataVault";
 import { abrirCatalogoEmVoo } from "@/lib/deposito-do-catalogo";
 import { espelhoLegado, precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
@@ -1475,6 +1476,9 @@ export function StoreProvider({
       isAdmin,
     );
     fetchConfig();
+    // Banner do topo: pedido junto da configuração, sem esperar a Home montar
+    // (era o último elo da fila na 1a visita). Uma vez só por carga da página.
+    pedirBannersNoBoot();
     fetchProducts();
   }, [fetchConfig, fetchProducts]);
 
