@@ -15,12 +15,19 @@ interface BannerCarouselProps {
   banners: Banner[];
   autoPlay?: boolean;
   interval?: number;
+  /**
+   * A primeira foto entra de uma vez, sem o esmaecer de 300 ms. Só o carrossel
+   * do topo da Home liga: é o banner que a cliente espera na primeira visita
+   * (o LCP só era marcado no fim do esmaecer). Meio e rodapé seguem esmaecendo.
+   */
+  primeiraSemFade?: boolean;
 }
 
 export const BannerCarousel = memo(function BannerCarousel({
   banners,
   autoPlay = true,
   interval = 5000,
+  primeiraSemFade = false,
 }: BannerCarouselProps) {
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: true,
@@ -195,6 +202,7 @@ export const BannerCarousel = memo(function BannerCarousel({
                 <BannerPronto
                   banner={banner}
                   prioridade={index === 0}
+                  semFade={primeiraSemFade && index === 0}
                   varios={validBanners.length > 1}
                 />
               ) : (
@@ -204,6 +212,7 @@ export const BannerCarousel = memo(function BannerCarousel({
                     alt={banner.title || ""}
                     className="size-full transition-transform [transition-duration:2000ms] [transition-timing-function:cubic-bezier(0.4,0,0.2,1)] group-hover:scale-105"
                     priority={index === 0}
+                    semFade={primeiraSemFade && index === 0}
                     // Banner ocupa a largura toda; era o pior caso (PNG de 1340 kB).
                     sizes={IMAGEM_DO_BANNER.sizes}
                     quality={IMAGEM_DO_BANNER.quality}

@@ -36,6 +36,10 @@ const trilhas: string[][] = [];
 const consultasDeRede = () =>
   trilhas.filter((t) => t.join("|").startsWith("select*")).length;
 
+// O "banco": o painel revalida na rede a cada montagem, então a consulta tem
+// de refletir o que o insert/delete gravou (como o servidor de verdade).
+let noBanco: (typeof LINHA_INSERIDA)[] = [];
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => {
@@ -53,7 +57,7 @@ vi.mock("@/lib/supabase", () => ({
           // teste conta; normalizeBannersOrder usa select("id, order").
           trilha.push(colunas === "*" ? "select*" : "select-parcial");
           return {
-            order: () => Promise.resolve({ data: [], error: null }),
+            order: () => Promise.resolve({ data: [...noBanco], error: null }),
             eq: () => ({
               order: () => ({
                 order: () => Promise.resolve({ data: [], error: null }),
@@ -65,14 +69,23 @@ vi.mock("@/lib/supabase", () => ({
           trilha.push("insert");
           return {
             select: () => ({
-              single: () =>
-                Promise.resolve({ data: LINHA_INSERIDA, error: null }),
+              single: () => {
+                noBanco = [LINHA_INSERIDA];
+                return Promise.resolve({ data: LINHA_INSERIDA, error: null });
+              },
             }),
           };
         },
         delete: () => {
           trilha.push("delete");
-          return { eq: () => ({ select: () => Promise.resolve(UMA_LINHA) }) };
+          return {
+            eq: () => ({
+              select: () => {
+                noBanco = [];
+                return Promise.resolve(UMA_LINHA);
+              },
+            }),
+          };
         },
         update: () => ({
           eq: () => ({ select: () => Promise.resolve(UMA_LINHA) }),
@@ -120,7 +133,7 @@ type DeleteBanner = (id: string, imageUrl?: string) => Promise<void>;
 
 /** Monta o hook, espera a carga inicial assentar e devolve os métodos que a
  * tela do painel usa, junto com um leitor do estado `banners`. */
-async function montarPainel(): Promise<{
+async function montarPainel(adminMode = true): Promise<{
   addBanner: AddBanner;
   deleteBanner: DeleteBanner;
   lerBanners: () => Banner[];
@@ -133,7 +146,7 @@ async function montarPainel(): Promise<{
     {};
 
   function Sonda() {
-    const { banners, addBanner, deleteBanner } = useBanners(true);
+    const { banners, addBanner, deleteBanner } = useBanners(adminMode);
     useEffect(() => {
       capturas.add = addBanner as unknown as AddBanner;
       capturas.del = deleteBanner as unknown as DeleteBanner;
@@ -178,6 +191,7 @@ async function montarPainel(): Promise<{
 describe("useBanners — mutação do painel aparece na próxima montagem (a Home)", () => {
   beforeEach(() => {
     trilhas.length = 0;
+    noBanco = [];
   });
 
   afterEach(() => {
@@ -204,7 +218,8 @@ describe("useBanners — mutação do painel aparece na próxima montagem (a Hom
 
     // 2. A HOME abre na mesma janela de 60s do throttle: o banner novo tem
     // de já estar lá — vindo do cache de módulo, sem nova consulta à rede.
-    const home = await montarPainel();
+    // (modo cliente: o painel, ao contrário, revalida na rede a cada abertura)
+    const home = await montarPainel(false);
     expect(home.lerBanners().map((b) => b.id)).toContain("banner-novo");
     expect(consultasDeRede()).toBe(redeAntesDeCriar);
 
@@ -218,7 +233,7 @@ describe("useBanners — mutação do painel aparece na próxima montagem (a Hom
     expect(painel2.lerBanners().map((b) => b.id)).not.toContain("banner-novo");
     await painel2.desmontar();
 
-    const homeFinal = await montarPainel();
+    const homeFinal = await montarPainel(false);
     expect(homeFinal.lerBanners().map((b) => b.id)).not.toContain(
       "banner-novo",
     );
