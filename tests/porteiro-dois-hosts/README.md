@@ -28,6 +28,20 @@ Não entra em `npm run test:front` (que só varre `tests/front/` — ver
 `vitest.config.ts`) porque `dist-test/` não existe naquele job (`test`),
 só no job `build`.
 
+## O cartaz pré-impresso (lote B, 31/10/2026)
+
+`cartaz-pre-impresso.test.ts` usa o mesmo servidor de ensaio e o mesmo
+`dist-test/` (o splash de verdade). As lojas dele têm um banco de banners de
+brinquedo por comportamento (`servidor.ts`: `HOSTS.MANUTENCAO`,
+`BANNER_ERRO`, `BANNER_QUEBRADO`, `BANNER_TRAVADO`; as lojas A e B também têm
+banner, a B com a foto no storage da A). Os pedidos do cartaz levam
+`Sec-Fetch-Dest: document` + `Sec-Fetch-Mode: navigate` -- o servidor de
+ensaio não manda esses cabeçalhos sozinho. Roda com arquivos explícitos:
+
+```
+npx vitest run --config vitest.porteiro.config.ts tests/porteiro-dois-hosts/cartaz-pre-impresso.test.ts tests/porteiro-dois-hosts/porteiro-dois-hosts.test.ts
+```
+
 ## As seis fichas
 
 | Host | Caminho do porteiro | O que prova |

@@ -22,6 +22,14 @@ import { readPublicStoreIdentity } from "../lib/publicStoreIdentity";
 import { assertPublicSupabaseKey } from "../lib/publicSupabaseKey";
 import type { PublicStoreIdentity } from "../lib/storeIdentity";
 import { identityRevision } from "../lib/storeIdentity";
+import type { Cartaz } from "./cartaz";
+import {
+  escolherBannerDoTopo,
+  injetarCartazNoHtml,
+  lojaRedimensionaFoto,
+  montarCartaz,
+  pedidoPodeTerCartaz,
+} from "./cartaz";
 import { montarDataBlock } from "./ficha";
 import { buscarIdsDosProdutos, robotsTxt, sitemapXml } from "./mapaDoSite";
 
@@ -158,6 +166,10 @@ export interface AmbientePorteiro {
    * porquê de existir (troca de uma variável da própria Vercel que se
    * mostrou instável num projeto multi-loja). */
   readonly IKCOUS_DOMINIO_PRINCIPAL?: string;
+  /** Interruptor do cartaz pre-impresso (lote B): "1" desliga, sem novo
+   * deploy de codigo -- so a variavel e um redeploy. Qualquer outro valor (ou
+   * ausente) deixa ligado. */
+  readonly IKCOUS_CARTAZ_DESLIGADO?: string;
 }
 
 export interface ConexaoResolvida {
@@ -817,8 +829,19 @@ export interface EntradaCacheMapa {
   readonly quando: number;
 }
 
+/** O que o banco da loja disse sobre os banners do topo (ou `null` = a leitura
+ * falhou), guardado por `host|supabaseUrl`. Guarda as LINHAS, nao o cartaz: a
+ * janela de datas se reavalia a cada pedido. */
+export interface EntradaCacheCartaz {
+  readonly linhas: readonly unknown[] | null;
+  readonly quando: number;
+}
+
 export interface DependenciasPorteiro {
   readonly fetchImpl: typeof fetch;
+  /** `Map` de modulo em `middleware.ts` (um por isolate). Opcional: sem ele
+   * (teste, chamada avulsa) cada primeira visita le o banco. */
+  readonly cacheCartaz?: Map<string, EntradaCacheCartaz>;
   readonly resolverNaCaderneta?: ResolverLojaNaCaderneta;
   /** Injetável só para teste; produção usa `readPublicStoreIdentity` real. */
   readonly lerIdentidade?: typeof readPublicStoreIdentity;
@@ -1165,7 +1188,17 @@ export async function atenderPorteiro(
   if (url.pathname === "/sitemap.xml")
     return atenderMapaDoSite(request, ficha, estadoCaderneta, deps);
 
-  return documentoDaLoja(request, ficha, estadoCaderneta, deps);
+  // A DECISÃO de pôr o cartaz mora AQUI (não em `documentoDaLoja`, que o robô
+  // de prévia também usa): só GET, só navegador abrindo a vitrine pela 1ª vez
+  // (`pedidoPodeTerCartaz`), loja fora de manutenção, interruptor ligado e
+  // foto redimensionada (decidido pela origem, ANTES de ler qualquer banner).
+  const cartaz =
+    request.method === "GET" &&
+    cleanEnvVar(ambiente.IKCOUS_CARTAZ_DESLIGADO ?? "") !== "1" &&
+    !ficha.configuracao.manutencao &&
+    pedidoPodeTerCartaz(url, request.headers) &&
+    lojaRedimensionaFoto(ficha.conexao.supabaseUrl);
+  return documentoDaLoja(request, ficha, estadoCaderneta, deps, {}, { cartaz });
 }
 
 // ─── robots.txt e sitemap.xml POR LOJA (multiloja-frota-3) ─────────────────
@@ -1261,6 +1294,129 @@ async function atenderMapaDoSite(
   }
 }
 
+// ─── Cartaz pré-impresso (lote B, 31/10/2026) ──────────────────────────────
+//
+// Na 1ª visita o porteiro imprime no splash do HTML a foto do banner do topo
+// (a regra de escolha, a defesa da URL e o trecho moram em `cartaz.ts`) para o
+// navegador baixá-la junto com o documento. SUPOSIÇÕES DE ESTADO, em voz alta:
+//   - LEITURA SEPARADA DA FICHA: o banner NÃO entra em `resolverFichaViaRede`
+//     (falha ali vira ficha antiga por 1 h e depois 503 "em manutenção"), nem
+//     no `SELECT_CONFIGURACAO_PUBLICA`, nem no cache da ficha, nem no
+//     `/identidade.json`. É uma função à parte que NUNCA lança.
+//   - FALHA SEGURA: qualquer erro, atraso, dado estranho ou dúvida = o HTML é
+//     BYTE A BYTE o de hoje (só o `Vary` do caminho do navegador cresce). O
+//     cartaz é um acréscimo; nunca pode derrubar nem atrasar a loja além do
+//     prazo.
+//   - A leitura corre EM PARALELO com o `/index.html` (não soma) e tem prazo
+//     curto (`PRAZO_BANNERS_MS`); passou do prazo, segue sem cartaz.
+//   - SÓ 1ª VISITA, pelos cabeçalhos `Sec-Fetch-*` (ver `pedidoPodeTerCartaz`):
+//     o porteiro não enxerga o service worker, mas distingue o pedido dele do
+//     do navegador. Quem volta é atendido pelo SW com o HTML do cache, e o
+//     pedido de revalidação/instalação do SW nunca recebe cartaz.
+//   - Idempotente e sem estado além do cache de 15 s por loja: repetir o
+//     pedido repete o resultado; nenhum cookie, nenhuma escrita.
+//   - O caminho do robô de prévia (`documentoDaLoja` sem a opção) nunca recebe.
+
+/** Banners do topo lidos do banco da loja: frescos por 15 s (a lojista troca
+ * o banner e confere em aba anônima); leitura que falhou, 10 s. */
+export const CACHE_CARTAZ_FRESCO_MS = 15_000;
+export const CACHE_CARTAZ_FALHA_MS = 10_000;
+/** Prazo da leitura: o cartaz não pode atrasar a página além disto. */
+export const PRAZO_BANNERS_MS = 250;
+const MAX_BYTES_BANNERS = 64 * 1024;
+/** Mais que 2 de propósito: banner vencido/agendado de menor `order` ocuparia
+ * uma das duas vagas e esconderia um empate real entre os vigentes. */
+const LIMITE_DE_BANNERS = 10;
+
+async function lerBannersDoTopoComSinal(
+  conexao: Pick<ConexaoResolvida, "supabaseUrl" | "publishableKey">,
+  fetchImpl: typeof fetch,
+  signal: AbortSignal,
+): Promise<readonly unknown[]> {
+  // Leitura anônima de `home_top` ativos, por `order` e depois `id` (os mesmos
+  // filtros do app, `pedirBanners`): a escolha do primeiro banner do topo tem
+  // de dar o mesmo resultado nos dois lugares. As datas se filtram na hora de
+  // servir, em `escolherBannerDoTopo`.
+  const url = `${conexao.supabaseUrl}/rest/v1/banners?select=*&position=eq.home_top&active=eq.true&order=order.asc,id.asc&limit=${LIMITE_DE_BANNERS}`;
+  const resposta = await fetchImpl(url, {
+    headers: {
+      apikey: conexao.publishableKey,
+      Authorization: `Bearer ${conexao.publishableKey}`,
+    },
+    signal,
+    redirect: "error",
+    credentials: "omit",
+  });
+  if (!resposta.ok) throw new Error("PORTEIRO_BANNERS: resposta não-ok");
+  const texto = await lerCorpoComTeto(resposta, signal, MAX_BYTES_BANNERS);
+  const linhas: unknown = JSON.parse(texto);
+  if (!Array.isArray(linhas))
+    throw new Error("PORTEIRO_BANNERS: forma inesperada");
+  return linhas;
+}
+
+/** Mesma corrida contra o temporizador de `lerConfiguracaoPublica`: um
+ * `fetchImpl` que ignora o sinal e nunca resolve não pode prender a página. */
+async function lerBannersDoTopo(
+  conexao: Pick<ConexaoResolvida, "supabaseUrl" | "publishableKey">,
+  fetchImpl: typeof fetch,
+): Promise<readonly unknown[]> {
+  const controller = new AbortController();
+  let temporizador: ReturnType<typeof setTimeout> | undefined;
+  const prazoEsgotado = new Promise<never>((_resolve, reject) => {
+    temporizador = setTimeout(() => {
+      controller.abort();
+      reject(new Error("PORTEIRO_BANNERS: prazo esgotado"));
+    }, PRAZO_BANNERS_MS);
+  });
+  try {
+    return await Promise.race([
+      lerBannersDoTopoComSinal(conexao, fetchImpl, controller.signal),
+      prazoEsgotado,
+    ]);
+  } finally {
+    clearTimeout(temporizador);
+  }
+}
+
+/** O cartaz desta loja agora, ou `null`. NUNCA rejeita. */
+async function cartazDaLoja(
+  ficha: FichaDaLoja,
+  deps: Pick<DependenciasPorteiro, "fetchImpl" | "cacheCartaz" | "agora">,
+): Promise<Cartaz | null> {
+  try {
+    const agora = (deps.agora ?? Date.now)();
+    const chave = `${ficha.host}|${ficha.conexao.supabaseUrl}`;
+    const guardado = deps.cacheCartaz?.get(chave);
+    let linhas: readonly unknown[] | null;
+    if (
+      guardado &&
+      agora - guardado.quando <
+        (guardado.linhas === null
+          ? CACHE_CARTAZ_FALHA_MS
+          : CACHE_CARTAZ_FRESCO_MS)
+    ) {
+      linhas = guardado.linhas;
+    } else {
+      try {
+        linhas = await lerBannersDoTopo(ficha.conexao, deps.fetchImpl);
+      } catch (erro) {
+        console.error("[Porteiro] cartaz: banners não lidos:", erro);
+        linhas = null;
+      }
+      deps.cacheCartaz?.set(chave, { linhas, quando: agora });
+    }
+    if (linhas === null) return null;
+    const linha = escolherBannerDoTopo(linhas, agora);
+    return linha === null
+      ? null
+      : montarCartaz(linha, ficha.conexao.supabaseUrl);
+  } catch (erro) {
+    console.error("[Porteiro] cartaz: falha inesperada:", erro);
+    return null;
+  }
+}
+
 /**
  * O documento da loja daquele endereço: baixa o `/index.html` estático do
  * build, injeta a ficha JÁ VALIDADA (`injetarFichaNoHtml`) e responde. É o
@@ -1279,27 +1435,38 @@ export async function documentoDaLoja(
   request: Request,
   ficha: FichaDaLoja,
   estadoCaderneta: EstadoCaderneta,
-  deps: Pick<DependenciasPorteiro, "fetchImpl">,
+  deps: Pick<DependenciasPorteiro, "fetchImpl" | "cacheCartaz" | "agora">,
   extras: Readonly<Record<string, string>> = {},
+  opcoes: { readonly cartaz?: boolean } = {},
 ): Promise<Response> {
-  const respostaHtml = await deps.fetchImpl(
-    new URL("/index.html", request.url),
-    {
+  // `opcoes.cartaz` só EXECUTA a decisão de `atenderPorteiro` (o robô de prévia
+  // não passa `opcoes`). A leitura corre junto com o documento e nunca rejeita.
+  const [respostaHtml, cartaz] = await Promise.all([
+    deps.fetchImpl(new URL("/index.html", request.url), {
       headers: { cookie: request.headers.get("cookie") ?? "" },
-    },
-  );
+    }),
+    opcoes.cartaz === true ? cartazDaLoja(ficha, deps) : Promise.resolve(null),
+  ]);
   if (respostaHtml.status !== 200)
     return respostaManutencao("html-indisponivel", estadoCaderneta);
   const html = await respostaHtml.text();
   const injetado = injetarFichaNoHtml(html, ficha);
-  return new Response(injetado, {
-    headers: {
-      "content-type": "text/html; charset=utf-8",
-      "x-ikcous-porteiro": "ok",
-      "x-ikcous-caderneta": estadoCaderneta,
-      "cache-control": "no-store",
-      vary: "host",
-      ...extras,
-    },
+  const comCartaz =
+    cartaz === null ? null : injetarCartazNoHtml(injetado, cartaz);
+  const cabecalhos = {
+    "content-type": "text/html; charset=utf-8",
+    "x-ikcous-porteiro": "ok",
+    "x-ikcous-caderneta": estadoCaderneta,
+    "cache-control": "no-store",
+    // O caminho do navegador depende do pedido (cabeçalhos `Sec-Fetch-*` e
+    // `Save-Data` decidem o cartaz); o do robô, não.
+    vary:
+      opcoes.cartaz === undefined
+        ? "host"
+        : "host, sec-fetch-dest, sec-fetch-mode, save-data",
+    ...(comCartaz === null ? {} : { "x-ikcous-cartaz": "ok" }),
+  };
+  return new Response(comCartaz ?? injetado, {
+    headers: { ...cabecalhos, ...extras },
   });
 }

@@ -218,7 +218,11 @@ describe("atenderPorteiro — host A e host B, mesmo HTML assado (teste obrigat�
     expect(htmlA).not.toBe(htmlB);
     expect(respA.headers.get("content-type")).toBe("text/html; charset=utf-8");
     expect(respA.headers.get("cache-control")).toBe("no-store");
-    expect(respA.headers.get("vary")).toBe("host");
+    // Lote B (cartaz pre-impresso, 31/10/2026): o documento do NAVEGADOR passou
+    // a variar tambem pelos cabecalhos que decidem o cartaz.
+    expect(respA.headers.get("vary")).toBe(
+      "host, sec-fetch-dest, sec-fetch-mode, save-data",
+    );
     // Achado 5 da revisão: sem este cabeçalho, "o porteiro rodou" e "o
     // matcher foi ignorado e a Vercel serviu o index.html assado direto"
     // produzem respostas indistinguíveis — é o mesmo instrumento que
