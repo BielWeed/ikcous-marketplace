@@ -391,6 +391,9 @@ function deps(ajuste = {}) {
       projectId: "prj_X",
     },
     versaoCandidato: versao(),
+    pedidosAoCandidato: [],
+    semPorteiroNoCandidato: false,
+    falhaNaRaizDoCandidato: false,
     classesAntes: [
       { dominio: "savycollection.vercel.app", classe: "ENDERECO_ANTIGO" },
       { dominio: "ickous-marketplace.vercel.app", classe: "OK" },
@@ -425,8 +428,25 @@ function deps(ajuste = {}) {
     politica,
     canais,
     agora: () => AGORA,
-    fetchImpl: async () =>
-      new Response(estado.versaoCandidato, { status: 200 }),
+    fetchImpl: async (url, init) => {
+      const u = new URL(url);
+      estado.pedidosAoCandidato.push({
+        caminho: u.pathname,
+        headers: init?.headers ?? null,
+      });
+      // "/" do candidato: o middleware (porteiro) responde com o selo, mesmo
+      // para um endereço que não é loja (`sem-loja`).
+      if (u.pathname === "/" && estado.falhaNaRaizDoCandidato)
+        throw new TypeError("fetch failed");
+      if (u.pathname === "/")
+        return new Response("<html></html>", {
+          status: estado.semPorteiroNoCandidato ? 200 : 503,
+          headers: estado.semPorteiroNoCandidato
+            ? {}
+            : { "x-ikcous-porteiro": "sem-loja" },
+        });
+      return new Response(estado.versaoCandidato, { status: 200 });
+    },
     vercelApi: async () => estado.candidato,
     inventariar: async () => ({
       origem: "vercel",
@@ -1843,6 +1863,16 @@ for (const [nome, ajuste, trecho] of [
     { versaoCandidato: "<html>" },
     "fora do contrato",
   ],
+  [
+    "candidato cujo '/' volta sem x-ikcous-porteiro (middleware nao carregou na borda)",
+    { semPorteiroNoCandidato: true },
+    "sem x-ikcous-porteiro",
+  ],
+  [
+    "candidato cujo '/' nao responde (rede)",
+    { falhaNaRaizDoCandidato: true },
+    '"/" do candidato não lida',
+  ],
   ["inventário incompleto", { completo: false }, "PARCIAL"],
   [
     "lista oficial da Vercel não lida/contrato quebrado",
@@ -1873,6 +1903,23 @@ Deno.test("endereço que não é loja legível nem esperado: bloqueia", async ()
   const r = await executar(d, true);
   assertEquals(r.codigo, 1);
   assert(r.bloqueios.some((b) => b.motivo.includes("estranho.vercel.app")));
+});
+
+Deno.test("candidato: o GET '/' leva Sec-Fetch-Dest: document + Sec-Fetch-Mode: navigate e o version.json, nao", async () => {
+  const { d, estado } = deps();
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 0, r.relatorio);
+  const raiz = estado.pedidosAoCandidato.filter((p) => p.caminho === "/");
+  assertEquals(raiz.length, 1);
+  assertEquals(raiz[0].headers, {
+    "sec-fetch-dest": "document",
+    "sec-fetch-mode": "navigate",
+  });
+  const versaoPedida = estado.pedidosAoCandidato.filter(
+    (p) => p.caminho === "/version.json",
+  );
+  assertEquals(versaoPedida.length, 1);
+  assertEquals(versaoPedida[0].headers, null);
 });
 
 // ---- promote

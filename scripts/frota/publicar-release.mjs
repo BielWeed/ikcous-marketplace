@@ -72,6 +72,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
+  CABECALHOS_DE_PRIMEIRA_ABERTURA,
   conferirFrota,
   criarExecutorVercel,
   inventariar,
@@ -229,6 +230,26 @@ export async function conferirCandidato({
       }
     } catch (e) {
       problemas.push(`version.json do candidato não lido: ${e.message}`);
+    }
+    // O middleware (porteiro) carrega na borda do candidato? Um GET "/" como o
+    // do navegador na 1a abertura tem de voltar com `x-ikcous-porteiro`
+    // (qualquer valor: o endereço do candidato nao e uma loja). Sem o
+    // cabecalho o middleware nao rodou -- e uma release com o porteiro
+    // quebrado derrubaria TODAS as lojas depois da promocao.
+    try {
+      const res = await fetchImpl(`https://${d.url}/?t=${Date.now()}`, {
+        cache: "no-store",
+        redirect: "manual",
+        headers: CABECALHOS_DE_PRIMEIRA_ABERTURA,
+        signal: AbortSignal.timeout(15000),
+      });
+      await res.text();
+      if (!res.headers.get("x-ikcous-porteiro"))
+        problemas.push(
+          `candidato respondeu a "/" (HTTP ${res.status}) sem x-ikcous-porteiro: o middleware (porteiro) não carregou na borda`,
+        );
+    } catch (e) {
+      problemas.push(`"/" do candidato não lida: ${e.message}`);
     }
   }
   return { ok: problemas.length === 0, deployment: d, problemas };
