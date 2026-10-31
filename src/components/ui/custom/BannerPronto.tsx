@@ -18,6 +18,8 @@ interface BannerProntoPreviewProps {
   botao: string;
   selo?: string;
   prioridade?: boolean;
+  /** Foto sem o esmaecer de entrada (só o banner do topo da Home). */
+  semFade?: boolean;
 }
 
 export function BannerProntoPreview({
@@ -29,6 +31,7 @@ export function BannerProntoPreview({
   botao,
   selo,
   prioridade = false,
+  semFade = false,
 }: BannerProntoPreviewProps) {
   const fundo = /^#([\da-f]{3}|[\da-f]{6})$/i.test(corHex) ? corHex : "#2A2A31";
   const tinta = modelo === "foto" ? "claro" : tintaSobre(fundo);
@@ -39,6 +42,7 @@ export function BannerProntoPreview({
       alt=""
       className="banner-pronto-foto"
       priority={prioridade}
+      semFade={semFade}
       sizes={IMAGEM_DO_BANNER.sizes}
       quality={IMAGEM_DO_BANNER.quality}
     />
@@ -89,7 +93,13 @@ export function BannerPronto({
   banner,
   prioridade,
   varios = false,
-}: { banner: Banner; prioridade?: boolean; varios?: boolean }) {
+  semFade = false,
+}: {
+  banner: Banner;
+  prioridade?: boolean;
+  varios?: boolean;
+  semFade?: boolean;
+}) {
   const modelo = modeloDoBanner(banner.templateType);
   if (!modelo) return null;
   return (
@@ -103,6 +113,7 @@ export function BannerPronto({
         botao={banner.buttonText || ""}
         selo={banner.badgeText}
         prioridade={prioridade}
+        semFade={semFade}
       />
     </div>
   );

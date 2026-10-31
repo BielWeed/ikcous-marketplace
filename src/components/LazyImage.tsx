@@ -34,6 +34,14 @@ interface LazyImageProps {
   sizes?: string;
   /** Qualidade da imagem redimensionada, 20–100. Padrão 75. */
   quality?: number;
+  /**
+   * A foto aparece de uma vez ao carregar, sem o esmaecer de 300 ms. Só o
+   * banner do topo da Home liga isto: o LCP dele só é marcado no fim da
+   * transição, e na primeira visita lenta isso são 300 ms de tela vazia a mais.
+   * Continua escondida (opacity-0) até o `onLoad`, para não mostrar a foto
+   * pela metade nem o ícone de imagem quebrada.
+   */
+  semFade?: boolean;
 }
 
 export function LazyImage({
@@ -48,6 +56,7 @@ export function LazyImage({
   style: imgStyle,
   sizes,
   quality = 75,
+  semFade = false,
 }: LazyImageProps) {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isInView, setIsInView] = useState(priority);
@@ -236,9 +245,9 @@ export function LazyImage({
             setHasError(true);
             setIsLoaded(true); // Stop skeleton
           }}
-          className={`size-full transition-opacity duration-300 ease-out ${
-            isLoaded && !hasError ? "opacity-100" : "opacity-0"
-          }`}
+          className={`size-full ${
+            semFade ? "" : "transition-opacity duration-300 ease-out "
+          }${isLoaded && !hasError ? "opacity-100" : "opacity-0"}`}
           style={{ objectFit, ...imgStyle }}
         />
       )}
