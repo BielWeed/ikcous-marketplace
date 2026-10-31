@@ -45,10 +45,13 @@ describe("banners — recarga anterior à edição", () => {
   const raizes: Root[] = [];
   const alvos: HTMLDivElement[] = [];
   let useBanners: typeof import("@/hooks/useBanners").useBanners;
-  async function montar() {
+  // `adminMode` true = tela de Banners do painel; false = a Home da cliente.
+  // O painel revalida na rede a cada montagem (sem throttle), a Home não --
+  // por isso "home" aqui monta em modo cliente, que é o que ela é de verdade.
+  async function montar(adminMode = true) {
     let atual!: ReturnType<typeof useBanners>;
     function Sonda() {
-      const hook = useBanners(true);
+      const hook = useBanners(adminMode);
       useEffect(() => {
         atual = hook;
       });
@@ -84,7 +87,7 @@ describe("banners — recarga anterior à edição", () => {
 
   it("resposta velha não desfaz o título salvo no painel, cache, cofre nem consumidor em espera", async () => {
     const painel = await montar();
-    const home = await montar();
+    const home = await montar(false);
     expect(painel().banners[0].title).toBe("Antigo");
     let liberar!: (valor: unknown) => void;
     const leitura = new Promise((resolve) => {
@@ -111,7 +114,7 @@ describe("banners — recarga anterior à edição", () => {
     expect(painel().banners[0].title).toBe("Novo");
     expect(home().banners[0].title).toBe("Novo");
     expect(h.persistir).not.toHaveBeenCalled();
-    const proximo = await montar();
+    const proximo = await montar(false);
     expect(proximo().banners[0].title).toBe("Novo");
     expect(h.consultar).toHaveBeenCalledTimes(2);
   });
