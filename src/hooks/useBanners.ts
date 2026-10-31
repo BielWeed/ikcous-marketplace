@@ -218,15 +218,29 @@ export function useBanners(adminMode = false) {
     [],
   );
 
+  // Painel: o cache pode ter sido semeado pelo pedido do boot ANTES do login,
+  // e sem sessão o banco só devolve os banners públicos (pausados, agendados e
+  // vencidos ficam de fora). O throttle de 60 s tratava isso como fresco e a
+  // lojista que entrou logo e abriu a tela de Banners via só os públicos. Por
+  // isso o painel revalida UMA vez a cada montagem, sem throttle. A ref impede
+  // a segunda consulta quando `isLoaded` vira true logo depois da primeira.
+  const revalidouNoPainelRef = useRef(false);
+
   useEffect(() => {
     // Only fetch from network if DataVault didn't have cached data
     if (!isLoaded) {
+      revalidouNoPainelRef.current = true;
+      fetchBanners(false, true);
+    } else if (adminMode && !revalidouNoPainelRef.current) {
+      // Mostra o cache já e confirma na rede em segundo plano; a geração das
+      // mutações (em `fetchBanners`) impede que a resposta desfaça uma edição.
+      revalidouNoPainelRef.current = true;
       fetchBanners(false, true);
     } else if (Date.now() - horaDaUltimaConsultaDeBanners() > FETCH_THROTTLE) {
       // Stale-While-Revalidate: cached data is shown, fetch fresh in background if throttled out
       fetchBanners(false, true);
     }
-  }, [fetchBanners, isLoaded]);
+  }, [fetchBanners, isLoaded, adminMode]);
 
   const getBannersByPosition = useCallback(
     (position: Banner["position"]) => {

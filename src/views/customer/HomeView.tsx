@@ -491,6 +491,7 @@ export const HomeView = React.memo(function HomeView({
               banners={topBanners}
               autoPlay={true}
               interval={5000}
+              primeiraSemFade
             />
 
             {/* Premium Info Carousel */}

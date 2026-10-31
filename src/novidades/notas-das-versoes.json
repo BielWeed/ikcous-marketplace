@@ -1,4 +1,14 @@
 {
+  "1.5.106": {
+    "titulo": "O banner do topo da loja aparece de uma vez e o painel de banners mostra a lista completa",
+    "novidades": [],
+    "correcoes": [
+      "Painel de banners: quem entrava no painel logo depois de abrir o app podia ver só os banners que estão no ar. Os pausados, os agendados e os já vencidos sumiam da lista. Agora, toda vez que a tela de banners abre, ela mostra o que já tem e confere a lista completa em seguida."
+    ],
+    "melhorias": [
+      "O banner do topo da loja agora aparece de uma vez, sem o esmaecer de uma fração de segundo. Na primeira visita com internet lenta, a foto surge um pouco antes. Os banners do meio e do fim da página, as fotos dos produtos e o resto do visual continuam como estavam."
+    ]
+  },
   "1.5.105": {
     "titulo": "Na primeira visita, a loja começa a buscar o banner do topo mais cedo",
     "novidades": [],
