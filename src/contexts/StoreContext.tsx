@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSyncListener } from "@/hooks/useDataVault";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { DataVault } from "@/lib/dataVault";
+import { abrirCatalogoEmVoo } from "@/lib/deposito-do-catalogo";
 import { espelhoLegado, precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import {
@@ -1027,6 +1028,12 @@ export function StoreProvider({
     // Só a consulta MAIS RECENTE pode alterar o catálogo, o cache e os avisos:
     // o efeito de montagem consulta de novo quando o lojista troca de fonte.
     const minhaConsulta = ++consultaDoCatalogoRef.current;
+    // Avisa o motor de sincronização que o catálogo está a caminho: a rodada
+    // dele espera o cofre receber esta gravação em vez de achá-lo vazio e
+    // baixar tudo de novo (src/lib/deposito-do-catalogo.ts). TEM de fechar em
+    // todo desfecho -- sucesso (depois da gravação), falha, consulta superada.
+    const fecharCatalogoEmVoo = abrirCatalogoEmVoo();
+    let gravacaoDoCofreEmCurso = false;
     try {
       let data: any[] | null = null;
       let error: any = null;
@@ -1105,6 +1112,9 @@ export function StoreProvider({
       // Pelo singleton e com erro logado — mesma regra dos puts de config
       // (revisão 20260825-1050): conexão fechada por upgrade de outra aba
       // reabre no init(), e falha de escrita não pode ser silêncio.
+      // A gravação NÃO é aguardada aqui (o splash depende do `finally` abaixo):
+      // quem fecha o registro do catálogo em voo é o fim dela.
+      gravacaoDoCofreEmCurso = true;
       DataVault.init()
         .then(async (vault) => {
           if (minhaConsulta !== consultaDoCatalogoRef.current) return;
@@ -1118,7 +1128,8 @@ export function StoreProvider({
             "[StoreContext] produtos não gravados no cache offline:",
             err,
           ),
-        );
+        )
+        .finally(fecharCatalogoEmVoo);
     } catch (err) {
       console.error("[StoreContext] Products fetch error:", err);
       if (minhaConsulta === consultaDoCatalogoRef.current) {
@@ -1141,6 +1152,9 @@ export function StoreProvider({
         }
       }
     } finally {
+      // Sucesso: quem fecha é o fim da gravação no cofre. Qualquer outro
+      // desfecho (falha, consulta superada, lançou) fecha agora.
+      if (!gravacaoDoCofreEmCurso) fecharCatalogoEmVoo();
       if (minhaConsulta === consultaDoCatalogoRef.current) {
         setLoadingProducts(false);
       }
