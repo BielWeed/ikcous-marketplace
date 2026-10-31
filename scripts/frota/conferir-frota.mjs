@@ -98,9 +98,15 @@ const AMOSTRAS = 3;
 
 /**
  * Cabeçalhos que o NAVEGADOR manda na primeira abertura de uma página. Com eles
- * o porteiro percorre o caminho do cartaz pré-impresso (lê os banners e
- * injeta o cartaz) -- o caminho mais novo e o único que um pedido "pelado" do
- * script nunca exercitaria. Fica de fora o service worker (`dest=empty`).
+ * o middleware roda no caminho do navegador (o que um pedido "pelado" do script
+ * não faz) e devolve `x-ikcous-porteiro`. ATENÇÃO: isto NÃO prova o cartaz
+ * pré-impresso. As sondas pedem `/?t=<carimbo>` e `t` não é parâmetro de
+ * campanha, então `pedidoPodeTerCartaz` dá `false` e a leitura do banner nem
+ * roda (medido em 31/10/2026: `/?t=123` sem cartaz; `/` e `/?utm_source=x`
+ * com). Para provar o cartaz seria preciso mandar o carimbo num parâmetro
+ * aceito e aceitar a resposta sem `x-ikcous-cartaz`, porque banner com texto,
+ * botão ou modelo pronto fica legitimamente sem cartaz. Fica de fora o
+ * service worker (`dest=empty`).
  */
 export const CABECALHOS_DE_PRIMEIRA_ABERTURA = Object.freeze({
   "sec-fetch-dest": "document",

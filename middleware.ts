@@ -76,7 +76,7 @@ const cachePorteiro = new Map<string, EntradaCachePorteiro>();
 // chave = `host|supabaseUrl` da ficha): ver `CACHE_MAPA_FRESCO_MS` no porteiro.
 const cacheMapaDoSite = new Map<string, EntradaCacheMapa>();
 
-// Banners do topo por loja (60 s; falha 20 s), para o cartaz pré-impresso da
+// Banners do topo por loja (15 s; falha 10 s), para o cartaz pré-impresso da
 // 1ª visita: ver `CACHE_CARTAZ_FRESCO_MS` no porteiro. Chave `host|supabaseUrl`.
 const cacheCartazDaLoja = new Map<string, EntradaCacheCartaz>();
 
