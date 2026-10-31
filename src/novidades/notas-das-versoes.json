@@ -1,4 +1,12 @@
 {
+  "1.5.105": {
+    "titulo": "Na primeira visita, a loja começa a buscar o banner do topo mais cedo",
+    "novidades": [],
+    "correcoes": [],
+    "melhorias": [
+      "Primeira visita: a loja passa a pedir o banner do topo logo que abre, em vez de esperar a página inicial ficar pronta. Em lojas cujas fotos são reduzidas automaticamente, a foto do banner também começa a baixar mais cedo. O banner pode aparecer um pouco antes e a página se mexe menos enquanto carrega. Nada muda no que a cliente vê ou compra."
+    ]
+  },
   "1.5.104": {
     "titulo": "A primeira visita à loja gasta menos internet e os produtos não trocam de lugar sozinhos",
     "novidades": [],
