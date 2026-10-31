@@ -93,6 +93,17 @@ describe("ehErroDeChunk — as formas do erro que o mecanismo único reconhece",
     }
   });
 
+  it("reconhece a mensagem do Vite quando o CSS de um chunk não carrega (arquivo de release antiga)", () => {
+    // `vite:preloadError` / helper de preload do Vite: "Unable to preload CSS for <url>".
+    expect(
+      ehErroDeChunk(
+        "Unable to preload CSS for /assets/AdminOrdersView-AbC123.css",
+      ),
+    ).toBe(true);
+    // Só o CSS: outra coisa que "não pré-carregou" não é chunk velho.
+    expect(ehErroDeChunk("Unable to preload the video")).toBe(false);
+  });
+
   it("recusa erro comum de render, mensagem vazia e nulo", () => {
     expect(
       ehErroDeChunk("Cannot read properties of undefined (reading 'x')"),

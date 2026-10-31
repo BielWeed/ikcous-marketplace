@@ -649,8 +649,18 @@ sw.addEventListener("fetch", (event: any) => {
             try {
               // Robust cache update: only cache valid, successful responses
               const responseToCache = networkResponse.clone();
+              // HTML aqui é a hospedagem devolvendo o índice do app no lugar de
+              // um arquivo que não existe mais (chunk de release antiga): guardá-lo
+              // trocaria o JavaScript bom pelo HTML. Mesma conferência da instalação
+              // (`arquivosQueVieramComoHtml`) e do reparo do precache.
+              const respostaEhHtml = (
+                responseToCache?.headers?.get("content-type") ?? ""
+              )
+                .toLowerCase()
+                .includes("text/html");
               if (
                 responseToCache?.status === 200 &&
+                !respostaEhHtml &&
                 (responseToCache.type === "basic" ||
                   responseToCache.type === "cors")
               ) {
