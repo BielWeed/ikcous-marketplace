@@ -1,4 +1,12 @@
 {
+  "1.5.107": {
+    "titulo": "Na primeira visita, a foto do banner da loja aparece bem mais cedo",
+    "novidades": [],
+    "correcoes": [],
+    "melhorias": [
+      "Na primeira visita à loja, a foto do banner do topo passa a começar a baixar junto com a página, e já aparece na tela de abertura, enquanto o app termina de ligar. Em testes com internet lenta, ela aparece em cerca de 2 a 3 segundos, no lugar de uns 5 ou 6. Quem já abriu a loja antes não nota diferença, e lojas sem foto de banner continuam como estavam."
+    ]
+  },
   "1.5.106": {
     "titulo": "O banner do topo da loja aparece de uma vez e o painel de banners mostra a lista completa",
     "novidades": [],

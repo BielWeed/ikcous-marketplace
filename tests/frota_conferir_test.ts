@@ -36,6 +36,7 @@ import {
   maioriaEstrita,
   montarContexto,
   problemasDoContrato,
+  sondarEndereco,
   verificarCanonico,
   verificarIsolamentoCruzado,
 } from "../scripts/frota/conferir-frota.mjs";
@@ -157,7 +158,11 @@ function responder(m, dominio, caminho, n, busca = "") {
   const publicUrl = "publicUrl" in e ? e.publicUrl : `https://${dominio}`;
   return {
     status: e.status,
-    headers: { "x-ikcous-caderneta": e.caderneta },
+    headers: {
+      "x-ikcous-caderneta": e.caderneta,
+      // O selo do middleware; `semSelo` simula uma borda em que ele nao rodou.
+      ...(e.semSelo ? {} : { "x-ikcous-porteiro": e.porteiro ?? "ok" }),
+    },
     body: html(
       titulo,
       e.refsExtras ? [ref, ...e.refsExtras] : [ref],
@@ -221,6 +226,7 @@ function sonda(dominio, o = {}) {
   const base = {
     status: 200,
     caderneta: "hit",
+    porteiro: "ok",
     titulo: "Savy",
     refs: [REF.savy],
   };
@@ -299,6 +305,7 @@ Deno.test("classificar: INALCANCAVEL (version.json inválido, página caída, am
   const base = {
     status: 200,
     caderneta: "hit",
+    porteiro: "ok",
     titulo: "Savy",
     refs: [REF.savy],
   };
@@ -421,7 +428,13 @@ Deno.test("classificar: LOJA_TROCADA quando o HTML da loja tem ref ausente, dupl
 });
 
 Deno.test("classificar: 3 amostras divergentes = LOJA_TROCADA", () => {
-  const a = { status: 200, caderneta: "hit", titulo: "Savy", refs: [REF.savy] };
+  const a = {
+    status: 200,
+    caderneta: "hit",
+    porteiro: "ok",
+    titulo: "Savy",
+    refs: [REF.savy],
+  };
   const b = { ...a, titulo: "IKCOUS - imports", refs: [REF.ikcous] };
   const r = classificar(
     LOJA,
@@ -1774,4 +1787,72 @@ Deno.test("política: só política (sem lista de clientes por release) e com o 
     "8f-conferir-201",
   );
   assert(!("lojas" in POLITICA), "o inventário não vem de uma lista de lojas");
+});
+
+// ------------------------------------------------- cartaz pre-impresso (lote B)
+
+Deno.test("sondarEndereco: as amostras de '/' vao com Sec-Fetch-Dest: document e Sec-Fetch-Mode: navigate; version.json, nao", async () => {
+  const pedidos = [];
+  const fetchImpl = (url, init) => {
+    const u = new URL(url);
+    pedidos.push({ caminho: u.pathname, headers: init?.headers ?? null });
+    return Promise.resolve(
+      u.pathname === "/version.json"
+        ? new Response("{}", { status: 200 })
+        : new Response(html("Savy", [REF.savy], "https://savy.example"), {
+            status: 200,
+            headers: {
+              "x-ikcous-caderneta": "hit",
+              "x-ikcous-porteiro": "ok",
+            },
+          }),
+    );
+  };
+  const s = await sondarEndereco("savycollection.vercel.app", {
+    fetchImpl,
+    amostras: 3,
+  });
+  const paginas = pedidos.filter((p) => p.caminho === "/");
+  assertEquals(paginas.length, 3);
+  for (const p of paginas)
+    assertEquals(p.headers, {
+      "sec-fetch-dest": "document",
+      "sec-fetch-mode": "navigate",
+    });
+  assertEquals(
+    pedidos.find((p) => p.caminho === "/version.json")?.headers,
+    null,
+  );
+  // O selo do middleware chega na ficha.
+  assertEquals(s.ficha.porteiro, "ok");
+});
+
+Deno.test("classificar: loja 200 em 1a abertura SEM x-ikcous-porteiro: ok e ESTADO_INESPERADO (o middleware nao rodou), nunca OK", () => {
+  for (const porteiro of [null, undefined, "", "sem-loja", "discorda", "OK"]) {
+    const r = classificar(
+      LOJA,
+      sonda(LOJA.dominio, { pagina: { porteiro } }),
+      CTX,
+    );
+    assertEquals(r.classe, "ESTADO_INESPERADO", `porteiro=${porteiro}`);
+    assertStringIncludes(r.achados[0].motivo, "x-ikcous-porteiro");
+  }
+  // O caso saudavel continua OK.
+  assertEquals(classificar(LOJA, sonda(LOJA.dominio), CTX).classe, "OK");
+});
+
+Deno.test("conferirFrota: uma loja que responde 200 sem o selo do porteiro reprova a frota", async () => {
+  const mundo = mundoBase();
+  mundo["savycollection.vercel.app"].semSelo = true;
+  const r = await conferirFrota(POLITICA, {
+    sha: SHA,
+    fetchImpl: fetchFalso(mundo),
+  });
+  assertEquals(r.ok, false);
+  const por = Object.fromEntries(
+    r.resultados.map((x) => [x.dominio, x.classe]),
+  );
+  assertEquals(por["savycollection.vercel.app"], "ESTADO_INESPERADO");
+  assertEquals(por["ickous-marketplace.vercel.app"], "OK");
+  assertStringIncludes(r.relatorio, "x-ikcous-porteiro");
 });

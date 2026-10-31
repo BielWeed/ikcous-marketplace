@@ -96,6 +96,17 @@ const RE_DOMINIO = {
 };
 const AMOSTRAS = 3;
 
+/**
+ * Cabeçalhos que o NAVEGADOR manda na primeira abertura de uma página. Com eles
+ * o porteiro percorre o caminho do cartaz pré-impresso (lê os banners e
+ * injeta o cartaz) -- o caminho mais novo e o único que um pedido "pelado" do
+ * script nunca exercitaria. Fica de fora o service worker (`dest=empty`).
+ */
+export const CABECALHOS_DE_PRIMEIRA_ABERTURA = Object.freeze({
+  "sec-fetch-dest": "document",
+  "sec-fetch-mode": "navigate",
+});
+
 export const COMO_RECUPERAR = {
   LOJA_TROCADA:
     "PARAR a publicação e voltar com `vercel rollback <deployment anterior>` (um endereço serviu a ficha de OUTRA loja, ou a ficha mudou entre amostras: falha de isolamento).",
@@ -291,11 +302,12 @@ export async function sondarEndereco(dominio, opcoes = {}) {
     amostras: [],
     redirecionamento: null,
   };
-  const pedir = (caminho, t) =>
+  const pedir = (caminho, t, headers = undefined) =>
     fetchImpl(urlDe(modelo, dominio, `${caminho}?t=${t}`), {
       cache: "no-store",
       redirect: "manual",
       signal: AbortSignal.timeout(timeoutMs),
+      ...(headers ? { headers } : {}),
     });
   const versao = (async () => {
     try {
@@ -313,11 +325,17 @@ export async function sondarEndereco(dominio, opcoes = {}) {
   })();
   const paginas = Array.from({ length: amostras }, async (_, i) => {
     try {
-      const res = await pedir("/", `${agora}-${i}`);
+      const res = await pedir(
+        "/",
+        `${agora}-${i}`,
+        CABECALHOS_DE_PRIMEIRA_ABERTURA,
+      );
       const html = await res.text();
       return {
         status: res.status,
         caderneta: res.headers.get("x-ikcous-caderneta"),
+        // Quem respondeu: o middleware (`ok`/`sem-loja`/...) ou outra coisa.
+        porteiro: res.headers.get("x-ikcous-porteiro"),
         titulo: extrairTitulo(html),
         refs: extrairRefsSupabase(html),
         publicUrl: extrairPublicUrl(html),
@@ -635,6 +653,14 @@ export function classificar(alvo, sonda, ctx) {
           add(
             "ESTADO_INESPERADO",
             `loja respondeu HTTP ${ficha.status}, esperado 200`,
+          );
+        // Um 200 de loja SEM o selo do porteiro nao veio do middleware: com o
+        // cartaz pre-impresso o caminho de 1a abertura e outro, e o selo e o
+        // que prova que ele carregou na borda e nao caiu em silencio.
+        else if (ficha.porteiro !== "ok")
+          add(
+            "ESTADO_INESPERADO",
+            `loja respondeu 200 a uma 1a abertura (Sec-Fetch-Dest: document) sem x-ikcous-porteiro: ok (veio ${ficha.porteiro ?? "(ausente)"})`,
           );
       }
     } else if (alvo.esperado === "manutencao") {

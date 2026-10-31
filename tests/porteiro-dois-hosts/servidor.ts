@@ -141,6 +141,13 @@ export const ORIGEM_A = `https://${"a".repeat(20)}.supabase.co`;
 export const ORIGEM_B = `https://${"b".repeat(20)}.supabase.co`;
 export const ORIGEM_C = `https://${"c".repeat(20)}.supabase.co`;
 export const ORIGEM_D = `https://${"d".repeat(20)}.supabase.co`;
+// Lojas do ensaio do CARTAZ PRE-IMPRESSO (lote B): uma por comportamento do
+// banco de banners, porque o porteiro guarda a leitura por host (15 s) e um
+// host so pode mostrar um comportamento por vez.
+export const ORIGEM_E = `https://${"e".repeat(20)}.supabase.co`;
+export const ORIGEM_F = `https://${"f".repeat(20)}.supabase.co`;
+export const ORIGEM_G = `https://${"g".repeat(20)}.supabase.co`;
+export const ORIGEM_H = `https://${"h".repeat(20)}.supabase.co`;
 
 export const HOSTS = {
   A: "loja-a.localhost",
@@ -162,7 +169,53 @@ export const HOSTS = {
   TROCADA: "loja-trocada.localhost",
   /** Nenhum caminho (a) nem (b) tem banco para este host — `sem-loja`. */
   DESCONHECIDA: "loja-desconhecida.localhost",
+  /** Cartaz (lote B): loja com banner valido, MAS em manutencao. */
+  MANUTENCAO: "loja-manutencao.localhost",
+  /** Cartaz: a leitura dos banners devolve erro HTTP 500. */
+  BANNER_ERRO: "loja-banner-erro.localhost",
+  /** Cartaz: a leitura dos banners devolve JSON quebrado. */
+  BANNER_QUEBRADO: "loja-banner-quebrado.localhost",
+  /** Cartaz: a leitura dos banners NUNCA responde (so o prazo do porteiro corta). */
+  BANNER_TRAVADO: "loja-banner-travado.localhost",
 } as const;
+
+/** O que o banco de brinquedo responde a `GET /rest/v1/banners`. */
+export type ComportamentoDosBanners =
+  | { readonly tipo: "linhas"; readonly linhas: readonly unknown[] }
+  | { readonly tipo: "erro-http" }
+  | { readonly tipo: "json-quebrado" }
+  | { readonly tipo: "trava" };
+
+/** Foto de banner no storage publico de UMA origem. */
+export function fotoDeBanner(
+  origem: string,
+  arquivo = "1791565996435-7tdkqgfb019.webp",
+): string {
+  return `${origem}/storage/v1/object/public/banners/${arquivo}`;
+}
+
+/** Linha de `banners` como o PostgREST devolve: ativo, no topo, so a foto. */
+export function linhaDeBanner(
+  origem: string,
+  extra: Record<string, unknown> = {},
+) {
+  return {
+    id: "banner-1",
+    image_url: fotoDeBanner(origem),
+    position: "home_top",
+    active: true,
+    order: 1,
+    title: "",
+    subtitle: "",
+    button_text: "",
+    badge_text: "",
+    template_type: "default",
+    show_text_overlay: true,
+    start_date: null,
+    end_date: null,
+    ...extra,
+  };
+}
 
 /** Os 4 valores públicos por loja (etapa 3 da escala, 11/09/2026) — Loja A
  * com pagamento LIGADO (prova que `configuracao` chega intacta ao caminho
@@ -187,6 +240,8 @@ interface BancoDeBrinquedo {
   readonly dominioPublico: string;
   readonly chavePublica: string;
   readonly configuracao: ConfiguracaoDeBrinquedo;
+  /** Ausente = lista vazia. */
+  readonly banners?: ComportamentoDosBanners;
 }
 
 const BANCOS_POR_ORIGEM: Record<string, BancoDeBrinquedo> = {
@@ -200,12 +255,15 @@ const BANCOS_POR_ORIGEM: Record<string, BancoDeBrinquedo> = {
       pagamentoOnline: true,
       manutencao: false,
     },
+    banners: { tipo: "linhas", linhas: [linhaDeBanner(ORIGEM_A)] },
   },
   [ORIGEM_B]: {
     linha: criarLinha("Loja B", "#222222", "b2".repeat(32), ORIGEM_B),
     dominioPublico: HOSTS.B,
     chavePublica: "sb_publishable_loja_b",
     configuracao: CONFIGURACAO_DESLIGADA,
+    // Foto no storage de OUTRA loja (a A): o porteiro tem de recusar.
+    banners: { tipo: "linhas", linhas: [linhaDeBanner(ORIGEM_A)] },
   },
   [ORIGEM_C]: {
     linha: criarLinha("Loja C", "#333333", "c3".repeat(32), ORIGEM_C),
@@ -219,6 +277,42 @@ const BANCOS_POR_ORIGEM: Record<string, BancoDeBrinquedo> = {
     chavePublica: "sb_publishable_loja_d",
     configuracao: CONFIGURACAO_DESLIGADA,
   },
+  [ORIGEM_E]: {
+    linha: criarLinha("Loja E", "#555555", "e5".repeat(32), ORIGEM_E),
+    dominioPublico: HOSTS.MANUTENCAO,
+    chavePublica: "sb_publishable_loja_e",
+    configuracao: { ...CONFIGURACAO_DESLIGADA, manutencao: true },
+    banners: { tipo: "linhas", linhas: [linhaDeBanner(ORIGEM_E)] },
+  },
+  [ORIGEM_F]: {
+    linha: criarLinha("Loja F", "#666666", "f6".repeat(32), ORIGEM_F),
+    dominioPublico: HOSTS.BANNER_ERRO,
+    chavePublica: "sb_publishable_loja_f",
+    configuracao: CONFIGURACAO_DESLIGADA,
+    banners: { tipo: "erro-http" },
+  },
+  [ORIGEM_G]: {
+    linha: criarLinha("Loja G", "#777777", "a7".repeat(32), ORIGEM_G),
+    dominioPublico: HOSTS.BANNER_QUEBRADO,
+    chavePublica: "sb_publishable_loja_g",
+    configuracao: CONFIGURACAO_DESLIGADA,
+    banners: { tipo: "json-quebrado" },
+  },
+  [ORIGEM_H]: {
+    linha: criarLinha("Loja H", "#888888", "b8".repeat(32), ORIGEM_H),
+    dominioPublico: HOSTS.BANNER_TRAVADO,
+    chavePublica: "sb_publishable_loja_h",
+    configuracao: CONFIGURACAO_DESLIGADA,
+    banners: { tipo: "trava" },
+  },
+};
+
+/** Host (caminho b) -> origem, para as lojas do ensaio do cartaz. */
+const ORIGEM_POR_HOST_DO_CARTAZ: Record<string, string> = {
+  [HOSTS.MANUTENCAO]: ORIGEM_E,
+  [HOSTS.BANNER_ERRO]: ORIGEM_F,
+  [HOSTS.BANNER_QUEBRADO]: ORIGEM_G,
+  [HOSTS.BANNER_TRAVADO]: ORIGEM_H,
 };
 
 /** Para as asserções do teste — nunca reconstruir estes valores lá. */
@@ -313,6 +407,15 @@ function aplicarAmbientePorHost(hostname: string): void {
       BANCOS_POR_ORIGEM[ORIGEM_D]!.chavePublica;
     return;
   }
+  // eslint-disable-next-line security/detect-object-injection -- `hostname` e normalizado e so serve de CHAVE de um mapa fixo do ensaio; ausente cai no `undefined` tratado abaixo.
+  const origemDoCartaz = ORIGEM_POR_HOST_DO_CARTAZ[hostname];
+  if (origemDoCartaz !== undefined) {
+    process.env.VITE_SUPABASE_URL = origemDoCartaz;
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY =
+      // eslint-disable-next-line security/detect-object-injection -- `origemDoCartaz` vem do mapa fixo acima.
+      BANCOS_POR_ORIGEM[origemDoCartaz]!.chavePublica;
+    return;
+  }
   // HOSTS.DESCONHECIDA (e qualquer outro host): nenhuma variável — os dois
   // caminhos do porteiro ficam sem banco, e `resolverConexao` devolve
   // `conexao: null` -> "sem-loja".
@@ -405,6 +508,28 @@ async function fetchDeBrinquedo(
       );
     }
     return new Response(JSON.stringify([banco.linha]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  // Banners do topo (cartaz pre-impresso): cada banco responde do seu jeito.
+  if (url.pathname === "/rest/v1/banners") {
+    const banco = BANCOS_POR_ORIGEM[url.origin];
+    if (!banco)
+      return new Response("banco nao mapeado no servidor de ensaio", {
+        status: 500,
+      });
+    const comportamento = banco.banners ?? { tipo: "linhas", linhas: [] };
+    if (comportamento.tipo === "erro-http")
+      return new Response("erro", { status: 500 });
+    if (comportamento.tipo === "json-quebrado")
+      return new Response("[{oops", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    if (comportamento.tipo === "trava") return new Promise<Response>(() => {});
+    return new Response(JSON.stringify(comportamento.linhas), {
       status: 200,
       headers: { "content-type": "application/json" },
     });

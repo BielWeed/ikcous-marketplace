@@ -1,5 +1,6 @@
 import type {
   AmbientePorteiro,
+  EntradaCacheCartaz,
   EntradaCacheMapa,
   EntradaCachePorteiro,
   ResolverLojaNaCaderneta,
@@ -74,6 +75,10 @@ const cachePorteiro = new Map<string, EntradaCachePorteiro>();
 // Ids públicos do sitemap por loja (10 min frescos, 1h de stale-if-error,
 // chave = `host|supabaseUrl` da ficha): ver `CACHE_MAPA_FRESCO_MS` no porteiro.
 const cacheMapaDoSite = new Map<string, EntradaCacheMapa>();
+
+// Banners do topo por loja (60 s; falha 20 s), para o cartaz pré-impresso da
+// 1ª visita: ver `CACHE_CARTAZ_FRESCO_MS` no porteiro. Chave `host|supabaseUrl`.
+const cacheCartazDaLoja = new Map<string, EntradaCacheCartaz>();
 
 // Caminho (a) do porteiro — a caderneta central (`resolver_loja`, T5,
 // `supabase/migrations/20261141000000_caderneta_da_frota.sql`). Convenção de
@@ -392,5 +397,6 @@ export default async function middleware(request: Request) {
     resolverNaCaderneta,
     cache: cachePorteiro,
     cacheMapa: cacheMapaDoSite,
+    cacheCartaz: cacheCartazDaLoja,
   });
 }
