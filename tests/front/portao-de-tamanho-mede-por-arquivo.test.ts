@@ -47,10 +47,25 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     for (const ancora of ["cliente.map(", "painel.map("]) {
       const trechoJs = entrada(ancora);
       expect(trechoJs, ancora).toContain("webpack: false");
-      // A medida de tempo roda o bundle em Chrome headless — quebra em runner
-      // sem Chrome e não é o que o portão protege.
-      expect(trechoJs, ancora).toContain("running: false");
+      // Sem medida de tempo: ela roda o bundle em Chrome headless (quebra em
+      // runner sem Chrome) e não é o que o portão protege. Como o plugin de
+      // tempo saiu das dependências (ele puxava o `extract-zip`, alertas
+      // altos do Dependabot), a chave `running` nem existe mais aqui.
+      expect(trechoJs, ancora).not.toContain("running:");
     }
+  });
+
+  it("o plugin de tempo e o preset big-lib não voltam às dependências", () => {
+    const pacote = JSON.parse(readFileSync("package.json", "utf-8")) as {
+      devDependencies: Record<string, string>;
+    };
+    expect(pacote.devDependencies).not.toHaveProperty("@size-limit/time");
+    expect(pacote.devDependencies).not.toHaveProperty(
+      "@size-limit/preset-big-lib",
+    );
+    // `webpack: false` só é aceito pelo size-limit com o plugin instalado.
+    expect(pacote.devDependencies).toHaveProperty("@size-limit/webpack");
+    expect(pacote.devDependencies).toHaveProperty("@size-limit/file");
   });
 
   it("a entrada de CSS continua medindo por arquivo com o teto de 100 kB", () => {
