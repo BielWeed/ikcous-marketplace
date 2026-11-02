@@ -24,8 +24,8 @@ DECLARE
 BEGIN
   FOR v_f IN
     SELECT * FROM (VALUES
-      ('contar_entrada', 'public.contar_entrada(text)', '86d4bedb06ac94a8ef70e6455792518e'),
-      ('crm_visitas', 'public.crm_visitas(date, date)', '5fc0e010d21d65c8731df760ad30e2ba')
+      ('contar_entrada', 'public.contar_entrada(text)', 'e31b3fd92a739ff7b5c206ef0ece1c22'),
+      ('crm_visitas', 'public.crm_visitas(date, date)', '025c19ac6d1ce86617dba41b5ba8b73c')
     ) AS t(nome, assinatura, hash)
   LOOP
     IF (SELECT count(*) FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = v_f.nome) > 1 THEN

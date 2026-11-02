@@ -412,8 +412,8 @@ const VERIFICACOES = {
     },
   ],
   // 20261399000000: as visitas da loja contam pelo porteiro. DUAS funcoes novas: contar_entrada (a unica porta do visitante: canal conferido contra a lista
-  // fechada ANTES de gravar, dia vindo de fin__hoje(), soma 1 e para no teto de 50000 por canal e dia) e crm_visitas (leitura so do admin atual, com as duas
-  // travas de crm_visao; a previa fica fora de "visitas"). A tabela, a RLS e o ACL nao sao conferiveis aqui (so corpo de funcao): a consulta 117a e a prova
+  // fechada ANTES de gravar, dia vindo de fin__hoje(), pre-leitura sem trava que sai no teto, soma 1 e para no teto de 50000 por canal e dia) e crm_visitas (leitura so do admin atual, com as duas
+  // travas de crm_visao; a previa fica fora de "visitas"; no_teto lista os dias e canais que bateram no teto). A tabela, a RLS e o ACL nao sao conferiveis aqui (so corpo de funcao): a consulta 117a e a prova
   // viva fazem isso (corpo exato por md5, atributos, ACL e o fechamento da tabela).
   "20261399000000_as_visitas_da_loja_contam_pelo_porteiro.sql": [
     {
@@ -424,7 +424,18 @@ const VERIFICACOES = {
             "IF p_canal IS NULL OR p_canal NOT IN ('direto', 'instagram', 'whatsapp', 'outros_sites', 'previa') THEN",
           vezes: 1,
         },
-        { texto: "VALUES (public.fin__hoje(), p_canal, 1)", vezes: 1 },
+        { texto: "v_dia date := public.fin__hoje();", vezes: 1 },
+        {
+          texto:
+            "SELECT v.contagem INTO v_atual FROM public.visitas_por_dia v WHERE v.dia = v_dia AND v.canal = p_canal;",
+          vezes: 1,
+        },
+        { texto: "IF v_atual >= 50000 THEN", vezes: 1 },
+        {
+          texto: "PERFORM set_config('synchronous_commit', 'off', true);",
+          vezes: 1,
+        },
+        { texto: "VALUES (v_dia, p_canal, 1)", vezes: 1 },
         {
           texto:
             "ON CONFLICT (dia, canal) DO UPDATE SET contagem = v.contagem + 1 WHERE v.contagem < 50000;",
@@ -441,6 +452,8 @@ const VERIFICACOES = {
           texto: "v_pessoas := v_direto + v_instagram + v_whatsapp + v_outros;",
           vezes: 1,
         },
+        { texto: "AND canal <> 'previa'", vezes: 1 },
+        { texto: "AND contagem >= 50000;", vezes: 1 },
       ],
     },
   ],

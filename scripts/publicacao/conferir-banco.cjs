@@ -2884,7 +2884,7 @@ const ROL_DA_116 = [
 const ROL_DA_117A = [
   "controle: catalogo publico visivel",
   "contar_entrada: uma so, com o corpo da 20261399000000 (md5)",
-  "contar_entrada: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path fixo, retorna void) e EXECUTE para anon, authenticated e service_role, sem PUBLIC",
+  "contar_entrada: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path fixo e lock_timeout de 100ms, retorna void) e EXECUTE so para anon e service_role (authenticated e PUBLIC nada)",
   "crm_visitas: uma so, com o corpo da 20261399000000 (md5)",
   "crm_visitas: atributos de sempre (SECURITY DEFINER, plpgsql, STABLE, search_path fixo, retorna jsonb) e EXECUTE so para authenticated e service_role (anon e PUBLIC nada)",
   "visitas_por_dia: tabela comum com RLS ligada sem FORCE e nenhuma politica",

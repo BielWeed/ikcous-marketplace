@@ -1,6 +1,6 @@
 -- 117a-conferir-as-visitas-da-loja-contam-pelo-porteiro-aplicado: DEPOIS da 20261399000000. SO LEITURA, rol fechado de 8 linhas.
 -- Somente catalogo: NAO le nenhuma linha de visitas_por_dia (a tabela nasce vazia e a contagem e' dado da loja). Prova que as duas funcoes
--- tem o corpo desta migration, que o visitante (anon) alcanca SO a contar_entrada, que a leitura e' so do authenticated e do service_role
+-- tem o corpo desta migration, que o visitante (anon) alcanca SO a contar_entrada (e o authenticated nao), que a leitura e' so do authenticated e do service_role
 -- e que a tabela esta selada a todo papel de aplicacao. Antes do apply esta consulta responde "nao" (a 117a negativa e' esperada), nunca erro.
 WITH fn AS (
   SELECT p.oid, p.proname, md5(replace(p.prosrc, chr(13), '')) AS h, l.lanname, p.prosecdef, p.provolatile, p.proisstrict, p.proretset, p.proconfig,
@@ -13,19 +13,19 @@ WITH fn AS (
   SELECT 'controle: catalogo publico visivel', 'sim', CASE WHEN EXISTS (SELECT 1 FROM pg_class WHERE relnamespace = 'public'::regnamespace) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'contar_entrada: uma so, com o corpo da 20261399000000 (md5)', 'sim', CASE WHEN
     (SELECT count(*) FROM fn WHERE proname = 'contar_entrada') = 1
-    AND EXISTS (SELECT 1 FROM fn WHERE proname = 'contar_entrada' AND h = '86d4bedb06ac94a8ef70e6455792518e') THEN 'sim' ELSE 'nao' END
-  UNION ALL SELECT 'contar_entrada: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path fixo, retorna void) e EXECUTE para anon, authenticated e service_role, sem PUBLIC', 'sim', CASE WHEN COALESCE(
+    AND EXISTS (SELECT 1 FROM fn WHERE proname = 'contar_entrada' AND h = 'e31b3fd92a739ff7b5c206ef0ece1c22') THEN 'sim' ELSE 'nao' END
+  UNION ALL SELECT 'contar_entrada: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path fixo e lock_timeout de 100ms, retorna void) e EXECUTE so para anon e service_role (authenticated e PUBLIC nada)', 'sim', CASE WHEN COALESCE(
     (SELECT bool_and(f.lanname = 'plpgsql' AND f.prosecdef AND f.provolatile = 'v' AND NOT f.proisstrict AND NOT f.proretset AND f.resultado = 'void'
-        AND f.proconfig = ARRAY['search_path=public']::text[]
+        AND f.proconfig = ARRAY['search_path=public', 'lock_timeout=100ms']::text[]
         AND f.argumentos = 'p_canal text'
-        AND has_function_privilege('anon', f.oid, 'EXECUTE') AND has_function_privilege('authenticated', f.oid, 'EXECUTE')
+        AND has_function_privilege('anon', f.oid, 'EXECUTE') AND NOT has_function_privilege('authenticated', f.oid, 'EXECUTE')
         AND has_function_privilege('service_role', f.oid, 'EXECUTE')
         AND NOT EXISTS (SELECT 1 FROM pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
                          WHERE p.oid = f.oid AND a.grantee = 0 AND a.privilege_type = 'EXECUTE'))
        FROM fn f WHERE f.oid = to_regprocedure('public.contar_entrada(text)')), false) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'crm_visitas: uma so, com o corpo da 20261399000000 (md5)', 'sim', CASE WHEN
     (SELECT count(*) FROM fn WHERE proname = 'crm_visitas') = 1
-    AND EXISTS (SELECT 1 FROM fn WHERE proname = 'crm_visitas' AND h = '5fc0e010d21d65c8731df760ad30e2ba') THEN 'sim' ELSE 'nao' END
+    AND EXISTS (SELECT 1 FROM fn WHERE proname = 'crm_visitas' AND h = '025c19ac6d1ce86617dba41b5ba8b73c') THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'crm_visitas: atributos de sempre (SECURITY DEFINER, plpgsql, STABLE, search_path fixo, retorna jsonb) e EXECUTE so para authenticated e service_role (anon e PUBLIC nada)', 'sim', CASE WHEN COALESCE(
     (SELECT bool_and(f.lanname = 'plpgsql' AND f.prosecdef AND f.provolatile = 's' AND NOT f.proisstrict AND NOT f.proretset AND f.resultado = 'jsonb'
         AND f.proconfig = ARRAY['search_path=public']::text[]

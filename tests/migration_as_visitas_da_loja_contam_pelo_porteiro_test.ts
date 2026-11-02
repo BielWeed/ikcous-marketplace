@@ -143,14 +143,27 @@ Deno.test("20261399: contar_entrada e' a UNICA porta do visitante: sem retorno, 
   const n = norm(migration);
   assertStringIncludes(
     n,
-    "CREATE OR REPLACE FUNCTION public.contar_entrada(p_canal text) RETURNS void LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $function$",
+    "CREATE OR REPLACE FUNCTION public.contar_entrada(p_canal text) RETURNS void LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public SET lock_timeout = '100ms' AS $function$",
   );
   // Nao devolve dado: nenhum RETURN com valor, nenhum SELECT, nenhum RETURNING, nenhum RAISE com dado da tabela.
   assert(
     !/\bRETURN\s+\S/i.test(CORPO_CONTAR),
     "contar_entrada nao devolve valor",
   );
-  assert(!/\bSELECT\b/i.test(CORPO_CONTAR), "contar_entrada nao le a tabela");
+  // A unica leitura e' a conferencia do teto, para uma VARIAVEL local (nada sai da funcao), sem trava de linha.
+  assertEquals(
+    [...CORPO_CONTAR.matchAll(/\bSELECT\b/gi)].length,
+    1,
+    "uma unica leitura (o teto)",
+  );
+  assertStringIncludes(
+    norm(CORPO_CONTAR),
+    "SELECT v.contagem INTO v_atual FROM public.visitas_por_dia v WHERE v.dia = v_dia AND v.canal = p_canal;",
+  );
+  assert(
+    !/\bFOR\s+(UPDATE|SHARE|NO KEY UPDATE|KEY SHARE)\b/i.test(CORPO_CONTAR),
+    "a leitura do teto nao trava a linha",
+  );
   assert(
     !/\bRETURNING\b/i.test(CORPO_CONTAR),
     "contar_entrada nao devolve a linha",
@@ -172,16 +185,25 @@ Deno.test("20261399: contar_entrada e' a UNICA porta do visitante: sem retorno, 
     iCheca >= 0 && iGrava > iCheca,
     "o canal e' conferido antes do INSERT",
   );
+  // A linha quente: no teto a funcao SAI antes de tocar a linha (o ON CONFLICT DO UPDATE trava a linha mesmo quando a WHERE barra o update).
+  const iLe = CORPO_CONTAR.indexOf("SELECT v.contagem INTO v_atual");
+  const iSai = CORPO_CONTAR.indexOf("IF v_atual >= 50000 THEN");
+  assert(
+    iCheca < iLe && iLe < iSai && iSai < iGrava,
+    "valida o canal, le o teto sem trava, sai se ja esta no teto, so entao grava",
+  );
+  assertStringIncludes(
+    norm(CORPO_CONTAR),
+    "IF v_atual >= 50000 THEN RETURN; END IF;",
+  );
   assertStringIncludes(
     norm(CORPO_CONTAR),
     "p_canal IS NULL OR p_canal NOT IN ('direto', 'instagram', 'whatsapp', 'outros_sites', 'previa')",
   );
   assertStringIncludes(CORPO_CONTAR, "ERRCODE = '22023'");
   // O que e' gravado vem da propria funcao: o dia de fin__hoje() (nunca de parametro, nunca do relogio do servidor sem fuso) e o canal ja validado.
-  assertStringIncludes(
-    norm(CORPO_CONTAR),
-    "VALUES (public.fin__hoje(), p_canal, 1)",
-  );
+  assertStringIncludes(norm(CORPO_CONTAR), "VALUES (v_dia, p_canal, 1)");
+  assertStringIncludes(norm(CORPO_CONTAR), "v_dia date := public.fin__hoje();");
   assert(
     !/\bp_dia\b|\bCURRENT_DATE\b|\bnow\s*\(|\bCURRENT_TIMESTAMP\b|\bLOCALTIMESTAMP\b/i.test(
       CORPO_CONTAR,
@@ -198,16 +220,60 @@ Deno.test("20261399: contar_entrada e' a UNICA porta do visitante: sem retorno, 
   );
 });
 
-Deno.test("20261399: o teto de 50000 por canal e por dia mora no ON CONFLICT e e' o unico numero de limite", () => {
+Deno.test("20261399: o teto de 50000 por canal e por dia: pre-leitura sem trava + ON CONFLICT que so soma abaixo dele; o painel recebe os pares no teto", () => {
   const c = norm(CORPO_CONTAR);
   assertStringIncludes(
     c,
     "ON CONFLICT (dia, canal) DO UPDATE SET contagem = v.contagem + 1 WHERE v.contagem < 50000;",
   );
+  // O numero do teto so mora em tres lugares do codigo: a pre-leitura e o ON CONFLICT da contar_entrada e o no_teto da crm_visitas.
+  const semComentario = migration.replace(/--.*$/gm, "");
+  assertEquals(contar(CORPO_CONTAR, "50000"), 2);
+  assertEquals(contar(CORPO_CRM, "50000"), 1);
+  assertEquals(contar(semComentario, "50000"), 3, "so tres usos do teto");
+  assertStringIncludes(
+    norm(CORPO_CRM),
+    "jsonb_agg(jsonb_build_object('dia', dia, 'canal', canal) ORDER BY dia, canal)",
+  );
+  // A previa (link aberto fora da conta) inflada NAO invalida a contagem de PESSOAS: ela nunca entra no no_teto.
+  assertStringIncludes(
+    norm(CORPO_CRM),
+    "WHERE dia BETWEEN v_de AND p_fim AND canal <> 'previa' AND contagem >= 50000;",
+  );
+  assertEquals(contar(norm(CORPO_CRM), "canal <> 'previa'"), 1);
+  // Tabela vazia ou periodo anterior ao contador: a lista tambem vem (vazia), nunca ausente.
+  assertStringIncludes(norm(CORPO_CRM), "'no_teto', '[]'::jsonb");
+});
+
+Deno.test("20261399: contar_entrada nao espera linha quente (lock_timeout de 100ms na DEFINICAO) e nao espera o disco (commit assincrono DESTA transacao, pelo corpo)", () => {
+  const n = norm(migration);
+  assertEquals(contar(n, "SET lock_timeout = '100ms'"), 1);
+  // O lock_timeout e' da contar_entrada, nao da crm_visitas (que le e deve esperar o que for preciso).
+  const iR = n.indexOf("CREATE OR REPLACE FUNCTION public.crm_visitas(");
+  assert(
+    n.indexOf("CREATE OR REPLACE FUNCTION public.contar_entrada(") <
+      n.indexOf("SET lock_timeout = '100ms'") &&
+      n.indexOf("SET lock_timeout = '100ms'") < iR,
+  );
+  // O commit assincrono NAO pode ser clausula SET da funcao: o Postgres restaura o valor na saida da funcao, ANTES do commit (medido: o
+  // WAL continua sendo gravado e sincronizado no commit). Tem de ser set_config LOCAL dentro do corpo, que vale ate o fim da transacao.
+  const semComentario = migration.replace(/--.*$/gm, "");
+  assert(
+    !/\bSET\s+synchronous_commit\b/i.test(semComentario),
+    "SET synchronous_commit na definicao da funcao nao tem efeito no commit",
+  );
   assertEquals(
-    contar(migration.replace(/--.*$/gm, ""), "50000"),
+    contar(
+      CORPO_CONTAR,
+      "PERFORM set_config('synchronous_commit', 'off', true);",
+    ),
     1,
-    "o teto aparece uma vez no codigo",
+  );
+  const iSet = CORPO_CONTAR.indexOf("PERFORM set_config('synchronous_commit'");
+  assert(
+    CORPO_CONTAR.indexOf("IF v_atual >= 50000 THEN") < iSet &&
+      iSet < CORPO_CONTAR.indexOf("INSERT INTO public.visitas_por_dia"),
+    "o commit assincrono vale so para o caminho que escreve",
   );
 });
 
@@ -237,6 +303,7 @@ Deno.test("20261399: crm_visitas tem as duas travas de admin de crm_visao, leitu
     "'canais'",
     "'previas'",
     "'periodo_completo'",
+    "'no_teto'",
   ])
     assertStringIncludes(CORPO_CRM, chave);
   // 'visitas' soma os 4 canais de PESSOA; a previa fica em 'previas'.
@@ -245,6 +312,19 @@ Deno.test("20261399: crm_visitas tem as duas travas de admin de crm_visao, leitu
   assert(!/previa/.test(soma[1]), "a previa nao entra em visitas");
   for (const v of ["v_direto", "v_instagram", "v_whatsapp", "v_outros"])
     assertStringIncludes(soma[1], v);
+  // A checagem do periodo e' a MESMA de crm_visao (20261232000000): nulo, invertido ou mais de 400 dias = 22023 com a mesma mensagem.
+  const crmVisao = lerMig(
+    "20261232000000_a_grade_do_crm_mede_a_recencia_do_mesmo_instante_da_lista.sql",
+  );
+  const checagem = (sql: string) => {
+    const m =
+      /IF p_inicio IS NULL OR p_fim IS NULL OR p_fim < p_inicio OR p_fim - p_inicio > 400 THEN\s+RAISE EXCEPTION '([^']+)' USING ERRCODE = '22023';/.exec(
+        sql,
+      );
+    assert(m, "checagem de periodo nao achada");
+    return m[0].replace(/\s+/g, " ");
+  };
+  assertEquals(checagem(CORPO_CRM), checagem(crmVisao));
   // O contador comeca no primeiro dia gravado; antes dele ou com a tabela vazia, 'visitas' e' NULL (nunca zero).
   assertStringIncludes(
     norm(CORPO_CRM),
@@ -256,12 +336,12 @@ Deno.test("20261399: crm_visitas tem as duas travas de admin de crm_visao, leitu
   );
 });
 
-Deno.test("20261399: ACL das funcoes: contar_entrada para anon/authenticated/service_role, crm_visitas SEM anon, nada para PUBLIC", () => {
+Deno.test("20261399: ACL das funcoes: contar_entrada SO para anon e service_role, crm_visitas SEM anon, nada para PUBLIC nem authenticated na escrita", () => {
   const n = norm(migration);
   const revC =
     "REVOKE ALL ON FUNCTION public.contar_entrada(text) FROM PUBLIC, anon, authenticated, service_role;";
   const granC =
-    "GRANT EXECUTE ON FUNCTION public.contar_entrada(text) TO anon, authenticated, service_role;";
+    "GRANT EXECUTE ON FUNCTION public.contar_entrada(text) TO anon, service_role;";
   const revR =
     "REVOKE ALL ON FUNCTION public.crm_visitas(date, date) FROM PUBLIC, anon, authenticated, service_role;";
   const granR =
@@ -273,6 +353,14 @@ Deno.test("20261399: ACL das funcoes: contar_entrada para anon/authenticated/ser
   );
   const cod = soComandos(migration);
   assert(!/GRANT[^;]*\bPUBLIC\b/.test(cod), "nada e' concedido a PUBLIC");
+  const grantsDeContar = (
+    cod.match(/GRANT[^;]*contar_entrada[^;]*;/g) ?? []
+  ).join(" ");
+  assert(
+    /\banon\b/.test(grantsDeContar) &&
+      !/\bauthenticated\b/.test(grantsDeContar),
+    "a escrita e' do anon (e do service_role); o porteiro nunca usa a sessao de um logado",
+  );
   const grantsDeCrm = (cod.match(/GRANT[^;]*crm_visitas[^;]*;/g) ?? []).join(
     " ",
   );
