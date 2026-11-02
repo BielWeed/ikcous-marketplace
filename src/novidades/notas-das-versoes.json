@@ -4,7 +4,7 @@
     "novidades": [],
     "correcoes": [],
     "melhorias": [
-      "Quando o pedido está como enviado e tem código de rastreio, o botão de WhatsApp do pedido, no painel, agora já escreve o código e o link para a cliente acompanhar a entrega, sem você precisar digitar nada. Vale para todo pedido, inclusive de quem comprou sem cadastro. Pedidos de retirada na loja e pedidos sem código continuam com a mensagem de sempre."
+      "Quando o pedido está como enviado e tem código de rastreio, o botão de WhatsApp do pedido, no painel, agora já escreve o código e o link para a cliente acompanhar a entrega, sem você precisar digitar nada. Vale também para quem comprou sem cadastro. Pedidos de retirada na loja e pedidos sem código continuam com a mensagem de sempre."
     ]
   },
   "1.5.107": {
