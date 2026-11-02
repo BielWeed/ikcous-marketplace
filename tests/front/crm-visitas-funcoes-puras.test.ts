@@ -137,7 +137,7 @@ describe("estadoDasVisitas", () => {
     });
   });
 
-  it("período que começa antes do contador: 'Contando desde 02/11'", () => {
+  it("período que começa antes do contador: 'Contando desde 02/11/2026'", () => {
     const lida = lerVisitasDoCrm({
       ...COMPLETO,
       contando_desde: "2026-11-02",
@@ -145,7 +145,7 @@ describe("estadoDasVisitas", () => {
     });
     expect(estadoDasVisitas(lida, PERIODO)).toEqual({
       tipo: "parcial",
-      aviso: "Contando desde 02/11",
+      aviso: "Contando desde 02/11/2026",
     });
   });
 

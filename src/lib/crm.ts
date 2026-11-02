@@ -448,7 +448,7 @@ export function estadoDasVisitas(
   if (desde && desde > inicio) {
     return {
       tipo: "parcial",
-      aviso: `Contando desde ${formatarData(desde).slice(0, 5)}`,
+      aviso: `Contando desde ${formatarData(desde)}`,
       ...teto,
     };
   }

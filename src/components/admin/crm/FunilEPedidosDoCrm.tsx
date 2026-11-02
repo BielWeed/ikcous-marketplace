@@ -197,7 +197,11 @@ function FunilEmEtapas({ medidas }: Readonly<{ medidas: EtapaMedida[] }>) {
             <p
               className={cn(
                 "text-admin-text font-extrabold tabular-nums",
-                medidas.length > 3 ? "text-xl" : "text-2xl",
+                medidas.length < 4
+                  ? "text-2xl"
+                  : etapa.valor < 10_000
+                    ? "text-xl"
+                    : "text-lg",
               )}
             >
               {formatarInteiro(etapa.valor)}
@@ -518,9 +522,9 @@ export function FunilEPedidosDoCrm({
                 {estado?.aviso && <p>{estado.aviso}</p>}
                 {estado?.naoConfiavel && (
                   <p className="text-amber-300">
-                    Contagem não confiável em {diasNoTeto}{" "}
-                    {diasNoTeto === 1 ? "dia" : "dias"}: alguém inflou o
-                    contador.
+                    Contagem no limite em {diasNoTeto}{" "}
+                    {diasNoTeto === 1 ? "dia" : "dias"}: o número é no mínimo
+                    esse.
                   </p>
                 )}
               </div>

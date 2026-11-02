@@ -99,7 +99,10 @@ describe("useCrmVisitas", () => {
     await montar(periodo);
     await esperar();
     expect(ultimo).toEqual({ visitas: null, erro: false });
-    await montar(periodo);
+    // Fechar e reabrir a aba com o MESMO período: o resultado "ausente"
+    // também fica guardado, então não pergunta de novo.
+    await montar(periodo, false);
+    await montar(periodo, true);
     await esperar();
     expect(h.rpc).toHaveBeenCalledTimes(1);
     expect(erro).not.toHaveBeenCalled();

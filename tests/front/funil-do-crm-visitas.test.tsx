@@ -126,12 +126,12 @@ describe("FunilEPedidosDoCrm — visitas", () => {
     expect(texto()).not.toMatch(/Contando desde|A contar/);
   });
 
-  it("período que começa antes do contador: 'Contando desde 02/11'", () => {
+  it("período que começa antes do contador: 'Contando desde 02/11/2026'", () => {
     montar({
       visitas: lida({ contando_desde: "2026-11-02" }),
       intervalo: PERIODO,
     });
-    expect(texto()).toContain("Contando desde 02/11");
+    expect(texto()).toContain("Contando desde 02/11/2026");
     expect(etapas()[0]).toBe("Visitas");
   });
 
@@ -174,7 +174,7 @@ describe("FunilEPedidosDoCrm — visitas", () => {
       intervalo: PERIODO,
     });
     expect(texto()).toContain(
-      "Contagem não confiável em 2 dias: alguém inflou o contador.",
+      "Contagem no limite em 2 dias: o número é no mínimo esse.",
     );
     const etapa = hospedeiro.querySelector('[aria-label="Visitas"]');
     expect(etapa?.textContent).toContain("42");
@@ -186,10 +186,21 @@ describe("FunilEPedidosDoCrm — visitas", () => {
       visitas: lida({ no_teto: [{ dia: "2026-10-20", canal: "direto" }] }),
       intervalo: PERIODO,
     });
-    expect(texto()).toContain("Contagem não confiável em 1 dia:");
+    expect(texto()).toContain("Contagem no limite em 1 dia:");
     montar({ visitas: lida(), intervalo: PERIODO });
-    expect(texto()).not.toContain("não confiável");
+    expect(texto()).not.toContain("no limite");
+    expect(texto()).not.toContain("inflou");
     expect(texto()).not.toContain("pelo menos");
+  });
+
+  it("número grande (>= 10.000) ganha fonte menor, para caber na caixa a 375 px", () => {
+    const fonte = () =>
+      hospedeiro.querySelector('[aria-label="Visitas"] p')?.className ?? "";
+    montar({ visitas: lida({ visitas: 12345 }), intervalo: PERIODO });
+    expect(fonte()).toContain("text-lg");
+    montar({ visitas: lida({ visitas: 9999 }), intervalo: PERIODO });
+    expect(fonte()).toContain("text-xl");
+    expect(fonte()).not.toContain("text-lg");
   });
 
   it("a ajuda do funil deixa de dizer que visitas não são medidas", () => {
