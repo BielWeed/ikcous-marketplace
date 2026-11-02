@@ -177,3 +177,84 @@ export function classificarEntrada(pedido: PedidoParaClassificar): Entrada {
   if (!ehNavegacaoDePessoa(cabecalhos, userAgent)) return null;
   return { tipo: "pessoa", canal: canalDaPessoa(url, cabecalhos, userAgent) };
 }
+
+// ─── Gravar a entrada no banco da loja (sem nunca atrasar a pagina) ─────────
+//
+// SUPOSICOES DE ESTADO, ditas em voz alta:
+//   - O porteiro so tem a chave PUBLICA da loja (nao ha credencial de escrita
+//     por loja). Por isso a escrita e' a RPC `contar_entrada`, chamavel por
+//     `anon` e com teto no banco; esta funcao nao le nada nem escolhe data.
+//   - `registrarEntrada` NUNCA rejeita e NAO e' aguardada no caminho critico
+//     (o `middleware` a entrega a `context.waitUntil`). Pior caso de uma falha:
+//     uma entrada a menos contada. Nunca uma pagina mais lenta ou quebrada.
+//   - Nao ha retentativa: gravar duas vezes seria contar duas vezes.
+//   - 404 = a loja ainda nao recebeu a migration (PostgREST nao acha a
+//     funcao). A conta nao existe nela; calar por 10 min evita um fetch inutil
+//     a cada visita. O silencio e' por `supabaseUrl` (nunca por host), num Map
+//     do isolate que o CHAMADOR guarda, como os demais caches do porteiro.
+
+/** O pedaco da conexao validada da ficha que a gravacao precisa. */
+export interface ConexaoDeContagem {
+  readonly supabaseUrl: string;
+  readonly publishableKey: string;
+}
+
+export interface DependenciasDoRegistro {
+  readonly fetchImpl: typeof fetch;
+  /** `supabaseUrl` -> instante (ms) ate o qual nao se tenta de novo. */
+  readonly silencio: Map<string, number>;
+  /** Relogio injetavel -- testes avancam o tempo sem `sleep`. */
+  readonly agora?: () => number;
+}
+
+export const PRAZO_DA_GRAVACAO_MS = 1_500;
+export const SILENCIO_SEM_FUNCAO_MS = 600_000;
+
+export async function registrarEntrada(
+  conexao: ConexaoDeContagem,
+  canal: CanalDeEntrada,
+  deps: DependenciasDoRegistro,
+): Promise<void> {
+  const controller = new AbortController();
+  let temporizador: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const relogio = deps.agora ?? Date.now;
+    const silenciadoAte = deps.silencio.get(conexao.supabaseUrl);
+    if (silenciadoAte !== undefined) {
+      if (relogio() < silenciadoAte) return;
+      deps.silencio.delete(conexao.supabaseUrl);
+    }
+    // A corrida (e nao so o `signal`) garante o prazo mesmo se o `fetch` ignorar
+    // o aborto: a promessa devolvida resolve em 1,5 s de qualquer jeito.
+    const prazo = new Promise<null>((resolver) => {
+      temporizador = setTimeout(() => {
+        controller.abort();
+        resolver(null);
+      }, PRAZO_DA_GRAVACAO_MS);
+    });
+    const resposta = await Promise.race([
+      deps.fetchImpl(`${conexao.supabaseUrl}/rest/v1/rpc/contar_entrada`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          apikey: conexao.publishableKey,
+          Authorization: `Bearer ${conexao.publishableKey}`,
+        },
+        body: JSON.stringify({ p_canal: canal }),
+        signal: controller.signal,
+        redirect: "error",
+        credentials: "omit",
+      }),
+      prazo,
+    ]);
+    if (resposta !== null && resposta.status === 404)
+      deps.silencio.set(
+        conexao.supabaseUrl,
+        relogio() + SILENCIO_SEM_FUNCAO_MS,
+      );
+  } catch {
+    // Contar e' o que menos importa neste caminho: engolir e seguir.
+  } finally {
+    clearTimeout(temporizador);
+  }
+}
