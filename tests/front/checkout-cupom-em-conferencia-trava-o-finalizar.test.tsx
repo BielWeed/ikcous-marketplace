@@ -89,10 +89,18 @@ vi.mock("@/hooks/useAddresses", () => ({
   }),
 }));
 
-// Referência ESTÁVEL de `user` (ver checkout-economia-do-frete-na-barra).
-const mockUser = { id: "user-1" };
+// Referência ESTÁVEL de `user` (ver checkout-economia-do-frete-na-barra). A
+// conta é trocável entre renders: o caso "convidada entra na conta" muda `quem`.
+const { mockUser, quemEstaLogado } = vi.hoisted(() => ({
+  mockUser: { id: "user-1" },
+  quemEstaLogado: { user: null as { id: string } | null },
+}));
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: mockUser, profile: null, loading: false }),
+  useAuth: () => ({
+    user: quemEstaLogado.user,
+    profile: null,
+    loading: false,
+  }),
 }));
 
 vi.mock("@/hooks/useCart", async () => {
@@ -228,10 +236,16 @@ describe("CheckoutView — cupom em conferência não deixa finalizar", () => {
   let hospedeiro: HTMLDivElement;
   let slotDoHeader: HTMLDivElement;
 
-  const montar = async (subtotal = 80) => {
-    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+  // `semRemontar`: a `CheckoutView` real remonta a tela inteira (`key` = conta)
+  // quando a conta muda; `CheckoutViewDaConta` é a mesma tela SEM esse remonte,
+  // o único jeito de a conta mudar com o estado vivo e provar a comparação.
+  const montar = async (subtotal = 80, semRemontar = false) => {
+    const { CheckoutView, CheckoutViewDaConta } = await import(
+      "@/views/customer/CheckoutView"
+    );
+    const Tela = semRemontar ? CheckoutViewDaConta : CheckoutView;
     return (
-      <CheckoutView
+      <Tela
         cart={CART}
         subtotal={subtotal}
         shipping={0}
@@ -263,10 +277,10 @@ describe("CheckoutView — cupom em conferência não deixa finalizar", () => {
     });
   };
 
-  const abrirComRascunho = async (subtotal = 80) => {
+  const abrirComRascunho = async (subtotal = 80, semRemontar = false) => {
     semearRascunhoComCupom("CUPOM10");
     await act(async () => {
-      raiz.render(await montar(subtotal));
+      raiz.render(await montar(subtotal, semRemontar));
     });
     await esperar(420);
     await preencherDados();
@@ -287,6 +301,7 @@ describe("CheckoutView — cupom em conferência não deixa finalizar", () => {
     onNavigate.mockClear();
     onSetBackOverride.mockClear();
     respostasPendentes = [];
+    quemEstaLogado.user = mockUser;
     mockValidateCoupon.mockReset();
     mockValidateCoupon.mockImplementation(
       () =>
@@ -416,5 +431,57 @@ describe("CheckoutView — cupom em conferência não deixa finalizar", () => {
     await tocarEmFinalizar();
     expect(createOrder).toHaveBeenCalledTimes(1);
     expect(createOrder.mock.calls[0][0].couponCode).toBe("CUPOM10");
+  });
+
+  it("convidada com o cupom já conferido entra na conta (tela real, que remonta): o cupom volta do rascunho e trava até a conferência da conta chegar", async () => {
+    quemEstaLogado.user = null;
+    await abrirComRascunho(80);
+    await responderAConferencia({ valid: true, discount: 10 });
+
+    quemEstaLogado.user = mockUser;
+    await act(async () => {
+      raiz.render(await montar(80));
+    });
+    await esperar(420);
+    await preencherDados();
+    expect(mockValidateCoupon).toHaveBeenCalledTimes(2);
+    expect(localizarBotaoFinalizar()!.disabled).toBe(true);
+    await tocarEmFinalizar();
+    expect(createOrder).not.toHaveBeenCalled();
+
+    await responderAConferencia({ valid: true, discount: 10 });
+    expect(localizarBotaoFinalizar()!.disabled).toBe(false);
+    await tocarEmFinalizar();
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(createOrder.mock.calls[0][0].totalAmount).toBe(70);
+  });
+
+  it("a conta muda com a tela viva e o cupom já conferido (código e subtotal iguais): a conferência era de OUTRA conta — trava até a nova chegar", async () => {
+    quemEstaLogado.user = null;
+    await abrirComRascunho(80, true);
+    expect(mockValidateCoupon).toHaveBeenCalledTimes(1);
+    await responderAConferencia({ valid: true, discount: 10 });
+    expect(document.body.textContent).not.toContain("Conferindo o desconto");
+
+    // A conta entra com o cupom na tela: o cupom fica (convidado → conta não é
+    // troca), mas a conferência dele era de OUTRA conta.
+    quemEstaLogado.user = mockUser;
+    await act(async () => {
+      raiz.render(await montar(80, true));
+    });
+    await esperar(50);
+    expect(mockValidateCoupon).toHaveBeenCalledTimes(2);
+    expect(mockValidateCoupon).toHaveBeenLastCalledWith("CUPOM10", 80);
+    expect(localizarBotaoFinalizar()!.disabled).toBe(true);
+    await tocarEmFinalizar();
+    expect(createOrder).not.toHaveBeenCalled();
+
+    await responderAConferencia({ valid: true, discount: 10 });
+    expect(localizarBotaoFinalizar()!.disabled).toBe(false);
+    await tocarEmFinalizar();
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    const pedido = createOrder.mock.calls[0][0];
+    expect(pedido.couponCode).toBe("CUPOM10");
+    expect(pedido.totalAmount).toBe(70);
   });
 });
