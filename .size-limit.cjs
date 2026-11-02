@@ -246,7 +246,10 @@ module.exports = [
     // avisa e-mail da loja, pagamento pelo app e transportadora que faltam). Base 498 kB
     // cabendo por poucos bytes; com o cartao novo mede 498,07 kB (73 B acima). Nenhum codigo
     // foi trocado por algo mais arriscado para caber.
-    limit: "499 kB",
+    // 02/11/2026 (mesma regra): 499 -> 501 kB na 1.5.110 (Funil do CRM mostra as visitas da loja
+    // por canal, com o aviso de contagem no limite). O lote inteiro mede
+    // 499,02 kB no CI (18 B acima). Nenhum codigo foi trocado por algo mais arriscado para caber.
+    limit: "501 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },
