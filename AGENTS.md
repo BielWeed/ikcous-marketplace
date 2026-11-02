@@ -63,7 +63,10 @@ não no cliente; `increment_helpful` foi reescrita em cima dela); favoritos. Com
 itens (snapshot de preço) + histórico de status + payment_history (registro **manual**
 do lojista: recebido|desfeito). Pessoas: profiles, public_profiles, user_addresses.
 Loja: store_config (identidade, frete, flags), app_settings, credenciais de frete,
-cache/logs de cotação, analytics_events, push_subscriptions(+log), otp_verifications.
+cache/logs de cotação, analytics_events, push_subscriptions(+log), otp_verifications;
+`visitas_por_dia` (entradas da loja por dia e canal, tabela nova da 20261399000000, fora da
+contagem acima): **só por RPC** — `contar_entrada` (a única porta do visitante) e `crm_visitas`
+(admin atual); nenhum privilégio de tabela para anon, authenticated nem service_role.
 Auditoria: `vor_receipts` (recibos de operação com hash SHA-256 encadeado:
 `proof_hash`/`previous_hash` — consumida por `src/hooks/useVOR.ts`);
 `marketplace_ai_state` é órfã (estado genérico por componente, sem uso vivo no front).
