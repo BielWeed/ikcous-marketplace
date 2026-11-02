@@ -676,6 +676,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                         name="fullName"
                         type="text"
                         autoComplete="name"
+                        maxLength={120}
                         placeholder="Seu nome"
                         value={fullName}
                         onChange={(e) => {

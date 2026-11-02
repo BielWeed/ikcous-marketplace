@@ -128,20 +128,18 @@ describe("robots.txt da loja", () => {
 });
 
 describe("sitemap.xml da loja", () => {
-  // O retrato das 4 entradas estáticas é o do public/sitemap.xml versionado
-  // (lastmod 2024-03-21, changefreq daily): a issue não pediu política de SEO
-  // nova, então o gerador preserva o que já foi publicado e só reescreve a
-  // origem para a publicUrl da loja que está sendo construída.
+  // A única entrada estática é a raiz (lastmod 2024-03-21, changefreq daily, do
+  // public/sitemap.xml versionado): `/?view=cart|favorites|orders` saíram porque
+  // nada no app lê `view` — os três endereços abrem a vitrine, duplicata da raiz.
+  // A issue não pediu política de SEO nova, então o gerador só reescreve a origem
+  // para a publicUrl da loja que está sendo construída.
   const estatico = (origem: string) =>
-    `  <url>\n    <loc>${origem}/</loc>\n    <lastmod>2024-03-21</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n` +
-    `  <url>\n    <loc>${origem}/?view=cart</loc>\n    <lastmod>2024-03-21</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.8</priority>\n  </url>\n` +
-    `  <url>\n    <loc>${origem}/?view=favorites</loc>\n    <lastmod>2024-03-21</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.8</priority>\n  </url>\n` +
-    `  <url>\n    <loc>${origem}/?view=orders</loc>\n    <lastmod>2024-03-21</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.8</priority>\n  </url>\n`;
+    `  <url>\n    <loc>${origem}/</loc>\n    <lastmod>2024-03-21</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>1.0</priority>\n  </url>\n`;
 
   const entradaDeProduto = (origem: string, id: string) =>
     `  <url>\n    <loc>${sitemap.urlDeProduto(origem, id)}</loc>\n  </url>\n`;
 
-  it("sem produtos: declaração, urlset e as 4 entradas do retrato, nada mais", () => {
+  it("sem produtos: declaração, urlset e a entrada da raiz, nada mais", () => {
     expect(sitemap.sitemapXml(PUBLIC_URL, [])).toBe(
       `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${estatico(PUBLIC_URL)}</urlset>\n`,
     );

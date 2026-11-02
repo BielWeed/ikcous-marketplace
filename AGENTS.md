@@ -421,7 +421,7 @@ em `public/`, que servem o `vite dev`; modo fixture não sai para a rede) — ma
 endereço da loja que o build conhece, e na Vercel todas as lojas dividem o mesmo build. Por isso,
 em produção, **quem responde os dois caminhos é o porteiro, por host** (`atenderMapaDoSite`,
 `src/hospedagem/mapaDoSite.ts`; defeito multiloja-frota-3, 23/10/2026): `robots.txt` com o
-`Sitemap:` do endereço que respondeu; `sitemap.xml` com as 4 URLs estáticas mais os produtos de
+`Sitemap:` do endereço que respondeu; `sitemap.xml` com a URL estática da raiz (`/`) mais os produtos de
 `vw_produtos_public` do banco DAQUELA loja (cache de 10 min por endereço; banco fora = último mapa
 bom por até 1h, depois só as estáticas — nunca erro, nunca o mapa de outra loja). O gerador do
 build e o de borda são dois arquivos que precisam dar a mesma saída (`tests/front/mapa-do-site.test.ts`

@@ -921,6 +921,7 @@ export function AccountSettingsView() {
                       id="full_name"
                       name="full_name"
                       autoComplete="name"
+                      maxLength={120}
                       value={profileData.name}
                       disabled={profileLoadState !== "loaded"}
                       onChange={(e) => {

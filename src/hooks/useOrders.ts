@@ -1867,10 +1867,15 @@ export function useOrders(
   // iniciar ≠ este (o transporte pode ignorar o cancelamento). Vale só para
   // a leitura DO CLIENTE; o painel (`loadOrders`) tem o próprio controlador.
   const userIdAtualRef = useRef<string | null>(user?.id ?? null);
+  // Pedidos (trio do código) cujo ÚLTIMO envio de código falhou, com a hora da
+  // falha. Some na troca de conta e ao desmontar (a limpeza do efeito abaixo).
+  const falhasDoOtpRef = useRef(new Map<string, number>());
   useEffect(() => {
     userIdAtualRef.current = user?.id ?? null;
+    const falhasDoOtp = falhasDoOtpRef.current;
     return () => {
       userOrdersAbortControllerRef.current?.abort();
+      falhasDoOtp.clear();
     };
   }, [user?.id]);
 
@@ -4458,6 +4463,16 @@ export function useOrders(
       const NAO_CONFERE =
         "Não encontramos um pedido com esse e-mail, WhatsApp e ID juntos.";
 
+      // A edge grava o código e a janela de 60 s ANTES do SMTP e não os desfaz
+      // se ele falha (desfazer tiraria o freio e deixaria uma pane queimar os
+      // tetos de 24 h). Quem tenta de novo em seguida recebe `muito_recente` de
+      // um código que NUNCA saiu: a frase "já enviamos" seria falsa. Por isso
+      // lembramos, por pedido, que o último envio falhou (por 60 s, a janela).
+      const falhas = falhasDoOtpRef.current;
+      const chave = [email, whatsapp, orderFragment]
+        .map((s) => String(s).trim().toLowerCase())
+        .join("|");
+
       try {
         const { data, error } = await supabase.functions.invoke(
           "send-otp-email",
@@ -4466,18 +4481,28 @@ export function useOrders(
 
         // `invoke` transforma status >= 400 em `error`. A função devolve 502
         // quando a loja falhou (envio ou remetente ausente) — daí o erro sem
-        // corpo cair no mesmo aviso de "não conseguimos enviar".
+        // corpo cair no mesmo aviso de "não conseguimos enviar". O motivo está
+        // no corpo do 502; só `envio_falhou` deixou código gravado.
         if (error && !data) {
           console.error("Error generating OTP:", error);
           toast.error(NAO_ENVIOU);
+          const corpo = await (error as any).context
+            ?.json?.()
+            .catch(() => null);
+          if (corpo?.motivo === "envio_falhou") falhas.set(chave, Date.now());
           return false;
         }
 
-        if (data?.ok) return true;
+        if (data?.ok) {
+          falhas.delete(chave);
+          return true;
+        }
 
         if (data?.motivo === "muito_recente") {
           toast.error(
-            `Já enviamos um código há pouco. Espere ${data.espereSegundos ?? 60} segundos e confira sua caixa de entrada.`,
+            Date.now() - (falhas.get(chave) ?? 0) < 60_000
+              ? "Ainda não conseguimos enviar seu código. Aguarde um instante e tente de novo."
+              : `Já enviamos um código há pouco. Espere ${data.espereSegundos ?? 60} segundos e confira sua caixa de entrada.`,
           );
           return false;
         }
@@ -4486,6 +4511,7 @@ export function useOrders(
           data?.motivo === "envio_falhou" ||
           data?.motivo === "sem_remetente"
         ) {
+          if (data.motivo === "envio_falhou") falhas.set(chave, Date.now());
           toast.error(NAO_ENVIOU);
           return false;
         }

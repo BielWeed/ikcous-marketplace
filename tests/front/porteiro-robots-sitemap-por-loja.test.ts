@@ -279,7 +279,7 @@ describe("robots.txt por host — o Sitemap aponta para a PRÓPRIA loja", () => 
 });
 
 describe("sitemap.xml por host — URLs e produtos da PRÓPRIA loja", () => {
-  it("host da IKCOUS: 4 URLs estáticas e os 3 produtos dela, no endereço dela", async () => {
+  it("host da IKCOUS: a URL estática (só a raiz) e os 3 produtos dela, no endereço dela", async () => {
     const { resp, corpo } = await pedir(
       lojasDoDefeito(),
       "ikcous-mapa.exemplo",
@@ -292,9 +292,6 @@ describe("sitemap.xml por host — URLs e produtos da PRÓPRIA loja", () => {
     expect(resp.headers.get("x-ikcous-mapa")).toBe("completo");
     expect(urlsDoSitemap(corpo)).toEqual([
       "https://ikcous-mapa.exemplo/",
-      "https://ikcous-mapa.exemplo/?view=cart",
-      "https://ikcous-mapa.exemplo/?view=favorites",
-      "https://ikcous-mapa.exemplo/?view=orders",
       ...IDS_IKCOUS.map(
         (id) => `https://ikcous-mapa.exemplo/product-detail?id=${id}`,
       ),
@@ -313,9 +310,6 @@ describe("sitemap.xml por host — URLs e produtos da PRÓPRIA loja", () => {
     expect(resp.status).toBe(200);
     expect(urlsDoSitemap(corpo)).toEqual([
       "https://savy-mapa.exemplo/",
-      "https://savy-mapa.exemplo/?view=cart",
-      "https://savy-mapa.exemplo/?view=favorites",
-      "https://savy-mapa.exemplo/?view=orders",
       ...IDS_SAVY.map(
         (id) => `https://savy-mapa.exemplo/product-detail?id=${id}`,
       ),
@@ -386,7 +380,7 @@ describe("sitemap.xml por host — URLs e produtos da PRÓPRIA loja", () => {
     expect(
       chamadas.filter((c) => c.endsWith("/vw_produtos_public")),
     ).toHaveLength(3);
-    expect(urlsDoSitemap(corpo)).toHaveLength(4 + 2500);
+    expect(urlsDoSitemap(corpo)).toHaveLength(1 + 2500);
     expect(corpo).toContain("id=p-02499");
   });
 
@@ -433,7 +427,7 @@ describe("sitemap.xml — a leitura dos produtos falha: só as URLs estáticas D
     ["rede cai", { tipo: "lanca" }],
     ["corpo que não é JSON", { tipo: "torto" }],
   ] as const)(
-    "%s -> 200 com as 4 estáticas da Savy, sem produto, sem nada da IKCOUS, sem cache",
+    "%s -> 200 com a estática (raiz) da Savy, sem produto, sem nada da IKCOUS, sem cache",
     async (rotulo, produtos) => {
       const lojas = lojasDoDefeito();
       const savy = lojas[1];
@@ -444,12 +438,7 @@ describe("sitemap.xml — a leitura dos produtos falha: só as URLs estáticas D
       expect(resp.status).toBe(200);
       expect(resp.headers.get("x-ikcous-mapa")).toBe("estatico");
       expect(resp.headers.get("cache-control")).toBe("no-store");
-      expect(urlsDoSitemap(corpo)).toEqual([
-        `https://${savy.host}/`,
-        `https://${savy.host}/?view=cart`,
-        `https://${savy.host}/?view=favorites`,
-        `https://${savy.host}/?view=orders`,
-      ]);
+      expect(urlsDoSitemap(corpo)).toEqual([`https://${savy.host}/`]);
       expect(corpo).not.toContain("product-detail");
       expect(corpo).not.toContain("ikcous");
       for (const id of IDS_IKCOUS) expect(corpo).not.toContain(id);
@@ -478,7 +467,7 @@ describe("sitemap.xml — a leitura dos produtos falha: só as URLs estáticas D
       const { resp, corpo } = await promessa;
       expect(resp.status).toBe(200);
       expect(resp.headers.get("x-ikcous-mapa")).toBe("estatico");
-      expect(urlsDoSitemap(corpo)).toHaveLength(4);
+      expect(urlsDoSitemap(corpo)).toEqual([`https://${loja.host}/`]);
     } finally {
       vi.useRealTimers();
     }
@@ -495,7 +484,7 @@ describe("sitemap.xml — a leitura dos produtos falha: só as URLs estáticas D
     const ikcous = await pedir(lojas, lojas[0].host, "/sitemap.xml");
     expect(savy.resp.headers.get("x-ikcous-mapa")).toBe("estatico");
     expect(ikcous.resp.headers.get("x-ikcous-mapa")).toBe("completo");
-    expect(urlsDoSitemap(ikcous.corpo)).toHaveLength(4 + IDS_IKCOUS.length);
+    expect(urlsDoSitemap(ikcous.corpo)).toHaveLength(1 + IDS_IKCOUS.length);
   });
 });
 

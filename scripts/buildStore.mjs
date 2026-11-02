@@ -8,6 +8,48 @@ import { gerarHospedagem } from "./hospedagem.mjs";
 import { gerarSitemap } from "./sitemap.mjs";
 
 const failure = (code) => new Error(`IDENTITY_${code}`);
+
+// Causa do erro em UMA linha para o log do CLI. Mensagem de terceiro (fetch,
+// Vite, fs) pode carregar token, chave ou variável de ambiente, então sai lavada:
+// (1) o VALOR de toda variável de nome sensível do `process.env` (valores que o
+// Vite lê de arquivos .env via loadEnv NÃO são cobertos aqui, mas nenhuma
+// mensagem de erro deste build os interpola; os padrões abaixo são a rede); (2) formatos
+// conhecidos de segredo; (3) sequência opaca longa. Caminho de arquivo fica
+// legível: a barra não entra na classe da sequência opaca. Valor lançado que não
+// é Error nunca é impresso — pode ser qualquer coisa.
+const NOME_SENSIVEL =
+  /KEY|TOKEN|SECRET|PASS|AUTH|CREDENTIAL|PRIVATE|DATABASE_URL|DSN|COOKIE|SIGNATURE/i;
+const FORMATOS_DE_SEGREDO = [
+  /eyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]*/g, // JWT
+  /\bsb_(?:publishable|secret)_[\w-]+/gi, // chaves novas do Supabase
+  /\bBearer\s+\S+/gi,
+  /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:[^\s/@]+@/gi, // user:senha@ em URL
+  /[A-Za-z0-9_-]{32,}/g, // sequência opaca longa (hash, chave, token)
+];
+const TETO_DA_CAUSA = 400;
+
+export function descreverCausa(error, env = process.env) {
+  if (!(error instanceof Error)) return "valor lançado que não é Error";
+  const origem = error.cause;
+  const extra =
+    origem instanceof Error
+      ? ` (causa: ${String(origem.code ?? origem.message)})`
+      : "";
+  let texto = `${error.message}${extra}`;
+  for (const [nome, valor] of Object.entries(env))
+    if (
+      NOME_SENSIVEL.test(nome) &&
+      typeof valor === "string" &&
+      valor.length >= 8
+    )
+      texto = texto.split(valor).join("[oculto]");
+  for (const formato of FORMATOS_DE_SEGREDO)
+    texto = texto.replace(formato, "[oculto]");
+  texto = texto.replace(/\s+/g, " ").trim();
+  return texto.length > TETO_DA_CAUSA
+    ? `${texto.slice(0, TETO_DA_CAUSA)}…`
+    : texto;
+}
 const object = (value) =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 const samePath = (one, two) => path.relative(one, two) === "";
@@ -388,7 +430,7 @@ export async function buildStore(options = {}) {
   try {
     await gerarHospedagem(output, capturedDelivery);
   } catch (error) {
-    const razao = error instanceof Error ? error.message : String(error);
+    const razao = descreverCausa(error);
     throw failure(`HOSTING ${razao}`);
   }
   // robots.txt/sitemap.xml da loja (issue #117): sobrescreve as sementes que
@@ -398,7 +440,7 @@ export async function buildStore(options = {}) {
   try {
     await gerarSitemap(output, capturedDelivery);
   } catch (error) {
-    const razao = error instanceof Error ? error.message : String(error);
+    const razao = descreverCausa(error);
     throw failure(`SITEMAP ${razao}`);
   }
   const temporary = path.join(output, `version.json.${randomUUID()}.tmp`);
@@ -420,8 +462,10 @@ if (
   try {
     if (process.argv.length !== 2) throw failure("OPTIONS");
     await buildStore();
-  } catch {
-    console.error("IDENTITY_BUILD_FAILED: entrega não confirmada.");
+  } catch (error) {
+    console.error(
+      `IDENTITY_BUILD_FAILED: entrega não confirmada. Causa: ${descreverCausa(error)}`,
+    );
     process.exitCode = 1;
   }
 }
