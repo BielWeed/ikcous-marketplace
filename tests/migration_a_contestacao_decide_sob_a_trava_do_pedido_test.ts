@@ -677,6 +677,10 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // dia de Sao Paulo, teto de 50000 sem escrever nem travar a linha, lock_timeout, commit assincrono; crm_visitas so do admin atual, previa fora, no_teto; 50001 chamadas reais,
     // corrida de duas conexoes, mutantes, rollback comum e destrutivo, pre/pos-voo e consultas 117a/117b).
     "tests/banco/as-visitas-da-loja-viva.cjs",
+    // 20261399100000: o nome do perfil (e o WhatsApp) tem teto no banco (tres CHECKs NOT VALID: nome ate 120 em profiles e em public_profiles, WhatsApp ate 20; 121 e 2 milhoes
+    // recusados para todos e a vitrine nunca devolve nome acima de 120; a migration se recusa se ja houver perfil acima do teto (o CHECK travaria foto, CPF e cargo da conta);
+    // mutantes, rollback byte a byte, pre/pos-voo, atomicidade e lock_timeout nas duas tabelas).
+    "tests/banco/o-nome-do-perfil-tem-teto-no-banco-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",
