@@ -853,9 +853,9 @@ export const AdminQAView = memo(function AdminQAView({
                   Resposta Oficial
                 </div>
                 <p className="text-sm text-zinc-300">
-                  Ao responder uma pergunta, ela se torna visível publicamente
-                  no app para que outros clientes que tenham a mesma dúvida
-                  possam ler imediatamente.
+                  A pergunta já aparece para todos assim que o cliente a envia.
+                  A sua resposta aparece junto dela na hora, para quem tiver a
+                  mesma dúvida.
                 </p>
               </div>
 
