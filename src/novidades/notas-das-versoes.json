@@ -1,4 +1,17 @@
 {
+  "1.5.111": {
+    "titulo": "Correções no cupom do checkout, no aviso do código por e-mail e nos limites do nome",
+    "novidades": [],
+    "correcoes": [
+      "Checkout: um cupom que voltava do rascunho da compra deixava o botão Finalizar liberado antes de o desconto ser conferido. Agora o botão espera a conferência do cupom.",
+      "Código por e-mail: depois de uma falha no envio, a tela não diz mais que o código já foi enviado. Ela avisa que ainda não conseguimos enviar e pede para tentar de novo.",
+      "Página sem internet e mapa do site: a página sem internet não mostra mais uma imagem quebrada, e o mapa do site não lista mais três endereços internos."
+    ],
+    "melhorias": [
+      "Cadastro e Minha conta: o campo de nome aceita até 120 caracteres.",
+      "Painel, aba Perguntas: o texto de ajuda agora diz que a pergunta já aparece para todos assim que o cliente a envia."
+    ]
+  },
   "1.5.110": {
     "titulo": "O painel agora mostra quantas vezes a loja foi aberta e por onde as pessoas vieram",
     "novidades": [
