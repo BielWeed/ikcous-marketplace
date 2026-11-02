@@ -693,6 +693,15 @@ jobs:
       - name: Prova viva da v23 que recusa o pagamento pelo app (20261394200000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-v23-recusa-o-pagamento-pelo-app-viva.cjs
+      # Migration 20261399000000 (as visitas da loja contam pelo porteiro): tabela visitas_por_dia selada (RLS sem politica, nenhum privilegio para
+      # anon, authenticated nem service_role), contar_entrada (a UNICA porta nova do visitante: so anon e service_role, devolve nada, sem data nem texto
+      # livre, canal fora da lista = 22023, dia de Sao Paulo, teto de 50000 por canal e dia sem escrever nem travar a linha, lock_timeout de 100 ms,
+      # commit assincrono pelo corpo) e crm_visitas (so o admin ATUAL; previa fora de visitas; no_teto so de canal de pessoa; periodo como crm_visao);
+      # mutantes, as 50001 chamadas reais, corrida de duas conexoes, rollback comum que mantem as linhas e destrutivo com confirmacao, pre/pos-voo e
+      # consultas 117a/117b. CLONE proprio.
+      - name: Prova viva das visitas da loja que o porteiro conta (20261399000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/as-visitas-da-loja-viva.cjs
       # Migration 20261398000000 (o Inicio compara o mes anterior ate a mesma hora): painel_inicio corta o ULTIMO dia dos mesmos dias do mes
       # anterior na MESMA hora de agora (dia 1, venda de R$ 100 hoje as 05h contra R$ 100 as 18h do dia 1 anterior: o anterior vale 0, nao 100);
       # dia 15, 28 a 31 contra fevereiro de 28 e 29 dias e meses de 30/31, virada de ano, hora exata (<=), corte em UTC e dia inexistente (o ultimo
