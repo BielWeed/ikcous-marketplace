@@ -1,3 +1,9 @@
+import {
+  classificarEntrada,
+  ehPaginaContavel,
+  registrarEntrada,
+} from "./src/hospedagem/contador";
+import type { CanalDeEntrada } from "./src/hospedagem/contador";
 import type {
   AmbientePorteiro,
   EntradaCacheCartaz,
@@ -79,6 +85,49 @@ const cacheMapaDoSite = new Map<string, EntradaCacheMapa>();
 // Banners do topo por loja (15 s; falha 10 s), para o cartaz pré-impresso da
 // 1ª visita: ver `CACHE_CARTAZ_FRESCO_MS` no porteiro. Chave `host|supabaseUrl`.
 const cacheCartazDaLoja = new Map<string, EntradaCacheCartaz>();
+
+// Contador de visitas da loja (spec "visitas da loja", 02/11/2026): lojas cujo
+// banco ainda nao tem `contar_entrada` (404) ficam 10 min caladas, por
+// `supabaseUrl` -- ver `registrarEntrada` em `src/hospedagem/contador.ts`.
+const silencioDoContador = new Map<string, number>();
+
+// O segundo argumento que a Vercel entrega ao `middleware` em qualquer
+// framework que nao seja o Next (doc oficial "Routing Middleware", `context`
+// com `waitUntil`, conferido via context7 em 02/11/2026). Tipo LOCAL de
+// proposito: `@vercel/functions` nao e' dependencia daqui e a borda nao ganha
+// pacote novo (`porteiro-grafo-da-borda-so-modulos-puros`).
+interface ContextoDaBorda {
+  waitUntil(promessa: Promise<unknown>): void;
+}
+
+type GravarEntrada = (
+  conexao: { readonly supabaseUrl: string; readonly publishableKey: string },
+  canal: CanalDeEntrada,
+) => void;
+
+// SO a producao conta: a previa de desenvolvimento fala com o banco da IKCOUS e
+// nao pode sujar o numero dela. Devolve `undefined` fora dela (nada a chamar).
+// A gravacao NUNCA e' aguardada aqui: a promessa (que nunca rejeita) vai para
+// `context.waitUntil`, que mantem a funcao viva depois da resposta. Sem
+// `context`, ou com um `waitUntil` que lanca, a gravacao segue solta -- a pagina
+// nao depende dela.
+function criarGravadorDeEntrada(
+  env: AmbientePorteiro,
+  context: ContextoDaBorda | undefined,
+): GravarEntrada | undefined {
+  if (env.VERCEL_ENV !== "production") return undefined;
+  return (conexao, canal) => {
+    const gravacao = registrarEntrada(conexao, canal, {
+      fetchImpl: fetch,
+      silencio: silencioDoContador,
+    });
+    try {
+      context?.waitUntil(gravacao);
+    } catch {
+      // Sem waitUntil a gravacao so pode ser cortada; a pagina segue.
+    }
+  };
+}
 
 // Caminho (a) do porteiro — a caderneta central (`resolver_loja`, T5,
 // `supabase/migrations/20261141000000_caderneta_da_frota.sql`). Convenção de
@@ -191,8 +240,15 @@ export function escaparHtml(valor: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export default async function middleware(request: Request) {
+export default async function middleware(
+  request: Request,
+  context?: ContextoDaBorda,
+) {
   const url = new URL(request.url);
+  const gravarEntrada = criarGravadorDeEntrada(
+    process.env as AmbientePorteiro,
+    context,
+  );
   const userAgent = request.headers.get("user-agent") || "";
 
   // Detect if the request is from a crawler bot (WhatsApp, Facebook, Twitter, Telegram, etc.)
@@ -224,6 +280,16 @@ export default async function middleware(request: Request) {
     // encontrado", mais abaixo, segue a mesma regra: `semProduto`.)
     if (resultado.tipo === "manutencao") return resultado.resposta;
     const { ficha, caderneta: estadoCaderneta } = resultado;
+    // Contador de visitas: o robo de previa de link tambem entra na conta, como
+    // `previa` (NUNCA somada em "visitas"), no banco da PROPRIA loja -- a
+    // conexao e' a da ficha validada acima, a mesma que serve o produto. So
+    // GET, loja aberta; a ficha ja foi aceita pela concordancia.
+    if (
+      gravarEntrada !== undefined &&
+      !ficha.configuracao.manutencao &&
+      ehPaginaContavel(request.method, url)
+    )
+      gravarEntrada(ficha.conexao, "previa");
     const { supabaseUrl, publishableKey: supabaseKey } = ficha.conexao;
     // Nome da marca no HTML servido a crawlers: T5 (11/09/2026) tira o
     // último valor ASSADO do ramo de robô (antes: `process.env.VITE_APP_NAME`
@@ -398,5 +464,22 @@ export default async function middleware(request: Request) {
     cache: cachePorteiro,
     cacheMapa: cacheMapaDoSite,
     cacheCartaz: cacheCartazDaLoja,
+    // Pessoa abrindo a loja (ou previa de link) -> uma entrada no banco DESTA
+    // loja. Quem decide se o pedido conta e' `classificarEntrada`.
+    contarEntrada:
+      gravarEntrada === undefined
+        ? undefined
+        : (conexao, pedido) => {
+            const entrada = classificarEntrada({
+              metodo: pedido.method,
+              url: new URL(pedido.url),
+              cabecalhos: pedido.headers,
+            });
+            if (entrada === null) return;
+            gravarEntrada(
+              conexao,
+              entrada.tipo === "pessoa" ? entrada.canal : "previa",
+            );
+          },
   });
 }
