@@ -2599,6 +2599,24 @@ export type Database = {
         };
         Relationships: [];
       };
+      visitas_por_dia: {
+        Row: {
+          canal: string;
+          contagem: number;
+          dia: string;
+        };
+        Insert: {
+          canal: string;
+          contagem?: number;
+          dia: string;
+        };
+        Update: {
+          canal?: string;
+          contagem?: number;
+          dia?: string;
+        };
+        Relationships: [];
+      };
       vor_receipts: {
         Row: {
           action_type: string;
@@ -3278,6 +3296,7 @@ export type Database = {
         Args: { p_order_id: string };
         Returns: Json;
       };
+      contar_entrada: { Args: { p_canal: string }; Returns: undefined };
       create_marketplace_order: {
         Args: {
           p_address_id: string;
@@ -3355,6 +3374,10 @@ export type Database = {
         Returns: Json;
       };
       crm_visao: {
+        Args: { p_fim: string; p_inicio: string };
+        Returns: Json;
+      };
+      crm_visitas: {
         Args: { p_fim: string; p_inicio: string };
         Returns: Json;
       };
