@@ -5,6 +5,7 @@ import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import {
   lerClientesDoCrm,
   lerVisaoDoCrm,
+  lerVisitasDoCrm,
   mensagemDeErroDoPainel,
 } from "@/lib/crm";
 import { supabase } from "@/lib/supabase";
@@ -13,6 +14,7 @@ import type {
   ListaDeClientesDoCrm,
   SegmentoCrm,
   VisaoDoCrm,
+  VisitasDoCrm,
 } from "@/types/crm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -134,6 +136,58 @@ export function useCrmVisao(
   ]);
 
   return { visao, carregando, erro, atualizar };
+}
+
+// ═══ crm_visitas ═════════════════════════════════════════════════════════
+
+// A leitura de cada período (`null` = função ainda ausente nesta loja).
+const cacheDasVisitas = new Map<
+  string,
+  { visitas: VisitasDoCrm | null; lidoEm: number }
+>();
+
+/**
+ * Separado de `useCrmVisao`: o número de visitas nunca atrasa nem derruba a
+ * visão. Função ausente (PGRST202/42883) some em silêncio; outro erro só
+ * marca `erro`.
+ */
+export function useCrmVisitas(intervalo: IntervaloDeDatas, active: boolean) {
+  const { session } = useAuth();
+  const temSessao = Boolean(session);
+  const chave = `${intervalo.inicio}:${intervalo.fim}`;
+  const [falha, setFalha] = useState({ chave: "", erro: false });
+
+  useEffect(() => {
+    const emCache = cacheDasVisitas.get(chave);
+    if (!active || !temSessao) return;
+    if (emCache && Date.now() - emCache.lidoEm < FRESCOR_MS) return;
+    let cancelada = false;
+    const timer = setTimeout(async () => {
+      let visitas: VisitasDoCrm | null = null;
+      let erro = false;
+      try {
+        const { data, error } = await supabase.rpc("crm_visitas", {
+          p_inicio: intervalo.inicio,
+          p_fim: intervalo.fim,
+        });
+        if (error) erro = !["PGRST202", "42883"].includes(error.code);
+        else erro = (visitas = lerVisitasDoCrm(data)) === null;
+      } catch {
+        erro = true;
+      }
+      if (!erro) cacheDasVisitas.set(chave, { visitas, lidoEm: Date.now() });
+      if (!cancelada) setFalha({ chave, erro });
+    }, ESPERA_DO_PERIODO_MS);
+    return () => {
+      cancelada = true;
+      clearTimeout(timer);
+    };
+  }, [chave, intervalo.inicio, intervalo.fim, active, temSessao]);
+
+  return {
+    visitas: cacheDasVisitas.get(chave)?.visitas ?? null,
+    erro: falha.chave === chave && falha.erro,
+  };
 }
 
 // ═══ crm_clientes ════════════════════════════════════════════════════════
