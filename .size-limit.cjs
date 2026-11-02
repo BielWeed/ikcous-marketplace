@@ -132,10 +132,9 @@ module.exports = [
     // (1.5.105); os dois itens somam +0,22 kB e medem 598,06 kB (64 B acima do teto).
     limit: "599 kB",
     webpack: false,
-    // Sem `running: false` o preset tenta MEDIR TEMPO rodando o bundle em
-    // Chrome headless — inútil para app de navegador e quebra em runner sem
-    // Chrome. O portão é o TAMANHO da entrega, não o tempo de execução.
-    running: false,
+    // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
+    // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
+    // nao existe chave `running` aqui. O portao e o TAMANHO da entrega.
   },
   {
     // Painel (novo, 26/09/2026): só o que fica atrás do portão do admin
@@ -249,7 +248,6 @@ module.exports = [
     // foi trocado por algo mais arriscado para caber.
     limit: "499 kB",
     webpack: false,
-    running: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },
   {
@@ -265,6 +263,5 @@ module.exports = [
     path: [`${output}/assets/leitor-zxing-*.js`, `${output}/assets/*.wasm`],
     limit: "400 kB",
     webpack: false,
-    running: false,
   },
 ];
