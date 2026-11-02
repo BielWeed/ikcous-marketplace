@@ -7,6 +7,7 @@ import {
 } from "@/components/admin/crm/PecasDoCrm";
 import {
   conversaoEmVenda,
+  estadoDasVisitas,
   formatarInteiro,
   formatarPercentual,
   idadePorExtenso,
@@ -17,7 +18,13 @@ import {
 } from "@/lib/crm";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
-import type { EtapaDoPipeline, FunilDoCrm, VisaoDoCrm } from "@/types/crm";
+import type {
+  EtapaDoPipeline,
+  FunilDoCrm,
+  IntervaloDeDatas,
+  VisaoDoCrm,
+  VisitasDoCrm,
+} from "@/types/crm";
 import {
   ChevronRight,
   Clock,
@@ -47,6 +54,12 @@ interface EtapaMedida extends DefinicaoDeEtapa {
 
 /** Só as etapas que o app realmente mede — cada uma com a unidade escrita. */
 const ETAPAS_MEDIDAS: readonly DefinicaoDeEtapa[] = [
+  {
+    chave: "visitas",
+    rotulo: "Visitas",
+    unidade: "entradas",
+    unidadeCurta: "entradas",
+  },
   {
     chave: "carrinhos",
     rotulo: "Carrinhos",
@@ -181,7 +194,16 @@ function FunilEmEtapas({ medidas }: Readonly<{ medidas: EtapaMedida[] }>) {
             />
           )}
           <div className="min-h-14 min-w-0 flex-1 rounded-xl border border-admin-border bg-admin-raised py-1 text-center">
-            <p className="text-admin-text text-2xl font-extrabold tabular-nums">
+            <p
+              className={cn(
+                "text-admin-text font-extrabold tabular-nums",
+                medidas.length < 4
+                  ? "text-2xl"
+                  : etapa.valor < 10_000
+                    ? "text-xl"
+                    : "text-lg",
+              )}
+            >
               {formatarInteiro(etapa.valor)}
             </p>
             <p className="text-admin-text-soft text-[11px]">
@@ -316,6 +338,8 @@ export function FunilEPedidosDoCrm({
   erro,
   offline = false,
   aoTentar,
+  visitas,
+  intervalo,
 }: Readonly<{
   visao: VisaoDoCrm | null;
   carregando: boolean;
@@ -323,6 +347,9 @@ export function FunilEPedidosDoCrm({
   erro?: string | null;
   offline?: boolean;
   aoTentar?: () => void;
+  /** `crm_visitas`; `null`/ausente = o funil fica como era. */
+  visitas?: VisitasDoCrm | null;
+  intervalo?: IntervaloDeDatas;
 }>) {
   const funil = visao?.funil;
   const criados = funil?.pedidosCriados ?? null;
@@ -337,9 +364,24 @@ export function FunilEPedidosDoCrm({
     CLASSES_DO_DESTAQUE_DE_PAGAMENTO[tomDaTaxaDePagamento(conversao)];
   const esqueleto = carregando && !visao;
   const falha = !esqueleto && !visao && (!!erro || offline);
+  const estado =
+    visitas && intervalo ? estadoDasVisitas(visitas, intervalo) : null;
+  const diasNoTeto = new Set(visitas?.noTeto.map((t) => t.dia)).size;
   const medidas = ETAPAS_MEDIDAS.flatMap((etapa) => {
-    const valor = funil?.[etapa.chave];
-    return valor == null ? [] : [{ ...etapa, valor }];
+    const valor =
+      etapa.chave === "visitas" ? visitas?.visitas : funil?.[etapa.chave];
+    const noLimite = etapa.chave === "visitas" && estado?.naoConfiavel;
+    return valor == null
+      ? []
+      : [
+          {
+            ...etapa,
+            valor,
+            unidadeCurta: noLimite
+              ? "entradas (contagem no limite)"
+              : etapa.unidadeCurta,
+          },
+        ];
   });
   return (
     <div className="space-y-4">
@@ -423,7 +465,8 @@ export function FunilEPedidosDoCrm({
           ),
           ajuda: (
             <ExplicacaoDoRelatorio titulo="Funil do app">
-              Visitas e produtos vistos ainda não são medidos. Só conta quem
+              {visitas?.visitas == null ? "Visitas e produtos" : "Produtos"}{" "}
+              vistos ainda não são medidos. Carrinhos e pedidos só contam quem
               entrou com conta. A conversão é vendas pagas ÷ pedidos criados.
             </ExplicacaoDoRelatorio>
           ),
@@ -446,6 +489,45 @@ export function FunilEPedidosDoCrm({
               <EstadoVazioDoCrm titulo="Ainda não há dados do funil do app" />
             ) : (
               <FunilEmEtapas medidas={medidas} />
+            )}
+            {!esqueleto && visitas && (
+              <div className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-zinc-400">
+                {visitas.visitas != null && (
+                  <>
+                    <div
+                      role="group"
+                      aria-label="Visitas por canal"
+                      className="flex flex-wrap gap-1.5"
+                    >
+                      {visitas.canais.map((c) => (
+                        <span
+                          key={c.rotulo}
+                          className="rounded-full border border-admin-border bg-white/5 px-2 py-0.5 text-zinc-200"
+                        >
+                          {c.rotulo}{" "}
+                          <strong className="tabular-nums">
+                            {formatarInteiro(c.visitas)}
+                          </strong>
+                        </span>
+                      ))}
+                    </div>
+                    {!!visitas.previas && (
+                      <p>
+                        Fora da conta: {formatarInteiro(visitas.previas)}{" "}
+                        pré-visualizações de link e robôs
+                      </p>
+                    )}
+                  </>
+                )}
+                {estado?.aviso && <p>{estado.aviso}</p>}
+                {estado?.naoConfiavel && (
+                  <p className="text-amber-300">
+                    Contagem no limite em {diasNoTeto}{" "}
+                    {diasNoTeto === 1 ? "dia" : "dias"}: o número pode não
+                    refletir as visitas reais.
+                  </p>
+                )}
+              </div>
             )}
           </CartaoDoCrm>
           {esqueleto ? (

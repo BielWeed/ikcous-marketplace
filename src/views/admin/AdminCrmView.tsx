@@ -16,7 +16,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
-import { useCrmVisao, useDashboardClassico } from "@/hooks/useCrm";
+import {
+  useCrmVisao,
+  useCrmVisitas,
+  useDashboardClassico,
+} from "@/hooks/useCrm";
 import { instanteDoDia, useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
@@ -107,6 +111,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
     erro,
     atualizar: atualizarVisao,
   } = useCrmVisao(intervalo, ativo);
+  const { visitas } = useCrmVisitas(intervalo, ativo && aba === "funil");
   const classico = useDashboardClassico(ativo, atualizarVisao);
   const { carregar: carregarClassico } = classico;
   const sincronizando = carregando || classico.carregando;
@@ -418,6 +423,8 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
                     visao={visao}
                     carregando={carregando}
                     onNavigate={onNavigate}
+                    visitas={visitas}
+                    intervalo={intervalo}
                   />
                 )}
               </LocalErrorBoundary>

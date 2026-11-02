@@ -673,6 +673,10 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261398000000: o Inicio compara o mes anterior ate a mesma hora (o ultimo dia dos mesmos dias do mes anterior corta na hora de agora; dia 1, 15, 28 a 31,
     // fevereiro de 28 e 29 dias, virada de ano, hora exata, corte em UTC; oraculo em JS e 12 mutantes, controle com o corpo anterior, rollback, pre/pos-voo, leitor concorrente e consultas 116a/116b).
     "tests/banco/o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-viva.cjs",
+    // 20261399000000: as visitas da loja contam pelo porteiro (tabela selada; contar_entrada e' a unica porta nova do visitante: so anon e service_role, canal fora da lista = 22023,
+    // dia de Sao Paulo, teto de 50000 sem escrever nem travar a linha, lock_timeout, commit assincrono; crm_visitas so do admin atual, previa fora, no_teto; 50001 chamadas reais,
+    // corrida de duas conexoes, mutantes, rollback comum e destrutivo, pre/pos-voo e consultas 117a/117b).
+    "tests/banco/as-visitas-da-loja-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",

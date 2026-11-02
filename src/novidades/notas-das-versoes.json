@@ -1,4 +1,12 @@
 {
+  "1.5.110": {
+    "titulo": "O painel agora mostra quantas vezes a loja foi aberta e por onde as pessoas vieram",
+    "novidades": [
+      "Painel, aba Funil do CRM: a etapa Visitas conta cada vez que alguém abre a loja e separa Direto, Instagram, WhatsApp e Outros sites. Quem só recebeu a prévia do link no WhatsApp fica de fora da conta. A contagem começa no dia em que a novidade entra no ar e não guarda nenhum dado de quem visitou."
+    ],
+    "correcoes": [],
+    "melhorias": []
+  },
   "1.5.109": {
     "titulo": "Peça com uma opção só já vem com ela marcada, na vitrine e na página do produto",
     "novidades": [],

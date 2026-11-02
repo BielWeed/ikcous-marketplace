@@ -14884,3 +14884,93 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
     },
   );
 });
+
+// 117a/117b (02/11/2026) — a PROVA DE OBJETOS da 20261399000000 (as visitas da loja contam pelo porteiro: a tabela visitas_por_dia, a escrita
+// contar_entrada e a leitura crm_visitas). A 117a e' a consulta do lote (DEPOIS do apply, so catalogo, 8 linhas, NENHUMA linha da tabela e' lida);
+// a 117b e' a de ausencia (ANTES, 4 linhas). As duas sao de ROL FECHADO. Estes testes medem o texto dos .sql contra a migration DESTA arvore;
+// a decisao de cada consulta num Postgres real fica com tests/banco/as-visitas-da-loja-viva.cjs (rpc-ci.yml).
+const NOME_117A =
+  "117a-conferir-as-visitas-da-loja-contam-pelo-porteiro-aplicado";
+const NOME_117B = "117b-antes-as-visitas-da-loja-contam-pelo-porteiro-ausente";
+const MIGRACAO_399 = `${MIGRATIONS_DIR}/20261399000000_as_visitas_da_loja_contam_pelo_porteiro.sql`;
+
+Deno.test("117a/117b — o rol fechado (8 e 4 linhas) bate com os rotulos do SQL, cada consulta tem UM statement, e so le catalogo (nenhuma linha da tabela de visitas)", async () => {
+  const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+  const { [NOME_117A]: rol117a, [NOME_117B]: rol117b } =
+    ROL_FECHADO_POR_CONSULTA;
+  assertEquals(rol117a?.length, 8);
+  assertEquals(rol117b?.length, 4);
+  for (const [nome, rol] of [
+    [NOME_117A, rol117a],
+    [NOME_117B, rol117b],
+  ] as Array<[string, string[]]>) {
+    assertEquals(new Set(rol).size, rol.length, `${nome}: rotulo repetido`);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    assertEquals(contarStatements(sql), 1, `${nome}: tem de ser UM statement`);
+    // O veredito compara por nome: cada rotulo do rol esta no SQL, com o texto exato, e nenhum rotulo a mais.
+    for (const item of rol) assertStringIncludes(sql, `'${item}'`);
+    const rotulos = [...sql.matchAll(/SELECT '([^']+)', '(?:sim|nao)'/g)].map(
+      (m) => m[1],
+    );
+    assertEquals(
+      rotulos.sort(),
+      [...rol].sort(),
+      `${nome}: rotulos do SQL != rol`,
+    );
+    // So leitura, e de catalogo: nada de INSERT/UPDATE/DELETE/DDL e nenhuma referencia a LINHA da tabela de visitas.
+    const codigo = sql.replace(/--.*$/gm, "").replace(/'[^']*'/g, "''");
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|ALTER|DROP|CREATE|GRANT|REVOKE|TRUNCATE)\b/.test(
+        codigo,
+      ),
+      `${nome}: so leitura`,
+    );
+    assert(
+      !/\bFROM\s+(public\.)?visitas_por_dia\b/i.test(codigo),
+      `${nome}: nao le linha da tabela de visitas`,
+    );
+  }
+});
+
+Deno.test("117a — o md5 dos DOIS corpos e' o das funcoes que a migration 20261399000000 grava, uma vez cada", async () => {
+  const { createHash } = await import("node:crypto");
+  const mig = (await Deno.readTextFile(MIGRACAO_399)).replace(/\r/g, "");
+  const a = (
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_117A}.sql`)
+  ).replace(/\r/g, "");
+  for (const funcao of ["contar_entrada", "crm_visitas"]) {
+    const marca = `CREATE OR REPLACE FUNCTION public.${funcao}(`;
+    const i = mig.indexOf(marca);
+    assert(i >= 0, `${funcao} nao esta na migration`);
+    const abre = mig.indexOf("AS $function$", i) + "AS $function$".length;
+    const corpo = mig.slice(abre, mig.indexOf("$function$;", abre));
+    const h = createHash("md5").update(corpo).digest("hex");
+    assertEquals(
+      a.split(`'${h}'`).length - 1,
+      1,
+      `${funcao}: md5 ${h} na 117a`,
+    );
+  }
+});
+
+Deno.test("117a/117b — registradas no menu do conferir-banco-da-loja, nos dois caminhos do rpc-ci e no portao de rol fechado da release", async () => {
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    new URL("../scripts/frota/publicar-release.mjs", import.meta.url).href
+  );
+  const menu = await Deno.readTextFile(
+    `${RAIZ}/.github/workflows/conferir-banco-da-loja.yml`,
+  );
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  for (const nome of [NOME_117A, NOME_117B]) {
+    assert(
+      CONSULTAS_DE_ROL_FECHADO.has(nome),
+      `${nome} fora de CONSULTAS_DE_ROL_FECHADO`,
+    );
+    assertStringIncludes(menu, `          - ${nome}\n`);
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${nome}.sql"`).length - 1,
+      2,
+      `${nome}: nas duas listas de caminhos do rpc-ci`,
+    );
+  }
+});

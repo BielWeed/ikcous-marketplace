@@ -195,6 +195,14 @@
       "porque": "Devolucoes e estornos do painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
     },
     {
+      "funcao": "public.contar_entrada(p_canal text)",
+      "executa": ["anon"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "necessaria",
+      "porque": "necessária: o porteiro conta as entradas com a chave pública da loja; só o anon. Devolve nada, não aceita data nem texto livre (só um dos 5 canais; outro valor ou NULL = 22023 sem gravar), o dia vem de fin__hoje(), cada canal para em 50000 por dia sem escrever nem travar a linha (no máximo 5 linhas por dia na tabela), lock_timeout de 100 ms; o authenticated NÃO executa (a sessão de um logado nunca entra aqui) e ninguém de aplicação lê nem escreve a tabela visitas_por_dia."
+    },
+    {
       "funcao": "public.create_marketplace_order_v23(p_items jsonb, p_total_amount numeric, p_shipping_cost numeric, p_payment_method text, p_address_id uuid, p_coupon_code text, p_customer_name text, p_customer_phone text, p_observation text, p_address_data jsonb, p_destination_cep text, p_shipping_option_id text, p_idempotency_key uuid)",
       "executa": ["anon", "authenticated"],
       "tipo": "volatil",
@@ -225,6 +233,14 @@
       "secdef": true,
       "situacao": "logado",
       "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; o visitante nao a executa."
+    },
+    {
+      "funcao": "public.crm_visitas(p_inicio date, p_fim date)",
+      "executa": ["authenticated"],
+      "tipo": "leitura",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Painel do lojista (entradas da loja por canal): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL (is_admin() e is_admin_atual(), como crm_visao); o visitante não a executa."
     },
     {
       "funcao": "public.cupons_do_checkout(p_subtotal numeric)",

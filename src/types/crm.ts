@@ -75,6 +75,18 @@ export interface FunilDoCrm {
   readonly pedidosPagos: number | null;
 }
 
+/** `crm_visitas`: entradas na loja contadas pelo porteiro. */
+export interface VisitasDoCrm {
+  /** Primeiro dia com entrada contada; `null` = o contador ainda não contou. */
+  readonly contandoDesde: string | null;
+  /** Só pessoas (a prévia fica fora); `null` = o período é anterior ao contador. */
+  readonly visitas: number | null;
+  readonly canais: readonly { rotulo: string; visitas: number }[];
+  readonly previas: number | null;
+  /** Pares dia/canal que bateram o teto do contador (o total pode não refletir as visitas reais). */
+  readonly noTeto: readonly { dia: string; canal: string }[];
+}
+
 export interface EtapaDoPipeline {
   readonly status: string;
   readonly quantidade: number;

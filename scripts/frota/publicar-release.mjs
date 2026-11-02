@@ -668,6 +668,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "115b-antes-o-desconto-do-cupom-e-arredondado-ao-centavo-base-vigente",
   "116a-conferir-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-aplicado",
   "116b-antes-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-base-vigente",
+  "117a-conferir-as-visitas-da-loja-contam-pelo-porteiro-aplicado",
+  "117b-antes-as-visitas-da-loja-contam-pelo-porteiro-ausente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

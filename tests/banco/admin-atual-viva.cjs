@@ -70,6 +70,7 @@ const {
 } = require("./ex-admin-resto-do-painel-posterior.cjs");
 const { DEFINIR_CARGO } = require("./definir-cargo-posterior.cjs");
 const { LIMITES_DE_ABUSO } = require("./limites-de-abuso-posterior.cjs");
+const { AS_VISITAS } = require("./as-visitas-da-loja-posterior.cjs");
 const {
   PRECO_HISTORICO,
 } = require("./o-preco-do-produto-deixa-historico-posterior.cjs");
@@ -418,6 +419,9 @@ const POSTERIORES_A_97 = [
   // 20261396000000 e 20261396100000: gatilhos que chamam rls_admin_atual(); sem eles o rollback da 97 recusa.
   // Definicao unica em tests/banco/limites-de-abuso-posterior.cjs. No FIM da lista de proposito.
   ...LIMITES_DE_ABUSO,
+  // 20261399000000: a RPC crm_visitas usa is_admin_atual(); sem esta entrada o rollback da 97 recusa.
+  // Definicao unica em tests/banco/as-visitas-da-loja-posterior.cjs. No FIM da lista de proposito.
+  AS_VISITAS,
 ];
 
 // As RPCs novas da 252 usam is_admin_atual. Seu rollback exige a 99 ainda no ar

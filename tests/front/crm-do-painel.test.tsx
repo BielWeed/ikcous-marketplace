@@ -260,6 +260,39 @@ describe("Dashboard CRM", () => {
     }
   });
 
+  it("Funil e pedidos lê crm_visitas com o período do chip, e de novo ao trocar de chip", async () => {
+    h.respostas.set("crm_visitas", {
+      data: {
+        contando_desde: "2026-01-01",
+        visitas: 42,
+        canais: [{ canal: "direto", visitas: 42 }],
+        previas: 0,
+      },
+      error: null,
+    });
+    await montar();
+    // Aba fechada: ninguém pergunta quantas pessoas abriram a loja.
+    expect(chamadasDe("crm_visitas")).toHaveLength(0);
+
+    const aba = Array.from(hospedeiro.querySelectorAll('[role="tab"]')).find(
+      (t) => t.getAttribute("aria-label") === "Funil e pedidos",
+    ) as HTMLButtonElement;
+    await act(async () => aba.click());
+    await esperarAte(() => chamadasDe("crm_visitas").length >= 1);
+    expect(chamadasDe("crm_visitas").at(-1)).toEqual({
+      p_inicio: "2026-08-28",
+      p_fim: "2026-09-26",
+    });
+    await esperarAte(() => texto(hospedeiro).includes("entradas"));
+
+    await act(async () => botao(hospedeiro, "7 dias").click());
+    await esperarAte(() => chamadasDe("crm_visitas").length >= 2);
+    expect(chamadasDe("crm_visitas").at(-1)).toEqual({
+      p_inicio: "2026-09-20",
+      p_fim: "2026-09-26",
+    });
+  });
+
   it('N3 da re-revisão: a legenda "vs. 30 dias antes" usa text-zinc-400, não text-zinc-500', async () => {
     await montar();
     const legenda = Array.from(
