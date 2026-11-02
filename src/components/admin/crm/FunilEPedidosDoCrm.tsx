@@ -370,15 +370,15 @@ export function FunilEPedidosDoCrm({
   const medidas = ETAPAS_MEDIDAS.flatMap((etapa) => {
     const valor =
       etapa.chave === "visitas" ? visitas?.visitas : funil?.[etapa.chave];
-    const peloMenos = etapa.chave === "visitas" && estado?.naoConfiavel;
+    const noLimite = etapa.chave === "visitas" && estado?.naoConfiavel;
     return valor == null
       ? []
       : [
           {
             ...etapa,
             valor,
-            unidadeCurta: peloMenos
-              ? "entradas (pelo menos)"
+            unidadeCurta: noLimite
+              ? "entradas (contagem no limite)"
               : etapa.unidadeCurta,
           },
         ];
@@ -523,8 +523,8 @@ export function FunilEPedidosDoCrm({
                 {estado?.naoConfiavel && (
                   <p className="text-amber-300">
                     Contagem no limite em {diasNoTeto}{" "}
-                    {diasNoTeto === 1 ? "dia" : "dias"}: o número é no mínimo
-                    esse.
+                    {diasNoTeto === 1 ? "dia" : "dias"}: o número pode não
+                    refletir as visitas reais.
                   </p>
                 )}
               </div>

@@ -83,7 +83,7 @@ export interface VisitasDoCrm {
   readonly visitas: number | null;
   readonly canais: readonly { rotulo: string; visitas: number }[];
   readonly previas: number | null;
-  /** Pares dia/canal que bateram o teto do contador (alguém o inflou). */
+  /** Pares dia/canal que bateram o teto do contador (o total pode não refletir as visitas reais). */
   readonly noTeto: readonly { dia: string; canal: string }[];
 }
 

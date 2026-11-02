@@ -162,7 +162,7 @@ describe("FunilEPedidosDoCrm — visitas", () => {
     expect(texto()).not.toMatch(/entradas|Contando|A contar|Fora da conta/);
   });
 
-  it("dia no teto: avisa que a contagem não é confiável e o número vira 'pelo menos'", () => {
+  it("dia no teto: avisa que a contagem pode não refletir as visitas e rotula a unidade", () => {
     montar({
       visitas: lida({
         no_teto: [
@@ -174,14 +174,15 @@ describe("FunilEPedidosDoCrm — visitas", () => {
       intervalo: PERIODO,
     });
     expect(texto()).toContain(
-      "Contagem no limite em 2 dias: o número é no mínimo esse.",
+      "Contagem no limite em 2 dias: o número pode não refletir as visitas reais.",
     );
     const etapa = hospedeiro.querySelector('[aria-label="Visitas"]');
     expect(etapa?.textContent).toContain("42");
-    expect(etapa?.textContent).toContain("pelo menos");
+    expect(etapa?.textContent).toContain("contagem no limite");
+    expect(etapa?.textContent).not.toContain("pelo menos");
   });
 
-  it("um dia só: singular; sem no_teto: nenhum aviso nem 'pelo menos'", () => {
+  it("um dia só: singular; sem no_teto: nenhum aviso nem rótulo de limite", () => {
     montar({
       visitas: lida({ no_teto: [{ dia: "2026-10-20", canal: "direto" }] }),
       intervalo: PERIODO,
@@ -191,6 +192,7 @@ describe("FunilEPedidosDoCrm — visitas", () => {
     expect(texto()).not.toContain("no limite");
     expect(texto()).not.toContain("inflou");
     expect(texto()).not.toContain("pelo menos");
+    expect(texto()).not.toContain("contagem no limite");
   });
 
   it("número grande (>= 10.000) ganha fonte menor, para caber na caixa a 375 px", () => {
