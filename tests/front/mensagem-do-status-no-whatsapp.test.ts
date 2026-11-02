@@ -1,3 +1,4 @@
+import { mensagemDoStatusNoWhatsapp } from "@/lib/mensagem-do-status-no-whatsapp";
 // A mensagem que o botão de WhatsApp do painel abre para a cliente. Até a
 // 1.5.107 ela dizia só "foi atualizado. Status: Enviado", sem o código de
 // rastreio: a lojista tinha de digitar o código à mão, e a cliente que comprou
@@ -8,7 +9,6 @@
 // pedido novo); só ganha duas linhas quando o pedido está ENVIADO, é de ENTREGA
 // e tem código.
 import { describe, expect, it } from "vitest";
-import { mensagemDoStatusNoWhatsapp } from "@/lib/mensagem-do-status-no-whatsapp";
 
 const base = {
   nomeDoCliente: "Ana",
@@ -28,7 +28,10 @@ describe("mensagemDoStatusNoWhatsapp", () => {
 
   it("enviado, de entrega e com código: leva o código e o link de rastreio", () => {
     expect(
-      mensagemDoStatusNoWhatsapp({ ...base, codigoDeRastreio: "AB123456789BR" }),
+      mensagemDoStatusNoWhatsapp({
+        ...base,
+        codigoDeRastreio: "AB123456789BR",
+      }),
     ).toBe(
       "Olá Ana!\n\nSeu pedido #A1B2C3 foi atualizado.\nStatus: Em Trânsito\n" +
         "Código de rastreio: AB123456789BR\n" +
@@ -49,9 +52,9 @@ describe("mensagemDoStatusNoWhatsapp", () => {
   it("código vazio, só espaços ou nulo não vira linha de rastreio", () => {
     const semRastreio = mensagemDoStatusNoWhatsapp(base);
     for (const codigo of ["", "   ", "\n", null, undefined]) {
-      expect(mensagemDoStatusNoWhatsapp({ ...base, codigoDeRastreio: codigo })).toBe(
-        semRastreio,
-      );
+      expect(
+        mensagemDoStatusNoWhatsapp({ ...base, codigoDeRastreio: codigo }),
+      ).toBe(semRastreio);
     }
   });
 
@@ -67,7 +70,12 @@ describe("mensagemDoStatusNoWhatsapp", () => {
   });
 
   it("fora de 'enviado' não leva rastreio, mesmo com código gravado", () => {
-    for (const status of ["pending", "processing", "delivered", "cancelled"] as const) {
+    for (const status of [
+      "pending",
+      "processing",
+      "delivered",
+      "cancelled",
+    ] as const) {
       const msg = mensagemDoStatusNoWhatsapp({
         ...base,
         status,
