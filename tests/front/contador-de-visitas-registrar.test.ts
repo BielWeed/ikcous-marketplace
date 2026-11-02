@@ -172,10 +172,10 @@ describe("registrarEntrada -- 404 = funcao ausente nesta loja: silencio de 10 mi
     const silencio = new Map<string, number>();
     const fetchA = fetchQueResponde(404);
     const chamadas: string[] = [];
-    const fetchImpl = (async (url: string, init: RequestInit) => {
+    const fetchImpl = (async (url: string) => {
       chamadas.push(url);
       return url.startsWith(CONEXAO_A.supabaseUrl)
-        ? fetchA(url, init)
+        ? fetchA()
         : new Response(null, { status: 204 });
     }) as unknown as typeof fetch;
     const dep = deps(fetchImpl, relogio, silencio);
