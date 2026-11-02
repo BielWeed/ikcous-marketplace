@@ -13,9 +13,10 @@
 //   rede: o build de ensaio do CI não tem banco e não pode depender dele.
 // - A URL de produto é a canônica do compartilhamento (a og:url): o sitemap
 //   e a prévia social precisam anunciar a mesma página.
-// - As 4 entradas estáticas preservam o retrato do public/sitemap.xml
+// - A única entrada estática é a raiz: preserva o retrato do public/sitemap.xml
 //   versionado (lastmod 2024-03-21 etc.), só reescrevendo a origem para a
-//   publicUrl da loja. Entrada de produto entra SÓ com <loc>: lastmod,
+//   publicUrl da loja. `/?view=cart|favorites|orders` saíram: nada no app lê
+//   `view`, os três endereços abrem a vitrine (duplicata da raiz). Entrada de produto entra SÓ com <loc>: lastmod,
 //   changefreq e priority são política de SEO que a issue #117 não define, e
 //   inventá-los é exatamente o que a peça manda não fazer.
 //
@@ -80,9 +81,6 @@ export function sitemapXml(publicUrl, ids) {
   let xml =
     '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
   xml += entradaEstatica(`${origem}/`, "1.0");
-  xml += entradaEstatica(`${origem}/?view=cart`, "0.8");
-  xml += entradaEstatica(`${origem}/?view=favorites`, "0.8");
-  xml += entradaEstatica(`${origem}/?view=orders`, "0.8");
   const vistos = new Set();
   for (const id of ids) {
     if (vistos.has(id)) continue; // a vista é a fonte, mas o arquivo sai deduplicado

@@ -63,9 +63,6 @@ export function sitemapXml(origem: string, ids: Iterable<string>): string {
   let xml =
     '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';
   xml += entradaEstatica(`${base}/`, "1.0");
-  xml += entradaEstatica(`${base}/?view=cart`, "0.8");
-  xml += entradaEstatica(`${base}/?view=favorites`, "0.8");
-  xml += entradaEstatica(`${base}/?view=orders`, "0.8");
   const vistos = new Set<string>();
   for (const id of ids) {
     if (vistos.has(id)) continue; // a vista é a fonte, mas o arquivo sai deduplicado
