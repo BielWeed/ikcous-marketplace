@@ -25,6 +25,7 @@ import type {
   ResumoDoSegmento,
   SegmentoCrm,
   VisaoDoCrm,
+  VisitasDoCrm,
 } from "@/types/crm";
 import type {
   AssinaturaDaLoja,
@@ -384,6 +385,62 @@ export function lerClientesDoCrm(json: unknown): ListaDeClientesDoCrm | null {
     total: comoNumero(raiz.total) ?? clientes.length,
     clientes,
   };
+}
+
+const ROTULO_DAS_ENTRADAS = new Map([
+  ["direto", "Direto"],
+  ["instagram", "Instagram"],
+  ["whatsapp", "WhatsApp"],
+  ["outros_sites", "Outros sites"],
+]);
+
+/** `crm_visitas`: canal desconhecido (e a prévia) fica fora da lista. */
+export function lerVisitasDoCrm(json: unknown): VisitasDoCrm | null {
+  const raiz = comoRegistro(json);
+  const desde = comoTexto(raiz?.contando_desde);
+  const visitas = comoNumero(raiz?.visitas);
+  if (
+    !raiz ||
+    !Array.isArray(raiz.canais) ||
+    (raiz.visitas != null && visitas == null) ||
+    (desde != null && !PADRAO_DIA.test(desde))
+  ) {
+    return null;
+  }
+  return {
+    contandoDesde: desde,
+    visitas,
+    canais: raiz.canais.flatMap((item) => {
+      const canal = comoRegistro(item);
+      const rotulo = ROTULO_DAS_ENTRADAS.get(String(canal?.canal));
+      const n = comoNumero(canal?.visitas);
+      return rotulo && n != null ? [{ rotulo, visitas: n }] : [];
+    }),
+    previas: comoNumero(raiz.previas),
+  };
+}
+
+/** O que o funil faz com a leitura: nada (`indisponivel`), avisa ou mostra. */
+export function estadoDasVisitas(
+  v: VisitasDoCrm | null,
+  { inicio }: IntervaloDeDatas,
+): {
+  tipo: "indisponivel" | "a-contar" | "parcial" | "completo";
+  aviso?: string;
+} {
+  if (!v) return { tipo: "indisponivel" };
+  const desde = v.contandoDesde;
+  if (v.visitas == null) {
+    const quando = desde ? formatarData(desde) : "agora";
+    return { tipo: "a-contar", aviso: `A contar a partir de ${quando}` };
+  }
+  if (desde && desde > inicio) {
+    return {
+      tipo: "parcial",
+      aviso: `Contando desde ${formatarData(desde).slice(0, 5)}`,
+    };
+  }
+  return { tipo: "completo" };
 }
 
 // ─── Segmentos: rótulo, descrição e tom ──────────────────────────────────
