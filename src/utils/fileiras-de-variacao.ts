@@ -90,6 +90,29 @@ export function fileirasDeVariacao(
 }
 
 /**
+ * A escolha que a tela já abre marcada: fileira com UM valor só, esse valor com
+ * estoque (mesma conta de `disponivel`, olhando o que já ficou marcado nas
+ * fileiras de antes). Fileira com 2+ valores fica de fora -- ali a escolha é da
+ * cliente --, e valor único esgotado também. Só decide o que a TELA mostra
+ * marcado: a linha que vai ao carrinho continua saindo de `fileirasDeVariacao`
+ * com esta mesma escolha, a que o toque no chip montaria.
+ */
+export function escolhaDasOpcoesUnicas(
+  variantes: ProductVariant[] = [],
+): Record<string, string> {
+  const escolha = new Map<string, string>();
+  for (const { nome } of fileirasDeVariacao(variantes, {}).fileiras) {
+    const valores =
+      fileirasDeVariacao(variantes, Object.fromEntries(escolha)).fileiras.find(
+        (f) => f.nome === nome,
+      )?.valores ?? [];
+    const unico = valores.length === 1 ? valores[0] : undefined;
+    if (unico?.disponivel) escolha.set(nome, unico.valor);
+  }
+  return Object.fromEntries(escolha);
+}
+
+/**
  * A escolha que sai de TOCAR num valor (a cliente nunca fica com seleção
  * incoerente). Devolve `null` se o valor não tem estoque em combinação
  * nenhuma (esgotado de vez, desligado ou inexistente): a tela não muda.

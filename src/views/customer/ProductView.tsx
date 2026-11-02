@@ -50,6 +50,7 @@ import type { Product, ProductVariant, View } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
 import {
   aplicarEscolhaDeVariacao,
+  escolhaDasOpcoesUnicas,
   fileirasDeVariacao,
 } from "@/utils/fileiras-de-variacao";
 import { AnimatePresence, motion } from "framer-motion";
@@ -141,9 +142,13 @@ export const ProductView = React.memo(function ProductView({
   const [activeTab, setActiveTab] = useState<
     "description" | "reviews" | "questions"
   >("description");
+  // Fileira com UMA opção só (e com estoque) já nasce marcada: não há o que
+  // escolher. É só o valor inicial -- a tela remonta a cada produto (a `key` do
+  // App) --, então não há efeito para rodar em laço nem para sobrescrever o que
+  // a cliente escolher depois.
   const [selectedVariants, setSelectedVariants] = useState<
     Record<string, string>
-  >({});
+  >(() => escolhaDasOpcoesUnicas(product.variants));
   const [folhaAberta, setFolhaAberta] = useState(false);
   // O que a última escolha SOLTOU do outro lado ("Tamanho P desmarcado"), para
   // o leitor de tela: a tela muda sozinha e quem não vê não perceberia.
@@ -569,6 +574,9 @@ export const ProductView = React.memo(function ProductView({
       escolherVariante(grupo, valor);
       return;
     }
+    // Opção única já marcada: tocar nela é confirmar, não desfazer. Desmarcar
+    // devolveria o "Falta escolher" por uma fileira que não tem outra opção.
+    if (fileiras.find((f) => f.nome === grupo)?.valores.length === 1) return;
     setSelectedVariants(
       Object.fromEntries(
         Object.entries(selectedVariants).filter(([nome]) => nome !== grupo),

@@ -32,6 +32,7 @@ import {
   eixoEhCor,
   escolherValorDoEixo,
   preselecionarCor,
+  preselecionarOpcaoUnica,
   resolverSelecaoDosEixos,
 } from "@/utils/eixos-da-variacao";
 import { Check, Flame, Loader2, ShoppingCart, Truck } from "lucide-react";
@@ -321,12 +322,17 @@ export const ProductCard = memo(function ProductCard({
     );
   };
 
-  // Pré-escolha só ao abrir. Nem um único tamanho/voltagem é comprado por
-  // suposição. Reabrir preserva a escolha anterior do mesmo card.
+  // Pré-escolha só ao abrir, e só onde não há o que escolher: a cor sozinha e
+  // o eixo de UMA opção com estoque (um tamanho, uma voltagem). Entre duas ou
+  // mais nada é comprado por suposição. Reabrir preserva a escolha anterior
+  // do mesmo card.
   const abrirFolhaDeOpcoes = () => {
-    const escolhas = preselecionarCor(
+    const escolhas = preselecionarOpcaoUnica(
       modeloDeEixos,
-      escolherValorDoEixo(modeloDeEixos, escolhasDosEixos),
+      preselecionarCor(
+        modeloDeEixos,
+        escolherValorDoEixo(modeloDeEixos, escolhasDosEixos),
+      ),
     );
     aplicarEscolhasDosEixos(escolhas);
     setEixoAberto(

@@ -1038,14 +1038,18 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     expect(entregar).not.toHaveBeenCalled();
   });
 
-  it("compacta: um único tamanho continua esperando; Ver detalhes sai da folha uma vez", async () => {
+  it("compacta: um único tamanho já vem marcado; Ver detalhes sai da folha uma vez", async () => {
     const navegar = vi.fn();
     await renderizarCard(criarProduto({ variants: [criarVariantes()[0]!] }), {
       onProductClick: navegar,
       onAddToCartWithVariants: vi.fn(),
     });
     await abrirFolha();
-    expect(ctaDaFolha().textContent).toContain("Escolha: Tamanho");
+    // Uma opção só: nada a escolher. A entrega e o resto da regra estão em
+    // card-marca-sozinho-a-opcao-unica.test.tsx; entre duas ou mais opções a
+    // folha continua esperando a cliente.
+    expect(chip("P").getAttribute("aria-pressed")).toBe("true");
+    expect(ctaDaFolha().textContent).not.toContain("Escolha:");
     const detalhes = Array.from(
       folha()!.querySelectorAll<HTMLButtonElement>("button"),
     ).find((b) => b.textContent?.includes("Ver detalhes"))!;
@@ -1063,6 +1067,13 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
             ...criarVariantes()[0]!,
             name: "Cor / Tamanho / Manga",
             value: "Azul / M / Longa",
+            priceOverride: 80,
+          },
+          {
+            ...criarVariantes()[0]!,
+            id: "var-q",
+            name: "Cor / Tamanho / Manga",
+            value: "Verde / G / Curta",
             priceOverride: 80,
           },
         ],

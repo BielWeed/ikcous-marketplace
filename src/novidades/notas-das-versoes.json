@@ -1,4 +1,12 @@
 {
+  "1.5.109": {
+    "titulo": "Peça com uma opção só já vem com ela marcada, na vitrine e na página do produto",
+    "novidades": [],
+    "correcoes": [],
+    "melhorias": [
+      "Loja: quando a peça tem uma opção só (um tamanho, uma cor, uma voltagem), ela já vem marcada e não precisa tocar nela para comprar. Isso vale na janela de opções da vitrine e na página do produto, e o botão de adicionar já aparece pronto. Peças com duas ou mais opções continuam pedindo que a cliente escolha, e o que vai para o carrinho é o mesmo de sempre."
+    ]
+  },
   "1.5.108": {
     "titulo": "A mensagem de WhatsApp do pedido enviado já leva o código de rastreio",
     "novidades": [],

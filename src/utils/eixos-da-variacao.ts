@@ -107,8 +107,9 @@ export function preselecionarCor(
   escolhas: Map<string, string>,
 ) {
   const depois = new Map(escolhas);
-  // Com Tamanho/Voltagem na frente (como na página), nada é pré-marcado: a cor
-  // vem DEPOIS de quem escolheu o tamanho.
+  // Com Tamanho/Voltagem na frente (como na página), nenhuma cor é ESCOLHIDA
+  // por esta regra: a cor vem DEPOIS de quem escolheu o tamanho. O eixo de uma
+  // opção só (cor inclusive) não passa por aqui: ver `preselecionarOpcaoUnica`.
   if (modelo.eixos.some((e) => posicaoDoAtributo(e.nome) === 0)) return depois;
   for (const e of modelo.eixos) {
     if (!eixoEhCor(e) || depois.has(e.chave)) continue;
@@ -116,6 +117,27 @@ export function preselecionarCor(
       (v) => disponibilidadeDoValor(modelo, depois, e.chave, v).disponivel,
     );
     if (valor !== undefined) depois.set(e.chave, valor);
+  }
+  return depois;
+}
+
+// Eixo com UM valor só e esse valor com estoque não tem o que a cliente
+// escolher: entra marcado (aditivo -- escolha já feita vence e nada é trocado).
+// Eixo com 2+ valores segue esperando a cliente, tamanho principalmente. O valor
+// único esgotado não é marcado: o card esgotado já nem abre a folha. Só mexe
+// na TELA; quem resolve variantId, preço e chave do carrinho segue sendo
+// `resolverSelecaoDosEixos`, com o mesmo mapa que o toque no chip montaria.
+export function preselecionarOpcaoUnica(
+  modelo: ModeloDeEixos,
+  escolhas: Map<string, string>,
+) {
+  const depois = new Map(escolhas);
+  for (const e of modelo.eixos) {
+    const [unico, ...outros] = e.valores;
+    if (unico === undefined || outros.length > 0 || depois.has(e.chave))
+      continue;
+    if (disponibilidadeDoValor(modelo, depois, e.chave, unico).disponivel)
+      depois.set(e.chave, unico);
   }
   return depois;
 }
