@@ -358,7 +358,13 @@ describe("ProductView — a galeria desliza e a variação não esconde as fotos
   });
 
   it("foto da variação que o produto não tem entra no fim da faixa e sai ao desmarcar", async () => {
-    await montar(blusa([cor("v-rosa", "Rosa", "/so-da-rosa.png")]));
+    // Duas cores: com UMA só ela já nasceria marcada (e a foto, na faixa).
+    await montar(
+      blusa([
+        cor("v-rosa", "Rosa", "/so-da-rosa.png"),
+        cor("v-verde", "Verde"),
+      ]),
+    );
     expect(bolinhas()).toHaveLength(3);
 
     await tocar(opcao("Rosa"));

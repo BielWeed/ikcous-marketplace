@@ -387,8 +387,21 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
     );
   });
 
-  it("a área rolável da folha reserva a folga segura do rodapé", async () => {
+  it("opção única: a barra já mostra a escolha e compra direto, sem abrir a folha", async () => {
     await montar(blusa([cor("azul", "Azul", 2)]));
+    expect(barra()?.textContent).toContain("Azul");
+    expect(barra()?.textContent).not.toContain("Escolher");
+    await comprarPelaBarra();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(adicionarAoCarrinho).toHaveBeenCalledExactlyOnceWith(
+      1,
+      "azul",
+      "Cor: Azul",
+    );
+  });
+
+  it("a área rolável da folha reserva a folga segura do rodapé", async () => {
+    await montar(blusa([cor("azul", "Azul", 2), cor("verde", "Verde", 2)]));
     await comprarPelaBarra();
     const folha = document.querySelector('[role="dialog"]')!;
     const conteudo = folha.querySelector(".overflow-y-auto")!;
@@ -437,7 +450,7 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
   });
 
   it("a folha mostra De riscado e preço promocional só com desconto real", async () => {
-    const produto = blusa([cor("azul", "Azul", 2)]);
+    const produto = blusa([cor("azul", "Azul", 2), cor("verde", "Verde", 2)]);
     await montar({ ...produto, originalPrice: 100 });
     await comprarPelaBarra();
     const folha = document.querySelector('[role="dialog"]')!;
@@ -455,7 +468,7 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
   });
 
   it("a folha mantém o botão de compra na cor da loja e com texto do tema", async () => {
-    await montar(blusa([cor("azul", "Azul", 2)]));
+    await montar(blusa([cor("azul", "Azul", 2), cor("verde", "Verde", 2)]));
     await comprarPelaBarra();
     const botao = [...document.querySelectorAll('[role="dialog"] button')].at(
       -1,
@@ -465,7 +478,7 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
   });
 
   it("os dois botões de quantidade da folha usam alvos de 44px", async () => {
-    await montar(blusa([cor("azul", "Azul", 2)]));
+    await montar(blusa([cor("azul", "Azul", 2), cor("verde", "Verde", 2)]));
     await comprarPelaBarra();
     const folha = document.querySelector('[role="dialog"]')!;
     expect(folha).not.toBeNull();

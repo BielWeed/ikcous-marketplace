@@ -2,6 +2,7 @@ import type { ProductVariant } from "@/types";
 import { corDaVariacao } from "@/utils/cor-da-variacao";
 import {
   aplicarEscolhaDeVariacao,
+  escolhaDasOpcoesUnicas,
   fileirasDeVariacao,
 } from "@/utils/fileiras-de-variacao";
 import { describe, expect, it } from "vitest";
@@ -523,5 +524,58 @@ describe("a linha comprável nunca nasce de combinação sem estoque (toda sequ�
     };
     andar({}, "início", 5);
     expect(visitados).toBe(1 + 5 + 25 + 125 + 625 + 3125);
+  });
+});
+
+describe("a escolha que a tela já abre marcada: fileira de um valor só e com estoque", () => {
+  it("marca a fileira única, em grade composta e em grupos legados, e deixa as de 2+ valores", () => {
+    expect(escolhaDasOpcoesUnicas(undefined)).toEqual({});
+    expect(escolhaDasOpcoesUnicas([])).toEqual({});
+    expect(escolhaDasOpcoesUnicas([linha("a", "Azul / M", 3)])).toEqual({
+      Cor: "Azul",
+      Tamanho: "M",
+    });
+    expect(
+      escolhaDasOpcoesUnicas([
+        linha("a", "Azul / P", 3),
+        linha("b", "Azul / M", 3),
+      ]),
+    ).toEqual({ Cor: "Azul" });
+    expect(
+      escolhaDasOpcoesUnicas([
+        linha("a", "Azul / P", 3),
+        linha("b", "Verde / M", 3),
+      ]),
+    ).toEqual({});
+    expect(
+      escolhaDasOpcoesUnicas([
+        linha("c", "Azul", 3, "Cor"),
+        linha("t", "M", 3, "Tamanho"),
+      ]),
+    ).toEqual({ Cor: "Azul", Tamanho: "M" });
+    expect(
+      escolhaDasOpcoesUnicas([
+        linha("c", "Azul", 3, "Cor"),
+        linha("t1", "M", 3, "Tamanho"),
+        linha("t2", "G", 3, "Tamanho"),
+      ]),
+    ).toEqual({ Cor: "Azul" });
+  });
+
+  it("valor único esgotado e linha desligada não entram; a marca resolve a MESMA linha do toque", () => {
+    expect(escolhaDasOpcoesUnicas([linha("a", "M", 0, "Tamanho")])).toEqual({});
+    expect(
+      escolhaDasOpcoesUnicas([
+        linha("a", "Azul / M", 3, "Cor / Tamanho", false),
+      ]),
+    ).toEqual({});
+    // Tamanho único com estoque só em uma das cores: marca, a cor segue da cliente.
+    const variantes = [linha("v", "Verde / M", 0), linha("a", "Azul / M", 2)];
+    expect(escolhaDasOpcoesUnicas(variantes)).toEqual({ Tamanho: "M" });
+    // Duas únicas: a linha comprável é a que o toque em cada uma montaria.
+    const unica = [linha("a", "Azul / M", 3)];
+    expect(
+      fileirasDeVariacao(unica, escolhaDasOpcoesUnicas(unica)).variante?.id,
+    ).toBe("a");
   });
 });

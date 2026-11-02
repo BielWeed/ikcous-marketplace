@@ -4,6 +4,7 @@ import {
   disponibilidadeDoValor,
   escolherValorDoEixo,
   preselecionarCor,
+  preselecionarOpcaoUnica,
   resolverSelecaoDosEixos,
 } from "@/utils/eixos-da-variacao";
 import { fileirasDeVariacao } from "@/utils/fileiras-de-variacao";
@@ -158,6 +159,84 @@ describe("eixos da variação — tradução sem mudar a linha entregue", () => 
     expect([...preselecionarCor(semTamanho, new Map()).values()]).toEqual([
       "Azul",
     ]);
+  });
+
+  it("opção única com estoque entra marcada em qualquer eixo; entre duas ou mais, nenhuma", () => {
+    for (const nome of ["Cor", "Tamanho", "Voltagem", "Sabor", "Numeração"]) {
+      const m = criarEixosDaVariacao([variante("único", 1, { name: nome })]);
+      expect([...preselecionarOpcaoUnica(m, new Map()).values()]).toEqual([
+        "único",
+      ]);
+      const dois = criarEixosDaVariacao([
+        variante("a", 1, { name: nome }),
+        variante("b", 1, { name: nome }),
+      ]);
+      expect([...preselecionarOpcaoUnica(dois, new Map()).values()]).toEqual(
+        [],
+      );
+    }
+  });
+
+  it("opção única esgotada não é marcada; a com estoque do outro eixo é", () => {
+    const esgotada = criarEixosDaVariacao([
+      variante("M", 0, { name: "Tamanho" }),
+    ]);
+    expect(preselecionarOpcaoUnica(esgotada, new Map()).size).toBe(0);
+    // Tamanho único (M) com cores 0/2 em estoque: M tem estoque numa delas.
+    const m = criarEixosDaVariacao([
+      variante("Verde / M", 0),
+      variante("Azul / M", 2),
+    ]);
+    expect([...preselecionarOpcaoUnica(m, new Map()).values()]).toEqual(["M"]);
+    // Único com todas as combinações zeradas: nada marcado.
+    const zerado = criarEixosDaVariacao([
+      variante("Verde / M", 0),
+      variante("Azul / M", 0),
+    ]);
+    expect(preselecionarOpcaoUnica(zerado, new Map()).size).toBe(0);
+  });
+
+  it("opção única respeita escolha anterior, não a muda e não é mutada; só entra se combina com o escolhido", () => {
+    const m = criarEixosDaVariacao([
+      variante("Azul / PP", 5),
+      variante("Azul / M", 3),
+    ]);
+    const cor = eixoDe(m, "Cor").chave;
+    const tamanho = eixoDe(m, "Tamanho").chave;
+    const antes = new Map([[tamanho, "M"]]);
+    const depois = preselecionarOpcaoUnica(m, antes);
+    expect([...antes]).toEqual([[tamanho, "M"]]);
+    expect(depois.get(tamanho)).toBe("M");
+    expect(depois.get(cor)).toBe("Azul");
+    // Cor única, mas sem estoque no M já escolhido: com ele ela não entra.
+    const semM = criarEixosDaVariacao([
+      variante("Azul / PP", 5),
+      variante("Azul / M", 0),
+    ]);
+    const ponto = new Map([[eixoDe(semM, "Tamanho").chave, "M"]]);
+    expect(preselecionarOpcaoUnica(semM, ponto)).toEqual(ponto);
+  });
+
+  it("opção única em grupos legados: cada grupo com um valor só marca, e resolve a mesma linha do toque", () => {
+    const m = criarEixosDaVariacao([
+      variante("Azul", 4, { name: "Cor" }),
+      variante("M", 3, { name: "Tamanho", priceOverride: 65 }),
+    ]);
+    const s = preselecionarOpcaoUnica(m, new Map());
+    expect(s.size).toBe(2);
+    expect([...resolverSelecaoDosEixos(m, s)]).toEqual([
+      ["Cor", "Azul"],
+      ["Tamanho", "M"],
+    ]);
+    // Um dos grupos com duas opções: só o único marca, a seleção não resolve.
+    const meio = criarEixosDaVariacao([
+      variante("Azul", 4, { name: "Cor" }),
+      variante("M", 3, { name: "Tamanho" }),
+      variante("G", 3, { name: "Tamanho" }),
+    ]);
+    const parcial = preselecionarOpcaoUnica(meio, new Map());
+    expect([...parcial.values()]).toEqual(["Azul"]);
+    expect([...resolverSelecaoDosEixos(meio, parcial)]).toEqual([]);
   });
 
   it("escolha anterior vence a pré-escolha e não é mutada", () => {
