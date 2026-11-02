@@ -360,13 +360,25 @@ export function FunilEPedidosDoCrm({
     CLASSES_DO_DESTAQUE_DE_PAGAMENTO[tomDaTaxaDePagamento(conversao)];
   const esqueleto = carregando && !visao;
   const falha = !esqueleto && !visao && (!!erro || offline);
+  const estado =
+    visitas && intervalo ? estadoDasVisitas(visitas, intervalo) : null;
+  const diasNoTeto = new Set(visitas?.noTeto.map((t) => t.dia)).size;
   const medidas = ETAPAS_MEDIDAS.flatMap((etapa) => {
     const valor =
       etapa.chave === "visitas" ? visitas?.visitas : funil?.[etapa.chave];
-    return valor == null ? [] : [{ ...etapa, valor }];
+    const peloMenos = etapa.chave === "visitas" && estado?.naoConfiavel;
+    return valor == null
+      ? []
+      : [
+          {
+            ...etapa,
+            valor,
+            unidadeCurta: peloMenos
+              ? "entradas (pelo menos)"
+              : etapa.unidadeCurta,
+          },
+        ];
   });
-  const aviso =
-    visitas && intervalo ? estadoDasVisitas(visitas, intervalo).aviso : null;
   return (
     <div className="space-y-4">
       {!carregando && erro && visao && !offline && (
@@ -503,7 +515,14 @@ export function FunilEPedidosDoCrm({
                     )}
                   </>
                 )}
-                {aviso && <p>{aviso}</p>}
+                {estado?.aviso && <p>{estado.aviso}</p>}
+                {estado?.naoConfiavel && (
+                  <p className="text-amber-300">
+                    Contagem não confiável em {diasNoTeto}{" "}
+                    {diasNoTeto === 1 ? "dia" : "dias"}: alguém inflou o
+                    contador.
+                  </p>
+                )}
               </div>
             )}
           </CartaoDoCrm>

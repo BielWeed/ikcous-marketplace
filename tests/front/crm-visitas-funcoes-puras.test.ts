@@ -33,6 +33,7 @@ describe("lerVisitasDoCrm", () => {
         { rotulo: "Outros sites", visitas: 4 },
       ],
       previas: 9,
+      noTeto: [],
     });
   });
 
@@ -68,6 +69,38 @@ describe("lerVisitasDoCrm", () => {
   it("visitas NULL do banco continua NULL, nunca vira zero", () => {
     const lida = lerVisitasDoCrm({ ...COMPLETO, visitas: null });
     expect(lida?.visitas).toBeNull();
+  });
+});
+
+describe("no_teto (contador inflado)", () => {
+  const TETO = { dia: "2026-10-20", canal: "direto" };
+
+  it("lê os pares dia/canal e ignora item mal formado", () => {
+    const lida = lerVisitasDoCrm({
+      ...COMPLETO,
+      no_teto: [
+        TETO,
+        { dia: "ontem", canal: "direto" },
+        { dia: "2026-10-21" },
+        7,
+      ],
+    });
+    expect(lida?.noTeto).toEqual([TETO]);
+  });
+
+  it("ausente = vazio, e o estado não fica não confiável", () => {
+    expect(lerVisitasDoCrm(COMPLETO)?.noTeto).toEqual([]);
+    expect(
+      estadoDasVisitas(lerVisitasDoCrm(COMPLETO), PERIODO),
+    ).not.toHaveProperty("naoConfiavel");
+  });
+
+  it("com algum dia no teto o estado expõe naoConfiavel", () => {
+    const lida = lerVisitasDoCrm({ ...COMPLETO, no_teto: [TETO] });
+    expect(estadoDasVisitas(lida, PERIODO)).toEqual({
+      tipo: "completo",
+      naoConfiavel: true,
+    });
   });
 });
 

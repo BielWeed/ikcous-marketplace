@@ -162,6 +162,36 @@ describe("FunilEPedidosDoCrm — visitas", () => {
     expect(texto()).not.toMatch(/entradas|Contando|A contar|Fora da conta/);
   });
 
+  it("dia no teto: avisa que a contagem não é confiável e o número vira 'pelo menos'", () => {
+    montar({
+      visitas: lida({
+        no_teto: [
+          { dia: "2026-10-20", canal: "direto" },
+          { dia: "2026-10-20", canal: "instagram" },
+          { dia: "2026-10-21", canal: "direto" },
+        ],
+      }),
+      intervalo: PERIODO,
+    });
+    expect(texto()).toContain(
+      "Contagem não confiável em 2 dias: alguém inflou o contador.",
+    );
+    const etapa = hospedeiro.querySelector('[aria-label="Visitas"]');
+    expect(etapa?.textContent).toContain("42");
+    expect(etapa?.textContent).toContain("pelo menos");
+  });
+
+  it("um dia só: singular; sem no_teto: nenhum aviso nem 'pelo menos'", () => {
+    montar({
+      visitas: lida({ no_teto: [{ dia: "2026-10-20", canal: "direto" }] }),
+      intervalo: PERIODO,
+    });
+    expect(texto()).toContain("Contagem não confiável em 1 dia:");
+    montar({ visitas: lida(), intervalo: PERIODO });
+    expect(texto()).not.toContain("não confiável");
+    expect(texto()).not.toContain("pelo menos");
+  });
+
   it("a ajuda do funil deixa de dizer que visitas não são medidas", () => {
     montar({ visitas: lida(), intervalo: PERIODO });
     act(() => {
@@ -188,5 +218,7 @@ describe("AjudaDoCrm — visitas", () => {
     );
     expect(ajuda).toContain("o mesmo celular abrindo duas vezes conta duas");
     expect(ajuda).toContain("porque o WhatsApp não diz de onde a pessoa veio");
+    expect(ajuda).toContain("do seu próprio painel não contam");
+    expect(ajuda).toContain("barra de endereço do Chrome pode não contar");
   });
 });

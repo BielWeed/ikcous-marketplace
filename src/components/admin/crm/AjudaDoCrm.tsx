@@ -65,8 +65,9 @@ export function AjudaDoCrm({
               visita: o mesmo celular abrindo duas vezes conta duas, e quem vem
               pelo WhatsApp muitas vezes aparece como "direto", porque o
               WhatsApp não diz de onde a pessoa veio. Produtos vistos ainda não
-              são medidos. Abaixo, os pedidos por status com a idade do mais
-              antigo parado.
+              são medidos. As aberturas do seu próprio painel não contam, e a
+              pré-visualização da barra de endereço do Chrome pode não contar.
+              Abaixo, os pedidos por status com a idade do mais antigo parado.
             </li>
           </ul>
         </div>

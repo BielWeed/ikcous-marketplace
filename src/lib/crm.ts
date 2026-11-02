@@ -417,6 +417,11 @@ export function lerVisitasDoCrm(json: unknown): VisitasDoCrm | null {
       return rotulo && n != null ? [{ rotulo, visitas: n }] : [];
     }),
     previas: comoNumero(raiz.previas),
+    noTeto: comoLista(raiz.no_teto).flatMap((item) => {
+      const dia = comoTexto(comoRegistro(item)?.dia);
+      const canal = comoTexto(comoRegistro(item)?.canal);
+      return dia && canal && PADRAO_DIA.test(dia) ? [{ dia, canal }] : [];
+    }),
   };
 }
 
@@ -427,20 +432,27 @@ export function estadoDasVisitas(
 ): {
   tipo: "indisponivel" | "a-contar" | "parcial" | "completo";
   aviso?: string;
+  naoConfiavel?: true;
 } {
   if (!v) return { tipo: "indisponivel" };
   const desde = v.contandoDesde;
+  const teto = v.noTeto.length > 0 ? { naoConfiavel: true as const } : {};
   if (v.visitas == null) {
     const quando = desde ? formatarData(desde) : "agora";
-    return { tipo: "a-contar", aviso: `A contar a partir de ${quando}` };
+    return {
+      tipo: "a-contar",
+      aviso: `A contar a partir de ${quando}`,
+      ...teto,
+    };
   }
   if (desde && desde > inicio) {
     return {
       tipo: "parcial",
       aviso: `Contando desde ${formatarData(desde).slice(0, 5)}`,
+      ...teto,
     };
   }
-  return { tipo: "completo" };
+  return { tipo: "completo", ...teto };
 }
 
 // ─── Segmentos: rótulo, descrição e tom ──────────────────────────────────
