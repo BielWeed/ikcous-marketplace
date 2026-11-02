@@ -637,6 +637,10 @@ const FRASE_LOJA_SEM_FRETE =
 const FRASE_LOJA_SEM_FRETE_E_SEM_CONTATO =
   "Esta loja ainda não calcula o frete pelo app e não cadastrou um contato aqui. Procure a loja pelos canais em que você a conheceu.";
 
+/** Cupom aplicado cuja conferência não respondeu: o Finalizar fica travado até a cliente decidir. */
+const AVISO_CUPOM_SEM_CONFERENCIA =
+  "Não deu para conferir o desconto do cupom agora. Remova o cupom para finalizar sem ele, ou aplique-o de novo.";
+
 interface GatilhoDoResumoDoPedidoProps {
   readonly cart: CartItem[];
   readonly isOpen: boolean;
@@ -2538,8 +2542,17 @@ export function CheckoutViewDaConta({
       try {
         const resultado = await validateCoupon(codigoDoCupom, subtotal);
         if (!vivo || contaRef.current !== contaQueConferiu) return;
-        if (resultado.networkError) return;
+        if (resultado.networkError) {
+          // Sem resposta o desconto real é desconhecido: o Finalizar segue
+          // travado (`cupomEmConferencia`) e a cliente precisa saber por quê.
+          // Offline não avisa: a volta da rede repete a conferência sozinha.
+          if (!isOffline) setCouponError(AVISO_CUPOM_SEM_CONFERENCIA);
+          return;
+        }
         if (resultado.valid) {
+          setCouponError((atual) =>
+            atual === AVISO_CUPOM_SEM_CONFERENCIA ? "" : atual,
+          );
           // O par que ACABOU de ser validado vira a referência: subtotal que
           // vai e volta (100 → 150 → 100) revalida de novo em vez de manter o
           // desconto de 150.
@@ -3742,6 +3755,23 @@ export function CheckoutViewDaConta({
     recusaDoUltimoClique?.acao === "conferir_antes" ||
     recusaDoUltimoClique?.acao === "reenviar_mesma_compra";
 
+  // CUPOM EM CONFERÊNCIA (dinheiro): o cupom da tela ainda não foi conferido
+  // para o subtotal e a conta de AGORA — restaurado do rascunho com desconto 0,
+  // ou com o subtotal que mudou depois da última conferência. Enviar assim leva
+  // o total sem o desconto (ou com o antigo) e o servidor, que só tolera R$ 0,05
+  // de diferença, recusa ou cria um pedido que a cliente não esperava. Resolve
+  // sozinho: conferência válida ou inválida termina o estado; sem resposta da
+  // rede, a cliente remove o cupom (aviso na tela) e finaliza sem ele.
+  const cupomConferido = cupomConferidoRef.current;
+  const cupomEmConferencia =
+    !compraConcluida &&
+    !!appliedCoupon &&
+    !(
+      cupomConferido?.code === appliedCoupon.code &&
+      cupomConferido.subtotal === subtotal &&
+      cupomConferido.conta === contaDoCheckout
+    );
+
   // Fonte ÚNICA da condição de "Finalizar Pedido" apagado. Antes desta
   // constante, o `disabled` do botão e o `cn(...)` que decide a APARÊNCIA
   // dele repetiam a mesma expressão em dois lugares — e as duas estavam
@@ -3755,6 +3785,7 @@ export function CheckoutViewDaConta({
   const botaoFinalizarDesabilitado =
     cart.length === 0 ||
     !!aplicandoCupom ||
+    cupomEmConferencia ||
     leituraDaRetomadaPendente ||
     !isValid ||
     isSubmitting ||
@@ -3937,7 +3968,12 @@ export function CheckoutViewDaConta({
 
   const handleSubmitEvent = async () => {
     // Este handler cria uma compra nova; retomada paga o pedido já existente.
-    if (cart.length === 0 || aplicandoCupom || aplicacaoDoCupomEmVooRef.current)
+    if (
+      cart.length === 0 ||
+      aplicandoCupom ||
+      aplicacaoDoCupomEmVooRef.current ||
+      cupomEmConferencia
+    )
       return;
     const contaEsperada = user?.id ?? null;
     // Pedido retomado com a primeira leitura em voo: o pedido JÁ existe, e
