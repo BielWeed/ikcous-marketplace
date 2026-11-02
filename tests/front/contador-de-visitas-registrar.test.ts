@@ -23,6 +23,7 @@ beforeEach(() => {
   vi.useFakeTimers();
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -243,5 +244,80 @@ describe("registrarEntrada -- 404 = funcao ausente nesta loja: silencio de 10 mi
       deps(fetchDuble as unknown as typeof fetch),
     );
     expect(fetchDuble).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("registrarEntrada -- 401/403 (grants diferentes) tambem calam 10 min, com UMA linha de log por janela", () => {
+  it.each([401, 403, 404])(
+    "status %s: silencia o supabaseUrl, nao tenta de novo na janela e loga uma linha so, sem URL",
+    async (status) => {
+      const aviso = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const relogio = { agora: 1_000_000 };
+      const fetchDuble = fetchQueResponde(status);
+      const dep = deps(fetchDuble as unknown as typeof fetch, relogio);
+
+      await registrarEntrada(CONEXAO_A, "direto", dep);
+      await registrarEntrada(CONEXAO_A, "whatsapp", dep);
+      relogio.agora += DEZ_MINUTOS - 1;
+      await registrarEntrada(CONEXAO_A, "previa", dep);
+
+      expect(fetchDuble).toHaveBeenCalledTimes(1);
+      expect(aviso).toHaveBeenCalledTimes(1);
+      expect(aviso).toHaveBeenCalledWith(
+        `contador-de-visitas: silenciado status=${status}`,
+      );
+      // Nada que identifique loja ou visitante.
+      const linha = String(aviso.mock.calls[0]?.[0]);
+      expect(linha).not.toContain("supabase");
+      expect(linha).not.toContain("http");
+
+      // Janela nova (10 min depois): tenta de novo, cala de novo, loga de novo.
+      relogio.agora += 1;
+      await registrarEntrada(CONEXAO_A, "direto", dep);
+      expect(fetchDuble).toHaveBeenCalledTimes(2);
+      expect(aviso).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("duas gravacoes em voo ao mesmo tempo que voltam 401 geram UMA linha so", async () => {
+    const aviso = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchDuble = fetchQueResponde(401);
+    const dep = deps(fetchDuble as unknown as typeof fetch);
+    await Promise.all([
+      registrarEntrada(CONEXAO_A, "direto", dep),
+      registrarEntrada(CONEXAO_A, "direto", dep),
+    ]);
+    expect(fetchDuble).toHaveBeenCalledTimes(2);
+    expect(aviso).toHaveBeenCalledTimes(1);
+  });
+
+  it("outros erros (500, 429) e sucesso nao calam nem logam", async () => {
+    const aviso = vi.spyOn(console, "warn").mockImplementation(() => {});
+    for (const status of [500, 429, 204]) {
+      const fetchDuble = fetchQueResponde(status);
+      const dep = deps(fetchDuble as unknown as typeof fetch);
+      await registrarEntrada(CONEXAO_A, "direto", dep);
+      await registrarEntrada(CONEXAO_A, "direto", dep);
+      expect(fetchDuble).toHaveBeenCalledTimes(2);
+    }
+    expect(aviso).not.toHaveBeenCalled();
+  });
+
+  it("o silencio por 401 nao cala outro supabaseUrl", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const silencio = new Map<string, number>();
+    const fetchA = fetchQueResponde(401);
+    const fetchB = fetchQueResponde(204);
+    await registrarEntrada(
+      CONEXAO_A,
+      "direto",
+      deps(fetchA as unknown as typeof fetch, undefined, silencio),
+    );
+    await registrarEntrada(
+      CONEXAO_B,
+      "direto",
+      deps(fetchB as unknown as typeof fetch, undefined, silencio),
+    );
+    expect(fetchB).toHaveBeenCalledTimes(1);
   });
 });

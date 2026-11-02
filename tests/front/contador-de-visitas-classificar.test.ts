@@ -113,6 +113,10 @@ describe("classificarEntrada -- caminhos que nao sao pagina da loja", () => {
     "/sitemap.xml",
     "/sw.js",
     "/pasta/foto.png",
+    "/admin",
+    "/admin/",
+    "/admin/pedidos",
+    "/admin-orders",
   ])("%s -> fora da conta", (caminho) => {
     expect(entrada(`${LOJA}${caminho}`)).toBeNull();
     expect(ehPaginaContavel("GET", new URL(`${LOJA}${caminho}`))).toBe(false);
@@ -201,6 +205,31 @@ describe("classificarEntrada -- robos e previas de link", () => {
       });
     },
   );
+
+  it("celular CUBOT (\"Android 11; CUBOT P50\") com navigate e' PESSOA: o `BOT` do modelo nao e' robo", () => {
+    const ua =
+      "Mozilla/5.0 (Linux; Android 11; CUBOT P50) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36";
+    expect(entrada(`${LOJA}/`, { ...NAVEGACAO, "user-agent": ua })).toEqual({
+      tipo: "pessoa",
+      canal: "direto",
+    });
+  });
+
+  it.each([
+    "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+    "TelegramBot (like TwitterBot)",
+    "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)",
+    "Twitterbot/1.0",
+    "LinkedInBot/1.0",
+    "Mozilla/5.0 (compatible; bingbot/2.0)",
+    "Mozilla/5.0 (compatible; YandexBot/3.0)",
+    "Mozilla/5.0 (compatible; AhrefsBot/7.0)",
+    "Mozilla/5.0 (compatible; GPTBot/1.0)",
+  ])("robo que escreve Bot/bot ('%s') segue previa", (ua) => {
+    expect(entrada(`${LOJA}/`, { ...NAVEGACAO, "user-agent": ua })).toEqual({
+      tipo: "previa",
+    });
+  });
 
   it("robo sem user-agent e sem Sec-Fetch -> fora da conta (nem pessoa nem previa)", () => {
     expect(entrada(`${LOJA}/`, { accept: "text/html" })).toBeNull();

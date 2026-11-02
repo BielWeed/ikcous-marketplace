@@ -323,6 +323,99 @@ describe("middleware + contador -- ISOLAMENTO entre lojas", () => {
   });
 });
 
+describe("middleware + contador -- o ramo de robo de /product-detail usa o MESMO classificador", () => {
+  const UA_WHATSAPP_EMBUTIDO = `${UA_CHROME} WhatsApp/2.24.1`;
+
+  async function gravadoPara(
+    chave: string,
+    pedidoDe: (host: string) => Request,
+  ): Promise<{ canais: string[]; resposta: Response }> {
+    const loja = {
+      host: `ramo-${chave}.exemplo`,
+      nome: "Loja A",
+      origem: origemDe(`ramo${chave}`),
+    };
+    const gravacoes: Gravacao[] = [];
+    const { context, entregues } = contexto();
+    let resposta: Response | undefined;
+    await emProducao(
+      "production",
+      criarFetchDeLojas([loja], gravacoes),
+      async () => {
+        resposta = await middleware(pedidoDe(loja.host), context);
+        await Promise.all(entregues);
+      },
+    );
+    return {
+      canais: gravacoes.map((g) => g.canal),
+      resposta: resposta as Response,
+    };
+  }
+
+  it("pessoa no navegador embutido do WhatsApp (o ramo casa /whatsapp/ e entrega HTML de robo) conta como pessoa/whatsapp, nao como previa", async () => {
+    const { canais, resposta } = await gravadoPara("pessoa", (host) =>
+      navegador(host, "/product-detail?id=1", {
+        "user-agent": UA_WHATSAPP_EMBUTIDO,
+      }),
+    );
+    // O roteamento antigo do ramo nao mudou: a resposta continua sendo a de robo.
+    expect(resposta.headers.get("x-ikcous-og")).toBe("produto");
+    expect(canais).toEqual(["whatsapp"]);
+  });
+
+  it("robo inequivoco com Sec-Fetch de navegador segue previa", async () => {
+    const { canais } = await gravadoPara("twitter", (host) =>
+      navegador(host, "/product-detail?id=1", {
+        "user-agent": "Twitterbot/1.0",
+      }),
+    );
+    expect(canais).toEqual(["previa"]);
+  });
+
+  it("robo do WhatsApp (UA sem Sec-Fetch) segue previa", async () => {
+    const { canais } = await gravadoPara("robo", (host) => robo(host));
+    expect(canais).toEqual(["previa"]);
+  });
+
+  it("pedido do ramo que o classificador nao reconhece como entrada (WhatsApp com mode=cors) nao conta", async () => {
+    const { canais, resposta } = await gravadoPara("cors", (host) =>
+      navegador(host, "/product-detail?id=1", {
+        "user-agent": UA_WHATSAPP_EMBUTIDO,
+        "sec-fetch-mode": "cors",
+        "sec-fetch-dest": "empty",
+      }),
+    );
+    expect(resposta.status).toBe(200);
+    expect(canais).toEqual([]);
+  });
+});
+
+describe("middleware + contador -- /admin nao e' visita", () => {
+  it("/admin, /admin/pedidos e /admin-orders nao gravam; o app instalado em /?source=pwa grava como direto", async () => {
+    const loja = {
+      host: "adm-a.exemplo",
+      nome: "Loja A",
+      origem: origemDe("admA"),
+    };
+    const gravacoes: Gravacao[] = [];
+    const { context, entregues } = contexto();
+    await emProducao(
+      "production",
+      criarFetchDeLojas([loja], gravacoes),
+      async () => {
+        for (const caminho of ["/admin", "/admin/pedidos", "/admin-orders"])
+          expect(
+            (await middleware(navegador(loja.host, caminho), context)).status,
+          ).toBe(200);
+        expect(gravacoes).toEqual([]);
+        await middleware(navegador(loja.host, "/?source=pwa"), context);
+        await Promise.all(entregues);
+      },
+    );
+    expect(gravacoes.map((g) => g.canal)).toEqual(["direto"]);
+  });
+});
+
 describe("middleware + contador -- o que nao grava", () => {
   it("host que o banco desmente (503 discorda): zero gravacoes, pelo documento E pelo robo", async () => {
     const x = {

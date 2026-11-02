@@ -39,7 +39,7 @@ const CAMINHOS_QUE_NAO_SAO_PAGINA = new Set([
 /**
  * So GET de uma PAGINA da loja: sem extensao de arquivo no ultimo trecho do
  * caminho (o ponto de uma pasta, como em `/v1.2/oferta`, nao faz arquivo), fora
- * de `/api/` e `/.well-known/`, e fora dos documentos de maquina que o porteiro
+ * de `/api/`, `/.well-known/` e `/admin*` (painel), e fora dos documentos de maquina que o porteiro
  * responde (`identidade.json`, manifesto, `robots.txt`, `sitemap.xml`). HEAD
  * nunca conta: o porteiro o atende como GET (`atenderPorteiro`), mas quem manda
  * HEAD e' monitor e verificador de link, nao uma pessoa abrindo a loja.
@@ -50,6 +50,9 @@ export function ehPaginaContavel(metodo: string, url: URL): boolean {
   if (CAMINHOS_QUE_NAO_SAO_PAGINA.has(caminho)) return false;
   if (caminho === "/api" || caminho.startsWith("/api/")) return false;
   if (caminho.startsWith("/.well-known/")) return false;
+  // A lojista e a equipe abrem o painel (`/admin`, `/admin-orders`...) e o app
+  // instalado dela: nao e' cliente abrindo a loja.
+  if (caminho.startsWith("/admin")) return false;
   const ultimoTrecho = caminho.replace(/\/+$/, "").split("/").pop() ?? "";
   if (/\.[A-Za-z0-9]+$/.test(ultimoTrecho)) return false;
   return true;
@@ -61,7 +64,16 @@ export function ehPaginaContavel(metodo: string, url: URL): boolean {
 // NAO esta aqui de proposito: o navegador de dentro do Instagram e' uma pessoa;
 // a previa da Meta chega como `facebookexternalhit`.
 const UA_DE_ROBO =
-  /bot|crawler|spider|slurp|facebookexternalhit|facebookcatalog|meta-externalagent|embedly|iframely|preview|lighthouse|headless/i;
+  /crawler|spider|slurp|facebookexternalhit|facebookcatalog|meta-externalagent|embedly|iframely|preview|lighthouse|headless/i;
+
+// "bot" PRECISA de caixa: robo escreve `Googlebot`, `TelegramBot`, `Slackbot`
+// (`Bot`/`bot`), mas o celular CUBOT se apresenta como "Android 11; CUBOT P50"
+// -- com a bandeira `i` ele viraria robo e a lojista perderia essas pessoas.
+const UA_DE_ROBO_COM_BOT = /[Bb]ot/;
+
+function ehUserAgentDeRobo(userAgent: string): boolean {
+  return UA_DE_ROBO.test(userAgent) || UA_DE_ROBO_COM_BOT.test(userAgent);
+}
 
 function pedeCarregamentoAntecipado(cabecalhos: Headers): boolean {
   for (const nome of ["sec-purpose", "purpose", "x-purpose"]) {
@@ -165,7 +177,7 @@ export function classificarEntrada(pedido: PedidoParaClassificar): Entrada {
   const { metodo, url, cabecalhos } = pedido;
   if (!ehPaginaContavel(metodo, url)) return null;
   const userAgent = cabecalhos.get("user-agent") ?? "";
-  if (UA_DE_ROBO.test(userAgent)) return { tipo: "previa" };
+  if (ehUserAgentDeRobo(userAgent)) return { tipo: "previa" };
   if (pedeCarregamentoAntecipado(cabecalhos)) return { tipo: "previa" };
   // O robo de previa do WhatsApp se apresenta como `WhatsApp/...` e NAO manda
   // Sec-Fetch-Mode; o navegador embutido do app manda (e e' pessoa).
@@ -188,8 +200,8 @@ export function classificarEntrada(pedido: PedidoParaClassificar): Entrada {
 //     (o `middleware` a entrega a `context.waitUntil`). Pior caso de uma falha:
 //     uma entrada a menos contada. Nunca uma pagina mais lenta ou quebrada.
 //   - Nao ha retentativa: gravar duas vezes seria contar duas vezes.
-//   - 404 = a loja ainda nao recebeu a migration (PostgREST nao acha a
-//     funcao). A conta nao existe nela; calar por 10 min evita um fetch inutil
+//   - 404/401/403 = a loja ainda nao recebeu a migration (PostgREST nao acha a
+//     funcao) ou nao deu `EXECUTE` ao papel publico. A conta nao existe nela; calar por 10 min evita um fetch inutil
 //     a cada visita. O silencio e' por `supabaseUrl` (nunca por host), num Map
 //     do isolate que o CHAMADOR guarda, como os demais caches do porteiro.
 
@@ -209,6 +221,11 @@ export interface DependenciasDoRegistro {
 
 export const PRAZO_DA_GRAVACAO_MS = 1_500;
 export const SILENCIO_SEM_FUNCAO_MS = 600_000;
+
+/** 404 = a loja nao tem a funcao (migration nao chegou); 401/403 = o banco
+ * dela nao deu `EXECUTE` ao papel publico (grants diferentes por loja). Nos tres
+ * casos tentar a cada visita so gasta um fetch inutil. */
+const STATUS_QUE_CALAM: ReadonlySet<number> = new Set([401, 403, 404]);
 
 export async function registrarEntrada(
   conexao: ConexaoDeContagem,
@@ -247,11 +264,18 @@ export async function registrarEntrada(
       }),
       prazo,
     ]);
-    if (resposta !== null && resposta.status === 404)
-      deps.silencio.set(
-        conexao.supabaseUrl,
-        relogio() + SILENCIO_SEM_FUNCAO_MS,
-      );
+    if (resposta !== null && STATUS_QUE_CALAM.has(resposta.status)) {
+      const agora = relogio();
+      // Uma linha de log por JANELA de silencio: gravacoes em voo ao mesmo tempo
+      // voltam todas com o mesmo status e so a primeira conta. Sem URL, sem
+      // referer, sem user-agent: nada que identifique loja ou visitante.
+      const jaCalado = (deps.silencio.get(conexao.supabaseUrl) ?? 0) > agora;
+      deps.silencio.set(conexao.supabaseUrl, agora + SILENCIO_SEM_FUNCAO_MS);
+      if (!jaCalado)
+        console.warn(
+          `contador-de-visitas: silenciado status=${resposta.status}`,
+        );
+    }
   } catch {
     // Contar e' o que menos importa neste caminho: engolir e seguir.
   } finally {

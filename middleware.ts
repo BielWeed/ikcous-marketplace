@@ -1,6 +1,5 @@
 import {
   classificarEntrada,
-  ehPaginaContavel,
   registrarEntrada,
 } from "./src/hospedagem/contador";
 import type { CanalDeEntrada } from "./src/hospedagem/contador";
@@ -73,8 +72,10 @@ export const config = {
   ],
 };
 
-// `Map` de módulo: vive uma vez por isolate da Vercel Edge e sobrevive entre
-// invocações — é o que faz o cache de 60s/1h do porteiro valer a pena
+// `Map` de módulo: vive uma vez por instância da função (o `middleware.ts` roda
+// em Node.js por padrão na Vercel; este projeto não declara `runtime` nem em
+// `config` nem em `vercel.json`) e sobrevive entre invocações da mesma
+// instância — é o que faz o cache de 60s/1h do porteiro valer a pena
 // (`src/hospedagem/porteiro.ts`, `CACHE_FRESCO_MS`/`CACHE_STALE_MAX_MS`).
 const cachePorteiro = new Map<string, EntradaCachePorteiro>();
 
@@ -280,16 +281,24 @@ export default async function middleware(
     // encontrado", mais abaixo, segue a mesma regra: `semProduto`.)
     if (resultado.tipo === "manutencao") return resultado.resposta;
     const { ficha, caderneta: estadoCaderneta } = resultado;
-    // Contador de visitas: o robo de previa de link tambem entra na conta, como
-    // `previa` (NUNCA somada em "visitas"), no banco da PROPRIA loja -- a
-    // conexao e' a da ficha validada acima, a mesma que serve o produto. So
-    // GET, loja aberta; a ficha ja foi aceita pela concordancia.
-    if (
-      gravarEntrada !== undefined &&
-      !ficha.configuracao.manutencao &&
-      ehPaginaContavel(request.method, url)
-    )
-      gravarEntrada(ficha.conexao, "previa");
+    // Contador de visitas, pelo MESMO classificador do documento: este ramo casa
+    // /whatsapp/ e entrega HTML de robo tambem a pessoa no navegador embutido do
+    // WhatsApp, que conta como pessoa/whatsapp; robo inequivoco (e o robo do
+    // WhatsApp, sem Sec-Fetch) segue `previa`. O roteamento do ramo nao muda. A
+    // conexao e' a da ficha validada acima, a mesma que serve o produto; loja
+    // em manutencao nao conta.
+    if (gravarEntrada !== undefined && !ficha.configuracao.manutencao) {
+      const entrada = classificarEntrada({
+        metodo: request.method,
+        url,
+        cabecalhos: request.headers,
+      });
+      if (entrada !== null)
+        gravarEntrada(
+          ficha.conexao,
+          entrada.tipo === "pessoa" ? entrada.canal : "previa",
+        );
+    }
     const { supabaseUrl, publishableKey: supabaseKey } = ficha.conexao;
     // Nome da marca no HTML servido a crawlers: T5 (11/09/2026) tira o
     // último valor ASSADO do ramo de robô (antes: `process.env.VITE_APP_NAME`
