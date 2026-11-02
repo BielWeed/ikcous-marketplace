@@ -200,10 +200,11 @@ export function classificarEntrada(pedido: PedidoParaClassificar): Entrada {
 //     (o `middleware` a entrega a `context.waitUntil`). Pior caso de uma falha:
 //     uma entrada a menos contada. Nunca uma pagina mais lenta ou quebrada.
 //   - Nao ha retentativa: gravar duas vezes seria contar duas vezes.
-//   - 404/401/403 = a loja ainda nao recebeu a migration (PostgREST nao acha a
-//     funcao) ou nao deu `EXECUTE` ao papel publico. A conta nao existe nela; calar por 10 min evita um fetch inutil
-//     a cada visita. O silencio e' por `supabaseUrl` (nunca por host), num Map
-//     do isolate que o CHAMADOR guarda, como os demais caches do porteiro.
+//   - Toda falha cala AQUELE banco (chave = `supabaseUrl`, nunca o host) e deixa
+//     uma linha anonima de log por janela: 10 min para a permanente (404/401/403 =
+//     migration ausente ou sem `EXECUTE` ao papel publico; 400 e demais 4xx) e
+//     60 s para a transitoria (5xx, 429, prazo, rede). O Map e' do isolate e
+//     o CHAMADOR o guarda, como os demais caches do porteiro.
 
 /** O pedaco da conexao validada da ficha que a gravacao precisa. */
 export interface ConexaoDeContagem {
@@ -220,12 +221,42 @@ export interface DependenciasDoRegistro {
 }
 
 export const PRAZO_DA_GRAVACAO_MS = 1_500;
-export const SILENCIO_SEM_FUNCAO_MS = 600_000;
 
-/** 404 = a loja nao tem a funcao (migration nao chegou); 401/403 = o banco
- * dela nao deu `EXECUTE` ao papel publico (grants diferentes por loja). Nos tres
- * casos tentar a cada visita so gasta um fetch inutil. */
-const STATUS_QUE_CALAM: ReadonlySet<number> = new Set([401, 403, 404]);
+/** Falha PERMANENTE (404 = a loja nao tem a funcao, a migration nao chegou;
+ * 401/403 = o banco nao deu `EXECUTE` ao papel publico; 400 = canal recusado;
+ * qualquer outro 4xx): insistir a cada visita nao adianta. */
+export const SILENCIO_LONGO_MS = 600_000;
+/** Falha TRANSITORIA (5xx, 429, prazo estourado, erro de rede): banco doente nao
+ * recebe um POST por visita, mas volta a ser tentado logo. */
+export const SILENCIO_CURTO_MS = 60_000;
+
+/** O rotulo que vai para o log: o status HTTP, ou `timeout`/`rede`. Fixo e
+ * anonimo -- nunca URL, chave, referer nem user-agent. */
+type RotuloDaFalha = number | "timeout" | "rede";
+
+/** `null` = nao e' falha (2xx e o que o `fetch` nao entrega com `redirect:"error"`). */
+function duracaoDoSilencio(status: number): number | null {
+  if (status >= 500 || status === 429) return SILENCIO_CURTO_MS;
+  if (status >= 400) return SILENCIO_LONGO_MS;
+  return null;
+}
+
+function calarOBanco(
+  deps: DependenciasDoRegistro,
+  supabaseUrl: string,
+  agora: number,
+  duracao: number,
+  rotulo: RotuloDaFalha,
+): void {
+  const calado = deps.silencio.get(supabaseUrl) ?? 0;
+  // Nunca encurta: uma falha curta que chega depois de uma longa (gravacoes em
+  // voo ao mesmo tempo) nao pode reabrir a porta antes da hora.
+  deps.silencio.set(supabaseUrl, Math.max(calado, agora + duracao));
+  // Uma linha de log por JANELA de silencio: as gravacoes em voo ao mesmo tempo
+  // voltam todas com o mesmo problema e so a primeira conta.
+  if (calado <= agora)
+    console.warn(`contador-de-visitas: silenciado status=${rotulo}`);
+}
 
 export async function registrarEntrada(
   conexao: ConexaoDeContagem,
@@ -249,33 +280,53 @@ export async function registrarEntrada(
         resolver(null);
       }, PRAZO_DA_GRAVACAO_MS);
     });
-    const resposta = await Promise.race([
-      deps.fetchImpl(`${conexao.supabaseUrl}/rest/v1/rpc/contar_entrada`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          apikey: conexao.publishableKey,
-          Authorization: `Bearer ${conexao.publishableKey}`,
-        },
-        body: JSON.stringify({ p_canal: canal }),
-        signal: controller.signal,
-        redirect: "error",
-        credentials: "omit",
-      }),
-      prazo,
-    ]);
-    if (resposta !== null && STATUS_QUE_CALAM.has(resposta.status)) {
-      const agora = relogio();
-      // Uma linha de log por JANELA de silencio: gravacoes em voo ao mesmo tempo
-      // voltam todas com o mesmo status e so a primeira conta. Sem URL, sem
-      // referer, sem user-agent: nada que identifique loja ou visitante.
-      const jaCalado = (deps.silencio.get(conexao.supabaseUrl) ?? 0) > agora;
-      deps.silencio.set(conexao.supabaseUrl, agora + SILENCIO_SEM_FUNCAO_MS);
-      if (!jaCalado)
-        console.warn(
-          `contador-de-visitas: silenciado status=${resposta.status}`,
-        );
+    let resposta: Response | null;
+    try {
+      resposta = await Promise.race([
+        deps.fetchImpl(`${conexao.supabaseUrl}/rest/v1/rpc/contar_entrada`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            apikey: conexao.publishableKey,
+            Authorization: `Bearer ${conexao.publishableKey}`,
+          },
+          body: JSON.stringify({ p_canal: canal }),
+          signal: controller.signal,
+          redirect: "error",
+          credentials: "omit",
+        }),
+        prazo,
+      ]);
+    } catch {
+      // Rejeicao de rede (inclui o redirecionamento recusado) ou `fetch` que lanca.
+      calarOBanco(
+        deps,
+        conexao.supabaseUrl,
+        relogio(),
+        SILENCIO_CURTO_MS,
+        "rede",
+      );
+      return;
     }
+    if (resposta === null) {
+      calarOBanco(
+        deps,
+        conexao.supabaseUrl,
+        relogio(),
+        SILENCIO_CURTO_MS,
+        "timeout",
+      );
+      return;
+    }
+    const duracao = duracaoDoSilencio(resposta.status);
+    if (duracao !== null)
+      calarOBanco(
+        deps,
+        conexao.supabaseUrl,
+        relogio(),
+        duracao,
+        resposta.status,
+      );
   } catch {
     // Contar e' o que menos importa neste caminho: engolir e seguir.
   } finally {
