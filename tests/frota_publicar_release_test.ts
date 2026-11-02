@@ -3163,6 +3163,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "114a-conferir-o-texto-da-avaliacao-tem-teto-no-banco-aplicado",
     "115a-conferir-o-desconto-do-cupom-e-arredondado-ao-centavo-aplicado",
     "116a-conferir-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-aplicado",
+    "117a-conferir-as-visitas-da-loja-contam-pelo-porteiro-aplicado",
   ]);
 });
 
