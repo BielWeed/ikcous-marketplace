@@ -42,8 +42,11 @@ vi.mock("sonner", () => ({
   toast: { error: toastError, success: toastSuccess },
 }));
 // O hook chama estes dois no corpo; sem eles a sonda não monta.
+// `vi.hoisted`: a fábrica do mock sobe para o topo, então a conta atual tem de
+// existir antes dela. Os testes de troca de conta mudam `auth.user`.
+const auth = vi.hoisted(() => ({ user: null as { id: string } | null }));
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: null, isAdmin: false }),
+  useAuth: () => ({ user: auth.user, isAdmin: false }),
 }));
 vi.mock("@/hooks/useLeaderElection", () => ({
   useLeaderElection: () => ({ isLeader: false }),
@@ -78,18 +81,30 @@ async function pegarGenerateOrderOtp(): Promise<Gerar> {
   }
 
   let gerar: Gerar | undefined;
+  // Elemento NOVO a cada render: o React pula a renderização de um objeto de
+  // elemento idêntico, e o hook nunca veria a conta nova.
+  const elemento = () => (
+    <Sonda
+      aoMontar={(g) => {
+        gerar = g;
+      }}
+    />
+  );
   await act(async () => {
-    raiz.render(
-      <Sonda
-        aoMontar={(g) => {
-          gerar = g;
-        }}
-      />,
-    );
+    raiz.render(elemento());
   });
+  // Mesmo tipo de componente = mesma instância do hook (não remonta): serve
+  // para o teste de troca de conta, que muda `auth.user` e re-renderiza.
+  rerenderizar = async () => {
+    await act(async () => {
+      raiz.render(elemento());
+    });
+  };
   if (!gerar) throw new Error("a sonda não expôs generateOrderOtp");
   return gerar;
 }
+
+let rerenderizar: () => Promise<void> = async () => {};
 
 describe("generateOrderOtp — o retorno segue o envio, não a validação", () => {
   beforeEach(() => {
@@ -200,5 +215,154 @@ describe("generateOrderOtp — o retorno segue o envio, não a validação", () 
 
     expect(await gerar("a@b.c", "34999999999", "abcdef")).toBe(false);
     expect(toastSuccess).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A mensagem de "muito recente" depois de um envio que FALHOU (02/11/2026).
+ *
+ * A edge grava o código e a janela de 60 s ANTES do SMTP, e não os desfaz se o
+ * SMTP falha (desfazer tira o freio e deixaria uma pane queimar os tetos de
+ * 24 h da cliente). Então quem tenta de novo em seguida recebe `muito_recente`
+ * — e dizer "Já enviamos um código, confira sua caixa de entrada" seria
+ * mentira: o último envio falhou. A tela lembra a falha, por pedido, e só nesse
+ * caso troca a frase. O contrato com a edge é o mesmo.
+ */
+describe("generateOrderOtp — muito_recente depois de um envio que falhou", () => {
+  const FALHOU = { data: { ok: false, motivo: "envio_falhou" }, error: null };
+  const MUITO_RECENTE = {
+    data: { ok: false, motivo: "muito_recente", espereSegundos: 42 },
+    error: null,
+  };
+  const textoDoUltimoToast = () =>
+    String(toastError.mock.calls[toastError.mock.calls.length - 1][0]);
+
+  /** O 502 real: `invoke` descarta o corpo e entrega um erro com `context`. */
+  const erroHttp502 = (corpo: unknown) => ({
+    data: null,
+    error: Object.assign(new Error("Edge Function returned a non-2xx"), {
+      context: { json: async () => corpo },
+    }),
+  });
+
+  beforeEach(() => {
+    invoke.mockReset();
+    rpc.mockReset();
+    toastError.mockReset();
+    toastSuccess.mockReset();
+    auth.user = null;
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    raiz = createRoot(host);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    act(() => {
+      raiz.unmount();
+    });
+    host.remove();
+  });
+
+  it("falhou e a tentativa seguinte caiu no freio: a frase é verdadeira, sem 'já enviamos' nem 'caixa de entrada'", async () => {
+    invoke.mockResolvedValueOnce(FALHOU).mockResolvedValueOnce(MUITO_RECENTE);
+    const gerar = await pegarGenerateOrderOtp();
+
+    expect(await gerar("a@b.c", "34999999999", "abcdef")).toBe(false);
+    expect(await gerar("a@b.c", "34999999999", "abcdef")).toBe(false);
+
+    const texto = textoDoUltimoToast();
+    expect(texto).toContain("Ainda não conseguimos enviar");
+    expect(texto).not.toMatch(/já enviamos|caixa de entrada/i);
+    // Não promete o tempo exato.
+    expect(texto).not.toContain("42");
+  });
+
+  it("o 502 REAL (erro HTTP sem data, motivo só no corpo) também conta como falha lembrada", async () => {
+    invoke
+      .mockResolvedValueOnce(erroHttp502({ ok: false, motivo: "envio_falhou" }))
+      .mockResolvedValueOnce(MUITO_RECENTE);
+    const gerar = await pegarGenerateOrderOtp();
+
+    await gerar("a@b.c", "34999999999", "abcdef");
+    await gerar("a@b.c", "34999999999", "abcdef");
+
+    expect(textoDoUltimoToast()).toContain("Ainda não conseguimos enviar");
+  });
+
+  it("nenhuma falha anterior: o 'já enviamos' de sempre, com os segundos", async () => {
+    invoke.mockResolvedValueOnce(MUITO_RECENTE);
+    const gerar = await pegarGenerateOrderOtp();
+
+    await gerar("a@b.c", "34999999999", "abcdef");
+
+    const texto = textoDoUltimoToast();
+    expect(texto).toContain("Já enviamos um código há pouco");
+    expect(texto).toContain("42");
+    expect(texto).toContain("caixa de entrada");
+  });
+
+  it("o último envio deu certo: o 'já enviamos' continua valendo", async () => {
+    invoke
+      .mockResolvedValueOnce(FALHOU)
+      .mockResolvedValueOnce({ data: { ok: true }, error: null })
+      .mockResolvedValueOnce(MUITO_RECENTE);
+    const gerar = await pegarGenerateOrderOtp();
+
+    await gerar("a@b.c", "34999999999", "abcdef");
+    expect(await gerar("a@b.c", "34999999999", "abcdef")).toBe(true);
+    await gerar("a@b.c", "34999999999", "abcdef");
+
+    expect(textoDoUltimoToast()).toContain("Já enviamos um código há pouco");
+  });
+
+  it("a falha de um pedido não contamina outro", async () => {
+    invoke.mockResolvedValueOnce(FALHOU).mockResolvedValueOnce(MUITO_RECENTE);
+    const gerar = await pegarGenerateOrderOtp();
+
+    await gerar("a@b.c", "34999999999", "abcdef");
+    await gerar("outra@pessoa.com", "34888888888", "123456");
+
+    expect(textoDoUltimoToast()).toContain("Já enviamos um código há pouco");
+  });
+
+  it("falha de rede (sem resposta da função) NÃO vira falha lembrada: pode haver código enviado antes", async () => {
+    invoke
+      .mockResolvedValueOnce({
+        data: null,
+        error: new Error("Failed to fetch"),
+      })
+      .mockResolvedValueOnce(MUITO_RECENTE);
+    const gerar = await pegarGenerateOrderOtp();
+
+    await gerar("a@b.c", "34999999999", "abcdef");
+    await gerar("a@b.c", "34999999999", "abcdef");
+
+    expect(textoDoUltimoToast()).toContain("Já enviamos um código há pouco");
+  });
+
+  it("depois de 60 s a falha lembrada vence: o freio de agora é de outro envio", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-02T12:00:00Z"));
+    invoke.mockResolvedValueOnce(FALHOU).mockResolvedValueOnce(MUITO_RECENTE);
+    const gerar = await pegarGenerateOrderOtp();
+
+    await gerar("a@b.c", "34999999999", "abcdef");
+    vi.setSystemTime(new Date("2026-11-02T12:01:01Z"));
+    await gerar("a@b.c", "34999999999", "abcdef");
+
+    expect(textoDoUltimoToast()).toContain("Já enviamos um código há pouco");
+  });
+
+  it("troca de conta apaga a memória da falha", async () => {
+    invoke.mockResolvedValueOnce(FALHOU).mockResolvedValueOnce(MUITO_RECENTE);
+    const gerar = await pegarGenerateOrderOtp();
+
+    await gerar("a@b.c", "34999999999", "abcdef");
+    auth.user = { id: "outra-conta" };
+    await rerenderizar();
+    await gerar("a@b.c", "34999999999", "abcdef");
+
+    expect(textoDoUltimoToast()).toContain("Já enviamos um código há pouco");
   });
 });
