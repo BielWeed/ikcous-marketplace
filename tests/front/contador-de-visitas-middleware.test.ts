@@ -560,6 +560,14 @@ describe("middleware + contador -- NUNCA atrasa nem derruba a pagina", () => {
       await vi.advanceTimersByTimeAsync(10);
       await new Promise<void>((seguir) => setImmediate(seguir));
     }
+    // O relogio falso ja parou em 200 ms; so o laco REAL continua. Numa maquina
+    // lenta (CI sob carga) 20 voltas nao bastam para ler os corpos das respostas,
+    // entao espera-se por tempo real (ate 5 s) sem adiantar o relogio falso: se o
+    // middleware dependesse da gravacao de 1,5 s, ela nunca chegaria aqui.
+    const limite = Date.now() + 5_000;
+    while (!resolveu && Date.now() < limite) {
+      await new Promise<void>((seguir) => setImmediate(seguir));
+    }
     return { resolveu: () => resolveu, promessa };
   }
 
