@@ -22,7 +22,7 @@
  *  MUTANTES    o mesmo roteiro sobre restricoes sabotadas (teto de 121/119/5000, bytes, exige texto, sem a regra; WhatsApp 21/19/bytes)
  *              FICA VERMELHO na expectativa certa.
  *  MIGRATION   reaplicar (2x) e CRLF = mesmo estado; rollback sem tocar dado, 2x no-op, ida e volta igual; o pre-voo recusa SEM
- *              escrever; a conferencia final recusa cada estrago; o pre-voo do rollback recusa o que nao e' dele.
+ *              escrever; a conferencia final recusa cada estrago; o pre-voo do rollback recusa o que nao e' dele; consultas 118a/118b.
  *  ATOMICIDADE conexao SEM BEGIN: a conferencia sabotada derruba o arquivo inteiro; gravacao em voo (em profiles OU em public_profiles)
  *              faz a migration FALHAR LIMPA no lock_timeout, sem deixar CHECK nenhum, e depois aplica.
  *
@@ -1060,6 +1060,88 @@ prova(
         },
       );
     }
+  },
+);
+
+const A118 = "118a-conferir-o-nome-do-perfil-tem-teto-no-banco-aplicado";
+const B118 = "118b-antes-o-nome-do-perfil-tem-teto-no-banco-ausente";
+prova(
+  "consultas 118a/118b nos dois sentidos, com o rol fechado, e cada linha reprova no estrago certo",
+  async () => {
+    await P.emTransacao(
+      async () => {
+        assert.deepEqual(await P.consulta(A118), [], "118a no estado DEPOIS");
+        assert.equal(
+          (await P.consulta(B118)).length,
+          2,
+          "118b depois do apply devia reprovar as 2 linhas de ausencia",
+        );
+        await antes();
+        assert.deepEqual(await P.consulta(B118), [], "118b no estado ANTES");
+        assert.equal(
+          (await P.consulta(A118)).length,
+          4,
+          "118a no estado ANTES devia reprovar as 4 linhas das restricoes",
+        );
+        await depois();
+        for (const [estrago, linha] of [
+          [tirar("profiles", CK_NOME), /CHECK profiles_full_name/],
+          [
+            tirar("public_profiles", CK_PUBLICO),
+            /CHECK public_profiles_full_name/,
+          ],
+          [tirar("profiles", CK_WHATSAPP), /CHECK profiles_whatsapp/],
+          [
+            trocarRegra("profiles", CK_NOME, "char_length(full_name) <= 500"),
+            /CHECK profiles_full_name/,
+          ],
+          [
+            "ALTER TABLE public.profiles ADD CONSTRAINT prova_outro CHECK (char_length(full_name) <= 5000)",
+            /so existe UM CHECK/,
+          ],
+          [
+            "ALTER TABLE public.public_profiles ADD CONSTRAINT prova_outro CHECK (char_length(full_name) <= 5000)",
+            /so existe UM CHECK/,
+          ],
+          [
+            "ALTER TABLE public.profiles ADD CONSTRAINT prova_outro CHECK (char_length(whatsapp) <= 5000)",
+            /so existe UM CHECK/,
+          ],
+        ]) {
+          await P.conexao().query("SAVEPOINT estrago");
+          await P.conexao().query(estrago);
+          const reprovadas = await P.consulta(A118);
+          assert.ok(
+            reprovadas.some((i) => linha.test(i)),
+            `a 118a nao reprovou a linha certa para '${estrago.slice(0, 70)}': ${JSON.stringify(reprovadas)}`,
+          );
+          await P.conexao().query("ROLLBACK TO SAVEPOINT estrago");
+        }
+        // um CHECK de OUTRA coluna nao conta como concorrente
+        await P.conexao().query(
+          "ALTER TABLE public.profiles ADD CONSTRAINT prova_outra_coluna CHECK (char_length(cpf) <= 50)",
+        );
+        assert.deepEqual(await P.consulta(A118), [], "CHECK de outra coluna");
+        // as restricoes ja validadas tambem sao aceitas pela 118a
+        for (const [tabela, nome] of [
+          ["profiles", CK_NOME],
+          ["public_profiles", CK_PUBLICO],
+          ["profiles", CK_WHATSAPP],
+        ])
+          await P.conexao().query(
+            `ALTER TABLE public.${tabela} VALIDATE CONSTRAINT ${nome}`,
+          );
+        assert.deepEqual(
+          await P.consulta(A118),
+          [],
+          "118a com as restricoes validadas",
+        );
+      },
+      async () => {
+        await semear();
+        await depois();
+      },
+    );
   },
 );
 

@@ -238,6 +238,8 @@ on:
       - "scripts/publicacao/consultas/116b-antes-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-base-vigente.sql"
       - "scripts/publicacao/consultas/117a-conferir-as-visitas-da-loja-contam-pelo-porteiro-aplicado.sql"
       - "scripts/publicacao/consultas/117b-antes-as-visitas-da-loja-contam-pelo-porteiro-ausente.sql"
+      - "scripts/publicacao/consultas/118a-conferir-o-nome-do-perfil-tem-teto-no-banco-aplicado.sql"
+      - "scripts/publicacao/consultas/118b-antes-o-nome-do-perfil-tem-teto-no-banco-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -445,6 +447,8 @@ on:
       - "scripts/publicacao/consultas/116b-antes-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-base-vigente.sql"
       - "scripts/publicacao/consultas/117a-conferir-as-visitas-da-loja-contam-pelo-porteiro-aplicado.sql"
       - "scripts/publicacao/consultas/117b-antes-as-visitas-da-loja-contam-pelo-porteiro-ausente.sql"
+      - "scripts/publicacao/consultas/118a-conferir-o-nome-do-perfil-tem-teto-no-banco-aplicado.sql"
+      - "scripts/publicacao/consultas/118b-antes-o-nome-do-perfil-tem-teto-no-banco-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -742,7 +746,8 @@ jobs:
       # Migration 20261399100000 (o nome do perfil e o WhatsApp tem teto no banco): tres CHECKs NOT VALID (profiles.full_name e public_profiles.full_name ate 120, profiles.whatsapp
       # ate 20); 120 entra (letra, acento, emoji, nulo, vazio), 121 e 2 milhoes sao recusados pela RPC, por UPDATE direto, por INSERT, para admin, service_role e sessao direta, e
       # a vitrine (vw_questions_public.author_name) nunca devolve nome acima de 120; perfil antigo acima do teto faz a migration se RECUSAR (guarda: o CHECK travaria foto, CPF e
-      # cargo da conta; medido); mutantes, reaplicar, rollback byte a byte, pre-voo, pos-voo, atomicidade e lock_timeout nas duas tabelas. CLONE proprio.
+      # cargo da conta; medido); mutantes, reaplicar, rollback byte a byte, pre-voo, pos-voo, atomicidade, lock_timeout nas duas tabelas e consultas
+      # 118a/118b. CLONE proprio.
       - name: Prova viva do teto do nome do perfil (20261399100000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-nome-do-perfil-tem-teto-no-banco-viva.cjs

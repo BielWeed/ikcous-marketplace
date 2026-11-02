@@ -90,7 +90,8 @@
 -- tira os três CHECKs (únicos objetos criados aqui; não há estado anterior a restaurar, o esquema volta byte a byte ao de
 -- antes). Nenhuma linha muda.
 --
--- PROVA VIVA: tests/banco/o-nome-do-perfil-tem-teto-no-banco-viva.cjs (rpc-ci).
+-- 8. FICHA DE VERIFICAÇÃO: consultas 118a (depois) / 118b (antes).
+--   PROVA VIVA: tests/banco/o-nome-do-perfil-tem-teto-no-banco-viva.cjs (rpc-ci).
 -- ============================================================================
 
 SET LOCAL lock_timeout = '5s';

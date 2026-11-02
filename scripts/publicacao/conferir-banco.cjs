@@ -2897,7 +2897,23 @@ const ROL_DA_117B = [
   "fin__hoje() devolve date e is_admin() e is_admin_atual() devolvem boolean",
   "os papeis anon, authenticated e service_role existem",
 ];
+// Lote 118 (20261399100000, o nome do perfil e o WhatsApp tem teto no banco: tres CHECKs NOT VALID, profiles.full_name e public_profiles.full_name ate 120 e profiles.whatsapp ate 20, objeto NOVO).
+// A 118a prova as tres restricoes (NOT VALID ou ja validadas) e que nao ha outro CHECK concorrente sobre as colunas; a 118b a ausencia delas. Nenhuma das duas le perfil.
+const ROL_DA_118A = [
+  "controle: catalogo publico visivel",
+  "profiles: CHECK profiles_full_name_ate_120_caracteres (char_length(full_name) <= 120) existe",
+  "public_profiles: CHECK public_profiles_full_name_ate_120_caracteres (char_length(full_name) <= 120) existe",
+  "profiles: CHECK profiles_whatsapp_ate_20_caracteres (char_length(whatsapp) <= 20) existe",
+  "so existe UM CHECK sobre cada coluna (full_name em profiles e em public_profiles, whatsapp em profiles): nenhum teto concorrente",
+];
+const ROL_DA_118B = [
+  "controle: catalogo publico visivel",
+  "profiles.full_name, profiles.whatsapp e public_profiles.full_name sao text e nenhum dos tres CHECKs de tamanho existe ainda",
+  "nenhum outro CHECK limita full_name ou whatsapp hoje (o teto de 120 e o de 20 ainda nao estao no banco)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "118a-conferir-o-nome-do-perfil-tem-teto-no-banco-aplicado": ROL_DA_118A,
+  "118b-antes-o-nome-do-perfil-tem-teto-no-banco-ausente": ROL_DA_118B,
   "117a-conferir-as-visitas-da-loja-contam-pelo-porteiro-aplicado": ROL_DA_117A,
   "117b-antes-as-visitas-da-loja-contam-pelo-porteiro-ausente": ROL_DA_117B,
   "116a-conferir-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-aplicado":
