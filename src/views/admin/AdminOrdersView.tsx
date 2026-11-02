@@ -61,6 +61,7 @@ import {
   enderecoDeRetiradaDoCustomerData,
   mapOrderFromDB,
 } from "@/lib/mappers";
+import { mensagemDoStatusNoWhatsapp } from "@/lib/mensagem-do-status-no-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { pedidosParaCsv } from "@/lib/pedidos-csv";
 import { STATUS_PARA_PREPARAR } from "@/lib/pedidos-para-preparar";
@@ -1585,7 +1586,15 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       const rotuloDoStatusNaMensagem = statusConfig[order.status]
         ? rotuloDoStatus(order.status, order.retiradaNaLoja)
         : statusConfig.pending.label;
-      const message = `Olá ${order.customer?.name || "Cliente"}!\n\nSeu pedido #${numeroDoPedido(order.id)} foi atualizado.\nStatus: ${rotuloDoStatusNaMensagem}\n\nObrigado por comprar na ${storeNameDaLoja}!`;
+      const message = mensagemDoStatusNoWhatsapp({
+        nomeDoCliente: order.customer?.name || "Cliente",
+        numeroDoPedido: numeroDoPedido(order.id),
+        rotuloDoStatus: rotuloDoStatusNaMensagem,
+        nomeDaLoja: storeNameDaLoja,
+        status: order.status,
+        retiradaNaLoja: order.retiradaNaLoja,
+        codigoDeRastreio: order.trackingCode,
+      });
 
       // Laudo 0109 (A-7): número sem DDD+numero não abre conversa válida.
       // O util decide: sem link, o toque não abre janela nenhuma.

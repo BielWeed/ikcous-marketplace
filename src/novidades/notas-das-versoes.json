@@ -1,4 +1,12 @@
 {
+  "1.5.108": {
+    "titulo": "A mensagem de WhatsApp do pedido enviado já leva o código de rastreio",
+    "novidades": [],
+    "correcoes": [],
+    "melhorias": [
+      "Quando o pedido está como enviado e tem código de rastreio, o botão de WhatsApp do pedido, no painel, agora já escreve o código e o link para a cliente acompanhar a entrega, sem você precisar digitar nada. Vale também para quem comprou sem cadastro. Pedidos de retirada na loja e pedidos sem código continuam com a mensagem de sempre."
+    ]
+  },
   "1.5.107": {
     "titulo": "Na primeira visita, a foto do banner da loja aparece bem mais cedo",
     "novidades": [],

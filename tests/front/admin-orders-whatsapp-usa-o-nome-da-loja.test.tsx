@@ -134,8 +134,8 @@ describe("AdminOrdersView — WhatsApp de status chama a loja pelo nome que a lo
     nomeConfigurado = undefined;
   });
 
-  async function tocarNoWhatsapp(): Promise<string> {
-    mockOrders = [pedidoFake()];
+  async function tocarNoWhatsapp(sobre: Partial<Order> = {}): Promise<string> {
+    mockOrders = [{ ...pedidoFake(), ...sobre }];
     const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
     await act(async () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
@@ -182,6 +182,29 @@ describe("AdminOrdersView — WhatsApp de status chama a loja pelo nome que a lo
     const mensagem = await tocarNoWhatsapp();
     expect(mensagem).toContain("Obrigado por comprar na Doces da Ana!");
     expect(mensagem).not.toContain(`na ${branding.appName}!`);
+  });
+
+  it("pedido enviado com código: a mensagem leva o rastreio e o link", async () => {
+    nomeConfigurado = "Loja Teste";
+    const mensagem = await tocarNoWhatsapp({
+      status: "shipping",
+      trackingCode: "ab123456789br",
+    });
+    expect(mensagem).toContain("Código de rastreio: AB123456789BR");
+    expect(mensagem).toContain(
+      "Acompanhe a entrega: https://www.melhorrastreio.com.br/rastreio/AB123456789BR",
+    );
+  });
+
+  it("pedido enviado de retirada: nunca leva rastreio", async () => {
+    nomeConfigurado = "Loja Teste";
+    const mensagem = await tocarNoWhatsapp({
+      status: "shipping",
+      trackingCode: "AB123456789BR",
+      retiradaNaLoja: true,
+    });
+    expect(mensagem).toContain("Status: Pronto para retirar");
+    expect(mensagem).not.toContain("rastreio");
   });
 
   it("sem nome configurado: cai no nome do app", async () => {
