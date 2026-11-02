@@ -411,6 +411,39 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261399000000: as visitas da loja contam pelo porteiro. DUAS funcoes novas: contar_entrada (a unica porta do visitante: canal conferido contra a lista
+  // fechada ANTES de gravar, dia vindo de fin__hoje(), soma 1 e para no teto de 50000 por canal e dia) e crm_visitas (leitura so do admin atual, com as duas
+  // travas de crm_visao; a previa fica fora de "visitas"). A tabela, a RLS e o ACL nao sao conferiveis aqui (so corpo de funcao): a consulta 117a e a prova
+  // viva fazem isso (corpo exato por md5, atributos, ACL e o fechamento da tabela).
+  "20261399000000_as_visitas_da_loja_contam_pelo_porteiro.sql": [
+    {
+      funcao: "contar_entrada",
+      esperado: [
+        {
+          texto:
+            "IF p_canal IS NULL OR p_canal NOT IN ('direto', 'instagram', 'whatsapp', 'outros_sites', 'previa') THEN",
+          vezes: 1,
+        },
+        { texto: "VALUES (public.fin__hoje(), p_canal, 1)", vezes: 1 },
+        {
+          texto:
+            "ON CONFLICT (dia, canal) DO UPDATE SET contagem = v.contagem + 1 WHERE v.contagem < 50000;",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "crm_visitas",
+      esperado: [
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        {
+          texto: "v_pessoas := v_direto + v_instagram + v_whatsapp + v_outros;",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   // 20261398000000: o Inicio compara o mes anterior ate a mesma hora. painel_inicio troca SO a condicao de receita_mes_anterior (o ULTIMO dia dos
   // mesmos dias do mes anterior so conta ate a hora de agora, como a semana passada da 20261228000000) e ganha a variavel v_mes_ant_tem_o_dia (dia 29,
   // 30 ou 31 que nao existe no mes anterior nao corta: o ultimo dia dele vale inteiro). O resto do corpo e o da 20261390000000 (o lucro do mes inteiro, a

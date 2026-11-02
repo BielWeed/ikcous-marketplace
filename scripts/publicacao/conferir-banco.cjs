@@ -2878,7 +2878,28 @@ const ROL_DA_116 = [
   "painel_inicio: assinatura e atributos conhecidos",
   "painel_inicio: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
 ];
+// Lote 117 (20261399000000, as visitas da loja contam pelo porteiro: tabela visitas_por_dia, a escrita contar_entrada e a leitura crm_visitas). A 117a e a 117b
+// nao se parecem: a 117a prova o que ficou (so catalogo, nenhuma linha da tabela e' lida); a 117b prova a ausencia e as premissas. A 117a negativa (antes do
+// apply) responde "nao" em tudo menos no controle, nunca erro.
+const ROL_DA_117A = [
+  "controle: catalogo publico visivel",
+  "contar_entrada: uma so, com o corpo da 20261399000000 (md5)",
+  "contar_entrada: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path fixo, retorna void) e EXECUTE para anon, authenticated e service_role, sem PUBLIC",
+  "crm_visitas: uma so, com o corpo da 20261399000000 (md5)",
+  "crm_visitas: atributos de sempre (SECURITY DEFINER, plpgsql, STABLE, search_path fixo, retorna jsonb) e EXECUTE so para authenticated e service_role (anon e PUBLIC nada)",
+  "visitas_por_dia: tabela comum com RLS ligada sem FORCE e nenhuma politica",
+  "visitas_por_dia: nenhum privilegio para anon, authenticated, service_role e PUBLIC (tabela e coluna)",
+  "visitas_por_dia: as 3 colunas com o tipo certo, default 0, chave primaria (dia, canal) e os dois CHECK (5 canais e contagem >= 0)",
+];
+const ROL_DA_117B = [
+  "controle: catalogo publico visivel",
+  "visitas_por_dia, contar_entrada e crm_visitas: ainda NAO existem",
+  "fin__hoje() devolve date e is_admin() e is_admin_atual() devolvem boolean",
+  "os papeis anon, authenticated e service_role existem",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "117a-conferir-as-visitas-da-loja-contam-pelo-porteiro-aplicado": ROL_DA_117A,
+  "117b-antes-as-visitas-da-loja-contam-pelo-porteiro-ausente": ROL_DA_117B,
   "116a-conferir-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-aplicado":
     ROL_DA_116,
   "116b-antes-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-base-vigente":
