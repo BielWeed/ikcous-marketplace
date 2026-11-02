@@ -61,9 +61,12 @@ export function AjudaDoCrm({
             </li>
             <li>
               <strong className="text-white">Funil e pedidos:</strong> de
-              carrinhos a pedidos pagos (visitas e produtos vistos ainda não são
-              medidos), e os pedidos por status com a idade do mais antigo
-              parado.
+              visitas a pedidos pagos. Cada vez que alguém abre a loja conta uma
+              visita: o mesmo celular abrindo duas vezes conta duas, e quem vem
+              pelo WhatsApp muitas vezes aparece como "direto", porque o
+              WhatsApp não diz de onde a pessoa veio. Produtos vistos ainda não
+              são medidos. Abaixo, os pedidos por status com a idade do mais
+              antigo parado.
             </li>
           </ul>
         </div>
