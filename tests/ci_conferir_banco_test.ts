@@ -14896,8 +14896,8 @@ const MIGRACAO_399 = `${MIGRATIONS_DIR}/20261399000000_as_visitas_da_loja_contam
 
 Deno.test("117a/117b — o rol fechado (8 e 4 linhas) bate com os rotulos do SQL, cada consulta tem UM statement, e so le catalogo (nenhuma linha da tabela de visitas)", async () => {
   const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
-  const rol117a = ROL_FECHADO_POR_CONSULTA[NOME_117A];
-  const rol117b = ROL_FECHADO_POR_CONSULTA[NOME_117B];
+  const { [NOME_117A]: rol117a, [NOME_117B]: rol117b } =
+    ROL_FECHADO_POR_CONSULTA;
   assertEquals(rol117a?.length, 8);
   assertEquals(rol117b?.length, 4);
   for (const [nome, rol] of [

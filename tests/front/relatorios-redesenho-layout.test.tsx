@@ -10,6 +10,7 @@ vi.mock("@/hooks/useCrm", () => ({
     erro: null,
     atualizar: vi.fn(),
   }),
+  useCrmVisitas: () => ({ visitas: null }),
   useCrmClientes: () => ({
     lista: { total: 0, clientes: [] },
     carregando: false,

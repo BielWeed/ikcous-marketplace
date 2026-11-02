@@ -1,4 +1,5 @@
 // @ts-nocheck
+/* eslint-disable security/detect-unsafe-regex -- as regexes leem o texto fixo e versionado de uma migration (sem entrada de fora), então não há ReDoS possível; mesma razão dos outros testes migration_*. */
 // AS VISITAS DA LOJA CONTAM PELO PORTEIRO — leitura do TEXTO do trio 20261399000000 + rollback comum + rollback destrutivo
 // (spec "Visitas da loja", linha B; 02/11/2026). O COMPORTAMENTO (soma, teto, canal invalido, ACL por papel, dia de Sao Paulo,
 // concorrencia, reaplicar, rollback) e' provado no Postgres efemero por tests/banco/as-visitas-da-loja-viva.cjs; aqui ficam as
