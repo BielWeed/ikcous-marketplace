@@ -639,7 +639,7 @@ const FRASE_LOJA_SEM_FRETE_E_SEM_CONTATO =
 
 /** Cupom aplicado cuja conferência não respondeu: o Finalizar fica travado até a cliente decidir. */
 const AVISO_CUPOM_SEM_CONFERENCIA =
-  "Não deu para conferir o desconto do cupom agora. Remova o cupom para finalizar sem ele, ou aplique-o de novo.";
+  "Não deu para conferir o desconto do cupom agora. Remova o cupom para finalizar sem ele, ou aplique o cupom de novo.";
 
 interface GatilhoDoResumoDoPedidoProps {
   readonly cart: CartItem[];
