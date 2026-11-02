@@ -23,41 +23,67 @@ afterEach(async () => {
   preparado = undefined;
 });
 
-// Caminhos absolutos do próprio site que a página pede (src/href), sem query.
+// Caminhos absolutos do próprio site que a página pede (src, href ou url()),
+// sem query.
 function arquivosPedidosPelaPagina(html: string): string[] {
-  const achados = [...html.matchAll(/\b(?:src|href)="(\/[^"?#]+)"/g)].map(
-    (m) => m[1],
-  );
+  const achados = [
+    ...html.matchAll(/\b(?:src|href)="(\/[^"?#]+)"/g),
+    ...html.matchAll(/url\(\s*["']?(\/[^)"'?#]+)/g),
+  ].map((m) => m[1]);
   return [...new Set(achados)];
 }
 
+// Os pedidos da página que NÃO existem no diretório que o Vite publica.
+async function pedidosAusentesDoPublicado(html: string): Promise<string[]> {
+  preparado ??= await prepareIdentityBuild({
+    downloaded: await createIdentityBuildFixture("aurora"),
+    commonPublicDir: path.join(projeto, "public"),
+    code: { version: "1.0.0", sha: "a".repeat(40) },
+  });
+  const publicado = preparado.publicDir;
+  const faltando: string[] = [];
+  for (const pedido of arquivosPedidosPelaPagina(html)) {
+    const existe = await fs
+      .stat(path.join(publicado, pedido.slice(1)))
+      .then((s) => s.isFile())
+      .catch(() => false);
+    if (!existe) faltando.push(pedido);
+  }
+  return faltando;
+}
+
 describe("public/offline.html só pede arquivo que o build publica", () => {
-  it("a página pede ao menos uma imagem (senão o confronto casa vazio com vazio)", async () => {
+  it("cada arquivo que a página pede existe no diretório publicado (hoje ela não pede nenhum: passa vazio)", async () => {
     const html = await fs.readFile(
       path.join(projeto, "public/offline.html"),
       "utf8",
     );
-    expect(arquivosPedidosPelaPagina(html).length).toBeGreaterThan(0);
+    expect(await pedidosAusentesDoPublicado(html)).toEqual([]);
   });
 
-  it("cada arquivo pedido existe no diretório publicado depois do preparo da identidade", async () => {
+  it("a página é neutra: sem logo, sem favicon e sem nada de /branding/ (é a mesma para toda a frota)", async () => {
     const html = await fs.readFile(
       path.join(projeto, "public/offline.html"),
       "utf8",
     );
-    preparado = await prepareIdentityBuild({
-      downloaded: await createIdentityBuildFixture("aurora"),
-      commonPublicDir: path.join(projeto, "public"),
-      code: { version: "1.0.0", sha: "a".repeat(40) },
-    });
-    const faltando: string[] = [];
-    for (const pedido of arquivosPedidosPelaPagina(html)) {
-      const existe = await fs
-        .stat(path.join(preparado.publicDir, pedido.slice(1)))
-        .then((s) => s.isFile())
-        .catch(() => false);
-      if (!existe) faltando.push(pedido);
-    }
-    expect(faltando).toEqual([]);
+    expect(html).not.toMatch(/<img\b/i);
+    expect(html).not.toContain("favicon");
+    expect(html).not.toContain("/branding/");
+  });
+
+  // Controle: o defeito original, reintroduzido num texto, TEM de ser pego —
+  // senão "passa vazio" acima provaria nada.
+  it("controle: reintroduzir /branding/logo.svg é pego pelo confronto com o publicado", async () => {
+    const html = '<img src="/branding/logo.svg" alt="">';
+    expect(await pedidosAusentesDoPublicado(html)).toEqual([
+      "/branding/logo.svg",
+    ]);
+  });
+
+  it("controle: url() em CSS também é lido", async () => {
+    const html = "<style>.x{background:url(/branding/logo.png)}</style>";
+    expect(await pedidosAusentesDoPublicado(html)).toEqual([
+      "/branding/logo.png",
+    ]);
   });
 });

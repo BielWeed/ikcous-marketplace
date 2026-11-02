@@ -125,53 +125,8 @@
             background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
         }
 
-        .logo-wrap {
-            display: inline-flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-            margin-bottom: 32px;
-        }
-
-        .logo-wrap img {
-            width: 52px;
-            height: 52px;
-            object-fit: contain;
-        }
-
-        .logo-box {
-            width: 52px;
-            height: 52px;
-            background: var(--fg);
-            border-radius: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .logo-box span {
-            font-size: 28px;
-            font-weight: 900;
-            font-style: italic;
-            color: var(--bg);
-            line-height: 1;
-        }
-
-        .logo-name {
-            font-size: 18px;
-            font-weight: 900;
-            letter-spacing: -0.04em;
-            color: var(--fg);
-        }
-
-        .logo-sub {
-            font-size: 8px;
-            font-weight: 700;
-            letter-spacing: 0.2em;
-            color: var(--muted);
-            text-transform: uppercase;
-        }
-
+        /* Sem logo de propósito: a página é a mesma para toda a frota, sem marca.
+           O único ícone é este, embutido (nenhum arquivo externo). */
         /* Signal icon */
         .signal-icon {
             width: 48px;
@@ -278,11 +233,7 @@
     </div>
 
     <div class="card">
-        <div class="logo-wrap">
-            <img src="/favicon.svg" alt="">
-        </div>
-
-        <div class="signal-icon">
+        <div class="signal-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="1" y1="1" x2="23" y2="23" />
                 <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" />

@@ -11,7 +11,9 @@ const failure = (code) => new Error(`IDENTITY_${code}`);
 
 // Causa do erro em UMA linha para o log do CLI. Mensagem de terceiro (fetch,
 // Vite, fs) pode carregar token, chave ou variável de ambiente, então sai lavada:
-// (1) o VALOR de toda variável de ambiente de nome sensível; (2) formatos
+// (1) o VALOR de toda variável de nome sensível do `process.env` (valores que o
+// Vite lê de arquivos .env via loadEnv NÃO são cobertos aqui, mas nenhuma
+// mensagem de erro deste build os interpola; os padrões abaixo são a rede); (2) formatos
 // conhecidos de segredo; (3) sequência opaca longa. Caminho de arquivo fica
 // legível: a barra não entra na classe da sequência opaca. Valor lançado que não
 // é Error nunca é impresso — pode ser qualquer coisa.
