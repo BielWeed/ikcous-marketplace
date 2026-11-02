@@ -1,5 +1,6 @@
 import type { LocalIdentityUrls } from "../config/buildIdentityContract";
 import type {
+  ConexaoDaLoja,
   ConfiguracaoDaLoja,
   FichaDaLoja,
 } from "../config/fichaDaLojaContract";
@@ -30,6 +31,7 @@ import {
   montarCartaz,
   pedidoPodeTerCartaz,
 } from "./cartaz";
+import { ehPaginaContavel } from "./contador";
 import { montarDataBlock } from "./ficha";
 import { buscarIdsDosProdutos, robotsTxt, sitemapXml } from "./mapaDoSite";
 
@@ -854,6 +856,14 @@ export interface DependenciasPorteiro {
   readonly cacheMapa?: Map<string, EntradaCacheMapa>;
   /** Relógio injetável — testes avançam o tempo sem `sleep`. */
   readonly agora?: () => number;
+  /** O contador de visitas (spec "visitas da loja", 02/11/2026). Chamado por
+   * `atenderPorteiro` DEPOIS que o documento da loja saiu com 200 e só para
+   * GET de página da loja com a loja fora de manutenção, com a conexão da
+   * ficha JÁ VALIDADA (a única que existe aqui: o banco que provou o domínio).
+   * Fire-and-forget: devolve `void`, o porteiro nunca espera nem lê o
+   * resultado, e uma exceção dele é engolida (a página não pode mudar por
+   * causa da conta). Quem classifica pessoa/robô e grava é `middleware.ts`. */
+  readonly contarEntrada?: (conexao: ConexaoDaLoja, request: Request) => void;
 }
 
 class DecisaoPorteiro extends Error {
@@ -1198,7 +1208,31 @@ export async function atenderPorteiro(
     !ficha.configuracao.manutencao &&
     pedidoPodeTerCartaz(url, request.headers) &&
     lojaRedimensionaFoto(ficha.conexao.supabaseUrl);
-  return documentoDaLoja(request, ficha, estadoCaderneta, deps, {}, { cartaz });
+  const resposta = await documentoDaLoja(
+    request,
+    ficha,
+    estadoCaderneta,
+    deps,
+    {},
+    { cartaz },
+  );
+  // Só conta o que a pessoa de fato recebeu: documento 200 (503 de manutenção
+  // do porteiro e `html-indisponivel` ficam de fora), de uma página da loja
+  // (GET; nada de arquivo, `/api/`, HEAD) e com a loja aberta (em manutenção a
+  // vitrine não abre, então não houve visita).
+  if (
+    deps.contarEntrada !== undefined &&
+    resposta.status === 200 &&
+    !ficha.configuracao.manutencao &&
+    ehPaginaContavel(request.method, url)
+  ) {
+    try {
+      deps.contarEntrada(ficha.conexao, request);
+    } catch (erro) {
+      console.error("[Porteiro] contador: falha inesperada:", erro);
+    }
+  }
+  return resposta;
 }
 
 // ─── robots.txt e sitemap.xml POR LOJA (multiloja-frota-3) ─────────────────
