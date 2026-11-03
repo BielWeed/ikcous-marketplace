@@ -707,6 +707,12 @@ export function reducerDaVenda(
   if (estado.enviando && EDICOES_DO_CUPOM.has(acao.tipo)) return estado;
   switch (acao.tipo) {
     case "codigo_resolvido": {
+      // A resposta do bipe vem de uma ida ao servidor sem prazo: se chega
+      // depois que a balconista saiu do cupom (cliente, fechamento, recibo)
+      // ou já está numa escolha de variação, ela não puxa a tela de volta
+      // nem troca a escolha pendente. Só a etapa "cupom" aceita bipe.
+      if (estado.etapa !== "cupom") return estado;
+
       // A guarda da leitura repetida vem PRIMEIRO: nenhum dos cinco
       // desfechos abaixo (nem "não cadastrado", nem "esgotado") deveria
       // reaparecer numa leitura que a máquina já processou há menos de
@@ -879,6 +885,8 @@ export function reducerDaVenda(
           ...estado,
           itens: estado.itens.filter((i) => i.chave !== acao.chave),
           aviso: null,
+          // O cupom mudou de verdade: o erro da recusa antiga não vale mais.
+          erro: null,
           ultimaEntrada:
             estado.ultimaEntrada?.chave === acao.chave
               ? null
@@ -908,6 +916,7 @@ export function reducerDaVenda(
           i.chave === acao.chave ? { ...i, quantidade: novaQuantidade } : i,
         ),
         aviso: null,
+        erro: null,
       };
     }
 
@@ -920,6 +929,7 @@ export function reducerDaVenda(
         ...estado,
         itens: estado.itens.filter((i) => i.chave !== acao.chave),
         aviso: null,
+        erro: null,
         ultimaEntrada:
           estado.ultimaEntrada?.chave === acao.chave
             ? null
