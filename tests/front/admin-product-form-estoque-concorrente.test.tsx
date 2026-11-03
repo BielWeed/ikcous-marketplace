@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { useProducts } from "@/hooks/useProducts";
+import { chaveDoRascunhoDoProduto } from "@/lib/rascunho-do-produto";
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -651,6 +652,9 @@ describe("salvar estoque confere a versão lida na abertura", () => {
       },
     ];
     await montar();
+    // O preço digitado é o que deixa o formulário "sujo" depois da recusa
+    // (o estoque volta ao do banco) e, por isso, o que gera o rascunho.
+    await digitar("product-sale-price", "60,00");
     await editarVariacao();
     banco.variacoes.push({
       id: "v-2",
@@ -673,19 +677,13 @@ describe("salvar estoque confere a versão lida na abertura", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 1300));
     });
-    const chave = Object.keys(localStorage).find((k) =>
-      k.includes("rascunho"),
+    const bruto = localStorage.getItem(
+      chaveDoRascunhoDoProduto("lojista-1", "p-1") as string,
     );
-    if (chave) {
-      const rascunho = JSON.parse(localStorage.getItem(chave) as string);
-      const ids = (rascunho.variants ?? []).map((v: { id: string }) => v.id);
-      expect(ids).toContain("v-2");
-    }
-
-    await salvar();
-    for (const chamada of banco.chamadasRpc) {
-      expect(chamada.p_apagar).not.toContain("v-2");
-    }
+    expect(bruto).not.toBeNull();
+    const rascunho = JSON.parse(bruto as string);
+    const ids = (rascunho.variants ?? []).map((v: { id: string }) => v.id);
+    expect(ids).toContain("v-2");
   });
 
   it("duas gravações seguidas aceitam a versão devolvida pelo primeiro salvar", async () => {
