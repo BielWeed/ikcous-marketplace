@@ -94,6 +94,31 @@ export function SearchBar({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // O foco do campo abre a caixa quando ha texto; ao devolver o foco a ele
+  // depois de um Esc, esse foco nao pode reabri-la.
+  const focoDevolvido = useRef(false);
+
+  // Esc com o foco em qualquer ponto da busca (uma sugestao, o X, o veu) fecha
+  // a caixa e volta ao campo. So o campo e o veu tratavam Esc: quem navegava
+  // por Tab ate uma sugestao nao tinha como sair pelo teclado. O proprio campo
+  // ja trata o Esc (tira o foco dele), entao fica de fora.
+  const showDropdown = isOpen && localValue.trim().length > 0;
+  useEffect(() => {
+    if (!showDropdown) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const alvo = event.target as Node | null;
+      if (!alvo || !containerRef.current?.contains(alvo)) return;
+      if (alvo === inputRef.current) return;
+      setIsOpen(false);
+      focoDevolvido.current = true;
+      inputRef.current?.focus();
+      focoDevolvido.current = false;
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [showDropdown]);
+
   const handleClear = () => {
     haptic.light();
     setLocalValue("");
@@ -239,8 +264,6 @@ export function SearchBar({
   // que a lista inteira (o "Ver todos os resultados") vai mostrar.
   const searchResults = useMemo(() => allResults.slice(0, 6), [allResults]);
 
-  const showDropdown = isOpen && localValue.trim().length > 0;
-
   return (
     <div
       ref={containerRef}
@@ -273,6 +296,7 @@ export function SearchBar({
           name="search"
           value={localValue}
           onFocus={() => {
+            if (focoDevolvido.current) return;
             if (localValue.trim().length > 0) setIsOpen(true);
           }}
           onChange={(e) => {

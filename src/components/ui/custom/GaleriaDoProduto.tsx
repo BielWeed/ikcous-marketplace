@@ -171,7 +171,7 @@ export function GaleriaDoProduto({
         {varias && (
           <div
             className={cn(
-              "pointer-events-none absolute inset-0 flex items-center justify-between px-4 opacity-100 transition-opacity duration-300 hover-hover:opacity-0 hover-hover:group-hover:opacity-100",
+              "pointer-events-none absolute inset-0 flex items-center justify-between px-4 opacity-100 transition-opacity duration-300 hover-hover:opacity-0 hover-hover:group-hover:opacity-100 hover-hover:group-focus-within:opacity-100",
               "lg:!opacity-100",
             )}
           >
