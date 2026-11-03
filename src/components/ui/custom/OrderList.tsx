@@ -31,6 +31,13 @@ const statusConfig: Record<OrderStatus, { desc: string }> = {
   cancelled: { desc: "Este pedido foi cancelado" },
 };
 
+// Retirada na loja: nada é enviado nem entregue, a cliente busca.
+const frasesDaRetirada = new Map<OrderStatus, string>([
+  ["processing", "Separando seu pedido"],
+  ["shipping", "Venha retirar na loja"],
+  ["delivered", "Pedido retirado na loja"],
+]);
+
 const trailSteps: string[] = [
   ROTULOS_DAS_ETAPAS.recebido,
   ROTULOS_DAS_ETAPAS.separado,
@@ -433,7 +440,10 @@ export const OrderList = memo(function OrderList({
         const statusBase = statusConfig[order.status] || statusConfig.pending;
         const retirada =
           order.retiradaNaLoja === true && order.status === "shipping";
-        const desc = retirada ? "Venha retirar na loja" : statusBase.desc;
+        const desc =
+          (order.retiradaNaLoja === true
+            ? frasesDaRetirada.get(order.status)
+            : undefined) ?? statusBase.desc;
         // A MESMA frase da ficha do pedido (`rotuloDaFormaDoPedido`): inclui a
         // compra que fechou em R$ 0,00 e nunca chama de "PIX" um método que a
         // tela não conhece.
@@ -460,7 +470,7 @@ export const OrderList = memo(function OrderList({
             key={order.id}
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: idx * 0.05 }}
+            transition={{ delay: Math.min(idx, 8) * 0.05 }}
             className="group"
           >
             {/* O card inteiro abre o pedido: o `after:` do botão "Ver
@@ -485,6 +495,8 @@ export const OrderList = memo(function OrderList({
                           )
                         }
                         alt={order.items[0].name || ""}
+                        loading="lazy"
+                        decoding="async"
                         className="size-full object-cover"
                       />
                     ) : (

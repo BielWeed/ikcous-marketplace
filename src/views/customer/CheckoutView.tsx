@@ -1020,7 +1020,7 @@ export function CheckoutViewDaConta({
   const dynamicSchema = useMemo(() => {
     return z
       .object({
-        name: z.string().min(1, "Nome é obrigatório"),
+        name: z.string().trim().min(1, "Nome é obrigatório"),
         whatsapp: z.string(),
         cep: z.string().optional(),
         street: z.string().optional(),
@@ -1028,7 +1028,7 @@ export function CheckoutViewDaConta({
         neighborhood: z.string().optional(),
         city: z.string().optional(),
         state: z.string().optional(),
-        complement: z.string().optional(),
+        complement: z.string().max(100).optional(),
         cpf: z.string().optional(),
       })
       .superRefine((data, ctx) => {
@@ -4240,6 +4240,8 @@ export function CheckoutViewDaConta({
 
     const customerInfo = {
       ...(data as unknown as Customer),
+      // `getValues()` devolve o nome como digitado; o pedido leva o aparado.
+      name: data.name.trim(),
       // CPF sai do CheckoutView JÁ só em dígitos — o formulário guarda a
       // máscara (para a pessoa ler enquanto digita), mas o que atravessa
       // para `createOrder` é o dado cru.
@@ -6483,6 +6485,7 @@ export function CheckoutViewDaConta({
                     <input
                       id="guest-complement"
                       {...form.register("complement")}
+                      maxLength={100}
                       autoComplete="address-line2"
                       placeholder="Apto, Bloco, Fundos, etc."
                       className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
@@ -6829,6 +6832,7 @@ export function CheckoutViewDaConta({
               name="order_notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
+              maxLength={500}
               placeholder="Ex: Deixar na portaria, campainha estragada, etc..."
               rows={2}
               className="w-full resize-none rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"

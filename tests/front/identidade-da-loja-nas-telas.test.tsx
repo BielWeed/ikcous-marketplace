@@ -128,6 +128,8 @@ describe("HomeView — a cidade vem do config, e a home para de prometer o que n
       storeCity: "Uberlândia",
       storeState: "MG",
       shippingCoverage: "local",
+      // A frase do frete grátis só existe com um mínimo configurado.
+      freeShippingMin: 50,
     };
     await renderizarHome();
 

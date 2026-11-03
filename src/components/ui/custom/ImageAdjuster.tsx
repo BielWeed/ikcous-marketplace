@@ -1354,7 +1354,7 @@ export function ImageAdjuster({
                           className={cn(
                             "flex flex-col items-center justify-center gap-2 rounded-2xl border py-2 px-1.5 sm:py-3 sm:px-2 text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 text-center",
                             aspectRatio === preset
-                              ? "border-emerald-450 bg-emerald-500/10 text-emerald-455 shadow-lg shadow-emerald-500/5"
+                              ? "border-emerald-400 bg-emerald-500/10 text-emerald-400 shadow-lg shadow-emerald-500/5"
                               : "border-white/5 bg-zinc-950/40 text-zinc-550 hover:bg-zinc-900/60 hover:text-white",
                           )}
                         >
@@ -1545,8 +1545,8 @@ export function ImageAdjuster({
                           className={cn(
                             "flex-shrink-0 rounded-xl border px-3 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all active:scale-95",
                             selectedPreset === p.id
-                              ? "border-emerald-450 bg-emerald-500/10 text-emerald-400"
-                              : "border-white/5 bg-zinc-950/30 text-zinc-450 hover:bg-zinc-900 hover:text-white",
+                              ? "border-emerald-400 bg-emerald-500/10 text-emerald-400"
+                              : "border-white/5 bg-zinc-950/30 text-zinc-500 hover:bg-zinc-900 hover:text-white",
                           )}
                         >
                           {p.name}
@@ -1575,7 +1575,7 @@ export function ImageAdjuster({
                             <span className="ml-1.5 inline-block size-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
                           )}
                         </label>
-                        <span className="text-zinc-450 cursor-pointer text-[10px] font-black transition-colors hover:text-zinc-300">
+                        <span className="cursor-pointer text-[10px] font-black text-zinc-500 transition-colors hover:text-zinc-300">
                           {brightness}%
                         </span>
                       </div>
@@ -1614,7 +1614,7 @@ export function ImageAdjuster({
                             <span className="ml-1.5 inline-block size-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
                           )}
                         </label>
-                        <span className="text-zinc-450 cursor-pointer text-[10px] font-black transition-colors hover:text-zinc-300">
+                        <span className="cursor-pointer text-[10px] font-black text-zinc-500 transition-colors hover:text-zinc-300">
                           {contrast}%
                         </span>
                       </div>
@@ -1653,7 +1653,7 @@ export function ImageAdjuster({
                             <span className="ml-1.5 inline-block size-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
                           )}
                         </label>
-                        <span className="text-zinc-450 cursor-pointer text-[10px] font-black transition-colors hover:text-zinc-300">
+                        <span className="cursor-pointer text-[10px] font-black text-zinc-500 transition-colors hover:text-zinc-300">
                           {saturation}%
                         </span>
                       </div>
@@ -1692,7 +1692,7 @@ export function ImageAdjuster({
                             <span className="ml-1.5 inline-block size-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
                           )}
                         </label>
-                        <span className="text-zinc-450 cursor-pointer text-[10px] font-black transition-colors hover:text-zinc-300">
+                        <span className="cursor-pointer text-[10px] font-black text-zinc-500 transition-colors hover:text-zinc-300">
                           {grayscale}%
                         </span>
                       </div>
@@ -1731,7 +1731,7 @@ export function ImageAdjuster({
                             <span className="ml-1.5 inline-block size-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
                           )}
                         </label>
-                        <span className="text-zinc-450 cursor-pointer text-[10px] font-black transition-colors hover:text-zinc-300">
+                        <span className="cursor-pointer text-[10px] font-black text-zinc-500 transition-colors hover:text-zinc-300">
                           {sepia}%
                         </span>
                       </div>

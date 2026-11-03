@@ -6,6 +6,7 @@ import {
   produtoCombinaComBusca,
 } from "@/lib/busca-de-produtos";
 import { miniaturaDaSugestao, usarImagemOriginal } from "@/lib/imageUrl";
+import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Product } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -445,7 +446,7 @@ export function SearchBar({
                             {item.name}
                           </span>
                           <span className="text-xs font-black text-zinc-800">
-                            {formatCurrency(item.price)}
+                            {formatCurrency(precoDeVitrine(item).preco)}
                           </span>
                         </div>
                       </div>

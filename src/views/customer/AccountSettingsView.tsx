@@ -1209,7 +1209,7 @@ export function AccountSettingsView() {
                 setModalTab("avatars");
                 haptic.light();
               }}
-              className={`relative flex-1 rounded-lg py-1.5 text-xs font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
+              className={`relative min-h-11 flex-1 rounded-lg py-2 text-sm font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
                 modalTab === "avatars"
                   ? "text-zinc-900"
                   : "text-zinc-500 hover:text-zinc-900"
@@ -1233,7 +1233,7 @@ export function AccountSettingsView() {
                 setModalTab("upload");
                 haptic.light();
               }}
-              className={`relative flex-1 rounded-lg py-1.5 text-xs font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
+              className={`relative min-h-11 flex-1 rounded-lg py-2 text-sm font-bold outline-none transition-all focus-visible:ring-2 focus-visible:ring-zinc-900/50 ${
                 modalTab === "upload"
                   ? "text-zinc-900"
                   : "text-zinc-500 hover:text-zinc-900"
@@ -1398,7 +1398,7 @@ export function AccountSettingsView() {
                               onChange={handlePhotoUpload}
                               disabled={isUpdatingAvatar}
                             />
-                            <span className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-[10px] font-bold uppercase tracking-wider text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-95">
+                            <span className="flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary text-sm font-bold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-95">
                               <Camera className="size-3.5" />
                               Escolher Outra Foto
                             </span>
@@ -1407,7 +1407,7 @@ export function AccountSettingsView() {
                             variant="outline"
                             onClick={handleRemoveAvatar}
                             disabled={isUpdatingAvatar}
-                            className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-solid border-red-100 text-[10px] font-bold uppercase tracking-wider text-red-600 transition-colors hover:border-red-200 hover:bg-red-50/50"
+                            className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-solid border-red-100 text-sm font-bold text-red-600 transition-colors hover:border-red-200 hover:bg-red-50/50"
                           >
                             <Trash2 className="size-3.5" />
                             Remover Foto
@@ -1455,7 +1455,7 @@ export function AccountSettingsView() {
                             variant="outline"
                             onClick={handleRemoveAvatar}
                             disabled={isUpdatingAvatar}
-                            className="text-red-650 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-solid border-red-100 text-[10px] font-bold uppercase tracking-wider transition-colors hover:border-red-200 hover:bg-red-50/50"
+                            className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-solid border-red-100 text-sm font-bold text-red-600 transition-colors hover:border-red-200 hover:bg-red-50/50"
                           >
                             <Trash2 className="size-3.5" />
                             Remover Avatar Atual
@@ -1529,7 +1529,7 @@ export function AccountSettingsView() {
                 setCoverModalTab("presets");
                 haptic.light();
               }}
-              className={`flex-1 rounded-xl py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${
+              className={`min-h-11 flex-1 rounded-xl py-2 text-sm font-bold transition-all ${
                 coverModalTab === "presets"
                   ? "bg-primary text-primary-foreground shadow-md"
                   : "text-slate-500 hover:text-slate-800"
@@ -1543,7 +1543,7 @@ export function AccountSettingsView() {
                 setCoverModalTab("upload");
                 haptic.light();
               }}
-              className={`flex-1 rounded-xl py-1.5 text-[9px] font-black uppercase tracking-wider transition-all ${
+              className={`min-h-11 flex-1 rounded-xl py-2 text-sm font-bold transition-all ${
                 coverModalTab === "upload"
                   ? "bg-primary text-primary-foreground shadow-md"
                   : "text-slate-500 hover:text-slate-800"
@@ -1649,7 +1649,7 @@ export function AccountSettingsView() {
                     variant="outline"
                     onClick={handleRemoveCover}
                     disabled={isUpdatingCover}
-                    className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border-zinc-100 bg-transparent text-[9px] font-black uppercase tracking-wider text-red-500 shadow-none transition-all hover:border-red-500/30 hover:bg-red-500/5"
+                    className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border-zinc-100 bg-transparent text-sm font-bold text-red-500 shadow-none transition-all hover:border-red-500/30 hover:bg-red-500/5"
                   >
                     <Trash2 className="size-3.5" />
                     Remover
@@ -1664,7 +1664,7 @@ export function AccountSettingsView() {
                     haptic.light();
                   }}
                   disabled={isUpdatingCover}
-                  className="flex h-10 w-full items-center justify-center rounded-xl bg-primary text-[9px] font-black font-bold uppercase tracking-wider text-primary-foreground shadow-md transition-all hover:bg-primary/90"
+                  className="flex min-h-11 w-full items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground shadow-md transition-all hover:bg-primary/90"
                 >
                   {isUpdatingCover ? (
                     <>
