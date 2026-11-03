@@ -3094,11 +3094,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         const { stock, variants } = camposDoFormularioDoProduto(atual);
         setCurrentProduct(atual);
         setInitialData({ ...initialData, stock, variants });
+        // Variação que OUTRO aparelho criou nesse meio-tempo volta ao
+        // formulário (a menos que a lojista a tenha excluído aqui). Se ficasse
+        // de fora, "base − formulário" deixaria de ser só o que ela excluiu, e
+        // o rascunho gravado a seguir faria Restaurar + Salvar apagá-la
+        // (ver `variacoesExcluidasNoRascunho`).
+        const idsNoFormulario = new Set(formData.variants.map((v) => v.id));
+        const idsExcluidosAqui = new Set(deletedVariantIds);
+        const criadasEmOutroAparelho = variants.filter(
+          (v) => !idsNoFormulario.has(v.id) && !idsExcluidosAqui.has(v.id),
+        );
         setFormData(
-          formComVariacoes(
-            { ...formData, stock, variants },
-            variacoesDoRascunhoComEstoqueDoBanco(formData.variants, variants),
-          ),
+          formComVariacoes({ ...formData, stock, variants }, [
+            ...variacoesDoRascunhoComEstoqueDoBanco(formData.variants, variants),
+            ...criadasEmOutroAparelho,
+          ]),
         );
       }
       setIsSubmitting(false);

@@ -635,6 +635,59 @@ describe("salvar estoque confere a versão lida na abertura", () => {
     expect(banco.filtros).toEqual([]);
   });
 
+  // A recusa traz o produto de hoje. A variação que OUTRO aparelho criou
+  // nesse meio-tempo tem de aparecer no formulário: se ficar de fora, o
+  // rascunho que a tela grava logo depois guarda "base com a D, grade sem a D",
+  // e Restaurar + Salvar a trataria como exclusão da lojista e a apagaria.
+  it("a recusa traz ao formulário a variação criada em outro aparelho, sem mandá-la apagar", async () => {
+    banco.variacoes = [
+      {
+        id: "v-1",
+        product_id: "p-1",
+        name: "Cor",
+        value: "Rosa",
+        stock_increment: 10,
+        active: true,
+      },
+    ];
+    await montar();
+    await editarVariacao();
+    banco.variacoes.push({
+      id: "v-2",
+      product_id: "p-1",
+      name: "Cor",
+      value: "Azul",
+      stock_increment: 4,
+      active: true,
+    });
+    banco.produto.estoque = 14;
+    avancarVersao();
+
+    await salvar();
+    expect(banco.gravacoes).toBe(0);
+    expect(
+      host.querySelectorAll('[data-testid="variante-cadastrada"]'),
+    ).toHaveLength(2);
+
+    // O autosave grava o rascunho depois de ~1 s: ele tem de levar as duas.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 1300));
+    });
+    const chave = Object.keys(localStorage).find((k) =>
+      k.includes("rascunho"),
+    );
+    if (chave) {
+      const rascunho = JSON.parse(localStorage.getItem(chave) as string);
+      const ids = (rascunho.variants ?? []).map((v: { id: string }) => v.id);
+      expect(ids).toContain("v-2");
+    }
+
+    await salvar();
+    for (const chamada of banco.chamadasRpc) {
+      expect(chamada.p_apagar).not.toContain("v-2");
+    }
+  });
+
   it("duas gravações seguidas aceitam a versão devolvida pelo primeiro salvar", async () => {
     await act(async () => raiz.render(<SondaDoHook />));
     let primeira: Awaited<ReturnType<typeof api.updateProduct>>;
