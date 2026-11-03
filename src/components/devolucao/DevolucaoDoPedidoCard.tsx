@@ -187,8 +187,10 @@ export function DevolucaoDoPedidoCard({
     setEnviando(null);
     if (r.ok) {
       setCodigo("");
+      // Nada avisa a loja por conta própria: ela vê a devolução "A caminho" na
+      // lista de Devoluções do painel. A frase não promete mais que isso.
       toast.success(
-        "Pronto! A loja foi avisada de que o produto está a caminho.",
+        "Pronto! Registramos o envio. A loja acompanha pela lista de Devoluções do painel.",
       );
     } else {
       setErro(r.erro);

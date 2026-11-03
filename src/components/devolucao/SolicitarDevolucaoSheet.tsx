@@ -392,7 +392,6 @@ function FluxoDaDevolucao({
   const permitidas = resolucoesPermitidas(motivo, janelas, politica);
   const exigeFotos = fotosObrigatorias(motivo, politica);
   const valor = valorDaSelecao(itens, selecao);
-  const comFrete = devolveFreteDeIda(tipo, itens, selecao);
   const enderecoParaEntregar =
     politica.endereco_devolucao?.trim() || enderecoDaLoja?.trim() || null;
 
@@ -400,6 +399,10 @@ function FluxoDaDevolucao({
   // política não aceita reembolso) — a escolha velha não pode sobreviver.
   const resolucaoValida =
     resolucao && permitidas.includes(resolucao) ? resolucao : null;
+  // O frete é dinheiro: o servidor só o devolve quando a solução é o
+  // reembolso (troca e vale não geram `order_refunds`).
+  const comFrete =
+    resolucaoValida === "reembolso" && devolveFreteDeIda(tipo, itens, selecao);
 
   function erroDoPasso(p: Passo): string | null {
     if (p === 1) return erroDosItens(selecao);
@@ -884,6 +887,7 @@ function FluxoDaDevolucao({
             <NotaLegal
               tipo={tipo}
               comFrete={comFrete}
+              resolucao={resolucaoValida}
               prazoArrependimento={politica.prazo_arrependimento_dias}
               prazoAte={
                 tipo === "arrependimento"
@@ -1082,11 +1086,13 @@ function LinhaDeRevisao({
 function NotaLegal({
   tipo,
   comFrete,
+  resolucao,
   prazoArrependimento,
   prazoAte,
 }: Readonly<{
   tipo: ReturnType<typeof tipoPrevisto>;
   comFrete: boolean;
+  resolucao: ResolucaoDevolucao | null;
   prazoArrependimento: number;
   prazoAte: string | null;
 }>) {
@@ -1103,7 +1109,9 @@ function NotaLegal({
     tipo === "arrependimento" || tipo === "vicio"
       ? comFrete
         ? " Como o pedido volta inteiro, o frete que você pagou também é devolvido."
-        : " O frete de ida só é devolvido quando o pedido volta inteiro."
+        : resolucao === "troca" || resolucao === "vale"
+          ? " O frete de ida só é devolvido quando a solução é o reembolso e o pedido volta inteiro."
+          : " O frete de ida só é devolvido quando o pedido volta inteiro."
       : "";
   return (
     <p className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-xs leading-relaxed text-emerald-900">
