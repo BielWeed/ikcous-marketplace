@@ -224,7 +224,6 @@ describe("Trocas e devoluções — usa o que a lojista configurou", () => {
       }),
     );
     expect(loja).toMatch(/frete da troca é pago pela loja/i);
-    expect(loja).toMatch(/depois que a loja confere/i);
 
     const voce = textoCorrido(
       montarPolitica("trocas", LOJA, {
@@ -234,7 +233,21 @@ describe("Trocas e devoluções — usa o que a lojista configurou", () => {
       }),
     );
     expect(voce).toMatch(/frete da troca é pago por você/i);
-    expect(voce).toMatch(/assim que a loja recebe/i);
+  });
+
+  it("o reembolso é descrito como o app realmente faz, seja qual for o valor gravado", () => {
+    // O app só reembolsa quando a lojista abre a devolução, confere o que
+    // chegou e conclui. A opção antiga "Ao receber" prometia o contrário
+    // ("assim que a loja recebe") e a configuração nunca mudou o dinheiro.
+    for (const reembolso_momento of ["ao_receber", "apos_inspecao"] as const) {
+      const texto = textoCorrido(
+        montarPolitica("trocas", LOJA, { ...POLITICA, reembolso_momento }),
+      );
+      expect(texto).toMatch(
+        /O reembolso sai depois que a loja recebe o produto, confere e conclui a devolução\./,
+      );
+      expect(texto).not.toMatch(/assim que a loja recebe/i);
+    }
   });
 
   it("não inventa condição que nenhuma regra configurada prevê", () => {
