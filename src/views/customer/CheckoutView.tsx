@@ -6188,7 +6188,6 @@ export function CheckoutViewDaConta({
                       }
                       ref={field.ref}
                       placeholder="000.000.000-00"
-                      maxLength={14}
                       aria-invalid={erroDoCampo("cpf") ? true : undefined}
                       aria-describedby={
                         erroDoCampo("cpf")

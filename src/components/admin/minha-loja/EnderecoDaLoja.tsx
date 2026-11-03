@@ -318,7 +318,6 @@ export const EnderecoDaLoja = memo(function EnderecoDaLoja({
               disabled={disabled}
               inputMode="numeric"
               autoComplete="postal-code"
-              maxLength={9}
               placeholder="00000-000"
               className={CAMPO}
             />

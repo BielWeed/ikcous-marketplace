@@ -1,4 +1,17 @@
 {
+  "1.5.113": {
+    "titulo": "Correções no CEP, nas devoluções, na venda do balcão e nos pedidos",
+    "novidades": [],
+    "correcoes": [
+      "Endereço: colar o CEP com ponto, espaço ou traço não corta mais o último número, e apagar e digitar o mesmo CEP não desfaz a rua e o bairro que você corrigiu.",
+      "Devolução: o aviso depois de informar o envio não diz mais que a loja foi avisada, e o texto do frete só aparece quando a solução é o reembolso.",
+      "Venda do balcão: um código lido com atraso não joga mais a tela de volta para a escolha de tamanho e cor, e o aviso de erro antigo some quando você muda a quantidade."
+    ],
+    "melhorias": [
+      "Painel, Devoluções: o valor sugerido do reembolso avisa quando há item marcado como Não veio ou Danificado, e a política da loja não aceita prazo de defeito menor que o de arrependimento.",
+      "Pedidos: ao voltar para o app, o histórico de pedidos é baixado uma vez só."
+    ]
+  },
   "1.5.112": {
     "titulo": "Correções no frete, nos avisos, no voltar depois do login e em textos do painel",
     "novidades": [],

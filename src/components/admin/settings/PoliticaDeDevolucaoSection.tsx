@@ -114,13 +114,24 @@ export function erroDaTroca(v: string): string | null {
   return null;
 }
 
-export function erroDoVicio(v: string): string | null {
+export function erroDoVicio(v: string, arrependimento?: string): string | null {
   const n = inteiro(v);
   if (!Number.isInteger(n)) return "Informe o número de dias.";
   if (n < MINIMO_VICIO_DIAS) {
     return "Mínimo de 30 dias: é o prazo da lei para reclamar de defeito em produto não durável (o durável tem 90).";
   }
   if (n > 365) return "No máximo 365 dias.";
+  // Com defeito menor que arrependimento, num dia entre os dois a cliente com
+  // produto quebrado só conseguiria pedir como arrependimento. Só compara
+  // quando o arrependimento é um número válido (senão o erro é dele).
+  const arrep =
+    arrependimento !== undefined &&
+    erroDoArrependimento(arrependimento) === null
+      ? inteiro(arrependimento)
+      : Number.NaN;
+  if (n < arrep) {
+    return `O prazo de defeito não pode ser menor que o de arrependimento (${arrep} dias).`;
+  }
   return null;
 }
 
@@ -256,6 +267,14 @@ export function PoliticaDeDevolucaoSection({
     [],
   );
 
+  // O defeito depende do arrependimento: a função muda junto com ele, e o
+  // campo de defeito (que só valida o próprio texto) revalida sozinho.
+  const arrependimentoDoForm = form?.prazo_arrependimento_dias;
+  const validarVicio = useCallback(
+    (v: string) => erroDoVicio(v, arrependimentoDoForm),
+    [arrependimentoDoForm],
+  );
+
   if (erroDeLeitura) {
     return (
       <div className="space-y-3">
@@ -285,7 +304,7 @@ export function PoliticaDeDevolucaoSection({
   const erros = {
     arrependimento: erroDoArrependimento(form.prazo_arrependimento_dias),
     troca: erroDaTroca(form.prazo_troca_dias),
-    vicio: erroDoVicio(form.prazo_vicio_dias),
+    vicio: erroDoVicio(form.prazo_vicio_dias, form.prazo_arrependimento_dias),
   };
   const temErro = Object.values(erros).some((e) => e !== null);
 
@@ -462,7 +481,7 @@ export function PoliticaDeDevolucaoSection({
               max={365}
               value={form.prazo_vicio_dias}
               onFlush={(v) => mudar("prazo_vicio_dias", v)}
-              validate={erroDoVicio}
+              validate={validarVicio}
               className={cn(
                 CAMPO,
                 "text-center text-xl font-bold tabular-nums",
@@ -473,8 +492,8 @@ export function PoliticaDeDevolucaoSection({
         <p className="text-[11px] leading-relaxed text-zinc-500">
           Arrependimento: mínimo 7 dias pela lei (compra pela internet),
           devolvendo tudo o que o cliente pagou, frete de ida incluso. Defeito:
-          mínimo 30 dias; produto durável tem 90 pela lei. Troca por gosto é
-          cortesia da loja — 0 dia desliga.
+          mínimo 30 dias, e nunca menos que o de arrependimento; produto durável
+          tem 90 pela lei. Troca por gosto é cortesia da loja — 0 dia desliga.
         </p>
       </div>
 

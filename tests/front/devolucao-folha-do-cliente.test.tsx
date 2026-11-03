@@ -284,8 +284,9 @@ describe("SolicitarDevolucaoSheet — pedido de devolução do cliente", () => {
 
     const revisao = folha()?.querySelector('[data-testid="passo-revisao"]');
     expect(revisao?.textContent).toContain("arts. 18 e 26");
-    // As 2 unidades = pedido inteiro: o frete de ida volta junto.
-    expect(revisao?.textContent).toContain(
+    // As 2 unidades = pedido inteiro, mas a solução é TROCA: não há dinheiro,
+    // então o frete NÃO volta (ver devolucao-frete-so-volta-no-reembolso).
+    expect(revisao?.textContent).not.toContain(
       "o frete que você pagou também é devolvido",
     );
 

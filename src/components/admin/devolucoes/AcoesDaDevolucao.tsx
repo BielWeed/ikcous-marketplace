@@ -69,6 +69,9 @@ export function pagoPeloApp(detalhe: DevolucaoDetalhe): boolean {
   );
 }
 
+const nomesDosItens = (itens: readonly { product_name: string | null }[]) =>
+  itens.map((item) => item.product_name || "Produto").join(", ");
+
 /** Confirmação em linha (mesmo desenho da etiqueta de ida): aviso + "Confirmar"
  * + "Cancelar". Quem chama decide o que a confirmação dispara. */
 function ConfirmacaoDaAcao({
@@ -139,15 +142,6 @@ export function AcoesDaDevolucao({
   // O que o servidor ainda deixa devolver deste pedido (a mesma conta que ele
   // faz ao concluir). `null` = ainda não lido, ou ilegível: aí vale o padrão.
   const [disponivel, setDisponivel] = useState<number | null>(null);
-  const sugeridoCheio =
-    paraCentavos(detalhe.valor_itens) + paraCentavos(detalhe.valor_frete_ida);
-  const saldoEmCentavos = disponivel === null ? null : paraCentavos(disponivel);
-  const limitadoAoSaldo =
-    saldoEmCentavos !== null && saldoEmCentavos < sugeridoCheio;
-  const valorPadrao = (
-    (limitadoAoSaldo ? saldoEmCentavos : sugeridoCheio) / 100
-  ).toFixed(2);
-
   const [modo, setModo] = useState<Modo>(null);
   const [mensagem, setMensagem] = useState("");
   const [coletaEm, setColetaEm] = useState("");
@@ -172,6 +166,33 @@ export function AcoesDaDevolucao({
       ? detalhe.resolucao_desejada
       : resolucoes[0],
   );
+  // Item marcado "Não veio" não voltou: a ficha traz o preço de cada item (já
+  // com o cupom rateado), então o valor sugerido o desconta. "Danificada" fica
+  // no valor cheio (devolver tudo pode ser legítimo) e só ganha aviso. Soma por
+  // item pode passar de `valor_itens` por arredondamento: nunca abaixo de zero.
+  const itensComCondicao = (condicao: CondicaoItemDevolvido) =>
+    detalhe.itens.filter(
+      (item) => inspecao.get(item.id)?.condicao === condicao,
+    );
+  const itensAusentes = itensComCondicao("ausente");
+  const itensDanificados = itensComCondicao("danificada");
+  const centavosDosItens = paraCentavos(detalhe.valor_itens);
+  const centavosAusentes = Math.min(
+    centavosDosItens,
+    itensAusentes.reduce(
+      (soma, item) =>
+        soma + item.quantidade * paraCentavos(item.valor_unitario),
+      0,
+    ),
+  );
+  const sugeridoCheio =
+    centavosDosItens - centavosAusentes + paraCentavos(detalhe.valor_frete_ida);
+  const saldoEmCentavos = disponivel === null ? null : paraCentavos(disponivel);
+  const limitadoAoSaldo =
+    saldoEmCentavos !== null && saldoEmCentavos < sugeridoCheio;
+  const valorPadrao = (
+    (limitadoAoSaldo ? saldoEmCentavos : sugeridoCheio) / 100
+  ).toFixed(2);
   // Só o que a lojista DIGITOU; sem edição o campo segue o padrão (que muda
   // quando o saldo chega).
   const [valorDigitado, setValorDigitado] = useState<string | null>(null);
@@ -748,7 +769,7 @@ export function AcoesDaDevolucao({
                   <p className="text-[11px] leading-relaxed text-zinc-500">
                     Itens {formatarReais(detalhe.valor_itens)}
                     {detalhe.valor_frete_ida > 0 &&
-                      ` + frete de ida ${formatarReais(detalhe.valor_frete_ida)} (o pedido voltou inteiro)`}
+                      ` + frete de ida ${formatarReais(detalhe.valor_frete_ida)}${itensAusentes.length === 0 ? " (o pedido voltou inteiro)" : ""}`}
                     .{" "}
                     {pagoPeloApp(detalhe)
                       ? "O dinheiro volta ao cliente pelo Mercado Pago (PIX ou cartão) se o pagamento tiver até 180 dias; depois disso você devolve em mãos ou por PIX e o app registra a saída."
@@ -756,6 +777,33 @@ export function AcoesDaDevolucao({
                     {limitadoAoSaldo &&
                       ` O valor sugerido é o que ainda pode ser devolvido deste pedido (${formatarReais(disponivel ?? 0)}).`}
                   </p>
+                  {(itensAusentes.length > 0 ||
+                    itensDanificados.length > 0) && (
+                    <div
+                      data-testid="aviso-item-fora-do-valor"
+                      role="status"
+                      className="space-y-1 text-xs font-medium leading-snug text-amber-400"
+                    >
+                      {itensAusentes.length > 0 && (
+                        <p className="flex items-start gap-2">
+                          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                          <span>
+                            {`Você marcou ${nomesDosItens(itensAusentes)} como "Não veio": o valor sugerido já desconta ${formatarReais(centavosAusentes / 100)} ${itensAusentes.length > 1 ? "desses itens" : "desse item"}.`}
+                            {detalhe.valor_frete_ida > 0 &&
+                              " O frete de ida continua somado: confira se deve devolvê-lo."}
+                          </span>
+                        </p>
+                      )}
+                      {itensDanificados.length > 0 && (
+                        <p className="flex items-start gap-2">
+                          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                          <span>
+                            {`Você marcou ${nomesDosItens(itensDanificados)} como "Danificada": o valor sugerido continua cheio. Confira se deve devolver tudo.`}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

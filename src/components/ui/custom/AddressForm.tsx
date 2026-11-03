@@ -195,6 +195,23 @@ export function AddressForm({
   // CEP a resposta corrente descreve (o hook já garante, pela guarda de
   // sequência de #184, que só a busca mais nova chama este callback).
   const cepEmBuscaRef = useRef<string>("");
+  // Rua e bairro que a pessoa digitou à mão para o CEP atual. Apagar e digitar
+  // de novo o MESMO CEP refaz a busca, e a resposta não pode escrever por cima
+  // do que ela corrigiu (o checkout de convidado faz igual). Esvazia quando o
+  // CEP muda de verdade: o que ela digitou valia para o CEP anterior.
+  const camposEditadosAMaoRef = useRef(new Set<"street" | "neighborhood">());
+  const escreverCampoDoCep = (
+    campo: "street" | "neighborhood",
+    valor: string,
+  ) => {
+    if (
+      camposEditadosAMaoRef.current.has(campo) &&
+      form.getValues(campo).trim() !== ""
+    ) {
+      return;
+    }
+    form.setValue(campo, valor, { shouldValidate: true });
+  };
 
   // Escolha "Outro" do apelido, travada: a pessoa que escolheu Outro e digita
   // "Casa" no campo não pode ver a escolha pular sozinha para o botão Casa.
@@ -229,18 +246,14 @@ export function AddressForm({
         cepAssociadoRef.current !== cepDaResposta;
 
       if (endereco.logradouro) {
-        form.setValue("street", endereco.logradouro, {
-          shouldValidate: true,
-        });
+        escreverCampoDoCep("street", endereco.logradouro);
       } else if (eraDeOutroCep) {
-        form.setValue("street", "", { shouldValidate: true });
+        escreverCampoDoCep("street", "");
       }
       if (endereco.bairro) {
-        form.setValue("neighborhood", endereco.bairro, {
-          shouldValidate: true,
-        });
+        escreverCampoDoCep("neighborhood", endereco.bairro);
       } else if (eraDeOutroCep) {
-        form.setValue("neighborhood", "", { shouldValidate: true });
+        escreverCampoDoCep("neighborhood", "");
       }
       if (endereco.localidade)
         form.setValue("city", endereco.localidade, { shouldValidate: true });
@@ -518,7 +531,9 @@ export function AddressForm({
             const handleCepChange = (
               e: React.ChangeEvent<HTMLInputElement>,
             ) => {
-              const { limpo, formatado } = formatarCep(e.target.value);
+              const { limpo: digitos, formatado } = formatarCep(e.target.value);
+              // Sem o maxLength do campo, um 9º dígito não pode derrubar o CEP achado.
+              const limpo = digitos.slice(0, 8);
               field.onChange(formatado);
 
               // `limpo.length === 8` é portante, não só filtro de busca:
@@ -526,6 +541,10 @@ export function AddressForm({
               // dono que a busca nunca respondeu, e a limpeza de
               // `eraDeOutroCep` dispararia sozinha depois.
               if (limpo.length === 8) {
+                const mesmoCep =
+                  limpo === cepEmBuscaRef.current ||
+                  limpo === cepAssociadoRef.current;
+                if (!mesmoCep) camposEditadosAMaoRef.current.clear();
                 cepEmBuscaRef.current = limpo;
                 setCamposAbertos(false);
                 void buscarCep(limpo);
@@ -543,7 +562,6 @@ export function AddressForm({
                   onChange={handleCepChange}
                   onBlur={field.onBlur}
                   placeholder="00000-000"
-                  maxLength={9}
                   inputMode="numeric"
                   disabled={loading}
                   readOnly={buscandoCep}
@@ -689,7 +707,9 @@ export function AddressForm({
               </label>
               <input
                 id="street"
-                {...form.register("street")}
+                {...form.register("street", {
+                  onChange: () => camposEditadosAMaoRef.current.add("street"),
+                })}
                 placeholder="Ex: Rua Tiradentes"
                 disabled={loading}
                 aria-invalid={!!erros.street}
@@ -808,7 +828,10 @@ export function AddressForm({
                 </label>
                 <input
                   id="neighborhood"
-                  {...form.register("neighborhood")}
+                  {...form.register("neighborhood", {
+                    onChange: () =>
+                      camposEditadosAMaoRef.current.add("neighborhood"),
+                  })}
                   placeholder="Seu bairro"
                   disabled={loading}
                   aria-invalid={!!erros.neighborhood}

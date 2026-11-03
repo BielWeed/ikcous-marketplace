@@ -21,7 +21,10 @@
 // defeito que `src/lib/preco-vendido.ts` existe para fechar (override zero
 // tratado como ausência de preço).
 
-import type { PrecoAtualDaVenda } from "@/lib/erro-da-venda-presencial";
+import {
+  MENSAGEM_DE_REDE_DA_VENDA,
+  type PrecoAtualDaVenda,
+} from "@/lib/erro-da-venda-presencial";
 import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import { JANELA_DE_REPETICAO_MS } from "@/lib/leitor/debounce-de-leitura";
 import {
@@ -354,6 +357,17 @@ export type AcaoDaVenda =
 // ============================================================================
 // PASSO 7 (parte 1) — A CHAVE DE IDEMPOTÊNCIA nasce aqui, não no clique.
 // ============================================================================
+
+/**
+ * O que fica em `erro` quando o cupom muda (item tirado ou quantidade
+ * alterada). Uma recusa antiga ("Estoque insuficiente") deixa de valer, mas o
+ * erro de REDE não: ele quer dizer "a venda pode ter sido gravada", e apagá-lo
+ * faz o balcão tratar o cancelamento como "nada foi registrado" e refazer a
+ * venda do zero — pedido em dobro e estoque baixado duas vezes.
+ */
+function erroQueSobreviveAoCupom(erro: string | null): string | null {
+  return erro === MENSAGEM_DE_REDE_DA_VENDA ? erro : null;
+}
 
 /**
  * Estado inicial de um cupom novo. `gerarChave` entra por parâmetro (molde:
@@ -707,6 +721,12 @@ export function reducerDaVenda(
   if (estado.enviando && EDICOES_DO_CUPOM.has(acao.tipo)) return estado;
   switch (acao.tipo) {
     case "codigo_resolvido": {
+      // A resposta do bipe vem de uma ida ao servidor sem prazo: se chega
+      // depois que a balconista saiu do cupom (cliente, fechamento, recibo)
+      // ou já está numa escolha de variação, ela não puxa a tela de volta
+      // nem troca a escolha pendente. Só a etapa "cupom" aceita bipe.
+      if (estado.etapa !== "cupom") return estado;
+
       // A guarda da leitura repetida vem PRIMEIRO: nenhum dos cinco
       // desfechos abaixo (nem "não cadastrado", nem "esgotado") deveria
       // reaparecer numa leitura que a máquina já processou há menos de
@@ -879,6 +899,8 @@ export function reducerDaVenda(
           ...estado,
           itens: estado.itens.filter((i) => i.chave !== acao.chave),
           aviso: null,
+          // O cupom mudou de verdade: o erro da recusa antiga não vale mais.
+          erro: erroQueSobreviveAoCupom(estado.erro),
           ultimaEntrada:
             estado.ultimaEntrada?.chave === acao.chave
               ? null
@@ -908,6 +930,7 @@ export function reducerDaVenda(
           i.chave === acao.chave ? { ...i, quantidade: novaQuantidade } : i,
         ),
         aviso: null,
+        erro: erroQueSobreviveAoCupom(estado.erro),
       };
     }
 
@@ -920,6 +943,7 @@ export function reducerDaVenda(
         ...estado,
         itens: estado.itens.filter((i) => i.chave !== acao.chave),
         aviso: null,
+        erro: erroQueSobreviveAoCupom(estado.erro),
         ultimaEntrada:
           estado.ultimaEntrada?.chave === acao.chave
             ? null
