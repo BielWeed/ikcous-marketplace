@@ -220,11 +220,13 @@
     "com motivo que 87 testes da casa já usam, e 1 diretiva sobrando saiu. Resultado",
     "303, um abaixo do teto antigo. Baixado antes do CI a pedido da hub.",
     "",
-    "25/10/2026 — warnings de eslint de 303 para 302. Medido com a catraca local (lote de polimento da 1.5.68: 'eslint warnings 302 / teto 303 / baixou -1'), com o código deste lote incluído (0 aviso novo). Baixado antes do CI."
+    "25/10/2026 — warnings de eslint de 303 para 302. Medido com a catraca local (lote de polimento da 1.5.68: 'eslint warnings 302 / teto 303 / baixou -1'), com o código deste lote incluído (0 aviso novo). Baixado antes do CI.",
+    "",
+    "03/11/2026 — warnings de eslint de 302 para 300. Medido no CI do PR #1232: 'eslint warnings 300 / teto 302 / baixou -2'."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 302
+    "warnings": 300
   },
   "biome": {
     "errors": 13,

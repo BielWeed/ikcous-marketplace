@@ -224,6 +224,10 @@ describe("Trocas e devoluções — usa o que a lojista configurou", () => {
       }),
     );
     expect(loja).toMatch(/frete da troca é pago pela loja/i);
+    // O app não cobra nem paga esse frete: o envio se combina fora dele.
+    expect(loja).toContain(
+      "O frete da troca é pago pela loja. A loja combina com você o envio.",
+    );
 
     const voce = textoCorrido(
       montarPolitica("trocas", LOJA, {
@@ -233,6 +237,9 @@ describe("Trocas e devoluções — usa o que a lojista configurou", () => {
       }),
     );
     expect(voce).toMatch(/frete da troca é pago por você/i);
+    expect(voce).toContain(
+      "O frete da troca é pago por você. A loja combina com você como pagar.",
+    );
   });
 
   it("o reembolso é descrito como o app realmente faz, seja qual for o valor gravado", () => {
@@ -264,8 +271,23 @@ describe("Trocas e devoluções — usa o que a lojista configurou", () => {
       const secao = doc.secoes.find((s) => s.id === "frete-de-volta");
       expect(secao, "seção do frete de volta").toBeDefined();
       expect((secao?.paragrafos ?? []).join(" ")).toMatch(
-        /arrependimento e no defeito.*frete de volta é pago pela loja/i,
+        /arrependimento e no defeito.*frete de volta é da loja/i,
       );
+    }
+  });
+
+  // A lei põe o frete de volta do arrependimento por conta da loja, mas no
+  // envio próprio o cliente paga a postagem e o app não soma isso ao
+  // reembolso: o texto diz o que de fato acontece, sem "só na coleta".
+  it("frete de volta: o envio próprio não volta sozinho pelo app e o texto não afirma que a loja sempre paga", () => {
+    for (const politica of [POLITICA, null]) {
+      const doc = montarPolitica("trocas", LOJA, politica);
+      const secao = doc.secoes.find((s) => s.id === "frete-de-volta");
+      const texto = (secao?.paragrafos ?? []).join(" ");
+      expect(texto).toBe(
+        "No arrependimento e no defeito, o frete de volta é da loja. Na coleta ou com o código de postagem da loja, você não paga nada. Se você enviar por conta própria, guarde o comprovante e peça o valor à loja: ele não volta automaticamente pelo app.",
+      );
+      expect(texto).not.toMatch(/é pago pela loja/i);
     }
   });
 
@@ -279,6 +301,11 @@ describe("Trocas e devoluções — usa o que a lojista configurou", () => {
     );
     expect(semTrocaComVale).toMatch(/não faz troca por preferência/);
     expect(semTrocaComVale).toMatch(/\bvale\b/i);
+    // O app não cria o crédito: o vale é combinado com a loja.
+    expect(semTrocaComVale).toContain(
+      "A loja também pode resolver com um vale para outra compra, combinado com você. Ao pedir a devolução, você escolhe entre as opções disponíveis para o seu caso.",
+    );
+    expect(semTrocaComVale).not.toMatch(/devolver o valor em forma de vale/i);
 
     const semNenhum = textoCorrido(
       montarPolitica("trocas", LOJA, {

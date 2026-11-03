@@ -1310,7 +1310,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // O módulo não lança; o catch é só o cinto de segurança do Sair.
       }
     }
-    const { error } = await supabase.auth.signOut();
+    // `scope: 'local'`: o padrão do supabase-js é 'global' e revoga os tokens da
+    // conta em TODOS os aparelhos; Sair aqui só encerra este.
+    const { error } = await supabase.auth.signOut({ scope: "local" });
     if (error) {
       // #122 — `signOut()` devolvendo erro (rede caída, por exemplo) não
       // dispara o evento `SIGNED_OUT`: sem este ramo, o app continuava

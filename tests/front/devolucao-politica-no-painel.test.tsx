@@ -220,6 +220,23 @@ describe("PoliticaDeDevolucaoSection", () => {
     );
   });
 
+  // O app só registra a escolha "vale" e não cobra frete de troca nem soma o
+  // frete do envio próprio ao reembolso: a tela não promete o contrário.
+  it("avisa que o vale e o frete da troca são combinados fora do app e que o frete de volta próprio não entra no reembolso", async () => {
+    await montar();
+    const texto = hospedeiro.textContent ?? "";
+    expect(texto).toContain(
+      "O app só registra a escolha. O vale você cria (um cupom, por exemplo) e passa ao cliente.",
+    );
+    expect(texto).not.toContain("Crédito para o cliente usar em outra compra.");
+    expect(texto).toContain(
+      "É o que a política avisa ao cliente. O app não cobra esse frete. Se você gerar o código de postagem dos Correios, ele sai do seu saldo no Melhor Envio. O envio do produto novo você combina com o cliente.",
+    );
+    expect(texto).toContain(
+      "No arrependimento e no defeito o frete de volta é sempre da loja (é lei). Se o cliente mesmo enviar, ele paga a postagem e você devolve esse valor por fora, em mãos ou por PIX. O app não soma esse frete no reembolso.",
+    );
+  });
+
   it("salvar não troca o valor antigo do reembolso que a loja já tinha gravado", async () => {
     maybeSingle.mockResolvedValue({
       data: { ...LINHA, reembolso_momento: "apos_inspecao" },

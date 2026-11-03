@@ -71,6 +71,7 @@ import {
   rascunhoSobreOBancoDeHoje,
   serializarRascunhoDoProduto,
   variacoesDoRascunhoComEstoqueDoBanco,
+  variacoesExcluidasNoRascunho,
 } from "@/lib/rascunho-do-produto";
 import { recusaDeFoto } from "@/lib/recusa-de-foto";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -1459,6 +1460,26 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             initialData,
           );
 
+          // A GRADE. A lista de exclusões da tela não entra no rascunho: a
+          // variação que ela excluiu e o rascunho já não tem seguiria à venda
+          // depois de "Restaurar" + "Salvar" (e o estoque gravado seria a soma
+          // sem ela). O produto-base do rascunho diz o que foi exclusão DELA
+          // (`apagar`) e o que veio de outro aparelho e ela nunca viu
+          // (`manter`: volta ao formulário, nunca é apagada em silêncio).
+          const { apagar: exclusoesDaLojista, manter: criadasEmOutroAparelho } =
+            variacoesExcluidasNoRascunho(parsed, initialData.variants);
+          const variacoesRestauradas = Array.isArray(parsed.variants)
+            ? [
+                ...variacoesDoRascunhoComEstoqueDoBanco(
+                  parsed.variants,
+                  initialData.variants,
+                ),
+                ...criadasEmOutroAparelho,
+              ]
+            : initialData.variants;
+          const gradeMudouPelaBase =
+            exclusoesDaLojista.length > 0 || criadasEmOutroAparelho.length > 0;
+
           // Only prompt if the draft actually contains modified data compared to DB (initialData)
           const draftFields = {
             name: parsed.name ?? initialData.name,
@@ -1466,7 +1487,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             price: parsed.price ?? initialData.price,
             costPrice: parsed.costPrice ?? initialData.costPrice,
             originalPrice: parsed.originalPrice ?? initialData.originalPrice,
-            stock: initialData.stock,
+            // O do banco de hoje; só se a grade mudou pela exclusão/variação
+            // nova é a soma do que FICA (o mesmo cálculo de excluir na tela).
+            stock: gradeMudouPelaBase
+              ? formComVariacoes(initialData, variacoesRestauradas).stock
+              : initialData.stock,
             estoqueMinimo: parsed.estoqueMinimo ?? initialData.estoqueMinimo,
             category: parsed.category ?? initialData.category,
             images: soFotosReais(parsed.images ?? initialData.images),
@@ -1487,12 +1512,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               parsed.metaDescription ?? initialData.metaDescription,
             sku: parsed.sku ?? initialData.sku,
             codigoBarras: parsed.codigoBarras ?? initialData.codigoBarras,
-            variants: Array.isArray(parsed.variants)
-              ? variacoesDoRascunhoComEstoqueDoBanco(
-                  parsed.variants,
-                  initialData.variants,
-                )
-              : initialData.variants,
+            variants: variacoesRestauradas,
             weightKg: parsed.weightKg ?? initialData.weightKg,
             widthCm: parsed.widthCm ?? initialData.widthCm,
             heightCm: parsed.heightCm ?? initialData.heightCm,
@@ -1509,6 +1529,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               setVariacoesPendentes(false);
               restaurarPendenteRef.current = null;
               setFormData(draftFields);
+              // As que ela excluiu saem do banco quando ela salvar (a RPC só
+              // apaga o que vem em `p_apagar`).
+              if (exclusoesDaLojista.length > 0) {
+                setDeletedVariantIds((prev) => [
+                  ...new Set([...prev, ...exclusoesDaLojista]),
+                ]);
+              }
               // A categoria que o rascunho trouxe e o produto já não tem: confere.
               if (
                 draftFields.category &&
@@ -1535,7 +1562,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 estoqueDoRascunhoDiferia
                   ? ` ${AVISO_ESTOQUE_NAO_RESTAURADO}`
                   : ""
-              }${bancoMudou ? ` ${AVISO_PRODUTO_ALTERADO_DEPOIS}` : ""}`,
+              }${bancoMudou || criadasEmOutroAparelho.length > 0 ? ` ${AVISO_PRODUTO_ALTERADO_DEPOIS}` : ""}`,
               action: { label: "Restaurar", onClick: restaurar },
               cancel: {
                 label: "Descartar",
@@ -3067,11 +3094,24 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         const { stock, variants } = camposDoFormularioDoProduto(atual);
         setCurrentProduct(atual);
         setInitialData({ ...initialData, stock, variants });
+        // Variação que OUTRO aparelho criou nesse meio-tempo volta ao
+        // formulário (a menos que a lojista a tenha excluído aqui). Se ficasse
+        // de fora, "base − formulário" deixaria de ser só o que ela excluiu, e
+        // o rascunho gravado a seguir faria Restaurar + Salvar apagá-la
+        // (ver `variacoesExcluidasNoRascunho`).
+        const idsNoFormulario = new Set(formData.variants.map((v) => v.id));
+        const idsExcluidosAqui = new Set(deletedVariantIds);
+        const criadasEmOutroAparelho = variants.filter(
+          (v) => !idsNoFormulario.has(v.id) && !idsExcluidosAqui.has(v.id),
+        );
         setFormData(
-          formComVariacoes(
-            { ...formData, stock, variants },
-            variacoesDoRascunhoComEstoqueDoBanco(formData.variants, variants),
-          ),
+          formComVariacoes({ ...formData, stock, variants }, [
+            ...variacoesDoRascunhoComEstoqueDoBanco(
+              formData.variants,
+              variants,
+            ),
+            ...criadasEmOutroAparelho,
+          ]),
         );
       }
       setIsSubmitting(false);

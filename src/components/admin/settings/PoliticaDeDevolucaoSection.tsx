@@ -509,7 +509,7 @@ export function PoliticaDeDevolucaoSection({
         />
         <LinhaDeInterruptor
           rotulo="Vale-troca"
-          ajuda="Crédito para o cliente usar em outra compra."
+          ajuda="O app só registra a escolha. O vale você cria (um cupom, por exemplo) e passa ao cliente."
           ligado={form.aceita_vale}
           onMudar={(v) => mudar("aceita_vale", v)}
         />
@@ -615,7 +615,15 @@ export function PoliticaDeDevolucaoSection({
           onMudar={(v) => mudar("frete_troca_pago_por", v)}
         />
         <p className="text-[11px] leading-relaxed text-zinc-500">
-          No arrependimento e no defeito o frete de volta é sempre da loja.
+          É o que a política avisa ao cliente. O app não cobra esse frete. Se
+          você gerar o código de postagem dos Correios, ele sai do seu saldo no
+          Melhor Envio. O envio do produto novo você combina com o cliente.
+        </p>
+        <p className="text-[11px] leading-relaxed text-zinc-500">
+          No arrependimento e no defeito o frete de volta é sempre da loja (é
+          lei). Se o cliente mesmo enviar, ele paga a postagem e você devolve
+          esse valor por fora, em mãos ou por PIX. O app não soma esse frete no
+          reembolso.
         </p>
       </div>
 

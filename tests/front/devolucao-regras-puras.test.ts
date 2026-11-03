@@ -14,6 +14,7 @@ import {
   erroDoMotivo,
   erroDosItens,
   etapasDaDevolucao,
+  explicacaoResolucao,
   formatarDia,
   fotosObrigatorias,
   instrucaoParaOCliente,
@@ -191,6 +192,16 @@ describe("rótulos pt-BR", () => {
       "Código de postagem dos Correios",
     );
     expect(rotuloResolucao("vale")).toBe("Vale-troca");
+  });
+
+  // O app só grava a palavra "vale": quem cria o crédito (um cupom, por
+  // exemplo) é a lojista, à mão. O texto não pode prometer crédito pronto.
+  it("o vale-troca é descrito como combinado com a loja, sem prometer crédito criado pelo app", () => {
+    const frase = explicacaoResolucao("vale");
+    expect(frase).toBe(
+      "A loja combina com você um vale para usar em outra compra nela.",
+    );
+    expect(frase).not.toMatch(/você recebe um crédito/i);
   });
 });
 
@@ -750,6 +761,47 @@ describe("linha do tempo, prazos e instruções", () => {
       const texto = instrucaoParaOCliente(d, { endereco: "Rua A, 10" });
       expect(texto).toContain("Envie para: Rua A, 10");
     }
+  });
+
+  it("concluída com vale-troca: a loja combina o valor e o uso, sem dizer que o vale já foi emitido", () => {
+    const d = lerDevolucaoDetalhe({
+      ...DETALHE_CRU,
+      status: "concluida",
+      resolucao_final: "vale",
+    });
+    expect(d).not.toBeNull();
+    if (!d) return;
+    const texto = instrucaoParaOCliente(d, {});
+    expect(texto).toBe(
+      "A devolução foi resolvida com vale-troca. A loja combina com você o valor e como usar. Se não tiver notícia, fale com a loja.",
+    );
+    expect(texto).not.toMatch(/foi emitido/i);
+  });
+
+  it("envio próprio: o frete de volta não volta sozinho pelo app (devolução) e na troca se combina com a loja", () => {
+    const base = {
+      ...DETALHE_CRU,
+      status: "aprovada",
+      metodo_retorno: "envio_proprio",
+    };
+    for (const tipo of ["arrependimento", "vicio"]) {
+      const d = lerDevolucaoDetalhe({ ...base, tipo });
+      expect(d).not.toBeNull();
+      if (!d) return;
+      const texto = instrucaoParaOCliente(d, { endereco: "Rua A, 10" });
+      expect(texto).toContain(
+        "Guarde o comprovante do frete e peça o valor à loja: ele não volta sozinho pelo app.",
+      );
+      expect(texto).not.toContain("ele não é devolvido sozinho");
+    }
+    const troca = lerDevolucaoDetalhe({ ...base, tipo: "troca" });
+    expect(troca).not.toBeNull();
+    if (!troca) return;
+    const textoTroca = instrucaoParaOCliente(troca, { endereco: "Rua A, 10" });
+    expect(textoTroca).toContain(
+      "Guarde o comprovante do frete e combine com a loja.",
+    );
+    expect(textoTroca).not.toContain("peça o valor à loja");
   });
 
   it("envio próprio sem endereço cadastrado manda pedir o endereço à loja, sem inventar", () => {

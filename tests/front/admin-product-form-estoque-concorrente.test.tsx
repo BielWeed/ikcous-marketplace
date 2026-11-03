@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { useProducts } from "@/hooks/useProducts";
+import { chaveDoRascunhoDoProduto } from "@/lib/rascunho-do-produto";
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -172,7 +173,8 @@ vi.mock("@/lib/supabase", () => ({
             const valoresAtuais = new Map(Object.entries(banco.produto));
             if (
               !filtros.every(
-                ([campo, valor]) => valoresAtuais.get(campo) === valor,
+                ([campo, valor]) =>
+                  (valoresAtuais.get(campo) ?? null) === valor,
               )
             ) {
               return { data: null, error: null };
@@ -190,6 +192,11 @@ vi.mock("@/lib/supabase", () => ({
           };
           const consulta = {
             eq: (campo: string, valor: unknown) => {
+              filtros.push([campo, valor]);
+              return consulta;
+            },
+            // `deleted_at IS NULL`: o produto do dublê nunca foi excluído.
+            is: (campo: string, valor: unknown) => {
               filtros.push([campo, valor]);
               return consulta;
             },
@@ -629,6 +636,56 @@ describe("salvar estoque confere a versão lida na abertura", () => {
     expect(banco.filtros).toEqual([]);
   });
 
+  // A recusa traz o produto de hoje. A variação que OUTRO aparelho criou
+  // nesse meio-tempo tem de aparecer no formulário: se ficar de fora, o
+  // rascunho que a tela grava logo depois guarda "base com a D, grade sem a D",
+  // e Restaurar + Salvar a trataria como exclusão da lojista e a apagaria.
+  it("a recusa traz ao formulário a variação criada em outro aparelho, sem mandá-la apagar", async () => {
+    banco.variacoes = [
+      {
+        id: "v-1",
+        product_id: "p-1",
+        name: "Cor",
+        value: "Rosa",
+        stock_increment: 10,
+        active: true,
+      },
+    ];
+    await montar();
+    // O preço digitado é o que deixa o formulário "sujo" depois da recusa
+    // (o estoque volta ao do banco) e, por isso, o que gera o rascunho.
+    await digitar("product-sale-price", "60,00");
+    await editarVariacao();
+    banco.variacoes.push({
+      id: "v-2",
+      product_id: "p-1",
+      name: "Cor",
+      value: "Azul",
+      stock_increment: 4,
+      active: true,
+    });
+    banco.produto.estoque = 14;
+    avancarVersao();
+
+    await salvar();
+    expect(banco.gravacoes).toBe(0);
+    expect(
+      host.querySelectorAll('[data-testid="variante-cadastrada"]'),
+    ).toHaveLength(2);
+
+    // O autosave grava o rascunho depois de ~1 s: ele tem de levar as duas.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 1300));
+    });
+    const bruto = localStorage.getItem(
+      chaveDoRascunhoDoProduto("lojista-1", "p-1") as string,
+    );
+    expect(bruto).not.toBeNull();
+    const rascunho = JSON.parse(bruto as string);
+    const ids = (rascunho.variants ?? []).map((v: { id: string }) => v.id);
+    expect(ids).toContain("v-2");
+  });
+
   it("duas gravações seguidas aceitam a versão devolvida pelo primeiro salvar", async () => {
     await act(async () => raiz.render(<SondaDoHook />));
     let primeira: Awaited<ReturnType<typeof api.updateProduct>>;
@@ -723,7 +780,11 @@ describe("salvar estoque confere a versão lida na abertura", () => {
     await salvar();
     expect(banco.produto.preco_venda).toBe(60);
     expect(banco.produto.estoque).toBe(9);
-    expect(banco.filtros[0]).toEqual([["id", "p-1"]]);
+    // Sem conferência de versão: só o id e o "não excluído".
+    expect(banco.filtros[0]).toEqual([
+      ["id", "p-1"],
+      ["deleted_at", null],
+    ]);
     expect(banco.toastError).not.toHaveBeenCalled();
   });
 

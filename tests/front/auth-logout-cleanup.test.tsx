@@ -236,6 +236,24 @@ describe("AuthContext — limpeza local de sessão (issue #122)", () => {
     expect(restantes.some((k) => k.includes("-code-verifier"))).toBe(false);
   });
 
+  // Encerrar a sessão NESTE aparelho não pode derrubar a conta nos outros: o
+  // padrão do supabase-js é `scope: 'global'`, que revoga todos os refresh
+  // tokens da pessoa (celular, outro navegador, o PDV do balcão).
+  it("1b. Sair encerra só a sessão deste aparelho (scope local)", async () => {
+    const { supabase, aoAtualizar } = await montarLogado();
+    (
+      supabase.auth.signOut as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ error: null });
+
+    const estado = ultimoEstado(aoAtualizar)!;
+    await act(async () => {
+      await estado.logout();
+      await esperarMicrotarefas();
+    });
+
+    expect(supabase.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
+  });
+
   it("2. após a limpeza, nenhuma chave com prefixo ikcous_orders_cache_ ou ikcous_addresses_cache_ permanece — inclusive de DOIS usuários diferentes", async () => {
     const { callback } = await montarLogado();
 

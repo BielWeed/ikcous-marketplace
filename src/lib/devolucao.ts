@@ -205,7 +205,7 @@ const ROTULO_RESOLUCAO = new Map<ResolucaoDevolucao, string>([
 const EXPLICACAO_RESOLUCAO = new Map<ResolucaoDevolucao, string>([
   ["reembolso", "O dinheiro volta para você pelo mesmo meio do pagamento."],
   ["troca", "A loja entrega outro tamanho, cor ou produto equivalente."],
-  ["vale", "Você recebe um crédito para usar em outra compra na loja."],
+  ["vale", "A loja combina com você um vale para usar em outra compra nela."],
 ]);
 
 const ROTULO_METODO = new Map<MetodoDevolucao, string>([
@@ -783,8 +783,8 @@ export function instrucaoParaOCliente(
             ? `Envie para: ${endereco}.`
             : "Peça o endereço de envio à loja.";
           return d.tipo === "troca"
-            ? `Embale o produto, poste nos Correios ou na transportadora de sua preferência e informe o código de rastreio aqui. ${destino}`
-            : `Embale o produto, poste nos Correios ou na transportadora de sua preferência e informe o código de rastreio aqui. ${destino} Guarde o comprovante do frete: ele não é devolvido sozinho, combine com a loja.`;
+            ? `Embale o produto, poste nos Correios ou na transportadora de sua preferência e informe o código de rastreio aqui. ${destino} Guarde o comprovante do frete e combine com a loja.`
+            : `Embale o produto, poste nos Correios ou na transportadora de sua preferência e informe o código de rastreio aqui. ${destino} Guarde o comprovante do frete e peça o valor à loja: ele não volta sozinho pelo app.`;
         }
       }
     case "em_transito":
@@ -806,7 +806,7 @@ export function instrucaoParaOCliente(
       if (d.resolucao_final === "troca") {
         return "A troca foi confirmada. A loja combina com você a entrega do novo produto.";
       }
-      return "Seu vale-troca foi emitido. Fale com a loja para usar.";
+      return "A devolução foi resolvida com vale-troca. A loja combina com você o valor e como usar. Se não tiver notícia, fale com a loja.";
     }
     case "recusada":
       return "A loja não aprovou esta devolução.";

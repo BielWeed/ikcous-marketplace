@@ -71,10 +71,13 @@ vi.mock("sonner", () => ({
 function encadear(resultado: { data?: any; error?: any }) {
   const chain = Promise.resolve(resultado) as Promise<typeof resultado> & {
     eq: () => typeof chain;
+    is: () => typeof chain;
     select: () => typeof chain;
     single: () => Promise<typeof resultado>;
   };
   chain.eq = () => chain;
+  // `.update().eq().is("deleted_at", null)`: o UPDATE do produto não pega excluído.
+  chain.is = () => chain;
   chain.select = () => chain;
   chain.single = () => Promise.resolve(resultado);
   return chain;

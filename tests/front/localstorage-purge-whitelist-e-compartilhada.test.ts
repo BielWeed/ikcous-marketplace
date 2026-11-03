@@ -26,6 +26,7 @@
 // rascunho de banner): as três chaves de escrita pendente reprovariam.
 import { describe, expect, it } from "vitest";
 
+import { PREFIXO_DA_CHAVE_DO_PEDIDO } from "@/lib/chave-do-pedido";
 import {
   LOCALSTORAGE_PURGE_WHITELIST,
   chaveSobreviveAPurga,
@@ -43,6 +44,27 @@ describe("chaveSobreviveAPurga — critério ÚNICO usado pela Nuclear Purge e p
   // sumir sozinho no boot antes de a venda ser registrada.
   it("preserva o rascunho da venda de balcão", () => {
     expect(chaveSobreviveAPurga("admin_pdv_venda_draft")).toBe(true);
+  });
+
+  // A chave da compra (localStorage, validade de 30 min) é o que faz a
+  // retentativa de um Finalizar com a resposta perdida devolver o MESMO
+  // pedido. Se a purga a apaga, a cliente toca Finalizar de novo, nasce uma
+  // chave nova e o servidor cria o segundo pedido. O prefixo real usa HÍFEN
+  // ("ikcous-chave-do-pedido:"), diferente do "ikcous_" da lista antiga.
+  it("preserva a chave da compra, que impede o pedido em dobro", () => {
+    expect(chaveSobreviveAPurga("ikcous-chave-do-pedido:convidado")).toBe(true);
+    expect(
+      chaveSobreviveAPurga(
+        "ikcous-chave-do-pedido:5f0d6c1e-8a3b-4c52-9e7a-2b1d3f4a5c6d",
+      ),
+    ).toBe(true);
+  });
+
+  it("a lista usa o prefixo de verdade da chave da compra, sem divergir do módulo dela", () => {
+    expect(LOCALSTORAGE_PURGE_WHITELIST).toContain(PREFIXO_DA_CHAVE_DO_PEDIDO);
+    expect(
+      chaveSobreviveAPurga(`${PREFIXO_DA_CHAVE_DO_PEDIDO}qualquer-conta`),
+    ).toBe(true);
   });
 
   it("preserva sessão, carrinho, favoritos e aviso lido — o que a Nuclear Purge original já cobria", () => {
