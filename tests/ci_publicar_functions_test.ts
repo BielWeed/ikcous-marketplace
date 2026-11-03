@@ -175,7 +175,9 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
       for (const chamada of reais) {
         assertEquals(
           chamada.trim(),
-          'supabase functions deploy "$n" --project-ref "$REF"',
+          // `--yes`: o CLI atual (setup-cli `latest`) pede confirmacao e, sem terminal, recusa
+          // sem publicar nada ("Confirmation required ... Re-run with --yes"; run 41594818062).
+          'supabase functions deploy "$n" --project-ref "$REF" --yes',
         );
       }
     },
