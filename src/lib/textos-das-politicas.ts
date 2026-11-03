@@ -227,7 +227,7 @@ const FRETE_DE_VOLTA: SecaoDeTexto = {
   id: "frete-de-volta",
   titulo: "Frete de volta",
   paragrafos: [
-    "No arrependimento e no defeito, o frete de volta é pago pela loja.",
+    "No arrependimento e no defeito, o frete de volta é da loja. Na coleta ou com o código de postagem da loja, você não paga nada. Se você enviar por conta própria, guarde o comprovante e peça o valor à loja: ele não volta automaticamente pelo app.",
   ],
 };
 
@@ -281,8 +281,8 @@ function montarTrocas(
         paragrafos: [
           `Você pode trocar por outro tamanho, cor ou modelo em até ${politica.prazo_troca_dias} dias depois de receber.`,
           politica.frete_troca_pago_por === "loja"
-            ? "O frete da troca é pago pela loja."
-            : "O frete da troca é pago por você.",
+            ? "O frete da troca é pago pela loja. A loja combina com você o envio."
+            : "O frete da troca é pago por você. A loja combina com você como pagar.",
         ],
       });
     } else {
@@ -302,7 +302,7 @@ function montarTrocas(
         id: "vale",
         titulo: "Vale",
         paragrafos: [
-          "A loja também aceita devolver o valor em forma de vale. Ao pedir a devolução, você escolhe entre as opções disponíveis para o seu caso.",
+          "A loja também pode resolver com um vale para outra compra, combinado com você. Ao pedir a devolução, você escolhe entre as opções disponíveis para o seu caso.",
         ],
       });
     }

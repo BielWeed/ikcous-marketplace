@@ -749,6 +749,12 @@ export function AcoesDaDevolucao({
                 <p className="mt-1.5 text-[11px] text-zinc-500">
                   O cliente pediu: {rotuloResolucao(detalhe.resolucao_desejada)}
                 </p>
+                {resolucao === "vale" && (
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-500">
+                    Ao concluir, crie o vale (um cupom, por exemplo) e mande ao
+                    cliente. O app não cria sozinho.
+                  </p>
+                )}
               </fieldset>
 
               {resolucao === "reembolso" && (

@@ -419,7 +419,36 @@ describe("item 6 — o texto ao cliente não promete o frete de volta que o app 
     );
     expect(texto).toContain("Guarde o comprovante");
     expect(texto).not.toMatch(/a loja reembolsa/i);
-    expect(texto).toContain("combine com a loja");
+    expect(texto).toContain("peça o valor à loja");
+    expect(texto).toContain("não volta sozinho pelo app");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Vale-troca — o app só grava a palavra "vale"; a lojista cria o crédito
+// ---------------------------------------------------------------------------
+
+describe("vale-troca — a conclusão avisa a lojista que o app não cria o vale", () => {
+  const AVISO =
+    "Ao concluir, crie o vale (um cupom, por exemplo) e mande ao cliente. O app não cria sozinho.";
+
+  it("escolher a resolução Vale-troca mostra o aviso; Reembolso e Troca não", async () => {
+    await abrirConclusao();
+    const form = () =>
+      hospedeiro.querySelector('[data-testid="form-concluir"]')?.textContent ??
+      "";
+
+    // Abre em Reembolso (o que o cliente pediu): sem aviso.
+    expect(form()).not.toContain(AVISO);
+
+    await clicar(botao("Vale-troca"));
+    expect(form()).toContain(AVISO);
+
+    await clicar(botao("Troca"));
+    expect(form()).not.toContain(AVISO);
+
+    await clicar(botao("Reembolso"));
+    expect(form()).not.toContain(AVISO);
   });
 });
 
