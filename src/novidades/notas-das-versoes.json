@@ -1,4 +1,17 @@
 {
+  "1.5.115": {
+    "titulo": "Correções no envio do pedido, no produto e nos textos de devolução",
+    "novidades": [],
+    "correcoes": [
+      "Finalizar compra: com o pedido sendo enviado, tocar em outra aba não sai mais da tela; aparece um aviso e a tela espera o fim do envio.",
+      "Sair da conta encerra só este aparelho, sem derrubar a conta nos outros.",
+      "Atualização do app: a limpeza de segurança não apaga mais a chave que impede o pedido em dobro.",
+      "Painel, produto: o rascunho recuperado lembra a variação que você excluiu, e um produto excluído em outro aparelho não volta a ser alterado."
+    ],
+    "melhorias": [
+      "Devoluções: os textos do vale, do frete da troca e do frete de volta dizem o que o app faz de verdade, e a loja é avisada de que cria o vale."
+    ]
+  },
   "1.5.114": {
     "titulo": "Correções na busca, na galeria de fotos e no texto do reembolso",
     "novidades": [],
