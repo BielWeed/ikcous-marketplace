@@ -260,10 +260,11 @@ function montarTrocas(
       },
     );
   } else {
+    // O app so reembolsa quando a lojista abre a devolucao, confere o que
+    // chegou e conclui; `reembolso_momento` nunca mudou isso. A frase diz o que
+    // acontece de fato, qualquer que seja o valor gravado na loja.
     const reembolso =
-      politica.reembolso_momento === "apos_inspecao"
-        ? "O reembolso sai depois que a loja confere o produto devolvido."
-        : "O reembolso sai assim que a loja recebe o produto de volta.";
+      "O reembolso sai depois que a loja recebe o produto, confere e conclui a devolução.";
     secoes.push({
       id: "arrependimento",
       titulo: "Desistir da compra",
