@@ -1811,6 +1811,98 @@ export function decidirRealtimeInsertAdmin(
 export const MENSAGEM_FALHA_AO_CARREGAR_PEDIDOS =
   "Não conseguimos carregar seus pedidos agora.";
 
+// A consulta dos pedidos DA CLIENTE (pedidos + itens + produto + endereço, sem
+// limite) é pesada. As abas Carrinho e Perfil ficam montadas no fundo, cada uma
+// com a sua instância de `useOrders`, e ao voltar para o app TODAS recarregam em
+// silêncio: N consultas idênticas. Aqui a consulta de REDE em voo é dividida por
+// usuário; cada instância continua aplicando o resultado no seu estado.
+// - O cancelamento é por instância: quem cancela só deixa de esperar; a consulta
+//   é abortada de verdade quando não resta ninguém esperando por ela.
+// - Só a leitura silenciosa (recarga de fundo) pega carona numa consulta que já
+//   voava; a pedida pela cliente (ex.: logo depois de pagar) abre a sua, para
+//   nunca devolver um retrato anterior ao pedido.
+function iniciarConsultaDoCliente(userId: string, signal: AbortSignal) {
+  return supabase
+    .from("marketplace_orders")
+    .select(
+      `
+            *,
+            items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)),
+            address:user_addresses(*)
+          `,
+    )
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .abortSignal(signal);
+}
+
+type RespostaDosPedidosDoCliente = Awaited<
+  ReturnType<typeof iniciarConsultaDoCliente>
+>;
+
+type ConsultaDoClienteEmVoo = {
+  resposta: Promise<RespostaDosPedidosDoCliente>;
+  controlador: AbortController;
+  esperando: number;
+};
+
+const consultasDoClienteEmVoo = new Map<string, ConsultaDoClienteEmVoo>();
+
+function consultarPedidosDoCliente(
+  userId: string,
+  signal: AbortSignal,
+  compartilhar: boolean,
+): Promise<RespostaDosPedidosDoCliente> {
+  let consulta = compartilhar ? consultasDoClienteEmVoo.get(userId) : undefined;
+  if (!consulta) {
+    const controlador = new AbortController();
+    const nova: ConsultaDoClienteEmVoo = {
+      resposta: Promise.resolve(
+        iniciarConsultaDoCliente(userId, controlador.signal),
+      ),
+      controlador,
+      esperando: 0,
+    };
+    const liberar = () => {
+      if (consultasDoClienteEmVoo.get(userId) === nova) {
+        consultasDoClienteEmVoo.delete(userId);
+      }
+    };
+    nova.resposta.then(liberar, liberar);
+    consultasDoClienteEmVoo.set(userId, nova);
+    consulta = nova;
+  }
+  const dividida = consulta;
+  dividida.esperando += 1;
+  return new Promise<RespostaDosPedidosDoCliente>((resolve, reject) => {
+    const desistir = () => {
+      dividida.esperando -= 1;
+      if (dividida.esperando === 0) {
+        dividida.controlador.abort();
+        if (consultasDoClienteEmVoo.get(userId) === dividida) {
+          consultasDoClienteEmVoo.delete(userId);
+        }
+      }
+      reject(new DOMException("Fetch is aborted", "AbortError"));
+    };
+    if (signal.aborted) {
+      desistir();
+      return;
+    }
+    signal.addEventListener("abort", desistir, { once: true });
+    dividida.resposta.then(
+      (resposta) => {
+        signal.removeEventListener("abort", desistir);
+        resolve(resposta);
+      },
+      (erro) => {
+        signal.removeEventListener("abort", desistir);
+        reject(erro);
+      },
+    );
+  });
+}
+
 export function useOrders(
   enabled = true,
   isAdmin = false,
@@ -1951,20 +2043,11 @@ export function useOrders(
         setLoading(true);
       }
       try {
-        const query = supabase
-          .from("marketplace_orders")
-          .select(
-            `
-            *,
-            items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)),
-            address:user_addresses(*)
-          `,
-          )
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .abortSignal(signal);
-
-        const { data, error } = await query;
+        const { data, error } = await consultarPedidosDoCliente(
+          user.id,
+          signal,
+          silent,
+        );
 
         // A conta mudou enquanto a leitura corria: a resposta é de OUTRA
         // pessoa. Nada dela (lista, cache, erro) pode tocar a conta atual.
@@ -2786,6 +2869,13 @@ export function useOrders(
           return;
         }
 
+        // Pedido novo da cliente: a consulta em voo (se houver) é um retrato
+        // ANTERIOR a ele. Quem pedir depois já tem este pedido na lista
+        // (`idsNoInicio`) e, pegando carona nela, o veria sumir. Encerra o
+        // compartilhamento: o próximo pedido abre consulta nova; quem já
+        // esperava pela antiga continua esperando por ela. Só a cliente do
+        // pedido (a guarda de dono está acima).
+        if (data.user_id) consultasDoClienteEmVoo.delete(data.user_id);
         setOrders((prev) => {
           if (prev.some((o) => o.id === newOrder.id)) return prev;
           return [newOrder, ...prev];
