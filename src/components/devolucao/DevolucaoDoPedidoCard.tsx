@@ -37,7 +37,10 @@ import {
   tituloDoStatusParaCliente,
   tomDoStatus,
 } from "@/lib/devolucao";
-import { linkDeRastreio } from "@/lib/link-de-rastreio";
+import {
+  linkDeRastreio,
+  normalizarCodigoDeRastreio,
+} from "@/lib/link-de-rastreio";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { DevolucaoDetalhe, ResumoDevolucao } from "@/types/devolucao";
@@ -172,7 +175,8 @@ export function DevolucaoDoPedidoCard({
 
   async function informarEnvio() {
     if (enviando) return;
-    const codigoFinal = codigoDaEtiqueta ?? codigo.trim();
+    // Sem espaços (inclusive do meio): a RPC só aceita letras, números e hífen.
+    const codigoFinal = codigoDaEtiqueta ?? normalizarCodigoDeRastreio(codigo);
     if (codigoFinal.length < 5) {
       setErro("Digite o código de rastreio do comprovante de postagem.");
       return;

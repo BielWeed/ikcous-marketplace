@@ -23,6 +23,21 @@ import {
 } from "./visualDoInicio";
 
 /**
+ * "Loja que ainda não vendeu". Mês e hoje zerados não bastam: no dia 1 o mês
+ * volta a zero para loja antiga. Conta como já vendeu quem tem receita no mês
+ * anterior ou em algum dos últimos 14 dias (no dia 1 a série cobre o fim do
+ * mês passado).
+ */
+export function lojaSemVendasAinda(painel: PainelInicio | null): boolean {
+  return (
+    painel?.mes?.pedidos === 0 &&
+    painel.hoje?.pedidos === 0 &&
+    !((painel.mes.receitaMesAnterior ?? 0) > 0) &&
+    !painel.serie14d?.some((ponto) => ponto.receita > 0)
+  );
+}
+
+/**
  * Só pendências conhecidas e o estado do caixa; desconhecido continua como —.
  * Cada linha: tile neutro com o glifo na cor do significado, título,
  * subtítulo e, à direita, a contagem na cor (vermelho = atraso, âmbar =
@@ -137,8 +152,7 @@ export function ParaFazer({
   const pendentes = itens.filter((item) => item.pendente).length;
   // Loja que ainda não vendeu: o Início mostra "Sua loja começa por aqui"
   // acima, então dizer "Tudo em dia" aqui contradiz a tela.
-  const semPedidosAinda =
-    painel?.mes?.pedidos === 0 && painel.hoje?.pedidos === 0;
+  const semPedidosAinda = lojaSemVendasAinda(painel);
   const esqueleto = carregando && !painel;
   const visiveis = itens.filter(
     (item) =>

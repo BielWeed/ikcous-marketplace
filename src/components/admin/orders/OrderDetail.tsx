@@ -353,9 +353,16 @@ function ItemSkuBadge({
 interface OrderHeaderProps {
   order: Order;
   avisoDeEspera: string | null;
+  // Motivo pelo qual o papel ainda não pode sair com tamanho e cor (achado e8
+  // da caça): o texto aparece ao lado do botão desligado. `null` = pode imprimir.
+  motivoDeNaoImprimir?: string | null;
 }
 
-function OrderHeader({ order, avisoDeEspera }: Readonly<OrderHeaderProps>) {
+function OrderHeader({
+  order,
+  avisoDeEspera,
+  motivoDeNaoImprimir = null,
+}: Readonly<OrderHeaderProps>) {
   const criadoEm = new Date(order.createdAt);
   const data = criadoEm.toLocaleDateString("pt-BR");
   const hora = criadoEm.toLocaleTimeString("pt-BR", {
@@ -399,12 +406,21 @@ function OrderHeader({ order, avisoDeEspera }: Readonly<OrderHeaderProps>) {
         <Button
           variant="ghost"
           onClick={() => globalThis.print()}
+          disabled={!!motivoDeNaoImprimir}
+          aria-describedby={
+            motivoDeNaoImprimir ? "motivo-de-nao-imprimir" : undefined
+          }
           className="size-11 shrink-0 rounded-xl border border-admin-border bg-white/5 p-0 text-zinc-200 transition-colors hover:bg-white/10 active:scale-95"
           title="Imprimir Pedido"
         >
           <Printer className="size-5" />
         </Button>
       </div>
+      {motivoDeNaoImprimir && (
+        <p id="motivo-de-nao-imprimir" className="text-xs text-amber-300">
+          {motivoDeNaoImprimir}
+        </p>
+      )}
 
       {pagamentoPedeAtencao && (
         <PaymentStatusBadge
@@ -1839,6 +1855,21 @@ export const OrderDetail = memo(function OrderDetail({
 
   const nextStatus = getNextStatus(order.status);
 
+  // O papel só leva "Tamanho M · Cor Azul" se a leitura chegou. Enquanto ela
+  // carrega, ou depois de falhar, e há item com variação sem rótulo, imprimir
+  // sairia sem a peça certa e sem aviso — então o botão espera.
+  const faltaVariacaoNoPapel = order.items.some(
+    (i) => !!i.variantId && !variacoes[i.variantId],
+  );
+  let motivoDeNaoImprimir: string | null = null;
+  if (faltaVariacaoNoPapel && falhaNaLeitura) {
+    motivoDeNaoImprimir =
+      "Para imprimir, carregue antes o tamanho e a cor dos itens (use “Tentar de novo”).";
+  } else if (faltaVariacaoNoPapel && loadingSkus) {
+    motivoDeNaoImprimir =
+      "Carregando o tamanho e a cor dos itens. Já dá para imprimir em instantes.";
+  }
+
   const displayAddress = [
     order.customer.address && order.customer.number
       ? `${order.customer.address}, ${order.customer.number}`
@@ -2076,7 +2107,11 @@ export const OrderDetail = memo(function OrderDetail({
           dinheiro, coladas nele) → entrega → itens (com a conta) → envio
           (etiqueta, rastreio e anotações em linhas). O grid de 2 colunas saiu. */}
       <div className="mx-auto w-full max-w-[600px] space-y-4 px-4 pt-5 md:px-6 md:pt-6">
-        <OrderHeader order={order} avisoDeEspera={avisoDeEspera} />
+        <OrderHeader
+          order={order}
+          avisoDeEspera={avisoDeEspera}
+          motivoDeNaoImprimir={motivoDeNaoImprimir}
+        />
 
         <OrderStepperPipeline
           orderStatus={order.status}

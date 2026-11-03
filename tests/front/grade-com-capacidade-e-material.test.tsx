@@ -475,7 +475,7 @@ describe("celular 'Memória / Armazenamento': dois cartões do mesmo tipo, cada 
     expect(texto(botaoPorTexto("Gerar"))).toBe("Gerar 1 combinação");
     await tocar(botaoPorTexto("Gerar"));
     expect(toastError).not.toHaveBeenCalled();
-    expect(corpo()).toContain("passo 2 de 2 · 1 combinações novas");
+    expect(corpo()).toContain("passo 2 de 2 · 1 combinação nova");
   });
 
   it("tocar a peça Capacidade no cartão que já é Capacidade não troca o nome (nem para o do outro)", async () => {

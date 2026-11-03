@@ -180,13 +180,23 @@ export const AdminCustomersView = memo(function AdminCustomersView({
     [globalStats, totalCustomers],
   );
 
+  // Texto cru, o formato já salvo (não `useLocalStorage`, que grava JSON).
+  // Storage cheio ou bloqueado só deixa de lembrar a escolha.
   const [viewMode, setViewMode] = useState<"detailed" | "compact">(() => {
-    const saved = localStorage.getItem("admin_customers_view_mode");
-    return saved === "detailed" || saved === "compact" ? saved : "compact";
+    try {
+      const saved = localStorage.getItem("admin_customers_view_mode");
+      return saved === "detailed" || saved === "compact" ? saved : "compact";
+    } catch {
+      return "compact";
+    }
   });
 
   useEffect(() => {
-    localStorage.setItem("admin_customers_view_mode", viewMode);
+    try {
+      localStorage.setItem("admin_customers_view_mode", viewMode);
+    } catch {
+      /* storage cheio ou bloqueado: a escolha vale só nesta sessão */
+    }
   }, [viewMode]);
 
   // Scroll position is handled by useScrollRestoration hook

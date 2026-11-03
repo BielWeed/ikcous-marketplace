@@ -416,8 +416,11 @@ describe("Início do painel", () => {
       data: {
         ...PAINEL,
         hoje: { ...PAINEL.hoje, pedidos: 0 },
-        mes: { ...PAINEL.mes, pedidos: 0 },
+        // Loja nova de verdade: sem pedidos, sem receita no mês passado e
+        // sem receita nos últimos 14 dias (senão conta como loja que já vendeu).
+        mes: { ...PAINEL.mes, pedidos: 0, receita_mes_anterior: 0 },
         pendencias: { ...PAINEL.pendencias, pedidos_para_preparar: 0 },
+        serie_14d: [],
       },
       error: null,
     });

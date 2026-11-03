@@ -196,7 +196,7 @@ describe("Para fazer no primeiro dia da loja", () => {
     const novo: PainelInicio = {
       ...PAINEL,
       hoje: { ...PAINEL.hoje, pedidos: 0, receita: 0 },
-      mes: { ...PAINEL.mes, pedidos: 0, receita: 0 },
+      mes: { ...PAINEL.mes, pedidos: 0, receita: 0, receitaMesAnterior: 0 },
       contasVencidas: 0,
       pendencias: {
         ...PAINEL.pendencias,

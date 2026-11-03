@@ -294,9 +294,10 @@ describe("Painel — o que a cliente RECEBE também diz 'Pronto para retirar' na
     expect(corpo).not.toContain("Trânsito");
   });
 
-  it("PUSH da entrega: continua 'agora está: Em Trânsito' (controle)", async () => {
+  it("PUSH da entrega: 'agora está: A caminho', o nome que a cliente lê no app (não 'Em Trânsito' do painel)", async () => {
     const corpo = await avancarEPegarOPush(pedidoBase);
-    expect(corpo).toContain("agora está: Em Trânsito");
+    expect(corpo).toContain("agora está: A caminho");
+    expect(corpo).not.toContain("Em Trânsito");
   });
 
   it("WhatsApp da retirada pronta: 'Status: Pronto para retirar'", async () => {
@@ -309,9 +310,10 @@ describe("Painel — o que a cliente RECEBE também diz 'Pronto para retirar' na
     expect(texto).not.toContain("Trânsito");
   });
 
-  it("WhatsApp da entrega a caminho: continua 'Status: Em Trânsito' (controle)", async () => {
+  it("WhatsApp da entrega a caminho: 'Status: A caminho', o nome que a cliente lê no app (não 'Em Trânsito' do painel)", async () => {
     const texto = await whatsappDoCard({ ...pedidoBase, status: "shipping" });
-    expect(texto).toContain("Status: Em Trânsito");
+    expect(texto).toContain("Status: A caminho");
+    expect(texto).not.toContain("Em Trânsito");
   });
 
   it("aviso da lojista (realtime) de retirada: 'atualizado para Pronto para retirar'", async () => {

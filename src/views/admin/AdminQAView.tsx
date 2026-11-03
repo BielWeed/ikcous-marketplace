@@ -193,6 +193,8 @@ export const AdminQAView = memo(function AdminQAView({
   // Keep ref up to date with latest loadQuestions and page state without recreating subcription effect
   onQuestionEventRef.current = () => {
     loadQuestions(page);
+    // Pergunta nova também mexe nos números do topo (Pendentes, Todas, %).
+    void fetchStats();
   };
 
   // --- 4. EFFECTS ---

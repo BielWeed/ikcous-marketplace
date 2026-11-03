@@ -121,6 +121,8 @@ function FormularioDoCupom({
   // Validade que já passou: pergunta antes de salvar (como o editor de banner).
   const [confirmarVencido, setConfirmarVencido] = useState(false);
   const vencidoConfirmadoRef = useRef(false);
+  // Texto do campo de data enquanto a data digitada ainda está incompleta.
+  const [rascunhoValidade, setRascunhoValidade] = useState<string | null>(null);
   const previaBotaoRef = useRef<HTMLButtonElement>(null);
 
   const [formData, setFormData] = useState<Partial<Coupon>>({
@@ -931,20 +933,31 @@ function FormularioDoCupom({
                   name="validUntil"
                   type="date"
                   autoComplete="off"
-                  value={validadeParaDataDoInput(formData.validUntil)}
+                  value={
+                    rascunhoValidade ??
+                    validadeParaDataDoInput(formData.validUntil)
+                  }
                   disabled={isOffline || isSubmitting}
                   onChange={(e) => {
                     if (!e.target.value) {
+                      setRascunhoValidade(null);
                       setFormData({ ...formData, validUntil: undefined });
                       return;
                     }
                     const validade = dataEscolhidaParaValidade(e.target.value);
                     if (validade) {
+                      setRascunhoValidade(null);
                       setFormData({
                         ...formData,
                         validUntil: validade,
                       });
+                      return;
                     }
+                    // Digitando com o teclado: "0002-11-03" (ano com 1
+                    // dígito) ainda não é data. Guarda o texto para o campo
+                    // não ser esvaziado no meio da digitação; a validade só
+                    // é gravada quando a data fica válida.
+                    setRascunhoValidade(e.target.value);
                   }}
                   className={`${CAMPO} pl-10 [color-scheme:dark]`}
                 />
@@ -955,9 +968,10 @@ function FormularioDoCupom({
               <button
                 type="button"
                 disabled={isOffline || isSubmitting || !formData.validUntil}
-                onClick={() =>
-                  setFormData({ ...formData, validUntil: undefined })
-                }
+                onClick={() => {
+                  setRascunhoValidade(null);
+                  setFormData({ ...formData, validUntil: undefined });
+                }}
                 className={SECUNDARIO}
               >
                 <X aria-hidden="true" className="size-4 text-zinc-400" />

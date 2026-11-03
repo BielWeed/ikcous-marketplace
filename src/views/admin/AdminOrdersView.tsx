@@ -61,7 +61,10 @@ import {
   enderecoDeRetiradaDoCustomerData,
   mapOrderFromDB,
 } from "@/lib/mappers";
-import { mensagemDoStatusNoWhatsapp } from "@/lib/mensagem-do-status-no-whatsapp";
+import {
+  mensagemDoStatusNoWhatsapp,
+  rotuloDoStatusParaACliente,
+} from "@/lib/mensagem-do-status-no-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { pedidosParaCsv } from "@/lib/pedidos-csv";
 import { STATUS_PARA_PREPARAR } from "@/lib/pedidos-para-preparar";
@@ -140,6 +143,14 @@ const SUBTITULO_PARA_PREPARAR = STATUS_PARA_PREPARAR.map(
 )
   .filter((label): label is string => Boolean(label))
   .join(" · ");
+
+/**
+ * Lista vazia com canal/pagamento ligado enquanto o status é "Em Aberto": o
+ * "Em Aberto" esconde os entregues e a venda do balcão já nasce Entregue,
+ * então limpar só o canal/pagamento não traz nada de volta.
+ */
+const textoDoEmAbertoTambemLigado =
+  'O status "Em Aberto" também está ligado e não mostra pedidos entregues (vendas do balcão nascem como Entregue). Escolha "Todos" no status para ver esses pedidos.';
 
 /**
  * `mapOrderFromDB` (src/lib/mappers.ts) já copia `payment_status` para
@@ -429,13 +440,24 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   const [canalFilter, setCanalFilter] = useLocalStorage<
     "all" | "online" | "presencial"
   >("admin_orders_canal_filter", "all");
+  // Texto cru ("detailed"/"compact"), o formato que a lojista já tem salvo:
+  // por isso não é `useLocalStorage` (ele grava JSON e descartaria o valor
+  // cru). Storage cheio ou bloqueado só deixa de lembrar a escolha.
   const [viewMode, setViewMode] = useState<"detailed" | "compact">(() => {
-    const saved = localStorage.getItem("admin_orders_view_mode");
-    return saved === "detailed" || saved === "compact" ? saved : "compact";
+    try {
+      const saved = localStorage.getItem("admin_orders_view_mode");
+      return saved === "detailed" || saved === "compact" ? saved : "compact";
+    } catch {
+      return "compact";
+    }
   });
 
   useEffect(() => {
-    localStorage.setItem("admin_orders_view_mode", viewMode);
+    try {
+      localStorage.setItem("admin_orders_view_mode", viewMode);
+    } catch {
+      /* storage cheio ou bloqueado: a escolha vale só nesta sessão */
+    }
   }, [viewMode]);
 
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -1517,7 +1539,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
     try {
       const title = "Status do Pedido Atualizado";
-      const body = `Seu pedido #${numeroDoPedido(orderId)} agora está: ${rotuloDoStatus(newStatus, alvo.retiradaNaLoja)}`;
+      const body = `Seu pedido #${numeroDoPedido(orderId)} agora está: ${rotuloDoStatusParaACliente(newStatus, alvo.retiradaNaLoja)}`;
 
       const {
         data: { session },
@@ -1577,19 +1599,17 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       }
       // O CHECK do banco aceita SEIS status (inclui 'new', histórico —
       // migrado para 'pending' pela 20260327000003, 0 pedidos hoje), o
-      // `statusConfig` (OrderStatusBadge.tsx) só conhece os CINCO do type
-      // `OrderStatus`. Sem o `|| statusConfig.pending` (mesma guarda de
-      // OrderStatusBadge.tsx:68 e OrderList.tsx:209) o botão quebra. E
-      // NUNCA `?.label || newStatus` aqui (como a linha 520 acima): isso
-      // botaria o valor cru do banco, em inglês, dentro da mensagem que a
-      // lojista manda para a cliente.
-      const rotuloDoStatusNaMensagem = statusConfig[order.status]
-        ? rotuloDoStatus(order.status, order.retiradaNaLoja)
-        : statusConfig.pending.label;
+      // `OrderStatus` só conhece os CINCO. `rotuloDoStatusParaACliente` cai em
+      // "Recebido" para o que não conhece, e NUNCA devolve o valor cru do
+      // banco, em inglês, dentro da mensagem que a lojista manda para a
+      // cliente. O nome é o do app da cliente, não o do painel.
       const message = mensagemDoStatusNoWhatsapp({
         nomeDoCliente: order.customer?.name || "Cliente",
         numeroDoPedido: numeroDoPedido(order.id),
-        rotuloDoStatus: rotuloDoStatusNaMensagem,
+        rotuloDoStatus: rotuloDoStatusParaACliente(
+          order.status,
+          order.retiradaNaLoja,
+        ),
         nomeDaLoja: storeNameDaLoja,
         status: order.status,
         retiradaNaLoja: order.retiradaNaLoja,
@@ -2330,6 +2350,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       <p className="mt-2 max-w-md text-sm leading-relaxed text-zinc-400">
                         Nenhum pedido com esse status de pagamento. Limpe o
                         filtro para ver todos os pedidos.
+                        {filter === "open" && ` ${textoDoEmAbertoTambemLigado}`}
                       </p>
                     </>
                   ) : canalFilter !== "all" ? (
@@ -2345,8 +2366,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         Nenhum pedido nesse canal
                       </h3>
                       <p className="mt-2 max-w-md text-sm leading-relaxed text-zinc-400">
-                        Limpe o filtro de canal da venda para ver todos os
-                        pedidos.
+                        {filter === "open"
+                          ? textoDoEmAbertoTambemLigado
+                          : "Limpe o filtro de canal da venda para ver todos os pedidos."}
                       </p>
                     </>
                   ) : filter !== "all" ||
