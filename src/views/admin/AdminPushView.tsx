@@ -480,9 +480,8 @@ export const AdminPushView = memo(function AdminPushView({
     setCustomPath("");
   };
 
-  const { isSupported, subscribe } = usePushNotifications();
+  const { isSupported, subscribe, subscription } = usePushNotifications();
   const { recordAction } = useVOR();
-  const [isTestSubscribed, setIsTestSubscribed] = useState(false);
   const [segment, setSegment] = useState("all");
   // O quinto contador (achado do revisor sobre a correção do quarto, em
   // 20/08/2026): igual a `subCount`, nascia em `useState(0)` e o
@@ -807,8 +806,11 @@ export const AdminPushView = memo(function AdminPushView({
       return;
     }
     try {
-      await subscribe();
-      setIsTestSubscribed(true);
+      // `subscribe()` devolve `undefined` sem lançar quando a conta mudou no
+      // meio do toque: nada foi inscrito, então nada a atualizar. O botão
+      // acompanha `subscription` do hook, que só muda numa inscrição real.
+      const nova = await subscribe();
+      if (!nova) return;
       fetchSubscribers();
     } catch {
       // Error handled in hook
@@ -1897,7 +1899,7 @@ export const AdminPushView = memo(function AdminPushView({
             onde o rascunho vive. */}
         {/* Sem a chave de avisos de compras (escondida), o bloco só existe
             quando o botão de teste aparece — nunca um "Ajustes" vazio. */}
-        {(MOSTRAR_AVISOS_DE_COMPRAS || (isSupported && !isTestSubscribed)) && (
+        {(MOSTRAR_AVISOS_DE_COMPRAS || (isSupported && !subscription)) && (
           <SecaoColapsavel
             titulo="Ajustes"
             descricao={
@@ -1999,8 +2001,8 @@ export const AdminPushView = memo(function AdminPushView({
 
               {/* Liga os avisos NESTE aparelho (só inscreve — não manda aviso
                 de teste; quem manda é o cartão do Início). Some depois de
-                ligado, na mesma condição `isSupported && !isTestSubscribed`. */}
-              {isSupported && !isTestSubscribed && (
+                ligado, na mesma condição `isSupported && !subscription`. */}
+              {isSupported && !subscription && (
                 <button
                   onClick={handleTestSubscription}
                   disabled={isOffline}
