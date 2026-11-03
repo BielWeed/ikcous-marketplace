@@ -411,6 +411,12 @@ describe("a entrada de login não sobrevive ao login (Voltar não cai no Perfil)
   });
 
   afterEach(async () => {
+    // O App agenda um setTimeout de 350 ms ao fim de cada transição de tela (App.tsx,
+    // `onTransitionEnd`). Se ele disparar depois de o ambiente de teste ser desfeito, vira
+    // "window is not defined" como erro não tratado e derruba o CI (visto na junção do PR 1227).
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
     const paraDesmontar = raiz;
     await act(async () => {
       paraDesmontar?.unmount();
