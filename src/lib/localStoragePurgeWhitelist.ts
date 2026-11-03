@@ -37,6 +37,13 @@ export const LOCALSTORAGE_PURGE_WHITELIST: readonly string[] = [
   // a Nuclear Purge (useUpdateCheck.ts:196) apaga uma venda montada sozinha
   // no boot, sem ninguém decidir nada.
   "admin_pdv_venda_draft",
+  // Chave da compra (src/lib/chave-do-pedido.ts, validade de 30 min): é ela
+  // que faz a retentativa de um Finalizar com a resposta perdida devolver o
+  // MESMO pedido. O prefixo real usa HIFEN, entao o "ikcous_" acima nao a
+  // cobre; sem esta linha a purga a apagava e o proximo Finalizar criava o
+  // segundo pedido. Literal de proposito (este arquivo e so string in,
+  // boolean out); o teste amarra o literal ao prefixo exportado pelo modulo.
+  "ikcous-chave-do-pedido:",
 ];
 
 // Compartilha também o CRITÉRIO, não só a lista: os dois chamadores testam
