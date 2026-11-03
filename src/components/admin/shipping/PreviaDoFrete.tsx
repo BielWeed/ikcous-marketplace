@@ -59,6 +59,7 @@ export function PreviaDoFrete({
     { id: "local-delivery", price: config.localDeliveryFee ?? 10 },
     { config, subtotal, temItemMarcado: false },
   );
+  const diasLocais = config.localDeliveryDays ?? 1;
   const soRetiro = modo === "so_retiro";
   const fora = config.shippingCoverage !== "local" && !soRetiro;
   const nacional = promessas.nacional;
@@ -108,7 +109,9 @@ export function PreviaDoFrete({
                   ? "grátis se tiver produto marcado"
                   : local === 0
                     ? "entrega grátis"
-                    : `chega em ${config.localDeliveryDays ?? 1} ${(config.localDeliveryDays ?? 1) === 1 ? "dia" : "dias"}`
+                    : diasLocais === 0
+                      ? "no mesmo dia"
+                      : `chega em ${diasLocais} ${diasLocais === 1 ? "dia" : "dias"}`
               }
             />
           )}
