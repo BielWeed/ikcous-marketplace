@@ -215,7 +215,7 @@ jobs:
           set -euo pipefail
           for n in $NOMES; do
             echo "::group::supabase functions deploy $n --project-ref $REF"
-            supabase functions deploy "$n" --project-ref "$REF"
+            supabase functions deploy "$n" --project-ref "$REF" --yes
             echo "::endgroup::"
           done
 
@@ -229,7 +229,7 @@ jobs:
           set -euo pipefail
           for n in $NOMES; do
             echo "::group::supabase functions deploy $n --project-ref $REF"
-            supabase functions deploy "$n" --project-ref "$REF"
+            supabase functions deploy "$n" --project-ref "$REF" --yes
             echo "::endgroup::"
           done
 
@@ -308,7 +308,7 @@ jobs:
           set -euo pipefail
           for n in $NOMES; do
             echo "::group::supabase functions deploy $n --project-ref $REF"
-            supabase functions deploy "$n" --project-ref "$REF"
+            supabase functions deploy "$n" --project-ref "$REF" --yes
             echo "::endgroup::"
           done
 
