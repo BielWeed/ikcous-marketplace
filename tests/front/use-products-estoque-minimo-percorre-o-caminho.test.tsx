@@ -83,14 +83,25 @@ function encadear(resultado: { data?: any; error?: any }) {
   chain.is = () => {
     const daFila = Promise.resolve(resultado) as Promise<typeof resultado> & {
       eq: () => typeof daFila;
-      select: () => Promise<typeof resultado>;
+      select: () => Promise<typeof resultado> & {
+        single: () => Promise<typeof resultado>;
+        maybeSingle: () => Promise<typeof resultado>;
+      };
     };
     daFila.eq = () => daFila;
+    // Fila offline: `.select(id)` devolve a lista de linhas. O UPDATE online
+    // também passa por `.is("deleted_at", null)` e fecha com `.single()`.
     daFila.select = () =>
-      Promise.resolve({
-        ...resultado,
-        data: resultado.error ? null : [{ id: "linha" }],
-      });
+      Object.assign(
+        Promise.resolve({
+          ...resultado,
+          data: resultado.error ? null : [{ id: "linha" }],
+        }),
+        {
+          single: () => Promise.resolve(resultado),
+          maybeSingle: () => Promise.resolve(resultado),
+        },
+      );
     return daFila;
   };
   chain.select = () => chain;

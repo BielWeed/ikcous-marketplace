@@ -145,6 +145,58 @@ export function variacoesDoRascunhoComEstoqueDoBanco(
 }
 
 /**
+ * A grade do rascunho contra o banco de hoje: o que a lojista EXCLUIU e o que
+ * ela nunca viu.
+ *
+ * A lista de exclusões da tela é só memória e não entra no rascunho. Rascunho
+ * [A, B] com o banco ainda em [A, B, C], restaurado e salvo, não apagava a C:
+ * ela seguia à venda e o estoque gravado era a soma SEM ela. Quem diz que a
+ * ausência é exclusão dela, e não coisa de outro aparelho, é o produto-base
+ * que o próprio rascunho guarda (`baseDoRascunho`):
+ *
+ *  - `apagar`: id de verdade que estava na base, NÃO está no rascunho e AINDA
+ *    existe no banco — ela a excluiu antes de sair. Vai para a lista de
+ *    exclusões ao restaurar, e só sai do banco quando ela apertar Salvar com a
+ *    variação já fora da tela;
+ *  - `manter`: variação do banco que nunca esteve na base nem no rascunho
+ *    (criada em outro aparelho depois dele). Ela nunca a viu: volta ao
+ *    formulário em vez de ser apagada em silêncio nem ficar fora da soma.
+ *
+ * Sem base, ou sem lista de variações num dos lados (rascunho antigo), não
+ * deriva nada: a ausência não prova exclusão. Variação nova (`temp-…`) e a que
+ * já sumiu do banco nunca entram em `apagar`. Jamais se deriva a exclusão só
+ * de "banco menos formulário" no salvar: a D de outro aparelho seria apagada.
+ */
+export function variacoesExcluidasNoRascunho(
+  rascunho: { variants?: unknown; baseDoRascunho?: unknown },
+  bancoDeHoje: ProductVariant[],
+): { apagar: string[]; manter: ProductVariant[] } {
+  const nada = { apagar: [], manter: [] };
+  const base = rascunho.baseDoRascunho;
+  if (!base || typeof base !== "object") return nada;
+  const daBase = new Map(Object.entries(base)).get("variants");
+  if (!Array.isArray(daBase) || !Array.isArray(rascunho.variants)) return nada;
+  const idsDaBase = new Set(
+    daBase.map((v: { id?: unknown }) => v?.id).filter((id) => id != null),
+  );
+  const idsDoRascunho = new Set(
+    rascunho.variants.map((v: { id?: unknown }) => v?.id),
+  );
+  const idsDoBanco = new Set(bancoDeHoje.map((v) => v.id));
+  const apagar = [...idsDaBase].filter(
+    (id): id is string =>
+      typeof id === "string" &&
+      !id.startsWith("temp-") &&
+      !idsDoRascunho.has(id) &&
+      idsDoBanco.has(id),
+  );
+  const manter = bancoDeHoje.filter(
+    (v) => !idsDaBase.has(v.id) && !idsDoRascunho.has(v.id),
+  );
+  return { apagar, manter };
+}
+
+/**
  * O rascunho trazia um estoque DIFERENTE do que está no banco hoje? É o que
  * decide se a lojista recebe o aviso "o estoque não foi restaurado" — avisar
  * quando os números batem seria ruído.

@@ -56,6 +56,7 @@ function criarQueryEncadeavel(resultado: { data: any; error: any }) {
     update: vi.fn(() => chain),
     select: vi.fn(() => chain),
     eq: vi.fn(() => chain),
+    is: vi.fn(() => chain),
     single: vi.fn(() => Promise.resolve(resultado)),
   };
   return chain;

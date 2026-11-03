@@ -583,6 +583,10 @@ const MSG_VARIACAO_JA_VENDIDA =
 const MSG_SESSAO_OU_PERMISSAO =
   "Sua sessão expirou ou você não tem permissão para salvar. Saia da conta, entre de novo e tente outra vez.";
 
+/** O UPDATE não achou o produto e a releitura confirmou: foi excluído. */
+const MSG_PRODUTO_EXCLUIDO =
+  "Este produto foi excluído em outro aparelho. Recarregue a lista.";
+
 const MSG_SEM_CONEXAO =
   "Sem conexão com a internet. Confira a conexão e tente salvar de novo.";
 
@@ -1636,9 +1640,14 @@ export function useProducts({ autoFetch = true } = {}) {
 
         const dbUpdates = atualizacoesDoProdutoParaBanco(updates);
 
+        // `deleted_at IS NULL`: a view não filtra os excluídos, e sem isto o
+        // UPDATE "dava certo" num produto que outro aparelho já excluiu
+        // (voltava "atualizado" e, ao ativar, o excluído ficava ativo). O
+        // mesmo filtro da fila offline (`sincronizarFilaDoUsuario`).
         let gravacao = (supabase.from("vw_produtos_admin") as any)
           .update(dbUpdates)
-          .eq("id", id);
+          .eq("id", id)
+          .is("deleted_at", null);
         // A mesma comparação atômica da fila offline. A versão vem da
         // abertura do formulário, sem Date/ISO (preserva microssegundos).
         if (conferenciaDeEstoque) {
@@ -1655,16 +1664,34 @@ export function useProducts({ autoFetch = true } = {}) {
           ? retorno.maybeSingle()
           : retorno.single());
 
-        if (error) throw error;
-        if (conferenciaDeEstoque && !data) {
-          const produtoAtual = await fetchProduct(id).catch(() => null);
-          throw Object.assign(
-            new RecusaDoCadastroDeProduto(
-              `O estoque deste produto mudou enquanto você editava${produtoAtual ? ` (agora está ${produtoAtual.stock})` : ""}. Confira e salve de novo.`,
-            ),
-            { produtoAtual },
-          );
+        // Nenhuma linha casou: ou o produto foi excluído em outro aparelho, ou
+        // (só com conferência) o estoque mudou. `.single()` devolve isso como
+        // PGRST116; `.maybeSingle()`, como `data` nulo. Quem diz qual dos dois
+        // é a releitura por id (que não enxerga excluído); se ela própria
+        // falhar, nada se afirma sobre exclusão e segue a recusa de antes.
+        const nenhumaLinha =
+          (!error && !data) ||
+          (error as { code?: unknown } | null)?.code === "PGRST116";
+        if (nenhumaLinha) {
+          let produtoAtual: Product | null | undefined;
+          try {
+            produtoAtual = await fetchProduct(id);
+          } catch {
+            produtoAtual = undefined;
+          }
+          if (produtoAtual === null) {
+            throw new RecusaDoCadastroDeProduto(MSG_PRODUTO_EXCLUIDO);
+          }
+          if (conferenciaDeEstoque && !error) {
+            throw Object.assign(
+              new RecusaDoCadastroDeProduto(
+                `O estoque deste produto mudou enquanto você editava${produtoAtual ? ` (agora está ${produtoAtual.stock})` : ""}. Confira e salve de novo.`,
+              ),
+              { produtoAtual: produtoAtual ?? null },
+            );
+          }
         }
+        if (error) throw error;
 
         if (data) {
           const updatedProduct = mapProductFromDB(data);

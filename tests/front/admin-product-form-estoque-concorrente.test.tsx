@@ -172,7 +172,8 @@ vi.mock("@/lib/supabase", () => ({
             const valoresAtuais = new Map(Object.entries(banco.produto));
             if (
               !filtros.every(
-                ([campo, valor]) => valoresAtuais.get(campo) === valor,
+                ([campo, valor]) =>
+                  (valoresAtuais.get(campo) ?? null) === valor,
               )
             ) {
               return { data: null, error: null };
@@ -190,6 +191,11 @@ vi.mock("@/lib/supabase", () => ({
           };
           const consulta = {
             eq: (campo: string, valor: unknown) => {
+              filtros.push([campo, valor]);
+              return consulta;
+            },
+            // `deleted_at IS NULL`: o produto do dublê nunca foi excluído.
+            is: (campo: string, valor: unknown) => {
               filtros.push([campo, valor]);
               return consulta;
             },
@@ -723,7 +729,11 @@ describe("salvar estoque confere a versão lida na abertura", () => {
     await salvar();
     expect(banco.produto.preco_venda).toBe(60);
     expect(banco.produto.estoque).toBe(9);
-    expect(banco.filtros[0]).toEqual([["id", "p-1"]]);
+    // Sem conferência de versão: só o id e o "não excluído".
+    expect(banco.filtros[0]).toEqual([
+      ["id", "p-1"],
+      ["deleted_at", null],
+    ]);
     expect(banco.toastError).not.toHaveBeenCalled();
   });
 
