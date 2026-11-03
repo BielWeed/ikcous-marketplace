@@ -69,6 +69,19 @@ function coletarMarkdown(dir, recursivo = true) {
 const SO_DIGITOS = /^\d+$/;
 
 /**
+ * `decodeURI` lança `URIError` num `%` solto (`100%.md`). Um link assim não pode
+ * derrubar o job com stack trace: vale o texto literal, e se o arquivo não
+ * existir o link cai na lista de quebrados como qualquer outro.
+ */
+function decodificar(destino) {
+  try {
+    return decodeURI(destino);
+  } catch {
+    return destino;
+  }
+}
+
+/**
  * `arquivo.ts:13` e `arquivo.ts:13:5` viram `arquivo.ts`.
  *
  * Feito com split em vez de `/:\d+(:\d+)?$/` porque o eslint marca aquela
@@ -104,7 +117,7 @@ for (const arquivo of arquivos) {
 
     // Corta a âncora, desfaz o %20 de caminho com espaço e tira o sufixo
     // `:linha` / `:linha:coluna` das referências de código.
-    const semAncora = tirarSufixoDeLinha(decodeURI(destino.split("#")[0]));
+    const semAncora = tirarSufixoDeLinha(decodificar(destino.split("#")[0]));
     if (!semAncora) continue;
 
     verificados++;
