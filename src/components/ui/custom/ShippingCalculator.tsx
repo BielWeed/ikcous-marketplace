@@ -138,6 +138,24 @@ function gravarNoCache(chave: string, valor: string): void {
   }
 }
 
+/** Leitura e remoção também: armazenamento bloqueado (SecurityError) vira
+ * "sem cache", e a cotação segue pela rede. */
+function lerDoCache(chave: string): string | null {
+  try {
+    return localStorage.getItem(chave);
+  } catch {
+    return null;
+  }
+}
+
+function removerDoCache(chave: string): void {
+  try {
+    localStorage.removeItem(chave);
+  } catch {
+    // Sem armazenamento não há cache velho para apagar.
+  }
+}
+
 interface EnvelopeDeCacheDeFrete {
   /**
    * `contextoDaLojaParaFrete` (src/contexts/ContextoDoFreteDaLoja.ts) da loja
@@ -337,6 +355,23 @@ interface ShippingCalculatorProps {
   modoResumo?: boolean;
 }
 
+/**
+ * Frase do prazo. Prazo 0 (release 1.5.7, EMENDA R1-4): "no mesmo dia" —
+ * nunca "até 0 dia útil". O frete grátis por produto (`free-shipping-promo`,
+ * provider "free") sai da edge com `deliveryDays: 3` FIXO, sem transportadora
+ * cotada: o preço é real, o prazo não — sem frase de prazo.
+ */
+function prazoDaOpcao(option: ShippingOption): string | null {
+  if (option.id === "free-shipping-promo" || option.provider === "free") {
+    return null;
+  }
+  return option.deliveryDays === 0
+    ? "Entrega no mesmo dia"
+    : `Entrega em até ${option.deliveryDays} ${
+        option.deliveryDays > 1 ? "dias úteis" : "dia útil"
+      }`;
+}
+
 function soDigitosDoCep(valor: string | null | undefined): string {
   return (valor ?? "").replace(/\D/g, "");
 }
@@ -519,7 +554,7 @@ export function ShippingCalculator({
       // isso a entrada precisa ser do carrinho de agora e estar dentro da
       // validade — ver `cotacaoCacheadaQueAindaServe`. A chave é o CEP (o
       // destino) e o envelope carrega a assinatura do carrinho (os itens).
-      const cached = localStorage.getItem(cacheKey);
+      const cached = lerDoCache(cacheKey);
       if (cached) {
         try {
           const envelopeCru = JSON.parse(cached) as unknown;
@@ -738,7 +773,7 @@ export function ShippingCalculator({
     // Invalida CEDO (síncrono), não dentro do timer: o cache é indexado pelo
     // CEP e uma cotação que começasse na janela do debounce não pode achar o
     // preço da quantidade anterior.
-    localStorage.removeItem(chaveDoCacheDeFrete(alvo));
+    removerDoCache(chaveDoCacheDeFrete(alvo));
     setLoading(true);
     setError(null);
 
@@ -785,7 +820,7 @@ export function ShippingCalculator({
     forcarNovaCotacaoVistoRef.current = forcarNovaCotacaoEm;
     const alvo = cepAdotadoRef.current;
     if (!alvo || cart.length === 0) return;
-    localStorage.removeItem(chaveDoCacheDeFrete(alvo));
+    removerDoCache(chaveDoCacheDeFrete(alvo));
     calculateShipping(alvo, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forcarNovaCotacaoEm]);
@@ -1133,13 +1168,7 @@ export function ShippingCalculator({
               <span
                 className={`mt-0.5 block leading-none ${tamanhoApoio} ${corFraca}`}
               >
-                {/* Prazo 0 (release 1.5.7, EMENDA R1-4): "no mesmo dia" —
-                    nunca "até 0 dia útil", um prazo que não existe. */}
-                {option.deliveryDays === 0
-                  ? "Entrega no mesmo dia"
-                  : `Entrega em até ${option.deliveryDays} ${
-                      option.deliveryDays > 1 ? "dias úteis" : "dia útil"
-                    }`}
+                {prazoDaOpcao(option)}
               </span>
             )}
             {/* Contrato §5: a mesma nota vale para toda nacional NÃO
@@ -1291,11 +1320,7 @@ export function ShippingCalculator({
               ? option.pickupAddress
                 ? `Retire em: ${option.pickupAddress}`
                 : "Aguarde a confirmação da loja para retirar"
-              : option.deliveryDays === 0
-                ? "Entrega no mesmo dia"
-                : `Entrega em até ${option.deliveryDays} ${
-                    option.deliveryDays > 1 ? "dias úteis" : "dia útil"
-                  }`}
+              : prazoDaOpcao(option)}
           </span>
         </div>
         {retirada || precoExibido === 0 ? (

@@ -378,7 +378,7 @@ export function ModalVarianteGrade({
     setAplicarEstoque("");
     setAplicarPreco("");
     toast.info(
-      `Aplicado para as ${linhas.length} linhas — ajuste aí embaixo só a que precisar.`,
+      `Aplicado para ${linhas.length === 1 ? "a 1 linha" : `as ${linhas.length} linhas`} — ajuste aí embaixo só a que precisar.`,
     );
   };
 
@@ -599,7 +599,7 @@ export function ModalVarianteGrade({
                 <p className="mt-1 text-[11px] font-bold uppercase leading-none tracking-wider text-zinc-500">
                   {passo === 1
                     ? "grade de variações — passo 1 de 2"
-                    : `grade de variações — passo 2 de 2 · ${linhas.length} combinações novas`}
+                    : `grade de variações — passo 2 de 2 · ${linhas.length} ${linhas.length === 1 ? "combinação nova" : "combinações novas"}`}
                 </p>
               </div>
             </div>

@@ -693,8 +693,8 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                             isOutOfStock
                               ? "bg-zinc-100 border-zinc-200 text-zinc-500"
                               : isLowStock
-                                ? "bg-red-50 border-red-100 text-red-650"
-                                : "bg-green-50 border-green-100 text-green-650",
+                                ? "bg-red-50 border-red-100 text-red-600"
+                                : "bg-green-50 border-green-100 text-green-600",
                           )}
                         >
                           {isOutOfStock ? (

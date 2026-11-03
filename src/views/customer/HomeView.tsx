@@ -359,7 +359,7 @@ export const HomeView = React.memo(function HomeView({
   // mesma classe de mentira que o PR #225 já tinha tirado do carrinho, só
   // que esta sobreviveu escondida atrás do `cidadeLoja ? ... : ...` (a Tarefa
   // 6 só olhou as linhas 217/222/224 e ninguém reparou nesta). O frete grátis
-  // fica: ele é de verdade, configurável, com valor mínimo.
+  // fica quando está ligado (`freeShippingMin > 0`, a régua do cartão da home).
   //
   // A cidade do TÍTULO afirma onde a loja ESTÁ e não muda com a cobertura;
   // a do OG afirma PARA ONDE ela entrega ("frete grátis em <cidade>") — por
@@ -367,7 +367,9 @@ export const HomeView = React.memo(function HomeView({
   // preenchida mostra a frase sem cidade em vez de restringir a entrega à
   // sede.
   const cidadeDeEntrega =
-    config.shippingCoverage === "local" ? cidadeLoja : undefined;
+    config.shippingCoverage === "local" && config.freeShippingMin > 0
+      ? cidadeLoja
+      : undefined;
   const homeDescription = cidadeDeEntrega
     ? `Descubra produtos exclusivos com frete grátis em ${cidadeDeEntrega}.`
     : "Descubra produtos exclusivos.";
@@ -406,11 +408,6 @@ export const HomeView = React.memo(function HomeView({
       "@type": "WebSite",
       name: nomeDaLoja,
       url: globalThis.location.origin,
-      potentialAction: {
-        "@type": "SearchAction",
-        target: `${globalThis.location.origin}/?search={search_term_string}`,
-        "query-input": "required name=search_term_string",
-      },
     },
     jsonLdId: "home-structured-data",
   });

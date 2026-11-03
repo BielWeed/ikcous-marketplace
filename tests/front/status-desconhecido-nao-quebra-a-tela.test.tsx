@@ -272,7 +272,9 @@ describe("AdminOrdersView — botão de WhatsApp não quebra com status desconhe
     // A metade que impede o conserto de virar o outro defeito: nada de
     // valor técnico cru na mensagem que a lojista manda para a cliente.
     expect(mensagem).not.toContain("new");
-    expect(mensagem).toContain("Novo Pedido");
+    // Caça 03/11: a mensagem usa o nome da etapa como a CLIENTE lê no app
+    // ("Recebido"), não o rótulo do painel da lojista ("Novo Pedido").
+    expect(mensagem).toContain("Recebido");
   });
 
   it("controle: status conhecido (shipping) continua com o rótulo dele na mensagem", async () => {
@@ -292,6 +294,6 @@ describe("AdminOrdersView — botão de WhatsApp não quebra com status desconhe
     });
 
     const mensagem = mensagemEnviada();
-    expect(mensagem).toContain("Em Trânsito");
+    expect(mensagem).toContain("A caminho");
   });
 });

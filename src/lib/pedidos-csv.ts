@@ -1,6 +1,6 @@
 import {
   rotuloDoPagamento,
-  statusConfig,
+  rotuloDoStatus,
 } from "@/components/admin/orders/OrderStatusBadge";
 import {
   type FormaDoPedido,
@@ -16,7 +16,6 @@ export function rotuloDaFormaDePagamento(pedido: FormaDoPedido): string {
   return rotuloDaFormaDoPedido(pedido);
 }
 
-const statusPorChave = new Map(Object.entries(statusConfig));
 // "Canal" entra NO FIM, nunca no meio: quem já tem planilha salva com
 // fórmula por posição de coluna perde tudo se as colunas antigas andarem
 // de lugar (lote C4, item 15).
@@ -44,9 +43,9 @@ export function pedidosParaCsv(pedidos: Pedido[]): string {
       dataLocal(pedido.createdAt),
       escaparCampo(pedido.customer?.name || "Cliente"),
       escaparCampo(pedido.customer?.whatsapp ?? ""),
-      escaparCampo(
-        (statusPorChave.get(pedido.status) ?? statusConfig.pending).label,
-      ),
+      // Mesmo rótulo das telas: retirada na loja pronta é "Pronto para
+      // retirar", não "Em Trânsito" (achado b13).
+      escaparCampo(rotuloDoStatus(pedido.status, pedido.retiradaNaLoja)),
       escaparCampo(rotuloDaFormaDePagamento(pedido)),
       escaparCampo(
         rotuloDoPagamento(pedido.paymentStatus, pedido.status, pedido.canal),

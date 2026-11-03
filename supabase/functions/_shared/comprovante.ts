@@ -219,15 +219,21 @@ export async function variacoesDosItens(
  * `reducao` (so' o desconto): o valor sai como "− R$ 30,00". E' TEXTO de
  * e-mail — o numero gravado no pedido nao muda — e vale o modulo: desconto
  * gravado negativo nao vira "− −".
+ *
+ * `mostrarZero` (so' o Total): o zero GRAVADO aparece como "R$ 0,00" — a
+ * conta do cupom de 100% precisa terminar em algum lugar. Ausente (null/
+ * undefined) ou nao numerico continua sumindo.
  */
 function linhaDeValor(
   rotulo: string,
   valor: unknown,
   forte = false,
   reducao = false,
+  mostrarZero = false,
 ): string {
   const numero = Number(valor ?? 0);
-  if (!Number.isFinite(numero) || numero === 0) return "";
+  if (!Number.isFinite(numero)) return "";
+  if (numero === 0 && !(mostrarZero && valor != null && valor !== "")) return "";
   const peso = forte ? "700" : "400";
   const cor = forte ? "#18181b" : "#52525b";
   const texto = reducao
@@ -323,7 +329,7 @@ export function htmlDoPedido(dados: {
         ${linhaDeValor("Subtotal", pedido?.subtotal)}
         ${linhaDeValor("Entrega", frete)}
         ${linhaDeValor("Desconto", pedido?.discount, false, true)}
-        ${linhaDeValor("Total", total, true)}
+        ${linhaDeValor("Total", total, true, false, true)}
       </table>
 
       ${bloco("Forma de pagamento", pagamento)}

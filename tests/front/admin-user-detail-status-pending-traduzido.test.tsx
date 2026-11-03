@@ -154,6 +154,6 @@ describe("AdminUserDetailView — o extrato traduz 'pending', igual aos outros s
     await abrirFicha();
 
     expect(texto()).toContain("Cancelado");
-    expect(texto()).toContain("Entregue");
+    expect(texto()).toContain("Finalizado");
   });
 });

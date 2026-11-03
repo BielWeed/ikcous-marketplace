@@ -58,18 +58,29 @@ export type QAStatsResult =
 const QUESTIONS_CACHE_KEY_PREFIX = "ikcous_questions_cache_";
 const memoryQuestionsCache = new Map<string, Question[]>();
 
-const getQuestionsCache = (productId: string): Question[] | null => {
-  if (memoryQuestionsCache.has(productId)) {
-    return memoryQuestionsCache.get(productId)!;
+// d5 (caça 03/11/2026): o cache é separado por VISÃO. A logada guarda `userId`
+// e o selo "Comprador"; a pública nasce sem os dois de propósito. Com uma chave
+// só, o visitante recebia — antes da rede, ou sem rede — o que a pessoa que
+// acabou de sair tinha na tela. A chave antiga (sem sufixo) deixa de ser lida.
+const chaveDoCache = (productId: string, anonimo: boolean) =>
+  `${productId}:${anonimo ? "pub" : "auth"}`;
+
+const getQuestionsCache = (
+  productId: string,
+  anonimo: boolean,
+): Question[] | null => {
+  const chave = chaveDoCache(productId, anonimo);
+  if (memoryQuestionsCache.has(chave)) {
+    return memoryQuestionsCache.get(chave)!;
   }
   if (typeof window !== "undefined") {
     try {
       const stored = localStorage.getItem(
-        `${QUESTIONS_CACHE_KEY_PREFIX}${productId}`,
+        `${QUESTIONS_CACHE_KEY_PREFIX}${chave}`,
       );
       if (stored) {
         const parsed = JSON.parse(stored);
-        memoryQuestionsCache.set(productId, parsed);
+        memoryQuestionsCache.set(chave, parsed);
         return parsed;
       }
     } catch (e) {
@@ -79,12 +90,17 @@ const getQuestionsCache = (productId: string): Question[] | null => {
   return null;
 };
 
-const updateQuestionsCache = (productId: string, newQuestions: Question[]) => {
-  memoryQuestionsCache.set(productId, newQuestions);
+const updateQuestionsCache = (
+  productId: string,
+  anonimo: boolean,
+  newQuestions: Question[],
+) => {
+  const chave = chaveDoCache(productId, anonimo);
+  memoryQuestionsCache.set(chave, newQuestions);
   if (typeof window !== "undefined") {
     try {
       localStorage.setItem(
-        `${QUESTIONS_CACHE_KEY_PREFIX}${productId}`,
+        `${QUESTIONS_CACHE_KEY_PREFIX}${chave}`,
         JSON.stringify(newQuestions),
       );
     } catch (e) {
@@ -147,7 +163,7 @@ export function useQuestions() {
       questionIdsDoProdutoRef.current = null;
 
       // 1. SWR Cache Sync
-      const cached = getQuestionsCache(productId);
+      const cached = getQuestionsCache(productId, !user);
       if (cached) {
         setQuestions(cached);
         setLoading(false);
@@ -255,7 +271,7 @@ export function useQuestions() {
             setQuestions(formattedQuestions);
             setError(null);
           }
-          updateQuestionsCache(productId, formattedQuestions);
+          updateQuestionsCache(productId, true, formattedQuestions);
           return;
         }
 
@@ -373,7 +389,7 @@ export function useQuestions() {
           setQuestions(formattedQuestions);
           setError(null);
         }
-        updateQuestionsCache(productId, formattedQuestions);
+        updateQuestionsCache(productId, false, formattedQuestions);
       } catch (error: any) {
         if (
           error?.name === "AbortError" ||

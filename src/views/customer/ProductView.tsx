@@ -44,6 +44,7 @@ import {
 import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
+import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { textoEstoqueBaixo, textoSoRestam } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
@@ -489,6 +490,15 @@ export const ProductView = React.memo(function ProductView({
   // a mesma que vai ao carrinho e que o servidor cobra. O ajuste de uma outra
   // escolha nunca é cobrado, então também não é mostrado.
   const currentPrice = precoDaEscolha(product, selectedVariantObjects);
+  // Antes de a cliente escolher, a página diz o MESMO que o card da vitrine
+  // (menor preço à venda, "A partir de", "De" e % OFF só se forem reais), em
+  // vez do preço base. Escolhida a variação, vale `currentPrice`.
+  const vitrine =
+    selectedVariantObjects.length === 0 ? precoDeVitrine(product) : null;
+  const precoExibido = vitrine ? vitrine.preco : currentPrice;
+  const originalExibido = vitrine
+    ? vitrine.precoOriginal
+    : product.originalPrice;
   // Estoque que a cliente pode levar com UMA escolha de variações (o menor
   // entre as escolhidas; sem escolha, o do produto). Separado de `currentStock`
   // para a troca de variação conferir a escolha NOVA antes de renderizar.
@@ -611,10 +621,8 @@ export const ProductView = React.memo(function ProductView({
   // ESCOLHIDA que deixou de existir.
   const variacaoIndisponivel = escolhaIndisponivel;
   const isOutOfStock = currentStock <= 0 || variacaoIndisponivel;
-  const discount = product.originalPrice
-    ? Math.round(
-        ((product.originalPrice - currentPrice) / product.originalPrice) * 100,
-      )
+  const discount = originalExibido
+    ? Math.round(((originalExibido - precoExibido) / originalExibido) * 100)
     : 0;
 
   // ProductCard-520 + T3 (23/09): `product.freeShipping` só é verdade
@@ -718,11 +726,11 @@ export const ProductView = React.memo(function ProductView({
           (_marcador, qual: string) => {
             const tipo = qual.toLowerCase();
             if (tipo === "nome") return product.name;
-            if (tipo === "preco") return reais(currentPrice);
+            if (tipo === "preco") return reais(precoExibido);
             return globalThis.location.href;
           },
         )
-      : `${config.shareText} ${product.name} por ${reais(currentPrice)}`;
+      : `${config.shareText} ${product.name} por ${reais(precoExibido)}`;
     const shareData = {
       title: product.name,
       text: textoDoShare,
@@ -804,7 +812,7 @@ export const ProductView = React.memo(function ProductView({
       "@type": "Offer",
       url: globalThis.location.href,
       priceCurrency: "BRL",
-      price: product.price,
+      price: precoExibido,
       availability: isOutOfStock
         ? "https://schema.org/OutOfStock"
         : "https://schema.org/InStock",
@@ -986,13 +994,18 @@ export const ProductView = React.memo(function ProductView({
                 "lg:mb-6 lg:gap-3",
               )}
             >
-              {product.originalPrice && product.originalPrice > currentPrice ? (
+              {originalExibido && originalExibido > precoExibido ? (
                 <div
                   className={cn(
                     "flex items-baseline gap-2",
                     "lg:gap-3 lg:flex-wrap",
                   )}
                 >
+                  {vitrine?.aPartirDe && (
+                    <span className="text-xs font-bold uppercase text-zinc-500">
+                      A partir de
+                    </span>
+                  )}
                   <span
                     className={cn(
                       "text-[30px] font-bold tracking-tight",
@@ -1000,7 +1013,7 @@ export const ProductView = React.memo(function ProductView({
                       "lg:text-4xl",
                     )}
                   >
-                    {reais(currentPrice)}
+                    {reais(precoExibido)}
                   </span>
                   <span
                     className={cn(
@@ -1008,18 +1021,25 @@ export const ProductView = React.memo(function ProductView({
                       "lg:text-sm",
                     )}
                   >
-                    De: {reais(product.originalPrice)}
+                    De: {reais(originalExibido)}
                   </span>
                 </div>
               ) : (
-                <span
-                  className={cn(
-                    "text-[30px] font-bold tracking-tight text-foreground",
-                    "lg:text-4xl",
+                <div className="flex items-baseline gap-2">
+                  {vitrine?.aPartirDe && (
+                    <span className="text-xs font-bold uppercase text-zinc-500">
+                      A partir de
+                    </span>
                   )}
-                >
-                  {reais(currentPrice)}
-                </span>
+                  <span
+                    className={cn(
+                      "text-[30px] font-bold tracking-tight text-foreground",
+                      "lg:text-4xl",
+                    )}
+                  >
+                    {reais(precoExibido)}
+                  </span>
+                </div>
               )}
 
               <div
@@ -1648,20 +1668,20 @@ export const ProductView = React.memo(function ProductView({
           <SheetDescription>
             Escolha as opções para adicionar ao carrinho.
           </SheetDescription>
-          {!!product.originalPrice && product.originalPrice > currentPrice && (
+          {!!originalExibido && originalExibido > precoExibido && (
             <span className="text-sm text-muted-foreground line-through">
-              De: {reais(product.originalPrice)}
+              De: {reais(originalExibido)}
             </span>
           )}
           <p
             className={cn(
               "text-xl font-bold",
-              product.originalPrice && product.originalPrice > currentPrice
+              originalExibido && originalExibido > precoExibido
                 ? CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO
                 : "text-foreground",
             )}
           >
-            {reais(currentPrice)}
+            {reais(precoExibido)}
           </p>
           <FileirasDeVariacao
             fileiras={fileiras}
@@ -1729,13 +1749,12 @@ export const ProductView = React.memo(function ProductView({
                   <p
                     className={cn(
                       "break-words text-lg font-bold leading-tight",
-                      product.originalPrice &&
-                        product.originalPrice > currentPrice
+                      originalExibido && originalExibido > precoExibido
                         ? CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO
                         : "text-foreground",
                     )}
                   >
-                    {reais(currentPrice)}
+                    {reais(precoExibido)}
                   </p>
                   {fileiras.length > 0 && (
                     <>

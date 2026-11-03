@@ -9,7 +9,10 @@ import { DinheiroNasContas } from "@/components/admin/inicio/DinheiroNasContas";
 import { EstadoDaConexao } from "@/components/admin/inicio/EstadoDaConexao";
 import { HojeNaLoja } from "@/components/admin/inicio/HojeNaLoja";
 import { NumerosDoMes } from "@/components/admin/inicio/NumerosDoMes";
-import { ParaFazer } from "@/components/admin/inicio/ParaFazer";
+import {
+  ParaFazer,
+  lojaSemVendasAinda,
+} from "@/components/admin/inicio/ParaFazer";
 import { PerfilDaLoja } from "@/components/admin/inicio/PerfilDaLoja";
 import { SerieDe14Dias } from "@/components/admin/inicio/SerieDe14Dias";
 import {
@@ -333,8 +336,8 @@ export const AdminDashboardView = memo(function AdminDashboardView({
         {/* A ordem de leitura do celular também ordena as três colunas do computador. */}
         <div className="space-y-6 lg:grid lg:grid-cols-3 lg:items-start lg:gap-6 lg:space-y-0">
           <div className="min-w-0 space-y-6">
-            {painel?.mes.pedidos === 0 &&
-            painel.hoje.pedidos === 0 &&
+            {painel &&
+            lojaSemVendasAinda(painel) &&
             painel.pendencias.pedidosParaPreparar === 0 ? (
               <LocalErrorBoundary>
                 <SecaoLojaProntaEEstoqueBaixo

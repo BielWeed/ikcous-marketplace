@@ -108,7 +108,7 @@ const respostaDaLoja = {
 };
 const falhaNasRespostas = { message: "Não foi possível consultar answers" };
 const chaveDoCache = (productId: string) =>
-  `ikcous_questions_cache_${productId}`;
+  `ikcous_questions_cache_${productId}:pub`;
 
 describe("useQuestions — falha nas respostas não publica uma lista incompleta", () => {
   let raiz: Root;

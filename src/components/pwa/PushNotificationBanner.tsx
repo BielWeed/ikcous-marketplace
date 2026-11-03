@@ -36,8 +36,13 @@ export function PushNotificationBanner({
   const haCamadaAberta = useHaCamadaAberta();
 
   useEffect(() => {
-    // 1. Suporte do navegador obrigatorio
-    if (!isSupported) return;
+    // 1. Suporte do navegador obrigatorio. O hook comeca dizendo "tem suporte"
+    // e pode DESMARCAR depois (service worker que nao liga no prazo): o convite
+    // que ja subiu tem de sair, senao o toque cai num subscribe() mudo.
+    if (!isSupported) {
+      setIsVisible(false);
+      return;
+    }
 
     // 2. Nao exibir em telas administrativas ou sucesso de pedido
     if (currentView.startsWith("admin") || currentView === "order-success") {

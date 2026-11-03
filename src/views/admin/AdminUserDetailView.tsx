@@ -1,5 +1,6 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { rotuloDoStatus } from "@/components/admin/orders/OrderStatusBadge";
 import {
   type AvaliacaoDaFicha,
   type PerguntaDaFicha,
@@ -472,7 +473,10 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, retiradaNaLoja?: boolean) => {
+    // Os rótulos vêm de `rotuloDoStatus` (o vocabulário da lista de Pedidos,
+    // com "Pronto para retirar" na retirada); aqui ficam só as cores.
+    const rotulo = rotuloDoStatus(status as Order["status"], retiradaNaLoja);
     switch (status) {
       case "new":
         return (
@@ -505,7 +509,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             variant="secondary"
             className="border-yellow-200 bg-yellow-100 text-yellow-800"
           >
-            Processando
+            {rotulo}
           </Badge>
         );
       case "shipping":
@@ -514,7 +518,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             variant="secondary"
             className="border-blue-200 bg-blue-100 text-blue-800"
           >
-            Enviado
+            {rotulo}
           </Badge>
         );
       case "delivered":
@@ -523,7 +527,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             variant="secondary"
             className="border-green-200 bg-green-100 text-green-800"
           >
-            Entregue
+            {rotulo}
           </Badge>
         );
       case "cancelled":
@@ -1081,7 +1085,10 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                     className="col-start-2 row-start-2 p-0 text-right sm:p-2 sm:py-4 sm:text-left"
                                   >
                                     <div className="origin-right scale-90 sm:origin-left">
-                                      {getStatusBadge(order.status)}
+                                      {getStatusBadge(
+                                        order.status,
+                                        order.retiradaNaLoja,
+                                      )}
                                     </div>
                                   </TableCell>
                                   <TableCell

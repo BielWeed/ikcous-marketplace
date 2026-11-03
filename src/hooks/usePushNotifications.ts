@@ -127,8 +127,9 @@ function mensagemDaOrigem(origin: PushSubscribeErrorOrigin): string {
       return "Não conseguimos confirmar que sua inscrição foi salva. Tente novamente em instantes.";
     case "limite_de_aparelhos":
       // O banco recusa o 11º aparelho com aviso ligado (20261396000000);
-      // repetir não adianta, só desligar em outro aparelho.
-      return "Você já tem 10 aparelhos recebendo avisos nesta conta. Desative em um deles para ligar neste.";
+      // repetir não adianta. O app NÃO tem botão de desligar aviso: o que
+      // apaga a inscrição de um aparelho é o "Sair" da conta nele.
+      return "Você já tem 10 aparelhos recebendo avisos nesta conta. Toque em Sair num aparelho que você não usa mais e tente de novo.";
     case "sem_conta":
       // A checagem que gera esta origem roda ANTES de
       // `Notification.requestPermission()` — de propósito: se lançasse
@@ -182,6 +183,33 @@ function ehInstrucaoDePermissao(error: unknown): boolean {
 // `duration` passado no PRÓPRIO `toast.error` vence o do `<Toaster>` (sonner:
 // `toast.duration || duration do Toaster`), então o resto do app não muda.
 const DURACAO_DA_INSTRUCAO_DE_PERMISSAO_MS = 8000;
+
+// `navigator.serviceWorker.ready` NUNCA assenta (nem resolve, nem rejeita)
+// enquanto não há service worker ativo: instalação que falhou na primeira
+// visita, registro bloqueado. Sem prazo, a sonda ficava em "sondando" e o
+// `subscribe()` pendurado depois de a permissão já ter sido gasta.
+const PRAZO_DO_SERVICE_WORKER_MS = 10_000;
+
+function esperarServiceWorker(
+  pronto: Promise<ServiceWorkerRegistration>,
+): Promise<ServiceWorkerRegistration> {
+  return new Promise((resolver, rejeitar) => {
+    const relogio = setTimeout(
+      () => rejeitar(new Error("prazo do service worker")),
+      PRAZO_DO_SERVICE_WORKER_MS,
+    );
+    pronto.then(
+      (registro) => {
+        clearTimeout(relogio);
+        resolver(registro);
+      },
+      (erro) => {
+        clearTimeout(relogio);
+        rejeitar(erro);
+      },
+    );
+  });
+}
 
 // O guard de suporte precisa olhar as TRÊS peças que este hook toca — o
 // container (`navigator.serviceWorker.ready`), `Notification` (permissão) e
@@ -246,36 +274,7 @@ export function usePushNotifications() {
     // `setState` delas cairiam num componente que já não existe.
     let desmontado = false;
 
-    const checkSupport = async () => {
-      setSondado(false);
-      const supported = suporteRealDePush();
-      setIsSupported(supported);
-
-      if (!supported) {
-        setSondado(true);
-        return;
-      }
-
-      setPermission(Notification.permission);
-
-      let registration: ServiceWorkerRegistration;
-      try {
-        registration = await navigator.serviceWorker.ready;
-      } catch {
-        // `ready` rejeita quando o contexto não consegue entregar um
-        // registro de Service Worker (headless com SW bloqueado, política
-        // do navegador). Sem inscrição alcançável, push NÃO funciona aqui:
-        // manter `isSupported === true` seria falso positivo — o banner
-        // ofereceria um botão que só saberia falhar. Desmarcar o suporte é
-        // o estado honesto, e a próxima montagem sonda de novo.
-        if (!desmontado) {
-          setIsSupported(false);
-          setSubscription(null);
-          setSondado(true);
-        }
-        return;
-      }
-
+    const lerInscricao = async (registration: ServiceWorkerRegistration) => {
       try {
         const sub = await registration.pushManager.getSubscription();
         if (!desmontado) {
@@ -295,6 +294,52 @@ export function usePushNotifications() {
       }
     };
 
+    const checkSupport = async () => {
+      setSondado(false);
+      const supported = suporteRealDePush();
+      setIsSupported(supported);
+
+      if (!supported) {
+        setSondado(true);
+        return;
+      }
+
+      setPermission(Notification.permission);
+
+      let registration: ServiceWorkerRegistration;
+      let pronto: Promise<ServiceWorkerRegistration> | undefined;
+      try {
+        pronto = Promise.resolve(navigator.serviceWorker.ready);
+        registration = await esperarServiceWorker(pronto);
+      } catch {
+        // `ready` rejeita quando o contexto não consegue entregar um
+        // registro de Service Worker (headless com SW bloqueado, política
+        // do navegador). Sem inscrição alcançável, push NÃO funciona aqui:
+        // manter `isSupported === true` seria falso positivo — o banner
+        // ofereceria um botão que só saberia falhar. Desmarcar o suporte é
+        // o estado honesto, e a próxima montagem sonda de novo.
+        if (!desmontado) {
+          setIsSupported(false);
+          setSubscription(null);
+          setSondado(true);
+        }
+        // Estourou o prazo mas o serviço pode só estar instalando devagar
+        // (rede ruim): se ele ligar depois, a sonda recomeça. `ready` que
+        // rejeitou não tem o que recomeçar (o 2º argumento engole).
+        void pronto?.then(
+          (pronta) => {
+            if (desmontado) return;
+            setIsSupported(true);
+            return lerInscricao(pronta);
+          },
+          () => undefined,
+        );
+        return;
+      }
+
+      await lerInscricao(registration);
+    };
+
     checkSupport();
     return () => {
       desmontado = true;
@@ -305,6 +350,27 @@ export function usePushNotifications() {
     // novo em vez de confiar no estado de antes. Sem troca de conta isto roda
     // uma vez, como sempre rodou.
   }, [userId]);
+
+  // A permissão só era lida na sonda: quem bloqueou, liberou nas configurações
+  // do aparelho e voltou ao app (ainda aberto) ficava com "denied" e sem o
+  // convite até fechar e reabrir. Ao voltar à tela, relê. Forma funcional: não
+  // depende do valor de `permission` capturado (e não renderiza se é igual).
+  useEffect(() => {
+    if (!isSupported) return;
+    const reler = () => {
+      if (document.visibilityState === "hidden") return;
+      if (typeof Notification === "undefined") return;
+      setPermission((atual) =>
+        atual === Notification.permission ? atual : Notification.permission,
+      );
+    };
+    document.addEventListener("visibilitychange", reler);
+    window.addEventListener("focus", reler);
+    return () => {
+      document.removeEventListener("visibilitychange", reler);
+      window.removeEventListener("focus", reler);
+    };
+  }, [isSupported]);
 
   // A inscrição do NAVEGADOR pode ser de OUTRA conta: quem estava logado antes
   // a gravou no nome dele e o navegador a mantém depois do Sair (celular da
@@ -429,7 +495,17 @@ export function usePushNotifications() {
         );
       }
 
-      const registration = await navigator.serviceWorker.ready;
+      // Com prazo: sem service worker ativo `ready` não assenta nunca, e a
+      // pessoa ficaria com o botão em "Ativando..." sem aviso nenhum. Família
+      // "navegador", como qualquer outra falha de infraestrutura do aparelho.
+      let registration: ServiceWorkerRegistration;
+      try {
+        registration = await esperarServiceWorker(
+          Promise.resolve(navigator.serviceWorker.ready),
+        );
+      } catch (esperaFalhou) {
+        throw new PushSubscribeError("navegador", esperaFalhou);
+      }
 
       // `pushManager.subscribe()` com a MESMA `applicationServerKey` não
       // cria nada quando já existe uma inscrição viva — a spec (W3C Push

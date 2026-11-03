@@ -266,7 +266,7 @@ describe("usePushNotifications — falha ao salvar no banco desfaz a inscrição
     ).rejects.toThrow();
 
     expect(toast.error).toHaveBeenCalledWith(
-      "Você já tem 10 aparelhos recebendo avisos nesta conta. Desative em um deles para ligar neste.",
+      "Você já tem 10 aparelhos recebendo avisos nesta conta. Toque em Sair num aparelho que você não usa mais e tente de novo.",
     );
     expect(toast.error).not.toHaveBeenCalledWith(MENSAGEM_BANCO);
     expect(subscricaoFalsa.unsubscribe).toHaveBeenCalledTimes(1);

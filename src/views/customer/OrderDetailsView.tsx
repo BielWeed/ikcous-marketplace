@@ -433,7 +433,7 @@ export function OrderDetailsView({
     reenviarComprovante,
   } = useOrders(true, false);
   const { config } = useStore();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [order, setOrder] = useState<Order | null>(null);
   // Qual cor/tamanho cada linha do pedido e (o pedido so guarda o id).
   const rotulosDasVariacoes = useRotulosDasVariacoes(order?.items);
@@ -961,7 +961,9 @@ export function OrderDetailsView({
   const devolucaoDoProduto = useDevolucaoCliente(orderId, podeUsarDevolucao);
   const [pedindoDevolucao, setPedindoDevolucao] = useState(false);
 
-  if (loading) {
+  // Sessão ainda sendo verificada e nenhum pedido na tela: não é "sem conta"
+  // ainda, e o convite de login abaixo não pode piscar para quem está logada.
+  if (loading || (authLoading && !user && !order)) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center space-y-4 bg-zinc-50/30">
         <div className="size-12 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />
@@ -973,6 +975,11 @@ export function OrderDetailsView({
   }
 
   if (!order) {
+    // Sem conta aberta (sessão vencida, aviso aberto em outro aparelho) o
+    // pedido não é "inexistente": a lista dele só aparece para quem entrou.
+    // O convidado que rastreou por código já achou o pedido no sessionStorage
+    // acima e nem chega aqui. Falha de rede continua sendo falha de rede.
+    const semConta = !user && !ordersLoadError;
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-white p-8 text-center">
         <div className="mb-6 flex size-20 items-center justify-center rounded-[2.5rem] bg-zinc-100">
@@ -981,13 +988,25 @@ export function OrderDetailsView({
         <h2 className="mb-2 text-xl font-black tracking-tighter text-zinc-900">
           {ordersLoadError
             ? "Não conseguimos carregar agora"
-            : "Pedido não encontrado"}
+            : semConta
+              ? "Entre na conta para ver este pedido"
+              : "Pedido não encontrado"}
         </h2>
         <p className="mb-8 text-sm font-medium leading-relaxed text-zinc-500">
           {ordersLoadError
             ? "Verifique sua conexão e tente de novo."
-            : "Não conseguimos localizar as informações deste pedido em nosso sistema."}
+            : semConta
+              ? "Seu pedido está salvo na sua conta. Entre para ver os detalhes."
+              : "Não conseguimos localizar as informações deste pedido em nosso sistema."}
         </p>
+        {semConta && (
+          <button
+            onClick={() => onNavigate("auth")}
+            className="mb-3 h-12 rounded-2xl bg-zinc-900 px-8 text-sm font-bold text-white transition-all active:scale-95"
+          >
+            Entrar
+          </button>
+        )}
         {ordersLoadError && (
           <button
             onClick={() => {

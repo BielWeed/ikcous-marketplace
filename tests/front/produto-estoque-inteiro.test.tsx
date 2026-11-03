@@ -178,9 +178,18 @@ describe("Produto — estoque inteiro", () => {
     });
   }
 
-  it.each(["1.5", "1,5", "-1", "1e2"])(
+  const NEGATIVO = "O estoque deve ser maior ou igual a zero.";
+  const NAO_INTEIRO =
+    "Use um número inteiro: 0, 1, 2… (sem vírgula nem sinal de menos).";
+
+  it.each([
+    ["1.5", NAO_INTEIRO, NEGATIVO],
+    ["1,5", NAO_INTEIRO, NEGATIVO],
+    ["1e2", NAO_INTEIRO, NEGATIVO],
+    ["-1", NEGATIVO, NAO_INTEIRO],
+  ])(
     "recusa estoque %s antes de gravar, inclusive em submit direto",
-    async (valor) => {
+    async (valor, frase, fraseErrada) => {
       await montar();
       const campo = document.getElementById(
         "product-stock",
@@ -189,9 +198,10 @@ describe("Produto — estoque inteiro", () => {
       if (valor.includes(",")) campo.type = "text";
       await digitarCampo("product-stock", valor);
 
-      expect(hospedeiro.textContent).toContain(
-        "O estoque deve ser maior ou igual a zero.",
-      );
+      // Decimal pede número inteiro; negativo pede zero ou mais. Cada um com
+      // a sua frase: dizer "maior ou igual a zero" para 2,5 parece erro.
+      expect(hospedeiro.textContent).toContain(frase);
+      expect(hospedeiro.textContent).not.toContain(fraseErrada);
       expect(botao("Salvar").disabled).toBe(true);
       await act(async () => {
         botao("Salvar").click();

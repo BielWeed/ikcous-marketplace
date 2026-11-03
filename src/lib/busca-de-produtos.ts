@@ -87,9 +87,19 @@ function formasDaPalavra(palavra: string): FormaDaPalavra[] {
   return [...formas.values()];
 }
 
-/** Para cada palavra digitada, as formas aceitas (qualquer uma serve). */
+/**
+ * Para cada palavra digitada, as formas aceitas (qualquer uma serve). A
+ * pontuacao das PONTAS da palavra nao conta ("camiseta." e "camiseta," -- o
+ * ponto do iPhone na barra de espaco dupla); a do meio fica ("3.5").
+ */
 export function palavrasDaBusca(busca: string): FormaDaPalavra[][] {
-  return normalizeText(busca).split(/\s+/).filter(Boolean).map(formasDaPalavra);
+  const palavras = normalizeText(busca).split(/\s+/).filter(Boolean);
+  const aparadas = palavras
+    .map((palavra) => palavra.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ""))
+    .filter(Boolean);
+  // Sem nenhuma letra ou numero (so emoji ou simbolo) a busca segue como antes:
+  // acha so quem tem aquilo no nome, nunca vira "lista inteira".
+  return (aparadas.length > 0 ? aparadas : palavras).map(formasDaPalavra);
 }
 
 const ehLetraOuNumero = (caractere: string | undefined): boolean =>

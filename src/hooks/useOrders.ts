@@ -2791,7 +2791,11 @@ export function useOrders(
           return [newOrder, ...prev];
         });
         if (!onRealtimeEventRef.current) {
-          toast.info(`Novo pedido recebido! #${numeroDoPedido(newOrder.id)}`);
+          // Id estável por pedido: o canal é compartilhado entre telas e cada
+          // instância avisaria uma vez; com o mesmo id o sonner funde num só.
+          toast.info(`Novo pedido recebido! #${numeroDoPedido(newOrder.id)}`, {
+            id: `pedido-novo-${newOrder.id}`,
+          });
         }
       }
     },

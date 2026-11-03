@@ -172,7 +172,7 @@ describe("AdminOrdersView — WhatsApp de status chama a loja pelo nome que a lo
     await act(async () => botao?.click());
     expect(abrirWhatsapp).toHaveBeenCalledExactlyOnceWith(
       `https://wa.me/5534999999999?text=${encodeURIComponent(
-        "Olá Cliente Teste!\n\nSeu pedido #-WHATS foi atualizado.\nStatus: Novo Pedido\n\nObrigado por comprar na Loja Teste!",
+        "Olá Cliente Teste!\n\nSeu pedido #-WHATS foi atualizado.\nStatus: Recebido\n\nObrigado por comprar na Loja Teste!",
       )}`,
     );
   });

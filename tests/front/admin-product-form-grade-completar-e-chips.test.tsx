@@ -294,7 +294,18 @@ describe("AdminProductFormView — completar a grade e reaproveitar valores", ()
     expect(linhasDaGrade()).toEqual(["Branca / GG"]);
     expect(
       document.querySelector('[data-testid="contador-da-grade"]')?.textContent,
-    ).toContain("Só as 1 novas — as 2 existentes não são tocadas");
+    ).toContain("Só 1 nova — as 2 existentes não são tocadas");
+    expect(document.body.textContent).not.toMatch(/1 novas/);
+    // Cabeçalho do passo 2 e aviso de "Aplicar para todas" no singular.
+    expect(document.body.textContent).toContain("1 combinação nova");
+    expect(document.body.textContent).not.toMatch(/1 combinações/);
+    await act(async () => {
+      clicarObrigatorio("Aplicar para todas");
+    });
+    expect(toastInfo).toHaveBeenCalledTimes(1);
+    const avisoDoAplicar = String(toastInfo.mock.calls[0][0]);
+    expect(avisoDoAplicar).toContain("Aplicado para a 1 linha");
+    expect(avisoDoAplicar).not.toMatch(/1 linhas/);
 
     await act(async () => {
       clicarObrigatorio("Salvar 1 variação");

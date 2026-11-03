@@ -655,6 +655,8 @@ export function useReviews() {
         if (!apagadas?.length) throw new Error("Nenhuma avaliação apagada.");
 
         setAdminReviews((prev) => prev.filter((r) => r.id !== reviewId));
+        // O sino do painel conta avaliações sem resposta e não tem canal.
+        window.dispatchEvent(new Event("admin:recontar-avisos"));
         toast.success("Avaliação removida.");
         return true;
       } catch (error) {
@@ -736,6 +738,7 @@ export function useReviews() {
           ),
         );
 
+        window.dispatchEvent(new Event("admin:recontar-avisos"));
         toast.success("Resposta enviada com sucesso!");
         return true;
       } catch (error) {

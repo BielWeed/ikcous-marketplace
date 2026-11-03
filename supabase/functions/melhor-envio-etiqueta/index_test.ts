@@ -3642,6 +3642,122 @@ Deno.test("gerar_devolucao_reversa - pedido sem e-mail ou sem celular do cliente
     })
 })
 
+// ── e-mail da CONTA (achado d3) ─────────────────────────────────────────────
+// O pedido de quem tem conta nasce SEM `customer_data.email` (as RPCs de
+// criação não gravam e-mail): o e-mail de quem devolve mora na conta
+// (`user_id`). Mesma ordem do comprovante: o do pedido vence, senão o da conta.
+
+const USER_ID_CLIENTE = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+const EMAIL_DA_CONTA = 'conta-da-cliente@exemplo.com.br'
+
+/** Pedido real de cliente logada: sem a chave `email` no customer_data. */
+function pedidoDeContaSemEmail(): any {
+    const { email: _semEmail, ...customerDataSemEmail } = PEDIDO_DA_DEVOLUCAO.customer_data
+    return { ...PEDIDO_DA_DEVOLUCAO, user_id: USER_ID_CLIENTE, customer_data: customerDataSemEmail }
+}
+
+/** Anexa ao banco falso o `auth.admin.getUserById` e anota colunas lidas do pedido. */
+function comContaFalsa(
+    supa: ReturnType<typeof clienteFalsoDevolucao>,
+    conta: { resposta?: any; lanca?: boolean } = {},
+) {
+    const consultas: string[] = []
+    const colunasDoPedido: string[] = []
+    ;(supa.cliente as any).auth = {
+        admin: {
+            getUserById(id: string) {
+                consultas.push(id)
+                if (conta.lanca) return Promise.reject(new Error('falha de rede simulada'))
+                return Promise.resolve(conta.resposta ?? { data: { user: { id, email: EMAIL_DA_CONTA } }, error: null })
+            },
+        },
+    }
+    const fromOriginal = (supa.cliente as any).from.bind(supa.cliente)
+    ;(supa.cliente as any).from = (tabela: string) => {
+        const api = fromOriginal(tabela)
+        const selectOriginal = api.select
+        api.select = (colunas?: string) => {
+            if (tabela === 'marketplace_orders') colunasDoPedido.push(String(colunas))
+            return selectOriginal(colunas)
+        }
+        return api
+    }
+    return { consultas, colunasDoPedido }
+}
+
+Deno.test("gerar_devolucao_reversa - cliente logada, pedido SEM e-mail: usa o e-mail da conta no POST /cart/reverse (achado d3)", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ pedido: pedidoDeContaSemEmail() })
+        const conta = comContaFalsa(supa)
+        const me = buscarMeReversoFalso()
+        const { res, corpo } = await rodarReversa(supa, me)
+        assertEquals(res.status, 200)
+        assertEquals(corpo.ok, true)
+        assertEquals(me.registro.corpoReverso.new_sender_mail, EMAIL_DA_CONTA)
+        assertEquals(conta.consultas, [USER_ID_CLIENTE])
+        // a function tem de PEDIR o user_id ao banco (o fake devolve o que lhe mandam)
+        assertEquals(conta.colunasDoPedido.some((c) => c.split(',').map((x) => x.trim()).includes('user_id') && c.includes('shipping_label_id')), true)
+        // o e-mail da conta não sai na resposta ao painel
+        assertEquals(JSON.stringify(corpo).includes(EMAIL_DA_CONTA), false)
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - e-mail do PEDIDO vence o da conta e a conta nem é consultada", async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteFalsoDevolucao({ pedido: { ...PEDIDO_DA_DEVOLUCAO, user_id: USER_ID_CLIENTE } })
+        const conta = comContaFalsa(supa)
+        const me = buscarMeReversoFalso()
+        const { res } = await rodarReversa(supa, me)
+        assertEquals(res.status, 200)
+        assertEquals(me.registro.corpoReverso.new_sender_mail, EMAIL_CLIENTE)
+        assertEquals(conta.consultas, [])
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - sem e-mail em lugar nenhum (convidado, conta sem e-mail ou e-mail inválido): 400 antes de reservar, sem chamar o ME", async () => {
+    await comEnvAdmin(async () => {
+        const convidado = { ...pedidoDeContaSemEmail(), user_id: undefined }
+        const casos: Array<{ nome: string; pedido: any; conta?: any; consultas: number }> = [
+            { nome: 'convidado (sem user_id)', pedido: convidado, consultas: 0 },
+            { nome: 'user_id nulo', pedido: { ...pedidoDeContaSemEmail(), user_id: null }, consultas: 0 },
+            { nome: 'conta sem e-mail', pedido: pedidoDeContaSemEmail(), conta: { data: { user: { id: USER_ID_CLIENTE, email: null } }, error: null }, consultas: 1 },
+            { nome: 'conta com e-mail inválido', pedido: pedidoDeContaSemEmail(), conta: { data: { user: { id: USER_ID_CLIENTE, email: 'isto-nao-e-email' } }, error: null }, consultas: 1 },
+            { nome: 'conta que não existe mais', pedido: pedidoDeContaSemEmail(), conta: { data: { user: null }, error: { status: 404, message: 'User not found' } }, consultas: 1 },
+        ]
+        for (const caso of casos) {
+            const supa = clienteFalsoDevolucao({ pedido: caso.pedido })
+            const conta = comContaFalsa(supa, { resposta: caso.conta })
+            const me = buscarMeReversoFalso()
+            const { res, corpo } = await rodarReversa(supa, me)
+            assertEquals(res.status, 400, caso.nome)
+            assertEquals(String(corpo.error).includes('e-mail'), true, caso.nome)
+            assertEquals(conta.consultas.length, caso.consultas, caso.nome)
+            assertEquals(supa.registro.reservas.length, 0, caso.nome)
+            assertEquals(me.registro.chamadas, [], caso.nome)
+        }
+    })
+})
+
+Deno.test("gerar_devolucao_reversa - consulta da conta FALHA (rede/auth fora): não diz que falta e-mail, devolve erro de tentar de novo e não reserva", async () => {
+    await comEnvAdmin(async () => {
+        const falhas: any[] = [
+            { lanca: true },
+            { resposta: { data: { user: null }, error: { status: 500, message: 'Database error' } } },
+        ]
+        for (const falha of falhas) {
+            const supa = clienteFalsoDevolucao({ pedido: pedidoDeContaSemEmail() })
+            comContaFalsa(supa, falha)
+            const me = buscarMeReversoFalso()
+            const { res, corpo } = await rodarReversa(supa, me)
+            assertEquals(res.status, 503)
+            assertEquals(String(corpo.error).includes('Tente'), true)
+            assertEquals(String(corpo.error).includes('Use envio pelo cliente'), false)
+            assertEquals(supa.registro.reservas.length, 0)
+            assertEquals(me.registro.chamadas, [])
+        }
+    })
+})
+
 // ── caminho feliz ───────────────────────────────────────────────────────────
 
 Deno.test("gerar_devolucao_reversa - caminho feliz: reserva, POST /cart/reverse com o corpo da doc, vincula, paga, gera, lê o código, grava e registra o evento", async () => {

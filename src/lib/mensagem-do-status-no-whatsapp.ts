@@ -2,11 +2,41 @@ import {
   linkDeRastreio,
   normalizarCodigoDeRastreio,
 } from "@/lib/link-de-rastreio";
+import {
+  ROTULOS_DAS_ETAPAS,
+  ROTULO_RETIRADA_PRONTA,
+} from "@/lib/rotulos-das-etapas";
+
+/**
+ * O nome da etapa como a CLIENTE lê no app, para o que a lojista manda a ela
+ * (aviso push e WhatsApp). O rótulo do painel ("Em Trânsito", "Finalizado",
+ * "Novo Pedido") é da lojista e fica no toast dela. Status que o type não
+ * conhece (o histórico 'new') cai em "Recebido", nunca no valor cru do banco.
+ */
+export function rotuloDoStatusParaACliente(
+  status: string,
+  retiradaNaLoja?: boolean | null,
+): string {
+  switch (status) {
+    case "processing":
+      return ROTULOS_DAS_ETAPAS.separado;
+    case "shipping":
+      return retiradaNaLoja
+        ? ROTULO_RETIRADA_PRONTA
+        : ROTULOS_DAS_ETAPAS.aCaminho;
+    case "delivered":
+      return ROTULOS_DAS_ETAPAS.entregue;
+    case "cancelled":
+      return "Cancelado";
+    default:
+      return ROTULOS_DAS_ETAPAS.recebido;
+  }
+}
 
 interface DadosDaMensagem {
   nomeDoCliente: string;
   numeroDoPedido: string;
-  /** Rótulo do status como a lojista o vê (já com "Pronto para retirar"). */
+  /** Rótulo do status como a cliente o lê (`rotuloDoStatusParaACliente`). */
   rotuloDoStatus: string;
   nomeDaLoja: string;
   status: string;

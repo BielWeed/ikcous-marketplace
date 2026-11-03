@@ -468,6 +468,8 @@ function camposDoFormularioDoProduto(product: Product): ProductFormFields {
 // teto continua valendo, mas a tela não mostra esse número (onda J): são
 // duas mensagens, uma para o que não é inteiro e outra para o grande demais.
 const ESTOQUE_MINIMO_MAXIMO = 2147483647;
+const MENSAGEM_ESTOQUE_ACIMA_DO_TETO =
+  "O estoque total não pode passar de 10.000 unidades. Reduza o estoque do produto ou das variações.";
 const MENSAGEM_ESTOQUE_MINIMO_INVALIDO =
   "Use um número inteiro: 0, 1, 2… (sem vírgula nem sinal de menos).";
 const MENSAGEM_ESTOQUE_MINIMO_GRANDE_DEMAIS =
@@ -512,6 +514,16 @@ const numeroOpcionalDoCampo = (val: string): number | undefined => {
   if (!limpo) return undefined;
   const numero = Number.parseFloat(limpo);
   return Number.isNaN(numero) ? undefined : numero;
+};
+
+/**
+ * Peso e medidas: abaixo de zero não passa em silêncio (o `Math.max(0, ...)` do
+ * payload é só a rede). Lê pelo MESMO caminho que o payload, então o que seria
+ * trocado por 0 sem aviso é exatamente o que o campo acusa. Zero e vazio valem.
+ */
+const erroDaMedida = (texto: string): string => {
+  const numero = numeroOpcionalDoCampo(texto);
+  return numero !== undefined && numero < 0 ? "Não pode ser negativo." : "";
 };
 
 /**
@@ -1845,16 +1857,23 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         !Number.isSafeInteger(stock) ||
         stock < 0)
     ) {
-      setStockError("O estoque deve ser maior ou igual a zero.");
+      // Cada causa com a sua frase: dizer "maior ou igual a zero" para 2,5
+      // parece erro da tela. Negativo pede zero ou mais; grande demais diz o
+      // teto; o resto (decimal, expoente) pede número inteiro.
+      setStockError(
+        stock < 0
+          ? "O estoque deve ser maior ou igual a zero."
+          : Number.isInteger(stock) && stock > ESTOQUE_MAXIMO_DO_PRODUTO
+            ? MENSAGEM_ESTOQUE_ACIMA_DO_TETO
+            : MENSAGEM_ESTOQUE_MINIMO_INVALIDO,
+      );
     } else if (
       stock > ESTOQUE_MAXIMO_DO_PRODUTO &&
       (!productId || estoqueDoProdutoFoiMexido(formData, initialData))
     ) {
       // O mesmo teto do salvar. Produto que já está acima dele e cujo estoque
       // ela não mexeu segue editável: só o estoque NOVO esbarra no teto.
-      setStockError(
-        "O estoque total não pode passar de 10.000 unidades. Reduza o estoque do produto ou das variações.",
-      );
+      setStockError(MENSAGEM_ESTOQUE_ACIMA_DO_TETO);
     } else {
       setStockError("");
     }
@@ -2576,6 +2595,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       return "product-original-price";
     if (costError && !costError.startsWith("Aviso"))
       return "product-cost-price";
+    if (pesoError) return "product-weight";
+    if (larguraError) return "product-width";
+    if (alturaError) return "product-height";
+    if (comprimentoError) return "product-length";
     if (skuError) return "product-sku";
     if (codigoBarrasError) return "product-codigo-barras";
     if (estoqueMinimoError) return "product-estoque-minimo";
@@ -3135,6 +3158,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // o erro some no instante em que o texto volta a ser válido.
   const estoqueMinimoError = lerEstoqueMinimo(formData.estoqueMinimo).erro;
 
+  // Peso e medidas negativos: só valem com entrega nacional (com entrega local
+  // a seção nem aparece, e um valor antigo escondido não pode travar o salvar).
+  const pesoError = isLocalShipping ? "" : erroDaMedida(formData.weightKg);
+  const larguraError = isLocalShipping ? "" : erroDaMedida(formData.widthCm);
+  const alturaError = isLocalShipping ? "" : erroDaMedida(formData.heightCm);
+  const comprimentoError = isLocalShipping
+    ? ""
+    : erroDaMedida(formData.lengthCm);
+  const medidaComErro = !!(
+    pesoError ||
+    larguraError ||
+    alturaError ||
+    comprimentoError
+  );
+
   const isValid =
     formData.name &&
     formData.description &&
@@ -3150,6 +3188,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     !originalPriceError &&
     !promocaoSemPrecoOriginal &&
     !estoqueMinimoError &&
+    !medidaComErro &&
     !stockError;
 
   // UMA conta para o botão e para o aviso (se fossem duas, divergiriam: um
@@ -3164,6 +3203,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     (costError && !costError.startsWith("Aviso")) ||
     originalPriceError ||
     estoqueMinimoError ||
+    medidaComErro ||
     stockError
   );
   const motivoDoBloqueio: string | null = isOffline
@@ -3333,6 +3373,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // junto do campo, no básico, e entra à parte na frase "há avisos" do topo.
   const avisoDeCusto =
     costError && !costError.startsWith("Aviso") ? costError : "";
+  const avisoDasMedidas = medidaComErro ? "Há medida negativa" : "";
   const avisoDosCodigos = skuError || codigoBarrasError || estoqueMinimoError;
 
   // O "?" do guia de fotos: mora na linha da dica quando o cartão está vazio e
@@ -3897,6 +3938,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           {avisoDeCusto ||
           originalPriceError ||
           avisoDosCodigos ||
+          avisoDasMedidas ||
           priceError ||
           stockError
             ? " · há avisos"
@@ -5203,6 +5245,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               <div className="col-span-2">
                 <SecaoDoProduto
                   titulo="Peso e medidas"
+                  aviso={avisoDasMedidas}
                   resumo={
                     formData.weightKg &&
                     formData.widthCm &&
@@ -5232,8 +5275,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           onFlush={(val) =>
                             setFormData((prev) => ({ ...prev, weightKg: val }))
                           }
+                          aria-invalid={pesoError ? true : undefined}
+                          aria-describedby={
+                            pesoError ? "product-weight-erro" : undefined
+                          }
                           className="w-full rounded-lg border border-admin-border bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
                         />
+                        {pesoError && (
+                          <span
+                            id="product-weight-erro"
+                            className="ml-1 block text-[11px] font-bold text-red-500"
+                          >
+                            {pesoError}
+                          </span>
+                        )}
                         {pesoEmGramasTalvez && (
                           <span
                             id="product-weight-aviso"
@@ -5263,8 +5318,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           onFlush={(val) =>
                             setFormData((prev) => ({ ...prev, widthCm: val }))
                           }
+                          aria-invalid={larguraError ? true : undefined}
+                          aria-describedby={
+                            larguraError ? "product-width-erro" : undefined
+                          }
                           className="w-full rounded-lg border border-admin-border bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
                         />
+                        {larguraError && (
+                          <span
+                            id="product-width-erro"
+                            className="ml-1 block text-[11px] font-bold text-red-500"
+                          >
+                            {larguraError}
+                          </span>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <label
@@ -5283,8 +5350,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           onFlush={(val) =>
                             setFormData((prev) => ({ ...prev, heightCm: val }))
                           }
+                          aria-invalid={alturaError ? true : undefined}
+                          aria-describedby={
+                            alturaError ? "product-height-erro" : undefined
+                          }
                           className="w-full rounded-lg border border-admin-border bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
                         />
+                        {alturaError && (
+                          <span
+                            id="product-height-erro"
+                            className="ml-1 block text-[11px] font-bold text-red-500"
+                          >
+                            {alturaError}
+                          </span>
+                        )}
                       </div>
                       <div className="space-y-1">
                         <label
@@ -5303,8 +5382,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           onFlush={(val) =>
                             setFormData((prev) => ({ ...prev, lengthCm: val }))
                           }
+                          aria-invalid={comprimentoError ? true : undefined}
+                          aria-describedby={
+                            comprimentoError ? "product-length-erro" : undefined
+                          }
                           className="w-full rounded-lg border border-admin-border bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
                         />
+                        {comprimentoError && (
+                          <span
+                            id="product-length-erro"
+                            className="ml-1 block text-[11px] font-bold text-red-500"
+                          >
+                            {comprimentoError}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <span className="block text-[11px] font-medium leading-normal text-zinc-400">

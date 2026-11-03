@@ -190,8 +190,10 @@ export function LinhasDaGrade({
         className="ml-1 text-[11px] font-black uppercase tracking-wider text-emerald-500"
         data-testid="contador-da-grade"
       >
-        Só as {linhas.length} novas — as {quantasExistentes} existentes não são
-        tocadas
+        Só {linhas.length === 1 ? "1 nova" : `as ${linhas.length} novas`} —{" "}
+        {quantasExistentes === 1
+          ? "a 1 existente não é tocada"
+          : `as ${quantasExistentes} existentes não são tocadas`}
       </p>
 
       <div
