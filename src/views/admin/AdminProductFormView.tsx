@@ -3106,7 +3106,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         );
         setFormData(
           formComVariacoes({ ...formData, stock, variants }, [
-            ...variacoesDoRascunhoComEstoqueDoBanco(formData.variants, variants),
+            ...variacoesDoRascunhoComEstoqueDoBanco(
+              formData.variants,
+              variants,
+            ),
             ...criadasEmOutroAparelho,
           ]),
         );

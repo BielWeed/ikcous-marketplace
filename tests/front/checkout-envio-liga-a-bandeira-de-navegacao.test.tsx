@@ -1,4 +1,11 @@
 // @vitest-environment jsdom
+
+import { haEnvioDoCheckoutEmCurso } from "@/lib/envio-do-checkout-em-curso";
+import { act } from "react";
+import { type Root, createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { pararABuscaDeCep } from "./duble-busca-de-cep";
+
 //
 // Caça 8 (03/11/2026) — o lado do CHECKOUT da trava de navegação durante o
 // envio. Enquanto o pedido está a caminho (até 30 s em rede lenta), a tela
@@ -12,11 +19,6 @@
 // confirmação ("Ver meus pedidos", "Início") ficaria barrada pelo roteador.
 //
 // Harness copiado de checkout-pedido-chave-voltar-e-sessao.test.tsx (convidada).
-import { act } from "react";
-import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { haEnvioDoCheckoutEmCurso } from "@/lib/envio-do-checkout-em-curso";
-import { pararABuscaDeCep } from "./duble-busca-de-cep";
 
 const { estado, produto } = vi.hoisted(() => {
   const produto = {

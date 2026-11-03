@@ -12,13 +12,13 @@ import { aoIniciarAposAtualizacao } from "@/components/pwa/ao-iniciar-apos-atual
 import { applyThemeColor, branding } from "@/config/branding";
 import { esquecerChaveDoPedidoDe } from "@/lib/chave-do-pedido";
 import {
-  AVISO_ENVIO_DO_CHECKOUT_EM_CURSO,
-  haEnvioDoCheckoutEmCurso,
-} from "@/lib/envio-do-checkout-em-curso";
-import {
   destinoPosLogin,
   painelSemContaPedeEntrada,
 } from "@/lib/destinoPosLogin";
+import {
+  AVISO_ENVIO_DO_CHECKOUT_EM_CURSO,
+  haEnvioDoCheckoutEmCurso,
+} from "@/lib/envio-do-checkout-em-curso";
 import {
   PRAZO_DA_SESSAO_NA_RECARGA_MS,
   esquecerPedidoPendenteDoCheckout,

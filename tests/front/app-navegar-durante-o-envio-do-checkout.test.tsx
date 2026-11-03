@@ -1,4 +1,13 @@
 // @vitest-environment jsdom
+
+import {
+  haEnvioDoCheckoutEmCurso,
+  marcarEnvioDoCheckout,
+} from "@/lib/envio-do-checkout-em-curso";
+import { act } from "react";
+import { type Root, createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 //
 // Caça 8 (03/11/2026) — tocar numa aba da barra de baixo com o pedido NO AR.
 //
@@ -20,13 +29,6 @@
 // O CheckoutView é um dublê mínimo que expõe só o contrato com o roteador: a
 // bandeira e um botão "Início" da confirmação (navega por onNavigate, como a
 // tela de sucesso de verdade).
-import { act } from "react";
-import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  haEnvioDoCheckoutEmCurso,
-  marcarEnvioDoCheckout,
-} from "@/lib/envio-do-checkout-em-curso";
 
 const { toastInfo } = vi.hoisted(() => ({ toastInfo: vi.fn() }));
 

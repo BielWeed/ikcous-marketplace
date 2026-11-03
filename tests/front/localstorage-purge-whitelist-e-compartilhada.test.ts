@@ -61,9 +61,7 @@ describe("chaveSobreviveAPurga — critério ÚNICO usado pela Nuclear Purge e p
   });
 
   it("a lista usa o prefixo de verdade da chave da compra, sem divergir do módulo dela", () => {
-    expect(LOCALSTORAGE_PURGE_WHITELIST).toContain(
-      PREFIXO_DA_CHAVE_DO_PEDIDO,
-    );
+    expect(LOCALSTORAGE_PURGE_WHITELIST).toContain(PREFIXO_DA_CHAVE_DO_PEDIDO);
     expect(
       chaveSobreviveAPurga(`${PREFIXO_DA_CHAVE_DO_PEDIDO}qualquer-conta`),
     ).toBe(true);
