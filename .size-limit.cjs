@@ -130,7 +130,9 @@ module.exports = [
     // 31/10/2026 (mesma regra): 598 -> 599 kB na 1.5.106 (banner do topo sem o esmaecer de
     // 300 ms; painel de banners revalida a lista completa a cada abertura). Base 597,84 kB
     // (1.5.105); os dois itens somam +0,22 kB e medem 598,06 kB (64 B acima do teto).
-    limit: "599 kB",
+    // 02/11/2026 (mesma regra): 599 -> 600 kB na 1.5.111 (correcoes da caca de bugs e a nota da
+    // versao, que vai dentro do pacote). Base 598,99 kB; medem 599,1 kB no CI (103 B acima do teto).
+    limit: "600 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
