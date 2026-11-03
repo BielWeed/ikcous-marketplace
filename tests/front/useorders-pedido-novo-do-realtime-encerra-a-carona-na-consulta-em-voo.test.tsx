@@ -175,11 +175,7 @@ describe("useOrders — pedido novo do realtime encerra a carona na consulta em 
     raiz = createRoot(hospedeiro);
     await act(async () => {
       raiz.render(
-        <>
-          {nomes.map((nome) => (
-            <Alvo key={nome} nome={nome} usuario={usuario} />
-          ))}
-        </>,
+        nomes.map((nome) => <Alvo key={nome} nome={nome} usuario={usuario} />),
       );
     });
   }

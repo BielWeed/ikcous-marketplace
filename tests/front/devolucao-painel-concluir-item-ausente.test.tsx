@@ -225,6 +225,16 @@ describe("AcoesDaDevolucao — valor sugerido e itens que não voltaram", () => 
 
     expect(campoValor()?.value).toBe("120,00");
     expect(aviso()?.textContent).toContain("frete");
+    // Com item que não veio, a tela não afirma que o pedido voltou inteiro.
+    expect(document.body.textContent).not.toContain("o pedido voltou inteiro");
+  });
+
+  it("com todos os itens recebidos, a linha do frete diz que o pedido voltou inteiro", async () => {
+    await abrirConclusao(detalheDe({ valor_frete_ida: 20 }));
+    await clicar(condicaoDe("Camiseta azul", "Nova, sem uso"));
+    await clicar(condicaoDe("Calça preta", "Nova, sem uso"));
+
+    expect(document.body.textContent).toContain("o pedido voltou inteiro");
   });
 
   it("item 'Danificada': o valor NÃO muda, mas o aviso aparece", async () => {

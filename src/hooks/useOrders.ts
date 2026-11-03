@@ -1844,9 +1844,17 @@ type ConsultaDoClienteEmVoo = {
   resposta: Promise<RespostaDosPedidosDoCliente>;
   controlador: AbortController;
   esperando: number;
+  iniciadaEm: number;
 };
 
 const consultasDoClienteEmVoo = new Map<string, ConsultaDoClienteEmVoo>();
+
+// Passado este tempo, uma consulta ainda pendente não recebe mais carona: com
+// duas ou mais instâncias, cada recarga em silêncio desiste da anterior e
+// entra de novo, então o contador de quem espera nunca chega a zero e uma
+// requisição pendurada (rede móvel caindo) ficaria valendo para sempre. A
+// recarga seguinte abre a consulta dela.
+const LIMITE_DE_CARONA_NA_CONSULTA_MS = 15_000;
 
 function consultarPedidosDoCliente(
   userId: string,
@@ -1854,6 +1862,12 @@ function consultarPedidosDoCliente(
   compartilhar: boolean,
 ): Promise<RespostaDosPedidosDoCliente> {
   let consulta = compartilhar ? consultasDoClienteEmVoo.get(userId) : undefined;
+  if (
+    consulta &&
+    Date.now() - consulta.iniciadaEm > LIMITE_DE_CARONA_NA_CONSULTA_MS
+  ) {
+    consulta = undefined;
+  }
   if (!consulta) {
     const controlador = new AbortController();
     const nova: ConsultaDoClienteEmVoo = {
@@ -1862,6 +1876,7 @@ function consultarPedidosDoCliente(
       ),
       controlador,
       esperando: 0,
+      iniciadaEm: Date.now(),
     };
     const liberar = () => {
       if (consultasDoClienteEmVoo.get(userId) === nova) {

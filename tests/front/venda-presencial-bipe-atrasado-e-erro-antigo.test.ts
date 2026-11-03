@@ -18,6 +18,7 @@ import {
   estadoInicialDaVenda,
   reducerDaVenda,
 } from "@/hooks/useVendaPresencial";
+import { MENSAGEM_DE_REDE_DA_VENDA } from "@/lib/erro-da-venda-presencial";
 
 const estadoBase = (): EstadoDaVenda =>
   estadoInicialDaVenda(() => "chave-fixa-de-teste");
@@ -221,5 +222,71 @@ describe("erro de recusa antiga some quando o cupom muda de verdade", () => {
       etapa: "cliente",
     });
     expect(depois.erro).toBe("Estoque insuficiente");
+  });
+});
+
+describe("o erro de rede (a venda pode ter sido gravada) sobrevive a mexer no cupom", () => {
+  function estadoComErroDeRede(): EstadoDaVenda {
+    const comItem: EstadoDaVenda = { ...estadoBase(), itens: [itemComTres()] };
+    return reducerDaVenda(comItem, {
+      tipo: "envio_falhou",
+      mensagem: MENSAGEM_DE_REDE_DA_VENDA,
+    });
+  }
+
+  it("diminuir a quantidade mantém o erro e a mesma chave de idempotência", () => {
+    const antes = estadoComErroDeRede();
+    const depois = reducerDaVenda(antes, {
+      tipo: "quantidade_alterada",
+      chave: antes.itens[0].chave,
+      delta: -1,
+    });
+    expect(depois.itens[0].quantidade).toBe(2);
+    expect(depois.erro).toBe(MENSAGEM_DE_REDE_DA_VENDA);
+    expect(depois.chaveDeIdempotencia).toBe(antes.chaveDeIdempotencia);
+  });
+
+  it("tirar a última unidade mantém o erro", () => {
+    const base = estadoComErroDeRede();
+    const antes: EstadoDaVenda = {
+      ...base,
+      itens: [{ ...base.itens[0], quantidade: 1 }],
+    };
+    const depois = reducerDaVenda(antes, {
+      tipo: "quantidade_alterada",
+      chave: antes.itens[0].chave,
+      delta: -1,
+    });
+    expect(depois.itens).toHaveLength(0);
+    expect(depois.erro).toBe(MENSAGEM_DE_REDE_DA_VENDA);
+  });
+
+  it("remover o item mantém o erro", () => {
+    const antes = estadoComErroDeRede();
+    const depois = reducerDaVenda(antes, {
+      tipo: "item_removido",
+      chave: antes.itens[0].chave,
+    });
+    expect(depois.itens).toHaveLength(0);
+    expect(depois.erro).toBe(MENSAGEM_DE_REDE_DA_VENDA);
+  });
+
+  it("o fluxo do revisor: rede cai, volta ao cupom, tira uma unidade, o aviso continua", () => {
+    let estado = estadoComErroDeRede();
+    estado = reducerDaVenda(estado, { tipo: "etapa_pedida", etapa: "cupom" });
+    estado = reducerDaVenda(estado, {
+      tipo: "quantidade_alterada",
+      chave: estado.itens[0].chave,
+      delta: -1,
+    });
+    expect(estado.erro).toBe(MENSAGEM_DE_REDE_DA_VENDA);
+  });
+
+  it("o cancelamento de venda ainda limpa o erro (a venda sai de cena de propósito)", () => {
+    const depois = reducerDaVenda(estadoComErroDeRede(), {
+      tipo: "cupom_limpo",
+      novaChave: "chave-nova-de-teste",
+    });
+    expect(depois.erro).toBeNull();
   });
 });

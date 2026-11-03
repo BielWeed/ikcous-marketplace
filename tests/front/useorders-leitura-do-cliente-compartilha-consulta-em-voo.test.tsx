@@ -173,11 +173,9 @@ describe("useOrders — a leitura dos pedidos da cliente é compartilhada entre 
   async function renderizar(instancias: Array<[string, string]>) {
     await act(async () => {
       raiz.render(
-        <>
-          {instancias.map(([nome, usuario]) => (
-            <Alvo key={nome} nome={nome} usuario={usuario} />
-          ))}
-        </>,
+        instancias.map(([nome, usuario]) => (
+          <Alvo key={nome} nome={nome} usuario={usuario} />
+        )),
       );
     });
   }
@@ -436,5 +434,37 @@ describe("useOrders — a leitura dos pedidos da cliente é compartilhada entre 
     expect(rede.pedidos).toHaveLength(2);
     expect(rede.pedidos[0].sinal!.aborted).toBe(true);
     expect(rede.pedidos[1].sinal!.aborted).toBe(false);
+  });
+
+  it("consulta pendurada por mais de 15 s não recebe mais carona: a recarga seguinte abre a sua", async () => {
+    // Só o relógio é falso; os timers do React continuam reais.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    await montar([
+      ["a", "cliente-A"],
+      ["b", "cliente-A"],
+    ]);
+    // Duas rodadas de recarga em silêncio por instância: o contador de quem
+    // espera nunca chega a zero, então a primeira consulta nunca era trocada.
+    await act(async () => {
+      void exposto.instancias.get("a")!.fetchUserOrders(true);
+      void exposto.instancias.get("b")!.fetchUserOrders(true);
+    });
+    await act(async () => {
+      void exposto.instancias.get("a")!.fetchUserOrders(true);
+      void exposto.instancias.get("b")!.fetchUserOrders(true);
+    });
+    expect(rede.pedidos).toHaveLength(1);
+
+    vi.setSystemTime(Date.now() + 16_000);
+    await act(async () => {
+      void exposto.instancias.get("a")!.fetchUserOrders(true);
+    });
+    expect(rede.pedidos).toHaveLength(2);
+
+    // A nova consulta volta a ser dividida entre as instâncias.
+    await act(async () => {
+      void exposto.instancias.get("b")!.fetchUserOrders(true);
+    });
+    expect(rede.pedidos).toHaveLength(2);
   });
 });
