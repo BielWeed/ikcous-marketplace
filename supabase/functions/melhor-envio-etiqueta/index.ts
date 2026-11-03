@@ -1803,7 +1803,7 @@ async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
     // 3. O pedido: a reversa do ME exige o envio de IDA feito por ele.
     const { data: pedido, error: pedidoError } = await supabase
         .from('marketplace_orders')
-        .select('id, shipping_label_id, customer_data')
+        .select('id, shipping_label_id, customer_data, user_id')
         .eq('id', devolucao.order_id)
         .maybeSingle()
     if (pedidoError || !pedido) {
@@ -1817,12 +1817,42 @@ async function gerarDevolucaoReversa(ctx: ContextoReversa): Promise<Response> {
     // 4. Contato de quem devolve — o ME exige os dois (os Correios mandam o
     //    código por e-mail). Nunca vão para log.
     const customerData = pedido.customer_data || {}
-    const emailCliente = typeof customerData.email === 'string' ? customerData.email.trim() : ''
+    const emailValido = (texto: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(texto)
+    let emailCliente = typeof customerData.email === 'string' ? customerData.email.trim() : ''
     let celularCliente = String(customerData.whatsapp || customerData.phone || '').replace(/\D/g, '')
     if ((celularCliente.length === 12 || celularCliente.length === 13) && celularCliente.startsWith('55')) {
         celularCliente = celularCliente.slice(2)
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailCliente)) {
+    // Achado d3: o pedido de quem tem conta nasce SEM `customer_data.email`
+    // (as RPCs de criação não o gravam) — o e-mail dela mora na conta. Mesma
+    // ordem do comprovante: o do pedido vence; a conta só é consultada se
+    // faltar (service role, dono explícito = o `user_id` do próprio pedido).
+    // O e-mail nunca vai para log nem para a resposta.
+    if (!emailValido(emailCliente) && typeof pedido.user_id === 'string' && pedido.user_id) {
+        let consultaFalhou = false
+        try {
+            const { data: conta, error: contaError } = await supabase.auth.admin.getUserById(pedido.user_id)
+            const contaNaoExiste = contaError?.status === 404 || contaError?.code === 'user_not_found'
+            if (contaError && !contaNaoExiste) {
+                console.error('[melhor-envio-etiqueta] reversa: falha ao ler a conta da cliente:', contaError?.status ?? contaError?.code ?? 'erro')
+                consultaFalhou = true
+            } else {
+                emailCliente = typeof conta?.user?.email === 'string' ? conta.user.email.trim() : ''
+            }
+        } catch (err) {
+            console.error('[melhor-envio-etiqueta] reversa: falha ao ler a conta da cliente:', sanitizarDadosPessoaisDoTexto(String(err)))
+            consultaFalhou = true
+        }
+        // Falha de leitura não é "sem e-mail": mandar usar envio pelo cliente
+        // trocaria um soluço por uma recusa. Para ANTES da reserva.
+        if (consultaFalhou) {
+            return respostaJson(
+                { error: 'Não consegui ler o e-mail da conta da cliente agora (nada foi reservado nem pago). Tente de novo em instantes.' },
+                503,
+            )
+        }
+    }
+    if (!emailValido(emailCliente)) {
         return respostaJson(
             { error: 'O pedido não tem um e-mail válido do cliente — o Melhor Envio exige o e-mail de quem devolve (é por ele que os Correios mandam o código). Use envio pelo cliente.' },
             400,

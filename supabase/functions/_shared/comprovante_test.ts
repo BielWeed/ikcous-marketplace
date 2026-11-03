@@ -582,6 +582,40 @@ Deno.test("CONTROLE do e-mail: o mesmo pedido com total 10 e 100 mantém o texto
   );
 });
 
+// A conta do cupom de 100% tem de fechar no e-mail: Subtotal, Desconto e o
+// Total zerado. Só o Total aparece no zero — Entrega e Desconto zerados seguem
+// escondidos, e um pedido SEM total (ausente) também não ganha linha.
+Deno.test("e-mail de pedido de R$ 0,00 mostra a linha Total com R$ 0,00 (a conta fecha)", async () => {
+  const html = await htmlDoComprovante("cash", undefined, {
+    subtotal: 100,
+    discount: 100,
+    shipping: 0,
+    total: 0,
+  });
+  assertStringIncludes(html, ">Total<");
+  assertStringIncludes(html, ">Subtotal<");
+  assertStringIncludes(html, ">Desconto<");
+  // Entrega zerada continua escondida.
+  assertEquals(html.includes(">Entrega<"), false);
+  // O Total zerado é a única linha da tabela de totais com "R$ 0,00".
+  const depoisDoTotal = html.slice(html.indexOf(">Total<"));
+  assertEquals(/R\$\s0,00/.test(depoisDoTotal), true);
+});
+
+Deno.test("CONTROLE do e-mail: sem total no pedido a linha Total continua ausente; desconto e entrega zerados seguem escondidos", async () => {
+  const semTotal = await htmlDoComprovante("cash", undefined, { total: undefined });
+  assertEquals(semTotal.includes(">Total<"), false);
+  const comTotal = await htmlDoComprovante("cash", undefined, {
+    subtotal: 10,
+    discount: 0,
+    shipping: 0,
+    total: 10,
+  });
+  assertStringIncludes(comTotal, ">Total<");
+  assertEquals(comTotal.includes(">Desconto<"), false);
+  assertEquals(comTotal.includes(">Entrega<"), false);
+});
+
 // --- PIX pelo site: a abertura do e-mail depende do STATUS, não só do MÉTODO
 //
 // Achado de revisão de contexto limpo, 25/08/2026: mutar `comprovante.ts:331-
