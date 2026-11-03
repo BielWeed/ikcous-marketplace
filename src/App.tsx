@@ -12,6 +12,10 @@ import { aoIniciarAposAtualizacao } from "@/components/pwa/ao-iniciar-apos-atual
 import { applyThemeColor, branding } from "@/config/branding";
 import { esquecerChaveDoPedidoDe } from "@/lib/chave-do-pedido";
 import {
+  AVISO_ENVIO_DO_CHECKOUT_EM_CURSO,
+  haEnvioDoCheckoutEmCurso,
+} from "@/lib/envio-do-checkout-em-curso";
+import {
   destinoPosLogin,
   painelSemContaPedeEntrada,
 } from "@/lib/destinoPosLogin";
@@ -926,6 +930,22 @@ const AppContent = () => {
       // empilhar outra por cima (ver o `pushState` mais abaixo).
       opts?: { retomarPedidoId?: string; trocarEntradaDeLogin?: boolean },
     ) => {
+      // Pedido NO AR (caça 8, 03/11/2026): sair do checkout agora desmontaria a
+      // tela com a RPC ainda correndo; a resposta de sucesso chegaria sem tela
+      // para limpar carrinho e chave, e a compra seguinte (cupom de uso único
+      // já gasto) nasceria como OUTRO pedido, sem desconto. Segura aqui, ANTES
+      // de qualquer estado ser mexido (retomada, recarga): barra de baixo,
+      // cabeçalho e qualquer outro caminho passam por este portão. O destino
+      // que é o próprio checkout segue (é só scroll). O teto de 30 s do envio
+      // solta a bandeira; o checkout a solta também ao desmontar.
+      if (
+        currentViewRef.current === "checkout" &&
+        view !== "checkout" &&
+        haEnvioDoCheckoutEmCurso()
+      ) {
+        toast.info(AVISO_ENVIO_DO_CHECKOUT_EM_CURSO);
+        return;
+      }
       setCheckoutRetomadaId(opts?.retomarPedidoId ?? null);
       setRetomadaDaRecarga(false);
       navegouAntesDaRecargaRef.current = true;

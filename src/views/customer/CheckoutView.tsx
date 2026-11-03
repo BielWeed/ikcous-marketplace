@@ -74,6 +74,10 @@ import {
   resumoDoEndereco,
 } from "@/lib/endereco-de-entrega";
 import {
+  AVISO_ENVIO_DO_CHECKOUT_EM_CURSO,
+  marcarEnvioDoCheckout,
+} from "@/lib/envio-do-checkout-em-curso";
+import {
   assinaturaDosItens,
   chaveDaLinha,
   notaDasEscolhas,
@@ -2830,6 +2834,19 @@ export function CheckoutViewDaConta({
     }
   }, [isSubmitting]);
 
+  // Navegar durante o ENVIO (caça 8, 03/11/2026): o Voltar já era retido acima,
+  // mas a barra de baixo e o cabeçalho passam por `handleNavigate` (App.tsx), que
+  // não sabia do envio — a tela desmontava com o pedido no ar e a resposta de
+  // sucesso caía em `montadoRef = false`, sem esvaziar carrinho nem chave. Esta
+  // bandeira é o que `handleNavigate` consulta. Layout effect: liga no mesmo
+  // commit em que o círculo aparece. Solta em todo fim de envio (o `finally` de
+  // `enviarPedido` desliga `isSubmitting` ANTES de a confirmação aparecer, então
+  // os botões dela não são barrados) e, no desmonte, pelo cleanup.
+  useLayoutEffect(() => {
+    marcarEnvioDoCheckout(isSubmitting);
+    return () => marcarEnvioDoCheckout(false);
+  }, [isSubmitting]);
+
   // Handle back button override for address modal
   useEffect(() => {
     if (isAddressModalOpen) {
@@ -2854,7 +2871,7 @@ export function CheckoutViewDaConta({
           "",
           globalThis.location.pathname,
         );
-        toast.info("Aguarde, estamos enviando seu pedido.");
+        toast.info(AVISO_ENVIO_DO_CHECKOUT_EM_CURSO);
       });
     } else {
       onSetBackOverride(null);
