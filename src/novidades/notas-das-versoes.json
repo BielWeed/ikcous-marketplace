@@ -1,11 +1,23 @@
 {
+  "1.5.114": {
+    "titulo": "Correções na busca, na galeria de fotos e no texto do reembolso",
+    "novidades": [],
+    "correcoes": [
+      "Busca: com o teclado, o Esc fecha a caixa de sugestões também quando você está sobre uma sugestão.",
+      "Foto do produto: as setas de trocar de foto aparecem quando você chega nelas pelo teclado.",
+      "Política de trocas: o texto do reembolso agora diz como ele sai de verdade, depois que a loja recebe o produto, confere e conclui a devolução."
+    ],
+    "melhorias": [
+      "Painel, Ajustes: a opção Quando reembolsar saiu, porque nunca mudou o dinheiro, e no lugar há uma explicação curta de como o reembolso sai."
+    ]
+  },
   "1.5.113": {
     "titulo": "Correções no CEP, nas devoluções, na venda do balcão e nos pedidos",
     "novidades": [],
     "correcoes": [
       "Endereço: colar o CEP com ponto, espaço ou traço não corta mais o último número, e apagar e digitar o mesmo CEP não desfaz a rua e o bairro que você corrigiu.",
       "Devolução: o aviso depois de informar o envio não diz mais que a loja foi avisada, e o texto do frete só aparece quando a solução é o reembolso.",
-      "Venda do balcão: um código lido com atraso não joga mais a tela de volta para a escolha de tamanho e cor, e o aviso de erro antigo some quando você muda a quantidade."
+      "Venda do balcão: um código lido com atraso não joga mais a tela de volta para a escolha de tamanho e cor, e o aviso de recusa antigo some quando você muda a quantidade, mas o aviso de falha de rede fica até você tentar de novo."
     ],
     "melhorias": [
       "Painel, Devoluções: o valor sugerido do reembolso avisa quando há item marcado como Não veio ou Danificado, e a política da loja não aceita prazo de defeito menor que o de arrependimento.",
