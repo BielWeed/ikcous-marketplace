@@ -1,4 +1,21 @@
 {
+  "1.5.112": {
+    "titulo": "Correções no frete, nos avisos, no voltar depois do login e em textos do painel",
+    "novidades": [],
+    "correcoes": [
+      "Checkout: um nome só com espaços não passa mais, e os campos de complemento e observação têm limite de tamanho.",
+      "Frete: com o armazenamento do navegador bloqueado a calculadora não trava mais, e o frete grátis da promoção não mostra mais um prazo que nunca foi prometido.",
+      "Avisos no celular: o convite para ligar os avisos some quando o aparelho não consegue ativá-los, em vez de ficar na tela sem fazer nada.",
+      "Voltar depois do login: ao entrar na conta a partir do checkout, de Meus pedidos ou dos avisos, a seta volta para a mesma tela, e não mais para o perfil.",
+      "Produto e busca: antes de escolher a variação, o preço mostrado é o da vitrine, igual ao da lista.",
+      "Painel: a mensagem de status do WhatsApp usa o nome da etapa como a cliente vê, os contadores de perguntas e avaliações atualizam na hora, e a etiqueta de devolução usa o e-mail da conta quando o pedido não guardou o da cliente.",
+      "Sair da conta apaga do aparelho o resumo de vendas e as buscas do painel."
+    ],
+    "melhorias": [
+      "Busca: pontuação colada na palavra (como o ponto do teclado do iPhone) não esconde mais o produto.",
+      "Painel: lista de pedidos vazia explica que o filtro Em Aberto pode estar escondendo pedidos, e cupom aceita a data digitada sem perder o ano."
+    ]
+  },
   "1.5.111": {
     "titulo": "Correções no cupom do checkout, no aviso do código por e-mail e nos limites do nome",
     "novidades": [],
