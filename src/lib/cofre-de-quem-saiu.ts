@@ -1,6 +1,12 @@
 import { DataVault, type StoreName } from "@/lib/dataVault";
 import { invalidarGravacoesEmVoo } from "@/lib/geracao-do-cofre";
 
+// Ids da gaveta `store_config` gravados por src/hooks/useAnalytics.ts.
+const LINHAS_DO_RESUMO_DE_VENDAS = [
+  "admin_dashboard_stats",
+  "admin_category_data",
+] as const;
+
 /**
  * O que o "Sair" (e a troca direta de conta) esquece no cofre local — o
  * IndexedDB `ikcous-datavault` (caça 4, A1, 24/10/2026).
@@ -15,6 +21,9 @@ import { invalidarGravacoesEmVoo } from "@/lib/geracao-do-cofre";
  *    Contrapartida conhecida: lojista que sai e recarrega o app SEM rede vê a
  *    vitrine vazia (com "Tentar de novo") até a rede voltar; o catálogo
  *    público volta inteiro na primeira consulta com rede.
+ *  - `store_config`, só as duas linhas do resumo de vendas do painel
+ *    (faturamento, lucro, custo do estoque, mais vendidos), SEMPRE. A gaveta
+ *    guarda também o singleton PÚBLICO da loja: apaga por id, nunca esvazia.
  *
  * Dispara-e-esquece: NUNCA lança e quem chama não espera — o Sair não pode
  * travar por causa de IndexedDB negado, bloqueado ou lento.
@@ -32,8 +41,18 @@ export function esquecerCofreDeQuemSaiu(eraLojista: boolean): void {
   void (async () => {
     try {
       const vault = await DataVault.init();
-      await Promise.all(
-        gavetas.map((gaveta) =>
+      await Promise.all([
+        ...LINHAS_DO_RESUMO_DE_VENDAS.map(async (id) => {
+          try {
+            await vault.deleteById("store_config", id);
+          } catch (err) {
+            console.warn(
+              `[Auth] linha '${id}' do cofre local não foi apagada:`,
+              err,
+            );
+          }
+        }),
+        ...gavetas.map((gaveta) =>
           vault.clear(gaveta).catch((err) => {
             console.warn(
               `[Auth] gaveta '${gaveta}' do cofre local não foi esvaziada:`,
@@ -41,7 +60,7 @@ export function esquecerCofreDeQuemSaiu(eraLojista: boolean): void {
             );
           }),
         ),
-      );
+      ]);
     } catch (err) {
       console.warn("[Auth] cofre local indisponível para limpeza:", err);
     }

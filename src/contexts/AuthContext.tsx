@@ -265,6 +265,9 @@ function esquecerDadosLocaisDaConta() {
       // quem saiu não deixa a dele para o próximo da mesma aba.
       key?.startsWith(PREFIXO_DA_CHAVE_DO_PEDIDO) ||
       key?.startsWith(REVIEWS_CACHE_KEY_PREFIX) ||
+      // A busca digitada nas listas do painel (`admin_<lista>_search_query`)
+      // pode ser nome ou WhatsApp de cliente. Modo de lista e filtros ficam.
+      (key?.startsWith("admin_") && key.endsWith("_search_query")) ||
       // L10 — rascunho de edição de produto de ANTES do desenho por usuário
       // (`…_edit_<id>`, sem `:<uid>`; o id é um UUID, nunca tem `:`).
       (key?.startsWith("ikcous_product_form_draft_edit_") && !key.includes(":"))
