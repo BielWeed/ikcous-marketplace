@@ -208,6 +208,40 @@ describe("PoliticaDeDevolucaoSection", () => {
     expect(onDirtyMudou).toHaveBeenLastCalledWith(false);
   });
 
+  it("não oferece 'Quando reembolsar' (nunca mudou o dinheiro) e explica como o reembolso sai", async () => {
+    await montar();
+    const texto = hospedeiro.textContent ?? "";
+    expect(texto).not.toContain("Quando reembolsar");
+    expect(texto).not.toContain("Ao receber o produto");
+    expect(botao("Depois de conferir")).toBeUndefined();
+    expect(texto).toContain("Dinheiro e frete");
+    expect(texto).toContain(
+      "O reembolso sai quando você abre a devolução, confere o produto e toca em Concluir.",
+    );
+  });
+
+  it("salvar não troca o valor antigo do reembolso que a loja já tinha gravado", async () => {
+    maybeSingle.mockResolvedValue({
+      data: { ...LINHA, reembolso_momento: "apos_inspecao" },
+      error: null,
+    });
+    await montar();
+    await digitar("politica-arrependimento", "10");
+    await act(async () => {
+      botao("Salvar política")?.click();
+    });
+    await act(async () => {
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+
+    expect(rpc).toHaveBeenCalledWith(
+      "salvar_politica_de_devolucao",
+      expect.objectContaining({
+        p: expect.objectContaining({ reembolso_momento: "apos_inspecao" }),
+      }),
+    );
+  });
+
   it("endereço vazio: a caixa 'Mesmo endereço da loja' no lugar do campo", async () => {
     await montar();
     const caixa = Array.from(

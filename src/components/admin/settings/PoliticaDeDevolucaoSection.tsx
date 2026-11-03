@@ -601,15 +601,10 @@ export function PoliticaDeDevolucaoSection({
           <IconeDeAjustes icone={Banknote} matiz="roxo" />
           Dinheiro e frete
         </h4>
-        <Escolha
-          rotulo="Quando reembolsar"
-          valor={form.reembolso_momento}
-          opcoes={[
-            ["ao_receber", "Ao receber o produto"],
-            ["apos_inspecao", "Depois de conferir"],
-          ]}
-          onMudar={(v) => mudar("reembolso_momento", v)}
-        />
+        <p className="text-[11px] leading-relaxed text-zinc-500">
+          O reembolso sai quando você abre a devolução, confere o produto e toca
+          em Concluir. É isso que o cliente lê na política.
+        </p>
         <Escolha
           rotulo="Frete da troca por gosto"
           valor={form.frete_troca_pago_por}
