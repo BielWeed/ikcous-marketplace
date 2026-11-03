@@ -109,7 +109,10 @@ function comoRegistro(valor: unknown): Record<string, unknown> | null {
  *      "user-profile" o pedido só vale com um `id` utilizável no state
  *      (string não vazia): a view só desenha com `userId`, e honrar sem id
  *      mandaria a um skeleton eterno. Sem id, cai nas regras seguintes.
- *   2. `from` igual a "checkout" ou "cart" — de onde ela veio.
+ *   2. `from` igual a "checkout", "cart", "orders" ou "notifications" — de
+ *      onde ela veio ("orders" e "notifications" entraram em 03/11/2026:
+ *      quem tocava em "Entrar" na aba Pedidos ou nos Avisos voltava ao
+ *      Perfil; as duas telas não têm id nem formulário).
  *   3. qualquer outra coisa (inclusive `state` nulo, lixo, `from`
  *      desconhecido) — cai no perfil.
  */
@@ -138,7 +141,12 @@ export function destinoPosLogin(state: unknown): View | null {
   }
 
   const from = registro?.from;
-  if (from === "checkout" || from === "cart") {
+  if (
+    from === "checkout" ||
+    from === "cart" ||
+    from === "orders" ||
+    from === "notifications"
+  ) {
     return from as View;
   }
 

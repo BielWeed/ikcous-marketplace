@@ -46,7 +46,9 @@ vi.mock("@/hooks/useOrders", () => ({
     updateOrderStatus: vi.fn(),
   }),
 }));
-vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: null }) }));
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: { id: "cliente-logada" } }),
+}));
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: { whatsappNumber: "34999999999" } }),
 }));

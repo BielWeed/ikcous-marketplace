@@ -302,25 +302,36 @@ describe("C6/P2 — verificação em desafio3ds (order confirmada) oferece 'Paga
   });
 
   it("VERMELHO (relógio): o botão existe antes do prazo e SOME quando o prazo do pedido passa — o desafio continua", async () => {
-    criarPagamento.mockResolvedValue({
-      verificacao: "desafio3ds",
-      paymentId: "ORD-3DS-ADOTADA",
-      desafio3ds: { url: URL_DO_DESAFIO },
-      expiraEm: new Date(Date.now() + 400).toISOString(),
-    });
-    await retomar(LINHA_COM_SENTINELA);
-    expect(botao("Pagar com PIX")).toBeDefined();
+    // Relógio FALSO (só Date e setTimeout): o prazo de 400 ms não disputa com
+    // o custo do primeiro `import()` da tela, que numa máquina fria passa de
+    // 2 s e vencia o prazo ANTES da resposta chegar (falso vermelho ao rodar
+    // o teste sozinho). Com o tempo parado, só o `advanceTimersByTimeAsync`
+    // o move — e o import pré-aquecido fica fora da conta.
+    await import("@/views/customer/CheckoutView");
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    try {
+      criarPagamento.mockResolvedValue({
+        verificacao: "desafio3ds",
+        paymentId: "ORD-3DS-ADOTADA",
+        desafio3ds: { url: URL_DO_DESAFIO },
+        expiraEm: new Date(Date.now() + 400).toISOString(),
+      });
+      await retomar(LINHA_COM_SENTINELA);
+      expect(botao("Pagar com PIX")).toBeDefined();
 
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 600));
-    });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600);
+      });
 
-    expect(botao("Pagar com PIX")).toBeUndefined();
-    expect(hospedeiro.querySelector("iframe")?.getAttribute("src")).toBe(
-      URL_DO_DESAFIO,
-    );
-    expect(criarPagamento).toHaveBeenCalledTimes(1);
-    expect(montagensDoPagamento).toBe(0);
+      expect(botao("Pagar com PIX")).toBeUndefined();
+      expect(hospedeiro.querySelector("iframe")?.getAttribute("src")).toBe(
+        URL_DO_DESAFIO,
+      );
+      expect(criarPagamento).toHaveBeenCalledTimes(1);
+      expect(montagensDoPagamento).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("CONTROLE (servidor sem C2): o 'verificar' recusado com 400 nunca chega ao desafio — sem PIX", async () => {

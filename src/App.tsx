@@ -921,7 +921,10 @@ const AppContent = () => {
       // Frente 10 (29/09/2026): retomada de pagamento — o 4º param define
       // (ou limpa) o pedido retomado; qualquer navegação SEM ele limpa, então
       // carrinho→checkout nunca herda a retomada anterior.
-      opts?: { retomarPedidoId?: string },
+      // `trocarEntradaDeLogin` (só `handleAuthSuccess` passa): o destino
+      // pós-login OCUPA o lugar da entrada /auth do histórico em vez de
+      // empilhar outra por cima (ver o `pushState` mais abaixo).
+      opts?: { retomarPedidoId?: string; trocarEntradaDeLogin?: boolean },
     ) => {
       setCheckoutRetomadaId(opts?.retomarPedidoId ?? null);
       setRetomadaDaRecarga(false);
@@ -1234,7 +1237,38 @@ const AppContent = () => {
           if (targetView === "auth" && targetView !== view) {
             state.requested = view;
           }
-          globalThis.history.pushState(state, "", path);
+          // Só o login precisa saber se a tela de onde a pessoa saiu tem uma
+          // entrada ANTES dela (ver a troca da entrada de login, abaixo).
+          if (targetView === "auth") {
+            state.haEntradaAntes = Boolean(globalThis.history.state?.from);
+          }
+          // Depois do login a entrada /auth não pode ficar no histórico: o
+          // Voltar cairia nela, a guarda de "logada não fica em /auth" a
+          // trocaria pelo Perfil e a cliente sairia do meio da compra no
+          // lugar errado. O destino a substitui e herda o `from` dela (de
+          // onde a pessoa veio; sem `from`, a seta cai no ramo absoluto).
+          // Se o destino é a MESMA tela que estava atrás do login, sobra uma
+          // cópia dela logo antes: `loginTrocado` avisa o `handleBack` para
+          // pular as duas. Só quando essa cópia tem uma entrada antes dela;
+          // tela de ENTRADA aberta por link direto não tem, e `go(-2)` cairia
+          // fora do histórico (seta morta, ou saída da loja): ali o destino
+          // fica sem `from` e a seta cai no ramo absoluto.
+          const entradaDoLogin = globalThis.history.state;
+          if (
+            opts?.trocarEntradaDeLogin &&
+            fromView === "auth" &&
+            targetView !== "auth" &&
+            entradaDoLogin?.view === "auth"
+          ) {
+            state.from = entradaDoLogin.from;
+            if (entradaDoLogin.from === targetView) {
+              if (entradaDoLogin.haEntradaAntes) state.loginTrocado = true;
+              else state.from = undefined;
+            }
+            globalThis.history.replaceState(state, "", path);
+          } else {
+            globalThis.history.pushState(state, "", path);
+          }
         }
       };
 
@@ -1525,7 +1559,10 @@ const AppContent = () => {
 
     const state = globalThis.history.state;
     if (state?.from) {
-      globalThis.history.back();
+      // Entrada que trocou o login e repete a tela de trás: voltar um passo
+      // cairia na cópia, sem efeito visível — pula as duas.
+      if (state.loginTrocado) globalThis.history.go(-2);
+      else globalThis.history.back();
     } else {
       if (currentViewRef.current === "order-details") {
         handleNavigate("orders");
@@ -1592,6 +1629,8 @@ const AppContent = () => {
         destino === "user-profile" || destino === "product-detail"
           ? idDoPedido
           : undefined,
+        false,
+        { trocarEntradaDeLogin: true },
       );
     }
   }, [handleNavigate]);
