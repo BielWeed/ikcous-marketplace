@@ -137,7 +137,10 @@ module.exports = [
     // medem 600,28 kB (284 B acima do teto).
     // 03/11/2026 (mesma regra): 601 -> 602 kB na 1.5.113 (correcoes do CEP, das devolucoes, do
     // balcao e do historico de pedidos). Base 600,28 kB (1.5.112); medem 601,13 kB (126 B acima do teto).
-    limit: "602 kB",
+    // 04/11/2026 (mesma regra): 602 -> 603 kB na 1.5.116 (correcoes da caca: busca da Home, estoque
+    // da pagina do produto, textos do pagamento e a nota da versao). Base 601,13 kB (1.5.113);
+    // medem 602,18 kB (178 B acima do teto).
+    limit: "603 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
