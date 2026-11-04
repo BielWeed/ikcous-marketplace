@@ -400,6 +400,13 @@ function cancelledDescription(
     }
     return "Este pedido foi cancelado, mas o seu pagamento foi recebido. Fale com a loja para resolver.";
   }
+  // Reembolso concluído (ou chargeback, ou "Já estornei" da loja): o dinheiro
+  // JÁ voltou. Sem o meio (PIX/cartão): o app não sabe qual foi. O valor, quando
+  // há linha concluída no livro, vem da linha "Devolução concluída" do bloco de
+  // pagamento — a descrição só diz o desfecho.
+  if (key === "estornado") {
+    return "Este pedido foi cancelado e o seu pagamento foi estornado: o dinheiro foi devolvido.";
+  }
   if (key === "aguardando") {
     return "Este pedido foi cancelado. Se o pagamento ainda estiver aberto no seu banco, não pague — o pedido não será entregue.";
   }
@@ -937,9 +944,14 @@ export function OrderDetailsView({
   // `if`) — `order` pode ser `null` no primeiro render, antes de qualquer
   // pedido ter carregado, e é por isso que `mostrarDevolucao` usa `order?.`.
   const chaveDoPagamento = paymentStatusKey(order?.paymentStatus);
+  // `estornado` entra só para mostrar o valor da devolução CONCLUÍDA: é o
+  // estado em que o pagamento vira quando o reembolso termina, e sem ler o
+  // livro a frase "Devolução concluída: R$ X" nunca aparecia.
   const mostrarDevolucao =
     order?.status === "cancelled" &&
-    (chaveDoPagamento === "pago" || chaveDoPagamento === "pago_apos_expirar");
+    (chaveDoPagamento === "pago" ||
+      chaveDoPagamento === "pago_apos_expirar" ||
+      chaveDoPagamento === "estornado");
   const {
     linhas: linhasDevolucao,
     lido: devolucaoLida,
@@ -1063,18 +1075,28 @@ export function OrderDetailsView({
             leituraDaDevolucao,
           )
         : currentStatus.description;
+  // Estornado: o dinheiro já voltou, então só a linha CONCLUÍDA tem o que dizer
+  // (o valor). "Em andamento", "a loja faz depois" e "cuidando disso" seriam
+  // falsos aqui, e sem linha (chargeback, "Já estornei") a descrição acima basta.
   const textoDaDevolucao = !mostrarDevolucao
     ? null
-    : leituraDaDevolucao === "conferindo"
-      ? TEXTO_CONFERINDO_DEVOLUCAO
-      : leituraDaDevolucao === "falhou"
-        ? TEXTO_NAO_CONSEGUI_CONFERIR
-        : textoDevolucao({
+    : chaveDoPagamento === "estornado"
+      ? devolucaoLida && desfechoDaDevolucao(linhasDevolucao) === "concluida"
+        ? textoDevolucao({
             linhas: linhasDevolucao,
             cancelledAfterShipping: order.cancelledAfterShipping,
-            returnedToSellerAt: order.returnedToSellerAt,
-            retiradaNaLoja: order.retiradaNaLoja === true,
-          });
+          })
+        : null
+      : leituraDaDevolucao === "conferindo"
+        ? TEXTO_CONFERINDO_DEVOLUCAO
+        : leituraDaDevolucao === "falhou"
+          ? TEXTO_NAO_CONSEGUI_CONFERIR
+          : textoDevolucao({
+              linhas: linhasDevolucao,
+              cancelledAfterShipping: order.cancelledAfterShipping,
+              returnedToSellerAt: order.returnedToSellerAt,
+              retiradaNaLoja: order.retiradaNaLoja === true,
+            });
 
   // Cartão "O que achou da compra?" (redesenho 25/09/2026) — mesma trava de
   // sempre (ADMIN-090, #101): sem `enableReviews`, sem `user`, ou fora de

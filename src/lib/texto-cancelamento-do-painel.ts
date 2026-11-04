@@ -23,6 +23,10 @@ export interface PedidoParaConfirmarCancelamento {
   /** `Order.shippingLabelId`: a etiqueta de envio já foi comprada no Melhor
    * Envio. Cancelar o pedido NÃO cancela a etiqueta: o saldo continua gasto. */
   shipping_label_id?: string | null;
+  /** `Order.retiradaNaLoja`: a cliente buscaria na loja. "Pronto para retirar"
+   * é gravado como `shipping`, mas o produto NUNCA saiu da loja: não há
+   * transporte nem produto "voltando". */
+  retiradaNaLoja?: boolean | null;
 }
 
 const PAGOS = new Set(["pago", "pago_apos_expirar", "recebido_na_entrega"]);
@@ -94,6 +98,14 @@ function produtoJaVoltouParaALoja(pedido: PedidoParaConfirmarCancelamento) {
   );
 }
 
+// Retirada na loja pronta (ou reativada depois de pronta), cancelada. O banco
+// carimba `cancelled_after_shipping` em qualquer cancelamento vindo de
+// `shipping`, retirada ou não, e então NÃO repõe o estoque e `solicitar_estorno`
+// recusa a devolução até a loja tocar em "O produto voltou". O texto diz o que
+// é verdade nos dois lados: o produto não saiu E o passo ainda é da loja.
+const PASSO_DA_RETIRADA_CANCELADA =
+  'O pedido entra na lista "Esperando o produto voltar": toque em "O produto voltou" para repor o estoque';
+
 const AVISO_DA_ETIQUETA_PAGA =
   "A etiqueta de envio já foi paga. Cancele a etiqueta no Melhor Envio para recuperar o saldo.";
 // Toda frase abaixo fecha com a pergunta ("Cancelar?" / "Cancelar mesmo
@@ -141,6 +153,9 @@ function textoBaseDoCancelamento(
     ((pedido.status && EM_ROTA.has(pedido.status)) ||
       pedido.cancelledAfterShipping === true)
   ) {
+    if (pedido.retiradaNaLoja === true) {
+      return `Este pedido está PAGO e já está pronto para retirar: a cliente não levou o produto, ele continua na loja. Cancelar não devolve o dinheiro nem repõe o estoque sozinho. ${PASSO_DA_RETIRADA_CANCELADA} e liberar a devolução do dinheiro, e então devolva o valor à cliente. Cancelar mesmo assim?`;
+    }
     return 'Este pedido está PAGO e já saiu para entrega. Cancelar não devolve o dinheiro automaticamente, e o produto não volta por conta própria. O pedido entra na lista "Esperando o produto voltar": combine com o cliente a volta do produto e, depois que ele chegar, devolva o dinheiro. Cancelar mesmo assim?';
   }
   // Pago que NÃO gera a linha automática e ainda não saiu (pago na entrega):
@@ -156,6 +171,9 @@ function textoBaseDoCancelamento(
     (pedido.cancelledAfterShipping === true &&
       !produtoJaVoltouParaALoja(pedido))
   ) {
+    if (pedido.retiradaNaLoja === true) {
+      return `Este pedido já está pronto para retirar na loja: a cliente não levou o produto. Cancelar não repõe o estoque sozinho. ${PASSO_DA_RETIRADA_CANCELADA}. Cancelar mesmo assim?`;
+    }
     return "Este pedido já saiu para entrega. Cancelar agora não traz a mercadoria de volta sozinho — fale com o cliente. Cancelar mesmo assim?";
   }
   // Sem pagamento, enviado, devolvido e reativado: o estoque já foi acertado

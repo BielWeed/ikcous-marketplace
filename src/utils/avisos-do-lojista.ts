@@ -53,6 +53,10 @@ export interface PedidoPendente {
  *     rotina de 10 minutos a faz sozinha;
  *   - ja_saiu: o produto ja estava na rua; o reembolso e do lojista, depois
  *     que o produto voltar;
+ *   - retirada_pronta: retirada na loja que ja estava "Pronto para retirar"
+ *     (gravada como `shipping`): o produto NUNCA saiu da loja, nao ha
+ *     transporte. O banco trata como "ja saiu" (nao repoe o estoque nem abre o
+ *     reembolso), entao o passo "O produto voltou" continua sendo da loja;
  *   - pago_depois: o pagamento entrou DEPOIS do cancelamento;
  *   - sem_pagamento_online: nao havia pagamento online (dinheiro/cartao na
  *     entrega ou na retirada) e o produto nao tinha saido — nao ha dinheiro
@@ -62,6 +66,7 @@ export interface PedidoPendente {
 export type SituacaoDoCancelamento =
   | "reembolso_automatico"
   | "ja_saiu"
+  | "retirada_pronta"
   | "pago_depois"
   | "sem_pagamento_online";
 
@@ -86,6 +91,12 @@ interface PedidoDoCancelamento {
   payment_status: string | null;
   status: string | null;
   cancelled_after_shipping: boolean | null;
+  /**
+   * `customer_data->>pickup_address`: o retrato do endereco da loja gravado so'
+   * no pedido de RETIRADA NA LOJA (a mesma regra de
+   * `enderecoDeRetiradaDoCustomerData`). Opcional: ausente/vazio = entrega.
+   */
+  pickup_address?: string | null;
 }
 
 /** A linha de `marketplace_order_history` como a consulta da tela a devolve. */
@@ -101,6 +112,13 @@ export interface LinhaDeCancelamento {
 // `estornado` entra: a rotina pode ter devolvido o dinheiro antes de a tela
 // abrir, e o cancelamento continua tendo sido do cliente.
 const PAGAMENTO_QUE_ENTROU = ["pago", "pago_apos_expirar", "estornado"];
+
+function ehRetirada(pedido: PedidoDoCancelamento): boolean {
+  return (
+    typeof pedido.pickup_address === "string" &&
+    pedido.pickup_address.trim() !== ""
+  );
+}
 
 /**
  * Das linhas de cancelamento do historico, fica so o que o CLIENTE cancelou:
@@ -154,7 +172,9 @@ export function selecionarCancelamentosDoCliente(
       situacao: !pagamento
         ? "sem_pagamento_online"
         : jaSaiu
-          ? "ja_saiu"
+          ? ehRetirada(pedido)
+            ? "retirada_pronta"
+            : "ja_saiu"
           : pagamento === "pago_apos_expirar"
             ? "pago_depois"
             : "reembolso_automatico",
@@ -169,6 +189,8 @@ const FRASE_DO_DINHEIRO: Record<
 > = {
   reembolso_automatico: "pago, o reembolso é automático",
   ja_saiu: "pago, o produto já saiu: avise o transporte",
+  retirada_pronta:
+    'pago, o produto não saiu da loja: toque em "O produto voltou" para devolver o dinheiro',
   pago_depois: "pago depois do cancelamento: confira o pedido",
 };
 

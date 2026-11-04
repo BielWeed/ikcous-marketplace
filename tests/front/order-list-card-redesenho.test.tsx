@@ -180,7 +180,10 @@ describe("OrderList — card do pedido redesenhado", () => {
       "Seu pagamento foi recebido. Fale com a loja para resolver.",
     ],
     ["recusado", "O pagamento não foi aprovado e o pedido foi cancelado."],
-    ["estornado", "O pagamento foi estornado. Fale com a loja."],
+    [
+      "estornado",
+      "O dinheiro deste pedido foi devolvido. Toque para ver os detalhes.",
+    ],
     [undefined, "Toque para ver os detalhes do pedido."],
   ])(
     "cancelado com %s: frase do gabarito sem prometer devolução",

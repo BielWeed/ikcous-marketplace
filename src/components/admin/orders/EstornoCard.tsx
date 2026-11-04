@@ -345,8 +345,9 @@ export function EstornoCard({
       )}
       {estado === "bloqueado_retorno" && (
         <p className="text-xs font-bold text-amber-400">
-          Para devolver o dinheiro, primeiro confirme que o produto voltou, no
-          aviso de pedidos cancelados (ícone ao lado do título Pedidos).
+          {order.retiradaNaLoja
+            ? "Para devolver o dinheiro, primeiro toque em “O produto voltou”, no aviso de pedidos cancelados (ícone ao lado do título Pedidos). A cliente não levou o produto: o toque só repõe o estoque e libera a devolução."
+            : "Para devolver o dinheiro, primeiro confirme que o produto voltou, no aviso de pedidos cancelados (ícone ao lado do título Pedidos)."}
         </p>
       )}
       {estado === "tudo_devolvido" && (

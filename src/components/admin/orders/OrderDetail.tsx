@@ -1862,7 +1862,15 @@ export const OrderDetail = memo(function OrderDetail({
     (i) => !!i.variantId && !variacoes[i.variantId],
   );
   let motivoDeNaoImprimir: string | null = null;
-  if (faltaVariacaoNoPapel && falhaNaLeitura) {
+  // Pedido cancelado (e venda do balcão anulada) deixa de valer como
+  // comprovante de compra: o papel não lê o status e sairia igual ao de uma
+  // venda válida. O recibo nem é montado (ver o fim da ficha), para o Ctrl+P
+  // do navegador não o trazer de volta.
+  const pedidoCancelado = order.status === "cancelled";
+  if (pedidoCancelado) {
+    motivoDeNaoImprimir =
+      "Pedido cancelado: o papel não sai, porque deixou de valer como comprovante de compra.";
+  } else if (faltaVariacaoNoPapel && falhaNaLeitura) {
     motivoDeNaoImprimir =
       "Para imprimir, carregue antes o tamanho e a cor dos itens (use “Tentar de novo”).";
   } else if (faltaVariacaoNoPapel && loadingSkus) {
@@ -2057,6 +2065,8 @@ export const OrderDetail = memo(function OrderDetail({
       valorEstornado: order.valorEstornado,
       // Cancelar o pedido não cancela a etiqueta já paga no Melhor Envio.
       shipping_label_id: order.shippingLabelId,
+      // Retirada pronta (gravada como `shipping`): o produto nunca saiu.
+      retiradaNaLoja: order.retiradaNaLoja,
     });
     const confirmado = await confirmar({
       titulo: "Cancelar este pedido?",
@@ -2254,7 +2264,13 @@ export const OrderDetail = memo(function OrderDetail({
         </section>
       </div>
 
-      <OrderReceipt order={order} storeName={storeName} variacoes={variacoes} />
+      {!pedidoCancelado && (
+        <OrderReceipt
+          order={order}
+          storeName={storeName}
+          variacoes={variacoes}
+        />
+      )}
 
       <AlertDialog
         open={pendingAdvance !== null}
