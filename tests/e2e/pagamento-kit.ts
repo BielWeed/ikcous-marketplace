@@ -752,7 +752,7 @@ export function exigirCriacaoDoPedido(sim: SimuladorDePagamento): void {
         p_coupon_code: null,
         p_customer_name: "Cliente das Jornadas",
         p_customer_phone: "(34) 99999-0000",
-        p_observation: "Frete Escolhido: Entrega local (Prazo: 1 dias)",
+        p_observation: "Frete Escolhido: Entrega local (Prazo: 1 dia)",
         p_address_data: null,
         p_destination_cep: "38500-000",
         p_shipping_option_id: "local-delivery",
