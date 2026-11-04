@@ -143,7 +143,11 @@ module.exports = [
     // 04/11/2026 (mesma regra): 603 -> 604 kB na 1.5.117 (correcoes da segunda caca do dia: pedido
     // cancelado e devolvido, recibo do balcao, numeros do Inicio). Base 602,37 kB (CI da 1.5.116);
     // medem 602,92 kB no build local, rente ao teto. Nenhum codigo foi trocado por algo mais arriscado.
-    limit: "604 kB",
+    // 04/11/2026 (mesma regra): 604 -> 605 kB na 1.5.118 (favoritos que avisam, carrinho entre abas,
+    // foto da conta pelo teclado, compartilhar igual a previa). Base 602,87 kB (CI da 1.5.117); medem
+    // 603,8 kB no build local, rente ao teto. A funcao de compartilhar foi para um modulo pequeno
+    // para a vitrine nao carregar os modelos do painel (isso custava 2,3 kB). Nada trocado por algo arriscado.
+    limit: "605 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
