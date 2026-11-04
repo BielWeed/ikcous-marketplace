@@ -235,6 +235,14 @@ describe("OrderDetailsView — cancelado e estornado", () => {
     expect(tela).toMatch(/Devolução concluída: R\$\s?100,00/);
   });
 
+  it("devolução parcial no livro + 'Já estornei' no resto (estornado de R$ 100 com só R$ 30 no livro): não mostra o valor menor", async () => {
+    linhasDeDevolucao = [concluida(30)];
+    const tela = await renderizar(pedidoBase);
+    expect(tela).not.toContain("Devolução concluída");
+    expect(tela).not.toMatch(/R\$\s?30,00/);
+    expect(tela).toContain("o dinheiro foi devolvido");
+  });
+
   it("estornado SEM linha no livro (chargeback, 'Já estornei' da loja): não inventa valor nem promete 'a loja faz depois'", async () => {
     linhasDeDevolucao = [];
     const tela = await renderizar({

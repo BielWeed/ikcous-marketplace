@@ -1081,7 +1081,15 @@ export function OrderDetailsView({
   const textoDaDevolucao = !mostrarDevolucao
     ? null
     : chaveDoPagamento === "estornado"
-      ? devolucaoLida && desfechoDaDevolucao(linhasDevolucao) === "concluida"
+      ? // Estornado = o total voltou, mas o livro pode ter só uma parte (devolução
+        // parcial pelo app + "Já estornei" no resto): mostrar o valor do livro
+        // diria que voltou menos do que voltou. Valor só quando cobre o pedido.
+        devolucaoLida &&
+        desfechoDaDevolucao(linhasDevolucao) === "concluida" &&
+        linhasDevolucao
+          .filter((linha) => linha.status === "concluido")
+          .reduce((soma, linha) => soma + linha.amount, 0) >=
+          order.total - 0.005
         ? textoDevolucao({
             linhas: linhasDevolucao,
             cancelledAfterShipping: order.cancelledAfterShipping,

@@ -3,7 +3,7 @@
     "titulo": "Correções em pedidos cancelados, recibos do balcão e números do Início",
     "novidades": [],
     "correcoes": [
-      "Pedido cancelado com o dinheiro já devolvido: a lista e a tela do pedido dizem que o dinheiro foi devolvido, o selo deixa de aparecer em vermelho e, quando há registro da devolução, aparece \"Devolução concluída\" com o valor.",
+      "Pedido cancelado com o dinheiro já devolvido: a lista e a tela do pedido dizem que o dinheiro foi devolvido, o selo deixa de aparecer em vermelho e, quando o registro da devolução cobre o valor do pedido, aparece \"Devolução concluída\" com o valor.",
       "Painel, Pedidos: na retirada pronta que foi cancelada, os textos e os avisos dizem que o produto nunca saiu da loja, sem falar em entrega nem em transporte.",
       "Pedido cancelado e venda do balcão anulada deixam de imprimir comprovante como se estivessem valendo.",
       "Balcão: a peça gravada que não está mais na tela sai no recibo com o tamanho e a cor.",

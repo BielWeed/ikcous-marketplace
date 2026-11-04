@@ -190,7 +190,7 @@ const FRASE_DO_DINHEIRO: Record<
   reembolso_automatico: "pago, o reembolso é automático",
   ja_saiu: "pago, o produto já saiu: avise o transporte",
   retirada_pronta:
-    'pago, o produto não saiu da loja: toque em "O produto voltou" para devolver o dinheiro',
+    'pago, o produto não saiu da loja: toque em "O produto voltou" para repor o estoque e liberar a devolução do dinheiro',
   pago_depois: "pago depois do cancelamento: confira o pedido",
 };
 
