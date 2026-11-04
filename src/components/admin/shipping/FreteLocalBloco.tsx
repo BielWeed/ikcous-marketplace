@@ -110,6 +110,14 @@ const RESPOSTAS_DE_ENTREGA: readonly {
   },
 ];
 
+/**
+ * "Só retirada" não entrega na cidade, mas o servidor segue cotando a
+ * transportadora para o CEP de fora: com ela ligada (ou sem saber ainda), a
+ * frase de `RESPOSTAS_DE_ENTREGA` ("qualquer lugar busca na loja") seria falsa.
+ */
+const EFEITO_SO_RETIRADA_COM_TRANSPORTADORA =
+  "Na sua região, todo mundo busca na loja. Quem é de outra cidade ainda pode comprar pela transportadora, se ela estiver ligada.";
+
 /** Configuração local: os mesmos campos e guardas, sem a cobertura de fora. */
 export const FreteLocalBloco = memo(function FreteLocalBloco({
   valor,
@@ -325,7 +333,13 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
                 key={r.modo}
                 ativa={modo === r.modo}
                 titulo={r.titulo}
-                efeito={r.efeito}
+                efeito={
+                  r.modo === "so_retiro" &&
+                  coverage !== "local" &&
+                  vendeFora !== false
+                    ? EFEITO_SO_RETIRADA_COM_TRANSPORTADORA
+                    : r.efeito
+                }
                 desabilitado={desabilitado}
                 onEscolher={() => {
                   // Só retiro sem CEP da loja: ninguém consegue comprar.

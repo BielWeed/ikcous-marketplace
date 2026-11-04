@@ -154,6 +154,8 @@ const NAO_E_CLASSE = new Set([
   "checkout-name",
   "checkout-tel",
   "checkout-cpf",
+  // id da opção de frete grátis por produto (a edge a devolve), não classe
+  "free-shipping-promo",
   // ids dos campos do endereco do convidado (CAMPO_DO_INPUT), nao classes
   "guest-cep",
   "guest-number",

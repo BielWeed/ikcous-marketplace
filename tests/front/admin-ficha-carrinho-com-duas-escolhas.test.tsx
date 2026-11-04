@@ -211,4 +211,50 @@ describe("AdminUserDetailView — carrinho da cliente com cor e tamanho separado
     expect(filtros).toContainEqual(["product_id", "p-camiseta"]);
     expect(filtros).toContainEqual(["variant_id", "vc-azul~vt-p"]);
   });
+
+  it("depois de remover um item, a aba Carrinho continua aberta (a releitura não desmonta a ficha)", async () => {
+    await abrirAbaCarrinho();
+
+    const abaCarrinho = () =>
+      [...hospedeiro.querySelectorAll('[role="tab"]')].find((b) =>
+        b.textContent?.includes("Carrinho"),
+      );
+    expect(abaCarrinho()?.getAttribute("aria-selected")).toBe("true");
+
+    const lixeira = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.getAttribute("title")?.includes("Remover do Carrinho"),
+    )!;
+    await act(async () => {
+      lixeira.click();
+    });
+    const confirmar = [...document.body.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Remover Item",
+    )!;
+    await act(async () => {
+      confirmar.click();
+    });
+    await act(async () => {
+      await esperar(50);
+    });
+
+    expect(abaCarrinho()?.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("a ajuda da ficha não promete bloquear cliente (o painel não tem essa função)", async () => {
+    await abrirAbaCarrinho();
+    const ajuda = hospedeiro.querySelector(
+      'button[title="Guia da ficha do cliente e ajuda"]',
+    ) as HTMLButtonElement;
+    await act(async () => {
+      ajuda.click();
+    });
+    await act(async () => {
+      await esperar(0);
+    });
+
+    const texto = document.body.textContent ?? "";
+    expect(texto).toContain("Funções Administrativas");
+    expect(texto).not.toContain("bloqueios");
+    expect(texto).not.toContain("fraudulento");
+  });
 });

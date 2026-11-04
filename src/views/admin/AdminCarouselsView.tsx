@@ -281,11 +281,18 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     return handleUpdateHomeSections(updated, false);
   };
 
+  // A loja corta a vitrine em `maximo` DEPOIS de tirar os pausados: o que passa
+  // disso fica gravado, mas só aparece se algum dos primeiros for pausado.
+  const avisarSePassouDoMaximo = (escolhidos: number, maximo: number) => {
+    if (escolhidos <= maximo) return;
+    toast.info(`Esta vitrine mostra até ${maximo} produtos`, {
+      description: `Os marcados depois do ${maximo}º só aparecem na loja se algum dos primeiros for pausado.`,
+    });
+  };
+
   const handleUpdateMaxItems = (sectionId: string, maxItems: number) => {
-    if (
-      (homeSections.find((s) => s.id === sectionId)?.maxItems ??
-        QUANTIDADE_PADRAO) === maxItems
-    ) {
+    const atual = homeSections.find((s) => s.id === sectionId);
+    if ((atual?.maxItems ?? QUANTIDADE_PADRAO) === maxItems) {
       return;
     }
     if (isOffline) {
@@ -295,7 +302,11 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     const updated = homeSections.map((s) =>
       s.id === sectionId ? { ...s, maxItems } : s,
     );
-    handleUpdateHomeSections(updated, false);
+    void handleUpdateHomeSections(updated, false).then((salvou) => {
+      if (salvou) {
+        avisarSePassouDoMaximo(atual?.productIds?.length ?? 0, maxItems);
+      }
+    });
   };
 
   const handleUpdateLayout = (sectionId: string, layout: LayoutDeOfertas) => {
@@ -504,7 +515,14 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
         : [...initialIds, productId];
       return { ...sec, productIds: newIds };
     });
-    await handleUpdateHomeSections(updated, false);
+    const salvou = await handleUpdateHomeSections(updated, false);
+    const nova = updated.find((sec) => sec.id === sectionId);
+    if (salvou && nova?.productIds?.includes(productId)) {
+      avisarSePassouDoMaximo(
+        nova.productIds.length,
+        nova.maxItems ?? QUANTIDADE_PADRAO,
+      );
+    }
   };
 
   /** "Automático": a loja volta a escolher sozinha (lista de produtos vazia). */

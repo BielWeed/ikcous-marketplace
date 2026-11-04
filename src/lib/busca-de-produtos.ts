@@ -138,3 +138,49 @@ export function produtoCombinaComBusca(
     formas.some((forma) => formaAparece(texto, forma)),
   );
 }
+
+/**
+ * Pontuacao de RELEVANCIA da busca, a mesma na caixinha do topo e na lista da
+ * Home ("Relevancia"). Quem entra na lista e' `produtoCombinaComBusca`; a
+ * pontuacao so ORDENA. A `busca` e' calculada uma vez e o resultado serve a
+ * todos os produtos.
+ */
+export function pontuadorDaBusca(busca: string) {
+  const query = normalizeText(busca);
+  const palavras = palavrasDaBusca(query);
+
+  return (produto: {
+    name: string;
+    description?: string | null;
+    category?: string | null;
+  }): number => {
+    let score = 0;
+    const name = normalizeText(produto.name);
+    // `description` pode vir nula do banco: `.toLowerCase()` direto quebrava a
+    // busca inteira. `normalizeText` aguenta nulo.
+    const description = normalizeText(produto.description);
+    const category = normalizeText(produto.category);
+
+    // Exact match
+    if (name === query) score += 100;
+    // Starts with query
+    else if (name.startsWith(query)) score += 85;
+    // Contains query
+    else if (name.includes(query)) score += 50;
+
+    // Word level score (qualquer forma da palavra: "colares" -> "colar")
+    for (const formas of palavras) {
+      if (formas.some((forma) => formaAparece(name, forma))) score += 20;
+      if (formas.some((forma) => formaAparece(category, forma))) score += 15;
+    }
+
+    // Category match
+    if (category === query) score += 40;
+    else if (category.includes(query)) score += 25;
+
+    // Description match
+    if (description.includes(query)) score += 5;
+
+    return score;
+  };
+}

@@ -237,123 +237,131 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     }
   }, [isAdmin, onBack]);
 
-  const fetchUserData = useCallback(async () => {
-    if (!isAdmin) return;
-    const consulta = ++consultaFicha.current;
-    setLoading(true);
-    setLoadFailed(false);
-    setNaoEncontrado(false);
-    setIdCarregado(null);
-    setProfile(null);
-    setOrders([]);
-    setAddresses([]);
-    setCartItems([]);
-    setCartItemToRemove(null);
-    setIsClearingCart(false);
-    setCopiedField(null);
-    try {
-      const { data, error } = await supabase.rpc("get_admin_user_detail", {
-        p_user_id: userId,
-      });
-
-      if (consulta !== consultaFicha.current) return;
-      if (error) throw error;
-
-      const payload = data as any;
-      // A consulta devolve `profile: null` para um id válido que não existe:
-      // sem isto a tela mostrava uma ficha vazia ("Usuário Não-Nomeado").
-      if (!payload?.profile) {
-        setNaoEncontrado(true);
-        return;
+  // `silenciosa` (true) é a releitura depois de mexer no carrinho: a ficha segue
+  // na tela (e na aba Carrinho) até os dados novos chegarem. Troca de cliente e
+  // "Tentar novamente" usam a leitura completa, que zera tudo.
+  const fetchUserData = useCallback(
+    async (silenciosa?: boolean) => {
+      if (!isAdmin) return;
+      const consulta = ++consultaFicha.current;
+      if (!silenciosa) {
+        setLoading(true);
+        setLoadFailed(false);
+        setNaoEncontrado(false);
+        setIdCarregado(null);
+        setProfile(null);
+        setOrders([]);
+        setAddresses([]);
+        setCartItems([]);
+        setCartItemToRemove(null);
+        setIsClearingCart(false);
+        setCopiedField(null);
       }
-      setProfile(payload.profile as Profile);
-      setOrders(payload.orders?.map(mapOrderFromDB) || []);
-      setAddresses(payload.addresses || []);
-
-      // Handle Cart Items fetching products if needed
-      if (payload.cart_items && payload.cart_items.length > 0) {
-        const productIds = payload.cart_items.map(
-          (item: any) => item.product_id,
-        );
-        const { data: products, error: prodError } = await supabase
-          .from("vw_produtos_admin")
-          .select("*, product_variants(*)")
-          .in("id", productIds);
+      try {
+        const { data, error } = await supabase.rpc("get_admin_user_detail", {
+          p_user_id: userId,
+        });
 
         if (consulta !== consultaFicha.current) return;
-        if (prodError) throw prodError;
+        if (error) throw error;
 
-        const reconstructedCart: CartItem[] = (payload.cart_items || []).map(
-          (dbItem: any) => {
-            const product = products?.find((p) => p.id === dbItem.product_id);
-            let itemProduct: any;
+        const payload = data as any;
+        // A consulta devolve `profile: null` para um id válido que não existe:
+        // sem isto a tela mostrava uma ficha vazia ("Usuário Não-Nomeado").
+        if (!payload?.profile) {
+          setNaoEncontrado(true);
+          return;
+        }
+        setProfile(payload.profile as Profile);
+        setOrders(payload.orders?.map(mapOrderFromDB) || []);
+        setAddresses(payload.addresses || []);
 
-            if (!product) {
-              itemProduct = {
-                id: dbItem.product_id,
-                name: "Produto Indisponível / Deletado",
-                description: "",
-                price: 0,
-                costPrice: 0,
-                images: ["https://placehold.co/600x400?text=Indisponivel"],
-                category: "Desconhecido",
-                stock: 0,
-                sold: 0,
-                isActive: false,
-                isBestseller: false,
-                freeShipping: false,
-                createdAt: new Date().toISOString(),
-                createdTime: Date.now(),
-                rating: 0,
-                reviewCount: 0,
-                tags: [],
-                variants: [],
+        // Handle Cart Items fetching products if needed
+        if (payload.cart_items && payload.cart_items.length > 0) {
+          const productIds = payload.cart_items.map(
+            (item: any) => item.product_id,
+          );
+          const { data: products, error: prodError } = await supabase
+            .from("vw_produtos_admin")
+            .select("*, product_variants(*)")
+            .in("id", productIds);
+
+          if (consulta !== consultaFicha.current) return;
+          if (prodError) throw prodError;
+
+          const reconstructedCart: CartItem[] = (payload.cart_items || []).map(
+            (dbItem: any) => {
+              const product = products?.find((p) => p.id === dbItem.product_id);
+              let itemProduct: any;
+
+              if (!product) {
+                itemProduct = {
+                  id: dbItem.product_id,
+                  name: "Produto Indisponível / Deletado",
+                  description: "",
+                  price: 0,
+                  costPrice: 0,
+                  images: ["https://placehold.co/600x400?text=Indisponivel"],
+                  category: "Desconhecido",
+                  stock: 0,
+                  sold: 0,
+                  isActive: false,
+                  isBestseller: false,
+                  freeShipping: false,
+                  createdAt: new Date().toISOString(),
+                  createdTime: Date.now(),
+                  rating: 0,
+                  reviewCount: 0,
+                  tags: [],
+                  variants: [],
+                };
+              } else {
+                itemProduct = mapProductFromDB(product);
+                let statusSuffix = "";
+                if ((product as any).deleted_at) {
+                  statusSuffix = " (Deletado)";
+                } else if (!product.ativo && product.ativo !== undefined) {
+                  statusSuffix = " (Inativo)";
+                } else if (itemProduct.isActive === false) {
+                  statusSuffix = " (Inativo)";
+                }
+                if (statusSuffix) {
+                  itemProduct.name = `${itemProduct.name}${statusSuffix}`;
+                }
+              }
+
+              const item: CartItem = {
+                product: itemProduct,
+                quantity: dbItem.quantity,
               };
-            } else {
-              itemProduct = mapProductFromDB(product);
-              let statusSuffix = "";
-              if ((product as any).deleted_at) {
-                statusSuffix = " (Deletado)";
-              } else if (!product.ativo && product.ativo !== undefined) {
-                statusSuffix = " (Inativo)";
-              } else if (itemProduct.isActive === false) {
-                statusSuffix = " (Inativo)";
-              }
-              if (statusSuffix) {
-                itemProduct.name = `${itemProduct.name}${statusSuffix}`;
-              }
-            }
+              // A coluna guarda a chave da linha: `idA~idB` quando o cliente
+              // escolheu cor e tamanho de um produto de cadastro antigo.
+              const { variantId, outrasVariantIds } = separarChave(
+                dbItem.variant_id,
+              );
+              if (variantId) item.variantId = variantId;
+              if (outrasVariantIds.length > 0)
+                item.outrasVariantIds = outrasVariantIds;
+              return item;
+            },
+          );
 
-            const item: CartItem = {
-              product: itemProduct,
-              quantity: dbItem.quantity,
-            };
-            // A coluna guarda a chave da linha: `idA~idB` quando o cliente
-            // escolheu cor e tamanho de um produto de cadastro antigo.
-            const { variantId, outrasVariantIds } = separarChave(
-              dbItem.variant_id,
-            );
-            if (variantId) item.variantId = variantId;
-            if (outrasVariantIds.length > 0)
-              item.outrasVariantIds = outrasVariantIds;
-            return item;
-          },
-        );
-
-        setCartItems(reconstructedCart);
-      } else {
-        setCartItems([]);
+          setCartItems(reconstructedCart);
+        } else {
+          setCartItems([]);
+        }
+        setIdCarregado(userId);
+      } catch (err) {
+        if (consulta !== consultaFicha.current) return;
+        console.error("[AdminUserDetail] Error fetching data:", err);
+        toast.error("Erro ao carregar dados do usuário");
+        if (!silenciosa) setLoadFailed(true);
+      } finally {
+        if (consulta === consultaFicha.current) setLoading(false);
       }
-      setIdCarregado(userId);
-    } catch (err) {
-      if (consulta !== consultaFicha.current) return;
-      console.error("[AdminUserDetail] Error fetching data:", err);
-      toast.error("Erro ao carregar dados do usuário");
-      setLoadFailed(true);
-    } finally {
-      if (consulta === consultaFicha.current) setLoading(false);
-    }
-  }, [userId, isAdmin]);
+    },
+    [userId, isAdmin],
+  );
 
   useEffect(() => {
     const controle = consultaFicha;
@@ -413,12 +421,12 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         );
         // Relê mesmo na falha: no caso "já saiu", é isto que tira da tela a
         // linha fantasma. No caso da policy é uma ida à rede a mais, barata.
-        fetchUserData();
+        fetchUserData(true);
         return;
       }
 
       toast.success("Item removido com sucesso!");
-      fetchUserData();
+      fetchUserData(true);
     } catch (err) {
       if (consulta !== consultaFicha.current) return;
       console.error("Error removing cart item:", err);
@@ -458,12 +466,12 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         toast.error(
           "Nada foi removido. O carrinho pode já estar vazio, ou o app não tem permissão para alterar o carrinho de outra pessoa.",
         );
-        fetchUserData();
+        fetchUserData(true);
         return;
       }
 
       toast.success("Carrinho limpo com sucesso!");
-      fetchUserData();
+      fetchUserData(true);
     } catch (err) {
       if (consulta !== consultaFicha.current) return;
       console.error("Error clearing user cart:", err);
@@ -1594,9 +1602,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   Funções Administrativas
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Permite ao administrador entrar em contato direto via WhatsApp
-                  ou aplicar bloqueios de segurança se for um usuário
-                  fraudulento.
+                  Permite ao administrador conversar com o cliente pelo WhatsApp
+                  e tirar itens do carrinho dele.
                 </p>
               </div>
 

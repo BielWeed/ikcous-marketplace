@@ -630,8 +630,12 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
       storeAddress: ENDERECO_FICTICIO,
     };
     await renderizarFrete();
+    // Cobertura nacional e transportadoras ainda sem confirmar: o servidor
+    // pode cotar a transportadora para o CEP de fora, então a frase não jura
+    // que "qualquer lugar" busca na loja (a versão sem transportadora está em
+    // frete-so-retirada-nao-jura-que-ninguem-recebe.test.tsx).
     expect(chaveDaRetirada("Só retirada").textContent).toContain(
-      "Ninguém recebe em casa. Qualquer cliente, de qualquer lugar, busca na loja.",
+      "Na sua região, todo mundo busca na loja. Quem é de outra cidade ainda pode comprar pela transportadora, se ela estiver ligada.",
     );
     expect(chaveDaRetirada("Eu entrego").textContent).toContain(
       "Você leva o pedido até a casa do cliente.",

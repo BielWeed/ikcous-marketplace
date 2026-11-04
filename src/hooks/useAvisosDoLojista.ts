@@ -394,8 +394,21 @@ export function useAvisosDoLojista(): AvisosDoLojista {
   useEffect(() => {
     ativoRef.current = true;
     void buscar();
+    // A tela fica aberta no balcão: relê quando o foco volta e quando o prazo
+    // de devolução muda, os mesmos dois gatilhos do sino da barra. Sem canal
+    // em tempo real próprio — a `rodadaRef` já descarta a rodada atropelada.
+    const reler = () => {
+      void buscar();
+    };
+    const aoMudarAVisibilidade = () => {
+      if (document.visibilityState === "visible") reler();
+    };
+    document.addEventListener("visibilitychange", aoMudarAVisibilidade);
+    window.addEventListener("admin:recontar-avisos", reler);
     return () => {
       ativoRef.current = false;
+      document.removeEventListener("visibilitychange", aoMudarAVisibilidade);
+      window.removeEventListener("admin:recontar-avisos", reler);
     };
   }, [buscar]);
 

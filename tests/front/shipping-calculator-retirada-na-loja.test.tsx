@@ -210,7 +210,8 @@ describe("ShippingCalculator — retirada na loja é escolha EXPLÍCITA da clien
     expect(texto).not.toMatch(/dia útil|dias úteis/);
     // A entrega local continua com o prazo e o preço de sempre.
     const local = botaoDe("Entrega Local")?.textContent ?? "";
-    expect(local).toContain("Entrega em até 1 dia útil");
+    expect(local).toContain("Entrega em até 1 dia");
+    expect(local).not.toMatch(/dia útil|dias úteis/);
     expect(local).toContain("10,00");
   });
 

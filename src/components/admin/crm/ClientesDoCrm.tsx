@@ -643,7 +643,10 @@ export function ClientesDoCrm({
     atualizar();
   }, [sinalDeAtualizacao, atualizar]);
 
-  const total = lista?.total ?? 0;
+  // Em falha (já sem recarregar) a lista guardada é de OUTRA consulta: não vira
+  // linha nem paginação sob o rótulo do filtro novo — só o alerta fica.
+  const listaVisivel = erro && !carregando ? null : lista;
+  const total = listaVisivel?.total ?? 0;
   const quantidadeDoGrupo = (grupo: SegmentoCrm) =>
     segmentosDisponiveis
       ? (segmentos.find((s) => s.segmento === grupo)?.clientes ?? 0)
@@ -927,7 +930,7 @@ export function ClientesDoCrm({
                 />
               ))}
             </ul>
-          ) : lista && lista.clientes.length > 0 ? (
+          ) : listaVisivel && listaVisivel.clientes.length > 0 ? (
             <div className="space-y-2">
               <div
                 aria-hidden="true"
@@ -954,7 +957,7 @@ export function ClientesDoCrm({
                   carregando && "opacity-60",
                 )}
               >
-                {lista.clientes.map((cliente) => (
+                {listaVisivel.clientes.map((cliente) => (
                   <LinhaDoCliente
                     key={cliente.chave}
                     cliente={cliente}
@@ -964,7 +967,7 @@ export function ClientesDoCrm({
                 ))}
               </ul>
             </div>
-          ) : lista ? (
+          ) : listaVisivel ? (
             <EstadoVazioDoCrm
               titulo={
                 busca.trim()

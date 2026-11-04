@@ -450,6 +450,24 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
     expect(hospedeiro.textContent).not.toContain("prazo de reserva venceu");
   });
 
+  it("o texto de 'pago' bate com o do detalhe do pedido: a loja VAI iniciar a separação, não 'já está preparando' (o pedido segue só recebido)", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    await act(async () => {
+      onRealtimeEventCapturado?.({
+        eventType: "UPDATE",
+        new: { id: "ped-999", payment_status: "pago" },
+      });
+    });
+
+    expect(hospedeiro.textContent).toContain("Pagamento Confirmado");
+    expect(hospedeiro.textContent).toContain(
+      "A loja vai iniciar a separação do seu pedido.",
+    );
+    expect(hospedeiro.textContent).not.toContain("já está preparando");
+  });
+
   // Achado 1 da revisão (16/08/2026), e decisão de produto do Gabriel
   // (16/08/2026): `pago_apos_expirar` NÃO é pagamento legítimo do ponto de
   // vista do pedido — a varredura que grava esse status
@@ -482,7 +500,7 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
     // Metade negativa (não apagar): nunca pode parecer a tela de sucesso.
     expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado");
     expect(hospedeiro.textContent).not.toContain(
-      "a loja já está preparando seu pedido",
+      "A loja vai iniciar a separação",
     );
     // Metade positiva: a tela própria do estado, com as três informações que
     // o Gabriel decidiu (pagamento recebido, prazo vencido, loja contata).
@@ -510,7 +528,7 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
     expect(fromSpy).toHaveBeenCalledWith("marketplace_orders");
     expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado");
     expect(hospedeiro.textContent).not.toContain(
-      "a loja já está preparando seu pedido",
+      "A loja vai iniciar a separação",
     );
     expect(hospedeiro.textContent).toContain("prazo de reserva venceu");
     // formatCurrency usa espaço não quebrável entre "R$" e o número.
@@ -541,6 +559,27 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
 
   it("na tela de fora do prazo, sem whatsapp_number configurado, não quebra e não mostra o botão de WhatsApp", async () => {
     mockWhatsappNumber = "";
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    await act(async () => {
+      onRealtimeEventCapturado?.({
+        eventType: "UPDATE",
+        new: { id: "ped-999", payment_status: "pago_apos_expirar" },
+      });
+    });
+
+    expect(hospedeiro.textContent).toContain("prazo de reserva venceu");
+    expect(
+      localizarBotaoPorTexto(hospedeiro, "Falar com a Loja"),
+    ).toBeUndefined();
+  });
+
+  // A tela só liga o botão com a MESMA régua do toque (`lojaTemWhatsapp`, 10+
+  // dígitos). Com um número legado curto, o botão aparecia e o toque não fazia
+  // nada — e é a única saída de contato de quem pagou e teve o pedido cancelado.
+  it("na tela de fora do prazo, com whatsapp_number legado curto (menos de 10 dígitos), o botão de WhatsApp não aparece", async () => {
+    mockWhatsappNumber = "123";
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNaTelaDeAguardarPagamento(CheckoutView);
 

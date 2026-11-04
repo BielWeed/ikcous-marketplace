@@ -32,7 +32,6 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useBanners } from "@/hooks/useBanners";
 import { useCategories } from "@/hooks/useCategories";
-import { useCoupons } from "@/hooks/useCoupons";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
@@ -706,7 +705,6 @@ export const AdminBannersView = memo(function AdminBannersView({
   const chaveDoRascunho = user?.id
     ? chaveDoUsuario("admin_banner_form_draft", user.id)
     : null;
-  useCoupons(true);
   const { categories } = useCategories();
 
   const [searchQueryList, setSearchQueryList] = useState("");

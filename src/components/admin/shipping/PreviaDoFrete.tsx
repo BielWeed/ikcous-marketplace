@@ -60,7 +60,12 @@ export function PreviaDoFrete({
     { config, subtotal, temItemMarcado: false },
   );
   const diasLocais = config.localDeliveryDays ?? 1;
-  const soRetiro = modo === "so_retiro";
+  // "Só retirada" não entrega na cidade, mas o servidor segue cotando a
+  // transportadora para o CEP de fora: só some do "fora" quando não há uma
+  // (cobertura só na cidade, ou nenhuma ligada).
+  const soRetiro =
+    modo === "so_retiro" &&
+    (config.shippingCoverage === "local" || nomesLigados?.length === 0);
   const fora = config.shippingCoverage !== "local" && !soRetiro;
   const nacional = promessas.nacional;
   const gratisNacional =

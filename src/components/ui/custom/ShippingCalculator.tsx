@@ -365,11 +365,16 @@ function prazoDaOpcao(option: ShippingOption): string | null {
   if (option.id === "free-shipping-promo" || option.provider === "free") {
     return null;
   }
-  return option.deliveryDays === 0
-    ? "Entrega no mesmo dia"
-    : `Entrega em até ${option.deliveryDays} ${
-        option.deliveryDays > 1 ? "dias úteis" : "dia útil"
-      }`;
+  if (option.deliveryDays === 0) return "Entrega no mesmo dia";
+  const plural = option.deliveryDays > 1;
+  // A entrega própria (provider "local") tem o prazo digitado pela lojista em
+  // "dias" no painel: a frase não vira "úteis", que é de transportadora.
+  if (option.provider === "local") {
+    return `Entrega em até ${option.deliveryDays} ${plural ? "dias" : "dia"}`;
+  }
+  return `Entrega em até ${option.deliveryDays} ${
+    plural ? "dias úteis" : "dia útil"
+  }`;
 }
 
 function soDigitosDoCep(valor: string | null | undefined): string {
