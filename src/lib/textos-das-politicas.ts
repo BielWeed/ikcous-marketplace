@@ -342,6 +342,9 @@ function montarTrocas(
     titulo: "Como pedir",
     paragrafos: [
       "Depois que o pedido for entregue, entre na sua conta, abra o pedido em Meus pedidos e toque em Solicitar devolução ou troca. Você recebe um protocolo e acompanha o andamento por lá.",
+      // Quem comprou sem criar conta não tem "Meus pedidos" nem o botão: o
+      // caminho dele é a conversa com a loja (contato no fim desta página).
+      "Se você comprou sem criar conta, fale com a loja pelo contato no fim desta página e informe o número do pedido.",
     ],
   });
 

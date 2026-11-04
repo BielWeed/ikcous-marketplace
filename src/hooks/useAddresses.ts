@@ -48,6 +48,16 @@ function carregarCacheDoDisco(id: string | null | undefined): Address[] {
   return [];
 }
 
+// O banco devolve "principal primeiro, depois o mais novo". Um endereço
+// recém-criado (e não principal) é o mais novo: entra logo depois do
+// principal, para a lista local e a recarregada terem a MESMA ordem — é dela
+// que o carrinho tira o endereço de entrega quando nada foi escolhido.
+function inserirDepoisDoPrincipal(itens: Address[], novo: Address): Address[] {
+  const posicao = itens.findIndex((a) => !a.is_default);
+  if (posicao === -1) return [...itens, novo];
+  return [...itens.slice(0, posicao), novo, ...itens.slice(posicao)];
+}
+
 export function useAddresses() {
   const { user } = useAuth();
   // Identidade da conta: resposta em voo da conta ANTERIOR (troca/logout)
@@ -200,6 +210,25 @@ export function useAddresses() {
     }
   }, [user, gravarLista]);
 
+  // Sem principal o carrinho cai no primeiro da lista e a escolha muda sozinha
+  // ao recarregar. O gatilho do banco só age quando a linha NOVA é principal,
+  // então quem apaga ou desliga o principal promove o próximo aqui. Falhar não
+  // desfaz o que a cliente fez: segue sem principal, como antes.
+  const promoverNoBanco = async (idDaConta: string, id: string) => {
+    try {
+      const { error } = await supabase
+        .from("user_addresses")
+        .update({ is_default: true })
+        .eq("id", id)
+        .eq("user_id", idDaConta);
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error("Error promoting address:", error);
+      return false;
+    }
+  };
+
   const addAddress = async (address: Omit<Address, "id" | "user_id">) => {
     if (!user) return null;
     if (!ufBrasileiraValida(address.state)) {
@@ -255,7 +284,7 @@ export function useAddresses() {
               formattedAddress,
               ...prev.itens.map((a) => ({ ...a, is_default: false })),
             ]
-          : [...prev.itens, formattedAddress];
+          : inserirDepoisDoPrincipal(prev.itens, formattedAddress);
         gravarLista(idDaConta, updated);
       }
 
@@ -289,6 +318,22 @@ export function useAddresses() {
       // Resposta da conta anterior não grava nada, nem avisa sucesso.
       if (usuarioAtualRef.current !== idDaConta) return false;
 
+      // Desligou o principal e sobrou outro endereço: o mais recente assume.
+      let promovidoId: string | null = null;
+      if (updates.is_default === false) {
+        const antes = estadoRef.current;
+        const eraPrincipal =
+          antes.dono === idDaConta &&
+          antes.itens.some((a) => a.id === id && a.is_default);
+        const proximo = antes.itens.find((a) => a.id !== id && !a.is_default);
+        if (eraPrincipal && proximo) {
+          if (await promoverNoBanco(idDaConta, proximo.id)) {
+            promovidoId = proximo.id;
+          }
+          if (usuarioAtualRef.current !== idDaConta) return false;
+        }
+      }
+
       const formattedAddress: Address = {
         id: data.id,
         user_id: data.user_id,
@@ -308,15 +353,23 @@ export function useAddresses() {
       const prev = estadoRef.current;
       // Estado trocou de dono em voo: não escreve.
       if (prev.dono === idDaConta) {
-        const updated: Address[] = updates.is_default
-          ? prev.itens
-              .map((a) =>
-                a.id === id ? formattedAddress : { ...a, is_default: false },
-              )
-              .sort((a, b) =>
-                a.is_default === b.is_default ? 0 : a.is_default ? -1 : 1,
-              )
-          : prev.itens.map((a) => (a.id === id ? formattedAddress : a));
+        const promovido = prev.itens.find((a) => a.id === promovidoId);
+        const updated: Address[] = promovido
+          ? [
+              { ...promovido, is_default: true },
+              ...prev.itens
+                .filter((a) => a.id !== promovido.id)
+                .map((a) => (a.id === id ? formattedAddress : a)),
+            ]
+          : updates.is_default
+            ? prev.itens
+                .map((a) =>
+                  a.id === id ? formattedAddress : { ...a, is_default: false },
+                )
+                .sort((a, b) =>
+                  a.is_default === b.is_default ? 0 : a.is_default ? -1 : 1,
+                )
+            : prev.itens.map((a) => (a.id === id ? formattedAddress : a));
         gravarLista(idDaConta, updated);
       }
 
@@ -344,12 +397,32 @@ export function useAddresses() {
       // Resposta da conta anterior não grava nada, nem avisa sucesso.
       if (usuarioAtualRef.current !== idDaConta) return false;
 
+      // Apagou o principal e sobrou endereço: o mais recente assume.
+      const antes = estadoRef.current;
+      const restantes =
+        antes.dono === idDaConta ? antes.itens.filter((a) => a.id !== id) : [];
+      const apagouPrincipal =
+        antes.dono === idDaConta &&
+        antes.itens.some((a) => a.id === id && a.is_default);
+      let promovidoId: string | null = null;
+      if (apagouPrincipal && restantes.length > 0) {
+        const proximo = restantes[0];
+        if (await promoverNoBanco(idDaConta, proximo.id)) {
+          promovidoId = proximo.id;
+        }
+        if (usuarioAtualRef.current !== idDaConta) return false;
+      }
+
       const prev = estadoRef.current;
       // Estado trocou de dono em voo: não escreve.
       if (prev.dono === idDaConta) {
         gravarLista(
           idDaConta,
-          prev.itens.filter((a) => a.id !== id),
+          prev.itens
+            .filter((a) => a.id !== id)
+            .map((a) =>
+              a.id === promovidoId ? { ...a, is_default: true } : a,
+            ),
         );
       }
       toast.success("Endereço removido");

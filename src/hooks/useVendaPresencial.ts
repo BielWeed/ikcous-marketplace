@@ -27,6 +27,7 @@ import {
 } from "@/lib/erro-da-venda-presencial";
 import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import { JANELA_DE_REPETICAO_MS } from "@/lib/leitor/debounce-de-leitura";
+import { gerarUuidV4 } from "@/lib/uuid-v4";
 import {
   useCallback,
   useEffect,
@@ -35,6 +36,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { toast } from "sonner";
 
 // ============================================================================
 // PASSO 1 — TIPOS
@@ -372,10 +374,12 @@ function erroQueSobreviveAoCupom(erro: string | null): string | null {
 /**
  * Estado inicial de um cupom novo. `gerarChave` entra por parâmetro (molde:
  * `src/lib/chave-do-pedido.ts:107`) para o teste poder fixar a chave em vez
- * de depender de `crypto.randomUUID()` de verdade.
+ * de depender do gerador de UUID de verdade. O padrão é `gerarUuidV4`, que
+ * tem plano B para aparelho sem `crypto.randomUUID` (tablet e navegador
+ * antigos de balcão), onde a chamada direta derrubava a abertura do caixa.
  */
 export function estadoInicialDaVenda(
-  gerarChave: () => string = () => globalThis.crypto.randomUUID(),
+  gerarChave: () => string = gerarUuidV4,
 ): EstadoDaVenda {
   return {
     etapa: "cupom",
@@ -1269,8 +1273,7 @@ export interface VendaPresencialEmUso {
 export function useVendaPresencial(
   opcoes: OpcoesDoVendaPresencial = {},
 ): VendaPresencialEmUso {
-  const gerarChave =
-    opcoes.gerarChave ?? (() => globalThis.crypto.randomUUID());
+  const gerarChave = opcoes.gerarChave ?? gerarUuidV4;
   const atrasoDeGravacaoMs = opcoes.atrasoDeGravacaoMs ?? 300;
 
   // Refs para não recriar os efeitos a cada render por causa de uma opção
@@ -1299,6 +1302,37 @@ export function useVendaPresencial(
     estadoInicialDaVenda(gerarChave),
   );
   const [restaurado, setRestaurado] = useState(false);
+
+  // O bipe que responde tarde (a balconista já saiu do cupom, ou o envio já
+  // começou) é descartado pela máquina de propósito — mas o leitor JÁ apitou,
+  // então descartar em silêncio deixa a peça fora da venda sem ninguém saber.
+  // O reducer é puro e não fala com a tela; quem despacha é que avisa, olhando
+  // o estado do último render (um bipe responde depois de uma ida ao servidor,
+  // sempre bem depois do render que mudou a etapa). Usa `toast` porque o
+  // aviso do cupom (`estado.aviso`) só aparece na etapa "cupom", justamente a
+  // que a balconista já deixou.
+  const estadoRef = useRef(estado);
+  useEffect(() => {
+    estadoRef.current = estado;
+  });
+  const despacharDaTela = useCallback((acao: AcaoDaVenda) => {
+    if (acao.tipo === "codigo_resolvido") {
+      const atual = estadoRef.current;
+      if (atual.enviando) {
+        toast.error(
+          `A leitura do código ${acao.codigo} chegou enquanto a venda estava sendo registrada e não foi adicionada. A peça não entrou nesta venda.`,
+          { duration: 10_000 },
+        );
+      } else if (atual.etapa !== "cupom") {
+        toast.error(
+          `A leitura do código ${acao.codigo} chegou depois de você sair do cupom e não foi adicionada à venda. Se a peça for levada, bipe de novo.`,
+          { duration: 10_000 },
+        );
+      }
+    }
+    despachar(acao);
+  }, []);
+
   // L10 — a chave do rascunho é DO USUÁRIO (`admin_pdv_venda_draft:<uid>`).
   // Sem uid não há chave: o hook não lê nem grava rascunho (o cupom vive em
   // memória) e jamais cai numa chave compartilhada entre admins.
@@ -1450,7 +1484,7 @@ export function useVendaPresencial(
 
   return {
     estado,
-    despachar,
+    despachar: despacharDaTela,
     subtotal,
     total,
     podeRegistrar,

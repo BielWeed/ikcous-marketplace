@@ -488,6 +488,22 @@ const ehFalhaDeRedeAntesDoEnvio = (error: unknown): boolean => {
 };
 
 /**
+ * Prazo em dias da nota, com a MESMA regra do `prazoDaOpcao` do carrinho
+ * (ShippingCalculator): plural certo, e "úteis" só para transportadora — o
+ * prazo da entrega própria (provider "local") é digitado em "dias" pela
+ * lojista. A nota vai crua para as "Observações do pedido" da ficha.
+ */
+const prazoEmDiasDaNota = (
+  option: Pick<ShippingOption, "deliveryDays" | "provider">,
+): string => {
+  const plural = option.deliveryDays > 1;
+  if (option.provider === "local") {
+    return `${option.deliveryDays} ${plural ? "dias" : "dia"}`;
+  }
+  return `${option.deliveryDays} ${plural ? "dias úteis" : "dia útil"}`;
+};
+
+/**
  * A nota do pedido para a opção de frete escolhida (release 1.5.7,
  * CONTRATO-1.5.7.md R1-4): prazo 0 é "no mesmo dia" — o valor CANÔNICO do
  * servidor —, nunca "0 dias" (um prazo que não existe para quem lê a nota
@@ -514,7 +530,7 @@ export const notaDoFreteEscolhido = (
       ? "não calculado"
       : option.deliveryDays === 0
         ? "no mesmo dia"
-        : `${option.deliveryDays} dias`;
+        : prazoEmDiasDaNota(option);
   return `Frete Escolhido: ${option.name} (Prazo: ${prazo})`;
 };
 

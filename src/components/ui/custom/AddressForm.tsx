@@ -23,10 +23,22 @@ import { useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import * as z from "zod";
 
+// Tetos de tamanho (só no formulário, sem mexer no banco): impedem que uma
+// conta grave megabytes num campo de endereço. Endereço ANTIGO já salvo acima
+// do teto não trava em silêncio — ao salvar, o campo mostra o máximo.
+// Os mesmos números estão escritos DENTRO do schema (o teste de dependências
+// enxutas recorta só o corpo dele); o teste de tetos confere que batem.
+const TETO_RUA = 200;
+const TETO_COMPLEMENTO = 200;
+const TETO_REFERENCIA = 200;
+const TETO_NOME = 120;
+const TETO_NUMERO = 20;
+
 const addressSchema = z.object({
   // Aparar só para validar mantém os valores válidos enviados como antes.
   name: z
     .string()
+    .max(120, "Máximo de 120 caracteres")
     .refine((v) => v.trim().length > 0, "Nome/Apelido é obrigatório"),
   // A máscara devolve "12345-67" para 7 dígitos — 8 CARACTERES contando o
   // hífen, o que passava num min(8) e gravava CEP incompleto como endereço
@@ -36,20 +48,34 @@ const addressSchema = z.object({
     .refine((v) => v.replace(/\D/g, "").length === 8, "CEP inválido"),
   street: z
     .string()
+    .max(200, "Máximo de 200 caracteres")
     .refine((v) => v.trim().length > 0, "Logradouro é obrigatório"),
-  number: z.string().refine((v) => v.trim().length > 0, "Número é obrigatório"),
-  complement: z.string().optional().or(z.literal("")),
+  number: z
+    .string()
+    .max(20, "Máximo de 20 caracteres")
+    .refine((v) => v.trim().length > 0, "Número é obrigatório"),
+  complement: z
+    .string()
+    .max(200, "Máximo de 200 caracteres")
+    .optional()
+    .or(z.literal("")),
   neighborhood: z
     .string()
+    .max(120, "Máximo de 120 caracteres")
     .refine((v) => v.trim().length > 0, "Bairro é obrigatório"),
   city: z.string().refine((v) => v.trim().length > 0, "Cidade é obrigatória"),
   state: z
     .string()
     .refine((v) => v.trim().length > 0, "Estado é obrigatório")
     .refine((v) => !v.trim() || ufBrasileiraValida(v), "Estado inválido"),
-  reference: z.string().optional().or(z.literal("")),
+  reference: z
+    .string()
+    .max(200, "Máximo de 200 caracteres")
+    .optional()
+    .or(z.literal("")),
   recipient_name: z
     .string()
+    .max(120, "Máximo de 120 caracteres")
     .refine((v) => v.trim().length > 0, "Nome do destinatário é obrigatório"),
   is_default: z.boolean(),
 });
@@ -712,6 +738,7 @@ export function AddressForm({
                 })}
                 placeholder="Ex: Rua Tiradentes"
                 disabled={loading}
+                maxLength={TETO_RUA}
                 aria-invalid={!!erros.street}
                 aria-describedby={erros.street ? "erro-street" : undefined}
                 className={cn(CAMPO, erros.street && CAMPO_COM_ERRO)}
@@ -740,6 +767,7 @@ export function AddressForm({
                   {...form.register("number")}
                   placeholder="123"
                   disabled={loading}
+                  maxLength={TETO_NUMERO}
                   aria-invalid={!!erros.number}
                   aria-describedby={erros.number ? "erro-number" : undefined}
                   className={cn(CAMPO, erros.number && CAMPO_COM_ERRO)}
@@ -759,7 +787,12 @@ export function AddressForm({
                   {...form.register("complement")}
                   placeholder="Apto, bloco, fundos"
                   disabled={loading}
-                  className={CAMPO}
+                  maxLength={TETO_COMPLEMENTO}
+                  aria-invalid={!!erros.complement}
+                  aria-describedby={
+                    erros.complement ? "erro-complement" : undefined
+                  }
+                  className={cn(CAMPO, erros.complement && CAMPO_COM_ERRO)}
                   autoComplete="address-line2"
                 />
               </div>
@@ -767,6 +800,11 @@ export function AddressForm({
             {erros.number && (
               <MensagemDeErro id="erro-number">
                 {erros.number.message}
+              </MensagemDeErro>
+            )}
+            {erros.complement && (
+              <MensagemDeErro id="erro-complement">
+                {erros.complement.message}
               </MensagemDeErro>
             )}
             <div className="mt-2.5 flex items-center justify-between gap-2">
@@ -814,9 +852,19 @@ export function AddressForm({
                 {...form.register("reference")}
                 placeholder="Ex: Próximo ao mercado principal"
                 disabled={loading}
-                className={CAMPO}
+                maxLength={TETO_REFERENCIA}
+                aria-invalid={!!erros.reference}
+                aria-describedby={
+                  erros.reference ? "erro-reference" : undefined
+                }
+                className={cn(CAMPO, erros.reference && CAMPO_COM_ERRO)}
                 autoComplete="off"
               />
+              {erros.reference && (
+                <MensagemDeErro id="erro-reference">
+                  {erros.reference.message}
+                </MensagemDeErro>
+              )}
             </div>
           )}
 
@@ -834,6 +882,7 @@ export function AddressForm({
                   })}
                   placeholder="Seu bairro"
                   disabled={loading}
+                  maxLength={TETO_NOME}
                   aria-invalid={!!erros.neighborhood}
                   aria-describedby={
                     erros.neighborhood ? "erro-neighborhood" : undefined
@@ -919,6 +968,7 @@ export function AddressForm({
               {...form.register("recipient_name")}
               placeholder="Quem irá receber?"
               disabled={loading}
+              maxLength={TETO_NOME}
               aria-invalid={!!erros.recipient_name}
               aria-describedby={
                 erros.recipient_name ? "erro-recipient_name" : undefined
@@ -991,6 +1041,7 @@ export function AddressForm({
                   {...form.register("name")}
                   placeholder="Ex: Casa da vó, Escritório"
                   disabled={loading}
+                  maxLength={TETO_NOME}
                   aria-invalid={!!erros.name}
                   aria-describedby={erros.name ? "erro-name" : undefined}
                   className={cn(CAMPO, erros.name && CAMPO_COM_ERRO)}

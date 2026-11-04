@@ -275,12 +275,12 @@ describe("FreteLocalBloco: até onde você entrega", () => {
     it("CEP da região da loja: 'Entra na sua entrega' com o valor", () => {
       montar("");
       abrirMaisLugaresEDigitar("38400999");
-      expect(texto()).toContain("Entra na sua entrega — paga R$ 10");
+      expect(texto()).toContain("Entra na sua entrega — a entrega custa R$ 10");
       expect(texto()).not.toContain("Fica de fora");
       expect(campoDeTeste()?.value).toBe("38400-999");
     });
 
-    it("entrega grátis (valor 0): diz que é grátis, não 'paga R$ 0'", () => {
+    it("entrega grátis (valor 0): diz que é grátis, não 'R$ 0'", () => {
       montar("", { valor: 0 });
       abrirMaisLugaresEDigitar("38400-999");
       expect(texto()).toContain("Entra na sua entrega — entrega grátis");
@@ -290,7 +290,7 @@ describe("FreteLocalBloco: até onde você entrega", () => {
     it("valor com centavos usa vírgula", () => {
       montar("", { valor: 7.5 });
       abrirMaisLugaresEDigitar("38400-999");
-      expect(texto()).toContain("paga R$ 7,50");
+      expect(texto()).toContain("a entrega custa R$ 7,50");
     });
 
     it("CEP de outra região: 'Fica de fora' e o botão que inclui a região", () => {
@@ -322,7 +322,7 @@ describe("FreteLocalBloco: até onde você entrega", () => {
       clicar(botao("Incluir a região"));
       expect(gravados).toEqual(["38400, 38500"]);
       // Agora o mesmo CEP entra, e o botão some (nada para incluir de novo).
-      expect(texto()).toContain("Entra na sua entrega — paga R$ 10");
+      expect(texto()).toContain("Entra na sua entrega — a entrega custa R$ 10");
       expect(botao("Incluir a região")).toBeUndefined();
       // E a região da loja não foi trocada: CEP dela segue entrando.
       digitar(campoDeTeste(), "38400-100");

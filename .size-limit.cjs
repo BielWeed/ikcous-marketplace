@@ -147,7 +147,10 @@ module.exports = [
     // foto da conta pelo teclado, compartilhar igual a previa). Base 602,87 kB (CI da 1.5.117); medem
     // 603,8 kB no build local, rente ao teto. A funcao de compartilhar foi para um modulo pequeno
     // para a vitrine nao carregar os modelos do painel (isso custava 2,3 kB). Nada trocado por algo arriscado.
-    limit: "605 kB",
+    // 04/11/2026 (mesma regra): 605 -> 606 kB na 1.5.120 (limites de tamanho do endereco, avisos do balcao,
+    // favoritos e busca mais certos, frete gratis honesto). Medem 605,14 kB no build local, 137 B acima do teto.
+    // Nada foi trocado por algo mais arriscado.
+    limit: "606 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao

@@ -295,7 +295,10 @@ export const SearchView = React.memo(function SearchView({
   const activeFiltersCount =
     (category !== "Todas" ? 1 : 0) +
     (minPrice !== "" ? 1 : 0) +
-    (maxPrice !== "" ? 1 : 0);
+    (maxPrice !== "" ? 1 : 0) +
+    // "Mais Novos" é o padrão (useSearch): ordenação diferente conta e libera
+    // o "Limpar Tudo", que a devolve ao padrão.
+    (sort !== "newest" ? 1 : 0);
 
   return (
     <div className="pb-customer min-h-full bg-white selection:bg-black selection:text-white">

@@ -55,7 +55,7 @@ describe("notaDoFreteEscolhido e o prazo do frete grátis por produto", () => {
         deliveryDays: 3,
         provider: "melhor_envio",
       }),
-    ).toBe("Frete Escolhido: PAC (Prazo: 3 dias)");
+    ).toBe("Frete Escolhido: PAC (Prazo: 3 dias úteis)");
     expect(
       notaDoFreteEscolhido({
         id: "local-delivery",
