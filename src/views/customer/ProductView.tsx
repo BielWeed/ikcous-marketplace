@@ -512,9 +512,21 @@ export const ProductView = React.memo(function ProductView({
   const estoqueDaEscolha = (escolha: Record<string, string>): number => {
     if (Object.keys(variantGroups).length === 0) return product.stock;
     const escolhidas = variantesDaEscolha(escolha);
-    return escolhidas.length > 0
-      ? Math.min(...escolhidas.map((v) => v.stockIncrement || 0))
-      : product.stock;
+    if (escolhidas.length > 0) {
+      return Math.min(...escolhidas.map((v) => v.stockIncrement || 0));
+    }
+    // Escolha PARCIAL (só o tamanho, sem a cor): cada valor marcado já traz o
+    // estoque das combinações que ainda cabem; vale o menor deles. Só sem
+    // nenhuma marcação vale o total do produto.
+    const marcados = fileirasDeVariacao(
+      product.variants,
+      escolha,
+    ).fileiras.flatMap((f) =>
+      f.valores
+        .filter((v) => v.valor === escolha[f.nome])
+        .map((v) => v.estoque),
+    );
+    return marcados.length > 0 ? Math.min(...marcados) : product.stock;
   };
   const currentStock = estoqueDaEscolha(selectedVariants);
 

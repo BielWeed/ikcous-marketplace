@@ -1,8 +1,7 @@
 import { Input } from "@/components/ui/input";
 import { useProducts } from "@/hooks/useProducts";
 import {
-  formaAparece,
-  palavrasDaBusca,
+  pontuadorDaBusca,
   produtoCombinaComBusca,
 } from "@/lib/busca-de-produtos";
 import { miniaturaDaSugestao, usarImagemOriginal } from "@/lib/imageUrl";
@@ -220,43 +219,13 @@ export function SearchBar({
   const allResults = useMemo<ScoredProduct[]>(() => {
     const query = normalizeText(deferredLocalValue);
     if (!query) return [];
-    const palavras = palavrasDaBusca(query);
+    const pontuar = pontuadorDaBusca(query);
 
     return products
       .filter(
         (product) => product.isActive && produtoCombinaComBusca(product, query),
       )
-      .map((product) => {
-        let score = 0;
-        const name = normalizeText(product.name);
-        // `description` pode vir nula do banco: `.toLowerCase()` direto
-        // quebrava a busca inteira aqui. `normalizeText` aguenta nulo.
-        const description = normalizeText(product.description);
-        const category = normalizeText(product.category);
-
-        // Exact match
-        if (name === query) score += 100;
-        // Starts with query
-        else if (name.startsWith(query)) score += 85;
-        // Contains query
-        else if (name.includes(query)) score += 50;
-
-        // Word level score (qualquer forma da palavra: "colares" -> "colar")
-        for (const formas of palavras) {
-          if (formas.some((forma) => formaAparece(name, forma))) score += 20;
-          if (formas.some((forma) => formaAparece(category, forma)))
-            score += 15;
-        }
-
-        // Category match
-        if (category === query) score += 40;
-        else if (category.includes(query)) score += 25;
-
-        // Description match
-        if (description.includes(query)) score += 5;
-
-        return { ...product, score } as ScoredProduct;
-      })
+      .map((product) => ({ ...product, score: pontuar(product) }))
       .sort((a, b) => b.score - a.score);
   }, [products, deferredLocalValue]);
 

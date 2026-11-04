@@ -493,11 +493,16 @@ const ehFalhaDeRedeAntesDoEnvio = (error: unknown): boolean => {
  * servidor —, nunca "0 dias" (um prazo que não existe para quem lê a nota
  * depois, lojista ou cliente). Pura e exportada pelo mesmo motivo de
  * `decidirSaidaDoCheckout`: testável sem montar a tela inteira.
+ *
+ * O frete grátis por produto (`free-shipping-promo`, provider "free") sai da
+ * edge com `deliveryDays: 3` FIXO, sem transportadora cotada — o carrinho já
+ * esconde esse prazo; a nota também não o grava. O parêntese "(Prazo: ...)"
+ * fica, porque quem lê a nota (ficha do pedido, etiqueta) exige a frase inteira.
  */
 export const notaDoFreteEscolhido = (
   option: Pick<
     ShippingOption,
-    "id" | "name" | "deliveryDays" | "pickupAddress"
+    "id" | "name" | "deliveryDays" | "pickupAddress" | "provider"
   > | null,
 ): string | undefined => {
   if (!option) return undefined;
@@ -505,7 +510,11 @@ export const notaDoFreteEscolhido = (
     return `Retirada na loja${option.pickupAddress ? `: ${option.pickupAddress}` : ""}`;
   }
   const prazo =
-    option.deliveryDays === 0 ? "no mesmo dia" : `${option.deliveryDays} dias`;
+    option.id === "free-shipping-promo" || option.provider === "free"
+      ? "não calculado"
+      : option.deliveryDays === 0
+        ? "no mesmo dia"
+        : `${option.deliveryDays} dias`;
   return `Frete Escolhido: ${option.name} (Prazo: ${prazo})`;
 };
 
@@ -7804,7 +7813,8 @@ function PagamentoConfirmadoView({
         </p>
         <div className="mx-auto max-w-[300px]">
           <p className="text-sm font-medium leading-relaxed text-zinc-500">
-            Seu pagamento foi confirmado e a loja já está preparando seu pedido.
+            Seu pagamento foi confirmado. A loja vai iniciar a separação do seu
+            pedido.
           </p>
         </div>
       </div>
@@ -7915,7 +7925,7 @@ function PagamentoForaDoPrazoView({
       </div>
 
       <div className="flex w-full max-w-xs flex-col gap-4 duration-1000 animate-in slide-in-from-bottom-12">
-        {numeroLimpo && (
+        {lojaTemWhatsappAgora && (
           <BotaoWhatsapp
             onClick={handleFalarComALoja}
             className="h-16 text-[11px] font-black uppercase tracking-[0.3em]"

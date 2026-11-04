@@ -275,3 +275,170 @@ describe("realtimeSyncEngine — evento de produto não apaga as variações já
     expect(gravado.stock).toBe(3);
   });
 });
+
+// Produto com TODAS as variações desligadas (ou a última apagada) continua
+// vendável pelo estoque de base -- é o que `mapProductFromDB` já mostra na
+// carga normal (`some(active) ? soma das ativas : estoque`). O motor somava só
+// as ativas SEM esse "senão" e, com nenhuma ativa, zerava o estoque: a vitrine
+// ao vivo dizia "Esgotado" num produto que o servidor ainda vende, até a
+// página recarregar.
+describe("realtimeSyncEngine — sem variação ativa o estoque de base vale, nunca zero", () => {
+  let removerOuvinte: () => void;
+
+  beforeEach(() => {
+    removerOuvinte = RealtimeSyncEngine.onSync(() => {});
+  });
+
+  afterEach(() => {
+    removerOuvinte();
+  });
+
+  const variacaoDoCofre = (id: string, estoque: number, active: boolean) => ({
+    id,
+    productId: "prod-camiseta",
+    name: "Tamanho",
+    value: id,
+    stockIncrement: estoque,
+    active,
+  });
+
+  // Dublê com os dois cofres que o motor toca nos eventos de variação: o de
+  // `product_variants` (para achar o produto da variação apagada) e o de
+  // `products`.
+  function criarCofreDeProdutoEVariacoes(produto: any, variacaoApagada?: any) {
+    return {
+      async mutate<T>(
+        store: string,
+        _id: string,
+        update: (current: T | undefined) => T | undefined,
+      ) {
+        const registro = update(produto as unknown as T | undefined);
+        if (registro !== undefined) await this.put(store, registro);
+        return registro;
+      },
+      put: vi.fn(async (_store: string, _registro: any) => undefined),
+      deleteById: vi.fn(async (_store: string, _id: string) => undefined),
+      setLastSync: vi.fn(async () => undefined),
+      getById: vi.fn(async (store: string, _id: string) =>
+        store === "product_variants" ? variacaoApagada : produto,
+      ),
+      getByIndex: vi.fn(async () => []),
+    };
+  }
+
+  it("UPDATE de produtos com as variações do cofre todas desligadas: fica o estoque de base (7), não 0", async () => {
+    const vault = criarCofreDeProdutoEVariacoes({
+      id: "prod-camiseta",
+      name: "Camiseta",
+      stock: 7,
+      variants: [
+        variacaoDoCofre("var-p", 3, false),
+        variacaoDoCofre("var-m", 5, false),
+      ],
+    });
+
+    await RealtimeSyncEngine._applyChangeAndNotify(
+      vault as any,
+      configDe("produtos"),
+      "UPDATE",
+      {
+        id: "prod-camiseta",
+        nome: "Camiseta",
+        preco_venda: 49.9,
+        estoque: 7,
+        ativo: true,
+      },
+      {},
+    );
+
+    const [, gravado] = vault.put.mock.calls[0];
+    expect(gravado.variants).toHaveLength(2);
+    expect(gravado.stock).toBe(7);
+  });
+
+  it("evento de uma variação desligada, sem nenhuma ativa no produto: o estoque do produto não vira 0", async () => {
+    const vault = criarCofreDeProdutoEVariacoes({
+      id: "prod-camiseta",
+      name: "Camiseta",
+      stock: 7,
+      variants: [
+        variacaoDoCofre("var-p", 3, false),
+        variacaoDoCofre("var-m", 5, false),
+      ],
+    });
+
+    await RealtimeSyncEngine._applyChangeAndNotify(
+      vault as any,
+      configDe("product_variants"),
+      "UPDATE",
+      {
+        id: "var-m",
+        product_id: "prod-camiseta",
+        name: "Tamanho",
+        value: "var-m",
+        stock_increment: 5,
+        active: false,
+      },
+      {},
+    );
+
+    const gravadoNoProduto = vault.put.mock.calls.find(
+      ([store]) => store === "products",
+    )?.[1];
+    expect(gravadoNoProduto.stock).toBe(7);
+  });
+
+  it("apagar a última variação: o produto segue com o estoque que tinha, não 0", async () => {
+    const vault = criarCofreDeProdutoEVariacoes(
+      {
+        id: "prod-camiseta",
+        name: "Camiseta",
+        stock: 7,
+        variants: [variacaoDoCofre("var-p", 3, false)],
+      },
+      variacaoDoCofre("var-p", 3, false),
+    );
+
+    await RealtimeSyncEngine._applyChangeAndNotify(
+      vault as any,
+      configDe("product_variants"),
+      "DELETE",
+      {},
+      { id: "var-p" },
+    );
+
+    const gravadoNoProduto = vault.put.mock.calls.find(
+      ([store]) => store === "products",
+    )?.[1];
+    expect(gravadoNoProduto.variants).toEqual([]);
+    expect(gravadoNoProduto.stock).toBe(7);
+  });
+
+  it("controle: com uma variação ativa e outra apagada, a soma das ativas continua valendo", async () => {
+    const vault = criarCofreDeProdutoEVariacoes(
+      {
+        id: "prod-camiseta",
+        name: "Camiseta",
+        stock: 8,
+        variants: [
+          variacaoDoCofre("var-p", 3, true),
+          variacaoDoCofre("var-m", 5, true),
+        ],
+      },
+      variacaoDoCofre("var-m", 5, true),
+    );
+
+    await RealtimeSyncEngine._applyChangeAndNotify(
+      vault as any,
+      configDe("product_variants"),
+      "DELETE",
+      {},
+      { id: "var-m" },
+    );
+
+    const gravadoNoProduto = vault.put.mock.calls.find(
+      ([store]) => store === "products",
+    )?.[1];
+    expect(gravadoNoProduto.stock).toBe(3);
+  });
+});

@@ -231,6 +231,20 @@ export const TABLE_CONFIGS: TableConfig[] = [
   },
 ];
 
+// Espelha `mapProductFromDB`: com ao menos uma variação ATIVA o estoque do
+// produto é a soma das ativas; sem nenhuma ativa o produto vende pelo estoque
+// de base (é assim que o servidor vende), nunca por uma soma que daria 0.
+function estoqueDasAtivas(
+  variants: NonNullable<Product["variants"]>,
+  estoqueDeBase: number,
+): number {
+  if (!variants.some((v) => v.active)) return estoqueDeBase;
+  return variants.reduce(
+    (acc, v) => acc + (v.active ? Number(v.stockIncrement) || 0 : 0),
+    0,
+  );
+}
+
 // ─── Singleton ───────────────────────────────────────────────────────────────
 
 let _channel: RealtimeChannel | null = null;
@@ -646,10 +660,9 @@ export const RealtimeSyncEngine = {
                 (produtoExistente) => {
                   if (produtoExistente?.variants?.length) {
                     mapped.variants = produtoExistente.variants;
-                    mapped.stock = produtoExistente.variants.reduce(
-                      (acc, v) =>
-                        acc + (v.active ? Number(v.stockIncrement) || 0 : 0),
-                      0,
+                    mapped.stock = estoqueDasAtivas(
+                      produtoExistente.variants,
+                      mapped.stock,
                     );
                   }
                   return mapped;
@@ -678,11 +691,7 @@ export const RealtimeSyncEngine = {
                     variants.push(variant);
                   }
                   product.variants = variants;
-                  product.stock = variants.reduce(
-                    (acc, v) =>
-                      acc + (v.active ? Number(v.stockIncrement) || 0 : 0),
-                    0,
-                  );
+                  product.stock = estoqueDasAtivas(variants, product.stock);
                   return product;
                 },
               );
@@ -739,11 +748,7 @@ export const RealtimeSyncEngine = {
                     (v) => v.id !== deleteId,
                   );
                   product.variants = variants;
-                  product.stock = variants.reduce(
-                    (acc, v) =>
-                      acc + (v.active ? Number(v.stockIncrement) || 0 : 0),
-                    0,
-                  );
+                  product.stock = estoqueDasAtivas(variants, product.stock);
                   return product;
                 },
               );

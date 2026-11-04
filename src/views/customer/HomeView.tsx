@@ -4,7 +4,10 @@ import { CategoryFilter } from "@/components/ui/custom/CategoryFilter";
 import { useStore } from "@/contexts/StoreContext";
 import { useBanners } from "@/hooks/useBanners";
 import { useCategories } from "@/hooks/useCategories";
-import { produtoCombinaComBusca } from "@/lib/busca-de-produtos";
+import {
+  pontuadorDaBusca,
+  produtoCombinaComBusca,
+} from "@/lib/busca-de-produtos";
 import { categoriaValidaDaHome } from "@/lib/categoria-valida-da-home";
 import { identidadeLegalDaLoja } from "@/lib/identidade-legal-da-loja";
 import {
@@ -230,6 +233,14 @@ export const HomeView = React.memo(function HomeView({
       result = result.filter((p) => produtoCombinaComBusca(p, searchQuery));
     }
 
+    // "Relevância" na busca é a MESMA pontuação da caixinha do topo (nome
+    // igual > começa com > contém > palavra > categoria > descrição). Sem
+    // busca não há o que pontuar e vale a ordem do catálogo.
+    const pontuar = searchQuery.trim() ? pontuadorDaBusca(searchQuery) : null;
+    const pontos = pontuar
+      ? new Map(result.map((p) => [p.id, pontuar(p)]))
+      : null;
+
     // Sort with availability (in-stock first) prioritization, preserving sort order
     result.sort((a, b) => {
       const aAvailable = a.stock > 0 ? 1 : 0;
@@ -245,12 +256,26 @@ export const HomeView = React.memo(function HomeView({
         case "price-desc":
           return precoDeVitrine(b).preco - precoDeVitrine(a).preco;
         default:
-          return 0;
+          return pontos ? (pontos.get(b.id) ?? 0) - (pontos.get(a.id) ?? 0) : 0;
       }
     });
 
     return result;
   }, [produtosAVenda, selectedCategory, searchQuery, sortBy]);
+
+  // A busca do topo olha a loja INTEIRA (é o que a caixinha conta). Ao COMEÇAR
+  // ou trocar a busca com uma categoria marcada, a categoria volta para
+  // "Todas": senão "Ver todos os resultados" mostrava menos do que a caixinha
+  // prometeu (ou "Nenhum produto agora"). Só reage a MUDANÇA da busca: tocar
+  // numa categoria depois de buscar é escolha da cliente e fica.
+  const buscaAnterior = React.useRef(searchQuery);
+  React.useEffect(() => {
+    const mudou = buscaAnterior.current !== searchQuery;
+    buscaAnterior.current = searchQuery;
+    if (mudou && searchQuery.trim() && selectedCategory !== "Todas") {
+      onCategoryChange("Todas");
+    }
+  }, [searchQuery, selectedCategory, onCategoryChange]);
 
   const newArrivals = useMemo(() => {
     // A ordenação mora em ordenarParaVitrine (src/lib/vitrine.ts) — a MESMA
