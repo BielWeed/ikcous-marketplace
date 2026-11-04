@@ -56,6 +56,8 @@ interface PedidoDaLista {
   customer?: { name?: string | null } | null;
   /** Canal da venda (C4.2): o confirm do estorno manual fala 'no balcão' quando presencial. */
   canal?: CanalDaVenda;
+  /** Forma de pagamento: fora de `online` o dinheiro nunca passou pelo Mercado Pago, e o botão diz "Já devolvi ao cliente". */
+  paymentMethod?: Order["paymentMethod"];
   /** Achado A4 (rodada 3): o confirm de "Já devolvi" mostra o que FALTA, não o total. */
   valorDevolvidoPorDevolucao?: number;
   valorEstornado?: number;
@@ -656,7 +658,11 @@ export function AlertasCancelados({
                             ? "Conferindo…"
                             : estornandoId === pedido.id
                               ? "Registrando..."
-                              : "Já estornei no Mercado Pago"}
+                              : pedido.canal === "presencial" ||
+                                  (pedido.paymentMethod !== undefined &&
+                                    pedido.paymentMethod !== "online")
+                                ? "Já devolvi ao cliente"
+                                : "Já estornei no Mercado Pago"}
                         </button>
                       </li>
                     );

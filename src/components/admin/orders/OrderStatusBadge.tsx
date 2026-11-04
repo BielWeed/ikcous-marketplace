@@ -338,6 +338,22 @@ const ESTORNADO_E_CANCELADO: PaymentStatusEntry = {
 };
 
 /**
+ * Pedido CANCELADO que nunca foi pago: cancelar grava só o `status` do pedido,
+ * então o `payment_status` fica em "aguardando" para sempre (o cliente que
+ * desiste do PIX, a loja que cancela um pedido ainda não pago). O selo âmbar
+ * "Aguardando pagamento" num pedido morto mandava esperar um dinheiro que não
+ * vem — e a planilha exportava a mesma mentira. Caso resolvido, sem dinheiro
+ * em jogo: mesmo tom neutro de `ESTORNADO_E_CANCELADO`, sem atenção e sem piscar.
+ */
+const CANCELADO_SEM_PAGAMENTO: PaymentStatusEntry = {
+  label: "Cancelado — sem pagamento",
+  shortLabel: "Sem pagamento",
+  color: paymentStatusConfig.expirado.color,
+  bgColor: paymentStatusConfig.expirado.bgColor,
+  borderColor: paymentStatusConfig.expirado.borderColor,
+};
+
+/**
  * D1 do plano (docs/superpowers/plans/2026-09-15-super-atualizacao-do-app.md,
  * seção 6): a venda de balcão grava o MESMO `recebido_na_entrega` — o banco
  * não ganhou um oitavo valor. Só o rótulo muda, e muda aqui, num lugar só.
@@ -370,6 +386,9 @@ function configDoPagamento(
   }
   if (key === "estornado" && orderStatus === "cancelled") {
     return ESTORNADO_E_CANCELADO;
+  }
+  if (key === "aguardando" && orderStatus === "cancelled") {
+    return CANCELADO_SEM_PAGAMENTO;
   }
   if (key === "recebido_na_entrega" && canal === "presencial") {
     return RECEBIDO_NO_BALCAO;

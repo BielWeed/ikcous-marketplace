@@ -581,7 +581,12 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                   label: "Cancelar pedido",
                   motivo: !podeCancelar
                     ? order.status === "delivered"
-                      ? "Venda finalizada: use Anular venda quando disponível."
+                      ? // "Anular venda" só existe para venda do balcão: para
+                        // pedido online entregue a frase mandaria para uma
+                        // ação que nunca estará disponível.
+                        order.canal === "presencial"
+                        ? "Venda finalizada: use Anular venda quando disponível."
+                        : "Pedido finalizado não se cancela."
                       : "Indisponível: pedido cancelado."
                     : isOffline
                       ? "Indisponível: sem conexão."

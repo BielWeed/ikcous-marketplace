@@ -1020,6 +1020,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // para um dinheiro que ele recebeu na mão. Opcional: os chamadores de
     // hoje (pedido de canal online) continuam sem passar o campo.
     canal?: CanalDaVenda;
+    // Achado 6 (rodada 6): pedido pago na entrega (dinheiro, PIX da loja,
+    // maquininha) e depois cancelado também cai em "Devolver agora", mas nunca
+    // passou pelo Mercado Pago — a pergunta não pode mandar conferir lá.
+    // Opcional: sem o campo, vale a pergunta do Mercado Pago de sempre.
+    paymentMethod?: Order["paymentMethod"];
     // Achado A4 (revisão 26/09/2026, rodada 3): o confirm mostrava o TOTAL
     // do pedido, mesmo com parte já devolvida (manual ou pelo ledger do MP)
     // — o lojista confirmava um valor maior do que o que realmente falta.
@@ -1083,6 +1088,21 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // `em_processamento` faz o servidor RECUSAR o registro. O texto abaixo é
     // verdadeiro nos dois mundos: "pode ser cancelada", "pode recusar", "ou o
     // cliente pode receber as duas" (POST já saído antes da C-S).
+    //
+    // Achado 6 (rodada 6): quem recebeu o dinheiro na mão (balcão, ou pedido
+    // do site pago na entrega: `paymentMethod` diferente de "online") devolve
+    // direto ao cliente — a pergunta (e a leitura do ledger do Mercado Pago
+    // que falhou) não tem o que ver com o painel do Mercado Pago. A devolução
+    // que o MP já está fazendo (`emCurso`, abaixo) prova que o MP participou e
+    // mantém o texto dele.
+    const devolucaoDireta =
+      pedido.canal === "presencial" ||
+      (pedido.paymentMethod !== undefined && pedido.paymentMethod !== "online");
+    const perguntaDaDevolucaoDireta = `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} ${
+      pedido.canal === "presencial"
+        ? "no balcão"
+        : "(dinheiro, PIX ou maquininha)"
+    }?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`;
     let pergunta: string;
     if (conferido && conferido.emCurso > 0) {
       const emCurso = reais(conferido.emCurso);
@@ -1105,6 +1125,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             ? `Se você devolveu só R$ ${reais(descontado)} (ou nada), toque em Cancelar e espere a devolução do Mercado Pago terminar; depois confirme.`
             : "Se você não devolveu nada por fora, toque em Cancelar: o dinheiro já está voltando pelo Mercado Pago.";
       pergunta = `ATENÇÃO: ${quemPediu}\n\nSe você confirmar e o registro for aceito, o pedido inteiro passa a contar como devolvido, e essa devolução do Mercado Pago pode ser cancelada. Se ela já estiver saindo, o app pode recusar o registro — ou o cliente pode receber as duas.\n\nConfirme só se você já devolveu a ${cliente}, por fora (PIX, dinheiro ou painel do Mercado Pago), o valor TOTAL de R$ ${valor}. ${seDevolveuMenos}`;
+    } else if (devolucaoDireta) {
+      pergunta = perguntaDaDevolucaoDireta;
     } else if (!conferido) {
       // Rodada 3: estado DESCONHECIDO (leitura pendente ou falha) — é
       // exatamente quando o lojista não tem como saber se o MP já está
@@ -1112,10 +1134,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // conferir, e o valor TOTAL que o registro marca como devolvido.
       pergunta = `ATENÇÃO: Não consegui conferir agora se o Mercado Pago já está devolvendo parte deste pedido. Antes de confirmar, abra o painel do Mercado Pago e veja se há devolução em andamento — se houver, toque em Cancelar.\n\nConfirme só se você já devolveu a ${cliente}, por fora (PIX, dinheiro ou painel do Mercado Pago), o valor TOTAL de R$ ${valor}.\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`;
     } else {
-      pergunta =
-        pedido.canal === "presencial"
-          ? `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no balcão?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`
-          : `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no painel do Mercado Pago?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`;
+      pergunta = `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no painel do Mercado Pago?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`;
     }
     const confirmado = await confirmar({
       titulo: "Registrar que o dinheiro já foi devolvido?",

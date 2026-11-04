@@ -271,7 +271,10 @@ module.exports = [
     // 499,02 kB no CI (18 B acima). Nenhum codigo foi trocado por algo mais arriscado para caber.
     // 04/11/2026 (mesma regra): 501 -> 502 kB na 1.5.117 (mesmo lote; Inicio le o eco do pagamento
     // pelo app e Financeiro/Pedidos ganham textos). Medem 500,96 kB no build local, rente ao teto.
-    limit: "502 kB",
+    // 04/11/2026 (mesma regra): 502 -> 503 kB na 1.5.121 (guia de pagamento, selo de cancelado sem pagamento e
+    // textos de devolucao no painel de Pedidos). Medem 502,11 kB no build local, 109 B acima do teto.
+    // Nada foi trocado por algo mais arriscado.
+    limit: "503 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },

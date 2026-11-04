@@ -353,6 +353,72 @@ function componhaShareText(
 // existe laço. Toque manual em "Tentar de novo" zera a contagem.
 const ESPERAS_DO_CATALOGO_MS: readonly number[] = [2000, 5000, 10000];
 
+// O catálogo é lido em páginas de 200 produtos (`.range()`), até acabar. Antes
+// era um corte seco em 200 (`.limit(200)`): a loja que passava disso perdia os
+// produtos mais antigos da vitrine e da busca, sem aviso. O teto de páginas é
+// só trava de segurança (10 mil produtos) -- nunca existe laço sem fim.
+const PRODUTOS_POR_PAGINA = 200;
+const MAXIMO_DE_PAGINAS_DO_CATALOGO = 50;
+
+type RespostaDaPaginaDoCatalogo = { data: any[] | null; error: any };
+
+function semLinhasRepetidas(linhas: any[]): any[] {
+  // Produto cadastrado ENTRE duas páginas empurra a lista e repete a última
+  // linha da página anterior no começo da seguinte: a primeira ocorrência vale.
+  const vistos = new Set<unknown>();
+  return linhas.filter((linha) => {
+    const id = linha?.id;
+    if (id === undefined || id === null) return true;
+    if (vistos.has(id)) return false;
+    vistos.add(id);
+    return true;
+  });
+}
+
+/**
+ * Lê TODAS as páginas do catálogo e só então devolve. Falha em qualquer página
+ * depois da primeira devolve erro e NENHUMA linha: catálogo pela metade não
+ * pode se passar por completo (nem na tela, nem no cofre offline). Loja com
+ * menos de uma página faz uma consulta só. Quem decide ficar com a cópia que
+ * já estava na tela é o chamador, que recebe o erro.
+ */
+async function lerCatalogoEmPaginas(
+  lerPagina: (
+    de: number,
+    ate: number,
+  ) => PromiseLike<RespostaDaPaginaDoCatalogo>,
+  aindaVale: () => boolean,
+): Promise<RespostaDaPaginaDoCatalogo> {
+  const primeira = await lerPagina(0, PRODUTOS_POR_PAGINA - 1);
+  if (primeira.error || !primeira.data) return primeira;
+  if (primeira.data.length < PRODUTOS_POR_PAGINA) return primeira;
+
+  const linhas = [...primeira.data];
+  for (let pagina = 1; pagina < MAXIMO_DE_PAGINAS_DO_CATALOGO; pagina += 1) {
+    // Consulta superada por outra mais nova: não gasta rede com o resto.
+    if (!aindaVale()) {
+      return { data: null, error: new Error("consulta de produtos superada") };
+    }
+    const de = pagina * PRODUTOS_POR_PAGINA;
+    const resposta = await lerPagina(de, de + PRODUTOS_POR_PAGINA - 1);
+    if (resposta.error) return { data: null, error: resposta.error };
+    if (!resposta.data) {
+      return {
+        data: null,
+        error: new Error("página do catálogo voltou sem dados e sem erro"),
+      };
+    }
+    linhas.push(...resposta.data);
+    if (resposta.data.length < PRODUTOS_POR_PAGINA) {
+      return { data: semLinhasRepetidas(linhas), error: null };
+    }
+  }
+  console.warn(
+    `[StoreContext] catálogo passou de ${MAXIMO_DE_PAGINAS_DO_CATALOGO} páginas; o resto não foi lido`,
+  );
+  return { data: semLinhasRepetidas(linhas), error: null };
+}
+
 // Mesma ideia para a CONFIGURAÇÃO da loja (nome, WhatsApp, frete, cores): na
 // primeira visita com rede ruim a consulta falhava e a loja seguia com a
 // configuração de fábrica até a cliente recarregar a página. Espera crescente
@@ -1029,6 +1095,7 @@ export function StoreProvider({
     // Só a consulta MAIS RECENTE pode alterar o catálogo, o cache e os avisos:
     // o efeito de montagem consulta de novo quando o lojista troca de fonte.
     const minhaConsulta = ++consultaDoCatalogoRef.current;
+    const aindaVale = () => minhaConsulta === consultaDoCatalogoRef.current;
     // Avisa o motor de sincronização que o catálogo está a caminho: a rodada
     // dele espera o cofre receber esta gravação em vez de achá-lo vazio e
     // baixar tudo de novo (src/lib/deposito-do-catalogo.ts). TEM de fechar em
@@ -1041,23 +1108,35 @@ export function StoreProvider({
 
       // Only query admin view if admin is verified and auth is not loading
       if (usaFontePainel) {
-        const res = await supabase
-          .from("vw_produtos_admin")
-          .select("*, product_variants(*)")
-          .is("deleted_at", null)
-          .limit(200)
-          .order("data_cadastro", { ascending: false });
+        // `id` desempata produtos cadastrados no mesmo instante: sem ele a
+        // ordem entre duas páginas não é garantida e linha repete ou some.
+        const res = await lerCatalogoEmPaginas(
+          (de, ate) =>
+            supabase
+              .from("vw_produtos_admin")
+              .select("*, product_variants(*)")
+              .is("deleted_at", null)
+              .order("data_cadastro", { ascending: false })
+              .order("id", { ascending: true })
+              .range(de, ate),
+          aindaVale,
+        );
         data = res.data;
         error = res.error;
       }
 
       // Fallback to public view if not admin or if admin query failed (e.g., PGRST205 or unauthenticated)
       if (!usaFontePainel || error) {
-        const publicRes = await supabase
-          .from("vw_produtos_public")
-          .select("*, product_variants(*)")
-          .limit(200)
-          .order("data_cadastro", { ascending: false });
+        const publicRes = await lerCatalogoEmPaginas(
+          (de, ate) =>
+            supabase
+              .from("vw_produtos_public")
+              .select("*, product_variants(*)")
+              .order("data_cadastro", { ascending: false })
+              .order("id", { ascending: true })
+              .range(de, ate),
+          aindaVale,
+        );
 
         if (publicRes.error && error) {
           throw error;

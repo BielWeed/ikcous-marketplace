@@ -18,6 +18,7 @@ import {
   lerCpfDaConta,
   mensagemFalhaCpf,
 } from "@/lib/cpf-da-conta";
+import { descartarPendenteDaConta } from "@/lib/cpf-pendente-do-cadastro";
 import { supabase } from "@/lib/supabase";
 import { digitosDoTelefoneDoCampo } from "@/lib/telefone-br";
 import {
@@ -633,6 +634,10 @@ export function AccountSettingsView() {
           digitosCpfAtual,
           contaDonaId,
         );
+        // CPF gravado (ou limpo) AQUI vale mais que o do cadastro: o
+        // pendente não pode voltar depois e sobrescrever. Vale mesmo que a
+        // sessão tenha virado outra conta — o servidor gravou na conta dona.
+        if (resultadoCpf.ok) descartarPendenteDaConta(contaDonaId);
         if (!contaAindaEhDona()) return;
         if (!resultadoCpf.ok) {
           toast.error(mensagemFalhaCpf(resultadoCpf.motivo));
@@ -1077,7 +1082,7 @@ export function AccountSettingsView() {
                         id="email"
                         name="email"
                         autoComplete="email"
-                        value={profileData.email}
+                        value={user.email ?? ""}
                         disabled
                         className={`${CAMPO} pr-10`}
                       />

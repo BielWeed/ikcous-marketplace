@@ -69,6 +69,7 @@ import {
   lerCpfDaConta,
   mensagemFalhaCpf,
 } from "@/lib/cpf-da-conta";
+import { descartarPendenteDaConta } from "@/lib/cpf-pendente-do-cadastro";
 import {
   enderecoDeEntregaEfetivo,
   resumoDoEndereco,
@@ -4532,11 +4533,13 @@ export function CheckoutViewDaConta({
       ) {
         // O CPF é conveniência pós-pedido: a falha só avisa, sem desfazer
         // a compra nem limpar o campo. A conta veio do início da operação.
-        void gravarCpfDaConta(cpfParaRpc, pedido.contaEsperada).then(
-          (resultado) => {
-            if (!resultado.ok) toast.error(mensagemFalhaCpf(resultado.motivo));
-          },
-        );
+        const contaDoCpf = pedido.contaEsperada;
+        void gravarCpfDaConta(cpfParaRpc, contaDoCpf).then((resultado) => {
+          // CPF salvo aqui vale mais que o pendente do cadastro: não deixa
+          // ele voltar depois e sobrescrever.
+          if (resultado.ok) descartarPendenteDaConta(contaDoCpf);
+          else toast.error(mensagemFalhaCpf(resultado.motivo));
+        });
       }
       setOrderId(order.id);
       setValorDoPedido(order.totalAmount);

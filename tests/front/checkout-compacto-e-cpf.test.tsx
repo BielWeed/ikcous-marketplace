@@ -926,6 +926,84 @@ describe("CheckoutView — checkout compacto (Seus dados e entrega) + CPF do des
     expect(cpfDaConta.gravar).toHaveBeenCalledWith("11144477735", "user-1");
   });
 
+  it.each([
+    ["user-1", true],
+    ["outra-conta", false],
+  ] as const)(
+    "CPF salvo na conta pelo checkout apaga o pendente do cadastro DESTA conta (pendente de %s some: %s)",
+    async (donoDoPendente, deveSumir) => {
+      const chave = "ikcous:cpf-pendente-cadastro";
+      const mapa = new Map<string, string>([
+        [
+          chave,
+          JSON.stringify({
+            v: 1,
+            userId: donoDoPendente,
+            email: "cliente@example.com",
+            cpf: "52998224725",
+            expiraEm: Date.now() + 60 * 60 * 1000,
+          }),
+        ],
+      ]);
+      vi.stubGlobal("localStorage", {
+        getItem: (k: string) => mapa.get(k) ?? null,
+        setItem: (k: string, v: string) => void mapa.set(k, v),
+        removeItem: (k: string) => void mapa.delete(k),
+      });
+      try {
+        cpfDaConta.ler.mockResolvedValue({ ok: true, cpf: null });
+        cpfDaConta.gravar.mockResolvedValue({ ok: true });
+        cotacoesControladas({ "01001000": [PAC_SP] });
+        await montar();
+        await finalizarComTransportadora("111.444.777-35");
+        await act(async () => caixaSalvarNaConta()?.click());
+        await act(async () => botaoFinalizar().click());
+        await drenar();
+
+        expect(cpfDaConta.gravar).toHaveBeenCalledTimes(1);
+        expect(mapa.has(chave)).toBe(!deveSumir);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  it("CPF do checkout que NÃO foi gravado na conta (falha) deixa o pendente do cadastro", async () => {
+    const chave = "ikcous:cpf-pendente-cadastro";
+    const mapa = new Map<string, string>([
+      [
+        chave,
+        JSON.stringify({
+          v: 1,
+          userId: "user-1",
+          email: "cliente@example.com",
+          cpf: "52998224725",
+          expiraEm: Date.now() + 60 * 60 * 1000,
+        }),
+      ],
+    ]);
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => mapa.get(k) ?? null,
+      setItem: (k: string, v: string) => void mapa.set(k, v),
+      removeItem: (k: string) => void mapa.delete(k),
+    });
+    try {
+      cpfDaConta.ler.mockResolvedValue({ ok: true, cpf: null });
+      cpfDaConta.gravar.mockResolvedValue({ ok: false, motivo: "falha" });
+      cotacoesControladas({ "01001000": [PAC_SP] });
+      await montar();
+      await finalizarComTransportadora("111.444.777-35");
+      await act(async () => caixaSalvarNaConta()?.click());
+      await act(async () => botaoFinalizar().click());
+      await drenar();
+
+      expect(cpfDaConta.gravar).toHaveBeenCalledTimes(1);
+      expect(mapa.has(chave)).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it.each(["conta_trocada", "falha"] as const)(
     "falha opcional do CPF (%s) só avisa e não interrompe o pedido criado",
     async (motivo) => {

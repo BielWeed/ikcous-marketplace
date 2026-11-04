@@ -74,7 +74,7 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     expect(trechoCss).toContain("webpack: false");
   });
 
-  it("os tetos de JS são os fixados: cliente 606 kB, painel 502 kB", () => {
+  it("os tetos de JS são os fixados: cliente 606 kB, painel 503 kB", () => {
     // Se algum PR precisar mexer num teto, que seja explícito AQUI: mudar o
     // número quebra este teste de propósito. Painel 450 -> 455 em 15/10/2026
     // (lote da noite: 39 ajustes de tela juntos) e 455 -> 460 no mesmo dia
@@ -104,9 +104,10 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     // cliente 603 -> 604 e painel 501 -> 502 em 04/11/2026 (1.5.117, correcoes da segunda caca; medido 602,92 e 500,96 kB no build local; regra do dono);
     // cliente 604 -> 605 em 04/11/2026 (1.5.118, favoritos, carrinho entre abas e conta; medido 603,8 kB no build local; regra do dono);
     // cliente 605 -> 606 em 04/11/2026 (1.5.120, enderecos, balcao, busca e frete gratis; medido 605,14 kB no build local; regra do dono);
+    // painel 502 -> 503 em 04/11/2026 (1.5.121, pedidos do painel; medido 502,11 kB no build local; regra do dono);
     // ver comentário no `.size-limit.cjs`.
     expect(entrada("cliente.map(")).toContain('limit: "606 kB"');
-    expect(entrada("painel.map(")).toContain('limit: "502 kB"');
+    expect(entrada("painel.map(")).toContain('limit: "503 kB"');
     expect(configTexto).not.toContain('limit: "800 kB"');
   });
 });

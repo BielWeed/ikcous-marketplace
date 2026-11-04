@@ -40,6 +40,8 @@ export interface PendenteCpf {
   email: string;
   cpf: string;
   expiraEm: number;
+  /** A cliente já viu o aviso de falha deste pendente (uma vez só). */
+  avisado?: boolean;
 }
 
 function armazem(): Storage | null {
@@ -80,6 +82,21 @@ export function salvarPendente(params: {
 export function removerPendente(): void {
   try {
     armazem()?.removeItem(CHAVE_CPF_PENDENTE);
+  } catch {
+    // Storage indisponível — nada para limpar mesmo.
+  }
+}
+
+/**
+ * A conta `userId` acabou de gravar ou limpar o CPF por OUTRO caminho
+ * (Minha conta, checkout): o pendente do cadastro deixa de valer, senão a
+ * próxima abertura do app o gravaria POR CIMA do que a cliente digitou.
+ * Só apaga o pendente DESTA conta — o de outra pessoa que se cadastrou no
+ * mesmo aparelho continua esperando a confirmação do e-mail dela.
+ */
+export function descartarPendenteDaConta(userId: string): void {
+  try {
+    if (lerRegistroValido()?.userId === userId) removerPendente();
   } catch {
     // Storage indisponível — nada para limpar mesmo.
   }
@@ -137,12 +154,37 @@ export function lerPendente(): PendenteCpf | null {
   return dado;
 }
 
+function marcarAvisado(pendente: PendenteCpf): void {
+  try {
+    // Relê ANTES de gravar: durante o voo da RPC a cliente pode ter salvo o CPF
+    // em Minha conta (o pendente foi descartado) ou outra pessoa pode ter se
+    // cadastrado neste aparelho. Regravar o registro lido antes do `await`
+    // ressuscitaria um CPF velho. Só marca se ainda for o MESMO pendente.
+    const atual = lerRegistroValido();
+    if (
+      !atual ||
+      atual.userId !== pendente.userId ||
+      atual.cpf !== pendente.cpf
+    ) {
+      return;
+    }
+    armazem()?.setItem(
+      CHAVE_CPF_PENDENTE,
+      JSON.stringify({ ...atual, avisado: true }),
+    );
+  } catch {
+    // Sem storage o aviso pode repetir — melhor que perder o pendente.
+  }
+}
+
 export type ResultadoRetomada =
   | "gravado"
   | "sem_pendente"
   | "outra_conta"
   | "expirado"
   | "falhou"
+  | "falhou_ja_avisado"
+  | "sem_sessao"
   | "ja_em_curso";
 
 // Dedupe de evento duplicado (SIGNED_IN + INITIAL_SESSION quase
@@ -191,9 +233,23 @@ export async function retomarCpfPendente(sessao: {
       removerPendente();
       return "outra_conta";
     }
+    if (resultado.motivo === "cpf_invalido") {
+      // O servidor recusou o CPF: tentar de novo nunca vai passar. Descarta
+      // agora (nada de ficar até o TTL) — este "falhou" é o único aviso.
+      removerPendente();
+      return "falhou";
+    }
+    if (resultado.motivo === "sem_sessao") {
+      // Saiu da conta no meio da gravação: não há ninguém para avisar e o
+      // CPF segue guardado para o próximo login.
+      return "sem_sessao";
+    }
     // Falha genuína (rede, servidor fora): MANTÉM o pendente até o TTL
     // vencer — a próxima retomada (próximo login, próxima aba) tenta de
-    // novo; quem chama decide o aviso ao cliente.
+    // novo. Só a PRIMEIRA falha devolve "falhou" (quem chama avisa a
+    // cliente); as seguintes devolvem "falhou_ja_avisado", sem aviso.
+    if (pendente.avisado) return "falhou_ja_avisado";
+    marcarAvisado(pendente);
     return "falhou";
   } finally {
     emVooPara = null;

@@ -1,4 +1,15 @@
 {
+  "1.5.121": {
+    "titulo": "Conta, avisos, pedidos do painel e lojas grandes mais certos",
+    "novidades": [],
+    "correcoes": [
+      "Conta: o CPF do cadastro que falhou ao salvar não volta depois por cima do que você digitou em Minha conta, e o aviso de erro aparece uma vez só; o e-mail de login aparece mesmo se o perfil demorar a carregar; e quem perde a sessão numa tela não é mais mandado de repente para o login.",
+      "Notificações: o sino e a caixa de avisos se atualizam quando o app volta para a frente, quando a internet volta e quando a conexão em tempo real se refaz.",
+      "Painel, Pedidos: pedido cancelado que nunca foi pago mostra \"Cancelado — sem pagamento\"; o Guia de ajuda descreve o que o cancelamento faz de verdade; a lista não passa da página quando chega pedido novo; e a devolução de pedido pago na entrega fala em devolver ao cliente, não em Mercado Pago.",
+      "Loja: quem tem mais de 200 produtos passa a ver todos na vitrine e na busca, não só os 200 mais novos."
+    ],
+    "melhorias": []
+  },
   "1.5.120": {
     "titulo": "Endereços, busca, frete e caixa mais claros e sem surpresas",
     "novidades": [],

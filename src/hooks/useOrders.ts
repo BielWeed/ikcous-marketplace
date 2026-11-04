@@ -2844,6 +2844,12 @@ export function useOrders(
               idsInseridosPeloRealtimeRef.current.has(newOrder.id);
             if (jaNaLista) return;
             idsInseridosPeloRealtimeRef.current.add(newOrder.id);
+            // Página 0 tem no máximo `pageSize` pedidos (o 2º da última
+            // consulta). O novo entra no topo e o último sai: ele é o
+            // primeiro da página 2, que o total (+1, abaixo) já conta — sem
+            // o corte a página crescia a cada venda até a próxima recarga.
+            // Sem consulta anterior não há tamanho de página a respeitar.
+            const tamanhoDaPagina = ultimaConsultaAdminRef.current?.[1];
             setOrders((prev) => {
               if (prev.some((o) => o.id === newOrder.id)) return prev;
               // P-2 (laudo varredura 01/09): SEM gravação de cache aqui —
@@ -2853,7 +2859,10 @@ export function useOrders(
               // que o fetch traz. O estado EM MEMÓRIA continua sendo
               // atualizado; o cache só se renova no fetch, que roda no
               // mount.
-              return [newOrder, ...prev];
+              const lista = [newOrder, ...prev];
+              return typeof tamanhoDaPagina === "number" && tamanhoDaPagina > 0
+                ? lista.slice(0, tamanhoDaPagina)
+                : lista;
             });
             setTotalOrders((total) => total + 1);
           } else if (decisao === "recarregar") {

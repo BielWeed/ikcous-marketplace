@@ -435,12 +435,17 @@ export function ProfileView({
   const lojaTemWhatsappAgora = lojaTemWhatsapp(config.whatsappNumber);
 
   useEffect(() => {
-    if (user) {
-      fetchAddresses();
-    } else if (!authLoading) {
-      onNavigate("auth");
-    }
+    if (user) fetchAddresses();
   }, [user, fetchAddresses, authLoading, onNavigate]);
+
+  // Sem sessão, o login só aparece quando o Perfil é a aba VISÍVEL (o botão
+  // Sair, ou o visitante que toca em Perfil). A aba fica montada escondida
+  // depois da primeira visita: se a sessão acabar por outro motivo (outra
+  // aba, token revogado) enquanto a pessoa está num produto ou no carrinho,
+  // ela não pode ser levada ao login sem explicação.
+  useEffect(() => {
+    if (!user && !authLoading && isActive) onNavigate("auth");
+  }, [user, authLoading, isActive, onNavigate]);
 
   // `useOrders` não busca ao montar: só lê o cache do aparelho, que só a
   // busca grava, e cada tela tem a SUA cópia da lista. Sem esta chamada o
