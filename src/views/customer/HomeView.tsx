@@ -207,6 +207,10 @@ export const HomeView = React.memo(function HomeView({
     [onAddToCart],
   );
 
+  // Um espaço (ou vários) na caixinha do topo é busca VAZIA: toda a Home usa
+  // este termo aparado, para banners, vitrines, título e filtro concordarem.
+  const termoDaBusca = searchQuery.trim();
+
   const produtosAVenda = useMemo(
     () => products.filter((p) => p.isActive),
     [products],
@@ -226,17 +230,17 @@ export const HomeView = React.memo(function HomeView({
     }
 
     // Filter by search query
-    if (searchQuery.trim()) {
+    if (termoDaBusca) {
       // Palavra por palavra, em qualquer ordem, ignorando acento e plural
       // simples (`produtoCombinaComBusca`): "bolsa preta" acha "Bolsa Grande
       // Preta". `description` pode vir nula do banco; a regra aguenta.
-      result = result.filter((p) => produtoCombinaComBusca(p, searchQuery));
+      result = result.filter((p) => produtoCombinaComBusca(p, termoDaBusca));
     }
 
     // "Relevância" na busca é a MESMA pontuação da caixinha do topo (nome
     // igual > começa com > contém > palavra > categoria > descrição). Sem
     // busca não há o que pontuar e vale a ordem do catálogo.
-    const pontuar = searchQuery.trim() ? pontuadorDaBusca(searchQuery) : null;
+    const pontuar = termoDaBusca ? pontuadorDaBusca(termoDaBusca) : null;
     const pontos = pontuar
       ? new Map(result.map((p) => [p.id, pontuar(p)]))
       : null;
@@ -261,21 +265,21 @@ export const HomeView = React.memo(function HomeView({
     });
 
     return result;
-  }, [produtosAVenda, selectedCategory, searchQuery, sortBy]);
+  }, [produtosAVenda, selectedCategory, termoDaBusca, sortBy]);
 
   // A busca do topo olha a loja INTEIRA (é o que a caixinha conta). Ao COMEÇAR
   // ou trocar a busca com uma categoria marcada, a categoria volta para
   // "Todas": senão "Ver todos os resultados" mostrava menos do que a caixinha
   // prometeu (ou "Nenhum produto agora"). Só reage a MUDANÇA da busca: tocar
   // numa categoria depois de buscar é escolha da cliente e fica.
-  const buscaAnterior = React.useRef(searchQuery);
+  const buscaAnterior = React.useRef(termoDaBusca);
   React.useEffect(() => {
-    const mudou = buscaAnterior.current !== searchQuery;
-    buscaAnterior.current = searchQuery;
-    if (mudou && searchQuery.trim() && selectedCategory !== "Todas") {
+    const mudou = buscaAnterior.current !== termoDaBusca;
+    buscaAnterior.current = termoDaBusca;
+    if (mudou && termoDaBusca && selectedCategory !== "Todas") {
       onCategoryChange("Todas");
     }
-  }, [searchQuery, selectedCategory, onCategoryChange]);
+  }, [termoDaBusca, selectedCategory, onCategoryChange]);
 
   const newArrivals = useMemo(() => {
     // A ordenação mora em ordenarParaVitrine (src/lib/vitrine.ts) — a MESMA
@@ -474,7 +478,7 @@ export const HomeView = React.memo(function HomeView({
           nome da loja como título do documento. sr-only: zero pixel muda. */}
       <h1 className="sr-only">{nomeDaLoja}</h1>
       {/* Top Banners - Full Width */}
-      {!searchQuery &&
+      {!termoDaBusca &&
         (!bannersLoaded && topBanners.length === 0 ? (
           // Memória da última visita (frente cls-ressalva1-0409, laudo
           // 6ab5s4): loja cuja última visita NÃO tinha banner não ganha
@@ -526,7 +530,7 @@ export const HomeView = React.memo(function HomeView({
       {/* Recently Viewed - Removed and moved to Profile */}
 
       {/* Dynamic Showcases / Carousels */}
-      {!searchQuery &&
+      {!termoDaBusca &&
         (
           config.homeSections ?? [
             {
@@ -637,7 +641,7 @@ export const HomeView = React.memo(function HomeView({
         })}
 
       {/* Middle Banners - Full Width */}
-      {!searchQuery &&
+      {!termoDaBusca &&
         (!bannersLoaded && middleBanners.length === 0 ? (
           <div className="mx-4 w-full py-4">
             <div className="h-[120px] w-[calc(100%-2rem)] animate-pulse rounded-[2rem] bg-zinc-100 sm:h-[200px]" />
@@ -654,7 +658,7 @@ export const HomeView = React.memo(function HomeView({
           id="catalogo"
           className="mb-8 scroll-mt-16 text-3xl font-black leading-none tracking-tighter text-zinc-900"
         >
-          {searchQuery ? "Resultados da busca" : "Catálogo"}
+          {termoDaBusca ? "Resultados da busca" : "Catálogo"}
         </h2>
 
         {/* Sentinel for sticky docking detection */}
@@ -848,7 +852,7 @@ export const HomeView = React.memo(function HomeView({
               Nenhum produto agora
             </h3>
             <p className="mx-auto max-w-[200px] text-sm leading-relaxed text-zinc-500">
-              {searchQuery || selectedCategory !== "Todas"
+              {termoDaBusca || selectedCategory !== "Todas"
                 ? "Tente buscar por outro termo ou mudar a categoria."
                 : "Em breve novidades por aqui."}
             </p>
@@ -856,7 +860,7 @@ export const HomeView = React.memo(function HomeView({
         ) : (
           <ProductList
             products={filteredProducts}
-            resetKey={JSON.stringify([selectedCategory, searchQuery, sortBy])}
+            resetKey={JSON.stringify([selectedCategory, termoDaBusca, sortBy])}
             isLoading={isLoading}
             favorites={favorites}
             onToggleFavorite={onToggleFavorite}
@@ -869,7 +873,7 @@ export const HomeView = React.memo(function HomeView({
         )}
       </div>
 
-      {bottomBanners.length > 0 && !searchQuery && (
+      {bottomBanners.length > 0 && !termoDaBusca && (
         <div className="w-full py-4">
           <BannerCarousel
             banners={bottomBanners}

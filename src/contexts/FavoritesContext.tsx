@@ -744,17 +744,25 @@ export function FavoritesProvider({
   // cache de fallback (`snapshotsSemCatalogoRef`) quando o catálogo (já
   // carregado) não tem mais aquele id, para o favorito não desaparecer sem
   // explicação nenhuma por causa de uma lojista que excluiu o produto.
+  //
+  // Produto PAUSADO não aparece: o dono logado tem o catálogo inteiro (com os
+  // pausados), e o retrato de reserva do visitante é de quando o produto ainda
+  // vendia. Se o catálogo traz o id e ele está pausado, vale o catálogo — o
+  // retrato não o ressuscita. Id que o catálogo NÃO traz segue pelo retrato:
+  // o catálogo vem em páginas, então "ausente" não prova que foi excluído.
   const favorites = React.useMemo(() => {
     if (!user) {
       return localFavoriteIds
-        .map(
-          (id) =>
-            allProducts.find((p) => p.id === id) ??
-            snapshotsSemCatalogoRef.current.get(id),
-        )
+        .map((id) => {
+          const vivo = allProducts.find((p) => p.id === id);
+          if (vivo) return vivo.isActive === false ? undefined : vivo;
+          return snapshotsSemCatalogoRef.current.get(id);
+        })
         .filter((p): p is Product => p !== undefined);
     }
-    return allProducts.filter((p) => dbFavoriteIds.includes(p.id));
+    return allProducts.filter(
+      (p) => p.isActive !== false && dbFavoriteIds.includes(p.id),
+    );
   }, [user, allProducts, dbFavoriteIds, localFavoriteIds]);
 
   // 3. Actions

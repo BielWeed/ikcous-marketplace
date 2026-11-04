@@ -36,7 +36,10 @@ import { AddressList } from "@/components/ui/custom/AddressList";
 import { CartFooterSummary } from "@/components/ui/custom/CartFooterSummary";
 import { CartItemsList } from "@/components/ui/custom/CartItemsList";
 import { EmptyCart } from "@/components/ui/custom/EmptyCart";
-import { AvisoDeFreteGratis } from "@/components/ui/custom/FreeShippingBlock";
+import {
+  AvisoDeFreteGratis,
+  semMetaDeFreteGratis,
+} from "@/components/ui/custom/FreeShippingBlock";
 import { OrderList } from "@/components/ui/custom/OrderList";
 import { OrderSearch } from "@/components/ui/custom/OrderSearch";
 import { ShippingCalculator } from "@/components/ui/custom/ShippingCalculator";
@@ -961,6 +964,9 @@ export function CartView({
                     {user &&
                       cart.length > 0 &&
                       !freteIndefinido &&
+                      // Só retirada e sem transportadora: a meta salva antes
+                      // não vale para entrega nenhuma (a retirada já é grátis).
+                      !semMetaDeFreteGratis(config) &&
                       deveExibirMetaDeFreteGratis(
                         // MENOR (revisão Opus, pós-T3): retirada na loja
                         // (`store-pickup`) SEMPRE chega a R$ 0 da edge — o

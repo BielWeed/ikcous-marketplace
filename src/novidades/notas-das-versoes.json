@@ -1,4 +1,17 @@
 {
+  "1.5.120": {
+    "titulo": "Endereços, busca, frete e caixa mais claros e sem surpresas",
+    "novidades": [],
+    "correcoes": [
+      "Endereços: os campos do endereço agora têm limite de tamanho, com aviso claro; ao apagar o endereço principal, o mais recente passa a ser o principal; e o endereço novo entra na lista no mesmo lugar em que aparece depois de recarregar o app.",
+      "Loja, Busca e Favoritos: digitar só um espaço na busca não esconde mais os banners da Home; mudar só a ordenação conta como filtro e dá para limpar; e produto pausado não aparece mais em Favoritos.",
+      "Carrinho: loja que só faz retirada não anuncia mais frete grátis na cidade, nem mostra quanto falta para ele.",
+      "Troca e devolução: a política agora diz como pedir para quem comprou sem criar conta (falar com a loja, informando o número do pedido).",
+      "Balcão: se uma leitura de código de barras chega depois de sair do cupom ou com a venda em envio, a tela avisa que ela não foi adicionada; e a tela do caixa abre também em navegadores mais antigos.",
+      "Painel, Frete: os textos do frete nacional por produto e do teste de CEP descrevem a regra real, e a nota do pedido escreve \"1 dia\" e \"dias úteis\" corretamente."
+    ],
+    "melhorias": []
+  },
   "1.5.119": {
     "titulo": "Avisos mais honestos em cupons, estoque, caixa e listas do painel",
     "novidades": [],

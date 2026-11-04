@@ -529,7 +529,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
                     className={`mt-2 text-[13px] font-semibold ${entraNoTeste ? "text-emerald-300" : "text-amber-300"}`}
                   >
                     {entraNoTeste
-                      ? `Entra na sua entrega — ${entregaInvalida ? "confira o valor da entrega" : valor > 0 ? `paga R$ ${reais(valor)}` : "entrega grátis"}`
+                      ? `Entra na sua entrega — ${entregaInvalida ? "confira o valor da entrega" : valor > 0 ? `a entrega custa R$ ${reais(valor)} quando nenhuma regra de frete grátis se aplica` : "entrega grátis"}`
                       : "Fica de fora da sua entrega"}
                   </p>
                 )}

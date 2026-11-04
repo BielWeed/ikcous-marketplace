@@ -1,3 +1,4 @@
+import { semMetaDeFreteGratis } from "@/components/ui/custom/FreeShippingBlock";
 import { useStore } from "@/contexts/StoreContext";
 import { useCart } from "@/hooks/useCart";
 // T3 (23/09/2026, fim das cópias — lição #53): mesmo raciocínio do
@@ -39,8 +40,11 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
   //    com por produto quem comunica o grátis é a marcação no produto, e uma
   //    barra de valor aqui mentiria (não existe número de corte).
   const preset = presetDoConfig(config.freeShippingMin);
-  const hasFreeShippingGoal = config.freeShippingMin > 0;
-  const isSempreGratis = preset === "sempre";
+  // Só retirada e sem transportadora: não há entrega a que o grátis se
+  // refira — o lembrete só conta os itens, como numa loja sem a regra.
+  const hasFreeShippingGoal =
+    config.freeShippingMin > 0 && !semMetaDeFreteGratis(config);
+  const isSempreGratis = hasFreeShippingGoal && preset === "sempre";
   // T3: qualificador "na cidade" quando a regra nacional diverge da local —
   // sem CEP da cliente aqui (é o carrinho flutuante), a única promessa
   // segura de anunciar é a local, com escopo declarado.

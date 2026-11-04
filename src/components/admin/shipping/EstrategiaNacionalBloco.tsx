@@ -51,7 +51,7 @@ const ESTRATEGIAS: readonly {
   {
     id: "por_produto",
     nome: "Só produtos marcados",
-    desc: 'só o que você marcar como "frete grátis" no cadastro do produto',
+    desc: "Se o carrinho tiver pelo menos um produto marcado como “frete grátis” no cadastro, o frete de todo o pedido sai grátis.",
   },
   {
     id: "desconto_na_mais_barata",
