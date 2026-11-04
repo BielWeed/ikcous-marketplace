@@ -410,7 +410,13 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
     });
   }
 
-  for (const produto of entrada.produtos) {
+  // Urgencia: o que zerou primeiro, depois o de menor estoque. O aviso nao tem
+  // "quando" (a data do produto e' a do cadastro, nao a de quando o estoque
+  // baixou), entao o `sort` final empata e, sendo estavel, mantem esta ordem.
+  const produtosPorUrgencia = [...entrada.produtos].sort(
+    (a, b) => a.stock - b.stock,
+  );
+  for (const produto of produtosPorUrgencia) {
     if (!precisaDeReposicao(produto.stock, produto.estoqueMinimo)) continue;
     avisos.push({
       id: `estoque:${produto.id}`,
@@ -425,7 +431,7 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
           : produto.stock === 1
             ? "1 unidade restante"
             : `${produto.stock} unidades restantes`,
-      quando: produto.created_at,
+      quando: "",
       destino: { view: "admin-product-form", id: produto.id },
       // NAO conta no cracha, e isso e' deliberado: estoque baixo so' termina
       // se o lojista repuser. Se ele decidir nao repor, o aviso fica para

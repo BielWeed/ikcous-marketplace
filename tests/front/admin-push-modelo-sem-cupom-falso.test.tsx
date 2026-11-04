@@ -19,6 +19,7 @@ const { estado } = vi.hoisted(() => ({
     cupons: [] as Record<string, unknown>[],
     erroDosCupons: null as null | { message: string },
     consultasDeCupom: [] as unknown[],
+    cuponsLigadosNaLoja: true,
   },
 }));
 
@@ -28,7 +29,10 @@ vi.mock("@/hooks/useAuth", () => ({
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
-    config: { realTimeSalesAlerts: false },
+    config: {
+      realTimeSalesAlerts: false,
+      enableCoupons: estado.cuponsLigadosNaLoja,
+    },
     isLoaded: true,
     updateConfig: vi.fn(),
   }),
@@ -170,6 +174,7 @@ describe("AdminPushView — modelo pronto não promete cupom que a loja não cri
     estado.cupons = [];
     estado.erroDosCupons = null;
     estado.consultasDeCupom = [];
+    estado.cuponsLigadosNaLoja = true;
 
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
@@ -393,6 +398,45 @@ describe("AdminPushView — modelo pronto não promete cupom que a loja não cri
 
     await enviar();
     expect(invokeSendPush).not.toHaveBeenCalled();
+
+    await enviar();
+    expect(invokeSendPush).toHaveBeenCalledTimes(1);
+  });
+
+  it("com a chave geral de cupons desligada, citar um cupom bom avisa antes de enviar", async () => {
+    estado.cuponsLigadosNaLoja = false;
+    estado.cupons = [
+      {
+        code: "VERAO10",
+        active: true,
+        valid_until: null,
+        usage_limit: null,
+        usage_count: 0,
+      },
+    ];
+    await abrirTela();
+    await escrever("Oferta", "Use o cupom VERAO10 hoje.");
+
+    await enviar();
+    expect(invokeSendPush).not.toHaveBeenCalled();
+    const { toast } = await import("sonner");
+    const chamada = (toast.error as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c: unknown[]) =>
+        /Os cupons de desconto estão desligados na sua loja\. Ligue em Cupons/.test(
+          String(c[0]),
+        ),
+    );
+    expect(chamada).toBeTruthy();
+
+    // mesmo comportamento dos outros avisos: o segundo toque envia
+    await enviar();
+    expect(invokeSendPush).toHaveBeenCalledTimes(1);
+  });
+
+  it("com a chave geral de cupons desligada, texto sem cupom citado envia sem aviso", async () => {
+    estado.cuponsLigadosNaLoja = false;
+    await abrirTela();
+    await escrever("Novidades", "Chegaram produtos novos na loja.");
 
     await enviar();
     expect(invokeSendPush).toHaveBeenCalledTimes(1);

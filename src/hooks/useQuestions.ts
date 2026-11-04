@@ -142,6 +142,12 @@ export function useQuestions() {
   // deixava questions=[] e a tela convidava a cliente a "ser o primeiro" a
   // perguntar num produto que podia ter dez perguntas respondidas.
   const [error, setError] = useState<string | null>(null);
+  // Mesmo contrato do `erroDaListagemAdmin` de useReviews: a busca da LISTA do
+  // painel falhou. Sem isto a tela mostrava a lista da busca anterior, ou
+  // "Fila de perguntas limpa" com pergunta esperando resposta.
+  const [erroDaListagemAdmin, setErroDaListagemAdmin] = useState<string | null>(
+    null,
+  );
   const latestProductIdRef = useRef<string | null>(null);
   // C4 (laudo 0109): ids das perguntas do produto que ESTA instância
   // carregou por último — é o conjunto contra o qual o canal de `answers`
@@ -573,6 +579,7 @@ export function useQuestions() {
             setCachedQuestionsData(formatted);
           }
           setQuestions(formatted);
+          setErroDaListagemAdmin(null);
           return { questions: formatted, total: totalCount };
         }
 
@@ -692,8 +699,11 @@ export function useQuestions() {
         });
 
         setQuestions(formatted);
+        setErroDaListagemAdmin(null);
         return { questions: formatted, total: count || 0 };
       } catch (error: any) {
+        // Carga cancelada (a próxima já saiu) não é falha: a que a substituiu
+        // é quem decide o que a tela mostra.
         if (
           error?.name === "AbortError" ||
           error?.message === "Fetch is aborted" ||
@@ -703,6 +713,11 @@ export function useQuestions() {
         }
         console.error("Error fetching all questions:", error);
         toast.error("Erro ao carregar perguntas.");
+        // A lista e o cache da leitura anterior saem, para a falha não parecer
+        // o resultado de outro filtro/busca (contrato do useReviews).
+        setQuestions([]);
+        if (isAdmin) setCachedQuestionsData(null);
+        setErroDaListagemAdmin("Não foi possível carregar as perguntas.");
         return { questions: [], total: 0, falhou: true };
       } finally {
         setLoading(false);
@@ -962,6 +977,7 @@ export function useQuestions() {
     questions,
     loading,
     error,
+    erroDaListagemAdmin,
     getQuestionsByProduct,
     getAllQuestions,
     addQuestion,

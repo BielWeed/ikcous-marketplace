@@ -147,6 +147,9 @@ export async function prefetchReviewsData() {
         rating: item.rating,
         comment: item.comment || "",
         verified: item.verified ?? false,
+        // Mesmo mapeamento do useReviews: sem o status, a moderação pendente
+        // aparece como publicada (sem selo nem botão de aprovar) na 1ª abertura.
+        status: item.status ?? "publicada",
         helpful: item.helpful ?? 0,
         createdAt: item.created_at,
         merchantReply: item.merchant_reply,

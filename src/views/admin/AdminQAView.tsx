@@ -75,6 +75,7 @@ export const AdminQAView = memo(function AdminQAView({
   const {
     questions,
     loading,
+    erroDaListagemAdmin,
     getAllQuestions,
     addAnswer,
     deleteQuestion,
@@ -626,7 +627,9 @@ export const AdminQAView = memo(function AdminQAView({
     }
 
     if (questions.length === 0) {
-      return renderEmptyState();
+      // Lista que falhou ao carregar não é fila vazia: o aviso com "Tentar de
+      // novo" (acima da lista) já diz o que houve.
+      return erroDaListagemAdmin ? null : renderEmptyState();
     }
 
     return (
@@ -760,6 +763,25 @@ export const AdminQAView = memo(function AdminQAView({
           <div className="mb-3">
             <AvisoDeProblema>
               Sem conexão. Responder e excluir voltam quando a internet voltar.
+            </AvisoDeProblema>
+          </div>
+        )}
+
+        {erroDaListagemAdmin && (
+          <div className="mb-3">
+            <AvisoDeProblema
+              acao={
+                <button
+                  type="button"
+                  onClick={() => loadQuestions(page)}
+                  disabled={loading}
+                  className={cn(BOTAO_NEUTRO, "self-start")}
+                >
+                  Tentar de novo
+                </button>
+              }
+            >
+              {erroDaListagemAdmin} Confira a internet e tente de novo.
             </AvisoDeProblema>
           </div>
         )}

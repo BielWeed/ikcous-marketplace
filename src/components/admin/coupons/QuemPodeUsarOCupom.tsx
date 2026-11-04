@@ -82,6 +82,12 @@ export interface QuemPodeUsarOCupomProps {
   ) => Promise<readonly ClienteEncontrado[]>;
   /** Vitrine sem limite de uso nem validade: o aviso aparece. */
   readonly semLimiteNemValidade: boolean;
+  /**
+   * O campo "Limite de uso" está em 0 (ilimitado). Clientes escolhidos: o
+   * limite é da loja inteira, não de cada cliente. Sem esta informação, vale
+   * `semLimiteNemValidade` (que implica limite 0).
+   */
+  readonly semLimiteDeUso?: boolean;
   readonly desabilitado: boolean;
 }
 
@@ -95,6 +101,7 @@ export function QuemPodeUsarOCupom({
   onCarregarDeNovo,
   buscarClientes,
   semLimiteNemValidade,
+  semLimiteDeUso,
   desabilitado,
 }: QuemPodeUsarOCupomProps): ReactElement {
   const [termo, setTermo] = useState("");
@@ -208,6 +215,17 @@ export function QuemPodeUsarOCupom({
           />
           Este cupom vai aparecer para todo mundo sem limite de uso nem
           validade. Se não é essa a ideia, defina um limite ou uma data.
+        </p>
+      )}
+
+      {alcance === "exclusivo" && (semLimiteDeUso ?? semLimiteNemValidade) && (
+        <p className="flex items-start gap-2 rounded-[20px] border border-sky-300/20 bg-sky-300/5 p-4 text-sm leading-relaxed text-sky-200">
+          <AlertTriangle
+            aria-hidden="true"
+            className="mt-0.5 size-3.5 shrink-0"
+          />
+          Cada cliente da lista pode usar este cupom em todas as compras. O
+          limite de uso é da loja inteira, não de cada cliente.
         </p>
       )}
 
