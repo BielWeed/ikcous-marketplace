@@ -256,6 +256,12 @@ export function baldeDeEstorno(pedido: Order): BaldeDeEstorno {
     pedido.paymentStatus === "pago_apos_expirar" ||
     pedido.paymentStatus === "recebido_na_entrega";
   if (!entrou) return null;
+  // Retirada na loja pronta (`shipping` + `retiradaNaLoja`) cai aqui TAMBÉM, de
+  // propósito: o banco carimba `cancelled_after_shipping` sem olhar se é
+  // retirada, não repõe o estoque, e `solicitar_estorno` recusa a devolução até
+  // a loja tocar em "O produto voltou". Mandá-la para "devolver_agora" daria um
+  // cartão cujo botão o servidor recusa. Só os TEXTOS dizem a verdade da
+  // retirada (texto-cancelamento-do-painel, EstornoCard, avisos do sino).
   if (pedido.cancelledAfterShipping && !pedido.returnedToSellerAt) {
     return "esperando_o_produto";
   }

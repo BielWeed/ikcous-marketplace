@@ -59,6 +59,7 @@ import {
 } from "@/lib/erro-da-venda-presencial";
 import type { Leitura } from "@/lib/leitor/decodificador";
 import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
+import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
 import type { View } from "@/types";
 import { Keyboard, ScanBarcode, Search } from "lucide-react";
@@ -74,6 +75,10 @@ import { toast } from "sonner";
 /** Quanto o balconista espera pelo registro da venda antes de ver a frase de
  * rede e poder tentar de novo (a retentativa é idempotente). */
 const PRAZO_DO_REGISTRO_DA_VENDA_MS = 20_000;
+
+/** Quanto o recibo espera pelo tamanho/cor de uma peça que a tela não tem. A
+ * venda JÁ está gravada: passado o prazo, o recibo sai sem o rótulo. */
+const PRAZO_DO_ROTULO_DA_VARIACAO_MS = 4_000;
 
 export interface AdminPdvViewProps {
   readonly onNavigate: (view: View, id?: string) => void;
@@ -395,8 +400,13 @@ export function AdminPdvView({
   // a TELA pode ter mudado (quantidade alterada por baixo do fechamento,
   // preço do produto trocado no banco); o item gravado é a única verdade do
   // que foi vendido e do que saiu do estoque.
+  //
+  // `rotulos` (variant_id → "Tamanho M") cobre a peça gravada que a TELA não
+  // tem mais (retentativa depois de a lojista tirar a peça): sem ele ela sairia
+  // sem tamanho/cor no recibo, no papel e no aviso "a venda gravada tem a mais".
   function montarItensDoRecibo(
     itensGravados: readonly ItemGravadoNoPedido[],
+    rotulos: Readonly<Record<string, string>>,
   ): readonly ItemDoCupom[] {
     return itensGravados.map((gravado) => {
       const doCarrinho = estado.itens.find(
@@ -409,7 +419,10 @@ export function AdminPdvView({
         productId: gravado.product_id,
         variantId: gravado.variant_id,
         nome: gravado.product_name,
-        variacao: doCarrinho?.variacao ?? null,
+        variacao:
+          doCarrinho?.variacao ??
+          (gravado.variant_id ? rotulos[gravado.variant_id] : undefined) ??
+          null,
         preco: gravado.price,
         quantidade: gravado.quantity,
         // `estoque` só importa DENTRO do cupom (é o teto do "+"); no recibo,
@@ -420,6 +433,47 @@ export function AdminPdvView({
         imagem: doCarrinho?.imagem ?? "",
       };
     });
+  }
+
+  // O rótulo da variação das peças gravadas que o cupom da tela não explica,
+  // lido em `product_variants` (o mesmo `rotuloDaVariacao` da ficha do pedido).
+  // Peça que a tela explica não gera consulta. Enfeite: se a leitura falhar ou
+  // estourar o prazo, devolve vazio e o recibo sai sem o rótulo, nunca quebra.
+  async function rotulosDasPecasForaDaTela(
+    itensGravados: readonly ItemGravadoNoPedido[],
+  ): Promise<Record<string, string>> {
+    const ids = new Set<string>();
+    for (const gravado of itensGravados) {
+      if (!gravado.variant_id) continue;
+      const doCarrinho = estado.itens.find(
+        (item) =>
+          item.productId === gravado.product_id &&
+          item.variantId === gravado.variant_id,
+      );
+      if (!doCarrinho?.variacao) ids.add(gravado.variant_id);
+    }
+    if (ids.size === 0) return {};
+    try {
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase
+            .from("product_variants")
+            .select("id, name, value")
+            .in("id", [...ids]),
+        ),
+        PRAZO_DO_ROTULO_DA_VARIACAO_MS,
+        () => new Error("A leitura da variação não respondeu a tempo."),
+      );
+      if (error || !data) return {};
+      const lidos: Record<string, string> = {};
+      for (const v of data) {
+        const rotulo = rotuloDaVariacao(v.name, v.value);
+        if (rotulo) lidos[v.id] = rotulo;
+      }
+      return lidos;
+    } catch {
+      return {};
+    }
   }
 
   // Tarefa C3.4 — o fechamento de VERDADE. `registrar_venda_presencial`
@@ -520,6 +574,8 @@ export function AdminPdvView({
         };
       }
 
+      const rotulos = await rotulosDasPecasForaDaTela(resposta.items);
+
       const recibo: ReciboDaVendaRegistrada = {
         orderId: pedido.id,
         // Seis últimos caracteres, maiúsculos — mesma regra de
@@ -541,7 +597,7 @@ export function AdminPdvView({
         // acima). Usar `estado.itens` aqui é o achado BLOQUEIA da revisão: o
         // cupom continua interativo por baixo do fechamento e pode ter mudado
         // entre a tentativa que gravou e esta leitura da resposta.
-        itens: montarItensDoRecibo(resposta.items),
+        itens: montarItensDoRecibo(resposta.items, rotulos),
         jaExistia: resposta.ja_existia,
       };
 

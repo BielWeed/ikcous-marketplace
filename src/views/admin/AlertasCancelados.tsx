@@ -399,11 +399,11 @@ export function AlertasCancelados({
                 Produtos que ainda não voltaram
               </h3>
               <p className="mt-1.5 max-w-2xl text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">
-                O pedido já saiu para entrega e foi cancelado. Confirme aqui só
-                quando a mercadoria voltar de verdade à sua mão — é isso que
-                devolve o item ao estoque. Isto não fala de dinheiro: aparece
-                mesmo em pedido que nunca foi cobrado ou que já teve o pagamento
-                estornado.
+                O pedido já saiu para entrega (ou estava pronto para retirada) e
+                foi cancelado. Confirme aqui só quando a mercadoria voltar de
+                verdade à sua mão — é isso que devolve o item ao estoque. Isto
+                não fala de dinheiro: aparece mesmo em pedido que nunca foi
+                cobrado ou que já teve o pagamento estornado.
               </p>
 
               <div className="mt-5">

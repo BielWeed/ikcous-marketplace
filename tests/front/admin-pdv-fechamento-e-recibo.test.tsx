@@ -437,4 +437,77 @@ describe("FechamentoDaVenda (C3.2)", () => {
     );
     expect(localizarBotaoPorTexto(hospedeiro, "Imprimir")).toBeTruthy();
   });
+
+  it("caso 8 — venda ANULADA não monta o papel do recibo (Ctrl+P não imprime comprovante de compra que não vale)", async () => {
+    await act(async () => {
+      raiz.render(
+        <ReciboDaVenda
+          recibo={reciboDeExemplo({ anulada: true })}
+          despachar={vi.fn()}
+          limparCupom={vi.fn()}
+          storeName="Loja Teste"
+        />,
+      );
+    });
+    await avancar();
+
+    // A tela segue dizendo que a venda foi anulada…
+    expect(hospedeiro.textContent).toContain("Venda anulada");
+    // …e o papel (o bloco `print:block` do OrderReceipt) nem existe na página.
+    expect(hospedeiro.querySelector("[data-tema-fixo]")).toBeNull();
+    expect(hospedeiro.textContent).not.toContain("Obrigado pela preferência!");
+  });
+
+  it("caso 8b — venda válida continua montando o papel do recibo", async () => {
+    await act(async () => {
+      raiz.render(
+        <ReciboDaVenda
+          recibo={reciboDeExemplo()}
+          despachar={vi.fn()}
+          limparCupom={vi.fn()}
+          storeName="Loja Teste"
+        />,
+      );
+    });
+    await avancar();
+
+    expect(hospedeiro.querySelector("[data-tema-fixo]")).not.toBeNull();
+    expect(hospedeiro.textContent).toContain("Obrigado pela preferência!");
+  });
+
+  it("caso 9 — peça com variação aparece com o tamanho/cor na tela, no papel e nos avisos da diferença", async () => {
+    const recibo = reciboDeExemplo({
+      jaExistia: true,
+      itens: [{ ...ITEM, variantId: "v-g", variacao: "Tamanho G" }],
+      divergenciaComATela: {
+        totalDaTela: 39.9,
+        unidadesDaTela: 1,
+        pagamentoDaTela: "cash",
+        aMenosNaTela: [
+          { nome: "Camiseta Lisa", variacao: "Tamanho G", quantidade: 1 },
+        ],
+      },
+    });
+    await act(async () => {
+      raiz.render(
+        <ReciboDaVenda
+          recibo={recibo}
+          despachar={vi.fn()}
+          limparCupom={vi.fn()}
+          storeName="Loja Teste"
+          aoAnular={vi.fn()}
+        />,
+      );
+    });
+    await avancar();
+
+    const linha = hospedeiro.querySelector(".pdv-receipt-lines li");
+    expect(linha?.textContent).toContain("Tamanho G");
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
+      "1 peça a mais do que a tela: Camiseta Lisa Tamanho G.",
+    );
+    expect(hospedeiro.querySelector("[data-tema-fixo]")?.textContent).toContain(
+      "Camiseta Lisa - Tamanho G",
+    );
+  });
 });

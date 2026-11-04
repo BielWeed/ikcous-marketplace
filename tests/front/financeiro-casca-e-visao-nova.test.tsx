@@ -345,8 +345,10 @@ describe("Financeiro — casca nova e Visão no desenho aprovado", () => {
       expect(normalizar(saldo.textContent)).toContain("Saldo total · hoje");
       expect(normalizar(saldo.textContent)).toContain("R$ 453,88");
       expect(normalizar(saldo.textContent)).toContain(
-        "Soma de todas as contas da loja, hoje",
+        "Soma das contas ativas, hoje",
       );
+      // Conta desativada fica fora do total (fin_resumo soma só `ativa`).
+      expect(normalizar(saldo.textContent)).not.toContain("todas as contas");
       const valor = saldo.querySelector(".tabular-nums")!;
       expect(valor.className).toContain("text-white");
       expect(valor.className).not.toContain("emerald");

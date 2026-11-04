@@ -147,7 +147,9 @@ function fraseDoCancelado(paymentStatus: Order["paymentStatus"]) {
     case "recusado":
       return "O pagamento não foi aprovado e o pedido foi cancelado.";
     case "estornado":
-      return "O pagamento foi estornado. Fale com a loja.";
+      // Pedido cancelado e estornado é o fim do reembolso: o dinheiro voltou.
+      // Não diz o meio (PIX/cartão): o app não sabe qual foi.
+      return "O dinheiro deste pedido foi devolvido. Toque para ver os detalhes.";
     default:
       return "Toque para ver os detalhes do pedido.";
   }

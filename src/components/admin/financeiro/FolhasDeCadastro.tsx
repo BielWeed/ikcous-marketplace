@@ -293,7 +293,7 @@ export function ContaFolha({
         <LinhaDoInterruptor
           id="fin-conta-ativa"
           rotulo="Conta ativa"
-          detalhe="Desativada, some das escolhas de novos lançamentos."
+          detalhe="Desativada, some das escolhas de novos lançamentos e o saldo dela sai do Saldo total."
           ligado={form.ativa}
           desabilitado={sistema || enviando}
           aoMudar={(ativa) => atualizar({ ativa })}

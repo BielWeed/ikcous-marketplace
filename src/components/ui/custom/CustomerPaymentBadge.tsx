@@ -221,6 +221,14 @@ const AGUARDANDO_MAS_CANCELADO: CustomerPaymentEntry = {
   tone: "atencao",
 };
 
+// Pedido cancelado cujo dinheiro já foi devolvido (reembolso concluído, chargeback
+// ou "Já estornei" da loja): é o desfecho que a cliente espera, não um erro.
+// Mesmo rótulo de `estornado`, em tom neutro em vez do vermelho de "recusado".
+const ESTORNADO_E_CANCELADO: CustomerPaymentEntry = {
+  label: "Pagamento estornado",
+  tone: "neutro",
+};
+
 /**
  * Traduz `payment_status` (e, quando o pedido morreu com o dinheiro dentro,
  * também `status`) para o texto que o comprador vê. `null` para
@@ -244,6 +252,8 @@ export function customerPaymentStatusEntry(
     return PAGO_MAS_CANCELADO;
   if (key === "pago" && orderStatus === "cancelled")
     return PAGO_CANCELADO_NEUTRO;
+  if (key === "estornado" && orderStatus === "cancelled")
+    return ESTORNADO_E_CANCELADO;
   if (key === "aguardando" && orderStatus === "cancelled")
     return AGUARDANDO_MAS_CANCELADO;
   // `Map.get` não é indexação dinâmica para o eslint, e o Record acima é

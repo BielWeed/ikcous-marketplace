@@ -33,9 +33,12 @@ import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useRecomendadosDaLoja } from "@/hooks/useRecomendadosDaLoja";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { pedirPedidosSemFiltroAntigo } from "@/lib/atalho-do-inicio-para-pedidos";
-import { pagamentoOnlineLigado } from "@/lib/flags";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
+import {
+  useChaveDoPixPeloApp,
+  usePagamentoPeloApp,
+} from "@/lib/pagamento-pelo-app-no-painel";
 import { pendentesRecomendados } from "@/lib/passos-recomendados";
 import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { cn } from "@/lib/utils";
@@ -76,13 +79,18 @@ function SecaoLojaProntaEEstoqueBaixo({
   active?: boolean;
 }>) {
   const { config, isLoaded, products, loadingProducts } = useStore();
-  const chaveOk = pixConfiguradoNoBuild(chavePublicaMercadoPago() ?? undefined);
+  // O MESMO estado que Ajustes e Frete leem: ligar ou pausar o PIX em Ajustes
+  // vale aqui na hora (o retrato do boot ficaria velho até recarregar).
+  const ligado = usePagamentoPeloApp();
+  const chaveDoEco = useChaveDoPixPeloApp();
+  const chaveOk =
+    chaveDoEco ?? pixConfiguradoNoBuild(chavePublicaMercadoPago() ?? undefined);
 
   const cartao = (recomendados?: ReturnType<typeof pendentesRecomendados>) => (
     <LojaProntaEEstoqueBaixo
       stats={estoqueBaixo == null ? null : { inventoryAlerts: estoqueBaixo }}
       config={config}
-      ligado={pagamentoOnlineLigado()}
+      ligado={ligado}
       chaveOk={chaveOk}
       // Mesma normalização de AdminSettingsView e CheckoutView: ausente ou
       // corrompido cai no padrão das três formas.
@@ -108,6 +116,7 @@ function SecaoLojaProntaEEstoqueBaixo({
       active={active}
       config={config}
       isLoaded={isLoaded}
+      ligado={ligado}
       chaveOk={chaveOk}
     >
       {cartao}
@@ -123,12 +132,14 @@ function ComRecomendados({
   active,
   config,
   isLoaded,
+  ligado,
   chaveOk,
   children,
 }: Readonly<{
   active?: boolean;
   config: ReturnType<typeof useStore>["config"];
   isLoaded: boolean;
+  ligado: boolean;
   chaveOk: boolean;
   children: (
     recomendados: ReturnType<typeof pendentesRecomendados>,
@@ -138,7 +149,7 @@ function ComRecomendados({
   return children(
     pendentesRecomendados({
       email: lidos.email,
-      pixOk: pagamentoOnlineLigado() && chaveOk,
+      pixOk: ligado && chaveOk,
       nomesLigados: lidos.nomesLigados,
       config,
       configCarregando: !isLoaded,

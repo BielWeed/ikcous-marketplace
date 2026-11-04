@@ -23,6 +23,9 @@ const NOME_DO_MES = new Intl.DateTimeFormat("pt-BR", {
   timeZone: "America/Sao_Paulo",
 });
 
+/** Até este dia do mês (inclusive), prejuízo estimado ainda não vira margem. */
+const ULTIMO_DIA_DA_MARGEM_EM_FORMACAO = 15;
+
 /**
  * "Este mês": vendas pagas (com variação) e lucro estimado na cor do sinal,
  * quantidade de vendas e valor médio. O gráfico dos 14 dias entra como
@@ -47,6 +50,14 @@ export function NumerosDoMes({
     mes?.lucroEstimado != null && mes.receita != null && mes.receita > 0
       ? (mes.lucroEstimado / mes.receita) * 100
       : null;
+  // O lucro estimado já desconta as despesas do mês INTEIRO, mas a receita só
+  // vai até hoje: com lucro negativo na primeira metade do mês, o percentual
+  // compara um mês cheio de contas com poucos dias de vendas (R$ 200 contra
+  // -R$ 2.800 dava -1.400%). Aí a margem ainda está em formação.
+  const margemEmFormacao =
+    margem != null &&
+    margem < 0 &&
+    Number(dia.slice(8, 10)) <= ULTIMO_DIA_DA_MARGEM_EM_FORMACAO;
   const receita = formatarMoeda(mes?.receita);
   const lucro = formatarMoeda(mes?.lucroEstimado);
   // A largura mínima acompanha a moeda inteira; quem decide empilhar é o
@@ -101,7 +112,9 @@ export function NumerosDoMes({
             </p>
             {margem != null ? (
               <p className="mt-1 text-sm text-zinc-400">
-                Margem estimada {formatarPercentual(margem, 0)}
+                {margemEmFormacao
+                  ? "Margem estimada em formação até meados do mês"
+                  : `Margem estimada ${formatarPercentual(margem, 0)}`}
               </p>
             ) : null}
           </div>

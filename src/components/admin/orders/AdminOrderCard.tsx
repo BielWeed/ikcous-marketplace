@@ -260,6 +260,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
     returnedToSellerAt: order.returnedToSellerAt,
     valorEstornado: order.valorEstornado,
     shipping_label_id: order.shippingLabelId,
+    retiradaNaLoja: order.retiradaNaLoja,
   });
 
   return (
