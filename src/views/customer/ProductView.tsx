@@ -44,6 +44,7 @@ import {
 import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
+import { montarMensagemDeCompartilhar } from "@/lib/mensagem-de-compartilhar";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { textoEstoqueBaixo, textoSoRestam } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -717,32 +718,18 @@ export const ProductView = React.memo(function ProductView({
   const handleShare = async (e?: React.MouseEvent) => {
     e?.stopPropagation();
     e?.preventDefault();
-    // O texto de compartilhar vem dos presets da tela de Atendimento
-    // (AdminWhatsAppConfigView), que vendem mensagem pronta com [nome],
-    // [preco] e [link]. Texto COM marcador é mensagem completa da lojista:
-    // substitui e não gruda o sufixo padrão; texto SEM marcador (o default)
-    // mantém o comportamento de sempre — nome e preço colados na frente.
-    const temMarcador = /\[(nome|preco|link)\]/i.test(config.shareText);
-    // Esta é uma decisão SEPARADA: só quando [link] está no preset é que a
-    // substituição já colocou a URL dentro do texto. Um preset com [nome]
-    // ou [preco] mas sem [link] (ex.: "[nome] por [preco]. Acesse nossa
-    // loja!") cai no ramo temMarcador acima, mas continua sem URL nenhuma —
-    // e é essa URL que falta colar no fim, no caminho do clipboard.
-    const temMarcadorDeLink = /\[link\]/i.test(config.shareText);
-    const textoDoShare = temMarcador
-      ? // Uma passada só, com FUNÇÃO: string no lugar do valor faria "$&"/"$1"
-        // do nome virarem padrão de substituição, e o nome com "[preco]"
-        // seria trocado de novo pela etapa seguinte.
-        config.shareText.replace(
-          /\[(nome|preco|link)\]/gi,
-          (_marcador, qual: string) => {
-            const tipo = qual.toLowerCase();
-            if (tipo === "nome") return product.name;
-            if (tipo === "preco") return reais(precoExibido);
-            return globalThis.location.href;
-          },
-        )
-      : `${config.shareText} ${product.name} por ${reais(precoExibido)}`;
+    // O texto de compartilhar vem dos presets de Minha loja (mensagem pronta
+    // com [nome], [preco] e [link]); a regra de montagem é a MESMA da prévia
+    // que a lojista aprova (`montarMensagemDeCompartilhar`).
+    const {
+      texto: textoDoShare,
+      temLink: temMarcadorDeLink,
+      completa: textoParaCopiar,
+    } = montarMensagemDeCompartilhar(config.shareText, {
+      nome: product.name,
+      preco: reais(precoExibido),
+      link: globalThis.location.href,
+    });
     const shareData = {
       title: product.name,
       text: textoDoShare,
@@ -765,13 +752,6 @@ export const ProductView = React.memo(function ProductView({
         console.log("Share cancelled");
       }
     } else {
-      // A URL só fica de fora quando [link] já a colocou dentro do texto
-      // substituído. Em qualquer outro caso — sem marcador nenhum, ou com
-      // marcador mas sem [link] — ela continua entrando como sufixo, como
-      // sempre entrou.
-      const textoParaCopiar = temMarcadorDeLink
-        ? textoDoShare
-        : `${textoDoShare} - ${shareData.url}`;
       try {
         await navigator.clipboard.writeText(textoParaCopiar);
         toast.success("Link copiado!", {

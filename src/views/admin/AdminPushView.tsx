@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { buildIdentity } from "@/config/buildIdentity";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
@@ -251,21 +252,16 @@ interface AdminPushViewProps {
 }
 
 /**
- * Ícone da loja para a prévia — o ÍCONE CADASTRADO da loja
- * (`config.logoUrl`), com fallback honesto: sem logo (ou logo que não
- * carrega), o monograma da loja em neutro escuro — o card real da
- * notificação do Android é neutro, e a prévia promete ser o que o cliente
- * vê. Nunca um emoji genérico.
+ * Ícone da loja para a prévia — o ÍCONE DO APP (`icon_192`), o mesmo que o
+ * celular do cliente recebe na notificação (sw.ts). NUNCA `config.logoUrl`:
+ * é a logo LARGA do cabeçalho, e o recorte quadrado dela não é o que chega.
+ * Fallback honesto: se o ícone não carrega, o monograma da loja em neutro
+ * escuro — o card real da notificação do Android é neutro, e a prévia
+ * promete ser o que o cliente vê. Nunca um emoji genérico.
  */
-function IconeDaLoja({
-  logoUrl,
-  nome,
-}: {
-  readonly logoUrl?: string | null;
-  readonly nome: string;
-}) {
+function IconeDaLoja({ nome }: { readonly nome: string }) {
   const [falhou, setFalhou] = useState(false);
-  if (!logoUrl || falhou) {
+  if (falhou) {
     const inicial = nome.trim().charAt(0).toUpperCase() || "?";
     return (
       <div
@@ -278,7 +274,7 @@ function IconeDaLoja({
   }
   return (
     <img
-      src={logoUrl}
+      src={buildIdentity.localUrls.icon_192}
       alt=""
       onError={() => setFalhou(true)}
       className="size-full object-cover"
@@ -290,12 +286,10 @@ function IconeDaLoja({
 function PreviaNoCelular({
   title,
   body,
-  logoUrl,
   nomeLoja,
 }: {
   readonly title: string;
   readonly body: string;
-  readonly logoUrl?: string | null;
   readonly nomeLoja?: string | null;
 }) {
   const [agora, setAgora] = useState(() => new Date());
@@ -336,7 +330,7 @@ function PreviaNoCelular({
           </p>
           <div className="mt-5 flex items-start gap-3 rounded-[22px] border border-white/[0.17] bg-white/[0.12] p-3.5 shadow-lg backdrop-blur-xl">
             <div className="size-11 shrink-0 overflow-hidden rounded-[11px] bg-black ring-1 ring-admin-border">
-              <IconeDaLoja logoUrl={logoUrl} nome={nome} />
+              <IconeDaLoja nome={nome} />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline justify-between gap-2 text-xs text-zinc-200">
@@ -1445,7 +1439,6 @@ export const AdminPushView = memo(function AdminPushView({
               <PreviaNoCelular
                 title={notification.title}
                 body={notification.body}
-                logoUrl={config?.logoUrl}
                 nomeLoja={config?.storeName}
               />
             </div>

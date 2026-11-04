@@ -3,6 +3,11 @@
 // "Atendimento" (painel simples, D9) sem mudar o comportamento; o que mudou é
 // só o visual dos marcadores: texto de 11px no mínimo (régua visual do painel).
 
+import { montarMensagemDeCompartilhar } from "@/lib/mensagem-de-compartilhar";
+
+// Reexporta: quem já importava daqui continua funcionando.
+export { montarMensagemDeCompartilhar };
+
 export type TipoDeMarcador = "nome" | "preco" | "link";
 
 export interface ModeloDeMensagem {
@@ -221,27 +226,20 @@ export function htmlParaTexto(html: string): string {
   return doc.body.textContent || "";
 }
 
-/** O texto com os marcadores trocados por um produto de exemplo (a prévia). */
+/** A mensagem de compartilhar com um produto de exemplo (a prévia). */
 export function textoDaPrevia(
   texto: string,
   exemplo: { name: string; price: number; id?: string },
 ): string {
-  if (!texto) return "Confira os produtos!";
-
-  const preco = exemplo.price.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
-  const link = `${window.location.origin}/produtos?id=${exemplo.id || "1"}`;
-
   // Só [nome], [preco] e [link] — os mesmos três que a vitrine troca ao
-  // compartilhar (ProductView). {nome}, [nome_produto] etc. a vitrine manda
-  // crus, então a prévia também os mostra crus. Uma passada, com FUNÇÃO: "$&"
-  // no nome do produto não vira padrão.
-  return texto.replace(/\[(nome|preco|link)\]/gi, (_marcador, qual: string) => {
-    const tipo = qual.toLowerCase();
-    if (tipo === "nome") return exemplo.name;
-    if (tipo === "preco") return preco;
-    return link;
-  });
+  // compartilhar. {nome}, [nome_produto] etc. a vitrine manda crus, então a
+  // prévia também os mostra crus.
+  return montarMensagemDeCompartilhar(texto, {
+    nome: exemplo.name,
+    preco: exemplo.price.toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }),
+    link: `${window.location.origin}/product-detail?id=${exemplo.id || "1"}`,
+  }).completa;
 }
