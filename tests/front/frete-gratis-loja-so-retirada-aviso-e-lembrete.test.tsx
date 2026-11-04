@@ -68,7 +68,8 @@ describe("frete grátis — loja só com retirada não anuncia meta", () => {
   });
 
   async function aviso(estilo?: string) {
-    if (estilo) estado.config = { ...estado.config, freeShippingCardStyle: estilo };
+    if (estilo)
+      estado.config = { ...estado.config, freeShippingCardStyle: estilo };
     const { FreeShippingBlock } = await import(
       "@/components/ui/custom/FreeShippingBlock"
     );
@@ -134,17 +135,20 @@ describe("frete grátis — loja só com retirada não anuncia meta", () => {
     it.each([
       ["entrego", ["sedex"]],
       ["entrego e retiro", ["sedex", "store-pickup"]],
-    ])("modo '%s' (entrega na cidade): o aviso de antes continua", async (_n, metodos) => {
-      estado.config = {
-        ...estado.config,
-        localDeliveryEnabled: true,
-        shippingCoverage: "local",
-        enabledShippingMethods: metodos,
-      };
-      const texto = await aviso();
-      expect(texto).toContain("R$ 50,00");
-      expect(texto).toContain("Falta pouquinho");
-    });
+    ])(
+      "modo '%s' (entrega na cidade): o aviso de antes continua",
+      async (_n, metodos) => {
+        estado.config = {
+          ...estado.config,
+          localDeliveryEnabled: true,
+          shippingCoverage: "local",
+          enabledShippingMethods: metodos,
+        };
+        const texto = await aviso();
+        expect(texto).toContain("R$ 50,00");
+        expect(texto).toContain("Falta pouquinho");
+      },
+    );
   });
 
   describe("CartReminder (lembrete flutuante)", () => {
