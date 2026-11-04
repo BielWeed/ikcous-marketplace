@@ -35,8 +35,14 @@ function dataLocal(valor: string): string {
   return `${doisDigitos(data.getDate())}/${doisDigitos(data.getMonth() + 1)}/${data.getFullYear()} ${doisDigitos(data.getHours())}:${doisDigitos(data.getMinutes())}`;
 }
 
-/** Exporta somente os pedidos recebidos, na mesma ordem, sem alterar a lista. */
-export function pedidosParaCsv(pedidos: Pedido[]): string {
+/** Exporta somente os pedidos recebidos, na mesma ordem, sem alterar a lista.
+ * `rotulos` (variantId -> "Tamanho M") é o que o pedido NÃO grava: o nome do
+ * item é só o do produto, e quem separa a mercadoria pela planilha precisa do
+ * tamanho e da cor. Item sem rótulo no mapa sai como sempre saiu. */
+export function pedidosParaCsv(
+  pedidos: Pedido[],
+  rotulos: Readonly<Record<string, string>> = {},
+): string {
   const linhas = pedidos.map((pedido) =>
     [
       escaparCampo(`#${pedido.id.slice(-6).toUpperCase()}`),
@@ -55,10 +61,10 @@ export function pedidosParaCsv(pedidos: Pedido[]): string {
       escaparCampo(pedido.customer?.state ?? ""),
       escaparCampo(
         pedido.items
-          .map(
-            (item) =>
-              `${item.name} (${item.quantity} x ${item.price.toFixed(2).replace(".", ",")})`,
-          )
+          .map((item) => {
+            const rotulo = item.variantId ? rotulos[item.variantId] : "";
+            return `${item.name}${rotulo ? ` - ${rotulo}` : ""} (${item.quantity} x ${item.price.toFixed(2).replace(".", ",")})`;
+          })
           .join(" | "),
       ),
       pedido.subtotal.toFixed(2).replace(".", ","),

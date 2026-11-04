@@ -61,8 +61,8 @@ describe("critério 5 — prévia do WhatsApp usa o endereço da loja", () => {
       (span) => span.textContent,
     );
     expect(links).toEqual([
-      `${window.location.origin}/produtos?id=1`,
-      `${window.location.origin}/produtos?id=1`,
+      `${window.location.origin}/product-detail?id=1`,
+      `${window.location.origin}/product-detail?id=1`,
     ]);
     expect(hospedeiro.textContent).not.toContain("ikcous.com");
     expect(

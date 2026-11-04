@@ -1,4 +1,17 @@
 {
+  "1.5.118": {
+    "titulo": "Planilha de pedidos com tamanho e cor, favoritos e carrinho mais confiáveis",
+    "novidades": [],
+    "correcoes": [
+      "Painel, Pedidos: a planilha exportada traz o tamanho e a cor de cada peça; se não der para ler a variação, aparece um aviso e a planilha não é gerada.",
+      "Painel, Produto: descrição só com espaços não conta como preenchida, dá para cadastrar custo R$ 0,00 (brinde), e a lista de estoque marca as variações desligadas, que não entram no total.",
+      "Favoritos: a tela não diz mais que você não tem favoritos enquanto os produtos carregam ou quando a internet falha, e favoritos de visitante ainda por salvar mostram um aviso com o botão Tentar agora.",
+      "Conta: a foto de perfil e a capa podem ser trocadas só com o teclado ou com leitor de tela.",
+      "Carrinho de quem não entrou na conta: com duas abas abertas, a última alteração vale nas duas, em vez de uma apagar a outra.",
+      "Painel, Notificações e Compartilhar: a prévia mostra o ícone do app e a mensagem de compartilhar como o cliente de fato recebe."
+    ],
+    "melhorias": []
+  },
   "1.5.117": {
     "titulo": "Correções em pedidos cancelados, recibos do balcão e números do Início",
     "novidades": [],

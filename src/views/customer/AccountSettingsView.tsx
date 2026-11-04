@@ -1359,14 +1359,14 @@ export function AccountSettingsView() {
                           <div className="absolute -bottom-1 -right-1 flex size-8 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md transition-colors hover:bg-primary/90">
                             <label
                               htmlFor="account-avatar-upload-icon"
-                              className="flex size-full cursor-pointer items-center justify-center"
+                              className="relative flex size-full cursor-pointer items-center justify-center rounded-full focus-within:ring-2 focus-within:ring-ring"
                             >
                               <input
                                 id="account-avatar-upload-icon"
                                 name="avatar"
                                 type="file"
                                 accept="image/*"
-                                className="hidden"
+                                className="sr-only"
                                 onChange={handlePhotoUpload}
                                 disabled={isUpdatingAvatar}
                               />
@@ -1387,14 +1387,14 @@ export function AccountSettingsView() {
                         <div className="flex w-full flex-col gap-2">
                           <label
                             htmlFor="account-avatar-upload-button"
-                            className="w-full"
+                            className="relative w-full rounded-xl focus-within:ring-2 focus-within:ring-ring"
                           >
                             <input
                               id="account-avatar-upload-button"
                               name="avatar"
                               type="file"
                               accept="image/*"
-                              className="hidden"
+                              className="sr-only"
                               onChange={handlePhotoUpload}
                               disabled={isUpdatingAvatar}
                             />
@@ -1419,14 +1419,14 @@ export function AccountSettingsView() {
                       <div className="space-y-4">
                         <label
                           htmlFor="avatar_file_input"
-                          className="block cursor-pointer"
+                          className="relative block cursor-pointer rounded-[2rem] focus-within:ring-2 focus-within:ring-ring"
                         >
                           <span className="sr-only">Fazer upload de foto</span>
                           <input
                             id="avatar_file_input"
                             type="file"
                             accept="image/*"
-                            className="hidden"
+                            className="sr-only"
                             onChange={handlePhotoUpload}
                             disabled={isUpdatingAvatar}
                           />
@@ -1607,7 +1607,10 @@ export function AccountSettingsView() {
               </div>
             ) : (
               <div className="flex flex-1 flex-col items-center justify-center py-2">
-                <label htmlFor="cover_file_input" className="w-full">
+                <label
+                  htmlFor="cover_file_input"
+                  className="relative w-full rounded-2xl focus-within:ring-2 focus-within:ring-ring"
+                >
                   <span className="sr-only">Fazer upload de foto de capa</span>
                   <input
                     id="cover_file_input"
@@ -1615,7 +1618,7 @@ export function AccountSettingsView() {
                     accept="image/*"
                     onChange={handleCoverUpload}
                     disabled={isUpdatingCover}
-                    className="hidden"
+                    className="sr-only"
                   />
                   <motion.div
                     whileHover={{

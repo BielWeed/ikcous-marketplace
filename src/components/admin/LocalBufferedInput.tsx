@@ -28,6 +28,13 @@ interface LocalBufferedInputProps
    */
   readonly zeroVazio?: boolean;
   /**
+   * Só com `zeroVazio`: o zero que a pessoa ESCREVE (ou cola) vale e fica como
+   * "0,00"; só APAGAR até sobrar zero esvazia o campo. É o custo do produto:
+   * vazio = "sem custo", 0,00 = brinde. Sem `inputType` no evento (teste
+   * sintético), vale o esvaziar de antes quando o texto bruto tem vírgula.
+   */
+  readonly zeroDigitadoVale?: boolean;
+  /**
    * Ao sair do campo, escreve de volta o texto já normalizado (o mesmo que o
    * `onFlush` entrega ao pai). Sem isto, o campo seguia mostrando o que foi
    * digitado ("verão 10") enquanto outro texto ("VERAO10") era gravado.
@@ -97,6 +104,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
   mask,
   permiteNegativo = false,
   zeroVazio = false,
+  zeroDigitadoVale = false,
   normalizarAoSair,
   ...props
 }: LocalBufferedInputProps) {
@@ -157,9 +165,16 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
       val = formatPhone(val, localVal.toString());
       rawVal = val.replace(/\D/g, "");
     } else if (mask === "currency") {
+      const textoBruto = val;
       val = formatCurrency(val, permiteNegativo);
       rawVal = parseCurrencyToFloatString(val, permiteNegativo);
-      if (zeroVazio && Number.parseFloat(rawVal) === 0) {
+      const tipo = (e.nativeEvent as InputEvent).inputType;
+      const zeroEscrito =
+        zeroDigitadoVale &&
+        (tipo === undefined
+          ? !textoBruto.includes(",")
+          : !tipo.startsWith("delete"));
+      if (zeroVazio && !zeroEscrito && Number.parseFloat(rawVal) === 0) {
         val = "";
         rawVal = "";
       }

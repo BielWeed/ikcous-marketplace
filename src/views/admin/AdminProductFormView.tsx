@@ -2606,6 +2606,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     setVariantToDelete(null);
   };
 
+  // Nome e descrição só com espaços valem como vazios: a gravação apara o texto
+  // e o produto sairia sem descrição (campo obrigatório) com a tela dizendo
+  // "tudo pronto". O botão, a frase do que falta e o contador usam ESTA cópia.
+  const camposObrigatorios = {
+    ...formData,
+    name: formData.name.trim(),
+    description: formData.description.trim(),
+  };
+
   // Primeiro campo com erro que BLOQUEIA o salvar, na ordem em que a tela os
   // mostra (básico, com a promoção logo abaixo de preço e estoque; depois
   // "Custo e lucro", depois "Códigos e câmera"). O AVISO de
@@ -2635,7 +2644,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // Para onde a frase "falta preencher" e o Publicar cinza levam: o primeiro
   // obrigatório vazio, na ordem da tela; sem vazio, o primeiro com erro.
   const idDoCampoDoBloqueio = (): string | null =>
-    camposQueFaltam(formData)[0]?.id ?? idDoPrimeiroCampoComErro();
+    camposQueFaltam(camposObrigatorios)[0]?.id ?? idDoPrimeiroCampoComErro();
 
   // Mostra o campo e põe o foco nele. Se está dentro de uma SecaoRecolhivel
   // que a lojista FECHOU com o erro lá dentro, o `temErro` dela já era
@@ -3214,8 +3223,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   );
 
   const isValid =
-    formData.name &&
-    formData.description &&
+    camposObrigatorios.name &&
+    camposObrigatorios.description &&
     formData.price &&
     formData.stock &&
     formData.category !== "" &&
@@ -3253,7 +3262,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       : isValid
         ? null
         : motivoDoBloqueioDoProduto(
-            formData,
+            camposObrigatorios,
             temErroNoCampo,
             !!productId,
             promocaoSemPrecoOriginal,
@@ -3261,7 +3270,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // A mesma causa, em poucas palavras, para a linha única da barra de baixo.
   const fraseCurtaDaBarra = isImageUploading
     ? fraseCurtaDoEnvioDeFotos(progressoDoEnvio, isUploadingAdjusted)
-    : fraseCurtaDoBloqueio(formData, temErroNoCampo, promocaoSemPrecoOriginal);
+    : fraseCurtaDoBloqueio(
+        camposObrigatorios,
+        temErroNoCampo,
+        promocaoSemPrecoOriginal,
+      );
   const botaoDeSalvarDesligado =
     isSubmitting ||
     showSuccess ||
@@ -3402,8 +3415,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const hasActiveVariants = formData.variants.some((v) => v.active);
   // Indicadores de apresentação, a partir dos mesmos campos da validação.
   const preenchidos = [
-    formData.name,
-    formData.description,
+    camposObrigatorios.name,
+    camposObrigatorios.description,
     formData.category,
     formData.price,
     formData.stock,
@@ -5213,6 +5226,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           name="costPrice"
                           mask="currency"
                           zeroVazio
+                          zeroDigitadoVale
                           value={formData.costPrice}
                           onFlush={(val) =>
                             setFormData((prev) => ({ ...prev, costPrice: val }))
