@@ -26,18 +26,19 @@ import * as z from "zod";
 // Tetos de tamanho (só no formulário, sem mexer no banco): impedem que uma
 // conta grave megabytes num campo de endereço. Endereço ANTIGO já salvo acima
 // do teto não trava em silêncio — ao salvar, o campo mostra o máximo.
+// Os mesmos números estão escritos DENTRO do schema (o teste de dependências
+// enxutas recorta só o corpo dele); o teste de tetos confere que batem.
 const TETO_RUA = 200;
 const TETO_COMPLEMENTO = 200;
 const TETO_REFERENCIA = 200;
 const TETO_NOME = 120;
 const TETO_NUMERO = 20;
-const maximoDe = (n: number) => `Máximo de ${n} caracteres`;
 
 const addressSchema = z.object({
   // Aparar só para validar mantém os valores válidos enviados como antes.
   name: z
     .string()
-    .max(TETO_NOME, maximoDe(TETO_NOME))
+    .max(120, "Máximo de 120 caracteres")
     .refine((v) => v.trim().length > 0, "Nome/Apelido é obrigatório"),
   // A máscara devolve "12345-67" para 7 dígitos — 8 CARACTERES contando o
   // hífen, o que passava num min(8) e gravava CEP incompleto como endereço
@@ -47,20 +48,20 @@ const addressSchema = z.object({
     .refine((v) => v.replace(/\D/g, "").length === 8, "CEP inválido"),
   street: z
     .string()
-    .max(TETO_RUA, maximoDe(TETO_RUA))
+    .max(200, "Máximo de 200 caracteres")
     .refine((v) => v.trim().length > 0, "Logradouro é obrigatório"),
   number: z
     .string()
-    .max(TETO_NUMERO, maximoDe(TETO_NUMERO))
+    .max(20, "Máximo de 20 caracteres")
     .refine((v) => v.trim().length > 0, "Número é obrigatório"),
   complement: z
     .string()
-    .max(TETO_COMPLEMENTO, maximoDe(TETO_COMPLEMENTO))
+    .max(200, "Máximo de 200 caracteres")
     .optional()
     .or(z.literal("")),
   neighborhood: z
     .string()
-    .max(TETO_NOME, maximoDe(TETO_NOME))
+    .max(120, "Máximo de 120 caracteres")
     .refine((v) => v.trim().length > 0, "Bairro é obrigatório"),
   city: z.string().refine((v) => v.trim().length > 0, "Cidade é obrigatória"),
   state: z
@@ -69,12 +70,12 @@ const addressSchema = z.object({
     .refine((v) => !v.trim() || ufBrasileiraValida(v), "Estado inválido"),
   reference: z
     .string()
-    .max(TETO_REFERENCIA, maximoDe(TETO_REFERENCIA))
+    .max(200, "Máximo de 200 caracteres")
     .optional()
     .or(z.literal("")),
   recipient_name: z
     .string()
-    .max(TETO_NOME, maximoDe(TETO_NOME))
+    .max(120, "Máximo de 120 caracteres")
     .refine((v) => v.trim().length > 0, "Nome do destinatário é obrigatório"),
   is_default: z.boolean(),
 });
