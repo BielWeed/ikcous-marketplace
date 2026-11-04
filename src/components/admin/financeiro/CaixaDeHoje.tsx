@@ -72,11 +72,14 @@ export function CaixaDeHoje({
 
   const caixa = dados.sessao;
   const esperadoNegativo = caixa ? paraCentavos(caixa.esperado) < 0 : false;
+  // A releitura falhou e o que está na tela é o de antes: avisa, não finge.
+  const desatualizado = Boolean(erro);
 
-  return (
+  const cartao = (
     <section
       aria-label="Caixa"
       data-faixa-do-caixa={caixa ? "aberto" : "fechado"}
+      data-valor-desatualizado={desatualizado ? "true" : undefined}
       className="flex min-w-0 flex-col gap-4 rounded-[20px] bg-foreground p-5 text-background"
     >
       <div className="flex items-center justify-between gap-3">
@@ -113,6 +116,12 @@ export function CaixaDeHoje({
             <p className="text-sm text-background/70">
               esperado na gaveta agora
             </p>
+            {desatualizado ? (
+              <p className="text-sm font-semibold text-background/70">
+                Valor de antes: pode estar desatualizado, não deu para
+                atualizar.
+              </p>
+            ) : null}
             <p className="break-words text-sm text-background/70">
               desde {quandoCurto(caixa.abertoEm)} ·{" "}
               <span className="whitespace-nowrap">
@@ -157,5 +166,13 @@ export function CaixaDeHoje({
         </button>
       </div>
     </section>
+  );
+
+  if (!erro) return cartao;
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      <EstadoDeErro mensagem={erro} aoTentarDeNovo={recarregar} />
+      {cartao}
+    </div>
   );
 }

@@ -300,7 +300,12 @@ export function MovimentarCaixaFolha({
   readonly aoMudarEnviando: (enviando: boolean) => void;
   readonly sessaoId: string;
   readonly movimento: "sangria" | "suprimento";
-  readonly esperado: number;
+  /**
+   * `null` = a leitura do caixa falhou e o valor guardado pode estar velho: a
+   * tela não o mostra nem barra a sangria por ele (o servidor confere o dinheiro
+   * de verdade ao registrar e recusa o que passa do esperado).
+   */
+  readonly esperado: number | null;
   readonly contas: readonly ContaFinanceira[];
   readonly contaDoCaixa: string | null;
   readonly aoFechar: () => void;
@@ -358,8 +363,10 @@ export function MovimentarCaixaFolha({
         : undefined;
   const passaDoEsperado =
     sangria &&
+    esperado !== null &&
     numero !== null &&
     Math.round(numero * 100) > Math.round(esperado * 100);
+  const esperadoIncerto = sangria && esperado === null;
 
   const erroConta = !contasChegaram
     ? "As contas ainda não carregaram. Aguarde um instante ou atualize a página."
@@ -465,7 +472,7 @@ export function MovimentarCaixaFolha({
             className={`${CLASSE_CAMPO} text-xl font-black tabular-nums`}
           />
         </Campo>
-        {sangria ? (
+        {sangria && esperado !== null ? (
           <dl className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
             <dt className="text-zinc-400">Esperado na gaveta</dt>
             <dd className="text-xl font-bold">
@@ -473,7 +480,26 @@ export function MovimentarCaixaFolha({
             </dd>
           </dl>
         ) : null}
-        {passaDoEsperado ? (
+        {esperadoIncerto ? (
+          <p
+            className={cn(
+              "flex items-start gap-2 rounded-xl p-3 text-xs",
+              classeDoTexto("atencao"),
+            )}
+          >
+            <AlertTriangle
+              aria-hidden="true"
+              className="mt-0.5 size-4 shrink-0"
+            />
+            <span>
+              Não deu para atualizar o esperado na gaveta, então o valor pode
+              estar desatualizado. Se puder, feche esta tela e atualize o caixa
+              antes de registrar. Você ainda pode registrar a retirada; o
+              sistema confere o valor ao registrar.
+            </span>
+          </p>
+        ) : null}
+        {passaDoEsperado && esperado !== null ? (
           <p
             className={cn(
               "flex items-start gap-2 rounded-xl p-3 text-xs",
