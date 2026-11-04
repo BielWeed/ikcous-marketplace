@@ -18,26 +18,46 @@ import { useSyncExternalStore } from "react";
  * lê. Sem eco nenhum, vale o boot — exatamente o que Ajustes faz. Não é fonte
  * nova de verdade: não há leitura nova no servidor.
  *
+ * O Início (04/11/2026) lê o mesmo eco — inclusive a Public Key, quando quem
+ * publica sabe dela (ver `publicarPagamentoPeloApp`).
+ *
  * Estado do módulo = estado da SESSÃO do painel (uma página, uma loja).
  */
 let eco: boolean | null = null;
+let ecoDaChave: boolean | null = null;
 const ouvintes = new Set<() => void>();
 
 export function pagamentoPeloAppAgora(): boolean {
   return eco ?? pagamentoOnlineLigado();
 }
 
-/** O servidor devolveu o estado gravado: o painel inteiro passa a usá-lo. */
-export function publicarPagamentoPeloApp(ligado: boolean): void {
-  if (eco === ligado) return;
+/**
+ * O servidor devolveu o estado gravado: o painel inteiro passa a usá-lo.
+ * `chaveOk` só se informa quando se SABE se a Public Key está publicada; sem
+ * ele, vale o que já se sabia (e, sem eco nenhum, a chave do boot).
+ */
+export function publicarPagamentoPeloApp(
+  ligado: boolean,
+  chaveOk?: boolean,
+): void {
+  if (eco === ligado && (chaveOk === undefined || ecoDaChave === chaveOk)) {
+    return;
+  }
   eco = ligado;
+  if (chaveOk !== undefined) ecoDaChave = chaveOk;
   for (const ouvinte of ouvintes) ouvinte();
 }
 
 /** Só para teste: volta a palavra ao retrato do boot. */
 export function esquecerEcoDoPagamentoPeloApp(): void {
   eco = null;
+  ecoDaChave = null;
   for (const ouvinte of ouvintes) ouvinte();
+}
+
+/** A Public Key está publicada? `null` = nenhum eco disse: vale o boot. */
+export function chaveDoPixPeloAppAgora(): boolean | null {
+  return ecoDaChave;
 }
 
 function assinar(ouvinte: () => void): () => void {
@@ -53,5 +73,14 @@ export function usePagamentoPeloApp(): boolean {
     assinar,
     pagamentoPeloAppAgora,
     pagamentoPeloAppAgora,
+  );
+}
+
+/** A Public Key que o eco trouxe (ou `null`). Re-renderiza quando ela chega. */
+export function useChaveDoPixPeloApp(): boolean | null {
+  return useSyncExternalStore(
+    assinar,
+    chaveDoPixPeloAppAgora,
+    chaveDoPixPeloAppAgora,
   );
 }

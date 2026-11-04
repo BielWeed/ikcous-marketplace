@@ -448,9 +448,7 @@ export function AbaVisao({
           )}
         />
         <EtiquetaDoResultado resultado={dados.resultado} />
-        <p className="text-xs text-zinc-400">
-          Soma de todas as contas da loja, hoje
-        </p>
+        <p className="text-xs text-zinc-400">Soma das contas ativas, hoje</p>
       </section>
 
       <section aria-label="Movimentos do período">

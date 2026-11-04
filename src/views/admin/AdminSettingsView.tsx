@@ -1259,7 +1259,16 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                           // A tela de Frete é OUTRA aba (as duas ficam montadas):
                           // o mesmo eco do servidor vai para ela, que o usa para
                           // avisar da transportadora sem aviso falso.
-                          publicarPagamentoPeloApp(ligado);
+                          // O Início lê o mesmo eco, inclusive o da chave pública:
+                          // a mesma regra do `setPixChaveOk` logo abaixo.
+                          publicarPagamentoPeloApp(
+                            ligado,
+                            chaveNaLoja !== undefined
+                              ? chaveNaLoja
+                              : ligado
+                                ? true
+                                : undefined,
+                          );
                           // `chaveNaLoja` só vem preenchido no eco do `ler`
                           // (mp-10): é o único dos quatro que NÃO garante chave
                           // publicada quando `ligado` é `true` — `ler` devolve o
