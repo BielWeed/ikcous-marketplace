@@ -3,7 +3,7 @@
     "titulo": "Avisos mais honestos em cupons, estoque, caixa e listas do painel",
     "novidades": [],
     "correcoes": [
-      "Painel, Notificações: antes de enviar um aviso que cita um cupom, o painel alerta se os cupons estão desligados na loja; o alerta de que o cupom cobre a compra inteira só aparece quando isso é possível; e o cupom para clientes escolhidos explica que o limite de uso é da loja toda.",
+      "Painel, Notificações e Cupons: antes de enviar um aviso que cita um cupom, o painel alerta se os cupons estão desligados na loja; o alerta de que o cupom cobre a compra inteira só aparece quando isso é possível; e o cupom para clientes escolhidos explica que o limite de uso é da loja toda.",
       "Painel, Estoque: o aviso de produto acabando segue a ordem de urgência, sem a data de cadastro, e produto pausado não aparece mais como crítico na lista.",
       "Painel, Caixa: se a atualização do caixa falha, a tela avisa que o valor da gaveta pode estar desatualizado e oferece Tentar de novo.",
       "Balcão: antes de escolher a forma de pagamento, a tela pede para escolher em vez de dizer que a forma é inválida.",
