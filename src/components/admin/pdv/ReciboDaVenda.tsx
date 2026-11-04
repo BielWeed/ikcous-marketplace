@@ -422,10 +422,14 @@ export function ReciboDaVenda({
           Nova venda
         </Button>
       )}
-      <OrderReceipt
-        order={construirOrderParaImpressao(recibo)}
-        storeName={storeName}
-      />
+      {/* Anulada: o papel nem existe na página — Ctrl+P ou o menu do navegador
+          não podem imprimir um comprovante de compra que não vale mais. */}
+      {!anulada && (
+        <OrderReceipt
+          order={construirOrderParaImpressao(recibo)}
+          storeName={storeName}
+        />
+      )}
     </div>
   );
 }
