@@ -13,6 +13,7 @@ import {
   ChevronDown,
   ChevronUp,
   Heart,
+  RotateCw,
 } from "lucide-react";
 import React, {
   useCallback,
@@ -63,6 +64,52 @@ const TECLAS_DE_ROLAGEM = new Set([
 const textoDeProdutos = (n: number) =>
   `${n} ${n === 1 ? "produto" : "produtos"}`;
 
+/**
+ * Favoritos que não chegaram ao servidor depois do login ficam numa fila
+ * invisível (não entram na lista nem nos corações). Esta linha diz quantos
+ * faltam e deixa tentar na hora: o retry automático só roda quando a internet
+ * volta, e falha do servidor com a rede de pé nunca dispara esse sinal.
+ */
+function AvisoDeFavoritosRetidos({
+  quantidade,
+  onTentarAgora,
+}: Readonly<{ quantidade: number; onTentarAgora: () => Promise<void> }>) {
+  const [tentando, setTentando] = useState(false);
+  if (quantidade <= 0) return null;
+  const tentar = async () => {
+    if (tentando) return;
+    setTentando(true);
+    try {
+      await onTentarAgora();
+    } finally {
+      setTentando(false);
+    }
+  };
+  return (
+    <div
+      role="status"
+      className="mx-4 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
+    >
+      <span>
+        {quantidade}{" "}
+        {quantidade === 1
+          ? "favorito ainda está sendo salvo"
+          : "favoritos ainda estão sendo salvos"}
+      </span>
+      <button
+        type="button"
+        onClick={() => {
+          void tentar();
+        }}
+        disabled={tentando}
+        className="min-h-11 rounded-full px-3 font-semibold underline underline-offset-2 disabled:opacity-60"
+      >
+        {tentando ? "Tentando..." : "Tentar agora"}
+      </button>
+    </div>
+  );
+}
+
 interface Secao {
   nome: string;
   itens: Product[];
@@ -83,7 +130,18 @@ export const FavoritesView = React.memo(function FavoritesView({
   selectedProductId,
   onAddToCart,
 }: FavoritesViewProps) {
-  const { config, products } = useStore();
+  const { config, products, loadingProducts, catalogoErro, fetchProducts } =
+    useStore();
+  const [tentandoCatalogo, setTentandoCatalogo] = useState(false);
+  const tentarCatalogoDeNovo = async () => {
+    if (tentandoCatalogo) return;
+    setTentandoCatalogo(true);
+    try {
+      await fetchProducts();
+    } finally {
+      setTentandoCatalogo(false);
+    }
+  };
   // B3 do item 2 da fila (19/09): o selo "Frete Grátis" do card obedece ao
   // preset da LOJA (ProductCard-520), derivado do MESMO config que já
   // alimentava `showRating` — mesmo padrão do ProductView.
@@ -92,7 +150,12 @@ export const FavoritesView = React.memo(function FavoritesView({
   // A LISTA continua vindo por props (App.tsx é o dono do fluxo); o estado
   // de ERRO do fetch vem direto do contexto — falha de consulta não pode
   // renderizar o mesmo "lista vazia" de quem nunca favoritou nada.
-  const { erro: favoritosErro, refresh: favoritosRefresh } = useFavorites();
+  const {
+    erro: favoritosErro,
+    refresh: favoritosRefresh,
+    pendingCount,
+    retentarPendentes,
+  } = useFavorites();
   const idBase = useId();
   const listaRef = useRef<HTMLDivElement>(null);
   const [comDesconto, setComDesconto] = useState(false);
@@ -340,7 +403,12 @@ export const FavoritesView = React.memo(function FavoritesView({
     prefetchView("product-detail");
   }, [prefetchView]);
 
-  if (loading) {
+  // A lista é o cruzamento dos ids salvos com o catálogo: sem catálogo ela
+  // vem vazia mesmo para quem tem favoritos. Carregando ou falhado, a tela não
+  // pode afirmar "você ainda não tem favoritos" (Home e Busca já separam isso).
+  const semCatalogo = favorites.length === 0 && products.length === 0;
+
+  if (loading || (semCatalogo && (loadingProducts || tentandoCatalogo))) {
     return (
       <div className="pb-customer min-h-full overflow-x-hidden bg-background">
         <header className="px-4 pb-4 pt-5">
@@ -387,6 +455,36 @@ export const FavoritesView = React.memo(function FavoritesView({
     );
   }
 
+  if (semCatalogo && catalogoErro) {
+    return (
+      <div
+        role="alert"
+        className="pb-customer flex min-h-full flex-col items-center justify-center px-4 py-16 text-center"
+      >
+        <div className="mb-5 flex size-20 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/40">
+          <Heart aria-hidden="true" className="size-9 text-amber-600" />
+        </div>
+        <h2 className="mb-2 text-lg font-bold text-foreground">
+          Não conseguimos carregar
+        </h2>
+        <p className="mb-7 max-w-xs text-sm leading-relaxed text-muted-foreground">
+          Não deu para carregar os produtos da loja. Verifique sua conexão e
+          tente de novo.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            void tentarCatalogoDeNovo();
+          }}
+          className="inline-flex min-h-11 items-center gap-2 rounded-full bg-foreground px-6 text-sm font-semibold text-background active:scale-95"
+        >
+          <RotateCw aria-hidden="true" className="size-4" />
+          Tentar de novo
+        </button>
+      </div>
+    );
+  }
+
   if (favorites.length === 0) {
     // Defeito da prova de rua (01/09): para o DONO da loja (logado como
     // admin) a lista do contexto carrega o catálogo INTEIRO, inclusive
@@ -403,6 +501,11 @@ export const FavoritesView = React.memo(function FavoritesView({
             Nenhum produto salvo ainda
           </p>
         </header>
+
+        <AvisoDeFavoritosRetidos
+          quantidade={pendingCount ?? 0}
+          onTentarAgora={retentarPendentes}
+        />
 
         <div className="flex flex-col items-center px-6 pb-6 pt-10 text-center">
           <div className="mb-6 grid size-28 place-items-center rounded-full bg-muted">
@@ -508,6 +611,11 @@ export const FavoritesView = React.memo(function FavoritesView({
           </label>
         </div>
       </header>
+
+      <AvisoDeFavoritosRetidos
+        quantidade={pendingCount ?? 0}
+        onTentarAgora={retentarPendentes}
+      />
 
       {mostrarAtalhos && (
         <nav

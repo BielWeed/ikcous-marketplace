@@ -133,6 +133,10 @@ interface FavoritesContextType {
   // quem consumir este contexto. Ver o comentário grande abaixo, antes do
   // memo de `favorites`, sobre por que os pendentes pararam de entrar nele.
   pendingCount: number;
+  // Tenta gravar AGORA a fila retida (o mesmo caminho do evento `online`).
+  // Existe para o botão "Tentar agora" da tela de Favoritos: falha do servidor
+  // com a rede de pé nunca dispara `online`. Resolve quando a tentativa acabou.
+  retentarPendentes: () => Promise<void>;
 }
 
 export const FavoritesContext = createContext<FavoritesContextType | undefined>(
@@ -574,57 +578,52 @@ export function FavoritesProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, fetchDbFavorites]);
 
-  // Retentativa da fila pendente: a promessa que o toast acima faz
-  // ("vamos tentar de novo quando a conexão voltar") só é verdadeira se
-  // algo de fato tentar de novo nesta mesma sessão — antes disso, o efeito
-  // acima só reagia a uma nova montagem. `online` é o sinal mais direto de
-  // "a conexão voltou" para o cenário que gerou a pendência (escrita feita
-  // sem rede).
+  const retentarPendentes = useCallback(async () => {
+    if (!user) return;
+    // Achado 1 (26/08/2026) — a fila é lida do DISCO, pelo `user.id` deste
+    // fechamento, NO INSTANTE da chamada — nunca do `pendingFavorites` do
+    // render. `user` e `pendingFavorites` mudam em COMMITS diferentes (troca
+    // de conta A->B sem passar por `null`, AuthContext.tsx:579-583,
+    // `isCriticalTransition`): ler do estado podia gravar os favoritos de A na
+    // conta de B quando `online` disparasse (o gatilho real: rede instável é
+    // a mesma causa que gerou a pendência). Ler do disco aqui dentro elimina
+    // essa janela: a fila é sempre a de quem está logado AGORA, porque
+    // `gravarFavoritosPendentes` só grava sob a chave deste usuário.
+    const filaAtual = lerFavoritosPendentes(user.id);
+    if (filaAtual.length === 0) return;
+
+    const { total, sincronizados } = await tentarSincronizarComServidor(
+      user.id,
+      filaAtual,
+    );
+    // Achado 1 da revisão de contexto limpo (26/08/2026) — a retentativa
+    // bem-sucedida não relia o servidor: o aviso dizia "foram sincronizados!"
+    // e `favorites` continuava com o retrato antigo de `dbFavoriteIds`.
+    if (sincronizados > 0) {
+      fetchDbFavorites();
+    }
+    if (
+      total > 0 &&
+      sincronizados === total &&
+      usuarioAtualIdRef.current === user.id
+    ) {
+      toast.success("Seus favoritos pendentes foram sincronizados!");
+    }
+  }, [user, tentarSincronizarComServidor, fetchDbFavorites]);
+
+  // Retentativa da fila pendente: a promessa que o toast do login faz
+  // ("vamos tentar de novo quando a conexão voltar") só é verdadeira se algo
+  // de fato tentar de novo nesta mesma sessão. `online` é o sinal mais direto
+  // de "a conexão voltou" para o cenário que gerou a pendência (escrita feita
+  // sem rede); o botão "Tentar agora" da tela cobre a falha sem queda de rede.
   useEffect(() => {
     if (!user || typeof window === "undefined") return;
-
-    // Achado 1 (26/08/2026) — a fila é lida do DISCO, pelo `user.id` deste
-    // fechamento, NO INSTANTE em que o evento dispara — nunca do
-    // `pendingFavorites` do render. `user` e `pendingFavorites` mudam em
-    // COMMITS diferentes (troca de conta A->B sem passar por `null`,
-    // AuthContext.tsx:579-583, `isCriticalTransition`): um efeito que
-    // dependesse de `pendingFavorites` podia religar já com o `user` NOVO
-    // mas com a fila do usuário ANTERIOR ainda presa no fechamento — e
-    // gravar os favoritos de A na conta de B quando `online` disparasse
-    // (o gatilho real: rede instável é a mesma causa que gerou a
-    // pendência). Ler do disco aqui dentro, e tirar `pendingFavorites` das
-    // deps, elimina essa janela: a fila é sempre a de quem está logado
-    // AGORA, porque `gravarFavoritosPendentes` só grava sob a chave deste
-    // usuário.
-    const retentar = () => {
-      const filaAtual = lerFavoritosPendentes(user.id);
-      if (filaAtual.length === 0) return;
-
-      tentarSincronizarComServidor(user.id, filaAtual).then(
-        ({ total, sincronizados }) => {
-          // Achado 1 da revisão de contexto limpo (26/08/2026) — a
-          // retentativa bem-sucedida não relia o servidor: o aviso dizia
-          // "foram sincronizados!" e `favorites` continuava com o retrato
-          // antigo de `dbFavoriteIds`, porque nada tinha chamado
-          // `fetchDbFavorites()` de novo. A tela só se corrigia sozinha se
-          // ALGO MAIS disparasse um novo fetch depois — nada garantia isso.
-          if (sincronizados > 0) {
-            fetchDbFavorites();
-          }
-          if (
-            total > 0 &&
-            sincronizados === total &&
-            usuarioAtualIdRef.current === user.id
-          ) {
-            toast.success("Seus favoritos pendentes foram sincronizados!");
-          }
-        },
-      );
+    const aoVoltarARede = () => {
+      void retentarPendentes();
     };
-
-    window.addEventListener("online", retentar);
-    return () => window.removeEventListener("online", retentar);
-  }, [user, tentarSincronizarComServidor, fetchDbFavorites]);
+    window.addEventListener("online", aoVoltarARede);
+    return () => window.removeEventListener("online", aoVoltarARede);
+  }, [user, retentarPendentes]);
 
   // Realtime Sync for Favorites
   useEffect(() => {
@@ -963,6 +962,7 @@ export function FavoritesProvider({
       erro,
       refresh: () => void fetchDbFavorites(),
       pendingCount: pendingFavorites.length,
+      retentarPendentes,
     }),
     [
       favorites,
@@ -972,6 +972,7 @@ export function FavoritesProvider({
       erro,
       fetchDbFavorites,
       pendingFavorites,
+      retentarPendentes,
     ],
   );
 

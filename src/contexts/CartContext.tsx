@@ -339,6 +339,26 @@ function removerSeguro(chave: string): void {
 }
 
 /**
+ * O carrinho guardado no aparelho, validado linha a linha (Zod): linha estragada
+ * cai, as boas ficam. `null` = texto que não é uma lista (estragado).
+ */
+function carrinhoDoTextoSalvo(texto: string): CartItem[] | null {
+  try {
+    const parsed = JSON.parse(texto);
+    if (!Array.isArray(parsed)) return null;
+    return parsed
+      .map((item) => {
+        const result = cartItemSchema.safeParse(item);
+        return result.success ? (result.data as unknown as CartItem) : null;
+      })
+      .filter((item): item is CartItem => item !== null);
+  } catch (e) {
+    console.error("[CartContext] ⚠️ Failed to parse LocalStorage cart:", e);
+    return null;
+  }
+}
+
+/**
  * Lê o estado ATUAL de produtos (vitrine pública: só devolve o que está à
  * venda) e variações. `produtos` lança se a leitura do produto falhar; a das
  * variações NÃO lança (o sync sempre continuou sem elas), mas devolve o erro:
@@ -389,25 +409,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const [cart, setCart] = useState<CartItem[]>(() => {
     const saved = lerSeguro(CART_STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          // Sanity check: Filter and Validate with Zod
-          return parsed
-            .map((item) => {
-              const result = cartItemSchema.safeParse(item);
-              return result.success
-                ? (result.data as unknown as CartItem)
-                : null;
-            })
-            .filter((item): item is CartItem => item !== null);
-        }
-      } catch (e) {
-        console.error("[CartContext] ⚠️ Failed to parse LocalStorage cart:", e);
-      }
-    }
-    return [];
+    return (saved ? carrinhoDoTextoSalvo(saved) : null) ?? [];
   });
 
   const [isLoading, setIsLoading] = useState(true);
@@ -491,6 +493,30 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     cartRef.current = cart;
   }, [cart]);
+
+  // Visitante com o app em duas abas: cada aba grava o carrinho INTEIRO dela, e
+  // a que mexe por último apagava o que a outra pôs. O navegador avisa (evento
+  // "storage") só as OUTRAS abas quando o valor muda; aqui a aba adota o que a
+  // outra gravou — o último a gravar vence, sem fusão. Com conta o banco é a
+  // fonte, e com pedido sem resposta o carrinho não muda por baixo.
+  useEffect(() => {
+    const aoGravarEmOutraAba = (e: StorageEvent) => {
+      if (e.key !== null && e.key !== CART_STORAGE_KEY) return;
+      if (e.storageArea && e.storageArea !== localStorage) return;
+      if (userIdAtualRef.current) return;
+      if (isInitialLoad.current || syncLocked.current) return;
+      if (haChaveDoPedidoVigente(null)) return;
+      const novo =
+        e.key === null || e.newValue === null
+          ? []
+          : carrinhoDoTextoSalvo(e.newValue);
+      if (!novo) return;
+      if (JSON.stringify(novo) === JSON.stringify(cartRef.current)) return;
+      setCart(novo);
+    };
+    window.addEventListener("storage", aoGravarEmOutraAba);
+    return () => window.removeEventListener("storage", aoGravarEmOutraAba);
+  }, []);
 
   // O carrinho que está no BANCO só é conhecido depois que a leitura inicial
   // teve sucesso e foi mesclada ao daqui. Até lá NADA vai ao servidor: a RPC
