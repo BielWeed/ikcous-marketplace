@@ -908,3 +908,95 @@ describe("useAvisosDoLojista — pedido entregue sem recebimento marcado", () =>
     expect(atual().fontesComFalha).toEqual([]);
   });
 });
+
+describe("useAvisosDoLojista — tela aberta acompanha o que chega depois", () => {
+  // A tela de Notificações fica aberta no balcão: o sino da barra já relê as
+  // contagens ao voltar o foco e quando a lojista muda o prazo de devolução, e
+  // a lista tem de fazer o mesmo — senão o sino acende e a lista diz "Tudo em
+  // dia". Sem canal em tempo real: só a releitura simples.
+  const estadoOriginal = Object.getOwnPropertyDescriptor(
+    document,
+    "visibilityState",
+  );
+
+  function fingirVisibilidade(estado: "visible" | "hidden") {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => estado,
+    });
+  }
+
+  afterEach(() => {
+    if (estadoOriginal) {
+      Object.defineProperty(document, "visibilityState", estadoOriginal);
+    } else {
+      Reflect.deleteProperty(document, "visibilityState");
+    }
+  });
+
+  async function chegouPedidoDepoisDeAbrir() {
+    RESPOSTA_PEDIDOS = { data: [], error: null };
+    RESPOSTA_PERGUNTAS = { data: { total_count: 0 }, error: null };
+    RESPOSTA_AVALIACOES = { data: [], error: null };
+    RESPOSTA_PRODUTOS = { products: [], total: 0 };
+    const sonda = await montarSonda();
+    expect(sonda.atual().avisos).toEqual([]);
+    RESPOSTA_PEDIDOS = { data: [pedidoDeExemplo()], error: null };
+    return sonda;
+  }
+
+  it("ao voltar o foco para a tela, relê e mostra o pedido que chegou", async () => {
+    const { atual } = await chegouPedidoDepoisDeAbrir();
+    fingirVisibilidade("visible");
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await act(async () => {});
+
+    expect(atual().avisos.map((a) => a.tipo)).toEqual(["pedido"]);
+  });
+
+  it("quando a lojista muda o prazo de devolução (admin:recontar-avisos), relê", async () => {
+    const { atual } = await chegouPedidoDepoisDeAbrir();
+
+    await act(async () => {
+      window.dispatchEvent(new Event("admin:recontar-avisos"));
+    });
+    await act(async () => {});
+
+    expect(atual().avisos.map((a) => a.tipo)).toEqual(["pedido"]);
+  });
+
+  it("com a tela escondida não consulta nada", async () => {
+    const { atual } = await chegouPedidoDepoisDeAbrir();
+    const consultasAntes = tabelasConsultadas.length;
+    fingirVisibilidade("hidden");
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await act(async () => {});
+
+    expect(tabelasConsultadas.length).toBe(consultasAntes);
+    expect(atual().avisos).toEqual([]);
+  });
+
+  it("desmontada, a tela para de ouvir", async () => {
+    await chegouPedidoDepoisDeAbrir();
+    for (const raiz of raizes.splice(0)) {
+      act(() => {
+        raiz.unmount();
+      });
+    }
+    const consultasAntes = tabelasConsultadas.length;
+    fingirVisibilidade("visible");
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("admin:recontar-avisos"));
+    });
+
+    expect(tabelasConsultadas.length).toBe(consultasAntes);
+  });
+});

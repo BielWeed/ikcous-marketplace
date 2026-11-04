@@ -70,10 +70,11 @@ export function statusDaEntrega({
   const presetSalvo = presetDoConfig(minSalvo);
   const localFee = Number(config?.localDeliveryFee ?? 10);
 
-  // "Só retiro": a loja não entrega nem manda por transportadora; a cliente
-  // retira e quem é de fora também. Só falta o endereço para saber onde. O
-  // critério é o MESMO do passo "entrega" da loja pronta: endereço conferido
-  // (formato novo, com o CEP da loja), não qualquer texto.
+  // "Só retiro": a loja não entrega na cidade; a cliente retira. Quem é de fora
+  // também retira, e ainda pode comprar pela transportadora se houver uma
+  // ligada (o servidor segue cotando para o CEP de fora). Só falta o endereço
+  // para saber onde. O critério é o MESMO do passo "entrega" da loja pronta:
+  // endereço conferido (formato novo, com o CEP da loja), não qualquer texto.
   const soRetiro = modoDaEntregaNaCidade(config) === "so_retiro";
   const temEndereco =
     lerEnderecoConferido(config?.storeAddress, config?.originCep) !== null;
@@ -114,7 +115,11 @@ export function statusDaEntrega({
   const detalheNacional = (base: string): string =>
     resumoNacional === "desligado" ? base : `${base} · ${resumoNacional}`;
 
-  const nacional: StatusDaFaixaFrete = soRetiro
+  const soRetiroSemTransportadora =
+    soRetiro &&
+    ((config?.shippingCoverage || "national") === "local" ||
+      nomesLigados.length === 0);
+  const nacional: StatusDaFaixaFrete = soRetiroSemTransportadora
     ? {
         rotulo: "Fora da cidade",
         valor: "Só retirada",
@@ -142,7 +147,11 @@ export function statusDaEntrega({
                 nomesLigados.length === 1
                   ? `${nomesLigados[0]} ligado`
                   : `${nomesLigados.length} provedores ligados`,
-              detalhe: detalheNacional("cotação real na hora"),
+              detalhe: detalheNacional(
+                soRetiro
+                  ? "cotação real na hora ou retirar na loja"
+                  : "cotação real na hora",
+              ),
               tom: "positivo",
             }
           : {
