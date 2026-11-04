@@ -139,7 +139,7 @@ module.exports = [
     // balcao e do historico de pedidos). Base 600,28 kB (1.5.112); medem 601,13 kB (126 B acima do teto).
     // 04/11/2026 (mesma regra): 602 -> 603 kB na 1.5.116 (correcoes da caca: busca da Home, estoque
     // da pagina do produto, textos do pagamento e a nota da versao). Base 601,13 kB (1.5.113);
-    // medem 602,18 kB (178 B acima do teto).
+    // medem 602,37 kB no CI (370 B acima do teto).
     limit: "603 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em

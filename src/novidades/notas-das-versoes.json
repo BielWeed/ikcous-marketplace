@@ -5,9 +5,9 @@
     "correcoes": [
       "Produto com cor e tamanho: escolhendo só o tamanho, o estoque mostrado é o dessa escolha, não o total de todas as combinações.",
       "Busca da Home: \"Relevância\" ordena por relevância, e a categoria marcada não esconde os resultados da busca.",
-      "Pagamento confirmado: o texto diz o que de fato aconteceu com o pedido, e \"Falar com a Loja\" só aparece quando há número para abrir.",
+      "Pagamento confirmado: o texto diz o que de fato aconteceu com o pedido; na tela de pagamento recebido depois do prazo, \"Falar com a Loja\" só aparece quando há número para abrir.",
       "Painel, Clientes: se a busca falha, aparece só o erro, sem a lista da busca anterior; na ficha, remover item do carrinho não sai da aba Carrinho.",
-      "Painel, Notificações: a lista se atualiza ao voltar para a aba e quando chega aviso novo.",
+      "Painel, Notificações: a lista se atualiza ao voltar para a aba e depois que você responde uma avaliação ou muda o prazo de devolução.",
       "Painel, Frete: \"Só retirada\" não diz mais que ninguém recebe em casa quando a transportadora continua vendendo para fora da cidade."
     ],
     "melhorias": [

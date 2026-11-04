@@ -100,7 +100,7 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     // cliente 599 -> 600 em 02/11/2026 (1.5.111, correcoes da caca e a nota da versao; medido 599,1 kB no CI; regra do dono);
     // cliente 600 -> 601 em 03/11/2026 (1.5.112, correcoes da segunda caca; medido 600,28 kB; regra do dono);
     // cliente 601 -> 602 em 03/11/2026 (1.5.113, correcoes do CEP, devolucoes, balcao e pedidos; medido 601,13 kB; regra do dono);
-    // cliente 602 -> 603 em 04/11/2026 (1.5.116, correcoes da caca; medido 602,18 kB; regra do dono);
+    // cliente 602 -> 603 em 04/11/2026 (1.5.116, correcoes da caca; medido 602,37 kB no CI; regra do dono);
     // ver comentário no `.size-limit.cjs`.
     expect(entrada("cliente.map(")).toContain('limit: "603 kB"');
     expect(entrada("painel.map(")).toContain('limit: "501 kB"');
