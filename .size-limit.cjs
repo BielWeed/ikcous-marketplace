@@ -140,7 +140,10 @@ module.exports = [
     // 04/11/2026 (mesma regra): 602 -> 603 kB na 1.5.116 (correcoes da caca: busca da Home, estoque
     // da pagina do produto, textos do pagamento e a nota da versao). Base 601,13 kB (1.5.113);
     // medem 602,37 kB no CI (370 B acima do teto).
-    limit: "603 kB",
+    // 04/11/2026 (mesma regra): 603 -> 604 kB na 1.5.117 (correcoes da segunda caca do dia: pedido
+    // cancelado e devolvido, recibo do balcao, numeros do Inicio). Base 602,37 kB (CI da 1.5.116);
+    // medem 602,92 kB no build local, rente ao teto. Nenhum codigo foi trocado por algo mais arriscado.
+    limit: "604 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
@@ -259,7 +262,9 @@ module.exports = [
     // 02/11/2026 (mesma regra): 499 -> 501 kB na 1.5.110 (Funil do CRM mostra as visitas da loja
     // por canal, com o aviso de contagem no limite). O lote inteiro mede
     // 499,02 kB no CI (18 B acima). Nenhum codigo foi trocado por algo mais arriscado para caber.
-    limit: "501 kB",
+    // 04/11/2026 (mesma regra): 501 -> 502 kB na 1.5.117 (mesmo lote; Inicio le o eco do pagamento
+    // pelo app e Financeiro/Pedidos ganham textos). Medem 500,96 kB no build local, rente ao teto.
+    limit: "502 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },

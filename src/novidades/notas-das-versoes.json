@@ -1,4 +1,17 @@
 {
+  "1.5.117": {
+    "titulo": "Correções em pedidos cancelados, recibos do balcão e números do Início",
+    "novidades": [],
+    "correcoes": [
+      "Pedido cancelado com o dinheiro já devolvido: a lista e a tela do pedido dizem que o dinheiro foi devolvido, o selo deixa de aparecer em vermelho e, quando há registro da devolução, aparece \"Devolução concluída\" com o valor.",
+      "Painel, Pedidos: na retirada pronta que foi cancelada, os textos e os avisos dizem que o produto nunca saiu da loja, sem falar em entrega nem em transporte.",
+      "Pedido cancelado e venda do balcão anulada deixam de imprimir comprovante como se estivessem valendo.",
+      "Balcão: a peça gravada que não está mais na tela sai no recibo com o tamanho e a cor.",
+      "Painel, Financeiro: o Saldo total diz que soma as contas ativas, e o aviso de desativar uma conta explica que o saldo dela sai do total.",
+      "Painel, Início: nos primeiros 15 dias do mês, margem negativa aparece como em formação em vez de um percentual absurdo, e ligar o pagamento pelo app em Ajustes atualiza o passo do Início."
+    ],
+    "melhorias": []
+  },
   "1.5.116": {
     "titulo": "Correções na busca, no estoque do produto e nos avisos do painel",
     "novidades": [],
