@@ -392,6 +392,24 @@ export function NotificationProvider({
         }, 500);
       };
 
+      // O app volta de segundo plano (o aparelho congela o PWA), a internet
+      // volta, ou o canal ao vivo reconecta: avisos que chegaram nesse
+      // meio-tempo não vêm por evento nenhum (o Realtime não reenvia o que
+      // perdeu). Os três gatilhos passam pela MESMA junção de 500 ms da
+      // rajada, então um retorno típico (visível + online + canal) vira UMA
+      // releitura; a proteção de rodada do fetch descarta resposta velha.
+      // Só existe com usuária logada: o cleanup abaixo remove tudo.
+      let ativo = true;
+      let canalJaCaiu = false;
+      const releituraAoVoltar = () => {
+        if (ativo) releituraAposRajada(false);
+      };
+      const aoMudarDeVisibilidade = () => {
+        if (document.visibilityState === "visible") releituraAoVoltar();
+      };
+      document.addEventListener("visibilitychange", aoMudarDeVisibilidade);
+      window.addEventListener("online", releituraAoVoltar);
+
       let channel: any = null;
 
       if (isLeader) {
@@ -409,7 +427,22 @@ export function NotificationProvider({
             },
             () => releituraAposRajada(true),
           )
-          .subscribe();
+          .subscribe((status: string) => {
+            // A primeira conexão não relê (o efeito já buscou); só o
+            // SUBSCRIBED que vem DEPOIS de uma queda.
+            if (status === "SUBSCRIBED") {
+              if (canalJaCaiu) {
+                canalJaCaiu = false;
+                releituraAoVoltar();
+              }
+            } else if (
+              status === "CHANNEL_ERROR" ||
+              status === "TIMED_OUT" ||
+              status === "CLOSED"
+            ) {
+              canalJaCaiu = true;
+            }
+          });
       } else {
         console.log(
           "[Notifications] Secondary tab listening to notifications via BroadcastChannel...",
@@ -427,6 +460,9 @@ export function NotificationProvider({
       }
 
       return () => {
+        ativo = false;
+        document.removeEventListener("visibilitychange", aoMudarDeVisibilidade);
+        window.removeEventListener("online", releituraAoVoltar);
         if (esperaDaRajada) clearTimeout(esperaDaRajada);
         if (channel) {
           supabase.removeChannel(channel);

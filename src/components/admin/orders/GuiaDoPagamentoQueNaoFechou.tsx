@@ -13,11 +13,17 @@ import { getPaymentStatusConfig } from "./OrderStatusBadge";
  *   - Cartão em dúvida aparece no painel igual a qualquer pedido aguardando:
  *     o `Order` do painel não carrega a vaga nem o método online
  *     (20261180000000, "FORA DO ESCOPO"), e o selo é o de `aguardando`.
- *   - O admin PODE cancelar esse pedido: a guarda do cartão vivo de
- *     `update_order_status_atomic` só vale para quem não é admin
- *     (20261180000000, dentro de `IF NOT v_is_admin`). O cancelamento devolve
- *     o estoque e só escreve `status` — não chama o Mercado Pago, nem mexe na
- *     vaga.
+ *   - O admin PODE cancelar esse pedido, mas desde o S1 (04/10/2026) o
+ *     cancelamento de pedido online/aguardando vai pela edge `criar-pagamento`
+ *     (`useOrders.updateOrderStatus`, `cancelamentoVaiPelaEdge`), que ANULA a
+ *     cobrança aberta no Mercado Pago antes de cancelar no banco
+ *     (`cancelar-pedido.ts`). Pagamento já aprovado (`ja_pago`) ou cartão em
+ *     análise/3DS (`em_analise`) = não cancela e avisa; anulação não provada
+ *     (`recuperavel`) = nada muda; vaga em verificação sem NENHUMA order viva
+ *     no MP = admin cancela com o aviso "confira no painel do Mercado Pago".
+ *     O texto da rodada 6 (achado 4) segue isso; o ramo "cancelado mesmo
+ *     assim, com o pagamento aprovado" ficou só para a corrida e para o
+ *     cancelamento feito pela varredura.
  *   - Se o banco aprovar depois, o webhook ADOTA a vaga sem olhar `status`
  *     (webhook-mercadopago/index.ts, bloco "ADOÇÃO") e `confirmar_pagamento`
  *     grava `pago_apos_expirar` para `aguardando` + `cancelled` ou para
@@ -152,8 +158,11 @@ export function GuiaDoPagamentoQueNaoFechou() {
             do prazo (veja abaixo).
           </li>
           <li>
-            Se o pedido for cancelado mesmo assim, com o pagamento aprovado no
-            Mercado Pago:
+            Se o pedido acabar cancelado e o pagamento aparecer aprovado no
+            Mercado Pago (o app não deixa cancelar um pedido que ele já sabe que
+            foi pago; isso pode acontecer, por exemplo, quando a aprovação chega
+            no mesmo instante do cancelamento ou depois que o app cancelou o
+            pedido sozinho por falta de pagamento):
             <ul className="mt-1 list-inside list-disc space-y-1 pl-3">
               <li>
                 Se o pedido aparecer em “Devolver ao cliente” com o aviso “
@@ -210,10 +219,27 @@ export function GuiaDoPagamentoQueNaoFechou() {
             cancela o pedido sozinho e o estoque volta para a loja.
           </li>
           <li>
-            Se você cancelar antes disso: cancelar aqui devolve o estoque, mas
-            não cancela nada no Mercado Pago. Se o banco aprovar o cartão
-            depois, o dinheiro entra mesmo assim e o pedido pode virar “
-            {pagoForaDoFluxo}” (veja abaixo).
+            Se você cancelar antes disso: o app primeiro anula a cobrança aberta
+            no Mercado Pago e só então cancela o pedido e devolve o estoque para
+            a loja.
+            <ul className="mt-1 list-inside list-disc space-y-1 pl-3">
+              <li>
+                Se o pagamento já tiver sido aprovado, ou o cartão estiver em
+                análise no banco, o app não cancela o pedido e avisa na tela.
+                Aguarde a confirmação: o pedido vira “{pago}”.
+              </li>
+              <li>
+                Se o Mercado Pago não confirmar a anulação, o pedido continua
+                como estava. Tente de novo em instantes.
+              </li>
+              <li>
+                Se o app não achar nenhuma cobrança do cartão no Mercado Pago,
+                ele cancela e pede para você conferir no painel do Mercado Pago
+                se nenhum cartão foi cobrado. Se o banco aprovar o cartão depois
+                mesmo assim, o pedido pode virar “{pagoForaDoFluxo}” (veja
+                abaixo).
+              </li>
+            </ul>
           </li>
         </ol>
       </div>

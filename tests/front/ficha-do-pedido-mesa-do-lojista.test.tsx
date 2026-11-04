@@ -214,6 +214,9 @@ describe("ficha do pedido (mesa do lojista) — frase-situação do dinheiro no 
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain("Cancelado · nada a receber");
     expect(texto).not.toContain("Aguardando pagamento no site");
+    // Achado 3 (rodada 6): o selo logo abaixo da frase concorda com ela.
+    expect(texto).toContain("Cancelado — sem pagamento");
+    expect(texto).not.toContain("Aguardando pagamento");
   });
 });
 

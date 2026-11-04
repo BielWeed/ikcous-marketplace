@@ -248,7 +248,7 @@ describe("rótulo do badge permanece igual ao extrair a regra para o CSV", () =>
   it.each([
     ["pago", "Pago e cancelado — precisa de atenção"],
     ["recebido_na_entrega", "Pago e cancelado — precisa de atenção"],
-    ["aguardando", "Aguardando pagamento"],
+    ["aguardando", "Cancelado — sem pagamento"],
   ] as const)("%s com pedido cancelado", (paymentStatus, label) => {
     const html = renderToStaticMarkup(
       createElement(PaymentStatusBadge, {

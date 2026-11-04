@@ -3,10 +3,11 @@
 // C7 do ciclo de recuperação do cartão (02/10/2026): orientação ao LOJISTA
 // para os dois casos de cartão que o servidor deixa para uma pessoa resolver
 // (VEREDITO-A2, itens 2 e 6):
-//   1. cartão em dúvida ("sem_registro"): o pedido segue aguardando, e
-//      cancelar pelo painel devolve o estoque SEM cancelar nada no Mercado
-//      Pago (update_order_status_atomic, 20261180000000, guarda só para
-//      não-admin);
+//   1. cartão em dúvida ("sem_registro"): o pedido segue aguardando. (Desde
+//      04/10, S1, cancelar pelo painel ANULA a cobrança no Mercado Pago antes
+//      de cancelar no banco, e recusa se o pagamento já passou ou está em
+//      análise — criar-pagamento/cancelar-pedido.ts. Rodada 6: o guia foi
+//      reescrito para isso.)
 //   2. cobrança que chega depois do cancelamento: o webhook adota a vaga e
 //      `confirmar_pagamento` grava `pago_apos_expirar` — nada é devolvido
 //      sozinho.
@@ -170,7 +171,7 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
     return (hospedeiro.textContent ?? "").replace(/\s+/g, " ");
   }
 
-  it("caso 1 (cartão em dúvida): mandar conferir o Mercado Pago ANTES de cancelar, e dizer que cancelar no painel não cancela a cobrança", async () => {
+  it("caso 1 (cartão em dúvida): mandar conferir o Mercado Pago ANTES de cancelar, e dizer que cancelar no painel anula a cobrança aberta (ou recusa, se já foi paga)", async () => {
     const texto = await textoDoGuia();
     expect(texto).toContain(TITULO_DO_GUIA);
     // O rótulo que o lojista vê no selo do pedido — vem do MESMO config do
@@ -201,7 +202,30 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
       "ou o pedido pode virar “Pago fora do fluxo” mais tarde, quando o app reconhecer",
     );
     expect(texto).toContain("devolva direto no painel do Mercado Pago");
-    expect(texto).toContain("não cancela nada no Mercado Pago");
+    // Achado 4 (rodada 6): desde 04/10 (S1) cancelar pedido online ANULA a
+    // cobrança no Mercado Pago antes de cancelar no banco — a frase antiga
+    // ("não cancela nada no Mercado Pago") passou a ser falsa. O comportamento
+    // real: anula a cobrança aberta; pagamento já aprovado ou cartão em
+    // análise = o app não cancela e avisa (cancelar-pedido.ts).
+    expect(texto).not.toContain("não cancela nada no Mercado Pago");
+    expect(texto).not.toContain("o dinheiro entra mesmo assim");
+    expect(texto).toContain(
+      "o app primeiro anula a cobrança aberta no Mercado Pago e só então cancela o pedido",
+    );
+    expect(texto).toContain(
+      "Se o pagamento já tiver sido aprovado, ou o cartão estiver em análise no banco, o app não cancela o pedido e avisa na tela",
+    );
+    expect(texto).toContain(
+      "Se o app não achar nenhuma cobrança do cartão no Mercado Pago, ele cancela e pede para você conferir no painel do Mercado Pago se nenhum cartão foi cobrado",
+    );
+    expect(texto).toContain(
+      "Se o Mercado Pago não confirmar a anulação, o pedido continua como estava",
+    );
+    // O ramo de "cancelado com pagamento aprovado" deixou de ser o caminho
+    // comum: o app recusa cancelar pedido que já sabe que foi pago.
+    expect(texto).toContain(
+      "o app não deixa cancelar um pedido que ele já sabe que foi pago",
+    );
     // A ponte para o caso 2, sem espaço sobrando dentro das aspas (o rótulo
     // vem numa expressão JSX quebrada de linha).
     expect(texto).toContain(
