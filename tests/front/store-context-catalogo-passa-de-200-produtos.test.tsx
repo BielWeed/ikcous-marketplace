@@ -109,6 +109,7 @@ function consultaDeProdutos(tabela: string): any {
       pedido.ate = ate;
       return consulta;
     },
+    // biome-ignore lint/suspicious/noThenProperty: dublê do query builder thenable do Supabase.
     then: (resolve: (v: unknown) => void, rejeitar: (e: unknown) => void) =>
       Promise.resolve(atender(pedido)).then(resolve, rejeitar),
   };

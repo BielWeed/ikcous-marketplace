@@ -156,9 +156,21 @@ export function lerPendente(): PendenteCpf | null {
 
 function marcarAvisado(pendente: PendenteCpf): void {
   try {
+    // Relê ANTES de gravar: durante o voo da RPC a cliente pode ter salvo o CPF
+    // em Minha conta (o pendente foi descartado) ou outra pessoa pode ter se
+    // cadastrado neste aparelho. Regravar o registro lido antes do `await`
+    // ressuscitaria um CPF velho. Só marca se ainda for o MESMO pendente.
+    const atual = lerRegistroValido();
+    if (
+      !atual ||
+      atual.userId !== pendente.userId ||
+      atual.cpf !== pendente.cpf
+    ) {
+      return;
+    }
     armazem()?.setItem(
       CHAVE_CPF_PENDENTE,
-      JSON.stringify({ ...pendente, avisado: true }),
+      JSON.stringify({ ...atual, avisado: true }),
     );
   } catch {
     // Sem storage o aviso pode repetir — melhor que perder o pendente.

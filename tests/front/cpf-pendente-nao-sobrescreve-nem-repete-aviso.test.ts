@@ -187,6 +187,62 @@ describe("cpf pendente: não sobrescreve a cliente e não repete o aviso", () =>
       expect(JSON.parse(armazem.getItem(CHAVE)!).expiraEm).toBe(expiraAntes);
     });
 
+    it("a cliente salva o CPF em Minha conta DURANTE o voo da chamada que falha: o pendente descartado NÃO ressuscita", async () => {
+      gravarPendente();
+      let falharDepois: () => void = () => {};
+      rpc.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            falharDepois = () =>
+              resolve({
+                data: null,
+                error: { code: "XXYYY", message: "boom" },
+              });
+          }),
+      );
+      const { retomarCpfPendente, descartarPendenteDaConta } = await import(
+        "@/lib/cpf-pendente-do-cadastro"
+      );
+
+      const emVoo = retomarCpfPendente({ userId: USER_ID, email: EMAIL });
+      await vi.waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
+      // Minha conta grava o CPF e descarta o pendente enquanto a rede pendura.
+      descartarPendenteDaConta(USER_ID);
+      expect(armazem.getItem(CHAVE)).toBeNull();
+      falharDepois();
+
+      expect(await emVoo).toBe("falhou");
+      expect(armazem.getItem(CHAVE)).toBeNull();
+    });
+
+    it("outra pessoa se cadastra no aparelho DURANTE o voo: o pendente dela não é sobrescrito pelo marcador de aviso", async () => {
+      gravarPendente(USER_ID);
+      let falharDepois: () => void = () => {};
+      rpc.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            falharDepois = () =>
+              resolve({
+                data: null,
+                error: { code: "XXYYY", message: "boom" },
+              });
+          }),
+      );
+      const { retomarCpfPendente } = await import(
+        "@/lib/cpf-pendente-do-cadastro"
+      );
+
+      const emVoo = retomarCpfPendente({ userId: USER_ID, email: EMAIL });
+      await vi.waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
+      gravarPendente(OUTRA_CONTA);
+      falharDepois();
+      await emVoo;
+
+      const guardado = JSON.parse(armazem.getItem(CHAVE)!);
+      expect(guardado.userId).toBe(OUTRA_CONTA);
+      expect(guardado.avisado).toBeUndefined();
+    });
+
     it("depois de avisada e a rede voltar: grava, remove, e não avisa de novo", async () => {
       gravarPendente();
       rpc.mockResolvedValueOnce({
