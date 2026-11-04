@@ -243,7 +243,7 @@ function Pipeline({
         {ordenadas.length === 0 ? (
           <EstadoVazioDoCrm
             titulo="Nenhum pedido em aberto"
-            texto="A fila está em dia: nenhum pedido esperando separação, pagamento ou envio."
+            texto="A fila está em dia: nenhum pedido esperando separação ou envio. Pedidos que aguardam pagamento ficam de fora."
           />
         ) : (
           <ul className="space-y-1.5">
@@ -416,7 +416,9 @@ export function FunilEPedidosDoCrm({
             value:
               pagos == null || criados == null
                 ? "—"
-                : `${formatarInteiro(pagos)} de ${formatarInteiro(criados)}`,
+                : pagos > criados
+                  ? formatarInteiro(pagos)
+                  : `${formatarInteiro(pagos)} de ${formatarInteiro(criados)}`,
             icon: ShoppingBag,
           },
         ]}
@@ -441,8 +443,6 @@ export function FunilEPedidosDoCrm({
                 Ver pedidos ›
               </button>
             </>
-          ) : semVenda === 0 ? (
-            "Todo pedido criado virou venda paga"
           ) : (
             "Só o app · neste período"
           )
@@ -468,6 +468,8 @@ export function FunilEPedidosDoCrm({
               {visitas?.visitas == null ? "Visitas e produtos" : "Produtos"}{" "}
               vistos ainda não são medidos. Carrinhos e pedidos só contam quem
               entrou com conta. A conversão é vendas pagas ÷ pedidos criados.
+              Pedido conta pela data em que foi criado; venda paga, pela data do
+              pagamento.
             </ExplicacaoDoRelatorio>
           ),
         }}
