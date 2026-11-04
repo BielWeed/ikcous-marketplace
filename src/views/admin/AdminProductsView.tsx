@@ -2745,9 +2745,17 @@ const AdminProductCard = memo(function AdminProductCard({
                 </p>
                 <p className="break-words text-zinc-400">
                   {product.variants
-                    .map((v: any) => `${v.value}: ${v.stockIncrement}`)
+                    .map(
+                      (v: any) =>
+                        `${v.value}: ${v.stockIncrement}${v.active ? "" : " (desligada)"}`,
+                    )
                     .join(" · ")}
                 </p>
+                {variantesAtivas.length < product.variants.length && (
+                  <p className="text-zinc-400">
+                    As variações desligadas não entram no total.
+                  </p>
+                )}
               </div>
             )}
             {custoSuspeito && (

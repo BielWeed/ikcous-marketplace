@@ -141,4 +141,127 @@ describe("LocalBufferedInput — zeroVazio", () => {
     expect(campo().value).toBe("(11) 98765-4321");
     expect(aoSalvar).toHaveBeenLastCalledWith("11987654321");
   });
+
+  // Custo do produto: vazio quer dizer "sem custo" e 0,00 quer dizer "brinde".
+  // Com `zeroDigitadoVale`, o zero que a pessoa DIGITA vale (campo mostra 0,00 e
+  // entrega "0.00"); o que continua esvaziando o campo é APAGAR até sobrar zero.
+  describe("zeroDigitadoVale (custo R$ 0,00 de brinde)", () => {
+    async function montarCusto(
+      props: { value?: string; zeroDigitadoVale?: boolean } = {},
+    ) {
+      await act(async () => {
+        raiz.render(
+          <LocalBufferedInput
+            value={props.value ?? ""}
+            mask="currency"
+            zeroVazio
+            zeroDigitadoVale={props.zeroDigitadoVale}
+            onFlush={aoSalvar}
+          />,
+        );
+      });
+    }
+
+    async function evento(valor: string, inputType?: string) {
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(
+          globalThis.HTMLInputElement.prototype,
+          "value",
+        )?.set?.call(campo(), valor);
+        campo().dispatchEvent(
+          inputType === undefined
+            ? new Event("input", { bubbles: true })
+            : new InputEvent("input", { bubbles: true, inputType }),
+        );
+        await vi.advanceTimersByTimeAsync(300);
+      });
+    }
+
+    it("COM a prop: digitar 0 num campo vazio vale custo zero", async () => {
+      await montarCusto({ zeroDigitadoVale: true });
+      await evento("0", "insertText");
+      expect(campo().value).toBe("0,00");
+      expect(aoSalvar).toHaveBeenLastCalledWith("0.00");
+    });
+
+    it("COM a prop: digitar 000 também vale custo zero", async () => {
+      await montarCusto({ zeroDigitadoVale: true });
+      await evento("0", "insertText");
+      await evento("0,000", "insertText");
+      await evento("0,0000", "insertText");
+      expect(campo().value).toBe("0,00");
+      expect(aoSalvar).toHaveBeenLastCalledWith("0.00");
+    });
+
+    it("COM a prop: colar 0 vale custo zero", async () => {
+      await montarCusto({ zeroDigitadoVale: true });
+      await evento("0", "insertFromPaste");
+      expect(campo().value).toBe("0,00");
+      expect(aoSalvar).toHaveBeenLastCalledWith("0.00");
+    });
+
+    it("COM a prop: digitar 0 e depois 5 continua dando 0,05", async () => {
+      await montarCusto({ zeroDigitadoVale: true });
+      await evento("0", "insertText");
+      await evento("0,005", "insertText");
+      expect(campo().value).toBe("0,05");
+      expect(aoSalvar).toHaveBeenLastCalledWith("0.05");
+    });
+
+    it("COM a prop: apagar tecla por tecla até sobrar zero deixa o campo VAZIO (sem custo)", async () => {
+      await montarCusto({ value: "12.5", zeroDigitadoVale: true });
+      expect(campo().value).toBe("12,50");
+      await evento("12,5", "deleteContentBackward");
+      expect(campo().value).toBe("1,25");
+      await evento("1,2", "deleteContentBackward");
+      expect(campo().value).toBe("0,12");
+      await evento("0,1", "deleteContentBackward");
+      expect(campo().value).toBe("0,01");
+      await evento("0,0", "deleteContentBackward");
+      expect(campo().value).toBe("");
+      expect(aoSalvar).toHaveBeenLastCalledWith("");
+    });
+
+    it("COM a prop: apagar o 0,00 que já estava salvo também deixa vazio", async () => {
+      await montarCusto({ value: "0", zeroDigitadoVale: true });
+      expect(campo().value).toBe("0,00");
+      await evento("0,0", "deleteContentBackward");
+      expect(campo().value).toBe("");
+      expect(aoSalvar).toHaveBeenLastCalledWith("");
+    });
+
+    it("COM a prop: recortar (selecionar tudo e cortar) deixa vazio", async () => {
+      await montarCusto({ value: "12.5", zeroDigitadoVale: true });
+      await evento("", "deleteByCut");
+      expect(campo().value).toBe("");
+      expect(aoSalvar).toHaveBeenLastCalledWith("");
+    });
+
+    it("COM a prop, sem inputType e com vírgula (0,0): mantém o esvaziar de sempre", async () => {
+      await montarCusto({ value: "12.5", zeroDigitadoVale: true });
+      await evento("0,0");
+      expect(campo().value).toBe("");
+      expect(aoSalvar).toHaveBeenLastCalledWith("");
+    });
+
+    it("SEM a prop (zeroVazio sozinho): digitar 0 continua esvaziando o campo", async () => {
+      await montarCusto({});
+      await evento("0", "insertText");
+      expect(campo().value).toBe("");
+      expect(aoSalvar).toHaveBeenLastCalledWith("");
+    });
+
+    it("SEM a prop: apagar até sobrar zero também esvazia (igual a antes)", async () => {
+      await montarCusto({ value: "0.05" });
+      await evento("0,0", "deleteContentBackward");
+      expect(campo().value).toBe("");
+      expect(aoSalvar).toHaveBeenLastCalledWith("");
+    });
+
+    it("a prop não vaza para o HTML da página", async () => {
+      await montarCusto({ zeroDigitadoVale: true });
+      expect(campo().hasAttribute("zerodigitadovale")).toBe(false);
+      expect(campo().hasAttribute("zeroDigitadoVale")).toBe(false);
+    });
+  });
 });

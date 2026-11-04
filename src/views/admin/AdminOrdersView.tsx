@@ -68,6 +68,8 @@ import {
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { pedidosParaCsv } from "@/lib/pedidos-csv";
 import { STATUS_PARA_PREPARAR } from "@/lib/pedidos-para-preparar";
+import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
+import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import {
@@ -106,6 +108,53 @@ import {
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { toast } from "sonner";
+
+const CSV_SEM_TAMANHO_E_COR = "CSV_SEM_TAMANHO_E_COR";
+
+/** O pedido grava só o nome do produto; o tamanho e a cor moram em
+ * `product_variants` (a mesma consulta da ficha do pedido). Sem eles a
+ * planilha deixa a lojista separar a peça errada — por isso, se a leitura
+ * falhar ou demorar, ela PARA com erro em vez de gerar planilha sem a
+ * informação. Consulta em fatias: 5000 pedidos estouram o tamanho do endereço. */
+async function lerRotulosDasVariacoes(
+  pedidos: Order[],
+): Promise<Record<string, string>> {
+  const ids = [
+    ...new Set(
+      pedidos.flatMap((p) => p.items.flatMap((i) => i.variantId ?? [])),
+    ),
+  ];
+  const rotulos: Record<string, string> = {};
+  const leituras: PromiseLike<unknown>[] = [];
+  for (let ini = 0; ini < ids.length; ini += 100) {
+    leituras.push(
+      supabase
+        .from("product_variants")
+        .select("id, name, value")
+        .in("id", ids.slice(ini, ini + 100))
+        .then(({ data, error }) => {
+          if (error) throw error;
+          for (const v of data ?? []) {
+            const rotulo = rotuloDaVariacao(v.name, v.value);
+            if (rotulo) rotulos[v.id] = rotulo;
+          }
+        }),
+    );
+  }
+  try {
+    await aguardarComPrazo(
+      Promise.all(leituras),
+      20_000,
+      () => new Error("A leitura do tamanho e da cor não respondeu a tempo."),
+    );
+  } catch (erro) {
+    throw Object.assign(new Error("Falha ao ler tamanho e cor."), {
+      code: CSV_SEM_TAMANHO_E_COR,
+      cause: erro,
+    });
+  }
+  return rotulos;
+}
 
 const STATUS_ORDER_COLORS = new Map(
   Object.entries({
@@ -1295,11 +1344,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         // na tela quando o chip "Balcão" está ligado.
         canal: canalFilter,
       });
+      const rotulos = await lerRotulosDasVariacoes(pedidosDoFiltro);
       const agora = new Date();
       const doisDigitos = (numero: number) => String(numero).padStart(2, "0");
       const data = `${agora.getFullYear()}-${doisDigitos(agora.getMonth() + 1)}-${doisDigitos(agora.getDate())}`;
       const hora = `${doisDigitos(agora.getHours())}-${doisDigitos(agora.getMinutes())}`;
-      const arquivo = new Blob([pedidosParaCsv(pedidosDoFiltro)], {
+      const arquivo = new Blob([pedidosParaCsv(pedidosDoFiltro, rotulos)], {
         type: "text/csv;charset=utf-8;",
       });
       const url = URL.createObjectURL(arquivo);
@@ -1315,10 +1365,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
     } catch (erro) {
+      const codigo = (erro as { code?: string } | null)?.code;
       toast.error(
-        (erro as { code?: string } | null)?.code === "CSV_PEDIDOS_DEMAIS"
+        codigo === "CSV_PEDIDOS_DEMAIS"
           ? "O CSV permite até 5000 pedidos. Reduza o período do filtro."
-          : "Não foi possível gerar o CSV. Tente de novo.",
+          : codigo === CSV_SEM_TAMANHO_E_COR
+            ? "Não deu para ler o tamanho e a cor das peças, então a planilha não foi gerada. Tente de novo."
+            : "Não foi possível gerar o CSV. Tente de novo.",
       );
     } finally {
       exportacaoCsvEmCursoRef.current = false;
