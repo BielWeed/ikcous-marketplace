@@ -382,7 +382,17 @@ const MOSTRAR_AVISOS_DE_COMPRAS: boolean = false;
  * que não deu para conferir (a tela deixa a lojista decidir, nunca envia
  * calada). Só roda quando o texto cita um código; sem citação, nem consulta.
  */
-async function avisosDosCuponsCitados(codigos: string[]): Promise<string[]> {
+async function avisosDosCuponsCitados(
+  codigos: string[],
+  cuponsLigados: boolean,
+): Promise<string[]> {
+  // Chave geral da tela de Cupons desligada: o servidor recusa qualquer código
+  // e o checkout nem mostra o campo, então conferir cupom por cupom é inútil.
+  if (!cuponsLigados) {
+    return [
+      "Os cupons de desconto estão desligados na sua loja. Ligue em Cupons antes de divulgar um código",
+    ];
+  }
   try {
     const { data, error } = await supabase
       .from("coupons")
@@ -849,7 +859,10 @@ export const AdminPushView = memo(function AdminPushView({
         codigosCitados.length > 0 &&
         textoJaAvisadoDeCupom.current !== chaveDoTexto
       ) {
-        const avisos = await avisosDosCuponsCitados(codigosCitados);
+        const avisos = await avisosDosCuponsCitados(
+          codigosCitados,
+          config.enableCoupons !== false,
+        );
         if (avisos.length > 0) {
           textoJaAvisadoDeCupom.current = chaveDoTexto;
           toast.error(avisos.join(". "), {

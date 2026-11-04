@@ -610,11 +610,11 @@ export function vendaPodeSerRegistrada(
     };
   }
   if (estado.pagamento === null) {
-    // migration 20261162000000:264
-    return {
-      ok: false,
-      motivo: "Forma de pagamento inválida para venda no balcão.",
-    };
+    // Ainda não escolheu: nada foi tentado, então nada é "inválido". A frase do
+    // banco (migration 20261162000000:264, "Forma de pagamento inválida para
+    // venda no balcão.") só vale para um valor fora da lista e chega pela
+    // recusa do servidor, não daqui.
+    return { ok: false, motivo: "Escolha a forma de pagamento." };
   }
   if (estado.itens.length === 0) {
     // migration 20261162000000:268

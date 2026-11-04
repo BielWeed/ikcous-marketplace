@@ -1008,6 +1008,7 @@ function FormularioDoCupom({
                   semLimiteNemValidade={
                     !formData.validUntil && !Number(formData.usageLimit)
                   }
+                  semLimiteDeUso={!Number(formData.usageLimit)}
                   desabilitado={isOffline || isSubmitting}
                 />
               </div>

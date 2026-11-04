@@ -116,6 +116,30 @@ describe("QuemPodeUsarOCupom — as três opções", () => {
     expect(hospedeiro.textContent).not.toContain("sem limite de uso nem");
   });
 
+  it("clientes escolhidos sem limite de uso avisa que o limite é da loja toda, não de cada cliente", async () => {
+    await montar({ alcance: "exclusivo", semLimiteDeUso: true });
+    expect(hospedeiro.textContent).toContain(
+      "Cada cliente da lista pode usar este cupom em todas as compras",
+    );
+    expect(hospedeiro.textContent).toContain(
+      "O limite de uso é da loja inteira, não de cada cliente",
+    );
+    // com limite definido o aviso some; nos outros alcances também
+    await montar({ alcance: "exclusivo", semLimiteDeUso: false });
+    expect(hospedeiro.textContent).not.toContain("em todas as compras");
+    await montar({ alcance: "codigo", semLimiteDeUso: true });
+    expect(hospedeiro.textContent).not.toContain("em todas as compras");
+    await montar({ alcance: "vitrine", semLimiteDeUso: true });
+    expect(hospedeiro.textContent).not.toContain("em todas as compras");
+  });
+
+  it("sem a informação do limite, o exclusivo cai no aviso de 'sem limite nem validade'", async () => {
+    await montar({ alcance: "exclusivo", semLimiteNemValidade: true });
+    expect(hospedeiro.textContent).toContain("em todas as compras");
+    await montar({ alcance: "exclusivo", semLimiteNemValidade: false });
+    expect(hospedeiro.textContent).not.toContain("em todas as compras");
+  });
+
   it("fora do exclusivo não há busca de clientes", async () => {
     await montar({ alcance: "codigo" });
     expect(campoDeBusca()).toBeNull();

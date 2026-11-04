@@ -735,11 +735,11 @@ describe("vendaPodeSerRegistrada — as mesmas recusas da RPC, ditas cedo (migra
     });
   });
 
-  it("sem forma de pagamento é recusado", () => {
+  it("sem forma de pagamento é recusado, pedindo a escolha (não chamando de inválida algo que ninguém tentou)", () => {
     const estado = { ...estadoComUmItem(), pagamento: null };
     expect(vendaPodeSerRegistrada(estado)).toEqual({
       ok: false,
-      motivo: "Forma de pagamento inválida para venda no balcão.",
+      motivo: "Escolha a forma de pagamento.",
     });
   });
 

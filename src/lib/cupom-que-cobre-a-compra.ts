@@ -16,8 +16,9 @@ export const VALOR_FIXO_QUE_PODE_COBRIR_UM_PEDIDO = 100;
 /**
  * O cupom pode zerar uma compra?
  *  - porcentagem: só 100% zera (95% ainda deixa 5% do produto);
- *  - valor fixo: quando já cobre o MÍNIMO de compra que o próprio cupom
- *    exige (comprando o mínimo, a conta zera), ou quando é um valor alto.
+ *  - valor fixo com mínimo de compra: só quando já cobre esse mínimo
+ *    (comprando o mínimo, a conta zera);
+ *  - valor fixo sem mínimo: quando é um valor alto.
  */
 export function cupomPodeCobrirACompraInteira(
   cupom: Pick<Partial<Coupon>, "type" | "value" | "minPurchase">,
@@ -26,7 +27,9 @@ export function cupomPodeCobrirACompraInteira(
   if (!(valor > 0)) return false;
   if (cupom.type === "percentage") return valor >= 100;
   const minimo = Number(cupom.minPurchase ?? 0);
-  if (minimo > 0 && atingiuOMinimo(valor, minimo)) return true;
+  // Com mínimo, quem usa o cupom compra pelo menos o mínimo: a conta é exata,
+  // sem palpite. O limiar de valor alto só vale quando não há mínimo.
+  if (minimo > 0) return atingiuOMinimo(valor, minimo);
   return valor >= VALOR_FIXO_QUE_PODE_COBRIR_UM_PEDIDO;
 }
 

@@ -62,6 +62,11 @@ const CASOS: { nome: string; cupom: Cupom; avisa: boolean }[] = [
     avisa: false,
   },
   {
+    nome: "fixo R$ 150 com mínimo de R$ 500: nunca zera a compra, não avisa",
+    cupom: { type: "fixed", value: 150, minPurchase: 500 },
+    avisa: false,
+  },
+  {
     nome: "valor zero não avisa",
     cupom: { type: "percentage", value: 0 },
     avisa: false,

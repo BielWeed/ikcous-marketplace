@@ -54,7 +54,8 @@ export type FolhaDoFinanceiro =
       readonly tipo: "caixa-movimentar";
       readonly sessaoId: string;
       readonly movimento: "sangria" | "suprimento";
-      readonly esperado: number;
+      /** `null` = a última leitura do caixa falhou: o valor guardado pode estar velho. */
+      readonly esperado: number | null;
       readonly contaDoCaixa: string;
     }
   | { readonly tipo: "caixa-fechar"; readonly caixa: CaixaAtual }

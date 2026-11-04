@@ -2451,13 +2451,15 @@ const AdminProductCard = memo(function AdminProductCard({
     </div>
   );
   // "Estoque baixo" é UMA regra só no front (a mesma do sino e do aviso de
-  // reposição): o mínimo do produto, ou o limiar padrão quando não tem.
-  const estoqueBaixo = precisaDeReposicao(
-    product.stock,
-    product.estoqueMinimo ?? null,
-  );
-  const classeDoEstoque =
-    product.stock <= 0
+  // reposição): o mínimo do produto, ou o limiar padrão quando não tem. Produto
+  // pausado fica de fora, como no Início e nos Avisos: alarme sobre uma decisão
+  // que a lojista já tomou. Ele fica "Offline", com cor neutra.
+  const estoqueBaixo =
+    product.isActive &&
+    precisaDeReposicao(product.stock, product.estoqueMinimo ?? null);
+  const classeDoEstoque = !product.isActive
+    ? undefined
+    : product.stock <= 0
       ? classeDoTexto("negativo")
       : estoqueBaixo
         ? classeDoTexto("atencao")

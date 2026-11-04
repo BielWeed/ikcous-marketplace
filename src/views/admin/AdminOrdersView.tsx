@@ -2396,10 +2396,15 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         acompanhe tudo por esta lista.
                       </p>
                     </>
-                  ) : paymentFilter !== "all" ? (
+                  ) : paymentFilter !== "all" &&
+                    searchQuery.trim() === "" &&
+                    !dateRange.start &&
+                    !dateRange.end ? (
                     // O filtro de payment_status roda NO BANCO (lista E
                     // contagem). Lista vazia aqui é "não existe nenhum pedido
                     // com este status" — a saída honesta é limpar o filtro.
+                    // SÓ sem busca nem período: com eles a causa pode ser a
+                    // busca/as datas, e cai no texto de recorte lá embaixo.
                     // Laudo 0109 (A-5): o texto antigo mandava paginar por um
                     // filtro client-side que morreu.
                     <>
@@ -2412,7 +2417,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         {filter === "open" && ` ${textoDoEmAbertoTambemLigado}`}
                       </p>
                     </>
-                  ) : canalFilter !== "all" ? (
+                  ) : canalFilter !== "all" &&
+                    searchQuery.trim() === "" &&
+                    !dateRange.start &&
+                    !dateRange.end ? (
                     // Mesmo contrato do ramo de pagamento acima: o filtro de
                     // canal também roda NO BANCO (lista E contagem), então
                     // lista vazia aqui é "não existe pedido nesse canal" —

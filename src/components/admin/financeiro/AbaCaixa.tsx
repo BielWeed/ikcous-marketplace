@@ -76,10 +76,13 @@ function CaixaAberto({
   caixa,
   abrirFolha,
   aoNovoLancamento,
+  desatualizado = false,
 }: {
   readonly caixa: CaixaAtual;
   readonly abrirFolha: AbrirFolha;
   readonly aoNovoLancamento?: () => void;
+  /** A última leitura do caixa falhou: o que está na tela é o valor de antes. */
+  readonly desatualizado?: boolean;
 }) {
   const ocultos = useValoresEstaoOcultos();
   const esperadoNegativo = paraCentavos(caixa.esperado) < 0;
@@ -88,7 +91,9 @@ function CaixaAberto({
       tipo: "caixa-movimentar",
       sessaoId: caixa.id,
       movimento,
-      esperado: caixa.esperado,
+      // Leitura que falhou: o esperado guardado pode estar velho, então a
+      // folha não o usa para travar nem liberar a sangria (o servidor confere).
+      esperado: desatualizado ? null : caixa.esperado,
       contaDoCaixa: caixa.contaId,
     });
   return (
@@ -96,6 +101,7 @@ function CaixaAberto({
       <section
         aria-label="Esperado na gaveta"
         data-estado-do-caixa="aberto"
+        data-valor-desatualizado={desatualizado ? "true" : undefined}
         className={cn(CLASSE_CARTAO_DO_CAIXA, "flex flex-col gap-5")}
       >
         <div className="flex flex-col items-start gap-2">
@@ -112,6 +118,11 @@ function CaixaAberto({
               esperadoNegativo ? classeDoTexto("negativo") : "text-white",
             )}
           />
+          {desatualizado ? (
+            <p className={cn("text-xs", classeDoTexto("atencao"))}>
+              Valor de antes: pode estar desatualizado, não deu para atualizar.
+            </p>
+          ) : null}
           <p className="break-words text-sm text-zinc-400">
             desde {quandoCurto(caixa.abertoEm)} · {caixa.contaNome}
           </p>
@@ -474,17 +485,30 @@ export function AbaCaixa({
         <EstadoDeErro mensagem={atual.erro} aoTentarDeNovo={atual.recarregar} />
       ) : !atual.dados ? (
         <EsqueletoDoCaixa />
-      ) : atual.dados.sessao ? (
-        <CaixaAberto
-          caixa={atual.dados.sessao}
-          abrirFolha={abrirFolha}
-          aoNovoLancamento={aoNovoLancamento}
-        />
       ) : (
-        <CaixaFechado
-          abrirFolha={abrirFolha}
-          aoNovoLancamento={aoNovoLancamento}
-        />
+        <>
+          {/* Releitura que falhou com dado antigo na tela: avisa, em vez de
+              deixar o valor de antes passar por atual. */}
+          {atual.erro ? (
+            <EstadoDeErro
+              mensagem={atual.erro}
+              aoTentarDeNovo={atual.recarregar}
+            />
+          ) : null}
+          {atual.dados.sessao ? (
+            <CaixaAberto
+              caixa={atual.dados.sessao}
+              abrirFolha={abrirFolha}
+              aoNovoLancamento={aoNovoLancamento}
+              desatualizado={Boolean(atual.erro)}
+            />
+          ) : (
+            <CaixaFechado
+              abrirFolha={abrirFolha}
+              aoNovoLancamento={aoNovoLancamento}
+            />
+          )}
+        </>
       )}
 
       {!atual.dados && aoNovoLancamento ? (
