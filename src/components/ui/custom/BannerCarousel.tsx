@@ -204,6 +204,7 @@ export const BannerCarousel = memo(function BannerCarousel({
                   prioridade={index === 0}
                   semFade={primeiraSemFade && index === 0}
                   varios={validBanners.length > 1}
+                  semDestino={destino === null}
                 />
               ) : (
                 <>

@@ -1,4 +1,14 @@
 {
+  "1.5.124": {
+    "titulo": "Compras do balcão, avaliações e banners mais claros na loja",
+    "novidades": [],
+    "correcoes": [
+      "Meus pedidos: a compra feita no balcão da loja aparece como \"Compra na loja\", sem frete, endereço de entrega nem \"Chegou!\"; e a compra anulada pela loja não afirma que o dinheiro já foi devolvido.",
+      "Produto: quem acabou de avaliar vê \"Avaliação em análise\" em vez de \"Sem avaliações ainda\".",
+      "Home: o banner pronto sem link não mostra mais um botão \"Comprar agora\" que não levava a lugar nenhum."
+    ],
+    "melhorias": []
+  },
   "1.5.123": {
     "titulo": "Aparelho de balcão mais seguro e textos do painel mais certos",
     "novidades": [],

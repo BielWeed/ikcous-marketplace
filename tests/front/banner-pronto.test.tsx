@@ -85,6 +85,28 @@ describe("banner pronto no carrossel", () => {
       expect(hospedeiro.querySelector("[data-botao]")).toBeNull();
     },
   );
+  // Sem destino o slide nem é tocável: o botão "Comprar agora" seria falso.
+  it.each(["", "   ", "javascript:alert(1)", "//outro-site.com"])(
+    "link '%s' (sem destino): o botão não é desenhado e o resto fica",
+    (link) => {
+      montar({ link });
+      const pronto = hospedeiro.querySelector("[data-modelo]");
+      expect(pronto?.querySelector("[data-botao]")).toBeNull();
+      expect(pronto?.textContent).not.toContain("Comprar agora");
+      expect(pronto?.textContent).toContain("Coleção de verão");
+      expect(pronto?.textContent).toContain("A partir de R$ 89,90");
+    },
+  );
+  it("link ausente (undefined): também sem o botão", () => {
+    montar({ link: undefined });
+    expect(hospedeiro.querySelector("[data-botao]")).toBeNull();
+  });
+  it("com destino o botão continua igual", () => {
+    montar();
+    expect(hospedeiro.querySelector("[data-botao]")?.textContent).toBe(
+      "Comprar agora",
+    );
+  });
   it("todos os textos vazios deixam apenas a foto", () => {
     montar({ title: null, subtitle: " ", buttonText: "", badgeText: " " });
     const pronto = hospedeiro.querySelector("[data-modelo]");
