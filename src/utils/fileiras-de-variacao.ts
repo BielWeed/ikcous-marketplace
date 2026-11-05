@@ -2,6 +2,7 @@ import type { ProductVariant } from "@/types";
 import {
   MAX_ATRIBUTOS_DA_GRADE,
   dividirEmAtributos,
+  dobrar,
   posicaoDoAtributo,
 } from "./atributos-da-variacao";
 
@@ -17,6 +18,60 @@ export interface FileiraDeVariacao {
      *  só pela combinação: a tela o apaga mas deixa tocar. Ausente = `disponivel`. */
     existe?: boolean;
   }[];
+}
+
+/** A escada de tamanhos que a loja conhece, do menor ao maior (a brasileira e a
+ *  internacional; quem usa uma só não vê a outra). Empate de posição cai no texto. */
+const ESCADA_DE_TAMANHOS = new Map<string, number>([
+  ["xxs", 0],
+  ["xs", 1],
+  ["pp", 1],
+  ["s", 2],
+  ["p", 2],
+  ["m", 3],
+  ["l", 4],
+  ["g", 4],
+  ["gg", 5],
+  ["xl", 6],
+  ["xg", 6],
+  ["xxl", 7],
+  ["xgg", 7],
+  ["exg", 7],
+  ["xxg", 7],
+  ["xxxl", 8],
+  ["exgg", 8],
+  ["xxxg", 8],
+]);
+
+/** Onde o valor cai: 0 = escada de tamanhos, 1 = número (36, 110V), 2 = o resto
+ *  (cores, materiais), 3 = "Único", sempre por último. `posicao` desempata
+ *  dentro do grupo. */
+function chaveDoValor(valor: string): { grupo: number; posicao: number } {
+  const chave = dobrar(valor);
+  const naEscada = ESCADA_DE_TAMANHOS.get(chave);
+  if (naEscada !== undefined) return { grupo: 0, posicao: naEscada };
+  if (/^(unico|u|tamanho unico)$/.test(chave)) return { grupo: 3, posicao: 0 };
+  // `parseFloat` lê o número da frente ("110V" = 110, "2,5 L" = 2.5); sem regex.
+  const numero = Number.parseFloat(chave.replace(",", "."));
+  if (/^\d/.test(chave) && Number.isFinite(numero))
+    return { grupo: 1, posicao: numero };
+  return { grupo: 2, posicao: 0 };
+}
+
+/** Ordem DETERMINÍSTICA dos valores de uma fileira. O banco devolve as variações
+ *  sem ORDER BY e a linha vendida pode ir para o fim: a ordem dos chips não pode
+ *  depender disso. Desempate: português, e por fim o texto cru (ordem total). */
+function compararValores(a: string, b: string): number {
+  const x = chaveDoValor(a);
+  const y = chaveDoValor(b);
+  if (x.grupo !== y.grupo) return x.grupo - y.grupo;
+  if (x.posicao !== y.posicao) return x.posicao - y.posicao;
+  const texto = a.localeCompare(b, "pt-BR", {
+    sensitivity: "base",
+    numeric: true,
+  });
+  if (texto !== 0) return texto;
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 /** A seleção só entrega o id da LINHA completa: carrinho e estoque não mudam de contrato. */
@@ -52,27 +107,31 @@ export function fileirasDeVariacao(
   }
   const fileiras = Array.from(grupos, ([nome, valores]) => ({
     nome,
-    valores: Array.from(valores, (valor) => {
-      const estoque = linhas.reduce((soma, { variante, atributos }) => {
-        // Todo valor, a cor inclusive, só conta o estoque das linhas que
-        // combinam com o que já foi escolhido nas OUTRAS fileiras.
-        const corresponde =
-          atributos.some((par) => par.name === nome && par.value === valor) &&
-          atributos.every(
-            (par) =>
-              par.name === nome ||
-              !selecionadas.get(par.name) ||
-              selecionadas.get(par.name) === par.value,
+    valores: Array.from(valores)
+      .sort(compararValores)
+      .map((valor) => {
+        const estoque = linhas.reduce((soma, { variante, atributos }) => {
+          // Todo valor, a cor inclusive, só conta o estoque das linhas que
+          // combinam com o que já foi escolhido nas OUTRAS fileiras.
+          const corresponde =
+            atributos.some((par) => par.name === nome && par.value === valor) &&
+            atributos.every(
+              (par) =>
+                par.name === nome ||
+                !selecionadas.get(par.name) ||
+                selecionadas.get(par.name) === par.value,
+            );
+          return (
+            soma + (corresponde ? Math.max(0, variante.stockIncrement) : 0)
           );
-        return soma + (corresponde ? Math.max(0, variante.stockIncrement) : 0);
-      }, 0);
-      const existe = linhas.some(
-        ({ variante, atributos }) =>
-          variante.stockIncrement > 0 &&
-          atributos.some((par) => par.name === nome && par.value === valor),
-      );
-      return { valor, estoque, disponivel: estoque > 0, existe };
-    }),
+        }, 0);
+        const existe = linhas.some(
+          ({ variante, atributos }) =>
+            variante.stockIncrement > 0 &&
+            atributos.some((par) => par.name === nome && par.value === valor),
+        );
+        return { valor, estoque, disponivel: estoque > 0, existe };
+      }),
   }));
   fileiras.sort(
     (a, b) => posicaoDoAtributo(a.nome) - posicaoDoAtributo(b.nome),

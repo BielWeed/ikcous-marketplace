@@ -454,7 +454,13 @@ async function main() {
         [id, papel],
       );
 
-    // ---- 0. O topo instalado pelo CI (todas as migrations do zero) e' o desta migration; o anterior e' o da 390. ----
+    // A 20261399300000 (o estorno em andamento nao e conta vencida) sucede esta em painel_inicio e esta no ar no clone: sai PRIMEIRO, pelo
+    // rollback-manual dela (o da 398 so aceita o corpo da 398). Esta prova mede a 398 isolada.
+    await require("./o-estorno-em-andamento-posterior.cjs").desfazerEstornoForaDoVencidoNaTransacao(
+      c,
+    );
+
+    // ---- 0. O topo da 398 (a 3993, que a sucede, acabou de sair) e' o desta migration; o anterior e' o da 390. ----
     const topo = await funcao(c);
     assert.equal(topo.prosrc, CORPO_NOVO, "o topo instalado nao e o da 398");
     assert.equal(md5(topo.prosrc), HASH_NOVO);
@@ -957,6 +963,10 @@ async function main() {
       )
     ).rows[0].h;
   try {
+    // O clone tem a 3993 no ar de verdade (a transacao de cima foi desfeita): sai aqui tambem, com COMMIT, antes de medir a 398.
+    await require("./o-estorno-em-andamento-posterior.cjs").desfazerEstornoForaDoVencidoNaTransacao(
+      d,
+    );
     assert.equal(await hash(), HASH_NOVO);
     await d.query(rollback);
     assert.equal(await hash(), HASH_ANTES);

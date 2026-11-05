@@ -544,9 +544,10 @@ describe("AdminProductFormView — escolher a variação em vez de digitar", () 
     expect(variantesNaTela()).toEqual(["cor: Rosa", "cor: Preto"]);
     const fileiras = await comoAVitrineVe();
     expect(fileiras.map((f) => f.nome)).toEqual(["cor"]);
+    // A vitrine ordena os valores (português), não segue a ordem da gravação.
     expect(fileiras.at(0)?.valores.map((v) => v.valor)).toEqual([
-      "Rosa",
       "Preto",
+      "Rosa",
     ]);
   });
 

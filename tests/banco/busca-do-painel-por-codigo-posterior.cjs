@@ -4,6 +4,8 @@
  * A 20261385 sucede o get_admin_products_paged da 20261381 (so amplia o filtro de busca). O rollback da 20261381 exige o
  * corpo DELA: toda prova que desfaz ou mede a 20261381 (ou a 20261213, que ela sucede) isolada tem de desfazer a 385
  * PRIMEIRO, na própria transação/clone. Nunca se afrouxa o pré-voo da migration anterior.
+ * A 20261399200000 (a busca acha por palavras) sucede ESTA: `desfazerBuscaDoPainelNaTransacao` a desfaz antes (a-busca-do-painel-acha-por-palavras-
+ * posterior.cjs), de modo que todo consumidor que já a chama continua valendo com a 3992 no ar.
  */
 const fs = require("node:fs");
 const path = require("node:path");
@@ -15,6 +17,10 @@ const BUSCA_DO_PAINEL = Object.freeze({
     = '39db382689def5fac3b263a66f84ede1', false) AS sim`,
 });
 async function desfazerBuscaDoPainelNaTransacao(c) {
+  // A sucessora (3992) sai primeiro: o rollback da 385 só aceita o corpo da 385. Não faz nada se não está no ar.
+  await require("./a-busca-do-painel-acha-por-palavras-posterior.cjs").desfazerBuscaPorPalavrasNaTransacao(
+    c,
+  );
   if ((await c.query(BUSCA_DO_PAINEL.noAr)).rows[0]?.sim !== true) return false;
   await c.query(
     fs.readFileSync(

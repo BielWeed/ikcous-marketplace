@@ -304,6 +304,8 @@ on:
           - 117b-antes-as-visitas-da-loja-contam-pelo-porteiro-ausente
           - 118a-conferir-o-nome-do-perfil-tem-teto-no-banco-aplicado
           - 118b-antes-o-nome-do-perfil-tem-teto-no-banco-ausente
+          - 119a-conferir-a-busca-por-palavras-e-o-estorno-fora-do-vencido-aplicado
+          - 119b-antes-a-busca-por-palavras-e-o-estorno-fora-do-vencido-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

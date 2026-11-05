@@ -196,7 +196,12 @@ const desfazSucessora = async (c) => {
     "SELECT md5(replace(prosrc, E'\\r', '')) AS h FROM pg_proc WHERE oid = to_regprocedure('public.crm_visao(date,date)')",
   );
   if (r.rows[0] && r.rows[0].h === H.crmSucessora) await c.query(RB32);
-  // E a sucessora da sucessora do painel_inicio (a 20261398) sai PRIMEIRO: o rollback da 390 so aceita o corpo da 390.
+  // A sucessora da 398 em painel_inicio (a 20261399300000, o estorno em andamento nao e conta vencida) sai ANTES de tudo: o rollback da 398 so aceita o
+  // corpo da 398. O rollback dela devolve tambem o fin_resumo; nao faz nada se nao esta no ar.
+  await require("./o-estorno-em-andamento-posterior.cjs").desfazerEstornoForaDoVencidoNaTransacao(
+    c,
+  );
+  // E a sucessora da sucessora do painel_inicio (a 20261398) sai em seguida: o rollback da 390 so aceita o corpo da 390.
   const q = await c.query(
     "SELECT md5(replace(prosrc, E'\\r', '')) AS h FROM pg_proc WHERE oid = to_regprocedure('public.painel_inicio()')",
   );

@@ -181,18 +181,25 @@ Deno.test("385: sem BEGIN/COMMIT, pre-voo antes do CREATE (corpo, atributos, don
   );
 });
 
-Deno.test("385: a vigente e' a ultima redefinicao de get_admin_products_paged da arvore; db-apply exige as guardas dos dois blocos", () => {
+Deno.test("385: a ultima redefinicao de get_admin_products_paged antes da sucessora 20261399200000 (a busca por palavras); db-apply exige as guardas dos dois blocos", () => {
   const fontes = [...Deno.readDirSync(dir)]
     .map((e) => e.name)
     .filter((n) => /^\d{14}_.*\.sql$/.test(n))
     .sort()
     .filter((n) => definicao(ler(`supabase/migrations/${n}`)));
+  // A UNICA redefinicao depois da 385 e' a 20261399200000 (a busca acha por palavras; prova propria em
+  // tests/banco/a-busca-do-painel-acha-por-palavras-viva.cjs e no teste offline dela).
   assert.equal(
     fontes.at(-1),
+    "20261399200000_a_busca_de_produtos_do_painel_acha_por_palavras.sql",
+    "outra migration redefine get_admin_products_paged depois da 20261399200000",
+  );
+  assert.equal(
+    fontes.at(-2),
     nome,
     "outra migration redefine get_admin_products_paged depois da 385",
   );
-  assert.equal(fontes.at(-2), nome81);
+  assert.equal(fontes.at(-3), nome81);
   const { VERIFICACOES, avaliarChecagem } = require("../scripts/db-apply.cjs");
   // eslint-disable-next-line security/detect-object-injection -- Nome literal desta migration, nunca entrada externa.
   const checagem = VERIFICACOES[nome];

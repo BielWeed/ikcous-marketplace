@@ -27,12 +27,14 @@
 --   * `painel_inicio`          → 20261212000000 (o início conta estoque baixo pela regra da loja)
 --                                e, DEPOIS dela, 20261228000000 (o início compara até a mesma hora)
 --                                e, DEPOIS dela, 20261390000000 (o lucro do início conta o mês inteiro)
---                                e, DEPOIS dela, 20261398000000 (o início compara o mês anterior até a mesma hora);
+--                                e, DEPOIS dela, 20261398000000 (o início compara o mês anterior até a mesma hora)
+--                                e, DEPOIS dela, 20261399300000 (o estorno em andamento não é conta vencida);
 --   * `get_admin_analytics_v2` → 20261214000000 (o lucro do estoque só conta produto com custo)
 --                                e, DEPOIS dela, 20261234000000 (o lucro só conta produto com custo)
 --                                e, DEPOIS dela, 20261242000000 (o lucro usa o custo do dia da venda);
 --   * `fin_dre`                → 20261242000000 (a DRE usa o custo do dia da venda; parte do corpo da 99);
 --                                e, DEPOIS dela, 20261382000000 (o resultado mostra tarifa, juro e quebra como despesa);
+--   * `fin_resumo`            → 20261399300000 (o estorno em andamento não é conta vencida: sai de a_pagar.vencido; parte do corpo da 99);
 --   * `crm_visao`              → 20261227000000 (o CRM compara o que é comparável)
 --                                e, DEPOIS dela, 20261232000000 (a grade do CRM mede a recência do mesmo instante da lista);
 --   * `get_admin_customers_paged` → 20261230000000 (a busca de clientes acha pelo número do WhatsApp)
@@ -151,6 +153,8 @@ WITH corpos AS (
     ('painel_inicio', 'ad5620273997ba9266f240f272bf399b', '20261228000000'),
     ('painel_inicio', 'b4aa318b777824bd49aab4175d9133f8', '20261390000000'),
     ('painel_inicio', '01d29aedf98b7f95851c1a1001b5c7ca', '20261398000000'),
+    ('painel_inicio', '8d58e15e7410afe0d254f37f38251df4', '20261399300000'),
+    ('fin_resumo', 'a10e7f301eaf6b3edfac50bc87ff74bc', '20261399300000'),
     ('get_admin_customers_paged', 'd6c092c3e0d8069891af795147d65e9e', '20261230000000'),
     ('crm_clientes', '9c4268178a50729b5f7b256b77882585', '20261231000000'),
     ('get_admin_customers_paged', '1c71829d75e3d8f17bf7fb01019c05ec', '20261392000000'),

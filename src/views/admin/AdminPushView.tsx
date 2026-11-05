@@ -1532,7 +1532,8 @@ export const AdminPushView = memo(function AdminPushView({
                         count: (segment === "inactive"
                           ? reachExibido
                           : segmentCounts.inactive) as ContagemMedida,
-                        motivoDoZero: "ninguém passou de 30 dias sem pedir",
+                        motivoDoZero:
+                          "nenhum aparelho com aviso ativo neste grupo",
                       },
                       {
                         id: "vip",
@@ -1541,7 +1542,8 @@ export const AdminPushView = memo(function AdminPushView({
                         count: (segment === "vip"
                           ? reachExibido
                           : segmentCounts.vip) as ContagemMedida,
-                        motivoDoZero: "nenhuma compra paga ainda",
+                        motivoDoZero:
+                          "nenhum aparelho com aviso ativo neste grupo",
                       },
                       {
                         id: "new",
@@ -1550,7 +1552,8 @@ export const AdminPushView = memo(function AdminPushView({
                         count: (segment === "new"
                           ? reachExibido
                           : segmentCounts.new) as ContagemMedida,
-                        motivoDoZero: "nenhum cadastro nos últimos 7 dias",
+                        motivoDoZero:
+                          "nenhum aparelho com aviso ativo neste grupo",
                       },
                     ].map((s) => {
                       const indisponivel = s.count === 0 || isOffline;

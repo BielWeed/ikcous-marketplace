@@ -375,7 +375,7 @@ Deno.test("a cadeia 99 -> 12 -> 28 -> 390 -> 398 esta declarada: o cabecalho cit
     assert.ok(!lerRepo(antes).includes(H_NOVO), `${antes}: nunca cita a 398`);
 });
 
-Deno.test("so a baseline, a 20261199, a 20261212, a 20261228, a 20261390 e este par definem painel_inicio; depois da 20261390 ninguem mais a redefine", () => {
+Deno.test("so a baseline, a 20261199, a 20261212, a 20261228, a 20261390, este par e a 20261399300000 (o estorno em andamento, par proprio) definem painel_inicio; depois da 20261390 so esta e a 20261399300000 a redefinem", () => {
   const todas = [...Deno.readDirSync(new URL("supabase/migrations/", DIR))]
     .map((e) => e.name)
     .filter((n) => n.endsWith(".sql") && !n.startsWith("_"));
@@ -388,7 +388,14 @@ Deno.test("so a baseline, a 20261199, a 20261212, a 20261228, a 20261390 e este 
       )
     )
       posteriores.push(n);
-  assert.deepEqual(posteriores.sort(), [NOME, `rollback-manual-${NOME}`]);
+  const SUCESSORA_3993 =
+    "20261399300000_o_estorno_em_andamento_nao_e_conta_vencida.sql";
+  assert.deepEqual(posteriores.sort(), [
+    NOME,
+    SUCESSORA_3993,
+    `rollback-manual-${NOME}`,
+    `rollback-manual-${SUCESSORA_3993}`,
+  ]);
 });
 
 Deno.test("publicacao: lote unico de apply normal (116a/116b), rol fechado de 4 linhas, consultas so leem catalogo e citam os md5 certos, registrado nos dois workflows", () => {

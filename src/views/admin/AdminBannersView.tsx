@@ -758,7 +758,6 @@ export const AdminBannersView = memo(function AdminBannersView({
   const [destinationMode, setDestinationMode] = useState<
     "none" | "product" | "route" | "custom"
   >("none");
-  const [selectedCouponCode, setSelectedCouponCode] = useState<string>("");
 
   const { config } = useStore();
   const [activeColorElement, setActiveColorElement] = useState<
@@ -1302,7 +1301,6 @@ export const AdminBannersView = memo(function AdminBannersView({
       setAdjustingImgUrl("");
       setIsUploadingAdjusted(false);
       setTela("jeito");
-      setSelectedCouponCode("");
       setExtractedColors([]);
     }
   }, [active]);
@@ -1543,15 +1541,6 @@ export const AdminBannersView = memo(function AdminBannersView({
     setProductSearch("");
     setMostrarProdutos(false);
 
-    let initialCoupon = "";
-    if (banner?.link) {
-      const match = banner.link.match(/[?&]coupon=([^&]+)/);
-      if (match?.[1]) {
-        initialCoupon = match[1];
-      }
-    }
-    setSelectedCouponCode(initialCoupon);
-
     isSavedRef.current = false;
     setEdicaoPendenteAposSalvar(false);
     setTela("jeito");
@@ -1658,7 +1647,6 @@ export const AdminBannersView = memo(function AdminBannersView({
       geracaoDoEditor.current += 1;
       setUploading(false);
       setProductSearch("");
-      setSelectedCouponCode("");
       if (!isSavedRef.current) {
         if (
           imagemEnviadaNaoSalvaRef.current &&
@@ -2847,11 +2835,6 @@ export const AdminBannersView = memo(function AdminBannersView({
                           }))
                         }
                       />
-                      {selectedCouponCode && (
-                        <p className="text-xs">
-                          Cupom no link: {selectedCouponCode}
-                        </p>
-                      )}
                     </section>
                     <section className="space-y-3">
                       <div className="flex min-h-11 items-center justify-between">

@@ -53,6 +53,8 @@
 -- redefine depois da 28. A mesma linha aceita tambem o corpo da 390 (LF e CRLF).
 -- JA DECIDIDO PARA `painel_inicio` (28/10/2026): a 20261398000000 (o Inicio compara o mes anterior ate a mesma
 -- hora) o redefine depois da 390. A mesma linha aceita tambem o corpo da 398 (LF e CRLF).
+-- JA DECIDIDO PARA `painel_inicio` (04/11/2026): a 20261399300000 (o estorno em andamento nao e conta vencida) o
+-- redefine depois da 398, so tirando o estorno de contas_vencidas. A mesma linha aceita tambem o corpo da 3993 (LF e CRLF).
 -- JA DECIDIDO PARA `get_admin_analytics_v2` (14/10/2026): a 20261234000000 (o lucro so conta produto com
 -- custo) o redefine depois deste lote. A linha `get_admin_analytics_v2: corpo e o da 20261214000000` aceita
 -- o corpo da 14 OU o da 34 OU o da 42 (a 20261242000000, o lucro usa o custo do dia da venda: o corpo da 34 com
@@ -64,6 +66,9 @@
 -- JA DECIDIDO PARA `get_admin_products_paged` (23/10/2026): a 20261385000000 (a busca de produtos do painel
 -- acha pelo codigo de barras e pelo codigo da variacao) o redefine depois da 81, so ampliando o filtro de busca.
 -- A mesma linha aceita tambem o corpo da 85 (LF e CRLF).
+-- JA DECIDIDO PARA `get_admin_products_paged` (04/11/2026): a 20261399200000 (a busca de produtos do painel e do balcao
+-- acha por palavras, em qualquer ordem) o redefine depois da 85, so trocando o filtro de busca. A mesma linha aceita
+-- tambem o corpo da 3992 (LF e CRLF).
 --
 -- sha256 = encode(sha256(convert_to(prosrc, 'UTF8')), 'hex'). Cada hash aparece aqui uma vez em
 -- LF e uma em CRLF; tests/ci_conferir_banco_test.ts os recalcula dos ARQUIVOS das migrations
@@ -170,15 +175,18 @@ WITH alvo(nome, assinatura) AS (
   UNION ALL
   SELECT 'get_admin_products_paged: corpo e o da 20261213000000 (sha256)',
          'ce2d99a8fc28deece0e72a2c678bb92ab0ea50073631e2307c0d053b70e98501',
-         -- 6 hashes aceitos: o corpo da 20261213000000 (LF e CRLF) OU o da SUCESSORA dele, a 20261381000000 (a
+         -- 8 hashes aceitos: o corpo da 20261213000000 (LF e CRLF) OU o da SUCESSORA dele, a 20261381000000 (a
          -- guarda passa de is_admin() para o admin atual; LF e CRLF) OU o da sucessora desta, a 20261385000000 (o filtro de
-         -- busca acha tambem o codigo de barras e o codigo da variacao; LF e CRLF). O `vivo` mostra o esperado.
+         -- busca acha tambem o codigo de barras e o codigo da variacao; LF e CRLF) OU o da sucessora desta, a 20261399200000
+         -- (a busca acha por palavras, em qualquer ordem; LF e CRLF). O `vivo` mostra o esperado.
          COALESCE((SELECT CASE WHEN f.h IN ('ce2d99a8fc28deece0e72a2c678bb92ab0ea50073631e2307c0d053b70e98501',
                                             '0924946faa9dc2c66de1622a9ddc60fabf7abb96147aeba2584ca44d7025ca81',
                                             'e1f5529f7da9735c92d2a55606e9cb309d5de1ab9bd40723d2b2be3f58d4de97',
                                             '5a4ed0e8186f0f7cd3a6c2420916b756464ae9f835e9537dd2fc078516c3ef6b',
                                             '2602b946af80d90cc7519bd3fdf57a7ea69e57b1d659587da1b1f4a035dd30bc',
-                                            '3152b3808fc8e5be2a5ad951a8f257384fd5c4ffc1a9204c62b693d94d73ff7d')
+                                            '3152b3808fc8e5be2a5ad951a8f257384fd5c4ffc1a9204c62b693d94d73ff7d',
+                                            '1bbb83b9758dfa35faf69f529cdce4c0ce66cb862f4bda0b5f5e9091e2453e32',
+                                            '8fa4076005a6b6898cef5a45eeb1670bec4e247f7ab5593c55aa37fdf26ccc68')
                                THEN 'ce2d99a8fc28deece0e72a2c678bb92ab0ea50073631e2307c0d053b70e98501'
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'get_admin_products_paged'), 'AUSENTE')
@@ -201,10 +209,11 @@ WITH alvo(nome, assinatura) AS (
   UNION ALL
   SELECT 'painel_inicio: corpo e o da 20261212000000 (sha256)',
          '5b26c34030a7de32033b53894f8da19d850bf116b31208bb5b1195dcec0925db',
-         -- 8 hashes aceitos: o corpo da 20261212000000 (LF e CRLF) OU o da SUCESSORA dele, a
+         -- 10 hashes aceitos: o corpo da 20261212000000 (LF e CRLF) OU o da SUCESSORA dele, a
          -- 20261228000000 (o Inicio compara ate a mesma hora; LF e CRLF) OU o da sucessora desta, a
          -- 20261390000000 (o lucro do Inicio conta o mes inteiro; LF e CRLF) OU o da sucessora desta, a
-         -- 20261398000000 (o Inicio compara o mes anterior ate a mesma hora; LF e CRLF). O `vivo` mostra o esperado.
+         -- 20261398000000 (o Inicio compara o mes anterior ate a mesma hora; LF e CRLF) OU o da sucessora desta, a 20261399300000
+         -- (o estorno em andamento nao e conta vencida; LF e CRLF). O `vivo` mostra o esperado.
          COALESCE((SELECT CASE WHEN f.h IN ('5b26c34030a7de32033b53894f8da19d850bf116b31208bb5b1195dcec0925db',
                                             '77cc91fbe8e03fbd89ee163046101804abf6dbf7fc1c2b4bc9ee5a1d97df64cf',
                                             '31ba1c96a0af9c647b722ddec813e3f0105bee88bad64fed58d2b905335d12c8',
@@ -212,7 +221,9 @@ WITH alvo(nome, assinatura) AS (
                                             '197df63f3f083a240e2e647aa3941980dcdd95aff07e4096e019c630058eb367',
                                             'd1690297feff4610cd3cd81cad26df7b46a24bcf08785aa34c9ffdd0e4dd53d7',
                                             'c25ad7104f7e20537a55c7ca3cea6638f433ff6cce254a834a8713b48212198f',
-                                            '61dbafff4086be102bdf968f34b21f092c1f3b44341138dc1fc6d446c895da20')
+                                            '61dbafff4086be102bdf968f34b21f092c1f3b44341138dc1fc6d446c895da20',
+                                            '60d9e2583832d870bf46499a492b5a878ae44a92dca695b671fc00e5771fac1d',
+                                            'cb689ddbbb831de580d5e7623fce078ef904076a28c64f88fc17c473c399d594')
                                THEN '5b26c34030a7de32033b53894f8da19d850bf116b31208bb5b1195dcec0925db'
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'painel_inicio'), 'AUSENTE')
