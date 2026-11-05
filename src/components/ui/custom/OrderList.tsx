@@ -133,7 +133,10 @@ function OrderStatusTrail({
   );
 }
 
-function fraseDoCancelado(paymentStatus: Order["paymentStatus"]) {
+function fraseDoCancelado(
+  paymentStatus: Order["paymentStatus"],
+  noBalcao = false,
+) {
   switch (paymentStatus) {
     case "expirado":
       return "O prazo para pagar terminou. Se não pagou, é só comprar de novo.";
@@ -147,6 +150,11 @@ function fraseDoCancelado(paymentStatus: Order["paymentStatus"]) {
     case "recusado":
       return "O pagamento não foi aprovado e o pedido foi cancelado.";
     case "estornado":
+      // Venda do balcão anulada: o app não devolve nada, a loja combina com a
+      // cliente. Não afirma que o dinheiro voltou.
+      if (noBalcao) {
+        return "Esta compra foi anulada pela loja. A devolução do valor é combinada com a loja.";
+      }
       // Pedido cancelado e estornado é o fim do reembolso: o dinheiro voltou.
       // Não diz o meio (PIX/cartão): o app não sabe qual foi.
       return "O dinheiro deste pedido foi devolvido. Toque para ver os detalhes.";
@@ -442,10 +450,14 @@ export const OrderList = memo(function OrderList({
         const statusBase = statusConfig[order.status] || statusConfig.pending;
         const retirada =
           order.retiradaNaLoja === true && order.status === "shipping";
+        // Compra no balcão (canal presencial): nada foi enviado nem entregue.
+        const noBalcao = order.canal === "presencial";
         const desc =
-          (order.retiradaNaLoja === true
-            ? frasesDaRetirada.get(order.status)
-            : undefined) ?? statusBase.desc;
+          noBalcao && order.status === "delivered"
+            ? "Compra na loja"
+            : ((order.retiradaNaLoja === true
+                ? frasesDaRetirada.get(order.status)
+                : undefined) ?? statusBase.desc);
         // A MESMA frase da ficha do pedido (`rotuloDaFormaDoPedido`): inclui a
         // compra que fechou em R$ 0,00 e nunca chama de "PIX" um método que a
         // tela não conhece.
@@ -580,10 +592,12 @@ export const OrderList = memo(function OrderList({
                   className="mt-2"
                 />
 
-                <OrderStatusTrail
-                  status={order.status}
-                  retiradaNaLoja={order.retiradaNaLoja}
-                />
+                {!noBalcao && (
+                  <OrderStatusTrail
+                    status={order.status}
+                    retiradaNaLoja={order.retiradaNaLoja}
+                  />
+                )}
 
                 {/* Código livre nunca é cortado; substitui a próxima etapa,
                     sem esconder rastreio já existente no histórico. */}
@@ -598,7 +612,8 @@ export const OrderList = memo(function OrderList({
                     </span>
                   </div>
                 ) : order.status !== "cancelled" &&
-                  order.status !== "delivered" ? (
+                  order.status !== "delivered" &&
+                  !noBalcao ? (
                   <p
                     aria-hidden="true"
                     className="mt-2 text-xs leading-4 text-muted-foreground"
@@ -613,7 +628,7 @@ export const OrderList = memo(function OrderList({
                 ) : null}
                 {order.status === "cancelled" && (
                   <p className="mt-2 min-h-7 text-[15px] leading-5 text-muted-foreground">
-                    {fraseDoCancelado(order.paymentStatus)}
+                    {fraseDoCancelado(order.paymentStatus, noBalcao)}
                   </p>
                 )}
               </div>

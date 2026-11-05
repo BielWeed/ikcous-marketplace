@@ -94,11 +94,14 @@ export function BannerPronto({
   prioridade,
   varios = false,
   semFade = false,
+  semDestino = false,
 }: {
   banner: Banner;
   prioridade?: boolean;
   varios?: boolean;
   semFade?: boolean;
+  /** Vitrine: sem para onde ir, o botão seria falso. O painel não passa. */
+  semDestino?: boolean;
 }) {
   const modelo = modeloDoBanner(banner.templateType);
   if (!modelo) return null;
@@ -110,7 +113,7 @@ export function BannerPronto({
         fotoUrl={banner.imageUrl}
         titulo={banner.title || ""}
         subtitulo={banner.subtitle || ""}
-        botao={banner.buttonText || ""}
+        botao={semDestino ? "" : banner.buttonText || ""}
         selo={banner.badgeText}
         prioridade={prioridade}
         semFade={semFade}

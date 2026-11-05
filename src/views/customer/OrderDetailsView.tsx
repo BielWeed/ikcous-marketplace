@@ -175,6 +175,18 @@ const RETIRADO_NA_LOJA = {
 };
 
 /**
+ * COMPRA NO BALCÃO (canal "presencial") vinculada à conta: nasce entregue,
+ * sem frete nem endereço, então "Chegou!"/"entregue com sucesso" mentiam. Só
+ * o texto muda; o pedido online não passa por aqui.
+ */
+const COMPRA_NA_LOJA = {
+  label: "Compra na loja",
+  icon: Store,
+  description: "Compra concluída no balcão da loja. Obrigado!",
+  heroTitle: "Compra concluída",
+};
+
+/**
  * Aviso do quadro da retirada, conforme o ponto do pedido: esperar só vale
  * ANTES de a loja avisar; depois de entregue, mandar aguardar é contradição.
  */
@@ -357,6 +369,7 @@ function cancelledDescription(
   paymentStatus: PaymentStatus | null | undefined,
   linhasDevolucao: LinhaDevolucaoDoCliente[],
   leituraDaDevolucao: LeituraDaDevolucao = "lida",
+  noBalcao = false,
 ): string {
   const key = paymentStatusKey(paymentStatus);
   // `recebido_na_entrega` fica fora do Mercado Pago (brief T7): a devolução
@@ -405,6 +418,11 @@ function cancelledDescription(
   // há linha concluída no livro, vem da linha "Devolução concluída" do bloco de
   // pagamento — a descrição só diz o desfecho.
   if (key === "estornado") {
+    // Venda do balcão anulada: o app não devolve nada, a loja acerta com a
+    // cliente na mão. Não afirmar que o dinheiro voltou.
+    if (noBalcao) {
+      return "Esta compra foi anulada pela loja. A devolução do valor é combinada diretamente com a loja.";
+    }
     return "Este pedido foi cancelado e o seu pagamento foi estornado: o dinheiro foi devolvido.";
   }
   if (key === "aguardando") {
@@ -1052,11 +1070,15 @@ export function OrderDetailsView({
     order.retiradaNaLoja === true && order.status === "shipping";
   const jaRetirado =
     order.retiradaNaLoja === true && order.status === "delivered";
+  const noBalcao = order.canal === "presencial";
+  const compraNaLoja = noBalcao && order.status === "delivered";
   const currentStatus = prontoParaRetirar
     ? PRONTO_PARA_RETIRAR
     : jaRetirado
       ? RETIRADO_NA_LOJA
-      : statusConfig[order.status as OrderStatus] || statusConfig.pending;
+      : compraNaLoja
+        ? COMPRA_NA_LOJA
+        : statusConfig[order.status as OrderStatus] || statusConfig.pending;
   const StatusIcon = currentStatus.icon;
   const statusDescription =
     order.status === "pending"
@@ -1073,6 +1095,7 @@ export function OrderDetailsView({
             order.paymentStatus,
             linhasDevolucao,
             leituraDaDevolucao,
+            noBalcao,
           )
         : currentStatus.description;
   // Estornado: o dinheiro já voltou, então só a linha CONCLUÍDA tem o que dizer
@@ -1171,8 +1194,10 @@ export function OrderDetailsView({
                 ? PRONTO_PARA_RETIRAR.heroTitle
                 : jaRetirado
                   ? RETIRADO_NA_LOJA.heroTitle
-                  : heroTitleByStatus[order.status as OrderStatus] ||
-                    heroTitleByStatus.pending}
+                  : compraNaLoja
+                    ? COMPRA_NA_LOJA.heroTitle
+                    : heroTitleByStatus[order.status as OrderStatus] ||
+                      heroTitleByStatus.pending}
             </h1>
           </div>
           {lojaTemWhatsappAgora && (
@@ -1303,7 +1328,7 @@ export function OrderDetailsView({
 
           {/* Linha do tempo de 4 etapas — some no cancelado, que tem seu
               próprio quadro de aviso logo abaixo. */}
-          {order.status !== "cancelled" && (
+          {order.status !== "cancelled" && !noBalcao && (
             <div className="mt-5 flex items-start justify-between gap-1">
               {TIMELINE_STEPS.map((step, i) => {
                 const isPast = timelineIndex > i;
@@ -1705,23 +1730,25 @@ export function OrderDetailsView({
                 {formatCurrency(order.subtotal)}
               </span>
             </div>
-            <div className="flex items-center justify-between text-[13px] font-medium text-zinc-600">
-              <span>Frete</span>
-              <span
-                className={cn(
-                  "font-bold",
-                  order.shipping === 0 && !order.retiradaNaLoja
-                    ? "text-emerald-700"
-                    : "text-zinc-900",
-                )}
-              >
-                {order.shipping > 0
-                  ? formatCurrency(order.shipping)
-                  : order.retiradaNaLoja
-                    ? "Sem frete (retirada)"
-                    : "Grátis"}
-              </span>
-            </div>
+            {!noBalcao && (
+              <div className="flex items-center justify-between text-[13px] font-medium text-zinc-600">
+                <span>Frete</span>
+                <span
+                  className={cn(
+                    "font-bold",
+                    order.shipping === 0 && !order.retiradaNaLoja
+                      ? "text-emerald-700"
+                      : "text-zinc-900",
+                  )}
+                >
+                  {order.shipping > 0
+                    ? formatCurrency(order.shipping)
+                    : order.retiradaNaLoja
+                      ? "Sem frete (retirada)"
+                      : "Grátis"}
+                </span>
+              </div>
+            )}
             {order.discount > 0 && (
               <div className="flex items-center justify-between text-[13px] font-bold text-emerald-700">
                 <span>Desconto</span>
@@ -1761,9 +1788,11 @@ export function OrderDetailsView({
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold text-zinc-500">
-                {order.retiradaNaLoja
-                  ? "Retirada na loja"
-                  : "Endereço de entrega"}
+                {noBalcao
+                  ? "Compra na loja"
+                  : order.retiradaNaLoja
+                    ? "Retirada na loja"
+                    : "Endereço de entrega"}
               </p>
               {order.retiradaNaLoja && (
                 // O endereço REAL da loja no momento da compra, e o aviso

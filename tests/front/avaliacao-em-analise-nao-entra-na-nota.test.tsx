@@ -203,10 +203,25 @@ describe("ProductView — avaliação em análise não entra na nota nem na cont
     avaliacoesDoHook = [avaliacao("c", 1, "pendente")];
     await montar();
 
+    // Ela acabou de enviar: a tela não diz "Sem avaliações ainda" em cima do
+    // próprio comentário nem mostra "(0)" na aba; diz que está em análise.
     const secao = textoDaSecao();
-    expect(secao).toContain("Sem avaliações ainda");
+    expect(secao).toContain("Avaliação em análise");
+    expect(secao).not.toContain("Sem avaliações ainda");
     expect(secao).not.toContain("Baseado em");
     expect(secao).toContain("Em análise");
-    expect(hospedeiro.textContent).toContain("Avaliações (0)");
+    expect(hospedeiro.textContent).not.toContain("Avaliações (0)");
+    expect(hospedeiro.textContent).toContain("Avaliações");
+  });
+
+  it("borda: várias em análise e nenhuma publicada: plural, sem '(0)'", async () => {
+    avaliacoesDoHook = [
+      avaliacao("c", 1, "pendente"),
+      avaliacao("d", 2, "pendente"),
+    ];
+    await montar();
+
+    expect(textoDaSecao()).toContain("Avaliações em análise");
+    expect(hospedeiro.textContent).not.toContain("Avaliações (0)");
   });
 });

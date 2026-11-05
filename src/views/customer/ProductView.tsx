@@ -446,6 +446,9 @@ export const ProductView = React.memo(function ProductView({
       : reviews.length > 0
         ? 0
         : (product.rating ?? 5);
+  // Só há avaliação em análise (a da própria cliente): nada de "(0)" nem de
+  // "Sem avaliações ainda" em cima do comentário que ela acabou de enviar.
+  const soEmAnalise = avaliacoesPublicadas.length === 0 && reviews.length > 0;
   const notaComVirgula = averageRating.toFixed(1).replace(".", ",");
 
   const { fileiras, variante } = fileirasDeVariacao(
@@ -1284,7 +1287,14 @@ export const ProductView = React.memo(function ProductView({
                   // ADMIN-090 (#101): com o interruptor desligado, a aba
                   // "Avaliações" some da vitrine — não só o pill do admin.
                   ...(config.enableReviews
-                    ? [{ id: "reviews", label: `Avaliações (${reviewCount})` }]
+                    ? [
+                        {
+                          id: "reviews",
+                          label: soEmAnalise
+                            ? "Avaliações"
+                            : `Avaliações (${reviewCount})`,
+                        },
+                      ]
                     : []),
                   { id: "questions", label: "Perguntas" },
                 ].map((tab) => {
@@ -1428,7 +1438,11 @@ export const ProductView = React.memo(function ProductView({
                       >
                         {reviewCount > 0
                           ? `${reviewCount} ${reviewCount === 1 ? "opinião" : "opiniões"} dos consumidores`
-                          : "Sem avaliações ainda"}
+                          : soEmAnalise
+                            ? reviews.length === 1
+                              ? "Avaliação em análise"
+                              : "Avaliações em análise"
+                            : "Sem avaliações ainda"}
                       </p>
                     </div>
                   </div>
