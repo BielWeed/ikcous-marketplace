@@ -215,16 +215,20 @@ export const AdminCouponsView = memo(function AdminCouponsView({
   // servidor já recusando ele no checkout (`valid_until > now()`). O mesmo
   // vale para o cupom ESGOTADO (usos no teto): "Disponíveis para uso" é o
   // que o checkout ainda aceita — a mesma leitura do selo do card.
-  const activeCoupons = coupons.filter(
-    (c) => rotuloDoCupom(c) === "Ativo",
-  ).length;
+  // Chave geral desligada: o servidor recusa QUALQUER cupom, então nenhum está
+  // disponível (o selo de cada um segue sendo o da chavinha dele). Só afirma
+  // "desligado" com a configuração já lida.
+  const lojaSemCupons = configLoaded && config.enableCoupons === false;
+  const activeCoupons = lojaSemCupons
+    ? 0
+    : coupons.filter((c) => rotuloDoCupom(c) === "Ativo").length;
   const totalUsage = coupons.reduce((sum, c) => sum + (c.usageCount || 0), 0);
   const averageDiscount = (() => {
     // Só os que o checkout ainda aceita (mesma leitura do selo "Ativo").
     const percentageCoupons = coupons.filter(
       (c) => c.type === "percentage" && rotuloDoCupom(c) === "Ativo",
     );
-    if (percentageCoupons.length === 0) return 0;
+    if (lojaSemCupons || percentageCoupons.length === 0) return 0;
     const sum = percentageCoupons.reduce((acc, c) => acc + (c.value || 0), 0);
     return Math.round(sum / percentageCoupons.length);
   })();
@@ -242,7 +246,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         value: activeCoupons,
         accent: "text-emerald-400",
         subValue: `/ ${totalCoupons} total`,
-        footer: "Disponíveis para uso",
+        footer: lojaSemCupons ? "Desligados na loja" : "Disponíveis para uso",
       },
       {
         id: "uso",
@@ -269,7 +273,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         footer: "Em ofertas percentuais",
       },
     ],
-    [activeCoupons, totalCoupons, totalUsage, averageDiscount],
+    [activeCoupons, totalCoupons, totalUsage, averageDiscount, lojaSemCupons],
   );
 
   const renderSkeleton = () => (
@@ -485,6 +489,14 @@ export const AdminCouponsView = memo(function AdminCouponsView({
               </div>
             )}
           </section>
+        )}
+        {lojaSemCupons && coupons.length > 0 && (
+          <p
+            role="status"
+            className={`text-sm leading-relaxed ${classeDoTexto("atencao")}`}
+          >
+            Cupons desligados na loja — nenhum cupom pode ser usado agora.
+          </p>
         )}
         {isOffline && (
           <div
