@@ -325,7 +325,12 @@ describe("AdminReviewsView — redesenho", () => {
 
   it("a avaliação pendente leva 'Em moderação' e o botão Aprovar publica pelo id", async () => {
     await montar();
-    expect(tela()).toContain("Em moderação");
+    // O botão-filtro "Em moderação" do topo não é o selo do item: o selo se confere só dentro da LISTA.
+    const lista = Array.from(hospedeiro.querySelectorAll("ul")).find((ul) =>
+      ul.textContent?.includes("Chegou rápido e bem embalado."),
+    );
+    expect(lista).toBeDefined();
+    expect(lista?.textContent).toContain("Em moderação");
     const aprovar = botaoPorTexto("Aprovar");
     expect(aprovar.getAttribute("aria-label")).toBe("Aprovar e Publicar");
     expect(

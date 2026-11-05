@@ -152,6 +152,15 @@ describe("AdminReviewsView — a fila de moderação é real", () => {
     vi.restoreAllMocks();
   });
 
+  // O botão-filtro "Em moderação" do topo da tela não é o selo do item: o selo se confere só dentro da LISTA.
+  function textoDaLista(nomeDoAutor: string) {
+    const lista = Array.from(hospedeiro.querySelectorAll("ul")).find((ul) =>
+      ul.textContent?.includes(nomeDoAutor),
+    );
+    expect(lista).toBeDefined();
+    return lista?.textContent ?? "";
+  }
+
   async function montar() {
     const { AdminReviewsView } = await import("@/views/admin/AdminReviewsView");
     await act(async () => {
@@ -185,7 +194,7 @@ describe("AdminReviewsView — a fila de moderação é real", () => {
     await montar();
 
     const texto = hospedeiro.textContent ?? "";
-    expect(texto).toContain("Em moderação");
+    expect(textoDaLista("Recém-chegada")).toContain("Em moderação");
     // A fila (contagem do BANCO) aparece na linha do resumo.
     expect(texto).toContain("1 na fila");
     // O rótulo decorativo que afirmava moderação sem haver moderação:
@@ -248,8 +257,7 @@ describe("AdminReviewsView — a fila de moderação é real", () => {
     ];
     await montar();
 
-    const texto = hospedeiro.textContent ?? "";
-    expect(texto).toContain("Em moderação");
+    expect(textoDaLista("Recém-chegada")).toContain("Em moderação");
     expect(
       hospedeiro.querySelector('button[aria-label="Aprovar e Publicar"]'),
     ).not.toBeNull();
@@ -274,7 +282,7 @@ describe("AdminReviewsView — a fila de moderação é real", () => {
     await montar();
 
     const texto = hospedeiro.textContent ?? "";
-    expect(texto).not.toContain("Em moderação");
+    expect(textoDaLista("Compradora")).not.toContain("Em moderação");
     expect(texto).not.toContain("na fila");
     const expandir = [...hospedeiro.querySelectorAll("button")].find(
       (b) => b.textContent?.trim() === "Expandir",
