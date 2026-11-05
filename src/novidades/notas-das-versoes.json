@@ -5,9 +5,9 @@
     "correcoes": [
       "Avaliações: a avaliação que ainda está em análise não mostra mais o botão Útil, que só dava erro ao ser tocado.",
       "Avaliações: com internet ruim, a lista de avaliações já guardada no aparelho continua na tela, em vez de ser trocada por um aviso de erro.",
-      "Avaliações: as quebras de linha escritas pela cliente no comentário e pela loja na resposta aparecem como foram escritas.",
+      "Avaliações: na página do produto e no perfil de quem avaliou, as quebras de linha escritas no comentário e na resposta da loja aparecem como foram escritas.",
       "Painel, cupons: desconto fixo com mais de 2 casas depois da vírgula é recusado ao salvar, para o total do pedido não divergir da ficha em 1 centavo.",
-      "Painel, cupons: quando os cupons estão desligados na loja, a lista avisa e mostra 0 cupons ativos, em vez de dizer Ativo e Disponíveis para uso."
+      "Painel, cupons: quando os cupons estão desligados na loja, a lista mostra um aviso, 0 cupons ativos e Desligados na loja no lugar de Disponíveis para uso."
     ],
     "melhorias": []
   },

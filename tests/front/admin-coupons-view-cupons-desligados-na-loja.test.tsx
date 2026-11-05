@@ -135,7 +135,31 @@ describe("AdminCouponsView — cupons desligados na loja", () => {
     await abrirTela();
     expect(texto()).toContain("UM");
     expect(texto()).toContain("DOIS");
-    expect(texto().match(/Ativo/g)?.length).toBeGreaterThanOrEqual(2);
+    // Só o SELO do cartão: o rótulo "Cupons Ativos" também casa com /Ativo/.
+    // O selo é um <span> com o ponto colorido dentro: vale o texto PRÓPRIO dele.
+    const selos = [...hospedeiro.querySelectorAll("span")].filter(
+      (el) =>
+        [...el.childNodes]
+          .filter((no) => no.nodeType === Node.TEXT_NODE)
+          .map((no) => no.textContent)
+          .join("")
+          .trim() === "Ativo",
+    );
+    expect(selos).toHaveLength(2);
+  });
+
+  it("desligados: 'Desconto Médio' zera mesmo com cupom de % marcado Ativo", async () => {
+    mockCoupons = [cupom({ id: "p", code: "QUINZE", value: 15 })];
+    mockConfig = { enableCoupons: false };
+    await abrirTela();
+    expect(texto()).toMatch(/Desconto Médio\s*0%/);
+    expect(texto()).not.toMatch(/Desconto Médio\s*15%/);
+  });
+
+  it("controle: ligados, 'Desconto Médio' mostra a média do cupom de % ativo", async () => {
+    mockCoupons = [cupom({ id: "p", code: "QUINZE", value: 15 })];
+    await abrirTela();
+    expect(texto()).toMatch(/Desconto Médio\s*15%/);
   });
 
   it("controle: ligados, sem aviso e com a contagem de sempre", async () => {

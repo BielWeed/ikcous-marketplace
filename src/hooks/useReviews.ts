@@ -257,7 +257,7 @@ export function useReviews() {
         console.error("Error fetching reviews:", error);
         // Com a lista guardada na tela, a releitura que falha não a troca por
         // erro (mesmo critério das Perguntas): só vale o erro sem nada a mostrar.
-        if (!cached) {
+        if (!cached?.length) {
           setErroDaListagemProduto("Não foi possível carregar as avaliações.");
           toast.error("Erro ao carregar avaliações.");
         }

@@ -228,7 +228,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
     const percentageCoupons = coupons.filter(
       (c) => c.type === "percentage" && rotuloDoCupom(c) === "Ativo",
     );
-    if (percentageCoupons.length === 0) return 0;
+    if (lojaSemCupons || percentageCoupons.length === 0) return 0;
     const sum = percentageCoupons.reduce((acc, c) => acc + (c.value || 0), 0);
     return Math.round(sum / percentageCoupons.length);
   })();

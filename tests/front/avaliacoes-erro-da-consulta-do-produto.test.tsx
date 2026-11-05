@@ -186,3 +186,20 @@ it("com a lista já guardada no aparelho, a releitura que falha mantém a lista 
   expect(secao.textContent).not.toContain("Tentar de novo");
   expect(toast.error).not.toHaveBeenCalled();
 });
+
+it("com a lista guardada VAZIA, a releitura que falha mostra o erro e avisa", async () => {
+  const { updateReviewsCache } = await import("@/lib/cache-de-avaliacoes");
+  const { toast } = await import("sonner");
+  vi.mocked(toast.error).mockClear();
+  updateReviewsCache(produto.id, []);
+  h.ler.mockResolvedValue({ data: null, error: { message: "sem rede" } });
+  await mostrar();
+  const secao = host.querySelector("#reviews-section")!;
+  expect(h.ler).toHaveBeenCalled();
+  expect(secao.querySelector('[role="alert"]')).not.toBeNull();
+  expect(secao.textContent).toContain(
+    "Não foi possível carregar as avaliações",
+  );
+  expect(secao.textContent).not.toContain("Ainda sem avaliações");
+  expect(toast.error).toHaveBeenCalledWith("Erro ao carregar avaliações.");
+});

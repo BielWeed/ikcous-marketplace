@@ -616,7 +616,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                           </div>
 
                           {rev.comment && (
-                            <p className="text-xs font-medium leading-relaxed text-zinc-700">
+                            <p className="whitespace-pre-wrap text-xs font-medium leading-relaxed text-zinc-700">
                               {rev.comment}
                             </p>
                           )}
@@ -641,7 +641,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                                 ✓
                               </span>
                             </div>
-                            <p className="font-medium italic text-zinc-600">
+                            <p className="whitespace-pre-wrap font-medium italic text-zinc-600">
                               "{rev.merchant_reply}"
                             </p>
                           </div>
