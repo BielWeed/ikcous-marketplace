@@ -1,4 +1,12 @@
 {
+  "1.5.129": {
+    "titulo": "O título da aba do navegador volta ao certo ao sair de uma tela da loja",
+    "novidades": [],
+    "correcoes": [
+      "Loja: ao voltar dos Termos de uso, de Sobre a loja ou de um produto para a página inicial, a aba do navegador (e o histórico e o favorito) passa a mostrar o nome da loja, em vez de continuar com o título da tela anterior."
+    ],
+    "melhorias": []
+  },
   "1.5.128": {
     "titulo": "O resultado do mês passa a creditar o custo das devoluções de outro mês",
     "novidades": [],

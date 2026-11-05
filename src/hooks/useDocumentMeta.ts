@@ -30,19 +30,32 @@ export interface DocumentMetaOptions {
   readonly jsonLdId?: string;
 }
 
-const upsertMeta = (attr: "name" | "property", key: string, value: string) => {
+/** Grava a meta e devolve como desfazer: restaura o conteúdo anterior ou remove a tag que esta chamada criou. */
+const upsertMeta = (
+  attr: "name" | "property",
+  key: string,
+  value: string,
+): (() => void) => {
   // Sem CSS.escape aqui: o valor está entre aspas no seletor de atributo, então
   // escapar transformaria "og:title" em "og\:title" e o seletor deixaria de casar
   // com a tag estática do index.html — criando uma duplicata em vez de atualizá-la.
   // (As chaves são constantes nossas, não entrada de usuário.)
   const selector = `meta[${attr}="${key}"]`;
   let tag = document.head.querySelector<HTMLMetaElement>(selector);
+  const criada = !tag;
   if (!tag) {
     tag = document.createElement("meta");
     tag.setAttribute(attr, key);
     document.head.append(tag);
   }
+  const anterior = tag.getAttribute("content");
   tag.setAttribute("content", value);
+  const gravada = tag;
+  return () => {
+    if (criada) gravada.remove();
+    else if (anterior === null) gravada.removeAttribute("content");
+    else gravada.setAttribute("content", anterior);
+  };
 };
 
 export function useDocumentMeta({
@@ -59,21 +72,34 @@ export function useDocumentMeta({
   useEffect(() => {
     if (typeof document === "undefined") return;
 
-    if (title) document.title = title;
+    // Tudo que esta tela escreve é devolvido ao sair: a Home fica montada por baixo das
+    // telas secundárias e não reescreve o título quando a cliente volta para ela.
+    const desfazer: Array<() => void> = [];
+    if (title) {
+      const tituloAnterior = document.title;
+      document.title = title;
+      desfazer.push(() => {
+        document.title = tituloAnterior;
+      });
+    }
 
     for (const [key, value] of Object.entries(
       JSON.parse(namesKey) as Record<string, string | undefined>,
     )) {
-      if (value) upsertMeta("name", key, value);
+      if (value) desfazer.push(upsertMeta("name", key, value));
     }
 
     for (const [key, value] of Object.entries(
       JSON.parse(propsKey) as Record<string, string | undefined>,
     )) {
-      if (value) upsertMeta("property", key, value);
+      if (value) desfazer.push(upsertMeta("property", key, value));
     }
 
-    if (!jsonLdKey) return;
+    const desfazerTudo = () => {
+      for (const f of desfazer.reverse()) f();
+    };
+
+    if (!jsonLdKey) return desfazerTudo;
 
     let script = document.head.querySelector<HTMLScriptElement>(
       `script#${CSS.escape(jsonLdId)}`,
@@ -90,6 +116,7 @@ export function useDocumentMeta({
     // da página do produto e acabar descrevendo a Home.
     return () => {
       document.getElementById(jsonLdId)?.remove();
+      desfazerTudo();
     };
   }, [title, namesKey, propsKey, jsonLdKey, jsonLdId]);
 }
