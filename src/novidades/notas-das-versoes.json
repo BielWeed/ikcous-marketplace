@@ -1,4 +1,12 @@
 {
+  "1.5.128": {
+    "titulo": "O resultado do mês passa a creditar o custo das devoluções de outro mês",
+    "novidades": [],
+    "correcoes": [
+      "Painel, Financeiro: quando uma venda de um mês é devolvida em outro, o custo da mercadoria devolvida volta como crédito no mês da devolução, em vez de se perder. O lucro desse mês fica certo e a soma dos meses fecha com o período inteiro. Meses passados que tiveram esse tipo de devolução passam a mostrar um lucro maior do que mostravam antes."
+    ],
+    "melhorias": []
+  },
   "1.5.127": {
     "titulo": "As estrelas das avaliações passam a aparecer nos produtos da loja",
     "novidades": [

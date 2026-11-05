@@ -14,6 +14,10 @@ const SINAL_DA_DRE = Object.freeze({
     = '2d191bc8120a9b188c04eeaaa0263110', false) AS sim`,
 });
 async function desfazerSinalDaDreNaTransacao(c) {
+  // A 3996 (credito do CMV) sucede o fin_dre da 382: cai antes de qualquer rollback da 382.
+  await require("./o-resultado-credita-o-custo-da-devolucao-posterior.cjs").desfazerCreditoDoCmvNaTransacao(
+    c,
+  );
   if ((await c.query(SINAL_DA_DRE.noAr)).rows[0]?.sim !== true) return false;
   await c.query(
     fs.readFileSync(

@@ -693,6 +693,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399500000: as estrelas do produto aparecem na vitrine (gatilho em reviews recalcula produtos.rating e review_count so das publicadas; pendente nao conta; a falha da nota nunca
     // perde a avaliacao; corrida real de duas avaliacoes, trocas cruzadas, compra segurando o produto, o pagamento nunca e a vitima do deadlock; mutantes, rollback, pre/pos-voo e consultas 121a/121b).
     "tests/banco/as-estrelas-do-produto-aparecem-na-vitrine-viva.cjs",
+    // 20261399600000: o resultado credita o custo da devolucao de venda de outro mes (fin_dre deixa de cortar o CMV em zero; CMV negativo = credito de custo; a linha do CMV aparece quando nao e zero;
+    // controle com o corpo da 382 na mesma fixture, soma dos meses fecha com o periodo, mutantes, rollback byte a byte, pre/pos-voo e consultas 122a/122b).
+    "tests/banco/o-resultado-credita-o-custo-da-devolucao-de-outro-mes-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",

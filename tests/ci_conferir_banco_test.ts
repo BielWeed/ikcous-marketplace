@@ -2197,6 +2197,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "2d191bc8120a9b188c04eeaaa0263110",
           versao: "20261382000000",
         },
+        // 05/11/2026 (lote 122): o resultado credita o custo da devolucao de venda de outro mes (so o piso do CMV e o filtro da linha do CMV mudam; 99 -> 42 -> 382 -> 3996).
+        {
+          fn: "fin_dre",
+          h: "eafc6a2c4663e33f5459791c6601b848",
+          versao: "20261399600000",
+        },
         {
           fn: "fin_lancamento_salvar",
           h: "1356dbfc037a9202ef163ba598854891",

@@ -246,6 +246,8 @@ on:
       - "scripts/publicacao/consultas/120b-antes-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-base-vigente.sql"
       - "scripts/publicacao/consultas/121a-conferir-as-estrelas-do-produto-aparecem-na-vitrine-aplicado.sql"
       - "scripts/publicacao/consultas/121b-antes-as-estrelas-do-produto-aparecem-na-vitrine-ausente.sql"
+      - "scripts/publicacao/consultas/122a-conferir-o-resultado-credita-o-custo-da-devolucao-de-outro-mes-aplicado.sql"
+      - "scripts/publicacao/consultas/122b-antes-o-resultado-credita-o-custo-da-devolucao-de-outro-mes-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -461,6 +463,8 @@ on:
       - "scripts/publicacao/consultas/120b-antes-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-base-vigente.sql"
       - "scripts/publicacao/consultas/121a-conferir-as-estrelas-do-produto-aparecem-na-vitrine-aplicado.sql"
       - "scripts/publicacao/consultas/121b-antes-as-estrelas-do-produto-aparecem-na-vitrine-ausente.sql"
+      - "scripts/publicacao/consultas/122a-conferir-o-resultado-credita-o-custo-da-devolucao-de-outro-mes-aplicado.sql"
+      - "scripts/publicacao/consultas/122b-antes-o-resultado-credita-o-custo-da-devolucao-de-outro-mes-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -791,6 +795,13 @@ jobs:
       - name: Prova viva das estrelas do produto na vitrine (20261399500000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/as-estrelas-do-produto-aparecem-na-vitrine-viva.cjs
+      # Migration 20261399600000 (o resultado credita o custo da devolucao de venda de outro mes): fin_dre deixa de cortar o CMV em zero (GREATEST(cmv - volta, 0) vira cmv - volta);
+      # quando a devolucao do mes custa mais que as vendas do mes o CMV fica NEGATIVO (credito de custo) e o lucro bruto, o resultado e o lucro do Inicio sobem pelo mesmo valor; a linha 'cmv'
+      # aparece quando o CMV nao e zero. Controle com o corpo da 20261382 na MESMA fixture (o defeito), mes sem devolucao maior que o CMV igual ao de antes, soma dos meses fecha com o periodo
+      # inteiro, custo do DIA (nao o de hoje), porta de admin, mutantes, reaplicar (LF e CRLF), rollback byte a byte, pre-voo, 8e/45a/87a aceitando o corpo novo e consultas 122a/122b. CLONE proprio.
+      - name: Prova viva do resultado que credita o custo da devolucao de outro mes (20261399600000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-resultado-credita-o-custo-da-devolucao-de-outro-mes-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

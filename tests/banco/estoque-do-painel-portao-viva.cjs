@@ -1349,6 +1349,12 @@ async function main() {
         "20261399300000_o_estorno_em_andamento_nao_e_conta_vencida.sql",
         "public.painel_inicio()",
       ],
+      // A 20261399600000 (o resultado credita o custo da devolucao de outro mes): fin_dre sobre o corpo da 382, funcao de fora destas tres (a 17a nao a le), o mesmo caso da 382 acima.
+      // O rollback dela devolve o corpo da 382 (o molde, abaixo, desfaz e mede).
+      [
+        "20261399600000_o_resultado_credita_o_custo_da_devolucao_de_outro_mes.sql",
+        "public.fin_dre(date,date)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

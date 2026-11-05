@@ -104,9 +104,9 @@ WITH alvo(chave, assinatura, nome, lingua, volatilidade, retorno) AS (
   UNION ALL
   SELECT 'fin_dre: corpo e o da 20261242000000, com o custo do dia da venda (md5)',
          'afc3e13805ce37819cfdcd094043087c',
-         -- A 20261382000000 sucede so o fin_dre (o sinal do detalhe do Resultado financeiro): aceita os dois corpos
-         -- EXATOS; normaliza ao esperado historico do rol.
-         COALESCE((SELECT CASE WHEN f.m IN ('afc3e13805ce37819cfdcd094043087c', '2d191bc8120a9b188c04eeaaa0263110')
+         -- A 20261382000000 sucede so o fin_dre (o sinal do detalhe do Resultado financeiro) e a 20261399600000 sucede a 382 (o resultado
+         -- credita o custo da devolucao de outro mes): aceita os tres corpos EXATOS; normaliza ao esperado historico do rol.
+         COALESCE((SELECT CASE WHEN f.m IN ('afc3e13805ce37819cfdcd094043087c', '2d191bc8120a9b188c04eeaaa0263110', 'eafc6a2c4663e33f5459791c6601b848')
                               THEN 'afc3e13805ce37819cfdcd094043087c' ELSE f.m END FROM fn f WHERE f.chave = 'dre'), 'AUSENTE')
   UNION ALL
   SELECT 'marketplace_order_item__guarda_o_custo_do_dia: corpo e o da 20261242000000, o gatilho que nunca derruba a compra (md5)',
