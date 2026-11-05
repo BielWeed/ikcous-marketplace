@@ -516,14 +516,16 @@ describe("resumoDaEstrategiaNacional — texto curto do estado SALVO (botão 'Fo
     );
   });
 
-  it("por_produto, alcance 'mais_barata'", () => {
-    const config = configBase({
-      nationalShippingStrategy: "por_produto",
-      nationalBenefitScope: "mais_barata",
-    });
-    expect(resumoDaEstrategiaNacional(config)).toBe(
-      "grátis por produto marcado · só a mais barata",
-    );
+  it("por_produto não imprime o alcance (o servidor devolve uma opção só e ignora a escolha)", () => {
+    for (const alcance of ["mais_barata", "todas"] as const) {
+      const config = configBase({
+        nationalShippingStrategy: "por_produto",
+        nationalBenefitScope: alcance,
+      });
+      expect(resumoDaEstrategiaNacional(config)).toBe(
+        "grátis por produto marcado",
+      );
+    }
   });
 
   it("desconto percentual sem mínimo (0 = sem 'acima de')", () => {
@@ -549,15 +551,18 @@ describe("resumoDaEstrategiaNacional — texto curto do estado SALVO (botão 'Fo
   });
 });
 
-describe("estrategiaTemAlcanceEditavel — o alcance só existe para as 3 estratégias de GRÁTIS", () => {
+describe("estrategiaTemAlcanceEditavel — o alcance só existe para as 2 estratégias de GRÁTIS que o servidor respeita", () => {
   it("desligado não tem alcance editável", () => {
     expect(estrategiaTemAlcanceEditavel("desligado")).toBe(false);
   });
 
-  it("acima_de_valor, sempre e por_produto têm", () => {
+  it("acima_de_valor e sempre têm", () => {
     expect(estrategiaTemAlcanceEditavel("acima_de_valor")).toBe(true);
     expect(estrategiaTemAlcanceEditavel("sempre")).toBe(true);
-    expect(estrategiaTemAlcanceEditavel("por_produto")).toBe(true);
+  });
+
+  it("por_produto não tem — o servidor devolve uma única opção grátis e nunca lê o alcance", () => {
+    expect(estrategiaTemAlcanceEditavel("por_produto")).toBe(false);
   });
 
   it("desconto_na_mais_barata não tem — é sempre a mais barata por definição", () => {

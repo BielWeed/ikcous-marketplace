@@ -219,11 +219,58 @@ export function htmlParaTexto(html: string): string {
     const tag = marcador.getAttribute("data-tag");
     marcador.replaceWith(doc.createTextNode(`[${tag}]`));
   }
-  for (const quebra of doc.querySelectorAll("br")) {
-    quebra.replaceWith(doc.createTextNode("\n"));
-  }
 
-  return doc.body.textContent || "";
+  // O Enter numa div contentEditable cria blocos (`A<div>B</div>`; linha em
+  // branco = `<div><br></div>`), não um `<br>`: ler só o `textContent` colava
+  // as linhas. Lê por linhas — bloco abre linha nova, `<br>` solto quebra, e o
+  // `<br>` que é o único filho do bloco é só o "marcador de linha vazia" do
+  // navegador (a quebra já vem do próprio bloco; contar de novo duplicaria).
+  const linhas: string[] = [];
+  let aberta = false; // há uma linha em andamento
+  let recemAberta = false; // ... e ela foi aberta por um bloco, ainda vazia
+  let fechada = false; // o último bloco acabou: o que vier começa linha nova
+
+  const abrirLinha = () => {
+    linhas.push("");
+    aberta = true;
+    fechada = false;
+  };
+  const percorrer = (no: Node): void => {
+    for (const filho of no.childNodes) {
+      if (filho.nodeType === Node.TEXT_NODE) {
+        const texto = filho.textContent ?? "";
+        if (texto === "") continue;
+        // Espaço de formatação entre dois blocos não é linha.
+        if (fechada && texto.trim() === "") continue;
+        if (!aberta || fechada) abrirLinha();
+        linhas[linhas.length - 1] += texto;
+        recemAberta = false;
+        continue;
+      }
+      if (filho.nodeType !== Node.ELEMENT_NODE) continue;
+      const elemento = filho as Element;
+      const nome = elemento.tagName;
+      if (nome === "BR") {
+        const marcadorDeLinhaVazia =
+          elemento.parentElement !== doc.body &&
+          elemento.parentElement?.childNodes.length === 1;
+        if (marcadorDeLinhaVazia) continue;
+        if (!aberta || fechada) abrirLinha();
+        abrirLinha();
+        recemAberta = false;
+      } else if (nome === "DIV" || nome === "P") {
+        if (!(aberta && recemAberta && !fechada)) abrirLinha();
+        recemAberta = true;
+        percorrer(elemento);
+        fechada = true;
+      } else {
+        percorrer(elemento);
+      }
+    }
+  };
+  percorrer(doc.body);
+
+  return linhas.join("\n");
 }
 
 /** A mensagem de compartilhar com um produto de exemplo (a prévia). */

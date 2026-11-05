@@ -307,15 +307,18 @@ export function metaDeFreteGratisPorValor(
 // da conta da edge faria a prévia mentir sobre o preço real.
 // ─────────────────────────────────────────────────────────────────────────
 
-/** As 3 estratégias de GRÁTIS cujo alcance (mais barata / todas as opções) é
+/** As 2 estratégias de GRÁTIS cujo alcance (mais barata / todas as opções) é
  * uma escolha da lojista. O desconto não entra: é sempre "mais_barata" por
  * definição da própria estratégia (o servidor ignora a coluna nesse caso —
- * EMENDA revisão T1). */
+ * EMENDA revisão T1). `por_produto` também não entra: com item marcado a edge
+ * devolve UMA opção grátis fixa (`free-shipping-promo`) e nunca lê o alcance,
+ * então oferecer a escolha prometeria o que o servidor não faz. */
 const ESTRATEGIAS_DE_GRATIS_NACIONAL: ReadonlySet<EstrategiaDeFreteNacional> =
-  new Set(["acima_de_valor", "sempre", "por_produto"]);
+  new Set(["acima_de_valor", "sempre"]);
 
 /** O alcance (mais barata / todas as opções) só faz sentido para as
- * estratégias de GRÁTIS — desconto não mostra o painel de alcance. */
+ * estratégias de GRÁTIS que o servidor respeita — desconto e grátis por
+ * produto não mostram o painel de alcance. */
 export function estrategiaTemAlcanceEditavel(
   estrategia: EstrategiaDeFreteNacional,
 ): boolean {
@@ -390,7 +393,7 @@ export function resumoDaEstrategiaNacional(
     case "sempre":
       return `sempre grátis · ${alcanceTexto}`;
     case "por_produto":
-      return `grátis por produto marcado · ${alcanceTexto}`;
+      return "grátis por produto marcado";
     case "desconto_na_mais_barata": {
       const valorTexto =
         tipoDesconto === "percentual"
