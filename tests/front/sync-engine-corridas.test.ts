@@ -17,6 +17,7 @@ vi.mock("@/lib/supabase", () => ({
       const consulta = {
         select: () => consulta,
         order: () => consulta,
+        range: () => consulta,
         is: () => consulta,
         in: () => {
           detalhe = true;

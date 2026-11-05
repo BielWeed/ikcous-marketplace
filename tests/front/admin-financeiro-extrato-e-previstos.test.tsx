@@ -134,8 +134,9 @@ const A_PAGAR = [
     id: "e1",
     descricao: "Estorno do pedido #999xyz",
     valor: 60,
-    vencimento: null,
-    vencido: false,
+    // Dia em que o estorno foi pedido: já passou, e mesmo assim não é atraso.
+    vencimento: "2026-09-02",
+    vencido: true,
     conta_id: CONTA_MERCADO_PAGO,
     conta_nome: "Mercado Pago",
     origem: "estorno",
@@ -327,6 +328,10 @@ describe("Financeiro — extrato e a pagar", () => {
     const texto = normalizar(hospedeiro.textContent);
     expect(texto).toContain("Vencidos · 1");
     expect(texto).toMatch(/Venceu há \d+ dias/);
+    // O estorno com vencimento no passado fica fora de "Vencidos" (a Visão
+    // também não o conta) e não diz "Venceu há N dias".
+    expect(texto).toContain("Em andamento · 1");
+    expect(texto.split("Venceu há").length - 1).toBe(1);
     expect(texto).toContain("Fornecedor de camisetas (1/2)");
     expect(texto.split("1/2").length - 1).toBe(1);
     expect(texto).toContain("Estorno em andamento");

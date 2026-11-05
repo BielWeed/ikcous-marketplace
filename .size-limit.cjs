@@ -278,7 +278,9 @@ module.exports = [
     // 04/11/2026 (mesma regra): 502 -> 503 kB na 1.5.121 (guia de pagamento, selo de cancelado sem pagamento e
     // textos de devolucao no painel de Pedidos). Medem 502,11 kB no build local, 109 B acima do teto.
     // Nada foi trocado por algo mais arriscado.
-    limit: "503 kB",
+    // 05/11/2026 (mesma regra): 503 -> 504 kB na 1.5.130 (colar valor em reais, leitor de balcao e aba
+    // Pagar e receber). Medem 502,99 kB no build local, 10 B abaixo do teto: folga menor que o ruido.
+    limit: "504 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },

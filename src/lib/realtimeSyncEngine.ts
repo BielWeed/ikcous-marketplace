@@ -29,6 +29,7 @@ import {
   geracaoDoCofre,
   invalidarGravacoesEmVoo,
 } from "@/lib/geracao-do-cofre";
+import { lerEmPaginas } from "@/lib/ler-em-paginas";
 import { mapProductFromDB, mapVariantFromDB } from "@/lib/mappers";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types";
@@ -848,13 +849,23 @@ export const RealtimeSyncEngine = {
       const tableSourceConfig = isAdmin ? "store_config" : "v_store_config";
       const productSource = isAdmin ? "produtos" : "vw_produtos_public";
 
-      // Build products query
-      let productsQuery = supabase
-        .from(productSource as any)
-        .select("id, ultima_atualizacao");
-      if (isAdmin) {
-        productsQuery = productsQuery.is("deleted_at", null);
-      }
+      // Resumo dos produtos (id + ultima_atualizacao), lido em PÁGINAS de
+      // 1.000 com ordenação estável. O servidor corta cada chamada em 1.000
+      // linhas sem avisar: lido de uma vez só, o resumo de uma loja maior
+      // vinha pela metade, e o laço de exclusão (mais abaixo) apagava do
+      // aparelho todo produto "ausente" dele. Falha em qualquer página
+      // devolve `data: null` e a reconciliação inteira dos produtos é pulada
+      // nesta rodada (nunca se apaga com resumo incompleto).
+      const lerResumoDosProdutos = () =>
+        lerEmPaginas<any>((de, ate) => {
+          let productsQuery = supabase
+            .from(productSource as any)
+            .select("id, ultima_atualizacao");
+          if (isAdmin) {
+            productsQuery = productsQuery.is("deleted_at", null);
+          }
+          return productsQuery.order("id").range(de, ate);
+        });
 
       // Execute queries in parallel
       const [configResult, categoriesResult, bannersResult, summaryResult] =
@@ -865,7 +876,7 @@ export const RealtimeSyncEngine = {
             .single(),
           supabase.from("categorias").select("*").order("nome"),
           supabase.from("banners").select("*").order("order"),
-          productsQuery,
+          lerResumoDosProdutos(),
         ]);
       if (caducou()) return;
 
@@ -994,10 +1005,26 @@ export const RealtimeSyncEngine = {
         // aviso à tela com estado que o cofre não tem.
         const localProducts = await vault.getAllOrThrow<Product>("products");
 
+        // Defesa extra: a lista pode andar enquanto as páginas são lidas
+        // (produto novo empurra a linha da fronteira para a página seguinte e
+        // ela vem DUAS vezes). Resumo com id repetido não merece confiança
+        // para apagar nada: pula as exclusões desta rodada (as inclusões e
+        // atualizações abaixo seguem) e a próxima rodada reconcilia.
+        const resumoCoerente = serverIds.size === serverSummary.length;
+        if (!resumoCoerente) {
+          console.warn(
+            "[RealtimeSyncEngine] Resumo de produtos com id repetido: exclusões puladas nesta rodada.",
+          );
+        }
+
         // Find deleted/inactive items: in local but not on server
-        const deletedIds = localProducts
-          .filter((p) => !serverIds.has(p.id) && !_produtosTocados?.has(p.id))
-          .map((p) => p.id);
+        const deletedIds = resumoCoerente
+          ? localProducts
+              .filter(
+                (p) => !serverIds.has(p.id) && !_produtosTocados?.has(p.id),
+              )
+              .map((p) => p.id)
+          : [];
         for (const id of deletedIds) {
           // Outro evento pode chegar enquanto as exclusões anteriores aguardam IDB.
           if (caducou()) return;
@@ -1048,7 +1075,9 @@ export const RealtimeSyncEngine = {
         // primeiro-achado do `.find` no (inexistente em produção) caso de
         // id repetido. NÃO adicionar `.limit()` no resumo: limite causaria
         // falso-sync (produto fora do resumo pareceria excluído) — o
-        // resumo de 2 colunas é leve de propósito.
+        // resumo de 2 colunas é leve de propósito. E o teto de 1.000 linhas
+        // do servidor tem o mesmo efeito: por isso o resumo é lido em
+        // páginas (`lerEmPaginas`, ver o começo do método).
         const localPorId = new Map<string, Product>();
         for (const p of localProducts) {
           if (!localPorId.has(p.id)) localPorId.set(p.id, p);
@@ -1096,7 +1125,7 @@ export const RealtimeSyncEngine = {
           //
           // realtimeSyncEngine-955: o `.in("id", [...])` é montado em LOTES de
           // 100 ids. Cada UUID custa ~37 caracteres na query string; o resumo
-          // de onde nasce `outOfDateIds` é deliberadamente sem `.limit()` (um
+          // de onde nasce `outOfDateIds` é lido por inteiro, sem `.limit()` (um
           // limite causaria falso-sync), então uma loja com algumas centenas de
           // produtos e cofre vazio (primeiro boot, purge de versão) passava de
           // 8 KB de linha de requisição num GET único — 414/431 no gateway, a

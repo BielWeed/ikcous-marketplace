@@ -518,6 +518,47 @@ describe("useLeitorDeCodigo", () => {
     expect(aoLer).not.toHaveBeenCalled();
   });
 
+  it("11b. teclado: o MESMO código bipado duas vezes em menos de 1,5s chama aoLer duas vezes (cada bipe da pistola é deliberado)", async () => {
+    const aoLer = vi.fn();
+    await montar({ ativo: false, aoLer });
+    await avancar(0);
+
+    function bipar(codigo: string) {
+      for (const tecla of [...codigo, "Enter"]) {
+        const evento = new KeyboardEvent("keydown", {
+          key: tecla,
+          bubbles: true,
+          cancelable: true,
+        });
+        act(() => {
+          document.body.dispatchEvent(evento);
+        });
+      }
+    }
+
+    bipar("7891000315507");
+    await avancar(300);
+    bipar("7891000315507");
+
+    expect(aoLer).toHaveBeenCalledTimes(2);
+  });
+
+  it("12c. lerCodigoDigitado: o MESMO código digitado duas vezes em menos de 1,5s chama aoLer duas vezes", async () => {
+    const aoLer = vi.fn();
+    await montar({ ativo: false, aoLer });
+    await avancar(0);
+
+    act(() => {
+      clicar("ler-digitado");
+    });
+    await avancar(300);
+    act(() => {
+      clicar("ler-digitado");
+    });
+
+    expect(aoLer).toHaveBeenCalledTimes(2);
+  });
+
   it("12. lerCodigoDigitado tira os espaços; string vazia não chama nada", async () => {
     const aoLer = vi.fn();
     await montar({ ativo: false, aoLer });

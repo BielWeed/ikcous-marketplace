@@ -20,6 +20,7 @@ vi.mock("@/lib/supabase", () => {
   const builder: any = {
     select: () => builder,
     order: () => builder,
+    range: () => builder,
     limit: () => builder,
     is: () => builder,
     in: () => builder,

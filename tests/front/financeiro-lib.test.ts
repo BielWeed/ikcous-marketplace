@@ -32,6 +32,7 @@ import {
   rotuloDaForma,
   saldoCorrenteRetroativo,
   serieDoFluxoDeCaixa,
+  situacaoDoPrevisto,
   situacaoDoVencimento,
   sublinhasDaDre,
   textoDoVencimento,
@@ -821,6 +822,23 @@ describe("a pagar / a receber", () => {
       total: 36.1,
       vencido: 10.1,
       proximos7Dias: 20,
+    });
+  });
+
+  it("estorno em andamento com vencimento no passado não é conta vencida (como a Visão)", () => {
+    const itens = parsePrevistos([
+      { id: "1", valor: 10, vencimento: "2026-09-01", origem: "manual" },
+      { id: "2", valor: 60, vencimento: "2026-09-24", origem: "estorno" },
+    ]);
+    expect(itens.map((item) => situacaoDoPrevisto(item, hoje))).toEqual([
+      "vencido",
+      "andamento",
+    ]);
+    // O estorno segue no total (o dinheiro vai sair); só o "vencido" o ignora.
+    expect(totaisDosPrevistos(itens, hoje)).toEqual({
+      total: 70,
+      vencido: 10,
+      proximos7Dias: 0,
     });
   });
 });

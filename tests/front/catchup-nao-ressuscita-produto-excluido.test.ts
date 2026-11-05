@@ -101,6 +101,7 @@ function construirQueryBuilder(tabela: string, banco: BancoDeTeste) {
   const builder: any = {
     select: () => builder,
     order: () => builder,
+    range: () => builder,
     // P-6 (laudo varredura 01/09): o catchUp agora manda .limit(500) no
     // ramo admin de cupons — o dublê apenas encadeia.
     limit: () => builder,

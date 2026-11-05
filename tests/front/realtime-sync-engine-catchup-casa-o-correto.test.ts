@@ -50,6 +50,7 @@ function builderResumo(linhas: any[]) {
   builder.select = vi.fn(() => builder);
   builder.is = vi.fn(() => builder);
   builder.order = vi.fn(() => builder);
+  builder.range = vi.fn(() => builder);
   builder.single = vi.fn(() => Promise.resolve({ data: null, error: null }));
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
   builder.then = (resolve: any, reject?: any) =>

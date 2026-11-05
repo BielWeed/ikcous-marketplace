@@ -58,6 +58,7 @@ vi.mock("@/lib/supabase", () => ({
         is: vi.fn(() => consulta),
         in: vi.fn(() => consulta),
         order: vi.fn(() => consulta),
+        range: vi.fn(() => consulta),
         eq: vi.fn(() => consulta),
         limit: vi.fn(() => consulta),
         single: vi.fn(() => Promise.resolve({ data: null, error: null })),
