@@ -293,6 +293,9 @@ export type AcaoDaVenda =
       readonly codigo: string;
       readonly resposta: RespostaDoCodigo;
       readonly em: number;
+      /** Veio da pistola ou do campo Digitar. Ausente/false = câmera, a única
+       * origem sujeita a `deveIgnorarLeitura`. */
+      readonly deTeclado?: boolean;
     }
   | {
       readonly tipo: "variacao_escolhida";
@@ -440,8 +443,10 @@ export function estoqueEfetivo(resposta: RespostaDoCodigo): number {
 // ============================================================================
 
 /**
- * `useLeitorDeCodigo` (C2) já ignora o MESMO código decodificado duas vezes
- * dentro de `JANELA_DE_REPETICAO_MS` — mas essa janela conta da
+ * `useLeitorDeCodigo` (C2) ignora o MESMO código decodificado PELA CÂMERA
+ * duas vezes dentro de `JANELA_DE_REPETICAO_MS` (pistola e campo Digitar não
+ * têm esse debounce, e esta guarda também não vale para eles: a ação chega
+ * com `deTeclado`). Para a câmera, essa janela conta da
  * DECODIFICAÇÃO, e entre `aoLer` e este código chegar aqui como
  * `codigo_resolvido` há uma ida ao servidor (`buscar_por_codigo_barras`).
  * Duas leituras separadas por 1,6s (fora da janela do leitor) podem ter as
@@ -736,7 +741,10 @@ export function reducerDaVenda(
       // reaparecer numa leitura que a máquina já processou há menos de
       // 1,5s (o defeito clássico é o mesmo aviso piscando duas vezes por
       // causa de duas respostas da mesma leitura chegando fora de ordem).
-      if (deveIgnorarLeitura(estado, acao.codigo, acao.em)) {
+      // Só a câmera: cada bipe da pistola (ou código digitado) é um disparo
+      // deliberado e gera UMA resposta, então duas peças iguais seguidas
+      // são 2 unidades.
+      if (!acao.deTeclado && deveIgnorarLeitura(estado, acao.codigo, acao.em)) {
         return {
           ...estado,
           aviso: { tipo: "ignorado_repetido", codigo: acao.codigo },

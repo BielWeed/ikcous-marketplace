@@ -1284,7 +1284,8 @@ export type SituacaoDoVencimento =
   | "hoje"
   | "semana"
   | "depois"
-  | "sem_data";
+  | "sem_data"
+  | "andamento";
 
 export function situacaoDoVencimento(
   vencimento: DataIso | null,
@@ -1294,6 +1295,20 @@ export function situacaoDoVencimento(
   if (vencimento < hoje) return "vencido";
   if (vencimento === hoje) return "hoje";
   return diasEntre(hoje, vencimento) <= 7 ? "semana" : "depois";
+}
+
+/**
+ * Estorno em andamento não é conta atrasada: o vencimento dele é só o dia em
+ * que o pedido de estorno foi criado (a Visão já o tira do "vencido").
+ */
+export function situacaoDoPrevisto(
+  item: Pick<LancamentoPrevisto, "vencimento" | "origem">,
+  hoje: DataIso,
+): SituacaoDoVencimento {
+  const situacao = situacaoDoVencimento(item.vencimento, hoje);
+  return situacao === "vencido" && item.origem === "estorno"
+    ? "andamento"
+    : situacao;
 }
 
 export function textoDoVencimento(
@@ -1332,7 +1347,7 @@ export function totaisDosPrevistos(
   for (const item of lista) {
     const centavos = paraCentavos(item.valor);
     total += centavos;
-    const situacao = situacaoDoVencimento(item.vencimento, hoje);
+    const situacao = situacaoDoPrevisto(item, hoje);
     if (situacao === "vencido") vencido += centavos;
     else if (situacao === "hoje" || situacao === "semana") proximos += centavos;
   }

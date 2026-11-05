@@ -263,6 +263,7 @@ export function AdminPdvView({
         codigo: leitura.codigo,
         resposta,
         em: Date.now(),
+        deTeclado: leitura.deTeclado === true,
       });
     } catch (erro) {
       console.error("Erro ao consultar código de barras no balcão:", erro);

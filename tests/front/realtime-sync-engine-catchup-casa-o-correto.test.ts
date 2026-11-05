@@ -3,8 +3,9 @@
 // servidor contra o catálogo local com `localProducts.find(...)` DENTRO do
 // laço — O(n×m) a cada foco/retorno de conexão. O conserto constrói UM
 // `Map` de id→produto local antes do laço (O(n+m)), SEM mudar a semântica:
-// mesmo critério (id), primeiro-achado preservado, NENHUM .limit() no
-// resumo (limpar o resumo causaria falso-sync — decisão registrada).
+// mesmo critério (id), primeiro-achado preservado, resumo nunca cortado
+// (um corte causaria falso-sync — decisão registrada; hoje ele é lido
+// INTEIRO, em páginas por chave, e a leitura por página usa `.limit()`).
 //
 // Este teste é de CARACTERIZAÇÃO da semântica do casamento: com N produtos
 // locais e M linhas de resumo, afirma que o detalhe recarregado é EXATAMENTE
@@ -50,6 +51,7 @@ function builderResumo(linhas: any[]) {
   builder.select = vi.fn(() => builder);
   builder.is = vi.fn(() => builder);
   builder.order = vi.fn(() => builder);
+  builder.limit = vi.fn(() => builder);
   builder.single = vi.fn(() => Promise.resolve({ data: null, error: null }));
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
   builder.then = (resolve: any, reject?: any) =>

@@ -34,6 +34,8 @@ import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import {
   GRUPOS_DE_MOTIVO,
   MAXIMO_DE_FOTOS,
+  TAMANHO_MAXIMO_DA_FOTO,
+  TIPOS_DE_FOTO,
   devolveFreteDeIda,
   erroDaResolucao,
   erroDoMotivo,
@@ -51,6 +53,7 @@ import {
   tipoPrevisto,
   valorDaSelecao,
 } from "@/lib/devolucao";
+import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import { cn } from "@/lib/utils";
 import type {
   ElegibilidadeDevolucao,
@@ -104,6 +107,24 @@ const previaDe = (arquivo: File) =>
   typeof URL !== "undefined" && typeof URL.createObjectURL === "function"
     ? URL.createObjectURL(arquivo)
     : "";
+
+/**
+ * Por que a foto não serve (mesmas regras de `enviarFoto`, que segue
+ * conferindo ao enviar), ou `null`. O limite vale depois da redução, que só
+ * vale a pena para o que já passa do limite.
+ */
+async function recusaDaFoto(arquivo: File): Promise<string | null> {
+  if (!TIPOS_DE_FOTO.includes(arquivo.type)) {
+    return `A foto "${arquivo.name}" não é JPG, PNG ou WEBP. Escolha outra.`;
+  }
+  if (
+    arquivo.size > TAMANHO_MAXIMO_DA_FOTO &&
+    (await redimensionarImagem(arquivo)).size > TAMANHO_MAXIMO_DA_FOTO
+  ) {
+    return `A foto "${arquivo.name}" passa de 5 MB. Escolha uma menor.`;
+  }
+  return null;
+}
 
 const soltarPrevia = (previa: string) => {
   if (previa && typeof URL.revokeObjectURL === "function") {
@@ -451,23 +472,32 @@ function FluxoDaDevolucao({
     setErro(null);
   }
 
-  function adicionarFotos(lista: FileList | null) {
+  async function adicionarFotos(lista: FileList | null) {
     if (!lista || lista.length === 0) return;
-    const vagas = MAXIMO_DE_FOTOS - fotos.length;
-    const novas = Array.from(lista)
-      .slice(0, Math.max(vagas, 0))
-      .map((arquivo) => ({
+    const escolhidas = Array.from(lista);
+    if (entradaDeFotoRef.current) entradaDeFotoRef.current.value = "";
+    const vagas = Math.max(MAXIMO_DE_FOTOS - fotos.length, 0);
+    if (escolhidas.length > vagas) {
+      toast.info(`Envie no máximo ${MAXIMO_DE_FOTOS} fotos.`);
+    }
+    // A foto ruim é barrada aqui, com o nome dela; as outras da escolha entram.
+    const aceitas: File[] = [];
+    for (const arquivo of escolhidas.slice(0, vagas)) {
+      const recusa = await recusaDaFoto(arquivo);
+      if (recusa) toast.error(recusa);
+      else aceitas.push(arquivo);
+    }
+    if (desmontadaRef.current) return;
+    setFotos((antes) => [
+      ...antes,
+      ...aceitas.map((arquivo) => ({
         chave: `${arquivo.name}-${arquivo.size}-${Math.random()}`,
         arquivo,
         previa: previaDe(arquivo),
         caminho: null,
-      }));
-    if (lista.length > vagas) {
-      toast.info(`Envie no máximo ${MAXIMO_DE_FOTOS} fotos.`);
-    }
-    setFotos((antes) => [...antes, ...novas]);
+      })),
+    ]);
     setErro(null);
-    if (entradaDeFotoRef.current) entradaDeFotoRef.current.value = "";
   }
 
   function removerFoto(chave: string) {
@@ -758,7 +788,7 @@ function FluxoDaDevolucao({
                 className="sr-only"
                 tabIndex={-1}
                 aria-hidden
-                onChange={(e) => adicionarFotos(e.target.files)}
+                onChange={(e) => void adicionarFotos(e.target.files)}
               />
             </div>
           </div>

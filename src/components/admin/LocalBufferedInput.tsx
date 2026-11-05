@@ -83,6 +83,28 @@ const parseCurrencyToFloatString = (val: string, permiteNegativo = false) => {
   return sinal + num.toFixed(2);
 };
 
+// Colagem: lê o texto como número brasileiro (vírgula decimal, ponto de milhar;
+// "R$", espaços e sinal ignorados) e devolve os centavos, ou "" se não for número.
+// Ponto sem vírgula: 1-2 dígitos depois é decimal ("12.5"), 3 é milhar ("1.234").
+const centavosDaColagem = (texto: string) => {
+  const t = texto.replace(/[^\d.,]/g, "");
+  if (!/\d/.test(t)) return "";
+  const [inteira, decimal = "", ...resto] = t.split(",");
+  const grupos = inteira.split(".");
+  const milhar =
+    grupos.length > 1 &&
+    grupos[0].length > 0 &&
+    grupos[0].length <= 3 &&
+    grupos.slice(1).every((g) => g.length === 3);
+  let n = "";
+  if (resto.length === 0 && /^\d*$/.test(decimal)) {
+    if (grupos.length === 1 || milhar)
+      n = `${grupos.join("") || 0}.${decimal || 0}`;
+    else if (t === inteira && /^\d+\.\d{1,2}$/.test(t)) n = t;
+  }
+  return n ? String(Math.round(Number(n) * 100)) : "";
+};
+
 // O valor que chega pela prop `value` já está em reais (ex.: 100 ou "100.00"),
 // diferente do que o usuário digita, que é interpretado em centavos.
 // Converter para centavos antes de formatar, senão R$ 100,00 é exibido como R$ 1,00.
@@ -165,10 +187,19 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
       val = formatPhone(val, localVal.toString());
       rawVal = val.replace(/\D/g, "");
     } else if (mask === "currency") {
+      const { inputType: tipo, data } = e.nativeEvent as InputEvent;
+      if (tipo === "insertFromPaste" || tipo === "insertFromDrop") {
+        // Colar/soltar não é "máscara de centavos": o texto vale como número e
+        // substitui o campo. `data` é só o trecho inserido (o campo já vem
+        // misturado com o que havia); sem ele, vale o campo inteiro.
+        const colado = data ?? val;
+        const centavos = centavosDaColagem(colado);
+        if (!centavos) return; // não é número: ignora, o campo volta ao que era
+        val = sinalDaMoeda(colado, permiteNegativo) + centavos;
+      }
       const textoBruto = val;
       val = formatCurrency(val, permiteNegativo);
       rawVal = parseCurrencyToFloatString(val, permiteNegativo);
-      const tipo = (e.nativeEvent as InputEvent).inputType;
       const zeroEscrito =
         zeroDigitadoVale &&
         (tipo === undefined

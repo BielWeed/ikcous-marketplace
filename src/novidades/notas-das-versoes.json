@@ -1,4 +1,16 @@
 {
+  "1.5.130": {
+    "titulo": "Menos tropeços no balcão, no financeiro, nas fotos de devolução e na vitrine grande",
+    "novidades": [],
+    "correcoes": [
+      "Balcão: bipar duas peças iguais seguidas com a pistola (ou digitando o código) agora lança as duas unidades; antes a segunda era descartada sem aviso.",
+      "Painel, campos de valor em reais: ao colar um valor (150, 12,5, 1.234,56, R$ 10) o campo entende o número como está escrito, em vez de tratar como centavos.",
+      "Financeiro, Pagar e receber: estorno em andamento não aparece mais como conta vencida; ele fica numa seção Em andamento.",
+      "Devolução: a foto que não serve (formato errado ou maior que 5 MB) é recusada na hora de escolher, dizendo qual é, e não só no fim do pedido.",
+      "Loja com mais de 1.000 produtos: ao voltar para o app, os produtos deixam de sumir da vitrine."
+    ],
+    "melhorias": []
+  },
   "1.5.129": {
     "titulo": "O título da aba do navegador volta ao certo ao sair de uma tela da loja",
     "novidades": [],

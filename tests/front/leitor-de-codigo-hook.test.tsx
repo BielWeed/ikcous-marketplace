@@ -504,6 +504,7 @@ describe("useLeitorDeCodigo", () => {
     expect(aoLer).toHaveBeenCalledWith({
       codigo: "7891",
       formato: "desconhecido",
+      deTeclado: true,
     });
 
     aoLer.mockClear();
@@ -516,6 +517,52 @@ describe("useLeitorDeCodigo", () => {
     }
     teclar("Enter", campoReal);
     expect(aoLer).not.toHaveBeenCalled();
+  });
+
+  it("11b. teclado: o MESMO código bipado duas vezes em menos de 1,5s chama aoLer duas vezes (cada bipe da pistola é deliberado)", async () => {
+    const aoLer = vi.fn();
+    await montar({ ativo: false, aoLer });
+    await avancar(0);
+
+    function bipar(codigo: string) {
+      for (const tecla of [...codigo, "Enter"]) {
+        const evento = new KeyboardEvent("keydown", {
+          key: tecla,
+          bubbles: true,
+          cancelable: true,
+        });
+        act(() => {
+          document.body.dispatchEvent(evento);
+        });
+      }
+    }
+
+    bipar("7891000315507");
+    await avancar(300);
+    bipar("7891000315507");
+
+    expect(aoLer).toHaveBeenCalledTimes(2);
+    // Cada chamada leva a marca de teclado: é ela que o balcão usa para não
+    // aplicar a proteção da câmera (mesmo código parado no quadro).
+    for (const [leitura] of aoLer.mock.calls) {
+      expect(leitura).toMatchObject({ deTeclado: true });
+    }
+  });
+
+  it("12c. lerCodigoDigitado: o MESMO código digitado duas vezes em menos de 1,5s chama aoLer duas vezes", async () => {
+    const aoLer = vi.fn();
+    await montar({ ativo: false, aoLer });
+    await avancar(0);
+
+    act(() => {
+      clicar("ler-digitado");
+    });
+    await avancar(300);
+    act(() => {
+      clicar("ler-digitado");
+    });
+
+    expect(aoLer).toHaveBeenCalledTimes(2);
   });
 
   it("12. lerCodigoDigitado tira os espaços; string vazia não chama nada", async () => {
@@ -534,6 +581,7 @@ describe("useLeitorDeCodigo", () => {
     expect(aoLer).toHaveBeenCalledWith({
       codigo: "7891000315507",
       formato: "desconhecido",
+      deTeclado: true,
     });
   });
 
@@ -548,6 +596,7 @@ describe("useLeitorDeCodigo", () => {
     expect(aoLer).toHaveBeenCalledWith({
       codigo: "7891234567895",
       formato: "desconhecido",
+      deTeclado: true,
     });
   });
 

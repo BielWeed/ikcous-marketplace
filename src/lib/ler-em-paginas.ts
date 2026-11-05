@@ -4,7 +4,7 @@
 // menor que o tamanho — a prova de que acabou.
 export const TAMANHO_DA_PAGINA = 1000;
 // Freio contra laço infinito (100 mil linhas); nunca chega nele na prática.
-const MAXIMO_DE_PAGINAS = 100;
+export const MAXIMO_DE_PAGINAS = 100;
 
 type Resposta<T> = { data: T[] | null; error: unknown };
 

@@ -9,7 +9,7 @@ import {
   paraCentavos,
   previstoEhEditavel,
   rotuloDaOrigem,
-  situacaoDoVencimento,
+  situacaoDoPrevisto,
   textoDoVencimento,
   totaisDosPrevistos,
 } from "@/lib/financeiro";
@@ -44,6 +44,7 @@ import {
 
 const SECOES: readonly { situacao: SituacaoDoVencimento; titulo: string }[] = [
   { situacao: "vencido", titulo: "Vencidos" },
+  { situacao: "andamento", titulo: "Em andamento" },
   { situacao: "hoje", titulo: "Vencem hoje" },
   { situacao: "semana", titulo: "Próximos 7 dias" },
   { situacao: "depois", titulo: "Mais adiante" },
@@ -78,7 +79,7 @@ function CartaoDoPrevisto({
   readonly aoAbrirPedido: (pedidoId: string) => void;
 }) {
   const ocultos = useValoresEstaoOcultos();
-  const situacao = situacaoDoVencimento(item.vencimento, hoje);
+  const situacao = situacaoDoPrevisto(item, hoje);
   const editavel = previstoEhEditavel(item);
   // O banco já grava "Aluguel (1/3)" na descrição: só acrescenta a parcela
   // quando o texto ainda não a traz (lançamento antigo), nunca duas vezes.
@@ -122,7 +123,9 @@ function CartaoDoPrevisto({
               : "text-zinc-300",
         )}
       >
-        {textoDoVencimento(item.vencimento, hoje)}
+        {situacao === "andamento"
+          ? "Em andamento"
+          : textoDoVencimento(item.vencimento, hoje)}
         {item.vencimento && situacao !== "depois" ? (
           <span className="font-normal text-zinc-400">
             {" "}
@@ -226,8 +229,7 @@ export function AbaPrevistos({
       SECOES.map((secao) => ({
         ...secao,
         itens: ordenados.filter(
-          (item) =>
-            situacaoDoVencimento(item.vencimento, hoje) === secao.situacao,
+          (item) => situacaoDoPrevisto(item, hoje) === secao.situacao,
         ),
       })).filter((secao) => secao.itens.length > 0),
     [ordenados, hoje],

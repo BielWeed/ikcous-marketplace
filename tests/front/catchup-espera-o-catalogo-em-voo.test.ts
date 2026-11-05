@@ -52,6 +52,7 @@ function builderDeProduto(): any {
   let ehDetalhe = false;
   consulta.is = vi.fn(() => consulta);
   consulta.order = vi.fn(() => consulta);
+  consulta.limit = vi.fn(() => consulta);
   consulta.eq = vi.fn(() => consulta);
   consulta.select = vi.fn(() => consulta);
   consulta.in = vi.fn(() => {
@@ -76,6 +77,7 @@ function builderDeOutraTabela(_tabela: string): any {
   consulta.is = vi.fn(() => consulta);
   consulta.in = vi.fn(() => consulta);
   consulta.order = vi.fn(() => consulta);
+  consulta.limit = vi.fn(() => consulta);
   consulta.eq = vi.fn(() => consulta);
   consulta.select = vi.fn(() => consulta);
   consulta.single = vi.fn(() => Promise.resolve({ data: null, error: null }));
@@ -289,10 +291,12 @@ describe("catchUp espera o catálogo que a vitrine já está baixando", () => {
 
     expect(vi.getTimerCount()).toBe(0);
     expect(tabelasConsultadas).toEqual([
-      "vw_produtos_public", // o resumo é montado primeiro
       "v_store_config",
       "categorias",
       "banners",
+      // o resumo é lido em páginas (lerEmPaginas): a 1ª página é montada
+      // dentro do Promise.all, junto das outras três consultas
+      "vw_produtos_public",
       "vw_produtos_public", // o detalhe por id (cofre vazio)
     ]);
     expect(servidor.consultasDeResumo).toBe(1);

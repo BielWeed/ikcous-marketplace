@@ -29,6 +29,7 @@ import {
   geracaoDoCofre,
   invalidarGravacoesEmVoo,
 } from "@/lib/geracao-do-cofre";
+import { MAXIMO_DE_PAGINAS, TAMANHO_DA_PAGINA } from "@/lib/ler-em-paginas";
 import { mapProductFromDB, mapVariantFromDB } from "@/lib/mappers";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types";
@@ -848,13 +849,65 @@ export const RealtimeSyncEngine = {
       const tableSourceConfig = isAdmin ? "store_config" : "v_store_config";
       const productSource = isAdmin ? "produtos" : "vw_produtos_public";
 
-      // Build products query
-      let productsQuery = supabase
-        .from(productSource as any)
-        .select("id, ultima_atualizacao");
-      if (isAdmin) {
-        productsQuery = productsQuery.is("deleted_at", null);
-      }
+      // Resumo dos produtos (id + ultima_atualizacao), lido em PÁGINAS de
+      // 1.000 POR CHAVE: cada página pede as linhas com `id` depois do último
+      // lido (`.gt("id", ultimoId).order("id").limit(1000)`), até vir uma
+      // página menor que 1.000. O servidor corta cada chamada em 1.000 linhas
+      // sem avisar: lido de uma vez só, o resumo de uma loja maior vinha pela
+      // metade, e o laço de exclusão (mais abaixo) apagava do aparelho todo
+      // produto "ausente" dele. Por POSIÇÃO (`.range`) não serve: se um produto
+      // for excluído/pausado entre a página 1 e a 2, a lista encolhe, a linha
+      // da fronteira passa para a página anterior e nunca é lida -- um produto
+      // vivo pareceria "ausente" e seria apagado do aparelho por engano. Por
+      // chave (`id` é uuid, chave primária: ordem total, sem empate) a página
+      // seguinte recomeça exatamente depois do último lido, aconteça o que
+      // acontecer com as outras linhas. Qualquer falha (rede, chave que não
+      // avança, mais de 100 páginas) devolve `data: null` e a reconciliação
+      // inteira dos produtos é pulada nesta rodada (nunca se apaga com resumo
+      // incompleto).
+      const lerResumoDosProdutos = async (): Promise<{
+        data: any[] | null;
+        error: unknown;
+      }> => {
+        const todas: any[] = [];
+        let depoisDoId: string | null = null;
+        for (let pagina = 0; pagina < MAXIMO_DE_PAGINAS; pagina++) {
+          let productsQuery = supabase
+            .from(productSource as any)
+            .select("id, ultima_atualizacao");
+          if (isAdmin) {
+            productsQuery = productsQuery.is("deleted_at", null);
+          }
+          if (depoisDoId !== null) {
+            productsQuery = productsQuery.gt("id", depoisDoId);
+          }
+          const { data, error } = await productsQuery
+            .order("id")
+            .limit(TAMANHO_DA_PAGINA);
+          if (error) return { data: null, error };
+          const linhas = (data ?? []) as any[];
+          todas.push(...linhas);
+          if (linhas.length < TAMANHO_DA_PAGINA) {
+            return { data: todas, error: null };
+          }
+          // Página cheia: tem de haver um último id novo, senão o servidor
+          // repetiu a página (ou a linha veio sem id) e o laço não anda.
+          const ultimoId: unknown = linhas[linhas.length - 1]?.id;
+          if (typeof ultimoId !== "string" || ultimoId === depoisDoId) {
+            return {
+              data: null,
+              error: new Error("A leitura do resumo dos produtos não avançou"),
+            };
+          }
+          depoisDoId = ultimoId;
+        }
+        // A última página ainda veio cheia: não se sabe se acabou. Devolver o
+        // pedaço como se fosse tudo seria o corte silencioso de volta.
+        return {
+          data: null,
+          error: new Error("Lista grande demais para ler de uma vez"),
+        };
+      };
 
       // Execute queries in parallel
       const [configResult, categoriesResult, bannersResult, summaryResult] =
@@ -865,7 +918,7 @@ export const RealtimeSyncEngine = {
             .single(),
           supabase.from("categorias").select("*").order("nome"),
           supabase.from("banners").select("*").order("order"),
-          productsQuery,
+          lerResumoDosProdutos(),
         ]);
       if (caducou()) return;
 
@@ -994,10 +1047,26 @@ export const RealtimeSyncEngine = {
         // aviso à tela com estado que o cofre não tem.
         const localProducts = await vault.getAllOrThrow<Product>("products");
 
+        // Defesa em profundidade: a leitura por chave não repete linha (cada
+        // página começa depois do último id lido), mas resumo com id repetido
+        // -- de onde quer que venha -- não merece confiança para apagar nada:
+        // pula as exclusões desta rodada (as inclusões e atualizações abaixo
+        // seguem) e a próxima rodada reconcilia.
+        const resumoCoerente = serverIds.size === serverSummary.length;
+        if (!resumoCoerente) {
+          console.warn(
+            "[RealtimeSyncEngine] Resumo de produtos com id repetido: exclusões puladas nesta rodada.",
+          );
+        }
+
         // Find deleted/inactive items: in local but not on server
-        const deletedIds = localProducts
-          .filter((p) => !serverIds.has(p.id) && !_produtosTocados?.has(p.id))
-          .map((p) => p.id);
+        const deletedIds = resumoCoerente
+          ? localProducts
+              .filter(
+                (p) => !serverIds.has(p.id) && !_produtosTocados?.has(p.id),
+              )
+              .map((p) => p.id)
+          : [];
         for (const id of deletedIds) {
           // Outro evento pode chegar enquanto as exclusões anteriores aguardam IDB.
           if (caducou()) return;
@@ -1046,9 +1115,13 @@ export const RealtimeSyncEngine = {
         // indexa o local UMA vez (O(n+m)). A semântica NÃO muda: mesma
         // chave (`p.id`), e o `if (!map.has(...))` preserva o
         // primeiro-achado do `.find` no (inexistente em produção) caso de
-        // id repetido. NÃO adicionar `.limit()` no resumo: limite causaria
-        // falso-sync (produto fora do resumo pareceria excluído) — o
-        // resumo de 2 colunas é leve de propósito.
+        // id repetido. NÃO cortar o resumo num `.limit()` sem continuar: o
+        // pedaço causaria falso-sync (produto fora do resumo pareceria
+        // excluído) — o resumo de 2 colunas é leve de propósito. O teto de
+        // 1.000 linhas do servidor tem o mesmo efeito: por isso o resumo é
+        // lido INTEIRO em páginas por chave (`lerResumoDosProdutos`, no começo
+        // do método), cada uma com `.limit(1000)` e a seguinte a partir do
+        // último id.
         const localPorId = new Map<string, Product>();
         for (const p of localProducts) {
           if (!localPorId.has(p.id)) localPorId.set(p.id, p);
@@ -1096,7 +1169,7 @@ export const RealtimeSyncEngine = {
           //
           // realtimeSyncEngine-955: o `.in("id", [...])` é montado em LOTES de
           // 100 ids. Cada UUID custa ~37 caracteres na query string; o resumo
-          // de onde nasce `outOfDateIds` é deliberadamente sem `.limit()` (um
+          // de onde nasce `outOfDateIds` é lido por inteiro, sem `.limit()` (um
           // limite causaria falso-sync), então uma loja com algumas centenas de
           // produtos e cofre vazio (primeiro boot, purge de versão) passava de
           // 8 KB de linha de requisição num GET único — 414/431 no gateway, a

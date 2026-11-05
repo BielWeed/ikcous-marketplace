@@ -154,7 +154,10 @@ module.exports = [
     // loja). Mede 606,27 kB no build local, 267 B acima do teto. Nada foi trocado por algo mais arriscado.
     // 05/11/2026 (mesma regra): 607 -> 608 kB na 1.5.125 (cartao de estoque baixo abre Produtos ja filtrado e aviso
     // da avaliacao respondida). Mede 607,06 kB no build local, 62 B acima do teto. Nada foi trocado por algo mais arriscado.
-    limit: "608 kB",
+    // 05/11/2026 (mesma regra): 608 -> 609 kB na 1.5.130 (conferencia do catalogo le o resumo por chave, em paginas,
+    // para a loja com mais de 1.000 produtos nao perder produto; recusa de foto da devolucao na escolha). Mede 608,05 kB
+    // no build local, 50 B acima do teto. Nada foi trocado por algo mais arriscado.
+    limit: "609 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
@@ -278,7 +281,9 @@ module.exports = [
     // 04/11/2026 (mesma regra): 502 -> 503 kB na 1.5.121 (guia de pagamento, selo de cancelado sem pagamento e
     // textos de devolucao no painel de Pedidos). Medem 502,11 kB no build local, 109 B acima do teto.
     // Nada foi trocado por algo mais arriscado.
-    limit: "503 kB",
+    // 05/11/2026 (mesma regra): 503 -> 504 kB na 1.5.130 (colar valor em reais, leitor de balcao e aba
+    // Pagar e receber). Medem 502,99 kB no build local, 10 B abaixo do teto: folga menor que o ruido.
+    limit: "504 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },

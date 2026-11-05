@@ -15,8 +15,8 @@
 // lista: ele não depende de `ativo` de propósito. Um leitor USB/Bluetooth
 // funciona sem câmera nenhuma — é só um teclado — então continua ouvindo
 // mesmo enquanto a câmera está fechada/pausada/com erro. Os dois caminhos
-// (câmera e teclado) desembocam na MESMA função `processar`, que já carrega
-// o debounce de 1,5s e o bip/vibração de confirmação.
+// (câmera e teclado) desembocam na MESMA função `processar`, que carrega o
+// bip/vibração de confirmação; o debounce de 1,5s vale só para a câmera.
 
 import { normalizarCodigoBarras } from "@/lib/codigo-de-barras";
 import {
@@ -83,7 +83,7 @@ export interface LeitorDeCodigoEmUso {
   readonly ultimaLeitura: Leitura | null;
   readonly refDoVideo: RefObject<HTMLVideoElement | null>;
   tentarDeNovo(): void;
-  /** Caminho manual: passa pelo MESMO debounce e feedback da câmera. */
+  /** Caminho manual: mesmo feedback da câmera, mas sem debounce. */
   lerCodigoDigitado(codigo: string): void;
 }
 
@@ -210,8 +210,11 @@ export function useLeitorDeCodigo(
   const pararCameraRef = useRef<() => void>(() => {});
 
   const processar = useCallback(
-    (leitura: Leitura) => {
-      if (!debounce.aceita(leitura.codigo)) return;
+    (leitura: Leitura, deCamera: boolean) => {
+      // Debounce só na câmera: o código parado no quadro é lido várias vezes
+      // por segundo. Pistola e campo Digitar são um disparo deliberado por
+      // leitura — duas peças iguais bipadas em seguida são 2 unidades.
+      if (deCamera && !debounce.aceita(leitura.codigo)) return;
       feedback?.confirmar();
       setUltimaLeitura(leitura);
       opcoesRef.current.aoLer(leitura);
@@ -226,7 +229,10 @@ export function useLeitorDeCodigo(
     (codigo: string) => {
       const codigoLimpo = normalizarCodigoBarras(codigo);
       if (codigoLimpo === "") return;
-      processar({ codigo: codigoLimpo, formato: "desconhecido" });
+      processar(
+        { codigo: codigoLimpo, formato: "desconhecido", deTeclado: true },
+        false,
+      );
     },
     [processar],
   );
@@ -481,7 +487,7 @@ export function useLeitorDeCodigo(
             const leituras = await decodificador.detectar(fonte);
             if (!laçoAtivo || cancelado) return;
             for (const leitura of leituras) {
-              processar(leitura);
+              processar(leitura, true);
               // `processar` já chamou `pararTudo()` no modo "único" — não
               // agenda mais nada nem olha as leituras restantes do quadro.
               if (!laçoAtivo) break;
@@ -518,7 +524,8 @@ export function useLeitorDeCodigo(
   useEffect(() => {
     if (!lerTeclado) return;
     const buffer = criarBufferDoLeitorFisico({
-      aoLer: (codigo) => processar({ codigo, formato: "desconhecido" }),
+      aoLer: (codigo) =>
+        processar({ codigo, formato: "desconhecido", deTeclado: true }, false),
     });
     function aoPressionarTecla(evento: KeyboardEvent): void {
       buffer.aoPressionarTecla(evento);
