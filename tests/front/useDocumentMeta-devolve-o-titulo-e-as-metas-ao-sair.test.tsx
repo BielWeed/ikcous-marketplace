@@ -111,6 +111,72 @@ describe("useDocumentMeta devolve o que escreveu ao sair da tela", () => {
     expect(document.title).toBe("Loja da Ana | Monte Carmelo");
   });
 
+  it("a Home montada por baixo: sair da tela secundária devolve o título da Home", () => {
+    act(() =>
+      root.render(
+        <>
+          <Tela key="home" title="Início | Loja da Ana" />
+          <Tela key="termos" title="Termos de uso | Loja da Ana" />
+        </>,
+      ),
+    );
+    expect(document.title).toBe("Termos de uso | Loja da Ana");
+
+    act(() => root.render(<Tela key="home" title="Início | Loja da Ana" />));
+    expect(document.title).toBe("Início | Loja da Ana");
+
+    act(() => root.render(null));
+    expect(document.title).toBe("Loja da Ana | Monte Carmelo");
+  });
+
+  it("fallback de animação: a tela nova escreve ANTES de a antiga limpar e o título da nova prevalece", () => {
+    act(() => root.render(<Tela key="termos" title="Termos de uso" />));
+    // as duas montadas ao mesmo tempo, a nova por cima
+    act(() =>
+      root.render(
+        <>
+          <Tela key="termos" title="Termos de uso" />
+          <Tela key="privacidade" title="Privacidade" />
+        </>,
+      ),
+    );
+    expect(document.title).toBe("Privacidade");
+
+    // só agora a antiga sai: não pode devolver o título da Home por cima da nova
+    act(() => root.render(<Tela key="privacidade" title="Privacidade" />));
+    expect(document.title).toBe("Privacidade");
+
+    act(() => root.render(null));
+    expect(document.title).toBe("Loja da Ana | Monte Carmelo");
+  });
+
+  it("a mesma regra vale para as metas quando a tela nova entra antes de a antiga sair", () => {
+    act(() => root.render(<Tela key="a" descricao="Descrição A" />));
+    act(() =>
+      root.render(
+        <>
+          <Tela key="a" descricao="Descrição A" />
+          <Tela key="b" descricao="Descrição B" og="Título B" />
+        </>,
+      ),
+    );
+    act(() =>
+      root.render(<Tela key="b" descricao="Descrição B" og="Título B" />),
+    );
+    expect(meta("name", "description")?.getAttribute("content")).toBe(
+      "Descrição B",
+    );
+    expect(meta("property", "og:title")?.getAttribute("content")).toBe(
+      "Título B",
+    );
+
+    act(() => root.render(null));
+    expect(meta("name", "description")?.getAttribute("content")).toBe(
+      "Descrição da Home",
+    );
+    expect(meta("property", "og:title")).toBeNull();
+  });
+
   it("tela sem título não mexe no da aba", () => {
     act(() => root.render(<Tela descricao="Só a descrição" />));
     expect(document.title).toBe("Loja da Ana | Monte Carmelo");
