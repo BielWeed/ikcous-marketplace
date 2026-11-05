@@ -340,8 +340,12 @@ describe("AdminProductFormView — produto legado que já tem dois tipos", () =>
 
     const texto = document.body.textContent?.replace(/\s+/g, " ") ?? "";
     expect(texto).toContain("tipos de variação demais");
-    // O aviso precisa dizer a CONSEQUÊNCIA, não só que está errado.
-    expect(texto).toMatch(/recebe dois P/);
+    // O aviso precisa dizer a CONSEQUÊNCIA real, não só que está errado. Desde
+    // 23/10 o pedido leva as duas escolhas: o que não acontece é o estoque do
+    // segundo grupo descer com as vendas.
+    expect(texto).toMatch(/estoque do segundo tipo não diminui/);
+    expect(texto).toMatch(/cadastre as combinações/i);
+    expect(texto).not.toMatch(/recebe dois P/);
   });
 
   it("NÃO avisa quando o produto tem um tipo só", async () => {
