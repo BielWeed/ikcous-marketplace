@@ -332,6 +332,26 @@ function FormularioDoCupom({
       return;
     }
 
+    // Desconto fixo é dinheiro: o servidor o usa cru, então 7,505 deixava o
+    // total 1 centavo fora da conta da ficha. Confere o TEXTO do número (em
+    // ponto flutuante 7.505 * 100 dá 750.4999...). Cupom já salvo que ela não
+    // mexeu no valor nem no tipo não é barrado por isso.
+    const lido = lidoAoAbrirRef.current ?? initialData;
+    const valorIntocado =
+      isEditing && value === lido.value && formData.type === lido.type;
+    const textoDoValor = String(value);
+    if (
+      formData.type === "fixed" &&
+      !valorIntocado &&
+      (textoDoValor.includes("e") ||
+        (textoDoValor.split(".")[1] ?? "").length > 2)
+    ) {
+      toast.error(
+        "O desconto fixo precisa ter no máximo 2 casas depois da vírgula.",
+      );
+      return;
+    }
+
     if (minPurchase < 0) {
       toast.error("O valor mínimo de compra não pode ser negativo.");
       return;
@@ -391,7 +411,6 @@ function FormularioDoCupom({
     // validade...) pode ter sido mudado em outro aparelho — mandar o
     // formulário inteiro desfazia isso e a tela dizia "Cupom atualizado".
     // Cupom novo manda tudo.
-    const lido = lidoAoAbrirRef.current ?? initialData;
     const { validUntil: validadeMexida, ...mexidos } = couponId
       ? camposQueMudaram(
           remendoDoCupom(formData, cleanCode),

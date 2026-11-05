@@ -1,4 +1,16 @@
 {
+  "1.5.132": {
+    "titulo": "Avaliações mais claras na vitrine e cupons mais honestos no painel",
+    "novidades": [],
+    "correcoes": [
+      "Avaliações: a avaliação que ainda está em análise não mostra mais o botão Útil, que só dava erro ao ser tocado.",
+      "Avaliações: com internet ruim, a lista de avaliações já guardada no aparelho continua na tela, em vez de ser trocada por um aviso de erro.",
+      "Avaliações: as quebras de linha escritas pela cliente no comentário e pela loja na resposta aparecem como foram escritas.",
+      "Painel, cupons: desconto fixo com mais de 2 casas depois da vírgula é recusado ao salvar, para o total do pedido não divergir da ficha em 1 centavo.",
+      "Painel, cupons: quando os cupons estão desligados na loja, a lista avisa e mostra 0 cupons ativos, em vez de dizer Ativo e Disponíveis para uso."
+    ],
+    "melhorias": []
+  },
   "1.5.131": {
     "titulo": "Pedidos do painel mais firmes e aviso claro para preço grande demais",
     "novidades": [],

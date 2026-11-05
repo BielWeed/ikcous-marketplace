@@ -161,7 +161,7 @@ export function ReviewCard({
       {review.comment && (
         <p
           className={cn(
-            "mb-4 mt-3 break-words text-xs font-normal leading-relaxed text-zinc-600 md:text-sm",
+            "mb-4 mt-3 whitespace-pre-wrap break-words text-xs font-normal leading-relaxed text-zinc-600 md:text-sm",
             "lg:text-sm",
           )}
         >
@@ -189,23 +189,27 @@ export function ReviewCard({
 
       {/* Actions */}
       <div className="flex flex-col gap-3">
-        <button
-          onClick={handleHelpful}
-          disabled={hasMarkedHelpful || votoEmVoo}
-          className={`flex min-h-11 w-fit items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
-            hasMarkedHelpful
-              ? "border-primary bg-primary text-primary-foreground shadow-sm"
-              : "border-secondary/20 bg-secondary/10 text-primary hover:bg-secondary/20 active:scale-95"
-          }`}
-        >
-          <ThumbsUp
-            className={`size-3 ${hasMarkedHelpful ? "fill-current" : ""}`}
-          />
-          {/* O contador vem do objeto confirmado pela releitura de
-              useReviews.markHelpful — somar +1 aqui contava o clique duas
-              vezes. */}
-          <span>Útil ({review.helpful})</span>
-        </button>
+        {/* Só avaliação publicada recebe voto: o banco recusa a que está em
+            análise, e o botão ativo só devolvia erro. */}
+        {review.status !== "pendente" && (
+          <button
+            onClick={handleHelpful}
+            disabled={hasMarkedHelpful || votoEmVoo}
+            className={`flex min-h-11 w-fit items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
+              hasMarkedHelpful
+                ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                : "border-secondary/20 bg-secondary/10 text-primary hover:bg-secondary/20 active:scale-95"
+            }`}
+          >
+            <ThumbsUp
+              className={`size-3 ${hasMarkedHelpful ? "fill-current" : ""}`}
+            />
+            {/* O contador vem do objeto confirmado pela releitura de
+                useReviews.markHelpful — somar +1 aqui contava o clique duas
+                vezes. */}
+            <span>Útil ({review.helpful})</span>
+          </button>
+        )}
 
         {review.merchantReply && (
           <div className="relative mt-1 rounded-2xl border border-zinc-100 bg-zinc-50/80 p-3.5 text-xs duration-300 animate-in slide-in-from-left-1">
@@ -217,7 +221,7 @@ export function ReviewCard({
             </div>
             <p
               className={cn(
-                "break-words font-medium italic leading-relaxed text-zinc-600",
+                "whitespace-pre-wrap break-words font-medium italic leading-relaxed text-zinc-600",
                 "lg:text-sm",
               )}
             >

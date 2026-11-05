@@ -255,8 +255,12 @@ export function useReviews() {
       } catch (error: any) {
         if (!atual()) return;
         console.error("Error fetching reviews:", error);
-        setErroDaListagemProduto("Não foi possível carregar as avaliações.");
-        toast.error("Erro ao carregar avaliações.");
+        // Com a lista guardada na tela, a releitura que falha não a troca por
+        // erro (mesmo critério das Perguntas): só vale o erro sem nada a mostrar.
+        if (!cached) {
+          setErroDaListagemProduto("Não foi possível carregar as avaliações.");
+          toast.error("Erro ao carregar avaliações.");
+        }
       } finally {
         if (atual() && latestProductIdRef.current === productId) {
           setLoading(false);

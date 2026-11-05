@@ -159,3 +159,30 @@ it("erro atrasado do produto anterior não contamina a consulta atual", async ()
   expect(secao.querySelector('[role="alert"]')).toBeNull();
   expect(secao.textContent).toContain("Ainda sem avaliações");
 });
+
+it("com a lista já guardada no aparelho, a releitura que falha mantém a lista e não avisa de erro", async () => {
+  const { updateReviewsCache } = await import("@/lib/cache-de-avaliacoes");
+  const { toast } = await import("sonner");
+  vi.mocked(toast.error).mockClear();
+  updateReviewsCache(produto.id, [
+    {
+      id: "r1",
+      productId: produto.id,
+      customerName: "Cliente Guardada",
+      rating: 5,
+      comment: "Comentário guardado",
+      verified: true,
+      helpful: 0,
+      createdAt: "2026-10-01T12:00:00Z",
+      status: "publicada",
+    },
+  ]);
+  h.ler.mockResolvedValue({ data: null, error: { message: "sem rede" } });
+  await mostrar();
+  const secao = host.querySelector("#reviews-section")!;
+  expect(h.ler).toHaveBeenCalled();
+  expect(secao.querySelector('[role="alert"]')).toBeNull();
+  expect(secao.textContent).toContain("Comentário guardado");
+  expect(secao.textContent).not.toContain("Tentar de novo");
+  expect(toast.error).not.toHaveBeenCalled();
+});
