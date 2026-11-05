@@ -2939,7 +2939,28 @@ const ROL_DA_120 = [
   "reply_review_atomic(uuid,text,uuid): assinatura e atributos conhecidos",
   "reply_review_atomic(uuid,text,uuid): EXECUTE authenticated, sem PUBLIC ou anon",
 ];
+// Lote 121 (20261399500000, as estrelas do produto aparecem na vitrine: funcao avaliacao_atualiza_a_nota_do_produto e gatilho tr_avaliacao_atualiza_a_nota_do_produto em reviews, objeto NOVO).
+// A 121a prova a funcao (md5, trava antes de ler, atributos, EXECUTE fechado) e o gatilho; a 121b a ausencia dos dois e as colunas, tipos e restricao de que o apply depende. Nenhuma le avaliacao nem produto.
+const ROL_DA_121A = [
+  "controle: funcoes de public visiveis a este papel",
+  "avaliacao_atualiza_a_nota_do_produto: corpo e o da 20261399500000 (md5)",
+  "avaliacao_atualiza_a_nota_do_produto: o corpo trava a linha do produto antes de ler as publicadas e nunca recusa",
+  "avaliacao_atualiza_a_nota_do_produto: atributos de sempre (SECURITY DEFINER, VOLATILE, retorna trigger, search_path=public, lock_timeout=500ms)",
+  "avaliacao_atualiza_a_nota_do_produto: EXECUTE fechado a PUBLIC, anon, authenticated e service_role",
+  "tr_avaliacao_atualiza_a_nota_do_produto: AFTER INSERT OR DELETE OR UPDATE OF status, rating, product_id por linha em public.reviews, ligado, sem WHEN",
+];
+const ROL_DA_121B = [
+  "controle: funcoes de public visiveis a este papel",
+  "avaliacao_atualiza_a_nota_do_produto: a funcao ainda NAO existe",
+  "tr_avaliacao_atualiza_a_nota_do_produto: o gatilho ainda NAO existe",
+  "reviews: product_id, rating e status com os tipos de sempre",
+  "produtos: id, rating e review_count com os tipos de sempre",
+  "reviews_status_check: o CHECK de status cita publicada (20261031000000)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "121a-conferir-as-estrelas-do-produto-aparecem-na-vitrine-aplicado":
+    ROL_DA_121A,
+  "121b-antes-as-estrelas-do-produto-aparecem-na-vitrine-ausente": ROL_DA_121B,
   "120a-conferir-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-aplicado":
     ROL_DA_120,
   "120b-antes-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-base-vigente":

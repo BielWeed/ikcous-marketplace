@@ -587,6 +587,21 @@ const VERIFICACOES = {
         { texto: "A10: log honesto", vezes: 1 },
       ],
     },
+  // 20261399500000: as estrelas do produto aparecem na vitrine. A funcao NOVA do gatilho recalcula produtos.rating e produtos.review_count do zero, so das avaliacoes
+  // publicadas: tranca a linha do produto (ordem global por id) ANTES de ler as avaliacoes, e tudo roda num bloco BEGIN ... EXCEPTION (a falha da nota nunca desfaz a avaliacao).
+  // Cada marcador aparece UMA vez no corpo: a trava (sem ela a segunda gravacao perde a primeira da conta), o filtro publicada (sem ele a pendente entraria na media), o bloco de
+  // melhor esforco, os dois produtos da troca de produto e o piso 5 de quem nao tem avaliacao publicada. O gatilho (tgtype, colunas) e a ACL sao conferidos pelo bloco DO da
+  // propria migration; a consulta 121a confere o corpo exato (md5), os atributos e a ACL.
+  "20261399500000_as_estrelas_do_produto_aparecem_na_vitrine.sql": {
+    funcao: "avaliacao_atualiza_a_nota_do_produto",
+    esperado: [
+      { texto: "FOR NO KEY UPDATE;", vezes: 1 },
+      { texto: "AND r.status = 'publicada';", vezes: 1 },
+      { texto: "EXCEPTION WHEN OTHERS THEN", vezes: 1 },
+      { texto: "ARRAY[OLD.product_id, NEW.product_id]", vezes: 1 },
+      { texto: "COALESCE(round(avg(r.rating), 1), 5)", vezes: 1 },
+    ],
+  },
   // 20261397000000: o desconto do cupom de porcentagem e' arredondado ao centavo. As TRES funcoes (create_marketplace_order_v23/v24 e
   // validate_coupon_secure_v2) trocam SO a linha da conta do desconto percentual: `round(<subtotal * valor / 100>, 2)` no lugar da conta crua.
   // Cada marcador aparece UMA vez no corpo (o marcador nao admite "zero vezes": a ausencia da conta antiga e' do pos-voo da migration e da

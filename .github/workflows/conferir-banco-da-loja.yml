@@ -308,6 +308,8 @@ on:
           - 119b-antes-a-busca-por-palavras-e-o-estorno-fora-do-vencido-base-vigente
           - 120a-conferir-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-aplicado
           - 120b-antes-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-base-vigente
+          - 121a-conferir-as-estrelas-do-produto-aparecem-na-vitrine-aplicado
+          - 121b-antes-as-estrelas-do-produto-aparecem-na-vitrine-ausente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

@@ -690,6 +690,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399400000: a cliente e avisada quando a loja responde a avaliacao dela (as duas sobrecargas de reply_review_atomic criam o aviso no sino; um por avaliacao; a falha do aviso nunca perde a resposta;
     // a linha do log de push continua; controle com o corpo anterior, corrida real, mutantes, rollback byte a byte, pre/pos-voo e consultas 120a/120b).
     "tests/banco/a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-viva.cjs",
+    // 20261399500000: as estrelas do produto aparecem na vitrine (gatilho em reviews recalcula produtos.rating e review_count so das publicadas; pendente nao conta; a falha da nota nunca
+    // perde a avaliacao; corrida real de duas avaliacoes, trocas cruzadas, compra segurando o produto, o pagamento nunca e a vitima do deadlock; mutantes, rollback, pre/pos-voo e consultas 121a/121b).
+    "tests/banco/as-estrelas-do-produto-aparecem-na-vitrine-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",
