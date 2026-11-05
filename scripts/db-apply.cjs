@@ -494,6 +494,72 @@ const VERIFICACOES = {
       { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
     ],
   },
+  // 20261399200000: a busca de produtos do painel e do balcao (get_admin_products_paged) acha por PALAVRAS, em qualquer ordem: o texto vira padroes de
+  // ILIKE (v_padroes, sem acento, % _ e barra escapados) e TODAS as palavras precisam estar no texto junto do produto (nome, codigo, SKU, nome e valor das
+  // variacoes ativas); o codigo de barras segue por IGUALDADE do texto inteiro. O filtro entra IGUAL nos dois blocos (total_count e pagina): cada
+  // marcador do filtro vale 2 vezes. O resto e o corpo da 20261385000000. A consulta 119a confere o corpo exato (md5), os atributos e a ACL; a prova
+  // viva mede o comportamento.
+  "20261399200000_a_busca_de_produtos_do_painel_acha_por_palavras.sql": {
+    funcao: "get_admin_products_paged",
+    esperado: [
+      { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      {
+        texto:
+          "FROM regexp_split_to_table(COALESCE(v_clean_search, ''), '[[:space:]]+') AS w(palavra)",
+        vezes: 1,
+      },
+      { texto: "cardinality(v_padroes) = 0 OR", vezes: 2 },
+      { texto: "p.codigo_barras = v_clean_search OR", vezes: 2 },
+      {
+        texto: "AND vc.active AND vc.codigo_barras = v_clean_search",
+        vezes: 2,
+      },
+      {
+        texto:
+          "WHERE NOT EXISTS (SELECT 1 FROM unnest(v_padroes) AS w(padrao) WHERE t.texto NOT ILIKE w.padrao)",
+        vezes: 2,
+      },
+    ],
+  },
+  // 20261399300000: o estorno em andamento nao e conta vencida. painel_inicio (contas_vencidas) e fin_resumo (a_pagar.vencido) passam a deixar de fora o
+  // movimento previsto de origem 'estorno'; a_pagar_7d, a_receber_7d e o resto dos dois corpos ficam como estao (corpos da 20261398000000 e da
+  // 20261199000000). A consulta 119a confere os dois corpos (md5), os atributos e a ACL; a prova viva mede o comportamento.
+  "20261399300000_o_estorno_em_andamento_nao_e_conta_vencida.sql": [
+    {
+      funcao: "painel_inicio",
+      esperado: [
+        {
+          texto:
+            "'contas_vencidas', (SELECT count(*) FROM prev WHERE tipo = 'saida' AND venc < v_hoje AND origem <> 'estorno'),",
+          vezes: 1,
+        },
+        {
+          texto:
+            "'a_pagar_7d', (SELECT COALESCE(sum(valor), 0) FROM prev WHERE tipo = 'saida' AND venc <= v_hoje + 7),",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+    {
+      funcao: "fin_resumo",
+      esperado: [
+        {
+          texto:
+            "'vencido', COALESCE((SELECT sum(valor) FROM previstos WHERE tipo = 'saida' AND venc < v_hoje AND origem <> 'estorno'), 0),",
+          vezes: 1,
+        },
+        {
+          texto:
+            "'vencido', COALESCE((SELECT sum(valor) FROM previstos WHERE tipo = 'entrada' AND venc < v_hoje), 0),",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
   // 20261397000000: o desconto do cupom de porcentagem e' arredondado ao centavo. As TRES funcoes (create_marketplace_order_v23/v24 e
   // validate_coupon_secure_v2) trocam SO a linha da conta do desconto percentual: `round(<subtotal * valor / 100>, 2)` no lugar da conta crua.
   // Cada marcador aparece UMA vez no corpo (o marcador nao admite "zero vezes": a ausencia da conta antiga e' do pos-voo da migration e da

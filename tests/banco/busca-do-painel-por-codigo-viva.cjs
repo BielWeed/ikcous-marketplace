@@ -298,7 +298,13 @@ async function main() {
   try {
     await c.query("BEGIN");
 
-    // O topo instalado pelo CI (todas as migrations do zero) e o desta migration.
+    // A 20261399200000 (a busca acha por palavras) sucede esta e esta no ar no clone: sai PRIMEIRO, pelo rollback-manual dela (o da 385
+    // so aceita o corpo da 385). Esta prova mede a 385 isolada.
+    await require("./a-busca-do-painel-acha-por-palavras-posterior.cjs").desfazerBuscaPorPalavrasNaTransacao(
+      c,
+    );
+
+    // O topo da 385 (a 3992, que a sucede, acabou de sair) e o desta migration.
     const topo = await funcao(c);
     assert.equal(
       topo.prosrc,
@@ -1005,6 +1011,10 @@ async function main() {
           `SELECT md5(replace(prosrc, chr(13), '')) AS h FROM pg_proc WHERE oid = '${ASSINATURA}'::regprocedure`,
         )
       ).rows[0].h;
+    // O clone tem a 3992 no ar de verdade (a transacao de cima foi desfeita): sai aqui tambem, com COMMIT, antes de medir a 385.
+    await require("./a-busca-do-painel-acha-por-palavras-posterior.cjs").desfazerBuscaPorPalavrasNaTransacao(
+      d,
+    );
     assert.equal(await hash(), HASH_NOVO);
     await d.query(rollback);
     assert.equal(await hash(), HASH_ANTES);

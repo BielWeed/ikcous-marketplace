@@ -1,5 +1,8 @@
 -- 90a-conferir-busca-do-painel-por-codigo-aplicado: DEPOIS da 20261385000000 (o desta migration).
 -- SO LEITURA, so catalogo; rol fechado de 4 linhas. Nao le nenhuma linha de produto nem chama a get_admin_products_paged.
+-- A get_admin_products_paged tem uma SUCESSORA, a 20261399200000 (a busca acha por palavras, em qualquer ordem; so troca o filtro de busca, md5
+-- 346063e900b8b7b63dfbeffe5070eedc): a linha do corpo aceita os DOIS corpos exatos e, aceito o da sucessora, o `vivo` mostra o `esperado` (quem
+-- distingue os dois e a 119a). Qualquer outro corpo segue mostrando o md5 dele.
 WITH fn AS (
   SELECT p.oid, md5(replace(p.prosrc, chr(13), '')) AS h,
     (p.prokind = 'f' AND p.prosecdef AND p.proconfig = ARRAY['search_path=public, extensions']::text[]
@@ -22,7 +25,7 @@ WITH fn AS (
     CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace) > 0 THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'get_admin_products_paged: corpo exato (md5)', '39db382689def5fac3b263a66f84ede1',
-    COALESCE((SELECT h FROM fn), 'AUSENTE')
+    COALESCE((SELECT CASE WHEN h IN ('39db382689def5fac3b263a66f84ede1', '346063e900b8b7b63dfbeffe5070eedc') THEN '39db382689def5fac3b263a66f84ede1' ELSE h END FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_products_paged: assinatura e atributos conhecidos', 'sim',
     CASE WHEN COALESCE((SELECT atributos FROM fn), false) THEN 'sim' ELSE 'nao' END

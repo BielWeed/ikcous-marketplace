@@ -681,6 +681,12 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // recusados para todos e a vitrine nunca devolve nome acima de 120; a migration se recusa se ja houver perfil acima do teto (o CHECK travaria foto, CPF e cargo da conta);
     // mutantes, rollback byte a byte, pre/pos-voo, atomicidade e lock_timeout nas duas tabelas).
     "tests/banco/o-nome-do-perfil-tem-teto-no-banco-viva.cjs",
+    // 20261399200000: a busca de produtos do painel e do balcao acha por palavras (todas as palavras, qualquer ordem, nome/codigo/SKU/nome e valor das variacoes ativas; codigo de barras por
+    // igualdade; % _ e barra valem como letras; controle com o corpo da 385; mutantes, rollback byte a byte, pre/pos-voo, atomicidade e consultas 119a/119b).
+    "tests/banco/a-busca-do-painel-acha-por-palavras-viva.cjs",
+    // 20261399300000: o estorno em andamento nao e conta vencida (painel_inicio.contas_vencidas e fin_resumo.a_pagar.vencido; a conta lancada segue; a_pagar_7d nao muda; controle com os corpos
+    // anteriores, mutantes, rollback byte a byte, pre/pos-voo, atomicidade e consultas 119a/119b).
+    "tests/banco/o-estorno-em-andamento-nao-e-conta-vencida-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",

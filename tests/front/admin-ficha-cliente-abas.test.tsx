@@ -183,6 +183,8 @@ const { estado } = vi.hoisted(() => ({
     // irmãos da tela usam: a consulta da voz encontra um builder sem .eq()
     // e falha — o cenário de rede quebrada na vida real.
     vozQuebrada: false,
+    // Consulta da voz que nunca responde: a ficha já abriu, a voz ainda carrega.
+    vozPendente: false,
   },
 }));
 
@@ -194,7 +196,9 @@ function cadeia(resposta: { data: unknown; error: unknown }) {
   // Builder awaitable com os métodos encadeáveis anexados (mesma técnica de
   // painel-nao-mente-sobre-o-carrinho-da-cliente: Promise de verdade com
   // métodos, para não esbarrar no noThenProperty do Biome).
-  const b: any = Promise.resolve(resposta);
+  const b: any = estado.vozPendente
+    ? new Promise(() => {})
+    : Promise.resolve(resposta);
   b.select = () => b;
   b.eq = () => b;
   b.order = () => b;
@@ -276,6 +280,7 @@ describe("AdminUserDetailView — a aba Voz do Cliente na ficha", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     estado.vozQuebrada = false;
+    estado.vozPendente = false;
     estado.reviews = [
       {
         id: "r1",
@@ -383,5 +388,29 @@ describe("AdminUserDetailView — a aba Voz do Cliente na ficha", () => {
     expect(t).not.toMatch(/nada escrito ainda/i);
     // E o resgate existe: o botão de tentar de novo está na aba.
     expect(t).toMatch(/tentar novamente/i);
+  });
+
+  // O selo do topo não pode afirmar "(0)" quando a consulta falhou ou ainda
+  // não respondeu: o corpo da aba já separa falha de vazio, o selo também.
+  it("consulta quebrada: o selo da aba não afirma '(0)'", async () => {
+    estado.vozQuebrada = true;
+    await abrirFicha();
+
+    const trigger = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Voz do Cliente"),
+    );
+    expect(trigger).toBeDefined();
+    expect(trigger!.textContent).not.toMatch(/\(\d+\)/);
+  });
+
+  it("voz ainda carregando: o selo da aba não afirma '(0)'", async () => {
+    estado.vozPendente = true;
+    await abrirFicha();
+
+    const trigger = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Voz do Cliente"),
+    );
+    expect(trigger).toBeDefined();
+    expect(trigger!.textContent).not.toMatch(/\(\d+\)/);
   });
 });

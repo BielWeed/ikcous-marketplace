@@ -2911,7 +2911,26 @@ const ROL_DA_118B = [
   "profiles.full_name, profiles.whatsapp e public_profiles.full_name sao text e nenhum dos tres CHECKs de tamanho existe ainda",
   "nenhum outro CHECK limita full_name ou whatsapp hoje (o teto de 120 e o de 20 ainda nao estao no banco)",
 ];
+// Lote 119 (20261399200000 + 20261399300000, a busca de produtos do painel acha por palavras e o estorno em andamento fica fora do vencido: get_admin_products_paged,
+// painel_inicio e fin_resumo redefinidas). A 119a e a 119b tem o MESMO rol de 10 linhas (controle e, para cada uma das tres funcoes, corpo exato (md5), atributos e ACL);
+// a 119a espera os tres corpos das migrations novas e a 119b os tres vigentes (20261385000000, 20261398000000 e 20261199000000).
+const ROL_DA_119 = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_products_paged: corpo exato (md5)",
+  "get_admin_products_paged: assinatura e atributos conhecidos",
+  "get_admin_products_paged: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
+  "painel_inicio: corpo exato (md5)",
+  "painel_inicio: assinatura e atributos conhecidos",
+  "painel_inicio: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
+  "fin_resumo: corpo exato (md5)",
+  "fin_resumo: assinatura e atributos conhecidos",
+  "fin_resumo: EXECUTE authenticated, sem PUBLIC ou anon",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "119a-conferir-a-busca-por-palavras-e-o-estorno-fora-do-vencido-aplicado":
+    ROL_DA_119,
+  "119b-antes-a-busca-por-palavras-e-o-estorno-fora-do-vencido-base-vigente":
+    ROL_DA_119,
   "118a-conferir-o-nome-do-perfil-tem-teto-no-banco-aplicado": ROL_DA_118A,
   "118b-antes-o-nome-do-perfil-tem-teto-no-banco-ausente": ROL_DA_118B,
   "117a-conferir-as-visitas-da-loja-contam-pelo-porteiro-aplicado": ROL_DA_117A,

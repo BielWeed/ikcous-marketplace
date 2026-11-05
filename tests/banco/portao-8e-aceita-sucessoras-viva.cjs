@@ -162,7 +162,12 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // da 394200, da 394000 e da 208; nenhuma e' funcao da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 394200/394000/208
     // (o-desconto-do-cupom-posterior.cjs); aqui sai do rol pela mesma razao da 394200 e da 394000.
     s.nome !==
-      "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql",
+      "20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql" &&
+    // A 20261399300000 (o estorno em andamento nao e conta vencida) e a QUINTA sucessora de painel_inicio (99 -> 12 -> 28 -> 390 -> 398 -> 3993) e a
+    // PRIMEIRA de fin_resumo (99 -> 3993): UMA migration, duas funcoes da 8e, com a PROVA PROPRIA em
+    // tests/banco/o-estorno-em-andamento-nao-e-conta-vencida-viva.cjs; `noEstado` a desfaz antes (`desfazerMesAnteriorNaTransacao` chama
+    // o-estorno-em-andamento-posterior.cjs primeiro, o rollback dela devolve as duas funcoes de uma vez), como faz com a 398.
+    s.nome !== "20261399300000_o_estorno_em_andamento_nao_e_conta_vencida.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");

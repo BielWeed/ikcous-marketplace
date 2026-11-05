@@ -1,5 +1,7 @@
 -- 116a-conferir-o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-aplicado: DEPOIS da 20261398000000 (o desta migration, md5 01d29aedf98b7f95851c1a1001b5c7ca).
 -- SO LEITURA, so catalogo; rol fechado de 4 linhas. Nao le nenhum pedido, lancamento nem cliente e nao chama a painel_inicio.
+-- A painel_inicio tem uma SUCESSORA, a 20261399300000 (o estorno em andamento nao e conta vencida; md5 8d58e15e7410afe0d254f37f38251df4): a linha do
+-- corpo aceita os DOIS corpos exatos e, aceito o da sucessora, o `vivo` mostra o `esperado` (quem distingue os dois e a 119a).
 WITH fn AS (
   SELECT p.oid, md5(replace(p.prosrc, chr(13), '')) AS h,
     (p.prokind = 'f' AND p.prosecdef AND p.proconfig = ARRAY['search_path=public']::text[]
@@ -21,7 +23,7 @@ WITH fn AS (
     CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace) > 0 THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'painel_inicio: corpo exato (md5)', '01d29aedf98b7f95851c1a1001b5c7ca',
-    COALESCE((SELECT h FROM fn), 'AUSENTE')
+    COALESCE((SELECT CASE WHEN h IN ('01d29aedf98b7f95851c1a1001b5c7ca', '8d58e15e7410afe0d254f37f38251df4') THEN '01d29aedf98b7f95851c1a1001b5c7ca' ELSE h END FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'painel_inicio: assinatura e atributos conhecidos', 'sim',
     CASE WHEN COALESCE((SELECT atributos FROM fn), false) THEN 'sim' ELSE 'nao' END

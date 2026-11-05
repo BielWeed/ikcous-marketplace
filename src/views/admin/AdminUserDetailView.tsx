@@ -977,9 +977,13 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                     <span>
                       Voz<span className="hidden sm:inline"> do Cliente</span>
                     </span>
-                    <span className="absolute right-0 top-0 rounded-full bg-admin-surface px-1 text-[11px] text-zinc-400 sm:right-2">
-                      ({avaliacoes.length + perguntas.length})
-                    </span>
+                    {/* Sem número enquanto carrega ou se a consulta falhou: "(0)"
+                        diria que o cliente nunca escreveu. */}
+                    {!vozCarregando && !vozErro && (
+                      <span className="absolute right-0 top-0 rounded-full bg-admin-surface px-1 text-[11px] text-zinc-400 sm:right-2">
+                        ({avaliacoes.length + perguntas.length})
+                      </span>
+                    )}
                   </TabsTrigger>
                 </TabsList>
 

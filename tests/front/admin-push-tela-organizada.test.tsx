@@ -304,10 +304,19 @@ describe("AdminPushView — tela organizada e compacta", () => {
     ).toEqual(["8", "0", "2", "0"]);
 
     const inativos = chips[1];
-    expect(inativos.disabled).toBe(true);
-    expect(inativos.textContent).toContain(
-      "ninguém passou de 30 dias sem pedir",
+    const novos = chips[3];
+    expect(novos.disabled).toBe(true);
+    expect(novos.textContent).toContain(
+      "nenhum aparelho com aviso ativo neste grupo",
     );
+    expect(novos.textContent).not.toContain("nenhum cadastro nos últimos");
+    expect(inativos.disabled).toBe(true);
+    // O número é de APARELHOS com aviso ativo, não de clientes: o motivo diz
+    // o que foi medido e não afirma que ninguém "passou de 30 dias sem pedir".
+    expect(inativos.textContent).toContain(
+      "nenhum aparelho com aviso ativo neste grupo",
+    );
+    expect(inativos.textContent).not.toContain("ninguém passou de 30 dias");
     // O reset global do projeto tira o estilo de borda de todo <button>:
     // sem `border-solid` o contorno do chip não aparece (medido no navegador).
     for (const c of chips) expect(c.className).toContain("border-solid");

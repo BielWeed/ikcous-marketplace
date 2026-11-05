@@ -25,6 +25,8 @@
 --                O painel_inicio tambem pode estar no corpo da sucessora DESTA, a 20261398000000 (o Inicio compara o mes
 --                anterior ate a mesma hora: o mesmo corpo com o ultimo dia do mes anterior cortado na hora; lote 116): a
 --                linha aceita os TRES e, aceito qualquer sucessor, o `vivo` mostra o `esperado` (quem distingue e a 116a).
+--                Ele tambem pode estar no corpo da sucessora da 398, a 20261399300000 (o estorno em andamento nao e conta
+--                vencida: o mesmo corpo com o estorno fora de contas_vencidas; lote 119): a linha aceita os QUATRO (quem distingue e a 119a).
 --   * marcador -- 'sim' se o corpo traz o corte na mesma hora (`::time <= v_hora`, que so existe nos
 --                corpos novos): leitura humana do mesmo fato do md5. No crm_visao, tambem a CTE `turma`
 --                (a turma de vendas da taxa de devolucao).
@@ -90,7 +92,7 @@ WITH alvo(chave, assinatura) AS (
   UNION ALL
   SELECT 'painel_inicio: corpo e o da 20261228000000, com a semana passada cortada na mesma hora (md5)',
          'ad5620273997ba9266f240f272bf399b',
-         COALESCE((SELECT CASE WHEN f.m IN ('b4aa318b777824bd49aab4175d9133f8', '01d29aedf98b7f95851c1a1001b5c7ca') THEN 'ad5620273997ba9266f240f272bf399b' ELSE f.m END
+         COALESCE((SELECT CASE WHEN f.m IN ('b4aa318b777824bd49aab4175d9133f8', '01d29aedf98b7f95851c1a1001b5c7ca', '8d58e15e7410afe0d254f37f38251df4') THEN 'ad5620273997ba9266f240f272bf399b' ELSE f.m END
                      FROM fn f WHERE f.chave = 'painel'), 'AUSENTE')
   UNION ALL
   SELECT 'painel_inicio: o corpo traz o corte na mesma hora',

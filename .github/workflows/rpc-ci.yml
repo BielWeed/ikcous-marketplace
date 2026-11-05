@@ -240,6 +240,8 @@ on:
       - "scripts/publicacao/consultas/117b-antes-as-visitas-da-loja-contam-pelo-porteiro-ausente.sql"
       - "scripts/publicacao/consultas/118a-conferir-o-nome-do-perfil-tem-teto-no-banco-aplicado.sql"
       - "scripts/publicacao/consultas/118b-antes-o-nome-do-perfil-tem-teto-no-banco-ausente.sql"
+      - "scripts/publicacao/consultas/119a-conferir-a-busca-por-palavras-e-o-estorno-fora-do-vencido-aplicado.sql"
+      - "scripts/publicacao/consultas/119b-antes-a-busca-por-palavras-e-o-estorno-fora-do-vencido-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -449,6 +451,8 @@ on:
       - "scripts/publicacao/consultas/117b-antes-as-visitas-da-loja-contam-pelo-porteiro-ausente.sql"
       - "scripts/publicacao/consultas/118a-conferir-o-nome-do-perfil-tem-teto-no-banco-aplicado.sql"
       - "scripts/publicacao/consultas/118b-antes-o-nome-do-perfil-tem-teto-no-banco-ausente.sql"
+      - "scripts/publicacao/consultas/119a-conferir-a-busca-por-palavras-e-o-estorno-fora-do-vencido-aplicado.sql"
+      - "scripts/publicacao/consultas/119b-antes-a-busca-por-palavras-e-o-estorno-fora-do-vencido-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -751,6 +755,19 @@ jobs:
       - name: Prova viva do teto do nome do perfil (20261399100000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-nome-do-perfil-tem-teto-no-banco-viva.cjs
+      # Migration 20261399200000 (a busca de produtos do painel e do balcao acha por palavras): get_admin_products_paged exige TODAS as palavras (qualquer ordem, sem acento, sem
+      # caixa) no texto junto de nome, codigo, SKU e nome/valor das variacoes ATIVAS, nos dois blocos (total_count e pagina); "camiseta branca P" (o exemplo da tela do balcao) acha;
+      # codigo de barras segue por igualdade do texto inteiro; % _ e barra valem como letras; variacao inativa, produto apagado, categoria, status e estoque baixo seguem; controle
+      # com o corpo da 20261385; mutantes, reaplicar, rollback byte a byte, pre-voo, pos-voo, atomicidade e consultas 119a/119b. CLONE proprio.
+      - name: Prova viva da busca de produtos por palavras (20261399200000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-busca-do-painel-acha-por-palavras-viva.cjs
+      # Migration 20261399300000 (o estorno em andamento nao e conta vencida): painel_inicio.contas_vencidas e fin_resumo.a_pagar.vencido deixam de contar o movimento previsto de
+      # origem 'estorno'; a conta lancada pela lojista segue; a_pagar_7d e o resto do JSON nao mudam; os dois numeros concordam; controle com os corpos anteriores; mutantes, reaplicar,
+      # rollback byte a byte, pre-voo, pos-voo, atomicidade e consultas 119a/119b. CLONE proprio.
+      - name: Prova viva do estorno em andamento fora das contas vencidas (20261399300000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-estorno-em-andamento-nao-e-conta-vencida-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

@@ -270,9 +270,12 @@ describe("AdminPushView — rádio do lojista (direção B)", () => {
 
     // Zero medido tem EXPLICAÇÃO na cara do chip — não é um zero mudo.
     expect(chipInativo!.disabled).toBe(true);
+    // O número é de APARELHOS com aviso ativo, não de clientes: o motivo diz
+    // o que foi medido e não afirma que ninguém "passou de 30 dias sem pedir".
     expect(chipInativo!.textContent).toContain(
-      "ninguém passou de 30 dias sem pedir",
+      "nenhum aparelho com aviso ativo neste grupo",
     );
+    expect(chipInativo!.textContent).not.toContain("ninguém passou de 30 dias");
 
     // E a desativação é de verdade: clicar não troca o segmento — a tela
     // continua no "all" (8 aparelhos), não no zero.

@@ -1339,6 +1339,16 @@ async function main() {
         "20261398000000_o_inicio_compara_o_mes_anterior_ate_a_mesma_hora.sql",
         "public.painel_inicio()",
       ],
+      // A 20261399300000 (o estorno em andamento nao e conta vencida): UMA migration, duas funcoes da 99 (fin_resumo, de fora destas tres, e painel_inicio sobre o corpo da 398;
+      // ordem alfabetica da assinatura, como a prova a lista). A 17a aceita o corpo dela de painel_inicio (LF e CRLF) ao lado dos de antes; o rollback dela devolve os dois corpos de uma vez.
+      [
+        "20261399300000_o_estorno_em_andamento_nao_e_conta_vencida.sql",
+        "public.fin_resumo(date,date)",
+      ],
+      [
+        "20261399300000_o_estorno_em_andamento_nao_e_conta_vencida.sql",
+        "public.painel_inicio()",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

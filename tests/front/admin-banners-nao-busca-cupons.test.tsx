@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
-// BANNERS NÃO BUSCA CUPONS — a tela não tem campo de cupom (o "?coupon=" só é
-// lido de um link já gravado). Chamar `useCoupons(true)` fazia uma consulta à
+// BANNERS NÃO BUSCA CUPONS — a tela não tem campo de cupom e não lê o
+// "?coupon=" do link. Chamar `useCoupons(true)` fazia uma consulta à
 // toa a cada abertura e, com a rede ruim, um aviso "Não foi possível carregar
 // os cupons" por cima de uma tela que não tem a ver com cupom.
 import { act } from "react";

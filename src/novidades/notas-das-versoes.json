@@ -1,4 +1,17 @@
 {
+  "1.5.122": {
+    "titulo": "Busca de produtos por várias palavras e avisos do painel mais honestos",
+    "novidades": [],
+    "correcoes": [
+      "Painel, Produtos e Balcão: a busca acha o produto digitando várias palavras em qualquer ordem, como \"camiseta branca P\"; antes só achava a frase inteira.",
+      "Painel, Início e Financeiro: estorno que o Mercado Pago ainda está devolvendo deixa de aparecer como \"conta vencida\".",
+      "Painel, Avisar clientes: quando um grupo aparece zerado, o texto diz que nenhum aparelho tem o aviso ativo, em vez de dizer que não existe cliente.",
+      "Painel, banners: some o texto \"Cupom no link\", que prometia um cupom aplicado pelo toque que o app nunca aplicou.",
+      "Painel, ficha do cliente: o contador da aba Voz do Cliente não mostra mais zero enquanto carrega ou quando a consulta falha.",
+      "Loja: tamanhos e cores de um produto aparecem sempre na mesma ordem (PP, P, M, G, GG, números), mesmo depois de vendas."
+    ],
+    "melhorias": []
+  },
   "1.5.121": {
     "titulo": "Conta, avisos, pedidos do painel e lojas grandes mais certos",
     "novidades": [],
