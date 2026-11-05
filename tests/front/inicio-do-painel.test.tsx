@@ -307,7 +307,7 @@ describe("Início do painel", () => {
       ["Preparar pedidos", "admin-orders"],
       ["1 devolução aberta", "admin-devolucoes"],
       ["2 contas vencidas", "admin-financeiro", "previstos"],
-      ["3 produtos com estoque baixo", "admin-products"],
+      ["3 produtos com estoque baixo", "admin-products", "estoque-baixo"],
     ];
     for (const [rotulo, ...destino] of destinos) {
       await act(async () => {
