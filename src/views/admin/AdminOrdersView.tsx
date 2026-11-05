@@ -1415,6 +1415,43 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     }
   }, [isLoaded, currentPage, totalPages, setCurrentPage]);
 
+  // O último pedido da última página sai do filtro (finalizado/cancelado):
+  // o tempo real o tira da lista na hora, mas o total só encolhe quando a
+  // releitura volta — e, nesse intervalo, a página existente aparecia vazia
+  // com "Nenhum pedido neste recorte". Quando a página que TINHA pedidos fica
+  // sem nenhum, volta uma página já e liga o carregando (consulta imediata).
+  // Só olha `orders` (antes do filtro de pagamento em memória): página que o
+  // filtro esvaziou continua sendo o vazio honesto. `currentPage >= totalPages`
+  // é do efeito acima. Uma página por vez: nunca sobe até a 0 sem necessidade.
+  const ultimaPaginaComPedidosRef = useRef(-1);
+  useEffect(() => {
+    if (orders.length > 0) {
+      ultimaPaginaComPedidosRef.current = currentPage;
+      return;
+    }
+    if (
+      !isLoaded ||
+      erroDaListagem ||
+      currentPage === 0 ||
+      totalOrders === 0 ||
+      currentPage >= totalPages ||
+      ultimaPaginaComPedidosRef.current !== currentPage
+    ) {
+      return;
+    }
+    setCurrentPage(currentPage - 1);
+    loadAllData(currentPage - 1, false);
+  }, [
+    orders.length,
+    isLoaded,
+    erroDaListagem,
+    currentPage,
+    totalOrders,
+    totalPages,
+    setCurrentPage,
+    loadAllData,
+  ]);
+
   // ── A loja tem pedido NENHUM, ou o filtro é que está vazio? ─────────────
   // `totalOrders` do hook é o total da consulta FILTRADA — numa loja vazia
   // com o filtro padrão "Em Aberto" ele é 0, mas o MESMO 0 acontece numa
@@ -1465,6 +1502,65 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       setTotalAbsolutoNaLoja(null);
     }
   }, [listaTemPedidos, totalAbsolutoNaLoja]);
+
+  /** Push de "seu pedido agora está: …" depois de o status ser gravado. Nunca
+   *  lança: a falha vira aviso amarelo para a lojista. */
+  const avisarOClienteDoStatus = async (
+    orderId: string,
+    newStatus: OrderStatus,
+    alvo: Order,
+  ) => {
+    try {
+      const title = "Status do Pedido Atualizado";
+      const body = `Seu pedido #${numeroDoPedido(orderId)} agora está: ${rotuloDoStatusParaACliente(newStatus, alvo.retiradaNaLoja)}`;
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const { data: envio, error: erroDoInvoke } =
+        await supabase.functions.invoke("send-push", {
+          body: {
+            targetUserId: alvo.userId,
+            title,
+            body,
+            // Sem `url` o toque no aviso caía na vitrine ("/").
+            url: caminhoDoPedidoNoAviso(orderId),
+            data: { orderId, type: "order_status" },
+          },
+          headers: token
+            ? {
+                Authorization: `Bearer ${token}`,
+              }
+            : {},
+        });
+
+      if (erroDoInvoke) throw erroDoInvoke;
+
+      // `enviados` só existe na send-push depois da PUSH-010 (#80). O teste de
+      // tipo é de propósito: contra a versão antiga da função, que respondia
+      // `{ success: true }` sem contagem, isto não faz nada — em vez de acusar
+      // falha em todo envio. `total` 0 = a cliente nunca ligou as notificações
+      // (nenhum aparelho inscrito): não é falha, então não há o que acusar.
+      if (
+        typeof envio?.enviados === "number" &&
+        envio.enviados === 0 &&
+        envio.total !== 0
+      ) {
+        toast.warning("Status atualizado, mas o push não chegou", {
+          description:
+            envio?.falhas?.[0]?.motivo ??
+            "Nenhum dispositivo deste cliente recebeu a notificação.",
+        });
+      }
+    } catch (err) {
+      console.error("Error sending status push:", err);
+      toast.warning("Status atualizado, mas o push falhou", {
+        description: "O cliente não foi notificado da mudança.",
+      });
+    }
+  };
 
   // `silent` é código morto HOJE: o único chamador real é `OrderDetail`
   // (`onStatusChange={handleStatusChange}` logo abaixo), e `OrderDetailProps.
@@ -1615,56 +1711,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // o canal dele é o WhatsApp. Não é caso de aviso.
     if (!alvo.userId) return;
 
-    try {
-      const title = "Status do Pedido Atualizado";
-      const body = `Seu pedido #${numeroDoPedido(orderId)} agora está: ${rotuloDoStatusParaACliente(newStatus, alvo.retiradaNaLoja)}`;
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      const { data: envio, error: erroDoInvoke } =
-        await supabase.functions.invoke("send-push", {
-          body: {
-            targetUserId: alvo.userId,
-            title,
-            body,
-            // Sem `url` o toque no aviso caía na vitrine ("/").
-            url: caminhoDoPedidoNoAviso(orderId),
-            data: { orderId, type: "order_status" },
-          },
-          headers: token
-            ? {
-                Authorization: `Bearer ${token}`,
-              }
-            : {},
-        });
-
-      if (erroDoInvoke) throw erroDoInvoke;
-
-      // `enviados` só existe na send-push depois da PUSH-010 (#80). O teste de
-      // tipo é de propósito: contra a versão antiga da função, que respondia
-      // `{ success: true }` sem contagem, isto não faz nada — em vez de acusar
-      // falha em todo envio. `total` 0 = a cliente nunca ligou as notificações
-      // (nenhum aparelho inscrito): não é falha, então não há o que acusar.
-      if (
-        typeof envio?.enviados === "number" &&
-        envio.enviados === 0 &&
-        envio.total !== 0
-      ) {
-        toast.warning("Status atualizado, mas o push não chegou", {
-          description:
-            envio?.falhas?.[0]?.motivo ??
-            "Nenhum dispositivo deste cliente recebeu a notificação.",
-        });
-      }
-    } catch (err) {
-      console.error("Error sending status push:", err);
-      toast.warning("Status atualizado, mas o push falhou", {
-        description: "O cliente não foi notificado da mudança.",
-      });
-    }
+    // O status JÁ está gravado e o aviso ao cliente é secundário: não o
+    // esperamos aqui, senão o botão do pedido ficava em "Processando..." pelo
+    // tempo do envio (sem limite, com sinal ruim). A falha segue dando o aviso
+    // amarelo, dentro da própria função.
+    void avisarOClienteDoStatus(orderId, newStatus, alvo);
   };
 
   const handleWhatsApp = useCallback(

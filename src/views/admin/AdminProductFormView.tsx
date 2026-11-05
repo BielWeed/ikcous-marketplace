@@ -106,6 +106,10 @@ import {
   sufixoLivre,
 } from "@/utils/sku-automatico";
 import {
+  acimaDoTetoDePreco,
+  mensagemDePrecoAcimaDoTeto,
+} from "@/utils/teto-de-preco";
+import {
   gruposDeVariacao,
   temGrupoDemais,
   travaDeUmGrupoSo,
@@ -1829,15 +1833,28 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     );
   }
 
+  // O teto de preço vale para valor NOVO ou que ela mexeu. Produto antigo já
+  // acima do teto, com o campo intocado, segue editável (e esse campo nem viaja
+  // no salvar: ver `camposQueMudaram`).
+  const valorNovoOuMexido = useCallback(
+    (atual: string, inicial: string) => !productId || atual !== inicial,
+    [productId],
+  );
+
   useEffect(() => {
     // Validar Preço de Venda
     const price = Number.parseFloat(formData.price);
     if (formData.price && (Number.isNaN(price) || price <= 0)) {
       setPriceError("Preço de venda deve ser maior que zero.");
+    } else if (
+      acimaDoTetoDePreco(price) &&
+      valorNovoOuMexido(formData.price, initialData.price)
+    ) {
+      setPriceError(mensagemDePrecoAcimaDoTeto("O preço de venda"));
     } else {
       setPriceError("");
     }
-  }, [formData.price]);
+  }, [formData.price, initialData.price, valorNovoOuMexido]);
 
   useEffect(() => {
     // Validar Preço de Custo
@@ -1846,6 +1863,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     if (formData.costPrice && !Number.isNaN(cost)) {
       if (cost < 0) {
         setCostError("Preço de custo não pode ser negativo.");
+      } else if (
+        acimaDoTetoDePreco(cost) &&
+        valorNovoOuMexido(formData.costPrice, initialData.costPrice)
+      ) {
+        setCostError(mensagemDePrecoAcimaDoTeto("O preço de custo"));
       } else if (price > 0 && cost >= price) {
         setCostError(
           "Aviso: Preço de custo é maior ou igual ao preço de venda (prejuízo!).",
@@ -1856,14 +1878,26 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     } else {
       setCostError("");
     }
-  }, [formData.costPrice, formData.price]);
+  }, [
+    formData.costPrice,
+    formData.price,
+    initialData.costPrice,
+    valorNovoOuMexido,
+  ]);
 
   useEffect(() => {
     // Validar Preço Original (De:)
     const price = Number.parseFloat(formData.price) || 0;
     const orig = Number.parseFloat(formData.originalPrice);
     if (isPromoActive && formData.originalPrice && !Number.isNaN(orig)) {
-      if (orig <= price) {
+      if (
+        acimaDoTetoDePreco(orig) &&
+        valorNovoOuMexido(formData.originalPrice, initialData.originalPrice)
+      ) {
+        setOriginalPriceError(
+          mensagemDePrecoAcimaDoTeto('O preço de antes ("De")'),
+        );
+      } else if (orig <= price) {
         setOriginalPriceError(
           'Preço de antes ("De") deve ser maior que o preço de venda.',
         );
@@ -1873,7 +1907,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     } else {
       setOriginalPriceError("");
     }
-  }, [formData.originalPrice, formData.price, isPromoActive]);
+  }, [
+    formData.originalPrice,
+    formData.price,
+    initialData.originalPrice,
+    isPromoActive,
+    valorNovoOuMexido,
+  ]);
 
   useEffect(() => {
     // Validar Estoque
@@ -2390,6 +2430,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       sanitizedVarPrice,
       editingVariant?.priceOverride === 0,
     );
+    // Teto de preço; a variação antiga acima dele, reaberta sem mexer no preço,
+    // segue valendo. O que ela digitou fica no campo.
+    if (
+      acimaDoTetoDePreco(parsedPriceOverride) &&
+      parsedPriceOverride !== editingVariant?.priceOverride
+    ) {
+      toast.error(mensagemDePrecoAcimaDoTeto("O preço desta variação"));
+      return;
+    }
     const sanitizedVarSku = variantFormData.sku
       ? variantFormData.sku.trim().toUpperCase().replace(/\s+/g, "-")
       : undefined;
@@ -2517,6 +2566,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     precoDaGrade?: number,
   ): boolean => {
     if (linhas.length === 0) return false;
+
+    if (
+      acimaDoTetoDePreco(precoDaGrade) ||
+      linhas.some((linha) => acimaDoTetoDePreco(linha.priceOverride))
+    ) {
+      toast.error(mensagemDePrecoAcimaDoTeto("O preço de uma variação"));
+      return false;
+    }
 
     const trava = travaDeUmGrupoSo(formData.variants, null, linhas[0].name);
     if (trava.bloqueia) {
@@ -2706,6 +2763,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     const campoComErro = idDoPrimeiroCampoComErro();
     if (campoComErro) {
       mostrarEFocarCampo(campoComErro);
+      return;
+    }
+    // Rede do teto de preço das variações (rascunho antigo restaurado): o
+    // banco não limita o preço próprio, e o pedido estouraria na hora de pagar.
+    const precoDeAbertura = new Map(
+      initialData.variants.map((v) => [v.id, v.priceOverride]),
+    );
+    if (
+      formData.variants.some(
+        (v) =>
+          acimaDoTetoDePreco(v.priceOverride) &&
+          precoDeAbertura.get(v.id) !== v.priceOverride,
+      )
+    ) {
+      toast.error(mensagemDePrecoAcimaDoTeto("O preço de uma variação"));
       return;
     }
     setIsSubmitting(true);

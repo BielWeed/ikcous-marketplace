@@ -2252,7 +2252,12 @@ export function useOrders(
         if (!silent) toast.error("Erro ao carregar pedidos");
         return { orders: [], total: 0 };
       } finally {
-        setLoading(false);
+        // Só a consulta mais nova desliga o carregando: a cancelada termina
+        // DEPOIS de a nova ligá-lo e o apagaria (a lista do filtro antigo
+        // apareceria como se fosse o resultado novo).
+        if (adminOrdersAbortControllerRef.current?.signal === signal) {
+          setLoading(false);
+        }
       }
     },
     [enabled],
