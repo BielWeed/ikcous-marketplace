@@ -21,6 +21,9 @@ const STEM_A =
   "120a-conferir-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-aplicado";
 const STEM_B =
   "120b-antes-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-base-vigente";
+// Leitura por chave sem indexar objeto (a catraca de lint conta cada colchete como alerta).
+const doMapa = (mapa, chave) =>
+  Object.entries(mapa).find(([k]) => k === chave)?.[1];
 const ler = (caminho) =>
   Deno.readTextFileSync(new URL(caminho, DIR)).replace(/\r\n/g, "\n");
 const migration = ler(`supabase/migrations/${NOME}`);
@@ -237,12 +240,16 @@ Deno.test("a migration e o rollback sao ADITIVOS e seguem sem BEGIN/COMMIT de ni
 Deno.test("as fichas 120a/120b: mesmo rol de 8 linhas, so catalogo, 120a espera os corpos novos e 120b os vigentes", () => {
   const conf = require("../scripts/publicacao/conferir-banco.cjs");
   for (const stem of [STEM_A, STEM_B]) {
-    assert.equal(conf.ROL_FECHADO_POR_CONSULTA[stem].length, 8, stem);
-    assert.equal(new Set(conf.ROL_FECHADO_POR_CONSULTA[stem]).size, 8, stem);
+    assert.equal(doMapa(conf.ROL_FECHADO_POR_CONSULTA, stem).length, 8, stem);
+    assert.equal(
+      new Set(doMapa(conf.ROL_FECHADO_POR_CONSULTA, stem)).size,
+      8,
+      stem,
+    );
   }
   assert.deepEqual(
-    conf.ROL_FECHADO_POR_CONSULTA[STEM_A],
-    conf.ROL_FECHADO_POR_CONSULTA[STEM_B],
+    doMapa(conf.ROL_FECHADO_POR_CONSULTA, STEM_A),
+    doMapa(conf.ROL_FECHADO_POR_CONSULTA, STEM_B),
   );
   for (const [ficha, f2, f3, outro] of [
     [fichaA, DEPOIS_F2, DEPOIS_F3, [ANTES_F2, ANTES_F3]],
@@ -268,7 +275,7 @@ Deno.test("as fichas 120a/120b: mesmo rol de 8 linhas, so catalogo, 120a espera 
         sql,
       ),
     );
-    for (const item of conf.ROL_FECHADO_POR_CONSULTA[STEM_A])
+    for (const item of doMapa(conf.ROL_FECHADO_POR_CONSULTA, STEM_A))
       assert.ok(sql.includes(`'${item}'`), item);
   }
 });
@@ -319,7 +326,10 @@ Deno.test("o lote 120 esta registrado em exatamente um lugar de cada registro (c
     ),
   );
   const mapa = require("../scripts/db-apply.cjs");
-  assert.deepEqual(mapa.VERIFICACOES[NOME].funcao, "reply_review_atomic");
+  assert.deepEqual(
+    doMapa(mapa.VERIFICACOES, NOME).funcao,
+    "reply_review_atomic",
+  );
   // o marcador "A10: log honesto" da 1064/1065 segue valendo nos dois corpos (reaplicar a 1064/1065 e' recusado pelo aplicador)
   const [m2, m3] = corpos(migration);
   for (const c of [m2, m3])

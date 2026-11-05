@@ -424,7 +424,7 @@ export const AdminProductsView = memo(function AdminProductsView({
               }
               if (ultima) {
                 setTotalProducts(ultima.total);
-                cachedProductsTotal = ultima.total;
+                if (!modoEstoqueBaixo) cachedProductsTotal = ultima.total;
               } else {
                 setLoadError(true);
               }
