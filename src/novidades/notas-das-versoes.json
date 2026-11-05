@@ -1,4 +1,12 @@
 {
+  "1.5.127": {
+    "titulo": "As estrelas das avaliações passam a aparecer nos produtos da loja",
+    "novidades": [
+      "Os cartões de produto da loja passam a mostrar as estrelas e o número de avaliações, a partir da próxima avaliação publicada de cada produto."
+    ],
+    "correcoes": [],
+    "melhorias": []
+  },
   "1.5.126": {
     "titulo": "Produtos antigos com dois tipos de variação ficam sinalizados no painel",
     "novidades": [],
