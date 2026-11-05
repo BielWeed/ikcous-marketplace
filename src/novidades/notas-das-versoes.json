@@ -1,4 +1,14 @@
 {
+  "1.5.123": {
+    "titulo": "Aparelho de balcão mais seguro e textos do painel mais certos",
+    "novidades": [],
+    "correcoes": [
+      "Segurança: quando a dona tira o cargo de alguém, o catálogo com custos que ficou guardado no aparelho dessa pessoa é apagado assim que o app confirma a mudança.",
+      "Painel, Frete: no frete grátis por produto marcado some a pergunta \"Qual entrega fica grátis?\", que o app nunca usou, e o resumo deixa de prometer essa escolha.",
+      "Painel, Compartilhar: as quebras de linha da mensagem de compartilhar, digitadas com Enter, passam a chegar no WhatsApp como a lojista escreveu."
+    ],
+    "melhorias": []
+  },
   "1.5.122": {
     "titulo": "Busca de produtos por várias palavras e avisos do painel mais honestos",
     "novidades": [],

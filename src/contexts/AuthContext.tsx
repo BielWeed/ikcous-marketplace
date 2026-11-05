@@ -463,6 +463,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         );
         return;
       }
+      // Rebaixamento (a dona tirou o cargo): um "não" REAL do servidor para
+      // quem era lojista -- pela marca do aparelho OU pela confirmação desta
+      // sessão. Lido ANTES de a marca virar "false" logo abaixo: o "Sair"
+      // decide limpar o catálogo de lojista (custo, produto pausado) pelas
+      // marcas "true" do aparelho, e sem elas esse resíduo ficava no cofre
+      // local para sempre. Só aqui (veredito real, usuário ainda ativo): erro
+      // de rede nunca chega a esta função, e quem nunca foi lojista não perde
+      // o catálogo público que a vitrine usa offline. Antes de o estado mudar,
+      // para o aviso às gravações em voo valer para a rodada do motor que
+      // reinicia como não-admin.
+      if (
+        !isAdminResult &&
+        (localStorage.getItem(cacheKey) === "true" ||
+          adminConfirmadoRef.current === userId)
+      ) {
+        limparCachesDeAdmin();
+        esquecerCofreDeQuemSaiu(true);
+      }
       setAdminStatus(isAdminResult ? "admin" : "not-admin");
       setAdminVerificacaoFalhou(false);
       localStorage.setItem(cacheKey, isAdminResult ? "true" : "false");
