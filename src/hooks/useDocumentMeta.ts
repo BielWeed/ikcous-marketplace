@@ -30,19 +30,94 @@ export interface DocumentMetaOptions {
   readonly jsonLdId?: string;
 }
 
-const upsertMeta = (attr: "name" | "property", key: string, value: string) => {
+interface Original {
+  readonly conteudo: string | null;
+  readonly criada: boolean;
+}
+
+interface Pilha {
+  readonly original: Original;
+  readonly entradas: { readonly valor: string }[];
+}
+
+interface Alvo {
+  capturar(): Original;
+  gravar(valor: string): void;
+  devolver(original: Original): void;
+}
+
+/**
+ * Cada título ou meta tem uma PILHA de quem o escreveu. A Home fica montada por
+ * baixo das telas secundárias e, no fallback de animação, a tela que sai só
+ * limpa DEPOIS de a que entra ter escrito: guardar "o valor de antes" em cada
+ * chamada devolveria um título velho por cima do novo. Com a pilha, quem sai
+ * tira só a sua entrada e vale a de cima; com a pilha vazia volta o original.
+ */
+const pilhas = new Map<string, Pilha>();
+
+const empilhar = (chave: string, valor: string, alvo: Alvo): (() => void) => {
+  let pilha = pilhas.get(chave);
+  if (!pilha) {
+    pilha = { original: alvo.capturar(), entradas: [] };
+    pilhas.set(chave, pilha);
+  }
+  const entrada = { valor };
+  pilha.entradas.push(entrada);
+  alvo.gravar(valor);
+  return () => {
+    const atual = pilhas.get(chave);
+    if (!atual) return;
+    const posicao = atual.entradas.indexOf(entrada);
+    if (posicao >= 0) atual.entradas.splice(posicao, 1);
+    const topo = atual.entradas.at(-1);
+    if (topo) {
+      alvo.gravar(topo.valor);
+    } else {
+      pilhas.delete(chave);
+      alvo.devolver(atual.original);
+    }
+  };
+};
+
+const alvoDoTitulo: Alvo = {
+  capturar: () => ({ conteudo: document.title, criada: false }),
+  gravar: (valor) => {
+    document.title = valor;
+  },
+  devolver: (original) => {
+    document.title = original.conteudo ?? "";
+  },
+};
+
+const alvoDaMeta = (attr: "name" | "property", key: string): Alvo => {
   // Sem CSS.escape aqui: o valor está entre aspas no seletor de atributo, então
   // escapar transformaria "og:title" em "og\:title" e o seletor deixaria de casar
   // com a tag estática do index.html — criando uma duplicata em vez de atualizá-la.
   // (As chaves são constantes nossas, não entrada de usuário.)
   const selector = `meta[${attr}="${key}"]`;
-  let tag = document.head.querySelector<HTMLMetaElement>(selector);
-  if (!tag) {
-    tag = document.createElement("meta");
-    tag.setAttribute(attr, key);
-    document.head.append(tag);
-  }
-  tag.setAttribute("content", value);
+  const achar = () => document.head.querySelector<HTMLMetaElement>(selector);
+  return {
+    capturar: () => {
+      const tag = achar();
+      return { conteudo: tag?.getAttribute("content") ?? null, criada: !tag };
+    },
+    gravar: (valor) => {
+      let tag = achar();
+      if (!tag) {
+        tag = document.createElement("meta");
+        tag.setAttribute(attr, key);
+        document.head.append(tag);
+      }
+      tag.setAttribute("content", valor);
+    },
+    devolver: (original) => {
+      const tag = achar();
+      if (!tag) return;
+      if (original.criada) tag.remove();
+      else if (original.conteudo === null) tag.removeAttribute("content");
+      else tag.setAttribute("content", original.conteudo);
+    },
+  };
 };
 
 export function useDocumentMeta({
@@ -59,21 +134,31 @@ export function useDocumentMeta({
   useEffect(() => {
     if (typeof document === "undefined") return;
 
-    if (title) document.title = title;
+    // O que esta tela escreve é devolvido ao sair (ver a pilha acima).
+    const desfazer: Array<() => void> = [];
+    const desfazerTudo = () => {
+      for (const parar of desfazer.reverse()) parar();
+    };
+
+    if (title) desfazer.push(empilhar("titulo", title, alvoDoTitulo));
 
     for (const [key, value] of Object.entries(
       JSON.parse(namesKey) as Record<string, string | undefined>,
     )) {
-      if (value) upsertMeta("name", key, value);
+      if (value)
+        desfazer.push(empilhar(`name:${key}`, value, alvoDaMeta("name", key)));
     }
 
     for (const [key, value] of Object.entries(
       JSON.parse(propsKey) as Record<string, string | undefined>,
     )) {
-      if (value) upsertMeta("property", key, value);
+      if (value)
+        desfazer.push(
+          empilhar(`property:${key}`, value, alvoDaMeta("property", key)),
+        );
     }
 
-    if (!jsonLdKey) return;
+    if (!jsonLdKey) return desfazerTudo;
 
     let script = document.head.querySelector<HTMLScriptElement>(
       `script#${CSS.escape(jsonLdId)}`,
@@ -90,6 +175,7 @@ export function useDocumentMeta({
     // da página do produto e acabar descrevendo a Home.
     return () => {
       document.getElementById(jsonLdId)?.remove();
+      desfazerTudo();
     };
   }, [title, namesKey, propsKey, jsonLdKey, jsonLdId]);
 }
