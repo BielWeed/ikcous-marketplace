@@ -619,6 +619,24 @@ const VERIFICACOES = {
       },
     ],
   },
+  // 20261399700000: o painel de avaliacoes filtra o que esta em moderacao. get_admin_reviews_paged TROCA a assinatura (de 4 para 5 argumentos: o ultimo, p_status text DEFAULT 'todas', e a de 4 e' apagada na
+  // mesma migration) e ganha UM predicado, na contagem e na consulta paginada: 'pendente' mostra so a fila; qualquer outro valor vale 'todas'. O corpo e o vivo da 20261381000000 (gate is_admin_atual, contadores
+  // globais sem filtro). Cada marcador aparece no corpo as vezes abaixo (o predicado, 2: contagem e lista). A consulta 123a confere o corpo exato (md5), os atributos, a ACL e a assinatura unica.
+  "20261399700000_o_painel_de_avaliacoes_filtra_o_que_esta_em_moderacao.sql": {
+    funcao: "get_admin_reviews_paged",
+    esperado: [
+      { texto: "p_status text DEFAULT 'todas'::text", vezes: 1 },
+      {
+        texto: "v_so_pendentes := COALESCE(p_status = 'pendente', false);",
+        vezes: 1,
+      },
+      {
+        texto: "AND (NOT v_so_pendentes OR r.status = 'pendente')",
+        vezes: 2,
+      },
+      { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+    ],
+  },
   // 20261397000000: o desconto do cupom de porcentagem e' arredondado ao centavo. As TRES funcoes (create_marketplace_order_v23/v24 e
   // validate_coupon_secure_v2) trocam SO a linha da conta do desconto percentual: `round(<subtotal * valor / 100>, 2)` no lugar da conta crua.
   // Cada marcador aparece UMA vez no corpo (o marcador nao admite "zero vezes": a ausencia da conta antiga e' do pos-voo da migration e da

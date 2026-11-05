@@ -460,6 +460,10 @@ async function desfazerPosterioresNaTransacao(cliente) {
     cliente,
   );
   await desfazerCaixaIntencaoNaTransacao(cliente);
+  // A 20261399700000 (o painel de avaliacoes filtra o que esta em moderacao) TROCA a assinatura de get_admin_reviews_paged da 81: sai ANTES dela (o rollback da 81 exige a de 4 argumentos com o corpo da 81).
+  await require("./o-painel-de-avaliacoes-filtra-posterior.cjs").desfazerFiltroDeModeracaoNaTransacao(
+    cliente,
+  );
   // A 20261393100000 (o balcao diz "inativo") sucede buscar_por_codigo_barras da 81: sai ANTES dela (o rollback da 81 exige o corpo da 81).
   await desfazerBalcaoDizInativoNaTransacao(cliente);
   // A 20261385 (a busca de produtos) sucede get_admin_products_paged da 81: sai ANTES dela (o rollback da 81 exige o corpo da 81).
@@ -1631,6 +1635,10 @@ PROVAS.push({
         cliente,
       );
       await desfazerCaixaIntencaoNaTransacao(cliente);
+      // A 20261399700000 (o painel de avaliacoes filtra o que esta em moderacao) sai antes da 81, que e' desfeita nesta pilha (o rollback da 81 exige a assinatura de 4 argumentos).
+      await require("./o-painel-de-avaliacoes-filtra-posterior.cjs").desfazerFiltroDeModeracaoNaTransacao(
+        cliente,
+      );
       // A 20261393100000 (o balcao diz "inativo") e a 20261385 (a busca de produtos) saem antes da 81, que e' desfeita nesta pilha (o rollback da 81 exige o corpo da 81).
       await desfazerBalcaoDizInativoNaTransacao(cliente);
       await desfazerBuscaDoPainelNaTransacao(cliente);

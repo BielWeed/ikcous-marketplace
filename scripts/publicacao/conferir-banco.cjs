@@ -2965,7 +2965,20 @@ const ROL_DA_122 = [
   "fin_dre: assinatura e atributos conhecidos",
   "fin_dre: EXECUTE authenticated, sem PUBLIC ou anon",
 ];
+// Lote 123 (20261399700000, o painel de avaliacoes filtra o que esta em moderacao: get_admin_reviews_paged ganha p_status e TROCA de assinatura, de 4 para 5 argumentos, DROP da antiga e CREATE da
+// nova). A 123a e a 123b tem o MESMO rol de 4 linhas (controle, corpo exato (md5), assinatura e atributos - inclusive "uma unica assinatura com esse nome" - e ACL); a 123a espera a funcao de 5
+// argumentos com o corpo da migration nova e a 123b a de 4 com o corpo vigente (o da 20261381000000). Nenhuma le avaliacao nem chama a get_admin_reviews_paged.
+const ROL_DA_123 = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_reviews_paged: corpo exato (md5)",
+  "get_admin_reviews_paged: assinatura e atributos conhecidos",
+  "get_admin_reviews_paged: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "123a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-aplicado":
+    ROL_DA_123,
+  "123b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-base-vigente":
+    ROL_DA_123,
   "122a-conferir-o-resultado-credita-o-custo-da-devolucao-de-outro-mes-aplicado":
     ROL_DA_122,
   "122b-antes-o-resultado-credita-o-custo-da-devolucao-de-outro-mes-base-vigente":

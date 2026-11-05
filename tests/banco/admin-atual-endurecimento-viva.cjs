@@ -788,6 +788,11 @@ async function main() {
           [ADMIN_SEL],
         )
       ).rows[0].sim;
+    // A 20261399700000 (o painel de avaliacoes filtra o que esta em moderacao) TROCA a assinatura de get_admin_reviews_paged desta
+    // migration: sai primeiro (ordem inversa da aplicacao). Definicao unica em tests/banco/o-painel-de-avaliacoes-filtra-posterior.cjs.
+    await require("./o-painel-de-avaliacoes-filtra-posterior.cjs").desfazerFiltroDeModeracaoNaTransacao(
+      c,
+    );
     // A 20261393100000 (o balcao diz "inativo") sucede buscar_por_codigo_barras desta migration: sai primeiro (ordem inversa
     // da aplicacao). Definicao unica em tests/banco/o-balcao-diz-inativo-posterior.cjs.
     await require("./o-balcao-diz-inativo-posterior.cjs").desfazerBalcaoDizInativoNaTransacao(

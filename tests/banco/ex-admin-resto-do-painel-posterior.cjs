@@ -13,6 +13,12 @@ const EX_ADMIN_RESTO_DO_PAINEL = Object.freeze({
   noAr: "SELECT EXISTS(SELECT 1 FROM pg_policy WHERE polname='banners_admin_select_policy' AND polrelid=to_regclass('public.banners')) sim",
 });
 async function desfazerExAdminRestoNaTransacao(c) {
+  // A 20261399700000 (o painel de avaliacoes filtra o que esta em moderacao) TROCA a assinatura de get_admin_reviews_paged, que esta
+  // migration (381) tambem redefine: o rollback da 81 exige a de 4 argumentos com o corpo DELA, entao a 3997 sai primeiro (ordem inversa
+  // da aplicacao; nao faz nada se nao esta no ar). Definicao unica em tests/banco/o-painel-de-avaliacoes-filtra-posterior.cjs.
+  await require("./o-painel-de-avaliacoes-filtra-posterior.cjs").desfazerFiltroDeModeracaoNaTransacao(
+    c,
+  );
   // A 20261393100000 (o balcao diz "inativo" para a variacao desligada) e' a ULTIMA a redefinir buscar_por_codigo_barras, que
   // esta migration (381) tambem redefine: o rollback da 81 exige o corpo DELA, entao a 393100000 sai primeiro (ordem inversa
   // da aplicacao; nao faz nada se nao esta no ar). Definicao unica em tests/banco/o-balcao-diz-inativo-posterior.cjs.

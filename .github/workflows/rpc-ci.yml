@@ -248,6 +248,8 @@ on:
       - "scripts/publicacao/consultas/121b-antes-as-estrelas-do-produto-aparecem-na-vitrine-ausente.sql"
       - "scripts/publicacao/consultas/122a-conferir-o-resultado-credita-o-custo-da-devolucao-de-outro-mes-aplicado.sql"
       - "scripts/publicacao/consultas/122b-antes-o-resultado-credita-o-custo-da-devolucao-de-outro-mes-base-vigente.sql"
+      - "scripts/publicacao/consultas/123a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-aplicado.sql"
+      - "scripts/publicacao/consultas/123b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -465,6 +467,8 @@ on:
       - "scripts/publicacao/consultas/121b-antes-as-estrelas-do-produto-aparecem-na-vitrine-ausente.sql"
       - "scripts/publicacao/consultas/122a-conferir-o-resultado-credita-o-custo-da-devolucao-de-outro-mes-aplicado.sql"
       - "scripts/publicacao/consultas/122b-antes-o-resultado-credita-o-custo-da-devolucao-de-outro-mes-base-vigente.sql"
+      - "scripts/publicacao/consultas/123a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-aplicado.sql"
+      - "scripts/publicacao/consultas/123b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -802,6 +806,13 @@ jobs:
       - name: Prova viva do resultado que credita o custo da devolucao de outro mes (20261399600000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-resultado-credita-o-custo-da-devolucao-de-outro-mes-viva.cjs
+      # Migration 20261399700000 (o painel de avaliacoes filtra o que esta em moderacao): get_admin_reviews_paged ganha p_status text DEFAULT 'todas' (assinatura de 4 para 5 argumentos: DROP da antiga,
+      # CREATE da nova, sem sobrecarga ambigua para o PostgREST). 'pendente' filtra a lista E o total_count; NULL, 'todas' e texto desconhecido valem 'todas'; os contadores globais nao seguem o filtro.
+      # Controle com o corpo da 381 na MESMA fixture (o defeito: a pendente antiga afunda), chamadas de 4 argumentos nomeados e posicionais, mutantes, ACL e atributos iguais aos de antes (mesmo com os
+      # privilegios padrao do Supabase), porta de admin, reaplicar (LF e CRLF), atomicidade sem BEGIN, rollback byte a byte, pre-voo, 86a aceitando o corpo novo e consultas 123a/123b. CLONE proprio.
+      - name: Prova viva do painel de avaliacoes que filtra o que esta em moderacao (20261399700000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

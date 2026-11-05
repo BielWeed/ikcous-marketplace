@@ -515,7 +515,7 @@
       "porque": "Paineis e relatorios do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige is_admin(); o visitante nao a executa."
     },
     {
-      "funcao": "public.get_admin_reviews_paged(p_search text, p_rating text, p_page integer, p_page_size integer)",
+      "funcao": "public.get_admin_reviews_paged(p_search text, p_rating text, p_page integer, p_page_size integer, p_status text)",
       "executa": ["authenticated"],
       "tipo": "volatil",
       "secdef": true,

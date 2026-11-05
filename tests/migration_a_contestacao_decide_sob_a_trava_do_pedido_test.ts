@@ -696,6 +696,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399600000: o resultado credita o custo da devolucao de venda de outro mes (fin_dre deixa de cortar o CMV em zero; CMV negativo = credito de custo; a linha do CMV aparece quando nao e zero;
     // controle com o corpo da 382 na mesma fixture, soma dos meses fecha com o periodo, mutantes, rollback byte a byte, pre/pos-voo e consultas 122a/122b).
     "tests/banco/o-resultado-credita-o-custo-da-devolucao-de-outro-mes-viva.cjs",
+    // 20261399700000: o painel de avaliacoes filtra o que esta em moderacao (get_admin_reviews_paged troca de 4 para 5 argumentos: p_status 'pendente' filtra a lista e o total_count; DROP da assinatura
+    // antiga sem sobrecarga ambigua; ACL, dono e atributos iguais aos de antes; controle com o corpo da 381 na mesma fixture, mutantes, rollback byte a byte, pre/pos-voo e consultas 123a/123b).
+    "tests/banco/o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",

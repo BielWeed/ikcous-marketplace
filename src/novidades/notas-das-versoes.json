@@ -1,4 +1,12 @@
 {
+  "1.5.133": {
+    "titulo": "Avaliações do painel com filtro Em moderação",
+    "novidades": [
+      "Painel, Avaliações: novo filtro Em moderação mostra só as avaliações que esperam sua decisão, com o número delas no botão, sem precisar passar página por página procurando o selo."
+    ],
+    "correcoes": [],
+    "melhorias": []
+  },
   "1.5.132": {
     "titulo": "Avaliações mais claras na vitrine e cupons mais honestos no painel",
     "novidades": [],
