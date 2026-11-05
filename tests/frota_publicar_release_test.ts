@@ -3166,6 +3166,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "117a-conferir-as-visitas-da-loja-contam-pelo-porteiro-aplicado",
     "118a-conferir-o-nome-do-perfil-tem-teto-no-banco-aplicado",
     "119a-conferir-a-busca-por-palavras-e-o-estorno-fora-do-vencido-aplicado",
+    "120a-conferir-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-aplicado",
   ]);
 });
 

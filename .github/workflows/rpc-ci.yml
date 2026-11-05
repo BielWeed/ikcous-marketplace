@@ -242,6 +242,8 @@ on:
       - "scripts/publicacao/consultas/118b-antes-o-nome-do-perfil-tem-teto-no-banco-ausente.sql"
       - "scripts/publicacao/consultas/119a-conferir-a-busca-por-palavras-e-o-estorno-fora-do-vencido-aplicado.sql"
       - "scripts/publicacao/consultas/119b-antes-a-busca-por-palavras-e-o-estorno-fora-do-vencido-base-vigente.sql"
+      - "scripts/publicacao/consultas/120a-conferir-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-aplicado.sql"
+      - "scripts/publicacao/consultas/120b-antes-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -453,6 +455,8 @@ on:
       - "scripts/publicacao/consultas/118b-antes-o-nome-do-perfil-tem-teto-no-banco-ausente.sql"
       - "scripts/publicacao/consultas/119a-conferir-a-busca-por-palavras-e-o-estorno-fora-do-vencido-aplicado.sql"
       - "scripts/publicacao/consultas/119b-antes-a-busca-por-palavras-e-o-estorno-fora-do-vencido-base-vigente.sql"
+      - "scripts/publicacao/consultas/120a-conferir-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-aplicado.sql"
+      - "scripts/publicacao/consultas/120b-antes-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -768,6 +772,13 @@ jobs:
       - name: Prova viva do estorno em andamento fora das contas vencidas (20261399300000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-estorno-em-andamento-nao-e-conta-vencida-viva.cjs
+      # Migration 20261399400000 (a cliente e avisada no sino quando a loja responde a avaliacao dela): reply_review_atomic, as duas sobrecargas, cria UM aviso em notificacoes para quem
+      # avaliou (titulo, mensagem com o produto, acao que abre o produto, dados {review_id, product_id}), dentro de BEGIN ... EXCEPTION (a falha do aviso nunca desfaz a resposta); resposta
+      # repetida ou editada nao duplica, avaliacao antiga so ganha aviso se a loja editar, nao-admin e recusado sem escrever; a linha de push_notifications_log CONTINUA sendo gravada
+      # (a consulta 27m a usa); controle com os corpos da 20261360; mutantes, reaplicar, rollback byte a byte, pre-voo, pos-voo, atomicidade, consultas 120a/120b e 82a. CLONE proprio.
+      - name: Prova viva do aviso da avaliacao respondida (20261399400000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

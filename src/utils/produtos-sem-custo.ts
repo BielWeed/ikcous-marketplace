@@ -34,6 +34,13 @@ export function produtoSemCustoEmEstoque(produto: {
  */
 export const VISAO_SEM_CUSTO = "sem-custo";
 
+/**
+ * O `id` com que `onNavigate("admin-products", ...)` pede a lista de Produtos
+ * só com os ATIVOS de estoque baixo: a conta do card "N produtos com estoque
+ * baixo" do Início (o servidor filtra com `stock: "low"` + `status: "active"`).
+ */
+export const VISAO_ESTOQUE_BAIXO = "estoque-baixo";
+
 /** "1 produto sem custo cadastrado ficou fora do lucro." (plural certo). */
 export function avisoProdutosSemCusto(quantidade: number): string {
   return quantidade === 1

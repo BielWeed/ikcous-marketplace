@@ -51,7 +51,10 @@ import {
 } from "@/utils/avisos-do-lojista";
 import { haptic } from "@/utils/haptic";
 import { consumirProdutoNovoCadastrado } from "@/utils/produto-recem-cadastrado";
-import { VISAO_SEM_CUSTO } from "@/utils/produtos-sem-custo";
+import {
+  VISAO_ESTOQUE_BAIXO,
+  VISAO_SEM_CUSTO,
+} from "@/utils/produtos-sem-custo";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -119,8 +122,8 @@ interface AdminProductsViewProps {
   active?: boolean;
   /**
    * Visão com que a lista abre (o `id` de `onNavigate("admin-products", id)`):
-   * só `VISAO_SEM_CUSTO` vale; qualquer outro valor é ignorado e a lista abre
-   * como sempre.
+   * só `VISAO_SEM_CUSTO` e `VISAO_ESTOQUE_BAIXO` valem; qualquer outro valor é
+   * ignorado e a lista abre como sempre.
    */
   visaoInicial?: string | null;
 }
@@ -221,9 +224,16 @@ export const AdminProductsView = memo(function AdminProductsView({
   const [semCusto, setSemCusto] = useState<Product[] | null>(null);
   const [paginaSemCusto, setPaginaSemCusto] = useState(0);
   const [pedidoDeRolagem, setPedidoDeRolagem] = useState(0);
+  // Visão "Estoque baixo" (vinda do card do Início): a lista continua sendo a
+  // paginada do servidor, só com o filtro `stock: "low"` + `status: "active"`
+  // (a conta do número do card). `estoqueBaixoPronto` fecha a janela em que a
+  // lista antiga ainda está na tela. Também sai em "Ver todos".
+  const [modoEstoqueBaixo, setModoEstoqueBaixo] = useState(false);
+  const [estoqueBaixoPronto, setEstoqueBaixoPronto] = useState(false);
   const filtrosAntesDaVisao = useRef<{
     busca: string;
     categoria: string;
+    pagina: number;
   } | null>(null);
   const faixaDaVisaoRef = useRef<HTMLDivElement>(null);
   const totalDaLista = modoSemCusto ? (semCusto?.length ?? 0) : totalProducts;
@@ -311,8 +321,14 @@ export const AdminProductsView = memo(function AdminProductsView({
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const buscandoSemCusto = modoSemCusto && semCusto === null && !loadError;
+  const buscandoEstoqueBaixo =
+    modoEstoqueBaixo && !estoqueBaixoPronto && !loadError;
   const effectiveLoading =
-    loading || !hasLoadedOnce || buscandoSemCusto || atualizacoesPendentes > 0;
+    loading ||
+    !hasLoadedOnce ||
+    buscandoSemCusto ||
+    buscandoEstoqueBaixo ||
+    atualizacoesPendentes > 0;
   const shouldScrollToTop = useRef(false);
 
   // Logo depois de CADASTRAR um produto novo, a lista abre na página 1 e sem
@@ -328,6 +344,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     setCurrentPage(0);
     // O produto novo é o mais recente e tem de aparecer na lista normal.
     setModoSemCusto(false);
+    setModoEstoqueBaixo(false);
     setSemCusto(null);
     filtrosAntesDaVisao.current = null;
     shouldScrollToTop.current = true;
@@ -364,6 +381,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         const filtros = {
           search: searchTerm || undefined,
           category: filterCategory === "all" ? undefined : filterCategory,
+          ...(modoEstoqueBaixo && { stock: "low", status: "active" }),
         };
         if (modoSemCusto) {
           const achados = await loadProductsSemCusto(filtros);
@@ -384,7 +402,9 @@ export const AdminProductsView = memo(function AdminProductsView({
         if (result) {
           setLoadError(false);
           setTotalProducts(result.total);
-          cachedProductsTotal = result.total;
+          // O total filtrado por estoque não é o do catálogo guardado.
+          if (!modoEstoqueBaixo) cachedProductsTotal = result.total;
+          if (modoEstoqueBaixo) setEstoqueBaixoPronto(true);
 
           const maxPage = Math.max(0, Math.ceil(result.total / pageSize) - 1);
           if (pageToFetch > maxPage) {
@@ -425,6 +445,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       loadProducts,
       loadProductsSemCusto,
       modoSemCusto,
+      modoEstoqueBaixo,
       pageSize,
       searchTerm,
       filterCategory,
@@ -537,14 +558,16 @@ export const AdminProductsView = memo(function AdminProductsView({
       // Uma busca da lista normal ainda em andamento não pode gravar o erro
       // dela na visão que está abrindo.
       geracaoDaRecarga.current += 1;
-      filtrosAntesDaVisao.current = {
+      filtrosAntesDaVisao.current ??= {
         busca: searchTerm,
         categoria: filterCategory,
+        pagina: currentPage,
       };
       // A visão olha o catálogo inteiro: busca e categoria saem (voltam em
       // "Ver todos").
       setSearchTerm("");
       setFilterCategory("all");
+      setModoEstoqueBaixo(false);
       setSemCusto(null);
       setPaginaSemCusto(0);
       setLoadError(false);
@@ -562,6 +585,35 @@ export const AdminProductsView = memo(function AdminProductsView({
   useEffect(() => {
     if (active && pedeVisaoSemCusto) abrirVisaoSemCustoRef.current();
   }, [active, pedeVisaoSemCusto]);
+  // Vindo do Início (card "N produtos com estoque baixo"): mesma ideia, com
+  // a lista do servidor já filtrada. Começa na página 1 e sem busca/categoria.
+  const abrirVisaoEstoqueBaixo = () => {
+    if (!modoEstoqueBaixo) {
+      geracaoDaRecarga.current += 1;
+      filtrosAntesDaVisao.current ??= {
+        busca: searchTerm,
+        categoria: filterCategory,
+        pagina: currentPage,
+      };
+      setSearchTerm("");
+      setFilterCategory("all");
+      setCurrentPage(0);
+      setModoSemCusto(false);
+      setSemCusto(null);
+      setEstoqueBaixoPronto(false);
+      setLoadError(false);
+      setModoEstoqueBaixo(true);
+    }
+    setPedidoDeRolagem((n) => n + 1);
+  };
+  const pedeVisaoEstoqueBaixo = visaoInicial === VISAO_ESTOQUE_BAIXO;
+  const abrirVisaoEstoqueBaixoRef = useRef(abrirVisaoEstoqueBaixo);
+  useEffect(() => {
+    abrirVisaoEstoqueBaixoRef.current = abrirVisaoEstoqueBaixo;
+  });
+  useEffect(() => {
+    if (active && pedeVisaoEstoqueBaixo) abrirVisaoEstoqueBaixoRef.current();
+  }, [active, pedeVisaoEstoqueBaixo]);
   const verTodos = () => {
     const antes = filtrosAntesDaVisao.current;
     filtrosAntesDaVisao.current = null;
@@ -569,6 +621,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     // recarga) chega depois da saída: com a geração nova, é descartada.
     geracaoDaRecarga.current += 1;
     setModoSemCusto(false);
+    setModoEstoqueBaixo(false);
     setSemCusto(null);
     setPaginaSemCusto(0);
     setLoadError(false);
@@ -576,6 +629,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       // Nada foi mexido dentro da visão: a lista volta como estava.
       setSearchTerm(antes.busca);
       setFilterCategory(antes.categoria);
+      setCurrentPage(antes.pagina);
     } else {
       setCurrentPage(0);
     }
@@ -786,11 +840,13 @@ export const AdminProductsView = memo(function AdminProductsView({
         // o filtro de categoria, não só para a busca.
         subValue: modoSemCusto
           ? "Só sem custo"
-          : searchTerm
-            ? "Resultados da busca"
-            : filterCategory !== "all"
-              ? "Só desta categoria"
-              : "Catálogo Geral",
+          : modoEstoqueBaixo
+            ? "Só estoque baixo"
+            : searchTerm
+              ? "Resultados da busca"
+              : filterCategory !== "all"
+                ? "Só desta categoria"
+                : "Catálogo Geral",
       },
     ],
     [
@@ -798,6 +854,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       liquidoEstimado,
       totalDaLista,
       modoSemCusto,
+      modoEstoqueBaixo,
       semCusto,
       searchTerm,
       filterCategory,
@@ -853,10 +910,17 @@ export const AdminProductsView = memo(function AdminProductsView({
         refreshFinancialStats();
         // Na visão "Sem custo" a lista é esta tela que guarda: sem recarregar,
         // o produto pausado continuaria nela.
-        if (modoSemCusto) recarregarAtualRef.current();
+        // Idem em "Estoque baixo": o produto pausado sai do filtro dos ativos.
+        if (modoSemCusto || modoEstoqueBaixo) recarregarAtualRef.current();
       }
     },
-    [toggleProductStatus, isOffline, refreshFinancialStats, modoSemCusto],
+    [
+      toggleProductStatus,
+      isOffline,
+      refreshFinancialStats,
+      modoSemCusto,
+      modoEstoqueBaixo,
+    ],
   );
 
   const handleDelete = useCallback(
@@ -1104,7 +1168,9 @@ export const AdminProductsView = memo(function AdminProductsView({
                     ? "Recarregando..."
                     : modoSemCusto
                       ? `Sincronizado · ${totalDaLista} sem custo`
-                      : `Sincronizado · ${totalProducts} ${searchTerm ? "na busca" : filterCategory !== "all" ? "nesta categoria" : "no catálogo"}`}
+                      : modoEstoqueBaixo
+                        ? `Sincronizado · ${totalProducts} com estoque baixo`
+                        : `Sincronizado · ${totalProducts} ${searchTerm ? "na busca" : filterCategory !== "all" ? "nesta categoria" : "no catálogo"}`}
             </span>
           </div>
         </div>
@@ -1406,21 +1472,29 @@ export const AdminProductsView = memo(function AdminProductsView({
 
         <div className="admin-topo-lista">
           {/* Grid view of Products as Assets */}
-          {modoSemCusto && (
+          {(modoSemCusto || modoEstoqueBaixo) && (
             <div
               ref={faixaDaVisaoRef}
-              data-visao-sem-custo=""
+              {...(modoSemCusto
+                ? { "data-visao-sem-custo": "" }
+                : { "data-visao-estoque-baixo": "" })}
               className="mb-3 flex scroll-mt-4 flex-wrap items-center justify-between gap-2 rounded-2xl border border-admin-border bg-admin-surface p-3"
             >
               <p
                 role="status"
                 className="min-w-0 flex-1 text-sm font-semibold text-zinc-50"
               >
-                {semCusto !== null
-                  ? `Mostrando só produtos sem custo · ${semCusto.length}`
-                  : loadError
-                    ? "Não deu para buscar os produtos sem custo"
-                    : "Procurando os produtos sem custo…"}
+                {modoEstoqueBaixo
+                  ? loadError
+                    ? "Não deu para buscar os produtos com estoque baixo"
+                    : estoqueBaixoPronto
+                      ? `Mostrando só produtos com estoque baixo · ${totalProducts}`
+                      : "Procurando os produtos com estoque baixo…"
+                  : semCusto !== null
+                    ? `Mostrando só produtos sem custo · ${semCusto.length}`
+                    : loadError
+                      ? "Não deu para buscar os produtos sem custo"
+                      : "Procurando os produtos sem custo…"}
               </p>
               <button
                 type="button"
@@ -1606,13 +1680,17 @@ export const AdminProductsView = memo(function AdminProductsView({
                 <h3 className="text-lg font-bold text-zinc-50">
                   {temBuscaOuFiltro
                     ? "Nenhum produto encontrado"
-                    : "Nenhum produto cadastrado"}
+                    : modoEstoqueBaixo
+                      ? "Nenhum produto com estoque baixo"
+                      : "Nenhum produto cadastrado"}
                 </h3>
                 {/* Com busca ou filtro, "nenhum" é do filtro, não do catálogo:
                 diz o que está filtrado e dá a saída. */}
                 {!temBuscaOuFiltro && (
                   <p className="mt-3 text-sm text-zinc-400">
-                    Cadastre seu primeiro produto pelo botão Novo produto.
+                    {modoEstoqueBaixo
+                      ? "Todos os produtos ativos estão com estoque acima do mínimo."
+                      : "Cadastre seu primeiro produto pelo botão Novo produto."}
                   </p>
                 )}
                 {temBuscaOuFiltro && (
