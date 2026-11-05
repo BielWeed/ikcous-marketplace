@@ -32,6 +32,10 @@ export interface Leitura {
   /** `rawValue`/`text` já com `trim()`; nunca vazio (linha descartada antes). */
   readonly codigo: string;
   readonly formato: FormatoDeLeitura | "desconhecido";
+  /** `true` só quando a leitura veio da pistola ou do campo Digitar: um
+   * disparo deliberado por leitura. Ausente = câmera, que relê o mesmo código
+   * parado no quadro e por isso é a única a passar pelas guardas de repetição. */
+  readonly deTeclado?: boolean;
 }
 
 /**

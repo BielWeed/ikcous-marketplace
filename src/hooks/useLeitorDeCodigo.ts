@@ -229,7 +229,10 @@ export function useLeitorDeCodigo(
     (codigo: string) => {
       const codigoLimpo = normalizarCodigoBarras(codigo);
       if (codigoLimpo === "") return;
-      processar({ codigo: codigoLimpo, formato: "desconhecido" }, false);
+      processar(
+        { codigo: codigoLimpo, formato: "desconhecido", deTeclado: true },
+        false,
+      );
     },
     [processar],
   );
@@ -521,7 +524,8 @@ export function useLeitorDeCodigo(
   useEffect(() => {
     if (!lerTeclado) return;
     const buffer = criarBufferDoLeitorFisico({
-      aoLer: (codigo) => processar({ codigo, formato: "desconhecido" }, false),
+      aoLer: (codigo) =>
+        processar({ codigo, formato: "desconhecido", deTeclado: true }, false),
     });
     function aoPressionarTecla(evento: KeyboardEvent): void {
       buffer.aoPressionarTecla(evento);

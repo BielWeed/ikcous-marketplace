@@ -52,7 +52,7 @@ function builderDeProduto(): any {
   let ehDetalhe = false;
   consulta.is = vi.fn(() => consulta);
   consulta.order = vi.fn(() => consulta);
-  consulta.range = vi.fn(() => consulta);
+  consulta.limit = vi.fn(() => consulta);
   consulta.eq = vi.fn(() => consulta);
   consulta.select = vi.fn(() => consulta);
   consulta.in = vi.fn(() => {
@@ -77,7 +77,7 @@ function builderDeOutraTabela(_tabela: string): any {
   consulta.is = vi.fn(() => consulta);
   consulta.in = vi.fn(() => consulta);
   consulta.order = vi.fn(() => consulta);
-  consulta.range = vi.fn(() => consulta);
+  consulta.limit = vi.fn(() => consulta);
   consulta.eq = vi.fn(() => consulta);
   consulta.select = vi.fn(() => consulta);
   consulta.single = vi.fn(() => Promise.resolve({ data: null, error: null }));

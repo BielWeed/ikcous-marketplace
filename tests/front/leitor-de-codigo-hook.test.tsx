@@ -504,6 +504,7 @@ describe("useLeitorDeCodigo", () => {
     expect(aoLer).toHaveBeenCalledWith({
       codigo: "7891",
       formato: "desconhecido",
+      deTeclado: true,
     });
 
     aoLer.mockClear();
@@ -541,6 +542,11 @@ describe("useLeitorDeCodigo", () => {
     bipar("7891000315507");
 
     expect(aoLer).toHaveBeenCalledTimes(2);
+    // Cada chamada leva a marca de teclado: é ela que o balcão usa para não
+    // aplicar a proteção da câmera (mesmo código parado no quadro).
+    for (const [leitura] of aoLer.mock.calls) {
+      expect(leitura).toMatchObject({ deTeclado: true });
+    }
   });
 
   it("12c. lerCodigoDigitado: o MESMO código digitado duas vezes em menos de 1,5s chama aoLer duas vezes", async () => {
@@ -575,6 +581,7 @@ describe("useLeitorDeCodigo", () => {
     expect(aoLer).toHaveBeenCalledWith({
       codigo: "7891000315507",
       formato: "desconhecido",
+      deTeclado: true,
     });
   });
 
@@ -589,6 +596,7 @@ describe("useLeitorDeCodigo", () => {
     expect(aoLer).toHaveBeenCalledWith({
       codigo: "7891234567895",
       formato: "desconhecido",
+      deTeclado: true,
     });
   });
 

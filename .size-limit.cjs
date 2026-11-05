@@ -154,7 +154,10 @@ module.exports = [
     // loja). Mede 606,27 kB no build local, 267 B acima do teto. Nada foi trocado por algo mais arriscado.
     // 05/11/2026 (mesma regra): 607 -> 608 kB na 1.5.125 (cartao de estoque baixo abre Produtos ja filtrado e aviso
     // da avaliacao respondida). Mede 607,06 kB no build local, 62 B acima do teto. Nada foi trocado por algo mais arriscado.
-    limit: "608 kB",
+    // 05/11/2026 (mesma regra): 608 -> 609 kB na 1.5.130 (conferencia do catalogo le o resumo por chave, em paginas,
+    // para a loja com mais de 1.000 produtos nao perder produto; recusa de foto da devolucao na escolha). Mede 608,05 kB
+    // no build local, 50 B acima do teto. Nada foi trocado por algo mais arriscado.
+    limit: "609 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao

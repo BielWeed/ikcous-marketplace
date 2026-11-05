@@ -7,8 +7,12 @@
 // lojista" -- apagava do cofre local (e as variações dele) o que só tinha
 // ficado depois da linha 1.000. A vitrine relia o cofre e encolhia.
 //
-// O conserto lê o resumo em páginas (`.order("id").range(...)`) até acabar, e
-// só reconcilia exclusões com o resumo COMPLETO e coerente.
+// O conserto lê o resumo em páginas POR CHAVE (`.gt("id", ultimoLido)
+// .order("id").limit(1000)`) até vir uma página menor que 1.000, e só
+// reconcilia exclusões com o resumo COMPLETO e coerente. Por posição
+// (`.range`), um produto excluído no servidor entre a página 1 e a 2 empurrava
+// a lista uma linha para cima e a linha da fronteira nunca era lida -- o
+// produto vivo parecia "ausente" e era apagado do aparelho por engano.
 //
 // Molde: dublê de `supabase` de
 // tests/front/catchup-avisa-a-tela-quando-apaga-produto.test.ts, agora com o
@@ -20,29 +24,40 @@ import type { SyncEvent } from "@/lib/realtimeSyncEngine";
 const TETO_DO_SERVIDOR = 1000;
 const CARIMBO = "2026-11-05T10:00:00Z";
 
+interface PedidoDeResumo {
+  /** Valor passado ao `.gt("id", ...)`; null na primeira página. */
+  depoisDoId: string | null;
+  /** Valor passado ao `.limit(...)`; null se não houve. */
+  limite: number | null;
+  /** Coluna passada ao `.order()`. */
+  ordenacao: string | null;
+  /** O pedido usou `.range()` (paginação por posição). */
+  usouFaixa: boolean;
+}
+
 interface ServidorDeTeste {
-  /** Linhas do resumo, na ordem em que o servidor as guarda. */
+  /** Linhas do resumo (o dublê as devolve ordenadas por `id`). */
   produtos: any[];
-  /** Se definido, a página que COMEÇA nesta linha responde com erro. */
-  falharNaPaginaQueComecaEm: number | null;
-  /** Uma entrada por página pedida: [de, ate] do `.range()`. */
-  faixasPedidas: Array<[number, number]>;
-  /** Uma entrada por pedido de resumo: coluna passada ao `.order()`. */
-  ordenacoesPedidas: string[];
-  /** Quantos pedidos de resumo foram feitos SEM `.range()`. */
-  pedidosSemFaixa: number;
+  /** Se definido, o pedido de resumo de NÚMERO n (1 = primeira página) falha. */
+  falharNoPedido: number | null;
+  /** Um registro por pedido de resumo recebido. */
+  pedidos: PedidoDeResumo[];
+  /** Roda DEPOIS de o servidor entregar o pedido n (o catálogo anda no meio). */
+  aposEntregar: ((numeroDoPedido: number) => void) | null;
+  /** Servidor quebrado: ignora o `.gt` e devolve sempre a mesma página. */
+  ignoraOGt: boolean;
 }
 
 function criarServidor(
   produtos: any[],
-  falharNaPaginaQueComecaEm: number | null = null,
+  falharNoPedido: number | null = null,
 ): ServidorDeTeste {
   return {
     produtos,
-    falharNaPaginaQueComecaEm,
-    faixasPedidas: [],
-    ordenacoesPedidas: [],
-    pedidosSemFaixa: 0,
+    falharNoPedido,
+    pedidos: [],
+    aposEntregar: null,
+    ignoraOGt: false,
   };
 }
 
@@ -58,6 +73,9 @@ function construirQueryBuilder(tabela: string, servidor: ServidorDeTeste) {
   const filtros: Array<(linha: any) => boolean> = [];
   let modoUnico = false;
   let faixa: [number, number] | null = null;
+  let limite: number | null = null;
+  let depoisDoId: string | null = null;
+  let ordenacao: string | null = null;
 
   const obterLinhas = (): any[] => {
     switch (tabela) {
@@ -77,15 +95,23 @@ function construirQueryBuilder(tabela: string, servidor: ServidorDeTeste) {
 
   const builder: any = {
     select: () => builder,
-    limit: () => builder,
+    limit(n: number) {
+      limite = n;
+      return builder;
+    },
     order(coluna: string) {
-      if (tabela === "produtos" || tabela === "vw_produtos_public") {
-        servidor.ordenacoesPedidas.push(coluna);
-      }
+      ordenacao = coluna;
       return builder;
     },
     range(de: number, ate: number) {
       faixa = [de, ate];
+      return builder;
+    },
+    gt(coluna: string, valor: string) {
+      if (coluna === "id") depoisDoId = valor;
+      if (!servidor.ignoraOGt) {
+        filtros.push((linha) => lerColuna(linha, coluna) > valor);
+      }
       return builder;
     },
     is(coluna: string, valor: any) {
@@ -105,31 +131,49 @@ function construirQueryBuilder(tabela: string, servidor: ServidorDeTeste) {
     // biome-ignore lint/suspicious/noThenProperty: dublê do query builder thenable do Supabase, ver tests/front/catchup-avisa-a-tela-quando-apaga-produto.test.ts
     then(resolve: any, reject: any) {
       const ehResumo = tabela === "produtos" || tabela === "vw_produtos_public";
+      let numeroDoPedido = 0;
       if (ehResumo) {
-        if (faixa === null) servidor.pedidosSemFaixa += 1;
-        else servidor.faixasPedidas.push(faixa);
-      }
-      const de = faixa === null ? 0 : faixa[0];
-      if (ehResumo && servidor.falharNaPaginaQueComecaEm === de) {
-        return Promise.resolve({
-          data: null,
-          error: { message: "falha de rede na página do resumo" },
-        }).then(resolve, reject);
+        servidor.pedidos.push({
+          depoisDoId,
+          limite,
+          ordenacao,
+          usouFaixa: faixa !== null,
+        });
+        numeroDoPedido = servidor.pedidos.length;
+        if (servidor.falharNoPedido === numeroDoPedido) {
+          return Promise.resolve({
+            data: null,
+            error: { message: "falha de rede na página do resumo" },
+          }).then(resolve, reject);
+        }
       }
       let linhas = obterLinhas().filter((linha) =>
         filtros.every((f) => f(linha)),
       );
       if (ehResumo) {
+        if (ordenacao !== null) {
+          const coluna = ordenacao;
+          linhas = [...linhas].sort((a, b) => {
+            const va = lerColuna(a, coluna);
+            const vb = lerColuna(b, coluna);
+            return va < vb ? -1 : va > vb ? 1 : 0;
+          });
+        }
         // O servidor real corta em 1.000 linhas por chamada, mesmo quando o
-        // `.range()` pede mais (ou quando não há `.range()`).
-        const ate = faixa === null ? Number.POSITIVE_INFINITY : faixa[1];
-        const fim = Math.min(ate + 1, de + TETO_DO_SERVIDOR);
-        linhas = linhas.slice(de, fim);
+        // `.range()`/`.limit()` pede mais (ou quando não há nenhum dos dois).
+        const de = faixa === null ? 0 : faixa[0];
+        const pedido =
+          faixa !== null
+            ? faixa[1] - faixa[0] + 1
+            : (limite ?? Number.POSITIVE_INFINITY);
+        linhas = linhas.slice(de, de + Math.min(pedido, TETO_DO_SERVIDOR));
       }
       const resultado = modoUnico
         ? { data: linhas[0] ?? null, error: null }
         : { data: linhas, error: null };
-      return Promise.resolve(resultado).then(resolve, reject);
+      const resposta = Promise.resolve(resultado).then(resolve, reject);
+      if (ehResumo) servidor.aposEntregar?.(numeroDoPedido);
+      return resposta;
     },
   };
   return builder;
@@ -177,7 +221,13 @@ function resumoDoServidor(quantidade: number): any[] {
   }));
 }
 
-describe("realtimeSyncEngine.catchUp — resumo dos produtos lido em páginas", () => {
+function idsApagadosDoCofre(vault: ReturnType<typeof criarDubleVault>) {
+  return vault.deleteById.mock.calls
+    .filter(([store]) => store === "products")
+    .map(([, id]) => id);
+}
+
+describe("realtimeSyncEngine.catchUp — resumo dos produtos lido em páginas por chave", () => {
   let eventosRecebidos: SyncEvent[];
   let removerOuvinte: () => void;
 
@@ -192,33 +242,47 @@ describe("realtimeSyncEngine.catchUp — resumo dos produtos lido em páginas", 
     removerOuvinte();
   });
 
-  it("loja com 1.500 produtos: nenhum é apagado e a 2ª página é pedida com .range(1000, 1999)", async () => {
+  it("loja com 1.500 produtos: nenhum é apagado e a 2ª página é pedida DEPOIS do último id da 1ª (.gt), sem .range", async () => {
     const vault = criarDubleVault(produtosDoCofre(1500));
     servidorAtual = criarServidor(resumoDoServidor(1500));
 
     await RealtimeSyncEngine.catchUp(vault as any, true);
 
-    expect(servidorAtual.pedidosSemFaixa).toBe(0);
-    expect(servidorAtual.faixasPedidas).toEqual([
-      [0, 999],
-      [1000, 1999],
+    expect(servidorAtual.pedidos).toEqual([
+      { depoisDoId: null, limite: 1000, ordenacao: "id", usouFaixa: false },
+      {
+        depoisDoId: idDoProduto(999),
+        limite: 1000,
+        ordenacao: "id",
+        usouFaixa: false,
+      },
     ]);
-    // Ordenação estável nas duas páginas: sem ela, o corte de 1.000 linhas
-    // cairia em produtos arbitrários a cada chamada.
-    expect(servidorAtual.ordenacoesPedidas).toEqual(["id", "id"]);
     expect(vault.deleteById).not.toHaveBeenCalled();
     expect(eventosRecebidos.filter((e) => e.store === "products")).toHaveLength(
       0,
     );
   });
 
-  it("falha na 2ª página do resumo: a rodada NÃO apaga nada (resumo incompleto)", async () => {
-    const vault = criarDubleVault(produtosDoCofre(1500));
-    servidorAtual = criarServidor(resumoDoServidor(1500), 1000);
+  it("loja com exatamente 1.000 produtos: pede uma 2ª página (vazia) para ter certeza de que acabou", async () => {
+    const vault = criarDubleVault(produtosDoCofre(1000));
+    servidorAtual = criarServidor(resumoDoServidor(1000));
 
     await RealtimeSyncEngine.catchUp(vault as any, true);
 
-    expect(servidorAtual.faixasPedidas).toContainEqual([0, 999]);
+    expect(servidorAtual.pedidos.map((p) => p.depoisDoId)).toEqual([
+      null,
+      idDoProduto(999),
+    ]);
+    expect(vault.deleteById).not.toHaveBeenCalled();
+  });
+
+  it("falha na 2ª página do resumo: a rodada NÃO apaga nada (resumo incompleto)", async () => {
+    const vault = criarDubleVault(produtosDoCofre(1500));
+    servidorAtual = criarServidor(resumoDoServidor(1500), 2);
+
+    await RealtimeSyncEngine.catchUp(vault as any, true);
+
+    expect(servidorAtual.pedidos).toHaveLength(2);
     expect(vault.deleteById).not.toHaveBeenCalled();
     expect(eventosRecebidos.filter((e) => e.store === "products")).toHaveLength(
       0,
@@ -232,16 +296,37 @@ describe("realtimeSyncEngine.catchUp — resumo dos produtos lido em páginas", 
 
     await RealtimeSyncEngine.catchUp(vault as any, true);
 
-    const apagados = vault.deleteById.mock.calls
-      .filter(([store]) => store === "products")
-      .map(([, id]) => id);
-    expect(apagados).toEqual([idDoProduto(1499)]);
+    expect(idsApagadosDoCofre(vault)).toEqual([idDoProduto(1499)]);
     expect(eventosRecebidos.filter((e) => e.store === "products").length).toBe(
       1,
     );
   });
 
-  it("resumo incoerente (id repetido, sinal de que a lista andou durante a leitura): não apaga ninguém", async () => {
+  it("produto excluído no servidor DEPOIS de a 1ª página ser entregue: nenhum produto vivo é apagado (por posição, a linha da fronteira era pulada)", async () => {
+    // O caso que motiva a paginação por chave. A lojista exclui o produto
+    // prod-0999 (última linha da 1ª página) enquanto a 2ª página ainda não foi
+    // pedida. Por posição, o servidor reentregava a partir da linha 1.000 de
+    // uma lista que encolheu: prod-1000 virava a linha 999 e nunca era lido --
+    // vivo no servidor, "ausente" do resumo, apagado do aparelho por engano.
+    const vault = criarDubleVault(produtosDoCofre(1500));
+    servidorAtual = criarServidor(resumoDoServidor(1500));
+    servidorAtual.aposEntregar = (numeroDoPedido) => {
+      if (numeroDoPedido !== 1) return;
+      servidorAtual.produtos = servidorAtual.produtos.filter(
+        (p) => p.id !== idDoProduto(999),
+      );
+    };
+
+    await RealtimeSyncEngine.catchUp(vault as any, true);
+
+    expect(idsApagadosDoCofre(vault)).toEqual([]);
+    expect(servidorAtual.pedidos[1]?.depoisDoId).toBe(idDoProduto(999));
+    expect(eventosRecebidos.filter((e) => e.store === "products")).toHaveLength(
+      0,
+    );
+  });
+
+  it("resumo incoerente (id repetido, defesa em profundidade): não apaga ninguém", async () => {
     // 1.499 ids distintos + um repetido = 1.500 linhas; falta prod-1499. Sem a
     // defesa, ele seria apagado por um resumo que não merece confiança.
     const vault = criarDubleVault(produtosDoCofre(1500));
@@ -251,6 +336,23 @@ describe("realtimeSyncEngine.catchUp — resumo dos produtos lido em páginas", 
 
     await RealtimeSyncEngine.catchUp(vault as any, true);
 
+    expect(vault.deleteById).not.toHaveBeenCalled();
+    expect(eventosRecebidos.filter((e) => e.store === "products")).toHaveLength(
+      0,
+    );
+  });
+
+  it("servidor que ignora o .gt e repete a mesma página (a chave não avança): pára cedo e NÃO apaga nada", async () => {
+    // Sem o freio de "a chave tem de avançar", o laço pediria 100 páginas
+    // iguais e só então desistiria. A 2ª resposta, idêntica à 1ª, já derruba
+    // a leitura; a rodada pula a reconciliação dos produtos.
+    const vault = criarDubleVault(produtosDoCofre(1500));
+    servidorAtual = criarServidor(resumoDoServidor(1500));
+    servidorAtual.ignoraOGt = true;
+
+    await RealtimeSyncEngine.catchUp(vault as any, true);
+
+    expect(servidorAtual.pedidos).toHaveLength(2);
     expect(vault.deleteById).not.toHaveBeenCalled();
     expect(eventosRecebidos.filter((e) => e.store === "products")).toHaveLength(
       0,

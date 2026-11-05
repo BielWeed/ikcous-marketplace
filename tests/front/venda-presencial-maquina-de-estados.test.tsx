@@ -162,7 +162,9 @@ const estadoBase = (): EstadoDaVenda =>
 // ============================================================================
 
 describe("bipe repetido — a guarda é sobre o item JÁ NO CUPOM, não sobre o código decodificado", () => {
-  it("bipar o mesmo código de novo, DENTRO da janela, é ignorado e mantém o cupom", () => {
+  it("CÂMERA: ler o mesmo código de novo, DENTRO da janela, é ignorado e mantém o cupom", () => {
+    // Sem `deTeclado` a leitura vale como da câmera: o mesmo código parado no
+    // quadro e as respostas do servidor fora de ordem não podem somar.
     let estado = estadoBase();
     estado = reducerDaVenda(estado, {
       tipo: "codigo_resolvido",
@@ -186,6 +188,52 @@ describe("bipe repetido — a guarda é sobre o item JÁ NO CUPOM, não sobre o 
     });
     expect(estado.itens).toHaveLength(1);
     expect(estado.itens[0].quantidade).toBe(1); // não somou
+  });
+
+  it("PISTOLA/DIGITADO: o mesmo código lido de novo, DENTRO da janela (300 ms), soma 2 unidades sem aviso", () => {
+    let estado = estadoBase();
+    estado = reducerDaVenda(estado, {
+      tipo: "codigo_resolvido",
+      codigo: "7891000000011",
+      resposta: respostaVariante(),
+      em: 0,
+      deTeclado: true,
+    });
+    estado = reducerDaVenda(estado, {
+      tipo: "codigo_resolvido",
+      codigo: "7891000000011",
+      resposta: respostaVariante(),
+      em: 300,
+      deTeclado: true,
+    });
+
+    expect(estado.aviso).toBeNull();
+    expect(estado.itens).toHaveLength(1);
+    expect(estado.itens[0].quantidade).toBe(2);
+  });
+
+  it("a pistola não desliga a proteção da câmera: câmera logo depois de pistola continua ignorada", () => {
+    let estado = estadoBase();
+    estado = reducerDaVenda(estado, {
+      tipo: "codigo_resolvido",
+      codigo: "7891000000011",
+      resposta: respostaVariante(),
+      em: 0,
+      deTeclado: true,
+    });
+    estado = reducerDaVenda(estado, {
+      tipo: "codigo_resolvido",
+      codigo: "7891000000011",
+      resposta: respostaVariante(),
+      em: 300,
+      deTeclado: false,
+    });
+
+    expect(estado.aviso).toEqual({
+      tipo: "ignorado_repetido",
+      codigo: "7891000000011",
+    });
+    expect(estado.itens[0].quantidade).toBe(1);
   });
 
   it("bipar o mesmo código de novo, FORA da janela, soma quantidade", () => {
