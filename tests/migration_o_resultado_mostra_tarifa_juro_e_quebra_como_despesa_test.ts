@@ -123,10 +123,15 @@ Deno.test("382: a vigente e' a ultima redefinicao de fin_dre da arvore; db-apply
     .filter((n) => /^\d{14}_.*\.sql$/.test(n))
     .sort()
     .filter((n) => definicao(ler(`supabase/migrations/${n}`)));
+  // A 3996 (o resultado credita o custo da devolucao de outro mes) e a unica redefinicao depois da 382.
+  assert.equal(
+    fontes.at(-2),
+    nome,
+    "outra migration redefine fin_dre entre a 382 e a ultima",
+  );
   assert.equal(
     fontes.at(-1),
-    nome,
-    "outra migration redefine fin_dre depois da 382",
+    "20261399600000_o_resultado_credita_o_custo_da_devolucao_de_outro_mes.sql",
   );
   const { VERIFICACOES, avaliarChecagem } = require("../scripts/db-apply.cjs");
   // eslint-disable-next-line security/detect-object-injection -- Nome literal desta migration, nunca entrada externa.
@@ -162,7 +167,9 @@ Deno.test("382: a 8e e a 45a aceitam os dois corpos EXATOS de fin_dre; as consul
   assert.ok(
     ler(
       "scripts/publicacao/consultas/45a-conferir-custo-do-dia-aplicado.sql",
-    ).includes(`f.m IN ('${H_ANTES}', '${hNovo}')`),
+    ).includes(
+      `f.m IN ('${H_ANTES}', '${hNovo}', 'eafc6a2c4663e33f5459791c6601b848')`,
+    ),
   );
   const { contarStatements, ROL_FECHADO_POR_CONSULTA, estruturaDoRolFechado } =
     require("../scripts/publicacao/conferir-banco.cjs");

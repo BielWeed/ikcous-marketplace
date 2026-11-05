@@ -167,7 +167,13 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // PRIMEIRA de fin_resumo (99 -> 3993): UMA migration, duas funcoes da 8e, com a PROVA PROPRIA em
     // tests/banco/o-estorno-em-andamento-nao-e-conta-vencida-viva.cjs; `noEstado` a desfaz antes (`desfazerMesAnteriorNaTransacao` chama
     // o-estorno-em-andamento-posterior.cjs primeiro, o rollback dela devolve as duas funcoes de uma vez), como faz com a 398.
-    s.nome !== "20261399300000_o_estorno_em_andamento_nao_e_conta_vencida.sql",
+    s.nome !==
+      "20261399300000_o_estorno_em_andamento_nao_e_conta_vencida.sql" &&
+    // A 20261399600000 (o resultado credita o custo da devolucao de outro mes) e a TERCEIRA sucessora de fin_dre (99 -> 42 -> 382 -> 3996): tem a PROVA PROPRIA do que a 8e, a 45a e a 87a
+    // fazem com ela em tests/banco/o-resultado-credita-o-custo-da-devolucao-de-outro-mes-viva.cjs; `noEstado` a desfaz antes (fin-dre-sinal-posterior.cjs chama
+    // o-resultado-credita-o-custo-da-devolucao-posterior.cjs primeiro), como faz com a 382.
+    s.nome !==
+      "20261399600000_o_resultado_credita_o_custo_da_devolucao_de_outro_mes.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");

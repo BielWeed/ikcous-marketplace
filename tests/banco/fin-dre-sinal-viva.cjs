@@ -125,6 +125,12 @@ async function main() {
   try {
     await c.query("BEGIN");
 
+    // A 20261399600000 (o resultado credita o custo da devolucao de outro mes) sucede o corpo da 382: sai PRIMEIRO, pelo rollback-manual dela
+    // (a prova mede a 382 isolada; a prova propria da 3996 mede o que ela faz).
+    await require("./o-resultado-credita-o-custo-da-devolucao-posterior.cjs").desfazerCreditoDoCmvNaTransacao(
+      c,
+    );
+
     // O topo instalado pelo CI (todas as migrations do zero) e o desta migration.
     const topo = await funcao(c);
     assert.equal(

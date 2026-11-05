@@ -128,6 +128,9 @@ const NOMES = [
   // O estorno em andamento nao e conta vencida: UMA migration, DUAS funcoes da 99 (painel_inicio sucede o corpo da 398 e fin_resumo o da 99: duas entradas,
   // o rollback-manual dela desfaz as duas de uma vez). O `hashVigente` de painel_inicio e o `hashDesta` da 398 (a CADEIA 99 -> 12 -> 28 -> 390 -> 398 -> 3993).
   "20261399300000_o_estorno_em_andamento_nao_e_conta_vencida.sql",
+  // O resultado credita o custo da devolucao de venda de outro mes: fin_dre sucede o corpo da 382 (a CADEIA 99 -> 42 -> 382 -> 3996: o `hashVigente` da 3996 e o
+  // `hashDesta` da 382). O rollback da 382 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261399600000_o_resultado_credita_o_custo_da_devolucao_de_outro_mes.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).

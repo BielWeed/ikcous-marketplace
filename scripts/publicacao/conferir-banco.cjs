@@ -2957,7 +2957,19 @@ const ROL_DA_121B = [
   "produtos: id, rating e review_count com os tipos de sempre",
   "reviews_status_check: o CHECK de status cita publicada (20261031000000)",
 ];
+// Lote 122 (20261399600000, o resultado credita o custo da devolucao de venda de outro mes: fin_dre redefinida, sem objeto novo). A 122a e a 122b tem o MESMO rol de 4 linhas (controle, corpo exato (md5),
+// atributos e ACL); a 122a espera o corpo da migration nova e a 122b o vigente (o da 20261382000000). Nenhuma le linha financeira nem chama a fin_dre.
+const ROL_DA_122 = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin_dre: corpo exato (md5)",
+  "fin_dre: assinatura e atributos conhecidos",
+  "fin_dre: EXECUTE authenticated, sem PUBLIC ou anon",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "122a-conferir-o-resultado-credita-o-custo-da-devolucao-de-outro-mes-aplicado":
+    ROL_DA_122,
+  "122b-antes-o-resultado-credita-o-custo-da-devolucao-de-outro-mes-base-vigente":
+    ROL_DA_122,
   "121a-conferir-as-estrelas-do-produto-aparecem-na-vitrine-aplicado":
     ROL_DA_121A,
   "121b-antes-as-estrelas-do-produto-aparecem-na-vitrine-ausente": ROL_DA_121B,
