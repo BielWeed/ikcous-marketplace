@@ -1,0 +1,81 @@
+-- ============================================================================
+-- PENDENTE — NAO E MIGRATION, NINGUEM O APLICA POR ENGANO (extensao .pendente de proposito).
+-- Backfill das estrelas dos produtos que JA tinham avaliacao publicada antes da migration
+-- 20261399500000 (as estrelas do produto aparecem na vitrine). Depende de APROVACAO DO DONO:
+-- altera dado existente do catalogo (a nota e a contagem que a vitrine mostra).
+-- ============================================================================
+--
+-- POR QUE EXISTE: o gatilho da 20261399500000 so recalcula o produto quando uma avaliacao DELE entra,
+-- sai, muda de nota, de status ou de produto. Produto que ja tinha avaliacoes publicadas antes disso
+-- continua com review_count = 0 (sem estrelas no cartao) ate a proxima avaliacao publicada, aprovada,
+-- editada ou excluida dele. Este arquivo corrige todos de uma vez, com a MESMA conta do gatilho:
+--     review_count := quantidade de avaliacoes com status 'publicada' do produto
+--     rating       := round(avg(rating), 1) dessas avaliacoes
+--
+-- O QUE TOCA, SO ISTO: produtos cujo review_count e' 0 ou NULL (o estado de quem nunca foi recalculado)
+-- E que tem pelo menos uma avaliacao publicada. NAO toca produto sem avaliacao (segue 5 / 0, que ja e'
+-- o resultado certo), nem produto com review_count > 0 (ja foi recalculado pelo gatilho), nem avaliacao
+-- nenhuma. Reaplicar e' no-op: depois da primeira vez nenhum produto satisfaz o filtro.
+--
+-- EFEITO COLATERAL CONHECIDO: o gatilho BEFORE UPDATE de produtos (set_ultima_atualizacao,
+-- 20261012000000) renova produtos.ultima_atualizacao de cada produto escrito, e a vitrine rebusca
+-- esses produtos (e' o que se quer: ela passa a ver a nota nova).
+--
+-- COMO RODAR (depois da aprovacao do dono, uma loja por vez; valem IKCOUS e Savy; lojas de teste ficam fora):
+--   1. Rode o PASSO 1 (so leitura) e confira os numeros com o dono: quantos produtos serao escritos.
+--   2. Rode o PASSO 2 numa transacao so (o editor de SQL do Supabase ja abre uma), de preferencia
+--      fora do pico: ele tranca, por instantes, a linha de cada produto escrito, SEMPRE em ordem de id
+--      (a mesma ordem global da compra), e desiste em 2 s por produto em vez de esperar para sempre.
+--   3. Rode o PASSO 3 (so leitura): tem de devolver ZERO linhas.
+--   Desfazer: nao ha estado anterior a restaurar alem de 5 / 0 (o padrao de quem nao tem avaliacao); se for
+--   preciso voltar atras, guarde antes o resultado do PASSO 1 e use-o. Dado de avaliacao nenhum e' escrito.
+--
+-- PROVADO LOCALMENTE (Postgres efemero, sem loja real): produto com avaliacoes antigas ganha a conta
+-- certa; produto sem avaliacao, so com pendente, e com review_count > 0 nao e' tocado; segunda rodada e' no-op.
+
+-- PASSO 1 — SO LEITURA: quem sera escrito e com que valor.
+SELECT p.id, p.nome, p.rating AS rating_hoje, p.review_count AS contagem_hoje,
+       count(*)::integer AS contagem_nova, round(avg(r.rating), 1) AS rating_novo
+  FROM public.produtos p
+  JOIN public.reviews r ON r.product_id = p.id AND r.status = 'publicada'
+ WHERE COALESCE(p.review_count, 0) = 0
+ GROUP BY p.id, p.nome, p.rating, p.review_count
+ ORDER BY p.id;
+
+-- PASSO 2 — ESCREVE (so depois da aprovacao do dono).
+SET LOCAL lock_timeout = '2s';
+
+DO $backfill_estrelas$
+DECLARE
+  v record;
+  v_escritos integer := 0;
+BEGIN
+  FOR v IN
+    SELECT r.product_id AS id, count(*)::integer AS n, round(avg(r.rating), 1) AS media
+      FROM public.reviews r
+      JOIN public.produtos p ON p.id = r.product_id
+     WHERE r.status = 'publicada'
+       AND COALESCE(p.review_count, 0) = 0
+     GROUP BY r.product_id
+     ORDER BY r.product_id
+  LOOP
+    UPDATE public.produtos p
+       SET rating = v.media,
+           review_count = v.n
+     WHERE p.id = v.id
+       AND COALESCE(p.review_count, 0) = 0;
+    v_escritos := v_escritos + 1;
+  END LOOP;
+  RAISE NOTICE 'backfill das estrelas: % produto(s) recalculado(s)', v_escritos;
+END
+$backfill_estrelas$;
+
+-- PASSO 3 — SO LEITURA: confere. Esperado: ZERO linhas (nenhum produto fica com a contagem diferente das publicadas).
+SELECT p.id, p.nome, p.review_count AS contagem_no_produto, c.n AS publicadas, p.rating AS rating_no_produto, c.media
+  FROM public.produtos p
+  JOIN (SELECT r.product_id, count(*)::integer AS n, round(avg(r.rating), 1) AS media
+          FROM public.reviews r
+         WHERE r.status = 'publicada'
+         GROUP BY r.product_id) c ON c.product_id = p.id
+ WHERE p.review_count IS DISTINCT FROM c.n
+    OR p.rating IS DISTINCT FROM c.media;

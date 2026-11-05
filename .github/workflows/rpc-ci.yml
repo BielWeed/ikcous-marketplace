@@ -244,6 +244,8 @@ on:
       - "scripts/publicacao/consultas/119b-antes-a-busca-por-palavras-e-o-estorno-fora-do-vencido-base-vigente.sql"
       - "scripts/publicacao/consultas/120a-conferir-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-aplicado.sql"
       - "scripts/publicacao/consultas/120b-antes-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-base-vigente.sql"
+      - "scripts/publicacao/consultas/121a-conferir-as-estrelas-do-produto-aparecem-na-vitrine-aplicado.sql"
+      - "scripts/publicacao/consultas/121b-antes-as-estrelas-do-produto-aparecem-na-vitrine-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -457,6 +459,8 @@ on:
       - "scripts/publicacao/consultas/119b-antes-a-busca-por-palavras-e-o-estorno-fora-do-vencido-base-vigente.sql"
       - "scripts/publicacao/consultas/120a-conferir-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-aplicado.sql"
       - "scripts/publicacao/consultas/120b-antes-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-base-vigente.sql"
+      - "scripts/publicacao/consultas/121a-conferir-as-estrelas-do-produto-aparecem-na-vitrine-aplicado.sql"
+      - "scripts/publicacao/consultas/121b-antes-as-estrelas-do-produto-aparecem-na-vitrine-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -779,6 +783,14 @@ jobs:
       - name: Prova viva do aviso da avaliacao respondida (20261399400000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-viva.cjs
+      # Migration 20261399500000 (as estrelas do produto aparecem na vitrine): gatilho AFTER INSERT OR DELETE OR UPDATE OF status, rating, product_id em reviews recalcula produtos.rating
+      # e produtos.review_count so das avaliacoes PUBLICADAS (pendente nao conta; ultima publicada que sai = 5 / 0), SECURITY DEFINER com search_path fixo e lock_timeout de 500 ms, best-effort
+      # (a falha da nota nunca desfaz a avaliacao); SEM backfill (o apply nao escreve em produtos nem em reviews). Conexoes reais com COMMIT: corrida de duas avaliacoes do mesmo produto,
+      # trocas cruzadas de produto, compra segurando o produto, o pagamento que nunca e' a vitima do deadlock e coluna alheia sem espera; mutantes, reaplicar, rollback, pre-voo,
+      # conferencia final e consultas 121a/121b. CLONE proprio.
+      - name: Prova viva das estrelas do produto na vitrine (20261399500000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/as-estrelas-do-produto-aparecem-na-vitrine-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs
