@@ -2926,7 +2926,24 @@ const ROL_DA_119 = [
   "fin_resumo: assinatura e atributos conhecidos",
   "fin_resumo: EXECUTE authenticated, sem PUBLIC ou anon",
 ];
+// Lote 120 (20261399400000, a cliente e avisada no sino quando a loja responde a avaliacao dela: reply_review_atomic, as duas sobrecargas, redefinidas). A 120a e a 120b tem o MESMO rol
+// de 8 linhas (controle, as duas sobrecargas e, para cada uma, corpo exato (md5), atributos e ACL); a 120a espera os dois corpos da migration nova e a 120b os dois vigentes
+// (os da 20261360000000).
+const ROL_DA_120 = [
+  "controle: funcoes de public visiveis a este papel",
+  "reply_review_atomic: exatamente duas sobrecargas",
+  "reply_review_atomic(uuid,text): corpo exato (md5)",
+  "reply_review_atomic(uuid,text): assinatura e atributos conhecidos",
+  "reply_review_atomic(uuid,text): EXECUTE authenticated, sem PUBLIC ou anon",
+  "reply_review_atomic(uuid,text,uuid): corpo exato (md5)",
+  "reply_review_atomic(uuid,text,uuid): assinatura e atributos conhecidos",
+  "reply_review_atomic(uuid,text,uuid): EXECUTE authenticated, sem PUBLIC ou anon",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "120a-conferir-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-aplicado":
+    ROL_DA_120,
+  "120b-antes-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-base-vigente":
+    ROL_DA_120,
   "119a-conferir-a-busca-por-palavras-e-o-estorno-fora-do-vencido-aplicado":
     ROL_DA_119,
   "119b-antes-a-busca-por-palavras-e-o-estorno-fora-do-vencido-base-vigente":

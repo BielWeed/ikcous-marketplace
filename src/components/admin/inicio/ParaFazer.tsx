@@ -7,6 +7,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import type { PainelInicio } from "@/types/painel";
+import { VISAO_ESTOQUE_BAIXO } from "@/utils/produtos-sem-custo";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -147,6 +148,7 @@ export function ParaFazer({
       contagem: estoque,
       pendente: (estoque ?? 0) > 0,
       destino: "admin-products",
+      alvo: VISAO_ESTOQUE_BAIXO,
     },
   ];
   const pendentes = itens.filter((item) => item.pendente).length;

@@ -1,4 +1,14 @@
 {
+  "1.5.125": {
+    "titulo": "Avaliação respondida avisa a cliente e estoque baixo abre a lista certa",
+    "novidades": [
+      "A cliente recebe um aviso no sino quando a loja responde a avaliação dela."
+    ],
+    "correcoes": [
+      "Painel, Início: o cartão de estoque baixo abre a tela de Produtos já filtrada nos produtos que estão acabando."
+    ],
+    "melhorias": []
+  },
   "1.5.124": {
     "titulo": "Compras do balcão, avaliações e banners mais claros na loja",
     "novidades": [],

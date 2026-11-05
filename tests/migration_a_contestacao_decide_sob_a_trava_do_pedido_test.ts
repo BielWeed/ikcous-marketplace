@@ -687,6 +687,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399300000: o estorno em andamento nao e conta vencida (painel_inicio.contas_vencidas e fin_resumo.a_pagar.vencido; a conta lancada segue; a_pagar_7d nao muda; controle com os corpos
     // anteriores, mutantes, rollback byte a byte, pre/pos-voo, atomicidade e consultas 119a/119b).
     "tests/banco/o-estorno-em-andamento-nao-e-conta-vencida-viva.cjs",
+    // 20261399400000: a cliente e avisada quando a loja responde a avaliacao dela (as duas sobrecargas de reply_review_atomic criam o aviso no sino; um por avaliacao; a falha do aviso nunca perde a resposta;
+    // a linha do log de push continua; controle com o corpo anterior, corrida real, mutantes, rollback byte a byte, pre/pos-voo e consultas 120a/120b).
+    "tests/banco/a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",

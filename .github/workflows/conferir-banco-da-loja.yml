@@ -306,6 +306,8 @@ on:
           - 118b-antes-o-nome-do-perfil-tem-teto-no-banco-ausente
           - 119a-conferir-a-busca-por-palavras-e-o-estorno-fora-do-vencido-aplicado
           - 119b-antes-a-busca-por-palavras-e-o-estorno-fora-do-vencido-base-vigente
+          - 120a-conferir-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-aplicado
+          - 120b-antes-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-base-vigente
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

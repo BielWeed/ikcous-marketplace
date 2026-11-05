@@ -455,6 +455,10 @@ async function desfazerPosterioresNaTransacao(cliente) {
   );
   // A 20261241000000 (a mais nova; redefine corpos da 1196/1198/1201/1225/1226) sai primeiro de todas.
   await desfazerReembolsoEmDuvidaNaTransacao(cliente);
+  // A 20261399400000 (o aviso da avaliacao respondida) sucede os corpos de reply_review_atomic da 1360: sai ANTES dela (o rollback da 1360 exige o corpo da 1360).
+  await require("./a-cliente-e-avisada-avaliacao-posterior.cjs").desfazerAvisoDaAvaliacaoNaTransacao(
+    cliente,
+  );
   await desfazerCaixaIntencaoNaTransacao(cliente);
   // A 20261393100000 (o balcao diz "inativo") sucede buscar_por_codigo_barras da 81: sai ANTES dela (o rollback da 81 exige o corpo da 81).
   await desfazerBalcaoDizInativoNaTransacao(cliente);
@@ -1622,6 +1626,10 @@ PROVAS.push({
       );
       // A 20261241000000 (a mais nova de todas) sai antes de qualquer uma desta pilha (só se no ar).
       await desfazerReembolsoEmDuvidaNaTransacao(cliente);
+      // A 20261399400000 (o aviso da avaliacao respondida) sucede os corpos de reply_review_atomic da 1360: sai ANTES dela (o rollback da 1360 exige o corpo da 1360).
+      await require("./a-cliente-e-avisada-avaliacao-posterior.cjs").desfazerAvisoDaAvaliacaoNaTransacao(
+        cliente,
+      );
       await desfazerCaixaIntencaoNaTransacao(cliente);
       // A 20261393100000 (o balcao diz "inativo") e a 20261385 (a busca de produtos) saem antes da 81, que e' desfeita nesta pilha (o rollback da 81 exige o corpo da 81).
       await desfazerBalcaoDizInativoNaTransacao(cliente);

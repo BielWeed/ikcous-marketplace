@@ -1,5 +1,7 @@
 -- DEPOIS da 20261360000000. SO LEITURA: um SELECT, somente catalogo, nenhuma linha de cliente.
 -- Rol fechado de 36 itens, inclusive objetos ausentes (ok=false). Fonte das definicoes no cabecalho da migration.
+-- Sucessora 20261399400000: so reply_review_atomic (as duas sobrecargas) muda, ganhando o aviso no sino da cliente; a guarda de admin atual e o resto do corpo
+-- permanecem. Aceita os dois hashes EXATOS novos (coluna sucessora); qualquer outro corpo continua reprovando.
 WITH alvo(tabela, politica, comando, papeis, qual, chk) AS (VALUES
     ('public.coupons', 'coupons_admin_insert_policy', 'a', 'authenticated', NULL::text, '(SELECTrls_admin_atual()ASrls_admin_atual)'),
     ('public.coupons', 'coupons_admin_update_policy', 'w', 'authenticated', '(SELECTrls_admin_atual()ASrls_admin_atual)', '(SELECTrls_admin_atual()ASrls_admin_atual)'),
@@ -29,11 +31,11 @@ WITH alvo(tabela, politica, comando, papeis, qual, chk) AS (VALUES
     ('public.questions', 'questions_admin_update_policy', 'w', 'authenticated', '(SELECTrls_admin_atual()ASrls_admin_atual)', '(SELECTrls_admin_atual()ASrls_admin_atual)'),
     ('public.questions', 'questions_admin_delete_policy', 'd', 'authenticated', '(SELECTrls_admin_atual()ASrls_admin_atual)', NULL::text),
     ('public.reviews', 'reviews_select_policy', 'r', 'authenticated', '((status=''publicada''::text)OR(user_id=(SELECTauth.uid()ASuid))OR(SELECTrls_admin_atual()ASrls_admin_atual))', NULL::text)
-), funcoes(assinatura, hash) AS (VALUES
-    ('public.answer_question_atomic(uuid,text)', '4766b4ce828e0f7761bcb5c29e4c617a'),
-    ('public.answer_question_atomic(uuid,text,uuid)', 'a4d977922837f6ecf3e3df71930b0785'),
-    ('public.reply_review_atomic(uuid,text)', '0e58549366e4b4be17ae070a8fc622dc'),
-    ('public.reply_review_atomic(uuid,text,uuid)', '64b337eb3ec5dd1431e0dbf9d12a49ac')
+), funcoes(assinatura, hash, sucessora) AS (VALUES
+    ('public.answer_question_atomic(uuid,text)', '4766b4ce828e0f7761bcb5c29e4c617a', NULL::text),
+    ('public.answer_question_atomic(uuid,text,uuid)', 'a4d977922837f6ecf3e3df71930b0785', NULL::text),
+    ('public.reply_review_atomic(uuid,text)', '0e58549366e4b4be17ae070a8fc622dc', 'f617966c37037537410c3c78d85b8785'),
+    ('public.reply_review_atomic(uuid,text,uuid)', '64b337eb3ec5dd1431e0dbf9d12a49ac', '08569f17f477dea9ff87709ca3edd218')
 ), itens(item, esperado, vivo) AS (
   SELECT 'controle: catalogo publico visivel','sim',
     CASE WHEN EXISTS(SELECT 1 FROM pg_class WHERE relnamespace='public'::regnamespace) THEN 'sim' ELSE 'nao' END
@@ -80,7 +82,7 @@ WITH alvo(tabela, politica, comando, papeis, qual, chk) AS (VALUES
     AND p.provolatile='v' AND p.proconfig=ARRAY['search_path=public']::text[] AND p.prorettype='void'::regtype
     AND NOT p.proretset AND NOT p.proisstrict AND NOT p.proleakproof AND p.proparallel='u' AND p.procost=100
     AND p.proowner=(SELECT proowner FROM pg_proc WHERE oid=to_regprocedure('public.is_admin_atual()'))
-    AND md5(replace(p.prosrc,chr(13),''))=a.hash
+    AND md5(replace(p.prosrc,chr(13),'')) IN (a.hash, a.sucessora)
     AND (SELECT count(*)=2 FROM pg_proc x WHERE x.pronamespace='public'::regnamespace AND x.proname=p.proname)
     AND has_function_privilege('authenticated',p.oid,'EXECUTE') AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
     AND NOT EXISTS(SELECT 1 FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) e WHERE e.grantee=0 AND e.privilege_type='EXECUTE')

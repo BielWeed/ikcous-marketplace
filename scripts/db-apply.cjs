@@ -560,6 +560,33 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261399400000: a cliente e avisada no sino quando a loja responde a AVALIACAO dela (reply_review_atomic, as DUAS sobrecargas: (uuid,text) e
+  // (uuid,text,uuid)). O corpo e o da 20261360000000 MAIS o passo 3 (aviso em notificacoes, um por avaliacao, dentro de BEGIN ... EXCEPTION: a falha do
+  // aviso nunca perde a resposta); a linha de push_notifications_log continua sendo gravada (a consulta 27m a usa como rastro), por isso o marcador
+  // "A10: log honesto" segue valendo UMA vez. buscarDef le UMA das duas sobrecargas, entao so entram marcadores que existem UMA vez em AMBOS os corpos
+  // (o titulo do aviso leva aspas coladas e SEM o "!" do titulo do log). As guardas de admin tem a mesma frase nas duas. A consulta 120a confere o corpo
+  // exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
+  "20261399400000_a_cliente_e_avisada_quando_a_loja_responde_sua_avaliacao.sql":
+    {
+      funcao: "reply_review_atomic",
+      esperado: [
+        {
+          texto:
+            "-- 3. Aviso no sino da cliente que escreveu a avaliacao (20261399400000).",
+          vezes: 1,
+        },
+        { texto: "'Sua avaliação foi respondida'", vezes: 1 },
+        { texto: "'/product-detail?id=' || v_product_id", vezes: 1 },
+        { texto: "n.dados ->> 'review_id' = p_review_id::text", vezes: 1 },
+        { texto: "EXCEPTION WHEN OTHERS THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        {
+          texto: "Unauthorized: Only admins can reply to reviews.",
+          vezes: 1,
+        },
+        { texto: "A10: log honesto", vezes: 1 },
+      ],
+    },
   // 20261397000000: o desconto do cupom de porcentagem e' arredondado ao centavo. As TRES funcoes (create_marketplace_order_v23/v24 e
   // validate_coupon_secure_v2) trocam SO a linha da conta do desconto percentual: `round(<subtotal * valor / 100>, 2)` no lugar da conta crua.
   // Cada marcador aparece UMA vez no corpo (o marcador nao admite "zero vezes": a ausencia da conta antiga e' do pos-voo da migration e da

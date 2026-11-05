@@ -674,6 +674,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "118b-antes-o-nome-do-perfil-tem-teto-no-banco-ausente",
   "119a-conferir-a-busca-por-palavras-e-o-estorno-fora-do-vencido-aplicado",
   "119b-antes-a-busca-por-palavras-e-o-estorno-fora-do-vencido-base-vigente",
+  "120a-conferir-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-aplicado",
+  "120b-antes-a-cliente-e-avisada-quando-a-loja-responde-a-avaliacao-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

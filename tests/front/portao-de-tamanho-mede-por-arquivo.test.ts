@@ -5,7 +5,7 @@
 // O DEFEITO: a entrada de JS do `.size-limit.cjs` não passava `webpack:
 // false` (a de CSS passava). Sem isso o size-limit jogava os ~107 chunks
 // num projeto webpack vazio, re-minificava e comprimia UMA VEZ em brotli —
-// medindo o bundle FUNDIDO (607 kB) enquanto o que o CDN entrega de verdade
+// medindo o bundle FUNDIDO (608 kB) enquanto o que o CDN entrega de verdade
 // são respostas brotli independentes por arquivo (~777 kB somados). São 170
 // kB de "folga" que não existem: o portão aprovava no papel uma biblioteca
 // nova de leitor de código de barras que, na entrega real, estouraria o teto.
@@ -74,7 +74,7 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     expect(trechoCss).toContain("webpack: false");
   });
 
-  it("os tetos de JS são os fixados: cliente 607 kB, painel 503 kB", () => {
+  it("os tetos de JS são os fixados: cliente 608 kB, painel 503 kB", () => {
     // Se algum PR precisar mexer num teto, que seja explícito AQUI: mudar o
     // número quebra este teste de propósito. Painel 450 -> 455 em 15/10/2026
     // (lote da noite: 39 ajustes de tela juntos) e 455 -> 460 no mesmo dia
@@ -105,9 +105,10 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     // cliente 604 -> 605 em 04/11/2026 (1.5.118, favoritos, carrinho entre abas e conta; medido 603,8 kB no build local; regra do dono);
     // cliente 605 -> 606 em 04/11/2026 (1.5.120, enderecos, balcao, busca e frete gratis; medido 605,14 kB no build local; regra do dono);
     // cliente 606 -> 607 em 04/11/2026 (1.5.122, ordem fixa de tamanhos e cores; medido 606,27 kB no build local; regra do dono);
+    // cliente 607 -> 608 em 05/11/2026 (1.5.125, estoque baixo abre Produtos filtrado; medido 607,06 kB no build local; regra do dono);
     // painel 502 -> 503 em 04/11/2026 (1.5.121, pedidos do painel; medido 502,11 kB no build local; regra do dono);
     // ver comentário no `.size-limit.cjs`.
-    expect(entrada("cliente.map(")).toContain('limit: "607 kB"');
+    expect(entrada("cliente.map(")).toContain('limit: "608 kB"');
     expect(entrada("painel.map(")).toContain('limit: "503 kB"');
     expect(configTexto).not.toContain('limit: "800 kB"');
   });

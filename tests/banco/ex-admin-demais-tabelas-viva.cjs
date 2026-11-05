@@ -26,6 +26,9 @@ const depois = ler(
   "scripts/publicacao/consultas/82a-conferir-ex-admin-sem-acesso-nas-demais-tabelas.sql",
 );
 const CONF = require("../../scripts/publicacao/conferir-banco.cjs");
+const {
+  desfazerAvisoDaAvaliacaoNaTransacao,
+} = require("./a-cliente-e-avisada-avaliacao-posterior.cjs");
 const U = {
   admin: "b3600000-0000-4000-8000-000000000001",
   perfil: "b3600000-0000-4000-8000-000000000002",
@@ -441,6 +444,8 @@ async function main() {
         "SELECT pg_get_expr(polqual,polrelid) LIKE '%rls_admin_atual%' sim FROM pg_policy WHERE polname='coupons_select_policy'",
       )
     ).rows[0].sim;
+    // A 20261399400000 (o aviso da avaliacao respondida) sucede os corpos de reply_review_atomic desta migration: sai antes.
+    await desfazerAvisoDaAvaliacaoNaTransacao(c);
     if (esta) await aplicar(rollback);
     const original = await catalogo();
     await consulta(antes, "82b-antes-ex-admin-nas-demais-tabelas", true);

@@ -1861,6 +1861,10 @@ const POSTERIORES_A_97 = [
 ];
 
 async function desfazerPosterioresNaTransacao(c) {
+  // A 20261399400000 (o aviso da avaliacao respondida) sucede os corpos de reply_review_atomic da 1360: sai ANTES dela (o rollback da 1360 exige o corpo da 1360).
+  await require("./a-cliente-e-avisada-avaliacao-posterior.cjs").desfazerAvisoDaAvaliacaoNaTransacao(
+    c,
+  );
   // A 20261393100000 (o balcao diz "inativo") sucede buscar_por_codigo_barras da 81: sai ANTES dela (o rollback da 81 exige o corpo da 81).
   await desfazerBalcaoDizInativoNaTransacao(c);
   // A 20261385 (a busca de produtos) sucede get_admin_products_paged da 81: sai ANTES dela (o rollback da 81 exige o corpo da 81).
