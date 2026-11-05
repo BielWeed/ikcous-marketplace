@@ -1,4 +1,15 @@
 {
+  "1.5.131": {
+    "titulo": "Pedidos do painel mais firmes e aviso claro para preço grande demais",
+    "novidades": [],
+    "correcoes": [
+      "Painel, Pedidos: ao digitar a busca duas vezes seguidas ou trocar o filtro com internet lenta, a barra Sincronizando continua até a lista nova chegar; antes aparecia a lista antiga como se fosse o resultado.",
+      "Painel, Pedidos: ao finalizar ou cancelar o último pedido da última página, a tela volta para a página anterior na hora, sem mostrar Nenhum pedido neste recorte por engano.",
+      "Painel, Pedidos: o botão de avançar o status deixa de ficar em Processando assim que o status é gravado, mesmo com o aviso ao cliente demorando.",
+      "Painel, cadastro de produto: preço de venda, custo, preço De e preço da variação acima de R$ 9.999.999,99 agora são recusados na tela, dizendo qual campo passou do máximo, em vez de falhar no banco com aviso genérico."
+    ],
+    "melhorias": []
+  },
   "1.5.130": {
     "titulo": "Menos tropeços no balcão, no financeiro, nas fotos de devolução e na vitrine grande",
     "novidades": [],
