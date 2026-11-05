@@ -4995,13 +4995,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       <p className="text-[11px] font-medium leading-relaxed text-amber-200/80">
                         Cada produto aceita <b>um tipo só</b> de variação. Com
                         mais de um, o estoque mostrado acima soma as opções em
-                        dobro e o pedido do cliente guarda só metade da escolha
-                        — quem pedir um P e um M recebe dois P.
+                        dobro, e o estoque do segundo tipo não diminui com as
+                        vendas.
                       </p>
                       <p className="text-[11px] font-medium leading-relaxed text-amber-200/80">
-                        Para consertar, edite as variações abaixo e junte tudo
-                        num tipo só, com as opções combinadas (ex: <i>Rosa P</i>
-                        , <i>Rosa M</i>).
+                        Para consertar, cadastre as combinações: edite as
+                        variações abaixo e junte tudo num tipo só, com as opções
+                        combinadas (ex: <i>Rosa P</i>, <i>Rosa M</i>).
                       </p>
                     </div>
                   )}

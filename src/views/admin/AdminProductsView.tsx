@@ -55,6 +55,7 @@ import {
   VISAO_ESTOQUE_BAIXO,
   VISAO_SEM_CUSTO,
 } from "@/utils/produtos-sem-custo";
+import { gruposDeVariacao, temGrupoDemais } from "@/utils/um-grupo-de-variacao";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -1007,6 +1008,18 @@ export const AdminProductsView = memo(function AdminProductsView({
       if (isOffline) {
         toast.error("Ação não permitida offline", {
           description: "Reconecte-se à internet para duplicar produtos.",
+        });
+        haptic.error();
+        return;
+      }
+      // A regra de um grupo só (`um-grupo-de-variacao.ts`) vale também aqui:
+      // duplicar copiava as variações sem passar por ela. Perder um grupo na
+      // cópia perderia dado, então não se cria nada até a lojista juntar os
+      // grupos no produto original.
+      if (temGrupoDemais(variantesParaTrava(product))) {
+        toast.error("Não dá para duplicar este produto", {
+          description:
+            "Este produto tem dois grupos de variação separados. Cadastre as combinações no produto original antes de duplicar.",
         });
         haptic.error();
         return;
@@ -2325,6 +2338,42 @@ function FotoDoCatalogo({ product }: { readonly product: any }) {
   );
 }
 
+/** Variação sem nome (cadastro corrompido) não conta como grupo, nem derruba a lista. */
+function variantesParaTrava(product: any) {
+  return ((product.variants ?? []) as Array<{ id: string; name?: string }>).map(
+    (v) => ({ id: v.id, name: v.name ?? "" }),
+  );
+}
+
+/**
+ * Produto antigo com dois grupos de variação separados (Cor e Tamanho): o
+ * pedido leva as duas escolhas, mas o estoque só desce da primeira. O painel já
+ * não deixa criar assim; esta marca mostra os que sobraram. O conserto é
+ * cadastrar as combinações ("Azul P"); a dica vai por inteiro na linha de baixo
+ * (cartão detalhado) ou só no `title` (grade, onde falta espaço).
+ */
+function EtiquetaDoisGrupos({
+  product,
+  comDica,
+}: {
+  readonly product: any;
+  readonly comDica?: boolean;
+}) {
+  const variantes = variantesParaTrava(product);
+  if (!temGrupoDemais(variantes)) return null;
+  const dica = `${gruposDeVariacao(variantes).join(" e ")} são grupos separados. Cadastre as combinações, como Azul P, para o estoque descer certo.`;
+  return (
+    <span
+      data-dois-grupos=""
+      title={dica}
+      className={cn("mt-1 block text-[11px]", classeDoTexto("atencao"))}
+    >
+      <span className="font-semibold">Estoque de uma variação não desce</span>
+      {comDica && <span className="block text-zinc-400">{dica}</span>}
+    </span>
+  );
+}
+
 function MenuDoProduto({
   product,
   onNavigate,
@@ -2659,6 +2708,7 @@ const AdminProductCard = memo(function AdminProductCard({
                   Sem Custo Cadastrado
                 </span>
               )}
+              <EtiquetaDoisGrupos product={product} comDica />
             </span>
           </MenuDoProduto>
           <h4 className="sr-only">{product.name}</h4>
@@ -2955,6 +3005,7 @@ const AdminProductCard = memo(function AdminProductCard({
                 {product.variants.length === 1 ? "variação" : "variações"}
               </p>
             )}
+            <EtiquetaDoisGrupos product={product} />
             {botoes(false)}
           </div>
         </div>
