@@ -1,4 +1,13 @@
 {
+  "1.5.126": {
+    "titulo": "Produtos antigos com dois tipos de variação ficam sinalizados no painel",
+    "novidades": [],
+    "correcoes": [
+      "Painel, Produtos: o produto antigo com dois tipos de variação separados (como Cor e Tamanho) ganha uma etiqueta explicando que o estoque do segundo tipo não desce, e o aviso do editor passa a dizer isso com clareza.",
+      "Painel, Produtos: o botão Duplicar não cria mais um produto novo com os dois tipos de variação separados; avisa como arrumar antes."
+    ],
+    "melhorias": []
+  },
   "1.5.125": {
     "titulo": "Avaliação respondida avisa a cliente e estoque baixo abre a lista certa",
     "novidades": [
