@@ -747,7 +747,9 @@ function OrderDeliveryCard({
           <p className="text-sm leading-relaxed text-zinc-200">
             {order.customer.address}
             {order.customer.number ? `, ${order.customer.number}` : ""}
-            {order.customer.complement ? ` - ${order.customer.complement}` : ""}
+            {order.customer.complement?.trim()
+              ? ` - ${order.customer.complement.trim()}`
+              : ""}
             <br />
             <span className="text-zinc-400">
               {order.customer.neighborhood}
