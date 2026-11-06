@@ -49,7 +49,7 @@ import { formatCurrency } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Address, CartItem, Order, View } from "@/types";
 import { haptic } from "@/utils/haptic";
-import { format } from "date-fns";
+import { format } from "date-fns/format";
 import {
   Check,
   ChevronRight,

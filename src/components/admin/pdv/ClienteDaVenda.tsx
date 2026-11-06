@@ -63,6 +63,8 @@ export function ClienteDaVenda({
   >([]);
   const [buscando, setBuscando] = useState(false);
   const [erroDeBusca, setErroDeBusca] = useState(false);
+  // Só da rodada atual: liga quando a resposta chega, desliga ao digitar de novo.
+  const [buscaConcluida, setBuscaConcluida] = useState(false);
 
   // Cliente avulso é montado de DOIS campos que chegam por flushes
   // separados do `LocalBufferedInput` — o estado local combina os dois
@@ -81,6 +83,7 @@ export function ClienteDaVenda({
     const rodada = ++rodadaRef.current;
     setTermoDeBusca(valor);
     setErroDeBusca(false);
+    setBuscaConcluida(false);
     setResultados([]);
     const termoLimpo = valor.trim();
     if (termoLimpo.length < 2) {
@@ -92,6 +95,7 @@ export function ClienteDaVenda({
       const linhas = await buscarClientes(termoLimpo);
       if (rodada !== rodadaRef.current) return;
       setResultados(linhas);
+      setBuscaConcluida(true);
     } catch (erro) {
       if (rodada !== rodadaRef.current) return;
       console.error("Erro ao buscar cliente no balcão:", erro);
@@ -221,6 +225,15 @@ export function ClienteDaVenda({
                 Não foi possível buscar. Tente de novo.
               </p>
             )}
+            {buscaConcluida &&
+              !buscando &&
+              !erroDeBusca &&
+              resultados.length === 0 && (
+                <p role="status" className="pdv-muted">
+                  Nenhum cliente encontrado. Quem só comprou no balcão não tem
+                  conta: use “Cliente avulso” ou “Sem cliente”.
+                </p>
+              )}
             {resultados.length > 0 && (
               <ul className="pdv-stack">
                 {resultados.map((linha) => (

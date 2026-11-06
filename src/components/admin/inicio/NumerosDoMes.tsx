@@ -56,6 +56,9 @@ export function NumerosDoMes({
     margem != null &&
     margem < 0 &&
     Number(dia.slice(8, 10)) <= ULTIMO_DIA_DA_MARGEM_EM_FORMACAO;
+  // Sem venda no mês o banco devolve valor médio 0: "não houve venda" não é
+  // "vendeu a R$ 0,00".
+  const ticketMedio = mes?.pedidos === 0 ? null : mes?.ticketMedio;
   const receita = formatarMoeda(mes?.receita);
   const lucro = formatarMoeda(mes?.lucroEstimado);
   // A largura mínima acompanha a moeda inteira; quem decide empilhar é o
@@ -125,9 +128,9 @@ export function NumerosDoMes({
           </strong>{" "}
           {mes?.pedidos === 1 ? "venda" : "vendas"} · valor médio por venda{" "}
           <strong
-            className={`font-bold tabular-nums ${tomDoValor(mes?.ticketMedio) === "neutro" ? classeDoTexto("neutro") : "text-white"}`}
+            className={`font-bold tabular-nums ${tomDoValor(ticketMedio) === "neutro" ? classeDoTexto("neutro") : "text-white"}`}
           >
-            {formatarMoeda(mes?.ticketMedio)}
+            {formatarMoeda(ticketMedio)}
           </strong>
         </p>
         {children}

@@ -5,6 +5,7 @@ import {
   calcularParametrosDeRecorte,
   clampOffset as limitarOffset,
 } from "@/lib/geometria-do-recorte";
+import { comMarcaDeTentativa } from "@/lib/imageUrl";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import {
@@ -208,6 +209,23 @@ export function ImageAdjuster({
     naturalHeight: 0,
   });
   const [loading, setLoading] = useState(true);
+  // A foto não abriu (sem internet, arquivo apagado): sem isto o editor ficava
+  // em "Carregando Imagem..." para sempre. `tentativa` é a `key` do <img> e a
+  // marca na URL: "Tentar de novo" pede a foto de novo de verdade.
+  const [loadError, setLoadError] = useState(false);
+  const [tentativa, setTentativa] = useState(0);
+  // Foto nova (ou editor reaberto): o erro da foto antiga não vale para ela. O
+  // ajuste durante a renderização (e não num efeito) evita o <img> novo
+  // carregar ANTES de o `loading` voltar a true e ficar preso no spinner.
+  const [fotoVista, setFotoVista] = useState({ imageUrl, isOpen });
+  if (fotoVista.imageUrl !== imageUrl || fotoVista.isOpen !== isOpen) {
+    setFotoVista({ imageUrl, isOpen });
+    if (loadError) {
+      setLoadError(false);
+      setLoading(true);
+    }
+    setTentativa(0);
+  }
   const [activeTab, setActiveTab] = useState<"crop" | "filters" | "export">(
     "crop",
   );
@@ -1200,8 +1218,31 @@ export function ImageAdjuster({
                 </div>
               )}
 
+              {loadError && (
+                <div
+                  role="alert"
+                  className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-zinc-950/90 px-4 text-center"
+                >
+                  <span className="text-xs font-bold text-zinc-300">
+                    Não foi possível abrir esta foto. Verifique a internet e
+                    tente de novo.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoadError(false);
+                      setLoading(true);
+                      setTentativa((n) => n + 1);
+                    }}
+                    className="min-h-11 rounded-xl bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-950 active:scale-95"
+                  >
+                    Tentar de novo
+                  </button>
+                </div>
+              )}
+
               {/* Crop Viewfinder Corner L-Handles */}
-              {!loading && (
+              {!loading && !loadError && (
                 <>
                   <div className="pointer-events-none absolute left-3.5 top-3.5 z-[11] size-4 rounded-tl-sm border-l-2 border-t-2 border-white/70" />
                   <div className="pointer-events-none absolute right-3.5 top-3.5 z-[11] size-4 rounded-tr-sm border-r-2 border-t-2 border-white/70" />
@@ -1211,14 +1252,17 @@ export function ImageAdjuster({
               )}
 
               {/* Render live banner simulation overlay if toggled and available */}
-              {bannerPreview && showBannerSimulation && !loading && (
-                <div className="pointer-events-none absolute inset-0 z-10">
-                  {renderBannerOverlay(1.0)}
-                </div>
-              )}
+              {bannerPreview &&
+                showBannerSimulation &&
+                !loading &&
+                !loadError && (
+                  <div className="pointer-events-none absolute inset-0 z-10">
+                    {renderBannerOverlay(1.0)}
+                  </div>
+                )}
 
               {/* Grid Lines helper */}
-              {!loading && gridType === "thirds" && (
+              {!loading && !loadError && gridType === "thirds" && (
                 <div className="pointer-events-none absolute inset-0 z-10 grid grid-cols-3 grid-rows-3 opacity-30">
                   <div className="col-span-1 border-r border-dashed border-emerald-400" />
                   <div className="col-span-1 border-r border-dashed border-emerald-400" />
@@ -1226,7 +1270,7 @@ export function ImageAdjuster({
                   <div className="absolute inset-x-0 top-2/3 col-span-3 row-span-1 border-b border-dashed border-emerald-400" />
                 </div>
               )}
-              {!loading && gridType === "golden" && (
+              {!loading && !loadError && gridType === "golden" && (
                 <div className="pointer-events-none absolute inset-0 z-10 opacity-30">
                   {/* Vertical golden ratio lines */}
                   <div
@@ -1250,7 +1294,7 @@ export function ImageAdjuster({
               )}
 
               {/* Guidelines for cross-device viewports (only for banners) */}
-              {bannerPreview && !loading && (
+              {bannerPreview && !loading && !loadError && (
                 <>
                   {aspectRatio === "2:1" && (
                     <>
@@ -1271,17 +1315,22 @@ export function ImageAdjuster({
 
               {/* Editable Image */}
               <img
+                key={tentativa}
                 ref={imageRef}
-                src={corsImageUrl}
+                src={comMarcaDeTentativa(corsImageUrl, tentativa)}
                 crossOrigin="anonymous"
                 alt="Ajuste"
                 onLoad={handleImageLoad}
+                onError={() => {
+                  setLoading(false);
+                  setLoadError(true);
+                }}
                 className="pointer-events-none absolute left-0 top-0 max-w-none origin-center select-none"
                 style={{
                   width: imageSize.naturalWidth || "auto",
                   height: imageSize.naturalHeight || "auto",
                   transform: `translate(${offset.x}px, ${offset.y}px) rotate(${rotation + fineRotation}deg) scale(${currentScale})`,
-                  opacity: loading ? 0 : 1,
+                  opacity: loading || loadError ? 0 : 1,
                   transition: isAdjusting ? "none" : "transform 0.15s ease-out",
                   filter: `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) grayscale(${grayscale}%) sepia(${sepia}%)`,
                 }}
@@ -1793,7 +1842,7 @@ export function ImageAdjuster({
             <button
               type="button"
               onClick={handleCrop}
-              disabled={isSubmitting || loading}
+              disabled={isSubmitting || loading || loadError}
               className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-6 py-2.5 text-[10px] font-black uppercase tracking-widest text-emerald-950 shadow-lg shadow-emerald-500/10 transition-all hover:bg-emerald-400 hover:shadow-emerald-500/20 active:scale-95 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:shadow-none sm:flex-none"
             >
               {isSubmitting ? (

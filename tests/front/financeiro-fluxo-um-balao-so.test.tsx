@@ -209,7 +209,7 @@ describe("FluxoDeCaixaGrafico — um balão só por toque, com o sinal certo", (
       // O padrão é o Saldo; o outro gráfico entra pela chave.
       if (rotulo !== "Saldo") escolherGrafico(tela, rotulo);
 
-      // O gráfico da vez: largura 320, eixo Y reserva 56px à esquerda, margem
+      // O gráfico da vez: largura 320, eixo Y reserva 72px à esquerda, margem
       // direita 8px — clientX=90 cai na 1ª banda, o dia de 29/08 (saldo −187,40).
       tocarNoGrafico(tela);
 

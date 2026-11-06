@@ -54,6 +54,28 @@ function passaNoFiltro(
   return filtro === "entradas" ? sentido > 0 : sentido < 0;
 }
 
+/** Lançamentos desenhados de cada vez; "Ver mais" soma outro bloco. */
+const TAMANHO_DO_BLOCO = 100;
+
+/**
+ * Corta os dias visíveis no primeiro dia em que a soma de linhas chega ao
+ * limite: o dia nunca fica pela metade (o cabeçalho traz o total do dia
+ * inteiro). Só limita o que se DESENHA — totais e saldo vêm de `grupos`.
+ */
+function cortarEmBloco<T extends { readonly linhas: readonly unknown[] }>(
+  dias: readonly T[],
+  limite: number,
+): T[] {
+  let desenhadas = 0;
+  const corte: T[] = [];
+  for (const dia of dias) {
+    if (desenhadas >= limite) break;
+    corte.push(dia);
+    desenhadas += dia.linhas.length;
+  }
+  return corte;
+}
+
 function LinhaDoExtratoItem({
   linha,
   contaFiltrada,
@@ -207,6 +229,10 @@ export function AbaExtrato({
   const ocultos = useValoresEstaoOcultos();
   const [contaId, setContaId] = useState("");
   const [filtro, setFiltro] = useState<FiltroDoTipo>("todos");
+  const [ampliado, setAmpliado] = useState({
+    visao: "",
+    limite: TAMANHO_DO_BLOCO,
+  });
   const contaFiltrada = contaId || null;
   const extrato = useExtratoFinanceiro(intervalo, contaFiltrada, ativo, versao);
 
@@ -258,6 +284,17 @@ export function AbaExtrato({
   }, [grupos]);
 
   const quantidade = visiveis.reduce((soma, g) => soma + g.linhas.length, 0);
+
+  // O limite volta ao primeiro bloco quando muda período, conta ou filtro: o
+  // limite guardado vale só para a "visão" em que foi pedido.
+  const visao = `${intervalo?.inicio ?? ""}:${intervalo?.fim ?? ""}:${contaId}:${filtro}`;
+  const limite = ampliado.visao === visao ? ampliado.limite : TAMANHO_DO_BLOCO;
+  const desenhados = useMemo(
+    () => cortarEmBloco(visiveis, limite),
+    [visiveis, limite],
+  );
+  const faltam =
+    quantidade - desenhados.reduce((soma, g) => soma + g.linhas.length, 0);
   const houveEntrada = paraCentavos(totais.entradas) > 0;
   const houveSaida = paraCentavos(totais.saidas) > 0;
 
@@ -374,7 +411,7 @@ export function AbaExtrato({
             aria-label={`${quantidade} ${quantidade === 1 ? "lançamento" : "lançamentos"}`}
             className="flex flex-col gap-3"
           >
-            {visiveis.map(({ grupo, linhas }) => (
+            {desenhados.map(({ grupo, linhas }) => (
               <section
                 key={grupo.dia}
                 aria-label={formatarDiaPorExtenso(grupo.dia)}
@@ -398,6 +435,18 @@ export function AbaExtrato({
               </section>
             ))}
           </div>
+          {faltam > 0 ? (
+            <button
+              type="button"
+              onClick={() =>
+                setAmpliado({ visao, limite: limite + TAMANHO_DO_BLOCO })
+              }
+              className={CLASSE_BOTAO_SECUNDARIO}
+            >
+              Ver mais ({faltam}{" "}
+              {faltam === 1 ? "lançamento restante" : "lançamentos restantes"})
+            </button>
+          ) : null}
           {filtro !== "todos" ? (
             <p className="text-xs leading-relaxed text-zinc-400">
               Os totais e o total do dia não mudam ao filtrar Mostrar.

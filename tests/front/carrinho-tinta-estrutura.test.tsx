@@ -172,7 +172,9 @@ describe("CartItemsList Tinta — a linha do carrinho continua fazendo tudo", ()
       ],
       { onRemove },
     );
-    await act(async () => botao("Remover Ventilador de teto")?.click());
+    await act(async () =>
+      botao("Remover Ventilador de teto (Cor: Azul)")?.click(),
+    );
     expect(onRemove).toHaveBeenCalledWith("prod-1", "var-azul");
     expect(texto()).toContain("Cor: Azul");
   });

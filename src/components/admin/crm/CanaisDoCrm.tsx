@@ -99,7 +99,8 @@ function BlocoDeCanal({
   ticketGeral: number | null;
 }>) {
   const estilo = estiloDoCanal(canal.canal as "online" | "presencial");
-  const zerado = canal.receita <= 0;
+  // Zerado é "nenhum pedido": brinde de R$ 0,00 conta como venda.
+  const zerado = canal.pedidos <= 0;
   const fatiaPedidos = percentualDoTotal(canal.pedidos, totalPedidos, 0);
   const diffTicket =
     !zerado && ticketGeral != null && ticketGeral > 0
@@ -396,21 +397,24 @@ export function CanaisDoCrm({
               </ul>
             )}
           </section>
-          {visao && totalReceita <= 0 && totalFormas <= 0 && (
-            <EstadoVazioDoCrm
-              titulo="Nenhuma venda paga neste período"
-              texto="Troque o período no topo ou registre uma venda do balcão."
-              acao={
-                <button
-                  type="button"
-                  onClick={() => onNavigate("admin-pdv")}
-                  className="min-h-11 rounded-xl bg-foreground px-4 text-xs font-bold text-background"
-                >
-                  Vender no balcão
-                </button>
-              }
-            />
-          )}
+          {visao &&
+            totalPedidos <= 0 &&
+            totalReceita <= 0 &&
+            totalFormas <= 0 && (
+              <EstadoVazioDoCrm
+                titulo="Nenhuma venda paga neste período"
+                texto="Troque o período no topo ou registre uma venda do balcão."
+                acao={
+                  <button
+                    type="button"
+                    onClick={() => onNavigate("admin-pdv")}
+                    className="min-h-11 rounded-xl bg-foreground px-4 text-xs font-bold text-background"
+                  >
+                    Vender no balcão
+                  </button>
+                }
+              />
+            )}
           <CartaoDeFormas formas={visao?.formas ?? []} carregando={esqueleto} />
         </>
       )}

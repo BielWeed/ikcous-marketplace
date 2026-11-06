@@ -1481,14 +1481,14 @@ export const ProductView = React.memo(function ProductView({
                 <div className="space-y-4 duration-300 animate-in fade-in slide-in-from-bottom-2">
                   <div className="mb-6 flex items-center justify-between">
                     <div>
-                      <h3
+                      <h2
                         className={cn(
                           "text-lg font-extrabold tracking-tight text-zinc-900",
                           "lg:text-3xl",
                         )}
                       >
                         Avaliações
-                      </h3>
+                      </h2>
                       <p
                         className={cn(
                           "mt-0.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-600",
@@ -1687,9 +1687,9 @@ export const ProductView = React.memo(function ProductView({
                     "lg:mb-8 lg:items-start lg:text-left",
                   )}
                 >
-                  <h3 className="text-3xl font-black leading-none tracking-tighter text-zinc-900">
+                  <h2 className="text-3xl font-black leading-none tracking-tighter text-zinc-900">
                     Você também pode gostar
-                  </h3>
+                  </h2>
                 </div>
                 <div
                   className={cn(

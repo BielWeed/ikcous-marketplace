@@ -37,6 +37,11 @@ import {
   MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA,
 } from "@/lib/mensagens-auth";
 import { esquecerTodosOsPedidosPendentesDoCheckout } from "@/lib/pedido-pendente-do-checkout";
+import {
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { limparCachesDeAdmin } from "@/utils/admin_cache";
 import {
@@ -81,6 +86,37 @@ export type AdminStatus = "unknown" | "admin" | "not-admin";
 // sem nenhum import de runtime; o histórico de decisão de cada frase (por
 // que "fale com a loja" não serve para o lojista, por que `user_banned` é
 // 400 e não 403, por que `audience` é obrigatório sem default) está lá.
+
+// PRAZO DAS CHAMADAS DE AUTENTICAÇÃO (06/11/2026). Rede "pendurada" conecta e
+// não responde: sem prazo, "Entrar", "Criar conta", "Esqueci a senha", o código
+// de recuperação e "Nova senha" giravam para sempre (o botão só solta quando a
+// função devolve). 15 s, o mesmo da cotação do frete: login/cadastro falam com
+// o GoTrue, que numa rede lenta mas viva responde em poucos segundos.
+//
+// O prazo limita só a ESPERA DA TELA (`aguardarComPrazo`): o servidor pode ter
+// concluído. Por isso cada frase diz o que conferir antes de repetir — e uma
+// sessão que chegue depois pelo `onAuthStateChange` é aceita normalmente.
+// Só o erro de prazo (`ehConsultaSemResposta`) é tratado aqui; qualquer outra
+// exceção segue exatamente o caminho que já tinha.
+const PRAZO_DA_AUTENTICACAO_MS = 15_000;
+
+const MENSAGEM_LOGIN_SEM_RESPOSTA =
+  "A conexão está lenta e a entrada não foi confirmada. Tente de novo em instantes.";
+const MENSAGEM_CADASTRO_SEM_RESPOSTA =
+  "A conexão está lenta e o cadastro não foi confirmado. Ele pode ter sido feito: confira seu e-mail ou tente entrar antes de criar a conta de novo.";
+const MENSAGEM_CODIGO_SEM_RESPOSTA =
+  "A conexão está lenta e o código não foi confirmado. Tente de novo; se disser que o código venceu, peça outro.";
+const MENSAGEM_NOVA_SENHA_SEM_RESPOSTA =
+  "A conexão está lenta e a troca de senha não foi confirmada. Ela pode ter sido feita: tente entrar com a senha nova antes de repetir.";
+
+function comPrazoDeAutenticacao<T>(
+  requisicao: Promise<T>,
+  mensagemSemResposta: string,
+): Promise<T> {
+  return aguardarComPrazo(requisicao, PRAZO_DA_AUTENTICACAO_MS, () =>
+    erroDeConsultaSemResposta(mensagemSemResposta),
+  );
+}
 
 interface AuthContextType {
   session: Session | null;
@@ -1156,17 +1192,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // como PENDENTE (`salvarPendente`) quando a confirmação por e-mail
       // ainda vai acontecer — ver `src/lib/cpf-pendente-do-cadastro.ts`
       // para o porquê (link de confirmação abre aba nova no Android).
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password: senha,
-        options: {
-          emailRedirectTo: window.location.origin,
-          data: {
-            full_name: fullName,
-            phone: phone,
-          },
-        },
-      });
+      let resposta: Awaited<ReturnType<typeof supabase.auth.signUp>>;
+      try {
+        resposta = await comPrazoDeAutenticacao(
+          supabase.auth.signUp({
+            email,
+            password: senha,
+            options: {
+              emailRedirectTo: window.location.origin,
+              data: {
+                full_name: fullName,
+                phone: phone,
+              },
+            },
+          }),
+          MENSAGEM_CADASTRO_SEM_RESPOSTA,
+        );
+      } catch (erroDeRede) {
+        if (!ehConsultaSemResposta(erroDeRede)) throw erroDeRede;
+        // O servidor pode ter criado a conta: a frase manda conferir antes de
+        // repetir. O CPF pendente não é guardado (não há `user.id` sem resposta).
+        console.error("[Auth] Cadastro sem resposta no prazo.");
+        toast.error(MENSAGEM_CADASTRO_SEM_RESPOSTA);
+        return false;
+      }
+      const { data, error } = resposta;
       if (error) {
         // Tradução por CAUSA verificada na doc oficial do Supabase Auth
         // (https://supabase.com/docs/guides/auth/debugging/error-codes):
@@ -1253,10 +1303,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       senha: string,
       audience: LoginAudience,
     ): Promise<{ success: boolean; error?: AuthError; message?: string }> => {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password: senha,
-      });
+      let resposta: Awaited<
+        ReturnType<typeof supabase.auth.signInWithPassword>
+      >;
+      try {
+        resposta = await comPrazoDeAutenticacao(
+          supabase.auth.signInWithPassword({
+            email,
+            password: senha,
+          }),
+          MENSAGEM_LOGIN_SEM_RESPOSTA,
+        );
+      } catch (erroDeRede) {
+        if (!ehConsultaSemResposta(erroDeRede)) throw erroDeRede;
+        // Sem `error`: não há causa do servidor para traduzir, e as telas não
+        // podem cair em "senha incorreta" nem em "e-mail não confirmado". Elas
+        // mostram `message` quando `error` não vem (AuthView, AdminLoginView).
+        // Uma sessão que chegue depois pelo `onAuthStateChange` é aceitável.
+        console.error("[Auth] Entrar sem resposta no prazo.");
+        return { success: false, message: MENSAGEM_LOGIN_SEM_RESPOSTA };
+      }
+      const { error } = resposta;
       if (error) {
         // O erro de login aparece UMA vez, na faixa da própria tela (AuthView e
         // AdminLoginView mostram a faixa): o toast que existia aqui repetia a
@@ -1445,11 +1512,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // navegador. Fechar a enumeração foi a decisão tomada mesmo assim;
         // dar a esse usuário uma entrada nova na tela de login é escopo de
         // outra issue, não desta.
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${
-            window.location.origin + window.location.pathname
-          }?type=recovery`,
-        });
+        // O prazo estoura como EXCEÇÃO e cai no `catch` abaixo, que devolve a
+        // mesma frase genérica do erro genuíno: nenhuma frase nova que
+        // distinga conta cadastrada de não cadastrada (#120).
+        const { error } = await comPrazoDeAutenticacao(
+          supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: `${
+              window.location.origin + window.location.pathname
+            }?type=recovery`,
+          }),
+          MENSAGEM_LOGIN_SEM_RESPOSTA,
+        );
 
         if (error) {
           // Erro genuíno (rede, rate limit etc.) — não pode distinguir
@@ -1502,11 +1575,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     async (email: string, code: string): Promise<boolean> => {
       try {
         console.log("[Auth] Verifying OTP code");
-        const { error } = await supabase.auth.verifyOtp({
-          email,
-          token: code,
-          type: "email",
-        });
+        const { error } = await comPrazoDeAutenticacao(
+          supabase.auth.verifyOtp({
+            email,
+            token: code,
+            type: "email",
+          }),
+          MENSAGEM_CODIGO_SEM_RESPOSTA,
+        );
 
         if (error) {
           console.error("[Auth] OTP verification failed:", error);
@@ -1519,7 +1595,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return true;
       } catch (err) {
         console.error("[Auth] verifyOtp exception:", err);
-        toast.error("Erro ao verificar código.");
+        // Prazo estourado não é "erro ao verificar": o servidor pode até ter
+        // aceitado o código; a frase de conexão lenta diz o que fazer.
+        toast.error(
+          ehConsultaSemResposta(err)
+            ? MENSAGEM_CODIGO_SEM_RESPOSTA
+            : "Erro ao verificar código.",
+        );
         return false;
       }
     },
@@ -1528,9 +1610,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const updatePassword = useCallback(
     async (newPassword: string): Promise<boolean> => {
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
+      let resposta: Awaited<ReturnType<typeof supabase.auth.updateUser>>;
+      try {
+        resposta = await comPrazoDeAutenticacao(
+          supabase.auth.updateUser({
+            password: newPassword,
+          }),
+          MENSAGEM_NOVA_SENHA_SEM_RESPOSTA,
+        );
+      } catch (erroDeRede) {
+        if (!ehConsultaSemResposta(erroDeRede)) throw erroDeRede;
+        // O servidor pode ter trocado a senha: a frase manda conferir (entrar
+        // com a senha nova) antes de repetir. `isPasswordRecovery` fica como
+        // está — só some quando a troca é confirmada.
+        console.error("[Auth] Troca de senha sem resposta no prazo.");
+        toast.error(MENSAGEM_NOVA_SENHA_SEM_RESPOSTA);
+        return false;
+      }
+      const { error } = resposta;
       if (error) {
         // Tradução por causa (doc oficial do Supabase Auth,
         // https://supabase.com/docs/guides/auth/debugging/error-codes):

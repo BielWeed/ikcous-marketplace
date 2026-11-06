@@ -11,6 +11,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import type { DashboardStats } from "@/hooks/useAnalytics";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { formatarInteiro, formatarMoedaCompacta } from "@/lib/crm";
 import { formatarBRLCompacto, formatarPercentual } from "@/lib/financeiro";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
@@ -304,26 +305,22 @@ export const OperationalPerformanceChart = memo(
             <>
               <div className="min-w-0 pr-1">
                 <p className="text-admin-text-soft text-[11px]">Faturamento</p>
-                <p className="text-admin-text text-base font-extrabold tabular-nums">
-                  R${" "}
-                  {periodTotals.revenue.toLocaleString("pt-BR", {
-                    maximumFractionDigits: 0,
-                  })}
+                <p className="text-admin-text text-sm font-extrabold tabular-nums min-[360px]:text-base">
+                  {formatarMoedaCompacta(periodTotals.revenue)}
                 </p>
               </div>
               <div className="min-w-0 px-2">
                 <p className="text-admin-text-soft text-[11px]">Pedidos</p>
-                <p className="text-admin-text text-base font-extrabold tabular-nums">
-                  {periodTotals.orders}
+                <p className="text-admin-text text-sm font-extrabold tabular-nums min-[360px]:text-base">
+                  {formatarInteiro(periodTotals.orders)}
                 </p>
               </div>
               <div className="min-w-0 pl-2">
                 <p className="text-admin-text-soft text-[11px]">Valor médio</p>
-                <p className="text-admin-text text-base font-extrabold tabular-nums">
-                  R${" "}
-                  {periodTotals.avgTicket.toLocaleString("pt-BR", {
-                    maximumFractionDigits: 0,
-                  })}
+                <p className="text-admin-text text-sm font-extrabold tabular-nums min-[360px]:text-base">
+                  {periodTotals.orders > 0
+                    ? formatarMoedaCompacta(periodTotals.avgTicket)
+                    : "—"}
                 </p>
               </div>
             </>

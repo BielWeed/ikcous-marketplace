@@ -1935,6 +1935,13 @@ const consultasDoClienteEmVoo = new Map<string, ConsultaDoClienteEmVoo>();
 // recarga seguinte abre a consulta dela.
 const LIMITE_DE_CARONA_NA_CONSULTA_MS = 15_000;
 
+// Quanto a TELA espera pela leitura dos pedidos da cliente. Rede "pendurada"
+// conecta e não responde: sem prazo o `loading` ficava ligado para sempre, sem
+// erro e sem "Tentar de novo". 20 s: a consulta é pesada (pedidos + itens +
+// produto + endereço, sem limite) e o prazo da carona acima (15 s) é para
+// outra coisa. O estouro vira falha comum (`ordersLoadError`), nunca aborto.
+export const PRAZO_DA_CONSULTA_DE_PEDIDOS_MS = 20_000;
+
 function consultarPedidosDoCliente(
   userId: string,
   signal: AbortSignal,
@@ -2129,18 +2136,22 @@ export function useOrders(
       if (userOrdersAbortControllerRef.current) {
         userOrdersAbortControllerRef.current.abort();
       }
-      userOrdersAbortControllerRef.current = new AbortController();
-      const signal = userOrdersAbortControllerRef.current.signal;
+      const controlador = new AbortController();
+      userOrdersAbortControllerRef.current = controlador;
+      const signal = controlador.signal;
       const idsNoInicio = new Set(ordersRef.current.map((pedido) => pedido.id));
 
       if (!hasCache) {
         setLoading(true);
       }
       try {
-        const { data, error } = await consultarPedidosDoCliente(
-          user.id,
-          signal,
-          silent,
+        // Prazo da ESPERA da tela: o erro de estouro é uma falha comum, nunca
+        // um aborto (o catch abaixo engole aborto em silêncio e devolveria []
+        // sem erro e sem "Tentar de novo").
+        const { data, error } = await aguardarComPrazo(
+          consultarPedidosDoCliente(user.id, signal, silent),
+          PRAZO_DA_CONSULTA_DE_PEDIDOS_MS,
+          () => erroDeConsultaSemResposta(),
         );
 
         // A conta mudou enquanto a leitura corria: a resposta é de OUTRA
@@ -2197,6 +2208,11 @@ export function useOrders(
         // Falha que chegou depois da troca de conta é da conta ANTERIOR.
         if (userIdAtualRef.current !== (user.id ?? null)) return [];
         console.error("Error fetching user orders:", err);
+        // Estourou o prazo: larga a requisição pendurada (ela só sai da
+        // consulta compartilhada quando não resta ninguém esperando). Aqui e
+        // não no estouro: abortar antes faria a consulta rejeitar com
+        // AbortError e vencer a corrida contra o erro do prazo.
+        if (ehConsultaSemResposta(err)) controlador.abort();
         // A falha FICA registrada (o toast some em segundos): a tela decide —
         // sem pedido em memória mostra "Não conseguimos carregar" com
         // "Tentar de novo"; com pedidos em memória mantém a lista e avisa
@@ -2213,7 +2229,11 @@ export function useOrders(
                 "Mostrando os pedidos salvos neste aparelho. Eles serão atualizados quando a conexão voltar.",
             });
           } else {
-            toast.error("Erro ao carregar seus pedidos");
+            toast.error(
+              ehConsultaSemResposta(err)
+                ? err.message
+                : "Erro ao carregar seus pedidos",
+            );
           }
         }
         return [];

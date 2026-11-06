@@ -235,7 +235,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
         // default silencioso (ver comentário de `MENSAGEM_ERRO_LOGIN_GENERICA`
         // em `@/lib/mensagens-auth.ts` para o porquê — não mais em
         // AuthContext.tsx, A1-fix4 moveu a constante).
-        const { success, error } = await login(
+        const { success, error, message } = await login(
           email.trim(),
           password,
           "customer",
@@ -244,6 +244,11 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           toast.success("Acesso concedido. Bem-vindo!");
           if (onSuccess) onSuccess();
           else onNavigate("profile");
+        } else if (!error && message) {
+          // Sem `error` o servidor não respondeu no prazo (rede pendurada, ver
+          // `PRAZO_DA_AUTENTICACAO_MS` em AuthContext.tsx): não há causa para
+          // traduzir, e `message` já é a frase de conexão lenta.
+          setLoginError(message);
         } else if (error) {
           // Tratamento de Erro - Localização de mensagens do Supabase
           let message = MENSAGEM_ERRO_LOGIN_GENERICA;

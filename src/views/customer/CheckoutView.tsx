@@ -5929,6 +5929,10 @@ export function CheckoutViewDaConta({
 
   return (
     <div className="pb-customer-summary min-h-dvh bg-gray-50/10 pt-2">
+      {/* Título nível 1 só para leitor de tela: a tela principal do checkout
+          não tinha nenhum h1. Fica FORA do bloco `space-y-4` abaixo para não
+          somar margem ao primeiro cartão (sr-only não ocupa espaço). */}
+      <h1 className="sr-only">Finalizar compra</h1>
       {/* Gatilho do resumo do pedido, portado para o CENTRO da barra
           superior (D1 refinado, 12/09/2026) — o mesmo espaço que ficava
           vazio quando a busca some. `headerSlotEl` só existe depois que o

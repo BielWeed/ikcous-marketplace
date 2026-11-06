@@ -277,7 +277,7 @@ describe("F3 — produto no computador e celular preservado", () => {
         "lg:max-w-prose",
       ),
     ).toBe(true);
-    expect(elemento("#chat-section h3").textContent).toBe(
+    expect(elemento("#chat-section h2").textContent).toBe(
       "Perguntas ao vendedor",
     );
   });

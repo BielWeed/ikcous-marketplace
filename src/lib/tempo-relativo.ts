@@ -1,5 +1,5 @@
-import { formatDistanceToNow } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { formatDistanceToNow } from "date-fns/formatDistanceToNow";
+import { ptBR } from "date-fns/locale/pt-BR";
 
 /**
  * "há 3 minutos" para pergunta, avaliação e dúvida. Com o relógio do celular

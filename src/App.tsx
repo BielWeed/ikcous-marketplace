@@ -138,11 +138,25 @@ function TabWrapper({ active, children, index, activeIndex }: TabWrapperProps) {
   );
 }
 
+// Nome falado da tela principal ao trocar de tela (região de aviso do App).
+// As outras telas ficam sem nome: o aviso fica vazio.
+const NOME_DA_TELA = new Map<string, string>([
+  ["home", "Início"],
+  ["favorites", "Favoritos"],
+  ["cart", "Carrinho"],
+  ["orders", "Meus pedidos"],
+  ["profile", "Minha conta"],
+  ["checkout", "Finalizar compra"],
+]);
+
 function ViewLoadingFallback() {
   const isReady = useDeferredRender(150);
   if (!isReady) return null;
   return (
-    <div className="flex min-h-[40vh] flex-col items-center justify-center space-y-4">
+    <div
+      role="status"
+      className="flex min-h-[40vh] flex-col items-center justify-center space-y-4"
+    >
       <div className="size-10 animate-spin rounded-full border-[3px] border-zinc-900/10 border-t-zinc-900" />
       <p className="animate-pulse text-sm font-medium text-zinc-500">
         Carregando...
@@ -901,6 +915,28 @@ const AppContent = () => {
     }
   }, []);
   const mainRef = useRef<HTMLElement>(null);
+  // Troca de tela: o foco vai para o <main> (a tela antiga some e o foco
+  // cairia no <body>), exceto se a pessoa está digitando, está na barra de
+  // baixo ou há diálogo aberto. O nome da tela é falado pela região de aviso.
+  const vistaAnteriorRef = useRef(currentView);
+  useEffect(() => {
+    if (vistaAnteriorRef.current === currentView) return;
+    vistaAnteriorRef.current = currentView;
+    if (currentView.startsWith("admin")) return;
+    // Abrir o app direto num endereço (/cart, /orders...) também "troca de
+    // tela" na montagem, sem a pessoa ter tocado em nada: não puxar o foco,
+    // senão o "Pular para o conteúdo" some do caminho do teclado.
+    if (navigator.userActivation?.hasBeenActive === false) return;
+    const ativo = document.activeElement;
+    if (
+      ativo instanceof HTMLElement &&
+      (ativo.isContentEditable ||
+        ativo.closest("input,textarea,select,nav,[role=dialog]"))
+    )
+      return;
+    if (document.querySelector("[role=dialog],[role=alertdialog]")) return;
+    mainRef.current?.focus({ preventScroll: true });
+  }, [currentView]);
   const scrollSentinelRef = useRef<HTMLDivElement>(null);
   const backOverrideRef = useRef<(() => void) | null>(null);
   const isTransitioningRef = useRef(false);
@@ -1259,6 +1295,9 @@ const AppContent = () => {
           activeTransitionRef.current = transition;
 
           const onTransitionEnd = () => {
+            // Ambiente já desmontado (aba fechando, teste encerrado): sem janela não
+            // há tela para atualizar, e o setState levantaria erro não tratado.
+            if (typeof window === "undefined") return;
             if (activeTransitionRef.current === transition) {
               activeTransitionRef.current = null;
             }
@@ -3305,6 +3344,9 @@ const AppContent = () => {
       >
         Pular para o conteúdo
       </a>
+      <div role="status" aria-live="polite" className="sr-only">
+        {NOME_DA_TELA.get(currentView) ?? ""}
+      </div>
       <AppBadgeSynchronizer />
       <CarrinhoAtual aoMudar={guardarCarrinhoAtual} />
       {/* Barra de rota SOB DEMANDA: o Suspense só monta depois que a

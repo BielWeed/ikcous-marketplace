@@ -1,4 +1,20 @@
 {
+  "1.5.146": {
+    "titulo": "Entrar e salvar endereço não travam com internet ruim, e o painel ficou mais claro",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Entrar: entrar, criar conta, “Esqueci a senha” e “Nova senha” não ficam mais girando para sempre com internet ruim; depois de 15 segundos aparece um aviso dizendo o que fazer.",
+      "Loja, Pedidos e Endereços: Meus pedidos, a ficha do pedido e o salvar endereço não travam com internet ruim; aparece “Tentar de novo”, e o aviso do endereço manda conferir a lista antes de repetir.",
+      "Loja: produto sem foto mostra um quadrado “Sem foto” mesmo sem internet, em vez de pedir “Toque para tentar de novo”.",
+      "Loja, Acessibilidade: quem usa leitor de tela ouve o nome da tela ao navegar, os botões do carrinho de variações diferentes têm nomes diferentes, e a escolha de opções diz o que está esgotado ou indisponível.",
+      "Painel, Financeiro: os números do gráfico de Fluxo de caixa não ficam mais cortados, o Extrato mostra uns 100 lançamentos por vez com “Ver mais”, e os valores dos Relatórios mostram os centavos quando são menores que R$ 10.000.",
+      "Painel, Relatórios: um canal com venda de valor zero (brinde com cupom de 100%) mostra “Pedidos” em vez de “Nenhuma venda”.",
+      "Painel, Balcão: a busca de cliente que não acha ninguém avisa “Nenhum cliente encontrado”.",
+      "Painel, Login: a atualização do app não recarrega a tela de login com e-mail e senha já digitados.",
+      "Painel, Banners e fotos: escolher um produto sem foto não grava mais a imagem cinza “Sem Imagem”, e o editor de foto que não abre mostra um aviso com “Tentar de novo” em vez de ficar carregando."
+    ]
+  },
   "1.5.145": {
     "titulo": "Cadastro de produto mais seguro, Voltar do balcão certo e carrinho que não perde o frete",
     "novidades": [],

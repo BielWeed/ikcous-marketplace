@@ -212,6 +212,10 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
       (b) =>
         b.getAttribute("aria-label") === texto ||
+        // opção com estado fala "Verde, última unidade" (esgotado etc.)
+        b
+          .getAttribute("aria-label")
+          ?.startsWith(`${texto}, `) ||
         b.textContent?.trim() === texto,
     )!;
 
@@ -1289,8 +1293,10 @@ describe("ProductCard — escolher opções na FOLHA (direção B)", () => {
     await abrirFolha();
     await act(async () => linha("Cor").click());
     await act(async () => chip("Preto").click());
-    expect(folha()!.textContent).toContain("Riscado = indisponível em Preto.");
-    expect(folha()!.textContent).not.toContain("Riscado = esgotado");
+    expect(folha()!.textContent).toContain(
+      "Opções indisponíveis em Preto aparecem",
+    );
+    expect(folha()!.textContent).not.toContain("aparecem como esgotad");
     expect(chip("M").disabled).toBe(false);
     expect(chip("Verde").disabled).toBe(true); // Nenhuma combinação Verde tem estoque.
   });

@@ -6,8 +6,8 @@ import { tempoRelativo } from "@/lib/tempo-relativo";
 import type { View } from "@/types";
 import { getPredefinedCoverSvg } from "@/utils/covers";
 import { haptic } from "@/utils/haptic";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { format } from "date-fns/format";
+import { ptBR } from "date-fns/locale/pt-BR";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
