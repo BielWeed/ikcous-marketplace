@@ -417,12 +417,15 @@ export function OrderSearch({
                       inputMode="numeric"
                       autoComplete="one-time-code"
                       required
-                      maxLength={6}
                       aria-label="Código de 6 dígitos"
                       placeholder="DIGITE O CÓDIGO DE 6 DÍGITOS"
                       value={otp}
+                      // Sem `maxLength`: o navegador cortava o texto COLADO em
+                      // 6 caracteres antes desta limpeza, e '123 456' ou
+                      // '123-456' perdia o último dígito. O corte em 6 dígitos
+                      // é daqui.
                       onChange={(e) =>
-                        setOtp(e.target.value.replace(/\D/g, ""))
+                        setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
                       }
                       className="h-14 w-full rounded-[14px] border border-input bg-muted/40 text-center text-lg font-bold tracking-[0.3em] text-foreground transition-colors placeholder:text-sm placeholder:font-medium placeholder:tracking-normal placeholder:text-muted-foreground focus:border-foreground focus:outline-none"
                     />

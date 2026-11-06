@@ -1148,7 +1148,10 @@ export const mensagemAmigavelErroOtp = (error: unknown): string => {
     pista.includes("network request failed") ||
     pista.includes("load failed")
   ) {
-    return "Sem conexão com o servidor. Verifique sua internet e tente novamente.";
+    // Rede ruim pode perder a RESPOSTA depois de o servidor já ter aceitado o
+    // código (uso único): na nova tentativa ele volta "inválido". A pessoa
+    // precisa saber que nesse caso o caminho é pedir um código novo.
+    return "Sem conexão com o servidor. Verifique sua internet e tente novamente. Se o código aparecer como inválido, peça um novo.";
   }
 
   return "Não conseguimos verificar seu código agora. Tente novamente em instantes.";
@@ -4703,10 +4706,18 @@ export function useOrders(
         if (data && typeof data === "object" && "ok" in data) {
           if (!data.ok) {
             const restantes = (data as any).restantes;
+            // `restantes === 0` é a 5ª tentativa errada: a RPC já bloqueou o
+            // código mas devolve o texto de "inválido" desta última rodada.
+            // Sem esta frase a pessoa seguiria digitando um código que já
+            // não vale. Com tentativas sobrando, lembra que a RPC só olha o
+            // código do e-mail MAIS RECENTE (um código antigo, digitado
+            // depois de pedir outro, conta como erro).
             toast.error(
-              typeof restantes === "number" && restantes > 0
-                ? `${(data as any).error} Resta${restantes === 1 ? "" : "m"} ${restantes} tentativa${restantes === 1 ? "" : "s"}.`
-                : (data as any).error || "Código inválido ou expirado",
+              restantes === 0
+                ? "Código bloqueado por excesso de tentativas. Peça um novo código."
+                : typeof restantes === "number" && restantes > 0
+                  ? `${(data as any).error} Resta${restantes === 1 ? "" : "m"} ${restantes} tentativa${restantes === 1 ? "" : "s"}. Use o código do e-mail mais recente.`
+                  : (data as any).error || "Código inválido ou expirado",
             );
             return [];
           }
