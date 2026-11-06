@@ -33,7 +33,6 @@ describe("navegarPorUrl — páginas públicas da loja", () => {
     ["/terms", "terms"],
     ["/privacy", "privacy"],
     ["/returns-policy", "returns-policy"],
-    ["/recently-viewed", "recently-viewed"],
   ])("%s abre a tela %s, não a vitrine", (url, tela) => {
     const navegar = destinoDe(url);
     expect(navegar).toHaveBeenCalledTimes(1);
@@ -55,6 +54,14 @@ describe("navegarPorUrl — páginas públicas da loja", () => {
     expect(destinoDe("/admin-orders")).toHaveBeenCalledWith("home");
     expect(destinoDe("/admin-about-store")).toHaveBeenCalledWith("home");
     expect(destinoDe("/admin")).toHaveBeenCalledWith("home");
+  });
+
+  // 06/11/2026: /recently-viewed abria tela em branco (a tela nunca existiu) e
+  // /order-success mostrava "Pedido Realizado!" sem compra nenhuma. Aviso com
+  // esses destinos agora cai na vitrine, como qualquer destino desconhecido.
+  it("destino sem tela própria (/recently-viewed, /order-success) cai na vitrine", () => {
+    expect(destinoDe("/recently-viewed")).toHaveBeenCalledWith("home");
+    expect(destinoDe("/order-success")).toHaveBeenCalledWith("home");
   });
 
   it("CONTROLES — o que já funcionava segue igual", () => {

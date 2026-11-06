@@ -423,6 +423,20 @@ describe("App — endereço desconhecido volta para a Home", () => {
     expect(globalThis.location.search).toBe("?category=Bebidas");
   });
 
+  // 06/11/2026: /recently-viewed abria uma tela em branco (a tela nunca
+  // existiu) e /order-success dizia "Pedido Realizado!" a quem não comprou
+  // nada. Os dois eram aceitos como entrada; agora são endereços
+  // desconhecidos e caem na Home como /produto/abc.
+  it.each(["/recently-viewed", "/order-success"])(
+    "%s cai na Home (nada de tela em branco nem de pedido fantasma) e o endereço volta para '/'",
+    async (endereco) => {
+      await abrirEm(endereco);
+      expect(container?.querySelector('[data-testid="home"]')).not.toBeNull();
+      expect(container?.textContent ?? "").not.toContain("Pedido Realizado");
+      expect(globalThis.location.pathname).toBe("/");
+    },
+  );
+
   it("limite: rota VÁLIDA (/cart) não é mexida", async () => {
     await abrirEm("/cart");
     expect(globalThis.location.pathname).toBe("/cart");

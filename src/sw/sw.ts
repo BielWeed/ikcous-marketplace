@@ -466,6 +466,15 @@ sw.addEventListener("fetch", (event: any) => {
   // nativamente. O `cache: "no-store"` do useUpdateCheck cuida do cache HTTP.
   if (url.pathname === "/version.json") return;
 
+  // `/identidade.json` pela PÁGINA é a mesma pergunta de frescor: a tela de
+  // manutenção confere se a loja já voltou (`configuracao.manutencao`). O
+  // catch-all abaixo é cache-first e o `caches.match` global acha a ficha que
+  // o `install` guardou em `ikcous-identidade`: a pergunta seria respondida
+  // com a ficha de MANUTENÇÃO velha para sempre. Vai direto à rede. O
+  // `install` (busca do próprio SW, que não passa por este listener) e o
+  // `push` (lê o cache próprio) continuam como eram.
+  if (url.pathname === CAMINHO_IDENTIDADE_JSON) return;
+
   // 2. NAVEGAÇÃO: CACHE PRIMEIRO, REVALIDAÇÃO EM SEGUNDO PLANO
   // (laudo ofensiva 3108, achado N4)
   //

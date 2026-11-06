@@ -101,7 +101,6 @@ export function navegarPorUrl(
       "login",
       "favorites",
       "notifications",
-      "order-success",
       "orders",
       "order-details",
       "account-settings",
@@ -112,7 +111,6 @@ export function navegarPorUrl(
       "terms",
       "privacy",
       "returns-policy",
-      "recently-viewed",
     ];
 
     if (knownViews.includes(cleanPath)) {
