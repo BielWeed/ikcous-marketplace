@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   estoqueDoProdutoFoiMexido,
   estoqueDoProdutoPelasVariacoes,
+  estoqueQueAPrimeiraVariacaoHerda,
   formComVariacoes,
   variacoesSoComEstoqueMexido,
 } from "@/utils/estoque-das-variacoes";
@@ -225,5 +226,45 @@ describe("variacoesSoComEstoqueMexido", () => {
     variacoesSoComEstoqueMexido(atuais, [v("a", 3)]);
     expect(atuais[0]).toHaveProperty("stockIncrement", 3);
     expect(variacoesSoComEstoqueMexido([], [])).toEqual([]);
+  });
+});
+
+describe("estoqueQueAPrimeiraVariacaoHerda", () => {
+  const form = (stock: string, variants: Array<ReturnType<typeof ligada>>) => ({
+    stock,
+    variants,
+  });
+
+  it("sem variação e com estoque: a primeira herda o estoque do produto", () => {
+    expect(estoqueQueAPrimeiraVariacaoHerda(form("20", []))).toBe(20);
+  });
+
+  it("e o total NÃO zera: a soma depois de criar a primeira é o estoque que havia", () => {
+    const antes = form("20", []);
+    const herdado = estoqueQueAPrimeiraVariacaoHerda(antes);
+    const depois = formComVariacoes(antes, [ligada(herdado)]);
+    expect(depois.stock).toBe("20");
+  });
+
+  it("já com variação ligada: a nova nasce com 0 (a soma já é do que há)", () => {
+    expect(
+      estoqueQueAPrimeiraVariacaoHerda(form("7", [ligada(3), desligada(4)])),
+    ).toBe(0);
+  });
+
+  it("só variações desligadas e estoque no campo: herda (a soma das ligadas seria 0)", () => {
+    expect(estoqueQueAPrimeiraVariacaoHerda(form("12", [desligada(5)]))).toBe(
+      12,
+    );
+  });
+
+  it("estoque 0, vazio, negativo, quebrado ou lixo: nasce 0", () => {
+    for (const stock of ["0", "", "  ", "-3", "1,5", "abc", "2.5"]) {
+      expect(estoqueQueAPrimeiraVariacaoHerda(form(stock, []))).toBe(0);
+    }
+  });
+
+  it("aceita espaço nas pontas e zeros à esquerda", () => {
+    expect(estoqueQueAPrimeiraVariacaoHerda(form(" 08 ", []))).toBe(8);
   });
 });

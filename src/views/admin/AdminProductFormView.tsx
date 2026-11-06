@@ -85,6 +85,7 @@ import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import { erroDoEstoqueDaVariacao } from "@/utils/estoque-da-variacao";
 import {
   estoqueDoProdutoFoiMexido,
+  estoqueQueAPrimeiraVariacaoHerda,
   formComVariacoes,
   variacoesSoComEstoqueMexido,
 } from "@/utils/estoque-das-variacoes";
@@ -2631,6 +2632,24 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     });
     if (aplicaPrecoDaGrade) setPrecoVeioDaGrade(true);
     setShowGradeForm(false);
+    // A grade não tem como dividir o estoque que o produto já tinha entre as
+    // linhas: com variação ligada o estoque do produto vira a soma delas. Não
+    // bloqueia — só diz o número antes que ele suma sem aviso.
+    // Só quando alguma linha entra de fato (lote repetido não muda o estoque).
+    const jaNaLista = new Set(
+      formData.variants.map((v) => chaveDaIdentidade(v)),
+    );
+    const estoqueQueAGradeSubstitui = linhas.some(
+      (linha) => !jaNaLista.has(chaveDaIdentidade(linha)),
+    )
+      ? estoqueQueAPrimeiraVariacaoHerda(formData)
+      : 0;
+    if (estoqueQueAGradeSubstitui > 0) {
+      toast.warning(
+        `Este produto tinha ${estoqueQueAGradeSubstitui} un; agora o estoque é a soma das variações — informe a quantidade de cada uma.`,
+        { duration: 10000 },
+      );
+    }
     toast.success(
       linhas.length === 1
         ? "Variante da grade criada — ela entra na loja quando o produto for salvo."
@@ -5096,7 +5115,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             pares: [parNovo()],
                             sku: "",
                             codigoBarras: "",
-                            stockIncrement: "0",
+                            // A primeira variação ligada herda o estoque que o
+                            // produto já tem: com variação o estoque do produto é
+                            // a soma delas, e nascer com 0 zerava o produto no
+                            // salvar. Ver `estoqueQueAPrimeiraVariacaoHerda`.
+                            stockIncrement: String(
+                              estoqueQueAPrimeiraVariacaoHerda(formData),
+                            ),
                             priceOverride: "",
                             active: true,
                             imageUrl: "",
