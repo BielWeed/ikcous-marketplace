@@ -3,6 +3,7 @@ import {
   useIlhaDeAtualizacaoAtiva,
 } from "@/components/pwa/IlhaDeAtualizacao";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
+import { primeiraLetra } from "@/lib/primeira-letra";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -93,10 +94,12 @@ export const Header = memo(function Header({
 
   // A regra comum prefere o nome configurado pela loja à marca do build.
   const storeName = nomeDaLoja(config);
-  const parts = storeName.split(/[|-]/);
+  // Só hífen COM espaços ou a barra vertical separam nome e subtítulo:
+  // "Guarda-Roupa da Lu" é um nome só. O que sobra é juntado, não descartado.
+  const parts = storeName.split(/\s+-\s+|\s*\|\s*/);
   const mainName = parts[0]?.trim() || storeName;
-  const subName = parts[1]?.trim() || "";
-  const storeLetter = mainName.charAt(0).toUpperCase();
+  const subName = parts.slice(1).join(" - ").trim();
+  const storeLetter = primeiraLetra(mainName);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);

@@ -1185,6 +1185,12 @@ export function OrderDetailsView({
   const rotuloDoTotal =
     order.status !== "cancelled" && dinheiroConfirmado ? "Total pago" : "Total";
 
+  // Unidades, como o carrinho e o painel contam: 1 produto x 3 = "3 itens".
+  const unidades = order.items.reduce(
+    (soma, item) => soma + (item.quantity || 1),
+    0,
+  );
+
   return (
     <div className="pb-customer min-h-full bg-zinc-50/50">
       {/* Cabeçalho */}
@@ -1667,7 +1673,7 @@ export function OrderDetailsView({
               Itens do pedido
             </h4>
             <span className="text-xs font-semibold text-zinc-500">
-              {order.items.length} {order.items.length === 1 ? "item" : "itens"}
+              {unidades} {unidades === 1 ? "item" : "itens"}
             </span>
           </div>
 

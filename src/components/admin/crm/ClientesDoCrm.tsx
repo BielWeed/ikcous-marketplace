@@ -31,6 +31,7 @@ import {
   textoDoValorDoBlocoDeSegmento,
 } from "@/lib/crm";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
+import { primeiraLetra } from "@/lib/primeira-letra";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import type { ClienteDoCrm, ResumoDoSegmento, SegmentoCrm } from "@/types/crm";
@@ -436,7 +437,7 @@ function LinhaDoCliente({
           aria-hidden="true"
           className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-admin-raised text-sm font-bold text-admin-gold"
         >
-          {nome.charAt(0).toUpperCase()}
+          {primeiraLetra(nome)}
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-admin-text break-words text-sm font-bold">

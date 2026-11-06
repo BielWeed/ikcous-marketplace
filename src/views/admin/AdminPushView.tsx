@@ -43,6 +43,7 @@ import {
   temMarcadorPendente,
 } from "@/lib/modelos-de-campanha";
 import { intercalarPorServico } from "@/lib/ordem-do-envio-de-push";
+import { primeiraLetra } from "@/lib/primeira-letra";
 import { supabase } from "@/lib/supabase";
 import { normalizeText } from "@/lib/utils";
 import type { View } from "@/types";
@@ -262,7 +263,7 @@ interface AdminPushViewProps {
 function IconeDaLoja({ nome }: { readonly nome: string }) {
   const [falhou, setFalhou] = useState(false);
   if (falhou) {
-    const inicial = nome.trim().charAt(0).toUpperCase() || "?";
+    const inicial = primeiraLetra(nome, 1, "?");
     return (
       <div
         aria-hidden="true"

@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import type { CargoDaConta } from "@/lib/cargo-da-conta";
 import { formatarInteiro } from "@/lib/crm";
 import { rotuloDoPapel } from "@/lib/papel-da-conta";
+import { primeiraLetra } from "@/lib/primeira-letra";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -57,7 +58,7 @@ function IdentidadeCliente({
               ),
             )}
           >
-            {customer.full_name?.substring(0, 2).toUpperCase() || "CX"}
+            {primeiraLetra(customer.full_name, 2, "CX")}
           </AvatarFallback>
         </Avatar>
         {customer.is_push_subscribed && (
