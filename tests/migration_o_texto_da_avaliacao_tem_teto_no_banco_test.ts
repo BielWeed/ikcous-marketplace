@@ -139,8 +139,12 @@ Deno.test("1396200: a GUARDA — logo depois do ADD CONSTRAINT, recusa com B1_BA
 
 Deno.test("1396200: o teto do banco e' o da tela e o app grava o texto so por useReviews.addReview", () => {
   const form = lerRepo("src/components/ui/custom/ReviewForm.tsx");
+  // O limite mora numa constante (a tela mostra o contador n/1000 com ela);
+  // o campo usa a constante ou o literal 1000, e a constante vale 1000.
   assert.ok(
-    /maxLength=\{1000\}/.test(form),
+    /maxLength=\{1000\}/.test(form) ||
+      (/const LIMITE_DO_COMENTARIO = 1000;/.test(form) &&
+        /maxLength=\{LIMITE_DO_COMENTARIO\}/.test(form)),
     "a tela mudou o limite do texto: revise o CHECK (o banco nao pode recusar o que a tela aceita)",
   );
   const hook = lerRepo("src/hooks/useReviews.ts");
