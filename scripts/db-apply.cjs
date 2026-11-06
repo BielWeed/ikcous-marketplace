@@ -4002,7 +4002,8 @@ const VERIFICACOES = {
   // 2-ter (20261168000000, anterior a esta) recusa toda opção de
   // transportadora antes de alcançar aqui. O marcador prova que o CÓDIGO
   // está lá, byte a byte, nas duas funções — não que o ramo é alcançável
-  // (isso é coberto por tests/frete-revisao-database/run.cjs, RPC real).
+  // (isso é coberto por tests/banco/o-frete-do-pedido-segue-a-regra-da-loja-viva.cjs,
+  // RPC real, no rpc-ci.yml).
   "20261170000000_a_cotacao_de_frete_confere_a_revisao.sql": [
     {
       funcao: "create_marketplace_order_v23",

@@ -26,6 +26,10 @@ import {
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
+import {
+  CODIGO_PEDIDO_PASSA_DO_MAXIMO,
+  FRASE_PEDIDO_PASSA_DO_MAXIMO,
+} from "@/lib/recusaDoPedido";
 import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import {
@@ -1141,6 +1145,12 @@ export const mensagemAmigavelErroPedido = (error: unknown): string => {
 
   if (codigo === "P0001" && textoOriginal) {
     return textoOriginal;
+  }
+
+  // Total acima do que o banco guarda (numeric(10,2)): o retry nunca caberia.
+  // Mesma frase do painel (`recusaDoPedido.ts`) — antes do ramo genérico.
+  if (codigo === CODIGO_PEDIDO_PASSA_DO_MAXIMO) {
+    return FRASE_PEDIDO_PASSA_DO_MAXIMO;
   }
 
   if (

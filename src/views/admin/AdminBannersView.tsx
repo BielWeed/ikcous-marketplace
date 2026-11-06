@@ -43,6 +43,7 @@ import {
   INFO_DOS_MODELOS,
   templateTypeDoModelo,
 } from "@/lib/catalogo-de-banners";
+import { cortarTexto } from "@/lib/cortar-texto";
 import {
   MENSAGEM_FIM_ANTES_DO_INICIO,
   estaNoAr,
@@ -68,6 +69,14 @@ import {
   consumirPedidoDeNovoBanner,
 } from "@/lib/novo-banner-pendente";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
+import {
+  AVISO_BANNER_ALTERADO_DEPOIS,
+  type RascunhoDoBanner,
+  bannerMudouDepoisDoRascunho,
+  baseDoRascunho,
+  rascunhoSobreOBannerDeHoje,
+  situacaoDoRascunhoDoBanner,
+} from "@/lib/rascunho-do-banner";
 import { recusaDeFoto } from "@/lib/recusa-de-foto";
 import { distanciaCurta } from "@/lib/tempo-relativo";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
@@ -1489,12 +1498,9 @@ export const AdminBannersView = memo(function AdminBannersView({
   ]);
 
   // State to manage draft recovery
-  const [draftToRecover, setDraftToRecover] = useState<{
-    formData: Partial<Banner>;
-    editingBannerId?: string;
-    imagemEnviadaNaoSalva?: string | null;
-    savedAt: string;
-  } | null>(null);
+  const [draftToRecover, setDraftToRecover] = useState<RascunhoDoBanner | null>(
+    null,
+  );
 
   // Check for drafts when dialog opens
   useEffect(() => {
@@ -1504,11 +1510,13 @@ export const AdminBannersView = memo(function AdminBannersView({
         try {
           const parsed = JSON.parse(savedDraft);
           const currentId = editingBanner?.id || undefined;
-          if (parsed.editingBannerId === currentId) {
-            setDraftToRecover(parsed);
-          } else {
-            setDraftToRecover(null);
+          // Vencido (7 dias) ou de edição sem a "base" (gravado antes desta
+          // regra) sai do aparelho; de outro banner fica quieto onde está.
+          const situacao = situacaoDoRascunhoDoBanner(parsed, currentId);
+          if (situacao === "descartar") {
+            localStorage.removeItem(chaveDoRascunho);
           }
+          setDraftToRecover(situacao === "usar" ? parsed : null);
         } catch {
           setDraftToRecover(null);
         }
@@ -1544,6 +1552,9 @@ export const AdminBannersView = memo(function AdminBannersView({
       const draftData = {
         formData,
         editingBannerId: editingBanner?.id || undefined,
+        // Como o banner estava ao abrir: é o que diz, ao recuperar, quais
+        // campos a lojista de fato editou.
+        base: baseDoRascunho(initial),
         imagemEnviadaNaoSalva: imagemEnviadaNaoSalvaRef.current,
         savedAt: new Date().toISOString(),
       };
@@ -2241,10 +2252,11 @@ export const AdminBannersView = memo(function AdminBannersView({
             // Sem foto de verdade fica vazio (o "Salvar" avisa): a reserva
             // "Sem Imagem" de fora não pode virar a imagem do banner.
             imageUrl: soFotosReais(produto.images)[0] ?? "",
-            title: (prev.title || produto.name).slice(0, 60),
-            subtitle: (
-              prev.subtitle || `${prefixoDoPreco(vitrine)} ${precoEmTexto}`
-            ).slice(0, 80),
+            title: cortarTexto(prev.title || produto.name, 60),
+            subtitle: cortarTexto(
+              prev.subtitle || `${prefixoDoPreco(vitrine)} ${precoEmTexto}`,
+              80,
+            ),
             buttonText: prev.buttonText || "Comprar agora",
           }
         : {}),
@@ -2465,6 +2477,14 @@ export const AdminBannersView = memo(function AdminBannersView({
                   Rascunho salvo {distanciaCurta(draftToRecover.savedAt)}.
                   Deseja recuperar?
                 </p>
+                {bannerMudouDepoisDoRascunho(
+                  draftToRecover.base,
+                  editingBanner,
+                ) && (
+                  <p className="text-sm text-white">
+                    {AVISO_BANNER_ALTERADO_DEPOIS}
+                  </p>
+                )}
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -2480,30 +2500,40 @@ export const AdminBannersView = memo(function AdminBannersView({
                   <Button
                     className="min-h-11 bg-white text-zinc-950 ring-1 ring-inset ring-admin-border-strong hover:ring-current"
                     onClick={() => {
-                      const imagem = draftToRecover.formData.imageUrl;
+                      // O banner de AGORA com só o que ela editou por cima.
+                      const recuperado = rascunhoSobreOBannerDeHoje(
+                        draftToRecover,
+                        {
+                          ...defaultBannerFor(
+                            editingBanner?.position || "home_top",
+                            editingBanner?.order || 1,
+                          ),
+                          ...formData,
+                        },
+                      );
+                      const imagem = recuperado.imageUrl;
                       const arquivoDoRascunho =
                         imagem &&
                         (draftToRecover.imagemEnviadaNaoSalva === imagem ||
                           imagem.includes(
                             "/storage/v1/object/public/banners/",
                           ));
-                      imagemEnviadaNaoSalvaRef.current =
-                        arquivoDoRascunho &&
-                        !banners.some((b) => b.imageUrl === imagem) &&
-                        !products.some((p) => p.images?.includes(imagem))
-                          ? imagem
-                          : null;
-                      setFormData({
-                        ...defaultBannerFor(
-                          editingBanner?.position || "home_top",
-                          editingBanner?.order || 1,
-                        ),
-                        ...draftToRecover.formData,
-                      });
+                      // Foto que a recuperação não troca (o rascunho não mexeu
+                      // nela) segue com o dono que já tinha, inclusive o envio
+                      // desta sessão que ainda não virou banner.
+                      if (imagem !== formData.imageUrl) {
+                        imagemEnviadaNaoSalvaRef.current =
+                          arquivoDoRascunho &&
+                          !banners.some((b) => b.imageUrl === imagem) &&
+                          !products.some((p) => p.images?.includes(imagem))
+                            ? imagem
+                            : null;
+                      }
+                      setFormData(recuperado);
                       setBannerMode((m) =>
-                        modeloDoBanner(draftToRecover.formData.templateType)
+                        modeloDoBanner(recuperado.templateType)
                           ? "complete"
-                          : modoAoAbrirOBanner(draftToRecover.formData, m),
+                          : modoAoAbrirOBanner(recuperado, m),
                       );
                       setTela("editor");
                       setDraftToRecover(null);
@@ -3088,6 +3118,8 @@ export const AdminBannersView = memo(function AdminBannersView({
                             {productSuggestions && (
                               <div className="space-y-2">
                                 <p className="text-xs">Sugestões do produto</p>
+                                {/* O botão mostra o texto que vai ser gravado:
+                                    cortado em letra inteira e com "…". */}
                                 {productSuggestions.titles.map((t) => (
                                   <Button
                                     key={t}
@@ -3096,11 +3128,11 @@ export const AdminBannersView = memo(function AdminBannersView({
                                     onClick={() =>
                                       setFormData((prev) => ({
                                         ...prev,
-                                        title: t.slice(0, 60),
+                                        title: cortarTexto(t, 60),
                                       }))
                                     }
                                   >
-                                    {t}
+                                    {cortarTexto(t, 60)}
                                   </Button>
                                 ))}
                                 {productSuggestions.subtitles.map((t) => (
@@ -3111,11 +3143,11 @@ export const AdminBannersView = memo(function AdminBannersView({
                                     onClick={() =>
                                       setFormData((prev) => ({
                                         ...prev,
-                                        subtitle: t.slice(0, 80),
+                                        subtitle: cortarTexto(t, 80),
                                       }))
                                     }
                                   >
-                                    {t}
+                                    {cortarTexto(t, 80)}
                                   </Button>
                                 ))}
                               </div>

@@ -102,7 +102,6 @@ describe("SearchView — vitrine vazia não promete produtos", () => {
   it("loja sem produto à venda: nada de 'Alguns produtos da' nem de 'dar uma olhada em alguns produtos'", async () => {
     catalogo = [];
     const host = await renderizarBusca();
-    expect(host.textContent).toContain("Ué, nenhum resultado?");
     expect(host.textContent).not.toContain("Alguns produtos da");
     expect(host.textContent).not.toContain("Sugestões");
     expect(host.textContent).not.toContain("alguns produtos da loja");
@@ -112,5 +111,54 @@ describe("SearchView — vitrine vazia não promete produtos", () => {
     catalogo = [produto({ id: "pausado", isActive: false })];
     const host = await renderizarBusca();
     expect(host.textContent).not.toContain("Alguns produtos da");
+  });
+
+  // Quem abre a busca numa loja sem produto não buscou nada nem ligou filtro:
+  // "Ué, nenhum resultado?" e "Limpar Tudo" mentem (não há o que limpar). A
+  // Home já separa os dois casos ("Em breve novidades por aqui").
+  it("loja sem produto à venda: diz que a loja ainda não tem produtos, sem 'nenhum resultado' nem 'Limpar Tudo'", async () => {
+    catalogo = [];
+    const host = await renderizarBusca();
+    expect(host.textContent).toContain("A loja ainda não tem produtos");
+    expect(host.textContent).toContain("Volte em breve.");
+    expect(host.textContent).not.toContain("Ué, nenhum resultado?");
+    expect(host.textContent).not.toContain("com esses filtros");
+    const botoes = Array.from(host.querySelectorAll("button")).map(
+      (b) => b.textContent,
+    );
+    expect(botoes).not.toContain("Limpar Tudo");
+  });
+
+  it("todos os produtos pausados contam como loja sem produto à venda", async () => {
+    catalogo = [produto({ id: "pausado", isActive: false })];
+    const host = await renderizarBusca();
+    expect(host.textContent).toContain("A loja ainda não tem produtos");
+    expect(host.textContent).not.toContain("Ué, nenhum resultado?");
+  });
+
+  it("controle: com produto à venda e busca sem resultado, mantém 'Ué, nenhum resultado?' e 'Limpar Tudo'", async () => {
+    catalogo = [produto({ id: "vestido", name: "Vestido" })];
+    const { SearchView } = await import("@/views/customer/SearchView");
+    await act(async () => {
+      raiz.render(
+        <SearchView
+          onNavigate={() => {}}
+          onBack={() => {}}
+          initialQuery="zzzz-nao-existe"
+        />,
+      );
+    });
+    // O termo passa por um debounce de 300 ms antes de filtrar a lista.
+    await act(async () => {
+      await new Promise((resolver) => setTimeout(resolver, 400));
+    });
+    expect(hospedeiro.textContent).toContain("Ué, nenhum resultado?");
+    expect(hospedeiro.textContent).not.toContain(
+      "A loja ainda não tem produtos",
+    );
+    const botoes = Array.from(hospedeiro.querySelectorAll("button")).map(
+      (b) => b.textContent,
+    );
+    expect(botoes).toContain("Limpar Tudo");
   });
 });

@@ -131,7 +131,7 @@ export class LocalErrorBoundary extends Component<Props, State> {
             <p className="max-w-xs text-sm leading-relaxed text-foreground">
               Não conseguimos carregar esta tela.{" "}
               {esgotado
-                ? "Feche e abra o app de novo (ou recarregue a página)."
+                ? "Feche e abra o app de novo."
                 : semRede
                   ? "Verifique sua conexão."
                   : chunkAviso === "pagina-ficou"

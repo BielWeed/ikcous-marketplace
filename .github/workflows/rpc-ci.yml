@@ -753,6 +753,16 @@ jobs:
       - name: Prova viva do desconto do cupom arredondado ao centavo (20261397000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-desconto-do-cupom-e-arredondado-ao-centavo-viva.cjs
+      # O frete que o pedido grava (DINHEIRO): create_marketplace_order_v24 e v23 decidem no banco quanto de frete a cliente paga e recusam a
+      # cotacao velha (FRETE_COTACAO_DESATUALIZADA: revisao das credenciais diferente, carimbo da estrategia nacional divergente, subtotal que
+      # cruzou o minimo). Corpo VIVO das funcoes, migrations aplicadas do zero: limite positivo de frete gratis (um centavo abaixo, exato e
+      # acima), modo por produto (-1), estrategias nacionais, entrega local, retirada e os portoes de CEP; toda recusa deixa pedido, item e
+      # estoque como estavam. Dois controles trocam o corpo vivo dentro de uma transacao que volta (a recusa vira aviso; o ">=" vira ">") e
+      # exigem que os cenarios fiquem vermelhos. Substitui, no CI, os ensaios tests/frete-revisao-database e tests/frete-estrategias-database
+      # (um container Docker proprio cada, nunca rodados aqui). So o clone efemero; nao e' prova de migration. CLONE proprio.
+      - name: Prova viva do frete que o pedido grava e da cotacao de frete velha recusada
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-frete-do-pedido-segue-a-regra-da-loja-viva.cjs
       # Migration 20261396000000 (cada conta tem no maximo 10 aparelhos com aviso ligado): gatilho BEFORE INSERT em push_subscriptions recusa a 11a
       # inscricao NOVA da conta (cliente que nao e' administrador), sem apagar nada; o re-registro do mesmo aparelho (upsert por endpoint, que
       # dispara o gatilho antes do conflito) nao conta; conta acima de 10 de antes renova e desliga mas nao cadastra novo; duas conexoes reais

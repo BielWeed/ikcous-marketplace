@@ -37,6 +37,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ImageAdjuster } from "@/components/ui/custom/ImageAdjuster";
+import { LimiteDePedaco } from "@/components/ui/custom/LimiteDePedaco";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
@@ -94,6 +95,7 @@ import {
   chaveDaIdentidade,
   recadoDoTetoDeVariacoes,
 } from "@/utils/grade-de-combinacoes";
+import { lazyRetentavel } from "@/utils/lazyRetentavel";
 import {
   camposQueFaltam,
   fraseCurtaDoBloqueio,
@@ -153,7 +155,6 @@ import React, {
   useCallback,
   useMemo,
   useRef,
-  lazy,
   Suspense,
 } from "react";
 import { createPortal } from "react-dom";
@@ -182,7 +183,7 @@ function precoDaVariacaoEhZero(texto: string): boolean {
 // import DINÂMICO via `React.lazy`, do mesmo jeito que `conferirCodigoNoBanco`
 // (acima) já faz com o cliente Supabase. Estático puxaria o decodificador de
 // código de barras (e a câmera) para todo carregamento do formulário.
-const LeitorDeCodigo = lazy(() =>
+const LeitorDeCodigo = lazyRetentavel(() =>
   import("@/components/admin/pdv/LeitorDeCodigo").then((modulo) => ({
     default: modulo.LeitorDeCodigo,
   })),
@@ -190,7 +191,7 @@ const LeitorDeCodigo = lazy(() =>
 
 // A tela "Gerenciar categorias" só é baixada quando a lojista a abre (pelo
 // mesmo motivo do leitor acima): fora dela o formulário não precisa dela.
-const GerenciarCategorias = lazy(() =>
+const GerenciarCategorias = lazyRetentavel(() =>
   import("@/components/admin/categorias/GerenciarCategorias").then(
     (modulo) => ({ default: modulo.GerenciarCategorias }),
   ),
@@ -198,7 +199,7 @@ const GerenciarCategorias = lazy(() =>
 
 // A folha "Nova categoria" (com a galeria de ícones) só é baixada quando a
 // lojista a abre, como a tela acima: o formulário não paga por ela no pacote.
-const FolhaDeNovaCategoria = lazy(() =>
+const FolhaDeNovaCategoria = lazyRetentavel(() =>
   import("@/components/admin/products/FolhaDeNovaCategoria").then((modulo) => ({
     default: modulo.FolhaDeNovaCategoria,
   })),
@@ -3678,26 +3679,36 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   return (
     <div className="produto-formulario pb-admin relative h-auto min-h-full overflow-x-clip text-white lg:pb-12">
       {gerenciandoCategorias && (
-        <Suspense fallback={null}>
-          <GerenciarCategorias
-            aberta
-            onFechar={() => setGerenciandoCategorias(false)}
-          />
-        </Suspense>
+        <LimiteDePedaco
+          pedacos={[GerenciarCategorias]}
+          aoFechar={() => setGerenciandoCategorias(false)}
+        >
+          <Suspense fallback={null}>
+            <GerenciarCategorias
+              aberta
+              onFechar={() => setGerenciandoCategorias(false)}
+            />
+          </Suspense>
+        </LimiteDePedaco>
       )}
 
       {showCategoryForm && (
-        <Suspense fallback={null}>
-          <FolhaDeNovaCategoria
-            categoriasDaLoja={dbCategories}
-            adicionar={addCategory}
-            atualizarIcone={updateCategory}
-            aoCriada={(nome) =>
-              setFormData((prev) => ({ ...prev, category: nome }))
-            }
-            aoFechar={() => setShowCategoryForm(false)}
-          />
-        </Suspense>
+        <LimiteDePedaco
+          pedacos={[FolhaDeNovaCategoria]}
+          aoFechar={() => setShowCategoryForm(false)}
+        >
+          <Suspense fallback={null}>
+            <FolhaDeNovaCategoria
+              categoriasDaLoja={dbCategories}
+              adicionar={addCategory}
+              atualizarIcone={updateCategory}
+              aoCriada={(nome) =>
+                setFormData((prev) => ({ ...prev, category: nome }))
+              }
+              aoFechar={() => setShowCategoryForm(false)}
+            />
+          </Suspense>
+        </LimiteDePedaco>
       )}
 
       {typeof document !== "undefined" &&
@@ -6332,16 +6343,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           data-testid="container-do-leitor"
           className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4"
         >
-          <Suspense fallback={null}>
-            <LeitorDeCodigo
-              aberto
-              modo="unico"
-              titulo="Ler o código de barras"
-              dica="Aponte para o código da embalagem"
-              aoLer={aoLerCodigoDeBarras}
-              aoFechar={() => setLeitorAberto(null)}
-            />
-          </Suspense>
+          <LimiteDePedaco
+            pedacos={[LeitorDeCodigo]}
+            aoFechar={() => setLeitorAberto(null)}
+          >
+            <Suspense fallback={null}>
+              <LeitorDeCodigo
+                aberto
+                modo="unico"
+                titulo="Ler o código de barras"
+                dica="Aponte para o código da embalagem"
+                aoLer={aoLerCodigoDeBarras}
+                aoFechar={() => setLeitorAberto(null)}
+              />
+            </Suspense>
+          </LimiteDePedaco>
         </div>
       )}
     </div>

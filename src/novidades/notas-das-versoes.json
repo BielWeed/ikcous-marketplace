@@ -1,4 +1,21 @@
 {
+  "1.5.147": {
+    "titulo": "Endereços certos em dois aparelhos, Voltar sem surpresas e telas que não somem com internet ruim",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Endereços: ao voltar para o app, a lista de endereços é conferida de novo; apagar o endereço principal passa o principal para o mais recente, e entrar em outra conta não mistura endereços.",
+      "Loja, Carrinho: quando o total chega exatamente na meta do frete grátis, a barra não diz mais “faltam R$ 0,00”; o botão de mais quantidade explica que o limite é o estoque, e a linha mostra “Máximo disponível”.",
+      "Loja, Pedido: um pedido de valor alto demais agora manda conferir o carrinho, em vez de pedir para tentar de novo sem fim.",
+      "Loja, Voltar: depois de fazer um pedido, o botão Voltar do celular leva ao carrinho em vez de abrir um checkout vazio.",
+      "Loja, Busca: loja sem produtos não promete resultados, e a busca não mostra produto pausado.",
+      "Loja e Painel: quando uma parte da tela não consegue baixar com internet ruim, o resto da tela continua aparecendo, com o aviso “Tentar de novo” só naquele pedaço.",
+      "Painel, Banners: “Recuperar” um rascunho antigo não desfaz mais o que você mudou depois no banner, e o rascunho vence em 7 dias.",
+      "Painel, Pedidos: o botão Voltar da ficha do pedido fecha a ficha, e “Descartar e Sair” volta para a tela certa.",
+      "Painel, Balcão e Cupons: o recibo de venda sem cliente pode ser impresso de novo, e o desconto médio dos cupons só conta os cupons ativos.",
+      "Loja: o carrinho de quem visita sem entrar continua sendo salvo mesmo com o aparelho cheio de cópias guardadas."
+    ]
+  },
   "1.5.146": {
     "titulo": "Entrar e salvar endereço não travam com internet ruim, e o painel ficou mais claro",
     "novidades": [],

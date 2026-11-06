@@ -516,27 +516,42 @@ export const SearchView = React.memo(function SearchView({
               <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-[2.5rem] border border-zinc-100 bg-zinc-50">
                 <PackageSearch className="size-8 text-zinc-300" />
               </div>
-              <h2 className="text-2xl font-black tracking-tighter text-zinc-900">
-                Ué, nenhum resultado?
-              </h2>
-              <p className="mt-2 text-xs font-medium leading-relaxed text-zinc-600">
-                Não encontramos o que você buscou com esses filtros.
-                {trendingProducts.length > 0 && (
-                  <>
-                    <br />
-                    <span className="font-black text-zinc-900">
-                      Que tal dar uma olhada em alguns produtos da loja?
-                    </span>
-                  </>
-                )}
-              </p>
-              <Button
-                variant="outline"
-                onClick={handleClearSearch}
-                className="mt-8 h-12 rounded-2xl border-zinc-200 px-8 text-xs font-black uppercase tracking-widest text-zinc-900"
-              >
-                Limpar Tudo
-              </Button>
+              {produtosAVenda.length === 0 ? (
+                /* Loja sem produto à venda: ninguém buscou nada que desse
+                   para "limpar" -- a Home já separa os dois casos. */
+                <>
+                  <h2 className="text-2xl font-black tracking-tighter text-zinc-900">
+                    A loja ainda não tem produtos
+                  </h2>
+                  <p className="mt-2 text-xs font-medium leading-relaxed text-zinc-600">
+                    Volte em breve.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-2xl font-black tracking-tighter text-zinc-900">
+                    Ué, nenhum resultado?
+                  </h2>
+                  <p className="mt-2 text-xs font-medium leading-relaxed text-zinc-600">
+                    Não encontramos o que você buscou com esses filtros.
+                    {trendingProducts.length > 0 && (
+                      <>
+                        <br />
+                        <span className="font-black text-zinc-900">
+                          Que tal dar uma olhada em alguns produtos da loja?
+                        </span>
+                      </>
+                    )}
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={handleClearSearch}
+                    className="mt-8 h-12 rounded-2xl border-zinc-200 px-8 text-xs font-black uppercase tracking-widest text-zinc-900"
+                  >
+                    Limpar Tudo
+                  </Button>
+                </>
+              )}
             </div>
 
             {/* Sugestões: são só 4 produtos da loja (os com estoque primeiro) --

@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCart } from "@/hooks/useCart";
 import { useOrders } from "@/hooks/useOrders";
 import { useProducts } from "@/hooks/useProducts";
+import { useReleituraDosEnderecosAoVoltar } from "@/hooks/useReleituraDosEnderecosAoVoltar";
 import { atingiuOMinimo } from "@/lib/atingiu-o-minimo";
 import {
   enderecoDeEntregaEfetivo,
@@ -283,11 +284,17 @@ export function CartView({
     : (shippingCep ?? null);
   const [escolhendoEndereco, setEscolhendoEndereco] = useState(false);
 
+  // O efeito depende do ID da conta, não do objeto `user`: este pode mudar de
+  // identidade a cada render sem a conta mudar, e a leitura voltaria a rodar.
+  const usuarioId = user?.id;
   useEffect(() => {
-    if (user) {
+    if (usuarioId) {
       fetchAddresses();
     }
-  }, [user, fetchAddresses]);
+  }, [usuarioId, fetchAddresses]);
+  // A aba fica montada no fundo: outro aparelho pode ter mudado o endereço
+  // (e portanto o frete) enquanto ela estava escondida ou o app em segundo plano.
+  useReleituraDosEnderecosAoVoltar(user?.id, isActive, fetchAddresses);
 
   // "Cadastrar endereço" leva à tela de endereço; o que for criado lá chega
   // aqui pela lista compartilhada do `useAddresses`. O endereço NOVO passa a
@@ -649,8 +656,20 @@ export function CartView({
       };
     }
 
-    const progress = isRuleActive ? Math.min((subtotal / meta) * 100, 100) : 0;
-    const diff = isRuleActive ? Math.max(0, meta - subtotal) : 0;
+    // Em CENTAVOS inteiros, como o resto do app (`atingiuOMinimo`): 10,10 +
+    // 10,20 soma 20.299999999999997 em reais crus, e a comparação crua dizia
+    // "Adicione mais R$ 0,00" e 99% com a meta de R$ 20,30 já batida (visível
+    // quando a opção escolhida não recebe o grátis). Meta batida = 100% e nada
+    // falta; senão `metaC` é maior que `subC`, logo maior que zero.
+    const subC = Math.round(subtotal * 100);
+    const metaC = Math.round(meta * 100);
+    const metaBatida = isRuleActive && atingiuOMinimo(subtotal, meta);
+    const progress = !isRuleActive
+      ? 0
+      : metaBatida
+        ? 100
+        : Math.min((subC / metaC) * 100, 100);
+    const diff = isRuleActive ? Math.max(0, (metaC - subC) / 100) : 0;
     // FRETE INDEFINIDO (laudo caça-bugs 30/08, achado 7): com provedor de
     // cotação real e nenhuma cotação escolhida, `ctxShippingFee` é o chute de
     // fábrica — exibir `null` ("A calcular") e NÃO somar frete ao total.

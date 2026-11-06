@@ -167,7 +167,7 @@ vi.mock("@/components/ui/custom/EmptyCart", () => ({
   EmptyCart: () => <div data-testid="carrinho-vazio" />,
 }));
 
-// SearchView: catálogo vazio garante zero resultados independente do debounce
+// SearchView: produto que não casa com o termo garante zero resultados após o debounce
 // interno de useSearch — o que se testa aqui é se o TERMO some da caixa, não
 // o algoritmo de filtragem (já coberto em outro lugar).
 vi.mock("@/hooks/useFavorites", () => ({
@@ -351,6 +351,16 @@ describe("SearchView — Limpar Tudo limpa a busca de verdade", () => {
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
     mockedProducts = [];
+    // Antes do debounce o card do produto aparece por um instante, e o
+    // LazyImage dele pede o IntersectionObserver (jsdom não tem).
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
   });
 
   afterEach(() => {
@@ -358,9 +368,21 @@ describe("SearchView — Limpar Tudo limpa a busca de verdade", () => {
       raiz.unmount();
     });
     hospedeiro.remove();
+    vi.unstubAllGlobals();
   });
 
+  // Loja COM produto à venda e termo que não casa com nenhum: é o único caso
+  // em que "Ué, nenhum resultado?" e "Limpar Tudo" aparecem (loja sem produto
+  // diz "A loja ainda não tem produtos", sem botão). O termo só filtra a lista
+  // depois do debounce de 300 ms do useSearch, daí a espera.
+  async function esperarODebounceDoTermo() {
+    await act(async () => {
+      await new Promise((resolver) => setTimeout(resolver, 400));
+    });
+  }
+
   it("com termo digitado e zero resultados, Limpar Tudo tira o termo da caixa", async () => {
+    mockedProducts = [produtoVestido];
     const { SearchView } = await import("@/views/customer/SearchView");
     await act(async () => {
       raiz.render(
@@ -371,9 +393,7 @@ describe("SearchView — Limpar Tudo limpa a busca de verdade", () => {
         />,
       );
     });
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await esperarODebounceDoTermo();
 
     const input = hospedeiro.querySelector<HTMLInputElement>("#search-input");
     if (!input) throw new Error("Caixa de busca não encontrada");
@@ -397,6 +417,7 @@ describe("SearchView — Limpar Tudo limpa a busca de verdade", () => {
   // sabe que o termo sumiu se o SearchView avisar — por isso o teste mede a
   // CHAMADA do callback, não a caixa (já coberto pelo teste anterior).
   it("com termo digitado e zero resultados, Limpar Tudo avisa o pai para limpar a busca também", async () => {
+    mockedProducts = [produtoVestido];
     const { SearchView } = await import("@/views/customer/SearchView");
     const onQueryChange = vi.fn();
     await act(async () => {
@@ -409,16 +430,17 @@ describe("SearchView — Limpar Tudo limpa a busca de verdade", () => {
         />,
       );
     });
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await esperarODebounceDoTermo();
 
     const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
       (b) => b.textContent === "Limpar Tudo",
     );
     if (!botao) throw new Error('Botão "Limpar Tudo" não encontrado na busca');
 
-    expect(onQueryChange).not.toHaveBeenCalled();
+    // Passada a espera do debounce, a caixa já ecoou o termo de entrada para o
+    // pai; o que o clique tem de provar é o aviso de termo VAZIO, que antes
+    // dele ainda não existe.
+    expect(onQueryChange).not.toHaveBeenCalledWith("");
 
     await act(async () => {
       botao.dispatchEvent(new MouseEvent("click", { bubbles: true }));

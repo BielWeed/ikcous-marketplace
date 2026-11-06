@@ -8,6 +8,7 @@ import {
 } from "@/components/admin/minha-loja/EnderecoDaLoja";
 import { BusinessHoursSection } from "@/components/admin/settings/BusinessHoursSection";
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
+import { LimiteDePedaco } from "@/components/ui/custom/LimiteDePedaco";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
@@ -20,10 +21,10 @@ import {
   seisPassosDaLojaPronta,
 } from "@/lib/loja-pronta";
 import { descricaoDaLojaParaHtml, textoDaLoja } from "@/lib/texto-da-loja";
+import { lazyRetentavel } from "@/utils/lazyRetentavel";
 import { AlertTriangle, RefreshCw, Save } from "lucide-react";
 import {
   Suspense,
-  lazy,
   memo,
   useCallback,
   useEffect,
@@ -83,7 +84,7 @@ interface AdminAboutStoreViewProps {
   onSetBackOverride?: (fn: (() => void) | null) => void;
 }
 
-const IdentitySettingsSection = lazy(() =>
+const IdentitySettingsSection = lazyRetentavel(() =>
   import("@/components/admin/settings/IdentitySettingsSection").then(
     (module) => ({ default: module.IdentitySettingsSection }),
   ),
@@ -528,18 +529,20 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
           descricao="Nome e logo que aparecem no app inteiro — inclusive na página Sobre a Loja."
           refDoTitulo={guardarTitulo("marca")}
         >
-          <Suspense
-            fallback={
-              <p className="text-sm text-zinc-400">Carregando identidade…</p>
-            }
-          >
-            <IdentitySettingsSection
-              active={active}
-              onRegistrarSalvamento={registrarMarca}
-              onDirtyChange={setIdentidadePendente}
-              onNavigate={onNavigate}
-            />
-          </Suspense>
+          <LimiteDePedaco pedacos={[IdentitySettingsSection]}>
+            <Suspense
+              fallback={
+                <p className="text-sm text-zinc-400">Carregando identidade…</p>
+              }
+            >
+              <IdentitySettingsSection
+                active={active}
+                onRegistrarSalvamento={registrarMarca}
+                onDirtyChange={setIdentidadePendente}
+                onNavigate={onNavigate}
+              />
+            </Suspense>
+          </LimiteDePedaco>
         </BlocoNumerado>
 
         <BlocoNumerado

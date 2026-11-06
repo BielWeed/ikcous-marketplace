@@ -229,7 +229,9 @@ export const AdminCouponsView = memo(function AdminCouponsView({
     const percentageCoupons = coupons.filter(
       (c) => c.type === "percentage" && rotuloDoCupom(c) === "Ativo",
     );
-    if (lojaSemCupons || percentageCoupons.length === 0) return 0;
+    // Sem cupom percentual para tirar a média: `null` (a tela mostra "—"), não
+    // 0%, que diria que a loja dá desconto médio zero.
+    if (lojaSemCupons || percentageCoupons.length === 0) return null;
     const sum = percentageCoupons.reduce((acc, c) => acc + (c.value || 0), 0);
     return Math.round(sum / percentageCoupons.length);
   })();
@@ -268,10 +270,13 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         iconClass: "text-violet-300",
         iconBg: "bg-violet-400/10 border-violet-400/20",
         hoverBorder: "hover:border-violet-400/30",
-        value: `${averageDiscount}%`,
+        value: averageDiscount === null ? "—" : `${averageDiscount}%`,
         accent: "text-violet-300",
-        subValue: "OFF",
-        footer: "Em ofertas percentuais",
+        subValue: averageDiscount === null ? undefined : "OFF",
+        footer:
+          averageDiscount === null
+            ? "Nenhum cupom percentual ativo"
+            : "Em ofertas percentuais",
       },
     ],
     [activeCoupons, totalCoupons, totalUsage, averageDiscount, lojaSemCupons],

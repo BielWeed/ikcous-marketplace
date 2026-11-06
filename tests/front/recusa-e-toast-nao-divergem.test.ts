@@ -75,7 +75,10 @@ vi.mock("sonner", () => ({
 }));
 
 import { mensagemAmigavelErroPedido } from "@/hooks/useOrders";
-import { classificarRecusaDoPedido } from "@/lib/recusaDoPedido";
+import {
+  FRASE_PEDIDO_PASSA_DO_MAXIMO,
+  classificarRecusaDoPedido,
+} from "@/lib/recusaDoPedido";
 import { describe, expect, it, vi } from "vitest";
 
 const p0001 = (message: string) => ({ code: "P0001", message });
@@ -246,6 +249,15 @@ const CORPUS: ReadonlyArray<{ rotulo: string; erro: unknown }> = [
     erro: { code: "XX999", message: "erro nunca visto" },
   },
 
+  // PEDIDO GRANDE DEMAIS: o total estoura numeric(10,2) e o banco devolve 22003.
+  // Painel e toast têm de falar a MESMA coisa (o valor passou do máximo), e
+  // nenhum dos dois manda "tentar de novo" um pedido que nunca vai caber.
+  {
+    rotulo: "22003 (numeric field overflow: total acima de R$ 99.999.999,99)",
+    erro: { code: "22003", message: "numeric field overflow" },
+  },
+  { rotulo: "22003 sem message", erro: { code: "22003" } },
+
   // code vazio, não-string, ou message ausente.
   { rotulo: "code vazio", erro: { code: "", message: "algo" } },
   {
@@ -296,5 +308,17 @@ describe("o painel e o toast nunca dão ordens opostas para a mesma recusa", () 
           "pedido",
       ).not.toBe("tentar_de_novo");
     }
+  });
+});
+
+describe("22003 (pedido acima do máximo): painel e toast dizem a MESMA frase", () => {
+  it.each([
+    { code: "22003", message: "numeric field overflow" },
+    { code: "22003" },
+  ])("%j", (erro) => {
+    expect(mensagemAmigavelErroPedido(erro)).toBe(FRASE_PEDIDO_PASSA_DO_MAXIMO);
+    const painel = classificarRecusaDoPedido(erro);
+    expect(painel.acao).toBe("reconferir_carrinho");
+    expect(painel.mensagem).toBe(mensagemAmigavelErroPedido(erro));
   });
 });

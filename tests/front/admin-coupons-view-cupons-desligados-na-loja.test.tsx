@@ -148,11 +148,12 @@ describe("AdminCouponsView — cupons desligados na loja", () => {
     expect(selos).toHaveLength(2);
   });
 
-  it("desligados: 'Desconto Médio' zera mesmo com cupom de % marcado Ativo", async () => {
+  it("desligados: 'Desconto Médio' vira traço mesmo com cupom de % marcado Ativo", async () => {
     mockCoupons = [cupom({ id: "p", code: "QUINZE", value: 15 })];
     mockConfig = { enableCoupons: false };
     await abrirTela();
-    expect(texto()).toMatch(/Desconto Médio\s*0%/);
+    expect(texto()).toMatch(/Desconto Médio\s*—/);
+    expect(texto()).not.toMatch(/Desconto Médio\s*0%/);
     expect(texto()).not.toMatch(/Desconto Médio\s*15%/);
   });
 

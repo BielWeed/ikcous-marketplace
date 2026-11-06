@@ -4,8 +4,21 @@ Ensaio local da migration `20261171000000_o_frete_nacional_ganha_estrategia_prop
 no molde de `tests/frete-revisao-database/` (a mesma receita: Postgres 17 efêmero e
 descartável via Docker, criado e destruído pelo próprio script). **O CI geral do app NÃO
 roda este ensaio automaticamente** — ele não está referenciado em nenhum
-`.github/workflows/*.yml`. Rode explicitamente antes de aplicar a migration em qualquer
-banco:
+`.github/workflows/*.yml`.
+
+> **Atualização (06/11/2026): o COMPORTAMENTO deste ensaio agora roda no CI.** Os casos (e)
+> carimbo igual/divergente/ausente/`null`/`{}`/parcial, subtotal que cruzou o mínimo, duas opções
+> na mesma cotação, (f) local e nacional sem vazamento, (g) portões de CEP e `free-shipping-promo`
+> e (h) retirada/local/`v23`, mais o limite positivo de frete grátis e o modo por produto (-1),
+> estão em `tests/banco/o-frete-do-pedido-segue-a-regra-da-loja-viva.cjs`, passo bloqueante do
+> job `contrato-dinheiro` do `rpc-ci.yml`, contra o corpo VIVO das funções. Os casos de
+> migration deste `run.cjs` que atuam sobre a raiz inteira ((b) reaplicação e (i) rollback e
+> reaplicação) **já não rodam sobre o banco de hoje**: as migrations posteriores reescreveram
+> `v23`/`v24` e o pré-voo recusa com `B1_BASELINE_DIVERGENT` (medido num Postgres 17 efêmero,
+> rodando o SQL da 20261171 e o do rollback dela sobre o banco atual). O caso (a), que monta o
+> banco só até a 20261170, não foi medido. Referência histórica; não o use como portão.
+
+Rode explicitamente antes de aplicar a migration em qualquer banco (só o estado da época dela):
 
 ```powershell
 node tests/frete-estrategias-database/run.cjs

@@ -25,7 +25,6 @@ import {
 import {
   type ComponentType,
   Suspense,
-  lazy,
   memo,
   useCallback,
   useEffect,
@@ -65,6 +64,7 @@ import {
 import { IconeMercadoPago } from "@/components/icons/IconeMercadoPago";
 import { classeDoTexto } from "@/lib/tons-de-estado";
 import "@/components/admin/settings/ajustes.css";
+import { LimiteDePedaco } from "@/components/ui/custom/LimiteDePedaco";
 import { Skeleton } from "@/components/ui/skeleton";
 import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
 import { NOMES_DO_PAINEL, type TelaDoPainel } from "@/config/nomes-do-painel";
@@ -77,6 +77,7 @@ import { publicarPagamentoPeloApp } from "@/lib/pagamento-pelo-app-no-painel";
 import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import { lazyRetentavel } from "@/utils/lazyRetentavel";
 
 import {
   StatusPagamentoCartao,
@@ -101,7 +102,7 @@ interface AdminSettingsViewProps {
 // Peça 20 (14/09/2026): chaves do Mercado Pago do lojista + guia com prompt
 // pronto + teste de conexão — conteúdo inteiro mora no próprio componente
 // (junto do arquivo de conteúdo do guia); aqui só a porta.
-const MercadoPagoSection = lazy(() =>
+const MercadoPagoSection = lazyRetentavel(() =>
   import("@/components/admin/settings/MercadoPagoSection").then((module) => ({
     default: module.MercadoPagoSection,
   })),
@@ -111,7 +112,7 @@ const MercadoPagoSection = lazy(() =>
 // envia o e-mail do pedido, com o passo a passo dentro da tela. Carregada sob
 // demanda, como o Mercado Pago: só é baixada (e só fala com o servidor) quando
 // a seção é aberta.
-const EmailDaLojaSection = lazy(() =>
+const EmailDaLojaSection = lazyRetentavel(() =>
   import("@/components/admin/settings/EmailDaLojaSection").then((module) => ({
     default: module.EmailDaLojaSection,
   })),
@@ -121,7 +122,7 @@ const EmailDaLojaSection = lazy(() =>
 // correção de e-mail pedidas pelo app e atendidas à mão pela loja. Carregada sob
 // demanda, como o E-mail da loja: só é baixada (e só lê o banco) quando a seção
 // é aberta. O sino do painel já avisa quando há pedido esperando.
-const PrivacidadeDosClientesSection = lazy(() =>
+const PrivacidadeDosClientesSection = lazyRetentavel(() =>
   import("@/components/admin/settings/PrivacidadeDosClientesSection").then(
     (module) => ({
       default: module.PrivacidadeDosClientesSection,
@@ -1136,15 +1137,17 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                     icone={Mail}
                     comPendencia={emailPendente}
                   >
-                    <Suspense
-                      fallback={
-                        <p className="text-sm text-zinc-400">
-                          Carregando E-mail da loja…
-                        </p>
-                      }
-                    >
-                      <EmailDaLojaSection onDirtyMudou={setEmailPendente} />
-                    </Suspense>
+                    <LimiteDePedaco pedacos={[EmailDaLojaSection]}>
+                      <Suspense
+                        fallback={
+                          <p className="text-sm text-zinc-400">
+                            Carregando E-mail da loja…
+                          </p>
+                        }
+                      >
+                        <EmailDaLojaSection onDirtyMudou={setEmailPendente} />
+                      </Suspense>
+                    </LimiteDePedaco>
                   </SecaoColapsavel>
                   {/* Pedidos de privacidade dos clientes (14/10/2026, LGPD): a
                   cliente pede, pelo app, a exclusão da conta ou a correção do
@@ -1156,18 +1159,20 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                     icone={ShieldCheck}
                     comPendencia={privacidadePendente}
                   >
-                    <Suspense
-                      fallback={
-                        <p className="text-sm text-zinc-400">
-                          Carregando os pedidos…
-                        </p>
-                      }
-                    >
-                      <PrivacidadeDosClientesSection
-                        onNavigate={onNavigate}
-                        onDirtyMudou={setPrivacidadePendente}
-                      />
-                    </Suspense>
+                    <LimiteDePedaco pedacos={[PrivacidadeDosClientesSection]}>
+                      <Suspense
+                        fallback={
+                          <p className="text-sm text-zinc-400">
+                            Carregando os pedidos…
+                          </p>
+                        }
+                      >
+                        <PrivacidadeDosClientesSection
+                          onNavigate={onNavigate}
+                          onDirtyMudou={setPrivacidadePendente}
+                        />
+                      </Suspense>
+                    </LimiteDePedaco>
                   </SecaoColapsavel>
                 </GrupoDeAjustes>
 
@@ -1263,52 +1268,54 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                     comPendencia={pagamentosPendente}
                     abrirGatilho={abrirMercadoPagoGatilho}
                   >
-                    <Suspense
-                      fallback={
-                        <p className="text-sm text-zinc-400">
-                          Carregando Mercado Pago…
-                        </p>
-                      }
-                    >
-                      <MercadoPagoSection
-                        onDirtyMudou={setPagamentosPendente}
-                        abrirChavesGatilho={abrirChavesGatilho}
-                        transportadoraVende={transportadoraVende}
-                        onPixAlternado={(ligado, chaveNaLoja) => {
-                          setPixLigado(ligado);
-                          // A tela de Frete é OUTRA aba (as duas ficam montadas):
-                          // o mesmo eco do servidor vai para ela, que o usa para
-                          // avisar da transportadora sem aviso falso.
-                          // O Início lê o mesmo eco, inclusive o da chave pública:
-                          // a mesma regra do `setPixChaveOk` logo abaixo.
-                          publicarPagamentoPeloApp(
-                            ligado,
-                            chaveNaLoja !== undefined
-                              ? chaveNaLoja
-                              : ligado
-                                ? true
-                                : undefined,
-                          );
-                          // `chaveNaLoja` só vem preenchido no eco do `ler`
-                          // (mp-10): é o único dos quatro que NÃO garante chave
-                          // publicada quando `ligado` é `true` — `ler` devolve o
-                          // retrato cru da ficha (`pagamento_online`), que pode
-                          // estar ligada com a Public Key ausente (teste X6).
-                          // Com o dado do servidor em mãos, usamos ELE; sem ele
-                          // (eco de `ligar_pix`/`salvar`, que a edge só acende
-                          // com a chave publicada JUNTO — mp-8), a inferência
-                          // antiga continua válida: ligado -> chave OK. Sem esta
-                          // distinção o painel acendia "Funcionando" com o PIX
-                          // quebrado assim que o lojista abria esta seção
-                          // (achado BLOQUEIA da revisão de mp-10).
-                          if (chaveNaLoja !== undefined) {
-                            setPixChaveOk(chaveNaLoja);
-                          } else if (ligado) {
-                            setPixChaveOk(true);
-                          }
-                        }}
-                      />
-                    </Suspense>
+                    <LimiteDePedaco pedacos={[MercadoPagoSection]}>
+                      <Suspense
+                        fallback={
+                          <p className="text-sm text-zinc-400">
+                            Carregando Mercado Pago…
+                          </p>
+                        }
+                      >
+                        <MercadoPagoSection
+                          onDirtyMudou={setPagamentosPendente}
+                          abrirChavesGatilho={abrirChavesGatilho}
+                          transportadoraVende={transportadoraVende}
+                          onPixAlternado={(ligado, chaveNaLoja) => {
+                            setPixLigado(ligado);
+                            // A tela de Frete é OUTRA aba (as duas ficam montadas):
+                            // o mesmo eco do servidor vai para ela, que o usa para
+                            // avisar da transportadora sem aviso falso.
+                            // O Início lê o mesmo eco, inclusive o da chave pública:
+                            // a mesma regra do `setPixChaveOk` logo abaixo.
+                            publicarPagamentoPeloApp(
+                              ligado,
+                              chaveNaLoja !== undefined
+                                ? chaveNaLoja
+                                : ligado
+                                  ? true
+                                  : undefined,
+                            );
+                            // `chaveNaLoja` só vem preenchido no eco do `ler`
+                            // (mp-10): é o único dos quatro que NÃO garante chave
+                            // publicada quando `ligado` é `true` — `ler` devolve o
+                            // retrato cru da ficha (`pagamento_online`), que pode
+                            // estar ligada com a Public Key ausente (teste X6).
+                            // Com o dado do servidor em mãos, usamos ELE; sem ele
+                            // (eco de `ligar_pix`/`salvar`, que a edge só acende
+                            // com a chave publicada JUNTO — mp-8), a inferência
+                            // antiga continua válida: ligado -> chave OK. Sem esta
+                            // distinção o painel acendia "Funcionando" com o PIX
+                            // quebrado assim que o lojista abria esta seção
+                            // (achado BLOQUEIA da revisão de mp-10).
+                            if (chaveNaLoja !== undefined) {
+                              setPixChaveOk(chaveNaLoja);
+                            } else if (ligado) {
+                              setPixChaveOk(true);
+                            }
+                          }}
+                        />
+                      </Suspense>
+                    </LimiteDePedaco>
                   </SecaoColapsavel>
                 </GrupoDeAjustes>
 

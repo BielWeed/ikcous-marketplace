@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { LimiteDePedaco } from "@/components/ui/custom/LimiteDePedaco";
 import { Input } from "@/components/ui/input";
 import { useStore } from "@/contexts/StoreContext";
 import { useAlturaDoTeclado } from "@/hooks/useAlturaDoTeclado";
@@ -463,12 +464,19 @@ export function SearchBar({
                       onClick={() => handleSuggestionClick(cat)}
                       className="shadow-2xs flex min-h-11 items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary hover:text-primary-foreground active:scale-95"
                     >
-                      <Suspense fallback={<Tag className="size-3" />}>
-                        <IconeDaCategoriaBuscada
-                          nome={cat}
-                          className="size-3"
-                        />
-                      </Suspense>
+                      {/* Se o arquivo do desenho não baixa, fica a mesma
+                          etiqueta do carregamento: um ícone nunca derruba a
+                          busca (nem a tela inteira). */}
+                      <LimiteDePedaco
+                        fallback={() => <Tag className="size-3" />}
+                      >
+                        <Suspense fallback={<Tag className="size-3" />}>
+                          <IconeDaCategoriaBuscada
+                            nome={cat}
+                            className="size-3"
+                          />
+                        </Suspense>
+                      </LimiteDePedaco>
                       <span>{cat}</span>
                     </button>
                   ))}

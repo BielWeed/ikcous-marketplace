@@ -262,10 +262,13 @@ describe("endereços — só leitura confirmada da mesma conta limpa o erro entr
       data: { ...CASA, street: "Rua Editada" },
       ruas: ["Rua Editada"],
     },
-    { acao: "Apagar", data: null, ruas: [] },
+    // Apagar relê a lista do servidor depois do DELETE: aqui a releitura
+    // FALHA (sem ela, vale a lista guardada) -- a leitura que dá certo é o
+    // caso do teste seguinte.
+    { acao: "Apagar", data: null, ruas: [], releituraFalha: true },
   ])(
     "$acao sobre cache antigo publica a lista sem apagar o erro",
-    async ({ acao, data, ruas }) => {
+    async ({ acao, data, ruas, releituraFalha }) => {
       localStorage.setItem(
         "ikcous_addresses_cache_conta-a",
         JSON.stringify([CASA]),
@@ -273,6 +276,9 @@ describe("endereços — só leitura confirmada da mesma conta limpa o erro entr
       await falharPerfil();
       await clicar(acao);
       await responder({ data, error: null });
+      if (releituraFalha) {
+        await responder({ data: null, error: new Error("Sem rede") });
+      }
 
       expect(aviso()).not.toBeNull();
       expect(perfil().textContent).not.toContain("Nenhum endereço cadastrado");
@@ -282,6 +288,22 @@ describe("endereços — só leitura confirmada da mesma conta limpa o erro entr
       }
     },
   );
+
+  it("'Apagar' cuja releitura do servidor DÁ CERTO é leitura confirmada: o Perfil mostra a lista do servidor e remove o alerta", async () => {
+    localStorage.setItem(
+      "ikcous_addresses_cache_conta-a",
+      JSON.stringify([CASA]),
+    );
+    await falharPerfil();
+    await clicar("Apagar");
+    await responder({ data: null, error: null });
+    // O servidor já tem principal: nenhuma promoção a fazer.
+    await responder({ data: [{ ...TRABALHO, is_default: true }], error: null });
+
+    expect(aviso()).toBeNull();
+    expect(perfil().textContent).toContain("Rua do Trabalho");
+    expect(perfil().textContent).not.toContain("Rua Principal");
+  });
 
   it("leitura confirmada de outra conta não altera a lista nem limpa o erro", async () => {
     localStorage.setItem(

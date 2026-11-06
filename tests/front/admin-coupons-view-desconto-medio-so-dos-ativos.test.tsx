@@ -94,10 +94,22 @@ describe("AdminCouponsView — Desconto Médio só dos cupons ativos", () => {
 
   function descontoMedio(): string {
     const texto = (hospedeiro.textContent ?? "").replace(/\s+/g, " ");
-    const achou = /Desconto Médio\s*(\d+)%/.exec(texto);
+    const achou = /Desconto Médio\s*(\d+%|—)/.exec(texto);
     if (!achou) throw new Error(`Desconto Médio não encontrado em: ${texto}`);
-    return `${achou[1]}%`;
+    return achou[1];
   }
+
+  // As métricas nascem recolhidas (só valor + rótulo); o rodapé e o "OFF"
+  // só aparecem com o painel de métricas aberto.
+  async function abrirMetricas() {
+    await act(async () => {
+      hospedeiro
+        .querySelector<HTMLButtonElement>('[aria-controls="coupon-metrics"]')
+        ?.click();
+    });
+  }
+
+  const textoDaTela = () => (hospedeiro.textContent ?? "").replace(/\s+/g, " ");
 
   it("vencido e desligado não entram na média: só o cupom ativo conta", async () => {
     mockCoupons = [
@@ -133,11 +145,34 @@ describe("AdminCouponsView — Desconto Médio só dos cupons ativos", () => {
     expect(descontoMedio()).toBe("15%");
   });
 
-  it("sem nenhum cupom ativo a média é 0%", async () => {
+  // Sem cupom percentual ativo não há média para tirar: "0% OFF" dizia que a
+  // loja dá desconto médio zero, o que não é verdade. Mostra traço, como as
+  // avaliações e as perguntas sem registro.
+  it("sem nenhum cupom ativo não há média: mostra traço, não 0%", async () => {
     mockCoupons = [
       cupom({ id: "a", code: "VENCIDO50", value: 50, validUntil: noPassado() }),
     ];
     await abrirTela();
-    expect(descontoMedio()).toBe("0%");
+    expect(descontoMedio()).toBe("—");
+  });
+
+  it("só cupom de valor fixo: traço, e o rodapé explica que não há cupom percentual ativo", async () => {
+    mockCoupons = [cupom({ id: "f", code: "DEZ", type: "fixed", value: 10 })];
+    await abrirTela();
+    expect(descontoMedio()).toBe("—");
+    await abrirMetricas();
+    expect(textoDaTela()).toContain("Nenhum cupom percentual ativo");
+    expect(textoDaTela()).not.toContain("Em ofertas percentuais");
+    expect(textoDaTela()).not.toMatch(/Desconto Médio\s*—\s*OFF/);
+  });
+
+  it("controle: com cupom percentual ativo o rodapé e o OFF continuam", async () => {
+    mockCoupons = [cupom({ id: "a", code: "ATIVO10", value: 10 })];
+    await abrirTela();
+    await abrirMetricas();
+    expect(descontoMedio()).toBe("10%");
+    expect(textoDaTela()).toContain("Em ofertas percentuais");
+    expect(textoDaTela()).not.toContain("Nenhum cupom percentual ativo");
+    expect(textoDaTela()).toMatch(/10%\s*OFF/);
   });
 });

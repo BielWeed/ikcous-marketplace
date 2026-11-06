@@ -46,6 +46,10 @@ function reais(valor: number): string {
   });
 }
 
+// O literal que o banco grava em `customer_name` numa venda de balcão sem
+// cliente (migration do balcão, COALESCE final) — o mesmo de `ReciboDaVenda`.
+const NOME_DE_VENDA_SEM_CLIENTE = "Venda no balcão";
+
 export const OrderReceipt = memo(function OrderReceipt({
   order,
   storeName: storeNameProp,
@@ -54,6 +58,16 @@ export const OrderReceipt = memo(function OrderReceipt({
   const storeName = storeNameProp ?? branding.appName;
   // Venda de balcão: não tem frete, e o papel diz como a cliente pagou.
   const presencial = order.canal === "presencial";
+  // O banco grava este texto em `customer_name` quando a venda de balcão nasce
+  // sem cliente (e quando a cliente cadastrada não tem nome no perfil). Ele não
+  // é nome de gente: sem conta vinculada o papel não leva o bloco CLIENTE; com
+  // conta diz "Cliente" — o mesmo que o recibo da tela Vender (ReciboDaVenda).
+  const nomeNoPapel =
+    presencial && order.customer.name?.trim() === NOME_DE_VENDA_SEM_CLIENTE
+      ? order.userId
+        ? "Cliente"
+        : ""
+      : order.customer.name;
   const papel = (
     <>
       <div
@@ -72,11 +86,11 @@ export const OrderReceipt = memo(function OrderReceipt({
 
         {/* Venda de balcão sem cliente chega aqui com o nome vazio: o papel
             não imprime o título "CLIENTE:" sozinho. */}
-        {(!presencial || order.customer.name) && (
+        {(!presencial || nomeNoPapel) && (
           <div className="mb-4">
             <p className="mb-1 border-b border-black font-bold">CLIENTE:</p>
-            <p>{order.customer.name}</p>
-            <p>{order.customer.whatsapp}</p>
+            <p>{nomeNoPapel}</p>
+            {order.customer.whatsapp && <p>{order.customer.whatsapp}</p>}
             {linhasDoEndereco(order.customer).map((linha) => (
               <p key={linha} className="text-xs">
                 {linha}

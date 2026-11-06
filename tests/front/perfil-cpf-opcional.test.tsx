@@ -167,8 +167,9 @@ describe("AccountSettingsView — CPF opcional em Informações Pessoais", () =>
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
+    // Nome e WhatsApp não foram editados: nenhum dos dois é reenviado.
     expect(rpc).toHaveBeenCalledWith("update_my_profile_secure", {
-      p_full_name: "Fulano de Tal",
+      p_full_name: null,
       p_whatsapp: null,
     });
     expect(rpc).not.toHaveBeenCalledWith("set_my_cpf", expect.anything());

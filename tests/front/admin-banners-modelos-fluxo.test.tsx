@@ -457,7 +457,7 @@ describe("novo editor de banners prontos", () => {
           active: true,
         },
         imagemEnviadaNaoSalva: "https://loja.test/rascunho.webp",
-        savedAt: "2026-10-21T00:00:00Z",
+        savedAt: new Date().toISOString(),
       }),
     );
     await montar();

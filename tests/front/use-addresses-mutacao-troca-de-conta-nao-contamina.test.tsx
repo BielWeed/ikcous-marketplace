@@ -234,6 +234,14 @@ describe("useAddresses — mutação em voo não atravessa troca de conta", () =
       resolvidores.shift()!(respostaDa(op));
       for (let i = 0; i < 10; i++) await Promise.resolve();
     });
+    // Apagar relê a lista do servidor logo depois do DELETE (para decidir o
+    // principal pela lista dele, não pela do aparelho): conta A segue vazia.
+    if (op === "delete" && resolvidores.length > 0) {
+      await act(async () => {
+        resolvidores.shift()!({ data: [], error: null });
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+      });
+    }
   }
 
   it.each(["M", "ZZ", "12"])(
@@ -279,6 +287,40 @@ describe("useAddresses — mutação em voo não atravessa troca de conta", () =
       expect(JSON.stringify(espelho.hook!.addresses)).not.toContain("end-b1");
     },
   );
+
+  it("troca de conta durante a RELEITURA do apagar: nada grava, nada promove, nada avisa", async () => {
+    await renderizar();
+    const { promessa } = await iniciar("delete");
+    // O DELETE da conta A responde; a releitura fica no ar.
+    await act(async () => {
+      resolvidores.shift()!({ data: null, error: null });
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+    expect(resolvidores).toHaveLength(1);
+
+    await trocarConta("conta-b");
+    expect(espelho.hook!.addresses).toEqual([END_B]);
+    // A releitura da conta A responde sem principal e com endereço: era a
+    // deixa para promover -- que não pode acontecer com a conta B na tela.
+    const pendentesAntes = resolvidores.length;
+    await act(async () => {
+      resolvidores.shift()!({
+        data: [{ ...END_A, id: "end-a9", is_default: false }],
+        error: null,
+      });
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+
+    expect(await promessa).toBe(false);
+    // Nenhuma chamada nova ao servidor (a promoção seria um UPDATE).
+    expect(resolvidores).toHaveLength(pendentesAntes - 1);
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(espelho.hook!.addresses).toEqual([END_B]);
+    expect(JSON.parse(armazem.get("ikcous_addresses_cache_conta-a")!)).toEqual([
+      END_A,
+    ]);
+  });
 
   it("consulta atrasada não desfaz uma edição nem regrava a versão antiga no disco", async () => {
     await renderizar();

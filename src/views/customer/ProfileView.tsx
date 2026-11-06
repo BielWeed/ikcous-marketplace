@@ -24,6 +24,7 @@ import {
 import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrders } from "@/hooks/useOrders";
+import { useReleituraDosEnderecosAoVoltar } from "@/hooks/useReleituraDosEnderecosAoVoltar";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import {
   TIPOS_DE_POLITICA,
@@ -452,9 +453,15 @@ export function ProfileView({
   // abrir `wa.me/` sem destinatário.
   const lojaTemWhatsappAgora = lojaTemWhatsapp(config.whatsappNumber);
 
+  // Depende do ID da conta, não do objeto `user` (que pode mudar de identidade
+  // a cada render sem a conta mudar).
+  const usuarioId = user?.id;
   useEffect(() => {
-    if (user) fetchAddresses();
-  }, [user, fetchAddresses, authLoading, onNavigate]);
+    if (usuarioId) fetchAddresses();
+  }, [usuarioId, fetchAddresses, authLoading, onNavigate]);
+  // A aba fica montada no fundo: outro aparelho pode ter mudado a lista de
+  // endereços enquanto ela estava escondida ou o app em segundo plano.
+  useReleituraDosEnderecosAoVoltar(user?.id, isActive, fetchAddresses);
 
   // Sem sessão, o login só aparece quando o Perfil é a aba VISÍVEL (o botão
   // Sair, ou o visitante que toca em Perfil). A aba fica montada escondida

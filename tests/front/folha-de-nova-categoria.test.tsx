@@ -492,7 +492,7 @@ describe("AdminProductFormView — folha de 'Nova categoria'", () => {
       "utf8",
     );
     expect(fonte).toMatch(
-      /lazy\(\s*\(\)\s*=>\s*import\(\s*"@\/components\/admin\/products\/FolhaDeNovaCategoria"/,
+      /lazy(?:Retentavel)?\(\s*\(\)\s*=>\s*import\(\s*"@\/components\/admin\/products\/FolhaDeNovaCategoria"/,
     );
     expect(fonte).not.toMatch(
       /^import[^;]*from "@\/components\/admin\/products\/FolhaDeNovaCategoria"/m,

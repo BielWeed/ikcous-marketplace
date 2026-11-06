@@ -193,13 +193,13 @@ describe("AccountSettingsView — nome em branco não salva", () => {
   it("nome válido e só o telefone mudou: grava o nome aparado junto com o telefone", async () => {
     await montarComPerfilCarregado();
 
-    digitar("full_name", "  Fulano de Tal ");
+    digitar("full_name", "  Fulano de Tal Jr ");
     digitar("phone", "34999998888");
     await salvar();
 
     expect(gravacoes()).toHaveLength(1);
     expect(gravacoes()[0][1]).toMatchObject({
-      p_full_name: "Fulano de Tal",
+      p_full_name: "Fulano de Tal Jr",
       p_whatsapp: "(34) 99999-8888",
     });
   });
@@ -291,14 +291,14 @@ describe("AccountSettingsView — nome em branco não salva", () => {
     expect(gravacoes()[0][1]).toMatchObject({ p_full_name: "Maria Souza" });
   });
 
-  it("nome válido sem mexer no campo continua gravando como antes", async () => {
+  it("nome válido sem mexer no campo: salva sem reenviar o nome (o banco preserva o gravado)", async () => {
     await montarComPerfilCarregado();
     const { toast } = await import("sonner");
 
     await salvar();
 
     expect(gravacoes()).toHaveLength(1);
-    expect(gravacoes()[0][1]).toMatchObject({ p_full_name: "Fulano de Tal" });
+    expect(gravacoes()[0][1]).toMatchObject({ p_full_name: null });
     expect(toast.success).toHaveBeenCalledWith("Perfil atualizado com sucesso");
     expect(document.getElementById("full_name-erro")).toBeNull();
   });
