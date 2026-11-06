@@ -11,7 +11,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // A foto só entra no DOM quando o observador diz "visível": o stub diz já na
 // 1ª observação, para a miniatura de reserva existir de verdade no teste.
 class IntersectionObserverStub {
-  constructor(private readonly aoVer: IntersectionObserverCallback) {}
+  private readonly aoVer: IntersectionObserverCallback;
+  constructor(aoVer: IntersectionObserverCallback) {
+    this.aoVer = aoVer;
+  }
   observe() {
     this.aoVer(
       [{ isIntersecting: true } as IntersectionObserverEntry],
