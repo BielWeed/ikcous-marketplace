@@ -1,6 +1,7 @@
 import { ChevronRight, FileText } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 
+import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import { useDreFinanceira, useDreMensal } from "@/hooks/useFinanceiro";
 import {
   type ChaveDaDre,
@@ -11,6 +12,7 @@ import {
   percentualDaReceita,
   sublinhasDaDre,
 } from "@/lib/financeiro";
+import { margemEmFormacao } from "@/lib/margem-em-formacao";
 import { cn } from "@/lib/utils";
 import type { DreFinanceira, IntervaloDeDatas } from "@/types/financeiro";
 import {
@@ -34,6 +36,18 @@ import {
 type ModoDaDre = "periodo" | "mensal";
 
 const MAXIMO_DE_MESES = 12;
+
+/**
+ * As linhas que carregam as despesas do mês INTEIRO (não acompanham as vendas
+ * dos poucos dias já feitos): enquanto a margem está em formação, o % delas
+ * sobre a receita não diz nada. CMV e custos variáveis seguem as vendas e ficam.
+ */
+const LINHAS_COM_AS_DESPESAS_DO_MES: ReadonlySet<ChaveDaDre> = new Set([
+  "despesas_fixas",
+  "resultado_operacional",
+  "resultado_financeiro",
+  "lucro_liquido",
+]);
 
 function RotuloDaLinha({
   linha,
@@ -119,10 +133,13 @@ function TabelaDoPeriodo({
   dre,
   abertas,
   aoAlternar,
+  emFormacao,
 }: {
   readonly dre: DreFinanceira;
   readonly abertas: ReadonlySet<ChaveDaDre>;
   readonly aoAlternar: (chave: ChaveDaDre) => void;
+  /** Começo do mês: o % das linhas com as despesas do mês vira "—". */
+  readonly emFormacao: boolean;
 }) {
   const ocultos = useValoresEstaoOcultos();
   const cascata = cascataDaDre(dre);
@@ -156,6 +173,8 @@ function TabelaDoPeriodo({
           const aberta = abertas.has(linha.chave);
           const sublinhas = aberta ? sublinhasDaDre(dre, linha.chave) : [];
           const divisoria = indice > 0 && !linha.final ? DIVISORIA : "";
+          const semPercentual =
+            emFormacao && LINHAS_COM_AS_DESPESAS_DO_MES.has(linha.chave);
           return (
             <Fragment key={linha.chave}>
               {linha.final ? (
@@ -213,7 +232,9 @@ function TabelaDoPeriodo({
                   )}
                 >
                   {formatarPercentual(
-                    percentualDaReceita(linha.valor, dre.receitaLiquida),
+                    semPercentual
+                      ? null
+                      : percentualDaReceita(linha.valor, dre.receitaLiquida),
                   )}
                 </td>
               </tr>
@@ -240,7 +261,9 @@ function TabelaDoPeriodo({
                   </td>
                   <td className="w-14 whitespace-nowrap py-2 pl-2 text-right align-middle text-xs tabular-nums text-zinc-400">
                     {formatarPercentual(
-                      percentualDaReceita(sub.valor, dre.receitaLiquida),
+                      semPercentual
+                        ? null
+                        : percentualDaReceita(sub.valor, dre.receitaLiquida),
                     )}
                   </td>
                 </tr>
@@ -436,6 +459,7 @@ export function AbaDre({
 
   const dre = useDreFinanceira(intervalo, ativo, versao);
   const porMes = useDreMensal(meses, ativo && mensal, versao);
+  const dia = useDiaDeSaoPaulo(ativo);
 
   const alternar = (chave: ChaveDaDre) =>
     setAbertas((atual) => {
@@ -467,6 +491,9 @@ export function AbaDre({
     dados.margemContribuicao,
     dados.receitaLiquida,
   );
+  // Começo do mês: despesas do mês inteiro contra poucos dias de venda dá uma
+  // margem absurda; até meados do mês ela ainda está em formação (como no Início).
+  const emFormacao = margemEmFormacao(margemLiquida, dia, intervalo);
 
   return (
     <div data-aba-resultado="" className="flex flex-col gap-4">
@@ -486,7 +513,11 @@ export function AbaDre({
         <QuadroDoResultado
           rotulo="Lucro líquido"
           valor={dados.lucroLiquido}
-          detalhe={`Margem líquida ${formatarPercentual(margemLiquida)}`}
+          detalhe={
+            emFormacao
+              ? "Margem em formação"
+              : `Margem líquida ${formatarPercentual(margemLiquida)}`
+          }
           comAviso={dados.cmvEstimado}
         />
         <QuadroDoResultado
@@ -545,6 +576,7 @@ export function AbaDre({
             dre={dados}
             abertas={abertas}
             aoAlternar={alternar}
+            emFormacao={emFormacao}
           />
         )}
       </CartaoSecao>

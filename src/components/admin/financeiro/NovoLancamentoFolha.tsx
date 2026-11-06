@@ -140,6 +140,29 @@ export function NovoLancamentoFolha({
       : form.contaId === CONTA_CAIXA_DA_LOJA
         ? "Este valor não entra na conferência do caixa aberto. Se o dinheiro saiu ou entrou na gaveta hoje, use a data de hoje."
         : null;
+  // O banco só soma ao saldo o que tem data a partir do saldo inicial da conta
+  // (regra intencional): antes disso o lançamento aparece no extrato, mas o saldo
+  // não muda. Só avisa, nunca trava. Na transferência vale qualquer das pontas; com
+  // as duas antes, cita a data mais tardia (a que resolve as duas).
+  const pontaAntesDoSaldoInicial =
+    form.situacao === "realizado" && ehDataIso(form.dataRealizacao)
+      ? contas
+          .flatMap((c) =>
+            (c.id === form.contaId ||
+              (transferencia && c.id === form.contaDestinoId)) &&
+            c.saldoInicialEm !== null &&
+            form.dataRealizacao < c.saldoInicialEm
+              ? [{ nome: c.nome, desde: c.saldoInicialEm }]
+              : [],
+          )
+          .sort((a, b) => (a.desde < b.desde ? 1 : a.desde > b.desde ? -1 : 0))
+          .at(0)
+      : undefined;
+  const avisoDoSaldoInicial = !pontaAntesDoSaldoInicial
+    ? null
+    : transferencia
+      ? `Esta data é anterior ao saldo inicial da conta ${pontaAntesDoSaldoInicial.nome} (${formatarData(pontaAntesDoSaldoInicial.desde)}). A transferência aparece no extrato, mas não muda o saldo dessa conta. Para o saldo contar, ajuste a data do saldo inicial em Contas.`
+      : `Esta data é anterior ao saldo inicial da conta (${formatarData(pontaAntesDoSaldoInicial.desde)}). O lançamento aparece no extrato e no resultado, mas não muda o saldo da conta. Para o saldo contar, ajuste a data do saldo inicial em Contas.`;
 
   const categoriasDoTipo = useMemo(
     () =>
@@ -550,6 +573,21 @@ export function NovoLancamentoFolha({
               className="mt-0.5 size-4 shrink-0"
             />
             <span>{avisoDaConferenciaDoCaixa}</span>
+          </p>
+        ) : null}
+        {avisoDoSaldoInicial ? (
+          <p
+            role="status"
+            className={cn(
+              "-mt-2 flex items-start gap-2 rounded-xl p-3 text-xs",
+              classeDoTexto("atencao"),
+            )}
+          >
+            <AlertTriangle
+              aria-hidden="true"
+              className="mt-0.5 size-4 shrink-0"
+            />
+            <span>{avisoDoSaldoInicial}</span>
           </p>
         ) : null}
 
