@@ -2,10 +2,12 @@
   "1.5.145": {
     "titulo": "Cadastro de produto mais seguro, Voltar do balcão certo e carrinho que não perde o frete",
     "novidades": [],
+    "melhorias": [],
     "correcoes": [
       "Painel, Produto: o código de barras aceita letras; trocar o nome de uma variação já salva pergunta antes; quando o produto tem um só tipo de variação dá para corrigir o nome do tipo; e um código de barras repetido entre variações é recusado com aviso.",
       "Painel, Login e Transportadoras: a senha e o e-mail do lojista não ganham maiúscula nem correção automática, e o gerenciador de senhas não preenche a chave de acesso da transportadora.",
-      "Painel, Balcão: depois de registrar uma venda, o botão Voltar do celular sai de uma vez, sem “não faz nada” nem pergunta de alterações não salvas; fechar a folha de compartilhar não abre o aviso de “não salvo”.",
+      "Painel, Balcão: depois de registrar uma venda, o botão Voltar do celular sai de uma vez, sem “não faz nada” nem pergunta de alterações não salvas.",
+      "Painel, Minha Loja: fechar a folha de compartilhar a mensagem da loja não abre mais o aviso de “não salvo”.",
       "Loja, Carrinho: mudar só a quantidade mantém o frete e o CEP escolhidos, e o total mostra “A calcular” enquanto o frete ainda não é conhecido.",
       "Loja: o selo “Frete grátis” deixa de aparecer quando a loja só trabalha com retirada.",
       "Loja, Avisos: abrir um pedido pelo aviso marca como lidos os avisos daquele pedido, e o número do sino para de só crescer.",
