@@ -110,6 +110,26 @@ function AvisoDeFavoritosRetidos({
   );
 }
 
+/**
+ * Favorito de quem tem conta cujo produto a loja pausou (ou tirou do catálogo)
+ * some da lista; sem este aviso a pessoa achava que tinha perdido o favorito.
+ */
+function AvisoDeFavoritosIndisponiveis({
+  quantidade,
+}: Readonly<{ quantidade: number }>) {
+  if (quantidade <= 0) return null;
+  return (
+    <p
+      role="status"
+      className="mx-4 mb-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
+    >
+      {quantidade === 1
+        ? "1 favorito seu está temporariamente indisponível; volta se a loja reativar."
+        : `${quantidade} favoritos seus estão temporariamente indisponíveis; voltam se a loja reativar.`}
+    </p>
+  );
+}
+
 interface Secao {
   nome: string;
   itens: Product[];
@@ -155,7 +175,9 @@ export const FavoritesView = React.memo(function FavoritesView({
     refresh: favoritosRefresh,
     pendingCount,
     retentarPendentes,
+    favoritosIndisponiveis,
   } = useFavorites();
+  const indisponiveis = favoritosIndisponiveis ?? 0;
   const idBase = useId();
   const listaRef = useRef<HTMLDivElement>(null);
   const [comDesconto, setComDesconto] = useState(false);
@@ -498,10 +520,13 @@ export const FavoritesView = React.memo(function FavoritesView({
         <header className="px-4 pb-4 pt-5">
           <h1 className="text-3xl font-bold tracking-tight">Favoritos</h1>
           <p className="mt-1 text-xs text-muted-foreground">
-            Nenhum produto salvo ainda
+            {indisponiveis > 0
+              ? "Nenhum produto disponível agora"
+              : "Nenhum produto salvo ainda"}
           </p>
         </header>
 
+        <AvisoDeFavoritosIndisponiveis quantidade={indisponiveis} />
         <AvisoDeFavoritosRetidos
           quantidade={pendingCount ?? 0}
           onTentarAgora={retentarPendentes}
@@ -514,7 +539,11 @@ export const FavoritesView = React.memo(function FavoritesView({
               className="size-12 text-muted-foreground"
             />
           </div>
-          <h2 className="text-xl font-bold">Você ainda não tem favoritos</h2>
+          <h2 className="text-xl font-bold">
+            {indisponiveis > 0
+              ? "Seus favoritos estão indisponíveis agora"
+              : "Você ainda não tem favoritos"}
+          </h2>
           <p className="mt-2 max-w-xs text-sm leading-relaxed text-muted-foreground">
             Toque no coração de um produto para guardar ele aqui.
           </p>
@@ -612,6 +641,7 @@ export const FavoritesView = React.memo(function FavoritesView({
         </div>
       </header>
 
+      <AvisoDeFavoritosIndisponiveis quantidade={indisponiveis} />
       <AvisoDeFavoritosRetidos
         quantidade={pendingCount ?? 0}
         onTentarAgora={retentarPendentes}
