@@ -256,6 +256,64 @@ describe("AuthContext — as seis mensagens deixam de vazar o erro cru do Supaba
       expect(mensagem).not.toMatch(/at least 6 characters/i);
     });
 
+    it("e-mail digitado errado (code email_address_invalid): aponta o e-mail, não o 'tente novamente' genérico", async () => {
+      const { supabase, toast, signUp } = await montar();
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      (
+        supabase.auth.signUp as unknown as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        data: {},
+        error: {
+          code: "email_address_invalid",
+          status: 400,
+          message: 'Email address "maria@gmial" is invalid',
+        },
+      });
+
+      let resultado = true;
+      await act(async () => {
+        resultado = await signUp(
+          "maria@gmial",
+          "senha123",
+          "Maria",
+          "34999999999",
+        );
+      });
+
+      expect(resultado).toBe(false);
+      const mensagem = (toast.error as ReturnType<typeof vi.fn>).mock
+        .calls[0][0] as string;
+      expect(mensagem).toBe(
+        "Confira o e-mail: ele parece ter um erro de digitação.",
+      );
+      expect(mensagem).not.toMatch(/is invalid/i);
+    });
+
+    it("controle: outro 400 de validação (validation_failed) continua genérico, não vira 'e-mail errado'", async () => {
+      const { supabase, toast, signUp } = await montar();
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      (
+        supabase.auth.signUp as unknown as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        data: {},
+        error: {
+          code: "validation_failed",
+          status: 400,
+          message: "Unable to validate email address: invalid format",
+        },
+      });
+
+      await act(async () => {
+        await signUp("maria@gmail.com", "senha123", "Maria", "34999999999");
+      });
+
+      const mensagem = (toast.error as ReturnType<typeof vi.fn>).mock
+        .calls[0][0] as string;
+      expect(mensagem).toBe(
+        "Não foi possível concluir o cadastro. Tente novamente.",
+      );
+    });
+
     it("limite de envio (status 429): 'muitas tentativas', não 'senha fraca' nem a frase crua", async () => {
       const { supabase, toast, signUp } = await montar();
       (

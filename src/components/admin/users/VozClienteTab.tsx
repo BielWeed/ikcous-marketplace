@@ -130,7 +130,7 @@ function ListaAvaliacoes({ avaliacoes }: { avaliacoes: AvaliacaoDaFicha[] }) {
             </span>
           </div>
           {a.comment && (
-            <p className="mt-2 text-xs leading-relaxed text-zinc-300">
+            <p className="mt-2 whitespace-pre-line break-words text-xs leading-relaxed text-zinc-300">
               “{a.comment}”
             </p>
           )}
@@ -145,7 +145,9 @@ function ListaAvaliacoes({ avaliacoes }: { avaliacoes: AvaliacaoDaFicha[] }) {
               <p className="text-[11px] font-black uppercase tracking-widest text-admin-gold">
                 Resposta da loja
               </p>
-              <p className="mt-1 text-xs text-zinc-300">{a.merchantReply}</p>
+              <p className="mt-1 whitespace-pre-line break-words text-xs text-zinc-300">
+                {a.merchantReply}
+              </p>
             </div>
           )}
         </div>
@@ -168,7 +170,7 @@ function ListaPerguntas({ perguntas }: { perguntas: PerguntaDaFicha[] }) {
         <div key={q.id} className="p-4 transition-colors hover:bg-zinc-800/20">
           <div className="flex items-start gap-2">
             <MessageSquare className="mt-0.5 size-3.5 shrink-0 text-admin-gold" />
-            <p className="text-xs font-semibold leading-relaxed text-zinc-200">
+            <p className="min-w-0 flex-1 whitespace-pre-line break-words text-xs font-semibold leading-relaxed text-zinc-200">
               {q.question}
             </p>
           </div>
@@ -191,7 +193,7 @@ function ListaPerguntas({ perguntas }: { perguntas: PerguntaDaFicha[] }) {
                       • {dataCurta(r.createdAt)}
                     </span>
                   </p>
-                  <p className="mt-1 text-xs leading-relaxed text-zinc-300">
+                  <p className="mt-1 whitespace-pre-line break-words text-xs leading-relaxed text-zinc-300">
                     {r.answer}
                   </p>
                 </div>

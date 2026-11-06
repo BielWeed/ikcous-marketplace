@@ -107,6 +107,7 @@ describe("HomeView — a cliente acha as políticas da loja no rodapé", () => {
       "Termos de uso",
       "Política de Privacidade",
       "Trocas e devoluções",
+      "Sobre a loja",
     ]);
     for (const b of botoes) expect(b.className).toContain("min-h-11");
   });
@@ -130,6 +131,7 @@ describe("HomeView — a cliente acha as políticas da loja no rodapé", () => {
       "terms",
       "privacy",
       "returns-policy",
+      "about-store",
     ]);
   });
 });

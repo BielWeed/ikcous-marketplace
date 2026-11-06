@@ -13,7 +13,7 @@ import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Star } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -55,16 +55,29 @@ interface ReviewFormProps {
   // Quem fecha a folha precisa saber se há comentário escrito a perder: o
   // formulário mantém esta ref em dia (true = tem texto digitado).
   temTextoRef?: { current: boolean };
+  // Quem fecha a folha também precisa saber se há envio em curso: fechar e
+  // reabrir no meio dele deixaria avaliar o mesmo produto duas vezes. O
+  // formulário mantém esta ref em dia (true = enviando).
+  enviandoRef?: { current: boolean };
 }
+
+// Limite do comentário no banco (CHECK) e a partir de quando o contador avisa.
+const LIMITE_DO_COMENTARIO = 1000;
+const AVISO_DO_COMENTARIO = 900;
 
 export function ReviewForm({
   productId,
   onSuccess,
   initialRating,
   temTextoRef,
+  enviandoRef,
 }: ReviewFormProps) {
   const { addReview } = useReviews();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Trava síncrona: dois envios no mesmo instante passam antes de
+  // `isSubmitting` desabilitar o botão. Sem `enviandoRef` de fora, usa a própria.
+  const enviandoProprioRef = useRef(false);
+  const enviando = enviandoRef ?? enviandoProprioRef;
   const [hoverRating, setHoverRating] = useState(0);
 
   const form = useForm<z.infer<typeof reviewSchema>>({
@@ -75,6 +88,7 @@ export function ReviewForm({
     },
   });
 
+  const tamanhoDoComentario = form.watch("comment").length;
   const temTexto = form.watch("comment").trim() !== "";
   useEffect(() => {
     if (!temTextoRef) return;
@@ -91,6 +105,8 @@ export function ReviewForm({
   }, [temTexto]);
 
   async function onSubmit(values: z.infer<typeof reviewSchema>) {
+    if (enviando.current) return;
+    enviando.current = true;
     setIsSubmitting(true);
     try {
       const result = await addReview({
@@ -106,6 +122,7 @@ export function ReviewForm({
     } catch {
       // Error handled in hook
     } finally {
+      enviando.current = false;
       setIsSubmitting(false);
     }
   }
@@ -196,12 +213,24 @@ export function ReviewForm({
                 <FormControl>
                   <Textarea
                     placeholder="Conte-nos os detalhes que lhe surpreenderam..."
-                    maxLength={1000}
+                    maxLength={LIMITE_DO_COMENTARIO}
                     className="min-h-[110px] resize-none rounded-2xl border-zinc-200/60 bg-zinc-50 p-4 text-base shadow-none transition-all placeholder:text-zinc-400 focus:border-primary focus:bg-white focus:ring-0 md:text-sm"
                     {...field}
                     disabled={isSubmitting}
                   />
                 </FormControl>
+                <p
+                  data-testid="contador-comentario"
+                  aria-live="polite"
+                  className={cn(
+                    "mr-1 text-right text-[11px] font-bold tabular-nums",
+                    tamanhoDoComentario >= AVISO_DO_COMENTARIO
+                      ? "text-red-700"
+                      : "text-zinc-600",
+                  )}
+                >
+                  {tamanhoDoComentario}/{LIMITE_DO_COMENTARIO}
+                </p>
                 <FormMessage className="text-[11px] font-bold uppercase tracking-wider text-red-700" />
               </FormItem>
             )}

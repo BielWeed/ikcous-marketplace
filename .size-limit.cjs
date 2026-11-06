@@ -170,7 +170,10 @@ module.exports = [
     // PIX apos espera longa). Mede 614,21 kB no build local, 211 B acima do teto. Nada foi trocado por algo mais arriscado.
     // 06/11/2026 (mesma regra): 615 -> 617 kB na 1.5.140 (busca com plural irregular, fotos da galeria, cupom digitado,
     // pedido na ficha, textos). Mede 616,35 kB no build local, 1,35 kB acima do teto. Nada foi trocado por algo mais arriscado.
-    limit: "617 kB",
+    // 06/11/2026 (mesma regra): 617 -> 619 kB na 1.5.141 (rastreio e cancelamento, login e recuperacao de senha, avaliacoes,
+    // mapa sem internet e politicas no Perfil). Medem 617,94 kB no build local, 940 B acima do teto. Nada foi trocado
+    // por algo mais arriscado.
+    limit: "619 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
@@ -306,7 +309,10 @@ module.exports = [
     // 06/11/2026 (mesma regra): 507 -> 509 kB na 1.5.137 (cadastro de produto trava ao salvar e junta fotos, estoque
     // na primeira variacao, financeiro, banners, aviso de cor clara). Medem 508,03 kB no build local, 1,03 kB acima do
     // teto. Nada foi trocado por algo mais arriscado.
-    limit: "509 kB",
+    // 06/11/2026 (mesma regra): 509 -> 511 kB na 1.5.141 (frete que guarda a chave, perguntas e avaliacoes sem registro,
+    // textos longos na ficha do cliente). Medem 509,17 kB no build local, 170 B acima do teto. Nada foi trocado por
+    // algo mais arriscado.
+    limit: "511 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },

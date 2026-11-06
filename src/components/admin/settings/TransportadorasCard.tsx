@@ -395,6 +395,26 @@ function rascunhoVazio(): RascunhoDoProvedor {
   };
 }
 
+/** O que uma leitura de configuração precisa reiniciar nos rascunhos:
+ * tudo, ou só os cartões dos provedores recém-salvos. Vazio = nada. */
+interface ReinicioDeRascunhos {
+  readonly tudo: boolean;
+  readonly provedores: ReadonlySet<ProvedorFrete>;
+}
+
+/** Junta o pedido pendente (de leituras que falharam) com o pedido desta
+ * leitura, ficando sempre com o MAIS FORTE: tudo > provedores > nenhum.
+ * Dois provedores diferentes viram o CONJUNTO dos dois (nunca "tudo": isso
+ * apagaria a chave digitada num terceiro cartão). */
+function juntarReinicio(
+  pendente: ReinicioDeRascunhos | null,
+  pedido: "tudo" | ProvedorFrete | "nenhum",
+): ReinicioDeRascunhos {
+  const provedores = new Set(pendente?.provedores);
+  if (pedido !== "tudo" && pedido !== "nenhum") provedores.add(pedido);
+  return { tudo: pendente?.tudo === true || pedido === "tudo", provedores };
+}
+
 export interface SalvamentoDasTransportadoras {
   readonly mudou: boolean;
   readonly salvar: () => Promise<boolean>;
@@ -493,21 +513,38 @@ export const TransportadorasSection = memo(function TransportadorasSection({
   // quando só UM foi salvo. Salvar o Melhor Envio apagava, em silêncio, o
   // token que a lojista já tinha colado no card da Frenet e ainda não
   // salvara. Agora:
-  //   "tudo"     — carga inicial e "Tentar de novo": ainda não há rascunho
-  //                de ninguém para preservar, parte tudo do zero;
+  //   "tudo"     — carga inicial (e padrão sem argumento): ainda não há
+  //                rascunho de ninguém para preservar, parte tudo do zero;
   //   provider   — `salvarProvedor` passa QUEM acabou de ser salvo: só o
   //                rascunho dele volta limpo (a chave nova já está
   //                gravada); os demais mantêm o que estava sendo digitado;
   //   "nenhum"   — `salvarLigados` passa isto: liga/desliga NUNCA mexe em
   //                credencial nenhuma, então nenhum rascunho é tocado.
+  //
+  // Uma leitura que FALHA não perde o pedido: ele fica em `resetPendenteRef`.
+  // A próxima leitura bem-sucedida — "Tentar de novo" OU a volta à aba —
+  // aplica o MAIS FORTE entre o pendente e o seu próprio pedido (tudo >
+  // provedores > nenhum) e só então zera o ref. Antes o "Tentar de novo"
+  // sempre partia de "tudo" e apagava a chave que a lojista tinha colado e
+  // ainda não salvara; e uma leitura "nenhum" que funcionava deixava o card
+  // do provedor recém-salvo preso em "Salvando…". Dois provedores salvos com
+  // leituras falhas ficam como CONJUNTO (não sobem para "tudo").
+  const resetPendenteRef = useRef<ReinicioDeRascunhos | null>(null);
   const carregar = useCallback(
     async (resetarRascunhoDe: "tudo" | ProvedorFrete | "nenhum" = "tudo") => {
       setErroCarga(false);
       const resultado = await buscarConfiguracaoDeFrete();
+      // Pedido efetivo desta leitura: o dela somado ao que ficou pendente.
+      const reinicio = juntarReinicio(
+        resetPendenteRef.current,
+        resetarRascunhoDe,
+      );
       if (!resultado.ok) {
+        resetPendenteRef.current = reinicio;
         setErroCarga(true);
         return;
       }
+      resetPendenteRef.current = null;
       const { config } = resultado;
       setProvedoresSalvos(config.provedores);
       const anteriores = ligadosSalvosRef.current;
@@ -515,7 +552,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       ligadosSalvosRef.current = confirmados;
       setLigadosSalvos(confirmados);
       setLigadosEscolhidos((atual) =>
-        resetarRascunhoDe === "tudo" ||
+        reinicio.tudo ||
         (atual.size === anteriores.size &&
           [...atual].every((p) => anteriores.has(p)))
           ? confirmados
@@ -524,14 +561,14 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       // A escolha pendente acabou de voltar à do servidor — a recusa que
       // falava dela sai junto (revisão Opus, PR #637).
       setErroLigados(null);
-      if (resetarRascunhoDe !== "nenhum") {
+      if (reinicio.tudo || reinicio.provedores.size > 0) {
         const rascunhoFresco = (
           provider: ProvedorFrete,
         ): RascunhoDoProvedor => ({
           ...rascunhoVazio(),
           emailDigitado: config.provedores.get(provider)?.contato_email ?? "",
         });
-        if (resetarRascunhoDe === "tudo") {
+        if (reinicio.tudo) {
           setRascunhos(
             () =>
               new Map(
@@ -542,29 +579,30 @@ export const TransportadorasSection = memo(function TransportadorasSection({
               ),
           );
         } else {
-          const provider = resetarRascunhoDe;
           setRascunhos((prev) => {
             const proximo = new Map(prev);
-            // PR #637: a lista já aberta continua aberta, marcada com o que
-            // o SERVIDOR devolveu como salvo — antes ela sumia e a tela
-            // voltava a "Ver serviços da conta", parecendo que nada gravou.
-            const carregados = prev.get(provider)?.servicosCarregados ?? null;
-            const salvos = new Set(
-              config.provedores.get(provider)?.servicos ?? [],
-            );
-            proximo.set(provider, {
-              ...rascunhoFresco(provider),
-              servicosCarregados: carregados,
-              servicosDoCatalogo:
-                prev.get(provider)?.servicosDoCatalogo ?? false,
-              servicosSelecionados: carregados
-                ? new Set(
-                    carregados
-                      .map((s) => s.codigo)
-                      .filter((codigo) => salvos.has(codigo)),
-                  )
-                : null,
-            });
+            for (const provider of reinicio.provedores) {
+              // PR #637: a lista já aberta continua aberta, marcada com o que
+              // o SERVIDOR devolveu como salvo — antes ela sumia e a tela
+              // voltava a "Ver serviços da conta", parecendo que nada gravou.
+              const carregados = prev.get(provider)?.servicosCarregados ?? null;
+              const salvos = new Set(
+                config.provedores.get(provider)?.servicos ?? [],
+              );
+              proximo.set(provider, {
+                ...rascunhoFresco(provider),
+                servicosCarregados: carregados,
+                servicosDoCatalogo:
+                  prev.get(provider)?.servicosDoCatalogo ?? false,
+                servicosSelecionados: carregados
+                  ? new Set(
+                      carregados
+                        .map((s) => s.codigo)
+                        .filter((codigo) => salvos.has(codigo)),
+                    )
+                  : null,
+              });
+            }
             return proximo;
           });
         }
@@ -1142,7 +1180,8 @@ export const TransportadorasSection = memo(function TransportadorasSection({
         </div>
         <button
           type="button"
-          onClick={() => carregar()}
+          // "nenhum" não rebaixa nada: `carregar` soma o pedido pendente.
+          onClick={() => carregar("nenhum")}
           className="min-h-11 self-start rounded-lg border border-admin-border bg-zinc-900 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:border-admin-gold/30"
         >
           Tentar de novo

@@ -413,6 +413,11 @@ export const AdminQAView = memo(function AdminQAView({
     setPage(0);
   };
 
+  // Loja sem nenhuma pergunta: "0% respondidas" e "0 de 0" fingem uma medida
+  // onde não há base para medir. A taxa 0 do hook fica como valor neutro; é
+  // a tela que decide não mostrá-la.
+  const semBase = !statsUnavailable && totalCount === 0;
+
   const resumoNaLinha = statsUnavailable ? (
     <>
       <span className="shrink-0 text-base font-bold text-white">
@@ -420,6 +425,10 @@ export const AdminQAView = memo(function AdminQAView({
       </span>
       <span className="min-w-0 text-sm text-red-300">Erro ao atualizar</span>
     </>
+  ) : semBase ? (
+    <span className="min-w-0 text-base font-bold text-white">
+      Nenhuma pergunta ainda
+    </span>
   ) : (
     <>
       <span className="shrink-0 text-base font-bold tabular-nums text-white">
@@ -744,16 +753,18 @@ export const AdminQAView = memo(function AdminQAView({
           />
           <CartaoDeNumero
             rotulo="Respondidas"
-            valor={statsUnavailable ? "—" : `${responseRate}%`}
+            valor={statsUnavailable || semBase ? "—" : `${responseRate}%`}
             extra={
-              statsUnavailable ? undefined : (
+              statsUnavailable || semBase ? undefined : (
                 <BarraDeProporcao percentual={responseRate} />
               )
             }
             rodape={
               statsUnavailable
                 ? "Não foi possível carregar agora"
-                : `${answeredCount} de ${totalCount}`
+                : semBase
+                  ? "nenhuma pergunta ainda"
+                  : `${answeredCount} de ${totalCount}`
             }
           />
           <CartaoDeNumero

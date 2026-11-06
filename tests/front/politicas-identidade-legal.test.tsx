@@ -291,12 +291,12 @@ describe("identidade legal nas políticas", () => {
       });
     }
 
-    it("sem identidade: o rodapé é só os três links, como sempre", async () => {
+    it("sem identidade: o rodapé é só os links (três políticas e o Sobre a loja), como sempre", async () => {
       await montarRodape(undefined);
       const nav = hospedeiro.querySelector(
         '[data-testid="rodape-das-politicas"]',
       ) as HTMLElement;
-      expect(nav.querySelectorAll("button")).toHaveLength(3);
+      expect(nav.querySelectorAll("button")).toHaveLength(4);
       expect(nav.querySelector('[data-testid="rodape-identidade-legal"]')).toBe(
         null,
       );
@@ -329,7 +329,7 @@ describe("identidade legal nas políticas", () => {
         hospedeiro.querySelectorAll(
           '[data-testid="rodape-das-politicas"] button',
         ),
-      ).toHaveLength(3);
+      ).toHaveLength(4);
     });
 
     it("só e-mail: mostra só o e-mail; só razão social: mostra só ela", async () => {

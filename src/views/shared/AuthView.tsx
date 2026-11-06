@@ -7,8 +7,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { cpfValido, formatarCpf } from "@/lib/cpf";
 import { MENSAGEM_ERRO_LOGIN_GENERICA } from "@/lib/mensagens-auth";
 import {
-  limparTelefoneBrasileiro,
+  celularBrasileiroCompleto,
   mascaraTelefoneDoCadastro,
+  mensagemDeWhatsappIncompleto,
 } from "@/lib/telefone-br";
 import type { View } from "@/types";
 import { type Variants, motion } from "framer-motion";
@@ -71,6 +72,11 @@ function subtituloBoasVindas(storeName: string | undefined | null): string {
     ? `Entre para acompanhar seus pedidos e novidades da ${nome}.`
     : "Entre para acompanhar seus pedidos e novidades da loja.";
 }
+
+// Intervalo FIXO e do app entre dois envios do link de recuperação. Não é o
+// tempo do servidor: o limite dele só dispara para quem tem conta, e ecoar
+// esse tempo na tela reabriria a enumeração de e-mails (#120).
+const INTERVALO_REENVIO_RECUPERACAO_S = 60;
 
 export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   const { config } = useStore();
@@ -175,6 +181,21 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   const [emailNaoConfirmado, setEmailNaoConfirmado] = useState(false);
   const [reenviandoConfirmacao, setReenviandoConfirmacao] = useState(false);
   const reenvioConfirmacaoEmCurso = useRef(false);
+  // Reenvio do link de RECUPERAÇÃO (tela "Verifique seu e-mail" do "Esqueceu?"):
+  // mesma trava síncrona do reenvio da confirmação, mais um intervalo entre
+  // envios, que começa a contar já no primeiro envio.
+  const [reenviandoRecuperacao, setReenviandoRecuperacao] = useState(false);
+  const reenvioRecuperacaoEmCurso = useRef(false);
+  const [esperaReenvioRecuperacao, setEsperaReenvioRecuperacao] = useState(0);
+  const emEsperaDeReenvio = esperaReenvioRecuperacao > 0;
+
+  useEffect(() => {
+    if (!emEsperaDeReenvio) return;
+    const relogio = setInterval(() => {
+      setEsperaReenvioRecuperacao((restante) => Math.max(0, restante - 1));
+    }, 1000);
+    return () => clearInterval(relogio);
+  }, [emEsperaDeReenvio]);
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setPhone(mascaraTelefoneDoCadastro(e.target.value, phone));
@@ -322,14 +343,12 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           setIsLoading(false);
           return;
         }
-        // WhatsApp precisa ser um número de verdade: DDD + 8 ou 9 dígitos (10
-        // ou 11), depois de tirar +55 e o zero de tronco como o checkout.
-        // Antes só se conferia se não estava vazio e "(34) 9999" criava conta.
-        const digitosWhatsapp = limparTelefoneBrasileiro(phone).length;
-        if (digitosWhatsapp !== 10 && digitosWhatsapp !== 11) {
-          toast.error(
-            "Confira o WhatsApp: informe DDD + número, com 10 ou 11 dígitos.",
-          );
+        // WhatsApp precisa ser um CELULAR completo (DDD + 9 + 8 dígitos), a
+        // mesma régua e a mesma frase do checkout e do perfil. Antes o
+        // cadastro aceitava fixo de 10 dígitos e a conta nascia com um número
+        // que o Finalizar da compra recusava.
+        if (!celularBrasileiroCompleto(phone)) {
+          toast.error(mensagemDeWhatsappIncompleto(phone));
           setIsLoading(false);
           return;
         }
@@ -381,6 +400,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           toast.success(res.message);
           if (fluxoDaTela.current === fluxoEnviado) {
             setEmailDaConfirmacao(emailEnviado);
+            setEsperaReenvioRecuperacao(INTERVALO_REENVIO_RECUPERACAO_S);
             setViewMode("reset-prompt");
           }
         } else {
@@ -436,6 +456,35 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
     } finally {
       reenvioConfirmacaoEmCurso.current = false;
       setReenviandoConfirmacao(false);
+    }
+  };
+
+  // Reenvia o link de recuperação para o e-mail mostrado na tela. A resposta
+  // é a mesma exista ou não a conta (#120), então o aviso é condicional. Dá
+  // certo ou errado, o botão espera o intervalo: não convida a martelar.
+  const handleResendRecuperacao = async () => {
+    if (reenvioRecuperacaoEmCurso.current || emEsperaDeReenvio) return;
+    reenvioRecuperacaoEmCurso.current = true;
+    setReenviandoRecuperacao(true);
+    const falhaGenerica =
+      "Não foi possível reenviar o link agora. Tente novamente em instantes.";
+    try {
+      const res = await resetPassword(emailDaConfirmacao);
+      if (res.success) {
+        toast.success(
+          res.message ||
+            "Se este e-mail estiver cadastrado, enviamos um novo link.",
+        );
+      } else {
+        toast.error(res.message || falhaGenerica);
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error(falhaGenerica);
+    } finally {
+      reenvioRecuperacaoEmCurso.current = false;
+      setReenviandoRecuperacao(false);
+      setEsperaReenvioRecuperacao(INTERVALO_REENVIO_RECUPERACAO_S);
     }
   };
 
@@ -581,16 +630,48 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               <br />
               <br />
               Se você recebeu o e-mail, clique no link para definir sua nova
-              senha.
+              senha. Se não chegou, confira também a caixa de spam ou lixo
+              eletrônico.
             </motion.p>
 
-            <motion.div variants={itemVariants} className="w-full">
+            <motion.div
+              variants={itemVariants}
+              className="w-full space-y-3 sm:space-y-4"
+            >
               <Button
                 onClick={() => setViewMode("login")}
                 className="h-14 w-full rounded-2xl bg-zinc-900 text-[10px] font-black uppercase tracking-[0.2em] text-white shadow-xl shadow-zinc-200 transition-all hover:bg-black active:scale-95 sm:h-16 sm:rounded-3xl sm:text-xs"
               >
                 Voltar para o Login
               </Button>
+
+              <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                Não recebeu?{" "}
+                <button
+                  type="button"
+                  onClick={handleResendRecuperacao}
+                  disabled={reenviandoRecuperacao || emEsperaDeReenvio}
+                  className="relative text-amber-800 after:absolute after:-inset-x-2 after:-inset-y-3.5 after:content-[''] hover:underline disabled:no-underline disabled:opacity-60"
+                >
+                  {reenviandoRecuperacao ? "Reenviando..." : "Reenviar link"}
+                </button>
+              </p>
+              {emEsperaDeReenvio && !reenviandoRecuperacao && (
+                <p className="text-[10px] font-bold text-zinc-500">
+                  Dá para pedir outro link em {esperaReenvioRecuperacao} s.
+                </p>
+              )}
+
+              <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
+                E-mail errado?{" "}
+                <button
+                  type="button"
+                  onClick={() => setViewMode("forgot")}
+                  className="relative text-amber-800 after:absolute after:-inset-x-2 after:-inset-y-3.5 after:content-[''] hover:underline"
+                >
+                  Corrigir e-mail
+                </button>
+              </p>
             </motion.div>
           </div>
         </motion.div>
@@ -839,6 +920,11 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                           ? "current-password"
                           : "new-password"
                       }
+                      // Com "Mostrar senha" o campo vira type="text" e o teclado
+                      // do celular passaria a pôr maiúscula e "corrigir" a senha.
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
                       placeholder={
                         viewMode === "new-password" ? "Nova senha" : "••••••••"
                       }
@@ -882,6 +968,9 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                           name="password-confirmacao"
                           type={showPassword ? "text" : "password"}
                           autoComplete="new-password"
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
                           placeholder="Repita a nova senha"
                           value={confirmaSenha}
                           onChange={(e) => setConfirmaSenha(e.target.value)}
