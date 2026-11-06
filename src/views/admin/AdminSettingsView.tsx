@@ -35,6 +35,7 @@ import {
 
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AvisoDaLojaSemDados } from "@/components/admin/AvisoDaLojaSemDados";
 import { IconePix } from "@/components/admin/primitivos/IconePix";
 import { AparenciaDoPainel } from "@/components/admin/settings/AparenciaDoPainel";
 import {
@@ -592,6 +593,8 @@ function PortaDeAjustes({
  * entrada no mapa não desenha a linha. É um `<p>` irmão do `<h2>`: o título
  * do grupo continua sendo só o nome.
  */
+const SEM_SUBTITULOS: ReadonlyMap<ChaveDoGrupoDeAjustes, string> = new Map();
+
 const VISUAL_DO_GRUPO = new Map<
   ChaveDoGrupoDeAjustes,
   { icone: LucideIcon; matiz: MatizDeAjustes }
@@ -752,7 +755,12 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   active,
   onSetDirty,
 }: Readonly<AdminSettingsViewProps>) {
-  const { config, isLoaded, updateConfig } = useStore();
+  const { config, isLoaded, updateConfig, configIndisponivel, refresh } =
+    useStore();
+  // A leitura da config falhou e não há cópia no aparelho: `config` é a de
+  // fábrica, e ler isso como "a lojista não preencheu" escreveria "Falta: …"
+  // sob os grupos. `=== true`: contexto sem o campo lê como "não falhou".
+  const configFalhou = configIndisponivel === true;
   const isOffline = useOnlineStatus();
   const [showHelpModal, setShowHelpModal] = useState(false);
 
@@ -936,12 +944,17 @@ export const AdminSettingsView = memo(function AdminSettingsView({
 
   // O subtítulo de status de cada grupo — a mesma função dos seis passos do
   // Início (grupos-de-ajustes.ts); aqui só se entregam os fatos.
-  const subtitulos = subtitulosDosGrupos({
-    config,
-    formasNaEntrega,
-    nivelDoPix,
-    nomesLigados: nomesLigadosDeFrete,
-  });
+  // Com a leitura da config falha, o subtítulo seria a verdade da config de
+  // fábrica ("Falta: Nome e logo…"): grupo sem entrada no mapa não desenha a
+  // linha, e o aviso no topo explica por quê.
+  const subtitulos = configFalhou
+    ? SEM_SUBTITULOS
+    : subtitulosDosGrupos({
+        config,
+        formasNaEntrega,
+        nivelDoPix,
+        nomesLigados: nomesLigadosDeFrete,
+      });
 
   return (
     <div className="ajustes pb-admin h-auto duration-200 animate-in fade-in lg:pb-12">
@@ -975,6 +988,12 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             </span>
           </div>
         )}
+
+        {isLoaded && configFalhou ? (
+          <AvisoDaLojaSemDados
+            onTentarDeNovo={() => void refresh({ onlyConfig: true })}
+          />
+        ) : null}
 
         {!isLoaded ? (
           <div
@@ -1227,6 +1246,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                       isOffline={isOffline}
                       updateConfig={updateConfig}
                       onDirtyMudou={setFormasPagamentoPendente}
+                      somenteLeitura={configFalhou}
                       onAbrirMercadoPago={() => {
                         setAbrirMercadoPagoGatilho((n) => n + 1);
                         // "Configurar credenciais" cai direto nos campos das

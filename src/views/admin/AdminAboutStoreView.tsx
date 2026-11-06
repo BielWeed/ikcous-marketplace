@@ -1,4 +1,5 @@
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AvisoDaLojaSemDados } from "@/components/admin/AvisoDaLojaSemDados";
 import { ContatoDaLoja } from "@/components/admin/minha-loja/ContatoDaLoja";
 import { DadosDaEmpresa } from "@/components/admin/minha-loja/DadosDaEmpresa";
 import {
@@ -157,7 +158,12 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
   secaoInicial,
   onSetBackOverride,
 }: AdminAboutStoreViewProps) {
-  const { config, updateConfig, isLoaded } = useStore();
+  const { config, updateConfig, isLoaded, configIndisponivel, refresh } =
+    useStore();
+  // A leitura da config falhou e não há cópia no aparelho: `config` é a de
+  // fábrica, e "falta preencher" nela seria mentira. `=== true`: contexto sem
+  // o campo lê como "não falhou".
+  const configFalhou = configIndisponivel === true;
   const isOffline = useOnlineStatus();
   const usuario = useAuth().user?.id ?? "";
 
@@ -304,6 +310,10 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
       !active ||
       isOffline ||
       !isLoaded ||
+      // Leitura falha DEPOIS de a lojista já ter editado algo: o formulário
+      // trava, mas a alteração pendente continua contada e gravaria (a
+      // identidade legal vai com os três campos) por cima dos dados reais.
+      configFalhou ||
       !alterados.length
     )
       return;
@@ -440,7 +450,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
       pixOk: false,
       formasNaEntrega: [],
       produtos: [],
-      configCarregando: !isLoaded,
+      configCarregando: !isLoaded || configFalhou,
       produtosCarregando: false,
       entrega: "pendente",
     }),
@@ -457,9 +467,23 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         </div>
       </header>
 
+      {/* Fora do fieldset de propósito: ele fica travado com a leitura
+          falha, e o "Tentar de novo" do aviso tem de seguir ativo. */}
+      {isLoaded && configFalhou && (
+        <div className="mx-auto max-w-4xl px-4 pt-4">
+          <AvisoDaLojaSemDados
+            onTentarDeNovo={() => void refresh({ onlyConfig: true })}
+          />
+        </div>
+      )}
+
+      {/* Com a leitura da config falha (`configFalhou`) a tela mostra a
+          config de FÁBRICA: gravar dela apagaria os dados reais (a identidade
+          legal, por exemplo, vai com os três campos juntos). Trava tudo até
+          a leitura funcionar. */}
       <fieldset
         ref={formulario}
-        disabled={salvandoTudo || !active}
+        disabled={salvandoTudo || !active || configFalhou}
         className="mx-auto min-w-0 max-w-4xl space-y-4 px-4 pt-4"
       >
         {isOffline && (
@@ -671,7 +695,11 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
             type="button"
             onClick={() => void salvarTudo()}
             aria-disabled={
-              !isLoaded || isOffline || salvandoTudo || !alterados.length
+              !isLoaded ||
+              configFalhou ||
+              isOffline ||
+              salvandoTudo ||
+              !alterados.length
             }
             className="admin-barra-principal flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-sm font-bold text-background transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >

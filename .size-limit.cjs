@@ -157,7 +157,10 @@ module.exports = [
     // 05/11/2026 (mesma regra): 608 -> 609 kB na 1.5.130 (conferencia do catalogo le o resumo por chave, em paginas,
     // para a loja com mais de 1.000 produtos nao perder produto; recusa de foto da devolucao na escolha). Mede 608,05 kB
     // no build local, 50 B acima do teto. Nada foi trocado por algo mais arriscado.
-    limit: "609 kB",
+    // 05/11/2026 (mesma regra): 609 -> 610 kB na 1.5.135 (painel e vitrine nao dizem "falta" quando a leitura da
+    // loja falha, aviso de anotacao nao salva no pedido, motivo certo do prazo de devolucao, titulo do Markdown).
+    // Mede 609,2 kB no build local, 203 B acima do teto. Nada foi trocado por algo mais arriscado.
+    limit: "610 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
@@ -283,7 +286,11 @@ module.exports = [
     // Nada foi trocado por algo mais arriscado.
     // 05/11/2026 (mesma regra): 503 -> 504 kB na 1.5.130 (colar valor em reais, leitor de balcao e aba
     // Pagar e receber). Medem 502,99 kB no build local, 10 B abaixo do teto: folga menor que o ruido.
-    limit: "504 kB",
+    // 05/11/2026 (mesma regra): 504 -> 506 kB na 1.5.135 (Inicio, Ajustes e Minha loja avisam e travam o salvar
+    // quando a leitura da loja falha; pergunta ao sair da ficha do pedido com anotacao nao salva; fotos da
+    // devolucao se renovam). Medem 505,27 kB no build local (1,27 kB acima do teto; a 1.5.134, ja juntada, media
+    // 504,001 kB e reprovou por 1 B no CI). Nada foi trocado por algo mais arriscado.
+    limit: "506 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },

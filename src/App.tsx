@@ -28,6 +28,7 @@ import {
   lerPedidoPendenteDoCheckout,
 } from "@/lib/pedido-pendente-do-checkout";
 import { descartarRascunhoDoProduto } from "@/lib/rascunho-do-produto";
+import { esquecerRolagemDoProdutoAberto } from "@/lib/rolagemDaEntradaNova";
 import { rolarAoCatalogo } from "@/lib/rolar-ao-catalogo";
 
 // Mesmo padrão de useUpdateCheck/recuperacao-chunk: o `define` mora no build;
@@ -1120,6 +1121,16 @@ const AppContent = () => {
         }
         return;
       }
+
+      // Entrada NOVA de produto começa no topo: a posição guardada na visita
+      // anterior seria restaurada (layout effect + animação). Depois do
+      // `saveCurrentScroll` (produto→outro produto não perde o atual) e dos
+      // retornos acima; o Voltar/Avançar (popstate) não passa por aqui.
+      esquecerRolagemDoProdutoAberto(
+        scrollPositionsRef.current,
+        targetView,
+        id,
+      );
 
       const fromView = currView;
       const dir = getNavigationDirection(currView, targetView);

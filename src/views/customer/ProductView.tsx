@@ -739,22 +739,7 @@ export const ProductView = React.memo(function ProductView({
       url: globalThis.location.href,
     };
 
-    if (navigator.share) {
-      try {
-        // O menu de compartilhar do celular (WhatsApp no Android, por
-        // exemplo) costuma juntar `text` e `url` numa mensagem só. Quando o
-        // modelo da lojista já trouxe [link], a URL está dentro do texto —
-        // mandá-la também no campo `url` a repetiria. Sem [link], o texto
-        // não tem URL e ela segue no campo `url`, uma vez só.
-        await navigator.share(
-          temMarcadorDeLink
-            ? { title: shareData.title, text: shareData.text }
-            : shareData,
-        );
-      } catch {
-        console.log("Share cancelled");
-      }
-    } else {
+    const copiarOLink = async () => {
       try {
         await navigator.clipboard.writeText(textoParaCopiar);
         toast.success("Link copiado!", {
@@ -767,6 +752,32 @@ export const ProductView = React.memo(function ProductView({
             "Seu navegador bloqueou a cópia. Copie o endereço da barra do navegador.",
         });
       }
+    };
+
+    if (navigator.share) {
+      try {
+        // O menu de compartilhar do celular (WhatsApp no Android, por
+        // exemplo) costuma juntar `text` e `url` numa mensagem só. Quando o
+        // modelo da lojista já trouxe [link], a URL está dentro do texto —
+        // mandá-la também no campo `url` a repetiria. Sem [link], o texto
+        // não tem URL e ela segue no campo `url`, uma vez só.
+        await navigator.share(
+          temMarcadorDeLink
+            ? { title: shareData.title, text: shareData.text }
+            : shareData,
+        );
+      } catch (err) {
+        // Cancelar a folha do aparelho (AbortError) é escolha da cliente:
+        // silêncio. Qualquer outra falha da folha cai na cópia do link, o
+        // mesmo caminho de quem não tem menu de compartilhar.
+        if ((err as { name?: string } | null)?.name === "AbortError") {
+          console.log("Share cancelled");
+          return;
+        }
+        await copiarOLink();
+      }
+    } else {
+      await copiarOLink();
     }
   };
 

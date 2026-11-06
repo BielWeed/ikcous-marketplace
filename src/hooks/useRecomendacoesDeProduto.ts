@@ -125,7 +125,19 @@ export function useRecomendacoesDeProduto(
     // 2. Fetch fresh data in background
     let isMounted = true;
     const loadRecs = async () => {
-      const recs = await buscarRef.current(productId);
+      let recs: Product[];
+      try {
+        recs = await buscarRef.current(productId);
+      } catch (err) {
+        if (!isMounted) return;
+        // Falha da busca NÃO é "sem recomendações": mantém o que já está na
+        // tela e a cópia guardada (memória + aparelho). Sem cópia, a lista
+        // segue vazia e a seção some como sempre.
+        console.error("Failed to load recommendations", err);
+        setCarregando(false);
+        setConsultado(true);
+        return;
+      }
       if (!isMounted) return;
       setRecomendacoes(recs);
       // Resposta com a leitura das variações falha é a do momento, não vale

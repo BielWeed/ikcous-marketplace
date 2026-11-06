@@ -348,6 +348,9 @@ export interface FichaDaDevolucao {
   reprovar: (motivo: string) => Promise<boolean>;
 }
 
+/** Renova as fotos antes dos 10 min (600 s) da assinatura vencerem. */
+const RENOVAR_FOTOS_MS = 8 * 60 * 1000;
+
 async function assinarFotos(
   caminhos: readonly string[],
 ): Promise<Map<string, string | null>> {
@@ -430,6 +433,54 @@ export function useDevolucaoAdmin(
       rodadaRef.current += 1;
     };
   }, [id, carregar]);
+
+  // O endereço assinado vale 10 min (600 s, política da casa): com a ficha
+  // aberta por mais tempo, o link e a miniatura da foto da cliente morreriam.
+  // Renova SÓ as fotos (sem reler a ficha) a cada 8 min e quando a aba
+  // volta ao primeiro plano (o navegador congela o intervalo em aba escondida).
+  // Depende do array de caminhos: cada `carregar()` troca o array, o que
+  // reinicia o relógio junto com a assinatura recém-feita.
+  const caminhosDasFotos = detalhe?.fotos ?? null;
+  useEffect(() => {
+    if (!caminhosDasFotos || caminhosDasFotos.length === 0) return;
+    let ativo = true;
+    let renovando = false;
+    const renovar = async () => {
+      if (renovando) return;
+      renovando = true;
+      const rodada = rodadaRef.current;
+      // Vale enquanto a ficha for a mesma e nenhuma releitura tiver começado.
+      const valeAinda = () => ativo && rodada === rodadaRef.current;
+      try {
+        const novas = await assinarFotos(caminhosDasFotos);
+        if (!valeAinda()) return;
+        // Falha na renovação não apaga o que já está na tela: mantém o
+        // endereço antigo daquele caminho e tenta de novo na próxima.
+        setFotos((atuais) => {
+          const mescladas = new Map<string, string | null>();
+          for (const caminho of caminhosDasFotos) {
+            mescladas.set(
+              caminho,
+              novas.get(caminho) ?? atuais.get(caminho) ?? null,
+            );
+          }
+          return mescladas;
+        });
+      } finally {
+        renovando = false;
+      }
+    };
+    const aoMudarAba = () => {
+      if (document.visibilityState === "visible") void renovar();
+    };
+    const intervalo = setInterval(() => void renovar(), RENOVAR_FOTOS_MS);
+    document.addEventListener("visibilitychange", aoMudarAba);
+    return () => {
+      ativo = false;
+      clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", aoMudarAba);
+    };
+  }, [caminhosDasFotos]);
 
   /** Envelope comum: trava, RPC, aviso, releitura. */
   const executar = useCallback(

@@ -37,6 +37,7 @@ import {
   TAMANHO_MAXIMO_DA_FOTO,
   TIPOS_DE_FOTO,
   devolveFreteDeIda,
+  enderecoParaDevolver,
   erroDaResolucao,
   erroDoMotivo,
   erroDosItens,
@@ -413,8 +414,7 @@ function FluxoDaDevolucao({
   const permitidas = resolucoesPermitidas(motivo, janelas, politica);
   const exigeFotos = fotosObrigatorias(motivo, politica);
   const valor = valorDaSelecao(itens, selecao);
-  const enderecoParaEntregar =
-    politica.endereco_devolucao?.trim() || enderecoDaLoja?.trim() || null;
+  const enderecoParaEntregar = enderecoParaDevolver(politica, enderecoDaLoja);
 
   // Motivo novo pode tirar do ar a resolução já escolhida (ex.: troca de
   // política não aceita reembolso) — a escolha velha não pode sobreviver.
@@ -433,6 +433,7 @@ function FluxoDaDevolucao({
         detalhe,
         quantidadeDeFotos: fotos.length,
         janelas,
+        prazos,
         politica,
       });
     }
@@ -695,7 +696,9 @@ function FluxoDaDevolucao({
                       desabilitado={!disponivel}
                       titulo={rotuloMotivo(m)}
                       explicacao={
-                        disponivel ? undefined : porqueMotivoIndisponivel(m)
+                        disponivel
+                          ? undefined
+                          : porqueMotivoIndisponivel(m, prazos)
                       }
                       onEscolher={() => {
                         setMotivo(m);

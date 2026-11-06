@@ -11,6 +11,7 @@ import {
   caminhoDaFoto,
   contagemDe,
   devolveFreteDeIda,
+  enderecoParaDevolver,
   erroDoMotivo,
   erroDosItens,
   etapasDaDevolucao,
@@ -29,6 +30,7 @@ import {
   mensagemDoErro,
   mensagemDoErroDaEdge,
   podeLiberarVinculoReverso,
+  porqueMotivoIndisponivel,
   resolucoesDaConclusao,
   resolucoesPermitidas,
   rotuloMetodo,
@@ -561,6 +563,11 @@ describe("regras do pedido do cliente", () => {
   const todas = { arrependimento: true, troca: true, vicio: true };
   const soTrocaEVicio = { arrependimento: false, troca: true, vicio: true };
   const soVicio = { arrependimento: false, troca: false, vicio: true };
+  const PRAZOS_ABERTOS = {
+    arrependimento_ate: "2026-10-01",
+    troca_ate: "2026-10-24",
+    vicio_ate: "2026-12-23",
+  };
 
   it("tipo previsto segue o servidor: problema → vício; senão arrependimento, depois troca", () => {
     expect(tipoPrevisto("defeito", todas)).toBe("vicio");
@@ -594,6 +601,79 @@ describe("regras do pedido do cliente", () => {
     expect(resolucoesPermitidas(null, todas, POLITICA)).toEqual([]);
   });
 
+  describe("motivo indisponível diz a verdade", () => {
+    const FRASE_TROCA_OU_ARREPENDIMENTO =
+      "O prazo para troca ou arrependimento terminou.";
+    const FRASE_DESISTIR = "O prazo para desistir da compra terminou.";
+    const FRASE_SEM_TROCA = "A loja não faz troca por tamanho ou gosto.";
+    const FRASE_VICIO =
+      "O prazo para reclamar de problema no produto terminou.";
+    const online = {
+      arrependimento_ate: "2026-10-01",
+      troca_ate: null,
+      vicio_ate: "2026-12-23",
+    };
+    const balcao = {
+      arrependimento_ate: null,
+      troca_ate: null,
+      vicio_ate: "2026-12-23",
+    };
+
+    it("existe prazo de troca e ele passou: 'troca ou arrependimento terminou'", () => {
+      expect(porqueMotivoIndisponivel("nao_gostei", PRAZOS_ABERTOS)).toBe(
+        FRASE_TROCA_OU_ARREPENDIMENTO,
+      );
+    });
+
+    it("online com troca desligada e arrependimento vencido: fala em desistir, não em 'a loja não faz troca'", () => {
+      const frase = porqueMotivoIndisponivel("tamanho_grande", online);
+      expect(frase).toBe(FRASE_DESISTIR);
+      expect(frase).not.toBe(FRASE_SEM_TROCA);
+    });
+
+    it("balcão (sem arrependimento nem troca): a loja não faz troca por gosto", () => {
+      expect(porqueMotivoIndisponivel("tamanho_grande", balcao)).toBe(
+        FRASE_SEM_TROCA,
+      );
+    });
+
+    it("problema no produto segue com a frase do vício, em qualquer canal", () => {
+      expect(porqueMotivoIndisponivel("defeito", balcao)).toBe(FRASE_VICIO);
+      expect(porqueMotivoIndisponivel("defeito", online)).toBe(FRASE_VICIO);
+    });
+
+    it("erroDoMotivo sem janela devolve a mesma frase de cada ramo", () => {
+      const base = {
+        detalhe: "",
+        quantidadeDeFotos: 0,
+        janelas: soVicio,
+        politica: POLITICA,
+        motivo: "nao_gostei" as const,
+      };
+      expect(erroDoMotivo({ ...base, prazos: PRAZOS_ABERTOS })).toBe(
+        FRASE_TROCA_OU_ARREPENDIMENTO,
+      );
+      expect(erroDoMotivo({ ...base, prazos: online })).toBe(FRASE_DESISTIR);
+      expect(erroDoMotivo({ ...base, prazos: balcao })).toBe(FRASE_SEM_TROCA);
+    });
+  });
+
+  it("endereço para devolver: o da política; vazio, o da loja; nenhum, null", () => {
+    expect(
+      enderecoParaDevolver({ endereco_devolucao: " Rua Nova, 99 " }, "Loja"),
+    ).toBe("Rua Nova, 99");
+    expect(
+      enderecoParaDevolver({ endereco_devolucao: "  " }, " Rua A, 10 "),
+    ).toBe("Rua A, 10");
+    expect(
+      enderecoParaDevolver({ endereco_devolucao: null }, "Rua A, 10"),
+    ).toBe("Rua A, 10");
+    expect(enderecoParaDevolver({ endereco_devolucao: null }, null)).toBeNull();
+    expect(
+      enderecoParaDevolver({ endereco_devolucao: null }, undefined),
+    ).toBeNull();
+  });
+
   it("fotos obrigatórias só em problema e quando a política exige", () => {
     expect(fotosObrigatorias("defeito", { exige_fotos_vicio: true })).toBe(
       true,
@@ -610,6 +690,7 @@ describe("regras do pedido do cliente", () => {
         detalhe: "",
         quantidadeDeFotos: 0,
         janelas: todas,
+        prazos: PRAZOS_ABERTOS,
         politica: POLITICA,
       }),
     ).toBe("Envie ao menos uma foto do problema no produto.");
@@ -619,6 +700,7 @@ describe("regras do pedido do cliente", () => {
         detalhe: "",
         quantidadeDeFotos: 1,
         janelas: todas,
+        prazos: PRAZOS_ABERTOS,
         politica: POLITICA,
       }),
     ).toBeNull();
@@ -628,6 +710,7 @@ describe("regras do pedido do cliente", () => {
         detalhe: "  ",
         quantidadeDeFotos: 0,
         janelas: todas,
+        prazos: PRAZOS_ABERTOS,
         politica: POLITICA,
       }),
     ).toBe("Conte em poucas palavras o motivo da devolução.");
