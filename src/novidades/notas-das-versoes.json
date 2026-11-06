@@ -1,4 +1,26 @@
 {
+  "1.5.143": {
+    "titulo": "Fotos que não mentem, avisos que acompanham você e cadastro e checkout que apontam o campo",
+    "novidades": [],
+    "correcoes": [
+      "Painel, Devoluções: se a devolução falhar, a mensagem vem em português e manda conferir se ela já aparece na tela antes de tentar de novo, para não repetir um reembolso.",
+      "Painel, Produtos: a lista sem internet não mostra mais produtos de outra página, duplicar numa página adiante leva à página 1, o lucro negativo sai como −R$ 300,00 e nenhum percentual aparece como −0%.",
+      "Painel: a bolinha de avisos acompanha pedidos e perguntas novos em qualquer aba aberta e se atualiza quando a internet volta.",
+      "Loja: comprar rápido com a última unidade já no carrinho segue direto ao pagamento sem aviso de estoque; avaliações aparecem de 10 em 10, e nota a partir de 4,5 pinta 5 estrelas.",
+      "Loja: título e descrição com palavras muito longas quebram a linha em vez de ficarem cortados.",
+      "Painel, Frete e Banners: valores a partir de mil reais saem com ponto (R$ 1.500) e o desconto que arredonda para 0% não vira selo “0% OFF”.",
+      "Pagamento sem conta: Cidade e UF vazias avisam o que falta e levam ao campo, e o CEP lembrado da última compra busca o endereço sozinho.",
+      "Cadastro, Conta e Rastreio: WhatsApp e senha com problema ficam marcados e recebem o foco, e a busca de pedido ganhou rótulos visíveis nos três campos.",
+      "Painel, Buscas e Avisos: busca sem resultado explica o que limitou e como sair, e abrir Perguntas ou Avaliações pelo aviso mostra a lista completa, sem filtro antigo; a busca da loja cabe na tela com o teclado aberto.",
+      "Painel, Produtos e Banners: foto que o aparelho não abre não mostra mais o aviso verde de sucesso, e recortar ou excluir uma foto acerta a foto das variações que a usavam.",
+      "Painel, Banners: o envio da imagem tem prazo e, sem internet, dá para escolher a mesma foto de novo.",
+      "Painel, Categorias e Trocas: recriar uma categoria escondida diz como reativá-la, e salvar a política de trocas não desfaz em silêncio as categorias de outro aparelho.",
+      "Painel, Balcão: anular uma venda protege o motivo digitado, e o recibo impresso sai completo mesmo com a tela rolada.",
+      "Avisos: depois de limpar o app, o aparelho que já aceitou receber avisos volta a recebê-los sozinho, e enviar para todos os clientes pede confirmação antes.",
+      "Painel: o botão Voltar do sino leva de volta às Notificações, o Desfazer aparece também no celular, e as janelas de foto e de prévia do celular fecham com Esc."
+    ],
+    "melhorias": []
+  },
   "1.5.142": {
     "titulo": "Fotos que não mentem, avisos que religam sozinhos e recibo que imprime inteiro",
     "novidades": [],
