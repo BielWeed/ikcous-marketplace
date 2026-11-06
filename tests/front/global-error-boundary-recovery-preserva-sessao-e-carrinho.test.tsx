@@ -25,6 +25,16 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GlobalErrorBoundary } from "@/components/ui/custom/GlobalErrorBoundary";
+import {
+  chaveDoPedidoPendenteDoCheckout,
+  guardarPedidoPendenteDoCheckout,
+  lerPedidoPendenteDoCheckout,
+} from "@/lib/pedido-pendente-do-checkout";
+import {
+  lerRascunhoDoCheckout,
+  rascunhoVazio,
+  salvarRascunhoDoCheckout,
+} from "@/lib/rascunho-do-checkout";
 
 function Bomba(): never {
   throw new Error("boom — estado inválido de teste");
@@ -183,7 +193,48 @@ describe("GlobalErrorBoundary — recovery não apaga sessão nem carrinho", () 
     expect(reloadEspiao).toHaveBeenCalled();
   });
 
-  it("sessionStorage continua sendo limpo por inteiro (não guarda sessão nem carrinho)", async () => {
+  it("sessionStorage é limpo, MENOS o PIX pendente e o rascunho do checkout", async () => {
+    const pedidoId = "5f0d6c1e-8a3b-4c52-9e7a-2b1d3f4a5c6d";
+    const chaveDoPix = chaveDoPedidoPendenteDoCheckout("conta-1");
+    guardarPedidoPendenteDoCheckout("conta-1", pedidoId);
+    salvarRascunhoDoCheckout(sessionStorage, {
+      ...rascunhoVazio(),
+      nome: "Maria",
+      whatsapp: "11999990000",
+    });
+    // Lixo (e qualquer coisa parecida com sessão/token) que a purga TEM que
+    // remover: só as duas chaves nomeadas ficam.
+    sessionStorage.setItem("qualquer_coisa", "1");
+    sessionStorage.setItem("sb-projeto-auth-token", "token-de-sessao");
+    sessionStorage.setItem("splash_shown", "true");
+
+    await act(async () => {
+      raiz.render(
+        <GlobalErrorBoundary>
+          <Bomba />
+        </GlobalErrorBoundary>,
+      );
+    });
+
+    clicarRecovery();
+
+    // Sobrevive: o pedido que estava sendo pago e o formulário digitado.
+    expect(sessionStorage.getItem(chaveDoPix)).toBe(pedidoId);
+    expect(lerPedidoPendenteDoCheckout("conta-1")).toBe(pedidoId);
+    expect(lerRascunhoDoCheckout(sessionStorage)?.nome).toBe("Maria");
+    expect(lerRascunhoDoCheckout(sessionStorage)?.whatsapp).toBe("11999990000");
+
+    // Não sobrevive: o resto, inclusive o que parece token.
+    expect(sessionStorage.getItem("qualquer_coisa")).toBeNull();
+    expect(sessionStorage.getItem("sb-projeto-auth-token")).toBeNull();
+    expect(sessionStorage.getItem("splash_shown")).toBeNull();
+    expect(Object.keys(sessionStorage).sort()).toEqual(
+      [chaveDoPix, "ikcous-rascunho-do-checkout-v1"].sort(),
+    );
+    expect(reloadEspiao).toHaveBeenCalled();
+  });
+
+  it("sessionStorage sem nenhuma das duas chaves fica vazio e o app recarrega", async () => {
     sessionStorage.setItem("qualquer_coisa", "1");
 
     await act(async () => {
@@ -196,6 +247,41 @@ describe("GlobalErrorBoundary — recovery não apaga sessão nem carrinho", () 
 
     clicarRecovery();
 
-    expect(sessionStorage.getItem("qualquer_coisa")).toBeNull();
+    expect(Object.keys(sessionStorage)).toEqual([]);
+    expect(reloadEspiao).toHaveBeenCalled();
+  });
+
+  it("storage que falha ao listar as chaves não impede o recarregamento", async () => {
+    await act(async () => {
+      raiz.render(
+        <GlobalErrorBoundary>
+          <Bomba />
+        </GlobalErrorBoundary>,
+      );
+    });
+    vi.stubGlobal("sessionStorage", {
+      get length(): number {
+        throw new DOMException("bloqueado", "SecurityError");
+      },
+      getItem: () => {
+        throw new DOMException("bloqueado", "SecurityError");
+      },
+      removeItem: () => {
+        throw new DOMException("bloqueado", "SecurityError");
+      },
+      setItem: () => {
+        throw new DOMException("bloqueado", "SecurityError");
+      },
+      key: () => {
+        throw new DOMException("bloqueado", "SecurityError");
+      },
+      clear: () => {
+        throw new DOMException("bloqueado", "SecurityError");
+      },
+    });
+
+    clicarRecovery();
+
+    expect(reloadEspiao).toHaveBeenCalled();
   });
 });

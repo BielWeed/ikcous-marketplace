@@ -5,6 +5,10 @@
 // "essa data já passou" com "Voltar e ajustar" / "Salvar mesmo assim". Quem não
 // mexeu na data de um cupom que já estava vencido não é perguntada de novo.
 import type { Coupon } from "@/types";
+import {
+  dataEscolhidaParaValidade,
+  validadeParaDataDoInput,
+} from "@/utils/validade-do-cupom";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -117,14 +121,19 @@ describe("AdminCouponFormView — validade que já passou pede confirmação", (
   it("'Salvar mesmo assim' salva uma vez, com a data escolhida", async () => {
     mockCoupons = [cupomBase()];
     await abrirTela("c1");
-    await escolherData(dataDeDiasAtras(10));
+    const escolhida = dataDeDiasAtras(10);
+    await escolherData(escolhida);
     await salvar();
     await act(async () => {
       botaoPorTexto("Salvar mesmo assim")?.click();
     });
 
     expect(updateCoupon).toHaveBeenCalledTimes(1);
-    expect(updateCoupon.mock.calls[0][1].validUntil).toBeTruthy();
+    const { validUntil } = updateCoupon.mock.calls[0][1];
+    // Não basta existir uma data: tem de ser exatamente a que ela escolheu,
+    // até o fim daquele dia, e a ida e volta devolve o mesmo dia no campo.
+    expect(validUntil).toBe(dataEscolhidaParaValidade(escolhida));
+    expect(validadeParaDataDoInput(validUntil)).toBe(escolhida);
   });
 
   it("a confirmação vale só para aquele salvar: o seguinte pergunta de novo", async () => {
@@ -145,13 +154,17 @@ describe("AdminCouponFormView — validade que já passou pede confirmação", (
   it("data no futuro salva direto, sem perguntar", async () => {
     mockCoupons = [cupomBase()];
     await abrirTela("c1");
-    await escolherData(
-      new Date(Date.now() + 30 * UM_DIA_MS).toISOString().slice(0, 10),
-    );
+    const escolhida = new Date(Date.now() + 30 * UM_DIA_MS)
+      .toISOString()
+      .slice(0, 10);
+    await escolherData(escolhida);
     await salvar();
 
     expect(document.body.textContent).not.toContain("Essa data já passou");
     expect(updateCoupon).toHaveBeenCalledTimes(1);
+    expect(updateCoupon.mock.calls[0][1].validUntil).toBe(
+      dataEscolhidaParaValidade(escolhida),
+    );
   });
 
   it("cupom que já estava vencido e a data não foi mexida salva sem perguntar", async () => {

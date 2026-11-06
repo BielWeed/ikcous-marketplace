@@ -44,6 +44,33 @@ export const LOCALSTORAGE_PURGE_WHITELIST: readonly string[] = [
   // segundo pedido. Literal de proposito (este arquivo e so string in,
   // boolean out); o teste amarra o literal ao prefixo exportado pelo modulo.
   "ikcous-chave-do-pedido:",
+  // CPF digitado no cadastro, esperando a confirmação do e-mail
+  // (src/lib/cpf-pendente-do-cadastro.ts, validade de 24 h). A chave usa
+  // DOIS-PONTOS ("ikcous:cpf-..."), entao o "ikcous_" acima nao a cobre; sem
+  // esta linha a purga de versao e o botao "Recarregar o app" a apagavam e a
+  // pessoa tinha de redigitar o CPF depois de confirmar o e-mail. Literal
+  // EXATO de proposito (outras chaves "ikcous:" nao ficam); o teste amarra o
+  // literal a CHAVE_CPF_PENDENTE do modulo.
+  "ikcous:cpf-pendente-cadastro",
+];
+
+// Lista branca do `sessionStorage` para a purga do botão "Recarregar o app"
+// (GlobalErrorBoundary.handleReset). Antes dela o botão fazia
+// `sessionStorage.clear()` e apagava o que a pessoa ainda estava fazendo:
+//
+//  - o PIX pendente (src/lib/pedido-pendente-do-checkout.ts): só o ID do
+//    pedido, validado como uuid na leitura; o resto volta do servidor. Chave
+//    por conta: "ikcous:checkout-pedido-pendente:<id da conta>".
+//  - o rascunho do checkout (src/lib/rascunho-do-checkout.ts): formulário e
+//    cupom digitados. Sem CPF (o módulo proíbe) e saneado na leitura.
+//
+// SÓ estas duas. Nada de sessão/token do Supabase (mora no localStorage, sob
+// `sb-`, e a purga do localStorage já cuida dele). Os literais espelham os dos
+// módulos (que não exportam as constantes); o teste amarra cada um gravando
+// pelo módulo de verdade.
+export const SESSIONSTORAGE_PURGE_WHITELIST: readonly string[] = [
+  "ikcous:checkout-pedido-pendente:",
+  "ikcous-rascunho-do-checkout-v1",
 ];
 
 // Compartilha também o CRITÉRIO, não só a lista: os dois chamadores testam
@@ -54,4 +81,11 @@ export const LOCALSTORAGE_PURGE_WHITELIST: readonly string[] = [
 // `useUpdateCheck.ts` importa — só string in, boolean out.
 export function chaveSobreviveAPurga(key: string): boolean {
   return LOCALSTORAGE_PURGE_WHITELIST.some((prefix) => key.startsWith(prefix));
+}
+
+/** Mesmo critério (`startsWith`) para o `sessionStorage`. */
+export function chaveDeSessaoSobreviveAPurga(key: string): boolean {
+  return SESSIONSTORAGE_PURGE_WHITELIST.some((prefix) =>
+    key.startsWith(prefix),
+  );
 }

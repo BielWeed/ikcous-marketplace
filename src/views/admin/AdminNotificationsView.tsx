@@ -103,6 +103,19 @@ const NOME_DA_FONTE = new Map(
   Object.entries(APARENCIA).map(([tipo, { fonte }]) => [tipo, fonte]),
 );
 
+// Texto de quando a lista veio cortada (mais itens que o teto da leitura). Sem
+// "atualizar": repetir a leitura nao traz o que ficou de fora.
+const TEXTO_DE_LISTA_CORTADA = new Map<TipoDeAviso, string>([
+  [
+    "estoque",
+    "Há mais produtos acabando do que cabem nesta tela. Para ver o resto, abra o cartão de estoque baixo no Início.",
+  ],
+  [
+    "avaliacao",
+    "Há mais avaliações sem resposta do que cabem nesta tela: aqui estão as mais novas. Veja o resto em Avaliações.",
+  ],
+]);
+
 function formatarQuando(quando: string): string {
   if (!quando) return "";
   const data = new Date(quando);
@@ -447,8 +460,13 @@ function Bloco({
 export const AdminNotificationsView = memo(function AdminNotificationsView({
   onNavigate,
 }: AdminNotificationsViewProps) {
-  const { avisos, carregando, fontesComFalha, recarregar } =
-    useAvisosDoLojista();
+  const {
+    avisos,
+    carregando,
+    fontesComFalha,
+    listasCortadas = [],
+    recarregar,
+  } = useAvisosDoLojista();
   const { novidades, naoLidas } = useNovidadesDoAparelho();
   const novidadesId = useId();
 
@@ -561,6 +579,27 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
             </button>
           </div>
         )}
+
+        {/*
+          Lista CORTADA nao e falha: a consulta respondeu, so tinha mais do que
+          cabe aqui. Atualizar traria as mesmas, entao nao ha botao — o texto
+          diz onde ver o resto.
+        */}
+        {listasCortadas.map((tipo) => (
+          <div
+            key={tipo}
+            data-lista-cortada={tipo}
+            className="flex items-start gap-3 rounded-[18px] border border-border p-4"
+          >
+            <TriangleAlert
+              aria-hidden="true"
+              className="mt-0.5 size-5 shrink-0 text-amber-400"
+            />
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {TEXTO_DE_LISTA_CORTADA.get(tipo)}
+            </p>
+          </div>
+        ))}
 
         <Bloco
           nome="precisa-de-voce"
