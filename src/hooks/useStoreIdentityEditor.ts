@@ -490,16 +490,28 @@ export function useStoreIdentityEditor(active = true) {
         message:
           "Imagem conferida no rascunho. Salve a identidade para usar esta escolha.",
       });
-    } catch {
+    } catch (error) {
       if (!op.isCurrent()) return;
       const isOg = target.kind === "asset" && target.roles.includes("og");
+      // O módulo do envio é carregado sob demanda: a classe não entra no bundle
+      // principal, então o erro dele se reconhece pelo nome e pelo código.
+      const code =
+        error instanceof Error && error.name === "IdentityImageUploadError"
+          ? (error as Error & { code?: unknown }).code
+          : undefined;
       finish({
         ...before,
         phase: "editing",
         message:
-          isOg && file.type !== "image/png"
-            ? "A arte de compartilhamento precisa ser PNG, 1200 x 630."
-            : "Não foi possível conferir esta imagem. Confira o formato e as dimensões e tente novamente.",
+          code === "IDENTITY_UPLOAD_SESSION"
+            ? "Sua sessão expirou. Entre de novo e tente enviar."
+            : code === "IDENTITY_UPLOAD_NETWORK" ||
+                code === "IDENTITY_UPLOAD_TIMEOUT" ||
+                code === "IDENTITY_UPLOAD_UNCONFIRMED"
+              ? "Não conseguimos enviar a imagem. Confira sua internet e tente de novo; o arquivo não tem problema."
+              : isOg && file.type !== "image/png"
+                ? "A arte de compartilhamento precisa ser PNG, 1200 x 630."
+                : "Não foi possível conferir esta imagem. Confira o formato e as dimensões e tente novamente.",
       });
     }
   }
