@@ -953,8 +953,11 @@ export function useProducts({ autoFetch = true } = {}) {
         // guarda, o pErr ia para o throw e a view dizia "verifique a
         // conexao" para um produto que simplesmente nao esta mais la.
         // O padrao certo ja existia em UserProfileView.tsx:131.
+        // 22P02 = o id do link nem e um uuid (link truncado): tambem nao existe.
         if (pErr) {
-          if ((pErr as any).code === "PGRST116") return null;
+          const codigoDoErro = (pErr as any).code;
+          if (codigoDoErro === "PGRST116" || codigoDoErro === "22P02")
+            return null;
           throw pErr;
         }
 

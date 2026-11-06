@@ -122,6 +122,21 @@ describe("UserProfileView — falha de rede não é 'usuário foi removido'", ()
     expect(texto).toContain("foi");
   });
 
+  it("link com id truncado (22P02, não é uuid): também 'não encontrado', sem retry de conexão", async () => {
+    resultadoDoPerfil = {
+      data: null,
+      error: {
+        code: "22P02",
+        message: 'invalid input syntax for type uuid: "user-al"',
+      },
+    };
+    const texto = await renderizar();
+
+    expect(texto).toContain("Usuário não encontrado");
+    expect(texto).not.toContain("Não conseguimos carregar este perfil");
+    expect(texto).not.toContain("Tentar de novo");
+  });
+
   it("FALHA no perfil (erro qualquer): 'Não conseguimos carregar' com retry, nunca 'removido'", async () => {
     resultadoDoPerfil = {
       data: null,
