@@ -62,6 +62,10 @@ let RESPOSTA_RECEBIMENTOS: unknown = { data: [], error: null };
 let RESPOSTA_POLITICA: unknown = { data: null, error: null };
 let POLITICA_LANCA = false;
 const CONSULTAS_DE_PEDIDOS: Array<Array<[string, ...unknown[]]>> = [];
+// Os filtros de cada consulta a `reviews`, na ordem (select incluso): a lista
+// de avaliacoes sem resposta tem de pedir ordem e teto, senao o servidor corta
+// sozinho em 1.000 e sem criterio.
+const CONSULTAS_DE_AVALIACOES: Array<Array<[string, ...unknown[]]>> = [];
 
 // `loadProducts` do useProducts engole o erro e devolve `null`. `null` aqui
 // NAO e "zero produtos", e "nao sei" — e o hook tem de tratar como falha.
@@ -87,11 +91,15 @@ function criarBuilder(tabela: string) {
   // `calls` guarda todos os filtros DESTA consulta, na ordem.
   const calls: Array<[string, ...unknown[]]> = [];
   if (tabela === "marketplace_orders") CONSULTAS_DE_PEDIDOS.push(calls);
+  if (tabela === "reviews") CONSULTAS_DE_AVALIACOES.push(calls);
   const ehRecebimento = () =>
     calls.some(
       (c) => c[0] === "eq" && c[1] === "status" && c[2] === "delivered",
     );
-  builder.select = vi.fn(() => builder);
+  builder.select = vi.fn((...argumentos: unknown[]) => {
+    if (tabela === "reviews") calls.push(["select", ...argumentos]);
+    return builder;
+  });
   builder.maybeSingle = vi.fn(() =>
     POLITICA_LANCA
       ? Promise.reject(new Error("rede caiu"))
@@ -193,6 +201,7 @@ interface LeituraDoHook {
   quantidadeNoCracha: number;
   carregando: boolean;
   fontesComFalha: string[];
+  listasCortadas: string[];
   recarregar: () => void;
 }
 
@@ -263,6 +272,7 @@ beforeEach(() => {
   tabelasConsultadas = [];
   FILTROS_DO_HISTORICO.length = 0;
   CONSULTAS_DE_PEDIDOS.length = 0;
+  CONSULTAS_DE_AVALIACOES.length = 0;
   RESPOSTA_RECEBIMENTOS = { data: [], error: null };
   RESPOSTA_POLITICA = { data: null, error: null };
   POLITICA_LANCA = false;
@@ -540,17 +550,182 @@ describe("useAvisosDoLojista", () => {
     expect(atual().avisos.map((a) => a.tipo)).toContain("estoque");
   });
 
-  it("mais produtos acabando do que o teto conta como falha da fonte de estoque", async () => {
-    // 250 produtos acabando e so 1 na resposta: a varredura NAO viu todos.
-    // Dizer "tudo em dia" seria mentira sobre os que ninguem olhou.
-    RESPOSTA_PRODUTOS = { products: [produtoDeExemplo()], total: 250 };
+  // Servidor de mentira que pagina como a RPC `get_admin_products_paged`:
+  // `total` produtos acabando, fatiados por (pagina, tamanho). Cada produto
+  // tem estoque 0 e id proprio.
+  function servidorComProdutosAcabando(total: number) {
+    const todos = Array.from({ length: total }, (_, i) =>
+      produtoDeExemplo({ id: `prod-${i}`, name: `Produto ${i}`, stock: 0 }),
+    );
+    loadProductsFalso.mockImplementation((pagina: number, tamanho: number) =>
+      Promise.resolve({
+        products: todos.slice(pagina * tamanho, (pagina + 1) * tamanho),
+        total,
+      }),
+    );
+  }
+
+  it("mais de 200 produtos acabando: le todas as paginas e nenhum fica de fora", async () => {
+    // Antes a tela lia so a pagina 0 (200) e, com 450 acabando, dizia "nao
+    // consegui conferir produtos" para sempre, sem que atualizar mudasse nada.
+    servidorComProdutosAcabando(450);
+
+    const { atual } = await montarSonda();
+
+    expect(loadProductsFalso.mock.calls.map((c) => c[0])).toEqual([0, 1, 2]);
+    expect(loadProductsFalso.mock.calls.every((c) => c[1] === 200)).toBe(true);
+    expect(atual().avisos.filter((a) => a.tipo === "estoque")).toHaveLength(
+      450,
+    );
+    expect(atual().fontesComFalha).toEqual([]);
+    expect(atual().listasCortadas).toEqual([]);
+  });
+
+  it("exatamente uma pagina cheia (200): nao pede pagina a mais", async () => {
+    servidorComProdutosAcabando(200);
+
+    const { atual } = await montarSonda();
+
+    expect(loadProductsFalso).toHaveBeenCalledTimes(1);
+    expect(atual().listasCortadas).toEqual([]);
+  });
+
+  it("acima do teto de seguranca (2.000): para ali e diz que a lista de estoque esta cortada, sem acusar falha", async () => {
+    // Falha seria mentira (a rede esta boa) e atualizar nao resolve: o aviso
+    // e de lista cortada, a tela manda o lojista para onde ver o resto.
+    servidorComProdutosAcabando(5000);
+
+    const { atual } = await montarSonda();
+
+    expect(loadProductsFalso).toHaveBeenCalledTimes(10);
+    expect(atual().avisos.filter((a) => a.tipo === "estoque")).toHaveLength(
+      2000,
+    );
+    expect(atual().listasCortadas).toEqual(["estoque"]);
+    expect(atual().fontesComFalha).toEqual([]);
+  });
+
+  it("uma pagina do meio que falha e falha da fonte de estoque, nao 'tudo em dia'", async () => {
+    // `loadProducts` devolve `null` quando a consulta cai: com a pagina 1
+    // ausente, o que ficou nao e a lista completa e a tela nao pode fingir.
+    loadProductsFalso.mockImplementation((pagina: number) =>
+      Promise.resolve(
+        pagina === 0
+          ? {
+              products: Array.from({ length: 200 }, (_, i) =>
+                produtoDeExemplo({ id: `prod-${i}`, stock: 0 }),
+              ),
+              total: 450,
+            }
+          : null,
+      ),
+    );
 
     const { atual } = await montarSonda();
 
     expect(atual().fontesComFalha).toEqual(["estoque"]);
-    // E o que ELA viu continua valendo: aviso incompleto e honesto e melhor
-    // que lista vazia.
-    expect(atual().avisos.map((a) => a.tipo)).toContain("estoque");
+    expect(atual().listasCortadas).toEqual([]);
+  });
+
+  it("pagina vazia antes de chegar ao total nao prende a tela num laco: vira falha de estoque", async () => {
+    loadProductsFalso.mockImplementation((pagina: number) =>
+      Promise.resolve({
+        products: pagina === 0 ? [produtoDeExemplo({ stock: 0 })] : [],
+        total: 450,
+      }),
+    );
+
+    const { atual } = await montarSonda();
+
+    expect(loadProductsFalso.mock.calls.length).toBeLessThanOrEqual(2);
+    expect(atual().fontesComFalha).toEqual(["estoque"]);
+  });
+
+  it("produto repetido na fronteira de duas paginas nao fecha a conta com um faltando: segue ate o teto e avisa lista cortada", async () => {
+    // Empate de data na fronteira: a pagina 1 repete o ultimo da pagina 0 e o
+    // servidor "pula" um. 201 no total, 200 unicos lidos de verdade.
+    loadProductsFalso.mockImplementation((pagina: number) =>
+      Promise.resolve({
+        products:
+          pagina === 0
+            ? Array.from({ length: 200 }, (_, i) =>
+                produtoDeExemplo({ id: `prod-${i}`, stock: 0 }),
+              )
+            : [produtoDeExemplo({ id: "prod-199", stock: 0 })],
+        total: 201,
+      }),
+    );
+
+    const { atual } = await montarSonda();
+
+    expect(atual().avisos.filter((a) => a.tipo === "estoque")).toHaveLength(
+      200,
+    );
+    expect(atual().listasCortadas).toEqual(["estoque"]);
+  });
+
+  it("estoque completo nao acende lista cortada", async () => {
+    const { atual } = await montarSonda();
+
+    expect(atual().listasCortadas).toEqual([]);
+  });
+
+  it("avaliacoes sem resposta: pede as mais novas primeiro, com teto de 100 e a contagem exata", async () => {
+    await montarSonda();
+
+    const consulta = CONSULTAS_DE_AVALIACOES[0];
+    expect(consulta).toContainEqual([
+      "select",
+      "id, product_id, rating, created_at",
+      { count: "exact" },
+    ]);
+    expect(consulta).toContainEqual(["is", "merchant_reply", null]);
+    expect(consulta).toContainEqual([
+      "order",
+      "created_at",
+      { ascending: false },
+    ]);
+    expect(consulta).toContainEqual(["limit", 100]);
+  });
+
+  it("mais de 100 avaliacoes sem resposta: mostra as 100 e avisa que a lista esta cortada", async () => {
+    // O sino conta TODAS (130); a lista traz as 100 mais novas. Sem o aviso o
+    // lojista via o sino dizer 130 e a tela listar 100, sem explicacao.
+    RESPOSTA_AVALIACOES = {
+      data: Array.from({ length: 100 }, (_, i) => ({
+        ...avaliacaoDeExemplo(),
+        id: `av-${i}`,
+        product_id: `prod-${i}`,
+      })),
+      count: 130,
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().avisos.filter((a) => a.tipo === "avaliacao")).toHaveLength(
+      100,
+    );
+    expect(atual().listasCortadas).toEqual(["avaliacao"]);
+    expect(atual().fontesComFalha).toEqual([]);
+    // Os 100 ids de produto cabem inteiros na consulta de nomes.
+    const consultaDeNomes = CHAMADAS_DE_IN.find(([coluna]) => coluna === "id");
+    expect(consultaDeNomes?.[1]).toHaveLength(100);
+  });
+
+  it("avaliacoes: contagem igual ao que veio, ou ausente, nao e lista cortada", async () => {
+    RESPOSTA_AVALIACOES = {
+      data: [avaliacaoDeExemplo()],
+      count: 1,
+      error: null,
+    };
+    const primeira = await montarSonda();
+    expect(primeira.atual().listasCortadas).toEqual([]);
+
+    // Sem `count` na resposta nao ha como afirmar corte: nao se inventa aviso.
+    RESPOSTA_AVALIACOES = { data: [avaliacaoDeExemplo()], error: null };
+    const segunda = await montarSonda();
+    expect(segunda.atual().listasCortadas).toEqual([]);
   });
 
   it("o nome do produto avaliado vem do id da avaliacao, mesmo fora da lista de estoque", async () => {

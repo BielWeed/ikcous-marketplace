@@ -28,18 +28,27 @@ import {
 } from "@/utils/avisos-do-lojista";
 
 /**
- * Quantos produtos COM ESTOQUE BAIXO a tela le. Quem filtra e o servidor
- * (`stock: "low"`, a mesma conta de `precisaDeReposicao`), entao o tamanho do
- * catalogo nao entra: so a quantidade de produtos acabando. Nao ha paginacao
- * aqui de proposito: a tela e "o que falta fazer", nao um relatorio.
- *
- * O que o teto NAO pode fazer e virar piso silencioso: com mais produtos
- * acabando que isto, o seguinte nunca seria olhado e a tela diria "tudo em
- * dia" sem ter visto. Por isso a leitura devolve `truncou`, e truncar conta
- * como FALHA da fonte de estoque — "nao consegui conferir produtos" e
- * verdade; "tudo em dia" seria mentira.
+ * Quantos produtos COM ESTOQUE BAIXO a tela le por pagina. Quem filtra e o
+ * servidor (`stock: "low"`, a mesma conta de `precisaDeReposicao`), entao o
+ * tamanho do catalogo nao entra: so a quantidade de produtos acabando.
  */
-const TETO_DE_PRODUTOS = 200;
+const TAMANHO_DA_PAGINA_DE_PRODUTOS = 200;
+
+/**
+ * Ate quantos produtos acabando a tela junta, lendo pagina por pagina. Loja
+ * com mais de 200 acabando nao pode ficar para sempre num "nao consegui
+ * conferir" que atualizar nao resolve (10 consultas no maximo). Passando
+ * disto a leitura devolve `truncou`, e a tela diz que a lista esta cortada e
+ * manda ver o resto no Inicio — nunca "tudo em dia" sem ter visto.
+ */
+const TETO_DE_SEGURANCA_DE_PRODUTOS = 2000;
+
+/**
+ * Quantas avaliacoes sem resposta a lista mostra (as MAIS NOVAS). Sem
+ * `.limit`/`.order` o servidor corta sozinho em 1.000, sem criterio. O sino
+ * conta todas; a diferenca vira o aviso de lista cortada.
+ */
+const TETO_DE_AVALIACOES = 100;
 
 export interface AvisosDoLojista {
   avisos: Aviso[];
@@ -53,6 +62,12 @@ export interface AvisosDoLojista {
   carregando: boolean;
   /** As fontes que nao responderam nesta rodada. A tela diz isso em voz alta. */
   fontesComFalha: TipoDeAviso[];
+  /**
+   * As listas que responderam, mas vieram CORTADAS (mais itens que o teto).
+   * Nao e falha: atualizar nao resolve, entao a tela explica onde ver o resto
+   * em vez de oferecer o botao de tentar de novo.
+   */
+  listasCortadas: TipoDeAviso[];
   recarregar: () => void;
 }
 
@@ -135,11 +150,19 @@ async function buscarPedidosDePrivacidadeAbertos(): Promise<number> {
 // barram com `if (!replyText.trim()) return` (AdminReviewsView) antes de
 // chamar a RPC. Alargar a consulta por um caso que o proprio app nao produz
 // custaria um `.or` e nenhuma verdade a mais.
-async function buscarAvaliacoesSemResposta(): Promise<AvaliacaoSemResposta[]> {
-  const { data, error } = await supabase
+interface LeituraDeAvaliacoes {
+  avaliacoes: AvaliacaoSemResposta[];
+  /** Havia mais sem resposta que o teto: esta lista traz so as mais novas. */
+  truncou: boolean;
+}
+
+async function buscarAvaliacoesSemResposta(): Promise<LeituraDeAvaliacoes> {
+  const { data, error, count } = await supabase
     .from("reviews")
-    .select("id, product_id, rating, created_at")
-    .is("merchant_reply", null);
+    .select("id, product_id, rating, created_at", { count: "exact" })
+    .is("merchant_reply", null)
+    .order("created_at", { ascending: false })
+    .limit(TETO_DE_AVALIACOES);
 
   if (error) throw error;
   const avaliacoes = (data ?? []) as unknown as AvaliacaoCrua[];
@@ -159,10 +182,14 @@ async function buscarAvaliacoesSemResposta(): Promise<AvaliacaoSemResposta[]> {
       nomes.set(p.id, p.nome);
     }
   }
-  return avaliacoes.map((a) => ({
-    ...a,
-    nomeDoProduto: nomes.get(a.product_id) ?? null,
-  }));
+  return {
+    avaliacoes: avaliacoes.map((a) => ({
+      ...a,
+      nomeDoProduto: nomes.get(a.product_id) ?? null,
+    })),
+    // Sem numero na resposta nao ha como afirmar corte: nao se inventa aviso.
+    truncou: typeof count === "number" && count > avaliacoes.length,
+  };
 }
 
 // 14/10/2026: o cliente cancelou um pedido que ja tinha pago, ou um pedido a
@@ -235,7 +262,7 @@ async function buscarRecebimentosPorMarcar(): Promise<RecebimentoPorMarcar[]> {
 
 interface LeituraDeProdutos {
   produtos: ProdutoComEstoque[];
-  /** O catalogo era maior que o teto: esta varredura NAO viu tudo. */
+  /** Havia mais produtos acabando que o teto de seguranca: NAO viu tudo. */
   truncou: boolean;
 }
 
@@ -246,21 +273,44 @@ async function buscarProdutosComEstoqueBaixo(
     filtros?: Record<string, unknown>,
   ) => Promise<{ products: Product[]; total: number } | null>,
 ): Promise<LeituraDeProdutos> {
-  const resultado = await carregar(0, TETO_DE_PRODUTOS, {
-    silent: true,
-    // So os ativos com estoque baixo: a conta e a do servidor, igual a
-    // `precisaDeReposicao`. O `.filter` abaixo e `montarAvisos` continuam
-    // conferindo (a copia de offline do `loadProducts` nao e filtrada).
-    stock: "low",
-    status: "active",
-  });
+  // Por id: o mesmo produto em duas paginas (cadastro mexido no meio da
+  // leitura, ou empate de data na fronteira) conta uma vez so, senao a conta
+  // fecha com um produto faltando e a tela nao avisa.
+  const unicos = new Map<string, Product>();
+  let total = 0;
+  const maximoDePaginas = Math.ceil(
+    TETO_DE_SEGURANCA_DE_PRODUTOS / TAMANHO_DA_PAGINA_DE_PRODUTOS,
+  );
 
-  // `loadProducts` engole o erro e devolve `null`. `null` NAO e "zero
-  // produtos", e "nao sei" — tratar como lista vazia esconderia a falha e a
-  // tela diria "nenhum produto acabando" sem ter olhado.
-  if (!resultado) throw new Error("nao consegui listar os produtos");
+  // Pagina por pagina (o `loadProducts` aborta a consulta anterior, entao
+  // nada de paralelo) ate cobrir o total do servidor ou bater o teto.
+  for (let pagina = 0; pagina < maximoDePaginas; pagina++) {
+    const resultado = await carregar(pagina, TAMANHO_DA_PAGINA_DE_PRODUTOS, {
+      silent: true,
+      // So os ativos com estoque baixo: a conta e a do servidor, igual a
+      // `precisaDeReposicao`. O `.filter` abaixo e `montarAvisos` continuam
+      // conferindo (a copia de offline do `loadProducts` nao e filtrada).
+      stock: "low",
+      status: "active",
+    });
 
-  const produtos = resultado.products
+    // `loadProducts` engole o erro e devolve `null`. `null` NAO e "zero
+    // produtos", e "nao sei" — tratar como lista vazia esconderia a falha e a
+    // tela diria "nenhum produto acabando" sem ter olhado. Vale para qualquer
+    // pagina: com uma do meio faltando a lista nao esta completa.
+    if (!resultado) throw new Error("nao consegui listar os produtos");
+
+    for (const produto of resultado.products) unicos.set(produto.id, produto);
+    total = resultado.total;
+    if (unicos.size >= total) break;
+    // Pagina vazia sem ter chegado ao total: o servidor se contradiz. Parar
+    // aqui como "falha" evita um laco e nao finge que a lista esta completa.
+    if (resultado.products.length === 0) {
+      throw new Error("paginas de produtos incompletas");
+    }
+  }
+
+  const produtos = [...unicos.values()]
     // Produto desativado nao esta a venda: avisar que ele "esta acabando"
     // e alarme falso sobre uma decisao que o lojista ja tomou.
     .filter((produto) => produto.isActive)
@@ -274,9 +324,9 @@ async function buscarProdutosComEstoqueBaixo(
       created_at: produto.createdAt,
     }));
 
-  // A comparacao e com a lista CRUA, nao com a filtrada: o `.filter` acima e
-  // decisao nossa, o teto e limite da consulta.
-  return { produtos, truncou: resultado.total > resultado.products.length };
+  // A comparacao e com os produtos LIDOS (unicos), nao com a lista filtrada: o
+  // `.filter` acima e decisao nossa, o teto e limite da leitura.
+  return { produtos, truncou: total > unicos.size };
 }
 
 /**
@@ -295,6 +345,7 @@ export function useAvisosDoLojista(): AvisosDoLojista {
 
   const [avisos, setAvisos] = useState<Aviso[]>([]);
   const [fontesComFalha, setFontesComFalha] = useState<TipoDeAviso[]>([]);
+  const [listasCortadas, setListasCortadas] = useState<TipoDeAviso[]>([]);
   const [carregando, setCarregando] = useState(true);
 
   const ativoRef = useRef(true);
@@ -362,18 +413,24 @@ export function useAvisosDoLojista(): AvisosDoLojista {
       rRecebimentos.status === "fulfilled" ? rRecebimentos.value : [];
     if (rRecebimentos.status === "rejected") falhas.push("recebimento");
 
+    const cortadas: TipoDeAviso[] = [];
+
     const avaliacoes =
-      rAvaliacoes.status === "fulfilled" ? rAvaliacoes.value : [];
+      rAvaliacoes.status === "fulfilled" ? rAvaliacoes.value.avaliacoes : [];
     if (rAvaliacoes.status === "rejected") falhas.push("avaliacao");
+    // Lista cortada nao e falha (a rede respondeu): e aviso a parte, sem o
+    // botao de atualizar, porque atualizar traria as mesmas.
+    if (rAvaliacoes.status === "fulfilled" && rAvaliacoes.value.truncou) {
+      cortadas.push("avaliacao");
+    }
 
     const leituraDeProdutos =
       rProdutos.status === "fulfilled" ? rProdutos.value : null;
     const produtos = leituraDeProdutos?.produtos ?? [];
-    // Truncar conta como falha: a lista de estoque que veio e verdadeira, mas
+    if (rProdutos.status === "rejected") falhas.push("estoque");
+    // Passou do teto de seguranca: a lista que veio e verdadeira, mas
     // incompleta, e a tela precisa dizer isso em vez de "tudo em dia".
-    if (rProdutos.status === "rejected" || leituraDeProdutos?.truncou) {
-      falhas.push("estoque");
-    }
+    if (leituraDeProdutos?.truncou) cortadas.push("estoque");
 
     setAvisos(
       montarAvisos({
@@ -388,6 +445,7 @@ export function useAvisosDoLojista(): AvisosDoLojista {
       }),
     );
     setFontesComFalha(falhas);
+    setListasCortadas(cortadas);
     setCarregando(false);
   }, [loadProducts]);
 
@@ -421,6 +479,7 @@ export function useAvisosDoLojista(): AvisosDoLojista {
     quantidadeNoCracha: avisos.filter((aviso) => aviso.contaNoCracha).length,
     carregando,
     fontesComFalha,
+    listasCortadas,
     recarregar,
   };
 }
