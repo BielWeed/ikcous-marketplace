@@ -23,6 +23,7 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { pluralizar } from "@/lib/pluralizar";
 import {
   aguardarComPrazo,
+  ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
@@ -49,6 +50,17 @@ const REPERGUNTA_AO_SERVIDOR_MS = 15_000;
 const PRAZO_DA_PAGINA_DO_CSV_MS = 20_000;
 const MENSAGEM_CSV_CONEXAO_LENTA =
   "A conexão está lenta. Tente exportar de novo.";
+// Rastreio sem conta: o prazo só encerra a ESPERA da tela. Rede "pendurada"
+// conecta e não responde, e "Gerando Código..." / "Verificando..." giravam para
+// sempre. O envio dá 20 s (SMTP da edge, o mesmo prazo do PIX); a conferência
+// do código, 15 s. As frases não afirmam o desfecho: o servidor pode ter
+// enviado o código, e a verificação pode ter gasto o código (uso único).
+const PRAZO_DO_ENVIO_DO_CODIGO_MS = 20_000;
+const PRAZO_DA_VERIFICACAO_DO_CODIGO_MS = 15_000;
+const MENSAGEM_ENVIO_DO_CODIGO_LENTO =
+  "A conexão está lenta e não sabemos se o código saiu. Confira seu e-mail e, se não chegar, toque em Enviar Código de novo.";
+const MENSAGEM_VERIFICACAO_DO_CODIGO_LENTA =
+  "A conexão está lenta e não conseguimos confirmar seu código. Toque em Verificar de novo; se ele aparecer como inválido, peça um novo.";
 
 const validateStatusUpdate = (
   order: Order | undefined,
@@ -1139,6 +1151,9 @@ export const mensagemAmigavelErroPedido = (error: unknown): string => {
  * novo à toa.
  */
 export const mensagemAmigavelErroOtp = (error: unknown): string => {
+  // Prazo da própria tela estourado (`aguardarComPrazo`): a resposta não veio,
+  // e o código pode já ter sido gasto no servidor.
+  if (ehConsultaSemResposta(error)) return MENSAGEM_VERIFICACAO_DO_CODIGO_LENTA;
   const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
   const codigo = typeof detalhes.code === "string" ? detalhes.code : "";
   const textoOriginal =
@@ -3912,7 +3927,13 @@ export function useOrders(
         if (error) throw error;
 
         clearAnalyticsCache();
-        if (!silent) toast.success("Status atualizado com sucesso");
+        if (!silent) {
+          toast.success(
+            status === "cancelled"
+              ? "Pedido cancelado."
+              : "Status atualizado com sucesso",
+          );
+        }
         // Achado A da revisão de 26/08/2026 (rodada 4, BLOQUEIA): os dois
         // baldes de mercadoria/estorno de AdminOrdersView.tsx dependem de
         // `pedidosCancelados` — a consulta PRÓPRIA acima, em
@@ -4619,9 +4640,12 @@ export function useOrders(
         .join("|");
 
       try {
-        const { data, error } = await supabase.functions.invoke(
-          "send-otp-email",
-          { body: { email, whatsapp, orderFragment } },
+        const { data, error } = await aguardarComPrazo(
+          supabase.functions.invoke("send-otp-email", {
+            body: { email, whatsapp, orderFragment },
+          }),
+          PRAZO_DO_ENVIO_DO_CODIGO_MS,
+          () => erroDeConsultaSemResposta(MENSAGEM_ENVIO_DO_CODIGO_LENTO),
         );
 
         // `invoke` transforma status >= 400 em `error`. A função devolve 502
@@ -4667,7 +4691,14 @@ export function useOrders(
         // Rede caiu, função fora do ar, corpo ilegível: nada disso é culpa de
         // quem está comprando, e nenhum deles pode virar `true`.
         console.error("Error generating OTP:", err);
-        toast.error(NAO_ENVIOU);
+        // Prazo estourado: o servidor pode ter gravado e enviado o código, e
+        // nenhuma marca de falha é guardada (não sabemos). A frase não afirma
+        // que nada saiu.
+        toast.error(
+          ehConsultaSemResposta(err)
+            ? MENSAGEM_ENVIO_DO_CODIGO_LENTO
+            : NAO_ENVIOU,
+        );
         return false;
       }
     },
@@ -4687,17 +4718,24 @@ export function useOrders(
         // do pedido que confere com o trio, então quem sabe só o e-mail não
         // consegue gastar as tentativas do código de outra pessoa (migration
         // 20261217000000). Sem o trio, a v1 de sempre.
-        const { data, error } = trio
-          ? await (supabase.rpc as any)("get_orders_by_otp_v2", {
-              p_email: email,
-              p_whatsapp: trio.whatsapp,
-              p_fragmento: trio.fragmento,
-              p_otp: otp,
-            })
-          : await (supabase.rpc as any)("get_orders_by_otp_v1", {
-              p_email: email,
-              p_otp: otp,
-            });
+        const { data, error } = await aguardarComPrazo(
+          // `rpc` devolve um "thenable", não uma Promise.
+          Promise.resolve(
+            trio
+              ? (supabase.rpc as any)("get_orders_by_otp_v2", {
+                  p_email: email,
+                  p_whatsapp: trio.whatsapp,
+                  p_fragmento: trio.fragmento,
+                  p_otp: otp,
+                })
+              : (supabase.rpc as any)("get_orders_by_otp_v1", {
+                  p_email: email,
+                  p_otp: otp,
+                }),
+          ),
+          PRAZO_DA_VERIFICACAO_DO_CODIGO_MS,
+          () => erroDeConsultaSemResposta(MENSAGEM_VERIFICACAO_DO_CODIGO_LENTA),
+        );
 
         if (error) throw error;
 
