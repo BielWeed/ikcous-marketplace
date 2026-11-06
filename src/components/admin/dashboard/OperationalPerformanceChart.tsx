@@ -89,6 +89,24 @@ function semVendaNosTrintaDiasAntes(stats: DashboardStats): boolean {
   return !temVenda(historico.slice(-60, -30));
 }
 
+/** Teto do percentual do cartão "Sobre o estoque de hoje": acima disso o
+ * número deixa de informar (a base é o estoque de hoje, que pode estar quase
+ * zerado) e vira ">999%" (curto de propósito: o cartão tem uma linha só). */
+const TETO_DO_PERCENTUAL_SOBRE_O_ESTOQUE = 999;
+
+/** Lucro sobre o custo do estoque de hoje, sem "-0%" (arredonda e soma 0, que
+ * troca o zero negativo pelo zero) e sem milhares de por cento. */
+function percentualSobreOEstoque(lucro: number, custoDoEstoque: number) {
+  const percentual = Math.round((lucro / custoDoEstoque) * 100) + 0; // +0 troca -0 por 0
+  if (percentual > TETO_DO_PERCENTUAL_SOBRE_O_ESTOQUE) {
+    return `>${TETO_DO_PERCENTUAL_SOBRE_O_ESTOQUE}%`;
+  }
+  if (percentual < -TETO_DO_PERCENTUAL_SOBRE_O_ESTOQUE) {
+    return `<-${TETO_DO_PERCENTUAL_SOBRE_O_ESTOQUE}%`;
+  }
+  return `${percentual}%`;
+}
+
 export const OperationalPerformanceChart = memo(
   function OperationalPerformanceChart({
     stats,
@@ -277,7 +295,7 @@ export const OperationalPerformanceChart = memo(
             </button>
           ))}
         </div>
-        <div className="grid h-11 shrink-0 grid-cols-3 divide-x divide-admin-border">
+        <div className="grid min-h-11 shrink-0 grid-cols-3 divide-x divide-admin-border">
           {loading || !stats ? (
             [0, 1, 2].map((i) => (
               <span key={i} className="premium-shimmer m-2 h-6 rounded" />
@@ -337,16 +355,14 @@ export const OperationalPerformanceChart = memo(
                 stats.inventory.totalCost > 0 && (
                   <div className="min-w-0 pl-2">
                     <p className="text-admin-text-soft text-[11px]">
-                      Recuperado
+                      Sobre o estoque de hoje
                     </p>
                     <p className="text-admin-text text-base font-extrabold tabular-nums">
-                      {(
-                        ((processedRoiData[processedRoiData.length - 1]
-                          ?.cumulativeProfit ?? 0) /
-                          stats.inventory.totalCost) *
-                        100
-                      ).toFixed(0)}
-                      %
+                      {percentualSobreOEstoque(
+                        processedRoiData[processedRoiData.length - 1]
+                          ?.cumulativeProfit ?? 0,
+                        stats.inventory.totalCost,
+                      )}
                     </p>
                   </div>
                 )}
