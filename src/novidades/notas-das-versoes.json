@@ -1,4 +1,18 @@
 {
+  "1.5.135": {
+    "titulo": "Painel e vitrine mais honestos quando a internet falha, e acertos na devolução e nos pedidos",
+    "novidades": [
+      "Painel, ficha do pedido: ao sair com uma anotação ou um código de rastreio digitados e ainda não salvos, o painel pergunta se você quer descartar."
+    ],
+    "correcoes": [
+      "Painel, Início, Ajustes e Minha loja: quando a leitura dos dados da loja ou dos produtos falha, o painel não diz mais que falta cadastrar; mostra um aviso com Tentar de novo e, nesse caso, trava o salvar para não gravar valores de fábrica por cima dos dados reais.",
+      "Devolução, cliente: o endereço para enviar a devolução é o atual da loja, e a recusa por prazo diz o motivo certo (troca desligada, prazo de desistência ou prazo de troca encerrado).",
+      "Painel, Devoluções: as fotos da devolução se renovam sozinhas enquanto a ficha fica aberta, em vez de deixarem de aparecer depois de um tempo.",
+      "Produto e pedido: ao abrir um produto ou um pedido por toque, a tela começa no topo, não onde você parou da última vez.",
+      "Produto: um título escrito com # colado no texto ou na lista da descrição aparece como título; se a busca de produtos parecidos falhar, a faixa que já estava na tela continua lá; compartilhar com uma falha que não seja cancelar copia o link."
+    ],
+    "melhorias": []
+  },
   "1.5.134": {
     "titulo": "Banners com o preço certo, avisos que levam ao pedido e pequenos acertos no painel",
     "novidades": [
