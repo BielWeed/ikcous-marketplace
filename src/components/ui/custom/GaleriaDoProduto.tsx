@@ -1,13 +1,164 @@
 import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import {
+  comMarcaDeTentativa,
+  conjuntoComMarcaDeTentativa,
   conjuntoDeImagens,
   imagemRedimensionada,
   usarImagemOriginal,
 } from "@/lib/imageUrl";
 import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { type CSSProperties, type ReactNode, useEffect, useRef } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
+// Mesma sequência do LazyImage (vitrine): espera (ms) antes de cada nova
+// tentativa AUTOMÁTICA de uma foto que falhou. O tamanho da lista é o teto --
+// depois dela só o toque da cliente tenta de novo.
+const ESPERAS_DE_NOVA_TENTATIVA_MS: readonly number[] = [1500, 3000];
+
+// ±20% sobre a espera, para fotos que falham juntas não tentarem em rajada.
+function comVariacao(esperaMs: number): number {
+  return Math.round(esperaMs * (0.8 + Math.random() * 0.4));
+}
+
+/**
+ * Foto que falha numa rede fraca não é definitiva na primeira vez. `ciclo`
+ * conta os pedidos já refeitos: serve de `key` da <img> (elemento novo, pedido
+ * novo) e de marca na URL (`_r=N`, para não reaproveitar uma falha guardada).
+ * A original tentada pelo `usarImagemOriginal` (transformação fora do ar) vem
+ * ANTES; só a falha da original gasta uma tentativa automática.
+ */
+function useFotoQueTentaDeNovo(foto: string) {
+  const [ciclo, setCiclo] = useState(0);
+  const [desistiu, setDesistiu] = useState(false);
+  const automaticasRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const limparTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+  useEffect(() => limparTimer, [limparTimer]);
+
+  const aoFalhar = (imagem: HTMLImageElement) => {
+    if (usarImagemOriginal(imagem, comMarcaDeTentativa(foto, ciclo))) return;
+    const espera = ESPERAS_DE_NOVA_TENTATIVA_MS.at(automaticasRef.current);
+    if (espera === undefined) {
+      setDesistiu(true);
+      return;
+    }
+    if (timerRef.current) return;
+    automaticasRef.current += 1;
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      setCiclo((c) => c + 1);
+    }, comVariacao(espera));
+  };
+
+  // Toque da cliente no aviso: pede de novo na hora e devolve o fôlego das
+  // tentativas automáticas.
+  const tentarDeNovo = () => {
+    limparTimer();
+    automaticasRef.current = 0;
+    setDesistiu(false);
+    setCiclo((c) => c + 1);
+  };
+
+  return { ciclo, desistiu, aoFalhar, tentarDeNovo };
+}
+
+interface FotoDaFaixaProps {
+  foto: string;
+  nome: string;
+  posicao: number;
+  /** Só a primeira foto, quando a transição de vista está ligada. */
+  comTransicao: boolean;
+}
+
+/** A foto grande de uma posição da faixa, com nova tentativa e aviso. */
+function FotoDaFaixa({ foto, nome, posicao, comTransicao }: FotoDaFaixaProps) {
+  const { ciclo, desistiu, aoFalhar, tentarDeNovo } =
+    useFotoQueTentaDeNovo(foto);
+  return (
+    <>
+      {!desistiu && (
+        <img
+          key={ciclo}
+          src={comMarcaDeTentativa(
+            imagemRedimensionada(foto, { width: 960, quality: 80 }),
+            ciclo,
+          )}
+          srcSet={conjuntoComMarcaDeTentativa(
+            conjuntoDeImagens(foto, [480, 640, 960, 1280], 80) || undefined,
+            ciclo,
+          )}
+          // Ocupa a largura toda no celular; a partir do desktop fica limitada pela altura.
+          sizes="(min-width: 1024px) 720px, 100vw"
+          alt={nome}
+          draggable={false}
+          onError={(event) => aoFalhar(event.currentTarget)}
+          className="main-product-image h-full w-auto max-w-full select-none object-contain"
+          // Só a primeira foto é pedida já; as outras esperam a faixa
+          // chegar perto delas.
+          loading={posicao === 0 ? "eager" : "lazy"}
+          fetchPriority={posicao === 0 ? "high" : "auto"}
+          decoding="async"
+          style={
+            (comTransicao
+              ? { viewTransitionName: "product-image" }
+              : undefined) as CSSProperties
+          }
+        />
+      )}
+      {/* Falha definitiva (as novas tentativas automáticas acabaram): aviso
+          discreto, e o toque pede a foto de novo. `z-10` e `stopPropagation`
+          como no LazyImage: o toque não pode cair na foto nem subir. */}
+      {desistiu && (
+        <button
+          type="button"
+          aria-label={`A foto de ${nome} não carregou. Toque para tentar de novo`}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            tentarDeNovo();
+          }}
+          className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-50"
+        >
+          <span className="px-2 text-center text-xs font-medium text-zinc-600">
+            Toque para tentar de novo
+          </span>
+        </button>
+      )}
+    </>
+  );
+}
+
+/** A miniatura do computador: tenta de novo sozinha (o aviso fica na foto grande). */
+function Miniatura({ foto }: { foto: string }) {
+  const { ciclo, aoFalhar } = useFotoQueTentaDeNovo(foto);
+  return (
+    <img
+      key={ciclo}
+      src={comMarcaDeTentativa(
+        imagemRedimensionada(foto, { width: 200, quality: 80 }),
+        ciclo,
+      )}
+      alt=""
+      onError={(event) => aoFalhar(event.currentTarget)}
+      loading="lazy"
+      decoding="async"
+      className="lg:size-full lg:object-contain"
+    />
+  );
+}
 
 interface GaleriaDoProdutoProps {
   /** Todas as fotos da galeria, na ordem em que a cliente as percorre. */
@@ -53,12 +204,14 @@ export function GaleriaDoProduto({
 
   // `indice` mudou por fora (seta, bolinha, miniatura, variação): leva a
   // faixa até lá. Se a faixa já está ali (o gesto da cliente foi quem mudou
-  // o índice), não faz nada.
+  // o índice), não faz nada. Com um destino NOSSO ainda pendente a faixa pode
+  // "estar" na foto pedida só porque o deslize anterior mal começou (Próxima e
+  // logo Anterior): aí o pedido novo segue e cancela o antigo.
   useEffect(() => {
     const faixa = faixaRef.current;
     if (!faixa || faixa.clientWidth === 0) return;
     const atual = Math.round(faixa.scrollLeft / faixa.clientWidth);
-    if (atual === indice) return;
+    if (atual === indice && destinoRef.current === null) return;
     destinoRef.current = indice;
     const semMovimento = globalThis.matchMedia?.(
       "(prefers-reduced-motion: reduce)",
@@ -136,31 +289,16 @@ export function GaleriaDoProduto({
               role={varias ? "group" : undefined}
               aria-roledescription={varias ? "foto" : undefined}
               aria-label={varias ? `${posicao + 1} de ${total}` : undefined}
-              className="flex size-full shrink-0 basis-full snap-center snap-always items-center justify-center"
+              // `relative` + `isolate`: o aviso de nova tentativa cobre só ESTA
+              // foto, e o `z-10` dele não vaza para as setas e bolinhas.
+              className="relative isolate flex size-full shrink-0 basis-full snap-center snap-always items-center justify-center"
             >
-              <img
-                src={imagemRedimensionada(foto, { width: 960, quality: 80 })}
-                srcSet={
-                  conjuntoDeImagens(foto, [480, 640, 960, 1280], 80) ||
-                  undefined
-                }
-                // Ocupa a largura toda no celular; a partir do desktop fica limitada pela altura.
-                sizes="(min-width: 1024px) 720px, 100vw"
-                alt={nome}
-                draggable={false}
-                onError={(event) =>
-                  usarImagemOriginal(event.currentTarget, foto)
-                }
-                className="main-product-image h-full w-auto max-w-full select-none object-contain"
-                // Só a primeira foto é pedida já; as outras esperam a faixa
-                // chegar perto delas.
-                loading={posicao === 0 ? "eager" : "lazy"}
-                fetchPriority={posicao === 0 ? "high" : "auto"}
-                decoding="async"
-                style={
-                  (isViewTransitionSupported && posicao === 0 && indice === 0
-                    ? { viewTransitionName: "product-image" }
-                    : undefined) as CSSProperties
+              <FotoDaFaixa
+                foto={foto}
+                nome={nome}
+                posicao={posicao}
+                comTransicao={
+                  isViewTransitionSupported && posicao === 0 && indice === 0
                 }
               />
             </div>
@@ -272,16 +410,7 @@ export function GaleriaDoProduto({
                   : "lg:border-zinc-200 lg:hover:border-zinc-400",
               )}
             >
-              <img
-                src={imagemRedimensionada(foto, { width: 200, quality: 80 })}
-                alt=""
-                onError={(event) =>
-                  usarImagemOriginal(event.currentTarget, foto)
-                }
-                loading="lazy"
-                decoding="async"
-                className="lg:size-full lg:object-contain"
-              />
+              <Miniatura foto={foto} />
             </button>
           ))}
         </div>

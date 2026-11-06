@@ -12,6 +12,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useAlturaDoTeclado } from "@/hooks/useAlturaDoTeclado";
+import { pluralizar } from "@/lib/pluralizar";
 import { cn } from "@/lib/utils";
 import { Loader2, Send, X } from "lucide-react";
 import { useEffect } from "react";
@@ -145,7 +146,7 @@ export function FolhaDeResposta({
                   Sua resposta
                 </label>
                 <span className="text-sm tabular-nums text-zinc-300">
-                  {resposta.length} caracteres
+                  {pluralizar(resposta.length, "caractere", "caracteres")}
                 </span>
               </div>
               <textarea

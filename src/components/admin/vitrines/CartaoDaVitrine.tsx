@@ -3,6 +3,7 @@ import {
   type LayoutDeOfertas,
   normalizarLayoutDeOfertas,
 } from "@/lib/layout-de-ofertas";
+import { pluralizar } from "@/lib/pluralizar";
 import { cn } from "@/lib/utils";
 import type { Product } from "@/types";
 import { Reorder, useDragControls } from "framer-motion";
@@ -162,7 +163,9 @@ export function CartaoDaVitrine({
               />
               {secao.active ? (
                 <span className="whitespace-nowrap">
-                  {manual ? `${escolhidos} escolhidos` : "automático"}
+                  {manual
+                    ? pluralizar(escolhidos, "escolhido", "escolhidos")
+                    : "automático"}
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 whitespace-nowrap text-zinc-400">

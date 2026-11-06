@@ -16,13 +16,21 @@ type OrderItemRow =
   Database["public"]["Tables"]["marketplace_order_items"]["Row"];
 
 function extractProductImages(row: any): string[] {
-  const rawImages =
-    row.imagem_urls || row.images || (row.imagem_url ? [row.imagem_url] : []);
-  const sanitizedImages = Array.isArray(rawImages)
-    ? rawImages.filter(
-        (img: any) => typeof img === "string" && img.trim() !== "",
+  // `imagem_urls` é o DEFAULT `[]` da coluna com frequência: lista vazia (ou só
+  // de entradas vazias) não pode apagar a capa em `imagem_url`. Vale a primeira
+  // lista que tiver foto de verdade, na ordem imagem_urls, images, imagem_url.
+  const listas: unknown[] = [row.imagem_urls, row.images, [row.imagem_url]];
+  const sanitizedImages: string[] =
+    listas
+      .map((lista) =>
+        Array.isArray(lista)
+          ? lista.filter(
+              (img: any): img is string =>
+                typeof img === "string" && img.trim() !== "",
+            )
+          : [],
       )
-    : [];
+      .find((lista) => lista.length > 0) ?? [];
 
   /*
     NÃO VOLTE A GRAMPEAR PRODUTO AQUI (CATALOGO-100, #44).

@@ -226,6 +226,48 @@ describe("mapProductFromDB", () => {
     expect(produto.images).toEqual(["https://cdn.exemplo/legado.jpg"]);
   });
 
+  it("lista imagem_urls VAZIA (padrão da coluna) não apaga a capa em imagem_url", () => {
+    // `[]` é verdadeiro em JS: o `||` antigo parava nele e a capa nunca era
+    // olhada -- o produto aparecia como "Sem Imagem" com a foto cadastrada.
+    const produto = mapProductFromDB({
+      ...LINHA_VIEW_PUBLICA,
+      imagem_urls: [],
+      imagem_url: "https://cdn.exemplo/capa.jpg",
+    });
+    expect(produto.images).toEqual(["https://cdn.exemplo/capa.jpg"]);
+  });
+
+  it("lista images VAZIA também cai na capa em imagem_url", () => {
+    const produto = mapProductFromDB({
+      ...LINHA_VIEW_PUBLICA,
+      imagem_urls: undefined,
+      images: [],
+      imagem_url: "https://cdn.exemplo/capa.jpg",
+    });
+    expect(produto.images).toEqual(["https://cdn.exemplo/capa.jpg"]);
+  });
+
+  it("imagem_urls só com entradas vazias também cai na capa", () => {
+    const produto = mapProductFromDB({
+      ...LINHA_VIEW_PUBLICA,
+      imagem_urls: ["", "   "],
+      imagem_url: "https://cdn.exemplo/capa.jpg",
+    });
+    expect(produto.images).toEqual(["https://cdn.exemplo/capa.jpg"]);
+  });
+
+  it("lista imagem_urls com fotos continua mandando (a capa não entra por cima)", () => {
+    const produto = mapProductFromDB({
+      ...LINHA_VIEW_PUBLICA,
+      imagem_urls: ["https://cdn.exemplo/a.jpg", "https://cdn.exemplo/b.jpg"],
+      imagem_url: "https://cdn.exemplo/capa.jpg",
+    });
+    expect(produto.images).toEqual([
+      "https://cdn.exemplo/a.jpg",
+      "https://cdn.exemplo/b.jpg",
+    ]);
+  });
+
   it("descarta entradas vazias de imagem_urls e não deixa a lista vazia", () => {
     const produto = mapProductFromDB({
       ...LINHA_VIEW_PUBLICA,

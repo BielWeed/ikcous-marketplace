@@ -11,6 +11,7 @@ import {
   compraIndeterminadaPeloHistorico,
   elegibilidadeDaEtiqueta,
   freteEfetivoDoPedido,
+  motivoDoStatusSemEtiqueta,
 } from "@/lib/elegibilidade-da-etiqueta";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
@@ -76,6 +77,37 @@ interface EtiquetaDoPedidoCardProps {
    * sendo a verdade do primeiro desenho).
    */
   trackingCodeDaFicha?: string;
+  /**
+   * Status e pagamento do pedido que a FICHA mostra agora. O cartão lê o
+   * pedido uma vez por `orderId`; sem isto, cancelar ou concluir o pedido na
+   * própria ficha deixava o cartão oferecendo "Gerar etiqueta". Só uma
+   * MUDANÇA deles refaz a leitura (em silêncio, sem remontar: o CPF digitado,
+   * a confirmação aberta e a compra em voo ficam como estão). Ausentes (quem
+   * monta o cartão sem a ficha): nunca relê por conta própria.
+   */
+  status?: string | null;
+  paymentStatus?: string | null;
+}
+
+/**
+ * `silencioso`: releitura por mudança de status na ficha -- o cartão não pisca
+ * em "carregando" nem troca o que está na tela por um erro; só aplica o pedido
+ * novo. Sem a opção (ou com o evento do clique em "Tentar de novo") é a
+ * leitura de sempre.
+ */
+interface OpcoesDeLeitura {
+  silencioso?: boolean;
+}
+
+/**
+ * A edge recusa pedido cancelado/entregue/devolvido com o status CRU em
+ * inglês (`erroDePedidoParaEtiqueta`: Pedido com status "cancelled" não gera
+ * etiqueta de envio.). Devolve o texto em português da elegibilidade, ou
+ * `null` se a mensagem for outra (aí vale a frase do servidor).
+ */
+function traducaoDaRecusaPorStatus(mensagem: string): string | null {
+  const casou = /^Pedido com status "([^"]*)" não gera etiqueta/.exec(mensagem);
+  return casou ? motivoDoStatusSemEtiqueta(casou[1]) : null;
 }
 
 // ── Travas de reentrada em escopo de MÓDULO (não de instância/useRef) ──────
@@ -147,6 +179,8 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
   isOffline,
   onTrackingAtualizado,
   trackingCodeDaFicha,
+  status,
+  paymentStatus,
 }: Readonly<EtiquetaDoPedidoCardProps>) {
   const [cargaFase, setCargaFase] = useState<CargaFase>("carregando");
   const [pedido, setPedido] = useState<PedidoParaEtiqueta | null>(null);
@@ -188,64 +222,74 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
     };
   }, [orderId]);
 
-  const fetchPedido = useCallback(async () => {
-    const minhaGeracao = ++geracaoRef.current;
-    setCargaFase("carregando");
-    try {
-      const { data, error } = await supabase
-        .from("marketplace_orders")
-        .select(
-          "id, status, payment_status, shipping, shipping_cost, tracking_code, shipping_label_id, shipping_label_url, notes, customer_data->>shipping_option_id, customer_data->>cpf",
-        )
-        .eq("id", orderId)
-        .maybeSingle();
-      if (geracaoRef.current !== minhaGeracao) return;
-      if (error) {
-        console.error("[EtiquetaDoPedido] Erro ao carregar o pedido:", error);
-        setCargaFase("erro");
-        return;
-      }
-      if (!data) {
-        setCargaFase("vazio");
-        return;
-      }
-      const linha = data as unknown as PedidoParaEtiqueta;
-      // A compra ficou INDETERMINADA? Só vale perguntar quando já existe
-      // vínculo com uma etiqueta, e é uma leitura À PARTE de propósito: se o
-      // histórico não puder ser lido, o card degrada para o que sempre
-      // mostrou ("Etiqueta emitida") em vez de sumir com a etiqueta.
-      let compraIndeterminada = false;
-      if (linha.shipping_label_id) {
-        try {
-          const { data: eventos, error: eventosError } = await supabase
-            .from("order_shipping_events")
-            .select("event_type, payload, error_message, created_at")
-            .eq("order_id", orderId);
-          if (geracaoRef.current !== minhaGeracao) return;
-          if (eventosError) {
-            console.error(
-              "[EtiquetaDoPedido] Erro ao ler o histórico de envio:",
-              eventosError,
-            );
-          } else {
-            compraIndeterminada = compraIndeterminadaPeloHistorico(eventos);
-          }
-        } catch (errEventos) {
-          if (geracaoRef.current !== minhaGeracao) return;
-          console.error(
-            "[EtiquetaDoPedido] Exceção ao ler o histórico de envio:",
-            errEventos,
-          );
+  const fetchPedido = useCallback(
+    async (opcoes?: OpcoesDeLeitura) => {
+      const silencioso = opcoes?.silencioso === true;
+      const minhaGeracao = ++geracaoRef.current;
+      if (!silencioso) setCargaFase("carregando");
+      // Falha da releitura silenciosa: mantém a tela, a não ser que ainda não
+      // houvesse nada para mostrar (a 1ª leitura foi atropelada por esta).
+      const falhou = () =>
+        silencioso
+          ? setCargaFase((atual) => (atual === "carregando" ? "erro" : atual))
+          : setCargaFase("erro");
+      try {
+        const { data, error } = await supabase
+          .from("marketplace_orders")
+          .select(
+            "id, status, payment_status, shipping, shipping_cost, tracking_code, shipping_label_id, shipping_label_url, notes, customer_data->>shipping_option_id, customer_data->>cpf",
+          )
+          .eq("id", orderId)
+          .maybeSingle();
+        if (geracaoRef.current !== minhaGeracao) return;
+        if (error) {
+          console.error("[EtiquetaDoPedido] Erro ao carregar o pedido:", error);
+          falhou();
+          return;
         }
+        if (!data) {
+          setCargaFase("vazio");
+          return;
+        }
+        const linha = data as unknown as PedidoParaEtiqueta;
+        // A compra ficou INDETERMINADA? Só vale perguntar quando já existe
+        // vínculo com uma etiqueta, e é uma leitura À PARTE de propósito: se o
+        // histórico não puder ser lido, o card degrada para o que sempre
+        // mostrou ("Etiqueta emitida") em vez de sumir com a etiqueta.
+        let compraIndeterminada = false;
+        if (linha.shipping_label_id) {
+          try {
+            const { data: eventos, error: eventosError } = await supabase
+              .from("order_shipping_events")
+              .select("event_type, payload, error_message, created_at")
+              .eq("order_id", orderId);
+            if (geracaoRef.current !== minhaGeracao) return;
+            if (eventosError) {
+              console.error(
+                "[EtiquetaDoPedido] Erro ao ler o histórico de envio:",
+                eventosError,
+              );
+            } else {
+              compraIndeterminada = compraIndeterminadaPeloHistorico(eventos);
+            }
+          } catch (errEventos) {
+            if (geracaoRef.current !== minhaGeracao) return;
+            console.error(
+              "[EtiquetaDoPedido] Exceção ao ler o histórico de envio:",
+              errEventos,
+            );
+          }
+        }
+        setPedido({ ...linha, compra_indeterminada: compraIndeterminada });
+        setCargaFase("ok");
+      } catch (err) {
+        if (geracaoRef.current !== minhaGeracao) return;
+        console.error("[EtiquetaDoPedido] Exceção ao carregar o pedido:", err);
+        falhou();
       }
-      setPedido({ ...linha, compra_indeterminada: compraIndeterminada });
-      setCargaFase("ok");
-    } catch (err) {
-      if (geracaoRef.current !== minhaGeracao) return;
-      console.error("[EtiquetaDoPedido] Exceção ao carregar o pedido:", err);
-      setCargaFase("erro");
-    }
-  }, [orderId]);
+    },
+    [orderId],
+  );
 
   // Troca de pedido: zera a fase de compra e a mensagem persistente ANTES de
   // buscar — o pedido antigo não pode continuar na tela com o rótulo do
@@ -260,6 +304,24 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
     setConsultandoRastreio(false);
     fetchPedido();
   }, [fetchPedido]);
+
+  // Cancelar/concluir o pedido na ficha (ou o pagamento mudar): relê, para o
+  // cartão parar de oferecer a etiqueta que a edge vai recusar. A 1ª leitura
+  // (e a troca de pedido) já é feita pelo efeito acima -- aqui só entra uma
+  // MUDANÇA de status/pagamento do MESMO pedido.
+  const ultimaLeituraDaFichaRef = useRef({ orderId, status, paymentStatus });
+  useEffect(() => {
+    const anterior = ultimaLeituraDaFichaRef.current;
+    ultimaLeituraDaFichaRef.current = { orderId, status, paymentStatus };
+    if (anterior.orderId !== orderId) return;
+    if (
+      anterior.status === status &&
+      anterior.paymentStatus === paymentStatus
+    ) {
+      return;
+    }
+    void fetchPedido({ silencioso: true });
+  }, [orderId, status, paymentStatus, fetchPedido]);
 
   // O código salvo/apagado na linha da ficha chega aqui. Pedido ainda não lido
   // (`null`): nada a aplicar, a leitura que vem já traz o código gravado.
@@ -336,23 +398,30 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       if (orderIdAtualRef.current !== orderIdDoClique) return;
       console.error("[EtiquetaDoPedido] Erro na geração:", err);
       const {
-        mensagem: detalhe,
+        mensagem: mensagemDoServidor,
         resgate,
         precisaCpf,
       } = await mensagemDeErroInvocacao(err, {
         mensagemGenerica:
           "Não foi possível falar com o servidor de etiquetas. Tente de novo.",
       });
+      // Recusa por status (pedido cancelado/entregue/devolvido depois que a
+      // tela leu o pedido): o servidor diz o status cru em inglês -- a
+      // lojista lê o mesmo motivo que o cartão mostraria com a tela em dia.
+      const motivoPorStatus = traducaoDaRecusaPorStatus(mensagemDoServidor);
+      const detalhe = motivoPorStatus ?? mensagemDoServidor;
       // `mensagemDeErroInvocacao` também tem `await` (lê o corpo da
       // resposta) — checa de novo antes de qualquer efeito visível.
       if (orderIdAtualRef.current !== orderIdDoClique) return;
       setMensagemResultado({ tipo: "erro", texto: detalhe });
-      if (resgate || precisaCpf) {
+      if (resgate || precisaCpf || motivoPorStatus) {
         // A etiqueta já existe/está paga (ou o estado é indeterminado): a
         // releitura do pedido traz o `shipping_label_id` de verdade e a UI
         // cai em "emitida" sozinha — nunca reapresenta o botão de compra.
         // `precisaCpf`: a edge recusou por falta/invalidez de CPF (tela
         // desatualizada) — a releitura cai sozinha no estado `precisa_cpf`.
+        // `motivoPorStatus`: pedido que deixou de ser elegível -- a releitura
+        // cai em "indisponível" e o botão de compra some.
         // `fetchPedido` aqui é o da MESMA renderização deste handler — ligado
         // ao `orderIdDoClique` (a checagem acima já provou que ele ainda é o
         // pedido atual); chamar sem essa checagem buscaria o pedido ERRADO
@@ -541,7 +610,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
           Não foi possível carregar os dados da etiqueta.{" "}
           <button
             type="button"
-            onClick={fetchPedido}
+            onClick={() => void fetchPedido()}
             className="font-semibold underline hover:no-underline"
           >
             Tentar de novo

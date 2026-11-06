@@ -530,7 +530,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                   ? "Sincronizando clientes..."
                   : erroDaListagem
                     ? "Falha ao atualizar clientes"
-                    : `${formatarInteiro(globalStats?.total_customers)} contas no app · Sincronizado`}
+                    : `${globalStats?.total_customers === 1 ? "1 conta" : `${formatarInteiro(globalStats?.total_customers)} contas`} no app · Sincronizado`}
             </span>
           </div>
         </div>

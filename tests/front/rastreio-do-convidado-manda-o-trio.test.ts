@@ -109,7 +109,7 @@ describe("fetchOrdersByOtp — com o trio, a verificação amarrada ao pedido (v
 
     expect(resultado).toEqual([]);
     expect(toast.error).toHaveBeenCalledWith(
-      "Código inválido ou expirado. Restam 4 tentativas.",
+      "Código inválido ou expirado. Restam 4 tentativas. Use o código do e-mail mais recente.",
     );
   });
 

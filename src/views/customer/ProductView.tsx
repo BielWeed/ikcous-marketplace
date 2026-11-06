@@ -46,10 +46,12 @@ import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
 import { montarMensagemDeCompartilhar } from "@/lib/mensagem-de-compartilhar";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
+import { resumoParaPrevia } from "@/lib/resumo-para-previa";
 import { textoEstoqueBaixo, textoSoRestam } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
+import { criarEixosDaVariacao, eixoEhCor } from "@/utils/eixos-da-variacao";
 import {
   aplicarEscolhaDeVariacao,
   escolhaDasOpcoesUnicas,
@@ -534,14 +536,46 @@ export const ProductView = React.memo(function ProductView({
   };
   const currentStock = estoqueDaEscolha(selectedVariants);
 
+  // Foto da COR escolhida mesmo sem linha completa (só a cor, sem o tamanho):
+  // a primeira linha ativa com foto cujo valor no eixo de cor bate com a
+  // escolha. A foto da cor costuma estar numa linha só da grade. Mesma regra
+  // do card da vitrine (`fotoDaCor` do ProductCard).
+  const fotoDaCorEscolhida = (escolha: Record<string, string>) => {
+    const escolhido = new Map(Object.entries(escolha));
+    return criarEixosDaVariacao(product.variants ?? []).grupos.flatMap((g) =>
+      g.linhas.filter(
+        (l) =>
+          l.variante.imageUrl &&
+          g.eixos
+            .filter(eixoEhCor)
+            .some(
+              (e) =>
+                escolhido.has(e.nome) &&
+                l.valores[e.indice] === escolhido.get(e.nome),
+            ),
+      ),
+    )[0]?.variante.imageUrl;
+  };
+  // A foto que a escolha aponta: a da variação escolhida e, sem ela, a da cor.
+  const fotosQueAEscolhaAponta = (
+    escolha: Record<string, string>,
+  ): string[] => {
+    const dasLinhas = variantesDaEscolha(escolha)
+      .map((v) => v.imageUrl)
+      .filter((url): url is string => !!url);
+    if (dasLinhas.length > 0) return dasLinhas;
+    const daCor = fotoDaCorEscolhida(escolha);
+    return daCor ? [daCor] : [];
+  };
+
   // As fotos da galeria: as do produto e, se uma variação escolhida aponta
   // uma foto que o produto não tem mais, essa foto no fim. A variação com
   // foto NÃO esconde as outras -- só leva a galeria até a dela.
   const fotosDaEscolha = (escolha: Record<string, string>): string[] => {
     const doProduto = product.images ?? [];
-    const extras = variantesDaEscolha(escolha)
-      .map((v) => v.imageUrl)
-      .filter((url): url is string => !!url && !doProduto.includes(url));
+    const extras = fotosQueAEscolhaAponta(escolha).filter(
+      (url) => !doProduto.includes(url),
+    );
     return [...doProduto, ...new Set(extras)];
   };
   const fotosDaGaleria = fotosDaEscolha(selectedVariants);
@@ -580,7 +614,7 @@ export const ProductView = React.memo(function ProductView({
           : `${soltas.join(" e ")} desmarcados`,
     );
     setSelectedVariants(proxima);
-    const fotoDaVariante = variantesDaEscolha(proxima)[0]?.imageUrl;
+    const fotoDaVariante = fotosQueAEscolhaAponta(proxima)[0];
     if (fotoDaVariante) {
       const posicao = fotosDaEscolha(proxima).indexOf(fotoDaVariante);
       if (posicao >= 0) setCurrentImageIndex(posicao);
@@ -838,7 +872,7 @@ export const ProductView = React.memo(function ProductView({
   };
 
   const metaDescription =
-    product.metaDescription || product.description?.substring(0, 150) || "";
+    product.metaDescription || resumoParaPrevia(product.description ?? "", 150);
   const metaTitle = product.metaTitle || product.name;
   const nomeDaLoja = config.storeName?.trim() || branding.appName;
   const metaImage = product.images?.[0] || "";

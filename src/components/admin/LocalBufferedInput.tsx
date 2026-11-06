@@ -281,6 +281,15 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
     }
   };
 
+  // Teclado do celular: a máscara roda por JS sobre um input de texto, então o
+  // aparelho não sabe que só entram dígitos. Moeda com sinal fica sem dica (o
+  // teclado numérico do iPhone não tem o "-"). O `inputMode` do chamador vence.
+  let modoDoTeclado = props.inputMode;
+  if (modoDoTeclado === undefined) {
+    if (mask === "phone") modoDoTeclado = "tel";
+    else if (mask === "currency" && !permiteNegativo) modoDoTeclado = "numeric";
+  }
+
   return (
     <div className="flex w-full flex-col gap-1.5">
       {useShadcn ? (
@@ -290,6 +299,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
           // no WhatsApp do Atendimento — teclado numérico no celular). A
           // máscara funciona por JS sobre o valor, não pelo tipo do input.
           type={props.type ?? (mask ? "text" : undefined)}
+          inputMode={modoDoTeclado}
           value={localVal}
           onChange={handleChange}
           onFocus={handleFocus}
@@ -311,6 +321,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
         <input
           {...props}
           type={props.type ?? (mask ? "text" : undefined)}
+          inputMode={modoDoTeclado}
           value={localVal}
           onChange={handleChange}
           onFocus={handleFocus}

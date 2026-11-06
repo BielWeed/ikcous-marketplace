@@ -95,8 +95,8 @@ function reaisCurtos(valor: number): string {
   })}`;
 }
 
-/** "10%" / "12,5%". */
-function porcentagem(valor: number): string {
+/** "10%" / "12,5%". A loja e o painel do lojista usam esta mesma função. */
+export function porcentagem(valor: number): string {
   const arredondado = Math.round(valor * 100) / 100;
   return `${String(arredondado).replace(".", ",")}%`;
 }

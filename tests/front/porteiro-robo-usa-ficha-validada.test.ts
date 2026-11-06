@@ -1045,3 +1045,118 @@ describe("middleware — o ramo de robô nunca pula decidirConcordancia (achado 
     expect(html).not.toContain("og-image.png");
   });
 });
+
+// Lote r25-s: a prévia do link na Vercel mostrava a descrição crua (com ** e
+// #, sem teto) e o preço sem ponto de milhar ("R$ 1299,90"), enquanto o
+// Worker da Cloudflare já mostrava "R$ 1.299,90". Mesmo texto nas duas rotas.
+describe("middleware — prévia do link: descrição resumida e preço com ponto de milhar", () => {
+  async function previaDe(produto: Record<string, unknown>) {
+    const origemProjeto = "https://projetojjjjjjjjjjjjj.supabase.co";
+    const fetchDuble: typeof fetch = (async (input) => {
+      const url = requestUrl(input);
+      if (url.pathname === "/rest/v1/v_store_config") {
+        if (url.searchParams.get("select") === SELECT_CONFIGURACAO_PUBLICA) {
+          return new Response(
+            JSON.stringify([linhaConfiguracaoPublica("loja-resumo.exemplo")]),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(
+          JSON.stringify([identidadeFixture("Loja Resumo", origemProjeto)]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.pathname === "/rest/v1/vw_produtos_public")
+        return new Response(JSON.stringify([produto]), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      throw new Error(`URL não mapeada no dublê: ${url.toString()}`);
+    }) as typeof fetch;
+    const resp = await comProcessEnv(
+      {
+        ...ENV_LIMPO,
+        VITE_SUPABASE_URL: origemProjeto,
+        VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_projeto",
+      },
+      () =>
+        comFetch(fetchDuble, () =>
+          middleware(
+            new Request("https://loja-resumo.exemplo/product-detail?id=1", {
+              headers: { "user-agent": UA_ROBO },
+            }),
+          ),
+        ),
+    );
+    expect(resp.status).toBe(200);
+    return resp.text();
+  }
+
+  const base = {
+    nome: "Caderno",
+    preco_venda: 49.9,
+    imagem_url: "https://cdn.exemplo.com/r.jpg",
+    imagem_urls: null,
+  };
+
+  it("descrição com Markdown sai limpa e curta nas três metas e no corpo", async () => {
+    const longa = `**Caderno Inteligente**\n* 📖 50 Páginas reposicionáveis\n* ✏️ Acompanha caneta\n\n---\n${"texto bem comprido ".repeat(40)}`;
+    const html = await previaDe({ ...base, descricao: longa });
+    const descricoes = [
+      ...html.matchAll(
+        /<meta (?:name|property)="[^"]*description" content="([^"]*)"/g,
+      ),
+    ].map((m) => m[1]);
+    expect(descricoes).toHaveLength(3);
+    for (const d of descricoes) {
+      expect(d).not.toMatch(/[*#]/);
+      expect(d).not.toContain("\n");
+      expect(Array.from(d).length).toBeLessThanOrEqual(200);
+      expect(
+        d.startsWith("Caderno Inteligente 📖 50 Páginas reposicionáveis"),
+      ).toBe(true);
+      expect(d.endsWith("…")).toBe(true);
+    }
+    expect(html).toMatch(/<p>Caderno Inteligente [^*#<]*…<\/p>/);
+  });
+
+  it("descrição só de Markdown ou ausente cai no texto padrão; escape continua valendo", async () => {
+    const soMarkdown = await previaDe({ ...base, descricao: "---\n**" });
+    expect(soMarkdown).toContain(
+      '<meta name="description" content="Confira os detalhes do produto no Loja Resumo.">',
+    );
+    const hostil = await previaDe({
+      ...base,
+      descricao: '**Leve** & "rápido" <b>',
+    });
+    expect(hostil).toContain(
+      'name="description" content="Leve &amp; &quot;rápido&quot; &lt;b&gt;"',
+    );
+    expect(hostil).not.toContain("<b>");
+  });
+
+  it.each([
+    [999.9, "R$ 999,90"],
+    [1299.9, "R$ 1.299,90"],
+    [12345.6, "R$ 12.345,60"],
+  ])(
+    "preço %s sai como %s (ponto de milhar, igual ao Worker da Cloudflare)",
+    async (preco, esperado) => {
+      const html = await previaDe({
+        ...base,
+        descricao: "desc",
+        preco_venda: preco,
+      });
+      expect(html).toContain(`content="Caderno - ${esperado} | Loja Resumo"`);
+    },
+  );
+
+  it("preço que chega como texto numérico (numeric do Postgres) também sai formatado", async () => {
+    const html = await previaDe({
+      ...base,
+      descricao: "desc",
+      preco_venda: "1299.90",
+    });
+    expect(html).toContain("R$ 1.299,90");
+  });
+});

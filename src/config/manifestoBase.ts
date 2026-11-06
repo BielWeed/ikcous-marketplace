@@ -45,7 +45,7 @@ export const MANIFESTO_BASE = {
     {
       name: "Favoritos",
       short_name: "Favoritos",
-      description: "Ver lista de desejos",
+      description: "Ver favoritos",
       url: "/favorites",
       icons: [{ src: "/icons/heart-96x96.png", sizes: "96x96" }],
     },

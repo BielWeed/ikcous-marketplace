@@ -2451,7 +2451,7 @@ export function useProducts({ autoFetch = true } = {}) {
           // Update products
           await refreshContext();
 
-          toast.success("Variante adicionada");
+          toast.success("Variação adicionada");
           return newVariant;
         }
       } catch (err) {
@@ -2533,7 +2533,7 @@ export function useProducts({ autoFetch = true } = {}) {
 
           // Update local state
           await refreshContext();
-          toast.success("Variante atualizada");
+          toast.success("Variação atualizada");
         }
       } catch (err) {
         console.error("Error updating variant:", err);
@@ -2572,7 +2572,7 @@ export function useProducts({ autoFetch = true } = {}) {
         }
 
         await refreshContext();
-        toast.success("Variante removida");
+        toast.success("Variação removida");
       } catch (err) {
         console.error("Error deleting variant:", err);
         // useProducts-1608: os cinco catches de variante usam a mesma
@@ -2639,7 +2639,7 @@ export function useProducts({ autoFetch = true } = {}) {
           throw Object.assign(primeiraRecusa as object, { recusadas });
         }
 
-        toast.success("Variantes removidas");
+        toast.success("Variações removidas");
         return true;
       } catch (err) {
         console.error("Error deleting variants:", err);
@@ -2723,7 +2723,7 @@ export function useProducts({ autoFetch = true } = {}) {
         }
 
         await refreshContext();
-        toast.success("Variantes salvas");
+        toast.success("Variações salvas");
         return true;
       } catch (err) {
         console.error("Error upserting variants:", err);

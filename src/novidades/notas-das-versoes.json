@@ -1,4 +1,21 @@
 {
+  "1.5.140": {
+    "titulo": "Busca que acha o plural, fotos que seguem a cor, cupom digitado com acento e pedido na ficha mais seguro",
+    "novidades": [],
+    "correcoes": [
+      "Busca: quem digita no singular acha o plural (anel acha Anéis, cartão acha Cartões); a caixa de busca diz que está carregando em vez de “nenhum produto” e aguenta termos longos.",
+      "Fotos do produto: escolher só a cor mostra a foto daquela cor; produto com capa mas sem lista de fotos não aparece mais sem imagem; foto que falha tenta de novo sozinha.",
+      "Cupom: aceita o código digitado com acento ou espaço; o aviso de conexão lenta ficou claro; a lista de cupons se atualiza depois de uma recusa.",
+      "Carrinho guardado: avisa quando um produto saiu da venda.",
+      "Pedido consultado sem conta some do aparelho em 60 minutos, e o lembrete do carrinho não fica mais escondido atrás do convite de avisos.",
+      "Rastreio do pedido: colar o código com espaço ou traço funciona, e a tela avisa quando o código foi bloqueado.",
+      "Link compartilhado: a prévia mostra a descrição sem asteriscos e cerquilhas e o preço com ponto de milhar.",
+      "Painel, Pedidos: o cancelamento confere se o pedido mudou antes de cancelar, e a etiqueta de envio some depois de cancelar.",
+      "Teclado do celular: campos de preço, custo e desconto abrem o teclado de números, e o Enter no número do endereço vai para o complemento.",
+      "Textos: “1 itens” vira “1 item”, “N/A” vira “Não informado” e rastreio, variação e excluir passam a ter um só nome."
+    ],
+    "melhorias": []
+  },
   "1.5.139": {
     "titulo": "Vitrines que não perdem produtos, cupom e exportação mais seguros e acertos no gráfico do painel",
     "novidades": [],

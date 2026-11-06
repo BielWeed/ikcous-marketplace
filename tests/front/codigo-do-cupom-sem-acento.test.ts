@@ -3,9 +3,39 @@
 // ou expirado"). O painel agora grava o código já sem acento.
 import {
   codigoDoCupomParaSalvar,
+  ehRecusaDeCupomInexistente,
   normalizarCodigoDoCupom,
 } from "@/lib/codigo-do-cupom";
 import { describe, expect, it } from "vitest";
+
+// A frase vem de validate_coupon_secure_v2 (migration 20261397000000): é a
+// MESMA para "não existe", "inativo" e "exclusivo de outra conta".
+describe("ehRecusaDeCupomInexistente", () => {
+  it("reconhece a recusa de código que o servidor não conhece", () => {
+    expect(ehRecusaDeCupomInexistente("Cupom inválido ou expirado.")).toBe(
+      true,
+    );
+    expect(ehRecusaDeCupomInexistente(" cupom inválido ou expirado ")).toBe(
+      true,
+    );
+  });
+
+  it("não confunde com as recusas de um cupom que EXISTE", () => {
+    for (const frase of [
+      "Este cupom expirou.",
+      "Cupom atingiu o limite de uso.",
+      "Faltam R$ 10,00 em produtos para usar este cupom (mínimo de R$ 100,00).",
+      "Os cupons estão desativados nesta loja.",
+      "A conexão está lenta. Tente aplicar o cupom de novo.",
+      "Erro ao validar cupom",
+      "",
+    ]) {
+      expect(ehRecusaDeCupomInexistente(frase), frase).toBe(false);
+    }
+    expect(ehRecusaDeCupomInexistente(undefined)).toBe(false);
+    expect(ehRecusaDeCupomInexistente(null)).toBe(false);
+  });
+});
 
 describe("normalizarCodigoDoCupom", () => {
   it("tira acento e põe em maiúsculas", () => {

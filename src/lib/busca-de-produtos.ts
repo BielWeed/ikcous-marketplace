@@ -19,6 +19,9 @@
  *   - -oes/-aes:           cordoes -> cordao, paes -> pao
  *   - vogal + is:          aneis -> anel, lencois -> lencol, azuis -> azul
  *   - e/i/o/u + ns:        batons -> batom, bombons -> bombom
+ * E o caminho de volta, para quem digita o singular e o cadastro esta no
+ * plural irregular (palavra inteira): anel -> aneis, batom -> batons,
+ * cartao -> cartoes/cartaes/cartaos, pao -> paes/paos.
  * A forma e buscada POR TRECHO (basta estar dentro do texto) e a forma "sem o
  * s" e sempre um pedaco da palavra digitada, entao o que ja era achado
  * continua sendo -- "oculos", "lapis", "pires" e "onibus" acham a si mesmos.
@@ -53,13 +56,52 @@ const porTrecho = (texto: string): FormaDaPalavra => ({
   palavraInteira: false,
 });
 
+/**
+ * O caminho de volta: a palavra digitada e' o SINGULAR e o cadastro esta no
+ * plural irregular. So as formas que NAO contem a palavra digitada precisam
+ * existir ("colar" ja esta dentro de "colares"). Valem como PALAVRA INTEIRA: o
+ * plural cadastrado e' uma palavra, e por trecho "pao" -> "paes" acharia
+ * "Capaes" e qualquer sobra de radical curto.
+ */
+function formasNoPlural(palavra: string): FormaDaPalavra[] {
+  const plurais: string[] = [];
+  const inteira = (texto: string): FormaDaPalavra => ({
+    texto,
+    palavraInteira: true,
+  });
+  // anel -> aneis, lencol -> lencois, azul -> azuis
+  if (
+    palavra.length >= TAMANHO_MINIMO_DO_SINGULAR_EM_L &&
+    /[aeou]l$/.test(palavra)
+  ) {
+    plurais.push(`${palavra.slice(0, -1)}is`);
+  }
+  // batom -> batons, bombom -> bombons
+  if (
+    palavra.length >= TAMANHO_MINIMO_DO_SINGULAR_EM_L &&
+    /[eiou]m$/.test(palavra)
+  ) {
+    plurais.push(`${palavra.slice(0, -1)}ns`);
+  }
+  // cartao -> cartoes, cordao -> cordoes, pao -> paes, mao -> maos. "-oes" so
+  // com radical de 2+ letras: "pao" -> "poes" acharia Poesia.
+  if (palavra.length >= 3 && palavra.endsWith("ao")) {
+    const radical = palavra.slice(0, -2);
+    if (radical.length >= 2) plurais.push(`${radical}oes`);
+    // "mao" so faz "maos": "maes" e outra palavra (Dia das Maes).
+    if (palavra !== "mao") plurais.push(`${radical}aes`);
+    plurais.push(`${radical}aos`);
+  }
+  return plurais.map(inteira);
+}
+
 /** Formas no singular que a palavra (JA normalizada, sem acento) pode ter. */
 function formasDaPalavra(palavra: string): FormaDaPalavra[] {
   if (
     palavra.length < TAMANHO_MINIMO_PARA_TIRAR_O_S ||
     !palavra.endsWith("s")
   ) {
-    return [porTrecho(palavra)];
+    return [porTrecho(palavra), ...formasNoPlural(palavra)];
   }
   // A forma "sem o s" mantem o comportamento de sempre: por trecho.
   const formas = new Map<string, FormaDaPalavra>([

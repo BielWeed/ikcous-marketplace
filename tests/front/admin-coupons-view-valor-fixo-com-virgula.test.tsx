@@ -148,4 +148,21 @@ describe("AdminCouponsView — o desconto de valor fixo usa vírgula, como o res
 
     expect(textoDoCard("DEZPORCENTO")).toContain("10% OFF");
   });
+
+  it("cupom de porcentagem com casa decimal sai com vírgula (12,5% OFF), como na loja", async () => {
+    mockCoupons = [
+      cupomFake({
+        id: "c-pct-dec",
+        code: "DOZEMEIO",
+        type: "percentage",
+        value: 12.5,
+      }),
+    ];
+
+    await abrirTela();
+
+    const texto = textoDoCard("DOZEMEIO");
+    expect(texto).toContain("12,5% OFF");
+    expect(texto).not.toContain("12.5");
+  });
 });

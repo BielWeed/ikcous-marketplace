@@ -34,7 +34,9 @@ import {
   AVISO_CUPOM_PODE_COBRIR_E_LOJA_SO_NO_APP,
   cupomPodeCobrirACompraInteira,
 } from "@/lib/cupom-que-cobre-a-compra";
+import { porcentagem } from "@/lib/cupons-do-checkout";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
+import { pluralizar } from "@/lib/pluralizar";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { ClienteDoCupom, Coupon, View } from "@/types";
 import { camposQueMudaram } from "@/utils/campos-mexidos-do-produto";
@@ -610,7 +612,7 @@ function FormularioDoCupom({
                   <>
                     <span className="break-all">{formData.code}</span> ·{" "}
                     {formData.type === "percentage"
-                      ? `${formData.value || 0}%`
+                      ? porcentagem(Number(formData.value || 0))
                       : formatCurrency(Number(formData.value || 0))}{" "}
                     · mín. {formatCurrency(formData.minPurchase || 0)}
                   </>
@@ -660,7 +662,7 @@ function FormularioDoCupom({
                       <p className="text-xs text-zinc-400">Desconto</p>
                       <p className="mt-1 text-3xl font-bold tabular-nums text-zinc-50">
                         {formData.type === "percentage"
-                          ? `${formData.value || 0}% OFF`
+                          ? `${porcentagem(Number(formData.value || 0))} OFF`
                           : formatCurrency(Number(formData.value || 0))}
                       </p>
                     </div>
@@ -917,8 +919,13 @@ function FormularioDoCupom({
               </p>
               {isEditing && editingCoupon && (
                 <p className="text-xs leading-relaxed text-zinc-400">
-                  {editingCoupon.usageCount} utilizações acumuladas. O contador
-                  não pode ser editado e permanece ao alterar o limite.
+                  {pluralizar(
+                    editingCoupon.usageCount ?? 0,
+                    "utilização acumulada",
+                    "utilizações acumuladas",
+                  )}
+                  . O contador não pode ser editado e permanece ao alterar o
+                  limite.
                 </p>
               )}
             </section>

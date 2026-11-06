@@ -16,6 +16,7 @@ import {
   obterFichaValidada,
   respostaManutencao,
 } from "./src/hospedagem/porteiro";
+import { resumoParaPrevia } from "./src/lib/resumo-para-previa";
 
 // O `matcher` PRECISA ser um array-LITERAL bem aqui — a Vercel/Next lê
 // `config.matcher` por ANÁLISE ESTÁTICA em tempo de build; qualquer valor
@@ -371,9 +372,12 @@ export default async function middleware(
             // Resolve values (escapados: nome/descrição vêm do banco, o
             // lojista escreve, e um `"` ou `<` cru quebraria a meta tag).
             const name = escaparHtml(product.nome || `Produto - ${storeName}`);
+            // Texto puro e curto (sem ** nem #, sem quebra, teto de ~200):
+            // o MESMO resumo do Worker (`compartilhamento.ts`).
             const description = escaparHtml(
-              product.descricao ||
-                `Confira os detalhes do produto no ${storeName}.`,
+              (typeof product.descricao === "string"
+                ? resumoParaPrevia(product.descricao)
+                : "") || `Confira os detalhes do produto no ${storeName}.`,
             );
             // Só número > 0 aparece: 0, negativo ou não numérico ficam sem
             // preço na prévia (decisão do dono, 11/09/2026).
@@ -381,7 +385,10 @@ export default async function middleware(
             const price =
               Number.isFinite(precoNumerico) && precoNumerico > 0
                 ? escaparHtml(
-                    `R$ ${precoNumerico.toFixed(2).replace(".", ",")}`,
+                    `R$ ${precoNumerico.toLocaleString("pt-BR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}`,
                   )
                 : "";
             // `imagem_urls` é o DEFAULT `[]` da coluna com frequência — um

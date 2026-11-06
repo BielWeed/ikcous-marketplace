@@ -765,6 +765,14 @@ export function AddressForm({
                 <input
                   id="number"
                   {...form.register("number")}
+                  // "Ir/Enter" do celular no Número leva ao Complemento em vez
+                  // de salvar o endereço antes de ele ser escrito.
+                  enterKeyHint="next"
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                    e.preventDefault();
+                    form.setFocus("complement");
+                  }}
                   placeholder="123"
                   disabled={loading}
                   maxLength={TETO_NUMERO}

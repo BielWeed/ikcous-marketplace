@@ -50,7 +50,6 @@ import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Address, CartItem, Order, View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import {
   Check,
   ChevronRight,
@@ -298,7 +297,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               if (!product) {
                 itemProduct = {
                   id: dbItem.product_id,
-                  name: "Produto Indisponível / Deletado",
+                  name: "Produto Indisponível / Excluído",
                   description: "",
                   price: 0,
                   costPrice: 0,
@@ -320,7 +319,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 itemProduct = mapProductFromDB(product);
                 let statusSuffix = "";
                 if ((product as any).deleted_at) {
-                  statusSuffix = " (Deletado)";
+                  statusSuffix = " (Excluído)";
                 } else if (!product.ativo && product.ativo !== undefined) {
                   statusSuffix = " (Inativo)";
                 } else if (itemProduct.isActive === false) {
@@ -719,14 +718,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 <p className="mt-1 text-xs text-zinc-400">
                   Cliente desde{" "}
                   {profile?.created_at
-                    ? format(
-                        new Date(profile.created_at),
-                        "dd 'de' MMM, yyyy",
-                        {
-                          locale: ptBR,
-                        },
-                      )
-                    : "N/A"}
+                    ? format(new Date(profile.created_at), "dd/MM/yyyy")
+                    : "—"}
                 </p>
                 <Badge className="mt-2 rounded-full border border-admin-border bg-admin-surface px-2 py-0.5 text-[11px] font-semibold text-zinc-400">
                   {rotuloDoPapel(profile?.role)}
@@ -759,10 +752,10 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex min-w-0 flex-col">
                       <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-400">
-                        Email
+                        E-mail
                       </span>
                       <span className="break-all font-semibold text-zinc-300">
-                        {profile?.email || "N/A"}
+                        {profile?.email || "Não informado"}
                       </span>
                     </div>
                   </div>
@@ -791,7 +784,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                         Telefone / WhatsApp
                       </span>
                       <span className="break-all font-semibold text-zinc-300">
-                        {profile?.whatsapp || "N/A"}
+                        {profile?.whatsapp || "Não informado"}
                       </span>
                     </div>
                   </div>
@@ -908,9 +901,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   </span>
                   <span className="break-words text-sm font-bold tracking-tight text-white sm:text-base">
                     {resumo.ultimaCompra
-                      ? format(resumo.ultimaCompra, "dd MMM yy", {
-                          locale: ptBR,
-                        })
+                      ? format(resumo.ultimaCompra, "dd/MM/yyyy")
                       : "—"}
                   </span>
                 </div>
@@ -1089,8 +1080,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                   >
                                     {format(
                                       new Date(order.createdAt),
-                                      "dd MMMM, yy",
-                                      { locale: ptBR },
+                                      "dd/MM/yyyy",
                                     )}
                                   </TableCell>
                                   <TableCell

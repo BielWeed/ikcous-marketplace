@@ -38,8 +38,10 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const PRAZO_MS = 12_000;
 const PAUSA_DO_SUBTOTAL_MS = 400;
+// A frase serve aos dois caminhos (cartão da lista e campo de digitar): com o
+// campo vazio o botão "Aplicar" está apagado, então ela não aponta botão nenhum.
 const MENSAGEM_DE_CUPOM_LENTO =
-  "A conexão está lenta. Toque em Aplicar para tentar de novo.";
+  "A conexão está lenta. Tente aplicar o cupom de novo.";
 
 let raiz: Root;
 let hospedeiro: HTMLDivElement;

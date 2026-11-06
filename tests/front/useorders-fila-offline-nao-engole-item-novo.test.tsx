@@ -506,11 +506,11 @@ describe("useOrders — a fila offline não engole item novo", () => {
     await montar();
     await reconectar();
     expect(toast.error).toHaveBeenCalledWith(
-      expect.stringContaining("1 alterações de pedidos"),
+      expect.stringContaining("1 alteração de pedido"),
       { id: toastId },
     );
     expect(toast.error).toHaveBeenCalledWith(
-      expect.stringContaining("1 alterações não se aplicam mais"),
+      expect.stringContaining("1 alteração não se aplica mais"),
       { id: toastId },
     );
   });

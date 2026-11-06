@@ -57,6 +57,7 @@ import {
   criarGerenciadorDeChave,
   impressaoDaCompra,
 } from "@/lib/chave-do-pedido";
+import { ehRecusaDeCupomInexistente } from "@/lib/codigo-do-cupom";
 import { rotuloDaOpcaoDeCartao } from "@/lib/config-do-cartao";
 import {
   cpfValido,
@@ -670,7 +671,7 @@ const FRASE_LOJA_SEM_FRETE_E_SEM_CONTATO =
 
 /** Cupom aplicado cuja conferência não respondeu: o Finalizar fica travado até a cliente decidir. */
 const AVISO_CUPOM_SEM_CONFERENCIA =
-  "Não deu para conferir o desconto do cupom agora. Remova o cupom para finalizar sem ele, ou aplique o cupom de novo.";
+  "Não deu para conferir o desconto do cupom agora. Remova o cupom para finalizar sem ele, ou remova e aplique o código de novo.";
 
 interface GatilhoDoResumoDoPedidoProps {
   readonly cart: CartItem[];
@@ -3923,6 +3924,10 @@ export function CheckoutViewDaConta({
         // Resolve aqui mesmo: o cupom é editável nesta tela, e mandar a pessoa
         // para o carrinho para tirar algo que está na frente dela seria pior.
         handleRemoveCoupon();
+        // O servidor acabou de recusar esse cupom (esgotou, venceu, saiu do ar):
+        // a lista de cartões ainda o oferece. Reler a lista é só aqui — tirar à
+        // mão um cupom válido (`handleRemoveCoupon`) não consulta nada à toa.
+        cuponsDoCheckout.tentarDeNovo();
         return;
       case "endereco":
         setIsAddressModalOpen(true);
@@ -3946,7 +3951,7 @@ export function CheckoutViewDaConta({
     }
   };
 
-  const handleApplyCoupon = async (code: string) => {
+  const handleApplyCoupon = async (code: string, alternativo?: string) => {
     if (envioEmCurso()) return;
     // Toque duplo (ou toque em outro cartão) com uma validação em voo: nada.
     if (aplicacaoDoCupomEmVooRef.current) return;
@@ -3961,13 +3966,34 @@ export function CheckoutViewDaConta({
     // aplicado na tela da outra.
     const contaQuePediu = contaRef.current;
     try {
-      const result = await validateCoupon(code, subtotal);
+      let result = await validateCoupon(code, subtotal);
       if (contaRef.current !== contaQuePediu) return;
 
+      // Código digitado com acento ou espaço ("verão10"): o painel grava SEM
+      // os dois. Tentou-se como digitado (cupom antigo gravado com acento
+      // continua valendo); só se o servidor disse que o código NÃO EXISTE
+      // tenta-se a versão normalizada. O código que vale é o que ele aceitou.
+      let codigoAceito = code;
+      if (
+        !result.valid &&
+        !result.networkError &&
+        alternativo &&
+        alternativo !== code &&
+        ehRecusaDeCupomInexistente(result.message)
+      ) {
+        result = await validateCoupon(alternativo, subtotal);
+        if (contaRef.current !== contaQuePediu) return;
+        codigoAceito = alternativo;
+      }
+
       if (result.valid) {
-        cupomConferidoRef.current = { code, subtotal, conta: contaQuePediu };
+        cupomConferidoRef.current = {
+          code: codigoAceito,
+          subtotal,
+          conta: contaQuePediu,
+        };
         setAppliedCoupon({
-          code,
+          code: codigoAceito,
           discount: result.discount,
           conta: contaQuePediu,
         });

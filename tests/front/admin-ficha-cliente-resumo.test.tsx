@@ -1,5 +1,4 @@
 import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 // @vitest-environment jsdom
 //
 // Frente "ficha do cliente" (03/09): o resumo do topo responde "quem é este
@@ -371,12 +370,8 @@ describe("AdminUserDetailView — os cartões do resumo no ar", () => {
   it("Última Compra é a data do pedido que conta mais recente, não a do cancelado", async () => {
     await abrirFicha();
 
-    const esperado = format(new Date("2026-09-12T12:00:00Z"), "dd MMM yy", {
-      locale: ptBR,
-    });
-    const cancelado = format(new Date("2026-09-20T12:00:00Z"), "dd MMM yy", {
-      locale: ptBR,
-    });
+    const esperado = format(new Date("2026-09-12T12:00:00Z"), "dd/MM/yyyy");
+    const cancelado = format(new Date("2026-09-20T12:00:00Z"), "dd/MM/yyyy");
 
     const etiqueta = [...hospedeiro.querySelectorAll("span")].find(
       (s) => s.textContent?.trim() === "Última Compra",

@@ -83,6 +83,15 @@ const SearchInput = React.memo(function SearchInput({
         name="q"
         value={localValue}
         onChange={(e) => setLocalValue(e.target.value)}
+        // A tecla do teclado do celular vira "buscar": aplica o termo na hora
+        // (sem esperar os 300 ms) e tira o foco, que fecha o teclado e deixa os
+        // resultados à vista (a barra do topo já faz o mesmo).
+        enterKeyHint="search"
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          onChange(localValue);
+          e.currentTarget.blur();
+        }}
         placeholder="O que você deseja hoje?"
         aria-label="Buscar produtos"
         className="h-12 rounded-2xl border-zinc-100 bg-zinc-50 pl-11 pr-4 text-sm transition-all placeholder:text-zinc-400 focus:border-zinc-200 focus:ring-black/5"

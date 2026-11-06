@@ -2072,7 +2072,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       await deleteBanner(bannerToDelete.id, bannerToDelete.imageUrl);
     } catch (error) {
       console.error("Erro ao deletar banner:", error);
-      toast.error("Erro ao deletar o banner.");
+      toast.error("Erro ao excluir o banner.");
     } finally {
       setIsProcessing(false);
       setActiveAction(null);
