@@ -1351,8 +1351,10 @@ export const AdminShippingView = memo(function AdminShippingView({
                 }
                 dias={formData.diasDaEntrega}
                 onDias={(diasDaEntrega) => {
-                  if (aceitarDias(diasDaEntrega))
+                  const aceito = aceitarDias(diasDaEntrega);
+                  if (aceito)
                     atualizarFormData((prev) => ({ ...prev, diasDaEntrega }));
+                  return aceito;
                 }}
                 enderecoDaLoja={config?.storeAddress}
                 onNavigate={onNavigate}

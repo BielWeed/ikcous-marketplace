@@ -222,6 +222,21 @@ describe("edição do cupom — confirmação das regras e dos clientes", () => 
     expect(clientesNoBanco).toEqual(["u-ana"]);
   });
 
+  it("código repetido em cupom exclusivo diz o motivo, não o aviso genérico", async () => {
+    gravarCupom.mockResolvedValueOnce({
+      error: { code: "23505", message: "duplicate key value" },
+    });
+    await montar();
+    await escolherBia();
+    await digitar("#coupon-code", "VIPNOVO");
+    await clicar("Salvar Cupom");
+    expect(erro).toHaveBeenCalledTimes(1);
+    expect(erro).toHaveBeenCalledWith("Já existe um cupom com este código.");
+    expect(sucesso).not.toHaveBeenCalled();
+    expect(gravarClientes).not.toHaveBeenCalled();
+    expect(navegar).not.toHaveBeenCalled();
+  });
+
   it("trocar para exclusivo espera a lista sem recarregar os clientes antigos", async () => {
     cupomNoBanco.alcance = "codigo";
     let resolver!: (resposta: { error: null }) => void;

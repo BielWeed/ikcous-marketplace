@@ -1,4 +1,24 @@
 {
+  "1.5.144": {
+    "titulo": "Internet lenta não trava mais a loja, e devoluções, carrinho e avisos ficaram mais claros",
+    "novidades": [],
+    "correcoes": [
+      "Loja: abrir um link de produto com internet ruim mostra “Carregando produto…” e, se não vier, um aviso com “Tentar de novo” e “Voltar à loja”; a primeira visita não fica presa esperando a vitrine.",
+      "Loja, Carrinho: o botão “+” para em 500 unidades por item e o carrinho avisa quando limita, sempre citando o limite certo (estoque ou 500).",
+      "Loja, Pedidos: cancelar um pedido com internet lenta não deixa o botão preso em “Processando”; a loja manda conferir o pedido antes de tentar de novo.",
+      "Loja, Devoluções: o cartão da devolução se atualiza depois de um erro e quando você volta ao app, a variação aparece com o nome certo e produto excluído não convida a avaliar.",
+      "Painel, Pedidos: avançar o status ou cancelar com internet lenta volta ao status anterior e avisa; “Ver no Maps” usa rua e número sem o bairro; o WhatsApp de retirada diz “Retirado” e o de cancelado tem uma despedida própria.",
+      "Painel, Devoluções: a ficha abre como janela no celular (fecha com Esc e prende o foco), e a idade da devolução conta por dia de São Paulo e muda sozinha à meia-noite.",
+      "Painel, Banners e Loja: os prazos aparecem como “em 47h 0m” (dias só a partir de 48 h) e nenhuma pergunta ou avaliação mostra “em 3 minutos” quando o relógio do celular está atrasado.",
+      "Painel, Balcão: venda de R$ 0,00 não pede conferência de troco e o recibo diz “Sem valor a pagar”; o leitor de código reinicia sozinho depois de três falhas seguidas.",
+      "Painel, Cupons e Avisos: mensagens claras para cupom que já existe e para cupom exclusivo, com aviso suave antes de enviar uma campanha com cupom exclusivo.",
+      "Painel, Produtos e Início: loja sem produto com estoque mostra “—” em vez de R$ 0,00, e a loja sem pedidos ainda recebe orientação dos primeiros passos.",
+      "Painel, Frete, Banners e Produtos: ordem do banner, prazo da entrega própria e observação longa da cliente tratados sem erro genérico ou texto cortado, e a lista de produtos sem internet deixa de parecer atualizada quando não está.",
+      "Loja, Busca e Avisos: a busca começa no topo dos resultados, o iPhone fora do app instalado explica por que não recebe avisos, e o convite “Quero Receber!” não volta depois que os avisos foram ligados.",
+      "Painel: duas abas abertas ao mesmo tempo não repetem a fila de pedidos guardada sem internet."
+    ],
+    "melhorias": []
+  },
   "1.5.143": {
     "titulo": "Fotos que não mentem, avisos que acompanham você e cadastro e checkout que apontam o campo",
     "novidades": [],

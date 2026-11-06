@@ -28,6 +28,10 @@ import {
   existeAlgumPedidoPendenteDoCheckout,
   lerPedidoPendenteDoCheckout,
 } from "@/lib/pedido-pendente-do-checkout";
+import {
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { descartarRascunhoDoProduto } from "@/lib/rascunho-do-produto";
 import { esquecerRolagemDoProdutoAberto } from "@/lib/rolagemDaEntradaNova";
 import { rolarAoCatalogo } from "@/lib/rolar-ao-catalogo";
@@ -468,6 +472,13 @@ export default function App() {
 
 const getProductById = (products: Product[], id: string) =>
   products.find((p) => p.id === id);
+
+// Link de produto compartilhado em rede PENDURADA (conecta e não responde):
+// sem prazo a tela ficava branca para sempre. 12 s para a consulta do produto
+// (mesmo prazo das consultas baratas do checkout); 15 s é quanto a tela espera
+// catálogo/sessão carregarem antes de oferecer "Tentar de novo".
+const PRAZO_DA_CHECAGEM_DO_PRODUTO_MS = 12_000;
+const PRAZO_DA_ESPERA_DO_PRODUTO_MS = 15_000;
 
 const getNavigationDirection = (
   from: View,
@@ -2432,6 +2443,32 @@ const AppContent = () => {
     setTentativaDoProduto((n) => n + 1);
   }, [recarregarProdutos]);
 
+  // Catálogo ou sessão que não terminam de carregar (rede pendurada): a
+  // checagem do produto abaixo só roda DEPOIS deles, então sem este relógio a
+  // tela esperaria para sempre. Passado o prazo, vira a mesma tela de "Não
+  // conseguimos carregar" (com "Tentar de novo"); se o carregamento terminar
+  // depois, a checagem roda e o produto aparece normalmente.
+  const produtoDoLinkNaLista = selectedProductId
+    ? getProductById(products, selectedProductId) !== undefined
+    : false;
+  useEffect(() => {
+    if (currentView !== "product-detail" || !selectedProductId) return;
+    if (produtoDoLinkNaLista) return;
+    if (!authLoading && !productsLoading) return;
+    const relogio = setTimeout(
+      () => setProdutoSemRede(selectedProductId),
+      PRAZO_DA_ESPERA_DO_PRODUTO_MS,
+    );
+    return () => clearTimeout(relogio);
+  }, [
+    currentView,
+    selectedProductId,
+    produtoDoLinkNaLista,
+    authLoading,
+    productsLoading,
+    tentativaDoProduto,
+  ]);
+
   // Handle missing product or invalid product detail view
   useEffect(() => {
     let active = true;
@@ -2481,11 +2518,27 @@ const AppContent = () => {
               redirecionarParaHome();
               return;
             }
-            const { data, error } = await supabase
-              .from("vw_produtos_public")
-              .select("*, product_variants(*)")
-              .eq("id", selectedProductId)
-              .single();
+            // A espera por catálogo/sessão pode ter acendido a tela de falha
+            // antes desta checagem poder rodar: ela tem a palavra agora.
+            if (active) {
+              setProdutoSemRede((atual) =>
+                atual === selectedProductId ? null : atual,
+              );
+            }
+            // Rede pendurada não responde nem erra: o prazo transforma a
+            // espera eterna em falha de CARREGAR (cai no `catch`, que mostra
+            // "Não conseguimos carregar" com "Tentar de novo").
+            const { data, error } = await aguardarComPrazo(
+              Promise.resolve(
+                supabase
+                  .from("vw_produtos_public")
+                  .select("*, product_variants(*)")
+                  .eq("id", selectedProductId)
+                  .single(),
+              ),
+              PRAZO_DA_CHECAGEM_DO_PRODUTO_MS,
+              () => erroDeConsultaSemResposta(),
+            );
             if (error) {
               // PGRST116 = `.single()` não achou linha nenhuma: não existe.
               // 22P02 = o id do link nem é um uuid (link truncado): também
@@ -2664,10 +2717,31 @@ const AppContent = () => {
                 >
                   Tentar de novo
                 </button>
+                <button
+                  type="button"
+                  onClick={() => handleNavigate("home")}
+                  className="inline-flex min-h-11 items-center rounded-lg px-4 text-sm font-medium text-zinc-500 underline underline-offset-2 hover:bg-zinc-100"
+                >
+                  Voltar à loja
+                </button>
               </div>
             );
           }
-          return null;
+          // Ainda checando o link (catálogo, sessão ou a consulta do produto
+          // em andamento): esqueleto em vez de tela branca. Os desfechos --
+          // produto, Home ou "Não conseguimos carregar" -- têm prazo.
+          return (
+            <div
+              aria-busy="true"
+              aria-live="polite"
+              className="flex min-h-[60vh] flex-col gap-4 px-4 pt-4"
+            >
+              <span className="sr-only">Carregando produto…</span>
+              <div className="aspect-square w-full animate-pulse rounded-2xl bg-zinc-100" />
+              <div className="h-6 w-2/3 animate-pulse rounded bg-zinc-100" />
+              <div className="h-4 w-1/3 animate-pulse rounded bg-zinc-100" />
+            </div>
+          );
         }
         return (
           <PreloadedOrLazy

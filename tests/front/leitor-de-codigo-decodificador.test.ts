@@ -251,6 +251,137 @@ describe("criarDecodificador", () => {
     });
   });
 
+  it("caso 9b: zxing com readBarcodes falhando 3 quadros seguidos (WASM não baixou) rejeita com falha_do_fallback, em vez de devolver lista vazia para sempre", async () => {
+    const readBarcodes = vi.fn(async (): Promise<never> => {
+      throw new Error("wasm não baixou");
+    });
+    const carregar = vi.fn(
+      async (): Promise<ModuloZxingReader> => ({ readBarcodes }),
+    );
+    const aviso = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const decodificador = await criarDecodificador({
+      carregarFallback: carregar,
+    });
+    const imagem = {
+      data: new Uint8ClampedArray(4),
+      width: 1,
+      height: 1,
+    } as unknown as ImageData;
+
+    // As duas primeiras falhas ainda são tratadas como quadro ruim.
+    expect(await decodificador.detectar(imagem)).toEqual([]);
+    expect(await decodificador.detectar(imagem)).toEqual([]);
+    // A terceira seguida vira o erro com a frase pronta de conexão.
+    await expect(decodificador.detectar(imagem)).rejects.toMatchObject({
+      origem: "falha_do_fallback",
+      message:
+        "Não foi possível carregar o leitor de código de barras. Verifique a conexão e tente de novo.",
+    });
+    expect(aviso).toHaveBeenCalledTimes(1);
+
+    // O módulo é carregado de novo na nova tentativa.
+    await expect(decodificador.detectar(imagem)).resolves.toEqual([]);
+    expect(carregar).toHaveBeenCalledTimes(2);
+    aviso.mockRestore();
+  });
+
+  it("caso 9d: ao desistir (3ª falha seguida) o decodificador reinicia a lib de verdade; só depois do reinício a leitura volta a funcionar", async () => {
+    // Imita a zxing-wasm real: a promessa de instanciação do WASM fica em
+    // cache POR DENTRO da lib (inclusive rejeitada) e `readBarcodes` falha
+    // sem tentar de novo até alguém purgar e preparar o módulo outra vez.
+    let reiniciado = false;
+    const reiniciar = vi.fn(() => {
+      reiniciado = true;
+    });
+    const readBarcodes = vi.fn(async () => {
+      if (!reiniciado)
+        throw new Error("wasm não instanciou (promessa em cache)");
+      return [{ text: "7891000315507", format: "EAN13" }];
+    });
+    const modulo: ModuloZxingReader = { readBarcodes, reiniciar };
+    const aviso = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const decodificador = await criarDecodificador({
+      carregarFallback: async () => modulo,
+    });
+    const imagem = {
+      data: new Uint8ClampedArray(4),
+      width: 1,
+      height: 1,
+    } as unknown as ImageData;
+
+    await decodificador.detectar(imagem);
+    await decodificador.detectar(imagem);
+    expect(reiniciar).not.toHaveBeenCalled();
+    await expect(decodificador.detectar(imagem)).rejects.toMatchObject({
+      origem: "falha_do_fallback",
+    });
+    expect(reiniciar).toHaveBeenCalledTimes(1);
+
+    // Nova tentativa (o Tentar de novo): agora lê de verdade.
+    await expect(decodificador.detectar(imagem)).resolves.toEqual([
+      { codigo: "7891000315507", formato: "ean_13" },
+    ]);
+    aviso.mockRestore();
+  });
+
+  it("caso 9e: reiniciar() que lança não esconde o falha_do_fallback", async () => {
+    const readBarcodes = vi.fn(async (): Promise<never> => {
+      throw new Error("wasm não baixou");
+    });
+    const aviso = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const decodificador = await criarDecodificador({
+      carregarFallback: async (): Promise<ModuloZxingReader> => ({
+        readBarcodes,
+        reiniciar: () => {
+          throw new Error("purge falhou");
+        },
+      }),
+    });
+    const imagem = {
+      data: new Uint8ClampedArray(4),
+      width: 1,
+      height: 1,
+    } as unknown as ImageData;
+
+    await decodificador.detectar(imagem);
+    await decodificador.detectar(imagem);
+    await expect(decodificador.detectar(imagem)).rejects.toMatchObject({
+      origem: "falha_do_fallback",
+    });
+    aviso.mockRestore();
+  });
+
+  it("caso 9c: um quadro bem-sucedido (mesmo sem código) zera a contagem de falhas seguidas", async () => {
+    const respostas: Array<"erro" | "ok"> = [
+      "erro",
+      "erro",
+      "ok",
+      "erro",
+      "erro",
+    ];
+    const readBarcodes = vi.fn(async () => {
+      if (respostas.shift() === "erro") throw new Error("quadro ruim");
+      return [];
+    });
+    const aviso = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const decodificador = await criarDecodificador({
+      carregarFallback: async (): Promise<ModuloZxingReader> => ({
+        readBarcodes,
+      }),
+    });
+    const imagem = {
+      data: new Uint8ClampedArray(4),
+      width: 1,
+      height: 1,
+    } as unknown as ImageData;
+
+    for (let i = 0; i < 5; i += 1) {
+      await expect(decodificador.detectar(imagem)).resolves.toEqual([]);
+    }
+    expect(readBarcodes).toHaveBeenCalledTimes(5);
+    aviso.mockRestore();
+  });
+
   it("caso 10: encerrar() duas vezes não lança", async () => {
     const { Ctor } = criarConstrutorNativoFalso({
       suportados: ["ean_13", "code_128"],

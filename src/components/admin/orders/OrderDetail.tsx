@@ -41,6 +41,7 @@ import {
   normalizarCodigoDeRastreio,
 } from "@/lib/link-de-rastreio";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { buscaDoMapaDoEndereco } from "@/lib/query-maps-do-endereco";
 import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
@@ -744,7 +745,7 @@ function OrderDeliveryCard({
               ? "Endereço do cliente"
               : "Endereço de entrega"}
           </p>
-          <p className="text-sm leading-relaxed text-zinc-200">
+          <p className="break-words text-sm leading-relaxed text-zinc-200">
             {order.customer.address}
             {order.customer.number ? `, ${order.customer.number}` : ""}
             {order.customer.complement?.trim()
@@ -1463,7 +1464,7 @@ function OrderNotesCard({
           </span>
         </Button>
       </div>
-      <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-200">
+      <p className="whitespace-pre-line break-words text-sm leading-relaxed text-zinc-200">
         {localNotes}
       </p>
     </div>
@@ -1914,32 +1915,23 @@ export const OrderDetail = memo(function OrderDetail({
     .filter(Boolean)
     .join(" - ");
 
-  const mapsQueryParts: string[] = [];
-  const streetAddr = order.customer.address || "";
-  const num = order.customer.number || "";
-  if (streetAddr) {
-    if (num && !streetAddr.toLowerCase().includes(num.toLowerCase())) {
-      mapsQueryParts.push(`${streetAddr}, ${num}`);
-    } else {
-      mapsQueryParts.push(streetAddr);
-    }
-  }
-  if (order.customer.neighborhood) {
-    mapsQueryParts.push(order.customer.neighborhood);
-  }
-  // Sem cidade, a busca no mapa não leva Monte Carmelo calada: só empurra o
-  // que existe de verdade. Cidade e estado são checados em separado — pedido
-  // com só um dos dois não pode perder o que tem, e o `.filter(Boolean)`
-  // abaixo já cuida de não deixar "-" órfão quando falta um dos dois.
-  if (order.customer.city || order.customer.state) {
-    mapsQueryParts.push(
-      [order.customer.city, order.customer.state].filter(Boolean).join(" - "),
-    );
-  }
-  if (order.customer.cep) {
-    mapsQueryParts.push(order.customer.cep);
-  }
-  const mapsUrlQuery = mapsQueryParts.join(", ");
+  // A busca do mapa é a MESMA do cartão de endereço do Perfil: rua+número,
+  // cidade e UF, sem o bairro quando o endereço é completo (o bairro faz o
+  // Google listar comércios em vez de apontar a casa). Sem rua e sem CEP não
+  // há o que apontar: sobra o que existe (bairro, cidade, UF), nunca uma
+  // cidade inventada.
+  const mapsUrlQuery =
+    buscaDoMapaDoEndereco({
+      street: order.customer.address,
+      number: order.customer.number,
+      neighborhood: order.customer.neighborhood,
+      city: order.customer.city,
+      state: order.customer.state,
+      cep: order.customer.cep,
+    }) ??
+    [order.customer.neighborhood, order.customer.city, order.customer.state]
+      .filter(Boolean)
+      .join(", ");
 
   // Laudo 0109 (A-8): a cópia só comemora se DEU certo —
   // `copiarParaClipboard` devolve false quando a API recusa (permissão,
@@ -2323,7 +2315,7 @@ export const OrderDetail = memo(function OrderDetail({
               <h3 className="text-sm font-medium text-zinc-200">
                 Observações do pedido
               </h3>
-              <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-200">
+              <p className="whitespace-pre-line break-words text-sm leading-relaxed text-zinc-200">
                 {order.notes}
               </p>
             </div>

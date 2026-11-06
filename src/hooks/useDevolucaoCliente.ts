@@ -71,8 +71,10 @@ const ERRO_GENERICO = "Não foi possível concluir agora. Tente de novo.";
  * (regra do React) e, desligado, não busca nada.
  *
  * Sem realtime: a mudança de status já chega ao cliente como aviso em
- * `notificacoes` (gatilho da migration); a tela relê ao abrir e após cada
- * ação dela.
+ * `notificacoes` (gatilho da migration); a tela relê ao abrir, após cada
+ * ação dela (inclusive quando o servidor a recusa: a recusa quase sempre
+ * quer dizer que o cartão na tela está velho) e ao voltar ao app (aba
+ * visível de novo ou conexão de volta).
  */
 export function useDevolucaoCliente(
   orderId: string,
@@ -170,6 +172,23 @@ export function useDevolucaoCliente(
       rodadaRef.current += 1;
     };
   }, [orderId, habilitado, carregar]);
+
+  // Ficha aberta por muito tempo: a loja pode ter aprovado, recebido ou
+  // cancelado sem a tela saber. Ao voltar ao app, relê (a guarda de rodada de
+  // `carregar` descarta a resposta velha; os dados na tela ficam até a nova).
+  useEffect(() => {
+    if (!habilitado) return;
+    const aoVoltarAba = () => {
+      if (document.visibilityState === "visible") void carregar();
+    };
+    const aoVoltarConexao = () => void carregar();
+    document.addEventListener("visibilitychange", aoVoltarAba);
+    window.addEventListener("online", aoVoltarConexao);
+    return () => {
+      document.removeEventListener("visibilitychange", aoVoltarAba);
+      window.removeEventListener("online", aoVoltarConexao);
+    };
+  }, [habilitado, carregar]);
 
   const solicitar = useCallback(
     async (
@@ -278,8 +297,12 @@ export function useDevolucaoCliente(
         const { data, error } = await supabase.rpc("cancelar_devolucao", {
           p_id: id,
         });
-        if (error)
+        if (error) {
+          // O servidor recusou: o cartão na tela provavelmente está velho
+          // (a loja já mudou o status). Relê para ele se corrigir sozinho.
+          await carregar();
           return { ok: false, erro: mensagemDoErro(error, ERRO_GENERICO) };
+        }
         await carregar();
         return lerResultadoDeStatus(data)
           ? { ok: true, valor: undefined }
@@ -301,8 +324,12 @@ export function useDevolucaoCliente(
           p_id: id,
           p_codigo_rastreio: codigo.trim(),
         });
-        if (error)
+        if (error) {
+          // O servidor recusou: o cartão na tela provavelmente está velho
+          // (a loja já mudou o status). Relê para ele se corrigir sozinho.
+          await carregar();
           return { ok: false, erro: mensagemDoErro(error, ERRO_GENERICO) };
+        }
         await carregar();
         return lerResultadoDeStatus(data)
           ? { ok: true, valor: undefined }

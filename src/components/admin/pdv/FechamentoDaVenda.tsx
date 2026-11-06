@@ -137,9 +137,14 @@ export function FechamentoDaVenda({
   useEffect(() => {
     setConferido(null);
   }, [estado.pagamento, total]);
+  // Venda que fecha em R$ 0,00 (desconto integral) não tem pagamento a
+  // conferir: nada vai entrar no banco nem na maquininha. Em centavos, como a
+  // régua do resto da tela: R$ 0,004 é zero, R$ 0,01 não.
+  const temValorAPagar = Math.round(total * 100) > 0;
   const pedeConferencia =
     estado.pagamento !== null &&
-    FORMAS_QUE_PEDEM_CONFERENCIA.includes(estado.pagamento);
+    FORMAS_QUE_PEDEM_CONFERENCIA.includes(estado.pagamento) &&
+    temValorAPagar;
   const conferiu =
     conferido !== null &&
     conferido.pagamento === estado.pagamento &&

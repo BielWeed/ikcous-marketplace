@@ -70,6 +70,12 @@ export interface ModuloZxingReader {
       maxNumberOfSymbols?: number;
     },
   ): Promise<readonly { readonly text: string; readonly format: string }[]>;
+  /**
+   * Opcional: solta o cache interno da lib (a promessa de instanciação do WASM,
+   * inclusive rejeitada) para a próxima leitura instanciar de novo. Os dublês
+   * de teste não precisam ter.
+   */
+  reiniciar?(): void | Promise<void>;
 }
 
 export type CarregadorDoFallback = () => Promise<ModuloZxingReader>;
@@ -304,6 +310,9 @@ function criarDecodificadorNativo(escolhido: NativoEscolhido): Decodificador {
   };
 }
 
+/** Falhas seguidas de `readBarcodes` (sem nenhum quadro bom no meio) até virar erro. */
+const LIMITE_DE_FALHAS_SEGUIDAS = 3;
+
 function criarDecodificadorZxing(
   formatosPedidos: readonly FormatoDeLeitura[],
   carregarFallback: CarregadorDoFallback | null,
@@ -320,6 +329,7 @@ function criarDecodificadorZxing(
 
   const formatosTraduzidos = formatosPedidos.map(paraFormatoZxing);
   let avisoJaEmitido = false;
+  let falhasSeguidas = 0;
   // Memoizado no fecho: `carregarFallback()` só roda na PRIMEIRA vez que
   // `detectar()` precisa dele, e nunca de novo depois — é o que prova a
   // regra de "lazy de verdade" do teste (o import dinâmico caro do WASM só
@@ -347,7 +357,8 @@ function criarDecodificadorZxing(
     formatos: formatosPedidos,
     async detectar(fonte) {
       // Erro de programação de quem chamou (C3), não condição de corrida:
-      // tem que aparecer alto, nunca virar lista vazia em silêncio.
+      // nunca vira lista vazia em silêncio — rejeita. (O laço da câmera,
+      // em useLeitorDeCodigo, trata essa rejeição como quadro ruim e segue.)
       if (!ehImageData(fonte)) {
         throw new ErroDoDecodificador("fonte_invalida");
       }
@@ -378,8 +389,30 @@ function criarDecodificadorZxing(
             erro,
           );
         }
+        // Um quadro ruim é normal; o WASM que não baixou falha em TODO
+        // quadro. Passou do limite seguido, deixa de ser quadro ruim: limpa
+        // a nossa memória do módulo E reinicia a lib por dentro (ela guarda a
+        // promessa de instanciação, inclusive rejeitada, e a devolveria para
+        // sempre), para a próxima tentativa baixar de novo, e avisa quem
+        // chamou, em vez de devolver lista vazia para sempre.
+        falhasSeguidas += 1;
+        if (falhasSeguidas >= LIMITE_DE_FALHAS_SEGUIDAS) {
+          falhasSeguidas = 0;
+          moduloPromise = null;
+          try {
+            await modulo.reiniciar?.();
+          } catch (erroDoReinicio) {
+            // O reinício é melhor-esforço: não pode esconder o erro de verdade.
+            console.warn(
+              "Não foi possível reiniciar o leitor.",
+              erroDoReinicio,
+            );
+          }
+          throw new ErroDoDecodificador("falha_do_fallback", erro);
+        }
         return [];
       }
+      falhasSeguidas = 0;
 
       const leituras: Leitura[] = [];
       for (const resultado of resultados) {

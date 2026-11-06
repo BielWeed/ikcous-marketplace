@@ -28,6 +28,10 @@ import {
 } from "@/lib/prazo-da-requisicao";
 import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
+import {
+  PRAZO_DA_TRAVA_DA_FILA_MS,
+  comTravaEntreAbas,
+} from "@/lib/trava-entre-abas";
 import type { DashboardSummary, Order, OrderStatus } from "@/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -223,6 +227,26 @@ const DESFECHOS_DO_CANCELAMENTO: ReadonlySet<string> = new Set([
 
 export const MENSAGEM_CANCELAMENTO_RECUPERAVEL =
   "Não foi possível cancelar agora. Tente de novo em instantes.";
+
+// Cancelar e avançar status: rede "pendurada" conecta e não responde, e sem
+// prazo o botão ficava em "Processando" para sempre. O prazo só encerra a
+// ESPERA DA TELA: a requisição segue no servidor e pode ter dado certo. Por
+// isso as frases NÃO afirmam que falhou: dizem que não se sabe e mandam
+// conferir o pedido antes de tentar de novo.
+//
+// - Cancelar: 30 s (o mesmo prazo do pedido). A edge faz até quatro chamadas
+//   ao Mercado Pago em série, 15 s cada (`TEMPO_LIMITE_MS`), mas o normal são
+//   poucos segundos; passar disso é rede ruim, não cancelamento lento.
+// - Avançar status: 15 s (uma RPC e uma releitura do banco, sem terceiros).
+export const PRAZO_DO_CANCELAMENTO_MS = 30_000;
+export const PRAZO_DO_AVANCO_DE_STATUS_MS = 15_000;
+// Releitura do status que vem ANTES de avançar (uma leitura barata, nada
+// gravado ainda): 10 s, para os dois passos juntos não passarem de 25 s.
+const PRAZO_DA_RELEITURA_DE_STATUS_MS = 10_000;
+export const MENSAGEM_CANCELAMENTO_SEM_RESPOSTA =
+  "A conexão está lenta e não conseguimos confirmar se o pedido foi cancelado. Confira o pedido antes de tentar de novo.";
+export const MENSAGEM_AVANCO_DE_STATUS_SEM_RESPOSTA =
+  "A conexão está lenta e não conseguimos confirmar se o status mudou. Confira o pedido antes de tentar de novo.";
 
 /**
  * O cancelamento NÃO aconteceu — a edge respondeu (ou não respondeu) com
@@ -427,21 +451,44 @@ export function mesclarFilaOfflineAposPassada(
 // AuthContext): a passada do admin A em voo nunca é "compartilhada" com o
 // admin B, que ficaria sem a sua. Quem chega com outro usuário espera a
 // passada em curso terminar e roda a sua.
+//
+// Entre ABAS do mesmo aparelho (a fila é um `localStorage` só), a passada roda
+// sob um Web Lock por dono da fila (`comTravaEntreAbas`): a aba que não o
+// consegue sai sem avisar — a passada em curso já leva a fila inteira, e a
+// segunda passada (item que entrou durante a primeira) acontece DENTRO do mesmo
+// lock. O lock vence em `PRAZO_DA_TRAVA_DA_FILA_MS` (2 min): a RPC e a releitura
+// daqui não têm prazo próprio, e uma passada pendurada não pode segurar a fila
+// de TODAS as abas do usuário (depois do prazo, raras vezes, duas passadas
+// coexistem — `avancar_status_do_pedido` com `p_status_esperado` deixa só uma
+// valer). Sem `navigator.locks`, vale só a passada em voo da aba.
 let sincronizacaoEmVoo: { userId: string; promise: Promise<boolean> } | null =
   null;
 
 function syncOfflineOrderUpdates(userId: string): Promise<boolean> {
   if (sincronizacaoEmVoo?.userId === userId) return sincronizacaoEmVoo.promise;
   const anterior = sincronizacaoEmVoo?.promise.catch(() => false);
+  const passada = () =>
+    comTravaEntreAbas(
+      `ikcous-fila-pedidos:${userId}`,
+      false,
+      () => processarFilaOfflineDePedidos(userId),
+      PRAZO_DA_TRAVA_DA_FILA_MS,
+    );
   const promise: Promise<boolean> = (
-    anterior
-      ? anterior.then(() => processarFilaOfflineDePedidos(userId))
-      : processarFilaOfflineDePedidos(userId)
+    anterior ? anterior.then(passada) : passada()
   ).finally(() => {
     if (sincronizacaoEmVoo?.promise === promise) sincronizacaoEmVoo = null;
   });
   sincronizacaoEmVoo = { userId, promise };
   return promise;
+}
+
+/** Só para teste: a passada é privada e não tem outro ponto de entrada sem
+ *  montar o hook inteiro e esperar o `setTimeout` do evento `online`. */
+export function _syncOfflineOrderUpdatesParaTeste(
+  userId: string,
+): Promise<boolean> {
+  return syncOfflineOrderUpdates(userId);
 }
 
 /** L10 — a mensagem de descarte por validade (singular/plural). */
@@ -1212,6 +1259,9 @@ export const mensagemAmigavelErroAtualizacaoStatus = (
   const codigo = typeof detalhes.code === "string" ? detalhes.code : "";
   const textoOriginal =
     typeof detalhes.message === "string" ? detalhes.message : "";
+  // Prazo da própria tela estourado (`aguardarComPrazo`): o servidor pode ter
+  // gravado. A frase já vem pronta no erro e NÃO afirma que falhou.
+  if (ehConsultaSemResposta(error) && textoOriginal) return textoOriginal;
 
   // `validateStatusUpdate` (topo deste arquivo) lança ANTES de qualquer
   // chamada de rede, com uma das duas frases fixas abaixo — já em
@@ -3639,16 +3689,31 @@ export function useOrders(
 
           let resposta: RespostaDoCancelamento;
           try {
-            const { data, error } = await (supabase as any).functions.invoke(
-              "criar-pagamento",
-              { body: { orderId, metodo: "cancelar" } },
+            // O prazo cobre a chamada e a leitura do corpo da resposta: o
+            // corpo também pode ficar pendurado. Estourou, cai no `catch`
+            // como qualquer falha de rede (desfecho recuperável, nada pintado).
+            resposta = await aguardarComPrazo(
+              (async () => {
+                const { data, error } = await (
+                  supabase as any
+                ).functions.invoke("criar-pagamento", {
+                  body: { orderId, metodo: "cancelar" },
+                });
+                return lerRespostaDoCancelamento(data, error);
+              })(),
+              PRAZO_DO_CANCELAMENTO_MS,
+              () =>
+                erroDeConsultaSemResposta(MENSAGEM_CANCELAMENTO_SEM_RESPOSTA),
             );
-            resposta = await lerRespostaDoCancelamento(data, error);
           } catch (erroDeRede) {
             console.error("Erro ao pedir o cancelamento à edge:", erroDeRede);
+            // Sem resposta no prazo: o servidor pode ter cancelado. A frase
+            // manda conferir, não afirma que falhou.
             resposta = {
               desfecho: "recuperavel",
-              mensagem: MENSAGEM_CANCELAMENTO_RECUPERAVEL,
+              mensagem: ehConsultaSemResposta(erroDeRede)
+                ? MENSAGEM_CANCELAMENTO_SEM_RESPOSTA
+                : MENSAGEM_CANCELAMENTO_RECUPERAVEL,
             };
           }
 
@@ -3734,11 +3799,21 @@ export function useOrders(
             throw new ErroStatusEsperadoDesconhecido();
           }
 
-          const { data: linhaAtual, error: erroReleitura } = await supabase
-            .from("marketplace_orders")
-            .select("status")
-            .eq("id", orderId)
-            .single();
+          // Nada foi gravado ainda: se a releitura pendurar (rede "pendurada"),
+          // o prazo a trata como qualquer falha de releitura, que já falha
+          // FECHADO (sem otimista e sem RPC), e a ficha sai de "Processando".
+          const { data: linhaAtual, error: erroReleitura } =
+            await aguardarComPrazo(
+              Promise.resolve(
+                supabase
+                  .from("marketplace_orders")
+                  .select("status")
+                  .eq("id", orderId)
+                  .single(),
+              ),
+              PRAZO_DA_RELEITURA_DE_STATUS_MS,
+              () => erroDeConsultaSemResposta(),
+            ).catch((erro: unknown) => ({ data: null, error: erro }));
 
           if (erroReleitura) {
             // "Não sei" nunca vira "pode avançar": sem confirmar o status
@@ -3909,20 +3984,32 @@ export function useOrders(
         // abaixo já falou). A marca nasce ANTES da gravação — o evento pode
         // chegar antes da resposta — e some se a gravação falhar.
         if (isAdmin && !silent) marcarAcaoPropriaDoPedido(orderId, status);
-        const { error } =
-          isAdmin && status !== "cancelled"
-            ? await supabase.rpc("avancar_status_do_pedido", {
-                p_order_id: orderId,
-                p_status_esperado: esperado as string,
-                p_new_status: status,
-                p_notes: notes || null,
-              })
-            : await (supabase.rpc as any)("update_order_status_atomic", {
-                p_order_id: orderId,
-                p_new_status: status,
-                p_notes: notes || null,
-                p_silent: silent,
-              });
+        // Prazo só da espera da tela (rede pendurada). Estourou: o erro cai
+        // no `catch` abaixo, que desfaz o otimista e conta que NÃO se sabe se
+        // gravou. Reenviar é seguro: a RPC de avanço confere o status de
+        // origem (`p_status_esperado`) e a de cancelamento é idempotente.
+        const { error } = await aguardarComPrazo(
+          // `rpc` devolve um "thenable", não uma Promise: sem isto o tipo do
+          // retorno vira `unknown`.
+          Promise.resolve(
+            isAdmin && status !== "cancelled"
+              ? supabase.rpc("avancar_status_do_pedido", {
+                  p_order_id: orderId,
+                  p_status_esperado: esperado as string,
+                  p_new_status: status,
+                  p_notes: notes || null,
+                })
+              : (supabase.rpc as any)("update_order_status_atomic", {
+                  p_order_id: orderId,
+                  p_new_status: status,
+                  p_notes: notes || null,
+                  p_silent: silent,
+                }),
+          ),
+          PRAZO_DO_AVANCO_DE_STATUS_MS,
+          () =>
+            erroDeConsultaSemResposta(MENSAGEM_AVANCO_DE_STATUS_SEM_RESPOSTA),
+        );
 
         if (error) throw error;
 

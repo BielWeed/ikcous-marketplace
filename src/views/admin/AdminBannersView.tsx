@@ -68,6 +68,7 @@ import {
 } from "@/lib/novo-banner-pendente";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { recusaDeFoto } from "@/lib/recusa-de-foto";
+import { distanciaCurta } from "@/lib/tempo-relativo";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Banner, View } from "@/types";
 import { camposQueMudaram } from "@/utils/campos-mexidos-do-produto";
@@ -95,6 +96,9 @@ import {
 } from "react";
 import { toast } from "sonner";
 
+const ORDEM_MAXIMA_DO_BANNER = 9999;
+const AVISO_DE_ORDEM_RECUSADA = `A ordem de exibição precisa ser um número inteiro de 1 a ${ORDEM_MAXIMA_DO_BANNER}.`;
+
 const getLuminance = (hex: string): number => {
   if (!hex) return 0;
   const c = hex.replace("#", "");
@@ -119,30 +123,6 @@ const toLocalDatetimeLocal = (isoString?: string | null): string => {
   const offset = d.getTimezoneOffset();
   const localDate = new Date(d.getTime() - offset * 60 * 1000);
   return localDate.toISOString().slice(0, 16);
-};
-
-const formatDistanceToNow = (
-  dateStringOrDate: string | Date | null | undefined,
-): string => {
-  if (!dateStringOrDate) return "";
-  const d = new Date(dateStringOrDate);
-  if (Number.isNaN(d.getTime())) return "";
-  const now = new Date();
-  const diffMs = d.getTime() - now.getTime();
-  const absDiff = Math.abs(diffMs);
-
-  const minutes = Math.floor(absDiff / (1000 * 60));
-  const hours = Math.floor(absDiff / (1000 * 60 * 60));
-  const days = Math.floor(absDiff / (1000 * 60 * 60 * 24));
-
-  if (diffMs > 0) {
-    if (days > 0) return `em ${days} ${days === 1 ? "dia" : "dias"}`;
-    if (hours > 0) return `em ${hours}h ${minutes % 60}m`;
-    return `em ${minutes}m`;
-  }
-  if (days > 0) return `há ${days} ${days === 1 ? "dia" : "dias"}`;
-  if (hours > 0) return `há ${hours}h ${minutes % 60}m`;
-  return `há ${minutes}m`;
 };
 
 const blendColors = (
@@ -329,7 +309,7 @@ interface AdminBannersViewProps {
 }
 
 // ── Redesenho do gerenciador (peça 23): situação em UMA linha por banner ──
-// Mesmos dados de antes (active/startDate/endDate + formatDistanceToNow),
+// Mesmos dados de antes (active/startDate/endDate + distanciaCurta),
 // só que em vez de espalhar badges empilhadas, cada card mostra um ponto
 // colorido e uma frase: "qual banner está onde e ligado ou não" em 1 olhar.
 const situacaoDoBanner = (
@@ -341,28 +321,28 @@ const situacaoDoBanner = (
   const agora = new Date();
   if (banner.startDate && new Date(banner.startDate) > agora) {
     return {
-      rotulo: `Agendado — entra no ar ${formatDistanceToNow(banner.startDate)}`,
+      rotulo: `Agendado — entra no ar ${distanciaCurta(banner.startDate)}`,
       ponto: "bg-amber-400",
       texto: "text-amber-400",
     };
   }
   if (banner.endDate && new Date(banner.endDate) < agora) {
     return {
-      rotulo: `Expirado — saiu do ar ${formatDistanceToNow(banner.endDate)}`,
+      rotulo: `Expirado — saiu do ar ${distanciaCurta(banner.endDate)}`,
       ponto: "bg-rose-400",
       texto: "text-rose-400",
     };
   }
   if (banner.endDate) {
     return {
-      rotulo: `No ar — expira ${formatDistanceToNow(banner.endDate)}`,
+      rotulo: `No ar — expira ${distanciaCurta(banner.endDate)}`,
       ponto: "bg-emerald-400",
       texto: "text-emerald-400",
     };
   }
   if (banner.startDate) {
     return {
-      rotulo: `No ar — começou ${formatDistanceToNow(banner.startDate)}`,
+      rotulo: `No ar — começou ${distanciaCurta(banner.startDate)}`,
       ponto: "bg-emerald-400",
       texto: "text-emerald-400",
     };
@@ -1968,6 +1948,20 @@ export const AdminBannersView = memo(function AdminBannersView({
         return;
       }
 
+      // A coluna da ordem é inteira: decimal, zero, negativo ou número
+      // gigante diriam só "Erro ao salvar" depois da ida ao banco.
+      const ordem = Number(formData.order);
+      if (
+        !Number.isInteger(ordem) ||
+        ordem < 1 ||
+        ordem > ORDEM_MAXIMA_DO_BANNER
+      ) {
+        toast.error(AVISO_DE_ORDEM_RECUSADA);
+        setIsSubmitting(false);
+        isSubmittingRef.current = false;
+        return;
+      }
+
       // Datas sem sentido não salvam em silêncio: fim antes do início
       // bloqueia; fim que já passou (banner que nunca vai aparecer) pergunta.
       // Banner que já estava vencido e continua com a mesma data de fim não
@@ -2465,7 +2459,7 @@ export const AdminBannersView = memo(function AdminBannersView({
             {draftToRecover && (
               <aside className="space-y-3 rounded-2xl border border-admin-border bg-admin-surface p-4">
                 <p className="text-sm text-white">
-                  Rascunho salvo {formatDistanceToNow(draftToRecover.savedAt)}.
+                  Rascunho salvo {distanciaCurta(draftToRecover.savedAt)}.
                   Deseja recuperar?
                 </p>
                 <div className="flex gap-2">
@@ -2607,7 +2601,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           />
                         )}
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm text-white">
+                          <p className="line-clamp-2 break-words text-sm text-white">
                             {selectedProduct.name}
                           </p>
                           <p className="text-sm">
@@ -2661,7 +2655,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                             >
                               <button
                                 type="button"
-                                className="min-h-11 min-w-0 flex-1 truncate text-left text-sm text-white"
+                                className="line-clamp-2 min-h-11 min-w-0 flex-1 break-words py-2 text-left text-sm text-white"
                                 disabled={ocupadoComImagem}
                                 onClick={() => escolherProduto(p)}
                               >
@@ -2831,6 +2825,9 @@ export const AdminBannersView = memo(function AdminBannersView({
                           : "banner-order"
                       }
                       type="number"
+                      min={1}
+                      max={ORDEM_MAXIMA_DO_BANNER}
+                      step={1}
                       className="min-h-11 border-admin-border bg-admin-bg text-white"
                       value={formData.order ?? ""}
                       onChange={(e) =>

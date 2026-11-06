@@ -136,16 +136,53 @@ describe("PerfilDaLoja — Compartilhar no lugar de Ver loja", () => {
     expect(toast.success).not.toHaveBeenCalled();
   });
 
-  // Controle positivo do teste acima: sem este caso, um `if` invertido por
-  // engano (mostrar o erro só quando FOR AbortError, por exemplo) passaria
-  // no teste de cancelamento sem ninguém notar — aqui um erro que NÃO é
-  // AbortError precisa continuar mostrando o toast.
-  it("erro de share que NÃO é AbortError mostra o toast de erro", async () => {
+  // O menu do aparelho pode falhar por outro motivo (sem permissão, sem app
+  // para compartilhar). Aí a lojista não fica sem saída: cai na cópia do
+  // link, o mesmo caminho de quem não tem menu (como na vitrine, em
+  // ProductView).
+  it("erro de share que NÃO é AbortError cai na cópia do link, sem toast de erro", async () => {
     const share = vi
       .fn()
       .mockRejectedValue(new DOMException("sem permissão", "NotAllowedError"));
     Object.defineProperty(window.navigator, "share", {
       value: share,
+      configurable: true,
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window.navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+
+    const tela = montar(<PerfilDaLoja {...props} />);
+    const botao = tela.querySelector("button")!;
+    await act(async () => {
+      botao.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/`);
+    expect(toast.success).toHaveBeenCalledWith("Link da loja copiado");
+    expect(tela.querySelector('[role="status"]')?.textContent).toContain(
+      "Endereço da loja copiado",
+    );
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  // Controle do caso acima: se a cópia TAMBÉM falha, o aviso de erro aparece
+  // (só comemora quando DEU CERTO).
+  it("share falha e a cópia também falha: mostra o toast de erro", async () => {
+    const share = vi
+      .fn()
+      .mockRejectedValue(new DOMException("sem permissão", "NotAllowedError"));
+    Object.defineProperty(window.navigator, "share", {
+      value: share,
+      configurable: true,
+    });
+    const writeText = vi.fn().mockRejectedValue(new Error("bloqueado"));
+    Object.defineProperty(window.navigator, "clipboard", {
+      value: { writeText },
       configurable: true,
     });
 
@@ -160,6 +197,34 @@ describe("PerfilDaLoja — Compartilhar no lugar de Ver loja", () => {
     expect(toast.error).toHaveBeenCalledWith(
       "Não foi possível compartilhar agora",
     );
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(tela.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it("cancelamento do share (AbortError) não tenta copiar", async () => {
+    const share = vi
+      .fn()
+      .mockRejectedValue(new DOMException("cancelado", "AbortError"));
+    Object.defineProperty(window.navigator, "share", {
+      value: share,
+      configurable: true,
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window.navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+
+    const tela = montar(<PerfilDaLoja {...props} />);
+    const botao = tela.querySelector("button")!;
+    await act(async () => {
+      botao.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(writeText).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
   });
 });

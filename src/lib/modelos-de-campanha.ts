@@ -112,13 +112,19 @@ export interface CupomDaLoja {
   readonly valid_until: string | null;
   readonly usage_limit: number | null;
   readonly usage_count: number | null;
+  /**
+   * Quem pode usar o cupom ("codigo" | "vitrine" | "exclusivo"). Ausente em
+   * banco sem a migration 20261208000000: aí vale como "codigo".
+   */
+  readonly alcance?: string | null;
 }
 
 export type ProblemaDoCupom =
   | "nao-existe"
   | "desativado"
   | "vencido"
-  | "esgotado";
+  | "esgotado"
+  | "exclusivo";
 
 /**
  * O cupom citado serve para uma cliente usar agora? `null` = serve.
@@ -128,6 +134,7 @@ export function problemaDoCupom(
   codigo: string,
   cupons: readonly CupomDaLoja[],
   agora: Date,
+  opcoes: { readonly paraClienteEspecifico?: boolean } = {},
 ): ProblemaDoCupom | null {
   const cupom = cupons.find((c) => c.code.toUpperCase() === codigo);
   if (!cupom) return "nao-existe";
@@ -144,6 +151,12 @@ export function problemaDoCupom(
     (cupom.usage_count ?? 0) >= cupom.usage_limit
   ) {
     return "esgotado";
+  }
+  // Exclusivo vale só para as clientes escolhidas no cupom: citado num aviso
+  // que sai para mais gente, a maioria lê "Cupom inválido ou expirado". Aviso
+  // para UM cliente (Mensagem para Cliente Específico) é a lojista no controle.
+  if (cupom.alcance === "exclusivo" && !opcoes.paraClienteEspecifico) {
+    return "exclusivo";
   }
   return null;
 }
@@ -162,5 +175,7 @@ export function mensagemDoProblemaDoCupom(
       return `O cupom ${codigo} já venceu`;
     case "esgotado":
       return `O cupom ${codigo} já usou todos os usos permitidos`;
+    case "exclusivo":
+      return `O cupom ${codigo} é exclusivo de clientes escolhidos e este aviso não vai só para eles`;
   }
 }

@@ -206,7 +206,9 @@ export function ParaFazer({
                       : "Tudo em dia"}
                   </p>
                   <p className="mt-0.5 text-sm text-zinc-400">
-                    Nenhuma pendência para resolver.
+                    {semPedidosAinda
+                      ? "Quando chegar o primeiro pedido, ele aparece aqui."
+                      : "Nenhuma pendência para resolver."}
                   </p>
                 </div>
               </li>

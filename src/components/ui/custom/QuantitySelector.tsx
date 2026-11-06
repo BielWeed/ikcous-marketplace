@@ -1,6 +1,11 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Minus, Plus } from "lucide-react";
 
+import {
+  DICA_DO_TETO_POR_PEDIDO,
+  MAX_ITEM_QUANTITY,
+} from "@/lib/limite-de-quantidade";
+
 interface QuantitySelectorProps {
   quantity: number;
   maxQuantity: number;
@@ -36,8 +41,13 @@ export function QuantitySelector({
     }
   };
 
+  // O carrinho nunca guarda mais que o teto por item: o "+" para nele em vez de
+  // deixar subir até o estoque e ser cortado depois, em silêncio.
+  const limite = Math.min(maxQuantity, MAX_ITEM_QUANTITY);
+  const travouNoTeto = quantity >= MAX_ITEM_QUANTITY && maxQuantity > limite;
+
   const handleIncrease = () => {
-    if (quantity < maxQuantity) {
+    if (quantity < limite) {
       onChange(quantity + 1);
     }
   };
@@ -96,10 +106,10 @@ export function QuantitySelector({
 
       <button
         onClick={handleIncrease}
-        disabled={quantity >= maxQuantity}
+        disabled={quantity >= limite}
         aria-label="Aumentar quantidade"
         type="button"
-        title="Aumentar"
+        title={travouNoTeto ? DICA_DO_TETO_POR_PEDIDO : "Aumentar"}
         className={`${buttonSize} flex items-center justify-center ${size === "pill" ? "rounded-full" : "rounded-xl"} ${size === "folha" ? "focus-visible:outline-2 focus-visible:outline-zinc-900" : size === "pill" ? "" : "border border-zinc-200/50 bg-white shadow-sm"} transition-all ${size === "pill" ? "hover:bg-background" : "hover:bg-zinc-50"} active:scale-90 disabled:cursor-not-allowed disabled:opacity-30`}
       >
         <Plus

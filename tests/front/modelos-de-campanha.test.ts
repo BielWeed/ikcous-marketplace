@@ -195,12 +195,41 @@ describe("problemaDoCupom", () => {
     ).toBeNull();
   });
 
+  it("cupom exclusivo citado num aviso para todos é problema; o aviso para um cliente só, não", () => {
+    const exclusivo: CupomDaLoja = { ...bom, alcance: "exclusivo" };
+    expect(problemaDoCupom("VERAO10", [exclusivo], agora)).toBe("exclusivo");
+    expect(
+      problemaDoCupom("VERAO10", [exclusivo], agora, {
+        paraClienteEspecifico: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("alcance 'codigo', 'vitrine', vazio ou ausente (banco antigo) não é problema", () => {
+    for (const alcance of ["codigo", "vitrine", null, undefined]) {
+      expect(
+        problemaDoCupom("VERAO10", [{ ...bom, alcance }], agora),
+      ).toBeNull();
+    }
+  });
+
+  it("cupom exclusivo e desativado continua sendo 'desativado' (o problema mais grave vem antes)", () => {
+    expect(
+      problemaDoCupom(
+        "VERAO10",
+        [{ ...bom, active: false, alcance: "exclusivo" }],
+        agora,
+      ),
+    ).toBe("desativado");
+  });
+
   it("cada problema tem uma frase que diz o código", () => {
     for (const p of [
       "nao-existe",
       "desativado",
       "vencido",
       "esgotado",
+      "exclusivo",
     ] as const) {
       expect(mensagemDoProblemaDoCupom("VERAO10", p)).toContain("VERAO10");
     }

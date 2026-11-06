@@ -278,13 +278,21 @@ export const HomeView = React.memo(function HomeView({
   // "Todas": senão "Ver todos os resultados" mostrava menos do que a caixinha
   // prometeu (ou "Nenhum produto agora"). Só reage a MUDANÇA da busca: tocar
   // numa categoria depois de buscar é escolha da cliente e fica.
+  //
+  // E leva ao topo dos resultados: a busca esconde banners e vitrines, a página
+  // encolhe e quem buscava com ela rolada ficava no FIM da lista, sem ver os
+  // mais relevantes. "instant": "auto" herdaria o scroll-smooth da tela, e a
+  // cada letra a rolagem para o mesmo lugar não se acumula. (`?.` porque o
+  // jsdom dos testes não implementa `scrollIntoView`.)
   const buscaAnterior = React.useRef(termoDaBusca);
   React.useEffect(() => {
     const mudou = buscaAnterior.current !== termoDaBusca;
     buscaAnterior.current = termoDaBusca;
-    if (mudou && termoDaBusca && selectedCategory !== "Todas") {
-      onCategoryChange("Todas");
-    }
+    if (!mudou || !termoDaBusca) return;
+    if (selectedCategory !== "Todas") onCategoryChange("Todas");
+    document
+      .getElementById("catalogo")
+      ?.scrollIntoView?.({ block: "start", behavior: "instant" });
   }, [termoDaBusca, selectedCategory, onCategoryChange]);
 
   const newArrivals = useMemo(() => {

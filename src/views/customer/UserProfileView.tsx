@@ -2,10 +2,11 @@ import { StarRating } from "@/components/ui/custom/StarRating";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStore } from "@/contexts/StoreContext";
 import { supabase } from "@/lib/supabase";
+import { tempoRelativo } from "@/lib/tempo-relativo";
 import type { View } from "@/types";
 import { getPredefinedCoverSvg } from "@/utils/covers";
 import { haptic } from "@/utils/haptic";
-import { format, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -611,10 +612,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                               />
                             )}
                             <span className="text-xs font-medium uppercase tracking-wider text-zinc-600">
-                              {formatDistanceToNow(new Date(rev.created_at), {
-                                addSuffix: true,
-                                locale: ptBR,
-                              })}
+                              {tempoRelativo(rev.created_at)}
                             </span>
                           </div>
 
@@ -720,10 +718,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                               Dúvida enviada
                             </span>
                             <span className="text-xs font-medium uppercase tracking-wider text-zinc-600">
-                              {formatDistanceToNow(new Date(q.created_at), {
-                                addSuffix: true,
-                                locale: ptBR,
-                              })}
+                              {tempoRelativo(q.created_at)}
                             </span>
                           </div>
                           <p className="break-words text-xs font-bold leading-relaxed text-zinc-900 md:text-sm">
@@ -750,10 +745,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                                     </span>
                                   </div>
                                   <span className="text-xs font-medium uppercase tracking-wider text-zinc-600">
-                                    {formatDistanceToNow(
-                                      new Date(ans.created_at),
-                                      { addSuffix: true, locale: ptBR },
-                                    )}
+                                    {tempoRelativo(ans.created_at)}
                                   </span>
                                 </div>
                                 <p className="break-words pl-0.5 font-medium italic text-zinc-700">

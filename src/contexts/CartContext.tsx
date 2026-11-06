@@ -22,6 +22,10 @@ import {
 // -- local calcula aqui (mesmo preset de sempre); nacional só EXIBE o que a
 // edge já mandou pronto (a opção escolhida É a fonte, contrato §3).
 import { economiaDaOpcao, precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
+import {
+  AVISO_DO_TETO_POR_ITEM,
+  MAX_ITEM_QUANTITY,
+} from "@/lib/limite-de-quantidade";
 import { mapProductFromDB } from "@/lib/mappers";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
@@ -40,8 +44,6 @@ import React, {
 } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
-
-const MAX_ITEM_QUANTITY = 500; // Nuclear deterrent against inflation
 
 /** "Apenas N unidades disponíveis" com concordância: "Só resta 1 unidade
  *  disponível" no singular. */
@@ -98,9 +100,9 @@ function somarAoCarrinho(
       nextQuantity === MAX_ITEM_QUANTITY &&
       existing.quantity + qToAdd > MAX_ITEM_QUANTITY
     ) {
-      console.error(
-        `[CartContext-STOP] 🛑 QUANTITY CAP REACHED for ${product.id}.`,
-      );
+      // Estoque de sobra, mas o item bateu no teto por pedido: a pessoa
+      // precisa saber por que não entrou tudo (antes só ia ao console).
+      aviso = AVISO_DO_TETO_POR_ITEM;
     }
     const cart = [...prev];
     cart[existingIndex] = {
@@ -134,9 +136,13 @@ function somarAoCarrinho(
       },
     ],
     entrou: validatedQuantity,
+    // O motivo do corte é o limite que de fato mandou: o estoque, ou o teto
+    // quando há estoque de sobra (senão "só 800" para quem recebeu 500).
     aviso:
-      qToAdd > availableStock
-        ? `${unidadesDisponiveis(availableStock)}.`
+      qToAdd > validatedQuantity
+        ? availableStock <= MAX_ITEM_QUANTITY
+          ? `${unidadesDisponiveis(availableStock)}.`
+          : AVISO_DO_TETO_POR_ITEM
         : null,
   };
 }
@@ -1441,9 +1447,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
               MAX_ITEM_QUANTITY,
             );
 
-            if (quantity > availableStock) {
+            if (quantity > nextQuantity) {
               toast.error(
-                `Limite de estoque atingido (${availableStock} ${availableStock === 1 ? "unidade" : "unidades"}).`,
+                availableStock <= MAX_ITEM_QUANTITY
+                  ? `Limite de estoque atingido (${availableStock} ${availableStock === 1 ? "unidade" : "unidades"}).`
+                  : AVISO_DO_TETO_POR_ITEM,
               );
             }
 

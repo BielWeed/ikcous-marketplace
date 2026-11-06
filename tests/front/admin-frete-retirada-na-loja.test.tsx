@@ -726,6 +726,58 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     },
   );
 
+  it("a dica do campo já diz o limite do prazo: de 0 a 30 dias", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      storeAddress: ENDERECO_FICTICIO,
+      localDeliveryDays: 7,
+    };
+    await renderizarFrete();
+    expect(hospedeiro.textContent).toContain("Prazo de 0 a 30 dias");
+    expect(hospedeiro.textContent).toContain("0 = no mesmo dia");
+    expect(hospedeiro.querySelector("#erro-prazo-da-entrega")).toBeNull();
+  });
+
+  it.each(["31", "365", "-1", "1.5", "abc"])(
+    "prazo %s recusado: a tela explica o limite em vez de ignorar em silêncio",
+    async (digitado) => {
+      estadoDaLoja.atual = {
+        originCep: "38500-000",
+        storeAddress: ENDERECO_FICTICIO,
+        localDeliveryDays: 7,
+      };
+      await renderizarFrete();
+      digitar("#local-delivery-days", digitado);
+      const aviso = hospedeiro.querySelector("#erro-prazo-da-entrega");
+      expect(aviso?.textContent).toBe("O prazo vai de 0 a 30 dias.");
+      const campo = hospedeiro.querySelector<HTMLInputElement>(
+        "#local-delivery-days",
+      );
+      expect(campo?.getAttribute("aria-invalid")).toBe("true");
+      expect(campo?.getAttribute("aria-describedby")).toBe(
+        "erro-prazo-da-entrega",
+      );
+    },
+  );
+
+  it("o aviso do prazo some quando o número digitado passa a valer", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      storeAddress: ENDERECO_FICTICIO,
+      localDeliveryDays: 7,
+    };
+    await renderizarFrete();
+    digitar("#local-delivery-days", "31");
+    expect(hospedeiro.querySelector("#erro-prazo-da-entrega")).not.toBeNull();
+    digitar("#local-delivery-days", "3");
+    expect(hospedeiro.querySelector("#erro-prazo-da-entrega")).toBeNull();
+    expect(
+      hospedeiro
+        .querySelector<HTMLInputElement>("#local-delivery-days")
+        ?.getAttribute("aria-invalid"),
+    ).not.toBe("true");
+  });
+
   it("apagar o prazo e salvar volta ao padrão de 1 dia", async () => {
     estadoDaLoja.atual = {
       originCep: "38500-000",

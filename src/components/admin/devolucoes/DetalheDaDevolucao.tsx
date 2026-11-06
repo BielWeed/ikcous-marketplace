@@ -102,6 +102,7 @@ export function DetalheDaDevolucao({
           type="button"
           onClick={onFechar}
           aria-label="Fechar devolução"
+          data-fechar-ficha=""
           className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-admin-surface text-zinc-300 hover:text-white active:scale-95"
         >
           <ChevronLeft className="size-4 lg:hidden" />

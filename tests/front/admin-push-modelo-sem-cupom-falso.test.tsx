@@ -20,6 +20,10 @@ const { estado } = vi.hoisted(() => ({
     cupons: [] as Record<string, unknown>[],
     erroDosCupons: null as null | { message: string },
     consultasDeCupom: [] as unknown[],
+    colunasPedidas: [] as string[],
+    // Banco de loja de teste, sem a coluna `coupons.alcance`: pedir a coluna
+    // responde 42703 (undefined_column), como o PostgREST.
+    bancoSemAlcance: false,
     cuponsLigadosNaLoja: true,
   },
 }));
@@ -65,7 +69,7 @@ vi.mock("@/lib/supabase", () => ({
       }
       if (tabela === "coupons") {
         return {
-          select: () => ({
+          select: (colunas: string) => ({
             // A tela pede os códigos num filtro `or` de `ilike` (sem diferenciar
             // maiúscula, como o checkout): o dublê lê o filtro e compara igual.
             or: (filtro: string) => {
@@ -73,6 +77,16 @@ vi.mock("@/lib/supabase", () => ({
                 .split(",")
                 .map((parte) => parte.replace(/^code\.ilike\./, ""));
               estado.consultasDeCupom.push(codigos);
+              estado.colunasPedidas.push(colunas);
+              if (estado.bancoSemAlcance && /alcance/.test(colunas)) {
+                return Promise.resolve({
+                  data: null,
+                  error: {
+                    code: "42703",
+                    message: "column coupons.alcance does not exist",
+                  },
+                });
+              }
               if (estado.erroDosCupons) {
                 return Promise.resolve({
                   data: null,
@@ -80,13 +94,30 @@ vi.mock("@/lib/supabase", () => ({
                 });
               }
               const minusculas = codigos.map((c) => c.toLowerCase());
+              // O banco só devolve as colunas pedidas: sem `alcance` no
+              // select, a linha chega sem ele (o dublê não pode "ajudar").
+              const pediuAlcance = /alcance/.test(colunas);
               return Promise.resolve({
-                data: estado.cupons.filter((c) =>
-                  minusculas.includes(String(c.code).toLowerCase()),
-                ),
+                data: estado.cupons
+                  .filter((c) =>
+                    minusculas.includes(String(c.code).toLowerCase()),
+                  )
+                  .map(({ alcance: _alcance, ...resto }) =>
+                    pediuAlcance ? { ...resto, alcance: _alcance } : resto,
+                  ),
                 error: null,
               });
             },
+          }),
+        };
+      }
+      if (tabela === "public_profiles") {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: () =>
+                Promise.resolve({ data: { full_name: "Ana" }, error: null }),
+            }),
           }),
         };
       }
@@ -175,6 +206,8 @@ describe("AdminPushView — modelo pronto não promete cupom que a loja não cri
     estado.cupons = [];
     estado.erroDosCupons = null;
     estado.consultasDeCupom = [];
+    estado.colunasPedidas = [];
+    estado.bancoSemAlcance = false;
     estado.cuponsLigadosNaLoja = true;
 
     const armazem = new Map<string, string>();
@@ -212,10 +245,12 @@ describe("AdminPushView — modelo pronto não promete cupom que a loja não cri
     vi.restoreAllMocks();
   });
 
-  async function abrirTela() {
+  async function abrirTela(targetUserId?: string) {
     const { AdminPushView } = await import("@/views/admin/AdminPushView");
     await act(async () => {
-      raiz.render(<AdminPushView onNavigate={vi.fn()} />);
+      raiz.render(
+        <AdminPushView onNavigate={vi.fn()} targetUserId={targetUserId} />,
+      );
     });
     await act(async () => {
       await esperar(80);
@@ -453,6 +488,103 @@ describe("AdminPushView — modelo pronto não promete cupom que a loja não cri
     expect(invokeSendPush).not.toHaveBeenCalled();
     const { toast } = await import("sonner");
     expect(toast.error).toHaveBeenCalled();
+  });
+
+  const cupomExclusivo = {
+    code: "VERAO10",
+    active: true,
+    valid_until: null,
+    usage_limit: null,
+    usage_count: 0,
+    alcance: "exclusivo",
+  };
+
+  async function avisosDeErro() {
+    const { toast } = await import("sonner");
+    return (toast.error as ReturnType<typeof vi.fn>).mock.calls.map((c) =>
+      String(c[0]),
+    );
+  }
+
+  it("cupom exclusivo citado num aviso para todos avisa antes de enviar; o segundo toque envia", async () => {
+    estado.cupons = [cupomExclusivo];
+    await abrirTela();
+    await escrever("Oferta", "Use o cupom VERAO10 hoje.");
+
+    await enviar();
+    expect(invokeSendPush).not.toHaveBeenCalled();
+    expect(await avisosDeErro()).toContainEqual(
+      expect.stringContaining("O cupom VERAO10 é exclusivo de clientes"),
+    );
+
+    await enviar();
+    expect(invokeSendPush).toHaveBeenCalledTimes(1);
+  });
+
+  it("cupom exclusivo citado em mensagem para UM cliente não avisa", async () => {
+    estado.cupons = [cupomExclusivo];
+    await abrirTela("u1");
+    await escrever("Oferta", "Use o cupom VERAO10 hoje.");
+
+    await enviar();
+    expect(await avisosDeErro()).toEqual([]);
+    expect(invokeSendPush).toHaveBeenCalledTimes(1);
+  });
+
+  it("banco sem a coluna alcance: refaz a consulta sem ela, confere o resto e não vira 'não consegui conferir'", async () => {
+    estado.bancoSemAlcance = true;
+    estado.cupons = [
+      {
+        code: "VERAO10",
+        active: true,
+        valid_until: null,
+        usage_limit: null,
+        usage_count: 0,
+      },
+    ];
+    await abrirTela();
+    await escrever("Oferta", "Use o cupom VERAO10 hoje.");
+
+    await enviar();
+    expect(estado.colunasPedidas).toHaveLength(2);
+    expect(estado.colunasPedidas[0]).toContain("alcance");
+    expect(estado.colunasPedidas[1]).not.toContain("alcance");
+    expect(await avisosDeErro()).toEqual([]);
+    expect(invokeSendPush).toHaveBeenCalledTimes(1);
+  });
+
+  it("banco sem a coluna alcance continua achando os outros problemas do cupom", async () => {
+    estado.bancoSemAlcance = true;
+    estado.cupons = [
+      {
+        code: "VERAO10",
+        active: false,
+        valid_until: null,
+        usage_limit: null,
+        usage_count: 0,
+      },
+    ];
+    await abrirTela();
+    await escrever("Oferta", "Use o cupom VERAO10 hoje.");
+
+    await enviar();
+    expect(invokeSendPush).not.toHaveBeenCalled();
+    expect(await avisosDeErro()).toContainEqual(
+      expect.stringContaining("O cupom VERAO10 está desativado"),
+    );
+  });
+
+  it("outro erro (rede) na consulta com alcance NÃO é tratado como banco antigo: continua avisando que não conferiu", async () => {
+    estado.erroDosCupons = { message: "rede caiu" };
+    await abrirTela();
+    await escrever("Oferta", "Use o cupom VERAO10 hoje.");
+
+    await enviar();
+    expect(estado.colunasPedidas).toHaveLength(1);
+    expect(invokeSendPush).not.toHaveBeenCalled();
+    expect(await avisosDeErro()).toContainEqual(
+      expect.stringContaining("Não consegui conferir"),
+    );
   });
 
   it("texto sem cupom citado nem consulta a tabela de cupons", async () => {

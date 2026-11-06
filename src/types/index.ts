@@ -173,6 +173,13 @@ export interface OrderItem {
   price: number;
   quantity: number;
   image: string;
+  /**
+   * `false` quando a consulta do pedido trouxe o produto (`product`) e ele veio
+   * vazio: o produto foi excluído ou está pausado (a leitura só mostra produto
+   * ativo), então não há o que avaliar. Ausente quando a consulta nem fez a
+   * junção — sem a prova, nada é escondido.
+   */
+  productVisible?: boolean;
 }
 
 export interface Order {

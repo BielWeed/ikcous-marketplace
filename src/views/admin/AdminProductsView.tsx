@@ -473,6 +473,17 @@ export const AdminProductsView = memo(function AdminProductsView({
     paginaDaListaRef.current = currentPage;
   }, [loadData, currentPage]);
 
+  // A internet voltou com a lista aberta: o selo passa a dizer "Sincronizado",
+  // então a lista é buscada de novo (mesma página e filtros). Sem isso ela
+  // ficava com os produtos de antes da queda sob um selo verde. A guarda de
+  // geração do `loadData` descarta resposta velha.
+  const eraOfflineRef = useRef(isOffline);
+  useEffect(() => {
+    const voltou = eraOfflineRef.current && !isOffline;
+    eraOfflineRef.current = isOffline;
+    if (voltou && active) void recarregarAtualRef.current();
+  }, [isOffline, active]);
+
   // Renomear ou apagar categoria mexe nos produtos (o banco troca o nome neles).
   // O filtro lembrado no aparelho (`admin_products_filter_category`) guarda o
   // NOME: se ele era a categoria que mudou, acompanha, senão a lista ficaria
@@ -686,23 +697,32 @@ export const AdminProductsView = memo(function AdminProductsView({
       Math.abs(potentialRevenue - potentialValue - semCusto) < 0.01;
     const parcial = coberturaConferida && produtosSemCusto > 0;
     const semNenhumCusto = parcial && produtosComCusto === 0;
+    // Nenhum produto com estoque (catálogo vazio, ou tudo esgotado/pausado): não
+    // há custo a cadastrar nem valor a medir. O zero do servidor é "nada para
+    // somar", não medição; vira "—", como o resumo que não chegou.
+    const semEstoque =
+      coberturaConferida && produtosSemCusto === 0 && produtosComCusto === 0;
     const potentialProfit =
-      coberturaConferida && !semNenhumCusto ? potentialValue - invested : null;
+      coberturaConferida && !semNenhumCusto && !semEstoque
+        ? potentialValue - invested
+        : null;
     const avgRoi =
       invested !== null && invested > 0 && potentialProfit !== null
         ? (potentialProfit / invested) * 100
         : null;
 
     return {
-      invested,
+      invested: semEstoque ? null : invested,
       potential: potentialProfit,
-      potentialRevenue,
-      receitaComCusto: coberturaConferida ? potentialValue : null,
+      potentialRevenue: semEstoque ? null : potentialRevenue,
+      receitaComCusto:
+        coberturaConferida && !semEstoque ? potentialValue : null,
       receitaSemCusto: coberturaConferida ? semCusto : null,
       produtosSemCusto: coberturaConferida ? produtosSemCusto : null,
       coberturaConferida,
       parcial,
       semNenhumCusto,
+      semEstoque,
       avgRoi,
       totalCount: totalProducts,
     };
@@ -1302,6 +1322,8 @@ export const AdminProductsView = memo(function AdminProductsView({
                         · lucro parcial
                       </SeloDeStatus>
                     </button>
+                  ) : financialStats.semEstoque ? (
+                    "Nenhum produto com estoque ainda."
                   ) : (
                     <span className="text-emerald-300">
                       Todos os produtos em estoque têm custo cadastrado.
@@ -1415,6 +1437,8 @@ export const AdminProductsView = memo(function AdminProductsView({
                   Aguardando a separação dos produtos com e sem custo para
                   conferir o lucro bruto.
                 </p>
+              ) : financialStats.semEstoque ? (
+                <p>Nenhum produto com estoque para calcular.</p>
               ) : (
                 <>
                   {financialStats.parcial ? (

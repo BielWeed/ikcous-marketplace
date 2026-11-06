@@ -349,7 +349,7 @@ export function FolhaEditarVitrine({
                   )}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-white">
+                  <span className="line-clamp-2 break-words text-sm font-semibold text-white">
                     {produto.name}
                   </span>
                   <span className="block text-xs tabular-nums text-zinc-400">

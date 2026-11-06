@@ -16,6 +16,10 @@ import { mapProductFromDB } from "@/lib/mappers";
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
+import {
+  PRAZO_DA_TRAVA_DA_FILA_MS,
+  comTravaEntreAbas,
+} from "@/lib/trava-entre-abas";
 import type { Product, ProductVariant } from "@/types";
 import type { Database } from "@/types/database.types";
 import { LIMIAR_PADRAO_DE_ESTOQUE } from "@/utils/avisos-do-lojista";
@@ -188,8 +192,12 @@ const versoesAposSincronizar = new Map<string, string>();
  * no fim da passada, dê certo ou erre. Se a passada travar de vez (rede que
  * nunca responde), a marca vence em 2 minutos: uma travada não pode impedir
  * para sempre a fila de sair.
+ *
+ * Entre ABAS do mesmo aparelho (a fila é um `localStorage` só), a passada roda
+ * sob um Web Lock por dono da fila (`comTravaEntreAbas`): a aba que não o
+ * consegue sai sem avisar, igual a esta trava. O lock vence no mesmo prazo.
+ * Sem `navigator.locks`, vale só a trava do módulo.
  */
-const PRAZO_DA_TRAVA_DA_FILA_MS = 120_000;
 const filasEmSincronizacao = new Map<string, { desde: number }>();
 
 async function syncOfflineUpdates(userId: string): Promise<boolean> {
@@ -200,7 +208,12 @@ async function syncOfflineUpdates(userId: string): Promise<boolean> {
   const minhaMarca = { desde: Date.now() };
   filasEmSincronizacao.set(userId, minhaMarca);
   try {
-    return await sincronizarFilaDoUsuario(userId);
+    return await comTravaEntreAbas(
+      `ikcous-fila-produtos:${userId}`,
+      false,
+      () => sincronizarFilaDoUsuario(userId),
+      PRAZO_DA_TRAVA_DA_FILA_MS,
+    );
   } finally {
     // Só solta a própria marca: a de uma passada mais nova não é minha.
     if (filasEmSincronizacao.get(userId) === minhaMarca) {

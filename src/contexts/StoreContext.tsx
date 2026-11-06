@@ -17,6 +17,10 @@ import {
 } from "@/lib/guarda-de-frete";
 import { mapProductFromDB } from "@/lib/mappers";
 import { mesclarProdutoNaLista } from "@/lib/mescla-de-produtos";
+import {
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import { RealtimeSyncEngine } from "@/lib/realtimeSyncEngine";
 import { parseBrandingAssets } from "@/lib/storeIdentity";
@@ -370,6 +374,12 @@ const ESPERAS_DO_CATALOGO_MS: readonly number[] = [2000, 5000, 10000];
 // só trava de segurança (10 mil produtos) -- nunca existe laço sem fim.
 const PRODUTOS_POR_PAGINA = 200;
 const MAXIMO_DE_PAGINAS_DO_CATALOGO = 50;
+// Prazo de CADA página (06/11/2026). Rede "pendurada" conecta e não responde:
+// sem prazo o `loadingProducts` ficava `true` para sempre (esqueleto eterno) e
+// o "Tentar de novo" nunca soltava. Generoso de propósito -- é uma página de
+// 200 produtos com variações, e rede lenta mas viva não pode ser reprovada.
+// Estourou: vira erro e cai no `catch` de `buscarProdutos` (aviso + tentativas).
+const PRAZO_DA_PAGINA_DO_CATALOGO_MS = 25_000;
 
 type RespostaDaPaginaDoCatalogo = { data: any[] | null; error: any };
 
@@ -400,7 +410,21 @@ async function lerCatalogoEmPaginas(
   ) => PromiseLike<RespostaDaPaginaDoCatalogo>,
   aindaVale: () => boolean,
 ): Promise<RespostaDaPaginaDoCatalogo> {
-  const primeira = await lerPagina(0, PRODUTOS_POR_PAGINA - 1);
+  const lerComPrazo = async (
+    de: number,
+    ate: number,
+  ): Promise<RespostaDaPaginaDoCatalogo> => {
+    try {
+      return await aguardarComPrazo(
+        Promise.resolve(lerPagina(de, ate)),
+        PRAZO_DA_PAGINA_DO_CATALOGO_MS,
+        () => erroDeConsultaSemResposta(),
+      );
+    } catch (erro) {
+      return { data: null, error: erro };
+    }
+  };
+  const primeira = await lerComPrazo(0, PRODUTOS_POR_PAGINA - 1);
   if (primeira.error || !primeira.data) return primeira;
   if (primeira.data.length < PRODUTOS_POR_PAGINA) return primeira;
 
@@ -411,7 +435,7 @@ async function lerCatalogoEmPaginas(
       return { data: null, error: new Error("consulta de produtos superada") };
     }
     const de = pagina * PRODUTOS_POR_PAGINA;
-    const resposta = await lerPagina(de, de + PRODUTOS_POR_PAGINA - 1);
+    const resposta = await lerComPrazo(de, de + PRODUTOS_POR_PAGINA - 1);
     if (resposta.error) return { data: null, error: resposta.error };
     if (!resposta.data) {
       return {

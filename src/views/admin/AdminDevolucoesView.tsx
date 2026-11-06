@@ -1,5 +1,12 @@
 import { Loader2, RefreshCw, RotateCcw, Search } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
@@ -7,12 +14,14 @@ import { CartaoDaDevolucao } from "@/components/admin/devolucoes/CartaoDaDevoluc
 import { DetalheDaDevolucao } from "@/components/admin/devolucoes/DetalheDaDevolucao";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useDevolucoesAdmin } from "@/hooks/useDevolucoesAdmin";
+import { instanteDoDia, useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import {
   STATUS_EM_ORDEM,
   contagemDe,
   rotuloStatusPlural,
   totalGeral,
 } from "@/lib/devolucao";
+import { ehEscapeSintetico } from "@/lib/escape-sintetico";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import type { StatusDevolucao } from "@/types/devolucao";
@@ -27,6 +36,22 @@ interface AdminDevolucoesViewProps {
 
 const TEXTO_DESCARTAR =
   "Você escreveu algo que ainda não foi enviado. Descartar e sair?";
+
+const CONSULTA_TELA_LARGA = "(min-width: 1024px)";
+
+function assinarLargura(avisar: () => void): () => void {
+  if (typeof globalThis.matchMedia !== "function") return () => {};
+  const consulta = globalThis.matchMedia(CONSULTA_TELA_LARGA);
+  consulta.addEventListener?.("change", avisar);
+  return () => consulta.removeEventListener?.("change", avisar);
+}
+
+function telaLargaAgora(): boolean {
+  return (
+    typeof globalThis.matchMedia === "function" &&
+    globalThis.matchMedia(CONSULTA_TELA_LARGA).matches
+  );
+}
 
 /**
  * Devoluções e trocas do painel (plano 2026-09-26, seção "Devoluções").
@@ -49,17 +74,24 @@ export function AdminDevolucoesView({
     selectedDevolucaoId ?? null,
   );
   const [sujo, setSujo] = useState(false);
-  // "Agora" congelado: prazo e idade não mudam de rótulo no meio da leitura,
-  // e o render continua puro. Renova quando a tela volta a ficar ativa (a
-  // view fica montada em segundo plano).
-  const [agora, setAgora] = useState(() => new Date());
+  // "Agora" por DIA de São Paulo: a idade do cartão ("hoje", "há 1 dia") só
+  // muda de rótulo na virada do dia, e o render continua puro. O hook também
+  // reconfere quando a tela volta a ficar ativa ou ao voltar o foco (a view
+  // fica montada em segundo plano).
+  const dia = useDiaDeSaoPaulo(active !== false);
+  const agora = useMemo(() => instanteDoDia(dia), [dia]);
   const sujoRef = useRef(false);
+  const fichaRef = useRef<HTMLDivElement>(null);
+  const listaRef = useRef<HTMLDivElement>(null);
+  // Janela de verdade só quando a ficha cobre a tela (< 1024px); no
+  // computador ela é o painel ao lado da lista e nada disto vale.
+  const telaLarga = useSyncExternalStore(
+    assinarLargura,
+    telaLargaAgora,
+    () => false,
+  );
 
   const lista = useDevolucoesAdmin({ status, busca, ativo: active !== false });
-  const voltouAtiva = active !== false;
-  useEffect(() => {
-    if (voltouAtiva) setAgora(new Date());
-  }, [voltouAtiva]);
   const { recarregar } = lista;
 
   useEffect(() => {
@@ -128,6 +160,44 @@ export function AdminDevolucoesView({
     return () => document.body.classList.remove("admin-modal-open");
   }, [selecionada]);
 
+  // Ficha em tela cheia = janela de verdade: o foco entra no botão de fechar
+  // e, ao sair, volta ao cartão que a abriu; o Esc fecha (pelo `fechar`, que
+  // pergunta antes de descartar). Um Esc já tratado por outra camada
+  // (`defaultPrevented`) não conta, e a view em segundo plano não escuta.
+  const janela = Boolean(selecionada) && !telaLarga;
+  useEffect(() => {
+    if (!janela || !selecionada) return;
+    const origem = document.activeElement;
+    const raizDaLista = listaRef.current;
+    fichaRef.current
+      ?.querySelector<HTMLElement>("[data-fechar-ficha]")
+      ?.focus();
+    return () => {
+      const cartao = Array.from(
+        raizDaLista?.querySelectorAll<HTMLElement>("[data-devolucao]") ?? [],
+      ).find((el) => el.dataset.devolucao === selecionada);
+      const alvo =
+        origem instanceof HTMLElement &&
+        origem.isConnected &&
+        origem !== document.body
+          ? origem
+          : cartao;
+      alvo?.focus();
+    };
+  }, [janela, selecionada]);
+  useEffect(() => {
+    if (!janela || active === false) return;
+    const aoApertar = (evento: KeyboardEvent) => {
+      if (evento.key !== "Escape" || evento.defaultPrevented) return;
+      // O layout dispara um Escape próprio a cada troca de tela: não é do lojista.
+      if (ehEscapeSintetico(evento)) return;
+      evento.preventDefault();
+      fechar();
+    };
+    document.addEventListener("keydown", aoApertar);
+    return () => document.removeEventListener("keydown", aoApertar);
+  }, [janela, active, fechar]);
+
   const aoMudar = useCallback(() => recarregar(), [recarregar]);
   const aoAbrirPedido = useCallback(
     (orderId: string) => {
@@ -154,7 +224,10 @@ export function AdminDevolucoesView({
 
   return (
     <div className="pb-admin h-auto bg-admin-bg text-white lg:pb-12">
-      <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
+      <div
+        inert={janela}
+        className="flex items-center justify-between gap-4 px-6 pb-2 pt-6"
+      >
         <AdminPageHeader
           titulo={NOMES_DO_PAINEL["admin-devolucoes"]}
           acoes={
@@ -176,6 +249,7 @@ export function AdminDevolucoesView({
         <div
           role="group"
           aria-label="Filtrar por status"
+          inert={janela}
           className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6 lg:mx-0 lg:flex-wrap lg:px-0"
         >
           {chips.map((chip) => {
@@ -212,7 +286,7 @@ export function AdminDevolucoesView({
           })}
         </div>
 
-        <div className="group relative">
+        <div inert={janela} className="group relative">
           <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
             {digitando ? (
               <Loader2 className="size-4 animate-spin text-admin-gold" />
@@ -236,7 +310,12 @@ export function AdminDevolucoesView({
         </div>
 
         <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:items-start lg:gap-6">
-          <div className="space-y-2" data-testid="lista-devolucoes">
+          <div
+            ref={listaRef}
+            inert={janela}
+            className="space-y-2"
+            data-testid="lista-devolucoes"
+          >
             {lista.erro && (
               <div className="space-y-3 rounded-2xl border border-red-500/20 bg-zinc-950/40 p-4 shadow-2xl backdrop-blur-2xl">
                 <p className="text-xs font-bold text-red-300">
@@ -324,7 +403,13 @@ export function AdminDevolucoesView({
           </div>
 
           {selecionada ? (
-            <div className="fixed inset-0 z-[130] flex flex-col bg-admin-bg duration-300 animate-in slide-in-from-bottom-4 lg:sticky lg:inset-auto lg:top-4 lg:z-auto lg:h-[calc(100dvh-9rem)] lg:animate-none lg:overflow-hidden lg:rounded-2xl lg:border lg:border-admin-border">
+            <div
+              ref={fichaRef}
+              role={janela ? "dialog" : undefined}
+              aria-modal={janela ? true : undefined}
+              aria-label={janela ? "Detalhe da devolução" : undefined}
+              className="fixed inset-0 z-[130] flex flex-col bg-admin-bg duration-300 animate-in slide-in-from-bottom-4 lg:sticky lg:inset-auto lg:top-4 lg:z-auto lg:h-[calc(100dvh-9rem)] lg:animate-none lg:overflow-hidden lg:rounded-2xl lg:border lg:border-admin-border"
+            >
               <DetalheDaDevolucao
                 key={selecionada}
                 id={selecionada}

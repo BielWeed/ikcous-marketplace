@@ -506,9 +506,17 @@ export function OrderDetailsView({
   // "Avaliar" que abriu a folha (há um por item do pedido) para devolver o
   // foco a ele quando a folha fechar.
   const avaliarTriggerRef = useRef<HTMLButtonElement | null>(null);
+  // O foco volta DEPOIS de a folha sair do DOM (efeito abaixo): publicar troca
+  // as estrelas por "Avaliado" e o botão de origem some no mesmo render. Sem
+  // ele, o foco vai para o título do cartão de avaliação (tabIndex -1) em vez
+  // de se perder em <body>.
+  const devolverFocoRef = useRef<HTMLButtonElement | null | undefined>(
+    undefined,
+  );
+  const tituloDoCartaoDeAvaliacaoRef = useRef<HTMLHeadingElement | null>(null);
   const fecharAvaliacao = useCallback(() => {
+    devolverFocoRef.current = avaliarTriggerRef.current;
     setReviewingItem(null);
-    avaliarTriggerRef.current?.focus();
   }, []);
   // Fechar a folha desmonta o formulário e apaga o comentário escrito: com
   // texto digitado (o formulário avisa por `avaliacaoTemTextoRef`), fechar por
@@ -551,6 +559,13 @@ export function OrderDetailsView({
   useEffect(() => {
     if (!reviewingItem) return;
     avaliacaoFolhaRef.current?.focus();
+  }, [reviewingItem]);
+  useEffect(() => {
+    if (reviewingItem || devolverFocoRef.current === undefined) return;
+    const alvo = devolverFocoRef.current;
+    devolverFocoRef.current = undefined;
+    if (alvo?.isConnected) alvo.focus();
+    else tituloDoCartaoDeAvaliacaoRef.current?.focus();
   }, [reviewingItem]);
 
   // UI-191 (G10): a pergunta de cancelar é a caixa de confirmação da casa
@@ -1188,6 +1203,9 @@ export function OrderDetailsView({
     // Sem produto vinculado (`productId` vazio): não há o que avaliar —
     // publicar falharia sempre. O item continua na lista "Itens do pedido".
     if (!item.productId) continue;
+    // Produto excluído ou pausado (a consulta do pedido não o devolveu): não
+    // está à venda, então não há o que avaliar. O item segue em "Itens do pedido".
+    if (item.productVisible === false) continue;
     if (!productIdsJaListados.has(item.productId)) {
       productIdsJaListados.add(item.productId);
       produtosParaAvaliar.push(item);
@@ -1585,7 +1603,11 @@ export function OrderDetailsView({
             className="rounded-3xl border border-amber-200/60 bg-gradient-to-b from-amber-50 to-white p-5 shadow-sm"
           >
             <div className="mb-4 flex items-center justify-between gap-2">
-              <h4 className="text-[15px] font-extrabold tracking-tight text-zinc-900">
+              <h4
+                ref={tituloDoCartaoDeAvaliacaoRef}
+                tabIndex={-1}
+                className="text-[15px] font-extrabold tracking-tight text-zinc-900 focus:outline-none"
+              >
                 O que achou da compra?
               </h4>
               {!conferenciaFalhou && (
@@ -2153,7 +2175,13 @@ export function OrderDetailsView({
                   if (focaveis.length === 0) return;
                   const primeiro = focaveis[0];
                   const ultimo = focaveis[focaveis.length - 1];
-                  if (e.shiftKey && document.activeElement === primeiro) {
+                  // Logo ao abrir o foco está na própria folha: para o
+                  // Shift+Tab ela também é "o primeiro".
+                  if (
+                    e.shiftKey &&
+                    (document.activeElement === primeiro ||
+                      document.activeElement === e.currentTarget)
+                  ) {
                     e.preventDefault();
                     ultimo.focus();
                   } else if (!e.shiftKey && document.activeElement === ultimo) {
@@ -2164,8 +2192,8 @@ export function OrderDetailsView({
               }}
             >
               {/* Header */}
-              <div className="mb-6 flex items-center justify-between">
-                <div>
+              <div className="mb-6 flex items-center justify-between gap-3">
+                <div className="min-w-0">
                   <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
                     Avaliação do Produto
                   </span>
@@ -2181,7 +2209,7 @@ export function OrderDetailsView({
                   // Laudo 05/09, M5: o nome acessível era "✕" — agora diz
                   // o que fecha.
                   aria-label="Fechar avaliação"
-                  className="relative flex size-8 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-650 transition-colors after:absolute after:-inset-1.5 after:content-[''] hover:bg-zinc-300 hover:text-zinc-900"
+                  className="relative flex size-8 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-650 transition-colors after:absolute after:-inset-1.5 after:content-[''] hover:bg-zinc-300 hover:text-zinc-900"
                 >
                   ✕
                 </button>

@@ -4,9 +4,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuestions } from "@/hooks/useQuestions";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { iniciaisDaLoja } from "@/lib/iniciais-da-loja";
+import { tempoRelativo } from "@/lib/tempo-relativo";
 import { cn } from "@/lib/utils";
-import { formatDistanceToNow } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { Check, MessageSquare, Reply, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -351,10 +350,7 @@ export function ProductQA({
                     "lg:text-[11px] lg:text-zinc-500",
                   )}
                 >
-                  {formatDistanceToNow(new Date(q.createdAt), {
-                    addSuffix: true,
-                    locale: ptBR,
-                  })}
+                  {tempoRelativo(q.createdAt)}
                 </span>
               </div>
 
@@ -394,10 +390,7 @@ export function ProductQA({
                             </span>
                           </div>
                           <span className="text-xs font-medium uppercase tracking-wider text-zinc-600">
-                            {formatDistanceToNow(new Date(a.createdAt), {
-                              addSuffix: true,
-                              locale: ptBR,
-                            })}
+                            {tempoRelativo(a.createdAt)}
                           </span>
                         </div>
                         <p

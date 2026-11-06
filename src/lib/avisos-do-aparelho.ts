@@ -98,6 +98,17 @@ export const PASSOS_PARA_INSTALAR_NO_IOS: readonly string[] = [
 ];
 
 /**
+ * O mesmo caminho do iPhone/iPad, escrito para a CLIENTE (a tela de
+ * notificações dela): o primeiro e o último passo do lojista falam em "painel".
+ */
+export const PASSOS_PARA_INSTALAR_NO_IOS_DA_CLIENTE: readonly string[] = [
+  "Abra a loja no Safari.",
+  "Toque em Compartilhar (o quadrado com a seta para cima).",
+  "Escolha Adicionar à Tela de Início.",
+  "Abra o app pelo novo ícone, volte à tela de notificações e toque em Ligar avisos neste aparelho.",
+];
+
+/**
  * Como liberar os avisos quando a pessoa escolheu Bloquear — nenhuma página
  * consegue desfazer isso por ela. O caminho depende de ONDE ela está: o app
  * instalado tem entrada própria nas configurações do aparelho; na aba, quem

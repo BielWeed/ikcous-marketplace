@@ -14,11 +14,14 @@ describe("rotuloDoStatusParaACliente", () => {
     expect(rotuloDoStatusParaACliente("cancelled")).toBe("Cancelado");
   });
 
-  it("retirada na loja: 'shipping' é 'Pronto para retirar'; o resto não muda", () => {
+  it("retirada na loja: 'shipping' é 'Pronto para retirar' e 'delivered' é 'Retirado'; o resto não muda", () => {
     expect(rotuloDoStatusParaACliente("shipping", true)).toBe(
       "Pronto para retirar",
     );
-    expect(rotuloDoStatusParaACliente("delivered", true)).toBe("Entregue");
+    // Ninguém "entrega" nada na retirada: o app da cliente diz "Retirado".
+    expect(rotuloDoStatusParaACliente("delivered", true)).toBe("Retirado");
+    expect(rotuloDoStatusParaACliente("delivered", false)).toBe("Entregue");
+    expect(rotuloDoStatusParaACliente("cancelled", true)).toBe("Cancelado");
     expect(rotuloDoStatusParaACliente("pending", true)).toBe("Recebido");
   });
 

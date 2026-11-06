@@ -25,7 +25,8 @@ export function rotuloDoStatusParaACliente(
         ? ROTULO_RETIRADA_PRONTA
         : ROTULOS_DAS_ETAPAS.aCaminho;
     case "delivered":
-      return ROTULOS_DAS_ETAPAS.entregue;
+      // Na retirada ninguém "entrega" nada: o app da cliente diz "Retirado".
+      return retiradaNaLoja ? "Retirado" : ROTULOS_DAS_ETAPAS.entregue;
     case "cancelled":
       return "Cancelado";
     default:
@@ -64,5 +65,11 @@ export function mensagemDoStatusNoWhatsapp({
     status === "shipping" && !retiradaNaLoja && codigo
       ? `Código de rastreio: ${codigo}\nAcompanhe a entrega: ${linkDeRastreio(codigo)}\n`
       : "";
-  return `Olá ${nomeDoCliente}!\n\nSeu pedido #${numeroDoPedido} foi atualizado.\nStatus: ${rotuloDoStatus}\n${rastreio}\nObrigado por comprar na ${nomeDaLoja}!`;
+  // Pedido cancelado não agradece a compra: avisa e deixa a conversa aberta
+  // para a lojista explicar o motivo.
+  const fecho =
+    status === "cancelled"
+      ? "Qualquer dúvida sobre o cancelamento, é só responder esta mensagem."
+      : `Obrigado por comprar na ${nomeDaLoja}!`;
+  return `Olá ${nomeDoCliente}!\n\nSeu pedido #${numeroDoPedido} foi atualizado.\nStatus: ${rotuloDoStatus}\n${rastreio}\n${fecho}`;
 }
