@@ -61,6 +61,9 @@ import { toast } from "sonner";
 const ROTULO_MONO =
   "font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground";
 const ROTULO_CAMPO = "block text-[13px] font-semibold text-foreground";
+// A mesma frase no aviso (toast) e embaixo do campo WhatsApp.
+const MENSAGEM_WHATSAPP_INVALIDO =
+  "Informe DDD + 9 + 8 dígitos, por exemplo (34) 99999-8888.";
 // 16 px no celular (abaixo disso o iPhone dá zoom ao focar o campo).
 const CAMPO =
   "h-[52px] rounded-[14px] border border-input bg-muted/40 px-3.5 text-base font-medium text-foreground shadow-none transition-colors placeholder:text-muted-foreground/60 focus-visible:bg-background disabled:cursor-not-allowed disabled:opacity-60 md:text-[15px]";
@@ -447,6 +450,10 @@ export function AccountSettingsView() {
   // com "sucesso". A recusa mora aqui, junto do campo.
   const [nomeErro, setNomeErro] = useState(false);
 
+  // WhatsApp inválido: marca o campo, mostra a frase embaixo e foca nele (como
+  // o Nome acima), além do toast. Limpa assim que a pessoa volta a digitar.
+  const [whatsappErro, setWhatsappErro] = useState(false);
+
   const [passwordData, setPasswordData] = useState({
     newPassword: "",
     confirmPassword: "",
@@ -578,13 +585,15 @@ export function AccountSettingsView() {
         digitosWhatsapp.length > 0 &&
         !celularBrasileiroCompleto(profileData.phone)
       ) {
+        setWhatsappErro(true);
         toast.error("WhatsApp inválido", {
-          description:
-            "Informe DDD + 9 + 8 dígitos, por exemplo (34) 99999-8888.",
+          description: MENSAGEM_WHATSAPP_INVALIDO,
         });
+        document.getElementById("phone")?.focus();
         return;
       }
     }
+    setWhatsappErro(false);
 
     // CPF é OPCIONAL: campo vazio nunca bloqueia. Preenchido e inválido
     // marca erro NO CAMPO — mesma régua (`cpfValido`) do cadastro e do
@@ -970,6 +979,7 @@ export function AccountSettingsView() {
                       disabled={profileLoadState !== "loaded"}
                       onChange={(e) => {
                         setWhatsappEditado(true);
+                        if (whatsappErro) setWhatsappErro(false);
                         setProfileData((p) => ({
                           ...p,
                           // CONTA-09 (auditoria de 26/08/2026, camada 5) —
@@ -988,9 +998,19 @@ export function AccountSettingsView() {
                           ),
                         }));
                       }}
+                      aria-invalid={whatsappErro}
+                      aria-describedby={whatsappErro ? "phone-erro" : undefined}
                       className={CAMPO}
                       placeholder="(00) 00000-0000"
                     />
+                    {whatsappErro && (
+                      <p
+                        id="phone-erro"
+                        className="text-xs font-semibold text-red-600 dark:text-red-400"
+                      >
+                        {MENSAGEM_WHATSAPP_INVALIDO}
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-1.5">

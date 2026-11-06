@@ -277,9 +277,11 @@ export function FolhaEditarVitrine({
       <p className="mt-2 px-0.5 text-xs leading-snug text-zinc-400">
         {manual
           ? 'Aparecem na ordem em que você marcar. "Automático" volta a loja a escolher sozinha.'
-          : idsEmExibicao.length === 0 && produtos.length > 0
-            ? "Nenhum produto aparece nesta vitrine agora. Toque em um produto da lista para escolher."
-            : "Hoje a loja escolhe sozinha. Toque em um produto para passar a escolher você."}
+          : produtos.length === 0
+            ? "Sua loja ainda não tem produtos. Quando cadastrar, esta vitrine passa a escolher sozinha."
+            : idsEmExibicao.length === 0
+              ? "Nenhum produto aparece nesta vitrine agora. Toque em um produto da lista para escolher."
+              : "Hoje a loja escolhe sozinha. Toque em um produto para passar a escolher você."}
       </p>
 
       <div className="relative mt-3">
@@ -306,9 +308,17 @@ export function FolhaEditarVitrine({
 
       <div className="mt-1">
         {lista.length === 0 ? (
-          <p className="py-8 text-center text-sm text-zinc-400">
-            Nenhum produto encontrado na busca.
-          </p>
+          // Três casos: catálogo vazio, busca sem resultado e (impossível com
+          // produtos e sem busca) nada a dizer.
+          produtos.length === 0 ? (
+            <p className="py-8 text-center text-sm text-zinc-400">
+              Nenhum produto cadastrado ainda. Cadastre o primeiro em Produtos.
+            </p>
+          ) : busca.trim() ? (
+            <p className="py-8 text-center text-sm text-zinc-400">
+              Nenhum produto encontrado na busca.
+            </p>
+          ) : null
         ) : (
           lista.map((produto) => {
             const posicaoNaVitrine = idsEmExibicao.indexOf(produto.id);

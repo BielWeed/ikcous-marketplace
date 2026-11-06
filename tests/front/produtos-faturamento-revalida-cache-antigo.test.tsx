@@ -320,7 +320,7 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
   it.each([
     ["10,25", "49,75"],
     ["0", "60,00"],
-    ["70", "-10,00"],
+    ["70", "−R$\u00a010,00"],
   ])(
     "líquido estimado desconta despesas explícitas %s, sem usar receita sem custo",
     async (despesas, esperado) => {
@@ -520,7 +520,12 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
 
   it.each([
     { totalCost: 100, totalValue: 160, totalRevenue: 160, bruto: "60,00" },
-    { totalCost: 100, totalValue: 60, totalRevenue: 60, bruto: "-40,00" },
+    {
+      totalCost: 100,
+      totalValue: 60,
+      totalRevenue: 60,
+      bruto: "−R$\u00a040,00",
+    },
     { totalCost: 0, totalValue: 60, totalRevenue: 60, bruto: "60,00" },
     { totalCost: 0, totalValue: 0, totalRevenue: 0, bruto: "0,00" },
   ])(

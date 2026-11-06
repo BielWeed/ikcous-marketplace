@@ -259,15 +259,35 @@ export function AdminDevolucoesView({
                 </div>
                 <p className="text-sm font-black text-white">
                   {busca.trim()
-                    ? "Nada encontrado"
+                    ? `Nada para “${busca.trim()}”${status ? ` em ${rotuloStatusPlural(status).toLowerCase()}` : ""}`
                     : status
                       ? `Nenhuma devolução ${rotuloStatusPlural(status).toLowerCase()}`
                       : "Nenhuma devolução ainda"}
                 </p>
-                <p className="max-w-xs text-[11px] leading-snug text-zinc-500">
-                  Quando um cliente pedir para devolver ou trocar um produto
-                  entregue, o pedido aparece aqui e no sino.
-                </p>
+                {busca.trim() ? (
+                  <>
+                    <p className="max-w-xs text-[11px] leading-snug text-zinc-400">
+                      {status
+                        ? "A busca está limitada a esse status. Veja em Todas ou confira a escrita."
+                        : "Confira a escrita: busque pelo protocolo, pelo nome do cliente ou pelo número do pedido."}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBusca("");
+                        setStatus(null);
+                      }}
+                      className="mt-1 min-h-11 rounded-xl border border-solid border-admin-border bg-white/5 px-4 text-[11px] font-bold text-zinc-200"
+                    >
+                      Limpar busca e filtros
+                    </button>
+                  </>
+                ) : (
+                  <p className="max-w-xs text-[11px] leading-snug text-zinc-500">
+                    Quando um cliente pedir para devolver ou trocar um produto
+                    entregue, o pedido aparece aqui e no sino.
+                  </p>
+                )}
               </div>
             )}
 

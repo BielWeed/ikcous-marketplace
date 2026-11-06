@@ -62,6 +62,7 @@ import {
   categoriaExisteNaLista,
   mesmaCategoria,
 } from "@/lib/gestao-de-categorias";
+import { percentualComUmaCasa } from "@/lib/percentual";
 import {
   AVISO_ESTOQUE_NAO_RESTAURADO,
   AVISO_PRODUTO_ALTERADO_DEPOIS,
@@ -173,15 +174,6 @@ const MSG_CODIGO_BARRAS_DUPLICADO_NA_TELA =
  * produto". Olha só os algarismos, sem interpretar vírgula ou ponto. */
 function precoDaVariacaoEhZero(texto: string): boolean {
   return /\d/.test(texto) && !/[1-9]/.test(texto);
-}
-
-/** Percentual com 1 casa, em pt-BR ("33,3%", nunca "33.3%") — a mesma grafia
- * da lista de produtos. */
-function percentualComUmaCasa(valor: number): string {
-  return `${valor.toLocaleString("pt-BR", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  })}%`;
 }
 
 // C5.3 — o leitor de câmera (LeitorDeCodigo, componente de C2) só entra no

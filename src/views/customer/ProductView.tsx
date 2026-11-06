@@ -78,6 +78,10 @@ import React, {
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
+// Quantas avaliações a página lista de cada vez ("Ver mais avaliações" soma
+// outra leva).
+const AVALIACOES_POR_PAGINA = 10;
+
 // Dinheiro com milhar e vírgula ("R$ 1.234,50"), com espaço comum no lugar do
 // inseparável do Intl: o texto também vai para o clipboard/WhatsApp.
 const reais = (valor: number) => formatCurrency(valor).replace(/\u00a0/g, " ");
@@ -367,6 +371,16 @@ export const ProductView = React.memo(function ProductView({
 
   useEffect(() => {
     setRecsVisible(false);
+  }, [product.id]);
+
+  // Caça 30 (06/11): produto com centenas de avaliações listava todas de uma
+  // vez. Mostra 10 e o botão "Ver mais avaliações" soma mais 10; a nota e as
+  // barras seguem sobre a lista completa. Volta a 10 ao trocar de produto.
+  const [avaliacoesVisiveis, setAvaliacoesVisiveis] = useState(
+    AVALIACOES_POR_PAGINA,
+  );
+  useEffect(() => {
+    setAvaliacoesVisiveis(AVALIACOES_POR_PAGINA);
   }, [product.id]);
 
   useEffect(() => {
@@ -1004,7 +1018,7 @@ export const ProductView = React.memo(function ProductView({
             <div className="mb-3 flex flex-col gap-1">
               <h1
                 className={cn(
-                  "text-xl font-black leading-tight tracking-tight text-zinc-900",
+                  "break-words text-xl font-black leading-tight tracking-tight text-zinc-900",
                   "lg:text-3xl lg:tracking-tighter",
                 )}
               >
@@ -1602,7 +1616,7 @@ export const ProductView = React.memo(function ProductView({
                         </div>
                       )}
                       <div className="space-y-4">
-                        {reviews.map((review) => (
+                        {reviews.slice(0, avaliacoesVisiveis).map((review) => (
                           <ReviewCard
                             key={review.id}
                             review={review}
@@ -1612,6 +1626,19 @@ export const ProductView = React.memo(function ProductView({
                           />
                         ))}
                       </div>
+                      {reviews.length > avaliacoesVisiveis && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAvaliacoesVisiveis(
+                              (n) => n + AVALIACOES_POR_PAGINA,
+                            )
+                          }
+                          className="mt-4 min-h-11 w-full rounded-xl border border-zinc-200 px-4 text-sm font-bold text-zinc-900 transition-colors hover:bg-zinc-50"
+                        >
+                          Ver mais avaliações
+                        </button>
+                      )}
                     </>
                   )}
                 </div>

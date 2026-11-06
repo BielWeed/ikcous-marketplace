@@ -38,6 +38,7 @@ import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
+import { aoChegarPorAviso } from "@/utils/chegada-por-aviso";
 import {
   AlertCircle,
   Check,
@@ -298,6 +299,18 @@ export const AdminQAView = memo(function AdminQAView({
     return () => unsubscribe();
   }, [subscribeToQuestions, active]);
 
+  // Chegou pelo aviso "perguntas esperando resposta": a fila pendente, sem
+  // busca nem página guardadas (mesmos setters do "limpar").
+  useEffect(
+    () =>
+      aoChegarPorAviso("admin-qa", () => {
+        setFilter("pending");
+        setSearchQuery("");
+        setPage(0);
+      }),
+    [setFilter, setSearchQuery, setPage],
+  );
+
   const handleSendAnswer = async () => {
     if (isOffline) {
       toast.error("Você está offline", {
@@ -456,6 +469,21 @@ export const AdminQAView = memo(function AdminQAView({
 
   const renderEmptyState = () => {
     if (buscaAtiva) {
+      // O filtro "Pendentes" também limita a busca: o motivo do vazio pode não
+      // ser a escrita, e a saída é ver em Todas (a busca fica).
+      if (filter === "pending") {
+        return (
+          <VazioDaLista
+            icone={Search}
+            titulo="Nenhuma pergunta pendente encontrada"
+            frase={`Nada pendente para “${searchQuery.trim()}”. A busca olha só as pendentes: veja em Todas.`}
+            acao={{
+              rotulo: "Ver em Todas",
+              aoClicar: () => escolherFiltro("all"),
+            }}
+          />
+        );
+      }
       return (
         <VazioDaLista
           icone={Search}

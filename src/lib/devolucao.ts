@@ -1337,10 +1337,37 @@ export function lerRespostaEtiquetaReversa(
 const RE_REDE =
   /failed to fetch|networkerror|network request failed|load failed/i;
 
+// Sessão vencida ou sem permissão, no texto cru do banco/PostgREST.
+const RE_SESSAO =
+  /jwt|row-level security|permission denied|not authorized|invalid token/i;
+// Tempo esgotado, no texto cru (o código é 57014).
+const RE_TEMPO = /statement timeout|timeout|timed out/i;
+// Texto de banco em inglês: nunca é frase escrita à mão para o leigo.
+const RE_BANCO_EM_INGLES =
+  /violates|already exists|does not exist|duplicate key|null value|syntax error|invalid input|could not|constraint|failed/i;
+// Frase escrita à mão em pt-BR: acento ou palavra de função (não nome de
+// tabela/coluna, que também aparece em erro de banco em inglês).
+const RE_PORTUGUES =
+  /[À-ÖØ-öø-ÿ]|\b(nao|voce|entre|envie|cancele|informe|escolha|selecione|tente|aguarde|confira|antes|depois|ainda|acesso|negado|autorizado|precisa|deve|ao menos)\b/i;
+// `RAISE EXCEPTION` do banco: P0001 (padrão) e os que as RPCs escolhem de
+// propósito (P0002, 22023). Mensagem de quem escreveu para o leigo.
+const CODIGOS_ESCRITOS_A_MAO = new Set(["P0001", "P0002", "22023"]);
+const CODIGOS_DE_SESSAO = new Set(["42501", "PGRST301", "PGRST303"]);
+
+// Os dois textos moram em dinheiro (reembolso/estorno): mandam conferir se a
+// devolução já aparece antes de repetir, para não pedir duas vezes.
+const MSG_SESSAO_VENCEU =
+  "Sua sessão venceu. Entre de novo na conta e confira se a devolução já aparece na tela antes de tentar outra vez.";
+const MSG_TEMPO_ESGOTADO =
+  "O servidor demorou para responder. Confira se a devolução já aparece na tela antes de tentar de novo; se aparecer, não envie outra vez.";
+
 /**
  * A RPC já fala pt-BR com o leigo (as mensagens moram na migration) — a tela
- * mostra como veio (o dinheiro em reais brasileiros). Só a falha de rede, que chega em inglês do navegador,
- * vira frase nossa.
+ * mostra como veio (o dinheiro em reais brasileiros). O que chega em inglês
+ * vira frase nossa: falha de rede, sessão vencida/sem permissão e tempo
+ * esgotado têm frase própria; o resto do inglês cai na `generica` da ação.
+ * Cuidado: o 42501 também é usado por RPC com mensagem em português ("Acesso
+ * negado.", "Entre na sua conta…"), que passa como veio.
  */
 export function mensagemDoErro(erro: unknown, generica: string): string {
   const msg =
@@ -1353,7 +1380,18 @@ export function mensagemDoErro(erro: unknown, generica: string): string {
   if (RE_REDE.test(msg)) {
     return "Sem conexão com a internet. Confira a rede e tente de novo.";
   }
-  return reaisComVirgula(msg);
+  const code =
+    ehObjeto(erro) && typeof campo(erro, "code") === "string"
+      ? String(campo(erro, "code"))
+      : "";
+  if (CODIGOS_ESCRITOS_A_MAO.has(code)) return reaisComVirgula(msg);
+  if (RE_SESSAO.test(msg)) return MSG_SESSAO_VENCEU;
+  if (code === "57014" || RE_TEMPO.test(msg)) return MSG_TEMPO_ESGOTADO;
+  if (!RE_BANCO_EM_INGLES.test(msg) && RE_PORTUGUES.test(msg)) {
+    return reaisComVirgula(msg);
+  }
+  if (CODIGOS_DE_SESSAO.has(code)) return MSG_SESSAO_VENCEU;
+  return generica;
 }
 
 /**

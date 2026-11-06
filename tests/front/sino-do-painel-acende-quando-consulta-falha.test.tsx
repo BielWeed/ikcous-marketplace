@@ -58,6 +58,9 @@ let EXCECAO_NA_CONSULTA_DE_PERGUNTAS = false;
 // pendurada até o teste resolver manualmente — é consumido (voltando a
 // `null`) assim que uma leitura o usa, então só a rodada que o teste quer
 // atrasar é afetada; as demais seguem o caminho rápido padrão.
+// Eventos do tempo real por canal#tabela: toda aba visível do painel assina os
+// próprios canais (não há mais aba "seguidora" que só escuta BroadcastChannel).
+const handlersDoTempoReal = new Map<string, (payload?: any) => void>();
 let ORDERS_DEFERRED: {
   promise: Promise<{ count: number | null; error: Error | null }>;
   resolve: (valor: { count: number | null; error: Error | null }) => void;
@@ -167,10 +170,17 @@ vi.mock("@/lib/supabase", () => ({
           : null,
       });
     }),
-    channel: vi.fn(() => ({
-      on: vi.fn().mockReturnThis(),
-      subscribe: vi.fn(),
-    })),
+    channel: vi.fn((nome: string) => {
+      const canal: any = {};
+      canal.on = vi.fn(
+        (_tipo: string, cfg: any, handler: (payload?: any) => void) => {
+          handlersDoTempoReal.set(`${nome}#${cfg.table}`, handler);
+          return canal;
+        },
+      );
+      canal.subscribe = vi.fn();
+      return canal;
+    }),
     removeChannel: vi.fn(),
   },
 }));
@@ -495,14 +505,12 @@ describe("AdminLayout — retentativa quando a rodada anterior falhou (ressalva 
 // `useAvisosDoLojista.ts:152-158`), quem termina por último vence —
 // inclusive escrevendo o veredito VELHO por cima do novo. Este teste força
 // exatamente essa corrida: a rodada 1 (montagem) fica pendurada numa
-// consulta lenta que vai falhar; a rodada 2 (mensagem de BroadcastChannel —
-// o caminho da aba secundária, já que `useLeaderElection` está mocado para
-// `isLeader: false`) responde rápido e limpa a bolinha; só depois disso a
+// consulta lenta que vai falhar; a rodada 2 (evento do tempo real de pedidos,
+// que toda aba visível do painel assina) responde rápido e limpa a bolinha; só depois disso a
 // rodada 1 termina.
 describe("AdminLayout — rodada antiga não sobrescreve rodada nova (ressalva 3)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
-  let bcListeners: Array<(evento: { data?: { type?: string } }) => void>;
 
   beforeEach(() => {
     PEDIDOS_PENDENTES = 0;
@@ -516,21 +524,7 @@ describe("AdminLayout — rodada antiga não sobrescreve rodada nova (ressalva 3
     EXCECAO_NA_CONSULTA_DE_AVALIACOES = false;
     EXCECAO_NA_CONSULTA_DE_PERGUNTAS = false;
     ORDERS_DEFERRED = null;
-    bcListeners = [];
-    vi.stubGlobal(
-      "BroadcastChannel",
-      class {
-        postMessage() {}
-        close() {}
-        addEventListener(
-          _tipo: string,
-          escuta: (evento: { data?: { type?: string } }) => void,
-        ) {
-          bcListeners.push(escuta);
-        }
-        removeEventListener() {}
-      },
-    );
+    handlersDoTempoReal.clear();
     vi.stubGlobal("matchMedia", (query: string) => ({
       matches: false,
       media: query,
@@ -564,20 +558,21 @@ describe("AdminLayout — rodada antiga não sobrescreve rodada nova (ressalva 3
 
     const sino = await montarPainel(raiz, hospedeiro);
 
-    // Rodada 2: mensagem de BroadcastChannel, a mesma que uma aba líder
-    // manda quando algo muda. As três consultas dela respondem rápido (o
+    // Rodada 2: evento do tempo real de pedidos, o mesmo que dispara a
+    // conferência quando algo muda. As três consultas dela respondem rápido (o
     // dublê padrão, sem falha) porque `ORDERS_DEFERRED` já foi consumido
     // pela rodada 1 e está `null`.
     //
-    // C4 (laudo 0109): a mensagem da aba secundária não dispara a
+    // C4 (laudo 0109): o evento não dispara a
     // conferência na hora — cai na coalescência de badges (janela de
     // 1s). A prova da corrida continua a mesma: a rodada 2 inteira
     // acontece AQUI, e a rodada 1 só termina depois.
-    expect(bcListeners.length).toBeGreaterThan(0);
+    const aoMudarPedido = handlersDoTempoReal.get(
+      "admin-layout-orders-badge#marketplace_orders",
+    );
+    expect(aoMudarPedido).toBeTruthy();
     await act(async () => {
-      for (const escuta of bcListeners) {
-        escuta({ data: { type: "badge_update" } });
-      }
+      aoMudarPedido?.();
     });
 
     // Atravessa a janela de coalescência (1s) e espera a rodada 2

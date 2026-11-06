@@ -180,12 +180,14 @@ describe("CheckoutView (convidado) — CEP pré-preenchido pelo localStorage e d
       );
     });
 
-    // O CEP nasceu preenchido, sem nenhuma busca disparada — é o que prova
-    // que onChange não rodou para este valor.
+    // O CEP nasceu preenchido (semente do aparelho; `onChange` não rodou para
+    // este valor). Desde 06/11/2026 a abertura busca o endereço dessa semente
+    // UMA vez — aqui o dublê nunca responde, então a busca da semente fica em
+    // voo e o resto do caso é o de sempre: o que vale é a segunda busca.
     expect(
       (document.getElementById("guest-cep") as HTMLInputElement).value,
     ).toBe("01310-100");
-    expect(pendentes.size).toBe(0);
+    expect([...pendentes.keys()]).toEqual(["01310100"]);
 
     // A pessoa completa o endereço à mão, porque o CEP "parece" completo.
     act(() => {
@@ -198,7 +200,7 @@ describe("CheckoutView (convidado) — CEP pré-preenchido pelo localStorage e d
     act(() => {
       digitar("guest-cep", "38500000");
     });
-    expect(pendentes.size).toBe(1);
+    expect([...pendentes.keys()]).toEqual(["01310100", "38500000"]);
     pendentes.get("38500000")!({
       logradouro: "",
       bairro: "",

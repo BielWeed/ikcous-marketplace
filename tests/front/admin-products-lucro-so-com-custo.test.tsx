@@ -214,7 +214,8 @@ describe("Produtos: o lucro do estoque diz que só conta produto com custo", () 
 
   it("o número do lucro é valor menos custo (R$ 90 - R$ 30 = R$ 60,00)", async () => {
     await montar();
-    const tela = hospedeiro.textContent ?? "";
+    // O lucro vem de `formatarBRL` (espaço sem quebra depois do "R$").
+    const tela = (hospedeiro.textContent ?? "").replace(/\u00a0/g, " ");
     expect(tela).toContain("R$ 30,00");
     expect(tela).toContain("R$ 60,00");
   });

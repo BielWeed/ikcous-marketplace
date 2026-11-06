@@ -16,7 +16,7 @@ import {
   Phone,
   User,
 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { toast } from "sonner";
 
 /**
@@ -74,6 +74,12 @@ export function OrderSearch({
   );
 
   // Guest fields
+  // ids únicos por instância: ligam cada rótulo visível ao seu campo.
+  const idBase = useId();
+  const idEmail = `${idBase}-email`;
+  const idWhatsapp = `${idBase}-whatsapp`;
+  const idFragmento = `${idBase}-fragmento`;
+  const idDicaFragmento = `${idBase}-fragmento-dica`;
   const [email, setEmail] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [orderFragment, setOrderFragment] = useState("");
@@ -319,48 +325,83 @@ export function OrderSearch({
                     )}
                   </div>
 
+                  {/* Rótulo VISÍVEL em cada campo: o texto de dica (placeholder)
+                      some ao digitar e não é nome acessível confiável. Os
+                      ícones ficam num wrapper `relative` só com o input, para
+                      continuarem centrados no campo (o rótulo fica fora). */}
                   <div className="space-y-3">
-                    <div className="relative">
-                      <Mail className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                      <input
-                        type="email"
-                        required
-                        aria-label="Seu e-mail"
-                        autoComplete="email"
-                        placeholder="SEU E-MAIL"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className={campo}
-                      />
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor={idEmail}
+                        className="block text-sm font-medium text-foreground"
+                      >
+                        E-mail
+                      </label>
+                      <div className="relative">
+                        <Mail className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <input
+                          id={idEmail}
+                          type="email"
+                          required
+                          autoComplete="email"
+                          placeholder="SEU E-MAIL"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          className={campo}
+                        />
+                      </div>
                     </div>
 
-                    <div className="relative">
-                      <Phone className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                      <input
-                        type="tel"
-                        required
-                        aria-label="Seu WhatsApp"
-                        autoComplete="tel"
-                        inputMode="tel"
-                        placeholder="SEU WHATSAPP"
-                        value={whatsapp}
-                        onChange={handleWhatsappChange}
-                        className={campo}
-                      />
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor={idWhatsapp}
+                        className="block text-sm font-medium text-foreground"
+                      >
+                        WhatsApp com DDD
+                      </label>
+                      <div className="relative">
+                        <Phone className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <input
+                          id={idWhatsapp}
+                          type="tel"
+                          required
+                          autoComplete="tel"
+                          inputMode="tel"
+                          placeholder="SEU WHATSAPP"
+                          value={whatsapp}
+                          onChange={handleWhatsappChange}
+                          className={campo}
+                        />
+                      </div>
                     </div>
 
-                    <div className="relative">
-                      <Hash className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                      <input
-                        type="text"
-                        required
-                        minLength={6}
-                        aria-label="Últimos 6 dígitos do ID do pedido"
-                        placeholder="6 FINAIS DO ID DO PEDIDO"
-                        value={orderFragment}
-                        onChange={(e) => setOrderFragment(e.target.value)}
-                        className={campo}
-                      />
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor={idFragmento}
+                        className="block text-sm font-medium text-foreground"
+                      >
+                        6 últimos caracteres do ID do pedido
+                      </label>
+                      <div className="relative">
+                        <Hash className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <input
+                          id={idFragmento}
+                          type="text"
+                          required
+                          minLength={6}
+                          aria-describedby={idDicaFragmento}
+                          placeholder="6 FINAIS DO ID DO PEDIDO"
+                          value={orderFragment}
+                          onChange={(e) => setOrderFragment(e.target.value)}
+                          className={campo}
+                        />
+                      </div>
+                      <p
+                        id={idDicaFragmento}
+                        className="text-xs text-muted-foreground"
+                      >
+                        É o código que aparece no comprovante da compra.
+                      </p>
                     </div>
                   </div>
 

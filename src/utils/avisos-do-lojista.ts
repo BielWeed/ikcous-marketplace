@@ -29,7 +29,12 @@ export interface Aviso {
   titulo: string;
   detalhe: string;
   quando: string;
-  destino: { view: View; id?: string };
+  destino: {
+    view: View;
+    id?: string;
+    /** A tela guarda filtro/busca/página: ao chegar por este aviso, zera. */
+    limparFiltros?: true;
+  };
   contaNoCracha: boolean;
 }
 
@@ -393,7 +398,7 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
         : `${entrada.perguntasPendentes} perguntas esperando resposta`,
       detalhe: "Clientes perguntaram sobre seus produtos",
       quando: "",
-      destino: { view: "admin-qa" },
+      destino: { view: "admin-qa", limparFiltros: true },
       contaNoCracha: true,
     });
   }
@@ -405,7 +410,7 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
       titulo: `Avaliação de ${avaliacao.rating} estrela${avaliacao.rating === 1 ? "" : "s"} sem resposta`,
       detalhe: avaliacao.nomeDoProduto || "Produto",
       quando: avaliacao.created_at,
-      destino: { view: "admin-reviews" },
+      destino: { view: "admin-reviews", limparFiltros: true },
       contaNoCracha: true,
     });
   }

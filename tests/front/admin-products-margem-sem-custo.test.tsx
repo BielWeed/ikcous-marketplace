@@ -325,7 +325,8 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
       ...cartaoDoProduto().querySelectorAll("span, p"),
     ].find((el) => el.textContent === rotulo);
     const valor = elementoRotulo?.nextElementSibling;
-    return valor?.textContent ?? null;
+    // O lucro vem de `formatarBRLComSinal` (espaço sem quebra depois do "R$").
+    return valor?.textContent?.replace(/\u00a0/g, " ") ?? null;
   }
 
   function lerCapitalEPotencial() {
@@ -385,7 +386,7 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
     // invested = 0 * 10 = 0 ; totalProfit = 100*10 - 0 = 1000.
     const { capitalTexto, potencialTexto } = lerCapitalEPotencial();
     expect(capitalTexto).toBe("R$ 0,00");
-    expect(potencialTexto).toBe("+ R$ 1.000,00");
+    expect(potencialTexto).toBe("+R$ 1.000,00");
 
     expect(hospedeiro.textContent).toContain("Custo Suspeito");
     expect(hospedeiro.textContent).not.toContain("Sem Custo Cadastrado");
@@ -422,9 +423,9 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
     // invested = 10 * 20 = 200 ; totalProfit = 15*20 - 200 = 100
     expect(capitalTexto).toBe("R$ 200,00");
     // Achado 14 da auditoria de 20/08/2026: "Lucro bruto do estoque" passou a usar
-    // `minimumFractionDigits: 2`, como os vizinhos — "+ R$ 100", sem casas
+    // `minimumFractionDigits: 2`, como os vizinhos — "+R$ 100", sem casas
     // decimais, deixou de ser um jeito válido de escrever dinheiro aqui.
-    expect(potencialTexto).toBe("+ R$ 100,00");
+    expect(potencialTexto).toBe("+R$ 100,00");
 
     expect(hospedeiro.textContent).not.toContain("Sem Custo Cadastrado");
     expect(hospedeiro.textContent).not.toContain("Custo Suspeito");

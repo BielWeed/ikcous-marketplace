@@ -145,7 +145,7 @@ describe("Vitrines: alvos de toque de 44 px", () => {
       );
     });
     const ajuda = [...document.querySelectorAll("p")].find((p) =>
-      p.textContent?.includes("Hoje a loja escolhe sozinha"),
+      p.textContent?.includes("Sua loja ainda não tem produtos"),
     );
     expect(ajuda).toBeTruthy();
     // zinc-500 sobre o fundo do painel (zinc-950) mede 4,12:1; zinc-400, 7,6:1.

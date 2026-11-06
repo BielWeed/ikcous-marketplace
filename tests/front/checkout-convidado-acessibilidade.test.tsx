@@ -143,6 +143,6 @@ describe("CheckoutView (convidado) — rótulos, erros e preenchimento", () => {
     );
     expect(
       fonte.match(/mt-1\.5 text-\[10px\] font-bold uppercase text-red-700/g),
-    ).toHaveLength(7);
+    ).toHaveLength(9); // 7 de antes + Cidade e UF (06/11/2026)
   });
 });

@@ -11,7 +11,6 @@ import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
-import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { useConnectionDiagnostics } from "@/hooks/useOnlineStatus";
 import { useOrders } from "@/hooks/useOrders";
 import { prefetchPainelInicio } from "@/hooks/usePainelInicio";
@@ -21,7 +20,6 @@ import {
   isViewTransitionSupported,
   useViewTransition,
 } from "@/hooks/useViewTransition";
-import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { contagemDe, lerListaAdmin } from "@/lib/devolucao";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { pedirNovoBanner } from "@/lib/novo-banner-pendente";
@@ -85,7 +83,7 @@ export const STATUS_PEDIDOS_COM_ACAO_PENDENTE = STATUS_PARA_PREPARAR;
  * bolinha vermelha acesa por dúvida (`naoConseguiuConferirAvisos`) não
  * apaga sozinha numa aba do painel aberta em primeiro plano, numa loja sem
  * movimento: nenhum dos gatilhos existentes (troca de foco, tempo real,
- * BroadcastChannel) dispara ali, e não há intervalo nenhum rodando.
+ * volta da internet) dispara ali, e não há intervalo nenhum rodando.
  *
  * Só agenda quando a ÚLTIMA rodada falhou — rodada que deu certo não agenda
  * nada, senão troca-se um defeito por consumo de rede e bateria em toda aba
@@ -144,7 +142,6 @@ export function AdminLayout({
   const { fetchExecutiveSummary, fetchCategoryAnalytics } = useAnalytics();
   const { loadProducts } = useProducts({ autoFetch: false });
   const { loadOrders } = useOrders(false, true);
-  const { isLeader } = useLeaderElection();
 
   // `admin-mode` + o tema escolhido (Escuro/Claro/Confortável) na <html>, antes da
   // primeira pintura; ao sair do painel os dois saem (a vitrine nunca os recebe).
@@ -192,12 +189,12 @@ export function AdminLayout({
     // `useAvisosDoLojista.ts:152-158`, que existe pelo mesmo motivo medido
     // la: duas rodadas em voo ao mesmo tempo, quatro gatilhos que podem
     // disparar `fetchInitialCounts` (visivel, realtime de pedidos, realtime
-    // de perguntas/respostas, BroadcastChannel) e agora um quinto (a
+    // de perguntas/respostas, volta da internet) e agora um quinto (a
     // retentativa abaixo).
     let rodadaAtual = 0;
     // Estado da retentativa automatica (ressalva 1). Vive aqui, e nao em
     // `React.useRef`, pelo mesmo motivo de `isMounted`: reinicia sozinho
-    // quando o efeito inteiro reinicia (troca de `isLeader`), que e o
+    // quando o efeito inteiro reinicia (desmontagem), que e o
     // comportamento certo — uma nova rodada de assinaturas comeca um novo
     // ciclo de retentativa do zero.
     let tentativaDeRetentativa = 0;
@@ -219,8 +216,6 @@ export function AdminLayout({
         }
       }, ATRASO_COALESCENCIA_BADGES_MS);
     };
-    const bc = criarCanalDeAbas("ikcous_admin_layout_badges");
-    let bcListener: ((event: MessageEvent) => void) | null = null;
 
     const fetchInitialCounts = async () => {
       const rodada = ++rodadaAtual;
@@ -401,61 +396,39 @@ export function AdminLayout({
     // privacidade dos clientes). Essas contagens são lidas na busca
     // inicial e nas revalidacoes de `visibilitychange` — uma pendência que
     // chegue com o painel aberto so acende a bolinha na proxima vez que a
-    // aba voltar ao foco. Assinar mais uma tabela mexe na eleicao de lider e
+    // aba voltar ao foco. Assinar mais uma tabela mexe
     // no ciclo de vida dos canais, que e' onde moram os defeitos de
     // concorrencia deste arquivo; o atraso ate o proximo foco custa menos.
     const subscribe = () => {
       if (ordersChannel || questionsChannel) return; // already subscribed
 
-      if (isLeader) {
-        console.log("[AdminLayout] Leader tab subscribing to badge updates...");
-        ordersChannel = supabase
-          .channel("admin-layout-orders-badge")
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "marketplace_orders" },
-            () => {
-              pedirConferenciaDeAvisos();
-              bc?.postMessage({ type: "badge_update" });
-            },
-          )
-          .subscribe(aoMudarOStatusDoCanal("Orders"));
+      // Toda aba VISÍVEL do painel assina os próprios canais. Antes só a aba
+      // "líder" assinava e as outras esperavam um aviso por BroadcastChannel:
+      // se a líder era uma aba da vitrine ou estava escondida, a bolinha do
+      // painel que a lojista estava olhando ficava parada. O preço é um par
+      // de canais por aba visível; aba escondida fecha os dela (unsubscribe).
+      ordersChannel = supabase
+        .channel("admin-layout-orders-badge")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "marketplace_orders" },
+          pedirConferenciaDeAvisos,
+        )
+        .subscribe(aoMudarOStatusDoCanal("Orders"));
 
-        questionsChannel = supabase
-          .channel("admin-layout-questions-badge")
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "questions" },
-            () => {
-              pedirConferenciaDeAvisos();
-              bc?.postMessage({ type: "badge_update" });
-            },
-          )
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "answers" },
-            () => {
-              pedirConferenciaDeAvisos();
-              bc?.postMessage({ type: "badge_update" });
-            },
-          )
-          .subscribe(aoMudarOStatusDoCanal("Questions"));
-      } else {
-        console.log(
-          "[AdminLayout] Secondary tab listening to badge updates via BroadcastChannel...",
-        );
-        if (bc) {
-          bcListener = (event: MessageEvent) => {
-            if (event.data?.type === "badge_update") {
-              console.log(
-                "[AdminLayout-Secondary] Badge update received via BroadcastChannel",
-              );
-              pedirConferenciaDeAvisos();
-            }
-          };
-          bc.addEventListener("message", bcListener);
-        }
-      }
+      questionsChannel = supabase
+        .channel("admin-layout-questions-badge")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "questions" },
+          pedirConferenciaDeAvisos,
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "answers" },
+          pedirConferenciaDeAvisos,
+        )
+        .subscribe(aoMudarOStatusDoCanal("Questions"));
     };
 
     const unsubscribe = () => {
@@ -467,10 +440,6 @@ export function AdminLayout({
         supabase.removeChannel(questionsChannel);
         questionsChannel = null;
       }
-      if (bcListener && bc) {
-        bc.removeEventListener("message", bcListener);
-        bcListener = null;
-      }
     };
 
     const handleVisibility = () => {
@@ -479,6 +448,17 @@ export function AdminLayout({
         subscribe();
       } else {
         unsubscribe();
+        // Aba escondida não bate na rede: o que estava armado (contagem
+        // agrupada, retentativas) fica para quando ela voltar ao foco, onde
+        // `fetchInitialCounts` reconta tudo de uma vez.
+        if (timeoutDeRetentativa) {
+          clearTimeout(timeoutDeRetentativa);
+          timeoutDeRetentativa = null;
+        }
+        if (timerDeConferencia) {
+          clearTimeout(timerDeConferencia);
+          timerDeConferencia = null;
+        }
       }
     };
 
@@ -488,19 +468,28 @@ export function AdminLayout({
       subscribe();
     }
 
+    // Voltou a internet com o painel aberto: o selo diz "Sincronizado", então
+    // a bolinha tem que ser recontada (eventos perdidos na queda não voltam).
+    // Só com a aba visível — aba escondida não bate na rede; ela reconta
+    // sozinha quando voltar ao foco (`handleVisibility`).
+    const aoVoltarAInternet = () => {
+      if (document.visibilityState === "visible") pedirConferenciaDeAvisos();
+    };
+
     document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("online", aoVoltarAInternet);
     // A lojista salvou outro prazo de devolução: o corte do sino muda.
     window.addEventListener("admin:recontar-avisos", pedirConferenciaDeAvisos);
 
     return () => {
       isMounted = false;
       document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("online", aoVoltarAInternet);
       window.removeEventListener(
         "admin:recontar-avisos",
         pedirConferenciaDeAvisos,
       );
       unsubscribe();
-      bc?.close();
       if (timeoutDeRetentativa) {
         clearTimeout(timeoutDeRetentativa);
         timeoutDeRetentativa = null;
@@ -510,7 +499,7 @@ export function AdminLayout({
         timerDeConferencia = null;
       }
     };
-  }, [isLeader]);
+  }, []);
 
   const handleHoverTab = React.useCallback(
     (view: string) => {

@@ -265,7 +265,8 @@ describe("AdminProductsView — achado 14: 'Potencial' sempre com duas casas dec
       ...cartaoDoProduto().querySelectorAll("span, p"),
     ].find((el) => el.textContent === rotulo);
     const valor = elementoRotulo?.nextElementSibling;
-    return valor?.textContent ?? null;
+    // O dinheiro vem com espaço sem quebra entre "R$" e o número.
+    return valor?.textContent?.replace(/\u00a0/g, " ") ?? null;
   }
 
   it.each([
@@ -374,6 +375,51 @@ describe("AdminProductsView — achado 14: 'Potencial' sempre com duas casas dec
       .toBeNull();
   });
 
+  // Lucro negativo no mesmo formato do resto do painel (Financeiro, balão do
+  // gráfico): "−R$ 300,00" com o menos de verdade antes do R$, nunca "R$ -300,00".
+  it("lucro bruto potencial e líquido estimado negativos: −R$ x, nunca R$ -x", async () => {
+    custoDoResumo = 1000; // receita 900 − custo 1000
+    montarProduto({ price: 100, costPrice: 20, stock: 2 });
+    await montar();
+    const texto = (rotulo: string) =>
+      hospedeiro
+        .querySelector(`[role="group"][aria-label="${rotulo}"]`)
+        ?.textContent?.replace(/\u00a0/g, " ") ?? "";
+    expect(texto("Lucro bruto potencial")).toContain("−R$ 100,00");
+    expect(texto("Lucro bruto potencial")).not.toContain("R$ -");
+    expect(hospedeiro.textContent).not.toContain("R$ -");
+  });
+
+  it("simulador com prejuízo: lucro por unidade e do lote em −R$ x", async () => {
+    montarProduto({ price: 100, costPrice: 20, stock: 2 });
+    await montar();
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>(
+          'button[aria-label="Guia e simulador"]',
+        )!
+        .click(),
+    );
+    const simulador = [...document.querySelectorAll("button")].find(
+      (el) => el.textContent?.trim() === "Simulador",
+    )!;
+    await act(async () => simulador.click());
+    const dialogo = document.querySelector('[role="dialog"]')!;
+    const preco = document.getElementById("sim-price") as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(preco, "5");
+      preco.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    // Custo 10 (padrão), preço 5, 20 un.: −R$ 5,00 por unidade, −R$ 100,00 no lote.
+    const texto = (dialogo.textContent ?? "").replace(/\u00a0/g, " ");
+    expect(texto).toContain("−R$ 5,00");
+    expect(texto).toContain("−R$ 100,00");
+    expect(texto).not.toContain("R$ -");
+  });
+
   it.each([
     { stock: 0, cor: "text-red-400" },
     { stock: 2, cor: "text-amber-400" },
@@ -433,7 +479,7 @@ describe("AdminProductsView — achado 14: 'Potencial' sempre com duas casas dec
     await montar();
 
     const potencialTexto = lerValorPeloRotulo("Lucro bruto do estoque");
-    expect(potencialTexto).toBe("+ R$ 37,20");
+    expect(potencialTexto).toBe("+R$ 37,20");
   });
 
   it("lucro do produto usa preço de cada variante ativa, inclusive zero e herança do pai", async () => {
@@ -455,7 +501,7 @@ describe("AdminProductsView — achado 14: 'Potencial' sempre com duas casas dec
     });
     await montar();
     // Receita220 − custo100 =120; preço pai×estoque inventaria lucro400.
-    expect(lerValorPeloRotulo("Lucro bruto do estoque")).toBe("+ R$ 120,00");
+    expect(lerValorPeloRotulo("Lucro bruto do estoque")).toBe("+R$ 120,00");
     expect(cartaoDoProduto().querySelector("[data-margem]")?.textContent).toBe(
       "54,5%",
     );
@@ -474,7 +520,7 @@ describe("AdminProductsView — achado 14: 'Potencial' sempre com duas casas dec
       ],
     });
     await montar();
-    expect(lerValorPeloRotulo("Lucro bruto do estoque")).toBe("R$ -10,00");
+    expect(lerValorPeloRotulo("Lucro bruto do estoque")).toBe("−R$ 10,00");
   });
 
   it.each([
@@ -499,6 +545,18 @@ describe("AdminProductsView — achado 14: 'Potencial' sempre com duas casas dec
     },
   );
 
+  it("resultado perto de zero: margem e retorno mostram 0,0%, nunca -0,0%", async () => {
+    // Preço 99,99 sobre custo 100: margem −0,01% e retorno −0,01%.
+    montarProduto({ price: 99.99, stock: 2, costPrice: 100 });
+    await montar();
+    expect(cartaoDoProduto().querySelector("[data-margem]")?.textContent).toBe(
+      "0,0%",
+    );
+    expect(
+      cartaoDoProduto().querySelector("[data-lucro-sobre-custo]")?.textContent,
+    ).toBe("0,0%");
+  });
+
   it("sem variantes ativas, lucro do produto volta ao preço e estoque do pai", async () => {
     montarProduto({
       price: 100,
@@ -514,7 +572,7 @@ describe("AdminProductsView — achado 14: 'Potencial' sempre com duas casas dec
       ],
     });
     await montar();
-    expect(lerValorPeloRotulo("Lucro bruto do estoque")).toBe("+ R$ 240,00");
+    expect(lerValorPeloRotulo("Lucro bruto do estoque")).toBe("+R$ 240,00");
   });
 
   it("valor redondo (sem centavos): mostra 'R$ 100,00', não 'R$ 100' — as duas casas são OBRIGATÓRIAS, como nos vizinhos", async () => {
@@ -524,6 +582,6 @@ describe("AdminProductsView — achado 14: 'Potencial' sempre com duas casas dec
     await montar();
 
     const potencialTexto = lerValorPeloRotulo("Lucro bruto do estoque");
-    expect(potencialTexto).toBe("+ R$ 100,00");
+    expect(potencialTexto).toBe("+R$ 100,00");
   });
 });

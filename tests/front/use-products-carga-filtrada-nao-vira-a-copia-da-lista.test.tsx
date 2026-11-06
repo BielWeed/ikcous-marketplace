@@ -214,5 +214,34 @@ describe("useProducts.loadProducts: leitura filtrada nao sobrescreve a copia da 
       const resultado = await lerSemRede({ category: "all" });
       expect(resultado?.products.map((p) => p.id)).toEqual(["a", "b"]);
     });
+
+    // A cópia é a PÁGINA que foi lida (aqui a 0, de 12): sem rede, "Próximo"
+    // pedia a página 1 e recebia os mesmos produtos da página 0, com o rótulo
+    // da página 1. Página ou tamanho diferentes do guardado: null.
+    async function lerPaginaSemRede(page: number, pageSize: number) {
+      await ler({}); // grava a cópia: página 0, tamanho 12
+      mock.semRede = true;
+      const lida = await montar();
+      let resultado: Awaited<ReturnType<Api["loadProducts"]>> | undefined;
+      await act(async () => {
+        resultado = await lida().loadProducts(page, pageSize, {
+          silent: true,
+        });
+      });
+      return resultado;
+    }
+
+    it("a mesma página que foi lida continua devolvendo a cópia", async () => {
+      const resultado = await lerPaginaSemRede(0, 12);
+      expect(resultado?.products.map((p) => p.id)).toEqual(["a", "b"]);
+    });
+
+    it("outra página NÃO devolve a cópia da página que foi lida", async () => {
+      expect(await lerPaginaSemRede(1, 12)).toBeNull();
+    });
+
+    it("outro tamanho de página NÃO devolve a cópia", async () => {
+      expect(await lerPaginaSemRede(0, 24)).toBeNull();
+    });
   });
 });

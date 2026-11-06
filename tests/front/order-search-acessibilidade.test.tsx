@@ -49,16 +49,19 @@ describe("OrderSearch — campos com nome e teclado certos", () => {
     expect(campos).toHaveLength(3);
     const [email, zap, fragmento] = campos;
 
-    expect(email.getAttribute("aria-label")).toBe("Seu e-mail");
+    // O nome acessível agora vem do <label for> visível (o aria-label saiu);
+    // order-search-rotulos-visiveis-nos-tres-campos.test.tsx prova o texto.
+    const nomeDe = (campo: HTMLInputElement) =>
+      host.querySelector(`label[for="${campo.id}"]`)?.textContent?.trim();
+
+    expect(nomeDe(email)).toBe("E-mail");
     expect(email.getAttribute("autocomplete")).toBe("email");
 
-    expect(zap.getAttribute("aria-label")).toBe("Seu WhatsApp");
+    expect(nomeDe(zap)).toBe("WhatsApp com DDD");
     expect(zap.getAttribute("autocomplete")).toBe("tel");
     expect(zap.getAttribute("inputmode")).toBe("tel");
 
-    expect(fragmento.getAttribute("aria-label")).toBe(
-      "Últimos 6 dígitos do ID do pedido",
-    );
+    expect(nomeDe(fragmento)).toBe("6 últimos caracteres do ID do pedido");
     // o ID do pedido tem letras (hexadecimal): NÃO pode forçar teclado numérico
     expect(fragmento.getAttribute("inputmode")).toBeNull();
   });

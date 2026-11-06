@@ -262,6 +262,30 @@ describe("AdminBannersView — produto do banner: preço da vitrine e produto pa
       expect(botoes).not.toContain("Por apenas R$ 50,00");
     });
 
+    it("desconto que arredonda para 0% (100 -> 99,70) não sugere título '0% OFF', mas o 'De ... por ...' segue verdadeiro", async () => {
+      lista.products = [
+        ...lista.products,
+        {
+          ...produtoSimples,
+          id: "p-quase",
+          name: "Camiseta quase sem desconto",
+          price: 99.7,
+          originalPrice: 100,
+        },
+      ];
+      await editarBannerDo("p-quase");
+      await act(async () =>
+        document.body
+          .querySelector<HTMLButtonElement>('button[title="Editar"]')!
+          .click(),
+      );
+      const botoes = [...document.body.querySelectorAll("button")].map(
+        (b) => b.textContent?.replace(/\s+/g, " ").trim() ?? "",
+      );
+      expect(botoes.some((t) => t.includes("0% OFF"))).toBe(false);
+      expect(botoes).toContain("De R$ 100,00 por R$ 99,70");
+    });
+
     it("com opções a 90 e 120, a sugestão diz 'A partir de', igual ao subtítulo automático", async () => {
       await editarBannerDo("p-faixa");
       await act(async () =>

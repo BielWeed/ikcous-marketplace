@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useStore } from "@/contexts/StoreContext";
+import { useAlturaDoTeclado } from "@/hooks/useAlturaDoTeclado";
 import { useCategories } from "@/hooks/useCategories";
 import { useProducts } from "@/hooks/useProducts";
 import {
@@ -90,6 +91,7 @@ export function SearchBar({
   const deferredLocalValue = useDeferredValue(localValue);
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { altura: teclado, alturaVisivel } = useAlturaDoTeclado();
   const inputRef = useRef<HTMLInputElement>(null);
   const { products } = useProducts();
   // Catálogo ainda carregando ou que falhou de vez: "nenhum produto" seria
@@ -406,7 +408,19 @@ export function SearchBar({
           />
 
           {/* Floating Solid White Card directly under Search Input */}
-          <div className="fixed inset-x-0 top-[calc(var(--header-height)+6px)] z-[100] mx-auto max-h-[72vh] w-[calc(100vw-24px)] max-w-lg overflow-y-auto rounded-[28px] border border-zinc-200/90 bg-white p-4 shadow-[0_30px_70px_-15px_rgba(0,0,0,0.35)] duration-200 animate-in fade-in slide-in-from-top-2 sm:p-5">
+          <div
+            style={
+              // O teclado do celular se sobrepõe à página: 72vh passava por
+              // baixo dele. Com teclado, o limite é a área visível menos o
+              // topo do cartão e uma folga.
+              teclado > 0
+                ? {
+                    maxHeight: `min(72vh, calc(${alturaVisivel}px - var(--header-height) - 18px))`,
+                  }
+                : undefined
+            }
+            className="fixed inset-x-0 top-[calc(var(--header-height)+6px)] z-[100] mx-auto max-h-[72vh] w-[calc(100vw-24px)] max-w-lg overflow-y-auto rounded-[28px] border border-zinc-200/90 bg-white p-4 shadow-[0_30px_70px_-15px_rgba(0,0,0,0.35)] duration-200 animate-in fade-in slide-in-from-top-2 sm:p-5"
+          >
             {/* 1. PREDICTIVE AUTOCOMPLETE TERMS */}
             {predictedTerms.length > 0 && (
               <div className="mb-4 border-b border-zinc-100 pb-3">
