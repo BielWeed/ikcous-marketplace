@@ -3,7 +3,9 @@
 // Lote 249 (multiloja): o campo "Estado" do convidado mostrava "MG" como exemplo
 // sempre que a loja entrega só localmente — numa loja de São Paulo o exemplo
 // era de outro estado. Agora o exemplo é o estado da loja (config.storeState);
-// sem ele (ou com entrega nacional) fica o neutro "UF".
+// sem ele (ou com entrega nacional) fica o neutro "UF". Com estado, a dica sai
+// como EXEMPLO ("UF (ex.: SP)"): um "SP" cinza sozinho parecia valor já
+// preenchido e a pessoa passava direto pelo campo vazio (06/11/2026).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -125,20 +127,20 @@ describe("CheckoutView — exemplo do campo Estado do convidado", () => {
     vi.restoreAllMocks();
   });
 
-  it("entrega só local e a loja é de SP: o exemplo é SP (não MG)", async () => {
+  it("entrega só local e a loja é de SP: o exemplo é UF (ex.: SP), nunca MG", async () => {
     const campo = await abrirComConfig({
       shippingCoverage: "local",
       storeState: "SP",
     });
-    expect(campo.placeholder).toBe("SP");
+    expect(campo.placeholder).toBe("UF (ex.: SP)");
   });
 
-  it("o estado da loja digitado em minúsculas ou com espaço aparece limpo e em maiúsculas", async () => {
+  it("o estado da loja digitado em minúsculas ou com espaço aparece limpo e em maiúsculas, como exemplo", async () => {
     const campo = await abrirComConfig({
       shippingCoverage: "local",
       storeState: " rj ",
     });
-    expect(campo.placeholder).toBe("RJ");
+    expect(campo.placeholder).toBe("UF (ex.: RJ)");
   });
 
   it("entrega só local e a loja não informou o estado: exemplo neutro UF (nunca MG)", async () => {

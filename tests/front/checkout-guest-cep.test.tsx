@@ -274,7 +274,7 @@ describe("CheckoutView (convidado) — busca de CEP via useBuscaCep", () => {
     expect(cepLivre.getAttribute("aria-busy")).toBe("false");
   });
 
-  it("grava o CEP no localStorage mesmo com menos de 8 dígitos, sem esperar a busca", async () => {
+  it("NÃO grava no localStorage um CEP com menos de 8 dígitos (o pedaço não vira semente da próxima visita) e não busca", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
 
     await act(async () => {
@@ -293,10 +293,10 @@ describe("CheckoutView (convidado) — busca de CEP via useBuscaCep", () => {
       await Promise.resolve();
     });
 
-    // O `setItem` fica fora de qualquer gate em CheckoutView.tsx — nem do
-    // `isNational`, nem do comprimento de 8 dígitos. Se alguém mover esta
-    // gravação para dentro de um desses gates, esta asserção quebra.
-    expect(armazem.get("ikcous_last_shipping_cep")).toBe("0131");
+    // Desde 06/11/2026 só um CEP de 8 dígitos é gravado: antes o `setItem`
+    // rodava a cada tecla e o pedaço ("0131") voltava como "CEP" na visita
+    // seguinte (e, com a busca da semente, dispararia consulta de CEP errado).
+    expect(armazem.get("ikcous_last_shipping_cep")).toBeUndefined();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -365,6 +365,6 @@ describe("CheckoutView (convidado) — busca de CEP via useBuscaCep", () => {
     });
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(armazem.get("ikcous_last_shipping_cep")).toBe("01310-10");
+    expect(armazem.get("ikcous_last_shipping_cep")).toBeUndefined();
   });
 });

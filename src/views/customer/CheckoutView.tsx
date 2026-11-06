@@ -2414,6 +2414,19 @@ export function CheckoutViewDaConta({
     !!bairroAtual?.trim() &&
     !!cidadeAtual?.trim() &&
     ufBrasileiraValida(estadoAtual);
+  // O PRIMEIRO campo de endereço de convidado que falta ou está inválido, na
+  // ordem da tela (a mesma de `ORDEM_CAMPOS_FOCO`). O aviso da barra leva o
+  // foco até ele; os mesmos testes de "completo" de `enderecoConvidadoCompleto`.
+  const idDoPrimeiroCampoDeEnderecoQueFalta = (): string | null => {
+    if (soDigitos(cepDigitadoNoFormulario ?? "").length !== 8)
+      return "guest-cep";
+    if (!numeroAtual?.trim()) return "guest-number";
+    if (!ruaAtual?.trim()) return "guest-street";
+    if (!bairroAtual?.trim()) return "guest-neighborhood";
+    if (!cidadeAtual?.trim()) return "guest-city";
+    if (!ufBrasileiraValida(estadoAtual)) return "guest-state";
+    return null;
+  };
   const faltaCpf = exigeCpfDoDestinatario && !cpfValido(cpfAtual ?? "");
   // Só uma ação EXPLÍCITA abre a seção: cabeçalho, "Editar"/"Trocar"/
   // "Cadastre um endereço" do resumo, ou o submit inválido (que também foca
@@ -3267,6 +3280,36 @@ export function CheckoutViewDaConta({
       if (r.notas && !notasRef.current) setNotes(r.notas);
     }
   }, [authLoading, user, form]);
+
+  // CEP QUE JÁ VEM NA TELA, ENDEREÇO QUE NÃO VEM: o campo CEP nasce de
+  // `ikcous_last_shipping_cep` (visita anterior) ou do rascunho, mas a busca só
+  // saía quando a pessoa DIGITAVA — voltar ao checkout mostrava o CEP completo
+  // e rua/bairro/cidade/UF vazios. Convidado, com CEP de 8 dígitos e o endereço
+  // TODO vazio, a busca sai uma vez na abertura, pelo mesmo caminho da
+  // digitação: `cepAssociadoRef` já foi semeado com este CEP (então nada é
+  // tratado como "de outro CEP" nem apagado), `escreverCampoDoCep` respeita o
+  // que a pessoa digitar enquanto a busca está em voo, e o hook cuida da
+  // corrida e do tempo. Declarado DEPOIS do init e do efeito do rascunho: no
+  // commit em que a config chega, os dois já rodaram e o formulário está no
+  // estado final (rascunho restaurado = endereço não vazio = sem busca).
+  const cepSemeadoJaBuscadoRef = useRef(false);
+  useEffect(() => {
+    if (!storeConfigLoaded || authLoading || !hasInitializedRef.current) return;
+    if (user) return;
+    if (cepSemeadoJaBuscadoRef.current) return;
+    cepSemeadoJaBuscadoRef.current = true;
+    const limpo = soDigitos(form.getValues("cep") ?? "");
+    if (limpo.length !== 8) return;
+    const enderecoVazio = CAMPOS_DO_ENDERECO_DO_CEP.every(
+      (campo) => !(form.getValues(campo) ?? "").trim(),
+    );
+    if (!enderecoVazio) return;
+    cepEmBuscaRef.current = limpo;
+    void buscarCep(limpo);
+    // `buscarCep` não é recriada e o resto são refs/`form` estáveis: o efeito
+    // depende só de quando a config e a autenticação ficam prontas.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeConfigLoaded, authLoading, user]);
   useEffect(() => {
     if (perfilDaConta) {
       const nomeDoPerfil = perfilDaConta.full_name || "";
@@ -4385,7 +4428,9 @@ export function CheckoutViewDaConta({
             number: data.number,
             neighborhood: data.neighborhood,
             city: data.city,
-            state: data.state,
+            // A caixa da UF vai normalizada: "sp" digitado sai "SP" (a regra
+            // `ufBrasileiraValida` já aceita os dois, o pedido grava um só).
+            state: data.state?.trim().toUpperCase(),
             complement: data.complement,
             ...(cpfParaRpc ? { cpf: cpfParaRpc } : {}),
           },
@@ -6389,10 +6434,14 @@ export function CheckoutViewDaConta({
                           form.setValue("cep", formatado, {
                             shouldValidate: true,
                           });
-                          localStorage.setItem(
-                            "ikcous_last_shipping_cep",
-                            formatado,
-                          );
+                          // Só um CEP COMPLETO vira "último CEP" do aparelho:
+                          // gravar a cada tecla deixava o pedaço ("0131")
+                          // como semente da próxima visita.
+                          if (limpo.length === 8)
+                            localStorage.setItem(
+                              "ikcous_last_shipping_cep",
+                              formatado,
+                            );
 
                           // A busca vale em TODA loja (decisão do dono,
                           // 03/10/2026): a cobertura de entrega decide para
@@ -6530,12 +6579,20 @@ export function CheckoutViewDaConta({
                       {...registrarCampoDoEndereco("city")}
                       autoComplete="address-level2"
                       placeholder="Cidade"
-                      // Sem mensagem renderizada para este campo, mas o erro
-                      // existe no schema (convidado): `aria-invalid` + foco
-                      // do handler anunciam o problema (laudo 03/09, achado 1).
                       aria-invalid={erroDoCampo("city") ? true : undefined}
+                      aria-describedby={
+                        erroDoCampo("city") ? "erro-guest-city" : undefined
+                      }
                       className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
+                    {erroDoCampo("city") && (
+                      <p
+                        id="erro-guest-city"
+                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                      >
+                        {erroDoCampo("city")?.message}
+                      </p>
+                    )}
                   </div>
                   <div className="col-span-3">
                     <label
@@ -6549,14 +6606,31 @@ export function CheckoutViewDaConta({
                       {...registrarCampoDoEndereco("state")}
                       autoComplete="address-level1"
                       maxLength={2}
-                      placeholder={
-                        (config.shippingCoverage !== "national" &&
-                          config.storeState?.trim().toUpperCase()) ||
-                        "UF"
-                      }
+                      // O exemplo da loja vai como exemplo ("UF (ex.: SP)"):
+                      // um "SP" cinza sozinho parecia valor já preenchido, e a
+                      // pessoa passava direto pelo campo vazio.
+                      placeholder={(() => {
+                        const estadoDaLoja =
+                          config.shippingCoverage !== "national" &&
+                          config.storeState?.trim().toUpperCase();
+                        return estadoDaLoja
+                          ? `UF (ex.: ${estadoDaLoja})`
+                          : "UF";
+                      })()}
                       aria-invalid={erroDoCampo("state") ? true : undefined}
+                      aria-describedby={
+                        erroDoCampo("state") ? "erro-guest-state" : undefined
+                      }
                       className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                     />
+                    {erroDoCampo("state") && (
+                      <p
+                        id="erro-guest-state"
+                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                      >
+                        {erroDoCampo("state")?.message}
+                      </p>
+                    )}
                   </div>
                   <div className="col-span-6">
                     <label
@@ -7386,7 +7460,9 @@ export function CheckoutViewDaConta({
                                 ? "checkout-tel"
                                 : faltaCpf
                                   ? "checkout-cpf"
-                                  : null;
+                                  : !user
+                                    ? idDoPrimeiroCampoDeEnderecoQueFalta()
+                                    : null;
                             if (campoPendente)
                               document.getElementById(campoPendente)?.focus();
                             else
