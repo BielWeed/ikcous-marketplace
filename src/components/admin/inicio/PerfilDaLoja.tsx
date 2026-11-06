@@ -1,4 +1,5 @@
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import { primeiraLetra } from "@/lib/primeira-letra";
 import { CheckCircle2, MapPin, Share2, UserRound } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -27,7 +28,7 @@ export function PerfilDaLoja({
 }>) {
   const [logoFalhou, setLogoFalhou] = useState(false);
   const [linkCopiado, setLinkCopiado] = useState(false);
-  const inicial = nome.trim().charAt(0).toUpperCase() || "L";
+  const inicial = primeiraLetra(nome, 1, "L");
   const local = [cidade, uf].filter(Boolean).join(" / ");
 
   async function compartilharLoja() {

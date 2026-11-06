@@ -86,6 +86,7 @@ import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
+import { primeiraLetra } from "@/lib/primeira-letra";
 import { haptic } from "@/utils/haptic";
 import { formatarWhatsAppParaExibicao } from "@/utils/telefone";
 
@@ -536,7 +537,7 @@ export function ProfileView({
                     aria-hidden="true"
                     className="text-4xl font-bold text-muted-foreground"
                   >
-                    {profileName.trim().charAt(0).toUpperCase()}
+                    {primeiraLetra(String(profileName))}
                   </span>
                 )}
                 {isUpdatingAvatar && (

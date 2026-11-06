@@ -76,6 +76,7 @@ import {
   mensagemDoStatusNoWhatsapp,
   rotuloDoStatusParaACliente,
 } from "@/lib/mensagem-do-status-no-whatsapp";
+import { motivoDaFalhaEmPortugues } from "@/lib/motivo-da-falha-de-push";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { pedidosParaCsv } from "@/lib/pedidos-csv";
 import { STATUS_PARA_PREPARAR } from "@/lib/pedidos-para-preparar";
@@ -1595,10 +1596,15 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         envio.enviados === 0 &&
         envio.total !== 0
       ) {
+        // O motivo cru vem em inglês técnico ("push service respondeu 410
+        // Gone"): a lojista lê a tradução, com a inicial maiúscula.
+        const motivo = envio?.falhas?.[0]
+          ? motivoDaFalhaEmPortugues(envio.falhas[0])
+          : null;
         toast.warning("Status atualizado, mas o push não chegou", {
-          description:
-            envio?.falhas?.[0]?.motivo ??
-            "Nenhum dispositivo deste cliente recebeu a notificação.",
+          description: motivo
+            ? motivo.charAt(0).toUpperCase() + motivo.slice(1)
+            : "Nenhum dispositivo deste cliente recebeu a notificação.",
         });
       }
     } catch (err) {

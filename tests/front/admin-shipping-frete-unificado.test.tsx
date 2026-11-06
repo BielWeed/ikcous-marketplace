@@ -315,7 +315,7 @@ describe("Tela de Frete unificada — painéis, botão Salvar do cabeçalho e sa
     expect(botaoSalvar()?.disabled).toBe(true);
   });
 
-  it("salvar grava os campos LOCAIS e NACIONAIS na MESMA ação, mesmo mexendo só de um lado", async () => {
+  it("salvar grava só o lado que foi mexido (o outro não é regravado com o valor velho da tela)", async () => {
     await abrirTela();
 
     // Mexe SÓ no lado nacional.
@@ -335,13 +335,48 @@ describe("Tela de Frete unificada — painéis, botão Salvar do cabeçalho e sa
 
     expect(updateConfig).toHaveBeenCalledTimes(1);
     const payload = updateConfig.mock.calls[0][0];
-    // Os campos LOCAIS saem na MESMA chamada (com o valor atual salvo, sem
-    // ter sido tocados) — é isso que faz o save ser UMA ação só.
+    // Os campos LOCAIS que não foram tocados NÃO saem: outro aparelho pode tê-los
+    // mudado e o Salvar não regrava o que a lojista não mexeu (frete-salvar-
+    // manda-so-o-que-mexeu-neste-aparelho.test.tsx).
     // O CEP da loja NÃO sai daqui: é de Minha loja (P2, um CEP só).
     expect(payload).not.toHaveProperty("originCep");
-    expect(payload).toHaveProperty("localDeliveryFee", 10);
-    expect(payload).toHaveProperty("shippingCoverage", "national");
+    expect(payload).not.toHaveProperty("localDeliveryFee");
+    expect(payload).not.toHaveProperty("shippingCoverage");
     // E o campo nacional que foi de fato editado:
     expect(payload).toHaveProperty("nationalShippingStrategy", "sempre");
+  });
+
+  it("mexendo nos DOIS lados, os dois saem na MESMA chamada (uma ação só)", async () => {
+    await abrirTela();
+
+    await clicar(botaoComTexto(/^fora da sua região/i)!);
+    const pillSempreNacional = [
+      ...(hospedeiro
+        .querySelector("#bloco-estrategia-nacional")
+        ?.querySelectorAll('[role="radio"]') ?? []),
+    ].find((r) => /Sempre grátis/.test(r.textContent || "")) as HTMLElement;
+    await clicar(pillSempreNacional);
+    const taxa = hospedeiro.querySelector<HTMLInputElement>(
+      "#local-delivery-fee",
+    );
+    expect(taxa).not.toBeNull();
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set?.call(taxa, "12");
+      taxa?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    await act(async () => {
+      botaoSalvar()!.click();
+      await esperarMicrotarefas();
+    });
+
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(updateConfig.mock.calls[0][0]).toMatchObject({
+      localDeliveryFee: 12,
+      nationalShippingStrategy: "sempre",
+    });
   });
 });

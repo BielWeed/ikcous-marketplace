@@ -205,6 +205,32 @@ describe("AccountSettingsView — WhatsApp usa máscara e validação de src/uti
     expect(chamada![1]).toMatchObject({ p_whatsapp: "(34) 99999-8888" });
   });
 
+  // Achado 6 (R21): a conta aceitava fixo (10 dígitos) e celular sem o 9, e o
+  // checkout — que puxa esse número do perfil — recusava com "faltou um
+  // número". A conta passa a usar a MESMA régua do checkout
+  // (`celularBrasileiroCompleto`): DDD + 9 + 8 dígitos.
+  it.each([
+    ["fixo de 10 dígitos", "3433334444"],
+    ["celular de 11 dígitos sem o 9 na frente", "11123456789"],
+  ])(
+    "salvar com %s é recusado com a regra do checkout e nunca grava",
+    async (_nome, digitos) => {
+      await montarComPerfilCarregado();
+      const { toast } = await import("sonner");
+
+      digitar("phone", digitos);
+
+      const chamada = await salvarEPegarWhatsappGravado();
+      expect(chamada).toBeUndefined();
+      expect(toast.error).toHaveBeenCalledWith(
+        "WhatsApp inválido",
+        expect.objectContaining({
+          description: expect.stringContaining("DDD + 9 + 8 dígitos"),
+        }),
+      );
+    },
+  );
+
   it("número estrangeiro/longo demais (sem 55) continua cru e é recusado", async () => {
     await montarComPerfilCarregado();
     const { toast } = await import("sonner");
@@ -259,7 +285,7 @@ describe("AccountSettingsView — WhatsApp usa máscara e validação de src/uti
     expect(toast.error).toHaveBeenCalledWith(
       "WhatsApp inválido",
       expect.objectContaining({
-        description: expect.stringContaining("10 ou 11 dígitos"),
+        description: expect.stringContaining("DDD + 9 + 8 dígitos"),
       }),
     );
     const chamadasDeGravacao = rpc.mock.calls.filter(
@@ -308,7 +334,7 @@ describe("AccountSettingsView — WhatsApp usa máscara e validação de src/uti
     expect(toast.error).toHaveBeenCalledWith(
       "WhatsApp inválido",
       expect.objectContaining({
-        description: expect.stringContaining("10 ou 11 dígitos"),
+        description: expect.stringContaining("DDD + 9 + 8 dígitos"),
       }),
     );
     const chamadasDeGravacao = rpc.mock.calls.filter(
@@ -338,7 +364,7 @@ describe("AccountSettingsView — WhatsApp usa máscara e validação de src/uti
     expect(toast.error).toHaveBeenCalledWith(
       "WhatsApp inválido",
       expect.objectContaining({
-        description: expect.stringContaining("10 ou 11 dígitos"),
+        description: expect.stringContaining("DDD + 9 + 8 dígitos"),
       }),
     );
     const chamadasDeGravacao = rpc.mock.calls.filter(

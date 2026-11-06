@@ -14,6 +14,12 @@ import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { ehModalidadeDaLoja, ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
 import { precoVendido } from "@/lib/preco-vendido";
+import {
+  EVENTO_RETRATO_LIMPO,
+  lerRetratoDoConvidado,
+  limparRetratoDoConvidado,
+  textoDoRetrato,
+} from "@/lib/retrato-do-convidado";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { CartItem, Order, Product, View } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -55,6 +61,16 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
+
+// A régua da sub-aba "Em andamento" — contadores, filtro e a escolha da aba
+// que abre com os pedidos achados usam a MESMA, senão a aba aberta e a lista
+// divergem (foi assim que o pedido achado pelo código sumia atrás de "Nenhum
+// pedido em andamento").
+const STATUS_EM_ANDAMENTO = ["pending", "processing", "shipping"];
+const pedidoEmAndamento = (pedido: Order) =>
+  STATUS_EM_ANDAMENTO.includes(pedido.status);
+const abaDosPedidos = (pedidos: Order[]): "active" | "history" =>
+  pedidos.some(pedidoEmAndamento) ? "active" : "history";
 
 interface CartViewProps {
   cart?: CartItem[];
@@ -377,6 +393,20 @@ export function CartView({
     user ? "user" : "guest",
   );
   const [ordersTab, setOrdersTab] = useState<"active" | "history">("active");
+  // A sub-aba já foi decidida (pela busca do rastreio, pela primeira lista da
+  // conta ou por um toque da pessoa)? Enquanto não, a aba abre onde os pedidos
+  // estão — quem só tem pedido entregue/cancelado não cai em "Nenhum pedido em
+  // andamento" com o pedido escondido no Histórico. Decide UMA vez e nunca
+  // puxa de volta quem escolheu.
+  const [abaDecidida, setAbaDecidida] = useState(false);
+  const trocarAbaDosPedidos = (aba: "active" | "history") => {
+    setAbaDecidida(true);
+    setOrdersTab(aba);
+  };
+  // Horário do retrato do rastreio sem conta que está na lista (`null` = retrato
+  // antigo, sem horário) e contador que REMONTA a busca em "Consultar de novo".
+  const [retratoEm, setRetratoEm] = useState<number | null>(null);
+  const [buscaDoRastreio, setBuscaDoRastreio] = useState(0);
 
   // Directional Orders Sub-tab Transitions
   const [ordersTabDirection, setOrdersTabDirection] = useState<number>(0);
@@ -393,11 +423,19 @@ export function CartView({
   const carregandoPrimeiraVez =
     Boolean(user) && pedidosVivos.length === 0 && !primeiraBuscaFeita;
 
+  // Primeira lista com pedidos que a pessoa ainda não escolheu como ver. Conta
+  // logada espera a primeira resposta do servidor (antes dela a lista pode ser
+  // só o cache do aparelho); o rastreio guardado do convidado já vale na hora.
+  if (!abaDecidida && orders.length > 0 && (!user || primeiraBuscaFeita)) {
+    setAbaDecidida(true);
+    setOrdersTab(abaDosPedidos(orders));
+  }
+
   const { activeOrdersCount, historyOrdersCount } = useMemo(() => {
     let active = 0;
     let history = 0;
     orders.forEach((o) => {
-      if (["pending", "processing", "shipping"].includes(o.status)) {
+      if (pedidoEmAndamento(o)) {
         active++;
       } else {
         history++;
@@ -408,10 +446,23 @@ export function CartView({
 
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
-      const isActive = ["pending", "processing", "shipping"].includes(o.status);
+      const isActive = pedidoEmAndamento(o);
       return ordersTab === "active" ? isActive : !isActive;
     });
   }, [orders, ordersTab]);
+
+  // "Consultar de novo" (aqui ou nos detalhes do pedido) apagou o retrato: esta
+  // tela fica montada o tempo todo, então esvazia a lista guardada em memória e
+  // remonta a busca do zero, já na aba "Rastrear sem Conta".
+  useEffect(() => {
+    const aoLimpar = () => {
+      setPedidosConvidado([]);
+      setRetratoEm(null);
+      setBuscaDoRastreio((n) => n + 1);
+    };
+    globalThis.addEventListener(EVENTO_RETRATO_LIMPO, aoLimpar);
+    return () => globalThis.removeEventListener(EVENTO_RETRATO_LIMPO, aoLimpar);
+  }, []);
 
   useEffect(() => {
     if (!isReady) return;
@@ -430,16 +481,11 @@ export function CartView({
         });
       } else {
         setOrderViewMode("guest");
-        try {
-          const cached = sessionStorage.getItem("guest_tracked_orders");
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              setPedidosConvidado(parsed);
-            }
-          }
-        } catch (e) {
-          console.error("Error loading guest orders from sessionStorage:", e);
+        // Aceita o retrato nos dois formatos (com e sem o horário da consulta).
+        const retrato = lerRetratoDoConvidado();
+        if (retrato && retrato.pedidos.length > 0) {
+          setPedidosConvidado(retrato.pedidos);
+          setRetratoEm(retrato.consultadoEm);
         }
       }
     }
@@ -1278,12 +1324,48 @@ export function CartView({
             >
               {orderViewMode === "guest" && (
                 <OrderSearch
+                  key={buscaDoRastreio}
                   onNavigate={onNavigate}
                   whatsappDaLoja={config.whatsappNumber}
+                  abrirNoRastreio={buscaDoRastreio > 0}
                   onOrdersFound={(foundOrders) => {
                     setPedidosConvidado(foundOrders);
+                    // Acabou de consultar: o retrato é de agora (OrderSearch o
+                    // gravou neste instante) e a lista abre na aba onde os
+                    // pedidos achados estão, não atrás de "Nenhum pedido em
+                    // andamento".
+                    setRetratoEm(Date.now());
+                    trocarAbaDosPedidos(abaDosPedidos(foundOrders));
                   }}
                 />
+              )}
+
+              {/* Rastreio sem conta: a lista é o retrato do que o servidor
+                  respondeu na consulta e não atualiza sozinha — diz de que
+                  hora é e deixa consultar de novo. */}
+              {!user && orders.length > 0 && (
+                <div
+                  data-testid="aviso-retrato-do-convidado"
+                  className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-solid border-border bg-background px-4 py-3"
+                >
+                  <p className="flex min-w-0 flex-1 items-start gap-2 text-[13px] font-medium text-foreground">
+                    <span
+                      aria-hidden="true"
+                      className="mt-1.5 size-1.5 shrink-0 rounded-full bg-amber-500"
+                    />
+                    <span className="min-w-0">{textoDoRetrato(retratoEm)}</span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      haptic.light();
+                      limparRetratoDoConvidado();
+                    }}
+                    className="min-h-11 rounded-xl bg-foreground px-4 text-sm font-bold text-background transition-all active:scale-95"
+                  >
+                    Consultar de novo
+                  </button>
+                </div>
               )}
 
               {orders.length > 0 && !isLoadingOrders && (
@@ -1292,7 +1374,7 @@ export function CartView({
                     aria-pressed={ordersTab === "active"}
                     onClick={() => {
                       haptic.light();
-                      setOrdersTab("active");
+                      trocarAbaDosPedidos("active");
                     }}
                     className={cn(
                       "h-11 rounded-xl border border-solid px-4 text-[15px] font-semibold transition-colors",
@@ -1308,7 +1390,7 @@ export function CartView({
                     aria-pressed={ordersTab === "history"}
                     onClick={() => {
                       haptic.light();
-                      setOrdersTab("history");
+                      trocarAbaDosPedidos("history");
                     }}
                     className={cn(
                       "h-11 rounded-xl border border-solid px-4 text-[15px] font-semibold transition-colors",

@@ -42,6 +42,7 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { papel } from "@/lib/papeis-aria-da-tabela";
 import { rotuloDoPapel } from "@/lib/papel-da-conta";
 import { precoVendido } from "@/lib/preco-vendido";
+import { primeiraLetra } from "@/lib/primeira-letra";
 import { supabase } from "@/lib/supabase";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { formatCurrency } from "@/lib/utils";
@@ -706,7 +707,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                     className="object-cover"
                   />
                   <AvatarFallback className="bg-zinc-800 text-xl font-bold text-zinc-300">
-                    {profile?.full_name?.substring(0, 2).toUpperCase() || "CX"}
+                    {primeiraLetra(profile?.full_name, 2, "CX")}
                   </AvatarFallback>
                 </Avatar>
               </div>

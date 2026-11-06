@@ -158,7 +158,8 @@ describe("useCategories — rede falhando na consulta", () => {
     await avancar(1_000);
 
     expect(rede.consultas).toHaveLength(2);
-    expect(retratos.get(0)?.nomes).toEqual(["Camisas", "Bones"]);
+    // A lista chega em ordem de nome, qualquer que seja a ordem da resposta.
+    expect(retratos.get(0)?.nomes).toEqual(["Bones", "Camisas"]);
     expect(avisos.erro).not.toHaveBeenCalled();
   });
 

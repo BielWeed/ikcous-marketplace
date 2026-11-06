@@ -68,7 +68,7 @@ export function mensagemFalhaCpf(
   if (motivo === "conta_trocada") {
     return "A conta mudou durante a operação: nada foi salvo. Confira a conta e tente de novo.";
   }
-  const onde = contexto ?? "Minha conta > Informações pessoais";
+  const onde = contexto ?? "Perfil > Segurança e conta";
   return `Não foi possível salvar o CPF agora. Tente de novo em ${onde}.`;
 }
 

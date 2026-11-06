@@ -237,7 +237,10 @@ describe("CheckoutView — checagem prévia de revisão do frete antes de fechar
     vi.restoreAllMocks();
   });
 
-  async function gravarEnvelope(revisaoConfig: string) {
+  async function gravarEnvelope(
+    revisaoConfig: string,
+    opcoes: unknown[] = [mockSelectedShippingOption],
+  ) {
     const { chaveDoCacheDeFrete } = await import(
       "@/components/ui/custom/ShippingCalculator"
     );
@@ -247,7 +250,7 @@ describe("CheckoutView — checagem prévia de revisão do frete antes de fechar
     armazem.set(
       chaveDoCacheDeFrete("38500000"),
       JSON.stringify({
-        opcoes: [mockSelectedShippingOption],
+        opcoes,
         revisaoConfig,
         gravadoEm: Date.now(),
         assinatura: "prod-1:1",
@@ -256,7 +259,9 @@ describe("CheckoutView — checagem prévia de revisão do frete antes de fechar
     );
   }
 
-  async function montarEFinalizar() {
+  // `comCpf`: só a transportadora exige o CPF do destinatário; entrega
+  // própria e retirada não têm o campo na tela.
+  async function montarEFinalizar({ comCpf = true } = {}) {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await act(async () => {
       raiz.render(
@@ -276,7 +281,7 @@ describe("CheckoutView — checagem prévia de revisão do frete antes de fechar
       digitar("checkout-name", "Cliente Teste");
       digitar("checkout-tel", "34999999999");
       // TRANSPORTADORA EXIGE CPF (checkout compacto + CPF, 23/09/2026).
-      digitar("checkout-cpf", "11144477735");
+      if (comCpf) digitar("checkout-cpf", "11144477735");
       await esperarMicrotarefas();
       await esperarMicrotarefas();
     });
@@ -378,5 +383,138 @@ describe("CheckoutView — checagem prévia de revisão do frete antes de fechar
       shippingCalculatorProps.at(-1)?.forcarNovaCotacaoEm ?? 0;
     const primeiroValor = shippingCalculatorProps[0]?.forcarNovaCotacaoEm ?? 0;
     expect(ultimoValor).toBeGreaterThan(primeiroValor);
+  });
+
+  // ENTREGA PRÓPRIA (rodada 21): o valor dela (`local_delivery_fee`) e a faixa
+  // de CEP entram na revisão do servidor, e a opção `local-delivery` vem da
+  // MESMA cotação (mesmo envelope, mesma `revisaoConfig`) que a de
+  // transportadora. Antes, o checkout pulava a conferência para ela e a RPC
+  // recusava o pedido no último passo, sem dizer que era o frete.
+  describe("entrega própria (local-delivery) e retirada", () => {
+    const ENTREGA_PROPRIA = {
+      id: "local-delivery",
+      name: "Entrega pela loja",
+      price: 10,
+      deliveryDays: 1,
+      provider: "local",
+    };
+    const RETIRADA = {
+      id: "store-pickup",
+      name: "Retirar na loja",
+      price: 0,
+      deliveryDays: 0,
+      provider: "pickup",
+      pickupAddress: "Rua da Loja, 1 - Centro",
+    };
+
+    it("entrega própria com a revisão do envelope DIVERGINDO da atual: trava ANTES da RPC, avisa e força nova cotação", async () => {
+      mockSelectedShippingOption = ENTREGA_PROPRIA;
+      await gravarEnvelope("rev-velha");
+      invoke.mockResolvedValue({
+        data: { revisaoConfig: "rev-nova" },
+        error: null,
+      });
+      createOrder.mockResolvedValue({ id: "nao-deveria-nascer" });
+
+      await montarEFinalizar({ comCpf: false });
+
+      expect(invoke).toHaveBeenCalledWith("calculate-shipping", {
+        body: { action: "revisao_config_frete" },
+      });
+      expect(createOrder).not.toHaveBeenCalled();
+      expect(toastError).toHaveBeenCalledWith(
+        "O frete mudou, calcule de novo.",
+      );
+      expect(setSelectedShippingOption).toHaveBeenCalledWith(null);
+      const ultimoValor =
+        shippingCalculatorProps.at(-1)?.forcarNovaCotacaoEm ?? 0;
+      const primeiroValor =
+        shippingCalculatorProps[0]?.forcarNovaCotacaoEm ?? 0;
+      expect(ultimoValor).toBeGreaterThan(primeiroValor);
+    });
+
+    it("entrega própria com a confirmação fora do ar: não confirmou, não cria o pedido", async () => {
+      mockSelectedShippingOption = ENTREGA_PROPRIA;
+      await gravarEnvelope("rev-velha");
+      invoke.mockResolvedValue({ data: null, error: { message: "offline" } });
+      createOrder.mockResolvedValue({ id: "nao-deveria-nascer" });
+
+      await montarEFinalizar({ comCpf: false });
+
+      expect(createOrder).not.toHaveBeenCalled();
+      expect(toastError).toHaveBeenCalledWith(
+        "Não deu para confirmar o frete agora. Calculamos de novo — confira e finalize.",
+      );
+      expect(setSelectedShippingOption).toHaveBeenCalledWith(null);
+    });
+
+    it("entrega própria com a revisão IGUAL: segue e cria o pedido normalmente", async () => {
+      mockSelectedShippingOption = ENTREGA_PROPRIA;
+      await gravarEnvelope("rev-igual");
+      invoke.mockResolvedValue({
+        data: { revisaoConfig: "rev-igual" },
+        error: null,
+      });
+      createOrder.mockResolvedValueOnce({ id: "ped-local" });
+
+      await montarEFinalizar({ comCpf: false });
+
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      expect(toastError).not.toHaveBeenCalled();
+      expect(setSelectedShippingOption).not.toHaveBeenCalledWith(null);
+    });
+
+    it("entrega própria cujo valor na cotação da tela é outro: avisa que o frete foi atualizado, marca a opção fresca e não cria o pedido", async () => {
+      mockSelectedShippingOption = ENTREGA_PROPRIA;
+      await gravarEnvelope("rev-igual", [{ ...ENTREGA_PROPRIA, price: 15 }]);
+      invoke.mockResolvedValue({
+        data: { revisaoConfig: "rev-igual" },
+        error: null,
+      });
+      createOrder.mockResolvedValue({ id: "nao-deveria-nascer" });
+
+      await montarEFinalizar({ comCpf: false });
+
+      expect(createOrder).not.toHaveBeenCalled();
+      expect(toastError).toHaveBeenCalledWith(
+        "O frete foi atualizado. Confira o total e finalize.",
+      );
+      expect(setSelectedShippingOption).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "local-delivery", price: 15 }),
+        expect.anything(),
+      );
+    });
+
+    it("entrega própria SEM envelope (pedido de antes da 1.5.7): não há o que comparar, não consulta a revisão e cria o pedido", async () => {
+      mockSelectedShippingOption = ENTREGA_PROPRIA;
+      createOrder.mockResolvedValueOnce({ id: "ped-sem-envelope" });
+
+      await montarEFinalizar({ comCpf: false });
+
+      expect(invoke).not.toHaveBeenCalledWith("calculate-shipping", {
+        body: { action: "revisao_config_frete" },
+      });
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      expect(toastError).not.toHaveBeenCalled();
+    });
+
+    it("RETIRADA na loja (sempre R$ 0) continua SEM conferência: mesmo com revisão divergente no envelope, não consulta e cria o pedido", async () => {
+      mockSelectedShippingOption = RETIRADA;
+      await gravarEnvelope("rev-velha");
+      invoke.mockResolvedValue({
+        data: { revisaoConfig: "rev-nova" },
+        error: null,
+      });
+      createOrder.mockResolvedValueOnce({ id: "ped-retirada" });
+
+      await montarEFinalizar({ comCpf: false });
+
+      expect(invoke).not.toHaveBeenCalledWith("calculate-shipping", {
+        body: { action: "revisao_config_frete" },
+      });
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      expect(toastError).not.toHaveBeenCalled();
+      expect(setSelectedShippingOption).not.toHaveBeenCalledWith(null);
+    });
   });
 });

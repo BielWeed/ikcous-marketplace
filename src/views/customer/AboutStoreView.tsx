@@ -6,6 +6,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
+import { primeiraLetra } from "@/lib/primeira-letra";
 import { haptic } from "@/utils/haptic";
 import DOMPurify from "dompurify";
 import { motion, useIsPresent } from "framer-motion";
@@ -117,7 +118,7 @@ export function AboutStoreView() {
   // exigiria chamar safeToRemove). Fora de um AnimatePresence é sempre true; dentro dele vira
   // false quando a tela está saindo — aí o botão (portalado) some junto.
   const isPresent = useIsPresent();
-  const inicial = storeName.charAt(0).toUpperCase();
+  const inicial = primeiraLetra(storeName);
 
   // A descrição é RICA (o lojista formata texto e anexa imagem no painel —
   // peça futura do editor). Conteúdo do lojista renderizado como HTML SEMPRE

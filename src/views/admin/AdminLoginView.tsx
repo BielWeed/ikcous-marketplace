@@ -1,6 +1,7 @@
 import { branding } from "@/config/branding";
 import { useAuth } from "@/hooks/useAuth";
 import { MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA } from "@/lib/mensagens-auth";
+import { primeiraLetra } from "@/lib/primeira-letra";
 import type { View } from "@/types";
 import { ArrowRight, Eye, EyeOff, Loader2, Lock } from "lucide-react";
 import type React from "react";
@@ -150,7 +151,7 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
           <div className="mb-10 text-center">
             <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-[20px] border border-admin-border bg-zinc-950 text-white shadow-premium">
               <span className="text-3xl font-black italic">
-                {branding.appName.trim().charAt(0).toUpperCase()}
+                {primeiraLetra(branding.appName)}
               </span>
             </div>
             <h1 className="text-xl font-black uppercase tracking-tighter text-white">

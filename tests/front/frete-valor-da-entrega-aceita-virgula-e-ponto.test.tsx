@@ -195,16 +195,21 @@ describe("Frete — valor da entrega local aceita vírgula e ponto e nunca vira 
     );
   });
 
-  it("valor com fração de centavo que já estava na loja sai arredondado para centavos", async () => {
+  it("valor com fração de centavo que já estava na loja: mexer em outro campo não o regrava; mexer nele grava o novo", async () => {
     loja.atual = { ...loja.atual, localDeliveryFee: 7.556 };
     await montar();
     // Outro campo mexido só para o formulário ficar sujo e o Salvar habilitar.
     await digitar("local-delivery-days", "2");
     await act(async () => botaoSalvar().click());
 
-    expect(updateConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ localDeliveryFee: 7.56 }),
-    );
+    // O Salvar só manda o que foi mexido: a taxa fica como está.
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(updateConfig.mock.calls[0][0]).toEqual({ localDeliveryDays: 2 });
+
+    // Quando ela mexe na taxa, ela sai.
+    await digitar("local-delivery-fee", "7,60");
+    await act(async () => botaoSalvar().click());
+    expect(updateConfig).toHaveBeenLastCalledWith({ localDeliveryFee: 7.6 });
   });
 
   it('o texto digitado não é reescrito sob o dedo ("7," continua "7,")', async () => {

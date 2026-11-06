@@ -197,9 +197,10 @@ describe("mensagemFalhaCpf", () => {
     expect(mensagemFalhaCpf("sem_sessao")).toBe(
       "Entre na conta para salvar o CPF.",
     );
-    expect(mensagemFalhaCpf("falha")).toContain(
-      "Minha conta > Informações pessoais",
-    );
+    // O caminho citado tem de existir no app: Perfil > Segurança e conta
+    // (a tela "Sua conta"). "Minha conta > Informações pessoais" não existe.
+    expect(mensagemFalhaCpf("falha")).toContain("Perfil > Segurança e conta");
+    expect(mensagemFalhaCpf("falha")).not.toContain("Informações pessoais");
     expect(mensagemFalhaCpf("falha", "no checkout")).toContain("no checkout");
   });
 });

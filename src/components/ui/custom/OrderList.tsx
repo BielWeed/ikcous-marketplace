@@ -462,6 +462,11 @@ export const OrderList = memo(function OrderList({
         // compra que fechou em R$ 0,00 e nunca chama de "PIX" um método que a
         // tela não conhece.
         const formaDePagamento = rotuloDaFormaDoPedido(order);
+        // Unidades, como o carrinho e o painel contam: 1 produto x 3 = "3 itens".
+        const unidades = order.items.reduce(
+          (soma, item) => soma + (item.quantity || 1),
+          0,
+        );
         const total = order?.total || 0;
         const date = order?.createdAt ? new Date(order.createdAt) : new Date();
         // Cor só com significado: vermelho = cancelado, verde = entregue ou
@@ -529,8 +534,7 @@ export const OrderList = memo(function OrderList({
                     {order.items[0]?.name || "Pedido"}
                   </h4>
                   <p className="mt-1 text-[13px] leading-[18px] text-muted-foreground">
-                    {order.items.length}{" "}
-                    {order.items.length === 1 ? "item" : "itens"} ·{" "}
+                    {unidades} {unidades === 1 ? "item" : "itens"} ·{" "}
                     {formaDePagamento}
                     {order.customer.neighborhood
                       ? ` · ${order.customer.neighborhood}`

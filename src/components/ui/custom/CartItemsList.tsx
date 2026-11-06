@@ -1,6 +1,7 @@
 import { QuantitySelector } from "@/components/ui/custom/QuantitySelector";
 import { useStore } from "@/contexts/StoreContext";
 import { chaveDaLinha, estoqueDaLinha } from "@/lib/escolhas-do-item";
+import { fotoDoItemDoCarrinho } from "@/lib/foto-do-item-do-carrinho";
 import { usarImagemOriginal } from "@/lib/imageUrl";
 import { miniaturaDeCompra } from "@/lib/miniatura-de-compra";
 import { precoVendido } from "@/lib/preco-vendido";
@@ -76,6 +77,9 @@ const CartItemCard = memo(function CartItemCard({
         })()
       : undefined);
 
+  // A foto é a da cor escolhida (quando tem) ou a do produto.
+  const fotoDaLinha = fotoDoItemDoCarrinho(item);
+
   const variant = item.variantId
     ? item.product.variants?.find((v) => v.id === item.variantId)
     : null;
@@ -103,13 +107,15 @@ const CartItemCard = memo(function CartItemCard({
         <div className="size-16 flex-shrink-0 overflow-hidden rounded-xl bg-muted min-[380px]:size-20">
           <img
             src={
-              miniaturaDeCompra(item.product.images?.[0]) ||
+              miniaturaDeCompra(fotoDaLinha) ||
               "https://placehold.co/600x400?text=Sem+Imagem"
             }
-            onError={(e) =>
-              usarImagemOriginal(e.currentTarget, item.product.images?.[0])
+            onError={(e) => usarImagemOriginal(e.currentTarget, fotoDaLinha)}
+            alt={
+              variantText
+                ? `${item.product.name} - ${variantText}`
+                : item.product.name
             }
-            alt={item.product.name}
             className="size-full object-cover"
           />
         </div>

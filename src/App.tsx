@@ -2672,7 +2672,10 @@ const AppContent = () => {
         return (
           <PreloadedOrLazy
             component={NotificationsView}
-            props={{ onNavigate: handleNavigate }}
+            props={{
+              onNavigate: handleNavigate,
+              onCategoryChange: handleCategoryChange,
+            }}
           />
         );
 

@@ -20,7 +20,10 @@ import {
 } from "@/lib/cpf-da-conta";
 import { descartarPendenteDaConta } from "@/lib/cpf-pendente-do-cadastro";
 import { supabase } from "@/lib/supabase";
-import { digitosDoTelefoneDoCampo } from "@/lib/telefone-br";
+import {
+  celularBrasileiroCompleto,
+  digitosDoTelefoneDoCampo,
+} from "@/lib/telefone-br";
 import {
   PREDEFINED_AVATARS,
   compressImage,
@@ -36,7 +39,6 @@ import { haptic } from "@/utils/haptic";
 import {
   formatarWhatsAppDigitando,
   formatarWhatsAppParaExibicao,
-  validarWhatsApp,
 } from "@/utils/telefone";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -568,13 +570,17 @@ export function AccountSettingsView() {
 
     // A validação só se aplica ao que a PESSOA digitou. Um WhatsApp inválido
     // que já estava salvo (dado legado) não pode travar a troca do nome —
-    // ele nem vai ser reenviado (ver `p_whatsapp` abaixo).
+    // ele nem vai ser reenviado (ver `p_whatsapp` abaixo). A régua é a do
+    // checkout (celular completo), que puxa este número já preenchido.
     if (whatsappEditado) {
       const digitosWhatsapp = profileData.phone.replace(/\D/g, "");
-      if (digitosWhatsapp.length > 0 && !validarWhatsApp(profileData.phone)) {
+      if (
+        digitosWhatsapp.length > 0 &&
+        !celularBrasileiroCompleto(profileData.phone)
+      ) {
         toast.error("WhatsApp inválido", {
           description:
-            "Informe DDD + número, com 10 ou 11 dígitos — por exemplo (DDD) 3333-4444 ou (DDD) 99999-8888.",
+            "Informe DDD + 9 + 8 dígitos, por exemplo (34) 99999-8888.",
         });
         return;
       }

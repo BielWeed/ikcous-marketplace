@@ -91,6 +91,7 @@ import {
   rotuloDaFormaDoPedido,
 } from "@/lib/forma-de-pagamento";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
+import { fotoDoItemDoCarrinho } from "@/lib/foto-do-item-do-carrinho";
 import {
   conferirFreteEscolhidoComACotacao,
   ehModalidadeDaLoja,
@@ -4197,8 +4198,11 @@ export function CheckoutViewDaConta({
     // trocado serviço, mudado seguro) DEPOIS que esta cotação foi gravada
     // — até 2h atrás, prazo do cache do navegador — e o preço mudaria.
     // Confirma a revisão ANTES de criar o pedido; se não bater, recota e
-    // NUNCA cobra o frete antigo. Retirada e entrega local não vêm de
-    // cotação de provedor — não passam por aqui.
+    // NUNCA cobra o frete antigo. A retirada (sempre R$ 0) não passa por
+    // aqui; a ENTREGA PRÓPRIA passa: o valor dela e a faixa de CEP entram na
+    // revisão do servidor, e a opção `local-delivery` vem da MESMA cotação
+    // (mesmo envelope) — pulá-la deixava a tela com o valor de antes e a RPC
+    // recusava o pedido no último passo.
     //
     // SÓ investiga quando há EVIDÊNCIA de que a cotação escolhida carregava
     // uma revisão (envelope 1.5.7 em diante, escrito por `ShippingCalculator`).
@@ -4213,7 +4217,7 @@ export function CheckoutViewDaConta({
     // como "não confirmado", e o pedido não nasce.
     if (
       selectedShippingOption &&
-      !ehModalidadeDaLoja(selectedShippingOption.id) &&
+      !ehRetiradaNaLoja(selectedShippingOption.id) &&
       shippingCep
     ) {
       let revisaoDaCotacaoEscolhida: string | null = null;
@@ -7045,21 +7049,19 @@ export function CheckoutViewDaConta({
                           ),
                         );
 
+                        // A foto da cor escolhida (quando tem), senão a do
+                        // produto — a mesma regra do carrinho.
+                        const fotoDaLinha = fotoDoItemDoCarrinho(item);
+
                         return (
                           <li
                             key={`${item.product.id}-${chaveDaLinha(item)}`}
                             className="flex items-center gap-3"
                           >
                             <img
-                              src={miniaturaDoResumo(
-                                item.product.images?.[0],
-                                144,
-                              )}
+                              src={miniaturaDoResumo(fotoDaLinha, 144)}
                               onError={(e) =>
-                                usarImagemOriginal(
-                                  e.currentTarget,
-                                  item.product.images?.[0],
-                                )
+                                usarImagemOriginal(e.currentTarget, fotoDaLinha)
                               }
                               alt=""
                               className="size-12 shrink-0 rounded-xl border border-zinc-100 bg-zinc-50 object-cover"

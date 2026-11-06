@@ -1,3 +1,4 @@
+import { AvisosDoAparelhoDaCliente } from "@/components/pwa/AvisosDoAparelhoDaCliente";
 import { Button } from "@/components/ui/button";
 import { useNotificationCenter } from "@/contexts/NotificationContextCore";
 import { AnimatePresence, motion } from "framer-motion";
@@ -14,6 +15,7 @@ import { useCallback, useMemo, useState } from "react";
 
 interface NotificationsViewProps {
   readonly onNavigate?: (view: any, id?: string) => void;
+  readonly onCategoryChange?: (categoria: string) => void;
 }
 
 type TabType = "todas" | "avisos";
@@ -41,12 +43,24 @@ const TIPOS_DA_ABA_AVISOS = new Set([
 export function navegarPorUrl(
   url: string,
   onNavigate?: (view: any, id?: string) => void,
+  onCategoryChange?: (categoria: string) => void,
 ) {
   try {
     const parsedUrl = new URL(url, window.location.origin);
     const pathname = parsedUrl.pathname;
     const searchParams = parsedUrl.searchParams;
     const cleanPath = pathname.replace(/^\/+|\/+$/g, "");
+
+    // Link de categoria (`/?category=Vestidos`): o celular abre o app já na
+    // categoria. Aqui o App só guarda a categoria no `handleCategoryChange`
+    // (o mesmo do chip) ANTES da navegação, porque o endereço da página
+    // inicial é montado a partir da categoria atual.
+    const categoria = searchParams.get("category");
+    if (categoria && (cleanPath === "" || cleanPath === "home")) {
+      onCategoryChange?.(categoria);
+      onNavigate?.("home");
+      return;
+    }
 
     if (cleanPath === "product-detail" || cleanPath === "product") {
       const id = searchParams.get("id");
@@ -91,6 +105,14 @@ export function navegarPorUrl(
       "orders",
       "order-details",
       "account-settings",
+      // Páginas públicas que o App aceita como entrada e que a lojista pode
+      // digitar no "Avançado" do painel (o push do celular já as abre). As
+      // telas `admin-*` ficam de fora: a cliente não vai ao painel pelo sino.
+      "about-store",
+      "terms",
+      "privacy",
+      "returns-policy",
+      "recently-viewed",
     ];
 
     if (knownViews.includes(cleanPath)) {
@@ -107,7 +129,10 @@ export function navegarPorUrl(
   }
 }
 
-export function NotificationsView({ onNavigate }: NotificationsViewProps) {
+export function NotificationsView({
+  onNavigate,
+  onCategoryChange,
+}: NotificationsViewProps) {
   const {
     notifications,
     loading,
@@ -173,7 +198,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
       if (notif.order_id) {
         onNavigate?.("order-details", notif.order_id);
       } else if (notif.action_url) {
-        navegarPorUrl(notif.action_url, onNavigate);
+        navegarPorUrl(notif.action_url, onNavigate, onCategoryChange);
       }
 
       // Marcar como lida roda em segundo plano: falha não impede a navegação
@@ -185,7 +210,7 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
         });
       }
     },
-    [markAsRead, onNavigate],
+    [markAsRead, onNavigate, onCategoryChange],
   );
 
   // Grouping counts for each tab (unread count)
@@ -348,6 +373,9 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
 
       {/* Lista */}
       <div className="flex flex-1 flex-col px-4 pt-2">
+        {/* Estado dos avisos NESTE aparelho: só aparece quando bloqueado ou
+         * desligado (caça r21, achado 5). */}
+        <AvisosDoAparelhoDaCliente />
         {filteredNotifications.length > 0 ? (
           <motion.div layout role="list">
             <AnimatePresence mode="popLayout">
