@@ -34,6 +34,9 @@ interface AuthViewProps {
   onSuccess?: () => void;
 }
 
+// Mesma frase no aviso (toast) e embaixo do campo de senha do cadastro.
+const MENSAGEM_SENHA_CURTA = "A senha deve ter pelo menos 8 caracteres.";
+
 const containerVariants: Variants = {
   hidden: { opacity: 0, y: 30 },
   visible: {
@@ -169,6 +172,12 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   // diferentes com critérios diferentes.
   const [cpf, setCpf] = useState("");
   const [cpfErro, setCpfErro] = useState(false);
+  // WhatsApp incompleto e senha curta no cadastro: além do toast (que some),
+  // o campo é marcado, ganha a mensagem embaixo e recebe o foco — o mesmo
+  // padrão do CPF acima. O WhatsApp guarda a frase (ela muda se faltou 1
+  // dígito ou mais).
+  const [whatsappErro, setWhatsappErro] = useState<string | null>(null);
+  const [senhaErro, setSenhaErro] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -347,27 +356,41 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
         // mesma régua e a mesma frase do checkout e do perfil. Antes o
         // cadastro aceitava fixo de 10 dígitos e a conta nascia com um número
         // que o Finalizar da compra recusava.
-        if (!celularBrasileiroCompleto(phone)) {
-          toast.error(mensagemDeWhatsappIncompleto(phone));
-          setIsLoading(false);
-          return;
-        }
         // O GoTrue exige 8 (a mesma regra da troca de senha, abaixo). Sem esta
         // conferência a pessoa enviava "123456", lia "Senha muito fraca" sem
         // saber o mínimo e repetia com outra de 6.
-        if (password.length < 8) {
-          toast.error("A senha deve ter pelo menos 8 caracteres.");
-          setIsLoading(false);
-          return;
-        }
         // CPF vazio = cadastro normal (opcional). Preenchido e inválido:
-        // erro NO CAMPO (não no toast genérico) e não envia — mesmo
-        // padrão do campo de CPF do checkout.
-        if (cpf.trim() && !cpfValido(cpf)) {
-          setCpfErro(true);
+        // erro NO CAMPO e não envia — mesmo padrão do campo de CPF do
+        // checkout.
+        //
+        // As três conferências rodam juntas para marcar TODO campo errado de
+        // uma vez; o aviso (toast) e o foco vão para o primeiro na ordem da
+        // tela (WhatsApp, CPF, senha). Só o toast do CPF não existe: o campo
+        // já tem a mensagem dele.
+        const mensagemWhatsapp = celularBrasileiroCompleto(phone)
+          ? null
+          : mensagemDeWhatsappIncompleto(phone);
+        const cpfInvalido = Boolean(cpf.trim()) && !cpfValido(cpf);
+        const senhaCurta = password.length < 8;
+        if (mensagemWhatsapp !== null || cpfInvalido || senhaCurta) {
+          setWhatsappErro(mensagemWhatsapp);
+          setCpfErro(cpfInvalido);
+          setSenhaErro(senhaCurta);
+          if (mensagemWhatsapp !== null) {
+            toast.error(mensagemWhatsapp);
+            document.getElementById("phone")?.focus();
+          } else if (cpfInvalido) {
+            document.getElementById("cpf")?.focus();
+          } else {
+            toast.error(MENSAGEM_SENHA_CURTA);
+            document.getElementById("password")?.focus();
+          }
           setIsLoading(false);
           return;
         }
+        setWhatsappErro(null);
+        setCpfErro(false);
+        setSenhaErro(false);
         const success = await signUp(
           emailEnviado,
           password,
@@ -794,12 +817,25 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                         value={phone}
                         onChange={(e) => {
                           handlePhoneChange(e);
+                          if (whatsappErro) setWhatsappErro(null);
                           if (loginError) setLoginError(null);
                         }}
+                        aria-invalid={whatsappErro !== null}
+                        aria-describedby={
+                          whatsappErro !== null ? "phone-erro" : undefined
+                        }
                         className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 pl-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-300 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
                         required={viewMode === "signup"}
                       />
                     </div>
+                    {whatsappErro !== null && (
+                      <p
+                        id="phone-erro"
+                        className="ml-1 text-xs font-bold text-red-600"
+                      >
+                        {whatsappErro}
+                      </p>
+                    )}
                   </motion.div>
 
                   <motion.div
@@ -911,8 +947,13 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                     <Input
                       id="password"
                       name="password"
+                      aria-invalid={viewMode === "signup" && senhaErro}
                       aria-describedby={
-                        viewMode === "signup" ? "password-dica" : undefined
+                        viewMode === "signup"
+                          ? senhaErro
+                            ? "password-dica password-erro"
+                            : "password-dica"
+                          : undefined
                       }
                       type={showPassword ? "text" : "password"}
                       autoComplete={
@@ -931,6 +972,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                       value={password}
                       onChange={(e) => {
                         setPassword(e.target.value);
+                        if (senhaErro) setSenhaErro(false);
                         if (loginError) setLoginError(null);
                         if (emailNaoConfirmado) setEmailNaoConfirmado(false);
                       }}
@@ -986,6 +1028,14 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                       className="ml-1 text-xs font-bold uppercase tracking-widest text-zinc-600"
                     >
                       Mínimo 8 caracteres
+                    </p>
+                  )}
+                  {viewMode === "signup" && senhaErro && (
+                    <p
+                      id="password-erro"
+                      className="ml-1 text-xs font-bold text-red-600"
+                    >
+                      {MENSAGEM_SENHA_CURTA}
                     </p>
                   )}
                 </motion.div>

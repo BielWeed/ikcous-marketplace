@@ -202,6 +202,7 @@ describe("Conta (Tinta): toda classe vira regra no Tailwind do projeto", () => {
       "full_name",
       "full_name-erro",
       "cpf-erro",
+      "phone-erro",
       "profile-tab",
       "security-tab",
       "new-password",
