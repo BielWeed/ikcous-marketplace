@@ -2,6 +2,7 @@ import type { StatusDaFaixaFrete } from "@/components/admin/shipping/FreteResumo
 import { lerEnderecoConferido } from "@/lib/endereco-da-loja";
 import {
   type ConfigDeFreteNacional,
+  reaisSemSimbolo,
   resumoDaEstrategiaNacional,
 } from "@/lib/estrategias-de-frete";
 import { modoDaEntregaNaCidade } from "@/lib/guarda-de-frete";
@@ -49,12 +50,10 @@ export interface EntradaDaEntrega {
   readonly nomesLigados: readonly string[];
 }
 
-/** Dinheiro como a pessoa escreve: R$ 10, R$ 49,90 — nunca "R$ 49.9". */
+/** Dinheiro como a pessoa escreve: R$ 10, R$ 1.500, R$ 49,90 — nunca "R$ 49.9".
+ * Mesma regra de `reaisSemSimbolo` (uma só fonte, não duas que divergem). */
 export function reais(valor: number): string {
-  const seguro = Number.isFinite(valor) ? valor : 0;
-  return Number.isInteger(seguro)
-    ? `${seguro}`
-    : seguro.toFixed(2).replace(".", ",");
+  return reaisSemSimbolo(valor);
 }
 
 export function statusDaEntrega({

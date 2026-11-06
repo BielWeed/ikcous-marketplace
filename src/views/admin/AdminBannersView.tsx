@@ -1157,11 +1157,12 @@ export const AdminBannersView = memo(function AdminBannersView({
       `Confira: ${selectedProduct.name}`,
       `Destaque: ${selectedProduct.name}`,
     ];
-    if (vitrine.precoOriginal != null) {
-      const discount = Math.round(
-        ((vitrine.precoOriginal - vitrine.preco) / vitrine.precoOriginal) * 100,
+    // Desconto que arredonda para 0% não vira título "0% OFF" (o cartão da
+    // loja também esconde o selo nesse caso).
+    if (vitrine.desconto > 0) {
+      titleSuggestions.push(
+        `${vitrine.desconto}% OFF em ${selectedProduct.name}`,
       );
-      titleSuggestions.push(`${discount}% OFF em ${selectedProduct.name}`);
     }
     if (selectedProduct.freeShipping) {
       titleSuggestions.push(`FRETE GRÁTIS: ${selectedProduct.name}`);

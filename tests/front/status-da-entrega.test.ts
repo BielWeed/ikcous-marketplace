@@ -203,6 +203,23 @@ describe("statusDaEntrega — Frete grátis local", () => {
     expect(gratis.tom).toBe("positivo");
   });
 
+  it("valor de milhar usa o ponto: R$ 1.500 e R$ 1.234,50 (nunca 1500 nem 1234,50)", () => {
+    expect(
+      statusDaEntrega(entrada({ config: config({ freeShippingMin: 1500 }) }))[2]
+        .valor,
+    ).toBe("Acima de R$ 1.500");
+    expect(
+      statusDaEntrega(
+        entrada({ config: config({ freeShippingMin: 1234.5 }) }),
+      )[2].valor,
+    ).toBe("Acima de R$ 1.234,50");
+    expect(
+      statusDaEntrega(
+        entrada({ config: config({ localDeliveryFee: 1234.5 }) }),
+      )[0].valor,
+    ).toBe("R$ 1.234,50 por entrega");
+  });
+
   it("em toda a loja (sentinela 0,01) e por produto (sentinela -1)", () => {
     expect(
       statusDaEntrega(entrada({ config: config({ freeShippingMin: 0.01 }) }))[2]

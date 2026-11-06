@@ -325,12 +325,16 @@ export function estrategiaTemAlcanceEditavel(
   return ESTRATEGIAS_DE_GRATIS_NACIONAL.has(estrategia);
 }
 
-/** Dinheiro sem símbolo, como a pessoa escreve: "199", "49,90" — nunca "49.9". */
-function reaisSemSimbolo(valor: number): string {
+/** Dinheiro sem símbolo, como a pessoa escreve: "199", "1.500", "49,90",
+ * "1.234,50" — nunca "49.9" nem "1500". */
+export function reaisSemSimbolo(valor: number): string {
   const seguro = Number.isFinite(valor) ? valor : 0;
   return Number.isInteger(seguro)
-    ? `${seguro}`
-    : seguro.toFixed(2).replace(".", ",");
+    ? seguro.toLocaleString("pt-BR")
+    : seguro.toLocaleString("pt-BR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
 }
 
 /**

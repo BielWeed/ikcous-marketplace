@@ -506,6 +506,28 @@ describe("resumoDaEstrategiaNacional — texto curto do estado SALVO (botão 'Fo
     );
   });
 
+  it("valor de milhar usa o ponto: 'R$ 1.500' e 'R$ 1.234,50'", () => {
+    expect(
+      resumoDaEstrategiaNacional(
+        configBase({
+          nationalShippingStrategy: "acima_de_valor",
+          nationalShippingMin: 1500,
+          nationalBenefitScope: "todas",
+        }),
+      ),
+    ).toBe("grátis acima de R$ 1.500 · todas as opções");
+    expect(
+      resumoDaEstrategiaNacional(
+        configBase({
+          nationalShippingStrategy: "desconto_na_mais_barata",
+          nationalDiscountType: "fixo",
+          nationalDiscountValue: 1234.5,
+          nationalShippingMin: 2000,
+        }),
+      ),
+    ).toBe("R$ 1.234,50 na mais barata acima de R$ 2.000");
+  });
+
   it("sempre, alcance 'todas'", () => {
     const config = configBase({
       nationalShippingStrategy: "sempre",

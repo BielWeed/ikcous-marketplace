@@ -101,6 +101,16 @@ export const PhoneSimulator = memo(function PhoneSimulator({
     return formData.price;
   }, [formData.price, selectedVariant]);
 
+  // Percentual do selo "% OFF", já arredondado. 0 = sem selo: De 100 por 99,70
+  // arredonda para 0 e o cartão da loja não mostra "0% OFF" (`discount > 0`).
+  const percentualDoSelo = (() => {
+    const original = Number.parseFloat(formData.originalPrice);
+    const preco = Number.parseFloat(displayPrice);
+    return original > preco
+      ? Math.round(((original - preco) / original) * 100)
+      : 0;
+  })();
+
   const validImages = React.useMemo(() => {
     const baseImages = (formData.images || []).filter(
       (img) => img && !failedImages[img],
@@ -292,24 +302,16 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                       )}
 
                       {/* Promotion Discount Badge */}
-                      {formData.originalPrice &&
-                        Number.parseFloat(formData.originalPrice) >
-                          Number.parseFloat(displayPrice) && (
-                          <div
-                            className={cn(
-                              "shrink-0 select-none whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider shadow-sm backdrop-blur-md",
-                              CLASSE_SELO_DESCONTO,
-                            )}
-                          >
-                            {Math.round(
-                              ((Number.parseFloat(formData.originalPrice) -
-                                Number.parseFloat(displayPrice)) /
-                                Number.parseFloat(formData.originalPrice)) *
-                                100,
-                            )}
-                            % OFF
-                          </div>
-                        )}
+                      {percentualDoSelo > 0 && (
+                        <div
+                          className={cn(
+                            "shrink-0 select-none whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider shadow-sm backdrop-blur-md",
+                            CLASSE_SELO_DESCONTO,
+                          )}
+                        >
+                          {percentualDoSelo}% OFF
+                        </div>
+                      )}
 
                       {/* Bestseller (HOT) Badge */}
                       {formData.isBestseller && (
@@ -489,24 +491,16 @@ export const PhoneSimulator = memo(function PhoneSimulator({
 
                     {/* Badges row */}
                     <div className="flex flex-wrap gap-1.5">
-                      {formData.originalPrice &&
-                        Number.parseFloat(formData.originalPrice) >
-                          Number.parseFloat(displayPrice) && (
-                          <span
-                            className={cn(
-                              "rounded-full border px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-wider shadow-sm backdrop-blur-md",
-                              CLASSE_SELO_DESCONTO,
-                            )}
-                          >
-                            {Math.round(
-                              ((Number.parseFloat(formData.originalPrice) -
-                                Number.parseFloat(displayPrice)) /
-                                Number.parseFloat(formData.originalPrice)) *
-                                100,
-                            )}
-                            % OFF
-                          </span>
-                        )}
+                      {percentualDoSelo > 0 && (
+                        <span
+                          className={cn(
+                            "rounded-full border px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-wider shadow-sm backdrop-blur-md",
+                            CLASSE_SELO_DESCONTO,
+                          )}
+                        >
+                          {percentualDoSelo}% OFF
+                        </span>
+                      )}
                       {formData.isBestseller && (
                         <span className="flex items-center gap-1 rounded-full border border-admin-border bg-zinc-900/95 px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-white shadow-sm backdrop-blur-md">
                           <Flame className="size-2.5 fill-orange-400 text-orange-400" />
