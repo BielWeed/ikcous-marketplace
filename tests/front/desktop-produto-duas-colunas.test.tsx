@@ -211,7 +211,9 @@ describe("F3 — produto no computador e celular preservado", () => {
       await montar({ ...produto, originalPrice: promocao ? 150 : undefined });
       classe(
         "h1",
-        "text-xl font-black leading-tight tracking-tight text-zinc-900",
+        // Caça 30 (06/11): `break-words` entrou no título (nome com palavra ou
+        // link longo saía cortado na borda da tela).
+        "break-words text-xl font-black leading-tight tracking-tight text-zinc-900",
         "lg:text-3xl",
       );
       classe(

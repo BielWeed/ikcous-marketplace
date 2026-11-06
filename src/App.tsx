@@ -227,7 +227,12 @@ import { CartProvider } from "@/contexts/CartContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { StoreProvider, useStore } from "@/contexts/StoreContext";
 import { useCartActions, useCartState } from "@/hooks/useCart";
-import type { Product, SortOption, View } from "@/types";
+import {
+  chaveDoItem,
+  estoqueDaLinha,
+  separarChave,
+} from "@/lib/escolhas-do-item";
+import type { CartItem, Product, SortOption, View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { destinoDoPopstate } from "@/utils/volta-do-navegador-no-painel";
 
@@ -566,6 +571,21 @@ const AppBadgeSynchronizer = React.memo(function AppBadgeSynchronizer() {
   return null;
 });
 
+// Entrega o carrinho ATUAL a quem só precisa LER no toque (handleQuickBuy),
+// sem inscrever o AppContent inteiro nas mudanças do carrinho -- o mesmo
+// motivo do AppBadgeSynchronizer acima.
+const CarrinhoAtual = React.memo(function CarrinhoAtual({
+  aoMudar,
+}: {
+  readonly aoMudar: (cart: readonly CartItem[]) => void;
+}) {
+  const { cart } = useCartState();
+  useEffect(() => {
+    aoMudar(cart);
+  }, [aoMudar, cart]);
+  return null;
+});
+
 const AppContent = () => {
   const { user, isAdmin, adminStatus, loading: authLoading } = useAuth();
   const {
@@ -577,6 +597,10 @@ const AppContent = () => {
     useViewTransition();
 
   const { addToCart } = useCartActions();
+  const carrinhoAtualRef = useRef<readonly CartItem[]>([]);
+  const guardarCarrinhoAtual = useCallback((cart: readonly CartItem[]) => {
+    carrinhoAtualRef.current = cart;
+  }, []);
   const {
     favorites,
     toggleFavorite,
@@ -2578,9 +2602,38 @@ const AppContent = () => {
 
   const handleQuickBuy = useCallback(
     (product: Product, variantId?: string) => {
-      addToCart(product, 1, variantId);
+      // Caça 30 (06/11): com a última unidade JÁ no carrinho o addToCart
+      // recusa a segunda e avisa "1 unidade em estoque" em vermelho, e o
+      // checkout abria com o aviso por cima. Linha que já está no limite do
+      // estoque: segue ao checkout sem chamar addToCart (sem aviso, sem dobrar
+      // a quantidade).
+      const { variantId: principal, outrasVariantIds } =
+        separarChave(variantId);
+      const chave = chaveDoItem({
+        product,
+        variantId: principal,
+        outrasVariantIds,
+      });
+      const carrinho = carrinhoAtualRef.current;
+      const linha = carrinho.find((item) => chaveDoItem(item) === chave);
+      if (linha) {
+        const cabe = estoqueDaLinha(
+          product,
+          principal,
+          outrasVariantIds,
+          carrinho.filter((item) => chaveDoItem(item) !== chave),
+        );
+        if (linha.quantity >= cabe) {
+          handleNavigate("checkout");
+          return;
+        }
+      }
+      const entrou = addToCart(product, 1, variantId);
+      // Esgotado de verdade (nada entrou e a linha não está no carrinho): fica
+      // na vitrine com o aviso do addToCart, em vez de abrir um checkout vazio.
+      if (entrou <= 0 && !linha) return;
       handleNavigate("checkout");
-      haptic.success();
+      if (entrou > 0) haptic.success();
     },
     [addToCart, handleNavigate],
   );
@@ -3179,6 +3232,7 @@ const AppContent = () => {
         Pular para o conteúdo
       </a>
       <AppBadgeSynchronizer />
+      <CarrinhoAtual aoMudar={guardarCarrinhoAtual} />
       {/* Barra de rota SOB DEMANDA: o Suspense só monta depois que a
           primeira navegação pedir a barra (barraDeRotaJaPedida), para não
           pedir o chunk das animações no boot por conta própria (F1). Depois

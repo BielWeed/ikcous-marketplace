@@ -139,7 +139,9 @@ export function MarkdownRenderer({
   const paragraphs = content.split(/\n\n+/);
 
   return (
-    <div className={`space-y-4 ${className}`}>
+    // `break-words` herda para <p>, <li> e <strong>: link ou palavra longa quebra
+    // em vez de sair cortado na borda (o <main> do App corta o que passa).
+    <div className={`space-y-4 break-words ${className}`}>
       {paragraphs.map((para, i) => {
         const lines = para.split("\n");
 

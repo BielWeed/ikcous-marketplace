@@ -36,6 +36,10 @@ export const StarRating = memo(function StarRating({
     ? `${rating}`
     : rating.toFixed(1).replace(".", ",");
 
+  // Caça 30 (06/11): 4,6 a 4,9 pintavam só 4 estrelas (comparava com a nota
+  // crua). Pinta o inteiro mais próximo; a nota falada acima segue exata.
+  const preenchidas = Math.round(rating);
+
   return (
     <div className={cn("flex space-x-1", className)}>
       {/* Laudo Opus 07/09 (I1, PR #437): o span sr-only era o PRIMEIRO filho
@@ -46,7 +50,7 @@ export const StarRating = memo(function StarRating({
       <div aria-hidden="true" className="flex space-x-1">
         {Array.from({ length: maxRating }).map((_, index) => {
           const starValue = index + 1;
-          const isFilled = starValue <= rating;
+          const isFilled = starValue <= preenchidas;
 
           return (
             <Star
