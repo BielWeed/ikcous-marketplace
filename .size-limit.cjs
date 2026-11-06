@@ -173,7 +173,9 @@ module.exports = [
     // 06/11/2026 (mesma regra): 617 -> 619 kB na 1.5.141 (rastreio e cancelamento, login e recuperacao de senha, avaliacoes,
     // mapa sem internet e politicas no Perfil). Medem 617,94 kB no build local, 940 B acima do teto. Nada foi trocado
     // por algo mais arriscado.
-    limit: "619 kB",
+    // 06/11/2026 (mesma regra): 619 -> 622 kB na 1.5.143 (lote de 8 correcoes de caca somado a 1.5.142, que nao foi ao ar).
+    // Mede 620,64 kB no build local (a base 1.5.142 media 618,39), 1,64 kB acima do teto. Nada foi trocado por algo mais arriscado.
+    limit: "622 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
