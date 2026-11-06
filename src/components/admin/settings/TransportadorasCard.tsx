@@ -1431,7 +1431,10 @@ function CartaoDoProvedor({
           <div className="flex gap-2">
             <input
               type="password"
-              autoComplete="off"
+              // "off" é ignorado em campo de senha: o navegador oferecia a
+              // senha do painel para preencher a chave de frete.
+              autoComplete="new-password"
+              spellCheck={false}
               value={rascunho.tokenDigitado}
               disabled={rascunho.testando || rascunho.salvando}
               onChange={(e) => onTokenMudou(e.target.value)}

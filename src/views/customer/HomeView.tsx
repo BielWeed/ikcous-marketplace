@@ -9,6 +9,7 @@ import {
   produtoCombinaComBusca,
 } from "@/lib/busca-de-produtos";
 import { categoriaValidaDaHome } from "@/lib/categoria-valida-da-home";
+import { semMetaDeFreteGratis } from "@/lib/estrategias-de-frete";
 import { identidadeLegalDaLoja } from "@/lib/identidade-legal-da-loja";
 import {
   type LayoutDeOfertas,
@@ -410,7 +411,9 @@ export const HomeView = React.memo(function HomeView({
   // preenchida mostra a frase sem cidade em vez de restringir a entrega à
   // sede.
   const cidadeDeEntrega =
-    config.shippingCoverage === "local" && config.freeShippingMin > 0
+    config.shippingCoverage === "local" &&
+    config.freeShippingMin > 0 &&
+    !semMetaDeFreteGratis(config)
       ? cidadeLoja
       : undefined;
   const homeDescription = cidadeDeEntrega

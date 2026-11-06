@@ -113,6 +113,7 @@ import {
   mensagemDePrecoAcimaDoTeto,
 } from "@/utils/teto-de-preco";
 import {
+  chaveDoGrupo,
   gruposDeVariacao,
   temGrupoDemais,
   travaDeUmGrupoSo,
@@ -853,6 +854,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   }, [categoriaDoRascunho, carregandoCategorias, dbCategories]);
   const [deletedVariantIds, setDeletedVariantIds] = useState<string[]>([]);
   const [variantToDelete, setVariantToDelete] = useState<string | null>(null);
+  // Trocar o nome de uma variação já gravada espera o "sim" da lojista: o pedido
+  // lê a variação ao vivo, então o nome novo aparece também nos pedidos antigos.
+  // `aplicar` é o fim do "Salvar variação", adiado até a confirmação.
+  const [renomearPendente, setRenomearPendente] = useState<{
+    aplicar: () => void;
+    nomeDoTipo: string;
+    todasAsOpcoes: boolean;
+    emPedidos: boolean;
+  } | null>(null);
   const [isPromoActive, setIsPromoActive] = useState(false);
   // `key` da seção "Variações": muda UMA vez quando um RASCUNHO com variações
   // é aplicado depois da montagem (o `abertaInicial` da seção só vale na
@@ -2508,6 +2518,30 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       }
     }
 
+    // O mesmo código de barras em duas variações: a repetida sai na hora, com o
+    // nome de quem já tem o código. Sem isto ela entrava na lista (ainda não
+    // está no banco) e o erro só aparecia no campo do PRODUTO, longe da causa.
+    // Compara como será gravado (sem espaços), igual ao SKU acima.
+    if (sanitizedVarCodigoBarras) {
+      const donaDoCodigo = formData.variants.find(
+        (v) =>
+          v.id !== editingVariant?.id &&
+          !!v.codigoBarras &&
+          normalizarCodigoBarras(v.codigoBarras) === sanitizedVarCodigoBarras,
+      );
+      if (donaDoCodigo) {
+        toast.error(
+          `O código de barras "${sanitizedVarCodigoBarras}" já está em outra variação deste produto (${donaDoCodigo.name}: ${donaDoCodigo.value}).`,
+          {
+            description:
+              "Cada variação precisa de um código de barras diferente — ou deixe o campo em branco.",
+            duration: 8000,
+          },
+        );
+        return;
+      }
+    }
+
     const vData = {
       productId: productId || "",
       name: nomeComposto,
@@ -2520,41 +2554,87 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       imageUrl: variantFormData.imageUrl || undefined,
     };
 
-    // A lista passa por `formComVariacoes`: desligar a última variação ligada
-    // zera o estoque do produto (uma vez), em vez de deixar a soma velha no
-    // campo que acaba de destravar. Ver `estoque-das-variacoes.ts`.
-    if (editingVariant) {
-      setFormData((prev) =>
-        formComVariacoes(
-          prev,
-          prev.variants.map((v) =>
-            v.id === editingVariant.id ? { ...v, ...vData } : v,
-          ),
-        ),
-      );
-    } else {
-      setFormData((prev) =>
-        formComVariacoes(prev, [
-          ...prev.variants,
-          {
-            ...vData,
-            id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          } as any,
-        ]),
-      );
-    }
+    // O nome do tipo antigo, para achar as outras opções do grupo quando a
+    // edição o renomeia por inteiro (ver `renomeiaGrupoInteiro`).
+    const chaveDoGrupoAntigo = editingVariant
+      ? chaveDoGrupo(editingVariant.name)
+      : "";
+    const outrasDoGrupo = trava.renomeiaGrupoInteiro
+      ? formData.variants.filter(
+          (v) =>
+            v.id !== editingVariant?.id &&
+            chaveDoGrupo(v.name) === chaveDoGrupoAntigo,
+        )
+      : [];
 
-    setShowVariantForm(false);
-    setEditingVariant(null);
-    setVariantFormData({
-      pares: [parNovo()],
-      sku: "",
-      codigoBarras: "",
-      stockIncrement: "0",
-      priceOverride: "",
-      active: true,
-      imageUrl: "",
-    });
+    const gravarVariacao = () => {
+      // A lista passa por `formComVariacoes`: desligar a última variação ligada
+      // zera o estoque do produto (uma vez), em vez de deixar a soma velha no
+      // campo que acaba de destravar. Ver `estoque-das-variacoes.ts`.
+      if (editingVariant) {
+        setFormData((prev) =>
+          formComVariacoes(
+            prev,
+            prev.variants.map((v) => {
+              if (v.id === editingVariant.id) return { ...v, ...vData };
+              // Renomear o tipo único vale para todas as opções, as desligadas
+              // também: só o `name` muda; o valor (P, M) e o estoque ficam.
+              if (
+                trava.renomeiaGrupoInteiro &&
+                chaveDoGrupo(v.name) === chaveDoGrupoAntigo
+              ) {
+                return { ...v, name: nomeComposto };
+              }
+              return v;
+            }),
+          ),
+        );
+      } else {
+        setFormData((prev) =>
+          formComVariacoes(prev, [
+            ...prev.variants,
+            {
+              ...vData,
+              id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            } as any,
+          ]),
+        );
+      }
+
+      setShowVariantForm(false);
+      setEditingVariant(null);
+      setVariantFormData({
+        pares: [parNovo()],
+        sku: "",
+        codigoBarras: "",
+        stockIncrement: "0",
+        priceOverride: "",
+        active: true,
+        imageUrl: "",
+      });
+    };
+
+    // Variação já gravada que troca de nome ou de valor, ou renomeia o tipo de
+    // todas: pede o "sim" antes. Variação criada agora (id `temp-`) não está em
+    // pedido nenhum e troca sem aviso.
+    const jaGravada = (v: { id: string }) => !v.id.startsWith("temp-");
+    const trocouNomeOuValor =
+      !!editingVariant &&
+      (editingVariant.name.trim() !== nomeComposto.trim() ||
+        editingVariant.value.trim() !== valorComposto.trim());
+    const emPedidos =
+      (!!editingVariant && jaGravada(editingVariant) && trocouNomeOuValor) ||
+      outrasDoGrupo.some(jaGravada);
+    if (trava.renomeiaGrupoInteiro || emPedidos) {
+      setRenomearPendente({
+        aplicar: gravarVariacao,
+        nomeDoTipo: nomeComposto,
+        todasAsOpcoes: trava.renomeiaGrupoInteiro,
+        emPedidos,
+      });
+      return;
+    }
+    gravarVariacao();
   };
 
   const handleDeleteVariant = useCallback((vId: string) => {
@@ -4012,7 +4092,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                               id="variant-codigo-barras"
                               name="variant-codigo-barras"
                               type="text"
-                              inputMode="numeric"
+                              inputMode="text"
                               data-testid="codigo-barras-variacao"
                               value={variantFormData.codigoBarras}
                               onFlush={(val) =>
@@ -5718,7 +5798,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           }
                           name="product-codigo-barras"
                           type="text"
-                          inputMode="numeric"
+                          inputMode="text"
                           data-testid="codigo-barras-produto"
                           value={formData.codigoBarras}
                           onFlush={(val) =>
@@ -6187,6 +6267,52 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               className="min-h-11 rounded-xl border-0 bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700"
             >
               Excluir Variante
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmação ao trocar o nome de uma variação já gravada, e ao
+          renomear o tipo de todas as opções. Fica ACIMA do modal de variação
+          (z-[100]) de onde a lojista veio. */}
+      <AlertDialog
+        open={renomearPendente !== null}
+        onOpenChange={(open) => !open && setRenomearPendente(null)}
+      >
+        <AlertDialogContent
+          overlayClassName="z-[130]"
+          className="z-[130] max-w-md rounded-3xl border border-admin-border bg-zinc-950"
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-lg font-bold text-white">
+              Trocar o nome?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2 text-xs text-zinc-400">
+              {renomearPendente?.todasAsOpcoes && (
+                <span className="block">
+                  O nome do tipo, “{renomearPendente.nomeDoTipo}”, vai valer
+                  para todas as opções deste produto. Os valores e o estoque de
+                  cada uma ficam como estão.
+                </span>
+              )}
+              {renomearPendente?.emPedidos && (
+                <span className="block">
+                  {renomearPendente.todasAsOpcoes
+                    ? "Estas opções podem estar em pedidos já feitos, e o nome novo vai aparecer neles também."
+                    : "Esta variação pode estar em pedidos já feitos. Trocar o nome muda o que eles mostram. Se for outro tamanho ou outra cor, crie uma variação nova e desligue esta."}
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel className="min-h-11 rounded-xl border border-0 border-admin-border bg-white/5 px-4 py-2 text-xs font-bold text-zinc-400 hover:bg-white/10 hover:text-white">
+              Não trocar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => renomearPendente?.aplicar()}
+              className="min-h-11 rounded-xl border-0 bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-700"
+            >
+              Trocar o nome
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

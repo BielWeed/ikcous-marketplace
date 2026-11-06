@@ -14,7 +14,10 @@ interface CartFooterSummaryProps {
   /** Retirada na loja escolhida: o rodapé diz "Retirada na loja" em vez de
    *  "GRÁTIS" (a retirada chega a R$ 0 por natureza, não é frete grátis). */
   retiradaNaLoja?: boolean;
-  total: number;
+  /** `null` = total ainda não fecha (frete "A calcular"): o rodapé diz "A
+   *  calcular" no lugar do número, na MESMA linha — a altura da barra não
+   *  muda quando o frete fica pronto. */
+  total: number | null;
   onNavigate: (view: View) => void;
 }
 
@@ -99,7 +102,7 @@ export function CartFooterSummary({
               Total
             </span>
             <p className="mt-1.5 text-2xl font-bold leading-none tracking-tight text-foreground">
-              {formatCurrency(total)}
+              {total === null ? "A calcular" : formatCurrency(total)}
             </p>
             <p
               className={cn(

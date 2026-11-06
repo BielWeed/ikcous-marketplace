@@ -84,9 +84,49 @@ describe("travaDeUmGrupoSo — ao EDITAR variante existente", () => {
     expect(travaDeUmGrupoSo(atuais, "2", "Cor").bloqueia).toBe(false);
   });
 
-  it("BLOQUEIA tirar uma variante do grupo único e criar um segundo grupo", () => {
+  it("renomear o grupo único numa das opções é renomear o grupo INTEIRO: passa e avisa", () => {
+    // Antes isto bloqueava ("cada edição cria um segundo tipo") e o nome do tipo
+    // digitado errado ("Tamnho") não tinha conserto com 2 ou mais opções.
+    const atuais = [v("1", "Tamnho", "P"), v("2", "Tamnho", "M")];
+    const r = travaDeUmGrupoSo(atuais, "2", "Tamanho");
+    expect(r.bloqueia).toBe(false);
+    expect(r.renomeiaGrupoInteiro).toBe(true);
+    expect(r.grupoEmUso).toBe("Tamnho");
+  });
+
+  it("a ÚNICA opção do grupo renomeada não é 'renomear o grupo': não há outra opção para avisar", () => {
+    const atuais = [v("1", "Cor", "Rosa")];
+    expect(travaDeUmGrupoSo(atuais, "1", "Tamanho").renomeiaGrupoInteiro).toBe(
+      false,
+    );
+  });
+
+  it("o mesmo grupo escrito com outra caixa ou espaço não é renomear", () => {
     const atuais = [v("1", "Cor", "Rosa"), v("2", "Cor", "Azul")];
-    expect(travaDeUmGrupoSo(atuais, "2", "Tamanho").bloqueia).toBe(true);
+    const r = travaDeUmGrupoSo(atuais, "2", "  COR ");
+    expect(r.bloqueia).toBe(false);
+    expect(r.renomeiaGrupoInteiro).toBe(false);
+  });
+
+  it("grupo composto: trocar o NÚMERO de atributos (Cor / Tamanho -> Cor) continua bloqueado", () => {
+    // As outras linhas ficariam com valores "Branca / PP" sob o nome "Cor".
+    const atuais = [
+      v("1", "Cor / Tamanho", "Branca / PP"),
+      v("2", "Cor / Tamanho", "Branca / P"),
+    ];
+    const r = travaDeUmGrupoSo(atuais, "2", "Cor");
+    expect(r.bloqueia).toBe(true);
+    expect(r.renomeiaGrupoInteiro).toBe(false);
+  });
+
+  it("grupo composto: corrigir a grafia mantendo o número de atributos renomeia o grupo", () => {
+    const atuais = [
+      v("1", "Cor / Tamnho", "Branca / PP"),
+      v("2", "Cor / Tamnho", "Branca / P"),
+    ];
+    const r = travaDeUmGrupoSo(atuais, "2", "Cor / Tamanho");
+    expect(r.bloqueia).toBe(false);
+    expect(r.renomeiaGrupoInteiro).toBe(true);
   });
 });
 

@@ -8,11 +8,10 @@ import { useStore } from "@/contexts/StoreContext";
 // cidade" sempre que ela não empatar com a nacional (`!promessas.iguais`),
 // para nunca prometer grátis nacional que a loja não dá.
 import { atingiuOMinimo } from "@/lib/atingiu-o-minimo";
-import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import {
-  chavesDeTransportadoraDaLista,
-  modoDaEntregaNaCidade,
-} from "@/lib/guarda-de-frete";
+  promessasDeFrete,
+  semMetaDeFreteGratis,
+} from "@/lib/estrategias-de-frete";
 // FRETE V2 (frente B, 03/09): o que a Home anuncia passa a ser derivado do
 // PRESET escolhido pelo lojista — fonte única em presets-de-frete-gratis.ts.
 import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
@@ -27,27 +26,9 @@ interface FreeShippingBlockProps {
   readonly onNavigate?: (view: View) => void;
 }
 
-/**
- * A loja só entrega por retirada e não tem transportadora? Então não existe
- * entrega a que um "frete grátis" se refira (a retirada já é grátis), e a regra
- * de grátis que ficou salva antes de trocar o modo não pode virar "Falta
- * pouquinho pro Frete Grátis na Cidade" nem "Faltam R$ X". Sem transportadora
- * = cobertura só local OU lista de serviços sem nenhuma chave de transportadora
- * (lista ausente lê como sedex+pac, como a edge: aí HÁ transportadora).
- * Fonte única das telas da cliente (Home, lembrete e barra do carrinho).
- */
-export function semMetaDeFreteGratis(config: {
-  readonly localDeliveryEnabled?: boolean | null;
-  readonly enabledShippingMethods?: readonly string[] | null;
-  readonly shippingCoverage?: string | null;
-}): boolean {
-  if (modoDaEntregaNaCidade(config) !== "so_retiro") return false;
-  if ((config.shippingCoverage || "national") === "local") return true;
-  return (
-    Array.isArray(config.enabledShippingMethods) &&
-    chavesDeTransportadoraDaLista(config.enabledShippingMethods).length === 0
-  );
-}
+// A régua mora em estrategias-de-frete.ts (o selo dos produtos também passa
+// por ela); o nome continua exportado daqui para quem já o importava.
+export { semMetaDeFreteGratis };
 
 /** O aviso da HOME: lê o total do carrinho do contexto. */
 export function FreeShippingBlock(_props: FreeShippingBlockProps) {

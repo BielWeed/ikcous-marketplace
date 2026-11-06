@@ -131,8 +131,31 @@ export function AdminPdvView({
   // `state?.modal === "pdv"` é o que evita consumir a entrada de uma
   // navegação real que aconteceu por cima, ver AdminBannersView.tsx).
   const temEntradaDeHistoricoPendenteRef = useRef(false);
+  // Desvio de USO ÚNICO da devolução da entrada no recibo (ver o ramo
+  // `recibo` abaixo): o engolidor que o efeito do Voltar registra no lugar do
+  // `null`, e os dois relógios (a devolução e a rede de segurança).
+  const engolidorDoReciboRef = useRef<(() => void) | null>(null);
+  const relogioDaDevolucaoRef = useRef<
+    ReturnType<typeof setTimeout> | undefined
+  >(undefined);
+  const relogioDoEngolidorRef = useRef<
+    ReturnType<typeof setTimeout> | undefined
+  >(undefined);
+  useEffect(
+    () => () => {
+      clearTimeout(relogioDaDevolucaoRef.current);
+      clearTimeout(relogioDoEngolidorRef.current);
+      engolidorDoReciboRef.current = null;
+    },
+    [],
+  );
   useEffect(() => {
     if (camadaAberta) {
+      // Nova camada antes de o popstate da devolução chegar: o desvio da
+      // camada assume e a devolução pendente deixa de valer.
+      clearTimeout(relogioDaDevolucaoRef.current);
+      clearTimeout(relogioDoEngolidorRef.current);
+      engolidorDoReciboRef.current = null;
       if (!temEntradaDeHistoricoPendenteRef.current) {
         window.history.pushState(
           { ...window.history.state, modal: "pdv" },
@@ -144,25 +167,52 @@ export function AdminPdvView({
     } else if (temEntradaDeHistoricoPendenteRef.current) {
       temEntradaDeHistoricoPendenteRef.current = false;
       if (window.history.state?.modal === "pdv") {
-        if (estado.etapa === "recibo") {
-          // VENDA REGISTRADA: consumir a entrada SEM navegação. O
-          // `history.back()` daqui dispara um popstate que corre ANTES do
-          // dirty cair no painel (efeitos passivos perdem para a tarefa do
-          // popstate) — e o diálogo "alterações não salvas" abria sobre o
-          // RECIBO de uma venda já registrada (relato do dono em teste
-          // real no celular, 19/09). replaceState limpa a marca `{modal}`
-          // sem navegar: o recibo é um estado limpo, nada a perder.
+        if (estado.etapa === "recibo" && !onSetBackOverride) {
+          // Sem quem consuma o Voltar (o App sempre passa), não há como
+          // engolir o popstate: só limpa a marca, sem navegar.
           window.history.replaceState(
             {},
             "",
             window.location.pathname + window.location.search,
           );
+        } else if (estado.etapa === "recibo" && onSetBackOverride) {
+          // VENDA REGISTRADA: a entrada tem de ser CONSUMIDA de verdade. O
+          // `replaceState({})` que havia aqui só apagava a marca e deixava a
+          // entrada no histórico: cada venda somava uma, e o Voltar do celular
+          // "não fazia nada" uma vez por venda (o App vê "mesma tela").
+          //
+          // Mas o `history.back()` dispara um popstate que corre ANTES do dirty
+          // cair no painel (efeitos passivos perdem para a tarefa do popstate)
+          // — e o diálogo "alterações não salvas" abria sobre o RECIBO de uma
+          // venda já registrada (relato do dono, 19/09). Por isso o `back()`
+          // vai com um desvio de USO ÚNICO (mesmo desenho do Financeiro): o
+          // efeito do Voltar, logo abaixo, registra o engolidor no lugar do
+          // `null`, e o popstate dessa devolução cai nele, antes do gate de
+          // dirty do App. O `back()` sai numa macrotarefa própria, para o
+          // painel já ter recebido o desvio e o dirty limpo.
+          const soltar = () => {
+            clearTimeout(relogioDaDevolucaoRef.current);
+            clearTimeout(relogioDoEngolidorRef.current);
+            if (engolidorDoReciboRef.current !== engolidor) return;
+            engolidorDoReciboRef.current = null;
+            onSetBackOverride(null);
+          };
+          const engolidor = () => soltar();
+          engolidorDoReciboRef.current = engolidor;
+          // Rede de segurança: se o popstate nunca chegar, o desvio não pode
+          // ficar preso engolindo o Voltar de verdade.
+          relogioDoEngolidorRef.current = setTimeout(soltar, 1500);
+          relogioDaDevolucaoRef.current = setTimeout(() => {
+            // Só se a entrada ainda for a nossa: se o lojista já voltou pelo
+            // aparelho, o navegador a consumiu e não há o que devolver.
+            if (window.history.state?.modal === "pdv") window.history.back();
+          }, 0);
         } else {
           window.history.back();
         }
       }
     }
-  }, [camadaAberta, estado.etapa]);
+  }, [camadaAberta, estado.etapa, onSetBackOverride]);
 
   // Registra o fechamento da camada como override do Voltar do celular. O
   // botão Voltar do AdminLayout (AdminArea.tsx: `onBack={backOverride ||
@@ -193,7 +243,10 @@ export function AdminPdvView({
         }
       });
     } else {
-      onSetBackOverride(null);
+      // Recibo recém-aberto: este efeito roda DEPOIS do de histórico (acima),
+      // que deixa o engolidor da devolução armado — ele tem de vencer o `null`.
+      const engolidor = engolidorDoReciboRef.current;
+      onSetBackOverride(engolidor ? () => engolidor : null);
     }
     return () => {
       onSetBackOverride(null);

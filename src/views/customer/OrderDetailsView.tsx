@@ -19,6 +19,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useDevolucaoCliente } from "@/hooks/useDevolucaoCliente";
 import { useDevolucaoDoPedidoCliente } from "@/hooks/useDevolucaoDoPedidoCliente";
+import { useMarcarAvisosDoPedidoComoLidos } from "@/hooks/useMarcarAvisosDoPedidoComoLidos";
 import { ErroCancelamentoNaoConcluido, useOrders } from "@/hooks/useOrders";
 import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
@@ -467,6 +468,8 @@ export function OrderDetailsView({
   } = useOrders(true, false);
   const { config } = useStore();
   const { user, loading: authLoading } = useAuth();
+  // Abrir o pedido apaga do sino os avisos dele.
+  useMarcarAvisosDoPedidoComoLidos(orderId);
   const [order, setOrder] = useState<Order | null>(null);
   // O pedido na tela veio do RETRATO do rastreio sem conta (sessionStorage), e
   // não do servidor: o status é o de quando a pessoa consultou e não atualiza

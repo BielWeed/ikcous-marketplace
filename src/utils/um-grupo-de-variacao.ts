@@ -38,8 +38,12 @@
  *    caso contrário engorda um estoque que já está somado errado;
  *  - ao EDITAR variante existente, basta o resultado não ter MAIS grupos do
  *    que já tinha. Isso deixa renomear, deixa salvar sem mexer no grupo, e
- *    deixa juntar tudo num grupo só.
+ *    deixa juntar tudo num grupo só;
+ *  - o produto com UM grupo só pode ter o nome dele corrigido: a edição que o
+ *    renomeia vale para todas as opções (`renomeiaGrupoInteiro`).
  */
+
+import { SEPARADOR_DE_ATRIBUTOS } from "./atributos-da-variacao";
 
 /** O bastante para decidir a trava — o resto de `ProductVariant` não importa. */
 export interface VarianteParaTrava {
@@ -48,7 +52,8 @@ export interface VarianteParaTrava {
 }
 
 /** "  cor " e "Cor" são o MESMO grupo: sem isso a trava cai na primeira letra maiúscula. */
-const chaveDoGrupo = (name: string): string => name.trim().toLocaleLowerCase();
+export const chaveDoGrupo = (name: string): string =>
+  name.trim().toLocaleLowerCase();
 
 /**
  * Os grupos distintos de uma lista de variantes, na ordem em que aparecem e
@@ -73,7 +78,19 @@ export interface VeredictoDaTrava {
   bloqueia: boolean;
   /** Os grupos que o produto já usa, prontos para entrar na mensagem. */
   grupoEmUso: string;
+  /**
+   * A edição troca o nome do ÚNICO grupo do produto, tendo outras opções nele
+   * ("Tamnho" -> "Tamanho"): vale como renomear o grupo inteiro, e quem chama
+   * aplica o nome novo a todas as opções do grupo antigo. Sem isto o nome do
+   * tipo digitado errado não tinha conserto com 2 ou mais opções, porque cada
+   * edição sozinha parecia criar um segundo tipo.
+   */
+  renomeiaGrupoInteiro: boolean;
 }
+
+/** Quantos atributos o nome carrega ("Cor / Tamanho" tem 2). */
+const quantosAtributos = (name: string): number =>
+  name.split(SEPARADOR_DE_ATRIBUTOS).length;
 
 /**
  * Decide se uma submissão do formulário de variação pode passar.
@@ -100,12 +117,24 @@ export function travaDeUmGrupoSo(
     { id: idEmEdicao ?? "", name: nomeSubmetido },
   ]);
 
+  // Grupo único com outras opções, e o nome novo é outro grupo. Só vale como
+  // renomear o grupo inteiro se o número de atributos fica igual: trocar
+  // "Cor / Tamanho" por "Cor" deixaria as outras linhas com valores
+  // "Branca / PP" sob um nome de um atributo só.
+  const renomeiaGrupoInteiro =
+    idEmEdicao !== null &&
+    gruposAntes.length === 1 &&
+    restantes.some((v) => chaveDoGrupo(v.name) !== "") &&
+    chaveDoGrupo(nomeSubmetido) !== chaveDoGrupo(gruposAntes[0]) &&
+    quantosAtributos(nomeSubmetido.trim()) === quantosAtributos(gruposAntes[0]);
+
   // Adicionar: o resultado tem de caber em um grupo só.
-  // Editar: basta não aumentar a contagem de grupos.
+  // Editar: basta não aumentar a contagem de grupos — ou renomear o grupo
+  // único inteiro, que continua sendo um grupo só.
   const bloqueia =
     idEmEdicao === null
       ? gruposDepois.length > 1
-      : gruposDepois.length > gruposAntes.length;
+      : !renomeiaGrupoInteiro && gruposDepois.length > gruposAntes.length;
 
-  return { bloqueia, grupoEmUso };
+  return { bloqueia, grupoEmUso, renomeiaGrupoInteiro };
 }

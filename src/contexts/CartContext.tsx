@@ -1500,14 +1500,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [setSelectedShippingOption],
   );
 
-  // A cotação de frete vale para uma composição específica de carrinho: o preço
-  // depende de peso e dimensões. Mudou item ou quantidade, a cotação anterior
-  // deixa de valer e o cliente precisa recalcular — senão pagaria o frete de um
-  // carrinho que não é mais o dele.
-  const assinaturaDoCarrinho = React.useMemo(
+  // A ESCOLHA de frete (e o CEP dela) vale para uma composição específica de
+  // carrinho: quais PRODUTOS e quais VARIAÇÕES. Mudou um deles, a lista de
+  // opções da próxima cotação pode nem trazer mais o id escolhido, e a
+  // escolha anterior cai. A QUANTIDADE fica de fora de propósito: ela muda o
+  // VALOR do frete, não a escolha da cliente — apagar a escolha (inclusive a
+  // "Retirada na loja") a cada toque em "+" punha a entrega mais barata no
+  // lugar do que ela tinha tocado. Quem refaz o valor com a quantidade nova é
+  // a ShippingCalculator (recota com debounce e devolve o objeto fresco da
+  // MESMA modalidade, com a origem preservada).
+  const composicaoDoCarrinho = React.useMemo(
     () =>
       cart
-        .map((i) => [i.product.id, i.variantId || "", i.quantity].join(":"))
+        .map((i) => [i.product.id, i.variantId || ""].join(":"))
         .sort()
         .join("|"),
     [cart],
@@ -1516,14 +1521,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   // R2-5 (CONTRATO-1.5.7.md §8, escopo do pacote C): "a seleção cujo id
   // sumiu é limpa" — mudou o carrinho, a lista de opções que a próxima
   // cotação devolve pode nem trazer mais o id escolhido, e o efeito abaixo
-  // já cobre isso limpando a seleção JUNTO com a assinatura (o gatilho é o
+  // já cobre isso limpando a seleção JUNTO com a composição (o gatilho é o
   // mesmo: qualquer id que dependa de "este carrinho" perde a validade
-  // quando o carrinho muda). Nenhuma mudança de código foi necessária aqui
-  // além desta nota — o efeito já existia antes da 1.5.7.
+  // quando os produtos/variações mudam). Só a quantidade NÃO dispara: a
+  // dependência é uma string sem quantidade, então tocar em "+"/"-" não
+  // re-executa o efeito.
   useEffect(() => {
     setSelectedShippingOption(null);
     setShippingCep(null);
-  }, [assinaturaDoCarrinho, setSelectedShippingOption]);
+  }, [composicaoDoCarrinho, setSelectedShippingOption]);
 
   const cartTotal = React.useMemo(() => {
     return cart.reduce((total, item) => {

@@ -9,6 +9,12 @@ export type ValorDoContextoDeNotificacoes = NotificationContextType & {
   erro: string | null;
   /** Visitante: sem conta (e a conta não está carregando). Opcional. */
   semConta?: boolean;
+  /**
+   * Marca como lidos, num UPDATE só, os avisos próprios ainda não lidos de UM
+   * pedido (`dados.order_id`). Chamada pela tela do pedido ao abrir. Opcional:
+   * quem monta o contexto à mão (testes) não precisa conhecê-la.
+   */
+  markOrderAsRead?: (orderId: string) => Promise<void>;
 };
 
 export const NotificationContext = createContext<

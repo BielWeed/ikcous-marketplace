@@ -1,4 +1,19 @@
 {
+  "1.5.145": {
+    "titulo": "Cadastro de produto mais seguro, Voltar do balcão certo e carrinho que não perde o frete",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Painel, Produto: o código de barras aceita letras; trocar o nome de uma variação já salva pergunta antes; quando o produto tem um só tipo de variação dá para corrigir o nome do tipo; e um código de barras repetido entre variações é recusado com aviso.",
+      "Painel, Login e Transportadoras: a senha e o e-mail do lojista não ganham maiúscula nem correção automática, e o gerenciador de senhas não preenche a chave de acesso da transportadora.",
+      "Painel, Balcão: depois de registrar uma venda, o botão Voltar do celular sai de uma vez, sem “não faz nada” nem pergunta de alterações não salvas.",
+      "Painel, Minha Loja: fechar a folha de compartilhar a mensagem da loja não abre mais o aviso de “não salvo”.",
+      "Loja, Carrinho: mudar só a quantidade mantém o frete e o CEP escolhidos, e o total mostra “A calcular” enquanto o frete ainda não é conhecido.",
+      "Loja: o selo “Frete grátis” deixa de aparecer quando a loja só trabalha com retirada.",
+      "Loja, Avisos: abrir um pedido pelo aviso marca como lidos os avisos daquele pedido, e o número do sino para de só crescer.",
+      "Painel, Produtos e Clientes: o preço do cartão não quebra em duas linhas no celular estreito e o total estimado fica legível no tema Claro."
+    ]
+  },
   "1.5.144": {
     "titulo": "Internet lenta não trava mais a loja, e devoluções, carrinho e avisos ficaram mais claros",
     "novidades": [],

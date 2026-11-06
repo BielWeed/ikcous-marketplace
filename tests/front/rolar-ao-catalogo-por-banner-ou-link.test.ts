@@ -48,6 +48,15 @@ describe("rolarAoCatalogo", () => {
     expect(rolou).toHaveBeenCalledTimes(1);
   });
 
+  it("não quebra quando o ambiente já foi desmontado (sem document)", () => {
+    // Em teste, o temporizador de 300 ms pode disparar depois que o ambiente
+    // acabou: `document` deixa de existir e a rodada inteira falhava com
+    // "ReferenceError: document is not defined" mesmo com todos os testes verdes.
+    rolarAoCatalogo();
+    vi.stubGlobal("document", undefined);
+    expect(() => vi.runAllTimers()).not.toThrow();
+  });
+
   it("não quebra quando a Home não está na tela", () => {
     document.body.innerHTML = "";
     expect(() => {

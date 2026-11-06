@@ -226,6 +226,17 @@ describe("AdminProductFormView — editar manda só o que a lojista mudou", () =
     });
   }
 
+  // Trocar o nome/valor de uma variação já gravada pede o "sim" da lojista.
+  async function confirmarTrocaDeNome() {
+    await act(async () => {
+      const sim = [...document.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "Trocar o nome",
+      ) as HTMLButtonElement | undefined;
+      if (!sim) throw new Error("A confirmação de troca de nome não apareceu.");
+      sim.click();
+    });
+  }
+
   it("(a) mudar só a descrição NÃO manda preço, ativo, fotos, nome nem o resto", async () => {
     await montarProduto([]);
 
@@ -304,6 +315,7 @@ describe("AdminProductFormView — editar manda só o que a lojista mudou", () =
     await abrirVariacaoParaEditar("Rosa");
     await digitarCampo("variant-value", "Rosa choque");
     await confirmarVariacao();
+    await confirmarTrocaDeNome();
     await salvar();
 
     const enviadas = variacoesEnviadas();
@@ -419,6 +431,7 @@ describe("AdminProductFormView — editar manda só o que a lojista mudou", () =
     await abrirVariacaoParaEditar("Rosa");
     await digitarCampo("variant-value", "Rosa choque");
     await confirmarVariacao();
+    await confirmarTrocaDeNome();
     await salvar();
     expect(updateProduct).toHaveBeenCalledTimes(1);
     expect(remendo(0)).toEqual({ price: 60 });

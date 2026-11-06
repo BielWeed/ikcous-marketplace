@@ -393,7 +393,7 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
   });
 
-  it("caso 5c — venda registrada com camada aberta consome a entrada de histórico com replaceState e NUNCA history.back (o popstate disparava o diálogo 'alterações não salvas' sobre o recibo — relato do dono, 19/09)", async () => {
+  it("caso 5c — venda registrada com camada aberta devolve a entrada com history.back(), mas só com o desvio de uso único armado para engolir o popstate (sem ele, o diálogo 'alterações não salvas' abria sobre o recibo — relato do dono, 19/09; e com replaceState({}) cada venda deixava uma entrada: o Voltar 'não fazia nada')", async () => {
     await montar();
     await bipar(PRODUTO_SIMPLES.codigo);
     await abrirCamadaDeCliente();
@@ -431,8 +431,7 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
       "Registrar venda",
     ) as HTMLButtonElement;
     // A volta ao cupom já consumiu a entrada da camada por back() — o que
-    // este caso prova é o que acontece NA VIRADA PARA O RECIBO: aí não pode
-    // existir navegação nenhuma.
+    // este caso prova é o que acontece NA VIRADA PARA O RECIBO.
     backSpy.mockClear();
     replaceSpy.mockClear();
     await act(async () => {
@@ -442,11 +441,16 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
 
     // O recibo chegou (a venda existe)…
     expect(hospedeiro.textContent).toContain("Compra na loja");
-    // …e o consumo da entrada de histórico da camada NÃO foi por back(): o
-    // popstate dele corria antes do dirty cair no painel e abria o diálogo
-    // "alterações não salvas" sobre o recibo de uma venda JÁ registrada.
-    expect(backSpy).not.toHaveBeenCalled();
-    expect(replaceSpy).toHaveBeenCalled();
+    // …a entrada da camada é devolvida DE VERDADE (uma vez), sem replaceState
+    // (que só apagava a marca e deixava a entrada para trás)…
+    expect(backSpy).toHaveBeenCalledTimes(1);
+    expect(replaceSpy).not.toHaveBeenCalled();
+    // …e o popstate dessa devolução tem quem o engula: o desvio de uso único
+    // está armado enquanto ele não chega (o diálogo "alterações não salvas" do
+    // App nunca vê esse popstate). O comportamento com o popstate de verdade,
+    // N vendas e o dirty atrasado está em
+    // admin-pdv-venda-registrada-consome-a-entrada.test.tsx.
+    expect(overrideAtual).toBeInstanceOf(Function);
   });
 
   it("B2 — o cliente do recibo vem da RESPOSTA do banco, não do que está na tela (recarregar a página não pode apagar o cliente do recibo)", async () => {

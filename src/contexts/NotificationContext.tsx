@@ -4,7 +4,14 @@ import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { supabase } from "@/lib/supabase";
 import type { Notification } from "@/types";
 import type React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { NotificationContext } from "./NotificationContextCore";
 
@@ -283,6 +290,68 @@ export function NotificationProvider({
     [user, invalidarConsultasEmVoo],
   );
 
+  // Espelho de `notifications` para o markOrderAsRead ler a lista de AGORA sem
+  // entrar nas dependências (a função mudaria a cada aviso novo, e o efeito da
+  // tela do pedido que a chama religaria).
+  const notificationsRef = useRef(notifications);
+  // Layout effect: o efeito da tela do pedido (filha) roda ANTES dos efeitos
+  // normais do provedor (pai) no mesmo commit, e precisa já ver a lista nova.
+  useLayoutEffect(() => {
+    notificationsRef.current = notifications;
+  }, [notifications]);
+  // Pedidos com a marcação em voo: duas chamadas seguidas não geram dois UPDATEs.
+  const pedidosEmMarcacaoRef = useRef<Set<string>>(new Set());
+
+  // A cliente abriu o pedido: os avisos dele (já vistos na tela) deixam de pesar
+  // no contador do sino. Um UPDATE só, amarrado à dona e ao pedido; o filtro
+  // `usuario_id` também deixa de fora os avisos de campanha (que a policy não
+  // alcança). Ação automática: sem internet ou sem conta não faz nada, e falha
+  // não gera aviso na tela (ela não pediu nada) — o aviso só segue não lido.
+  const markOrderAsRead = useCallback(
+    async (orderId: string) => {
+      if (!user) return;
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        return;
+      }
+      const idsDoPedido = new Set(
+        notificationsRef.current
+          .filter(
+            (n) =>
+              !n.read &&
+              n.order_id === orderId &&
+              !campanhaIdsRef.current.has(n.id),
+          )
+          .map((n) => n.id),
+      );
+      if (idsDoPedido.size === 0) return;
+      if (pedidosEmMarcacaoRef.current.has(orderId)) return;
+      pedidosEmMarcacaoRef.current.add(orderId);
+
+      const donoDaOperacao = user.id;
+      try {
+        const { error } = await supabase
+          .from("notificacoes")
+          .update({ lida: true })
+          .eq("usuario_id", donoDaOperacao)
+          .eq("lida", false)
+          .contains("dados", { order_id: orderId });
+        if (error) throw error;
+        if (usuarioAtualIdRef.current !== donoDaOperacao) return;
+        invalidarConsultasEmVoo();
+        // Só os que estavam na lista quando a chamada saiu: aviso que chegou
+        // durante o UPDATE continua não lido.
+        setNotifications((prev) =>
+          prev.map((n) => (idsDoPedido.has(n.id) ? { ...n, read: true } : n)),
+        );
+      } catch (err) {
+        console.error("[Notifications] Mark order as read error:", err);
+      } finally {
+        pedidosEmMarcacaoRef.current.delete(orderId);
+      }
+    },
+    [user, invalidarConsultasEmVoo],
+  );
+
   const markAllAsRead = useCallback(async () => {
     if (!user) return;
     const donoDaOperacao = user.id;
@@ -494,6 +563,7 @@ export function NotificationProvider({
       erro,
       semConta: !user && !carregandoConta,
       markAsRead,
+      markOrderAsRead,
       markAllAsRead,
       deleteNotification,
       refresh: () => fetchNotifications(true),
@@ -506,6 +576,7 @@ export function NotificationProvider({
       user,
       carregandoConta,
       markAsRead,
+      markOrderAsRead,
       markAllAsRead,
       deleteNotification,
       fetchNotifications,

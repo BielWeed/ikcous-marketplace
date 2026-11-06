@@ -1278,7 +1278,10 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                           </AvatarFallback>
                                         </Avatar>
                                         <div className="flex min-w-0 flex-1 flex-col sm:flex-none">
-                                          <span className="truncate text-xs font-bold leading-tight text-white sm:w-[220px]">
+                                          <span
+                                            title={item.product.name}
+                                            className="line-clamp-2 break-words text-xs font-bold leading-tight text-white sm:w-[220px]"
+                                          >
                                             {item.product.name}
                                           </span>
                                           {variant && (
@@ -1385,7 +1388,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                 </td>
                                 <td
                                   {...papel("cell")}
-                                  className="block bg-gradient-to-r from-green-400 to-green-600 bg-clip-text text-right text-lg font-black tracking-tighter text-transparent sm:table-cell sm:px-6 sm:py-4"
+                                  className="block text-right text-lg font-black tracking-tighter text-green-500 sm:table-cell sm:px-6 sm:py-4"
                                 >
                                   {formatCurrency(
                                     cartItems.reduce((acc, item) => {

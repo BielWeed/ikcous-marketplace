@@ -3,6 +3,8 @@
 // "menos movimento" ("instant": "auto" herdaria o scroll-smooth da tela).
 export const rolarAoCatalogo = (tentativas = 7): void => {
   setTimeout(() => {
+    // Sem `document` (ambiente de teste já desmontado) não há tela a rolar.
+    if (typeof document === "undefined") return;
     const alvo = document.getElementById("catalogo");
     if (alvo) {
       alvo.scrollIntoView({

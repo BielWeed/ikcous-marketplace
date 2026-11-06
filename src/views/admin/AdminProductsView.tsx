@@ -2766,7 +2766,7 @@ const AdminProductCard = memo(function AdminProductCard({
           <div className="produto-resumo mt-3 grid grid-cols-3 gap-2">
             <div className="min-w-0">
               <p className="text-[11px] text-zinc-400">Preço de Venda</p>
-              <p className="mt-1 text-lg font-bold tabular-nums">
+              <p className="mt-1 whitespace-nowrap text-sm font-bold tabular-nums tracking-tighter min-[360px]:text-base min-[400px]:text-lg">
                 R${" "}
                 {product.price.toLocaleString("pt-BR", {
                   minimumFractionDigits: 2,
