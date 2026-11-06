@@ -271,14 +271,18 @@ function criar(cfg) {
       T.emTransacao(async () => {
         const original = await retrato();
         assert.equal(original.src, sha256(ANTIGA.corpo));
+        // Ordena no JS (ordem de codigo, igual dos dois lados): o ORDER BY do Postgres segue a collation do servidor, e a de
+        // um servidor en_US poe '=X/postgres' (PUBLIC) no fim enquanto a de um C poe no comeco.
         assert.deepEqual(
-          (
-            await T.C.query(
-              "SELECT coalesce(array_agg(x::text ORDER BY x::text), '{}') AS a FROM pg_proc p, unnest(coalesce(p.proacl, acldefault('f', p.proowner))) x WHERE p.oid = to_regprocedure($1)",
-              [sig],
-            )
-          ).rows[0].a,
-          aclDeSempre,
+          [
+            ...(
+              await T.C.query(
+                "SELECT coalesce(array_agg(x::text), '{}') AS a FROM pg_proc p, unnest(coalesce(p.proacl, acldefault('f', p.proowner))) x WHERE p.oid = to_regprocedure($1)",
+                [sig],
+              )
+            ).rows[0].a,
+          ].sort(),
+          [...aclDeSempre].sort(),
         );
         assert.equal(await T.aplicar(MIGRATION), null);
         const um = await retrato();
