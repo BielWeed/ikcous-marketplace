@@ -726,7 +726,7 @@ describe("salvar estoque confere a versão lida na abertura", () => {
     expect(banco.gravacoes).toBe(0);
     expect(banco.produto.estoque).toBe(9);
     expect(banco.toastError).toHaveBeenCalledWith(
-      "O estoque deste produto mudou enquanto você editava (agora está 9). Confira e salve de novo.",
+      "Este produto foi alterado em outro aparelho enquanto você editava (estoque ou fotos). Os dados foram recarregados; confira e salve de novo.",
     );
   });
 

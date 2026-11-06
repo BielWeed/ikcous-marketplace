@@ -78,6 +78,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import {
   camposQueMudaram,
+  fotosAposConflito,
   variacoesQueMudaram,
 } from "@/utils/campos-mexidos-do-produto";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
@@ -984,6 +985,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // abertura não é "não mexi". Ligado, o próximo salvar manda tudo (como antes
   // de mandar só o que mudou) em vez de comparar com a abertura.
   const salvarAnteriorGravouProdutoRef = useRef(false);
+  // O salvar foi recusado porque outro aparelho mexeu no produto e a tela trocou
+  // o produto-base (`setInitialData`). O efeito de recuperar rascunho depende de
+  // `initialData` e rodaria de novo, oferecendo restaurar o que a lojista já tem
+  // na tela, por cima do aviso do conflito. Ligado, a PRÓXIMA rodada dele sai
+  // sem oferecer (e desliga).
+  const pularOfertaDeRascunhoRef = useRef(false);
   const [imageUploadStep, setImageUploadStep] = useState<
     "compressing" | "uploading" | "idle"
   >("idle");
@@ -1437,6 +1444,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
   // Draft recovery on mount for existing products
   useEffect(() => {
+    if (pularOfertaDeRascunhoRef.current) {
+      pularOfertaDeRascunhoRef.current = false;
+      return;
+    }
     if (productId && !isLoading) {
       const draftKey = chaveDoRascunhoDoProduto(userId, productId);
       // Rascunho com mais de 7 dias já sai daqui descartado (vira `null`).
@@ -2932,9 +2943,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // (e sem estoque), o caminho de duas etapas nem chama o banco.
         const haCampoParaGravar =
           Object.keys(camposDoProduto).length > 0 || mexeuNoEstoqueDoProduto;
-        const conferencia = mexeuNoEstoque
-          ? { baseUpdatedAt: currentProduct?.updatedAt }
-          : undefined;
+        // A lista de fotos vai INTEIRA, então salvá-la com a cópia velha apaga a
+        // foto que outro aparelho acabou de pôr: mexer nas fotos confere a
+        // versão como o estoque (recusa e recarrega em vez de apagar).
+        const mexeuNasFotos = camposDoProduto.images !== undefined;
+        const conferencia =
+          mexeuNoEstoque || mexeuNasFotos
+            ? { baseUpdatedAt: currentProduct?.updatedAt }
+            : undefined;
         let naoApagadas: string[] = [];
         let produtoSalvo: Product | undefined | null;
         if (salvarEmTransacao) {
@@ -3172,9 +3188,29 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       }
       const atual = (error as { produtoAtual?: Product })?.produtoAtual;
       if (atual) {
-        const { stock, variants } = camposDoFormularioDoProduto(atual);
+        const {
+          stock,
+          variants,
+          images: fotosDoBanco,
+        } = camposDoFormularioDoProduto(atual);
+        // Troca o produto-base: o efeito do rascunho rodaria de novo e
+        // ofereceria restaurar o que a lojista já tem na tela.
+        pularOfertaDeRascunhoRef.current = true;
+        // As fotos seguem o mesmo caminho do estoque: o produto-base passa a ser
+        // o do banco de agora, e o formulário junta a lista dela com a do outro
+        // aparelho (ver `fotosAposConflito`).
+        const images = fotosAposConflito(
+          formData.images,
+          initialData.images,
+          fotosDoBanco,
+        );
         setCurrentProduct(atual);
-        setInitialData({ ...initialData, stock, variants });
+        setInitialData({
+          ...initialData,
+          stock,
+          variants,
+          images: fotosDoBanco,
+        });
         // Variação que OUTRO aparelho criou nesse meio-tempo volta ao
         // formulário (a menos que a lojista a tenha excluído aqui). Se ficasse
         // de fora, "base − formulário" deixaria de ser só o que ela excluiu, e
@@ -3186,7 +3222,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           (v) => !idsNoFormulario.has(v.id) && !idsExcluidosAqui.has(v.id),
         );
         setFormData(
-          formComVariacoes({ ...formData, stock, variants }, [
+          formComVariacoes({ ...formData, stock, variants, images }, [
             ...variacoesDoRascunhoComEstoqueDoBanco(
               formData.variants,
               variants,
@@ -4081,84 +4117,380 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         onSubmit={handleSubmit}
         className="gpu-accelerated mx-auto max-w-3xl space-y-4 p-4 sm:px-5"
       >
-        {isOffline && (
-          <div className="flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold uppercase tracking-wider text-red-400 duration-300 animate-in fade-in slide-in-from-top-2">
-            <AlertTriangle className="size-5 shrink-0 animate-pulse text-red-500" />
-            <span>
-              Você está offline. O salvamento e alteração de produtos estão
-              temporariamente suspensos.
-            </span>
-          </div>
-        )}
-        {/* Os mesmos controles de envio, agora à vista no cartão de fotos. */}
-        <section
-          className="produto-fotos relative"
-          aria-label="Fotos do produto"
+        {/* Enquanto salva ("Salvando…") e durante o "Salvo", o corpo do
+            formulário fica travado: o salvar leva a cópia de quando o botão foi
+            tocado e a ida para a lista ignora o que for mexido depois — campo
+            digitado ou foto excluída nessa janela se perdia sem aviso. O botão
+            de salvar, o cabeçalho e as camadas ficam FORA do fieldset, vivos. */}
+        <fieldset
+          disabled={isSubmitting || showSuccess}
+          className="m-0 min-w-0 space-y-4 border-0 p-0"
         >
-          <div className="group/fotos">
-            <div
-              className={cn(
-                "produto-fotos-titulo flex min-h-12 items-center gap-3 pb-2 pr-14",
-                formData.images.length === 0 && "sr-only",
-              )}
-            >
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-admin-raised text-zinc-300">
-                <Camera className="size-5" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-base font-bold">
-                  Fotos do Produto
-                </span>
-                <span className="mt-1 block text-xs text-zinc-400">
-                  {formData.images.length
-                    ? `${formData.images.length} de 10 · Proporção ideal: 4:5`
-                    : "Opcional · até 10 fotos"}
-                </span>
+          {isOffline && (
+            <div className="flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-bold uppercase tracking-wider text-red-400 duration-300 animate-in fade-in slide-in-from-top-2">
+              <AlertTriangle className="size-5 shrink-0 animate-pulse text-red-500" />
+              <span>
+                Você está offline. O salvamento e alteração de produtos estão
+                temporariamente suspensos.
               </span>
             </div>
-            <div className="w-full">
-              {formData.images.length === 0 ? (
-                <div className="produto-fotos-vazio">
-                  {/* A CAPA: o quadrado grande é o mesmo `<label>` de sempre
+          )}
+          {/* Os mesmos controles de envio, agora à vista no cartão de fotos. */}
+          <section
+            className="produto-fotos relative"
+            aria-label="Fotos do produto"
+          >
+            <div className="group/fotos">
+              <div
+                className={cn(
+                  "produto-fotos-titulo flex min-h-12 items-center gap-3 pb-2 pr-14",
+                  formData.images.length === 0 && "sr-only",
+                )}
+              >
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-admin-border bg-admin-raised text-zinc-300">
+                  <Camera className="size-5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-base font-bold">
+                    Fotos do Produto
+                  </span>
+                  <span className="mt-1 block text-xs text-zinc-400">
+                    {formData.images.length
+                      ? `${formData.images.length} de 10 · Proporção ideal: 4:5`
+                      : "Opcional · até 10 fotos"}
+                  </span>
+                </span>
+              </div>
+              <div className="w-full">
+                {formData.images.length === 0 ? (
+                  <div className="produto-fotos-vazio">
+                    {/* A CAPA: o quadrado grande é o mesmo `<label>` de sempre
                     (aponta para o input de galeria, que fica SEM `capture`) e
                     leva o arraste de arquivos. O label TEM texto visível ("Capa") e o
                     input casado está dentro dele: pôr `aria-label` aqui
                     pioraria a acessibilidade, trocando esse texto pelo rótulo
                     curto no nome acessível. */}
+                    <label
+                      htmlFor="product-image-upload"
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setIsDragging(true);
+                      }}
+                      onDragLeave={() => setIsDragging(false)}
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        setIsDragging(false);
+                        if (isOffline) {
+                          toast.error("Não é possível enviar imagens offline.");
+                          return;
+                        }
+                        if (isImageUploading) return;
+                        const files = Array.from(e.dataTransfer.files || []);
+                        await processAndUploadImages(files);
+                      }}
+                      className={cn(
+                        "produto-fotos-envio relative flex cursor-pointer select-none flex-col items-center justify-center gap-1 overflow-hidden transition-all",
+                        isDragging
+                          ? "border-emerald-500 bg-emerald-500/10"
+                          : "border-admin-border bg-zinc-900/30 hover:bg-emerald-500/5 hover:border-emerald-500/30",
+                        (isSubmitting || isImageUploading) &&
+                          "opacity-40 pointer-events-none",
+                      )}
+                    >
+                      <span className="sr-only">
+                        Adicionar fotos do produto.{" "}
+                      </span>
+                      <Plus aria-hidden="true" className="size-7" />
+                      <span className="text-sm font-medium">
+                        {isDragging ? "Solte aqui" : "Capa"}
+                      </span>
+                      <input
+                        id="product-image-upload"
+                        name="product-images"
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handleImageUpload}
+                        className="hidden"
+                        disabled={isSubmitting || isImageUploading}
+                      />
+                    </label>
+                    {/* Só o contorno de onde as próximas fotos vão aparecer. */}
+                    <div
+                      className="produto-fotos-miniaturas"
+                      aria-hidden="true"
+                    >
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                    <div className="produto-fotos-dica">
+                      <p className="min-w-0 flex-1 text-[11px] text-zinc-400">
+                        Até 10 · a primeira é a capa
+                      </p>
+                      {botaoGuiaDeFotos(
+                        "-mx-1.5 -my-3.5 flex size-11 shrink-0 items-center justify-center rounded-full text-zinc-400",
+                      )}
+                    </div>
+                    <div className="produto-fotos-botoes">
+                      {/* C5.3 — "Tirar foto": um SEGUNDO input, com `capture`,
+                    fora do label da capa. O input de galeria fica SEM
+                    `capture` de propósito — com `capture` o celular deixa de
+                    oferecer a galeria e só abre a câmera. Os dois chamam o
+                    MESMO `handleImageUpload`: a origem do arquivo (câmera ou
+                    galeria) não muda o que a tela faz com ele. */}
+                      <label
+                        htmlFor="product-image-capture"
+                        className={cn(
+                          "produto-fotos-camera flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-center whitespace-nowrap rounded-full px-3 text-[13px] font-bold transition-all",
+                          (isSubmitting || isImageUploading) &&
+                            "opacity-40 pointer-events-none",
+                        )}
+                      >
+                        Tirar foto
+                        <input
+                          id="product-image-capture"
+                          name="product-image-capture"
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          onChange={handleImageUpload}
+                          className="hidden"
+                          disabled={isSubmitting || isImageUploading}
+                        />
+                      </label>
+                      <label
+                        htmlFor="product-image-upload"
+                        className={cn(
+                          "produto-fotos-galeria flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-center rounded-full border border-solid border-admin-border-strong px-3 text-[13px] font-bold",
+                          (isSubmitting || isImageUploading) &&
+                            "opacity-40 pointer-events-none",
+                        )}
+                      >
+                        Galeria
+                      </label>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="produto-fotos-cheio">
+                    {/* A foto EM FOCO, grande, com as ações DELA ao lado. A
+                      primeira é a principal (capa da vitrine); tocar numa
+                      miniatura da faixa abaixo muda a foto em foco. */}
+                    <div
+                      ref={fotoEmFocoRef}
+                      role="group"
+                      aria-label={`Foto ${indiceEmFoco + 1} de ${formData.images.length}`}
+                      data-testid="foto-em-foco"
+                      data-foto-principal={indiceEmFoco === 0 ? "" : undefined}
+                      className="produto-foto-foco"
+                    >
+                      {(() => {
+                        const image = formData.images.at(indiceEmFoco) ?? "";
+                        const meta = imageMetadata[image];
+                        const isCover = indiceEmFoco === 0;
+                        return (
+                          <>
+                            <React.Fragment key={image}>
+                              <div className="produto-foto-foco-coluna">
+                                <div className="produto-foto-foco-imagem">
+                                  <img src={image} alt="" />
+                                  <div
+                                    data-tema-fixo=""
+                                    className="produto-foto-selo text-[11px] font-bold"
+                                  >
+                                    {isCover
+                                      ? "Principal"
+                                      : `Foto ${indiceEmFoco + 1}`}
+                                  </div>
+                                </div>
+                                {meta &&
+                                  meta.status !== "loading" &&
+                                  meta.status !== "erro" && (
+                                    <p
+                                      className={`mt-2 text-xs ${meta.status === "warning_aspect" || meta.status === "warning_res" ? "text-orange-300" : "text-zinc-400"}`}
+                                    >
+                                      {meta.status === "excellent"
+                                        ? "Excelente!"
+                                        : meta.status === "warning_aspect"
+                                          ? "Ajuste para 4:5."
+                                          : meta.status === "warning_res"
+                                            ? "Resolução baixa."
+                                            : "Boa qualidade."}
+                                      <span className="block text-[11px] text-zinc-400">
+                                        {meta.width} × {meta.height} px
+                                      </span>
+                                    </p>
+                                  )}
+                              </div>
+                              <div className="produto-foto-foco-acoes">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!acaoDeFotoLiberada(false)) return;
+                                    openAdjuster(image, indiceEmFoco);
+                                  }}
+                                  disabled={
+                                    isImageUploading ||
+                                    isSubmitting ||
+                                    showSuccess
+                                  }
+                                  className="flex min-h-11 w-full items-center gap-1.5 whitespace-nowrap rounded-xl border border-solid border-admin-border bg-admin-raised px-2.5 text-xs font-bold text-zinc-200 disabled:opacity-40"
+                                  title="Ajustar e Cortar"
+                                >
+                                  <Scissors className="size-4 shrink-0" />
+                                  Ajustar e Cortar
+                                </button>
+                                {/* "Excluir" fica SEMPRE no mesmo lugar: "Tornar
+                                principal" (que some quando a foto é a capa)
+                                vem depois dele. Se viesse antes, o Excluir
+                                subiria para baixo do dedo no momento em que
+                                a foto vira capa. */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!acaoDeFotoLiberada(true)) return;
+                                    removeImage(image);
+                                  }}
+                                  disabled={
+                                    isImageUploading ||
+                                    isSubmitting ||
+                                    showSuccess
+                                  }
+                                  className="flex min-h-11 w-full items-center gap-1.5 rounded-xl bg-rose-400/10 px-2.5 text-xs font-bold text-rose-300 disabled:opacity-40"
+                                  title="Excluir"
+                                >
+                                  <Trash2 className="size-4 shrink-0" />
+                                  Excluir
+                                </button>
+                                {!isCover && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (!acaoDeFotoLiberada(true)) return;
+                                      tornarPrincipal(indiceEmFoco);
+                                    }}
+                                    disabled={isImageUploading || isSubmitting}
+                                    aria-label={`Tornar principal: foto ${indiceEmFoco + 1} de ${formData.images.length}`}
+                                    className="min-h-11 w-full rounded-xl border border-solid border-admin-border px-2.5 text-xs font-bold text-zinc-200 disabled:opacity-40"
+                                  >
+                                    Tornar principal
+                                  </button>
+                                )}
+                              </div>
+                            </React.Fragment>
+                          </>
+                        );
+                      })()}
+                    </div>
+                    {/* A faixa de miniaturas (50 px): uma por foto, na ordem; a
+                      que está em foco fica marcada. Rola de lado quando as
+                      fotos não cabem. */}
+                    <div
+                      ref={faixaDeFotosRef}
+                      role="group"
+                      aria-label="Galeria de fotos do produto"
+                      className="produto-fotos-faixa"
+                    >
+                      {formData.images.map((image, index) => (
+                        <button
+                          key={image}
+                          type="button"
+                          aria-pressed={index === indiceEmFoco}
+                          aria-label={`Ver foto ${index + 1} de ${formData.images.length}${index === 0 ? " (principal)" : ""}`}
+                          onClick={() => setUrlEmFoco(image)}
+                        >
+                          <img src={image} alt="" />
+                        </button>
+                      ))}
+                      {isUploadingImages && (
+                        <div role="status" className="produto-fotos-enviando">
+                          <Loader2 className="size-5 animate-spin text-emerald-400" />
+                          <span>
+                            {imageUploadStep === "compressing"
+                              ? "Comprimindo..."
+                              : "Enviando..."}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {faixaRola && (
+                      <span className="mt-1 flex select-none items-center gap-1.5 text-[11px] font-bold text-zinc-500">
+                        ↔ Deslize para o lado para ver mais fotos
+                      </span>
+                    )}
+                  </div>
+                )}
+                {fotosComFalha.length > 0 && (
+                  <ul data-testid="fotos-com-falha" className="mt-3 space-y-2">
+                    {fotosComFalha.map((falha) => (
+                      <li
+                        key={falha.id}
+                        className="flex flex-col gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-bold text-red-300 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <span className="min-w-0">
+                          A foto "{falha.file.name}" {falha.motivo}. Ela não vai
+                          no produto — tente de novo, remova, ou publique sem
+                          ela.
+                        </span>
+                        <span className="flex shrink-0 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void tentarFotoDeNovo(falha.id)}
+                            disabled={isImageUploading || isOffline}
+                            className="min-h-11 rounded-xl border border-admin-border bg-admin-raised px-3 py-2 text-[11px] font-bold text-white disabled:opacity-40"
+                          >
+                            Tentar de novo
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => descartarFotoComFalha(falha.id)}
+                            className="min-h-11 rounded-lg border border-admin-border px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-zinc-300"
+                          >
+                            Remover
+                          </button>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {formData.images.length > 0 && (
+                <div className="flex items-center gap-2">
+                  {/* C5.3 — "Tirar foto": SEGUNDO input, com `capture`, para
+                    não tirar a galeria do celular do input de cima (ver
+                    comentário completo no estado vazio, abaixo). */}
                   <label
-                    htmlFor="product-image-upload"
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setIsDragging(true);
-                    }}
-                    onDragLeave={() => setIsDragging(false)}
-                    onDrop={async (e) => {
-                      e.preventDefault();
-                      setIsDragging(false);
-                      if (isOffline) {
-                        toast.error("Não é possível enviar imagens offline.");
-                        return;
-                      }
-                      if (isImageUploading) return;
-                      const files = Array.from(e.dataTransfer.files || []);
-                      await processAndUploadImages(files);
-                    }}
+                    htmlFor="product-image-capture"
                     className={cn(
-                      "produto-fotos-envio relative flex cursor-pointer select-none flex-col items-center justify-center gap-1 overflow-hidden transition-all",
-                      isDragging
-                        ? "border-emerald-500 bg-emerald-500/10"
-                        : "border-admin-border bg-zinc-900/30 hover:bg-emerald-500/5 hover:border-emerald-500/30",
+                      "produto-fotos-camera flex min-h-11 w-full min-w-0 cursor-pointer items-center justify-center gap-2 rounded-full px-3 text-[13px] font-bold",
                       (isSubmitting || isImageUploading) &&
                         "opacity-40 pointer-events-none",
                     )}
+                    title="Tirar Foto"
                   >
-                    <span className="sr-only">
-                      Adicionar fotos do produto.{" "}
-                    </span>
-                    <Plus aria-hidden="true" className="size-7" />
-                    <span className="text-sm font-medium">
-                      {isDragging ? "Solte aqui" : "Capa"}
-                    </span>
+                    <Camera className="size-5" /> Tirar foto
+                    <input
+                      id="product-image-capture"
+                      name="product-image-capture"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                      disabled={isSubmitting || isImageUploading}
+                    />
+                  </label>
+                  <label
+                    htmlFor="product-image-upload"
+                    className={cn(
+                      "produto-fotos-galeria flex min-h-11 w-full min-w-0 cursor-pointer items-center justify-center gap-2 rounded-full border border-solid border-admin-border-strong px-3 text-[13px] font-bold",
+                      (isSubmitting || isImageUploading) &&
+                        "opacity-40 pointer-events-none",
+                    )}
+                    title="Adicionar Mais Imagens"
+                  >
+                    <Plus className="size-5" /> Mais fotos
                     <input
                       id="product-image-upload"
                       name="product-images"
@@ -4170,800 +4502,533 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       disabled={isSubmitting || isImageUploading}
                     />
                   </label>
-                  {/* Só o contorno de onde as próximas fotos vão aparecer. */}
-                  <div className="produto-fotos-miniaturas" aria-hidden="true">
-                    <span />
-                    <span />
-                    <span />
-                  </div>
-                  <div className="produto-fotos-dica">
-                    <p className="min-w-0 flex-1 text-[11px] text-zinc-400">
-                      Até 10 · a primeira é a capa
-                    </p>
-                    {botaoGuiaDeFotos(
-                      "-mx-1.5 -my-3.5 flex size-11 shrink-0 items-center justify-center rounded-full text-zinc-400",
-                    )}
-                  </div>
-                  <div className="produto-fotos-botoes">
-                    {/* C5.3 — "Tirar foto": um SEGUNDO input, com `capture`,
-                    fora do label da capa. O input de galeria fica SEM
-                    `capture` de propósito — com `capture` o celular deixa de
-                    oferecer a galeria e só abre a câmera. Os dois chamam o
-                    MESMO `handleImageUpload`: a origem do arquivo (câmera ou
-                    galeria) não muda o que a tela faz com ele. */}
-                    <label
-                      htmlFor="product-image-capture"
-                      className={cn(
-                        "produto-fotos-camera flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-center whitespace-nowrap rounded-full px-3 text-[13px] font-bold transition-all",
-                        (isSubmitting || isImageUploading) &&
-                          "opacity-40 pointer-events-none",
-                      )}
-                    >
-                      Tirar foto
-                      <input
-                        id="product-image-capture"
-                        name="product-image-capture"
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={handleImageUpload}
-                        className="hidden"
-                        disabled={isSubmitting || isImageUploading}
-                      />
-                    </label>
-                    <label
-                      htmlFor="product-image-upload"
-                      className={cn(
-                        "produto-fotos-galeria flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-center rounded-full border border-solid border-admin-border-strong px-3 text-[13px] font-bold",
-                        (isSubmitting || isImageUploading) &&
-                          "opacity-40 pointer-events-none",
-                      )}
-                    >
-                      Galeria
-                    </label>
-                  </div>
-                </div>
-              ) : (
-                <div className="produto-fotos-cheio">
-                  {/* A foto EM FOCO, grande, com as ações DELA ao lado. A
-                      primeira é a principal (capa da vitrine); tocar numa
-                      miniatura da faixa abaixo muda a foto em foco. */}
-                  <div
-                    ref={fotoEmFocoRef}
-                    role="group"
-                    aria-label={`Foto ${indiceEmFoco + 1} de ${formData.images.length}`}
-                    data-testid="foto-em-foco"
-                    data-foto-principal={indiceEmFoco === 0 ? "" : undefined}
-                    className="produto-foto-foco"
-                  >
-                    {(() => {
-                      const image = formData.images.at(indiceEmFoco) ?? "";
-                      const meta = imageMetadata[image];
-                      const isCover = indiceEmFoco === 0;
-                      return (
-                        <>
-                          <React.Fragment key={image}>
-                            <div className="produto-foto-foco-coluna">
-                              <div className="produto-foto-foco-imagem">
-                                <img src={image} alt="" />
-                                <div
-                                  data-tema-fixo=""
-                                  className="produto-foto-selo text-[11px] font-bold"
-                                >
-                                  {isCover
-                                    ? "Principal"
-                                    : `Foto ${indiceEmFoco + 1}`}
-                                </div>
-                              </div>
-                              {meta &&
-                                meta.status !== "loading" &&
-                                meta.status !== "erro" && (
-                                  <p
-                                    className={`mt-2 text-xs ${meta.status === "warning_aspect" || meta.status === "warning_res" ? "text-orange-300" : "text-zinc-400"}`}
-                                  >
-                                    {meta.status === "excellent"
-                                      ? "Excelente!"
-                                      : meta.status === "warning_aspect"
-                                        ? "Ajuste para 4:5."
-                                        : meta.status === "warning_res"
-                                          ? "Resolução baixa."
-                                          : "Boa qualidade."}
-                                    <span className="block text-[11px] text-zinc-400">
-                                      {meta.width} × {meta.height} px
-                                    </span>
-                                  </p>
-                                )}
-                            </div>
-                            <div className="produto-foto-foco-acoes">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (!acaoDeFotoLiberada(false)) return;
-                                  openAdjuster(image, indiceEmFoco);
-                                }}
-                                className="flex min-h-11 w-full items-center gap-1.5 whitespace-nowrap rounded-xl border border-solid border-admin-border bg-admin-raised px-2.5 text-xs font-bold text-zinc-200"
-                                title="Ajustar e Cortar"
-                              >
-                                <Scissors className="size-4 shrink-0" />
-                                Ajustar e Cortar
-                              </button>
-                              {/* "Excluir" fica SEMPRE no mesmo lugar: "Tornar
-                                principal" (que some quando a foto é a capa)
-                                vem depois dele. Se viesse antes, o Excluir
-                                subiria para baixo do dedo no momento em que
-                                a foto vira capa. */}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (!acaoDeFotoLiberada(true)) return;
-                                  removeImage(image);
-                                }}
-                                className="flex min-h-11 w-full items-center gap-1.5 rounded-xl bg-rose-400/10 px-2.5 text-xs font-bold text-rose-300"
-                                title="Excluir"
-                              >
-                                <Trash2 className="size-4 shrink-0" />
-                                Excluir
-                              </button>
-                              {!isCover && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (!acaoDeFotoLiberada(true)) return;
-                                    tornarPrincipal(indiceEmFoco);
-                                  }}
-                                  disabled={isImageUploading || isSubmitting}
-                                  aria-label={`Tornar principal: foto ${indiceEmFoco + 1} de ${formData.images.length}`}
-                                  className="min-h-11 w-full rounded-xl border border-solid border-admin-border px-2.5 text-xs font-bold text-zinc-200 disabled:opacity-40"
-                                >
-                                  Tornar principal
-                                </button>
-                              )}
-                            </div>
-                          </React.Fragment>
-                        </>
-                      );
-                    })()}
-                  </div>
-                  {/* A faixa de miniaturas (50 px): uma por foto, na ordem; a
-                      que está em foco fica marcada. Rola de lado quando as
-                      fotos não cabem. */}
-                  <div
-                    ref={faixaDeFotosRef}
-                    role="group"
-                    aria-label="Galeria de fotos do produto"
-                    className="produto-fotos-faixa"
-                  >
-                    {formData.images.map((image, index) => (
-                      <button
-                        key={image}
-                        type="button"
-                        aria-pressed={index === indiceEmFoco}
-                        aria-label={`Ver foto ${index + 1} de ${formData.images.length}${index === 0 ? " (principal)" : ""}`}
-                        onClick={() => setUrlEmFoco(image)}
-                      >
-                        <img src={image} alt="" />
-                      </button>
-                    ))}
-                    {isUploadingImages && (
-                      <div role="status" className="produto-fotos-enviando">
-                        <Loader2 className="size-5 animate-spin text-emerald-400" />
-                        <span>
-                          {imageUploadStep === "compressing"
-                            ? "Comprimindo..."
-                            : "Enviando..."}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {faixaRola && (
-                    <span className="mt-1 flex select-none items-center gap-1.5 text-[11px] font-bold text-zinc-500">
-                      ↔ Deslize para o lado para ver mais fotos
-                    </span>
-                  )}
                 </div>
               )}
-              {fotosComFalha.length > 0 && (
-                <ul data-testid="fotos-com-falha" className="mt-3 space-y-2">
-                  {fotosComFalha.map((falha) => (
-                    <li
-                      key={falha.id}
-                      className="flex flex-col gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-bold text-red-300 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <span className="min-w-0">
-                        A foto "{falha.file.name}" {falha.motivo}. Ela não vai
-                        no produto — tente de novo, remova, ou publique sem ela.
-                      </span>
-                      <span className="flex shrink-0 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void tentarFotoDeNovo(falha.id)}
-                          disabled={isImageUploading || isOffline}
-                          className="min-h-11 rounded-xl border border-admin-border bg-admin-raised px-3 py-2 text-[11px] font-bold text-white disabled:opacity-40"
-                        >
-                          Tentar de novo
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => descartarFotoComFalha(falha.id)}
-                          className="min-h-11 rounded-lg border border-admin-border px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-zinc-300"
-                        >
-                          Remover
-                        </button>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+              {formData.images.length > 0 && (
+                <p className="mt-3 text-[11px] text-zinc-400">
+                  Máx. 10 fotos · 12 MB cada. A ordem não muda por arraste.
+                </p>
               )}
             </div>
-            {formData.images.length > 0 && (
-              <div className="flex items-center gap-2">
-                {/* C5.3 — "Tirar foto": SEGUNDO input, com `capture`, para
-                    não tirar a galeria do celular do input de cima (ver
-                    comentário completo no estado vazio, abaixo). */}
-                <label
-                  htmlFor="product-image-capture"
-                  className={cn(
-                    "produto-fotos-camera flex min-h-11 w-full min-w-0 cursor-pointer items-center justify-center gap-2 rounded-full px-3 text-[13px] font-bold",
-                    (isSubmitting || isImageUploading) &&
-                      "opacity-40 pointer-events-none",
-                  )}
-                  title="Tirar Foto"
-                >
-                  <Camera className="size-5" /> Tirar foto
-                  <input
-                    id="product-image-capture"
-                    name="product-image-capture"
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                    disabled={isSubmitting || isImageUploading}
-                  />
-                </label>
-                <label
-                  htmlFor="product-image-upload"
-                  className={cn(
-                    "produto-fotos-galeria flex min-h-11 w-full min-w-0 cursor-pointer items-center justify-center gap-2 rounded-full border border-solid border-admin-border-strong px-3 text-[13px] font-bold",
-                    (isSubmitting || isImageUploading) &&
-                      "opacity-40 pointer-events-none",
-                  )}
-                  title="Adicionar Mais Imagens"
-                >
-                  <Plus className="size-5" /> Mais fotos
-                  <input
-                    id="product-image-upload"
-                    name="product-images"
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handleImageUpload}
-                    className="hidden"
-                    disabled={isSubmitting || isImageUploading}
-                  />
-                </label>
-              </div>
-            )}
-            {formData.images.length > 0 && (
-              <p className="mt-3 text-[11px] text-zinc-400">
-                Máx. 10 fotos · 12 MB cada. A ordem não muda por arraste.
-              </p>
-            )}
-          </div>
-          {formData.images.length > 0 &&
-            botaoGuiaDeFotos(
-              "absolute right-2 top-2 flex size-11 items-center justify-center rounded-full text-zinc-400",
-            )}
-        </section>
+            {formData.images.length > 0 &&
+              botaoGuiaDeFotos(
+                "absolute right-2 top-2 flex size-11 items-center justify-center rounded-full text-zinc-400",
+              )}
+          </section>
 
-        {/* Guide Section */}
-        <AnimatePresence>
-          {showPhotoGuide && (
-            <AdminHelpModal
-              isOpen={true}
-              onClose={() => setShowPhotoGuide(false)}
-              title="Guia de Fotos do Produto"
-              icon={Camera}
-            >
-              <div className="space-y-4 rounded-2xl border border-admin-border bg-zinc-950/40 p-5">
-                <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
-                  Imagens de alta qualidade aumentam a conversão de vendas. Siga
-                  as orientações recomendadas:
-                </p>
-                <ul className="list-disc space-y-2 pl-4 text-[11px] font-medium text-zinc-500">
-                  <li>
-                    <b className="text-zinc-350">Proporção 4:5 (Card):</b>{" "}
-                    Essencial para que os produtos caibam no card da vitrine sem
-                    cortes laterais automáticos. Use o enquadramento "Vitrine".
-                  </li>
-                  <li>
-                    <b className="text-zinc-350">Proporção 1:1 (Detalhe):</b>{" "}
-                    Ideal para a galeria interna do produto. Mantém a
-                    consistência visual em carrosséis.
-                  </li>
-                  <li>
-                    <b className="text-zinc-350">Resolução Recomendada:</b>{" "}
-                    Imagens com pelo menos 800px a 1200px de altura garantem
-                    nitidez no zoom.
-                  </li>
-                  <li>
-                    <b className="text-zinc-350">Fundo e Contraste:</b> Fundos
-                    neutros (branco/cinza) e produtos bem iluminados destacam os
-                    detalhes e transmitem profissionalismo.
-                  </li>
-                </ul>
-                <div className="flex items-center justify-between gap-3 border-t border-admin-border pt-3 text-[11px] font-black uppercase tracking-wider text-emerald-400">
-                  <span>Proporção ideal: 4:5 ou 1:1</span>
-                  <span>Res: &gt; 800px</span>
-                </div>
-              </div>
-            </AdminHelpModal>
-          )}
-        </AnimatePresence>
-
-        {/* Content Section */}
-        <section className="produto-dados space-y-2">
-          <div className="flex items-center gap-3">
-            <h2 className="produto-rotulo-secao">Essencial</h2>
-            <button
-              type="button"
-              onClick={() => toggleHelp("productData")}
-              className="-my-3 ml-auto flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-full text-zinc-300 active:scale-95"
-              title="Ajuda / Guia de Dados do Produto"
-              aria-label="Guia de Cadastro e Informações"
-            >
-              {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
-                  expandedHelp.productData
-                    ? "bg-blue-500 border-blue-400 text-blue-950 shadow-md shadow-blue-500/10 scale-110"
-                    : "bg-zinc-950/50 border-admin-border text-zinc-400",
-                )}
-              >
-                ?
-              </span>
-            </button>
-          </div>
-
-          {/* Data Guide Section */}
+          {/* Guide Section */}
           <AnimatePresence>
-            {expandedHelp.productData && (
+            {showPhotoGuide && (
               <AdminHelpModal
                 isOpen={true}
-                onClose={() => toggleHelp("productData")}
-                title="Guia de Cadastro e Informações"
-                icon={Info}
+                onClose={() => setShowPhotoGuide(false)}
+                title="Guia de Fotos do Produto"
+                icon={Camera}
               >
                 <div className="space-y-4 rounded-2xl border border-admin-border bg-zinc-950/40 p-5">
                   <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
-                    O preenchimento correto dos dados melhora a indexação do
-                    produto e facilita a decisão do cliente.
+                    Imagens de alta qualidade aumentam a conversão de vendas.
+                    Siga as orientações recomendadas:
                   </p>
-                  <ul className="list-none space-y-3 pl-0 text-[11px] font-medium text-zinc-500">
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
-                      <span>
-                        <b className="text-zinc-300">Nome do Produto:</b> Seja
-                        claro, indicando o tipo do item, a marca e a
-                        característica principal (ex:{" "}
-                        <i>Camiseta Algodão Egípcio Slim - Preta</i>). Evite
-                        excesso de adjetivos promocionais.
-                      </span>
+                  <ul className="list-disc space-y-2 pl-4 text-[11px] font-medium text-zinc-500">
+                    <li>
+                      <b className="text-zinc-350">Proporção 4:5 (Card):</b>{" "}
+                      Essencial para que os produtos caibam no card da vitrine
+                      sem cortes laterais automáticos. Use o enquadramento
+                      "Vitrine".
                     </li>
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
-                      <span>
-                        <b className="text-zinc-350">Descrição Detalhada:</b>{" "}
-                        Informe materiais, dimensões, tabelas de medidas,
-                        garantia e cuidados de conservação. Uma boa descrição
-                        reduz as dúvidas no WhatsApp e diminui devoluções.
-                      </span>
+                    <li>
+                      <b className="text-zinc-350">Proporção 1:1 (Detalhe):</b>{" "}
+                      Ideal para a galeria interna do produto. Mantém a
+                      consistência visual em carrosséis.
                     </li>
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
-                      <span>
-                        <b className="text-zinc-350">Categoria:</b> Classifique
-                        adequadamente para que o produto seja filtrado na
-                        vitrine da loja e apareça nas categorias corretas do
-                        catálogo.
-                      </span>
+                    <li>
+                      <b className="text-zinc-350">Resolução Recomendada:</b>{" "}
+                      Imagens com pelo menos 800px a 1200px de altura garantem
+                      nitidez no zoom.
                     </li>
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
-                      <span>
-                        <b className="text-zinc-350">Código interno:</b>{" "}
-                        Referência sua, livre de repetir — útil para controle e
-                        identificação ágil (fica em Códigos e câmera). Quem
-                        precisa ser único é o código interno de cada variação.
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
-                      <span>
-                        <b className="text-zinc-350">Código de Barras:</b>{" "}
-                        Opcional — é o código impresso na EMBALAGEM física (o
-                        dos produtos de mercado ou o do seu fornecedor),
-                        diferente do código interno (que é uso interno seu).
-                        Precisa ser único no catálogo inteiro: o mesmo código
-                        não pode estar em outro produto ou variação. É o que a
-                        tela Vender lê no balcão. Se o produto tem variações,
-                        cadastre o código em CADA variação — a caixa da PP é
-                        diferente da caixa da M.
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
-                      <span>
-                        <b className="text-zinc-350">Estoque Base:</b>{" "}
-                        Quantidade física disponível quando o produto não tem
-                        variação ativa. Com qualquer variação ativa, o estoque
-                        do produto passa a ser a SOMA das variações ativas e
-                        este campo fica travado.
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
-                      <span>
-                        <b className="text-zinc-350">Em promoção:</b> Ligue para
-                        mostrar na loja o preço de antes, riscado, ao lado do
-                        preço de venda (ex: de R$ 100,00 por R$ 79,90). A loja
-                        também mostra o desconto em porcentagem. A prévia logo
-                        abaixo mostra como o cliente vai ver.
-                      </span>
+                    <li>
+                      <b className="text-zinc-350">Fundo e Contraste:</b> Fundos
+                      neutros (branco/cinza) e produtos bem iluminados destacam
+                      os detalhes e transmitem profissionalismo.
                     </li>
                   </ul>
+                  <div className="flex items-center justify-between gap-3 border-t border-admin-border pt-3 text-[11px] font-black uppercase tracking-wider text-emerald-400">
+                    <span>Proporção ideal: 4:5 ou 1:1</span>
+                    <span>Res: &gt; 800px</span>
+                  </div>
                 </div>
               </AdminHelpModal>
             )}
           </AnimatePresence>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="produto-campo col-span-2 space-y-1">
-              <label
-                htmlFor="product-name"
-                className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+          {/* Content Section */}
+          <section className="produto-dados space-y-2">
+            <div className="flex items-center gap-3">
+              <h2 className="produto-rotulo-secao">Essencial</h2>
+              <button
+                type="button"
+                onClick={() => toggleHelp("productData")}
+                className="-my-3 ml-auto flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-full text-zinc-300 active:scale-95"
+                title="Ajuda / Guia de Dados do Produto"
+                aria-label="Guia de Cadastro e Informações"
               >
-                Nome do Produto *
-              </label>
-              <LocalBufferedInput
-                id="product-name"
-                name="product-name"
-                type="text"
-                value={formData.name}
-                onFlush={(val) =>
-                  setFormData((prev) => ({ ...prev, name: val }))
-                }
-                placeholder="Ex: Camiseta básica preta"
-                className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5 sm:text-base"
-              />
+                {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
+                    expandedHelp.productData
+                      ? "bg-blue-500 border-blue-400 text-blue-950 shadow-md shadow-blue-500/10 scale-110"
+                      : "bg-zinc-950/50 border-admin-border text-zinc-400",
+                  )}
+                >
+                  ?
+                </span>
+              </button>
             </div>
 
-            <div className="produto-campo col-span-2 space-y-1">
-              <label
-                htmlFor="product-description"
-                className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
-              >
-                Descrição do Produto *
-              </label>
-              <LocalBufferedTextarea
-                id="product-description"
-                name="product-description"
-                value={formData.description}
-                onFlush={(val) =>
-                  setFormData((prev) => ({ ...prev, description: val }))
-                }
-                placeholder="Conte como é o produto..."
-                rows={3}
-                className="w-full resize-none rounded-2xl border border-admin-border bg-zinc-950/50 px-4 py-3.5 text-sm font-medium leading-relaxed text-zinc-300 transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-3xl sm:px-6 sm:py-5"
-              />
-            </div>
+            {/* Data Guide Section */}
+            <AnimatePresence>
+              {expandedHelp.productData && (
+                <AdminHelpModal
+                  isOpen={true}
+                  onClose={() => toggleHelp("productData")}
+                  title="Guia de Cadastro e Informações"
+                  icon={Info}
+                >
+                  <div className="space-y-4 rounded-2xl border border-admin-border bg-zinc-950/40 p-5">
+                    <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
+                      O preenchimento correto dos dados melhora a indexação do
+                      produto e facilita a decisão do cliente.
+                    </p>
+                    <ul className="list-none space-y-3 pl-0 text-[11px] font-medium text-zinc-500">
+                      <li className="flex items-start gap-2.5">
+                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
+                        <span>
+                          <b className="text-zinc-300">Nome do Produto:</b> Seja
+                          claro, indicando o tipo do item, a marca e a
+                          característica principal (ex:{" "}
+                          <i>Camiseta Algodão Egípcio Slim - Preta</i>). Evite
+                          excesso de adjetivos promocionais.
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
+                        <span>
+                          <b className="text-zinc-350">Descrição Detalhada:</b>{" "}
+                          Informe materiais, dimensões, tabelas de medidas,
+                          garantia e cuidados de conservação. Uma boa descrição
+                          reduz as dúvidas no WhatsApp e diminui devoluções.
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
+                        <span>
+                          <b className="text-zinc-350">Categoria:</b>{" "}
+                          Classifique adequadamente para que o produto seja
+                          filtrado na vitrine da loja e apareça nas categorias
+                          corretas do catálogo.
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
+                        <span>
+                          <b className="text-zinc-350">Código interno:</b>{" "}
+                          Referência sua, livre de repetir — útil para controle
+                          e identificação ágil (fica em Códigos e câmera). Quem
+                          precisa ser único é o código interno de cada variação.
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
+                        <span>
+                          <b className="text-zinc-350">Código de Barras:</b>{" "}
+                          Opcional — é o código impresso na EMBALAGEM física (o
+                          dos produtos de mercado ou o do seu fornecedor),
+                          diferente do código interno (que é uso interno seu).
+                          Precisa ser único no catálogo inteiro: o mesmo código
+                          não pode estar em outro produto ou variação. É o que a
+                          tela Vender lê no balcão. Se o produto tem variações,
+                          cadastre o código em CADA variação — a caixa da PP é
+                          diferente da caixa da M.
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
+                        <span>
+                          <b className="text-zinc-350">Estoque Base:</b>{" "}
+                          Quantidade física disponível quando o produto não tem
+                          variação ativa. Com qualquer variação ativa, o estoque
+                          do produto passa a ser a SOMA das variações ativas e
+                          este campo fica travado.
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
+                        <span>
+                          <b className="text-zinc-350">Em promoção:</b> Ligue
+                          para mostrar na loja o preço de antes, riscado, ao
+                          lado do preço de venda (ex: de R$ 100,00 por R$
+                          79,90). A loja também mostra o desconto em
+                          porcentagem. A prévia logo abaixo mostra como o
+                          cliente vai ver.
+                        </span>
+                      </li>
+                    </ul>
+                  </div>
+                </AdminHelpModal>
+              )}
+            </AnimatePresence>
 
-            {/* Galeria de categorias: só as que aparecem na loja (as escondidas
+            <div className="grid grid-cols-2 gap-3">
+              <div className="produto-campo col-span-2 space-y-1">
+                <label
+                  htmlFor="product-name"
+                  className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+                >
+                  Nome do Produto *
+                </label>
+                <LocalBufferedInput
+                  id="product-name"
+                  name="product-name"
+                  type="text"
+                  value={formData.name}
+                  onFlush={(val) =>
+                    setFormData((prev) => ({ ...prev, name: val }))
+                  }
+                  placeholder="Ex: Camiseta básica preta"
+                  className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5 sm:text-base"
+                />
+              </div>
+
+              <div className="produto-campo col-span-2 space-y-1">
+                <label
+                  htmlFor="product-description"
+                  className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+                >
+                  Descrição do Produto *
+                </label>
+                <LocalBufferedTextarea
+                  id="product-description"
+                  name="product-description"
+                  value={formData.description}
+                  onFlush={(val) =>
+                    setFormData((prev) => ({ ...prev, description: val }))
+                  }
+                  placeholder="Conte como é o produto..."
+                  rows={3}
+                  className="w-full resize-none rounded-2xl border border-admin-border bg-zinc-950/50 px-4 py-3.5 text-sm font-medium leading-relaxed text-zinc-300 transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-3xl sm:px-6 sm:py-5"
+                />
+              </div>
+
+              {/* Galeria de categorias: só as que aparecem na loja (as escondidas
                 saem da escolha; o produto que já tem uma delas continua com o
                 nome à vista). Contrato no comentário de `CampoDeCategoria`. */}
-            <CampoDeCategoria
-              valor={formData.category || ""}
-              nomes={dbCategories
-                .filter((c) => c.isActive !== false)
-                .map((c) => ({
-                  id: c.id,
-                  nome: c.name,
-                  icone: c.icone,
-                  iconeForma: c.iconeForma,
-                }))}
-              aoEscolher={(nome) =>
-                setFormData((prev) => ({ ...prev, category: nome }))
-              }
-              aberta={escolhendoCategoria}
-              aoMudarAberta={setEscolhendoCategoria}
-              aoCriar={() => setShowCategoryForm(true)}
-              aoGerenciar={() => setGerenciandoCategorias(true)}
-              categoriaDoRascunhoQueSumiu={categoriaDoRascunhoSumiu}
-            />
+              <CampoDeCategoria
+                valor={formData.category || ""}
+                nomes={dbCategories
+                  .filter((c) => c.isActive !== false)
+                  .map((c) => ({
+                    id: c.id,
+                    nome: c.name,
+                    icone: c.icone,
+                    iconeForma: c.iconeForma,
+                  }))}
+                aoEscolher={(nome) =>
+                  setFormData((prev) => ({ ...prev, category: nome }))
+                }
+                aberta={escolhendoCategoria}
+                aoMudarAberta={setEscolhendoCategoria}
+                aoCriar={() => setShowCategoryForm(true)}
+                aoGerenciar={() => setGerenciandoCategorias(true)}
+                categoriaDoRascunhoQueSumiu={categoriaDoRascunhoSumiu}
+              />
 
-            {/* Preço de venda: sobe da antiga "Precificação" para o básico —
+              {/* Preço de venda: sobe da antiga "Precificação" para o básico —
                 é o que toda lojista preenche. Só mudou de lugar no JSX; o
                 estado, o `id` e a validação (`priceError`) são os de sempre. */}
-            <div className="produto-campo space-y-1">
-              <label
-                htmlFor="product-sale-price"
-                className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
-              >
-                Preço de Venda *
-              </label>
-              <div className="group relative">
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 text-sm text-zinc-300">
-                  R$
-                </span>
-                <LocalBufferedInput
-                  id="product-sale-price"
-                  placeholder="0,00"
-                  aria-invalid={!!priceError}
-                  aria-describedby={
-                    priceError ? "product-price-error" : undefined
-                  }
-                  name="price"
-                  mask="currency"
-                  value={formData.price}
-                  onFlush={(val) => {
-                    // Sair do campo sem mexer também chama o onFlush: só
-                    // um valor DIFERENTE tira a frase "veio da grade".
-                    if (val !== formData.price) setPrecoVeioDaGrade(false);
-                    setFormData((prev) => ({ ...prev, price: val }));
-                  }}
-                  className="w-full rounded-xl border border-emerald-500/20 bg-zinc-950 py-3 pl-11 pr-4 text-base font-black tabular-nums text-emerald-500 shadow-inner transition-all focus:outline-none focus:ring-4 focus:ring-emerald-500/10 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
-                />
-              </div>
-              {priceError && (
-                <span
-                  id="product-price-error"
-                  className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
+              <div className="produto-campo space-y-1">
+                <label
+                  htmlFor="product-sale-price"
+                  className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
                 >
-                  {priceError}
-                </span>
-              )}
-              {!priceError &&
-                precoVeioDaGrade &&
-                precoDoProdutoTexto.trim() !== "" &&
-                formData.variants.length > 0 && (
+                  Preço de Venda *
+                </label>
+                <div className="group relative">
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 text-sm text-zinc-300">
+                    R$
+                  </span>
+                  <LocalBufferedInput
+                    id="product-sale-price"
+                    placeholder="0,00"
+                    aria-invalid={!!priceError}
+                    aria-describedby={
+                      priceError ? "product-price-error" : undefined
+                    }
+                    name="price"
+                    mask="currency"
+                    value={formData.price}
+                    onFlush={(val) => {
+                      // Sair do campo sem mexer também chama o onFlush: só
+                      // um valor DIFERENTE tira a frase "veio da grade".
+                      if (val !== formData.price) setPrecoVeioDaGrade(false);
+                      setFormData((prev) => ({ ...prev, price: val }));
+                    }}
+                    className="w-full rounded-xl border border-emerald-500/20 bg-zinc-950 py-3 pl-11 pr-4 text-base font-black tabular-nums text-emerald-500 shadow-inner transition-all focus:outline-none focus:ring-4 focus:ring-emerald-500/10 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
+                  />
+                </div>
+                {priceError && (
                   <span
-                    data-testid="preco-veio-da-grade"
-                    className="ml-1 mt-1 block text-[11px] font-bold text-emerald-500"
+                    id="product-price-error"
+                    className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
                   >
-                    Este preço veio da grade — as variações sem preço próprio
-                    usam ele.
+                    {priceError}
                   </span>
                 )}
-              {!priceError &&
-                precoDoProdutoTexto.trim() === "" &&
-                formData.variants.some((v) => v.priceOverride == null) && (
-                  <DicaExpansivel
-                    testId="preco-das-variacoes-sem-preco"
-                    rotulo="Variações sem preço usam este"
-                  >
-                    As variações sem preço usam este.
-                  </DicaExpansivel>
-                )}
-            </div>
-
-            <div className="produto-campo space-y-1">
-              <label
-                htmlFor="product-stock"
-                className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
-              >
-                Estoque *
-              </label>
-              <div className="group relative">
-                <LocalBufferedInput
-                  id="product-stock"
-                  placeholder="Ex: 24"
-                  aria-invalid={!!stockError}
-                  aria-describedby={
-                    hasActiveVariants
-                      ? "product-stock-info"
-                      : stockError
-                        ? "product-stock-error"
-                        : undefined
-                  }
-                  name="stock"
-                  type="number"
-                  min="0"
-                  value={formData.stock}
-                  onFlush={(val) =>
-                    setFormData((prev) => ({ ...prev, stock: val }))
-                  }
-                  disabled={hasActiveVariants}
-                  className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black tabular-nums text-white transition-all focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:text-zinc-400 disabled:opacity-50 sm:rounded-2xl sm:px-6 sm:py-5"
-                />
-                <div className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-zinc-400">
-                  <Package className="size-5" />
-                </div>
+                {!priceError &&
+                  precoVeioDaGrade &&
+                  precoDoProdutoTexto.trim() !== "" &&
+                  formData.variants.length > 0 && (
+                    <span
+                      data-testid="preco-veio-da-grade"
+                      className="ml-1 mt-1 block text-[11px] font-bold text-emerald-500"
+                    >
+                      Este preço veio da grade — as variações sem preço próprio
+                      usam ele.
+                    </span>
+                  )}
+                {!priceError &&
+                  precoDoProdutoTexto.trim() === "" &&
+                  formData.variants.some((v) => v.priceOverride == null) && (
+                    <DicaExpansivel
+                      testId="preco-das-variacoes-sem-preco"
+                      rotulo="Variações sem preço usam este"
+                    >
+                      As variações sem preço usam este.
+                    </DicaExpansivel>
+                  )}
               </div>
-              {hasActiveVariants ? (
-                <DicaExpansivel
-                  idDoTexto="product-stock-info"
-                  rotulo={`Estoque vem das variações · ${formData.stock} un`}
+
+              <div className="produto-campo space-y-1">
+                <label
+                  htmlFor="product-stock"
+                  className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
                 >
-                  O estoque deste produto é a soma das variações ativas (
-                  {formData.stock} un). Para mudar a quantidade, edite o estoque
-                  de cada variação.
-                </DicaExpansivel>
-              ) : (
-                stockError && (
+                  Estoque *
+                </label>
+                <div className="group relative">
+                  <LocalBufferedInput
+                    id="product-stock"
+                    placeholder="Ex: 24"
+                    aria-invalid={!!stockError}
+                    aria-describedby={
+                      hasActiveVariants
+                        ? "product-stock-info"
+                        : stockError
+                          ? "product-stock-error"
+                          : undefined
+                    }
+                    name="stock"
+                    type="number"
+                    min="0"
+                    value={formData.stock}
+                    onFlush={(val) =>
+                      setFormData((prev) => ({ ...prev, stock: val }))
+                    }
+                    disabled={hasActiveVariants}
+                    className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black tabular-nums text-white transition-all focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:text-zinc-400 disabled:opacity-50 sm:rounded-2xl sm:px-6 sm:py-5"
+                  />
+                  <div className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-zinc-400">
+                    <Package className="size-5" />
+                  </div>
+                </div>
+                {hasActiveVariants ? (
+                  <DicaExpansivel
+                    idDoTexto="product-stock-info"
+                    rotulo={`Estoque vem das variações · ${formData.stock} un`}
+                  >
+                    O estoque deste produto é a soma das variações ativas (
+                    {formData.stock} un). Para mudar a quantidade, edite o
+                    estoque de cada variação.
+                  </DicaExpansivel>
+                ) : (
+                  stockError && (
+                    <span
+                      id="product-stock-error"
+                      className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
+                    >
+                      {stockError}
+                    </span>
+                  )
+                )}
+                {hasActiveVariants && stockError && (
                   <span
                     id="product-stock-error"
+                    role="alert"
                     className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
                   >
                     {stockError}
                   </span>
-                )
-              )}
-              {hasActiveVariants && stockError && (
-                <span
-                  id="product-stock-error"
-                  role="alert"
-                  className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
-                >
-                  {stockError}
-                </span>
-              )}
-            </div>
+                )}
+              </div>
 
-            {/* Promoção (De/Por): a única parte do preço que o CLIENTE vê, por
+              {/* Promoção (De/Por): a única parte do preço que o CLIENTE vê, por
                 isso mora aqui, junto do Preço de venda, e não no cartão
                 privado "Custo e lucro". Preço e Estoque dividem a linha de
                 cima; este bloco ocupa a linha inteira logo abaixo deles. O
                 estado (`isPromoActive`), o `id` e a validação
                 (`originalPriceError`) são os de sempre: só mudou de lugar. */}
-            <h2 className="produto-rotulo-secao col-span-2 -mb-1 mt-3">
-              Promoção
-            </h2>
-            <div className="col-span-2 space-y-3">
-              <label
-                htmlFor="product-promo-active"
-                className="flex min-h-11 cursor-pointer select-none items-center justify-between gap-3 rounded-xl border border-admin-border bg-zinc-900/40 p-2.5 transition-all hover:border-emerald-500/10 sm:rounded-2xl sm:p-3.5"
-              >
-                <div className="min-w-0 space-y-0.5">
-                  <span className="block text-sm font-bold text-white">
-                    Em promoção
-                  </span>
-                  <span className="block text-[11px] font-medium text-zinc-500">
-                    Mostra na loja o preço de antes, riscado
-                  </span>
-                </div>
-                <input
-                  id="product-promo-active"
-                  name="isPromoActive"
-                  type="checkbox"
-                  aria-label="Produto em Promoção"
-                  checked={isPromoActive}
-                  onChange={(e) => {
-                    setIsPromoActive(e.target.checked);
-                    if (!e.target.checked) {
-                      setFormData((prev) => ({
-                        ...prev,
-                        originalPrice: "",
-                      }));
-                    }
-                  }}
-                  className="size-5 cursor-pointer rounded border-admin-border bg-zinc-950 text-emerald-500 transition-all focus:ring-emerald-500/20"
-                />
-              </label>
-
-              {isPromoActive && (
-                <div className="produto-campo space-y-1 duration-300 animate-in fade-in slide-in-from-top-2">
-                  <label
-                    htmlFor="product-original-price"
-                    className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
-                  >
-                    Preço de antes ("De")
-                  </label>
-                  <div className="group relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600 sm:left-6">
-                      R$
+              <h2 className="produto-rotulo-secao col-span-2 -mb-1 mt-3">
+                Promoção
+              </h2>
+              <div className="col-span-2 space-y-3">
+                <label
+                  htmlFor="product-promo-active"
+                  className="flex min-h-11 cursor-pointer select-none items-center justify-between gap-3 rounded-xl border border-admin-border bg-zinc-900/40 p-2.5 transition-all hover:border-emerald-500/10 sm:rounded-2xl sm:p-3.5"
+                >
+                  <div className="min-w-0 space-y-0.5">
+                    <span className="block text-sm font-bold text-white">
+                      Em promoção
                     </span>
-                    <LocalBufferedInput
-                      id="product-original-price"
-                      aria-invalid={!!originalPriceError}
-                      aria-describedby={
-                        originalPriceError
-                          ? "product-original-error"
-                          : undefined
-                      }
-                      name="originalPrice"
-                      mask="currency"
-                      value={formData.originalPrice}
-                      onFlush={(val) =>
+                    <span className="block text-[11px] font-medium text-zinc-500">
+                      Mostra na loja o preço de antes, riscado
+                    </span>
+                  </div>
+                  <input
+                    id="product-promo-active"
+                    name="isPromoActive"
+                    type="checkbox"
+                    aria-label="Produto em Promoção"
+                    checked={isPromoActive}
+                    onChange={(e) => {
+                      setIsPromoActive(e.target.checked);
+                      if (!e.target.checked) {
                         setFormData((prev) => ({
                           ...prev,
-                          originalPrice: val,
-                        }))
+                          originalPrice: "",
+                        }));
                       }
-                      placeholder="Ex: 99,90"
-                      className="w-full rounded-xl border border-admin-border bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
-                    />
-                  </div>
-                  {originalPriceError && (
-                    <span
-                      id="product-original-error"
-                      className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
-                    >
-                      {originalPriceError}
-                    </span>
-                  )}
-                </div>
-              )}
+                    }}
+                    className="size-5 cursor-pointer rounded border-admin-border bg-zinc-950 text-emerald-500 transition-all focus:ring-emerald-500/20"
+                  />
+                </label>
 
-              {/* A prévia sai dos MESMOS números do card da loja (mesma
-                  conta do selo: `Math.round((De - Por) / De * 100)`); sem
-                  "De" maior que o preço, não há promoção para mostrar. */}
-              {isPromoActive && priceVal > 0 && originalPriceVal > priceVal && (
-                <div
-                  data-testid="previa-promocao"
-                  className="rounded-xl border border-admin-border bg-admin-raised px-3 py-2.5"
-                >
-                  <p className="text-[11px] font-medium text-zinc-500">
-                    Na loja o cliente vai ver
-                  </p>
-                  <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                    <span
-                      className={cn(
-                        "text-xl font-bold tabular-nums",
-                        CLASSE_PRECO_PROMOCIONAL_FUNDO_ESCURO,
-                      )}
+                {isPromoActive && (
+                  <div className="produto-campo space-y-1 duration-300 animate-in fade-in slide-in-from-top-2">
+                    <label
+                      htmlFor="product-original-price"
+                      className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
                     >
-                      {formatCurrency(priceVal)}
-                    </span>
-                    <span className="text-sm tabular-nums text-zinc-500 line-through">
-                      {formatCurrency(originalPriceVal)}
-                    </span>
-                    {descontoDaPromocao > 0 && (
-                      <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-300">
-                        -{descontoDaPromocao}%
+                      Preço de antes ("De")
+                    </label>
+                    <div className="group relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600 sm:left-6">
+                        R$
+                      </span>
+                      <LocalBufferedInput
+                        id="product-original-price"
+                        aria-invalid={!!originalPriceError}
+                        aria-describedby={
+                          originalPriceError
+                            ? "product-original-error"
+                            : undefined
+                        }
+                        name="originalPrice"
+                        mask="currency"
+                        value={formData.originalPrice}
+                        onFlush={(val) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            originalPrice: val,
+                          }))
+                        }
+                        placeholder="Ex: 99,90"
+                        className="w-full rounded-xl border border-admin-border bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
+                      />
+                    </div>
+                    {originalPriceError && (
+                      <span
+                        id="product-original-error"
+                        className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
+                      >
+                        {originalPriceError}
                       </span>
                     )}
                   </div>
+                )}
+
+                {/* A prévia sai dos MESMOS números do card da loja (mesma
+                  conta do selo: `Math.round((De - Por) / De * 100)`); sem
+                  "De" maior que o preço, não há promoção para mostrar. */}
+                {isPromoActive &&
+                  priceVal > 0 &&
+                  originalPriceVal > priceVal && (
+                    <div
+                      data-testid="previa-promocao"
+                      className="rounded-xl border border-admin-border bg-admin-raised px-3 py-2.5"
+                    >
+                      <p className="text-[11px] font-medium text-zinc-500">
+                        Na loja o cliente vai ver
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                        <span
+                          className={cn(
+                            "text-xl font-bold tabular-nums",
+                            CLASSE_PRECO_PROMOCIONAL_FUNDO_ESCURO,
+                          )}
+                        >
+                          {formatCurrency(priceVal)}
+                        </span>
+                        <span className="text-sm tabular-nums text-zinc-500 line-through">
+                          {formatCurrency(originalPriceVal)}
+                        </span>
+                        {descontoDaPromocao > 0 && (
+                          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-300">
+                            -{descontoDaPromocao}%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+              </div>
+
+              {formData.name && (
+                <div
+                  data-testid="resumo-do-produto"
+                  className="col-span-2 mt-4 flex items-center gap-4 rounded-[20px] border border-admin-border bg-admin-raised p-3"
+                >
+                  {formData.images[0] ? (
+                    <img
+                      src={formData.images[0]}
+                      alt="Foto principal do produto"
+                      className="h-20 w-16 shrink-0 rounded-xl object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-20 w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-xl bg-zinc-800 text-[11px] text-zinc-300">
+                      <ImageIcon className="size-6" />
+                      Sem foto
+                    </span>
+                  )}
+                  <div className="min-w-0 space-y-1">
+                    <p className="break-words text-base font-bold">
+                      {formData.name}
+                    </p>
+                    <p className="text-2xl font-bold tabular-nums">
+                      {formatCurrency(priceVal)}
+                    </p>
+                    <p className="text-xs text-zinc-400">
+                      {formData.variants.length}{" "}
+                      {formData.variants.length === 1
+                        ? "variação"
+                        : "variações"}{" "}
+                      · {formData.stock || "0"} un. no total
+                    </p>
+                  </div>
                 </div>
               )}
-            </div>
 
-            {formData.name && (
-              <div
-                data-testid="resumo-do-produto"
-                className="col-span-2 mt-4 flex items-center gap-4 rounded-[20px] border border-admin-border bg-admin-raised p-3"
-              >
-                {formData.images[0] ? (
-                  <img
-                    src={formData.images[0]}
-                    alt="Foto principal do produto"
-                    className="h-20 w-16 shrink-0 rounded-xl object-cover"
-                  />
-                ) : (
-                  <span className="flex h-20 w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-xl bg-zinc-800 text-[11px] text-zinc-300">
-                    <ImageIcon className="size-6" />
-                    Sem foto
-                  </span>
-                )}
-                <div className="min-w-0 space-y-1">
-                  <p className="break-words text-base font-bold">
-                    {formData.name}
-                  </p>
-                  <p className="text-2xl font-bold tabular-nums">
-                    {formatCurrency(priceVal)}
-                  </p>
-                  <p className="text-xs text-zinc-400">
-                    {formData.variants.length}{" "}
-                    {formData.variants.length === 1 ? "variação" : "variações"}{" "}
-                    · {formData.stock || "0"} un. no total
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Variações (H1): MONTADA e FECHADA — o conteúdo nunca desmonta
+              {/* Variações (H1): MONTADA e FECHADA — o conteúdo nunca desmonta
                 (SecaoRecolhivel só aplica `hidden`), então estado e botões
                 seguem vivos com a seção fechada. `abertaInicial` só vale na
                 montagem, e aqui basta: com `productId` o formulário mostra o
@@ -4971,243 +5036,34 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 DEPOIS que o produto chegou — `formData.variants` já está
                 cheio na primeira montagem. Produto com variações abre
                 expandido; sem variações, fechado. */}
-            <h2 className="produto-rotulo-secao col-span-2 -mb-1 mt-3">
-              Mais detalhes
-            </h2>
-            <div className="col-span-2">
-              <SecaoDoProduto
-                key={chaveDasVariacoes}
-                titulo="Variações"
-                resumo={
-                  formData.variants.length === 0
-                    ? "tamanho, cor, voltagem"
-                    : `${variacoesAtivas} ${variacoesAtivas === 1 ? "ativa" : "ativas"} · ${formData.stock} un. · ${formData.variants.length - variacoesAtivas} ${formData.variants.length - variacoesAtivas === 1 ? "desligada" : "desligadas"}`
-                }
-                abertaInicial={formData.variants.length > 0}
-              >
-                <div className="relative space-y-4">
-                  <div className="flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => toggleHelp("productVariants")}
-                      className="flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-full active:scale-95"
-                      title="Ajuda / Guia de Variações"
-                    >
-                      {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
-                      <span
-                        aria-hidden="true"
-                        className={cn(
-                          "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
-                          expandedHelp.productVariants
-                            ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
-                            : "bg-zinc-950/50 border-admin-border text-zinc-400",
-                        )}
-                      >
-                        ?
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        // O mesmo teto de 60 da grade vale para o "+ Novo": sem isto
-                        // o 61º chegava por clique avulso. Ver `grade-de-combinacoes.ts`.
-                        const recadoDoTeto = recadoDoTetoDeVariacoes(
-                          formData.variants.length,
-                        );
-                        if (recadoDoTeto) {
-                          toast.error(recadoDoTeto);
-                          return;
-                        }
-                        setEditingVariant(null);
-                        // Achado ANTES DE CRESCER da revisão: o gate do SALVAR pode
-                        // ter escrito erro/aviso de duplicidade no estado do modal
-                        // com ele FECHADO (a checagem das variações no submit). O
-                        // reset do form abaixo não dispara o efeito limpador quando
-                        // o código já estava vazio — limpar aqui garante que uma
-                        // variação nova e inocente nunca abra bloqueada.
-                        setVariantCodigoBarrasError("");
-                        setVariantCodigoBarrasAvisoRede("");
-                        setVariantFormData({
-                          pares: [parNovo()],
-                          sku: "",
-                          codigoBarras: "",
-                          stockIncrement: "0",
-                          priceOverride: "",
-                          active: true,
-                          imageUrl: "",
-                        });
-                        setShowVariantForm(true);
-                      }}
-                      className="ml-auto mr-2 min-h-11 flex-1 rounded-2xl border border-admin-border bg-admin-raised p-3 text-sm font-bold text-white"
-                    >
-                      + Novo
-                    </button>
-                    {/* Grade de combinações: gera Cor × Tamanho (até 3 camadas) de uma
-                        vez, reaproveitando os valores já usados. O "+ Novo" de uma
-                        combinação só continua ao lado, intacto. */}
-                    <button
-                      type="button"
-                      data-testid="abrir-grade"
-                      onClick={() => setShowGradeForm(true)}
-                      className="min-h-11 flex-1 rounded-2xl border border-admin-border bg-admin-raised p-3 text-sm font-bold text-white"
-                    >
-                      + Grade
-                    </button>
-                  </div>
-
-                  {/* O produto ja esta no estado que mente: dois grupos de variacao.
-                      A trava impede chegar aqui, mas produto antigo pode ja estar --
-                      e nesse caso o numero de estoque na tela acima esta errado. Dizer
-                      isso e' melhor que somar em silencio. */}
-                  {produtoTemGrupoDemais && (
-                    <div className="space-y-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-                      <p className="text-[11px] font-black uppercase tracking-widest text-amber-400">
-                        Este produto tem tipos de variação demais
-                      </p>
-                      <p className="text-[11px] font-medium leading-relaxed text-amber-200/80">
-                        Cada produto aceita <b>um tipo só</b> de variação. Com
-                        mais de um, o estoque mostrado acima soma as opções em
-                        dobro, e o estoque do segundo tipo não diminui com as
-                        vendas.
-                      </p>
-                      <p className="text-[11px] font-medium leading-relaxed text-amber-200/80">
-                        Para consertar, cadastre as combinações: edite as
-                        variações abaixo e junte tudo num tipo só, com as opções
-                        combinadas (ex: <i>Rosa P</i>, <i>Rosa M</i>).
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Variants Guide Section */}
-                  <AnimatePresence>
-                    {expandedHelp.productVariants && (
-                      <AdminHelpModal
-                        isOpen={true}
-                        onClose={() => toggleHelp("productVariants")}
-                        title="Como usar as Variações"
-                        icon={Layers}
-                      >
-                        <div className="space-y-3 rounded-2xl border border-admin-border bg-zinc-950/40 p-4">
-                          <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
-                            Variações permitem vender o mesmo produto com
-                            diferentes opções — tamanho, cor, voltagem. Cada
-                            produto aceita{" "}
-                            <b className="text-zinc-350">um tipo só</b>: para
-                            vender tamanho e cor juntos, combine os dois no
-                            valor da opção (ex: Nome: <i>Modelo</i>, Valores:{" "}
-                            <i>Rosa P</i>, <i>Rosa M</i>).
-                          </p>
-                          <ul className="list-none space-y-2 pl-0 text-[11px] font-medium text-zinc-500">
-                            <li className="flex items-start gap-2.5">
-                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                              <span>
-                                <b className="text-zinc-350">
-                                  Atributo (Nome e Valor):
-                                </b>{" "}
-                                Defina a característica (ex: Nome:{" "}
-                                <i>Tamanho</i>, Valor: <i>G</i>; ou Nome:{" "}
-                                <i>Cor</i>, Valor: <i>Azul</i>).
-                              </span>
-                            </li>
-                            <li className="flex items-start gap-2.5">
-                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                              <span>
-                                <b className="text-zinc-350">
-                                  Ajuste de Preço (Opcional):
-                                </b>{" "}
-                                Se uma variante custar mais caro (ex: tamanho
-                                especial ou material premium), preencha o campo
-                                de preço substituto. Se deixar em branco, o
-                                preço principal do produto será usado.
-                              </span>
-                            </li>
-                            <li className="flex items-start gap-2.5">
-                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                              <span>
-                                <b className="text-zinc-350">
-                                  Estoque da Variação:
-                                </b>{" "}
-                                Informe o estoque físico real desta variação —
-                                não é um extra somado ao estoque do produto.
-                                Assim que qualquer variação estiver ativa, o
-                                estoque do produto acima passa a ser a{" "}
-                                <b>soma</b> de todas as variações ativas, e o
-                                campo dele fica travado enquanto isso.
-                              </span>
-                            </li>
-                            <li className="flex items-start gap-2.5">
-                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                              <span>
-                                <b className="text-zinc-350">
-                                  Foto da Variante:
-                                </b>{" "}
-                                Vincule uma foto específica da variação. Quando
-                                o comprador selecioná-la na página do produto, o
-                                carrossel exibirá automaticamente a foto
-                                correspondente.
-                              </span>
-                            </li>
-                          </ul>
-                        </div>
-                      </AdminHelpModal>
-                    )}
-                  </AnimatePresence>
-
-                  <div className="space-y-3">
-                    {formData.variants.length === 0 ? (
-                      <div className="rounded-[20px] border border-admin-border bg-admin-surface p-5 text-center">
-                        <p className="text-sm font-bold text-zinc-300">
-                          Nenhuma Variação Adicionada
-                        </p>
-                      </div>
-                    ) : (
-                      formData.variants.map((v) => (
-                        <VariantItem
-                          key={v.id}
-                          variant={v}
-                          onEdit={handleEditVariant}
-                          onDelete={handleDeleteVariant}
-                          onToggleActive={handleToggleVariantActive}
-                        />
-                      ))
-                    )}
-                  </div>
-                </div>
-              </SecaoDoProduto>
-            </div>
-
-            <div className="col-span-2">
-              {/* Custo e lucro (H1): o Preço de venda subiu para o básico; aqui
-            ficam só o custo e a análise de lucro (a promoção De/Por, que o
-            CLIENTE vê, mora junto do Preço de venda). MONTADA e
-            FECHADA; um erro de validação dentro dela a abre sozinha. O AVISO
-            de custo maior que o preço não é erro (não bloqueia o salvar), por
-            isso não força a abertura. */}
-              <SecaoDoProduto
-                titulo="Custo e lucro"
-                aviso={avisoDeCusto}
-                resumo={
-                  priceVal > 0 && costPriceVal > 0
-                    ? `Lucro ${formatCurrency(priceVal - costPriceVal)} · margem ${percentualComUmaCasa(marginPct)}`
-                    : "opcional"
-                }
-                temErro={!!costError && !costError.startsWith("Aviso")}
-              >
-                <div className="relative space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+              <h2 className="produto-rotulo-secao col-span-2 -mb-1 mt-3">
+                Mais detalhes
+              </h2>
+              <div className="col-span-2">
+                <SecaoDoProduto
+                  key={chaveDasVariacoes}
+                  titulo="Variações"
+                  resumo={
+                    formData.variants.length === 0
+                      ? "tamanho, cor, voltagem"
+                      : `${variacoesAtivas} ${variacoesAtivas === 1 ? "ativa" : "ativas"} · ${formData.stock} un. · ${formData.variants.length - variacoesAtivas} ${formData.variants.length - variacoesAtivas === 1 ? "desligada" : "desligadas"}`
+                  }
+                  abertaInicial={formData.variants.length > 0}
+                >
+                  <div className="relative space-y-4">
+                    <div className="flex items-center justify-between">
                       <button
                         type="button"
-                        onClick={() => toggleHelp("productPricing")}
+                        onClick={() => toggleHelp("productVariants")}
                         className="flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-full active:scale-95"
-                        title="Ajuda / Guia de Precificação"
+                        title="Ajuda / Guia de Variações"
                       >
                         {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
                         <span
                           aria-hidden="true"
                           className={cn(
                             "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
-                            expandedHelp.productPricing
+                            expandedHelp.productVariants
                               ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
                               : "bg-zinc-950/50 border-admin-border text-zinc-400",
                           )}
@@ -5215,549 +5071,780 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           ?
                         </span>
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // O mesmo teto de 60 da grade vale para o "+ Novo": sem isto
+                          // o 61º chegava por clique avulso. Ver `grade-de-combinacoes.ts`.
+                          const recadoDoTeto = recadoDoTetoDeVariacoes(
+                            formData.variants.length,
+                          );
+                          if (recadoDoTeto) {
+                            toast.error(recadoDoTeto);
+                            return;
+                          }
+                          setEditingVariant(null);
+                          // Achado ANTES DE CRESCER da revisão: o gate do SALVAR pode
+                          // ter escrito erro/aviso de duplicidade no estado do modal
+                          // com ele FECHADO (a checagem das variações no submit). O
+                          // reset do form abaixo não dispara o efeito limpador quando
+                          // o código já estava vazio — limpar aqui garante que uma
+                          // variação nova e inocente nunca abra bloqueada.
+                          setVariantCodigoBarrasError("");
+                          setVariantCodigoBarrasAvisoRede("");
+                          setVariantFormData({
+                            pares: [parNovo()],
+                            sku: "",
+                            codigoBarras: "",
+                            stockIncrement: "0",
+                            priceOverride: "",
+                            active: true,
+                            imageUrl: "",
+                          });
+                          setShowVariantForm(true);
+                        }}
+                        className="ml-auto mr-2 min-h-11 flex-1 rounded-2xl border border-admin-border bg-admin-raised p-3 text-sm font-bold text-white"
+                      >
+                        + Novo
+                      </button>
+                      {/* Grade de combinações: gera Cor × Tamanho (até 3 camadas) de uma
+                        vez, reaproveitando os valores já usados. O "+ Novo" de uma
+                        combinação só continua ao lado, intacto. */}
+                      <button
+                        type="button"
+                        data-testid="abrir-grade"
+                        onClick={() => setShowGradeForm(true)}
+                        className="min-h-11 flex-1 rounded-2xl border border-admin-border bg-admin-raised p-3 text-sm font-bold text-white"
+                      >
+                        + Grade
+                      </button>
                     </div>
-                  </div>
 
-                  {/* Pricing Guide Section */}
-                  <AnimatePresence>
-                    {expandedHelp.productPricing && (
-                      <AdminHelpModal
-                        isOpen={true}
-                        onClose={() => toggleHelp("productPricing")}
-                        title="Guia de Custos e Margens"
-                        icon={DollarSign}
-                      >
-                        <div className="space-y-4 rounded-2xl border border-admin-border bg-zinc-950/40 p-5">
-                          <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
-                            Configure os preços de forma estratégica. O sistema
-                            calcula a lucratividade automaticamente em tempo
-                            real.
-                          </p>
-                          <ul className="list-none space-y-3 pl-0 text-[11px] font-medium text-zinc-500">
-                            <li className="flex items-start gap-2.5">
-                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                              <span>
-                                <b className="text-zinc-350">
-                                  Preço de Custo (Opcional):
-                                </b>{" "}
-                                O valor total que você pagou para adquirir ou
-                                fabricar o produto. Esse dado é estritamente
-                                confidencial e é usado apenas pelo sistema para
-                                calcular a margem e o lucro exibidos abaixo.
-                              </span>
-                            </li>
-                            <li className="flex items-start gap-2.5">
-                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                              <span>
-                                <b className="text-zinc-350">Preço de Venda:</b>{" "}
-                                O preço final cobrado do cliente. Pense em
-                                embutir custos fixos, impostos e taxas para
-                                manter sua operação saudável.
-                              </span>
-                            </li>
-                            <li className="flex items-start gap-2.5">
-                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                              <span>
-                                <b className="text-zinc-350">
-                                  Painel de Lucratividade:
-                                </b>{" "}
-                                O sistema analisa a diferença entre o preço de
-                                venda e o preço de custo. É recomendada uma
-                                margem de lucro de pelo menos 30%. Abaixo disso
-                                aparece “Lucro baixo”; com custo igual ao preço,
-                                “Sem lucro”; com custo maior que o preço,
-                                “Prejuízo”.
-                              </span>
-                            </li>
-                          </ul>
-                        </div>
-                      </AdminHelpModal>
-                    )}
-                  </AnimatePresence>
-
-                  <div className="grid grid-cols-1 gap-3">
-                    <div className="produto-campo space-y-1.5">
-                      <label
-                        htmlFor="product-cost-price"
-                        className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
-                      >
-                        Preço de Custo
-                      </label>
-                      <div className="group relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600 sm:left-6">
-                          R$
-                        </span>
-                        <LocalBufferedInput
-                          id="product-cost-price"
-                          aria-invalid={
-                            !!costError && !costError.startsWith("Aviso")
-                          }
-                          aria-describedby={
-                            costError ? "product-cost-error" : undefined
-                          }
-                          name="costPrice"
-                          mask="currency"
-                          zeroVazio
-                          zeroDigitadoVale
-                          value={formData.costPrice}
-                          onFlush={(val) =>
-                            setFormData((prev) => ({ ...prev, costPrice: val }))
-                          }
-                          className="w-full rounded-xl border border-admin-border bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
-                        />
+                    {/* O produto ja esta no estado que mente: dois grupos de variacao.
+                      A trava impede chegar aqui, mas produto antigo pode ja estar --
+                      e nesse caso o numero de estoque na tela acima esta errado. Dizer
+                      isso e' melhor que somar em silencio. */}
+                    {produtoTemGrupoDemais && (
+                      <div className="space-y-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+                        <p className="text-[11px] font-black uppercase tracking-widest text-amber-400">
+                          Este produto tem tipos de variação demais
+                        </p>
+                        <p className="text-[11px] font-medium leading-relaxed text-amber-200/80">
+                          Cada produto aceita <b>um tipo só</b> de variação. Com
+                          mais de um, o estoque mostrado acima soma as opções em
+                          dobro, e o estoque do segundo tipo não diminui com as
+                          vendas.
+                        </p>
+                        <p className="text-[11px] font-medium leading-relaxed text-amber-200/80">
+                          Para consertar, cadastre as combinações: edite as
+                          variações abaixo e junte tudo num tipo só, com as
+                          opções combinadas (ex: <i>Rosa P</i>, <i>Rosa M</i>).
+                        </p>
                       </div>
-                      {costError && (
-                        <span
-                          id="product-cost-error"
-                          className={cn(
-                            "text-[11px] font-bold mt-1 ml-1 block",
-                            costError.includes("Aviso")
-                              ? "text-amber-500"
-                              : "text-red-500",
-                          )}
+                    )}
+
+                    {/* Variants Guide Section */}
+                    <AnimatePresence>
+                      {expandedHelp.productVariants && (
+                        <AdminHelpModal
+                          isOpen={true}
+                          onClose={() => toggleHelp("productVariants")}
+                          title="Como usar as Variações"
+                          icon={Layers}
                         >
-                          {costError}
-                        </span>
+                          <div className="space-y-3 rounded-2xl border border-admin-border bg-zinc-950/40 p-4">
+                            <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
+                              Variações permitem vender o mesmo produto com
+                              diferentes opções — tamanho, cor, voltagem. Cada
+                              produto aceita{" "}
+                              <b className="text-zinc-350">um tipo só</b>: para
+                              vender tamanho e cor juntos, combine os dois no
+                              valor da opção (ex: Nome: <i>Modelo</i>, Valores:{" "}
+                              <i>Rosa P</i>, <i>Rosa M</i>).
+                            </p>
+                            <ul className="list-none space-y-2 pl-0 text-[11px] font-medium text-zinc-500">
+                              <li className="flex items-start gap-2.5">
+                                <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                                <span>
+                                  <b className="text-zinc-350">
+                                    Atributo (Nome e Valor):
+                                  </b>{" "}
+                                  Defina a característica (ex: Nome:{" "}
+                                  <i>Tamanho</i>, Valor: <i>G</i>; ou Nome:{" "}
+                                  <i>Cor</i>, Valor: <i>Azul</i>).
+                                </span>
+                              </li>
+                              <li className="flex items-start gap-2.5">
+                                <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                                <span>
+                                  <b className="text-zinc-350">
+                                    Ajuste de Preço (Opcional):
+                                  </b>{" "}
+                                  Se uma variante custar mais caro (ex: tamanho
+                                  especial ou material premium), preencha o
+                                  campo de preço substituto. Se deixar em
+                                  branco, o preço principal do produto será
+                                  usado.
+                                </span>
+                              </li>
+                              <li className="flex items-start gap-2.5">
+                                <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                                <span>
+                                  <b className="text-zinc-350">
+                                    Estoque da Variação:
+                                  </b>{" "}
+                                  Informe o estoque físico real desta variação —
+                                  não é um extra somado ao estoque do produto.
+                                  Assim que qualquer variação estiver ativa, o
+                                  estoque do produto acima passa a ser a{" "}
+                                  <b>soma</b> de todas as variações ativas, e o
+                                  campo dele fica travado enquanto isso.
+                                </span>
+                              </li>
+                              <li className="flex items-start gap-2.5">
+                                <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                                <span>
+                                  <b className="text-zinc-350">
+                                    Foto da Variante:
+                                  </b>{" "}
+                                  Vincule uma foto específica da variação.
+                                  Quando o comprador selecioná-la na página do
+                                  produto, o carrossel exibirá automaticamente a
+                                  foto correspondente.
+                                </span>
+                              </li>
+                            </ul>
+                          </div>
+                        </AdminHelpModal>
+                      )}
+                    </AnimatePresence>
+
+                    <div className="space-y-3">
+                      {formData.variants.length === 0 ? (
+                        <div className="rounded-[20px] border border-admin-border bg-admin-surface p-5 text-center">
+                          <p className="text-sm font-bold text-zinc-300">
+                            Nenhuma Variação Adicionada
+                          </p>
+                        </div>
+                      ) : (
+                        formData.variants.map((v) => (
+                          <VariantItem
+                            key={v.id}
+                            variant={v}
+                            onEdit={handleEditVariant}
+                            onDelete={handleDeleteVariant}
+                            onToggleActive={handleToggleVariantActive}
+                          />
+                        ))
                       )}
                     </div>
-                  </div>
-
-                  {priceVal > 0 && costPriceVal > 0 && (
-                    <div className="space-y-4 rounded-[20px] border border-admin-border bg-admin-raised p-4">
-                      <div
-                        className={cn(
-                          "flex flex-wrap items-end justify-between gap-3",
-                          corDoLucro,
-                        )}
-                      >
-                        <div>
-                          <p className="text-xs text-zinc-400">
-                            Lucro por unidade
-                          </p>
-                          <p className="mt-1 text-xl font-bold tabular-nums">
-                            {formatCurrency(priceVal - costPriceVal)}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs text-zinc-400">Margem</p>
-                          <p className="mt-1 text-xl font-bold tabular-nums">
-                            {percentualComUmaCasa(marginPct)}
-                          </p>
-                        </div>
-                      </div>
-                      <div
-                        className="h-2 overflow-hidden rounded-full bg-zinc-800"
-                        aria-hidden="true"
-                      >
-                        <div
-                          className={`h-full rounded-full ${marginPct >= 30 ? "bg-emerald-400" : "bg-orange-400"}`}
-                          style={{
-                            width: `${Math.min(100, Math.max(0, marginPct))}%`,
-                          }}
-                        />
-                      </div>
-                      <p className={`text-xs ${corDoLucro}`}>
-                        Análise do Sistema · {analiseDoLucro}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </SecaoDoProduto>
-            </div>
-
-            {/* Peso e medidas (H1): MONTADA e FECHADA. Com entrega local a
-                seção nem existe — como o campo já não existia. */}
-            {!isLocalShipping && (
-              <div className="col-span-2">
-                <SecaoDoProduto
-                  titulo="Peso e medidas"
-                  aviso={avisoDasMedidas}
-                  resumo={
-                    formData.weightKg &&
-                    formData.widthCm &&
-                    formData.heightCm &&
-                    formData.lengthCm
-                      ? `${formData.weightKg} kg · ${formData.widthCm} × ${formData.heightCm} × ${formData.lengthCm} cm`
-                      : "para o frete"
-                  }
-                >
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                      <div className="space-y-1">
-                        <label
-                          htmlFor="product-weight"
-                          className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-wider text-zinc-500"
-                        >
-                          Peso (kg)
-                        </label>
-                        <LocalBufferedInput
-                          id="product-weight"
-                          name="weightKg"
-                          type="number"
-                          step="0.001"
-                          min="0"
-                          placeholder="Ex.: 0,350"
-                          value={formData.weightKg}
-                          onFlush={(val) =>
-                            setFormData((prev) => ({ ...prev, weightKg: val }))
-                          }
-                          aria-invalid={pesoError ? true : undefined}
-                          aria-describedby={
-                            pesoError ? "product-weight-erro" : undefined
-                          }
-                          className="w-full rounded-lg border border-admin-border bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
-                        />
-                        {pesoError && (
-                          <span
-                            id="product-weight-erro"
-                            className="ml-1 block text-[11px] font-bold text-red-500"
-                          >
-                            {pesoError}
-                          </span>
-                        )}
-                        {pesoEmGramasTalvez && (
-                          <span
-                            id="product-weight-aviso"
-                            role="status"
-                            className="ml-1 block text-[11px] font-medium text-amber-300"
-                          >
-                            Isso é mais de 30 kg. Se você quis dizer gramas,
-                            digite {pesoEmGramasTalvez.kg} para{" "}
-                            {pesoEmGramasTalvez.g} g.
-                          </span>
-                        )}
-                      </div>
-                      <div className="space-y-1">
-                        <label
-                          htmlFor="product-width"
-                          className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-wider text-zinc-500"
-                        >
-                          Largura (cm)
-                        </label>
-                        <LocalBufferedInput
-                          id="product-width"
-                          name="widthCm"
-                          type="number"
-                          min="0"
-                          placeholder="Ex: 15"
-                          value={formData.widthCm}
-                          onFlush={(val) =>
-                            setFormData((prev) => ({ ...prev, widthCm: val }))
-                          }
-                          aria-invalid={larguraError ? true : undefined}
-                          aria-describedby={
-                            larguraError ? "product-width-erro" : undefined
-                          }
-                          className="w-full rounded-lg border border-admin-border bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
-                        />
-                        {larguraError && (
-                          <span
-                            id="product-width-erro"
-                            className="ml-1 block text-[11px] font-bold text-red-500"
-                          >
-                            {larguraError}
-                          </span>
-                        )}
-                      </div>
-                      <div className="space-y-1">
-                        <label
-                          htmlFor="product-height"
-                          className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-wider text-zinc-500"
-                        >
-                          Altura (cm)
-                        </label>
-                        <LocalBufferedInput
-                          id="product-height"
-                          name="heightCm"
-                          type="number"
-                          min="0"
-                          placeholder="Ex: 15"
-                          value={formData.heightCm}
-                          onFlush={(val) =>
-                            setFormData((prev) => ({ ...prev, heightCm: val }))
-                          }
-                          aria-invalid={alturaError ? true : undefined}
-                          aria-describedby={
-                            alturaError ? "product-height-erro" : undefined
-                          }
-                          className="w-full rounded-lg border border-admin-border bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
-                        />
-                        {alturaError && (
-                          <span
-                            id="product-height-erro"
-                            className="ml-1 block text-[11px] font-bold text-red-500"
-                          >
-                            {alturaError}
-                          </span>
-                        )}
-                      </div>
-                      <div className="space-y-1">
-                        <label
-                          htmlFor="product-length"
-                          className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-wider text-zinc-500"
-                        >
-                          Comprimento (cm)
-                        </label>
-                        <LocalBufferedInput
-                          id="product-length"
-                          name="lengthCm"
-                          type="number"
-                          min="0"
-                          placeholder="Ex: 15"
-                          value={formData.lengthCm}
-                          onFlush={(val) =>
-                            setFormData((prev) => ({ ...prev, lengthCm: val }))
-                          }
-                          aria-invalid={comprimentoError ? true : undefined}
-                          aria-describedby={
-                            comprimentoError ? "product-length-erro" : undefined
-                          }
-                          className="w-full rounded-lg border border-admin-border bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
-                        />
-                        {comprimentoError && (
-                          <span
-                            id="product-length-erro"
-                            className="ml-1 block text-[11px] font-bold text-red-500"
-                          >
-                            {comprimentoError}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <span className="block text-[11px] font-medium leading-normal text-zinc-400">
-                      * O peso e as dimensões da embalagem individual são
-                      utilizados para a cotação de frete automática
-                      (Correios/Melhor Envio/Frenet). Se não informados, o
-                      sistema utilizará valores padrão (0,3 kg e 15x15x15 cm).
-                    </span>
                   </div>
                 </SecaoDoProduto>
               </div>
-            )}
-            <div className="col-span-2">
-              {/* Códigos e câmera: código interno, código de barras e aviso de estoque
+
+              <div className="col-span-2">
+                {/* Custo e lucro (H1): o Preço de venda subiu para o básico; aqui
+            ficam só o custo e a análise de lucro (a promoção De/Por, que o
+            CLIENTE vê, mora junto do Preço de venda). MONTADA e
+            FECHADA; um erro de validação dentro dela a abre sozinha. O AVISO
+            de custo maior que o preço não é erro (não bloqueia o salvar), por
+            isso não força a abertura. */}
+                <SecaoDoProduto
+                  titulo="Custo e lucro"
+                  aviso={avisoDeCusto}
+                  resumo={
+                    priceVal > 0 && costPriceVal > 0
+                      ? `Lucro ${formatCurrency(priceVal - costPriceVal)} · margem ${percentualComUmaCasa(marginPct)}`
+                      : "opcional"
+                  }
+                  temErro={!!costError && !costError.startsWith("Aviso")}
+                >
+                  <div className="relative space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleHelp("productPricing")}
+                          className="flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-full active:scale-95"
+                          title="Ajuda / Guia de Precificação"
+                        >
+                          {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
+                              expandedHelp.productPricing
+                                ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
+                                : "bg-zinc-950/50 border-admin-border text-zinc-400",
+                            )}
+                          >
+                            ?
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Pricing Guide Section */}
+                    <AnimatePresence>
+                      {expandedHelp.productPricing && (
+                        <AdminHelpModal
+                          isOpen={true}
+                          onClose={() => toggleHelp("productPricing")}
+                          title="Guia de Custos e Margens"
+                          icon={DollarSign}
+                        >
+                          <div className="space-y-4 rounded-2xl border border-admin-border bg-zinc-950/40 p-5">
+                            <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
+                              Configure os preços de forma estratégica. O
+                              sistema calcula a lucratividade automaticamente em
+                              tempo real.
+                            </p>
+                            <ul className="list-none space-y-3 pl-0 text-[11px] font-medium text-zinc-500">
+                              <li className="flex items-start gap-2.5">
+                                <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                                <span>
+                                  <b className="text-zinc-350">
+                                    Preço de Custo (Opcional):
+                                  </b>{" "}
+                                  O valor total que você pagou para adquirir ou
+                                  fabricar o produto. Esse dado é estritamente
+                                  confidencial e é usado apenas pelo sistema
+                                  para calcular a margem e o lucro exibidos
+                                  abaixo.
+                                </span>
+                              </li>
+                              <li className="flex items-start gap-2.5">
+                                <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                                <span>
+                                  <b className="text-zinc-350">
+                                    Preço de Venda:
+                                  </b>{" "}
+                                  O preço final cobrado do cliente. Pense em
+                                  embutir custos fixos, impostos e taxas para
+                                  manter sua operação saudável.
+                                </span>
+                              </li>
+                              <li className="flex items-start gap-2.5">
+                                <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                                <span>
+                                  <b className="text-zinc-350">
+                                    Painel de Lucratividade:
+                                  </b>{" "}
+                                  O sistema analisa a diferença entre o preço de
+                                  venda e o preço de custo. É recomendada uma
+                                  margem de lucro de pelo menos 30%. Abaixo
+                                  disso aparece “Lucro baixo”; com custo igual
+                                  ao preço, “Sem lucro”; com custo maior que o
+                                  preço, “Prejuízo”.
+                                </span>
+                              </li>
+                            </ul>
+                          </div>
+                        </AdminHelpModal>
+                      )}
+                    </AnimatePresence>
+
+                    <div className="grid grid-cols-1 gap-3">
+                      <div className="produto-campo space-y-1.5">
+                        <label
+                          htmlFor="product-cost-price"
+                          className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
+                        >
+                          Preço de Custo
+                        </label>
+                        <div className="group relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600 sm:left-6">
+                            R$
+                          </span>
+                          <LocalBufferedInput
+                            id="product-cost-price"
+                            aria-invalid={
+                              !!costError && !costError.startsWith("Aviso")
+                            }
+                            aria-describedby={
+                              costError ? "product-cost-error" : undefined
+                            }
+                            name="costPrice"
+                            mask="currency"
+                            zeroVazio
+                            zeroDigitadoVale
+                            value={formData.costPrice}
+                            onFlush={(val) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                costPrice: val,
+                              }))
+                            }
+                            className="w-full rounded-xl border border-admin-border bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
+                          />
+                        </div>
+                        {costError && (
+                          <span
+                            id="product-cost-error"
+                            className={cn(
+                              "text-[11px] font-bold mt-1 ml-1 block",
+                              costError.includes("Aviso")
+                                ? "text-amber-500"
+                                : "text-red-500",
+                            )}
+                          >
+                            {costError}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {priceVal > 0 && costPriceVal > 0 && (
+                      <div className="space-y-4 rounded-[20px] border border-admin-border bg-admin-raised p-4">
+                        <div
+                          className={cn(
+                            "flex flex-wrap items-end justify-between gap-3",
+                            corDoLucro,
+                          )}
+                        >
+                          <div>
+                            <p className="text-xs text-zinc-400">
+                              Lucro por unidade
+                            </p>
+                            <p className="mt-1 text-xl font-bold tabular-nums">
+                              {formatCurrency(priceVal - costPriceVal)}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-zinc-400">Margem</p>
+                            <p className="mt-1 text-xl font-bold tabular-nums">
+                              {percentualComUmaCasa(marginPct)}
+                            </p>
+                          </div>
+                        </div>
+                        <div
+                          className="h-2 overflow-hidden rounded-full bg-zinc-800"
+                          aria-hidden="true"
+                        >
+                          <div
+                            className={`h-full rounded-full ${marginPct >= 30 ? "bg-emerald-400" : "bg-orange-400"}`}
+                            style={{
+                              width: `${Math.min(100, Math.max(0, marginPct))}%`,
+                            }}
+                          />
+                        </div>
+                        <p className={`text-xs ${corDoLucro}`}>
+                          Análise do Sistema · {analiseDoLucro}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </SecaoDoProduto>
+              </div>
+
+              {/* Peso e medidas (H1): MONTADA e FECHADA. Com entrega local a
+                seção nem existe — como o campo já não existia. */}
+              {!isLocalShipping && (
+                <div className="col-span-2">
+                  <SecaoDoProduto
+                    titulo="Peso e medidas"
+                    aviso={avisoDasMedidas}
+                    resumo={
+                      formData.weightKg &&
+                      formData.widthCm &&
+                      formData.heightCm &&
+                      formData.lengthCm
+                        ? `${formData.weightKg} kg · ${formData.widthCm} × ${formData.heightCm} × ${formData.lengthCm} cm`
+                        : "para o frete"
+                    }
+                  >
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                        <div className="space-y-1">
+                          <label
+                            htmlFor="product-weight"
+                            className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-wider text-zinc-500"
+                          >
+                            Peso (kg)
+                          </label>
+                          <LocalBufferedInput
+                            id="product-weight"
+                            name="weightKg"
+                            type="number"
+                            step="0.001"
+                            min="0"
+                            placeholder="Ex.: 0,350"
+                            value={formData.weightKg}
+                            onFlush={(val) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                weightKg: val,
+                              }))
+                            }
+                            aria-invalid={pesoError ? true : undefined}
+                            aria-describedby={
+                              pesoError ? "product-weight-erro" : undefined
+                            }
+                            className="w-full rounded-lg border border-admin-border bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                          />
+                          {pesoError && (
+                            <span
+                              id="product-weight-erro"
+                              className="ml-1 block text-[11px] font-bold text-red-500"
+                            >
+                              {pesoError}
+                            </span>
+                          )}
+                          {pesoEmGramasTalvez && (
+                            <span
+                              id="product-weight-aviso"
+                              role="status"
+                              className="ml-1 block text-[11px] font-medium text-amber-300"
+                            >
+                              Isso é mais de 30 kg. Se você quis dizer gramas,
+                              digite {pesoEmGramasTalvez.kg} para{" "}
+                              {pesoEmGramasTalvez.g} g.
+                            </span>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <label
+                            htmlFor="product-width"
+                            className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-wider text-zinc-500"
+                          >
+                            Largura (cm)
+                          </label>
+                          <LocalBufferedInput
+                            id="product-width"
+                            name="widthCm"
+                            type="number"
+                            min="0"
+                            placeholder="Ex: 15"
+                            value={formData.widthCm}
+                            onFlush={(val) =>
+                              setFormData((prev) => ({ ...prev, widthCm: val }))
+                            }
+                            aria-invalid={larguraError ? true : undefined}
+                            aria-describedby={
+                              larguraError ? "product-width-erro" : undefined
+                            }
+                            className="w-full rounded-lg border border-admin-border bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                          />
+                          {larguraError && (
+                            <span
+                              id="product-width-erro"
+                              className="ml-1 block text-[11px] font-bold text-red-500"
+                            >
+                              {larguraError}
+                            </span>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <label
+                            htmlFor="product-height"
+                            className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-wider text-zinc-500"
+                          >
+                            Altura (cm)
+                          </label>
+                          <LocalBufferedInput
+                            id="product-height"
+                            name="heightCm"
+                            type="number"
+                            min="0"
+                            placeholder="Ex: 15"
+                            value={formData.heightCm}
+                            onFlush={(val) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                heightCm: val,
+                              }))
+                            }
+                            aria-invalid={alturaError ? true : undefined}
+                            aria-describedby={
+                              alturaError ? "product-height-erro" : undefined
+                            }
+                            className="w-full rounded-lg border border-admin-border bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                          />
+                          {alturaError && (
+                            <span
+                              id="product-height-erro"
+                              className="ml-1 block text-[11px] font-bold text-red-500"
+                            >
+                              {alturaError}
+                            </span>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <label
+                            htmlFor="product-length"
+                            className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-wider text-zinc-500"
+                          >
+                            Comprimento (cm)
+                          </label>
+                          <LocalBufferedInput
+                            id="product-length"
+                            name="lengthCm"
+                            type="number"
+                            min="0"
+                            placeholder="Ex: 15"
+                            value={formData.lengthCm}
+                            onFlush={(val) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                lengthCm: val,
+                              }))
+                            }
+                            aria-invalid={comprimentoError ? true : undefined}
+                            aria-describedby={
+                              comprimentoError
+                                ? "product-length-erro"
+                                : undefined
+                            }
+                            className="w-full rounded-lg border border-admin-border bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                          />
+                          {comprimentoError && (
+                            <span
+                              id="product-length-erro"
+                              className="ml-1 block text-[11px] font-bold text-red-500"
+                            >
+                              {comprimentoError}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <span className="block text-[11px] font-medium leading-normal text-zinc-400">
+                        * O peso e as dimensões da embalagem individual são
+                        utilizados para a cotação de frete automática
+                        (Correios/Melhor Envio/Frenet). Se não informados, o
+                        sistema utilizará valores padrão (0,3 kg e 15x15x15 cm).
+                      </span>
+                    </div>
+                  </SecaoDoProduto>
+                </div>
+              )}
+              <div className="col-span-2">
+                {/* Códigos e câmera: código interno, código de barras e aviso de estoque
             — raros no dia a dia, mas nada se apaga. MONTADA e FECHADA; erro
             em qualquer um dos três (formato, duplicidade ou número inválido)
             a abre sozinha. */}
-              <SecaoDoProduto
-                titulo="Códigos e câmera"
-                aviso={avisoDosCodigos}
-                resumo={
-                  formData.sku
-                    ? `${formData.sku} · aviso em ${formData.estoqueMinimo || "5"} un.`
-                    : "Código interno, código de barras e aviso de estoque"
-                }
-                temErro={
-                  !!skuError || !!codigoBarrasError || !!estoqueMinimoError
-                }
-              >
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
-                  <CodigoDoProduto
-                    automatico={skuAutomatico}
-                    onAlternar={alternarSkuAutomatico}
-                    codigoGerado={codigoAuto}
-                    onOutro={gerarOutroSku}
-                    valorManual={formData.sku}
-                    onManual={(val) =>
-                      setFormData((prev) => ({ ...prev, sku: val }))
-                    }
-                    erro={skuError}
-                    rotuloDoCampo="Código interno (SKU)"
-                  />
+                <SecaoDoProduto
+                  titulo="Códigos e câmera"
+                  aviso={avisoDosCodigos}
+                  resumo={
+                    formData.sku
+                      ? `${formData.sku} · aviso em ${formData.estoqueMinimo || "5"} un.`
+                      : "Código interno, código de barras e aviso de estoque"
+                  }
+                  temErro={
+                    !!skuError || !!codigoBarrasError || !!estoqueMinimoError
+                  }
+                >
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+                    <CodigoDoProduto
+                      automatico={skuAutomatico}
+                      onAlternar={alternarSkuAutomatico}
+                      codigoGerado={codigoAuto}
+                      onOutro={gerarOutroSku}
+                      valorManual={formData.sku}
+                      onManual={(val) =>
+                        setFormData((prev) => ({ ...prev, sku: val }))
+                      }
+                      erro={skuError}
+                      rotuloDoCampo="Código interno (SKU)"
+                    />
 
-                  <div className="space-y-1.5 md:space-y-3">
-                    <label
-                      htmlFor="product-codigo-barras"
-                      className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
-                    >
-                      Código de barras
-                    </label>
-                    {/* No celular o botão desce para baixo do campo: lado a lado,
+                    <div className="space-y-1.5 md:space-y-3">
+                      <label
+                        htmlFor="product-codigo-barras"
+                        className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+                      >
+                        Código de barras
+                      </label>
+                      {/* No celular o botão desce para baixo do campo: lado a lado,
                   os 13 dígitos não cabiam (onda J). */}
-                    <div className="flex flex-col gap-2 xs:flex-row">
+                      <div className="flex flex-col gap-2 xs:flex-row">
+                        <LocalBufferedInput
+                          id="product-codigo-barras"
+                          aria-invalid={!!codigoBarrasError}
+                          aria-describedby={
+                            codigoBarrasError
+                              ? "product-barcode-error"
+                              : undefined
+                          }
+                          name="product-codigo-barras"
+                          type="text"
+                          inputMode="numeric"
+                          data-testid="codigo-barras-produto"
+                          value={formData.codigoBarras}
+                          onFlush={(val) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              codigoBarras: normalizarCodigoBarras(val),
+                            }))
+                          }
+                          onBlur={(e) =>
+                            aoSairDoCampoDeCodigoDeBarras(
+                              e.target.value,
+                              "produto",
+                            )
+                          }
+                          placeholder="Ex: 7891234567890"
+                          className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 font-mono text-sm font-black tabular-nums text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
+                        />
+                        {/* C5.3 — some sem câmera: o leitor físico USB digita direto
+                    no campo acima, sem precisar deste botão. */}
+                        {temCameraDisponivel() && (
+                          <button
+                            type="button"
+                            onClick={() => setLeitorAberto("produto")}
+                            className="flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95 sm:rounded-2xl"
+                            title="Ler com a câmera"
+                          >
+                            <Camera className="size-4" />
+                            Ler com a câmera
+                          </button>
+                        )}
+                      </div>
+                      <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-400">
+                        Opcional. É o código impresso na embalagem; a tela
+                        Vender lê ele pela câmera.
+                      </span>
+                      {codigoBarrasError && (
+                        <span
+                          id="product-barcode-error"
+                          className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
+                        >
+                          {codigoBarrasError}
+                        </span>
+                      )}
+                      {!codigoBarrasError && codigoBarrasAvisoRede && (
+                        <span className="ml-1 mt-1 block text-[11px] font-bold text-amber-500">
+                          {codigoBarrasAvisoRede}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5 md:space-y-3">
+                      <label
+                        htmlFor="product-estoque-minimo"
+                        className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+                      >
+                        Avisar quando o estoque chegar a
+                      </label>
                       <LocalBufferedInput
-                        id="product-codigo-barras"
-                        aria-invalid={!!codigoBarrasError}
-                        aria-describedby={
-                          codigoBarrasError
-                            ? "product-barcode-error"
-                            : undefined
-                        }
-                        name="product-codigo-barras"
-                        type="text"
+                        id="product-estoque-minimo"
+                        name="product-estoque-minimo"
+                        type="number"
+                        min="0"
+                        step="1"
                         inputMode="numeric"
-                        data-testid="codigo-barras-produto"
-                        value={formData.codigoBarras}
+                        value={formData.estoqueMinimo}
                         onFlush={(val) =>
                           setFormData((prev) => ({
                             ...prev,
-                            codigoBarras: normalizarCodigoBarras(val),
+                            estoqueMinimo: val,
                           }))
                         }
-                        onBlur={(e) =>
-                          aoSairDoCampoDeCodigoDeBarras(
-                            e.target.value,
-                            "produto",
-                          )
+                        placeholder="Ex: 5"
+                        aria-invalid={estoqueMinimoError ? true : undefined}
+                        aria-describedby={
+                          estoqueMinimoError
+                            ? "product-estoque-minimo-dica product-estoque-minimo-erro"
+                            : "product-estoque-minimo-dica"
                         }
-                        placeholder="Ex: 7891234567890"
-                        className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 font-mono text-sm font-black tabular-nums text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
+                        className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
                       />
-                      {/* C5.3 — some sem câmera: o leitor físico USB digita direto
-                    no campo acima, sem precisar deste botão. */}
-                      {temCameraDisponivel() && (
-                        <button
-                          type="button"
-                          onClick={() => setLeitorAberto("produto")}
-                          className="flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95 sm:rounded-2xl"
-                          title="Ler com a câmera"
+                      <span
+                        id="product-estoque-minimo-dica"
+                        className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-400"
+                      >
+                        Vazio usa o padrão (5). Com variações, vale para a soma.
+                      </span>
+                      {estoqueMinimoError && (
+                        <span
+                          id="product-estoque-minimo-erro"
+                          className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
                         >
-                          <Camera className="size-4" />
-                          Ler com a câmera
-                        </button>
+                          {estoqueMinimoError}
+                        </span>
                       )}
                     </div>
-                    <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-400">
-                      Opcional. É o código impresso na embalagem; a tela Vender
-                      lê ele pela câmera.
-                    </span>
-                    {codigoBarrasError && (
-                      <span
-                        id="product-barcode-error"
-                        className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
-                      >
-                        {codigoBarrasError}
-                      </span>
-                    )}
-                    {!codigoBarrasError && codigoBarrasAvisoRede && (
-                      <span className="ml-1 mt-1 block text-[11px] font-bold text-amber-500">
-                        {codigoBarrasAvisoRede}
-                      </span>
-                    )}
                   </div>
+                </SecaoDoProduto>
+              </div>
 
-                  <div className="space-y-1.5 md:space-y-3">
-                    <label
-                      htmlFor="product-estoque-minimo"
-                      className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
-                    >
-                      Avisar quando o estoque chegar a
-                    </label>
-                    <LocalBufferedInput
-                      id="product-estoque-minimo"
-                      name="product-estoque-minimo"
-                      type="number"
-                      min="0"
-                      step="1"
-                      inputMode="numeric"
-                      value={formData.estoqueMinimo}
-                      onFlush={(val) =>
-                        setFormData((prev) => ({ ...prev, estoqueMinimo: val }))
-                      }
-                      placeholder="Ex: 5"
-                      aria-invalid={estoqueMinimoError ? true : undefined}
-                      aria-describedby={
-                        estoqueMinimoError
-                          ? "product-estoque-minimo-dica product-estoque-minimo-erro"
-                          : "product-estoque-minimo-dica"
-                      }
-                      className="w-full rounded-xl border border-admin-border bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
-                    />
-                    <span
-                      id="product-estoque-minimo-dica"
-                      className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-400"
-                    >
-                      Vazio usa o padrão (5). Com variações, vale para a soma.
-                    </span>
-                    {estoqueMinimoError && (
-                      <span
-                        id="product-estoque-minimo-erro"
-                        className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
-                      >
-                        {estoqueMinimoError}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </SecaoDoProduto>
-            </div>
-
-            <div className="col-span-2">
-              {/* Na loja: três chaves que o modelo já tinha e o salvar já gravava
+              <div className="col-span-2">
+                {/* Na loja: três chaves que o modelo já tinha e o salvar já gravava
             (`ativo`, `is_bestseller`, `frete_gratis`) — só não tinham tela.
             MONTADA e FECHADA, como as outras. */}
-              <SecaoDoProduto
-                titulo="Na loja"
-                resumo={[
-                  formData.isActive ? "Aparece na loja" : "Escondido da loja",
-                  formData.isBestseller ? "Em destaque" : null,
-                  formData.freeShipping ? "Frete grátis" : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              >
-                <div className="space-y-1">
-                  <InterruptorDoProduto
-                    rotulo="Aparece na loja"
-                    descricao="Desligue para guardar o produto sem mostrar aos clientes."
-                    ligado={formData.isActive}
-                    onAlternar={() =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        isActive: !prev.isActive,
-                      }))
-                    }
-                  />
-                  <InterruptorDoProduto
-                    rotulo="Em destaque"
-                    descricao="Mostra o selo “Em alta” e põe o produto na vitrine de destaques."
-                    ligado={formData.isBestseller}
-                    onAlternar={() =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        isBestseller: !prev.isBestseller,
-                      }))
-                    }
-                  />
-                  <InterruptorDoProduto
-                    rotulo="Frete grátis neste produto"
-                    descricao="Marca o produto para a regra “Só produtos marcados” do frete."
-                    ligado={formData.freeShipping}
-                    onAlternar={() =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        freeShipping: !prev.freeShipping,
-                      }))
-                    }
-                  >
-                    {formData.freeShipping && freteDeProdutoSemEfeito ? (
-                      <p
-                        data-testid="aviso-frete-por-produto"
-                        role="status"
-                        className="mt-2 flex items-start gap-2 px-1 text-xs text-amber-300"
-                      >
-                        <AlertTriangle
-                          aria-hidden="true"
-                          className="mt-0.5 size-4 shrink-0"
-                        />
-                        Hoje a loja não usa “Só produtos marcados”. A marca fica
-                        guardada, mas só vale quando você escolher essa regra em{" "}
-                        {NOMES_DO_PAINEL["admin-shipping"]}.
-                      </p>
-                    ) : null}
-                  </InterruptorDoProduto>
-                </div>
-              </SecaoDoProduto>
+                <SecaoDoProduto
+                  titulo="Na loja"
+                  resumo={[
+                    formData.isActive ? "Aparece na loja" : "Escondido da loja",
+                    formData.isBestseller ? "Em destaque" : null,
+                    formData.freeShipping ? "Frete grátis" : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                >
+                  <div className="space-y-1">
+                    <InterruptorDoProduto
+                      rotulo="Aparece na loja"
+                      descricao="Desligue para guardar o produto sem mostrar aos clientes."
+                      ligado={formData.isActive}
+                      onAlternar={() =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          isActive: !prev.isActive,
+                        }))
+                      }
+                    />
+                    <InterruptorDoProduto
+                      rotulo="Em destaque"
+                      descricao="Mostra o selo “Em alta” e põe o produto na vitrine de destaques."
+                      ligado={formData.isBestseller}
+                      onAlternar={() =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          isBestseller: !prev.isBestseller,
+                        }))
+                      }
+                    />
+                    <InterruptorDoProduto
+                      rotulo="Frete grátis neste produto"
+                      descricao="Marca o produto para a regra “Só produtos marcados” do frete."
+                      ligado={formData.freeShipping}
+                      onAlternar={() =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          freeShipping: !prev.freeShipping,
+                        }))
+                      }
+                    >
+                      {formData.freeShipping && freteDeProdutoSemEfeito ? (
+                        <p
+                          data-testid="aviso-frete-por-produto"
+                          role="status"
+                          className="mt-2 flex items-start gap-2 px-1 text-xs text-amber-300"
+                        >
+                          <AlertTriangle
+                            aria-hidden="true"
+                            className="mt-0.5 size-4 shrink-0"
+                          />
+                          Hoje a loja não usa “Só produtos marcados”. A marca
+                          fica guardada, mas só vale quando você escolher essa
+                          regra em {NOMES_DO_PAINEL["admin-shipping"]}.
+                        </p>
+                      ) : null}
+                    </InterruptorDoProduto>
+                  </div>
+                </SecaoDoProduto>
+              </div>
             </div>
-          </div>
-        </section>
-        {/* O guia "Como cadastrar um produto" já tem o botão "?" do
+          </section>
+          {/* O guia "Como cadastrar um produto" já tem o botão "?" do
             cabeçalho (o mesmo `setShowHelpModal`): aqui só resta o ID. */}
-        {productId && (
-          <p className="break-all text-[11px] text-zinc-400">
-            Número no sistema · {productId}
-          </p>
-        )}
+          {productId && (
+            <p className="break-all text-[11px] text-zinc-400">
+              Número no sistema · {productId}
+            </p>
+          )}
+        </fieldset>
       </motion.form>
 
       {/* Image Cropper Modal */}
