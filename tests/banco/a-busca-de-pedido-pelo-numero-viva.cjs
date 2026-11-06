@@ -257,6 +257,11 @@ async function main() {
   await c.connect();
   try {
     await c.query("BEGIN");
+    // A 20261399900000 (a busca de Pedidos acha o telefone colado com o +55) sucede o corpo desta migration: sai PRIMEIRO (ordem inversa da aplicacao;
+    // nao faz nada se nao esta no ar). Definicao unica em tests/banco/a-busca-de-pedidos-posterior.cjs.
+    await require("./a-busca-de-pedidos-posterior.cjs").desfazerBuscaDePedidosNaTransacao(
+      c,
+    );
     const topo = await funcao(c);
     await conferir(c, depois, true);
     await conferir(c, antes, false);

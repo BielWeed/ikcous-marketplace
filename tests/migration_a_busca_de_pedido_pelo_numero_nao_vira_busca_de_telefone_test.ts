@@ -199,14 +199,20 @@ Deno.test("387: uma funcao so por arquivo, rollback e cabecalho identicos aos vi
   }
 });
 
-Deno.test("387: o corpo novo e o MAIS NOVO da arvore e o db-apply exige todas as guardas", () => {
+Deno.test("387: o corpo novo e o PENULTIMO da arvore (a 20261399900000, o corte do +55, o sucede) e o db-apply exige todas as guardas", () => {
   const fontes = [...Deno.readDirSync(dir)]
     .map((e) => e.name)
     .filter((n) => /^\d{14}_.*\.sql$/.test(n))
     .sort()
     .map((n) => ler(`supabase/migrations/${n}`))
     .filter((s) => definicao(s));
-  assert.equal(md5(corpo(fontes.at(-1)!)), md5(corpo(sql)));
+  // A sucessora (lote 40) tem o proprio teste: tests/migration_a_busca_de_pedidos_acha_o_telefone_colado_com_o_55_test.ts.
+  assert.equal(md5(corpo(fontes.at(-2)!)), md5(corpo(sql)));
+  assert.ok(
+    fontes
+      .at(-1)!
+      .includes("a busca de Pedidos acha o telefone colado com o +55"),
+  );
   const { VERIFICACOES, avaliarChecagem } = require("../scripts/db-apply.cjs");
   // eslint-disable-next-line security/detect-object-injection -- Nome literal desta migration, nunca entrada externa.
   const checagem = VERIFICACOES[nome];
@@ -249,8 +255,17 @@ Deno.test("387: 8e e 9a conhecem o corpo novo (como sucessor e como corpo final)
   const a9 = ler(
     "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql",
   );
-  assert.ok(a9.includes(`('get_admin_orders_paged', '${novo}')`));
+  // O corpo FINAL da 9a e' o da sucessora (20261399900000); o da 99 e o desta migration ainda no ar aparecem como ele.
+  const sucessor = "bf08545275eaa451a65e15feceb0ed8d";
+  assert.ok(a9.includes(`('get_admin_orders_paged', '${sucessor}')`));
+  assert.ok(!a9.includes(`('get_admin_orders_paged', '${novo}')`));
   assert.ok(!a9.includes(`('get_admin_orders_paged', '${HASH_99}')`));
+  assert.ok(
+    a9.includes(
+      `(c.h = '${HASH_99}' OR c.h = '${novo}')
+              THEN '${sucessor}'`,
+    ),
+  );
 });
 
 Deno.test("387: consultas so de catalogo, quatro linhas fechadas e registros de publicacao", async () => {

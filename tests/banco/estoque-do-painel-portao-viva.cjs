@@ -1355,6 +1355,18 @@ async function main() {
         "20261399600000_o_resultado_credita_o_custo_da_devolucao_de_outro_mes.sql",
         "public.fin_dre(date,date)",
       ],
+      // A 20261399900000 (a busca de Pedidos acha o telefone colado com o +55): get_admin_orders_paged sobre o corpo da 387 (cadeia 99 -> 387 -> 3999), funcao de fora destas tres que a
+      // 17a nao le. O rollback dela devolve o corpo da 387 (o molde, acima, desfaz e mede).
+      [
+        "20261399900000_a_busca_de_pedidos_acha_o_telefone_colado_com_o_55.sql",
+        "public.get_admin_orders_paged(text,text,text,text,integer,integer,text,text)",
+      ],
+      // A 20261399910000 (a busca de devolucao ignora o acento): admin_devolucoes_listar sobre o corpo da 395 (cadeia 99 -> 395 -> 3999100), funcao de fora destas tres que a 17a
+      // nao le. O rollback dela devolve o corpo da 395 (o molde, acima, desfaz e mede).
+      [
+        "20261399910000_a_busca_de_devolucao_ignora_o_acento.sql",
+        "public.admin_devolucoes_listar(text,text,integer,integer)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

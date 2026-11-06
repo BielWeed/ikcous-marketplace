@@ -22,7 +22,9 @@ WITH fn AS (
          CASE WHEN COALESCE((SELECT count(*) > 0 FROM pg_proc WHERE pronamespace = 'public'::regnamespace), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'admin_devolucoes_listar: corpo exato (md5)', '989a6c6151eb35efc7c834c6cce20f01',
-         COALESCE((SELECT h FROM fn LIMIT 1), 'AUSENTE')
+         -- A 20261399910000 (a busca de devolucao ignora o acento) sucede este corpo: so os ramos do protocolo e do nome mudam (o ramo do numero do pedido,
+         -- e o marcador abaixo, ficam). Aceita os dois corpos EXATOS; normaliza ao esperado historico do rol.
+         COALESCE((SELECT CASE WHEN h IN ('989a6c6151eb35efc7c834c6cce20f01', '82d381944fb7b3337e7272a258b65260') THEN '989a6c6151eb35efc7c834c6cce20f01' ELSE h END FROM fn LIMIT 1), 'AUSENTE')
   UNION ALL
   SELECT 'admin_devolucoes_listar: o corpo traz a busca pelo numero do pedido (uma vez)', 'sim',
          CASE WHEN NOT EXISTS (SELECT 1 FROM fn) THEN 'AUSENTE'

@@ -21,7 +21,9 @@ WITH fn AS (
     CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace) > 0 THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'get_admin_orders_paged: corpo exato (md5)', 'f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6',
-    COALESCE((SELECT h FROM fn), 'AUSENTE')
+    -- A 20261399900000 (a busca de Pedidos acha o telefone colado com o +55) sucede este corpo: so o corte do 55 e' novo. Aceita os dois corpos
+    -- EXATOS; normaliza ao esperado historico do rol.
+    COALESCE((SELECT CASE WHEN h IN ('f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6', 'bf08545275eaa451a65e15feceb0ed8d') THEN 'f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6' ELSE h END FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_orders_paged: assinatura e atributos conhecidos', 'sim',
     CASE WHEN COALESCE((SELECT atributos FROM fn), false) THEN 'sim' ELSE 'nao' END

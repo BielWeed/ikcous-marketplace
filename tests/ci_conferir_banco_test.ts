@@ -2156,6 +2156,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "989a6c6151eb35efc7c834c6cce20f01",
           versao: "20261395000000",
         },
+        // 06/11/2026 (lote 40): a busca de devolucao ignora o acento do protocolo e do nome (a cadeia 199 -> 395 -> 3999100).
+        {
+          fn: "admin_devolucoes_listar",
+          h: "82d381944fb7b3337e7272a258b65260",
+          versao: "20261399910000",
+        },
         {
           fn: "autorizar_post_do_estorno",
           h: "c73e48294c08f34240abc3843aa7d1f1",
@@ -2266,6 +2272,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "get_admin_orders_paged",
           h: "f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6",
           versao: "20261387000000",
+        },
+        // 06/11/2026 (lote 40): a busca de Pedidos acha o telefone colado com o +55 (a cadeia 199 -> 387 -> 3999000).
+        {
+          fn: "get_admin_orders_paged",
+          h: "bf08545275eaa451a65e15feceb0ed8d",
+          versao: "20261399900000",
         },
         {
           fn: "painel_inicio",
@@ -3675,12 +3687,12 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
     });
   }
   await t.step(
-    "quem é o dono do corpo: 60..66 só para a que nenhuma migration posterior redefine (limpar_cotacoes_fora_da_janela); get_product_recommendations é da 20261399800000 (a faixa conta o estoque das variações ativas; antes, a 20261394100000, o teto de 50, e a 20261160, a coluna do código de barras); buscar_por_codigo_barras é da 20261393100000 (o balcão diz inativo para a variação desligada; antes, a 20261381, a guarda passa a exigir o admin atual, na hora); get_admin_orders_paged é da 20261387 (a busca de pedido pelo número não vira busca de telefone), get_admin_orders_cancelados_recentes é da 20261380 (o aviso de cancelados antigos conta só pendência real), registrar_venda_presencial é da 20261280 e upsert_store_config é da 20261244 (a loja escolhe como entrega na cidade; antes, a 20261239, a identidade legal da loja)",
+    "quem é o dono do corpo: 60..66 só para a que nenhuma migration posterior redefine (limpar_cotacoes_fora_da_janela); get_product_recommendations é da 20261399800000 (a faixa conta o estoque das variações ativas; antes, a 20261394100000, o teto de 50, e a 20261160, a coluna do código de barras); buscar_por_codigo_barras é da 20261393100000 (o balcão diz inativo para a variação desligada; antes, a 20261381, a guarda passa a exigir o admin atual, na hora); get_admin_orders_paged é da 20261399900000 (a busca de Pedidos acha o telefone colado com o +55; antes, a 20261387, a busca de pedido pelo número não vira busca de telefone), get_admin_orders_cancelados_recentes é da 20261380 (o aviso de cancelados antigos conta só pendência real), registrar_venda_presencial é da 20261280 e upsert_store_config é da 20261244 (a loja escolhe como entrega na cidade; antes, a 20261239, a identidade legal da loja)",
     () => {
       assertEquals(dono, {
         buscar_por_codigo_barras: "20261393100000",
         get_admin_orders_cancelados_recentes: "20261380000000",
-        get_admin_orders_paged: "20261387000000",
+        get_admin_orders_paged: "20261399900000",
         get_product_recommendations: "20261399800000",
         limpar_cotacoes_fora_da_janela: "20261166000000",
         registrar_venda_presencial: "20261280000000",

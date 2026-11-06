@@ -30,6 +30,10 @@ const BUSCA_DE_DEVOLUCAO = Object.freeze({ nome: NOME, hashDesta: HASH_DESTA });
 
 /** Desfaz a 20261395000000 na transacao aberta, se no ar; repetir e' no-op. Devolve true se desfez. */
 async function desfazerBuscaDeDevolucaoNaTransacao(cliente) {
+  // A 20261399910000 (a busca de devolucao ignora o acento) sucede o corpo desta migration: sai PRIMEIRO (ordem inversa da aplicacao; nao faz nada se nao esta no ar).
+  await require("./a-busca-de-devolucao-ignora-o-acento-posterior.cjs").desfazerBuscaDeDevolucaoSemAcentoNaTransacao(
+    cliente,
+  );
   const r = await cliente.query(hashVivo);
   if (r.rows[0]?.h !== HASH_DESTA) return false;
   await cliente.query(

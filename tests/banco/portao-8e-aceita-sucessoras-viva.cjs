@@ -173,7 +173,14 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // fazem com ela em tests/banco/o-resultado-credita-o-custo-da-devolucao-de-outro-mes-viva.cjs; `noEstado` a desfaz antes (fin-dre-sinal-posterior.cjs chama
     // o-resultado-credita-o-custo-da-devolucao-posterior.cjs primeiro), como faz com a 382.
     s.nome !==
-      "20261399600000_o_resultado_credita_o_custo_da_devolucao_de_outro_mes.sql",
+      "20261399600000_o_resultado_credita_o_custo_da_devolucao_de_outro_mes.sql" &&
+    // A 20261399900000 (a busca de Pedidos acha o telefone colado com o +55) e a SEGUNDA sucessora de get_admin_orders_paged (99 -> 387 -> 3999) e a 20261399910000
+    // (a busca de devolucao ignora o acento) a SEGUNDA de admin_devolucoes_listar (99 -> 395 -> 3999100): tem a PROVA PROPRIA do que as consultas 125a/125b e 126a/126b
+    // fazem com elas (a-busca-de-pedidos-acha-o-telefone-colado-com-o-55-viva.cjs e a-busca-de-devolucao-ignora-o-acento-viva.cjs); `noEstado` as desfaz antes
+    // (a-busca-de-pedidos-posterior.cjs e a-busca-de-devolucao-posterior.cjs, que chama a-busca-de-devolucao-ignora-o-acento-posterior.cjs primeiro), como a 392/3921.
+    s.nome !==
+      "20261399900000_a_busca_de_pedidos_acha_o_telefone_colado_com_o_55.sql" &&
+    s.nome !== "20261399910000_a_busca_de_devolucao_ignora_o_acento.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");
@@ -360,6 +367,11 @@ async function noEstado(montar, textos = [SQL_8E]) {
     await require("./o-desconto-do-cupom-posterior.cjs").desfazerODescontoDoCupomNaTransacao(
       C,
     );
+    // A 20261399900000 (a busca de Pedidos acha o telefone colado com o +55) sucede a 387 em get_admin_orders_paged: sai antes de qualquer montagem (so se no ar).
+    await require("./a-busca-de-pedidos-posterior.cjs").desfazerBuscaDePedidosNaTransacao(
+      C,
+    );
+    // A 20261399910000 (a busca de devolucao ignora o acento) sai primeiro, DENTRO do helper abaixo; depois a 20261395000000.
     // A 20261395000000 (a busca de devolucao acha o numero do pedido) sucede a 99 em admin_devolucoes_listar: sai antes de qualquer montagem.
     await require("./a-busca-de-devolucao-posterior.cjs").desfazerBuscaDeDevolucaoNaTransacao(
       C,
