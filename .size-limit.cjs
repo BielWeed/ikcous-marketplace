@@ -168,7 +168,9 @@ module.exports = [
     // Nada foi trocado por algo mais arriscado.
     // 06/11/2026 (mesma regra): 614 -> 615 kB na 1.5.139 (vitrine que nao perde produto, cupom, exportacao lenta,
     // PIX apos espera longa). Mede 614,21 kB no build local, 211 B acima do teto. Nada foi trocado por algo mais arriscado.
-    limit: "615 kB",
+    // 06/11/2026 (mesma regra): 615 -> 617 kB na 1.5.140 (busca com plural irregular, fotos da galeria, cupom digitado,
+    // pedido na ficha, textos). Mede 616,35 kB no build local, 1,35 kB acima do teto. Nada foi trocado por algo mais arriscado.
+    limit: "617 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
