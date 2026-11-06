@@ -925,15 +925,16 @@ describe("entrega preparada chega ao observador e é conferida", () => {
         path.join(saida, "_redirects"),
         "utf8",
       );
-      // 148 = 74 formas × 2 (inclui Card de frete grátis e seu alias admin/) (com e sem barra): admin-pdv (C3.3),
+      // 144 = 72 formas × 2 (inclui Card de frete grátis e seu alias admin/) (com e sem barra): admin-pdv (C3.3),
       // admin-about-store (20/09/2026), admin-shipping-national (23/09/2026,
       // estratégias do frete nacional) e admin-crm, admin-financeiro e
       // admin-devolucoes (26/09/2026) entraram em telasDeEntrada e cada uma
       // trouxe 4 linhas, como hospedagem-rotas.test.ts prende; terms,
       // privacy e returns-policy (14/10/2026, as três páginas de política da
-      // loja) trouxeram 2 linhas cada (sem alias admin/).
+      // loja) trouxeram 2 linhas cada (sem alias admin/); order-success e
+      // recently-viewed saíram em 06/11/2026 (abriam tela errada/em branco).
       const linhas = redirecionamentos.trimEnd().split("\n");
-      expect(linhas).toHaveLength(148);
+      expect(linhas).toHaveLength(144);
       for (const rota of [
         "/admin-free-shipping-card",
         "/admin/free-shipping-card",

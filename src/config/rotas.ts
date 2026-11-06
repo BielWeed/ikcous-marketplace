@@ -6,6 +6,10 @@ import type { View } from "@/types";
 // dois lados. Ordem preservada do App.tsx para o diff de revisão ser legível.
 // Fora daqui, de propósito: `product`, `admin-sros` e `referral` existem no
 // tipo View mas nunca foram entradas reconhecidas — documentado, não corrigido.
+// Também fora (06/11/2026): `order-success` e `recently-viewed`. Nenhuma tela do
+// app navega até elas: digitar o endereço mostrava "Pedido Realizado!" a quem
+// não comprou nada, ou uma tela em branco. Como endereço desconhecido, caem na
+// Home. A confirmação de compra é interna do checkout.
 export const TELAS_DE_ENTRADA = [
   "home",
   "cart",
@@ -18,10 +22,8 @@ export const TELAS_DE_ENTRADA = [
   "login",
   "favorites",
   "notifications",
-  "order-success",
   "orders",
   "order-details",
-  "recently-viewed",
   "account-settings",
   "admin-dashboard",
   "admin-products",
