@@ -936,7 +936,7 @@ function FluxoDaDevolucao({
                 <summary className="cursor-pointer font-bold text-zinc-700">
                   Ler a política de trocas da loja
                 </summary>
-                <p className="mt-2 whitespace-pre-line leading-relaxed">
+                <p className="mt-2 whitespace-pre-line break-words leading-relaxed">
                   {politica.texto_politica}
                 </p>
               </details>

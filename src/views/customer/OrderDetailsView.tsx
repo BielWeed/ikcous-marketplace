@@ -37,6 +37,11 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { podeReenviarComprovante } from "@/lib/pode-reenviar-comprovante";
 import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 import {
+  limparRetratoDoConvidado,
+  lerRetratoDoConvidado,
+  textoDoRetrato,
+} from "@/lib/retrato-do-convidado";
+import {
   ROTULOS_DAS_ETAPAS,
   ROTULO_RETIRADA_PRONTA,
 } from "@/lib/rotulos-das-etapas";
@@ -463,6 +468,12 @@ export function OrderDetailsView({
   const { config } = useStore();
   const { user, loading: authLoading } = useAuth();
   const [order, setOrder] = useState<Order | null>(null);
+  // O pedido na tela veio do RETRATO do rastreio sem conta (sessionStorage), e
+  // não do servidor: o status é o de quando a pessoa consultou e não atualiza
+  // sozinho. Guarda o horário da consulta (`null` = retrato antigo, sem hora).
+  const [retratoDoConvidado, setRetratoDoConvidado] = useState<{
+    consultadoEm: number | null;
+  } | null>(null);
   // Qual cor/tamanho cada linha do pedido e (o pedido so guarda o id).
   const rotulosDasVariacoes = useRotulosDasVariacoes(order?.items);
   const [loading, setLoading] = useState(true);
@@ -733,17 +744,15 @@ export function OrderDetailsView({
     // 3. Convidado que rastreou pedido por OTP não tem linha em
     //    marketplace_orders para o user_id dele; o pedido fica no
     //    sessionStorage.
+    //    `lerRetratoDoConvidado` aceita o formato novo (com o horário da
+    //    consulta) e o antigo (só a lista), e nunca lança.
+    let doRetrato: { consultadoEm: number | null } | null = null;
     if (!encontrado) {
-      try {
-        const guestCached = sessionStorage.getItem("guest_tracked_orders");
-        if (guestCached) {
-          const parsed = JSON.parse(guestCached);
-          if (Array.isArray(parsed)) {
-            encontrado = parsed.find((o) => o.id === orderId);
-          }
-        }
-      } catch (e) {
-        console.error("Error loading guest orders from sessionStorage:", e);
+      const retrato = lerRetratoDoConvidado();
+      const noRetrato = retrato?.pedidos.find((o) => o?.id === orderId);
+      if (retrato && noRetrato) {
+        encontrado = noRetrato;
+        doRetrato = { consultadoEm: retrato.consultadoEm };
       }
     }
 
@@ -754,6 +763,8 @@ export function OrderDetailsView({
     // apaga um pedido que a tela já tem: `novo ?? prev`. Pedido que de fato
     // não existe chega aqui sem pedido do MESMO id e continua "não encontrado".
     if (encontrado || !emMemoria) {
+      // Só o pedido que veio do retrato leva o aviso de "pode ter mudado".
+      setRetratoDoConvidado(doRetrato);
       const novo = encontrado ?? null;
       setOrder((prev) =>
         novo && prev
@@ -793,6 +804,9 @@ export function OrderDetailsView({
   const doPedidoNaLista = orders.find((o) => o.id === orderId);
   useEffect(() => {
     if (!doPedidoNaLista) return;
+    // A lista viva trouxe o pedido: o status daqui em diante é o do servidor,
+    // não o do retrato do rastreio.
+    setRetratoDoConvidado(null);
     if (cancelandoRef.current) {
       emitidoDuranteOCancelamentoRef.current = doPedidoNaLista;
       return;
@@ -832,7 +846,18 @@ export function OrderDetailsView({
 
     const checkIfReviewed = async () => {
       try {
-        const productIds = order.items.map((item) => item.productId);
+        // Item sem produto vinculado (`productId` vazio: o produto saiu do
+        // catálogo) não tem como ser avaliado e não entra na consulta. Sem
+        // nenhum item avaliável não há o que conferir: zera o conjunto e o
+        // aviso de falha em vez de consultar uma lista vazia.
+        const productIds = order.items
+          .map((item) => item.productId)
+          .filter(Boolean);
+        if (productIds.length === 0) {
+          setReviewedProductIds(new Set());
+          setConferenciaFalhou(false);
+          return;
+        }
         const { data, error } = await supabase
           .from("reviews" as any)
           .select("product_id")
@@ -1153,6 +1178,9 @@ export function OrderDetailsView({
   const produtosParaAvaliar: OrderItem[] = [];
   const productIdsJaListados = new Set<string>();
   for (const item of order.items) {
+    // Sem produto vinculado (`productId` vazio): não há o que avaliar —
+    // publicar falharia sempre. O item continua na lista "Itens do pedido".
+    if (!item.productId) continue;
     if (!productIdsJaListados.has(item.productId)) {
       productIdsJaListados.add(item.productId);
       produtosParaAvaliar.push(item);
@@ -1273,6 +1301,31 @@ export function OrderDetailsView({
       </div>
 
       <div className="mx-auto max-w-2xl space-y-4 px-6 py-4">
+        {/* Pedido achado pelo rastreio sem conta: o status é o RETRATO de quando
+            a pessoa consultou e não atualiza sozinho. Diz de que hora é e leva
+            de volta ao rastreio por código, que apaga o retrato. */}
+        {retratoDoConvidado && (
+          <div
+            data-testid="aviso-retrato-do-convidado"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-200/60 bg-amber-50 px-4 py-3"
+          >
+            <p className="min-w-0 flex-1 text-[13px] font-medium text-amber-900">
+              {textoDoRetrato(retratoDoConvidado.consultadoEm)}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                haptic.light();
+                limparRetratoDoConvidado();
+                onBack();
+              }}
+              className="min-h-11 rounded-xl bg-zinc-900 px-4 text-sm font-bold text-white transition-all active:scale-95"
+            >
+              Consultar de novo
+            </button>
+          </div>
+        )}
+
         {/* Cartão de status (hero) */}
         <motion.div
           data-testid="cartao-status"

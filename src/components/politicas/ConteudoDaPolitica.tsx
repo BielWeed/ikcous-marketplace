@@ -68,7 +68,7 @@ export function ConteudoDaPolitica({
             {secao.paragrafos.map((p) => (
               <p
                 key={p}
-                className="mb-2 text-sm leading-relaxed text-muted-foreground last:mb-0"
+                className="mb-2 break-words text-sm leading-relaxed text-muted-foreground last:mb-0"
               >
                 {p}
               </p>
@@ -130,7 +130,7 @@ function ContatoDaLoja() {
       {endereco && (
         <p className="mt-1 flex items-start gap-2 text-sm text-muted-foreground">
           <MapPin className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          {endereco}
+          <span className="min-w-0 break-words">{endereco}</span>
         </p>
       )}
       {!temWhatsapp && !endereco && !email && (

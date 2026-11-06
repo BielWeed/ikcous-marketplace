@@ -1104,9 +1104,18 @@ export function useProducts({ autoFetch = true } = {}) {
             mapProductFromDB(item),
           );
           setLocalProducts(mappedProducts);
-          // Leitura filtrada por estoque ou situação (Notificações) não vira a
-          // cópia que a tela Produtos desenha enquanto carrega e usa sem rede.
-          if (!autoFetch && isAdmin && !filters?.stock && !filters?.status) {
+          // Leitura filtrada (estoque, situação, busca ou categoria) não vira a
+          // cópia que a tela Produtos desenha enquanto carrega e usa sem rede:
+          // a cópia é a lista SEM filtro, e o caminho sem rede acima só a
+          // devolve a quem pediu a lista sem filtro.
+          if (
+            !autoFetch &&
+            isAdmin &&
+            !filters?.stock &&
+            !filters?.status &&
+            !filters?.search &&
+            (!filters?.category || filters.category === "all")
+          ) {
             cachedAdminProducts = mappedProducts;
             cachedAdminProductsTotal = count || 0;
           }
@@ -1126,7 +1135,17 @@ export function useProducts({ autoFetch = true } = {}) {
         }
         console.error("Error loading products:", err);
         if (typeof navigator !== "undefined" && !navigator.onLine) {
-          if (cachedAdminProducts) {
+          // A cópia guardada é a lista SEM filtro: só responde a quem pediu a
+          // lista sem filtro. Com estoque, situação, busca ou categoria ela
+          // mostraria produtos que o filtro não deixaria passar; `null` faz a
+          // tela dizer que não deu para buscar.
+          const filtrou = (v: unknown) => !!v && v !== "all";
+          const pediuFiltro =
+            filtrou(filters?.stock) ||
+            filtrou(filters?.status) ||
+            !!filters?.search ||
+            filtrou(filters?.category);
+          if (cachedAdminProducts && !pediuFiltro) {
             setLocalProducts(cachedAdminProducts);
             return {
               products: cachedAdminProducts,

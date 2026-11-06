@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mock = vi.hoisted(() => ({
   chamadas: [] as any[],
+  semRede: false,
 }));
 
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ isAdmin: true }) }));
@@ -52,6 +53,15 @@ vi.mock("@/lib/supabase", () => ({
         throw new Error(`RPC não mockada neste teste: ${nome}`);
       }
       mock.chamadas.push(args);
+      // Sem rede: a leitura falha (status 400 não é refeito pelo retry).
+      if (mock.semRede) {
+        return {
+          abortSignal: async () => ({
+            data: null,
+            error: { message: "Failed to fetch", status: 400 },
+          }),
+        };
+      }
       // Servidor de mentira: filtro de estoque/situacao devolve OUTRA lista.
       const filtrada = args.p_stock !== "all" || args.p_status !== "all";
       const data = filtrada ? [linha("baixo-1")] : [linha("a"), linha("b")];
@@ -87,6 +97,7 @@ describe("useProducts.loadProducts: leitura filtrada nao sobrescreve a copia da 
   beforeEach(() => {
     vi.clearAllMocks();
     mock.chamadas = [];
+    mock.semRede = false;
     hospedeiros = [];
     raizes = [];
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -159,4 +170,49 @@ describe("useProducts.loadProducts: leitura filtrada nao sobrescreve a copia da 
       expect(await listaInicial()).toEqual(["a", "b"]);
     },
   );
+
+  // Sem internet a leitura falha. A cópia guardada é a lista SEM filtro: só
+  // serve de resposta a quem pediu a lista SEM filtro. Para "só estoque baixo",
+  // busca ou categoria ela mostraria produtos que o filtro não deixaria passar
+  // (a tela diria "só estoque baixo" sobre o catálogo todo): devolve null e a
+  // tela mostra a falha que já existe.
+  describe("sem rede", () => {
+    async function lerSemRede(filtros: Record<string, unknown>) {
+      await ler({}); // grava a cópia (a, b) com a rede de pé
+      mock.semRede = true;
+      const lida = await montar();
+      let resultado: Awaited<ReturnType<Api["loadProducts"]>> | undefined;
+      await act(async () => {
+        resultado = await lida().loadProducts(0, 12, {
+          silent: true,
+          ...filtros,
+        });
+      });
+      return resultado;
+    }
+
+    it("sem filtro nenhum continua devolvendo a cópia guardada", async () => {
+      const resultado = await lerSemRede({});
+      expect(resultado?.products.map((p) => p.id)).toEqual(["a", "b"]);
+    });
+
+    it("só estoque baixo NÃO devolve a cópia da lista inteira", async () => {
+      expect(await lerSemRede({ stock: "low", status: "active" })).toBeNull();
+    });
+
+    it.each([
+      { stock: "low" },
+      { status: "active" },
+      { status: "inactive" },
+      { search: "anel" },
+      { category: "Anéis" },
+    ])("filtro %j NÃO devolve a cópia da lista inteira", async (filtros) => {
+      expect(await lerSemRede(filtros)).toBeNull();
+    });
+
+    it("category 'all' conta como sem filtro de categoria", async () => {
+      const resultado = await lerSemRede({ category: "all" });
+      expect(resultado?.products.map((p) => p.id)).toEqual(["a", "b"]);
+    });
+  });
 });

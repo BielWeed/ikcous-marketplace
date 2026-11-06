@@ -1,6 +1,7 @@
 import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { useOrders } from "@/hooks/useOrders";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { gravarRetratoDoConvidado } from "@/lib/retrato-do-convidado";
 import { mascaraWhatsappBr } from "@/lib/telefone-br";
 import { cn } from "@/lib/utils";
 import type { Order, View } from "@/types";
@@ -51,6 +52,12 @@ interface OrderSearchProps {
    * sem conta. Opcional: sem ele (ou curto demais) o aviso vira só instrução.
    */
   whatsappDaLoja?: string | null;
+  /**
+   * Já nasce na aba "Rastrear sem Conta". Usado por "Consultar de novo" (a
+   * CartView remonta a busca com este sinal): quem pediu para consultar outra
+   * vez não quer cair de novo no convite de "Entrar".
+   */
+  abrirNoRastreio?: boolean;
 }
 
 export function OrderSearch({
@@ -59,9 +66,12 @@ export function OrderSearch({
   description = "Faça login para ver seu histórico completo automaticamente e gerenciar seus pedidos.",
   onOrdersFound,
   whatsappDaLoja,
+  abrirNoRastreio = false,
 }: OrderSearchProps) {
   const { generateOrderOtp, fetchOrdersByOtp } = useOrders(true, false);
-  const [tab, setTab] = useState<"login" | "guest">("login");
+  const [tab, setTab] = useState<"login" | "guest">(
+    abrirNoRastreio ? "guest" : "login",
+  );
 
   // Guest fields
   const [email, setEmail] = useState("");
@@ -171,11 +181,10 @@ export function OrderSearch({
             : `${foundOrders.length} pedidos encontrados!`,
         );
         // O cache é opcional: o código já foi validado no servidor.
+        // Grava com o horário da consulta: é ele que deixa a tela dizer de
+        // quando é o status (o retrato nunca atualiza sozinho).
         try {
-          sessionStorage.setItem(
-            "guest_tracked_orders",
-            JSON.stringify(foundOrders),
-          );
+          gravarRetratoDoConvidado(foundOrders);
         } catch {
           console.warn("Não foi possível guardar os pedidos nesta sessão.");
         }
