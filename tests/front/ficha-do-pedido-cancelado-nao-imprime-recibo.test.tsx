@@ -82,7 +82,7 @@ describe("ficha do pedido — cancelado não imprime recibo", () => {
     hospedeiro.querySelector(
       'button[title="Imprimir Pedido"]',
     ) as HTMLButtonElement | null;
-  const papel = () => hospedeiro.querySelector("[data-tema-fixo]");
+  const papel = () => document.querySelector("[data-tema-fixo]");
 
   it("cancelado: botão desligado, motivo escrito e nenhum recibo de papel montado", async () => {
     const print = vi.fn();

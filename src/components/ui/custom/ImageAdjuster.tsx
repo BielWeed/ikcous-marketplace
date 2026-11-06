@@ -1,3 +1,4 @@
+import { useCamadaDeTelaCheia } from "@/hooks/useCamadaDeTelaCheia";
 import { classeDoScrimDoBanner } from "@/lib/banner-scrim";
 import {
   getBaseScale as calcularEscalaBase,
@@ -1053,11 +1054,26 @@ export function ImageAdjuster({
     }
   }, [isOpen]);
 
+  // Diálogo de verdade: foco entra e volta, Esc fecha (menos durante o envio,
+  // como o botão Voltar desabilitado) e o Tab não anda pela tela de baixo.
+  const camadaRef = useCamadaDeTelaCheia<HTMLDivElement>(
+    onClose,
+    !isSubmitting,
+    isOpen,
+  );
+
   if (!isOpen) return null;
   if (typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[130] flex h-screen w-screen flex-col bg-zinc-950">
+    <div
+      ref={camadaRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Ajustar imagem"
+      tabIndex={-1}
+      className="fixed inset-0 z-[130] flex h-screen w-screen flex-col bg-zinc-950 outline-none"
+    >
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}

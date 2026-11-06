@@ -17,6 +17,13 @@ const { consulta, invoke } = vi.hoisted(() => ({
   invoke: vi.fn(),
 }));
 
+// O recibo impresso é desenhado por portal no body; o renderizador de servidor
+// (renderToStaticMarkup) não aceita portal, então aqui ele sai no próprio lugar.
+vi.mock("react-dom", async (importarOriginal) => ({
+  ...(await importarOriginal<typeof import("react-dom")>()),
+  createPortal: (filhos: unknown) => filhos,
+}));
+
 // Só as fronteiras de rede: estados e cliques da etiqueta são os reais.
 vi.mock("@/lib/supabase", () => ({
   supabase: {

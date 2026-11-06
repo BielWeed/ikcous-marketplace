@@ -34,7 +34,11 @@ import type { View } from "@/types";
  *      alcançada por mais de um caminho; voltar sempre para um pai fixo
  *      largava quem veio por outro no lugar errado (achado do Gabriel com
  *      print, 30/08).
- *   5. a tabela fixa (com os casos "admin-push", "admin-notifications" e
+ *   5. `origem === "admin-notifications"` com view "admin-qa", "admin-reviews",
+ *      "admin-devolucoes" ou "admin-product-form" (portas criadas pelos avisos
+ *      do sino) — devolve "admin-notifications". Regra estreita: só esta
+ *      origem; as demais seguem a tabela fixa.
+ *   6. a tabela fixa (com os casos "admin-push", "admin-notifications" e
  *      "admin-whatsapp-config" movidos para as regras acima). "admin-banners"
  *      e "admin-carousels" continuam caindo em "admin-settings": hoje só são
  *      alcançadas por Ajustes.
@@ -99,6 +103,19 @@ export function paiDaTelaDoAdmin(
     origem.startsWith("admin-")
   ) {
     return origem;
+  }
+
+  // Quem veio pelo sino (Notificações) e abriu uma destas telas volta às
+  // Notificações, não a Clientes/Pedidos/Produtos. Regra estreita: só esta
+  // origem; as demais seguem o pai fixo da tabela.
+  if (
+    origem === "admin-notifications" &&
+    (view === "admin-qa" ||
+      view === "admin-reviews" ||
+      view === "admin-devolucoes" ||
+      view === "admin-product-form")
+  ) {
+    return "admin-notifications";
   }
 
   switch (view) {

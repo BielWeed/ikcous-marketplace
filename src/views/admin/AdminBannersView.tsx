@@ -71,6 +71,7 @@ import { recusaDeFoto } from "@/lib/recusa-de-foto";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Banner, View } from "@/types";
 import { camposQueMudaram } from "@/utils/campos-mexidos-do-produto";
+import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import { AnimatePresence } from "framer-motion";
 import {
   ArrowDown,
@@ -377,6 +378,13 @@ interface ControleAtivo {
   id: string;
   type: "up" | "down" | "toggle" | "delete";
 }
+
+// Mesmo prazo do envio de fotos da tela de produtos: sem ele, em rede ruim o
+// "Enviando..." girava para sempre e o campo de imagem ficava preso.
+const PRAZO_DO_ENVIO_MS = 90_000;
+const MENSAGEM_ENVIO_DEMOROU = "Demorou demais, tente de novo";
+const MENSAGEM_FOTO_ILEGIVEL =
+  "Não conseguimos abrir a foto. Salve como JPG ou PNG e tente de novo.";
 
 // Produto pausado: a página do produto não abre e a cliente cai na Home com
 // "Este produto não está mais disponível". O painel avisa para o lojista
@@ -1032,6 +1040,12 @@ export const AdminBannersView = memo(function AdminBannersView({
     setIsAdjusterOpen(true);
   };
 
+  // O envio que ninguém cancela chegou DEPOIS de a tela dá-lo por falha: o
+  // arquivo que ele gravou no armazenamento não pode ficar órfão.
+  const apagarEnvioTardio = (url: string) => {
+    deleteStorageFile(url).catch(() => {});
+  };
+
   const adotarImagemEnviada = (url: string) => {
     // Recorte e upload podem responder antes do próximo render. Compartilham
     // a imagem substituível, sem depender do formData capturado por cada envio.
@@ -1071,7 +1085,12 @@ export const AdminBannersView = memo(function AdminBannersView({
     const loadingToast = toast.loading("Enviando imagem recortada...");
     const fim = marcarOperacaoSensivel("upload-de-banner");
     try {
-      const url = await uploadBannerImage(file);
+      const url = await comPrazo(
+        uploadBannerImage(file),
+        PRAZO_DO_ENVIO_MS,
+        undefined,
+        apagarEnvioTardio,
+      );
       // O recorte pertence à abertura que o iniciou, assim como o upload normal.
       if (geracaoDoRecorte !== geracaoDoEditor.current) {
         deleteStorageFile(url).catch(() => {});
@@ -1087,7 +1106,12 @@ export const AdminBannersView = memo(function AdminBannersView({
         return;
       }
       console.error("Error uploading adjusted banner image:", error);
-      toast.error("Erro ao salvar imagem ajustada", { id: loadingToast });
+      toast.error(
+        error instanceof PrazoEsgotado
+          ? MENSAGEM_ENVIO_DEMOROU
+          : "Erro ao salvar imagem ajustada",
+        { id: loadingToast },
+      );
     } finally {
       fim();
       if (geracaoDoRecorte === geracaoDoEditor.current) {
@@ -1834,6 +1858,12 @@ export const AdminBannersView = memo(function AdminBannersView({
   };
 
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    // Lê o arquivo e esvazia o campo ANTES de qualquer retorno antecipado: se
+    // o campo guarda a escolha, escolher a MESMA foto de novo (depois de a
+    // internet voltar, por exemplo) não dispara `change` e nada acontece.
+    const input = e.target;
+    const file = input.files?.[0];
+    input.value = "";
     if (
       isSubmittingRef.current ||
       geracaoDoUploadPendente.current === geracaoDoEditor.current
@@ -1847,11 +1877,8 @@ export const AdminBannersView = memo(function AdminBannersView({
       });
       return;
     }
-    const input = e.target;
-    const file = input.files?.[0];
     if (!file) return;
     await enviarArquivo(file);
-    input.value = "";
   };
 
   const enviarArquivo = async (file: File) => {
@@ -1873,7 +1900,12 @@ export const AdminBannersView = memo(function AdminBannersView({
     const loadingToast = toast.loading("Enviando imagem do banner...");
     const fim = marcarOperacaoSensivel("upload-de-banner");
     try {
-      const url = await uploadBannerImage(file);
+      const url = await comPrazo(
+        uploadBannerImage(file),
+        PRAZO_DO_ENVIO_MS,
+        undefined,
+        apagarEnvioTardio,
+      );
       // O upload pertence à abertura que o iniciou.
       if (geracaoDoUpload !== geracaoDoEditor.current) {
         deleteStorageFile(url).catch(() => {});
@@ -1882,12 +1914,19 @@ export const AdminBannersView = memo(function AdminBannersView({
       }
       adotarImagemEnviada(url);
       toast.success("Imagem enviada com sucesso", { id: loadingToast });
-    } catch {
+    } catch (error) {
       if (geracaoDoUpload !== geracaoDoEditor.current) {
         toast.dismiss(loadingToast);
         return;
       }
-      toast.error("Erro ao enviar imagem", { id: loadingToast });
+      toast.error(
+        error instanceof PrazoEsgotado
+          ? MENSAGEM_ENVIO_DEMOROU
+          : error instanceof Error && error.name === "FotoIlegivel"
+            ? MENSAGEM_FOTO_ILEGIVEL
+            : "Erro ao enviar imagem",
+        { id: loadingToast },
+      );
     } finally {
       fim();
       if (geracaoDoUpload === geracaoDoEditor.current) {

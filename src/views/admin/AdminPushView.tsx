@@ -19,6 +19,7 @@ import { buildIdentity } from "@/config/buildIdentity";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
+import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useVOR } from "@/hooks/useVOR";
@@ -457,6 +458,7 @@ export const AdminPushView = memo(function AdminPushView({
     setCustomPath("");
   };
 
+  const { confirmar, dialogo } = useConfirmarAcao();
   const { isSupported, subscribe, subscription } = usePushNotifications();
   const { recordAction } = useVOR();
   const [segment, setSegment] = useState("all");
@@ -836,6 +838,22 @@ export const AdminPushView = memo(function AdminPushView({
         description: `Troque ${MARCADOR_DO_CUPOM} pelo código do cupom que você criou em Cupons.`,
       });
       return;
+    }
+
+    // Para TODOS os clientes: depois de enviar não dá para desfazer, e o
+    // público "Todos" já vem marcado — então pergunta antes, com o número de
+    // aparelhos. Fica DEPOIS das travas acima (o lojista é avisado do que falta
+    // antes de ser perguntado) e ANTES de `setLoading`/de qualquer leitura do
+    // banco: "Voltar" não deixa rastro. Segmento e cliente específico não
+    // perguntam: o alcance é menor e foi escolhido de propósito.
+    if (segment === "all") {
+      const confirmado = await confirmar({
+        titulo: "Enviar para todos os clientes?",
+        valor: textoDeAlcanceEmAparelhos(subCount),
+        texto: `O aviso "${notification.title.trim()}" vai agora para todos os clientes que ativaram os avisos.\n\nDepois de enviar, não dá para desfazer.`,
+        verbo: "Enviar agora",
+      });
+      if (!confirmado) return;
     }
 
     // O objeto deste render é o instantâneo usado por todo o envio.
@@ -2120,6 +2138,7 @@ export const AdminPushView = memo(function AdminPushView({
           </div>
         </div>
       </AdminHelpModal>
+      {dialogo}
     </div>
   );
 });

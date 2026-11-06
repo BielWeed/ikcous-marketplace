@@ -26,6 +26,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { confirmarEnvioSePerguntar } from "./confirma-envio-para-todos";
 
 const { estadoDoBanco } = vi.hoisted(() => ({
   estadoDoBanco: {
@@ -393,6 +394,7 @@ describe("AdminPushView — o envio não engole o aviso do app, e o histórico n
     await act(async () => {
       botao!.click();
     });
+    await confirmarEnvioSePerguntar();
     await act(async () => {
       await esperar(80);
     });

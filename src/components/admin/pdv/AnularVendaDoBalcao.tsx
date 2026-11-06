@@ -18,6 +18,7 @@ import {
   motivoTemTexto,
   orientacaoDeDevolucao,
 } from "@/lib/anulacao-do-balcao";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { formatCurrency } from "@/lib/utils";
 import { Ban, CheckCircle2 } from "lucide-react";
 import {
@@ -71,6 +72,16 @@ export function AnularVendaDoBalcao({
       botaoRef.current?.focus();
     }
   }, [aberto]);
+
+  // Motivo digitado (ou anulação em andamento) é trabalho que recarregar o app
+  // apagaria: a atualização espera. Com o aviso de "venda anulada" na tela, ou
+  // a pergunta sem motivo, não há mais nada a perder.
+  const protegido =
+    resultado === null && ((aberto && motivo.trim() !== "") || enviando);
+  useEffect(() => {
+    if (!protegido) return;
+    return marcarOperacaoSensivel("anulacao-da-venda-do-balcao");
+  }, [protegido]);
 
   if (resultado) {
     return (

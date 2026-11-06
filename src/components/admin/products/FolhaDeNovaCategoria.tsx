@@ -12,7 +12,13 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { ErroDeCategoria, categoriaParecida } from "@/lib/gestao-de-categorias";
+import {
+  ErroDeCategoria,
+  LIMITE_DO_NOME_DA_CATEGORIA,
+  avisoDeCategoriaEscondida,
+  categoriaParecida,
+  erroDoNomeDaCategoria,
+} from "@/lib/gestao-de-categorias";
 import type { Category } from "@/types";
 import { Loader2, X } from "lucide-react";
 import { useRef, useState } from "react";
@@ -50,6 +56,8 @@ export function FolhaDeNovaCategoria({
   readonly categoriasDaLoja: ReadonlyArray<{
     readonly name: string;
     readonly slug?: string | null;
+    /** `false` = escondida da loja (não aparece na escolha do produto). */
+    readonly isActive?: boolean;
   }>;
   readonly adicionar: (
     categoria: Omit<Category, "id" | "createdAt" | "slug">,
@@ -84,12 +92,24 @@ export function FolhaDeNovaCategoria({
 
   const criar = async () => {
     if (criandoRef.current || !nomeLimpo) return;
+    // A mesma régua do "renomear": só emoji ou símbolo (sem letra nem número)
+    // ou nome acima do limite são recusados antes de chamar o banco.
+    const invalido = erroDoNomeDaCategoria(nomeLimpo);
+    if (invalido) {
+      toast.error(invalido);
+      return;
+    }
     // O banco tem nome único e endereço único: "Vestuário" e "vestuario"
     // colidem. Avisa ANTES, com o nome da que já existe, em vez do erro
-    // genérico depois.
+    // genérico depois. A escondida não aparece na escolha do produto: o aviso
+    // diz isso e onde mostrá-la, em vez de só "já existe".
     const parecida = categoriaParecida(nomeLimpo, categoriasDaLoja);
     if (parecida) {
-      toast.error(`Já existe uma categoria parecida: ${parecida.name}`);
+      toast.error(
+        parecida.isActive === false
+          ? avisoDeCategoriaEscondida(parecida.name)
+          : `Já existe uma categoria parecida: ${parecida.name}`,
+      );
       return;
     }
     criandoRef.current = true;
@@ -205,6 +225,7 @@ export function FolhaDeNovaCategoria({
               value={nome}
               onFlush={setNome}
               readOnly={criando}
+              maxLength={LIMITE_DO_NOME_DA_CATEGORIA}
               autoComplete="off"
               enterKeyHint="done"
               className="min-h-11 w-full rounded-xl border border-solid border-admin-border bg-admin-surface px-4 py-3 text-base font-semibold text-foreground placeholder:font-normal placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

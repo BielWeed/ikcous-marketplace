@@ -17,6 +17,7 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { confirmarEnvioSePerguntar } from "./confirma-envio-para-todos";
 
 const PRODUTOS = [
   { id: "p-corrida", nome: "Tênis Corrida" },
@@ -285,6 +286,7 @@ describe("Avisar clientes — produtos que falham e contagens depois do envio", 
     await act(async () => {
       botaoDeEnviar().click();
     });
+    await confirmarEnvioSePerguntar();
     await act(async () => {
       await esperar(80);
     });

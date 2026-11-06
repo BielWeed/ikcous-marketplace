@@ -162,6 +162,55 @@ export const Header = memo(function Header({
     }
   };
 
+  // Ícone + texto + brilho da cápsula; é o mesmo conteúdo com ou sem ação.
+  const conteudoDoAviso = activeToast ? (
+    <>
+      <motion.div
+        initial={{ scale: 0.4, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: "spring", stiffness: 450, damping: 25 }}
+      >
+        {renderToastIcon(activeToast.type)}
+      </motion.div>
+
+      <motion.span
+        initial={{ opacity: 0, x: 8 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        // O cartão longo NÃO herda o `xs:max-w-[155px]` da pílula (ele
+        // vencia o `max-[640px]:max-w-none` entre 480 e 640 px): são
+        // dois conjuntos de classes, sem sobreposição de faixa.
+        className={cn(
+          "whitespace-normal break-words text-left font-bold leading-tight tracking-tight text-white/95",
+          avisoLongo
+            ? "line-clamp-none max-w-none flex-1 text-xs min-[641px]:line-clamp-2 min-[641px]:max-w-[220px] min-[641px]:flex-none"
+            : "line-clamp-2 max-w-[100px] text-[11px] xs:max-w-[155px] xs:text-xs sm:max-w-[220px]",
+        )}
+      >
+        {activeToast.message}
+        {activeToast.description && (
+          <span className="mt-0.5 block text-xs font-medium text-white/80 min-[641px]:hidden">
+            {activeToast.description}
+          </span>
+        )}
+      </motion.span>
+
+      <motion.span
+        initial={{ opacity: 0, scale: 0.5, rotate: -15 }}
+        animate={{ opacity: 1, scale: 1, rotate: 0 }}
+        transition={{
+          delay: 0.08,
+          type: "spring",
+          stiffness: 400,
+          damping: 20,
+        }}
+        className="shrink-0 select-none text-[10px] text-secondary/90"
+      >
+        ✨
+      </motion.span>
+    </>
+  ) : null;
+
   // -- CUSTOMER HEADER --
   return (
     <header
@@ -357,7 +406,66 @@ export const Header = memo(function Header({
               competir com a atualização nem deixar duas cápsulas juntas. */}
           {!atualizacaoAtiva && (
             <AnimatePresence mode="wait">
-              {activeToast ? (
+              {activeToast?.acao ? (
+                // Aviso com ação (ex.: "Desfazer"): botão dentro de botão é
+                // HTML inválido, então a cápsula vira um contêiner com DOIS
+                // botões — o texto, que dispensa, e a ação. A ação só aparece
+                // no celular: acima de 640 px o Sonner mostra o aviso com o
+                // botão dele.
+                <motion.div
+                  layout
+                  key={activeToast.id || "header-dynamic-island-toast"}
+                  initial={{ opacity: 0, scale: 0.8, width: 36 }}
+                  animate={{ opacity: 1, scale: 1, width: "auto" }}
+                  exit={{ opacity: 0, scale: 0.8, width: 36 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 350,
+                    damping: 30,
+                    mass: 0.8,
+                  }}
+                  className={cn(
+                    "flex shrink-0 items-center gap-1 overflow-hidden rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-0.5 pl-2 pr-1 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md min-[641px]:py-1.5 min-[641px]:pr-3.5",
+                    avisoLongo &&
+                      "max-[640px]:absolute max-[640px]:inset-x-3 max-[640px]:top-[calc(100%+0.25rem)] max-[640px]:rounded-2xl",
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      haptic.light();
+                      dispensarToast();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        dispensarToast();
+                      }
+                    }}
+                    className={cn(
+                      "flex min-w-0 cursor-pointer items-center gap-2 text-left",
+                      avisoLongo &&
+                        "max-[640px]:min-h-11 max-[640px]:flex-1 max-[640px]:items-start max-[640px]:py-2.5",
+                    )}
+                  >
+                    {conteudoDoAviso}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      haptic.light();
+                      // Dispensa ANTES: a ação pode avisar na hora por que não deu
+                      // ("o carrinho mudou", "esgotado"), e esse aviso novo não
+                      // pode ser apagado por este toque.
+                      const acao = activeToast.acao;
+                      dispensarToast();
+                      acao?.onClick();
+                    }}
+                    className="min-h-11 min-w-11 shrink-0 cursor-pointer rounded-full px-3 text-xs font-bold text-secondary hover:bg-white/10 active:scale-95 min-[641px]:hidden"
+                  >
+                    {activeToast.acao.label}
+                  </button>
+                </motion.div>
+              ) : activeToast ? (
                 <motion.button
                   type="button"
                   layout
@@ -390,49 +498,7 @@ export const Header = memo(function Header({
                       "max-[640px]:absolute max-[640px]:inset-x-3 max-[640px]:top-[calc(100%+0.25rem)] max-[640px]:items-start max-[640px]:rounded-2xl max-[640px]:py-2.5",
                   )}
                 >
-                  <motion.div
-                    initial={{ scale: 0.4, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ type: "spring", stiffness: 450, damping: 25 }}
-                  >
-                    {renderToastIcon(activeToast.type)}
-                  </motion.div>
-
-                  <motion.span
-                    initial={{ opacity: 0, x: 8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.2, ease: "easeOut" }}
-                    // O cartão longo NÃO herda o `xs:max-w-[155px]` da pílula (ele
-                    // vencia o `max-[640px]:max-w-none` entre 480 e 640 px): são
-                    // dois conjuntos de classes, sem sobreposição de faixa.
-                    className={cn(
-                      "whitespace-normal break-words text-left font-bold leading-tight tracking-tight text-white/95",
-                      avisoLongo
-                        ? "line-clamp-none max-w-none flex-1 text-xs min-[641px]:line-clamp-2 min-[641px]:max-w-[220px] min-[641px]:flex-none"
-                        : "line-clamp-2 max-w-[100px] text-[11px] xs:max-w-[155px] xs:text-xs sm:max-w-[220px]",
-                    )}
-                  >
-                    {activeToast.message}
-                    {activeToast.description && (
-                      <span className="mt-0.5 block text-xs font-medium text-white/80 min-[641px]:hidden">
-                        {activeToast.description}
-                      </span>
-                    )}
-                  </motion.span>
-
-                  <motion.span
-                    initial={{ opacity: 0, scale: 0.5, rotate: -15 }}
-                    animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                    transition={{
-                      delay: 0.08,
-                      type: "spring",
-                      stiffness: 400,
-                      damping: 20,
-                    }}
-                    className="shrink-0 select-none text-[10px] text-secondary/90"
-                  >
-                    ✨
-                  </motion.span>
+                  {conteudoDoAviso}
                 </motion.button>
               ) : (
                 <motion.div

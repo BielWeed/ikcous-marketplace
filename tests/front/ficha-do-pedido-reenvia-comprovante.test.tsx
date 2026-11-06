@@ -27,10 +27,12 @@ import { OrderDetailsView } from "@/views/customer/OrderDetailsView";
 const toastSuccess = vi.fn();
 const toastError = vi.fn();
 const toastNeutro = vi.fn();
+const toastInfo = vi.fn();
 vi.mock("sonner", () => ({
   toast: Object.assign((...args: unknown[]) => toastNeutro(...args), {
     success: (...args: unknown[]) => toastSuccess(...args),
     error: (...args: unknown[]) => toastError(...args),
+    info: (...args: unknown[]) => toastInfo(...args),
   }),
 }));
 
@@ -120,6 +122,7 @@ beforeEach(() => {
   toastSuccess.mockClear();
   toastError.mockClear();
   toastNeutro.mockClear();
+  toastInfo.mockClear();
   reenviarComprovante.mockReset();
   fetchUserOrders.mockResolvedValue([pedido]);
 });
@@ -158,7 +161,10 @@ describe("botão reenviar comprovante na ficha do pedido", () => {
     });
 
     expect(toastSuccess).not.toHaveBeenCalled();
-    expect(toastNeutro).toHaveBeenCalledWith(
+    // toast.info (e não toast()): só success/error/warning/info vão para a
+    // cápsula do celular; o neutro sumia (o Sonner fica escondido ali).
+    expect(toastNeutro).not.toHaveBeenCalled();
+    expect(toastInfo).toHaveBeenCalledWith(
       expect.stringContaining("já foi enviado"),
     );
   });

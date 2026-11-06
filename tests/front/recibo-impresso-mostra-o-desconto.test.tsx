@@ -82,7 +82,7 @@ describe("OrderReceipt — o recibo impresso mostra o desconto", () => {
       raiz.render(<OrderReceipt order={pedido} />);
     });
 
-    const texto = hospedeiro.textContent ?? "";
+    const texto = document.body.textContent ?? "";
     expect(texto).toContain("Desconto");
     expect(texto).toContain("10,00");
     expect(texto).toContain("105,00");
@@ -100,7 +100,7 @@ describe("OrderReceipt — o recibo impresso mostra o desconto", () => {
       raiz.render(<OrderReceipt order={pedido} />);
     });
 
-    const texto = hospedeiro.textContent ?? "";
+    const texto = document.body.textContent ?? "";
     expect(texto).not.toContain("Desconto");
   });
 
@@ -120,7 +120,7 @@ describe("OrderReceipt — o recibo impresso mostra o desconto", () => {
       raiz.render(<OrderReceipt order={pedido} />);
     });
 
-    const texto = hospedeiro.textContent ?? "";
+    const texto = document.body.textContent ?? "";
     expect(texto).toContain("R$ 100,00");
     expect(texto).toContain("R$ 15,00");
     expect(texto).toContain("R$ 105,00");

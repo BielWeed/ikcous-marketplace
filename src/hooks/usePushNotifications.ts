@@ -1,6 +1,12 @@
 import { chavePublicaVapid } from "@/config/configuracaoDaLoja";
 import { useAuth } from "@/hooks/useAuth";
 import { estaComoAppInstalado } from "@/lib/avisos-do-aparelho";
+import {
+  avisosEstavamLigados,
+  esquecerAvisosLigados,
+  marcarAvisosLigados,
+  reservarTentativaDeReligar,
+} from "@/lib/avisos-ligados-do-aparelho";
 import { dequemEAInscricao } from "@/lib/inscricao-de-push-da-conta";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { supabase } from "@/lib/supabase";
@@ -398,8 +404,21 @@ export function usePushNotifications() {
     }
 
     let cancelado = false;
+    const geracaoDaVerificacao = geracaoDaInscricao.current;
     const verificar = async () => {
       const dono = await dequemEAInscricao(subscription.endpoint, userId);
+      // Inscrição CONFIRMADA como desta conta = ela tem os avisos ligados neste
+      // aparelho. É o que permite religar sozinho depois de uma limpeza do app
+      // (ver `avisos-ligados-do-aparelho.ts`) também para quem ligou antes
+      // deste marcador existir. Só se a pessoa não desligou no meio da consulta
+      // (desligar muda a geração) — senão o marcador voltaria depois de apagado.
+      if (
+        !cancelado &&
+        dono === "esta-conta" &&
+        geracaoDaInscricao.current === geracaoDaVerificacao
+      ) {
+        marcarAvisosLigados(userId);
+      }
       if (cancelado || dono !== "outra-conta") return;
       geracaoDaInscricao.current += 1;
       try {
@@ -418,269 +437,308 @@ export function usePushNotifications() {
     };
   }, [userId, subscription]);
 
-  const subscribe = useCallback(async () => {
-    if (!isSupported) return;
-    const geracaoDaAtivacao = geracaoDaInscricao.current;
+  // `silencioso` é o religar automático depois de uma limpeza do app: NUNCA
+  // pede permissão (só segue com a que já é "granted"), não mostra aviso nem
+  // lança — a pessoa não tocou em nada, então não há a quem reclamar. O resto
+  // do caminho é o mesmo do toque.
+  const inscrever = useCallback(
+    async (silencioso: boolean) => {
+      if (!isSupported) return;
+      // Lido AO VIVO, não do estado: a permissão pode ter mudado desde a sonda.
+      if (silencioso && Notification.permission !== "granted") return;
+      const geracaoDaAtivacao = geracaoDaInscricao.current;
 
-    try {
-      // `isSupported` é fotografia do INSTANTE da montagem; o toque pode
-      // chegar muito depois (banner à espera de permissão, aba aberta há
-      // dias) e o mundo muda: `src/main.tsx` desliga o serviceWorker em
-      // contexto headless, navegadores/extensões desativam SW em runtime.
-      // Sem esta revalidação, o `await navigator.serviceWorker.ready`
-      // mais abaixo lançaria TypeError cru — e o pedido de PERMISSÃO já
-      // teria sido consumido antes de descobrir que não há push nenhum.
-      // Mesma família "navegador": não é decisão da pessoa, nem do banco.
-      if (!suporteRealDePush()) {
-        throw new PushSubscribeError(
-          "navegador",
-          new Error(
-            "Suporte a Service Worker/Push ausente no ato da inscrição",
-          ),
-        );
-      }
-
-      // Escala etapa 3 (11/09/2026): a chave VAPID deixou de ser assada no
-      // build e passa a vir da ficha da loja (banco de cada loja).
-      const vapidPublicKey = chavePublicaVapid();
-
-      if (!vapidPublicKey) {
-        // Item 5 da revisão de 27/08/2026: isto devolvia `undefined` em
-        // silêncio (nem toast, nem erro) — mesmo defeito que
-        // `push-sem-conta-avisa-em-vez-de-calar.test.ts` já corrigiu para a
-        // origem "sem_conta". Com o banner agora reaparecendo sempre que há
-        // permissão concedida mas nenhuma inscrição salva, faltar a chave
-        // deixava o tarjão "Quero Receber!" para sempre na tela, clicável e
-        // inerte. Família "navegador": não é decisão da pessoa (permissão),
-        // nem falha do banco — é o app que não está configurado para
-        // inscrever ninguém neste build.
-        throw new PushSubscribeError(
-          "navegador",
-          new Error("VAPID Public Key não configurada nesta loja"),
-        );
-      }
-
-      // Precisa ser ANTES de pedir a permissão do navegador: se a pessoa
-      // não tem conta, pedir agora e lançar DEPOIS deixaria a permissão já
-      // concedida — o balão só aparece enquanto ela está pendente, então
-      // ele sumiria do banner sem ela nunca ter recebido nada.
-      if (!user) {
-        throw new PushSubscribeError(
-          "sem_conta",
-          new Error("Sem sessão de usuário para a inscrição"),
-        );
-      }
-
-      const result = await Notification.requestPermission();
-      if (geracaoDaInscricao.current !== geracaoDaAtivacao) return;
-      setPermission(result);
-
-      if (result === "denied") {
-        // Decisão CONFIRMADA — a pessoa escolheu Bloquear. Só se resolve
-        // nas configurações do navegador/aparelho.
-        throw new PushSubscribeError(
-          "permissao_negada",
-          new Error("Permissão de notificação negada"),
-        );
-      }
-
-      if (result !== "granted") {
-        // `result === "default"`: o balão do navegador foi fechado sem
-        // escolher Permitir nem Bloquear. A permissão está PENDENTE, não
-        // negada — mandar para configurações mostraria "Perguntar" e nada
-        // aparentemente errado. Tocar de novo reabre o balão.
-        throw new PushSubscribeError(
-          "permissao_pendente",
-          new Error("Permissão de notificação não respondida"),
-        );
-      }
-
-      // Com prazo: sem service worker ativo `ready` não assenta nunca, e a
-      // pessoa ficaria com o botão em "Ativando..." sem aviso nenhum. Família
-      // "navegador", como qualquer outra falha de infraestrutura do aparelho.
-      let registration: ServiceWorkerRegistration;
       try {
-        registration = await esperarServiceWorker(
-          Promise.resolve(navigator.serviceWorker.ready),
-        );
-      } catch (esperaFalhou) {
-        throw new PushSubscribeError("navegador", esperaFalhou);
-      }
-
-      // `pushManager.subscribe()` com a MESMA `applicationServerKey` não
-      // cria nada quando já existe uma inscrição viva — a spec (W3C Push
-      // API, algoritmo de `subscribe()`, passo 11.6) compara as `options`
-      // com as da inscrição existente e, se baterem, resolve a promessa com
-      // a inscrição EXISTENTE. Sem saber disso, o `unsubscribe()` de erro do
-      // banco (mais abaixo) destruiria uma inscrição que este fluxo nem
-      // criou — cenário real: a pessoa já está inscrita, toca de novo em
-      // "Testar Recebimento" ou no convite, e um blip passageiro no
-      // Supabase apaga a inscrição que já funcionava.
-      //
-      // Falha ao sondar = estado DESCONHECIDO, e desconhecido não autoriza
-      // destruir — falha fechada: assume que já existia (não desfaz). Try/
-      // catch PRÓPRIO: se isto lançasse dentro do try grande, o erro
-      // trocaria de família (viraria a mensagem genérica do catch externo)
-      // em vez da família real ("banco"/"navegador") do que vier a seguir.
-      let inscricaoJaExistiaAntesDestaChamada = true;
-      try {
-        const inscricaoExistente =
-          await registration.pushManager.getSubscription();
-        inscricaoJaExistiaAntesDestaChamada = inscricaoExistente !== null;
-      } catch {
-        inscricaoJaExistiaAntesDestaChamada = true;
-      }
-
-      // Convert VAPID key from base64 to Uint8Array
-      const padding = "=".repeat((4 - (vapidPublicKey.length % 4)) % 4);
-      const base64 = (vapidPublicKey + padding)
-        .replaceAll("-", "+")
-        .replaceAll("_", "/");
-      const rawData = globalThis.atob(base64);
-      const outputArray = new Uint8Array(rawData.length);
-      for (let i = 0; i < rawData.length; ++i) {
-        outputArray[i] = rawData.codePointAt(i) || 0;
-      }
-
-      let newSubscription: PushSubscription;
-      try {
-        newSubscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: outputArray,
-        });
-      } catch (subscribeError) {
-        // Causa heterogênea (MDN: NotAllowedError, AbortError,
-        // NotSupportedError… cada engine com o seu texto) — família
-        // "navegador", frase genérica e honesta, não uma prescrição que só
-        // serve para um subtipo. A EXCEÇÃO é a única que se reconhece com
-        // certeza: o site tem permissão e o aparelho a nega (ver
-        // `falhouPorPermissaoDoAparelho`). Nada é gravado nem desfeito aqui —
-        // o erro acontece antes do `upsert` e a permissão do site fica como
-        // está.
-        throw new PushSubscribeError(
-          falhouPorPermissaoDoAparelho(subscribeError)
-            ? "permissao_do_aparelho"
-            : "navegador",
-          subscribeError,
-        );
-      }
-
-      const desfazerInscricaoNova = async () => {
-        if (inscricaoJaExistiaAntesDestaChamada) return;
-        try {
-          await newSubscription.unsubscribe();
-        } catch (unsubscribeError) {
-          console.error(
-            "Falha ao desfazer inscrição antiga do navegador:",
-            unsubscribeError,
+        // `isSupported` é fotografia do INSTANTE da montagem; o toque pode
+        // chegar muito depois (banner à espera de permissão, aba aberta há
+        // dias) e o mundo muda: `src/main.tsx` desliga o serviceWorker em
+        // contexto headless, navegadores/extensões desativam SW em runtime.
+        // Sem esta revalidação, o `await navigator.serviceWorker.ready`
+        // mais abaixo lançaria TypeError cru — e o pedido de PERMISSÃO já
+        // teria sido consumido antes de descobrir que não há push nenhum.
+        // Mesma família "navegador": não é decisão da pessoa, nem do banco.
+        if (!suporteRealDePush()) {
+          throw new PushSubscribeError(
+            "navegador",
+            new Error(
+              "Suporte a Service Worker/Push ausente no ato da inscrição",
+            ),
           );
         }
-      };
 
-      // `user` já foi garantido acima, antes de pedir a permissão —
-      // capturado no fechamento desta chamada e imutável durante a
-      // execução (closure de `useCallback`), então segue não-nulo aqui.
-      const subJSON = newSubscription.toJSON();
+        // Escala etapa 3 (11/09/2026): a chave VAPID deixou de ser assada no
+        // build e passa a vir da ficha da loja (banco de cada loja).
+        const vapidPublicKey = chavePublicaVapid();
 
-      // A conta pode ter mudado enquanto o navegador criava a inscrição.
-      if (geracaoDaInscricao.current !== geracaoDaAtivacao) {
-        await desfazerInscricaoNova();
-        return;
-      }
+        if (!vapidPublicKey) {
+          // Item 5 da revisão de 27/08/2026: isto devolvia `undefined` em
+          // silêncio (nem toast, nem erro) — mesmo defeito que
+          // `push-sem-conta-avisa-em-vez-de-calar.test.ts` já corrigiu para a
+          // origem "sem_conta". Com o banner agora reaparecendo sempre que há
+          // permissão concedida mas nenhuma inscrição salva, faltar a chave
+          // deixava o tarjão "Quero Receber!" para sempre na tela, clicável e
+          // inerte. Família "navegador": não é decisão da pessoa (permissão),
+          // nem falha do banco — é o app que não está configurado para
+          // inscrever ninguém neste build.
+          throw new PushSubscribeError(
+            "navegador",
+            new Error("VAPID Public Key não configurada nesta loja"),
+          );
+        }
 
-      const { error } = await (
-        supabase.from("push_subscriptions" as any) as any
-      ).upsert(
-        {
-          endpoint: subJSON.endpoint,
-          p256dh: subJSON.keys?.p256dh,
-          auth: subJSON.keys?.auth,
-          user_id: user.id,
-        },
-        { onConflict: "endpoint" },
-      );
+        // Precisa ser ANTES de pedir a permissão do navegador: se a pessoa
+        // não tem conta, pedir agora e lançar DEPOIS deixaria a permissão já
+        // concedida — o balão só aparece enquanto ela está pendente, então
+        // ele sumiria do banner sem ela nunca ter recebido nada.
+        if (!user) {
+          throw new PushSubscribeError(
+            "sem_conta",
+            new Error("Sem sessão de usuário para a inscrição"),
+          );
+        }
 
-      // Sair e voltar à mesma conta também invalida a resposta antiga.
-      if (geracaoDaInscricao.current !== geracaoDaAtivacao) {
-        await desfazerInscricaoNova();
-        return;
-      }
+        // Silencioso: a permissão já é "granted" (conferida lá em cima) e nada
+        // é perguntado — `requestPermission()` nem é chamado.
+        const result: NotificationPermission = silencioso
+          ? "granted"
+          : await Notification.requestPermission();
+        if (geracaoDaInscricao.current !== geracaoDaAtivacao) return;
+        setPermission(result);
 
-      if (error) {
-        // O navegador JÁ criou a inscrição — o que falhou foi salvar no
-        // banco (RLS, coluna, o que for). Sem desfazer, o navegador fica
-        // inscrito e o banco vazio: ninguém consegue enviar para esta
-        // cliente, e a PRÓXIMA carga acha `getSubscription()` não-nulo —
-        // o app acredita que ela está inscrita, esconde o convite para
-        // sempre, e a permissão já concedida vira um beco sem saída.
+        if (result === "denied") {
+          // Decisão CONFIRMADA — a pessoa escolheu Bloquear. Só se resolve
+          // nas configurações do navegador/aparelho.
+          throw new PushSubscribeError(
+            "permissao_negada",
+            new Error("Permissão de notificação negada"),
+          );
+        }
+
+        if (result !== "granted") {
+          // `result === "default"`: o balão do navegador foi fechado sem
+          // escolher Permitir nem Bloquear. A permissão está PENDENTE, não
+          // negada — mandar para configurações mostraria "Perguntar" e nada
+          // aparentemente errado. Tocar de novo reabre o balão.
+          throw new PushSubscribeError(
+            "permissao_pendente",
+            new Error("Permissão de notificação não respondida"),
+          );
+        }
+
+        // Com prazo: sem service worker ativo `ready` não assenta nunca, e a
+        // pessoa ficaria com o botão em "Ativando..." sem aviso nenhum. Família
+        // "navegador", como qualquer outra falha de infraestrutura do aparelho.
+        let registration: ServiceWorkerRegistration;
+        try {
+          registration = await esperarServiceWorker(
+            Promise.resolve(navigator.serviceWorker.ready),
+          );
+        } catch (esperaFalhou) {
+          throw new PushSubscribeError("navegador", esperaFalhou);
+        }
+
+        // `pushManager.subscribe()` com a MESMA `applicationServerKey` não
+        // cria nada quando já existe uma inscrição viva — a spec (W3C Push
+        // API, algoritmo de `subscribe()`, passo 11.6) compara as `options`
+        // com as da inscrição existente e, se baterem, resolve a promessa com
+        // a inscrição EXISTENTE. Sem saber disso, o `unsubscribe()` de erro do
+        // banco (mais abaixo) destruiria uma inscrição que este fluxo nem
+        // criou — cenário real: a pessoa já está inscrita, toca de novo em
+        // "Testar Recebimento" ou no convite, e um blip passageiro no
+        // Supabase apaga a inscrição que já funcionava.
         //
-        // Mas só faz sentido desfazer o que ESTA chamada criou agora —
-        // `inscricaoJaExistiaAntesDestaChamada` (ver sonda logo acima, antes
-        // do `subscribe()`). Se já havia inscrição viva, `newSubscription`
-        // É essa mesma inscrição (devolvida pela spec, não criada de novo);
-        // desfazê-la destruiria algo que já funcionava, por causa de um erro
-        // que não tem nada a ver com ela.
-        //
-        // Desfazer a inscrição RECÉM-CRIADA devolve um estado CONSISTENTE
-        // (nem navegador, nem banco) e barato de repetir: a permissão do
-        // SO/navegador já foi concedida, então tentar de novo não reabre o
-        // balão. Contas dos dois lados, por escrito:
-        //   - Se este `unsubscribe()` também falhar, sobra a MESMA
-        //     inconsistência de antes do conserto — não fica pior, e o
-        //     erro de banco ainda é reportado (catch abaixo).
-        //   - Se o `error` acima for, na verdade, "a resposta se perdeu
-        //     mas a gravação aconteceu" (ver comentário no topo do
-        //     arquivo sobre o `postgrest-js`), desfazer aqui deixa uma
-        //     linha órfã no banco — resíduo inofensivo NESSE caso
-        //     específico: a inscrição era nova, então não existe cliente
-        //     que dependia dela até agora; o provedor de push só para de
-        //     conseguir entregar numa linha que ninguém usava.
-        // O bem maior — a cliente conseguir se inscrever de verdade, em
-        // vez de ficar invisível para sempre — vale mais que os dois
-        // riscos acima, sem pagar o preço de destruir uma inscrição alheia.
-        if (!inscricaoJaExistiaAntesDestaChamada) {
-          geracaoDaInscricao.current += 1;
+        // Falha ao sondar = estado DESCONHECIDO, e desconhecido não autoriza
+        // destruir — falha fechada: assume que já existia (não desfaz). Try/
+        // catch PRÓPRIO: se isto lançasse dentro do try grande, o erro
+        // trocaria de família (viraria a mensagem genérica do catch externo)
+        // em vez da família real ("banco"/"navegador") do que vier a seguir.
+        let inscricaoJaExistiaAntesDestaChamada = true;
+        try {
+          const inscricaoExistente =
+            await registration.pushManager.getSubscription();
+          inscricaoJaExistiaAntesDestaChamada = inscricaoExistente !== null;
+        } catch {
+          inscricaoJaExistiaAntesDestaChamada = true;
+        }
+
+        // Convert VAPID key from base64 to Uint8Array
+        const padding = "=".repeat((4 - (vapidPublicKey.length % 4)) % 4);
+        const base64 = (vapidPublicKey + padding)
+          .replaceAll("-", "+")
+          .replaceAll("_", "/");
+        const rawData = globalThis.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; ++i) {
+          outputArray[i] = rawData.codePointAt(i) || 0;
+        }
+
+        let newSubscription: PushSubscription;
+        try {
+          newSubscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: outputArray,
+          });
+        } catch (subscribeError) {
+          // Causa heterogênea (MDN: NotAllowedError, AbortError,
+          // NotSupportedError… cada engine com o seu texto) — família
+          // "navegador", frase genérica e honesta, não uma prescrição que só
+          // serve para um subtipo. A EXCEÇÃO é a única que se reconhece com
+          // certeza: o site tem permissão e o aparelho a nega (ver
+          // `falhouPorPermissaoDoAparelho`). Nada é gravado nem desfeito aqui —
+          // o erro acontece antes do `upsert` e a permissão do site fica como
+          // está.
+          throw new PushSubscribeError(
+            falhouPorPermissaoDoAparelho(subscribeError)
+              ? "permissao_do_aparelho"
+              : "navegador",
+            subscribeError,
+          );
+        }
+
+        const desfazerInscricaoNova = async () => {
+          if (inscricaoJaExistiaAntesDestaChamada) return;
           try {
             await newSubscription.unsubscribe();
           } catch (unsubscribeError) {
             console.error(
-              "Falha ao desfazer inscrição do navegador após erro no banco:",
+              "Falha ao desfazer inscrição antiga do navegador:",
               unsubscribeError,
             );
           }
-        }
-        // Recusa do limite de aparelhos: o identificador estável vem no DETAIL.
-        throw new PushSubscribeError(
-          error.details === "push_limite_de_aparelhos"
-            ? "limite_de_aparelhos"
-            : "banco",
-          error,
-        );
-      }
+        };
 
-      inscricaoCriadaAqui.current = {
-        endpoint: newSubscription.endpoint,
-        userId: user.id,
-      };
-      setSubscription(newSubscription);
-      toast.success("Inscrição realizada com sucesso!");
-      return newSubscription;
-    } catch (error: any) {
-      console.error("Error subscribing to push:", error);
-      const mensagem = mensagemPorOrigem(error);
-      if (ehInstrucaoDePermissao(error)) {
-        toast.error(mensagem, {
-          duration: DURACAO_DA_INSTRUCAO_DE_PERMISSAO_MS,
-        });
-      } else {
-        toast.error(mensagem);
+        // `user` já foi garantido acima, antes de pedir a permissão —
+        // capturado no fechamento desta chamada e imutável durante a
+        // execução (closure de `useCallback`), então segue não-nulo aqui.
+        const subJSON = newSubscription.toJSON();
+
+        // A conta pode ter mudado enquanto o navegador criava a inscrição.
+        if (geracaoDaInscricao.current !== geracaoDaAtivacao) {
+          await desfazerInscricaoNova();
+          return;
+        }
+
+        const { error } = await (
+          supabase.from("push_subscriptions" as any) as any
+        ).upsert(
+          {
+            endpoint: subJSON.endpoint,
+            p256dh: subJSON.keys?.p256dh,
+            auth: subJSON.keys?.auth,
+            user_id: user.id,
+          },
+          { onConflict: "endpoint" },
+        );
+
+        // Sair e voltar à mesma conta também invalida a resposta antiga.
+        if (geracaoDaInscricao.current !== geracaoDaAtivacao) {
+          await desfazerInscricaoNova();
+          return;
+        }
+
+        if (error) {
+          // O navegador JÁ criou a inscrição — o que falhou foi salvar no
+          // banco (RLS, coluna, o que for). Sem desfazer, o navegador fica
+          // inscrito e o banco vazio: ninguém consegue enviar para esta
+          // cliente, e a PRÓXIMA carga acha `getSubscription()` não-nulo —
+          // o app acredita que ela está inscrita, esconde o convite para
+          // sempre, e a permissão já concedida vira um beco sem saída.
+          //
+          // Mas só faz sentido desfazer o que ESTA chamada criou agora —
+          // `inscricaoJaExistiaAntesDestaChamada` (ver sonda logo acima, antes
+          // do `subscribe()`). Se já havia inscrição viva, `newSubscription`
+          // É essa mesma inscrição (devolvida pela spec, não criada de novo);
+          // desfazê-la destruiria algo que já funcionava, por causa de um erro
+          // que não tem nada a ver com ela.
+          //
+          // Desfazer a inscrição RECÉM-CRIADA devolve um estado CONSISTENTE
+          // (nem navegador, nem banco) e barato de repetir: a permissão do
+          // SO/navegador já foi concedida, então tentar de novo não reabre o
+          // balão. Contas dos dois lados, por escrito:
+          //   - Se este `unsubscribe()` também falhar, sobra a MESMA
+          //     inconsistência de antes do conserto — não fica pior, e o
+          //     erro de banco ainda é reportado (catch abaixo).
+          //   - Se o `error` acima for, na verdade, "a resposta se perdeu
+          //     mas a gravação aconteceu" (ver comentário no topo do
+          //     arquivo sobre o `postgrest-js`), desfazer aqui deixa uma
+          //     linha órfã no banco — resíduo inofensivo NESSE caso
+          //     específico: a inscrição era nova, então não existe cliente
+          //     que dependia dela até agora; o provedor de push só para de
+          //     conseguir entregar numa linha que ninguém usava.
+          // O bem maior — a cliente conseguir se inscrever de verdade, em
+          // vez de ficar invisível para sempre — vale mais que os dois
+          // riscos acima, sem pagar o preço de destruir uma inscrição alheia.
+          if (!inscricaoJaExistiaAntesDestaChamada) {
+            geracaoDaInscricao.current += 1;
+            try {
+              await newSubscription.unsubscribe();
+            } catch (unsubscribeError) {
+              console.error(
+                "Falha ao desfazer inscrição do navegador após erro no banco:",
+                unsubscribeError,
+              );
+            }
+          }
+          // Recusa do limite de aparelhos: o identificador estável vem no DETAIL.
+          throw new PushSubscribeError(
+            error.details === "push_limite_de_aparelhos"
+              ? "limite_de_aparelhos"
+              : "banco",
+            error,
+          );
+        }
+
+        inscricaoCriadaAqui.current = {
+          endpoint: newSubscription.endpoint,
+          userId: user.id,
+        };
+        setSubscription(newSubscription);
+        // A inscrição está viva E gravada: daqui em diante, se uma limpeza do app
+        // a derrubar, o app sabe que esta conta tinha os avisos ligados.
+        marcarAvisosLigados(user.id);
+        if (!silencioso) toast.success("Inscrição realizada com sucesso!");
+        return newSubscription;
+      } catch (error: any) {
+        console.error("Error subscribing to push:", error);
+        // Religar sozinho falhou: fica no console e a próxima carga tenta de
+        // novo. Aviso na tela e erro lançado são para quem tocou.
+        if (silencioso) return;
+        const mensagem = mensagemPorOrigem(error);
+        if (ehInstrucaoDePermissao(error)) {
+          toast.error(mensagem, {
+            duration: DURACAO_DA_INSTRUCAO_DE_PERMISSAO_MS,
+          });
+        } else {
+          toast.error(mensagem);
+        }
+        throw error;
       }
-      throw error;
-    }
-  }, [isSupported, user]);
+    },
+    [isSupported, user],
+  );
+
+  const subscribe = useCallback(() => inscrever(false), [inscrever]);
+
+  // Religar sozinho depois de uma limpeza do app que desregistrou o service
+  // worker (e levou a inscrição junto). Só quando TUDO isto é verdade: há conta;
+  // a sonda terminou e o aparelho está SEM inscrição; a permissão do navegador
+  // já é "granted" (nada é perguntado); e esta conta tinha os avisos ligados
+  // aqui (marcador — sem ele, quem desligou de propósito seria religada contra
+  // a vontade, e quem nunca aceitou, inscrita). Uma tentativa por conta por
+  // carregamento do app.
+  useEffect(() => {
+    if (!userId || !isSupported || !sondado || subscription !== null) return;
+    if (permission !== "granted") return;
+    if (!avisosEstavamLigados(userId)) return;
+    if (!reservarTentativaDeReligar(userId)) return;
+    void inscrever(true);
+  }, [userId, isSupported, sondado, subscription, permission, inscrever]);
 
   const unsubscribe = useCallback(async () => {
     geracaoDaInscricao.current += 1;
+    // Desligar é de propósito: primeiro esquece, antes de qualquer espera ou
+    // falha, para nenhuma limpeza do app religar o que a pessoa desligou.
+    if (userId) esquecerAvisosLigados(userId);
     if (!subscription) return;
 
     try {
@@ -701,7 +759,7 @@ export function usePushNotifications() {
       console.error("Error unsubscribing:", error);
       toast.error("Erro ao cancelar inscrição");
     }
-  }, [subscription]);
+  }, [subscription, userId]);
 
   return {
     subscription,

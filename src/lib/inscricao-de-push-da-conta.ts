@@ -1,3 +1,7 @@
+import {
+  esquecerAvisosLigados,
+  esquecerTodosOsAvisosLigados,
+} from "@/lib/avisos-ligados-do-aparelho";
 import { supabase } from "@/lib/supabase";
 
 // A inscrição de notificação push nasce no NAVEGADOR (um endpoint por
@@ -82,6 +86,8 @@ async function apagarLinhaDaConta(
  * nossa para apagar.
  */
 export async function soltarInscricaoDoAparelho(): Promise<void> {
+  // Soltar é de propósito: ninguém deste aparelho é religado sozinho depois.
+  esquecerTodosOsAvisosLigados();
   const inscricao = await inscricaoDoNavegador();
   if (inscricao) await desinscreverNoNavegador(inscricao);
 }
@@ -100,6 +106,9 @@ export async function cancelarInscricaoDaConta(
   userId: string,
   prazoMs: number = PRAZO_DO_PUSH_NO_LOGOUT_MS,
 ): Promise<void> {
+  // Sair é de propósito: esta conta não é religada sozinha no próximo login.
+  // Antes de qualquer espera, para o prazo do Sair não deixá-lo para trás.
+  esquecerAvisosLigados(userId);
   let relogio: ReturnType<typeof setTimeout> | undefined;
   const prazo = new Promise<void>((resolve) => {
     relogio = setTimeout(resolve, prazoMs);

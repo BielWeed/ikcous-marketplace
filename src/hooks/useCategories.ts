@@ -5,6 +5,7 @@ import {
   ErroDeCategoria,
   type ResultadoDoApagar,
   type ResultadoDoRenome,
+  erroDoNomeDaCategoria,
   erroDoNomeReservado,
   lerResultadoDoApagar,
   lerResultadoDoRenome,
@@ -15,8 +16,10 @@ import { supabase } from "@/lib/supabase";
 import type { Category } from "@/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+// Pode ser uma categoria ESCONDIDA da loja (não aparece na escolha do produto):
+// a frase não manda "usar a que já existe" como se ela estivesse à vista.
 const MENSAGEM_CATEGORIA_JA_EXISTE =
-  "Já existe uma categoria com esse nome (ou muito parecido). Use a que já existe ou escolha outro nome.";
+  "Já existe uma categoria com esse nome (ou muito parecido), talvez escondida da loja. Veja em Organizar categorias ou escolha outro nome.";
 
 /**
  * Em ordem de nome, a MESMA régua da tela Gerenciar categorias. O cofre do
@@ -343,6 +346,14 @@ export function useCategories() {
       if (reservado) {
         if (!silent) toast.error(reservado);
         throw new ErroDeCategoria(reservado);
+      }
+      // A mesma régua do renomear (o banco só a aplica lá): sem letra nem
+      // número o endereço fica vazio e a segunda categoria assim colidiria com
+      // a primeira, com a frase "já existe", que seria falsa.
+      const invalido = erroDoNomeDaCategoria(category.name);
+      if (invalido) {
+        if (!silent) toast.error(invalido);
+        throw new ErroDeCategoria(invalido, "22023");
       }
       const tempId = `temp-${Date.now()}`;
       const slug = slugDaCategoria(category.name);

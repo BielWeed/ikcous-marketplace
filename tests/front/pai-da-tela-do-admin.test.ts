@@ -194,6 +194,38 @@ describe("paiDaTelaDoAdmin", () => {
     );
   });
 
+  // Quem veio pelo sino (Notificações) e abriu Perguntas, Avaliações,
+  // Devoluções ou o produto de um aviso volta às Notificações, não a
+  // Clientes/Pedidos/Produtos (achado do cético, R29). Só a origem
+  // "admin-notifications" muda; as demais origens seguem o pai fixo.
+  it("telas abertas pelo sino (origem admin-notifications) voltam para as Notificações", () => {
+    for (const view of [
+      "admin-qa",
+      "admin-reviews",
+      "admin-devolucoes",
+      "admin-product-form",
+    ] as const) {
+      expect(paiDaTelaDoAdmin(view, "admin-notifications", false)).toBe(
+        "admin-notifications",
+      );
+    }
+  });
+
+  it("origem admin-notifications não vence o detalhe de pedido nem muda outras telas", () => {
+    expect(paiDaTelaDoAdmin("admin-qa", "admin-notifications", true)).toBe(
+      "admin-orders",
+    );
+    expect(
+      paiDaTelaDoAdmin("admin-shipping", "admin-notifications", false),
+    ).toBe("admin-settings");
+    expect(paiDaTelaDoAdmin("admin-devolucoes", "admin-orders", false)).toBe(
+      "admin-orders",
+    );
+    expect(paiDaTelaDoAdmin("admin-product-form", "admin-orders", false)).toBe(
+      "admin-products",
+    );
+  });
+
   it("admin-shipping volta para Ajustes, com ou sem origem", () => {
     expect(paiDaTelaDoAdmin("admin-shipping", null, false)).toBe(
       "admin-settings",

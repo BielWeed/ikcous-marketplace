@@ -13,6 +13,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { confirmarEnvioSePerguntar } from "./confirma-envio-para-todos";
 
 const { estado } = vi.hoisted(() => ({
   estado: {
@@ -273,6 +274,7 @@ describe("AdminPushView — modelo pronto não promete cupom que a loja não cri
     await act(async () => {
       botaoEnviar().click();
     });
+    await confirmarEnvioSePerguntar();
     await act(async () => {
       await esperar(80);
     });

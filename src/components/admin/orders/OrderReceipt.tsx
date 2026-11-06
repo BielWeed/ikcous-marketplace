@@ -4,6 +4,7 @@ import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import type { Order } from "@/types";
 import { memo } from "react";
+import { createPortal } from "react-dom";
 
 interface OrderReceiptProps {
   order: Order;
@@ -53,7 +54,7 @@ export const OrderReceipt = memo(function OrderReceipt({
   const storeName = storeNameProp ?? branding.appName;
   // Venda de balcão: não tem frete, e o papel diz como a cliente pagou.
   const presencial = order.canal === "presencial";
-  return (
+  const papel = (
     <>
       <div
         data-tema-fixo=""
@@ -161,10 +162,8 @@ export const OrderReceipt = memo(function OrderReceipt({
                     @media print {
                         body * { visibility: hidden; }
                         .print\\:block, .print\\:block * { visibility: visible; }
-                        .print\\:block { 
-                            position: absolute; 
-                            left: 0; 
-                            top: 0; 
+                        .print\\:block {
+                            position: static; 
                             width: 100% !important; 
                             padding: 20px !important;
                             margin: 0 !important;
@@ -172,9 +171,25 @@ export const OrderReceipt = memo(function OrderReceipt({
                             background: white !important;
                         }
                         nav, footer, button, .sticky, header, [role="banner"] { display: none !important; }
+                        /* O painel inteiro (#root) sai da impressão: ele rola por
+                           dentro (altura fixa e overflow cortado) e, só escondido,
+                           ainda ocupava páginas em branco. O papel mora fora do
+                           #root (portal no body) e é o único que sobra; html e body
+                           soltam a altura para o recibo comprido paginar. */
+                        #root { display: none !important; }
+                        html, body {
+                            height: auto !important;
+                            overflow: visible !important;
+                        }
                     }
                 `}
       </style>
     </>
   );
+  // Fora do #root: na impressão o painel inteiro é escondido de verdade
+  // (`display: none`), e o papel, que não depende de nenhum ancestral do painel,
+  // sai completo, de cima, com a tela rolada ou não e com qualquer nº de itens.
+  return typeof document === "undefined"
+    ? papel
+    : createPortal(papel, document.body);
 });

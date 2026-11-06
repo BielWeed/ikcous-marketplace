@@ -214,11 +214,23 @@ describe("foto do banner sobe reduzida", () => {
     expect(arquivoEnviado()).toBe(original);
   });
 
-  it("falha ao decodificar: sobe o ORIGINAL, sem erro para o lojista", async () => {
+  it("falha ao decodificar o bitmap, mas o <img> abre: sobe o ORIGINAL, sem erro para o lojista", async () => {
     vi.stubGlobal(
       "createImageBitmap",
       vi.fn().mockRejectedValue(new Error("formato não suportado")),
     );
+    // Segunda opinião do envio: o jsdom não carrega imagem, o dublê "abre".
+    vi.stubGlobal(
+      "Image",
+      class {
+        onload: (() => void) | null = null;
+        set src(_v: string) {
+          queueMicrotask(() => this.onload?.());
+        }
+      },
+    );
+    URL.createObjectURL = () => "blob:teste";
+    URL.revokeObjectURL = () => {};
     const original = arquivoComPeso("foto.jpg", "image/jpeg", 5 * MB);
 
     let url = "";

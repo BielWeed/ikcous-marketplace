@@ -65,6 +65,7 @@ vi.mock("sonner", () => ({
     error: mocks.toastError,
     warning: vi.fn(),
     loading: vi.fn(),
+    dismiss: vi.fn(),
   },
 }));
 

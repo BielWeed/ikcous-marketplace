@@ -11,6 +11,12 @@ export interface HeaderToastData {
   duration?: number;
   /** `id` que o chamador deu ao toast do Sonner (para `toast.dismiss(id)`). */
   toastId?: string | number;
+  /**
+   * A `action` do toast do Sonner (ex.: "Desfazer"). No celular o Sonner some e
+   * a cápsula é o único aviso; sem isto o botão de ação nunca chegava a quem
+   * usa o app no celular.
+   */
+  acao?: { label: string; onClick: () => void };
 }
 
 /**
@@ -35,7 +41,12 @@ function ehCelular(): boolean {
 function triggerHeaderToast(
   message: string,
   type: "success" | "error" | "warning" | "info",
-  data?: { description?: unknown; duration?: unknown; id?: unknown },
+  data?: {
+    description?: unknown;
+    duration?: unknown;
+    id?: unknown;
+    action?: unknown;
+  },
 ) {
   if (typeof window !== "undefined") {
     const description =
@@ -51,6 +62,20 @@ function triggerHeaderToast(
           : duracaoDoAviso(message, description);
     }
     const idDoSonner = data?.id;
+    // Só vale `action` com rótulo em texto e função de clique; qualquer outra
+    // forma (rótulo em elemento React, por exemplo) fica só no Sonner.
+    const acaoDoSonner = data?.action as
+      | { label?: unknown; onClick?: unknown }
+      | null
+      | undefined;
+    const acao =
+      typeof acaoDoSonner?.label === "string" &&
+      typeof acaoDoSonner.onClick === "function"
+        ? {
+            label: acaoDoSonner.label,
+            onClick: acaoDoSonner.onClick as () => void,
+          }
+        : undefined;
     window.dispatchEvent(
       new CustomEvent<HeaderToastData>("header-toast-event", {
         detail: {
@@ -63,6 +88,7 @@ function triggerHeaderToast(
             typeof idDoSonner === "string" || typeof idDoSonner === "number"
               ? idDoSonner
               : undefined,
+          acao,
         },
       }),
     );

@@ -153,6 +153,19 @@ function apertarEscape() {
   );
 }
 
+// Caminho real do teclado: o Esc nasce no elemento focado (o editor de foto
+// move o foco para dentro de si ao abrir), borbulha pelo `document` e só
+// depois chega à janela.
+function apertarEscapeNoFoco() {
+  (document.activeElement ?? document.body).dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+}
+
 // Cabeçalho fixo do ImageAdjuster (src/components/ui/custom/
 // ImageAdjuster.tsx) — só existe no DOM enquanto `isOpen` é true, mesmo
 // sem a imagem ter terminado de carregar (bandeira `loading` interna não
@@ -306,6 +319,23 @@ describe("AdminBannersView — Escape com o ImageAdjuster aberto fecha só o rec
 
     // Agora sim o diálogo fecha — a correção não quebrou o Escape "puro"
     // (só o diálogo aberto, sem cropper por cima).
+    expect(localizarBotaoPorTexto(hospedeiro, "Salvar Banner")).toBeUndefined();
+  });
+
+  it("Escape vindo do elemento focado (caminho real do hook do editor) fecha só o cropper, e o seguinte fecha o diálogo", async () => {
+    await montar();
+    await abrirDialogoESubirImagemEAjustar();
+
+    await act(async () => {
+      apertarEscapeNoFoco();
+    });
+    expect(adjusterEstaAberto()).toBe(false);
+    expect(localizarBotaoPorTexto(hospedeiro, "Salvar Banner")).toBeDefined();
+    expect(deleteStorageFile).not.toHaveBeenCalled();
+
+    await act(async () => {
+      apertarEscapeNoFoco();
+    });
     expect(localizarBotaoPorTexto(hospedeiro, "Salvar Banner")).toBeUndefined();
   });
 });

@@ -359,6 +359,14 @@ export function PoliticaDeDevolucaoSection({
       toast.error("Você está offline");
       return;
     }
+    // A lista "sem troca" só vai no pedido se a lojista MEXEU nela. A cópia
+    // desta tela pode estar velha (a renomeação feita em outro aparelho não
+    // chega aqui ao vivo); regravá-la desfaria a troca de nome em silêncio. A
+    // RPC deixa como está o campo que não vem. A resposta do salvamento traz a
+    // lista do banco e a tela passa a mostrá-la.
+    const listaMexida =
+      JSON.stringify(form.categorias_sem_troca) !==
+      JSON.stringify(salva ? salva.categorias_sem_troca : []);
     setSalvando(true);
     haptic.light();
     try {
@@ -376,7 +384,9 @@ export function PoliticaDeDevolucaoSection({
             metodos_nacionais: form.metodos_nacionais,
             reembolso_momento: form.reembolso_momento,
             frete_troca_pago_por: form.frete_troca_pago_por,
-            categorias_sem_troca: form.categorias_sem_troca,
+            ...(listaMexida
+              ? { categorias_sem_troca: form.categorias_sem_troca }
+              : {}),
             texto_politica: form.texto_politica,
             endereco_devolucao: form.endereco_devolucao,
           },

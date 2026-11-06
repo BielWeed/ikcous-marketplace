@@ -18,6 +18,40 @@ import { toast } from "sonner";
 
 const FETCH_THROTTLE = 60000; // 1 minute throttle for network checks
 
+/**
+ * O aparelho consegue abrir esta imagem? Primeiro pelo bitmap; se ele falhar,
+ * pelo próprio <img> do navegador (a segunda opinião evita recusar foto boa
+ * que o bitmap não pegou). Só diz "não abre" quando as DUAS conferências
+ * falham; ambiente sem como conferir segue (fail-open, como o redimensionamento).
+ */
+async function imagemAbre(file: File): Promise<boolean> {
+  if (typeof createImageBitmap === "function") {
+    try {
+      const bitmap = await createImageBitmap(file);
+      bitmap.close?.();
+      return true;
+    } catch {
+      // cai na segunda opinião
+    }
+  }
+  let endereco: string;
+  try {
+    endereco = URL.createObjectURL(file);
+  } catch {
+    return true;
+  }
+  try {
+    return await new Promise<boolean>((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(true);
+      img.onerror = () => resolve(false);
+      img.src = endereco;
+    });
+  } finally {
+    URL.revokeObjectURL(endereco);
+  }
+}
+
 export async function normalizeBannersOrder(
   pos: "home_top" | "home_middle" | "home_bottom",
 ) {
@@ -279,6 +313,14 @@ export function useBanners(adminMode = false) {
       // tela inicial. Reduz ANTES do envio, como a foto de produto — o
       // utilitário é fail-open (falha ou formato intocável = o original).
       const pronto = await redimensionarImagem(file);
+      // Reduzida de verdade = a imagem abriu. Se voltou o mesmo arquivo, nada
+      // provou isso (o redimensionamento falha em silêncio): confere aqui, em
+      // vez de publicar um banner quebrado como "enviado com sucesso".
+      if (pronto === file && !(await imagemAbre(file))) {
+        const ilegivel = new Error("A imagem não abre neste aparelho.");
+        ilegivel.name = "FotoIlegivel";
+        throw ilegivel;
+      }
       const fileExt = pronto.name.split(".").pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
       const filePath = `${fileName}`;

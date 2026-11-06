@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { confirmarEnvioSePerguntar } from "./confirma-envio-para-todos";
 
 const { invokeSendPush, inserts, ajustarLog } = vi.hoisted(() => ({
   invokeSendPush: vi.fn(),
@@ -250,6 +251,7 @@ describe("Avisar clientes — falha não apaga a campanha", () => {
     await act(async () => {
       botao!.click();
     });
+    await confirmarEnvioSePerguntar();
     expect(invokeSendPush).toHaveBeenCalledTimes(1);
     expect(inserts.pushLog).toHaveLength(1);
     expect(inserts.notificacoes).toHaveLength(1);

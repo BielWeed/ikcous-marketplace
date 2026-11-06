@@ -18,6 +18,7 @@ import type { ReactNode } from "react";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { confirmarEnvioSePerguntar } from "./confirma-envio-para-todos";
 
 const PRODUTOS = [
   { id: "p-corrida", nome: "Tênis Corrida" },
@@ -291,6 +292,7 @@ describe("Avisar clientes — destino escolhido por lista", () => {
     await act(async () => {
       botao.click();
     });
+    await confirmarEnvioSePerguntar();
     await act(async () => {
       await esperar(80);
     });

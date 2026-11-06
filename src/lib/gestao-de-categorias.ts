@@ -302,3 +302,31 @@ export function categoriaParecida<
 
 /** Texto de apoio do campo de nome: o limite que o banco impõe. */
 export const LIMITE_DO_NOME_DA_CATEGORIA = 80;
+
+/**
+ * A régua do banco para um nome de categoria (a de `renomear_categoria`), para
+ * quem CRIA usar a mesma: nome vazio, acima do limite, ou sem letra nem número
+ * (só emoji ou símbolo: o endereço fica vazio e a segunda categoria assim
+ * colidiria com a primeira). Devolve a frase para a lojista, ou `null` quando
+ * o nome serve. O espaço repetido conta como um só, como no banco.
+ */
+export function erroDoNomeDaCategoria(nome: string): string | null {
+  const limpo = nome.trim().replace(/\s+/g, " ");
+  if (limpo === "") return "Escreva o nome da categoria.";
+  if (Array.from(limpo).length > LIMITE_DO_NOME_DA_CATEGORIA) {
+    return `O nome da categoria pode ter no máximo ${LIMITE_DO_NOME_DA_CATEGORIA} letras.`;
+  }
+  if (slugDaCategoria(limpo) === "") {
+    return "O nome da categoria precisa ter pelo menos uma letra ou um número.";
+  }
+  return null;
+}
+
+/**
+ * O que a lojista lê quando criar esbarra numa categoria ESCONDIDA da loja: ela
+ * não aparece na escolha do produto, então "já existe" sozinho não leva a lugar
+ * nenhum. Diz que está escondida e onde mostrar de novo.
+ */
+export function avisoDeCategoriaEscondida(nome: string): string {
+  return `“${nome}” já existe, mas está escondida da loja. Em Organizar categorias, toque em Mostrar para voltar a usá-la.`;
+}

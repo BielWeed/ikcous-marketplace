@@ -48,6 +48,16 @@ describe("usePushNotifications — ativação de uma geração antiga", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    // O hook guarda o marcador "avisos ligados" por conta; cada teste começa
+    // sem ele (no Node 24 do CI o localStorage passaria de um teste ao outro).
+    const armazenamento = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (chave: string) => armazenamento.get(chave) ?? null,
+      setItem: (chave: string, valor: string) =>
+        armazenamento.set(chave, valor),
+      removeItem: (chave: string) => armazenamento.delete(chave),
+      clear: () => armazenamento.clear(),
+    });
     usuarioAtual = { id: "conta-a" };
     inscricaoNoNavegador = null;
     const endpoint = "https://push.example.com/aparelho-teste";
