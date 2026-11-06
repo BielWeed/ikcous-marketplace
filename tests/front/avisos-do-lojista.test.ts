@@ -69,7 +69,10 @@ describe("montarAvisos", () => {
 
     expect(avisos).toHaveLength(1);
     expect(avisos[0].tipo).toBe("pergunta");
-    expect(avisos[0].destino).toEqual({ view: "admin-qa" });
+    expect(avisos[0].destino).toEqual({
+      view: "admin-qa",
+      limparFiltros: true,
+    });
     expect(avisos[0].titulo).toContain("3");
   });
 
@@ -151,7 +154,10 @@ describe("montarAvisos", () => {
 
     expect(avisos).toHaveLength(1);
     expect(avisos[0].tipo).toBe("avaliacao");
-    expect(avisos[0].destino).toEqual({ view: "admin-reviews" });
+    expect(avisos[0].destino).toEqual({
+      view: "admin-reviews",
+      limparFiltros: true,
+    });
   });
 
   it("produto acabando vira aviso que abre AQUELE produto, e NAO conta no cracha", () => {

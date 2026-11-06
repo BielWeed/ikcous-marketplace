@@ -9,6 +9,7 @@ import {
 } from "@/lib/novidades/armazenamento-local";
 import type { View } from "@/types";
 import type { Aviso, TipoDeAviso } from "@/utils/avisos-do-lojista";
+import { limparGuardadosAoChegarPorAviso } from "@/utils/chegada-por-aviso";
 import {
   CheckCircle2,
   ChevronDown,
@@ -310,7 +311,12 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
     <button
       type="button"
       data-aviso={aviso.tipo}
-      onClick={() => onNavigate(aviso.destino.view, aviso.destino.id)}
+      onClick={() => {
+        if (aviso.destino.limparFiltros) {
+          limparGuardadosAoChegarPorAviso(aviso.destino.view);
+        }
+        onNavigate(aviso.destino.view, aviso.destino.id);
+      }}
       className={`group block min-h-11 w-full min-w-0 whitespace-pre-line break-words rounded-[18px] border border-solid border-border bg-muted/30 p-4 text-left text-foreground transition-colors hover:bg-muted/50 ${FOCO}`}
     >
       <div className="mb-2 flex items-center gap-2">

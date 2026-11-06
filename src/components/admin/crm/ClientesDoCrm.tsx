@@ -660,7 +660,15 @@ export function ClientesDoCrm({
     if (!lista || carregando || erro || pagina < totalPaginas) return;
     setPaginacao({ chave: chaveDoFiltro, pagina: totalPaginas - 1 });
   }, [lista, carregando, erro, pagina, totalPaginas, chaveDoFiltro]);
+  // Lista vazia que ainda é a do filtro ANTERIOR (o hook só a troca quando a
+  // nova chega): não vale como "não há cliente" — é esqueleto até a nova vir.
+  const listaVelhaVazia =
+    !!lista &&
+    !erro &&
+    lista.clientes.length === 0 &&
+    (carregando || filtroDaLista.listaAnterior === lista);
   const esqueleto = carregando && !lista;
+  const esqueletoDaLista = esqueleto || listaVelhaVazia;
   const falhaDosSegmentos =
     !carregandoSegmentos &&
     !segmentosDisponiveis &&
@@ -922,7 +930,7 @@ export function ClientesDoCrm({
             </div>
           ) : null}
 
-          {esqueleto ? (
+          {esqueletoDaLista ? (
             <ul className="space-y-2" aria-busy="true">
               {Array.from({ length: 4 }, (_, i) => (
                 <li

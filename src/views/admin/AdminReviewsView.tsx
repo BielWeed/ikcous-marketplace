@@ -30,6 +30,7 @@ import { supabase } from "@/lib/supabase";
 import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
+import { aoChegarPorAviso } from "@/utils/chegada-por-aviso";
 import { haptic } from "@/utils/haptic";
 import {
   Check,
@@ -265,6 +266,19 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   };
 
   // Removed ref tracking for filter changes in favor of direct state resets
+
+  // Chegou pelo aviso "avaliação sem resposta": lista inteira, sem filtro,
+  // busca nem página guardados (mesmos setters do "limpar").
+  useEffect(
+    () =>
+      aoChegarPorAviso("admin-reviews", () => {
+        setSearchQuery("");
+        setRatingFilter("all");
+        setStatusFilter("todas");
+        setPage(0);
+      }),
+    [setSearchQuery, setRatingFilter, setStatusFilter, setPage],
+  );
 
   const firstLoadRef = useRef(true);
   const reviewsLengthRef = useRef(adminReviews.length);
