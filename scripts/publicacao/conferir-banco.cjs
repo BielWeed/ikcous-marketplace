@@ -2974,7 +2974,20 @@ const ROL_DA_123 = [
   "get_admin_reviews_paged: assinatura e atributos conhecidos",
   "get_admin_reviews_paged: EXECUTE authenticated e service_role, sem PUBLIC ou anon",
 ];
+// Lote 124 (20261399800000, as recomendacoes do produto contam o estoque das variacoes: get_product_recommendations julga o estoque pela soma das variacoes ativas, a regra da vitrine). A 124a e a
+// 124b tem o MESMO rol de 4 linhas (controle, corpo exato (md5), o corpo conta o estoque das variacoes ativas uma vez, e assinatura unica, atributos e ACL); a 124a espera o corpo da migration nova e a
+// 124b o vigente de antes (o da 20261394100000). Nenhuma le produto nem chama a get_product_recommendations.
+const ROL_DA_124 = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_product_recommendations: corpo exato (md5)",
+  "get_product_recommendations: o corpo conta o estoque das variacoes ativas (uma vez)",
+  "get_product_recommendations: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, SETOF produtos; anon, authenticated e service_role, sem PUBLIC)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "124a-conferir-as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-aplicado":
+    ROL_DA_124,
+  "124b-antes-as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-base-vigente":
+    ROL_DA_124,
   "123a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-aplicado":
     ROL_DA_123,
   "123b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-base-vigente":

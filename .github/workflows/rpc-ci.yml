@@ -250,6 +250,8 @@ on:
       - "scripts/publicacao/consultas/122b-antes-o-resultado-credita-o-custo-da-devolucao-de-outro-mes-base-vigente.sql"
       - "scripts/publicacao/consultas/123a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-aplicado.sql"
       - "scripts/publicacao/consultas/123b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-base-vigente.sql"
+      - "scripts/publicacao/consultas/124a-conferir-as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-aplicado.sql"
+      - "scripts/publicacao/consultas/124b-antes-as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -469,6 +471,8 @@ on:
       - "scripts/publicacao/consultas/122b-antes-o-resultado-credita-o-custo-da-devolucao-de-outro-mes-base-vigente.sql"
       - "scripts/publicacao/consultas/123a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-aplicado.sql"
       - "scripts/publicacao/consultas/123b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-base-vigente.sql"
+      - "scripts/publicacao/consultas/124a-conferir-as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-aplicado.sql"
+      - "scripts/publicacao/consultas/124b-antes-as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -813,6 +817,13 @@ jobs:
       - name: Prova viva do painel de avaliacoes que filtra o que esta em moderacao (20261399700000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-viva.cjs
+      # Migration 20261399800000 (as recomendacoes do produto contam o estoque das variacoes): get_product_recommendations julga o estoque pela regra da vitrine (com variacao ATIVA, a soma de
+      # stock_increment das ativas; senao, a coluna). O esgotado com grade nao ocupa mais vaga da faixa e quem tem saldo so na grade entra. Controle com o corpo da 20261394100000 na MESMA fixture,
+      # oraculo da regra em JS, bordas (inativa, active NULL, estoque NULL, 1 na grade), produto sem variacao igual ao de antes, teto, ordem e colunas, mutantes, ACL/atributos/dono iguais,
+      # reaplicar (LF e CRLF), atomicidade sem BEGIN, rollback byte a byte, pre-voo (inclui colunas de product_variants), fumaca do pos-voo, 107a/9a aceitando o corpo novo e consultas 124a/124b. CLONE proprio.
+      - name: Prova viva das recomendacoes do produto que contam o estoque das variacoes (20261399800000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

@@ -17,7 +17,9 @@ WITH fn AS (
          CASE WHEN COALESCE((SELECT count(*) > 0 FROM pg_proc WHERE pronamespace = 'public'::regnamespace), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'get_product_recommendations: corpo exato (md5)', '5e5bbe7bc7f12738a9082232ee6cfee6',
-         COALESCE((SELECT h FROM fn LIMIT 1), 'AUSENTE')
+         -- A 20261399800000 (as recomendacoes contam o estoque das variacoes) sucede este corpo: so o filtro do estoque muda (o teto da 107 fica).
+         -- Aceita os dois corpos EXATOS; normaliza ao esperado historico do rol.
+         COALESCE((SELECT CASE WHEN h IN ('5e5bbe7bc7f12738a9082232ee6cfee6', '9b9fa184eb3984e8afd3ec0f80a086e7') THEN '5e5bbe7bc7f12738a9082232ee6cfee6' ELSE h END FROM fn LIMIT 1), 'AUSENTE')
   UNION ALL
   SELECT 'get_product_recommendations: o corpo traz o teto do limite (uma vez)', 'sim',
          CASE WHEN NOT EXISTS (SELECT 1 FROM fn) THEN 'AUSENTE'

@@ -28,6 +28,10 @@ const md5 = (s: string) => createHash("md5").update(s).digest("hex");
 
 const H_ANTES = "3de5b27cc17c31301249861b7921a6fe";
 const H_DEPOIS = "5e5bbe7bc7f12738a9082232ee6cfee6";
+// A 20261399800000 (as recomendacoes contam o estoque das variacoes) sucede este corpo: a 107a e a 9a a aceitam como sucessora.
+const H_SUCESSORA = "9b9fa184eb3984e8afd3ec0f80a086e7";
+const NOME_SUCESSORA =
+  "20261399800000_as_recomendacoes_do_produto_contam_o_estoque_das_variacoes.sql";
 const LIMITE_ANTIGO = "    LIMIT p_limit;\n";
 const TETO = "LEAST(GREATEST(COALESCE(p_limit, 4), 1), 50)";
 const LIMITE_NOVO = `    LIMIT ${TETO};\n`;
@@ -146,7 +150,7 @@ Deno.test("394100: sem BEGIN/COMMIT, pre-voo antes do CREATE, hashes e fotografi
   assert.ok(!bruto.includes("\r"), "a migration em disco tem CR");
 });
 
-Deno.test("394100: a vigente e' a ultima redefinicao de get_product_recommendations da arvore; db-apply exige as guardas", () => {
+Deno.test("394100: e' a PENULTIMA redefinicao de get_product_recommendations da arvore (a 20261399800000 a sucede); db-apply exige as guardas", () => {
   const fontes = [...Deno.readDirSync(dir)]
     .map((e) => e.name)
     .filter((n) => /^\d{14}_.*\.sql$/.test(n))
@@ -154,11 +158,12 @@ Deno.test("394100: a vigente e' a ultima redefinicao de get_product_recommendati
     .filter((n) => definicao(ler(`supabase/migrations/${n}`)));
   assert.equal(
     fontes.at(-1),
-    nome,
-    "outra migration redefine get_product_recommendations depois da 394100",
+    NOME_SUCESSORA,
+    "outra migration redefine get_product_recommendations depois da 20261399800000",
   );
+  assert.equal(fontes.at(-2), nome);
   assert.equal(
-    fontes.at(-2),
+    fontes.at(-3),
     "20261160000000_o_codigo_de_barras_e_o_canal_nascem_no_banco.sql",
   );
   const { VERIFICACOES, avaliarChecagem } = require("../scripts/db-apply.cjs");
@@ -187,10 +192,14 @@ Deno.test("394100: a 9a aceita o corpo novo (e o da 20261160 ainda no ar aparece
   const nove = ler(
     "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql",
   );
-  assert.ok(nove.includes(`('${FN}', '${H_DEPOIS}')`));
+  // O corpo FINAL da 9a e' o da sucessora (20261399800000); o desta migration e o da 20261160 ainda no ar aparecem como ele.
+  assert.ok(nove.includes(`('${FN}', '${H_SUCESSORA}')`));
+  assert.ok(!nove.includes(`('${FN}', '${H_DEPOIS}')`));
   assert.ok(!nove.includes(`('${FN}', '${H_ANTES}')`));
   assert.ok(
-    nove.includes(`c.h = '${H_ANTES}'\n              THEN '${H_DEPOIS}'`),
+    nove.includes(
+      `(c.h = '${H_ANTES}' OR c.h = '${H_DEPOIS}')\n              THEN '${H_SUCESSORA}'`,
+    ),
   );
   const { contarStatements, ROL_FECHADO_POR_CONSULTA, estruturaDoRolFechado } =
     require("../scripts/publicacao/conferir-banco.cjs");
