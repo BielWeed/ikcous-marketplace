@@ -181,9 +181,11 @@ export function CorpoDaFolhaDeOpcoes({
                   <span className="sr-only">De: </span>
                   {formatCurrency(product.originalPrice!)}
                 </span>
-                <span className="rounded bg-emerald-50 px-1 text-[11px] font-bold text-emerald-700">
-                  -{desconto}%
-                </span>
+                {desconto > 0 && (
+                  <span className="rounded bg-emerald-50 px-1 text-[11px] font-bold text-emerald-700">
+                    -{desconto}%
+                  </span>
+                )}
               </>
             )}
           </div>

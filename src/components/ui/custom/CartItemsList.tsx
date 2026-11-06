@@ -88,6 +88,14 @@ const CartItemCard = memo(function CartItemCard({
   const price = precoVendido(item.product, variant);
   const hasDiscount =
     item.product.originalPrice && item.product.originalPrice > price;
+  // Desconto abaixo de meio por cento arredonda para 0: o selo "-0%" não
+  // aparece, mas o preço riscado continua.
+  const pctOff = hasDiscount
+    ? Math.round(
+        ((item.product.originalPrice! - price) / item.product.originalPrice!) *
+          100,
+      )
+    : 0;
 
   return (
     <motion.div
@@ -168,15 +176,11 @@ const CartItemCard = memo(function CartItemCard({
                   <span className="text-muted-foreground line-through">
                     {formatCurrency(item.product.originalPrice ?? 0)}
                   </span>
-                  <span className="font-bold text-emerald-700 dark:text-emerald-400">
-                    -
-                    {Math.round(
-                      ((item.product.originalPrice! - price) /
-                        item.product.originalPrice!) *
-                        100,
-                    )}
-                    %
-                  </span>
+                  {pctOff > 0 && (
+                    <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                      -{pctOff}%
+                    </span>
+                  )}
                 </div>
               )}
               <p className="text-lg font-bold leading-none tracking-tight text-foreground">

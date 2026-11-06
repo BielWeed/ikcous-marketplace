@@ -299,6 +299,8 @@ describe("AdminProductFormView — completar a grade e reaproveitar valores", ()
     // Cabeçalho do passo 2 e aviso de "Aplicar para todas" no singular.
     expect(document.body.textContent).toContain("1 combinação nova");
     expect(document.body.textContent).not.toMatch(/1 combinações/);
+    // "Aplicar para todas" só avisa "Aplicado" quando tem o que aplicar.
+    await digitarCampo("grade-aplicar-estoque", "0");
     await act(async () => {
       clicarObrigatorio("Aplicar para todas");
     });

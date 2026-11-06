@@ -360,6 +360,12 @@ export function ModalVarianteGrade({
       return;
     }
     const estoqueAplicado = aplicarEstoque.trim();
+    const precoAplicado = precoPositivoOuVazio(aplicarPreco);
+    // Sem estoque e sem preço válido nada muda nas linhas: não diz que aplicou.
+    if (estoqueAplicado === "" && precoAplicado === "") {
+      toast.info("Digite um estoque ou um preço maior que zero para aplicar.");
+      return;
+    }
     setLinhas((prev) =>
       prev.map((linha) => ({
         ...linha,
@@ -368,7 +374,7 @@ export function ModalVarianteGrade({
         // segurado de depois não passa por cima.
         estoqueEditado: linha.estoqueEditado || estoqueAplicado !== "",
         // Só preço maior que zero: "0.00" é texto não vazio e zerava as linhas.
-        preco: precoPositivoOuVazio(aplicarPreco) || linha.preco,
+        preco: precoAplicado || linha.preco,
       })),
     );
     // O que foi aplicado deixa de ser "segurado": sem isto o mesmo valor voltava
