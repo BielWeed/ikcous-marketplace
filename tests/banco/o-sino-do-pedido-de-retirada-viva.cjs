@@ -980,6 +980,11 @@ async function main() {
   } catch (erro) {
     falhar("INDETERMINADO", `Não conectei no banco efêmero: ${erro.message}`);
   }
+  // A 20261399920000 (o sino do pedido vencido fala do vencimento) sucede o corpo da 20261233000000: sai PRIMEIRO, neste clone descartavel
+  // (ordem inversa da aplicacao; nao faz nada se nao esta no ar). Definicao unica em o-sino-do-pedido-vencido-posterior.cjs.
+  await require("./o-sino-do-pedido-vencido-posterior.cjs").desfazerSinoDoPedidoVencidoNaTransacao(
+    cliente,
+  );
   const linhas = [];
   let falhas = 0;
   const provas = SO_COMPORTAMENTO

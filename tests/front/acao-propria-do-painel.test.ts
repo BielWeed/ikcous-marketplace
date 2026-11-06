@@ -44,6 +44,27 @@ describe("acao-propria-do-painel — a lojista acabou de avançar este pedido", 
     ).toBe(false);
   });
 
+  it("janela alargada (ação que demora, como cancelar pela edge): vale até o fim da janela pedida e some logo depois", () => {
+    const longa = JANELA_DA_ACAO_PROPRIA_MS + 30_000;
+    marcarAcaoPropriaDoPedido("p1", "cancelled", 1_000, longa);
+    expect(eAcaoPropriaDoPedido("p1", "cancelled", 1_000 + longa - 1)).toBe(
+      true,
+    );
+    expect(eAcaoPropriaDoPedido("p1", "cancelled", 1_000 + longa)).toBe(false);
+  });
+
+  it("marcar de novo SEM janela devolve a janela padrão (a marca longa não sobra)", () => {
+    marcarAcaoPropriaDoPedido("p1", "cancelled", 1_000, 60_000);
+    marcarAcaoPropriaDoPedido("p1", "cancelled", 2_000);
+    expect(
+      eAcaoPropriaDoPedido(
+        "p1",
+        "cancelled",
+        2_000 + JANELA_DA_ACAO_PROPRIA_MS,
+      ),
+    ).toBe(false);
+  });
+
   it("esquecer (a gravação falhou) tira a marca na hora", () => {
     marcarAcaoPropriaDoPedido("p1", "shipping", 1_000);
     esquecerAcaoPropriaDoPedido("p1");

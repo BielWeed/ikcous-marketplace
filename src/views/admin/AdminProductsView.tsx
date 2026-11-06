@@ -34,6 +34,7 @@ import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { useAoMudarCategoria } from "@/hooks/useAoMudarCategoria";
 import { useCategories } from "@/hooks/useCategories";
+import { useFocoAposExcluir } from "@/hooks/useFocoAposExcluir";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
@@ -281,6 +282,7 @@ export const AdminProductsView = memo(function AdminProductsView({
   const [simPrice, setSimPrice] = useState<string>("15.00");
   const [simStock, setSimStock] = useState<string>("20");
   const [productToDelete, setProductToDelete] = useState<string | null>(null);
+  const foco = useFocoAposExcluir();
   const [productToDuplicate, setProductToDuplicate] = useState<any | null>(
     null,
   );
@@ -1205,7 +1207,10 @@ export const AdminProductsView = memo(function AdminProductsView({
     >
       <header className="admin-topo-cabecalho flex h-[76px] items-center justify-between gap-3 px-5">
         <div className="min-w-0">
-          <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-products"]} />
+          <AdminPageHeader
+            titulo={NOMES_DO_PAINEL["admin-products"]}
+            propsDoTitulo={foco.propsDoTitulo}
+          />
           <div className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
             {loadError ? (
               <AlertTriangle
@@ -2240,7 +2245,10 @@ export const AdminProductsView = memo(function AdminProductsView({
           open={productToDelete !== null}
           onOpenChange={(open) => !open && setProductToDelete(null)}
         >
-          <AlertDialogContent className="produtos-confirmacao max-w-md rounded-3xl border border-admin-border bg-admin-raised">
+          <AlertDialogContent
+            {...foco.dialogo}
+            className="produtos-confirmacao max-w-md rounded-3xl border border-admin-border bg-admin-raised"
+          >
             <AlertDialogHeader>
               <AlertDialogTitle className="text-xl font-bold text-white">
                 <Trash2
@@ -2261,7 +2269,10 @@ export const AdminProductsView = memo(function AdminProductsView({
                 Cancelar
               </AlertDialogCancel>
               <AlertDialogAction
-                onClick={confirmDelete}
+                onClick={() => {
+                  foco.marcarExclusao();
+                  confirmDelete();
+                }}
                 aria-label="Excluir Produto: confirmar exclusão"
                 className="produto-perigo w-full"
               >

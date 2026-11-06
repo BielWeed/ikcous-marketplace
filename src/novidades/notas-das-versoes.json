@@ -1,4 +1,19 @@
 {
+  "1.5.148": {
+    "titulo": "Foto certa no iPhone, cancelar pedido mais seguro e avisos que dizem o que aconteceu",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Painel, Fotos: no iPhone, os filtros do editor (Vívido, P&B, brilho, contraste) saem na foto salva como na prévia, e uma foto recortada que ficou pesada é salva leve.",
+      "Painel, Fotos: o aviso de qualidade não diz mais “Excelente” para uma foto pequena que foi esticada no recorte, e tocar duas vezes em Salvar Ajuste não envia a foto duas vezes.",
+      "Painel, Pedidos: cancelar um pedido que já mudou de etapa em outro aparelho agora avisa para conferir, em vez de cancelar pela tela velha, e o aviso de cancelamento não aparece duas vezes.",
+      "Loja, Checkout: quando um produto foi pausado ou acabou o estoque durante a compra, o botão do aviso atualiza o carrinho de verdade, e a frase diz que o estoque do que você escolheu acabou.",
+      "Loja, Avisos: quando um pagamento vence sozinho, o aviso do sino diz que o prazo do pagamento terminou, em vez de mandar falar com a loja.",
+      "Loja, Perfil: trocar a foto de perfil e a capa funciona pelo teclado, e o leitor de tela anuncia qual avatar, capa e aba está escolhida.",
+      "Painel, Cupons, Banners, Produtos e Vitrines: depois de excluir ou cancelar a exclusão, o teclado continua no lugar certo da tela, e as fotos do produto podem ser escolhidas pelo teclado.",
+      "Painel, iPhone instalado: o editor de foto, o simulador do aplicativo e as janelas de variação e grade não ficam mais por baixo da faixa de cima nem da barra de baixo."
+    ]
+  },
   "1.5.147": {
     "titulo": "Endereços certos em dois aparelhos, Voltar sem surpresas e telas que não somem com internet ruim",
     "novidades": [],

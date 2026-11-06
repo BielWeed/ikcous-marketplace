@@ -11,15 +11,22 @@ export const JANELA_DA_ACAO_PROPRIA_MS = 15_000;
 
 const marcas = new Map<string, { status: string; ate: number }>();
 
+/**
+ * `janelaMs` (opcional) alarga a marca para uma ação que demora mais que a
+ * janela padrão — o cancelamento pela edge espera o Mercado Pago e o evento do
+ * próprio cancelamento chega ANTES da resposta. Quem alarga é quem a desfaz ou
+ * a renova na resposta.
+ */
 export function marcarAcaoPropriaDoPedido(
   pedidoId: string,
   status: string,
   agora: number = Date.now(),
+  janelaMs: number = JANELA_DA_ACAO_PROPRIA_MS,
 ): void {
   for (const [id, marca] of marcas) {
     if (marca.ate <= agora) marcas.delete(id);
   }
-  marcas.set(pedidoId, { status, ate: agora + JANELA_DA_ACAO_PROPRIA_MS });
+  marcas.set(pedidoId, { status, ate: agora + janelaMs });
 }
 
 export function esquecerAcaoPropriaDoPedido(pedidoId: string): void {

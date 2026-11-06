@@ -632,6 +632,11 @@ async function main() {
   await C.connect();
   const falhas = [];
   try {
+    // A 20261399920000 (o sino do pedido vencido fala do vencimento) sucede o corpo da 20261233000000: sai PRIMEIRO, neste clone descartavel
+    // (ordem inversa da aplicacao; nao faz nada se nao esta no ar). Definicao unica em o-sino-do-pedido-vencido-posterior.cjs.
+    await require("./o-sino-do-pedido-vencido-posterior.cjs").desfazerSinoDoPedidoVencidoNaTransacao(
+      C,
+    );
     await C.query(`CREATE ROLE ${PAPEL_RO} NOLOGIN NOSUPERUSER BYPASSRLS`);
     await C.query(`GRANT pg_read_all_data TO ${PAPEL_RO}`);
     for (const { nome, corpo } of PROVAS) {

@@ -996,6 +996,7 @@ export function ProfileView({
           <div className="relative z-10 my-2 flex w-full rounded-xl bg-muted p-1">
             <button
               type="button"
+              aria-pressed={modalTab === "avatars"}
               onClick={() => {
                 setModalTab("avatars");
                 haptic.light();
@@ -1020,6 +1021,7 @@ export function ProfileView({
             </button>
             <button
               type="button"
+              aria-pressed={modalTab === "upload"}
               onClick={() => {
                 setModalTab("upload");
                 haptic.light();
@@ -1081,6 +1083,7 @@ export function ProfileView({
                             key={avatar.id}
                             type="button"
                             whileTap={{ scale: 0.95 }}
+                            aria-pressed={isSelected}
                             onClick={() => handleSelectPredefinedAvatar(avatar)}
                             className={`relative flex aspect-square cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 border-solid transition-colors ${
                               isSelected
@@ -1090,6 +1093,7 @@ export function ProfileView({
                             style={{
                               background: `linear-gradient(135deg, ${avatar.start}, ${avatar.end})`,
                             }}
+                            aria-label={avatar.label}
                             title={avatar.label}
                           >
                             <span className="select-none text-4xl">
@@ -1137,14 +1141,14 @@ export function ProfileView({
                           <div className="absolute -bottom-2 -right-2 flex size-11 cursor-pointer items-center justify-center rounded-full bg-foreground text-background transition-colors hover:bg-foreground/90">
                             <label
                               htmlFor="profile-avatar-upload-icon"
-                              className="flex size-full cursor-pointer items-center justify-center"
+                              className="relative flex size-full cursor-pointer items-center justify-center rounded-full focus-within:ring-2 focus-within:ring-ring"
                             >
                               <input
                                 id="profile-avatar-upload-icon"
                                 name="avatar"
                                 type="file"
                                 accept="image/*"
-                                className="hidden"
+                                className="sr-only"
                                 onChange={handlePhotoUpload}
                                 disabled={isUpdatingAvatar}
                               />
@@ -1165,14 +1169,14 @@ export function ProfileView({
                         <div className="flex w-full flex-col gap-2">
                           <label
                             htmlFor="profile-avatar-upload-button"
-                            className="w-full"
+                            className="relative w-full rounded-2xl focus-within:ring-2 focus-within:ring-ring"
                           >
                             <input
                               id="profile-avatar-upload-button"
                               name="avatar"
                               type="file"
                               accept="image/*"
-                              className="hidden"
+                              className="sr-only"
                               onChange={handlePhotoUpload}
                               disabled={isUpdatingAvatar}
                             />
@@ -1197,14 +1201,14 @@ export function ProfileView({
                       <div className="space-y-4">
                         <label
                           htmlFor="avatar_file_input_profile"
-                          className="block cursor-pointer"
+                          className="relative block cursor-pointer rounded-[18px] focus-within:ring-2 focus-within:ring-ring"
                         >
                           <span className="sr-only">Fazer upload de foto</span>
                           <input
                             id="avatar_file_input_profile"
                             type="file"
                             accept="image/*"
-                            className="hidden"
+                            className="sr-only"
                             onChange={handlePhotoUpload}
                             disabled={isUpdatingAvatar}
                           />
@@ -1299,6 +1303,7 @@ export function ProfileView({
           <div className="my-3.5 flex rounded-xl bg-muted p-1">
             <button
               type="button"
+              aria-pressed={coverModalTab === "presets"}
               onClick={() => {
                 setCoverModalTab("presets");
                 haptic.light();
@@ -1313,6 +1318,7 @@ export function ProfileView({
             </button>
             <button
               type="button"
+              aria-pressed={coverModalTab === "upload"}
               onClick={() => {
                 setCoverModalTab("upload");
                 haptic.light();
@@ -1346,6 +1352,7 @@ export function ProfileView({
                         whileTap={{ scale: 0.96 }}
                         type="button"
                         key={cover.id}
+                        aria-pressed={isSelected || isDefault}
                         onClick={() => handleSelectPredefinedCover(cover)}
                         disabled={isUpdatingCover}
                         className={`relative flex aspect-[16/10] flex-col justify-end overflow-hidden rounded-xl border-2 border-solid p-1.5 transition-colors ${
@@ -1380,7 +1387,10 @@ export function ProfileView({
               </div>
             ) : (
               <div className="flex flex-1 flex-col items-center justify-center py-2">
-                <label htmlFor="cover_file_input_profile" className="w-full">
+                <label
+                  htmlFor="cover_file_input_profile"
+                  className="relative w-full rounded-[18px] focus-within:ring-2 focus-within:ring-ring"
+                >
                   <span className="sr-only">Fazer upload de foto de capa</span>
                   <input
                     id="cover_file_input_profile"
@@ -1388,7 +1398,7 @@ export function ProfileView({
                     accept="image/*"
                     onChange={handleCoverUpload}
                     disabled={isUpdatingCover}
-                    className="hidden"
+                    className="sr-only"
                   />
                   <motion.div
                     whileTap={{ scale: 0.99 }}

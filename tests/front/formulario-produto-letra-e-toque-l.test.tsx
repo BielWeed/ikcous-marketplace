@@ -98,8 +98,8 @@ describe("AdminProductFormView — letra e toque (onda L, L5)", () => {
 
   it("c. 'Tirar foto' do estado vazio com min-h-11 e 13px; ações da galeria com 44px e largura inteira", () => {
     const rotulosDaCamera = [
-      ...FONTE.matchAll(/<label\s+htmlFor="product-image-capture"/g),
-    ].map((m) => tagAPartirDe(m.index));
+      ...FONTE.matchAll(/abrirEscolhaDeFoto\("product-image-capture"\)/g),
+    ].map((m) => tagDe("button", m[0], m.index));
     expect(rotulosDaCamera).toHaveLength(2);
 
     const comFotos = rotulosDaCamera.find((t) =>
@@ -115,7 +115,7 @@ describe("AdminProductFormView — letra e toque (onda L, L5)", () => {
     expect(vazio).toContain("min-h-11");
     expect(vazio).toContain("text-[13px]");
 
-    const adicionar = tagDe("label", 'title="Adicionar Mais Imagens"');
+    const adicionar = tagDe("button", 'title="Adicionar Mais Imagens"');
     expect(adicionar).toContain("min-h-11");
     expect(adicionar).toContain("w-full");
   });

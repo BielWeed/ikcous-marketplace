@@ -413,7 +413,7 @@ Deno.test("o cabecalho declara o que acontece com o dado que ja existe, a ordem 
   assert.ok(lista.includes("public.notifica_cliente_de_mudanca_de_status()"));
 });
 
-Deno.test("so a 20261026000000 e este par definem a funcao; depois da 20261026000000 ninguem mais a redefine alem deste par", () => {
+Deno.test("so a 20261026000000, este par e a sucessora 20261399920000 (o sino do pedido vencido) definem a funcao; ninguem mais a redefine", () => {
   const todas = [...Deno.readDirSync(new URL("supabase/migrations/", DIR))]
     .map((e) => e.name)
     .filter((n) => n.endsWith(".sql") && !n.startsWith("_"));
@@ -425,9 +425,18 @@ Deno.test("so a 20261026000000 e este par definem a funcao; depois da 2026102600
       )
     )
       definem.push(n);
+  // A sucessora (20261399920000) troca so o ramo cancelled e tem prova propria (tests/migration_o_sino_do_pedido_vencido_fala_do_vencimento_test.ts).
+  const SUCESSORA =
+    "20261399920000_o_sino_do_pedido_vencido_fala_do_vencimento.sql";
   assert.deepEqual(
     definem.sort(),
-    [VIGENTE, NOME, `rollback-manual-${NOME}`].sort(),
+    [
+      VIGENTE,
+      NOME,
+      `rollback-manual-${NOME}`,
+      SUCESSORA,
+      `rollback-manual-${SUCESSORA}`,
+    ].sort(),
   );
 });
 

@@ -120,6 +120,7 @@ async function cancelar(opts: {
   adminAtual?: string | null;
   erroLeitura?: unknown;
   respostaRpc?: { data?: unknown; error?: unknown };
+  statusEsperado?: string | null;
 }) {
   const banco = bancoFalso(opts.linha, { erroLeitura: opts.erroLeitura, respostaRpc: opts.respostaRpc });
   let credenciaisPedidas = 0;
@@ -132,6 +133,7 @@ async function cancelar(opts: {
     sub,
     authorization: montarToken(sub),
     json,
+    ...(opts.statusEsperado !== undefined ? { statusEsperado: opts.statusEsperado } : {}),
     obterCredenciais: () => {
       credenciaisPedidas += 1;
       return Promise.resolve(CREDENCIAIS);
@@ -473,6 +475,109 @@ Deno.test("pagamento da API clássica (id numérico) → 409, nada anulado nem c
   semEfeitoNoBanco(r);
 });
 
+// ─── r43-e: a tela velha não cancela o que já mudou de etapa ─────────────────
+//
+// O avanço sempre conferiu a etapa de origem; o cancelamento, que é a ação mais
+// destrutiva, não. `statusEsperado` é OPCIONAL: sem ele, o comportamento é o de
+// sempre (front antigo). Com ele, a etapa gravada tem de ser a mesma — senão
+// "mudou", antes de tocar no MP e no banco.
+
+Deno.test("statusEsperado diferente da etapa gravada (já entregue) → mudou: ZERO MP, ZERO RPC, com o pedido relido e a frase da etapa", async () => {
+  const mp = mpFalso({});
+  const r = await cancelar({
+    linha: pedidoBase({ status: "delivered", payment_status: "pago" }),
+    mp,
+    sub: ADMIN,
+    adminAtual: ADMIN,
+    statusEsperado: "processing",
+  });
+  assertEquals(r.status, 200);
+  assertEquals(r.corpo.cancelamento, "mudou");
+  assertEquals(r.corpo.pedido, { status: "delivered", paymentStatus: "pago" });
+  assertEquals(r.corpo.mensagem, MENSAGENS_DO_CANCELAMENTO.mudouDeEtapa);
+  assertEquals(mp.chamadas, [], "nada no Mercado Pago");
+  semEfeitoNoBanco(r);
+});
+
+Deno.test("statusEsperado igual à etapa gravada → cancela normalmente (a conferência não atrapalha o caminho feliz)", async () => {
+  const r = await cancelar({
+    linha: pedidoBase({ status: "processing", payment_status: "pago", gateway_payment_id: null }),
+    sub: ADMIN,
+    adminAtual: ADMIN,
+    statusEsperado: "processing",
+  });
+  assertEquals(r.corpo.cancelamento, "cancelado");
+  assertEquals(r.banco.rpcs.length, 1);
+  assertEquals(r.banco.rpcs[0].nome, "cancelar_pedido_com_cobranca");
+});
+
+Deno.test("SEM statusEsperado (front antigo) → comportamento de sempre, mesmo com a etapa diferente da que a tela teria", async () => {
+  const r = await cancelar({
+    linha: pedidoBase({ status: "delivered", payment_status: "pago", gateway_payment_id: null }),
+    sub: ADMIN,
+    adminAtual: ADMIN,
+  });
+  assertEquals(r.corpo.cancelamento, "cancelado");
+  assertEquals(r.banco.rpcs.length, 1);
+});
+
+for (const [rotulo, valor] of [["null", null], ["texto vazio", ""], ["número", 7], ["objeto", {}]] as const) {
+  Deno.test(`statusEsperado inválido (${rotulo}) é tratado como AUSENTE → comportamento de sempre`, async () => {
+    const r = await cancelar({
+      linha: pedidoBase({ status: "delivered", payment_status: "pago", gateway_payment_id: null }),
+      sub: ADMIN,
+      adminAtual: ADMIN,
+      // @ts-ignore: de propósito, o corpo vem da rede
+      statusEsperado: valor,
+    });
+    assertEquals(r.corpo.cancelamento, "cancelado");
+    assertEquals(r.banco.rpcs.length, 1);
+  });
+}
+
+Deno.test("quem não é dono nem admin recebe o MESMO 404 mesmo com statusEsperado errado — a etapa do pedido alheio não vaza", async () => {
+  const mp = mpFalso({});
+  const r = await cancelar({
+    linha: pedidoBase({ status: "delivered", payment_status: "pago" }),
+    mp,
+    sub: ESTRANHO,
+    adminAtual: null,
+    statusEsperado: "processing",
+  });
+  assertEquals(r.status, 404);
+  assertEquals(r.corpo.error, "Pedido não encontrado.");
+  assertEquals(r.corpo.pedido, undefined);
+  assertEquals(mp.chamadas, []);
+  semEfeitoNoBanco(r);
+});
+
+Deno.test("pedido JÁ cancelado + statusEsperado diferente → cancelado/jaEstava (o desfecho que a pessoa queria já existe)", async () => {
+  const r = await cancelar({
+    linha: pedidoBase({ status: "cancelled" }),
+    sub: ADMIN,
+    adminAtual: ADMIN,
+    statusEsperado: "processing",
+  });
+  assertEquals(r.corpo.cancelamento, "cancelado");
+  assertEquals(r.corpo.jaEstava, true);
+  semEfeitoNoBanco(r);
+});
+
+Deno.test("etapa diferente também barra ANTES do Mercado Pago: pedido aguardando com cobrança na vaga, tela velha → nenhum GET/POST no MP", async () => {
+  const mp = mpFalso({});
+  const r = await cancelar({
+    linha: pedidoBase({ status: "shipping" }),
+    mp,
+    sub: ADMIN,
+    adminAtual: ADMIN,
+    statusEsperado: "pending",
+  });
+  assertEquals(r.corpo.cancelamento, "mudou");
+  assertEquals(mp.chamadas, []);
+  assertEquals(r.credenciaisPedidas, 0, "nem as credenciais do MP foram pedidas");
+  semEfeitoNoBanco(r);
+});
+
 // ─── A fiação no handler ─────────────────────────────────────────────────────
 
 Deno.test("handler: metodo 'cancelar' chega à ação nova (ADMIN pela conferência injetada) e não passa por podeCobrar", async () => {
@@ -494,6 +599,33 @@ Deno.test("handler: metodo 'cancelar' chega à ação nova (ADMIN pela conferên
   const corpo = await resposta.json();
   assertEquals(corpo.cancelamento, "cancelado");
   assertEquals(banco.registro.rpcs[0].args.p_ator, ADMIN);
+});
+
+Deno.test("handler: o statusEsperado do corpo chega à ação — etapa diferente → mudou, ZERO RPC; sem o campo → cancela", async () => {
+  const chamar = async (extra: Record<string, unknown>) => {
+    const banco = bancoFalso(pedidoBase({ gateway_payment_id: null, metodo_online: null, status: "delivered", payment_status: "pago" }));
+    const resposta = await handler(
+      new Request("http://localhost/criar-pagamento", {
+        method: "POST",
+        headers: { Authorization: montarToken(ADMIN), "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: PEDIDO, metodo: "cancelar", ...extra }),
+      }),
+      {
+        supabase: banco.supabase,
+        fetchImpl: mpFalso({}).fetchImpl,
+        credenciaisMp: CREDENCIAIS,
+        verificarAdminAtual: () => Promise.resolve(ADMIN),
+      },
+    );
+    return { status: resposta.status, corpo: await resposta.json(), banco: banco.registro };
+  };
+  const barrado = await chamar({ statusEsperado: "processing" });
+  assertEquals(barrado.status, 200);
+  assertEquals(barrado.corpo.cancelamento, "mudou");
+  assertEquals(barrado.banco.rpcs, []);
+  const antigo = await chamar({});
+  assertEquals(antigo.corpo.cancelamento, "cancelado");
+  assertEquals(antigo.banco.rpcs.length, 1);
 });
 
 Deno.test("handler: 'cancelar' com orderId inválido → 400 antes de tudo", async () => {

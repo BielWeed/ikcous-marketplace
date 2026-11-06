@@ -256,6 +256,8 @@ on:
       - "scripts/publicacao/consultas/125b-antes-a-busca-de-pedidos-acha-o-telefone-colado-com-o-55-base-vigente.sql"
       - "scripts/publicacao/consultas/126a-conferir-a-busca-de-devolucao-ignora-o-acento-aplicado.sql"
       - "scripts/publicacao/consultas/126b-antes-a-busca-de-devolucao-ignora-o-acento-base-vigente.sql"
+      - "scripts/publicacao/consultas/127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado.sql"
+      - "scripts/publicacao/consultas/127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -481,6 +483,8 @@ on:
       - "scripts/publicacao/consultas/125b-antes-a-busca-de-pedidos-acha-o-telefone-colado-com-o-55-base-vigente.sql"
       - "scripts/publicacao/consultas/126a-conferir-a-busca-de-devolucao-ignora-o-acento-aplicado.sql"
       - "scripts/publicacao/consultas/126b-antes-a-busca-de-devolucao-ignora-o-acento-base-vigente.sql"
+      - "scripts/publicacao/consultas/127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado.sql"
+      - "scripts/publicacao/consultas/127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -854,6 +858,13 @@ jobs:
       - name: Prova viva da busca de Devolucoes que ignora o acento (20261399910000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-busca-de-devolucao-ignora-o-acento-viva.cjs
+      # Migration 20261399920000 (o sino do pedido vencido fala do vencimento): notifica_cliente_de_mudanca_de_status, no ramo cancelled, avisa "Prazo do pagamento terminou" quando o pedido foi cancelado com
+      # payment_status expirado (a varredura grava os dois no mesmo UPDATE) e mantem a frase de hoje para qualquer outro cancelamento. Controle com o corpo da 20261233000000 na MESMA fixture, a varredura
+      # REAL (expirar_pedidos_vencidos), cancelamento da cliente/lojista, os outros status e a retirada iguais, mutantes, ACL/atributos/dono/trigger iguais, reaplicar, rollback byte a byte, pre-voo e
+      # consultas 127a/127b. CLONE proprio.
+      - name: Prova viva do sino do pedido vencido que fala do vencimento (20261399920000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-sino-do-pedido-vencido-fala-do-vencimento-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

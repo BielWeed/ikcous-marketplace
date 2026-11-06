@@ -688,6 +688,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "125b-antes-a-busca-de-pedidos-acha-o-telefone-colado-com-o-55-base-vigente",
   "126a-conferir-a-busca-de-devolucao-ignora-o-acento-aplicado",
   "126b-antes-a-busca-de-devolucao-ignora-o-acento-base-vigente",
+  "127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado",
+  "127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

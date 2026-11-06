@@ -25,6 +25,7 @@ import { Switch } from "@/components/ui/switch";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useCoupons } from "@/hooks/useCoupons";
+import { useFocoAposExcluir } from "@/hooks/useFocoAposExcluir";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
@@ -147,6 +148,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [couponToDelete, setCouponToDelete] = useState<string | null>(null);
+  const foco = useFocoAposExcluir();
 
   const { ref: viewRef } = useScrollRestoration(
     "admin-coupons",
@@ -319,7 +321,10 @@ export const AdminCouponsView = memo(function AdminCouponsView({
     >
       <div className="sticky top-0 z-20 bg-admin-bg/95 px-5 py-4 backdrop-blur-xl">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 [&_h1]:font-bold [&_h1]:normal-case [&_h1]:tracking-tight">
-          <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-coupons"]} />
+          <AdminPageHeader
+            titulo={NOMES_DO_PAINEL["admin-coupons"]}
+            propsDoTitulo={foco.propsDoTitulo}
+          />
           {coupons.length > 0 && (
             <button
               type="button"
@@ -949,7 +954,10 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         open={couponToDelete !== null}
         onOpenChange={(open) => !open && setCouponToDelete(null)}
       >
-        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
+        <AlertDialogContent
+          {...foco.dialogo}
+          className="max-w-md rounded-3xl border border-admin-border bg-zinc-950"
+        >
           <AlertDialogHeader>
             <Selo icone={Trash} matiz="#FF6868" />
             <AlertDialogTitle className="text-2xl font-bold text-zinc-50">
@@ -967,7 +975,13 @@ export const AdminCouponsView = memo(function AdminCouponsView({
             <AlertDialogCancel className={SECUNDARIO}>
               Cancelar
             </AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteCoupon} className={PERIGO}>
+            <AlertDialogAction
+              onClick={() => {
+                foco.marcarExclusao();
+                confirmDeleteCoupon();
+              }}
+              className={PERIGO}
+            >
               Excluir cupom
             </AlertDialogAction>
           </AlertDialogFooter>

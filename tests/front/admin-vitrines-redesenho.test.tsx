@@ -705,6 +705,19 @@ describe("Excluir pede confirmação", () => {
     });
   });
 
+  it("depois de excluir, o foco vai para o título da tela e não se perde no corpo da página", async () => {
+    await pedirExclusao();
+    await clicar(botaoComTexto("Excluir", confirmacao() as HTMLElement));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(confirmacao()).toBeNull();
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(hospedeiro.querySelector("h1")),
+    );
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
   it("Cancelar mantém a vitrine, não grava e devolve ao painel de edição", async () => {
     await pedirExclusao();
     await clicar(botaoComTexto("Cancelar", confirmacao() as HTMLElement));

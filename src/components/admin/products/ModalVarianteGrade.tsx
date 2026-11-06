@@ -594,7 +594,7 @@ export function ModalVarianteGrade({
             aria-labelledby="titulo-da-grade"
             className="produto-modal gpu-accelerated flex h-dvh max-h-dvh w-full max-w-lg flex-col overflow-hidden rounded-none border border-admin-border shadow-2xl sm:h-auto sm:max-h-[90dvh] sm:rounded-3xl"
           >
-            <div className="relative z-10 flex shrink-0 items-center gap-4 border-b border-admin-border bg-admin-bg p-5">
+            <div className="relative z-10 flex shrink-0 items-center gap-4 border-b border-admin-border bg-admin-bg p-5 pt-[calc(1.25rem+var(--safe-area-top,0px))]">
               <div className="flex size-12 items-center justify-center rounded-2xl border border-violet-400/20 bg-violet-400/10">
                 <Layers className="size-6 text-violet-300" />
               </div>
@@ -782,7 +782,7 @@ export function ModalVarianteGrade({
               )}
             </div>
 
-            <div className="relative z-10 flex shrink-0 flex-wrap gap-3 border-t border-admin-border bg-admin-surface p-5">
+            <div className="relative z-10 flex shrink-0 flex-wrap gap-3 border-t border-admin-border bg-admin-surface p-5 pb-[calc(1.25rem+var(--safe-area-bottom,0px))]">
               <p className="w-full text-xs text-zinc-400">
                 Alterações ainda não salvas
               </p>

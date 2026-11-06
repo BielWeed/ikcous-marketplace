@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
+import { useFocoAposExcluir } from "@/hooks/useFocoAposExcluir";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import type { LayoutDeOfertas } from "@/lib/layout-de-ofertas";
@@ -146,6 +147,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   const [confirmarRestaurar, setConfirmarRestaurar] = useState(false);
   const [vitrineParaExcluir, setVitrineParaExcluir] =
     useState<SecaoDaHome | null>(null);
+  const foco = useFocoAposExcluir();
 
   const defaultHomeSections = useMemo<SecaoDaHome[]>(
     () => [
@@ -646,6 +648,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           <div className="flex items-center justify-between gap-3">
             <AdminPageHeader
               titulo={NOMES_DO_PAINEL["admin-carousels"]}
+              propsDoTitulo={foco.propsDoTitulo}
               acoes={
                 <>
                   <button
@@ -891,7 +894,10 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           if (!aberto) setVitrineParaExcluir(null);
         }}
       >
-        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
+        <AlertDialogContent
+          {...foco.dialogo}
+          className="max-w-md rounded-3xl border border-admin-border bg-zinc-950"
+        >
           <AlertDialogHeader>
             <div className="flex size-11 items-center justify-center rounded-[14px] bg-rose-500/10 text-rose-400">
               <Trash2 className="size-5" />
@@ -920,6 +926,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             <AlertDialogAction
               disabled={salvandoVitrines}
               onClick={() => {
+                foco.marcarExclusao();
                 if (vitrineParaExcluir) {
                   handleDeleteVitrine(vitrineParaExcluir.id);
                 }

@@ -321,7 +321,8 @@ module.exports = [
     // 06/11/2026 (mesma regra): 511 -> 513 kB na 1.5.144 (cupons, produtos sem estoque, devolucao, datas, pedidos).
     // Medem 511,45 kB no build local, 446 B acima do teto. Nada foi trocado por algo mais arriscado.
     // 06/11/2026 (mesma regra): 513 -> 515 kB na 1.5.147 (mediu 513,51 kB no build local, 510 B acima do teto). Nada foi trocado por algo mais arriscado.
-    limit: "515 kB",
+    // 06/11/2026 (mesma regra): 515 -> 518 kB na 1.5.148 (foto do produto por teclado, foco apos excluir, editor de foto no iPhone; mediu 515,05 kB). Nada foi trocado por algo mais arriscado.
+    limit: "518 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },

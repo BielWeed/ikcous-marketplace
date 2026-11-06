@@ -152,6 +152,79 @@ describe("SaidaDaRecusa", () => {
     expect(container.textContent).not.toContain("Ainda há");
   });
 
+  // 06/11/2026 (r43-c): quem perde a corrida pela ÚLTIMA unidade leva
+  // "Disponível: 0". "Ainda há 0 de X disponível" e "Deixar a quantidade
+  // disponível" (não sobrou quantidade alguma) confundiam. A mensagem curta
+  // abaixo não traz o número do banco, para o "0" só aparecer na tela se o
+  // painel o escrever (mesma razão do teste do estoque com número).
+  it("estoque ZERADO: diz que acabou, sem 'Ainda há 0', e o botão é 'Atualizar o carrinho'", () => {
+    render({
+      acao: "ajustar_estoque",
+      mensagem: "Estoque insuficiente para o produto solicitado.",
+      produto: "Camiseta",
+      disponivel: 0,
+    });
+    const texto = container.textContent ?? "";
+    expect(texto).toContain('Acabou o estoque de "Camiseta"');
+    expect(texto).not.toContain("Ainda há");
+    expect(texto).not.toContain("0 de");
+    const botao = container.querySelector(
+      "button[data-acao]",
+    ) as HTMLButtonElement;
+    // A ação (e portanto o destino: carrinho relido) NÃO muda; só o rótulo.
+    expect(botao.getAttribute("data-acao")).toBe("ajustar_estoque");
+    expect(botao.textContent).toBe("Atualizar o carrinho");
+    expect(texto).not.toContain("Deixar a quantidade disponível");
+  });
+
+  it("estoque zerado clica no botão: devolve ajustar_estoque ao chamador", () => {
+    const recebidas: AcaoDeRecusa[] = [];
+    render(
+      {
+        acao: "ajustar_estoque",
+        mensagem: "Estoque insuficiente para o produto solicitado.",
+        produto: "Camiseta",
+        disponivel: 0,
+      },
+      (a) => recebidas.push(a),
+    );
+    act(() =>
+      (
+        container.querySelector("button[data-acao]") as HTMLButtonElement
+      ).click(),
+    );
+    expect(recebidas).toEqual(["ajustar_estoque"]);
+  });
+
+  it("estoque zerado e nome vazio: rótulo novo, mas nenhuma frase inventada", () => {
+    // O produto sem nome é possível (a regra de classificação aceita `*`).
+    render({
+      acao: "ajustar_estoque",
+      mensagem: "Estoque insuficiente para o produto solicitado.",
+      produto: "",
+      disponivel: 0,
+    });
+    expect(container.textContent).not.toContain("Acabou o estoque");
+    expect(container.textContent).not.toContain("Ainda há");
+    expect(container.querySelector("button[data-acao]")?.textContent).toBe(
+      "Atualizar o carrinho",
+    );
+  });
+
+  it("controle: sobrou 1 unidade, o painel segue dizendo quanto há e o botão antigo", () => {
+    render({
+      acao: "ajustar_estoque",
+      mensagem: "Estoque insuficiente para o produto solicitado.",
+      produto: "Camiseta",
+      disponivel: 1,
+    });
+    expect(container.textContent).toContain('Ainda há 1 de "Camiseta"');
+    expect(container.textContent).not.toContain("Acabou o estoque");
+    expect(container.querySelector("button[data-acao]")?.textContent).toBe(
+      "Deixar a quantidade disponível",
+    );
+  });
+
   it("conferir_antes NÃO oferece 'tentar de novo' — é assim que se duplica pedido", () => {
     render({ acao: "conferir_antes", mensagem: "Não conseguimos confirmar." });
     const rotulos = Array.from(container.querySelectorAll("button")).map((b) =>

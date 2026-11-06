@@ -299,6 +299,83 @@ describe("CheckoutView — a recusa de preço/estoque relê o carrinho antes de 
     });
   }
 
+  // 06/11/2026 (r43-c): produto PAUSADO (ou opção desligada) com o item no
+  // carrinho. O banco não acha o produto e recusa com a frase "Produto ... não
+  // disponível." (remover_item); produto que ganhou variações recusa com
+  // "Escolha uma variação ..." (escolher_variacao). Os dois botões só levavam
+  // ao carrinho SEM reler o catálogo: o item pausado continuava lá, sem aviso
+  // de qual era, e Finalizar devolvia a mesma recusa. Agora releem antes.
+  for (const [nome, recusa, acao] of [
+    [
+      "produto pausado ou opção desligada",
+      {
+        code: "P0001",
+        message: "Produto não encontrado não disponível.",
+      },
+      "remover_item",
+    ],
+    [
+      "produto que ganhou variações",
+      {
+        code: "P0001",
+        message: "Escolha uma variação para o produto Camiseta.",
+      },
+      "escolher_variacao",
+    ],
+  ] as const) {
+    it(`${nome} (${acao}): relê o carrinho, e SÓ DEPOIS leva até ele`, async () => {
+      const releitura = releituraSobControle();
+      const botao = await chegarNaRecusa(recusa, acao);
+
+      await act(async () => {
+        botao.click();
+        await esperarMicrotarefas();
+      });
+
+      // A releitura (que tira o item pausado e conta qual foi) começou, e a
+      // cliente ainda NÃO foi levada ao carrinho com o item velho.
+      expect(renovarCarrinho).toHaveBeenCalledTimes(1);
+      expect(onNavigate).not.toHaveBeenCalled();
+      expect(document.querySelector('[role="alert"]')).toBeNull();
+
+      await act(async () => {
+        releitura.terminar();
+        await esperarMicrotarefas();
+      });
+
+      expect(onNavigate).toHaveBeenCalledTimes(1);
+      expect(onNavigate).toHaveBeenCalledWith("cart");
+      expect(mundo.ordem).toEqual([
+        "releitura:comecou",
+        "releitura:terminou",
+        "ir:cart",
+      ]);
+    });
+  }
+
+  it("remover_item com a rede PENDURADA: depois do teto a cliente chega ao carrinho mesmo assim", async () => {
+    renovarCarrinho.mockImplementation(() => new Promise<void>(() => {}));
+    const botao = await chegarNaRecusa(
+      { code: "P0001", message: "Produto não encontrado não disponível." },
+      "remover_item",
+    );
+
+    vi.useFakeTimers();
+    await act(async () => {
+      botao.click();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(renovarCarrinho).toHaveBeenCalledTimes(1);
+    expect(onNavigate).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(onNavigate).toHaveBeenCalledWith("cart");
+  });
+
   it("rede PENDURADA: depois do teto a cliente chega ao carrinho mesmo assim", async () => {
     renovarCarrinho.mockImplementation(() => new Promise<void>(() => {}));
     const botao = await chegarNaRecusa(RECUSA_DE_PRECO, "reconferir_carrinho");

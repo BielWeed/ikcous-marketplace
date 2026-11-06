@@ -70,7 +70,9 @@ WITH fn AS (
   UNION ALL
   SELECT 'notifica_cliente_de_mudanca_de_status: corpo e o da 20261233000000, com o texto da retirada (md5)',
          'fc8fd54a2fa1533f0d926744aab8ff58',
-         COALESCE((SELECT f.m FROM fn f), 'AUSENTE')
+         -- A 20261399920000 (o sino do pedido vencido fala do vencimento) sucede este corpo: so o ramo cancelled muda (o texto da retirada, o da
+         -- entrega e o marcador abaixo ficam). Aceita os dois corpos EXATOS; normaliza ao esperado historico do rol.
+         COALESCE((SELECT CASE WHEN f.m IN ('fc8fd54a2fa1533f0d926744aab8ff58', 'dd76f4442bcb0a3b05bcede6d80fc406') THEN 'fc8fd54a2fa1533f0d926744aab8ff58' ELSE f.m END FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'notifica_cliente_de_mudanca_de_status: o corpo traz o texto da retirada',
          'sim',

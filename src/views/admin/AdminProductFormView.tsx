@@ -210,6 +210,15 @@ const FolhaDeNovaCategoria = lazyRetentavel(() =>
 // campo (dispensa o modal). Chamada a cada render de propósito — é barata e
 // `navigator.mediaDevices` pode mudar entre uma leitura e outra (permissão
 // revogada, por exemplo).
+/**
+ * Os campos de arquivo das fotos ficam escondidos (`display:none`, que não
+ * recebe foco). Os botões "Capa", "Tirar foto", "Galeria" e "Mais fotos" são
+ * botões de verdade — entram na ordem do Tab — e abrem a escolha de arquivo
+ * por aqui, o mesmo desenho do botão de imagem do banner.
+ */
+const abrirEscolhaDeFoto = (idDoCampo: string) =>
+  document.getElementById(idDoCampo)?.click();
+
 function temCameraDisponivel(): boolean {
   return (
     typeof navigator !== "undefined" &&
@@ -1245,8 +1254,29 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     setIsAdjusterOpen(true);
   };
 
+  // Trava contra o toque duplo em "Salvar Ajuste": `isUploadingAdjusted` (o
+  // botão desligado) só liga DEPOIS de o recorte baixar a foto de novo e gerar
+  // o arquivo, e esta função rodava de novo nessa janela, mandando o recorte
+  // duas vezes e deixando o primeiro arquivo órfão no armazenamento. Um ref
+  // vale no mesmo instante (mesmo padrão do banner, AdminBannersView).
+  const ajusteEmAndamentoRef = useRef(false);
+
   const handleAdjustConfirm = async (croppedBlob: Blob) => {
     if (adjustingImgIndex === null) return;
+    if (ajusteEmAndamentoRef.current) return;
+    ajusteEmAndamentoRef.current = true;
+    // A foto original, medida ANTES do envio: o recorte é estirado até
+    // 1000 x 1250 sem aviso, então o arquivo novo tem pixels de sobra que não
+    // existiam na foto. "Resolução baixa" e "Boa qualidade" valem para o que a
+    // foto TEM de verdade e o recorte herda (nunca vira "Excelente" de graça).
+    // Os demais avisos (proporção) o recorte resolve, e quem mede é a avaliação
+    // normal do arquivo novo.
+    // eslint-disable-next-line security/detect-object-injection -- chave é a URL de uma foto da própria lista do formulário, não entrada de usuário.
+    const statusDaFotoAntiga = imageMetadata[adjustingImgUrl]?.status;
+    const statusHerdado =
+      statusDaFotoAntiga === "warning_res" || statusDaFotoAntiga === "good"
+        ? statusDaFotoAntiga
+        : null;
     setIsUploadingAdjusted(true);
 
     const file = arquivoDaImagemRecortada(croppedBlob, "product-image-");
@@ -1268,6 +1298,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       );
       if (urls && urls.length > 0) {
         const newUrl = urls[0];
+        // Com aviso herdado, a URL nova entra como "já avaliada" ANTES de entrar
+        // na lista: senão o efeito de avaliação (que roda a cada mudança de
+        // `formData.images`) mede os pixels esticados e grava "Excelente" por
+        // cima. Sem aviso herdado, ele a avalia sozinho.
+        if (statusHerdado) evaluatedImagesRef.current.add(newUrl);
         setFormData((prev) => {
           const newImages = [...prev.images];
           const fotoAntiga = prev.images.at(adjustingImgIndex);
@@ -1288,19 +1323,23 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           };
         });
 
-        // Pre-evaluate the newly cropped image immediately
-        const img = new Image();
-        img.onload = () => {
-          setImageMetadata((prev) => ({
-            ...prev,
-            [newUrl]: {
-              width: img.naturalWidth,
-              height: img.naturalHeight,
-              status: "excellent",
-            },
-          }));
-        };
-        img.src = newUrl;
+        if (statusHerdado) {
+          // Tamanho real do arquivo novo, aviso da foto original.
+          const img = new Image();
+          const medida = (
+            width: number,
+            height: number,
+            status: typeof statusHerdado | "erro",
+          ) =>
+            setImageMetadata((prev) => ({
+              ...prev,
+              [newUrl]: { width, height, status },
+            }));
+          img.onload = () =>
+            medida(img.naturalWidth, img.naturalHeight, statusHerdado);
+          img.onerror = () => medida(0, 0, "erro");
+          img.src = newUrl;
+        }
 
         toast.success("Imagem ajustada com sucesso!", { id: loadingToast });
         setIsAdjusterOpen(false);
@@ -1320,6 +1359,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     } finally {
       fim();
       setIsUploadingAdjusted(false);
+      ajusteEmAndamentoRef.current = false;
     }
   };
 
@@ -3729,7 +3769,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   aria-labelledby="titulo-da-variacao"
                   className="produto-modal gpu-accelerated flex h-dvh max-h-dvh w-full max-w-lg flex-col overflow-hidden rounded-none border border-admin-border shadow-2xl sm:h-auto sm:max-h-[90dvh] sm:rounded-3xl"
                 >
-                  <div className="relative z-10 flex shrink-0 items-center gap-4 border-b border-admin-border bg-admin-bg p-5">
+                  <div className="relative z-10 flex shrink-0 items-center gap-4 border-b border-admin-border bg-admin-bg p-5 pt-[calc(1.25rem+var(--safe-area-top,0px))]">
                     <div className="flex size-12 items-center justify-center rounded-2xl border border-violet-400/20 bg-violet-400/10">
                       <Layers className="size-6 text-violet-300" />
                     </div>
@@ -4156,7 +4196,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     </details>
                   </div>
 
-                  <div className="relative z-10 flex shrink-0 gap-4 border-t border-admin-border bg-admin-surface p-5">
+                  <div className="relative z-10 flex shrink-0 gap-4 border-t border-admin-border bg-admin-surface p-5 pb-[calc(1.25rem+var(--safe-area-bottom,0px))]">
                     <button
                       type="button"
                       // Ressalva da revisão da C5.2: o rascunho do modal
@@ -4299,14 +4339,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               <div className="w-full">
                 {formData.images.length === 0 ? (
                   <div className="produto-fotos-vazio">
-                    {/* A CAPA: o quadrado grande é o mesmo `<label>` de sempre
-                    (aponta para o input de galeria, que fica SEM `capture`) e
-                    leva o arraste de arquivos. O label TEM texto visível ("Capa") e o
-                    input casado está dentro dele: pôr `aria-label` aqui
-                    pioraria a acessibilidade, trocando esse texto pelo rótulo
-                    curto no nome acessível. */}
-                    <label
-                      htmlFor="product-image-upload"
+                    {/* A CAPA: o quadrado grande é um botão (abre o input de
+                    galeria, que fica SEM `capture`) e leva o arraste de
+                    arquivos. O botão TEM texto visível ("Capa"): pôr
+                    `aria-label` aqui pioraria a acessibilidade, trocando esse
+                    texto pelo rótulo curto no nome acessível. O campo de
+                    arquivo é irmão dele, escondido: `display:none` não recebe
+                    foco. */}
+                    <button
+                      type="button"
+                      disabled={isSubmitting || isImageUploading}
+                      onClick={() => abrirEscolhaDeFoto("product-image-upload")}
                       onDragOver={(e) => {
                         e.preventDefault();
                         setIsDragging(true);
@@ -4339,17 +4382,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       <span className="text-sm font-medium">
                         {isDragging ? "Solte aqui" : "Capa"}
                       </span>
-                      <input
-                        id="product-image-upload"
-                        name="product-images"
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        onChange={handleImageUpload}
-                        className="hidden"
-                        disabled={isSubmitting || isImageUploading}
-                      />
-                    </label>
+                    </button>
+                    <input
+                      id="product-image-upload"
+                      name="product-images"
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleImageUpload}
+                      className="hidden"
+                      disabled={isSubmitting || isImageUploading}
+                    />
                     {/* Só o contorno de onde as próximas fotos vão aparecer. */}
                     <div
                       className="produto-fotos-miniaturas"
@@ -4369,13 +4412,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     </div>
                     <div className="produto-fotos-botoes">
                       {/* C5.3 — "Tirar foto": um SEGUNDO input, com `capture`,
-                    fora do label da capa. O input de galeria fica SEM
+                    fora do botão da capa. O input de galeria fica SEM
                     `capture` de propósito — com `capture` o celular deixa de
                     oferecer a galeria e só abre a câmera. Os dois chamam o
                     MESMO `handleImageUpload`: a origem do arquivo (câmera ou
                     galeria) não muda o que a tela faz com ele. */}
-                      <label
-                        htmlFor="product-image-capture"
+                      <button
+                        type="button"
+                        disabled={isSubmitting || isImageUploading}
+                        onClick={() =>
+                          abrirEscolhaDeFoto("product-image-capture")
+                        }
                         className={cn(
                           "produto-fotos-camera flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-center whitespace-nowrap rounded-full px-3 text-[13px] font-bold transition-all",
                           (isSubmitting || isImageUploading) &&
@@ -4383,19 +4430,23 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         )}
                       >
                         Tirar foto
-                        <input
-                          id="product-image-capture"
-                          name="product-image-capture"
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          onChange={handleImageUpload}
-                          className="hidden"
-                          disabled={isSubmitting || isImageUploading}
-                        />
-                      </label>
-                      <label
-                        htmlFor="product-image-upload"
+                      </button>
+                      <input
+                        id="product-image-capture"
+                        name="product-image-capture"
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handleImageUpload}
+                        className="hidden"
+                        disabled={isSubmitting || isImageUploading}
+                      />
+                      <button
+                        type="button"
+                        disabled={isSubmitting || isImageUploading}
+                        onClick={() =>
+                          abrirEscolhaDeFoto("product-image-upload")
+                        }
                         className={cn(
                           "produto-fotos-galeria flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-center rounded-full border border-solid border-admin-border-strong px-3 text-[13px] font-bold",
                           (isSubmitting || isImageUploading) &&
@@ -4403,7 +4454,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         )}
                       >
                         Galeria
-                      </label>
+                      </button>
                     </div>
                   </div>
                 ) : (
@@ -4595,8 +4646,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   {/* C5.3 — "Tirar foto": SEGUNDO input, com `capture`, para
                     não tirar a galeria do celular do input de cima (ver
                     comentário completo no estado vazio, abaixo). */}
-                  <label
-                    htmlFor="product-image-capture"
+                  <button
+                    type="button"
+                    disabled={isSubmitting || isImageUploading}
+                    onClick={() => abrirEscolhaDeFoto("product-image-capture")}
                     className={cn(
                       "produto-fotos-camera flex min-h-11 w-full min-w-0 cursor-pointer items-center justify-center gap-2 rounded-full px-3 text-[13px] font-bold",
                       (isSubmitting || isImageUploading) &&
@@ -4605,19 +4658,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     title="Tirar Foto"
                   >
                     <Camera className="size-5" /> Tirar foto
-                    <input
-                      id="product-image-capture"
-                      name="product-image-capture"
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handleImageUpload}
-                      className="hidden"
-                      disabled={isSubmitting || isImageUploading}
-                    />
-                  </label>
-                  <label
-                    htmlFor="product-image-upload"
+                  </button>
+                  <input
+                    id="product-image-capture"
+                    name="product-image-capture"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    disabled={isSubmitting || isImageUploading}
+                  />
+                  <button
+                    type="button"
+                    disabled={isSubmitting || isImageUploading}
+                    onClick={() => abrirEscolhaDeFoto("product-image-upload")}
                     className={cn(
                       "produto-fotos-galeria flex min-h-11 w-full min-w-0 cursor-pointer items-center justify-center gap-2 rounded-full border border-solid border-admin-border-strong px-3 text-[13px] font-bold",
                       (isSubmitting || isImageUploading) &&
@@ -4626,17 +4681,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     title="Adicionar Mais Imagens"
                   >
                     <Plus className="size-5" /> Mais fotos
-                    <input
-                      id="product-image-upload"
-                      name="product-images"
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={handleImageUpload}
-                      className="hidden"
-                      disabled={isSubmitting || isImageUploading}
-                    />
-                  </label>
+                  </button>
+                  <input
+                    id="product-image-upload"
+                    name="product-images"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    disabled={isSubmitting || isImageUploading}
+                  />
                 </div>
               )}
               {formData.images.length > 0 && (
