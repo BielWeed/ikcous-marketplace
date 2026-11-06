@@ -19,6 +19,7 @@ import {
   BOTAO_INICIO,
   CARTAO_INICIO,
   CARTAO_LISTA_INICIO,
+  FalhaDoInicio,
   TituloDoInicio,
 } from "@/components/admin/inicio/visualDoInicio";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
@@ -78,7 +79,29 @@ function SecaoLojaProntaEEstoqueBaixo({
   somenteBoasVindas?: boolean;
   active?: boolean;
 }>) {
-  const { config, isLoaded, products, loadingProducts } = useStore();
+  const {
+    config,
+    isLoaded,
+    products,
+    loadingProducts,
+    catalogoErro,
+    configIndisponivel,
+    refresh,
+    fetchProducts,
+  } = useStore();
+  // Leitura que FALHOU não é loja vazia. Sem cópia no aparelho, a lista de
+  // produtos fica [] e a configuração fica a de fábrica: lidas como estão, o
+  // cartão mandaria "Cadastrar um produto ativo" a quem já tem produtos (e
+  // "Cadastrar nome e logo" a quem já cadastrou). Com a leitura falha, os
+  // passos ficam em "Conferindo" e o aviso abaixo oferece tentar de novo.
+  // `=== true`: contexto sem o campo (dublê, versão antiga) lê como "não falhou".
+  const configFalhou = configIndisponivel === true;
+  const produtosFalharam = catalogoErro === true && products.length === 0;
+  const configCarregando = !isLoaded || configFalhou;
+  const tentarLerDeNovo = () => {
+    if (configFalhou) void refresh({ onlyConfig: true });
+    if (produtosFalharam) void fetchProducts();
+  };
   // O MESMO estado que Ajustes e Frete leem: ligar ou pausar o PIX em Ajustes
   // vale aqui na hora (o retrato do boot ficaria velho até recarregar).
   const ligado = usePagamentoPeloApp();
@@ -98,8 +121,8 @@ function SecaoLojaProntaEEstoqueBaixo({
         config.formasPagamentoEntrega,
       )}
       produtos={products}
-      configCarregando={!isLoaded}
-      produtosCarregando={loadingProducts}
+      configCarregando={configCarregando}
+      produtosCarregando={loadingProducts || produtosFalharam}
       estoqueCarregando={estoqueCarregando}
       recomendados={recomendados}
       onNavigate={onNavigate}
@@ -112,15 +135,29 @@ function SecaoLojaProntaEEstoqueBaixo({
   // transportadora para uma tela que não os usa.
   if (somenteBoasVindas) return cartao();
   return (
-    <ComRecomendados
-      active={active}
-      config={config}
-      isLoaded={isLoaded}
-      ligado={ligado}
-      chaveOk={chaveOk}
-    >
-      {cartao}
-    </ComRecomendados>
+    <>
+      <ComRecomendados
+        active={active}
+        config={config}
+        configCarregando={configCarregando}
+        ligado={ligado}
+        chaveOk={chaveOk}
+      >
+        {cartao}
+      </ComRecomendados>
+      {configFalhou || produtosFalharam ? (
+        <section aria-label="Leitura da loja" className="py-3">
+          <FalhaDoInicio onTentarDeNovo={tentarLerDeNovo}>
+            {configFalhou && produtosFalharam
+              ? "Não foi possível carregar os dados da loja nem a lista de produtos agora."
+              : configFalhou
+                ? "Não foi possível carregar os dados da loja agora."
+                : "Não foi possível carregar a lista de produtos agora."}{" "}
+            Os passos ficam em “Conferindo” até a leitura funcionar.
+          </FalhaDoInicio>
+        </section>
+      ) : null}
+    </>
   );
 }
 
@@ -131,14 +168,14 @@ function SecaoLojaProntaEEstoqueBaixo({
 function ComRecomendados({
   active,
   config,
-  isLoaded,
+  configCarregando,
   ligado,
   chaveOk,
   children,
 }: Readonly<{
   active?: boolean;
   config: ReturnType<typeof useStore>["config"];
-  isLoaded: boolean;
+  configCarregando: boolean;
   ligado: boolean;
   chaveOk: boolean;
   children: (
@@ -152,7 +189,7 @@ function ComRecomendados({
       pixOk: ligado && chaveOk,
       nomesLigados: lidos.nomesLigados,
       config,
-      configCarregando: !isLoaded,
+      configCarregando,
     }),
   );
 }

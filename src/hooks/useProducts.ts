@@ -2304,19 +2304,15 @@ export function useProducts({ autoFetch = true } = {}) {
         });
       } catch (err) {
         console.error("Error fetching recommendations:", err);
-        // Fallback to local filter if RPC fails (failsafe)
-        // Fallback: Optimized local loop to prevent processing entire cache
-        const fallback: Product[] = [];
-        for (const p of products) {
-          if (p.id !== productId && p.isActive && p.stock > 0) {
-            fallback.push(p);
-            if (fallback.length >= limit) break;
-          }
-        }
-        return fallback;
+        // Falha NÃO é "sem recomendações": o plano B antigo filtrava a lista
+        // local — sempre vazia na página da cliente — e devolvia [] como se
+        // fosse resposta, o que apagava a cópia boa guardada e escondia a
+        // seção por causa de uma falha de rede. O erro sobe para quem chamou
+        // (`useRecomendacoesDeProduto`), que mantém o que está na tela.
+        throw err;
       }
     },
-    [products],
+    [],
   );
 
   // Deprecated: Synchronous version for backward compatibility

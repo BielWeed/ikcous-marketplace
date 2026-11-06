@@ -29,6 +29,7 @@ import type {
   MotivoDevolucao,
   PedidoDaDevolucao,
   PoliticaDevolucao,
+  PrazosDeDevolucao,
   ResolucaoDevolucao,
   ResultadoConclusao,
   ResultadoDeStatus,
@@ -411,11 +412,33 @@ export function tipoPrevisto(
   return null;
 }
 
-/** Por que um motivo está indisponível (texto curto para a opção). */
-export function porqueMotivoIndisponivel(motivo: MotivoDevolucao): string {
-  return ehMotivoDeProblema(motivo)
-    ? "O prazo para reclamar de problema no produto terminou."
-    : "O prazo para troca ou arrependimento terminou.";
+/**
+ * Por que um motivo está indisponível (texto curto para a opção). O servidor
+ * só calcula `troca_ate` quando a loja faz troca por gosto, e abre o
+ * arrependimento (`arrependimento_ate`) em toda compra online: sem
+ * `troca_ate` mas com `arrependimento_ate`, o que acabou foi a desistência;
+ * sem nenhum dos dois (balcão), a loja simplesmente não faz troca por gosto.
+ */
+export function porqueMotivoIndisponivel(
+  motivo: MotivoDevolucao,
+  prazos: Pick<PrazosDeDevolucao, "troca_ate" | "arrependimento_ate">,
+): string {
+  if (ehMotivoDeProblema(motivo)) {
+    return "O prazo para reclamar de problema no produto terminou.";
+  }
+  if (prazos.troca_ate) return "O prazo para troca ou arrependimento terminou.";
+  if (prazos.arrependimento_ate) {
+    return "O prazo para desistir da compra terminou.";
+  }
+  return "A loja não faz troca por tamanho ou gosto.";
+}
+
+/** Endereço para mandar o pacote: o da política, senão o da loja. */
+export function enderecoParaDevolver(
+  politica: Pick<PoliticaDevolucao, "endereco_devolucao">,
+  enderecoDaLoja: string | null | undefined,
+): string | null {
+  return politica.endereco_devolucao?.trim() || enderecoDaLoja?.trim() || null;
 }
 
 /**
@@ -492,11 +515,15 @@ export function erroDoMotivo(args: {
   detalhe: string;
   quantidadeDeFotos: number;
   janelas: JanelasDeDevolucao;
+  prazos: Pick<PrazosDeDevolucao, "troca_ate" | "arrependimento_ate">;
   politica: Pick<PoliticaDevolucao, "exige_fotos_vicio">;
 }): string | null {
-  const { motivo, detalhe, quantidadeDeFotos, janelas, politica } = args;
+  const { motivo, detalhe, quantidadeDeFotos, janelas, prazos, politica } =
+    args;
   if (!motivo) return "Escolha o motivo da devolução.";
-  if (!tipoPrevisto(motivo, janelas)) return porqueMotivoIndisponivel(motivo);
+  if (!tipoPrevisto(motivo, janelas)) {
+    return porqueMotivoIndisponivel(motivo, prazos);
+  }
   if (motivo === "outro" && detalhe.trim().length === 0) {
     return "Conte em poucas palavras o motivo da devolução.";
   }
