@@ -1463,7 +1463,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           : codigo === CSV_SEM_TAMANHO_E_COR
             ? "Não deu para ler o tamanho e a cor das peças, então a planilha não foi gerada. Tente de novo."
             : ehConsultaSemResposta(erro)
-              ? (erro as Error).message
+              ? "A conexão está lenta. Tente exportar de novo."
               : "Não foi possível gerar o CSV. Tente de novo.",
       );
     } finally {
