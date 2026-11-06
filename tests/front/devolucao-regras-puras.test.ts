@@ -389,6 +389,110 @@ describe("mensagens de erro", () => {
     expect(mensagemDoErro(null, "genérica")).toBe("genérica");
   });
 
+  it("erro de sessão/permissão do banco vira frase em português (nunca JWT/RLS cru)", () => {
+    const frases = [
+      mensagemDoErro({ message: "JWT expired", code: "PGRST301" }, "x"),
+      mensagemDoErro({ message: "JWT expired" }, "x"),
+      mensagemDoErro(
+        {
+          message:
+            'new row violates row-level security policy for table "devolucoes"',
+          code: "42501",
+        },
+        "x",
+      ),
+      mensagemDoErro({ message: "permission denied for table x" }, "x"),
+      // Sem texto útil, só o código do banco.
+      mensagemDoErro({ message: "denied", code: "PGRST303" }, "x"),
+    ];
+    for (const f of frases) {
+      expect(f).toContain("Sua sessão venceu");
+      expect(f).not.toMatch(/jwt|row-level|permission denied|policy/i);
+      // Dinheiro: manda conferir a devolução antes de repetir.
+      expect(f).toContain("confira se a devolução já aparece");
+    }
+  });
+
+  it("tempo esgotado vira frase em português e manda conferir antes de repetir", () => {
+    const frases = [
+      mensagemDoErro(
+        {
+          message: "canceling statement due to statement timeout",
+          code: "57014",
+        },
+        "x",
+      ),
+      mensagemDoErro(
+        { message: "canceling statement due to statement timeout" },
+        "x",
+      ),
+      mensagemDoErro({ message: "Request timed out" }, "x"),
+      mensagemDoErro({ message: "algo", code: "57014" }, "x"),
+    ];
+    for (const f of frases) {
+      expect(f).toContain("O servidor demorou para responder");
+      expect(f).toContain("Confira se a devolução já aparece");
+      expect(f).not.toMatch(/statement|timeout|timed out/i);
+    }
+  });
+
+  it("texto em inglês puro do banco cai na frase genérica da ação", () => {
+    expect(
+      mensagemDoErro(
+        {
+          message:
+            'duplicate key value violates unique constraint "devolucoes_pkey"',
+          code: "23505",
+        },
+        "Não foi possível enviar a foto.",
+      ),
+    ).toBe("Não foi possível enviar a foto.");
+    expect(
+      mensagemDoErro(
+        { message: 'column "motivo" of relation "devolucoes" does not exist' },
+        "genérica",
+      ),
+    ).toBe("genérica");
+    expect(mensagemDoErro(new Error("Something went wrong"), "genérica")).toBe(
+      "genérica",
+    );
+  });
+
+  it("frase em português escrita à mão pela RPC continua passando como veio", () => {
+    // RAISE EXCEPTION do banco (P0001) — mesmo sem acento e sem palavra óbvia.
+    expect(
+      mensagemDoErro(
+        { message: "Item repetido nesta devolucao.", code: "P0001" },
+        "x",
+      ),
+    ).toBe("Item repetido nesta devolucao.");
+    // Com acento, sem código.
+    expect(
+      mensagemDoErro(
+        { message: "A devolução espera o produto: ele ainda não voltou." },
+        "x",
+      ),
+    ).toBe("A devolução espera o produto: ele ainda não voltou.");
+    // O 42501 também é usado por mensagem escrita à mão: não é trocada por
+    // "sessão venceu".
+    expect(
+      mensagemDoErro(
+        {
+          message: "Entre na sua conta para pedir uma devolução.",
+          code: "42501",
+        },
+        "x",
+      ),
+    ).toBe("Entre na sua conta para pedir uma devolução.");
+    expect(
+      mensagemDoErro({ message: "Acesso negado.", code: "42501" }, "x"),
+    ).toBe("Acesso negado.");
+    // Código de RPC escrito à mão (22023/P0002) com mensagem sem acento.
+    expect(
+      mensagemDoErro({ message: "Valor invalido.", code: "22023" }, "x"),
+    ).toBe("Valor invalido.");
+  });
+
   it("mensagemDoErroDaEdge lê o `{error}` do corpo em error.context", async () => {
     const erro = {
       context: { json: () => Promise.resolve({ error: "Sem saldo no ME" }) },
