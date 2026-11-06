@@ -155,19 +155,21 @@ Deno.test("395000: sem BEGIN/COMMIT, pre-voo antes do CREATE, hashes e fotografi
   assert.ok(!bruto.includes("\r"), "a migration em disco tem CR");
 });
 
-Deno.test("395000: a vigente e' a ultima redefinicao de admin_devolucoes_listar da arvore; db-apply exige as guardas", () => {
+Deno.test("395000: e' a PENULTIMA redefinicao de admin_devolucoes_listar da arvore (a 20261399910000, a busca sem acento, a sucede); db-apply exige as guardas", () => {
   const fontes = [...Deno.readDirSync(dir)]
     .map((e) => e.name)
     .filter((n) => /^\d{14}_.*\.sql$/.test(n))
     .sort()
     .filter((n) => definicao(ler(`supabase/migrations/${n}`)));
+  // A sucessora (lote 40) tem o proprio teste: tests/migration_a_busca_de_devolucao_ignora_o_acento_test.ts.
   assert.equal(
     fontes.at(-1),
-    nome,
-    "outra migration redefine admin_devolucoes_listar depois desta",
+    "20261399910000_a_busca_de_devolucao_ignora_o_acento.sql",
+    "outra migration redefine admin_devolucoes_listar depois da 20261399910000",
   );
+  assert.equal(fontes.at(-2), nome);
   assert.equal(
-    fontes.at(-2),
+    fontes.at(-3),
     "20261199000000_portas_do_painel_exigem_admin_atual.sql",
   );
   const { VERIFICACOES, avaliarChecagem } = require("../scripts/db-apply.cjs");

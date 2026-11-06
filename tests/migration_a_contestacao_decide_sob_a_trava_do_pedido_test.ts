@@ -702,6 +702,12 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399800000: as recomendacoes do produto contam o estoque das variacoes (get_product_recommendations julga o estoque pela soma das variacoes ativas, a regra da vitrine; o esgotado com grade
     // nao ocupa vaga e quem tem saldo so na grade entra; controle com o corpo da 20261394100000 na mesma fixture, mutantes, rollback byte a byte, pre/pos-voo e consultas 124a/124b).
     "tests/banco/as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-viva.cjs",
+    // 20261399900000: a busca de Pedidos acha o telefone colado com o +55 (get_admin_orders_paged corta o 55 dos digitos da busca com 12 ou 13 digitos que comecam por 55; DDD 55 com 11 digitos nao perde o 55;
+    // controle com o corpo da 20261387000000 na mesma fixture, mutantes, rollback byte a byte, pre-voo e consultas 125a/125b).
+    "tests/banco/a-busca-de-pedidos-acha-o-telefone-colado-com-o-55-viva.cjs",
+    // 20261399910000: a busca de Devolucoes ignora o acento (admin_devolucoes_listar compara protocolo e nome do cliente com f_unaccent nos dois lados; controle com o corpo da 20261395000000 na mesma fixture,
+    // mutantes, rollback byte a byte, pre/pos-voo e consultas 126a/126b).
+    "tests/banco/a-busca-de-devolucao-ignora-o-acento-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",

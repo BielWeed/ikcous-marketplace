@@ -101,6 +101,55 @@ const VERIFICACOES = {
         },
       ],
     },
+  // 20261399900000: a busca de Pedidos acha o telefone colado com o +55 (get_admin_orders_paged). Troca SO o corte do 55 dos digitos da busca (12 ou 13 digitos que comecam por 55, a regra da busca de Clientes e do CRM); os
+  // dois gates de admin, a regra "so e telefone o que parece telefone" nos DOIS blocos e o pedido do numero primeiro continuam no corpo, cada um com a contagem exata. A consulta 125a confere o corpo exato (md5), os
+  // atributos e a ACL; a prova viva mede o comportamento.
+  "20261399900000_a_busca_de_pedidos_acha_o_telefone_colado_com_o_55.sql": {
+    funcao: "get_admin_orders_paged",
+    esperado: [
+      { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+      { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      {
+        texto:
+          "IF length(v_search_digitos) IN (12, 13) AND left(v_search_digitos, 2) = '55' THEN",
+        vezes: 1,
+      },
+      { texto: "v_search_digitos := substr(v_search_digitos, 3);", vezes: 1 },
+      {
+        texto: "v_parece_telefone AND length(v_search_digitos) >= 4",
+        vezes: 2,
+      },
+      {
+        texto: "AND upper(right(o.id::TEXT, 6)) = upper(v_clean_search)",
+        vezes: 1,
+      },
+    ],
+  },
+  // 20261399910000: a busca de Devolucoes ignora o acento. admin_devolucoes_listar troca SO os ramos do protocolo e do nome do cliente (public.f_unaccent nos dois lados); o ramo do comeco do id e o do numero do pedido
+  // (20261395000000) ficam. A consulta 126a confere o corpo exato (md5), os atributos e a ACL; a prova viva faz o comportamento.
+  "20261399910000_a_busca_de_devolucao_ignora_o_acento.sql": [
+    {
+      funcao: "admin_devolucoes_listar",
+      esperado: [
+        {
+          texto:
+            "OR public.f_unaccent(d.protocolo) ILIKE public.f_unaccent('%' || v_busca || '%')",
+          vezes: 1,
+        },
+        {
+          texto:
+            "OR public.f_unaccent(o.customer_name) ILIKE public.f_unaccent('%' || v_busca || '%')",
+          vezes: 1,
+        },
+        { texto: "OR d.order_id::text ILIKE v_busca || '%'", vezes: 1 },
+        {
+          texto:
+            "OR upper(right(d.order_id::text, 6)) = upper(btrim(ltrim(v_busca, '#'))))",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   // 20261389100000: devolver_estoque tranca as linhas do pedido na ordem global da compra (variacoes por id, depois produtos por id) antes de
   // creditar. O credito e' o da 20261175000000, sem mexer: a guarda do carimbo (UMA vez por pedido) e os dois UPDATE (variacao OU produto) ficam
   // com a contagem exata. Sem o ORDER BY de cada grupo, ou sem um dos dois grupos, o deadlock com a compra volta (a prova viva mede).

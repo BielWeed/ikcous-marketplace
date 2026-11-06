@@ -2983,7 +2983,30 @@ const ROL_DA_124 = [
   "get_product_recommendations: o corpo conta o estoque das variacoes ativas (uma vez)",
   "get_product_recommendations: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, SETOF produtos; anon, authenticated e service_role, sem PUBLIC)",
 ];
+// Lote 125 (20261399900000, a busca de Pedidos acha o telefone colado com o +55: get_admin_orders_paged corta o 55 dos digitos da busca com 12 ou 13 digitos que comecam por 55). A 125a e a 125b tem o
+// MESMO rol de 4 linhas (controle, corpo exato (md5), o corpo corta o 55 uma vez, e assinatura unica, atributos e ACL); a 125a espera o corpo da migration nova e a 125b o vigente de antes (o da
+// 20261387000000). Nenhuma le pedido nem chama a get_admin_orders_paged.
+const ROL_DA_125 = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_orders_paged: corpo exato (md5)",
+  "get_admin_orders_paged: o corpo corta o 55 do telefone colado (uma vez)",
+  "get_admin_orders_paged: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, extensions, plpgsql, VOLATILE, retorno jsonb; authenticated e service_role, sem anon e sem PUBLIC)",
+];
+// Lote 126 (20261399910000, a busca de devolucao ignora o acento: admin_devolucoes_listar compara protocolo e nome do cliente com public.f_unaccent nos dois lados). A 126a e a 126b tem o MESMO rol de 4
+// linhas; a 126a espera o corpo da migration nova e a 126b o vigente de antes (o da 20261395000000). Nenhuma le dado nem chama a admin_devolucoes_listar.
+const ROL_DA_126 = [
+  "controle: funcoes de public visiveis a este papel",
+  "admin_devolucoes_listar: corpo exato (md5)",
+  "admin_devolucoes_listar: o corpo traz a busca sem acento do protocolo e do nome (uma vez)",
+  "admin_devolucoes_listar: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, STABLE, retorno jsonb; authenticated e service_role, sem anon e sem PUBLIC)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "126a-conferir-a-busca-de-devolucao-ignora-o-acento-aplicado": ROL_DA_126,
+  "126b-antes-a-busca-de-devolucao-ignora-o-acento-base-vigente": ROL_DA_126,
+  "125a-conferir-a-busca-de-pedidos-acha-o-telefone-colado-com-o-55-aplicado":
+    ROL_DA_125,
+  "125b-antes-a-busca-de-pedidos-acha-o-telefone-colado-com-o-55-base-vigente":
+    ROL_DA_125,
   "124a-conferir-as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-aplicado":
     ROL_DA_124,
   "124b-antes-as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-base-vigente":

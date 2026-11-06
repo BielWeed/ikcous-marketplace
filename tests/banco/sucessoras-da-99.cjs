@@ -131,6 +131,12 @@ const NOMES = [
   // O resultado credita o custo da devolucao de venda de outro mes: fin_dre sucede o corpo da 382 (a CADEIA 99 -> 42 -> 382 -> 3996: o `hashVigente` da 3996 e o
   // `hashDesta` da 382). O rollback da 382 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
   "20261399600000_o_resultado_credita_o_custo_da_devolucao_de_outro_mes.sql",
+  // A busca de Pedidos acha o telefone colado com o +55: get_admin_orders_paged sucede o corpo da 387 (a CADEIA 99 -> 387 -> 3999: o `hashVigente` da 3999 e o
+  // `hashDesta` da 387). O rollback da 387 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261399900000_a_busca_de_pedidos_acha_o_telefone_colado_com_o_55.sql",
+  // A busca de devolucao ignora o acento: admin_devolucoes_listar sucede o corpo da 395 (a CADEIA 99 -> 395 -> 3999100: o `hashVigente` da 3999100 e o
+  // `hashDesta` da 395). O rollback da 395 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261399910000_a_busca_de_devolucao_ignora_o_acento.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).

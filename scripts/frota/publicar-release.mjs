@@ -684,6 +684,10 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "123b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-base-vigente",
   "124a-conferir-as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-aplicado",
   "124b-antes-as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-base-vigente",
+  "125a-conferir-a-busca-de-pedidos-acha-o-telefone-colado-com-o-55-aplicado",
+  "125b-antes-a-busca-de-pedidos-acha-o-telefone-colado-com-o-55-base-vigente",
+  "126a-conferir-a-busca-de-devolucao-ignora-o-acento-aplicado",
+  "126b-antes-a-busca-de-devolucao-ignora-o-acento-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
