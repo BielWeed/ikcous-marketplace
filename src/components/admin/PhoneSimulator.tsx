@@ -1,5 +1,6 @@
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { useStore } from "@/contexts/StoreContext";
+import { useCamadaDeTelaCheia } from "@/hooks/useCamadaDeTelaCheia";
 import {
   CLASSE_PRECO_PROMOCIONAL_FUNDO_ESCURO,
   CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
@@ -131,15 +132,24 @@ export const PhoneSimulator = memo(function PhoneSimulator({
     };
   }, []);
 
+  // Diálogo de verdade: foco entra e volta, Esc fecha e o Tab não anda pela
+  // tela de baixo.
+  const camadaRef = useCamadaDeTelaCheia<HTMLDivElement>(onClose);
+
   if (typeof document === "undefined") return null;
 
   return createPortal(
     <motion.div
+      ref={camadaRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Simulador do aplicativo"
+      tabIndex={-1}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-[100] flex flex-col bg-background/80 text-foreground backdrop-blur-xl"
+      className="fixed inset-0 z-[100] flex flex-col bg-background/80 text-foreground outline-none backdrop-blur-xl"
     >
       {/* Barra de cima: segue o tema do painel (Escuro, Claro ou Confortável)
           pelos tokens, sem verde de marca — o celular abaixo é que tem tema fixo. */}

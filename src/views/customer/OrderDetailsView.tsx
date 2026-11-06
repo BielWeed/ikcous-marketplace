@@ -974,7 +974,7 @@ export function OrderDetailsView({
           "Comprovante reenviado! Confira a caixa de entrada do e-mail deste pedido.",
         );
       } else if (desfecho.motivo === "ja_enviado") {
-        toast("O comprovante deste pedido já foi enviado por e-mail.");
+        toast.info("O comprovante deste pedido já foi enviado por e-mail.");
       } else if (desfecho.motivo === "sem_remetente") {
         toast.error(
           "A loja ainda não configurou o envio de e-mails. Fale com o lojista.",

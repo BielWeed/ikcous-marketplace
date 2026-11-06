@@ -61,6 +61,12 @@ describe("escolha do card de frete", () => {
     expect(salvar().matches(":disabled")).toBe(true);
     expect(dirty).toHaveBeenLastCalledWith(false);
   });
+  it("reserva espaço para a barra de baixo (pb-admin), como as outras telas do painel", () => {
+    montar();
+    const raiz = container.firstElementChild!;
+    expect(raiz.classList.contains("pb-admin")).toBe(true);
+    expect(raiz.classList.contains("pb-8")).toBe(false);
+  });
   it("escolher não grava; salvar envia somente estilo e confirma o estado salvo", async () => {
     montar();
     act(() => radio("compacto").click());
