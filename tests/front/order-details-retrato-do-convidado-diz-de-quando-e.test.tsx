@@ -143,16 +143,12 @@ describe("detalhes do pedido rastreado sem conta: o status diz de quando é", ()
     expect(botao("Consultar de novo")).toBeDefined();
   });
 
-  it("retrato no formato ANTIGO (só a lista): o pedido abre e o aviso não inventa horário", async () => {
+  it("retrato no formato ANTIGO (sem horário): vale como vencido, o pedido não abre e a chave some", async () => {
     sessionStorage.setItem("guest_tracked_orders", JSON.stringify([pedido]));
     await abrir();
 
-    expect(texto()).not.toContain("Pedido não encontrado");
-    expect(texto()).toContain(
-      "Status de quando você consultou — pode ter mudado",
-    );
-    expect(texto()).not.toMatch(/Status de \d{2}:\d{2}/);
-    expect(botao("Consultar de novo")).toBeDefined();
+    expect(texto()).toContain("Entre na conta para ver este pedido");
+    expect(sessionStorage.getItem("guest_tracked_orders")).toBeNull();
   });
 
   it("'Consultar de novo' apaga o retrato e volta para a lista de pedidos", async () => {

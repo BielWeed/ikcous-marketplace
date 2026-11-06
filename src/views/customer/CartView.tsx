@@ -481,7 +481,7 @@ export function CartView({
         });
       } else {
         setOrderViewMode("guest");
-        // Aceita o retrato nos dois formatos (com e sem o horário da consulta).
+        // Retrato vencido (ou sem horário, formato antigo) volta null: já foi apagado.
         const retrato = lerRetratoDoConvidado();
         if (retrato && retrato.pedidos.length > 0) {
           setPedidosConvidado(retrato.pedidos);

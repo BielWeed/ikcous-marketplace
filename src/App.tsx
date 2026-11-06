@@ -809,6 +809,9 @@ const AppContent = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [scrollProgress, setScrollProgress] = useState(0);
   const [isHeaderDocked, setIsHeaderDocked] = useState(false);
+  // O convite de avisos (z-[999]) cobre o lembrete do carrinho: os dois nunca
+  // disputam o lugar, o lembrete só monta quando o convite não está à mostra.
+  const [conviteVisivel, setConviteVisivel] = useState(false);
   const [isRouteLoading, setIsRouteLoading] = useState(false);
   // Latch (achado do laudo Claude no PR #427, 04/09/2026): sobe para true na
   // primeira vez que uma navegação pede a barra e nunca mais desce. Sem
@@ -3308,7 +3311,7 @@ const AppContent = () => {
         <React.Suspense fallback={null}>
           <CartReminder
             onAction={() => handleNavigate("cart")}
-            docked={isHeaderDocked}
+            docked={isHeaderDocked && !conviteVisivel}
           />
         </React.Suspense>
       )}
@@ -3321,6 +3324,7 @@ const AppContent = () => {
               <PushNotificationBanner
                 currentView={currentView}
                 isKeyboardOpen={isKeyboardOpen}
+                onVisibleChange={setConviteVisivel}
               />
             </React.Suspense>
             {/* Fallback com a GEOMETRIA da barra (fixed bottom + 64px +

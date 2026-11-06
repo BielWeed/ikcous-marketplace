@@ -10,7 +10,7 @@
 //
 // B: quem rastreia sem conta vê o status de QUANDO consultou, e ele nunca
 // atualiza. A lista passa a dizer de que hora é o retrato e oferece "Consultar
-// de novo". O retrato guardado no formato ANTIGO (só a lista) continua legível.
+// de novo". O retrato guardado no formato ANTIGO (só a lista) vale como vencido.
 //
 // Dublês: OrderSearch (botão que dispara `onOrdersFound` e expõe se foi
 // remontado para o rastreio) e OrderList (expõe o que chegou). O teste julga a
@@ -336,7 +336,10 @@ describe("CartView — aba Meus Pedidos: pedido achado abre na aba certa e avisa
     });
 
     it("retrato guardado de pedido entregue também reabre no Histórico", async () => {
-      armazemDaSessao.set(RETRATO, JSON.stringify([entregue]));
+      armazemDaSessao.set(
+        RETRATO,
+        JSON.stringify({ consultadoEm: Date.now(), pedidos: [entregue] }),
+      );
       await montar();
 
       expect(botaoDaAba("Histórico")?.getAttribute("aria-pressed")).toBe(
@@ -360,18 +363,15 @@ describe("CartView — aba Meus Pedidos: pedido achado abre na aba certa e avisa
       expect(botaoDaAba("Consultar de novo")).toBeDefined();
     });
 
-    it("retrato no formato ANTIGO (só a lista) continua legível, sem horário inventado", async () => {
+    it("retrato no formato ANTIGO (sem horário) vale como vencido: a lista não o mostra e a chave some", async () => {
       armazemDaSessao.set(RETRATO, JSON.stringify([enviando]));
       await montar();
 
-      await esperarPedido("ped-enviando");
       expect(
         hospedeiro.querySelector('[data-testid="pedido-ped-enviando"]'),
-      ).not.toBeNull();
-      expect(texto()).toContain(
-        "Status de quando você consultou — pode ter mudado",
-      );
-      expect(texto()).not.toMatch(/Status de \d{2}:\d{2}/);
+      ).toBeNull();
+      expect(texto()).not.toContain("pode ter mudado");
+      expect(armazemDaSessao.has(RETRATO)).toBe(false);
     });
 
     it("retrato no formato NOVO (com o horário) é lido e mostra a hora gravada", async () => {
@@ -398,7 +398,10 @@ describe("CartView — aba Meus Pedidos: pedido achado abre na aba certa e avisa
     });
 
     it("'Consultar de novo' apaga o retrato, esvazia a lista e reabre o rastreio do zero", async () => {
-      armazemDaSessao.set(RETRATO, JSON.stringify([enviando]));
+      armazemDaSessao.set(
+        RETRATO,
+        JSON.stringify({ consultadoEm: Date.now(), pedidos: [enviando] }),
+      );
       await montar();
       const montagensAntes = duble.montagensDaBusca;
       expect(

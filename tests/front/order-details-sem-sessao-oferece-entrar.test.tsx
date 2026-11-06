@@ -164,7 +164,10 @@ describe("pedido aberto sem conta aberta", () => {
   });
 
   it("LIMITE: convidado que rastreou por código vê o pedido, sem convite de login", async () => {
-    sessionStorage.setItem("guest_tracked_orders", JSON.stringify([pedido]));
+    sessionStorage.setItem(
+      "guest_tracked_orders",
+      JSON.stringify({ consultadoEm: Date.now(), pedidos: [pedido] }),
+    );
 
     await abrir();
 

@@ -11,6 +11,10 @@
 // Um aparelho com aba aberta pode ter o antigo guardado antes da atualização,
 // então a leitura aceita OS DOIS — o antigo vem com `consultadoEm: null`
 // ("horário desconhecido") e a tela não inventa hora.
+//
+// O retrato tem PRAZO: pedido consultado sem conta não fica à vista de quem usar
+// o mesmo aparelho depois. Passado o prazo — ou sem horário, como o formato
+// antigo, que não dá para datar — a leitura devolve `null` e apaga a chave.
 import type { Order } from "@/types";
 
 export const CHAVE_DO_RETRATO = "guest_tracked_orders";
@@ -20,6 +24,9 @@ export const CHAVE_DO_RETRATO = "guest_tracked_orders";
 // retrato também em estado: sem o aviso, voltar dos detalhes mostraria a lista
 // velha que acabou de ser apagada.
 export const EVENTO_RETRATO_LIMPO = "retrato-do-convidado-limpo";
+
+/** Quanto tempo o retrato vale depois da consulta (60 min). */
+export const PRAZO_DO_RETRATO_MS = 60 * 60_000;
 
 export interface RetratoDoConvidado {
   pedidos: Order[];
@@ -55,10 +62,30 @@ export function interpretarRetrato(
   return null;
 }
 
-/** Lê o retrato do aparelho. Armazenamento bloqueado ou lixo viram `null`. */
+/**
+ * Lê o retrato do aparelho. Armazenamento bloqueado, lixo e retrato vencido (ou
+ * sem horário) viram `null`. O vencido é apagado SEM o aviso de "limpo": quem
+ * lê não pode esvaziar telas por efeito colateral de uma leitura.
+ */
 export function lerRetratoDoConvidado(): RetratoDoConvidado | null {
   try {
-    return interpretarRetrato(sessionStorage.getItem(CHAVE_DO_RETRATO));
+    const retrato = interpretarRetrato(
+      sessionStorage.getItem(CHAVE_DO_RETRATO),
+    );
+    if (!retrato) return null;
+    const { consultadoEm } = retrato;
+    if (
+      consultadoEm !== null &&
+      Date.now() - consultadoEm <= PRAZO_DO_RETRATO_MS
+    ) {
+      return retrato;
+    }
+    try {
+      sessionStorage.removeItem(CHAVE_DO_RETRATO);
+    } catch {
+      // Sem como apagar: a leitura devolve null do mesmo jeito.
+    }
+    return null;
   } catch {
     return null;
   }

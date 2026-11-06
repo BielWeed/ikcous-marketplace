@@ -744,8 +744,8 @@ export function OrderDetailsView({
     // 3. Convidado que rastreou pedido por OTP não tem linha em
     //    marketplace_orders para o user_id dele; o pedido fica no
     //    sessionStorage.
-    //    `lerRetratoDoConvidado` aceita o formato novo (com o horário da
-    //    consulta) e o antigo (só a lista), e nunca lança.
+    //    `lerRetratoDoConvidado` devolve null para retrato vencido ou do
+    //    formato antigo (sem horário) e nunca lança.
     let doRetrato: { consultadoEm: number | null } | null = null;
     if (!encontrado) {
       const retrato = lerRetratoDoConvidado();

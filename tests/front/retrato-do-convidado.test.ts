@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   EVENTO_RETRATO_LIMPO,
+  PRAZO_DO_RETRATO_MS,
   gravarRetratoDoConvidado,
   interpretarRetrato,
   lerRetratoDoConvidado,
@@ -71,22 +72,71 @@ describe("gravar / ler / limpar no sessionStorage", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("grava no formato novo, com o horário, e lê de volta", () => {
-    gravarRetratoDoConvidado([pedido], 1_700_000_000_000);
+    const agora = Date.now();
+    gravarRetratoDoConvidado([pedido], agora);
     expect(JSON.parse(dados.get("guest_tracked_orders") ?? "null")).toEqual({
-      consultadoEm: 1_700_000_000_000,
+      consultadoEm: agora,
       pedidos: [pedido],
     });
     expect(lerRetratoDoConvidado()).toEqual({
       pedidos: [pedido],
-      consultadoEm: 1_700_000_000_000,
+      consultadoEm: agora,
     });
   });
 
-  it("lê um retrato já guardado no formato antigo", () => {
+  it("retrato no formato antigo (sem horário) vale como vencido: não é devolvido e é apagado", () => {
     dados.set("guest_tracked_orders", JSON.stringify([pedido]));
-    expect(lerRetratoDoConvidado()).toEqual({
-      pedidos: [pedido],
-      consultadoEm: null,
+    expect(lerRetratoDoConvidado()).toBeNull();
+    expect(dados.has("guest_tracked_orders")).toBe(false);
+  });
+
+  describe("prazo de validade (relógio falso)", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(2026, 10, 5, 9, 0));
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it("o prazo é de 30 a 60 minutos", () => {
+      expect(PRAZO_DO_RETRATO_MS).toBeGreaterThanOrEqual(30 * 60_000);
+      expect(PRAZO_DO_RETRATO_MS).toBeLessThanOrEqual(60 * 60_000);
+    });
+
+    it("dentro do prazo: devolve o retrato e não apaga nada", () => {
+      gravarRetratoDoConvidado([pedido]);
+      vi.advanceTimersByTime(PRAZO_DO_RETRATO_MS - 1);
+      expect(lerRetratoDoConvidado()?.pedidos).toEqual([pedido]);
+      expect(dados.has("guest_tracked_orders")).toBe(true);
+    });
+
+    it("passou do prazo: devolve null e apaga a chave do aparelho", () => {
+      gravarRetratoDoConvidado([pedido]);
+      vi.advanceTimersByTime(PRAZO_DO_RETRATO_MS + 1);
+      expect(lerRetratoDoConvidado()).toBeNull();
+      expect(dados.has("guest_tracked_orders")).toBe(false);
+    });
+
+    it("vencer na leitura NÃO dispara o aviso de 'limpo' (a tela não reage a uma leitura)", () => {
+      gravarRetratoDoConvidado([pedido]);
+      vi.advanceTimersByTime(PRAZO_DO_RETRATO_MS + 1);
+      const ouvinte = vi.fn();
+      globalThis.addEventListener(EVENTO_RETRATO_LIMPO, ouvinte);
+      lerRetratoDoConvidado();
+      globalThis.removeEventListener(EVENTO_RETRATO_LIMPO, ouvinte);
+      expect(ouvinte).not.toHaveBeenCalled();
+    });
+
+    it("vencido com o armazenamento recusando a remoção: ainda devolve null, sem lançar", () => {
+      gravarRetratoDoConvidado([pedido]);
+      vi.advanceTimersByTime(PRAZO_DO_RETRATO_MS + 1);
+      vi.stubGlobal("sessionStorage", {
+        getItem: () => dados.get("guest_tracked_orders") ?? null,
+        removeItem: () => {
+          throw new DOMException("bloqueado", "SecurityError");
+        },
+      });
+      expect(() => lerRetratoDoConvidado()).not.toThrow();
+      expect(lerRetratoDoConvidado()).toBeNull();
     });
   });
 

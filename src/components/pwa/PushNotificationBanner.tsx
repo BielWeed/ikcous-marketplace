@@ -11,6 +11,12 @@ import { useCallback, useEffect, useState } from "react";
 interface PushNotificationBannerProps {
   readonly currentView?: string;
   readonly isKeyboardOpen?: boolean;
+  /**
+   * Avisa quem monta o convite se ele está de fato à mostra. Na Home o lembrete
+   * do carrinho (z-40) ficava por baixo dele (z-[999]) gastando os 8 s dele
+   * escondido; o App só monta o lembrete quando o convite não está na tela.
+   */
+  readonly onVisibleChange?: (visivel: boolean) => void;
 }
 
 const DISMISS_KEY = CHAVE_DO_ADIAMENTO_DO_CONVITE;
@@ -19,6 +25,7 @@ const DISMISS_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias de cooldown se a 
 export function PushNotificationBanner({
   currentView = "",
   isKeyboardOpen = false,
+  onVisibleChange,
 }: PushNotificationBannerProps) {
   const { isSupported, permission, subscription, semConta, subscribe } =
     usePushNotifications();
@@ -144,12 +151,18 @@ export function PushNotificationBanner({
     }
   }, [subscribe]);
 
+  const naTela = isVisible && !isKeyboardOpen && !semConta && !haCamadaAberta;
+  useEffect(() => {
+    onVisibleChange?.(naTela);
+    return () => onVisibleChange?.(false);
+  }, [naTela, onVisibleChange]);
+
   // Quem não entrou na conta não consegue aceitar ("Quero Receber!" só diria
   // "entre na sua conta primeiro" e a caixa continuaria ali). Fica no
   // render, e não no efeito, de propósito: o relógio dos 2,5 s não reinicia
   // quando a sessão termina de carregar, então para quem TEM conta o
   // convite nasce no mesmo momento de antes.
-  if (!isVisible || isKeyboardOpen || semConta || haCamadaAberta) return null;
+  if (!naTela) return null;
 
   return (
     <AnimatePresence>
