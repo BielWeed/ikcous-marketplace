@@ -80,6 +80,12 @@ export function VisaoGeralDoCrm({
       <ChipDeVariacao curto pct={pct} comparacao={comparacao} />
     );
   const emRisco = (k?.receitaEmRisco ?? 0) > 0;
+  // "Receita em risco" soma dois grupos; o atalho do cartão só abre o primeiro.
+  const temBonsClientesSumindo =
+    !falha &&
+    !!visao?.segmentos.some(
+      (s) => s.segmento === "nao_pode_perder" && s.clientes > 0,
+    );
   // Só os dados do histórico podem distinguir loja nova de um período sem venda.
   const lojaSemVenda =
     !!visao &&
@@ -266,6 +272,22 @@ export function VisaoGeralDoCrm({
             />
           )}
         />
+      )}
+      {temBonsClientesSumindo && !lojaSemVenda && (
+        <div className="flex flex-wrap items-center justify-between gap-x-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 text-xs text-amber-300">
+          <p className="py-2">
+            A receita em risco soma dois grupos: Podem não voltar e Bons
+            clientes sumindo
+          </p>
+          <button
+            type="button"
+            onClick={() => aoVerSegmento("nao_pode_perder")}
+            className="inline-flex min-h-11 shrink-0 items-center gap-1 text-left font-bold"
+          >
+            Ver bons clientes sumindo{" "}
+            <ArrowRight aria-hidden="true" className="size-3 shrink-0" />
+          </button>
+        </div>
       )}
       <section
         aria-label="Histórico completo da loja"

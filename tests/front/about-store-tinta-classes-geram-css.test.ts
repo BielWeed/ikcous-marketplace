@@ -49,6 +49,7 @@ const CLASSES = [
   "[&_img]:max-w-full",
   "[&_img]:rounded-[14px]",
   "[&_a]:text-foreground",
+  "[&_p]:whitespace-pre-line",
 ];
 
 async function geradas(candidatas: string[]): Promise<Set<string>> {

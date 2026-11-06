@@ -1050,10 +1050,25 @@ export const AdminProductsView = memo(function AdminProductsView({
       // backup/ e as fotos do sobrevivente sumirem. Falha de cópia lança e
       // cai no catch de baixo: melhor não duplicar do que duplicar
       // compartilhando arquivo de novo.
+      //
+      // Cada URL DISTINTA é copiada uma única vez: a foto da variação é
+      // escolhida entre as do produto e guardada como o MESMO endereço.
+      // Copiar as duas em chamadas separadas gerava dois caminhos para o
+      // mesmo arquivo, a URL da variação deixava de bater com a foto do
+      // produto e a galeria da loja a repetia no fim.
+      const copiasPorUrl = new Map<string, Promise<string>>();
+      const copiarUma = (url: string): Promise<string> => {
+        let copia = copiasPorUrl.get(url);
+        if (!copia) {
+          copia = copiarImagemParaDuplicacao(url);
+          copiasPorUrl.set(url, copia);
+        }
+        return copia;
+      };
       const imagens = await Promise.all(
         // Sem o marcador "Sem Imagem": produto sem foto duplica sem foto.
         soFotosReais(productToDuplicate.images).map((img: string) =>
-          copiarImagemParaDuplicacao(img),
+          copiarUma(img),
         ),
       );
       const variantes = await Promise.all(
@@ -1070,9 +1085,7 @@ export const AdminProductsView = memo(function AdminProductsView({
           stockIncrement: v.stockIncrement,
           priceOverride: v.priceOverride,
           active: v.active,
-          imageUrl: v.imageUrl
-            ? await copiarImagemParaDuplicacao(v.imageUrl)
-            : v.imageUrl,
+          imageUrl: v.imageUrl ? await copiarUma(v.imageUrl) : v.imageUrl,
         })),
       );
       const duplicateData = {

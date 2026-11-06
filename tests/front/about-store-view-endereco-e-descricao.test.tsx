@@ -152,6 +152,23 @@ describe("AboutStoreView — a descrição da loja renderiza e o HTML perigoso s
     expect(texto).toContain("Localização aproximada");
   });
 
+  it("linhas separadas por um só Enter chegam à cliente: o parágrafo guarda o \\n e pede whitespace-pre-line", async () => {
+    // O helper do admin só separa parágrafos por linha em branco: "A\nB\nC"
+    // vira UM <p> com \n dentro, e o HTML colapsa o \n em espaço — as linhas
+    // sumiam na página. A correção é só de apresentação (não regrava nada).
+    configAtual = {
+      ...BASE_DA_LOJA,
+      storeDescription: "<p>Linha A\nLinha B\nLinha C</p>",
+    };
+    await renderizarPagina();
+    const paragrafo = [...hospedeiro.querySelectorAll("p")].find((p) =>
+      p.textContent?.includes("Linha A"),
+    );
+    expect(paragrafo?.textContent).toBe("Linha A\nLinha B\nLinha C");
+    const dono = paragrafo?.parentElement;
+    expect(dono?.className).toContain("[&_p]:whitespace-pre-line");
+  });
+
   it("script e handler de evento embutidos na descrição NÃO executam (DOMPurify no render)", async () => {
     const alerta = vi.fn();
     vi.stubGlobal("alert", alerta);

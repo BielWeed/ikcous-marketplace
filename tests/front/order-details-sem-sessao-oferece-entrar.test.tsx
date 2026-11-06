@@ -153,7 +153,9 @@ describe("pedido aberto sem conta aberta", () => {
     await act(async () => {
       botao("Entrar")?.click();
     });
-    expect(onNavigate).toHaveBeenCalledWith("auth");
+    // O id do pedido vai junto: é ele que o App guarda no state do login para
+    // devolver a cliente ao pedido (e não ao Perfil) depois de entrar.
+    expect(onNavigate).toHaveBeenCalledWith("auth", ID);
 
     await act(async () => {
       botao("Voltar aos pedidos")?.click();

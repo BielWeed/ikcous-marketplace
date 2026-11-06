@@ -1707,8 +1707,12 @@ export interface FormularioDaConta {
 
 type CampoDaConta = "nome" | "saldoInicial" | "saldoInicialEm";
 
+// `hoje` é opcional: com ele, a data do saldo inicial não passa do dia de hoje
+// (o banco só soma movimentos com data >= saldo_inicial_em, então uma data
+// futura faz o saldo da conta sumir). Sem ele, a regra não se aplica.
 export function validarConta(
   form: FormularioDaConta,
+  hoje?: DataIso,
 ): ResultadoDaValidacao<PayloadDaConta, CampoDaConta> {
   const erros: ErrosDoFormulario<CampoDaConta> = {};
   const nome = form.nome.trim();
@@ -1722,6 +1726,8 @@ export function validarConta(
   }
   if (!ehDataIso(form.saldoInicialEm)) {
     erros.saldoInicialEm = "Informe a data do saldo inicial.";
+  } else if (hoje !== undefined && form.saldoInicialEm > hoje) {
+    erros.saldoInicialEm = "A data do saldo inicial não pode ser no futuro.";
   }
   if (Object.keys(erros).length > 0 || saldo === null) {
     return { ok: false, erros };

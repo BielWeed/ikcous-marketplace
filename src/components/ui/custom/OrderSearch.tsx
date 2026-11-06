@@ -27,6 +27,15 @@ import { toast } from "sonner";
 const limparFragmentoDoPedido = (valor: string) =>
   valor.replaceAll(/[#\s]/g, "");
 
+// Os três critérios que habilitam o envio do código — os mesmos decidem se
+// "Já tenho o código" aparece, para o botão nunca prometer o que o envio recusa.
+const emailValido = (valor: string) =>
+  Boolean(valor.trim()) && valor.includes("@");
+const whatsappValido = (valor: string) =>
+  valor.replaceAll(/\D/g, "").length >= 10;
+const fragmentoValido = (valor: string) =>
+  /^[0-9a-fA-F-]{6,}$/.test(limparFragmentoDoPedido(valor));
+
 // Campo Tinta: 16 px (o iPhone dá zoom abaixo disso), 48 px de altura. O
 // texto digitado fica em caixa normal; só o rótulo-exemplo vem em maiúsculas.
 const campo =
@@ -92,13 +101,13 @@ export function OrderSearch({
     e.preventDefault();
     haptic.light();
 
-    if (!email.trim() || !email.includes("@")) {
+    if (!emailValido(email)) {
       toast.error("Por favor, informe um e-mail válido.");
       return;
     }
 
     const cleanWhatsapp = whatsapp.replaceAll(/\D/g, "");
-    if (cleanWhatsapp.length < 10) {
+    if (!whatsappValido(whatsapp)) {
       toast.error("Por favor, informe um WhatsApp válido com DDD.");
       return;
     }
@@ -109,7 +118,7 @@ export function OrderSearch({
     // alfabeto de UUID são exigidos no banco — esta checagem é conveniência,
     // não a defesa.
     const fragmento = limparFragmentoDoPedido(orderFragment);
-    if (!/^[0-9a-fA-F-]{6,}$/.test(fragmento)) {
+    if (!fragmentoValido(orderFragment)) {
       toast.error(
         "Informe ao menos os 6 últimos caracteres do ID do pedido, que estão no seu comprovante.",
       );
@@ -363,6 +372,26 @@ export function OrderSearch({
                       </>
                     )}
                   </button>
+
+                  {/* Quem recebeu o código e tocou em "Voltar" não consegue
+                      pedir outro por 60 s (`muito_recente`) e aqui não há campo
+                      para digitá-lo: este botão leva direto a ele, sem novo
+                      envio. Só aparece com os três dados válidos, o mesmo
+                      critério do envio. */}
+                  {emailValido(email) &&
+                    whatsappValido(whatsapp) &&
+                    fragmentoValido(orderFragment) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          haptic.light();
+                          setStep("verify");
+                        }}
+                        className="min-h-11 w-full text-center text-sm font-semibold text-foreground underline underline-offset-4"
+                      >
+                        Já tenho o código
+                      </button>
+                    )}
                 </form>
               ) : (
                 <form onSubmit={handleVerifyOtp} className="space-y-4">
