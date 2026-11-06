@@ -29,6 +29,7 @@ import { type Aviso, montarAvisos } from "@/utils/avisos-do-lojista";
 // troca o retorno do hook sem remontar o dible inteiro.
 let AVISOS: Aviso[] = [];
 let FONTES_COM_FALHA: string[] = [];
+let LISTAS_CORTADAS: string[] = [];
 let CARREGANDO = false;
 
 const { recarregarFalso } = vi.hoisted(() => ({ recarregarFalso: vi.fn() }));
@@ -39,6 +40,7 @@ vi.mock("@/hooks/useAvisosDoLojista", () => ({
     quantidadeNoCracha: AVISOS.filter((aviso) => aviso.contaNoCracha).length,
     carregando: CARREGANDO,
     fontesComFalha: FONTES_COM_FALHA,
+    listasCortadas: LISTAS_CORTADAS,
     recarregar: recarregarFalso,
   }),
 }));
@@ -134,6 +136,7 @@ beforeEach(() => {
     AVISO_DE_ESTOQUE,
   ];
   FONTES_COM_FALHA = [];
+  LISTAS_CORTADAS = [];
   CARREGANDO = false;
 });
 
@@ -530,6 +533,56 @@ describe("Notificações v5 — funções preservadas", () => {
     act(() => botao?.click());
     expect(recarregarFalso).toHaveBeenCalledTimes(1);
     expect(todosOsAvisos()).toHaveLength(4);
+  });
+
+  it("sem lista cortada, nao mostra aviso de lista cortada", async () => {
+    await montar();
+    expect(container?.querySelector("[data-lista-cortada]")).toBeNull();
+  });
+
+  it("estoque cortado: aviso proprio que manda ver o resto no Inicio, sem botao de atualizar e sem acusar falha", async () => {
+    // Atualizar traria as mesmas 2.000: o texto antigo ("toque em atualizar
+    // para tentar de novo") mandava o lojista repetir algo inutil.
+    LISTAS_CORTADAS = ["estoque"];
+    await montar();
+
+    const aviso = container?.querySelector('[data-lista-cortada="estoque"]');
+    expect(aviso?.textContent).toContain(
+      "Há mais produtos acabando do que cabem nesta tela",
+    );
+    expect(aviso?.textContent).toContain(
+      "Para ver o resto, abra o cartão de estoque baixo no Início.",
+    );
+    expect(aviso?.querySelector("button")).toBeNull();
+    expect(aviso?.textContent).not.toMatch(/atualizar|Não consegui conferir/i);
+    // Nao e falha: nenhum alerta de "fonte sem atualizacao".
+    expect(container?.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("avaliacoes cortadas: diz que sao as mais novas e manda ver o resto em Avaliacoes", async () => {
+    LISTAS_CORTADAS = ["avaliacao"];
+    await montar();
+
+    const aviso = container?.querySelector('[data-lista-cortada="avaliacao"]');
+    expect(aviso?.textContent).toContain(
+      "Há mais avaliações sem resposta do que cabem nesta tela",
+    );
+    expect(aviso?.textContent).toContain("as mais novas");
+    expect(aviso?.textContent).toContain("Avaliações");
+    expect(aviso?.querySelector("button")).toBeNull();
+  });
+
+  it("lista cortada e falha ao mesmo tempo: os dois recados aparecem, cada um com o seu texto", async () => {
+    LISTAS_CORTADAS = ["estoque"];
+    FONTES_COM_FALHA = ["pergunta"];
+    await montar();
+
+    expect(container?.querySelector('[role="alert"]')?.textContent).toContain(
+      "Não consegui conferir perguntas agora.",
+    );
+    expect(
+      container?.querySelector('[data-lista-cortada="estoque"]'),
+    ).not.toBeNull();
   });
 });
 

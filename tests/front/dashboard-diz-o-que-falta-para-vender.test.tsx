@@ -525,12 +525,12 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
 // ── Aceite 6: equivalência do número — o front e a RPC contam a MESMA coisa ──
 //
 // A ÚNICA assimetria conhecida, deliberadamente fora desta frente: a tela de
-// avisos (useAvisosDoLojista.ts) varre no máximo TETO_DE_PRODUTOS = 200
-// produtos e trata truncamento como FALHA da fonte de estoque; a RPC
-// `low_stock_count` conta o catálogo inteiro, sem paginação. Numa loja com
-// mais de 200 produtos o card deste componente mostra o número completo
-// enquanto a tela de avisos diz "não consegui conferir produtos" — os dois
-// lados são honestos sobre o que sabem, e reconciliar isso é outro trabalho.
+// avisos (useAvisosDoLojista.ts) lê página por página até
+// TETO_DE_SEGURANCA_DE_PRODUTOS = 2000 produtos acabando; a RPC
+// `low_stock_count` conta o catálogo inteiro, sem teto. Só numa loja com mais
+// de 2.000 produtos acabando o card deste componente mostra o número completo
+// enquanto a tela de avisos diz que a lista está cortada e manda ver o resto
+// no Início — os dois lados são honestos sobre o que sabem.
 //
 // 🔴 Este bloco NÃO ancora num nome de arquivo fixo. `get_admin_analytics_v2`
 // já foi redefinida por inteiro várias vezes (hoje são 7 migrations que a
