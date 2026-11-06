@@ -227,8 +227,7 @@ export function mensagemDaFalhaDaVenda(erro: unknown): FalhaDaVendaTraduzida {
   // chegou à função, nada foi gravado. Mesma saída do 42501 — entrar de novo.
   if (codigo === "PGRST301" || codigo === "PGRST302" || codigo === "PGRST303") {
     return {
-      mensagem:
-        "A sua sessão expirou. Saia e entre de novo na conta; a venda fica salva aqui.",
+      mensagem: "A sua sessão expirou; a venda fica salva aqui.",
       podeTentarDeNovo: false,
       precisaEntrarDeNovo: true,
     };
