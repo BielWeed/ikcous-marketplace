@@ -202,7 +202,8 @@ describe("telas do pedido — retirada na loja", () => {
     await act(async () => {
       raiz.render(<OrderReceipt order={pedido} storeName="Loja Teste" />);
     });
-    const texto = hospedeiro.textContent ?? "";
+    // O recibo é desenhado direto no body (portal), fora do hospedeiro.
+    const texto = document.body.textContent ?? "";
     expect(texto).toContain("RETIRADA NA LOJA:");
     expect(texto).toContain(ENDERECO_FICTICIO);
   });
