@@ -11,6 +11,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({ products: [] }),
 }));
+// A caixinha agora lê o estado do catálogo (carregando/falha) do StoreContext.
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    loadingProducts: false,
+    catalogoErro: false,
+    fetchProducts: vi.fn(),
+  }),
+}));
 vi.mock("@/hooks/useCategories", () => ({
   useCategories: () => ({ categories: [], isLoading: false }),
 }));

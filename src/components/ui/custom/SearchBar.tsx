@@ -1,7 +1,11 @@
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useStore } from "@/contexts/StoreContext";
 import { useCategories } from "@/hooks/useCategories";
 import { useProducts } from "@/hooks/useProducts";
 import {
+  formaAparece,
+  palavrasDaBusca,
   pontuadorDaBusca,
   produtoCombinaComBusca,
 } from "@/lib/busca-de-produtos";
@@ -40,6 +44,38 @@ interface ScoredProduct extends Product {
   score: number;
 }
 
+/** A categoria tem todas as palavras da busca (qualquer forma: "anel" -> "Anéis")? */
+const categoriaCombina = (
+  categoria: string,
+  palavras: ReturnType<typeof palavrasDaBusca>,
+): boolean => {
+  const texto = normalizeText(categoria);
+  return (
+    palavras.length > 0 &&
+    palavras.every((formas) => formas.some((f) => formaAparece(texto, f)))
+  );
+};
+
+/**
+ * O nome da categoria COMEÇA com o que se digitou (autocompletar)? Para uma
+ * palavra só, vale também o plural irregular ("anel" -> "Anéis"); a forma de
+ * palavra inteira não pode ser só o começo de outra ("cases" não sugere "Casa").
+ */
+const categoriaComecaCom = (
+  categoria: string,
+  query: string,
+  palavras: ReturnType<typeof palavrasDaBusca>,
+): boolean => {
+  const texto = normalizeText(categoria);
+  if (texto.startsWith(query)) return true;
+  if (palavras.length !== 1) return false;
+  return palavras[0].some(
+    (f) =>
+      texto.startsWith(f.texto) &&
+      !(f.palavraInteira && /[a-z0-9]/.test(texto.charAt(f.texto.length))),
+  );
+};
+
 export function SearchBar({
   value,
   onChange,
@@ -56,6 +92,19 @@ export function SearchBar({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { products } = useProducts();
+  // Catálogo ainda carregando ou que falhou de vez: "nenhum produto" seria
+  // mentira (mesma régua da tela /search).
+  const { loadingProducts, catalogoErro, fetchProducts } = useStore();
+  const [tentandoBusca, setTentandoBusca] = useState(false);
+  const tentarBusca = async () => {
+    if (tentandoBusca) return;
+    setTentandoBusca(true);
+    try {
+      await fetchProducts();
+    } finally {
+      setTentandoBusca(false);
+    }
+  };
 
   // Categoria que a lojista escondeu não é sugerida (mesma régua da tela
   // /search: minúscula, sem espaço nas pontas). Só tira o que sabe estar
@@ -173,6 +222,7 @@ export function SearchBar({
     // como ele foi cadastrado -- quem digita "alianca" ve "Alianca" sugerido.
     const query = normalizeText(deferredLocalValue);
     if (!query) return [];
+    const palavras = palavrasDaBusca(query);
 
     const termSet = new Set<string>();
 
@@ -194,9 +244,10 @@ export function SearchBar({
         }
       });
 
-      // Category match
+      // Category match (prefixo, como as palavras do nome; o plural irregular
+      // entra: "anel" sugere "Anéis")
       if (
-        normalizeText(p.category).startsWith(query) &&
+        categoriaComecaCom(p.category, query, palavras) &&
         !escondidas.has(p.category.toLowerCase().trim())
       ) {
         termSet.add(p.category);
@@ -219,12 +270,13 @@ export function SearchBar({
   const matchingCategories = useMemo<string[]>(() => {
     const query = normalizeText(deferredLocalValue);
     if (!query) return [];
+    const palavras = palavrasDaBusca(query);
 
     const catSet = new Set<string>();
     products.forEach((p) => {
       if (
         p.isActive &&
-        normalizeText(p.category).includes(query) &&
+        categoriaCombina(p.category, palavras) &&
         !escondidas.has(p.category.toLowerCase().trim())
       ) {
         catSet.add(p.category);
@@ -313,6 +365,9 @@ export function SearchBar({
           )}
           placeholder={placeholder}
           autoComplete="off"
+          // Link colado de 300 letras estourava a caixinha; busca de produto
+          // não precisa de mais que isso.
+          maxLength={100}
         />
 
         {localValue && (
@@ -472,9 +527,34 @@ export function SearchBar({
                     </button>
                   ))}
                 </div>
+              ) : products.length === 0 &&
+                (loadingProducts || tentandoBusca) ? (
+                <p
+                  role="status"
+                  className="py-8 text-center text-xs text-zinc-600"
+                >
+                  Carregando busca…
+                </p>
+              ) : products.length === 0 && catalogoErro ? (
+                <div role="alert" className="py-8 text-center">
+                  <p className="text-xs font-bold text-zinc-700">
+                    Não conseguimos carregar a busca agora
+                  </p>
+                  <p className="mt-0.5 text-xs text-zinc-600">
+                    Verifique sua conexão e tente de novo.
+                  </p>
+                  <Button
+                    onClick={() => {
+                      void tentarBusca();
+                    }}
+                    className="mt-3 min-h-11 rounded-2xl text-xs font-bold"
+                  >
+                    Tentar de novo
+                  </Button>
+                </div>
               ) : (
                 <div className="py-8 text-center">
-                  <p className="text-xs font-bold text-zinc-700">
+                  <p className="break-words text-xs font-bold text-zinc-700 [overflow-wrap:anywhere]">
                     Nenhum produto encontrado para "{localValue}"
                   </p>
                   <p className="mt-0.5 text-xs text-zinc-600">
@@ -496,7 +576,9 @@ export function SearchBar({
                 className="flex w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 px-4 py-3 text-xs font-bold text-white shadow-md transition-all hover:bg-zinc-800 active:scale-[0.98]"
               >
                 <Search className="size-3.5" />
-                <span>Ver todos os resultados para "{localValue}"</span>
+                <span className="min-w-0 truncate">
+                  Ver todos os resultados para "{localValue}"
+                </span>
               </button>
             </div>
           </div>

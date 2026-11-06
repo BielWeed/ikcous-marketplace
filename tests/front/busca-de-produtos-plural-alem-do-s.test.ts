@@ -65,6 +65,61 @@ describe("plural alem do 's' simples acha o singular", () => {
   });
 });
 
+// O caminho de volta: quem digita o SINGULAR e o produto/categoria foi
+// cadastrado no plural irregular ("Anéis", "Cartões", "Batons", "Pães"). Ficar
+// so com "tira o s" deixava "anel" sem achar "Anéis".
+describe("singular digitado acha o plural irregular cadastrado", () => {
+  it.each([
+    ["anel", "Anéis de Prata"],
+    ["anél", "Anéis de Prata"],
+    ["lencol", "Lençóis de Algodão"],
+    ["lençol", "Lençóis de Algodão"],
+    ["azul", "Bolsas Azuis"],
+    ["batom", "Batons Matte"],
+    ["bombom", "Bombons de Morango"],
+    ["cartao", "Cartões Presente"],
+    ["cartão", "Cartões Presente"],
+    ["cordao", "Cordões de Prata"],
+    ["pao", "Pães Franceses"],
+    ["pão", "Pães Franceses"],
+    ["mao", "Mãos de Fada"],
+  ])("%s acha %s", (busca, nome) => {
+    expect(produtoCombinaComBusca(produto(nome), busca)).toBe(true);
+  });
+
+  it("vale tambem na categoria", () => {
+    expect(
+      produtoCombinaComBusca(produto("Argola Dourada", "Anéis"), "anel"),
+    ).toBe(true);
+  });
+
+  it("o singular digitado nao acha o que nao e o plural dele", () => {
+    expect(produtoCombinaComBusca(produto("Bolsa Grande"), "anel")).toBe(false);
+    expect(produtoCombinaComBusca(produto("Bolsa Grande"), "cartao")).toBe(
+      false,
+    );
+    // "pao" nao vira "poes": "Poesia" nao e pao (forma curta nao cola em trecho).
+    expect(produtoCombinaComBusca(produto("Livro de Poesia"), "pao")).toBe(
+      false,
+    );
+    expect(produtoCombinaComBusca(produto("Capaes Rosa"), "pao")).toBe(false);
+  });
+
+  it("palavra de 3 letras em -l ou -m nao e mexida (mel nao vira meis)", () => {
+    expect(produtoCombinaComBusca(produto("Meias Brancas"), "mel")).toBe(false);
+    expect(produtoCombinaComBusca(produto("Bons Tempos"), "bom")).toBe(false);
+  });
+
+  it("continua exigindo TODAS as palavras", () => {
+    expect(
+      produtoCombinaComBusca(produto("Anéis de Prata"), "anel dourado"),
+    ).toBe(false);
+    expect(
+      produtoCombinaComBusca(produto("Anéis Dourados"), "anel dourado"),
+    ).toBe(true);
+  });
+});
+
 describe("o que ja funcionava continua funcionando", () => {
   it.each([
     ["blusas", "Blusa de Seda"],
@@ -160,5 +215,15 @@ describe("singular derivado de 3 letras so vale como palavra inteira", () => {
       false,
     );
     expect(produtoCombinaComBusca(produto("Calça Jeans"), "jeans")).toBe(true);
+  });
+
+  it("mao acha maos mas nao Maes; pao continua achando paes", () => {
+    expect(produtoCombinaComBusca(produto("Bolsa de Mãos Livres"), "mao")).toBe(
+      true,
+    );
+    expect(produtoCombinaComBusca(produto("Kit Dia das Mães"), "mao")).toBe(
+      false,
+    );
+    expect(produtoCombinaComBusca(produto("Cesta de Pães"), "pao")).toBe(true);
   });
 });
