@@ -46,10 +46,26 @@ describe("margemEmFormacao", () => {
     );
   });
 
-  it("período de vários meses que inclui o mês corrente conta", () => {
+  it("período de vários meses NÃO esconde a margem: o prejuízo dos meses fechados é real", () => {
+    // 01/09 a 05/11 (ex.: personalizado) e "Este ano" (01/01 a 31/12).
     expect(
       margemEmFormacao(-50, "2026-11-03", {
         inicio: "2026-09-01",
+        fim: "2026-11-05",
+      }),
+    ).toBe(false);
+    expect(
+      margemEmFormacao(-5, "2026-11-03", {
+        inicio: "2026-01-01",
+        fim: "2026-12-31",
+      }),
+    ).toBe(false);
+  });
+
+  it("período dentro do mês corrente (ex.: 7 dias) conta", () => {
+    expect(
+      margemEmFormacao(-80, "2026-11-05", {
+        inicio: "2026-11-01",
         fim: "2026-11-05",
       }),
     ).toBe(true);
