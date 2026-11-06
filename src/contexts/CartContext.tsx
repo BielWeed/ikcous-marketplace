@@ -760,6 +760,31 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             } catch (err) {
               console.error("[CartContext] Failed to build cart notices:", err);
             }
+
+            // Item guardado na conta cujo produto foi pausado ou excluído: o
+            // banco só tem o id (sem nome), então não há produto para o aviso
+            // acima nomear — e sem esta frase ele sumia do carrinho calado.
+            // Fica de fora o que o aviso acima já cobre: a mesma linha também
+            // está neste aparelho (e lá o aviso tem o nome).
+            const chavesDeAqui = new Set(
+              cartRef.current.map((item) => chaveDoItem(item)),
+            );
+            const saiuSemNome = dbItems.filter(
+              (dbItem) =>
+                !products.some((p) => p.id === dbItem.product_id) &&
+                !chavesDeAqui.has(
+                  `${dbItem.product_id}-${normalizarChave(dbItem.variant_id)}`,
+                ),
+            ).length;
+            if (saiuSemNome === 1) {
+              avisos.push(
+                "Um item do seu carrinho guardado não está mais à venda e saiu dele.",
+              );
+            } else if (saiuSemNome > 1) {
+              avisos.push(
+                `${saiuSemNome} itens do seu carrinho guardado não estão mais à venda e saíram dele.`,
+              );
+            }
           }
 
           // A conta saiu/trocou durante a leitura: o carrinho dela não é de
