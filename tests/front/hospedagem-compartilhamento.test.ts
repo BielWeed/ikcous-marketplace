@@ -434,6 +434,68 @@ describe("worker", () => {
     expect(await r.text()).not.toContain("R$");
   });
 
+  it("descrição com Markdown sai limpa e curta em description, og:description, twitter:description e no corpo", async () => {
+    const { env } = ambiente();
+    const longa = `**Caderno Inteligente**\n* 📖 50 Páginas reposicionáveis\n* ✏️ Acompanha caneta\n\n---\n${"texto bem comprido ".repeat(40)}`;
+    const { impl } = fetchComProduto([{ ...produto, descricao: longa }]);
+    const html = await (
+      await criarWorker(config(), { fetchImpl: impl }).fetch(
+        new Request(`https://loja.exemplo/product-detail?id=${ID}`, {
+          headers: ROBO,
+        }),
+        env,
+      )
+    ).text();
+    const descricoes = [
+      ...html.matchAll(
+        /<meta (?:name|property)="[^"]*description" content="([^"]*)">/g,
+      ),
+    ].map((m) => m[1]);
+    expect(descricoes).toHaveLength(3);
+    for (const d of descricoes) {
+      expect(d).not.toMatch(/[*#]/);
+      expect(d).not.toContain("\n");
+      expect(Array.from(d).length).toBeLessThanOrEqual(200);
+      expect(
+        d.startsWith("Caderno Inteligente 📖 50 Páginas reposicionáveis"),
+      ).toBe(true);
+      expect(d.endsWith("…")).toBe(true);
+    }
+    expect(html).toMatch(/<p>Caderno Inteligente [^*#<]*…<\/p>/);
+  });
+
+  it("descrição só de Markdown (sem texto de verdade) cai no texto padrão da loja", async () => {
+    const { env } = ambiente();
+    const { impl } = fetchComProduto([{ ...produto, descricao: "---\n**" }]);
+    const html = await (
+      await criarWorker(config(), { fetchImpl: impl }).fetch(
+        new Request(`https://loja.exemplo/product-detail?id=${ID}`, {
+          headers: ROBO,
+        }),
+        env,
+      )
+    ).text();
+    expect(html).toContain("Confira os detalhes do produto no Loja &amp; Cia.");
+  });
+
+  it("descrição com aspas e sinais continua escapada depois do resumo", async () => {
+    const { env } = ambiente();
+    const { impl } = fetchComProduto([
+      { ...produto, descricao: '**Leve** & "rápido" <b>' },
+    ]);
+    const html = await (
+      await criarWorker(config(), { fetchImpl: impl }).fetch(
+        new Request(`https://loja.exemplo/product-detail?id=${ID}`, {
+          headers: ROBO,
+        }),
+        env,
+      )
+    ).text();
+    expect(html).toContain(
+      'name="description" content="Leve &amp; &quot;rápido&quot; &lt;b&gt;"',
+    );
+  });
+
   it("produto sem foto usa og:image:width=1200 e og:image:height=630 (identidade)", async () => {
     const { env } = ambiente();
     const { impl } = fetchComProduto([{ id: ID }]);

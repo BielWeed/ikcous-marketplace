@@ -1,3 +1,4 @@
+import { resumoParaPrevia } from "../lib/resumo-para-previa";
 // Porta do middleware.ts (Vercel Edge) para uma Function do Pages, com o que a
 // decisão do sócio exigiu a mais: id validado, seleção explícita e limit=1,
 // prazo e corpo limitados, sem redirecionamento, origem vinda do contrato,
@@ -164,8 +165,10 @@ export function montarHtml(
   const nome = escaparHtml(
     textoOuNulo(produto.nome) ?? `Produto - ${config.storeName}`,
   );
+  // Texto puro e curto (sem ** nem #, sem quebra, teto de ~200): é o mesmo
+  // resumo do middleware.ts, para as duas hospedagens mostrarem a mesma prévia.
   const descricao = escaparHtml(
-    textoOuNulo(produto.descricao) ??
+    resumoParaPrevia(textoOuNulo(produto.descricao) ?? "") ||
       `Confira os detalhes do produto no ${config.storeName}.`,
   );
   // Só número > 0 aparece: 0, negativo ou não numérico ficam sem preço na

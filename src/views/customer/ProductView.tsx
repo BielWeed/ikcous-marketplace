@@ -46,6 +46,7 @@ import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
 import { montarMensagemDeCompartilhar } from "@/lib/mensagem-de-compartilhar";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
+import { resumoParaPrevia } from "@/lib/resumo-para-previa";
 import { textoEstoqueBaixo, textoSoRestam } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
@@ -838,7 +839,7 @@ export const ProductView = React.memo(function ProductView({
   };
 
   const metaDescription =
-    product.metaDescription || product.description?.substring(0, 150) || "";
+    product.metaDescription || resumoParaPrevia(product.description ?? "", 150);
   const metaTitle = product.metaTitle || product.name;
   const nomeDaLoja = config.storeName?.trim() || branding.appName;
   const metaImage = product.images?.[0] || "";
