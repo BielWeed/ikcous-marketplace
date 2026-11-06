@@ -3,6 +3,7 @@ import { MODELOS_DE_CAMPANHA } from "@/lib/modelos-de-campanha";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { confirmarEnvioSePerguntar } from "./confirma-envio-para-todos";
 
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: { id: "admin-1" } }),
@@ -173,6 +174,7 @@ describe("Avisar clientes — a conclusão só limpa a mensagem enviada", () => 
     enviarPush.mockReturnValue(envio.promessa);
     await preparar();
     await act(async () => botao("Enviar agora para").click());
+    await confirmarEnvioSePerguntar();
     expect(enviarPush).toHaveBeenCalledWith("send-push", {
       body: expect.objectContaining(MODELOS_DE_CAMPANHA.auth.mensagem),
     });
@@ -199,6 +201,7 @@ describe("Avisar clientes — a conclusão só limpa a mensagem enviada", () => 
     enviarPush.mockReturnValue(envio.promessa);
     await preparar();
     await act(async () => botao("Enviar agora para").click());
+    await confirmarEnvioSePerguntar();
     expect(enviarPush).toHaveBeenCalledTimes(1);
     await act(async () => {
       botao("Cupom de boas-vindas").click();
@@ -218,6 +221,7 @@ describe("Avisar clientes — a conclusão só limpa a mensagem enviada", () => 
     buscarAlvos.mockResolvedValue({ data: [], error: null });
     await preparar("cliente-1");
     await act(async () => botao("Enviar agora para").click());
+    await confirmarEnvioSePerguntar();
     expect(registrarAviso).toHaveBeenCalledWith(
       expect.objectContaining({
         titulo: MODELOS_DE_CAMPANHA.auth.mensagem.title,

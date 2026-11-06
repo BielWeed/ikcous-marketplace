@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { confirmarEnvioSePerguntar } from "./confirma-envio-para-todos";
 
 const { invokeSendPush, inserts, ajustarLog, recordAction } = vi.hoisted(
   () => ({
@@ -253,6 +254,7 @@ describe("Avisar clientes — destinatários não tentados", () => {
     await act(async () => {
       botao!.click();
     });
+    await confirmarEnvioSePerguntar();
     expect(invokeSendPush).toHaveBeenCalledTimes(1);
     expect(inserts.pushLog).toHaveLength(1);
     expect(inserts.notificacoes).toHaveLength(1);

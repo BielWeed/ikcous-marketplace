@@ -9,6 +9,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { confirmarEnvioSePerguntar } from "./confirma-envio-para-todos";
 
 const { estado, invokeSendPush, chamadasDeRange, toastError } = vi.hoisted(
   () => ({
@@ -204,6 +205,7 @@ describe("Avisar clientes: envio paginado, texto em branco e historico amigavel"
     await act(async () => {
       botao("Enviar agora para")!.click();
     });
+    await confirmarEnvioSePerguntar();
     await act(async () => {
       await esperar(80);
     });
