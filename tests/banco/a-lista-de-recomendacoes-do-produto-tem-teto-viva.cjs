@@ -137,7 +137,14 @@ const PROVAS = [];
 const prova = (nome, corpo) => PROVAS.push({ nome, corpo });
 
 /** O estado DEPOIS: a migration inteira (pre-voo, troca e pos-voo) ou, no modo mutante, so o corpo do arquivo. */
-const instalarNova = () => C.query(MUTADO ? decl(NOVA) : MIGRATION);
+const instalarNova = async () => {
+  // A 20261399800000 (as recomendacoes contam o estoque das variacoes) sucede o corpo desta migration: sai PRIMEIRO (ordem inversa da aplicacao; nao faz nada se nao esta no ar).
+  // Definicao unica em tests/banco/as-recomendacoes-do-produto-posterior.cjs.
+  await require("./as-recomendacoes-do-produto-posterior.cjs").desfazerContaDasVariacoesNaTransacao(
+    C,
+  );
+  await C.query(MUTADO ? decl(NOVA) : MIGRATION);
+};
 /** O estado ANTES: o corpo vivo de antes (CREATE OR REPLACE direto; vale como o rollback, sem depender do pre-voo). */
 const instalarAntiga = () => C.query(decl(ANTIGA));
 

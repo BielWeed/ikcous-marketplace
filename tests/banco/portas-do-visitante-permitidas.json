@@ -576,7 +576,7 @@
       "tipo": "volatil",
       "secdef": true,
       "situacao": "necessaria",
-      "porque": "Produtos relacionados na pagina do produto, vista pelo visitante (useProducts). Desde a 20261394100000 o limite pedido vale no maximo 50 (NULL vale o padrao 4)."
+      "porque": "Produtos relacionados na pagina do produto, vista pelo visitante (useProducts). Desde a 20261394100000 o limite pedido vale no maximo 50 (NULL vale o padrao 4). Desde a 20261399800000 o estoque que decide a vaga e' o da vitrine: a soma das variacoes ativas, ou a coluna se nao ha variacao ativa."
     },
     {
       "funcao": "public.get_retention_rate()",
