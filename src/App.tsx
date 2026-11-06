@@ -1295,6 +1295,9 @@ const AppContent = () => {
           activeTransitionRef.current = transition;
 
           const onTransitionEnd = () => {
+            // Ambiente já desmontado (aba fechando, teste encerrado): sem janela não
+            // há tela para atualizar, e o setState levantaria erro não tratado.
+            if (typeof window === "undefined") return;
             if (activeTransitionRef.current === transition) {
               activeTransitionRef.current = null;
             }
