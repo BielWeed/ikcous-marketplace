@@ -221,6 +221,21 @@ export function AdminPdvView({
     return () => onSetDirty?.(false);
   }, [onSetDirty]);
 
+  // O recibo vive SÓ em memória (useVendaPresencial não o grava no rascunho
+  // de propósito) e `dirty` cai quando ele aparece — então, sozinho, nada
+  // segurava uma atualização esperando: a lojista toca em "Enviar por
+  // WhatsApp", o app vai para segundo plano (ponto de parada do momento
+  // seguro), a atualização instala e o recibo some antes de ser enviado.
+  // Enquanto o recibo está na tela, marca operação sensível: a instalação e o
+  // veto de recarga esperam até "Nova venda" (ou até a tela ser fechada — o
+  // cleanup solta a marca nos dois casos). Dep booleana: só marca/solta na
+  // mudança de "há recibo", não a cada render.
+  const haRecibo = estado.recibo !== null;
+  useEffect(() => {
+    if (!haRecibo) return;
+    return marcarOperacaoSensivel("recibo-do-pdv");
+  }, [haRecibo]);
+
   const [modoDeProduto, setModoDeProduto] = useState<
     "bipar" | "digitar" | "buscar"
   >("bipar");
