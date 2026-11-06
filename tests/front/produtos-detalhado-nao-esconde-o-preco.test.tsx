@@ -260,14 +260,14 @@ describe("Produtos, modo detalhado: o cartão não esconde o preço (onda J2, J2
     it("mantém os quatro dados, preço sempre visível e Potencial expansível", async () => {
       await montar();
 
-      const texto = cartao().textContent ?? "";
+      const texto = (cartao().textContent ?? "").replace(/\u00a0/g, " ");
       expect(texto).toContain("Preço de Venda");
       expect(texto).toContain("R$ 15,00");
       expect(texto).toContain("Dinheiro parado em estoque");
       expect(texto).toContain("R$ 20,00");
       expect(texto).toContain("Unidades em Estoque");
       expect(texto).toContain("Lucro bruto do estoque");
-      expect(texto).toContain("+ R$ 10,00");
+      expect(texto).toContain("+R$ 10,00");
 
       const preco = rotulo("Preço de Venda");
       const potencial = rotulo("Lucro bruto do estoque");
@@ -282,7 +282,9 @@ describe("Produtos, modo detalhado: o cartão não esconde o preço (onda J2, J2
       expect(abrir).not.toBeNull();
       await act(async () => abrir?.click());
       expect(detalhes?.hidden).toBe(false);
-      expect(detalhes?.textContent).toContain("+ R$ 10,00");
+      expect(detalhes?.textContent?.replace(/\u00a0/g, " ")).toContain(
+        "+R$ 10,00",
+      );
     });
   });
 

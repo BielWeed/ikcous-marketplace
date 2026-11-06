@@ -39,9 +39,14 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
-import { parseValorBR } from "@/lib/financeiro";
+import {
+  formatarBRL,
+  formatarBRLComSinal,
+  parseValorBR,
+} from "@/lib/financeiro";
 import { soFotosReais } from "@/lib/foto-do-produto";
 import { mesmaCategoria } from "@/lib/gestao-de-categorias";
+import { percentualComUmaCasa } from "@/lib/percentual";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { Product, View } from "@/types";
@@ -97,19 +102,16 @@ import "@/components/admin/products/catalogo-produtos.css";
 
 let cachedProductsTotal = 0;
 
+/** Lucro em reais, igual ao resto do painel: "R$ 300,00" ou, negativo,
+ * "−R$ 300,00" (menos de verdade, antes do R$; nunca "R$ -300,00"). */
+function lucroEmReais(valor: number): string {
+  return valor < 0 ? formatarBRLComSinal(valor) : formatarBRL(valor);
+}
+
 // Estimativa inicial do cartão recolhido; `auto` guarda a altura real ao renderizar.
 // O esqueleto reserva o mesmo espaço. A medição no navegador fica para o QA visual.
 const RESERVA_DO_CARTAO_DETALHADO = "![contain-intrinsic-size:auto_210px]";
 const ALTURA_DO_ESQUELETO_DETALHADO = "h-[210px]";
-
-/** Percentual com 1 casa, em pt-BR ("130,2%", nunca "130.15%"): a mesma
- * grafia no cartão do topo, no simulador e no cartão detalhado. */
-function percentualComUmaCasa(valor: number): string {
-  return `${valor.toLocaleString("pt-BR", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  })}%`;
-}
 
 // A tela "Gerenciar categorias" só é baixada quando a lojista a abre.
 const GerenciarCategorias = lazy(() =>
@@ -465,8 +467,10 @@ export const AdminProductsView = memo(function AdminProductsView({
   // A exclusão pode demorar: quando termina, a recarga usa a página e os
   // filtros ATUAIS, não os do clique de confirmar.
   const recarregarAtualRef = useRef<() => Promise<void>>(async () => {});
+  const paginaDaListaRef = useRef(0);
   useEffect(() => {
     recarregarAtualRef.current = () => loadData(currentPage);
+    paginaDaListaRef.current = currentPage;
   }, [loadData, currentPage]);
 
   // Renomear ou apagar categoria mexe nos produtos (o banco troca o nome neles).
@@ -763,7 +767,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         parcial: financialStats.parcial,
         value:
           financialStats.potential !== null
-            ? `R$ ${financialStats.potential.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+            ? lucroEmReais(financialStats.potential)
             : "—",
         icon: TrendingUp,
         accent: classeDoTexto("neutro"),
@@ -795,7 +799,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         parcial: liquidoEstimado !== null && financialStats.parcial,
         value:
           liquidoEstimado !== null
-            ? `R$ ${liquidoEstimado.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            ? lucroEmReais(liquidoEstimado)
             : "Não calculado",
         icon: Calculator,
         accent: "text-sky-300",
@@ -1122,8 +1126,18 @@ export const AdminProductsView = memo(function AdminProductsView({
       const copia = await addProduct(duplicateData, { avisarSucesso: false });
       // A cópia existe (mesmo a que ficou sem grade): recarrega a lista, como a
       // exclusão, para ela entrar na ordem e no total em vez de aparecer solta
-      // na página atual. Usa a página e os filtros de AGORA.
-      if (copia) recarregarAtualRef.current();
+      // na página atual. Usa a página e os filtros de AGORA. Numa página
+      // adiante a cópia (a mais recente) nasce na página 1 e sumiria de vista:
+      // volta à página 1, como o cadastro novo; a busca da página nova
+      // (320 ms) recarrega sozinha.
+      if (copia) {
+        if (paginaDaListaRef.current > 0) {
+          shouldScrollToTop.current = true;
+          setCurrentPage(0);
+        } else {
+          recarregarAtualRef.current();
+        }
+      }
       if (copia?.variantesNaoSalvas) {
         // A cópia já existe e `addProduct` já avisou (com o motivo) que a grade
         // não foi salva: anunciar sucesso a esconderia, e um segundo aviso aqui
@@ -1155,6 +1169,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     productToDuplicate,
     isOffline,
     refreshFinancialStats,
+    setCurrentPage,
   ]);
 
   return (
@@ -1740,7 +1755,7 @@ export const AdminProductsView = memo(function AdminProductsView({
           {/* Erro ao carregar — estado distinto do vazio real e do
             carregamento: achado 11 avisava que trocar a mentira "vazio" por
             um esqueleto eterno na falha seria trocar uma mentira por outra. */}
-          {!effectiveLoading && loadError && lista?.length === 0 && (
+          {!effectiveLoading && loadError && (
             <div
               role="alert"
               className="rounded-3xl border border-admin-border bg-admin-surface p-6 text-center"
@@ -1751,7 +1766,9 @@ export const AdminProductsView = memo(function AdminProductsView({
               />
               <h3 className="text-lg font-bold">Erro ao Carregar Produtos</h3>
               <p className="my-4 text-sm text-zinc-400">
-                A lista não chegou. Confira a internet e tente de novo.
+                {lista.length > 0
+                  ? "A lista na tela é de antes do que você pediu. Confira a internet e tente de novo."
+                  : "A lista não chegou. Confira a internet e tente de novo."}
               </p>
               <button
                 type="button"
@@ -2135,7 +2152,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                         cor: classeDoTexto(
                           tomDoValor(simulatorMetrics.unitProfit),
                         ),
-                        valor: `R$ ${simulatorMetrics.unitProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+                        valor: lucroEmReais(simulatorMetrics.unitProfit),
                       },
                       {
                         rotulo: "Capital de Lote (Custo)",
@@ -2175,10 +2192,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                           ),
                         )}
                       >
-                        R${" "}
-                        {simulatorMetrics.totalProfit.toLocaleString("pt-BR", {
-                          minimumFractionDigits: 2,
-                        })}
+                        {lucroEmReais(simulatorMetrics.totalProfit)}
                       </p>
                       <p className="text-[11px] font-medium text-zinc-400">
                         Faturamento Potencial: R${" "}
@@ -2875,9 +2889,7 @@ const AdminProductCard = memo(function AdminProductCard({
                   classeDoTexto(tomDoValor(totalProfit)),
                 )}
               >
-                {totalProfit === null
-                  ? "—"
-                  : `${totalProfit >= 0 ? "+ " : ""}R$ ${totalProfit.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                {totalProfit === null ? "—" : formatarBRLComSinal(totalProfit)}
               </span>
             </div>
             {product.variants?.length > 0 && (

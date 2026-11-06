@@ -13,6 +13,7 @@
  * Sem hook, sem Supabase, sem `import.meta.env`: tudo aqui é testável com
  * entrada e saída.
  */
+import { semMenosZero } from "@/lib/percentual";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type {
   CanalDoCrm,
@@ -775,7 +776,7 @@ export function formatarPercentual(
   casas = 1,
 ): string {
   if (valor == null) return "—";
-  return `${valor.toLocaleString("pt-BR", {
+  return `${semMenosZero(valor, casas).toLocaleString("pt-BR", {
     minimumFractionDigits: 0,
     maximumFractionDigits: casas,
   })}%`;

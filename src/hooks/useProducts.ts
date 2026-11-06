@@ -111,6 +111,11 @@ async function callRpcWithRetry<T>(
 // Memory cache for Admin Products (SWR Pattern)
 let cachedAdminProducts: Product[] | null = null;
 let cachedAdminProductsTotal = 0;
+// Página e tamanho de página que a cópia acima representa: sem rede, só quem
+// pede ESSA página recebe a cópia (outra página mostraria os mesmos produtos
+// com o rótulo trocado).
+let cachedAdminProductsPagina = -1;
+let cachedAdminProductsTamanho = -1;
 
 /**
  * O que a exclusão precisa de um produto que não está na página carregada de
@@ -1121,6 +1126,8 @@ export function useProducts({ autoFetch = true } = {}) {
           ) {
             cachedAdminProducts = mappedProducts;
             cachedAdminProductsTotal = count || 0;
+            cachedAdminProductsPagina = page;
+            cachedAdminProductsTamanho = pageSize;
           }
           return {
             products: mappedProducts,
@@ -1148,7 +1155,12 @@ export function useProducts({ autoFetch = true } = {}) {
             filtrou(filters?.status) ||
             !!filters?.search ||
             filtrou(filters?.category);
-          if (cachedAdminProducts && !pediuFiltro) {
+          if (
+            cachedAdminProducts &&
+            !pediuFiltro &&
+            page === cachedAdminProductsPagina &&
+            pageSize === cachedAdminProductsTamanho
+          ) {
             setLocalProducts(cachedAdminProducts);
             return {
               products: cachedAdminProducts,
