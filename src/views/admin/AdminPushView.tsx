@@ -32,7 +32,6 @@ import {
   somenteCampanhasReais,
 } from "@/lib/historico-de-campanhas";
 import { lerEmPaginas } from "@/lib/ler-em-paginas";
-import { motivoDaFalhaEmPortugues } from "@/lib/motivo-da-falha-de-push";
 import {
   type CupomDaLoja,
   MARCADOR_DO_CUPOM,
@@ -43,6 +42,7 @@ import {
   problemaDoCupom,
   temMarcadorPendente,
 } from "@/lib/modelos-de-campanha";
+import { motivoDaFalhaEmPortugues } from "@/lib/motivo-da-falha-de-push";
 import { intercalarPorServico } from "@/lib/ordem-do-envio-de-push";
 import { primeiraLetra } from "@/lib/primeira-letra";
 import { supabase } from "@/lib/supabase";

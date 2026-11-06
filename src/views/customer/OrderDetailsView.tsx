@@ -37,8 +37,8 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { podeReenviarComprovante } from "@/lib/pode-reenviar-comprovante";
 import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 import {
-  limparRetratoDoConvidado,
   lerRetratoDoConvidado,
+  limparRetratoDoConvidado,
   textoDoRetrato,
 } from "@/lib/retrato-do-convidado";
 import {

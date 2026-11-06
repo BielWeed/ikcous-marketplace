@@ -1,4 +1,26 @@
 {
+  "1.5.136": {
+    "titulo": "Frete do painel mais seguro, pedidos e carrinho mais claros, e vários acertos de texto e de ordem",
+    "novidades": [
+      "Painel, Frete: salvar manda só o que você mexeu; se outro aparelho mudar o frete enquanto você edita, o que você digitou é mantido e o resto se atualiza.",
+      "Sino da cliente: mostra se os avisos do aparelho estão ligados, com o botão para ligar, e os avisos com link de categoria ou de página pública abrem o lugar certo.",
+      "Painel, Clientes: novo filtro Administradores primeiro, útil no celular para ver quem tem acesso.",
+      "Pedido sem conta: o status mostra de que horas é a consulta e tem o botão Consultar de novo."
+    ],
+    "correcoes": [
+      "Painel, Frete: voltar um campo ao valor de antes agora grava, o frete grátis não se perde e o aviso de salvo só aparece quando algo foi gravado; a prévia respeita o pedido mínimo.",
+      "Checkout: o frete da entrega própria é conferido antes de fechar o pedido.",
+      "Conta: o WhatsApp exige o número completo, os avisos de CPF citam o caminho que existe e os endereços ficam legíveis no tema escuro.",
+      "Pedidos do cliente: a lista abre na aba onde o pedido está, o item sem produto não pede avaliação e N itens conta unidades, como o carrinho.",
+      "Carrinho e resumo do pedido mostram a foto da cor escolhida e o nome atual da variação.",
+      "Vitrine: categorias e Catálogo ficam em ordem estável (mais novos primeiro), a busca não sugere categoria escondida e o nome da loja com hífen aparece inteiro.",
+      "Painel, Estoque e Início: sem internet, a lista de estoque baixo avisa em vez de mostrar tudo; o Início refaz os números ao voltar; a oferta só diz Apenas N restantes de 2 a 5.",
+      "Painel, Avisar clientes: mostra a falha ao carregar produtos, não deixa abrir produto sem escolher e atualiza as contagens depois de enviar; o motivo de aviso que não chegou sai em português.",
+      "Painel, Categorias: esconder uma categoria que tem banner avisa que o banner abrirá a vitrine completa. Textos longos na política quebram de linha e a folha não esvazia ao fechar.",
+      "Painel: o card de lucro não quebra com emoji no nome, a inicial do nome com emoji sai certa, o erro de preenchimento é anunciado a quem usa leitor de tela e o recibo do balcão diz Cliente quando o perfil não tem nome."
+    ],
+    "melhorias": []
+  },
   "1.5.135": {
     "titulo": "Painel e vitrine mais honestos quando a internet falha, e acertos na devolução e nos pedidos",
     "novidades": [
