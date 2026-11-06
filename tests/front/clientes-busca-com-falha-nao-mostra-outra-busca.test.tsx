@@ -291,7 +291,7 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
     expect(hospedeiro.textContent).not.toContain("Nenhum cliente ainda");
   });
 
-  it("folha mantém as três ordenações, e limpar no vazio restaura busca e ordem sem mudar o modo", async () => {
+  it("folha mantém as quatro ordenações, e limpar no vazio restaura busca e ordem sem mudar o modo", async () => {
     rpc.mockResolvedValue(sucesso([]));
     await abrirTela();
     const filtros = hospedeiro.querySelector<HTMLButtonElement>(
@@ -304,7 +304,12 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
       [...folha.querySelectorAll("button[aria-pressed]")].map(
         (b) => b.textContent,
       ),
-    ).toEqual(["Maior total comprado", "Mais pedidos", "A–Z"]);
+    ).toEqual([
+      "Maior total comprado",
+      "Mais pedidos",
+      "A–Z",
+      "Administradores primeiro",
+    ]);
     const alfabetica = [
       ...folha.querySelectorAll<HTMLButtonElement>("button"),
     ].find((b) => b.textContent === "A–Z")!;
@@ -344,6 +349,55 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
         .querySelector('[aria-label="Mostrar detalhado"]')
         ?.hasAttribute("aria-pressed"),
     ).toBe(false);
+  });
+
+  it("no celular, o chip 'Administradores primeiro' pede o tipo de conta em ordem crescente (admin vem antes de customer) e limpar volta ao padrão", async () => {
+    // A coluna "Tipo de conta" só existe em tela larga; sem este chip, quem usa
+    // o celular não tinha como juntar no topo quem tem acesso de administrador.
+    // No banco o `role` é texto (admin, customer, gerente, vendedor): em ordem
+    // crescente `admin` é sempre o primeiro.
+    rpc.mockResolvedValue(sucesso([cliente("joao", "João Silva")], 24));
+    await abrirTela();
+    expect(botao("Administradores primeiro").getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+
+    await clicar("Administradores primeiro");
+    await avancar(320);
+
+    expect(rpc).toHaveBeenLastCalledWith(
+      "get_admin_customers_paged",
+      expect.objectContaining({
+        p_sort_field: "role",
+        p_sort_direction: "asc",
+        p_page: 0,
+      }),
+    );
+    expect(botao("Administradores primeiro").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(botao("Maior total comprado").getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+
+    // Ordenação fora do padrão acende o "Limpar tudo" da folha e ele restaura o padrão.
+    await act(async () =>
+      hospedeiro
+        .querySelector<HTMLButtonElement>('[aria-label="Filtros"]')!
+        .click(),
+    );
+    const limpar = [
+      ...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button'),
+    ].find((b) => b.textContent === "Limpar tudo")!;
+    await act(async () => limpar.click());
+    await avancar(320);
+    expect(rpc).toHaveBeenLastCalledWith(
+      "get_admin_customers_paged",
+      expect.objectContaining({
+        p_sort_field: "total_spent",
+        p_sort_direction: "desc",
+      }),
+    );
   });
 
   it("mostra o resumo antes da busca, com os modos nomeados e a seleção explícita", async () => {

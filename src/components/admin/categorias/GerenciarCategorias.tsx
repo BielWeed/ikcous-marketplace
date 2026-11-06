@@ -46,6 +46,16 @@ const BOTAO_NEUTRO = `${BOTAO} border-admin-border-strong bg-admin-raised text-f
 const BOTAO_PRIMARIO = `${BOTAO} border-foreground bg-foreground text-background hover:opacity-90`;
 const BOTAO_PERIGO = `${BOTAO} border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20`;
 
+// Esconder a categoria tira o nome do filtro da vitrine, e o banner que aponta
+// para ela passa a abrir "Todas" sem aviso (`categoriaValidaDaHome`). Não
+// bloqueia: só conta à lojista, na mesma frase, o que acontece com o banner.
+function avisoDoBannerEscondido(banners: number): string {
+  if (banners <= 0) return "";
+  return banners === 1
+    ? " Atenção: 1 banner aponta para ela e vai abrir a vitrine completa em “Todas”. Troque o link no painel de banners."
+    : ` Atenção: ${banners} banners apontam para ela e vão abrir a vitrine completa em “Todas”. Troque o link no painel de banners.`;
+}
+
 export function GerenciarCategorias({
   aberta,
   onFechar,
@@ -182,7 +192,7 @@ function ConteudoDaGestao() {
     void executar(c.id, async () => {
       await setCategoryActive(c.id, !c.ativa);
       return c.ativa
-        ? `“${c.nome}” saiu do filtro da vitrine. Os produtos continuam à venda em “Todas”.`
+        ? `“${c.nome}” saiu do filtro da vitrine. Os produtos continuam à venda em “Todas”.${avisoDoBannerEscondido(c.banners)}`
         : `“${c.nome}” voltou ao filtro da vitrine.`;
     });
   }
@@ -477,6 +487,9 @@ function ConteudoDaGestao() {
                   Para apagar: mude os produtos para outra categoria, troque o
                   link do banner e tire a categoria da regra de devolução. Se só
                   quer tirá-la da loja, use Esconder.
+                  {c.banners > 0
+                    ? ` ${c.banners === 1 ? "Esconder faz o banner dela abrir" : "Esconder faz os banners dela abrirem"} a vitrine completa em “Todas”: troque o link no painel de banners antes.`
+                    : ""}
                   {c.produtosExcluidos > 0
                     ? " Produto excluído não aparece na lista de produtos e só sai da categoria com a ajuda do suporte."
                     : ""}

@@ -199,7 +199,8 @@ describe("useCategories.addCategory — nome que o banco já tem", () => {
         );
     });
 
-    expect(t.linhas()).toEqual(["Vestuário", "Calçados"]);
+    // Entra no lugar dela em ordem de nome, não no fim da lista.
+    expect(t.linhas()).toEqual(["Calçados", "Vestuário"]);
     t.desmontar();
   });
 });

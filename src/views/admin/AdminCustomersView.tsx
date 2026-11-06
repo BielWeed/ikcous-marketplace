@@ -34,6 +34,7 @@ import {
   MessageSquare,
   RefreshCw,
   Search,
+  ShieldCheck,
   ShoppingBag,
   TrendingUp,
   Users,
@@ -72,6 +73,17 @@ const ORDENACOES_CLIENTES = [
     icone: ArrowDownAZ,
     cor: "text-violet-300",
   },
+  // `role` é texto no banco (admin, customer, gerente, vendedor): em ordem
+  // crescente `admin` vem primeiro. A coluna "Tipo de conta" só existe em tela
+  // larga; este chip é a saída do celular para achar quem tem acesso de
+  // administrador. gerente/vendedor vêm por último, sem agrupar (exigiria banco).
+  {
+    campo: "role",
+    direcao: "asc",
+    rotulo: "Administradores primeiro",
+    icone: ShieldCheck,
+    cor: "text-emerald-300",
+  },
 ] as const;
 
 /** Mesmo par campo/direção de ORDENACOES_CLIENTES, como `Map` — pra
@@ -83,8 +95,8 @@ const ORDENACOES_CLIENTES = [
  * indexar um objeto por campo dinâmico: o eslint-plugin-security acusa
  * `detect-object-injection` em `objeto[variável]` mesmo quando a chave
  * vem de uma união fechada — mesmo padrão de CustomerPaymentBadge.tsx
- * (`customerPaymentConfigByKey`). "role" não tem chip próprio e cai no
- * fallback "asc" de `handleSort`. */
+ * (`customerPaymentConfigByKey`). "role" tem o chip "Administradores
+ * primeiro", em "asc" (igual ao fallback de `handleSort`). */
 const DIRECAO_PADRAO_POR_CAMPO = new Map<keyof Customer, "asc" | "desc">(
   ORDENACOES_CLIENTES.map((o) => [o.campo, o.direcao]),
 );

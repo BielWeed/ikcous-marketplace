@@ -18,6 +18,22 @@ import { toast } from "sonner";
 const MENSAGEM_CATEGORIA_JA_EXISTE =
   "Já existe uma categoria com esse nome (ou muito parecido). Use a que já existe ou escolha outro nome.";
 
+/**
+ * Em ordem de nome, a MESMA régua da tela Gerenciar categorias. O cofre do
+ * aparelho devolve os registros em ordem de uuid; só a consulta de rede vinha
+ * em ordem de nome, e os botões de categoria mudavam de lugar sozinhos depois
+ * de uma sincronização ou sem internet. Devolve uma cópia: nunca mexe na lista
+ * que veio.
+ */
+export function ordenarCategorias(lista: readonly Category[]): Category[] {
+  return [...lista].sort(
+    (a, b) =>
+      a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }) ||
+      a.name.localeCompare(b.name, "pt-BR") ||
+      (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
+}
+
 // Module-level cache to persist data across component mounts
 let globalCategoriesCache: Category[] | null = null;
 let categoriesFetchPromise: Promise<Category[]> | null = null;
@@ -167,7 +183,9 @@ export function useCategories() {
         const vault = await DataVault.init();
         vaultRef.current = vault;
         if (!globalCategoriesCache) {
-          const cached = await vault.getAll<Category>("categories");
+          const cached = ordenarCategorias(
+            await vault.getAll<Category>("categories"),
+          );
           if (cached.length > 0 && !cancelled) {
             globalCategoriesCache = cached;
             setCategories(cached);
@@ -235,17 +253,22 @@ export function useCategories() {
           }
           if (error) throw error;
 
-          const adaptedCategories: Category[] = (data || []).map((item) => ({
-            id: item.id,
-            name: item.nome,
-            slug: item.slug || "",
-            description: item.descricao || "",
-            isActive: item.ativo ?? true,
-            icone: item.icone ?? null,
-            // Cache ou banco sem a coluna: cai no `icone` e na dedução pelo nome.
-            iconeForma: item.icone_forma ?? null,
-            createdAt: item.created_at,
-          }));
+          // Mesma régua do cofre: a ordem do banco pode diferir da do aparelho
+          // (ordenação de acento e maiúscula), e a lista não pode pular de
+          // lugar quando a origem muda.
+          const adaptedCategories: Category[] = ordenarCategorias(
+            (data || []).map((item) => ({
+              id: item.id,
+              name: item.nome,
+              slug: item.slug || "",
+              description: item.descricao || "",
+              isActive: item.ativo ?? true,
+              icone: item.icone ?? null,
+              // Cache ou banco sem a coluna: cai no `icone` e na dedução pelo nome.
+              iconeForma: item.icone_forma ?? null,
+              createdAt: item.created_at,
+            })),
+          );
           globalCategoriesCache = adaptedCategories;
           lastCategoriesFetchTime = Date.now();
           // Resposta de verdade (lista vazia inclusive): a falha acabou.
@@ -333,7 +356,7 @@ export function useCategories() {
       };
 
       setCategories((prev) => {
-        const next = [...prev, newCategory];
+        const next = ordenarCategorias([...prev, newCategory]);
         persistToVault(next);
         return next;
       });
@@ -401,10 +424,12 @@ export function useCategories() {
   const aplicarNaLista = useCallback(
     (trocar: (lista: Category[]) => Category[]) => {
       if (globalCategoriesCache) {
-        globalCategoriesCache = trocar(globalCategoriesCache);
+        globalCategoriesCache = ordenarCategorias(
+          trocar(globalCategoriesCache),
+        );
       }
       setCategories((prev) => {
-        const next = trocar(prev);
+        const next = ordenarCategorias(trocar(prev));
         persistToVault(next);
         return next;
       });
@@ -589,8 +614,9 @@ export function useCategories() {
           if (cofreFechado(vaultRef.current)) {
             vaultRef.current = await DataVault.init();
           }
-          const fresh =
-            await vaultRef.current.getAllOrThrow<Category>("categories");
+          const fresh = ordenarCategorias(
+            await vaultRef.current.getAllOrThrow<Category>("categories"),
+          );
           setCategories(fresh);
         } catch (err) {
           // Leitura do cofre falhou -- manter o que já está na tela é

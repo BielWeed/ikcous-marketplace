@@ -260,7 +260,13 @@ export const HomeView = React.memo(function HomeView({
         case "price-desc":
           return precoDeVitrine(b).preco - precoDeVitrine(a).preco;
         default:
-          return pontos ? (pontos.get(b.id) ?? 0) - (pontos.get(a.id) ?? 0) : 0;
+          // Sem busca vale "mais novos primeiro" (a régua de ordenarParaVitrine):
+          // produto novo do Realtime entra no fim da lista, e depois de pausar
+          // ou sem internet ela vem em ordem de uuid. Datas iguais: o sort é
+          // estável e fica a ordem em que a lista chegou.
+          return pontos
+            ? (pontos.get(b.id) ?? 0) - (pontos.get(a.id) ?? 0)
+            : (b.createdTime ?? 0) - (a.createdTime ?? 0);
       }
     });
 
