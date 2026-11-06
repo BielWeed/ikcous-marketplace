@@ -8,6 +8,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import type { Address } from "@/types";
 import { CheckCircle2, Edit, MapPin, Plus, Trash2 } from "lucide-react";
 import { memo, useState } from "react";
@@ -135,6 +136,10 @@ export const AddressList = memo(function AddressList({
   showMaps = false,
   onAdd,
 }: AddressListProps) {
+  // `true` = SEM internet (o nome do hook engana). Sem rede o embed do Google
+  // mostra a tela de erro do navegador dentro do cartão; o endereço já está em
+  // texto logo acima, então só o aviso ocupa o lugar do mapa.
+  const semInternet = useOnlineStatus();
   // O endereço cuja lixeira foi tocada, enquanto a pergunta está aberta.
   const [apagando, setApagando] = useState<Address | null>(null);
   const confirmacao = (
@@ -464,7 +469,17 @@ export const AddressList = memo(function AddressList({
               Maps em nova aba — com o apelido no nome acessível para
               distinguir os cartões. Recolher os detalhes desmonta o ramo
               expandido → desmonta o mapa. */}
-              {queryMaps && (
+              {queryMaps && semInternet && (
+                <div className="mt-3 space-y-1 rounded-xl border border-zinc-100 p-4">
+                  <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Sem internet
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    O mapa volta quando a conexão voltar.
+                  </p>
+                </div>
+              )}
+              {queryMaps && !semInternet && (
                 <div className="mt-3 overflow-hidden rounded-xl border border-zinc-100">
                   <div className="relative h-40 w-full overflow-hidden">
                     <iframe

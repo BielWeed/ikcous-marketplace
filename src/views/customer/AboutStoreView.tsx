@@ -283,6 +283,8 @@ export function AboutStoreView() {
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
                   credentialless=""
+                  tabIndex={-1}
+                  aria-hidden="true"
                   className={`${CAIXA_DO_IFRAME} block border-0`}
                 />
                 {/* Pino da casa (ver `PinDoMapa`). Mora na MESMA caixa do

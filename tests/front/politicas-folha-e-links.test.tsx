@@ -321,7 +321,7 @@ describe("folha e links das políticas", () => {
     await vi.waitFor(() => expect(folha.textContent).toContain("7 dias"));
   });
 
-  it("rodapé: três links, cada um navega para a sua página", async () => {
+  it("rodapé: três políticas mais o 'Sobre a loja', cada um navega para a sua página", async () => {
     const { RodapeDasPoliticas } = await import(
       "@/components/politicas/RodapeDasPoliticas"
     );
@@ -334,14 +334,17 @@ describe("folha e links das políticas", () => {
       "Termos de uso",
       "Política de Privacidade",
       "Trocas e devoluções",
+      "Sobre a loja",
     ]);
     act(() => botaoPorTexto("Termos de uso").click());
     act(() => botaoPorTexto("Política de Privacidade").click());
     act(() => botaoPorTexto("Trocas e devoluções").click());
+    act(() => botaoPorTexto("Sobre a loja").click());
     expect(onNavigate.mock.calls.map((c) => c[0])).toEqual([
       "terms",
       "privacy",
       "returns-policy",
+      "about-store",
     ]);
   });
 });

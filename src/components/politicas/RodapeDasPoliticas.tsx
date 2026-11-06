@@ -13,7 +13,7 @@ import { haptic } from "@/utils/haptic";
 import type { IdentidadeLegalDaLoja } from "@/lib/identidade-legal-da-loja";
 
 /**
- * Os três links no fim da vitrine. Aqui é navegação mesmo (a cliente não
+ * Os três links das políticas, mais o "Sobre a loja", no fim da vitrine. Aqui é navegação mesmo (a cliente não
  * está no meio de nada): leva à página, e o voltar do app traz de volta.
  * Arquivo próprio e leve (só botões): a Home não carrega a folha de leitura.
  *
@@ -58,6 +58,17 @@ export function RodapeDasPoliticas({
             {nomeDaPolitica(tipo)}
           </button>
         ))}
+        {/* Quem não tem conta não chega em "Sobre a loja" pelo Perfil. */}
+        <button
+          type="button"
+          onClick={() => {
+            haptic.light();
+            onNavigate("about-store");
+          }}
+          className="flex min-h-11 items-center px-2 text-xs font-semibold text-muted-foreground underline underline-offset-2"
+        >
+          Sobre a loja
+        </button>
       </nav>
       {(quem || email) && (
         <div

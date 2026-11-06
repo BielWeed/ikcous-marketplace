@@ -74,6 +74,15 @@ describe("AboutStoreView — sem internet, endereço em texto no lugar do mapa",
     expect(hospedeiro.textContent).not.toContain("Sem internet");
   });
 
+  it("com internet: o mapa é só enfeite e não prende o Tab nem o leitor de tela", async () => {
+    await montar();
+    const mapa = hospedeiro.querySelector("iframe");
+    // O link em volta já se chama "Abrir no Google Maps"; o iframe dentro dele
+    // fica fora da ordem do teclado e escondido do leitor de tela.
+    expect(mapa?.getAttribute("tabindex")).toBe("-1");
+    expect(mapa?.getAttribute("aria-hidden")).toBe("true");
+  });
+
   it("sem internet: nada de mapa nem link; o endereço aparece em texto com o aviso", async () => {
     semInternet = true;
     await montar();

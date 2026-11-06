@@ -25,6 +25,12 @@ import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrders } from "@/hooks/useOrders";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
+import {
+  TIPOS_DE_POLITICA,
+  type TipoDePolitica,
+  nomeDaPolitica,
+  viewDaPolitica,
+} from "@/lib/nomes-das-politicas";
 import type { View } from "@/types";
 import {
   PREDEFINED_AVATARS,
@@ -125,6 +131,17 @@ function LinhaDoMenu({
       />
     </button>
   );
+}
+
+function descricaoDaPolitica(tipo: TipoDePolitica): string {
+  switch (tipo) {
+    case "termos":
+      return "Regras para usar a loja";
+    case "privacidade":
+      return "Como cuidamos dos seus dados";
+    case "trocas":
+      return "Prazos e como pedir";
+  }
 }
 
 interface ProfileViewProps {
@@ -898,6 +915,16 @@ export function ProfileView({
               descricao="A loja por trás deste app"
               onClick={() => onNavigate("about-store")}
             />
+            {/* Termos, Privacidade e Trocas: no Início só aparecem no fim da
+                lista de produtos; quem tem conta passa por aqui. */}
+            {TIPOS_DE_POLITICA.map((tipo) => (
+              <LinhaDoMenu
+                key={tipo}
+                titulo={nomeDaPolitica(tipo)}
+                descricao={descricaoDaPolitica(tipo)}
+                onClick={() => onNavigate(viewDaPolitica(tipo))}
+              />
+            ))}
           </div>
         </motion.section>
 

@@ -32,6 +32,13 @@ class IntersectionObserverStub {
 vi.stubGlobal("ResizeObserver", ResizeObserverStub);
 vi.stubGlobal("IntersectionObserver", IntersectionObserverStub);
 
+// O hook de rede que a casca já tem; aqui só o valor que ele devolve
+// (`true` = SEM internet, mesmo padrão de AboutStoreView).
+let semInternet = false;
+vi.mock("@/hooks/useOnlineStatus", () => ({
+  useOnlineStatus: () => semInternet,
+}));
+
 const CASA: Address = {
   id: "addr-1",
   user_id: "user-1",
@@ -73,6 +80,7 @@ describe("AddressList — o mapa é opt-in e só existe no ramo expandido", () =
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
+    semInternet = false;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -153,6 +161,31 @@ describe("AddressList — o mapa é opt-in e só existe no ramo expandido", () =
         "Rua das Acácias, 120, Paracatu, MG, 38600-123",
       )}`,
     );
+  });
+
+  it("sem internet: nada de iframe nem de link do Google; cada cartão avisa 'Sem internet' e o endereço segue em texto", async () => {
+    semInternet = true;
+    await renderizar({ showMaps: true });
+
+    expect(iframes(hospedeiro)).toHaveLength(0);
+    expect(hospedeiro.querySelector('a[href*="google.com/maps"]')).toBeNull();
+    // Um aviso por cartão (dois endereços).
+    expect(hospedeiro.textContent?.match(/Sem internet/g)).toHaveLength(2);
+    // O endereço continua legível no próprio cartão.
+    expect(hospedeiro.textContent).toContain("Rua das Acácias, 120");
+    expect(hospedeiro.textContent).toContain("Avenida Paulista, 1578");
+  });
+
+  it("com internet: nenhum aviso de 'Sem internet'", async () => {
+    await renderizar({ showMaps: true });
+    expect(hospedeiro.textContent).not.toContain("Sem internet");
+  });
+
+  it("sem internet, mas sem showMaps: nada muda (nem aviso, nem mapa)", async () => {
+    semInternet = true;
+    await renderizar({});
+    expect(iframes(hospedeiro)).toHaveLength(0);
+    expect(hospedeiro.textContent).not.toContain("Sem internet");
   });
 
   it("editar e excluir continuam funcionando com o mapa montado", async () => {
