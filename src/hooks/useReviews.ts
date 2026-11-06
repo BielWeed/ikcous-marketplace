@@ -412,7 +412,13 @@ export function useReviews() {
     async (
       page = 0,
       pageSize = 20,
-      filters?: { rating?: number | "all"; search?: string; silent?: boolean },
+      filters?: {
+        rating?: number | "all";
+        search?: string;
+        // "pendente" = só a fila de moderação (20261399700000); "todas" ou ausente = sem filtro de situação.
+        status?: "todas" | "pendente";
+        silent?: boolean;
+      },
     ) => {
       const rodada = ++rodadaAdminRef.current;
       const geracao = geracaoAtualDoCache();
@@ -438,6 +444,11 @@ export function useReviews() {
                   : "all",
               p_page: page,
               p_page_size: pageSize,
+              // Só manda p_status com o filtro de moderação LIGADO: a lista sem filtro segue chamando com os 4
+              // parâmetros de sempre, então a loja que ainda não recebeu a migration 20261399700000 continua abrindo.
+              ...(filters?.status === "pendente"
+                ? { p_status: "pendente" }
+                : {}),
             },
           );
 

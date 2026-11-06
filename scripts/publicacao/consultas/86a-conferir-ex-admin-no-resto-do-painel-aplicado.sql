@@ -90,13 +90,21 @@ WITH alvo(tabela, politica, comando, papeis, qual, chk) AS (VALUES
          OR (a.assinatura='public.get_admin_products_paged(text,text,text,text,integer,integer)'
              AND md5(replace(p.prosrc,chr(13),'')) IN ('39db382689def5fac3b263a66f84ede1','346063e900b8b7b63dfbeffe5070eedc'))
          OR (a.assinatura='public.buscar_por_codigo_barras(text)'
-             AND md5(replace(p.prosrc,chr(13),''))='3e2276ae97a7f2aef487e55d259ba7a3'))
+             AND md5(replace(p.prosrc,chr(13),''))='3e2276ae97a7f2aef487e55d259ba7a3')
+         OR (a.assinatura='public.get_admin_reviews_paged(text,text,integer,integer)'
+             AND p.oid=to_regprocedure('public.get_admin_reviews_paged(text,text,integer,integer,text)')
+             AND md5(replace(p.prosrc,chr(13),''))='af5d21345d167ca44dd327a93f949ea6'))
     AND (SELECT count(*)=1 FROM pg_proc x WHERE x.pronamespace='public'::regnamespace AND x.proname=p.proname)
     AND has_function_privilege('authenticated',p.oid,'EXECUTE') AND has_function_privilege('service_role',p.oid,'EXECUTE')
     AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
     AND NOT EXISTS(SELECT 1 FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) e WHERE e.grantee=0 AND e.privilege_type='EXECUTE')
     THEN 'sim' ELSE 'nao' END
-    FROM funcoes a LEFT JOIN pg_proc p ON p.oid=to_regprocedure(a.assinatura) LEFT JOIN pg_language l ON l.oid=p.prolang
+    -- get_admin_reviews_paged tem uma SUCESSORA que TROCA a assinatura (20261399700000, o painel de avaliacoes filtra o que esta em moderacao: ganha
+    -- p_status, 5 argumentos, e a de 4 e' apagada; so acrescenta o filtro, o gate e o desta migration): quando a de 4 nao existe mais, a linha mede a de 5
+    -- (so com o corpo exato dela, abaixo). Com as duas ou nenhuma a linha reprova (a contagem de assinaturas por nome tem de dar 1).
+    FROM funcoes a LEFT JOIN pg_proc p ON p.oid=COALESCE(to_regprocedure(a.assinatura),
+      CASE WHEN a.assinatura='public.get_admin_reviews_paged(text,text,integer,integer)' THEN to_regprocedure('public.get_admin_reviews_paged(text,text,integer,integer,text)') END)
+      LEFT JOIN pg_language l ON l.oid=p.prolang
   UNION ALL
   SELECT 'varredura: nenhuma politica das 10 tabelas ainda usa is_admin()', 'sim', CASE WHEN
     (SELECT count(*) FROM pg_policy p WHERE p.polrelid = ANY (ARRAY[to_regclass('public._ninja_migrations'), to_regclass('public.app_settings'), to_regclass('public.assinatura_da_loja'), to_regclass('public.banners'), to_regclass('public.categorias'), to_regclass('public.marketplace_ai_state'), to_regclass('public.shipping_calculation_logs'), to_regclass('public.shipping_quotes_cache'), to_regclass('public.store_config'), to_regclass('public.vor_receipts')]::regclass[])

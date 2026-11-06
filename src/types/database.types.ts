@@ -3619,6 +3619,7 @@ export type Database = {
           p_page_size?: number;
           p_rating?: string;
           p_search?: string;
+          p_status?: string;
         };
         Returns: Json;
       };

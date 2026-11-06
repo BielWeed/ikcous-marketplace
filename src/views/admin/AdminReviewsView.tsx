@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import {
+  Check,
   HelpCircle,
   MessageSquare,
   Send,
@@ -143,6 +144,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   const [ratingFilter, setRatingFilter] = useLocalStorage<number | "all">(
     "admin_reviews_rating_filter",
     "all",
+  );
+  // "Em moderação" mostra só a fila (a RPC filtra no banco, na lista e no total): sem isto uma avaliação pendente
+  // antiga afunda na paginação e a lojista pagina procurando o selo.
+  const [statusFilter, setStatusFilter] = useLocalStorage<"todas" | "pendente">(
+    "admin_reviews_status_filter",
+    "todas",
   );
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -278,6 +285,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         const result = await getAllReviews(pageToFetch, pageSize, {
           rating: ratingFilter,
           search: searchQuery,
+          status: statusFilter,
           silent,
         });
         if (rodada !== rodadaRef.current) return;
@@ -317,7 +325,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         firstLoadRef.current = false;
       }
     },
-    [getAllReviews, pageSize, ratingFilter, searchQuery, setPage],
+    [getAllReviews, pageSize, ratingFilter, searchQuery, statusFilter, setPage],
   );
 
   useEffect(() => {
@@ -335,6 +343,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     page,
     ratingFilter,
     searchQuery,
+    statusFilter,
     active,
     loadReviews,
     refreshTrigger,
@@ -463,13 +472,16 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     new Date(dateStr).toLocaleDateString("pt-BR");
 
   const detalhado = viewMode === "detailed";
-  const filtroAtivo = searchQuery.trim().length > 0 || ratingFilter !== "all";
+  const soEmModeracao = statusFilter === "pendente";
+  const filtroAtivo =
+    searchQuery.trim().length > 0 || ratingFilter !== "all" || soEmModeracao;
   const corDaNotaBaixa = classeDoTexto("negativo");
   const corDoSelo = classeDoTexto("positivo");
 
   const limparBuscaEFiltros = () => {
     setSearchQuery("");
     setRatingFilter("all");
+    setStatusFilter("todas");
     setPage(0);
   };
 
@@ -533,11 +545,30 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   );
 
   const renderEmpty = () =>
-    filtroAtivo ? (
+    soEmModeracao &&
+    searchQuery.trim().length === 0 &&
+    ratingFilter === "all" ? (
+      <VazioDaLista
+        icone={Check}
+        titulo="Nenhuma avaliação em moderação"
+        frase="Todas as avaliações que chegaram já foram decididas."
+        acao={{
+          rotulo: "Ver todas as avaliações",
+          aoClicar: () => {
+            setStatusFilter("todas");
+            setPage(0);
+          },
+        }}
+      />
+    ) : filtroAtivo ? (
       <VazioDaLista
         icone={Star}
         titulo="Nenhuma avaliação encontrada"
-        frase="Nada com essa busca ou essa nota. Tente outra ou limpe os filtros."
+        frase={
+          soEmModeracao
+            ? "Nada em moderação com essa busca ou essa nota. Tente outra ou limpe os filtros."
+            : "Nada com essa busca ou essa nota. Tente outra ou limpe os filtros."
+        }
         acao={{
           rotulo: "Limpar busca e filtros",
           aoClicar: limparBuscaEFiltros,
@@ -848,6 +879,28 @@ export const AdminReviewsView = memo(function AdminReviewsView({
               ),
               nome: star === 1 ? "1 estrela" : `${star} estrelas`,
             })),
+          ]}
+        />
+
+        <FiltroEmSegmentos
+          rotulo="Filtrar por situação"
+          valor={statusFilter}
+          aoEscolher={(nova) => {
+            setStatusFilter(nova);
+            setPage(0);
+          }}
+          opcoes={[
+            { valor: "todas", rotulo: "Todas" },
+            {
+              valor: "pendente",
+              rotulo: "Em moderação",
+              // A contagem é a da fila inteira no banco (a mesma do cartão "para aprovar"), não a da página.
+              contagem: pendentesNoBanco ?? "—",
+              tomDaContagem:
+                pendentesNoBanco !== null && pendentesNoBanco > 0
+                  ? "atencao"
+                  : undefined,
+            },
           ]}
         />
 

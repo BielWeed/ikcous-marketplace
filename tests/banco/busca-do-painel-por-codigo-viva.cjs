@@ -839,6 +839,10 @@ async function main() {
     await require("./o-balcao-diz-inativo-posterior.cjs").desfazerBalcaoDizInativoNaTransacao(
       c,
     );
+    // A 20261399700000 (o painel de avaliacoes filtra o que esta em moderacao) TROCA a assinatura de get_admin_reviews_paged da 381: sai antes dela.
+    await require("./o-painel-de-avaliacoes-filtra-posterior.cjs").desfazerFiltroDeModeracaoNaTransacao(
+      c,
+    );
     await c.query(
       ler(
         "supabase/migrations/rollback-manual-20261381000000_ex_admin_perde_o_acesso_na_hora_no_resto_do_painel.sql",

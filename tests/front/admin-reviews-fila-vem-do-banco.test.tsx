@@ -163,9 +163,14 @@ describe("AdminReviewsView — a fila do cartão vem do banco, não da página (
     expect(tela).not.toContain("Nenhuma na fila");
 
     // A LISTA continua sendo a da página: as duas publicadas aparecem e
-    // nenhuma "Em moderação" inventada entra nela.
+    // nenhum selo "Em moderação" inventado entra nela. (O botão-filtro "Em
+    // moderação 3" do topo da tela não é a lista: a checagem olha só o <ul>.)
     expect(tela).toContain("Ana Publicada");
     expect(tela).toContain("Bruno Publicada");
-    expect(tela).not.toContain("Em moderação");
+    const lista = Array.from(hospedeiro.querySelectorAll("ul")).find((ul) =>
+      ul.textContent?.includes("Ana Publicada"),
+    );
+    expect(lista).toBeDefined();
+    expect(lista?.textContent).not.toContain("Em moderação");
   });
 });
