@@ -10,7 +10,8 @@
 //    produto continua 20 depois de criá-la;
 //  - produto que já tem variação ligada: a nova nasce com 0 e a soma não muda;
 //  - produto com estoque 0: nasce 0;
-//  - só variações desligadas e 12 no campo: a nova ligada herda os 12;
+//  - só variações desligadas e zeradas e 12 no campo: a nova ligada herda os 12;
+//  - desligada que ainda guarda quantidade: a nova NÃO herda (religar somaria em dobro);
 //  - grade num produto com estoque e sem variação: aviso com o número (a grade
 //    não tem como dividir o estoque); sem estoque, ou com variação já ligada,
 //    sem aviso — e a grade é efetivada nos dois casos.
@@ -277,8 +278,8 @@ describe("AdminProductFormView — a primeira variação herda o estoque do prod
     expect(valorDoCampo("variant-stock")).toBe("0");
   });
 
-  it("só variações desligadas e 12 no campo: a nova ligada herda os 12", async () => {
-    await montar(12, [variacao("v1", "Rosa", 5, false)]);
+  it("só variações desligadas e ZERADAS, 12 no campo: a nova ligada herda os 12", async () => {
+    await montar(12, [variacao("v1", "Rosa", 0, false)]);
     expect(valorDoCampo("product-stock")).toBe("12");
 
     await abrirNovaVariacao();
@@ -287,6 +288,14 @@ describe("AdminProductFormView — a primeira variação herda o estoque do prod
     await criarVariacao("Azul");
 
     expect(valorDoCampo("product-stock")).toBe("12");
+  });
+
+  it("desligada que ainda guarda 5 e 12 no campo: a nova NÃO herda (religar a Rosa somaria em dobro)", async () => {
+    await montar(12, [variacao("v1", "Rosa", 5, false)]);
+
+    await abrirNovaVariacao();
+
+    expect(valorDoCampo("variant-stock")).toBe("0");
   });
 
   it("cancelar e reabrir depois de mexer no estoque do produto: herda o número de agora", async () => {

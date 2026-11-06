@@ -85,16 +85,20 @@ export function formComVariacoes<
  * (`formComVariacoes`). Se a primeira nascesse com 0, o produto de 20 peças
  * salvava com 0, virava "Esgotado" na loja e as 20 só voltavam se a lojista
  * digitasse a quantidade em cada variação. Quando ainda não há nenhuma ligada
- * e o campo do produto tem um número inteiro maior que zero, a primeira
- * começa com esse número e a soma não muda. Já havendo ligada, a nova começa
- * em 0 (a soma já é do que existe). Qualquer outra coisa no campo (vazio,
+ * (nem desligada guardando quantidade) e o campo do produto tem um número
+ * inteiro maior que zero, a primeira começa com esse número e a soma não
+ * muda. Já havendo ligada, a nova começa em 0 (a soma já é do que existe). Qualquer outra coisa no campo (vazio,
  * zero, negativo, "1,5") vale 0.
  */
 export function estoqueQueAPrimeiraVariacaoHerda(form: {
   stock: string;
   variants: VariacaoParaEstoque[];
 }): number {
-  if (form.variants.some((v) => v.active)) return 0;
+  // Variação desligada que ainda guarda quantidade também segura a herança:
+  // religá-la depois somaria o estoque do produto POR CIMA dela (20 + 20).
+  if (form.variants.some((v) => v.active || (v.stockIncrement || 0) > 0)) {
+    return 0;
+  }
   const texto = String(form.stock ?? "").trim();
   if (!/^\d+$/.test(texto)) return 0;
   return Number(texto);

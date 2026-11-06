@@ -252,9 +252,18 @@ describe("estoqueQueAPrimeiraVariacaoHerda", () => {
     ).toBe(0);
   });
 
-  it("só variações desligadas e estoque no campo: herda (a soma das ligadas seria 0)", () => {
-    expect(estoqueQueAPrimeiraVariacaoHerda(form("12", [desligada(5)]))).toBe(
+  it("só variações desligadas e ZERADAS, estoque no campo: herda (a soma das ligadas seria 0)", () => {
+    expect(estoqueQueAPrimeiraVariacaoHerda(form("12", [desligada(0)]))).toBe(
       12,
+    );
+  });
+
+  it("variação desligada que ainda guarda quantidade: NÃO herda (religar somaria em dobro)", () => {
+    expect(estoqueQueAPrimeiraVariacaoHerda(form("12", [desligada(5)]))).toBe(
+      0,
+    );
+    expect(estoqueQueAPrimeiraVariacaoHerda(form("20", [desligada(20)]))).toBe(
+      0,
     );
   });
 
