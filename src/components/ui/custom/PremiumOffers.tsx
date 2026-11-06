@@ -611,7 +611,7 @@ function HeroOfferCard({
                   e.stopPropagation();
                   handleCardClick();
                 }}
-                className="line-clamp-2 w-full text-left text-lg font-extrabold leading-snug tracking-tight text-slate-900 transition-colors duration-300 group-hover:text-primary sm:text-xl"
+                className="line-clamp-2 w-full [overflow-wrap:anywhere] text-left text-lg font-extrabold leading-snug tracking-tight text-slate-900 transition-colors duration-300 group-hover:text-primary sm:text-xl"
               >
                 {product.name}
               </button>

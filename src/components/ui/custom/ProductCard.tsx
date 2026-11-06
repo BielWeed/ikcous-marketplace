@@ -1022,7 +1022,7 @@ export const ProductCard = memo(function ProductCard({
                     e.stopPropagation();
                     abrirProduto();
                   }}
-                  className="line-clamp-2 w-full text-left text-[13px] font-black leading-tight text-slate-900 transition-colors duration-300 group-hover:text-primary sm:text-[14px]"
+                  className="line-clamp-2 w-full break-words text-left text-[13px] font-black leading-tight text-slate-900 transition-colors duration-300 group-hover:text-primary sm:text-[14px]"
                 >
                   {product.name}
                 </button>
