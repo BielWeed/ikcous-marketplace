@@ -1,4 +1,17 @@
 {
+  "1.5.142": {
+    "titulo": "Fotos que não mentem, avisos que religam sozinhos e recibo que imprime inteiro",
+    "novidades": [],
+    "correcoes": [
+      "Painel, Produtos e Banners: foto que o aparelho não abre não mostra mais o aviso verde de sucesso, e recortar ou excluir uma foto acerta a foto das variações que a usavam.",
+      "Painel, Banners: o envio da imagem tem prazo e, sem internet, dá para escolher a mesma foto de novo.",
+      "Painel, Categorias e Trocas: recriar uma categoria escondida diz como reativá-la, e salvar a política de trocas não desfaz em silêncio as categorias de outro aparelho.",
+      "Painel, Balcão: anular uma venda protege o motivo digitado, e o recibo impresso sai completo mesmo com a tela rolada.",
+      "Avisos: depois de limpar o app, o aparelho que já aceitou receber avisos volta a recebê-los sozinho, e enviar para todos os clientes pede confirmação antes.",
+      "Painel: o botão Voltar do sino leva de volta às Notificações, o Desfazer aparece também no celular, e as janelas de foto e de prévia do celular fecham com Esc."
+    ],
+    "melhorias": []
+  },
   "1.5.141": {
     "titulo": "Frete que guarda a chave, login mais claro, avaliações e rastreio que não ficam presos",
     "novidades": [],
