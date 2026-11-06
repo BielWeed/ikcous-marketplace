@@ -8,11 +8,11 @@
       "Loja, Carrinho: quando o total chega exatamente na meta do frete grátis, a barra não diz mais “faltam R$ 0,00”; o botão de mais quantidade explica que o limite é o estoque, e a linha mostra “Máximo disponível”.",
       "Loja, Pedido: um pedido de valor alto demais agora manda conferir o carrinho, em vez de pedir para tentar de novo sem fim.",
       "Loja, Voltar: depois de fazer um pedido, o botão Voltar do celular leva ao carrinho em vez de abrir um checkout vazio.",
-      "Loja, Busca: loja sem produtos não promete resultados, e a busca não mostra produto pausado.",
+      "Loja, Busca: numa loja sem produtos, a busca não promete resultados.",
       "Loja e Painel: quando uma parte da tela não consegue baixar com internet ruim, o resto da tela continua aparecendo, com o aviso “Tentar de novo” só naquele pedaço.",
       "Painel, Banners: “Recuperar” um rascunho antigo não desfaz mais o que você mudou depois no banner, e o rascunho vence em 7 dias.",
       "Painel, Pedidos: o botão Voltar da ficha do pedido fecha a ficha, e “Descartar e Sair” volta para a tela certa.",
-      "Painel, Balcão e Cupons: o recibo de venda sem cliente pode ser impresso de novo, e o desconto médio dos cupons só conta os cupons ativos.",
+      "Painel, Balcão e Cupons: o recibo de venda sem cliente pode ser impresso de novo, e o desconto médio dos cupons mostra um traço, em vez de 0%, quando não há cupom percentual ativo.",
       "Loja: o carrinho de quem visita sem entrar continua sendo salvo mesmo com o aparelho cheio de cópias guardadas."
     ]
   },
