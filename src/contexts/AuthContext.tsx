@@ -1195,6 +1195,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             // defeito que este lote existe para matar: a tela nomeando um
             // conserto que não conserta.
             "Senha muito fraca. Escolha outra senha.";
+        } else if (error.code === "email_address_invalid") {
+          // E-mail digitado errado ("maria@gmial"): causa única e que não
+          // revela se há conta. `validation_failed` fica de fora de
+          // propósito — é um 400 amplo que cobre outros parâmetros.
+          message = "Confira o e-mail: ele parece ter um erro de digitação.";
         } else if (error.status === 429) {
           message = "Muitas tentativas. Tente novamente em alguns minutos.";
         }

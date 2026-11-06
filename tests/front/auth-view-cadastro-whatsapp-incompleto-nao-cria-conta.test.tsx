@@ -4,8 +4,10 @@
 //
 // A tela só conferia se o WhatsApp não estava vazio: "(34) 9999" passava e a
 // conta nascia com um número que não existe (o rastreio de pedido e o aviso
-// da loja dependem dele). Agora o cadastro exige 10 ou 11 dígitos (depois de
-// tirar +55 e o zero de tronco, como o checkout) e avisa em português claro.
+// da loja dependem dele). Agora o cadastro exige o MESMO celular completo do
+// checkout e do perfil (DDD + 9 + 8 dígitos, depois de tirar +55 e o zero de
+// tronco) e avisa em português claro. Fixo de 10 dígitos já passou aqui e era
+// recusado no Finalizar: a conta nascia com um número que a compra rejeitava.
 //
 // Mesmo padrão de auth-view-cadastro-confirmacao-condicional-e-senha-minima
 // (render de verdade, useAuth e sonner dublados).
@@ -60,7 +62,7 @@ function localizarBotaoPorTexto(texto: string) {
   return botao as HTMLButtonElement;
 }
 
-describe("AuthView — cadastro exige WhatsApp com 10 ou 11 dígitos", () => {
+describe("AuthView — cadastro exige o mesmo celular completo do checkout", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -108,10 +110,30 @@ describe("AuthView — cadastro exige WhatsApp com 10 ou 11 dígitos", () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  it("controle: fixo de 10 dígitos '(34) 3333-4444' passa", async () => {
+  it("fixo de 10 dígitos '(34) 3333-4444' NÃO cria a conta (o checkout também recusa)", async () => {
     await enviarCadastroCom("(34) 3333-4444");
-    expect(signUp).toHaveBeenCalledTimes(1);
-    expect(toast.error).not.toHaveBeenCalled();
+
+    expect(signUp).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toBe(
+      "Confira o WhatsApp: faltou um número (DDD + 9 + 8 dígitos)",
+    );
+  });
+
+  it("celular antigo sem o 9 '(34) 8888-7777' (10 dígitos) NÃO cria a conta", async () => {
+    await enviarCadastroCom("(34) 8888-7777");
+    expect(signUp).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toMatch(
+      /faltou um número/i,
+    );
+  });
+
+  it("11 dígitos sem o 9 depois do DDD '(34) 33334-4444' NÃO cria a conta", async () => {
+    await enviarCadastroCom("(34) 33334-4444");
+    expect(signUp).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.error).mock.calls[0]?.[0]).toBe(
+      "Confira o WhatsApp: precisa de DDD + 9 + 8 dígitos",
+    );
   });
 
   it("controle: '+55 34 99999-8888' colado (limpo para 11 dígitos) passa", async () => {
