@@ -1346,10 +1346,14 @@ export function CartView({
               {!user && orders.length > 0 && (
                 <div
                   data-testid="aviso-retrato-do-convidado"
-                  className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-200/60 bg-amber-50 px-4 py-3"
+                  className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-solid border-border bg-background px-4 py-3"
                 >
-                  <p className="min-w-0 flex-1 text-[13px] font-medium text-amber-900">
-                    {textoDoRetrato(retratoEm)}
+                  <p className="flex min-w-0 flex-1 items-start gap-2 text-[13px] font-medium text-foreground">
+                    <span
+                      aria-hidden="true"
+                      className="mt-1.5 size-1.5 shrink-0 rounded-full bg-amber-500"
+                    />
+                    <span className="min-w-0">{textoDoRetrato(retratoEm)}</span>
                   </p>
                   <button
                     type="button"
@@ -1357,7 +1361,7 @@ export function CartView({
                       haptic.light();
                       limparRetratoDoConvidado();
                     }}
-                    className="min-h-11 rounded-xl bg-zinc-900 px-4 text-sm font-bold text-white transition-all active:scale-95"
+                    className="min-h-11 rounded-xl bg-foreground px-4 text-sm font-bold text-background transition-all active:scale-95"
                   >
                     Consultar de novo
                   </button>
