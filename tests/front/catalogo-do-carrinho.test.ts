@@ -230,3 +230,135 @@ describe("linha SEM variação de produto que TEM variação ativa", () => {
     );
   });
 });
+
+// A lojista corrige o nome da variação ("Pequeno" no lugar de "P") e o carrinho
+// seguia mostrando o nome velho: `variantNames` é um texto montado quando a
+// linha entrou e nunca era relido. A releitura do catálogo agora o remonta, no
+// mesmo formato da página do produto ("Grupo: Opção", unidos por ", ") e na
+// ordem em que a linha foi montada (`variantId` primeiro).
+describe("nome da variação na linha do carrinho acompanha o catálogo", () => {
+  it("variação renomeada: o nome novo entra; quantidade, carimbo e escolha não mudam", () => {
+    const itens = [
+      item(linha(), 2, { variantId: "P", variantNames: "Tamanho: P" }, [
+        variacao("P"),
+      ]),
+    ];
+    const catalogo = montarCatalogo(
+      ["a"],
+      [linha()],
+      [variacao("P", { value: "Pequeno" })],
+    );
+    const r = aplicarCatalogoAoCarrinho(itens, catalogo, 5000);
+    expect(r).not.toBe(itens);
+    expect(r[0].variantNames).toBe("Tamanho: Pequeno");
+    expect(r[0].variantId).toBe("P");
+    expect(r[0].quantity).toBe(2);
+    expect(r[0].lastModifiedAt).toBe(1000);
+  });
+
+  it("o NOME DO GRUPO corrigido também vale", () => {
+    const itens = [
+      item(linha(), 1, { variantId: "P", variantNames: "Tamanho: P" }, [
+        variacao("P"),
+      ]),
+    ];
+    const catalogo = montarCatalogo(
+      ["a"],
+      [linha()],
+      [variacao("P", { name: "Medida" })],
+    );
+    const [novo] = aplicarCatalogoAoCarrinho(itens, catalogo, 5000);
+    expect(novo.variantNames).toBe("Medida: P");
+  });
+
+  it("o produto da linha já era o atual, só o texto estava velho (somar quantidade deixa isso): o texto é corrigido", () => {
+    const renomeada = [variacao("P", { value: "Pequeno" })];
+    const itens = [
+      item(
+        linha(),
+        1,
+        { variantId: "P", variantNames: "Tamanho: P" },
+        renomeada,
+      ),
+    ];
+    const catalogo = montarCatalogo(["a"], [linha()], renomeada);
+    const [novo] = aplicarCatalogoAoCarrinho(itens, catalogo, 5000);
+    expect(novo.variantNames).toBe("Tamanho: Pequeno");
+  });
+
+  it("variação intacta: devolve o MESMO array e o MESMO item (nada de re-render à toa)", () => {
+    const itens = [
+      item(linha(), 1, { variantId: "P", variantNames: "Tamanho: P" }, [
+        variacao("P"),
+      ]),
+    ];
+    const catalogo = montarCatalogo(["a"], [linha()], [variacao("P")]);
+    const r = aplicarCatalogoAoCarrinho(itens, catalogo, 5000);
+    expect(r).toBe(itens);
+    expect(r[0]).toBe(itens[0]);
+  });
+
+  it("duas escolhas (cadastro antigo): remonta na ordem da linha, variantId primeiro", () => {
+    const antes = [
+      variacao("P", { name: "Tamanho" }),
+      variacao("azul", { name: "Cor", value: "Azul" }),
+    ];
+    const itens = [
+      item(
+        linha(),
+        1,
+        {
+          variantId: "azul",
+          outrasVariantIds: ["P"],
+          variantNames: "Cor: Azul, Tamanho: P",
+        },
+        antes,
+      ),
+    ];
+    const catalogo = montarCatalogo(
+      ["a"],
+      [linha()],
+      [
+        variacao("P", { name: "Tamanho", value: "Pequeno" }),
+        variacao("azul", { name: "Cor", value: "Azul" }),
+      ],
+    );
+    const [novo] = aplicarCatalogoAoCarrinho(itens, catalogo, 5000);
+    expect(novo.variantNames).toBe("Cor: Azul, Tamanho: Pequeno");
+  });
+
+  it("variação que sumiu: a linha SAI (regra de antes), não ganha nome novo", () => {
+    const itens = [
+      item(linha(), 1, { variantId: "P", variantNames: "Tamanho: P" }, [
+        variacao("P"),
+      ]),
+    ];
+    const catalogo = montarCatalogo(["a"], [linha()], [variacao("M")]);
+    expect(aplicarCatalogoAoCarrinho(itens, catalogo, 5000)).toEqual([]);
+  });
+
+  it("linha de carrinho velho SEM variantNames fica como está (a tela lê o nome atual da variação)", () => {
+    const itens = [item(linha(), 1, { variantId: "P" }, [variacao("P")])];
+    const catalogo = montarCatalogo(["a"], [linha()], [variacao("P")]);
+    const r = aplicarCatalogoAoCarrinho(itens, catalogo, 5000);
+    expect(r).toBe(itens);
+    expect(r[0].variantNames).toBeUndefined();
+  });
+
+  it("preço e estoque seguem a regra de antes quando o nome também muda", () => {
+    const itens = [
+      item(linha(), 5, { variantId: "P", variantNames: "Tamanho: P" }, [
+        variacao("P"),
+      ]),
+    ];
+    const catalogo = montarCatalogo(
+      ["a"],
+      [linha()],
+      [variacao("P", { value: "Pequeno", stock_increment: 2 })],
+    );
+    const [novo] = aplicarCatalogoAoCarrinho(itens, catalogo, 5000);
+    expect(novo.variantNames).toBe("Tamanho: Pequeno");
+    expect(novo.quantity).toBe(2);
+    expect(novo.lastModifiedAt).toBe(5000);
+  });
+});
