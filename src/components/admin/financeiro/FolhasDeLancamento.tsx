@@ -269,19 +269,30 @@ export function BaixarLancamentoFolha({
 }) {
   const confirmarVisualmente = useConfirmacaoFinanceira();
   const [data, setData] = useState<string>(hoje);
-  const [contaId, setContaId] = useState<string>(alvo.contaId ?? "");
+  const [contaEscolhida, setContaEscolhida] = useState<string | null>(null);
   const [erroData, setErroData] = useState<string | null>(null);
   const [erroDoServidor, setErroDoServidor] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const enviandoRef = useRef(false);
 
-  const sujo = data !== hoje || contaId !== (alvo.contaId ?? "");
+  // O servidor só baixa em conta ATIVA ("Escolha uma conta ativa."). Se a conta do
+  // lançamento foi desativada, ela não é oferecida nem vem como padrão: o campo
+  // começa vazio e a baixa só confirma depois de escolher uma conta ativa. Conta
+  // que a lista não traz (ainda carregando) não conta como desativada.
+  const contaOriginalDesativada = contas.some(
+    (c) => c.id === alvo.contaId && !c.ativa,
+  );
+  const contaInicial = contaOriginalDesativada ? "" : (alvo.contaId ?? "");
+  const contaId = contaEscolhida ?? contaInicial;
+  const faltaEscolherConta = contaOriginalDesativada && contaId === "";
+
+  const sujo = data !== hoje || contaId !== contaInicial;
   useEffect(() => {
     aoMudarSujo(sujo);
   }, [sujo, aoMudarSujo]);
 
   async function confirmar() {
-    if (enviandoRef.current) return;
+    if (enviandoRef.current || faltaEscolherConta) return;
     if (!ehDataIso(data)) {
       setErroData("Informe a data.");
       return;
@@ -339,7 +350,7 @@ export function BaixarLancamentoFolha({
     }
   }
 
-  const ativas = contas.filter((c) => c.ativa || c.id === alvo.contaId);
+  const ativas = contas.filter((c) => c.ativa);
 
   return (
     <FolhaFinanceira
@@ -358,7 +369,7 @@ export function BaixarLancamentoFolha({
           {erroDoServidor ? <EstadoDeErro mensagem={erroDoServidor} /> : null}
           <button
             type="button"
-            disabled={enviando}
+            disabled={enviando || faltaEscolherConta}
             onClick={() => void confirmar()}
             className={CLASSE_BOTAO_PRIMARIO}
           >
@@ -402,16 +413,24 @@ export function BaixarLancamentoFolha({
         <Campo
           id="fin-baixa-conta"
           rotulo={alvo.lado === "entrada" ? "Entrou em" : "Saiu de"}
-          ajuda="A conta do lançamento ou outra conta ativa. A original continua disponível mesmo inativa."
+          ajuda={
+            contaOriginalDesativada
+              ? `A conta original está desativada: escolha ${alvo.lado === "entrada" ? "em que conta o dinheiro entrou" : "de onde saiu o dinheiro"} ou reative a conta em Contas.`
+              : "A conta do lançamento ou outra conta ativa."
+          }
         >
           <select
             id="fin-baixa-conta"
             disabled={enviando}
             value={contaId}
-            onChange={(e) => setContaId(e.target.value)}
+            onChange={(e) => setContaEscolhida(e.target.value)}
             className={CLASSE_CAMPO}
           >
-            <option value="">A conta do lançamento</option>
+            <option value="">
+              {contaOriginalDesativada
+                ? "Escolha uma conta ativa…"
+                : "A conta do lançamento"}
+            </option>
             {ativas.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.nome}
