@@ -324,7 +324,8 @@ it("política leva status, data e o mesmo Salvar para a pílula, inclusive duran
       metodos_nacionais: ["etiqueta_reversa", "envio_proprio"],
       reembolso_momento: "ao_receber",
       frete_troca_pago_por: "cliente",
-      categorias_sem_troca: [],
+      // categorias_sem_troca não vai: a lista não mudou neste aparelho, e
+      // enviá-la desfaria em silêncio a de outro aparelho.
       texto_politica: "",
       endereco_devolucao: "",
     },
