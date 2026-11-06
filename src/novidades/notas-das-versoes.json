@@ -1,4 +1,20 @@
 {
+  "1.5.141": {
+    "titulo": "Frete que guarda a chave, login mais claro, avaliações e rastreio que não ficam presos",
+    "novidades": [],
+    "correcoes": [
+      "Painel, Frete: se a leitura falhar, “Tentar de novo” não apaga mais a chave da transportadora que você já colou, e nenhum cartão fica preso em “Salvando…”.",
+      "Painel, Perguntas e Avaliações: loja sem nenhum registro mostra “Nenhuma pergunta ainda” e “—” em vez de “0% respondidas” e “0,0”.",
+      "Painel, Início: o aviso do caixa fechado não promete mais que ele é preciso para vender no balcão.",
+      "Textos longos sem espaço (um link, por exemplo) quebram linha no perfil de outra pessoa e na ficha do cliente.",
+      "Avaliar um produto: a folha fecha assim que a avaliação é gravada, não mostra mais erro falso, tem contador de 1000 letras e não deixa enviar duas vezes.",
+      "Cadastro: e-mail digitado errado é apontado, o WhatsApp precisa ser um celular completo (como no checkout) e a tela de recuperar senha ganhou reenviar link, aviso de spam e corrigir e-mail.",
+      "Senha: ao mostrar a senha, o celular não coloca mais maiúscula nem corrige sozinho.",
+      "Rastreio sem conta: pedir e conferir o código não ficam mais girando para sempre, e cancelar um pedido diz “Pedido cancelado.”.",
+      "Endereços: sem internet, o mapa dá lugar a um aviso e o endereço continua em texto; “Sobre a loja” aparece no rodapé para quem não tem conta, e Termos, Privacidade e Trocas também estão no Perfil."
+    ],
+    "melhorias": []
+  },
   "1.5.140": {
     "titulo": "Busca que acha o plural, fotos que seguem a cor, cupom digitado com acento e pedido na ficha mais seguro",
     "novidades": [],
