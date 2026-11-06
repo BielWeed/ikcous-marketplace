@@ -611,6 +611,11 @@ export function AccountSettingsView() {
     // tinha CPF TAMBÉM é uma mudança — é o caminho de limpar.
     const cpfMudou = digitosCpfAtual !== cpfOriginal;
 
+    // Como o WhatsApp e o CPF, o nome só vai quando ELA o editou: os dados são
+    // lidos uma vez ao abrir a tela, e outro aparelho pode ter trocado o nome
+    // desde então -- reenviar o do formulário o devolveria ao antigo.
+    const nomeMudou = nomeAparado !== profileDataOriginal.name.trim();
+
     const perfilEnviado = profileData;
     setLoading(true);
     const desmarcar = marcarOperacaoSensivel("salvar-conta");
@@ -622,7 +627,7 @@ export function AccountSettingsView() {
       // mostra (que pode estar truncado/mascarado por `formatarWhatsApp`).
       const resultado = await gravarPerfilDaConta(
         {
-          p_full_name: nomeAparado,
+          p_full_name: nomeMudou ? nomeAparado : null,
           p_whatsapp: whatsappEditado ? perfilEnviado.phone : null,
         },
         contaDonaId,

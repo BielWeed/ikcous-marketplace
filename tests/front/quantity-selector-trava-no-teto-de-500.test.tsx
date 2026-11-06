@@ -62,12 +62,12 @@ describe("QuantitySelector — teto de 500 por item", () => {
     expect(mais.title).toBe("Aumentar");
   });
 
-  it("controle, estoque 500, em 500: trava (o limite é o estoque, título de sempre)", () => {
+  it("controle, estoque 500, em 500: trava (o limite é o estoque, e a dica diz isso — não a do teto)", () => {
     const { mais, onChange } = montar(500, 500);
     expect(mais.disabled).toBe(true);
     act(() => mais.click());
     expect(onChange).not.toHaveBeenCalled();
-    expect(mais.title).toBe("Aumentar");
+    expect(mais.title).toBe("Limite do estoque (500 unidades)");
   });
 
   it("controle, estoque 3, em 3: trava; em 2 sobe para 3", () => {

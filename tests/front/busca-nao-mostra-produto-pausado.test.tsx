@@ -150,7 +150,8 @@ describe("SearchView — produto pausado não aparece nos resultados", () => {
     });
     expect(fetchProducts).toHaveBeenCalledTimes(1);
     await renderizarBusca();
-    expect(host.textContent).toContain("Ué, nenhum resultado?");
+    expect(host.textContent).toContain("A loja ainda não tem produtos");
+    expect(host.textContent).not.toContain("Ué, nenhum resultado?");
   });
 
   it("com o catálogo salvo no aparelho, falha em segundo plano não esconde a busca", async () => {

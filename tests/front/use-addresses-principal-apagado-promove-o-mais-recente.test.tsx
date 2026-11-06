@@ -309,7 +309,8 @@ describe("useAddresses — sempre que sobra endereço, existe um principal", () 
 
     expect(nomes()).toEqual(["Casa"]);
     expect(principal()).toBe("Casa");
-    expect(banco.operacoes.map((o) => o.op)).toEqual(["delete"]);
+    // Apagar relê a lista do servidor; promoção seria um "update".
+    expect(banco.operacoes.map((o) => o.op)).toEqual(["delete", "select"]);
   });
 
   it("CONTROLE: apagar o único endereço deixa a lista vazia, sem promoção", async () => {
@@ -322,6 +323,7 @@ describe("useAddresses — sempre que sobra endereço, existe um principal", () 
     });
 
     expect(nomes()).toEqual([]);
-    expect(banco.operacoes.map((o) => o.op)).toEqual(["delete"]);
+    // Apagar relê a lista do servidor; promoção seria um "update".
+    expect(banco.operacoes.map((o) => o.op)).toEqual(["delete", "select"]);
   });
 });

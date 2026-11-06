@@ -10,6 +10,7 @@ import {
   montarCatalogo,
 } from "@/lib/catalogo-do-carrinho";
 import { haChaveDoPedidoVigente } from "@/lib/chave-do-pedido";
+import { liberarCopiasPorProduto } from "@/lib/copias-por-produto";
 import {
   chaveDaLinha,
   chaveDoItem,
@@ -332,6 +333,22 @@ function gravarSeguro(chave: string, valor: string): void {
   try {
     localStorage.setItem(chave, valor);
   } catch (e) {
+    // Aparelho cheio: o carrinho do visitante só mora aqui, e as cópias por
+    // produto (recomendações, avaliações, perguntas) se refazem com uma ida à
+    // rede. Libera as cópias e tenta uma vez mais; sem cópia para liberar, o
+    // carrinho segue na memória, como sempre.
+    if (liberarCopiasPorProduto() > 0) {
+      try {
+        localStorage.setItem(chave, valor);
+        return;
+      } catch (segundoErro) {
+        console.error(
+          "[CartContext] Failed to write localStorage:",
+          segundoErro,
+        );
+        return;
+      }
+    }
     console.error("[CartContext] Failed to write localStorage:", e);
   }
 }

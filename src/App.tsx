@@ -744,6 +744,11 @@ const AppContent = () => {
   const [pendingNavigation, setPendingNavigation] = useState<{
     view: View;
     id?: string;
+    // O aviso nasceu de um Voltar do aparelho: o navegador JÁ recuou para a
+    // entrada de destino. "Descartar e Sair" não pode empurrar o destino de
+    // novo (a pilha ganharia uma cópia e o Voltar seguinte reabriria o
+    // formulário descartado) — consome a entrada de guarda com um Voltar.
+    viaPopstate?: boolean;
   } | null>(null);
 
   const isAdminDirtyRef = useRef(false);
@@ -854,6 +859,13 @@ const AppContent = () => {
   useLayoutEffect(() => {
     adminStatusRef.current = adminStatus;
   }, [adminStatus]);
+
+  // Lido pelo Voltar do aparelho (syncWithUrl, "popstate"): uma retomada de
+  // pagamento ainda ligada faz do checkout vazio uma tela com motivo de abrir.
+  const checkoutRetomadaIdRef = useRef(checkoutRetomadaId);
+  useLayoutEffect(() => {
+    checkoutRetomadaIdRef.current = checkoutRetomadaId;
+  }, [checkoutRetomadaId]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [scrollProgress, setScrollProgress] = useState(0);
@@ -2131,6 +2143,27 @@ const AppContent = () => {
           }
         }
 
+        // Voltar do aparelho que CHEGA ao checkout (vindo de outra tela) com o
+        // carrinho vazio e sem pagamento a retomar: é a entrada que sobrou da
+        // compra já feita (o carrinho do pedido ou a guarda do envio, as duas
+        // em /checkout). Montá-lo mostraria a tela "Finalizar compra" sem itens
+        // e sem resumo, com o botão apagado e sem explicar por quê. A pessoa vai
+        // ao carrinho, que diz que está vazio; replaceState troca a entrada em
+        // vez de empilhar outra. Só "popstate": a carga da página em /checkout
+        // (recarga com pedido guardado) e o toque em "Finalizar compra" não
+        // passam por aqui, e quem já está no checkout (tela de pagamento ou de
+        // sucesso, com o carrinho já esvaziado) nunca é expulsa dele.
+        if (
+          targetView === "checkout" &&
+          origem === "popstate" &&
+          currentViewRef.current !== "checkout" &&
+          carrinhoAtualRef.current.length === 0 &&
+          checkoutRetomadaIdRef.current === null
+        ) {
+          targetView = "cart";
+          globalThis.history.replaceState({ view: "cart" }, "", "/cart");
+        }
+
         const urlParams = new URLSearchParams(globalThis.location.search);
         const categoryParam = urlParams.get("category") || "Todas";
         if (targetView === "home") {
@@ -2158,7 +2191,12 @@ const AppContent = () => {
           targetView !== "admin-product-form" &&
           targetView !== "admin-coupon-form" &&
           targetView !== "admin-user-detail" &&
-          targetView !== "admin-orders" &&
+          // Pedidos: no Voltar do aparelho a entrada da LISTA (`/admin-orders`,
+          // sem `?id=`) é justamente o sinal de "fechar a ficha". Reter o
+          // pedido antigo aqui deixava a ficha aberta ("mesmo destino") e a
+          // seta do cabeçalho dizendo "Perfil". Toda ficha tem `?id=` na URL
+          // (handleNavigate e link direto), então não há o que reter.
+          (targetView !== "admin-orders" || origem === "popstate") &&
           targetView !== "admin-push"
             ? null
             : selectedProductId);
@@ -2360,7 +2398,11 @@ const AppContent = () => {
             targetView = targetState.view;
             targetId = targetState.id;
           }
-          setPendingNavigation({ view: targetView, id: targetId });
+          setPendingNavigation({
+            view: targetView,
+            id: targetId,
+            viaPopstate: true,
+          });
           return;
         }
 
@@ -3552,7 +3594,16 @@ const AppContent = () => {
                     selectedProductId || undefined,
                   );
                 }
-                if (pendingNavigation) {
+                if (pendingNavigation?.viaPopstate) {
+                  // A guarda já empurrou a entrada do formulário por cima do
+                  // destino em que o navegador pousou: um Voltar de verdade a
+                  // consome e o `popstate` normal leva à tela (lida da URL).
+                  // O ref cai junto por garantia: o efeito do estado também o
+                  // derruba, mas se ainda não tiver rodado o popstate leria o
+                  // "sujo" velho e reabriria este mesmo aviso.
+                  isAdminDirtyRef.current = false;
+                  globalThis.history.back();
+                } else if (pendingNavigation) {
                   handleNavigate(
                     pendingNavigation.view,
                     pendingNavigation.id,

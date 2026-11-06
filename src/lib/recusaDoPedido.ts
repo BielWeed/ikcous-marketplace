@@ -101,6 +101,24 @@ export const LIMITE_DE_UNIDADES_DO_VISITANTE = 10;
 export const FRASE_TETO_DE_UNIDADES_DO_VISITANTE = `Sem entrar na conta, o pedido aceita até ${LIMITE_DE_UNIDADES_DO_VISITANTE} unidades. Entre na conta para comprar mais.`;
 
 /**
+ * O pedido passou do máximo que o banco guarda (`marketplace_orders.total` é
+ * `numeric(10,2)`: até R$ 99.999.999,99). O INSERT estoura com o SQLSTATE
+ * `22003` (numeric_value_out_of_range) e o PostgREST o repassa como `code`.
+ *
+ * É erro DENTRO do Postgres, então a transação da RPC inteira reverteu: o
+ * pedido provadamente não nasceu (nada de conferir "pedido fantasma"), e o
+ * total é o mesmo a cada tentativa — "tente novamente em instantes" nunca
+ * funcionaria. A saída é reduzir o pedido, e é no carrinho que se faz.
+ *
+ * `mensagemAmigavelErroPedido` (`useOrders.ts`) usa ESTA mesma constante: painel
+ * e toast aparecem juntos e não podem falar coisas diferentes
+ * (`recusa-e-toast-nao-divergem.test.ts`).
+ */
+export const CODIGO_PEDIDO_PASSA_DO_MAXIMO = "22003";
+export const FRASE_PEDIDO_PASSA_DO_MAXIMO =
+  "O valor deste pedido passa do máximo aceito. Reduza a quantidade ou divida em mais de um pedido.";
+
+/**
  * Os três que provam que a chamada nem chegou ao Postgres. Tem de ser o MESMO
  * conjunto de `mensagemAmigavelErroPedido` — ver o cabeçalho deste arquivo.
  */
@@ -379,6 +397,14 @@ export const classificarRecusaDoPedido = (error: unknown): RecusaDoPedido => {
     }
     // P0001 que ninguém previu: o texto do banco é bom, a ação é que não se sabe.
     return { acao: "conferir_antes", mensagem: texto };
+  }
+
+  // Antes do ramo genérico de SQLSTATE, que o engoliria como "tentar de novo".
+  if (codigo === CODIGO_PEDIDO_PASSA_DO_MAXIMO) {
+    return {
+      acao: "reconferir_carrinho",
+      mensagem: FRASE_PEDIDO_PASSA_DO_MAXIMO,
+    };
   }
 
   if (

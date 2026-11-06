@@ -1,4 +1,7 @@
-import { classificarRecusaDoPedido } from "@/lib/recusaDoPedido";
+import {
+  FRASE_PEDIDO_PASSA_DO_MAXIMO,
+  classificarRecusaDoPedido,
+} from "@/lib/recusaDoPedido";
 import { describe, expect, it } from "vitest";
 
 const p0001 = (message: string) => ({ code: "P0001", message });
@@ -187,6 +190,47 @@ describe("classificarRecusaDoPedido", () => {
       message: "deadlock detected",
     });
     expect(r.acao).toBe("tentar_de_novo");
+  });
+
+  // Pedido grande demais (R$ 99.999.999,99 e mais): o banco guarda o total em
+  // numeric(10,2) e o INSERT estoura com 22003. O total é o mesmo a cada
+  // tentativa, então "tente de novo" nunca funcionaria — e a pessoa precisa
+  // saber que o problema é o valor, não a internet.
+  it("22003 (valor grande demais para o pedido) -> reconferir o carrinho, dizendo que passou do maximo, NUNCA tentar de novo", () => {
+    const r = classificarRecusaDoPedido({
+      code: "22003",
+      message: "numeric field overflow",
+    });
+    expect(r.acao).toBe("reconferir_carrinho");
+    expect(r.mensagem).toBe(FRASE_PEDIDO_PASSA_DO_MAXIMO);
+    expect(r.mensagem).toContain("passa do máximo");
+    expect(r.mensagem).not.toContain("Tente novamente");
+  });
+
+  it("22003 sem message tambem e o limite do valor (o codigo basta)", () => {
+    expect(classificarRecusaDoPedido({ code: "22003" }).acao).toBe(
+      "reconferir_carrinho",
+    );
+  });
+
+  it("vizinhos de 22003 NAO viram 'passou do maximo': 22012 (divisao por zero) e 22P02 continuam 'tentar de novo'; 22003 minusculo nao e SQLSTATE e cai em conferir antes", () => {
+    expect(classificarRecusaDoPedido({ code: "22012" }).acao).toBe(
+      "tentar_de_novo",
+    );
+    expect(classificarRecusaDoPedido({ code: "22P02" }).acao).toBe(
+      "tentar_de_novo",
+    );
+    expect(classificarRecusaDoPedido({ code: "22003x" }).acao).toBe(
+      "conferir_antes",
+    );
+  });
+
+  it("P0001 com a frase do banco continua mandando no texto, mesmo que a frase cite 22003", () => {
+    const r = classificarRecusaDoPedido(
+      p0001("Os valores do pedido mudaram. Erro 22003."),
+    );
+    expect(r.acao).toBe("reconferir_carrinho");
+    expect(r.mensagem).toBe("Os valores do pedido mudaram. Erro 22003.");
   });
 
   it("erro SEM code (rede/gateway) -> conferir antes, NUNCA tentar de novo", () => {

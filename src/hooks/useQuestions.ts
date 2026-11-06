@@ -2,6 +2,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
+import {
+  PREFIXO_DE_PERGUNTAS,
+  gravarCopiaPorProduto,
+} from "@/lib/copias-por-produto";
 import { supabase } from "@/lib/supabase";
 import {
   cachedQuestionsData,
@@ -55,7 +59,7 @@ export type QAStatsResult =
     }
   | { status: "error"; error: unknown };
 
-const QUESTIONS_CACHE_KEY_PREFIX = "ikcous_questions_cache_";
+const QUESTIONS_CACHE_KEY_PREFIX = PREFIXO_DE_PERGUNTAS;
 const memoryQuestionsCache = new Map<string, Question[]>();
 
 // d5 (caça 03/11/2026): o cache é separado por VISÃO. A logada guarda `userId`
@@ -99,7 +103,8 @@ const updateQuestionsCache = (
   memoryQuestionsCache.set(chave, newQuestions);
   if (typeof window !== "undefined") {
     try {
-      localStorage.setItem(
+      gravarCopiaPorProduto(
+        QUESTIONS_CACHE_KEY_PREFIX,
         `${QUESTIONS_CACHE_KEY_PREFIX}${chave}`,
         JSON.stringify(newQuestions),
       );

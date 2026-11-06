@@ -1,3 +1,7 @@
+import {
+  PREFIXO_DE_RECOMENDACOES,
+  gravarCopiaPorProduto,
+} from "@/lib/copias-por-produto";
 import type { Product } from "@/types";
 import { useEffect, useRef, useState } from "react";
 
@@ -7,7 +11,7 @@ import { useEffect, useRef, useState } from "react";
 // SEM as variações — peça com tamanho/cor aparecia como "sem variação" e ia ao
 // carrinho sem escolha. Prefixo novo = nenhuma cópia antiga é servida (as
 // chaves velhas ficam órfãs no aparelho, sem ninguém que as leia).
-const RECS_CACHE_KEY_PREFIX = "ikcous_recs_v2_cache_";
+const RECS_CACHE_KEY_PREFIX = PREFIXO_DE_RECOMENDACOES;
 const memoryRecsCache = new Map<string, Product[]>();
 
 const getRecsCache = (productId: string): Product[] | null => {
@@ -52,7 +56,9 @@ const updateRecsCache = (productId: string, newRecs: Product[]) => {
   memoryRecsCache.set(productId, newRecs);
   if (typeof window !== "undefined") {
     try {
-      localStorage.setItem(
+      // Com teto (as últimas cópias) e liberando espaço se o aparelho encher.
+      gravarCopiaPorProduto(
+        RECS_CACHE_KEY_PREFIX,
         `${RECS_CACHE_KEY_PREFIX}${productId}`,
         JSON.stringify(newRecs),
       );

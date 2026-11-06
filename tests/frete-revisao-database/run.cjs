@@ -6,6 +6,11 @@
  * pasta: NÃO é rodado pelo CI automático; roda um Postgres 17 efêmero e
  * descartável via Docker, criado e destruído por este próprio script.
  *
+ * ATENÇÃO (06/11/2026): o comportamento dos casos 1-6 roda no CI em
+ * tests/banco/o-frete-do-pedido-segue-a-regra-da-loja-viva.cjs. O ciclo
+ * rollback/reaplicação daqui já não roda sobre o banco de hoje
+ * (B1_BASELINE_DIVERGENT: migrations posteriores reescreveram v23/v24).
+ *
  * USO: node tests/frete-revisao-database/run.cjs
  */
 

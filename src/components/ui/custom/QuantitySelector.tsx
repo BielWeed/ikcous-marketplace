@@ -45,6 +45,18 @@ export function QuantitySelector({
   // deixar subir até o estoque e ser cortado depois, em silêncio.
   const limite = Math.min(maxQuantity, MAX_ITEM_QUANTITY);
   const travouNoTeto = quantity >= MAX_ITEM_QUANTITY && maxQuantity > limite;
+  // Travou porque a quantidade JÁ É o estoque inteiro (o teto de 500 é o caso
+  // acima). Sem estoque (`limite` 0) não há o que dizer: fica "Aumentar".
+  const travouNoEstoque =
+    !travouNoTeto &&
+    limite >= 1 &&
+    quantity >= limite &&
+    limite === maxQuantity;
+  const dicaDoMais = travouNoTeto
+    ? DICA_DO_TETO_POR_PEDIDO
+    : travouNoEstoque
+      ? `Limite do estoque (${limite} ${limite === 1 ? "unidade" : "unidades"})`
+      : "Aumentar";
 
   const handleIncrease = () => {
     if (quantity < limite) {
@@ -109,7 +121,7 @@ export function QuantitySelector({
         disabled={quantity >= limite}
         aria-label="Aumentar quantidade"
         type="button"
-        title={travouNoTeto ? DICA_DO_TETO_POR_PEDIDO : "Aumentar"}
+        title={dicaDoMais}
         className={`${buttonSize} flex items-center justify-center ${size === "pill" ? "rounded-full" : "rounded-xl"} ${size === "folha" ? "focus-visible:outline-2 focus-visible:outline-zinc-900" : size === "pill" ? "" : "border border-zinc-200/50 bg-white shadow-sm"} transition-all ${size === "pill" ? "hover:bg-background" : "hover:bg-zinc-50"} active:scale-90 disabled:cursor-not-allowed disabled:opacity-30`}
       >
         <Plus

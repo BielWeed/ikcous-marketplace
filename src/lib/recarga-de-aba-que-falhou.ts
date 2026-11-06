@@ -8,6 +8,11 @@
  * seguro aqui: rascunho do checkout e pedido pendente moram em sessionStorage
  * e o carrinho em localStorage — todos sobrevivem à recarga.
  *
+ * Antes do reload seco, tenta fazer o service worker NOVO assumir (update +
+ * SKIP_WAITING): com a versão nova ainda esperando, o service worker antigo
+ * devolveria o mesmo HTML velho do cache e a mesma tela falharia de novo. Sem
+ * versão nova a recarga seca segue como sempre.
+ *
  * Por que NÃO usa `recuperacao-chunk`: aquele orçamento é por VERSÃO (ciclo
  * do SW, depois purge seletivo) e existe para o caso "app velho pedindo
  * chunk que o deploy apagou". Um soluço de 3G não pode gastá-lo — gastar
@@ -23,7 +28,11 @@
  *     abrir o app, sem prometer rede.
  */
 import { gravaMotivoDeRecarga } from "@/lib/motivo-de-recarga";
-import { verificarRedeDeVerdade } from "@/lib/recuperacao-chunk";
+import {
+  PRAZO_CICLO_DO_SW_MS,
+  assumirServiceWorkerNovoERecarregar,
+  verificarRedeDeVerdade,
+} from "@/lib/recuperacao-chunk";
 
 export const CHAVE_RECARGAS_DE_ABA_QUE_FALHOU = "pwa_aba_falhou_recargas";
 
@@ -82,15 +91,65 @@ export function reservarRecargaDeAbaQueFalhou(
  * aceito: quem cancela o aviso gasta 1 das recargas da janela de 5 min. */
 export const PRAZO_DA_PAGINA_SAIR_MS = 3500;
 
-/** A reserva da guarda nasce ANTES do `reload()` (check-and-set; segura mesmo
- * que a página morra na hora) e fica gasta. Se a recarga acontece, a página
- * some antes e a promessa nunca resolve (de propósito); se a página continua
- * viva passado o prazo, resolve "pagina-ficou" só para o botão voltar. */
+/** Quanto esperar o `update()` do service worker (a busca do arquivo novo
+ * dele) antes de desistir e recarregar mesmo assim. Sem este teto, um update
+ * pendurado em rede ruim deixaria o botão girando para sempre. */
+export const PRAZO_UPDATE_DO_SW_MS = 3000;
+
+/** Tenta fazer o service worker NOVO assumir antes de recarregar: sem isso, o
+ * service worker antigo ainda entrega o HTML velho do cache na recarga e a
+ * mesma tela que não baixou abre de novo (versão nova ainda esperando).
+ * `true` = o novo assumiu (a recarga acontece no controllerchange, ou ficou
+ * pendente no gate se a compra vetou); `false` = nada a ativar, momento
+ * ocupado ou prazo estourado — quem chama recarrega seco, como sempre. Nunca
+ * desregistra o service worker nem apaga cache. */
+async function tentarAtivarServiceWorkerNovo(): Promise<boolean> {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    return false;
+  }
+  try {
+    const registro = await navigator.serviceWorker.getRegistration();
+    if (!registro) return false;
+    if (!registro.waiting) {
+      // Ainda não há versão nova esperando: pede a busca dela (a checagem
+      // automática é de 3 em 3 minutos). Teto de tempo e erro engolidos —
+      // sem versão nova, o assumir abaixo devolve `false`.
+      let prazo: ReturnType<typeof setTimeout> | undefined = undefined;
+      try {
+        await Promise.race([
+          registro.update(),
+          new Promise<void>((resolve) => {
+            prazo = setTimeout(resolve, PRAZO_UPDATE_DO_SW_MS);
+          }),
+        ]);
+      } catch {
+        // update() recusado: segue para o assumir, que checa o waiting.
+      } finally {
+        clearTimeout(prazo);
+      }
+    }
+  } catch {
+    return false;
+  }
+  return assumirServiceWorkerNovoERecarregar({
+    motivo: "recuperacao-erro-modulo",
+    prazoMs: PRAZO_CICLO_DO_SW_MS,
+  });
+}
+
+/** A reserva da guarda nasce ANTES de qualquer recarga (check-and-set; segura
+ * mesmo que a página morra na hora) e fica gasta. Primeiro tenta ativar o
+ * service worker novo (que recarrega por conta própria); sem ele, `reload()`
+ * seco. Se a recarga acontece, a página some antes e a promessa nunca resolve
+ * (de propósito); se a página continua viva passado o prazo, resolve
+ * "pagina-ficou" só para o botão voltar. */
 export async function tentarDeNovoAbaQueNaoBaixou(): Promise<ResultadoDoTentarDeNovo> {
   if (!(await verificarRedeDeVerdade())) return "sem-rede";
   if (!reservarRecargaDeAbaQueFalhou()) return "esgotado";
-  gravaMotivoDeRecarga("recuperacao-erro-modulo");
-  window.location.reload();
+  if (!(await tentarAtivarServiceWorkerNovo())) {
+    gravaMotivoDeRecarga("recuperacao-erro-modulo");
+    window.location.reload();
+  }
   await new Promise<void>((resolve) =>
     setTimeout(resolve, PRAZO_DA_PAGINA_SAIR_MS),
   );

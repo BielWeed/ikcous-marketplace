@@ -1,3 +1,7 @@
+import {
+  PREFIXO_DE_AVALIACOES,
+  gravarCopiaPorProduto,
+} from "@/lib/copias-por-produto";
 import type { Review } from "@/types";
 
 // Cache de avaliações por produto (mostrado antes de a rede responder). Vive
@@ -8,7 +12,7 @@ import type { Review } from "@/types";
 // A lista pode conter avaliações ainda NÃO aprovadas, com o nome do autor
 // (lojista), ou as pendentes da cliente: por isso é dado de quem estava
 // logado e some no logout e na troca de conta.
-export const REVIEWS_CACHE_KEY_PREFIX = "ikcous_reviews_cache_";
+export const REVIEWS_CACHE_KEY_PREFIX = PREFIXO_DE_AVALIACOES;
 
 const memoryReviewsCache = new Map<string, Review[]>();
 
@@ -45,7 +49,8 @@ export const updateReviewsCache = (productId: string, newReviews: Review[]) => {
   memoryReviewsCache.set(productId, newReviews);
   if (typeof window !== "undefined") {
     try {
-      localStorage.setItem(
+      gravarCopiaPorProduto(
+        REVIEWS_CACHE_KEY_PREFIX,
         `${REVIEWS_CACHE_KEY_PREFIX}${productId}`,
         JSON.stringify(newReviews),
       );

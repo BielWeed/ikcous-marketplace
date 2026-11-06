@@ -8,6 +8,11 @@
  * descartável via Docker, criado e destruído por este próprio script —
  * mesmo molde de tests/frete-revisao-database/run.cjs.
  *
+ * ATENÇÃO (06/11/2026): o comportamento dos casos (e)-(h) roda no CI em
+ * tests/banco/o-frete-do-pedido-segue-a-regra-da-loja-viva.cjs. Os casos de
+ * migration daqui sobre a raiz inteira ((b) e (i)) já não rodam sobre o banco de
+ * hoje (B1_BASELINE_DIVERGENT: migrations posteriores reescreveram v23/v24).
+ *
  * USO: node tests/frete-estrategias-database/run.cjs
  */
 

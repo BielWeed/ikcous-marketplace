@@ -3,8 +3,19 @@
 Ensaio local da migration `20261170000000_a_cotacao_de_frete_confere_a_revisao.sql`,
 no molde de `tests/banco/` (a suíte que o `rpc-ci.yml` roda) e de `tests/identity-database/`
 (ensaio manual documentado por README). **O CI geral do app NÃO roda este ensaio
-automaticamente** — ele não está referenciado em nenhum `.github/workflows/*.yml`. Rode
-explicitamente antes de aplicar a migration em qualquer banco:
+automaticamente** — ele não está referenciado em nenhum `.github/workflows/*.yml`.
+
+> **Atualização (06/11/2026): o COMPORTAMENTO deste ensaio agora roda no CI.** Os casos de
+> revisão (igual, diferente, campo ausente, sem a linha `_revisao`, retirada e entrega local,
+> cotação nova depois da recusa) e a prova de que a `v23` segue recusando transportadora estão
+> em `tests/banco/o-frete-do-pedido-segue-a-regra-da-loja-viva.cjs`, passo bloqueante do job
+> `contrato-dinheiro` do `rpc-ci.yml`, contra o corpo VIVO das funções. Este `run.cjs` ficou só
+> como ensaio do ciclo migration → rollback → reaplicação da 20261170, e esse ciclo **já não
+> roda sobre o banco de hoje**: as migrations posteriores reescreveram `v23`/`v24` e o pré-voo
+> recusa com `B1_BASELINE_DIVERGENT` (medido num Postgres 17 efêmero). Só serve de referência
+> histórica; não o use como portão.
+
+Rode explicitamente antes de aplicar a migration em qualquer banco (só o estado da época dela):
 
 ```powershell
 node tests/frete-revisao-database/run.cjs

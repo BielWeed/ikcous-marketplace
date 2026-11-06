@@ -1,6 +1,7 @@
 import { FolhaDoPainel } from "@/components/admin/primitivos/FolhaDoPainel";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/contexts/StoreContext";
+import { normalizeText } from "@/lib/utils";
 import {
   Check,
   Copy,
@@ -283,12 +284,14 @@ export const MensagemDeCompartilhar = memo(function MensagemDeCompartilhar({
   );
 
   const modelosFiltrados = useMemo(() => {
-    const termo = busca.toLowerCase();
+    // Sem acento, sem caixa e sem espaço no fim: o teclado do celular põe um
+    // espaço ao aceitar a sugestão, e "classico" tem de achar "Clássico".
+    const termo = normalizeText(busca);
     return PRESETS.filter(
       (modelo) =>
-        modelo.name.toLowerCase().includes(termo) ||
-        modelo.description.toLowerCase().includes(termo) ||
-        modelo.text.toLowerCase().includes(termo),
+        normalizeText(modelo.name).includes(termo) ||
+        normalizeText(modelo.description).includes(termo) ||
+        normalizeText(modelo.text).includes(termo),
     );
   }, [busca]);
 

@@ -76,8 +76,57 @@ function inserirDepoisDoPrincipal(itens: Address[], novo: Address): Address[] {
   return [...itens.slice(0, posicao), novo, ...itens.slice(posicao)];
 }
 
+// Lê do servidor a lista de endereços da conta: principal primeiro, depois o
+// mais novo. Estoura (erro, prazo ou resposta sem dados) em vez de devolver
+// lista vazia: lista vazia não prova "a conta não tem endereço".
+async function lerEnderecosDoServidor(idDaConta: string): Promise<Address[]> {
+  // `then` do builder do supabase não é Promise: `Promise.resolve` primeiro.
+  const { data, error } = await comPrazo(
+    Promise.resolve(
+      supabase
+        .from("user_addresses")
+        .select("*")
+        .eq("user_id", idDaConta)
+        .order("is_default", { ascending: false })
+        .order("created_at", { ascending: false }),
+    ),
+    PRAZO_DAS_CHAMADAS_DE_ENDERECO_MS,
+  );
+  if (error) throw error;
+  if (!data) throw new Error("consulta de endereços voltou sem dados");
+  return data.map((a) => ({
+    id: a.id,
+    user_id: a.user_id,
+    name: a.name,
+    recipient_name: a.recipient_name,
+    cep: a.cep,
+    street: a.street,
+    number: a.number,
+    complement: a.complement,
+    neighborhood: a.neighborhood,
+    city: a.city,
+    state: a.state,
+    reference: a.reference,
+    is_default: a.is_default || false,
+  }));
+}
+
+// Lista do servidor com o endereço promovido (se houve) na frente, marcado.
+function comPromovidoNaFrente(
+  lista: Address[],
+  promovidoId: string | null,
+): Address[] {
+  const promovido = lista.find((a) => a.id === promovidoId);
+  if (!promovido) return lista;
+  return [
+    { ...promovido, is_default: true },
+    ...lista.filter((a) => a.id !== promovido.id),
+  ];
+}
+
 export function useAddresses() {
   const { user } = useAuth();
+  const usuarioId = user?.id;
   // Identidade da conta: resposta em voo da conta ANTERIOR (troca/logout)
   // não grava estado nem cache.
   const usuarioAtualRef = useRef(user?.id);
@@ -168,75 +217,65 @@ export function useAddresses() {
     setEstado(novo);
   }, [user?.id]);
 
-  const fetchAddresses = useCallback(async () => {
-    if (!user) return;
-    const idDaBusca = user.id;
-    const consulta = ++consultaRef.current;
-    const atual = () =>
-      usuarioAtualRef.current === idDaBusca && consulta === consultaRef.current;
-    const cacheKey = `ikcous_addresses_cache_${idDaBusca}`;
-    let hasCache = false;
-    try {
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) {
-        hasCache = true;
+  // `silencioso`: releitura de fundo (a cliente voltou ao app). Falhar nela não
+  // vira aviso nem banner de erro: a lista que a tela já tem continua valendo.
+  const fetchAddresses = useCallback(
+    async (opcoes?: { silencioso?: boolean }) => {
+      // Depende do ID, não do objeto `user`: um `user` novo a cada render (o
+      // contexto troca de identidade sem trocar de conta) recriaria esta função
+      // e faria as telas, cujo efeito relê quando ela muda, lerem sem parar.
+      if (!usuarioId) return;
+      const idDaBusca = usuarioId;
+      const consulta = ++consultaRef.current;
+      const atual = () =>
+        usuarioAtualRef.current === idDaBusca &&
+        consulta === consultaRef.current;
+      const cacheKey = `ikcous_addresses_cache_${idDaBusca}`;
+      let hasCache = false;
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          hasCache = true;
+        }
+      } catch {
+        // ignore localStorage issues
       }
-    } catch {
-      // ignore localStorage issues
-    }
 
-    if (!hasCache) {
-      setLoading(true);
-    }
-    try {
-      // `then` do builder do supabase não é Promise: `Promise.resolve` primeiro.
-      const { data, error } = await comPrazo(
-        Promise.resolve(
-          supabase
-            .from("user_addresses")
-            .select("*")
-            .eq("user_id", idDaBusca)
-            .order("is_default", { ascending: false })
-            .order("created_at", { ascending: false }),
-        ),
-        PRAZO_DAS_CHAMADAS_DE_ENDERECO_MS,
-      );
-
-      if (!atual()) return;
-      if (error) throw error;
-      if (!data) throw new Error("consulta de endereços voltou sem dados");
-      const mapped = data.map((a) => ({
-        id: a.id,
-        user_id: a.user_id,
-        name: a.name,
-        recipient_name: a.recipient_name,
-        cep: a.cep,
-        street: a.street,
-        number: a.number,
-        complement: a.complement,
-        neighborhood: a.neighborhood,
-        city: a.city,
-        state: a.state,
-        reference: a.reference,
-        is_default: a.is_default || false,
-      }));
-      gravarLista(idDaBusca, mapped, true);
-      setContaComErro(null);
-    } catch (error) {
-      if (!atual()) return;
-      setContaComErro(idDaBusca);
-      console.error("Error fetching addresses:", error);
-      toast.error(
-        error instanceof PrazoEsgotado
-          ? MENSAGEM_LEITURA_SEM_RESPOSTA
-          : "Erro ao carregar endereços",
-      );
-    } finally {
-      if (atual()) {
-        setLoading(false);
+      if (!hasCache) {
+        setLoading(true);
       }
-    }
-  }, [user, gravarLista]);
+      try {
+        const mapped = await lerEnderecosDoServidor(idDaBusca);
+        if (!atual()) return;
+        gravarLista(idDaBusca, mapped, true);
+        setContaComErro(null);
+      } catch (error) {
+        if (!atual()) return;
+        console.error("Error fetching addresses:", error);
+        // Só se cala quando a tela JÁ tem uma lista lida do servidor para
+        // continuar mostrando. Sem ela (aparelho novo, leitura de abertura em
+        // voo que esta releitura acabou de invalidar), calar apagaria o único
+        // aviso de erro e o Perfil diria "nenhum endereço" a quem tem.
+        if (
+          opcoes?.silencioso === true &&
+          leituraConfirmadaDeRef.current === idDaBusca
+        ) {
+          return;
+        }
+        setContaComErro(idDaBusca);
+        toast.error(
+          error instanceof PrazoEsgotado
+            ? MENSAGEM_LEITURA_SEM_RESPOSTA
+            : "Erro ao carregar endereços",
+        );
+      } finally {
+        if (atual()) {
+          setLoading(false);
+        }
+      }
+    },
+    [usuarioId, gravarLista],
+  );
 
   // A escrita estourou o prazo e o servidor respondeu DEPOIS: a lista da tela
   // não sabe do que ele gravou. Relê do servidor (fonte da verdade) -- e só se
@@ -375,19 +414,39 @@ export function useAddresses() {
       // Resposta da conta anterior não grava nada, nem avisa sucesso.
       if (usuarioAtualRef.current !== idDaConta) return false;
 
-      // Desligou o principal e sobrou outro endereço: o mais recente assume.
+      // Edição que manda `is_default: false` (o formulário real sempre manda
+      // `is_default`): se sobrar outro endereço e a conta ficar sem principal,
+      // o mais recente assume --
+      // mas QUEM ESTÁ SEM PRINCIPAL se decide pela lista do SERVIDOR, não pela
+      // do aparelho: outro aparelho pode ter marcado outro principal (promover
+      // o "próximo" da lista velha tiraria a marca dele) ou ter feito deste o
+      // principal sem este aparelho saber. Se a releitura falhar, vale a lista
+      // guardada, como antes: o que a cliente fez não se desfaz.
       let promovidoId: string | null = null;
+      let listaFresca: Address[] | null = null;
       if (updates.is_default === false) {
-        const antes = estadoRef.current;
-        const eraPrincipal =
-          antes.dono === idDaConta &&
-          antes.itens.some((a) => a.id === id && a.is_default);
-        const proximo = antes.itens.find((a) => a.id !== id && !a.is_default);
-        if (eraPrincipal && proximo) {
-          if (await promoverNoBanco(idDaConta, proximo.id)) {
-            promovidoId = proximo.id;
+        listaFresca = await lerEnderecosDoServidor(idDaConta).catch(() => null);
+        if (usuarioAtualRef.current !== idDaConta) return false;
+        if (listaFresca) {
+          const proximo = listaFresca.find((a) => a.id !== id);
+          if (proximo && !listaFresca.some((a) => a.is_default)) {
+            if (await promoverNoBanco(idDaConta, proximo.id)) {
+              promovidoId = proximo.id;
+            }
+            if (usuarioAtualRef.current !== idDaConta) return false;
           }
-          if (usuarioAtualRef.current !== idDaConta) return false;
+        } else {
+          const antes = estadoRef.current;
+          const eraPrincipal =
+            antes.dono === idDaConta &&
+            antes.itens.some((a) => a.id === id && a.is_default);
+          const proximo = antes.itens.find((a) => a.id !== id && !a.is_default);
+          if (eraPrincipal && proximo) {
+            if (await promoverNoBanco(idDaConta, proximo.id)) {
+              promovidoId = proximo.id;
+            }
+            if (usuarioAtualRef.current !== idDaConta) return false;
+          }
         }
       }
 
@@ -409,7 +468,13 @@ export function useAddresses() {
 
       const prev = estadoRef.current;
       // Estado trocou de dono em voo: não escreve.
-      if (prev.dono === idDaConta) {
+      if (prev.dono === idDaConta && listaFresca) {
+        gravarLista(
+          idDaConta,
+          comPromovidoNaFrente(listaFresca, promovidoId),
+          true,
+        );
+      } else if (prev.dono === idDaConta) {
         const promovido = prev.itens.find((a) => a.id === promovidoId);
         const updated: Address[] = promovido
           ? [
@@ -460,25 +525,52 @@ export function useAddresses() {
       // Resposta da conta anterior não grava nada, nem avisa sucesso.
       if (usuarioAtualRef.current !== idDaConta) return false;
 
-      // Apagou o principal e sobrou endereço: o mais recente assume.
-      const antes = estadoRef.current;
-      const restantes =
-        antes.dono === idDaConta ? antes.itens.filter((a) => a.id !== id) : [];
-      const apagouPrincipal =
-        antes.dono === idDaConta &&
-        antes.itens.some((a) => a.id === id && a.is_default);
+      // Sobrou endereço e a conta ficou sem principal: o mais recente assume.
+      // Quem decide é a lista do SERVIDOR, não a do aparelho: outro aparelho
+      // pode ter marcado outro principal (a promoção da lista velha tiraria a
+      // marca dele) ou ter feito deste o principal sem este aparelho saber
+      // (ninguém seria promovido). Se a releitura falhar, vale a lista
+      // guardada, como antes: o que a cliente fez não se desfaz.
+      const listaFresca = await lerEnderecosDoServidor(idDaConta).catch(
+        () => null,
+      );
+      if (usuarioAtualRef.current !== idDaConta) return false;
       let promovidoId: string | null = null;
-      if (apagouPrincipal && restantes.length > 0) {
-        const proximo = restantes[0];
-        if (await promoverNoBanco(idDaConta, proximo.id)) {
-          promovidoId = proximo.id;
+      if (listaFresca) {
+        if (listaFresca.length > 0 && !listaFresca.some((a) => a.is_default)) {
+          const proximo = listaFresca[0];
+          if (await promoverNoBanco(idDaConta, proximo.id)) {
+            promovidoId = proximo.id;
+          }
+          if (usuarioAtualRef.current !== idDaConta) return false;
         }
-        if (usuarioAtualRef.current !== idDaConta) return false;
+      } else {
+        const antes = estadoRef.current;
+        const restantes =
+          antes.dono === idDaConta
+            ? antes.itens.filter((a) => a.id !== id)
+            : [];
+        const apagouPrincipal =
+          antes.dono === idDaConta &&
+          antes.itens.some((a) => a.id === id && a.is_default);
+        if (apagouPrincipal && restantes.length > 0) {
+          const proximo = restantes[0];
+          if (await promoverNoBanco(idDaConta, proximo.id)) {
+            promovidoId = proximo.id;
+          }
+          if (usuarioAtualRef.current !== idDaConta) return false;
+        }
       }
 
       const prev = estadoRef.current;
       // Estado trocou de dono em voo: não escreve.
-      if (prev.dono === idDaConta) {
+      if (prev.dono === idDaConta && listaFresca) {
+        gravarLista(
+          idDaConta,
+          comPromovidoNaFrente(listaFresca, promovidoId),
+          true,
+        );
+      } else if (prev.dono === idDaConta) {
         gravarLista(
           idDaConta,
           prev.itens

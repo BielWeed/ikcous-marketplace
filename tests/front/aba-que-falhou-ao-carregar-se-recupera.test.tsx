@@ -31,8 +31,7 @@ const FALHA_DE_CHUNK =
 
 const TELA_NAO_BAIXOU = "Não conseguimos carregar esta tela.";
 const FRASE_DE_REDE = "Verifique sua conexão.";
-const FRASE_FECHE_E_ABRA =
-  "Feche e abra o app de novo (ou recarregue a página).";
+const FRASE_FECHE_E_ABRA = "Feche e abra o app de novo.";
 const FRASE_PRIMEIRA_VEZ = "Use o botão Tentar de novo.";
 const FRASE_AINDA_CARREGANDO =
   "Ainda carregando… se nada mudar, use o botão de novo.";
