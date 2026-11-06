@@ -25,6 +25,7 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useReviews } from "@/hooks/useReviews";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { pluralizar } from "@/lib/pluralizar";
 import { supabase } from "@/lib/supabase";
 import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
@@ -954,13 +955,21 @@ export const AdminReviewsView = memo(function AdminReviewsView({
             rotulo="Taxa de resposta"
             valor={responseRate.text}
             extra={<BarraDeProporcao percentual={responseRate.width} />}
-            rodape={jaLeu ? `${globalRepliedCount} respondidas no total` : "—"}
+            rodape={
+              jaLeu
+                ? `${pluralizar(globalRepliedCount, "respondida", "respondidas")} no total`
+                : "—"
+            }
           />
           <CartaoDeNumero
             rotulo="Compras verificadas"
             valor={verifiedRate.text}
             extra={<BarraDeProporcao percentual={verifiedRate.width} />}
-            rodape={jaLeu ? `${globalVerifiedCount} verificadas no total` : "—"}
+            rodape={
+              jaLeu
+                ? `${pluralizar(globalVerifiedCount, "verificada", "verificadas")} no total`
+                : "—"
+            }
           />
         </ResumoRecolhivel>
 

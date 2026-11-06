@@ -185,7 +185,7 @@ export const CartaoCliente = memo(function CartaoCliente({
             className="mt-0.5 size-3 shrink-0 text-indigo-300"
           />
           <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-            {customer.email || "N/A"}
+            {customer.email || "Não informado"}
           </span>
         </span>
         {customer.phone && (
@@ -258,7 +258,7 @@ export const CartaoCliente = memo(function CartaoCliente({
           />
           {customer.last_order_date
             ? new Date(customer.last_order_date).toLocaleDateString("pt-BR")
-            : "--"}
+            : "—"}
         </div>
       )}
       <div

@@ -20,6 +20,7 @@ import { instanteDentroDoPeriodo } from "@/lib/filtro-da-lista-de-pedidos";
 import { JANELA_PEDIDOS_CANCELADOS_DIAS } from "@/lib/janela-cancelados";
 import { mapOrderFromDB } from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { pluralizar } from "@/lib/pluralizar";
 import {
   aguardarComPrazo,
   erroDeConsultaSemResposta,
@@ -654,9 +655,11 @@ async function processarFilaOfflineDePedidos(
 
     if (falhasTransitorias > 0) {
       toast.error(
-        `Falha ao sincronizar ${falhasTransitorias} alterações de pedidos. Tentando novamente mais tarde.${
+        `Falha ao sincronizar ${pluralizar(falhasTransitorias, "alteração de pedido", "alterações de pedidos")}. Tentando novamente mais tarde.${
           descartesTerminais > 0
-            ? ` ${descartesTerminais} alterações não se aplicam mais ao estado atual dos pedidos.`
+            ? descartesTerminais === 1
+              ? " 1 alteração não se aplica mais ao estado atual do pedido."
+              : ` ${descartesTerminais} alterações não se aplicam mais ao estado atual dos pedidos.`
             : ""
         }`,
         { id: toastId },

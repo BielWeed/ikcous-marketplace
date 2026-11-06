@@ -22,6 +22,9 @@ const h = vi.hoisted(() => {
     erro: null as string | null,
     offline: false,
     enableReviews: true,
+    // false = os totais de sempre (10 verificadas, 6 respondidas); o teste do
+    // singular usa 1 de cada.
+    umaSo: false,
   };
   const aprovarReview = vi.fn(async (..._a: unknown[]) => {});
   const addMerchantReply = vi.fn(async (..._a: unknown[]) => true);
@@ -30,8 +33,8 @@ const h = vi.hoisted(() => {
   const getAllReviews = vi.fn(async (..._a: unknown[]) => ({
     total: estado.adminReviews.length,
     averageRating: 4.7,
-    globalVerifiedCount: 10,
-    globalRepliedCount: 6,
+    globalVerifiedCount: estado.umaSo ? 1 : 10,
+    globalRepliedCount: estado.umaSo ? 1 : 6,
     globalTotal: 12,
     globalAverageRating: 4.7,
     globaisDisponiveis: true,
@@ -146,6 +149,7 @@ describe("AdminReviewsView — redesenho", () => {
     h.estado.erro = null;
     h.estado.offline = false;
     h.estado.enableReviews = true;
+    h.estado.umaSo = false;
     for (const f of [
       h.aprovarReview,
       h.addMerchantReply,
@@ -288,6 +292,17 @@ describe("AdminReviewsView — redesenho", () => {
     }
     await tocar(botaoPorTexto("Recolher"));
     expect(tela()).not.toContain("nota dos compradores");
+  });
+
+  it("com uma só avaliação respondida e uma verificada, o rodapé fala no singular", async () => {
+    h.estado.umaSo = true;
+    await montar();
+    await tocar(botaoPorTexto("Expandir"));
+    const aberto = tela();
+    expect(aberto).toContain("1 respondida no total");
+    expect(aberto).toContain("1 verificada no total");
+    expect(aberto).not.toContain("1 respondidas");
+    expect(aberto).not.toContain("1 verificadas");
   });
 
   it("o interruptor da loja diz Ativo e desliga com um toque", async () => {

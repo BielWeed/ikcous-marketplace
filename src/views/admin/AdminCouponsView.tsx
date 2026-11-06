@@ -697,7 +697,8 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                           )}
                         </span>
                         <span className="tabular-nums">
-                          {coupon.usageCount} / {coupon.usageLimit || "∞"} usos
+                          {coupon.usageCount} / {coupon.usageLimit || "∞"}{" "}
+                          {coupon.usageLimit === 1 ? "uso" : "usos"}
                         </span>
                       </div>
                       {indisponivel && (
@@ -807,7 +808,8 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                           </div>
                           <p>
                             Aproveitamento · {coupon.usageCount} /{" "}
-                            {coupon.usageLimit || "∞"} usos
+                            {coupon.usageLimit || "∞"}{" "}
+                            {coupon.usageLimit === 1 ? "uso" : "usos"}
                           </p>
                           {coupon.usageLimit && coupon.usageLimit > 0 ? (
                             <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">

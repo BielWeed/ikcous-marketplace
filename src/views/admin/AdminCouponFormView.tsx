@@ -36,6 +36,7 @@ import {
 } from "@/lib/cupom-que-cobre-a-compra";
 import { porcentagem } from "@/lib/cupons-do-checkout";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
+import { pluralizar } from "@/lib/pluralizar";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { ClienteDoCupom, Coupon, View } from "@/types";
 import { camposQueMudaram } from "@/utils/campos-mexidos-do-produto";
@@ -918,8 +919,13 @@ function FormularioDoCupom({
               </p>
               {isEditing && editingCoupon && (
                 <p className="text-xs leading-relaxed text-zinc-400">
-                  {editingCoupon.usageCount} utilizações acumuladas. O contador
-                  não pode ser editado e permanece ao alterar o limite.
+                  {pluralizar(
+                    editingCoupon.usageCount ?? 0,
+                    "utilização acumulada",
+                    "utilizações acumuladas",
+                  )}
+                  . O contador não pode ser editado e permanece ao alterar o
+                  limite.
                 </p>
               )}
             </section>

@@ -2652,8 +2652,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     }
     toast.success(
       linhas.length === 1
-        ? "Variante da grade criada — ela entra na loja quando o produto for salvo."
-        : `${linhas.length} variantes da grade criadas — elas entram na loja quando o produto for salvo.`,
+        ? "Variação da grade criada — ela entra na loja quando o produto for salvo."
+        : `${linhas.length} variações da grade criadas — elas entram na loja quando o produto for salvo.`,
     );
     return true;
   };

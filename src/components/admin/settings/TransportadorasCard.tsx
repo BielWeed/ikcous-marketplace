@@ -5,6 +5,7 @@ import { LogoDaTransportadora } from "@/components/shipping/MarcaDoFrete";
 import { Switch } from "@/components/ui/switch";
 import { logoDoAgregador, marcaDoFrete } from "@/lib/marca-do-frete";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
+import { pluralizar } from "@/lib/pluralizar";
 import { supabase } from "@/lib/supabase";
 import { haptic } from "@/utils/haptic";
 import {
@@ -1282,7 +1283,7 @@ function CartaoDoProvedor({
             ? "Modo de teste"
             : "Falta o e-mail de contato"
           : ligado
-            ? `Ligada · ${quantidadeServicos} serviços`
+            ? `Ligada · ${pluralizar(quantidadeServicos, "serviço", "serviços")}`
             : "Chave salva · desligada";
   return (
     <div>

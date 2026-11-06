@@ -215,7 +215,7 @@ describe("pedido — rastreio não se perde", () => {
     expect(salvar).toHaveBeenCalledWith("id", "A");
     expect(hospedeiro.querySelector("#tracking-input")).toBeNull();
     expect(hospedeiro.textContent).toContain("BR123456789BR");
-    expect(toast.success).toHaveBeenCalledWith("Código de rastreamento salvo!");
+    expect(toast.success).toHaveBeenCalledWith("Código de rastreio salvo!");
     clicar("Editar Código");
     expect(campo().disabled).toBe(false);
   });
@@ -252,7 +252,7 @@ describe("pedido — rastreio não se perde", () => {
     expect(campo().value).toBe("RASTREIO-PARA-REPETIR");
     expect(campo().disabled).toBe(false);
     expect(toast.error).toHaveBeenCalledWith(
-      "Erro ao salvar código de rastreamento.",
+      "Erro ao salvar código de rastreio.",
     );
     expect(toast.success).not.toHaveBeenCalled();
   });

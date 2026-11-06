@@ -1962,7 +1962,7 @@ export const OrderDetail = memo(function OrderDetail({
       return;
     }
     setCopiedTracking(true);
-    toast.success("Código de rastreamento copiado!");
+    toast.success("Código de rastreio copiado!");
     setTimeout(() => setCopiedTracking(false), 2000);
   };
 
@@ -1985,11 +1985,11 @@ export const OrderDetail = memo(function OrderDetail({
       if (error) throw error;
       setLocalTrackingCode(codigo);
       setIsEditingTracking(false);
-      toast.success("Código de rastreamento salvo!");
+      toast.success("Código de rastreio salvo!");
     } catch (err) {
       if (!vigente()) return;
       console.error("Error saving tracking code:", err);
-      toast.error("Erro ao salvar código de rastreamento.");
+      toast.error("Erro ao salvar código de rastreio.");
     } finally {
       if (vigente()) setIsSavingTracking(false);
     }

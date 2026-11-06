@@ -182,7 +182,7 @@ describe("useProducts.upsertVariants — #useProducts-1591 lote misto (variante 
     });
 
     expect(resultado).toBe(true);
-    expect(mock.toastSuccess).toHaveBeenCalledWith("Variantes salvas");
+    expect(mock.toastSuccess).toHaveBeenCalledWith("Variações salvas");
     expect(mock.toastError).not.toHaveBeenCalled();
 
     const inserts = mock.ordem.filter((c) => c.tipo === "insert");
