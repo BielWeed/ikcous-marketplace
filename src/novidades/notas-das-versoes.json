@@ -1,4 +1,19 @@
 {
+  "1.5.138": {
+    "titulo": "Recarregar o app sem perder o PIX, tela de manutenção que volta sozinha e avisos do painel completos",
+    "novidades": [
+      "Tela de manutenção: ganhou o botão Tentar de novo e confere sozinha, a cada poucos segundos, se a loja voltou.",
+      "Painel, Avisos: lê todos os produtos acabando (até 2.000) e as 100 avaliações mais novas sem resposta; quando a lista é maior, um aviso diz isso."
+    ],
+    "correcoes": [
+      "Recarregar o app não apaga mais o PIX que estava sendo pago, o que a cliente digitou no checkout nem o CPF do cadastro à espera do e-mail.",
+      "Balcão: o recibo da venda não some quando uma atualização do app está esperando.",
+      "Endereços antigos do app (vistos recentemente e pedido realizado) abrem a vitrine em vez de tela em branco ou falso pedido realizado.",
+      "Link de perfil, pedido ou produto que não existe diz que não foi encontrado em vez de pedir para verificar a conexão.",
+      "Sair da conta esquece o Agora não do convite para ligar os avisos."
+    ],
+    "melhorias": []
+  },
   "1.5.137": {
     "titulo": "Erros do balcão em português, estoque que não zera, favoritos que atualizam e mais acertos",
     "novidades": [
