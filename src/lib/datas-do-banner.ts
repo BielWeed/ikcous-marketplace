@@ -74,3 +74,23 @@ export function fimDoBannerEmTexto(
   if (mesmoDia(fim, amanha)) return `Termina amanhã às ${hora}.`;
   return `Termina em ${dia} às ${hora}.`;
 }
+
+/**
+ * O banner está NO AR agora: ligado e dentro da programação (já começou e
+ * ainda não terminou). A mesma regra do filtro "Ativos" do painel — ligado
+ * fora da janela de datas não aparece na vitrine.
+ */
+export function estaNoAr(
+  banner: {
+    active: boolean;
+    startDate?: string | null;
+    endDate?: string | null;
+  },
+  agora: Date = new Date(),
+): boolean {
+  return (
+    banner.active &&
+    (!banner.startDate || new Date(banner.startDate) <= agora) &&
+    (!banner.endDate || new Date(banner.endDate) >= agora)
+  );
+}

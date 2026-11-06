@@ -853,6 +853,55 @@ describe("imagem original e fontes explícitas", () => {
     expect(h.upload).toHaveBeenCalledTimes(1);
     expect(host.textContent).not.toContain("PRIVATE");
   });
+  describe("falha no envio da imagem diz a causa certa", () => {
+    const SEM_REDE =
+      "Não conseguimos enviar a imagem. Confira sua internet e tente de novo; o arquivo não tem problema.";
+    const SESSAO = "Sua sessão expirou. Entre de novo e tente enviar.";
+    it.each([
+      ["IDENTITY_UPLOAD_SESSION", SESSAO],
+      ["IDENTITY_UPLOAD_NETWORK", SEM_REDE],
+      ["IDENTITY_UPLOAD_TIMEOUT", SEM_REDE],
+      ["IDENTITY_UPLOAD_UNCONFIRMED", SEM_REDE],
+    ] as const)("%s não culpa o formato do arquivo", async (code, texto) => {
+      const { IdentityImageUploadError } = await vi.importActual<
+        typeof import("@/lib/uploadIdentityImage")
+      >("@/lib/uploadIdentityImage");
+      h.upload.mockRejectedValueOnce(new IdentityImageUploadError(code));
+      await render();
+      await select();
+      expect(host.textContent).toContain(texto);
+      expect(host.textContent).not.toContain("formato e as dimensões");
+    });
+    it.each([
+      "IDENTITY_UPLOAD_INVALID",
+      "IDENTITY_UPLOAD_ORIGIN",
+      "IDENTITY_UPLOAD_PROTOCOL",
+      "IDENTITY_UPLOAD_CANCELED",
+    ] as const)("%s mantém a mensagem de formato e dimensões", async (code) => {
+      const { IdentityImageUploadError } = await vi.importActual<
+        typeof import("@/lib/uploadIdentityImage")
+      >("@/lib/uploadIdentityImage");
+      h.upload.mockRejectedValueOnce(new IdentityImageUploadError(code));
+      await render();
+      await select();
+      expect(host.textContent).toContain("formato e as dimensões");
+      expect(host.textContent).not.toContain("Confira sua internet");
+      expect(host.textContent).not.toContain("sessão expirou");
+    });
+    it("erro comum no envio mantém a mensagem de formato e dimensões", async () => {
+      h.upload.mockRejectedValueOnce(new Error("qualquer coisa"));
+      await render();
+      await select();
+      expect(host.textContent).toContain("formato e as dimensões");
+    });
+    it("falha do preparador mantém a mensagem de formato e dimensões", async () => {
+      h.prepare.mockRejectedValueOnce(new Error("PRIVATE"));
+      await render();
+      await select();
+      expect(host.textContent).toContain("formato e as dimensões");
+      expect(host.textContent).not.toContain("Confira sua internet");
+    });
+  });
   it("cancelar A e iniciar B impede A tardio de alterar imagem ou progresso", async () => {
     const old = deferred<unknown>();
     h.upload.mockReturnValueOnce(old.promise);

@@ -1023,7 +1023,7 @@ export const ProductView = React.memo(function ProductView({
                   </span>
                   <span
                     className={cn(
-                      "text-xs font-bold text-zinc-400 line-through",
+                      "text-xs font-bold text-zinc-500 line-through",
                       "lg:text-sm",
                     )}
                   >
@@ -1443,7 +1443,7 @@ export const ProductView = React.memo(function ProductView({
                       </h3>
                       <p
                         className={cn(
-                          "mt-0.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-400",
+                          "mt-0.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-600",
                           ROTULO_NO_COMPUTADOR,
                         )}
                       >

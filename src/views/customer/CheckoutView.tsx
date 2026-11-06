@@ -7114,7 +7114,7 @@ export function CheckoutViewDaConta({
                             // (= shipping + economiaDoFrete, a fonte é a
                             // PRÓPRIA opção, nunca recalculada aqui) + final.
                             <>
-                              <span className="mr-1 text-zinc-300 line-through">
+                              <span className="mr-1 text-zinc-500 line-through">
                                 {reais(shipping + economiaDoFrete)}
                               </span>
                               {reais(shipping)}
@@ -7127,7 +7127,7 @@ export function CheckoutViewDaConta({
                             // para explicar a pílula da barra de baixo — o
                             // Total não muda (o frete grátis já entra como 0).
                             <>
-                              <span className="mr-1 text-zinc-300 line-through">
+                              <span className="mr-1 text-zinc-500 line-through">
                                 {reais(economiaDoFrete)}
                               </span>
                               Grátis
