@@ -425,7 +425,12 @@ async function main() {
         .map((p) => p.id),
     );
     assert.deepEqual(medidasNovo[0].chaves, medidasAntigo[0].chaves);
-    assert.deepEqual(medidasNovo[0].linhaChaves, medidasAntigo[0].linhaChaves);
+    // a busca [0] ("+55 ...") é justamente a que MUDA (o corpo antigo não acha): compara
+    // uma que não muda, para provar que o formato das colunas é o mesmo.
+    assert.deepEqual(
+      medidasNovo[ix("34 98888-7777")].linhaChaves,
+      medidasAntigo[ix("34 98888-7777")].linhaChaves,
+    );
 
     // ---- Reaplica o novo; nada de dado muda no apply ----
     await c.query(migration);
