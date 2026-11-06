@@ -219,10 +219,18 @@ describe("original preservado", () => {
       primaryColor: "#123456",
       logoUrl: "https://store.test/header.png",
     });
+    // O ícone do iPhone (180) também ganha a cor principal ANTES do desenho: o
+    // iOS pinta transparência de preto. O de 192 segue sem fundo.
     // Fundo na cor principal ANTES da logo; a logo (32x16) a 70% da largura,
     // centralizada: 358.4 x 179.2 em (76.8, 166.4).
     expect(operacoes).toEqual([
       { op: "drawImage", canvas: 192, image: 1, args: [0, 0, 192, 192] },
+      {
+        op: "fillRect",
+        canvas: 180,
+        fillStyle: "#123456",
+        args: [0, 0, 180, 180],
+      },
       { op: "drawImage", canvas: 180, image: 1, args: [0, 0, 180, 180] },
       {
         op: "fillRect",
@@ -263,6 +271,70 @@ describe("original preservado", () => {
       });
     }
   });
+
+  it("PNG transparente: o ícone do iPhone leva a cor principal de fundo antes do desenho", async () => {
+    const transparente = new Uint8Array(
+      await sharp({
+        create: {
+          width: 512,
+          height: 512,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        },
+      })
+        .png()
+        .toBuffer(),
+    );
+    const operacoes = documentoComCanvasGravador(transparente);
+    const icons = await prepareIdentityAppIcons(blob(transparente), {
+      signal: signal(),
+      primaryColor: "#FACC15",
+    });
+    const apple = operacoes.filter((operacao) => operacao.canvas === 180);
+    expect(apple).toEqual([
+      {
+        op: "fillRect",
+        canvas: 180,
+        fillStyle: "#FACC15",
+        args: [0, 0, 180, 180],
+      },
+      { op: "drawImage", canvas: 180, image: 1, args: [0, 0, 180, 180] },
+    ]);
+    // O de 192 não muda: só desenho, sem fundo.
+    expect(operacoes.filter((operacao) => operacao.canvas === 192)).toEqual([
+      { op: "drawImage", canvas: 192, image: 1, args: [0, 0, 192, 192] },
+    ]);
+    // sha256 e bytes continuam sendo os do PNG final (depois do desenho).
+    const bytes = new Uint8Array(await icons.apple_touch.blob.arrayBuffer());
+    expect(icons.apple_touch.asset).toMatchObject({
+      width: 180,
+      height: 180,
+      media_type: "image/png",
+      sha256: hash(bytes),
+      bytes: bytes.length,
+    });
+  });
+
+  it.each(["", "azul", "#123", "#12345678", "rgb(0,0,0)"])(
+    "cor principal inválida (%j): o fundo do ícone do iPhone cai em branco, nunca preto",
+    async (primaryColor) => {
+      const large = await pngGrande("red");
+      const operacoes = documentoComCanvasGravador(large);
+      await prepareIdentityAppIcons(blob(large), {
+        signal: signal(),
+        primaryColor,
+      });
+      expect(operacoes.filter((operacao) => operacao.canvas === 180)).toEqual([
+        {
+          op: "fillRect",
+          canvas: 180,
+          fillStyle: "#FFFFFF",
+          args: [0, 0, 180, 180],
+        },
+        { op: "drawImage", canvas: 180, image: 1, args: [0, 0, 180, 180] },
+      ]);
+    },
+  );
 
   it("usa o icon_512 a 80% quando a logo não carrega", async () => {
     const large = await pngGrande("blue");
