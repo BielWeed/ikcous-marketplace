@@ -350,7 +350,9 @@ describe("uploads de banner limpam a imagem substituída e o seletor", () => {
         const envio = pendente<string>();
         uploadBannerImage.mockReturnValueOnce(envio.promessa);
         await act(async () => escolherMesmoArquivo());
-        expect(campo.value).toBe(caminho);
+        // O campo é esvaziado na hora (antes do envio, não depois): o arquivo
+        // já está na mão da tela, e a escolha guardada só atrapalharia.
+        expect(campo.value).toBe("");
         expect(uploadBannerImage).toHaveBeenCalledTimes(1);
         await act(async () => {
           if (resultado === "sucesso") envio.resolver(imagemEnviada);

@@ -1267,10 +1267,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         const newUrl = urls[0];
         setFormData((prev) => {
           const newImages = [...prev.images];
+          const fotoAntiga = prev.images.at(adjustingImgIndex);
           newImages[adjustingImgIndex] = newUrl;
+          // A variação que usava a foto velha passa a usar a recortada: sem
+          // isso ela seguiria apontando para a imagem antiga.
+          const usavaAFoto =
+            !!fotoAntiga &&
+            prev.variants.some((v) => v.imageUrl === fotoAntiga);
           return {
             ...prev,
             images: newImages,
+            variants: usavaAFoto
+              ? prev.variants.map((v) =>
+                  v.imageUrl === fotoAntiga ? { ...v, imageUrl: newUrl } : v,
+                )
+              : prev.variants,
           };
         });
 
@@ -2095,6 +2106,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       );
       const falhas: FotoComFalha[] = [];
       let enviadas = 0;
+      // Fotos que o aparelho não abriu: já têm o próprio aviso vermelho, mas
+      // não são "falha de envio" (não adianta tentar de novo a mesma foto).
+      let ilegiveis = 0;
       const fim = marcarOperacaoSensivel("upload-de-foto-do-produto");
       try {
         // Uma foto por vez, cada uma com o próprio prazo: a que trava não
@@ -2143,6 +2157,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               toast.error(
                 `Não conseguimos abrir a foto "${file.name}". Salve como JPG ou PNG e tente de novo.`,
               );
+              ilegiveis += 1;
               continue;
             }
             falhas.push({
@@ -2156,10 +2171,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           }
         }
 
-        if (falhas.length === 0) {
+        if (falhas.length === 0 && ilegiveis === 0) {
           toast.success("Imagens processadas e enviadas com sucesso!", {
             id: loadingToast,
           });
+        } else if (falhas.length === 0) {
+          // O vermelho de cada foto ilegível já está na tela: aqui só não se
+          // pode dizer "sucesso" por cima dele.
+          if (enviadas > 0) {
+            toast.warning(
+              `${enviadas} de ${files.length} fotos enviadas; ${ilegiveis} ${ilegiveis === 1 ? "não abriu" : "não abriram"}.`,
+              { id: loadingToast },
+            );
+          } else {
+            toast.dismiss(loadingToast);
+          }
         } else {
           setFotosComFalha((prev) => [...prev, ...falhas]);
           toast.error(
@@ -2236,6 +2262,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     setFormData((prev) => ({
       ...prev,
       images: prev.images.filter((u) => u !== imagem),
+      // A variação que usava esta foto volta a usar a galeria normal, em vez
+      // de apontar para uma imagem que o produto não tem mais.
+      variants: prev.variants.some((v) => v.imageUrl === imagem)
+        ? prev.variants.map((v) =>
+            v.imageUrl === imagem ? { ...v, imageUrl: undefined } : v,
+          )
+        : prev.variants,
     }));
   }, []);
 
