@@ -3170,6 +3170,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "121a-conferir-as-estrelas-do-produto-aparecem-na-vitrine-aplicado",
     "122a-conferir-o-resultado-credita-o-custo-da-devolucao-de-outro-mes-aplicado",
     "123a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-aplicado",
+    "124a-conferir-as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-aplicado",
   ]);
 });
 

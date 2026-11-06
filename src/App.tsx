@@ -13,6 +13,7 @@ import { applyThemeColor, branding } from "@/config/branding";
 import { esquecerChaveDoPedidoDe } from "@/lib/chave-do-pedido";
 import {
   destinoPosLogin,
+  idDoDestinoPosLogin,
   painelSemContaPedeEntrada,
 } from "@/lib/destinoPosLogin";
 import {
@@ -1647,19 +1648,12 @@ const AppContent = () => {
       // {view:"auth", id, requested}) e precisa ser lido AQUI, antes de
       // `handleNavigate` sobrescrever o state com o pushState do destino.
       // "user-profile" sem o repasse montaria a view sem `userId` — skeleton
-      // eterno; "product-detail" sem id idem. O repasse é SÓ para elas: id nas outras views criaria `?id`
+      // eterno; "product-detail" e "order-details" sem id idem. O repasse é
+      // SÓ para elas (`idDoDestinoPosLogin`): id nas outras views criaria `?id`
       // fantasma em URL que nunca o teve.
-      const idDoPedido =
-        typeof estadoNoLogin === "object" &&
-        estadoNoLogin !== null &&
-        typeof (estadoNoLogin as { id?: unknown }).id === "string"
-          ? (estadoNoLogin as { id: string }).id
-          : undefined;
       handleNavigate(
         destino,
-        destino === "user-profile" || destino === "product-detail"
-          ? idDoPedido
-          : undefined,
+        idDoDestinoPosLogin(destino, estadoNoLogin),
         false,
         { trocarEntradaDeLogin: true },
       );

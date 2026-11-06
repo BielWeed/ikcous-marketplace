@@ -311,7 +311,7 @@ export function AboutStoreView() {
               Nossa história
             </h2>
             <div
-              className="break-words text-base leading-relaxed text-foreground [&_a]:font-semibold [&_a]:text-foreground [&_a]:underline [&_h1]:mt-3 [&_h1]:text-lg [&_h1]:font-bold [&_h2]:mt-3 [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mt-2 [&_h3]:text-base [&_h3]:font-bold [&_img]:my-3 [&_img]:h-auto [&_img]:max-w-full [&_img]:rounded-[14px] [&_li]:my-1 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-3 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
+              className="break-words text-base leading-relaxed text-foreground [&_a]:font-semibold [&_a]:text-foreground [&_a]:underline [&_h1]:mt-3 [&_h1]:text-lg [&_h1]:font-bold [&_h2]:mt-3 [&_h2]:text-lg [&_h2]:font-bold [&_h3]:mt-2 [&_h3]:text-base [&_h3]:font-bold [&_img]:my-3 [&_img]:h-auto [&_img]:max-w-full [&_img]:rounded-[14px] [&_li]:my-1 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-3 [&_p]:whitespace-pre-line [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
               // biome-ignore lint/security/noDangerouslySetInnerHtml: o HTML vem do lojista e passa por DOMPurify ANTES (script/handlers/URLs perigosos removidos) — o teste da página prova o ataque inerte.
               dangerouslySetInnerHTML={{ __html: descricaoHtml }}
             />

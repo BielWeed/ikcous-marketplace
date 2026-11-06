@@ -682,6 +682,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "122b-antes-o-resultado-credita-o-custo-da-devolucao-de-outro-mes-base-vigente",
   "123a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-aplicado",
   "123b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-base-vigente",
+  "124a-conferir-as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-aplicado",
+  "124b-antes-as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-base-vigente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

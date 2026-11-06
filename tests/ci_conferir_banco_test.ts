@@ -3675,13 +3675,13 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
     });
   }
   await t.step(
-    "quem é o dono do corpo: 60..66 só para a que nenhuma migration posterior redefine (limpar_cotacoes_fora_da_janela); get_product_recommendations é da 20261394100000 (a lista de recomendações do produto tem teto de 50; antes, a 20261160, a coluna do código de barras); buscar_por_codigo_barras é da 20261393100000 (o balcão diz inativo para a variação desligada; antes, a 20261381, a guarda passa a exigir o admin atual, na hora); get_admin_orders_paged é da 20261387 (a busca de pedido pelo número não vira busca de telefone), get_admin_orders_cancelados_recentes é da 20261380 (o aviso de cancelados antigos conta só pendência real), registrar_venda_presencial é da 20261280 e upsert_store_config é da 20261244 (a loja escolhe como entrega na cidade; antes, a 20261239, a identidade legal da loja)",
+    "quem é o dono do corpo: 60..66 só para a que nenhuma migration posterior redefine (limpar_cotacoes_fora_da_janela); get_product_recommendations é da 20261399800000 (a faixa conta o estoque das variações ativas; antes, a 20261394100000, o teto de 50, e a 20261160, a coluna do código de barras); buscar_por_codigo_barras é da 20261393100000 (o balcão diz inativo para a variação desligada; antes, a 20261381, a guarda passa a exigir o admin atual, na hora); get_admin_orders_paged é da 20261387 (a busca de pedido pelo número não vira busca de telefone), get_admin_orders_cancelados_recentes é da 20261380 (o aviso de cancelados antigos conta só pendência real), registrar_venda_presencial é da 20261280 e upsert_store_config é da 20261244 (a loja escolhe como entrega na cidade; antes, a 20261239, a identidade legal da loja)",
     () => {
       assertEquals(dono, {
         buscar_por_codigo_barras: "20261393100000",
         get_admin_orders_cancelados_recentes: "20261380000000",
         get_admin_orders_paged: "20261387000000",
-        get_product_recommendations: "20261394100000",
+        get_product_recommendations: "20261399800000",
         limpar_cotacoes_fora_da_janela: "20261166000000",
         registrar_venda_presencial: "20261280000000",
         upsert_store_config: "20261310000000",

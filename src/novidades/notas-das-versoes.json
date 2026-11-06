@@ -1,4 +1,20 @@
 {
+  "1.5.134": {
+    "titulo": "Banners com o preço certo, avisos que levam ao pedido e pequenos acertos no painel",
+    "novidades": [
+      "Painel, CRM: quando existem Bons clientes sumindo, um segundo atalho no cartão Receita em risco abre essa lista, já que o valor do cartão soma os dois grupos."
+    ],
+    "correcoes": [
+      "Painel, Banners: o subtítulo sugerido para o banner de um produto usa o mesmo preço que a vitrine mostra, e só diz A partir de quando o produto tem mais de um preço; o seletor de produtos mostra esse mesmo preço.",
+      "Painel, Banners: produto pausado aparece marcado no seletor, e o banner ligado a ele avisa que o toque leva para a Home.",
+      "Painel, Produtos: ao duplicar um produto cuja variação usa uma das fotos do produto, a foto não aparece repetida na galeria da loja.",
+      "Painel, Financeiro: a data do saldo inicial de uma conta não pode mais ser depois de hoje, para o saldo da conta não sumir.",
+      "Sobre a loja: as linhas separadas por um só Enter na descrição aparecem em linhas separadas para a cliente.",
+      "Pedido pelo aviso: quem toca no aviso sem estar logada e entra na conta volta para o pedido do aviso, não mais para o Perfil.",
+      "Rastrear pedido sem conta: depois de voltar da etapa do código, o botão Já tenho o código leva direto ao campo de 6 dígitos, sem esperar o novo envio."
+    ],
+    "melhorias": []
+  },
   "1.5.133": {
     "titulo": "Avaliações do painel com filtro Em moderação",
     "novidades": [
