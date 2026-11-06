@@ -166,7 +166,9 @@ describe("renomear categoria com a aba Ajustes aberta por baixo", () => {
     await digitar("politica-troca", "20");
     await salvar();
 
-    expect(listaGravada()).toEqual(["Brinquedos"]);
+    // A lista ja' esta no nome novo no banco e a lojista nao mexeu nela: NAO vai no pedido
+    // (regravar a copia da tela e' o que desfazia a renomeacao de outro aparelho).
+    expect(listaGravada()).toBeUndefined();
   });
 
   it("o que a lojista ja tinha marcado e ainda nao salvou continua marcado", async () => {
@@ -192,7 +194,9 @@ describe("renomear categoria com a aba Ajustes aberta por baixo", () => {
     await digitar("politica-troca", "20");
     await salvar();
 
-    expect(listaGravada()).toEqual(["Brinquedos"]);
+    // A lista ja' esta no nome novo no banco e a lojista nao mexeu nela: NAO vai no pedido
+    // (regravar a copia da tela e' o que desfazia a renomeacao de outro aparelho).
+    expect(listaGravada()).toBeUndefined();
   });
 
   it("renomear outra categoria nao mexe na regra", async () => {
@@ -202,7 +206,9 @@ describe("renomear categoria com a aba Ajustes aberta por baixo", () => {
     await digitar("politica-troca", "20");
     await salvar();
 
-    expect(listaGravada()).toEqual(["Brinquedo"]);
+    // A lista ja' esta no nome novo no banco e a lojista nao mexeu nela: NAO vai no pedido
+    // (regravar a copia da tela e' o que desfazia a renomeacao de outro aparelho).
+    expect(listaGravada()).toBeUndefined();
   });
 
   it("a renomeacao que chega ENQUANTO a politica ainda esta sendo lida tambem vale", async () => {
@@ -229,6 +235,8 @@ describe("renomear categoria com a aba Ajustes aberta por baixo", () => {
     expect(botao("Brinquedos")?.getAttribute("aria-pressed")).toBe("true");
     await digitar("politica-troca", "20");
     await salvar();
-    expect(listaGravada()).toEqual(["Brinquedos"]);
+    // A lista ja' esta no nome novo no banco e a lojista nao mexeu nela: NAO vai no pedido
+    // (regravar a copia da tela e' o que desfazia a renomeacao de outro aparelho).
+    expect(listaGravada()).toBeUndefined();
   });
 });
