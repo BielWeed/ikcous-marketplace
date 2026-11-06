@@ -1,4 +1,5 @@
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { primeiraLetra } from "@/lib/primeira-letra";
 import { type TomDeEstado, classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import {
@@ -53,7 +54,7 @@ export function rolarAoTopo(origem: HTMLElement) {
 
 /** Inicial do cliente num círculo neutro (sem degradê de cor por nome). */
 export function Avatar({ nome }: { readonly nome: string | undefined }) {
-  const inicial = nome ? nome.trim().charAt(0).toUpperCase() : "";
+  const inicial = primeiraLetra(nome);
   return (
     <span
       aria-hidden="true"

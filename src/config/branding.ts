@@ -1,3 +1,4 @@
+import { primeiraLetra } from "@/lib/primeira-letra";
 import { buildIdentity } from "./buildIdentity";
 import { textoSobreACorDaLoja } from "./cor-da-loja";
 
@@ -147,7 +148,7 @@ export function applyBranding(): void {
   const guardianLetter = document.querySelector(".guardian-logo-icon span");
   if (guardianLetter && branding.appName) {
     // Pega a inicial da primeira palavra do appName
-    const firstLetter = branding.appName.trim().charAt(0).toUpperCase();
+    const firstLetter = primeiraLetra(branding.appName);
     guardianLetter.textContent = firstLetter;
   }
 }

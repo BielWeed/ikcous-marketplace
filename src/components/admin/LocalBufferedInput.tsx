@@ -4,7 +4,7 @@ import { digitosDoTelefoneDoCampo } from "@/lib/telefone-br";
 import { cn } from "@/lib/utils";
 import { AlertTriangle } from "lucide-react";
 import type React from "react";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useId, useRef, useState } from "react";
 
 interface LocalBufferedInputProps
   extends Omit<
@@ -41,6 +41,14 @@ interface LocalBufferedInputProps
    */
   readonly normalizarAoSair?: (val: string) => string;
 }
+
+// Com erro, o campo aponta para a mensagem (leitor de tela a lê junto do
+// campo), sem apagar um `aria-describedby` que o chamador já tenha passado.
+const descritoPor = (
+  existente: string | undefined,
+  erroId: string,
+  erro: string | null,
+) => (erro ? [existente, erroId].filter(Boolean).join(" ") : existente);
 
 const formatPhone = (val: string, anterior?: string) => {
   const clean = digitosDoTelefoneDoCampo(val, anterior);
@@ -146,6 +154,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
 
   const [localVal, setLocalVal] = useState(() => formatValue(value));
   const [error, setError] = useState<string | null>(null);
+  const erroId = useId();
   const onFlushRef = useRef(onFlush);
   const isFocusedRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -286,6 +295,12 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
           onFocus={handleFocus}
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
+          aria-invalid={error ? true : props["aria-invalid"]}
+          aria-describedby={descritoPor(
+            props["aria-describedby"],
+            erroId,
+            error,
+          )}
           className={cn(
             className,
             error &&
@@ -301,6 +316,12 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
           onFocus={handleFocus}
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
+          aria-invalid={error ? true : props["aria-invalid"]}
+          aria-describedby={descritoPor(
+            props["aria-describedby"],
+            erroId,
+            error,
+          )}
           className={cn(
             className,
             error &&
@@ -309,7 +330,11 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
         />
       )}
       {error && (
-        <p className="ml-1 flex items-center gap-1 text-[11px] font-bold text-red-400 duration-200 animate-in slide-in-from-top-1">
+        <p
+          id={erroId}
+          role="alert"
+          className="ml-1 flex items-center gap-1 text-[11px] font-bold text-red-400 duration-200 animate-in slide-in-from-top-1"
+        >
           <AlertTriangle className="size-3.5 text-red-500" />
           {error}
         </p>
@@ -341,6 +366,7 @@ export const LocalBufferedTextarea = memo(function LocalBufferedTextarea({
 }: LocalBufferedTextareaProps) {
   const [localVal, setLocalVal] = useState(value);
   const [error, setError] = useState<string | null>(null);
+  const erroId = useId();
   const onFlushRef = useRef(onFlush);
   const isFocusedRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -412,6 +438,12 @@ export const LocalBufferedTextarea = memo(function LocalBufferedTextarea({
           onChange={handleChange}
           onFocus={handleFocus}
           onBlur={handleBlur}
+          aria-invalid={error ? true : props["aria-invalid"]}
+          aria-describedby={descritoPor(
+            props["aria-describedby"],
+            erroId,
+            error,
+          )}
           className={cn(
             className,
             error &&
@@ -425,6 +457,12 @@ export const LocalBufferedTextarea = memo(function LocalBufferedTextarea({
           onChange={handleChange}
           onFocus={handleFocus}
           onBlur={handleBlur}
+          aria-invalid={error ? true : props["aria-invalid"]}
+          aria-describedby={descritoPor(
+            props["aria-describedby"],
+            erroId,
+            error,
+          )}
           className={cn(
             className,
             error &&
@@ -433,7 +471,11 @@ export const LocalBufferedTextarea = memo(function LocalBufferedTextarea({
         />
       )}
       {error && (
-        <p className="ml-1 flex items-center gap-1 text-[11px] font-bold text-red-400 duration-200 animate-in slide-in-from-top-1">
+        <p
+          id={erroId}
+          role="alert"
+          className="ml-1 flex items-center gap-1 text-[11px] font-bold text-red-400 duration-200 animate-in slide-in-from-top-1"
+        >
           <AlertTriangle className="size-3.5 text-red-500" />
           {error}
         </p>

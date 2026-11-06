@@ -78,7 +78,7 @@ export const TopProductsList = memo(function TopProductsList({
                       <LazyImage
                         src={
                           item.image ||
-                          `https://placehold.co/100x100/18181b/d4af37?text=${encodeURIComponent(displayName.substring(0, 2))}`
+                          `https://placehold.co/100x100/18181b/d4af37?text=${encodeURIComponent(Array.from(displayName).slice(0, 2).join(""))}`
                         }
                         alt={displayName}
                         className="size-full object-cover"
