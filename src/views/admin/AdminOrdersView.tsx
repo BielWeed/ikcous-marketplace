@@ -67,7 +67,10 @@ import { orientacaoDeDevolucao } from "@/lib/anulacao-do-balcao";
 import { consumirPedidoDePedidosSemFiltroAntigo } from "@/lib/atalho-do-inicio-para-pedidos";
 import { tipoDoAvisoDoPedido } from "@/lib/aviso-de-pedido-atualizado";
 import { formatarInteiro } from "@/lib/crm";
-import { recorteDaListaDePedidos } from "@/lib/filtro-da-lista-de-pedidos";
+import {
+  periodoInvertido,
+  recorteDaListaDePedidos,
+} from "@/lib/filtro-da-lista-de-pedidos";
 import {
   enderecoDeRetiradaDoCustomerData,
   mapOrderFromDB,
@@ -483,6 +486,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     start: "",
     end: "",
   });
+  // Fim antes do início: o banco devolve lista vazia. A tela avisa (painel de
+  // filtros e lista vazia) sem bloquear a digitação nem trocar as datas.
+  const periodoEstaInvertido = periodoInvertido(dateRange.start, dateRange.end);
   // Chave NOVA (v2): quem já tinha "all" salvo da versão antiga
   // ("admin_orders_filter") não fica preso nele — a chave antiga é ignorada
   // e o novo padrão ("open") vale uma vez para todo mundo, sem código de
@@ -2290,6 +2296,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       </label>
                     ))}
                   </div>
+                  {periodoEstaInvertido && (
+                    <p role="alert" className="text-xs text-orange-300">
+                      O fim precisa ser depois do início.
+                    </p>
+                  )}
                   {(dateRange.start || dateRange.end) && (
                     <button
                       type="button"
@@ -2591,6 +2602,19 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         {filter === "open"
                           ? textoDoEmAbertoTambemLigado
                           : "Limpe o filtro de canal da venda para ver todos os pedidos."}
+                      </p>
+                    </>
+                  ) : periodoEstaInvertido ? (
+                    // Fim antes do início nunca casa com pedido nenhum: o
+                    // banco devolve vazio. Culpar "status, busca ou período"
+                    // esconde a causa — aqui a saída é acertar as datas.
+                    <>
+                      <h3 className="text-lg font-bold leading-snug text-zinc-100">
+                        O período está invertido
+                      </h3>
+                      <p className="mt-2 max-w-md text-sm leading-relaxed text-zinc-400">
+                        A data de fim vem antes da data de início. Acerte as
+                        datas ou limpe o período para ver os pedidos.
                       </p>
                     </>
                   ) : filter !== "all" ||
