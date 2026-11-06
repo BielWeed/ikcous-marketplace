@@ -17,6 +17,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({ products: [] }),
 }));
+vi.mock("@/hooks/useCategories", () => ({
+  useCategories: () => ({ categories: [], isLoading: false }),
+}));
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: { logoUrl: null }, isLoaded: true }),

@@ -527,6 +527,11 @@ describe("Gerenciar categorias", () => {
   });
 
   it("esconder e mostrar da vitrine: só liga e desliga, e explica que os produtos continuam à venda", async () => {
+    // Categoria sem banner: a frase continua só com o que acontece com os produtos.
+    rpcMock.mockResolvedValue({
+      data: USOS.map((u) => (u.id === "c-brinq" ? { ...u, banners: 0 } : u)),
+      error: null,
+    });
     await abrir();
     await act(async () => {
       botao("Esconder Brinquedos da vitrine").click();
@@ -536,6 +541,7 @@ describe("Gerenciar categorias", () => {
     expect(document.body.textContent).toMatch(
       /saiu do filtro da vitrine\. Os produtos continuam à venda em “Todas”\./,
     );
+    expect(document.body.textContent).not.toMatch(/Atenção/);
     await act(async () => {
       botao("Mostrar Outono na vitrine").click();
       await espera();
@@ -543,6 +549,60 @@ describe("Gerenciar categorias", () => {
     expect(setCategoryActive).toHaveBeenCalledWith("c-oculta", true);
     expect(renameCategory).not.toHaveBeenCalled();
     expect(deleteCategory).not.toHaveBeenCalled();
+  });
+
+  it("esconder categoria com banner: a frase avisa que o banner vai abrir a vitrine completa e manda trocar o link (sem bloquear)", async () => {
+    // USOS já traz 1 banner em Brinquedos; Outono (escondida) não tem banner.
+    await abrir();
+    await act(async () => {
+      botao("Esconder Brinquedos da vitrine").click();
+      await espera();
+    });
+    expect(setCategoryActive).toHaveBeenCalledWith("c-brinq", false);
+    const texto = document.body.textContent ?? "";
+    expect(texto).toMatch(
+      /saiu do filtro da vitrine\. Os produtos continuam à venda em “Todas”\./,
+    );
+    expect(texto).toMatch(
+      /Atenção: 1 banner aponta para ela e vai abrir a vitrine completa em “Todas”\. Troque o link no painel de banners\./,
+    );
+    // Mostrar de volta não repete o aviso.
+    await act(async () => {
+      botao("Mostrar Outono na vitrine").click();
+      await espera();
+    });
+    expect(document.body.textContent).not.toMatch(/Atenção/);
+  });
+
+  it("esconder categoria com mais de um banner: plural em português correto", async () => {
+    rpcMock.mockResolvedValue({
+      data: USOS.map((u) => (u.id === "c-brinq" ? { ...u, banners: 3 } : u)),
+      error: null,
+    });
+    await abrir();
+    await act(async () => {
+      botao("Esconder Brinquedos da vitrine").click();
+      await espera();
+    });
+    expect(document.body.textContent).toMatch(
+      /Atenção: 3 banners apontam para ela e vão abrir a vitrine completa em “Todas”\. Troque o link no painel de banners\./,
+    );
+  });
+
+  it("o texto que oferece Esconder avisa do banner quando há banner, e só então", async () => {
+    await abrir();
+    const linha = (nome: string) =>
+      [...document.querySelectorAll("li")].find((li) =>
+        li.textContent?.includes(nome),
+      )?.textContent ?? "";
+    // Brinquedos: em uso, com 1 banner.
+    expect(linha("Brinquedos")).toMatch(/use Esconder\./);
+    expect(linha("Brinquedos")).toMatch(
+      /Esconder faz o banner dela abrir a vitrine completa/,
+    );
+    // Outono: em uso (produtos), sem banner.
+    expect(linha("Outono")).toMatch(/use Esconder\./);
+    expect(linha("Outono")).not.toMatch(/o banner dela abrir/);
   });
 
   it("lista que não carrega: diz o motivo e deixa tentar de novo (nunca finge lista vazia)", async () => {

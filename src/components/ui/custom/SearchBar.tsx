@@ -1,4 +1,5 @@
 import { Input } from "@/components/ui/input";
+import { useCategories } from "@/hooks/useCategories";
 import { useProducts } from "@/hooks/useProducts";
 import {
   pontuadorDaBusca,
@@ -55,6 +56,20 @@ export function SearchBar({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { products } = useProducts();
+
+  // Categoria que a lojista escondeu não é sugerida (mesma régua da tela
+  // /search: minúscula, sem espaço nas pontas). Só tira o que sabe estar
+  // escondido: se a lista de categorias ainda não chegou, nada sai.
+  const { categories } = useCategories();
+  const escondidas = useMemo(
+    () =>
+      new Set(
+        categories
+          .filter((c) => !c.isActive)
+          .map((c) => c.name.toLowerCase().trim()),
+      ),
+    [categories],
+  );
 
   // Keep localValue in sync with props
   useEffect(() => {
@@ -180,7 +195,10 @@ export function SearchBar({
       });
 
       // Category match
-      if (normalizeText(p.category).startsWith(query)) {
+      if (
+        normalizeText(p.category).startsWith(query) &&
+        !escondidas.has(p.category.toLowerCase().trim())
+      ) {
         termSet.add(p.category);
       }
     });
@@ -195,7 +213,7 @@ export function SearchBar({
         products.some((p) => p.isActive && produtoCombinaComBusca(p, termo)),
       )
       .slice(0, 4);
-  }, [products, deferredLocalValue]);
+  }, [products, deferredLocalValue, escondidas]);
 
   // Matching categories
   const matchingCategories = useMemo<string[]>(() => {
@@ -204,13 +222,17 @@ export function SearchBar({
 
     const catSet = new Set<string>();
     products.forEach((p) => {
-      if (p.isActive && normalizeText(p.category).includes(query)) {
+      if (
+        p.isActive &&
+        normalizeText(p.category).includes(query) &&
+        !escondidas.has(p.category.toLowerCase().trim())
+      ) {
         catSet.add(p.category);
       }
     });
 
     return Array.from(catSet).slice(0, 3);
-  }, [products, deferredLocalValue]);
+  }, [products, deferredLocalValue, escondidas]);
 
   // Produtos que a busca acha, do mais ao menos relevante. QUEM decide se um
   // produto entra e' `produtoCombinaComBusca` -- a mesma regra da lista da

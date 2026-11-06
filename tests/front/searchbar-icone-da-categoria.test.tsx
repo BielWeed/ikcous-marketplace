@@ -20,6 +20,7 @@ vi.mock("@/hooks/useProducts", () => ({
 }));
 vi.mock("@/hooks/useCategories", () => ({
   categoriasEmMemoria: () => estado.memoria,
+  useCategories: () => ({ categories: [], isLoading: false }),
 }));
 vi.mock("@/lib/dataVault", () => ({
   DataVault: {

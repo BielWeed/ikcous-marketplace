@@ -11,6 +11,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({ products: [] }),
 }));
+vi.mock("@/hooks/useCategories", () => ({
+  useCategories: () => ({ categories: [], isLoading: false }),
+}));
 vi.mock("@/utils/haptic", () => ({
   haptic: { light: vi.fn(), medium: vi.fn() },
 }));
