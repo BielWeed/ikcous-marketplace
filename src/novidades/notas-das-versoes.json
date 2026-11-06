@@ -13,7 +13,7 @@
       "Conta: o WhatsApp exige o número completo, os avisos de CPF citam o caminho que existe e os endereços ficam legíveis no tema escuro.",
       "Pedidos do cliente: a lista abre na aba onde o pedido está, o item sem produto não pede avaliação e N itens conta unidades, como o carrinho.",
       "Carrinho e resumo do pedido mostram a foto da cor escolhida e o nome atual da variação.",
-      "Vitrine: categorias e Catálogo ficam em ordem estável (mais novos primeiro), a busca não sugere categoria escondida e o nome da loja com hífen aparece inteiro.",
+      "Vitrine: categorias ficam em ordem de nome e o Catálogo em ordem estável, a busca não sugere categoria escondida e o nome da loja com hífen aparece inteiro.",
       "Painel, Estoque e Início: sem internet, a lista de estoque baixo avisa em vez de mostrar tudo; o Início refaz os números ao voltar; a oferta só diz Apenas N restantes de 2 a 5.",
       "Painel, Avisar clientes: mostra a falha ao carregar produtos, não deixa abrir produto sem escolher e atualiza as contagens depois de enviar; o motivo de aviso que não chegou sai em português.",
       "Painel, Categorias: esconder uma categoria que tem banner avisa que o banner abrirá a vitrine completa. Textos longos na política quebram de linha e a folha não esvazia ao fechar.",
