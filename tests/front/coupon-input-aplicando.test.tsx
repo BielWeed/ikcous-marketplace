@@ -61,6 +61,54 @@ describe("CouponInput", () => {
     expect(onApply).toHaveBeenCalledWith("PROMO10");
   });
 
+  // Cupom digitado com acento ou espaço no meio era recusado como se não
+  // existisse (o painel grava SEM acento e SEM espaço). O campo manda o código
+  // como digitado (um cupom antigo pode ter sido gravado com acento) e,
+  // junto, a versão normalizada para quem aplica tentar em seguida.
+  async function aplicarDigitando(texto: string, onApply: () => void) {
+    await render({ onApply, onRemove: vi.fn() });
+    await digitar(texto);
+    await act(async () => {
+      hospedeiro
+        .querySelector("form")
+        ?.dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        );
+    });
+  }
+
+  it("'verão10' vai como digitado (VERÃO10) e leva VERAO10 de reserva", async () => {
+    const onApply = vi.fn();
+    await aplicarDigitando("verão10", onApply);
+    expect(onApply).toHaveBeenCalledTimes(1);
+    expect(onApply).toHaveBeenCalledWith("VERÃO10", "VERAO10");
+  });
+
+  it("'VERAO 10' (espaço no meio) vai como digitado e leva VERAO10 de reserva", async () => {
+    const onApply = vi.fn();
+    await aplicarDigitando("VERAO 10", onApply);
+    expect(onApply).toHaveBeenCalledWith("VERAO 10", "VERAO10");
+  });
+
+  it("'VERÃO10' em maiúsculas também leva a versão sem acento", async () => {
+    const onApply = vi.fn();
+    await aplicarDigitando(" VERÃO10 ", onApply);
+    expect(onApply).toHaveBeenCalledWith("VERÃO10", "VERAO10");
+  });
+
+  it("código que já é igual depois de normalizar NÃO leva reserva (uma consulta só)", async () => {
+    const onApply = vi.fn();
+    await aplicarDigitando("verao10", onApply);
+    expect(onApply).toHaveBeenCalledTimes(1);
+    expect(onApply.mock.calls[0]).toEqual(["VERAO10"]);
+  });
+
+  it("só acento/espaço no campo (nada sobra depois de normalizar) não aplica nada", async () => {
+    const onApply = vi.fn();
+    await aplicarDigitando("   ", onApply);
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
   it("com uma validação em voo, o botão trava e o Enter não valida de novo", async () => {
     const onApply = vi.fn();
     await render({ onApply, onRemove: vi.fn(), aplicando: true });

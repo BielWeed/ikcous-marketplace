@@ -33,6 +33,7 @@ import {
   AVISO_CUPOM_PODE_COBRIR_E_LOJA_SO_NO_APP,
   cupomPodeCobrirACompraInteira,
 } from "@/lib/cupom-que-cobre-a-compra";
+import { porcentagem } from "@/lib/cupons-do-checkout";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { type TomDeEstado, classeDoTexto } from "@/lib/tons-de-estado";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -673,7 +674,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                         >
                           <span className="sr-only">Desconto </span>
                           {coupon.type === "percentage"
-                            ? `${coupon.value ?? 0}% OFF`
+                            ? `${porcentagem(Number(coupon.value ?? 0))} OFF`
                             : formatCurrency(Number(coupon.value ?? 0))}
                         </p>
                         <EstadoComPonto

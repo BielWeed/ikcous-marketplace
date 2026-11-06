@@ -193,7 +193,7 @@ export interface CuponsDoCheckoutProps {
   /** O pedido está sendo enviado: o desconto já foi para o servidor, então
    *  aplicar ou tirar cupom agora só mudaria a tela. Trava os dois. */
   readonly emEnvio?: boolean;
-  readonly onApply: (code: string) => void;
+  readonly onApply: (code: string, alternativo?: string) => void;
   readonly onRemove: () => void;
 }
 

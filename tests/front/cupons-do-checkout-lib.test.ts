@@ -5,6 +5,7 @@ import {
   destaqueDoCupom,
   lerCuponsDoCheckout,
   melhorCupom,
+  porcentagem,
   progressoAteOMinimo,
   validadeDoCupom,
 } from "@/lib/cupons-do-checkout";
@@ -85,6 +86,11 @@ describe("texto do cartão", () => {
 
   it("destaque curto do canhoto", () => {
     expect(destaqueDoCupom({ tipo: "percentage", valor: 10 })).toBe("10%");
+    // A casa decimal sai com vírgula; o painel usa a MESMA função (`porcentagem`).
+    expect(porcentagem(12.5)).toBe("12,5%");
+    expect(porcentagem(10)).toBe("10%");
+    expect(porcentagem(0)).toBe("0%");
+    expect(porcentagem(7.25)).toBe("7,25%");
     expect(destaqueDoCupom({ tipo: "fixed", valor: 15 })).toBe("R$ 15");
     expect(destaqueDoCupom({ tipo: "fixed", valor: 9.9 })).toBe("R$ 9,90");
     expect(destaqueDoCupom({ tipo: "fixed", valor: 999.9 })).toBe("R$ 999,90");

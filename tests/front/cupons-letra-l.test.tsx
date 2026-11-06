@@ -215,7 +215,7 @@ describe("cupons — resumo compacto sem perder valores e detalhes", () => {
 
   it("os dois valores têm espaço para quebrar sem corte por largura fixa", () => {
     for (const ancora of [
-      "`${coupon.value",
+      "porcentagem(Number(coupon.value",
       "formatCurrency(coupon.minPurchase",
     ]) {
       const trecho = trechoDoValor(ancora);
@@ -227,7 +227,7 @@ describe("cupons — resumo compacto sem perder valores e detalhes", () => {
 
   it("o dinheiro do resumo e do mínimo usa tamanho legível sem esconder dígitos", () => {
     for (const ancora of [
-      "`${coupon.value",
+      "porcentagem(Number(coupon.value",
       "formatCurrency(coupon.minPurchase",
     ]) {
       const trecho = trechoDoValor(ancora);

@@ -80,9 +80,13 @@ interface ResultadoDaValidacaoDoCupom {
   networkError?: boolean;
 }
 
-/** No cupom o toque certo é "Aplicar" — não existe botão "Tentar de novo". */
+/**
+ * No cupom não existe botão "Tentar de novo", e "Aplicar" nem sempre serve: no
+ * cartão da lista o toque é no próprio cartão, e com o campo vazio o botão
+ * "Aplicar" está apagado. A frase serve aos dois caminhos e não aponta botão.
+ */
 const MENSAGEM_CUPOM_CONEXAO_LENTA =
-  "A conexão está lenta. Toque em Aplicar para tentar de novo.";
+  "A conexão está lenta. Tente aplicar o cupom de novo.";
 
 /**
  * A consulta em si (sem prazo — quem chama é que limita a espera). LANÇA em

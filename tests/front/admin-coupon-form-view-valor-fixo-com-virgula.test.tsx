@@ -107,4 +107,32 @@ describe("AdminCouponFormView — a pré-visualização do valor fixo usa vírgu
     expect(texto()).toContain("R$ 7,50");
     expect(texto()).not.toContain("7.50");
   });
+
+  it("porcentagem com casa decimal sai com vírgula (12,5%), na linha de resumo e na prévia", async () => {
+    mockCoupons = [
+      cupomFake({
+        id: "c-pct-dec",
+        code: "DOZEMEIO",
+        type: "percentage",
+        value: 12.5,
+      }),
+    ];
+
+    await abrirTela("c-pct-dec");
+
+    expect(texto()).toContain("12,5% OFF");
+    expect(texto()).toContain("DOZEMEIO · 12,5% ·");
+    expect(texto()).not.toContain("12.5");
+  });
+
+  it("porcentagem inteira continua sem casas (10%)", async () => {
+    mockCoupons = [
+      cupomFake({ id: "c-pct", code: "DEZ", type: "percentage", value: 10 }),
+    ];
+
+    await abrirTela("c-pct");
+
+    expect(texto()).toContain("10% OFF");
+    expect(texto()).toContain("DEZ · 10% ·");
+  });
 });

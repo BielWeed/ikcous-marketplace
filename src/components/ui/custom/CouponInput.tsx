@@ -1,9 +1,12 @@
+import { normalizarCodigoDoCupom } from "@/lib/codigo-do-cupom";
 import { formatCurrency } from "@/lib/utils";
 import { Check, Tag, X } from "lucide-react";
 import { memo, useState } from "react";
 
 interface CouponInputProps {
-  onApply: (code: string) => void;
+  /** `alternativo`: o mesmo código sem acento e sem espaço, para tentar se o
+   *  servidor não conhecer o digitado. Ausente quando seria igual. */
+  onApply: (code: string, alternativo?: string) => void;
   onRemove: () => void;
   appliedCoupon?: { code: string; discount: number } | null;
   error?: string;
@@ -32,7 +35,18 @@ export const CouponInput = memo(function CouponInput({
     e.preventDefault();
     if (aplicando || travado) return;
     if (code.trim()) {
-      onApply(code.trim().toUpperCase());
+      // O painel grava o código SEM acento e SEM espaço; quem digita
+      // "verão10" ou "VERAO 10" tem o cupom, só que escrito diferente. Vai
+      // primeiro como digitado (um cupom antigo pode ter sido gravado com
+      // acento e não pode quebrar) e a versão normalizada segue de reserva —
+      // quem aplica só a usa se o servidor disser que o código não existe.
+      const digitado = code.trim().toUpperCase();
+      const normalizado = normalizarCodigoDoCupom(code);
+      if (normalizado && normalizado !== digitado) {
+        onApply(digitado, normalizado);
+      } else {
+        onApply(digitado);
+      }
     }
   };
 
