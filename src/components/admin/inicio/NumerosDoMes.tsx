@@ -5,6 +5,7 @@ import {
   formatarPercentual,
   variacaoPercentual,
 } from "@/lib/crm";
+import { ULTIMO_DIA_DA_MARGEM_EM_FORMACAO } from "@/lib/margem-em-formacao";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import type { PainelInicio } from "@/types/painel";
 import { HelpCircle } from "lucide-react";
@@ -22,9 +23,6 @@ const NOME_DO_MES = new Intl.DateTimeFormat("pt-BR", {
   month: "long",
   timeZone: "America/Sao_Paulo",
 });
-
-/** Até este dia do mês (inclusive), prejuízo estimado ainda não vira margem. */
-const ULTIMO_DIA_DA_MARGEM_EM_FORMACAO = 15;
 
 /**
  * "Este mês": vendas pagas (com variação) e lucro estimado na cor do sinal,

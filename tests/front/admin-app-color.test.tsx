@@ -299,6 +299,32 @@ describe("Cor do app — tela com editor real e fotografia completa", () => {
     expect(host.textContent).toContain("4,2 para 1");
     expect(button("Salvar cor").disabled).toBe(false);
   });
+  const AVISO_COR_CLARA = "Esta cor é clara: em botões e textos";
+  it.each(["#FACC15", "#FFC0CB", "#FFFFFF"])(
+    "cor clara %s avisa que texto e botão sobre fundo branco podem sumir, sem bloquear",
+    async (cor) => {
+      await render();
+      await type(cor);
+      expect(host.textContent).toContain(AVISO_COR_CLARA);
+      expect(host.textContent).toContain("Prefira um tom mais escuro.");
+      expect(button("Salvar cor").disabled).toBe(false);
+    },
+  );
+  it.each(["#1F2937", "#234567", "#8B5CF6"])(
+    "cor %s (contraste com o branco de 3:1 ou mais) não ganha o aviso de cor clara",
+    async (cor) => {
+      await render();
+      await type(cor);
+      expect(host.textContent).not.toContain(AVISO_COR_CLARA);
+    },
+  );
+  it("a cor clara não muda a medição do texto do botão", async () => {
+    await render();
+    await type("#FACC15");
+    const linha = host.querySelector("[data-previa-uso]")!;
+    expect(linha.textContent).toContain("Texto escuro · fácil de ler");
+    expect(host.textContent).not.toContain("O texto pode ficar difícil de ler");
+  });
   it("offline desativa salvar, mas mantém campo e prévia", async () => {
     h.offline = true;
     await render();

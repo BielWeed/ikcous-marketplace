@@ -465,13 +465,13 @@ export function AddressForm({
         cep: values.cep,
         street: values.street,
         number: values.number,
-        complement: values.complement || "",
+        complement: values.complement?.trim() || "",
         neighborhood: values.neighborhood,
         city: values.city,
         // UF vai para a etiqueta do Melhor Envio: sempre em maiúsculas.
         state: values.state.toUpperCase(),
         is_default: values.is_default,
-        reference: values.reference || "",
+        reference: values.reference?.trim() || "",
         recipient_name: values.recipient_name,
       };
       await onSubmit(cleanData);

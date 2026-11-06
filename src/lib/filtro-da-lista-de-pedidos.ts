@@ -43,6 +43,19 @@ function diaValido(dia: string | undefined): dia is string {
   );
 }
 
+/**
+ * Fim antes do início: os dois dias existem e o fim vem ANTES. O banco devolve
+ * lista vazia para isso, e a tela avisa em vez de culpar o filtro genérico.
+ * `AAAA-MM-DD` ordena como texto; só um lado (ou data inválida) nunca é
+ * invertido — o outro limite sozinho continua sendo um recorte legítimo.
+ */
+export function periodoInvertido(
+  start: string | undefined,
+  end: string | undefined,
+): boolean {
+  return diaValido(start) && diaValido(end) && end < start;
+}
+
 /** Meia-noite de Brasília do dia escolhido. Sem dia válido: sem limite. */
 export function inicioDoDiaDaLoja(dia: string | undefined): string | undefined {
   return diaValido(dia) ? `${dia}T00:00:00${DESLOCAMENTO_DA_LOJA}` : undefined;

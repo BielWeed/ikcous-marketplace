@@ -454,7 +454,7 @@ export function SearchBar({
                           )}
                         </div>
                         <div className="flex min-w-0 flex-col">
-                          <span className="truncate text-[9px] font-extrabold uppercase tracking-wider text-zinc-400">
+                          <span className="truncate text-[10px] font-extrabold uppercase tracking-wider text-zinc-600">
                             {item.category}
                           </span>
                           <span className="truncate text-xs font-bold text-zinc-900 transition-colors group-hover:text-primary">
@@ -477,7 +477,7 @@ export function SearchBar({
                   <p className="text-xs font-bold text-zinc-700">
                     Nenhum produto encontrado para "{localValue}"
                   </p>
-                  <p className="mt-0.5 text-[11px] text-zinc-400">
+                  <p className="mt-0.5 text-xs text-zinc-600">
                     Tente pesquisar por categorias ou termos mais genéricos.
                   </p>
                 </div>

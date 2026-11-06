@@ -340,13 +340,17 @@ export async function prepareIdentityAppIcons(
       image.src = url;
       return image.decode();
     }, "IDENTITY_IMAGE_DECODE");
-    async function resize(size: number) {
+    async function resize(size: number, background?: string) {
       scope.check();
       const canvas = document.createElement("canvas");
       canvas.width = size;
       canvas.height = size;
       const context = canvas.getContext("2d");
       if (!context) throw new IdentityImageError("IDENTITY_IMAGE_DECODE");
+      if (background !== undefined) {
+        context.fillStyle = background;
+        context.fillRect(0, 0, size, size);
+      }
       context.drawImage(image, 0, 0, size, size);
       const blob = await scope.wait(
         () =>
@@ -450,7 +454,14 @@ export async function prepareIdentityAppIcons(
       );
     }
     const small = await resize(192);
-    const apple = await resize(180);
+    // O iOS pinta a transparência do ícone de preto: o do iPhone nasce com fundo
+    // na cor do app (ou branco, se a cor não for #RRGGBB — nunca preto).
+    const apple = await resize(
+      180,
+      /^#[0-9a-f]{6}$/i.test(options.primaryColor)
+        ? options.primaryColor
+        : "#FFFFFF",
+    );
     const masked = await maskable();
     return Object.freeze({
       icon_512: original,

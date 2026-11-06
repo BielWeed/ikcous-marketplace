@@ -591,7 +591,7 @@ function HeroOfferCard({
                 );
                 return (
                   frase && (
-                    <div className="flex items-center gap-1 rounded-md border border-emerald-100/40 bg-emerald-50 px-2 py-0.5 text-[9px] font-extrabold text-emerald-800">
+                    <div className="flex items-center gap-1 rounded-md border border-emerald-100/40 bg-emerald-50 px-2 py-0.5 text-[11px] font-extrabold text-emerald-800">
                       <Truck className="animate-bounce-subtle size-2.5 shrink-0" />
                       <span>{frase}</span>
                     </div>
@@ -611,7 +611,7 @@ function HeroOfferCard({
                   e.stopPropagation();
                   handleCardClick();
                 }}
-                className="line-clamp-2 w-full text-left text-lg font-extrabold leading-snug tracking-tight text-slate-900 transition-colors duration-300 group-hover:text-primary sm:text-xl"
+                className="line-clamp-2 w-full text-left text-lg font-extrabold leading-snug tracking-tight text-slate-900 transition-colors duration-300 [overflow-wrap:anywhere] group-hover:text-primary sm:text-xl"
               >
                 {product.name}
               </button>
@@ -638,7 +638,7 @@ function HeroOfferCard({
             <div className="mb-3.5 flex flex-wrap items-end gap-3">
               {precoAntigo ? (
                 <div className="flex flex-col">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 line-through">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 line-through">
                     De: {formatCurrency(precoAntigo)}
                   </span>
                   {aPartirDe && (
@@ -674,7 +674,7 @@ function HeroOfferCard({
                 </span>
               )}
               {savings > 0 && (
-                <div className="mb-0.5 rounded-md border border-emerald-200/30 bg-emerald-50 px-2 py-0.5 text-[9px] font-extrabold uppercase text-emerald-700">
+                <div className="mb-0.5 rounded-md border border-emerald-200/30 bg-emerald-50 px-2 py-0.5 text-[11px] font-extrabold uppercase text-emerald-700">
                   Economize {formatCurrency(savings)}
                 </div>
               )}

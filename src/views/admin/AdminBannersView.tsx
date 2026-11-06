@@ -45,6 +45,7 @@ import {
 } from "@/lib/catalogo-de-banners";
 import {
   MENSAGEM_FIM_ANTES_DO_INICIO,
+  estaNoAr,
   fimDoBannerEmTexto,
   problemaDasDatas,
 } from "@/lib/datas-do-banner";
@@ -1180,10 +1181,7 @@ export const AdminBannersView = memo(function AdminBannersView({
 
       let matchesStatus = true;
       if (statusFilter === "active") {
-        matchesStatus =
-          b.active &&
-          (!b.startDate || new Date(b.startDate) <= now) &&
-          (!b.endDate || new Date(b.endDate) >= now);
+        matchesStatus = estaNoAr(b, now);
       } else if (statusFilter === "paused") {
         matchesStatus = !b.active;
       } else if (statusFilter === "scheduled") {
@@ -2146,13 +2144,19 @@ export const AdminBannersView = memo(function AdminBannersView({
 
   // Compute Metrics
   const totalBanners = banners.length;
-  const activeBanners = banners.filter((b) => b.active).length;
-  const topActive = banners.some((b) => b.position === "home_top" && b.active);
+  // "Ligado" aqui é NO AR: banner vencido ou agendado não enche a vitrine.
+  const agoraDasMetricas = new Date();
+  const activeBanners = banners.filter((b) =>
+    estaNoAr(b, agoraDasMetricas),
+  ).length;
+  const topActive = banners.some(
+    (b) => b.position === "home_top" && estaNoAr(b, agoraDasMetricas),
+  );
   const middleActive = banners.some(
-    (b) => b.position === "home_middle" && b.active,
+    (b) => b.position === "home_middle" && estaNoAr(b, agoraDasMetricas),
   );
   const bottomActive = banners.some(
-    (b) => b.position === "home_bottom" && b.active,
+    (b) => b.position === "home_bottom" && estaNoAr(b, agoraDasMetricas),
   );
   const activeSectionsCount = [topActive, middleActive, bottomActive].filter(
     Boolean,

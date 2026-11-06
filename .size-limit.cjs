@@ -163,7 +163,10 @@ module.exports = [
     // 06/11/2026 (mesma regra): 610 -> 613 kB na 1.5.136 (pedido do cliente na aba certa, foto da cor no carrinho,
     // categorias e Catalogo em ordem estavel, avisos do painel e do sino, nome da loja e inicial com emoji).
     // Mede 612,42 kB no build local, 2,42 kB acima do teto. Nada foi trocado por algo mais arriscado.
-    limit: "613 kB",
+    // 06/11/2026 (mesma regra): 613 -> 614 kB na 1.5.137 (favoritos que atualizam e avisam, erros do balcao em
+    // portugues, estoque na primeira variacao, financeiro, banners). Mede 613,3 kB no build local, 298 B acima do teto.
+    // Nada foi trocado por algo mais arriscado.
+    limit: "614 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
@@ -296,7 +299,10 @@ module.exports = [
     // 06/11/2026 (mesma regra): 506 -> 507 kB na 1.5.136 (frete salva so o que mexeu e mescla dois aparelhos,
     // lista de clientes com Administradores primeiro, erro acessivel nos campos, avisos do painel). Medem 506,55 kB
     // no build local, 547 B acima do teto. Nada foi trocado por algo mais arriscado.
-    limit: "507 kB",
+    // 06/11/2026 (mesma regra): 507 -> 509 kB na 1.5.137 (cadastro de produto trava ao salvar e junta fotos, estoque
+    // na primeira variacao, financeiro, banners, aviso de cor clara). Medem 508,03 kB no build local, 1,03 kB acima do
+    // teto. Nada foi trocado por algo mais arriscado.
+    limit: "509 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },

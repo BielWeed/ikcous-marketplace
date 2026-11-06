@@ -101,3 +101,34 @@ export function variacoesQueMudaram<V extends VariacaoComparavel>(
     return variacaoMudou(v, inicial);
   });
 }
+
+/**
+ * As fotos que o formulário passa a mostrar depois de o salvar ser recusado
+ * porque OUTRO aparelho mexeu no produto (a versão lida na abertura ficou
+ * velha). `formulario` é o que a lojista tem na tela, `abertura` o que a tela
+ * leu ao abrir e `doBanco` o que o banco tem agora.
+ *
+ * - Ela não mexeu nas fotos: vale o banco (inclusive a ordem, que o outro
+ *   aparelho pode ter trocado para mudar a principal).
+ * - Ela mexeu: a lista dela fica, sem as fotos que o outro aparelho tirou
+ *   (o arquivo delas já foi para o backup, o endereço não abre mais) e com as
+ *   que o outro aparelho pôs. Assim o salvar seguinte não apaga nem ressuscita
+ *   foto de ninguém.
+ */
+export function fotosAposConflito(
+  formulario: string[],
+  abertura: string[],
+  doBanco: string[],
+): string[] {
+  if (valoresIguais(formulario, abertura)) return doBanco;
+  const naAbertura = new Set(abertura);
+  const noBanco = new Set(doBanco);
+  const tiradasPeloOutro = new Set(
+    abertura.filter((foto) => !noBanco.has(foto)),
+  );
+  const postasPeloOutro = doBanco.filter((foto) => !naAbertura.has(foto));
+  return [
+    ...formulario.filter((foto) => !tiradasPeloOutro.has(foto)),
+    ...postasPeloOutro.filter((foto) => !formulario.includes(foto)),
+  ];
+}

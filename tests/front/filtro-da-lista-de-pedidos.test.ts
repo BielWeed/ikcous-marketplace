@@ -10,9 +10,37 @@ import {
   fimDoDiaDaLoja,
   inicioDoDiaDaLoja,
   instanteDentroDoPeriodo,
+  periodoInvertido,
   termoDeBuscaDoPedido,
 } from "@/lib/filtro-da-lista-de-pedidos";
 import { describe, expect, it } from "vitest";
+
+describe("período invertido (Fim antes do Início)", () => {
+  it("é invertido só quando os dois dias são válidos e o fim vem antes do início", () => {
+    expect(periodoInvertido("2026-10-20", "2026-10-10")).toBe(true);
+    expect(periodoInvertido("2027-01-01", "2026-12-31")).toBe(true);
+  });
+
+  it("mesmo dia e ordem certa não são invertidos", () => {
+    expect(periodoInvertido("2026-10-14", "2026-10-14")).toBe(false);
+    expect(periodoInvertido("2026-10-10", "2026-10-20")).toBe(false);
+  });
+
+  it("só um lado preenchido (ou vazio) nunca é invertido", () => {
+    expect(periodoInvertido("2026-10-20", "")).toBe(false);
+    expect(periodoInvertido("", "2026-10-10")).toBe(false);
+    expect(periodoInvertido(undefined, "2026-10-10")).toBe(false);
+    expect(periodoInvertido("2026-10-20", undefined)).toBe(false);
+    expect(periodoInvertido("", "")).toBe(false);
+  });
+
+  it("data que não existe ou texto solto não conta como invertido", () => {
+    expect(periodoInvertido("2026-02-30", "2026-01-01")).toBe(false);
+    expect(periodoInvertido("2026-10-20", "2026-13-01")).toBe(false);
+    expect(periodoInvertido("20/10/2026", "10/10/2026")).toBe(false);
+    expect(periodoInvertido("abc", "2026-10-10")).toBe(false);
+  });
+});
 
 describe("início e fim do dia da loja (Brasília)", () => {
   it("o início é a meia-noite de Brasília e o fim é o último milissegundo do dia", () => {

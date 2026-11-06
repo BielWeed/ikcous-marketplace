@@ -90,6 +90,25 @@ function retirarDaFilaPendentes(userId: string, ids: string[]): Product[] {
   return restante;
 }
 
+// Intervalo mínimo entre duas leituras disparadas pelo "voltar ao app": quem
+// alterna de aba/app em rajada não vira rajada de consultas (mesmo padrão do
+// carrinho e da loja).
+const INTERVALO_MIN_RELEITURA_VISIVEL_MS = 5_000;
+
+// A lista de quem tem conta segue a ordem em que a pessoa SALVOU (a tela
+// promete isso em "Ordem original"). Ordenação estável: empate ou linha sem
+// `created_at` mantém a ordem em que o servidor respondeu.
+function ordenarPorQuandoFoiSalvo<T extends { created_at?: string | null }>(
+  linhas: readonly T[],
+): T[] {
+  return [...linhas].sort((a, b) => {
+    const ta = a.created_at ? Date.parse(a.created_at) : Number.NaN;
+    const tb = b.created_at ? Date.parse(b.created_at) : Number.NaN;
+    if (Number.isNaN(ta) || Number.isNaN(tb)) return 0;
+    return ta - tb;
+  });
+}
+
 function mesclarSemDuplicar(listas: Product[][]): Product[] {
   const mapa = new Map<string, Product>();
   for (const lista of listas) {
@@ -137,6 +156,11 @@ interface FavoritesContextType {
   // Existe para o botão "Tentar agora" da tela de Favoritos: falha do servidor
   // com a rede de pé nunca dispara `online`. Resolve quando a tentativa acabou.
   retentarPendentes: () => Promise<void>;
+  // Favoritos de quem tem conta cujo produto não aparece na lista (pausado ou
+  // fora do catálogo). Só conta com o catálogo já carregado e com produtos —
+  // antes disso "ausente" pode ser só atraso. A tela usa para avisar em vez de
+  // fingir que a pessoa nunca favoritou nada.
+  favoritosIndisponiveis: number;
 }
 
 export const FavoritesContext = createContext<FavoritesContextType | undefined>(
@@ -148,7 +172,7 @@ export function FavoritesProvider({
 }: Readonly<{ children: React.ReactNode }>) {
   const { user } = useAuth();
   const { isLeader } = useLeaderElection();
-  const { products: allProducts } = useProducts();
+  const { products: allProducts, loading: carregandoCatalogo } = useProducts();
   // Tipado como "pode ser string OU Product" (ver `EntradaFavoritoLocal`
   // acima) porque o primeiro render lê o disco como ele estiver — um
   // aparelho antigo ainda tem o `Product` inteiro aqui, e a migração
@@ -223,6 +247,9 @@ export function FavoritesProvider({
   // Cada consulta pega um número de rodada e, ao voltar, só grava se ainda é a
   // mais nova E se o usuário atual continua o mesmo que a disparou.
   const rodadaRef = useRef(0);
+  // Quando a última leitura começou (qualquer origem): o "voltar ao app" não
+  // relê se ela foi há menos de `INTERVALO_MIN_RELEITURA_VISIVEL_MS`.
+  const ultimaLeituraEmRef = useRef(0);
   // Leituras anteriores ou durante uma gravação podem trazer um retrato velho.
   // O controle pertence à sessão: terminar uma escrita de A não invalida B.
   const gravacoesRef = useRef({
@@ -247,6 +274,7 @@ export function FavoritesProvider({
     async function consultarFavoritos() {
       if (!user || usuarioAtualIdRef.current !== user.id) return;
       const rodada = ++rodadaRef.current;
+      ultimaLeituraEmRef.current = Date.now();
       const donoDaRodada = user.id;
       const gravacoes = gravacoesRef.current;
       gravacoes.ultimaLeitura = rodada;
@@ -272,7 +300,7 @@ export function FavoritesProvider({
       try {
         const { data, error } = await supabase
           .from("favorites")
-          .select("product_id")
+          .select("product_id, created_at")
           .eq("user_id", user.id);
 
         if (ehVelha()) return;
@@ -280,7 +308,9 @@ export function FavoritesProvider({
           console.error("Error fetching favorites", error);
           setErro("Não conseguimos carregar seus favoritos.");
         } else if (data) {
-          const newIds = data.map((f) => f.product_id);
+          const newIds = ordenarPorQuandoFoiSalvo(data).map(
+            (f) => f.product_id,
+          );
           setDbFavoriteIds(newIds);
           setErro(null);
         }
@@ -625,6 +655,26 @@ export function FavoritesProvider({
     return () => window.removeEventListener("online", aoVoltarARede);
   }, [user, retentarPendentes]);
 
+  // Voltar ao app (aba volta a ficar visível): outro aparelho pode ter mudado
+  // os favoritos enquanto este estava em segundo plano, e `online` só cobre
+  // quem ficou sem rede. `fetchDbFavorites` já respeita as gravações em voo.
+  useEffect(() => {
+    if (!user || typeof document === "undefined") return;
+    const aoFicarVisivel = () => {
+      if (document.visibilityState !== "visible") return;
+      if (
+        Date.now() - ultimaLeituraEmRef.current <
+        INTERVALO_MIN_RELEITURA_VISIVEL_MS
+      ) {
+        return;
+      }
+      void fetchDbFavorites();
+    };
+    document.addEventListener("visibilitychange", aoFicarVisivel);
+    return () =>
+      document.removeEventListener("visibilitychange", aoFicarVisivel);
+  }, [user, fetchDbFavorites]);
+
   // Realtime Sync for Favorites
   useEffect(() => {
     const bc = criarCanalDeAbas("ikcous_favorites_sync");
@@ -760,10 +810,31 @@ export function FavoritesProvider({
         })
         .filter((p): p is Product => p !== undefined);
     }
-    return allProducts.filter(
-      (p) => p.isActive !== false && dbFavoriteIds.includes(p.id),
-    );
+    // Ordem em que a pessoa salvou (`dbFavoriteIds` já vem ordenada e o toque
+    // acrescenta no fim), não a do catálogo.
+    const porId = new Map(allProducts.map((p) => [p.id, p]));
+    const salvos: Product[] = [];
+    for (const id of new Set(dbFavoriteIds)) {
+      const produto = porId.get(id);
+      if (produto && produto.isActive !== false) salvos.push(produto);
+    }
+    return salvos;
   }, [user, allProducts, dbFavoriteIds, localFavoriteIds]);
+
+  // Favorito de quem tem conta que não aparece em `favorites` (produto pausado
+  // ou fora do catálogo). O catálogo é lido inteiro, todas as páginas, antes de
+  // chegar aqui; ainda assim só conta com ele carregado E com produtos: sem
+  // isso, uma falha ou um atraso do catálogo faria TODO favorito parecer
+  // indisponível.
+  const favoritosIndisponiveis = React.useMemo(() => {
+    if (!user || carregandoCatalogo || allProducts.length === 0) return 0;
+    const visiveis = new Set(favorites.map((p) => p.id));
+    let indisponiveis = 0;
+    for (const id of new Set(dbFavoriteIds)) {
+      if (!visiveis.has(id)) indisponiveis++;
+    }
+    return indisponiveis;
+  }, [user, carregandoCatalogo, allProducts, dbFavoriteIds, favorites]);
 
   // 3. Actions
   const addToFavorites = useCallback(
@@ -843,7 +914,8 @@ export function FavoritesProvider({
   );
 
   // "Desfazer" do aviso de remoção (o carrinho já ensina esse gesto). Quem
-  // entra logado volta pela ordem do catálogo; o visitante volta ao índice.
+  // tem conta volta ao fim da lista (a gravação é nova); o visitante volta ao
+  // índice.
   const avisarRemovido = useCallback(
     (produto?: Product, posicao?: number) => {
       if (!produto) {
@@ -971,9 +1043,11 @@ export function FavoritesProvider({
       refresh: () => void fetchDbFavorites(),
       pendingCount: pendingFavorites.length,
       retentarPendentes,
+      favoritosIndisponiveis,
     }),
     [
       favorites,
+      favoritosIndisponiveis,
       toggleFavorite,
       isFavorite,
       loading,

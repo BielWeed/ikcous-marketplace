@@ -1469,8 +1469,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                   <span className="font-bold text-zinc-200">
                                     {addr.number}
                                   </span>
-                                  {addr.complement
-                                    ? ` - ${addr.complement}`
+                                  {addr.complement?.trim()
+                                    ? ` - ${addr.complement.trim()}`
                                     : ""}
                                 </p>
                                 <p className="text-[11px] text-zinc-400">

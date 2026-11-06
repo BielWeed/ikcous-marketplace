@@ -1653,7 +1653,7 @@ export function useProducts({ autoFetch = true } = {}) {
 
         if (conferenciaDeEstoque && !conferenciaDeEstoque.baseUpdatedAt) {
           throw new RecusaDoCadastroDeProduto(
-            "Não consegui conferir a versão do estoque. Recarregue o produto antes de salvar de novo.",
+            "Não consegui conferir a versão do produto. Recarregue o produto antes de salvar de novo.",
           );
         }
 
@@ -1704,7 +1704,7 @@ export function useProducts({ autoFetch = true } = {}) {
           if (conferenciaDeEstoque && !error) {
             throw Object.assign(
               new RecusaDoCadastroDeProduto(
-                `O estoque deste produto mudou enquanto você editava${produtoAtual ? ` (agora está ${produtoAtual.stock})` : ""}. Confira e salve de novo.`,
+                "Este produto foi alterado em outro aparelho enquanto você editava (estoque ou fotos). Os dados foram recarregados; confira e salve de novo.",
               ),
               { produtoAtual: produtoAtual ?? null },
             );

@@ -87,6 +87,9 @@ function EscolhaDaCor({
   const texto = branco ? "#FAFAFA" : "#18181B";
   const contraste = razaoDeContraste(cor, texto);
   const fraco = contraste < 4.5;
+  // O app também usa a cor da marca como TEXTO sobre fundo branco ("Ver Meus
+  // Pedidos", "Escolher outro frete"): abaixo de 3:1 contra o branco ela some.
+  const claroDemais = razaoDeContraste(cor, "#FFFFFF") < 3;
   const pendente =
     editor.phase === "pending" ||
     (editor.phase === "checking" && !!editor.intent);
@@ -266,6 +269,13 @@ function EscolhaDaCor({
           {contraste.toFixed(1).replace(".", ",")} para 1; o ideal é 4,5 ou
           mais). Você pode salvar assim ou tentar um tom mais escuro ou mais
           claro.
+        </Aviso>
+      )}
+      {claroDemais && (
+        <Aviso titulo="Esta cor pode sumir sobre o fundo branco">
+          {
+            'Esta cor é clara: em botões e textos sobre fundo branco (como "Ver Meus Pedidos") ela pode quase sumir. Prefira um tom mais escuro.'
+          }
         </Aviso>
       )}
       {offline && (

@@ -438,7 +438,9 @@ export const AddressList = memo(function AddressList({
                 </p>
                 <p className="leading-relaxed">
                   {address.street}, {address.number}
-                  {address.complement ? ` - ${address.complement}` : ""}
+                  {address.complement?.trim()
+                    ? ` - ${address.complement.trim()}`
+                    : ""}
                 </p>
                 <p className="leading-relaxed">
                   {address.neighborhood}, {address.city} - {address.state}

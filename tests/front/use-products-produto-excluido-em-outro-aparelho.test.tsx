@@ -240,7 +240,7 @@ describe("useProducts: produto excluído em outro aparelho", () => {
     expect(banco.produto.stock).toBeUndefined();
   });
 
-  it("limite: o estoque mudou DE VERDADE (produto vivo, versão nova) continua dizendo 'O estoque deste produto mudou'", async () => {
+  it("limite: o produto mudou DE VERDADE (produto vivo, versão nova) diz que foi alterado em outro aparelho (estoque ou fotos)", async () => {
     banco.produto.ultima_atualizacao = "2026-11-03T10:30:00+00:00";
     let erro: unknown;
     await act(async () => {
@@ -253,7 +253,7 @@ describe("useProducts: produto excluído em outro aparelho", () => {
         .catch((e) => e);
     });
     expect((erro as Error).message).toContain(
-      "O estoque deste produto mudou enquanto você editava (agora está 3)",
+      "Este produto foi alterado em outro aparelho enquanto você editava (estoque ou fotos). Os dados foram recarregados; confira e salve de novo.",
     );
     expect(erros()[0]).not.toContain("excluído");
   });

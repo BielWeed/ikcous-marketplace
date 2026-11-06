@@ -2,7 +2,7 @@ import { useIconesPeloNome } from "@/hooks/useIconesPeloNome";
 import { IconeDaCategoria, iconeDaCategoria } from "@/lib/icones-de-categoria";
 import type { Category } from "@/types";
 import { haptic } from "@/utils/haptic";
-import { memo } from "react";
+import { memo, useEffect, useRef } from "react";
 
 interface CategoryFilterProps {
   categories: Category[];
@@ -24,6 +24,30 @@ export const CategoryFilter = memo(function CategoryFilter({
 }: CategoryFilterProps) {
   // Sem ícone salvo na categoria, o do catálogo que combina com o nome (chega depois; antes vale o de sempre).
   const pelosNomes = useIconesPeloNome(categories, !isLoading);
+  const faixaRef = useRef<HTMLDivElement>(null);
+
+  // Categoria aberta por banner ou link chega marcada, mas a faixa rola na
+  // horizontal e o chip podia ficar fora da tela. Centraliza só a faixa: nada de
+  // `scrollIntoView`, que rolaria a página junto.
+  useEffect(() => {
+    const faixa = faixaRef.current;
+    const chip = faixa?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (isLoading || !faixa || !chip) return;
+    // A posição do chip na fila vem da tela (não de `offsetLeft`, que depende de
+    // quem é o pai posicionado).
+    const naFila =
+      chip.getBoundingClientRect().left -
+      faixa.getBoundingClientRect().left +
+      faixa.scrollLeft;
+    const semMovimento = globalThis.matchMedia?.(
+      "(prefers-reduced-motion: reduce)",
+    )?.matches;
+    faixa.scrollTo?.({
+      left: Math.max(0, naFila - (faixa.clientWidth - chip.offsetWidth) / 2),
+      behavior: semMovimento ? "auto" : "smooth",
+    });
+  }, [selectedCategory, isLoading]);
+
   if (isLoading) {
     return (
       <div role="status" className="flex w-full items-center">
@@ -50,7 +74,7 @@ export const CategoryFilter = memo(function CategoryFilter({
   ];
   return (
     <div className="flex w-full items-center">
-      <div className={FAIXA}>
+      <div ref={faixaRef} className={FAIXA}>
         {allCategories.map((category) => {
           const isActive = selectedCategory === category.name;
           const sugerido =

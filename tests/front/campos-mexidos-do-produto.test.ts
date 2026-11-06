@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   camposQueMudaram,
+  fotosAposConflito,
   variacoesQueMudaram,
 } from "@/utils/campos-mexidos-do-produto";
 
@@ -120,5 +121,45 @@ describe("variacoesQueMudaram", () => {
     expect(variacoesQueMudaram(atuais, iniciais).map((x) => x.id)).toEqual([
       "v3",
     ]);
+  });
+});
+
+describe("fotosAposConflito (salvar recusado porque outro aparelho mexeu)", () => {
+  it("ela não mexeu nas fotos: vale o banco, inclusive a ordem que o outro aparelho trocou", () => {
+    expect(fotosAposConflito(["a", "b"], ["a", "b"], ["b", "a", "c"])).toEqual([
+      "b",
+      "a",
+      "c",
+    ]);
+  });
+
+  it("ela tirou uma e o outro pôs outra: ficam as duas decisões", () => {
+    expect(fotosAposConflito(["b"], ["a", "b"], ["a", "b", "c"])).toEqual([
+      "b",
+      "c",
+    ]);
+  });
+
+  it("foto que o outro aparelho tirou não volta pela lista dela", () => {
+    expect(fotosAposConflito(["a", "b"], ["a", "b"], ["a"])).toEqual(["a"]);
+    expect(fotosAposConflito(["b", "x"], ["a", "b"], ["a"])).toEqual(["x"]);
+  });
+
+  it("foto que ela mesma pôs (ainda fora do banco) é mantida", () => {
+    expect(
+      fotosAposConflito(["a", "b", "nova"], ["a", "b"], ["a", "b"]),
+    ).toEqual(["a", "b", "nova"]);
+  });
+
+  it("as duas puseram a mesma foto: sem duplicar", () => {
+    expect(fotosAposConflito(["a", "c"], ["a"], ["a", "c"])).toEqual([
+      "a",
+      "c",
+    ]);
+  });
+
+  it("lista vazia: ela esvaziou e o outro pôs uma, ficam as do outro; ninguém mexeu e o banco esvaziou, fica vazio", () => {
+    expect(fotosAposConflito([], ["a"], ["a", "c"])).toEqual(["c"]);
+    expect(fotosAposConflito(["a"], ["a"], [])).toEqual([]);
   });
 });
