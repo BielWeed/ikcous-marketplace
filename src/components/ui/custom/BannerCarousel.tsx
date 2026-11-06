@@ -190,6 +190,9 @@ export const BannerCarousel = memo(function BannerCarousel({
                 destino === null
                   ? undefined
                   : (e) => {
+                      // Só o slide em foco abre o destino: Enter/Espaço num
+                      // botão de dentro (ex.: "tentar de novo" da foto) é do botão.
+                      if (e.target !== e.currentTarget) return;
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
                         handleNavigation(destino);
