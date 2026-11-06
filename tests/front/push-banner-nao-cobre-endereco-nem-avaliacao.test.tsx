@@ -93,7 +93,7 @@ describe("PushNotificationBanner — telas com barra de ação no rodapé", () =
     });
   }
 
-  it.each(["address-form", "order-details"])(
+  it.each(["address-form", "order-details", "notifications"])(
     "em %s a caixa não nasce nem depois do delay",
     (tela) => {
       montar(tela);

@@ -234,6 +234,14 @@ export const AdminQAView = memo(function AdminQAView({
     }
   }, [selectedQuestion]);
 
+  // Fechar a folha nunca deixa alteração pendente. Efeito à parte para não
+  // refazer o preenchimento acima se `onSetDirty` mudar de identidade. Sem
+  // isto, resposta publicada apagada e descartada deixava o sinal sujo:
+  // `answer` já era "" e não muda, então o efeito abaixo não roda.
+  useEffect(() => {
+    if (!selectedQuestion) onSetDirty?.(false);
+  }, [selectedQuestion, onSetDirty]);
+
   // Comunicar estado dirty para o roteador global
   useEffect(() => {
     onSetDirty?.(answer.trim() !== initialAnswerRef.current.trim());

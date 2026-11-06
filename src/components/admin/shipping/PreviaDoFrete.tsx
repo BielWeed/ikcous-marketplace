@@ -72,6 +72,12 @@ export function PreviaDoFrete({
     nacional.estrategia === "sempre" ||
     (nacional.estrategia === "acima_de_valor" &&
       atingiuOMinimo(subtotal, nacional.minimo));
+  // O desconto também tem pedido mínimo (o servidor aplica `subtotal >= mínimo`;
+  // mínimo 0 = vale sempre), mas `promessasDeFrete` zera o mínimo de tudo que
+  // não é "acima de valor": o limiar vem direto do config.
+  const descontoNacionalVale =
+    nacional.estrategia === "desconto_na_mais_barata" &&
+    atingiuOMinimo(subtotal, Number(config.nationalShippingMin) || 0);
   return (
     <section
       aria-label="Como fica para o cliente"
@@ -165,7 +171,7 @@ export function PreviaDoFrete({
                     : "na opção mais barata"
                   : nacional.estrategia === "por_produto"
                     ? "grátis se tiver produto marcado"
-                    : nacional.estrategia === "desconto_na_mais_barata"
+                    : descontoNacionalVale
                       ? "desconto na opção mais barata"
                       : "preço da transportadora"
             }

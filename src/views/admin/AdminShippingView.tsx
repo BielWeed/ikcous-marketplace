@@ -52,7 +52,7 @@ import {
   valorDoPreset,
 } from "@/lib/presets-de-frete-gratis";
 import { reais, situacaoDaEntrega } from "@/lib/status-da-entrega";
-import type { EstrategiaDeFreteNacional, View } from "@/types";
+import type { EstrategiaDeFreteNacional, StoreConfig, View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import {
   AlertCircle,
@@ -91,6 +91,149 @@ function diasDoTexto(texto: string): number {
 /** Só inteiro de 0 a 30 (ou vazio, para quem apaga para digitar de novo). */
 function aceitarDias(texto: string): boolean {
   return /^\d{0,2}$/.test(texto) && (texto === "" || Number(texto) <= 30);
+}
+
+// ── O formulário e o "retrato" do que ele tinha ao ser sincronizado ───────
+// O Salvar manda SÓ o que a lojista mexeu NESTE aparelho: o que difere do
+// retrato, que é sempre o ÚLTIMO CONFIG QUE A TELA CONHECEU DO BANCO (ao abrir,
+// a cada config que chega, e o que o último Salvar gravou). Quem manda tudo
+// regrava, com o valor velho que a tela ainda tem, o que OUTRO aparelho acabou
+// de mudar — a loja ficava com a regra do último Salvar, sem aviso. A mesma
+// régua (`camposLocaisMexidos`) vale na mesclagem e no Salvar: se divergissem,
+// a tela mostraria uma coisa, o Salvar não mandaria nada e a loja cobraria outra.
+interface FormularioLocal {
+  preset: PresetFreteGratis;
+  acimaDe: number;
+  shippingCoverage: "local" | "national";
+  localDeliveryFee: number;
+  localCepRange: string;
+  modo: ModoDaEntregaNaCidade;
+  diasDaEntrega: string;
+}
+interface FormularioNacional {
+  estrategia: EstrategiaDeFreteNacional;
+  minimo: number;
+  tipoDesconto: "percentual" | "fixo" | null;
+  valorDesconto: number;
+  alcance: "mais_barata" | "todas";
+}
+
+function formularioLocalDoConfig(config: StoreConfig): FormularioLocal {
+  const minSalvo = Number(config.freeShippingMin ?? 0);
+  const presetSalvo = presetDoConfig(minSalvo);
+  return {
+    preset: presetSalvo,
+    acimaDe: presetSalvo === "acima_de_valor" ? minSalvo : 0,
+    shippingCoverage: (config.shippingCoverage || "national") as
+      | "local"
+      | "national",
+    localDeliveryFee: Number(config.localDeliveryFee ?? 10),
+    localCepRange: config.localCepRange || "",
+    modo: modoDaEntregaNaCidade(config),
+    diasDaEntrega: String(diasDaEntregaPropria(config.localDeliveryDays)),
+  };
+}
+
+function formularioNacionalDoConfig(config: StoreConfig): FormularioNacional {
+  return {
+    estrategia: config.nationalShippingStrategy,
+    minimo: config.nationalShippingMin,
+    tipoDesconto: config.nationalDiscountType,
+    valorDesconto: config.nationalDiscountValue,
+    alcance: config.nationalBenefitScope,
+  };
+}
+
+function nacionalMudou(a: FormularioNacional, b: FormularioNacional): boolean {
+  return (
+    a.estrategia !== b.estrategia ||
+    a.minimo !== b.minimo ||
+    a.tipoDesconto !== b.tipoDesconto ||
+    a.valorDesconto !== b.valorDesconto ||
+    a.alcance !== b.alcance
+  );
+}
+
+function mesmoFormularioLocal(a: FormularioLocal, b: FormularioLocal): boolean {
+  return (
+    a.preset === b.preset &&
+    a.acimaDe === b.acimaDe &&
+    a.shippingCoverage === b.shippingCoverage &&
+    Object.is(a.localDeliveryFee, b.localDeliveryFee) &&
+    a.localCepRange === b.localCepRange &&
+    a.modo === b.modo &&
+    a.diasDaEntrega === b.diasDaEntrega
+  );
+}
+
+/** Quais respostas do formulário local diferem da base (o retrato). */
+interface CamposLocaisMexidos {
+  gratis: boolean;
+  cobertura: boolean;
+  taxa: boolean;
+  alcance: boolean;
+  modo: boolean;
+  dias: boolean;
+}
+
+/**
+ * A régua única de "ela mexeu". "Frete grátis" é uma resposta só: o valor do
+ * "acima de" só conta quando a opção ativa é "acima de um valor" (senão ela
+ * teria só passado por ali, e o número que o campo ganhou não é resposta dela).
+ * Sem base (a tela nunca sincronizou) vale tudo, como sempre foi.
+ */
+function camposLocaisMexidos(
+  atual: FormularioLocal,
+  base: FormularioLocal | null,
+): CamposLocaisMexidos {
+  if (!base) {
+    return {
+      gratis: true,
+      cobertura: true,
+      taxa: true,
+      alcance: true,
+      modo: true,
+      dias: true,
+    };
+  }
+  return {
+    gratis:
+      atual.preset !== base.preset ||
+      (atual.preset === "acima_de_valor" && atual.acimaDe !== base.acimaDe),
+    cobertura: atual.shippingCoverage !== base.shippingCoverage,
+    taxa: !Object.is(atual.localDeliveryFee, base.localDeliveryFee),
+    alcance: atual.localCepRange !== base.localCepRange,
+    modo: atual.modo !== base.modo,
+    dias: diasDoTexto(atual.diasDaEntrega) !== diasDoTexto(base.diasDaEntrega),
+  };
+}
+
+/**
+ * Chegou um config novo (o outro aparelho gravou) com o formulário em edição.
+ * Cada resposta que ela NÃO mexeu acompanha o config novo; a que ela mexeu
+ * fica como está. Quem chama passa o config novo a ser o retrato em TODOS os
+ * campos: dali em diante "mexeu" = "a tela difere do banco", inclusive o
+ * campo que ela voltou ao valor de antes.
+ */
+function mesclarFormularioLocal(
+  atual: FormularioLocal,
+  retrato: FormularioLocal,
+  novo: FormularioLocal,
+): FormularioLocal {
+  const mexeu = camposLocaisMexidos(atual, retrato);
+  return {
+    preset: mexeu.gratis ? atual.preset : novo.preset,
+    acimaDe: mexeu.gratis ? atual.acimaDe : novo.acimaDe,
+    shippingCoverage: mexeu.cobertura
+      ? atual.shippingCoverage
+      : novo.shippingCoverage,
+    localDeliveryFee: mexeu.taxa
+      ? atual.localDeliveryFee
+      : novo.localDeliveryFee,
+    localCepRange: mexeu.alcance ? atual.localCepRange : novo.localCepRange,
+    modo: mexeu.modo ? atual.modo : novo.modo,
+    diasDaEntrega: mexeu.dias ? atual.diasDaEntrega : novo.diasDaEntrega,
+  };
 }
 
 const ORDEM_DE_EXIBICAO: readonly ProvedorFrete[] = [
@@ -213,13 +356,13 @@ export const AdminShippingView = memo(function AdminShippingView({
   }, []);
 
   // ── Formulário LOCAL (herdado, intacto) ───────────────────────────────
-  const [formData, setFormData] = useState({
-    preset: "desligado" as PresetFreteGratis,
+  const [formData, setFormData] = useState<FormularioLocal>({
+    preset: "desligado",
     acimaDe: 0,
-    shippingCoverage: "national" as "local" | "national",
+    shippingCoverage: "national",
     localDeliveryFee: 10,
     localCepRange: "",
-    modo: "entrego" as ModoDaEntregaNaCidade,
+    modo: "entrego",
     diasDaEntrega: String(DIAS_DA_ENTREGA_PROPRIA_PADRAO),
   });
   // O CEP da loja com que o formulário foi montado: "Só perto da loja" é uma
@@ -228,13 +371,27 @@ export const AdminShippingView = memo(function AdminShippingView({
   const cepDoFormularioRef = useRef<string | null | undefined>(undefined);
 
   // ── Formulário NACIONAL (T4, herdado de AdminShippingNationalView) ───
-  const [formDataNacional, setFormDataNacional] = useState({
-    estrategia: "desligado" as EstrategiaDeFreteNacional,
+  const [formDataNacional, setFormDataNacional] = useState<FormularioNacional>({
+    estrategia: "desligado",
     minimo: 0,
-    tipoDesconto: null as "percentual" | "fixo" | null,
+    tipoDesconto: null,
     valorDesconto: 0,
-    alcance: "mais_barata" as "mais_barata" | "todas",
+    alcance: "mais_barata",
   });
+  // O retrato de cada metade: o formulário como saiu do config (ou do último
+  // Salvar). O Salvar manda só o que difere dele; ver `FormularioLocal`.
+  const retratoLocalRef = useRef<FormularioLocal | null>(null);
+  const retratoNacionalRef = useRef<FormularioNacional | null>(null);
+  // O formulário de AGORA, para o efeito de sincronização mesclar sem depender
+  // dele (o efeito roda quando o config muda, não a cada tecla).
+  const formDataRef = useRef(formData);
+  const formDataNacionalRef = useRef(formDataNacional);
+  useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
+  useEffect(() => {
+    formDataNacionalRef.current = formDataNacional;
+  }, [formDataNacional]);
 
   // Qualquer edição nova limpa o aviso de falha do save anterior — "Tentar
   // de novo" não deve continuar aceso depois que a lojista já mexeu de
@@ -295,27 +452,32 @@ export const AdminShippingView = memo(function AdminShippingView({
 
   useEffect(() => {
     if (isLoaded && config) {
-      if (
-        jaSincronizouRef.current &&
-        (isFormDirtyRef.current || sincronizacaoSuspensaRef.current)
-      ) {
+      const retrato = retratoLocalRef.current;
+      if (jaSincronizouRef.current && sincronizacaoSuspensaRef.current) {
+        return;
+      }
+      const novo = formularioLocalDoConfig(config);
+      if (jaSincronizouRef.current && isFormDirtyRef.current && retrato) {
+        // Em edição: o que ela não mexeu acompanha o config (que pode ter vindo
+        // do outro aparelho); o que ela digitou fica. Sem isto o formulário
+        // seguiria mostrando o valor velho e nunca "fecharia" com o config.
+        const mesclado = mesclarFormularioLocal(
+          formDataRef.current,
+          retrato,
+          novo,
+        );
+        // O retrato é o config novo em TODOS os campos (não só nos que ela não
+        // mexeu): o que sobrar diferente na tela é edição dela e vai no Salvar.
+        retratoLocalRef.current = novo;
+        setFormData((prev) =>
+          mesmoFormularioLocal(prev, mesclado) ? prev : mesclado,
+        );
         return;
       }
       jaSincronizouRef.current = true;
       cepDoFormularioRef.current = config.originCep;
-      const minSalvo = Number(config.freeShippingMin ?? 0);
-      const presetSalvo = presetDoConfig(minSalvo);
-      setFormData({
-        preset: presetSalvo,
-        acimaDe: presetSalvo === "acima_de_valor" ? minSalvo : 0,
-        shippingCoverage: (config.shippingCoverage || "national") as
-          | "local"
-          | "national",
-        localDeliveryFee: Number(config.localDeliveryFee ?? 10),
-        localCepRange: config.localCepRange || "",
-        modo: modoDaEntregaNaCidade(config),
-        diasDaEntrega: String(diasDaEntregaPropria(config.localDeliveryDays)),
-      });
+      retratoLocalRef.current = novo;
+      setFormData(novo);
     }
   }, [isLoaded, config, active]);
 
@@ -325,20 +487,34 @@ export const AdminShippingView = memo(function AdminShippingView({
 
   useEffect(() => {
     if (isLoaded && config) {
+      const retrato = retratoNacionalRef.current;
       if (
         jaSincronizouNacionalRef.current &&
-        (isFormDirtyNacionalRef.current || sincronizacaoSuspensaRef.current)
+        sincronizacaoSuspensaRef.current
       ) {
         return;
       }
+      const novo = formularioNacionalDoConfig(config);
+      if (
+        jaSincronizouNacionalRef.current &&
+        isFormDirtyNacionalRef.current &&
+        retrato
+      ) {
+        // A regra de fora da cidade é UMA resposta só (o banco confere os cinco
+        // campos juntos): mexida, fica inteira; intocada, acompanha o config.
+        // O retrato vira o config novo nos dois casos (mesma regra do local).
+        const mexida = nacionalMudou(formDataNacionalRef.current, retrato);
+        retratoNacionalRef.current = novo;
+        if (!mexida) {
+          setFormDataNacional((prev) =>
+            nacionalMudou(prev, novo) ? novo : prev,
+          );
+        }
+        return;
+      }
       jaSincronizouNacionalRef.current = true;
-      setFormDataNacional({
-        estrategia: config.nationalShippingStrategy,
-        minimo: config.nationalShippingMin,
-        tipoDesconto: config.nationalDiscountType,
-        valorDesconto: config.nationalDiscountValue,
-        alcance: config.nationalBenefitScope,
-      });
+      retratoNacionalRef.current = novo;
+      setFormDataNacional(novo);
     }
   }, [isLoaded, config, active]);
 
@@ -653,6 +829,77 @@ export const AdminShippingView = memo(function AdminShippingView({
       alcance: formDataNacional.alcance,
     };
 
+    // O que ela mexeu NESTE aparelho (difere do retrato). Sem retrato (nunca
+    // sincronizou) vale tudo, como sempre foi. A regra de fora da cidade vai
+    // inteira ou não vai (o banco confere os cinco campos juntos).
+    const retratoLocal = retratoLocalRef.current;
+    const retratoNacional = retratoNacionalRef.current;
+    const mexeu = {
+      // O alcance entra já com o ajuste ao CEP novo da loja (o que será gravado).
+      ...camposLocaisMexidos(
+        { ...formData, localCepRange: alcance },
+        retratoLocal,
+      ),
+      nacional:
+        !retratoNacional || nacionalMudou(formDataNacional, retratoNacional),
+    };
+    // Só chega aqui com valor inválido se o campo está ESCONDIDO ("Só
+    // retirada": as duas travas acima não valem). Virar R$ 0 seria entrega
+    // grátis sem aviso e perderia o valor de antes: o valor gravado fica, o
+    // formulário volta a ele e a lojista é avisada.
+    const taxaDescartada =
+      regrasMudaram &&
+      mexeu.taxa &&
+      (Number.isNaN(formData.localDeliveryFee) ||
+        formData.localDeliveryFee < 0);
+    const taxaGravada = Number(config?.localDeliveryFee ?? 10);
+    const regrasParaGravar: Partial<StoreConfig> = {
+      ...(mexeu.gratis
+        ? { freeShippingMin: valorDoPreset(formData.preset, acimaDeAjustado) }
+        : {}),
+      ...(mexeu.cobertura
+        ? { shippingCoverage: formData.shippingCoverage }
+        : {}),
+      ...(mexeu.taxa && !taxaDescartada
+        ? {
+            // Centavos inteiros: "7.556" gravava fração de centavo.
+            localDeliveryFee: valorDeFreteEmCentavos(
+              Math.max(0, formData.localDeliveryFee),
+            ),
+          }
+        : {}),
+      ...(mexeu.alcance ? { localCepRange: alcance } : {}),
+      ...(mexeu.modo
+        ? {
+            localDeliveryEnabled: formData.modo !== "so_retiro",
+            ...(retiradaMudou
+              ? {
+                  enabledShippingMethods: listaComRetirada(
+                    config?.enabledShippingMethods,
+                    formData.modo !== "entrego",
+                  ),
+                }
+              : {}),
+          }
+        : {}),
+      ...(mexeu.dias
+        ? { localDeliveryDays: diasDoTexto(formData.diasDaEntrega) }
+        : {}),
+      ...(mexeu.nacional
+        ? {
+            nationalShippingStrategy: nacionalAjustado.estrategia,
+            nationalShippingMin: nacionalAjustado.minimo,
+            nationalDiscountType: nacionalAjustado.tipoDesconto,
+            nationalDiscountValue: nacionalAjustado.valorDesconto,
+            nationalBenefitScope: nacionalAjustado.alcance,
+          }
+        : {}),
+    };
+    // Nada mexido além do que já está no config (o formulário só "difere" por
+    // causa de uma mudança que veio de fora): não há o que gravar.
+    const gravaRegras =
+      regrasMudaram && Object.keys(regrasParaGravar).length > 0;
+
     try {
       // Se esta gravação falhar, PARA AQUI (ADMIN-010, #94). O toast de
       // erro sai de dentro do `updateConfig`.
@@ -671,36 +918,50 @@ export const AdminShippingView = memo(function AdminShippingView({
           nome: contatoMototaxi.nome.trim(),
         });
       }
-      const salvou = !regrasMudaram
-        ? true
-        : await updateConfig({
-            freeShippingMin: valorDoPreset(formData.preset, acimaDeAjustado),
-            shippingCoverage: formData.shippingCoverage,
-            // Centavos inteiros: "7.556" gravava fração de centavo.
-            localDeliveryFee: valorDeFreteEmCentavos(
-              Math.max(0, formData.localDeliveryFee),
-            ),
-            localCepRange: alcance,
-            localDeliveryEnabled: formData.modo !== "so_retiro",
-            localDeliveryDays: diasDoTexto(formData.diasDaEntrega),
-            ...(retiradaMudou
-              ? {
-                  enabledShippingMethods: listaComRetirada(
-                    config?.enabledShippingMethods,
-                    formData.modo !== "entrego",
-                  ),
-                }
-              : {}),
-            nationalShippingStrategy: nacionalAjustado.estrategia,
-            nationalShippingMin: nacionalAjustado.minimo,
-            nationalDiscountType: nacionalAjustado.tipoDesconto,
-            nationalDiscountValue: nacionalAjustado.valorDesconto,
-            nationalBenefitScope: nacionalAjustado.alcance,
-          });
+      const salvou = !gravaRegras ? true : await updateConfig(regrasParaGravar);
       if (!salvou) {
         haptic.error();
         setFalhaAoSalvar(true);
         return;
+      }
+
+      // O retrato passa a ser o que acabou de ser gravado, só nas respostas que
+      // foram: as outras seguem iguais ao retrato (e ao config que chegou).
+      if (gravaRegras && retratoLocal) {
+        retratoLocalRef.current = {
+          ...retratoLocal,
+          ...(mexeu.gratis
+            ? { preset: formData.preset, acimaDe: acimaDeAjustado }
+            : {}),
+          ...(mexeu.cobertura
+            ? { shippingCoverage: formData.shippingCoverage }
+            : {}),
+          ...(mexeu.taxa
+            ? { localDeliveryFee: formData.localDeliveryFee }
+            : {}),
+          ...(mexeu.alcance ? { localCepRange: alcance } : {}),
+          ...(mexeu.modo ? { modo: formData.modo } : {}),
+          ...(mexeu.dias ? { diasDaEntrega: formData.diasDaEntrega } : {}),
+        };
+      }
+      if (gravaRegras && mexeu.nacional) {
+        retratoNacionalRef.current = nacionalAjustado;
+      }
+      if (taxaDescartada) {
+        // O valor inválido não foi gravado: o campo (escondido) volta ao que
+        // está valendo, senão ficaria "diferente do salvo" para sempre e,
+        // ao voltar para "Eu entrego", apareceria vazio (= entrega grátis).
+        if (retratoLocalRef.current) {
+          retratoLocalRef.current = {
+            ...retratoLocalRef.current,
+            localDeliveryFee: taxaGravada,
+          };
+        }
+        setFormData((prev) =>
+          Object.is(prev.localDeliveryFee, formData.localDeliveryFee)
+            ? { ...prev, localDeliveryFee: taxaGravada }
+            : prev,
+        );
       }
 
       // Normaliza só o formulário enviado; preserva edições feitas na espera.
@@ -744,7 +1005,20 @@ export const AdminShippingView = memo(function AdminShippingView({
       setFalhaAoSalvar(false);
       // A guarda acompanha o dirty check e os tokens pendentes pelo efeito.
       haptic.success();
-      if (regrasMudaram) toast.success("Regras de frete salvas!");
+      if (taxaDescartada)
+        toast.success("Regras de frete salvas!", {
+          description: `O valor da entrega que estava no campo não valia e não foi trocado: continua ${taxaGravada === 0 ? "grátis" : `R$ ${reais(taxaGravada)}`}.`,
+        });
+      else if (regrasMudaram && gravaRegras)
+        toast.success("Regras de frete salvas!");
+      else if (regrasMudaram)
+        // A tela difere do banco, mas nada dela a gravar: o que difere é de
+        // outro aparelho. Mandar a tela regravaria o que ela nunca viu; dizer
+        // "salvas" seria mentira.
+        toast.error("Nada foi salvo: outro aparelho mudou o frete.", {
+          description:
+            "A tela está diferente do que a loja tem hoje. Saia do Frete e entre de novo para ver o que está valendo.",
+        });
       else if (mototaxiSalvoNestaRodada)
         toast.success("Contato do mototáxi salvo");
     } catch (err) {

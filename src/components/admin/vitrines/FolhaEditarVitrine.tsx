@@ -319,6 +319,9 @@ export function FolhaEditarVitrine({
                 type="button"
                 data-produto-id={produto.id}
                 aria-pressed={marcado}
+                // Só uma gravação sai por vez: um toque durante outra seria
+                // descartado em silêncio pela view e não ficaria marcado.
+                disabled={travado}
                 onClick={() => aoAlternarProduto(produto.id)}
                 className="flex w-full items-center gap-3 border-b border-admin-border py-2.5 text-left transition-colors hover:bg-white/[0.02]"
               >

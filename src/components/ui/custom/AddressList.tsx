@@ -330,10 +330,12 @@ export const AddressList = memo(function AddressList({
               key={address.id}
               role={selectable ? "button" : undefined}
               tabIndex={selectable ? 0 : undefined}
-              className={`relative rounded-2xl border-2 bg-zinc-50/50 p-4 transition-all duration-500 sm:p-5 ${
+              className={`relative rounded-2xl border-2 ${selectable ? "bg-zinc-50/50" : "bg-muted/50"} p-4 transition-all duration-500 sm:p-5 ${
                 selectable && selectedId === address.id
                   ? "z-10 border-zinc-900 bg-white shadow-2xl shadow-zinc-100"
-                  : "border-transparent hover:border-zinc-200 hover:bg-white"
+                  : selectable
+                    ? "border-transparent hover:border-zinc-200 hover:bg-white"
+                    : "border-transparent hover:border-border hover:bg-card"
               } ${selectable ? "cursor-pointer active:scale-[0.98]" : ""}`}
               onClick={() => selectable && onSelect?.(address)}
               onKeyDown={(e) => {
@@ -347,12 +349,14 @@ export const AddressList = memo(function AddressList({
               <div className="mb-2 flex items-start justify-between gap-2">
                 <div className="flex min-w-0 flex-1 items-center gap-3">
                   <div
-                    className={`flex size-8 items-center justify-center rounded-xl shadow-sm ${selectable && selectedId === address.id ? "bg-zinc-900 text-white" : "bg-white text-zinc-400"} shrink-0`}
+                    className={`flex size-8 items-center justify-center rounded-xl shadow-sm ${selectable && selectedId === address.id ? "bg-zinc-900 text-white" : selectable ? "bg-white text-zinc-400" : "bg-background text-muted-foreground"} shrink-0`}
                   >
                     <MapPin className="size-4" />
                   </div>
                   <div className="min-w-0">
-                    <span className="block text-sm font-bold leading-tight text-zinc-900">
+                    <span
+                      className={`block text-sm font-bold leading-tight ${selectable ? "text-zinc-900" : "text-foreground"}`}
+                    >
                       {address.name}
                     </span>
                     {address.is_default && (
@@ -383,7 +387,7 @@ export const AddressList = memo(function AddressList({
                       className={
                         selectable
                           ? "relative flex size-8 items-center justify-center rounded-lg bg-white text-zinc-600 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-zinc-900 hover:text-white"
-                          : "flex size-11 items-center justify-center rounded-full text-zinc-600 transition-colors hover:bg-zinc-100"
+                          : "flex size-11 items-center justify-center rounded-full text-foreground/70 transition-colors hover:bg-muted"
                       }
                       aria-label={
                         selectable
@@ -424,10 +428,12 @@ export const AddressList = memo(function AddressList({
                 className={
                   selectable
                     ? "space-y-1 pl-11 text-[11px] font-medium text-zinc-500"
-                    : "space-y-1 pl-11 text-sm font-medium text-zinc-600"
+                    : "space-y-1 pl-11 text-sm font-medium text-foreground/70"
                 }
               >
-                <p className="mb-1 text-xs font-bold uppercase tracking-tighter text-zinc-900">
+                <p
+                  className={`mb-1 text-xs font-bold uppercase tracking-tighter ${selectable ? "text-zinc-900" : "text-foreground"}`}
+                >
                   {address.recipient_name}
                 </p>
                 <p className="leading-relaxed">
@@ -441,7 +447,7 @@ export const AddressList = memo(function AddressList({
                   className={
                     selectable
                       ? "mt-1 text-xs font-bold text-zinc-600"
-                      : "mt-1 text-sm font-bold text-zinc-600"
+                      : "mt-1 text-sm font-bold text-foreground/70"
                   }
                 >
                   CEP: {address.cep}

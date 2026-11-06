@@ -73,7 +73,15 @@ export function PushNotificationBanner({
     // endereço (Salvar endereço, a 64px do fundo) e o detalhe do pedido
     // (Publicar Avaliação, na folha da avaliação). A caixa, a 80px do fundo,
     // cobria esses botões e o toque caía nela.
-    if (currentView === "address-form" || currentView === "order-details") {
+    //
+    // 2-quinquies. NEM na tela do sino (notifications): ela já traz o cartão
+    // "Avisos desligados" com o botão Ligar avisos; o convite flutuante por
+    // cima dela repetia o mesmo pedido e cobria a lista.
+    if (
+      currentView === "address-form" ||
+      currentView === "order-details" ||
+      currentView === "notifications"
+    ) {
       setIsVisible(false);
       return;
     }

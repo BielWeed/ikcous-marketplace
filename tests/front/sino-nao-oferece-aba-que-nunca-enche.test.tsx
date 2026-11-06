@@ -49,6 +49,19 @@ const deleteNotification = vi.fn();
 // que e onde mora a frase da aba padrao, a primeira que toda cliente nova le.
 let listaDoSino: (typeof aviso)[] = [aviso];
 
+// O cartão de avisos do aparelho lê o hook de push (que puxa o supabase real,
+// sem variáveis de ambiente aqui); esta tela é a caixa de avisos.
+vi.mock("@/hooks/usePushNotifications", () => ({
+  usePushNotifications: () => ({
+    isSupported: false,
+    permission: "default",
+    subscription: null,
+    semConta: true,
+    sondado: true,
+    subscribe: vi.fn(),
+  }),
+}));
+
 vi.mock("@/contexts/NotificationContextCore", () => ({
   useNotificationCenter: () => ({
     notifications: listaDoSino,

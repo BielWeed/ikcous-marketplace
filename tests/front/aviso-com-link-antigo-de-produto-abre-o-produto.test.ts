@@ -12,6 +12,12 @@
 // de qualquer espera.
 import { describe, expect, it, vi } from "vitest";
 
+// A tela importa o cartão de avisos do aparelho, que lê o hook de push (puxa o
+// supabase real, sem variáveis de ambiente aqui); este teste é só da decisão.
+vi.mock("@/hooks/usePushNotifications", () => ({
+  usePushNotifications: () => ({}),
+}));
+
 import { navegarPorUrl } from "@/views/customer/NotificationsView";
 
 function destinoDe(url: string) {

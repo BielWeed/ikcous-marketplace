@@ -1,3 +1,4 @@
+import { AvisosDoAparelhoDaCliente } from "@/components/pwa/AvisosDoAparelhoDaCliente";
 import { Button } from "@/components/ui/button";
 import { useNotificationCenter } from "@/contexts/NotificationContextCore";
 import { AnimatePresence, motion } from "framer-motion";
@@ -91,6 +92,14 @@ export function navegarPorUrl(
       "orders",
       "order-details",
       "account-settings",
+      // Páginas públicas que o App aceita como entrada e que a lojista pode
+      // digitar no "Avançado" do painel (o push do celular já as abre). As
+      // telas `admin-*` ficam de fora: a cliente não vai ao painel pelo sino.
+      "about-store",
+      "terms",
+      "privacy",
+      "returns-policy",
+      "recently-viewed",
     ];
 
     if (knownViews.includes(cleanPath)) {
@@ -348,6 +357,9 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
 
       {/* Lista */}
       <div className="flex flex-1 flex-col px-4 pt-2">
+        {/* Estado dos avisos NESTE aparelho: só aparece quando bloqueado ou
+         * desligado (caça r21, achado 5). */}
+        <AvisosDoAparelhoDaCliente />
         {filteredNotifications.length > 0 ? (
           <motion.div layout role="list">
             <AnimatePresence mode="popLayout">

@@ -515,11 +515,11 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
       nationalDiscountValue: 0,
       nationalBenefitScope: "mais_barata",
     });
-    // A tela unificada grava os campos LOCAIS junto, na MESMA ação — a
-    // regra que morreu foi "só os 5 nacionais", não a de campo alheio
-    // (nada de Transportadoras, isso continua provado em
+    // A tela unificada grava os dois lados na MESMA ação QUANDO os dois foram
+    // mexidos; o lado que não foi tocado não é regravado (nada de
+    // Transportadoras, isso continua provado em
     // admin-frete-v2-contrato.test.tsx / admin-visual-frete.test.tsx).
-    expect(payload).toHaveProperty("localDeliveryFee");
+    expect(payload).not.toHaveProperty("localDeliveryFee");
     // O CEP da loja é de Minha loja (P2) — o Salvar do Frete não o envia.
     expect(payload).not.toHaveProperty("originCep");
     expect(payload).not.toHaveProperty("shippingProvider");

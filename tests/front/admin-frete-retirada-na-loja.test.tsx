@@ -371,8 +371,12 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
         expect.objectContaining({
           localDeliveryEnabled: ligada,
           enabledShippingMethods: [...esperados],
-          localDeliveryDays: 1,
         }),
+      );
+      // O prazo não foi mexido: o Salvar não o manda (outro aparelho pode ter
+      // mudado e não se regrava com o valor velho da tela).
+      expect(updateConfig.mock.calls[0][0]).not.toHaveProperty(
+        "localDeliveryDays",
       );
     },
   );
@@ -567,8 +571,11 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
       digitar("#local-delivery-days", dias);
       await clicar(chaveDaRetirada("Eu entrego ou ele retira"));
       await clicar(botaoSalvar());
-      expect(updateConfig).toHaveBeenCalledWith(
-        expect.objectContaining({ localDeliveryDays: 1 }),
+      // O texto inválido nem entra no campo: o prazo não foi mexido e o
+      // Salvar não o manda (fica o que já está gravado).
+      expect(updateConfig).toHaveBeenCalledTimes(1);
+      expect(updateConfig.mock.calls[0][0]).not.toHaveProperty(
+        "localDeliveryDays",
       );
     },
   );
@@ -608,10 +615,11 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     };
     await renderizarFrete();
     await clicar(chaveDaRetirada("Eu entrego ou ele retira"));
+    // Minha loja mudou só o CEP (e outro aparelho, os serviços): o alcance é
+    // a cópia do CEP antigo, então o Salvar o leva junto.
     estadoDaLoja.atual = {
       ...estadoDaLoja.atual,
       originCep: "38400-100",
-      localCepRange: "38400",
       enabledShippingMethods: ["jadlog"],
     };
     await renderizarFrete();
@@ -622,6 +630,30 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
         enabledShippingMethods: ["jadlog", "store-pickup"],
       }),
     );
+  });
+
+  it("CEP e alcance já mudaram por fora: o Salvar não regrava o alcance (já está certo no banco) e manda só a retirada", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      localCepRange: "38500",
+      storeAddress: ENDERECO_FICTICIO,
+      enabledShippingMethods: ["pac"],
+    };
+    await renderizarFrete();
+    await clicar(chaveDaRetirada("Eu entrego ou ele retira"));
+    estadoDaLoja.atual = {
+      ...estadoDaLoja.atual,
+      originCep: "38400-100",
+      localCepRange: "38400",
+      enabledShippingMethods: ["jadlog"],
+    };
+    await renderizarFrete();
+    await clicar(botaoSalvar());
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(updateConfig.mock.calls[0][0]).toEqual({
+      localDeliveryEnabled: true,
+      enabledShippingMethods: ["jadlog", "store-pickup"],
+    });
   });
 
   it("cada resposta diz o efeito para a cliente, em português simples", async () => {
@@ -665,7 +697,7 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     );
   });
 
-  it("padrões intactos: mexer só na taxa não muda o modo nem a lista, e manda entrega ligada e 1 dia", async () => {
+  it("padrões intactos: mexer só na taxa manda só a taxa (nem modo, nem lista, nem prazo)", async () => {
     estadoDaLoja.atual = {
       originCep: "38500-000",
       storeAddress: ENDERECO_FICTICIO,
@@ -674,13 +706,7 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     await renderizarFrete();
     digitar("#local-delivery-fee", "7");
     await clicar(botaoSalvar());
-    const enviado = updateConfig.mock.calls[0][0];
-    expect(enviado).toMatchObject({
-      localDeliveryFee: 7,
-      localDeliveryEnabled: true,
-      localDeliveryDays: 1,
-    });
-    expect(enviado).not.toHaveProperty("enabledShippingMethods");
+    expect(updateConfig.mock.calls[0][0]).toEqual({ localDeliveryFee: 7 });
   });
 
   it.each(["-1", "31", "365", "1.5", "abc"])(

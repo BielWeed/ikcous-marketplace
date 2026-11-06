@@ -207,21 +207,34 @@ describe("Entrega e frete — escolhas novas, valores antigos", () => {
       // Também garante gravação para o caso em que todas as escolhas eram os padrões.
       await act(async () => salvar().click());
       // Oráculo literal do fluxo antigo: não reaproveita a função de conversão que está sendo testada.
+      // Os VALORES são os do contrato antigo; desde que o Salvar manda só o que
+      // foi mexido neste aparelho, cada resposta que continuou igual ao config
+      // (cobertura "local", sem frete grátis local, "Eu entrego", regra de
+      // fora desligada) não sai — e o alcance e o prazo, que este teste nunca
+      // toca, também não.
+      const nacionalMexido =
+        nacional[1] !== "desligado" ||
+        nacional[2] !== 0 ||
+        nacional[3] !== null ||
+        nacional[4] !== 0 ||
+        nacional[5] !== "mais_barata";
       expect(updateConfig).toHaveBeenLastCalledWith({
-        freeShippingMin: local[1],
-        shippingCoverage: fora ? "national" : "local",
+        ...(local[1] === 0 ? {} : { freeShippingMin: local[1] }),
+        ...(fora ? { shippingCoverage: "national" } : {}),
         localDeliveryFee: 12.5,
-        localCepRange: "38400",
-        localDeliveryEnabled: modo[1],
-        localDeliveryDays: 1,
+        ...(modo[0] === "Eu entrego" ? {} : { localDeliveryEnabled: modo[1] }),
         ...(modo[2]
           ? { enabledShippingMethods: ["pac", "sedex", "store-pickup"] }
           : {}),
-        nationalShippingStrategy: nacional[1],
-        nationalShippingMin: nacional[2],
-        nationalDiscountType: nacional[3],
-        nationalDiscountValue: nacional[4],
-        nationalBenefitScope: nacional[5],
+        ...(nacionalMexido
+          ? {
+              nationalShippingStrategy: nacional[1],
+              nationalShippingMin: nacional[2],
+              nationalDiscountType: nacional[3],
+              nationalDiscountValue: nacional[4],
+              nationalBenefitScope: nacional[5],
+            }
+          : {}),
       });
     },
   );
@@ -350,18 +363,9 @@ describe("Entrega e frete — escolhas novas, valores antigos", () => {
       data: { success: false, error: "Falha simulada" },
     });
     await act(async () => salvar().click());
+    // Só a taxa foi mexida: só ela sai (as outras respostas seguem como estão).
     expect(updateConfig).toHaveBeenCalledExactlyOnceWith({
-      freeShippingMin: 0,
-      shippingCoverage: "local",
       localDeliveryFee: 12.5,
-      localCepRange: "38400",
-      localDeliveryEnabled: true,
-      localDeliveryDays: 1,
-      nationalShippingStrategy: "desligado",
-      nationalShippingMin: 0,
-      nationalDiscountType: null,
-      nationalDiscountValue: 0,
-      nationalBenefitScope: "mais_barata",
     });
     expect(erroToast).toHaveBeenCalledWith(
       "As regras foram salvas, mas as transportadoras não. Toque em Tentar de novo.",

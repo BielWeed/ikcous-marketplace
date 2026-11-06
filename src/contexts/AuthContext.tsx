@@ -1074,7 +1074,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             .then((resultado) => {
               if (resultado === "falhou") {
                 toast.error(
-                  "Não foi possível salvar o CPF do cadastro. Informe-o em Minha conta > Informações pessoais.",
+                  "Não foi possível salvar o CPF do cadastro. Informe-o em Perfil > Segurança e conta.",
                 );
               }
             })
@@ -1216,7 +1216,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             toast.error(
               resultado.motivo === "conta_trocada"
                 ? mensagemFalhaCpf(resultado.motivo)
-                : "Cadastro concluído, mas não foi possível salvar o CPF agora. Você pode informá-lo depois em Minha conta > Informações pessoais.",
+                : "Cadastro concluído, mas não foi possível salvar o CPF agora. Você pode informá-lo depois em Perfil > Segurança e conta.",
             );
           }
         } else if (data.user) {
@@ -1231,7 +1231,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           });
           if (!salvou) {
             toast.error(
-              "Cadastro concluído, mas não foi possível guardar o CPF neste aparelho. Você pode informá-lo depois em Minha conta ou no checkout.",
+              "Cadastro concluído, mas não foi possível guardar o CPF neste aparelho. Você pode informá-lo depois em Perfil > Segurança e conta ou no checkout.",
             );
           }
         }

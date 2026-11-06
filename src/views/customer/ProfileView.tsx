@@ -536,7 +536,7 @@ export function ProfileView({
                     aria-hidden="true"
                     className="text-4xl font-bold text-muted-foreground"
                   >
-                    {profileName.trim().charAt(0).toUpperCase()}
+                    {(Array.from(profileName.trim())[0] ?? "").toUpperCase()}
                   </span>
                 )}
                 {isUpdatingAvatar && (

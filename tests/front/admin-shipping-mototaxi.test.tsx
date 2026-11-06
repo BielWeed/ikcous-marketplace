@@ -153,21 +153,9 @@ it("salvar uma regra manda somente os campos de frete, não contato nem horário
   await digitar("#local-delivery-fee", "18");
   await act(async () => botao()?.click());
   expect(s.update).toHaveBeenCalledTimes(1);
-  expect(Object.keys(s.update.mock.calls[0][0]).sort()).toEqual(
-    [
-      "freeShippingMin",
-      "shippingCoverage",
-      "localDeliveryFee",
-      "localCepRange",
-      "localDeliveryEnabled",
-      "localDeliveryDays",
-      "nationalShippingStrategy",
-      "nationalShippingMin",
-      "nationalDiscountType",
-      "nationalDiscountValue",
-      "nationalBenefitScope",
-    ].sort(),
-  );
+  // Só o que foi mexido (a taxa): nem contato, nem horário, nem as outras
+  // regras de frete que a tela não tocou.
+  expect(Object.keys(s.update.mock.calls[0][0])).toEqual(["localDeliveryFee"]);
   expect(s.rpc).not.toHaveBeenCalled();
 });
 it("não grava frete quando o contato pendente falha primeiro", async () => {
