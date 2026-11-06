@@ -157,6 +157,25 @@ function nomeDoServicoDaSuperFrete(
 }
 
 /**
+ * O motivo, em português, de um status que não gera etiqueta -- ou `null` se o
+ * status não é um dos três "mortos para envio". Fonte ÚNICA dos três textos:
+ * a elegibilidade (acima) e o cartão da ficha, que traduz com eles a recusa da
+ * edge (`erroDePedidoParaEtiqueta`, em inglês) quando a tela estava velha.
+ */
+export function motivoDoStatusSemEtiqueta(status: unknown): string | null {
+  switch (String(status || "").toLowerCase()) {
+    case "cancelled":
+      return "Pedido cancelado — não gera etiqueta.";
+    case "delivered":
+      return "Pedido já entregue — não gera etiqueta.";
+    case "returned":
+      return "Pedido devolvido — não gera etiqueta.";
+    default:
+      return null;
+  }
+}
+
+/**
  * Regra de decisão principal. Ordem descrita no comentário de topo do
  * arquivo — cada `if` é um ramo TERMINAL, nunca cai no de baixo.
  */
@@ -180,16 +199,8 @@ export function elegibilidadeDaEtiqueta(
   }
 
   // 2. status morto para envio.
-  const status = String(p.status || "").toLowerCase();
-  if (status === "cancelled") {
-    return indisponivel("Pedido cancelado — não gera etiqueta.");
-  }
-  if (status === "delivered") {
-    return indisponivel("Pedido já entregue — não gera etiqueta.");
-  }
-  if (status === "returned") {
-    return indisponivel("Pedido devolvido — não gera etiqueta.");
-  }
+  const motivoDoStatus = motivoDoStatusSemEtiqueta(p.status);
+  if (motivoDoStatus) return indisponivel(motivoDoStatus);
 
   // 3. pagamento não confirmado (falha FECHADO — a etiqueta usa o saldo REAL
   //    da conta do lojista no Melhor Envio). Passam os TRÊS valores de

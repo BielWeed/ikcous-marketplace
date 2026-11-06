@@ -96,5 +96,9 @@ export function useConfirmarAcao() {
     </AlertDialog>
   );
 
-  return { confirmar, dialogo };
+  // Fecha a pergunta por fora (a tela percebeu que o que ela afirma deixou de
+  // ser verdade): quem espera recebe "não". Sem pergunta aberta, não faz nada.
+  const fechar = useCallback(() => responder(false), [responder]);
+
+  return { confirmar, dialogo, fechar };
 }

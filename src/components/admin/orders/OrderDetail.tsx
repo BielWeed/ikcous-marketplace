@@ -2074,8 +2074,45 @@ export const OrderDetail = memo(function OrderDetail({
   // Laudo #2 (L-1): cancelar pedido deixa de ser UM clique sem guarda — a
   // ação mais destrutiva do painel pede confirmação com texto por caso
   // (pago? em rota?), na mesma régua do cancelamento pelo cliente.
-  const { confirmar, dialogo } = useConfirmarAcao();
+  const { confirmar, dialogo, fechar: fecharConfirmacao } = useConfirmarAcao();
+  // A foto dos campos que alimentam o texto da pergunta: "o app devolve
+  // sozinho" só é verdade enquanto o pedido está como estava quando a janela
+  // abriu. Pedido que muda com a janela aberta (cliente cancelou, pagamento
+  // confirmou, outra aba avançou o pedido) tornaria o "sim" uma resposta a
+  // outra pergunta. Inclui o id: trocar de ficha também invalida a janela.
+  const chaveDoTextoDeCancelar = JSON.stringify([
+    order.id,
+    order.status,
+    order.paymentStatus,
+    order.cancelledAfterShipping,
+    order.returnedToSellerAt,
+    order.valorEstornado,
+    order.shippingLabelId,
+    order.retiradaNaLoja,
+  ]);
+  // Escrita no corpo do render (como `orderIdAtualRef`): a continuação do
+  // "sim" roda em microtarefa e precisa ler o pedido de AGORA, não o da
+  // renderização em que a janela abriu.
+  const chaveAtualDoTextoRef = useRef(chaveDoTextoDeCancelar);
+  chaveAtualDoTextoRef.current = chaveDoTextoDeCancelar;
+  const cancelamentoEmConfirmacaoRef = useRef<{
+    chave: string;
+    avisado: boolean;
+  } | null>(null);
+  useEffect(() => {
+    const aberto = cancelamentoEmConfirmacaoRef.current;
+    if (!aberto || aberto.avisado || aberto.chave === chaveDoTextoDeCancelar) {
+      return;
+    }
+    aberto.avisado = true;
+    fecharConfirmacao();
+    toast.warning("O pedido mudou de situação. Confira antes de cancelar.");
+  }, [chaveDoTextoDeCancelar, fecharConfirmacao]);
   const handleCancelarComConfirmacao = async (id: string) => {
+    // Pergunta já aberta: o clique repetido não pode trocar a foto da janela.
+    if (cancelamentoEmConfirmacaoRef.current) return;
+    const foto = { chave: chaveDoTextoDeCancelar, avisado: false };
+    const statusDaFoto = order.status;
     const texto = textoCancelamentoDoPainel({
       status: order.status,
       payment_status: order.paymentStatus,
@@ -2091,12 +2128,29 @@ export const OrderDetail = memo(function OrderDetail({
       // Retirada pronta (gravada como `shipping`): o produto nunca saiu.
       retiradaNaLoja: order.retiradaNaLoja,
     });
-    const confirmado = await confirmar({
-      titulo: "Cancelar este pedido?",
-      texto,
-      verbo: "Cancelar pedido",
-    });
-    if (confirmado) void handleStatusChange(id, "cancelled");
+    cancelamentoEmConfirmacaoRef.current = foto;
+    let confirmado = false;
+    try {
+      confirmado = await confirmar({
+        titulo: "Cancelar este pedido?",
+        texto,
+        verbo: "Cancelar pedido",
+      });
+    } finally {
+      if (cancelamentoEmConfirmacaoRef.current === foto) {
+        cancelamentoEmConfirmacaoRef.current = null;
+      }
+    }
+    if (!confirmado) return;
+    // O pedido mudou entre o toque no "sim" e agora (antes de o efeito acima
+    // ter fechado a janela): o texto que o lojista confirmou já não vale.
+    if (foto.chave !== chaveAtualDoTextoRef.current) {
+      if (!foto.avisado) {
+        toast.warning("O pedido mudou de situação. Confira antes de cancelar.");
+      }
+      return;
+    }
+    void handleStatusChange(id, "cancelled", statusDaFoto);
   };
 
   // Laudo #2 (L-8): pedido pendente não expira nunca (decisão deliberada —
@@ -2230,6 +2284,10 @@ export const OrderDetail = memo(function OrderDetail({
               key={order.id}
               orderId={order.id}
               isOffline={isOffline}
+              // Cancelar/concluir o pedido aqui na ficha refaz a leitura do
+              // cartão: sem isto ele seguia oferecendo "Gerar etiqueta".
+              status={order.status}
+              paymentStatus={order.paymentStatus}
               trackingCodeDaFicha={localTrackingCode}
               onTrackingAtualizado={(orderIdDaResposta, codigo) => {
                 // A resposta pode ser de um pedido que este componente não
