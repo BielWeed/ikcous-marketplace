@@ -1,5 +1,8 @@
 import { Button } from "@/components/ui/button";
-import { chaveSobreviveAPurga } from "@/lib/localStoragePurgeWhitelist";
+import {
+  chaveDeSessaoSobreviveAPurga,
+  chaveSobreviveAPurga,
+} from "@/lib/localStoragePurgeWhitelist";
 import { gravaMotivoDeRecarga } from "@/lib/motivo-de-recarga";
 import {
   ehErroDeChunk,
@@ -162,7 +165,23 @@ export class GlobalErrorBoundary extends Component<Props, State> {
         e,
       );
     }
-    sessionStorage.clear();
+    // Mesma ideia no sessionStorage: `clear()` puro apagava o PIX pendente e
+    // o formulário do checkout. Fica SÓ o que a lista branca nomeia; o resto
+    // (inclusive qualquer chave que pareça sessão/token) vai embora. O try
+    // também garante que o recarregamento acontece mesmo com o storage
+    // bloqueado.
+    try {
+      for (const key of Object.keys(sessionStorage)) {
+        if (!chaveDeSessaoSobreviveAPurga(key)) {
+          sessionStorage.removeItem(key);
+        }
+      }
+    } catch (e) {
+      console.error(
+        "[GlobalErrorBoundary] Falha ao limpar sessionStorage seletivamente",
+        e,
+      );
+    }
     window.location.reload();
   };
 
