@@ -1,4 +1,17 @@
 {
+  "1.5.139": {
+    "titulo": "Vitrines que não perdem produtos, cupom e exportação mais seguros e acertos no gráfico do painel",
+    "novidades": [],
+    "correcoes": [
+      "Painel, Vitrines: ao tocar num produto da lista, ele não tira da vitrine os que o catálogo ainda não carregou; o contador e o aviso só mostram o que existe.",
+      "Painel, Cupom: o valor mínimo de compra recusa mais de duas casas decimais, em vez de gravar um valor que o caixa não consegue cobrar.",
+      "Painel, Pedidos: exportar em planilha avisa que a conexão está lenta e deixa tentar de novo, em vez de ficar esperando para sempre.",
+      "Checkout: depois de esperar o PIX por muito tempo, o app para de perguntar a cada segundo, mas continua aceitando a confirmação do pagamento.",
+      "Painel, gráfico Retorno do estoque: o cartão não mostra mais -0% nem milhares de por cento e agora se chama Sobre o estoque de hoje.",
+      "Balcão e carrinho: a etiqueta de desconto só aparece quando o desconto é maior que zero, e aplicar uma variação sem estoque nem preço avisa o que falta."
+    ],
+    "melhorias": []
+  },
   "1.5.138": {
     "titulo": "Recarregar o app sem perder o PIX, tela de manutenção que volta sozinha e avisos do painel completos",
     "novidades": [

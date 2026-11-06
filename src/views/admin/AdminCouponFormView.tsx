@@ -357,6 +357,23 @@ function FormularioDoCupom({
       return;
     }
 
+    // O mínimo também é dinheiro: com 49,991 a cliente via "Faltam R$ 0,00" e
+    // não conseguia usar o cupom. Mesma conferência do TEXTO do número do
+    // desconto fixo, valendo para qualquer tipo de cupom. Cupom já salvo cujo
+    // mínimo ela não mexeu não é barrado por isso.
+    const minimoIntocado = isEditing && minPurchase === (lido.minPurchase ?? 0);
+    const textoDoMinimo = String(minPurchase);
+    if (
+      !minimoIntocado &&
+      (textoDoMinimo.includes("e") ||
+        (textoDoMinimo.split(".")[1] ?? "").length > 2)
+    ) {
+      toast.error(
+        "O mínimo de compra precisa ter no máximo 2 casas depois da vírgula.",
+      );
+      return;
+    }
+
     if (usageLimit < 0) {
       toast.error("O limite de uso não pode ser negativo.");
       return;

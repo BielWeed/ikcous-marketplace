@@ -83,7 +83,10 @@ import { motivoDaFalhaEmPortugues } from "@/lib/motivo-da-falha-de-push";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { pedidosParaCsv } from "@/lib/pedidos-csv";
 import { STATUS_PARA_PREPARAR } from "@/lib/pedidos-para-preparar";
-import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
+import {
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -1459,7 +1462,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           ? "O CSV permite até 5000 pedidos. Reduza o período do filtro."
           : codigo === CSV_SEM_TAMANHO_E_COR
             ? "Não deu para ler o tamanho e a cor das peças, então a planilha não foi gerada. Tente de novo."
-            : "Não foi possível gerar o CSV. Tente de novo.",
+            : ehConsultaSemResposta(erro)
+              ? "A conexão está lenta. Tente exportar de novo."
+              : "Não foi possível gerar o CSV. Tente de novo.",
       );
     } finally {
       exportacaoCsvEmCursoRef.current = false;

@@ -68,6 +68,7 @@ export function CartaoDaVitrine({
   indice,
   total,
   produtosEmExibicao,
+  escolhidos: escolhidosVivos,
   aoAbrir,
   aoAlternarAtiva,
   aoMover,
@@ -80,6 +81,8 @@ export function CartaoDaVitrine({
   readonly indice: number;
   readonly total: number;
   readonly produtosEmExibicao: readonly Product[];
+  /** Quantos dos escolhidos ainda existem na loja (o excluído não conta). */
+  readonly escolhidos?: number;
   readonly aoAbrir: (id: string) => void;
   readonly aoAlternarAtiva: (id: string) => void;
   readonly aoMover: (indice: number, direcao: "up" | "down") => void;
@@ -93,7 +96,8 @@ export function CartaoDaVitrine({
   const controles = useDragControls();
   const titulo = tituloExibido(secao);
   const { rotulo, Icone } = tipoDaVitrine(secao);
-  const escolhidos = secao.productIds?.length ?? 0;
+  const manual = (secao.productIds?.length ?? 0) > 0;
+  const escolhidos = escolhidosVivos ?? secao.productIds?.length ?? 0;
   const maximo = secao.maxItems ?? QUANTIDADE_PADRAO;
   const visiveis = produtosEmExibicao.slice(0, MINIATURAS_VISIVEIS);
   const restantes = produtosEmExibicao.length - visiveis.length;
@@ -158,7 +162,7 @@ export function CartaoDaVitrine({
               />
               {secao.active ? (
                 <span className="whitespace-nowrap">
-                  {escolhidos > 0 ? `${escolhidos} escolhidos` : "automático"}
+                  {manual ? `${escolhidos} escolhidos` : "automático"}
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 whitespace-nowrap text-zinc-400">
@@ -226,7 +230,7 @@ export function CartaoDaVitrine({
           >
             Até {maximo}
           </span>
-          {escolhidos > 0 ? (
+          {manual ? (
             <span
               className={cn(
                 "flex h-[30px] items-center whitespace-nowrap gap-1.5 rounded-[10px] border border-admin-gold/25 bg-admin-gold/10 px-2.5 text-xs font-semibold text-admin-gold",

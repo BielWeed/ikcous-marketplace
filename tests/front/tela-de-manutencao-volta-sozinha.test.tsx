@@ -297,6 +297,22 @@ describe("tela de manutenção — NÃO HÁ LAÇO DE RECARGA", () => {
     expect(navegar).not.toHaveBeenCalled();
     expect(buscar).not.toHaveBeenCalled();
   });
+
+  it("só dá para LER o sessionStorage (cheio: setItem falha): a ficha diz 'voltou' e mesmo assim NÃO recarrega, porque sem anotar a recarga não há trava", async () => {
+    vi.stubGlobal("sessionStorage", {
+      getItem: () => null,
+      setItem: () => {
+        throw new DOMException("cheio", "QuotaExceededError");
+      },
+      removeItem: () => undefined,
+      clear: () => undefined,
+    });
+    buscar.mockImplementation(async () => resposta(false));
+    await montar();
+    await passar(INTERVALO_DA_CHECAGEM_MS * 5);
+    expect(buscar).toHaveBeenCalled();
+    expect(navegar).not.toHaveBeenCalled();
+  });
 });
 
 describe("tela de manutenção — botão 'Tentar de novo'", () => {

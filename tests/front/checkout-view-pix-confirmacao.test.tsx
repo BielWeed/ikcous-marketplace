@@ -1027,6 +1027,95 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
     expect(fromSpy).not.toHaveBeenCalled();
   });
 
+  // Achado do cético (r24-q, 06/11/2026): o teto parava o intervalo E marcava
+  // `parado = true`, que também desligava as leituras avulsas. Quem deixou o
+  // cartão em análise por mais de 1 h e voltava à aba depois disso nunca mais
+  // via o pedido pago — a tela ficava em "Confirmando seu pedido…". O teto
+  // agora só para o INTERVALO; a volta à aba (ação da cliente, uma leitura por
+  // volta) continua consultando o banco. Sem este par, voltar a `parado = true`
+  // no teto deixaria o teste de cima verde e a cliente presa de novo.
+  it("depois do teto de 360 ticks o intervalo não consulta mais, mas voltar à aba ainda consulta UMA vez e confirma o pedido pago", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    fromSpy.mockClear();
+    mockRespostaPoll = {
+      data: { payment_status: "aguardando", expires_at: null },
+      error: null,
+    };
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(360 * 10_000);
+    });
+    expect(fromSpy).toHaveBeenCalledTimes(360);
+
+    // O intervalo está parado: tempo passando sozinho não consulta.
+    fromSpy.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    expect(fromSpy).not.toHaveBeenCalled();
+
+    // Enquanto isso o pedido foi pago no banco. A cliente sai da aba (nenhuma
+    // consulta: aba escondida) e volta (exatamente UMA).
+    mockRespostaPoll = {
+      data: { payment_status: "pago", expires_at: null },
+      error: null,
+    };
+    definirVisibilidade("hidden");
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(fromSpy).not.toHaveBeenCalled();
+
+    definirVisibilidade("visible");
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(fromSpy).toHaveBeenCalledTimes(1);
+    expect(fromSpy).toHaveBeenCalledWith("marketplace_orders");
+    expect(hospedeiro.textContent).toContain("Pagamento Confirmado");
+
+    // Confirmou: nada mais consulta.
+    fromSpy.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(fromSpy).not.toHaveBeenCalled();
+  });
+
+  it("depois do teto, voltar à aba com o pedido ainda aguardando consulta UMA vez por volta e não recria o intervalo", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    mockRespostaPoll = {
+      data: { payment_status: "aguardando", expires_at: null },
+      error: null,
+    };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(360 * 10_000);
+    });
+
+    fromSpy.mockClear();
+    for (let volta = 1; volta <= 3; volta += 1) {
+      definirVisibilidade("visible");
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"));
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(fromSpy).toHaveBeenCalledTimes(volta);
+    }
+
+    // Entre uma volta e outra o relógio continua sem consultar.
+    fromSpy.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300_000);
+    });
+    expect(fromSpy).not.toHaveBeenCalled();
+  });
+
   it("a verificação periódica consulta pelas colunas certas e pelo id do pedido em tela", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNaTelaDeAguardarPagamento(CheckoutView);

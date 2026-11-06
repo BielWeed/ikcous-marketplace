@@ -3356,7 +3356,8 @@ export function CheckoutViewDaConta({
   // 'pago_apos_expirar', 'recusado', 'estornado' — ver `verificarPagamento`,
   // abaixo), ou quando o teto de TICKS (não de relógio — ver o comentário
   // grande de `TETO_TICKS_VERIFICACAO_PAGAMENTO`, no topo do arquivo) é
-  // atingido. 'expirado' continua sendo consultado normalmente, porque é o
+  // atingido — e este último só para o INTERVALO: a volta à aba continua
+  // fazendo uma leitura por volta. 'expirado' continua sendo consultado normalmente, porque é o
   // único caminho até 'pago_apos_expirar'.
   //
   // ESCOPO (decidido na tarefa): só cliente LOGADO. `marketplace_orders_
@@ -3558,10 +3559,18 @@ export function CheckoutViewDaConta({
       // valor congelado, cada corte pertence à sua própria chamada. Não se
       // perde robustez: os ticks seguintes também satisfazem a condição, então
       // uma consulta pendurada não impede o corte.
+      //
+      // O teto só para o INTERVALO — NÃO grava `parado` (achado r24-q,
+      // 06/11/2026). `parado` desliga também as leituras avulsas (volta à aba
+      // e realtime): com cartão em análise por mais de 1 h, a cliente voltava
+      // à aba, nenhuma leitura saía, e a tela ficava em "Confirmando seu
+      // pedido…" com o pedido já pago. Cada leitura avulsa nasce de uma ação
+      // dela (ou de um evento do realtime), então não vira polling contínuo.
+      // `parado` fica para desmontagem, 'recusado'/'estornado' e a cerca do
+      // `await`.
       const tickDesteCiclo = ticks;
       verificarPagamento().finally(() => {
         if (tickDesteCiclo >= TETO_TICKS_VERIFICACAO_PAGAMENTO) {
-          parado = true;
           clearInterval(intervalId);
         }
       });

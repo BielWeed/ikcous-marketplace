@@ -20,6 +20,10 @@ import { instanteDentroDoPeriodo } from "@/lib/filtro-da-lista-de-pedidos";
 import { JANELA_PEDIDOS_CANCELADOS_DIAS } from "@/lib/janela-cancelados";
 import { mapOrderFromDB } from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import {
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
 import type { DashboardSummary, Order, OrderStatus } from "@/types";
@@ -40,6 +44,10 @@ const globalOrderSubscriptions = new Map<string, SharedSubscription>();
 // tempo real em `useOrders`.
 const ESPERA_DO_SERVIDOR_MS = 1000;
 const REPERGUNTA_AO_SERVIDOR_MS = 15_000;
+// Exportar CSV: cada página de 100 pedidos tem 20 s (o mesmo prazo do PIX).
+const PRAZO_DA_PAGINA_DO_CSV_MS = 20_000;
+const MENSAGEM_CSV_CONEXAO_LENTA =
+  "A conexão está lenta. Tente exportar de novo.";
 
 const validateStatusUpdate = (
   order: Order | undefined,
@@ -2288,23 +2296,31 @@ export function useOrders(
       let totalEsperado: number | undefined;
 
       for (let page = 0; page < MAX_PAGES; page += 1) {
-        const { data, error } = await (supabase.rpc as any)(
-          "get_admin_orders_paged",
-          {
-            p_search: searchQuery || "",
-            p_status: statusFilter || "all",
-            p_start_date: startDate || "",
-            p_end_date: endDate || "",
-            p_page: page,
-            p_page_size: PAGE_SIZE,
-            // A RPC filtra tanto os dados quanto a contagem por pagamento.
-            p_payment_status: paymentStatus || "all",
-            // C4.4: sem isto, o CSV exportaria um filtro diferente do que
-            // está na tela quando o chip "Balcão" está ligado — mesma
-            // classe de defeito que o comentário acima já cobre para
-            // pagamento.
-            p_canal: canal || "all",
-          },
+        // Prazo POR PÁGINA: rede "pendurada" conecta e não responde, e sem ele
+        // o botão do CSV ficava em "Gerando CSV..." para sempre. Estourou, o
+        // laço para aqui e nenhum arquivo parcial sai.
+        const { data, error } = await aguardarComPrazo(
+          // `rpc` devolve um "thenable", nao uma Promise: sem isto o tipo
+          // do retorno vira `unknown`.
+          Promise.resolve(
+            (supabase.rpc as any)("get_admin_orders_paged", {
+              p_search: searchQuery || "",
+              p_status: statusFilter || "all",
+              p_start_date: startDate || "",
+              p_end_date: endDate || "",
+              p_page: page,
+              p_page_size: PAGE_SIZE,
+              // A RPC filtra tanto os dados quanto a contagem por pagamento.
+              p_payment_status: paymentStatus || "all",
+              // C4.4: sem isto, o CSV exportaria um filtro diferente do que
+              // está na tela quando o chip "Balcão" está ligado — mesma
+              // classe de defeito que o comentário acima já cobre para
+              // pagamento.
+              p_canal: canal || "all",
+            }),
+          ),
+          PRAZO_DA_PAGINA_DO_CSV_MS,
+          () => erroDeConsultaSemResposta(MENSAGEM_CSV_CONEXAO_LENTA),
         );
         if (error) throw error;
 

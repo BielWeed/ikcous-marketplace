@@ -102,6 +102,22 @@ function efeitosDeRestaurar(
   return efeitos;
 }
 
+/**
+ * Os ids escolhidos que ainda existem no catálogo. Produto excluído continua
+ * na lista gravada da vitrine, mas não está na loja: não conta nem entra na
+ * numeração. `existentes` nulo = catálogo ainda sem ler: não filtra (senão a
+ * lista zerava).
+ */
+function soOsQueExistem(
+  ids: readonly string[] | undefined,
+  existentes: ReadonlySet<string> | null,
+): string[] {
+  const escolhidos = ids ?? [];
+  return existentes
+    ? escolhidos.filter((id) => existentes.has(id))
+    : [...escolhidos];
+}
+
 export const AdminCarouselsView = memo(function AdminCarouselsView({
   onNavigate: _onNavigate,
   onSetDirty,
@@ -112,6 +128,13 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   // Lista vazia por não ter lido ainda (ou por erro) não é "loja sem produtos".
   const catalogoFora =
     products.length === 0 && (loadingProducts || catalogoErro);
+  const idsDoCatalogo = useMemo(
+    () =>
+      catalogoFora || products.length === 0
+        ? null
+        : new Set(products.map((p) => p.id)),
+    [catalogoFora, products],
+  );
   const isOffline = useOnlineStatus();
 
   // Painéis e diálogos
@@ -304,7 +327,10 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     );
     void handleUpdateHomeSections(updated, false).then((salvou) => {
       if (salvou) {
-        avisarSePassouDoMaximo(atual?.productIds?.length ?? 0, maxItems);
+        avisarSePassouDoMaximo(
+          soOsQueExistem(atual?.productIds, idsDoCatalogo).length,
+          maxItems,
+        );
       }
     });
   };
@@ -504,6 +530,11 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     }
     const updated = homeSections.map((sec) => {
       if (sec.id !== sectionId) return sec;
+      // A lista gravada fica CRUA: o catálogo desta tela pode ser parcial (cai
+      // na vista pública, sem pausados, se a consulta do painel falhar) e podar
+      // aqui apagaria produto pausado da vitrine para sempre. Id de produto
+      // excluído na lista é inofensivo — a loja já o ignora; só a CONTAGEM e a
+      // numeração mostradas ao lojista passam por `soOsQueExistem`.
       const initialIds =
         sec.productIds && sec.productIds.length > 0
           ? sec.productIds
@@ -519,7 +550,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     const nova = updated.find((sec) => sec.id === sectionId);
     if (salvou && nova?.productIds?.includes(productId)) {
       avisarSePassouDoMaximo(
-        nova.productIds.length,
+        soOsQueExistem(nova.productIds, idsDoCatalogo).length,
         nova.maxItems ?? QUANTIDADE_PADRAO,
       );
     }
@@ -602,11 +633,11 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   const idsEmExibicaoNaEdicao = useMemo(() => {
     if (!secaoEmEdicao) return [];
     if (secaoEmEdicao.productIds && secaoEmEdicao.productIds.length > 0) {
-      return secaoEmEdicao.productIds;
+      return soOsQueExistem(secaoEmEdicao.productIds, idsDoCatalogo);
     }
     // Modo automático: os que aparecem são os calculados em previewProducts
     return (previewProducts[secaoEmEdicao.id] || []).map((p) => p.id);
-  }, [secaoEmEdicao, previewProducts]);
+  }, [secaoEmEdicao, previewProducts, idsDoCatalogo]);
 
   return (
     <div className="pb-admin relative h-auto w-full max-w-full overflow-x-hidden bg-admin-bg font-sans text-zinc-400 selection:bg-admin-gold/30 selection:text-white">
@@ -746,6 +777,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
               indice={index}
               total={secoesNaLista.length}
               produtosEmExibicao={previewProducts[sec.id] ?? []}
+              escolhidos={soOsQueExistem(sec.productIds, idsDoCatalogo).length}
               aoAbrir={setEditingSectionId}
               aoAlternarAtiva={handleToggleSectionActive}
               aoMover={moveSection}
