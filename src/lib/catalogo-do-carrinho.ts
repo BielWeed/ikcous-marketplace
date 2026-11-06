@@ -107,6 +107,32 @@ function unidadesDisponiveis(
   return unidades;
 }
 
+/**
+ * O texto da variação da linha ("Cor: Azul" ou "Cor: Azul, Tamanho: P") com os
+ * nomes de AGORA. `variantNames` é montado quando a linha entra no carrinho
+ * (mesmo formato de ProductView.tsx) e, sem isto, ficava congelado: a lojista
+ * corrige "P" para "Pequeno" e a cliente seguia vendo o nome velho.
+ *
+ * Mesma ordem em que a linha foi montada: `variantId` primeiro, depois
+ * `outrasVariantIds`. Só mexe em linha que JÁ tem texto (a de carrinho antigo
+ * sem `variantNames` a tela lê direto da variação) e só quando TODAS as
+ * variações da linha existem — se alguma sumiu, mantém o texto como está (quem
+ * decide o destino da linha é `unidadesDisponiveis`, sem mexer aqui).
+ */
+function nomesAtuaisDaLinha(
+  item: CartItem,
+  atual: Product,
+): string | undefined {
+  if (!item.variantId || !item.variantNames) return item.variantNames;
+  const nomes: string[] = [];
+  for (const id of [item.variantId, ...(item.outrasVariantIds ?? [])]) {
+    const variacao = atual.variants?.find((v) => v.id === id);
+    if (!variacao) return item.variantNames;
+    nomes.push(`${variacao.name}: ${variacao.value}`);
+  }
+  return nomes.join(", ");
+}
+
 function renovarItem(
   item: CartItem,
   catalogo: CatalogoLido,
@@ -125,12 +151,15 @@ function renovarItem(
   const quantity = Math.min(item.quantity, disponivel);
   somarUso(usado, item, quantity);
   const mesmoProduto = JSON.stringify(item.product) === JSON.stringify(atual);
-  if (mesmoProduto && quantity === item.quantity) return item;
+  const variantNames = nomesAtuaisDaLinha(item, atual);
+  const mesmosNomes = variantNames === item.variantNames;
+  if (mesmoProduto && quantity === item.quantity && mesmosNomes) return item;
 
   return {
     ...item,
     product: mesmoProduto ? item.product : atual,
     quantity,
+    ...(mesmosNomes ? {} : { variantNames }),
     // A quantidade só é carimbada de novo quando ELA mudou: trocar a cópia do
     // produto não é uma edição da cliente e não pode ganhar do carrinho de
     // outro aparelho na regra "quem escreveu por último vence".

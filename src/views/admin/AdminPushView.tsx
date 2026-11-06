@@ -32,6 +32,7 @@ import {
   somenteCampanhasReais,
 } from "@/lib/historico-de-campanhas";
 import { lerEmPaginas } from "@/lib/ler-em-paginas";
+import { motivoDaFalhaEmPortugues } from "@/lib/motivo-da-falha-de-push";
 import {
   type CupomDaLoja,
   MARCADOR_DO_CUPOM,
@@ -80,35 +81,6 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-
-// O motivo gravado vem em inglês técnico da função de envio (ex.: "push
-// service respondeu 410 Gone"). Aqui só se traduz para exibir; o dado não muda.
-function motivoDaFalhaEmPortugues(falha: {
-  status?: unknown;
-  motivo?: unknown;
-  quantidade?: unknown;
-}): string {
-  // A função de envio já manda o código numérico; o texto em inglês só serve
-  // de reserva.
-  const status =
-    typeof falha.status === "number"
-      ? falha.status
-      : Number(
-          /push service respondeu (\d{3})/i.exec(
-            String(falha.motivo ?? ""),
-          )?.[1],
-        );
-  if (status === 404 || status === 410)
-    return Number(falha.quantidade) > 1
-      ? "esses aparelhos não recebem mais avisos (as inscrições venceram)"
-      : "esse aparelho não recebe mais avisos (a inscrição venceu)";
-  if (status === 401 || status === 403)
-    return "o serviço de avisos recusou o envio";
-  if (status === 413) return "mensagem grande demais";
-  if (status === 429) return "muitos envios, tente daqui a pouco";
-  if (status >= 500) return "o serviço de avisos está fora do ar agora";
-  return "motivo não identificado";
-}
 
 /** Selo de ícone neutro: a cor fica para o que significa algo. */
 function SeloDeIcone({
@@ -507,37 +479,45 @@ export const AdminPushView = memo(function AdminPushView({
   const [filtroDeProduto, setFiltroDeProduto] = useState("");
   const [products, setProducts] = useState<{ id: string; nome: string }[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
+  // A leitura da lista falhou: sem este aviso, "Abrir um produto específico"
+  // virava um link sem produto e ninguém sabia por quê.
+  const [erroProdutos, setErroProdutos] = useState(false);
+
+  const loadProducts = useCallback(async () => {
+    setLoadingProducts(true);
+    setErroProdutos(false);
+    try {
+      const { data, error } = await lerEmPaginas((de, ate) =>
+        supabase
+          .from("vw_produtos_public")
+          .select("id, nome")
+          .eq("ativo", true)
+          .order("nome", { ascending: true })
+          .order("id", { ascending: true })
+          .range(de, ate),
+      );
+      if (!error && data) {
+        const validProducts = (data as any[])
+          .filter((p) => p.id && p.nome)
+          .map((p) => ({ id: p.id as string, nome: p.nome as string }));
+        setProducts(validProducts);
+        if (validProducts.length > 0) {
+          setSelectedProductId(validProducts[0].id);
+        }
+      } else {
+        setErroProdutos(true);
+      }
+    } catch (err) {
+      console.error("Erro ao carregar produtos:", err);
+      setErroProdutos(true);
+    } finally {
+      setLoadingProducts(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const loadProducts = async () => {
-      setLoadingProducts(true);
-      try {
-        const { data, error } = await lerEmPaginas((de, ate) =>
-          supabase
-            .from("vw_produtos_public")
-            .select("id, nome")
-            .eq("ativo", true)
-            .order("nome", { ascending: true })
-            .order("id", { ascending: true })
-            .range(de, ate),
-        );
-        if (!error && data) {
-          const validProducts = (data as any[])
-            .filter((p) => p.id && p.nome)
-            .map((p) => ({ id: p.id as string, nome: p.nome as string }));
-          setProducts(validProducts);
-          if (validProducts.length > 0) {
-            setSelectedProductId(validProducts[0].id);
-          }
-        }
-      } catch (err) {
-        console.error("Erro ao carregar produtos:", err);
-      } finally {
-        setLoadingProducts(false);
-      }
-    };
     loadProducts();
-  }, []);
+  }, [loadProducts]);
 
   // A URL de cada destino mora em `src/lib/destino-do-aviso.ts` (função pura,
   // com a tabela de URLs presa em teste): este componente só guarda a escolha.
@@ -549,6 +529,12 @@ export const AdminPushView = memo(function AdminPushView({
   };
 
   const handleDestTypeChange = (type: string) => {
+    // Sem produto na lista, "produto" geraria "/product-detail" sem id, que o
+    // efeito de sincronização lê como "Outra página": o destino não troca.
+    if (type === "product" && products.length === 0) {
+      toast.warning("Nenhum produto disponível para escolher.");
+      return;
+    }
     setDestType(type);
     // O caminho manual (Avançado) só vale enquanto "Outra página" é o destino:
     // escolher uma tela da lista o esvazia para o campo não mostrar um caminho
@@ -831,6 +817,15 @@ export const AdminPushView = memo(function AdminPushView({
     }
     if (!notification.title.trim() || !notification.body.trim()) {
       toast.error("Preencha título e mensagem");
+      return;
+    }
+    // Segunda trava do produto sem id: "/product-detail" (ou "?id=" vazio)
+    // abre uma página sem produto no celular da cliente.
+    if (/^\/product-detail\/?(\?id=)?$/.test(notification.url)) {
+      toast.error("Escolha o produto que o aviso vai abrir", {
+        description:
+          'Em "Ao tocar na mensagem", escolha um produto da lista ou outra tela.',
+      });
       return;
     }
     // O botão já fica travado com o marcador no texto; esta guarda cobre o
@@ -1145,7 +1140,13 @@ export const AdminPushView = memo(function AdminPushView({
       if (envioConfirmado && entregues > 0) {
         limparMensagemEnviada(mensagemEnviada);
       }
+      // O envio mudou a base (aparelhos que venceram saem, o histórico ganha
+      // uma linha): remede o que a tela mostra, só leituras baratas. Para
+      // "todos", o alcance se remede sozinho quando `subCount` muda.
       fetchHistory();
+      fetchSubscribers();
+      fetchSegmentCounts();
+      if (segment !== "all") calculateReach();
     } catch (error) {
       console.error("Error sending push:", error);
       toast.error("Falha ao registrar notificação no banco");
@@ -1701,6 +1702,29 @@ export const AdminPushView = memo(function AdminPushView({
                     </SelectItem>
                   </SelectContent>
                 </Select>
+
+                {erroProdutos && (
+                  <div
+                    role="alert"
+                    className="flex flex-wrap items-center gap-3 rounded-2xl border border-admin-border bg-admin-card px-3.5 py-3 text-sm text-zinc-200"
+                  >
+                    <AlertCircle
+                      aria-hidden="true"
+                      className="size-4 shrink-0 text-zinc-300"
+                    />
+                    <span className="min-w-0 flex-1">
+                      Não deu para carregar os produtos.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={loadProducts}
+                      disabled={isOffline || loadingProducts}
+                      className="inline-flex min-h-12 items-center rounded-full bg-white/[0.06] px-4 text-sm font-bold text-zinc-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-60"
+                    >
+                      Tentar de novo
+                    </button>
+                  </div>
+                )}
 
                 {destType === "product" && (
                   <div className="space-y-3 motion-safe:duration-200 motion-safe:animate-in motion-safe:fade-in">

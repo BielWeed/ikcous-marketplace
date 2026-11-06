@@ -361,15 +361,20 @@ export function AdminPdvView({
       typeof whatsappBruto === "string" && whatsappBruto.trim() !== ""
         ? whatsappBruto
         : null;
+    const nome = (pedido.customer_name ?? "").trim();
     if (pedido.user_id) {
+      // Cliente cadastrada sem nome no perfil: o banco grava o literal de
+      // venda sem cliente (ver acima). Na tela de escolher a cliente isso já
+      // é "Cliente" (ClienteDaVenda.tsx); o recibo diz o mesmo, não "Venda no
+      // balcão" — que ela não é.
       return {
         tipo: "cadastrado",
         userId: pedido.user_id,
-        nome: pedido.customer_name,
+        nome:
+          nome === "" || nome === NOME_DE_VENDA_SEM_CLIENTE ? "Cliente" : nome,
         whatsapp,
       };
     }
-    const nome = (pedido.customer_name ?? "").trim();
     if (nome === "" || nome === NOME_DE_VENDA_SEM_CLIENTE) {
       return { tipo: "sem_cliente" };
     }

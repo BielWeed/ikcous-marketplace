@@ -235,22 +235,39 @@ describe("Painel — aviso de push que não chegou", () => {
     expect(aviso).not.toHaveBeenCalled();
   });
 
-  it("havia aparelho e nenhum recebeu (total 2, enviados 0): avisa", async () => {
+  it("havia aparelho e nenhum recebeu (total 2, enviados 0): avisa com o motivo em português", async () => {
+    // Antes o painel mostrava o motivo cru da função ("push service respondeu
+    // 410 Gone"); agora a mesma tradução da tela Avisar clientes.
     const aviso = await avancarComResposta({
       ok: true,
       total: 2,
       enviados: 0,
       falharam: 2,
-      falhas: [{ motivo: "Aparelho não respondeu" }],
+      falhas: [
+        {
+          status: 410,
+          motivo: "push service respondeu 410 Gone",
+          quantidade: 2,
+        },
+      ],
     });
     expect(aviso).toHaveBeenCalledWith(
       "Status atualizado, mas o push não chegou",
-      expect.objectContaining({ description: "Aparelho não respondeu" }),
+      expect.objectContaining({
+        description:
+          "Esses aparelhos não recebem mais avisos (as inscrições venceram)",
+      }),
     );
   });
 
-  it("resposta sem a contagem total (função antiga) e enviados 0: continua avisando", async () => {
+  it("resposta sem a contagem total (função antiga) e enviados 0: continua avisando, com o texto de reserva", async () => {
     const aviso = await avancarComResposta({ enviados: 0, falhas: [] });
     expect(aviso).toHaveBeenCalledTimes(1);
+    expect(aviso).toHaveBeenCalledWith(
+      "Status atualizado, mas o push não chegou",
+      expect.objectContaining({
+        description: "Nenhum dispositivo deste cliente recebeu a notificação.",
+      }),
+    );
   });
 });
