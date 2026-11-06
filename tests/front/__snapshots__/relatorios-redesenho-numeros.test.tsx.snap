@@ -1,44 +1,5 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`Canais conserva a receita, participação, pedidos e valor médio por canal e forma 1`] = `
-[
-  [
-    "29%",
-    "5",
-    "56%",
-    "72%",
-    "R$ 122,92",
-    "R$ 24,58",
-  ],
-  [
-    "28%",
-    "37%",
-    "4",
-    "44%",
-    "R$ 11,99",
-    "R$ 47,96",
-  ],
-  [
-    "4",
-    "58%",
-    "R$ 24,73",
-    "R$ 98,92",
-  ],
-  [
-    "21%",
-    "3",
-    "R$ 11,99",
-    "R$ 35,98",
-  ],
-  [
-    "2",
-    "21%",
-    "R$ 17,99",
-    "R$ 35,98",
-  ],
-]
-`;
-
 exports[`Clientes conserva valores, pedidos, datas e todos os números dos grupos 1`] = `
 {
   "cliente": [
@@ -98,18 +59,6 @@ exports[`Clientes conserva valores, pedidos, datas e todos os números dos grupo
     ],
   ],
 }
-`;
-
-exports[`Funil conserva a conversão, as três etapas e as quantidades da fila 1`] = `
-[
-  "13",
-  "17",
-  "2",
-  "5",
-  "6",
-  "7",
-  "71,4%",
-]
 `;
 
 exports[`Visão conserva os oito números e as três variações da renderização anterior 1`] = `
