@@ -621,6 +621,8 @@ describe("AdminProductFormView — escolher a variação em vez de digitar", () 
     await digitarNoCampoESair("variant-value", "Vovô");
     expect(valorDoCampo("variant-value")).toBe("Vovô");
     await clicarTexto("Salvar variação");
+    // Variação já gravada que troca de valor pede o "sim" (pode estar em pedido).
+    await clicarTexto("Trocar o nome");
     expect(variantesNaTela()).toEqual(["Estampa: Vovô"]);
   });
 
@@ -640,6 +642,8 @@ describe("AdminProductFormView — escolher a variação em vez de digitar", () 
     await abrirEdicaoDaLinha("azul");
     await digitarNoCampoESair("variant-value", "Azul");
     await clicarTexto("Salvar variação");
+    // Variação já gravada que troca de valor pede o "sim" (pode estar em pedido).
+    await clicarTexto("Trocar o nome");
     expect(variantesNaTela()).toEqual(["Cor: Azul"]);
   });
 
@@ -649,6 +653,8 @@ describe("AdminProductFormView — escolher a variação em vez de digitar", () 
     await clicarRotulo("Azul");
     expect(valorDoCampo("variant-value")).toBe("Azul");
     await clicarTexto("Salvar variação");
+    // Variação já gravada que troca de valor pede o "sim" (pode estar em pedido).
+    await clicarTexto("Trocar o nome");
     expect(variantesNaTela()).toEqual(["Cor: Azul"]);
   });
 

@@ -917,6 +917,22 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                 viewMode === "signup" ||
                 viewMode === "new-password") && (
                 <motion.div variants={itemVariants} className="space-y-2">
+                  {viewMode === "new-password" && user?.email && (
+                    // A tela só tem campos de senha: este campo escondido diz
+                    // ao gerenciador de senhas de QUAL conta é a senha nova.
+                    // É o e-mail da própria sessão de recuperação; não é
+                    // lido nem enviado (o envio usa só a senha digitada).
+                    <input
+                      type="email"
+                      name="email"
+                      autoComplete="username"
+                      value={user.email}
+                      readOnly
+                      hidden
+                      tabIndex={-1}
+                      aria-hidden="true"
+                    />
+                  )}
                   <div className="ml-1 flex items-center justify-between">
                     <label
                       htmlFor="password"

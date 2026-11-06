@@ -113,29 +113,6 @@ export const MensagemDeCompartilhar = memo(function MensagemDeCompartilhar({
     }
   }, [folhaAberta]);
 
-  // Voltar físico do Android / botão Voltar do AdminLayout: empurra uma
-  // entrada de histórico própria na MESMA URL ao abrir, e a consome
-  // (history.back()) ao fechar por QUALQUER caminho, só se ela ainda não
-  // tiver sido consumida pelo pop físico do navegador.
-  const temEntradaDeHistoricoRef = useRef(false);
-  useEffect(() => {
-    if (folhaAberta) {
-      if (!temEntradaDeHistoricoRef.current) {
-        window.history.pushState(
-          { ...window.history.state, modal: "presets" },
-          "",
-          window.location.pathname + window.location.search,
-        );
-        temEntradaDeHistoricoRef.current = true;
-      }
-    } else if (temEntradaDeHistoricoRef.current) {
-      temEntradaDeHistoricoRef.current = false;
-      if (window.history.state?.modal === "presets") {
-        window.history.back();
-      }
-    }
-  }, [folhaAberta]);
-
   const jaFechouPeloVoltarRef = useRef(false);
   useEffect(() => {
     if (onSetBackOverride) {
@@ -154,6 +131,60 @@ export const MensagemDeCompartilhar = memo(function MensagemDeCompartilhar({
       if (onSetBackOverride) onSetBackOverride(null);
     };
   }, [folhaAberta, onSetBackOverride, fecharFolha]);
+
+  // Voltar físico do Android / botão Voltar do AdminLayout: empurra uma
+  // entrada de histórico própria na MESMA URL ao abrir, e a consome
+  // (history.back()) ao fechar por QUALQUER caminho, só se ela ainda não
+  // tiver sido consumida pelo pop físico do navegador.
+  //
+  // Fica DEPOIS do efeito do Voltar (acima): o `back()` entrega o popstate
+  // depois do commit, e o desvio de USO ÚNICO registrado aqui (que só engole
+  // esse popstate, igual ao do Financeiro) tem de vencer o `null` que aquele
+  // efeito registra ao fechar. Sem ele, o App lia "sem desvio" e, com a tela
+  // ainda marcada como alterada (o WhatsApp ou a mensagem mudados sem salvar),
+  // abria "Alterações não salvas" sem a lojista ter saído de lugar.
+  const temEntradaDeHistoricoRef = useRef(false);
+  const engolidorRef = useRef<(() => void) | null>(null);
+  const relogioDoEngolidorRef = useRef<
+    ReturnType<typeof setTimeout> | undefined
+  >(undefined);
+  useEffect(() => () => clearTimeout(relogioDoEngolidorRef.current), []);
+  useEffect(() => {
+    if (folhaAberta) {
+      // Reaberta antes de o popstate chegar: o desvio da folha assume (o
+      // efeito acima já o registrou) e o engolidor velho deixa de valer.
+      clearTimeout(relogioDoEngolidorRef.current);
+      engolidorRef.current = null;
+      if (!temEntradaDeHistoricoRef.current) {
+        window.history.pushState(
+          { ...window.history.state, modal: "presets" },
+          "",
+          window.location.pathname + window.location.search,
+        );
+        temEntradaDeHistoricoRef.current = true;
+      }
+    } else if (temEntradaDeHistoricoRef.current) {
+      temEntradaDeHistoricoRef.current = false;
+      if (window.history.state?.modal === "presets") {
+        if (onSetBackOverride) {
+          const concluir = () => {
+            clearTimeout(relogioDoEngolidorRef.current);
+            // Só solta se ainda for o vigente (a folha pode ter reaberto).
+            if (engolidorRef.current !== engolidor) return;
+            engolidorRef.current = null;
+            onSetBackOverride(null);
+          };
+          const engolidor = () => concluir();
+          engolidorRef.current = engolidor;
+          onSetBackOverride(() => engolidor);
+          // Rede de segurança: se o popstate nunca chegar, o desvio não pode
+          // ficar preso engolindo o Voltar de verdade.
+          relogioDoEngolidorRef.current = setTimeout(concluir, 1500);
+        }
+        window.history.back();
+      }
+    }
+  }, [folhaAberta, onSetBackOverride]);
 
   const sincronizarComOEditor = useCallback(() => {
     const editor = editorRef.current;

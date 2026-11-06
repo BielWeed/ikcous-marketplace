@@ -110,6 +110,23 @@ describe("HomeView — a descrição só promete frete grátis quando ele está 
     },
   );
 
+  it("Só retiro (sem entrega própria) com cobertura local e frete grátis salvo: não promete frete grátis", async () => {
+    mockConfig = {
+      shippingCoverage: "local",
+      localDeliveryEnabled: false,
+      enabledShippingMethods: ["store-pickup"],
+      storeCity: "Monte Carmelo",
+      storeState: "MG",
+      freeShippingMin: 50,
+    };
+    await renderizarHome();
+
+    const { og, twitter } = descricoes();
+    expect(og).not.toContain("frete grátis");
+    expect(twitter).not.toContain("frete grátis");
+    expect(og).toContain("Descubra produtos exclusivos.");
+  });
+
   it("controle: entrega local com cidade e frete grátis ligado continua prometendo na cidade", async () => {
     mockConfig = {
       shippingCoverage: "local",

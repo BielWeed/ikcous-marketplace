@@ -18,7 +18,11 @@
  * o bug que esta frente corrige. Daqui para frente, todos passam por aqui.
  */
 import { atingiuOMinimo } from "@/lib/atingiu-o-minimo";
-import { ehModalidadeDaLoja } from "@/lib/guarda-de-frete";
+import {
+  chavesDeTransportadoraDaLista,
+  ehModalidadeDaLoja,
+  modoDaEntregaNaCidade,
+} from "@/lib/guarda-de-frete";
 import {
   type PresetFreteGratis,
   presetDoConfig,
@@ -44,7 +48,34 @@ export type ConfigDeFrete = Pick<
   | "nationalDiscountType"
   | "nationalDiscountValue"
   | "nationalBenefitScope"
+  // Opcionais (leitura ausente = "loja que entrega"): só `promessasDeFrete` os
+  // lê, para não prometer frete grátis numa loja sem entrega nenhuma.
+  | "localDeliveryEnabled"
+  | "enabledShippingMethods"
+  | "shippingCoverage"
 >;
+
+/**
+ * A loja só entrega por retirada e não tem transportadora? Então não existe
+ * entrega a que um "frete grátis" se refira (a retirada já é grátis), e a regra
+ * de grátis que ficou salva antes de trocar o modo não pode virar selo, "Falta
+ * pouquinho pro Frete Grátis na Cidade" nem "Faltam R$ X". Sem transportadora
+ * = cobertura só local OU lista de serviços sem nenhuma chave de transportadora
+ * (lista ausente lê como sedex+pac, como a edge: aí HÁ transportadora).
+ * Fonte única das telas da cliente (selos, Home, lembrete e barra do carrinho).
+ */
+export function semMetaDeFreteGratis(config: {
+  readonly localDeliveryEnabled?: boolean | null;
+  readonly enabledShippingMethods?: readonly string[] | null;
+  readonly shippingCoverage?: string | null;
+}): boolean {
+  if (modoDaEntregaNaCidade(config) !== "so_retiro") return false;
+  if ((config.shippingCoverage || "national") === "local") return true;
+  return (
+    Array.isArray(config.enabledShippingMethods) &&
+    chavesDeTransportadoraDaLista(config.enabledShippingMethods).length === 0
+  );
+}
 
 /**
  * O que a cópia legada da migration produziria a partir de
@@ -175,8 +206,16 @@ export interface PromessasDeFrete {
  * O que a loja PROMETE, antes de a cliente escolher uma opção — para selos
  * de produto, banners da Home e o lembrete do carrinho. Nunca usada para
  * cobrar (isso é `precoFinalDaOpcao`/o preço da opção escolhida).
+ *
+ * Loja sem entrega nenhuma (`semMetaDeFreteGratis`: só retirada, sem
+ * transportadora) não promete nada: o grátis salvo antes de trocar o modo não
+ * vira selo.
  */
 export function promessasDeFrete(config: ConfigDeFrete): PromessasDeFrete {
+  if (semMetaDeFreteGratis(config)) {
+    const desligada: PromessaDeCanal = { estrategia: "desligado", minimo: 0 };
+    return { local: desligada, nacional: desligada, iguais: true };
+  }
   const preset = presetDoConfig(config.freeShippingMin);
   const local: PromessaDeCanal = {
     estrategia: preset,

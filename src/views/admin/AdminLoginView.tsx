@@ -178,6 +178,7 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="username"
+                autoCapitalize="none"
                 placeholder="admin@exemplo.com"
                 className="mb-4 w-full rounded-2xl border border-admin-border bg-admin-surface px-5 py-4 text-sm font-medium text-white transition-all placeholder:text-zinc-700 focus:border-admin-gold focus:outline-none focus:ring-4 focus:ring-admin-gold/20"
                 required
@@ -196,6 +197,11 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
                   id="admin-password"
                   name="password"
                   autoComplete="current-password"
+                  // Com "Mostrar senha" o campo vira type="text" e o teclado
+                  // do celular passaria a pôr maiúscula e "corrigir" a senha.
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Digite a senha"

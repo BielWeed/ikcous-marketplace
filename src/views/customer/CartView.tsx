@@ -657,7 +657,12 @@ export function CartView({
     // REVISÃO A3: `save` zerou junto — comparava contra `config.shippingFee`,
     // o preço morto da taxa fixa (ver o comentário acima).
     const ship = freteIndefinido ? null : ctxShippingFee;
-    const tot = subtotal + (ship ?? 0);
+    // TOTAL SÓ FECHA COM FRETE CONHECIDO: com `ship === null` o que existe é
+    // "produtos, frete zero" — número que a cliente leria como total e que o
+    // checkout (que já não fecha total sem frete) contradiria. `null` aqui
+    // vira "A calcular" nos dois resumos. Frete 0 conhecido (retirada na
+    // loja, grátis, transportadora a R$ 0) NÃO é `null` e segue fechado.
+    const tot = ship === null ? null : subtotal + ship;
     const save = 0;
     const nearly = Boolean(isRuleActive && progress >= 70 && progress < 100);
 
@@ -1250,7 +1255,9 @@ export function CartView({
                           Total
                         </span>
                         <span className="text-2xl font-bold tracking-tight text-foreground">
-                          {formatCurrency(total)}
+                          {total === null
+                            ? "A calcular"
+                            : formatCurrency(total)}
                         </span>
                       </div>
                       {shipping === 0 && !retiradaEscolhida && (

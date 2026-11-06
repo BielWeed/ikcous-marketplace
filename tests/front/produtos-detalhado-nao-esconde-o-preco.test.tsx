@@ -366,6 +366,22 @@ describe("Produtos, modo detalhado: o cartão não esconde o preço (onda J2, J2
     });
   });
 
+  describe("i. o preço não quebra em duas linhas no celular", () => {
+    it("o valor fica numa linha só (whitespace-nowrap), mais compacto em tela estreita", async () => {
+      await montar();
+      const valor = rotulo("Preço de Venda").nextElementSibling;
+      expect(valor?.textContent?.replace(/\s/g, " ")).toBe("R$ 15,00");
+      const classes = classesDe(valor as HTMLElement);
+      expect(classes).toContain("whitespace-nowrap");
+      expect(classes).toContain("tracking-tighter");
+      // Fonte menor no celular estreito (text-sm até 360px, text-base até 400px); a grande só volta a partir de 400px.
+      expect(classes).toContain("text-sm");
+      expect(classes).toContain("min-[360px]:text-base");
+      expect(classes).toContain("min-[400px]:text-lg");
+      expect(classes).not.toContain("text-lg");
+    });
+  });
+
   describe("h. reserva do content-visibility e esqueleto usam os mesmos números", () => {
     it("a reserva do cartão recolhido acompanha o novo resumo compacto", async () => {
       await montar();
