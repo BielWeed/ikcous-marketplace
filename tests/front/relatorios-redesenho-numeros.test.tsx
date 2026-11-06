@@ -1,6 +1,6 @@
 import { lerClientesDoCrm, lerVisaoDoCrm } from "@/lib/crm";
 // @vitest-environment jsdom
-// A fotografia foi gravada renderizando a base 4d27e0fe, ANTES do redesenho.
+// A fotografia (Visão e Clientes) foi gravada renderizando a base 4d27e0fe, ANTES do redesenho.
 // Mesmo conjunto de dados nas quatro abas; apenas os seletores acompanham a nova casca.
 import { type ReactNode, act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -120,6 +120,10 @@ const texto = (e: Element | null) => {
 };
 const numeros = (s: string) =>
   [...new Set(s.match(/R\$\s*[\d.,]+|[+-]?[\d.,]+%|\b\d+\b/g) ?? [])].sort();
+// Pares rótulo -> valor (sem ordenar nem juntar repetidos): cada número fica
+// preso ao rótulo que o mostra, então trocar dois valores de lugar reprova.
+const dinheiros = (s: string) => s.match(/R\$\s*[\d.,]+/g) ?? [];
+const percentuais = (s: string) => s.match(/\d+%/g) ?? [];
 beforeEach(() => {
   host = document.createElement("div");
   document.body.append(host);
@@ -221,16 +225,84 @@ it("Canais conserva a receita, participação, pedidos e valor médio por canal 
   await montar(
     <CanaisDoCrm visao={dados} carregando={false} onNavigate={vi.fn()} />,
   );
-  const linhas = [...host.querySelectorAll("li")].map((e) => {
-    // Receita e participação mudaram da linha para o resumo; ainda são do mesmo canal.
-    const nome = e.getAttribute("aria-label")?.replace("Detalhes ", "");
-    return numeros(
-      (nome
-        ? `${texto(host.querySelector(`[role="group"][aria-label="${nome}"]`))} `
-        : "") + texto(e),
-    );
+  const canais = Object.fromEntries(
+    [...host.querySelectorAll('li[aria-label^="Detalhes "]')].map((li) => {
+      const nome = (li.getAttribute("aria-label") ?? "").replace(
+        "Detalhes ",
+        "",
+      );
+      // Receita e participação mudaram da linha para o resumo; ainda são do mesmo canal.
+      const resumo = texto(
+        host.querySelector(`[role="group"][aria-label="${nome}"]`),
+      );
+      const dd = (rotulo: string) =>
+        texto(
+          [...li.querySelectorAll("dt")].find((dt) => texto(dt) === rotulo)
+            ?.nextElementSibling ?? null,
+        );
+      return [
+        nome,
+        {
+          receita: dinheiros(resumo)[0],
+          participacaoNaReceita: percentuais(resumo)[0],
+          pedidos: dd("Pedidos").match(/^\d+/)?.[0],
+          participacaoNosPedidos: percentuais(dd("Pedidos"))[0],
+          valorMedio: dd("Valor médio"),
+        },
+      ];
+    }),
+  );
+  expect(canais).toEqual({
+    "App (online)": {
+      receita: "R$ 122,92",
+      participacaoNaReceita: "72%",
+      pedidos: "5",
+      participacaoNosPedidos: "56%",
+      valorMedio: "R$ 24,58",
+    },
+    "Loja física": {
+      receita: "R$ 47,96",
+      participacaoNaReceita: "28%",
+      pedidos: "4",
+      participacaoNosPedidos: "44%",
+      valorMedio: "R$ 11,99",
+    },
   });
-  expect(linhas).toMatchSnapshot();
+  const formas = Object.fromEntries(
+    [...host.querySelectorAll("li:not([aria-label])")].map((li) => {
+      const t = texto(li);
+      const valores = dinheiros(t);
+      return [
+        texto(li.querySelector("span")),
+        {
+          receita: valores[0],
+          participacao: percentuais(t)[0],
+          pedidos: t.match(/(\d+) pedidos?/)?.[1],
+          valorMedio: valores[1],
+        },
+      ];
+    }),
+  );
+  expect(formas).toEqual({
+    PIX: {
+      receita: "R$ 98,92",
+      participacao: "58%",
+      pedidos: "4",
+      valorMedio: "R$ 24,73",
+    },
+    Dinheiro: {
+      receita: "R$ 35,98",
+      participacao: "21%",
+      pedidos: "3",
+      valorMedio: "R$ 11,99",
+    },
+    "Cartão de crédito": {
+      receita: "R$ 35,98",
+      participacao: "21%",
+      pedidos: "2",
+      valorMedio: "R$ 17,99",
+    },
+  });
 });
 it("dinheiro grande preserva o valor completo do computador e o compacto do celular", async () => {
   const { VisaoGeralDoCrm } = await import(
@@ -350,6 +422,22 @@ it("Funil conserva a conversão, as três etapas e as quantidades da fila", asyn
       onNavigate={vi.fn()}
     />,
   );
-  // O resumo repete etapas no desenho novo: a fotografia compara os valores únicos.
-  expect(numeros(texto(host)).sort()).toMatchSnapshot();
+  // O resumo e o funil repetem etapas no desenho novo: cada grupo mantém o seu
+  // rótulo, na ordem em que aparece na tela, em vez de juntar valores únicos.
+  const etapas = [...host.querySelectorAll('[role="group"]')].map((g) => {
+    const rotulo = g.getAttribute("aria-label") ?? "";
+    return [rotulo, texto(g).replace(rotulo, "").trim()];
+  });
+  expect(etapas).toEqual([
+    ["Conversão em venda", "71,4%"],
+    ["Pedidos pagos", "5 de 7"],
+    ["Carrinhos", "6 pessoas"],
+    ["Pedidos criados", "7 pedidos"],
+    ["Pedidos pagos", "5 pagos"],
+  ]);
+  expect(texto(host)).toContain("2 pedidos não viraram venda paga");
+  expect([...host.querySelectorAll("li")].map((li) => texto(li))).toEqual([
+    "Em separação 13",
+    "Em trânsito 17",
+  ]);
 });
