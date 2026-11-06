@@ -516,7 +516,12 @@ export function OrderDetailsView({
   const avaliacaoTemTextoRef = useRef(false);
   const [confirmandoDescarteAvaliacao, setConfirmandoDescarteAvaliacao] =
     useState(false);
+  // Com o envio em curso a folha não fecha (nem pergunta): fechar e reabrir no
+  // meio dele deixava avaliar o mesmo produto duas vezes. Quando o envio
+  // confirma, o próprio onSuccess marca "Avaliado" e fecha.
+  const avaliacaoEnviandoRef = useRef(false);
   const fecharAvaliacaoPerguntando = useCallback(() => {
+    if (avaliacaoEnviandoRef.current) return;
     if (avaliacaoTemTextoRef.current) {
       setConfirmandoDescarteAvaliacao(true);
       return;
@@ -532,9 +537,11 @@ export function OrderDetailsView({
       setConfirmandoDescarteAvaliacao(false);
       return false;
     }
-    const vaiPerguntar = avaliacaoTemTextoRef.current;
+    // Enviando: a folha fica aberta, como quando pergunta.
+    const naoVaiFechar =
+      avaliacaoTemTextoRef.current || avaliacaoEnviandoRef.current;
     fecharAvaliacaoPerguntando();
-    return !vaiPerguntar;
+    return !naoVaiFechar;
   });
   // Rodada 2 (Codex, 08/09, item 1): o foco continuava no botão "Avaliar"
   // de fora depois de abrir a folha — Esc não chegava a ela e o Tab
@@ -2184,6 +2191,7 @@ export function OrderDetailsView({
                 productId={reviewingItem.productId}
                 initialRating={reviewingItem.rating}
                 temTextoRef={avaliacaoTemTextoRef}
+                enviandoRef={avaliacaoEnviandoRef}
                 onSuccess={() => {
                   setReviewedProductIds((prev) => {
                     const next = new Set(prev);

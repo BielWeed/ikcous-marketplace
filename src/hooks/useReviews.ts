@@ -136,7 +136,10 @@ export function useReviews() {
   }, [user?.id]);
 
   const getReviewsByProduct = useCallback(
-    async (productId: string) => {
+    // `silencioso`: releitura de bastidor (depois de gravar a avaliação). Se
+    // falhar, não avisa a cliente nem marca a lista como com erro: ela só
+    // queria a lista fresca, e o que importava (a gravação) já deu certo.
+    async (productId: string, opcoes?: { silencioso?: boolean }) => {
       if (usuarioAtualRef.current !== user?.id) return;
       if (latestProductIdRef.current !== productId) setVotosUteis(new Set());
       latestProductIdRef.current = productId;
@@ -257,7 +260,7 @@ export function useReviews() {
         console.error("Error fetching reviews:", error);
         // Com a lista guardada na tela, a releitura que falha não a troca por
         // erro (mesmo critério das Perguntas): só vale o erro sem nada a mostrar.
-        if (!cached?.length) {
+        if (!cached?.length && !opcoes?.silencioso) {
           setErroDaListagemProduto("Não foi possível carregar as avaliações.");
           toast.error("Erro ao carregar avaliações.");
         }
@@ -327,8 +330,11 @@ export function useReviews() {
           "Recebemos sua avaliação! Ela aparece no produto após a aprovação da loja.",
         );
 
-        // Refresh reviews
-        await getReviewsByProduct(review.productId);
+        // Refresh reviews, em segundo plano e sem aviso de erro: a avaliação
+        // já está gravada. Esperar a releitura segurava a folha de avaliar
+        // aberta (dava para fechar, reabrir e avaliar o produto de novo) e,
+        // se ela falhasse, o aviso vermelho vinha logo depois do de sucesso.
+        void getReviewsByProduct(review.productId, { silencioso: true });
 
         return data;
       } catch (error: any) {
