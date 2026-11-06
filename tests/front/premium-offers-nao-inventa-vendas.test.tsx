@@ -101,7 +101,7 @@ describe("PremiumOffers/HeroOfferCard — não inventa vendas nem procura", () =
     });
   }
 
-  it("sold=0 e estoque 50: sem '% VENDIDO', sem barra, sem 'Alta Procura', com o estoque real", async () => {
+  it("sold=0 e estoque 50: sem '% VENDIDO', sem barra, sem 'Alta Procura', sem falsa escassez", async () => {
     await renderiza(produtoBase);
 
     const texto = hospedeiro.textContent ?? "";
@@ -112,7 +112,9 @@ describe("PremiumOffers/HeroOfferCard — não inventa vendas nem procura", () =
       hospedeiro.querySelectorAll<HTMLElement>("[style]"),
     ).filter((el) => el.style.width.endsWith("%"));
     expect(barras).toHaveLength(0);
-    expect(texto).toContain("Apenas 50 restantes");
+    // Estoque folgado não vira "Apenas N restantes" (falsa escassez).
+    expect(texto).not.toContain("Apenas");
+    expect(texto).not.toContain("restantes");
     // O resto do cartão segue idêntico.
     expect(texto).toContain("Super Oferta");
     expect(texto).toContain("20% OFF");
@@ -125,6 +127,33 @@ describe("PremiumOffers/HeroOfferCard — não inventa vendas nem procura", () =
     expect(texto).not.toMatch(/vendido/i);
     expect(texto).not.toContain("Alta Procura");
     expect(texto).toContain("Apenas 5 restantes");
+  });
+
+  // A régua é a do card do produto (ProductCard): até 5 unidades é estoque
+  // baixo ("Restam N"); acima disso o card só informa o número, sem escassez.
+  it.each([
+    [3, true],
+    [5, true],
+    [6, false],
+    [60, false],
+  ])(
+    "estoque %i: 'Apenas N restantes' aparece = %s",
+    async (stock, aparece) => {
+      await renderiza({ ...produtoBase, stock });
+
+      const texto = hospedeiro.textContent ?? "";
+      if (aparece) {
+        expect(texto).toContain(`Apenas ${stock} restantes`);
+      } else {
+        expect(texto).not.toContain("Apenas");
+      }
+    },
+  );
+
+  it("sem estoque: continua dizendo 'Sem estoque'", async () => {
+    await renderiza({ ...produtoBase, stock: 0 });
+
+    expect(hospedeiro.textContent).toContain("Sem estoque");
   });
 
   it("1 em estoque: mostra 'Só resta 1!'", async () => {

@@ -273,6 +273,26 @@ describe("CartView — aba Meus Pedidos: falha de carregamento não é lista vaz
     duble.proximaFalha = true;
     await montarAbaPedidos();
 
+    // Rodada 21 (C2): só há pedido antigo, então a tela já abre no Histórico.
+    // A pessoa toca em "Em andamento" para chegar na aba vazia que este teste
+    // vigia (a animação da troca de sub-aba corre em tempo real: espera-se).
+    expect(texto()).toContain("Em andamento (0)");
+    const emAndamento = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim().startsWith("Em andamento"),
+    );
+    await act(async () => {
+      emAndamento?.click();
+    });
+    for (
+      let i = 0;
+      i < 60 && !texto().includes("Nenhum pedido em andamento");
+      i++
+    ) {
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+    }
+
     expect(texto()).toContain("Nenhum pedido em andamento");
     expect(texto()).toContain(
       "Quando você comprar, o andamento do pedido aparece aqui.",

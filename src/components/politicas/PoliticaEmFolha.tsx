@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import { useState } from "react";
 
 import { ConteudoDaPolitica } from "@/components/politicas/ConteudoDaPolitica";
 import {
@@ -30,6 +31,13 @@ interface PoliticaEmFolhaProps {
  * lida do banco quando alguém de fato a abre.
  */
 export function PoliticaEmFolha({ tipo, onFechar }: PoliticaEmFolhaProps) {
+  // Ao fechar, `tipo` vira null mas a folha ainda faz a animação de saída:
+  // título e texto continuam os da última política aberta, senão a folha
+  // esvaziaria e encolheria enquanto some.
+  const [ultimoTipo, setUltimoTipo] = useState<TipoDePolitica | null>(tipo);
+  if (tipo !== null && tipo !== ultimoTipo) setUltimoTipo(tipo);
+  const exibido = tipo ?? ultimoTipo;
+
   // O Voltar do aparelho fecha SÓ a folha (a tela de baixo não se mexe).
   useVoltarFechaAFolha(tipo !== null, onFechar);
 
@@ -58,15 +66,15 @@ export function PoliticaEmFolha({ tipo, onFechar }: PoliticaEmFolhaProps) {
             <X className="size-5" aria-hidden="true" />
           </SheetClose>
           <SheetTitle className="text-lg font-black tracking-tight">
-            {tipo ? nomeDaPolitica(tipo) : ""}
+            {exibido ? nomeDaPolitica(exibido) : ""}
           </SheetTitle>
           <SheetDescription className="sr-only">
-            Texto da página {tipo ? nomeDaPolitica(tipo) : ""} da loja. Feche
-            para voltar de onde você estava.
+            Texto da página {exibido ? nomeDaPolitica(exibido) : ""} da loja.
+            Feche para voltar de onde você estava.
           </SheetDescription>
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5">
-          {tipo && <ConteudoDaPolitica tipo={tipo} />}
+          {exibido && <ConteudoDaPolitica tipo={exibido} />}
         </div>
       </SheetContent>
     </Sheet>

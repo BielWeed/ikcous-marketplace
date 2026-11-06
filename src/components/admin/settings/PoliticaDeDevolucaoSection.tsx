@@ -491,9 +491,10 @@ export function PoliticaDeDevolucaoSection({
         </div>
         <p className="text-[11px] leading-relaxed text-zinc-500">
           Arrependimento: mínimo 7 dias pela lei (compra pela internet),
-          devolvendo tudo o que o cliente pagou, frete de ida incluso. Defeito:
-          mínimo 30 dias, e nunca menos que o de arrependimento; produto durável
-          tem 90 pela lei. Troca por gosto é cortesia da loja — 0 dia desliga.
+          devolvendo o que o cliente pagou pelos itens devolvidos; o frete de
+          ida também volta quando o pedido volta inteiro. Defeito: mínimo 30
+          dias, e nunca menos que o de arrependimento; produto durável tem 90
+          pela lei. Troca por gosto é cortesia da loja — 0 dia desliga.
         </p>
       </div>
 

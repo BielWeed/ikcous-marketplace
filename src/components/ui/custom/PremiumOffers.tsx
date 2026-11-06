@@ -16,6 +16,7 @@ import type { LayoutDeOfertas } from "@/lib/layout-de-ofertas";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product } from "@/types";
+import { LIMIAR_PADRAO_DE_ESTOQUE } from "@/utils/avisos-do-lojista";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
 import { haptic } from "@/utils/haptic";
 import useEmblaCarousel from "embla-carousel-react";
@@ -683,13 +684,18 @@ function HeroOfferCard({
                 saiu (14/10/2026): `produtos.sold` é 0 em toda loja (nada o
                 atualiza) e a conta fingia 3 vendas e prendia o resultado
                 entre 60% e 95% -- porcentagem inventada, publicidade
-                enganosa (CDC art. 37). */}
+                enganosa (CDC art. 37). "Apenas N restantes" só aparece com
+                estoque baixo, pela mesma régua do card do produto (até
+                LIMIAR_PADRAO_DE_ESTOQUE): com 60 unidades dizer "apenas 60"
+                era falsa escassez. */}
             <div className="mb-4 max-w-sm text-[9px] font-extrabold uppercase tracking-wide text-slate-500">
               {product.stock <= 0
                 ? "Sem estoque"
                 : product.stock === 1
                   ? "Só resta 1!"
-                  : `Apenas ${product.stock} restantes`}
+                  : product.stock <= LIMIAR_PADRAO_DE_ESTOQUE
+                    ? `Apenas ${product.stock} restantes`
+                    : null}
             </div>
           </div>
 

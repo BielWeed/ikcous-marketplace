@@ -37,6 +37,8 @@ interface RetratoDoPainel {
   readonly assinaturaLida: boolean;
   readonly erroAssinatura: string | null;
   readonly lidoEm: number;
+  /** `geracaoDoPainel` quando a busca SAIU: se mudou, o retrato não é fresco. */
+  readonly geracao: number;
 }
 
 const FRESCOR_MS = 30_000;
@@ -44,6 +46,17 @@ const ESPERA_DO_TEMPO_REAL_MS = 1500;
 const ESPERA_DA_ABERTURA_MS = 200;
 
 let retratoEmCache: RetratoDoPainel | null = null;
+
+// Sobe quando a lojista SAI do Início: ela pode mexer em produto e estoque nas
+// outras telas, e o Início não tem como saber. Retrato lido antes da saída
+// (ou busca que saiu antes dela) fica na tela, mas deixa de contar como fresco
+// e a volta ao Início busca de novo, em vez de repetir por até 30 s o número
+// de "estoque baixo" de antes da reposição.
+let geracaoDoPainel = 0;
+
+function invalidarRetratoDoPainel(): void {
+  geracaoDoPainel += 1;
+}
 
 /** O dia de São Paulo (`YYYY-MM-DD`) em que o retrato foi lido. */
 function diaDaLeitura(retrato: RetratoDoPainel): string {
@@ -57,11 +70,13 @@ function diaDaLeitura(retrato: RetratoDoPainel): string {
 function retratoFresco(retrato: RetratoDoPainel | null): boolean {
   return (
     retrato !== null &&
+    retrato.geracao === geracaoDoPainel &&
     Date.now() - retrato.lidoEm < FRESCOR_MS &&
     diaDaLeitura(retrato) === hojeEmSaoPaulo()
   );
 }
 let buscaEmVoo: Promise<RetratoDoPainel> | null = null;
+let geracaoDaBuscaEmVoo = 0;
 // Recarga FORÇADA pedida com uma busca em voo: roda uma busca depois dela.
 let buscaForcadaSeguinte: Promise<RetratoDoPainel> | null = null;
 
@@ -71,7 +86,10 @@ let buscaForcadaSeguinte: Promise<RetratoDoPainel> | null = null;
  * volta depois da meia-noite traz números de ontem — carimbada com a hora do
  * fim, ela passaria por fresca de hoje e o "Hoje" ficaria com eles.
  */
-async function buscarRetrato(iniciadaEm: number): Promise<RetratoDoPainel> {
+async function buscarRetrato(
+  iniciadaEm: number,
+  geracao: number,
+): Promise<RetratoDoPainel> {
   const [respostaPainel, respostaAssinatura] = await Promise.all([
     supabase.rpc("painel_inicio"),
     supabase.rpc("assinatura_da_loja_ler"),
@@ -118,6 +136,7 @@ async function buscarRetrato(iniciadaEm: number): Promise<RetratoDoPainel> {
     assinaturaLida: erroAssinatura === null,
     erroAssinatura,
     lidoEm: iniciadaEm,
+    geracao,
   };
 }
 
@@ -128,7 +147,9 @@ async function buscarRetrato(iniciadaEm: number): Promise<RetratoDoPainel> {
  */
 function buscarCoalescido(forcar = false): Promise<RetratoDoPainel> {
   if (buscaEmVoo) {
-    if (!forcar) return buscaEmVoo;
+    // Busca que saiu antes de a lojista deixar o Início também não serve a quem
+    // pede agora: vale como forçada.
+    if (!forcar && geracaoDaBuscaEmVoo === geracaoDoPainel) return buscaEmVoo;
     // A busca em voo pode ter começado ANTES da mudança que motivou a recarga
     // (pedido novo no tempo real): reaproveitá-la gravaria no cache, como
     // fresco, um retrato anterior à mudança. Enfileira UMA busca nova para
@@ -143,7 +164,9 @@ function buscarCoalescido(forcar = false): Promise<RetratoDoPainel> {
     return buscaForcadaSeguinte;
   }
   const iniciadaEm = Date.now();
-  const busca = buscarRetrato(iniciadaEm)
+  const geracao = geracaoDoPainel;
+  geracaoDaBuscaEmVoo = geracao;
+  const busca = buscarRetrato(iniciadaEm, geracao)
     .catch((erro: unknown): RetratoDoPainel => {
       console.error("[usePainelInicio] busca falhou:", erro);
       const mensagem = mensagemDeErroDoPainel(erro, "carregar o Início");
@@ -154,6 +177,7 @@ function buscarCoalescido(forcar = false): Promise<RetratoDoPainel> {
         assinaturaLida: false,
         erroAssinatura: mensagem,
         lidoEm: iniciadaEm,
+        geracao,
       };
     })
     .then((retrato) => {
@@ -175,6 +199,7 @@ function buscarCoalescido(forcar = false): Promise<RetratoDoPainel> {
           retrato.assinaturaLida || (retratoEmCache?.assinaturaLida ?? false),
         erroAssinatura: retrato.erroAssinatura,
         lidoEm: retrato.lidoEm,
+        geracao: retrato.geracao,
       };
       return retratoEmCache;
     })
@@ -258,6 +283,14 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
   }, []);
 
   const atualizar = useCallback(() => carregar(true), [carregar]);
+
+  // Sair do Início (outra aba, ou sair do painel): o retrato de agora deixa de
+  // ser fresco, ver `geracaoDoPainel`. Não depende de `temSessao`: o cache é de
+  // módulo e vale para a próxima abertura.
+  useEffect(() => {
+    if (!active) return;
+    return invalidarRetratoDoPainel;
+  }, [active]);
 
   // Abertura: um respiro curto deixa a transição de aba terminar antes da
   // rede (mesma ideia do atraso do dashboard antigo).
