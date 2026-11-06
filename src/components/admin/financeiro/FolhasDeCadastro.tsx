@@ -153,7 +153,7 @@ export function ContaFolha({
     aoMudarSujo(sujo);
   }, [sujo, aoMudarSujo]);
 
-  const validacao = useMemo(() => validarConta(form), [form]);
+  const validacao = useMemo(() => validarConta(form, hoje), [form, hoje]);
   const erros = tentou && !validacao.ok ? validacao.erros : {};
 
   const atualizar = (parcial: Partial<FormularioDaConta>) => {
@@ -164,7 +164,7 @@ export function ContaFolha({
   async function salvar() {
     if (trava.current) return;
     setTentou(true);
-    const resultado = validarConta(form);
+    const resultado = validarConta(form, hoje);
     if (!resultado.ok) return;
     trava.current = true;
     setEnviando(true);
@@ -279,6 +279,7 @@ export function ContaFolha({
               id="fin-conta-data"
               disabled={enviando}
               type="date"
+              max={hoje}
               value={form.saldoInicialEm}
               onChange={(e) => atualizar({ saldoInicialEm: e.target.value })}
               className={CLASSE_CAMPO}

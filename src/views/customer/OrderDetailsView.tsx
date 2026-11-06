@@ -83,7 +83,9 @@ import { toast } from "sonner";
 interface OrderDetailsViewProps {
   orderId: string;
   onBack: () => void;
-  onNavigate: (view: View) => void;
+  // O `id` opcional só é usado pelo "Entrar" de quem abriu o pedido sem conta:
+  // vai ao state do login para o App devolver a cliente a ESTE pedido.
+  onNavigate: (view: View, id?: string) => void;
   // Frente 10 (missão de pagamentos, 29/09/2026): retomada do pagamento a
   // partir do card do pedido pendente. O checkout perde o `orderId` ao
   // desmontar (useState) — sem esta porta, o cliente que sai antes de pagar
@@ -1031,7 +1033,7 @@ export function OrderDetailsView({
         </p>
         {semConta && (
           <button
-            onClick={() => onNavigate("auth")}
+            onClick={() => onNavigate("auth", orderId)}
             className="mb-3 h-12 rounded-2xl bg-zinc-900 px-8 text-sm font-bold text-white transition-all active:scale-95"
           >
             Entrar

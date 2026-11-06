@@ -65,6 +65,7 @@ import {
   EVENTO_NOVO_BANNER,
   consumirPedidoDeNovoBanner,
 } from "@/lib/novo-banner-pendente";
+import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { recusaDeFoto } from "@/lib/recusa-de-foto";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Banner, View } from "@/types";
@@ -376,8 +377,31 @@ interface ControleAtivo {
   type: "up" | "down" | "toggle" | "delete";
 }
 
+// Produto pausado: a página do produto não abre e a cliente cai na Home com
+// "Este produto não está mais disponível". O painel avisa para o lojista
+// pausar o banner junto ou trocar o produto.
+const AVISO_PRODUTO_PAUSADO =
+  "Este produto está pausado: o toque no banner leva à Home";
+
+/** O prefixo da frase de preço do banner: o mesmo no subtítulo automático e na sugestão. */
+const prefixoDoPreco = (vitrine: { aPartirDe: boolean }) =>
+  vitrine.aPartirDe ? "A partir de" : "Por apenas";
+
+/** O id do produto de um link `/product-detail?id=<id>`; `null` nos demais. */
+function idDoProdutoDoLink(link: string | null | undefined): string | null {
+  const achado = /^\/product-detail\?id=([^&#]+)/.exec(link ?? "");
+  if (!achado) return null;
+  try {
+    return decodeURIComponent(achado[1]);
+  } catch {
+    return achado[1];
+  }
+}
+
 interface CartaoDoBannerProps {
   readonly banner: Banner;
+  /** O produto do link está pausado (só quando a lista o achou pausado). */
+  readonly produtoPausado: boolean;
   /** Rótulo curto da posição (mostrado só quando a lista mistura setores). */
   readonly posicaoCurta: string | null;
   readonly indice: number;
@@ -412,6 +436,7 @@ function InterruptorDoBanner({
 
 const CartaoDoBanner = memo(function CartaoDoBanner({
   banner,
+  produtoPausado,
   posicaoCurta,
   indice,
   total,
@@ -504,6 +529,12 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
                 <ExternalLink className="size-2.5 shrink-0" />
                 <span className="min-w-0 truncate">{banner.link}</span>
               </div>
+            )}
+
+            {produtoPausado && (
+              <p className="text-[11px] font-medium text-amber-400">
+                {AVISO_PRODUTO_PAUSADO}
+              </p>
             )}
 
             {banner.startDate &&
@@ -1083,21 +1114,27 @@ export const AdminBannersView = memo(function AdminBannersView({
     return products.find((p) => p.id === formData.productId);
   }, [products, formData.productId]);
 
+  // Só entra aqui o produto que a lista carregada ACHOU pausado: a lista é
+  // paginada, então "não achado" não prova que foi excluído.
+  const idsDeProdutosPausados = useMemo(
+    () =>
+      new Set(products.filter((p) => p.isActive === false).map((p) => p.id)),
+    [products],
+  );
+
   const productSuggestions = useMemo(() => {
     if (!selectedProduct) return null;
+    // O preço que a vitrine anuncia (o menor entre as opções à venda), não o
+    // preço-base: banner e cartão têm de dizer o mesmo número.
+    const vitrine = precoDeVitrine(selectedProduct);
     const titleSuggestions = [
       selectedProduct.name,
       `Confira: ${selectedProduct.name}`,
       `Destaque: ${selectedProduct.name}`,
     ];
-    if (
-      selectedProduct.originalPrice &&
-      selectedProduct.originalPrice > selectedProduct.price
-    ) {
+    if (vitrine.precoOriginal != null) {
       const discount = Math.round(
-        ((selectedProduct.originalPrice - selectedProduct.price) /
-          selectedProduct.originalPrice) *
-          100,
+        ((vitrine.precoOriginal - vitrine.preco) / vitrine.precoOriginal) * 100,
       );
       titleSuggestions.push(`${discount}% OFF em ${selectedProduct.name}`);
     }
@@ -1113,17 +1150,12 @@ export const AdminBannersView = memo(function AdminBannersView({
       // eslint-disable-next-line no-irregular-whitespace
       formatCurrency(Number(valor)).replace(/ /g, " ");
     const subtitleSuggestions = [
-      `Por apenas ${dinheiro(selectedProduct.price)}`,
+      `${prefixoDoPreco(vitrine)} ${dinheiro(vitrine.preco)}`,
       "Confira essa oferta especial na nossa loja!",
     ];
-    if (
-      selectedProduct.originalPrice &&
-      selectedProduct.originalPrice > selectedProduct.price
-    ) {
+    if (vitrine.precoOriginal != null) {
       subtitleSuggestions.push(
-        `De ${dinheiro(selectedProduct.originalPrice)} por ${dinheiro(
-          selectedProduct.price,
-        )}`,
+        `De ${dinheiro(vitrine.precoOriginal)} por ${dinheiro(vitrine.preco)}`,
       );
     }
     if (selectedProduct.freeShipping) {
@@ -2149,6 +2181,13 @@ export const AdminBannersView = memo(function AdminBannersView({
     )
       return;
     setMostrarProdutos(false);
+    // Mesmo preço que o cartão da vitrine anuncia; "A partir de" só quando as
+    // opções à venda custam coisas diferentes.
+    const vitrine = precoDeVitrine(produto);
+    const precoEmTexto = formatCurrency(Number(vitrine.preco)).replaceAll(
+      String.fromCharCode(160),
+      " ",
+    );
     if (modelo) {
       const orfa = imagemEnviadaNaoSalvaRef.current;
       if (orfa) deleteStorageFile(orfa).catch(() => {});
@@ -2163,8 +2202,7 @@ export const AdminBannersView = memo(function AdminBannersView({
             imageUrl: produto.images?.[0] || "",
             title: (prev.title || produto.name).slice(0, 60),
             subtitle: (
-              prev.subtitle ||
-              `A partir de ${formatCurrency(Number(produto.price)).replaceAll(String.fromCharCode(160), " ")}`
+              prev.subtitle || `${prefixoDoPreco(vitrine)} ${precoEmTexto}`
             ).slice(0, 80),
             buttonText: prev.buttonText || "Comprar agora",
           }
@@ -2325,6 +2363,9 @@ export const AdminBannersView = memo(function AdminBannersView({
                         <CartaoDoBanner
                           key={b.id}
                           banner={b}
+                          produtoPausado={idsDeProdutosPausados.has(
+                            idDoProdutoDoLink(b.link) ?? "",
+                          )}
                           posicaoCurta={null}
                           indice={todosNaPosicao.findIndex(
                             (t) => t.id === b.id,
@@ -2526,8 +2567,10 @@ export const AdminBannersView = memo(function AdminBannersView({
                             {selectedProduct.name}
                           </p>
                           <p className="text-sm">
-                            {formatCurrency(Number(selectedProduct.price))} ·
-                            foto e link do produto
+                            {formatCurrency(
+                              Number(precoDeVitrine(selectedProduct).preco),
+                            )}{" "}
+                            · foto e link do produto
                           </p>
                         </div>
                         <Button
@@ -2542,6 +2585,14 @@ export const AdminBannersView = memo(function AdminBannersView({
                           Trocar
                         </Button>
                       </div>
+                    )}
+                    {selectedProduct?.isActive === false && (
+                      <p
+                        role="status"
+                        className="text-sm font-medium text-amber-400"
+                      >
+                        {AVISO_PRODUTO_PAUSADO}
+                      </p>
                     )}
                     {(!modelo || !selectedProduct || mostrarProdutos) && (
                       <>
@@ -2572,8 +2623,15 @@ export const AdminBannersView = memo(function AdminBannersView({
                               >
                                 {p.name}
                               </button>
+                              {p.isActive === false && (
+                                <span className="text-xs font-medium text-amber-400">
+                                  Pausado
+                                </span>
+                              )}
                               <span className="text-xs">
-                                {formatCurrency(Number(p.price))}
+                                {formatCurrency(
+                                  Number(precoDeVitrine(p).preco),
+                                )}
                               </span>
                             </div>
                           ))}

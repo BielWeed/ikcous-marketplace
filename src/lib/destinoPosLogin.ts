@@ -73,6 +73,37 @@ function comoRegistro(valor: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function idUtilizavel(registro: Record<string, unknown> | null): boolean {
+  return typeof registro?.id === "string" && registro.id !== "";
+}
+
+/**
+ * As únicas views de destino que recebem o `id` do state do login. Id nas
+ * outras criaria `?id` fantasma em URL que nunca o teve.
+ */
+const DESTINOS_QUE_RECEBEM_ID = new Set<string>([
+  "user-profile",
+  "product-detail",
+  "order-details",
+]);
+
+/**
+ * O `id` que `handleAuthSuccess` (App.tsx) repassa a `handleNavigate` junto do
+ * destino. Lê o state do login (precisa ser chamado ANTES de navegar, que o
+ * sobrescreve). `undefined` para toda view fora de `DESTINOS_QUE_RECEBEM_ID` e
+ * para id ausente, vazio ou que não é string.
+ */
+export function idDoDestinoPosLogin(
+  destino: View,
+  state: unknown,
+): string | undefined {
+  const registro = comoRegistro(state);
+  if (!DESTINOS_QUE_RECEBEM_ID.has(destino) || !idUtilizavel(registro)) {
+    return undefined;
+  }
+  return registro?.id as string;
+}
+
 /**
  * Destino do cliente depois de entrar (ou criar conta), calculado a partir
  * de `globalThis.history.state`. Quando devolve uma `View`, é para navegação
@@ -112,7 +143,11 @@ function comoRegistro(valor: unknown): Record<string, unknown> | null {
  *   2. `from` igual a "checkout", "cart", "orders" ou "notifications" — de
  *      onde ela veio ("orders" e "notifications" entraram em 03/11/2026:
  *      quem tocava em "Entrar" na aba Pedidos ou nos Avisos voltava ao
- *      Perfil; as duas telas não têm id nem formulário).
+ *      Perfil; as duas telas não têm id nem formulário). `from` igual a
+ *      "order-details" (05/11/2026) vale SÓ com `id` utilizável no state
+ *      (string não vazia, o que a tela passa em `onNavigate("auth", id)`);
+ *      sem id cai no perfil, como antes. Aqui NÃO se olha `requested`: o App
+ *      não redireciona essa tela ao login, então ele nunca é gravado.
  *   3. qualquer outra coisa (inclusive `state` nulo, lixo, `from`
  *      desconhecido) — cai no perfil.
  */
@@ -131,16 +166,24 @@ export function destinoPosLogin(state: unknown): View | null {
     // eterno (o "product-detail" idem: produto sem id). Sem id, ignora o `requested` e segue para as regras
     // seguintes — o pior caso volta a ser o comportamento de antes. As
     // outras três views não carregam id.
-    const idUtilizavel = typeof registro?.id === "string" && registro.id !== "";
     if (
       (requested !== "user-profile" && requested !== "product-detail") ||
-      idUtilizavel
+      idUtilizavel(registro)
     ) {
       return requested as View;
     }
   }
 
   const from = registro?.from;
+  // "order-details" (05/11/2026): a tela do pedido NÃO é redirecionada ao login
+  // pelo App (o convidado que rastreou por código a usa), então o `requested`
+  // nunca é gravado nesse fluxo — só o `from` e o `id` que a tela passa ao
+  // tocar em "Entrar". Com id volta ao pedido; sem id não há o que desenhar.
+  // Quem manda no que a tela mostra é a própria tela (e o banco): o id só
+  // escolhe QUAL pedido da conta logada abrir.
+  if (from === "order-details" && idUtilizavel(registro)) {
+    return "order-details";
+  }
   if (
     from === "checkout" ||
     from === "cart" ||
