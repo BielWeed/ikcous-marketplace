@@ -173,4 +173,216 @@ describe("useDevolucaoCliente", () => {
     expect(atual().erro).toBe(true);
     expect(atual().elegibilidade).toBeNull();
   });
+
+  describe("o cartão se mantém em dia", () => {
+    const POLITICA = {
+      prazo_arrependimento_dias: 7,
+      prazo_troca_dias: 30,
+      prazo_vicio_dias: 90,
+    };
+    const ELEGIBILIDADE = {
+      pode: false,
+      modalidade: "nacional",
+      janelas: {},
+      itens: [],
+      politica: POLITICA,
+    };
+
+    // Servidor de mentira: o status da devolução é do SERVIDOR, e muda sem a
+    // tela saber (a loja cancelou/recebeu enquanto a ficha estava aberta).
+    const servidor = { status: "aprovada" };
+    const chamadas = (nome: string) =>
+      rpc.mock.calls.filter(([n]) => n === nome).length;
+
+    function ligarServidor(
+      acoes: Record<string, () => { data: unknown; error: unknown }> = {},
+    ) {
+      const porNome = new Map(Object.entries(acoes));
+      rpc.mockImplementation((nome: string) => {
+        const acao = porNome.get(nome);
+        if (acao) return Promise.resolve(acao());
+        if (nome === "devolucao_elegibilidade") {
+          return Promise.resolve({ data: ELEGIBILIDADE, error: null });
+        }
+        if (nome === "devolucoes_do_pedido") {
+          return Promise.resolve({
+            data: [
+              {
+                id: "d-1",
+                protocolo: "DV1",
+                status: servidor.status,
+                tipo: "arrependimento",
+                resolucao_desejada: "reembolso",
+                metodo_retorno: "envio_proprio",
+              },
+            ],
+            error: null,
+          });
+        }
+        if (nome === "devolucao_detalhe") {
+          return Promise.resolve({
+            data: {
+              id: "d-1",
+              protocolo: "DV1",
+              order_id: "o-1",
+              tipo: "arrependimento",
+              motivo: "desisti",
+              resolucao_desejada: "reembolso",
+              modalidade: "nacional",
+              metodo_retorno: "envio_proprio",
+              status: servidor.status,
+              itens: [],
+            },
+            error: null,
+          });
+        }
+        return Promise.resolve({ data: null, error: null });
+      });
+    }
+
+    const mudarVisibilidade = (estado: "visible" | "hidden") => {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => estado,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    };
+
+    beforeEach(() => {
+      servidor.status = "aprovada";
+    });
+
+    afterEach(() => {
+      Reflect.deleteProperty(document, "visibilityState");
+    });
+
+    it("cancelar que o servidor recusa (já cancelada pela loja) relê o cartão e mantém a mensagem do servidor", async () => {
+      ligarServidor({
+        cancelar_devolucao: () => {
+          // Quando a cliente toca em cancelar, a loja já tinha cancelado.
+          servidor.status = "cancelada";
+          return {
+            data: null,
+            error: { message: "Esta devolução não pode mais ser cancelada." },
+          };
+        },
+      });
+      const atual = await montarSonda(true);
+      expect(atual().atual?.status).toBe("aprovada");
+      expect(chamadas("devolucao_elegibilidade")).toBe(1);
+
+      let desfecho: unknown;
+      await act(async () => {
+        desfecho = await atual().cancelar("d-1");
+      });
+
+      expect(desfecho).toEqual({
+        ok: false,
+        erro: "Esta devolução não pode mais ser cancelada.",
+      });
+      expect(chamadas("devolucao_elegibilidade")).toBe(2);
+      expect(atual().atual?.status).toBe("cancelada");
+    });
+
+    it("informar envio que o servidor recusa também relê o cartão", async () => {
+      ligarServidor({
+        informar_envio_devolucao: () => {
+          servidor.status = "cancelada";
+          return {
+            data: null,
+            error: { message: "A devolução não está aguardando envio." },
+          };
+        },
+      });
+      const atual = await montarSonda(true);
+
+      let desfecho: unknown;
+      await act(async () => {
+        desfecho = await atual().informarEnvio("d-1", "AB123456789BR");
+      });
+
+      expect(desfecho).toEqual({
+        ok: false,
+        erro: "A devolução não está aguardando envio.",
+      });
+      expect(chamadas("devolucao_elegibilidade")).toBe(2);
+      expect(atual().atual?.status).toBe("cancelada");
+    });
+
+    it("se a releitura depois do erro também falha, a mensagem do servidor continua sendo a devolvida", async () => {
+      let lidas = 0;
+      ligarServidor({
+        devolucao_elegibilidade: () => {
+          lidas += 1;
+          return lidas === 1
+            ? { data: ELEGIBILIDADE, error: null }
+            : { data: null, error: { message: "rede" } };
+        },
+        cancelar_devolucao: () => ({
+          data: null,
+          error: { message: "Não foi possível cancelar agora." },
+        }),
+      });
+      const atual = await montarSonda(true);
+
+      let desfecho: unknown;
+      await act(async () => {
+        desfecho = await atual().cancelar("d-1");
+      });
+
+      expect(desfecho).toEqual({
+        ok: false,
+        erro: "Não foi possível cancelar agora.",
+      });
+    });
+
+    it("ao voltar ao app (aba visível) relê; com a aba escondida não", async () => {
+      ligarServidor();
+      const atual = await montarSonda(true);
+      expect(chamadas("devolucao_elegibilidade")).toBe(1);
+
+      await act(async () => {
+        mudarVisibilidade("hidden");
+      });
+      expect(chamadas("devolucao_elegibilidade")).toBe(1);
+
+      servidor.status = "em_transito";
+      await act(async () => {
+        mudarVisibilidade("visible");
+      });
+      expect(chamadas("devolucao_elegibilidade")).toBe(2);
+      expect(atual().atual?.status).toBe("em_transito");
+    });
+
+    it("ao voltar a conexão (evento online) relê", async () => {
+      ligarServidor();
+      await montarSonda(true);
+      await act(async () => {
+        window.dispatchEvent(new Event("online"));
+      });
+      expect(chamadas("devolucao_elegibilidade")).toBe(2);
+    });
+
+    it("desligado (convidado/não entregue) não relê ao voltar ao app", async () => {
+      ligarServidor();
+      await montarSonda(false);
+      await act(async () => {
+        mudarVisibilidade("visible");
+        window.dispatchEvent(new Event("online"));
+      });
+      expect(rpc).not.toHaveBeenCalled();
+    });
+
+    it("depois de desmontar, voltar ao app não relê mais (ouvintes removidos)", async () => {
+      ligarServidor();
+      await montarSonda(true);
+      for (const raiz of raizes.splice(0)) act(() => raiz.unmount());
+      const antes = chamadas("devolucao_elegibilidade");
+      await act(async () => {
+        mudarVisibilidade("visible");
+        window.dispatchEvent(new Event("online"));
+      });
+      expect(chamadas("devolucao_elegibilidade")).toBe(antes);
+    });
+  });
 });

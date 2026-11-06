@@ -157,8 +157,9 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   readonly onModo?: (modo: ModoDaEntregaNaCidade) => void;
   /** Prazo da entrega própria, como o texto do campo (0 a 30; vazio = 1). */
   readonly dias?: string;
-  /** Ausente = sem campo de prazo. */
-  readonly onDias?: (dias: string) => void;
+  /** Ausente = sem campo de prazo. Devolver `false` = o texto foi recusado
+   * (fora de 0 a 30): o campo explica o limite em vez de ignorar em silêncio. */
+  readonly onDias?: (dias: string) => boolean | undefined;
   /** `store_address` salvo — sem ele a retirada não se escolhe. */
   readonly enderecoDaLoja?: string | null;
   /** Leva a Minha loja (`admin-about-store`), onde o endereço se cadastra.
@@ -197,6 +198,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
     /[.,]$/.test(textoDaEntrega) &&
     !Number.isNaN(valorDoTexto(textoDaEntrega.slice(0, -1)));
   const mostrarErroDaEntrega = entregaInvalida && !digitandoDecimal;
+  const [prazoRecusado, setPrazoRecusado] = useState(false);
   const [semEnderecoAoEscolher, setSemEnderecoAoEscolher] = useState(false);
   const [semCepAoEscolher, setSemCepAoEscolher] = useState(false);
   const soRetiro = modo === "so_retiro";
@@ -392,8 +394,12 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
               <span id="erro-valor-da-entrega" className="text-amber-300">
                 Escreva só números, como 7,50.
               </span>
+            ) : prazoRecusado ? (
+              <span id="erro-prazo-da-entrega" className="text-amber-300">
+                O prazo vai de 0 a 30 dias.
+              </span>
             ) : (
-              "Valor vazio = entrega grátis. Prazo 0 = no mesmo dia."
+              "Valor vazio = entrega grátis. Prazo de 0 a 30 dias; 0 = no mesmo dia."
             )
           }
         >
@@ -436,7 +442,14 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
                 inputMode="numeric"
                 aria-label="Prazo da entrega própria em dias"
                 value={dias}
-                onChange={(e) => onDias(e.target.value)}
+                onChange={(e) =>
+                  setPrazoRecusado(onDias(e.target.value) === false)
+                }
+                onBlur={() => setPrazoRecusado(false)}
+                aria-invalid={prazoRecusado}
+                aria-describedby={
+                  prazoRecusado ? "erro-prazo-da-entrega" : undefined
+                }
                 placeholder="1"
                 disabled={desabilitado}
                 className="w-10 bg-transparent text-right text-xl font-bold tabular-nums text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-0 disabled:opacity-50"

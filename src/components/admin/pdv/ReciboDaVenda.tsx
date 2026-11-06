@@ -18,6 +18,10 @@ import type {
   ReciboDaVendaRegistrada,
 } from "@/hooks/useVendaPresencial";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
+import {
+  ROTULO_SEM_VALOR_A_PAGAR,
+  pedidoSemValorAPagar,
+} from "@/lib/forma-de-pagamento";
 import { gerarUuidV4 } from "@/lib/uuid-v4";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order } from "@/types";
@@ -158,6 +162,14 @@ export function ReciboDaVenda({
   const divergencia = recibo.divergenciaComATela;
   const whatsapp = whatsappDoCliente(recibo.cliente);
   const linkWhatsapp = linkWhatsappDoCliente(whatsapp);
+  // A MESMA decisão do papel (`OrderReceipt` -> `rotuloDaFormaDoPedido`): venda
+  // de R$ 0,00 não tem forma de pagamento a mostrar nem pagamento conferido.
+  const semValorAPagar = pedidoSemValorAPagar({
+    total: recibo.total,
+    subtotal: recibo.subtotal,
+    discount: recibo.desconto,
+    shipping: 0,
+  });
 
   function aoEnviarPorWhatsapp(): void {
     if (!linkWhatsapp) return;
@@ -295,8 +307,12 @@ export function ReciboDaVenda({
           )}
           <div>
             <p className="sr-only">Pagamento</p>
-            <p>{ROTULO_DO_PAGAMENTO[recibo.pagamento]}</p>
-            {recibo.pagamento !== "cash" && (
+            <p>
+              {semValorAPagar
+                ? ROTULO_SEM_VALOR_A_PAGAR
+                : ROTULO_DO_PAGAMENTO[recibo.pagamento]}
+            </p>
+            {recibo.pagamento !== "cash" && !semValorAPagar && (
               <p className="pdv-muted">Pagamento conferido pelo lojista</p>
             )}
           </div>

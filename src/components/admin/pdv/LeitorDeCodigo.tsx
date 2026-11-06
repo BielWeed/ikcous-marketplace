@@ -96,7 +96,9 @@ export function LeitorDeCodigo({
       </div>
 
       {aberto && (
-        <div className="pdv-reader-preview">
+        // Em erro a prévia some, mas o <video> continua montado: é nele que
+        // o hook religa a câmera quando toca em Tentar de novo.
+        <div className="pdv-reader-preview" hidden={estado === "erro"}>
           <video
             ref={refDoVideo}
             muted
@@ -106,7 +108,9 @@ export function LeitorDeCodigo({
           />
 
           {/* Moldura decorativa — não é informação, só ajuda a mirar o código. */}
-          <div aria-hidden="true" className="pdv-reader-frame" />
+          {estado !== "erro" && (
+            <div aria-hidden="true" className="pdv-reader-frame" />
+          )}
 
           {estado === "preparando" && (
             <div role="status" className="pdv-reader-overlay">
@@ -119,9 +123,11 @@ export function LeitorDeCodigo({
               Leitura pausada
             </div>
           )}
-          <p className="pdv-reader-hint">
-            {compacto ? "Câmera ativa · Bipe o próximo" : dica}
-          </p>
+          {estado !== "erro" && (
+            <p className="pdv-reader-hint">
+              {compacto ? "Câmera ativa · Bipe o próximo" : dica}
+            </p>
+          )}
         </div>
       )}
       {estado === "erro" && erro && (

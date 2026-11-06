@@ -175,7 +175,9 @@ module.exports = [
     // por algo mais arriscado.
     // 06/11/2026 (mesma regra): 619 -> 622 kB na 1.5.143 (lote de 8 correcoes de caca somado a 1.5.142, que nao foi ao ar).
     // Mede 620,64 kB no build local (a base 1.5.142 media 618,39), 1,64 kB acima do teto. Nada foi trocado por algo mais arriscado.
-    limit: "622 kB",
+    // 06/11/2026 (mesma regra): 622 -> 625 kB na 1.5.144 (lote de 16 correcoes de caca: leitor, carrinho, devolucao, datas,
+    // rede lenta). Mede 623,12 kB no build local, 1,12 kB acima do teto. Nada foi trocado por algo mais arriscado.
+    limit: "625 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
@@ -314,7 +316,9 @@ module.exports = [
     // 06/11/2026 (mesma regra): 509 -> 511 kB na 1.5.141 (frete que guarda a chave, perguntas e avaliacoes sem registro,
     // textos longos na ficha do cliente). Medem 509,17 kB no build local, 170 B acima do teto. Nada foi trocado por
     // algo mais arriscado.
-    limit: "511 kB",
+    // 06/11/2026 (mesma regra): 511 -> 513 kB na 1.5.144 (cupons, produtos sem estoque, devolucao, datas, pedidos).
+    // Medem 511,45 kB no build local, 446 B acima do teto. Nada foi trocado por algo mais arriscado.
+    limit: "513 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },

@@ -805,8 +805,9 @@ function FluxoDaDevolucao({
               </legend>
               {tipo === "troca" && (
                 <p className="rounded-2xl bg-zinc-50 p-3 text-xs leading-relaxed text-zinc-600">
-                  O prazo de arrependimento terminou: pela política da loja,
-                  este pedido pode ser trocado ou virar vale-troca.
+                  {prazos.arrependimento_ate
+                    ? "O prazo de arrependimento terminou: pela política da loja, este pedido pode ser trocado ou virar vale-troca."
+                    : "Pela política da loja, este pedido pode ser trocado ou virar vale-troca."}
                 </p>
               )}
               {permitidas.map((r) => (

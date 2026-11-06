@@ -159,3 +159,79 @@ describe("OrderDetail — não inventa a cidade do pedido", () => {
     expect(query).not.toMatch(/,\s*-\s*MG/);
   });
 });
+
+// O "Ver no Maps" do painel monta a busca como o cartão de endereço do Perfil
+// (`queryMapsDoEndereco`): rua+número, cidade, UF e CEP de rua, sem o bairro
+// quando o endereço é completo (o bairro faz o Google listar comércios).
+describe("OrderDetail — 'Ver no Maps' aponta a casa, não a rua nem o bairro", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+  });
+
+  async function buscaDoMapa(customer: Order["customer"]): Promise<string> {
+    const { OrderDetail } = await import(
+      "@/components/admin/orders/OrderDetail"
+    );
+    const order: Order = { ...pedidoFake({}), customer };
+    await act(async () => {
+      raiz.render(<OrderDetail order={order} onStatusChange={vi.fn()} />);
+    });
+    const link = hospedeiro.querySelector<HTMLAnchorElement>(
+      'a[title="Ver no Google Maps"]',
+    );
+    expect(link).not.toBeNull();
+    return decodeURIComponent(link?.href.split("query=")[1] ?? "");
+  }
+
+  it("rua que traz o número no meio do nome ('Rua 15 de Novembro', nº 15) ainda leva o número", async () => {
+    const query = await buscaDoMapa({
+      name: "Cliente Teste",
+      whatsapp: "34999999999",
+      address: "Rua 15 de Novembro",
+      number: "15",
+      neighborhood: "Centro",
+      city: "Patos de Minas",
+      state: "MG",
+    });
+    expect(query).toBe("Rua 15 de Novembro, 15, Patos de Minas, MG");
+  });
+
+  it("endereço completo não leva o bairro; o CEP de rua entra no fim", async () => {
+    const query = await buscaDoMapa({
+      name: "Cliente Teste",
+      whatsapp: "34999999999",
+      address: "Rua das Flores",
+      number: "123",
+      neighborhood: "Centro",
+      city: "Patos de Minas",
+      state: "MG",
+      cep: "38700-123",
+    });
+    expect(query).toBe("Rua das Flores, 123, Patos de Minas, MG, 38700-123");
+    expect(query).not.toContain("Centro");
+  });
+
+  it("rua que já termina no número não repete o número", async () => {
+    const query = await buscaDoMapa({
+      name: "Cliente Teste",
+      whatsapp: "34999999999",
+      address: "Rua das Flores, 123",
+      number: "123",
+      city: "Patos de Minas",
+      state: "MG",
+    });
+    expect(query).toBe("Rua das Flores, 123, Patos de Minas, MG");
+  });
+});

@@ -12,10 +12,11 @@ import { useLeitorDeCodigo } from "@/hooks/useLeitorDeCodigo";
 // O jsdom NÃO implementa `srcObject`, `play()` nem `readyState` de
 // `HTMLMediaElement` — sem os três dublês abaixo o arquivo inteiro falha
 // com "Not implemented" e parece defeito do hook, não do ambiente.
-import type {
-  Decodificador,
-  Leitura,
-  OpcoesDoDecodificador,
+import {
+  type Decodificador,
+  ErroDoDecodificador,
+  type Leitura,
+  type OpcoesDoDecodificador,
 } from "@/lib/leitor/decodificador";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -625,5 +626,79 @@ describe("useLeitorDeCodigo", () => {
     const chamadasAntes = detectar.mock.calls.length;
     await avancar(300);
     expect(detectar.mock.calls.length).toBe(chamadasAntes);
+  });
+
+  it("14. o leitor (WASM) não carregou: detectar rejeita com falha_do_fallback -> erro leitor_nao_carregou com a frase de conexão, câmera solta e laço parado; Tentar de novo religa", async () => {
+    const detectar = vi.fn(async () => {
+      throw new ErroDoDecodificador("falha_do_fallback", new Error("rede"));
+    });
+    const dec = criarDecodificadorDuble({
+      motor: "zxing",
+      entrada: "video",
+      detectar,
+    });
+    const getUserMedia = vi.fn(async () => criarStreamDuble(pararTrack));
+    const aviso = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await montar({
+      ativo: true,
+      aoLer: vi.fn(),
+      intervaloMs: 50,
+      midia: { getUserMedia },
+      criarDecodificador: vi.fn(async () => dec),
+    });
+    await avancar(0);
+    await avancar(200);
+
+    expect(texto("estado")).toBe("erro");
+    expect(texto("erro-origem")).toBe("leitor_nao_carregou");
+    expect(texto("erro-mensagem")).toBe(
+      "Não foi possível carregar o leitor de código de barras. Verifique a conexão e toque em Tentar de novo.",
+    );
+    expect(pararTrack).toHaveBeenCalledTimes(1);
+    expect(dec.encerrar).toHaveBeenCalledTimes(1);
+    expect(aviso).toHaveBeenCalled();
+
+    // O laço parou: nenhum detectar depois do erro.
+    const chamadasAntes = detectar.mock.calls.length;
+    await avancar(500);
+    expect(detectar.mock.calls.length).toBe(chamadasAntes);
+
+    act(() => {
+      clicar("tentar-de-novo");
+    });
+    await avancar(0);
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+  });
+
+  it("15. outro erro de detectar (não é falha do leitor) não mata o laço: segue lendo e acerta no quadro seguinte", async () => {
+    const leitura: Leitura = { codigo: "7891000315507", formato: "ean_13" };
+    let vez = 0;
+    const detectar = vi.fn(async () => {
+      vez += 1;
+      if (vez === 1) throw new Error("quadro ruim");
+      return [leitura];
+    });
+    const dec = criarDecodificadorDuble({
+      motor: "nativo",
+      entrada: "video",
+      detectar,
+    });
+    const aoLer = vi.fn();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await montar({
+      ativo: true,
+      aoLer,
+      intervaloMs: 50,
+      midia: { getUserMedia: vi.fn(async () => criarStreamDuble(pararTrack)) },
+      criarDecodificador: vi.fn(async () => dec),
+    });
+    await avancar(0);
+    await avancar(300);
+
+    expect(detectar.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(aoLer).toHaveBeenCalledWith(leitura);
+    expect(texto("estado")).toBe("lendo");
   });
 });

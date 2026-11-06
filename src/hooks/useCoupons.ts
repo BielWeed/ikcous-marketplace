@@ -373,9 +373,12 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       // Mesma régua do addCoupon (laudo 0109, A4): trocar o código por um
       // que já existe é recusa de constraint, não "revise as regras".
       toast.error(
-        clientes !== undefined
-          ? "Não foi possível salvar o cupom. Confira e tente de novo."
-          : mensagemDeErroDoCupom(error, "Erro ao atualizar cupom"),
+        mensagemDeErroDoCupom(
+          error,
+          clientes !== undefined
+            ? "Não foi possível salvar o cupom. Confira e tente de novo."
+            : "Erro ao atualizar cupom",
+        ),
       );
       if (clientes === undefined && anterior) {
         // A falha deste cupom preserva os demais já salvos.

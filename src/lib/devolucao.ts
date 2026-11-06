@@ -376,14 +376,26 @@ export function pedidoDentroDoPrazo(
   return dia <= prazoAte;
 }
 
-/** Idade de um pedido de devolução em dias inteiros (para o painel). */
+/**
+ * Idade de um pedido de devolução em DIAS DO CALENDÁRIO da loja (para o
+ * painel): pedido às 22h de ontem e visto às 9h de hoje é "há 1 dia", não
+ * "hoje" (só 11h corridas).
+ */
 export function idadeEmDias(iso: string, agora: Date): number | null {
   const data = new Date(iso);
-  if (Number.isNaN(data.getTime())) return null;
-  return Math.max(
-    0,
-    Math.floor((agora.getTime() - data.getTime()) / 86_400_000),
-  );
+  if (Number.isNaN(data.getTime()) || Number.isNaN(agora.getTime())) {
+    return null;
+  }
+  const diaDe = (quando: Date) => {
+    const m = RE_DIA.exec(
+      quando.toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }),
+    );
+    return m
+      ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+      : Number.NaN;
+  };
+  const dias = Math.round((diaDe(agora) - diaDe(data)) / 86_400_000);
+  return Number.isNaN(dias) ? null : Math.max(0, dias);
 }
 
 /** "hoje", "há 1 dia", "há 5 dias". */

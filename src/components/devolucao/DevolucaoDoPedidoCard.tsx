@@ -8,7 +8,7 @@ import {
   Truck,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 import type { Desfecho } from "@/hooks/useDevolucaoCliente";
+import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import {
   acoesDoCliente,
@@ -132,6 +133,15 @@ export function DevolucaoDoPedidoCard({
   const [enviando, setEnviando] = useState<"cancelar" | "envio" | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [confirmandoCancelar, setConfirmandoCancelar] = useState(false);
+
+  // Qual cor/tamanho cada linha devolvida é (duas linhas do mesmo produto
+  // não podem aparecer idênticas): o item só guarda o id da variação.
+  const itensParaRotular = useMemo(
+    () =>
+      atual.itens.map((item) => ({ variantId: item.variant_id ?? undefined })),
+    [atual.itens],
+  );
+  const rotulosDasVariacoes = useRotulosDasVariacoes(itensParaRotular);
 
   const etapas = etapasDaDevolucao(atual);
   const acoes = acoesDoCliente(atual);
@@ -355,6 +365,14 @@ export function DevolucaoDoPedidoCard({
           <div key={item.id} className="flex justify-between gap-3">
             <dt className="line-clamp-2 min-w-0 break-words text-zinc-600">
               {item.quantidade}× {item.product_name || "Produto"}
+              {item.variant_id && rotulosDasVariacoes[item.variant_id] && (
+                <span
+                  data-testid="variacao-do-item-devolvido"
+                  className="block break-words text-xs text-zinc-500"
+                >
+                  {rotulosDasVariacoes[item.variant_id]}
+                </span>
+              )}
             </dt>
             <dd className="shrink-0 font-semibold tabular-nums text-zinc-900">
               {formatarReais(item.quantidade * item.valor_unitario)}

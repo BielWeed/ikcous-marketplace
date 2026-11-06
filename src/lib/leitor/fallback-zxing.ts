@@ -12,7 +12,11 @@
 // Entrada `zxing-wasm/reader` (não a raiz): é a build só-leitora, ~566 kB
 // menor que a full — escrever código de barras nunca foi requisito do
 // balcão.
-import { prepareZXingModule, readBarcodes } from "zxing-wasm/reader";
+import {
+  prepareZXingModule,
+  purgeZXingModule,
+  readBarcodes,
+} from "zxing-wasm/reader";
 // O export de ASSET do próprio pacote (export map "./reader/
 // zxing_reader.wasm"), com o sufixo `?url` que o vite exige para binário:
 // emite o arquivo em dist/assets e aqui fica só a URL. Sem isto, o padrão
@@ -27,7 +31,10 @@ import type { ModuloZxingReader } from "./decodificador";
 // Só REGISTRA os overrides (`fireImmediately` é false por padrão): o módulo
 // Emscripten — e o download do WASM — só acontecem na primeira leitura de
 // verdade, não no carregamento deste chunk.
-prepareZXingModule({ overrides: { locateFile: () => urlDoWasm } });
+function prepararComWasmLocal(): void {
+  prepareZXingModule({ overrides: { locateFile: () => urlDoWasm } });
+}
+prepararComWasmLocal();
 
 // A assinatura real aceita MAIS do que a nossa interface estreita pede
 // (opções extras do `ReaderOptions`; resultados com campos além de
@@ -44,6 +51,14 @@ export const moduloZxing: ModuloZxingReader = {
       ...opcoes,
       formats: opcoes?.formats ? [...opcoes.formats] : undefined,
     } as Parameters<typeof readBarcodes>[1]),
+  // A lib guarda por dentro a promessa de instanciação do WASM — inclusive
+  // rejeitada — e devolve a MESMA para sempre; só o purge solta esse cache.
+  // Depois do purge o padrão da lib volta para o CDN jsDelivr (que a CSP não
+  // libera), então o módulo é preparado de novo com a URL local do WASM.
+  reiniciar: () => {
+    purgeZXingModule();
+    prepararComWasmLocal();
+  },
 };
 
 export default moduloZxing;

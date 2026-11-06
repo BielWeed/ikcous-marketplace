@@ -118,6 +118,16 @@ describe("LeitorDeCodigo (componente)", () => {
       "Você precisa permitir o acesso à câmera para ler o código.",
     );
     expect(alerta?.textContent).toContain("Não foi possível abrir a câmera");
+    // Com a câmera fora do ar, nada de moldura de mira nem de "Câmera ativa":
+    // o <video> fica montado (o hook religa a câmera nele no Tentar de novo),
+    // mas escondido junto com a prévia.
+    expect(document.querySelector(".pdv-reader-frame")).toBeNull();
+    expect(document.querySelector(".pdv-reader-hint")).toBeNull();
+    expect(
+      (document.querySelector(".pdv-reader-preview") as HTMLElement | null)
+        ?.hidden,
+    ).toBe(true);
+    expect(document.querySelector("video")).not.toBeNull();
     expect(
       [...hospedeiro.querySelectorAll("button")].find(
         (b) => b.textContent?.trim() === "Digitar o código",

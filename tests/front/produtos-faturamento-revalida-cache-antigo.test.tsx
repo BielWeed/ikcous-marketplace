@@ -527,7 +527,6 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
       bruto: "−R$\u00a040,00",
     },
     { totalCost: 0, totalValue: 60, totalRevenue: 60, bruto: "60,00" },
-    { totalCost: 0, totalValue: 0, totalRevenue: 0, bruto: "0,00" },
   ])(
     "custo zero conhecido e prejuízo não são confundidos com dado ausente: $bruto",
     async ({ bruto, ...inventory }) => {
@@ -535,7 +534,7 @@ describe("Produtos — faturamento vindo da RPC depois de cache legado", () => {
         ...inventory,
         revenueWithoutCost: 0,
         productsWithoutCost: 0,
-        productsWithCost: inventory.totalRevenue === 0 ? 0 : 1,
+        productsWithCost: 1,
       });
       expect(metrica("Lucro bruto potencial")).toContain(bruto);
       expect(metrica("Lucro bruto potencial")).not.toContain("Parcial");

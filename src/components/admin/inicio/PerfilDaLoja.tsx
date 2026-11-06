@@ -31,6 +31,18 @@ export function PerfilDaLoja({
   const inicial = primeiraLetra(nome, 1, "L");
   const local = [cidade, uf].filter(Boolean).join(" / ");
 
+  // Copiar o link, mesma regra do `copiarParaClipboard` (só comemora quando
+  // DEU CERTO). É o caminho de quem não tem menu de compartilhar e também o
+  // de quem tem, mas o menu falhou.
+  async function copiarOLink(url: string) {
+    if (await copiarParaClipboard(url)) {
+      toast.success("Link da loja copiado");
+      setLinkCopiado(true);
+    } else {
+      toast.error("Não foi possível compartilhar agora");
+    }
+  }
+
   async function compartilharLoja() {
     setLinkCopiado(false);
     const url = `${window.location.origin}/`;
@@ -43,21 +55,15 @@ export function PerfilDaLoja({
         });
       } catch (erro) {
         // Cancelar o share (usuário fechou a folha) não é falha — é a pessoa
-        // desistindo. Só avisa quando o motivo é outro (sem permissão etc.).
-        if ((erro as { name?: string } | null)?.name !== "AbortError") {
-          toast.error("Não foi possível compartilhar agora");
-        }
+        // desistindo: silêncio. Qualquer outra falha do menu (sem permissão
+        // etc.) cai na cópia do link, como na vitrine (ProductView).
+        if ((erro as { name?: string } | null)?.name === "AbortError") return;
+        await copiarOLink(url);
       }
       return;
     }
-    // Desktop não tem Web Share API: cai para copiar o link, mesma regra do
-    // `copiarParaClipboard` (só comemora quando DEU CERTO).
-    if (await copiarParaClipboard(url)) {
-      toast.success("Link da loja copiado");
-      setLinkCopiado(true);
-    } else {
-      toast.error("Não foi possível compartilhar agora");
-    }
+    // Desktop não tem Web Share API: cai para copiar o link.
+    await copiarOLink(url);
   }
 
   return (

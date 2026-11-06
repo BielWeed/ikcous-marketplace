@@ -21,6 +21,7 @@ import {
   useViewTransition,
 } from "@/hooks/useViewTransition";
 import { contagemDe, lerListaAdmin } from "@/lib/devolucao";
+import { marcarEscapeSintetico } from "@/lib/escape-sintetico";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { pedirNovoBanner } from "@/lib/novo-banner-pendente";
 import {
@@ -606,6 +607,7 @@ export function AdminLayout({
           bubbles: true,
           cancelable: true,
         });
+        marcarEscapeSintetico(escapeEvent);
         target.dispatchEvent(escapeEvent);
         console.debug(`[AdminLayout] Dispatched Escape to: ${name}`);
       };
@@ -697,6 +699,10 @@ export function AdminLayout({
       }, 4000);
       return () => clearTimeout(timer);
     }
+    // O efeito reexecutou sem ligar o flash de novo (caiu outra vez, ou voltou
+    // lenta): o limpador acima já cancelou o desligamento do flash anterior,
+    // então desliga aqui — senão o selo ficaria preso em "Sincronizado".
+    setShowSyncFlash(false);
     prevOfflineRef.current = isOffline;
   }, [isOffline]);
 

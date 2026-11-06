@@ -9,6 +9,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { queryMapsDoEndereco } from "@/lib/query-maps-do-endereco";
 import type { Address } from "@/types";
 import { CheckCircle2, Edit, MapPin, Plus, Trash2 } from "lucide-react";
 import { memo, useState } from "react";
@@ -28,58 +29,8 @@ interface AddressListProps {
   onAdd?: () => void;
 }
 
-// Query de LOCAL para o Google. Endereço completo (rua, cidade e UF):
-// rua+número, cidade, UF e, só se for específico, o CEP no fim. Incompleto:
-// rua+número, bairro, cidade, UF, CEP e Brasil — o que houver, como
-// localizador de reserva.
-// Dados privados — destinatário, complemento, referência e apelido — NUNCA
-// saem para o Google. Sem rua e sem CEP não há como apontar o mapa: devolve
-// null para o cartão nem montar iframe vazio (a query é texto; o Google
-// geocodifica sozinho — nada de coordenada inventada nem precisão prometida).
-//
-// No endereço completo o bairro e o "Brasil" ficam de fora (medido no embed
-// real): um nome de bairro que lembra nome de comércio faz o Google listar
-// dezenas de comércios (vários pinos) em vez de apontar UM endereço. Sem o
-// bairro o mesmo endereço dá um pino só. O CEP volta no fim apenas quando é
-// de rua (8 dígitos e NÃO terminado em 000): ele desempata rua repetida em
-// cidade grande. CEP geral da cidade (terminado em 000) não localiza nada.
-function cepEspecificoDoEndereco(cep: string | null | undefined) {
-  const digitos = (cep ?? "").replace(/\D/g, "");
-  if (digitos.length !== 8 || digitos.endsWith("000")) return null;
-  return `${digitos.slice(0, 5)}-${digitos.slice(5)}`;
-}
-
-export function queryMapsDoEndereco(address: Address): string | null {
-  // Guarda DIRETA em street ou CEP: um número órfão (rua vazia) não monta
-  // query — sem um dos dois não há como apontar o mapa.
-  const temRua = Boolean(address.street?.trim());
-  if (!temRua && !address.cep?.trim()) return null;
-  const rua =
-    temRua && address.number?.trim()
-      ? `${address.street!.trim()}, ${address.number.trim()}`
-      : (address.street?.trim() ?? "");
-  // A simplificação exige rua PRESENTE: sem rua, bairro e CEP são os únicos
-  // localizadores e não podem sair.
-  const enderecoCompleto = Boolean(
-    temRua && address.city?.trim() && address.state?.trim(),
-  );
-  const partes = enderecoCompleto
-    ? [
-        rua,
-        address.city?.trim(),
-        address.state?.trim(),
-        cepEspecificoDoEndereco(address.cep),
-      ]
-    : [
-        rua,
-        address.neighborhood?.trim(),
-        address.city?.trim(),
-        address.state?.trim(),
-        address.cep?.trim(),
-        "Brasil",
-      ];
-  return encodeURIComponent(partes.filter(Boolean).join(", "));
-}
+// A query de LOCAL do mapa mora em lib (o painel usa a mesma no pedido).
+export { queryMapsDoEndereco };
 
 // Apagar endereço pede confirmação (caçada de 14/10/2026, dado de cliente): a lixeira do cartão é pequena e fica
 // colada no lápis, e apagava na hora, sem "tem certeza?". O toque na lixeira só ABRE esta pergunta; quem apaga é o
@@ -270,6 +221,9 @@ export const AddressList = memo(function AddressList({
               } ${selectable ? "cursor-pointer active:scale-[0.99]" : ""}`}
               onClick={() => selectable && onSelect?.(address)}
               onKeyDown={(e) => {
+                // Só a tecla apertada no próprio cartão escolhe: vinda de um
+                // botão interno ela não pode ser engolida.
+                if (e.target !== e.currentTarget) return;
                 if (selectable && (e.key === "Enter" || e.key === " ")) {
                   e.preventDefault();
                   onSelect?.(address);
@@ -344,6 +298,9 @@ export const AddressList = memo(function AddressList({
               } ${selectable ? "cursor-pointer active:scale-[0.98]" : ""}`}
               onClick={() => selectable && onSelect?.(address)}
               onKeyDown={(e) => {
+                // Só a tecla apertada no próprio cartão escolhe: no Editar e
+                // no Excluir o Enter/Espaço tem de virar o clique do botão.
+                if (e.target !== e.currentTarget) return;
                 if (selectable && (e.key === "Enter" || e.key === " ")) {
                   e.preventDefault();
                   onSelect?.(address);

@@ -3,6 +3,7 @@ import {
   mapProductFromDB,
   mapVariantFromDB,
 } from "@/lib/mappers";
+import { valorDevolverAgora } from "@/lib/valor-devolver-agora";
 import type { Address } from "@/types";
 import type { Database } from "@/types/database.types";
 import { describe, expect, it, vi } from "vitest";
@@ -529,6 +530,36 @@ describe("mapOrderFromDB", () => {
     expect(o.items[0].image).toBe("https://cdn.exemplo/b.webp");
   });
 
+  it("produto que o join não devolveu (excluído/pausado) marca o item como sem produto visível", () => {
+    const o = mapOrderFromDB(
+      pedido({
+        items: [{ ...item(), product: null } as unknown as OrderItemRow],
+      }),
+    );
+    expect(o.items[0].productVisible).toBe(false);
+    // O vínculo continua gravado: só o convite a avaliar depende da marca.
+    expect(o.items[0].productId).toBe("prod-1");
+  });
+
+  it("produto devolvido pelo join, ou consulta sem o join, não marcam nada", () => {
+    const comJoin = mapOrderFromDB(
+      pedido({
+        items: [
+          {
+            ...item(),
+            product: { imagem_urls: ["https://cdn.exemplo/a.webp"] },
+          } as OrderItemRow,
+        ],
+      }),
+    );
+    expect(comJoin.items[0].productVisible).toBeUndefined();
+
+    // Caminho que não faz o join (a chave `product` nem vem): não esconde nada.
+    const semJoin = mapOrderFromDB(pedido({ items: [item()] }));
+    expect(semJoin.items[0].productVisible).toBeUndefined();
+    expect("productVisible" in semJoin.items[0]).toBe(false);
+  });
+
   it("pedido sem itens vira lista vazia, não undefined", () => {
     expect(mapOrderFromDB(pedido()).items).toEqual([]);
   });
@@ -562,6 +593,94 @@ describe("mapOrderFromDB", () => {
   it("payment_status nulo (os 64 pedidos históricos) continua nulo", () => {
     const o = mapOrderFromDB(pedido({ payment_status: null }));
     expect(o.paymentStatus).toBeNull();
+  });
+
+  // O dinheiro que JÁ saiu precisa chegar da base até o "Devolver agora": os
+  // testes do painel montam o pedido pronto, sem passar por este mapeador, então
+  // renomear a coluna aqui deixaria o botão cobrando o total cheio sem nenhum
+  // outro teste ficar vermelho.
+  describe("dinheiro já devolvido (estorno e devolução manual)", () => {
+    // `valor_devolvido_por_devolucao` só existe na RPC get_admin_orders_
+    // cancelados_recentes e não está em OrderRow: o cast espelha o do mapper.
+    const comDevolvido = (extra: Record<string, unknown>) =>
+      pedido(extra as Partial<OrderRow>);
+
+    it("valor_estornado e valor_devolvido_por_devolucao chegam ao pedido", () => {
+      const o = mapOrderFromDB(
+        comDevolvido({
+          valor_estornado: 60,
+          valor_devolvido_por_devolucao: 30,
+        }),
+      );
+      expect(o.valorEstornado).toBe(60);
+      expect(o.valorDevolvidoPorDevolucao).toBe(30);
+    });
+
+    it("o numeric do Postgres chega como texto e vira número", () => {
+      const o = mapOrderFromDB(
+        comDevolvido({
+          valor_estornado: "60.00",
+          valor_devolvido_por_devolucao: "30.50",
+        }),
+      );
+      expect(o.valorEstornado).toBe(60);
+      expect(o.valorDevolvidoPorDevolucao).toBe(30.5);
+    });
+
+    it("sem as colunas (cache antigo, outra RPC) vale 0: nada devolvido", () => {
+      const o = mapOrderFromDB(comDevolvido({ valor_estornado: null }));
+      expect(o.valorEstornado).toBe(0);
+      expect(o.valorDevolvidoPorDevolucao).toBe(0);
+    });
+
+    it("o pedido mapeado alimenta o 'Devolver agora' (total 100)", () => {
+      const soEstorno = mapOrderFromDB(
+        comDevolvido({ total: 100, valor_estornado: 60 }),
+      );
+      expect(valorDevolverAgora(soEstorno)).toBe(40);
+
+      const os2 = mapOrderFromDB(
+        comDevolvido({
+          total: 100,
+          valor_estornado: 60,
+          valor_devolvido_por_devolucao: 30,
+        }),
+      );
+      expect(valorDevolverAgora(os2)).toBe(10);
+    });
+  });
+
+  it("subtotal, frete, desconto e total chegam como números, e o item traz preço e quantidade reais", () => {
+    const o = mapOrderFromDB(
+      pedido({
+        subtotal: 100,
+        shipping: 15,
+        discount: 10,
+        total: 105,
+        items: [item({ price: 49.9, quantity: 3 })],
+      }),
+    );
+    expect(o.subtotal).toBe(100);
+    expect(o.shipping).toBe(15);
+    expect(o.discount).toBe(10);
+    expect(o.total).toBe(105);
+    expect(o.items[0].price).toBe(49.9);
+    expect(o.items[0].quantity).toBe(3);
+  });
+
+  it("item com preço e quantidade nulos vira preço 0 e quantidade 1", () => {
+    const o = mapOrderFromDB(
+      pedido({
+        items: [
+          item({
+            price: null as unknown as number,
+            quantity: null as unknown as number,
+          }),
+        ],
+      }),
+    );
+    expect(o.items[0].price).toBe(0);
+    expect(o.items[0].quantity).toBe(1);
   });
 });
 

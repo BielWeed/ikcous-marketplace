@@ -196,6 +196,41 @@ const DURACAO_DA_INSTRUCAO_DE_PERMISSAO_MS = 8000;
 // `subscribe()` pendurado depois de a permissão já ter sido gasta.
 const PRAZO_DO_SERVICE_WORKER_MS = 10_000;
 
+// Avisa as OUTRAS telas que usam este hook que o aparelho ligou ou desligou os
+// avisos (cada tela tem o próprio estado): elas relêem a inscrição do navegador.
+const EVENTO_INSCRICAO_MUDOU = "ikcous:push-inscricao-mudou";
+
+// `origem` identifica a instância que mexeu: ela já sabe o que gravou e não
+// precisa reler (a leitura dela só poderia atrasar-se em relação à escrita).
+function avisarQueAInscricaoMudou(origem: symbol) {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent(EVENTO_INSCRICAO_MUDOU, { detail: origem }),
+    );
+  }
+}
+
+// Quantos ligar/desligar estão no ar neste aparelho (de QUALQUER instância do
+// hook). Enquanto houver um, ninguém relê o navegador: a janela entre ele já ter
+// a inscrição e o banco gravá-la é a mesma em que o balão fecha e o foco volta,
+// e adotar a inscrição ali a deixaria no estado mesmo se a gravação falhar (que
+// a desfaz). Quem terminou avisa as outras telas DEPOIS de baixar o contador.
+let mexendoNaInscricao = 0;
+
+// Troca a cada começo de ligar/desligar: a resposta de uma leitura que começou
+// ANTES dele é descartada, senão ela apagaria o que a escrita acabou de gravar.
+let versaoDeEscrita = 0;
+
+function comecarAMexerNaInscricao() {
+  mexendoNaInscricao += 1;
+  versaoDeEscrita += 1;
+}
+
+function terminarDeMexerNaInscricao(mudou: boolean, origem: symbol) {
+  mexendoNaInscricao -= 1;
+  if (mudou) avisarQueAInscricaoMudou(origem);
+}
+
 function esperarServiceWorker(
   pronto: Promise<ServiceWorkerRegistration>,
 ): Promise<ServiceWorkerRegistration> {
@@ -253,6 +288,8 @@ export function usePushNotifications() {
   const [sondado, setSondado] = useState(false);
   const userId = user?.id ?? null;
   const geracaoDaInscricao = useRef(0);
+  // Quem sou entre as telas que usam este hook (ver `avisarQueAInscricaoMudou`).
+  const quemSou = useRef(Symbol("push"));
   // Só a SAÍDA DA TELA (desmontagem) não invalida uma ativação em andamento:
   // ela segue, grava e deixa o aparelho inscrito (outra instância pode estar
   // adotando a mesma inscrição). Trocar/sair de conta, sim, invalida.
@@ -378,6 +415,68 @@ export function usePushNotifications() {
     };
   }, [isSupported]);
 
+  // Cada tela que chama este hook tem o PRÓPRIO estado, e o convite do App e o
+  // cartão da tela do sino são duas delas: a cliente ligava os avisos no cartão,
+  // voltava ao Início e o convite ("Quero Receber!"), que só leu o navegador ao
+  // montar, aparecia de novo. O que vale é a inscrição do NAVEGADOR, então toda
+  // instância a relê quando (a) outra liga ou desliga (evento da janela) e (b)
+  // o app volta ao foco. Não relê no meio de um ligar/desligar (ver
+  // `mexendoNaInscricao`), e descarta a resposta que chega depois de outra
+  // leitura mais nova desta tela ou de uma escrita (`versaoDeEscrita`).
+  useEffect(() => {
+    if (!isSupported) return;
+    let desmontado = false;
+    let ultimaLeitura = 0;
+    const reler = async () => {
+      if (mexendoNaInscricao > 0) return;
+      const leitura = ++ultimaLeitura;
+      const escrita = versaoDeEscrita;
+      try {
+        const registro = await esperarServiceWorker(
+          Promise.resolve(navigator.serviceWorker.ready),
+        );
+        const sub = await registro.pushManager.getSubscription();
+        if (
+          desmontado ||
+          mexendoNaInscricao > 0 ||
+          versaoDeEscrita !== escrita ||
+          ultimaLeitura !== leitura
+        ) {
+          return;
+        }
+        // Mesma inscrição: devolve o MESMO objeto, para não refazer a
+        // verificação de dono (efeito abaixo) nem renderizar à toa.
+        setSubscription((atual) =>
+          atual?.endpoint === sub?.endpoint ? atual : sub,
+        );
+        if (typeof Notification !== "undefined") {
+          setPermission((atual) =>
+            atual === Notification.permission ? atual : Notification.permission,
+          );
+        }
+      } catch {
+        // Sem leitura nada muda: o estado de antes segue valendo.
+      }
+    };
+    const aoVoltar = () => {
+      if (document.visibilityState === "hidden") return;
+      void reler();
+    };
+    const aoMudarEmOutraTela = (evento: Event) => {
+      if ((evento as CustomEvent<unknown>).detail === quemSou.current) return;
+      void reler();
+    };
+    window.addEventListener(EVENTO_INSCRICAO_MUDOU, aoMudarEmOutraTela);
+    document.addEventListener("visibilitychange", aoVoltar);
+    window.addEventListener("focus", aoVoltar);
+    return () => {
+      desmontado = true;
+      window.removeEventListener(EVENTO_INSCRICAO_MUDOU, aoMudarEmOutraTela);
+      document.removeEventListener("visibilitychange", aoVoltar);
+      window.removeEventListener("focus", aoVoltar);
+    };
+  }, [isSupported]);
+
   // A inscrição do NAVEGADOR pode ser de OUTRA conta: quem estava logado antes
   // a gravou no nome dele e o navegador a mantém depois do Sair (celular da
   // família, aparelho da loja; e todo aparelho que saiu antes do Sair passar
@@ -447,6 +546,8 @@ export function usePushNotifications() {
       // Lido AO VIVO, não do estado: a permissão pode ter mudado desde a sonda.
       if (silencioso && Notification.permission !== "granted") return;
       const geracaoDaAtivacao = geracaoDaInscricao.current;
+      comecarAMexerNaInscricao();
+      let inscreveu = false;
 
       try {
         // `isSupported` é fotografia do INSTANTE da montagem; o toque pode
@@ -693,6 +794,7 @@ export function usePushNotifications() {
           userId: user.id,
         };
         setSubscription(newSubscription);
+        inscreveu = true;
         // A inscrição está viva E gravada: daqui em diante, se uma limpeza do app
         // a derrubar, o app sabe que esta conta tinha os avisos ligados.
         marcarAvisosLigados(user.id);
@@ -712,6 +814,8 @@ export function usePushNotifications() {
           toast.error(mensagem);
         }
         throw error;
+      } finally {
+        terminarDeMexerNaInscricao(inscreveu, quemSou.current);
       }
     },
     [isSupported, user],
@@ -741,8 +845,11 @@ export function usePushNotifications() {
     if (userId) esquecerAvisosLigados(userId);
     if (!subscription) return;
 
+    comecarAMexerNaInscricao();
+    let saiuDoNavegador = false;
     try {
       await subscription.unsubscribe();
+      saiuDoNavegador = true;
 
       // Remove from Supabase
       const { error } = await (
@@ -758,6 +865,8 @@ export function usePushNotifications() {
     } catch (error) {
       console.error("Error unsubscribing:", error);
       toast.error("Erro ao cancelar inscrição");
+    } finally {
+      terminarDeMexerNaInscricao(saiuDoNavegador, quemSou.current);
     }
   }, [subscription, userId]);
 

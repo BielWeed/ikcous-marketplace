@@ -1,4 +1,7 @@
-import { mensagemDoStatusNoWhatsapp } from "@/lib/mensagem-do-status-no-whatsapp";
+import {
+  mensagemDoStatusNoWhatsapp,
+  rotuloDoStatusParaACliente,
+} from "@/lib/mensagem-do-status-no-whatsapp";
 // A mensagem que o botão de WhatsApp do painel abre para a cliente. Até a
 // 1.5.107 ela dizia só "foi atualizado. Status: Enviado", sem o código de
 // rastreio: a lojista tinha de digitar o código à mão, e a cliente que comprou
@@ -83,6 +86,31 @@ describe("mensagemDoStatusNoWhatsapp", () => {
       });
       expect(msg, status).not.toContain("rastreio");
     }
+  });
+
+  it("pedido cancelado não agradece a compra: avisa o cancelamento e abre a conversa", () => {
+    const msg = mensagemDoStatusNoWhatsapp({
+      ...base,
+      status: "cancelled",
+      rotuloDoStatus: "Cancelado",
+    });
+    expect(msg).toBe(
+      "Olá Ana!\n\nSeu pedido #A1B2C3 foi atualizado.\nStatus: Cancelado\n\n" +
+        "Qualquer dúvida sobre o cancelamento, é só responder esta mensagem.",
+    );
+    expect(msg).not.toContain("Obrigado");
+  });
+
+  it("retirada concluída diz 'Retirado' e mantém o fecho de agradecimento", () => {
+    const msg = mensagemDoStatusNoWhatsapp({
+      ...base,
+      status: "delivered",
+      retiradaNaLoja: true,
+      rotuloDoStatus: rotuloDoStatusParaACliente("delivered", true),
+    });
+    expect(msg).toContain("Status: Retirado\n");
+    expect(msg).not.toContain("Entregue");
+    expect(msg.endsWith("Obrigado por comprar na Savy!")).toBe(true);
   });
 
   it("o nome do cliente e da loja entram sem tratamento extra (como antes)", () => {

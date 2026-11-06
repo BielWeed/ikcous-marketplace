@@ -51,6 +51,7 @@ export type OrigemDoErroDoLeitor =
   | "camera_ocupada"
   | "sem_suporte"
   | "contexto_inseguro"
+  | "leitor_nao_carregou"
   | "desconhecido";
 
 export interface ErroDoLeitor {
@@ -117,6 +118,8 @@ function mensagemDoErro(origem: OrigemDoErroDoLeitor): string {
       return "Este navegador não abre a câmera nesta tela. Digite o código à mão.";
     case "contexto_inseguro":
       return "A câmera só funciona em endereço seguro (https). Digite o código à mão.";
+    case "leitor_nao_carregou":
+      return "Não foi possível carregar o leitor de código de barras. Verifique a conexão e toque em Tentar de novo.";
     case "desconhecido":
       return "Não foi possível abrir a câmera. Digite o código à mão ou toque em Tentar de novo.";
   }
@@ -255,6 +258,7 @@ export function useLeitorDeCodigo(
     let cancelarQuadroAgendado: (() => void) | null = null;
     let pausado = false;
     let ultimoQuadroEm = 0;
+    let avisoDeQuadroRuimEmitido = false;
 
     function cancelarQuadro(): void {
       cancelarQuadroAgendado?.();
@@ -484,7 +488,33 @@ export function useLeitorDeCodigo(
               fonte = resultado;
             }
 
-            const leituras = await decodificador.detectar(fonte);
+            let leituras: readonly Leitura[];
+            try {
+              leituras = await decodificador.detectar(fonte);
+            } catch (erroBruto) {
+              if (!laçoAtivo || cancelado) return;
+              // O leitor (WASM) não baixou: sem ele a câmera ficaria
+              // "ligada e morta", sem aviso. Solta tudo e mostra a frase
+              // pronta, com o Tentar de novo.
+              if (
+                erroBruto instanceof ErroDoDecodificador &&
+                erroBruto.origem === "falha_do_fallback"
+              ) {
+                pararTudo();
+                falhar("leitor_nao_carregou", erroBruto);
+                return;
+              }
+              // Qualquer outro erro é um quadro ruim: o laço segue, e o
+              // aviso sai uma vez só (são vários quadros por segundo).
+              if (!avisoDeQuadroRuimEmitido) {
+                avisoDeQuadroRuimEmitido = true;
+                console.warn(
+                  "Leitor de código falhou ao decodificar um quadro; ignorando.",
+                  erroBruto,
+                );
+              }
+              leituras = [];
+            }
             if (!laçoAtivo || cancelado) return;
             for (const leitura of leituras) {
               processar(leitura, true);

@@ -355,10 +355,16 @@ const MOSTRAR_AVISOS_DE_COMPRAS: boolean = false;
  * consulta falhar, o desconhecido NÃO vira "tudo certo": devolve um aviso de
  * que não deu para conferir (a tela deixa a lojista decidir, nunca envia
  * calada). Só roda quando o texto cita um código; sem citação, nem consulta.
+ *
+ * `alcance` (cupom exclusivo) só existe em banco com a migration 20261208000000;
+ * lojas de teste ficam com o banco antigo para sempre. Banco sem a coluna
+ * responde 42703/PGRST204 ao pedi-la: aí a consulta se refaz sem ela (todo
+ * cupom vale como "codigo"), em vez de virar "não consegui conferir" sempre.
  */
 async function avisosDosCuponsCitados(
   codigos: string[],
   cuponsLigados: boolean,
+  paraClienteEspecifico: boolean,
 ): Promise<string[]> {
   // Chave geral da tela de Cupons desligada: o servidor recusa qualquer código
   // e o checkout nem mostra o campo, então conferir cupom por cupom é inútil.
@@ -368,16 +374,28 @@ async function avisosDosCuponsCitados(
     ];
   }
   try {
-    const { data, error } = await supabase
+    const filtro = filtroDosCodigosCitados(codigos);
+    let resposta = await supabase
       .from("coupons")
-      .select("code, active, valid_until, usage_limit, usage_count")
-      .or(filtroDosCodigosCitados(codigos));
-    if (error) throw error;
-    const cupons = (data ?? []) as CupomDaLoja[];
+      .select("code, active, valid_until, usage_limit, usage_count, alcance")
+      .or(filtro);
+    if (
+      resposta.error &&
+      ["42703", "PGRST204"].includes(String(resposta.error.code))
+    ) {
+      resposta = (await supabase
+        .from("coupons")
+        .select("code, active, valid_until, usage_limit, usage_count")
+        .or(filtro)) as typeof resposta;
+    }
+    if (resposta.error) throw resposta.error;
+    const cupons = (resposta.data ?? []) as unknown as CupomDaLoja[];
     const agora = new Date();
     const avisos: string[] = [];
     for (const codigo of codigos) {
-      const problema = problemaDoCupom(codigo, cupons, agora);
+      const problema = problemaDoCupom(codigo, cupons, agora, {
+        paraClienteEspecifico,
+      });
       if (problema) avisos.push(mensagemDoProblemaDoCupom(codigo, problema));
     }
     return avisos;
@@ -876,6 +894,7 @@ export const AdminPushView = memo(function AdminPushView({
         const avisos = await avisosDosCuponsCitados(
           codigosCitados,
           config.enableCoupons !== false,
+          Boolean(targetUserId),
         );
         if (avisos.length > 0) {
           textoJaAvisadoDeCupom.current = chaveDoTexto;

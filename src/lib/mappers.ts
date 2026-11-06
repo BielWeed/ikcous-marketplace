@@ -286,6 +286,8 @@ export function mapOrderFromDB(
     items:
       row.items?.map((item) => {
         const productData = (item as any).product;
+        // O join veio (a chave existe) e o produto não: excluído ou pausado.
+        const produtoNaoVisivel = "product" in item && productData == null;
         const fallbackImage =
           productData?.imagem_urls && productData.imagem_urls.length > 0
             ? productData.imagem_urls[0]
@@ -298,6 +300,7 @@ export function mapOrderFromDB(
           price: Number(item.price || 0),
           quantity: Number(item.quantity || 1),
           image: fallbackImage,
+          ...(produtoNaoVisivel ? { productVisible: false } : {}),
         };
       }) || [],
     total: Number(row.total ?? (row as any).total_amount ?? 0),
