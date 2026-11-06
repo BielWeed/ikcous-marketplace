@@ -66,12 +66,13 @@ describe("TopProductsList — produto sem foto com emoji no nome", () => {
     );
     expect(hospedeiro.querySelectorAll("ol li")).toHaveLength(1);
     expect(hospedeiro.textContent).toContain("✨🎁 Caneca");
-    const miniatura = hospedeiro.querySelector("ol li img");
+    // Produto sem foto: a miniatura é o quadrado local "Sem foto" (sem pedir
+    // imagem de fora), com o nome do produto inteiro — emoji incluído — como
+    // rótulo; não existe mais letra de reserva para rachar o emoji.
+    const miniatura = hospedeiro.querySelector('ol li [role="img"]');
     expect(miniatura).toBeTruthy();
-    expect(miniatura?.getAttribute("alt")).toBe("✨🎁 Caneca");
-    // A letra da reserva é o par de caracteres inteiros, não um emoji rachado.
-    expect(miniatura?.getAttribute("src")).toContain(
-      encodeURIComponent("✨🎁"),
-    );
+    expect(miniatura?.getAttribute("aria-label")).toBe("✨🎁 Caneca");
+    expect(miniatura?.textContent).toBe("Sem foto");
+    expect(hospedeiro.querySelector("ol li img")).toBeNull();
   });
 });

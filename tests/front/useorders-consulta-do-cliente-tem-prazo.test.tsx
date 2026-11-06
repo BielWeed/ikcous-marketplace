@@ -217,18 +217,22 @@ describe("useOrders — a consulta dos pedidos da cliente tem prazo", () => {
     expect(toasts.erro).not.toHaveBeenCalled();
   });
 
-  it("resposta dentro do prazo: sem erro e nenhum relógio sobrando", async () => {
+  it("resposta dentro do prazo: sem erro e o relógio do prazo não dispara depois", async () => {
     await montar();
     rede.modo = "vazio";
-    // O hook tem outros relógios (realtime, etc.): conta-se só o DESTA leitura.
-    const relogiosAntes = vi.getTimerCount();
     await act(async () => {
       await exposto.fetchUserOrders!();
     });
 
     expect(exposto.ordersLoadError).toBeNull();
     expect(exposto.loading).toBe(false);
-    expect(vi.getTimerCount()).toBeLessThanOrEqual(relogiosAntes);
+    // O hook tem outros relógios (realtime, etc.) e a contagem deles varia com
+    // a velocidade da máquina; o que importa é que o relógio do PRAZO desta
+    // leitura foi desarmado: passado o prazo inteiro, nada acusa lentidão.
+    await passar(PRAZO_DA_CONSULTA_DE_PEDIDOS_MS + 1);
+    expect(exposto.ordersLoadError).toBeNull();
+    expect(exposto.loading).toBe(false);
+    expect(toasts.erro).not.toHaveBeenCalled();
   });
 
   it("sem internet de verdade (navigator.onLine=false), o estouro diz o fato e não 'conexão lenta'", async () => {
