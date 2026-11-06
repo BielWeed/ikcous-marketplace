@@ -155,9 +155,13 @@ export function precosDaVendaRecusada(erro: unknown): {
  *    — nesses casos o balconista pode ajustar a quantidade e reenviar; nas
  *    outras (forma de pagamento, motivo do desconto, cliente não encontrado…)
  *    tentar de novo sem mudar nada só repetiria a mesma recusa.
- *  · Qualquer outro `code` — desconhecido, mas ainda assim veio do
- *    servidor: se ele escreveu uma frase, ela pelo menos foi pensada para
- *    gente ler; sem frase, cai na mensagem de rede.
+ *  · "PGRST301/302/303" — sessão vencida: entrar de novo (como 42501).
+ *  · "40P01" "40001" "57014" "55P03" e prefixo "53" — banco ocupado: a
+ *    transação foi desfeita por inteiro; convida a repetir (mesma chave).
+ *  · prefixos "08" e "57P" — conexão/servidor caindo, pode ter gravado: frase
+ *    de rede (a tela diz "talvez tenha entrado").
+ *  · Qualquer outro `code` — desconhecido: frase genérica em português, NUNCA
+ *    o texto cru do banco (vem em inglês); repetir é seguro pela chave.
  */
 export function mensagemDaFalhaDaVenda(erro: unknown): FalhaDaVendaTraduzida {
   const codigo = codigoDoErro(erro);
@@ -219,14 +223,58 @@ export function mensagemDaFalhaDaVenda(erro: unknown): FalhaDaVendaTraduzida {
     };
   }
 
-  // Código desconhecido: nunca mostramos o código cru. Se o banco escreveu
-  // uma frase, ela é honesta o bastante para aparecer; sem frase, a mensagem
-  // de rede é o fallback mais seguro (não afirma nada que não sabemos).
-  return mensagemDoBanco
-    ? {
-        mensagem: mensagemDoBanco,
-        podeTentarDeNovo: false,
-        precisaEntrarDeNovo: false,
-      }
-    : FALHA_DE_REDE;
+  // Sessão vencida no PostgREST (JWT expirado/inválido/ausente): a chamada nem
+  // chegou à função, nada foi gravado. Mesma saída do 42501 — entrar de novo.
+  if (codigo === "PGRST301" || codigo === "PGRST302" || codigo === "PGRST303") {
+    return {
+      mensagem:
+        "A sua sessão expirou. Saia e entre de novo na conta; a venda fica salva aqui.",
+      podeTentarDeNovo: false,
+      precisaEntrarDeNovo: true,
+    };
+  }
+
+  // Falha PASSAGEIRA do banco. A RPC é uma função só: erro levantado nela
+  // desfaz cabeçalho, itens e baixa de estoque juntos, e a mesma chave de
+  // idempotência devolve o pedido que já existe — repetir é seguro.
+  if (codigo === "40P01") {
+    return {
+      mensagem:
+        "Outra venda estava mexendo nos mesmos produtos. Toque em Registrar venda de novo.",
+      podeTentarDeNovo: true,
+      precisaEntrarDeNovo: false,
+    };
+  }
+  if (
+    codigo === "40001" ||
+    codigo === "57014" ||
+    codigo === "55P03" ||
+    codigo.startsWith("53")
+  ) {
+    return {
+      mensagem:
+        "O sistema estava ocupado e a venda não foi registrada. Toque em Registrar venda de novo — o estoque não foi descontado.",
+      podeTentarDeNovo: true,
+      precisaEntrarDeNovo: false,
+    };
+  }
+
+  // Conexão caída (08) ou servidor desligando (57P): a queda pode vir DEPOIS do
+  // commit. Cai na frase de rede, que a tela lê como "talvez tenha entrado" —
+  // afirmar "não foi registrada" aqui seria falso se o commit saiu.
+  if (codigo.startsWith("08") || codigo.startsWith("57P")) {
+    return FALHA_DE_REDE;
+  }
+
+  // Código desconhecido: NUNCA mostramos o código nem a frase do banco — ela
+  // chega em inglês ("deadlock detected"), sem sentido para o balconista. Como
+  // o erro veio do servidor, a transação foi desfeita; e como repetir com a
+  // mesma chave é idempotente, o botão continua disponível (desabilitá-lo
+  // deixaria só "Começar uma venda nova", que apaga a venda sem nada gravado).
+  return {
+    mensagem:
+      "Não foi possível registrar a venda agora. Confira a conexão e tente de novo; se continuar, avise o suporte.",
+    podeTentarDeNovo: true,
+    precisaEntrarDeNovo: false,
+  };
 }
