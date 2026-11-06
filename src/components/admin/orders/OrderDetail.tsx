@@ -262,6 +262,13 @@ interface OrderDetailProps {
    * montam `<OrderDetail>` sem ela, e aí o card só informa.
    */
   onAbrirDevolucoes?: (id: string) => void;
+  /**
+   * Avisa a cada mudança se há anotação ou código de rastreio digitados e
+   * ainda não salvos (texto diferente do gravado). É com isso que a tela de
+   * cima segura o Voltar e pergunta antes de descartar. Opcional pelo mesmo
+   * motivo das outras: testes montam `<OrderDetail>` sem ela.
+   */
+  onRascunhoPendente?: (pendente: boolean) => void;
 }
 
 const globalSkuCache: Record<string, string> = {};
@@ -1468,6 +1475,7 @@ export const OrderDetail = memo(function OrderDetail({
   onRegistrarPagamento,
   storeName,
   onAbrirDevolucoes,
+  onRascunhoPendente,
 }: Readonly<OrderDetailProps>) {
   const [localTrackingCode, setLocalTrackingCode] = useState(
     order.trackingCode || "",
@@ -1519,6 +1527,19 @@ export const OrderDetail = memo(function OrderDetail({
     if (!escritaPendente) return;
     return marcarOperacaoSensivel("anotacao-do-pedido");
   }, [escritaPendente]);
+
+  // O mesmo texto digitado também precisa proteger a SAÍDA: quem manda na
+  // navegação (AdminOrdersView) pergunta antes de o Voltar jogá-lo fora. Aqui
+  // só vale rascunho de verdade — texto diferente do gravado; abrir o campo e
+  // não mexer, ou a gravação em curso, não seguram o Voltar.
+  const rascunhoNaoSalvo =
+    (isEditingNotes && notesValue !== localNotes) ||
+    (isEditingTracking && trackingValue !== localTrackingCode);
+  useEffect(() => {
+    onRascunhoPendente?.(rascunhoNaoSalvo);
+  }, [rascunhoNaoSalvo, onRascunhoPendente]);
+  // Ficha que some leva o rascunho junto: o pai não pode ficar com o desvio.
+  useEffect(() => () => onRascunhoPendente?.(false), [onRascunhoPendente]);
 
   const [skus, setSkus] = useState<Record<string, string>>({});
   const [variacoes, setVariacoes] = useState<Record<string, string>>({});

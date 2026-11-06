@@ -92,4 +92,51 @@ describe("MarkdownRenderer — listas, separador e parágrafo", () => {
     );
     expect(alvo.textContent).not.toContain("*");
   });
+
+  // Título colado nas linhas de baixo (sem linha em branco): só a PRIMEIRA
+  // linha é título; antes o parágrafo inteiro virava um <h3> gigante de uma
+  // linha só, com os \n colapsados.
+  it("título colado em linhas de texto: <h3> só com o título, o resto segue parágrafo com <br/>", async () => {
+    const alvo = await renderizar("### Medidas\nLargura: 10 cm\nAltura: 5 cm");
+    const h3 = alvo.querySelectorAll("h3");
+    expect(h3.length).toBe(1);
+    expect(h3[0].textContent).toBe("Medidas");
+    const p = alvo.querySelector("p")!;
+    expect(p.textContent).toBe("Largura: 10 cmAltura: 5 cm");
+    expect(p.querySelectorAll("br").length).toBe(1);
+    expect(p.className).toBe(
+      "text-sm leading-relaxed text-gray-600 lg:text-base",
+    );
+  });
+
+  it("título colado numa lista: <h3> + <ul> de verdade", async () => {
+    const alvo = await renderizar("### Detalhes\n* Algodão\n* Lavar à mão");
+    expect(alvo.querySelector("h3")!.textContent).toBe("Detalhes");
+    const itens = Array.from(alvo.querySelectorAll("ul li")).map(
+      (li) => li.textContent,
+    );
+    expect(itens).toEqual(["Algodão", "Lavar à mão"]);
+    expect(alvo.textContent).not.toContain("#");
+  });
+
+  it("'#### X' mostra só o texto, sem '#' sobrando", async () => {
+    const alvo = await renderizar("#### Cuidados");
+    expect(alvo.querySelector("h3")!.textContent).toBe("Cuidados");
+    expect(alvo.textContent).not.toContain("#");
+  });
+
+  it("'## X' e '# X' viram título, sem os '#' literais", async () => {
+    const alvo = await renderizar("## Sobre\n\n# Entrega");
+    const titulos = Array.from(alvo.querySelectorAll("h3")).map(
+      (h) => h.textContent,
+    );
+    expect(titulos).toEqual(["Sobre", "Entrega"]);
+    expect(alvo.textContent).not.toContain("#");
+  });
+
+  it("'#hashtag' sem espaço continua texto comum, não título", async () => {
+    const alvo = await renderizar("#promoção da semana");
+    expect(alvo.querySelector("h3")).toBeNull();
+    expect(alvo.querySelector("p")!.textContent).toBe("#promoção da semana");
+  });
 });

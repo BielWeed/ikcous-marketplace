@@ -325,6 +325,44 @@ describe("SolicitarDevolucaoSheet — pedido de devolução do cliente", () => {
     );
   });
 
+  it("online com troca desligada e arrependimento vencido: o motivo bloqueado fala em desistir, não que a loja não troca", async () => {
+    await montar({
+      ...ELEGIBILIDADE,
+      prazos: { ...ELEGIBILIDADE.prazos, troca_ate: null },
+      janelas: { arrependimento: false, troca: false, vicio: true },
+    });
+    await clicar(botao("Aumentar Tênis"));
+    await clicar(botao("Continuar"));
+
+    const texto = folha()?.textContent ?? "";
+    expect(texto).toContain("O prazo para desistir da compra terminou.");
+    expect(texto).not.toContain("A loja não faz troca por tamanho ou gosto.");
+    expect(texto).not.toContain(
+      "O prazo para troca ou arrependimento terminou.",
+    );
+  });
+
+  it("compra de balcão sem troca: o motivo bloqueado diz que a loja não faz troca por gosto", async () => {
+    await montar({
+      ...ELEGIBILIDADE,
+      prazos: {
+        ...ELEGIBILIDADE.prazos,
+        arrependimento_ate: null,
+        troca_ate: null,
+      },
+      janelas: { arrependimento: false, troca: false, vicio: true },
+    });
+    await clicar(botao("Aumentar Tênis"));
+    await clicar(botao("Continuar"));
+
+    const texto = folha()?.textContent ?? "";
+    expect(texto).toContain("A loja não faz troca por tamanho ou gosto.");
+    expect(texto).not.toContain("O prazo para desistir da compra terminou.");
+    expect(texto).not.toContain(
+      "O prazo para troca ou arrependimento terminou.",
+    );
+  });
+
   it("falha no envio da foto para tudo antes da RPC e mostra o motivo", async () => {
     enviarFoto.mockResolvedValue({
       ok: false,

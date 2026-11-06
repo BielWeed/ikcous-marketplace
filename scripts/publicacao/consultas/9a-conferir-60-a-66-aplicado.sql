@@ -62,8 +62,9 @@
 --     variação desligada, só a busca nova no fim —: o corpo esperado é o dela, e o da 61 ou o da 81 ainda
 --     no ar (migration não aplicada nesta loja) aparece como o dela, pela mesma tolerância;
 --     get_product_recommendations foi redefinida de novo na 20261394100000 — a lista de recomendações tem
---     teto de 50, só a linha do LIMIT —: o corpo esperado é o dela, e o da 20261160 ainda no ar (migration
---     não aplicada nesta loja) aparece como o dela, pela mesma tolerância;
+--     teto de 50, só a linha do LIMIT — e mais uma vez na 20261399800000 — a faixa conta o estoque das
+--     variações ativas, só o filtro do estoque —: o corpo esperado é o desta última, e o da 20261160 ou o da
+--     20261394100000 ainda no ar (migration não aplicada nesta loja) aparece como o dela, pela mesma tolerância;
 --     e upsert_store_config foi redefinida de novo na
 --     20261239 — a loja declara razão social, CNPJ/CPF e e-mail de atendimento — e de novo
 --     na 20261244 — a loja escolhe como entrega na cidade e em quantos dias: as chaves
@@ -127,7 +128,7 @@ WITH corpos AS (
     ('buscar_por_codigo_barras', '3e2276ae97a7f2aef487e55d259ba7a3'),
     ('get_admin_orders_cancelados_recentes', '9567454f17698f3f0624cca0b06458cd'),
     ('get_admin_orders_paged', 'f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6'),
-    ('get_product_recommendations', '5e5bbe7bc7f12738a9082232ee6cfee6'),
+    ('get_product_recommendations', '9b9fa184eb3984e8afd3ec0f80a086e7'),
     ('limpar_cotacoes_fora_da_janela', '4d398faddf7d697d539a77b8fd04d8ba'),
     ('registrar_venda_presencial', '79b779b98a5d6f6205a31309d5593eb9'),
     ('upsert_store_config', 'aa4ed730ac6ad3d3c2644b4285ff39a9')
@@ -299,8 +300,9 @@ WITH corpos AS (
               WHEN f.fn = 'buscar_por_codigo_barras'
                    AND (c.h = '8762faab7f7efaf4bfd183499408d8df' OR c.h = 'e1b93114cd9deee7eda6801ef37ff1f9')
               THEN '3e2276ae97a7f2aef487e55d259ba7a3'
-              WHEN f.fn = 'get_product_recommendations' AND c.h = '3de5b27cc17c31301249861b7921a6fe'
-              THEN '5e5bbe7bc7f12738a9082232ee6cfee6'
+              WHEN f.fn = 'get_product_recommendations'
+                   AND (c.h = '3de5b27cc17c31301249861b7921a6fe' OR c.h = '5e5bbe7bc7f12738a9082232ee6cfee6')
+              THEN '9b9fa184eb3984e8afd3ec0f80a086e7'
               ELSE COALESCE(c.h, 'AUSENTE') END
     FROM final f LEFT JOIN corpos c ON c.proname = f.fn
   UNION ALL

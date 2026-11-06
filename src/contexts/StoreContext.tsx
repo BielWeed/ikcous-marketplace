@@ -77,6 +77,17 @@ interface StoreContextType {
    */
   catalogoErro: boolean;
   /**
+   * `true` quando a leitura da configuração da loja FALHOU (rede, servidor) e
+   * não há nada de verdade na tela: nem cópia salva no aparelho, nem resposta
+   * do servidor (a resposta "ainda não há linha" conta como resposta). Nesse
+   * caso `isLoaded` já é `true` (a loja segue de pé), mas `config` é a de
+   * fábrica — sem nome, logo, endereço, WhatsApp nem CEP —, e quem lê isso como
+   * "a lojista não preencheu nada" mente. Volta a `false` quando chega a cópia
+   * do aparelho ou a resposta do servidor. Campo ACRESCENTADO e opcional: quem
+   * só lê `config` e `isLoaded` segue igual; ausente lê como `false`.
+   */
+  configIndisponivel?: boolean;
+  /**
    * Devolve `true` se a configuração foi mesmo gravada, `false` se não.
    *
    * Era `Promise<void>` e engolia qualquer falha — RLS, sessão expirada, rede —
@@ -466,6 +477,10 @@ export function StoreProvider({
   };
   const [config, setConfig] = useState<StoreConfig>(configInicial);
   const [isLoaded, setIsLoaded] = useState(false);
+  // Ver `configIndisponivel` em StoreContextType: a leitura falhou e não há
+  // configuração de verdade na tela. Estado (não ref) porque as telas do
+  // painel precisam redesenhar quando ele muda.
+  const [configIndisponivel, setConfigIndisponivel] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const incluirProduto = useCallback((produto: Product) => {
     setProducts((atuais) =>
@@ -553,6 +568,7 @@ export function StoreProvider({
         if (cachedConfig && !cancelled) {
           // Já há configuração na tela: a rede ruim não deixa a loja "pelada".
           configResolvidaRef.current = true;
+          setConfigIndisponivel(false);
           const { id: _id, ...configData } = cachedConfig;
           const merged = { ...defaultStoreConfig, ...configData };
           // shareText com nome efetivo — mesmo contrato do mapConfig (o
@@ -1028,6 +1044,11 @@ export function StoreProvider({
     }
 
     configFalhouRef.current = semResposta;
+    // Sem resposta E sem nada de verdade na tela (a cópia do aparelho e a
+    // resposta de uma consulta anterior já marcaram `configResolvidaRef`): é o
+    // único caso em que a config de fábrica não pode ser lida como "a lojista
+    // não preencheu".
+    setConfigIndisponivel(semResposta && !configResolvidaRef.current);
     if (!semResposta) {
       tentativasDaConfigRef.current = 0;
       limparTimerDaConfig();
@@ -1604,6 +1625,12 @@ export function StoreProvider({
           // a casa inteira de graça).
           setConfig((prev) => (configIgual(mapped, prev) ? prev : mapped));
           applyBranding(corPrimariaEfetiva(mapped));
+          // Configuração de verdade chegou pelo tempo real (evento ao vivo ou
+          // catch-up): mesmo par da cópia do aparelho. Sem isto o aviso de
+          // "dados indisponíveis" ficava preso depois de uma resposta boa, e
+          // as novas tentativas automáticas seguiam insistindo à toa.
+          configResolvidaRef.current = true;
+          setConfigIndisponivel(false);
         }
       },
       [mapConfig, applyBranding, config.minAppVersion, configIgual],
@@ -1727,6 +1754,7 @@ export function StoreProvider({
       incluirProduto,
       loadingProducts,
       catalogoErro,
+      configIndisponivel,
       updateConfig,
       refresh,
       fetchProducts,
@@ -1739,6 +1767,7 @@ export function StoreProvider({
       incluirProduto,
       loadingProducts,
       catalogoErro,
+      configIndisponivel,
       updateConfig,
       refresh,
       fetchProducts,

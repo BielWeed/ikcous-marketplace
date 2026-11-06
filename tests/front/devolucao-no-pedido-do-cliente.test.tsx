@@ -355,6 +355,78 @@ describe("OrderDetailsView — devolução ou troca do produto entregue", () => 
     expect(cartao?.textContent).toContain("Envie para: Rua A, 10");
   });
 
+  // A política gravada na devolução é cópia do dia do pedido; a loja pode ter
+  // corrigido o endereço depois. A cliente vê o endereço de HOJE.
+  it("a loja corrigiu o endereço depois do pedido: o cartão mostra o novo, não a cópia velha", async () => {
+    respostas.set(
+      "devolucao_elegibilidade",
+      elegibilidade({
+        pode: false,
+        motivo_bloqueio:
+          "Já existe uma devolução em andamento para este pedido.",
+        politica: { ...POLITICA, endereco_devolucao: "Rua Nova, 99" },
+      }),
+    );
+    respostas.set("devolucoes_do_pedido", [
+      {
+        id: "d-1",
+        protocolo: "DV260926-ABCDE",
+        status: "aprovada",
+        tipo: "arrependimento",
+        resolucao_desejada: "reembolso",
+        metodo_retorno: "envio_proprio",
+        valor_itens: 100,
+        created_at: "2026-09-26T10:00:00Z",
+      },
+    ]);
+    respostas.set("devolucao_detalhe", {
+      ...DETALHE,
+      modalidade: "nacional",
+      metodo_retorno: "envio_proprio",
+      politica: { ...POLITICA, endereco_devolucao: "Rua Velha, 1" },
+    });
+    await renderizar();
+
+    const cartao = hospedeiro.querySelector('[data-testid="cartao-devolucao"]');
+    expect(cartao?.textContent).toContain("Envie para: Rua Nova, 99");
+    expect(cartao?.textContent).not.toContain("Rua Velha, 1");
+  });
+
+  it("a loja passou a usar o endereço da própria loja: o cartão não prende a cópia velha", async () => {
+    respostas.set(
+      "devolucao_elegibilidade",
+      elegibilidade({
+        pode: false,
+        motivo_bloqueio:
+          "Já existe uma devolução em andamento para este pedido.",
+        politica: { ...POLITICA, endereco_devolucao: null },
+      }),
+    );
+    respostas.set("devolucoes_do_pedido", [
+      {
+        id: "d-1",
+        protocolo: "DV260926-ABCDE",
+        status: "aprovada",
+        tipo: "arrependimento",
+        resolucao_desejada: "reembolso",
+        metodo_retorno: "envio_proprio",
+        valor_itens: 100,
+        created_at: "2026-09-26T10:00:00Z",
+      },
+    ]);
+    respostas.set("devolucao_detalhe", {
+      ...DETALHE,
+      modalidade: "nacional",
+      metodo_retorno: "envio_proprio",
+      politica: { ...POLITICA, endereco_devolucao: "Rua Velha, 1" },
+    });
+    await renderizar();
+
+    const cartao = hospedeiro.querySelector('[data-testid="cartao-devolucao"]');
+    expect(cartao?.textContent).toContain("Envie para: Rua A, 10");
+    expect(cartao?.textContent).not.toContain("Rua Velha, 1");
+  });
+
   it("devolução em trânsito com código: 'Rastrear devolução' leva ao Melhor Rastreio, sem espaços", async () => {
     respostas.set(
       "devolucao_elegibilidade",

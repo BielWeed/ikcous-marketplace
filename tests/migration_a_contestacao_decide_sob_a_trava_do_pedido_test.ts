@@ -699,6 +699,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399700000: o painel de avaliacoes filtra o que esta em moderacao (get_admin_reviews_paged troca de 4 para 5 argumentos: p_status 'pendente' filtra a lista e o total_count; DROP da assinatura
     // antiga sem sobrecarga ambigua; ACL, dono e atributos iguais aos de antes; controle com o corpo da 381 na mesma fixture, mutantes, rollback byte a byte, pre/pos-voo e consultas 123a/123b).
     "tests/banco/o-painel-de-avaliacoes-filtra-o-que-esta-em-moderacao-viva.cjs",
+    // 20261399800000: as recomendacoes do produto contam o estoque das variacoes (get_product_recommendations julga o estoque pela soma das variacoes ativas, a regra da vitrine; o esgotado com grade
+    // nao ocupa vaga e quem tem saldo so na grade entra; controle com o corpo da 20261394100000 na mesma fixture, mutantes, rollback byte a byte, pre/pos-voo e consultas 124a/124b).
+    "tests/banco/as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",

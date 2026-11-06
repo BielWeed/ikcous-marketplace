@@ -95,6 +95,12 @@ interface DevolucaoDoPedidoCardProps {
   readonly atual: DevolucaoDetalhe;
   /** Devoluções anteriores do mesmo pedido (mais recente primeiro). */
   readonly anteriores: readonly ResumoDevolucao[];
+  /**
+   * Endereço de devolução de HOJE (política atual, ou o da loja quando a
+   * política não define outro). `atual.politica` é cópia congelada no dia do
+   * pedido e pode estar velha; ela só vale quando não há endereço vivo.
+   */
+  readonly enderecoVivo?: string | null;
   readonly enderecoDaLoja: string | null;
   readonly horarioDaLoja: string | null;
   readonly onCancelar: (id: string) => Promise<Desfecho>;
@@ -116,6 +122,7 @@ const COR_DO_TOM = new Map([
 export function DevolucaoDoPedidoCard({
   atual,
   anteriores,
+  enderecoVivo,
   enderecoDaLoja,
   horarioDaLoja,
   onCancelar,
@@ -129,6 +136,7 @@ export function DevolucaoDoPedidoCard({
   const etapas = etapasDaDevolucao(atual);
   const acoes = acoesDoCliente(atual);
   const endereco =
+    enderecoVivo?.trim() ||
     atual.politica?.endereco_devolucao?.trim() ||
     enderecoDaLoja?.trim() ||
     null;

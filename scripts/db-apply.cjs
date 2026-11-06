@@ -637,6 +637,36 @@ const VERIFICACOES = {
       { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
     ],
   },
+  // 20261399800000: as recomendacoes do produto contam o estoque das variacoes. get_product_recommendations troca SO a linha do filtro de estoque (a coluna crua `p.estoque > 0` vira a regra da vitrine: com variacao ATIVA,
+  // a soma de stock_increment das ativas; senao, a coluna); o teto do limite, as 31 colunas (custo e fornecedor_id NULOS), a ordenacao e o filtro de ativo e de categoria/tags nao mudam. Cada marcador aparece UMA vez
+  // no corpo (o marcador nao admite "zero vezes": a ausencia do filtro antigo e' do pos-voo da migration). A consulta 124a confere o corpo exato (md5), os atributos e a ACL; a prova viva faz o comportamento.
+  "20261399800000_as_recomendacoes_do_produto_contam_o_estoque_das_variacoes.sql":
+    [
+      {
+        funcao: "get_product_recommendations",
+        esperado: [
+          {
+            texto:
+              "AND CASE WHEN EXISTS (SELECT 1 FROM public.product_variants v WHERE v.product_id = p.id AND v.active) THEN",
+            vezes: 1,
+          },
+          {
+            texto:
+              "(SELECT COALESCE(SUM(v.stock_increment),0) FROM public.product_variants v WHERE v.product_id = p.id AND v.active)",
+            vezes: 1,
+          },
+          { texto: "ELSE p.estoque END > 0", vezes: 1 },
+          {
+            texto: "LIMIT LEAST(GREATEST(COALESCE(p_limit, 4), 1), 50);",
+            vezes: 1,
+          },
+          {
+            texto: "NULL::numeric(10,2),  -- custo: nunca sai desta funcao",
+            vezes: 1,
+          },
+        ],
+      },
+    ],
   // 20261397000000: o desconto do cupom de porcentagem e' arredondado ao centavo. As TRES funcoes (create_marketplace_order_v23/v24 e
   // validate_coupon_secure_v2) trocam SO a linha da conta do desconto percentual: `round(<subtotal * valor / 100>, 2)` no lugar da conta crua.
   // Cada marcador aparece UMA vez no corpo (o marcador nao admite "zero vezes": a ausencia da conta antiga e' do pos-voo da migration e da

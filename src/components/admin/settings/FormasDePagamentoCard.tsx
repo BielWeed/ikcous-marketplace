@@ -67,6 +67,12 @@ interface FormasDePagamentoSectionProps {
     options?: { readonly silentSuccess?: boolean },
   ) => Promise<boolean>;
   readonly onDirtyMudou?: (dirty: boolean) => void;
+  /**
+   * A leitura da config da loja falhou e `formasNaEntrega` é a lista de
+   * FÁBRICA, não a escolha da lojista: um toque gravaria a lista toda derivada
+   * dela por cima da real. Trava os interruptores até a leitura funcionar.
+   */
+  readonly somenteLeitura?: boolean;
   /** Abre a seção Mercado Pago (a outra SecaoColapsavel, no hub) — ligar o
    * pagamento pelo app exige credencial, que mora só lá. */
   readonly onAbrirMercadoPago: () => void;
@@ -92,6 +98,7 @@ export function FormasDePagamentoSection({
   isOffline,
   updateConfig,
   onDirtyMudou,
+  somenteLeitura = false,
   onAbrirMercadoPago,
 }: FormasDePagamentoSectionProps) {
   const formasNaEntregaId = useId();
@@ -103,6 +110,7 @@ export function FormasDePagamentoSection({
     formasNaEntrega.includes(forma);
 
   async function alternar(forma: FormaDePagamentoNaEntrega, ligar: boolean) {
+    if (somenteLeitura) return;
     // Ordem CANÔNICA sempre, nunca a ordem de clique (mesma fonte que o
     // fallback do checkout usa) — evita que a prioridade de
     // `primeiraFormaDePagamentoDisponivel` dependa de qual switch a lojista
@@ -247,7 +255,7 @@ export function FormasDePagamentoSection({
             <Switch
               id={`${formasNaEntregaId}-${forma}`}
               checked={ligada(forma)}
-              disabled={salvando !== null}
+              disabled={salvando !== null || somenteLeitura}
               aria-label={ARIA_DA_FORMA.get(forma)}
               onCheckedChange={(checked) => alternar(forma, checked)}
               className="h-11 w-14 data-[state=checked]:bg-emerald-500"

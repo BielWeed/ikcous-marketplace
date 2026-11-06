@@ -24,6 +24,7 @@ import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import { enderecoParaDevolver } from "@/lib/devolucao";
 import {
   pedidoSemValorAPagar,
   rotuloDaFormaDoPedido,
@@ -1638,6 +1639,14 @@ export function OrderDetailsView({
               <DevolucaoDoPedidoCard
                 atual={devolucaoDoProduto.atual}
                 anteriores={devolucaoDoProduto.devolucoes.slice(1)}
+                enderecoVivo={
+                  devolucaoDoProduto.elegibilidade
+                    ? enderecoParaDevolver(
+                        devolucaoDoProduto.elegibilidade.politica,
+                        config.storeAddress,
+                      )
+                    : null
+                }
                 enderecoDaLoja={config.storeAddress ?? null}
                 horarioDaLoja={config.businessHours ?? null}
                 onCancelar={devolucaoDoProduto.cancelar}

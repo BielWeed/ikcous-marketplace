@@ -19,6 +19,16 @@ import {
   statusConfig,
 } from "@/components/admin/orders/OrderStatusBadge";
 import { SeloDeStatus } from "@/components/admin/primitivos/SeloDeStatus";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import {
@@ -50,6 +60,7 @@ import {
 } from "@/hooks/useOrders";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { caminhoDoPedidoNoAviso } from "@/lib/alvo-do-aviso";
 import { orientacaoDeDevolucao } from "@/lib/anulacao-do-balcao";
@@ -777,6 +788,42 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       }
     };
   }, [onSetBackOverride]);
+
+  // Anotação ou código de rastreio digitados e ainda não salvos (a ficha avisa
+  // por `onRascunhoPendente`): o Voltar pergunta antes de jogar o texto fora.
+  // Dois caminhos, porque o Voltar chega de dois jeitos:
+  //  - seta do cabeçalho: chama o desvio abaixo, e a entrada da ficha no
+  //    histórico continua no topo;
+  //  - botão/gesto do aparelho: o navegador já consumiu uma entrada, e sem
+  //    outra no lugar o App trocaria para a lista ANTES de qualquer pergunta
+  //    (o texto iria embora com ou sem aviso). `useVoltarFechaAFolha` empurra
+  //    essa entrada ao surgir o rascunho, pergunta no Voltar e a devolve.
+  const [rascunhoDaFicha, setRascunhoDaFicha] = useState(false);
+  const [perguntandoDescarte, setPerguntandoDescarte] = useState(false);
+  // A tela de Pedidos fica montada, inativa, atrás das outras abas do painel:
+  // com a aba trocada o rascunho continua guardado, mas o Voltar já é da outra
+  // aba (nada de engolir o Voltar nem de perguntar por cima dela).
+  const fichaProtegida = active !== false && rascunhoDaFicha;
+  const aoMudarRascunhoDaFicha = useCallback((pendente: boolean) => {
+    setRascunhoDaFicha(pendente);
+    if (!pendente) setPerguntandoDescarte(false);
+  }, []);
+  // O Voltar do aparelho com a pergunta já na tela vale "continuar digitando".
+  useVoltarFechaAFolha(fichaProtegida, () => {
+    setPerguntandoDescarte((aberta) => !aberta);
+    return false;
+  });
+  useEffect(() => {
+    if (!onSetBackOverride || !fichaProtegida) return;
+    onSetBackOverride(() => () => {
+      // No Voltar do aparelho este desvio também roda (o App o chama no
+      // popstate), mas aí a entrada já foi consumida e quem pergunta é o
+      // `useVoltarFechaAFolha`: perguntar aqui de novo desfaria a pergunta.
+      if (globalThis.history.state?.folhaDePolitica !== true) return;
+      setPerguntandoDescarte(true);
+    });
+    return () => onSetBackOverride(null);
+  }, [fichaProtegida, onSetBackOverride]);
 
   // Sync selectedOrder with selectedOrderId prop driven by URL
   const lastSelectedOrderIdRef = useRef<string | null | undefined>(undefined);
@@ -1834,9 +1881,41 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             onRegistrarPagamento={registrarPagamentoRecebido}
             storeName={storeNameDaLoja}
             onAbrirDevolucoes={abrirDevolucoes}
+            onRascunhoPendente={aoMudarRascunhoDaFicha}
           />
         </div>
         {dialogo}
+        <AlertDialog
+          open={perguntandoDescarte && fichaProtegida}
+          onOpenChange={(aberta) => !aberta && setPerguntandoDescarte(false)}
+        >
+          <AlertDialogContent
+            data-testid="descartar-rascunho-da-ficha"
+            overlayClassName="z-[130]"
+            className="z-[130] max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-3xl border border-admin-border bg-zinc-950"
+          >
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-lg font-black tracking-tight text-white">
+                Descartar o que você digitou?
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-sm leading-relaxed text-zinc-300">
+                A anotação ou o código de rastreio que você digitou ainda não
+                foi salvo. Se sair agora, o texto se perde.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="mt-2 gap-2">
+              <AlertDialogCancel className="min-h-11 rounded-xl border border-admin-border bg-white/5 px-4 text-sm font-semibold text-white hover:bg-white/10">
+                Continuar digitando
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => onNavigate("admin-orders")}
+                className="min-h-11 rounded-xl border border-red-900/60 bg-transparent px-4 text-sm font-semibold text-red-300 hover:bg-red-950/40"
+              >
+                Descartar e sair
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </LocalErrorBoundary>
     );
   }
