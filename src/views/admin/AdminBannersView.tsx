@@ -51,6 +51,7 @@ import {
 } from "@/lib/datas-do-banner";
 import { LINK_DA_PAGINA_DA_LOJA } from "@/lib/destino-do-banner";
 import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
+import { soFotosReais } from "@/lib/foto-do-produto";
 import {
   AVISO_DE_LINK_RECUSADO,
   avisoDoLinkDigitado,
@@ -2237,7 +2238,9 @@ export const AdminBannersView = memo(function AdminBannersView({
       link: `/product-detail?id=${encodeURIComponent(produto.id)}`,
       ...(modelo
         ? {
-            imageUrl: produto.images?.[0] || "",
+            // Sem foto de verdade fica vazio (o "Salvar" avisa): a reserva
+            // "Sem Imagem" de fora não pode virar a imagem do banner.
+            imageUrl: soFotosReais(produto.images)[0] ?? "",
             title: (prev.title || produto.name).slice(0, 60),
             subtitle: (
               prev.subtitle || `${prefixoDoPreco(vitrine)} ${precoEmTexto}`

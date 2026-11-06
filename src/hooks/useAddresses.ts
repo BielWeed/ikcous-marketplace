@@ -2,10 +2,28 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { ufBrasileiraValida } from "@/lib/uf-brasileira";
 import type { Address } from "@/types";
+import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const LISTA_VAZIA: Address[] = [];
+
+// PRAZO DAS CHAMADAS DE ENDEREÇO. Rede "pendurada" conecta e não responde: sem
+// prazo o "Salvar" travava o formulário inteiro e o "Editar endereço" abria em
+// "Carregando…" sem Voltar. É um prazo da ESPERA da tela: o servidor pode
+// concluir a escrita depois dele (ver `aoChegarDepois` em addAddress).
+export const PRAZO_DAS_CHAMADAS_DE_ENDERECO_MS = 15_000;
+
+// Escrita que estourou: o servidor PODE ter gravado. A frase manda conferir a
+// lista antes de repetir -- repetir às cegas duplica o endereço.
+const MENSAGEM_ENDERECO_SEM_RESPOSTA =
+  "A conexão está lenta e não sabemos se o endereço foi salvo. Confira a lista de endereços antes de tentar de novo, para não repetir.";
+const MENSAGEM_EDICAO_SEM_RESPOSTA =
+  "A conexão está lenta e não sabemos se a alteração foi salva. Confira o endereço na lista antes de tentar de novo.";
+const MENSAGEM_LEITURA_SEM_RESPOSTA =
+  "A conexão está lenta e não conseguimos carregar seus endereços.";
+// Frase longa: fica na tela mais que os 4 s padrão do toast.
+const DURACAO_DO_AVISO_LONGO_MS = 8_000;
 
 // UMA LISTA POR CONTA, VÁRIAS TELAS: cada tela que usa este hook tem o
 // próprio estado — e o carrinho continua montado atrás do checkout. Sem
@@ -171,12 +189,18 @@ export function useAddresses() {
       setLoading(true);
     }
     try {
-      const { data, error } = await supabase
-        .from("user_addresses")
-        .select("*")
-        .eq("user_id", idDaBusca)
-        .order("is_default", { ascending: false })
-        .order("created_at", { ascending: false });
+      // `then` do builder do supabase não é Promise: `Promise.resolve` primeiro.
+      const { data, error } = await comPrazo(
+        Promise.resolve(
+          supabase
+            .from("user_addresses")
+            .select("*")
+            .eq("user_id", idDaBusca)
+            .order("is_default", { ascending: false })
+            .order("created_at", { ascending: false }),
+        ),
+        PRAZO_DAS_CHAMADAS_DE_ENDERECO_MS,
+      );
 
       if (!atual()) return;
       if (error) throw error;
@@ -202,13 +226,30 @@ export function useAddresses() {
       if (!atual()) return;
       setContaComErro(idDaBusca);
       console.error("Error fetching addresses:", error);
-      toast.error("Erro ao carregar endereços");
+      toast.error(
+        error instanceof PrazoEsgotado
+          ? MENSAGEM_LEITURA_SEM_RESPOSTA
+          : "Erro ao carregar endereços",
+      );
     } finally {
       if (atual()) {
         setLoading(false);
       }
     }
   }, [user, gravarLista]);
+
+  // A escrita estourou o prazo e o servidor respondeu DEPOIS: a lista da tela
+  // não sabe do que ele gravou. Relê do servidor (fonte da verdade) -- e só se
+  // a conta ainda é a mesma: `fetchAddresses` liga o `loading` antes de
+  // conferir a conta, e soltá-lo para a conta nova não é com ela.
+  const reconciliarDepoisDoPrazo = (
+    idDaConta: string,
+    resposta: { data: unknown; error: unknown },
+  ) => {
+    if (resposta.error || !resposta.data) return;
+    if (usuarioAtualRef.current !== idDaConta) return;
+    void fetchAddresses();
+  };
 
   // Sem principal o carrinho cai no primeiro da lista e a escolha muda sozinha
   // ao recarregar. O gatilho do banco só age quando a linha NOVA é principal,
@@ -249,11 +290,14 @@ export function useAddresses() {
         is_default: isFirst ? true : address.is_default,
       };
 
-      const { data, error } = await supabase
-        .from("user_addresses")
-        .insert(newAddress)
-        .select()
-        .single();
+      const { data, error } = await comPrazo(
+        Promise.resolve(
+          supabase.from("user_addresses").insert(newAddress).select().single(),
+        ),
+        PRAZO_DAS_CHAMADAS_DE_ENDERECO_MS,
+        undefined,
+        (resposta) => reconciliarDepoisDoPrazo(idDaConta, resposta),
+      );
 
       if (error) throw error;
       // Resposta da conta anterior não grava nada, nem avisa sucesso.
@@ -293,7 +337,13 @@ export function useAddresses() {
     } catch (error) {
       if (usuarioAtualRef.current !== idDaConta) return null;
       console.error("Error adding address:", error);
-      toast.error("Erro ao adicionar endereço");
+      if (error instanceof PrazoEsgotado) {
+        toast.error(MENSAGEM_ENDERECO_SEM_RESPOSTA, {
+          duration: DURACAO_DO_AVISO_LONGO_MS,
+        });
+      } else {
+        toast.error("Erro ao adicionar endereço");
+      }
       return null;
     }
   };
@@ -306,13 +356,20 @@ export function useAddresses() {
     }
     const idDaConta = user.id;
     try {
-      const { data, error } = await supabase
-        .from("user_addresses")
-        .update(updates)
-        .eq("id", id)
-        .eq("user_id", user.id)
-        .select()
-        .single();
+      const { data, error } = await comPrazo(
+        Promise.resolve(
+          supabase
+            .from("user_addresses")
+            .update(updates)
+            .eq("id", id)
+            .eq("user_id", user.id)
+            .select()
+            .single(),
+        ),
+        PRAZO_DAS_CHAMADAS_DE_ENDERECO_MS,
+        undefined,
+        (resposta) => reconciliarDepoisDoPrazo(idDaConta, resposta),
+      );
 
       if (error) throw error;
       // Resposta da conta anterior não grava nada, nem avisa sucesso.
@@ -378,7 +435,13 @@ export function useAddresses() {
     } catch (error) {
       if (usuarioAtualRef.current !== idDaConta) return false;
       console.error("Error updating address:", error);
-      toast.error("Erro ao atualizar endereço");
+      if (error instanceof PrazoEsgotado) {
+        toast.error(MENSAGEM_EDICAO_SEM_RESPOSTA, {
+          duration: DURACAO_DO_AVISO_LONGO_MS,
+        });
+      } else {
+        toast.error("Erro ao atualizar endereço");
+      }
       return false;
     }
   };

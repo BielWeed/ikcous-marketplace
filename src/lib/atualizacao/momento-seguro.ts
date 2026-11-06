@@ -30,6 +30,9 @@ import { haOperacaoSensivel } from "./operacao-sensivel";
 // - auth/login: caminho real do convidado no meio do pagamento — escolher
 //   pagar online sem conta leva a "auth", e sair do checkout apaga o
 //   formulário digitado (só o CEP persiste).
+// - admin-login: o e-mail e a senha do lojista vivem só no estado da tela;
+//   recarregar no meio da digitação (ex.: foi copiar a senha em outro app)
+//   apaga tudo. O bloqueio dura só enquanto a tela de login está aberta.
 export const TELAS_DE_COMPRA: ReadonlySet<string> = new Set([
   "cart",
   "checkout",
@@ -37,6 +40,7 @@ export const TELAS_DE_COMPRA: ReadonlySet<string> = new Set([
   "order-success",
   "auth",
   "login",
+  "admin-login",
 ]);
 
 export type MotivoDeBloqueio =

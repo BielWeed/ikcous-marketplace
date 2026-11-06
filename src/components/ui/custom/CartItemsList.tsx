@@ -77,6 +77,12 @@ const CartItemCard = memo(function CartItemCard({
         })()
       : undefined);
 
+  // Duas variações do mesmo produto não podem ter botões com o mesmo nome
+  // para o leitor de tela: o rótulo da linha leva a variação.
+  const nomeDaLinha = variantText
+    ? `${item.product.name} (${variantText})`
+    : item.product.name;
+
   // A foto é a da cor escolhida (quando tem) ou a do produto.
   const fotoDaLinha = fotoDoItemDoCarrinho(item);
 
@@ -139,7 +145,7 @@ const CartItemCard = memo(function CartItemCard({
                 onRemove(item.product.id, chaveDaVariacao);
               }}
               className="relative -mr-1 -mt-0.5 flex size-7 flex-shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors before:absolute before:-inset-2 before:content-[''] hover:text-red-600 active:scale-90 dark:hover:text-red-400"
-              aria-label={`Remover ${item.product.name}`}
+              aria-label={`Remover ${nomeDaLinha}`}
             >
               <Trash2 className="size-[18px]" />
             </button>
@@ -203,7 +209,7 @@ const CartItemCard = memo(function CartItemCard({
                 onUpdateQuantity(item.product.id, qty, chaveDaVariacao)
               }
               size="pill"
-              produto={item.product.name}
+              produto={nomeDaLinha}
             />
           </div>
         </div>

@@ -161,14 +161,14 @@ export function ProductQA({
     <div className="mx-auto max-w-2xl space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-1">
-        <h3
+        <h2
           className={cn(
             "text-lg font-extrabold tracking-tight text-zinc-900",
             "lg:text-3xl",
           )}
         >
           Perguntas ao vendedor
-        </h3>
+        </h2>
       </div>
 
       {/* Ask Section */}

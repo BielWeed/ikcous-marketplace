@@ -260,7 +260,7 @@ export function CorpoDaFolhaDeOpcoes({
               aviso?.chave === eixo.chave
                 ? aviso.texto
                 : valores.some((v) => !v.compativel) && contexto
-                  ? `Riscado = indisponível em ${contexto}. Toque para trocar a combinação.`
+                  ? `Opções indisponíveis em ${contexto} aparecem como indisponíveis com a sua escolha. Toque para trocar a combinação.`
                   : "";
             return (
               <div
@@ -319,7 +319,15 @@ export function CorpoDaFolhaDeOpcoes({
                           <button
                             key={valor}
                             type="button"
-                            aria-label={valor}
+                            aria-label={
+                              !disponivel
+                                ? `${valor}, esgotado`
+                                : !compativel
+                                  ? `${valor}, indisponível com a sua escolha. Toque para trocar`
+                                  : ultima
+                                    ? `${valor}, última unidade`
+                                    : valor
+                            }
                             disabled={!disponivel}
                             aria-pressed={escolhido === valor}
                             title={

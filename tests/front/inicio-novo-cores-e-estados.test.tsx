@@ -289,7 +289,7 @@ describe("Este mês e Dinheiro nas contas", () => {
       const valores = tela.querySelectorAll("strong");
       expect(valores).toHaveLength(2);
       expect(texto(valores[0])).toBe(String(pedidos));
-      expect(texto(valores[1])).toBe(pedidos === 0 ? "R$ 0,00" : "R$ 166,43");
+      expect(texto(valores[1])).toBe(pedidos === 0 ? "—" : "R$ 166,43");
       for (const valor of valores) {
         expect
           .soft(valor.className)

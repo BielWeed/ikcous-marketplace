@@ -124,13 +124,14 @@ describe("OperationalPerformanceChart — os números ao lado batem com o perío
       );
     });
 
-    const texto = hospedeiro.textContent ?? "";
+    // O Intl põe espaço inseparável depois de "R$".
+    const texto = (hospedeiro.textContent ?? "").replace(/\s/g, " ");
 
     // O que a janela de 30D realmente soma: receita 3.000, 30 pedidos,
     // ticket médio 100.
-    expect(texto).toContain("R$ 3.000");
+    expect(texto).toContain("R$ 3.000,00");
     expect(texto).toContain("30");
-    expect(texto).toContain("R$ 100");
+    expect(texto).toContain("R$ 100,00");
     // A linha de resumo fala a língua da loja (glossário: "Ticket médio" →
     // "Valor médio por venda").
     expect(texto).toContain("Valor médio");

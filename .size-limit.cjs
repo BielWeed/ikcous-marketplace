@@ -177,7 +177,8 @@ module.exports = [
     // Mede 620,64 kB no build local (a base 1.5.142 media 618,39), 1,64 kB acima do teto. Nada foi trocado por algo mais arriscado.
     // 06/11/2026 (mesma regra): 622 -> 625 kB na 1.5.144 (lote de 16 correcoes de caca: leitor, carrinho, devolucao, datas,
     // rede lenta). Mede 623,12 kB no build local, 1,12 kB acima do teto. Nada foi trocado por algo mais arriscado.
-    limit: "625 kB",
+    // 06/11/2026 (mesma regra): 625 -> 628 kB na 1.5.146 (acessibilidade do app, foto de reserva local, prazo de entrar e de endereco; mediu 626,36 kB; regra do dono).
+    limit: "628 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao

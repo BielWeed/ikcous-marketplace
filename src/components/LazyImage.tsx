@@ -1,3 +1,4 @@
+import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
 import {
   atributosDeImagem,
   comMarcaDeTentativa,
@@ -164,6 +165,27 @@ export function LazyImage({
   const style: React.CSSProperties = {};
   if (width !== undefined) style.width = width;
   if (height !== undefined) style.height = height;
+
+  // Foto de reserva ("Sem Imagem" de placehold.co): desenhada aqui, sem pedir
+  // nada à rede. Sem internet o pedido falhava e a cliente via "Toque para
+  // tentar de novo" num produto que nem tem foto.
+  if (ehMarcadorDeFoto(src)) {
+    return (
+      <div
+        ref={imgRef}
+        // alt="" é foto decorativa (o nome do produto está ao lado): não anunciar.
+        {...(alt === ""
+          ? { "aria-hidden": true }
+          : { role: "img", "aria-label": alt ?? "Produto sem foto" })}
+        className={`relative isolate flex items-center justify-center overflow-hidden bg-zinc-100 dark:bg-zinc-900/50 ${className}`}
+        style={style}
+      >
+        <span className="px-2 text-center text-[10px] font-medium text-zinc-600 dark:text-zinc-500">
+          Sem foto
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div

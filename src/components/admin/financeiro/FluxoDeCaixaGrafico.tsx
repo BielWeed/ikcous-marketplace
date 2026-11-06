@@ -221,7 +221,7 @@ export function FluxoDeCaixaGrafico({
       axisLine={false}
       tickLine={false}
       fontSize={11}
-      width={ocultos ? 8 : 56}
+      width={ocultos ? 8 : 72}
       tick={ocultos ? false : { fill: COR_EIXO, fontWeight: 700 }}
       tickFormatter={(v: number) => formatarBRLCompacto(v)}
     />

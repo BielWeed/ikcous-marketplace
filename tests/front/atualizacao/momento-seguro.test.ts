@@ -48,6 +48,7 @@ describe("o que NUNCA pode ser interrompido, mesmo num ponto de parada", () => {
     expect([...TELAS_DE_COMPRA].sort()).toEqual(
       [
         "address-form",
+        "admin-login",
         "auth",
         "cart",
         "checkout",
@@ -64,6 +65,7 @@ describe("o que NUNCA pode ser interrompido, mesmo num ponto de parada", () => {
     "order-success",
     "auth",
     "login",
+    "admin-login",
   ]) {
     it(`tela de compra '${tela}': bloqueia mesmo trocando de tela e com o app em segundo plano`, () => {
       const d = decidirMomentoSeguro({

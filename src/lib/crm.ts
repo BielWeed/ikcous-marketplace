@@ -1072,7 +1072,13 @@ export function fraseLeituraDosCanais(
   presencial: CanalDoCrm,
 ): string {
   const total = online.receita + presencial.receita;
-  if (total <= 0) return "Nenhuma venda no período.";
+  if (total <= 0) {
+    // Pedido que fecha em R$ 0,00 (brinde com cupom de 100%) é venda: o
+    // cartão ao lado já conta "Pedidos 1", a frase não pode negar.
+    return online.pedidos + presencial.pedidos > 0
+      ? "As vendas do período somaram R$ 0,00 (brindes)."
+      : "Nenhuma venda no período.";
+  }
   const pctOnline = Math.round((online.receita / total) * 100);
   const pctPresencial = 100 - pctOnline;
   if (Math.abs(pctOnline - pctPresencial) <= 10) {

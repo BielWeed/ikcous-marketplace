@@ -106,13 +106,18 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
       // com `MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA` no ramo genérico, em vez
       // da frase escrita para o cliente ("fale com a loja"). É a MESMA
       // frase que `mensagemDeErroAdminLogin` usa para o banner inline.
-      const { success, error: loginError } = await login(
-        email,
-        password,
-        "admin",
-      );
+      const {
+        success,
+        error: loginError,
+        message,
+      } = await login(email, password, "admin");
       if (success) {
         onLogin();
+      } else if (!loginError && message) {
+        // Sem `error` o servidor não respondeu no prazo (rede pendurada, ver
+        // `PRAZO_DA_AUTENTICACAO_MS` em AuthContext.tsx): `message` já é a
+        // frase de conexão lenta, não há causa para traduzir.
+        setError(message);
       } else {
         setError(mensagemDeErroAdminLogin(loginError));
       }
