@@ -1,4 +1,22 @@
 {
+  "1.5.137": {
+    "titulo": "Erros do balcão em português, estoque que não zera, favoritos que atualizam e mais acertos",
+    "novidades": [
+      "Favoritos: a lista atualiza ao voltar ao app, segue a ordem em que você salvou e avisa quantos favoritos estão indisponíveis.",
+      "Painel, Ajustes: aviso quando a cor da marca é clara demais para texto sobre fundo branco; o ícone do iPhone ganha a cor do app em vez de fundo preto.",
+      "Painel, Financeiro: aviso quando o lançamento tem data antes do saldo inicial da conta e \"Margem em formação\" no começo do mês."
+    ],
+    "correcoes": [
+      "Balcão: erro passageiro do sistema aparece em português e deixa tocar em Registrar venda de novo, sem apagar a venda.",
+      "Painel, Produto: criar a primeira variação não zera mais o estoque do produto; salvar fotos confere se outro aparelho mexeu antes de gravar; os campos ficam travados enquanto salva.",
+      "Painel, Financeiro: dar baixa só oferece contas ativas.",
+      "Painel, Banners: banner vencido ou agendado não conta mais como ligado.",
+      "Painel, Pedidos: período com fim antes do início avisa em vez de esvaziar a lista; falha de internet ou de sessão no envio da logo diz a causa.",
+      "Vitrine: a faixa de categorias rola até a categoria marcada, nome de produto longo não é cortado e Enter no botão de tentar a foto de novo não abre o banner.",
+      "Endereço: complemento só com espaços não deixa um traço solto; preço riscado e dicas ficam legíveis."
+    ],
+    "melhorias": []
+  },
   "1.5.136": {
     "titulo": "Frete do painel mais seguro, pedidos e carrinho mais claros, e vários acertos de texto e de ordem",
     "novidades": [

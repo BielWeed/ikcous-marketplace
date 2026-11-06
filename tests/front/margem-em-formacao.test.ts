@@ -31,7 +31,9 @@ describe("margemEmFormacao", () => {
     expect(margemEmFormacao(19, "2026-11-03", NOVEMBRO)).toBe(false);
     expect(margemEmFormacao(null, "2026-11-03", NOVEMBRO)).toBe(false);
     expect(margemEmFormacao(Number.NaN, "2026-11-03", NOVEMBRO)).toBe(false);
-    expect(margemEmFormacao(-Infinity, "2026-11-03", NOVEMBRO)).toBe(false);
+    expect(
+      margemEmFormacao(Number.NEGATIVE_INFINITY, "2026-11-03", NOVEMBRO),
+    ).toBe(false);
   });
 
   it("período que não toca o mês corrente não está em formação", () => {
