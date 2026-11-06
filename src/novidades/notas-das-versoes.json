@@ -10,7 +10,7 @@
       "Painel, Pedidos: avançar o status ou cancelar com internet lenta volta ao status anterior e avisa; “Ver no Maps” usa rua e número sem o bairro; o WhatsApp de retirada diz “Retirado” e o de cancelado tem uma despedida própria.",
       "Painel, Devoluções: a ficha abre como janela no celular (fecha com Esc e prende o foco), e a idade da devolução conta por dia de São Paulo e muda sozinha à meia-noite.",
       "Painel, Banners e Loja: os prazos aparecem como “em 47h 0m” (dias só a partir de 48 h) e nenhuma pergunta ou avaliação mostra “em 3 minutos” quando o relógio do celular está atrasado.",
-      "Painel, Balcão: venda de R$ 0,00 não pede conferência de troco e o recibo diz “Sem valor a pagar”; o leitor de código reinicia sozinho depois de três falhas seguidas.",
+      "Painel, Balcão: venda de R$ 0,00 não pede conferência de troco e o recibo diz “Sem valor a pagar”; o leitor de código que não carregou avisa e volta a funcionar no “Tentar de novo”.",
       "Painel, Cupons e Avisos: mensagens claras para cupom que já existe e para cupom exclusivo, com aviso suave antes de enviar uma campanha com cupom exclusivo.",
       "Painel, Produtos e Início: loja sem produto com estoque mostra “—” em vez de R$ 0,00, e a loja sem pedidos ainda recebe orientação dos primeiros passos.",
       "Painel, Frete, Banners e Produtos: ordem do banner, prazo da entrega própria e observação longa da cliente tratados sem erro genérico ou texto cortado, e a lista de produtos sem internet deixa de parecer atualizada quando não está.",
