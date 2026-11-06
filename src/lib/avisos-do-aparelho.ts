@@ -7,6 +7,13 @@
 export const CHAVE_DO_ADIAMENTO_DOS_AVISOS =
   "ikcous_admin_avisos_do_aparelho_adiado_ate";
 
+/**
+ * Chave do "Agora não" do convite flutuante (`PushNotificationBanner`): outro
+ * adiamento de 7 dias, também deste aparelho, que tem de ser esquecido junto.
+ */
+export const CHAVE_DO_ADIAMENTO_DO_CONVITE =
+  "ikcous_push_banner_dismissed_until";
+
 /** Quanto tempo o "Agora não" esconde o cartão. */
 export const PRAZO_DO_ADIAMENTO_DOS_AVISOS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -151,7 +158,7 @@ export function adiarOsAvisos(agora: number): number {
 }
 
 /**
- * Zera o "Agora não". Chamado onde o app descadastra o aparelho da conta (o
+ * Zera os "Agora não" (o do cartão do Início e o do convite flutuante). Chamado onde o app descadastra o aparelho da conta (o
  * Sair, o fim de sessão vindo de fora e a troca direta de conta): sem isso o
  * alarme "este aparelho não recebe aviso" ficaria calado depois de Sair e
  * Entrar, que é justamente o caso que ele existe para pegar. Nunca lança.
@@ -159,6 +166,7 @@ export function adiarOsAvisos(agora: number): number {
 export function esquecerAdiamentoDosAvisos(): void {
   try {
     localStorage.removeItem(CHAVE_DO_ADIAMENTO_DOS_AVISOS);
+    localStorage.removeItem(CHAVE_DO_ADIAMENTO_DO_CONVITE);
   } catch {
     // Sem armazenamento (ou sem `window`) não há adiamento a esquecer.
   }

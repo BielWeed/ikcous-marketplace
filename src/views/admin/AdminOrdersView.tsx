@@ -539,6 +539,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // erro NO PRIMEIRO QUADRO de toda abertura de pedido (efeito passivo
   // roda depois do paint). detailError so e true quando o catch rodou.
   const [detailError, setDetailError] = useState(false);
+  // Com `detailError`: o servidor respondeu que o pedido NÃO EXISTE (link
+  // truncado ou de pedido apagado) — não é falha de conexão.
+  const [detailNaoExiste, setDetailNaoExiste] = useState(false);
   const prevSelectedOrderRef = useRef<Order | null>(null);
   const {
     ref: viewRef,
@@ -891,6 +894,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // presos de uma busca ANTERIOR de OUTRO id, e o painel morria ate o F5
     // (a view nunca desmonta por causa do DeferredTabContent).
     setDetailError(false);
+    setDetailNaoExiste(false);
     setLoadingDetail(false);
 
     if (!selectedOrderId) {
@@ -921,6 +925,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // cheia (era ele que desmontava o OrderDetail em edição).
       if (!revalidar) setLoadingDetail(true);
       setDetailError(false);
+      setDetailNaoExiste(false);
       try {
         const { data, error } = await supabase
           .from("marketplace_orders")
@@ -941,7 +946,17 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       } catch (err) {
         console.error("Error fetching single order:", err);
         if (isCurrent) {
-          toast.error("Erro ao carregar detalhes do pedido");
+          // PGRST116 = `.single()` não achou linha; 22P02 = o id do link nem
+          // é um uuid (link truncado). Os dois: o pedido não existe.
+          const codigoDoErro = (err as { code?: string } | null)?.code;
+          const naoExiste =
+            codigoDoErro === "PGRST116" || codigoDoErro === "22P02";
+          toast.error(
+            naoExiste
+              ? "Pedido não encontrado"
+              : "Erro ao carregar detalhes do pedido",
+          );
+          setDetailNaoExiste(naoExiste);
           setDetailError(true);
         }
       } finally {
@@ -1865,10 +1880,14 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         </div>
         <div className="mt-6 flex flex-col items-center gap-1.5 text-center">
           <p className="text-[11px] font-black uppercase tracking-[0.2em] text-red-400">
-            Não foi possível carregar
+            {detailNaoExiste
+              ? "Pedido não encontrado"
+              : "Não foi possível carregar"}
           </p>
           <p className="max-w-[240px] text-[11px] font-bold uppercase leading-none tracking-widest text-zinc-500">
-            Verifique a conexão e tente novamente
+            {detailNaoExiste
+              ? "Este pedido não existe ou o link está incompleto"
+              : "Verifique a conexão e tente novamente"}
           </p>
           <button
             onClick={() => onNavigate("admin-orders")}

@@ -186,8 +186,10 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
       try {
         // 1. Fetch public profile details. PGRST116 = 0 linhas: o perfil
         // NÃO EXISTE e a mensagem atual ("não encontrado/removido") é
-        // verdade. Qualquer outro erro é FALHA — e falha não pode virar
-        // "usuário removido" na tela de quem só teve a rede oscilando.
+        // verdade. 22P02 = o id do link nem é um uuid (link truncado): também
+        // não existe, e "tentar de novo" repetiria o mesmo link. Qualquer
+        // outro erro é FALHA — e falha não pode virar "usuário removido" na
+        // tela de quem só teve a rede oscilando.
         const { data: profileData, error: profileError } = await supabase
           .from("public_profiles")
           .select("*")
@@ -195,7 +197,8 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
           .single();
 
         if (profileError) {
-          if ((profileError as { code?: string }).code !== "PGRST116") {
+          const codigoDoErro = (profileError as { code?: string }).code;
+          if (codigoDoErro !== "PGRST116" && codigoDoErro !== "22P02") {
             setLoadError(true);
             return;
           }

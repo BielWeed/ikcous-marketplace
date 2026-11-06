@@ -1,6 +1,7 @@
 import { useStore } from "@/contexts/StoreContext";
 import { useHaCamadaAberta } from "@/hooks/useHaCamadaAberta";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { CHAVE_DO_ADIAMENTO_DO_CONVITE } from "@/lib/avisos-do-aparelho";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
@@ -12,7 +13,7 @@ interface PushNotificationBannerProps {
   readonly isKeyboardOpen?: boolean;
 }
 
-const DISMISS_KEY = "ikcous_push_banner_dismissed_until";
+const DISMISS_KEY = CHAVE_DO_ADIAMENTO_DO_CONVITE;
 const DISMISS_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 dias de cooldown se a cliente fechar
 
 export function PushNotificationBanner({
