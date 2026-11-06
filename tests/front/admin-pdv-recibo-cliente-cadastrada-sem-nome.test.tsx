@@ -167,7 +167,7 @@ describe("AdminPdvView — recibo de cliente cadastrada sem nome no perfil", () 
 
   const bloco = () =>
     hospedeiro.querySelector(".pdv-heading.pdv-divider") as HTMLElement;
-  const papel = () => hospedeiro.querySelector("[data-tema-fixo]")!;
+  const papel = () => document.querySelector("[data-tema-fixo]")!;
 
   it("user_id + nome 'Venda no balcão' + WhatsApp: a tela e o papel dizem 'Cliente'", async () => {
     await registrarComPedido({});

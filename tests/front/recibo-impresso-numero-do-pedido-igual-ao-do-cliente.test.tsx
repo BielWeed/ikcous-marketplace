@@ -50,7 +50,7 @@ describe("OrderReceipt — o número do pedido no papel é o que o cliente vê",
       raiz.render(<OrderReceipt order={pedido} />);
     });
 
-    const texto = hospedeiro.textContent ?? "";
+    const texto = document.body.textContent ?? "";
     expect(texto).toContain("Pedido #3884BE");
     expect(texto).not.toContain("#3884be");
   });

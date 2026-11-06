@@ -454,8 +454,10 @@ describe("FechamentoDaVenda (C3.2)", () => {
     // A tela segue dizendo que a venda foi anulada…
     expect(hospedeiro.textContent).toContain("Venda anulada");
     // …e o papel (o bloco `print:block` do OrderReceipt) nem existe na página.
-    expect(hospedeiro.querySelector("[data-tema-fixo]")).toBeNull();
-    expect(hospedeiro.textContent).not.toContain("Obrigado pela preferência!");
+    expect(document.querySelector("[data-tema-fixo]")).toBeNull();
+    expect(document.body.textContent).not.toContain(
+      "Obrigado pela preferência!",
+    );
   });
 
   it("caso 8b — venda válida continua montando o papel do recibo", async () => {
@@ -471,8 +473,8 @@ describe("FechamentoDaVenda (C3.2)", () => {
     });
     await avancar();
 
-    expect(hospedeiro.querySelector("[data-tema-fixo]")).not.toBeNull();
-    expect(hospedeiro.textContent).toContain("Obrigado pela preferência!");
+    expect(document.querySelector("[data-tema-fixo]")).not.toBeNull();
+    expect(document.body.textContent).toContain("Obrigado pela preferência!");
   });
 
   it("caso 9 — peça com variação aparece com o tamanho/cor na tela, no papel e nos avisos da diferença", async () => {
@@ -506,7 +508,7 @@ describe("FechamentoDaVenda (C3.2)", () => {
     expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
       "1 peça a mais do que a tela: Camiseta Lisa Tamanho G.",
     );
-    expect(hospedeiro.querySelector("[data-tema-fixo]")?.textContent).toContain(
+    expect(document.querySelector("[data-tema-fixo]")?.textContent).toContain(
       "Camiseta Lisa - Tamanho G",
     );
   });

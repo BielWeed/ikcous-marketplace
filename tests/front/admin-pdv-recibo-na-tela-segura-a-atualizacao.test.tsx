@@ -169,7 +169,7 @@ describe("AdminPdvView — o recibo na tela segura a atualização do app", () =
   }
 
   const reciboNaTela = () =>
-    hospedeiro.querySelector("[data-tema-fixo]") !== null;
+    document.querySelector("[data-tema-fixo]") !== null;
 
   it("controle: com a venda ainda em montagem (sem recibo) não há operação sensível do recibo", async () => {
     await act(async () => {

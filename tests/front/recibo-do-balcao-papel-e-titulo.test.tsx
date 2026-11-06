@@ -93,7 +93,7 @@ describe("recibo da venda de balcão — papel e título", () => {
     hospedeiro.remove();
   });
 
-  const papel = () => hospedeiro.querySelector("[data-tema-fixo]")!;
+  const papel = () => document.querySelector("[data-tema-fixo]")!;
 
   it("papel de venda PRESENCIAL: sem linha de Frete e com a forma de pagamento", async () => {
     await act(async () => {

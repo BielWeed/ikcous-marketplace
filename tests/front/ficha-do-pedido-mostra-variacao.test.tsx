@@ -165,7 +165,7 @@ describe("ficha do pedido e recibo — mostram a variação de cada item", () =>
       ) ?? [],
     ).map((el) => el.textContent);
   const papelDoRecibo = () =>
-    Array.from(hospedeiro.querySelectorAll<HTMLElement>("div")).find((d) =>
+    Array.from(document.querySelectorAll<HTMLElement>("div")).find((d) =>
       d.classList.contains("print:block"),
     );
 

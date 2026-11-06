@@ -157,7 +157,7 @@ describe("ficha do pedido — resposta antiga não apaga tamanho e código", () 
       (elemento) => elemento.textContent,
     );
   const recibo = () =>
-    [...hospedeiro.querySelectorAll("div")].find((elemento) =>
+    [...document.querySelectorAll("div")].find((elemento) =>
       elemento.classList.contains("print:block"),
     );
 

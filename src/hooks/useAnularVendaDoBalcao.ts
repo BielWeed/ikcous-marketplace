@@ -11,6 +11,7 @@
 // chamada pela tela — traduzir em dois lugares criaria duas verdades.
 
 import { clearAnalyticsCache } from "@/hooks/useAnalytics";
+import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { avisarAnulacao } from "@/lib/avisa-anulacao-do-balcao";
 import { supabase } from "@/lib/supabase";
 import { useCallback } from "react";
@@ -42,11 +43,20 @@ export function useAnularVendaDoBalcao(): {
   ) => Promise<ResultadoDaAnulacao>;
 } {
   const anular = useCallback(async (orderId: string, motivo: string) => {
-    const { data, error } = await supabase.rpc("anular_venda_presencial", {
-      p_order_id: orderId,
-      p_motivo: motivo,
-    });
-    if (error) throw error;
+    // Recarregar o app com a chamada no ar deixaria a lojista sem saber se a
+    // venda foi anulada: a atualização espera a resposta (sucesso ou erro).
+    const desmarcar = marcarOperacaoSensivel("anulacao-da-venda-do-balcao");
+    let data: unknown;
+    try {
+      const resposta = await supabase.rpc("anular_venda_presencial", {
+        p_order_id: orderId,
+        p_motivo: motivo,
+      });
+      if (resposta.error) throw resposta.error;
+      data = resposta.data;
+    } finally {
+      desmarcar();
+    }
     const resultado = lerRespostaDaAnulacao(data);
     // Os números de venda do painel (Clientes, Relatórios, o topo de
     // Pedidos) mudam com a anulação (o Financeiro desconta): sem isto o

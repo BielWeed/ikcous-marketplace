@@ -69,7 +69,7 @@ describe("OrderReceipt — o papel traz o endereço completo", () => {
       raiz.render(<OrderReceipt order={pedido} />);
     });
     // As linhas do bloco CLIENTE (uma por <p>), sem o título.
-    const bloco = Array.from(hospedeiro.querySelectorAll("p")).find(
+    const bloco = Array.from(document.querySelectorAll("p")).find(
       (p) => p.textContent === "CLIENTE:",
     )?.parentElement;
     expect(bloco).toBeDefined();

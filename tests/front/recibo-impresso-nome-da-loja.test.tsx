@@ -90,7 +90,7 @@ describe("OrderReceipt — o recibo impresso sai com o nome da LOJA", () => {
       );
     });
 
-    const texto = hospedeiro.textContent ?? "";
+    const texto = document.body.textContent ?? "";
     expect(texto).toContain(NOME_DA_LOJA);
     // Sinal NOMINAL: o nome do molde NÃO pode estar na folha — "também tem
     // o nome certo em algum lugar" não serve quando o papel é impresso.
@@ -106,7 +106,7 @@ describe("OrderReceipt — o recibo impresso sai com o nome da LOJA", () => {
       raiz.render(<OrderReceipt order={pedidoBase()} />);
     });
 
-    const texto = hospedeiro.textContent ?? "";
+    const texto = document.body.textContent ?? "";
     expect(texto).toContain(branding.appName);
   });
 
@@ -125,7 +125,7 @@ describe("OrderReceipt — o recibo impresso sai com o nome da LOJA", () => {
       );
     });
 
-    const texto = hospedeiro.textContent ?? "";
+    const texto = document.body.textContent ?? "";
     expect(texto).toContain(NOME_DA_LOJA);
   });
 });

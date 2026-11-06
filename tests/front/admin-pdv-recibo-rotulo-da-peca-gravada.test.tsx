@@ -214,7 +214,7 @@ describe("AdminPdvView — peça gravada que a tela não tem mais (achado 6)", (
       "1 peça a mais do que a tela: Camiseta Tamanho G.",
     );
 
-    const papel = hospedeiro.querySelector("[data-tema-fixo]");
+    const papel = document.querySelector("[data-tema-fixo]");
     expect(papel?.textContent).toContain("Camiseta - Tamanho G");
   });
 
