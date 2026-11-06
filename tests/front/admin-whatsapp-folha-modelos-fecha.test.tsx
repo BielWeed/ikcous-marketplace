@@ -196,7 +196,17 @@ describe("Minha loja › Contato — folha de modelos prontos fecha por todos os
     expect(
       hospedeiro.querySelector("#settings-share-message-editor"),
     ).not.toBeNull();
-    // Fechada a folha, o Voltar próprio é devolvido (null) ao App.
+    // Fechada a folha, a tela deixa no App um desvio de USO ÚNICO que só engole
+    // o popstate do history.back() que ela mesma pediu (sem ele o App abriria
+    // "Alterações não salvas" sem a lojista ter saído de lugar).
+    const ultimas = onSetBackOverride.mock.calls
+      .map(([arg]) => arg)
+      .filter((arg): arg is () => () => void => typeof arg === "function");
+    const engolidor = ultimas[ultimas.length - 1]();
+    // O App chama o desvio quando o popstate chega; ele se solta (null).
+    await act(async () => {
+      engolidor();
+    });
     expect(onSetBackOverride).toHaveBeenLastCalledWith(null);
   });
 
