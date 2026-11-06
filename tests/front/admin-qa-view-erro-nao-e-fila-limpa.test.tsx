@@ -259,14 +259,27 @@ describe("AdminQAView na tela — erro de estatística nunca vira 'Fila Limpa'",
     // este teste cai junto.
     expect(tela).toContain("Fila de perguntas limpa");
 
-    // E os zeros legítimos aparecem SEM cara de erro: "0%" e "0 de 0" são a
-    // verdade aqui — é exatamente o que NÃO pode vazar no CASO 1.
+    // Os zeros de contagem são verdade e aparecem SEM cara de erro; já a
+    // PORCENTAGEM de uma loja sem nenhuma pergunta não tem base: nada de
+    // "0% respondidas" nem "0 de 0", e sim "Nenhuma pergunta ainda".
     expect(tela).toContain("Pendentes 0");
     expect(tela).toContain("Todas 0");
-    expect(tela).toContain("0% respondidas");
-    expect(tela).toContain("0 de 0");
+    expect(tela).toContain("Nenhuma pergunta ainda");
+    expect(tela).not.toContain("0%");
+    expect(tela).not.toContain("0 de 0");
     expect(tela).not.toContain("Erro ao atualizar");
     expect(tela).not.toContain("—");
+
+    // Aberto, o cartão "Respondidas" mostra o traço (sem base) e o rodapé
+    // honesto — diferente do CASO 1, que mostra "Não foi possível carregar".
+    await expandirResumo();
+    const aberta = texto();
+    expect(aberta).not.toContain("0%");
+    expect(aberta).not.toContain("0 de 0");
+    expect(aberta).toContain("nenhuma pergunta ainda");
+    expect(aberta).not.toContain("Erro ao atualizar");
+    expect(aberta).not.toContain("Não foi possível carregar agora");
+    expect((aberta.match(/—/g) ?? []).length).toBe(1);
   });
 
   it("CASO 3 — loja com pendências: números na tela, nenhum sinal de erro", async () => {

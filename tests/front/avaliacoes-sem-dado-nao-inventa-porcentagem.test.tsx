@@ -231,6 +231,14 @@ describe("AdminReviewsView — taxa sem dado não vira porcentagem inventada (A3
     h.estado.globalRepliedCount = 0;
 
     await montar();
+
+    // Média sem nenhuma nota também não vira "0,0": a linha do resumo
+    // (fechada) mostra "—" na nota, mas mantém "0 avaliações", porque zero
+    // de contagem é verdade.
+    const linha = texto();
+    expect(linha).not.toContain("0,0");
+    expect(linha).toContain("0 avaliações");
+
     await expandirResumo();
 
     const tela = texto();
@@ -239,11 +247,12 @@ describe("AdminReviewsView — taxa sem dado não vira porcentagem inventada (A3
     // uma taxa medida.
     expect(tela).not.toContain("100%");
     expect(tela).not.toContain("0%");
+    expect(tela).not.toContain("0,0");
 
-    // O "—" tem que aparecer duas vezes: uma para cada cartão de taxa
-    // (Compras verificadas e Taxa de resposta).
+    // O "—" tem que aparecer três vezes: cartão "Média global" e os dois
+    // cartões de taxa (Compras verificadas e Taxa de resposta).
     const tracos = (tela.match(/—/g) ?? []).length;
-    expect(tracos).toBe(2);
+    expect(tracos).toBe(3);
 
     // E as duas barras de progresso ficam vazias, não cheias.
     expect(larguraDaBarra("Compras verificadas")).toBe("0%");

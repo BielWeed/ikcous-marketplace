@@ -130,7 +130,7 @@ export function ParaFazer({
           : "Caixa fechado",
       descricao: caixaAberto
         ? "Feche no fim do dia · Financeiro"
-        : "Abra para vender no balcão · Financeiro",
+        : "Abra para conferir o dinheiro da gaveta · Financeiro",
       contagem: null,
       pendente: caixaAberto,
       destino: "admin-financeiro",

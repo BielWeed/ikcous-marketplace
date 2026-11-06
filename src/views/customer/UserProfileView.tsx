@@ -619,7 +619,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                           </div>
 
                           {rev.comment && (
-                            <p className="whitespace-pre-wrap text-xs font-medium leading-relaxed text-zinc-700">
+                            <p className="whitespace-pre-wrap break-words text-xs font-medium leading-relaxed text-zinc-700">
                               {rev.comment}
                             </p>
                           )}
@@ -644,7 +644,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                                 ✓
                               </span>
                             </div>
-                            <p className="whitespace-pre-wrap font-medium italic text-zinc-600">
+                            <p className="whitespace-pre-wrap break-words font-medium italic text-zinc-600">
                               "{rev.merchant_reply}"
                             </p>
                           </div>
@@ -726,7 +726,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                               })}
                             </span>
                           </div>
-                          <p className="text-xs font-bold leading-relaxed text-zinc-900 md:text-sm">
+                          <p className="break-words text-xs font-bold leading-relaxed text-zinc-900 md:text-sm">
                             {q.question}
                           </p>
                         </div>
@@ -756,7 +756,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                                     )}
                                   </span>
                                 </div>
-                                <p className="pl-0.5 font-medium italic text-zinc-700">
+                                <p className="break-words pl-0.5 font-medium italic text-zinc-700">
                                   "{ans.answer}"
                                 </p>
                               </div>

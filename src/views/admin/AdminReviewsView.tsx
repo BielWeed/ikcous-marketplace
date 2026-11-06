@@ -395,7 +395,10 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   const totalPages = Math.ceil(totalReviews / pageSize);
 
   const globaisProntos = jaLeu && globaisDisponiveis;
-  const mediaGlobalExibida = globaisProntos
+  // Sem nenhuma avaliação não existe média: "0,0" fingiria uma nota. A
+  // contagem "0 avaliações" continua, porque zero ali é verdade.
+  const temMediaGlobal = globaisProntos && globalTotal > 0;
+  const mediaGlobalExibida = temMediaGlobal
     ? globalAvgRating.replace(".", ",")
     : "—";
   const totalGlobalExibido = globaisProntos ? globalTotal : "—";
@@ -917,7 +920,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
             valor={
               <>
                 {mediaGlobalExibida}
-                {globaisProntos && (
+                {temMediaGlobal && (
                   <span className="mt-0.5">
                     {renderStars(Math.round(Number(globalAvgRating) || 0))}
                   </span>

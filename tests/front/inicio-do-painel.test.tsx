@@ -321,6 +321,17 @@ describe("Início do painel", () => {
     expect(texto(hospedeiro)).toContain("4 pendências");
   });
 
+  it("caixa fechado não promete exigência: o balcão vende sem abrir o caixa", async () => {
+    h.respostas.set("painel_inicio", { data: PAINEL, error: null });
+    await montar();
+    await esperarAte(() => texto(hospedeiro).includes("pendências"));
+    const emDia = botaoPorTexto(hospedeiro, "Caixa fechado");
+    expect(emDia.textContent).not.toContain("vender no balcão");
+    expect(emDia.textContent).toContain(
+      "Abra para conferir o dinheiro da gaveta · Financeiro",
+    );
+  });
+
   it("o destaque é um botão branco (sem dourado) e as linhas têm tile neutro com o glifo na cor", async () => {
     h.respostas.set("painel_inicio", { data: PAINEL, error: null });
     await montar();
