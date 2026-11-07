@@ -158,6 +158,18 @@ export const getPredefinedCoverSvg = (
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg.trim())}`;
 };
 
+/**
+ * A capa de quem nunca escolheu uma (`cover_url` nulo): a primeira da lista,
+ * "Sunset Glow", a mesma que a janela "Capa de Fundo" marca como atual. UMA
+ * constante para o Perfil, Ajustes da conta e o perfil público, para a pessoa
+ * e quem vê o perfil dela verem a mesma capa.
+ */
+export const CAPA_PADRAO_URL = getPredefinedCoverSvg(
+  PREDEFINED_COVERS[0].start,
+  PREDEFINED_COVERS[0].end,
+  PREDEFINED_COVERS[0].patternType,
+);
+
 export const compressCoverImage = (
   base64Str: string,
   maxWidth = 800,

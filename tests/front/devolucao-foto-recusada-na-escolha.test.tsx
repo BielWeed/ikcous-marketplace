@@ -26,6 +26,12 @@ vi.mock("@/lib/redimensiona-imagem", () => ({
   redimensionarImagem: (arquivo: File) => redimensionarImagem(arquivo),
 }));
 
+// O jsdom não decodifica imagem: o teste decide quais fotos "abrem" no aparelho.
+const imagemAbre = vi.fn(async (_arquivo: File) => true);
+vi.mock("@/lib/imagem-abre", () => ({
+  imagemAbre: (arquivo: File) => imagemAbre(arquivo),
+}));
+
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -79,6 +85,7 @@ let hospedeiro: HTMLDivElement;
 beforeEach(() => {
   enviarFoto.mockReset();
   redimensionarImagem.mockClear();
+  imagemAbre.mockReset().mockResolvedValue(true);
   vi.mocked(toast.error).mockClear();
   hospedeiro = document.createElement("div");
   document.body.appendChild(hospedeiro);
@@ -172,6 +179,36 @@ describe("SolicitarDevolucaoSheet — foto ruim é barrada ao escolher", () => {
     expect(vi.mocked(toast.error).mock.calls[0][0]).toContain("IMG_0042.heic");
     // Nada foi ao servidor: o aviso veio na escolha, não no "Confirmar".
     expect(enviarFoto).not.toHaveBeenCalled();
+  });
+
+  it("foto que diz ser JPG mas o aparelho não abre: avisa com o NOME do arquivo e as outras entram", async () => {
+    imagemAbre.mockImplementation(
+      async (arquivo) => arquivo.name !== "estragada.jpg",
+    );
+    await ateOPassoDasFotos();
+    await escolher([
+      new File(["x"], "estragada.jpg", { type: "image/jpeg" }),
+      boa(),
+    ]);
+
+    expect(fotosNaLista()).toBe(1);
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    const aviso = String(vi.mocked(toast.error).mock.calls[0][0]);
+    expect(aviso).toContain("estragada.jpg");
+    expect(aviso).toContain("não abre neste aparelho");
+    expect(enviarFoto).not.toHaveBeenCalled();
+  });
+
+  it("foto grande que não abre: recusada por não abrir, sem gastar a redução", async () => {
+    imagemAbre.mockResolvedValue(false);
+    await ateOPassoDasFotos();
+    await escolher([grande("enorme.png")]);
+
+    expect(fotosNaLista()).toBe(0);
+    expect(String(vi.mocked(toast.error).mock.calls[0][0])).toContain(
+      "não abre neste aparelho",
+    );
+    expect(redimensionarImagem).not.toHaveBeenCalled();
   });
 
   it("mais de 5 MB depois de reduzida: avisa com o NOME do arquivo e a boa entra", async () => {

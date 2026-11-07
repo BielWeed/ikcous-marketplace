@@ -6,6 +6,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { cpfValido, formatarCpf } from "@/lib/cpf";
 import { MENSAGEM_ERRO_LOGIN_GENERICA } from "@/lib/mensagens-auth";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import {
   celularBrasileiroCompleto,
   mascaraTelefoneDoCadastro,
@@ -380,7 +381,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
         }
       } else if (viewMode === "signup") {
         if (
-          !fullName.trim() ||
+          !nomeTemConteudoVisivel(fullName) ||
           !phone.trim() ||
           !email.trim() ||
           !password.trim()

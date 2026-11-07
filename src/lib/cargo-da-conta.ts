@@ -5,6 +5,12 @@
 // demais com mensagem em português (42501 sem permissão, 22023 cargo inválido,
 // P0002 pessoa inexistente). A tela só chama e traduz o que o banco devolve —
 // nunca decide quem pode (esconder o botão é conforto, não segurança).
+import {
+  CODIGO_CONSULTA_SEM_RESPOSTA,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 
 export type CargoDaConta = "admin" | "customer";
@@ -25,6 +31,16 @@ export const MENSAGEM_DONO_INCOMPLETO =
   "O cadastro do dono da loja está incompleto. Fale com o suporte para acertar.";
 const MENSAGEM_GENERICA =
   "Não foi possível mudar o acesso agora. Tente de novo em instantes.";
+// Rede que conecta e não responde. É PERMISSÃO: estourar o prazo não prova que
+// nada mudou (o banco pode ter gravado depois que a tela desistiu de esperar),
+// então a frase manda conferir a lista e NUNCA diz que "não foi feito".
+export const MENSAGEM_CARGO_SEM_RESPOSTA =
+  "Sem resposta da rede. Confira se o acesso mudou na lista antes de tentar de novo.";
+
+// Mesmo prazo do PIX (20 s): é uma gravação, e o servidor numa rede lenta mas
+// viva ainda responde dentro dele. O prazo limita só a ESPERA DA TELA; a
+// resposta que chegar depois é descartada (sem toast de sucesso nem de erro).
+const PRAZO_DO_CARGO_MS = 20_000;
 
 // Copiada de `mensagemDoErro` (src/lib/devolucao.ts): importar aquele módulo
 // só por esta expressão puxaria a tela de devolução inteira para o cartão.
@@ -57,6 +73,13 @@ function falha(erro: unknown): ResultadoDoCargo {
     texto(campo(erro, "message")) ||
     (erro instanceof Error ? erro.message.trim() : "");
 
+  if (ehConsultaSemResposta(erro)) {
+    return {
+      ok: false,
+      codigo: CODIGO_CONSULTA_SEM_RESPOSTA,
+      mensagem: MENSAGEM_CARGO_SEM_RESPOSTA,
+    };
+  }
   if (codigo === "PGRST202") {
     return { ok: false, codigo, mensagem: MENSAGEM_FUNCAO_INATIVA };
   }
@@ -74,15 +97,24 @@ function falha(erro: unknown): ResultadoDoCargo {
 /**
  * Chama `definir_cargo`. Nunca lança: falha de rede, função ausente na loja e
  * recusa do banco voltam como `{ ok: false, mensagem }` pronta para o toast.
+ * Sem resposta em 20 s volta `codigo: CODIGO_CONSULTA_SEM_RESPOSTA` (o banco
+ * pode ter gravado: quem chama relê a lista).
  */
 export async function definirCargo(
   userId: string,
   cargo: CargoDaConta,
 ): Promise<ResultadoDoCargo> {
   try {
-    const { data, error } = await (supabase as unknown as ClienteComRpc).rpc(
-      "definir_cargo",
-      { p_user_id: userId, p_cargo: cargo },
+    const { data, error } = await aguardarComPrazo(
+      // `rpc` devolve um construtor "thenable", não uma Promise.
+      Promise.resolve(
+        (supabase as unknown as ClienteComRpc).rpc("definir_cargo", {
+          p_user_id: userId,
+          p_cargo: cargo,
+        }),
+      ),
+      PRAZO_DO_CARGO_MS,
+      () => erroDeConsultaSemResposta(MENSAGEM_CARGO_SEM_RESPOSTA),
     );
     if (error) return falha(error);
     const para = campo(data, "para");

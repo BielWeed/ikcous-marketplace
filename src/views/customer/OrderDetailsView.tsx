@@ -2188,7 +2188,7 @@ export function OrderDetailsView({
               className="fixed inset-0"
               onClick={fecharAvaliacaoPerguntando}
               role="button"
-              aria-label="Fechar avaliacao"
+              aria-label="Fechar avaliação"
               tabIndex={-1}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {

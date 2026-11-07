@@ -166,7 +166,9 @@ describe("OrderDetailsView — a avaliação em envio não deixa fechar a folha"
   it("toque no fundo escuro e Esc também não fecham durante o envio", async () => {
     await abrirEPublicar();
     await clicar(
-      document.body.querySelector('[aria-label="Fechar avaliacao"]'),
+      document.body.querySelector(
+        '[role="button"][aria-label="Fechar avaliação"]',
+      ),
     );
     expect(folha()).not.toBeNull();
     await act(async () => {

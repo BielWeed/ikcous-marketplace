@@ -7,7 +7,7 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
-import { type ReactNode, useCallback, useMemo } from "react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { useDevolucaoAdmin } from "@/hooks/useDevolucoesAdmin";
@@ -56,6 +56,40 @@ function Linha({
         {children}
       </dd>
     </div>
+  );
+}
+
+/**
+ * Uma foto que o cliente mandou. Se o aparelho não consegue abrir a imagem
+ * (arquivo estragado, formato que o navegador não lê), o quadrado diz isso em
+ * vez de mostrar o ícone de imagem quebrada. O link continua: dá para tentar
+ * abrir ou baixar o arquivo por fora.
+ */
+function FotoDoCliente({
+  url,
+  numero,
+}: Readonly<{ url: string; numero: number }>) {
+  const [naoAbriu, setNaoAbriu] = useState(false);
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="block aspect-square overflow-hidden rounded-xl border border-admin-border bg-zinc-900"
+    >
+      {naoAbriu ? (
+        <span className="flex size-full items-center justify-center p-2 text-center text-[11px] text-zinc-500">
+          Não foi possível abrir esta foto
+        </span>
+      ) : (
+        <img
+          src={url}
+          alt={`Foto ${numero} enviada pelo cliente`}
+          className="size-full object-cover"
+          onError={() => setNaoAbriu(true)}
+        />
+      )}
+    </a>
   );
 }
 
@@ -330,19 +364,11 @@ export function DetalheDaDevolucao({
                   {detalhe.fotos.map((caminho, indice) => {
                     const url = fotos.get(caminho);
                     return url ? (
-                      <a
-                        key={caminho}
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block aspect-square overflow-hidden rounded-xl border border-admin-border bg-zinc-900"
-                      >
-                        <img
-                          src={url}
-                          alt={`Foto ${indice + 1} enviada pelo cliente`}
-                          className="size-full object-cover"
-                        />
-                      </a>
+                      <FotoDoCliente
+                        key={`${caminho}|${url}`}
+                        url={url}
+                        numero={indice + 1}
+                      />
                     ) : (
                       <div
                         key={caminho}

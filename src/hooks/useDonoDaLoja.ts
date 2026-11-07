@@ -8,6 +8,10 @@
 // = a opção simplesmente não aparece. Sem lançar e sem toast. Esconder o botão
 // é conforto: quem barra de verdade é o banco.
 import { useAuth } from "@/hooks/useAuth";
+import {
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { useEffect, useState } from "react";
 
@@ -38,6 +42,14 @@ interface ClienteComDono {
 // rede NÃO é gravada, para a próxima abertura tentar de novo.
 const CODIGOS_DEFINITIVOS = new Set(["PGRST205", "42P01", "42501"]);
 
+// Rede que conecta e não responde: sem prazo, a leitura ficava pendurada (e a
+// promessa guardada em `leituraEmVoo`), `carregando` nunca baixava e a opção de
+// promover/remover não aparecia naquela sessão, sem aviso. 12 s, como as outras
+// consultas baratas. Estourar é "sem dono e nada gravado" (cai no `catch`
+// abaixo): a próxima abertura da folha lê de novo, e a resposta tardia é
+// descartada.
+const PRAZO_DA_LEITURA_DO_DONO_MS = 12_000;
+
 interface Leitura {
   readonly uid: string;
   readonly donoId: string | null;
@@ -59,10 +71,17 @@ async function lerDono(uid: string): Promise<string | null> {
   let donoId: string | null = null;
   let definitivo = false;
   try {
-    const { data, error } = await (supabase as unknown as ClienteComDono)
-      .from("dono_da_loja")
-      .select("user_id")
-      .maybeSingle();
+    const { data, error } = await aguardarComPrazo(
+      // A consulta devolve um "thenable", não uma Promise.
+      Promise.resolve(
+        (supabase as unknown as ClienteComDono)
+          .from("dono_da_loja")
+          .select("user_id")
+          .maybeSingle(),
+      ),
+      PRAZO_DA_LEITURA_DO_DONO_MS,
+      () => erroDeConsultaSemResposta(),
+    );
     if (error) {
       definitivo =
         (error.code !== undefined && CODIGOS_DEFINITIVOS.has(error.code)) ||
@@ -72,7 +91,8 @@ async function lerDono(uid: string): Promise<string | null> {
       definitivo = true;
     }
   } catch {
-    // Rede caiu, ou cliente sem a consulta: sem dono, e nada gravado.
+    // Rede caiu, estourou o prazo, ou cliente sem a consulta: sem dono, e nada
+    // gravado.
   }
   if (definitivo && leituraEmVoo?.uid === uid) {
     leituraFeita = { uid, donoId };

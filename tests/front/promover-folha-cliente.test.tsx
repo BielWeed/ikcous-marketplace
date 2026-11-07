@@ -86,6 +86,7 @@ describe("promover a administrador (folha do cartão)", () => {
   let aoMudarCargo: ReturnType<
     typeof vi.fn<(id: string, novoCargo: CargoDaConta) => void>
   >;
+  let aoFicarIncerto: ReturnType<typeof vi.fn<() => void>>;
 
   beforeEach(() => {
     h.meuId = "dono-1";
@@ -98,12 +99,14 @@ describe("promover a administrador (folha do cartão)", () => {
     toast.error.mockReset();
     limparDonoDaLoja();
     aoMudarCargo = vi.fn<(id: string, novoCargo: CargoDaConta) => void>();
+    aoFicarIncerto = vi.fn<() => void>();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     act(() => raiz.unmount());
     hospedeiro.remove();
     document.body.removeAttribute("style");
@@ -118,6 +121,7 @@ describe("promover a administrador (folha do cartão)", () => {
           onNavigate={vi.fn()}
           onPrefetch={vi.fn()}
           onCargoMudou={comCallback ? aoMudarCargo : undefined}
+          onCargoIncerto={comCallback ? aoFicarIncerto : undefined}
         />,
       );
     });
@@ -513,6 +517,128 @@ describe("promover a administrador (folha do cartão)", () => {
       await clicar(linha(TITULO_PROMOVER));
       await clicar(confirmar());
       expect(toast.success).toHaveBeenCalledTimes(1);
+    });
+
+    describe("rede que conecta e não responde (r63-b, achado 15)", () => {
+      const FRASE =
+        "Sem resposta da rede. Confira se o acesso mudou na lista antes de tentar de novo.";
+      const sucesso = {
+        data: { user_id: "cli-1", de: "customer", para: "admin", mudou: true },
+        error: null,
+      };
+
+      // O relógio falso entra SÓ depois de a janela abrir (o Radix e os
+      // `esperar` do teste usam setTimeout real até aqui) e vale só para o
+      // prazo da chamada, que nasce depois do clique.
+      async function confirmarComRedeMuda() {
+        let chegou: (v: unknown) => void = () => {};
+        h.rpc.mockReturnValue(
+          new Promise((r) => {
+            chegou = r;
+          }),
+        );
+        await abrirConfirmacaoDePromover();
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        await act(async () => {
+          (confirmar() as HTMLButtonElement).click();
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        return { chegou: (v: unknown) => chegou(v) };
+      }
+
+      it("até o prazo a janela segue presa (botões e Esc travados); no prazo ela SOLTA, com a frase honesta e a lista relida", async () => {
+        await confirmarComRedeMuda();
+        expect(h.rpc).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(19_000);
+        });
+        expect(dialogo()).toBeTruthy();
+        expect((confirmar() as HTMLButtonElement).disabled).toBe(true);
+        await act(async () => {
+          document.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+          );
+        });
+        expect(dialogo()).toBeTruthy();
+        expect(toast.error).not.toHaveBeenCalled();
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1_500);
+        });
+        // A janela fechou sozinha: nada de botão apagado e sem saída.
+        expect(dialogo()).toBeNull();
+        expect(toast.error).toHaveBeenCalledTimes(1);
+        expect(toast.error).toHaveBeenCalledWith(FRASE);
+        expect(toast.success).not.toHaveBeenCalled();
+        // Não sabemos se gravou: a lista é relida, e o selo NÃO é trocado.
+        expect(aoFicarIncerto).toHaveBeenCalledTimes(1);
+        expect(aoMudarCargo).not.toHaveBeenCalled();
+      });
+
+      it("a resposta que chega TARDE (depois do prazo) não vira toast de sucesso nem de erro, nem troca o selo", async () => {
+        const { chegou } = await confirmarComRedeMuda();
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(21_000);
+        });
+        expect(toast.error).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+          chegou(sucesso);
+          await vi.advanceTimersByTimeAsync(10);
+        });
+        expect(toast.success).not.toHaveBeenCalled();
+        expect(toast.error).toHaveBeenCalledTimes(1);
+        expect(aoMudarCargo).not.toHaveBeenCalled();
+        expect(aoFicarIncerto).toHaveBeenCalledTimes(1);
+      });
+
+      it("depois de soltar, dá para abrir de novo e tentar outra vez (a trava de duplo clique foi solta)", async () => {
+        await confirmarComRedeMuda();
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(21_000);
+        });
+        expect(dialogo()).toBeNull();
+
+        h.rpc.mockResolvedValue(sucesso);
+        vi.useRealTimers();
+        await abrirFolha();
+        await clicar(linha(TITULO_PROMOVER));
+        await clicar(confirmar());
+        expect(h.rpc).toHaveBeenCalledTimes(2);
+        expect(toast.success).toHaveBeenCalledTimes(1);
+        expect(aoMudarCargo).toHaveBeenCalledWith("cli-1", "admin");
+        // Só a primeira tentativa (sem resposta) pediu para reler a lista.
+        expect(aoFicarIncerto).toHaveBeenCalledTimes(1);
+      });
+
+      it("erro comum do banco NÃO pede para rereler a lista (só o 'sem resposta' pede)", async () => {
+        h.rpc.mockResolvedValueOnce({
+          data: null,
+          error: {
+            code: "42501",
+            message: "Só o dono da loja pode mudar cargos.",
+          },
+        });
+        await abrirConfirmacaoDePromover();
+        await clicar(confirmar());
+        expect(toast.error).toHaveBeenCalledTimes(1);
+        expect(aoFicarIncerto).not.toHaveBeenCalled();
+      });
+
+      it("sem a prop onCargoIncerto o cartão também solta e avisa (sem quebrar)", async () => {
+        h.rpc.mockReturnValue(new Promise(() => {}));
+        await render(cliente(), false);
+        await abrirFolha();
+        await clicar(linha(TITULO_PROMOVER));
+        vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+        await act(async () => {
+          (confirmar() as HTMLButtonElement).click();
+          await vi.advanceTimersByTimeAsync(21_000);
+        });
+        expect(dialogo()).toBeNull();
+        expect(toast.error).toHaveBeenCalledWith(FRASE);
+      });
     });
   });
 

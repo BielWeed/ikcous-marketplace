@@ -39,6 +39,7 @@ const toastLoading = vi.fn();
 const produtoTeste = {
   id: "prod-1",
   name: "Camiseta Base",
+  sku: "CAM-01",
   category: "Geral",
   images: [
     "https://proj.supabase.co/storage/v1/object/public/products/foto1.jpg",
@@ -293,6 +294,16 @@ describe("AdminProductsView — achado 546: duplicar duas vezes preserva a grade
     for (const sku of skusDasVariantes) {
       expect(sku).toBeFalsy();
     }
+  });
+
+  it("duplicar: o código da cópia ganha o sufixo em português '-COPIA', nunca '-COPY'", async () => {
+    await montar();
+    await duplicar();
+
+    expect(addProduct).toHaveBeenCalledTimes(1);
+    const { sku } = addProduct.mock.calls[0][0];
+    expect(sku).toBe("CAM-01-COPIA");
+    expect(sku).not.toMatch(/COPY/);
   });
 
   it("duplicar produto sem foto (a exibição o chama de 'Sem Imagem') não grava o marcador na cópia", async () => {

@@ -362,6 +362,25 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     // Nem liço de renderização: nenhum "undefined"/"null" vaza para a tela.
     expect(texto).not.toContain("undefined");
     expect(texto).not.toContain("null");
+
+    // A página não fica "quebrada": uma frase simples diz que a loja ainda
+    // não preencheu nada (sem inventar dado).
+    expect(texto).toContain("A loja ainda não preencheu estas informações");
+  });
+
+  it("loja com alguma informação NÃO mostra o aviso de 'ainda não preencheu'", async () => {
+    configAtual = LOJA_COMPLETA;
+    expect(await renderizarPagina()).not.toContain(
+      "A loja ainda não preencheu estas informações",
+    );
+
+    // Basta o horário para a página ter conteúdo próprio.
+    act(() => raiz.unmount());
+    raiz = createRoot(hospedeiro);
+    configAtual = { ...LOJA_VAZIA, businessHours: "Seg-Sex: 8h às 19h" };
+    expect(await renderizarPagina()).not.toContain(
+      "A loja ainda não preencheu estas informações",
+    );
   });
 
   it("logo do banco quebrada cai na LOGO DO BUILD; só quando ela também falha vem a inicial — o pin (ícone do app) não se move", async () => {

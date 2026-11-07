@@ -41,6 +41,7 @@ import {
   fraseDoSeloDeFreteGratis,
   promessasDeFrete,
 } from "@/lib/estrategias-de-frete";
+import { soFotosReais } from "@/lib/foto-do-produto";
 import { entregaPropriaLigada } from "@/lib/guarda-de-frete";
 import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
@@ -587,7 +588,7 @@ export const ProductView = React.memo(function ProductView({
   // uma foto que o produto não tem mais, essa foto no fim. A variação com
   // foto NÃO esconde as outras -- só leva a galeria até a dela.
   const fotosDaEscolha = (escolha: Record<string, string>): string[] => {
-    const doProduto = product.images ?? [];
+    const doProduto = soFotosReais(product.images);
     const extras = fotosQueAEscolhaAponta(escolha).filter(
       (url) => !doProduto.includes(url),
     );
@@ -658,9 +659,14 @@ export const ProductView = React.memo(function ProductView({
       ),
     );
   };
-  const variantImage = selectedVariantObjects.find(
-    (v) => v?.imageUrl,
-  )?.imageUrl;
+  const variantImage = fotosQueAEscolhaAponta(selectedVariants)[0];
+  const fotoDaMiniatura = soFotosReais([
+    variantImage,
+    ...(product.images ?? []),
+  ])[0];
+  const miniaturaReduzida = imagemRedimensionada(fotoDaMiniatura, {
+    width: 200,
+  });
 
   // A quantidade nunca passa do estoque da variação VIVA: 5 num tamanho com
   // 10, trocar para um com 2, tem que descer para 2 -- sem isso o "+" trava
@@ -741,7 +747,7 @@ export const ProductView = React.memo(function ProductView({
     const variantNames = escolhasDaLinha
       .map((v) => `${v.name}: ${v.value}`)
       .join(", ");
-    const imgSrc = variantImage || product.images?.[0] || "";
+    const imgSrc = miniaturaReduzida;
 
     // Pede ao carrinho ANTES de comemorar (mesmo critério do ProductCard): se
     // nada entrou (estoque já todo no carrinho), não anima nem fica verde --
@@ -1829,22 +1835,26 @@ export const ProductView = React.memo(function ProductView({
                   "lg:hidden",
                 )}
               >
-                <img
-                  src={
-                    imagemRedimensionada(
-                      variantImage || product.images?.[0] || "",
-                      { width: 200 },
-                    ) || undefined
-                  }
-                  onError={(e) =>
-                    usarImagemOriginal(
-                      e.currentTarget,
-                      variantImage || product.images?.[0],
-                    )
-                  }
-                  alt={product.name}
-                  className="size-[52px] shrink-0 rounded-full border border-border object-cover"
-                />
+                {fotoDaMiniatura ? (
+                  <img
+                    src={miniaturaReduzida}
+                    onError={(e) =>
+                      usarImagemOriginal(e.currentTarget, fotoDaMiniatura)
+                    }
+                    alt={product.name}
+                    className="size-[52px] shrink-0 rounded-full border border-border object-cover"
+                  />
+                ) : (
+                  <div
+                    role="img"
+                    aria-label={product.name}
+                    className="flex size-[52px] shrink-0 items-center justify-center rounded-full border border-border bg-zinc-100 dark:bg-zinc-900/50"
+                  >
+                    <span className="text-center text-[10px] text-zinc-600 dark:text-zinc-500">
+                      Sem foto
+                    </span>
+                  </div>
+                )}
                 <div className="min-w-[80px] flex-1">
                   {vitrine?.aPartirDe && (
                     <span className="block text-xs font-bold uppercase leading-tight text-zinc-500">

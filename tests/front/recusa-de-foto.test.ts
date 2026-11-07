@@ -1,6 +1,8 @@
 import { recusaDeFoto } from "@/lib/recusa-de-foto";
 import { describe, expect, it } from "vitest";
 
+const MB = 1024 * 1024;
+
 const arq = (nome: string, tipo: string, tamanho?: number) => {
   const f = new File(["x"], nome, { type: tipo });
   if (tamanho !== undefined)
@@ -32,6 +34,28 @@ describe("recusaDeFoto", () => {
     expect(recusaDeFoto(arq(nome, tipo))).toBe(
       "Esse arquivo não é uma foto. Envie JPG, PNG ou WebP.",
     );
+  });
+  // GIF pode ser animado e o canvas não o reduz sem matar a animação: não se
+  // converte em silêncio, então o peso é barrado AQUI, com a frase da casa.
+  it("GIF acima de 3 MB é recusado com o nome do arquivo e o limite", () => {
+    const aviso = recusaDeFoto(arq("festa.gif", "image/gif", 3 * MB + 1));
+    expect(aviso).toContain('"festa.gif"');
+    expect(aviso).toContain("3 MB");
+    expect(aviso).toMatch(/Envie uma imagem menor/);
+  });
+  it("GIF até 3 MB passa (fronteira no limite)", () => {
+    expect(recusaDeFoto(arq("festa.gif", "image/gif", 3 * MB))).toBeNull();
+    expect(recusaDeFoto(arq("festa.gif", "image/gif", 1 * MB))).toBeNull();
+  });
+  it("GIF sem tipo (ou genérico), reconhecido pela extensão, também tem o teto", () => {
+    expect(recusaDeFoto(arq("FESTA.GIF", "", 4 * MB))).toMatch(/3 MB/);
+    expect(
+      recusaDeFoto(arq("festa.gif", "application/octet-stream", 4 * MB)),
+    ).toMatch(/3 MB/);
+  });
+  it("o teto de 3 MB é só do GIF: WebP e JPEG pesados (até 12 MB) seguem passando", () => {
+    expect(recusaDeFoto(arq("a.webp", "image/webp", 10 * MB))).toBeNull();
+    expect(recusaDeFoto(arq("a.jpg", "image/jpeg", 10 * MB))).toBeNull();
   });
   it("recusa HEIC e arquivo acima de 12 MB", () => {
     expect(recusaDeFoto(arq("a.heic", "image/heic"))).toMatch(/JPG ou PNG/);

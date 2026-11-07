@@ -1190,7 +1190,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         metaDescription: productToDuplicate.metaDescription,
         tags: productToDuplicate.tags || [],
         sku: productToDuplicate.sku
-          ? `${productToDuplicate.sku}-COPY`
+          ? `${productToDuplicate.sku}-COPIA`
           : undefined,
         weightKg: productToDuplicate.weightKg,
         widthCm: productToDuplicate.widthCm,

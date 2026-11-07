@@ -79,6 +79,10 @@ vi.mock("sonner", () => ({
   },
 }));
 
+// O jsdom não decodifica imagem (o <img> nunca carrega nem falha): a conferência
+// "a foto abre?" da foto pequena é dublada aqui. A de verdade tem teste próprio.
+vi.mock("@/lib/imagem-abre", () => ({ imagemAbre: async () => true }));
+
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 

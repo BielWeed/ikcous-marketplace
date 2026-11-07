@@ -5,7 +5,7 @@
 // cadastro do dono incompleto ("duas fontes"), que viram frase nossa.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   rpc: vi.fn(),
@@ -18,6 +18,7 @@ vi.mock("@/lib/supabase", () => ({
 }));
 
 import {
+  MENSAGEM_CARGO_SEM_RESPOSTA,
   MENSAGEM_DONO_INCOMPLETO,
   MENSAGEM_FUNCAO_INATIVA,
   MENSAGEM_SEM_REDE,
@@ -207,6 +208,107 @@ describe("definirCargo: cada erro", () => {
     const r = await definirCargo(ID, "admin");
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.mensagem.length).toBeGreaterThan(10);
+  });
+});
+
+// Rede que conecta e não responde (r63-b, achado 15): sem prazo, a janela de
+// confirmação ficava presa. Como é PERMISSÃO, estourar o prazo não prova que
+// nada foi mudado (o banco pode ter gravado): a frase manda conferir a lista
+// antes de repetir, e NUNCA diz que "não foi feito".
+describe("definirCargo: rede que não responde", () => {
+  const FRASE =
+    "Sem resposta da rede. Confira se o acesso mudou na lista antes de tentar de novo.";
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("chamada pendurada: depois de ~20 s devolve a frase honesta, com o código de 'sem resposta'", async () => {
+    h.rpc.mockReturnValue(new Promise(() => {}));
+    let resultado: Awaited<ReturnType<typeof definirCargo>> | undefined;
+    void definirCargo(ID, "admin").then((r) => {
+      resultado = r;
+    });
+
+    await vi.advanceTimersByTimeAsync(19_000);
+    expect(resultado).toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(resultado).toEqual({
+      ok: false,
+      codigo: "CONSULTA_SEM_RESPOSTA",
+      mensagem: FRASE,
+    });
+    expect(MENSAGEM_CARGO_SEM_RESPOSTA).toBe(FRASE);
+  });
+
+  it("a frase nunca diz que não foi feito, e manda conferir a lista", () => {
+    expect(MENSAGEM_CARGO_SEM_RESPOSTA).toMatch(/confira/i);
+    expect(MENSAGEM_CARGO_SEM_RESPOSTA).not.toMatch(
+      /não foi (feito|mudado|possível)|falhou|não mudou/i,
+    );
+  });
+
+  it("resposta tardia de sucesso depois do prazo não muda o resultado já devolvido", async () => {
+    let responder!: (v: unknown) => void;
+    h.rpc.mockReturnValue(
+      new Promise((resolve) => {
+        responder = resolve;
+      }),
+    );
+    let resultado: Awaited<ReturnType<typeof definirCargo>> | undefined;
+    void definirCargo(ID, "admin").then((r) => {
+      resultado = r;
+    });
+    await vi.advanceTimersByTimeAsync(21_000);
+    expect(resultado).toMatchObject({ ok: false, mensagem: FRASE });
+
+    responder({
+      data: { user_id: ID, de: "customer", para: "admin", mudou: true },
+      error: null,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(resultado).toMatchObject({ ok: false, mensagem: FRASE });
+  });
+
+  it("resposta tardia que FALHA depois do prazo não vira erro solto", async () => {
+    let falhar!: (e: unknown) => void;
+    h.rpc.mockReturnValue(
+      new Promise((_, reject) => {
+        falhar = reject;
+      }),
+    );
+    const promessa = definirCargo(ID, "customer");
+    await vi.advanceTimersByTimeAsync(21_000);
+    await expect(promessa).resolves.toMatchObject({ ok: false });
+
+    // Sem o tratamento certo, isto viraria "unhandled rejection" e o vitest
+    // reprovaria o arquivo.
+    falhar(new Error("failed to fetch"));
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  it("resposta dentro do prazo segue igual (sucesso e erro do banco)", async () => {
+    h.rpc.mockResolvedValue({
+      data: { user_id: ID, de: "customer", para: "admin", mudou: true },
+      error: null,
+    });
+    expect(await definirCargo(ID, "admin")).toEqual({
+      ok: true,
+      para: "admin",
+      mudou: true,
+    });
+    h.rpc.mockResolvedValue({
+      data: null,
+      error: { code: "42501", message: "Só o dono da loja pode mudar cargos." },
+    });
+    expect(await definirCargo(ID, "admin")).toMatchObject({
+      ok: false,
+      codigo: "42501",
+    });
   });
 });
 

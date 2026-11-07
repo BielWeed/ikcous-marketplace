@@ -20,6 +20,10 @@ import type { AdminCustomersView as TipoClientes } from "@/views/admin/AdminCust
 const h = vi.hoisted(() => ({
   rpc: vi.fn(),
   paraOnde: "admin" as "admin" | "customer",
+  // O que o banco devolve ao LER a lista (null = a lista fixa `clientes`) e
+  // quantas leituras já houve.
+  listaDoBanco: null as unknown[] | null,
+  leituras: vi.fn(),
 }));
 
 function conta(id: string, nome: string, role: string) {
@@ -46,9 +50,10 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc: (nome: string, args: unknown) => {
       if (nome === "get_admin_customers_paged") {
+        h.leituras();
         return Promise.resolve({
           data: {
-            data: clientes,
+            data: h.listaDoBanco ?? clientes,
             total_count: 3,
             stats: {
               total_customers: 3,
@@ -130,6 +135,8 @@ describe("promover: a lista reflete o novo cargo na hora", () => {
   beforeEach(() => {
     limparDonoDaLoja();
     h.rpc.mockReset();
+    h.leituras.mockReset();
+    h.listaDoBanco = null;
     cache.gravar.mockReset();
     toast.success.mockReset();
     toast.error.mockReset();
@@ -156,6 +163,7 @@ describe("promover: a lista reflete o novo cargo na hora", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     act(() => raiz.unmount());
     hospedeiro.remove();
     vi.unstubAllGlobals();
@@ -268,5 +276,50 @@ describe("promover: a lista reflete o novo cargo na hora", () => {
         ]),
       }),
     );
+  });
+
+  it("rede sem resposta ao mudar o cargo: a lista RELÊ o banco e mostra o cargo de verdade (não o palpite)", async () => {
+    // A chamada nunca volta, mas o banco chegou a gravar: na releitura o
+    // Paulo já é administrador. O selo nasce do banco, não da tela.
+    h.rpc.mockReturnValue(new Promise(() => {}));
+    await abrirLista();
+    expect(h.leituras).toHaveBeenCalledTimes(1);
+    expect(selo("Paulo Lima")).toBe("Cliente");
+
+    await abrirFolhaDe("Paulo Lima");
+    await clicar(botao("Tornar administrador"));
+    h.listaDoBanco = [
+      conta("a1", "Paulo Lima", "admin"),
+      clientes[1],
+      clientes[2],
+    ];
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await act(async () => {
+      botao("Dar acesso de administrador")?.click();
+      await vi.advanceTimersByTimeAsync(21_000);
+    });
+    vi.useRealTimers();
+    await act(async () => {
+      await esperar(5);
+    });
+
+    expect(toast.error).toHaveBeenCalledWith(
+      "Sem resposta da rede. Confira se o acesso mudou na lista antes de tentar de novo.",
+    );
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(h.leituras).toHaveBeenCalledTimes(2);
+    expect(selo("Paulo Lima")).toBe("Administrador");
+  });
+
+  it("erro comum do banco NÃO relê a lista (só o 'sem resposta' relê)", async () => {
+    h.rpc.mockResolvedValue({
+      data: null,
+      error: { code: "42501", message: "Acesso negado." },
+    });
+    await abrirLista();
+    await abrirFolhaDe("Paulo Lima");
+    await clicar(botao("Tornar administrador"));
+    await clicar(botao("Dar acesso de administrador"));
+    expect(h.leituras).toHaveBeenCalledTimes(1);
   });
 });

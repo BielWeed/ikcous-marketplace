@@ -63,6 +63,7 @@ import {
   categoriaExisteNaLista,
   mesmaCategoria,
 } from "@/lib/gestao-de-categorias";
+import { imagemAbre } from "@/lib/imagem-abre";
 import { percentualComUmaCasa } from "@/lib/percentual";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import {
@@ -294,8 +295,17 @@ export const compressProductImage = (
   quality = 0.85,
 ): Promise<File> => {
   return new Promise((resolve, reject) => {
-    if (!file.type.startsWith("image/") || file.size < 100 * 1024) {
+    if (!file.type.startsWith("image/")) {
       resolve(file);
+      return;
+    }
+    // Pequena demais para reduzir, mas NÃO pode passar sem abrir: um arquivo
+    // estragado (ou outro formato com extensão .jpg) subiria com "sucesso" e a
+    // capa apareceria quebrada. A grande já é conferida logo abaixo, no <img>.
+    if (file.size < 100 * 1024) {
+      void imagemAbre(file).then((abre) =>
+        abre ? resolve(file) : reject(new FotoIlegivel()),
+      );
       return;
     }
 

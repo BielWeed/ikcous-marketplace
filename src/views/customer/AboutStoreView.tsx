@@ -339,6 +339,15 @@ export function AboutStoreView() {
             </p>
           </motion.div>
         )}
+
+        {/* Loja que ainda não preencheu mapa, história, horário nem WhatsApp:
+            a página não fica só com o cabeçalho (parece quebrada). A frase diz
+            a verdade e não inventa dado. */}
+        {!queryMaps && !descricaoHtml && !horario && !temWhatsapp && (
+          <p className="rounded-[18px] border border-border bg-muted/30 p-4 text-base leading-relaxed text-muted-foreground">
+            A loja ainda não preencheu estas informações. Volte em breve.
+          </p>
+        )}
       </div>
 
       {/* "Falar com a loja" ANCORADO (pedido do dono, 14/09): continua sempre

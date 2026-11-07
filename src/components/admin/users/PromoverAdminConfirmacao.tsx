@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { definirCargo, textoDoSucesso } from "@/lib/cargo-da-conta";
 import type { CargoDaConta } from "@/lib/cargo-da-conta";
+import { CODIGO_CONSULTA_SEM_RESPOSTA } from "@/lib/prazo-da-requisicao";
 import type { Customer } from "@/utils/admin_cache";
 import { type RefObject, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -38,6 +39,7 @@ export function PromoverAdminConfirmacao({
   customer,
   aoFechar,
   aoConcluir,
+  aoFicarIncerto,
   retornoDoFoco,
 }: {
   readonly acao: AcaoDeCargo | null;
@@ -45,6 +47,8 @@ export function PromoverAdminConfirmacao({
   readonly customer: Customer;
   readonly aoFechar: () => void;
   readonly aoConcluir: (id: string, novoCargo: CargoDaConta) => void;
+  /** A rede não respondeu: não se sabe se o cargo mudou. */
+  readonly aoFicarIncerto?: () => void;
   readonly retornoDoFoco: RefObject<HTMLElement | null>;
 }) {
   // Trava de duplo clique: a ref vale no mesmo instante (o estado só no
@@ -77,6 +81,12 @@ export function PromoverAdminConfirmacao({
         aoConcluir(customer.id, resultado.para);
       } else {
         toast.error(resultado.mensagem);
+        // Sem resposta da rede: o banco pode ter gravado depois que a tela
+        // desistiu de esperar. Avisa a lista para reler o cargo de verdade,
+        // em vez de ficar com o selo antigo (a janela solta logo abaixo).
+        if (resultado.codigo === CODIGO_CONSULTA_SEM_RESPOSTA) {
+          aoFicarIncerto?.();
+        }
       }
     } finally {
       emVooRef.current = false;

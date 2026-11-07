@@ -9,7 +9,13 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { imagemRedimensionada } from "@/lib/imageUrl";
 import type { Product, ProductVariant } from "@/types";
+import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
+
+vi.mock("@/utils/cartAnimation", () => ({
+  triggerFlyingCartAnimation: vi.fn(),
+}));
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -101,7 +107,7 @@ const grade = [
 
 describe("ProductView — a foto segue a COR, mesmo sem escolher o tamanho", () => {
   let raiz: Root;
-  let hospedeiro: HTMLDivElement;
+  let hospedeiro: HTMLElement;
   let scrollTo: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -127,7 +133,8 @@ describe("ProductView — a foto segue a COR, mesmo sem escolher o tamanho", () 
       configurable: true,
       value: scrollTo,
     });
-    hospedeiro = document.createElement("div");
+    hospedeiro = document.createElement("main");
+    vi.mocked(triggerFlyingCartAnimation).mockClear();
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
   });
@@ -181,6 +188,63 @@ describe("ProductView — a foto segue a COR, mesmo sem escolher o tamanho", () 
       (el as HTMLElement).click();
     });
   }
+
+  it("sem foto usa marcador local também no rodapé fixo", async () => {
+    await montar({
+      ...blusa([]),
+      images: ["https://placehold.co/600x400?text=Sem+Imagem"],
+    });
+    const barra = document.querySelector(".bottom-docked-navigation");
+    expect(barra).not.toBeNull();
+    expect(barra?.querySelector("img")).toBeNull();
+    expect(barra?.textContent).toContain("Sem foto");
+    expect(hospedeiro.textContent).toContain("Sem foto");
+    expect(document.querySelector('img[src*="placehold.co"]')).toBeNull();
+  });
+
+  it("sem foto própria a galeria só inclui a foto real da cor", async () => {
+    await montar({
+      ...blusa(grade),
+      images: ["https://placehold.co/600x400?text=Sem+Imagem"],
+    });
+    await tocar(opcao("Azul"));
+    expect(hospedeiro.querySelector('img[src*="placehold.co"]')).toBeNull();
+    const fotos = hospedeiro.querySelectorAll<HTMLImageElement>(
+      "img.main-product-image",
+    );
+    expect(fotos).toHaveLength(1);
+    expect(fotos[0]?.getAttribute("src")).toBe("/f2.png");
+    expect(hospedeiro.textContent).not.toContain("Sem foto");
+    expect(bolinhas()).toHaveLength(0);
+  });
+
+  it("rodapé e voo usam a foto reduzida da cor mesmo na linha sem foto", async () => {
+    const azul =
+      "https://fotos.supabase.co/storage/v1/object/public/produtos/azul.jpg";
+    await montar(
+      blusa([
+        linha("Azul / P", azul),
+        linha("Azul / M"),
+        linha("Verde / P"),
+        linha("Verde / M"),
+      ]),
+    );
+    await tocar(opcao("Azul"));
+    await tocar(opcao("M"));
+    const barra = document.querySelector(".bottom-docked-navigation");
+    const miniatura = barra?.querySelector("img");
+    expect(miniatura?.getAttribute("src")).toBe(
+      imagemRedimensionada(azul, { width: 200 }),
+    );
+    const adicionar = [...(barra?.querySelectorAll("button") ?? [])].find((b) =>
+      b.textContent?.includes("Adicionar"),
+    );
+    await tocar(adicionar);
+    expect(triggerFlyingCartAnimation).toHaveBeenCalledWith(
+      expect.any(HTMLElement),
+      imagemRedimensionada(azul, { width: 200 }),
+    );
+  });
 
   it("tocar só na cor leva a galeria para a foto dela", async () => {
     await montar();

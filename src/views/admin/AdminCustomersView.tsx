@@ -284,6 +284,13 @@ export const AdminCustomersView = memo(function AdminCustomersView({
     [searchTerm, sortField, sortDirection, PAGE_SIZE],
   );
 
+  // Mudar o cargo sem resposta da rede: o banco pode ter gravado, então a lista
+  // relê a página atual para o selo mostrar o cargo de verdade (o toast já
+  // mandou conferir). Mesma consulta e mesma guarda de rodada da carga normal.
+  const handleCargoIncerto = useCallback(() => {
+    void fetchCustomers(page);
+  }, [fetchCustomers, page]);
+
   useEffect(() => {
     if (!active) return;
     const timer = setTimeout(() => {
@@ -807,6 +814,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                             onNavigate={handleLocalNavigate}
                             onPrefetch={handlePrefetchUserDetail}
                             onCargoMudou={handleCargoMudou}
+                            onCargoIncerto={handleCargoIncerto}
                           />
                         ))}
                       </div>
@@ -820,6 +828,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                           onNavigate={handleLocalNavigate}
                           onPrefetch={handlePrefetchUserDetail}
                           onCargoMudou={handleCargoMudou}
+                          onCargoIncerto={handleCargoIncerto}
                         />
                       ))}
                     </div>
