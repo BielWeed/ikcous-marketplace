@@ -429,6 +429,15 @@ const STUBS_DO_BANCO: ReadonlyMap<string, unknown> = new Map<string, unknown>([
   // Tela do produto: perguntas e avaliações públicas (nenhuma na fixture).
   ["/rest/v1/vw_questions_public", []],
   ["/rest/v1/vw_reviews_public", []],
+  // Carrinho e checkout (1.5.154): o carrinho relê as variações do que está
+  // nele para conferir preço e estoque antes de finalizar (as MESMAS linhas
+  // do catálogo acima), e o checkout lê os pedidos da conta para achar um
+  // pedido pendente (a conta da fixture não tem nenhum).
+  [
+    "/rest/v1/product_variants",
+    linhasProdutos().flatMap((produto) => produto.product_variants),
+  ],
+  ["/rest/v1/marketplace_orders", []],
 ]);
 
 /**
