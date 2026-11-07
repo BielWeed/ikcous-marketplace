@@ -291,6 +291,21 @@ test("UM endereço: Trocar abre a folha por cima dos rodapés, com o endereço e
   await expect(page.getByText("Novo Endereço").first()).toBeVisible({
     timeout: 30_000,
   });
+  await expect(page).toHaveURL(/address-form/);
+  // Um Voltar indevido da folha pode chegar depois da primeira renderização.
+  await page.waitForTimeout(1_000);
+  await expect(page).toHaveURL(/address-form/);
+  await expect(page.getByText("Novo Endereço").first()).toBeVisible();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/cart$/);
+  await expect(trocar).toBeVisible();
+  expect(
+    await page.evaluate(() => window.history.state?.folhaDePolitica),
+  ).not.toBe(true);
+  await page.waitForTimeout(500); // transição do App encerrada
+  await page.goBack();
+  await expect(page).toHaveURL(/\/$/);
 
   expect(errosNoFim().erros).toEqual([]);
 });

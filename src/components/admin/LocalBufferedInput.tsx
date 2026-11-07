@@ -281,6 +281,13 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
     }
   };
 
+  const handleWheel = (e: React.WheelEvent<HTMLInputElement>) => {
+    if (props.type === "number" && document.activeElement === e.currentTarget) {
+      e.currentTarget.blur();
+    }
+    props.onWheel?.(e);
+  };
+
   // Teclado do celular: a máscara roda por JS sobre um input de texto, então o
   // aparelho não sabe que só entram dígitos. Moeda com sinal fica sem dica (o
   // teclado numérico do iPhone não tem o "-"). O `inputMode` do chamador vence.
@@ -305,6 +312,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
           onFocus={handleFocus}
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
+          onWheel={handleWheel}
           aria-invalid={error ? true : props["aria-invalid"]}
           aria-describedby={descritoPor(
             props["aria-describedby"],
@@ -327,6 +335,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
           onFocus={handleFocus}
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
+          onWheel={handleWheel}
           aria-invalid={error ? true : props["aria-invalid"]}
           aria-describedby={descritoPor(
             props["aria-describedby"],

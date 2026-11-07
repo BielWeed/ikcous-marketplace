@@ -225,6 +225,62 @@ describe("AdminProductFormView — a mesma combinação de variação não entra
     });
   }
 
+  it("dois cliques no mesmo Salvar não duplicam a variação nem o estoque", async () => {
+    await montar([]);
+    await novaVariacao("P");
+    await digitarCampo("variant-stock", "10");
+    const botao = [...document.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Salvar variação",
+    );
+    if (!botao) throw new Error("Salvar variação não está na tela.");
+    await act(async () => {
+      botao.click();
+      botao.click();
+    });
+    expect(naLista()).toEqual(["Tamanho: P"]);
+    await esperarJanelaFechar();
+    // A trava precisa liberar uma abertura nova.
+    await novaVariacao("M");
+    await salvarVariacao();
+    expect(naLista()).toEqual(["Tamanho: P", "Tamanho: M"]);
+  });
+
+  for (const esperarDebounce of [false, true]) {
+    it(`mais e menos usam o texto focado e mostram a conta (debounce: ${esperarDebounce})`, async () => {
+      await montar([]);
+      await novaVariacao("P");
+      const campo = document.getElementById(
+        "variant-stock",
+      ) as HTMLInputElement;
+      await act(async () => {
+        campo.focus();
+        digitar("variant-stock", "5");
+        if (esperarDebounce) await new Promise((r) => setTimeout(r, 300));
+      });
+      expect(document.activeElement).toBe(campo);
+      // click() não muda o foco: reproduz o botão no Safari do iPhone.
+      await act(async () => {
+        document
+          .querySelector<HTMLButtonElement>('[aria-label="Aumentar estoque"]')
+          ?.click();
+      });
+      expect(campo.value).toBe("6");
+      await act(async () => {
+        campo.focus();
+      });
+      await act(async () => {
+        document
+          .querySelector<HTMLButtonElement>('[aria-label="Diminuir estoque"]')
+          ?.click();
+      });
+      expect(campo.value).toBe("5");
+      await act(async () => {
+        campo.blur();
+      });
+      expect(campo.value).toBe("5");
+    });
+  }
+
   it("recusa a combinação repetida, avisa em português simples e a lista não muda", async () => {
     await montar([variacao("v1", "GG"), variacao("v2", "P")]);
     await novaVariacao("GG");

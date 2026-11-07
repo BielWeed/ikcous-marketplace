@@ -52,13 +52,13 @@ describe("aviso de pedido atualizado — old só com a chave primária (formato 
     expect(tipoDoAvisoDoPedido(evento)).toBe("pagamento");
   });
 
-  it("pedido que a tela não conhece: avisa como antes (nunca engole)", () => {
+  it("pedido que a tela não conhece: avisa sem afirmar mudança de status", () => {
     const evento = completarOldDoEvento(
       noAr({ status: "shipping", payment_status: "pago" }),
       undefined,
     );
     expect(evento.old).toEqual({ id: "p1" });
-    expect(tipoDoAvisoDoPedido(evento)).toBe("status");
+    expect(tipoDoAvisoDoPedido(evento)).toBe("generico");
   });
 
   it("já pago e continua pago, mesmo status: nada novo", () => {

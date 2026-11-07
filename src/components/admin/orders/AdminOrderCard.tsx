@@ -108,6 +108,20 @@ export const AdminOrderCard = memo(function AdminOrderCard({
     status: OrderStatus;
     statusOrigem: OrderStatus;
   }>();
+  const [cancelamentoFoto, setCancelamentoFoto] = useState<{
+    status: OrderStatus;
+    chave: string;
+  }>();
+  const chaveDoTextoDeCancelar = JSON.stringify([
+    order.id,
+    order.status,
+    order.paymentStatus,
+    order.cancelledAfterShipping,
+    order.returnedToSellerAt,
+    order.valorEstornado,
+    order.shippingLabelId,
+    order.retiradaNaLoja,
+  ]);
   const [anulando, setAnulando] = useState(false);
   const [anulada, setAnulada] = useState(false);
   const emVoo = useRef(false);
@@ -177,6 +191,36 @@ export const AdminOrderCard = memo(function AdminOrderCard({
       toast.warning("O pedido mudou de situação. Confira antes de avançar.");
     }
   }, [painel, destinoConfirmado, order.status]);
+
+  useEffect(() => {
+    if (
+      painel === "cancelar" &&
+      cancelamentoFoto &&
+      cancelamentoFoto.chave !== chaveDoTextoDeCancelar
+    ) {
+      setPainel(null);
+      toast.warning("O pedido mudou de situação. Confira antes de cancelar.");
+    }
+  }, [painel, cancelamentoFoto, chaveDoTextoDeCancelar]);
+
+  function abrirCancelamento() {
+    setCancelamentoFoto({
+      status: order.status,
+      chave: chaveDoTextoDeCancelar,
+    });
+    setPainel("cancelar");
+  }
+
+  function confirmarCancelamento() {
+    if (!cancelamentoFoto) return;
+    // Mesmo antes de o efeito fechar a janela, não confirma outra pergunta.
+    if (cancelamentoFoto.chave !== chaveDoTextoDeCancelar) {
+      setPainel(null);
+      toast.warning("O pedido mudou de situação. Confira antes de cancelar.");
+      return;
+    }
+    void executar("cancelled", false, cancelamentoFoto.status);
+  }
 
   async function executar(
     status?: OrderStatus,
@@ -490,7 +534,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
           <button
             type="button"
             disabled={bloqueado}
-            onClick={() => setPainel("cancelar")}
+            onClick={abrirCancelamento}
             className={`${PERIGO} mt-2 w-full`}
           >
             <XCircle aria-hidden="true" className="size-4" />
@@ -593,7 +637,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                       : "Pede confirmação e explica o que acontece com o dinheiro.",
                   Icone: XCircle,
                   cor: "text-red-300",
-                  clicar: () => setPainel("cancelar"),
+                  clicar: abrirCancelamento,
                   disabled: !podeCancelar || bloqueado || !onStatusChange,
                 },
                 ...(acaoPrincipal && proximo && onStatusChange
@@ -748,7 +792,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                   }
                   onClick={() =>
                     painel === "cancelar"
-                      ? void executar("cancelled")
+                      ? confirmarCancelamento()
                       : void executar(
                           destinoConfirmado?.status,
                           painel === "entregar",

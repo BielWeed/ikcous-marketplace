@@ -21,7 +21,15 @@ import type { Order } from "@/types";
 
 const ID_DO_PEDIDO = "pedido-c35ce4dd-7a1b-4c2d-9e8f-0a1b2c3884be";
 
-const { invoke, getSession, eventoRealtime } = vi.hoisted(() => ({
+const {
+  invoke,
+  getSession,
+  eventoRealtime,
+  carregarResumo,
+  recarregarNumeros,
+} = vi.hoisted(() => ({
+  carregarResumo: vi.fn(),
+  recarregarNumeros: vi.fn(),
   invoke: vi.fn(),
   getSession: vi.fn(),
   // O callback que a tela registra no `useOrders` para os eventos realtime.
@@ -97,7 +105,17 @@ vi.mock("@/components/ui/alert-dialog", () => ({
 }));
 
 vi.mock("@/hooks/useAnalytics", () => ({
-  useAnalytics: () => ({ stats: null, fetchExecutiveSummary: vi.fn() }),
+  useAnalytics: () => ({ stats: null, fetchExecutiveSummary: carregarResumo }),
+}));
+
+vi.mock("@/hooks/useNumerosDosPedidos", () => ({
+  useNumerosDosPedidos: () => ({
+    paraPreparar: null,
+    aguardandoPagamento: null,
+    aCaminho: null,
+    abertosComPagamentoAConferir: null,
+    pedirRecarga: recarregarNumeros,
+  }),
 }));
 
 let mockOrders: Order[] = [];
@@ -318,10 +336,42 @@ describe("Painel — aviso de pedido atualizado (realtime UPDATE)", () => {
     expect(avisos).toEqual([]);
   });
 
-  it("pedido que a tela não conhece (fora da página): continua avisando, nunca engole uma mudança real", async () => {
-    const avisos = await dispararUpdate(undefined, { status: "shipping" });
-    expect(avisos).toEqual(["Pedido #3884BE atualizado para Em Trânsito"]);
+  it.each([
+    { status: "shipping", tracking_code: "BR123" },
+    { status: "pending", payment_status: "pago" },
+  ])("fora da página não inventa mudança de status: %j", async (novo) => {
+    const avisos = await dispararUpdate(undefined, novo);
+    expect(avisos).toEqual(["Pedido #3884BE foi atualizado"]);
   });
+
+  it.each(["presencial", "online"] as const)(
+    "INSERT %s: só pedido online ganha aviso de pedido novo",
+    async (canal) => {
+      await montar(pedidoBase);
+      vi.mocked(toast.info).mockClear();
+      carregarResumo.mockClear();
+      recarregarNumeros.mockClear();
+      await act(async () => {
+        eventoRealtime.atual?.({
+          eventType: "INSERT",
+          new: { id: ID_DO_PEDIDO, canal, status: "delivered" },
+        });
+      });
+      expect(carregarResumo).toHaveBeenCalledWith(true);
+      expect(recarregarNumeros).toHaveBeenCalledTimes(1);
+      if (canal === "presencial") {
+        expect(toast.info).not.toHaveBeenCalled();
+      } else {
+        expect(toast.info).toHaveBeenCalledWith(
+          "Novo pedido recebido! #3884BE",
+          expect.objectContaining({
+            duration: 10_000,
+            action: expect.objectContaining({ label: "Ver" }),
+          }),
+        );
+      }
+    },
+  );
 
   it("compatibilidade: um 'old' completo vindo do servidor também vale", async () => {
     const igual = await dispararUpdate(

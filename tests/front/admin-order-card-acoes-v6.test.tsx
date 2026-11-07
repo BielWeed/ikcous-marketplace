@@ -280,6 +280,47 @@ it("Ainda não finaliza sem gravar recebimento, como na ficha", async () => {
   );
 });
 
+it.each([
+  { status: "shipping" as const },
+  { paymentStatus: "estornado" as const },
+  { cancelledAfterShipping: true },
+  { returnedToSellerAt: "2026-11-06T12:00:00Z" },
+  { valorEstornado: 5 },
+  { shippingLabelId: "etiqueta-1" },
+  { retiradaNaLoja: true },
+])("cancelamento aberto perde a validade quando muda %j", async (mudanca) => {
+  const aviso = vi.spyOn(toast, "warning");
+  const order = pedido();
+  montar(order);
+  await abrirAcoes();
+  await clicar("Cancelar pedido");
+  montar({ ...order, ...mudanca });
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(aviso).toHaveBeenCalledWith(
+    "O pedido mudou de situação. Confira antes de cancelar.",
+  );
+  expect(avancar).not.toHaveBeenCalled();
+  // Uma nova confirmação usa a situação atual.
+  await abrirAcoes();
+  await clicar("Cancelar pedido");
+  await clicar("Cancelar pedido");
+  expect(avancar).toHaveBeenCalledWith(
+    order.id,
+    "cancelled",
+    mudanca.status ?? order.status,
+  );
+});
+
+it("cancelamento não fecha por mudança que não afeta a pergunta", async () => {
+  const order = pedido({ paymentStatus: "aguardando" });
+  montar(order);
+  await clicar("Cancelar pedido");
+  montar({ ...order, total: 19 });
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+  await clicar("Cancelar pedido");
+  expect(avancar).toHaveBeenCalledWith(order.id, "cancelled", "pending");
+});
+
 it("confirmar cancelamento executa só depois do segundo clique", async () => {
   montar(pedido({ paymentStatus: "aguardando" }));
   await clicar("Cancelar pedido");

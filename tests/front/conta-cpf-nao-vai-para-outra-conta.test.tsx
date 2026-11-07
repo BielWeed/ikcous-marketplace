@@ -205,6 +205,7 @@ describe("Conta — CPF pertence à conta que começou a salvar", () => {
     expect(cpfDaConta.gravarCpfDaConta).toHaveBeenCalledExactlyOnceWith(
       "52998224725",
       CONTA_A.id,
+      expect.any(Function),
     );
     expect(rpc).toHaveBeenCalledWith("set_my_cpf", { p_cpf: "52998224725" });
     expect(fetchProfile).toHaveBeenCalledTimes(1);
@@ -228,6 +229,7 @@ describe("Conta — CPF pertence à conta que começou a salvar", () => {
     expect(cpfDaConta.gravarCpfDaConta).toHaveBeenCalledWith(
       "12345678909",
       CONTA_A.id,
+      expect.any(Function),
     );
     expect(rpc.mock.calls.some(([nome]) => nome === "set_my_cpf")).toBe(false);
     expect(toast.error).toHaveBeenCalledWith(

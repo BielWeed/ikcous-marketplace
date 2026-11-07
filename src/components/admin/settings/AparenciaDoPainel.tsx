@@ -1,3 +1,4 @@
+import { GrupoDeOpcoes } from "@/components/admin/GrupoDeOpcoes";
 import { useState } from "react";
 
 import "./aparencia-do-painel.css";
@@ -21,11 +22,7 @@ export function AparenciaDoPainel() {
   const raiz = document.documentElement;
   const [atual, setAtual] = useState(raiz.dataset.adminTema ?? "escuro");
   return (
-    <div
-      role="radiogroup"
-      aria-label="Aparência do painel"
-      className="space-y-2"
-    >
+    <GrupoDeOpcoes aria-label="Aparência do painel" className="space-y-2">
       {TEMAS.map(([id, nome, dica]) => (
         <button
           key={id}
@@ -52,6 +49,6 @@ export function AparenciaDoPainel() {
           </span>
         </button>
       ))}
-    </div>
+    </GrupoDeOpcoes>
   );
 }

@@ -241,10 +241,14 @@ export function AdminLoginView({ onLogin, onNavigate }: AdminLoginViewProps) {
             <button
               type="submit"
               disabled={!email || !password || isLoading}
+              aria-busy={isLoading}
               className="flex w-full items-center justify-center gap-3 rounded-2xl bg-foreground py-5 text-[11px] font-black uppercase tracking-[0.3em] text-background transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:border-admin-border disabled:bg-zinc-900 disabled:text-zinc-600"
             >
               {isLoading ? (
-                <Loader2 className="size-5 animate-spin" />
+                <>
+                  <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+                  <span className="sr-only">Entrando…</span>
+                </>
               ) : (
                 <>
                   Entrar no Sistema

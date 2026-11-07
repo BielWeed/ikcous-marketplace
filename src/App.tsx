@@ -245,6 +245,7 @@ import { CartProvider } from "@/contexts/CartContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { StoreProvider, useStore } from "@/contexts/StoreContext";
 import { useCartActions, useCartState } from "@/hooks/useCart";
+import type { FiltrosDaBusca } from "@/hooks/useSearch";
 import {
   chaveDoItem,
   estoqueDaLinha,
@@ -876,6 +877,14 @@ const AppContent = () => {
   }, [checkoutRetomadaId]);
 
   const [searchQuery, setSearchQuery] = useState("");
+  // Categoria, ordem e faixa de preço da tela /search: ela é desmontada ao abrir
+  // um produto, então os filtros moram aqui (como os da Home) e voltam com a
+  // tela. Ref e não estado: a tela os lê só ao montar, ninguém precisa
+  // redesenhar quando eles mudam. `null` = nada guardado (padrão da busca).
+  const filtrosDaBuscaRef = useRef<FiltrosDaBusca | null>(null);
+  const guardarFiltrosDaBusca = useCallback((filtros: FiltrosDaBusca) => {
+    filtrosDaBuscaRef.current = filtros;
+  }, []);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [isHeaderDocked, setIsHeaderDocked] = useState(false);
   // O convite de avisos (z-[999]) cobre o lembrete do carrinho: os dois nunca
@@ -1025,7 +1034,14 @@ const AppContent = () => {
       // `trocarEntradaDeLogin` (só `handleAuthSuccess` passa): o destino
       // pós-login OCUPA o lugar da entrada /auth do histórico em vez de
       // empilhar outra por cima (ver o `pushState` mais abaixo).
-      opts?: { retomarPedidoId?: string; trocarEntradaDeLogin?: boolean },
+      // `substituirEntrada` (só o ramo "sem de onde veio" do `handleBack`
+      // passa): o destino OCUPA o lugar da entrada atual do histórico em vez
+      // de empilhar por cima (ver o `replaceState` mais abaixo).
+      opts?: {
+        retomarPedidoId?: string;
+        trocarEntradaDeLogin?: boolean;
+        substituirEntrada?: boolean;
+      },
     ) => {
       // Pedido NO AR (caça 8, 03/11/2026): sair do checkout agora desmontaria a
       // tela com a RPC ainda correndo; a resposta de sucesso chegaria sem tela
@@ -1396,6 +1412,25 @@ const AppContent = () => {
               else state.from = undefined;
             }
             globalThis.history.replaceState(state, "", path);
+          } else if (
+            fromView === "cart" &&
+            targetView === "address-form" &&
+            globalThis.location.pathname === "/cart" &&
+            globalThis.history.state?.folhaDePolitica === true
+          ) {
+            // A folha fechou por navegação sem pedir back(): o formulário
+            // toma a entrada dela, para o Voltar não deixar um cart duplicado.
+            // Vale pelo endereço, não por `state.view`: o carrinho aberto direto
+            // (atalho do ícone, aviso de carrinho esquecido) entra sem `view`.
+            globalThis.history.replaceState(state, "", path);
+          } else if (opts?.substituirEntrada) {
+            // A seta Voltar sem tela de origem (link direto, aviso do
+            // celular): empilhar a Início deixava a entrada do link logo
+            // atrás, e o Voltar do aparelho, estando na vitrine, trazia a
+            // página de volta em vez de sair. A Início toma o lugar dela e,
+            // como não há tela antes, não diz que veio de alguma.
+            state.from = undefined;
+            globalThis.history.replaceState(state, "", path);
           } else {
             globalThis.history.pushState(state, "", path);
           }
@@ -1707,12 +1742,14 @@ const AppContent = () => {
       if (state.loginTrocado) globalThis.history.go(-2);
       else globalThis.history.back();
     } else {
+      // Sem `from` não há tela de app logo antes desta (link direto, aviso do
+      // celular): o destino TROCA a entrada em vez de empilhar por cima.
       if (currentViewRef.current === "order-details") {
-        handleNavigate("orders");
+        handleNavigate("orders", undefined, false, { substituirEntrada: true });
       } else if (currentViewRef.current === "product-detail") {
-        handleNavigate("home");
+        handleNavigate("home", undefined, false, { substituirEntrada: true });
       } else {
-        handleNavigate("home");
+        handleNavigate("home", undefined, false, { substituirEntrada: true });
       }
     }
     globalThis.scrollTo(0, 0);
@@ -2522,6 +2559,8 @@ const AppContent = () => {
       currentView !== "product-detail"
     ) {
       setSearchQuery("");
+      // Saiu da busca de propósito: os filtros vão junto com o termo.
+      filtrosDaBuscaRef.current = null;
     }
   }, [currentView]);
 
@@ -3021,6 +3060,8 @@ const AppContent = () => {
               selectedProductId: selectedProductId || undefined,
               onQueryChange: setSearchQuery,
               onAddToCart: handleAddToCart,
+              filtrosIniciais: filtrosDaBuscaRef.current ?? undefined,
+              aoMudarFiltros: guardarFiltrosDaBusca,
             }}
           />
         );

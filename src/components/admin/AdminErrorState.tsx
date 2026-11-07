@@ -16,7 +16,10 @@ export const AdminErrorState = React.memo(function AdminErrorState({
   isLoading = false,
 }: AdminErrorStateProps) {
   return (
-    <div className="mx-auto my-6 flex min-h-[300px] max-w-lg flex-col items-center justify-center space-y-6 rounded-[2rem] border border-admin-border bg-admin-surface p-8 text-center duration-300 animate-in fade-in zoom-in-95">
+    <div
+      role="alert"
+      className="mx-auto my-6 flex min-h-[300px] max-w-lg flex-col items-center justify-center space-y-6 rounded-[2rem] border border-admin-border bg-admin-surface p-8 text-center duration-300 animate-in fade-in zoom-in-95"
+    >
       <div className="flex size-16 items-center justify-center rounded-2xl border border-red-500/20 bg-red-500/10 text-red-400 shadow-[0_0_20px_rgba(239,68,68,0.1)]">
         <AlertCircle className="size-8" />
       </div>

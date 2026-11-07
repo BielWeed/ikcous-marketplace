@@ -68,11 +68,14 @@ vi.mock("@/utils/admin_cache", () => ({
 // `let` porque cada teste controla o que o resumo executivo "já chegou" —
 // mesmo padrão de admin-orders-total-concluido-e-aviso-pago-cancelado.test.tsx.
 let mockAnalyticsStats: any = null;
+let mockAnalyticsError: string | null = null;
+const mockFetchExecutiveSummary = vi.fn();
 
 vi.mock("@/hooks/useAnalytics", () => ({
   useAnalytics: () => ({
     stats: mockAnalyticsStats,
-    fetchExecutiveSummary: vi.fn(),
+    error: mockAnalyticsError,
+    fetchExecutiveSummary: mockFetchExecutiveSummary,
   }),
 }));
 
@@ -164,6 +167,7 @@ describe("AdminCustomersView — o card Ticket Médio", () => {
       new_customers_30d: 0,
     };
     mockAnalyticsStats = null;
+    mockAnalyticsError = null;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -191,6 +195,50 @@ describe("AdminCustomersView — o card Ticket Médio", () => {
   }
 
   const texto = () => hospedeiro.textContent ?? "";
+
+  it("revalida o resumo guardado a cada abertura sem apagar os números enquanto espera", async () => {
+    mockAnalyticsStats = analyticsStatsFake(40.95, 11);
+    await abrirTela();
+    expect(texto()).toContain("R$ 40,95");
+    expect(mockFetchExecutiveSummary).toHaveBeenCalledExactlyOnceWith(true);
+
+    const { AdminCustomersView } = await import(
+      "@/views/admin/AdminCustomersView"
+    );
+    const navegar = vi.fn();
+    mockAnalyticsStats = analyticsStatsFake(50, 12);
+    await act(async () => {
+      raiz.render(<AdminCustomersView active={true} onNavigate={navegar} />);
+    });
+    expect(texto()).toContain("R$ 50,00");
+    const posicao = texto().indexOf("Pedidos Totais");
+    expect(texto().slice(posicao, posicao + 40)).toContain("12");
+    expect(mockFetchExecutiveSummary).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      raiz.render(<AdminCustomersView active={false} onNavigate={navegar} />);
+    });
+    expect(mockFetchExecutiveSummary).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      raiz.render(<AdminCustomersView active={true} onNavigate={navegar} />);
+    });
+    expect(mockFetchExecutiveSummary).toHaveBeenCalledTimes(2);
+    expect(mockFetchExecutiveSummary).toHaveBeenLastCalledWith(true);
+  });
+
+  it("avisa quando não consegue atualizar o resumo guardado e mantém os números", async () => {
+    mockAnalyticsStats = analyticsStatsFake(40.95, 11);
+    mockAnalyticsError = "Falha ao consultar";
+    await abrirTela();
+    expect(texto()).toContain("R$ 40,95");
+    expect(
+      Array.from(hospedeiro.querySelectorAll('[role="status"]'))
+        .map((aviso) => aviso.textContent)
+        .join(" "),
+    ).toContain(
+      "Não foi possível atualizar os pedidos e o valor médio por venda. Mostrando a última atualização.",
+    );
+  });
 
   it("lê o ticket médio da mesma fonte que o Dashboard, não calcula a partir de global_ltv/global_orders (cenário do PIX pendente)", async () => {
     // Um pedido de R$ 89,90 aguardando pagamento: entra na base de

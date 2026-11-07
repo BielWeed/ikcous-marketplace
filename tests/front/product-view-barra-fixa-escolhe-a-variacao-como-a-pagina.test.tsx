@@ -431,6 +431,27 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
   });
 
   it("a barra distingue opção desligada de produto esgotado", async () => {
+    // A opção ESCOLHIDA foi desligada, mas a fileira continua com outra opção:
+    // não dá para comprar a escolha velha, a cliente precisa escolher outra.
+    const produto = blusa([cor("azul", "Azul", 2), cor("verde", "Verde", 2)]);
+    await montar(produto);
+    await tocar(opcaoDaPagina("Azul"));
+    await montar({
+      ...produto,
+      variants: [
+        { ...produto.variants![0], active: false },
+        produto.variants![1],
+      ],
+    });
+    // Com fileira na tela a barra tem o botão de escolha antes do de comprar.
+    const comprar = [...(barra()?.querySelectorAll("button") ?? [])].at(-1);
+    expect(comprar?.disabled).toBe(true);
+    expect(comprar?.textContent).toBe("Indisponível");
+    await tocar(comprar);
+    expect(adicionarAoCarrinho).not.toHaveBeenCalled();
+  });
+
+  it("a barra volta a vender pelo produto base quando TODAS as variações são desligadas com a página aberta", async () => {
     const produto = blusa([cor("azul", "Azul", 2)]);
     await montar(produto);
     await tocar(opcaoDaPagina("Azul"));
@@ -440,8 +461,11 @@ describe("ProductView — a barra fixa escolhe a variação como a página", () 
     });
     const comprar =
       barra()?.querySelector<HTMLButtonElement>("button:last-child");
-    expect(comprar?.disabled).toBe(true);
-    expect(comprar?.textContent).toBe("Indisponível");
+    expect(comprar?.disabled).toBe(false);
+    expect(comprar?.textContent).toBe("Adicionar");
+    await tocar(comprar);
+    expect(adicionarAoCarrinho).toHaveBeenCalledTimes(1);
+    expect(adicionarAoCarrinho.mock.calls[0][1]).toBeUndefined();
   });
 
   it("a barra mantém Esgotado para o produto sem estoque", async () => {

@@ -375,7 +375,7 @@ describe("AuthContext — rede pendurada na autenticação tem prazo", () => {
       expect(resultado.status).toBe("error");
       // Mesma frase do erro genuíno (#120): igual exista a conta ou não.
       expect(resultado.message).toBe(
-        "Não foi possível enviar o link de recuperação agora. Tente novamente em instantes.",
+        "Não foi possível enviar o link agora. Se você acabou de pedir um, ele já pode estar na sua caixa de entrada (confira também o spam): use o e-mail mais recente. Senão, tente novamente em instantes.",
       );
       expect(resultado.message).not.toMatch(/cadastrad|lenta/i);
     });

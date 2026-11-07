@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Minus, Plus } from "lucide-react";
 
 import {
@@ -22,6 +22,7 @@ export function QuantitySelector({
   size = "md",
   produto,
 }: QuantitySelectorProps) {
+  const reduzirMovimento = useReducedMotion();
   // sm: botao visual de 28px; o `before` invisivel de -inset-2 leva a area de
   // toque a 44px (8px por lado). Cabe sem sobrepor o vizinho: o numero entre
   // os dois botoes tem 32px (h-7 w-8), e cada area invade 8px dele.
@@ -98,8 +99,16 @@ export function QuantitySelector({
         aria-live="polite"
         className={`relative flex items-center justify-center overflow-hidden ${size === "folha" ? "h-12 w-7" : size === "pill" ? "h-11 w-6" : size === "sm" ? "h-7 w-8" : "h-8 w-10 xs:h-9 xs:w-12"}`}
       >
-        {size === "folha" ? (
-          <span className="text-sm font-bold text-zinc-900">{quantity}</span>
+        {size === "folha" || reduzirMovimento ? (
+          <span
+            className={
+              size === "folha"
+                ? "text-sm font-bold text-zinc-900"
+                : `text-sm font-black ${size === "pill" ? "text-foreground" : "text-zinc-800"}`
+            }
+          >
+            {quantity}
+          </span>
         ) : (
           <AnimatePresence mode="popLayout" initial={false}>
             <motion.span

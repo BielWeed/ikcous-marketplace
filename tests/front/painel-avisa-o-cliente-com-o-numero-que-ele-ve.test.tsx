@@ -352,6 +352,7 @@ describe("Painel — o aviso ao cliente usa o número que ele vê (#3884BE)", ()
     await act(async () => {
       eventoRealtime.atual?.({
         eventType: "UPDATE",
+        old: { id: ID_DO_PEDIDO, status: "processing" },
         new: { id: ID_DO_PEDIDO, status: "shipped" },
       });
       await esperar(0);

@@ -26,6 +26,7 @@
 //   9. Leitura com erro de rede na recarga → o aviso de sempre (não é calado).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
+import { toast } from "sonner";
 import {
   afterEach,
   beforeAll,
@@ -782,5 +783,188 @@ describe("CheckoutView — o pagamento pendente sobrevive à recarga da página"
     await renderizarNaMesmaInstancia(PEDIDO);
     expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado!");
     expect(criarPagamento).not.toHaveBeenCalled();
+  });
+
+  // ── Pagou DEPOIS do prazo e recarregou (r55-d, achado 2) ──────────────────
+  // `pago_apos_expirar` é dinheiro que já saiu da conta da cliente: a recarga
+  // mostra o aviso de pagamento recebido (a loja vai contatar), nunca o texto
+  // genérico de "não está aguardando pagamento" — que a levaria a achar que não
+  // pagou e pagar de novo num pedido novo.
+
+  const AVISO_DA_LOJA_VAI_CONTATAR = "A loja vai te contatar em breve";
+
+  it("pagou depois do prazo e recarregou: mostra 'pagamento recebido, a loja vai te contatar', não o texto genérico", async () => {
+    linhaDoPedido({ payment_status: "pago_apos_expirar", status: "cancelled" });
+    guardarPedidoPendenteDoCheckout(USUARIO.id, PEDIDO);
+
+    await recarregar();
+
+    expect(hospedeiro.textContent).toContain("Pagamento Recebido");
+    expect(hospedeiro.textContent).toContain(AVISO_DA_LOJA_VAI_CONTATAR);
+    expect(hospedeiro.textContent?.replace(/\s/g, " ")).toContain(
+      "R$ 120,00 recebido",
+    );
+    // Nunca o texto de "não achamos o pagamento".
+    expect(hospedeiro.textContent).not.toContain(
+      "Este pedido não está aguardando pagamento",
+    );
+    expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado!");
+    expect(hospedeiro.textContent).not.toContain(FINALIZE);
+    // Nada cobra, nada monta o PIX; o registro sai (o pedido deixou de ser pendente).
+    expect(criarPagamento).not.toHaveBeenCalled();
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(lerPedidoPendenteDoCheckout(USUARIO.id)).toBeNull();
+  });
+
+  it("pago depois do prazo, mas de OUTRA conta: descartado calado (o dono é conferido antes do status)", async () => {
+    linhaDoPedido({
+      payment_status: "pago_apos_expirar",
+      status: "cancelled",
+      user_id: "user-2",
+    });
+    guardarPedidoPendenteDoCheckout(USUARIO.id, PEDIDO);
+
+    await recarregar();
+
+    expect(hospedeiro.textContent).not.toContain("Pagamento Recebido");
+    expect(hospedeiro.textContent).not.toContain(AVISO_DA_LOJA_VAI_CONTATAR);
+    semPagamentoNaTela();
+    expect(criarPagamento).not.toHaveBeenCalled();
+    expect(lerPedidoPendenteDoCheckout(USUARIO.id)).toBeNull();
+  });
+
+  it("CONTROLE: recarga com 'expirado' (sem pagamento) segue com o texto genérico, sem o aviso de pagamento recebido", async () => {
+    linhaDoPedido({ payment_status: "expirado", status: "cancelled" });
+    guardarPedidoPendenteDoCheckout(USUARIO.id, PEDIDO);
+
+    await recarregar();
+
+    expect(hospedeiro.textContent).toContain(
+      "Este pedido não está aguardando pagamento",
+    );
+    expect(hospedeiro.textContent).not.toContain("Pagamento Recebido");
+    expect(hospedeiro.textContent).not.toContain(AVISO_DA_LOJA_VAI_CONTATAR);
+  });
+
+  it("pagou depois do prazo e a conta troca na mesma instância: o aviso de A não vaza para B nem para o visitante", async () => {
+    linhaDoPedido({ payment_status: "pago_apos_expirar", status: "cancelled" });
+    await renderizarNaMesmaInstancia(PEDIDO);
+    expect(hospedeiro.textContent).toContain(AVISO_DA_LOJA_VAI_CONTATAR);
+
+    // A releitura para a conta nova fica segura: o que decide a tela é a
+    // identidade do aviso (pedido + usuário), não o descarte.
+    adiarLeitura(PEDIDO);
+    usuarioAtual = { id: "user-2", email: "outra@exemplo.com" };
+    await renderizarNaMesmaInstancia(PEDIDO);
+    expect(hospedeiro.textContent).not.toContain(AVISO_DA_LOJA_VAI_CONTATAR);
+    expect(hospedeiro.textContent).not.toContain("Pagamento Recebido");
+
+    usuarioAtual = null;
+    await renderizarNaMesmaInstancia(PEDIDO);
+    expect(hospedeiro.textContent).not.toContain(AVISO_DA_LOJA_VAI_CONTATAR);
+    expect(criarPagamento).not.toHaveBeenCalled();
+  });
+
+  // ── Voltar do aparelho na tela do Pix (r55-d, achado 1) ───────────────────
+  // O Voltar largava a cliente no Início sem dizer nada: quem já copiou o
+  // código e estava pagando no banco achava que o pedido se perdeu. Agora o
+  // aviso diz que o pedido continua e onde retomar — só enquanto o Pix está de
+  // fato aberto (nunca depois de pago, vencido ou na tela de sucesso).
+
+  function voltarDoAparelho(): () => void {
+    const ultima = onSetBackOverride.mock.calls.at(-1)?.[0] as
+      | (() => () => void)
+      | null
+      | undefined;
+    expect(typeof ultima).toBe("function");
+    return ultima!();
+  }
+
+  it("Voltar com o Pix aberto: avisa que o pedido continua esperando e onde retomar, e DEPOIS leva ao Início", async () => {
+    linhaDoPedido();
+    const toastInfo = vi.spyOn(toast, "info").mockImplementation(() => 1);
+    onSetBackOverride.mockClear();
+    await renderizarNaMesmaInstancia(PEDIDO);
+    expect(hospedeiro.textContent).toContain(QR_DO_PEDIDO);
+
+    voltarDoAparelho()();
+
+    expect(toastInfo).toHaveBeenCalledTimes(1);
+    const aviso = String(toastInfo.mock.calls[0][0]);
+    expect(aviso).toContain("continua reservado");
+    expect(aviso).toContain("Retomar pagamento");
+    expect(aviso).toContain("Meus pedidos");
+    // A frase é longa: fica na tela mais que os 4,5 s de padrão do app.
+    expect(toastInfo.mock.calls[0][1]).toMatchObject({ duration: 8000 });
+    expect(onNavigate).toHaveBeenCalledWith("home");
+    // O aviso sai ANTES de a tela trocar (senão ele nasceria numa tela já
+    // desmontada, sem a cliente ter lido nada).
+    expect(toastInfo.mock.invocationCallOrder[0]).toBeLessThan(
+      onNavigate.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("Voltar depois de o Pix ser PAGO: vai ao Início sem dizer que o Pix continua aberto", async () => {
+    linhaDoPedido();
+    const toastInfo = vi.spyOn(toast, "info").mockImplementation(() => 1);
+    onSetBackOverride.mockClear();
+    await renderizarNaMesmaInstancia(PEDIDO);
+    expect(hospedeiro.textContent).toContain(QR_DO_PEDIDO);
+
+    linhaDoPedido({ payment_status: "pago", status: "processing" });
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await esvaziar();
+    expect(hospedeiro.textContent).toContain("Pagamento Confirmado!");
+
+    voltarDoAparelho()();
+
+    expect(toastInfo).not.toHaveBeenCalled();
+    expect(onNavigate).toHaveBeenCalledWith("home");
+  });
+
+  it("Voltar com o erro terminal 'o prazo acabou' na tela (a rotina do banco ainda não marcou o pedido): sem aviso de 'continua reservado'", async () => {
+    // O pedido segue `pending`/`aguardando` no banco (a rotina que vence
+    // pedido roda de tempos em tempos), mas a edge já respondeu 409 terminal.
+    linhaDoPedido();
+    criarPagamento.mockReset().mockRejectedValue(
+      Object.assign(new Error("O prazo para pagar este pedido acabou."), {
+        terminal: true,
+        httpStatus: 409,
+      }),
+    );
+    const toastInfo = vi.spyOn(toast, "info").mockImplementation(() => 1);
+    onSetBackOverride.mockClear();
+    await renderizarNaMesmaInstancia(PEDIDO);
+    expect(hospedeiro.textContent).toContain(
+      "O prazo para pagar este pedido acabou.",
+    );
+
+    voltarDoAparelho()();
+
+    expect(toastInfo).not.toHaveBeenCalled();
+    expect(onNavigate).toHaveBeenCalledWith("home");
+  });
+
+  it("Voltar depois de o pedido VENCER no servidor: sem aviso de 'continua reservado' (seria mentira)", async () => {
+    linhaDoPedido();
+    const toastInfo = vi.spyOn(toast, "info").mockImplementation(() => 1);
+    onSetBackOverride.mockClear();
+    await renderizarNaMesmaInstancia(PEDIDO);
+    expect(hospedeiro.textContent).toContain("Seu pedido está reservado");
+
+    linhaDoPedido({ payment_status: "expirado", status: "cancelled" });
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await esvaziar();
+    // O servidor já gravou o pedido como morto: a frase de reserva sumiu.
+    expect(hospedeiro.textContent).not.toContain("Seu pedido está reservado");
+
+    voltarDoAparelho()();
+
+    expect(toastInfo).not.toHaveBeenCalled();
+    expect(onNavigate).toHaveBeenCalledWith("home");
   });
 });

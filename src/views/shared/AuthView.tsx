@@ -12,7 +12,7 @@ import {
   mensagemDeWhatsappIncompleto,
 } from "@/lib/telefone-br";
 import type { View } from "@/types";
-import { type Variants, motion } from "framer-motion";
+import { type Variants, motion, useReducedMotion } from "framer-motion";
 import {
   ArrowLeft,
   ArrowRight,
@@ -82,6 +82,7 @@ function subtituloBoasVindas(storeName: string | undefined | null): string {
 const INTERVALO_REENVIO_RECUPERACAO_S = 60;
 
 export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
+  const reduzirMovimento = useReducedMotion();
   const { config } = useStore();
   const {
     user,
@@ -106,11 +107,15 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   // "esqueci a senha": abre a tela de ENTRAR com o aviso dele, que diz a
   // verdade provável (já usado: é só entrar). O reenvio da confirmação já
   // existe, no erro "e-mail ainda não confirmado" do próprio login.
+  //
+  // Os dois avisos lembram que só vale o e-mail MAIS RECENTE: cada pedido novo
+  // troca o link anterior no servidor, e quem abre o antigo vê "expirou" sem
+  // saber que o bom já está na caixa de entrada.
   const [avisoDoLink, setAvisoDoLink] = useState<string | null>(
     linkDeRecuperacaoVencido && !isPasswordRecovery
-      ? "Este link expirou ou já foi usado. Peça um novo abaixo."
+      ? "Este link expirou ou já foi usado. Se você pediu mais de um, só vale o do e-mail mais recente. Se precisar, peça um novo abaixo (pode ser preciso esperar 1 minuto entre um pedido e outro)."
       : linkDeConfirmacaoVencido
-        ? "Esse link já foi usado ou venceu. Se você já confirmou seu cadastro, é só entrar."
+        ? "Esse link já foi usado ou venceu. Se você já confirmou seu cadastro, é só entrar. Se pediu mais de um e-mail, vale só o mais recente."
         : null,
   );
   const [viewMode, setViewModeAtual] = useState<
@@ -197,13 +202,40 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   const reenvioRecuperacaoEmCurso = useRef(false);
   const [esperaReenvioRecuperacao, setEsperaReenvioRecuperacao] = useState(0);
   const emEsperaDeReenvio = esperaReenvioRecuperacao > 0;
+  // Hora (ms) em que a espera acaba. A contagem NÃO desconta 1 por tique: com a
+  // tela bloqueada ou o app em segundo plano o navegador congela os tiques, e a
+  // tela dizia "em 52 s" 3 minutos depois. O que falta sai sempre da hora real.
+  const fimDaEsperaDoReenvio = useRef(0);
+  const comecarEsperaDoReenvio = () => {
+    fimDaEsperaDoReenvio.current =
+      Date.now() + INTERVALO_REENVIO_RECUPERACAO_S * 1000;
+    setEsperaReenvioRecuperacao(INTERVALO_REENVIO_RECUPERACAO_S);
+  };
 
   useEffect(() => {
     if (!emEsperaDeReenvio) return;
-    const relogio = setInterval(() => {
-      setEsperaReenvioRecuperacao((restante) => Math.max(0, restante - 1));
-    }, 1000);
-    return () => clearInterval(relogio);
+    // Nunca mais que o intervalo (relógio do aparelho que voltou no tempo não
+    // pode alongar a trava) e nunca negativo.
+    const atualizar = () =>
+      setEsperaReenvioRecuperacao(
+        Math.min(
+          INTERVALO_REENVIO_RECUPERACAO_S,
+          Math.max(
+            0,
+            Math.ceil((fimDaEsperaDoReenvio.current - Date.now()) / 1000),
+          ),
+        ),
+      );
+    const relogio = setInterval(atualizar, 1000);
+    // Ao voltar à frente (app reaberto, aba trazida de volta, página restaurada
+    // do histórico) a conta é refeita na hora, sem esperar o próximo tique.
+    document.addEventListener("visibilitychange", atualizar);
+    window.addEventListener("pageshow", atualizar);
+    return () => {
+      clearInterval(relogio);
+      document.removeEventListener("visibilitychange", atualizar);
+      window.removeEventListener("pageshow", atualizar);
+    };
   }, [emEsperaDeReenvio]);
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -428,7 +460,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           toast.success(res.message);
           if (fluxoDaTela.current === fluxoEnviado) {
             setEmailDaConfirmacao(emailEnviado);
-            setEsperaReenvioRecuperacao(INTERVALO_REENVIO_RECUPERACAO_S);
+            comecarEsperaDoReenvio();
             setViewMode("reset-prompt");
           }
         } else {
@@ -512,7 +544,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
     } finally {
       reenvioRecuperacaoEmCurso.current = false;
       setReenviandoRecuperacao(false);
-      setEsperaReenvioRecuperacao(INTERVALO_REENVIO_RECUPERACAO_S);
+      comecarEsperaDoReenvio();
     }
   };
 
@@ -524,28 +556,28 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
         <div className="absolute bottom-0 left-0 size-96 -translate-x-1/2 translate-y-1/2 rounded-full bg-zinc-200/20 blur-[100px]" />
 
         <motion.div
-          initial="hidden"
+          initial={reduzirMovimento ? false : "hidden"}
           animate="visible"
-          variants={containerVariants}
+          variants={reduzirMovimento ? {} : containerVariants}
           className="z-10 w-full max-w-md"
         >
           <div className="flex flex-col items-center rounded-[2.5rem] border border-zinc-100 bg-white p-8 text-center shadow-[0_32px_64px_-16px_rgba(0,0,0,0.08)] sm:rounded-[3rem] sm:p-10">
             <motion.div
-              variants={itemVariants}
+              variants={reduzirMovimento ? {} : itemVariants}
               className="mb-6 flex size-16 items-center justify-center rounded-2xl bg-amber-50 italic ring-1 ring-amber-100 sm:mb-8 sm:size-20 sm:rounded-[2rem]"
             >
               <Mail className="size-6 text-amber-600 sm:size-8" />
             </motion.div>
 
             <motion.h1
-              variants={itemVariants}
+              variants={reduzirMovimento ? {} : itemVariants}
               className="mb-3 text-2xl font-black tracking-tighter text-zinc-900 sm:mb-4 sm:text-3xl"
             >
               Verifique seu e-mail
             </motion.h1>
 
             <motion.p
-              variants={itemVariants}
+              variants={reduzirMovimento ? {} : itemVariants}
               className="mx-auto mb-8 max-w-[240px] text-xs font-medium leading-relaxed text-zinc-500 sm:mb-10 sm:max-w-none sm:text-sm"
             >
               {/* O servidor responde SUCESSO sem mandar e-mail quando o endereço
@@ -566,7 +598,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
             </motion.p>
 
             <motion.div
-              variants={itemVariants}
+              variants={reduzirMovimento ? {} : itemVariants}
               className="w-full space-y-3 sm:space-y-4"
             >
               <Button
@@ -595,7 +627,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           </div>
 
           <motion.div
-            variants={itemVariants}
+            variants={reduzirMovimento ? {} : itemVariants}
             className="mt-6 flex justify-center sm:mt-8"
           >
             <button
@@ -619,28 +651,28 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
         <div className="absolute bottom-0 left-0 size-96 -translate-x-1/2 translate-y-1/2 rounded-full bg-zinc-200/20 blur-[100px]" />
 
         <motion.div
-          initial="hidden"
+          initial={reduzirMovimento ? false : "hidden"}
           animate="visible"
-          variants={containerVariants}
+          variants={reduzirMovimento ? {} : containerVariants}
           className="z-10 w-full max-w-md"
         >
           <div className="flex flex-col items-center rounded-[2.5rem] border border-zinc-100 bg-white p-8 text-center shadow-[0_32px_64px_-16px_rgba(0,0,0,0.08)] sm:rounded-[3rem] sm:p-10">
             <motion.div
-              variants={itemVariants}
+              variants={reduzirMovimento ? {} : itemVariants}
               className="mb-6 flex size-16 items-center justify-center rounded-2xl bg-amber-50 italic ring-1 ring-amber-100 sm:mb-8 sm:size-20 sm:rounded-[2rem]"
             >
               <Mail className="size-6 text-amber-600 sm:size-8" />
             </motion.div>
 
             <motion.h1
-              variants={itemVariants}
+              variants={reduzirMovimento ? {} : itemVariants}
               className="mb-3 text-2xl font-black tracking-tighter text-zinc-900 sm:mb-4 sm:text-3xl"
             >
               Verifique seu e-mail
             </motion.h1>
 
             <motion.p
-              variants={itemVariants}
+              variants={reduzirMovimento ? {} : itemVariants}
               className="mx-auto mb-8 max-w-[240px] text-xs font-medium leading-relaxed text-zinc-500 sm:mb-10 sm:max-w-none sm:text-sm"
             >
               {/* Revisão de contexto limpo do diff (achado 5) — "E-mail
@@ -659,11 +691,12 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               <br />
               Se você recebeu o e-mail, clique no link para definir sua nova
               senha. Se não chegou, confira também a caixa de spam ou lixo
-              eletrônico.
+              eletrônico. Se pedir de novo, use só o e-mail mais recente: os
+              anteriores deixam de valer.
             </motion.p>
 
             <motion.div
-              variants={itemVariants}
+              variants={reduzirMovimento ? {} : itemVariants}
               className="w-full space-y-3 sm:space-y-4"
             >
               <Button
@@ -716,23 +749,23 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
       <div className="pointer-events-none absolute bottom-[-20%] right-[-15%] h-[700px] w-[700px] rounded-full bg-zinc-100/20 blur-[150px]" />
 
       <motion.div
-        initial="hidden"
+        initial={reduzirMovimento ? false : "hidden"}
         animate="visible"
-        variants={containerVariants}
+        variants={reduzirMovimento ? {} : containerVariants}
         className="z-10 flex w-full max-w-[440px] flex-1 flex-col justify-between"
       >
         <div className="flex flex-1 flex-col justify-center sm:justify-start">
           {/* Header Section - Spaced out on taller screens */}
           <div className="mb-4 flex flex-col items-center text-center sm:mb-10">
             <motion.div
-              variants={itemVariants}
+              variants={reduzirMovimento ? {} : itemVariants}
               className="mb-2 flex size-10 items-center justify-center rounded-xl border border-zinc-100 bg-white shadow-sm sm:mb-8 sm:size-20 sm:rounded-[2rem]"
             >
               <User className="size-5 text-zinc-900 sm:size-8" />
             </motion.div>
 
             <motion.h1
-              variants={itemVariants}
+              variants={reduzirMovimento ? {} : itemVariants}
               className="text-2xl font-black leading-none tracking-tighter text-zinc-900 sm:text-5xl"
             >
               {viewMode === "login" && "Bem-vindo"}
@@ -741,7 +774,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               {viewMode === "new-password" && "Nova Senha"}
             </motion.h1>
             <motion.p
-              variants={itemVariants}
+              variants={reduzirMovimento ? {} : itemVariants}
               className="mt-2 max-w-[280px] px-4 text-xs font-bold uppercase tracking-widest text-zinc-600 dark:text-zinc-400 sm:mt-4 sm:max-w-none sm:text-sm"
             >
               {viewMode === "login" && subtituloBoasVindas(config.storeName)}
@@ -767,9 +800,9 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               {viewMode === "signup" && (
                 <>
                   <motion.div
-                    initial="hidden"
+                    initial={reduzirMovimento ? false : "hidden"}
                     animate="visible"
-                    variants={itemVariants}
+                    variants={reduzirMovimento ? {} : itemVariants}
                     className="space-y-2"
                   >
                     <label
@@ -799,9 +832,9 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                   </motion.div>
 
                   <motion.div
-                    initial="hidden"
+                    initial={reduzirMovimento ? false : "hidden"}
                     animate="visible"
-                    variants={itemVariants}
+                    variants={reduzirMovimento ? {} : itemVariants}
                     className="space-y-2"
                   >
                     <label
@@ -844,9 +877,9 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                   </motion.div>
 
                   <motion.div
-                    initial="hidden"
+                    initial={reduzirMovimento ? false : "hidden"}
                     animate="visible"
-                    variants={itemVariants}
+                    variants={reduzirMovimento ? {} : itemVariants}
                     className="space-y-2"
                   >
                     <label
@@ -890,7 +923,10 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               {(viewMode === "login" ||
                 viewMode === "signup" ||
                 viewMode === "forgot") && (
-                <motion.div variants={itemVariants} className="space-y-2">
+                <motion.div
+                  variants={reduzirMovimento ? {} : itemVariants}
+                  className="space-y-2"
+                >
                   <label
                     htmlFor="email"
                     className="ml-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600"
@@ -921,7 +957,10 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               {(viewMode === "login" ||
                 viewMode === "signup" ||
                 viewMode === "new-password") && (
-                <motion.div variants={itemVariants} className="space-y-2">
+                <motion.div
+                  variants={reduzirMovimento ? {} : itemVariants}
+                  className="space-y-2"
+                >
                   {viewMode === "new-password" && user?.email && (
                     // A tela só tem campos de senha: este campo escondido diz
                     // ao gerenciador de senhas de QUAL conta é a senha nova.
@@ -1074,7 +1113,8 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               {loginError && (
                 <motion.div
                   role="alert"
-                  initial={{ opacity: 0, height: 0 }}
+                  initial={reduzirMovimento ? false : { opacity: 0, height: 0 }}
+                  transition={reduzirMovimento ? { duration: 0 } : undefined}
                   animate={{ opacity: 1, height: "auto" }}
                   className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-center text-[10px] font-black uppercase tracking-widest text-red-600"
                 >
@@ -1120,9 +1160,9 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               )}
 
               <motion.button
-                variants={itemVariants}
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.98 }}
+                variants={reduzirMovimento ? {} : itemVariants}
+                whileHover={reduzirMovimento ? undefined : { scale: 1.01 }}
+                whileTap={reduzirMovimento ? undefined : { scale: 0.98 }}
                 type="submit"
                 disabled={isLoading}
                 className="group mt-2 flex h-14 w-full items-center justify-center gap-3 rounded-2xl bg-zinc-900 text-xs font-black uppercase tracking-[0.2em] text-white shadow-lg shadow-zinc-200/50 disabled:opacity-70 sm:mt-4 sm:rounded-3xl"
@@ -1151,7 +1191,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           </div>
 
           <motion.div
-            variants={itemVariants}
+            variants={reduzirMovimento ? {} : itemVariants}
             className="mb-4 mt-6 flex flex-col items-center gap-2 sm:mb-0"
           >
             <span className="text-xs font-semibold text-zinc-600">

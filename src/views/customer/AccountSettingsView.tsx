@@ -30,6 +30,7 @@ import {
   getPredefinedAvatarSvg,
   mensagemDaFalhaDeImagem,
 } from "@/utils/avatars";
+import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import {
   PREDEFINED_COVERS,
   compressCoverImage,
@@ -99,6 +100,15 @@ export function AccountSettingsView() {
     };
   }, [user?.id]);
   const [loading, setLoading] = useState(false);
+  const salvandoRef = useRef(false);
+  const rodadaSalvarRef = useRef(0);
+  const releituraPendenteRef = useRef<{
+    contaId: string;
+    rodada: number;
+    relerCampos: boolean;
+  } | null>(null);
+  const [salvamentoIncerto, setSalvamentoIncerto] = useState(false);
+  const cargaRef = useRef(0);
   const [updatingPassword, setUpdatingPassword] = useState(false);
   const [activeTab, setActiveTab] = useState<"profile" | "security">("profile");
   // "Privacidade e meus dados" é uma seção desta tela (sem rota): trocar de
@@ -166,6 +176,21 @@ export function AccountSettingsView() {
     haptic.light();
   };
 
+  const aguardarImagem = async (
+    operacao: Promise<boolean>,
+    contaDonaId: string | null,
+  ) => {
+    try {
+      return await comPrazo(operacao, 20_000, undefined, () =>
+        relerDepoisDoPrazo(contaDonaId, false),
+      );
+    } catch (erro) {
+      if (!(erro instanceof PrazoEsgotado)) throw erro;
+      relerDepoisDoPrazo(contaDonaId, false);
+      return false;
+    }
+  };
+
   const handleSelectPredefinedAvatar = async (avatar: any) => {
     const contaDonaId = contaAtualIdRef.current;
     const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
@@ -178,7 +203,10 @@ export function AccountSettingsView() {
         avatar.start,
         avatar.end,
       );
-      const success = await updateProfile({ avatar_url: svgUrl });
+      const success = await aguardarImagem(
+        updateProfile({ avatar_url: svgUrl }),
+        contaDonaId,
+      );
       if (!contaAindaEhDona()) return;
       if (success) {
         toast.success("Avatar atualizado com sucesso!");
@@ -226,8 +254,8 @@ export function AccountSettingsView() {
         try {
           const compressed = await compressImage(base64, 200, 200);
           if (!contaAindaEhDona()) return;
-          const success = await updateProfile(
-            { avatar_url: compressed },
+          const success = await aguardarImagem(
+            updateProfile({ avatar_url: compressed }, contaDonaId),
             contaDonaId,
           );
           if (!contaAindaEhDona()) return;
@@ -269,7 +297,10 @@ export function AccountSettingsView() {
     haptic.light();
     const desmarcar = marcarOperacaoSensivel("foto-de-perfil");
     try {
-      const success = await updateProfile({ avatar_url: "REMOVE" });
+      const success = await aguardarImagem(
+        updateProfile({ avatar_url: "REMOVE" }),
+        contaDonaId,
+      );
       if (!contaAindaEhDona()) return;
       if (success) {
         toast.success("Foto de perfil removida.");
@@ -296,7 +327,10 @@ export function AccountSettingsView() {
         cover.end,
         cover.patternType,
       );
-      const success = await updateProfile({ cover_url: svgUrl });
+      const success = await aguardarImagem(
+        updateProfile({ cover_url: svgUrl }),
+        contaDonaId,
+      );
       if (!contaAindaEhDona()) return;
       if (success) {
         toast.success("Capa de perfil atualizada!");
@@ -342,8 +376,8 @@ export function AccountSettingsView() {
         try {
           const compressed = await compressCoverImage(base64);
           if (!contaAindaEhDona()) return;
-          const success = await updateProfile(
-            { cover_url: compressed },
+          const success = await aguardarImagem(
+            updateProfile({ cover_url: compressed }, contaDonaId),
             contaDonaId,
           );
           if (!contaAindaEhDona()) return;
@@ -383,7 +417,10 @@ export function AccountSettingsView() {
     setIsUpdatingCover(true);
     haptic.light();
     try {
-      const success = await updateProfile({ cover_url: "REMOVE" });
+      const success = await aguardarImagem(
+        updateProfile({ cover_url: "REMOVE" }),
+        contaDonaId,
+      );
       if (!contaAindaEhDona()) return;
       if (success) {
         toast.success("Capa de perfil removida.");
@@ -474,13 +511,20 @@ export function AccountSettingsView() {
     return marcarOperacaoSensivel("edicao-da-conta");
   }, [recargaBloqueada]);
 
+  const userId = user?.id;
+  const userEmail = user?.email;
   const carregarPerfil = useCallback(async () => {
-    if (!user) return;
+    if (!userId) return;
+    const rodada = ++cargaRef.current;
+    const atual = () =>
+      rodada === cargaRef.current && contaAtualIdRef.current === userId;
     setProfileLoadState("loading");
     try {
-      const { data, error } = await (supabase as any).rpc(
-        "get_my_complete_profile",
+      const { data, error } = await comPrazo(
+        Promise.resolve((supabase as any).rpc("get_my_complete_profile")),
+        15_000,
       );
+      if (!atual()) return;
 
       if (error || !data) {
         console.error("Error fetching profile:", error);
@@ -497,7 +541,7 @@ export function AccountSettingsView() {
       const dadosCarregados = {
         name: profile.full_name || "",
         phone: formatarWhatsAppParaExibicao(profile.whatsapp || ""),
-        email: user.email || "",
+        email: userEmail || "",
       };
       setProfileData(dadosCarregados);
       setProfileDataOriginal(dadosCarregados);
@@ -515,6 +559,11 @@ export function AccountSettingsView() {
       // apagar um CPF real por causa de uma leitura que falhou).
       try {
         const resultadoCpf = await lerCpfDaConta();
+        if (!atual()) return;
+        if (!resultadoCpf.ok && resultadoCpf.motivo === "prazo_esgotado") {
+          setProfileLoadState("error");
+          return;
+        }
         const digitosCpf =
           resultadoCpf.ok && typeof resultadoCpf.cpf === "string"
             ? resultadoCpf.cpf
@@ -523,6 +572,7 @@ export function AccountSettingsView() {
         setCpfOriginal(digitosCpf);
         setCpfErro(false);
       } catch (erroCpf) {
+        if (!atual()) return;
         console.error("Error fetching CPF:", erroCpf);
         setCpf("");
         setCpfOriginal("");
@@ -530,18 +580,46 @@ export function AccountSettingsView() {
       }
 
       setProfileLoadState("loaded");
-    } catch (error) {
-      console.error("Error fetching profile:", error);
-      setProfileLoadState("error");
+    } catch {
+      if (atual()) setProfileLoadState("error");
     }
-  }, [user]);
+  }, [userId, userEmail]);
 
   useEffect(() => {
     carregarPerfil();
   }, [carregarPerfil]);
 
+  const relerDepoisDoPrazo = (
+    contaDonaId: string | null,
+    relerCampos = true,
+  ) => {
+    if (contaAtualIdRef.current !== contaDonaId || !contaDonaId) return;
+    setSalvamentoIncerto(true);
+    toast.warning(
+      "Não deu para confirmar: o dado pode ter sido salvo. Estamos conferindo sua conta; confira antes de tentar de novo.",
+    );
+    // Uma resposta antiga não pode trocar o campo enquanto um novo CPF é salvo.
+    // Junta os avisos da mesma rodada numa única conferência, depois do envio.
+    if (salvandoRef.current) {
+      const pendente = releituraPendenteRef.current;
+      const mesmaRodada =
+        pendente?.contaId === contaDonaId &&
+        pendente.rodada === rodadaSalvarRef.current;
+      releituraPendenteRef.current = {
+        contaId: contaDonaId,
+        rodada: rodadaSalvarRef.current,
+        relerCampos: relerCampos || (mesmaRodada && pendente.relerCampos),
+      };
+      return;
+    }
+    // Foto/capa não alteram nome, telefone ou CPF: preserva o rascunho deles.
+    if (relerCampos) void carregarPerfil();
+    // O contexto também pode estar aguardando a rede. Nunca prende os controles.
+    void comPrazo(Promise.resolve(fetchProfile()), 15_000).catch(() => {});
+  };
+
   const handleUpdateProfile = async () => {
-    if (!user) return;
+    if (!user || salvandoRef.current) return;
     const contaDonaId = user.id;
     const contaAindaEhDona = () => contaAtualIdRef.current === contaDonaId;
 
@@ -617,7 +695,12 @@ export function AccountSettingsView() {
     const nomeMudou = nomeAparado !== profileDataOriginal.name.trim();
 
     const perfilEnviado = profileData;
+    const rodadaSalvar = ++rodadaSalvarRef.current;
+    // A leitura que já estava no ar também perde a vez para o novo salvamento.
+    ++cargaRef.current;
+    salvandoRef.current = true;
     setLoading(true);
+    setSalvamentoIncerto(false);
     const desmarcar = marcarOperacaoSensivel("salvar-conta");
     try {
       // `update_my_profile_secure` faz `whatsapp = COALESCE(p_whatsapp,
@@ -631,10 +714,15 @@ export function AccountSettingsView() {
           p_whatsapp: whatsappEditado ? perfilEnviado.phone : null,
         },
         contaDonaId,
+        () => relerDepoisDoPrazo(contaDonaId),
       );
 
       if (!contaAindaEhDona()) return;
       if (!resultado.ok) {
+        if (resultado.motivo === "prazo_esgotado") {
+          relerDepoisDoPrazo(contaDonaId);
+          return;
+        }
         if (resultado.motivo === "conta_trocada") {
           toast.error(mensagemFalhaCpf(resultado.motivo));
           return;
@@ -653,6 +741,7 @@ export function AccountSettingsView() {
         const resultadoCpf = await gravarCpfDaConta(
           digitosCpfAtual,
           contaDonaId,
+          () => relerDepoisDoPrazo(contaDonaId),
         );
         // CPF gravado (ou limpo) AQUI vale mais que o do cadastro: o
         // pendente não pode voltar depois e sobrescrever. Vale mesmo que a
@@ -660,29 +749,53 @@ export function AccountSettingsView() {
         if (resultadoCpf.ok) descartarPendenteDaConta(contaDonaId);
         if (!contaAindaEhDona()) return;
         if (!resultadoCpf.ok) {
+          if (resultadoCpf.motivo === "prazo_esgotado") {
+            relerDepoisDoPrazo(contaDonaId);
+            return;
+          }
           toast.error(mensagemFalhaCpf(resultadoCpf.motivo));
           // O resto do perfil (nome/WhatsApp) JÁ foi salvo com sucesso —
           // não desfaz; só o CPF fica pendente para uma nova tentativa.
           // O nome novo já está no banco: atualiza o Perfil/cabeçalho também
           // (menos se a sessão virou outra conta: o contexto já é dela).
-          if (resultadoCpf.motivo !== "conta_trocada") await fetchProfile();
+          if (resultadoCpf.motivo !== "conta_trocada")
+            await comPrazo(Promise.resolve(fetchProfile()), 15_000);
           return;
         }
         setCpfOriginal(digitosCpfAtual);
       }
 
       // Refresh global profile in context (ZENITH v21.7)
-      await fetchProfile();
+      await comPrazo(Promise.resolve(fetchProfile()), 15_000);
       if (!contaAindaEhDona()) return;
 
       toast.success("Perfil atualizado com sucesso");
     } catch (error) {
       if (!contaAindaEhDona()) return;
+      if (error instanceof PrazoEsgotado) {
+        relerDepoisDoPrazo(contaDonaId);
+        return;
+      }
       console.error("Update error:", error);
       toast.error("Erro ao atualizar perfil");
     } finally {
       desmarcar();
-      if (contaAindaEhDona()) setLoading(false);
+      salvandoRef.current = false;
+      const releitura = releituraPendenteRef.current;
+      releituraPendenteRef.current = null;
+      if (contaAindaEhDona()) {
+        setLoading(false);
+        if (
+          releitura?.contaId === contaDonaId &&
+          releitura.rodada === rodadaSalvar &&
+          rodadaSalvar === rodadaSalvarRef.current
+        ) {
+          if (releitura.relerCampos) void carregarPerfil();
+          void comPrazo(Promise.resolve(fetchProfile()), 15_000).catch(
+            () => {},
+          );
+        }
+      }
     }
   };
 
@@ -908,7 +1021,33 @@ export function AccountSettingsView() {
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                <form
+                  id="form-perfil"
+                  noValidate
+                  className="space-y-4"
+                  onSubmit={(evento) => {
+                    evento.preventDefault();
+                    void handleUpdateProfile();
+                  }}
+                >
+                  {salvamentoIncerto && (
+                    <div
+                      role="alert"
+                      className="space-y-2 rounded-[14px] border border-border p-4 text-sm"
+                    >
+                      <p>
+                        Não deu para confirmar: o dado pode ter sido salvo.
+                        Confira os dados antes de tentar salvar de novo.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={carregarPerfil}
+                      >
+                        Conferir dados de novo
+                      </Button>
+                    </div>
+                  )}
                   {profileLoadState === "loading" && (
                     <div className="flex items-center justify-center gap-2 rounded-[14px] border border-border py-6">
                       <Loader2 className="size-4 animate-spin text-muted-foreground" />
@@ -1050,7 +1189,7 @@ export function AccountSettingsView() {
                       </p>
                     )}
                   </div>
-                </div>
+                </form>
 
                 {/* Linha-link: abre a seção de privacidade (sem rota). */}
                 <button
@@ -1193,7 +1332,8 @@ export function AccountSettingsView() {
             <div className="bottom-docked-navigation sticky z-20 -mx-4 border-t border-border bg-background/95 px-4 pb-2.5 pt-3 backdrop-blur sm:-mx-6 sm:px-6 md:bottom-[104px]">
               {activeTab === "profile" ? (
                 <Button
-                  onClick={handleUpdateProfile}
+                  type="submit"
+                  form="form-perfil"
                   disabled={loading || profileLoadState !== "loaded"}
                   className="flex h-[52px] w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-foreground text-[15px] font-semibold text-background transition-all hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-60"
                 >

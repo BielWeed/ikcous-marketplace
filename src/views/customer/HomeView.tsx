@@ -376,6 +376,7 @@ export const HomeView = React.memo(function HomeView({
     if (isLoading || !bannersLoaded || !configLoaded) return;
     gravarMemoriaDaHome({
       temBanner: topBanners.length > 0,
+      temBannerMeio: middleBanners.length > 0,
       temOfertas: offerProducts.length > 0,
       temBestsellers: bestsellerProducts.length > 0,
       layoutOfertas,
@@ -388,6 +389,7 @@ export const HomeView = React.memo(function HomeView({
     layoutOfertas,
     qtdOfertasNaFaixa,
     topBanners.length,
+    middleBanners.length,
     offerProducts.length,
     bestsellerProducts.length,
   ]);
@@ -676,9 +678,11 @@ export const HomeView = React.memo(function HomeView({
       {/* Middle Banners - Full Width */}
       {!termoDaBusca &&
         (!bannersLoaded && middleBanners.length === 0 ? (
-          <div className="mx-4 w-full py-4">
-            <div className="h-[120px] w-[calc(100%-2rem)] animate-pulse rounded-[2rem] bg-zinc-100 sm:h-[200px]" />
-          </div>
+          memoriaDaUltimaVisita?.temBannerMeio === false ? null : (
+            <div className="mx-4 w-full py-4">
+              <div className="h-[120px] w-[calc(100%-2rem)] animate-pulse rounded-[2rem] bg-zinc-100 sm:h-[200px]" />
+            </div>
+          )
         ) : middleBanners.length > 0 ? (
           <div className="w-full py-4">
             <BannerCarousel banners={middleBanners} autoPlay={false} />

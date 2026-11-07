@@ -14,6 +14,7 @@ import {
 } from "@/lib/devolucao";
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import { supabase } from "@/lib/supabase";
+import { gerarUuidV4 } from "@/lib/uuid-v4";
 import type {
   DevolucaoDetalhe,
   ElegibilidadeDevolucao,
@@ -205,8 +206,10 @@ export function useDevolucaoCliente(
           p_metodo: dados.metodo,
           p_fotos: dados.fotos,
         });
-        if (error)
+        if (error) {
+          await carregar();
           return { ok: false, erro: mensagemDoErro(error, ERRO_GENERICO) };
+        }
         const resultado = lerResultadoSolicitacao(data);
         if (!resultado) {
           await carregar();
@@ -218,6 +221,7 @@ export function useDevolucaoCliente(
         await carregar();
         return { ok: true, valor: resultado };
       } catch (e) {
+        await carregar();
         return { ok: false, erro: mensagemDoErro(e, ERRO_GENERICO) };
       } finally {
         desmarcar();
@@ -236,14 +240,14 @@ export function useDevolucaoCliente(
       if (pronto.size > TAMANHO_MAXIMO_DA_FOTO) {
         return { ok: false, erro: "A foto passa de 5 MB. Escolha uma menor." };
       }
-      const caminho = caminhoDaFoto(
-        userId,
-        orderId,
-        crypto.randomUUID(),
-        pronto.type,
-      );
       const desmarcar = marcarOperacaoSensivel("foto-de-devolucao");
       try {
+        const caminho = caminhoDaFoto(
+          userId,
+          orderId,
+          gerarUuidV4(),
+          pronto.type,
+        );
         const { error } = await supabase.storage
           .from("devolucoes")
           .upload(caminho, pronto, { contentType: pronto.type, upsert: false });

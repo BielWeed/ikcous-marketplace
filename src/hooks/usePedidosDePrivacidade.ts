@@ -7,6 +7,7 @@ import {
   lerPedidosDePrivacidade,
 } from "@/lib/pedidos-de-privacidade";
 import { supabase } from "@/lib/supabase";
+import { comPrazo } from "@/utils/com-prazo";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
@@ -56,11 +57,16 @@ export function usePedidosDePrivacidade(
     try {
       // `.eq("user_id", userId)` é redundante com a RLS de propósito: se a
       // política um dia afrouxar, a tela da cliente continua só com os dela.
-      const { data, error } = await supabase
-        .from("pedidos_de_privacidade")
-        .select(COLUNAS_DO_PEDIDO_DA_CLIENTE)
-        .eq("user_id", userId)
-        .order("criado_em", { ascending: false });
+      const { data, error } = await comPrazo(
+        Promise.resolve(
+          supabase
+            .from("pedidos_de_privacidade")
+            .select(COLUNAS_DO_PEDIDO_DA_CLIENTE)
+            .eq("user_id", userId)
+            .order("criado_em", { ascending: false }),
+        ),
+        15_000,
+      );
       if (!ativoRef.current || rodada !== rodadaRef.current) return;
       if (error) {
         setCarga("erro");

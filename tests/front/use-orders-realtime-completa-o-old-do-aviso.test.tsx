@@ -172,11 +172,11 @@ describe("useOrders — completa o 'antes' do UPDATE do realtime (old só com a 
     expect(tipoDoAvisoDoPedido(segundo)).toBeNull();
   });
 
-  it("pedido que a tela não tem (fora da página): chega como veio e o aviso sai como antes", async () => {
+  it("pedido que a tela não tem (fora da página): chega como veio e o aviso é neutro", async () => {
     const chegou = await emitirComOldSoComId(
       linha("desconhecido", "pago", "shipping"),
     );
     expect(chegou.old).toEqual({ id: "desconhecido" });
-    expect(tipoDoAvisoDoPedido(chegou)).toBe("status");
+    expect(tipoDoAvisoDoPedido(chegou)).toBe("generico");
   });
 });

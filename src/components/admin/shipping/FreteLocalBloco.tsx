@@ -1,3 +1,4 @@
+import { GrupoDeOpcoes } from "@/components/admin/GrupoDeOpcoes";
 import {
   CabecaDeSecao,
   Linha,
@@ -325,8 +326,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
           <p className="text-sm font-bold text-zinc-100">
             Como o cliente da sua região recebe?
           </p>
-          <div
-            role="radiogroup"
+          <GrupoDeOpcoes
             aria-label="Como o cliente da sua região recebe"
             className="mt-3 grid gap-3"
           >
@@ -363,7 +363,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
                 }}
               />
             ))}
-          </div>
+          </GrupoDeOpcoes>
           {alertaDoModo && (
             // Colado nos cartões: no celular um aviso lá embaixo ficava fora
             // da tela e parecia que o toque não tinha feito nada.
@@ -479,8 +479,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
           <p className="mt-1 text-[13px] text-zinc-400">
             Hoje: {resumoDoAlcance(cepDaLoja, faixa)}.
           </p>
-          <div
-            role="radiogroup"
+          <GrupoDeOpcoes
             aria-label="Até onde você entrega"
             className="mt-3 grid gap-3 sm:grid-cols-2"
           >
@@ -509,7 +508,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
               desabilitado={desabilitado}
               onEscolher={() => setCliqueEmMais(true)}
             />
-          </div>
+          </GrupoDeOpcoes>
 
           {maisLugares && (
             <div className="mt-4">

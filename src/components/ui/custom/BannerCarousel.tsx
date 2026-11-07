@@ -8,7 +8,7 @@ import { rolarAoCatalogo } from "@/lib/rolar-ao-catalogo";
 import { cn } from "@/lib/utils";
 import type { Banner } from "@/types";
 import useEmblaCarousel from "embla-carousel-react";
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { BannerPronto } from "./BannerPronto";
 
 interface BannerCarouselProps {
@@ -49,7 +49,26 @@ export const BannerCarousel = memo(function BannerCarousel({
   // (ex.: mouse sai com o foco ainda dentro não pode destravar o autoplay).
   const [hoverAtivo, setHoverAtivo] = useState(false);
   const [focoAtivo, setFocoAtivo] = useState(false);
+  const ultimoToqueEm = useRef(0);
   const pausado = hoverAtivo || focoAtivo;
+  const registrarToque = useCallback(() => {
+    ultimoToqueEm.current = Date.now();
+  }, []);
+  const handleMouseEnter = useCallback(() => {
+    // Mouse emulado após toque não tem mouseleave até o próximo toque fora.
+    if (Date.now() - ultimoToqueEm.current < 1000) return;
+    setHoverAtivo(true);
+  }, []);
+  const handleFocus = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
+    // Clique também foca: só o teclado deve manter o carrossel pausado.
+    let deTeclado = true;
+    try {
+      deTeclado = (e.target as Element).matches(":focus-visible");
+    } catch {
+      // Navegador antigo: preserva a pausa acessível.
+    }
+    setFocoAtivo(deTeclado);
+  }, []);
   const [menosMovimento, setMenosMovimento] = useState(false);
 
   useEffect(() => {
@@ -128,7 +147,18 @@ export const BannerCarousel = memo(function BannerCarousel({
         const searchParams = new URLSearchParams(url.search);
         const id = searchParams.get("id") || undefined;
 
-        globalThis.history.pushState({ view: viewName, id }, "", link);
+        // `from` (como o card do produto grava) diz à seta Voltar do App que
+        // há uma tela atrás: ela recua de verdade (history.back) em vez de
+        // empilhar outra Início por cima do destino.
+        globalThis.history.pushState(
+          {
+            view: viewName,
+            id,
+            from: globalThis.history.state?.view ?? "home",
+          },
+          "",
+          link,
+        );
         globalThis.dispatchEvent(new PopStateEvent("popstate"));
         // Toque no banner é intenção explícita: rola mesmo se a categoria
         // já for a atual.
@@ -156,6 +186,10 @@ export const BannerCarousel = memo(function BannerCarousel({
   const slides = validBanners.map((banner) => ({
     banner,
     destino: destinoDoBanner(banner.link),
+    descricao:
+      [banner.title, banner.subtitle, banner.badgeText, banner.buttonText]
+        .map((texto) => texto?.trim())
+        .find(Boolean) || "Promoção da loja",
   }));
 
   return (
@@ -167,9 +201,11 @@ export const BannerCarousel = memo(function BannerCarousel({
       role="region"
       aria-roledescription="carousel"
       aria-label="Destaques e Promoções"
-      onMouseEnter={() => setHoverAtivo(true)}
+      onTouchStart={registrarToque}
+      onTouchEnd={registrarToque}
+      onMouseEnter={handleMouseEnter}
       onMouseLeave={() => setHoverAtivo(false)}
-      onFocus={() => setFocoAtivo(true)}
+      onFocus={handleFocus}
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null))
           setFocoAtivo(false);
@@ -179,7 +215,7 @@ export const BannerCarousel = memo(function BannerCarousel({
       <div className="h-full overflow-hidden" ref={emblaRef}>
         {/* Container */}
         <div className="flex h-full">
-          {slides.map(({ banner, destino }, index) => (
+          {slides.map(({ banner, destino, descricao }, index) => (
             <div
               key={banner.id}
               className={cn(
@@ -205,7 +241,7 @@ export const BannerCarousel = memo(function BannerCarousel({
                       }
                     }
               }
-              aria-label={`${index + 1} de ${validBanners.length}: ${banner.title || ""}`}
+              aria-label={`${index + 1} de ${validBanners.length}: ${descricao}`}
             >
               {modeloDoBanner(banner.templateType) ? (
                 <BannerPronto
@@ -221,7 +257,7 @@ export const BannerCarousel = memo(function BannerCarousel({
                 <>
                   <LazyImage
                     src={banner.imageUrl}
-                    alt={banner.title || ""}
+                    alt={descricao}
                     className="size-full transition-transform [transition-duration:2000ms] [transition-timing-function:cubic-bezier(0.4,0,0.2,1)] group-hover:scale-105"
                     priority={index === 0}
                     semFade={primeiraSemFade && index === 0}

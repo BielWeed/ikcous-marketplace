@@ -109,6 +109,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.clearAllMocks();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("classeDoScrimDoBanner: a fonte única do escurecimento", () => {
@@ -189,6 +190,21 @@ describe("BannerCarousel: o texto sempre tem escurecimento atrás", () => {
         .length,
     ).toBe(0);
   });
+
+  it.each([
+    { title: "", subtitle: "Entrega grátis", esperado: "Entrega grátis" },
+    { title: " ", badgeText: "Novidades", esperado: "Novidades" },
+    { title: "", buttonText: "Ver coleção", esperado: "Ver coleção" },
+    { title: "", esperado: "Promoção da loja" },
+  ])(
+    "banner sem título tem nome acessível: $esperado",
+    async ({ esperado, ...campos }) => {
+      await montar([criarBanner({ id: "b1", link: "/home", ...campos })]);
+      const slide = hospedeiro.querySelector('[role="button"]');
+      expect(slide?.getAttribute("aria-label")).toBe(`1 de 1: ${esperado}`);
+      expect(hospedeiro.querySelector("img")?.alt).toBe(esperado);
+    },
+  );
 
   it("templateType glassmorphic: não duplica o escurecimento", async () => {
     await montar([
@@ -274,6 +290,16 @@ describe("BannerCarousel: o carrossel para de passar sozinho", () => {
     });
   }
 
+  beforeEach(() => {
+    const original = Element.prototype.matches;
+    vi.spyOn(Element.prototype, "matches").mockImplementation(function (
+      this: Element,
+      seletor: string,
+    ) {
+      return seletor === ":focus-visible" ? true : original.call(this, seletor);
+    });
+  });
+
   const doisBanners = () => [
     criarBanner({ id: "b1" }),
     criarBanner({ id: "b2", imageUrl: "https://example.com/banner2.jpg" }),
@@ -324,6 +350,56 @@ describe("BannerCarousel: o carrossel para de passar sozinho", () => {
       vi.advanceTimersByTime(2000);
     });
     expect(emblaApi.scrollNext).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["touchstart", "touchend"])(
+    "%s seguido de mouse emulado não prende o autoplay",
+    async (evento) => {
+      vi.useFakeTimers();
+      await montar(doisBanners(), { interval: 2000 });
+      act(() => {
+        regiao().dispatchEvent(new Event(evento, { bubbles: true }));
+        regiao().dispatchEvent(
+          new MouseEvent("mouseover", {
+            bubbles: true,
+            relatedTarget: document.body,
+          }),
+        );
+      });
+      act(() => {
+        vi.advanceTimersByTime(6000);
+      });
+      expect(emblaApi.scrollNext).toHaveBeenCalledTimes(3);
+    },
+  );
+
+  it("bolinha focada pelo clique não prende o autoplay depois que o mouse sai", async () => {
+    vi.useFakeTimers();
+    await montar(doisBanners(), { interval: 2000 });
+    const indicador = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Ir para slide"]',
+    )!;
+    vi.spyOn(indicador, "matches").mockReturnValue(false);
+    act(() => {
+      regiao().dispatchEvent(
+        new MouseEvent("mouseover", {
+          bubbles: true,
+          relatedTarget: document.body,
+        }),
+      );
+      indicador.click();
+      indicador.focus();
+      regiao().dispatchEvent(
+        new MouseEvent("mouseout", {
+          bubbles: true,
+          relatedTarget: document.body,
+        }),
+      );
+    });
+    act(() => {
+      vi.advanceTimersByTime(6000);
+    });
+    expect(emblaApi.scrollNext).toHaveBeenCalledTimes(3);
   });
 
   it("foco num elemento interno pausa o autoplay", async () => {

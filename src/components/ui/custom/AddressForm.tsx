@@ -1113,6 +1113,7 @@ export function AddressForm({
         <Button
           type="submit"
           disabled={loading || buscandoCep}
+          aria-busy={loading}
           className={cn(
             "h-[52px] w-full rounded-2xl bg-foreground text-[15px] font-semibold text-background transition-all hover:bg-foreground/90 active:scale-[0.98]",
             // Antes de haver um CEP completo o botão se mostra apagado, mas
@@ -1122,7 +1123,10 @@ export function AddressForm({
           )}
         >
           {loading ? (
-            <Loader2 className="size-5 animate-spin" />
+            <>
+              <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+              <span className="sr-only">Salvando endereço…</span>
+            </>
           ) : (
             "Salvar endereço"
           )}

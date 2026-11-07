@@ -83,6 +83,9 @@ function remendoDoCupom(c: Partial<Coupon>, code: string) {
   };
 }
 
+const AVISO_VALIDADE_INCOMPLETA =
+  "Digite a validade com o ano completo, ex.: 31/12/2027";
+
 /** O banco recusou por falta de permissão (42501): administradora rebaixada. */
 function semPermissaoDeAdmin(erro: unknown): boolean {
   return (erro as { code?: string } | null)?.code === "42501";
@@ -125,6 +128,16 @@ function FormularioDoCupom({
   const vencidoConfirmadoRef = useRef(false);
   // Texto do campo de data enquanto a data digitada ainda está incompleta.
   const [rascunhoValidade, setRascunhoValidade] = useState<string | null>(null);
+  // Data digitada que a tela não entendeu NÃO vira "sem validade": barra o
+  // salvar. O aviso ao lado do campo só aparece ao sair dele ou ao tentar
+  // salvar, para não piscar enquanto ela ainda digita o ano.
+  const campoValidadeRef = useRef<HTMLInputElement>(null);
+  const [avisarValidade, setAvisarValidade] = useState(false);
+  // Vale o que o campo diz NA HORA: o navegador deixa o value vazio (com
+  // `badInput`) em 31/02 ou em dia e mês sem ano, e nem sempre dispara evento.
+  const validadeDigitadaNaoEntendida = () =>
+    rascunhoValidade !== null ||
+    campoValidadeRef.current?.validity?.badInput === true;
   const previaBotaoRef = useRef<HTMLButtonElement>(null);
 
   const [formData, setFormData] = useState<Partial<Coupon>>({
@@ -403,6 +416,15 @@ function FormularioDoCupom({
     }
     if (alcanceSuportado && alcance === "exclusivo" && clientes.length === 0) {
       toast.error("Escolha pelo menos um cliente para o cupom exclusivo.");
+      return;
+    }
+
+    // Validade digitada e não entendida (ano de 2 dígitos, 31/02, sem ano):
+    // salvar assim gravava o cupom SEM validade, ou mantinha a antiga, com
+    // aviso de sucesso. Barra aqui; apagar o campo de propósito segue valendo.
+    if (validadeDigitadaNaoEntendida()) {
+      setAvisarValidade(true);
+      toast.error(AVISO_VALIDADE_INCOMPLETA);
       return;
     }
 
@@ -980,16 +1002,32 @@ function FormularioDoCupom({
                     rascunhoValidade ??
                     validadeParaDataDoInput(formData.validUntil)
                   }
+                  ref={campoValidadeRef}
+                  aria-invalid={avisarValidade || undefined}
+                  aria-describedby={
+                    avisarValidade
+                      ? "coupon-valid-until-erro coupon-valid-until-dica"
+                      : "coupon-valid-until-dica"
+                  }
                   disabled={isOffline || isSubmitting}
+                  onBlur={() =>
+                    setAvisarValidade(validadeDigitadaNaoEntendida())
+                  }
                   onChange={(e) => {
                     if (!e.target.value) {
                       setRascunhoValidade(null);
+                      // Vazio com `badInput` = data incompleta, não "sem
+                      // validade": o aviso continua se já estava na tela.
+                      if (!e.target.validity?.badInput) {
+                        setAvisarValidade(false);
+                      }
                       setFormData({ ...formData, validUntil: undefined });
                       return;
                     }
                     const validade = dataEscolhidaParaValidade(e.target.value);
                     if (validade) {
                       setRascunhoValidade(null);
+                      setAvisarValidade(false);
                       setFormData({
                         ...formData,
                         validUntil: validade,
@@ -1005,14 +1043,24 @@ function FormularioDoCupom({
                   className={`${CAMPO} pl-10 [color-scheme:dark]`}
                 />
               </div>
-              <p className="text-xs text-zinc-400">
+              <p id="coupon-valid-until-dica" className="text-xs text-zinc-400">
                 Até 23:59 do dia escolhido, no seu fuso.
               </p>
+              {avisarValidade && (
+                <p
+                  id="coupon-valid-until-erro"
+                  role="alert"
+                  className="text-xs font-medium text-red-300"
+                >
+                  {AVISO_VALIDADE_INCOMPLETA}
+                </p>
+              )}
               <button
                 type="button"
                 disabled={isOffline || isSubmitting || !formData.validUntil}
                 onClick={() => {
                   setRascunhoValidade(null);
+                  setAvisarValidade(false);
                   setFormData({ ...formData, validUntil: undefined });
                 }}
                 className={SECUNDARIO}

@@ -4804,8 +4804,12 @@ export function useOrders(
       //
       // Agora quem envia é a edge function, e ela responde. `true` aqui passa
       // a significar "o e-mail saiu", que é o que a tela sempre afirmou.
+      // Sem prometer "minutos": o teto de envios (5 por pedido, 10 por
+      // e-mail, 40 por loja, em janela de 24 h) volta da edge como a mesma
+      // falha de uma pane de e-mail, e a tela não os distingue. Tentar de novo
+      // em minutos não resolve o teto, que pode durar até 24 horas.
       const NAO_ENVIOU =
-        "Não conseguimos enviar seu código agora. Tente de novo em alguns minutos.";
+        "Não conseguimos enviar seu código agora. Tente de novo mais tarde. Se já pediu vários códigos hoje, o limite do dia pode levar até 24 horas para liberar: fale com a loja.";
       // Mensagem única para "pedido não existe", "e-mail não bate" e
       // "fragmento curto demais": distinguir os três diria a quem está
       // adivinhando qual metade ele já acertou (AUTH-010, #118).
@@ -4853,7 +4857,7 @@ export function useOrders(
         if (data?.motivo === "muito_recente") {
           toast.error(
             Date.now() - (falhas.get(chave) ?? 0) < 60_000
-              ? "Ainda não conseguimos enviar seu código. Aguarde um instante e tente de novo."
+              ? "Ainda não conseguimos enviar seu código. Tente de novo mais tarde; se continuar assim, fale com a loja."
               : `Já enviamos um código há pouco. Espere ${data.espereSegundos ?? 60} segundos e confira sua caixa de entrada.`,
           );
           return false;

@@ -86,6 +86,48 @@ describe("useDevolucaoCliente", () => {
     expect(desfecho).toEqual({ ok: true, valor: "u-1/o-1/uuid-1.jpg" });
   });
 
+  it("a foto sobe mesmo sem randomUUID, usando o UUID compatível", async () => {
+    vi.stubGlobal("crypto", {
+      getRandomValues: (bytes: Uint8Array) => bytes.fill(0),
+    });
+    const atual = await montarSonda(false);
+    const arquivo = new File(["x"], "f.jpg", { type: "image/jpeg" });
+    let desfecho: unknown;
+    await act(async () => {
+      desfecho = await atual().enviarFoto(arquivo, "u-1");
+    });
+    expect(desfecho).toEqual({
+      ok: true,
+      valor: "u-1/o-1/00000000-0000-4000-8000-000000000000.jpg",
+    });
+    expect(upload).toHaveBeenCalledWith(
+      "u-1/o-1/00000000-0000-4000-8000-000000000000.jpg",
+      arquivo,
+      { contentType: "image/jpeg", upsert: false },
+    );
+  });
+
+  it("falha ao gerar o caminho da foto devolve mensagem em vez de rejeitar", async () => {
+    vi.stubGlobal("crypto", {
+      getRandomValues: () => {
+        throw new Error("unsupported");
+      },
+    });
+    const atual = await montarSonda(false);
+    let desfecho: unknown;
+    await act(async () => {
+      desfecho = await atual().enviarFoto(
+        new File(["x"], "f.jpg", { type: "image/jpeg" }),
+        "u-1",
+      );
+    });
+    expect(desfecho).toEqual({
+      ok: false,
+      erro: "Não foi possível enviar a foto.",
+    });
+    expect(upload).not.toHaveBeenCalled();
+  });
+
   it("descartarFotos apaga do bucket privado só os caminhos pedidos", async () => {
     const atual = await montarSonda(false);
     await act(async () => {
@@ -254,6 +296,78 @@ describe("useDevolucaoCliente", () => {
 
     afterEach(() => {
       Reflect.deleteProperty(document, "visibilityState");
+    });
+
+    it.each(["recusa", "excecao"] as const)(
+      "solicitar com %s relê o cartão e preserva o erro original",
+      async (falha) => {
+        ligarServidor({
+          solicitar_devolucao: () => {
+            servidor.status = "solicitada";
+            const error = {
+              message: "Já existe uma devolução em andamento para este pedido.",
+            };
+            if (falha === "excecao") throw error;
+            return { data: null, error };
+          },
+        });
+        const atual = await montarSonda(true);
+        expect(atual().atual?.status).toBe("aprovada");
+
+        let desfecho: unknown;
+        await act(async () => {
+          desfecho = await atual().solicitar({
+            itens: [{ order_item_id: "oi-1", quantidade: 1 }],
+            motivo: "desisti",
+            detalhe: "",
+            resolucao: "reembolso",
+            metodo: "envio_proprio",
+            fotos: [],
+          });
+        });
+
+        expect(desfecho).toEqual({
+          ok: false,
+          erro: "Já existe uma devolução em andamento para este pedido.",
+        });
+        expect(chamadas("devolucao_elegibilidade")).toBe(2);
+        expect(atual().atual?.status).toBe("solicitada");
+      },
+    );
+
+    it("a releitura de solicitar que também falha sinaliza erro sem apagar a recusa original", async () => {
+      let lidas = 0;
+      ligarServidor({
+        devolucao_elegibilidade: () => {
+          lidas += 1;
+          return lidas === 1
+            ? { data: ELEGIBILIDADE, error: null }
+            : { data: null, error: { message: "rede" } };
+        },
+        solicitar_devolucao: () => ({
+          data: null,
+          error: {
+            message: "O prazo para devolução ou troca deste pedido terminou.",
+          },
+        }),
+      });
+      const atual = await montarSonda(true);
+      let desfecho: unknown;
+      await act(async () => {
+        desfecho = await atual().solicitar({
+          itens: [{ order_item_id: "oi-1", quantidade: 1 }],
+          motivo: "desisti",
+          detalhe: "",
+          resolucao: "reembolso",
+          metodo: "envio_proprio",
+          fotos: [],
+        });
+      });
+      expect(desfecho).toEqual({
+        ok: false,
+        erro: "O prazo para devolução ou troca deste pedido terminou.",
+      });
+      expect(atual().erro).toBe(true);
     });
 
     it("cancelar que o servidor recusa (já cancelada pela loja) relê o cartão e mantém a mensagem do servidor", async () => {

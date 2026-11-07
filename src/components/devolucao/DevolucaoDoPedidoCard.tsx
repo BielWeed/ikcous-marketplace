@@ -164,6 +164,14 @@ export function DevolucaoDoPedidoCard({
   );
   const tom = tomDoStatus(atual.status);
   const valorTotal = atual.valor_itens + atual.valor_frete_ida;
+  const concluidaSemReembolso =
+    atual.status === "concluida" &&
+    (atual.resolucao_final === "troca" || atual.resolucao_final === "vale");
+  const reembolsoAjustado =
+    atual.status === "concluida" &&
+    atual.resolucao_final === "reembolso" &&
+    atual.valor_reembolso !== null &&
+    atual.valor_reembolso < valorTotal;
 
   async function copiar(valor: string, rotulo: string) {
     const ok = await copiarParaClipboard(valor);
@@ -379,7 +387,7 @@ export function DevolucaoDoPedidoCard({
             </dd>
           </div>
         ))}
-        {atual.valor_frete_ida > 0 && (
+        {!concluidaSemReembolso && atual.valor_frete_ida > 0 && (
           <div className="flex justify-between gap-3">
             <dt className="text-zinc-600">Frete de ida</dt>
             <dd className="font-semibold tabular-nums text-zinc-900">
@@ -387,14 +395,25 @@ export function DevolucaoDoPedidoCard({
             </dd>
           </div>
         )}
-        <div className="flex justify-between gap-3">
-          <dt className="text-zinc-600">
-            {atual.valor_reembolso !== null ? "Reembolso" : "Valor"}
-          </dt>
-          <dd className="font-bold tabular-nums text-zinc-900">
-            {formatarReais(atual.valor_reembolso ?? valorTotal)}
-          </dd>
-        </div>
+        {!concluidaSemReembolso && (
+          <div className="flex justify-between gap-3">
+            <dt className="text-zinc-600">
+              {atual.valor_reembolso !== null ? "Reembolso" : "Valor"}
+            </dt>
+            <dd className="font-bold tabular-nums text-zinc-900">
+              {formatarReais(atual.valor_reembolso ?? valorTotal)}
+            </dd>
+          </div>
+        )}
+        {reembolsoAjustado && (
+          <div>
+            <dt className="sr-only">Sobre o valor do reembolso</dt>
+            <dd className="text-xs leading-relaxed text-zinc-600">
+              O valor final do reembolso foi definido pela loja. Em caso de
+              dúvida, fale com a loja.
+            </dd>
+          </div>
+        )}
         <div className="flex justify-between gap-3">
           <dt className="text-zinc-600">
             {atual.resolucao_final ? "Resolvido com" : "Você pediu"}

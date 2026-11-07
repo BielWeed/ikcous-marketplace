@@ -18,11 +18,13 @@
 // erro bruto (que pode carregar o CPF) nunca é logado.
 import { somenteDigitosDoCpf } from "@/lib/cpf";
 import { supabase } from "@/lib/supabase";
+import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 
 export type MotivoFalhaCpf =
   | "sem_sessao"
   | "conta_trocada"
   | "cpf_invalido"
+  | "prazo_esgotado"
   | "falha";
 
 export type ResultadoLeituraCpf =
@@ -68,6 +70,9 @@ export function mensagemFalhaCpf(
   if (motivo === "conta_trocada") {
     return "A conta mudou durante a operação: nada foi salvo. Confira a conta e tente de novo.";
   }
+  if (motivo === "prazo_esgotado") {
+    return "Não deu para confirmar: o dado pode ter sido salvo. Confira sua conta antes de tentar de novo.";
+  }
   const onde = contexto ?? "Perfil > Segurança e conta";
   return `Não foi possível salvar o CPF agora. Tente de novo em ${onde}.`;
 }
@@ -79,7 +84,10 @@ export function mensagemFalhaCpf(
  */
 export async function lerCpfDaConta(): Promise<ResultadoLeituraCpf> {
   try {
-    const { data, error } = await supabase.rpc("get_my_cpf");
+    const { data, error } = await comPrazo(
+      Promise.resolve(supabase.rpc("get_my_cpf")),
+      15_000,
+    );
     if (error) {
       return {
         ok: false,
@@ -87,8 +95,11 @@ export async function lerCpfDaConta(): Promise<ResultadoLeituraCpf> {
       };
     }
     return { ok: true, cpf: (data as string | null) ?? null };
-  } catch {
-    return { ok: false, motivo: "falha" };
+  } catch (erro) {
+    return {
+      ok: false,
+      motivo: erro instanceof PrazoEsgotado ? "prazo_esgotado" : "falha",
+    };
   }
 }
 
@@ -100,11 +111,13 @@ export async function lerCpfDaConta(): Promise<ResultadoLeituraCpf> {
 export function gravarCpfDaConta(
   cpf: string,
   contaEsperada: string,
+  aoChegarDepois?: () => void,
 ): Promise<ResultadoGravacaoCpf> {
   return gravarNaConta(
     "set_my_cpf",
     { p_cpf: somenteDigitosDoCpf(cpf) },
     contaEsperada,
+    aoChegarDepois,
   );
 }
 
@@ -116,19 +129,26 @@ export function gravarPerfilDaConta(
     p_cover_url?: string | null;
   },
   contaEsperada: string,
+  aoChegarDepois?: () => void,
 ): Promise<ResultadoGravacaoCpf> {
-  return gravarNaConta("update_my_profile_secure", args, contaEsperada);
+  return gravarNaConta(
+    "update_my_profile_secure",
+    args,
+    contaEsperada,
+    aoChegarDepois,
+  );
 }
 
 async function gravarNaConta(
   nome: "set_my_cpf" | "update_my_profile_secure",
   args: Parameters<typeof gravarPerfilDaConta>[0] | { p_cpf: string },
   contaEsperada: string,
+  aoChegarDepois?: () => void,
 ): Promise<ResultadoGravacaoCpf> {
   try {
     const {
       data: { session },
-    } = await supabase.auth.getSession();
+    } = await comPrazo(supabase.auth.getSession(), 15_000);
     if (!session) return { ok: false, motivo: "sem_sessao" };
     if (session.user.id !== contaEsperada) {
       return { ok: false, motivo: "conta_trocada" };
@@ -136,10 +156,18 @@ async function gravarNaConta(
     // Outra aba pode trocar o storage enquanto o SDK prepara o fetch. A
     // conta conferida e o token fixado neste pedido vêm do MESMO retrato,
     // sem await entre a comparação e a montagem do envio autenticado.
-    const { error } = await supabase
-      // Os tipos gerados omitem o null aceito pelo COALESCE do perfil.
-      .rpc(nome, args as any)
-      .setHeader("Authorization", `Bearer ${session.access_token}`);
+    const { error } = await comPrazo(
+      Promise.resolve(
+        supabase
+          // Os tipos gerados omitem o null aceito pelo COALESCE do perfil.
+          .rpc(nome, args as any)
+          .setHeader("Authorization", `Bearer ${session.access_token}`),
+      ),
+      20_000,
+      undefined,
+      // Não continua a sequência de gravações depois do prazo: só relê.
+      () => aoChegarDepois?.(),
+    );
     if (error) {
       return {
         ok: false,
@@ -147,7 +175,10 @@ async function gravarNaConta(
       };
     }
     return { ok: true };
-  } catch {
-    return { ok: false, motivo: "falha" };
+  } catch (erro) {
+    return {
+      ok: false,
+      motivo: erro instanceof PrazoEsgotado ? "prazo_esgotado" : "falha",
+    };
   }
 }

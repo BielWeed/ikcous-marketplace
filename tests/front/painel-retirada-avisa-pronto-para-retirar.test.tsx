@@ -272,6 +272,7 @@ describe("Painel — o que a cliente RECEBE também diz 'Pronto para retirar' na
     await act(async () => {
       eventoRealtime.atual?.({
         eventType: "UPDATE",
+        old: { id: ID_DO_PEDIDO, status: pedidoBase.status },
         new: {
           id: ID_DO_PEDIDO,
           status: "shipping",

@@ -80,14 +80,18 @@ vi.mock("@/contexts/StoreContext", () => ({
 // Banners controláveis por caso: `bannersDaLoja.isLoaded` decide se o
 // esqueleto do banner entra em cena (memória da última visita decide se
 // ele NASCE).
+let bannersDoMeio: unknown[] = [];
 let bannersDaLoja: { isLoaded: boolean; banners: unknown[] } = {
   isLoaded: true,
   banners: [],
 };
 vi.mock("@/hooks/useBanners", () => ({
   useBanners: () => ({
-    getBannersByPosition: (pos: string) =>
-      pos === "home_top" ? bannersDaLoja.banners : [],
+    getBannersByPosition: (pos: string) => {
+      if (pos === "home_top") return bannersDaLoja.banners;
+      if (pos === "home_middle") return bannersDoMeio;
+      return [];
+    },
     isLoaded: bannersDaLoja.isLoaded,
   }),
 }));
@@ -438,6 +442,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     configDaLoja = {};
     configCarregada = true;
     bannersDaLoja = { isLoaded: true, banners: [] };
+    bannersDoMeio = [];
     // O jsdom deste runner não entrega localStorage funcional (o hook lê
     // dentro de try/catch e cairia sempre em "1ª visita"): um fake por
     // caso dá o storage que os casos de memória precisam.
@@ -470,6 +475,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
 
   const semearMemoria = (memoria: {
     temBanner: boolean;
+    temBannerMeio?: unknown;
     temOfertas: boolean;
     temBestsellers: boolean;
     layoutOfertas?: "padrao" | "compacto" | "lateral" | "lateral-duplo";
@@ -525,6 +531,71 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     hospedeiro.querySelector('[data-testid="esqueleto-carrossel"]');
   const esqueletoDeBanner = () =>
     hospedeiro.querySelector('[data-testid="esqueleto-banner"]');
+
+  it.each([
+    [false, false],
+    [true, true],
+    [undefined, true],
+    ["false", true],
+  ])(
+    "memória de banner do meio %s: reserva espaço = %s",
+    async (temBannerMeio, reserva) => {
+      semearMemoria({
+        temBanner: false,
+        temBannerMeio,
+        temOfertas: false,
+        temBestsellers: false,
+      });
+      bannersDaLoja = { isLoaded: false, banners: [] };
+      await montar([]);
+      expect(hospedeiro.querySelector(".h-\\[120px\\]") !== null).toBe(reserva);
+    },
+  );
+
+  it("banner do meio recebido da rede aparece mesmo com memória vazia e atualiza a próxima visita", async () => {
+    semearMemoria({
+      temBanner: false,
+      temBannerMeio: false,
+      temOfertas: false,
+      temBestsellers: false,
+    });
+    bannersDaLoja = { isLoaded: false, banners: [] };
+    await montar([]);
+    expect(
+      hospedeiro.querySelector(
+        '[role="region"][aria-label="Destaques e Promoções"]',
+      ),
+    ).toBeNull();
+    bannersDoMeio = [
+      {
+        id: "banner-meio",
+        title: "Novidades do meio da loja",
+        imageUrl: "https://example.com/banner-meio.jpg",
+        position: "home_middle",
+        active: true,
+        order: 1,
+      },
+    ];
+    bannersDaLoja = { isLoaded: true, banners: [] };
+    await montar([]);
+    expect(
+      hospedeiro.querySelector(
+        '[role="region"][aria-label="Destaques e Promoções"] [aria-label="1 de 1: Novidades do meio da loja"]',
+      ),
+    ).not.toBeNull();
+    expect(
+      JSON.parse(window.localStorage.getItem("ikcous_home_memoria")!)
+        .temBannerMeio,
+    ).toBe(true);
+  });
+
+  it("grava ausência de banner do meio quando a rede resolve", async () => {
+    await montar([]);
+    expect(
+      JSON.parse(window.localStorage.getItem("ikcous_home_memoria")!)
+        .temBannerMeio,
+    ).toBe(false);
+  });
 
   it("1ª visita (sem memória): esqueleto de ofertas nasce — aposta de hoje (develop)", async () => {
     // Primeira visita: localStorage sem snapshot. O comportamento é o do

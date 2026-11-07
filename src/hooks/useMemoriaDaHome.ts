@@ -24,6 +24,7 @@ import { useState } from "react";
 // dados e banners da visita atual resolveram.
 export interface MemoriaDaHome {
   temBanner: boolean;
+  temBannerMeio?: boolean;
   temOfertas: boolean;
   temBestsellers: boolean;
   layoutOfertas?: LayoutDeOfertas;
@@ -64,6 +65,10 @@ function parseMemoria(bruto: string | null): MemoriaDaHome | null {
     if (Date.now() - gravadoEm > VALIDADE_MS) return null;
     return {
       temBanner: memo.temBanner,
+      temBannerMeio:
+        typeof memo.temBannerMeio === "boolean"
+          ? memo.temBannerMeio
+          : undefined,
       temOfertas: memo.temOfertas,
       temBestsellers: memo.temBestsellers,
       layoutOfertas: normalizarLayoutDeOfertas(memo.layoutOfertas),

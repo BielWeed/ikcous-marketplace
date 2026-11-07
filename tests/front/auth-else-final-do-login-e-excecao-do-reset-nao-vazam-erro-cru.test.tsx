@@ -372,9 +372,7 @@ describe("AuthContext — resetPassword: exceção fora do protocolo normal do G
     // Mesma frase do ramo "erro genuíno" (if (error), logo acima no código-
     // fonte) — a causa é igualmente desconhecida, então não pode ganhar uma
     // terceira frase inventada.
-    expect(resultado!.message).toMatch(
-      /não foi possível enviar o link de recuperação/i,
-    );
+    expect(resultado!.message).toMatch(/não foi possível enviar o link agora/i);
     expect(consoleErrorSpy).toHaveBeenCalled();
   });
 });

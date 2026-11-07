@@ -1351,16 +1351,18 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
       // Dispara aviso Toast
       if (payload.eventType === "INSERT") {
-        const newId = payload.new?.id;
-        toast.info(`Novo pedido recebido! #${numeroDoPedido(newId)}`, {
-          duration: 10_000,
-          action: {
-            label: "Ver",
-            onClick: () => {
-              if (payload.new) handleSelectOrder(payload.new as Order);
+        if (payload.new?.canal !== "presencial") {
+          const newId = payload.new?.id;
+          toast.info(`Novo pedido recebido! #${numeroDoPedido(newId)}`, {
+            duration: 10_000,
+            action: {
+              label: "Ver",
+              onClick: () => {
+                if (payload.new) handleSelectOrder(payload.new as Order);
+              },
             },
-          },
-        });
+          });
+        }
       } else if (payload.eventType === "UPDATE") {
         const updatedId = payload.new?.id;
         const newStatus = payload.new?.status as OrderStatus;
@@ -1381,12 +1383,14 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         // Só avisa o que a lojista ainda não sabe (ver tipoDoAvisoDoPedido):
         // status igual ao que a tela tinha não é novidade, o que ela mesma
         // acabou de avançar já ganhou o "Status atualizado com sucesso", e
-        // sem o "antes" avisa como sempre.
+        // sem o "antes" avisa sem afirmar mudança de status.
         const tipoDoAviso = tipoDoAvisoDoPedido(payload);
         if (tipoDoAviso === "pagamento") {
           toast.info(
             `Pagamento do pedido #${numeroDoPedido(updatedId)} confirmado`,
           );
+        } else if (tipoDoAviso === "generico") {
+          toast.info(`Pedido #${numeroDoPedido(updatedId)} foi atualizado`);
         } else if (tipoDoAviso === "status") {
           toast.info(
             `Pedido #${numeroDoPedido(updatedId)} atualizado para ${statusConfig[newStatus] ? rotuloDoStatus(newStatus, retirada) : `Status: ${newStatus}`}`,

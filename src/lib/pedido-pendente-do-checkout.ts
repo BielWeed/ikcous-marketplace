@@ -29,6 +29,16 @@
 // tomada PARA aquele usuário (a leitura do pedido, a saída do cliente, o
 // logout) apaga o registro.
 
+/**
+ * O que a cliente lê quando toca em Voltar com o Pix ainda aberto (r55-d): o
+ * Voltar larga a tela e o registro da recarga (de propósito — ver o App), mas o
+ * PEDIDO continua reservado no servidor e retomável. Sem o aviso, quem já
+ * copiou o código e está pagando no banco achava que o pedido se perdeu e
+ * refazia a compra.
+ */
+export const AVISO_PIX_CONTINUA_ABERTO_AO_VOLTAR =
+  "Seu pedido continua reservado, aguardando o Pix. Para pagar ou conferir, abra o pedido em Meus pedidos e toque em Retomar pagamento.";
+
 const PREFIXO_DA_CHAVE = "ikcous:checkout-pedido-pendente:";
 
 // O id de `marketplace_orders` é uuid. Qualquer outra coisa na chave
