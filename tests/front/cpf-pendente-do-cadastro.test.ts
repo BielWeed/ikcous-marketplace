@@ -367,8 +367,9 @@ describe("cpf-pendente-do-cadastro", () => {
       const p1 = retomarCpfPendente({ userId: USER_ID, email: EMAIL });
       const p2 = retomarCpfPendente({ userId: USER_ID, email: EMAIL });
 
-      // A gravação agora obtém o retrato da sessão antes de montar a RPC.
-      await Promise.resolve();
+      // A gravação agora obtém o retrato da sessão antes de montar a RPC:
+      // esperar a chamada de fato (nº de microtarefas varia com a carga).
+      await vi.waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
       resolverRpc!({ data: null, error: null });
       const [r1, r2] = await Promise.all([p1, p2]);
 
