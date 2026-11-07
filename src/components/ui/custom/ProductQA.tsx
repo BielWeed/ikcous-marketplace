@@ -93,7 +93,7 @@ export function ProductQA({
     const versaoEnviada = perguntaVersaoRef.current;
     const enviada = await addQuestion({
       productId,
-      question: newQuestion,
+      question: newQuestion.trim(),
     });
     if (enviada && perguntaVersaoRef.current === versaoEnviada) {
       perguntaVersaoRef.current += 1;
@@ -192,6 +192,7 @@ export function ProductQA({
               placeholder="Escreva sua dúvida sobre o produto..."
               maxLength={500}
               aria-label="Sua dúvida sobre o produto"
+              aria-describedby="qa-question-count"
               enterKeyHint="send"
               className="min-h-[52px] w-full rounded-full border border-border bg-background px-4 py-3 pr-16 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring md:text-sm"
             />
@@ -205,6 +206,16 @@ export function ProductQA({
               <Send className="size-3.5" />
             </button>
           </div>
+          <p
+            id="qa-question-count"
+            aria-live="polite"
+            className={cn(
+              "mt-1 text-right text-xs text-muted-foreground",
+              newQuestion.length >= 450 && "text-red-600",
+            )}
+          >
+            {newQuestion.length}/500 caracteres
+          </p>
         </form>
       ) : (
         <div className="rounded-2xl border border-border bg-muted/30 p-4">

@@ -17,6 +17,11 @@ import {
   reaisComVirgula,
   totalAbertas,
 } from "@/lib/devolucao";
+import {
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type {
   ContagemPorStatus,
@@ -33,6 +38,29 @@ const PAGINA = 50;
 /** Teto de `p_limite` na RPC (LEAST(..., 200)). */
 const LIMITE_MAXIMO = 200;
 const ERRO_GENERICO = "Não foi possível concluir agora. Tente de novo.";
+
+// Prazos da ESPERA da tela (a gravação pode chegar ao servidor depois — por
+// isso, no estouro, a ficha é relida e o aviso manda conferir, nunca diz que
+// "não foi feito"). Rede pendurada conecta e não responde: sem prazo a ficha
+// inteira ficava com os botões apagados, sem frase e sem saída.
+/** RPC de gravação (decidir, registrar, reprovar, concluir, liberar vínculo). */
+const PRAZO_DA_GRAVACAO_MS = 20_000;
+/** Edge com provedor externo por trás (Melhor Envio, Mercado Pago). */
+const PRAZO_DA_EDGE_MS = 30_000;
+/** Releitura da ficha depois de uma ação. */
+const PRAZO_DA_RELEITURA_MS = 15_000;
+
+const TEXTO_SEM_RESPOSTA_DA_ACAO =
+  "Sem resposta da rede. Confira na ficha se a mudança apareceu antes de tentar de novo.";
+const TEXTO_SEM_RESPOSTA_DA_CONCLUSAO =
+  "Sem resposta da rede. Confira na ficha se a devolução foi concluída e se o reembolso aparece antes de tentar de novo.";
+
+/** O AdminLayout escuta este evento e reconta a bolinha vermelha do sino. */
+const EVENTO_RECONTAR_AVISOS = "admin:recontar-avisos";
+
+function pedirRecontagemDoSino() {
+  window.dispatchEvent(new Event(EVENTO_RECONTAR_AVISOS));
+}
 
 /** Mesmo texto do estorno do pedido (useEstornosDoPedido): a linha já existe
  * no ledger e o cron `reconciliar-pagamentos` a executa se o clique falhar. */
@@ -482,30 +510,65 @@ export function useDevolucaoAdmin(
     };
   }, [caminhosDasFotos]);
 
+  /**
+   * Relê a ficha SEM poder prender a trava: a leitura também pode ficar
+   * pendurada, e quem espera por ela (a ação em voo) soltaria os botões só
+   * depois. O prazo limita a espera; a leitura segue e, se chegar, ainda vale
+   * (`carregar` descarta o que ficou velho pela rodada).
+   */
+  const relerFicha = useCallback(async () => {
+    try {
+      await aguardarComPrazo(carregar(), PRAZO_DA_RELEITURA_MS, () =>
+        erroDeConsultaSemResposta(),
+      );
+    } catch {
+      // Sem resposta: a ficha segue como estava e o aviso da ação já disse
+      // para conferir. `carregar` em si nunca rejeita.
+    }
+  }, [carregar]);
+
   /** Envelope comum: trava, RPC, aviso, releitura. */
   const executar = useCallback(
     async <T>(
       qual: AcaoEmVoo,
       chamada: () => PromiseLike<{ data: unknown; error: unknown }>,
       ler: (data: unknown) => T | null,
+      textoDoPrazo: string = TEXTO_SEM_RESPOSTA_DA_ACAO,
     ): Promise<T | null> => {
       if (emVooRef.current) return null;
       emVooRef.current = true;
       setEmVoo(qual);
       try {
-        const { data, error } = await chamada();
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(chamada()),
+          PRAZO_DA_GRAVACAO_MS,
+          () => erroDeConsultaSemResposta(),
+        );
         if (error) {
           // O servidor escreve valores crus ("R$ 120.00"): vira real brasileiro.
           toast.error(reaisComVirgula(mensagemDoErro(error, ERRO_GENERICO)));
-          await carregar();
+          await relerFicha();
           return null;
         }
         const lido = ler(data);
         if (lido === null) toast.error(ERRO_GENERICO);
-        await carregar();
+        await relerFicha();
         aoMudarRef.current?.();
+        pedirRecontagemDoSino();
         return lido;
       } catch (e) {
+        if (ehConsultaSemResposta(e)) {
+          // A gravação pode ter chegado ao servidor: nunca dizer "não foi
+          // feito", nunca repetir sozinho. A trava só solta depois da
+          // releitura, para a repetição só ser possível olhando a ficha real.
+          // A resposta que chegar tarde foi descartada pelo prazo: não vira
+          // aviso de sucesso.
+          toast.warning(textoDoPrazo, { duration: 12_000 });
+          await relerFicha();
+          aoMudarRef.current?.();
+          pedirRecontagemDoSino();
+          return null;
+        }
         toast.error(reaisComVirgula(mensagemDoErro(e, ERRO_GENERICO)));
         return null;
       } finally {
@@ -513,7 +576,7 @@ export function useDevolucaoAdmin(
         setEmVoo(null);
       }
     },
-    [carregar],
+    [relerFicha],
   );
 
   const aprovar = useCallback(
@@ -618,9 +681,12 @@ export function useDevolucaoAdmin(
     emVooRef.current = true;
     setEmVoo("etiqueta");
     try {
-      const { data, error } = await supabase.functions.invoke(
-        "melhor-envio-etiqueta",
-        { body: { action: "gerar_devolucao_reversa", devolucao_id: id } },
+      const { data, error } = await aguardarComPrazo(
+        supabase.functions.invoke("melhor-envio-etiqueta", {
+          body: { action: "gerar_devolucao_reversa", devolucao_id: id },
+        }),
+        PRAZO_DA_EDGE_MS,
+        () => erroDeConsultaSemResposta(),
       );
       // Fora de 2xx o corpo vem em `error.context`; em 2xx, em `data`. Os
       // dois passam pelo mesmo leitor — `resgate` pode vir em qualquer um.
@@ -637,7 +703,7 @@ export function useDevolucaoAdmin(
           toast.error(`${base} ${AVISO_RESGATE_ETIQUETA}`, {
             duration: 15_000,
           });
-          await carregar();
+          await relerFicha();
         } else {
           toast.error(base);
         }
@@ -661,17 +727,28 @@ export function useDevolucaoAdmin(
       // sucesso e o lojista nunca sabia que faltava buscar a DC-e ou avisar
       // o cliente do código vencido.
       if (aviso) toast.warning(aviso, { duration: 15_000 });
-      await carregar();
+      await relerFicha();
       aoMudarRef.current?.();
       return true;
     } catch (e) {
+      if (ehConsultaSemResposta(e)) {
+        // A compra do código pode ter saído (e ter sido cobrada): a ficha é
+        // relida (o código pode ter sido gravado) e o lojista confere antes
+        // de repetir. Nunca "não foi feito".
+        toast.warning(
+          `Sem resposta da rede. Confira na ficha se o código de postagem apareceu. ${AVISO_RESGATE_ETIQUETA}`,
+          { duration: 15_000 },
+        );
+        await relerFicha();
+        return false;
+      }
       toast.error(mensagemDoErro(e, ERRO_GENERICO));
       return false;
     } finally {
       emVooRef.current = false;
       setEmVoo(null);
     }
-  }, [id, carregar]);
+  }, [id, relerFicha]);
 
   const liberarVinculoReverso = useCallback(async () => {
     if (!id) return false;
@@ -727,6 +804,7 @@ export function useDevolucaoAdmin(
             p_observacao: observacao.trim() || null,
           }),
         lerResultadoConclusao,
+        TEXTO_SEM_RESPOSTA_DA_CONCLUSAO,
       );
       if (!r) return null;
 
@@ -741,16 +819,29 @@ export function useDevolucaoAdmin(
         // Falha aqui NÃO é falha da devolução: a linha está em
         // `order_refunds` e o cron a executa com a mesma idempotência.
         try {
-          const { data, error } = await supabase.functions.invoke(
-            "estornar-pagamento",
-            { body: { refund_id: r.refund_id } },
+          const { data, error } = await aguardarComPrazo(
+            supabase.functions.invoke("estornar-pagamento", {
+              body: { refund_id: r.refund_id },
+            }),
+            PRAZO_DA_EDGE_MS,
+            () => erroDeConsultaSemResposta(),
           );
           if (error) toast.info(TEXTO_REEMBOLSO_NA_FILA + estoque);
           else avisarDesfechoDoReembolso(statusDaEdge(data), valor, estoque);
-        } catch {
-          toast.info(TEXTO_REEMBOLSO_NA_FILA + estoque);
+        } catch (e) {
+          if (ehConsultaSemResposta(e)) {
+            // O Mercado Pago pode ter devolvido o dinheiro: nada de "não
+            // saiu" nem de repetir às cegas. A ficha é relida logo abaixo e
+            // mostra a situação real do reembolso.
+            toast.info(
+              `Devolução concluída. O Mercado Pago não respondeu a tempo: o reembolso de ${valor} pode já ter saído. Veja a situação logo abaixo, nesta devolução, antes de tentar de novo.${estoque}`,
+              { duration: 15_000 },
+            );
+          } else {
+            toast.info(TEXTO_REEMBOLSO_NA_FILA + estoque);
+          }
         }
-        await carregar();
+        await relerFicha();
       } else if (r.reembolso_manual) {
         toast.warning(
           `Devolução concluída. O reembolso não saiu pelo Mercado Pago: combine com o cliente a devolução de ${valor}, em mãos ou por PIX.${estoque}`,
@@ -761,7 +852,7 @@ export function useDevolucaoAdmin(
       }
       return r;
     },
-    [id, executar, carregar],
+    [id, executar, relerFicha],
   );
 
   return {

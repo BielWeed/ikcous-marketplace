@@ -840,7 +840,7 @@ export function AdminLayout({
   const isSubView = parentView !== "profile" || isOrderDetailsSubView;
 
   useDocumentMeta({
-    title: `${nomeDaLoja(config)} | Admin Dashboard`,
+    title: `${Object.hasOwn(NOMES_DO_PAINEL, currentView) ? NOMES_DO_PAINEL[currentView as keyof typeof NOMES_DO_PAINEL] : "Painel"} | ${nomeDaLoja(config)}`,
     names: { description: "Sistema de navegação unificada e operação." },
     properties: { "og:title": `${nomeDaLoja(config)} Admin` },
   });
@@ -1243,6 +1243,8 @@ export function AdminLayout({
 
         {/* Main Content Area */}
         <main
+          id="conteudo-do-painel"
+          tabIndex={-1}
           className="w-full flex-1 overflow-x-hidden bg-admin-bg"
           style={
             {

@@ -320,6 +320,44 @@ afterEach(() => {
 });
 
 describe("salvar estoque confere a versão lida na abertura", () => {
+  it("rede caiu e produto fora do cache: recusa real do hook mantém edição e rascunho", async () => {
+    await montar();
+    await digitar("product-name", "Camiseta editada");
+    const chave = chaveDoRascunhoDoProduto("lojista-1", "p-1")!;
+    localStorage.setItem(chave, JSON.stringify({ name: "Camiseta editada" }));
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    // O formulário já carregou; a releitura do hook agora encontra a rede caída.
+    const { supabase } = await import("@/lib/supabase");
+    vi.spyOn(supabase, "from").mockImplementationOnce(
+      () =>
+        ({
+          select: () => ({
+            eq: () => ({
+              is: () => ({
+                single: async () => {
+                  throw new TypeError("Failed to fetch");
+                },
+              }),
+            }),
+          }),
+        }) as never,
+    );
+    await salvar();
+
+    expect(banco.toastError).toHaveBeenCalledWith(
+      "Sem conexão e a versão atual deste produto não está neste aparelho. A alteração não foi guardada — conecte-se e tente de novo.",
+    );
+    expect(banco.gravacoes).toBe(0);
+    expect(host.textContent).not.toContain("Salvo · voltando à lista");
+    expect(localStorage.getItem(chave)).not.toBeNull();
+    expect(
+      [...host.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "Salvar alterações",
+      )?.disabled,
+    ).toBe(false);
+    expect(navegar).not.toHaveBeenCalled();
+  });
+
   it("online com grade faz uma só RPC, sem PATCH nem upsert avulso", async () => {
     banco.variacoes = [
       {

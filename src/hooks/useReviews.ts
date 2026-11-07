@@ -7,6 +7,11 @@ import {
   updateReviewsCacheSeMesmaGeracao,
 } from "@/lib/cache-de-avaliacoes";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
+import {
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { Review } from "@/types";
 import { cachedReviewsData, setCachedReviewsData } from "@/utils/admin_cache";
@@ -31,6 +36,8 @@ const bc = criarCanalDeAbas("ikcous_reviews_sync");
  * completo segue vivo no console.error de quem chamou.
  */
 const mensagemAmigavelErroAvaliacao = (error: unknown): string => {
+  if (ehConsultaSemResposta(error))
+    return "A conexão está lenta. Sua avaliação pode ter sido recebida. Confira antes de tentar de novo.";
   const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
   const codigo = typeof detalhes.code === "string" ? detalhes.code : "";
   const textoOriginal =
@@ -171,20 +178,26 @@ export function useReviews() {
         // logado continua lendo a tabela direto, comportamento inalterado.
         const anonimo = !user;
 
-        const { data, error } = anonimo
-          ? await supabase
-              .from("vw_reviews_public" as any)
-              .select("*")
-              .eq("product_id", productId)
-              .order("created_at", { ascending: false })
-          : await supabase
-              .from("reviews" as any)
-              .select(`
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            anonimo
+              ? supabase
+                  .from("vw_reviews_public" as any)
+                  .select("*")
+                  .eq("product_id", productId)
+                  .order("created_at", { ascending: false })
+              : supabase
+                  .from("reviews" as any)
+                  .select(`
           *,
           user:public_profiles(full_name, avatar_url)
         `)
-              .eq("product_id", productId)
-              .order("created_at", { ascending: false });
+                  .eq("product_id", productId)
+                  .order("created_at", { ascending: false }),
+          ),
+          15000,
+          erroDeConsultaSemResposta,
+        );
 
         if (!atual()) return;
         if (error) throw error;
@@ -231,14 +244,20 @@ export function useReviews() {
         // dizem quais botões já devem nascer marcados, numa consulta em lote.
         if (user && formattedReviews.length > 0) {
           try {
-            const { data: votos, error: erroDosVotos } = await supabase
-              .from("review_votes")
-              .select("review_id")
-              .eq("user_id", user.id)
-              .in(
-                "review_id",
-                formattedReviews.map((review) => review.id),
-              );
+            const { data: votos, error: erroDosVotos } = await aguardarComPrazo(
+              Promise.resolve(
+                supabase
+                  .from("review_votes")
+                  .select("review_id")
+                  .eq("user_id", user.id)
+                  .in(
+                    "review_id",
+                    formattedReviews.map((review) => review.id),
+                  ),
+              ),
+              15000,
+              erroDeConsultaSemResposta,
+            );
             if (!atual()) return;
             if (erroDosVotos) throw erroDosVotos;
             setVotosUteis((atuais) => {
@@ -306,23 +325,29 @@ export function useReviews() {
       }
       */
 
-        const { data, error } = await supabase
-          .from("reviews" as any)
-          .insert({
-            product_id: review.productId,
-            user_id: user.id,
-            rating: review.rating,
-            comment: review.comment,
-            // Item 8 do laudo de 29/08: a "Moderação Ativa" é real — toda
-            // avaliação nova nasce PENDENTE e só vai ao ar quando a loja
-            // aprova (migration 20261031000000: o público não lê pendente;
-            // o próprio autor vê a sua). O selo "Verificado" é derivado da
-            // compra pelas triggers da 20261030000000, independentemente do
-            // status de moderação.
-            status: "pendente",
-          })
-          .select()
-          .single();
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("reviews" as any)
+              .insert({
+                product_id: review.productId,
+                user_id: user.id,
+                rating: review.rating,
+                comment: review.comment,
+                // Item 8 do laudo de 29/08: a "Moderação Ativa" é real — toda
+                // avaliação nova nasce PENDENTE e só vai ao ar quando a loja
+                // aprova (migration 20261031000000: o público não lê pendente;
+                // o próprio autor vê a sua). O selo "Verificado" é derivado da
+                // compra pelas triggers da 20261030000000, independentemente do
+                // status de moderação.
+                status: "pendente",
+              })
+              .select()
+              .single(),
+          ),
+          15000,
+          erroDeConsultaSemResposta,
+        );
 
         if (error) throw error;
 
@@ -340,6 +365,29 @@ export function useReviews() {
       } catch (error: any) {
         console.error("Error adding review:", error);
         toast.error(mensagemAmigavelErroAvaliacao(error));
+        if (ehConsultaSemResposta(error) && user) {
+          try {
+            const { data: conferida, error: erroDaConferencia } =
+              await aguardarComPrazo(
+                Promise.resolve(
+                  supabase
+                    .from("reviews" as any)
+                    .select("id")
+                    .eq("product_id", review.productId)
+                    .eq("user_id", user.id)
+                    .limit(1)
+                    .maybeSingle(),
+                ),
+                15000,
+                erroDeConsultaSemResposta,
+              );
+            // ReviewForm usa a confirmação para fechar a folha e marcar o item
+            // como Avaliado no pedido, sem permitir reenviar o mesmo rascunho.
+            if (!erroDaConferencia && conferida) return conferida;
+          } catch {
+            // O aviso de recebimento incerto continua valendo.
+          }
+        }
         return null;
       } finally {
         desmarcar();

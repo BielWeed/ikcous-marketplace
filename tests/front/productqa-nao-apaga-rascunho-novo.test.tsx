@@ -159,6 +159,23 @@ describe("ProductQA — conclusão pertence ao rascunho enviado", () => {
     expect(campo("qa-new-question").value).toBe("Rascunho B");
   });
 
+  it("mostra o limite acessível e envia sem espaços nas pontas", async () => {
+    digitar("qa-new-question", "  Minha dúvida  ");
+    const contador = hospedeiro.querySelector('[aria-live="polite"]');
+    expect(contador?.textContent).toContain("16/500");
+    expect(campo("qa-new-question").getAttribute("aria-describedby")).toBe(
+      contador?.id,
+    );
+    clicar("Enviar pergunta");
+    expect(addQuestion).toHaveBeenCalledWith({
+      productId: "produto-ficticio",
+      question: "Minha dúvida",
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+  });
+
   it("limpa pergunta inalterada após sucesso", async () => {
     const envio = pendente<Question | null>();
     addQuestion.mockReturnValue(envio.promessa);

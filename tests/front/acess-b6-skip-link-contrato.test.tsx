@@ -16,6 +16,7 @@
 // <main> sem navegar (sem popstate, sem somar entrada de histórico). O
 // contrato textual continua útil como trava BARATA de marcação; a trava de
 // comportamento é o teste de render.
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const FONTES = import.meta.glob<string>("/src/App.tsx", {
@@ -40,22 +41,51 @@ describe("o glob casou /src/App.tsx (nada de prova vazia)", () => {
 describe("B6 — skip link é o primeiro focável do app", () => {
   it('existe <a href="#conteudo"> com o texto "Pular para o conteúdo", invisível até focar', () => {
     const src = fonte(APP);
-    // Entre `href` e `className` mora o `onClick` (rodada 2: preventDefault +
-    // foco por JS, para não navegar). Recorte por índice, não por regex
-    // atravessando a tag: a fatia entre `<a href="#conteudo"` e o texto tem de
-    // ser a PRÓPRIA tag de abertura — sem nenhum outro `<` no meio — senão a
-    // classe lida seria de outro elemento (laudo Opus rodada 2, anotado 1).
+    // O onClick contém TypeScript: "<HTMLElement>" é um tipo, não outra
+    // tag HTML. O parser lê os atributos do próprio link, nunca os de um
+    // elemento vizinho (o defeito que esta trava sempre protegeu).
     const posSkip = src.search(/<a\s+href="#conteudo"/);
     expect(posSkip, 'não achei o <a href="#conteudo">').toBeGreaterThan(-1);
     const posTexto = src.indexOf("Pular para o conteúdo", posSkip);
     expect(posTexto, "não achei o texto do skip link").toBeGreaterThan(-1);
-    const tag = src.slice(posSkip + 1, posTexto);
-    expect(
-      tag.includes("<"),
-      'há outra tag entre <a href="#conteudo"> e o texto — a classe seria de outro elemento',
-    ).toBe(false);
+    const arquivo = ts.createSourceFile(
+      "App.tsx",
+      src,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX,
+    );
+    let classes = "";
+    const visitar = (no: ts.Node) => {
+      if (ts.isJsxOpeningElement(no) && no.tagName.getText(arquivo) === "a") {
+        const atributos = no.attributes.properties;
+        const ehLink = atributos.some(
+          (atributo) =>
+            ts.isJsxAttribute(atributo) &&
+            atributo.name.getText(arquivo) === "href" &&
+            atributo.initializer &&
+            ts.isStringLiteral(atributo.initializer) &&
+            atributo.initializer.text === "#conteudo",
+        );
+        if (ehLink) {
+          const classe = atributos.find(
+            (atributo) =>
+              ts.isJsxAttribute(atributo) &&
+              atributo.name.getText(arquivo) === "className",
+          );
+          if (
+            classe &&
+            ts.isJsxAttribute(classe) &&
+            classe.initializer &&
+            ts.isStringLiteral(classe.initializer)
+          )
+            classes = classe.initializer.text;
+        }
+      }
+      ts.forEachChild(no, visitar);
+    };
+    visitar(arquivo);
     expect(src.slice(posTexto)).toMatch(/^Pular para o conteúdo\s*<\/a>/);
-    const classes = tag.match(/className="([^"]+)"/)?.[1] ?? "";
     expect(classes.startsWith("sr-only focus:not-sr-only")).toBe(true);
     // Anel de foco com contraste (laudo Opus rodada 1: admin-gold dava 1,63:1;
     // zinc-900 sobre branco dá 17,7:1). Guarda a correção como invariante.

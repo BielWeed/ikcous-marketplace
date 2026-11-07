@@ -185,19 +185,27 @@ export function usePedidosDePrivacidadeAdmin(): UsePedidosDePrivacidadeAdmin {
         if (error) {
           // 55000 = o gatilho do banco recusou: o pedido já tinha sido decidido.
           const falha = classificarFalhaDaDecisao(error);
-          if (falha === "ja_decidido") await recarregar();
+          if (falha === "ja_decidido") {
+            await recarregar();
+            pedirRecontagemDoSino();
+          }
           return { ok: false, falha };
         }
         if (!data || data.length === 0) {
           await recarregar();
+          pedirRecontagemDoSino();
           return { ok: false, falha: "ja_decidido" };
         }
         await recarregar();
+        pedirRecontagemDoSino();
         return { ok: true };
       } catch (erro) {
         // A resposta pode ter sido salva. A releitura não deve prolongar a
         // espera da confirmação se a rede continuar sem responder.
-        if (erro instanceof PrazoEsgotado) void recarregar();
+        if (erro instanceof PrazoEsgotado) {
+          void recarregar();
+          pedirRecontagemDoSino();
+        }
         return { ok: false, falha: classificarFalhaDaDecisao(erro) };
       } finally {
         decidindoRef.current = false;
@@ -217,6 +225,15 @@ export function usePedidosDePrivacidadeAdmin(): UsePedidosDePrivacidadeAdmin {
     recarregar,
     decidir,
   };
+}
+
+/**
+ * A bolinha vermelha do sino conta pedidos de privacidade abertos, mas não há
+ * canal em tempo real para essa tabela: o AdminLayout só reconta ao ouvir este
+ * evento. Sem ele, responder o último pedido deixava o aviso falso aceso.
+ */
+function pedirRecontagemDoSino() {
+  window.dispatchEvent(new Event("admin:recontar-avisos"));
 }
 
 function classificarFalhaDaDecisao(erro: unknown): FalhaDaDecisao {

@@ -232,7 +232,10 @@ describe("AdminProductFormView — dados do produto", () => {
       },
     });
     mocks.rpc.mockResolvedValue({ data: { encontrado: false }, error: null });
-    mocks.updateProduct.mockResolvedValue(undefined);
+    mocks.updateProduct.mockImplementation(async (_id, updates) => ({
+      ...produtoDoBanco(),
+      ...updates,
+    }));
     mocks.upsertVariants.mockResolvedValue(undefined);
     mocks.deleteVariants.mockResolvedValue(true);
     mocks.salvarProdutoComGrade.mockResolvedValue({

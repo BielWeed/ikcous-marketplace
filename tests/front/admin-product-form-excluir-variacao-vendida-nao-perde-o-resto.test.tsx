@@ -144,7 +144,6 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
     // Regressão do fluxo legado, mantido offline; RPC online é coberta
     // com hook real em admin-product-form-estoque-concorrente.
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
-    updateProduct.mockResolvedValue(undefined);
     upsertVariants.mockResolvedValue(undefined);
     deleteVariants.mockResolvedValue(true);
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -169,7 +168,7 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
   });
 
   async function montarProduto(variants: unknown[]) {
-    fetchProduct.mockResolvedValue({
+    const produto = {
       id: "p-1",
       name: "Camiseta",
       description: "Algodão",
@@ -182,7 +181,12 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
       isBestseller: false,
       isActive: true,
       variants,
-    });
+    };
+    fetchProduct.mockResolvedValue(produto);
+    updateProduct.mockImplementation(async (_id, updates) => ({
+      ...produto,
+      ...updates,
+    }));
     const { AdminProductFormView } = await import(
       "@/views/admin/AdminProductFormView"
     );
@@ -341,9 +345,13 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
     await salvar();
 
     expect(deleteVariants).toHaveBeenCalledTimes(1);
-    // A Rosa já foi gravada no primeiro Salvar e não foi mexida de novo: o
-    // segundo não a regrava (e muito menos tenta apagar a Azul outra vez).
-    expect(upsertVariants).toHaveBeenCalledTimes(1);
+    // O produto foi gravado antes da recusa: a repetição manda os dados
+    // completos, mas não repõe estoque que não foi editado depois da releitura.
+    expect(upsertVariants).toHaveBeenCalledTimes(2);
+    const segundoLote = upsertVariants.mock.calls[1][1] as Array<
+      Record<string, unknown>
+    >;
+    expect(segundoLote.every((v) => !("stockIncrement" in v))).toBe(true);
   });
 
   it("caminho feliz intacto: tudo apagado e gravado sai para a lista de produtos", async () => {
@@ -460,10 +468,12 @@ describe("AdminProductFormView — excluir variação vendida não perde o resto
     }>;
     // Nenhuma linha com id provisório: nada vai ser inserido de novo.
     expect(segundoLote.filter((v) => v.id.startsWith("temp-"))).toEqual([]);
-    // A Verde já está no banco com o id real e não foi mexida desde a releitura:
-    // não vai de novo (nem com o id provisório, que a inseriria em duplicata).
+    // A repetição após salvar parcialmente pode reenviar os dados completos,
+    // mas usa o id já gravado e não manda estoque que não foi mexido.
     const verdes = segundoLote.filter((v) => v.value === "Verde");
-    expect(verdes).toEqual([]);
+    expect(verdes).toHaveLength(1);
+    expect(verdes[0].id).toBe("v-verde-real");
+    expect(verdes[0]).not.toHaveProperty("stockIncrement");
     expect(segundoLote.find((v) => v.id === "v2")?.active).toBe(false);
   });
 

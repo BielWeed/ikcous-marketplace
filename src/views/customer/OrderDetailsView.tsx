@@ -38,6 +38,10 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { podeReenviarComprovante } from "@/lib/pode-reenviar-comprovante";
 import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 import {
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
+import {
   lerRetratoDoConvidado,
   limparRetratoDoConvidado,
   textoDoRetrato,
@@ -515,6 +519,7 @@ export function OrderDetailsView({
   // "0 de N" nem se oferece avaliar (a cliente avaliaria o mesmo produto de
   // novo). `tentativaDeConferir` refaz a consulta pelo botão "Tentar de novo".
   const [conferenciaFalhou, setConferenciaFalhou] = useState(false);
+  const [conferindoAvaliacoes, setConferindoAvaliacoes] = useState(true);
   const [tentativaDeConferir, setTentativaDeConferir] = useState(0);
   const [reviewingItem, setReviewingItem] = useState<{
     productId: string;
@@ -883,6 +888,7 @@ export function OrderDetailsView({
   useEffect(() => {
     setReviewedProductIds(new Set());
     setConferenciaFalhou(false);
+    setConferindoAvaliacoes(true);
   }, [pedidoIdAtual]);
 
   useEffect(() => {
@@ -893,6 +899,7 @@ export function OrderDetailsView({
     let cancelado = false;
 
     const checkIfReviewed = async () => {
+      setConferindoAvaliacoes(true);
       try {
         // Item sem produto vinculado (`productId` vazio: o produto saiu do
         // catálogo) não tem como ser avaliado e não entra na consulta. Sem
@@ -906,18 +913,26 @@ export function OrderDetailsView({
           setConferenciaFalhou(false);
           return;
         }
-        const { data, error } = await supabase
-          .from("reviews" as any)
-          .select("product_id")
-          .eq("user_id", user.id)
-          .in("product_id", productIds);
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("reviews" as any)
+              .select("product_id")
+              .eq("user_id", user.id)
+              .in("product_id", productIds),
+          ),
+          15000,
+          erroDeConsultaSemResposta,
+        );
 
         if (cancelado) return;
         if (!error && data) {
           const reviewedSet = new Set<string>(
             data.map((r: any) => r.product_id),
           );
-          setReviewedProductIds(reviewedSet);
+          setReviewedProductIds(
+            (atuais) => new Set([...atuais, ...reviewedSet]),
+          );
           setConferenciaFalhou(false);
         } else {
           setConferenciaFalhou(true);
@@ -927,6 +942,8 @@ export function OrderDetailsView({
           console.error("Failed to check existing reviews:", e);
           setConferenciaFalhou(true);
         }
+      } finally {
+        if (!cancelado) setConferindoAvaliacoes(false);
       }
     };
 
@@ -935,7 +952,8 @@ export function OrderDetailsView({
     return () => {
       cancelado = true;
     };
-  }, [user, order, tentativaDeConferir]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, order, tentativaDeConferir]);
 
   // Brief "o app não mente quando copia" (08/09/2026): copiava sem
   // await/catch e já comemorava mesmo quando a cópia falhava (permissão
@@ -1636,7 +1654,7 @@ export function OrderDetailsView({
               >
                 O que achou da compra?
               </h4>
-              {!conferenciaFalhou && (
+              {!conferenciaFalhou && !conferindoAvaliacoes && (
                 <span className="flex-shrink-0 text-xs font-semibold text-zinc-500">
                   {totalProdutosAvaliados} de {produtosParaAvaliar.length}{" "}
                   avaliados
@@ -1644,7 +1662,11 @@ export function OrderDetailsView({
               )}
             </div>
 
-            {conferenciaFalhou ? (
+            {conferindoAvaliacoes ? (
+              <p role="status" className="text-sm text-zinc-600">
+                Conferindo suas avaliações...
+              </p>
+            ) : conferenciaFalhou ? (
               <div role="alert" className="space-y-3">
                 <p className="text-sm font-medium text-zinc-600">
                   Não deu para conferir suas avaliações agora.

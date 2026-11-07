@@ -119,7 +119,6 @@ describe("AdminProductFormView — recortar ou excluir foto acerta a variação"
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
-    updateProduct.mockResolvedValue(undefined);
     upsertVariants.mockResolvedValue(undefined);
     uploadProductImages.mockResolvedValue([FOTO_A_RECORTADA]);
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -154,7 +153,7 @@ describe("AdminProductFormView — recortar ou excluir foto acerta a variação"
 
   // Produto com 2 fotos; Rosa usa a foto A, Azul usa a B, Verde não usa foto.
   async function montar() {
-    fetchProduct.mockResolvedValue({
+    const produto = {
       id: "p-1",
       name: "Camiseta",
       description: "Algodão",
@@ -171,7 +170,12 @@ describe("AdminProductFormView — recortar ou excluir foto acerta a variação"
         variacao("v2", "Azul", FOTO_B),
         variacao("v3", "Verde"),
       ],
-    });
+    };
+    fetchProduct.mockResolvedValue(produto);
+    updateProduct.mockImplementation(async (_id, updates) => ({
+      ...produto,
+      ...updates,
+    }));
     const { AdminProductFormView } = await import(
       "@/views/admin/AdminProductFormView"
     );
