@@ -33,6 +33,7 @@ vi.mock("@/lib/supabase", () => ({
       getUser: vi.fn(),
       onAuthStateChange: vi.fn(),
       signOut: vi.fn(),
+      updateUser: vi.fn(),
       resetPasswordForEmail: vi.fn(),
       resend: vi.fn(),
     },
@@ -122,10 +123,26 @@ describe("AuthContext + AuthView — link de recuperação vencido e reenvio con
     (
       supabase.auth.getSession as unknown as ReturnType<typeof vi.fn>
     ).mockResolvedValue({ data: { session: null }, error: null });
-    (
-      supabase.auth.onAuthStateChange as unknown as ReturnType<typeof vi.fn>
-    ).mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } });
-
+    let emitirAuth: (evento: string, sessao: unknown) => unknown = () => {};
+    vi.mocked(supabase.auth.onAuthStateChange).mockImplementation(
+      (callback: any) => {
+        emitirAuth = callback;
+        return {
+          data: {
+            subscription: {
+              id: "assinatura-ficticia",
+              callback,
+              unsubscribe: vi.fn(),
+            },
+          },
+        };
+      },
+    );
+    vi.mocked(supabase.rpc).mockResolvedValue({
+      data: false,
+      error: null,
+    } as never);
+    const aoNavegar = vi.fn();
     const aoAtualizar = vi.fn();
     function Sonda() {
       const ctx = useContext(AuthContext) as unknown as Estado;
@@ -144,7 +161,7 @@ describe("AuthContext + AuthView — link de recuperação vencido e reenvio con
       raiz.render(
         <AuthProvider>
           <Sonda />
-          {AuthView ? <AuthView onNavigate={vi.fn()} /> : null}
+          {AuthView ? <AuthView onNavigate={aoNavegar} /> : null}
         </AuthProvider>,
       );
     });
@@ -153,11 +170,144 @@ describe("AuthContext + AuthView — link de recuperação vencido e reenvio con
     });
     return {
       supabase,
+      emitir: async (evento: string, sessao: unknown) => {
+        await act(async () => {
+          void emitirAuth(evento, sessao);
+          await esperarMicrotarefas();
+        });
+      },
+      aoNavegar,
       estado: () => aoAtualizar.mock.calls.at(-1)?.[0] as Estado,
     };
   }
 
+  async function enviarNovaSenha() {
+    for (const id of ["password", "password-confirmacao"]) {
+      const campo = hospedeiro.querySelector<HTMLInputElement>(`#${id}`)!;
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value",
+      )!.set!;
+      await act(async () => {
+        setter.call(campo, "Senha-ficticia-123");
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+    await act(async () => {
+      hospedeiro
+        .querySelector("form")!
+        .dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        );
+      await esperarMicrotarefas();
+    });
+  }
+
   describe("A) link de recuperação", () => {
+    it.each(["ausente", "ainda em memória"])(
+      "link sem sessão válida (%s): a recusa abre Recuperar e permite pedir outro link",
+      async (sessaoLocal) => {
+        const { supabase, estado, aoNavegar, emitir } = await montarComEndereco(
+          "/auth?type=recovery",
+          true,
+        );
+        if (sessaoLocal === "ainda em memória") {
+          await emitir("PASSWORD_RECOVERY", {
+            access_token: "token-ficticio",
+            user: {
+              id: "conta-ficticia",
+              email: "pessoa-ficticia@example.com",
+            },
+          });
+        }
+        vi.mocked(supabase.auth.updateUser).mockResolvedValue({
+          data: { user: null },
+          error: {
+            name: "AuthSessionMissingError",
+            message: "Auth session missing!",
+          },
+        } as never);
+        await enviarNovaSenha();
+
+        expect(estado().isPasswordRecovery).toBe(false);
+        expect(hospedeiro.textContent).not.toContain("ATUALIZAR SENHA");
+        expect(hospedeiro.textContent).toContain("Recuperar");
+        expect(hospedeiro.textContent).toContain(
+          "Este link expirou ou já foi usado",
+        );
+        expect(hospedeiro.textContent).toContain("SOLICITAR LINK");
+        expect(aoNavegar).not.toHaveBeenCalledWith("profile");
+
+        vi.mocked(supabase.auth.resetPasswordForEmail).mockResolvedValue({
+          data: {},
+          error: null,
+        });
+        const campo = hospedeiro.querySelector<HTMLInputElement>("#email")!;
+        await act(async () => {
+          Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype,
+            "value",
+          )!.set!.call(campo, "pessoa-ficticia@example.com");
+          campo.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        await act(async () => {
+          hospedeiro
+            .querySelector("form")!
+            .dispatchEvent(
+              new Event("submit", { bubbles: true, cancelable: true }),
+            );
+          await esperarMicrotarefas();
+        });
+        expect(hospedeiro.textContent).toContain(
+          "Se este e-mail estiver cadastrado",
+        );
+        expect(aoNavegar).not.toHaveBeenCalledWith("profile");
+      },
+    );
+
+    it("a sessão acaba em outra aba: sai de Nova Senha e oferece um novo link", async () => {
+      const { emitir } = await montarComEndereco("/auth?type=recovery", true);
+      await emitir("PASSWORD_RECOVERY", {
+        access_token: "token-ficticio",
+        user: { id: "conta-ficticia", email: "pessoa-ficticia@example.com" },
+      });
+      expect(hospedeiro.textContent).toContain("ATUALIZAR SENHA");
+      await emitir("SIGNED_OUT", null);
+
+      expect(hospedeiro.textContent).not.toContain("ATUALIZAR SENHA");
+      expect(hospedeiro.textContent).toContain(
+        "Este link expirou ou já foi usado",
+      );
+      expect(hospedeiro.textContent).toContain("SOLICITAR LINK");
+    });
+
+    it("controle: sessão válida do link que chega depois mantém Nova Senha e conclui a troca", async () => {
+      const { supabase, emitir, aoNavegar } = await montarComEndereco(
+        "/auth?type=recovery",
+        true,
+      );
+      const user = {
+        id: "conta-ficticia",
+        email: "pessoa-ficticia@example.com",
+      };
+      await emitir("PASSWORD_RECOVERY", {
+        access_token: "token-ficticio",
+        user,
+      });
+      vi.mocked(supabase.auth.updateUser).mockResolvedValue({
+        data: { user },
+        error: null,
+      } as never);
+
+      expect(hospedeiro.textContent).toContain("ATUALIZAR SENHA");
+      expect(hospedeiro.textContent).not.toContain("Este link expirou");
+      await enviarNovaSenha();
+      expect(aoNavegar).toHaveBeenCalledWith("profile");
+      expect(toast.success).toHaveBeenCalledWith(
+        "Senha atualizada com sucesso!",
+      );
+    });
+
     it("caminho que funciona: '?type=recovery' sem erro entra em nova senha, como antes", async () => {
       const { estado } = await montarComEndereco("/auth?type=recovery", true);
 

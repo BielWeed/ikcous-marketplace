@@ -142,7 +142,7 @@ describe("AdminOrdersView — loja sem pedido nenhum vs filtro vazio", () => {
     expect(hospedeiro.textContent).not.toContain("Pode ser o filtro de status");
   });
 
-  it("loja COM pedidos e lista vazia por filtro: mantém a orientação de filtro de sempre", async () => {
+  it("loja COM pedidos e Em Aberto vazio, sem mais nenhum filtro: diz que não há nada para preparar, sem culpar o filtro", async () => {
     mockOrders = [];
     mockTotalOrders = 0;
     totalAbsolutoNoBanco = 83;
@@ -155,7 +155,17 @@ describe("AdminOrdersView — loja sem pedido nenhum vs filtro vazio", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
 
-    expect(hospedeiro.textContent).toContain("Nenhum pedido neste recorte");
+    // Achado 14: filtro padrão (Em Aberto), sem busca, período, canal nem
+    // pagamento. A causa é certa: não há pedido em aberto. Não é "recorte"
+    // nem "filtro errado", e a saída não é "limpar filtros".
+    expect(hospedeiro.textContent).toContain("Nada para preparar agora");
+    expect(hospedeiro.textContent).toContain(
+      "Os finalizados e cancelados continuam em Todos",
+    );
+    expect(hospedeiro.textContent).not.toContain("Nenhum pedido neste recorte");
+    expect(hospedeiro.textContent).not.toContain("Pode ser o filtro de status");
+    expect(hospedeiro.textContent).not.toContain("Limpar busca e filtros");
+    expect(hospedeiro.textContent).toContain("Ver todos os pedidos");
     expect(hospedeiro.textContent).not.toContain(
       "Seus pedidos vão aparecer aqui",
     );

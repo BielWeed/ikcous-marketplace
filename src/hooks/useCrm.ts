@@ -1,6 +1,7 @@
 import { type DashboardStats, useAnalytics } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
+import { useRevalidarAoVoltar } from "@/hooks/useRevalidarAoVoltar";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import {
   lerClientesDoCrm,
@@ -32,6 +33,7 @@ interface VisaoEmCache {
 
 // Cache por intervalo: voltar a um chip já visto mostra o número na hora.
 const cacheDaVisao = new Map<string, VisaoEmCache>();
+const leiturasDaVisaoEmVoo = new Map<string, symbol>();
 
 function guardarNoCache(chave: string, valor: VisaoEmCache) {
   cacheDaVisao.delete(chave);
@@ -70,6 +72,13 @@ export function useCrmVisao(
   // O último pedido de recarga que já foi atendido: um número novo força a
   // consulta mesmo com o cache fresco.
   const recargaAtendidaRef = useRef(0);
+  const consultasEmVooRef = useRef(0);
+  const [revalidacao, setRevalidacao] = useState(0);
+  useRevalidarAoVoltar(
+    active && temSessao,
+    () => setRevalidacao((n) => n + 1),
+    () => consultasEmVooRef.current === 0,
+  );
 
   useEffect(() => {
     // Troca de período: o número do período anterior NUNCA fica na tela
@@ -87,8 +96,11 @@ export function useCrmVisao(
     // "Carregando" já no mesmo commit da troca (sem piscar "—" durante a
     // espera); a limpeza desta rodada e o início da próxima saem juntos.
     let cancelada = false;
-    setCarregando(true);
+    setCarregando(!emCache);
     const timer = setTimeout(async () => {
+      consultasEmVooRef.current += 1;
+      const rodada = Symbol();
+      leiturasDaVisaoEmVoo.set(chave, rodada);
       recargaAtendidaRef.current = pedidoDeRecarga;
       try {
         const { data, error } = await supabase.rpc("crm_visao", {
@@ -96,9 +108,11 @@ export function useCrmVisao(
           p_fim: intervalo.fim,
         });
         const lida = error ? null : lerVisaoDoCrm(data);
-        // Resposta que chegou depois da troca de período ainda vale para o
-        // período DELA: vai para o cache, mas não para a tela.
-        if (lida) guardarNoCache(chave, { visao: lida, lidoEm: Date.now() });
+        // Guarda no período dela, mesmo após trocar de chip. Uma leitura
+        // mais nova DO MESMO período continua tendo preferência no cache.
+        if (lida && leiturasDaVisaoEmVoo.get(chave) === rodada) {
+          guardarNoCache(chave, { visao: lida, lidoEm: Date.now() });
+        }
         if (cancelada) return;
         if (error) {
           console.error("[useCrmVisao] crm_visao falhou:", error);
@@ -117,6 +131,9 @@ export function useCrmVisao(
         console.error("[useCrmVisao] consulta falhou:", falha);
         setErro(mensagemDeErroDoPainel(falha, "carregar o CRM"));
       } finally {
+        consultasEmVooRef.current -= 1;
+        if (leiturasDaVisaoEmVoo.get(chave) === rodada)
+          leiturasDaVisaoEmVoo.delete(chave);
         if (!cancelada) setCarregando(false);
       }
     }, ESPERA_DO_PERIODO_MS);
@@ -133,6 +150,7 @@ export function useCrmVisao(
     active,
     temSessao,
     pedidoDeRecarga,
+    revalidacao,
   ]);
 
   return { visao, carregando, erro, atualizar };
@@ -334,10 +352,12 @@ export function useDashboardClassico(
     aoMudarNoBancoRef.current = aoMudarNoBanco;
   }, [aoMudarNoBanco]);
 
+  const leiturasEmVooRef = useRef(0);
   const loadDashboardData = useCallback(
-    async (force = false) => {
+    async (force = false, silencioso = false) => {
+      leiturasEmVooRef.current += 1;
       const hasData = !!statsRef.current && !!categoryDataRef.current;
-      if (!hasData || force) {
+      if (!silencioso && (!hasData || force)) {
         setIsLoading(true);
       }
       try {
@@ -352,10 +372,17 @@ export function useDashboardClassico(
       } catch (err) {
         console.error("Error loading dashboard data:", err);
       } finally {
+        leiturasEmVooRef.current -= 1;
         setIsLoading(false);
       }
     },
     [fetchExecutiveSummary, fetchCategoryAnalytics],
+  );
+
+  useRevalidarAoVoltar(
+    active && temSessao,
+    () => loadDashboardData(false, true),
+    () => leiturasEmVooRef.current === 0,
   );
 
   const { isLeader } = useLeaderElection();

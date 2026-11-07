@@ -281,12 +281,12 @@ export const Header = memo(function Header({
             aria-label="Ir para o Início"
           >
             {logoSrc ? (
-              <div className="flex h-8 max-w-[100px] items-center overflow-hidden rounded-[8px] xs:max-w-[120px]">
+              <div className="flex h-8 w-[100px] items-center overflow-hidden rounded-[8px] xs:w-[120px]">
                 <img
                   key={`${logoSelection.revision}:${logoState}`}
                   src={logoSrc}
                   alt={storeName}
-                  className="size-full object-contain"
+                  className="size-full object-contain object-left"
                   onError={() => {
                     setLogoSelection((current) => {
                       // Falha só avança a candidata/revisão que a originou.

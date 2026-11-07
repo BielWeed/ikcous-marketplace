@@ -63,14 +63,20 @@ export const LOCALSTORAGE_PURGE_WHITELIST: readonly string[] = [
 //    por conta: "ikcous:checkout-pedido-pendente:<id da conta>".
 //  - o rascunho do checkout (src/lib/rascunho-do-checkout.ts): formulário e
 //    cupom digitados. Sem CPF (o módulo proíbe) e saneado na leitura.
+//  - o pedido de visitante com resposta perdida (src/lib/pedido-sem-resposta.ts):
+//    é a "mesma compra" congelada, que o checkout reabre para reenviar. Sem ele
+//    o checkout remonta o pedido do carrinho (que pode ter mudado de preço ou
+//    estoque) e a pessoa cria um segundo pedido sem perceber. Sem CPF (removido
+//    na gravação) e vale no máximo 30 min (vencido, a leitura o descarta).
 //
-// SÓ estas duas. Nada de sessão/token do Supabase (mora no localStorage, sob
+// SÓ estas três. Nada de sessão/token do Supabase (mora no localStorage, sob
 // `sb-`, e a purga do localStorage já cuida dele). Os literais espelham os dos
 // módulos (que não exportam as constantes); o teste amarra cada um gravando
 // pelo módulo de verdade.
 export const SESSIONSTORAGE_PURGE_WHITELIST: readonly string[] = [
   "ikcous:checkout-pedido-pendente:",
   "ikcous-rascunho-do-checkout-v1",
+  "ikcous-pedido-sem-resposta-v1",
 ];
 
 // Compartilha também o CRITÉRIO, não só a lista: os dois chamadores testam

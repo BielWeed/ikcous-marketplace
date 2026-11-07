@@ -1820,7 +1820,11 @@ const AppContent = () => {
   }, [handleNavigate]);
 
   const handleOrderDetailsBack = useCallback(() => {
-    handleNavigate("orders");
+    if (globalThis.history.state?.from === "orders") {
+      globalThis.history.back();
+    } else {
+      handleNavigate("orders", undefined, false, { substituirEntrada: true });
+    }
   }, [handleNavigate]);
 
   // "Retomar pagamento" a partir do cartão do pedido no Perfil — a mesma
@@ -2072,7 +2076,9 @@ const AppContent = () => {
     // chamada futura que não o informe.
     const syncWithUrl = (origem: "popstate" | "efeito" = "efeito") => {
       saveCurrentScroll();
-      let path = globalThis.location.pathname.slice(1) || "home";
+      let path = (
+        globalThis.location.pathname.slice(1) || "home"
+      ).toLowerCase();
       // Normalize path (remove trailing slashes)
       path = path.replace(/\/$/, "");
 

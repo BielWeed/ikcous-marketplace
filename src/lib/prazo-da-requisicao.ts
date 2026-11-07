@@ -30,6 +30,17 @@ export async function aguardarComPrazo<T>(
 export const PRAZO_DA_CONSULTA_DO_CHECKOUT_MS = 12_000;
 export const PRAZO_DA_COTACAO_DO_FRETE_MS = 15_000;
 
+// PRAZO DAS AÇÕES DO LOJISTA QUE GRAVAM NO PEDIDO (07/11/2026): marcar
+// pagamento recebido (e desfazer), "O produto voltou", código de rastreio,
+// anotação interna e "Já estornei". Uma gravação de uma RPC/linha, sem
+// terceiros: 20 s. Só encerra a ESPERA DA TELA — o servidor pode ter gravado —,
+// por isso a frase NÃO diz que falhou: diz que não houve resposta e manda
+// conferir o pedido antes de tentar de novo (repetir o toque é seguro: as RPCs
+// de dinheiro são idempotentes no banco).
+export const PRAZO_DAS_ACOES_DO_PEDIDO_MS = 20_000;
+export const MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA =
+  "Sem resposta da rede. Confira o pedido antes de tentar de novo.";
+
 /** Frase para quem está na tela: o que aconteceu e o que fazer. */
 export const MENSAGEM_CONEXAO_LENTA =
   "A conexão está lenta. Toque em Tentar de novo.";

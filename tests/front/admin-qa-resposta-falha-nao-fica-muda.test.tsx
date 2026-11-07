@@ -226,7 +226,7 @@ describe("AdminQAView — resposta que falha não fica muda (laudo 0109, A-1)", 
 
     // O ponto do A-1: falha tem de FALAR. Com o defeito, nenhum toast saía.
     expect(toast.error).toHaveBeenCalledWith(
-      "Não foi possível enviar a resposta. Tente de novo.",
+      "Não foi possível confirmar o envio da resposta. Confira na lista antes de tentar de novo.",
     );
     expect(toast.success).not.toHaveBeenCalled();
 

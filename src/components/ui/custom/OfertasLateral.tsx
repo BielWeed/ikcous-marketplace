@@ -330,7 +330,8 @@ function CartaoOfertaLateral({
         data-compra-oferta
         aria-label={rotuloCompra}
         title={rotuloCompra}
-        disabled={esgotado || cartStatus !== "idle"}
+        disabled={esgotado}
+        aria-disabled={!esgotado && cartStatus !== "idle" ? true : undefined}
         className={cn(
           "absolute bottom-1 right-2.5 z-20 flex size-11 shrink-0 items-center justify-center rounded-full border border-solid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           esgotado

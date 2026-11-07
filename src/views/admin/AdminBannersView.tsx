@@ -101,6 +101,7 @@ import {
   type ComponentProps,
   memo,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -407,6 +408,7 @@ interface CartaoDoBannerProps {
   readonly indice: number;
   readonly total: number;
   readonly detalhado: boolean;
+  readonly reordenacaoFiltrada: boolean;
   readonly isProcessing: boolean;
   readonly isOffline: boolean;
   readonly activeAction: ControleAtivo | null;
@@ -441,6 +443,7 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
   indice,
   total,
   detalhado,
+  reordenacaoFiltrada,
   isProcessing,
   isOffline,
   activeAction,
@@ -449,6 +452,17 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
   onEditar,
   onExcluir,
 }: CartaoDoBannerProps) {
+  const setaAcionada = useRef<HTMLButtonElement | null>(null);
+  useLayoutEffect(() => {
+    if (isProcessing || !setaAcionada.current) return;
+    const seta = setaAcionada.current;
+    setaAcionada.current = null;
+    if (
+      document.activeElement === document.body ||
+      document.activeElement === seta
+    )
+      seta.focus();
+  }, [isProcessing, indice]);
   const situacao = situacaoDoBanner(banner);
   const ocupado = activeAction?.id === banner.id;
 
@@ -573,10 +587,31 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
           <div className="flex flex-wrap items-center gap-1.5">
             <div className="flex items-center rounded-lg border border-admin-border bg-admin-raised p-0.5">
               <button
-                onClick={() => onMover(banner, "up")}
-                disabled={indice === 0 || isProcessing || isOffline}
-                className="flex size-11 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-25 disabled:hover:bg-transparent"
-                title="Mover para cima"
+                onClick={(evento) => {
+                  if (
+                    !reordenacaoFiltrada &&
+                    indice > 0 &&
+                    !isProcessing &&
+                    !isOffline
+                  ) {
+                    if (document.activeElement === evento.currentTarget)
+                      setaAcionada.current = evento.currentTarget;
+                    onMover(banner, "up");
+                  }
+                }}
+                aria-label={`Subir banner ${banner.title || "sem título"}`}
+                aria-disabled={
+                  reordenacaoFiltrada ||
+                  indice === 0 ||
+                  isProcessing ||
+                  isOffline
+                }
+                className="flex size-11 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-white/5 hover:text-white aria-disabled:opacity-25 aria-disabled:hover:bg-transparent"
+                title={
+                  reordenacaoFiltrada
+                    ? "Limpe o filtro para reordenar"
+                    : "Mover para cima"
+                }
               >
                 {ocupado && activeAction?.type === "up" ? (
                   <Loader2 className="size-4 motion-safe:animate-spin text-zinc-200" />
@@ -585,10 +620,31 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
                 )}
               </button>
               <button
-                onClick={() => onMover(banner, "down")}
-                disabled={indice === total - 1 || isProcessing || isOffline}
-                className="flex size-11 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-25 disabled:hover:bg-transparent"
-                title="Mover para baixo"
+                onClick={(evento) => {
+                  if (
+                    !reordenacaoFiltrada &&
+                    indice < total - 1 &&
+                    !isProcessing &&
+                    !isOffline
+                  ) {
+                    if (document.activeElement === evento.currentTarget)
+                      setaAcionada.current = evento.currentTarget;
+                    onMover(banner, "down");
+                  }
+                }}
+                aria-label={`Descer banner ${banner.title || "sem título"}`}
+                aria-disabled={
+                  reordenacaoFiltrada ||
+                  indice === total - 1 ||
+                  isProcessing ||
+                  isOffline
+                }
+                className="flex size-11 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-white/5 hover:text-white aria-disabled:opacity-25 aria-disabled:hover:bg-transparent"
+                title={
+                  reordenacaoFiltrada
+                    ? "Limpe o filtro para reordenar"
+                    : "Mover para baixo"
+                }
               >
                 {ocupado && activeAction?.type === "down" ? (
                   <Loader2 className="size-4 motion-safe:animate-spin text-zinc-200" />
@@ -618,6 +674,7 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
               disabled={isProcessing || isOffline}
               className="flex size-11 items-center justify-center rounded-lg border border-admin-border bg-admin-raised text-zinc-400 transition-colors hover:bg-white/5 hover:text-white disabled:pointer-events-none disabled:opacity-40"
               title="Editar"
+              aria-label={`Editar banner ${banner.title || "sem título"}`}
             >
               <Edit className="size-4 text-zinc-200" />
             </button>
@@ -626,6 +683,7 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
               disabled={isProcessing || isOffline}
               className="flex size-11 items-center justify-center rounded-lg border border-rose-500/20 bg-rose-500/10 text-rose-400 transition-colors hover:bg-rose-500 hover:text-white disabled:pointer-events-none disabled:opacity-40"
               title="Excluir"
+              aria-label={`Excluir banner ${banner.title || "sem título"}`}
             >
               {ocupado && activeAction?.type === "delete" ? (
                 <Loader2 className="size-4 motion-safe:animate-spin" />
@@ -776,6 +834,24 @@ export const AdminBannersView = memo(function AdminBannersView({
   const [confirmarFimVencido, setConfirmarFimVencido] = useState(false);
   const fimVencidoConfirmadoRef = useRef(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [anuncioDaOrdem, setAnuncioDaOrdem] = useState("");
+  const movimentoPendente = useRef<{ id: string; indice: number } | null>(null);
+  useEffect(() => {
+    if (isProcessing || !movimentoPendente.current) return;
+    const movimento = movimentoPendente.current;
+    movimentoPendente.current = null;
+    const movido = banners.find((b) => b.id === movimento.id);
+    if (!movido) return;
+    const lista = banners
+      .filter((b) => b.position === movido.position)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const indice = lista.findIndex((b) => b.id === movido.id);
+    if (indice === movimento.indice) {
+      setAnuncioDaOrdem(
+        `Banner ${movido.title || "sem título"} agora é o ${indice + 1}º de ${lista.length}`,
+      );
+    }
+  }, [banners, isProcessing]);
   const [activeAction, setActiveAction] = useState<{
     id: string;
     type: "up" | "down" | "toggle" | "delete";
@@ -1882,12 +1958,21 @@ export const AdminBannersView = memo(function AdminBannersView({
       toast.error(recusa);
       return;
     }
+    if (isOffline) {
+      toast.error("Sem conexão com a internet", {
+        description: "Conecte-se à internet e escolha a imagem de novo.",
+      });
+      return;
+    }
     if (
-      isOffline ||
       isSubmittingRef.current ||
       geracaoDoUploadPendente.current === geracaoDoEditor.current
-    )
+    ) {
+      toast.error(
+        "Aguarde o envio ou salvamento atual terminar e escolha a imagem de novo.",
+      );
       return;
+    }
 
     const geracaoDoUpload = geracaoDoEditor.current;
     geracaoDoUploadPendente.current = geracaoDoUpload;
@@ -2080,7 +2165,9 @@ export const AdminBannersView = memo(function AdminBannersView({
       setIsDialogOpen(false);
     } catch (error) {
       console.error("Erro ao salvar banner:", error);
-      toast.error("Erro ao salvar as configurações do banner.");
+      if (!(error instanceof Error && error.name === "BannerIndisponivel")) {
+        toast.error("Erro ao salvar as configurações do banner.");
+      }
     } finally {
       fim();
       setIsSubmitting(false);
@@ -2138,7 +2225,10 @@ export const AdminBannersView = memo(function AdminBannersView({
     }
   };
 
+  const reordenacaoFiltrada =
+    searchQueryList.trim() !== "" || statusFilter !== "all";
   const moveBanner = async (banner: Banner, direction: "up" | "down") => {
+    if (isProcessing || reordenacaoFiltrada) return;
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description:
@@ -2156,6 +2246,8 @@ export const AdminBannersView = memo(function AdminBannersView({
 
     if (targetIndex >= 0 && targetIndex < bannersInPosition.length) {
       const targetBanner = bannersInPosition[targetIndex];
+      setAnuncioDaOrdem("");
+      movimentoPendente.current = { id: banner.id, indice: targetIndex };
       setIsProcessing(true);
       setActiveAction({ id: banner.id, type: direction });
       try {
@@ -2267,6 +2359,9 @@ export const AdminBannersView = memo(function AdminBannersView({
       ref={viewRef}
       className="min-h-full w-full bg-admin-bg pb-admin font-sans text-zinc-400"
     >
+      <p role="status" aria-live="polite" className="sr-only">
+        {anuncioDaOrdem}
+      </p>
       <div className="mx-auto w-full max-w-3xl space-y-6 p-4 sm:p-6">
         {isOffline && (
           <p
@@ -2427,6 +2522,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           )}
                           total={todosNaPosicao.length}
                           detalhado={viewMode === "detailed"}
+                          reordenacaoFiltrada={reordenacaoFiltrada}
                           isProcessing={isProcessing}
                           isOffline={isOffline}
                           activeAction={activeAction}

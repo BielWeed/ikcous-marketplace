@@ -78,6 +78,7 @@ import {
   variacoesExcluidasNoRascunho,
 } from "@/lib/rascunho-do-produto";
 import { recusaDeFoto } from "@/lib/recusa-de-foto";
+import { ehAnimada } from "@/lib/redimensiona-imagem";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import {
@@ -276,7 +277,7 @@ const TRAVA_DAS_ACOES_DE_FOTO_MS = 400;
 interface FotoComFalha {
   id: string;
   file: File;
-  motivo: "demorou demais" | "não foi enviada";
+  motivo: "demorou demais" | "não foi enviada" | "teve o envio cancelado";
 }
 
 // Exportado só para o teste chamar direto (não passa pelo componente inteiro)
@@ -287,14 +288,26 @@ interface FotoComFalha {
 // quando os dois se chamam igual.
 /** A foto não pôde ser lida (formato que o aparelho não abre, arquivo ruim). */
 class FotoIlegivel extends Error {}
+class EnvioCancelado extends Error {}
 
-export const compressProductImage = (
+export const compressProductImage = async (
   file: File,
   maxWidth = 1200,
   maxHeight = 1200,
   quality = 0.85,
 ): Promise<File> => {
-  return new Promise((resolve, reject) => {
+  // O canvas só guarda o primeiro quadro; animação sobe como veio.
+  if (
+    file.type === "image/gif" ||
+    ((!file.type || file.type === "application/octet-stream") &&
+      /\.gif$/i.test(file.name)) ||
+    ((file.type === "image/webp" || file.type === "image/avif") &&
+      (await ehAnimada(file)))
+  ) {
+    if (!(await imagemAbre(file))) throw new FotoIlegivel();
+    return file;
+  }
+  return new Promise<File>((resolve, reject) => {
     if (!file.type.startsWith("image/")) {
       resolve(file);
       return;
@@ -992,6 +1005,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   );
   const [isUploadingAdjusted, setIsUploadingAdjusted] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const cancelarEnvioRef = useRef<(() => void) | null>(null);
   // "Foto 1 de 3" do lote em andamento, para o aviso do botão desligado.
   const [progressoDoEnvio, setProgressoDoEnvio] = useState<{
     atual: number;
@@ -2160,7 +2174,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const processAndUploadImages = useCallback(
     async (arquivos: File[]) => {
       let files = arquivos;
-      if (files.length === 0) return;
+      if (files.length === 0 || cancelarEnvioRef.current) return;
 
       // O tamanho conta por foto ORIGINAL; o total não, porque cada uma é
       // reduzida antes de subir. A quantidade entra até o máximo de 10.
@@ -2193,8 +2207,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       let ilegiveis = 0;
       const fim = marcarOperacaoSensivel("upload-de-foto-do-produto");
       try {
-        // Uma foto por vez, cada uma com o próprio prazo: a que trava não
-        // arrasta as outras, e a lojista vê "N de M" andar.
+        // Uma foto por vez; se a rede falha, o restante fica para tentar de
+        // novo, sem acumular um prazo de espera por foto.
         for (const [indice, file] of files.entries()) {
           setProgressoDoEnvio({ atual: indice + 1, total: files.length });
           setImageUploadStep("compressing");
@@ -2202,30 +2216,37 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           // de uma foto que a tela já deu por falha (evita arquivo órfão no
           // armazenamento e um estado "uploading" depois do fim).
           let estourou = false;
+          const cancelamento = new Promise<never>((_, rejeitar) => {
+            cancelarEnvioRef.current = () => {
+              estourou = true;
+              rejeitar(new EnvioCancelado());
+            };
+          });
           try {
             const url = await comPrazo(
-              (async () => {
-                const comprimida = await compressProductImage(file);
-                if (estourou) throw new PrazoEsgotado(PRAZO_POR_FOTO_MS);
-                setImageUploadStep("uploading");
-                toast.loading(
-                  `Enviando foto ${indice + 1} de ${files.length}...`,
-                  { id: loadingToast },
-                );
-                const urls = await uploadProductImages([comprimida]);
-                if (!urls || urls.length === 0) {
-                  throw new Error("Falha no upload.");
-                }
-                return urls[0];
-              })(),
+              Promise.race([
+                cancelamento,
+                (async () => {
+                  const comprimida = await compressProductImage(file);
+                  if (estourou) throw new PrazoEsgotado(PRAZO_POR_FOTO_MS);
+                  setImageUploadStep("uploading");
+                  toast.loading(
+                    `Enviando foto ${indice + 1} de ${files.length}...`,
+                    { id: loadingToast },
+                  );
+                  const urls = await uploadProductImages([comprimida]);
+                  if (!urls || urls.length === 0) {
+                    throw new Error("Falha no upload.");
+                  }
+                  // O upload por baixo não aceita cancelamento. Se chegou
+                  // depois do prazo OU do cancelamento, apaga só o que ele criou.
+                  if (estourou) void descartarFotosDoProduto([urls[0]]);
+                  return urls[0];
+                })(),
+              ]),
               PRAZO_POR_FOTO_MS,
               () => {
                 estourou = true;
-              },
-              // O upload (que ninguém cancela) terminou depois de a tela dar a
-              // foto por falha: apaga o objeto que ELE gravou.
-              (urlTardia) => {
-                void descartarFotosDoProduto([urlTardia]);
               },
             );
             setFormData((prev) => ({
@@ -2246,10 +2267,27 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               id: `${Date.now()}-${indice}-${file.name}`,
               file,
               motivo:
-                error instanceof PrazoEsgotado
-                  ? "demorou demais"
-                  : "não foi enviada",
+                error instanceof EnvioCancelado
+                  ? "teve o envio cancelado"
+                  : error instanceof PrazoEsgotado
+                    ? "demorou demais"
+                    : "não foi enviada",
             });
+            for (const [restante, pendente] of files
+              .slice(indice + 1)
+              .entries()) {
+              falhas.push({
+                id: `${Date.now()}-pendente-${restante}-${pendente.name}`,
+                file: pendente,
+                motivo:
+                  error instanceof EnvioCancelado
+                    ? "teve o envio cancelado"
+                    : "não foi enviada",
+              });
+            }
+            break;
+          } finally {
+            cancelarEnvioRef.current = null;
           }
         }
 
@@ -2271,9 +2309,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         } else {
           setFotosComFalha((prev) => [...prev, ...falhas]);
           toast.error(
-            enviadas > 0
-              ? `${falhas.length} de ${files.length} fotos não subiram.`
-              : "Erro ao processar ou enviar imagens.",
+            `${falhas.length} de ${files.length} ${files.length === 1 ? "foto não subiu" : "fotos não subiram"}.`,
             {
               id: loadingToast,
               description:
@@ -3720,7 +3756,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     variants: formData.variants,
   });
   const marginPct =
-    priceVal > 0 ? ((priceVal - costPriceVal) / priceVal) * 100 : 0;
+    priceVal > 0
+      ? Math.round(((priceVal - costPriceVal) / priceVal) * 10000) / 100
+      : 0;
   // Quatro rótulos em palavras simples: prejuízo, sem lucro, lucro baixo
   // (< 30%) e lucro bom.
   const [analiseDoLucro, corDoLucro] =
@@ -3775,7 +3813,27 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   );
 
   return (
-    <div className="produto-formulario pb-admin relative h-auto min-h-full overflow-x-clip text-white lg:pb-12">
+    <div
+      className="produto-formulario pb-admin relative h-auto min-h-full overflow-x-clip text-white lg:pb-12"
+      onDragOver={(e) => {
+        // Só ARQUIVO é tratado aqui: soltar um texto selecionado dentro de um
+        // campo continua funcionando como o navegador faz.
+        if (Array.from(e.dataTransfer?.types ?? []).includes("Files")) {
+          e.preventDefault();
+        }
+      }}
+      onDrop={async (e) => {
+        if (!Array.from(e.dataTransfer?.types ?? []).includes("Files")) return;
+        e.preventDefault();
+        setIsDragging(false);
+        if (isOffline) {
+          toast.error("Não é possível enviar imagens offline.");
+          return;
+        }
+        if (isImageUploading || isSubmitting || showSuccess) return;
+        await processAndUploadImages(Array.from(e.dataTransfer.files || []));
+      }}
+    >
       {gerenciandoCategorias && (
         <LimiteDePedaco
           pedacos={[GerenciarCategorias]}
@@ -4413,17 +4471,6 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         setIsDragging(true);
                       }}
                       onDragLeave={() => setIsDragging(false)}
-                      onDrop={async (e) => {
-                        e.preventDefault();
-                        setIsDragging(false);
-                        if (isOffline) {
-                          toast.error("Não é possível enviar imagens offline.");
-                          return;
-                        }
-                        if (isImageUploading) return;
-                        const files = Array.from(e.dataTransfer.files || []);
-                        await processAndUploadImages(files);
-                      }}
                       className={cn(
                         "produto-fotos-envio relative flex cursor-pointer select-none flex-col items-center justify-center gap-1 overflow-hidden transition-all",
                         isDragging
@@ -4664,6 +4711,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       </span>
                     )}
                   </div>
+                )}
+                {isUploadingImages && (
+                  <button
+                    type="button"
+                    onClick={() => cancelarEnvioRef.current?.()}
+                    className="mt-2 min-h-11 rounded-xl border border-admin-border px-3 text-sm font-bold text-white"
+                  >
+                    Cancelar envio
+                  </button>
                 )}
                 {fotosComFalha.length > 0 && (
                   <ul data-testid="fotos-com-falha" className="mt-3 space-y-2">

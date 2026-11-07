@@ -411,7 +411,7 @@ async function adotarCartaoCapturadoDoSentinela(args: {
       aviso: {
         title: "Pagamento precisa de conferência",
         body: `${numeroDoPedido(args.pedidoId)} · ${totalInvalido ? "total do pedido inválido; confira o pedido no painel da loja" : "valor divergente; confira no painel do Mercado Pago"}`,
-        url: "/admin-orders",
+        url: `/admin-orders?id=${encodeURIComponent(args.pedidoId)}`,
       },
       rotulo: "reconciliar-pagamentos",
     }), TETO_DO_PUSH_MS);
@@ -471,7 +471,7 @@ async function avisarDevolucoesQueNaoCabem(args: {
       aviso: {
         title: "Devolução do Mercado Pago para conferir",
         body: `${numeroDoPedido(args.orderId)} · o Mercado Pago registrou uma devolução que passa do que este pedido ainda podia devolver — o app não registrou essa devolução; confira no painel do Mercado Pago`,
-        url: "/admin-orders",
+        url: `/admin-orders?id=${encodeURIComponent(args.orderId)}`,
       },
       rotulo: "reconciliar-pagamentos",
     }), TETO_DO_PUSH_MS);
@@ -916,7 +916,7 @@ async function handler(
               aviso: {
                 title: "Devolução do Mercado Pago para conferir",
                 body: `${numeroDoPedido(candidato.order_id)} · o Mercado Pago informa um valor devolvido maior do que as devoluções que o app consegue listar — o app não confirmou o pagamento por isso; confira no painel do Mercado Pago`,
-                url: "/admin-orders",
+                url: `/admin-orders?id=${encodeURIComponent(candidato.order_id)}`,
               },
               rotulo: "reconciliar-pagamentos",
             }), TETO_DO_PUSH_MS);
@@ -1089,7 +1089,7 @@ async function handler(
             aviso: {
               title: "Pagamento precisa de conferência",
               body: `${numeroDoPedido(candidato.order_id)} · ${divergente ? "valor divergente; confira no painel do Mercado Pago" : "valor não conferido; tentando novamente"}`,
-              url: "/admin-orders",
+              url: `/admin-orders?id=${encodeURIComponent(candidato.order_id)}`,
             },
             rotulo: "reconciliar-pagamentos",
           }), TETO_DO_PUSH_MS);

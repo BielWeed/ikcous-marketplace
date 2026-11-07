@@ -23,6 +23,8 @@ import { mapOrderFromDB } from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { pluralizar } from "@/lib/pluralizar";
 import {
+  MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA,
+  PRAZO_DAS_ACOES_DO_PEDIDO_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
@@ -3070,15 +3072,26 @@ export function useOrders(
         jaNaLista &&
         updatedOrder.payment_status !== undefined &&
         (updatedOrder.payment_status ?? "sem_cobranca") !== filtroDePagamento;
+      // O inverso: filtro de PAGAMENTO ligado (qualquer um) e um pedido que NÃO
+      // está na lista passou a ter esse pagamento. Com status "Todos" o filtro
+      // de status é desconhecido e nenhuma outra condição o enxergava: o
+      // pedido recusado/estornado/expirado novo não entrava na lista nem no
+      // total até a lojista mexer num filtro. Só vale se o pedido também casa
+      // o status da visão (`casaStatus`) e se o pagamento realmente mudou
+      // (imagem anterior sem o campo conta como "mudou", como no `saiu...`).
+      const entrouNoFiltroDePagamento =
+        Boolean(filtroDePagamento) &&
+        filtroDePagamento !== "all" &&
+        !jaNaLista &&
+        casaStatus &&
+        updatedOrder.payment_status !== undefined &&
+        (updatedOrder.payment_status ?? "sem_cobranca") === filtroDePagamento &&
+        oldOrder?.payment_status !== updatedOrder.payment_status;
       // A RPC existente recompõe página e total quando alguém entra ou sai
       // do recorte. O mesmo debounce do INSERT absorve rajadas de eventos.
       if (
-        ((filtroConhecido ||
-          (isAdmin &&
-            ultimaConsultaAdminRef.current?.[7] === "pago" &&
-            updatedOrder.payment_status === "pago" &&
-            oldOrder?.payment_status !== "pago")) &&
-          (casaStatus ? !jaNaLista : jaNaLista)) ||
+        (filtroConhecido && (casaStatus ? !jaNaLista : jaNaLista)) ||
+        entrouNoFiltroDePagamento ||
         saiuDoFiltroDePagamento
       ) {
         if (debounceRecarregarInsertRef.current) {
@@ -4188,6 +4201,19 @@ export function useOrders(
   );
 
   /**
+   * Depois de uma ação do lojista que estourou o prazo SEM resposta: a
+   * gravação pode ter passado no servidor, então a tela relê a lista (mesma
+   * consulta de antes, em silêncio) e o painel de cancelados. A resposta
+   * tardia da ação original é descartada (nunca vira aviso nem mexe no
+   * pedido); quem corrige a tela é esta releitura e o realtime. Falha da
+   * releitura não vira aviso: a frase do estouro já mandou conferir.
+   */
+  const relerPedidosAposSemResposta = useCallback(() => {
+    recarregarAposReconexaoRef.current({ silencioso: true }).catch(() => {});
+    fetchPedidosCancelados().catch(() => {});
+  }, [fetchPedidosCancelados]);
+
+  /**
    * Confirma que o produto de um pedido cancelado-após-envio voltou à mão da
    * lojista — chama a RPC `confirmar_retorno_do_produto` (migration
    * `20260970000000`, ainda NÃO aplicada no banco enquanto esta tela não
@@ -4205,83 +4231,101 @@ export function useOrders(
    * `precisaConfirmarRetornoDoProduto`, e um pedido nunca pago jamais vira
    * "devolver_agora", só sai do card de mercadoria).
    */
-  const confirmarRetornoDoProduto = useCallback(async (orderId: string) => {
-    try {
-      const { data, error } = await (supabase.rpc as any)(
-        "confirmar_retorno_do_produto",
-        { p_order_id: orderId },
-      );
-
-      if (error) throw error;
-
-      // A idempotência (RPC devolve `ja_confirmado: true` sem re-mexer no
-      // estoque num segundo clique) mora no banco — aqui só refletimos o
-      // que ele confirmou. `returned_to_seller_at` vem da RPC quando
-      // presente; senão, "agora" é a melhor aproximação otimista.
-      const returnedAt: string =
-        typeof data?.returned_to_seller_at === "string"
-          ? data.returned_to_seller_at
-          : new Date().toISOString();
-
-      cachedAdminOrders = (cachedAdminOrders || []).map((o) =>
-        o.id === orderId ? { ...o, returnedToSellerAt: returnedAt } : o,
-      );
-
-      setOrders((prev) =>
-        prev.map((o) =>
-          o.id === orderId ? { ...o, returnedToSellerAt: returnedAt } : o,
-        ),
-      );
-
-      // Mesma atualização no painel de mercadoria/estorno (`pedidosCancelados`,
-      // acima): é ela — e não `orders` — quem alimenta os dois baldes de
-      // AdminOrdersView.tsx desde o BLOQUEIA 1 da revisão de 26/08/2026.
-      // Sem isto, um clique bem-sucedido continuaria mostrando o pedido
-      // no balde "esperando o produto voltar" até a próxima recarga.
-      setPedidosCancelados((prev) =>
-        prev.map((o) =>
-          o.id === orderId ? { ...o, returnedToSellerAt: returnedAt } : o,
-        ),
-      );
-
-      clearAnalyticsCache();
-      // O toast tem que dizer a verdade do QUE ESTE clique fez: no
-      // segundo clique a RPC devolve `ja_confirmado: true` sem tocar no
-      // estoque (idempotência, ver a migration) — dizer "Estoque
-      // atualizado" nesse caso afirma um fato que este clique não
-      // cumpriu (achado da revisão de 26/08/2026).
-      if (data?.ja_confirmado) {
-        toast.success(
-          "Este retorno já tinha sido confirmado antes. Nada mudou no estoque.",
+  const confirmarRetornoDoProduto = useCallback(
+    async (orderId: string) => {
+      try {
+        // Prazo só da espera da tela (rede "pendurada"). Estourou: o erro cai no
+        // `catch` abaixo, que conta que NÃO se sabe se gravou e relê o pedido.
+        // Reenviar é seguro: a RPC devolve `ja_confirmado` sem mexer no estoque.
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            (supabase.rpc as any)("confirmar_retorno_do_produto", {
+              p_order_id: orderId,
+            }),
+          ) as Promise<{ data: any; error: any }>,
+          PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+          () => erroDeConsultaSemResposta(MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA),
         );
-      } else {
-        toast.success("Retorno do produto confirmado. Estoque atualizado.");
+
+        if (error) throw error;
+
+        // A idempotência (RPC devolve `ja_confirmado: true` sem re-mexer no
+        // estoque num segundo clique) mora no banco — aqui só refletimos o
+        // que ele confirmou. `returned_to_seller_at` vem da RPC quando
+        // presente; senão, "agora" é a melhor aproximação otimista.
+        const returnedAt: string =
+          typeof data?.returned_to_seller_at === "string"
+            ? data.returned_to_seller_at
+            : new Date().toISOString();
+
+        cachedAdminOrders = (cachedAdminOrders || []).map((o) =>
+          o.id === orderId ? { ...o, returnedToSellerAt: returnedAt } : o,
+        );
+
+        setOrders((prev) =>
+          prev.map((o) =>
+            o.id === orderId ? { ...o, returnedToSellerAt: returnedAt } : o,
+          ),
+        );
+
+        // Mesma atualização no painel de mercadoria/estorno (`pedidosCancelados`,
+        // acima): é ela — e não `orders` — quem alimenta os dois baldes de
+        // AdminOrdersView.tsx desde o BLOQUEIA 1 da revisão de 26/08/2026.
+        // Sem isto, um clique bem-sucedido continuaria mostrando o pedido
+        // no balde "esperando o produto voltar" até a próxima recarga.
+        setPedidosCancelados((prev) =>
+          prev.map((o) =>
+            o.id === orderId ? { ...o, returnedToSellerAt: returnedAt } : o,
+          ),
+        );
+
+        clearAnalyticsCache();
+        // O toast tem que dizer a verdade do QUE ESTE clique fez: no
+        // segundo clique a RPC devolve `ja_confirmado: true` sem tocar no
+        // estoque (idempotência, ver a migration) — dizer "Estoque
+        // atualizado" nesse caso afirma um fato que este clique não
+        // cumpriu (achado da revisão de 26/08/2026).
+        if (data?.ja_confirmado) {
+          toast.success(
+            "Este retorno já tinha sido confirmado antes. Nada mudou no estoque.",
+          );
+        } else {
+          toast.success("Retorno do produto confirmado. Estoque atualizado.");
+        }
+        return data;
+      } catch (err: any) {
+        // Achado E da revisão de 26/08/2026 (rodada 4, BLOQUEIA): este
+        // catch só roda quando a RPC falha — e a falha acontece ANTES de
+        // qualquer escrita de estado (elas ficam todas depois do
+        // `if (error) throw error;`, acima). Um rollback aqui nunca desfaz
+        // nada DESTA chamada; ele restaura um retrato tirado no início
+        // dela, que pode já estar velho por causa de OUTRA atualização
+        // (realtime, ou outro clique) que aconteceu enquanto esta RPC
+        // estava em voo — e aí o rollback apaga essa outra atualização em
+        // vez de desfazer a própria. A correção é subtrativa: sem estado
+        // otimista para desfazer, não há nada para restaurar.
+        console.error("Error confirming product return:", err);
+        if (ehConsultaSemResposta(err)) {
+          // Sem resposta: o estoque pode ter sido devolvido. NUNCA dizer que não
+          // foi feito; a frase manda conferir e a tela relê os pedidos.
+          toast.error(MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA);
+          relerPedidosAposSemResposta();
+          throw err;
+        }
+        // O texto cru do erro ("TypeError: Failed to fetch", "JWT expired") não
+        // é palavra de lojista: passa pela tradução dos avisos do pedido. A
+        // frase em português que a própria RPC escreve (P0001) continua inteira.
+        toast.error("Não foi possível confirmar o retorno do produto.", {
+          description: mensagemAmigavelErroAtualizacaoStatus(
+            err,
+            FRASE_DE_NOVA_TENTATIVA,
+          ),
+        });
+        throw err;
       }
-      return data;
-    } catch (err: any) {
-      // Achado E da revisão de 26/08/2026 (rodada 4, BLOQUEIA): este
-      // catch só roda quando a RPC falha — e a falha acontece ANTES de
-      // qualquer escrita de estado (elas ficam todas depois do
-      // `if (error) throw error;`, acima). Um rollback aqui nunca desfaz
-      // nada DESTA chamada; ele restaura um retrato tirado no início
-      // dela, que pode já estar velho por causa de OUTRA atualização
-      // (realtime, ou outro clique) que aconteceu enquanto esta RPC
-      // estava em voo — e aí o rollback apaga essa outra atualização em
-      // vez de desfazer a própria. A correção é subtrativa: sem estado
-      // otimista para desfazer, não há nada para restaurar.
-      console.error("Error confirming product return:", err);
-      // O texto cru do erro ("TypeError: Failed to fetch", "JWT expired") não
-      // é palavra de lojista: passa pela tradução dos avisos do pedido. A
-      // frase em português que a própria RPC escreve (P0001) continua inteira.
-      toast.error("Não foi possível confirmar o retorno do produto.", {
-        description: mensagemAmigavelErroAtualizacaoStatus(
-          err,
-          FRASE_DE_NOVA_TENTATIVA,
-        ),
-      });
-      throw err;
-    }
-  }, []);
+    },
+    [relerPedidosAposSemResposta],
+  );
 
   /**
    * Registra que a loja recebeu (ou desfez o recebimento de) um pagamento na
@@ -4302,9 +4346,20 @@ export function useOrders(
     async (orderId: string, recebido: boolean) => {
       const fim = marcarOperacaoSensivel("registrar-pagamento-manual");
       try {
-        const { data, error } = await (supabase.rpc as any)(
-          "registrar_pagamento_recebido",
-          { p_order_id: orderId, p_recebido: recebido },
+        // Prazo só da espera da tela (rede "pendurada"): estourou, o `catch`
+        // abaixo conta que NÃO se sabe se gravou, o `finally` solta a marca
+        // da operação sensível e a tela relê o pedido. Reenviar é seguro: a
+        // RPC é idempotente (`ja_estava`, sob FOR UPDATE) e só grava o
+        // histórico de pagamento quando de fato muda.
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            (supabase.rpc as any)("registrar_pagamento_recebido", {
+              p_order_id: orderId,
+              p_recebido: recebido,
+            }),
+          ) as Promise<{ data: any; error: any }>,
+          PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+          () => erroDeConsultaSemResposta(MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA),
         );
 
         if (error) throw error;
@@ -4353,6 +4408,13 @@ export function useOrders(
         return data;
       } catch (err: any) {
         console.error("Error registering payment received:", err);
+        if (ehConsultaSemResposta(err)) {
+          // Sem resposta: o dinheiro pode ter sido registrado. NUNCA dizer que
+          // não foi feito; a frase manda conferir e a tela relê os pedidos.
+          toast.error(MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA);
+          relerPedidosAposSemResposta();
+          throw err;
+        }
         toast.error(
           recebido
             ? "Não foi possível registrar o pagamento recebido."
@@ -4370,7 +4432,7 @@ export function useOrders(
         fim();
       }
     },
-    [],
+    [relerPedidosAposSemResposta],
   );
 
   const fetchOrderHistory = useCallback(async (orderId: string) => {

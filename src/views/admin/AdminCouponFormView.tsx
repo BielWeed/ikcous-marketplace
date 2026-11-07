@@ -87,6 +87,54 @@ function remendoDoCupom(c: Partial<Coupon>, code: string) {
 const AVISO_VALIDADE_INCOMPLETA =
   "Digite a validade com o ano completo, ex.: 31/12/2027";
 
+/**
+ * Campos que o salvar pode recusar. Cada recusa vira, além do aviso passageiro
+ * (toast), um texto fixo junto do campo, o campo marcado (`aria-invalid`) e o
+ * foco nele: quem usa só o teclado, ou perdeu o aviso de 4 segundos, sabe qual
+ * dos campos está errado. Mesmo molde do aviso da validade.
+ */
+type CampoDoCupom =
+  | "code"
+  | "value"
+  | "minPurchase"
+  | "usageLimit"
+  | "clientes";
+
+function idDoCampo(campo: CampoDoCupom): string {
+  switch (campo) {
+    case "code":
+      return "coupon-code";
+    case "value":
+      return "coupon-value";
+    case "minPurchase":
+      return "coupon-min-purchase";
+    case "usageLimit":
+      return "coupon-usage-limit";
+    case "clientes":
+      return "coupon-clientes-busca";
+  }
+}
+
+/** Região "Quem pode usar": destino do foco quando a busca de clientes está travada. */
+const ID_DA_REGIAO_DE_CLIENTES = "coupon-quem-pode-usar";
+
+const idDoErro = (campo: CampoDoCupom) => `${idDoCampo(campo)}-erro`;
+
+function ErroDoCampo({
+  id,
+  mensagem,
+}: {
+  readonly id: string;
+  readonly mensagem: string | null;
+}) {
+  if (!mensagem) return null;
+  return (
+    <p id={id} role="alert" className="text-xs font-medium text-red-300">
+      {mensagem}
+    </p>
+  );
+}
+
 /** O banco recusou por falta de permissão (42501): administradora rebaixada. */
 function semPermissaoDeAdmin(erro: unknown): boolean {
   return (erro as { code?: string } | null)?.code === "42501";
@@ -141,6 +189,36 @@ function FormularioDoCupom({
     rascunhoValidade !== null ||
     campoValidadeRef.current?.validity?.badInput === true;
   const previaBotaoRef = useRef<HTMLButtonElement>(null);
+
+  // A última recusa do salvar, no campo que a causou (uma por vez: o salvar
+  // para na primeira). Some ao editar o campo e a cada novo "Salvar".
+  const [erroDeCampo, setErroDeCampo] = useState<{
+    campo: CampoDoCupom;
+    mensagem: string;
+  } | null>(null);
+  const erroDe = (campo: CampoDoCupom): string | null =>
+    erroDeCampo?.campo === campo ? erroDeCampo.mensagem : null;
+  const limparErroDe = (campo: CampoDoCupom) =>
+    setErroDeCampo((atual) => (atual?.campo === campo ? null : atual));
+  // Só o campo marcado ganha `aria-invalid` e aponta para o texto do erro.
+  const ariaDoErro = (campo: CampoDoCupom) =>
+    erroDe(campo)
+      ? { "aria-invalid": true as const, "aria-describedby": idDoErro(campo) }
+      : {};
+  const recusarCampo = (campo: CampoDoCupom, mensagem: string) => {
+    setErroDeCampo({ campo, mensagem });
+    toast.error(mensagem);
+    // A busca de clientes fica travada enquanto a lista carrega ou falha:
+    // nesse caso o foco vai para a região inteira.
+    const alvo = document.getElementById(idDoCampo(campo));
+    const foco =
+      alvo && !(alvo as HTMLInputElement).disabled
+        ? alvo
+        : campo === "clientes"
+          ? document.getElementById(ID_DA_REGIAO_DE_CLIENTES)
+          : null;
+    foco?.focus();
+  };
 
   const [formData, setFormData] = useState<Partial<Coupon>>({
     code: "",
@@ -327,9 +405,12 @@ function FormularioDoCupom({
       return;
     }
 
+    // Nova tentativa: a recusa anterior sai; se esta também falhar, entra a nova.
+    setErroDeCampo(null);
+
     const cleanCode = codigoDoCupomParaSalvar(formData.code, initialData.code);
     if (!cleanCode) {
-      toast.error("O código do cupom é obrigatório.");
+      recusarCampo("code", "O código do cupom é obrigatório.");
       return;
     }
 
@@ -338,12 +419,13 @@ function FormularioDoCupom({
     const usageLimit = formData.usageLimit ?? 0;
 
     if (value <= 0) {
-      toast.error("O valor do desconto deve ser maior que zero.");
+      recusarCampo("value", "O valor do desconto deve ser maior que zero.");
       return;
     }
 
     if (formData.type === "percentage" && value > 100) {
-      toast.error(
+      recusarCampo(
+        "value",
         "O valor do desconto em porcentagem não pode ser maior que 100%.",
       );
       return;
@@ -363,14 +445,18 @@ function FormularioDoCupom({
       (textoDoValor.includes("e") ||
         (textoDoValor.split(".")[1] ?? "").length > 2)
     ) {
-      toast.error(
+      recusarCampo(
+        "value",
         "O desconto fixo precisa ter no máximo 2 casas depois da vírgula.",
       );
       return;
     }
 
     if (minPurchase < 0) {
-      toast.error("O valor mínimo de compra não pode ser negativo.");
+      recusarCampo(
+        "minPurchase",
+        "O valor mínimo de compra não pode ser negativo.",
+      );
       return;
     }
 
@@ -385,31 +471,36 @@ function FormularioDoCupom({
       (textoDoMinimo.includes("e") ||
         (textoDoMinimo.split(".")[1] ?? "").length > 2)
     ) {
-      toast.error(
+      recusarCampo(
+        "minPurchase",
         "O mínimo de compra precisa ter no máximo 2 casas depois da vírgula.",
       );
       return;
     }
 
     if (usageLimit < 0) {
-      toast.error("O limite de uso não pode ser negativo.");
+      recusarCampo("usageLimit", "O limite de uso não pode ser negativo.");
       return;
     }
 
     // A coluna é inteira (até ~2,1 bilhões): 2.5 ou 3000000000 seriam recusados
     // ou arredondados pelo banco depois do aviso de sucesso.
     if (!Number.isInteger(usageLimit)) {
-      toast.error("O limite de uso precisa ser um número inteiro");
+      recusarCampo(
+        "usageLimit",
+        "O limite de uso precisa ser um número inteiro",
+      );
       return;
     }
     if (usageLimit > 2_000_000_000) {
-      toast.error("O limite de uso pode ir até 2.000.000.000");
+      recusarCampo("usageLimit", "O limite de uso pode ir até 2.000.000.000");
       return;
     }
 
     const alcance = formData.alcance ?? "codigo";
     if (listaTravada) {
-      toast.error(
+      recusarCampo(
+        "clientes",
         listaDoExclusivo === "carregando"
           ? "Aguarde: a lista de clientes deste cupom ainda está carregando."
           : "A lista de clientes deste cupom não carregou. Tente carregar de novo antes de salvar.",
@@ -417,7 +508,10 @@ function FormularioDoCupom({
       return;
     }
     if (alcanceSuportado && alcance === "exclusivo" && clientes.length === 0) {
-      toast.error("Escolha pelo menos um cliente para o cupom exclusivo.");
+      recusarCampo(
+        "clientes",
+        "Escolha pelo menos um cliente para o cupom exclusivo.",
+      );
       return;
     }
 
@@ -427,6 +521,7 @@ function FormularioDoCupom({
     if (validadeDigitadaNaoEntendida()) {
       setAvisarValidade(true);
       toast.error(AVISO_VALIDADE_INCOMPLETA);
+      campoValidadeRef.current?.focus();
       return;
     }
 
@@ -564,6 +659,14 @@ function FormularioDoCupom({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // Trocar o tipo muda o que o valor pode ser (100% de teto): a recusa antiga
+  // do valor sai.
+  const escolherTipo = (type: Coupon["type"]) => {
+    if (isOffline || isSubmitting) return;
+    limparErroDe("value");
+    setFormData({ ...formData, type });
   };
 
   const handleCancel = () => {
@@ -744,6 +847,8 @@ function FormularioDoCupom({
                     name="code"
                     autoComplete="off"
                     value={formData.code || ""}
+                    onInput={() => limparErroDe("code")}
+                    {...ariaDoErro("code")}
                     onFlush={(val) =>
                       setFormData((prev) => ({
                         ...prev,
@@ -761,7 +866,10 @@ function FormularioDoCupom({
                 </div>
                 <button
                   type="button"
-                  onClick={gerarCodigo}
+                  onClick={() => {
+                    limparErroDe("code");
+                    gerarCodigo();
+                  }}
                   disabled={isOffline || isSubmitting}
                   className={`${SECUNDARIO} min-h-12`}
                 >
@@ -772,6 +880,7 @@ function FormularioDoCupom({
                   Gerar
                 </button>
               </div>
+              <ErroDoCampo id={idDoErro("code")} mensagem={erroDe("code")} />
               {!formData.code && (
                 <p className="text-xs text-zinc-400">
                   Código vazio · digite ou gere um código.
@@ -815,11 +924,7 @@ function FormularioDoCupom({
                 <button
                   type="button"
                   aria-pressed={formData.type === "percentage"}
-                  onClick={() =>
-                    !isOffline &&
-                    !isSubmitting &&
-                    setFormData({ ...formData, type: "percentage" })
-                  }
+                  onClick={() => escolherTipo("percentage")}
                   disabled={isOffline || isSubmitting}
                   className={cn(
                     `${SECUNDARIO} min-h-12`,
@@ -838,11 +943,7 @@ function FormularioDoCupom({
                 <button
                   type="button"
                   aria-pressed={formData.type === "fixed"}
-                  onClick={() =>
-                    !isOffline &&
-                    !isSubmitting &&
-                    setFormData({ ...formData, type: "fixed" })
-                  }
+                  onClick={() => escolherTipo("fixed")}
                   disabled={isOffline || isSubmitting}
                   className={cn(
                     `${SECUNDARIO} min-h-12`,
@@ -871,6 +972,8 @@ function FormularioDoCupom({
                   min={0}
                   max={formData.type === "percentage" ? 100 : undefined}
                   value={formData.value || ""}
+                  onInput={() => limparErroDe("value")}
+                  {...ariaDoErro("value")}
                   onFlush={(val) =>
                     setFormData((prev) => ({ ...prev, value: Number(val) }))
                   }
@@ -878,6 +981,10 @@ function FormularioDoCupom({
                   disabled={isOffline || isSubmitting}
                   className={CAMPO}
                   placeholder="EX: 15"
+                />
+                <ErroDoCampo
+                  id={idDoErro("value")}
+                  mensagem={erroDe("value")}
                 />
               </div>
             </section>
@@ -905,6 +1012,8 @@ function FormularioDoCupom({
                     autoComplete="off"
                     min={0}
                     value={formData.minPurchase || ""}
+                    onInput={() => limparErroDe("minPurchase")}
+                    {...ariaDoErro("minPurchase")}
                     onFlush={(val) =>
                       setFormData((prev) => ({
                         ...prev,
@@ -915,6 +1024,10 @@ function FormularioDoCupom({
                     disabled={isOffline || isSubmitting}
                     className={CAMPO}
                     placeholder="EX: 50"
+                  />
+                  <ErroDoCampo
+                    id={idDoErro("minPurchase")}
+                    mensagem={erroDe("minPurchase")}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -931,6 +1044,8 @@ function FormularioDoCupom({
                     autoComplete="off"
                     min={0}
                     value={formData.usageLimit || ""}
+                    onInput={() => limparErroDe("usageLimit")}
+                    {...ariaDoErro("usageLimit")}
                     onFlush={(val) =>
                       setFormData((prev) => ({
                         ...prev,
@@ -941,6 +1056,10 @@ function FormularioDoCupom({
                     disabled={isOffline || isSubmitting}
                     placeholder="0 = Ilimitado"
                     className={CAMPO}
+                  />
+                  <ErroDoCampo
+                    id={idDoErro("usageLimit")}
+                    mensagem={erroDe("usageLimit")}
                   />
                 </div>
               </div>
@@ -1096,20 +1215,30 @@ function FormularioDoCupom({
               <div className="sm:col-span-2">
                 <QuemPodeUsarOCupom
                   alcance={formData.alcance ?? "codigo"}
-                  onAlcance={(alcance) =>
-                    setFormData((prev) => ({ ...prev, alcance }))
-                  }
+                  onAlcance={(alcance) => {
+                    limparErroDe("clientes");
+                    setFormData((prev) => ({ ...prev, alcance }));
+                  }}
                   clientes={clientes}
-                  onClientes={setClientes}
+                  onClientes={(lista) => {
+                    limparErroDe("clientes");
+                    setClientes(lista);
+                  }}
                   carregandoClientes={listaDoExclusivo === "carregando"}
                   falhaAoCarregar={listaDoExclusivo === "falhou"}
-                  onCarregarDeNovo={() => setTentativaDaLista((n) => n + 1)}
+                  onCarregarDeNovo={() => {
+                    limparErroDe("clientes");
+                    setTentativaDaLista((n) => n + 1);
+                  }}
                   buscarClientes={buscarClientesParaCupom}
                   semLimiteNemValidade={
                     !formData.validUntil && !Number(formData.usageLimit)
                   }
                   semLimiteDeUso={!Number(formData.usageLimit)}
                   desabilitado={isOffline || isSubmitting}
+                  erro={erroDe("clientes")}
+                  regiaoId={ID_DA_REGIAO_DE_CLIENTES}
+                  erroId={idDoErro("clientes")}
                 />
               </div>
             )}

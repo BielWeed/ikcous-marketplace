@@ -17,6 +17,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { buildIdentity } from "@/config/buildIdentity";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
+import { TELAS_DE_ENTRADA } from "@/config/rotas";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
@@ -600,6 +601,10 @@ export const AdminPushView = memo(function AdminPushView({
   };
 
   useEffect(() => {
+    // O formato antigo não é uma entrada do app. Mantém como manual para
+    // a validação barrá-lo, em vez de tratá-lo como produto já escolhido.
+    if (customPath.startsWith("/product/") && customPath === notification.url)
+      return;
     const destino = destinoDaUrl(notification.url);
     if (destType !== destino.tipo) setDestType(destino.tipo);
     if (
@@ -866,6 +871,25 @@ export const AdminPushView = memo(function AdminPushView({
           'Em "Ao tocar na mensagem", escolha um produto da lista ou outra tela.',
       });
       return;
+    }
+    if (destType === "custom") {
+      const caminho = notification.url.split(/[?#]/)[0];
+      const primeiraTela = caminho.split("/")[1];
+      // O app lê o caminho INTEIRO (menos uma barra no fim): "/orders/123" não
+      // é tela e cairia na página inicial, mesmo com "orders" na lista.
+      const nomeDaTela = caminho.slice(1).replace(/\/$/, "");
+      if (
+        !caminho.startsWith("/") ||
+        caminho.startsWith("//") ||
+        primeiraTela.startsWith("admin") ||
+        (caminho !== "/" &&
+          !TELAS_DE_ENTRADA.some((tela) => tela === nomeDaTela))
+      ) {
+        toast.error(
+          "Esse endereço não existe no app: a cliente cairia na página inicial",
+        );
+        return;
+      }
     }
     // O botão já fica travado com o marcador no texto; esta guarda cobre o
     // caminho em que o clique chega mesmo assim. "[CÓDIGO DO SEU CUPOM]" nunca

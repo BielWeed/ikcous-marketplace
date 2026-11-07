@@ -279,7 +279,7 @@ function montarTrocas(
         id: "troca",
         titulo: "Troca",
         paragrafos: [
-          `Você pode trocar por outro tamanho, cor ou modelo em até ${politica.prazo_troca_dias} dias depois de receber.`,
+          `Você pode trocar por outro tamanho, cor ou modelo em até ${politica.prazo_troca_dias} ${politica.prazo_troca_dias === 1 ? "dia" : "dias"} depois de receber.`,
           politica.frete_troca_pago_por === "loja"
             ? "O frete da troca é pago pela loja. A loja combina com você o envio."
             : "O frete da troca é pago por você. A loja combina com você como pagar.",

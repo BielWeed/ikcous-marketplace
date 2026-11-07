@@ -416,3 +416,9 @@ Deno.test("falha sem código (Error comum) -> o log leva o nome do erro, a respo
   assertEquals(logs[0].includes("sb_secret_xyz"), false);
   assertEquals(logs[0].includes("TypeError"), true);
 });
+
+Deno.test("aviso de pedido novo: o toque leva ao pedido do aviso — id na url, codificado", () => {
+  const base = { customer_name: "Maria", total: 10, created_at: new Date().toISOString() };
+  assertEquals(montarAviso({ ...base, id: UUID_VALIDO }).url, `/admin-orders?id=${UUID_VALIDO}`);
+  assertEquals(montarAviso({ ...base, id: "a b&id=outro" }).url, "/admin-orders?id=a%20b%26id%3Doutro");
+});

@@ -8,6 +8,10 @@ import {
   STATUS_PARA_PREPARAR,
 } from "@/lib/pedidos-para-preparar";
 import {
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
+import {
   FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
   TETO_DE_RECEBIMENTOS,
   inicioDaJanelaDoSino,
@@ -50,6 +54,20 @@ const TETO_DE_SEGURANCA_DE_PRODUTOS = 2000;
  * conta todas; a diferenca vira o aviso de lista cortada.
  */
 const TETO_DE_AVALIACOES = 100;
+
+/**
+ * Quanto a tela espera CADA fonte antes de contar que ela nao respondeu.
+ * Rede "pendurada" conecta e nao responde: sem prazo, uma fonte parada segurava
+ * a lista inteira em "Atualizando os avisos..." (nem a falha aparecia, porque
+ * ela so aparece quando a fonte REJEITA). Estourou = rejeicao, entra em
+ * `fontesComFalha` e as outras fontes aparecem normalmente.
+ */
+const PRAZO_DA_FONTE_DE_AVISO_MS = 15_000;
+
+const comPrazoDaFonte = <T>(fonte: Promise<T>): Promise<T> =>
+  aguardarComPrazo(fonte, PRAZO_DA_FONTE_DE_AVISO_MS, () =>
+    erroDeConsultaSemResposta(),
+  );
 
 export interface AvisosDoLojista {
   avisos: Aviso[];
@@ -288,14 +306,18 @@ async function buscarProdutosComEstoqueBaixo(
   // Pagina por pagina (o `loadProducts` aborta a consulta anterior, entao
   // nada de paralelo) ate cobrir o total do servidor ou bater o teto.
   for (let pagina = 0; pagina < maximoDePaginas; pagina++) {
-    const resultado = await carregar(pagina, TAMANHO_DA_PAGINA_DE_PRODUTOS, {
-      silent: true,
-      // So os ativos com estoque baixo: a conta e a do servidor, igual a
-      // `precisaDeReposicao`. O `.filter` abaixo e `montarAvisos` continuam
-      // conferindo (a copia de offline do `loadProducts` nao e filtrada).
-      stock: "low",
-      status: "active",
-    });
+    // Prazo POR PAGINA: o estoque le ate 10 paginas em serie, entao um prazo
+    // so para a fonte inteira cortaria uma leitura que esta andando, so lenta.
+    const resultado = await comPrazoDaFonte(
+      carregar(pagina, TAMANHO_DA_PAGINA_DE_PRODUTOS, {
+        silent: true,
+        // So os ativos com estoque baixo: a conta e a do servidor, igual a
+        // `precisaDeReposicao`. O `.filter` abaixo e `montarAvisos` continuam
+        // conferindo (a copia de offline do `loadProducts` nao e filtrada).
+        stock: "low",
+        status: "active",
+      }),
+    );
 
     // `loadProducts` engole o erro e devolve `null`. `null` NAO e "zero
     // produtos", e "nao sei" — tratar como lista vazia esconderia a falha e a
@@ -374,18 +396,19 @@ export function useAvisosDoLojista(): AvisosDoLojista {
       rPrivacidade,
       rRecebimentos,
     ] = await Promise.allSettled([
-      buscarPedidosPendentes(),
-      buscarPerguntasPendentes(),
-      buscarAvaliacoesSemResposta(),
+      comPrazoDaFonte(buscarPedidosPendentes()),
+      comPrazoDaFonte(buscarPerguntasPendentes()),
+      comPrazoDaFonte(buscarAvaliacoesSemResposta()),
+      // O prazo do estoque e por pagina (dentro da funcao).
       buscarProdutosComEstoqueBaixo(
         loadProducts as unknown as Parameters<
           typeof buscarProdutosComEstoqueBaixo
         >[0],
       ),
-      buscarDevolucoesSolicitadas(),
-      buscarCancelamentosDoCliente(),
-      buscarPedidosDePrivacidadeAbertos(),
-      buscarRecebimentosPorMarcar(),
+      comPrazoDaFonte(buscarDevolucoesSolicitadas()),
+      comPrazoDaFonte(buscarCancelamentosDoCliente()),
+      comPrazoDaFonte(buscarPedidosDePrivacidadeAbertos()),
+      comPrazoDaFonte(buscarRecebimentosPorMarcar()),
     ]);
 
     // Componente desmontado, ou rodada atropelada por outra mais nova: em

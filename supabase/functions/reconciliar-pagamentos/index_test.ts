@@ -653,6 +653,8 @@ for (const rota of ["payment", "order"] as const) {
       assertEquals(registro.chamadasAviso[0].args.p_chave, `valor_nao_conferido:${UUID_PEDIDO_1}:${id}`);
       // O mesmo número que o painel mostra no cartão do pedido (6 últimos, maiúsculas).
       assertEquals((alertas[0] as { body: string }).body.startsWith(`#${UUID_PEDIDO_1.slice(-6).toUpperCase()} · `), true);
+      // O toque no aviso abre o PEDIDO do aviso, não a lista com o filtro da última visita.
+      assertEquals((alertas[0] as { url: string }).url, `/admin-orders?id=${UUID_PEDIDO_1}`);
     });
   }
 
@@ -4095,6 +4097,7 @@ Deno.test("REV5 sentinela: total do pedido inválido não é rotulado como valor
   assertEquals(alertas.length, 1);
   assertStringIncludes(alertas[0].body, "total do pedido inválido");
   assertEquals(alertas[0].body.includes("valor divergente"), false);
+  assertEquals(alertas[0].url, `/admin-orders?id=${UUID_PEDIDO_1}`);
   assertStringIncludes(String(logs[0][0]), "total do pedido inválido");
   assertEquals(logs[0][1].motivo, "total_do_pedido");
   assertEquals(registro.chamadasAviso[0].args.p_chave, `total_do_pedido_invalido:${UUID_PEDIDO_1}:${id}`);
@@ -4119,6 +4122,7 @@ Deno.test("R1 cron: divergência avisa o admin uma vez, sem confirmar", async ()
   assertEquals(registro.chamadasConfirmar.length, 0);
   assertEquals(alertas.length, 1);
   assertEquals(alertas[0].body.includes("valor divergente"), true);
+  assertEquals(alertas[0].url, `/admin-orders?id=${UUID_PEDIDO_1}`);
 });
 
 Deno.test("R2 sentinela: raiz financiada é adotada; menor não é; valor ausente preserva adoção anterior", async () => {
@@ -4822,6 +4826,7 @@ Deno.test("P1 cron - lista de devoluções MENOR que o refunded_amount -> NÃO c
   assertEquals(r.registro.chamadasExternoDoMp.length, 0);
   assertEquals(r.efeitos.alertas.length, 1);
   assertEquals((r.efeitos.alertas[0] as any).title, "Devolução do Mercado Pago para conferir");
+  assertEquals((r.efeitos.alertas[0] as any).url, `/admin-orders?id=${UUID_PEDIDO_1}`);
 });
 
 Deno.test("P1 cron - lista VAZIA com refunded_amount > 0 -> NÃO confirma e não avisa (só o log com o motivo); decisão igual à de antes", async () => {
@@ -4874,6 +4879,7 @@ Deno.test("P1 cron - devolução que não cabe no saldo do ledger NÃO impede co
   assertEquals(r.corpo.confirmados, 1);
   assertEquals(r.efeitos.alertas.length, 1);
   assertEquals((r.efeitos.alertas[0] as any).title, "Devolução do Mercado Pago para conferir");
+  assertEquals((r.efeitos.alertas[0] as any).url, `/admin-orders?id=${UUID_PEDIDO_1}`);
 });
 
 // =============================================================================

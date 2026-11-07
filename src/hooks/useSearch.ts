@@ -96,12 +96,19 @@ export function useSearch(products: Product[], memoria?: MemoriaDosFiltros) {
           return bAvailable - aAvailable;
         }
 
+        const desempate =
+          (b.createdTime ?? 0) - (a.createdTime ?? 0) ||
+          a.id.localeCompare(b.id);
         switch (sort) {
           // Ordena pelo preço que o card ANUNCIA (menor das opções à venda).
           case "price_asc":
-            return precoDeVitrine(a).preco - precoDeVitrine(b).preco;
+            return (
+              precoDeVitrine(a).preco - precoDeVitrine(b).preco || desempate
+            );
           case "price_desc":
-            return precoDeVitrine(b).preco - precoDeVitrine(a).preco;
+            return (
+              precoDeVitrine(b).preco - precoDeVitrine(a).preco || desempate
+            );
           case "name_asc":
             return a.name.localeCompare(b.name);
           case "newest": {
@@ -117,7 +124,7 @@ export function useSearch(products: Product[], memoria?: MemoriaDosFiltros) {
               const diferenca = pontosDe(b) - pontosDe(a);
               if (diferenca !== 0) return diferenca;
             }
-            return (b.createdTime ?? 0) - (a.createdTime ?? 0);
+            return desempate;
           }
           default:
             return 0;

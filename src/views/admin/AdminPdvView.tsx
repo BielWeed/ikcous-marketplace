@@ -893,6 +893,7 @@ export function AdminPdvView({
           hidden={estado.etapa !== "cupom" || modoDeProduto !== "buscar"}
         >
           <BuscaDeProduto
+            onNavigate={onNavigate}
             despachar={despachar}
             buscarProdutos={buscarProdutos}
             visivel={

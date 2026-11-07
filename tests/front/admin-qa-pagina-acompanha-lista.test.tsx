@@ -77,7 +77,15 @@ vi.mock("@/hooks/useQuestions", async () => {
   }
 
   async function getQAStats() {
-    return { status: "ok", total: 0, pending: 0, answered: 0, rate: 0 };
+    const total = h.perguntas.length;
+    const pending = h.perguntas.filter((q) => q.answers.length === 0).length;
+    return {
+      status: "ok",
+      total,
+      pending,
+      answered: total - pending,
+      rate: total > 0 ? ((total - pending) / total) * 100 : 0,
+    };
   }
 
   // As ações não dependem de realtime; um teste dispara a recarga cancelada.
@@ -232,7 +240,11 @@ describe("AdminQAView — página acompanha a lista após uma ação", () => {
 
       expect(armazem.get("admin_qa_page")).toBe("0");
       expect(hospedeiro.textContent).not.toContain("Dúvida número 1?");
-      expect(hospedeiro.textContent).toContain("Fila de perguntas limpa");
+      expect(hospedeiro.textContent).toContain(
+        acao === "excluir"
+          ? "Nenhuma pergunta ainda"
+          : "Fila de perguntas limpa",
+      );
     },
   );
 
@@ -275,7 +287,7 @@ describe("AdminQAView — página acompanha a lista após uma ação", () => {
 
   it("trocar o filtro volta à primeira página", async () => {
     await montar();
-    await clicar("Todas 0"); // o filtro leva a contagem (a do dublê de estatísticas é 0)
+    await clicar("Todas 21"); // a contagem acompanha as perguntas do cenário
     expect(armazem.get("admin_qa_page")).toBe("0");
     expect(hospedeiro.textContent).toContain("Dúvida número 1?");
   });

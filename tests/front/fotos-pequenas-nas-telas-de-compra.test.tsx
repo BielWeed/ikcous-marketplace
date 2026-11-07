@@ -86,21 +86,25 @@ describe("fotos pequenas nas telas de compra", () => {
     expect(img.getAttribute("src")).toBe(ORIGINAL);
   });
 
-  it("CartItemsList mantém o placeholder sem foto", async () => {
-    const { CartItemsList } = await import(
-      "@/components/ui/custom/CartItemsList"
-    );
-    const img = await montar(
-      <CartItemsList
-        cart={[{ product: { ...produto, images: [] }, quantity: 1 }]}
-        removingId={null}
-        onUpdateQuantity={() => {}}
-        onRemove={() => {}}
-        handleClearCart={() => {}}
-      />,
-    );
-    expect(img.getAttribute("src")).toBe(PLACEHOLDER);
-  });
+  it.each([{ images: [] }, { images: [PLACEHOLDER] }])(
+    "CartItemsList desenha Sem foto local para %j",
+    async ({ images }) => {
+      const { CartItemsList } = await import(
+        "@/components/ui/custom/CartItemsList"
+      );
+      const img = await montar(
+        <CartItemsList
+          cart={[{ product: { ...produto, images }, quantity: 1 }]}
+          removingId={null}
+          onUpdateQuantity={() => {}}
+          onRemove={() => {}}
+          handleClearCart={() => {}}
+        />,
+      );
+      expect(img).toBeNull();
+      expect(host.textContent).toContain("Sem foto");
+    },
+  );
 
   it("OrderList pede a versão pequena da foto do pedido", async () => {
     const { OrderList } = await import("@/components/ui/custom/OrderList");
@@ -143,6 +147,28 @@ describe("fotos pequenas nas telas de compra", () => {
     });
     expect(host.querySelector("img")?.getAttribute("src")).toBe(ORIGINAL);
   });
+
+  it.each([{ images: [] }, { images: [PLACEHOLDER] }])(
+    "ShippingProgress desenha Sem foto local para %j",
+    async ({ images }) => {
+      const { ShippingProgress } = await import(
+        "@/components/ui/custom/ShippingProgress"
+      );
+      const img = await montar(
+        <ShippingProgress
+          estado="meta"
+          savings={0}
+          progressPercent={50}
+          amountToFree={10}
+          isNearlyThere={false}
+          freeShippingProducts={[{ ...produto, images }]}
+          onNavigate={() => {}}
+        />,
+      );
+      expect(img).toBeNull();
+      expect(host.textContent).toContain("Sem foto");
+    },
+  );
 
   it("ShippingProgress pede a versão pequena das sugestões", async () => {
     const { ShippingProgress } = await import(

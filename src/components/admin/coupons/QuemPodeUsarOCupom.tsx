@@ -93,6 +93,14 @@ export interface QuemPodeUsarOCupomProps {
    */
   readonly semLimiteDeUso?: boolean;
   readonly desabilitado: boolean;
+  /**
+   * Recusa do Salvar que é desta região (lista de clientes vazia ou que não
+   * carregou): o texto aparece aqui, ligado à região (`aria-describedby`) e à
+   * busca. `regiaoId` e `erroId` são dados pela tela, que é quem leva o foco.
+   */
+  readonly erro?: string | null;
+  readonly regiaoId?: string;
+  readonly erroId?: string;
 }
 
 export function QuemPodeUsarOCupom({
@@ -107,6 +115,9 @@ export function QuemPodeUsarOCupom({
   semLimiteNemValidade,
   semLimiteDeUso,
   desabilitado,
+  erro = null,
+  regiaoId,
+  erroId,
 }: QuemPodeUsarOCupomProps): ReactElement {
   const [termo, setTermo] = useState("");
   const [resultados, setResultados] = useState<readonly ClienteEncontrado[]>(
@@ -163,7 +174,13 @@ export function QuemPodeUsarOCupom({
   }
 
   return (
-    <fieldset className="min-w-0 space-y-3" disabled={desabilitado}>
+    <fieldset
+      id={regiaoId}
+      tabIndex={regiaoId ? -1 : undefined}
+      aria-describedby={erro ? erroId : undefined}
+      className="min-w-0 space-y-3 outline-none"
+      disabled={desabilitado}
+    >
       <legend className="mb-3 flex items-center gap-2.5 text-lg font-bold text-zinc-50">
         <Selo icone={Users} matiz="#73BFFF" />
         Quem pode usar
@@ -215,6 +232,16 @@ export function QuemPodeUsarOCupom({
         })}
       </GrupoDeOpcoes>
 
+      {erro && (
+        <p
+          id={erroId}
+          role="alert"
+          className="text-xs font-medium text-red-300"
+        >
+          {erro}
+        </p>
+      )}
+
       {alcance === "vitrine" && semLimiteNemValidade && (
         <p className="flex items-start gap-2 rounded-[20px] border border-sky-300/20 bg-sky-300/5 p-4 text-sm leading-relaxed text-sky-200">
           <AlertTriangle
@@ -258,7 +285,12 @@ export function QuemPodeUsarOCupom({
               value={termo}
               onChange={(e) => aoDigitar(e.target.value)}
               placeholder="Nome, e-mail ou WhatsApp"
-              aria-describedby="coupon-clientes-busca-help"
+              aria-invalid={erro ? true : undefined}
+              aria-describedby={
+                erro
+                  ? `coupon-clientes-busca-help ${erroId}`
+                  : "coupon-clientes-busca-help"
+              }
               className={`${CAMPO} border pl-9 pr-3 ${FOCO}`}
             />
           </div>

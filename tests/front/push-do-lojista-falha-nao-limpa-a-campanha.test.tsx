@@ -145,7 +145,7 @@ class Observador {
 
 const TITULO = "Chegaram novidades";
 const MENSAGEM = "Veja os produtos que chegaram hoje";
-const CAMINHO = "/novidades-da-semana";
+const CAMINHO = "/about-store";
 
 function esperar(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

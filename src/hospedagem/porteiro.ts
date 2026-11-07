@@ -517,7 +517,12 @@ export function respostaManutencao(
   motivo: MotivoManutencao,
   caderneta: EstadoCaderneta,
 ): Response {
-  const corpo = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>${escapeHtml("Loja em manutenção")}</title></head><body><p>${escapeHtml("Esta loja está em manutenção. Volte em instantes.")}</p></body></html>`;
+  // Mesmo padrão de public/offline.html: ajuste ao celular, recarga sozinha a
+  // cada 10 s e um link para a própria página como botão. SEM script e sem
+  // atributo de evento de propósito: a CSP de produção só libera 1 hash em
+  // script-src. O texto é o mesmo para todo motivo e para toda loja (nada de
+  // marca nem de dado do banco: falha fechada).
+  const corpo = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta http-equiv="refresh" content="30"><title>${escapeHtml("Loja em manutenção")}</title><style>body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;box-sizing:border-box;text-align:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;background:#fafafa;color:#18181b}p{margin:0;max-width:320px;font-size:16px;line-height:1.5}a{padding:14px 28px;border-radius:14px;background:#18181b;color:#fafafa;font-size:15px;font-weight:700;text-decoration:none}</style></head><body><p>${escapeHtml("Esta loja está em manutenção. Volte em instantes.")}</p><a href="">${escapeHtml("Tentar novamente")}</a></body></html>`;
   return new Response(corpo, {
     status: 503,
     headers: {

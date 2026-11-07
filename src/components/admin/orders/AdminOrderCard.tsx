@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAgoraDoPainel } from "@/hooks/useAgoraDoPainel";
 import type { ResultadoDaAnulacao } from "@/hooks/useAnularVendaDoBalcao";
 import { podeAnularVendaDoBalcao } from "@/lib/anulacao-do-balcao";
 import { pedidoSemValorAPagar } from "@/lib/forma-de-pagamento";
@@ -131,7 +132,8 @@ export const AdminOrderCard = memo(function AdminOrderCard({
   const unidades = itens.reduce((soma, item) => soma + (item.quantity || 1), 0);
   const nome = order.customer?.name || "Cliente";
   const numero = numeroDoPedido(order.id);
-  const tempo = horarioRelativo(order.createdAt);
+  const agora = useAgoraDoPainel();
+  const tempo = horarioRelativo(order.createdAt, new Date(agora));
   const data = new Date(order.createdAt);
   const criadoEm = Number.isNaN(data.getTime())
     ? null
@@ -161,7 +163,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
     "estornado",
   ].includes(order.paymentStatus ?? "");
   const avisoDeEspera = fraseDeEsperaDoPedido(
-    idadeDoPedidoPendente(order.createdAt, order.status),
+    idadeDoPedidoPendente(order.createdAt, order.status, agora),
   );
   const bloqueado = isOffline || processando || registrandoPagamento;
   const resumo =

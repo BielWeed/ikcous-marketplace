@@ -471,6 +471,13 @@ async function lerCatalogoEmPaginas(
 const ESPERAS_DA_CONFIG_MS: readonly number[] = [1000, 2000, 4000];
 // Rajada de eventos de rede (sinal piscando, aba trocando) não vira rajada de pedidos.
 const MINIMO_ENTRE_RETOMADAS_DA_CONFIG_MS = 3000;
+// Prazo da LEITURA da configuração (07/11/2026). Rede "pendurada" conecta e não
+// responde: sem prazo `isLoaded` ficava falso (painel em "Carregando...", Salvar
+// desligado, endereço do checkout sem preencher) e a retomada recusava rodar
+// por haver "consulta em voo". Estourou: vira "sem resposta" (mesmo caminho da
+// falha de rede), a tela solta e as tentativas automáticas e a retomada voltam
+// a funcionar. É uma linha só (nome, frete, cores): 20 s, como o de salvar.
+const PRAZO_DA_LEITURA_DA_CONFIG_MS = 20_000;
 
 export function StoreProvider({
   children,
@@ -961,10 +968,19 @@ export function StoreProvider({
     let semResposta = false;
     try {
       const tableSource = isAdmin ? "store_config" : "v_store_config";
-      const { data, error } = await supabase
-        .from(tableSource as any)
-        .select("*")
-        .single();
+      // O prazo só limita a ESPERA: a resposta que chegar depois dele não tem
+      // mais quem a leia (a corrida já terminou), então nunca sobrescreve uma
+      // configuração mais nova trazida pela nova tentativa.
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase
+            .from(tableSource as any)
+            .select("*")
+            .single(),
+        ) as Promise<{ data: any; error: any }>,
+        PRAZO_DA_LEITURA_DA_CONFIG_MS,
+        () => erroDeConsultaSemResposta(),
+      );
 
       // Uma escrita confirmada torna esta leitura anterior ultrapassada.
       if (geracao !== geracaoDaConfigRef.current) {

@@ -389,9 +389,10 @@ describe("CheckoutView — Voltar do aparelho enquanto o endereço é salvo", ()
     updateAddress.mockReturnValueOnce(promessa);
     await abrirOApp();
     await act(async () => {
-      // O lápis de editar do endereço salvo.
+      // O lápis de editar do endereço salvo (o nome acessível diz de qual
+      // endereço é, lote r64-a).
       const editar = document.querySelector(
-        'button[aria-label="Editar"]',
+        'button[aria-label="Editar endereço Casa"]',
       ) as HTMLButtonElement | null;
       expect(editar).not.toBeNull();
       editar!.click();

@@ -704,6 +704,7 @@ export function ProfileView({
                         }) && (
                           <Button
                             onClick={() => onRetomarPagamento(order.id)}
+                            aria-label={`Retomar pagamento do pedido #${numeroDoPedido(order.id)}`}
                             className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-foreground text-base font-semibold text-background hover:bg-foreground/90"
                           >
                             <CreditCard className="size-4" aria-hidden="true" />
@@ -714,6 +715,7 @@ export function ProfileView({
                       <div className="flex flex-wrap gap-2">
                         <Button
                           onClick={() => onNavigate("order-details", order.id)}
+                          aria-label={`Ver detalhes do pedido #${numeroDoPedido(order.id)}`}
                           className="h-12 flex-1 rounded-2xl bg-foreground text-base font-semibold text-background hover:bg-foreground/90"
                         >
                           Ver detalhes

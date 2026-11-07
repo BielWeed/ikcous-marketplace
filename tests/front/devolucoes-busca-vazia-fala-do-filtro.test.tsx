@@ -141,6 +141,22 @@ describe("Devoluções — busca sem resultado", () => {
     expect(tela()).not.toContain("Quando um cliente pedir");
   });
 
+  it.each([
+    ["Solicitadas", "solicitada"],
+    ["Aprovadas", "aprovada"],
+    ["Recusadas", "recusada"],
+    ["Canceladas", "cancelada"],
+    ["A caminho", "a caminho"],
+    ["Recebidas", "recebida"],
+    ["Concluídas", "concluída"],
+    ["Reprovadas", "reprovada"],
+  ])("sem busca, %s concorda com nenhuma devolução", async (chip, singular) => {
+    await montar();
+    await escolherChip(chip);
+    const titulo = hospedeiro.querySelector("p.text-sm.font-black");
+    expect(titulo?.textContent).toBe(`Nenhuma devolução ${singular}`);
+  });
+
   it("sem busca, a lista vazia continua explicando quando aparece a primeira devolução (controle)", async () => {
     await montar();
     expect(tela()).toContain("Nenhuma devolução ainda");

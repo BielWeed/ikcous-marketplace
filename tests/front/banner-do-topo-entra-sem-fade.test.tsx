@@ -120,6 +120,37 @@ describe("LazyImage — prop semFade", () => {
 describe("BannerCarousel — a primeira foto do topo entra seca", () => {
   const dois = [banner("um", { order: 1 }), banner("dois", { order: 2 })];
 
+  it.each(["default", "pronto_destaque"])(
+    "só o topo prioriza a primeira foto (%s)",
+    (templateType) => {
+      const banners = [
+        banner("primeiro", { templateType }),
+        banner("segundo", { templateType, order: 2 }),
+      ];
+      act(() =>
+        raiz.render(
+          <BannerCarousel
+            key="topo"
+            banners={banners}
+            autoPlay={false}
+            primeiraSemFade
+          />,
+        ),
+      );
+      expect(fotos()[0].getAttribute("fetchpriority")).toBe("high");
+      expect(fotos()[1].getAttribute("fetchpriority")).not.toBe("high");
+      act(() =>
+        raiz.render(
+          <BannerCarousel key="meio" banners={banners} autoPlay={false} />,
+        ),
+      );
+      for (const img of fotos()) {
+        expect(img.getAttribute("fetchpriority")).not.toBe("high");
+        expect(img.getAttribute("loading")).toBe("lazy");
+      }
+    },
+  );
+
   it("com primeiraSemFade, só a 1a foto perde a transição; a 2a segue esmaecendo", () => {
     act(() =>
       raiz.render(
@@ -169,17 +200,16 @@ describe("BannerCarousel — a primeira foto do topo entra seca", () => {
         <BannerCarousel banners={comTexto} autoPlay={false} primeiraSemFade />,
       ),
     );
-    const comProp = hospedeiro.innerHTML.replace(
-      /transition-opacity duration-300 ease-out /,
-      "",
-    );
+    // Prioridade e fade mudam de propósito; a película, texto e botão não.
+    const semAtributosDeCarga = () =>
+      hospedeiro.innerHTML
+        .replace(/transition-opacity duration-300 ease-out /, "")
+        .replace(/ (loading|decoding|fetchpriority)="[^"]*"/g, "");
+    const comProp = semAtributosDeCarga();
     act(() =>
       raiz.render(<BannerCarousel banners={comTexto} autoPlay={false} />),
     );
-    const semProp = hospedeiro.innerHTML.replace(
-      /transition-opacity duration-300 ease-out /,
-      "",
-    );
+    const semProp = semAtributosDeCarga();
     expect(comProp).toBe(semProp);
   });
 });

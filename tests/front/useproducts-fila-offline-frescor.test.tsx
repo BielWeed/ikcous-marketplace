@@ -8,6 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mock = vi.hoisted(() => ({
   products: [] as Product[],
+  rpc: vi.fn(),
+  aguardarEnvio: undefined as Promise<void> | undefined,
   version: "2026-10-16T07:00:00.123456+00:00",
   payloads: [] as Record<string, unknown>[],
   filters: [] as [string, unknown][],
@@ -37,6 +39,7 @@ vi.mock("sonner", () => ({
 }));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
+    rpc: (...args: unknown[]) => mock.rpc(...args),
     auth: {
       getSession: async () => ({
         data: { session: { user: { id: "lojista-1" } } },
@@ -58,6 +61,7 @@ vi.mock("@/lib/supabase", () => ({
             return query;
           },
           select: async () => {
+            await mock.aguardarEnvio;
             if (mock.error) return { data: null, error: mock.error };
             if (filters.get("ultima_atualizacao") !== mock.version) {
               return { data: [], error: null };
@@ -83,8 +87,11 @@ const CHAVE = "products_offline_updates_queue:lojista-1";
 const BASE = "2026-10-16T07:00:00.123456+00:00";
 type Api = ReturnType<typeof useProducts>;
 
-function Sonda({ ready }: { ready: (api: Api) => void }) {
-  const api = useProducts();
+function Sonda({
+  ready,
+  onSincronizado,
+}: { ready: (api: Api) => void; onSincronizado?: () => void }) {
+  const api = useProducts({ autoFetch: !onSincronizado, onSincronizado });
   useEffect(() => ready(api));
   return null;
 }
@@ -109,6 +116,13 @@ describe("fila offline de produtos — frescor e medidas", () => {
     localStorage.clear();
     vi.clearAllMocks();
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+    mock.rpc.mockImplementation(() => ({
+      abortSignal: async () => ({
+        data: { data: [], total_count: 0 },
+        error: null,
+      }),
+    }));
+    mock.aguardarEnvio = undefined;
     mock.version = BASE;
     mock.payloads = [];
     mock.filters = [];
@@ -135,6 +149,78 @@ describe("fila offline de produtos — frescor e medidas", () => {
   afterEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
+  });
+
+  it("sincronizar avisa quem cuida da lista, sem buscar a página padrão do hook", async () => {
+    vi.useFakeTimers();
+    const root = createRoot(document.createElement("div"));
+    const avisar = vi.fn();
+    try {
+      guardar({ stock: 6 });
+      await act(async () =>
+        root.render(<Sonda ready={() => {}} onSincronizado={avisar} />),
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(localStorage.getItem(CHAVE)).toBeNull();
+      expect(avisar).toHaveBeenCalledTimes(1);
+      expect(mock.rpc).not.toHaveBeenCalled();
+      expect(toast.error).not.toHaveBeenCalled();
+    } finally {
+      act(() => root.unmount());
+      vi.useRealTimers();
+    }
+  });
+
+  it("duas instâncias: quem perde a trava também recebe o aviso e sai ao desmontar", async () => {
+    vi.useFakeTimers();
+    const root = createRoot(document.createElement("div"));
+    const avisar = vi.fn();
+    const avisoAtual = vi.fn();
+    let liberarEnvio!: () => void;
+    mock.aguardarEnvio = new Promise<void>((resolve) => {
+      liberarEnvio = resolve;
+    });
+    const desenhar = (callback?: () => void, mostrarLista = true) => (
+      <>
+        <Sonda ready={() => {}} />
+        {mostrarLista && <Sonda ready={() => {}} onSincronizado={callback} />}
+      </>
+    );
+    try {
+      guardar({ stock: 6 });
+      await act(async () => root.render(desenhar(avisar)));
+      // A primeira instância começa o envio; a segunda encontra a trava ocupada.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(mock.payloads).toHaveLength(0);
+      expect(toast.loading).toHaveBeenCalledTimes(1);
+      // O callback pode mudar sem perder o registro da tela.
+      await act(async () => root.render(desenhar(avisoAtual)));
+      await act(async () => liberarEnvio());
+      expect(localStorage.getItem(CHAVE)).toBeNull();
+      expect(mock.payloads).toHaveLength(1);
+      expect(avisar).not.toHaveBeenCalled();
+      expect(avisoAtual).toHaveBeenCalledTimes(1);
+      expect(mock.rpc).not.toHaveBeenCalled();
+
+      await act(async () => root.render(desenhar(undefined, false)));
+      mock.version = BASE;
+      guardar({ stock: 5 });
+      await act(async () => {
+        window.dispatchEvent(new Event("online"));
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(mock.payloads).toHaveLength(2);
+      expect(avisoAtual).toHaveBeenCalledTimes(1);
+    } finally {
+      liberarEnvio();
+      act(() => root.unmount());
+      mock.aguardarEnvio = undefined;
+      vi.useRealTimers();
+    }
   });
 
   it("grava estoque e preço só com a versão-base no próprio UPDATE", async () => {

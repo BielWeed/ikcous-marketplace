@@ -188,6 +188,56 @@ describe("AdminQAView — redesenho", () => {
     });
   }
 
+  it("r66 confirmação anuncia a pergunta e cancelar volta à lixeira certa", async () => {
+    await montar();
+    const cartao = [...hospedeiro.querySelectorAll("li")].find((li) =>
+      li.textContent?.includes("Gabriel"),
+    )!;
+    await tocar(
+      cartao.querySelector<HTMLButtonElement>('[title="Excluir pergunta"]')!,
+    );
+    const aviso = cartao.querySelector('[role="alertdialog"]')!;
+    expect(aviso).not.toBeNull();
+    expect(
+      document.getElementById(aviso.getAttribute("aria-labelledby")!)
+        ?.textContent,
+    ).toBe("Excluir esta pergunta? Não dá para desfazer.");
+    await tocar(botaoPorTexto("Cancelar"));
+    expect(document.activeElement).toBe(
+      cartao.querySelector('[aria-label="Excluir pergunta de Gabriel"]'),
+    );
+    expect(
+      cartao.querySelector('[aria-label="Editar resposta a Gabriel"]'),
+    ).not.toBeNull();
+    expect(
+      cartao.querySelector(
+        '[aria-label="Mostrar detalhes da pergunta de Gabriel"]',
+      ),
+    ).not.toBeNull();
+  });
+
+  it("r66 após excluir pergunta de verdade o foco vai ao título da lista", async () => {
+    h.deleteQuestion.mockImplementationOnce(async () => {
+      h.estado.perguntas = h.estado.perguntas.filter(
+        (q) => q.id !== PENDENTE.id,
+      );
+      return true;
+    });
+    await montar();
+    await tocar(
+      hospedeiro.querySelector<HTMLButtonElement>(
+        '[title="Excluir pergunta"]',
+      )!,
+    );
+    await tocar(botaoPorTexto("Excluir"));
+    expect(document.activeElement?.textContent).toBe("Lista de perguntas");
+    expect(
+      hospedeiro.querySelector(
+        '[aria-label="Excluir pergunta de Isadora Bernardes"]',
+      ),
+    ).toBeNull();
+  });
+
   it("o filtro mostra Pendentes 2 e Todas 6, com Pendentes marcado", async () => {
     await montar();
     const grupo = hospedeiro.querySelector('[role="group"][aria-label]');
@@ -244,8 +294,10 @@ describe("AdminQAView — redesenho", () => {
     expect(norm(hospedeiro.textContent)).toContain("Respondida");
     expect(norm(hospedeiro.textContent)).not.toContain("Resposta da loja");
 
-    const setas = botoes().filter(
-      (b) => b.getAttribute("aria-label") === "Mostrar detalhes",
+    const setas = botoes().filter((b) =>
+      b
+        .getAttribute("aria-label")
+        ?.startsWith("Mostrar detalhes da pergunta de "),
     );
     expect(setas).toHaveLength(2);
     expect(setas[1]?.getAttribute("aria-expanded")).toBe("false");
@@ -257,8 +309,8 @@ describe("AdminQAView — redesenho", () => {
 
   it("excluir pede confirmação em frase e só apaga ao tocar em Excluir", async () => {
     await montar();
-    const lixeiras = botoes().filter(
-      (b) => b.getAttribute("aria-label") === "Excluir pergunta",
+    const lixeiras = botoes().filter((b) =>
+      b.getAttribute("aria-label")?.startsWith("Excluir pergunta de "),
     );
     expect(lixeiras).toHaveLength(2);
     await tocar(lixeiras[0] as HTMLElement);
@@ -275,8 +327,8 @@ describe("AdminQAView — redesenho", () => {
     expect(h.deleteQuestion).not.toHaveBeenCalled();
 
     await tocar(
-      botoes().filter(
-        (b) => b.getAttribute("aria-label") === "Excluir pergunta",
+      botoes().filter((b) =>
+        b.getAttribute("aria-label")?.startsWith("Excluir pergunta de "),
       )[0] as HTMLElement,
     );
     await tocar(botaoPorTexto("Excluir"));
@@ -319,8 +371,8 @@ describe("AdminQAView — redesenho", () => {
       "Sem conexão. Responder e excluir voltam quando a internet voltar.",
     );
     expect(botaoPorTexto("Responder").disabled).toBe(true);
-    for (const lixeira of botoes().filter(
-      (b) => b.getAttribute("aria-label") === "Excluir pergunta",
+    for (const lixeira of botoes().filter((b) =>
+      b.getAttribute("aria-label")?.startsWith("Excluir pergunta de "),
     )) {
       expect(lixeira.disabled).toBe(true);
     }

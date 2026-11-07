@@ -398,7 +398,10 @@ async function respostaTemFichaDaLoja(resposta: any): Promise<boolean> {
  * outra tarefa: nenhum byte de marca ou conexão sai quando não há ficha. */
 function respostaEmManutencao(): Response {
   return new Response(
-    "<!doctype html><html><body>Loja em manutenção. Tente novamente em instantes.</body></html>",
+    // Mesmo padrão do 503 do porteiro e de public/offline.html: ajuste ao
+    // celular, recarga sozinha a cada 10 s e um link para a própria página
+    // como botão. Sem script (a CSP só libera 1 hash em script-src).
+    '<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta http-equiv="refresh" content="10"><title>Loja em manutenção</title><style>body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;box-sizing:border-box;text-align:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;background:#fafafa;color:#18181b}p{margin:0;max-width:320px;font-size:16px;line-height:1.5}a{padding:14px 28px;border-radius:14px;background:#18181b;color:#fafafa;font-size:15px;font-weight:700;text-decoration:none}</style></head><body><p>Loja em manutenção. Tente novamente em instantes.</p><a href="">Tentar novamente</a></body></html>',
     {
       status: 503,
       headers: {

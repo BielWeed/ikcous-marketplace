@@ -1,3 +1,4 @@
+import { AvisoDaLojaSemDados } from "@/components/admin/AvisoDaLojaSemDados";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -55,7 +56,18 @@ export function AdminFreeShippingCardView({
   active = true,
   onSetDirty,
 }: AdminFreeShippingCardViewProps) {
-  const { config, isLoaded: configLoaded, updateConfig } = useStore();
+  const {
+    config,
+    isLoaded: configLoaded,
+    updateConfig,
+    configIndisponivel,
+    refresh,
+  } = useStore();
+  // A leitura da config falhou e não há cópia no aparelho: `config` é a de
+  // fábrica, e o estilo mostrado não é o da loja. Gravar dali mesclaria o
+  // resultado na fábrica e o guardaria no cofre do aparelho como se fosse a
+  // config de verdade. `=== true`: contexto sem o campo lê como "não falhou".
+  const configFalhou = configIndisponivel === true;
   const offline = useOnlineStatus();
   const estilo = config.freeShippingCardStyle ?? "completo";
   const [edicao, setEdicao] = useState({
@@ -80,7 +92,15 @@ export function AdminFreeShippingCardView({
   }, [active, dirty, onSetDirty]);
 
   async function salvar() {
-    if (trava.current || offline || !active || !configLoaded || !dirty) return;
+    if (
+      trava.current ||
+      offline ||
+      !active ||
+      !configLoaded ||
+      configFalhou ||
+      !dirty
+    )
+      return;
     trava.current = true;
     setSalvando(true);
     const valor = edicao.valor;
@@ -113,9 +133,16 @@ export function AdminFreeShippingCardView({
           Escolha como o aviso aparece na página inicial da loja.
         </p>
       </header>
+      {/* Fora do fieldset de propósito: ele fica travado com a leitura falha,
+          e o "Tentar de novo" do aviso tem de seguir ativo. */}
+      {configLoaded && configFalhou && (
+        <AvisoDaLojaSemDados
+          onTentarDeNovo={() => void refresh({ onlyConfig: true })}
+        />
+      )}
       <fieldset
         className="space-y-3"
-        disabled={!active || !configLoaded || salvando}
+        disabled={!active || !configLoaded || configFalhou || salvando}
       >
         <legend className="sr-only">Estilo do card de frete grátis</legend>
         {(["completo", "compacto"] as const).map((opcao) => (
@@ -160,7 +187,14 @@ export function AdminFreeShippingCardView({
         </p>
       )}
       <Button
-        disabled={offline || !active || !configLoaded || salvando || !dirty}
+        disabled={
+          offline ||
+          !active ||
+          !configLoaded ||
+          configFalhou ||
+          salvando ||
+          !dirty
+        }
         onClick={() => void salvar()}
         className="h-[52px] w-full rounded-full bg-zinc-50 font-bold text-zinc-950 hover:bg-zinc-200"
       >

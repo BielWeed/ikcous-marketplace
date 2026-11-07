@@ -134,6 +134,26 @@ describe("AddressForm — campos obrigatórios só com espaços", () => {
     },
   );
 
+  it.each(["​", "⠀"])(
+    "recusa texto invisível %j nos seis campos de entrega",
+    async (valor) => {
+      const onSubmit = await abrirFormulario();
+      await act(async () => {
+        for (const campo of Object.keys(mensagens)) {
+          digitar(campo, campo === "state" ? "MG" : valor);
+        }
+      });
+      await enviar();
+      expect(onSubmit).not.toHaveBeenCalled();
+      for (const [campo, mensagem] of Object.entries(mensagens)) {
+        if (campo === "state") continue;
+        expect(hospedeiro.querySelector(`#erro-${campo}`)?.textContent).toBe(
+          mensagem,
+        );
+      }
+    },
+  );
+
   it.each(["M", "ZZ", "12"])("recusa UF inexistente %s", async (state) => {
     const onSubmit = await abrirFormulario();
     await act(async () => {

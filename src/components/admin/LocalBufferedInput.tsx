@@ -17,6 +17,8 @@ interface LocalBufferedInputProps
   readonly delay?: number;
   readonly validate?: (val: string) => string | null;
   readonly mask?: "phone" | "currency";
+  /** Mantém dígitos excedentes para o validador do WhatsApp da loja recusar. */
+  readonly preservarExcessoTelefone?: boolean;
   /** Só com `mask="currency"`: preserva o sinal na exibição e no onFlush. */
   readonly permiteNegativo?: boolean;
   /**
@@ -50,8 +52,14 @@ const descritoPor = (
   erro: string | null,
 ) => (erro ? [existente, erroId].filter(Boolean).join(" ") : existente);
 
-const formatPhone = (val: string, anterior?: string) => {
+const formatPhone = (
+  val: string,
+  anterior?: string,
+  preservarExcesso = false,
+) => {
   const clean = digitosDoTelefoneDoCampo(val, anterior);
+  // Excedente precisa chegar à validação, não virar outro número válido.
+  if (preservarExcesso && clean.length > 11) return clean;
   if (clean.length === 0) return "";
   if (clean.length <= 2) return `(${clean}`;
   if (clean.length <= 6) return `(${clean.slice(0, 2)}) ${clean.slice(2)}`;
@@ -132,6 +140,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
   className,
   validate,
   mask,
+  preservarExcessoTelefone = false,
   permiteNegativo = false,
   zeroVazio = false,
   zeroDigitadoVale = false,
@@ -142,14 +151,20 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
     (val: string | number) => {
       const str = val !== undefined && val !== null ? val.toString() : "";
       if (mask === "phone") {
-        return formatPhone(str);
+        // O próprio onFlush já entrega dígitos nacionais. Não ler novamente
+        // o 55 excedente como país quando o pai devolve esse valor pela prop.
+        return formatPhone(
+          str,
+          preservarExcessoTelefone ? str : undefined,
+          preservarExcessoTelefone,
+        );
       }
       if (mask === "currency") {
         return decimalToCurrencyDisplay(str, permiteNegativo);
       }
       return str;
     },
-    [mask, permiteNegativo],
+    [mask, permiteNegativo, preservarExcessoTelefone],
   );
 
   const [localVal, setLocalVal] = useState(() => formatValue(value));
@@ -193,7 +208,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
     let rawVal = val;
 
     if (mask === "phone") {
-      val = formatPhone(val, localVal.toString());
+      val = formatPhone(val, localVal.toString(), preservarExcessoTelefone);
       rawVal = val.replace(/\D/g, "");
     } else if (mask === "currency") {
       const { inputType: tipo, data } = e.nativeEvent as InputEvent;

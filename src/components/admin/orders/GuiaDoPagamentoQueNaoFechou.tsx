@@ -5,7 +5,7 @@ import { getPaymentStatusConfig } from "./OrderStatusBadge";
  * C7 do ciclo de recuperação do cartão (02/10/2026): o que o LOJISTA faz nos
  * dois casos que o servidor deixa para uma pessoa resolver. Mora no modal
  * "Guia de Controle de Pedidos" (AdminOrdersView), que é a tela para onde o
- * push "Pagamento fora do fluxo" leva (`url: "/admin-orders"`,
+ * push "Pagamento fora do fluxo" leva (`url: "/admin-orders?id=<pedido>"`,
  * webhook-mercadopago/index.ts).
  *
  * Cada frase abaixo é um fato do código de hoje — se um destes mudar, o texto

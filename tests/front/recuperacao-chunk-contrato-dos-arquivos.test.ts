@@ -110,7 +110,7 @@ describe("silent-guardian — splash e fallback do loader, NUNCA dono", () => {
     expect(FONTE.includes('__APP_VERSION__ = "1773003981700"')).toBe(true);
   });
 
-  it("não desregistra SW, não apaga cache e não recarrega a página", () => {
+  it("não desregistra SW, não apaga cache e só recarrega a página quando a PESSOA toca no botão do aviso", () => {
     const fonte = normalizar(FONTE);
     expect({
       unregister: fonte.includes("unregister"),
@@ -118,8 +118,20 @@ describe("silent-guardian — splash e fallback do loader, NUNCA dono", () => {
       // citado em comentário diz "caches" em prosa — e a régua Deno N5
       // (tests/pwa_navegacao_offline_test.ts) mede a API pelo mesmo motivo.
       caches: fonte.includes("caches.delete"),
-      reload: fonte.includes("location.reload"),
-    }).toEqual({ unregister: false, caches: false, reload: false });
+      // Recarga automática continua proibida (a decisão de recuperar é do
+      // módulo único). Há UMA recarga permitida: a do botão "Tentar de novo"
+      // do aviso de app que não abriu, dentro do tratador de clique.
+      recargasNoArquivo: fonte.split("location.reload").length - 1,
+      recargaSoDentroDoClique:
+        /addEventListener\("click", \(\) => \{ globalThis\.location\.reload\(\); \}\)/.test(
+          fonte,
+        ),
+    }).toEqual({
+      unregister: false,
+      caches: false,
+      recargasNoArquivo: 1,
+      recargaSoDentroDoClique: true,
+    });
   });
 });
 

@@ -306,6 +306,26 @@ export function descricaoDoPedido(orderId: string): string {
   return `Pedido ${numeroDoPedido(orderId)}`;
 }
 
+/**
+ * O aviso do cartão órfão ao lojista. A url leva ao PEDIDO do aviso
+ * (`?id=`), não à lista de Pedidos: a lista abre com o filtro e a busca da
+ * última visita (gravados no aparelho) e pode nem mostrar este pedido.
+ * Com `avisoDoChamador` o texto é o do chamador; só a url é sempre esta.
+ */
+export function avisoDoCartaoOrfao(
+  orderId: string,
+  avisoDoChamador?: { title: string; body: string },
+): { title: string; body: string; url: string } {
+  const url = `/admin-orders?id=${encodeURIComponent(orderId)}`;
+  return avisoDoChamador
+    ? { ...avisoDoChamador, url }
+    : {
+      title: "Cobrança de cartão sem registro",
+      body: `${descricaoDoPedido(orderId)} · confira o painel do Mercado Pago`,
+      url,
+    };
+}
+
 export function donoConfere(
   pedido: { user_id: string | null },
   sub: string | null,
@@ -1587,13 +1607,7 @@ async function alertarAdminCartaoOrfaoReal(args: {
       vapidKeys,
     });
 
-    const aviso = args.aviso
-      ? { ...args.aviso, url: "/admin-orders" }
-      : {
-          title: "Cobrança de cartão sem registro",
-          body: `${descricaoDoPedido(orderId)} · confira o painel do Mercado Pago`,
-          url: "/admin-orders",
-        };
+    const aviso = avisoDoCartaoOrfao(orderId, args.aviso);
     const itens = await enviarParaInscritos({
       servidor,
       inscricoes,
@@ -3018,7 +3032,10 @@ async function handler(
         status: statusSeguro(ordemIlegivel?.status),
         status_detail: statusSeguro(ordemIlegivel?.status_detail),
       });
-      return json({ error: "Resposta inválida do gateway." }, 502);
+      return json(
+        { error: "O Mercado Pago respondeu de um jeito que não deu para entender. Confira seus pedidos antes de tentar de novo." },
+        502,
+      );
     }
 
     idGateway = extraido.orderId;

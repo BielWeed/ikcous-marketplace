@@ -135,7 +135,9 @@ describe("BannerCarousel: o texto sempre tem escurecimento atrás", () => {
       "@/components/ui/custom/BannerCarousel"
     );
     act(() => {
-      raiz.render(<BannerCarousel banners={banners} autoPlay={false} />);
+      raiz.render(
+        <BannerCarousel primeiraSemFade banners={banners} autoPlay={false} />,
+      );
     });
   }
 
@@ -286,7 +288,9 @@ describe("BannerCarousel: o carrossel para de passar sozinho", () => {
       "@/components/ui/custom/BannerCarousel"
     );
     act(() => {
-      raiz.render(<BannerCarousel banners={banners} {...props} />);
+      raiz.render(
+        <BannerCarousel primeiraSemFade banners={banners} {...props} />,
+      );
     });
   }
 

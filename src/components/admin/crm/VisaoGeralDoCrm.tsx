@@ -95,8 +95,10 @@ export function VisaoGeralDoCrm({
   const cards: KpiCardConfig[] = [
     {
       label: "Valor médio por venda",
-      value: formatarMoeda(k?.ticketMedio),
-      compactValue: formatarMoedaCompacta(k?.ticketMedio),
+      value: formatarMoeda(k?.pedidos === 0 ? null : k?.ticketMedio),
+      compactValue: formatarMoedaCompacta(
+        k?.pedidos === 0 ? null : k?.ticketMedio,
+      ),
       icon: Receipt,
       accent: "text-sky-400",
       footer: falha

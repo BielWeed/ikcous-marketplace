@@ -30,6 +30,10 @@ import {
   STATUS_PARA_PREPARAR,
 } from "@/lib/pedidos-para-preparar";
 import {
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
+import {
   FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
   inicioDaJanelaDoSino,
 } from "@/lib/recebimentos-por-marcar";
@@ -96,12 +100,16 @@ export const STATUS_PEDIDOS_COM_ACAO_PENDENTE = STATUS_PARA_PREPARAR;
 const RETENTATIVA_BASE_MS = 4000;
 const RETENTATIVA_MAX_TENTATIVAS = 3;
 
+/** Quanto o sino espera CADA contagem antes de tratá-la como "não consegui
+ * conferir" (o mesmo prazo por fonte da tela de Avisos). */
+const PRAZO_DA_CONTAGEM_DO_SINO_MS = 15_000;
+
 const ABA_ATIVA = "text-white";
 const ICONE_ABA_ATIVA = "border-admin-gold text-admin-gold";
 const TRACO_ABA_ATIVA =
   "absolute left-1/2 top-0 h-[3px] w-5 -translate-x-1/2 rounded-full bg-admin-gold";
 const BOTAO_ABA_INFERIOR =
-  "relative flex h-[52px] min-w-11 flex-1 flex-col items-center justify-center gap-1 rounded-[22px] transition-[color,transform] active:scale-95";
+  "relative flex h-[52px] min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-[22px] transition-[color,transform] active:scale-95";
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -350,8 +358,15 @@ export function AdminLayout({
           },
         ];
 
+        // Prazo por consulta: rede "pendurada" conecta e nao responde, e sem
+        // ele uma so consulta parada segurava o veredito (e a retentativa)
+        // para sempre. Estourou = rejeitada = `falhouAlgumaConsulta`.
         const resultados = await Promise.allSettled(
-          fontes.map((consultar) => consultar()),
+          fontes.map((consultar) =>
+            aguardarComPrazo(consultar(), PRAZO_DA_CONTAGEM_DO_SINO_MS, () =>
+              erroDeConsultaSemResposta(),
+            ),
+          ),
         );
         for (const resultado of resultados) {
           if (resultado.status === "rejected") {
@@ -1361,7 +1376,7 @@ export function AdminLayout({
                       </span>
                       <span
                         className={cn(
-                          "text-center text-[11px] leading-3",
+                          "max-w-full truncate text-center text-[11px] leading-3",
                           isActive ? "font-bold" : "font-medium",
                         )}
                       >
@@ -1417,7 +1432,7 @@ export function AdminLayout({
                   </span>
                   <span
                     className={cn(
-                      "text-center text-[11px] leading-3",
+                      "max-w-full truncate text-center text-[11px] leading-3",
                       currentView === "admin-pdv" ? "font-bold" : "font-medium",
                     )}
                   >

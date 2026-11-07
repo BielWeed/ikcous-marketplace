@@ -81,6 +81,8 @@ function subtituloBoasVindas(storeName: string | undefined | null): string {
 // tempo do servidor: o limite dele só dispara para quem tem conta, e ecoar
 // esse tempo na tela reabriria a enumeração de e-mails (#120).
 const INTERVALO_REENVIO_RECUPERACAO_S = 60;
+const AVISO_DO_LINK_DE_RECUPERACAO =
+  "Este link expirou ou já foi usado. Se você pediu mais de um, só vale o do e-mail mais recente. Se precisar, peça um novo abaixo (pode ser preciso esperar 1 minuto entre um pedido e outro).";
 
 export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   const reduzirMovimento = useReducedMotion();
@@ -114,7 +116,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   // saber que o bom já está na caixa de entrada.
   const [avisoDoLink, setAvisoDoLink] = useState<string | null>(
     linkDeRecuperacaoVencido && !isPasswordRecovery
-      ? "Este link expirou ou já foi usado. Se você pediu mais de um, só vale o do e-mail mais recente. Se precisar, peça um novo abaixo (pode ser preciso esperar 1 minuto entre um pedido e outro)."
+      ? AVISO_DO_LINK_DE_RECUPERACAO
       : linkDeConfirmacaoVencido
         ? "Esse link já foi usado ou venceu. Se você já confirmou seu cadastro, é só entrar. Se pediu mais de um e-mail, vale só o mais recente."
         : null,
@@ -153,6 +155,26 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
     }
   }, [isPasswordRecovery, setViewMode]);
 
+  const temUsuario = !!user;
+  useEffect(() => {
+    // Só sai de Nova Senha após a recuperação acabar: não antecipa a chegada
+    // da sessão de um link válido. Cobre também a saída em outra aba.
+    if (
+      viewMode === "new-password" &&
+      !isPasswordRecovery &&
+      (linkDeRecuperacaoVencido || !temUsuario)
+    ) {
+      setAvisoDoLink(AVISO_DO_LINK_DE_RECUPERACAO);
+      setViewMode("forgot");
+    }
+  }, [
+    viewMode,
+    isPasswordRecovery,
+    linkDeRecuperacaoVencido,
+    temUsuario,
+    setViewMode,
+  ]);
+
   const isLogin = viewMode === "login";
   // O aviso do link de recuperação vive na tela "Recuperar"; o do link de
   // confirmação vencido vive na tela de entrar.
@@ -164,12 +186,25 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   const [fullName, setFullName] = useState("");
 
   useEffect(() => {
-    if (user && !isPasswordRecovery) {
+    if (
+      user &&
+      !isPasswordRecovery &&
+      !linkDeRecuperacaoVencido &&
+      viewMode !== "forgot" &&
+      viewMode !== "reset-prompt"
+    ) {
       console.log("[AuthView] User session detected. Redirecting to success.");
       if (onSuccess) onSuccess();
       else onNavigate("profile");
     }
-  }, [user, isPasswordRecovery, onSuccess, onNavigate]);
+  }, [
+    user,
+    isPasswordRecovery,
+    linkDeRecuperacaoVencido,
+    viewMode,
+    onSuccess,
+    onNavigate,
+  ]);
   const [phone, setPhone] = useState("");
   // CPF é OPCIONAL no cadastro (23/09/2026, "o CPF mora na conta"): vazio
   // segue o cadastro normal; preenchido e INVÁLIDO marca erro no campo e
@@ -613,7 +648,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                 Retornar ao Login
               </Button>
 
-              <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
+              <p className="text-xs font-black uppercase tracking-widest text-zinc-600">
                 Não recebeu?{" "}
                 <button
                   type="button"
@@ -707,7 +742,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                 Voltar para o Login
               </Button>
 
-              <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
+              <p className="text-xs font-black uppercase tracking-widest text-zinc-600">
                 Não recebeu?{" "}
                 <button
                   type="button"
@@ -724,7 +759,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                 </p>
               )}
 
-              <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
+              <p className="text-xs font-black uppercase tracking-widest text-zinc-600">
                 E-mail errado?{" "}
                 <button
                   type="button"
@@ -826,7 +861,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                           setFullName(e.target.value);
                           if (loginError) setLoginError(null);
                         }}
-                        className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 pl-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-300 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
+                        className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 pl-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-500 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
                         required={viewMode === "signup"}
                       />
                     </div>
@@ -863,7 +898,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                         aria-describedby={
                           whatsappErro !== null ? "phone-erro" : undefined
                         }
-                        className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 pl-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-300 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
+                        className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 pl-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-500 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
                         required={viewMode === "signup"}
                       />
                     </div>
@@ -906,7 +941,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                         }}
                         aria-invalid={cpfErro}
                         aria-describedby={cpfErro ? "cpf-erro" : undefined}
-                        className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 pl-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-300 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
+                        className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 pl-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-500 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
                       />
                     </div>
                     {cpfErro && (
@@ -948,7 +983,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                         if (loginError) setLoginError(null);
                         if (emailNaoConfirmado) setEmailNaoConfirmado(false);
                       }}
-                      className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 pl-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-300 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
+                      className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 pl-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-500 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
                       required
                     />
                   </div>
@@ -1037,7 +1072,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                         if (loginError) setLoginError(null);
                         if (emailNaoConfirmado) setEmailNaoConfirmado(false);
                       }}
-                      className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 px-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-300 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
+                      className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 px-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-500 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
                       required
                     />
                     <button
@@ -1077,7 +1112,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                           placeholder="Repita a nova senha"
                           value={confirmaSenha}
                           onChange={(e) => setConfirmaSenha(e.target.value)}
-                          className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 px-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-300 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
+                          className="h-14 rounded-2xl border-zinc-100 bg-zinc-50/50 px-14 font-bold text-zinc-900 shadow-none transition-all placeholder:text-zinc-500 focus-visible:border-zinc-200 focus-visible:ring-1 focus-visible:ring-zinc-900/10 sm:h-16 sm:rounded-[2rem]"
                           required
                         />
                       </div>

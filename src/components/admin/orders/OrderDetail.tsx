@@ -42,6 +42,13 @@ import {
   normalizarCodigoDeRastreio,
 } from "@/lib/link-de-rastreio";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import {
+  MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA,
+  PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { buscaDoMapaDoEndereco } from "@/lib/query-maps-do-endereco";
 import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
@@ -235,6 +242,7 @@ function fraseSituacaoDoPagamento(
 
 interface OrderDetailProps {
   order: Order;
+  active?: boolean;
   onBack?: () => void;
   onStatusChange: (
     orderId: string,
@@ -1494,6 +1502,7 @@ function OrderNotesCard({
 
 export const OrderDetail = memo(function OrderDetail({
   order,
+  active = true,
   onStatusChange,
   isOffline = false,
   onRegistrarPagamento,
@@ -1988,10 +1997,19 @@ export const OrderDetail = memo(function OrderDetail({
       salvamentoRastreioRef.current === salvamento;
     try {
       setIsSavingTracking(true);
-      const { error } = await supabase
-        .from("marketplace_orders")
-        .update({ tracking_code: codigo || null })
-        .eq("id", pedidoId);
+      // Prazo só da espera da tela (rede "pendurada"): estourou, o `catch`
+      // abaixo conta que NÃO se sabe se gravou, solta o campo COM o que foi
+      // digitado e relê o código gravado. Repetir é seguro ("último vale").
+      const { error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase
+            .from("marketplace_orders")
+            .update({ tracking_code: codigo || null })
+            .eq("id", pedidoId),
+        ),
+        PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+        () => erroDeConsultaSemResposta(MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA),
+      );
 
       // Só o salvamento vigente pode alterar a ficha.
       if (!vigente()) return;
@@ -2002,6 +2020,34 @@ export const OrderDetail = memo(function OrderDetail({
     } catch (err) {
       if (!vigente()) return;
       console.error("Error saving tracking code:", err);
+      if (ehConsultaSemResposta(err)) {
+        // Sem resposta: o código pode ter sido gravado. NUNCA dizer que não
+        // foi; a frase manda conferir. A resposta tardia da gravação original
+        // é descartada (não vira aviso nem fecha o editor); o que corrige a
+        // ficha é esta releitura, que só troca o valor SALVO, nunca o rascunho.
+        toast.error(MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA);
+        void (async () => {
+          try {
+            const { data } = await aguardarComPrazo(
+              Promise.resolve(
+                supabase
+                  .from("marketplace_orders")
+                  .select("tracking_code")
+                  .eq("id", pedidoId)
+                  .maybeSingle(),
+              ),
+              PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+              () => erroDeConsultaSemResposta(),
+            );
+            if (vigente() && data) {
+              setLocalTrackingCode(data.tracking_code ?? "");
+            }
+          } catch {
+            // Releitura em silêncio: a frase acima já mandou conferir.
+          }
+        })();
+        return;
+      }
       toast.error("Erro ao salvar código de rastreio.");
     } finally {
       if (vigente()) setIsSavingTracking(false);
@@ -2061,7 +2107,15 @@ export const OrderDetail = memo(function OrderDetail({
       void pendente.then(() => {
         if (fila.get(pedidoId) === pendente) fila.delete(pedidoId);
       });
-      const { error } = await vez;
+      // Prazo só da espera da TELA: o envio pendurado CONTINUA na fila acima
+      // (um novo salvar não passa na frente, então nada duplica nem se
+      // reordena). Estourou: o `catch` abaixo conta que NÃO se sabe se
+      // gravou, solta o campo COM o texto digitado e relê a anotação gravada.
+      const { error } = await aguardarComPrazo(
+        vez,
+        PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+        () => erroDeConsultaSemResposta(MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA),
+      );
 
       // A resposta só pode alterar a ficha deste pedido E deste salvamento.
       if (!vigente()) return;
@@ -2073,6 +2127,25 @@ export const OrderDetail = memo(function OrderDetail({
     } catch (err) {
       if (!vigente()) return;
       console.error("Error saving internal note:", err);
+      if (ehConsultaSemResposta(err)) {
+        // Sem resposta: a anotação pode ter sido gravada. NUNCA dizer que não
+        // foi; a frase manda conferir. A resposta tardia é descartada; a
+        // releitura só troca o texto SALVO, nunca o rascunho.
+        toast.error(MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA);
+        void (async () => {
+          try {
+            const gravada = await aguardarComPrazo(
+              lerNotaInterna(pedidoId),
+              PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+              () => erroDeConsultaSemResposta(),
+            );
+            if (vigente()) setLocalNotes(gravada);
+          } catch {
+            // Releitura em silêncio: a frase acima já mandou conferir.
+          }
+        })();
+        return;
+      }
       toast.error("Erro ao salvar anotação interna.");
     } finally {
       if (vigente()) setIsSavingNotes(false);
@@ -2368,7 +2441,7 @@ export const OrderDetail = memo(function OrderDetail({
         </section>
       </div>
 
-      {!pedidoCancelado && (
+      {!pedidoCancelado && active && (
         <OrderReceipt
           order={order}
           storeName={storeName}

@@ -6,7 +6,7 @@ import { pedidosParaCsv } from "@/lib/pedidos-csv";
 import type { PaymentStatus, Order as Pedido } from "@/types";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 const CABECALHO =
   "Número do pedido;Data;Cliente;Telefone;Status;Forma de pagamento;Status do pagamento;Total;Cidade;UF;Itens;Subtotal;Frete;Desconto;Canal";
@@ -30,14 +30,75 @@ function pedido(alteracoes: Partial<Pedido> = {}): Pedido {
     paymentMethod: "pix",
     status: "pending",
     paymentStatus: "aguardando",
-    createdAt: new Date(2026, 8, 8, 9, 7).toISOString(),
-    updatedAt: new Date(2026, 8, 8, 9, 7).toISOString(),
+    createdAt: "2026-09-08T12:07:00Z",
+    updatedAt: "2026-09-08T12:07:00Z",
     cancelledAfterShipping: false,
     ...alteracoes,
   };
 }
 
 describe("pedidosParaCsv", () => {
+  it("não usa o relógio local de um aparelho em UTC", () => {
+    vi.spyOn(Date.prototype, "getDate").mockImplementation(function (
+      this: Date,
+    ) {
+      return this.getUTCDate();
+    });
+    vi.spyOn(Date.prototype, "getMonth").mockImplementation(function (
+      this: Date,
+    ) {
+      return this.getUTCMonth();
+    });
+    vi.spyOn(Date.prototype, "getFullYear").mockImplementation(function (
+      this: Date,
+    ) {
+      return this.getUTCFullYear();
+    });
+    vi.spyOn(Date.prototype, "getHours").mockImplementation(function (
+      this: Date,
+    ) {
+      return this.getUTCHours();
+    });
+    vi.spyOn(Date.prototype, "getMinutes").mockImplementation(function (
+      this: Date,
+    ) {
+      return this.getUTCMinutes();
+    });
+    try {
+      expect(
+        pedidosParaCsv([pedido({ createdAt: "2026-11-02T02:50:00Z" })])
+          .split(CRLF)[1]
+          .split(";")[1],
+      ).toBe("01/11/2026 23:50");
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it.each([
+    ["2026-11-02T02:50:00Z", "01/11/2026 23:50"],
+    ["2026-11-01T03:30:00Z", "01/11/2026 00:30"],
+    ["2026-11-01T03:00:00Z", "01/11/2026 00:00"],
+  ])(
+    "exporta %s no calendário de Brasília, não no do aparelho",
+    (createdAt, esperado) => {
+      expect(
+        pedidosParaCsv([pedido({ createdAt })])
+          .split(CRLF)[1]
+          .split(";")[1],
+      ).toBe(esperado);
+    },
+  );
+
+  it("data ilegível deixa só a coluna vazia e a planilha sai inteira", () => {
+    const linhas = pedidosParaCsv([
+      pedido({ createdAt: "não é data" }),
+      pedido({ createdAt: "2026-11-02T02:50:00Z" }),
+    ]).split(CRLF);
+    expect(linhas[1].split(";")[1]).toBe("");
+    expect(linhas[2].split(";")[1]).toBe("01/11/2026 23:50");
+  });
+
   it("exporta itens e valores históricos distintos sem recalcular o pedido", () => {
     const original = pedido({
       items: [

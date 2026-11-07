@@ -674,6 +674,7 @@ export const OrderList = memo(function OrderList({
                 <button
                   onClick={() => onNavigate("order-details", order.id)}
                   data-testid="order-card-open"
+                  aria-label={`Ver detalhes do pedido #${numeroDoPedido(order.id)}`}
                   className="ml-auto flex h-11 flex-shrink-0 items-center justify-center rounded-2xl bg-foreground px-5 text-[15px] font-semibold text-background transition-opacity after:absolute after:inset-0 after:rounded-[18px] after:content-[''] hover:opacity-90 active:scale-[0.97]"
                 >
                   Ver detalhes

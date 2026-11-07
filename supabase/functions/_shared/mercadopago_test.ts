@@ -2501,6 +2501,83 @@ Deno.test("cancelarOrder codifica o id no caminho — dado nunca vai cru para a 
   assertStringIncludes(url, "/v1/orders/ORD%2F..%2Fpayments/cancel");
 });
 
+// --- Frases que chegam a quem usa (cliente na tela de pagamento) ---
+//
+// `erro` de criarOrder/consultarOrder/cancelarOrder/consultarPagamento é
+// repassado tal qual na resposta 502 da criar-pagamento e aparece na caixa
+// vermelha do checkout. Nada de "gateway" (a cliente não sabe o que é) e,
+// na CRIAÇÃO, nada que afirme ou negue cobrança: a resposta pode ter se
+// perdido depois de o Mercado Pago processar.
+const SEM_RESPOSTA_NA_CRIACAO =
+  "Não deu para falar com o Mercado Pago agora. Confira seus pedidos antes de tentar de novo.";
+const ILEGIVEL_NA_CRIACAO =
+  "O Mercado Pago respondeu de um jeito que não deu para entender. Confira seus pedidos antes de tentar de novo.";
+const REDE_CAIDA = (() => Promise.reject(new Error("connection refused"))) as unknown as typeof fetch;
+const CORPO_ILEGIVEL = (() =>
+  Promise.resolve(new Response("<html>502</html>", { status: 200 }))) as unknown as typeof fetch;
+const CORPO_SEM_ID = (() =>
+  Promise.resolve(new Response(JSON.stringify({ status: "created" }), { status: 200 }))) as unknown as typeof fetch;
+
+Deno.test("frases de erro sem jargao: criarOrder (rede caida / 2xx ilegivel / 2xx sem id) nao diz gateway nem afirma cobranca", async () => {
+  const comum = { token: "APP_USR-token", corpo: {}, chaveIdempotencia: "k-frase" };
+  const semRede = await criarOrder({ ...comum, fetchImpl: REDE_CAIDA });
+  const ilegivel = await criarOrder({ ...comum, fetchImpl: CORPO_ILEGIVEL });
+  const semId = await criarOrder({ ...comum, fetchImpl: CORPO_SEM_ID });
+
+  assertEquals(semRede.ok, false);
+  assertEquals(ilegivel.ok, false);
+  assertEquals(semId.ok, false);
+  if (!semRede.ok && !ilegivel.ok && !semId.ok) {
+    assertEquals(semRede.erro, SEM_RESPOSTA_NA_CRIACAO);
+    assertEquals(semRede.status, 0);
+    assertEquals(ilegivel.erro, ILEGIVEL_NA_CRIACAO);
+    assertEquals(ilegivel.status, 200);
+    assertEquals(semId.erro, ILEGIVEL_NA_CRIACAO);
+    assertEquals(semId.status, 200);
+    for (const r of [semRede, ilegivel, semId]) {
+      assertEquals(r.erro.toLowerCase().includes("gateway"), false);
+      // Não afirma que NÃO foi cobrada (nem que foi): manda conferir.
+      assertEquals(r.erro.includes("Não foi possível gerar a cobrança"), false);
+    }
+  }
+});
+
+Deno.test("frases de erro sem jargao: consultarOrder (rede caida / 2xx ilegivel / 2xx sem id) diz 'consultar a cobranca'", async () => {
+  const comum = { token: "TEST-token", orderId: "ORD-frase" };
+  for (const fetchImpl of [REDE_CAIDA, CORPO_ILEGIVEL, CORPO_SEM_ID]) {
+    const r = await consultarOrder({ ...comum, fetchImpl });
+    assertEquals(r.ok, false);
+    if (!r.ok) {
+      assertEquals(r.erro, "Não foi possível consultar a cobrança.");
+      assertEquals(r.erro.toLowerCase().includes("gateway"), false);
+    }
+  }
+});
+
+Deno.test("frases de erro sem jargao: cancelarOrder (rede caida / 2xx ilegivel / 2xx sem id) diz 'cancelar a cobranca'", async () => {
+  const comum = { token: "t", orderId: "ORD-frase", chaveIdempotencia: "k-cancela" };
+  for (const fetchImpl of [REDE_CAIDA, CORPO_ILEGIVEL, CORPO_SEM_ID]) {
+    const r = await cancelarOrder({ ...comum, fetchImpl });
+    assertEquals(r.ok, false);
+    if (!r.ok) {
+      assertEquals(r.erro, "Não foi possível cancelar a cobrança.");
+      assertEquals(r.erro.toLowerCase().includes("gateway"), false);
+    }
+  }
+});
+
+Deno.test("frases de erro sem jargao: consultarPagamento (rede caida / 2xx ilegivel / 2xx sem id) diz 'consultar a cobranca'", async () => {
+  const comum = { token: "TEST-token", paymentId: "123456" };
+  for (const fetchImpl of [REDE_CAIDA, CORPO_ILEGIVEL, CORPO_SEM_ID]) {
+    const r = await consultarPagamento({ ...comum, fetchImpl });
+    assertEquals(r.ok, false);
+    if (!r.ok) {
+      assertEquals(r.erro, "Não foi possível consultar a cobrança.");
+      assertEquals(r.erro.toLowerCase().includes("gateway"), false);
+    }
+  }
+});
+
 Deno.test("cancelarOrder: MP recusa (PIX já pago) -> ok:false com o status, sem vazar o corpo na mensagem; rede caída -> status 0", async () => {
   const recusou = await cancelarOrder({
     token: "t",

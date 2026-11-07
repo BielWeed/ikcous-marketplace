@@ -16,7 +16,7 @@ import {
   Hand,
   Tag,
 } from "lucide-react";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import {
   QUANTIDADE_PADRAO,
   type SecaoDaHome,
@@ -118,6 +118,17 @@ export function CartaoDaVitrine({
   /** Produtos ainda sem ler (ou erro): lista vazia não quer dizer "sem produtos". */
   readonly catalogoFora?: boolean;
 }) {
+  const setaAcionada = useRef<HTMLButtonElement | null>(null);
+  useLayoutEffect(() => {
+    if (travado || !setaAcionada.current) return;
+    const seta = setaAcionada.current;
+    setaAcionada.current = null;
+    if (
+      document.activeElement === document.body ||
+      document.activeElement === seta
+    )
+      seta.focus();
+  }, [travado, indice]);
   const controles = useDragControls();
   const titulo = tituloExibido(secao);
   const { rotulo, Icone } = tipoDaVitrine(secao);
@@ -271,21 +282,33 @@ export function CartaoDaVitrine({
           <div className="pointer-events-auto ml-auto flex gap-1">
             <button
               type="button"
-              onClick={() => aoMover(indice, "up")}
-              disabled={travado || indice === 0}
+              onClick={(evento) => {
+                if (!travado && indice > 0) {
+                  if (document.activeElement === evento.currentTarget)
+                    setaAcionada.current = evento.currentTarget;
+                  aoMover(indice, "up");
+                }
+              }}
+              aria-disabled={travado || indice === 0}
               aria-label={`Subir vitrine ${titulo}`}
               title="Subir"
-              className="flex size-11 items-center justify-center rounded-[10px] border border-admin-border bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-25"
+              className="flex size-11 items-center justify-center rounded-[10px] border border-admin-border bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white aria-disabled:opacity-25"
             >
               <ArrowUp className="size-3.5" />
             </button>
             <button
               type="button"
-              onClick={() => aoMover(indice, "down")}
-              disabled={travado || indice === total - 1}
+              onClick={(evento) => {
+                if (!travado && indice < total - 1) {
+                  if (document.activeElement === evento.currentTarget)
+                    setaAcionada.current = evento.currentTarget;
+                  aoMover(indice, "down");
+                }
+              }}
+              aria-disabled={travado || indice === total - 1}
               aria-label={`Descer vitrine ${titulo}`}
               title="Descer"
-              className="flex size-11 items-center justify-center rounded-[10px] border border-admin-border bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-25"
+              className="flex size-11 items-center justify-center rounded-[10px] border border-admin-border bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white aria-disabled:opacity-25"
             >
               <ArrowDown className="size-3.5" />
             </button>

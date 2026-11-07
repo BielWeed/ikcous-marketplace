@@ -159,6 +159,58 @@ describe('AdminBannersView — o aviso de falha ao excluir diz "excluir"', () =>
     });
   }
 
+  it("Editar e Excluir anunciam qual banner será alterado", async () => {
+    await montar();
+    expect(
+      hospedeiro
+        .querySelector('button[title="Editar"]')
+        ?.getAttribute("aria-label"),
+    ).toBe("Editar banner Campanha Ativa");
+    expect(
+      hospedeiro
+        .querySelector('button[title="Excluir"]')
+        ?.getAttribute("aria-label"),
+    ).toBe("Excluir banner Campanha Ativa");
+  });
+
+  it("banner ausente não ganha um segundo aviso genérico ao salvar", async () => {
+    const erro = new Error("Banner ausente");
+    erro.name = "BannerIndisponivel";
+    updateBanner.mockRejectedValueOnce(erro);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await montar();
+    await act(async () => {
+      hospedeiro
+        .querySelector<HTMLButtonElement>('button[title="Editar"]')!
+        .click();
+      await esperarMicrotarefas();
+    });
+    const campo = document.getElementById("banner-title") as HTMLInputElement;
+    expect(campo).not.toBeNull();
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(campo, "Outro título");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const salvar = [...document.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Salvar Alterações",
+    );
+    expect(salvar).toBeDefined();
+    await act(async () => {
+      salvar!.click();
+      await esperarMicrotarefas();
+    });
+    expect(updateBanner).toHaveBeenCalledTimes(1);
+    // O hook já explicou a ausência; a tela não deve duplicar o aviso.
+    expect(toastError).not.toHaveBeenCalled();
+    // Mantém a edição para a pessoa poder copiar o que escreveu.
+    expect(
+      (document.getElementById("banner-title") as HTMLInputElement).value,
+    ).toBe("Outro título");
+  });
+
   it("deleteBanner falhando avisa 'Erro ao excluir o banner.'", async () => {
     deleteBanner.mockRejectedValueOnce(new Error("falha de rede"));
     vi.spyOn(console, "error").mockImplementation(() => {});

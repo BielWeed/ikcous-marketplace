@@ -68,7 +68,9 @@ test('retomar pagamento com a leitura do pedido falhando: avisa sem cobrar, e "T
     timeout: 30_000,
   });
   // Regex ancorada: o botao "Ver detalhes dos endereços" do Perfil tambem contem o texto.
-  await page.getByRole("button", { name: /^Ver detalhes$/i }).click();
+  await page
+    .getByRole("button", { name: /^Ver detalhes do pedido #/i })
+    .click();
   // O cartão do pedido no Perfil também tem o seu "Retomar pagamento" (3fdbd6ba)
   // e o Perfil fica montado, só escondido, quando o detalhe abre. Durante a
   // transição (~0,7 s) há DOIS botões com esse nome; o Playwright prende o
@@ -77,7 +79,7 @@ test('retomar pagamento com a leitura do pedido falhando: avisa sem cobrar, e "T
   // tela (o "Ver Detalhes" dele some) deixa só o botão do detalhe — que é o
   // que esta jornada percorre.
   await expect(
-    page.getByRole("button", { name: /^Ver detalhes$/i }),
+    page.getByRole("button", { name: /^Ver detalhes do pedido #/i }),
   ).toHaveCount(0, { timeout: 30_000 });
   await page
     .getByRole("button", { name: "Retomar pagamento" })

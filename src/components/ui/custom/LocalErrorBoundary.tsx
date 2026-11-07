@@ -195,7 +195,7 @@ export class LocalErrorBoundary extends Component<Props, State> {
             onRetry={this.handleReset}
           />
 
-          {this.state.error && (
+          {import.meta.env.DEV && this.state.error && (
             <div className="w-full max-w-md space-y-2 text-center">
               <button
                 type="button"

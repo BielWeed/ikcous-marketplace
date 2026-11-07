@@ -7,9 +7,10 @@
  * é DDD de verdade (Rio Grande do Sul) e fica. Número estrangeiro (12+
  * dígitos sem 55 na frente) passa como está.
  *
- * `colagem: false` é a digitação tecla a tecla: ali o 55 NUNCA é tirado. Quem
- * tem DDD 55 e digita um 12º dígito por engano veria o número virar outro
- * (o "55" lido como país); na digitação o excedente é cortado pela máscara.
+ * O "+55" explícito identifica o país mesmo num número ainda incompleto.
+ * `colagem: false` preserva o 55 sem "+". Quem tem DDD 55 e digita um
+ * 12º dígito por engano não pode ter o número trocado: na digitação sem "+"
+ * o excedente é cortado pela máscara, nunca reinterpretado como país.
  *
  * ZERO NA FRENTE: DDD brasileiro nunca começa com 0. O "0" inicial é o
  * prefixo de tronco ("034 99999-1234") e é descartado na colagem e na
@@ -37,9 +38,9 @@ export function limparTelefoneBrasileiro(
     }
   }
   if (
-    colagem &&
-    (digitos.length === 12 || digitos.length === 13) &&
-    digitos.startsWith("55")
+    digitos.startsWith("55") &&
+    ((valor || "").trim().startsWith("+55") ||
+      (colagem && (digitos.length === 12 || digitos.length === 13)))
   ) {
     return digitos.slice(2);
   }
@@ -77,6 +78,7 @@ export function digitosDoTelefoneDoCampo(
  * no máximo 11 dígitos (o excedente da digitação é cortado).
  */
 export function mascaraWhatsappBr(novo: string, anterior?: string): string {
+  if (/^\+5{0,2}$/.test(novo.trim())) return novo.trim();
   const numbers = digitosDoTelefoneDoCampo(novo, anterior);
   if (numbers.length <= 2) return numbers;
   if (numbers.length <= 7)
@@ -135,6 +137,7 @@ export function mascaraTelefoneDoCadastro(
   novo: string,
   anterior?: string,
 ): string {
+  if (/^\+5{0,2}$/.test(novo.trim())) return novo.trim();
   const numbers = digitosDoTelefoneDoCampo(novo, anterior);
   if (numbers.length <= 11) {
     let formatted = numbers;
