@@ -179,7 +179,8 @@ module.exports = [
     // rede lenta). Mede 623,12 kB no build local, 1,12 kB acima do teto. Nada foi trocado por algo mais arriscado.
     // 06/11/2026 (mesma regra): 625 -> 628 kB na 1.5.146 (acessibilidade do app, foto de reserva local, prazo de entrar e de endereco; mediu 626,36 kB; regra do dono).
     // 06/11/2026 (mesma regra): 628 -> 631 kB na 1.5.147 (lote de 8 correcoes: enderecos, voltar, carrinho, rascunho de banner, falha de pedaco da tela; mediu 628,71 kB). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
-    limit: "631 kB",
+    // 07/11/2026 (mesma regra): 631 -> 633 kB na 1.5.150 (lote de 9 correcoes: avisos do lojista, balcao, banners, sino; o commit de juncao mediu 631,07 kB). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
+    limit: "633 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
