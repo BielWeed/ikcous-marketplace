@@ -91,3 +91,78 @@ describe("produtoCombinaComBusca", () => {
     expect(produtoCombinaComBusca(bolsa, "   ")).toBe(true);
   });
 });
+
+// A cor e o tamanho moram so nas variacoes ("Camiseta Basica" com Cor: Azul,
+// Cor: Preto e Tamanho: GG): quem digitava "azul" ouvia "nenhum produto".
+describe("produtoCombinaComBusca — cor e tamanho das variacoes", () => {
+  const variacao = (name: string, value: string, active = true) => ({
+    name,
+    value,
+    active,
+  });
+  const camiseta = {
+    ...produto("Camiseta Básica", "Roupas", "Algodão macio"),
+    variants: [
+      variacao("Cor", "Azul"),
+      variacao("Cor", "Preto"),
+      variacao("Tamanho", "GG"),
+      variacao("Cor", "Vermelho", false),
+    ],
+  };
+
+  it("azul, preto e GG acham a camiseta pelo valor da variacao", () => {
+    expect(produtoCombinaComBusca(camiseta, "azul")).toBe(true);
+    expect(produtoCombinaComBusca(camiseta, "preto")).toBe(true);
+    expect(produtoCombinaComBusca(camiseta, "GG")).toBe(true);
+  });
+
+  it("acha com o nome do produto junto: camiseta azul", () => {
+    expect(produtoCombinaComBusca(camiseta, "camiseta azul")).toBe(true);
+    expect(produtoCombinaComBusca(camiseta, "camiseta verde")).toBe(false);
+  });
+
+  it("plural da cor tambem acha: azuis acha Azul", () => {
+    expect(produtoCombinaComBusca(camiseta, "azuis")).toBe(true);
+  });
+
+  it("variacao inativa nao acha: vermelho nao esta a venda", () => {
+    expect(produtoCombinaComBusca(camiseta, "vermelho")).toBe(false);
+  });
+
+  it("o NOME do grupo nao conta: 'cor' e 'tamanho' nao acham todo produto", () => {
+    expect(produtoCombinaComBusca(camiseta, "cor")).toBe(false);
+    expect(produtoCombinaComBusca(camiseta, "tamanho")).toBe(false);
+  });
+
+  it("valor curto (1 ou 2 letras) vale como palavra inteira, nao como trecho", () => {
+    const blusa = {
+      ...produto("Blusa Lisa", "Roupas"),
+      variants: [variacao("Tamanho", "M"), variacao("Cor", "Branco")],
+    };
+    // "m" e' a variacao M: acha. Mas "Marrom" nao pode casar com "m" por trecho.
+    expect(produtoCombinaComBusca(blusa, "blusa m")).toBe(true);
+    const calca = {
+      ...produto("Calça Reta", "Roupas"),
+      variants: [variacao("Cor", "Marrom"), variacao("Tamanho", "42")],
+    };
+    expect(produtoCombinaComBusca(calca, "calca m")).toBe(false);
+    expect(produtoCombinaComBusca(calca, "calca 42")).toBe(true);
+    expect(produtoCombinaComBusca(calca, "calca 4")).toBe(false);
+  });
+
+  it("valor composto 'Azul / M' acha por cada palavra", () => {
+    const polo = {
+      ...produto("Polo Clássica", "Roupas"),
+      variants: [variacao("Cor", "Azul / M")],
+    };
+    expect(produtoCombinaComBusca(polo, "polo azul m")).toBe(true);
+    expect(produtoCombinaComBusca(polo, "polo azul g")).toBe(false);
+  });
+
+  it("produto sem variacoes continua achando so por nome, categoria e descricao", () => {
+    expect(produtoCombinaComBusca(bolsa, "azul")).toBe(false);
+    expect(
+      produtoCombinaComBusca({ ...bolsa, variants: undefined }, "bolsa"),
+    ).toBe(true);
+  });
+});

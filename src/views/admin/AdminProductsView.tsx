@@ -531,15 +531,19 @@ export const AdminProductsView = memo(function AdminProductsView({
     const stock = Number.parseInt(simStock) || 0;
 
     const unitProfit = price - cost;
-    const margin = price > 0 ? (unitProfit / price) * 100 : 0;
-    const roi = cost > 0 ? (unitProfit / cost) * 100 : 0;
+    const temBase = price > 0 && cost > 0;
+    const margin = temBase ? (unitProfit / price) * 100 : null;
+    const roi = temBase ? (unitProfit / cost) * 100 : null;
     const totalCost = cost * stock;
     const totalRevenue = price * stock;
     const totalProfit = totalRevenue - totalCost;
 
-    let health: "excellent" | "good" | "low" | "danger" = "good";
-    let healthLabel = "Margem Saudável";
-    if (margin >= 35) {
+    let health: "excellent" | "good" | "low" | "danger" | "indefinida";
+    let healthLabel: string;
+    if (margin === null) {
+      health = "indefinida";
+      healthLabel = "Informe preço e custo para avaliar a margem";
+    } else if (margin >= 35) {
       health = "excellent";
       healthLabel = "Margem Excelente (Alta Rentabilidade)";
     } else if (margin >= 20) {
@@ -2193,11 +2197,13 @@ export const AdminProductsView = memo(function AdminProductsView({
                       <p className="text-[11px] font-black uppercase tracking-wider">
                         <EstadoComPonto
                           tom={
-                            simulatorMetrics.health === "danger"
-                              ? "negativo"
-                              : simulatorMetrics.health === "low"
-                                ? "atencao"
-                                : "positivo"
+                            simulatorMetrics.health === "indefinida"
+                              ? "neutro"
+                              : simulatorMetrics.health === "danger"
+                                ? "negativo"
+                                : simulatorMetrics.health === "low"
+                                  ? "atencao"
+                                  : "positivo"
                           }
                           texto={simulatorMetrics.healthLabel}
                         />
@@ -2219,13 +2225,27 @@ export const AdminProductsView = memo(function AdminProductsView({
                     {[
                       {
                         rotulo: "Margem de Lucro",
-                        cor: classeDoTexto(tomDoValor(simulatorMetrics.margin)),
-                        valor: percentualComUmaCasa(simulatorMetrics.margin),
+                        cor: classeDoTexto(
+                          simulatorMetrics.margin === null
+                            ? "neutro"
+                            : tomDoValor(simulatorMetrics.margin),
+                        ),
+                        valor:
+                          simulatorMetrics.margin === null
+                            ? "—"
+                            : percentualComUmaCasa(simulatorMetrics.margin),
                       },
                       {
                         rotulo: "Lucro sobre o custo (por unidade)",
-                        cor: classeDoTexto(tomDoValor(simulatorMetrics.roi)),
-                        valor: percentualComUmaCasa(simulatorMetrics.roi),
+                        cor: classeDoTexto(
+                          simulatorMetrics.roi === null
+                            ? "neutro"
+                            : tomDoValor(simulatorMetrics.roi),
+                        ),
+                        valor:
+                          simulatorMetrics.roi === null
+                            ? "—"
+                            : percentualComUmaCasa(simulatorMetrics.roi),
                       },
                       {
                         rotulo: "Lucro bruto por unidade",

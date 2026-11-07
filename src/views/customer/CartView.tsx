@@ -2,11 +2,13 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { useCart } from "@/hooks/useCart";
+import { useIrAoCarrinhoRelido } from "@/hooks/useIrAoCarrinhoRelido";
 import { useOrders } from "@/hooks/useOrders";
 import { useProducts } from "@/hooks/useProducts";
 import { useReleituraDosEnderecosAoVoltar } from "@/hooks/useReleituraDosEnderecosAoVoltar";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { atingiuOMinimo } from "@/lib/atingiu-o-minimo";
+import { haChaveDoPedidoVigente } from "@/lib/chave-do-pedido";
 import {
   enderecoDeEntregaEfetivo,
   resumoDoEndereco,
@@ -300,6 +302,32 @@ export function CartView({
   // A aba fica montada no fundo: outro aparelho pode ter mudado o endereço
   // (e portanto o frete) enquanto ela estava escondida ou o app em segundo plano.
   useReleituraDosEnderecosAoVoltar(user?.id, isActive, fetchAddresses);
+
+  // FINALIZAR RELÊ PREÇO E ESTOQUE (r60-b). Numa aba que nunca ficou escondida
+  // nada relê o catálogo, e o carrinho guarda um retrato do produto: sem isto a
+  // cliente chegava ao checkout com o total velho e só o último toque (recusa
+  // do servidor) a avisava. A leitura tem teto (`relerOCarrinhoComTeto`) e, se
+  // falhar ou pendurar, segue ao checkout como antes — o servidor confere o
+  // total de qualquer jeito. Pedido já enviado e sem resposta (chave vigente):
+  // não relê, porque a leitura explícita aplica o catálogo ao carrinho, gira a
+  // chave e o próximo "Finalizar" criaria um SEGUNDO pedido.
+  const irAoCarrinhoRelido = useIrAoCarrinhoRelido();
+  const isActiveRef = useRef(isActive);
+  isActiveRef.current = isActive;
+  const indoAoCheckoutRef = useRef(false);
+  const irAoCheckout = () => {
+    if (indoAoCheckoutRef.current) return;
+    if (haChaveDoPedidoVigente(user?.id ?? null)) {
+      onNavigate("checkout");
+      return;
+    }
+    indoAoCheckoutRef.current = true;
+    irAoCarrinhoRelido(() => {
+      indoAoCheckoutRef.current = false;
+      // Saiu desta tela durante a leitura: não é arrastada ao checkout.
+      if (isActiveRef.current) onNavigate("checkout");
+    });
+  };
 
   // "Cadastrar endereço" leva à tela de endereço; o que for criado lá chega
   // aqui pela lista compartilhada do `useAddresses`. O endereço NOVO passa a
@@ -1243,7 +1271,7 @@ export function CartView({
                           <button
                             onClick={() => {
                               haptic.light();
-                              onNavigate("checkout");
+                              irAoCheckout();
                             }}
                             className="h-[52px] w-full rounded-2xl border border-solid border-border bg-background text-[15px] font-semibold text-foreground transition-colors hover:bg-muted active:scale-[0.98]"
                           >
@@ -1355,7 +1383,7 @@ export function CartView({
                     <button
                       onClick={() => {
                         haptic.medium();
-                        onNavigate("checkout");
+                        irAoCheckout();
                       }}
                       className="flex h-[52px] w-full items-center justify-center gap-3 rounded-2xl bg-foreground text-[15px] font-semibold text-background transition-colors hover:bg-foreground/90 active:scale-[0.98]"
                     >
@@ -1587,7 +1615,9 @@ export function CartView({
               shipping={shipping}
               retiradaNaLoja={retiradaEscolhida}
               total={total}
-              onNavigate={onNavigate}
+              onNavigate={(view) =>
+                view === "checkout" ? irAoCheckout() : onNavigate(view)
+              }
             />
           )}
       </AnimatePresence>

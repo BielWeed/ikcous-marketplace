@@ -488,6 +488,60 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
     expect(roiTexto).not.toBe("—");
   });
 
+  it.each([
+    ["sim-cost", ""],
+    ["sim-cost", "0"],
+    ["sim-price", ""],
+    ["sim-price", "0"],
+  ])(
+    "simulador com %s = '%s': duas medidas indefinidas, sem diagnóstico de risco",
+    async (id, valor) => {
+      montarProduto({ price: 15, stock: 20, costPrice: 10 });
+      await montar();
+      const ajuda = hospedeiro.querySelector<HTMLButtonElement>(
+        'button[aria-label="Guia e simulador"]',
+      );
+      expect(ajuda).not.toBeNull();
+      await act(async () => ajuda!.click());
+      const abrir = [...document.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "Abrir simulador de margem",
+      );
+      expect(abrir).toBeTruthy();
+      await act(async () => abrir!.click());
+
+      const campo = document.getElementById(id) as HTMLInputElement;
+      expect(campo).not.toBeNull();
+      const antes = campo.closest('[role="dialog"]')!;
+      expect(antes.textContent).toContain("33,3%");
+      expect(antes.textContent).toContain("50,0%");
+      expect(antes.textContent).toContain("Margem Saudável (Média do Mercado)");
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value",
+        )!.set!.call(campo, valor);
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      const painel = campo.closest('[role="dialog"]')!;
+      const medida = (rotulo: string) =>
+        [...painel.querySelectorAll("p")].find((p) => p.textContent === rotulo)!
+          .parentElement!;
+      expect(medida("Margem de Lucro").textContent).toContain("—");
+      expect(medida("Lucro sobre o custo (por unidade)").textContent).toContain(
+        "—",
+      );
+      expect(painel.textContent).toContain(
+        "Informe preço e custo para avaliar a margem",
+      );
+      expect(painel.textContent).not.toContain(
+        "Margem Crítica (Risco de Prejuízo)",
+      );
+      expect(painel.textContent).not.toContain(
+        "Atenção: margem bruta baixa ou negativa",
+      );
+    },
+  );
+
   /** O menu de ações do card é um dublê que renderiza os itens como botões
    * reais; a duplicação pede o clique no item e a confirmação no diálogo. */
   async function duplicar() {

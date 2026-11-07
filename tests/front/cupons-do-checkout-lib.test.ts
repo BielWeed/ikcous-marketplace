@@ -103,21 +103,47 @@ describe("texto do cartão", () => {
     );
   });
 
-  it("validade no fuso de quem olha", () => {
-    const agora = new Date(2026, 8, 28, 10, 0, 0);
+  // Instantes UTC FIXOS: o calendário é o da loja (Brasília, UTC-3), não o do
+  // aparelho — o teste tem de passar com TZ=UTC e com TZ=America/Noronha.
+  it("validade no calendário de Brasília, não no do aparelho", () => {
+    // 28/09 10:00 em Brasília.
+    const agora = new Date("2026-09-28T13:00:00.000Z");
     expect(validadeDoCupom(null, agora)).toBeNull();
-    expect(
-      validadeDoCupom(new Date(2026, 8, 28, 23, 59).toISOString(), agora),
-    ).toBe("Vence hoje");
-    expect(
-      validadeDoCupom(new Date(2026, 8, 29, 23, 59).toISOString(), agora),
-    ).toBe("Vence amanhã");
-    expect(
-      validadeDoCupom(new Date(2026, 9, 5, 23, 59).toISOString(), agora),
-    ).toBe("Válido até 05/10");
-    expect(
-      validadeDoCupom(new Date(2027, 0, 2, 23, 59).toISOString(), agora),
-    ).toBe("Válido até 02/01/2027");
+    // 28/09 23:59:59.999 em Brasília = 29/09 02:59 UTC.
+    expect(validadeDoCupom("2026-09-29T02:59:59.999Z", agora)).toBe(
+      "Vence hoje",
+    );
+    expect(validadeDoCupom("2026-09-30T02:59:59.999Z", agora)).toBe(
+      "Vence amanhã",
+    );
+    expect(validadeDoCupom("2026-10-06T02:59:59.999Z", agora)).toBe(
+      "Válido até 05/10",
+    );
+    expect(validadeDoCupom("2027-01-03T02:59:59.999Z", agora)).toBe(
+      "Válido até 02/01/2027",
+    );
+  });
+
+  it("às 22h de Brasília (já 'amanhã' em UTC) o cupom do dia ainda 'vence hoje'", () => {
+    // 25/11 22:00 em Brasília = 26/11 01:00 UTC; o cupom vale até 25/11 23:59.
+    const agora = new Date("2026-11-26T01:00:00.000Z");
+    expect(validadeDoCupom("2026-11-26T02:59:59.999Z", agora)).toBe(
+      "Vence hoje",
+    );
+    expect(validadeDoCupom("2026-11-27T02:59:59.999Z", agora)).toBe(
+      "Vence amanhã",
+    );
+  });
+
+  it("a virada de ano usa o ano de Brasília", () => {
+    // 31/12/2026 22:00 em Brasília = 01/01/2027 01:00 UTC (ainda 2026 na loja).
+    const agora = new Date("2027-01-01T01:00:00.000Z");
+    expect(validadeDoCupom("2027-01-10T02:59:59.999Z", agora)).toBe(
+      "Válido até 09/01/2027",
+    );
+    expect(validadeDoCupom("2026-12-31T05:00:00.000Z", agora)).toBe(
+      "Vence hoje",
+    );
   });
 });
 

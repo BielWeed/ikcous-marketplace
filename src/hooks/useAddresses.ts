@@ -20,6 +20,10 @@ const MENSAGEM_ENDERECO_SEM_RESPOSTA =
   "A conexão está lenta e não sabemos se o endereço foi salvo. Confira a lista de endereços antes de tentar de novo, para não repetir.";
 const MENSAGEM_EDICAO_SEM_RESPOSTA =
   "A conexão está lenta e não sabemos se a alteração foi salva. Confira o endereço na lista antes de tentar de novo.";
+const MENSAGEM_EXCLUSAO_SEM_RESPOSTA =
+  "Sem resposta da rede. Confira se o endereço foi excluído antes de tentar de novo.";
+const MENSAGEM_PROMOCAO_SEM_RESPOSTA =
+  "Sem resposta da rede. Confira qual endereço ficou como principal antes de tentar de novo.";
 const MENSAGEM_LEITURA_SEM_RESPOSTA =
   "A conexão está lenta e não conseguimos carregar seus endereços.";
 // Frase longa: fica na tela mais que os 4 s padrão do toast.
@@ -294,17 +298,41 @@ export function useAddresses() {
   // ao recarregar. O gatilho do banco só age quando a linha NOVA é principal,
   // então quem apaga ou desliga o principal promove o próximo aqui. Falhar não
   // desfaz o que a cliente fez: segue sem principal, como antes.
-  const promoverNoBanco = async (idDaConta: string, id: string) => {
+  const promoverNoBanco = async (
+    idDaConta: string,
+    id: string,
+    aoEsgotarPrazo: () => void,
+  ) => {
     try {
-      const { error } = await supabase
-        .from("user_addresses")
-        .update({ is_default: true })
-        .eq("id", id)
-        .eq("user_id", idDaConta);
+      const { error } = await comPrazo(
+        Promise.resolve(
+          supabase
+            .from("user_addresses")
+            .update({ is_default: true })
+            .eq("id", id)
+            .eq("user_id", idDaConta),
+        ),
+        PRAZO_DAS_CHAMADAS_DE_ENDERECO_MS,
+        undefined,
+        (resposta) => {
+          if (!resposta.error && usuarioAtualRef.current === idDaConta) {
+            void fetchAddresses();
+          }
+        },
+      );
       if (error) throw error;
       return true;
     } catch (error) {
       console.error("Error promoting address:", error);
+      if (
+        error instanceof PrazoEsgotado &&
+        usuarioAtualRef.current === idDaConta
+      ) {
+        toast.error(MENSAGEM_PROMOCAO_SEM_RESPOSTA, {
+          duration: DURACAO_DO_AVISO_LONGO_MS,
+        });
+        aoEsgotarPrazo();
+      }
       return false;
     }
   };
@@ -423,6 +451,7 @@ export function useAddresses() {
       // principal sem este aparelho saber. Se a releitura falhar, vale a lista
       // guardada, como antes: o que a cliente fez não se desfaz.
       let promovidoId: string | null = null;
+      let promocaoSemResposta = false;
       let listaFresca: Address[] | null = null;
       if (updates.is_default === false) {
         listaFresca = await lerEnderecosDoServidor(idDaConta).catch(() => null);
@@ -430,7 +459,11 @@ export function useAddresses() {
         if (listaFresca) {
           const proximo = listaFresca.find((a) => a.id !== id);
           if (proximo && !listaFresca.some((a) => a.is_default)) {
-            if (await promoverNoBanco(idDaConta, proximo.id)) {
+            if (
+              await promoverNoBanco(idDaConta, proximo.id, () => {
+                promocaoSemResposta = true;
+              })
+            ) {
               promovidoId = proximo.id;
             }
             if (usuarioAtualRef.current !== idDaConta) return false;
@@ -442,7 +475,11 @@ export function useAddresses() {
             antes.itens.some((a) => a.id === id && a.is_default);
           const proximo = antes.itens.find((a) => a.id !== id && !a.is_default);
           if (eraPrincipal && proximo) {
-            if (await promoverNoBanco(idDaConta, proximo.id)) {
+            if (
+              await promoverNoBanco(idDaConta, proximo.id, () => {
+                promocaoSemResposta = true;
+              })
+            ) {
               promovidoId = proximo.id;
             }
             if (usuarioAtualRef.current !== idDaConta) return false;
@@ -495,6 +532,8 @@ export function useAddresses() {
         gravarLista(idDaConta, updated);
       }
 
+      // Só depois da publicação local: ela invalida consultas anteriores.
+      if (promocaoSemResposta) void fetchAddresses();
       toast.success("Endereço atualizado");
       return true;
     } catch (error) {
@@ -515,11 +554,23 @@ export function useAddresses() {
     if (!user) return false;
     const idDaConta = user.id;
     try {
-      const { error } = await supabase
-        .from("user_addresses")
-        .delete()
-        .eq("id", id)
-        .eq("user_id", user.id);
+      const { error } = await comPrazo(
+        Promise.resolve(
+          supabase
+            .from("user_addresses")
+            .delete()
+            .eq("id", id)
+            .eq("user_id", user.id),
+        ),
+        PRAZO_DAS_CHAMADAS_DE_ENDERECO_MS,
+        undefined,
+        (resposta) => {
+          // DELETE sem select devolve data nulo mesmo quando foi confirmado.
+          if (!resposta.error && usuarioAtualRef.current === idDaConta) {
+            void fetchAddresses();
+          }
+        },
+      );
 
       if (error) throw error;
       // Resposta da conta anterior não grava nada, nem avisa sucesso.
@@ -536,10 +587,15 @@ export function useAddresses() {
       );
       if (usuarioAtualRef.current !== idDaConta) return false;
       let promovidoId: string | null = null;
+      let promocaoSemResposta = false;
       if (listaFresca) {
         if (listaFresca.length > 0 && !listaFresca.some((a) => a.is_default)) {
           const proximo = listaFresca[0];
-          if (await promoverNoBanco(idDaConta, proximo.id)) {
+          if (
+            await promoverNoBanco(idDaConta, proximo.id, () => {
+              promocaoSemResposta = true;
+            })
+          ) {
             promovidoId = proximo.id;
           }
           if (usuarioAtualRef.current !== idDaConta) return false;
@@ -555,7 +611,11 @@ export function useAddresses() {
           antes.itens.some((a) => a.id === id && a.is_default);
         if (apagouPrincipal && restantes.length > 0) {
           const proximo = restantes[0];
-          if (await promoverNoBanco(idDaConta, proximo.id)) {
+          if (
+            await promoverNoBanco(idDaConta, proximo.id, () => {
+              promocaoSemResposta = true;
+            })
+          ) {
             promovidoId = proximo.id;
           }
           if (usuarioAtualRef.current !== idDaConta) return false;
@@ -580,12 +640,20 @@ export function useAddresses() {
             ),
         );
       }
+      if (promocaoSemResposta) void fetchAddresses();
       toast.success("Endereço removido");
       return true;
     } catch (error) {
       if (usuarioAtualRef.current !== idDaConta) return false;
       console.error("Error deleting address:", error);
-      toast.error("Erro ao remover endereço");
+      if (error instanceof PrazoEsgotado) {
+        toast.error(MENSAGEM_EXCLUSAO_SEM_RESPOSTA, {
+          duration: DURACAO_DO_AVISO_LONGO_MS,
+        });
+        void fetchAddresses();
+      } else {
+        toast.error("Erro ao remover endereço");
+      }
       return false;
     }
   };
