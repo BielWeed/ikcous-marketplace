@@ -65,6 +65,7 @@ function construirUpdate(patch: Record<string, unknown>) {
   let contido: Record<string, unknown> | null = null;
   const encadeamento: {
     eq: (coluna: string, valor: unknown) => typeof encadeamento;
+    in: (coluna: string, valores: unknown[]) => typeof encadeamento;
     contains: (
       coluna: string,
       valor: Record<string, unknown>,
@@ -76,6 +77,10 @@ function construirUpdate(patch: Record<string, unknown>) {
   } = {
     eq(coluna, valor) {
       filtros.push([coluna, valor]);
+      return encadeamento;
+    },
+    in(coluna, valores) {
+      filtros.push([`${coluna} in`, valores]);
       return encadeamento;
     },
     contains(coluna, valor) {
@@ -97,6 +102,7 @@ function construirUpdate(patch: Record<string, unknown>) {
       const passa = filtros.every(([coluna, valor]) => {
         if (coluna === "usuario_id") return linha.usuario_id === valor;
         if (coluna === "lida") return linha.lida === valor;
+        if (coluna === "id in") return (valor as string[]).includes(linha.id);
         if (coluna === "dados") {
           return (
             contido !== null &&
@@ -268,9 +274,14 @@ describe("sino da cliente — abrir o pedido marca os avisos DELE como lidos", (
     expect(lida("avulso")).toBe("false");
     expect(naoLidas()).toBe("2");
 
-    // Sem chamada em laço: um UPDATE só, amarrado à dona e ao pedido.
+    // Sem chamada em laço: um UPDATE só, amarrado à dona, ao pedido e aos ids
+    // que ela tinha na tela (o aviso que nasce durante o UPDATE fica de fora).
     expect(banco.updates).toHaveLength(1);
-    expect(banco.updates[0].filtros).toEqual([
+    const [filtroDeIds, ...demaisFiltros] = banco.updates[0].filtros;
+    // A ordem dos ids não importa; o conjunto, sim.
+    expect(filtroDeIds[0]).toBe("id in");
+    expect([...(filtroDeIds[1] as string[])].sort()).toEqual(["a1", "a2"]);
+    expect(demaisFiltros).toEqual([
       ["usuario_id", "cliente-1"],
       ["lida", false],
       ["dados", { order_id: "pedido-A" }],

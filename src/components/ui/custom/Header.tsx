@@ -3,6 +3,7 @@ import {
   useIlhaDeAtualizacaoAtiva,
 } from "@/components/pwa/IlhaDeAtualizacao";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
+import { imagemRedimensionada } from "@/lib/imageUrl";
 import { primeiraLetra } from "@/lib/primeira-letra";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -67,10 +68,18 @@ export const Header = memo(function Header({
   const atualizacaoAtiva = useIlhaDeAtualizacaoAtiva();
   const reduzMovimento = useReducedMotion();
   const logoUrl = config.logoUrl || null;
+  // A caixa do logo tem 32 px de altura e até 120 de largura; o arquivo da loja
+  // pode ter vários MB. 240 px cobre tela de alta densidade. SVG não se
+  // transforma. Se a loja não tiver a transformação ligada, a etapa "original"
+  // tenta o arquivo gravado antes de cair no logo do build (o logo errado).
+  const logoReduzido =
+    logoUrl && !/\.svg(\?|$)/i.test(logoUrl)
+      ? imagemRedimensionada(logoUrl, { width: 240, quality: 80 })
+      : logoUrl;
   const [logoSelection, setLogoSelection] = useState<{
     url: string | null;
     revision: number;
-    stage: "db" | "local" | "text";
+    stage: "db" | "original" | "local" | "text";
   }>({ url: logoUrl, revision: 0, stage: logoUrl ? "db" : "local" });
 
   // Cada troca ganha novas tentativas antes de atualizar o DOM, inclusive A -> B -> A.
@@ -86,7 +95,9 @@ export const Header = memo(function Header({
   const updateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   let logoSrc: string | null = null;
-  if (logoState === "db" && config.logoUrl) {
+  if (logoState === "db" && logoReduzido) {
+    logoSrc = logoReduzido;
+  } else if (logoState === "original" && config.logoUrl) {
     logoSrc = config.logoUrl;
   } else if (logoState === "local") {
     logoSrc = buildIdentity.localUrls.header;
@@ -278,11 +289,16 @@ export const Header = memo(function Header({
                     setLogoSelection((current) => {
                       // Falha só avança a candidata/revisão que a originou.
                       if (current !== logoSelection) return current;
-                      const stage =
-                        current.stage === "db" &&
+                      let stage: "original" | "local" | "text" = "text";
+                      if (current.stage === "db" && logoSrc !== logoUrl) {
+                        stage = "original";
+                      } else if (
+                        (current.stage === "db" ||
+                          current.stage === "original") &&
                         logoSrc !== buildIdentity.localUrls.header
-                          ? "local"
-                          : "text";
+                      ) {
+                        stage = "local";
+                      }
                       return { ...current, stage };
                     });
                   }}

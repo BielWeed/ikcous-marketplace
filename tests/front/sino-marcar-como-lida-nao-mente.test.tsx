@@ -80,8 +80,11 @@ function valorDaColuna(
 
 function construirEncadeamentoDeUpdate(patch: Record<string, unknown>) {
   const filtros: [string, unknown][] = [];
+  // `.in("id", ids)`: o contexto marca só os ids que a cliente tinha na tela.
+  let idsPermitidos: string[] | null = null;
   const encadeamento: {
     eq: (coluna: string, valor: unknown) => typeof encadeamento;
+    in: (coluna: string, valores: string[]) => typeof encadeamento;
     then?: (
       resolve: (v: { error: null }) => void,
       reject?: (e: unknown) => void,
@@ -89,6 +92,10 @@ function construirEncadeamentoDeUpdate(patch: Record<string, unknown>) {
   } = {
     eq(coluna: string, valor: unknown) {
       filtros.push([coluna, valor]);
+      return encadeamento;
+    },
+    in(_coluna: string, valores: string[]) {
+      idsPermitidos = valores;
       return encadeamento;
     },
   };
@@ -106,6 +113,7 @@ function construirEncadeamentoDeUpdate(patch: Record<string, unknown>) {
         ([coluna, valor]) => valorDaColuna(linha, coluna) === valor,
       );
       if (!passaFiltros) continue;
+      if (idsPermitidos !== null && !idsPermitidos.includes(linha.id)) continue;
       if (linha.usuario_id !== USUARIA.id) continue;
       Object.assign(linha, patch);
     }

@@ -1,4 +1,20 @@
 {
+  "1.5.150": {
+    "titulo": "Avisos que não somem sem você ver, cupom do balcão que pergunta e fotos que carregam melhor",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja e Painel, Perguntas: a resposta da loja com várias linhas aparece em linhas na página do produto e no perfil, e o campo de editar a resposta aceita várias linhas.",
+      "Painel, Avaliações: uma avaliação que ainda aguarda aprovação ganha aviso próprio no sino, continua lá depois da resposta da loja até ser aprovada, e tocar no aviso abre a tela já em “Em moderação”.",
+      "Loja, Avisos: “Marcar como lidas” e abrir um pedido marcam só os avisos que estavam na tela, sem marcar o que chegou naquele instante, e a lista avisa quando mostra só os 50 mais recentes.",
+      "Painel, Balcão: um cupom que ficou aberto de outro dia volta com o aviso “Venda que ficou aberta” e dois botões, continuar ou descartar, em vez de reabrir sem avisar.",
+      "Painel, Resultado: uma linha de valor muito pequeno mostra “0,0%” em vez de “−0,0%”.",
+      "Loja, Banners: a foto dos banners seguintes começa a baixar assim que a primeira termina, em vez de só quando o banner aparece.",
+      "Painel, Produtos e Vitrines: a foto que falha de passagem é tentada de novo antes de aparecer “Foto indisponível”, e as miniaturas pedem a foto pequena.",
+      "Loja, Cabeçalho e Perfil: o logo da loja baixa uma versão reduzida e a capa do perfil é recortada no formato da faixa, mais nítida.",
+      "Loja, Avisos no celular: o aviso usa o ícone atual da loja, mesmo depois de a lojista trocar o ícone do app."
+    ]
+  },
   "1.5.149": {
     "titulo": "Devolução que diz qual cor, link do produto com o preço certo e checkout que explica quando está vazio",
     "novidades": [],

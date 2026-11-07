@@ -255,6 +255,53 @@ describe("a chegada por aviso zera o que as telas guardam", () => {
     });
   });
 
+  it("Avaliações já aberta: aviso de avaliação pendente zera o resto e deixa só 'Em moderação'", async () => {
+    guardar("admin_reviews_rating_filter", 2);
+    guardar("admin_reviews_status_filter", "todas");
+    guardar("admin_reviews_search_query", "caneta");
+    guardar("admin_reviews_page", 3);
+    await montarAvaliacoes();
+
+    await act(async () => {
+      limparGuardadosAoChegarPorAviso("admin-reviews", {
+        soEmModeracao: true,
+      });
+      await esperar();
+    });
+
+    expect(guardado("admin_reviews_rating_filter")).toBe("all");
+    expect(guardado("admin_reviews_status_filter")).toBe("pendente");
+    expect(guardado("admin_reviews_search_query")).toBe("");
+    expect(guardado("admin_reviews_page")).toBe(0);
+    const ultima = h.getAllReviews.mock.calls.at(-1) as unknown[];
+    expect(ultima[2]).toMatchObject({
+      rating: "all",
+      search: "",
+      status: "pendente",
+    });
+  });
+
+  it("Avaliações ainda não aberta: abre já em 'Em moderação'", async () => {
+    guardar("admin_reviews_status_filter", "todas");
+    guardar("admin_reviews_search_query", "caneta");
+
+    limparGuardadosAoChegarPorAviso("admin-reviews", { soEmModeracao: true });
+    await montarAvaliacoes();
+
+    const primeira = h.getAllReviews.mock.calls[0] as unknown[];
+    expect(primeira[2]).toMatchObject({ search: "", status: "pendente" });
+  });
+
+  it("Avaliações ainda não aberta, aviso comum: abre sem filtro de moderação", async () => {
+    guardar("admin_reviews_status_filter", "pendente");
+
+    limparGuardadosAoChegarPorAviso("admin-reviews");
+    await montarAvaliacoes();
+
+    const primeira = h.getAllReviews.mock.calls[0] as unknown[];
+    expect(primeira[2]).toMatchObject({ status: "todas" });
+  });
+
   it("chegar por aviso a OUTRA tela não mexe nos filtros desta", async () => {
     guardar("admin_qa_filter", "all");
     guardar("admin_qa_search_query", "giz");
@@ -339,6 +386,55 @@ describe("tocar no aviso na tela de Avisos", () => {
     const { navegar, ouvinteQA } = await tocar("pergunta");
     expect(ouvinteQA).toHaveBeenCalledTimes(1);
     expect(navegar).toHaveBeenCalledWith("admin-qa", undefined);
+  });
+
+  it("aviso de avaliação aguardando aprovação pede só 'Em moderação' ao chegar", async () => {
+    AVISOS = montarAvisos({
+      pedidos: [],
+      perguntasPendentes: 0,
+      avaliacoes: [
+        {
+          id: "av-1",
+          product_id: "prod-1",
+          rating: 5,
+          nomeDoProduto: "Caneta",
+          created_at: "2026-10-01T10:00:00Z",
+          status: "pendente",
+        },
+      ],
+      produtos: [],
+    });
+    const util = await import("@/utils/chegada-por-aviso");
+    const ouvinte = vi.fn();
+    util.aoChegarPorAviso("admin-reviews", ouvinte);
+    const { navegar } = await tocar("avaliacao");
+    expect(ouvinte).toHaveBeenCalledTimes(1);
+    expect(ouvinte).toHaveBeenCalledWith({ soEmModeracao: true });
+    expect(navegar).toHaveBeenCalledWith("admin-reviews", undefined);
+  });
+
+  it("aviso de avaliação já publicada sem resposta chega sem pedir moderação", async () => {
+    AVISOS = montarAvisos({
+      pedidos: [],
+      perguntasPendentes: 0,
+      avaliacoes: [
+        {
+          id: "av-1",
+          product_id: "prod-1",
+          rating: 5,
+          nomeDoProduto: "Caneta",
+          created_at: "2026-10-01T10:00:00Z",
+          status: "publicada",
+        },
+      ],
+      produtos: [],
+    });
+    const util = await import("@/utils/chegada-por-aviso");
+    const ouvinte = vi.fn();
+    util.aoChegarPorAviso("admin-reviews", ouvinte);
+    await tocar("avaliacao");
+    expect(ouvinte).toHaveBeenCalledTimes(1);
+    expect(ouvinte).toHaveBeenCalledWith({});
   });
 
   it("aviso de pedido não mexe em filtro nenhum", async () => {

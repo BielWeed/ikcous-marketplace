@@ -720,6 +720,8 @@ export function useReviews() {
             r.id === reviewId ? { ...r, status: "publicada" as const } : r,
           ),
         );
+        // O aviso "aguardando aprovação" do sino sai quando a avaliação é publicada.
+        window.dispatchEvent(new Event("admin:recontar-avisos"));
         toast.success("Avaliação publicada.");
         return true;
       } catch (error) {

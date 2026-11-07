@@ -20,6 +20,7 @@ import {
   isViewTransitionSupported,
   useViewTransition,
 } from "@/hooks/useViewTransition";
+import { FILTRO_POSTGREST_AVALIACAO_PARA_ATENDER } from "@/lib/avaliacoes-para-atender";
 import { contagemDe, lerListaAdmin } from "@/lib/devolucao";
 import { marcarEscapeSintetico } from "@/lib/escape-sintetico";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
@@ -271,16 +272,16 @@ export function AdminLayout({
             }
           },
 
-          // Avaliação sem resposta também acende o sino: ela entra na lista
-          // da tela de Notificações e é trabalho parado esperando pelo
-          // lojista. `.is(null)` é o mesmo critério de `useAvisosDoLojista` —
-          // duas contagens diferentes para a mesma pergunta seria pior que
-          // nenhuma.
+          // Avaliação sem resposta OU aguardando aprovação também acende o
+          // sino: ela entra na lista da tela de Notificações e é trabalho
+          // parado esperando pelo lojista. O filtro é o mesmo de
+          // `useAvisosDoLojista` (`@/lib/avaliacoes-para-atender`) — duas
+          // contagens diferentes para a mesma pergunta seria pior que nenhuma.
           async () => {
             const { count: reviewsCount, error: reviewsErr } = await supabase
               .from("reviews")
               .select("*", { count: "exact", head: true })
-              .is("merchant_reply", null);
+              .or(FILTRO_POSTGREST_AVALIACAO_PARA_ATENDER);
 
             if (reviewsErr) {
               falhouAlgumaConsulta = true;

@@ -815,7 +815,8 @@ setInterval(() => {
   // Keep alive logic
 }, 30000);
 
-// A imagem da notificação prefere a FICHA guardada no install (loja
+// A imagem da notificação prefere a ficha renovada pela rede (ver
+// `buscarFichaRenovada`), depois a FICHA guardada no install (loja
 // resolvida por host, build compartilhado) e só cai no ícone assado
 // (`buildIdentity`, comportamento de hoje) quando não há ficha em cache —
 // build antigo, ou o `install` ainda não terminou de buscá-la. Qualquer falha
@@ -829,24 +830,67 @@ setInterval(() => {
 // mesmo dispositivo (SW não é limpo por navegação). Por isso, mesmo achando
 // a ficha no cache próprio, só ela é aceita se `ficha.host` bater com
 // `self.location.hostname` — senão, ícone assado (nunca a ficha de outra loja).
+/** Prazo da busca da ficha nova quando um aviso chega: curto de propósito, o
+ * aviso espera por ele e, estourando, sai com a cópia guardada. */
+const PRAZO_DA_FICHA_NO_AVISO_MS = 1500;
+
+function iconesDaFicha(ficha: FichaDaLoja): { icon: string; badge: string } {
+  const urls = ficha?.identidade?.localUrls;
+  return {
+    icon: urls?.icon_192 || ICONE_ASSADO,
+    // Ficha antiga: mantém o icon e usa reserva monocromática.
+    // Nunca interpretar a imagem colorida como silhueta do Android.
+    badge: urls?.badge_96 || BADGE_NEUTRO,
+  };
+}
+
+/** Regrava a cópia da ficha (best-effort: ninguém espera por ela e o erro fica
+ * aqui dentro). Se não gravar, o próximo aviso busca de novo. */
+async function guardarFichaRenovada(copia: Response): Promise<void> {
+  try {
+    const cache = await caches.open(IDENTIDADE_CACHE_NAME);
+    await cache.put(CAMINHO_IDENTIDADE_JSON, copia);
+  } catch (e) {
+    console.warn("[SW] Falha ao regravar a ficha da loja:", e);
+  }
+}
+
+// A ficha guardada no `install` envelhece: a lojista troca o ícone e a URL da
+// imagem muda (leva o hash do conteúdo). Quando um aviso chega, busca a ficha
+// de agora, com prazo curto (o `signal` cobre o pedido e a leitura do corpo).
+// Só vale ficha de ESTA loja e com as URLs das imagens; qualquer outra coisa
+// (rede fora, prazo, erro do servidor, página no lugar da ficha) devolve null
+// e o aviso segue com a cópia guardada — nunca perde nem atrasa além do prazo.
+async function buscarFichaRenovada(): Promise<FichaDaLoja | null> {
+  try {
+    const resposta = await fetch(CAMINHO_IDENTIDADE_JSON, {
+      cache: "no-store",
+      signal: sinalComPrazo(PRAZO_DA_FICHA_NO_AVISO_MS),
+    });
+    if (!resposta?.ok) return null;
+    const copia = resposta.clone();
+    const ficha: FichaDaLoja = await resposta.json();
+    if (ficha?.host !== sw.location.hostname) return null;
+    if (!ficha?.identidade?.localUrls) return null;
+    void guardarFichaRenovada(copia);
+    return ficha;
+  } catch {
+    return null;
+  }
+}
+
 async function resolverIconesDaLoja(): Promise<{
   icon: string;
   badge: string;
 }> {
+  const renovada = await buscarFichaRenovada();
+  if (renovada) return iconesDaFicha(renovada);
   try {
     const cache = await caches.open(IDENTIDADE_CACHE_NAME);
     const resposta = await cache.match(CAMINHO_IDENTIDADE_JSON);
     if (resposta) {
       const ficha: FichaDaLoja = await resposta.json();
-      if (ficha?.host === sw.location.hostname) {
-        const urls = ficha?.identidade?.localUrls;
-        return {
-          icon: urls?.icon_192 || ICONE_ASSADO,
-          // Ficha antiga: mantém o icon e usa reserva monocromática.
-          // Nunca interpretar a imagem colorida como silhueta do Android.
-          badge: urls?.badge_96 || BADGE_NEUTRO,
-        };
-      }
+      if (ficha?.host === sw.location.hostname) return iconesDaFicha(ficha);
     }
   } catch (e) {
     console.warn("[SW] Falha ao ler a ficha da loja em cache:", e);

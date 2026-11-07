@@ -211,6 +211,12 @@ describe("dinheiro em pt-BR", () => {
     expect(formatarPercentual(12.345)).toBe("12,3%");
     expect(formatarPercentual(-5.26)).toBe("−5,3%");
     expect(formatarPercentual(null)).toBe("—");
+    // Linha minúscula perto da receita (R$ 0,50 de tarifa em R$ 2.000): o
+    // número arredonda para 0,0 e não pode carregar o sinal de menos.
+    expect(formatarPercentual(-0.025)).toBe("0,0%");
+    expect(formatarPercentual(-0.049)).toBe("0,0%");
+    expect(formatarPercentual(-0.06)).toBe("−0,1%");
+    expect(formatarPercentual(0.04)).toBe("0,0%");
   });
 
   it("divide parcelas em centavos e diz quando não fecha", () => {

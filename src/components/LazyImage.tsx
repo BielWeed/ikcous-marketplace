@@ -43,6 +43,16 @@ interface LazyImageProps {
    * pela metade nem o ícone de imagem quebrada.
    */
   semFade?: boolean;
+  /**
+   * Pede a foto já, sem esperar ela aparecer na tela, mas SEM prioridade alta.
+   * Para slide de carrossel fora da vista: a faixa cortada (overflow) esconde o
+   * slide do observador, e a foto só começava a baixar quando já estava
+   * entrando. Sai `loading="eager"` porque o `lazy` do navegador também não o
+   * enxergaria ali dentro.
+   */
+  carregarCedo?: boolean;
+  /** Avisa uma vez a cada vez que a foto termina de carregar. */
+  aoCarregar?: () => void;
 }
 
 export function LazyImage({
@@ -58,9 +68,14 @@ export function LazyImage({
   sizes,
   quality = 75,
   semFade = false,
+  carregarCedo = false,
+  aoCarregar,
 }: LazyImageProps) {
   const [isLoaded, setIsLoaded] = useState(false);
-  const [isInView, setIsInView] = useState(priority);
+  const [visto, setIsInView] = useState(priority);
+  // `carregarCedo` vale como "já visto" sem trocar o estado do observador: se
+  // a prop sumir, o que o observador já viu continua valendo.
+  const isInView = visto || carregarCedo;
   const [hasError, setHasError] = useState(false);
   const [showSkeleton, setShowSkeleton] = useState(false);
   // Se o endpoint de transformação falhar (plano alterado, arquivo exótico),
@@ -235,10 +250,13 @@ export function LazyImage({
           srcSet={conjuntoComMarcaDeTentativa(atributos.srcSet, ciclo)}
           sizes={atributos.sizes}
           alt={alt}
-          loading={priority ? "eager" : "lazy"}
+          loading={priority || carregarCedo ? "eager" : "lazy"}
           decoding={priority ? "sync" : "async"}
           fetchPriority={priority ? "high" : "auto"}
-          onLoad={() => setIsLoaded(true)}
+          onLoad={() => {
+            setIsLoaded(true);
+            aoCarregar?.();
+          }}
           onError={() => {
             // Primeira falha com transformação em uso: tenta a URL original
             // antes de desistir.

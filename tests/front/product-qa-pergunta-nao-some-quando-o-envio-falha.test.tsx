@@ -73,9 +73,14 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // Mesmo padrão de product-qa-edit-prefill.test.tsx: dispara o setter nativo
 // do input para o onChange controlado do React ver o novo valor.
 function digitar(id: string, valor: string) {
-  const el = document.getElementById(id) as HTMLInputElement;
+  const el = document.getElementById(id) as
+    | HTMLInputElement
+    | HTMLTextAreaElement;
+  // Pergunta é <input>; resposta da loja é <textarea>.
   const setter = Object.getOwnPropertyDescriptor(
-    globalThis.HTMLInputElement.prototype,
+    el.tagName === "TEXTAREA"
+      ? globalThis.HTMLTextAreaElement.prototype
+      : globalThis.HTMLInputElement.prototype,
     "value",
   )!.set!;
   setter.call(el, valor);

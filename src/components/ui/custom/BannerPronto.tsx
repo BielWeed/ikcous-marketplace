@@ -20,6 +20,10 @@ interface BannerProntoPreviewProps {
   prioridade?: boolean;
   /** Foto sem o esmaecer de entrada (só o banner do topo da Home). */
   semFade?: boolean;
+  /** Foto pedida já, sem prioridade alta (slides fora da vista do carrossel). */
+  carregarCedo?: boolean;
+  /** Avisa quando a foto termina de carregar. */
+  aoCarregar?: () => void;
 }
 
 export function BannerProntoPreview({
@@ -32,6 +36,8 @@ export function BannerProntoPreview({
   selo,
   prioridade = false,
   semFade = false,
+  carregarCedo = false,
+  aoCarregar,
 }: BannerProntoPreviewProps) {
   const fundo = /^#([\da-f]{3}|[\da-f]{6})$/i.test(corHex) ? corHex : "#2A2A31";
   const tinta = modelo === "foto" ? "claro" : tintaSobre(fundo);
@@ -43,6 +49,8 @@ export function BannerProntoPreview({
       className="banner-pronto-foto"
       priority={prioridade}
       semFade={semFade}
+      carregarCedo={carregarCedo}
+      aoCarregar={aoCarregar}
       sizes={IMAGEM_DO_BANNER.sizes}
       quality={IMAGEM_DO_BANNER.quality}
     />
@@ -95,11 +103,15 @@ export function BannerPronto({
   varios = false,
   semFade = false,
   semDestino = false,
+  carregarCedo = false,
+  aoCarregar,
 }: {
   banner: Banner;
   prioridade?: boolean;
   varios?: boolean;
   semFade?: boolean;
+  carregarCedo?: boolean;
+  aoCarregar?: () => void;
   /** Vitrine: sem para onde ir, o botão seria falso. O painel não passa. */
   semDestino?: boolean;
 }) {
@@ -117,6 +129,8 @@ export function BannerPronto({
         selo={banner.badgeText}
         prioridade={prioridade}
         semFade={semFade}
+        carregarCedo={carregarCedo}
+        aoCarregar={aoCarregar}
       />
     </div>
   );

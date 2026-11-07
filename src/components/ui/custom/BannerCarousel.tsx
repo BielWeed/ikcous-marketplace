@@ -35,6 +35,12 @@ export const BannerCarousel = memo(function BannerCarousel({
     skipSnaps: false,
   });
   const [currentIndex, setCurrentIndex] = useState(0);
+  // As fotos do 2º banner em diante só começavam a baixar quando o slide já
+  // entrava na tela (a faixa do carrossel corta o que está fora, e o observador
+  // do LazyImage não o vê). Elas passam a baixar assim que a PRIMEIRA carrega:
+  // antes disso competiriam com ela, e é ela que a cliente espera.
+  const [primeiraCarregou, setPrimeiraCarregou] = useState(false);
+  const aoCarregarAPrimeira = useCallback(() => setPrimeiraCarregou(true), []);
   // Pausa do autoplay (WCAG 2.2.2 — laudo de acessibilidade 05/09, M7): mouse
   // em cima, foco de teclado dentro do carrossel, ou o sistema pedindo menos
   // movimento. Nenhuma das duas muda o visual — só some o `setInterval`.
@@ -206,6 +212,8 @@ export const BannerCarousel = memo(function BannerCarousel({
                   banner={banner}
                   prioridade={index === 0}
                   semFade={primeiraSemFade && index === 0}
+                  carregarCedo={index > 0 && primeiraCarregou}
+                  aoCarregar={index === 0 ? aoCarregarAPrimeira : undefined}
                   varios={validBanners.length > 1}
                   semDestino={destino === null}
                 />
@@ -217,6 +225,8 @@ export const BannerCarousel = memo(function BannerCarousel({
                     className="size-full transition-transform [transition-duration:2000ms] [transition-timing-function:cubic-bezier(0.4,0,0.2,1)] group-hover:scale-105"
                     priority={index === 0}
                     semFade={primeiraSemFade && index === 0}
+                    carregarCedo={index > 0 && primeiraCarregou}
+                    aoCarregar={index === 0 ? aoCarregarAPrimeira : undefined}
                     // Banner ocupa a largura toda; era o pior caso (PNG de 1340 kB).
                     sizes={IMAGEM_DO_BANNER.sizes}
                     quality={IMAGEM_DO_BANNER.quality}

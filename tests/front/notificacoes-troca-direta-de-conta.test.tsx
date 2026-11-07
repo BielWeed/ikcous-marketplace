@@ -50,7 +50,10 @@ vi.mock("@/lib/supabase", () => ({
           );
         },
       };
-      const mutacao = Object.assign(rede.mutacao, { eq: () => mutacao });
+      const mutacao = Object.assign(rede.mutacao, {
+        eq: () => mutacao,
+        in: () => mutacao,
+      });
       return {
         select: () => consulta,
         update: () => mutacao,

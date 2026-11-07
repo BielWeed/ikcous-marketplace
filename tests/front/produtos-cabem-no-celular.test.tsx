@@ -832,17 +832,107 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
         ).toContain(modo === "compact" ? "aspect-square" : "size-16");
       });
 
-      it("foto que falha mostra aviso sem botão aninhado", async () => {
+      // Rede oscilando: a foto que falha NÃO vira "Foto indisponível" na hora.
+      // O catálogo pede a foto pequena; se ela falha, tenta a original; e se
+      // nem isso, espera um pouco e pede tudo de novo (até 2 vezes).
+      const ORIGINAL_DA_FOTO =
+        "https://proj.supabase.co/storage/v1/object/public/products/foto1.jpg";
+
+      async function falhar(img: Element | null) {
+        expect(img).not.toBeNull();
+        await act(async () => {
+          img?.dispatchEvent(new Event("error"));
+        });
+      }
+      async function avancar(ms: number) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(ms);
+        });
+      }
+      /** Falha a foto atual duas vezes: a pequena e a original que a substitui. */
+      async function falharPequenaEOriginal() {
+        await falhar(gatilho().querySelector("img"));
+        await falhar(gatilho().querySelector("img"));
+      }
+
+      it("a miniatura do catálogo pede a foto pequena, não a original inteira", async () => {
         montarProduto({});
         await montar(modo);
-        const foto = gatilho().querySelector("img");
-        expect(foto).not.toBeNull();
-        await act(async () => {
-          foto?.dispatchEvent(new Event("error"));
-        });
-        expect(gatilho().textContent).toContain("Foto indisponível");
-        expect(gatilho().querySelector("button")).toBeNull();
+        const src = gatilho().querySelector("img")?.getAttribute("src") ?? "";
+        expect(src).toContain("/render/image/public/products/foto1.jpg");
+        expect(src).toContain("width=320");
+      });
+
+      it("se a foto pequena falha, a primeira queda de volta é a original (sem aviso)", async () => {
+        montarProduto({});
+        await montar(modo);
+        await falhar(gatilho().querySelector("img"));
+        const img = gatilho().querySelector("img");
+        expect(img?.getAttribute("src")).toBe(ORIGINAL_DA_FOTO);
+        expect(gatilho().textContent).not.toContain("Foto indisponível");
+      });
+
+      it("falha passageira: espera e pede a foto de novo, e ela volta sem aviso", async () => {
+        montarProduto({});
+        await montar(modo);
+        vi.useFakeTimers();
+        try {
+          await falharPequenaEOriginal();
+          // Durante a espera não aparece o aviso.
+          expect(gatilho().textContent).not.toContain("Foto indisponível");
+          await avancar(2000);
+          const nova = gatilho().querySelector("img");
+          expect(nova).not.toBeNull();
+          expect(nova?.getAttribute("src")).toContain("_r=1");
+          await act(async () => {
+            nova?.dispatchEvent(new Event("load"));
+          });
+          expect(gatilho().querySelector("img")).not.toBeNull();
+          expect(gatilho().textContent).not.toContain("Foto indisponível");
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it("foto que falha de verdade mostra aviso sem botão aninhado, só depois das novas tentativas", async () => {
+        montarProduto({});
+        await montar(modo);
+        vi.useFakeTimers();
+        try {
+          await falharPequenaEOriginal();
+          await avancar(2000);
+          await falharPequenaEOriginal();
+          expect(gatilho().textContent).not.toContain("Foto indisponível");
+          await avancar(4000);
+          await falharPequenaEOriginal();
+          expect(gatilho().textContent).toContain("Foto indisponível");
+          expect(gatilho().querySelector("img")).toBeNull();
+          expect(gatilho().querySelector("button")).toBeNull();
+        } finally {
+          vi.useRealTimers();
+        }
         await abrir(nomeDoProduto(modo));
+      });
+
+      it("depois do aviso, a rede voltando (evento online) pede a foto de novo", async () => {
+        montarProduto({});
+        await montar(modo);
+        vi.useFakeTimers();
+        try {
+          await falharPequenaEOriginal();
+          await avancar(2000);
+          await falharPequenaEOriginal();
+          await avancar(4000);
+          await falharPequenaEOriginal();
+          expect(gatilho().textContent).toContain("Foto indisponível");
+          await act(async () => {
+            window.dispatchEvent(new Event("online"));
+          });
+          expect(gatilho().querySelector("img")).not.toBeNull();
+          expect(gatilho().textContent).not.toContain("Foto indisponível");
+        } finally {
+          vi.useRealTimers();
+        }
       });
 
       it("produto pausado mantém foto esmaecida, nome inteiro e ação Ativar", async () => {

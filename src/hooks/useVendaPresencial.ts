@@ -26,6 +26,7 @@ import {
   type PrecoAtualDaVenda,
 } from "@/lib/erro-da-venda-presencial";
 import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
+import { hojeEmSaoPaulo } from "@/lib/financeiro";
 import { JANELA_DE_REPETICAO_MS } from "@/lib/leitor/debounce-de-leitura";
 import { gerarUuidV4 } from "@/lib/uuid-v4";
 import {
@@ -1119,15 +1120,29 @@ type EstadoPersistidoNoRascunho = Omit<
  * faria um F5 depois de uma venda registrada reabrir a tela de recibo como
  * se a venda ainda estivesse em curso (risco medido na tarefa).
  */
-export function serializarRascunho(estado: EstadoDaVenda): string {
+export function serializarRascunho(
+  estado: EstadoDaVenda,
+  salvoEm: number | null = Date.now(),
+): string {
   const {
     recibo: _recibo,
     enviando: _enviando,
     erro: _erro,
     ...persistido
   } = estado;
-  return JSON.stringify(persistido);
+  // O carimbo (`salvoEm`, ISO) mora SÓ no disco: `lerRascunhoComIdade` o tira
+  // antes de montar o estado. `null` = não carimba (é como um rascunho velho,
+  // de antes do carimbo existir, é regravado enquanto a lojista não decide).
+  return JSON.stringify(
+    salvoEm !== null && Number.isFinite(salvoEm)
+      ? { ...persistido, salvoEm: new Date(salvoEm).toISOString() }
+      : persistido,
+  );
 }
+
+/** Quanto um cupom aberto vale sem perguntar à lojista: 12 h. Passou disso —
+ * ou virou o dia em São Paulo — o cupom volta, mas com aviso. */
+export const VALIDADE_DO_RASCUNHO_MS = 12 * 3_600_000;
 
 /** Type guard defensivo: JSON válido mas com a forma errada (itens não é
  * array, item sem `productId`, `chaveDeIdempotencia` que não é string) NÃO
@@ -1203,13 +1218,49 @@ function pareceRascunhoValido(
  *    fechada) — quem LÊ também recusa a combinação, rebaixando para
  *    `cupom`, a única etapa sempre segura.
  */
-export function lerRascunho(bruto: string | null): EstadoDaVenda | null {
+export function lerRascunho(
+  bruto: string | null,
+  agora: number = Date.now(),
+): EstadoDaVenda | null {
+  return lerRascunhoComIdade(bruto, agora)?.estado ?? null;
+}
+
+/** O rascunho lido, com o que a tela precisa para decidir se pergunta. */
+export interface RascunhoLido {
+  readonly estado: EstadoDaVenda;
+  /** Quando foi gravado (ms). `null` = sem carimbo, ou carimbo ilegível. */
+  readonly salvoEm: number | null;
+  /** `true` = não é de hoje: sem carimbo (gravado antes de o carimbo existir),
+   * com carimbo ilegível, de outro dia em São Paulo ou com mais de
+   * `VALIDADE_DO_RASCUNHO_MS`. Quem lê NÃO apaga nada: o cupom volta, na etapa
+   * `cupom`, e a lojista escolhe continuar ou descartar. */
+  readonly velho: boolean;
+}
+
+/**
+ * `lerRascunho` com a idade. As regras de forma, de vocabulário de etapa e de
+ * `podeIrPara` (acima) valem iguais; a idade só acrescenta uma coisa: cupom
+ * velho NUNCA reabre direto no Fechar venda (nem numa folha de variação ou num
+ * aviso de ontem) — volta no cupom, com os itens, o cliente e o pagamento
+ * intactos. Sem carimbo (o que o app gravava antes) conta como velho: a data é
+ * desconhecida, e perguntar custa um toque, enquanto vender na conta errada
+ * custa uma venda.
+ */
+export function lerRascunhoComIdade(
+  bruto: string | null,
+  agora: number = Date.now(),
+): RascunhoLido | null {
   if (!bruto) return null;
   try {
     const objeto: unknown = JSON.parse(bruto);
     if (!pareceRascunhoValido(objeto)) return null;
+    const { salvoEm: carimbo, ...persistido } = objeto as typeof objeto & {
+      salvoEm?: unknown;
+    };
+    const salvoEm = lerCarimbo(carimbo);
+    const velho = rascunhoEstaVelho(salvoEm, agora);
     const restaurado: EstadoDaVenda = {
-      ...objeto,
+      ...persistido,
       recibo: null,
       enviando: false,
       erro: null,
@@ -1220,10 +1271,26 @@ export function lerRascunho(bruto: string | null): EstadoDaVenda | null {
     const etapa = podeIrPara(restaurado, etapaConhecida)
       ? etapaConhecida
       : "cupom";
-    return { ...restaurado, etapa };
+    const estado: EstadoDaVenda = velho
+      ? { ...restaurado, etapa: "cupom", escolhaDeVariacao: null, aviso: null }
+      : { ...restaurado, etapa };
+    return { estado, salvoEm, velho };
   } catch {
     return null;
   }
+}
+
+/** O carimbo gravado, em ms — ou `null` se faltar ou não for uma data. */
+function lerCarimbo(valor: unknown): number | null {
+  if (typeof valor !== "string") return null;
+  const ms = Date.parse(valor);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function rascunhoEstaVelho(salvoEm: number | null, agora: number): boolean {
+  if (salvoEm === null) return true;
+  if (agora - salvoEm > VALIDADE_DO_RASCUNHO_MS) return true;
+  return hojeEmSaoPaulo(new Date(salvoEm)) !== hojeEmSaoPaulo(new Date(agora));
 }
 
 // ============================================================================
@@ -1271,6 +1338,19 @@ export interface VendaPresencialEmUso {
   /** `true` quando o estado inicial veio de um rascunho salvo (F5 no meio
    * de uma venda), não de um cupom novo. */
   readonly restaurado: boolean;
+  /** Não `null` quando o cupom restaurado NÃO é de hoje (outro dia, mais de
+   * 12 h, ou sem data): a tela tem de avisar e deixar a lojista escolher —
+   * `continuarVendaAntiga` ou `limparCupom`. `salvoEm` é o instante em que foi
+   * gravado (ms), ou `null` se a data se perdeu. Some sozinho ao registrar a
+   * venda. */
+  readonly rascunhoAntigo: {
+    readonly salvoEm: number | null;
+    /** O instante em que o cupom foi lido do disco (ms): a tela diz "desde
+     * ontem" em relação a ESTE instante, sem consultar o relógio a cada desenho. */
+    readonly lidoEm: number;
+  } | null;
+  /** "Continuar esta venda": o cupom velho passa a valer como de agora. */
+  readonly continuarVendaAntiga: () => void;
 }
 
 /**
@@ -1310,6 +1390,17 @@ export function useVendaPresencial(
     estadoInicialDaVenda(gerarChave),
   );
   const [restaurado, setRestaurado] = useState(false);
+  // O cupom restaurado que não é de hoje, à espera da decisão da lojista. Entra
+  // na lista do efeito de gravar: enquanto houver decisão pendente a gravação
+  // mantém o carimbo ANTIGO (o cupom não rejuvenesce sozinho, nem por um bipe).
+  const [rascunhoAntigo, setRascunhoAntigo] = useState<{
+    readonly salvoEm: number | null;
+    readonly lidoEm: number;
+  } | null>(null);
+  const agoraRef = useRef(opcoes.agora ?? Date.now);
+  useEffect(() => {
+    agoraRef.current = opcoes.agora ?? Date.now;
+  });
 
   // O bipe que responde tarde (a balconista já saiu do cupom, ou o envio já
   // começou) é descartado pela máquina de propósito — mas o leitor JÁ apitou,
@@ -1383,6 +1474,7 @@ export function useVendaPresencial(
       // chave de idempotência incluída.
       despachar({ tipo: "cupom_limpo", novaChave: gerarChaveRef.current() });
       setRestaurado(false);
+      setRascunhoAntigo(null);
     }
 
     const armazenamento = armazenamentoRef.current;
@@ -1401,10 +1493,14 @@ export function useVendaPresencial(
       console.error("Erro ao ler rascunho da venda no balcão:", erro);
     }
 
-    const estadoRestaurado = lerRascunho(bruto);
-    if (estadoRestaurado) {
-      despachar({ tipo: "rascunho_restaurado", estado: estadoRestaurado });
+    const lidoEm = agoraRef.current();
+    const lido = lerRascunhoComIdade(bruto, lidoEm);
+    if (lido) {
+      despachar({ tipo: "rascunho_restaurado", estado: lido.estado });
       setRestaurado(true);
+      // Cupom que não é de hoje NÃO é apagado nem aceito em silêncio: a tela
+      // pergunta (continuar ou descartar). O disco fica como está até lá.
+      setRascunhoAntigo(lido.velho ? { salvoEm: lido.salvoEm, lidoEm } : null);
     }
     setChaveLida(chaveDoRascunho);
     // `despachar` do useReducer é estável entre renders e `gerarChaveRef` é um
@@ -1459,7 +1555,15 @@ export function useVendaPresencial(
 
     const identificador = setTimeout(() => {
       try {
-        armazenamento.setItem(chaveDoRascunho, serializarRascunho(estado));
+        armazenamento.setItem(
+          chaveDoRascunho,
+          // Decisão pendente = carimbo antigo (ou nenhum, se a data se perdeu);
+          // sem pendência, a hora desta gravação.
+          serializarRascunho(
+            estado,
+            rascunhoAntigo ? rascunhoAntigo.salvoEm : agoraRef.current(),
+          ),
+        );
       } catch (erro) {
         // QuotaExceededError não pode derrubar a venda em curso — mesmo
         // cuidado de src/hooks/useOrders.ts:1291-1302. O cupom continua
@@ -1469,10 +1573,23 @@ export function useVendaPresencial(
     }, atrasoDeGravacaoMs);
 
     return () => clearTimeout(identificador);
-  }, [estado, atrasoDeGravacaoMs, prontoParaGravar, chaveDoRascunho]);
+  }, [
+    estado,
+    atrasoDeGravacaoMs,
+    prontoParaGravar,
+    chaveDoRascunho,
+    rascunhoAntigo,
+  ]);
+
+  // "Continuar esta venda": a decisão pendente cai, e o efeito de gravar acima
+  // (que depende dela) regrava o MESMO cupom com a hora de agora.
+  const continuarVendaAntiga = useCallback(() => {
+    setRascunhoAntigo(null);
+  }, []);
 
   const limparCupom = useCallback(() => {
     despachar({ tipo: "cupom_limpo", novaChave: gerarChaveRef.current() });
+    setRascunhoAntigo(null);
     const armazenamento = armazenamentoRef.current;
     const chave = chaveDoRascunhoRef.current;
     if (!armazenamento || !chave) return;
@@ -1498,5 +1615,8 @@ export function useVendaPresencial(
     podeRegistrar,
     limparCupom,
     restaurado,
+    // Venda registrada: o aviso não faz mais sentido (o recibo é outra tela).
+    rascunhoAntigo: estado.recibo === null ? rascunhoAntigo : null,
+    continuarVendaAntiga,
   };
 }

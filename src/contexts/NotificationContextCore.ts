@@ -10,6 +10,12 @@ export type ValorDoContextoDeNotificacoes = NotificationContextType & {
   /** Visitante: sem conta (e a conta não está carregando). Opcional. */
   semConta?: boolean;
   /**
+   * A última consulta dos avisos próprios voltou cheia (50): pode haver avisos
+   * mais antigos que a lista não mostra. Opcional: quem monta o contexto à mão
+   * (testes) não precisa conhecê-lo.
+   */
+  listaCortada?: boolean;
+  /**
    * Marca como lidos, num UPDATE só, os avisos próprios ainda não lidos de UM
    * pedido (`dados.order_id`). Chamada pela tela do pedido ao abrir. Opcional:
    * quem monta o contexto à mão (testes) não precisa conhecê-la.

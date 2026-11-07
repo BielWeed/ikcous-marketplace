@@ -748,7 +748,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
                                     {tempoRelativo(ans.created_at)}
                                   </span>
                                 </div>
-                                <p className="break-words pl-0.5 font-medium italic text-zinc-700">
+                                <p className="whitespace-pre-line break-words pl-0.5 font-medium italic text-zinc-700">
                                   "{ans.answer}"
                                 </p>
                               </div>
