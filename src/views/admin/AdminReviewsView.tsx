@@ -112,7 +112,10 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     try {
       // O toast de erro sai de dentro do `updateConfig`; aqui só não se segue
       // em frente (ADMIN-010, #94).
-      const salvou = await updateConfig({ enableReviews: checked });
+      const salvou = await updateConfig(
+        { enableReviews: checked },
+        { silentSuccess: true },
+      );
       if (!salvou) return;
       toast.success(
         checked

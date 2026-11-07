@@ -107,6 +107,7 @@ export function filtroDosCodigosCitados(codigos: readonly string[]): string {
 
 /** Só as colunas de `coupons` que a conferência lê. */
 export interface CupomDaLoja {
+  readonly id?: string;
   readonly code: string;
   readonly active: boolean | null;
   readonly valid_until: string | null;
@@ -124,7 +125,8 @@ export type ProblemaDoCupom =
   | "desativado"
   | "vencido"
   | "esgotado"
-  | "exclusivo";
+  | "exclusivo"
+  | "cliente-fora-da-lista";
 
 /**
  * O cupom citado serve para uma cliente usar agora? `null` = serve.
@@ -134,7 +136,7 @@ export function problemaDoCupom(
   codigo: string,
   cupons: readonly CupomDaLoja[],
   agora: Date,
-  opcoes: { readonly paraClienteEspecifico?: boolean } = {},
+  opcoes: { readonly clienteNaListaDoCupom?: boolean } = {},
 ): ProblemaDoCupom | null {
   const cupom = cupons.find((c) => c.code.toUpperCase() === codigo);
   if (!cupom) return "nao-existe";
@@ -152,11 +154,12 @@ export function problemaDoCupom(
   ) {
     return "esgotado";
   }
-  // Exclusivo vale só para as clientes escolhidas no cupom: citado num aviso
-  // que sai para mais gente, a maioria lê "Cupom inválido ou expirado". Aviso
-  // para UM cliente (Mensagem para Cliente Específico) é a lojista no controle.
-  if (cupom.alcance === "exclusivo" && !opcoes.paraClienteEspecifico) {
-    return "exclusivo";
+  // Aviso individual só dispensa a ressalva com a conta conferida na lista.
+  // Ausente = campanha para mais gente; false = conta conferida, fora da lista.
+  if (cupom.alcance === "exclusivo" && !opcoes.clienteNaListaDoCupom) {
+    return opcoes.clienteNaListaDoCupom === false
+      ? "cliente-fora-da-lista"
+      : "exclusivo";
   }
   return null;
 }
@@ -175,6 +178,8 @@ export function mensagemDoProblemaDoCupom(
       return `O cupom ${codigo} já venceu`;
     case "esgotado":
       return `O cupom ${codigo} já usou todos os usos permitidos`;
+    case "cliente-fora-da-lista":
+      return `O cupom ${codigo} é exclusivo e este cliente não está na lista do cupom`;
     case "exclusivo":
       return `O cupom ${codigo} é exclusivo de clientes escolhidos e este aviso não vai só para eles`;
   }

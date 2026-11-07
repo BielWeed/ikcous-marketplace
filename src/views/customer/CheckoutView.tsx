@@ -97,6 +97,7 @@ import {
   conferirFreteEscolhidoComACotacao,
   ehModalidadeDaLoja,
   ehRetiradaNaLoja,
+  entregaPropriaLigada,
   finalizarBloqueadoPorFrete,
   formaDePagamentoDesligadaNaLoja,
   modoDaEntregaNaCidade,
@@ -324,6 +325,21 @@ const ORDEM_CAMPOS_FOCO = [
   "city",
   "state",
 ] as const satisfies readonly (keyof CheckoutFormValues)[];
+
+/**
+ * Tetos dos campos de texto do formulário do visitante — os MESMOS do
+ * endereço da conta (`AddressForm.tsx`: nome 120, rua 200, número 20, bairro
+ * 120; a conta não limita a cidade, aqui vale 120 como o bairro). Sem eles, um
+ * texto colado de 2 mil caracteres ia inteiro para o pedido, a ficha, a
+ * etiqueta e o recibo. O `maxLength` do <input> trava a digitação; o schema
+ * barra o que entra por fora dele (colar, preenchimento automático).
+ */
+const TETO_NOME_DO_CHECKOUT = 120;
+const TETO_RUA_DO_CHECKOUT = 200;
+const TETO_NUMERO_DO_CHECKOUT = 20;
+const TETO_BAIRRO_DO_CHECKOUT = 120;
+const TETO_CIDADE_DO_CHECKOUT = 120;
+const avisoDeTeto = (teto: number) => `Máximo de ${teto} caracteres`;
 
 /**
  * Qual campo do formulário cada <input> da seção "Seus dados e entrega"
@@ -1053,7 +1069,11 @@ export function CheckoutViewDaConta({
   const dynamicSchema = useMemo(() => {
     return z
       .object({
-        name: z.string().trim().min(1, "Nome é obrigatório"),
+        name: z
+          .string()
+          .trim()
+          .min(1, "Nome é obrigatório")
+          .max(TETO_NOME_DO_CHECKOUT, avisoDeTeto(TETO_NOME_DO_CHECKOUT)),
         whatsapp: z.string(),
         cep: z.string().optional(),
         street: z.string().optional(),
@@ -1099,10 +1119,19 @@ export function CheckoutViewDaConta({
               path: ["cep"],
             });
           }
+          // Os tetos só valem aqui, no formulário do VISITANTE: quem tem conta
+          // usa o endereço salvo, que já nasceu com teto no AddressForm, e um
+          // valor residual comprido nestes campos não pode prendê-lo.
           if (!data.street || data.street.trim() === "") {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               message: "Rua é obrigatória",
+              path: ["street"],
+            });
+          } else if (data.street.length > TETO_RUA_DO_CHECKOUT) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: avisoDeTeto(TETO_RUA_DO_CHECKOUT),
               path: ["street"],
             });
           }
@@ -1112,6 +1141,12 @@ export function CheckoutViewDaConta({
               message: "Número é obrigatório",
               path: ["number"],
             });
+          } else if (data.number.length > TETO_NUMERO_DO_CHECKOUT) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: avisoDeTeto(TETO_NUMERO_DO_CHECKOUT),
+              path: ["number"],
+            });
           }
           if (!data.neighborhood || data.neighborhood.trim() === "") {
             ctx.addIssue({
@@ -1119,11 +1154,23 @@ export function CheckoutViewDaConta({
               message: "Bairro é obrigatório",
               path: ["neighborhood"],
             });
+          } else if (data.neighborhood.length > TETO_BAIRRO_DO_CHECKOUT) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: avisoDeTeto(TETO_BAIRRO_DO_CHECKOUT),
+              path: ["neighborhood"],
+            });
           }
           if (!data.city || data.city.trim() === "") {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               message: "Cidade é obrigatória",
+              path: ["city"],
+            });
+          } else if (data.city.length > TETO_CIDADE_DO_CHECKOUT) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: avisoDeTeto(TETO_CIDADE_DO_CHECKOUT),
               path: ["city"],
             });
           }
@@ -6272,6 +6319,7 @@ export function CheckoutViewDaConta({
                   id="checkout-name"
                   type="text"
                   autoComplete="name"
+                  maxLength={TETO_NOME_DO_CHECKOUT}
                   {...form.register("name")}
                   placeholder="Como devemos te chamar?"
                   // Laudo de acessibilidade 03/09, achado 1: o campo errado
@@ -6553,6 +6601,7 @@ export function CheckoutViewDaConta({
                     </label>
                     <input
                       id="guest-number"
+                      maxLength={TETO_NUMERO_DO_CHECKOUT}
                       {...form.register("number")}
                       placeholder="123"
                       aria-invalid={erroDoCampo("number") ? true : undefined}
@@ -6579,6 +6628,7 @@ export function CheckoutViewDaConta({
                     </label>
                     <input
                       id="guest-street"
+                      maxLength={TETO_RUA_DO_CHECKOUT}
                       {...registrarCampoDoEndereco("street")}
                       autoComplete="address-line1"
                       placeholder="Nome da rua"
@@ -6606,6 +6656,7 @@ export function CheckoutViewDaConta({
                     </label>
                     <input
                       id="guest-neighborhood"
+                      maxLength={TETO_BAIRRO_DO_CHECKOUT}
                       {...registrarCampoDoEndereco("neighborhood")}
                       autoComplete="address-level3"
                       placeholder="Seu bairro"
@@ -6637,6 +6688,7 @@ export function CheckoutViewDaConta({
                     </label>
                     <input
                       id="guest-city"
+                      maxLength={TETO_CIDADE_DO_CHECKOUT}
                       {...registrarCampoDoEndereco("city")}
                       autoComplete="address-level2"
                       placeholder="Cidade"
@@ -7063,32 +7115,37 @@ export function CheckoutViewDaConta({
             EXCLUSIVIDADE de entrega na cidade (#525): com cobertura
             nacional ela seria falsa — a loja entrega para o país, não só
             para a sede. Some por inteiro quando a loja não configurou
-            cidade. Este aviso é sobre a loja, não sobre o cliente. */}
-        {config.storeCity && config.shippingCoverage === "local" && (
-          <div className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-slate-800 shadow-md">
-            <div className="absolute right-0 top-0 rotate-12 p-4 opacity-5 transition-transform duration-700 group-hover:rotate-0">
-              <MapPin className="size-16 text-zinc-500" />
-            </div>
-            <div className="relative z-10 flex items-start gap-3">
-              <div className="mt-0.5 shrink-0">
-                <AlertCircle className="size-5 text-zinc-500" />
+            cidade. Este aviso é sobre a loja, não sobre o cliente. Loja "Só
+            retirada" (entrega própria desligada) também não mostra: a frase
+            prometeria entrega que ela não faz e sugeriria que quem é de outra
+            cidade não pode comprar, quando pode retirar. */}
+        {config.storeCity &&
+          config.shippingCoverage === "local" &&
+          entregaPropriaLigada(config.localDeliveryEnabled) && (
+            <div className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-slate-800 shadow-md">
+              <div className="absolute right-0 top-0 rotate-12 p-4 opacity-5 transition-transform duration-700 group-hover:rotate-0">
+                <MapPin className="size-16 text-zinc-500" />
               </div>
-              <div>
-                <h4 className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-900">
-                  Aviso de Região
-                </h4>
-                <p className="text-[10px] font-medium uppercase leading-relaxed tracking-tight text-slate-500">
-                  Nossos serviços de entrega estão ativos exclusivamente em{" "}
-                  <span className="font-black text-slate-900">
-                    {config.storeCity}
-                    {config.storeState ? `, ${config.storeState}` : ""}
-                  </span>
-                  .
-                </p>
+              <div className="relative z-10 flex items-start gap-3">
+                <div className="mt-0.5 shrink-0">
+                  <AlertCircle className="size-5 text-zinc-500" />
+                </div>
+                <div>
+                  <h4 className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-900">
+                    Aviso de Região
+                  </h4>
+                  <p className="text-[10px] font-medium uppercase leading-relaxed tracking-tight text-slate-500">
+                    Nossos serviços de entrega estão ativos exclusivamente em{" "}
+                    <span className="font-black text-slate-900">
+                      {config.storeCity}
+                      {config.storeState ? `, ${config.storeState}` : ""}
+                    </span>
+                    .
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
         {/* Termos e Privacidade no FIM da tela, fora da barra do botão (a pedido
             do dono, 22/10/2026: dentro da barra ficava feio). Rola junto com o

@@ -146,6 +146,7 @@ it("(a) 'Só retirada' com um valor negativo escondido no campo: o Salvar não �
   expect(s.update).toHaveBeenCalledTimes(1);
   expect(s.update).toHaveBeenCalledWith(
     expect.objectContaining({ localDeliveryEnabled: false }),
+    { silentSuccess: true },
   );
 });
 

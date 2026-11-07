@@ -414,6 +414,27 @@ describe("zod enxuto — regras reais de formulários", () => {
       "src/views/customer/CheckoutView.tsx",
       "dynamicSchema",
     );
+    // O recorte do `dynamicSchema` cita constantes de módulo da view (os
+    // tetos dos campos e `avisoDeTeto`): saem da MESMA fonte, uma a uma, para
+    // não haver segunda cópia dos números no teste. `avisoDeTeto` tem tipo no
+    // parâmetro: o trecho passa pelo transpilador antes de entrar no pacote
+    // (que é JavaScript puro).
+    const constantesDoCheckout = [
+      "TETO_NOME_DO_CHECKOUT",
+      "TETO_RUA_DO_CHECKOUT",
+      "TETO_NUMERO_DO_CHECKOUT",
+      "TETO_BAIRRO_DO_CHECKOUT",
+      "TETO_CIDADE_DO_CHECKOUT",
+      "avisoDeTeto",
+    ]
+      .map(
+        (nome) =>
+          ts.transpileModule(
+            `const ${nome} = ${inicializador("src/views/customer/CheckoutView.tsx", nome)};`,
+            { compilerOptions: { target: ts.ScriptTarget.ESNext } },
+          ).outputText,
+      )
+      .join("\n");
     const entrada = `
 import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -422,6 +443,7 @@ import { ufBrasileiraValida } from "@/lib/uf-brasileira";
 import { celularBrasileiroCompleto, mensagemDeWhatsappIncompleto } from "@/lib/telefone-br";
 const addressSchema = ${endereco};
 const reviewSchema = ${avaliacao};
+${constantesDoCheckout}
 const useMemo = (criar) => criar();
 const address = {name:"Casa fictícia",cep:"12345-678",street:"Rua de teste",number:"10",neighborhood:"Bairro fictício",city:"Cidade de teste",state:"SP",recipient_name:"Pessoa fictícia",is_default:true};
 const compra = {name:"Pessoa fictícia",whatsapp:"11987654321",cep:"12345-678",street:"Rua de teste",number:"10",neighborhood:"Bairro fictício",city:"Cidade de teste",state:"SP",cpf:"52998224725"};
@@ -433,7 +455,7 @@ export async function validar() {
  for (const user of [null, {id:"pessoa-ficticia"}]) {
   for (const exigeCpfDoDestinatario of [false,true]) {
    const dynamicSchema = ${checkout};
-   cenarios.push([dynamicSchema, [compra,{}, {...compra,whatsapp:"1134567890"}, {...compra,cep:"12345-67",street:" ",number:""}, {...compra,cpf:""}, {...compra,cpf:"11111111111"}]]);
+   cenarios.push([dynamicSchema, [compra,{}, {...compra,whatsapp:"1134567890"}, {...compra,cep:"12345-67",street:" ",number:""}, {...compra,cpf:""}, {...compra,cpf:"11111111111"}, {...compra,street:"x".repeat(300),number:"9".repeat(30)}]]);
   }
  }
  return Promise.all(cenarios.map(async ([schema, entradas]) => Promise.all(entradas.map(async (dados) => {
@@ -460,6 +482,15 @@ export async function validar() {
     for (const casos of esperado.slice(2)) {
       expect(casos[0].resultado.data).toBeDefined();
       expect(casos[2].resultado.issues).toBeDefined();
+    }
+    // Tetos de endereço do checkout (r50-c): valem para o visitante (os dois
+    // primeiros cenários do checkout, `user = null`) e NÃO para quem tem conta
+    // (os dois últimos, `user = { id }`), que usa o endereço salvo.
+    for (const [i, casos] of esperado.slice(2).entries()) {
+      const comConta = i >= 2;
+      expect(casos[6].resultado.issues === undefined, `cenário ${i}`).toBe(
+        comConta,
+      );
     }
   }, 30_000);
 });

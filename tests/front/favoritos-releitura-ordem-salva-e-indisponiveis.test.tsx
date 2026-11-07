@@ -18,6 +18,7 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Product } from "@/types";
+import { toast } from "sonner";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
@@ -39,11 +40,32 @@ const umProduto = (id: string, isActive = true) =>
 
 let productsDaLoja: Product[] = [];
 let catalogoCarregando = false;
+let catalogoDaRedeAplicado = true;
+let catalogoErro = false;
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
     products: productsDaLoja,
     loading: catalogoCarregando,
+    catalogoDaRedeAplicado,
+    catalogoErro,
   }),
+}));
+
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: {},
+    products: productsDaLoja,
+    loadingProducts: catalogoCarregando,
+    catalogoErro,
+    catalogoDaRedeAplicado,
+    fetchProducts: vi.fn(async () => {}),
+  }),
+}));
+vi.mock("@/hooks/usePrefetchOnHover", () => ({
+  usePrefetchOnHover: () => ({ prefetchView: vi.fn() }),
+}));
+vi.mock("@/hooks/useDeferredRender", () => ({
+  useDeferredRender: () => true,
 }));
 
 let usuarioDaVez: { id: string } | null = null;
@@ -53,6 +75,8 @@ vi.mock("@/hooks/useAuth", () => ({
 
 let linhasDoServidor: { product_id: string; created_at?: string }[] = [];
 const consultas = vi.fn();
+const remocoes = vi.fn();
+let falharRemocao = false;
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (tabela: string) => {
@@ -61,6 +85,19 @@ vi.mock("@/lib/supabase", () => ({
       }
       return {
         upsert: () => Promise.resolve({ data: null, error: null }),
+        delete: () => ({
+          eq: (campo: string, dono: string) => ({
+            eq: (_campo: string, id: string) => {
+              remocoes(campo, dono, id);
+              if (falharRemocao)
+                return Promise.resolve({ error: { message: "rede" } });
+              linhasDoServidor = linhasDoServidor.filter(
+                (p) => p.product_id !== id,
+              );
+              return Promise.resolve({ error: null });
+            },
+          }),
+        }),
         select: () => ({
           eq: () => {
             consultas();
@@ -101,14 +138,28 @@ function criarStorageFake() {
   };
 }
 
-type Ctx = { favorites: Product[]; favoritosIndisponiveis: number };
+type Ctx = {
+  favorites: Product[];
+  favoritosIndisponiveis: number;
+  limparIndisponiveis: () => Promise<void>;
+};
 let ultimoContexto: unknown = null;
+let Tela: typeof import("@/views/customer/FavoritesView").FavoritesView | null =
+  null;
 function Sonda({ contexto }: { contexto: Context<any> }) {
   const ctx = useContext(contexto);
   useEffect(() => {
     ultimoContexto = ctx;
   });
-  return null;
+  return Tela ? (
+    <Tela
+      favorites={ctx.favorites}
+      loading={false}
+      onToggleFavorite={() => {}}
+      onProductClick={() => {}}
+      onNavigate={() => {}}
+    />
+  ) : null;
 }
 
 // @ts-expect-error flag interna do React, sem tipo público.
@@ -131,7 +182,11 @@ beforeEach(() => {
   usuarioDaVez = null;
   productsDaLoja = [];
   catalogoCarregando = false;
+  catalogoDaRedeAplicado = true;
+  catalogoErro = false;
+  Tela = null;
   linhasDoServidor = [];
+  falharRemocao = false;
   ultimoContexto = null;
   agora = 1_000_000;
   visibilidade = "visible";
@@ -141,6 +196,26 @@ beforeEach(() => {
     get: () => visibilidade,
   });
   vi.stubGlobal("localStorage", criarStorageFake());
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  vi.stubGlobal("matchMedia", () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
   vi.stubGlobal(
     "BroadcastChannel",
     class {
@@ -336,6 +411,93 @@ describe("FavoritesContext — (C) favoritos indisponíveis", () => {
 
     expect(ctx()?.favorites.map((p) => p.id)).toEqual(["a"]);
     expect(ctx()?.favoritosIndisponiveis).toBe(2);
+  });
+
+  it("limpa só os indisponíveis da própria conta e relê a lista", async () => {
+    usuarioDaVez = { id: "ana" };
+    productsDaLoja = [umProduto("a"), umProduto("pausado", false)];
+    linhasDoServidor = dosTresIds;
+    const ctx = await montar();
+    expect(ctx()?.limparIndisponiveis).toBeTypeOf("function");
+    await act(async () => {
+      await ctx()?.limparIndisponiveis();
+    });
+    await flush();
+    expect(remocoes.mock.calls).toEqual([
+      ["user_id", "ana", "pausado"],
+      ["user_id", "ana", "sumiu"],
+    ]);
+    expect(ctx()?.favoritosIndisponiveis).toBe(0);
+    expect(ctx()?.favorites.map((p) => p.id)).toEqual(["a"]);
+  });
+
+  it.each([
+    { redeAplicada: false, erro: true },
+    { redeAplicada: false, erro: false },
+    { redeAplicada: true, erro: true },
+  ])(
+    "cópia local sem confirmação segura ($redeAplicada/$erro): não apaga nem oferece limpar",
+    async ({ redeAplicada, erro }) => {
+      usuarioDaVez = { id: "ana" };
+      productsDaLoja = [umProduto("a")];
+      linhasDoServidor = [{ product_id: "novo" }];
+      catalogoDaRedeAplicado = redeAplicada;
+      catalogoErro = erro;
+      Tela = (await import("@/views/customer/FavoritesView")).FavoritesView;
+      const ctx = await montar();
+      expect.soft(hospedeiro.textContent).not.toContain("Limpar indisponíveis");
+      expect.soft(ctx()?.favoritosIndisponiveis).toBe(0);
+
+      await act(async () => {
+        await ctx()?.limparIndisponiveis();
+      });
+
+      expect(remocoes).not.toHaveBeenCalled();
+      expect(ctx()?.favoritosIndisponiveis).toBe(0);
+      expect(hospedeiro.textContent).not.toContain("Limpar indisponíveis");
+      expect(hospedeiro.textContent).not.toContain("não está disponível");
+      expect(linhasDoServidor).toEqual([{ product_id: "novo" }]);
+    },
+  );
+
+  it("rede aplicada: a tela oferece limpar e duas remoções mostram um único aviso", async () => {
+    usuarioDaVez = { id: "ana" };
+    productsDaLoja = [umProduto("a")];
+    linhasDoServidor = dosTresIds.slice(1);
+    Tela = (await import("@/views/customer/FavoritesView")).FavoritesView;
+    const ctx = await montar();
+    expect(hospedeiro.textContent).toContain("Limpar indisponíveis");
+
+    await act(async () => {
+      await ctx()?.limparIndisponiveis();
+    });
+
+    expect(remocoes).toHaveBeenCalledTimes(2);
+    expect(toast.success).toHaveBeenCalledTimes(1);
+    expect(toast.success).toHaveBeenCalledWith("2 favoritos removidos");
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).not.toContain("Limpar indisponíveis");
+  });
+
+  it("duas falhas na limpeza: um aviso de falha e nenhum sucesso", async () => {
+    usuarioDaVez = { id: "ana" };
+    productsDaLoja = [umProduto("a")];
+    linhasDoServidor = dosTresIds.slice(1);
+    falharRemocao = true;
+    const ctx = await montar();
+
+    await act(async () => {
+      await ctx()?.limparIndisponiveis();
+    });
+
+    expect(remocoes).toHaveBeenCalledTimes(2);
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    expect(toast.error).toHaveBeenCalledWith(
+      "Não foi possível remover todos os favoritos indisponíveis",
+    );
+    expect(ctx()?.favoritosIndisponiveis).toBe(2);
+    expect(linhasDoServidor).toEqual(dosTresIds.slice(1));
   });
 
   it("catálogo ainda carregando: NÃO conta (ausente pode ser só atraso)", async () => {

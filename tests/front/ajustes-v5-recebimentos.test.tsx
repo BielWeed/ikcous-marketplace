@@ -216,7 +216,9 @@ it("faixa acompanha a resposta gravada, inclusive quando difere do clique", asyn
   });
   expect(faixaDoCartao().textContent).toContain("Desligado");
   expect(resumo().textContent).toContain("Cartão desligado");
-  expect(estado.ler).toHaveBeenCalledTimes(2);
+  // 2 do abrir/Gerenciar + 1 de propósito: o toque lê a linha de agora antes
+  // de gravar só o campo tocado (r50-i).
+  expect(estado.ler).toHaveBeenCalledTimes(3);
 });
 
 it.each([true, false])(
@@ -281,7 +283,8 @@ it("mostra PIX, cartão com parcelas e entrega antes dos seis grupos, sem duplic
     debito: true,
     parcelasMax: 12,
   });
-  expect(estado.ler).toHaveBeenCalledTimes(2);
+  // Mesma leitura de propósito antes de gravar (r50-i): 2 + 1.
+  expect(estado.ler).toHaveBeenCalledTimes(3);
 });
 
 it("falha de leitura não vira cartão desligado", async () => {

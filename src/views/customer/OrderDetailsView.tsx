@@ -610,6 +610,10 @@ export function OrderDetailsView({
     order !== null &&
     ["pending", "processing", "shipping"].includes(order.status);
 
+  useVoltarFechaAFolha(perguntandoCancelar && podeCancelarPedido, () =>
+    setPerguntandoCancelar(false),
+  );
+
   // Se o pedido deixa de ser cancelável com a caixa aberta (a loja marcou como
   // entregue), a caixa fecha junto com o botão e a pergunta é DESARMADA: sem
   // isso ela reabriria sozinha se o pedido voltasse a ser cancelável.

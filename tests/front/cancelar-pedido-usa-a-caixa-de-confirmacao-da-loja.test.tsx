@@ -130,6 +130,17 @@ describe("OrderDetailsView — cancelar pedido pela caixa de confirmação da lo
     });
   }
 
+  it("Voltar fecha a confirmação sem cancelar nem sair do pedido", async () => {
+    await abrirACaixa();
+    expect(caixa()).not.toBeNull();
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(caixa()).toBeNull();
+    expect(updateOrderStatusMock).not.toHaveBeenCalled();
+    expect(botao(hospedeiro, "Cancelar Pedido")).toBeDefined();
+  });
+
   it("abre a caixa da loja (não o confirm do navegador) e ainda não cancela nada", async () => {
     await abrirACaixa();
 

@@ -5,8 +5,8 @@
 // parar de digitar o campo ESVAZIAVA sozinho e nada acontecia: o App zerava o
 // termo sempre que ele mudava fora da Home, e a barra copiava o vazio de volta.
 // Agora: buscar fora da Home leva a cliente a Home ja com o termo (uma entrada
-// de historico so, nao uma por letra); trocar de tela SEM buscar limpa como
-// antes.
+// de historico so, nao uma por letra); abrir produto preserva a busca para
+// voltar e comparar. Trocar de aba continua limpando.
 //
 // Aqui o App roda de verdade, com a SearchBar de verdade no lugar do Header.
 import { act } from "react";
@@ -67,12 +67,18 @@ vi.mock("@/views/customer/HomeView", () => ({
     searchQuery,
     onNavigate,
     onProductClick,
+    selectedCategory,
   }: {
     readonly searchQuery: string;
+    readonly selectedCategory: string;
     readonly onNavigate: (view: string) => void;
     readonly onProductClick: (id: string) => void;
   }) => (
-    <div data-testid="home" data-busca={searchQuery}>
+    <div
+      data-testid="home"
+      data-busca={searchQuery}
+      data-categoria={selectedCategory}
+    >
       <button
         type="button"
         data-testid="carrinho"
@@ -122,16 +128,22 @@ vi.mock("@/components/ui/custom/Header", async () => {
     Header: ({
       searchQuery,
       onSearch,
+      onCategorySelect,
+      onNavigate,
       hideSearch,
     }: {
       readonly searchQuery?: string;
       readonly onSearch?: (query: string) => void;
+      readonly onCategorySelect?: (category: string) => void;
+      readonly onNavigate: (view: string, id?: string) => void;
       readonly hideSearch?: boolean;
     }) =>
       hideSearch ? null : (
         <SearchBar
           value={searchQuery ?? ""}
           onChange={onSearch ?? (() => {})}
+          onCategorySelect={onCategorySelect}
+          onProductClick={(id) => onNavigate("product-detail", id)}
         />
       ),
   };
@@ -223,6 +235,12 @@ const catalogo = vi.hoisted(() => [
     freeShipping: false,
   },
 ]);
+vi.mock("@/hooks/useCategories", () => ({
+  useCategories: () => ({
+    categories: [{ id: "vestidos", name: "Vestidos", isActive: true }],
+    isLoading: false,
+  }),
+}));
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({ products: catalogo, loading: false }),
 }));
@@ -576,14 +594,65 @@ describe("a busca do topo nao apaga o que a cliente digita fora da Home", () => 
     });
   });
 
-  it("sair da Home para o produto tambem limpa", async () => {
+  it.each([
+    ["home", "/"],
+    ["carrinho", "/cart"],
+    ["produto", "/product-detail"],
+    ["tela-de-busca", "/search"],
+  ])(
+    "chip de categoria em %s leva à Home filtrada, sem termo de texto",
+    async (origem, destino) => {
+      await abrir();
+      if (origem !== "home") {
+        await irPara(origem, destino);
+      }
+      // Toca ANTES do debounce: preserva a origem fora da Home.
+      await digitar("vest");
+      const titulo = Array.from(container?.querySelectorAll("span") ?? []).find(
+        (s) => s.textContent === "Categorias Encontradas",
+      );
+      const chip =
+        titulo?.parentElement?.parentElement?.querySelector("button");
+      expect(chip?.textContent).toContain("Vestidos");
+      await act(async () => chip?.click());
+      await aguardarNaHomeCom("");
+      expect(
+        new URLSearchParams(globalThis.location.search).get("category"),
+      ).toBe("Vestidos");
+      expect(
+        container
+          ?.querySelector('[data-testid="home"]')
+          ?.getAttribute("data-categoria"),
+      ).toBe("Vestidos");
+      await esperarQueNadaAconteca(200);
+      expect(campo().value).toBe("");
+      expect(termoDaHome()).toBe("");
+    },
+  );
+
+  it("abrir produto pela sugestão também preserva a busca ao voltar", async () => {
+    await abrir();
+    await digitarEEsperar("vestido");
+    const sugestao = container
+      ?.querySelector<HTMLButtonElement>("button img")
+      ?.closest("button");
+    expect(sugestao).not.toBeNull();
+    await act(async () => sugestao?.click());
+    await aguardar(() => expect(caminho()).toBe("/product-detail"));
+    expect(campo().value).toBe("vestido");
+    await act(async () => globalThis.history.back());
+    await aguardarNaHomeCom("vestido");
+  });
+
+  it("abrir o produto e voltar preserva a busca e o campo do topo", async () => {
     await abrir();
     await digitarEEsperar("vestido");
 
     await irPara("produto", "/product-detail");
+    expect(campo().value).toBe("vestido");
+    expect(termoDaHome()).toBe("vestido");
 
-    await aguardar(() => {
-      expect(campo().value).toBe("");
-    });
+    await act(async () => globalThis.history.back());
+    await aguardarNaHomeCom("vestido");
   });
 });

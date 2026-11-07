@@ -296,6 +296,22 @@ export const HomeView = React.memo(function HomeView({
       ?.scrollIntoView?.({ block: "start", behavior: "instant" });
   }, [termoDaBusca, selectedCategory, onCategoryChange]);
 
+  // A lista reinicia ao trocar categoria ou ordem: a cliente precisa ver
+  // seus primeiros produtos, não a posição antiga no fim do catálogo.
+  const filtroAnterior = React.useRef({ selectedCategory, sortBy });
+  React.useEffect(() => {
+    const anterior = filtroAnterior.current;
+    filtroAnterior.current = { selectedCategory, sortBy };
+    if (
+      anterior.selectedCategory === selectedCategory &&
+      anterior.sortBy === sortBy
+    )
+      return;
+    document
+      .getElementById("catalogo")
+      ?.scrollIntoView?.({ block: "start", behavior: "instant" });
+  }, [selectedCategory, sortBy]);
+
   const newArrivals = useMemo(() => {
     // A ordenação mora em ordenarParaVitrine (src/lib/vitrine.ts) — a MESMA
     // função que o preview do painel usa (item 15 do laudo de 29/08: preview

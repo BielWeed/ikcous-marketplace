@@ -918,7 +918,9 @@ export const AdminShippingView = memo(function AdminShippingView({
           nome: contatoMototaxi.nome.trim(),
         });
       }
-      const salvou = !gravaRegras ? true : await updateConfig(regrasParaGravar);
+      const salvou = !gravaRegras
+        ? true
+        : await updateConfig(regrasParaGravar, { silentSuccess: true });
       if (!salvou) {
         haptic.error();
         setFalhaAoSalvar(true);

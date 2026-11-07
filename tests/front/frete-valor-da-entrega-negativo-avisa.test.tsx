@@ -141,6 +141,7 @@ describe("Frete — valor da entrega negativo avisa em vez de virar grátis", ()
     expect(toastErro).not.toHaveBeenCalled();
     expect(updateConfig).toHaveBeenCalledWith(
       expect.objectContaining({ localDeliveryFee: esperado }),
+      { silentSuccess: true },
     );
   });
 });

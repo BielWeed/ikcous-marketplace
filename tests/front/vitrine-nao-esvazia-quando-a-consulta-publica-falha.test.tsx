@@ -140,13 +140,19 @@ vi.mock("@/lib/supabase", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const alvo: { produtos: Product[] } = { produtos: [] };
+const alvo: {
+  produtos: Product[];
+  redeAplicada?: boolean;
+  catalogoErro?: boolean;
+} = { produtos: [] };
 
 function Capturador() {
-  const { products } = useStore();
+  const { products, catalogoDaRedeAplicado, catalogoErro } = useStore();
   useEffect(() => {
     alvo.produtos = products;
-  }, [products]);
+    alvo.redeAplicada = catalogoDaRedeAplicado;
+    alvo.catalogoErro = catalogoErro;
+  }, [products, catalogoDaRedeAplicado, catalogoErro]);
   return null;
 }
 
@@ -264,10 +270,13 @@ describe("StoreContext.fetchProducts — ausência de resposta não substitui o 
     await montarEEsperarOCofre();
     // Causalidade: o catálogo do cache está na tela ANTES da resposta ruim.
     expect(alvo.produtos.map((p) => p.id)).toEqual(["cache-1", "cache-2"]);
+    expect(alvo.redeAplicada).toBe(false);
 
     await deixarOServidorResponder();
 
     expect(alvo.produtos.map((p) => p.id)).toEqual(["cache-1", "cache-2"]);
+    expect(alvo.redeAplicada).toBe(false);
+    expect(alvo.catalogoErro).toBe(true);
     // E a causa registrada é a REAL (a rede), não um genérico "voltou sem
     // dados e sem erro" — que seria mentira, já que a pública devolveu erro.
     expect(causaRegistrada(espiaDeErro)).toEqual({ message: "network" });
@@ -283,10 +292,13 @@ describe("StoreContext.fetchProducts — ausência de resposta não substitui o 
 
     await montarEEsperarOCofre();
     expect(alvo.produtos.map((p) => p.id)).toEqual(["cache-1", "cache-2"]);
+    expect(alvo.redeAplicada).toBe(false);
 
     await deixarOServidorResponder();
 
     expect(alvo.produtos).toEqual([]);
+    expect(alvo.redeAplicada).toBe(true);
+    expect(alvo.catalogoErro).toBe(false);
   });
 
   it("(c) ADMIN — consulta de admin falha e a pública responde: a pública salva o dia e a vitrine mostra o que ela trouxe", async () => {
@@ -303,6 +315,7 @@ describe("StoreContext.fetchProducts — ausência de resposta não substitui o 
 
     await montarEEsperarOCofre();
     expect(alvo.produtos.map((p) => p.id)).toEqual(["cache-1", "cache-2"]);
+    expect(alvo.redeAplicada).toBe(false);
 
     await deixarOServidorResponder();
 
@@ -321,6 +334,7 @@ describe("StoreContext.fetchProducts — ausência de resposta não substitui o 
 
     await montarEEsperarOCofre();
     expect(alvo.produtos.map((p) => p.id)).toEqual(["cache-1", "cache-2"]);
+    expect(alvo.redeAplicada).toBe(false);
 
     await deixarOServidorResponder();
 
@@ -339,6 +353,7 @@ describe("StoreContext.fetchProducts — ausência de resposta não substitui o 
 
     await montarEEsperarOCofre();
     expect(alvo.produtos.map((p) => p.id)).toEqual(["cache-1", "cache-2"]);
+    expect(alvo.redeAplicada).toBe(false);
 
     await deixarOServidorResponder();
 

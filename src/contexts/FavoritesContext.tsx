@@ -155,10 +155,11 @@ interface FavoritesContextType {
   // Tenta gravar AGORA a fila retida (o mesmo caminho do evento `online`).
   // Existe para o botão "Tentar agora" da tela de Favoritos: falha do servidor
   // com a rede de pé nunca dispara `online`. Resolve quando a tentativa acabou.
-  retentarPendentes: () => Promise<void>;
+  retentarPendentes: (opcoes?: { avisarFalha?: boolean }) => Promise<void>;
+  limparIndisponiveis: () => Promise<void>;
   // Favoritos de quem tem conta cujo produto não aparece na lista (pausado ou
-  // fora do catálogo). Só conta com o catálogo já carregado e com produtos —
-  // antes disso "ausente" pode ser só atraso. A tela usa para avisar em vez de
+  // fora do catálogo). Só conta com catálogo confirmado pela rede, sem erro —
+  // antes disso "ausente" pode ser só atraso ou cópia velha. A tela usa para avisar em vez de
   // fingir que a pessoa nunca favoritou nada.
   favoritosIndisponiveis: number;
 }
@@ -172,7 +173,17 @@ export function FavoritesProvider({
 }: Readonly<{ children: React.ReactNode }>) {
   const { user } = useAuth();
   const { isLeader } = useLeaderElection();
-  const { products: allProducts, loading: carregandoCatalogo } = useProducts();
+  const {
+    products: allProducts,
+    loading: carregandoCatalogo,
+    catalogoDaRedeAplicado,
+    catalogoErro,
+  } = useProducts();
+  const catalogoConfirmado =
+    catalogoDaRedeAplicado &&
+    !catalogoErro &&
+    !carregandoCatalogo &&
+    allProducts.length > 0;
   // Tipado como "pode ser string OU Product" (ver `EntradaFavoritoLocal`
   // acima) porque o primeiro render lê o disco como ele estiver — um
   // aparelho antigo ainda tem o `Product` inteiro aqui, e a migração
@@ -399,30 +410,37 @@ export function FavoritesProvider({
       // O cliente do Supabase não rejeita a promessa em falha
       // (shouldThrowOnError=false por padrão), então o `{ error }` de cada
       // upsert precisa ser lido individualmente.
-      const resultados = await Promise.all(
-        candidatos.map(async (p) => {
-          const chave = `${userId}:${p.id}`;
-          const remocoesAntes = remocoesConcluidasRef.current.get(chave) ?? 0;
-          const {
-            resultado: { error },
-          } = await enfileirarGravacao(chave, async () => {
-            // Uma remoção terminou depois de esta drenagem entrar na fila: o
-            // favorito não é mais desejado e já saiu da fila pendente.
-            if (
-              (remocoesConcluidasRef.current.get(chave) ?? 0) !== remocoesAntes
-            ) {
-              return { error: null };
-            }
-            return await supabase
-              .from("favorites")
-              .upsert(
-                { user_id: userId, product_id: p.id },
-                { onConflict: "user_id,product_id", ignoreDuplicates: true },
-              );
-          });
-          return { produto: p, error };
-        }),
-      );
+      // Captura as remoções antes de esperar: retirar um item seguinte durante
+      // a gravação do primeiro também precisa cancelar sua sincronização.
+      const fila = candidatos.map((p) => ({
+        produto: p,
+        remocoesAntes:
+          remocoesConcluidasRef.current.get(`${userId}:${p.id}`) ?? 0,
+      }));
+      const resultados = [];
+      // A confirmação anterior precede a próxima escrita: created_at preserva
+      // a ordem salva pelo visitante, não a velocidade das requisições.
+      for (const { produto: p, remocoesAntes } of fila) {
+        const chave = `${userId}:${p.id}`;
+        const {
+          resultado: { error },
+        } = await enfileirarGravacao(chave, async () => {
+          // Uma remoção terminou depois de esta drenagem entrar na fila: o
+          // favorito não é mais desejado e já saiu da fila pendente.
+          if (
+            (remocoesConcluidasRef.current.get(chave) ?? 0) !== remocoesAntes
+          ) {
+            return { error: null };
+          }
+          return await supabase
+            .from("favorites")
+            .upsert(
+              { user_id: userId, product_id: p.id },
+              { onConflict: "user_id,product_id", ignoreDuplicates: true },
+            );
+        });
+        resultados.push({ produto: p, error });
+      }
 
       const naoSincronizados = resultados
         .filter((r) => r.error)
@@ -608,38 +626,51 @@ export function FavoritesProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, fetchDbFavorites]);
 
-  const retentarPendentes = useCallback(async () => {
-    if (!user) return;
-    // Achado 1 (26/08/2026) — a fila é lida do DISCO, pelo `user.id` deste
-    // fechamento, NO INSTANTE da chamada — nunca do `pendingFavorites` do
-    // render. `user` e `pendingFavorites` mudam em COMMITS diferentes (troca
-    // de conta A->B sem passar por `null`, AuthContext.tsx:579-583,
-    // `isCriticalTransition`): ler do estado podia gravar os favoritos de A na
-    // conta de B quando `online` disparasse (o gatilho real: rede instável é
-    // a mesma causa que gerou a pendência). Ler do disco aqui dentro elimina
-    // essa janela: a fila é sempre a de quem está logado AGORA, porque
-    // `gravarFavoritosPendentes` só grava sob a chave deste usuário.
-    const filaAtual = lerFavoritosPendentes(user.id);
-    if (filaAtual.length === 0) return;
+  const retentarPendentes = useCallback(
+    async (opcoes?: { avisarFalha?: boolean }) => {
+      if (!user) return;
+      // Achado 1 (26/08/2026) — a fila é lida do DISCO, pelo `user.id` deste
+      // fechamento, NO INSTANTE da chamada — nunca do `pendingFavorites` do
+      // render. `user` e `pendingFavorites` mudam em COMMITS diferentes (troca
+      // de conta A->B sem passar por `null`, AuthContext.tsx:579-583,
+      // `isCriticalTransition`): ler do estado podia gravar os favoritos de A na
+      // conta de B quando `online` disparasse (o gatilho real: rede instável é
+      // a mesma causa que gerou a pendência). Ler do disco aqui dentro elimina
+      // essa janela: a fila é sempre a de quem está logado AGORA, porque
+      // `gravarFavoritosPendentes` só grava sob a chave deste usuário.
+      const filaAtual = lerFavoritosPendentes(user.id);
+      if (filaAtual.length === 0) return;
 
-    const { total, sincronizados } = await tentarSincronizarComServidor(
-      user.id,
-      filaAtual,
-    );
-    // Achado 1 da revisão de contexto limpo (26/08/2026) — a retentativa
-    // bem-sucedida não relia o servidor: o aviso dizia "foram sincronizados!"
-    // e `favorites` continuava com o retrato antigo de `dbFavoriteIds`.
-    if (sincronizados > 0) {
-      fetchDbFavorites();
-    }
-    if (
-      total > 0 &&
-      sincronizados === total &&
-      usuarioAtualIdRef.current === user.id
-    ) {
-      toast.success("Seus favoritos pendentes foram sincronizados!");
-    }
-  }, [user, tentarSincronizarComServidor, fetchDbFavorites]);
+      const { total, sincronizados } = await tentarSincronizarComServidor(
+        user.id,
+        filaAtual,
+      );
+      // Achado 1 da revisão de contexto limpo (26/08/2026) — a retentativa
+      // bem-sucedida não relia o servidor: o aviso dizia "foram sincronizados!"
+      // e `favorites` continuava com o retrato antigo de `dbFavoriteIds`.
+      if (sincronizados > 0) {
+        fetchDbFavorites();
+      }
+      if (
+        total > 0 &&
+        sincronizados === total &&
+        usuarioAtualIdRef.current === user.id
+      ) {
+        toast.success("Seus favoritos pendentes foram sincronizados!");
+      } else if (
+        opcoes?.avisarFalha &&
+        total > sincronizados &&
+        usuarioAtualIdRef.current === user.id
+      ) {
+        toast.error(
+          sincronizados === 0
+            ? "Não conseguimos salvar agora. Tente de novo em instantes."
+            : `${sincronizados} de ${total} favoritos salvos. Tente de novo para salvar o restante.`,
+        );
+      }
+    },
+    [user, tentarSincronizarComServidor, fetchDbFavorites],
+  );
 
   // Retentativa da fila pendente: a promessa que o toast do login faz
   // ("vamos tentar de novo quando a conexão voltar") só é verdadeira se algo
@@ -823,18 +854,18 @@ export function FavoritesProvider({
 
   // Favorito de quem tem conta que não aparece em `favorites` (produto pausado
   // ou fora do catálogo). O catálogo é lido inteiro, todas as páginas, antes de
-  // chegar aqui; ainda assim só conta com ele carregado E com produtos: sem
-  // isso, uma falha ou um atraso do catálogo faria TODO favorito parecer
+  // chegar aqui; ainda assim só conta após confirmação pela rede, sem erro
+  // e com produtos: a cópia local pode ser velha e faria um favorito parecer
   // indisponível.
   const favoritosIndisponiveis = React.useMemo(() => {
-    if (!user || carregandoCatalogo || allProducts.length === 0) return 0;
+    if (!user || !catalogoConfirmado) return 0;
     const visiveis = new Set(favorites.map((p) => p.id));
     let indisponiveis = 0;
     for (const id of new Set(dbFavoriteIds)) {
       if (!visiveis.has(id)) indisponiveis++;
     }
     return indisponiveis;
-  }, [user, carregandoCatalogo, allProducts, dbFavoriteIds, favorites]);
+  }, [user, catalogoConfirmado, dbFavoriteIds, favorites]);
 
   // 3. Actions
   const addToFavorites = useCallback(
@@ -940,7 +971,12 @@ export function FavoritesProvider({
   );
 
   const removeFromFavorites = useCallback(
-    async (productId: string, produto?: Product, posicao?: number) => {
+    async (
+      productId: string,
+      produto?: Product,
+      posicao?: number,
+      silencioso = false,
+    ) => {
       if (user) {
         // Optimistic
         setDbFavoriteIds((prev) => prev.filter((id) => id !== productId));
@@ -967,11 +1003,11 @@ export function FavoritesProvider({
           return resposta;
         });
         // O rollback de quem saiu não pode alterar os favoritos da conta atual.
-        if (usuarioAtualIdRef.current !== user.id) return;
+        if (usuarioAtualIdRef.current !== user.id) return false;
 
         if (error) {
           console.error(error);
-          toast.error("Erro ao remover favorito");
+          if (!silencioso) toast.error("Erro ao remover favorito");
           if (ultima) setDbFavoriteIds((prev) => [...prev, productId]);
         } else {
           // Correção (26/08/2026) — o defeito que motivou esta rodada: sem
@@ -983,21 +1019,58 @@ export function FavoritesProvider({
           // o id "esquecido" e o gravava de novo no servidor, ressuscitando
           // algo que a pessoa removeu de propósito.
           setPendingFavorites(retirarDaFilaPendentes(user.id, [productId]));
-          avisarRemovido(produto, posicao);
+          if (!silencioso) avisarRemovido(produto, posicao);
         }
-      } else {
-        setLocalFavoritesRaw((prev) =>
-          prev.filter((entrada) => idDaEntradaLocal(entrada) !== productId),
-        );
-        // O produto acabou de ser removido de propósito — não faz sentido
-        // continuar oferecendo o retrato antigo dele como fallback (ver o
-        // cache acima).
-        snapshotsSemCatalogoRef.current.delete(productId);
-        avisarRemovido(produto, posicao);
+        return !error;
       }
+      setLocalFavoritesRaw((prev) =>
+        prev.filter((entrada) => idDaEntradaLocal(entrada) !== productId),
+      );
+      // O produto acabou de ser removido de propósito — não faz sentido
+      // continuar oferecendo o retrato antigo dele como fallback (ver o
+      // cache acima).
+      snapshotsSemCatalogoRef.current.delete(productId);
+      if (!silencioso) avisarRemovido(produto, posicao);
+      return true;
     },
     [user, setLocalFavoritesRaw, enfileirarGravacao, avisarRemovido],
   );
+
+  const limparIndisponiveis = useCallback(async () => {
+    if (!user || !catalogoConfirmado) return;
+    const dono = user.id;
+    const visiveis = new Set(favorites.map((p) => p.id));
+    const ids = [...new Set(dbFavoriteIds)].filter((id) => !visiveis.has(id));
+    // Usa a mesma fila por produto e a mesma proteção contra ressurreição
+    // da remoção pelo coração; nunca apaga favoritos disponíveis.
+    if (ids.length === 0) return;
+    let removidos = 0;
+    try {
+      for (const id of ids) {
+        if (usuarioAtualIdRef.current !== dono) return;
+        if (await removeFromFavorites(id, undefined, undefined, true))
+          removidos++;
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    if (usuarioAtualIdRef.current !== dono) return;
+    if (removidos === ids.length) {
+      toast.success(
+        `${removidos} ${removidos === 1 ? "favorito removido" : "favoritos removidos"}`,
+      );
+    } else {
+      toast.error("Não foi possível remover todos os favoritos indisponíveis");
+    }
+    await fetchDbFavorites();
+  }, [
+    user,
+    catalogoConfirmado,
+    favorites,
+    dbFavoriteIds,
+    removeFromFavorites,
+    fetchDbFavorites,
+  ]);
 
   const toggleFavorite = useCallback(
     (product: Product) => {
@@ -1043,6 +1116,7 @@ export function FavoritesProvider({
       refresh: () => void fetchDbFavorites(),
       pendingCount: pendingFavorites.length,
       retentarPendentes,
+      limparIndisponiveis,
       favoritosIndisponiveis,
     }),
     [
@@ -1055,6 +1129,7 @@ export function FavoritesProvider({
       fetchDbFavorites,
       pendingFavorites,
       retentarPendentes,
+      limparIndisponiveis,
     ],
   );
 

@@ -1333,6 +1333,22 @@ body.admin-modal-open .active-scroll-container {
   }
 }
 
+/* Tela baixa: a folga da pílula e o título extra espremiam os itens.
+   A área segura e a reserva medida dos rodapés continuam na conta original. */
+@media (width >= 768px) and (height <= 500px) {
+  :root {
+    --customer-nav-offset: 0px;
+  }
+
+  nav[aria-label="Navegação principal"] {
+    bottom: var(--customer-nav-offset);
+  }
+
+  .bottom-docked-navigation .cart-summary-context {
+    display: none;
+  }
+}
+
 @media (width >= 1024px) {
   :root {
     --admin-tab-pb: 3rem;

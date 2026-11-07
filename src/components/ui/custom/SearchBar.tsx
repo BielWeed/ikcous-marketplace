@@ -38,6 +38,7 @@ interface SearchBarProps {
   readonly value: string;
   readonly onChange: (value: string) => void;
   readonly onProductClick?: (id: string) => void;
+  readonly onCategorySelect?: (category: string) => void;
   readonly placeholder?: string;
   readonly className?: string;
 }
@@ -82,6 +83,7 @@ export function SearchBar({
   value,
   onChange,
   onProductClick,
+  onCategorySelect,
   // Igual ao que o Header passa, de propósito: um default divergente ("Buscar
   // produtos...", com reticências) faz quem lê só a assinatura acreditar num
   // texto que a tela não mostra.
@@ -461,7 +463,13 @@ export function SearchBar({
                     <button
                       key={cat}
                       type="button"
-                      onClick={() => handleSuggestionClick(cat)}
+                      onClick={() => {
+                        haptic.medium();
+                        onCategorySelect?.(cat);
+                        onChange("");
+                        setLocalValue("");
+                        setIsOpen(false);
+                      }}
                       className="shadow-2xs flex min-h-11 items-center gap-1.5 rounded-xl border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary transition-all hover:bg-primary hover:text-primary-foreground active:scale-95"
                     >
                       {/* Se o arquivo do desenho não baixa, fica a mesma

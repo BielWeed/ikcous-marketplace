@@ -116,17 +116,38 @@ function AvisoDeFavoritosRetidos({
  */
 function AvisoDeFavoritosIndisponiveis({
   quantidade,
-}: Readonly<{ quantidade: number }>) {
+  onLimpar,
+}: Readonly<{ quantidade: number; onLimpar: () => Promise<void> }>) {
+  const [limpando, setLimpando] = useState(false);
   if (quantidade <= 0) return null;
+  const limpar = async () => {
+    if (limpando) return;
+    setLimpando(true);
+    try {
+      await onLimpar();
+    } finally {
+      setLimpando(false);
+    }
+  };
   return (
-    <p
+    <div
       role="status"
       className="mx-4 mb-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
     >
       {quantidade === 1
-        ? "1 favorito seu está temporariamente indisponível; volta se a loja reativar."
-        : `${quantidade} favoritos seus estão temporariamente indisponíveis; voltam se a loja reativar.`}
-    </p>
+        ? "1 favorito seu não está disponível na loja."
+        : `${quantidade} favoritos seus não estão disponíveis na loja.`}
+      <button
+        type="button"
+        disabled={limpando}
+        onClick={() => {
+          void limpar();
+        }}
+        className="ml-2 min-h-11 rounded-full px-3 font-semibold underline underline-offset-2 disabled:opacity-60"
+      >
+        {limpando ? "Limpando..." : "Limpar indisponíveis"}
+      </button>
+    </div>
   );
 }
 
@@ -176,6 +197,7 @@ export const FavoritesView = React.memo(function FavoritesView({
     pendingCount,
     retentarPendentes,
     favoritosIndisponiveis,
+    limparIndisponiveis,
   } = useFavorites();
   const indisponiveis = favoritosIndisponiveis ?? 0;
   const idBase = useId();
@@ -526,10 +548,13 @@ export const FavoritesView = React.memo(function FavoritesView({
           </p>
         </header>
 
-        <AvisoDeFavoritosIndisponiveis quantidade={indisponiveis} />
+        <AvisoDeFavoritosIndisponiveis
+          quantidade={indisponiveis}
+          onLimpar={limparIndisponiveis}
+        />
         <AvisoDeFavoritosRetidos
           quantidade={pendingCount ?? 0}
-          onTentarAgora={retentarPendentes}
+          onTentarAgora={() => retentarPendentes({ avisarFalha: true })}
         />
 
         <div className="flex flex-col items-center px-6 pb-6 pt-10 text-center">
@@ -641,10 +666,13 @@ export const FavoritesView = React.memo(function FavoritesView({
         </div>
       </header>
 
-      <AvisoDeFavoritosIndisponiveis quantidade={indisponiveis} />
+      <AvisoDeFavoritosIndisponiveis
+        quantidade={indisponiveis}
+        onLimpar={limparIndisponiveis}
+      />
       <AvisoDeFavoritosRetidos
         quantidade={pendingCount ?? 0}
-        onTentarAgora={retentarPendentes}
+        onTentarAgora={() => retentarPendentes({ avisarFalha: true })}
       />
 
       {mostrarAtalhos && (

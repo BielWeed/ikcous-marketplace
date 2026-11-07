@@ -34,6 +34,7 @@ const { conta, estadoEnderecos, invoke, espelho } = vi.hoisted(() => ({
     // pela AUSÊNCIA aqui, não pelo valor final (gravar o mesmo id não muda
     // o estado e passaria despercebido).
     gravacoes: [] as (string | null)[],
+    limpar: vi.fn(),
   },
 }));
 
@@ -133,7 +134,7 @@ vi.mock("@/hooks/useCart", async () => {
   const fixos = {
     updateQuantity: vi.fn(),
     removeFromCart: vi.fn(),
-    clearCart: vi.fn(),
+    clearCart: espelho.limpar,
     addToCart: vi.fn(),
     getCartTotal: vi.fn(() => 256.5),
     getCartCount: vi.fn(() => 2),
@@ -235,6 +236,7 @@ describe("CartView — seletor de endereço em folha", () => {
     espelho.selecionada = null;
     espelho.idInicial = null;
     espelho.gravacoes = [];
+    espelho.limpar.mockClear();
     invoke.mockReset();
     invoke.mockImplementation(
       async (_nome: string, opts: { body: { cep: string } }) => ({
@@ -308,6 +310,41 @@ describe("CartView — seletor de endereço em folha", () => {
       for (let i = 0; i < 12; i++) await Promise.resolve();
     });
   }
+
+  it("Voltar fecha só a folha de endereços e mantém o carrinho", async () => {
+    await montar();
+    await clicar(botaoTrocar());
+    expect(folha()).not.toBeNull();
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(folha()).toBeNull();
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(botaoTrocar()).toBeDefined();
+  });
+
+  it("Voltar fecha a pergunta de esvaziar sem limpar o carrinho", async () => {
+    const { CartView } = await import("@/views/customer/CartView");
+    const cart = Array.from({ length: 51 }, (_, i) => ({
+      product: { ...produto, id: `prod-${i}` },
+      quantity: 1,
+    }));
+    await act(async () => {
+      raiz.render(<CartView cart={cart} onNavigate={onNavigate} />);
+    });
+    const esvaziar = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.includes("Esvaziar"),
+    );
+    await clicar(esvaziar);
+    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(espelho.limpar).not.toHaveBeenCalled();
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(botaoTrocar()).toBeDefined();
+  });
 
   it("UM endereço só: 'Trocar' existe e abre a folha com ele e o 'Cadastrar novo endereço'", async () => {
     estadoEnderecos.lista = [CASA];

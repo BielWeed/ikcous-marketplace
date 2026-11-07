@@ -312,7 +312,10 @@ describe("AdminReviewsView — redesenho", () => {
     const chave = document.body.querySelector<HTMLElement>('[role="switch"]');
     expect(chave?.getAttribute("aria-checked")).toBe("true");
     await tocar(chave as HTMLElement);
-    expect(h.updateConfig).toHaveBeenCalledWith({ enableReviews: false });
+    expect(h.updateConfig).toHaveBeenCalledWith(
+      { enableReviews: false },
+      { silentSuccess: true },
+    );
   });
 
   it("com as avaliações desligadas o interruptor diz Inativo e explica o que ligar faz", async () => {

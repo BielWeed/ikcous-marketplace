@@ -861,6 +861,8 @@ export function useProducts({ autoFetch = true } = {}) {
   const {
     products: contextProducts,
     loadingProducts: contextLoading,
+    catalogoDaRedeAplicado,
+    catalogoErro,
     fetchProducts: refreshContext,
   } = useStore();
   const [localProducts, setLocalProducts] = useState<Product[]>(() => {
@@ -1185,7 +1187,7 @@ export function useProducts({ autoFetch = true } = {}) {
         }
         return null;
       } finally {
-        setLoading(false);
+        if (loadId === lastLoadId.current) setLoading(false);
       }
     },
     [isAdmin, autoFetch],
@@ -2767,6 +2769,8 @@ export function useProducts({ autoFetch = true } = {}) {
   return {
     products,
     loading: currentLoading,
+    catalogoDaRedeAplicado,
+    catalogoErro,
     isLoaded: !currentLoading, // Derived property for backward compatibility
     fetchProducts,
     loadProducts,

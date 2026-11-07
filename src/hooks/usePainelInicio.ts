@@ -8,6 +8,7 @@ import {
 import { hojeEmSaoPaulo } from "@/lib/financeiro";
 import { supabase } from "@/lib/supabase";
 import type { AssinaturaDaLoja, PainelInicio } from "@/types/painel";
+import { comPrazo } from "@/utils/com-prazo";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
@@ -44,6 +45,9 @@ interface RetratoDoPainel {
 const FRESCOR_MS = 30_000;
 const ESPERA_DO_TEMPO_REAL_MS = 1500;
 const ESPERA_DA_ABERTURA_MS = 200;
+// Quanto a tela espera as duas leituras do Início antes de mostrar o erro com
+// "Tentar de novo" (mesma ordem de grandeza do prazo de login, 15 s).
+const PRAZO_DA_BUSCA_MS = 20_000;
 
 let retratoEmCache: RetratoDoPainel | null = null;
 
@@ -166,7 +170,14 @@ function buscarCoalescido(forcar = false): Promise<RetratoDoPainel> {
   const iniciadaEm = Date.now();
   const geracao = geracaoDoPainel;
   geracaoDaBuscaEmVoo = geracao;
-  const busca = buscarRetrato(iniciadaEm, geracao)
+  // Rede que conecta e não responde: sem prazo, esta promessa ficaria em
+  // `buscaEmVoo` por minutos e toda recarga (Sincronizar, volta ao Início, aviso
+  // de conexão restabelecida) entraria na fila atrás dela, com o Início em
+  // esqueleto e sem "Tentar de novo". Estourou: vira o erro de sempre (o
+  // `.catch` abaixo) e o `.finally` libera a vaga para a próxima busca. A
+  // resposta que chegar depois é descartada pelo `comPrazo` — o cache só é
+  // gravado no `.then` abaixo, nunca por `buscarRetrato`.
+  const busca = comPrazo(buscarRetrato(iniciadaEm, geracao), PRAZO_DA_BUSCA_MS)
     .catch((erro: unknown): RetratoDoPainel => {
       console.error("[usePainelInicio] busca falhou:", erro);
       const mensagem = mensagemDeErroDoPainel(erro, "carregar o Início");

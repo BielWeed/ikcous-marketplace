@@ -10,6 +10,7 @@ import {
   fraseDoSeloDeFreteGratis,
   promessasDeFrete,
 } from "@/lib/estrategias-de-frete";
+import { entregaPropriaLigada } from "@/lib/guarda-de-frete";
 import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
 import { cn } from "@/lib/utils";
 import type { ProductVariant } from "@/types";
@@ -754,7 +755,10 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                                 cobertura nacional (#571). */}
                         <div className="mt-3 space-y-1.5 border-t border-zinc-100 pt-3">
                           {config.storeCity &&
-                            config.shippingCoverage === "local" && (
+                            config.shippingCoverage === "local" &&
+                            entregaPropriaLigada(
+                              config.localDeliveryEnabled,
+                            ) && (
                               <div className="flex items-center gap-1.5 text-[8px] text-zinc-500">
                                 <Truck className="size-3.5 text-zinc-400" />
                                 <span>

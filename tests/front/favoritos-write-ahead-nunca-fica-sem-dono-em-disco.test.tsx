@@ -210,7 +210,10 @@ describe("FavoritesContext — write-ahead: a fila por usuário nunca fica ausen
       : [];
     expect(idsAnonimos).toEqual([]);
 
-    // 3. A rede responde — libera os upserts e deixa o sync terminar.
+    // 3. A rede responde a cada escrita em ordem. A segunda só começa
+    // depois da primeira confirmar (a ordem original dos favoritos é salva).
+    liberarTodos();
+    await flush();
     liberarTodos();
     await flush();
 
