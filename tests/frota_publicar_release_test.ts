@@ -3174,6 +3174,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "125a-conferir-a-busca-de-pedidos-acha-o-telefone-colado-com-o-55-aplicado",
     "126a-conferir-a-busca-de-devolucao-ignora-o-acento-aplicado",
     "127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado",
+    "128a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado",
   ]);
 });
 

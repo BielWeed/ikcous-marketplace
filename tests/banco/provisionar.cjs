@@ -103,12 +103,15 @@ async function main() {
     `);
     // raw_app_meta_data existe aqui porque public.is_admin() (baseline) cai
     // nele quando não há JWT na sessão — as provas logam admin por aqui.
+    // raw_user_meta_data (nulável, como na plataforma) existe porque handle_new_user e o reparo
+    // da 20261399930000 leem o nome/telefone/CPF do cadastro nele.
     await cliente.query(`
       CREATE TABLE auth.users (
         id uuid PRIMARY KEY,
         email text,
         phone text,
-        raw_app_meta_data jsonb NOT NULL DEFAULT '{}'::jsonb
+        raw_app_meta_data jsonb NOT NULL DEFAULT '{}'::jsonb,
+        raw_user_meta_data jsonb
       )
     `);
     console.log(

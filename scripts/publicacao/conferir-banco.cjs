@@ -3008,7 +3008,25 @@ const ROL_DA_127 = [
   "notifica_cliente_de_mudanca_de_status: o corpo traz o aviso do pedido vencido (uma vez)",
   "notifica_cliente_de_mudanca_de_status: uma assinatura so, atributos, trigger e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno trigger; tr_pedido_avisa_o_cliente AFTER UPDATE OF status por linha; EXECUTE aberto por heranca do PUBLIC)",
 ];
+// Lote 128 (20261399930000, o cadastro cria o perfil em toda loja: o gatilho on_auth_user_created de auth.users, que a Savy clonada do baseline nunca teve, mais o reparo de quem se cadastrou sem perfil).
+// A 128a (6 linhas) prova o gatilho como desenhado (estrutura do catalogo), ligado, sem concorrente, a funcao SECURITY DEFINER e que nenhum usuario de cliente de tamanho valido esta sem perfil (so uma
+// CONTAGEM); a 128b (3 linhas) prova o estado de antes (gatilho ausente). Nenhuma devolve nome, telefone, CPF ou e-mail.
+const ROL_DA_128A = [
+  "controle: catalogo publico visivel",
+  "auth.users: gatilho on_auth_user_created existe, AFTER INSERT por linha, chama public.handle_new_user(), sem condicao nem lista de colunas",
+  "auth.users: o gatilho on_auth_user_created esta LIGADO (nao desabilitado)",
+  "public.handle_new_user() existe, devolve trigger e e SECURITY DEFINER",
+  "so existe UM gatilho em auth.users que chama handle_new_user: nenhum concorrente",
+  "nenhum usuario de cliente (papel customer ou sem papel, nome ate 120 e telefone ate 20) esta sem perfil",
+];
+const ROL_DA_128B = [
+  "controle: catalogo publico visivel",
+  "auth.users tem id, raw_user_meta_data e raw_app_meta_data; profiles tem id, full_name, whatsapp, cpf e role; handle_new_user() existe (trigger, SECURITY DEFINER)",
+  "nenhum gatilho on_auth_user_created existe ainda em auth.users",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "128a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado": ROL_DA_128A,
+  "128b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente": ROL_DA_128B,
   "127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado":
     ROL_DA_127,
   "127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente":

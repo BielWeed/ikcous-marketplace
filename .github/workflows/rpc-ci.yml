@@ -258,6 +258,8 @@ on:
       - "scripts/publicacao/consultas/126b-antes-a-busca-de-devolucao-ignora-o-acento-base-vigente.sql"
       - "scripts/publicacao/consultas/127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado.sql"
       - "scripts/publicacao/consultas/127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente.sql"
+      - "scripts/publicacao/consultas/128a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado.sql"
+      - "scripts/publicacao/consultas/128b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -485,6 +487,8 @@ on:
       - "scripts/publicacao/consultas/126b-antes-a-busca-de-devolucao-ignora-o-acento-base-vigente.sql"
       - "scripts/publicacao/consultas/127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado.sql"
       - "scripts/publicacao/consultas/127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente.sql"
+      - "scripts/publicacao/consultas/128a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado.sql"
+      - "scripts/publicacao/consultas/128b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -865,6 +869,14 @@ jobs:
       - name: Prova viva do sino do pedido vencido que fala do vencimento (20261399920000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-sino-do-pedido-vencido-fala-do-vencimento-viva.cjs
+      # Migration 20261399930000 (o cadastro cria o perfil em toda loja): o gatilho on_auth_user_created de auth.users (AFTER INSERT por linha, chama handle_new_user), que a loja clonada do baseline
+      # nunca teve, so se ausente, e o reparo de quem ja se cadastrou sem perfil (ganha a mesma linha que o gatilho criaria; quem ja tem perfil, quem tem papel admin/gerente/vendedor e quem tem nome
+      # ou telefone acima do teto NAO sao tocados). Este passo LIGA o gatilho no clone dele: o efemero das outras provas o deixa DESLIGADO (aplicar-migrations.cjs). Controle sem o gatilho (o defeito),
+      # cadastro com e sem metadado, teto de nome/telefone recusado, papel sem EXECUTE na funcao ainda cria o perfil, mutantes, reaplicar 2x e CRLF, rollback sem tocar dado, pre-voo, conferencia,
+      # atomicidade, lock_timeout em auth.users e consultas 128a/128b. CLONE proprio.
+      - name: Prova viva do cadastro que cria o perfil em toda loja (20261399930000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-cadastro-cria-o-perfil-em-toda-loja-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs
