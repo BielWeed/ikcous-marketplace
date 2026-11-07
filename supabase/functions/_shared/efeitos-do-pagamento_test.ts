@@ -21,6 +21,7 @@ import {
   htmlDoAvisoDePagamentoAtrasado,
   reenviarAvisoPendenteDoPagamentoAtrasado,
 } from "./efeitos-do-pagamento.ts";
+import { ORCAMENTO_DO_ENVIO_MS } from "./comprovante.ts";
 import { formatarBRL, numeroDoPedido } from "./pedido.ts";
 import {
   assuntoDoAvisoDePagamentoAtrasado as assuntoDoWebhook,
@@ -514,3 +515,187 @@ Deno.test("EST-EDGE-DIN-3 - liberar_email_de_confirmacao devolvendo { error }: t
   assertEquals(banco.estado.reservado, false);
   assertEquals(erros.some((e) => e.includes("liberar reserva falhou")), true, erros.join(" | "));
 });
+
+// --- r59-f: o e-mail do pagamento nunca prende quem espera, nem derruba o resto ---------
+//
+// Tres buracos no mesmo lugar: (1) o aviso de pagamento atrasado ia ao SMTP sem
+// prazo e a reserva (gravada ANTES) so voltava no `catch`; (2) `getUserById` sem
+// tratamento: erro passageiro virava o aviso FALSO "sem e-mail de cliente";
+// (3) quem espera os efeitos (webhook do Mercado Pago, laco do cron) esperava o
+// e-mail sem teto algum.
+
+/** SMTP falso que respeita o prazo, como o real: sem prazo "demora" e termina bem. */
+function smtpQueEstouraNoPrazo(registro: { semPrazo: boolean }) {
+  return async (_m: unknown, _r: unknown, deps?: { prazoFinalMs?: number }) => {
+    if (deps?.prazoFinalMs === undefined) {
+      registro.semPrazo = true;
+      await new Promise((r) => setTimeout(r, 400));
+      return;
+    }
+    await new Promise((r) => setTimeout(r, Math.max(0, deps.prazoFinalMs! - performance.now())));
+    throw Object.assign(new Error("SMTP: envio recusado (ETIMEDOUT)"), { code: "ETIMEDOUT" });
+  };
+}
+
+Deno.test("r59-f aviso atrasado: o envio leva um prazo TOTAL (prazoFinalMs) dentro do orçamento", async () => {
+  const enviados: any[] = [];
+  const antes = performance.now();
+  await emSilencio(() =>
+    dispararAvisoDePagamentoAtrasadoReal({
+      supabase: supabaseDoAviso([]) as never,
+      orderId: PEDIDO,
+      deps: { resolverRemetente: async () => REMETENTE_OK, enviarEmail: async (...a: unknown[]) => void enviados.push(a) },
+    })
+  );
+  assertEquals(enviados.length, 1);
+  const prazo = enviados[0][2]?.prazoFinalMs;
+  assertEquals(typeof prazo, "number", "sem prazoFinalMs o nodemailer espera até 10 min");
+  assertEquals(prazo > antes && prazo <= performance.now() + ORCAMENTO_DO_ENVIO_MS, true);
+});
+
+Deno.test("r59-f aviso atrasado: SMTP que trava estoura no prazo, a reserva VOLTA e a reentrega manda UM aviso", async () => {
+  const banco = bancoComReserva({ payment_status: "pago_apos_expirar", reservado: false });
+  const travado = { semPrazo: false };
+  const inicio = performance.now();
+  await emSilencio(() =>
+    dispararAvisoDePagamentoAtrasadoReal({
+      supabase: banco as never,
+      orderId: PEDIDO,
+      deps: { resolverRemetente: async () => REMETENTE_OK, enviarEmail: smtpQueEstouraNoPrazo(travado), orcamentoDoEnvioMs: 40 },
+    })
+  );
+  assertEquals(travado.semPrazo, false, "o envio foi chamado sem prazo");
+  assertEquals(performance.now() - inicio < 300, true, "o envio não pode esperar além do orçamento");
+  assertEquals(banco.estado.reservado, false, "reserva presa = o cliente que pagou atrasado nunca é avisado");
+  const enviados: unknown[] = [];
+  const reentregar = () =>
+    emSilencio(() =>
+      reenviarAvisoPendenteDoPagamentoAtrasado({
+        supabase: banco as never,
+        orderId: PEDIDO,
+        enviarAvisoAtrasado: avisoRealComSmtp(async (...a: unknown[]) => void enviados.push(a)) as never,
+      })
+    );
+  await reentregar();
+  assertEquals(enviados.length, 1);
+  await reentregar();
+  assertEquals(enviados.length, 1, "o aviso saiu duas vezes");
+});
+
+/** Pedido de quem tem conta (sem e-mail dentro dele): o e-mail mora em `getUserById`. */
+function bancoDeQuemTemConta(getUserById: () => Promise<{ data: unknown; error?: unknown }>) {
+  const rpcs: string[] = [];
+  const consultas = { n: 0 };
+  return {
+    rpcs,
+    consultas,
+    rpc: async (nome: string) => {
+      rpcs.push(nome);
+      return { data: nome === "reivindicar_email_de_confirmacao" ? true : null, error: null };
+    },
+    from(tabela: string) {
+      const resultado = tabela === "marketplace_orders"
+        ? { data: { id: PEDIDO, user_id: "11111111-2222-4333-8444-555555555555", customer_data: {} }, error: null }
+        : { data: { store_name: "Loja Teste" }, error: null };
+      return {
+        select: () => ({
+          eq: () => ({ maybeSingle: async () => resultado }),
+          limit: () => ({ maybeSingle: async () => resultado }),
+        }),
+      };
+    },
+    auth: {
+      admin: {
+        getUserById: () => {
+          consultas.n++;
+          return getUserById();
+        },
+      },
+    },
+  };
+}
+
+async function avisoDeQuemTemConta(getUserById: () => Promise<{ data: unknown; error?: unknown }>) {
+  const banco = bancoDeQuemTemConta(getUserById);
+  const enviados: any[] = [];
+  const erros: string[] = [];
+  const avisos: string[] = [];
+  const [e, w, l] = [console.error, console.warn, console.log];
+  console.error = (...a: unknown[]) => void erros.push(a.map(String).join(" "));
+  console.warn = (...a: unknown[]) => void avisos.push(a.map(String).join(" "));
+  console.log = () => {};
+  try {
+    await dispararAvisoDePagamentoAtrasadoReal({
+      supabase: banco as never,
+      orderId: PEDIDO,
+      deps: { resolverRemetente: async () => REMETENTE_OK, enviarEmail: async (...a: unknown[]) => void enviados.push(a) },
+    });
+  } finally {
+    [console.error, console.warn, console.log] = [e, w, l];
+  }
+  return { banco, enviados, erros, avisos };
+}
+
+Deno.test("r59-f aviso atrasado: a consulta da conta falha (500) nas duas tentativas -> não reserva, não envia e NÃO diz 'sem e-mail'", async () => {
+  const r = await avisoDeQuemTemConta(async () => ({ data: { user: null }, error: { status: 500 } }));
+  assertEquals(r.banco.consultas.n, 2);
+  assertEquals(r.banco.rpcs.includes("reivindicar_email_de_confirmacao"), false, "a reserva continua livre para a reentrega");
+  assertEquals(r.enviados.length, 0);
+  assertEquals(r.avisos.some((l) => l.includes("sem e-mail")), false, "o aviso falso 'sem e-mail de cliente' não pode sair");
+  assertEquals(r.erros.some((l) => l.includes("500")), true, "o log diz o status, sem dado pessoal");
+});
+
+Deno.test("r59-f aviso atrasado: a consulta da conta LANÇA nas duas tentativas -> nada sobe, nada é enviado", async () => {
+  const r = await avisoDeQuemTemConta(async () => {
+    throw new Error("fetch failed");
+  });
+  assertEquals(r.banco.consultas.n, 2);
+  assertEquals(r.banco.rpcs.length, 0);
+  assertEquals(r.enviados.length, 0);
+  assertEquals(r.avisos.some((l) => l.includes("sem e-mail")), false);
+});
+
+Deno.test("r59-f aviso atrasado: falha na 1a tentativa e acerto na 2a -> o aviso sai UMA vez, para o e-mail da conta", async () => {
+  let n = 0;
+  const r = await avisoDeQuemTemConta(async () => {
+    n++;
+    return n === 1
+      ? { data: { user: null }, error: { status: 503 } }
+      : { data: { user: { email: "dona@exemplo.com" } }, error: null };
+  });
+  assertEquals(r.banco.consultas.n, 2);
+  assertEquals(r.enviados.length, 1);
+  assertEquals(r.enviados[0][0].para, "dona@exemplo.com");
+  assertEquals(r.banco.rpcs.filter((x) => x === "reivindicar_email_de_confirmacao").length, 1);
+});
+
+Deno.test("r59-f aviso atrasado: conta que NÃO existe (404) segue como 'sem e-mail', sem repetir a consulta e sem gastar a reserva", async () => {
+  const r = await avisoDeQuemTemConta(async () => ({ data: { user: null }, error: { status: 404 } }));
+  assertEquals(r.banco.consultas.n, 1);
+  assertEquals(r.banco.rpcs.length, 0);
+  assertEquals(r.enviados.length, 0);
+  assertEquals(r.avisos.some((l) => l.includes("sem e-mail")), true);
+});
+
+for (const resultado of ["pago", "pago_apos_expirar"]) {
+  Deno.test(`r59-f efeitos '${resultado}': e-mail que não responde NÃO prende quem espera (o push já saiu) e nada sobe`, async () => {
+    const db = bancoDoPedido();
+    const c = coletores();
+    const demorado = () => new Promise<void>((r) => setTimeout(r, 200));
+    const inicio = performance.now();
+    await emSilencio(() =>
+      aplicarEfeitosDoPagamentoConfirmado({
+        supabase: db as never,
+        orderId: PEDIDO,
+        resultado,
+        ...c.deps,
+        enviarComprovante: demorado,
+        enviarAvisoAtrasado: demorado,
+        tetoDoEmailMs: 30,
+      })
+    );
+    assertEquals(performance.now() - inicio < 150, true, "esperou o e-mail sem teto");
+    assertEquals(c.pushes.length, 1);
+    await new Promise((r) => setTimeout(r, 250)); // deixa o envio lento terminar sozinho
+  });
+}

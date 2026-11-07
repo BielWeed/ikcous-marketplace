@@ -155,6 +155,33 @@ describe("mínimos legais da política (funções puras)", () => {
 });
 
 describe("PoliticaDeDevolucaoSection", () => {
+  it("não envia política feita só de espaços e quebras de linha", async () => {
+    await montar();
+    const campo = hospedeiro.querySelector(
+      "#politica-texto",
+    ) as HTMLTextAreaElement;
+    expect(campo).toBeTruthy();
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      campo.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+      setter?.call(campo, " \n\t\n ");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      campo.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    });
+    await act(async () => {
+      botao("Salvar política")?.click();
+    });
+    expect(rpc).toHaveBeenCalledWith(
+      "salvar_politica_de_devolucao",
+      expect.objectContaining({
+        p: expect.objectContaining({ texto_politica: "" }),
+      }),
+    );
+  });
+
   it("abaixo do mínimo legal explica e não deixa salvar", async () => {
     await montar();
     expect(botao("Política salva")?.disabled).toBe(true);

@@ -19,6 +19,7 @@ import { mapProductFromDB } from "@/lib/mappers";
 import { mesclarProdutoNaLista } from "@/lib/mescla-de-produtos";
 import {
   aguardarComPrazo,
+  ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
@@ -382,6 +383,12 @@ const MAXIMO_DE_PAGINAS_DO_CATALOGO = 50;
 // 200 produtos com variações, e rede lenta mas viva não pode ser reprovada.
 // Estourou: vira erro e cai no `catch` de `buscarProdutos` (aviso + tentativas).
 const PRAZO_DA_PAGINA_DO_CATALOGO_MS = 25_000;
+// Prazo de SALVAR a configuração da loja (07/11/2026): frete, formas de
+// pagamento, frete grátis, contato... Sem ele o botão ficava em "Salvando"
+// até o navegador desistir. O prazo só limita a ESPERA da tela: a gravação
+// pode ter chegado ao servidor, por isso o estouro manda conferir, relê o
+// estado real e nunca diz que "não foi feito".
+const PRAZO_DE_SALVAR_A_CONFIG_MS = 20_000;
 
 type RespostaDaPaginaDoCatalogo = { data: any[] | null; error: any };
 
@@ -1458,9 +1465,17 @@ export function StoreProvider({
           dbUpdates.formas_pagamento_entrega = updates.formasPagamentoEntrega;
 
         if (!current()) return false;
-        const { data, error } = await (supabase.rpc as any)(
-          "upsert_store_config",
-          { config_json: dbUpdates },
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            (supabase.rpc as any)("upsert_store_config", {
+              config_json: dbUpdates,
+            }),
+          ) as Promise<{ data: unknown; error: unknown }>,
+          PRAZO_DE_SALVAR_A_CONFIG_MS,
+          () =>
+            erroDeConsultaSemResposta(
+              "Sem resposta da rede. Confira se a mudança apareceu antes de tentar de novo.",
+            ),
         );
 
         if (!current()) return false;
@@ -1561,6 +1576,16 @@ export function StoreProvider({
         if (!silent && !silentSuccess) toast.success("Configurações salvas");
         return true;
       } catch (err) {
+        // Sem resposta no prazo: a gravação pode ter chegado ao servidor.
+        // Relê o estado real (a resposta tardia da RPC é descartada pelo
+        // prazo e nunca vira aviso de sucesso) e manda a lojista conferir.
+        if (ehConsultaSemResposta(err)) {
+          void buscarConfigRef.current();
+          if (!current()) return false;
+          console.error("[StoreContext] Update sem resposta no prazo:", err);
+          if (!silent && current()) toast.error((err as Error).message);
+          return false;
+        }
         if (!current()) return false;
         console.error("[StoreContext] Update error:", err);
         if (!silent && current()) {

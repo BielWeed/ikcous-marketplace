@@ -6,7 +6,13 @@ import {
   PREFIXO_DE_PERGUNTAS,
   gravarCopiaPorProduto,
 } from "@/lib/copias-por-produto";
+import {
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
+import type { Database } from "@/types/database.types";
 import {
   cachedQuestionsData,
   setCachedQuestionsData,
@@ -137,7 +143,7 @@ const respostaAcordaAPagina = (
 };
 
 export function useQuestions() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, profile } = useAuth();
   const { isLeader } = useLeaderElection();
   const [questions, setQuestions] = useState<Question[]>(() => {
     return isAdmin && cachedQuestionsData ? cachedQuestionsData : [];
@@ -164,7 +170,7 @@ export function useQuestions() {
   const allQuestionsAbortControllerRef = useRef<AbortController | null>(null);
 
   const getQuestionsByProduct = useCallback(
-    async (productId: string) => {
+    async (productId: string, opcoes?: { silencioso?: boolean }) => {
       latestProductIdRef.current = productId;
       // Ressalva 1 da revisão da frente C4: durante a recarga o conjunto é
       // o ANTIGO — uma resposta a pergunta criada depois da última carga
@@ -178,7 +184,7 @@ export function useQuestions() {
       if (cached) {
         setQuestions(cached);
         setLoading(false);
-      } else {
+      } else if (!opcoes?.silencioso) {
         setQuestions([]); // Clear previous product questions if not cached
         setLoading(true);
       }
@@ -207,12 +213,18 @@ export function useQuestions() {
 
       try {
         if (anonimo) {
-          const { data, error } = await supabase
-            .from("vw_questions_public" as any)
-            .select("*")
-            .eq("product_id", productId)
-            .order("created_at", { ascending: false })
-            .abortSignal(signal);
+          const { data, error } = await aguardarComPrazo(
+            Promise.resolve(
+              supabase
+                .from("vw_questions_public" as any)
+                .select("*")
+                .eq("product_id", productId)
+                .order("created_at", { ascending: false })
+                .abortSignal(signal),
+            ),
+            15000,
+            erroDeConsultaSemResposta,
+          );
 
           if (error) throw error;
           if (!data) return;
@@ -223,7 +235,11 @@ export function useQuestions() {
             .select("nome, imagem_url")
             .eq("id", productId)
             .maybeSingle();
-          const { data: prodData } = await (query as any).abortSignal(signal);
+          const { data: prodData } = await aguardarComPrazo(
+            Promise.resolve((query as any).abortSignal(signal)),
+            15000,
+            erroDeConsultaSemResposta,
+          );
           if (prodData) {
             productInfo = prodData as any;
           }
@@ -231,11 +247,18 @@ export function useQuestions() {
           const questionIds = data.map((q: any) => q.id);
           const answersByQuestion = new Map<string, any[]>();
           if (questionIds.length > 0) {
-            const { data: answersData, error: answersError } = await supabase
-              .from("answers" as any)
-              .select("id, question_id, answer, created_at")
-              .in("question_id", questionIds)
-              .abortSignal(signal);
+            const { data: answersData, error: answersError } =
+              await aguardarComPrazo(
+                Promise.resolve(
+                  supabase
+                    .from("answers" as any)
+                    .select("id, question_id, answer, created_at")
+                    .in("question_id", questionIds)
+                    .abortSignal(signal),
+                ),
+                15000,
+                erroDeConsultaSemResposta,
+              );
             if (answersError) throw answersError;
             if (answersData) {
               for (const ans of answersData as any[]) {
@@ -299,12 +322,18 @@ export function useQuestions() {
           answers:answers(*)
         `;
 
-        const { data, error } = await supabase
-          .from("questions" as any)
-          .select(selectQuery)
-          .eq("product_id", productId)
-          .order("created_at", { ascending: false })
-          .abortSignal(signal);
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("questions" as any)
+              .select(selectQuery)
+              .eq("product_id", productId)
+              .order("created_at", { ascending: false })
+              .abortSignal(signal),
+          ),
+          15000,
+          erroDeConsultaSemResposta,
+        );
 
         if (error) throw error;
         if (!data) return;
@@ -317,7 +346,11 @@ export function useQuestions() {
             .select("nome, imagem_url")
             .eq("id", productId)
             .maybeSingle();
-          const { data: prodData } = await (query as any).abortSignal(signal);
+          const { data: prodData } = await aguardarComPrazo(
+            Promise.resolve((query as any).abortSignal(signal)),
+            15000,
+            erroDeConsultaSemResposta,
+          );
           if (prodData) {
             productInfo = prodData as any;
           }
@@ -335,9 +368,12 @@ export function useQuestions() {
             .in("user_id", userIds)
             .eq("status", "delivered")
             .eq("marketplace_order_items.product_id", productId);
-          const { data: ordersData, error: ordersError } = await (
-            query as any
-          ).abortSignal(signal);
+          const { data: ordersData, error: ordersError } =
+            await aguardarComPrazo(
+              Promise.resolve((query as any).abortSignal(signal)),
+              15000,
+              erroDeConsultaSemResposta,
+            );
 
           if (ordersError) {
             const isAbort =
@@ -410,7 +446,7 @@ export function useQuestions() {
           return;
         }
         console.error("Error fetching questions:", error);
-        toast.error("Erro ao carregar perguntas.");
+        if (!opcoes?.silencioso) toast.error("Erro ao carregar perguntas.");
         // R-2 (laudo varredura 01/09): a carga que falhou, se ainda é a
         // governante, deixa o conjunto NULO — o filtro passa tudo
         // (comportamento conservador de "ainda não carregou": um refetch a
@@ -420,7 +456,8 @@ export function useQuestions() {
         // acabou de gravar.
         if (latestProductIdRef.current === productId) {
           questionIdsDoProdutoRef.current = null;
-          setError("Não conseguimos carregar as perguntas deste produto.");
+          if (!opcoes?.silencioso)
+            setError("Não conseguimos carregar as perguntas deste produto.");
         }
       } finally {
         if (latestProductIdRef.current === productId) {
@@ -444,6 +481,9 @@ export function useQuestions() {
   const addQuestion = useCallback(
     async (question: { productId: string; question: string }) => {
       const desmarcar = marcarOperacaoSensivel("envio-de-pergunta");
+      const idsAntesDoEnvio = new Set(
+        (getQuestionsCache(question.productId, false) || []).map((q) => q.id),
+      );
       try {
         // ZENITH v21.7: Rely on AuthContext's verified user
         if (!user) {
@@ -451,30 +491,82 @@ export function useQuestions() {
           return null;
         }
 
-        const { data, error } = await supabase
-          .from("questions" as any)
-          .insert({
-            product_id: question.productId,
-            user_id: user.id,
-            question: question.question,
-          })
-          .select()
-          .single();
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("questions" as any)
+              .insert({
+                product_id: question.productId,
+                user_id: user.id,
+                question: question.question,
+              })
+              .select()
+              .single(),
+          ),
+          15000,
+          erroDeConsultaSemResposta,
+        );
 
         if (error) throw error;
 
         toast.success("Pergunta enviada com sucesso!");
-        await getQuestionsByProduct(question.productId);
+        // A gravação já foi confirmada: mostre-a mesmo sem rede para reler.
+        const gravada =
+          data as unknown as Database["public"]["Tables"]["questions"]["Row"];
+        const nova: Question = {
+          id: gravada.id,
+          userId: user.id,
+          productId: question.productId,
+          customerName: profile?.full_name || "Usuário Anônimo",
+          question: gravada.question,
+          createdAt: gravada.created_at,
+          answers: [],
+        };
+        const listaAnterior = getQuestionsCache(question.productId, false);
+        const atualizadas = [
+          nova,
+          ...(listaAnterior || []).filter((q) => q.id !== nova.id),
+        ];
+        // Sem uma carga completa, [nova] é só a confirmação local, não a lista do produto.
+        if (listaAnterior !== null)
+          updateQuestionsCache(question.productId, false, atualizadas);
+        if (
+          !latestProductIdRef.current ||
+          latestProductIdRef.current === question.productId
+        ) {
+          setQuestions(atualizadas);
+          if (listaAnterior !== null) setError(null);
+        }
+        void getQuestionsByProduct(question.productId, { silencioso: true });
         return data;
       } catch (error: any) {
         console.error("Error adding question:", error);
-        toast.error("Erro ao enviar pergunta.");
+        toast.error(
+          ehConsultaSemResposta(error)
+            ? "A conexão está lenta. Sua pergunta pode ter sido recebida. Confira antes de tentar de novo."
+            : "Erro ao enviar pergunta.",
+        );
+        if (ehConsultaSemResposta(error)) {
+          await getQuestionsByProduct(question.productId, {
+            silencioso: true,
+          });
+          const conferidas = getQuestionsCache(question.productId, false);
+          // Só a linha confirmada pelo servidor limpa o rascunho no formulário.
+          return (
+            conferidas?.find(
+              (q) =>
+                q.userId === user?.id &&
+                q.question === question.question &&
+                !idsAntesDoEnvio.has(q.id),
+            ) ?? null
+          );
+        }
         return null;
       } finally {
         desmarcar();
       }
     },
-    [getQuestionsByProduct, user],
+    [getQuestionsByProduct, user, profile?.full_name],
   );
 
   const addAnswer = useCallback(

@@ -99,6 +99,7 @@ interface Snapshot {
   }>;
   verifyRecoveryCode: (email: string, code: string) => Promise<boolean>;
   updatePassword: (newPassword: string) => Promise<boolean>;
+  resendConfirmationEmail: (email: string) => Promise<boolean>;
 }
 
 function Sonda({
@@ -115,6 +116,7 @@ function Sonda({
     resetPassword: ctx.resetPassword,
     verifyRecoveryCode: ctx.verifyRecoveryCode,
     updatePassword: ctx.updatePassword,
+    resendConfirmationEmail: ctx.resendConfirmationEmail,
   });
   return null;
 }
@@ -212,6 +214,48 @@ describe("AuthContext — rede pendurada na autenticação tem prazo", () => {
     if (falhou) throw falha;
     return resultado;
   }
+
+  describe("reenviar confirmação (resend)", () => {
+    it("reenvio pendurado termina no prazo e orienta conferir a caixa antes de repetir", async () => {
+      const { ctx, auth, toast } = await montar();
+      auth.resend.mockReturnValue(nuncaResolve());
+      vi.useFakeTimers();
+      let resultado: boolean | typeof PENDENTE = PENDENTE;
+      await act(async () => {
+        void ctx.resendConfirmationEmail("a@b.com").then((valor) => {
+          resultado = valor;
+        });
+        await vi.advanceTimersByTimeAsync(PRAZO_MS - 1);
+      });
+      expect(resultado).toBe(PENDENTE);
+      expect(toast.error).not.toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(resultado).toBe(false);
+      expect(toast.error).toHaveBeenCalledTimes(1);
+      const frase = String(toast.error.mock.calls[0][0]);
+      expect(frase).toMatch(/^A conexão está lenta/);
+      expect(frase).toMatch(/não foi confirmado/);
+      expect(frase).toMatch(/caixa de entrada e o spam/);
+      expect(frase).toMatch(/antes de pedir de novo/);
+    });
+
+    it("controle: reenvio rápido continua devolvendo sucesso", async () => {
+      const { ctx, auth, toast } = await montar();
+      auth.resend.mockResolvedValue({ error: null });
+      expect(await ctx.resendConfirmationEmail("a@b.com")).toBe(true);
+      expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it("controle: exceção diferente de prazo continua sendo lançada", async () => {
+      const { ctx, auth } = await montar();
+      auth.resend.mockRejectedValue(new Error("boom"));
+      await expect(ctx.resendConfirmationEmail("a@b.com")).rejects.toThrow(
+        "boom",
+      );
+    });
+  });
 
   describe("entrar (signInWithPassword)", () => {
     it("promessa que nunca resolve: só volta no prazo, com success:false e frase de conexão lenta", async () => {

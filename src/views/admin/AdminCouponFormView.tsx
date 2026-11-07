@@ -37,6 +37,7 @@ import {
 import { porcentagem } from "@/lib/cupons-do-checkout";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { pluralizar } from "@/lib/pluralizar";
+import { ehConsultaSemResposta } from "@/lib/prazo-da-requisicao";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { ClienteDoCupom, Coupon, View } from "@/types";
 import { camposQueMudaram } from "@/utils/campos-mexidos-do-produto";
@@ -114,6 +115,7 @@ function FormularioDoCupom({
     listarClientesDoCupom,
     definirClientesDoCupom,
     buscarClientesParaCupom,
+    refreshCoupons,
   } = useCoupons(true, true);
   const isOffline = useOnlineStatus();
   const { config } = useStore();
@@ -535,12 +537,19 @@ function FormularioDoCupom({
           await definirClientesDoCupom(idSalvo, idsDosClientes);
         } catch (erro) {
           console.error("Erro ao gravar os clientes do cupom:", erro);
-          toast.error("O cupom foi salvo, mas a lista de clientes não.", {
-            description: semPermissaoDeAdmin(erro)
-              ? "Ninguém consegue usar este cupom até a lista ser salva. Sua conta não tem mais permissão de administrador: entre de novo e abra o cupom para salvar a lista."
-              : "Ninguém consegue usar este cupom até a lista ser salva. Abra o cupom e salve de novo.",
-            duration: 10000,
-          });
+          if (ehConsultaSemResposta(erro)) {
+            toast.error(
+              "Sem resposta da rede. Confira a lista de clientes deste cupom antes de tentar de novo.",
+            );
+            void refreshCoupons(true, false);
+          } else {
+            toast.error("O cupom foi salvo, mas a lista de clientes não.", {
+              description: semPermissaoDeAdmin(erro)
+                ? "Ninguém consegue usar este cupom até a lista ser salva. Sua conta não tem mais permissão de administrador: entre de novo e abra o cupom para salvar a lista."
+                : "Ninguém consegue usar este cupom até a lista ser salva. Abra o cupom e salve de novo.",
+              duration: 10000,
+            });
+          }
         }
       }
 
@@ -1040,7 +1049,7 @@ function FormularioDoCupom({
                     // é gravada quando a data fica válida.
                     setRascunhoValidade(e.target.value);
                   }}
-                  className={`${CAMPO} pl-10 [color-scheme:dark]`}
+                  className={`${CAMPO} pl-10`}
                 />
               </div>
               <p id="coupon-valid-until-dica" className="text-xs text-zinc-400">

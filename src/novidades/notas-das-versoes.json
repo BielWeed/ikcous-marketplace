@@ -1,4 +1,23 @@
 {
+  "1.5.153": {
+    "titulo": "Telas que não travam com internet ruim e avisos mais honestos, na loja e no painel",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Avaliar e perguntar: com a internet pendurada, a tela confere no servidor antes de pedir para enviar de novo, para não duplicar avaliação nem pergunta.",
+      "Loja, Devolução: pedir, cancelar e avisar o envio soltam o botão quando a internet não responde, avisam sem dizer que “não foi feito” e releem o pedido; a foto tem mais tempo para subir; depois de cancelar uma devolução dá para pedir outra.",
+      "Loja, Checkout: ao salvar um endereço, o botão Voltar do celular não tira mais do checkout; “CEP não encontrado” só aparece quando todas as transportadoras recusaram o CEP; carrinho recusado pelo servidor ganhou frase própria.",
+      "Loja, Conta e privacidade: pedidos de privacidade e o reenvio do link de confirmação do cadastro têm prazo e avisam com honestidade quando a internet não responde.",
+      "Loja, Comprovante por e-mail: um servidor de e-mail travado não segura mais o pedido pago, e o comprovante pode ser reenviado pelo painel.",
+      "Painel, Balcão: a consulta por código e anular venda têm prazo, e o aviso “não sabemos se a venda foi registrada” sobrevive a recarregar o aplicativo.",
+      "Painel, Produtos: o cadastro não diz “Salvo” quando a gravação falhou, e uma variação criada em outro aparelho não é duplicada ao salvar.",
+      "Painel, Cupons: criar, editar e apagar têm prazo; o interruptor Ativar/Desativar só muda depois que o banco confirma e não liga e desliga com toque duplo.",
+      "Painel, Configurações da loja e Mercado Pago: salvar com a internet sem resposta solta o botão e avisa; uma resposta atrasada não desfaz mais a pausa do Pix.",
+      "Painel, Devoluções: a ficha tem prazo nas ações, e a bolinha vermelha do sino reconta depois de responder uma devolução ou um pedido de privacidade.",
+      "Painel, navegação: ao trocar de tela o painel anuncia qual abriu e leva o foco ao conteúdo, a aba do navegador mostra “Tela | Loja”, e os atalhos de teclado não mostram mais aviso falso.",
+      "Painel, CRM, banners e textos da loja: telas do CRM, temas, ordem dos banners e textos de Sobre a loja e política de devolução mais certos."
+    ]
+  },
   "1.5.152": {
     "titulo": "Recuperar senha, pedidos, Pix e voltar do celular mais certos, e painel mais claro",
     "novidades": [],

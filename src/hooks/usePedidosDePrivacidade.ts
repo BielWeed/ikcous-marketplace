@@ -7,7 +7,7 @@ import {
   lerPedidosDePrivacidade,
 } from "@/lib/pedidos-de-privacidade";
 import { supabase } from "@/lib/supabase";
-import { comPrazo } from "@/utils/com-prazo";
+import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
@@ -99,15 +99,21 @@ export function usePedidosDePrivacidade(
       enviandoRef.current = true;
       setEnviando(tipo);
       try {
-        const { data, error } = await supabase
-          .from("pedidos_de_privacidade")
-          .insert({
-            user_id: userId,
-            tipo,
-            email_novo: tipo === "corrigir_email" ? (emailNovo ?? null) : null,
-          })
-          .select(COLUNAS_DO_PEDIDO_DA_CLIENTE)
-          .single();
+        const { data, error } = await comPrazo(
+          Promise.resolve(
+            supabase
+              .from("pedidos_de_privacidade")
+              .insert({
+                user_id: userId,
+                tipo,
+                email_novo:
+                  tipo === "corrigir_email" ? (emailNovo ?? null) : null,
+              })
+              .select(COLUNAS_DO_PEDIDO_DA_CLIENTE)
+              .single(),
+          ),
+          15_000,
+        );
         if (error) {
           const falha = classificarFalhaDoPedido(error);
           // Já existe um aberto (outra aba, outro aparelho): a tela passa a mostrá-lo.
@@ -129,6 +135,9 @@ export function usePedidosDePrivacidade(
         }
         return { ok: true, pedido: criado };
       } catch (erro) {
+        // O prazo não cancela a gravação: pode já estar no banco. Relê sem
+        // prender a janela caso essa nova consulta também fique sem resposta.
+        if (erro instanceof PrazoEsgotado) void recarregar();
         return { ok: false, falha: classificarFalhaDoPedido(erro) };
       } finally {
         enviandoRef.current = false;

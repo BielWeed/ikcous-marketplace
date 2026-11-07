@@ -34,6 +34,8 @@ const banco = {
   perfisQuebra: false,
   atualizacao: { data: [{ id: "ped-1" }], error: null } as Resposta,
   atualizacaoQuebra: null as unknown,
+  atualizacaoPendente: null as Promise<Resposta> | null,
+  leituraPendente: null as Promise<Resposta> | null,
   leituras: 0,
   updates: [] as Array<{
     linha: Record<string, unknown>;
@@ -81,6 +83,8 @@ function consultaDaLista() {
     ) => {
       // A releitura conta uma vez por rodada (a consulta dos ABERTOS abre a rodada).
       if (ehConsultaDeAbertos) banco.leituras += 1;
+      if (banco.leituraPendente)
+        return banco.leituraPendente.then(resolve, reject);
       const base =
         banco.leituras > 1 && banco.listaDepois
           ? banco.listaDepois
@@ -138,7 +142,7 @@ vi.mock("@/lib/supabase", () => ({
             select: async () => {
               banco.updates.push({ linha, filtros });
               if (banco.atualizacaoQuebra) throw banco.atualizacaoQuebra;
-              return banco.atualizacao;
+              return banco.atualizacaoPendente ?? banco.atualizacao;
             },
           };
           return cadeia;
@@ -208,6 +212,8 @@ describe("PrivacidadeDosClientesSection", () => {
     banco.perfisQuebra = false;
     banco.atualizacao = { data: [{ id: "ped-1" }], error: null };
     banco.atualizacaoQuebra = null;
+    banco.atualizacaoPendente = null;
+    banco.leituraPendente = null;
     banco.leituras = 0;
     banco.updates = [];
     banco.chamadas = [];
@@ -222,6 +228,7 @@ describe("PrivacidadeDosClientesSection", () => {
     act(() => raiz.unmount());
     hospedeiro.remove();
     document.body.innerHTML = "";
+    vi.useRealTimers();
   });
 
   async function montar() {
@@ -377,6 +384,59 @@ describe("PrivacidadeDosClientesSection", () => {
     expect(onDirtyMudou).toHaveBeenLastCalledWith(true);
   });
 
+  it.each(["atendido", "recusado"] as const)(
+    "%s: decisão pendurada libera a pergunta e relê a resposta que pode ter sido gravada",
+    async (situacao) => {
+      banco.lista = { data: [pedido()], error: null };
+      banco.atualizacaoPendente = new Promise(() => {});
+      banco.listaDepois = {
+        data: [pedido({ situacao, atendido_em: "2026-11-07T12:00:00Z" })],
+        error: null,
+      };
+      await montar();
+      vi.useFakeTimers();
+      await act(async () =>
+        botao(
+          situacao === "atendido"
+            ? "Marcar como atendido"
+            : "Não posso atender",
+        )!.click(),
+      );
+      await act(async () =>
+        botao(
+          situacao === "atendido" ? "Sim, já atendi" : "Sim, não posso atender",
+          dialogo()!,
+        )!.click(),
+      );
+      expect(botao("Voltar", dialogo()!)?.disabled).toBe(true);
+      await act(async () => vi.advanceTimersByTimeAsync(15_001));
+      expect(botao("Voltar", dialogo()!)?.disabled).toBe(false);
+      expect(dialogo()?.textContent).toContain(
+        "Confira se a resposta aparece na lista antes de tentar de novo.",
+      );
+      expect(dialogo()?.textContent).not.toContain("Não consegui salvar");
+      expect(banco.leituras).toBe(2);
+      expect(corpo()).toContain("Já respondidos (1)");
+      await act(async () => botao("Voltar", dialogo()!)!.click());
+      expect(dialogo()).toBeNull();
+    },
+  );
+
+  it("libera a decisão mesmo quando a releitura fica pendurada; a próxima tentativa chega ao banco", async () => {
+    banco.lista = { data: [pedido()], error: null };
+    banco.atualizacaoPendente = new Promise(() => {});
+    await montar();
+    banco.leituraPendente = new Promise(() => {});
+    vi.useFakeTimers();
+    await act(async () => botao("Marcar como atendido")!.click());
+    await act(async () => botao("Sim, já atendi", dialogo()!)!.click());
+    await act(async () => vi.advanceTimersByTimeAsync(15_001));
+    expect(botao("Voltar", dialogo()!)?.disabled).toBe(false);
+    expect(botao("Sim, já atendi", dialogo()!)?.disabled).toBe(false);
+    await act(async () => botao("Sim, já atendi", dialogo()!)!.click());
+    expect(banco.updates).toHaveLength(2);
+  });
+
   it("falha de rede ao salvar: mostra o erro honesto, mantém a pergunta e o pedido aberto", async () => {
     banco.lista = { data: [pedido()], error: null };
     banco.atualizacaoQuebra = new TypeError("Failed to fetch");
@@ -386,7 +446,9 @@ describe("PrivacidadeDosClientesSection", () => {
       botao("Sim, já atendi", dialogo() as HTMLElement)?.click();
     });
     await assentar();
-    expect(dialogo()?.textContent).toContain("Não consegui salvar a resposta.");
+    expect(dialogo()?.textContent).toContain(
+      "Confira se a resposta aparece na lista antes de tentar de novo.",
+    );
     expect(corpo()).toContain("Esperando resposta (1)");
   });
 

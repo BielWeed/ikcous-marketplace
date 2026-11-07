@@ -1713,10 +1713,16 @@ async function handler(
   const respostaIndisponivel = () =>
     json({ error: "Não foi possível consultar o pagamento agora.", verificacao: "indisponivel" }, 503);
 
-  let body: Record<string, unknown>;
+  // JSON quebrado e JSON que não é objeto (`null` passa pelo parse e
+  // `body.orderId` lançava TypeError: 500 cru, sem CORS) caem na MESMA resposta,
+  // num ponto de retorno só (o teste "toda recusa" conta os pontos).
+  let body: Record<string, unknown> | null;
   try {
     body = await req.json();
   } catch {
+    body = null;
+  }
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
     return json({ error: "Corpo inválido." }, 400);
   }
 

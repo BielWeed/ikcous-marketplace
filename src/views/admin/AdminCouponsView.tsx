@@ -36,6 +36,11 @@ import {
 } from "@/lib/cupom-que-cobre-a-compra";
 import { porcentagem } from "@/lib/cupons-do-checkout";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
+import {
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { type TomDeEstado, classeDoTexto } from "@/lib/tons-de-estado";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
@@ -109,13 +114,16 @@ export const AdminCouponsView = memo(function AdminCouponsView({
     refreshCoupons,
   } = useCoupons(true);
   const isOffline = useOnlineStatus();
-  const { config, isLoaded: configLoaded, updateConfig } = useStore();
+  const { config, isLoaded: configLoaded, updateConfig, refresh } = useStore();
   // Mesma regra do formulario: sem nenhuma forma 'na retirada/entrega', a loja
   // so recebe pelo app e um cupom que zera a compra deixa a cliente sem caminho.
   const lojaSoRecebePeloApp =
     formasPagamentoNaEntregaValidas(config.formasPagamentoEntrega).length === 0;
 
   const [isUpdatingConfig, setIsUpdatingConfig] = useState(false);
+  const configEmVooRef = useRef(false);
+  const cuponsEmVooRef = useRef(new Set<string>());
+  const [cuponsEmVoo, setCuponsEmVoo] = useState<Set<string>>(() => new Set());
   const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
   const [metricasAbertas, setMetricasAbertas] = useState(false);
   const [detalhesAbertos, setDetalhesAbertos] = useState<
@@ -123,17 +131,20 @@ export const AdminCouponsView = memo(function AdminCouponsView({
   >({});
 
   const handleToggleCoupons = async (checked: boolean) => {
+    if (configEmVooRef.current) return;
     if (isOffline) {
       toast.error("Você está offline");
       return;
     }
+    configEmVooRef.current = true;
     setIsUpdatingConfig(true);
     try {
       // O toast de erro sai de dentro do `updateConfig`; aqui só não se segue
       // em frente (ADMIN-010, #94).
-      const salvou = await updateConfig(
-        { enableCoupons: checked },
-        { silentSuccess: true },
+      const salvou = await aguardarComPrazo(
+        updateConfig({ enableCoupons: checked }, { silentSuccess: true }),
+        15_000,
+        () => erroDeConsultaSemResposta(),
       );
       if (!salvou) return;
       toast.success(
@@ -143,9 +154,37 @@ export const AdminCouponsView = memo(function AdminCouponsView({
       );
     } catch (err) {
       console.error(err);
-      toast.error("Erro ao atualizar a configuração");
+      if (ehConsultaSemResposta(err)) {
+        toast.error(
+          "Sem resposta da rede. Confira se a mudança nos cupons apareceu antes de tentar de novo.",
+        );
+        // A gravação pode ter chegado; reler sem prender a chave por outra
+        // requisição pendurada. O StoreContext cuida do estado confirmado.
+        void aguardarComPrazo(refresh({ onlyConfig: true }), 12_000, () =>
+          erroDeConsultaSemResposta(),
+        ).catch((erro) => console.error(erro));
+      } else {
+        toast.error("Erro ao atualizar a configuração");
+      }
     } finally {
+      configEmVooRef.current = false;
       setIsUpdatingConfig(false);
+    }
+  };
+
+  const handleToggleCoupon = async (id: string, checked: boolean) => {
+    if (isOffline || cuponsEmVooRef.current.has(id)) return;
+    // Ref antes do await: dois toques no mesmo lote de renderização também
+    // precisam encontrar a trava, sem depender de quando o React desenha.
+    cuponsEmVooRef.current.add(id);
+    setCuponsEmVoo(new Set(cuponsEmVooRef.current));
+    try {
+      await updateCoupon(id, { active: checked });
+    } catch (err) {
+      console.error(err); // O aviso já foi dado pelo hook.
+    } finally {
+      cuponsEmVooRef.current.delete(id);
+      setCuponsEmVoo(new Set(cuponsEmVooRef.current));
     }
   };
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -666,16 +705,11 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                         <Switch
                           aria-label={`Ativação manual de ${coupon.code}`}
                           checked={coupon.active}
-                          disabled={isOffline}
-                          onCheckedChange={async (checked) => {
-                            try {
-                              await updateCoupon(coupon.id, {
-                                active: checked,
-                              });
-                            } catch (err) {
-                              console.error(err);
-                            }
-                          }}
+                          disabled={isOffline || cuponsEmVoo.has(coupon.id)}
+                          aria-busy={cuponsEmVoo.has(coupon.id)}
+                          onCheckedChange={(checked) =>
+                            handleToggleCoupon(coupon.id, checked)
+                          }
                           className={INTERRUPTOR}
                         />
                       </div>

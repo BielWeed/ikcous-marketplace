@@ -86,6 +86,76 @@ describe("Privacidade: rede lenta e formulário de e-mail", () => {
     await act(async () => concluir({ data: null, error: { code: "falha" } }));
     expect(botao("Corrigir meu e-mail")).toBeDefined();
   });
+  it.each(["excluir_conta", "corrigir_email"] as const)(
+    "%s: envio pendurado libera Voltar, avisa a incerteza e relê o pedido gravado",
+    async (tipo) => {
+      single.mockReturnValue(new Promise(() => {}));
+      await montar();
+      await act(async () =>
+        botao(
+          tipo === "excluir_conta" ? "Pedir exclusão" : "Corrigir meu e-mail",
+        ).click(),
+      );
+      if (tipo === "corrigir_email") {
+        const email = document.getElementById(
+          "privacidade-email-novo",
+        ) as HTMLInputElement;
+        act(() => {
+          Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype,
+            "value",
+          )!.set!.call(email, "novo@example.com");
+          email.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+      }
+      order.mockResolvedValue({
+        data: [
+          {
+            id: "pedido-gravado",
+            user_id: "conta-inventada",
+            tipo,
+            situacao: "aberto",
+            criado_em: "2026-11-07T12:00:00Z",
+          },
+        ],
+        error: null,
+      });
+      await act(async () =>
+        botao(
+          tipo === "excluir_conta" ? "Sim, pedir exclusão" : "Enviar pedido",
+        ).click(),
+      );
+      expect(botao("Voltar").disabled).toBe(true);
+      await act(async () => vi.advanceTimersByTimeAsync(15_001));
+      expect(botao("Voltar").disabled).toBe(false);
+      expect(document.body.textContent).toContain(
+        "Confira se o pedido aparece na lista antes de tentar de novo.",
+      );
+      expect(document.body.textContent).not.toContain("não foi enviado");
+      expect(order).toHaveBeenCalledTimes(2);
+      await act(async () => botao("Voltar").click());
+      expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+      expect(host.textContent).toContain("Pedido enviado em");
+      expect(
+        botao(
+          tipo === "excluir_conta" ? "Pedir exclusão" : "Corrigir meu e-mail",
+        ),
+      ).toBeUndefined();
+    },
+  );
+  it("libera a janela mesmo se a releitura também ficar pendurada e permite reenviar depois", async () => {
+    single.mockReturnValue(new Promise(() => {}));
+    await montar();
+    await act(async () => botao("Pedir exclusão").click());
+    order.mockReturnValue(new Promise(() => {}));
+    await act(async () => botao("Sim, pedir exclusão").click());
+    await act(async () => vi.advanceTimersByTimeAsync(15_001));
+    expect(botao("Voltar").disabled).toBe(false);
+    expect(botao("Sim, pedir exclusão").disabled).toBe(false);
+    // A ref interna também precisa ser liberada: uma nova tentativa chega ao banco.
+    await act(async () => botao("Sim, pedir exclusão").click());
+    expect(insert).toHaveBeenCalledTimes(2);
+  });
   it("Enter repetido enquanto o pedido aguarda não duplica nem fecha a confirmação", async () => {
     single.mockReturnValue(new Promise(() => {}));
     await montar();

@@ -36,9 +36,29 @@ const pedidoEntregue: Order = {
   cancelledAfterShipping: false,
 };
 
+let pedidoExibido = pedidoEntregue;
+let usarFormularioReal = false;
+vi.mock("@/hooks/useLeaderElection", () => ({
+  useLeaderElection: () => ({ isLeader: false }),
+}));
+vi.mock("@/components/ui/custom/ReviewForm", async () => {
+  const real = await vi.importActual<
+    typeof import("@/components/ui/custom/ReviewForm")
+  >("@/components/ui/custom/ReviewForm");
+  return {
+    ReviewForm: (
+      props: import("react").ComponentProps<typeof real.ReviewForm>,
+    ) =>
+      usarFormularioReal ? (
+        <real.ReviewForm {...props} />
+      ) : (
+        <button onClick={props.onSuccess}>Confirmar avaliação de teste</button>
+      ),
+  };
+});
 vi.mock("@/hooks/useOrders", () => ({
   useOrders: () => ({
-    orders: [pedidoEntregue],
+    orders: [pedidoExibido],
     fetchUserOrders,
     updateOrderStatus: vi.fn(),
   }),
@@ -55,17 +75,24 @@ vi.mock("@/contexts/StoreContext", () => ({
   }),
 }));
 
-const respostas: Array<{ data: unknown; error: unknown }> = [];
+const respostas: Array<
+  { data: unknown; error: unknown } | Promise<{ data: unknown; error: unknown }>
+> = [];
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          in: () =>
-            Promise.resolve(respostas.shift() ?? { data: [], error: null }),
-        }),
-      }),
-    }),
+    from: () => {
+      const b: any = {};
+      b.select = () => b;
+      b.eq = () => b;
+      b.in = () =>
+        Promise.resolve(respostas.shift() ?? { data: [], error: null });
+      b.insert = () => b;
+      b.single = () => new Promise(() => {});
+      b.limit = () => b;
+      b.maybeSingle = () =>
+        Promise.resolve({ data: { id: "avaliacao-confirmada" }, error: null });
+      return b;
+    },
   },
 }));
 
@@ -104,6 +131,8 @@ describe("OrderDetailsView — conferência de avaliações que falha (13-C #5)"
 
   beforeEach(() => {
     respostas.length = 0;
+    pedidoExibido = pedidoEntregue;
+    usarFormularioReal = false;
     fetchUserOrders.mockReset();
     fetchUserOrders.mockResolvedValue([pedidoEntregue]);
     hospedeiro = document.createElement("div");
@@ -116,6 +145,78 @@ describe("OrderDetailsView — conferência de avaliações que falha (13-C #5)"
       raiz.unmount();
     });
     hospedeiro.remove();
+  });
+
+  it("envio sem resposta mas avaliação confirmada fecha a folha e não oferece reenviar", async () => {
+    usarFormularioReal = true;
+    vi.useFakeTimers();
+    try {
+      await abrir();
+      await act(async () => {
+        botaoDeEstrela(hospedeiro)!.click();
+      });
+      const submit = document.body.querySelector<HTMLButtonElement>(
+        'button[type="submit"]',
+      );
+      expect(submit).toBeTruthy();
+      await act(async () => {
+        submit!.click();
+        for (let i = 0; i < 30; i++) await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(15001);
+      });
+      expect(
+        document.body.querySelector('[aria-labelledby="titulo-avaliacao"]'),
+      ).toBeNull();
+      expect(hospedeiro.textContent).toMatch(/1 de 1\s*avaliados/);
+      expect(botaoDeEstrela(hospedeiro)).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("resposta antiga não apaga a avaliação confirmada enquanto a folha estava aberta", async () => {
+    await abrir();
+    await act(async () => {
+      botaoDeEstrela(hospedeiro)!.click();
+    });
+    let resolver!: (valor: { data: unknown; error: unknown }) => void;
+    respostas.push(
+      new Promise((resolve) => {
+        resolver = resolve;
+      }),
+    );
+    pedidoExibido = { ...pedidoEntregue, updatedAt: "2027-01-01T00:00:00Z" };
+    await abrir();
+    await act(async () => {
+      const confirmar = [...document.body.querySelectorAll("button")].find(
+        (b) => b.textContent === "Confirmar avaliação de teste",
+      );
+      expect(confirmar).toBeTruthy();
+      confirmar!.click();
+    });
+    await act(async () => {
+      resolver({ data: [], error: null });
+    });
+    expect(hospedeiro.textContent).toMatch(/1 de 1\s*avaliados/);
+  });
+
+  it("enquanto confere não oferece avaliar nem afirma zero; prazo oferece tentar de novo", async () => {
+    vi.useFakeTimers();
+    respostas.push(new Promise(() => {}));
+    try {
+      await abrir();
+      expect(hospedeiro.textContent).toContain("Conferindo suas avaliações");
+      expect(hospedeiro.textContent).not.toMatch(/0 de 1\s*avaliados/);
+      expect(botaoDeEstrela(hospedeiro)).toBeUndefined();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15001);
+      });
+      expect(hospedeiro.textContent).toContain(
+        "Não deu para conferir suas avaliações",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("na falha, não diz '0 de N avaliados' nem oferece avaliar; oferece tentar de novo", async () => {

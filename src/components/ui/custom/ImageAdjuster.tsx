@@ -1418,7 +1418,10 @@ export function ImageAdjuster({
             )}
           >
             {/* Tab Navigation */}
-            <div className="relative flex w-full rounded-2xl border border-white/5 bg-zinc-950/85 p-1">
+            <div
+              data-slot="image-adjuster-tabs"
+              className="relative flex w-full rounded-2xl border border-white/5 bg-zinc-950/85 p-1"
+            >
               {(["crop", "filters"] as const).map((tab) => {
                 const isActive = activeTab === tab;
                 return (
@@ -1479,6 +1482,11 @@ export function ImageAdjuster({
                       {presets.map((preset) => (
                         <button
                           key={preset}
+                          data-slot={
+                            aspectRatio === preset
+                              ? undefined
+                              : "image-adjuster-preset"
+                          }
                           type="button"
                           onClick={() => setAspectRatio(preset)}
                           className={cn(

@@ -1825,3 +1825,43 @@ Deno.test("RE5 (M1) - o MP responde 500 à consulta: 200 indeterminado, o banco 
     assertEquals((await resposta.json()).resultado, "indeterminado")
     assertEquals(registro.reemissoes.length, 0)
 })
+
+// ── Corpo que não é um objeto JSON: 400 em JSON, com CORS, antes de tudo ───
+// `null` é JSON válido: o try/catch do parse não dispara e a leitura de
+// `body.acao` lançava TypeError (500 cru, sem CORS, antes da porta de admin).
+// `[]`, `5` e `"x"` já caíam no 400 normal por acaso (propriedade undefined);
+// ficam aqui como CONTROLE para a checagem nova não os transformar em outra coisa.
+for (const [rotulo, corpoBruto] of [
+    ["null", "null"],
+    ["JSON quebrado", "{"],
+    ["lista", "[]"],
+    ["número", "5"],
+    ["texto", '"x"'],
+] as const) {
+    Deno.test(`CORPO - ${rotulo}: 400 em JSON com CORS, sem porta de admin, sem ledger e sem MP`, async () => {
+        const { cliente, registro } = clienteSupaFalso({ linha: LINHA_SOLICITADA })
+        let chamadasDeRede = 0
+        const fetchContador = (() => {
+            chamadasDeRede++
+            return new Response("{}", { status: 200 })
+        }) as any
+        const resposta = await comEnv({}, () =>
+            comFetch(fetchContador, () =>
+                handler(
+                    new Request("https://edge.local/estornar-pagamento", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", Authorization: AUTH_ADMIN },
+                        body: corpoBruto,
+                    }),
+                    { supabase: cliente },
+                ),
+            ),
+        )
+        assertEquals(resposta.status, 400)
+        assertEquals(resposta.headers.get("Access-Control-Allow-Origin"), "*")
+        assertEquals(resposta.headers.get("Content-Type"), "application/json")
+        assertEquals(typeof (await resposta.json()).erro, "string")
+        assertEquals(registro.leiturasLinha, 0)
+        assertEquals(chamadasDeRede, 0)
+    })
+}

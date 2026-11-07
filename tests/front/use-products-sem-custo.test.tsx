@@ -128,6 +128,61 @@ describe("useProducts.loadProductsSemCusto: lista completa, mesma regra do selo"
     });
   }
 
+  it.each([false, true])(
+    "recarga silent=%s mantém o indicador correto enquanto espera",
+    async (silent) => {
+      mock.linhas = [produto(1)];
+      await montar();
+      let liberar!: () => void;
+      mock.segura = new Promise<void>((resolve) => {
+        liberar = resolve;
+      });
+      let pendente!: Promise<unknown>;
+      await act(async () => {
+        pendente = api.loadProductsSemCusto({ silent });
+      });
+      expect(api.loading).toBe(!silent);
+      await act(async () => {
+        liberar();
+        await pendente;
+      });
+      expect(api.loading).toBe(false);
+    },
+  );
+
+  it.each([
+    ["normal", false],
+    ["normal", true],
+    ["sem-custo", false],
+    ["sem-custo", true],
+  ] as const)(
+    "falha na lista %s com silent=%s preserva os dados e só avisa na carga normal",
+    async (modo, silent) => {
+      mock.linhas = [produto(1)];
+      await montar();
+      await act(async () => {
+        await api.loadProducts(0, 12, { search: "Produto" });
+      });
+      const anteriores = api.products;
+      // O celular ainda se diz online enquanto a conexão acorda.
+      vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(true);
+      mock.erro = { message: "rede ainda indisponível", status: 400 };
+      mock.toastError.mockClear();
+      let resultado: unknown;
+      await act(async () => {
+        resultado =
+          modo === "sem-custo"
+            ? await api.loadProductsSemCusto({ silent })
+            : await api.loadProducts(0, 12, { silent, search: "Produto" });
+      });
+      expect(resultado).toBeNull();
+      expect(api.products).toBe(anteriores);
+      if (silent) expect(mock.toastError).not.toHaveBeenCalled();
+      else
+        expect(mock.toastError).toHaveBeenCalledWith("Erro ao listar produtos");
+    },
+  );
+
   it("junta SÓ os sem custo (custo 0, com custo e sem estoque ficam de fora)", async () => {
     mock.linhas = [
       produto(1), // sem custo, com estoque: entra

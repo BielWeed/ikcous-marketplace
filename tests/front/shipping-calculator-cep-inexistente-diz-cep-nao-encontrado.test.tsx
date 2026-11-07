@@ -143,6 +143,41 @@ describe("ShippingCalculator — CEP inexistente tem aviso específico", () => {
     expect(onSelectOption.mock.calls).toEqual([[null]]);
   });
 
+  it("400 carrinho_invalido tem frase própria, sem texto do servidor e SEM 'Tentar de novo' (repetir devolve a mesma recusa)", async () => {
+    invoke.mockResolvedValue(
+      erroHttp(
+        new Response(
+          JSON.stringify({
+            error: "texto técnico proibido",
+            codigo: "carrinho_invalido",
+          }),
+          { status: 400 },
+        ),
+      ),
+    );
+    await montar();
+    await cotar();
+
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toBe(
+      "Seu carrinho mudou. Volte ao carrinho e confira os itens.",
+    );
+    expect(hospedeiro.textContent).not.toContain("texto técnico proibido");
+    expect(hospedeiro.textContent).not.toContain("Tentar de novo");
+    expect(onSelectOption.mock.calls).toEqual([[null]]);
+  });
+
+  it("CONTROLE: código desconhecido segue com a frase genérica e COM 'Tentar de novo'", async () => {
+    invoke.mockResolvedValue(
+      erroHttp(
+        new Response(JSON.stringify({ codigo: "outro" }), { status: 400 }),
+      ),
+    );
+    await montar();
+    await cotar();
+
+    expect(hospedeiro.textContent).toContain("Tentar de novo");
+  });
+
   it.each([
     [
       "503 sem código",

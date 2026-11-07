@@ -1577,6 +1577,7 @@ export const AdminBannersView = memo(function AdminBannersView({
   // editor nunca grava: só a escolha do lojista vira preferência.
   const escolherOModo = (modo: "simple" | "complete") => {
     setBannerMode(modo);
+    setFormData((prev) => ({ ...prev, showTextOverlay: modo === "complete" }));
     gravarModoDoEditor(modo);
   };
 
@@ -1596,9 +1597,8 @@ export const AdminBannersView = memo(function AdminBannersView({
     if (banner?.id) {
       setTela("editor");
       setEditingBanner(banner);
-      // Banner com texto abre SEMPRE em Completo: salvar em Simples apaga
-      // título, subtítulo, botão, selo, cores e fonte. Sem texto, vale o modo
-      // lembrado neste aparelho (Simples na primeira vez).
+      // Banner com texto abre em Completo para permitir revisar a campanha.
+      // Sem texto, vale o modo lembrado neste aparelho.
       setBannerMode(
         modeloDoBanner(banner.templateType)
           ? "complete"
@@ -2017,22 +2017,8 @@ export const AdminBannersView = memo(function AdminBannersView({
       const dataToSubmit = {
         ...formData,
         link: sanitizedLink,
-        ...(bannerMode === "simple"
-          ? {
-              title: "",
-              subtitle: "",
-              buttonText: "",
-              badgeText: "",
-              titleColor: "",
-              subtitleColor: "",
-              buttonBgColor: "",
-              buttonTextColor: "",
-              fontFamily: "",
-              overlayColor: "",
-              overlayOpacity: 0,
-              templateType: "default",
-            }
-          : {}),
+        // O interruptor esconde os textos; não apaga a campanha nem suas cores.
+        ...(bannerMode === "simple" ? { showTextOverlay: false } : {}),
       };
 
       // A bandeira de "salvo" e a limpeza do rascunho só valem DEPOIS do
@@ -2254,11 +2240,22 @@ export const AdminBannersView = memo(function AdminBannersView({
             // Sem foto de verdade fica vazio (o "Salvar" avisa): a reserva
             // "Sem Imagem" de fora não pode virar a imagem do banner.
             imageUrl: soFotosReais(produto.images)[0] ?? "",
-            title: cortarTexto(prev.title || produto.name, 60),
-            subtitle: cortarTexto(
-              prev.subtitle || `${prefixoDoPreco(vitrine)} ${precoEmTexto}`,
-              80,
-            ),
+            // Só troca a sugestão automática: texto personalizado é da lojista.
+            title:
+              !prev.title ||
+              prev.title === cortarTexto(selectedProduct?.name || "", 60)
+                ? cortarTexto(produto.name, 60)
+                : prev.title,
+            subtitle:
+              !prev.subtitle ||
+              (selectedProduct &&
+                prev.subtitle ===
+                  cortarTexto(
+                    `${prefixoDoPreco(precoDeVitrine(selectedProduct))} ${formatCurrency(Number(precoDeVitrine(selectedProduct).preco)).replaceAll(String.fromCharCode(160), " ")}`,
+                    80,
+                  ))
+                ? cortarTexto(`${prefixoDoPreco(vitrine)} ${precoEmTexto}`, 80)
+                : prev.subtitle,
             buttonText: prev.buttonText || "Comprar agora",
           }
         : {}),
@@ -2835,8 +2832,14 @@ export const AdminBannersView = memo(function AdminBannersView({
                             ...prev,
                             position,
                             order:
-                              banners.filter((b) => b.position === position)
-                                .length + 1,
+                              editingBanner &&
+                              position === editingBanner.position
+                                ? editingBanner.order || 1
+                                : banners.filter(
+                                    (b) =>
+                                      b.position === position &&
+                                      b.id !== editingBanner?.id,
+                                  ).length + 1,
                           }));
                         }}
                       >

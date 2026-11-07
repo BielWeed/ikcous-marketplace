@@ -373,6 +373,9 @@ export const AdminProductsView = memo(function AdminProductsView({
     }
   }, [lista, viewRef]);
 
+  const ultimaCargaBemSucedida = useRef(0);
+  const ultimaRetomada = useRef(0);
+  const cargaEmAndamento = useRef<number | null>(null);
   const geracaoDaRecarga = useRef(0);
   const catalogoMontado = useRef(false);
   useEffect(() => {
@@ -384,14 +387,16 @@ export const AdminProductsView = memo(function AdminProductsView({
   }, []);
 
   const loadData = useCallback(
-    async (pageToFetch: number) => {
+    async (pageToFetch: number, silenciosa = false) => {
       if (!catalogoMontado.current) return;
       const geracao = ++geracaoDaRecarga.current;
+      cargaEmAndamento.current = Date.now();
       try {
         const filtros = {
           search: searchTerm || undefined,
           category: filterCategory === "all" ? undefined : filterCategory,
           ...(modoEstoqueBaixo && { stock: "low", status: "active" }),
+          ...(silenciosa && { silent: true }),
         };
         if (modoSemCusto) {
           const achados = await loadProductsSemCusto(filtros);
@@ -401,8 +406,11 @@ export const AdminProductsView = memo(function AdminProductsView({
           ) {
             return;
           }
-          setLoadError(!achados);
-          if (achados) setSemCusto(achados.products);
+          if (achados || !silenciosa) setLoadError(!achados);
+          if (achados) {
+            setSemCusto(achados.products);
+            ultimaCargaBemSucedida.current = Date.now();
+          }
           return;
         }
         const result = await loadProducts(pageToFetch, pageSize, filtros);
@@ -410,6 +418,7 @@ export const AdminProductsView = memo(function AdminProductsView({
           return;
         }
         if (result) {
+          ultimaCargaBemSucedida.current = Date.now();
           setLoadError(false);
           setTotalProducts(result.total);
           // O total filtrado por estoque não é o do catálogo guardado.
@@ -436,17 +445,18 @@ export const AdminProductsView = memo(function AdminProductsView({
                 setTotalProducts(ultima.total);
                 if (!modoEstoqueBaixo) cachedProductsTotal = ultima.total;
               } else {
-                setLoadError(true);
+                if (!silenciosa) setLoadError(true);
               }
             }
           }
         } else {
           // O null da tentativa atual continua sendo falha; o de uma busca
           // superada já foi ignorado pela geração, sem alterar o estado atual.
-          setLoadError(true);
+          if (!silenciosa) setLoadError(true);
         }
       } finally {
         if (catalogoMontado.current && geracao === geracaoDaRecarga.current) {
+          cargaEmAndamento.current = null;
           setHasLoadedOnce(true);
         }
       }
@@ -473,10 +483,13 @@ export const AdminProductsView = memo(function AdminProductsView({
 
   // A exclusão pode demorar: quando termina, a recarga usa a página e os
   // filtros ATUAIS, não os do clique de confirmar.
-  const recarregarAtualRef = useRef<() => Promise<void>>(async () => {});
+  const recarregarAtualRef = useRef<(silenciosa?: boolean) => Promise<void>>(
+    async () => {},
+  );
   const paginaDaListaRef = useRef(0);
   useEffect(() => {
-    recarregarAtualRef.current = () => loadData(currentPage);
+    recarregarAtualRef.current = (silenciosa) =>
+      loadData(currentPage, silenciosa);
     paginaDaListaRef.current = currentPage;
   }, [loadData, currentPage]);
 
@@ -917,6 +930,39 @@ export const AdminProductsView = memo(function AdminProductsView({
       // snapshot antigo até a próxima revalidação natural.
     }
   }, [fetchExecutiveSummary]);
+
+  // Voltar ao app não muda a aba ativa. Revalida o retrato sem trocar página,
+  // filtros ou rolagem; eventos repetidos e pedidos lentos não empilham buscas.
+  useEffect(() => {
+    if (!active || isOffline) return;
+    const aoVoltar = () => {
+      if (document.visibilityState !== "visible") return;
+      const agora = Date.now();
+      // Uma conexão morta pode nunca responder: a carga velha não prende
+      // todos os retornos seguintes. A geração continua descartando a resposta velha.
+      if (
+        cargaEmAndamento.current !== null &&
+        agora - cargaEmAndamento.current <= 60_000
+      )
+        return;
+      const intervalo = modoSemCusto ? 300_000 : 30_000;
+      if (
+        agora -
+          Math.max(ultimaCargaBemSucedida.current, ultimaRetomada.current) <
+        intervalo
+      )
+        return;
+      ultimaRetomada.current = agora;
+      void recarregarAtualRef.current(true);
+      void refreshFinancialStats();
+    };
+    document.addEventListener("visibilitychange", aoVoltar);
+    window.addEventListener("pageshow", aoVoltar);
+    return () => {
+      document.removeEventListener("visibilitychange", aoVoltar);
+      window.removeEventListener("pageshow", aoVoltar);
+    };
+  }, [active, isOffline, modoSemCusto, refreshFinancialStats]);
 
   const handleToggleStatus = useCallback(
     async (id: string, active: boolean) => {
@@ -2266,7 +2312,9 @@ export const AdminProductsView = memo(function AdminProductsView({
                 “
                 {lista.find((p) => p.id === productToDelete)?.name ??
                   "Este produto"}
-                ” sai do catálogo para sempre. Não dá para desfazer.
+                ” sai do catálogo para sempre. Não dá para desfazer. Banners que
+                apontam para este produto ficam com o link quebrado. Revise os
+                banners após excluir.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter className="mt-4 gap-2">

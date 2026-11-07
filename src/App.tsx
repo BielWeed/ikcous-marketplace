@@ -141,6 +141,7 @@ function TabWrapper({ active, children, index, activeIndex }: TabWrapperProps) {
 // Nome falado da tela principal ao trocar de tela (região de aviso do App).
 // As outras telas ficam sem nome: o aviso fica vazio.
 const NOME_DA_TELA = new Map<string, string>([
+  ...Object.entries(NOMES_DO_PAINEL),
   ["home", "Início"],
   ["favorites", "Favoritos"],
   ["cart", "Carrinho"],
@@ -950,8 +951,9 @@ const AppContent = () => {
   const vistaAnteriorRef = useRef(currentView);
   useEffect(() => {
     if (vistaAnteriorRef.current === currentView) return;
+    const veioDoPainel = vistaAnteriorRef.current.startsWith("admin");
     vistaAnteriorRef.current = currentView;
-    if (currentView.startsWith("admin")) return;
+    if (currentView.startsWith("admin") && !veioDoPainel) return;
     // Abrir o app direto num endereço (/cart, /orders...) também "troca de
     // tela" na montagem, sem a pessoa ter tocado em nada: não puxar o foco,
     // senão o "Pular para o conteúdo" some do caminho do teclado.
@@ -964,7 +966,10 @@ const AppContent = () => {
     )
       return;
     if (document.querySelector("[role=dialog],[role=alertdialog]")) return;
-    mainRef.current?.focus({ preventScroll: true });
+    const destino = currentView.startsWith("admin")
+      ? mainRef.current?.querySelector<HTMLElement>("#conteudo-do-painel")
+      : mainRef.current;
+    destino?.focus({ preventScroll: true });
   }, [currentView]);
   const scrollSentinelRef = useRef<HTMLDivElement>(null);
   const backOverrideRef = useRef<(() => void) | null>(null);
@@ -1590,7 +1595,8 @@ const AppContent = () => {
     if (!isAdmin) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Check for Ctrl + Alt + Key
+      // Segurar a combinação não deve repetir a navegação.
+      if (e.repeat) return;
       if (e.ctrlKey && e.altKey) {
         let targetView: TelaDoPainel | null = null;
         switch (e.key.toLowerCase()) {
@@ -1616,11 +1622,8 @@ const AppContent = () => {
         if (targetView) {
           e.preventDefault();
           handleNavigate(targetView);
-          // eslint-disable-next-line security/detect-object-injection -- chave tipada (TelaDoPainel), não entrada do usuário
-          toast.success(`Abrindo ${NOMES_DO_PAINEL[targetView]}...`, {
-            duration: 1000,
-            icon: "⌨️",
-          });
+          // A própria tela anuncia a abertura; o pedido pode ser barrado
+          // pelo diálogo de alterações não salvas.
         }
       }
     };
@@ -3447,7 +3450,11 @@ const AppContent = () => {
           // popstate como "Voltar" (backOverrideRef no checkout; diálogo de
           // descarte no admin com formulário sujo). Laudo Opus do PR #455.
           e.preventDefault();
-          mainRef.current?.focus();
+          (
+            mainRef.current?.querySelector<HTMLElement>(
+              "#conteudo-do-painel",
+            ) ?? mainRef.current
+          )?.focus();
         }}
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100000] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-zinc-900 focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-zinc-900"
       >

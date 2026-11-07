@@ -207,6 +207,11 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
     } catch {
         return json({ erro: 'Corpo inválido: esperado JSON { refund_id }.' }, 400)
     }
+    // `null` é JSON válido: passa pelo try acima e `body.acao` lançaria TypeError
+    // (500 cru, sem CORS, antes mesmo da porta de admin). Só objeto segue.
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+        return json({ erro: 'Corpo inválido: esperado JSON { refund_id }.' }, 400)
+    }
 
     if (body.acao === 'reemitir') return await reemitir(req, body, deps)
 

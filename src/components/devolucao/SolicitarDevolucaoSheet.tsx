@@ -301,6 +301,7 @@ function FluxoDaDevolucao({
   readonly aoMudarRascunho: (estado: EstadoDoRascunho) => void;
 }) {
   const { itens, janelas, politica, prazos, metodos } = elegibilidade;
+  const textoDaPolitica = politica.texto_politica?.trim();
   const itensDisponiveis = itens.filter((item) => item.disponivel > 0);
 
   const [passo, setPasso] = useState<Passo>(1);
@@ -960,13 +961,13 @@ function FluxoDaDevolucao({
               }
             />
 
-            {politica.texto_politica && (
+            {textoDaPolitica && (
               <details className="rounded-2xl bg-zinc-50 p-3 text-xs text-zinc-600">
                 <summary className="cursor-pointer font-bold text-zinc-700">
                   Ler a política de trocas da loja
                 </summary>
                 <p className="mt-2 whitespace-pre-line break-words leading-relaxed">
-                  {politica.texto_politica}
+                  {textoDaPolitica}
                 </p>
               </details>
             )}

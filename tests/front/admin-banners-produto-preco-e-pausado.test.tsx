@@ -244,6 +244,45 @@ describe("AdminBannersView — produto do banner: preço da vitrine e produto pa
     });
   });
 
+  it("Trocar atualiza os textos automáticos para o produto novo", async () => {
+    await escolherProdutoNoModelo("Camiseta simples");
+    await clicar("Trocar");
+    await clicar("Camiseta com variação");
+    expect(
+      document.querySelector<HTMLInputElement>("#banner-title")!.value,
+    ).toBe("Camiseta com variação");
+    expect(subtitulo()).toBe("Por apenas R$ 90,00");
+  });
+
+  it("Trocar preserva os textos digitados pela lojista", async () => {
+    await escolherProdutoNoModelo("Camiseta simples");
+    for (const [id, value] of [
+      ["banner-title", "Minha campanha"],
+      ["banner-subtitle", "Só nesta semana"],
+      ["banner-btn-text", "Conferir novidades"],
+    ]) {
+      const input = document.getElementById(id) as HTMLInputElement;
+      expect(input, id).toBeTruthy();
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value",
+        )!.set!.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      });
+    }
+    await clicar("Trocar");
+    await clicar("Camiseta com variação");
+    expect(
+      document.querySelector<HTMLInputElement>("#banner-title")!.value,
+    ).toBe("Minha campanha");
+    expect(subtitulo()).toBe("Só nesta semana");
+    expect(
+      document.querySelector<HTMLInputElement>("#banner-btn-text")!.value,
+    ).toBe("Conferir novidades");
+  });
+
   describe("sugestões de subtítulo e título", () => {
     it("usam o preço e o 'De' da vitrine, não o preço-base", async () => {
       await editarBannerDo("p-var");

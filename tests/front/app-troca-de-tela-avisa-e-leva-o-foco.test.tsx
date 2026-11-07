@@ -110,6 +110,56 @@ vi.mock("@/views/customer/HomeView", () => ({
     </div>
   ),
 }));
+// O portão de acesso é dublado; navegação, foco e aviso vêm do App real.
+// O destino interno é o mesmo elemento focável exposto pelo AdminLayout.
+vi.mock("@/components/layouts/AdminAreaGate", () => ({
+  AdminAreaGate: ({
+    currentView,
+    onNavigate,
+    setIsAdminDirty,
+  }: {
+    currentView: string;
+    onNavigate: (view: string) => void;
+    setIsAdminDirty: (dirty: boolean) => void;
+  }) => (
+    <div data-testid="painel" data-view={currentView}>
+      <nav>
+        <button
+          type="button"
+          data-testid="menu-clientes"
+          onClick={() => onNavigate("admin-customers")}
+        >
+          Clientes
+        </button>
+      </nav>
+      <main id="conteudo-do-painel" tabIndex={-1}>
+        <input data-testid="campo-do-painel" />
+        <button
+          type="button"
+          data-testid="ficha-cliente"
+          onClick={() => onNavigate("admin-user-detail")}
+        >
+          Abrir ficha
+        </button>
+        <button
+          type="button"
+          data-testid="voltar-clientes"
+          onClick={() => onNavigate("admin-customers")}
+        >
+          Voltar
+        </button>
+        <button
+          type="button"
+          data-testid="sujar-painel"
+          onClick={() => setIsAdminDirty(true)}
+        >
+          Editar
+        </button>
+      </main>
+    </div>
+  ),
+}));
+
 vi.mock("@/views/customer/CartView", () => ({
   CartView: () => <div data-testid="tela-carrinho" />,
 }));
@@ -158,7 +208,7 @@ vi.mock("@/components/ui/sonner", () => ({ Toaster: () => null }));
 vi.mock("sonner", () => ({
   toast: Object.assign(() => {}, {
     error: () => {},
-    success: () => {},
+    success: vi.fn(),
     info: () => {},
     warning: () => {},
     message: () => {},
@@ -212,12 +262,13 @@ vi.mock("@/hooks/useCart", () => ({
 const estadoDoLink = vi.hoisted(() => ({
   vencido: false,
   confirmacaoVencida: false,
+  admin: false,
 }));
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
-    user: null,
-    isAdmin: false,
-    adminStatus: "not-admin",
+    user: estadoDoLink.admin ? { id: "lojista-ficticio" } : null,
+    isAdmin: estadoDoLink.admin,
+    adminStatus: estadoDoLink.admin ? "admin" : "not-admin",
     loading: false,
     isPasswordRecovery: false,
     linkDeRecuperacaoVencido: estadoDoLink.vencido,
@@ -306,6 +357,7 @@ vi.mock("@/lib/supabase", () => {
 });
 
 import App from "@/App";
+import { toast } from "sonner";
 
 // --- Buracos do jsdom -------------------------------------------------
 class ObservadorDeInterseccao {
@@ -346,6 +398,8 @@ describe("App — trocar de tela avisa em voz alta e leva o foco", () => {
     catalogo.fetchProducts = () => {};
     estadoDoLink.vencido = false;
     estadoDoLink.confirmacaoVencida = false;
+    estadoDoLink.admin = false;
+    vi.mocked(toast.success).mockClear();
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -474,6 +528,133 @@ describe("App — trocar de tela avisa em voz alta e leva o foco", () => {
     expect(document.activeElement).toBe(
       container?.querySelector('[data-testid="aba-carrinho"]'),
     );
+  });
+
+  const abrirPainel = async () => {
+    estadoDoLink.admin = true;
+    globalThis.history.replaceState(null, "", "/admin-customers");
+    await abrir();
+  };
+  const conteudoDoPainel = () =>
+    container?.querySelector<HTMLElement>("#conteudo-do-painel");
+  const atalho = async (key: string, repeat = false) => {
+    await act(async () => {
+      globalThis.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key,
+          ctrlKey: true,
+          altKey: true,
+          repeat,
+          cancelable: true,
+        }),
+      );
+    });
+    await assentar();
+  };
+
+  it("painel: entrada direta anuncia Clientes, mas não puxa o foco", async () => {
+    await abrirPainel();
+    expect(aviso()?.textContent).toBe("Clientes");
+    expect(document.activeElement).not.toBe(conteudoDoPainel());
+  });
+
+  it("painel: abrir a ficha e voltar anuncia a tela e pula a lateral", async () => {
+    await abrirPainel();
+    await tocar("ficha-cliente", true);
+    expect(aviso()?.textContent).toBe("Ficha do cliente");
+    expect(document.activeElement).toBe(conteudoDoPainel());
+    await tocar("voltar-clientes", true);
+    expect(aviso()?.textContent).toBe("Clientes");
+    expect(document.activeElement).toBe(conteudoDoPainel());
+  });
+
+  it("painel: sem interação anterior não puxa o foco ao trocar", async () => {
+    Object.defineProperty(navigator, "userActivation", {
+      configurable: true,
+      value: { hasBeenActive: false, isActive: false },
+    });
+    try {
+      await abrirPainel();
+      await tocar("ficha-cliente");
+      expect(aviso()?.textContent).toBe("Ficha do cliente");
+      expect(document.activeElement).not.toBe(conteudoDoPainel());
+    } finally {
+      Reflect.deleteProperty(navigator, "userActivation");
+    }
+  });
+
+  it("painel: Pular para o conteúdo pula também o menu lateral", async () => {
+    await abrirPainel();
+    await act(async () => {
+      container
+        ?.querySelector<HTMLAnchorElement>('a[href="#conteudo"]')
+        ?.click();
+    });
+    expect(document.activeElement).toBe(conteudoDoPainel());
+  });
+
+  it.each(["campo", "menu", "dialogo"])(
+    "painel: preserva o foco em %s durante a troca",
+    async (origem) => {
+      await abrirPainel();
+      let dialogo: HTMLDivElement | undefined;
+      const alvo =
+        origem === "campo"
+          ? container?.querySelector<HTMLElement>(
+              '[data-testid="campo-do-painel"]',
+            )
+          : origem === "menu"
+            ? container?.querySelector<HTMLElement>(
+                '[data-testid="menu-clientes"]',
+              )
+            : (dialogo = document.createElement("div"));
+      if (dialogo) {
+        dialogo.setAttribute("role", "dialog");
+        dialogo.tabIndex = -1;
+        document.body.append(dialogo);
+      }
+      try {
+        alvo?.focus();
+        await tocar("ficha-cliente");
+        expect(aviso()?.textContent).toBe("Ficha do cliente");
+        expect(document.activeElement).toBe(alvo);
+      } finally {
+        dialogo?.remove();
+      }
+    },
+  );
+
+  it.each(["atual", "alterações"])(
+    "painel: atalho barrado por tela %s não anuncia abertura falsa",
+    async (caso) => {
+      await abrirPainel();
+      if (caso === "alterações") await tocar("sujar-painel");
+      await atalho(caso === "atual" ? "c" : "p");
+      expect(
+        container
+          ?.querySelector('[data-testid="painel"]')
+          ?.getAttribute("data-view"),
+      ).toBe("admin-customers");
+      expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
+    },
+  );
+
+  it("painel: tecla segurada não navega nem repete aviso; toque simples navega", async () => {
+    await abrirPainel();
+    await atalho("p", true);
+    expect(
+      container
+        ?.querySelector('[data-testid="painel"]')
+        ?.getAttribute("data-view"),
+    ).toBe("admin-customers");
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
+    await atalho("p");
+    expect(
+      container
+        ?.querySelector('[data-testid="painel"]')
+        ?.getAttribute("data-view"),
+    ).toBe("admin-products");
+    expect(aviso()?.textContent).toBe("Produtos");
   });
 
   it("tela sem nome na lista (produto) esvazia o aviso", async () => {

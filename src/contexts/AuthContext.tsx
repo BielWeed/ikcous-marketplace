@@ -111,6 +111,8 @@ const MENSAGEM_LOGIN_SEM_RESPOSTA =
   "A conexão está lenta e a entrada não foi confirmada. Tente de novo em instantes.";
 const MENSAGEM_CADASTRO_SEM_RESPOSTA =
   "A conexão está lenta e o cadastro não foi confirmado. Ele pode ter sido feito: confira seu e-mail ou tente entrar antes de criar a conta de novo.";
+const MENSAGEM_REENVIO_SEM_RESPOSTA =
+  "A conexão está lenta e o reenvio não foi confirmado. O e-mail pode ter saído: confira a caixa de entrada e o spam antes de pedir de novo.";
 const MENSAGEM_CODIGO_SEM_RESPOSTA =
   "A conexão está lenta e o código não foi confirmado. Tente de novo; se disser que o código venceu, peça outro.";
 const MENSAGEM_NOVA_SENHA_SEM_RESPOSTA =
@@ -1488,13 +1490,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const resendConfirmationEmail = useCallback(
     async (email: string): Promise<boolean> => {
-      const { error } = await supabase.auth.resend({
-        type: "signup",
-        email,
-        options: {
-          emailRedirectTo: window.location.origin,
-        },
-      });
+      let resposta: Awaited<ReturnType<typeof supabase.auth.resend>>;
+      try {
+        resposta = await comPrazoDeAutenticacao(
+          supabase.auth.resend({
+            type: "signup",
+            email,
+            options: {
+              emailRedirectTo: window.location.origin,
+            },
+          }),
+          MENSAGEM_REENVIO_SEM_RESPOSTA,
+        );
+      } catch (err) {
+        if (!ehConsultaSemResposta(err)) throw err;
+        toast.error(MENSAGEM_REENVIO_SEM_RESPOSTA);
+        return false;
+      }
+      const { error } = resposta;
       if (error) {
         // O limite de envio (429/`over_email_send_rate_limit`, doc oficial)
         // é a única causa aqui com um sinal estável para distinguir — o

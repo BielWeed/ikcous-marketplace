@@ -509,6 +509,117 @@ describe("quantidade — soma, -/+, remoção e teto do estoque", () => {
     expect(estado.itens[0].quantidade).toBe(2);
   });
 
+  // A lista da aba Buscar é lida uma vez e fica na tela: o estoque dela pode
+  // estar mais velho que o do item que o bipe já pôs no cupom. O teto do "+"
+  // não pode voltar para o número velho.
+  describe("estoque da lista velha não sobrescreve o estoque mais novo do cupom", () => {
+    const chave = chaveDoItemDoCupom("prod-caneca", null);
+    function itemDaLista(estoque: number): ItemDoCupom {
+      return {
+        chave,
+        productId: "prod-caneca",
+        variantId: null,
+        nome: "Caneca Personalizada",
+        variacao: null,
+        preco: 29.9,
+        quantidade: 1,
+        estoque,
+        imagem: "img-caneca.jpg",
+      };
+    }
+    function comUmBipe(estoqueDoBipe: number): EstadoDaVenda {
+      const resposta = respostaProdutoSemVariacao({ estoque: estoqueDoBipe });
+      return reducerDaVenda(estadoBase(), {
+        tipo: "codigo_resolvido",
+        codigo: resposta.codigo,
+        resposta,
+        em: 0,
+      });
+    }
+
+    it("bipe com estoque 1, depois a lista velha (estoque 3): a peça NÃO entra e o teto continua 1", () => {
+      let estado = comUmBipe(1);
+      expect(estado.itens[0].estoque).toBe(1);
+      expect(estado.itens[0].quantidade).toBe(1);
+
+      estado = reducerDaVenda(estado, {
+        tipo: "item_adicionado_manualmente",
+        item: itemDaLista(3),
+        em: 100,
+      });
+      expect(estado.itens).toHaveLength(1);
+      expect(estado.itens[0].quantidade).toBe(1);
+      expect(estado.itens[0].estoque).toBe(1);
+      expect(estado.aviso).toEqual({
+        tipo: "esgotado",
+        nome: "Caneca Personalizada",
+        estoque: 1,
+        naVenda: 1,
+      });
+
+      // e o "+" também respeita o 1 (o aviso "Limite do estoque" não some)
+      estado = reducerDaVenda(estado, {
+        tipo: "quantidade_alterada",
+        chave,
+        delta: 1,
+      });
+      expect(estado.itens[0].quantidade).toBe(1);
+      expect(estado.aviso).toMatchObject({ tipo: "esgotado", estoque: 1 });
+    });
+
+    it("bipe com estoque 2 e quantidade 1, lista velha (3): entra a 2ª peça mas o teto fica 2, não 3", () => {
+      let estado = comUmBipe(2);
+      estado = reducerDaVenda(estado, {
+        tipo: "item_adicionado_manualmente",
+        item: itemDaLista(3),
+        em: 100,
+      });
+      expect(estado.itens[0].quantidade).toBe(2);
+      expect(estado.itens[0].estoque).toBe(2);
+      // a 3ª peça (que o estoque velho deixaria passar) é barrada
+      estado = reducerDaVenda(estado, {
+        tipo: "quantidade_alterada",
+        chave,
+        delta: 1,
+      });
+      expect(estado.itens[0].quantidade).toBe(2);
+      expect(estado.aviso).toMatchObject({ tipo: "esgotado", estoque: 2 });
+    });
+
+    it("lista com estoque MENOR que o do cupom também vale (o menor é o teto seguro)", () => {
+      let estado = comUmBipe(5);
+      estado = reducerDaVenda(estado, {
+        tipo: "item_adicionado_manualmente",
+        item: itemDaLista(2),
+        em: 100,
+      });
+      expect(estado.itens[0].quantidade).toBe(2);
+      expect(estado.itens[0].estoque).toBe(2);
+    });
+
+    it("item que ainda NÃO está no cupom entra com o estoque da lista, como sempre", () => {
+      const estado = reducerDaVenda(estadoBase(), {
+        tipo: "item_adicionado_manualmente",
+        item: itemDaLista(3),
+        em: 0,
+      });
+      expect(estado.itens[0].estoque).toBe(3);
+    });
+
+    it("o BIPE continua mandando: leitura nova com estoque maior sobe o teto (não é lista velha)", () => {
+      let estado = comUmBipe(1);
+      const resposta = respostaProdutoSemVariacao({ estoque: 4 });
+      estado = reducerDaVenda(estado, {
+        tipo: "codigo_resolvido",
+        codigo: resposta.codigo,
+        resposta,
+        em: 5_000,
+      });
+      expect(estado.itens[0].quantidade).toBe(2);
+      expect(estado.itens[0].estoque).toBe(4);
+    });
+  });
+
   it("'+' aumenta a quantidade", () => {
     let estado = reducerDaVenda(estadoBase(), {
       tipo: "codigo_resolvido",

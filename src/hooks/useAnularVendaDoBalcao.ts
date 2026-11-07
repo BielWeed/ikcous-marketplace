@@ -13,8 +13,14 @@
 import { clearAnalyticsCache } from "@/hooks/useAnalytics";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { avisarAnulacao } from "@/lib/avisa-anulacao-do-balcao";
+import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { useCallback } from "react";
+
+/** Quanto a lojista espera pela anulação antes de ver a frase "confira a venda"
+ * e poder tentar de novo (a RPC é idempotente). O mesmo prazo do registro da
+ * venda no balcão. */
+export const PRAZO_DA_ANULACAO_MS = 20_000;
 
 export interface ResultadoDaAnulacao {
   readonly orderId: string;
@@ -48,10 +54,21 @@ export function useAnularVendaDoBalcao(): {
     const desmarcar = marcarOperacaoSensivel("anulacao-da-venda-do-balcao");
     let data: unknown;
     try {
-      const resposta = await supabase.rpc("anular_venda_presencial", {
-        p_order_id: orderId,
-        p_motivo: motivo,
-      });
+      // Rede "pendurada" conecta e não responde: sem prazo a tela ficava em
+      // "Anulando…" sem saída. Estourar NÃO prova que nada foi anulado: o erro
+      // sai SEM `code`, e `mensagemDaFalhaDaAnulacao` responde "confira a venda
+      // antes de tentar de novo". Repetir é seguro (a RPC devolve `ja_anulada`).
+      // A resposta que chegar depois do prazo é descartada.
+      const resposta = await aguardarComPrazo(
+        Promise.resolve(
+          supabase.rpc("anular_venda_presencial", {
+            p_order_id: orderId,
+            p_motivo: motivo,
+          }),
+        ),
+        PRAZO_DA_ANULACAO_MS,
+        () => new Error("A anulação não respondeu a tempo."),
+      );
       if (resposta.error) throw resposta.error;
       data = resposta.data;
     } finally {

@@ -61,6 +61,16 @@ import {
 } from "./pedido.ts";
 import { ehRetiradaNaLoja } from "./retirada-na-loja.ts";
 
+/**
+ * Orçamento TOTAL do envio SMTP do comprovante (e do aviso de pagamento
+ * atrasado, que usa a mesma reserva): conexão, saudação, login e envio juntos.
+ * Sem ele valem os tetos do nodemailer (2 min para conectar, 10 min de socket
+ * parado) — mais que o limite da função — e a reserva do e-mail, gravada ANTES
+ * do envio, só volta no `catch`, que não roda se a plataforma matar a função no
+ * meio. Bem abaixo do que o Mercado Pago espera do webhook e do ciclo do cron.
+ */
+export const ORCAMENTO_DO_ENVIO_MS = 10_000;
+
 // RETIRADA NA LOJA (release 1.5.3): texto NEUTRO — a loja nao promete prazo
 // nem "pronto agora"; quem avisa quando buscar e a propria loja.
 //
@@ -463,6 +473,43 @@ export async function devolverReserva(
 }
 
 /**
+ * O e-mail da CONTA de quem comprou (`auth.admin.getUserById`, service role).
+ * O pedido de quem tem conta nasce sem e-mail dentro dele, então um erro
+ * passageiro aqui não pode virar "o pedido não tem e-mail" (era o que acontecia:
+ * só `data` era lido). Duas tentativas, como `devolverReserva`; só leitura, então
+ * repetir não envia nada duas vezes. Conta que NÃO EXISTE (404 / `user_not_found`)
+ * não é falha — é "sem e-mail", como antes. O log leva só o status, nunca o id
+ * nem o e-mail.
+ *
+ * Exportada: o aviso de pagamento atrasado (`efeitos-do-pagamento`) lê a conta
+ * do mesmo jeito; só o rótulo do log muda.
+ */
+export async function lerEmailDaConta(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  rotulo = "comprovante",
+): Promise<{ falhou: true } | { falhou: false; email: string | null }> {
+  for (let tentativa = 1; tentativa <= 2; tentativa++) {
+    try {
+      const { data, error } = await supabase.auth.admin.getUserById(userId);
+      if (!error) return { falhou: false, email: data?.user?.email ?? null };
+      if (error.status === 404 || error.code === "user_not_found") {
+        return { falhou: false, email: null };
+      }
+      console.error(
+        `${rotulo}: leitura da conta falhou (tentativa ${tentativa} de 2):`,
+        error.status ?? error.code ?? "erro",
+      );
+    } catch (_erro) {
+      console.error(
+        `${rotulo}: leitura da conta falhou (tentativa ${tentativa} de 2): exceção`,
+      );
+    }
+  }
+  return { falhou: true };
+}
+
+/**
  * Manda ao cliente o comprovante de UM pedido. Não valida a FORMA de
  * `orderId` — quem chama já validou (o corpo HTTP em `send-order-
  * confirmation/index.ts`, o `external_reference` autenticado pelo MP em
@@ -479,6 +526,8 @@ export async function enviarComprovantePedido(args: {
   deps?: {
     enviarEmail?: typeof enviarEmailReal;
     resolverRemetente?: typeof resolverRemetenteReal;
+    /** Só o teste encurta; em produção vale `ORCAMENTO_DO_ENVIO_MS`. */
+    orcamentoDoEnvioMs?: number;
   };
 }): Promise<DesfechoComprovante> {
   const { supabase, orderId } = args;
@@ -520,10 +569,12 @@ export async function enviarComprovantePedido(args: {
   // chamada de admin a menos no caminho do convidado, que e a maioria.
   let emailDaConta: string | null = null;
   if (!emailDoCliente(pedido) && pedido.user_id) {
-    const { data: conta } = await supabase.auth.admin.getUserById(
-      String(pedido.user_id),
-    );
-    emailDaConta = conta?.user?.email ?? null;
+    const conta = await lerEmailDaConta(supabase, String(pedido.user_id));
+    // Falha de LEITURA não é "sem e-mail": o e-mail existe, só não foi lido. Para
+    // ANTES de reservar — a reserva fica livre para o reenvio — e o log não
+    // mente dizendo que o pedido não tem e-mail.
+    if (conta.falhou) return { ok: false, motivo: "envio_falhou" };
+    emailDaConta = conta.email;
   }
 
   const destinatario = emailDoCliente(pedido, emailDaConta);
@@ -600,6 +651,10 @@ export async function enviarComprovantePedido(args: {
     .maybeSingle();
 
   try {
+    // Prazo TOTAL contado daqui, depois das leituras do banco: só o SMTP gasta
+    // o orçamento. Estourou -> ETIMEDOUT -> o `catch` abaixo devolve a reserva.
+    const prazoFinalMs = performance.now() +
+      (args.deps?.orcamentoDoEnvioMs ?? ORCAMENTO_DO_ENVIO_MS);
     await enviarEmail({
       para: destinatario,
       assunto: assuntoDoEmail(String(pedido.id), config?.store_name ?? ""),
@@ -612,10 +667,10 @@ export async function enviarComprovantePedido(args: {
         canal: String(pedido.canal ?? "online"),
         retirada: retiradaDoPedido(pedido.customer_data),
       }),
-    }, remetente);
+    }, remetente, { prazoFinalMs });
   } catch (e) {
-    // Devolve a reserva: o SMTP RECUSOU a mensagem, entao ninguem recebeu
-    // nada e uma tentativa posterior tem de ser possivel.
+    // Devolve a reserva: o SMTP RECUSOU a mensagem (ou estourou o prazo), entao
+    // ninguem recebeu nada e uma tentativa posterior tem de ser possivel.
     await devolverReserva(supabase, orderId);
     console.error(
       `comprovante: envio falhou para ${mascarar(destinatario)}: ${e?.message}`,

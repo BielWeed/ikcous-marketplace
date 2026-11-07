@@ -130,6 +130,7 @@ import {
   aplicarEfeitosDoPagamentoConfirmado,
   type DepsDosEfeitos,
   desfechoComEfeito,
+  TETO_DO_EMAIL_MS,
   TETO_DO_PUSH_MS,
 } from "../_shared/efeitos-do-pagamento.ts";
 import { numeroDoPedido } from "../_shared/pedido.ts";
@@ -512,6 +513,9 @@ async function handler(
     // Teto de espera do passo do aviso de cancelamento (opção da chamada, como
     // `tetoDoPushMs`): o teste o encurta; em produção vale `TETO_DO_PASSO_MS`.
     tetoDosCancelamentosMs?: number;
+    // Teto de espera pelo e-mail ao cliente (o teste o encurta); em produção
+    // vale `TETO_DO_EMAIL_MS`: o SMTP lento não pode prender a fila nem os estornos.
+    tetoDoEmailMs?: number;
     // Relógio e orçamento do laço de consulta (EST-EDGE-DIN-2): o teste os
     // injeta para não esperar 100 s; em produção valem `Date.now` e
     // `ORCAMENTO_DO_CICLO_MS`.
@@ -1138,6 +1142,8 @@ async function handler(
           enviarAvisoAtrasado: deps.enviarAvisoAtrasado,
           // Um push service lento não pode prender o laço de candidatos.
           tetoDoPushMs: TETO_DO_PUSH_MS,
+          // Nem um SMTP lento: o laço segue para o próximo candidato e para os estornos.
+          tetoDoEmailMs: deps.tetoDoEmailMs ?? TETO_DO_EMAIL_MS,
         });
       } else {
         // 'divergente' e 'inexistente' significam que o candidato não bate

@@ -4300,3 +4300,76 @@ Deno.test("cart_hash gravado no cache continua montado com o carrinho CRU (a RPC
   assertEquals(r.registro.upsertsCache.length, 1);
   assertEquals(r.registro.upsertsCache[0].linha.cart_hash, getCartHash(carrinho));
 });
+
+// --- Corpo e carrinho malformados: 400, nada lido (r57-g) --------------------
+//
+// Antes: JSON quebrado caía no `catch` de topo (500 "Tente novamente", como se
+// fosse falha da loja) e `cart: [null]` só estourava em `getCartHash`, DEPOIS de
+// ler credenciais e provedores — e antes do limite por origem. O app não gera
+// esses corpos; a resposta certa para quem gera é 400.
+
+async function rodarComCorpoBruto(corpoBruto: string) {
+  const banco = bancoDeApoio();
+  const resposta = await handler(
+    new Request("http://localhost/calculate-shipping", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer jwt-ficticio" },
+      body: corpoBruto,
+    }),
+    { supabase: banco.cliente, verificarAdmin: () => Promise.resolve(true) },
+  );
+  return { resposta, corpo: await resposta.json(), registro: banco.registro };
+}
+
+Deno.test("corpo: JSON quebrado -> 400 'Corpo inválido.', com CORS, sem ler o banco", async () => {
+  const r = await rodarComCorpoBruto("{");
+  assertEquals(r.resposta.status, 400);
+  assertEquals(r.corpo.error, "Corpo inválido.");
+  assertEquals(r.resposta.headers.get("Access-Control-Allow-Origin"), "*");
+  assertEquals(r.registro.eventos, []);
+});
+
+for (const [rotulo, corpoBruto] of [["null", "null"], ["lista", "[]"], ["número", "5"], ["texto", '"x"']] as const) {
+  Deno.test(`corpo: ${rotulo} segue pedindo o CEP (400), sem ler o banco — CONTROLE`, async () => {
+    const r = await rodarComCorpoBruto(corpoBruto);
+    assertEquals(r.resposta.status, 400);
+    assertEquals(r.corpo.error, "CEP de destino é obrigatório");
+    assertEquals(r.registro.eventos, []);
+  });
+}
+
+for (const [rotulo, cart] of [
+  ["item null", [null]],
+  ["item null entre itens bons", [CARRINHO_DE_APOIO[0], null]],
+  ["dois itens null", [null, null]],
+  ["item que é número", [5]],
+  ["item que é texto", ["p1"]],
+  ["item que é lista", [[]]],
+] as const) {
+  Deno.test(`carrinho: ${rotulo} -> 400 carrinho_invalido ANTES de ler credencial, cache ou transportadora`, async () => {
+    for (const cep of ["01001-000", CEP_LOCAL_DE_APOIO]) {
+      const r = await rodarComApoio(pedidoDeApoio({ cep, cart }));
+      assertEquals(r.resposta.status, 400, `${cep}: ${r.texto}`);
+      assertEquals(r.corpo.codigo, "carrinho_invalido", cep);
+      assertEquals(r.registro.eventos, [], cep);
+      assertEquals(r.registro.logs.length, 0, cep);
+      assertEquals(r.registro.upsertsCache.length, 0, cep);
+      assertEquals(r.chamadas.length, 0, cep);
+    }
+  });
+}
+
+Deno.test("carrinho: item objeto (com ou sem product) e lista vazia continuam seguindo — CONTROLE", async () => {
+  for (const cart of [CARRINHO_DE_APOIO, [{ productId: "p1", quantity: 1 }], []]) {
+    const r = await rodarComApoio(pedidoDeApoio({ cep: CEP_LOCAL_DE_APOIO, cart }));
+    assertEquals(r.resposta.status, 200, r.texto);
+  }
+});
+
+Deno.test("getCartHash - item null não lança (o hash dos itens válidos não muda)", () => {
+  const limpo = [{ product: { id: "prod-a" }, quantity: 2, variantId: "v1" }, { productId: "prod-b", quantity: 1 }];
+  const comNulo = [null, ...limpo, undefined];
+  assertEquals(getCartHash(comNulo).split(",").filter((p) => !p.startsWith("undefined")).join(","), getCartHash(limpo));
+  assertEquals(getCartHash(limpo), "prod-a:v1:2,prod-b::1");
+  getCartHash([null, null]);
+});

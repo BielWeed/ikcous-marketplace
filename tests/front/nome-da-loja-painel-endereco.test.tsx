@@ -14,15 +14,14 @@ vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => {
       const result = Promise.resolve({ count: 0, error: null });
-      const builder = {
+      const builder = Object.assign(result, {
         select: () => builder,
         eq: () => builder,
         in: () => builder,
-        // O selo de Pedidos encadeia `.in(...).or(...)` (regra única "para
-        // preparar", onda F); o `.or` é quem devolve o resultado.
-        or: () => result,
-        is: () => result,
-      };
+        or: () => builder,
+        is: () => builder,
+        gte: () => builder,
+      });
       return builder;
     },
     rpc: () => Promise.resolve({ data: { total_count: 0 }, error: null }),
@@ -104,11 +103,16 @@ describe("nome configurado no painel e no endereço", () => {
     vi.unstubAllGlobals();
   });
 
-  async function painel() {
+  async function painel(
+    currentView:
+      | "admin-dashboard"
+      | "admin-orders"
+      | "admin-pdv" = "admin-dashboard",
+  ) {
     const { AdminLayout } = await import("@/components/layouts/AdminLayout");
     await act(async () => {
       raiz.render(
-        <AdminLayout currentView="admin-dashboard" onNavigate={vi.fn()}>
+        <AdminLayout currentView={currentView} onNavigate={vi.fn()}>
           <div />
         </AdminLayout>,
       );
@@ -124,7 +128,7 @@ describe("nome configurado no painel e no endereço", () => {
     expect(hospedeiro.querySelector("h1 span")?.className).toContain(
       "text-[#A1A1AD]",
     );
-    expect(document.title).toBe("Savy Store | Admin Dashboard");
+    expect(document.title).toBe("Início | Savy Store");
     expect(
       document
         .querySelector('meta[property="og:title"]')
@@ -137,7 +141,7 @@ describe("nome configurado no painel e no endereço", () => {
     expect(hospedeiro.querySelector("h1")?.textContent).toBe(
       `${branding.appName} Admin`,
     );
-    expect(document.title).toBe(`${branding.appName} | Admin Dashboard`);
+    expect(document.title).toBe(`Início | ${branding.appName}`);
   });
 
   it("o painel acompanha a configuração que chega após montar", async () => {
@@ -147,7 +151,22 @@ describe("nome configurado no painel e no endereço", () => {
     expect(hospedeiro.querySelector("h1")?.textContent).toBe(
       "Savy Store Admin",
     );
-    expect(document.title).toBe("Savy Store | Admin Dashboard");
+    expect(document.title).toBe("Início | Savy Store");
+  });
+
+  it("a aba identifica a tela aberta e o conteúdo aceita foco sem incluir a lateral", async () => {
+    mockConfig = { storeName: "Loja de teste" };
+    await painel("admin-orders");
+    expect(document.title).toBe("Pedidos | Loja de teste");
+    const conteudo = hospedeiro.querySelector<HTMLElement>(
+      "#conteudo-do-painel",
+    );
+    expect(conteudo?.getAttribute("tabindex")).toBe("-1");
+    expect(conteudo?.contains(hospedeiro.querySelector("aside"))).toBe(false);
+    conteudo?.focus();
+    expect(document.activeElement).toBe(conteudo);
+    await painel("admin-pdv");
+    expect(document.title).toBe("Vender | Loja de teste");
   });
 
   it.each([{ storeName: "Savy Store" }, { storeName: null }])(

@@ -2694,8 +2694,21 @@ export async function handler(req: Request, deps: EtiquetaDeps = {}): Promise<Re
             .select('product_id, quantity, price')
             .eq('order_id', orderId)
 
+        // Falha de LEITURA não é pedido sem itens: `data` vem null e `itens || []`
+        // viraria o 400 "não tem itens" — falso, a lojista acharia o pedido
+        // corrompido em vez de tentar de novo. Para ANTES do ME e de qualquer
+        // reserva (nada foi chamado, nada foi pago). Só o CÓDIGO vai pro log (a
+        // mensagem crua do driver pode ecoar valor de coluna), como nas
+        // leituras vizinhas.
         if (itensError) {
-            console.error('[melhor-envio-etiqueta] Erro ao ler itens:', itensError)
+            console.error(
+                '[melhor-envio-etiqueta] falha ao ler os itens do pedido:',
+                itensError?.code ?? 'erro',
+            )
+            return respostaJson(
+                { error: 'Não consegui ler os itens do pedido agora; nada foi pago. Tente de novo em instantes.' },
+                500,
+            )
         }
         const itensPedido = itens || []
         if (itensPedido.length === 0) {

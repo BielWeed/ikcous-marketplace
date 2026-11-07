@@ -24,6 +24,7 @@ import type {
   ResultadoSolicitacao,
   ResumoDevolucao,
 } from "@/types/devolucao";
+import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 
 export type Desfecho<T = undefined> =
   | { ok: true; valor: T }
@@ -59,6 +60,11 @@ export interface DevolucaoDoCliente {
 }
 
 const ERRO_GENERICO = "Não foi possível concluir agora. Tente de novo.";
+const PRAZO_DA_LEITURA_MS = 12_000;
+const PRAZO_DA_GRAVACAO_MS = 20_000;
+const PRAZO_DO_UPLOAD_DA_FOTO_MS = 90_000;
+const SEM_RESPOSTA =
+  "Sem resposta da rede. Confira se a mudança apareceu no pedido antes de tentar de novo.";
 
 /**
  * Devolução/troca na tela do pedido do CLIENTE (plano 2026-09-26, seção
@@ -96,6 +102,12 @@ export function useDevolucaoCliente(
   // Rodada da leitura: a resposta velha que chega depois da nova não pinta
   // a tela (mesmo padrão de useAvisosDoLojista).
   const rodadaRef = useRef(0);
+  // A RPC não tem chave de idempotência. O banco recusa duas devoluções
+  // ativas; após resposta perdida, até uma nova já encerrada impede reenviar.
+  const solicitacaoIncertaRef = useRef<{
+    orderId: string;
+    idsAnteriores: Set<string>;
+  } | null>(null);
 
   const carregar = useCallback(async () => {
     if (!habilitado || !ativoRef.current || orderIdRef.current !== orderId) {
@@ -105,38 +117,41 @@ export function useDevolucaoCliente(
     const valeAinda = () => ativoRef.current && rodada === rodadaRef.current;
     setCarregando(true);
     try {
-      const [respElegibilidade, respLista] = await Promise.all([
-        supabase.rpc("devolucao_elegibilidade", { p_order_id: orderId }),
-        supabase.rpc("devolucoes_do_pedido", { p_order_id: orderId }),
-      ]);
-      if (!valeAinda()) return;
-      if (respElegibilidade.error || respLista.error) {
-        setIdDoErro(orderId);
-        setErro(true);
-        return;
-      }
-      const lida = lerElegibilidade(respElegibilidade.data);
-      const lista = lerDevolucoesDoPedido(respLista.data);
-      if (!lida || !lista) {
-        setIdDoErro(orderId);
-        setErro(true);
-        return;
-      }
+      // Um único prazo cobre a lista E o detalhe. A leitura atrasada não
+      // alcança os setState abaixo, nem apaga o aviso de falha da consulta.
+      const { lida, lista, detalhe } = await comPrazo(
+        (async () => {
+          const [respElegibilidade, respLista] = await Promise.all([
+            supabase.rpc("devolucao_elegibilidade", { p_order_id: orderId }),
+            supabase.rpc("devolucoes_do_pedido", { p_order_id: orderId }),
+          ]);
+          if (respElegibilidade.error || respLista.error) throw new Error();
+          const lida = lerElegibilidade(respElegibilidade.data);
+          const lista = lerDevolucoesDoPedido(respLista.data);
+          if (!lida || !lista) throw new Error();
 
-      let detalhe: DevolucaoDetalhe | null = null;
-      if (lista.length > 0) {
-        const respDetalhe = await supabase.rpc("devolucao_detalhe", {
-          p_id: lista[0].id,
-        });
-        if (!valeAinda()) return;
-        detalhe = respDetalhe.error
-          ? null
-          : lerDevolucaoDetalhe(respDetalhe.data);
-        if (!detalhe) {
-          setIdDoErro(orderId);
-          setErro(true);
-          return;
-        }
+          let detalhe: DevolucaoDetalhe | null = null;
+          if (lista.length > 0) {
+            const respDetalhe = await supabase.rpc("devolucao_detalhe", {
+              p_id: lista[0].id,
+            });
+            detalhe = respDetalhe.error
+              ? null
+              : lerDevolucaoDetalhe(respDetalhe.data);
+            if (!detalhe) throw new Error();
+          }
+          return { lida, lista, detalhe };
+        })(),
+        PRAZO_DA_LEITURA_MS,
+      );
+      if (!valeAinda()) return;
+      const incerta = solicitacaoIncertaRef.current;
+      if (
+        incerta?.orderId === orderId &&
+        lista.some((d) => !incerta.idsAnteriores.has(d.id))
+      ) {
+        // O pedido apareceu: não mantém a dúvida depois de ele ser encerrado.
+        solicitacaoIncertaRef.current = null;
       }
 
       setElegibilidade(lida);
@@ -196,16 +211,63 @@ export function useDevolucaoCliente(
       dados: DadosDaSolicitacao,
     ): Promise<Desfecho<ResultadoSolicitacao>> => {
       const desmarcar = marcarOperacaoSensivel("solicitacao-de-devolucao");
+      const idsAnteriores = new Set(devolucoes.map((d) => d.id));
       try {
-        const { data, error } = await supabase.rpc("solicitar_devolucao", {
-          p_order_id: orderId,
-          p_itens: dados.itens,
-          p_motivo: dados.motivo,
-          p_detalhe: dados.detalhe.trim() || null,
-          p_resolucao: dados.resolucao,
-          p_metodo: dados.metodo,
-          p_fotos: dados.fotos,
-        });
+        const incerta = solicitacaoIncertaRef.current;
+        if (incerta?.orderId === orderId) {
+          const resposta = await comPrazo(
+            Promise.resolve(
+              supabase.rpc("devolucoes_do_pedido", { p_order_id: orderId }),
+            ),
+            PRAZO_DA_LEITURA_MS,
+          );
+          const lista = resposta.error
+            ? null
+            : lerDevolucoesDoPedido(resposta.data);
+          if (
+            lista?.some((d) => !incerta.idsAnteriores.has(d.id)) &&
+            solicitacaoIncertaRef.current === incerta
+          ) {
+            solicitacaoIncertaRef.current = null;
+          }
+          if (
+            !lista ||
+            lista.some(
+              (d) =>
+                !incerta.idsAnteriores.has(d.id) ||
+                ["solicitada", "aprovada", "em_transito", "recebida"].includes(
+                  d.status,
+                ),
+            )
+          ) {
+            void carregar();
+            return { ok: false, erro: SEM_RESPOSTA };
+          }
+          solicitacaoIncertaRef.current = null;
+        }
+        const { data, error } = await comPrazo(
+          Promise.resolve(
+            supabase.rpc("solicitar_devolucao", {
+              p_order_id: orderId,
+              p_itens: dados.itens,
+              p_motivo: dados.motivo,
+              p_detalhe: dados.detalhe.trim() || null,
+              p_resolucao: dados.resolucao,
+              p_metodo: dados.metodo,
+              p_fotos: dados.fotos,
+            }),
+          ),
+          PRAZO_DA_GRAVACAO_MS,
+          undefined,
+          () => {
+            if (
+              solicitacaoIncertaRef.current?.idsAnteriores === idsAnteriores
+            ) {
+              solicitacaoIncertaRef.current = null;
+            }
+            void carregar();
+          },
+        );
         if (error) {
           await carregar();
           return { ok: false, erro: mensagemDoErro(error, ERRO_GENERICO) };
@@ -221,53 +283,20 @@ export function useDevolucaoCliente(
         await carregar();
         return { ok: true, valor: resultado };
       } catch (e) {
+        if (e instanceof PrazoEsgotado) {
+          if (solicitacaoIncertaRef.current?.orderId !== orderId) {
+            solicitacaoIncertaRef.current = { orderId, idsAnteriores };
+          }
+          void carregar();
+          return { ok: false, erro: SEM_RESPOSTA };
+        }
         await carregar();
         return { ok: false, erro: mensagemDoErro(e, ERRO_GENERICO) };
       } finally {
         desmarcar();
       }
     },
-    [orderId, carregar],
-  );
-
-  const enviarFoto = useCallback(
-    async (arquivo: File, userId: string): Promise<Desfecho<string>> => {
-      if (!TIPOS_DE_FOTO.includes(arquivo.type)) {
-        return { ok: false, erro: "Envie fotos em JPG, PNG ou WEBP." };
-      }
-      // Fail-open: sem redimensionar (navegador antigo), sobe o original.
-      const pronto = await redimensionarImagem(arquivo);
-      if (pronto.size > TAMANHO_MAXIMO_DA_FOTO) {
-        return { ok: false, erro: "A foto passa de 5 MB. Escolha uma menor." };
-      }
-      const desmarcar = marcarOperacaoSensivel("foto-de-devolucao");
-      try {
-        const caminho = caminhoDaFoto(
-          userId,
-          orderId,
-          gerarUuidV4(),
-          pronto.type,
-        );
-        const { error } = await supabase.storage
-          .from("devolucoes")
-          .upload(caminho, pronto, { contentType: pronto.type, upsert: false });
-        if (error) {
-          return {
-            ok: false,
-            erro: mensagemDoErro(error, "Não foi possível enviar a foto."),
-          };
-        }
-        return { ok: true, valor: caminho };
-      } catch (e) {
-        return {
-          ok: false,
-          erro: mensagemDoErro(e, "Não foi possível enviar a foto."),
-        };
-      } finally {
-        desmarcar();
-      }
-    },
-    [orderId],
+    [orderId, carregar, devolucoes],
   );
 
   /**
@@ -294,13 +323,75 @@ export function useDevolucaoCliente(
     [],
   );
 
+  const enviarFoto = useCallback(
+    async (arquivo: File, userId: string): Promise<Desfecho<string>> => {
+      if (!TIPOS_DE_FOTO.includes(arquivo.type)) {
+        return { ok: false, erro: "Envie fotos em JPG, PNG ou WEBP." };
+      }
+      const desmarcar = marcarOperacaoSensivel("foto-de-devolucao");
+      try {
+        // Se o preparo da foto atrasar, não começa um upload após liberar a tela.
+        const pronto = await comPrazo(
+          redimensionarImagem(arquivo),
+          PRAZO_DA_GRAVACAO_MS,
+        );
+        if (pronto.size > TAMANHO_MAXIMO_DA_FOTO) {
+          return {
+            ok: false,
+            erro: "A foto passa de 5 MB. Escolha uma menor.",
+          };
+        }
+        const caminho = caminhoDaFoto(
+          userId,
+          orderId,
+          gerarUuidV4(),
+          pronto.type,
+        );
+        const { error } = await comPrazo(
+          supabase.storage.from("devolucoes").upload(caminho, pronto, {
+            contentType: pronto.type,
+            upsert: false,
+          }),
+          PRAZO_DO_UPLOAD_DA_FOTO_MS,
+          undefined,
+          (resposta) => {
+            if (!resposta.error) void descartarFotos([caminho]);
+          },
+        );
+        if (error) {
+          return {
+            ok: false,
+            erro: mensagemDoErro(error, "Não foi possível enviar a foto."),
+          };
+        }
+        return { ok: true, valor: caminho };
+      } catch (e) {
+        return {
+          ok: false,
+          erro:
+            e instanceof PrazoEsgotado
+              ? "Sem resposta da rede. Confira a conexão antes de tentar enviar a foto de novo."
+              : mensagemDoErro(e, "Não foi possível enviar a foto."),
+        };
+      } finally {
+        desmarcar();
+      }
+    },
+    [orderId, descartarFotos],
+  );
+
   const cancelar = useCallback(
     async (id: string): Promise<Desfecho> => {
       const desmarcar = marcarOperacaoSensivel("cancelamento-de-devolucao");
       try {
-        const { data, error } = await supabase.rpc("cancelar_devolucao", {
-          p_id: id,
-        });
+        const { data, error } = await comPrazo(
+          Promise.resolve(supabase.rpc("cancelar_devolucao", { p_id: id })),
+          PRAZO_DA_GRAVACAO_MS,
+          undefined,
+          () => {
+            void carregar();
+          },
+        );
         if (error) {
           // O servidor recusou: o cartão na tela provavelmente está velho
           // (a loja já mudou o status). Relê para ele se corrigir sozinho.
@@ -312,6 +403,10 @@ export function useDevolucaoCliente(
           ? { ok: true, valor: undefined }
           : { ok: false, erro: ERRO_GENERICO };
       } catch (e) {
+        if (e instanceof PrazoEsgotado) {
+          void carregar();
+          return { ok: false, erro: SEM_RESPOSTA };
+        }
         return { ok: false, erro: mensagemDoErro(e, ERRO_GENERICO) };
       } finally {
         desmarcar();
@@ -324,10 +419,19 @@ export function useDevolucaoCliente(
     async (id: string, codigo: string): Promise<Desfecho> => {
       const desmarcar = marcarOperacaoSensivel("envio-de-devolucao");
       try {
-        const { data, error } = await supabase.rpc("informar_envio_devolucao", {
-          p_id: id,
-          p_codigo_rastreio: codigo.trim(),
-        });
+        const { data, error } = await comPrazo(
+          Promise.resolve(
+            supabase.rpc("informar_envio_devolucao", {
+              p_id: id,
+              p_codigo_rastreio: codigo.trim(),
+            }),
+          ),
+          PRAZO_DA_GRAVACAO_MS,
+          undefined,
+          () => {
+            void carregar();
+          },
+        );
         if (error) {
           // O servidor recusou: o cartão na tela provavelmente está velho
           // (a loja já mudou o status). Relê para ele se corrigir sozinho.
@@ -339,6 +443,10 @@ export function useDevolucaoCliente(
           ? { ok: true, valor: undefined }
           : { ok: false, erro: ERRO_GENERICO };
       } catch (e) {
+        if (e instanceof PrazoEsgotado) {
+          void carregar();
+          return { ok: false, erro: SEM_RESPOSTA };
+        }
         return { ok: false, erro: mensagemDoErro(e, ERRO_GENERICO) };
       } finally {
         desmarcar();

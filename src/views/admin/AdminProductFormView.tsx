@@ -441,6 +441,26 @@ interface ProductFormFields {
   lengthCm: string;
 }
 
+const AVISO_COMBINACAO_JA_CRIADA =
+  "Outro aparelho já criou essa combinação; mantivemos a dele, confira o estoque.";
+
+/** A linha já gravada vence a nova local: seus estoques nunca se somam. */
+function juntarVariacoesDeOutroAparelho(
+  locais: ProductVariant[],
+  criadasNoBanco: ProductVariant[],
+) {
+  const identidadesDoBanco = new Set(criadasNoBanco.map(chaveDaIdentidade));
+  const manter = locais.filter(
+    (v) =>
+      !v.id.startsWith("temp-") ||
+      !identidadesDoBanco.has(chaveDaIdentidade(v)),
+  );
+  return {
+    variants: [...manter, ...criadasNoBanco],
+    repetidas: manter.length < locais.length,
+  };
+}
+
 /**
  * Os campos do formulário a partir do produto como o banco o devolveu. É o que
  * a abertura da edição usa — e o que o salvar usa para RELER o banco quando um
@@ -1543,15 +1563,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           // (`manter`: volta ao formulário, nunca é apagada em silêncio).
           const { apagar: exclusoesDaLojista, manter: criadasEmOutroAparelho } =
             variacoesExcluidasNoRascunho(parsed, initialData.variants);
-          const variacoesRestauradas = Array.isArray(parsed.variants)
-            ? [
-                ...variacoesDoRascunhoComEstoqueDoBanco(
+          const gradeRestaurada = juntarVariacoesDeOutroAparelho(
+            Array.isArray(parsed.variants)
+              ? variacoesDoRascunhoComEstoqueDoBanco(
                   parsed.variants,
                   initialData.variants,
-                ),
-                ...criadasEmOutroAparelho,
-              ]
-            : initialData.variants;
+                )
+              : initialData.variants,
+            Array.isArray(parsed.variants) ? criadasEmOutroAparelho : [],
+          );
+          const variacoesRestauradas = gradeRestaurada.variants;
           const gradeMudouPelaBase =
             exclusoesDaLojista.length > 0 || criadasEmOutroAparelho.length > 0;
 
@@ -1596,7 +1617,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
           const isDraftDifferent = isProductFormDirty(draftFields, initialData);
 
-          if (isDraftDifferent) {
+          if (isDraftDifferent || gradeRestaurada.repetidas) {
             // Grade que só existe neste rascunho (o produto foi criado e as
             // variações não gravaram): o aviso fica até ela decidir.
             const pendente = parsed.variacoesPendentes === true;
@@ -1604,6 +1625,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               setVariacoesPendentes(false);
               restaurarPendenteRef.current = null;
               setFormData(draftFields);
+              if (gradeRestaurada.repetidas) {
+                toast.warning(AVISO_COMBINACAO_JA_CRIADA);
+              }
               // As que ela excluiu saem do banco quando ela salvar (a RPC só
               // apaga o que vem em `p_apagar`).
               if (exclusoesDaLojista.length > 0) {
@@ -3147,9 +3171,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           naoApagadas = retorno.recusadas;
         } else if (haCampoParaGravar) {
           produtoSalvo = await updateProduct(productId, updates, conferencia);
-          if (produtoSalvo !== undefined) {
-            salvarAnteriorGravouProdutoRef.current = true;
+          if (produtoSalvo === undefined) {
+            // O hook já avisou a recusa. Sem gravação, o rascunho e a tela ficam.
+            setIsSubmitting(false);
+            return;
           }
+          salvarAnteriorGravouProdutoRef.current = true;
         }
         // O produto já foi gravado mesmo se a grade falhar depois. A próxima
         // tentativa deve usar a versão devolvida pelo banco, não a da abertura.
@@ -3401,15 +3428,19 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         const criadasEmOutroAparelho = variants.filter(
           (v) => !idsNoFormulario.has(v.id) && !idsExcluidosAqui.has(v.id),
         );
-        setFormData(
-          formComVariacoes({ ...formData, stock, variants, images }, [
-            ...variacoesDoRascunhoComEstoqueDoBanco(
-              formData.variants,
-              variants,
-            ),
-            ...criadasEmOutroAparelho,
-          ]),
+        const gradeRecarregada = juntarVariacoesDeOutroAparelho(
+          variacoesDoRascunhoComEstoqueDoBanco(formData.variants, variants),
+          criadasEmOutroAparelho,
         );
+        setFormData(
+          formComVariacoes(
+            { ...formData, stock, variants, images },
+            gradeRecarregada.variants,
+          ),
+        );
+        if (gradeRecarregada.repetidas) {
+          toast.warning(AVISO_COMBINACAO_JA_CRIADA);
+        }
       }
       setIsSubmitting(false);
       console.error("Erro ao salvar produto:", error);

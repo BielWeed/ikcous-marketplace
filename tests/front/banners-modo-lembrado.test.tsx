@@ -3,11 +3,9 @@
 // Banners — o modo do editor (Simples / Completo) é lembrado NO APARELHO
 // (painel simples, H4). Simples continua o padrão da primeira abertura.
 //
-// O PERIGO DE DADO que este arquivo prende: salvar em Simples APAGA título,
-// subtítulo, botão, selo, cores e fonte do banner (`dataToSubmit` do
-// `handleSubmit`). Por isso o modo lembrado só vale para banner NOVO ou sem
-// texto; banner com texto abre SEMPRE em Completo, mesmo com "simple"
-// lembrado — senão um salvar distraído apagaria a campanha.
+// Banner com texto abre em Completo para revisar a campanha, mesmo com
+// "simple" lembrado. Desligar os textos ao salvar só esconde a campanha:
+// título, subtítulo, botão, selo, cores e fonte precisam sobreviver.
 //
 //   a. funções puras (`modo-do-editor-de-banner`): valor desconhecido vira
 //      Simples, armazenamento que lança não quebra, regra do banner com texto;
@@ -202,6 +200,12 @@ describe("modo-do-editor-de-banner (funções puras)", () => {
       expect(modoAoAbrirOBanner(undefined, "complete")).toBe("complete");
     });
 
+    it("banner com textos escondidos reabre em Simples, qualquer que seja a preferência", () => {
+      const escondido = { title: "Campanha", showTextOverlay: false };
+      expect(modoAoAbrirOBanner(escondido, "complete")).toBe("simple");
+      expect(modoAoAbrirOBanner(escondido, "simple")).toBe("simple");
+    });
+
     it("banner sem texto segue o modo lembrado", () => {
       const semTexto = { title: "", subtitle: "  ", buttonText: "" };
       expect(modoAoAbrirOBanner(semTexto, "simple")).toBe("simple");
@@ -343,7 +347,7 @@ describe("AdminBannersView — o modo do editor é lembrado no aparelho", () => 
     expect(emModoSimples()).toBe(true);
   });
 
-  it("banner COM título abre em Completo mesmo com 'simple' lembrado — salvar em Simples apagaria o texto", async () => {
+  it("banner com título visível abre em Completo mesmo com 'simple' lembrado", async () => {
     const a = armazenamento();
     a.mapa.set(CHAVE_DO_MODO_DO_EDITOR, "simple");
     vi.stubGlobal("localStorage", a.api);
@@ -354,6 +358,56 @@ describe("AdminBannersView — o modo do editor é lembrado no aparelho", () => 
     expect(emModoCompleto()).toBe(true);
     // Abrir não mexe na preferência do aparelho.
     expect(a.mapa.get(CHAVE_DO_MODO_DO_EDITOR)).toBe("simple");
+  });
+
+  it("desligar textos esconde sem apagar conteúdo e religar restaura", async () => {
+    vi.stubGlobal("localStorage", armazenamento().api);
+    const original = {
+      ...umBanner({
+        title: "Campanha",
+        subtitle: "Só hoje",
+        buttonText: "Ver",
+        badgeText: "Novo",
+      }),
+      titleColor: "#123456",
+      subtitleColor: "#abcdef",
+      buttonBgColor: "#112233",
+      buttonTextColor: "#ffffff",
+      fontFamily: "Arial",
+      overlayColor: "#000000",
+      overlayOpacity: 0.4,
+      showTextOverlay: true,
+    };
+    lista.banners = [original];
+    await montar();
+    await abrirEdicao();
+    await configurarTextos(false);
+    await clicar(botao("Salvar Banner"));
+    expect(updateBanner).toHaveBeenCalledTimes(1);
+    const enviado = updateBanner.mock.calls[0][1];
+    expect(enviado.showTextOverlay).toBe(false);
+    expect({ ...original, ...enviado }).toMatchObject({
+      title: "Campanha",
+      subtitle: "Só hoje",
+      buttonText: "Ver",
+      badgeText: "Novo",
+      titleColor: "#123456",
+      subtitleColor: "#abcdef",
+      buttonBgColor: "#112233",
+      buttonTextColor: "#ffffff",
+      fontFamily: "Arial",
+      overlayColor: "#000000",
+      overlayOpacity: 0.4,
+    });
+    lista.banners = [{ ...original, ...enviado }];
+    await montar();
+    await abrirEdicao();
+    await configurarTextos(false);
+    await configurarTextos(true);
+    await clicar(botao("Salvar Alterações"));
+    expect(updateBanner.mock.calls[1][1]).toMatchObject({
+      showTextOverlay: true,
+    });
   });
 
   it("banner com só o selo (sem título) também abre em Completo", async () => {
@@ -406,7 +460,7 @@ describe("AdminBannersView — o modo do editor é lembrado no aparelho", () => 
     expect(emModoCompleto()).toBe(true);
   });
 
-  it("recuperar um rascunho COM texto passa o editor para Completo — salvar em Simples apagaria o texto", async () => {
+  it("recuperar um rascunho COM texto passa o editor para Completo para revisar a campanha", async () => {
     const a = armazenamento();
     a.mapa.set(CHAVE_DO_MODO_DO_EDITOR, "simple");
     a.mapa.set(

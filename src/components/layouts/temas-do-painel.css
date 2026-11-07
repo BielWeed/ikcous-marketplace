@@ -23,6 +23,7 @@
 /* Escuro não usa data-admin-tema: define só o cinza de apoio, sem mudar fundos.
    #A1A1AD mantém AA até sobre --admin-hover e continua abaixo dos títulos. */
 :where(html.admin-mode:not([data-admin-tema])) {
+  color-scheme: dark;
   --admin-text-soft: 240 6.8% 65.5%;
 }
 
@@ -187,6 +188,55 @@ html.admin-mode[data-admin-tema] .shimmer {
   --bg-shimmer-from: hsl(var(--admin-raised));
   --bg-shimmer-via: hsl(var(--admin-hover));
   --bg-shimmer-to: hsl(var(--admin-raised));
+}
+
+/* Véus de portal: bg-black/50 é também usado em campos e o gerador o
+   torna opaco. Só as cortinas conservam sua transparência no painel. */
+html.admin-mode[data-admin-tema]
+  [data-slot="alert-dialog-overlay"]:where(
+    :not([data-tema-fixo], [data-tema-fixo] *)
+  ) {
+  background-color: rgb(0 0 0 / 0.5);
+}
+
+html.admin-mode[data-admin-tema]
+  [data-slot="dialog-overlay"]:where(
+    :not([data-tema-fixo], [data-tema-fixo] *)
+  ) {
+  background-color: rgb(0 0 0 / 0.5);
+}
+
+html.admin-mode[data-admin-tema]
+  [data-slot="sheet-overlay"]:where(
+    :not([data-tema-fixo], [data-tema-fixo] *)
+  ) {
+  background-color: rgb(0 0 0 / 0.5);
+}
+
+/* Recorte e fotos compartilhados: a vitrine mantém as cores originais.
+   A especificidade supera as variantes dark sem usar !important. */
+html.admin-mode[data-admin-tema]
+  [data-slot="image-adjuster-tabs"]:where(
+    :not([data-tema-fixo], [data-tema-fixo] *)
+  ) {
+  background-color: hsl(var(--admin-bg));
+}
+
+html.admin-mode[data-admin-tema]
+  [data-slot="image-adjuster-preset"]:hover:where(
+    :not([data-tema-fixo], [data-tema-fixo] *)
+  ) {
+  background-color: hsl(var(--admin-raised));
+}
+
+html.admin-mode[data-admin-tema]
+  .dark\:bg-zinc-900\/50:where(:not([data-tema-fixo], [data-tema-fixo] *)) {
+  background-color: hsl(var(--admin-raised));
+}
+
+html.admin-mode[data-admin-tema]
+  .dark\:text-zinc-500:where(:not([data-tema-fixo], [data-tema-fixo] *)) {
+  color: hsl(var(--admin-text-soft));
 }
 
 /* Gráficos: a grade e os números dos eixos vêm com cor fixa (branco a 5%, cinza

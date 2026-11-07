@@ -207,6 +207,31 @@ Deno.test("os três com erro -> 503, sem preço, log 'error' e nada no cache", a
     assertEquals(registro.logs.at(-1)?.status, "error")
 })
 
+// "CEP não encontrado" só vale quando TODO provedor que falhou recusou o CEP.
+// Um provedor fora do ar junto com outro que recusa o CEP não prova que o CEP
+// está errado: a cliente não pode ser mandada corrigir um CEP que está certo.
+const CEP_RECUSADO = () => json({ errors: { cep_destino: ["CEP de destino inválido"] } }, 422)
+
+Deno.test("CEP recusado por um provedor e OUTRO fora do ar -> 503 genérico, nunca 'CEP não encontrado'", async () => {
+    const { resposta, corpo } = await rodar(cotacao(), {
+        banco: multi(["melhor_envio", "superfrete"]),
+        rotas: { me: CEP_RECUSADO, sf: () => new Response("erro", { status: 500 }) },
+    })
+    assertEquals(resposta.status, 503)
+    assertEquals(corpo.codigo, undefined)
+    assertEquals(corpo.error, "Não foi possível calcular o frete agora. Tente novamente em instantes.")
+})
+
+Deno.test("CONTROLE: TODOS os provedores recusam o CEP -> 400 'CEP não encontrado' com codigo cep_invalido", async () => {
+    const { resposta, corpo } = await rodar(cotacao(), {
+        banco: multi(["melhor_envio", "superfrete"]),
+        rotas: { me: CEP_RECUSADO, sf: CEP_RECUSADO },
+    })
+    assertEquals(resposta.status, 400)
+    assertEquals(corpo.codigo, "cep_invalido")
+    assertEquals(corpo.error, "CEP não encontrado. Confira o número e tente de novo.")
+})
+
 // ── Insumos do banco (A2, R1-6) ─────────────────────────────────────────────
 
 Deno.test("ME: corpo oficial com services=<ids> salvos, insurance_value = valor do BANCO (COALESCE da variação) e medidas pela régua", async () => {

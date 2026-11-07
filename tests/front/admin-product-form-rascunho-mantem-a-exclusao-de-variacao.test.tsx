@@ -302,6 +302,102 @@ describe("AdminProductFormView — restaurar rascunho mantém a exclusão de var
     expect(avisos.some((d) => d.includes("foi alterado depois"))).toBe(true);
   });
 
+  it("não diz Salvo nem apaga o rascunho quando a edição não foi guardada", async () => {
+    fetchProduct.mockResolvedValue(produtoDoBanco([]));
+    armazem.set(CHAVE_EDICAO, JSON.stringify(campos({ name: "Nome editado" })));
+    await montar();
+    await restaurar();
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    await salvar();
+
+    expect(updateProduct).toHaveBeenCalledOnce();
+    expect(hospedeiro.textContent).not.toContain("Salvo · voltando à lista");
+    expect(armazem.has(CHAVE_EDICAO)).toBe(true);
+    expect(botaoPorTexto("Salvar alterações")?.disabled).toBe(false);
+  });
+
+  it("restaurar usa a combinação já criada no banco sem somar o estoque da nova repetida", async () => {
+    fetchProduct.mockResolvedValue(produtoDoBanco([A, D]));
+    armazem.set(
+      CHAVE_EDICAO,
+      JSON.stringify(
+        campos({
+          name: "Nome editado",
+          variants: [
+            A,
+            variacao("temp-local", " d ", 3),
+            variacao("temp-outra", "E", 2),
+          ],
+          baseDoRascunho: campos({ variants: [A] }),
+        }),
+      ),
+    );
+    await montar();
+    await restaurar();
+    await salvar();
+
+    const linhas = argumentosDaRpc()?.variantes ?? [];
+    expect(linhas.map((v) => v.id)).toEqual(["temp-outra"]);
+    expect(remendoDaRpc().stock).toBe(7);
+    expect(toast.warning).toHaveBeenCalledWith(
+      "Outro aparelho já criou essa combinação; mantivemos a dele, confira o estoque.",
+    );
+  });
+
+  it("avisa ao restaurar mesmo quando a combinação repetida era a única edição", async () => {
+    fetchProduct.mockResolvedValue(produtoDoBanco([A, D]));
+    armazem.set(
+      CHAVE_EDICAO,
+      JSON.stringify(
+        campos({
+          variants: [A, variacao("temp-local", "D", 3)],
+          baseDoRascunho: campos({ variants: [A] }),
+        }),
+      ),
+    );
+    await montar();
+    await restaurar();
+
+    expect(toast.warning).toHaveBeenCalledWith(
+      "Outro aparelho já criou essa combinação; mantivemos a dele, confira o estoque.",
+    );
+    expect(
+      hospedeiro.querySelectorAll('[data-testid="variante-cadastrada"]'),
+    ).toHaveLength(2);
+  });
+
+  it("recarregar conflito usa a combinação do banco sem duplicar a nova local", async () => {
+    fetchProduct.mockResolvedValue(produtoDoBanco([A]));
+    armazem.set(
+      CHAVE_EDICAO,
+      JSON.stringify(
+        campos({
+          name: "Nome editado",
+          variants: [
+            A,
+            variacao("temp-local", " d ", 3),
+            variacao("temp-outra", "E", 2),
+          ],
+          baseDoRascunho: campos({ variants: [A] }),
+        }),
+      ),
+    );
+    await montar();
+    await restaurar();
+    salvarProdutoComGrade.mockRejectedValueOnce({
+      produtoAtual: produtoDoBanco([A, D]),
+    });
+    await salvar();
+    await salvar();
+
+    const linhas = salvarProdutoComGrade.mock.calls[1]?.[2].variantes;
+    expect(linhas.map((v: { id: string }) => v.id)).toEqual(["temp-outra"]);
+    expect(salvarProdutoComGrade.mock.calls[1]?.[1].stock).toBe(7);
+    expect(toast.warning).toHaveBeenCalledWith(
+      "Outro aparelho já criou essa combinação; mantivemos a dele, confira o estoque.",
+    );
+  });
+
   it("limite: rascunho sem base (antigo) não apaga nada ao salvar", async () => {
     fetchProduct.mockResolvedValue(produtoDoBanco([A, B, C]));
     armazem.set(

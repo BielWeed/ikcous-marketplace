@@ -247,7 +247,9 @@ export interface PecaDaDiferenca {
 }
 
 /** O estado inteiro do caixa — é exatamente isto que o rascunho grava (menos
- * `recibo`/`enviando`/`erro`, que são de SESSÃO: ver `serializarRascunho`). */
+ * `recibo`/`enviando`/`erro`, que são de SESSÃO — com uma exceção: a incerteza
+ * de rede do envio ("pode ter sido gravada") volta como `erro`; ver
+ * `serializarRascunho`). */
 export interface EstadoDaVenda {
   readonly etapa: EtapaDaVenda;
   readonly itens: readonly ItemDoCupom[];
@@ -661,7 +663,9 @@ export function vendaPodeSerRegistrada(
  * produto são três unidades. O teto é sempre o estoque MAIS RECENTE que
  * chegou (`item.estoque`), porque o estoque pode ter mudado entre dois
  * bipes do mesmo código — usar o estoque do item já guardado no cupom
- * aceitaria uma soma que o servidor recusaria.
+ * aceitaria uma soma que o servidor recusaria. "Mais recente" vale para o
+ * bipe (leitura nova do servidor); o item que vem da lista da aba Buscar passa
+ * antes por `itemComEstoqueSeguro`, porque a lista pode estar velha.
  */
 function entrarItemNoCupom(
   estado: EstadoDaVenda,
@@ -707,6 +711,18 @@ function entrarItemNoCupom(
       ? { chave: item.chave, codigo: codigoQueEntrou, em }
       : estado.ultimaEntrada,
   };
+}
+
+/** Item vindo da LISTA da aba Buscar (que pode estar velha): se a mesma peça
+ * já está no cupom, o estoque que vale é o MENOR dos dois, nunca o da lista
+ * por cima do mais novo. Sem a peça no cupom, o item segue como veio. */
+function itemComEstoqueSeguro(
+  estado: EstadoDaVenda,
+  item: ItemDoCupom,
+): ItemDoCupom {
+  const existente = estado.itens.find((i) => i.chave === item.chave);
+  if (!existente) return item;
+  return { ...item, estoque: Math.min(existente.estoque, item.estoque) };
 }
 
 /** O que muda o conteúdo da venda. Com o envio pendente o cupom já foi
@@ -888,7 +904,18 @@ export function reducerDaVenda(
       // não atualiza `ultimaEntrada` por um código de barras (não existe
       // um aqui): usa a própria chave do item, que nunca colide com um
       // código de barras real.
-      return entrarItemNoCupom(estado, acao.item, acao.item.chave, acao.em);
+      //
+      // O estoque que chega aqui vem da LISTA da aba Buscar, lida uma vez e
+      // deixada na tela: pode ser mais velho que o do item que o bipe já pôs
+      // no cupom (outro aparelho vendeu no meio). Diferente do bipe (leitura
+      // nova do servidor), então não substitui: vale o MENOR dos dois, que é
+      // o teto seguro. Peça que ainda não está no cupom entra como veio.
+      return entrarItemNoCupom(
+        estado,
+        itemComEstoqueSeguro(estado, acao.item),
+        acao.item.chave,
+        acao.em,
+      );
 
     case "quantidade_alterada": {
       const item = estado.itens.find((i) => i.chave === acao.chave);
@@ -1119,24 +1146,29 @@ type EstadoPersistidoNoRascunho = Omit<
  * `recibo`, `enviando` e `erro` são de SESSÃO, não da venda em si: gravá-los
  * faria um F5 depois de uma venda registrada reabrir a tela de recibo como
  * se a venda ainda estivesse em curso (risco medido na tarefa).
+ *
+ * Única exceção, e só como FATO: se `erro` é exatamente a frase de rede
+ * (`MENSAGEM_DE_REDE_DA_VENDA` — "a venda pode ter sido gravada"), grava
+ * `talvezGravada: true`. Sem isso o F5 apagava o aviso e o Cancelar passava a
+ * dizer "Nada é registrado", levando a refazer uma venda que já existia. O
+ * texto nunca vai ao disco; recusa antiga (estoque, permissão) também não.
  */
 export function serializarRascunho(
   estado: EstadoDaVenda,
   salvoEm: number | null = Date.now(),
 ): string {
-  const {
-    recibo: _recibo,
-    enviando: _enviando,
-    erro: _erro,
-    ...persistido
-  } = estado;
+  const { recibo: _recibo, enviando: _enviando, erro, ...persistido } = estado;
+  const comIncerteza =
+    erro === MENSAGEM_DE_REDE_DA_VENDA
+      ? { ...persistido, talvezGravada: true }
+      : persistido;
   // O carimbo (`salvoEm`, ISO) mora SÓ no disco: `lerRascunhoComIdade` o tira
   // antes de montar o estado. `null` = não carimba (é como um rascunho velho,
   // de antes do carimbo existir, é regravado enquanto a lojista não decide).
   return JSON.stringify(
     salvoEm !== null && Number.isFinite(salvoEm)
-      ? { ...persistido, salvoEm: new Date(salvoEm).toISOString() }
-      : persistido,
+      ? { ...comIncerteza, salvoEm: new Date(salvoEm).toISOString() }
+      : comIncerteza,
   );
 }
 
@@ -1254,8 +1286,13 @@ export function lerRascunhoComIdade(
   try {
     const objeto: unknown = JSON.parse(bruto);
     if (!pareceRascunhoValido(objeto)) return null;
-    const { salvoEm: carimbo, ...persistido } = objeto as typeof objeto & {
+    const {
+      salvoEm: carimbo,
+      talvezGravada,
+      ...persistido
+    } = objeto as typeof objeto & {
       salvoEm?: unknown;
+      talvezGravada?: unknown;
     };
     const salvoEm = lerCarimbo(carimbo);
     const velho = rascunhoEstaVelho(salvoEm, agora);
@@ -1263,7 +1300,9 @@ export function lerRascunhoComIdade(
       ...persistido,
       recibo: null,
       enviando: false,
-      erro: null,
+      // Só o fato `true` exato volta, e volta como a constante do código —
+      // nunca texto lido do disco.
+      erro: talvezGravada === true ? MENSAGEM_DE_REDE_DA_VENDA : null,
     };
     const etapaConhecida = ETAPAS_DA_VENDA.includes(restaurado.etapa)
       ? restaurado.etapa

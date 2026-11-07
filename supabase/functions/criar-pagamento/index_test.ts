@@ -14227,3 +14227,50 @@ Deno.test("CATEGORIA: nenhuma resposta SEM motivoRecusa ganha o campo (aprovado,
     assertEquals(corpo.motivoRecusa, undefined);
   }
 });
+
+// Corpo que não é um objeto JSON: 400 em JSON com CORS, antes de qualquer
+// leitura de banco ou chamada ao MP. `null` é JSON válido: passa pelo try do
+// parse e `body.orderId` lançava TypeError (500 cru, sem CORS, que o navegador
+// mostra como falha de rede). `[]`, `5` e `"x"` já caíam no 400 de "Pedido
+// inválido." por acaso; ficam como CONTROLE do mesmo contrato.
+for (const [rotulo, corpoBruto] of [
+  ["null", "null"],
+  ["JSON quebrado", "{"],
+  ["lista", "[]"],
+  ["número", "5"],
+  ["texto", '"x"'],
+] as const) {
+  Deno.test(`handler: corpo ${rotulo} responde 400 em JSON com CORS, sem tocar banco nem MP`, async () => {
+    let leiturasDoBanco = 0;
+    const supabase = new Proxy(
+      {},
+      {
+        get() {
+          leiturasDoBanco++;
+          throw new Error("o banco não deveria ser tocado com corpo inválido");
+        },
+      },
+    ) as never;
+    let chamadasDeRede = 0;
+    const fetchImpl = (() => {
+      chamadasDeRede++;
+      return Promise.resolve(new Response("{}", { status: 200 }));
+    }) as typeof fetch;
+
+    const resposta = await handler(
+      new Request("http://localhost/criar-pagamento", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: montarToken(DONO_LOGADO) },
+        body: corpoBruto,
+      }),
+      { supabase, fetchImpl },
+    );
+
+    assertEquals(resposta.status, 400);
+    assertEquals(resposta.headers.get("Access-Control-Allow-Origin"), "*");
+    assertEquals(resposta.headers.get("Content-Type"), "application/json");
+    assertEquals(typeof (await resposta.json()).error, "string");
+    assertEquals(leiturasDoBanco, 0);
+    assertEquals(chamadasDeRede, 0);
+  });
+}

@@ -173,7 +173,10 @@ describe("AdminProductFormView — rascunho x releitura do banco", () => {
         armazem.delete(k);
       },
     });
-    updateProduct.mockResolvedValue(undefined);
+    updateProduct.mockImplementation(async (_id, updates) => ({
+      ...produtoBase,
+      ...updates,
+    }));
     upsertVariants.mockResolvedValue(undefined);
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);

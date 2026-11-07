@@ -387,7 +387,7 @@ export function PoliticaDeDevolucaoSection({
             ...(listaMexida
               ? { categorias_sem_troca: form.categorias_sem_troca }
               : {}),
-            texto_politica: form.texto_politica,
+            texto_politica: form.texto_politica.trim(),
             endereco_devolucao: form.endereco_devolucao,
           },
         },

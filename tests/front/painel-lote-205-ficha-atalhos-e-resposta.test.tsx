@@ -76,10 +76,10 @@ describe("lote 205 — texto-fonte", () => {
     ).toHaveLength(2);
   });
 
-  it("atalho Ctrl+Alt+letra avisa com o nome do painel em português", () => {
+  it("atalho não promete abertura antes de confirmar a navegação", () => {
     const app = fonte("src/App.tsx");
     expect(app).not.toContain("Navegando para o painel de");
-    expect(app).toContain("NOMES_DO_PAINEL[targetView]");
+    expect(app).not.toContain("toast.success(`Abrindo ");
   });
 
   it("data do último pedido do cartão do cliente usa pt-BR", () => {

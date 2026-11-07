@@ -2309,7 +2309,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                           name={`${limite}-date`}
                           type="date"
                           autoComplete="off"
-                          className="mt-1 h-11 w-full min-w-0 border-0 bg-transparent p-0 text-xs text-zinc-100 [color-scheme:dark]"
+                          className="mt-1 h-11 w-full min-w-0 border-0 bg-transparent p-0 text-xs text-zinc-100"
                           value={
                             limite === "start" ? dateRange.start : dateRange.end
                           }

@@ -176,6 +176,22 @@ describe("SolicitarDevolucaoSheet — pedido de devolução do cliente", () => {
     await clicar(botao("Continuar"));
   }
 
+  it("não oferece leitura de política vazia mesmo quando o banco traz Enter e espaços", async () => {
+    await ateOPassoDoMetodo({
+      ...ELEGIBILIDADE,
+      politica: { ...ELEGIBILIDADE.politica, texto_politica: " \n\t\n " },
+    });
+    await clicar(radio("reembolso"));
+    await clicar(radio("envio_proprio"));
+    await clicar(botao("Continuar"));
+    expect(
+      folha()?.querySelector('[data-testid="passo-revisao"]'),
+    ).not.toBeNull();
+    expect(folha()?.textContent).not.toContain(
+      "Ler a política de trocas da loja",
+    );
+  });
+
   it("envio próprio: o passo do método mostra para onde mandar o pacote", async () => {
     await ateOPassoDoMetodo();
     expect(folha()?.textContent).toContain("Envie para: Rua A, 10");

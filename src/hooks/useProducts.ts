@@ -1182,7 +1182,7 @@ export function useProducts({ autoFetch = true } = {}) {
               total: cachedAdminProductsTotal,
             };
           }
-        } else {
+        } else if (!filters?.silent) {
           toast.error("Erro ao listar produtos");
         }
         return null;
@@ -1204,7 +1204,11 @@ export function useProducts({ autoFetch = true } = {}) {
   // leitura desde a página 0, até 3 varreduras. Uma busca mais nova (desta ou de `loadProducts`) vence:
   // a resposta velha é descartada.
   const loadProductsSemCusto = useCallback(
-    async (filters?: { search?: string; category?: string }) => {
+    async (filters?: {
+      search?: string;
+      category?: string;
+      silent?: boolean;
+    }) => {
       if (abortControllerRef.current) abortControllerRef.current.abort();
       abortControllerRef.current = new AbortController();
       const signal = abortControllerRef.current.signal;
@@ -1214,7 +1218,7 @@ export function useProducts({ autoFetch = true } = {}) {
       const VARREDURAS_MAXIMAS = 3;
       try {
         if (!isAdmin) throw new Error("lista de custo é só do painel");
-        setLoading(true);
+        if (!filters?.silent) setLoading(true);
         // Por id: um cadastro no meio da leitura pode repetir uma linha.
         let semCusto = new Map<string, Product>();
         let terminou = false;
@@ -1280,7 +1284,7 @@ export function useProducts({ autoFetch = true } = {}) {
           return null;
         }
         console.error("Error loading products without cost:", err);
-        if (loadId === lastLoadId.current)
+        if (loadId === lastLoadId.current && !filters?.silent)
           toast.error("Erro ao listar produtos");
         return null;
       } finally {

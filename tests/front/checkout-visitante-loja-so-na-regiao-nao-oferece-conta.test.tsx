@@ -206,11 +206,18 @@ describe("CheckoutView (visitante) — loja que só entrega na região", () => {
     expect(botaoDeConta()).toBeUndefined();
   });
 
-  it("controle: loja 'só retiro' (sem entrega própria) com cobertura local + CEP de fora: o aviso não muda", async () => {
+  it("loja 'só retiro' (sem entrega própria) com cobertura local + CEP de fora, sem opção marcada: a oferta de conta NÃO aparece antes de a retirada ser tocada, e o Finalizar segue apagado", async () => {
     mockConfig.localDeliveryEnabled = false;
 
     const texto = await montarEDigitar("01310100");
 
-    expect(texto).toContain("Crie sua conta para receber em outro CEP");
+    // r57-c: antes este caso exigia a oferta de conta. Em "Só retiro" a
+    // retirada está na tela esperando o toque (o app nunca a marca sozinho), e
+    // pedir conta a quem só precisa tocar nela mentia sobre a regra. O portão
+    // do botão não mudou; o caso com uma opção que não é a retirada marcada
+    // (e a oferta que fica) é provado em checkout-convidado-so-retiro-nao-trava.
+    expect(texto).not.toContain("Crie sua conta para receber em outro CEP");
+    expect(botaoDeConta()).toBeUndefined();
+    expect(pegarBotaoFinalizar().disabled).toBe(true);
   });
 });
