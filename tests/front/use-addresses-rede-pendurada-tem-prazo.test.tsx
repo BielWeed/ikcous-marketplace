@@ -53,6 +53,9 @@ const { sessao, toast, supabase, chamadas } = vi.hoisted(() => {
     insert(): Cadeia {
       return this.marcar("insert");
     }
+    delete(): Cadeia {
+      return this.marcar("delete");
+    }
     update(): Cadeia {
       return this.marcar("update");
     }
@@ -123,6 +126,7 @@ interface ContratoHook {
     endereco: Omit<Address, "id" | "user_id">,
   ) => Promise<Address | null>;
   updateAddress: (id: string, mudancas: Partial<Address>) => Promise<boolean>;
+  deleteAddress: (id: string) => Promise<boolean>;
 }
 
 const espelho: { hook: ContratoHook | null } = { hook: null };
@@ -386,6 +390,58 @@ describe("useAddresses — rede pendurada tem prazo", () => {
 
       await expect(promessa).resolves.toBeNull();
       expect(toast.error).toHaveBeenCalledWith("Erro ao adicionar endereço");
+    });
+  });
+
+  describe("excluir e promover", () => {
+    it("delete pendurado termina, avisa a incerteza e relê mesmo com resposta tardia sem data", async () => {
+      await renderizar();
+      const { marca, promessa } = await iniciar(() =>
+        espelho.hook!.deleteAddress(END_A.id),
+      );
+      expect(chamadas[0].op).toBe("delete");
+      await passar(PRAZO);
+      expect(marca.terminou).toBe(true);
+      await expect(promessa).resolves.toBe(false);
+      expect(toast.error.mock.calls[0][0]).toContain("antes de tentar de novo");
+      expect(toast.success).not.toHaveBeenCalled();
+      expect(chamadas[1].op).toBe("select");
+      await responder(1, { data: [END_A], error: null });
+      await responder(0, { data: null, error: null });
+      expect(chamadas[2].op).toBe("select");
+      await responder(2, { data: [], error: null });
+      expect(espelho.hook!.addresses).toEqual([]);
+      expect(toast.success).not.toHaveBeenCalled();
+    });
+
+    it("promoção pendurada não prende a exclusão e a confirmação tardia relê o principal real", async () => {
+      await renderizar();
+      const { marca, promessa } = await iniciar(() =>
+        espelho.hook!.deleteAddress(END_A.id),
+      );
+      await responder(0, { data: null, error: null });
+      const restante = { ...GRAVADO_A2, is_default: false };
+      await responder(1, { data: [restante], error: null });
+      expect(chamadas[2].op).toBe("update");
+      await passar(PRAZO);
+      expect(marca.terminou).toBe(true);
+      await expect(promessa).resolves.toBe(true);
+      expect(espelho.hook!.addresses).toEqual([restante]);
+      expect(toast.error.mock.calls[0][0]).toContain("antes de tentar de novo");
+      await responder(3, {
+        data: [{ ...restante, is_default: true }],
+        error: null,
+      });
+      expect(espelho.hook!.addresses[0].is_default).toBe(true);
+      const sucessos = toast.success.mock.calls.length;
+      await responder(2, { data: null, error: null });
+      expect(chamadas[4].op).toBe("select");
+      await responder(4, {
+        data: [{ ...restante, is_default: true }],
+        error: null,
+      });
+      expect(espelho.hook!.addresses[0].is_default).toBe(true);
+      expect(toast.success).toHaveBeenCalledTimes(sucessos);
     });
   });
 

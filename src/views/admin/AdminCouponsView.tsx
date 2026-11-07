@@ -36,11 +36,6 @@ import {
 } from "@/lib/cupom-que-cobre-a-compra";
 import { porcentagem } from "@/lib/cupons-do-checkout";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
-import {
-  aguardarComPrazo,
-  ehConsultaSemResposta,
-  erroDeConsultaSemResposta,
-} from "@/lib/prazo-da-requisicao";
 import { type TomDeEstado, classeDoTexto } from "@/lib/tons-de-estado";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { View } from "@/types";
@@ -114,7 +109,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
     refreshCoupons,
   } = useCoupons(true);
   const isOffline = useOnlineStatus();
-  const { config, isLoaded: configLoaded, updateConfig, refresh } = useStore();
+  const { config, isLoaded: configLoaded, updateConfig } = useStore();
   // Mesma regra do formulario: sem nenhuma forma 'na retirada/entrega', a loja
   // so recebe pelo app e um cupom que zera a compra deixa a cliente sem caminho.
   const lojaSoRecebePeloApp =
@@ -139,12 +134,12 @@ export const AdminCouponsView = memo(function AdminCouponsView({
     configEmVooRef.current = true;
     setIsUpdatingConfig(true);
     try {
-      // O toast de erro sai de dentro do `updateConfig`; aqui só não se segue
-      // em frente (ADMIN-010, #94).
-      const salvou = await aguardarComPrazo(
-        updateConfig({ enableCoupons: checked }, { silentSuccess: true }),
-        15_000,
-        () => erroDeConsultaSemResposta(),
+      // O `updateConfig` já tem prazo próprio (20 s), relê a configuração e
+      // avisa com toast em qualquer falha, sem lançar: um prazo a mais aqui
+      // soltaria a chave antes e soltaria um segundo aviso (ADMIN-010, #94).
+      const salvou = await updateConfig(
+        { enableCoupons: checked },
+        { silentSuccess: true },
       );
       if (!salvou) return;
       toast.success(
@@ -154,18 +149,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
       );
     } catch (err) {
       console.error(err);
-      if (ehConsultaSemResposta(err)) {
-        toast.error(
-          "Sem resposta da rede. Confira se a mudança nos cupons apareceu antes de tentar de novo.",
-        );
-        // A gravação pode ter chegado; reler sem prender a chave por outra
-        // requisição pendurada. O StoreContext cuida do estado confirmado.
-        void aguardarComPrazo(refresh({ onlyConfig: true }), 12_000, () =>
-          erroDeConsultaSemResposta(),
-        ).catch((erro) => console.error(erro));
-      } else {
-        toast.error("Erro ao atualizar a configuração");
-      }
+      toast.error("Erro ao atualizar a configuração");
     } finally {
       configEmVooRef.current = false;
       setIsUpdatingConfig(false);

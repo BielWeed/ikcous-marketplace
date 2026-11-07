@@ -23,6 +23,7 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { contextoDaLojaParaFrete } from "@/contexts/ContextoDoFreteDaLoja";
 import type { CartItem, Product } from "@/types";
 
 const invoke = vi.fn();
@@ -343,6 +344,196 @@ describe("ShippingCalculator — o cache do navegador não serve cotação de ou
     expect(invoke).toHaveBeenCalledTimes(3);
     expect(hospedeiro.textContent).toContain("77,00");
     expect(hospedeiro.textContent).not.toContain("10,00");
+  });
+
+  // r60-b: o PREÇO também identifica o carrinho. Transportadora que dá frete
+  // grátis (ou desconto) acima de um subtotal responde diferente quando o
+  // preço do produto muda — com o mesmo produto, a mesma variação e a mesma
+  // quantidade. A cotação guardada (2 h) mostrava o frete do subtotal velho.
+  describe("preço do produto mudou (mesmo produto, variação e quantidade)", () => {
+    const produtoComPreco = (preco: number): Product => ({
+      ...produto(),
+      price: preco,
+    });
+    const carrinhoComPreco = (preco: number): CartItem[] => [
+      { product: produtoComPreco(preco), quantity: 1 },
+    ];
+    const carrinhoComVariacao = (precoDaVariacao: number): CartItem[] => [
+      {
+        product: {
+          ...produto(),
+          variants: [
+            {
+              id: "var-1",
+              productId: "prod-1",
+              name: "Tamanho",
+              value: "M",
+              stockIncrement: 1,
+              priceOverride: precoDaVariacao,
+              active: true,
+            },
+          ],
+        },
+        variantId: "var-1",
+        quantity: 1,
+      },
+    ];
+
+    // Transportadora com "frete grátis a partir de R$ 100": o frete depende
+    // do preço que a edge enxerga no carrinho enviado.
+    function transportadoraGratisAPartirDe100() {
+      invoke.mockImplementation((_nome: string, opts: any) => {
+        if (opts.body.action === "revisao_config_frete") {
+          return Promise.resolve({
+            data: { revisaoConfig: REVISAO_FIXA_DO_TESTE },
+            error: null,
+          });
+        }
+        const item = opts.body.cart[0];
+        const preco =
+          item.product.variants?.find((v: any) => v.id === item.variantId)
+            ?.priceOverride ?? item.product.price;
+        const subtotal = preco * item.quantity;
+        return Promise.resolve({
+          data: {
+            options: [
+              {
+                id: "melhorenvio-pac",
+                name: "PAC",
+                price: subtotal >= 100 ? 0 : 33,
+                deliveryDays: 7,
+              },
+            ],
+            revisaoConfig: REVISAO_FIXA_DO_TESTE,
+          },
+          error: null,
+        });
+      });
+    }
+
+    it("voltar ao carrinho com o preço novo recota: não serve o frete cheio do subtotal velho", async () => {
+      transportadoraGratisAPartirDe100();
+      await pintar(carrinhoComPreco(90));
+      await digitarCep("69000000");
+      await enviar();
+      expect(invoke).toHaveBeenCalledTimes(1);
+      expect(hospedeiro.textContent).toContain("33,00");
+
+      // A lojista sobe o preço para R$ 120; a releitura troca o produto do
+      // item (mesmo id, mesma quantidade) e a cliente volta ao carrinho.
+      await pintar(carrinhoComPreco(120));
+      await remontar();
+
+      // Cotação NOVA na rede (e não a confirmação de revisão do acerto de
+      // cache), com o preço novo no corpo.
+      expect(invoke).toHaveBeenCalledTimes(2);
+      expect(invoke.mock.calls[1][1].body.action).toBeUndefined();
+      expect(invoke.mock.calls[1][1].body.cart[0].product.price).toBe(120);
+      expect(hospedeiro.textContent).not.toContain("33,00");
+    });
+
+    it("com a tela aberta, o preço novo recota sozinho e troca o frete", async () => {
+      transportadoraGratisAPartirDe100();
+      await pintar(carrinhoComPreco(90));
+      await digitarCep("69000000");
+      await enviar();
+      expect(invoke).toHaveBeenCalledTimes(1);
+      expect(hospedeiro.textContent).toContain("33,00");
+
+      await pintar(carrinhoComPreco(120));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+
+      expect(invoke).toHaveBeenCalledTimes(2);
+      expect(invoke.mock.calls[1][1].body.cart[0].product.price).toBe(120);
+      expect(hospedeiro.textContent).not.toContain("33,00");
+    });
+
+    it("o contrário também vale: desconto que derruba o subtotal abaixo do mínimo recota", async () => {
+      transportadoraGratisAPartirDe100();
+      await pintar(carrinhoComPreco(120));
+      await digitarCep("69000000");
+      await enviar();
+      expect(invoke).toHaveBeenCalledTimes(1);
+      expect(hospedeiro.textContent).not.toContain("33,00");
+
+      await pintar(carrinhoComPreco(90));
+      await remontar();
+
+      expect(invoke).toHaveBeenCalledTimes(2);
+      expect(hospedeiro.textContent).toContain("33,00");
+    });
+
+    it("preço da VARIAÇÃO que mudou também recota", async () => {
+      transportadoraGratisAPartirDe100();
+      await pintar(carrinhoComVariacao(90));
+      await digitarCep("69000000");
+      await enviar();
+      expect(invoke).toHaveBeenCalledTimes(1);
+
+      await pintar(carrinhoComVariacao(120));
+      await remontar();
+
+      expect(invoke).toHaveBeenCalledTimes(2);
+      expect(invoke.mock.calls[1][1].body.action).toBeUndefined();
+      expect(
+        invoke.mock.calls[1][1].body.cart[0].product.variants[0].priceOverride,
+      ).toBe(120);
+    });
+
+    it("carrinho relido com o MESMO preço não gasta cotação nova (só a confirmação da revisão)", async () => {
+      transportadoraGratisAPartirDe100();
+      await pintar(carrinhoComPreco(90));
+      await digitarCep("69000000");
+      await enviar();
+      expect(invoke).toHaveBeenCalledTimes(1);
+
+      // Releitura do catálogo sem mudança: itens novos na memória, valores
+      // iguais. Nada de recotar.
+      await pintar(carrinhoComPreco(90));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      expect(invoke).toHaveBeenCalledTimes(1);
+
+      await remontar();
+      expect(invoke).toHaveBeenCalledTimes(2);
+      expect(invoke.mock.calls[1][1]).toEqual({
+        body: { action: "revisao_config_frete" },
+      });
+      expect(hospedeiro.textContent).toContain("33,00");
+    });
+
+    it("cotação guardada no formato sem preço (antes desta correção) não é servida: recota uma vez", async () => {
+      transportadoraGratisAPartirDe100();
+      armazem.set(
+        "ikcous_shipping_cache_v2_69000000",
+        JSON.stringify({
+          contexto: contextoDaLojaParaFrete(undefined),
+          assinatura: "prod-1::1",
+          gravadoEm: Date.now(),
+          revisaoConfig: REVISAO_FIXA_DO_TESTE,
+          opcoes: [
+            {
+              id: "melhorenvio-pac",
+              name: "PAC",
+              price: 999,
+              deliveryDays: 7,
+            },
+          ],
+        }),
+      );
+
+      await pintar(carrinhoComPreco(90));
+      await digitarCep("69000000");
+      await enviar();
+
+      expect(invoke).toHaveBeenCalledTimes(1);
+      expect(invoke.mock.calls[0][1].body.cart[0].product.price).toBe(90);
+      expect(hospedeiro.textContent).toContain("33,00");
+      expect(hospedeiro.textContent).not.toContain("999");
+    });
   });
 
   it("entrada no formato antigo (lista crua, sem carrinho e sem data) é tratada como ausência", async () => {

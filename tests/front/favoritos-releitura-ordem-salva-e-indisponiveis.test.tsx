@@ -241,6 +241,11 @@ afterEach(() => {
   Reflect.deleteProperty(document, "visibilityState");
 });
 
+// O visitante guarda só os ids no aparelho (chave de `FavoritesContext`).
+function guardarFavoritosDoVisitante(ids: string[]) {
+  localStorage.setItem("ikcous_favorites", JSON.stringify(ids));
+}
+
 async function montar() {
   const { FavoritesProvider, FavoritesContext } = await import(
     "@/contexts/FavoritesContext"
@@ -531,12 +536,104 @@ describe("FavoritesContext — (C) favoritos indisponíveis", () => {
     expect(ctx()?.favoritosIndisponiveis).toBe(0);
   });
 
-  it("visitante (sem conta): inalterado, zero", async () => {
+  it("visitante (sem conta) com todos os favoritos à venda: zero", async () => {
     usuarioDaVez = null;
-    productsDaLoja = [umProduto("a", false)];
+    productsDaLoja = [umProduto("a"), umProduto("b")];
+    guardarFavoritosDoVisitante(["a", "b"]);
 
     const ctx = await montar();
 
+    expect(ctx()?.favorites.map((p) => p.id)).toEqual(["a", "b"]);
     expect(ctx()?.favoritosIndisponiveis).toBe(0);
   });
+});
+
+// Visitante sem conta: o id fica só no aparelho. Se a lojista pausa ou exclui
+// o produto, o retrato em memória some ao reabrir o app e a tela dizia "você
+// ainda não tem favoritos" — sem aviso e sem como limpar. Agora vale o mesmo
+// aviso de quem tem conta (a lista do visitante já está no aparelho: nenhuma
+// chamada nova ao servidor).
+describe("favoritos indisponíveis do visitante (sem conta)", () => {
+  const guardados = ["a", "pausado", "excluido"];
+
+  it("pausado ou fora do catálogo: conta, e a tela avisa com o botão de limpar", async () => {
+    usuarioDaVez = null;
+    productsDaLoja = [umProduto("a"), umProduto("pausado", false)];
+    guardarFavoritosDoVisitante(guardados);
+    Tela = (await import("@/views/customer/FavoritesView")).FavoritesView;
+
+    const ctx = await montar();
+
+    expect(ctx()?.favorites.map((p) => p.id)).toEqual(["a"]);
+    expect(ctx()?.favoritosIndisponiveis).toBe(2);
+    expect(hospedeiro.textContent).toContain(
+      "2 favoritos seus não estão disponíveis na loja.",
+    );
+    expect(hospedeiro.textContent).toContain("Limpar indisponíveis");
+    expect(consultas).not.toHaveBeenCalled();
+  });
+
+  it("só indisponíveis: a lista vazia deixa de dizer que não há favoritos", async () => {
+    usuarioDaVez = null;
+    productsDaLoja = [umProduto("outro"), umProduto("pausado", false)];
+    guardarFavoritosDoVisitante(["pausado"]);
+    Tela = (await import("@/views/customer/FavoritesView")).FavoritesView;
+
+    await montar();
+
+    expect(hospedeiro.textContent).toContain(
+      "1 favorito seu não está disponível na loja.",
+    );
+    expect(hospedeiro.textContent).toContain(
+      "Seus favoritos estão indisponíveis agora",
+    );
+    expect(hospedeiro.textContent).not.toContain(
+      "Você ainda não tem favoritos",
+    );
+  });
+
+  it("limpar tira só os indisponíveis do aparelho, sem falar com o servidor", async () => {
+    usuarioDaVez = null;
+    productsDaLoja = [umProduto("a"), umProduto("pausado", false)];
+    guardarFavoritosDoVisitante(guardados);
+    const ctx = await montar();
+
+    await act(async () => {
+      await ctx()?.limparIndisponiveis();
+    });
+    await flush();
+
+    expect(
+      JSON.parse(localStorage.getItem("ikcous_favorites") ?? "[]"),
+    ).toEqual(["a"]);
+    expect(ctx()?.favorites.map((p) => p.id)).toEqual(["a"]);
+    expect(ctx()?.favoritosIndisponiveis).toBe(0);
+    expect(remocoes).not.toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledTimes(1);
+    expect(toast.success).toHaveBeenCalledWith("2 favoritos removidos");
+  });
+
+  it.each([
+    { nome: "catálogo carregando", carregando: true, redeAplicada: true },
+    { nome: "catálogo só do cache", carregando: false, redeAplicada: false },
+  ])(
+    "$nome: NÃO conta (ausente pode ser só atraso) e não limpa",
+    async ({ carregando, redeAplicada }) => {
+      usuarioDaVez = null;
+      catalogoCarregando = carregando;
+      catalogoDaRedeAplicado = redeAplicada;
+      productsDaLoja = [umProduto("a")];
+      guardarFavoritosDoVisitante(guardados);
+      const ctx = await montar();
+
+      expect(ctx()?.favoritosIndisponiveis).toBe(0);
+      await act(async () => {
+        await ctx()?.limparIndisponiveis();
+      });
+
+      expect(
+        JSON.parse(localStorage.getItem("ikcous_favorites") ?? "[]"),
+      ).toEqual(guardados);
+    },
+  );
 });

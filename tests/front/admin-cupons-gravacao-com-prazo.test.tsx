@@ -360,9 +360,18 @@ describe("cupons do painel: espera limitada e confirmação real", () => {
     expect(sucesso).not.toHaveBeenCalled();
   });
 
-  it("chave geral trava reentrada, libera com prazo e relê configuração sem sucesso tardio", async () => {
-    const voo = pendente<boolean>();
-    updateConfig.mockReturnValue(voo.promessa);
+  it("chave geral segue travada até o updateConfig voltar: um só aviso, sem prazo próprio da tela", async () => {
+    // Duble fiel ao StoreContext: prazo de 20 s dentro do updateConfig, que
+    // avisa com toast por conta própria e devolve false (nunca lança).
+    updateConfig.mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          setTimeout(() => {
+            erro("Sem resposta da rede (aviso do updateConfig)");
+            resolve(false);
+          }, 20_000);
+        }),
+    );
     await montar("lista");
     const chave = tela.querySelector(
       "#enable-coupons-switch",
@@ -374,14 +383,43 @@ describe("cupons do painel: espera limitada e confirmação real", () => {
     });
     expect(updateConfig).toHaveBeenCalledTimes(1);
     expect(chave.disabled).toBe(true);
+
+    // Aos 15 s a tela não pode soltar a chave nem avisar por conta própria.
     await passar(15_000);
-    expect(chave.disabled).toBe(false);
-    expect(refresh).toHaveBeenCalledWith({ onlyConfig: true });
-    expect(erro).toHaveBeenCalledTimes(1);
+    expect(chave.disabled).toBe(true);
+    expect(erro).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
     await act(async () => {
-      voo.resolver(true);
+      chave.click();
     });
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+
+    // Aos 20 s o updateConfig volta (false): chave liberada, um único aviso
+    // (o dele) e nenhum "sucesso".
+    await passar(5_000);
+    expect(chave.disabled).toBe(false);
+    expect(erro).toHaveBeenCalledTimes(1);
+    expect(erro.mock.calls[0][0]).toContain("aviso do updateConfig");
     expect(sucesso).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("chave geral: updateConfig que grava avisa sucesso uma vez e solta a chave", async () => {
+    updateConfig.mockResolvedValue(true);
+    await montar("lista");
+    const chave = tela.querySelector(
+      "#enable-coupons-switch",
+    ) as HTMLButtonElement;
+    await act(async () => {
+      chave.click();
+    });
+    expect(updateConfig).toHaveBeenCalledWith(
+      { enableCoupons: false },
+      { silentSuccess: true },
+    );
+    expect(chave.disabled).toBe(false);
+    expect(sucesso).toHaveBeenCalledTimes(1);
+    expect(erro).not.toHaveBeenCalled();
   });
 
   it("lista de clientes de cupom novo sem resposta avisa incerteza e relê, sem afirmar recusa", async () => {

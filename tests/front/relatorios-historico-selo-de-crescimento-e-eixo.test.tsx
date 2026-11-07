@@ -193,6 +193,56 @@ describe("Histórico da loja: selo de crescimento e eixo em reais", () => {
         (t) => t.textContent ?? "",
       );
 
+    it.each([undefined, "Retorno do estoque"] as const)(
+      "dias zerados mostram vazio, sem régua inventada (modo %s)",
+      async (modo) => {
+        const s = stats({
+          revenueHistory: dias([0, 0, 0]).map((dia) => ({ ...dia, orders: 0 })),
+          inventory: { totalCost: 0 },
+        });
+        await montar(s, modo);
+        expect(hospedeiro.textContent).toContain(
+          modo
+            ? "Nenhum dado disponível no período"
+            : "Nenhuma venda paga neste período",
+        );
+        expect(rotulosDoEixo()).toEqual([]);
+      },
+    );
+
+    it("período sem movimento não esconde o estoque investido no modo retorno", async () => {
+      const s = stats({
+        revenueHistory: dias([0, 0, 0]).map((dia) => ({ ...dia, orders: 0 })),
+        inventory: { totalCost: 500 },
+      });
+      await montar(s, "Retorno do estoque");
+      expect(hospedeiro.textContent).not.toContain("Nenhum dado disponível");
+      expect(rotulosDoEixo().length).toBeGreaterThan(0);
+    });
+
+    it("o vazio respeita 30 dias; Tudo ainda mostra a venda antiga", async () => {
+      const s = stats({
+        revenueHistory: dias([100, ...Array<number>(30).fill(0)]).map(
+          (dia, i) => ({
+            ...dia,
+            orders: i === 0 ? 1 : 0,
+          }),
+        ),
+      });
+      await montar(s);
+      expect(hospedeiro.textContent).toContain(
+        "Nenhuma venda paga neste período",
+      );
+      const tudo = [...hospedeiro.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "Tudo",
+      )!;
+      await act(async () => tudo.click());
+      expect(hospedeiro.textContent).not.toContain(
+        "Nenhuma venda paga neste período",
+      );
+      expect(rotulosDoEixo().length).toBeGreaterThan(0);
+    });
+
     it("vendas: valores pequenos e grandes saem em reais, com vírgula", async () => {
       await montar(stats({ growth: 1 }, [37.5, 12500, 1500]));
       const rotulos = rotulosDoEixo();

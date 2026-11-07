@@ -754,11 +754,15 @@ export function ShippingCalculator({
     }
   };
 
-  // Assinatura estável do carrinho: muda quando produto, variante OU
-  // QUANTIDADE mudam. Mesma forma de `getCartHash` em
-  // supabase/functions/calculate-shipping/index.ts: itens ordenados por
-  // `productId+variantId`, cada um `${productId}:${variantId}:${quantity}`,
-  // juntos por vírgula.
+  // Assinatura estável do carrinho: muda quando produto, variante, QUANTIDADE
+  // OU PREÇO mudam. Itens ordenados por `productId+variantId`, cada um
+  // `${productId}:${variantId}:${quantity}:${preço vendido}`, juntos por
+  // vírgula. Só a TELA usa esta forma (a edge tem o `getCartHash` dela, sem
+  // preço, e já invalida o próprio cache pelo valor lido do banco). O preço
+  // entra porque o frete grátis e o desconto da transportadora dependem do
+  // subtotal: mesmo produto, mesma variação e mesma quantidade com preço
+  // novo é outra cotação. Cotação guardada no formato sem preço nunca bate
+  // (recota uma vez, nunca serve o frete do subtotal velho).
   const cartSignature = useMemo(() => {
     if (cart.length === 0) return "";
     const sorted = [...cart].sort((a, b) => {
@@ -767,10 +771,15 @@ export function ShippingCalculator({
       return idA.localeCompare(idB);
     });
     return sorted
-      .map(
-        (item) =>
-          `${item.product?.id}:${item.variantId || ""}:${item.quantity || 1}`,
-      )
+      .map((item) => {
+        const preco = item.product
+          ? precoVendido(
+              item.product,
+              item.product.variants?.find((v) => v.id === item.variantId),
+            )
+          : "";
+        return `${item.product?.id}:${item.variantId || ""}:${item.quantity || 1}:${preco}`;
+      })
       .join(",");
   }, [cart]);
 

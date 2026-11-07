@@ -1,4 +1,7 @@
-import { produtoCombinaComBusca } from "@/lib/busca-de-produtos";
+import {
+  pontuadorDaBusca,
+  produtoCombinaComBusca,
+} from "@/lib/busca-de-produtos";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import type { Product } from "@/types";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -57,6 +60,13 @@ export function useSearch(products: Product[], memoria?: MemoriaDosFiltros) {
   const debouncedMaxPrice = useDebounce(maxPrice, 500);
 
   const filteredProducts = useMemo(() => {
+    // Com termo e a ordenação no padrão, vale a RELEVÂNCIA -- a mesma pontuação
+    // da caixinha do topo e da Home --, e a data só desempata. Sem termo não há
+    // o que pontuar e vale "mais novos primeiro".
+    const pontuar = debouncedQuery.trim()
+      ? pontuadorDaBusca(debouncedQuery)
+      : null;
+    const pontos = new Map<string, number>();
     return products
       .filter((product) => {
         // Palavra por palavra, em qualquer ordem, ignorando acento e plural
@@ -94,8 +104,21 @@ export function useSearch(products: Product[], memoria?: MemoriaDosFiltros) {
             return precoDeVitrine(b).preco - precoDeVitrine(a).preco;
           case "name_asc":
             return a.name.localeCompare(b.name);
-          case "newest":
+          case "newest": {
+            if (pontuar) {
+              const pontosDe = (p: Product) => {
+                let valor = pontos.get(p.id);
+                if (valor === undefined) {
+                  valor = pontuar(p);
+                  pontos.set(p.id, valor);
+                }
+                return valor;
+              };
+              const diferenca = pontosDe(b) - pontosDe(a);
+              if (diferenca !== 0) return diferenca;
+            }
             return (b.createdTime ?? 0) - (a.createdTime ?? 0);
+          }
           default:
             return 0;
         }

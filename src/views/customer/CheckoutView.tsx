@@ -4591,39 +4591,9 @@ export function CheckoutViewDaConta({
       status: "pending",
     };
 
-    // A chave desta compra: mesma impressão digital (mesma retentativa,
-    // mesmo F5) devolve a MESMA chave — é o que faz o servidor devolver o
-    // pedido original em vez de criar um gêmeo. Impressão nova (mudou
-    // carrinho, frete, cupom ou endereço) gira chave nova.
     // O eixo online x entrega é decidido UMA vez e serve à impressão da
     // chave e à escolha da RPC (ressalva da revisão de CheckoutView-1756).
     const ehOnline = paymentMethod === "online";
-    orderData.idempotencyKey = gerenteDaChaveDe(contaEsperada).chavePara(
-      impressaoDaCompra({
-        // A impressão enxerga a CHAVE da linha (as duas escolhas), não só o
-        // primeiro id que a RPC recebe: sem isso, trocar Azul-P por Azul-M e
-        // tentar de novo repetia a chave e devolvia o pedido da outra.
-        items: cart.map((item) => ({
-          product_id: item.product.id,
-          variant_id: chaveDaLinha(item) || undefined,
-          quantity: item.quantity,
-        })),
-        totalAmount: orderData.totalAmount,
-        shippingCost: orderData.shippingCost,
-        destinationCep: orderData.destinationCep,
-        shippingOptionId: orderData.shippingOptionId,
-        couponCode: orderData.couponCode,
-        addressId: orderData.addressId,
-        cepDoEndereco: orderData.addressData?.cep ?? null,
-        // Achado chave-do-pedido-25 (15/09/2026): só o EIXO que muda a RPC
-        // (online x entrega) entra na impressão — nunca o método fino
-        // (pix/card/cash), que gravam todos na MESMA RPC de entrega e
-        // continuam sendo a mesma retentativa aos olhos do servidor. Sem
-        // isto, trocar de meio no mesmo carrinho repetia a impressão e a
-        // MESMA chave devolvia o pedido gravado pelo OUTRO meio.
-        paymentMethod: ehOnline ? "online" : "entrega",
-      }),
-    );
 
     // SESSÃO VENCIDA + REDE RUIM (caça 7): o pedido de quem tem conta, enviado
     // sem sessão, seria gravado como anônimo (sem conta nem endereço) e sumiria
@@ -4661,6 +4631,43 @@ export function CheckoutViewDaConta({
         return;
       }
     }
+
+    // 🔴 A chave só nasce DEPOIS da conferência da sessão (r60-b): quem sai
+    // dali não enviou nada, e uma chave gravada contaria como "pedido em
+    // curso" por 30 min — o carrinho pararia de reler preço e estoque
+    // (`haChaveDoPedidoVigente`). Aquele ramo também NÃO apaga a chave: ela
+    // pode ser de um envio anterior que ficou sem resposta, e `chavePara`
+    // devolve a mesma chave para a mesma impressão.
+    // A chave desta compra: mesma impressão digital (mesma retentativa,
+    // mesmo F5) devolve a MESMA chave — é o que faz o servidor devolver o
+    // pedido original em vez de criar um gêmeo. Impressão nova (mudou
+    // carrinho, frete, cupom ou endereço) gira chave nova.
+    orderData.idempotencyKey = gerenteDaChaveDe(contaEsperada).chavePara(
+      impressaoDaCompra({
+        // A impressão enxerga a CHAVE da linha (as duas escolhas), não só o
+        // primeiro id que a RPC recebe: sem isso, trocar Azul-P por Azul-M e
+        // tentar de novo repetia a chave e devolvia o pedido da outra.
+        items: cart.map((item) => ({
+          product_id: item.product.id,
+          variant_id: chaveDaLinha(item) || undefined,
+          quantity: item.quantity,
+        })),
+        totalAmount: orderData.totalAmount,
+        shippingCost: orderData.shippingCost,
+        destinationCep: orderData.destinationCep,
+        shippingOptionId: orderData.shippingOptionId,
+        couponCode: orderData.couponCode,
+        addressId: orderData.addressId,
+        cepDoEndereco: orderData.addressData?.cep ?? null,
+        // Achado chave-do-pedido-25 (15/09/2026): só o EIXO que muda a RPC
+        // (online x entrega) entra na impressão — nunca o método fino
+        // (pix/card/cash), que gravam todos na MESMA RPC de entrega e
+        // continuam sendo a mesma retentativa aos olhos do servidor. Sem
+        // isto, trocar de meio no mesmo carrinho repetia a impressão e a
+        // MESMA chave devolvia o pedido gravado pelo OUTRO meio.
+        paymentMethod: ehOnline ? "online" : "entrega",
+      }),
+    );
 
     await enviarPedido({
       orderData,

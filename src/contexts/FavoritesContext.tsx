@@ -852,20 +852,21 @@ export function FavoritesProvider({
     return salvos;
   }, [user, allProducts, dbFavoriteIds, localFavoriteIds]);
 
-  // Favorito de quem tem conta que não aparece em `favorites` (produto pausado
-  // ou fora do catálogo). O catálogo é lido inteiro, todas as páginas, antes de
-  // chegar aqui; ainda assim só conta após confirmação pela rede, sem erro
-  // e com produtos: a cópia local pode ser velha e faria um favorito parecer
-  // indisponível.
+  // Favorito (da conta, ou do aparelho de quem não tem conta) que não aparece em
+  // `favorites` (produto pausado ou fora do catálogo). O catálogo é lido
+  // inteiro, todas as páginas, antes de chegar aqui; ainda assim só conta após
+  // confirmação pela rede, sem erro e com produtos: a cópia local pode ser
+  // velha e faria um favorito parecer indisponível. O visitante já tem a lista
+  // no aparelho (`localFavoriteIds`): nenhuma consulta nova ao servidor.
   const favoritosIndisponiveis = React.useMemo(() => {
-    if (!user || !catalogoConfirmado) return 0;
+    if (!catalogoConfirmado) return 0;
     const visiveis = new Set(favorites.map((p) => p.id));
     let indisponiveis = 0;
-    for (const id of new Set(dbFavoriteIds)) {
+    for (const id of new Set(user ? dbFavoriteIds : localFavoriteIds)) {
       if (!visiveis.has(id)) indisponiveis++;
     }
     return indisponiveis;
-  }, [user, catalogoConfirmado, dbFavoriteIds, favorites]);
+  }, [user, catalogoConfirmado, dbFavoriteIds, localFavoriteIds, favorites]);
 
   // 3. Actions
   const addToFavorites = useCallback(
@@ -1037,10 +1038,14 @@ export function FavoritesProvider({
   );
 
   const limparIndisponiveis = useCallback(async () => {
-    if (!user || !catalogoConfirmado) return;
-    const dono = user.id;
+    if (!catalogoConfirmado) return;
+    // Visitante: `dono` é `null` (igual ao `usuarioAtualIdRef` sem conta) e a
+    // remoção é só do aparelho — `removeFromFavorites` já tem o ramo local.
+    const dono = user?.id ?? null;
     const visiveis = new Set(favorites.map((p) => p.id));
-    const ids = [...new Set(dbFavoriteIds)].filter((id) => !visiveis.has(id));
+    const ids = [...new Set(user ? dbFavoriteIds : localFavoriteIds)].filter(
+      (id) => !visiveis.has(id),
+    );
     // Usa a mesma fila por produto e a mesma proteção contra ressurreição
     // da remoção pelo coração; nunca apaga favoritos disponíveis.
     if (ids.length === 0) return;
@@ -1068,6 +1073,7 @@ export function FavoritesProvider({
     catalogoConfirmado,
     favorites,
     dbFavoriteIds,
+    localFavoriteIds,
     removeFromFavorites,
     fetchDbFavorites,
   ]);

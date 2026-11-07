@@ -52,6 +52,7 @@ const visao = lerVisaoDoCrm({
 const classico = {
   stats: null,
   categorias: [],
+  carregandoCategorias: false,
   carregando: false,
   erro: null,
   erroDeCategoria: null,

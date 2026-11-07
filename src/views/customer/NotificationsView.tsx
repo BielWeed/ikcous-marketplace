@@ -375,6 +375,27 @@ export function NotificationsView({
         {/* Estado dos avisos NESTE aparelho: só aparece quando bloqueado ou
          * desligado (caça r21, achado 5). */}
         <AvisosDoAparelhoDaCliente />
+        {/* A releitura falhou DEPOIS de a lista carregar: o contexto mantém a
+         * lista antiga e só grava `erro`. Sem este recado, dado velho parecia
+         * atual. Com a lista vazia o erro tem tela própria (mais abaixo). O
+         * `erro` é limpo no próximo sucesso, e o recado some junto. */}
+        {erro && filteredNotifications.length > 0 && (
+          <div
+            role="status"
+            className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 text-[13px] leading-5 text-amber-800 dark:text-amber-300"
+          >
+            <p className="py-2">
+              Não foi possível atualizar os avisos. Mostrando a última lista.
+            </p>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              className="min-h-11 shrink-0 rounded-xl px-2 font-bold underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Tentar de novo
+            </button>
+          </div>
+        )}
         {filteredNotifications.length > 0 ? (
           <motion.div layout role="list">
             <AnimatePresence mode="popLayout">

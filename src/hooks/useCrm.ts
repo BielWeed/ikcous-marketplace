@@ -286,6 +286,7 @@ interface CategoriaDoDashboard {
 interface EstadoDoDashboardClassico {
   readonly stats: DashboardStats | null;
   readonly categorias: CategoriaDoDashboard[];
+  readonly carregandoCategorias: boolean;
   readonly carregando: boolean;
   readonly erro: string | null;
   readonly erroDeCategoria: string | null;
@@ -475,6 +476,7 @@ export function useDashboardClassico(
   return {
     stats,
     categorias,
+    carregandoCategorias: isLoading && categoryData == null && !categoryError,
     carregando: isLoading,
     erro: error,
     erroDeCategoria: categoryError,
