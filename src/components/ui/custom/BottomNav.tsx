@@ -5,7 +5,7 @@ import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import { haptic } from "@/utils/haptic";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Heart, Home, ShoppingCart, User } from "lucide-react";
 import { memo, useMemo } from "react";
 
@@ -18,6 +18,7 @@ export const BottomNav = memo(function BottomNav({
   currentView,
   onNavigate,
 }: Readonly<BottomNavProps>) {
+  const reduzirMovimento = useReducedMotion();
   const { cartCount } = useCartState();
   const { favorites } = useFavorites();
   const favoritesCount = favorites?.length ?? 0;
@@ -127,7 +128,7 @@ export const BottomNav = memo(function BottomNav({
               </span>
               {isActive && (
                 <motion.div
-                  layoutId="activeBottomNavDot"
+                  layoutId={reduzirMovimento ? undefined : "activeBottomNavDot"}
                   className="absolute -bottom-1 size-1.5 rounded-full bg-zinc-950 shadow-xs"
                   transition={{ type: "spring", stiffness: 350, damping: 25 }}
                 />

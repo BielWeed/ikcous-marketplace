@@ -117,7 +117,11 @@ export const AdminCustomersView = memo(function AdminCustomersView({
   // Fonte compartilhada do Ticket Médio — a mesma que o Dashboard
   // (AdminDashboardView) e a tela de Pedidos (AdminOrdersView) já leem.
   // Ver o comentário no card "Ticket Médio" logo abaixo.
-  const { stats: analyticsStats, fetchExecutiveSummary } = useAnalytics();
+  const {
+    stats: analyticsStats,
+    error: analyticsError,
+    fetchExecutiveSummary,
+  } = useAnalytics();
   const { prefetchView } = usePrefetchOnHover();
 
   const handlePrefetchUserDetail = useCallback(() => {
@@ -288,12 +292,19 @@ export const AdminCustomersView = memo(function AdminCustomersView({
     return () => clearTimeout(timer);
   }, [searchTerm, sortField, sortDirection, page, active, fetchCustomers]);
 
-  // Mesmo gatilho de AdminProductsView.tsx: só busca se ainda não tem o
-  // resumo executivo em cache (o hook já resolve isso em memória — um
-  // quarto consumidor de useAnalytics() não é uma quarta ida à rede).
+  // O resumo guardado continua visível, mas cada abertura confere os números
+  // atuais. Não refaz a consulta a cada atualização do próprio resumo.
+  const wasActiveRef = useRef(false);
   useEffect(() => {
-    if (active && !analyticsStats) {
+    const wasActive = wasActiveRef.current;
+    wasActiveRef.current = active ?? false;
+    if (!active) return;
+    if (!analyticsStats) {
       fetchExecutiveSummary(false);
+      return;
+    }
+    if (!wasActive) {
+      fetchExecutiveSummary(true);
     }
   }, [active, analyticsStats, fetchExecutiveSummary]);
 
@@ -555,6 +566,12 @@ export const AdminCustomersView = memo(function AdminCustomersView({
       </div>
       <div className="admin-topo-conteudo px-5">
         <div className="admin-topo-resumo">
+          {analyticsStats && analyticsError && (
+            <p role="status" className="text-admin-text-soft text-xs">
+              Não foi possível atualizar os pedidos e o valor médio por venda.
+              Mostrando a última atualização.
+            </p>
+          )}
           <LocalErrorBoundary>
             <MetricasDoPainel
               titulo="Métricas de Clientes"

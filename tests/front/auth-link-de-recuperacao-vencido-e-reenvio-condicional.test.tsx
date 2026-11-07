@@ -190,7 +190,7 @@ describe("AuthContext + AuthView — link de recuperação vencido e reenvio con
       expect(hospedeiro.textContent).toContain("Recuperar");
       expect(hospedeiro.textContent).toContain("SOLICITAR LINK");
       expect(hospedeiro.textContent).toContain(
-        "Este link expirou ou já foi usado. Peça um novo abaixo.",
+        "Este link expirou ou já foi usado. Se você pediu mais de um, só vale o do e-mail mais recente. Se precisar, peça um novo abaixo (pode ser preciso esperar 1 minuto entre um pedido e outro).",
       );
     });
 

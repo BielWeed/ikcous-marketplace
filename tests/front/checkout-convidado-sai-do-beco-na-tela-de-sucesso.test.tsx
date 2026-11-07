@@ -280,6 +280,17 @@ describe("CheckoutView — convidado sem beco na tela de sucesso (CheckoutView-3
     expect(hospedeiro.textContent).toContain("Pedido recebido!");
   }
 
+  it("o confete da tela de sucesso respeita 'reduzir movimento' do aparelho (acessibilidade)", async () => {
+    await chegarNaTelaDeSucessoComoConvidado();
+
+    // Quem pediu menos animação no sistema não pode levar 150 pedaços de
+    // confete na cara: a lib desliga sozinha com esta opção.
+    expect(confettiMock).toHaveBeenCalledTimes(1);
+    expect(confettiMock.mock.calls[0][0]).toMatchObject({
+      disableForReducedMotion: true,
+    });
+  });
+
   it("convidado com WhatsApp da loja configurado: sem 'Ver Meus Pedidos' (beco), com um caminho de acompanhamento que funciona", async () => {
     await chegarNaTelaDeSucessoComoConvidado();
 

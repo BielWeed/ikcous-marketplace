@@ -83,8 +83,9 @@ describe("AuthView — recuperação: reenviar, spam e corrigir o e-mail", () =>
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
-    // Só os intervalos são falsos: o resto da suíte espera setTimeout real.
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    // Só intervalos e a hora são falsos: o resto da suíte espera setTimeout
+    // real. A contagem do reenvio lê a hora (`Date`), então ela anda junto.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
     resetPassword.mockReset().mockResolvedValue(SUCESSO);
     vi.mocked(toast.error).mockClear();
     vi.mocked(toast.success).mockClear();

@@ -244,4 +244,69 @@ describe("ProductView — antes de escolher, o preço é o da vitrine", () => {
     expect(hospedeiro.textContent).toContain("14% OFF");
     expect(precoDoJsonLd()).toBe(60);
   });
+
+  // A barra fixa de baixo e a folha de opções NÃO moram dentro do `main` (são
+  // portais no `body`): quem lê só `hospedeiro` nunca as vê. Elas repetem o
+  // mesmo preço do bloco principal e precisam repetir o aviso de que é o MENOR.
+  const barraFixa = () =>
+    document.querySelector<HTMLElement>(".bottom-docked-navigation");
+  const folha = () => document.querySelector<HTMLElement>('[role="dialog"]');
+
+  async function abrirAFolhaPelaBarra() {
+    const botoes = [...(barraFixa()?.querySelectorAll("button") ?? [])];
+    const adicionar = botoes.at(-1);
+    expect(adicionar).toBeTruthy();
+    await act(async () => {
+      adicionar?.click();
+    });
+    expect(folha()).not.toBeNull();
+  }
+
+  async function escolherNaFolha(valor: string) {
+    const span = [...(folha()?.querySelectorAll("button span") ?? [])].find(
+      (el) => el.textContent === valor,
+    );
+    const botao = span?.closest("button") as HTMLButtonElement;
+    expect(botao).toBeTruthy();
+    await act(async () => {
+      botao.click();
+    });
+  }
+
+  it("barra fixa: antes de escolher diz 'A partir de' junto do menor preço; ao escolher G o aviso some", async () => {
+    await montar(doisPrecosAVenda);
+
+    expect(barraFixa()).not.toBeNull();
+    expect(barraFixa()?.textContent).toContain("A partir de");
+    expect(barraFixa()?.textContent).toContain("R$ 50,00");
+
+    await escolher("G");
+
+    expect(barraFixa()?.textContent).not.toContain("A partir de");
+    expect(barraFixa()?.textContent).toContain("R$ 60,00");
+  });
+
+  it("folha de opções: antes de escolher diz 'A partir de'; ao escolher G o aviso some", async () => {
+    await montar(doisPrecosAVenda);
+    await abrirAFolhaPelaBarra();
+
+    expect(folha()?.textContent).toContain("A partir de");
+    expect(folha()?.textContent).toContain("R$ 50,00");
+
+    await escolherNaFolha("G");
+
+    expect(folha()?.textContent).not.toContain("A partir de");
+    expect(folha()?.textContent).toContain("R$ 60,00");
+  });
+
+  it("preço único à venda (só G tem estoque): nem a barra nem a folha inventam 'A partir de'", async () => {
+    await montar(soGTemEstoque);
+
+    expect(barraFixa()?.textContent).toContain("R$ 90,00");
+    expect(barraFixa()?.textContent).not.toContain("A partir de");
+
+    await abrirAFolhaPelaBarra();
+    expect(folha()?.textContent).toContain("R$ 90,00");
+    expect(folha()?.textContent).not.toContain("A partir de");
+  });
 });

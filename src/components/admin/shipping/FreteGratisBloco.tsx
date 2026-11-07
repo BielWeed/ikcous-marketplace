@@ -1,3 +1,4 @@
+import { GrupoDeOpcoes } from "@/components/admin/GrupoDeOpcoes";
 import { CabecaDeSecao } from "@/components/admin/shipping/primitivas-direcao-d";
 import type { PresetFreteGratis } from "@/lib/presets-de-frete-gratis";
 import { memo } from "react";
@@ -83,8 +84,7 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
         Vale para a sua entrega e para a retirada na loja.
       </p>
 
-      <div
-        role="radiogroup"
+      <GrupoDeOpcoes
         aria-label="Estratégia de frete local"
         className="flex flex-col gap-2.5 py-5 "
       >
@@ -133,7 +133,7 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
             </button>
           );
         })}
-      </div>
+      </GrupoDeOpcoes>
 
       {preset === "acima_de_valor" && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-admin-border pb-1 pt-4 duration-200 animate-in fade-in">

@@ -575,6 +575,13 @@ body.admin-mode :focus-visible {
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
+  html,
+  .admin-scroll-container,
+  .admin-tab-pane,
+  .scroll-smooth {
+    scroll-behavior: auto !important;
+  }
+
   *,
   *::before,
   *::after {

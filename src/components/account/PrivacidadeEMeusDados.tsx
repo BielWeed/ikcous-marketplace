@@ -274,6 +274,7 @@ export function PrivacidadeEMeusDados({
   }
 
   async function confirmarEmail() {
+    if (ocupada || dialogo !== "corrigir_email") return;
     setFalha(null);
     const conferido = validarEmailNovo(emailDigitado, emailAtual);
     if (!conferido.ok) {
@@ -495,7 +496,15 @@ export function PrivacidadeEMeusDados({
               {TEXTOS_DA_CLIENTE.confirmaEmailTexto}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="space-y-1.5">
+          <form
+            id="form-email-da-conta"
+            noValidate
+            className="space-y-1.5"
+            onSubmit={(evento) => {
+              evento.preventDefault();
+              void confirmarEmail();
+            }}
+          >
             <label
               htmlFor="privacidade-email-novo"
               className="text-sm font-semibold text-zinc-900"
@@ -538,7 +547,7 @@ export function PrivacidadeEMeusDados({
                 {TEXTOS_DA_CLIENTE.campoEmailDica}
               </p>
             )}
-          </div>
+          </form>
           {falha && (
             <p role="alert" className="text-sm font-semibold text-red-700">
               {falha}
@@ -548,18 +557,16 @@ export function PrivacidadeEMeusDados({
             <AlertDialogCancel disabled={ocupada} className="min-h-11">
               {TEXTOS_DA_CLIENTE.confirmaVoltar}
             </AlertDialogCancel>
-            <AlertDialogAction
+            <Button
+              type="submit"
+              form="form-email-da-conta"
               disabled={ocupada}
               className="min-h-11"
-              onClick={(evento) => {
-                evento.preventDefault();
-                void confirmarEmail();
-              }}
             >
               {enviando === "corrigir_email"
                 ? TEXTOS_DA_CLIENTE.enviando
                 : TEXTOS_DA_CLIENTE.confirmaEmailAcao}
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

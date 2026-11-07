@@ -59,11 +59,17 @@ let retornosPendentes = 0;
  * O Voltar já consumiu a nossa entrada; sem empurrá-la de novo, o Voltar
  * seguinte tiraria a cliente da tela inteira. Só o `false` exato conta; qualquer
  * outro retorno (`true`, nada) é "fechou".
+ *
+ * Devolve uma função para marcar a saída por navegação ANTES de fechar a
+ * folha. A limpeza NÃO devolve a entrada nesse caminho: o roteador precisa
+ * substituí-la com replaceState pelo destino (carrinho → novo endereço),
+ * senão sobra uma cópia da tela e o primeiro Voltar nela não sai do lugar.
  */
 export function useVoltarFechaAFolha(
   aberta: boolean,
   aoVoltar: () => unknown,
-): void {
+): () => void {
+  const saindoPorNavegacaoRef = useRef(false);
   const aoVoltarRef = useRef(aoVoltar);
   useEffect(() => {
     aoVoltarRef.current = aoVoltar;
@@ -82,6 +88,7 @@ export function useVoltarFechaAFolha(
 
   useEffect(() => {
     if (!aberta) return;
+    saindoPorNavegacaoRef.current = false;
 
     const eu = Symbol("folha");
     pilhaDeFolhas.push(eu);
@@ -126,7 +133,7 @@ export function useVoltarFechaAFolha(
       globalThis.removeEventListener("popstate", aoPopState, true);
       const eraDaFrente = pilhaDeFolhas[pilhaDeFolhas.length - 1] === eu;
       sairDaPilha();
-      if (desmontandoRef.current) return;
+      if (desmontandoRef.current || saindoPorNavegacaoRef.current) return;
       if (!entradaPropria) return;
       // Fechada por baixo de outra folha: a entrada do topo é da outra.
       if (!eraDaFrente) return;
@@ -135,6 +142,10 @@ export function useVoltarFechaAFolha(
       globalThis.history.back();
     };
   }, [aberta]);
+
+  return () => {
+    saindoPorNavegacaoRef.current = true;
+  };
 }
 
 /** Engole o `popstate` do `history.back()` que acabamos de pedir. */

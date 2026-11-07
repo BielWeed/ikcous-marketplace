@@ -1,3 +1,4 @@
+import { GrupoDeOpcoes } from "@/components/admin/GrupoDeOpcoes";
 import {
   CAMPO,
   FOCO,
@@ -167,7 +168,7 @@ export function QuemPodeUsarOCupom({
         <Selo icone={Users} matiz="#73BFFF" />
         Quem pode usar
       </legend>
-      <div role="radiogroup" aria-label="Quem pode usar" className="space-y-3">
+      <GrupoDeOpcoes aria-label="Quem pode usar" className="space-y-3">
         {OPCOES.map(({ valor, titulo, explicacao, Icone, matiz }) => {
           const marcado = alcance === valor;
           return (
@@ -212,7 +213,7 @@ export function QuemPodeUsarOCupom({
             </button>
           );
         })}
-      </div>
+      </GrupoDeOpcoes>
 
       {alcance === "vitrine" && semLimiteNemValidade && (
         <p className="flex items-start gap-2 rounded-[20px] border border-sky-300/20 bg-sky-300/5 p-4 text-sm leading-relaxed text-sky-200">

@@ -118,7 +118,27 @@ describe("PremiumOffers/HeroOfferCard — não inventa vendas nem procura", () =
     // O resto do cartão segue idêntico.
     expect(texto).toContain("Super Oferta");
     expect(texto).toContain("20% OFF");
+    const capsula = hospedeiro.querySelector(
+      '[class~="p-0.5"][class~="bg-zinc-100/80"]',
+    );
+    expect(capsula?.textContent).toBe("Super Oferta20% OFF");
   });
+
+  it.each([undefined, 80, 60])(
+    "preço original %s sem desconto real não recebe selo de oferta",
+    async (originalPrice) => {
+      await renderiza({ ...produtoBase, originalPrice });
+      expect(hospedeiro.textContent).not.toContain("Super Oferta");
+      expect(hospedeiro.textContent).not.toContain("OFF");
+      expect(
+        hospedeiro.querySelector('[class~="p-0.5"][class~="bg-zinc-100/80"]'),
+      ).toBeNull();
+      expect(hospedeiro.textContent).toContain(produtoBase.name);
+      expect(
+        hospedeiro.querySelector('button[aria-label*="favoritos"]'),
+      ).not.toBeNull();
+    },
+  );
 
   it("sold alto (não zero) também não vira porcentagem: o cartão não mostra venda nenhuma", async () => {
     await renderiza({ ...produtoBase, sold: 400, stock: 5 });

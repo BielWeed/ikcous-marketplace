@@ -199,6 +199,7 @@ describe("Conta (Tinta): toda classe vira regra no Tailwind do projeto", () => {
     // Itens que não são utilitários do Tailwind (ids, rótulos, nomes).
     const naoUtilitarios = new Set([
       "form-senha",
+      "form-perfil",
       "full_name",
       "full_name-erro",
       "cpf-erro",

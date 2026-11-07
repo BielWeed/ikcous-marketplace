@@ -115,6 +115,7 @@ import {
   textoDoPedidoSemValor,
 } from "@/lib/pagamento-com-total-zero";
 import {
+  AVISO_PIX_CONTINUA_ABERTO_AO_VOLTAR,
   esquecerPedidoPendenteDoCheckout,
   guardarPedidoPendenteDoCheckout,
 } from "@/lib/pedido-pendente-do-checkout";
@@ -1966,10 +1967,15 @@ export function CheckoutViewDaConta({
   // de `falhaDaRetomada`): só vale enquanto a retomada e o usuário forem
   // esses — outra retomada (ou outra conta) na mesma instância nunca herda a
   // confirmação, nem o valor, de um pedido anterior.
+  //
+  // `foraDoPrazo` (r55-d): o pagamento chegou DEPOIS de a reserva vencer
+  // (`pago_apos_expirar`) — a mesma identidade, outra tela (PagamentoForaDoPrazoView,
+  // "a loja vai te contatar"), nunca o texto genérico de "não está aguardando".
   const [confirmacaoDaRecarga, setConfirmacaoDaRecarga] = useState<{
     readonly pedidoId: string;
     readonly userId: string;
     readonly valor: number;
+    readonly foraDoPrazo: boolean;
   } | null>(null);
   const retomadaJaPaga =
     confirmacaoDaRecarga !== null &&
@@ -2120,6 +2126,26 @@ export function CheckoutViewDaConta({
               pedidoId: pedidoRetomado,
               userId: dono,
               valor: Number((data as { total: unknown }).total ?? 0),
+              foraDoPrazo: false,
+            });
+            fecharAJanela();
+            return;
+          }
+          // Pagou DEPOIS do prazo (r55-d): o dinheiro já saiu da conta da
+          // cliente e a loja decide o que fazer. A recarga mostra o aviso de
+          // "pagamento recebido, a loja vai te contatar" — o mesmo que a tela
+          // mostra quando vê a virada ao vivo —, não o texto genérico de
+          // "não está aguardando pagamento", que a levaria a pagar de novo.
+          // Só depois da conferência do dono (acima) e sem montar nada.
+          if (pagamento === "pago_apos_expirar") {
+            respondeu = true;
+            clearTimeout(relogio);
+            setFalhaDaRetomada(null);
+            setConfirmacaoDaRecarga({
+              pedidoId: pedidoRetomado,
+              userId: dono,
+              valor: Number((data as { total: unknown }).total ?? 0),
+              foraDoPrazo: true,
             });
             fecharAJanela();
             return;
@@ -2936,6 +2962,24 @@ export function CheckoutViewDaConta({
     return () => marcarEnvioDoCheckout(false);
   }, [isSubmitting]);
 
+  // O Pix está de fato ABERTO na tela (r55-d): pedido em pagamento por Pix que
+  // o servidor ainda não deu por pago, vencido, recusado nem estornado. É a
+  // condição do aviso do Voltar abaixo — depois de pago, de vencido ou no
+  // sucesso de um pedido na entrega, "o Pix continua aberto" seria mentira.
+  // Cartão fica de fora: a aprovação dele pode estar a caminho (verificação em
+  // curso) e a frase do Pix não vale para ele.
+  const pixAindaAbertoNaTela =
+    aguardandoPagamento &&
+    !showSuccess &&
+    orderId !== "" &&
+    metodoDoPedido === "pix" &&
+    statusPagamentoPix === null &&
+    pedidoMortoNoServidorId !== orderId &&
+    // A edge já disse que o pedido não é mais cobrável (409 "o prazo para
+    // pagar acabou") antes de a rotina do banco marcá-lo como vencido: a
+    // tela mostra esse erro, e "continua reservado" contradiria a tela.
+    erroPagamento?.categoria !== "terminal";
+
   // Handle back button override for address modal
   useEffect(() => {
     if (isAddressModalOpen) {
@@ -2950,7 +2994,16 @@ export function CheckoutViewDaConta({
       // já foi limpo — não existe formulário para o botão voltar recuperar.
       // Sem este ramo, o voltar do Android saía direto para o carrinho vazio,
       // sem aviso, com o pedido reservado e o prazo de 30 minutos correndo.
-      onSetBackOverride(() => () => onNavigate("home"));
+      // r55-d: com o Pix aberto, o Voltar também DIZ que o pedido continua
+      // (e onde retomar) antes de ir ao Início — nada é apagado aqui: o
+      // registro da recarga continua sendo largado pelo App, de propósito.
+      onSetBackOverride(() => () => {
+        if (pixAindaAbertoNaTela) {
+          // Frase longa: mais tempo na tela que os 4,5 s de padrão do app.
+          toast.info(AVISO_PIX_CONTINUA_ABERTO_AO_VOLTAR, { duration: 8000 });
+        }
+        onNavigate("home");
+      });
     } else if (isSubmitting) {
       onSetBackOverride(() => () => {
         // O Voltar já gastou a entrada de guarda: devolve-a, para o próximo
@@ -2972,6 +3025,7 @@ export function CheckoutViewDaConta({
     isSummaryPanelOpen,
     showSuccess,
     aguardandoPagamento,
+    pixAindaAbertoNaTela,
     isSubmitting,
     onSetBackOverride,
     onNavigate,
@@ -4717,6 +4771,8 @@ export function CheckoutViewDaConta({
         spread: 70,
         origin: { y: 0.6 },
         colors: ["#000000", "#ffffff", "#10b981", "#fbbf24"],
+        // Quem pediu menos animação no aparelho não recebe o confete.
+        disableForReducedMotion: true,
       });
     } catch (error: any) {
       if (!montadoRef.current) return;
@@ -5113,6 +5169,16 @@ export function CheckoutViewDaConta({
           Ver meus pedidos
         </Button>
       </div>
+    );
+  }
+
+  if (retomadaJaPaga && confirmacaoDaRecarga?.foraDoPrazo) {
+    return (
+      <PagamentoForaDoPrazoView
+        orderId={confirmacaoDaRecarga.pedidoId}
+        valor={confirmacaoDaRecarga.valor}
+        onNavigate={onNavigate}
+      />
     );
   }
 

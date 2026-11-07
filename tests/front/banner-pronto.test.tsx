@@ -208,9 +208,11 @@ describe("banner pronto no carrossel", () => {
     expect(location.pathname + location.search).toBe(
       "/product-detail?id=produto-teste",
     );
+    // `from`: a seta Voltar sabe que há uma tela atrás (r56-d, achado 2).
     expect(history.state).toEqual({
       view: "product-detail",
       id: "produto-teste",
+      from: "home",
     });
   });
   it("slide sem destino não se torna um botão", () => {

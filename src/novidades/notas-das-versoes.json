@@ -1,4 +1,25 @@
 {
+  "1.5.152": {
+    "titulo": "Recuperar senha, pedidos, Pix e voltar do celular mais certos, e painel mais claro",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Recuperar senha: recarregar a tela “Nova senha” não perde mais o pedido de troca; pedir o link duas vezes vale só o último e-mail; o contador do reenvio continua com a tela em segundo plano; o código do rastreio não fica mais bloqueado por 24 horas.",
+      "Loja, Início: o banner continua girando sozinho depois de um toque, o selo “Super Oferta” só aparece em produto com desconto de verdade, o bloco cinza não pisca quando não há banner e banner só de imagem tem descrição para leitor de tela.",
+      "Loja, Produto: quando a loja desliga todas as variações, o produto não fica preso em “Indisponível”, e o preço mostra “A partir de” na barra fixa e na folha de opções.",
+      "Loja, Meus Pedidos: o pedido novo aparece em “Em andamento”, voltar do detalhe mantém a posição da lista e os botões “Em andamento” e “Histórico” não somem durante a recarga.",
+      "Loja, Checkout: ao voltar da tela do Pix com o pedido ainda aberto, aparece o aviso de que o pedido continua reservado e como retomar o pagamento; um pedido pago depois do prazo mostra “Pagamento Recebido” ao recarregar; o confete respeita “reduzir movimento”.",
+      "Loja, Devolução: a devolução concluída explica o valor do reembolso, e troca ou vale-troca concluídos não mostram mais frete nem “Valor”; se o pedido de devolução for recusado, o cartão é relido; a foto da devolução sobe mesmo em aparelho sem suporte a identificador automático.",
+      "Loja, Minha conta: salvar o CPF duas vezes seguidas, ou com internet lenta, não devolve mais o CPF antigo ao campo nem o grava por cima do novo; envio repetido de um pedido de privacidade conta uma vez só.",
+      "Loja, Carrinho: depois de cadastrar um endereço novo, o botão Voltar do celular leva ao carrinho e depois ao início, sem ficar parado, inclusive quando o carrinho abre pelo atalho do ícone ou pelo aviso de carrinho esquecido.",
+      "Loja, botão Voltar: a seta de um produto aberto por banner volta para a vitrine; num link direto de produto a seta leva ao Início sem deixar o link no histórico; categoria e ordem da busca sobrevivem a abrir um produto e voltar.",
+      "Loja e painel, acessibilidade: as opções do painel respondem às setas do teclado, botões mantêm o nome enquanto enviam, carregamentos e erros são anunciados para leitor de tela e as animações respeitam “reduzir movimento”.",
+      "Painel, Produtos: clicar duas vezes em “Salvar variação” não duplica a variação, a roda do mouse não altera mais números de um campo selecionado e os botões + e − do estoque mostram a conta no iPhone.",
+      "Painel, Pedidos: uma venda do balcão não avisa mais como pedido novo, o aviso de pagamento não afirma mais um status que pode estar errado e cancelar pelo cartão da lista reconfirma quando o pedido mudou.",
+      "Painel, Cupons: a validade digitada com ano incompleto não é mais ignorada; o painel pede o ano completo.",
+      "Painel, Clientes e Vendas por categoria: os números são atualizados ao abrir a tela e, se a atualização falhar, os últimos números ficam na tela com um aviso, em vez de sumirem ou mostrarem dados de ontem sem aviso."
+    ]
+  },
   "1.5.151": {
     "titulo": "Busca que não some ao voltar, favoritos que não se perdem, painel que não fica pendurado e Só retirada sem aviso de entrega",
     "novidades": [],

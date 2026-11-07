@@ -95,12 +95,28 @@ export const StrategicIntelligenceBlocks = memo(
           </ExplicacaoDoRelatorio>
         }
       >
+        {error && safeCategoryData.length > 0 && (
+          <div role="status" className="text-admin-text-soft mb-2 text-xs">
+            <p>
+              Não foi possível atualizar agora. Mostrando a última atualização.
+            </p>
+            {onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="min-h-11 rounded-xl text-xs font-bold underline"
+              >
+                Tentar novamente
+              </button>
+            )}
+          </div>
+        )}
         {loading && categoryData.length === 0 ? (
           <div
             className="premium-shimmer h-[156px] rounded-xl"
             aria-hidden="true"
           />
-        ) : !loading && error ? (
+        ) : !loading && error && safeCategoryData.length === 0 ? (
           <div
             role="alert"
             className="flex min-h-[156px] flex-col justify-center gap-2 text-rose-300"

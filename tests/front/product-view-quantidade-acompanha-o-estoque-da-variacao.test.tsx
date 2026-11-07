@@ -324,6 +324,145 @@ describe("ProductView — a quantidade acompanha o estoque da variação", () =>
     expect(adicionarAoCarrinho.mock.calls[0][1]).toBeUndefined();
   });
 
+  // Ao vivo: a cliente já tinha escolhido uma opção e a lojista desligou TODAS
+  // as variações do produto com a página aberta. Não há mais o que escolher e o
+  // produto segue à venda pelo cadastro base (igual a recarregar a página): a
+  // escolha velha, guardada na tela, não pode prender o botão em "Indisponível".
+  function botoesIndisponiveis() {
+    return [...document.querySelectorAll("button")].filter(
+      (b) => b.textContent === "Indisponível",
+    );
+  }
+
+  it("escolheu Vermelho e a lojista desligou TODAS as variações: o produto volta a vender pelo base", async () => {
+    const vermelho = cor("v-verm", "Vermelho", 10);
+    const azul = cor("v-azul", "Azul", 2);
+    await montar(produtoCom([vermelho, azul]));
+    await tocar(opcao("Vermelho"));
+    expect(opcao("Vermelho").getAttribute("aria-pressed")).toBe("true");
+
+    await montar(
+      produtoCom([
+        { ...vermelho, active: false },
+        { ...azul, active: false },
+      ]),
+    );
+
+    expect(hospedeiro.textContent).not.toContain(
+      "Esta opção não está mais disponível",
+    );
+    expect(botoesIndisponiveis()).toHaveLength(0);
+    await comprar();
+    expect(adicionarAoCarrinho).toHaveBeenCalledTimes(1);
+    expect(adicionarAoCarrinho.mock.calls[0][1]).toBeUndefined();
+  });
+
+  it("opção única já marcada sozinha e depois todas desligadas: também volta a vender pelo base", async () => {
+    const unica = cor("v-unica", "Vermelho", 10);
+    await montar(produtoCom([unica]));
+    expect(opcao("Vermelho").getAttribute("aria-pressed")).toBe("true");
+
+    await montar(produtoCom([{ ...unica, active: false }]));
+
+    expect(botoesIndisponiveis()).toHaveLength(0);
+    await comprar();
+    expect(adicionarAoCarrinho).toHaveBeenCalledTimes(1);
+    expect(adicionarAoCarrinho.mock.calls[0][1]).toBeUndefined();
+  });
+
+  it("todas desligadas e o produto base SEM estoque: continua sem comprar (Esgotado)", async () => {
+    const vermelho = cor("v-verm", "Vermelho", 10);
+    await montar(produtoCom([vermelho]));
+    await tocar(opcao("Vermelho"));
+
+    await montar({
+      ...produtoCom([{ ...vermelho, active: false }]),
+      stock: 0,
+    });
+
+    const botao = [...document.querySelectorAll("button")].find(
+      (b) => b.textContent === "Esgotado",
+    ) as HTMLButtonElement | undefined;
+    expect(botao).toBeTruthy();
+    expect(botao?.disabled).toBe(true);
+    await tocar(botao);
+    expect(adicionarAoCarrinho).not.toHaveBeenCalled();
+  });
+
+  it("só o grupo Cor foi todo desligado (Tamanho segue): a escolha velha de Cor não trava, e nunca vai ao carrinho", async () => {
+    const vermelho = cor("v-verm", "Vermelho", 10);
+    const p = tamanho("v-p", "P", 10);
+    const m = tamanho("v-m", "M", 10);
+    await montar(produtoCom([vermelho, p, m]));
+    await tocar(opcao("Vermelho"));
+    await tocar(opcao("P"));
+
+    await montar(produtoCom([{ ...vermelho, active: false }, p, m]));
+
+    expect(hospedeiro.textContent).not.toContain(
+      "Esta opção não está mais disponível",
+    );
+    expect(botoesIndisponiveis()).toHaveLength(0);
+    await comprar();
+    expect(adicionarAoCarrinho).toHaveBeenCalledTimes(1);
+    expect(adicionarAoCarrinho.mock.calls[0][1]).toBe("v-p");
+    expect(String(adicionarAoCarrinho.mock.calls[0][2] ?? "")).not.toContain(
+      "Vermelho",
+    );
+  });
+
+  it("a fileira de Cor continua, mas a cor escolhida foi desligada (Tamanho ainda por escolher): segue travado até escolher outra", async () => {
+    // O limite da regra: só a fileira que SUMIU por inteiro deixa de valer. Se
+    // a fileira continua na tela, a escolha velha que ficou fora dela trava.
+    const vermelho = cor("v-verm", "Vermelho", 10);
+    const azul = cor("v-azul", "Azul", 10);
+    const p = tamanho("v-p", "P", 10);
+    const m = tamanho("v-m", "M", 10);
+    await montar(produtoCom([vermelho, azul, p, m]));
+    await tocar(opcao("Vermelho"));
+
+    await montar(produtoCom([{ ...vermelho, active: false }, azul, p, m]));
+
+    expect(hospedeiro.textContent).toContain(
+      "Esta opção não está mais disponível",
+    );
+    const bloqueados = botoesIndisponiveis();
+    expect(bloqueados.length).toBeGreaterThan(0);
+    for (const botao of bloqueados) {
+      expect((botao as HTMLButtonElement).disabled).toBe(true);
+      await tocar(botao);
+    }
+    expect(adicionarAoCarrinho).not.toHaveBeenCalled();
+  });
+
+  it("grade composta (Cor / Tamanho) escolhida e depois toda desligada: vende pelo base", async () => {
+    const linha = (id: string, valor: string): ProductVariant => ({
+      id,
+      productId: "p-camiseta",
+      name: "Cor / Tamanho",
+      value: valor,
+      stockIncrement: 5,
+      active: true,
+    });
+    const brancaP = linha("v-bp", "Branca / P");
+    const brancaM = linha("v-bm", "Branca / M");
+    await montar(produtoCom([brancaP, brancaM]));
+    await tocar(document.querySelector('button[aria-label="Branca"]'));
+    await tocar(document.querySelector('button[aria-label="P"]'));
+
+    await montar(
+      produtoCom([
+        { ...brancaP, active: false },
+        { ...brancaM, active: false },
+      ]),
+    );
+
+    expect(botoesIndisponiveis()).toHaveLength(0);
+    await comprar();
+    expect(adicionarAoCarrinho).toHaveBeenCalledTimes(1);
+    expect(adicionarAoCarrinho.mock.calls[0][1]).toBeUndefined();
+  });
+
   it("desmarcar funciona também com dois grupos", async () => {
     // Estoque da combinação cai a 0 por causa do OUTRO grupo: o botão da
     // escolha atual não pode virar armadilha (disabled sem como desmarcar).

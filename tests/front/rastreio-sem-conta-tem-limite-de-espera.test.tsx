@@ -161,14 +161,67 @@ describe("rastreio sem conta — limite de espera", () => {
     expect(toastError).not.toHaveBeenCalled();
   });
 
-  it("envio: a falha comum (502, sem corpo) continua com a frase de sempre, não a de conexão lenta", async () => {
+  const FRASE_DO_ENVIO_QUE_FALHOU =
+    "Não conseguimos enviar seu código agora. Tente de novo mais tarde. Se já pediu vários códigos hoje, o limite do dia pode levar até 24 horas para liberar: fale com a loja.";
+
+  it("envio: a falha comum (502, sem corpo) dá a frase de falha, não a de conexão lenta", async () => {
     invoke.mockResolvedValue({ data: null, error: new Error("boom") });
     const { gerar } = await pegarFuncoes();
 
     expect(await gerar("a@b.c", "34999999999", "abcdef")).toBe(false);
-    expect(toastError).toHaveBeenCalledWith(
-      "Não conseguimos enviar seu código agora. Tente de novo em alguns minutos.",
-    );
+    expect(toastError).toHaveBeenCalledWith(FRASE_DO_ENVIO_QUE_FALHOU);
+  });
+
+  it("envio: o teto diário (que o cliente não distingue de pane) NUNCA promete 'alguns minutos' e diz que pode levar até 24 horas", async () => {
+    // O banco recusa o 6º código do dia para o mesmo pedido com um erro
+    // genérico; a edge o repassa como `envio_falhou` (502). Do lado da tela é
+    // indistinguível de uma pane de e-mail, então a frase tem de servir aos
+    // dois: sem prometer minutos, e dizendo que o limite do dia pode durar.
+    const casos = [
+      { data: null, error: new Error("502 sem corpo") },
+      { data: { ok: false, motivo: "envio_falhou" }, error: null },
+      { data: { ok: false, motivo: "sem_remetente" }, error: null },
+    ];
+    const { gerar } = await pegarFuncoes();
+    for (const caso of casos) {
+      toastError.mockClear();
+      invoke.mockResolvedValueOnce(caso);
+      // E-mail diferente por caso: nenhuma falha anterior segura o próximo.
+      expect(
+        await gerar(`c${casos.indexOf(caso)}@b.c`, "34999999999", "abcdef"),
+      ).toBe(false);
+      const texto = String(toastError.mock.calls[0]?.[0]);
+      expect(texto).toContain("24 horas");
+      expect(texto).toContain("fale com a loja");
+      expect(texto).not.toMatch(/minutos/i);
+    }
+  });
+
+  it("envio: rede que cai (exceção) também não promete 'alguns minutos'", async () => {
+    invoke.mockRejectedValue(new Error("Failed to fetch"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { gerar } = await pegarFuncoes();
+
+    expect(await gerar("a@b.c", "34999999999", "abcdef")).toBe(false);
+    expect(String(toastError.mock.calls[0]?.[0])).not.toMatch(/minutos/i);
+  });
+
+  it("envio: insistir logo depois da falha (freio de 60 s) também não promete minutos nem diz que 'já enviamos'", async () => {
+    invoke
+      .mockResolvedValueOnce({ data: { ok: false, motivo: "envio_falhou" } })
+      .mockResolvedValueOnce({
+        data: { ok: false, motivo: "muito_recente", espereSegundos: 42 },
+      });
+    const { gerar } = await pegarFuncoes();
+
+    await gerar("a@b.c", "34999999999", "abcdef");
+    toastError.mockClear();
+    await gerar("a@b.c", "34999999999", "abcdef");
+
+    const texto = String(toastError.mock.calls[0]?.[0]);
+    expect(texto).toContain("Ainda não conseguimos enviar seu código");
+    expect(texto).toContain("fale com a loja");
+    expect(texto).not.toMatch(/minutos|instante|já enviamos/i);
   });
 
   it("verificação (com trio, v2) que nunca responde: desiste, devolve [] e avisa 'conexão lenta' sem dizer que o código é inválido", async () => {

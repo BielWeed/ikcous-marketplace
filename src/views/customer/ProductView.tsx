@@ -672,18 +672,21 @@ export const ProductView = React.memo(function ProductView({
 
   const isLowStock = currentStock <= 3 && currentStock > 0;
   const escolhaIndisponivel =
-    Object.entries(selectedVariants).some(
-      ([name, value]) =>
-        !fileiras.some(
-          (f) => f.nome === name && f.valores.some((v) => v.valor === value),
-        ),
-    ) ||
+    Object.entries(selectedVariants).some(([name, value]) => {
+      const fileira = fileiras.find((f) => f.nome === name);
+      // Fileira que sumiu por inteiro (a lojista desligou todas as opções
+      // dela com a página aberta): não há o que escolher, então a escolha
+      // velha guardada aqui não vale nem trava -- nunca vai ao carrinho
+      // (`selectedVariantObjects` só olha o que ainda existe).
+      if (!fileira) return false;
+      return !fileira.valores.some((v) => v.valor === value);
+    }) ||
     (fileiras.length > 0 &&
       fileiras.every((f) => selectedVariants[f.nome]) &&
       !variante);
   // Grupo com TODAS as opções desligadas não trava a compra: o servidor, o
   // carrinho e o card seguem vendendo pelo produto base. Só trava a opção
-  // ESCOLHIDA que deixou de existir.
+  // ESCOLHIDA que deixou de existir numa fileira que continua na tela.
   const variacaoIndisponivel = escolhaIndisponivel;
   const isOutOfStock = currentStock <= 0 || variacaoIndisponivel;
   const discount = originalExibido
@@ -1512,8 +1515,14 @@ export const ProductView = React.memo(function ProductView({
                     </div>
                   </div>
 
+                  <span role="status" className="sr-only">
+                    {loadingReviews ? "Carregando Avaliações..." : ""}
+                  </span>
                   {loadingReviews ? (
-                    <div className="flex flex-col items-center py-12 text-center">
+                    <div
+                      aria-hidden="true"
+                      className="flex flex-col items-center py-12 text-center"
+                    >
                       <div className="mb-3 size-8 animate-spin rounded-full border-[3px] border-zinc-100 border-t-zinc-950" />
                       <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
                         Carregando Avaliações...
@@ -1757,16 +1766,23 @@ export const ProductView = React.memo(function ProductView({
               De: {reais(originalExibido)}
             </span>
           )}
-          <p
-            className={cn(
-              "text-xl font-bold",
-              originalExibido && originalExibido > precoExibido
-                ? CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO
-                : "text-foreground",
+          <div className="flex items-baseline gap-2">
+            {vitrine?.aPartirDe && (
+              <span className="text-xs font-bold uppercase text-zinc-500">
+                A partir de
+              </span>
             )}
-          >
-            {reais(precoExibido)}
-          </p>
+            <p
+              className={cn(
+                "text-xl font-bold",
+                originalExibido && originalExibido > precoExibido
+                  ? CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO
+                  : "text-foreground",
+              )}
+            >
+              {reais(precoExibido)}
+            </p>
+          </div>
           <FileirasDeVariacao
             fileiras={fileiras}
             escolha={selectedVariants}
@@ -1830,6 +1846,11 @@ export const ProductView = React.memo(function ProductView({
                   className="size-[52px] shrink-0 rounded-full border border-border object-cover"
                 />
                 <div className="min-w-[80px] flex-1">
+                  {vitrine?.aPartirDe && (
+                    <span className="block text-xs font-bold uppercase leading-tight text-zinc-500">
+                      A partir de
+                    </span>
+                  )}
                   <p
                     className={cn(
                       "break-words text-lg font-bold leading-tight",

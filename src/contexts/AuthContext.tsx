@@ -42,6 +42,13 @@ import {
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
+import {
+  esquecerRecuperacao,
+  garantirRecuperacao,
+  iniciarRecuperacao,
+  recuperacaoEmAndamento,
+  vincularRecuperacao,
+} from "@/lib/recuperacao-de-senha-em-andamento";
 import { supabase } from "@/lib/supabase";
 import { limparCachesDeAdmin } from "@/utils/admin_cache";
 import {
@@ -108,6 +115,14 @@ const MENSAGEM_CODIGO_SEM_RESPOSTA =
   "A conexão está lenta e o código não foi confirmado. Tente de novo; se disser que o código venceu, peça outro.";
 const MENSAGEM_NOVA_SENHA_SEM_RESPOSTA =
   "A conexão está lenta e a troca de senha não foi confirmada. Ela pode ter sido feita: tente entrar com a senha nova antes de repetir.";
+
+// Frase ÚNICA do pedido de link de recuperação que falhou (erro do servidor,
+// limite de envio ou exceção): igual para qualquer endereço, sem ecoar o texto
+// do servidor (#120). Cada pedido novo troca o link anterior, então quem pede de
+// novo logo depois pode ter o e-mail bom na caixa de entrada: a frase manda
+// conferir e usar o mais recente, em vez de parecer uma pane.
+const MENSAGEM_LINK_DE_RECUPERACAO_NAO_ENVIADO =
+  "Não foi possível enviar o link agora. Se você acabou de pedir um, ele já pode estar na sua caixa de entrada (confira também o spam): use o e-mail mais recente. Senão, tente novamente em instantes.";
 
 function comPrazoDeAutenticacao<T>(
   requisicao: Promise<T>,
@@ -412,10 +427,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (enderecoTrazErroDeLink(window.location.search, window.location.hash))
         return false;
       const params = new URLSearchParams(window.location.search);
-      return (
+      if (
         params.get("type") === "recovery" ||
         window.location.hash.includes("type=recovery")
-      );
+      ) {
+        return true;
+      }
+      // Recarregou (F5, aba descartada, reabriu o app) no meio da troca: o
+      // `type=recovery` já saiu do endereço, mas a sessão do link ficou no
+      // aparelho. A marca (validade curta, presa à conta) devolve o modo.
+      return recuperacaoEmAndamento(cachedSession?.user?.id ?? null);
     }
     return false;
   });
@@ -468,6 +489,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const activeUserIdRef = useRef<string | null>(
     cachedSession?.user?.id || null,
   );
+
+  // A marca do modo "nova senha" acompanha o estado: nasce com ele e sai
+  // quando ele acaba (troca concluída, saída, outra conta). Ver
+  // src/lib/recuperacao-de-senha-em-andamento.ts.
+  useEffect(() => {
+    if (isPasswordRecovery) garantirRecuperacao(activeUserIdRef.current);
+    else esquecerRecuperacao();
+  }, [isPasswordRecovery]);
 
   const checkAdmin = async (u: User | null | undefined) => {
     if (!u) {
@@ -1080,6 +1109,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (event === "PASSWORD_RECOVERY") {
         console.log("[Auth] Recovery event detected");
         contaDaRecuperacaoRef.current = currentUserId;
+        // Link aberto agora: marca de novo, com a validade recomeçando (vale
+        // também para quem já estava no modo e abriu um link mais novo).
+        iniciarRecuperacao(currentUserId);
         setIsPasswordRecovery(true);
       } else if (
         event === "SIGNED_OUT" ||
@@ -1091,6 +1123,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else if (currentUserId && contaDaRecuperacaoRef.current === null) {
         // Também vincula o modo iniciado pelo endereço antes do evento recovery.
         contaDaRecuperacaoRef.current = currentUserId;
+        vincularRecuperacao(currentUserId);
       }
 
       if (session?.user) {
@@ -1469,7 +1502,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.error("[Auth] Erro ao reenviar e-mail:", error.message);
         const message =
           error.status === 429 || error.code === "over_email_send_rate_limit"
-            ? "Muitas tentativas. Aguarde alguns minutos antes de pedir um novo e-mail."
+            ? "Muitas tentativas. Aguarde alguns minutos antes de pedir um novo e-mail. Se você já pediu um, use o e-mail mais recente."
             : "Não foi possível reenviar o e-mail agora. Tente novamente em instantes.";
         toast.error(message);
         return false;
@@ -1479,7 +1512,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // falsa para quem já tem conta. Condicional, e sem revelar se tem conta
       // (a #120 fechou esse vazamento) — vale para qualquer endereço.
       toast.success(
-        "Se este e-mail ainda aguarda confirmação, reenviamos o link. Se você já tem conta, entre ou use 'Esqueceu?'.",
+        "Se este e-mail ainda aguarda confirmação, reenviamos o link. Se pediu mais de um, vale só o e-mail mais recente. Se você já tem conta, entre ou use 'Esqueceu?'.",
       );
       return true;
     },
@@ -1537,8 +1570,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           return {
             success: false,
             status: "error",
-            message:
-              "Não foi possível enviar o link de recuperação agora. Tente novamente em instantes.",
+            message: MENSAGEM_LINK_DE_RECUPERACAO_NAO_ENVIADO,
           };
         }
 
@@ -1563,8 +1595,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return {
           success: false,
           status: "error",
-          message:
-            "Não foi possível enviar o link de recuperação agora. Tente novamente em instantes.",
+          message: MENSAGEM_LINK_DE_RECUPERACAO_NAO_ENVIADO,
         };
       }
     },
@@ -1591,6 +1622,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
 
         console.log("[Auth] OTP verified successfully. Session created.");
+        iniciarRecuperacao(activeUserIdRef.current);
         setIsPasswordRecovery(true);
         return true;
       } catch (err) {

@@ -14,7 +14,7 @@ import { useCategories } from "@/hooks/useCategories";
 import { useFavorites } from "@/hooks/useFavorites";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
-import { useSearch } from "@/hooks/useSearch";
+import { type FiltrosDaBusca, useSearch } from "@/hooks/useSearch";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import type { Product, View } from "@/types";
@@ -51,6 +51,11 @@ interface SearchViewProps {
     variantId?: string,
     variantNames?: string,
   ) => unknown;
+  /** Categoria, ordem e faixa de preço que o App guardou da última visita a
+   * esta tela (ela é desmontada ao abrir um produto). Só vale ao montar. */
+  filtrosIniciais?: FiltrosDaBusca;
+  /** Avisa o App a cada mudança dos filtros, para ele guardá-los. */
+  aoMudarFiltros?: (filtros: FiltrosDaBusca) => void;
 }
 
 interface SearchInputProps {
@@ -107,6 +112,8 @@ export const SearchView = React.memo(function SearchView({
   selectedProductId,
   onQueryChange,
   onAddToCart,
+  filtrosIniciais,
+  aoMudarFiltros,
 }: SearchViewProps) {
   const { config, catalogoErro, loadingProducts, fetchProducts } = useStore();
   const [tentandoBusca, setTentandoBusca] = useState(false);
@@ -144,7 +151,10 @@ export const SearchView = React.memo(function SearchView({
     setSort,
     filteredProducts,
     totalResults,
-  } = useSearch(produtosAVenda);
+  } = useSearch(produtosAVenda, {
+    iniciais: filtrosIniciais,
+    aoMudar: aoMudarFiltros,
+  });
 
   const { isFavorite, toggleFavorite } = useFavorites();
   const handleProductClick = useCallback(

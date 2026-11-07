@@ -1,17 +1,55 @@
 import { produtoCombinaComBusca } from "@/lib/busca-de-produtos";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import type { Product } from "@/types";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDebounce } from "./useDebounce";
 
 export type SortOption = "price_asc" | "price_desc" | "name_asc" | "newest";
 
-export function useSearch(products: Product[]) {
+/** Categoria, faixa de preço e ordenação: o que a cliente refina na busca. */
+export interface FiltrosDaBusca {
+  category: string;
+  minPrice: number | "";
+  maxPrice: number | "";
+  sort: SortOption;
+}
+
+/**
+ * A tela de busca é desmontada ao abrir um produto. Quem a hospeda (o App)
+ * guarda os filtros fora dela: `iniciais` é o que ficou guardado e `aoMudar`
+ * recebe o conjunto inteiro a cada mudança. Sem isto o gancho funciona como
+ * sempre, só com estado local.
+ */
+export interface MemoriaDosFiltros {
+  iniciais?: FiltrosDaBusca;
+  aoMudar?: (filtros: FiltrosDaBusca) => void;
+}
+
+export function useSearch(products: Product[], memoria?: MemoriaDosFiltros) {
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("Todas");
-  const [minPrice, setMinPrice] = useState<number | "">("");
-  const [maxPrice, setMaxPrice] = useState<number | "">("");
-  const [sort, setSort] = useState<SortOption>("newest");
+  // `iniciais` vale só no nascimento (useState ignora a mudança depois).
+  const [category, setCategory] = useState(
+    memoria?.iniciais?.category ?? "Todas",
+  );
+  const [minPrice, setMinPrice] = useState<number | "">(
+    memoria?.iniciais?.minPrice ?? "",
+  );
+  const [maxPrice, setMaxPrice] = useState<number | "">(
+    memoria?.iniciais?.maxPrice ?? "",
+  );
+  const [sort, setSort] = useState<SortOption>(
+    memoria?.iniciais?.sort ?? "newest",
+  );
+
+  // Avisa só quando um dos quatro valores muda (o aviso em si pode ser uma
+  // função nova a cada render do pai, então fica fora da lista de dependências).
+  const aoMudarRef = useRef(memoria?.aoMudar);
+  useEffect(() => {
+    aoMudarRef.current = memoria?.aoMudar;
+  });
+  useEffect(() => {
+    aoMudarRef.current?.({ category, minPrice, maxPrice, sort });
+  }, [category, minPrice, maxPrice, sort]);
 
   // Debounce inputs to avoid excessive re-filtering
   const debouncedQuery = useDebounce(query, 300);

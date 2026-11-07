@@ -229,10 +229,13 @@ export function ProductQA({
         </div>
       )}
 
+      <p role="status" className="sr-only">
+        {loading ? "Sincronizando conversas..." : ""}
+      </p>
       {/* Questions Feed */}
       <div className="space-y-4">
         {loading ? (
-          <div className="py-10 text-center">
+          <div aria-hidden="true" className="py-10 text-center">
             <div className="mx-auto mb-3 size-6 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-900" />
             <p className="text-xs font-bold uppercase tracking-widest text-zinc-600">
               Sincronizando conversas...
@@ -242,7 +245,10 @@ export function ProductQA({
           // Falha de carregamento não é "sem perguntas": sem este ramo, a
           // tela convidava a cliente a "ser o primeiro" num produto que a
           // consulta não conseguiu trazer — e podia ter histórico respondido.
-          <div className="flex flex-col items-center rounded-3xl border border-zinc-100 bg-gradient-to-b from-zinc-50/50 to-zinc-100/10 px-6 py-12 text-center shadow-sm">
+          <div
+            role="alert"
+            className="flex flex-col items-center rounded-3xl border border-zinc-100 bg-gradient-to-b from-zinc-50/50 to-zinc-100/10 px-6 py-12 text-center shadow-sm"
+          >
             <div className="mb-4 flex size-10 items-center justify-center rounded-full border border-amber-200/60 bg-amber-50 shadow-sm">
               <MessageSquare className="size-4 text-amber-500" />
             </div>

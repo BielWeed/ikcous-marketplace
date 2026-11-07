@@ -284,7 +284,7 @@ export function CartView({
     ? (enderecoDestino?.cep ?? null)
     : (shippingCep ?? null);
   const [escolhendoEndereco, setEscolhendoEndereco] = useState(false);
-  useVoltarFechaAFolha(
+  const sairDaFolhaPorNavegacao = useVoltarFechaAFolha(
     Boolean(user) && escolhendoEndereco && addresses.length > 0,
     () => setEscolhendoEndereco(false),
   );
@@ -338,6 +338,7 @@ export function CartView({
     haptic.light();
     idsAntesDoCadastroRef.current = new Set(addresses.map((a) => a.id));
     devolverFocoAoTrocarRef.current = false;
+    sairDaFolhaPorNavegacao();
     setEscolhendoEndereco(false);
     onNavigate("address-form");
   };
@@ -361,9 +362,13 @@ export function CartView({
 
   const [activeTab, setActiveTab] = useState<"cart" | "orders">(initialTab);
 
+  // A aba só acompanha o `initialTab` com a tela VISÍVEL. Esta tela fica
+  // montada por baixo do detalhe do pedido (o App passa `initialTab="cart"` e
+  // `isActive=false`): trocar de aba ali e voltar depois faria o efeito de
+  // "rolar ao topo" (abaixo) apagar a posição que o App restaura na volta.
   useEffect(() => {
-    setActiveTab(initialTab);
-  }, [initialTab]);
+    if (isActive) setActiveTab(initialTab);
+  }, [initialTab, isActive]);
 
   const [removingId, setRemovingId] = useState<string | null>(null);
 
@@ -414,12 +419,23 @@ export function CartView({
   // conta ou por um toque da pessoa)? Enquanto não, a aba abre onde os pedidos
   // estão — quem só tem pedido entregue/cancelado não cai em "Nenhum pedido em
   // andamento" com o pedido escondido no Histórico. Decide UMA vez e nunca
-  // puxa de volta quem escolheu.
+  // puxa de volta quem escolheu — a única reabertura é a de compra nova
+  // (bloco "Compra nova depois da decisão", mais abaixo).
   const [abaDecidida, setAbaDecidida] = useState(false);
+  // A pessoa tocou numa sub-aba NESTA visita à tela de pedidos? Vale só
+  // enquanto ela está olhando a lista (zera quando a tela sai de foco): é o que
+  // impede um pedido novo de arrancá-la da aba que ela escolheu de propósito.
+  const [tocouNestaVisita, setTocouNestaVisita] = useState(false);
   const trocarAbaDosPedidos = (aba: "active" | "history") => {
     setAbaDecidida(true);
+    setTocouNestaVisita(true);
     setOrdersTab(aba);
   };
+  // Ids dos pedidos da conta que a tela já viu. Pedido EM ANDAMENTO que ela
+  // nunca tinha visto é compra nova: ver o bloco que reabre "Em andamento".
+  const [idsVistos, setIdsVistos] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   // Horário do retrato do rastreio sem conta que está na lista (`null` = retrato
   // antigo, sem horário) e contador que REMONTA a busca em "Consultar de novo".
   const [retratoEm, setRetratoEm] = useState<number | null>(null);
@@ -446,6 +462,36 @@ export function CartView({
   if (!abaDecidida && orders.length > 0 && (!user || primeiraBuscaFeita)) {
     setAbaDecidida(true);
     setOrdersTab(abaDosPedidos(orders));
+  }
+
+  // A escolha por toque não atravessa a saída da tela (checkout, detalhe, outra
+  // aba): na volta, ela é uma visita nova.
+  if (tocouNestaVisita && (!isActive || activeTab !== "orders")) {
+    setTocouNestaVisita(false);
+  }
+
+  // Compra nova depois da decisão: a aba abriu sozinha em "Histórico" (conta
+  // só com pedido entregue/cancelado) e a pessoa comprou de novo — o pedido
+  // novo só existe em "Em andamento". Sem isto ela cai no Histórico, só com
+  // pedidos antigos, e acha que a compra não foi registrada. A decisão
+  // automática é reaberta só para um pedido em andamento que a tela nunca viu
+  // (por id: a lista que pisca vazia e volta não conta como novo) e nunca
+  // contra quem tocou numa aba nesta visita e está olhando a lista agora.
+  if (user && orders.some((o) => !idsVistos.has(o.id))) {
+    const chegouPedidoEmAndamento =
+      abaDecidida &&
+      idsVistos.size > 0 &&
+      orders.some((o) => !idsVistos.has(o.id) && pedidoEmAndamento(o));
+    const lendoPorEscolha =
+      tocouNestaVisita && isActive && activeTab === "orders";
+    setIdsVistos(new Set([...idsVistos, ...orders.map((o) => o.id)]));
+    if (
+      chegouPedidoEmAndamento &&
+      ordersTab === "history" &&
+      !lendoPorEscolha
+    ) {
+      setOrdersTab("active");
+    }
   }
 
   const { activeOrdersCount, historyOrdersCount } = useMemo(() => {
@@ -482,7 +528,9 @@ export function CartView({
   }, []);
 
   useEffect(() => {
-    if (!isReady) return;
+    // `isActive` entra aqui porque a aba não troca mais por baixo do detalhe
+    // (efeito do `initialTab`): é o voltar à tela que refaz a leitura.
+    if (!isReady || !isActive) return;
     if (activeTab === "orders") {
       if (user) {
         setIsLoadingOrders(true);
@@ -506,7 +554,7 @@ export function CartView({
         }
       }
     }
-  }, [user, fetchUserOrders, activeTab, isReady]);
+  }, [user, fetchUserOrders, activeTab, isReady, isActive]);
 
   // "Tentar de novo" da lista de pedidos: refaz a leitura do servidor. O hook
   // limpa o erro quando a resposta vem ok e o mantém se falhar de novo.
@@ -1407,7 +1455,10 @@ export function CartView({
                 </div>
               )}
 
-              {orders.length > 0 && !isLoadingOrders && (
+              {/* Os botões ficam enquanto a lista é relida em segundo plano:
+                  com pedidos na tela eles não esperam a rede, e sumir e voltar
+                  empurrava os cartões para baixo. */}
+              {orders.length > 0 && (
                 <div className="mb-4 flex flex-wrap gap-2">
                   <button
                     aria-pressed={ordersTab === "active"}

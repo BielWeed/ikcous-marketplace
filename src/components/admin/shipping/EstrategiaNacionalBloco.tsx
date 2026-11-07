@@ -1,3 +1,4 @@
+import { GrupoDeOpcoes } from "@/components/admin/GrupoDeOpcoes";
 import { CabecaDeSecao } from "@/components/admin/shipping/primitivas-direcao-d";
 import {
   estrategiaTemAlcanceEditavel,
@@ -138,8 +139,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
       <p className="text-[12.5px] text-zinc-500">
         Vale para o frete da transportadora.
       </p>
-      <div
-        role="radiogroup"
+      <GrupoDeOpcoes
         aria-label="Estratégia de frete nacional"
         className="flex flex-col gap-2.5 py-5 "
       >
@@ -188,14 +188,13 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
             </button>
           );
         })}
-      </div>
+      </GrupoDeOpcoes>
 
       {/* Tipo do desconto — pills próprias, FORA do radiogroup da estratégia
           (dois grupos de radio distintos, cada um com sua semântica). */}
       {ehDesconto && (
         <div className="border-t border-admin-border pb-1 pt-4 duration-200 animate-in fade-in">
-          <div
-            role="radiogroup"
+          <GrupoDeOpcoes
             aria-label="Tipo de desconto"
             className="flex flex-wrap gap-2"
           >
@@ -219,7 +218,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
                 </button>
               );
             })}
-          </div>
+          </GrupoDeOpcoes>
 
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
             <div className="flex items-center gap-1.5 rounded-xl border border-admin-border bg-admin-surface px-4 py-2">
@@ -318,8 +317,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
           <p className="mb-2 text-xs font-bold text-zinc-300">
             Qual entrega fica grátis?
           </p>
-          <div
-            role="radiogroup"
+          <GrupoDeOpcoes
             aria-label="Alcance do frete grátis nacional"
             className="flex flex-wrap gap-2"
           >
@@ -346,7 +344,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
                 </button>
               );
             })}
-          </div>
+          </GrupoDeOpcoes>
 
           {alcance === "todas" && (
             <p className="mt-3 flex flex-wrap items-start gap-2 text-[12.5px] leading-snug text-amber-300">

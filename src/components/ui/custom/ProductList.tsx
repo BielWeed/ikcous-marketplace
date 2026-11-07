@@ -3,7 +3,7 @@ import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import type { Product } from "@/types";
 import { haptic } from "@/utils/haptic";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import React, {
   useState,
   useEffect,
@@ -47,6 +47,7 @@ export const ProductList = React.memo(function ProductList({
   onQuickBuy,
   selectedProductId,
 }: ProductListProps) {
+  const reduzirMovimento = useReducedMotion();
   const { config } = useStore();
   // B3 do item 2 da fila (19/09): o selo "Frete Grátis" do card obedece ao
   // preset da LOJA (ProductCard-520), derivado do MESMO config que já
@@ -180,13 +181,17 @@ export const ProductList = React.memo(function ProductList({
         {products.slice(0, visibleCount).map((product, index) => (
           <motion.div
             key={product.id}
-            initial={{ opacity: 0, y: 12 }}
+            initial={reduzirMovimento ? false : { opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{
-              duration: 0.24,
-              ease: [0.16, 1, 0.3, 1],
-            }}
+            exit={reduzirMovimento ? undefined : { opacity: 0, scale: 0.95 }}
+            transition={
+              reduzirMovimento
+                ? { duration: 0 }
+                : {
+                    duration: 0.24,
+                    ease: [0.16, 1, 0.3, 1],
+                  }
+            }
             className="flex h-full flex-col"
           >
             <ProductCard

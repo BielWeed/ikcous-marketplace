@@ -784,6 +784,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const [precisaRecarregar, setPrecisaRecarregar] = useState(false);
   const [draftChecked, setDraftChecked] = useState(false);
   const [showVariantForm, setShowVariantForm] = useState(false);
+  const salvandoVariacaoRef = useRef(false);
   // Grade de combinações: o modal de lote ao lado do unitário.
   const [showGradeForm, setShowGradeForm] = useState(false);
   // O Preço de Venda que a grade preencheu (campo estava vazio): a frase "veio
@@ -2414,6 +2415,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // O − e o + do estoque da variação. O que não é número inteiro (o lojista
   // digitou "1,5" ou apagou) conta como 0 antes de somar, e o − para em 0.
   const somarEstoqueDaVariacao = (passo: 1 | -1) => {
+    // No iPhone o botão não tira o foco: envie o texto pendente antes da conta.
+    document.getElementById("variant-stock")?.blur();
     setVariantFormData((p) => {
       const texto = p.stockIncrement.trim();
       const atual = /^\d+$/.test(texto) ? Number(texto) : 0;
@@ -2422,6 +2425,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   };
 
   const handleVariantSubmit = () => {
+    if (salvandoVariacaoRef.current) return;
     const erroDosPares = validarAtributos(variantFormData.pares);
     if (erroDosPares) {
       toast.error(erroDosPares);
@@ -2613,6 +2617,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       : [];
 
     const gravarVariacao = () => {
+      if (salvandoVariacaoRef.current) return;
+      salvandoVariacaoRef.current = true;
       // A lista passa por `formComVariacoes`: desligar a última variação ligada
       // zera o estoque do produto (uma vez), em vez de deixar a soma velha no
       // campo que acaba de destravar. Ver `estoque-das-variacoes.ts`.
@@ -2636,13 +2642,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         );
       } else {
         setFormData((prev) =>
-          formComVariacoes(prev, [
-            ...prev.variants,
-            {
-              ...vData,
-              id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            } as any,
-          ]),
+          prev.variants.some(
+            (v) => chaveDaIdentidade(v) === chaveDaIdentidade(identidadeNova),
+          )
+            ? prev
+            : formComVariacoes(prev, [
+                ...prev.variants,
+                {
+                  ...vData,
+                  id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                } as any,
+              ]),
         );
       }
 
@@ -2687,6 +2697,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   }, []);
 
   const handleEditVariant = useCallback((v: ProductVariant) => {
+    salvandoVariacaoRef.current = false;
     // Ressalva da revisão da C5.2: erros/avisos de código de barras da
     // edição ANTERIOR não podem atravessar para esta — se o código não
     // mudar entre uma abertura e outra, o efeito que valida não dispara e
@@ -5319,6 +5330,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             active: true,
                             imageUrl: "",
                           });
+                          salvandoVariacaoRef.current = false;
                           setShowVariantForm(true);
                         }}
                         className="ml-auto mr-2 min-h-11 flex-1 rounded-2xl border border-admin-border bg-admin-raised p-3 text-sm font-bold text-white"

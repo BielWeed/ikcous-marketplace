@@ -29,6 +29,7 @@ import type { Product } from "@/types";
 const getReviewsByProduct = vi.fn();
 const subscribeToReviews = vi.fn(() => () => {});
 const markHelpful = vi.fn();
+let carregandoAvaliacoes = false;
 
 // jsdom não implementa IntersectionObserver -- o efeito de recomendações do
 // ProductView cria um a cada montagem. Sem o stub, `new IntersectionObserver`
@@ -43,7 +44,7 @@ class IntersectionObserverStub {
 vi.mock("@/hooks/useReviews", () => ({
   useReviews: () => ({
     reviews: [],
-    loading: false,
+    loading: carregandoAvaliacoes,
     getReviewsByProduct,
     markHelpful,
     subscribeToReviews,
@@ -148,6 +149,30 @@ describe("ProductView — gate do interruptor de Avaliações (ADMIN-090, #101)"
     document.getElementById("product-structured-data")?.remove();
     vi.unstubAllGlobals();
     enableReviews = true;
+  });
+
+  it("carregamento de avaliações tem anúncio para leitor de tela", async () => {
+    carregandoAvaliacoes = true;
+    try {
+      const { ProductView } = await import("@/views/customer/ProductView");
+      await act(async () =>
+        raiz.render(
+          <ProductView
+            product={produto}
+            isFavorite={false}
+            onToggleFavorite={() => {}}
+            onAddToCart={() => {}}
+            onBack={() => {}}
+          />,
+        ),
+      );
+      expect(
+        hospedeiro.querySelector('#reviews-section [role="status"]')
+          ?.textContent,
+      ).toContain("Carregando Avaliações");
+    } finally {
+      carregandoAvaliacoes = false;
+    }
   });
 
   it("com o flag DESLIGADO, some a nota do cabeçalho, a aba, a seção e o aggregateRating do JSON-LD", async () => {

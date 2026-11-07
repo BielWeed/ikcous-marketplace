@@ -530,12 +530,12 @@ function HeroOfferCard({
 
       {/* Clean Premium Tag Header (Does NOT overlap image) */}
       <div className="relative z-10 flex w-full items-center justify-between gap-1.5 border-b border-zinc-100/50 pb-3">
-        <div className="flex select-none items-center rounded-full border border-zinc-200/30 bg-zinc-100/80 p-0.5 text-[10px] font-black uppercase tracking-wider shadow-sm transition-transform duration-300 group-hover:scale-[1.02]">
-          <span className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-0.5 text-primary-foreground shadow-[0_2px_4px_rgba(24,24,27,0.1)]">
-            <Flame className="size-3 animate-pulse fill-primary-foreground text-primary-foreground" />
-            Super Oferta
-          </span>
-          {discount > 0 && (
+        {discount > 0 && (
+          <div className="flex select-none items-center rounded-full border border-zinc-200/30 bg-zinc-100/80 p-0.5 text-[10px] font-black uppercase tracking-wider shadow-sm transition-transform duration-300 group-hover:scale-[1.02]">
+            <span className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-0.5 text-primary-foreground shadow-[0_2px_4px_rgba(24,24,27,0.1)]">
+              <Flame className="size-3 animate-pulse fill-primary-foreground text-primary-foreground" />
+              Super Oferta
+            </span>
             <span
               className={cn(
                 "rounded-full px-3 py-0.5 font-black",
@@ -544,8 +544,8 @@ function HeroOfferCard({
             >
               {discount}% OFF
             </span>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Favorite Button */}
         <BotaoDeFavorito

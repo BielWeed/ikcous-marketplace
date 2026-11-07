@@ -99,6 +99,47 @@ describe("StrategicIntelligenceBlocks — erro distinto do vazio (#104)", () => 
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
+  it("mantém a lista anterior se a atualização falhar, com aviso e nova tentativa", async () => {
+    const { StrategicIntelligenceBlocks } = await import(
+      "@/components/admin/dashboard/StrategicIntelligenceBlocks"
+    );
+    const onRetry = vi.fn();
+    const categoryData = [{ name: "roupas", value: 250, orders: 2 }];
+    act(() => {
+      raiz.render(
+        <StrategicIntelligenceBlocks
+          categoryData={categoryData}
+          loading={false}
+        />,
+      );
+    });
+    expect(hospedeiro.textContent).toContain("Roupas");
+    act(() => {
+      raiz.render(
+        <StrategicIntelligenceBlocks
+          categoryData={categoryData}
+          loading={false}
+          error="Sem conexão"
+          onRetry={onRetry}
+        />,
+      );
+    });
+    expect(hospedeiro.textContent).toContain("Roupas");
+    expect(hospedeiro.textContent).toContain("250,00");
+    expect(hospedeiro.textContent).not.toContain(
+      "Falha ao carregar vendas por categoria",
+    );
+    expect(hospedeiro.querySelector('[role="status"]')?.textContent).toContain(
+      "Não foi possível atualizar agora. Mostrando a última atualização.",
+    );
+    const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent === "Tentar novamente",
+    );
+    expect(botao).toBeTruthy();
+    act(() => botao?.click());
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
   it("sem error e sem categorias, continua mostrando 'Sem dados registrados'", async () => {
     const { StrategicIntelligenceBlocks } = await import(
       "@/components/admin/dashboard/StrategicIntelligenceBlocks"
