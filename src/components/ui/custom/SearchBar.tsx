@@ -294,7 +294,9 @@ export function SearchBar({
   // Produtos que a busca acha, do mais ao menos relevante. QUEM decide se um
   // produto entra e' `produtoCombinaComBusca` -- a mesma regra da lista da
   // Home e da tela /search (todas as palavras, plural, nome/categoria/
-  // descricao). A pontuacao aqui so ORDENA; nao decide quem entra.
+  // descricao + cor/tamanho das variacoes). A pontuacao aqui so ORDENA; nao
+  // decide quem entra. Antes dela vem a disponibilidade, como na lista da Home:
+  // com muitos achados, os 6 da caixinha nao podem ser todos esgotados.
   const allResults = useMemo<ScoredProduct[]>(() => {
     const query = normalizeText(deferredLocalValue);
     if (!query) return [];
@@ -305,7 +307,10 @@ export function SearchBar({
         (product) => product.isActive && produtoCombinaComBusca(product, query),
       )
       .map((product) => ({ ...product, score: pontuar(product) }))
-      .sort((a, b) => b.score - a.score);
+      .sort(
+        (a, b) =>
+          (b.stock > 0 ? 1 : 0) - (a.stock > 0 ? 1 : 0) || b.score - a.score,
+      );
   }, [products, deferredLocalValue]);
 
   // A caixinha mostra no maximo 6, mas o numero do titulo e' o TOTAL: e' ele
@@ -545,8 +550,20 @@ export function SearchBar({
                           <span className="truncate text-xs font-bold text-zinc-900 transition-colors group-hover:text-primary">
                             {item.name}
                           </span>
-                          <span className="text-xs font-black text-zinc-800">
-                            {formatCurrency(precoDeVitrine(item).preco)}
+                          <span className="flex items-baseline gap-1.5">
+                            {precoDeVitrine(item).aPartirDe && (
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                                A partir de
+                              </span>
+                            )}
+                            <span className="text-xs font-black text-zinc-800">
+                              {formatCurrency(precoDeVitrine(item).preco)}
+                            </span>
+                            {item.stock <= 0 && (
+                              <span className="rounded-full bg-zinc-200 px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wider text-zinc-700">
+                                Esgotado
+                              </span>
+                            )}
                           </span>
                         </div>
                       </div>

@@ -10,6 +10,7 @@ import {
 import { dequemEAInscricao } from "@/lib/inscricao-de-push-da-conta";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { supabase } from "@/lib/supabase";
+import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -158,7 +159,11 @@ class PushSubscribeError extends Error {
     // `toast.error(err.message)` futuro, no lugar do `mensagemPorOrigem`
     // correto, vazaria tudo de novo. O texto cru continua acessível em
     // `cause`, para quem precisar depurar.
-    super(mensagemDaOrigem(origin));
+    super(
+      cause instanceof PrazoEsgotado
+        ? "Sem resposta da rede. Confira se os avisos estão ligados antes de tentar de novo."
+        : mensagemDaOrigem(origin),
+    );
     this.name = "PushSubscribeError";
     this.origin = origin;
     this.cause = cause;
@@ -167,7 +172,7 @@ class PushSubscribeError extends Error {
 
 function mensagemPorOrigem(error: unknown): string {
   if (error instanceof PushSubscribeError) {
-    return mensagemDaOrigem(error.origin);
+    return error.message;
   }
   return "Não foi possível se inscrever para notificações. Tente novamente.";
 }
@@ -195,6 +200,7 @@ const DURACAO_DA_INSTRUCAO_DE_PERMISSAO_MS = 8000;
 // visita, registro bloqueado. Sem prazo, a sonda ficava em "sondando" e o
 // `subscribe()` pendurado depois de a permissão já ter sido gasta.
 const PRAZO_DO_SERVICE_WORKER_MS = 10_000;
+const PRAZO_DA_GRAVACAO_MS = 20_000;
 
 // Avisa as OUTRAS telas que usam este hook que o aparelho ligou ou desligou os
 // avisos (cada tela tem o próprio estado): elas relêem a inscrição do navegador.
@@ -548,6 +554,7 @@ export function usePushNotifications() {
       const geracaoDaAtivacao = geracaoDaInscricao.current;
       comecarAMexerNaInscricao();
       let inscreveu = false;
+      let prazoEsgotado = false;
 
       try {
         // `isSupported` é fotografia do INSTANTE da montagem; o toque pode
@@ -719,17 +726,21 @@ export function usePushNotifications() {
           return;
         }
 
-        const { error } = await (
-          supabase.from("push_subscriptions" as any) as any
-        ).upsert(
-          {
-            endpoint: subJSON.endpoint,
-            p256dh: subJSON.keys?.p256dh,
-            auth: subJSON.keys?.auth,
-            user_id: user.id,
-          },
-          { onConflict: "endpoint" },
-        );
+        const { error } = await comPrazo(
+          Promise.resolve(
+            (supabase.from("push_subscriptions" as any) as any).upsert(
+              {
+                endpoint: subJSON.endpoint,
+                p256dh: subJSON.keys?.p256dh,
+                auth: subJSON.keys?.auth,
+                user_id: user.id,
+              },
+              { onConflict: "endpoint" },
+            ),
+          ),
+          PRAZO_DA_GRAVACAO_MS,
+        ).catch((error) => ({ error }));
+        prazoEsgotado = error instanceof PrazoEsgotado;
 
         // Sair e voltar à mesma conta também invalida a resposta antiga.
         if (geracaoDaInscricao.current !== geracaoDaAtivacao) {
@@ -815,7 +826,12 @@ export function usePushNotifications() {
         }
         throw error;
       } finally {
-        terminarDeMexerNaInscricao(inscreveu, quemSou.current);
+        // No prazo esgotado TODAS as telas relêem, inclusive quem tentou:
+        // a rede pode ter gravado e só perdido a resposta.
+        terminarDeMexerNaInscricao(
+          inscreveu || prazoEsgotado,
+          prazoEsgotado ? Symbol("reler após prazo") : quemSou.current,
+        );
       }
     },
     [isSupported, user],
@@ -847,26 +863,34 @@ export function usePushNotifications() {
 
     comecarAMexerNaInscricao();
     let saiuDoNavegador = false;
+    let prazoEsgotado = false;
     try {
       await subscription.unsubscribe();
       saiuDoNavegador = true;
 
       // Remove from Supabase
-      const { error } = await (
-        supabase.from("push_subscriptions" as any) as any
-      )
-        .delete()
-        .eq("endpoint", subscription.endpoint);
+      const { error } = await comPrazo(
+        Promise.resolve(
+          (supabase.from("push_subscriptions" as any) as any)
+            .delete()
+            .eq("endpoint", subscription.endpoint),
+        ),
+        PRAZO_DA_GRAVACAO_MS,
+      );
 
       if (error) throw error;
 
       setSubscription(null);
       toast.success("Você não receberá mais notificações.");
     } catch (error) {
+      prazoEsgotado = error instanceof PrazoEsgotado;
       console.error("Error unsubscribing:", error);
       toast.error("Erro ao cancelar inscrição");
     } finally {
-      terminarDeMexerNaInscricao(saiuDoNavegador, quemSou.current);
+      terminarDeMexerNaInscricao(
+        saiuDoNavegador,
+        prazoEsgotado ? Symbol("reler após prazo") : quemSou.current,
+      );
     }
   }, [subscription, userId]);
 

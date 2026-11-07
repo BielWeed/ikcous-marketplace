@@ -1,4 +1,3 @@
-import { AuthRetryableFetchError } from "@supabase/supabase-js";
 // @vitest-environment jsdom
 //
 // Caça 7 (26/10/2026) — três furos do caminho de finalizar o pedido do cliente:
@@ -22,6 +21,11 @@ import { AuthRetryableFetchError } from "@supabase/supabase-js";
 //    conferida antes de enviar.
 //
 // Harness copiado de checkout-convidada-tenta-de-novo-a-mesma-compra.test.tsx.
+import {
+  PREFIXO_DA_CHAVE_DO_PEDIDO as PREFIXO,
+  haChaveDoPedidoVigente,
+} from "@/lib/chave-do-pedido";
+import { AuthRetryableFetchError } from "@supabase/supabase-js";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -578,6 +582,99 @@ describe("CheckoutView — caça 7: chave que sobrevive ao app fechado, voltar r
       sessaoAindaEhDoDono.mockResolvedValue(true);
       await clicarFinalizar();
       expect(createOrder).toHaveBeenCalledTimes(1);
+    });
+
+    // r60-b: a chave nasce SÓ quando o pedido vai mesmo ser enviado. Uma saída
+    // sem envio que a deixasse gravada contaria como "pedido em curso" por 30
+    // min e congelaria a releitura de preço e estoque do carrinho.
+    describe("saída sem envio não deixa chave de pedido gravada", () => {
+      it("sessão vencida: nenhum registro de chave no aparelho e nenhum pedido em curso", async () => {
+        sessaoAindaEhDoDono.mockResolvedValue(false);
+        await abrirOApp();
+        await preencherComoConta();
+        await clicarFinalizar();
+
+        expect(createOrder).not.toHaveBeenCalled();
+        expect(
+          [...armazem.keys()].filter((k) => k.startsWith(PREFIXO)),
+        ).toEqual([]);
+        expect(haChaveDoPedidoVigente("user-1")).toBe(false);
+      });
+
+      it("conferência que falha por rede: nenhum registro de chave e nenhum pedido em curso", async () => {
+        sessaoAindaEhDoDono.mockRejectedValue(new Error("sem rede"));
+        await abrirOApp();
+        await preencherComoConta();
+        await clicarFinalizar();
+
+        expect(createOrder).not.toHaveBeenCalled();
+        expect(armazem.has(CHAVE_DA_CONTA_1)).toBe(false);
+        expect(haChaveDoPedidoVigente("user-1")).toBe(false);
+      });
+
+      it("conferência que estoura o prazo: nenhum registro de chave e nenhum pedido em curso", async () => {
+        sessaoAindaEhDoDono.mockImplementation(() => new Promise(() => {}));
+        await abrirOApp();
+        await preencherComoConta();
+        const agendar = globalThis.setTimeout;
+        vi.spyOn(globalThis, "setTimeout").mockImplementation(
+          (callback, prazo, ...args) =>
+            agendar(callback, prazo === 12_000 ? 1 : prazo, ...args),
+        );
+        await clicarFinalizar();
+
+        expect(createOrder).not.toHaveBeenCalled();
+        expect(armazem.has(CHAVE_DA_CONTA_1)).toBe(false);
+        expect(haChaveDoPedidoVigente("user-1")).toBe(false);
+      });
+
+      it("a saída sem envio NÃO apaga a chave de um envio anterior que ficou sem resposta (nada de pedido em dobro)", async () => {
+        // 1º toque: a conferência passa, o pedido SAI e a resposta se perde.
+        // (Falha de rede de verdade: "tentar de novo" não trava o botão.)
+        createOrder.mockRejectedValueOnce({
+          code: "",
+          message: "TypeError: Failed to fetch",
+        });
+        await abrirOApp();
+        await preencherComoConta();
+        await clicarFinalizar();
+        expect(createOrder).toHaveBeenCalledTimes(1);
+        const chaveDoEnvio = createOrder.mock.calls[0][0].idempotencyKey;
+        expect(JSON.parse(armazem.get(CHAVE_DA_CONTA_1)!).chave).toBe(
+          chaveDoEnvio,
+        );
+
+        // 2º toque: a conferência da sessão falha, nada sai, e a chave do
+        // envio anterior continua gravada, intacta.
+        sessaoAindaEhDoDono.mockResolvedValueOnce(false);
+        await clicarFinalizar();
+        expect(createOrder).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(armazem.get(CHAVE_DA_CONTA_1)!).chave).toBe(
+          chaveDoEnvio,
+        );
+        expect(haChaveDoPedidoVigente("user-1")).toBe(true);
+
+        // 3º toque: a sessão volta e a retentativa leva a MESMA chave.
+        createOrder.mockResolvedValueOnce({ id: "pedido-1234abcd" });
+        await clicarFinalizar();
+        expect(createOrder).toHaveBeenCalledTimes(2);
+        expect(createOrder.mock.calls[1][0].idempotencyKey).toBe(chaveDoEnvio);
+      });
+
+      it("sessão válida: a chave nasce e vai junto no pedido (a idempotência segue igual)", async () => {
+        createOrder.mockResolvedValueOnce({ id: "pedido-1234abcd" });
+        await abrirOApp();
+        await preencherComoConta();
+        await clicarFinalizar();
+
+        expect(createOrder).toHaveBeenCalledTimes(1);
+        expect(createOrder.mock.calls[0][0].idempotencyKey).toEqual(
+          expect.any(String),
+        );
+        expect(
+          createOrder.mock.calls[0][0].idempotencyKey.length,
+        ).toBeGreaterThan(8);
+      });
     });
 
     it("sessão válida: envia como sempre, com a conta no pedido", async () => {

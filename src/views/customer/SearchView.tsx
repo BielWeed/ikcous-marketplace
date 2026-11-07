@@ -397,7 +397,10 @@ export const SearchView = React.memo(function SearchView({
                       {[
                         { label: "Menor Preço", value: "price_asc" },
                         { label: "Maior Preço", value: "price_desc" },
-                        { label: "Mais Novos", value: "newest" },
+                        {
+                          label: query.trim() ? "Relevância" : "Mais Novos",
+                          value: "newest",
+                        },
                         { label: "Alfabética", value: "name_asc" },
                       ].map((option) => (
                         <button

@@ -1974,9 +1974,22 @@ export function dependenciasReais() {
         throw new Error("ref ou nome inválido");
       const dir = mkdtempSync(path.join(os.tmpdir(), `frota-fn-${nome}-`));
       mkdirSync(path.join(dir, "supabase"), { recursive: true });
+      // `--use-api`: o `download` padrão (eszip extraído no Docker) passou a
+      // devolver o bundle TRANSPILADO (tipos apagados, código reformatado) e
+      // acusava "difere" em TODA function, até nas que a release não tocou
+      // (07/11/2026, release 1.5.153). Pela API sai o fonte que foi publicado.
       await rodar(
         supabase,
-        ["functions", "download", nome, "--project-ref", ref, "--workdir", dir],
+        [
+          "functions",
+          "download",
+          nome,
+          "--project-ref",
+          ref,
+          "--workdir",
+          dir,
+          "--use-api",
+        ],
         { cwd: dir },
       );
       const raiz = path.join(dir, "supabase", "functions");

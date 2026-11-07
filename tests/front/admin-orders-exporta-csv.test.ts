@@ -234,6 +234,31 @@ describe("pedidosParaCsv", () => {
     "\t=1+1",
     "\r=1+1",
     "\n=1+1",
+  ])("neutraliza fórmula em Cidade e UF: %j", (valor) => {
+    const csv = pedidosParaCsv([
+      pedido({
+        customer: {
+          name: "Cliente de teste",
+          whatsapp: "11999999999",
+          city: valor,
+          state: valor,
+        },
+      }),
+    ]);
+    const protegido = `'${valor}`;
+    const esperado = /[\r\n]/.test(protegido) ? `"${protegido}"` : protegido;
+    expect(csv).toContain(`;1234,50;${esperado};${esperado};;`);
+  });
+
+  it.each([
+    "=1+1",
+    "+1+1",
+    "-1+1",
+    "@SUM(1)",
+    "  =1+1",
+    "\t=1+1",
+    "\r=1+1",
+    "\n=1+1",
   ])("neutraliza fórmula em texto de cliente: %j", (name) => {
     const csv = pedidosParaCsv([
       pedido({ customer: { name, whatsapp: "+5511987654321" } }),

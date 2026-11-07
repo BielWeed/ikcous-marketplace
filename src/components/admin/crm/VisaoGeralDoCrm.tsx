@@ -144,9 +144,11 @@ export function VisaoGeralDoCrm({
       icon: Repeat,
       accent: "text-emerald-400",
       footer:
-        k?.receitaRecorrentePct == null
+        falha || k?.receitaRecorrentePct == null
           ? "Sem dado agora"
-          : `${formatarPercentual(k.receitaRecorrentePct)} da receita vem de quem volta`,
+          : k?.pedidos === 0
+            ? "Sem venda neste período"
+            : `${formatarPercentual(k.receitaRecorrentePct)} da receita vem de quem volta`,
     },
     {
       label: "Total já comprado por cliente (média)",
@@ -159,10 +161,14 @@ export function VisaoGeralDoCrm({
     },
     {
       label: "Taxa de devolução",
-      value: formatarPercentual(k?.taxaDevolucao),
+      value: formatarPercentual(k?.pedidos === 0 ? null : k?.taxaDevolucao),
       icon: RotateCcw,
       accent: "text-rose-400",
-      footer: falha ? "Sem dado agora" : "Do valor vendido no período",
+      footer: falha
+        ? "Sem dado agora"
+        : k?.pedidos === 0
+          ? "Sem venda neste período"
+          : "Do valor vendido no período",
     },
   ];
   return (
@@ -320,7 +326,7 @@ export function VisaoGeralDoCrm({
         <LocalErrorBoundary>
           <StrategicIntelligenceBlocks
             categoryData={categorias}
-            loading={carregandoClassico}
+            loading={classico.carregandoCategorias}
             active={active}
             error={erroDeCategoria}
             onRetry={() => carregar(true)}

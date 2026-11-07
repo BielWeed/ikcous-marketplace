@@ -141,6 +141,37 @@ describe.each([
     expect(pergunta()).toBeNull();
   });
 
+  it("exclusão pendurada mantém a confirmação em Excluindo e impede repetir até terminar", async () => {
+    let resolver!: (valor: boolean) => void;
+    const excluir = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolver = resolve;
+        }),
+    );
+    act(() =>
+      raiz.render(
+        <AddressList
+          addresses={[CASA, TRABALHO]}
+          compact={compacto}
+          onDelete={excluir}
+        />,
+      ),
+    );
+    act(() => lixeiras()[0].click());
+    act(() => botao("Apagar")?.click());
+    const emAndamento = botao("Excluindo...");
+    expect(emAndamento).toBeDefined();
+    expect(emAndamento?.disabled).toBe(true);
+    expect(botao("Cancelar")?.disabled).toBe(true);
+    act(() => emAndamento?.click());
+    expect(excluir).toHaveBeenCalledTimes(1);
+    await act(async () => resolver(false));
+    expect(pergunta()).toBeNull();
+    act(() => lixeiras()[0].click());
+    expect(botao("Apagar")?.disabled).toBe(false);
+  });
+
   it("depois de cancelar, tocar em OUTRA lixeira pergunta pelo outro endereco (nao fica preso no primeiro)", () => {
     act(() => lixeiras()[0].click());
     act(() => botao("Cancelar")?.click());

@@ -212,6 +212,15 @@ export const OperationalPerformanceChart = memo(
       });
     }, [filteredRevenueHistory, stats?.inventory?.totalCost]);
 
+    const semMovimento =
+      chartMode === "revenue"
+        ? filteredRevenueHistory.every(
+            (dia) => (dia.revenue ?? 0) === 0 && (dia.orders ?? 0) === 0,
+          )
+        : processedRoiData.every(
+            (dia) => dia.cumulativeProfit === 0 && dia.inventoryCost === 0,
+          );
+
     return (
       <section
         aria-label="Histórico da loja"
@@ -385,13 +394,15 @@ export const OperationalPerformanceChart = memo(
         >
           {loading || !isChartReady ? (
             <Skeleton className="size-full animate-pulse rounded-3xl bg-white/5" />
-          ) : !stats?.revenueHistory || stats.revenueHistory.length === 0 ? (
+          ) : filteredRevenueHistory.length === 0 || semMovimento ? (
             <div className="flex size-full flex-col items-center justify-center space-y-4 rounded-3xl border border-admin-border bg-white/5">
               <div className="flex size-16 items-center justify-center rounded-2xl border border-admin-gold/10 bg-admin-gold/5">
                 <BarChart3 className="size-8 text-admin-gold/30" />
               </div>
               <p className="text-admin-text-soft text-center text-[11px] font-semibold">
-                Nenhum dado disponível no período
+                {chartMode === "revenue" && filteredRevenueHistory.length > 0
+                  ? "Nenhuma venda paga neste período"
+                  : "Nenhum dado disponível no período"}
               </p>
             </div>
           ) : chartMode === "revenue" ? (

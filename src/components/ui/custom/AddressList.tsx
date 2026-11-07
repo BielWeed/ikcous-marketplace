@@ -17,7 +17,7 @@ import { memo, useState } from "react";
 interface AddressListProps {
   addresses: Address[];
   onEdit?: (address: Address) => void;
-  onDelete?: (id: string) => void;
+  onDelete?: ((id: string) => void) | ((id: string) => Promise<unknown>);
   onSelect?: (address: Address) => void;
   selectedId?: string;
   selectable?: boolean;
@@ -40,16 +40,18 @@ function ConfirmaApagarEndereco({
   endereco,
   onCancelar,
   onConfirmar,
+  excluindo,
 }: {
   endereco: Address | null;
   onCancelar: () => void;
   onConfirmar: (id: string) => void;
+  excluindo: boolean;
 }) {
   return (
     <AlertDialog
       open={endereco !== null}
       onOpenChange={(aberto) => {
-        if (!aberto) onCancelar();
+        if (!aberto && !excluindo) onCancelar();
       }}
     >
       <AlertDialogContent overlayClassName="z-[130]" className="z-[130]">
@@ -62,13 +64,15 @@ function ConfirmaApagarEndereco({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel disabled={excluindo}>Cancelar</AlertDialogCancel>
           <AlertDialogAction
-            onClick={() => {
-              if (endereco) onConfirmar(endereco.id);
+            disabled={excluindo}
+            onClick={(evento) => {
+              evento.preventDefault();
+              if (endereco && !excluindo) onConfirmar(endereco.id);
             }}
           >
-            Apagar
+            {excluindo ? "Excluindo..." : "Apagar"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -93,13 +97,28 @@ export const AddressList = memo(function AddressList({
   const semInternet = useOnlineStatus();
   // O endereço cuja lixeira foi tocada, enquanto a pergunta está aberta.
   const [apagando, setApagando] = useState<Address | null>(null);
+  const [excluindo, setExcluindo] = useState(false);
   const confirmacao = (
     <ConfirmaApagarEndereco
       endereco={apagando}
+      excluindo={excluindo}
       onCancelar={() => setApagando(null)}
       onConfirmar={(id) => {
-        setApagando(null);
-        onDelete?.(id);
+        if (excluindo) return;
+        const resultado = onDelete?.(id);
+        if (!resultado) {
+          setApagando(null);
+          return;
+        }
+        setExcluindo(true);
+        void resultado
+          .catch(() => {
+            // O responsável pela exclusão informa o erro; a pergunta só espera.
+          })
+          .finally(() => {
+            setExcluindo(false);
+            setApagando(null);
+          });
       }}
     />
   );

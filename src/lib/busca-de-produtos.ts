@@ -6,10 +6,15 @@
  * A cliente digita "bolsa preta" e espera achar "Bolsa Grande Preta"; antes o
  * filtro exigia a frase inteira, na mesma ordem, e dizia "nenhum resultado".
  * Agora: a busca vira palavras, e TODAS precisam aparecer (em qualquer ordem)
- * no nome, na categoria ou na descricao. Acento e maiuscula nao contam.
+ * no nome, na categoria, na descricao ou no VALOR de uma variacao a venda
+ * ("Azul", "GG", "38"). Acento e maiuscula nao contam.
  * (Etiquetas/tags NAO entram: nenhuma tela do painel preenche esse campo, e
  * a lista nunca as procurou -- entrando so na caixinha, ela prometia o que a
  * lista nao entrega.)
+ * Variacao: entra so o valor das ATIVAS, nunca o nome do grupo ("Cor",
+ * "Tamanho" -- senao "cor" acharia todo produto com variacao). O valor curto
+ * (1 ou 2 letras: "M", "P", "42") vale como PALAVRA INTEIRA: por trecho, "m"
+ * acharia "Marrom" e "4" acharia o 42.
  *
  * Plural: o plural do portugues muda a palavra, nao so acrescenta "s". De cada
  * palavra digitada (com 4+ letras, para nao amputar "gas" nem "pes") saem as
@@ -43,6 +48,8 @@ const TAMANHO_MINIMO_DO_SINGULAR = 3;
 const TAMANHO_MINIMO_DO_SINGULAR_EM_L = 4;
 /** Singular derivado mais curto que isto so vale como palavra inteira. */
 const TAMANHO_MINIMO_PARA_ACHAR_POR_TRECHO = 4;
+/** Palavra digitada mais curta que isto so acha variacao como palavra inteira. */
+const TAMANHO_MINIMO_PARA_ACHAR_VARIACAO_POR_TRECHO = 3;
 
 export interface FormaDaPalavra {
   /** A forma, ja normalizada (sem acento, minuscula). */
@@ -163,11 +170,26 @@ export function formaAparece(texto: string, forma: FormaDaPalavra): boolean {
   return false;
 }
 
+/** Cor, tamanho, numero: so o que a variacao ATIVA diz; `name` ("Cor") nao entra. */
+interface VariacaoDaBusca {
+  value: string;
+  active: boolean;
+}
+
+/** Uma variacao por linha, para a palavra inteira enxergar onde uma acaba. */
+function textoDasVariacoes(variacoes?: VariacaoDaBusca[]): string {
+  return (variacoes ?? [])
+    .filter((variacao) => variacao.active)
+    .map((variacao) => normalizeText(variacao.value))
+    .join("\n");
+}
+
 export function produtoCombinaComBusca(
   produto: {
     name: string;
     description?: string | null;
     category?: string | null;
+    variants?: VariacaoDaBusca[];
   },
   busca: string,
 ): boolean {
@@ -176,8 +198,18 @@ export function produtoCombinaComBusca(
   const texto = [produto.name, produto.category, produto.description]
     .map(normalizeText)
     .join("\n");
-  return palavras.every((formas) =>
-    formas.some((forma) => formaAparece(texto, forma)),
+  const variacoes = textoDasVariacoes(produto.variants);
+  return palavras.every(
+    (formas) =>
+      formas.some((forma) => formaAparece(texto, forma)) ||
+      formas.some((forma) =>
+        formaAparece(variacoes, {
+          texto: forma.texto,
+          palavraInteira:
+            forma.palavraInteira ||
+            forma.texto.length < TAMANHO_MINIMO_PARA_ACHAR_VARIACAO_POR_TRECHO,
+        }),
+      ),
   );
 }
 

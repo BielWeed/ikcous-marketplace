@@ -123,18 +123,47 @@ export function descricaoDoCupom(
     : `${desconto} em qualquer compra`;
 }
 
-function mesmoDia(a: Date, b: Date): boolean {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
+// O dia no calendário da LOJA (Brasília), não no do aparelho: o servidor vence o
+// cupom em instante absoluto e o painel grava "até 23:59" no horário da loja.
+// Formatador local (e não `hojeEmSaoPaulo` de `financeiro.ts`) para não puxar
+// um módulo de 1.800 linhas do painel para dentro do checkout.
+const FORMATADOR_DIA_DA_LOJA = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/Sao_Paulo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const UM_DIA_EM_MS = 86_400_000;
+
+interface DiaDaLoja {
+  readonly ano: string;
+  readonly mes: string;
+  readonly dia: string;
+}
+
+function diaDaLoja(instante: Date): DiaDaLoja {
+  let ano = "";
+  let mes = "";
+  let dia = "";
+  for (const parte of FORMATADOR_DIA_DA_LOJA.formatToParts(instante)) {
+    if (parte.type === "year") ano = parte.value;
+    else if (parte.type === "month") mes = parte.value;
+    else if (parte.type === "day") dia = parte.value;
+  }
+  return { ano, mes, dia };
+}
+
+function mesmoDia(a: DiaDaLoja, b: DiaDaLoja): boolean {
+  return a.ano === b.ano && a.mes === b.mes && a.dia === b.dia;
 }
 
 /**
  * "Vence hoje" / "Vence amanhã" / "Válido até 30/09" (com o ano quando não é
- * o ano corrente). No fuso de quem olha — o mesmo calendário do painel
- * (`validade-do-cupom.ts`: a data escolhida vale até 23:59 do fuso da loja).
+ * o ano corrente). No calendário da LOJA (America/Sao_Paulo), qualquer que
+ * seja o fuso do aparelho — o mesmo do painel (`validade-do-cupom.ts`: a data
+ * escolhida vale até 23:59 do horário da loja). Brasília está em UTC-3 o ano
+ * todo (sem horário de verão desde 2019), então "amanhã" é +24 h.
  */
 export function validadeDoCupom(
   validoAte: string | null,
@@ -143,15 +172,15 @@ export function validadeDoCupom(
   if (!validoAte) return null;
   const fim = new Date(validoAte);
   if (Number.isNaN(fim.getTime())) return null;
-  if (mesmoDia(fim, agora)) return "Vence hoje";
-  const amanha = new Date(agora);
-  amanha.setDate(agora.getDate() + 1);
-  if (mesmoDia(fim, amanha)) return "Vence amanhã";
-  const dia = String(fim.getDate()).padStart(2, "0");
-  const mes = String(fim.getMonth() + 1).padStart(2, "0");
-  return fim.getFullYear() === agora.getFullYear()
-    ? `Válido até ${dia}/${mes}`
-    : `Válido até ${dia}/${mes}/${fim.getFullYear()}`;
+  const diaFim = diaDaLoja(fim);
+  const diaHoje = diaDaLoja(agora);
+  if (mesmoDia(diaFim, diaHoje)) return "Vence hoje";
+  if (mesmoDia(diaFim, diaDaLoja(new Date(agora.getTime() + UM_DIA_EM_MS)))) {
+    return "Vence amanhã";
+  }
+  return diaFim.ano === diaHoje.ano
+    ? `Válido até ${diaFim.dia}/${diaFim.mes}`
+    : `Válido até ${diaFim.dia}/${diaFim.mes}/${diaFim.ano}`;
 }
 
 /**
