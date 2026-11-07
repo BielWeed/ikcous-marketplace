@@ -7,10 +7,11 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
-import { type ReactNode, useCallback } from "react";
+import { type ReactNode, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 
 import { useDevolucaoAdmin } from "@/hooks/useDevolucoesAdmin";
+import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import {
   formatarDataHora,
@@ -80,6 +81,17 @@ export function DetalheDaDevolucao({
   const ficha = useDevolucaoAdmin(id, onMudou);
   const { detalhe, fotos, carregando, erro } = ficha;
   const aoSujar = useCallback((s: boolean) => onSujoMudou(s), [onSujoMudou]);
+  // Qual cor/tamanho cada linha devolvida é (duas linhas do mesmo produto não
+  // podem aparecer idênticas): o item só guarda o id da variação.
+  const itensDaFicha = detalhe?.itens;
+  const itensParaRotular = useMemo(
+    () =>
+      itensDaFicha?.map((item) => ({
+        variantId: item.variant_id ?? undefined,
+      })),
+    [itensDaFicha],
+  );
+  const rotulosDasVariacoes = useRotulosDasVariacoes(itensParaRotular);
 
   const whatsapp = linkWhatsappDoCliente(detalhe?.pedido?.whatsapp);
   const dentroDoPrazo = detalhe?.prazo_ate
@@ -260,6 +272,15 @@ export function DetalheDaDevolucao({
                       <p className="truncate text-xs font-bold text-white">
                         {item.product_name || "Produto"}
                       </p>
+                      {item.variant_id &&
+                        rotulosDasVariacoes[item.variant_id] && (
+                          <p
+                            data-testid="variacao-do-item-devolvido"
+                            className="break-words text-[11px] text-zinc-300"
+                          >
+                            {rotulosDasVariacoes[item.variant_id]}
+                          </p>
+                        )}
                       <p className="text-[11px] tabular-nums text-zinc-400">
                         {item.quantidade} × {formatarReais(item.valor_unitario)}
                         {item.condicao && ` · ${rotuloCondicao(item.condicao)}`}

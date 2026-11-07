@@ -405,17 +405,36 @@ describe("useCoupons — alcance e clientes do cupom", () => {
         p_page: 0,
         p_page_size: 8,
       });
-      expect(achados).toEqual([
+      expect(achados.clientes).toEqual([
         { id: "u1", full_name: "Ana", email: "ana@prova.teste" },
         { id: "7", full_name: null, email: null },
       ]);
+      // Resposta sem `total_count`: o total é o que veio (não inventa corte).
+      expect(achados.total).toBe(2);
       expect(JSON.stringify(achados)).not.toContain("12345678909");
     });
 
-    it("resposta sem linhas (null) vira []", async () => {
+    it("devolve o total do banco (total_count) junto com as 8 linhas da página", async () => {
+      rpc.mockResolvedValue({
+        data: {
+          data: [{ id: "u1", full_name: "Ana", email: "ana@prova.teste" }],
+          total_count: 143,
+        },
+        error: null,
+      });
+      const hook = await montar(false);
+      const achados = await hook().buscarClientesParaCupom("maria");
+      expect(achados.clientes).toHaveLength(1);
+      expect(achados.total).toBe(143);
+    });
+
+    it("resposta sem linhas (null) vira lista vazia, total 0", async () => {
       rpc.mockResolvedValue({ data: null, error: null });
       const hook = await montar(false);
-      expect(await hook().buscarClientesParaCupom("zz")).toEqual([]);
+      expect(await hook().buscarClientesParaCupom("zz")).toEqual({
+        clientes: [],
+        total: 0,
+      });
     });
 
     it("erro do banco lança", async () => {

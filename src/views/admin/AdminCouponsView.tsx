@@ -235,7 +235,8 @@ export const AdminCouponsView = memo(function AdminCouponsView({
     // 0%, que diria que a loja dá desconto médio zero.
     if (lojaSemCupons || percentageCoupons.length === 0) return null;
     const sum = percentageCoupons.reduce((acc, c) => acc + (c.value || 0), 0);
-    return Math.round(sum / percentageCoupons.length);
+    // Sem `Math.round`: um cupom só de 12,5% tem média 12,5%, igual ao cartão dele.
+    return sum / percentageCoupons.length;
   })();
 
   const kpiCards = useMemo<readonly KpiCardConfig[]>(
@@ -272,7 +273,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
         iconClass: "text-violet-300",
         iconBg: "bg-violet-400/10 border-violet-400/20",
         hoverBorder: "hover:border-violet-400/30",
-        value: averageDiscount === null ? "—" : `${averageDiscount}%`,
+        value: averageDiscount === null ? "—" : porcentagem(averageDiscount),
         accent: "text-violet-300",
         subValue: averageDiscount === null ? undefined : "OFF",
         footer:

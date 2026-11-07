@@ -279,7 +279,8 @@ describe("AdminProductFormView — preço próprio da variação nunca vira zero
   it("variação que JÁ está salva com preço zero aparece como R$ 0,00 na lista (não é escondida)", async () => {
     await montar([variacao("v1", "GG", 0), variacao("v2", "P")]);
 
-    const [gg, p] = precosNaLista();
+    // A lista abre na ordem da loja: P antes de GG.
+    const [p, gg] = precosNaLista();
     expect(gg).toContain("R$ 0,00");
     expect(p).toBeNull();
   });

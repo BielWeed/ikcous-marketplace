@@ -154,6 +154,8 @@ interface LojaDuble {
   readonly nome: string;
   readonly origem: string;
   readonly produtos: RespostaProdutos;
+  /** Linhas de `product_variants` (default: lista vazia, produto sem variação). */
+  readonly variacoes?: RespostaProdutos;
   readonly documento?: RespostaDocumento;
   /** `true` -> a leitura da ficha (identidade/configuração) dá 500. */
   readonly fichaFalha?: boolean;
@@ -214,6 +216,13 @@ function criarFetchDeLojas(
       if (loja.produtos.tipo === "status")
         return json({ erro: "x" }, loja.produtos.status);
       return json(loja.produtos.linhas);
+    }
+    if (url.pathname === "/rest/v1/product_variants") {
+      const variacoes = loja.variacoes ?? { tipo: "lista", linhas: [] };
+      if (variacoes.tipo === "lanca") throw new Error("rede caiu");
+      if (variacoes.tipo === "status")
+        return json({ erro: "x" }, variacoes.status);
+      return json(variacoes.linhas);
     }
     throw new Error(`URL não mapeada no dublê: ${url.toString()}`);
   }) as typeof fetch;
@@ -1159,4 +1168,135 @@ describe("middleware — prévia do link: descrição resumida e preço com pont
     });
     expect(html).toContain("R$ 1.299,90");
   });
+});
+
+// r46-e: a prévia do link da Vercel anunciava o preço-base do produto, mas o
+// card e a página mostram o menor preço entre as opções à venda. O ramo de
+// robô agora lê as variações (mesma leitura pública da página) e usa a MESMA
+// regra (`precoDeVitrine`); se a leitura falhar, a prévia cai no preço-base.
+describe("middleware — prévia do link: preço de vitrine (menor preço das variações à venda)", () => {
+  const produtoBase = {
+    nome: "Camiseta Lisa",
+    descricao: "desc",
+    preco_venda: 50,
+    imagem_url: "https://cdn.exemplo.com/c.jpg",
+    imagem_urls: [],
+  };
+  const variacao = (extra: Record<string, unknown>) => ({
+    name: "Tamanho",
+    active: true,
+    stock_increment: 5,
+    price_override: null,
+    ...extra,
+  });
+
+  async function tituloDaPrevia(
+    chave: string,
+    variacoes: RespostaProdutos,
+    aoPerguntar?: (url: URL) => void,
+  ) {
+    const host = `loja-vitrine-${chave}.exemplo`;
+    const fetchDuble = criarFetchDeLojas(
+      [
+        {
+          host,
+          nome: "Loja Vitrine",
+          origem: origemDe(`vit${chave}`),
+          produtos: { tipo: "lista", linhas: [produtoBase] },
+          variacoes,
+        },
+      ],
+      [],
+    );
+    const espiao = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const resp = await comProcessEnv(ENV_FROTA, () =>
+        comFetch(
+          (async (input: RequestInfo | URL, init?: RequestInit) => {
+            aoPerguntar?.(requestUrl(input));
+            return fetchDuble(input, init);
+          }) as typeof fetch,
+          () => middleware(robo(host, `/product-detail?id=${chave}`)),
+        ),
+      );
+      expect(resp.status).toBe(200);
+      expect(resp.headers.get("x-ikcous-og")).toBe("produto");
+      const html = await resp.text();
+      return html.match(/<meta property="og:title" content="([^"]*)" \/>/)?.[1];
+    } finally {
+      espiao.mockRestore();
+    }
+  }
+
+  it("base 50, P a 40 e G a 90, as duas com estoque -> R$ 40,00 (o que o card e a página mostram)", async () => {
+    const perguntas: URL[] = [];
+    const titulo = await tituloDaPrevia(
+      "p40g90",
+      {
+        tipo: "lista",
+        linhas: [
+          variacao({ price_override: 40 }),
+          variacao({ price_override: 90 }),
+        ],
+      },
+      (url) => perguntas.push(url),
+    );
+    expect(titulo).toBe("Camiseta Lisa - R$ 40,00 | Loja Vitrine");
+    // A MESMA leitura da página do produto: variações daquele produto, só as
+    // quatro colunas que a regra de preço usa.
+    const dasVariacoes = perguntas.find(
+      (u) => u.pathname === "/rest/v1/product_variants",
+    );
+    expect(dasVariacoes?.searchParams.get("product_id")).toBe("eq.p40g90");
+    expect(dasVariacoes?.searchParams.get("select")).toBe(
+      "name,active,stock_increment,price_override",
+    );
+  });
+
+  it("opção a 40 esgotada não puxa o preço: sobra só a G a 90 com estoque -> R$ 90,00", async () => {
+    const titulo = await tituloDaPrevia("esgotada", {
+      tipo: "lista",
+      linhas: [
+        variacao({ price_override: 40, stock_increment: 0 }),
+        variacao({ price_override: 90 }),
+      ],
+    });
+    expect(titulo).toBe("Camiseta Lisa - R$ 90,00 | Loja Vitrine");
+  });
+
+  it("opção desativada não conta: só a G a 90 está ativa -> R$ 90,00", async () => {
+    const titulo = await tituloDaPrevia("inativa", {
+      tipo: "lista",
+      linhas: [
+        variacao({ price_override: 40, active: false }),
+        variacao({ price_override: 90 }),
+      ],
+    });
+    expect(titulo).toBe("Camiseta Lisa - R$ 90,00 | Loja Vitrine");
+  });
+
+  it.each([
+    {
+      chave: "vazia",
+      rotulo: "lista vazia",
+      variacoes: { tipo: "lista", linhas: [] },
+    },
+    {
+      chave: "erro401",
+      rotulo: "permissão negada (401)",
+      variacoes: { tipo: "status", status: 401 },
+    },
+    {
+      chave: "erro500",
+      rotulo: "erro de banco (500)",
+      variacoes: { tipo: "status", status: 500 },
+    },
+    { chave: "rede", rotulo: "rede derrubada", variacoes: { tipo: "lanca" } },
+  ] as const)(
+    "consulta das variações com $rotulo -> a prévia continua no preço-base, a página não quebra",
+    async ({ chave, variacoes }) => {
+      const titulo = await tituloDaPrevia(chave, variacoes);
+      expect(titulo).toBe("Camiseta Lisa - R$ 50,00 | Loja Vitrine");
+    },
+  );
 });

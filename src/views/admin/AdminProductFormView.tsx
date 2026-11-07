@@ -64,6 +64,7 @@ import {
   mesmaCategoria,
 } from "@/lib/gestao-de-categorias";
 import { percentualComUmaCasa } from "@/lib/percentual";
+import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import {
   AVISO_ESTOQUE_NAO_RESTAURADO,
   AVISO_PRODUTO_ALTERADO_DEPOIS,
@@ -91,6 +92,7 @@ import {
   formComVariacoes,
   variacoesSoComEstoqueMexido,
 } from "@/utils/estoque-das-variacoes";
+import { ordenarVariantesDoPainel } from "@/utils/fileiras-de-variacao";
 import {
   chaveDaIdentidade,
   recadoDoTetoDeVariacoes,
@@ -466,7 +468,9 @@ function camposDoFormularioDoProduto(product: Product): ProductFormFields {
     metaDescription: product.metaDescription || "",
     sku: product.sku || "",
     codigoBarras: product.codigoBarras || "",
-    variants: product.variants || [],
+    // Na ordem da loja (P-M-G...): o banco devolve sem ORDER BY e a linha
+    // vendida ou editada pulava para o fim. Linha nova da tela entra no fim.
+    variants: ordenarVariantesDoPainel(product.variants || []),
     weightKg: product.weightKg?.toString() || "",
     widthCm: product.widthCm?.toString() || "",
     heightCm: product.heightCm?.toString() || "",
@@ -3655,12 +3659,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const priceVal = Number.parseFloat(formData.price) || 0;
   const costPriceVal = Number.parseFloat(formData.costPrice) || 0;
   const originalPriceVal = Number.parseFloat(formData.originalPrice) || 0;
-  // O selo "-X%" da prévia da promoção: a mesma conta do selo "% OFF" do
-  // card da loja (`ProductCard`), arredondada.
-  const descontoDaPromocao =
-    originalPriceVal > priceVal
-      ? Math.round(((originalPriceVal - priceVal) / originalPriceVal) * 100)
-      : 0;
+  // A prévia da promoção sai da MESMA função da loja (`precoDeVitrine`): o
+  // preço anunciado é o menor entre as variações ativas com estoque, e o "De"
+  // riscado e o selo "-X%" só existem quando esse preço é menor que o "De".
+  const vitrine = precoDeVitrine({
+    price: priceVal,
+    originalPrice: originalPriceVal || null,
+    variants: formData.variants,
+  });
   const marginPct =
     priceVal > 0 ? ((priceVal - costPriceVal) / priceVal) * 100 : 0;
   // Quatro rótulos em palavras simples: prejuízo, sem lucro, lucro baixo
@@ -5148,12 +5154,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   </div>
                 )}
 
-                {/* A prévia sai dos MESMOS números do card da loja (mesma
-                  conta do selo: `Math.round((De - Por) / De * 100)`); sem
-                  "De" maior que o preço, não há promoção para mostrar. */}
+                {/* A prévia sai da MESMA função da loja (`precoDeVitrine`):
+                  com variação de preço próprio o menor preço decide se há
+                  "De" riscado e selo; sem promoção visível, avisa. */}
                 {isPromoActive &&
                   priceVal > 0 &&
-                  originalPriceVal > priceVal && (
+                  vitrine.precoOriginal !== null && (
                     <div
                       data-testid="previa-promocao"
                       className="rounded-xl border border-admin-border bg-admin-raised px-3 py-2.5"
@@ -5162,24 +5168,40 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         Na loja o cliente vai ver
                       </p>
                       <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                        {vitrine.aPartirDe && (
+                          <span className="text-[11px] font-medium text-zinc-400">
+                            A partir de
+                          </span>
+                        )}
                         <span
                           className={cn(
                             "text-xl font-bold tabular-nums",
                             CLASSE_PRECO_PROMOCIONAL_FUNDO_ESCURO,
                           )}
                         >
-                          {formatCurrency(priceVal)}
+                          {formatCurrency(vitrine.preco)}
                         </span>
                         <span className="text-sm tabular-nums text-zinc-500 line-through">
-                          {formatCurrency(originalPriceVal)}
+                          {formatCurrency(vitrine.precoOriginal)}
                         </span>
-                        {descontoDaPromocao > 0 && (
+                        {vitrine.desconto > 0 && (
                           <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-bold text-emerald-300">
-                            -{descontoDaPromocao}%
+                            -{vitrine.desconto}%
                           </span>
                         )}
                       </div>
                     </div>
+                  )}
+                {isPromoActive &&
+                  priceVal > 0 &&
+                  originalPriceVal > priceVal &&
+                  vitrine.precoOriginal === null && (
+                    <p
+                      data-testid="previa-promocao-sem-efeito"
+                      className="ml-1 block text-[11px] font-bold leading-tight text-amber-400"
+                    >
+                      Com os preços das variações, a loja não mostra promoção.
+                    </p>
                   )}
               </div>
 

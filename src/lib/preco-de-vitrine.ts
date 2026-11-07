@@ -1,4 +1,21 @@
-import type { Product, ProductVariant } from "@/types";
+// Sem `import` de `@/types` DE PROPÓSITO: esta regra também roda na borda (a
+// prévia do link, `src/hospedagem/precoDaPrevia.ts`), onde o bundler não
+// resolve o alias `@/` e o grafo de `middleware.ts` só aceita módulos puros
+// (`tests/front/porteiro-grafo-da-borda-so-modulos-puros.test.ts`). Por isso os
+// tipos abaixo descrevem só os campos que a regra lê; `Product` e
+// `ProductVariant` do app cabem neles por estrutura.
+interface VarianteDeVitrine {
+  name: string;
+  active: boolean;
+  stockIncrement?: number;
+  priceOverride?: number;
+}
+
+interface ProdutoDeVitrine {
+  price: number;
+  originalPrice?: number | null;
+  variants?: VarianteDeVitrine[];
+}
 
 /**
  * O preço que a VITRINE (card, faixa de Ofertas, Favoritos, ordenação por
@@ -28,8 +45,6 @@ export interface PrecoDeVitrine {
   economia: number;
 }
 
-type ProdutoDeVitrine = Pick<Product, "price" | "originalPrice" | "variants">;
-
 const comparar = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
@@ -42,18 +57,18 @@ function precosPossiveis(
   produto: ProdutoDeVitrine,
   apenasComEstoque: boolean,
 ): number[] {
-  const ativas: ProductVariant[] = (produto.variants ?? []).filter(
+  const ativas: VarianteDeVitrine[] = (produto.variants ?? []).filter(
     (variante) => variante.active,
   );
   if (ativas.length === 0) return [produto.price];
 
-  const grupos = new Map<string, ProductVariant[]>();
+  const grupos = new Map<string, VarianteDeVitrine[]>();
   for (const variante of ativas) {
     const grupo = grupos.get(variante.name);
     if (grupo) grupo.push(variante);
     else grupos.set(variante.name, [variante]);
   }
-  const temEstoque = (variante: ProductVariant) =>
+  const temEstoque = (variante: VarianteDeVitrine) =>
     (variante.stockIncrement ?? 0) > 0;
   if (
     apenasComEstoque &&

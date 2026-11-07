@@ -74,6 +74,43 @@ function compararValores(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/** As linhas de Variações do PAINEL na mesma ordem dos chips da loja (P-M-G,
+ *  números, o resto, "Único"): o banco as devolve sem ORDER BY e a linha vendida
+ *  ou editada pulava para o fim. Grade composta ("Tamanho / Cor") ordena pelo
+ *  atributo que a loja mostra primeiro e desempata nos seguintes. Não altera a
+ *  lista recebida; empate total mantém a ordem de chegada (sort estável). */
+export function ordenarVariantesDoPainel(
+  variantes: ProductVariant[],
+): ProductVariant[] {
+  const chaves = new Map(
+    variantes.map((variante) => [
+      variante,
+      dividirEmAtributos(variante.name, variante.value)
+        .map((par, i) => ({ ...par, i }))
+        .sort(
+          (a, b) =>
+            posicaoDoAtributo(a.name) - posicaoDoAtributo(b.name) || a.i - b.i,
+        ),
+    ]),
+  );
+  return [...variantes].sort((a, b) => {
+    const x = chaves.get(a) ?? [];
+    const y = chaves.get(b) ?? [];
+    for (let i = 0; i < Math.min(x.length, y.length); i++) {
+      const parX = x.at(i);
+      const parY = y.at(i);
+      if (!parX || !parY) break;
+      const nomes =
+        posicaoDoAtributo(parX.name) - posicaoDoAtributo(parY.name) ||
+        parX.name.localeCompare(parY.name, "pt-BR");
+      if (nomes !== 0) return nomes;
+      const valores = compararValores(parX.value, parY.value);
+      if (valores !== 0) return valores;
+    }
+    return 0;
+  });
+}
+
 /** A seleção só entrega o id da LINHA completa: carrinho e estoque não mudam de contrato. */
 export function fileirasDeVariacao(
   variantes: ProductVariant[] = [],

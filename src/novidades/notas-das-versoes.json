@@ -1,4 +1,19 @@
 {
+  "1.5.149": {
+    "titulo": "Devolução que diz qual cor, link do produto com o preço certo e checkout que explica quando está vazio",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Painel, Cupons: o desconto médio de um cupom com decimais (por exemplo 12,5%) aparece igual ao cartão do cupom, em vez de arredondar para cima.",
+      "Painel, Produtos: a prévia da promoção usa o menor preço entre as variações, como a loja mostra, e a lista de variações segue sempre a mesma ordem, em vez de mudar depois de vendas ou edições.",
+      "Loja e Painel, Devoluções: quando o pedido tem o mesmo produto em cores ou tamanhos diferentes, a devolução diz qual variação é qual, na hora de pedir e na hora de conferir o que chegou.",
+      "Painel, Pedidos: o selo de pagamento estornado de um pedido entregue só fica discreto na ficha do pedido quando a devolução concluída cobre o valor todo; sem essa prova, continua avisando que precisa de atenção.",
+      "Loja, Pedidos: o aviso “Pagamento estornado” de um pedido entregue aparece em tom neutro para a cliente, e não mais em vermelho.",
+      "Painel, Balcão e Cupons: a busca de cliente avisa “Mostrando 8 de N” quando há mais pessoas do que as 8 mostradas e pede o nome completo, o e-mail ou o WhatsApp para achar a pessoa.",
+      "Loja, Checkout: abrir o checkout direto com o carrinho vazio explica que o carrinho está vazio e leva de volta ao carrinho, e um link de produto com o código em letras maiúsculas abre o produto em vez de ficar carregando.",
+      "Loja, Compartilhar: a prévia do link do produto mostra o menor preço à venda, o mesmo que a loja anuncia."
+    ]
+  },
   "1.5.148": {
     "titulo": "Foto certa no iPhone, cancelar pedido mais seguro e avisos que dizem o que aconteceu",
     "novidades": [],

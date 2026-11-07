@@ -167,6 +167,13 @@ export type PaymentStatus =
 export type CanalDaVenda = "online" | "presencial";
 
 export interface OrderItem {
+  /**
+   * Id da linha do pedido (`marketplace_order_items.id`). É o que liga esta
+   * linha à folha de devolução (`order_item_id`), para dizer a cor/tamanho de
+   * cada uma. Ausente em pedido montado no app antes de ir ao banco e em
+   * cópia guardada antiga.
+   */
+  id?: string;
   productId: string;
   variantId?: string;
   name: string;

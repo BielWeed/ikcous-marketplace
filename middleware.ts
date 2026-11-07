@@ -16,6 +16,10 @@ import {
   obterFichaValidada,
   respostaManutencao,
 } from "./src/hospedagem/porteiro";
+import {
+  montarConsultaDeVariacoes,
+  precoDaPrevia,
+} from "./src/hospedagem/precoDaPrevia";
 import { resumoParaPrevia } from "./src/lib/resumo-para-previa";
 
 // O `matcher` PRECISA ser um array-LITERAL bem aqui — a Vercel/Next lê
@@ -354,15 +358,34 @@ export default async function middleware(
         // `produtos` (42501 permission denied) — o caminho público de
         // verdade é a VIEW `vw_produtos_public`, a mesma que
         // src/lib/realtimeSyncEngine.ts usa para quem não é admin.
-        const response = await fetch(
-          `${supabaseUrl}/rest/v1/vw_produtos_public?id=eq.${encodeURIComponent(productId)}&select=*`,
-          {
-            headers: {
-              apikey: supabaseKey,
-              Authorization: `Bearer ${supabaseKey}`,
-            },
-          },
-        );
+        const cabecalhosDaLeitura = {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+        };
+        // As variações saem JUNTO com o produto: o preço da prévia é o de
+        // vitrine (menor preço das opções à venda, o do card e da página), e
+        // não o `preco_venda` base. Falha aqui (rede, permissão, formato) vira
+        // `null` e a prévia cai no preço-base — nunca derruba a prévia, nem
+        // vira "produto sem prévia".
+        const lerVariacoes = async (): Promise<unknown> => {
+          try {
+            const respostaVariacoes = await fetch(
+              montarConsultaDeVariacoes(supabaseUrl, productId),
+              { headers: cabecalhosDaLeitura },
+            );
+            return respostaVariacoes.ok ? await respostaVariacoes.json() : null;
+          } catch (error) {
+            console.error("[Middleware] Error fetching variants:", error);
+            return null;
+          }
+        };
+        const [response, variacoes] = await Promise.all([
+          fetch(
+            `${supabaseUrl}/rest/v1/vw_produtos_public?id=eq.${encodeURIComponent(productId)}&select=*`,
+            { headers: cabecalhosDaLeitura },
+          ),
+          lerVariacoes(),
+        ]);
 
         if (response.ok) {
           const products = await response.json();
@@ -381,7 +404,12 @@ export default async function middleware(
             );
             // Só número > 0 aparece: 0, negativo ou não numérico ficam sem
             // preço na prévia (decisão do dono, 11/09/2026).
-            const precoNumerico = Number(product.preco_venda);
+            // O número é o preço de VITRINE (menor preço das opções à venda);
+            // sem variações utilizáveis é o `preco_venda` base.
+            const precoNumerico = precoDaPrevia(
+              Number(product.preco_venda),
+              variacoes,
+            );
             const price =
               Number.isFinite(precoNumerico) && precoNumerico > 0
                 ? escaparHtml(

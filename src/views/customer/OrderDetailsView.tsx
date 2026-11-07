@@ -83,7 +83,14 @@ import {
   XCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
@@ -479,6 +486,18 @@ export function OrderDetailsView({
   } | null>(null);
   // Qual cor/tamanho cada linha do pedido e (o pedido so guarda o id).
   const rotulosDasVariacoes = useRotulosDasVariacoes(order?.items);
+  // O mesmo texto, por id da LINHA do pedido: é a chave que a folha de devolução
+  // usa (`order_item_id`) para distinguir duas linhas do mesmo produto.
+  const rotulosPorLinhaDoPedido = useMemo(() => {
+    const porLinha: Record<string, string> = {};
+    for (const linha of order?.items ?? []) {
+      const rotulo = linha.variantId
+        ? rotulosDasVariacoes[linha.variantId]
+        : undefined;
+      if (linha.id && rotulo) porLinha[linha.id] = rotulo;
+    }
+    return porLinha;
+  }, [order?.items, rotulosDasVariacoes]);
   const [loading, setLoading] = useState(true);
   const [isCancelling, setIsCancelling] = useState(false);
   // Espelho de `isCancelling` para o efeito que acompanha a lista (ele não
@@ -2119,6 +2138,7 @@ export function OrderDetailsView({
           aberto={pedindoDevolucao}
           onAbertoMudou={setPedindoDevolucao}
           elegibilidade={devolucaoDoProduto.elegibilidade}
+          rotulosDosItens={rotulosPorLinhaDoPedido}
           userId={user.id}
           enderecoDaLoja={config.storeAddress ?? null}
           horarioDaLoja={config.businessHours ?? null}

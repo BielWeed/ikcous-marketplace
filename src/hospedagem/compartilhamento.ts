@@ -9,6 +9,7 @@ import type {
   HospedagemConfig,
   MotivoOg,
 } from "./contrato";
+import { montarConsultaDeVariacoes, precoDaPrevia } from "./precoDaPrevia";
 
 export const PRAZO_MS = 2500;
 export const CORPO_MAXIMO = 64 * 1024;
@@ -123,34 +124,62 @@ async function lerCorpoLimitado(
   return new TextDecoder().decode(junto);
 }
 
+// Uma leitura pública ao banco da loja, com as mesmas travas para a view do
+// produto e para as variações: sem redirecionamento, prazo, corpo limitado.
+// Qualquer falha devolve null — o chamador decide o que fazer sem o dado.
+async function lerListaPublica(
+  config: HospedagemConfig,
+  url: (origin: string) => string,
+  opcoes: OpcoesDoWorker,
+): Promise<unknown[] | null> {
+  if (config.conexao.kind !== "database") return null;
+  const fetchImpl = opcoes.fetchImpl ?? fetch;
+  try {
+    const resposta = await fetchImpl(url(config.conexao.origin), {
+      headers: cabecalhosDaConsulta(config.conexao),
+      redirect: "manual",
+      signal: AbortSignal.timeout(opcoes.prazoMs ?? PRAZO_MS),
+    });
+    if (!resposta.ok) return null;
+    const texto = await lerCorpoLimitado(resposta, CORPO_MAXIMO);
+    if (texto === null) return null;
+    const lista: unknown = JSON.parse(texto);
+    return Array.isArray(lista) ? lista : null;
+  } catch {
+    // Regressão do defeito original do middleware: falha NUNCA vira "produto".
+    return null;
+  }
+}
+
 export async function consultarProduto(
   config: HospedagemConfig,
   id: string,
   opcoes: OpcoesDoWorker = {},
 ): Promise<ProdutoPublico | null> {
-  if (config.conexao.kind !== "database") return null;
-  const fetchImpl = opcoes.fetchImpl ?? fetch;
-  try {
-    const resposta = await fetchImpl(
-      montarConsulta(config.conexao.origin, id),
-      {
-        headers: cabecalhosDaConsulta(config.conexao),
-        redirect: "manual",
-        signal: AbortSignal.timeout(opcoes.prazoMs ?? PRAZO_MS),
-      },
-    );
-    if (!resposta.ok) return null;
-    const texto = await lerCorpoLimitado(resposta, CORPO_MAXIMO);
-    if (texto === null) return null;
-    const lista: unknown = JSON.parse(texto);
-    if (!Array.isArray(lista) || lista.length === 0) return null;
-    const primeiro: unknown = lista[0];
-    if (typeof primeiro !== "object" || primeiro === null) return null;
-    return primeiro as ProdutoPublico;
-  } catch {
-    // Regressão do defeito original do middleware: falha NUNCA vira "produto".
-    return null;
-  }
+  const lista = await lerListaPublica(
+    config,
+    (origin) => montarConsulta(origin, id),
+    opcoes,
+  );
+  if (lista === null || lista.length === 0) return null;
+  const primeiro = lista[0];
+  if (typeof primeiro !== "object" || primeiro === null) return null;
+  return primeiro as ProdutoPublico;
+}
+
+// As variações do produto, para a prévia anunciar o mesmo preço de vitrine que
+// a loja mostra. Falha (rede, prazo, permissão, corpo grande) = null: a prévia
+// cai no preço-base, nunca deixa de sair por causa disto.
+export function consultarVariacoes(
+  config: HospedagemConfig,
+  id: string,
+  opcoes: OpcoesDoWorker = {},
+): Promise<unknown[] | null> {
+  return lerListaPublica(
+    config,
+    (origin) => montarConsultaDeVariacoes(origin, id),
+    opcoes,
+  );
 }
 
 const textoOuNulo = (valor: unknown): string | null =>
@@ -160,6 +189,7 @@ export function montarHtml(
   produto: ProdutoPublico,
   id: string,
   config: HospedagemConfig,
+  variacoes: unknown = null,
 ): string {
   const loja = escaparHtml(config.storeName);
   const nome = escaparHtml(
@@ -173,10 +203,16 @@ export function montarHtml(
   );
   // Só número > 0 aparece: 0, negativo ou não numérico ficam sem preço na
   // prévia (decisão do dono, 11/09/2026).
+  // O número é o preço de VITRINE (menor preço das opções à venda), o mesmo do
+  // card e da página; sem variações utilizáveis é o `preco_venda` base.
+  const precoNumerico =
+    typeof produto.preco_venda === "number"
+      ? precoDaPrevia(produto.preco_venda, variacoes)
+      : Number.NaN;
   const preco =
-    typeof produto.preco_venda === "number" && produto.preco_venda > 0
+    Number.isFinite(precoNumerico) && precoNumerico > 0
       ? escaparHtml(
-          `R$ ${produto.preco_venda.toLocaleString("pt-BR", {
+          `R$ ${precoNumerico.toLocaleString("pt-BR", {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
           })}`,
@@ -322,9 +358,19 @@ export function criarWorker(
       const id = url.searchParams.get("id");
       if (!idValido(id) || config.conexao.kind !== "database")
         return documentoDaLoja(request, env, config, "sem-produto");
-      const produto = await consultarProduto(config, id, opcoes);
+      // As duas leituras saem juntas (cada uma com o próprio prazo): as
+      // variações não custam tempo a mais, e a falha delas só tira o preço de
+      // vitrine, nunca a prévia.
+      const [produto, variacoes] = await Promise.all([
+        consultarProduto(config, id, opcoes),
+        consultarVariacoes(config, id, opcoes),
+      ]);
       if (!produto) return documentoDaLoja(request, env, config, "sem-produto");
-      return previa(montarHtml(produto, id, config), request, config);
+      return previa(
+        montarHtml(produto, id, config, variacoes),
+        request,
+        config,
+      );
     },
   };
 }

@@ -454,6 +454,12 @@ describe("CheckoutView — cartão pelo app", () => {
       expect(mockCart).toEqual([]);
       expect(createOrder).toHaveBeenCalledTimes(1);
 
+      // O handler é capturado ENQUANTO o formulário ainda está na tela: depois
+      // de fechar o aviso a tela de "carrinho vazio" toma o lugar dele e o
+      // botão deixa de existir (nenhum caminho de toque cria outro pedido).
+      const onClickAntesDeFechar = capturarOnClickFinalizar(
+        botaoPorTexto(document.body, "Finalizar Pedido")!,
+      );
       const fechar = document.body.querySelector<HTMLButtonElement>(
         '[aria-label="Fechar o aviso"]',
       );
@@ -463,14 +469,12 @@ describe("CheckoutView — cartão pelo app", () => {
         document.body.querySelector('[aria-label="Fechar o aviso"]'),
       ).toBeNull();
 
-      const botao = botaoPorTexto(document.body, "Finalizar Pedido")!;
       if (via === "botao") {
-        expect(botao.disabled).toBe(true);
-        await clicar(botao);
+        expect(botaoPorTexto(document.body, "Finalizar Pedido")).toBeFalsy();
+        expect(hospedeiro.textContent).toContain("Seu carrinho está vazio");
       } else {
-        const onClick = capturarOnClickFinalizar(botao);
         await act(async () => {
-          onClick();
+          onClickAntesDeFechar();
           await esperarMicrotarefas();
           await esperarMicrotarefas();
         });

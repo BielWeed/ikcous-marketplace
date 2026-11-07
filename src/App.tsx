@@ -484,8 +484,16 @@ export default function App() {
   );
 }
 
-const getProductById = (products: Product[], id: string) =>
-  products.find((p) => p.id === id);
+// Sem diferenciar maiúscula de minúscula: o banco aceita o uuid do link em
+// maiúsculas (digitado à mão, planilha, banner do lojista) e devolve o produto
+// com o id em minúsculas; a comparação exata nunca o achava e a tela ficava
+// presa em "Carregando produto…". Só aqui: o `?id=` também serve a pedido,
+// cupom e usuário, então o id da URL não é normalizado na leitura.
+const getProductById = (products: Product[], id: string) => {
+  if (!id) return undefined;
+  const idEmMinusculas = id.toLowerCase();
+  return products.find((p) => p.id.toLowerCase() === idEmMinusculas);
+};
 
 // Link de produto compartilhado em rede PENDURADA (conecta e não responde):
 // sem prazo a tela ficava branca para sempre. 12 s para a consulta do produto

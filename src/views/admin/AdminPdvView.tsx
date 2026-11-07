@@ -30,7 +30,10 @@ import type {
   ProdutoEncontradoNaBusca,
 } from "@/components/admin/pdv/BuscaDeProduto";
 import { ClienteDaVenda } from "@/components/admin/pdv/ClienteDaVenda";
-import type { LinhaDeClienteEncontrado } from "@/components/admin/pdv/ClienteDaVenda";
+import type {
+  LinhaDeClienteEncontrado,
+  PaginaDeClientesEncontrados,
+} from "@/components/admin/pdv/ClienteDaVenda";
 import { CupomDaVenda } from "@/components/admin/pdv/CupomDaVenda";
 import { FechamentoDaVenda } from "@/components/admin/pdv/FechamentoDaVenda";
 import { LeitorDeCodigo } from "@/components/admin/pdv/LeitorDeCodigo";
@@ -348,7 +351,7 @@ export function AdminPdvView({
 
   async function buscarClientes(
     termo: string,
-  ): Promise<readonly LinhaDeClienteEncontrado[]> {
+  ): Promise<PaginaDeClientesEncontrados> {
     const rodada = ++rodadaClientesRef.current;
     const { data, error } = await supabase.rpc("get_admin_customers_paged", {
       p_search: termo,
@@ -357,9 +360,16 @@ export function AdminPdvView({
       p_page: 0,
       p_page_size: 8,
     });
-    if (rodada !== rodadaClientesRef.current) return [];
+    if (rodada !== rodadaClientesRef.current) return { clientes: [], total: 0 };
     if (error) throw error;
-    return ((data as any)?.data ?? []) as LinhaDeClienteEncontrado[];
+    const clientes = ((data as any)?.data ?? []) as LinhaDeClienteEncontrado[];
+    // `total_count` é quantas contas o termo acha no banco inteiro, não só
+    // nas 8 desta página — é o que deixa a tela avisar que há mais.
+    const total = Number((data as any)?.total_count);
+    return {
+      clientes,
+      total: Number.isFinite(total) ? total : clientes.length,
+    };
   }
 
   async function buscarProdutos(

@@ -118,13 +118,18 @@ describe("selo do pagamento — estornado", () => {
     expect(entrada?.label).toBe("Pagamento estornado");
   });
 
-  it("estornado fora de pedido cancelado (ou sem status): o selo de sempre (controle)", () => {
-    expect(customerPaymentStatusEntry("estornado", "pending")?.tone).toBe(
-      "recusado",
-    );
-    expect(customerPaymentStatusEntry("estornado", "delivered")?.tone).toBe(
-      "recusado",
-    );
+  it("entregue + estornado (devolução concluída): tom neutro, o dinheiro voltou", () => {
+    const entrada = customerPaymentStatusEntry("estornado", "delivered");
+    expect(entrada?.tone).toBe("neutro");
+    expect(entrada?.label).toBe("Pagamento estornado");
+  });
+
+  it("estornado em pedido que ainda não chegou (ou sem status): o selo de sempre (controle)", () => {
+    for (const status of ["pending", "processing", "shipping"] as const) {
+      expect(customerPaymentStatusEntry("estornado", status)?.tone).toBe(
+        "recusado",
+      );
+    }
     expect(customerPaymentStatusEntry("estornado")?.tone).toBe("recusado");
   });
 });

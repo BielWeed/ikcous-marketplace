@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import {
   ClienteDaVenda,
-  type LinhaDeClienteEncontrado,
+  type PaginaDeClientesEncontrados,
 } from "@/components/admin/pdv/ClienteDaVenda";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -56,7 +56,7 @@ async function digitar(valor: string) {
 it.each(["", "a"])(
   "apagar a busca para '%s' invalida a resposta pendente",
   async (termo) => {
-    let resolver!: (r: LinhaDeClienteEncontrado[]) => void;
+    let resolver!: (r: PaginaDeClientesEncontrados) => void;
     buscar.mockReturnValueOnce(
       new Promise((resolve) => {
         resolver = resolve;
@@ -67,9 +67,12 @@ it.each(["", "a"])(
     await digitar(termo);
     expect(hospedeiro.textContent).not.toContain("Buscando…");
     await act(async () => {
-      resolver([
-        { id: "1", full_name: "Cliente antigo", email: null, phone: null },
-      ]);
+      resolver({
+        clientes: [
+          { id: "1", full_name: "Cliente antigo", email: null, phone: null },
+        ],
+        total: 1,
+      });
     });
     expect(hospedeiro.textContent).not.toContain("Cliente antigo");
     expect(hospedeiro.querySelector("ul")).toBeNull();
@@ -82,9 +85,12 @@ it("erro da busca mostra aviso e uma nova tentativa limpa o aviso", async () => 
   expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toBe(
     "Não foi possível buscar. Tente de novo.",
   );
-  buscar.mockResolvedValueOnce([
-    { id: "2", full_name: "Cliente atual", email: null, phone: null },
-  ]);
+  buscar.mockResolvedValueOnce({
+    clientes: [
+      { id: "2", full_name: "Cliente atual", email: null, phone: null },
+    ],
+    total: 1,
+  });
   await digitar("abc");
   expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
   expect(hospedeiro.textContent).toContain("Cliente atual");
