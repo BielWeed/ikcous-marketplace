@@ -12477,3 +12477,16 @@ Deno.test("lote 20261233 — apply feito (a versão no ledger) e 34a POSITIVA: l
       JSON.stringify(r3.bloqueios),
     );
 });
+
+Deno.test("o download das functions do ar vem pela API: o padrão devolve bundle transpilado e acusava 'difere' em tudo", async () => {
+  // 07/11/2026 (release 1.5.153): `supabase functions download` sem --use-api
+  // extrai o eszip no Docker e devolve o código transpilado (tipos apagados,
+  // reformatado). O portão marcava "difere" em TODA function, até nas que a
+  // release não tocou, e travava o promote. Pela API sai o fonte publicado.
+  const texto = await Deno.readTextFile("scripts/frota/publicar-release.mjs");
+  const inicio = texto.indexOf("baixarFuncao: async (ref, nome)");
+  assert(inicio > -1, "baixarFuncao não encontrada");
+  const trecho = texto.slice(inicio, inicio + 1400);
+  assertStringIncludes(trecho, '"download"');
+  assertStringIncludes(trecho, '"--use-api"');
+});
