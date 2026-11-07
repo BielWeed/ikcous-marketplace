@@ -148,20 +148,28 @@ async function main() {
     const gatilhoDeCadastro = await cliente.query(
       "SELECT 1 FROM pg_trigger WHERE tgrelid = 'auth.users'::regclass AND tgname = 'on_auth_user_created' AND NOT tgisinternal",
     );
-    // Sem o gatilho depois de aplicar a raiz inteira, o desligamento seria pular em
-    // silêncio e a prova viva do gatilho mediria o nada: falha ALTA.
+    // Várias provas aplicam só uma FAIXA da raiz (base "pre1192", "pre60"...), e nelas a
+    // 20261399930000 nem entrou: sem o gatilho é o esperado. Quando ELA foi aplicada e o
+    // gatilho não está lá, o desligamento seria pular em silêncio e a prova viva do
+    // gatilho mediria o nada: falha ALTA.
+    const aplicouAMigrationDoGatilho = aplicados.some((nome) =>
+      String(nome).includes("20261399930000"),
+    );
     if (gatilhoDeCadastro.rowCount !== 1) {
-      falhar(
-        "FALHOU",
-        "on_auth_user_created ausente depois de aplicar a raiz (a 20261399930000 devia tê-lo criado em auth.users)",
+      if (aplicouAMigrationDoGatilho) {
+        falhar(
+          "FALHOU",
+          "on_auth_user_created ausente depois de aplicar a 20261399930000 (ela devia tê-lo criado em auth.users)",
+        );
+      }
+    } else {
+      await cliente.query(
+        "ALTER TABLE auth.users DISABLE TRIGGER on_auth_user_created",
+      );
+      console.log(
+        "[aplicar] gatilho on_auth_user_created de auth.users DESLIGADO no efêmero (as provas semeiam usuário e perfil à mão)",
       );
     }
-    await cliente.query(
-      "ALTER TABLE auth.users DISABLE TRIGGER on_auth_user_created",
-    );
-    console.log(
-      "[aplicar] gatilho on_auth_user_created de auth.users DESLIGADO no efêmero (as provas semeiam usuário e perfil à mão)",
-    );
   } finally {
     await cliente.end().catch(() => {});
   }
