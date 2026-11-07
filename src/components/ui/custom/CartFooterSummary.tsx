@@ -86,7 +86,7 @@ export function CartFooterSummary({
       >
         <div className="mx-auto flex max-w-screen-xl flex-wrap items-center justify-between gap-x-4 gap-y-3 p-4 min-[380px]:px-5">
           {/* Visual context */}
-          <div className="hidden w-full items-baseline justify-between gap-2 md:flex">
+          <div className="cart-summary-context hidden w-full items-baseline justify-between gap-2 md:flex">
             <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
               Seu Carrinho
             </span>

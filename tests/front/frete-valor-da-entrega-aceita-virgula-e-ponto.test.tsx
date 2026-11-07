@@ -143,6 +143,7 @@ describe("Frete — valor da entrega local aceita vírgula e ponto e nunca vira 
     expect(updateConfig).toHaveBeenCalledTimes(1);
     expect(updateConfig).toHaveBeenCalledWith(
       expect.objectContaining({ localDeliveryFee: esperado }),
+      { silentSuccess: true },
     );
   });
 
@@ -153,6 +154,7 @@ describe("Frete — valor da entrega local aceita vírgula e ponto e nunca vira 
 
     expect(updateConfig).toHaveBeenCalledWith(
       expect.objectContaining({ localDeliveryFee: 0 }),
+      { silentSuccess: true },
     );
   });
 
@@ -192,6 +194,7 @@ describe("Frete — valor da entrega local aceita vírgula e ponto e nunca vira 
 
     expect(updateConfig).toHaveBeenCalledWith(
       expect.objectContaining({ localDeliveryFee: 9.9 }),
+      { silentSuccess: true },
     );
   });
 
@@ -209,7 +212,10 @@ describe("Frete — valor da entrega local aceita vírgula e ponto e nunca vira 
     // Quando ela mexe na taxa, ela sai.
     await digitar("local-delivery-fee", "7,60");
     await act(async () => botaoSalvar().click());
-    expect(updateConfig).toHaveBeenLastCalledWith({ localDeliveryFee: 7.6 });
+    expect(updateConfig).toHaveBeenLastCalledWith(
+      { localDeliveryFee: 7.6 },
+      { silentSuccess: true },
+    );
   });
 
   it('o texto digitado não é reescrito sob o dedo ("7," continua "7,")', async () => {

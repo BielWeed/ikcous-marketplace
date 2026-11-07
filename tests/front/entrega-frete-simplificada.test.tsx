@@ -218,24 +218,29 @@ describe("Entrega e frete — escolhas novas, valores antigos", () => {
         nacional[3] !== null ||
         nacional[4] !== 0 ||
         nacional[5] !== "mais_barata";
-      expect(updateConfig).toHaveBeenLastCalledWith({
-        ...(local[1] === 0 ? {} : { freeShippingMin: local[1] }),
-        ...(fora ? { shippingCoverage: "national" } : {}),
-        localDeliveryFee: 12.5,
-        ...(modo[0] === "Eu entrego" ? {} : { localDeliveryEnabled: modo[1] }),
-        ...(modo[2]
-          ? { enabledShippingMethods: ["pac", "sedex", "store-pickup"] }
-          : {}),
-        ...(nacionalMexido
-          ? {
-              nationalShippingStrategy: nacional[1],
-              nationalShippingMin: nacional[2],
-              nationalDiscountType: nacional[3],
-              nationalDiscountValue: nacional[4],
-              nationalBenefitScope: nacional[5],
-            }
-          : {}),
-      });
+      expect(updateConfig).toHaveBeenLastCalledWith(
+        {
+          ...(local[1] === 0 ? {} : { freeShippingMin: local[1] }),
+          ...(fora ? { shippingCoverage: "national" } : {}),
+          localDeliveryFee: 12.5,
+          ...(modo[0] === "Eu entrego"
+            ? {}
+            : { localDeliveryEnabled: modo[1] }),
+          ...(modo[2]
+            ? { enabledShippingMethods: ["pac", "sedex", "store-pickup"] }
+            : {}),
+          ...(nacionalMexido
+            ? {
+                nationalShippingStrategy: nacional[1],
+                nationalShippingMin: nacional[2],
+                nationalDiscountType: nacional[3],
+                nationalDiscountValue: nacional[4],
+                nationalBenefitScope: nacional[5],
+              }
+            : {}),
+        },
+        { silentSuccess: true },
+      );
     },
   );
 
@@ -364,9 +369,12 @@ describe("Entrega e frete — escolhas novas, valores antigos", () => {
     });
     await act(async () => salvar().click());
     // Só a taxa foi mexida: só ela sai (as outras respostas seguem como estão).
-    expect(updateConfig).toHaveBeenCalledExactlyOnceWith({
-      localDeliveryFee: 12.5,
-    });
+    expect(updateConfig).toHaveBeenCalledExactlyOnceWith(
+      {
+        localDeliveryFee: 12.5,
+      },
+      { silentSuccess: true },
+    );
     expect(erroToast).toHaveBeenCalledWith(
       "As regras foram salvas, mas as transportadoras não. Toque em Tentar de novo.",
     );

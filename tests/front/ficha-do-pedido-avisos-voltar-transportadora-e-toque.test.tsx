@@ -200,6 +200,24 @@ describe("ficha — janela de pagamento não confirmado: o botão que só fecha 
   });
 });
 
+describe("ficha — cupom comprido não empurra o desconto", () => {
+  it("quebra o código e mantém o valor inteiro na mesma linha", async () => {
+    const codigo = "VERAOSUPERPROMOCAOCLIENTESESPECIAIS2026";
+    await montarFicha(pedidoFake({ couponCode: codigo, discount: 10 }));
+    const etiqueta = [...hospedeiro.querySelectorAll("span")].find(
+      (span) => span.textContent === codigo,
+    )!;
+    expect(etiqueta.classList.contains("break-all")).toBe(true);
+    expect(etiqueta.classList.contains("min-w-0")).toBe(true);
+    expect(etiqueta.parentElement?.classList.contains("min-w-0")).toBe(true);
+    expect(etiqueta.parentElement?.classList.contains("flex-wrap")).toBe(true);
+    const valor = etiqueta.parentElement!.nextElementSibling!;
+    expect(valor.textContent).toBe("- R$ 10,00");
+    expect(valor.classList.contains("shrink-0")).toBe(true);
+    expect(valor.classList.contains("whitespace-nowrap")).toBe(true);
+  });
+});
+
 describe("ficha — alvos de toque das janelas de confirmação", () => {
   it("pagamento não confirmado: 'Voltar' e 'Avançar mesmo assim' têm 44px de altura mínima", async () => {
     await montarFicha(pedidoFake());

@@ -364,7 +364,7 @@ const MOSTRAR_AVISOS_DE_COMPRAS: boolean = false;
 async function avisosDosCuponsCitados(
   codigos: string[],
   cuponsLigados: boolean,
-  paraClienteEspecifico: boolean,
+  targetUserId?: string,
 ): Promise<string[]> {
   // Chave geral da tela de Cupons desligada: o servidor recusa qualquer código
   // e o checkout nem mostra o campo, então conferir cupom por cupom é inútil.
@@ -377,7 +377,9 @@ async function avisosDosCuponsCitados(
     const filtro = filtroDosCodigosCitados(codigos);
     let resposta = await supabase
       .from("coupons")
-      .select("code, active, valid_until, usage_limit, usage_count, alcance")
+      .select(
+        "id, code, active, valid_until, usage_limit, usage_count, alcance",
+      )
       .or(filtro);
     if (
       resposta.error &&
@@ -385,7 +387,7 @@ async function avisosDosCuponsCitados(
     ) {
       resposta = (await supabase
         .from("coupons")
-        .select("code, active, valid_until, usage_limit, usage_count")
+        .select("id, code, active, valid_until, usage_limit, usage_count")
         .or(filtro)) as typeof resposta;
     }
     if (resposta.error) throw resposta.error;
@@ -393,8 +395,22 @@ async function avisosDosCuponsCitados(
     const agora = new Date();
     const avisos: string[] = [];
     for (const codigo of codigos) {
+      const cupom = cupons.find((c) => c.code.toUpperCase() === codigo);
+      let clienteNaListaDoCupom: boolean | undefined;
+      if (targetUserId && cupom?.alcance === "exclusivo") {
+        if (!cupom.id)
+          throw new Error("Cupom sem identificador para conferir a lista");
+        const lista = await supabase
+          .from("cupom_clientes")
+          .select("user_id")
+          .eq("coupon_id", cupom.id)
+          .eq("user_id", targetUserId)
+          .maybeSingle();
+        if (lista.error) throw lista.error;
+        clienteNaListaDoCupom = lista.data !== null;
+      }
       const problema = problemaDoCupom(codigo, cupons, agora, {
-        paraClienteEspecifico,
+        clienteNaListaDoCupom,
       });
       if (problema) avisos.push(mensagemDoProblemaDoCupom(codigo, problema));
     }
@@ -426,7 +442,10 @@ export const AdminPushView = memo(function AdminPushView({
       // O toast de erro sai de dentro do `updateConfig`; aqui só não se segue
       // em frente. Antes o retorno era `void` e o sucesso era anunciado mesmo
       // quando a gravação falhava (ADMIN-010, #94).
-      const salvou = await updateConfig({ realTimeSalesAlerts: checked });
+      const salvou = await updateConfig(
+        { realTimeSalesAlerts: checked },
+        { silentSuccess: true },
+      );
       if (!salvou) return;
       toast.success(
         checked
@@ -894,7 +913,7 @@ export const AdminPushView = memo(function AdminPushView({
         const avisos = await avisosDosCuponsCitados(
           codigosCitados,
           config.enableCoupons !== false,
-          Boolean(targetUserId),
+          targetUserId,
         );
         if (avisos.length > 0) {
           textoJaAvisadoDeCupom.current = chaveDoTexto;

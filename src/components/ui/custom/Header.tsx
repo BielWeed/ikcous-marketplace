@@ -41,6 +41,7 @@ interface HeaderProps {
   hideSearch?: boolean;
   searchQuery?: string;
   onSearch?: (query: string) => void;
+  onCategorySelect?: (category: string) => void;
   scrollProgress?: number;
 }
 
@@ -52,6 +53,7 @@ export const Header = memo(function Header({
   hideSearch = false,
   searchQuery = "",
   onSearch = () => {},
+  onCategorySelect,
   scrollProgress = 0,
 }: Readonly<HeaderProps>) {
   const { config } = useStore();
@@ -389,6 +391,7 @@ export const Header = memo(function Header({
             <SearchBar
               value={searchQuery}
               onChange={onSearch}
+              onCategorySelect={onCategorySelect}
               onProductClick={(id) => onNavigate("product-detail", id)}
               placeholder="Buscar produtos"
               className="w-full"

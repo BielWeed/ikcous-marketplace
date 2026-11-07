@@ -23,6 +23,7 @@ vi.mock("@/hooks/useFavorites", () => ({
     pendingCount: 0,
     retentarPendentes: vi.fn(() => Promise.resolve()),
     favoritosIndisponiveis: indisponiveisDaVez,
+    limparIndisponiveis: vi.fn(async () => {}),
   }),
 }));
 
@@ -134,7 +135,7 @@ describe("FavoritesView — favoritos indisponíveis", () => {
     expect(texto).not.toContain("Nenhum produto salvo ainda");
     expect(texto).toContain("Seus favoritos estão indisponíveis agora");
     expect(avisos()).toEqual([
-      "2 favoritos seus estão temporariamente indisponíveis; voltam se a loja reativar.",
+      "2 favoritos seus não estão disponíveis na loja.Limpar indisponíveis",
     ]);
   });
 
@@ -143,7 +144,7 @@ describe("FavoritesView — favoritos indisponíveis", () => {
     await renderizar([]);
 
     expect(avisos()).toEqual([
-      "1 favorito seu está temporariamente indisponível; volta se a loja reativar.",
+      "1 favorito seu não está disponível na loja.Limpar indisponíveis",
     ]);
   });
 
@@ -152,7 +153,7 @@ describe("FavoritesView — favoritos indisponíveis", () => {
     await renderizar([umProduto("a")]);
 
     expect(avisos()).toEqual([
-      "1 favorito seu está temporariamente indisponível; volta se a loja reativar.",
+      "1 favorito seu não está disponível na loja.Limpar indisponíveis",
     ]);
     const aviso = [...hospedeiro.querySelectorAll('[role="status"]')].find(
       (el) => el.textContent?.includes("indispon"),

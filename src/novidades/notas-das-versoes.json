@@ -1,4 +1,21 @@
 {
+  "1.5.151": {
+    "titulo": "Busca que não some ao voltar, favoritos que não se perdem, painel que não fica pendurado e Só retirada sem aviso de entrega",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Busca: abrir um produto e voltar mantém o que a cliente digitou; tocar numa categoria sugerida filtra só aquela categoria e limpa a busca; trocar categoria ou ordem leva ao começo da lista.",
+      "Loja, Favoritos: ao entrar na conta, os favoritos de antes sobem na ordem em que foram salvos; “Tentar agora” avisa quando falha ou salva só uma parte; produtos indisponíveis ganham o botão “Limpar indisponíveis”, que só aparece depois que o catálogo é confirmado pela internet.",
+      "Loja, Produto e Checkout: em loja “Só retirada” não aparece mais “Entrega em” a cidade nem o Aviso de Região, e a prévia do painel também.",
+      "Loja, Checkout: nome, rua, número, bairro e cidade de quem compra sem conta têm limite de tamanho, com aviso no próprio campo.",
+      "Loja, Meus Pedidos e lista de produtos: a tela espera a recarga terminar em vez de mostrar “Nenhum pedido”, e uma busca antiga não encerra o carregamento da busca nova.",
+      "Loja, botão Voltar do celular: fecha as janelas de endereço, de esvaziar o carrinho e de cancelar pedido, sem executar a ação.",
+      "Loja, Carrinho: com o celular deitado, a barra de baixo ocupa menos espaço e sobra mais área para os itens.",
+      "Painel, Início e acesso: se a internet conecta e não responde, o Início mostra erro com “Tentar de novo” depois de 20 segundos, e a verificação de acesso oferece tentar de novo depois de 15 segundos, sem abrir o painel sem confirmação.",
+      "Painel, Pagamentos: tocar em Crédito, Débito ou parcelas lê o que está salvo naquele momento e muda só o campo tocado, sem desfazer o que outro aparelho mudou.",
+      "Painel, Cupons, Avaliações, Notificações e Frete: aparece uma confirmação só ao salvar; a campanha de cupom exclusivo avisa quando o cliente não está na lista do cupom; o código de cupom longo quebra linha na ficha do pedido."
+    ]
+  },
   "1.5.150": {
     "titulo": "Avisos que não somem sem você ver, cupom do balcão que pergunta e fotos que carregam melhor",
     "novidades": [],

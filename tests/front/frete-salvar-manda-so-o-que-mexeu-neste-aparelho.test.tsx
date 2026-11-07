@@ -194,7 +194,10 @@ describe("Frete — o Salvar manda só o que foi mexido neste aparelho", () => {
       await salvar();
 
       expect(updateConfig).toHaveBeenCalledTimes(1);
-      expect(updateConfig).toHaveBeenCalledWith({ localDeliveryFee: 15 });
+      expect(updateConfig).toHaveBeenCalledWith(
+        { localDeliveryFee: 15 },
+        { silentSuccess: true },
+      );
       // O servidor guardou a taxa nova SEM desfazer o que o outro aparelho fez.
       expect(loja.atual).toMatchObject({
         localDeliveryFee: 15,
@@ -218,13 +221,16 @@ describe("Frete — o Salvar manda só o que foi mexido neste aparelho", () => {
       await salvar();
 
       expect(updateConfig).toHaveBeenCalledTimes(1);
-      expect(updateConfig).toHaveBeenCalledWith({
-        nationalShippingStrategy: "sempre",
-        nationalShippingMin: 0,
-        nationalDiscountType: null,
-        nationalDiscountValue: 0,
-        nationalBenefitScope: "mais_barata",
-      });
+      expect(updateConfig).toHaveBeenCalledWith(
+        {
+          nationalShippingStrategy: "sempre",
+          nationalShippingMin: 0,
+          nationalDiscountType: null,
+          nationalDiscountValue: 0,
+          nationalBenefitScope: "mais_barata",
+        },
+        { silentSuccess: true },
+      );
       expect(loja.atual.localDeliveryFee).toBe(12);
     });
 
@@ -236,7 +242,10 @@ describe("Frete — o Salvar manda só o que foi mexido neste aparelho", () => {
       expect(campo("local-delivery-fee").value).toBe("15");
       await salvar();
 
-      expect(updateConfig).toHaveBeenCalledWith({ localDeliveryFee: 15 });
+      expect(updateConfig).toHaveBeenCalledWith(
+        { localDeliveryFee: 15 },
+        { silentSuccess: true },
+      );
     });
 
     it("tela limpa recebe o que o outro aparelho gravou e depois manda só o que ela mexe", async () => {
@@ -247,7 +256,10 @@ describe("Frete — o Salvar manda só o que foi mexido neste aparelho", () => {
       await digitar("local-delivery-fee", "9");
       await salvar();
 
-      expect(updateConfig).toHaveBeenCalledWith({ localDeliveryFee: 9 });
+      expect(updateConfig).toHaveBeenCalledWith(
+        { localDeliveryFee: 9 },
+        { silentSuccess: true },
+      );
     });
 
     it("mexeu em tudo: continua mandando todos os campos (comportamento de antes)", async () => {
@@ -321,7 +333,10 @@ describe("Frete — o Salvar manda só o que foi mexido neste aparelho", () => {
       await salvar();
 
       expect(updateConfig).toHaveBeenCalledTimes(1);
-      expect(updateConfig).toHaveBeenCalledWith({ localDeliveryFee: 8 });
+      expect(updateConfig).toHaveBeenCalledWith(
+        { localDeliveryFee: 8 },
+        { silentSuccess: true },
+      );
       // A loja passa a cobrar o que a tela mostra.
       expect(loja.atual.localDeliveryFee).toBe(8);
       expect(toastSucesso).toHaveBeenCalledWith("Regras de frete salvas!");
@@ -349,7 +364,10 @@ describe("Frete — o Salvar manda só o que foi mexido neste aparelho", () => {
       await salvar();
 
       expect(updateConfig).toHaveBeenCalledTimes(1);
-      expect(updateConfig).toHaveBeenCalledWith({ localDeliveryFee: 12 });
+      expect(updateConfig).toHaveBeenCalledWith(
+        { localDeliveryFee: 12 },
+        { silentSuccess: true },
+      );
       // Tela e loja dizem a mesma coisa: continua 'sempre grátis'.
       expect(loja.atual.freeShippingMin).toBe(0.01);
       expect(
@@ -365,7 +383,10 @@ describe("Frete — o Salvar manda só o que foi mexido neste aparelho", () => {
       await salvar();
       await esperarOSalvarTerminar();
       ecoDuranteOSalvar = null;
-      expect(updateConfig).toHaveBeenCalledWith({ localDeliveryFee: 15 });
+      expect(updateConfig).toHaveBeenCalledWith(
+        { localDeliveryFee: 15 },
+        { silentSuccess: true },
+      );
 
       await digitar("local-delivery-days", "2");
       await outroAparelhoGrava({ localDeliveryFee: 20 });
@@ -376,7 +397,10 @@ describe("Frete — o Salvar manda só o que foi mexido neste aparelho", () => {
       await salvar();
 
       expect(updateConfig).toHaveBeenCalledTimes(2);
-      expect(updateConfig).toHaveBeenLastCalledWith({ localDeliveryDays: 2 });
+      expect(updateConfig).toHaveBeenLastCalledWith(
+        { localDeliveryDays: 2 },
+        { silentSuccess: true },
+      );
       expect(loja.atual).toMatchObject({
         localDeliveryFee: 20,
         localDeliveryDays: 2,
@@ -475,6 +499,7 @@ describe("Frete — o Salvar manda só o que foi mexido neste aparelho", () => {
           localDeliveryEnabled: false,
           localDeliveryFee: 15,
         }),
+        { silentSuccess: true },
       );
       expect(toastSucesso).toHaveBeenCalledWith("Regras de frete salvas!");
     });

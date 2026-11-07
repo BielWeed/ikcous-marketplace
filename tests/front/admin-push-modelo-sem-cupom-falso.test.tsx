@@ -24,6 +24,9 @@ const { estado } = vi.hoisted(() => ({
     // Banco de loja de teste, sem a coluna `coupons.alcance`: pedir a coluna
     // responde 42703 (undefined_column), como o PostgREST.
     bancoSemAlcance: false,
+    clientesDoCupom: ["u1"] as string[],
+    erroDaLista: false,
+    consultasDaLista: [] as Record<string, string>[],
     cuponsLigadosNaLoja: true,
   },
 }));
@@ -66,6 +69,27 @@ vi.mock("@/lib/supabase", () => ({
         return {
           select: () => Promise.resolve({ count: 3, error: null }),
         };
+      }
+      if (tabela === "cupom_clientes") {
+        const filtros: Record<string, string> = {};
+        const consulta = {
+          eq: (coluna: string, valor: string) => {
+            Object.assign(filtros, { [coluna]: valor });
+            return consulta;
+          },
+          maybeSingle: () => {
+            estado.consultasDaLista.push(filtros);
+            return Promise.resolve({
+              data:
+                filtros.coupon_id === "cupom-vip" &&
+                estado.clientesDoCupom.includes(filtros.user_id)
+                  ? { user_id: filtros.user_id }
+                  : null,
+              error: estado.erroDaLista ? { message: "rede caiu" } : null,
+            });
+          },
+        };
+        return { select: () => consulta };
       }
       if (tabela === "coupons") {
         return {
@@ -208,6 +232,9 @@ describe("AdminPushView — modelo pronto não promete cupom que a loja não cri
     estado.consultasDeCupom = [];
     estado.colunasPedidas = [];
     estado.bancoSemAlcance = false;
+    estado.clientesDoCupom = ["u1"];
+    estado.erroDaLista = false;
+    estado.consultasDaLista = [];
     estado.cuponsLigadosNaLoja = true;
 
     const armazem = new Map<string, string>();
@@ -491,6 +518,7 @@ describe("AdminPushView — modelo pronto não promete cupom que a loja não cri
   });
 
   const cupomExclusivo = {
+    id: "cupom-vip",
     code: "VERAO10",
     active: true,
     valid_until: null,
@@ -528,7 +556,38 @@ describe("AdminPushView — modelo pronto não promete cupom que a loja não cri
 
     await enviar();
     expect(await avisosDeErro()).toEqual([]);
+    expect(estado.consultasDaLista).toEqual([
+      { coupon_id: "cupom-vip", user_id: "u1" },
+    ]);
     expect(invokeSendPush).toHaveBeenCalledTimes(1);
+  });
+
+  it("cliente fora da lista recebe um aviso antes; insistir permite o envio", async () => {
+    estado.cupons = [cupomExclusivo];
+    await abrirTela("u2");
+    await escrever("Oferta", "Use o cupom VERAO10 hoje.");
+    await enviar();
+    expect(invokeSendPush).not.toHaveBeenCalled();
+    expect(await avisosDeErro()).toContainEqual(
+      expect.stringContaining("este cliente não está na lista do cupom"),
+    );
+    expect(estado.consultasDaLista).toEqual([
+      { coupon_id: "cupom-vip", user_id: "u2" },
+    ]);
+    await enviar();
+    expect(invokeSendPush).toHaveBeenCalledTimes(1);
+  });
+
+  it("falha ao ler a lista não vira autorização para enviar calado", async () => {
+    estado.cupons = [cupomExclusivo];
+    estado.erroDaLista = true;
+    await abrirTela("u1");
+    await escrever("Oferta", "Use o cupom VERAO10 hoje.");
+    await enviar();
+    expect(invokeSendPush).not.toHaveBeenCalled();
+    expect(await avisosDeErro()).toContainEqual(
+      expect.stringContaining("Não consegui conferir"),
+    );
   });
 
   it("banco sem a coluna alcance: refaz a consulta sem ela, confere o resto e não vira 'não consegui conferir'", async () => {

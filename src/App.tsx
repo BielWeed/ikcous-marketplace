@@ -1510,6 +1510,19 @@ const AppContent = () => {
     [handleNavigate],
   );
 
+  // O chip é uma categoria exata, não um termo. A referência da Home é
+  // atualizada antes da navegação para que o endereço já leve o filtro.
+  const handleSearchCategorySelect = useCallback(
+    (category: string) => {
+      handleCategoryChange(category);
+      setSearchQuery("");
+      if (currentViewRef.current !== "home") {
+        void handleNavigate("home");
+      }
+    },
+    [handleCategoryChange, handleNavigate],
+  );
+
   useCacheWarmer();
   const { isSlow } = useNetworkAdaptive();
   const getFramerMotionDuration = useCallback(() => {
@@ -2176,7 +2189,7 @@ const AppContent = () => {
         const categoryParam = urlParams.get("category") || "Todas";
         if (targetView === "home") {
           // Banner ou link de categoria: leva ao Catálogo filtrado. O chip
-          // não passa por aqui (usa handleCategoryChange) e não rola.
+          // não passa por aqui (usa handleCategoryChange); a Home rola o filtro.
           if (
             categoryParam !== "Todas" &&
             (selectedCategoryRef.current !== categoryParam ||
@@ -2497,12 +2510,17 @@ const AppContent = () => {
   ]);
 
   // A busca é limpa quando a cliente TROCA de tela (sair da Home/da busca para
-  // outra), nunca a cada termo novo. Antes o efeito também olhava
+  // outra aba), mas preservada ao abrir um produto para comparar e voltar.
+  // Nunca limpa a cada termo novo. Antes o efeito também olhava
   // `searchQuery`: fora da Home, todo termo digitado era zerado na hora — o
   // campo se esvaziava sozinho e nada acontecia. Quem busca fora da Home é
   // levada à Home pelo `handleSearch`, que é onde a lista filtra.
   useEffect(() => {
-    if (currentView !== "search" && currentView !== "home") {
+    if (
+      currentView !== "search" &&
+      currentView !== "home" &&
+      currentView !== "product-detail"
+    ) {
       setSearchQuery("");
     }
   }, [currentView]);
@@ -3450,6 +3468,7 @@ const AppContent = () => {
               hideSearch={["address-form", "checkout"].includes(currentView)}
               searchQuery={searchQuery}
               onSearch={handleSearch}
+              onCategorySelect={handleSearchCategorySelect}
               scrollProgress={scrollProgress}
             />
           </React.Suspense>

@@ -195,12 +195,17 @@ describe("problemaDoCupom", () => {
     ).toBeNull();
   });
 
-  it("cupom exclusivo citado num aviso para todos é problema; o aviso para um cliente só, não", () => {
+  it("cupom exclusivo só dispensa o aviso com cliente confirmado na lista", () => {
     const exclusivo: CupomDaLoja = { ...bom, alcance: "exclusivo" };
     expect(problemaDoCupom("VERAO10", [exclusivo], agora)).toBe("exclusivo");
     expect(
       problemaDoCupom("VERAO10", [exclusivo], agora, {
-        paraClienteEspecifico: true,
+        clienteNaListaDoCupom: false,
+      }),
+    ).toBe("cliente-fora-da-lista");
+    expect(
+      problemaDoCupom("VERAO10", [exclusivo], agora, {
+        clienteNaListaDoCupom: true,
       }),
     ).toBeNull();
   });
@@ -230,6 +235,7 @@ describe("problemaDoCupom", () => {
       "vencido",
       "esgotado",
       "exclusivo",
+      "cliente-fora-da-lista",
     ] as const) {
       expect(mensagemDoProblemaDoCupom("VERAO10", p)).toContain("VERAO10");
     }

@@ -257,6 +257,8 @@ export const CARTAO_PELO_APP = {
     "Deixe o pagamento pelo app liberado antes (seção Mercado Pago: as três chaves salvas e testadas): o cartão usa as mesmas chaves e só aparece para o cliente com o pagamento pelo app ligado.",
   leituraFalhou:
     "Não foi possível ler a configuração do cartão. Recarregue a página para tentar de novo.",
+  conferirFalhou:
+    "Não foi possível conferir o que está salvo agora. Nada foi alterado. Tente de novo.",
   debito:
     "No débito, o Mercado Pago aceita as bandeiras liberadas para a sua conta (hoje, em geral, só Elo).",
   parcelas:

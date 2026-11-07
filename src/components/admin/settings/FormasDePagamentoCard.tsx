@@ -324,9 +324,9 @@ type LeituraDoCartao =
  * lidos da tabela `config_pagamento_cartao` (contrato no plano
  * 2026-09-26-painel-cartao-e-devolucoes.md).
  *
- * Mesmo padrão imediato dos switches da entrega: cada toque salva a linha
- * inteira, e a tela mostra o que o BANCO devolveu (nunca o que o clique
- * pediu). Sem o PIX pelo app ligado (a mesma credencial do Mercado Pago),
+ * Mesmo padrão imediato dos switches da entrega: cada toque lê a linha de
+ * agora, troca só o campo tocado e salva, e a tela mostra o que o BANCO
+ * devolveu (nunca o que o clique pediu). Sem o PIX pelo app ligado (a mesma credencial do Mercado Pago),
  * ligar fica travado com o porquê na tela — desligar continua possível, para
  * a lojista nunca ficar presa com o cartão ligado.
  */
@@ -375,7 +375,13 @@ export function CartaoPeloAppBloco({
     };
   }, [relerGatilho]);
 
-  async function salvar(desejada: ConfigDoCartao, sucesso: string) {
+  /**
+   * Grava SÓ o campo em que a lojista tocou, sobre a linha de AGORA: a tela
+   * pode estar aberta há horas e outro aparelho ter mudado crédito, débito ou
+   * parcelas desde então, e a RPC regrava os três de uma vez. Sem conseguir
+   * ler a linha, não grava nada (gravar por cima do que não se viu é o defeito).
+   */
+  async function salvar(mudanca: Partial<ConfigDoCartao>, sucesso: string) {
     if (isOffline) {
       toast.error("Você está offline");
       return;
@@ -384,7 +390,15 @@ export function CartaoPeloAppBloco({
     setSalvando(true);
     onDirtyMudou?.(true);
     try {
-      const gravada = await salvarConfigDoCartao(desejada);
+      const atual = await buscarConfigDoCartao();
+      if (!atual.ok) {
+        toast.error(CARTAO_PELO_APP.conferirFalhou);
+        return;
+      }
+      const gravada = await salvarConfigDoCartao({
+        ...atual.config,
+        ...mudanca,
+      });
       setLeitura({ estado: "ok", config: gravada });
       toast.success(sucesso);
     } catch (err) {
@@ -451,7 +465,7 @@ export function CartaoPeloAppBloco({
               aria-label="Cartão de crédito pelo app"
               onCheckedChange={(checked) =>
                 salvar(
-                  { ...config, credito: checked },
+                  { credito: checked },
                   checked
                     ? "Cartão de crédito pelo app ligado"
                     : "Cartão de crédito pelo app desligado",
@@ -481,7 +495,7 @@ export function CartaoPeloAppBloco({
               aria-label="Cartão de débito pelo app"
               onCheckedChange={(checked) =>
                 salvar(
-                  { ...config, debito: checked },
+                  { debito: checked },
                   checked
                     ? "Cartão de débito pelo app ligado"
                     : "Cartão de débito pelo app desligado",
@@ -511,7 +525,7 @@ export function CartaoPeloAppBloco({
                   onChange={(e) => {
                     const parcelasMax = Number(e.target.value);
                     salvar(
-                      { ...config, parcelasMax },
+                      { parcelasMax },
                       parcelasMax === 1
                         ? "Crédito só à vista"
                         : `Crédito em até ${parcelasMax}x`,

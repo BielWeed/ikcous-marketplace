@@ -5,6 +5,7 @@ import { useCart } from "@/hooks/useCart";
 import { useOrders } from "@/hooks/useOrders";
 import { useProducts } from "@/hooks/useProducts";
 import { useReleituraDosEnderecosAoVoltar } from "@/hooks/useReleituraDosEnderecosAoVoltar";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { atingiuOMinimo } from "@/lib/atingiu-o-minimo";
 import {
   enderecoDeEntregaEfetivo,
@@ -283,6 +284,10 @@ export function CartView({
     ? (enderecoDestino?.cep ?? null)
     : (shippingCep ?? null);
   const [escolhendoEndereco, setEscolhendoEndereco] = useState(false);
+  useVoltarFechaAFolha(
+    Boolean(user) && escolhendoEndereco && addresses.length > 0,
+    () => setEscolhendoEndereco(false),
+  );
 
   // O efeito depende do ID da conta, não do objeto `user`: este pode mudar de
   // identidade a cada render sem a conta mudar, e a leitura voltaria a rodar.
@@ -348,6 +353,7 @@ export function CartView({
     fetchUserOrders,
     orders: pedidosVivos,
     ordersLoadError: erroDosPedidos,
+    loading: carregandoPedidos,
   } = useOrders(true, false);
   const [isPresent] = usePresence();
   const isReady = useDeferredRender(80);
@@ -390,7 +396,11 @@ export function CartView({
   // a do hook, viva (laudo #3, onda 2).
   const [pedidosConvidado, setPedidosConvidado] = useState<Order[]>([]);
   const orders = user ? pedidosVivos : pedidosConvidado;
-  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  const [buscaDaAbaEmAndamento, setIsLoadingOrders] = useState(false);
+  // O retorno da espera cancelada não encerra a leitura que a substituiu.
+  // O hook mantém o carregando até a consulta mais nova responder.
+  const isLoadingOrders =
+    buscaDaAbaEmAndamento || (Boolean(user) && Boolean(carregandoPedidos));
   // A primeira busca dos pedidos da conta já respondeu? A busca só arranca
   // depois do `useDeferredRender` (~80 ms) e `isLoadingOrders` nasce falso:
   // sem isto, aparelho sem cache dizia "Nenhum pedido" por um instante antes
@@ -714,6 +724,9 @@ export function CartView({
   // aparece com o endereço do site e o visual do sistema. Mesma ação: só
   // `clearCart()`, só depois do "sim".
   const [confirmandoEsvaziar, setConfirmandoEsvaziar] = useState(false);
+  useVoltarFechaAFolha(confirmandoEsvaziar, () =>
+    setConfirmandoEsvaziar(false),
+  );
   const handleClearCart = () => setConfirmandoEsvaziar(true);
 
   const handleRemove = useCallback(

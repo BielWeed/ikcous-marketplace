@@ -372,6 +372,7 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
           localDeliveryEnabled: ligada,
           enabledShippingMethods: [...esperados],
         }),
+        { silentSuccess: true },
       );
       // O prazo não foi mexido: o Salvar não o manda (outro aparelho pode ter
       // mudado e não se regrava com o valor velho da tela).
@@ -557,6 +558,7 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     await clicar(botaoSalvar());
     expect(updateConfig).toHaveBeenCalledWith(
       expect.objectContaining({ localDeliveryDays: dias }),
+      { silentSuccess: true },
     );
   });
 
@@ -629,6 +631,7 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
         localCepRange: "38400",
         enabledShippingMethods: ["jadlog", "store-pickup"],
       }),
+      { silentSuccess: true },
     );
   });
 
@@ -789,6 +792,7 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     await clicar(botaoSalvar());
     expect(updateConfig).toHaveBeenCalledWith(
       expect.objectContaining({ localDeliveryDays: 1 }),
+      { silentSuccess: true },
     );
   });
 
@@ -916,6 +920,7 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     await clicar(botaoSalvar());
     expect(updateConfig).toHaveBeenCalledWith(
       expect.objectContaining({ localCepRange: "38500-000, 38509-999" }),
+      { silentSuccess: true },
     );
   });
 

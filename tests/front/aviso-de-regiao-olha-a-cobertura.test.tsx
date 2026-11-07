@@ -35,6 +35,8 @@ const { mockConfig, mockUser } = vi.hoisted(() => ({
     shippingCoverage: "national" as "national" | "local",
     storeCity: undefined as string | undefined,
     storeState: undefined as string | undefined,
+    // Ausente = entrega própria ligada; "Só retirada" grava `false`.
+    localDeliveryEnabled: undefined as boolean | undefined,
   },
   mockUser: { atual: null as null | { id: string } },
 }));
@@ -137,6 +139,7 @@ afterEach(() => {
     shippingCoverage: "national",
     storeCity: undefined,
     storeState: undefined,
+    localDeliveryEnabled: undefined,
   });
   mockUser.atual = null;
 });
@@ -196,6 +199,19 @@ describe("CheckoutView — o Aviso de Região olha a cobertura de frete (#525)",
     expect(hospedeiro.textContent).toContain("Aviso de Região");
     expect(hospedeiro.textContent).toContain("Uberlândia, MG");
     expect(hospedeiro.textContent).toContain("exclusivamente");
+  });
+
+  it("cobertura LOCAL + 'Só retirada' (entrega desligada): o aviso de entrega não existe", async () => {
+    // A lojista desligou a entrega em casa e só aceita retirada, de qualquer
+    // cidade: "serviços de entrega ativos exclusivamente em <cidade>"
+    // prometeria o que a loja não faz e sugeriria que quem é de fora não
+    // pode comprar.
+    cidadeConfigurada("local");
+    mockConfig.localDeliveryEnabled = false;
+    await renderizarCheckout();
+
+    expect(hospedeiro.textContent).not.toContain("Aviso de Região");
+    expect(hospedeiro.textContent).not.toContain("exclusivamente");
   });
 
   it("cobertura LOCAL sem cidade: o aviso some (sem cidade solta no bloco)", async () => {

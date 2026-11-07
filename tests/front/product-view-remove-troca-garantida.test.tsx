@@ -66,6 +66,9 @@ const { mockConfig } = vi.hoisted(() => ({
     shippingCoverage: "local" as "national" | "local",
     storeCity: "Sao Paulo" as string | undefined,
     storeState: "SP" as string | undefined,
+    // Ausente = entrega própria ligada (config antiga); o caso "Só retirada"
+    // grava `false`.
+    localDeliveryEnabled: undefined as boolean | undefined,
   },
 }));
 
@@ -100,6 +103,7 @@ describe("ProductView — remove a promessa de troca que o app nao cumpre", () =
 
   beforeEach(() => {
     mockConfig.shippingCoverage = "local";
+    mockConfig.localDeliveryEnabled = undefined;
     getReviewsByProduct.mockClear();
     subscribeToReviews.mockClear();
     vi.stubGlobal("IntersectionObserver", IntersectionObserverStub);
@@ -175,5 +179,51 @@ describe("ProductView — remove a promessa de troca que o app nao cumpre", () =
     expect(hospedeiro.textContent).not.toContain("Entrega em");
     // O que sumiu foi SÓ o bloco de entrega — o estoque continua de pé.
     expect(hospedeiro.textContent).toContain("Produto em estoque");
+  });
+
+  it("loja 'Só retirada' (entrega desligada) com cobertura local nao promete 'Entrega em'", async () => {
+    // O painel grava localDeliveryEnabled=false sem mexer na cobertura: a
+    // lojista nao entrega em casa, so aceita retirada. "Entrega em <cidade>"
+    // prometeria um servico que a loja nao tem.
+    mockConfig.shippingCoverage = "local";
+    mockConfig.localDeliveryEnabled = false;
+    const { ProductView } = await import("@/views/customer/ProductView");
+
+    await act(async () => {
+      raiz.render(
+        <ProductView
+          product={produto}
+          isFavorite={false}
+          onToggleFavorite={() => {}}
+          onAddToCart={() => {}}
+          onBack={() => {}}
+        />,
+      );
+    });
+
+    expect(hospedeiro.textContent).not.toContain("Entrega em");
+    expect(hospedeiro.textContent).toContain("Produto em estoque");
+  });
+
+  it("entrega propria LIGADA explicitamente com cobertura local segue mostrando 'Entrega em'", async () => {
+    // Controle: o gate novo so desliga o selo com `false`; `true` e ausente
+    // continuam mostrando.
+    mockConfig.shippingCoverage = "local";
+    mockConfig.localDeliveryEnabled = true;
+    const { ProductView } = await import("@/views/customer/ProductView");
+
+    await act(async () => {
+      raiz.render(
+        <ProductView
+          product={produto}
+          isFavorite={false}
+          onToggleFavorite={() => {}}
+          onAddToCart={() => {}}
+          onBack={() => {}}
+        />,
+      );
+    });
+
+    expect(hospedeiro.textContent).toContain("Entrega em Sao Paulo, SP");
   });
 });

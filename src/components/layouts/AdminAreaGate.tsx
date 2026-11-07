@@ -1,4 +1,8 @@
 import { TelaDeVerificacaoFalhou } from "@/components/layouts/TelaDeVerificacaoFalhou";
+import {
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import React from "react";
 import { toast } from "sonner";
@@ -55,6 +59,10 @@ export interface AdminAreaGateProps extends PropsDaArea {
   readonly fallback: React.ReactNode;
 }
 
+// Mesmo prazo do login (`PRAZO_DA_AUTENTICACAO_MS`, 15 s): a pergunta é uma
+// consulta barata, e mais que isso é rede pendurada, não servidor lento.
+const PRAZO_DA_VERIFICACAO_DE_ADMIN_MS = 15_000;
+
 type EstadoDoPortao = "verificando" | "liberado" | "negado" | "falhou";
 
 export function AdminAreaGate({ fallback, ...props }: AdminAreaGateProps) {
@@ -68,7 +76,18 @@ export function AdminAreaGate({ fallback, ...props }: AdminAreaGateProps) {
 
     (async () => {
       try {
-        const { data, error } = await supabase.rpc("is_admin");
+        // Rede que conecta e não responde: sem prazo, a pergunta ficava
+        // pendurada e a tela em "Verificando permissões..." sem saída. O prazo
+        // estourado cai no `catch` abaixo -> "falhou" (tela com "Tentar de novo"
+        // e "Voltar à loja"). É "não respondeu", nunca "pode entrar": o portão
+        // segue fechado, e a resposta que chegar depois é descartada pelo
+        // `Promise.race`.
+        const { data, error } = await aguardarComPrazo(
+          // `rpc` devolve um construtor "thenable", não uma Promise.
+          Promise.resolve(supabase.rpc("is_admin")),
+          PRAZO_DA_VERIFICACAO_DE_ADMIN_MS,
+          () => erroDeConsultaSemResposta(),
+        );
         if (!vivo) return;
         if (error) {
           // NÃO é veredito. O servidor não respondeu — quem decide aqui é o

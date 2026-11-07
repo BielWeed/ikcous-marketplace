@@ -22,6 +22,10 @@ const retentarPendentes = vi.fn(() => Promise.resolve());
 const fetchProducts = vi.fn(() => Promise.resolve());
 
 let pendentesDaVez = 0;
+let indisponiveisDaVez = 0;
+const limparIndisponiveis = vi.fn(async () => {
+  indisponiveisDaVez = 0;
+});
 let lojaDaVez: {
   products: Product[];
   loadingProducts: boolean;
@@ -38,6 +42,8 @@ vi.mock("@/hooks/useFavorites", () => ({
     refresh,
     pendingCount: pendentesDaVez,
     retentarPendentes,
+    favoritosIndisponiveis: indisponiveisDaVez,
+    limparIndisponiveis,
   }),
 }));
 
@@ -62,6 +68,8 @@ describe("FavoritesView — catálogo carregando/falhado e favoritos retidos", (
 
   beforeEach(() => {
     pendentesDaVez = 0;
+    indisponiveisDaVez = 0;
+    limparIndisponiveis.mockClear();
     lojaDaVez = { products: [], loadingProducts: false, catalogoErro: false };
     refresh.mockClear();
     retentarPendentes.mockClear();
@@ -147,7 +155,22 @@ describe("FavoritesView — catálogo carregando/falhado e favoritos retidos", (
     await act(async () => {
       tentarAgora!.click();
     });
-    expect(retentarPendentes).toHaveBeenCalledTimes(1);
+    expect(retentarPendentes).toHaveBeenCalledWith({ avisarFalha: true });
+  });
+
+  it("aviso não promete reativação e permite limpar para voltar à lista vazia", async () => {
+    indisponiveisDaVez = 2;
+    const texto = await renderizar();
+    expect(texto).toContain("2 favoritos seus não estão disponíveis na loja.");
+    expect(texto).not.toContain("voltam se a loja reativar");
+    const limpar = botao("Limpar indisponíveis");
+    expect(limpar).toBeDefined();
+    await act(async () => {
+      limpar!.click();
+    });
+    expect(limparIndisponiveis).toHaveBeenCalledTimes(1);
+    expect(await renderizar()).toContain("Você ainda não tem favoritos");
+    expect(botao("Limpar indisponíveis")).toBeUndefined();
   });
 
   it("um favorito retido: singular", async () => {

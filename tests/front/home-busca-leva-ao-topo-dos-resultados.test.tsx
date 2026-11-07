@@ -8,7 +8,7 @@
 //
 // Controles negativos decidem o teste: rolar sempre (ou a cada render) passaria
 // no cenário principal. Montar já com busca, repetir a mesma busca, apagar a
-// busca e tocar numa categoria NÃO rolam.
+// busca NÃO rolam. Categoria e ordenação levam ao catálogo, exceto na montagem.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -126,7 +126,11 @@ describe("HomeView — buscar leva ao topo dos resultados", () => {
   });
 
   const render = async (
-    props: { searchQuery?: string; selectedCategory?: string } = {},
+    props: {
+      searchQuery?: string;
+      selectedCategory?: string;
+      sortBy?: "default" | "price-asc";
+    } = {},
   ) => {
     await act(async () => {
       raiz.render(
@@ -138,7 +142,7 @@ describe("HomeView — buscar leva ao topo dos resultados", () => {
           onNavigate={() => {}}
           selectedCategory={props.selectedCategory ?? "Todas"}
           searchQuery={props.searchQuery ?? ""}
-          sortBy="default"
+          sortBy={props.sortBy ?? "default"}
           onCategoryChange={() => {}}
           onSortByChange={() => {}}
         />,
@@ -195,9 +199,25 @@ describe("HomeView — buscar leva ao topo dos resultados", () => {
     expect(rolagens).toEqual([]);
   });
 
-  it("CONTROLE — só tocar numa categoria (sem mexer na busca) não rola", async () => {
+  it("trocar de categoria leva ao início do catálogo", async () => {
     await render();
     await render({ selectedCategory: "Bolsas" });
+    expect(rolagens).toEqual([
+      { id: "catalogo", opcoes: { block: "start", behavior: "instant" } },
+    ]);
+  });
+
+  it("trocar a ordenação leva ao início do catálogo", async () => {
+    await render();
+    await render({ sortBy: "price-asc" });
+    expect(rolagens).toEqual([
+      { id: "catalogo", opcoes: { block: "start", behavior: "instant" } },
+    ]);
+  });
+
+  it("CONTROLE — montar com categoria e ordem da URL, ou repetir, não rola", async () => {
+    await render({ selectedCategory: "Bolsas", sortBy: "price-asc" });
+    await render({ selectedCategory: "Bolsas", sortBy: "price-asc" });
     expect(rolagens).toEqual([]);
   });
 });

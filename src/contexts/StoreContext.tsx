@@ -80,6 +80,8 @@ interface StoreContextType {
    * é erro.
    */
   catalogoErro: boolean;
+  /** Só fica true após aplicar uma resposta da rede nesta montagem, nunca do cofre. */
+  catalogoDaRedeAplicado: boolean;
   /**
    * `true` quando a leitura da configuração da loja FALHOU (rede, servidor) e
    * não há nada de verdade na tela: nem cópia salva no aparelho, nem resposta
@@ -513,6 +515,7 @@ export function StoreProvider({
   }, []);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [catalogoErro, setCatalogoErro] = useState(false);
+  const [catalogoDaRedeAplicado, setCatalogoDaRedeAplicado] = useState(false);
   // Novas tentativas automáticas do catálogo (rede ruim na 1ª visita): no
   // máximo ESPERAS_DO_CATALOGO_MS.length, com espera crescente, e só se ainda
   // não há nada na tela quando a espera termina -- quem tem cópia salva no
@@ -1226,6 +1229,7 @@ export function StoreProvider({
       const mapped = (data as any[]).map((item: any) => mapProductFromDB(item));
 
       catalogoDaRedeAplicadoRef.current = true;
+      setCatalogoDaRedeAplicado(true);
       setProducts((prev) => {
         if (minhaConsulta !== consultaDoCatalogoRef.current) return prev;
         if (JSON.stringify(prev) === JSON.stringify(mapped)) return prev;
@@ -1778,6 +1782,7 @@ export function StoreProvider({
       incluirProduto,
       loadingProducts,
       catalogoErro,
+      catalogoDaRedeAplicado,
       configIndisponivel,
       updateConfig,
       refresh,
@@ -1791,6 +1796,7 @@ export function StoreProvider({
       incluirProduto,
       loadingProducts,
       catalogoErro,
+      catalogoDaRedeAplicado,
       configIndisponivel,
       updateConfig,
       refresh,

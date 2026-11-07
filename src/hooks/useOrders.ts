@@ -2249,7 +2249,10 @@ export function useOrders(
         }
         return [];
       } finally {
-        setLoading(false);
+        // A recarga silenciosa pode ter assumido a espera da tela.
+        if (userOrdersAbortControllerRef.current === controlador) {
+          setLoading(false);
+        }
       }
     },
     [user, enabled],

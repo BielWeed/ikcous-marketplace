@@ -26,6 +26,8 @@ const { mockConfig } = vi.hoisted(() => ({
     shippingCoverage: "local" as "national" | "local",
     storeCity: "Sao Paulo" as string | undefined,
     storeState: "SP" as string | undefined,
+    // Ausente = entrega própria ligada; "Só retirada" grava `false`.
+    localDeliveryEnabled: undefined as boolean | undefined,
   },
 }));
 
@@ -58,6 +60,7 @@ describe("PhoneSimulator — a previa nao promete o que o app nao cumpre", () =>
 
   beforeEach(() => {
     mockConfig.shippingCoverage = "local";
+    mockConfig.localDeliveryEnabled = undefined;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -132,6 +135,35 @@ describe("PhoneSimulator — a previa nao promete o que o app nao cumpre", () =>
 
     expect(document.body.textContent).not.toContain("Entrega em");
     // O que sumiu foi SÓ o bloco de entrega — o estoque continua de pé.
+    expect(document.body.textContent).toContain("Em estoque (10 un.)");
+  });
+
+  it("loja 'Só retirada' (entrega desligada) com cobertura local nao mostra 'Entrega em' na previa", async () => {
+    // A previa espelha a pagina real: sem entrega em casa, o selo some.
+    mockConfig.shippingCoverage = "local";
+    mockConfig.localDeliveryEnabled = false;
+    const { PhoneSimulator } = await import(
+      "@/components/admin/PhoneSimulator"
+    );
+
+    await act(async () => {
+      raiz.render(
+        <PhoneSimulator
+          onClose={() => {}}
+          formData={formDataBase}
+          previewMode="page"
+          setPreviewMode={() => {}}
+          previewImgIndex={0}
+          setPreviewImgIndex={() => {}}
+          previewSelectedVariants={{}}
+          setPreviewSelectedVariants={() => {}}
+          activeDetailTab="description"
+          setActiveDetailTab={() => {}}
+        />,
+      );
+    });
+
+    expect(document.body.textContent).not.toContain("Entrega em");
     expect(document.body.textContent).toContain("Em estoque (10 un.)");
   });
 

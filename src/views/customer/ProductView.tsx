@@ -41,6 +41,7 @@ import {
   fraseDoSeloDeFreteGratis,
   promessasDeFrete,
 } from "@/lib/estrategias-de-frete";
+import { entregaPropriaLigada } from "@/lib/guarda-de-frete";
 import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
@@ -1430,23 +1431,28 @@ export const ProductView = React.memo(function ProductView({
                   {/* Sem cidade configurada, ou com cobertura NACIONAL — em que
                   "Entrega em <cidade>" leria como exclusividade e seria falso
                   (#571, mesmo gate do #525) — o bloco inteiro (ícone e texto)
-                  não é renderizado. Fail-closed: só cobertura "local" mostra. */}
-                  {config.storeCity && config.shippingCoverage === "local" && (
-                    <div className="flex items-center gap-3 text-sm text-gray-700">
-                      <div
-                        className={cn(
-                          "flex size-8 items-center justify-center rounded-full bg-gray-100",
-                          "lg:size-9 lg:bg-zinc-100",
-                        )}
-                      >
-                        <Truck className="size-4" />
+                  não é renderizado. Fail-closed: só cobertura "local" mostra.
+                  Loja "Só retirada" (entrega própria desligada, o painel grava
+                  `localDeliveryEnabled=false` sem mexer na cobertura) também
+                  não mostra: ela não entrega em casa, só aceita retirada. */}
+                  {config.storeCity &&
+                    config.shippingCoverage === "local" &&
+                    entregaPropriaLigada(config.localDeliveryEnabled) && (
+                      <div className="flex items-center gap-3 text-sm text-gray-700">
+                        <div
+                          className={cn(
+                            "flex size-8 items-center justify-center rounded-full bg-gray-100",
+                            "lg:size-9 lg:bg-zinc-100",
+                          )}
+                        >
+                          <Truck className="size-4" />
+                        </div>
+                        <span>
+                          Entrega em {config.storeCity}
+                          {config.storeState ? `, ${config.storeState}` : ""}
+                        </span>
                       </div>
-                      <span>
-                        Entrega em {config.storeCity}
-                        {config.storeState ? `, ${config.storeState}` : ""}
-                      </span>
-                    </div>
-                  )}
+                    )}
                   {/* "Envio rapido" saiu daqui: nao existe envio rapido/expresso
                   neste app, a mesma promessa ja removida de CartView.tsx e
                   HomeView.tsx. E o selo so aparece com `!isOutOfStock` -- sem

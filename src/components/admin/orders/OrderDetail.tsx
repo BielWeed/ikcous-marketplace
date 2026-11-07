@@ -935,15 +935,17 @@ function OrderItemsCard({
 
         {(order?.discount > 0 || order?.couponCode) && (
           <div className="flex justify-between text-amber-400">
-            <span className="flex items-center gap-1.5">
+            <span className="flex min-w-0 flex-wrap items-center gap-1.5 gap-y-1">
               Desconto
               {order.couponCode && (
-                <span className="rounded border border-admin-border bg-admin-surface px-1.5 py-0.5 text-xs font-medium">
+                <span className="min-w-0 break-all rounded border border-admin-border bg-admin-surface px-1.5 py-0.5 text-xs font-medium">
                   {order.couponCode}
                 </span>
               )}
             </span>
-            <span>- R$ {formatarValor(order?.discount || 0)}</span>
+            <span className="shrink-0 whitespace-nowrap">
+              - R$ {formatarValor(order?.discount || 0)}
+            </span>
           </div>
         )}
 

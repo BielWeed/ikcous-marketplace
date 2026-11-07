@@ -33,6 +33,8 @@ vi.mock("@/hooks/useAuth", () => ({
 }));
 
 let servidorFalha = true;
+let segurarPrimeiro: (() => void) | null = null;
+let primeiroEmEspera = false;
 let chamadasUpsert: { user_id: string; product_id: string }[] = [];
 
 vi.mock("@/lib/supabase", () => ({
@@ -44,6 +46,11 @@ vi.mock("@/lib/supabase", () => ({
       return {
         upsert: (obj: { user_id: string; product_id: string }) => {
           chamadasUpsert.push({ ...obj });
+          if (primeiroEmEspera && chamadasUpsert.length === 1) {
+            return new Promise((resolve) => {
+              segurarPrimeiro = () => resolve({ data: [{}], error: null });
+            });
+          }
           return Promise.resolve(
             servidorFalha
               ? { data: null, error: { message: "500" } }
@@ -89,7 +96,7 @@ function criarStorageFake() {
 
 interface Contexto {
   pendingCount: number;
-  retentarPendentes: () => Promise<void>;
+  retentarPendentes: (opcoes?: { avisarFalha?: boolean }) => Promise<void>;
 }
 let ultimoContexto: Contexto | null = null;
 function Sonda({ contexto }: { contexto: Context<any> }) {
@@ -117,6 +124,8 @@ beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
   servidorFalha = true;
+  primeiroEmEspera = false;
+  segurarPrimeiro = null;
   chamadasUpsert = [];
   usuarioDaVez = null;
   ultimoContexto = null;
@@ -145,6 +154,65 @@ afterEach(() => {
 });
 
 describe("FavoritesContext — retentativa manual da fila (sem evento online)", () => {
+  it("avisa falha manual, mas não faz barulho na tentativa automática", async () => {
+    usuarioDaVez = { id: "userA" };
+    storageFake.setItem(pendingKeyDe("userA"), JSON.stringify([{ id: "p1" }]));
+    const { FavoritesProvider, FavoritesContext } = await import(
+      "@/contexts/FavoritesContext"
+    );
+    await act(async () => {
+      raiz.render(
+        <FavoritesProvider>
+          <Sonda contexto={FavoritesContext} />
+        </FavoritesProvider>,
+      );
+    });
+    await flush();
+    const { toast } = await import("sonner");
+    vi.mocked(toast.error).mockClear();
+    await act(async () => {
+      await ultimoContexto?.retentarPendentes();
+    });
+    expect(toast.error).not.toHaveBeenCalled();
+    await act(async () => {
+      await ultimoContexto?.retentarPendentes({ avisarFalha: true });
+    });
+    expect(toast.error).toHaveBeenCalledWith(
+      "Não conseguimos salvar agora. Tente de novo em instantes.",
+    );
+    expect(ultimoContexto?.pendingCount).toBe(1);
+  });
+
+  it("espera o primeiro favorito ser salvo antes de mandar o próximo no login", async () => {
+    storageFake.setItem(FAVORITES_KEY, JSON.stringify(["p1", "p2", "p3"]));
+    const { FavoritesProvider, FavoritesContext } = await import(
+      "@/contexts/FavoritesContext"
+    );
+    const montar = () =>
+      raiz.render(
+        <FavoritesProvider>
+          <Sonda contexto={FavoritesContext} />
+        </FavoritesProvider>,
+      );
+    await act(async () => {
+      montar();
+    });
+    await flush();
+    primeiroEmEspera = true;
+    servidorFalha = false;
+    usuarioDaVez = { id: "userA" };
+    await act(async () => {
+      montar();
+    });
+    await flush();
+    const enviadosAntesDeConfirmar = chamadasUpsert.map((p) => p.product_id);
+    await act(async () => {
+      segurarPrimeiro?.();
+    });
+    await flush();
+    expect(enviadosAntesDeConfirmar).toEqual(["p1"]);
+    expect(chamadasUpsert.map((p) => p.product_id)).toEqual(["p1", "p2", "p3"]);
+  });
   it("login com o servidor falhando deixa pendingCount; retentarPendentes() grava de novo e zera a fila", async () => {
     storageFake.setItem(FAVORITES_KEY, JSON.stringify(["p1"]));
     const { FavoritesProvider, FavoritesContext } = await import(

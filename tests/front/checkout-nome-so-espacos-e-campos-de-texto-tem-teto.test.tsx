@@ -296,4 +296,82 @@ describe("CheckoutView (visitante) — nome e campos de texto livre", () => {
     });
     expect(botaoFinalizar()!.disabled).toBe(false);
   });
+
+  // r50-c: o formulário do visitante não tinha teto em nome, rua, número,
+  // bairro e cidade (só no complemento e na observação), enquanto o endereço
+  // da conta limita a 120/200 (AddressForm.tsx). O texto gigante ia inteiro
+  // para o pedido, a ficha, a etiqueta e o recibo. Mesmos tetos da conta.
+  const TETOS_DO_VISITANTE: ReadonlyArray<{
+    id: string;
+    campo: string;
+    teto: number;
+  }> = [
+    { id: "checkout-name", campo: "nome", teto: 120 },
+    { id: "guest-street", campo: "rua", teto: 200 },
+    { id: "guest-number", campo: "número", teto: 20 },
+    { id: "guest-neighborhood", campo: "bairro", teto: 120 },
+    { id: "guest-city", campo: "cidade", teto: 120 },
+  ];
+
+  it("r50-c: nome, rua, número, bairro e cidade têm teto no próprio campo (120/200/20/120/120)", async () => {
+    await montarEPreencher("Cliente Teste");
+
+    for (const { id, teto } of TETOS_DO_VISITANTE) {
+      expect(
+        document.getElementById(id)?.getAttribute("maxlength"),
+        `maxlength de #${id}`,
+      ).toBe(String(teto));
+    }
+  });
+
+  for (const { id, campo, teto } of TETOS_DO_VISITANTE) {
+    it(`r50-c: ${campo} com ${teto + 1} caracteres (colado por fora do campo) não acende o Finalizar, mostra o aviso e não cria pedido; com ${teto} acende`, async () => {
+      await montarEPreencher("Cliente Teste", () =>
+        digitar(id, "x".repeat(teto + 1)),
+      );
+      expect(botaoFinalizar()!.disabled).toBe(true);
+      expect(createOrder).not.toHaveBeenCalled();
+
+      // O aviso aparece pelo caminho de sempre: depois que a pessoa sai do
+      // campo, com o campo marcado como inválido e ligado à mensagem.
+      await act(async () => {
+        (document.getElementById(id) as HTMLInputElement).focus();
+      });
+      await act(async () => {
+        (document.getElementById(id) as HTMLInputElement).blur();
+        await esperarMicrotarefas();
+        await esperarMicrotarefas();
+      });
+      const campoEl = document.getElementById(id) as HTMLInputElement;
+      expect(campoEl.getAttribute("aria-invalid")).toBe("true");
+      const idDoErro = campoEl.getAttribute("aria-describedby");
+      expect(idDoErro).toBeTruthy();
+      expect(document.getElementById(idDoErro!)?.textContent).toContain(
+        `Máximo de ${teto} caracteres`,
+      );
+
+      await act(async () => {
+        digitar(id, "x".repeat(teto));
+        await esperarMicrotarefas();
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      });
+      expect(botaoFinalizar()!.disabled).toBe(false);
+    });
+  }
+
+  it("r50-c (borda): nome de 120 caracteres com espaços nas pontas continua válido (o teto conta o nome já aparado)", async () => {
+    createOrder.mockResolvedValue({ id: "ped-1" });
+    await montarEPreencher(`  ${"n".repeat(120)}  `);
+
+    expect(botaoFinalizar()!.disabled).toBe(false);
+    await act(async () => {
+      botaoFinalizar()!.click();
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(createOrder.mock.calls[0][0].customer.name).toBe("n".repeat(120));
+  });
 });
