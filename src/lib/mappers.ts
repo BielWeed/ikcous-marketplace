@@ -294,6 +294,9 @@ export function mapOrderFromDB(
             : productData?.imagem_url || item.image_url || "";
 
         return {
+          // Só quando a linha veio do banco com o id (a folha de devolução liga
+          // por ele); sem id a chave nem existe, como era antes.
+          ...(item.id ? { id: item.id } : {}),
           productId: item.product_id || "",
           variantId: (item as any).variant_id || undefined,
           name: item.product_name || "",

@@ -94,7 +94,7 @@ describe("AdminCouponsView — Desconto Médio só dos cupons ativos", () => {
 
   function descontoMedio(): string {
     const texto = (hospedeiro.textContent ?? "").replace(/\s+/g, " ");
-    const achou = /Desconto Médio\s*(\d+%|—)/.exec(texto);
+    const achou = /Desconto Médio\s*([\d,]+%|—)/.exec(texto);
     if (!achou) throw new Error(`Desconto Médio não encontrado em: ${texto}`);
     return achou[1];
   }
@@ -143,6 +143,23 @@ describe("AdminCouponsView — Desconto Médio só dos cupons ativos", () => {
     ];
     await abrirTela();
     expect(descontoMedio()).toBe("15%");
+  });
+
+  // `Math.round` na média dava "13%" para um cupom só de 12,5%, enquanto o cartão
+  // do próprio cupom mostra "12,5% OFF". A média mantém a fração, como o resto.
+  it("um cupom só de 12,5%: a média é 12,5%, igual ao cartão do cupom", async () => {
+    mockCoupons = [cupom({ id: "a", code: "ATIVO125", value: 12.5 })];
+    await abrirTela();
+    expect(descontoMedio()).toBe("12,5%");
+  });
+
+  it("dois ativos de 5% e 10%: a média é 7,5%, sem arredondar para cima", async () => {
+    mockCoupons = [
+      cupom({ id: "a", code: "ATIVO5", value: 5 }),
+      cupom({ id: "b", code: "ATIVO10", value: 10 }),
+    ];
+    await abrirTela();
+    expect(descontoMedio()).toBe("7,5%");
   });
 
   // Sem cupom percentual ativo não há média para tirar: "0% OFF" dizia que a

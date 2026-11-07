@@ -876,6 +876,7 @@ export function CheckoutViewDaConta({
   const isReady = useDeferredRender(380);
   const {
     cart: ctxCart,
+    isLoading: lendoOCarrinhoSalvo,
     cartTotal: ctxSubtotal,
     shippingFee: ctxShipping,
     clearCart: ctxClearCart,
@@ -5736,6 +5737,54 @@ export function CheckoutViewDaConta({
           perfilDaConta?.full_name || user?.user_metadata?.name || ""
         }
       />
+    );
+  }
+
+  // Checkout aberto SEM itens e sem nada a retomar (F5 na tela "Pedido
+  // realizado", app reaberto em /checkout, link direto): o formulário montaria
+  // inteiro, sem item, sem resumo e com o Finalizar apagado, sem dizer por quê.
+  // A guarda do App só vale no Voltar do aparelho. Aqui a tela explica e leva
+  // ao carrinho. Ficam de fora, e seguem pelo caminho de sempre: pagamento a
+  // retomar (`retomarPedidoId`), pedido em envio/recém-criado (`isSubmitting`,
+  // os ramos acima) e o painel de recusa/reenvio da compra sem resposta
+  // (`recusaDoUltimoClique` — o "Tentar de novo" mora no formulário). Carrinho
+  // da conta ainda sendo lido NÃO é vazio: mesma espera da tela do carrinho.
+  if (
+    cart.length === 0 &&
+    !retomarPedidoId &&
+    !isSubmitting &&
+    recusaDoUltimoClique === null
+  ) {
+    const lendoOCarrinho = lendoOCarrinhoSalvo === true && !propCart;
+    return (
+      <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+        {lendoOCarrinho ? (
+          <p
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 text-sm text-zinc-600"
+          >
+            <Loader2 className="size-4 animate-spin" />
+            Carregando seu carrinho…
+          </p>
+        ) : (
+          <>
+            <h1 className="text-lg font-bold text-zinc-900">
+              Seu carrinho está vazio
+            </h1>
+            <p className="text-sm text-zinc-600">
+              Não há nenhum produto para finalizar. Volte ao carrinho para
+              escolher o que você quer comprar.
+            </p>
+            <Button
+              onClick={() => onNavigate("cart")}
+              className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
+            >
+              Voltar ao carrinho
+            </Button>
+          </>
+        )}
+      </div>
     );
   }
 

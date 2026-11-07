@@ -210,6 +210,15 @@ describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
       }
       if (nome === "get_admin_customers_paged") {
         const termo = (params.p_search as string).toLowerCase();
+        if (termo.includes("silva")) {
+          // Nome comum: o banco acha 143, a página 0 traz só as 8 mais novas.
+          const oito = Array.from({ length: 8 }, (_, i) => ({
+            ...CLIENTE_ENCONTRADO,
+            id: `silva-${i}`,
+            full_name: `Silva ${i}`,
+          }));
+          return { data: { data: oito, total_count: 143 }, error: null };
+        }
         const linhas = termo.includes("maria") ? [CLIENTE_ENCONTRADO] : [];
         return { data: { data: linhas }, error: null };
       }
@@ -400,6 +409,26 @@ describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
     // Escolher volta para o cupom (picker) e o botão de cliente reflete a
     // escolha.
     expect(hospedeiro.textContent).toContain("Cliente: Maria Cliente");
+  });
+
+  it("caso 6b — nome comum: a busca lê o total do banco e a tela diz 'Mostrando 8 de 143'", async () => {
+    await montar();
+
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Cliente (opcional)")!.click();
+    });
+    await avancar();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Buscar cliente")!.click();
+    });
+    await avancar();
+    await act(async () => {
+      digitarInput("busca-de-cliente-do-balcao", "silva");
+    });
+    await avancar(300);
+
+    expect(hospedeiro.textContent).toContain("Silva 7");
+    expect(hospedeiro.textContent).toContain("Mostrando 8 de 143");
   });
 
   it("caso 7 — cliente avulso com WhatsApp inválido avisa mas não bloqueia", async () => {

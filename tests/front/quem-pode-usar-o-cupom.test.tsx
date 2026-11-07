@@ -175,7 +175,7 @@ it("nomes longos e alternativas sem nome aparecem inteiros com remoção acessí
 
 describe("QuemPodeUsarOCupom — buscar e montar a lista", () => {
   it("menos de 2 letras não busca; com 2, busca depois da pausa", async () => {
-    buscarClientes.mockResolvedValue([ANA]);
+    buscarClientes.mockResolvedValue({ clientes: [ANA], total: 1 });
     await montar();
     await digitar("a");
     expect(buscarClientes).not.toHaveBeenCalled();
@@ -190,7 +190,7 @@ describe("QuemPodeUsarOCupom — buscar e montar a lista", () => {
   });
 
   it("adicionar manda a lista com a cliente nova no fim (id, nome, e-mail)", async () => {
-    buscarClientes.mockResolvedValue([ANA]);
+    buscarClientes.mockResolvedValue({ clientes: [ANA], total: 1 });
     const bia = { id: "u-bia", nome: "Bia", email: null };
     await montar({ clientes: [bia] });
     await digitar("an");
@@ -202,7 +202,7 @@ describe("QuemPodeUsarOCupom — buscar e montar a lista", () => {
   });
 
   it("quem já está na lista aparece como 'Na lista' e não entra duas vezes", async () => {
-    buscarClientes.mockResolvedValue([ANA]);
+    buscarClientes.mockResolvedValue({ clientes: [ANA], total: 1 });
     await montar({
       clientes: [{ id: "u-ana", nome: "Ana Prova", email: null }],
     });
@@ -236,17 +236,19 @@ describe("QuemPodeUsarOCupom — buscar e montar a lista", () => {
             soltarVelha = r;
           }),
       )
-      .mockResolvedValueOnce([
-        { id: "u-nova", full_name: "Nova Resposta", email: null },
-      ]);
+      .mockResolvedValueOnce({
+        clientes: [{ id: "u-nova", full_name: "Nova Resposta", email: null }],
+        total: 1,
+      });
     await montar();
     await digitar("an");
     await digitar("ana");
     expect(hospedeiro.textContent).toContain("Nova Resposta");
     await act(async () => {
-      soltarVelha([
-        { id: "u-velha", full_name: "Resposta Velha", email: null },
-      ]);
+      soltarVelha({
+        clientes: [{ id: "u-velha", full_name: "Resposta Velha", email: null }],
+        total: 1,
+      });
     });
     expect(hospedeiro.textContent).toContain("Nova Resposta");
     expect(hospedeiro.textContent).not.toContain("Resposta Velha");
@@ -264,7 +266,7 @@ describe("QuemPodeUsarOCupom — buscar e montar a lista", () => {
     await digitar("an");
     await digitar("");
     await act(async () => {
-      soltar([ANA]);
+      soltar({ clientes: [ANA], total: 1 });
     });
     expect(hospedeiro.textContent).not.toContain("Ana Prova");
     expect(hospedeiro.textContent).not.toContain("Buscando…");
@@ -278,16 +280,17 @@ describe("QuemPodeUsarOCupom — buscar e montar a lista", () => {
       "Não foi possível buscar clientes",
     );
     expect(hospedeiro.textContent).not.toContain("Nenhum cliente encontrado");
-    buscarClientes.mockResolvedValueOnce([]);
+    buscarClientes.mockResolvedValueOnce({ clientes: [], total: 0 });
     await digitar("anx");
     expect(hospedeiro.textContent).toContain("Nenhum cliente encontrado");
     expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
   });
 
   it("nunca mostra CPF, mesmo que a linha da busca traga um", async () => {
-    buscarClientes.mockResolvedValue([
-      { ...ANA, cpf: "123.456.789-09", cpf_digits: "12345678909" },
-    ]);
+    buscarClientes.mockResolvedValue({
+      clientes: [{ ...ANA, cpf: "123.456.789-09", cpf_digits: "12345678909" }],
+      total: 1,
+    });
     await montar();
     await digitar("an");
     expect(hospedeiro.textContent).toContain("Ana Prova");

@@ -556,9 +556,13 @@ describe("App + AuthProvider — o PIX pendente sobrevive à recarga com a sess�
     await avancar(50);
   }
 
-  // O checkout de carrinho vazio (visitante, sem pedido): o formulário de
-  // dados e a escolha da forma de pagamento. Era o que a recarga mostrava.
-  const checkoutVazioNaTela = () => textoDaTela().includes("Meio de pagamento");
+  // O checkout SEM pedido a retomar (carrinho vazio): é o que a recarga mostra
+  // quando não há pagamento guardado. Antes era o formulário vazio ("Meio de
+  // pagamento"); agora a tela diz que o carrinho está vazio. Para o que estes
+  // testes provam (o checkout abre na hora, sem retomada e sem quadro em
+  // branco) a sonda é a mesma: a tela do checkout sem pagamento a retomar.
+  const checkoutVazioNaTela = () =>
+    textoDaTela().includes("Seu carrinho está vazio");
 
   const carregandoNaTela = () =>
     textoDaTela().includes("Carregando marketplace...");

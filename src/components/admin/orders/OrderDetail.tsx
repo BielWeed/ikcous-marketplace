@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
 import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
+import { useDevolucaoConcluidaDoPedido } from "@/hooks/useDevolucaoConcluidaDoPedido";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import {
   DEPOIS_DO_DIA_COM_CLIENTE,
@@ -155,7 +156,14 @@ const getPaymentMethodLabel = (order: Order) =>
 // saem da mesma decisão e não podem discordar justamente no caso em que o
 // dinheiro está preso. Só os casos SEM atenção pendente ganham frase de
 // contexto (site/entrega).
-function fraseSituacaoDoPagamento(order: Order): string {
+//
+// `devolucaoConcluida`: entregue + estornado só é caso resolvido com a PROVA de
+// que a devolução desse pedido foi concluída (ver `OrderStatusBadge`); sem
+// ela, o selo — e, portanto, esta frase — pede atenção (pode ser chargeback).
+function fraseSituacaoDoPagamento(
+  order: Order,
+  devolucaoConcluida: boolean,
+): string {
   const valor = (order?.total || 0).toLocaleString("pt-BR", {
     minimumFractionDigits: 2,
   });
@@ -163,6 +171,7 @@ function fraseSituacaoDoPagamento(order: Order): string {
     order.paymentStatus,
     order.status,
     order.canal,
+    devolucaoConcluida,
   );
   if (rotuloDoSelo.includes("precisa de atenção")) {
     return `${rotuloDoSelo} · R$ ${valor}`;
@@ -360,6 +369,9 @@ function ItemSkuBadge({
 //    dinheiro preso não pode ficar só no meio da ficha.
 interface OrderHeaderProps {
   order: Order;
+  /** A devolução do pedido entregue e estornado foi concluída por inteiro
+   * (prova que torna o selo neutro; ver `useDevolucaoConcluidaDoPedido`). */
+  devolucaoConcluida: boolean;
   avisoDeEspera: string | null;
   // Motivo pelo qual o papel ainda não pode sair com tamanho e cor (achado e8
   // da caça): o texto aparece ao lado do botão desligado. `null` = pode imprimir.
@@ -368,6 +380,7 @@ interface OrderHeaderProps {
 
 function OrderHeader({
   order,
+  devolucaoConcluida,
   avisoDeEspera,
   motivoDeNaoImprimir = null,
 }: Readonly<OrderHeaderProps>) {
@@ -383,6 +396,7 @@ function OrderHeader({
     order.paymentStatus,
     order.status,
     order.canal,
+    devolucaoConcluida,
   ).includes("precisa de atenção");
 
   return (
@@ -435,6 +449,7 @@ function OrderHeader({
           paymentStatus={order.paymentStatus}
           orderStatus={order.status}
           canal={order.canal}
+          devolucaoConcluida={devolucaoConcluida}
           className={seloDaFicha}
         />
       )}
@@ -967,6 +982,8 @@ function OrderItemsCard({
 
 interface OrderFinanceCardProps {
   order: Order;
+  /** Prova de devolução concluída (ver `OrderHeaderProps.devolucaoConcluida`). */
+  devolucaoConcluida: boolean;
   /** Task 4b — `undefined` só nos testes que montam `<OrderDetail>` direto
    * sem a prop (ver `OrderDetailProps.onRegistrarPagamento`); nesse caso o
    * bloco de recebimento não renderiza (ver guarda no JSX abaixo). */
@@ -996,6 +1013,7 @@ function anulacaoDoBalcaoPassouDoDia(order: Order): boolean {
 // para o bloco "Itens".
 function OrderFinanceCard({
   order,
+  devolucaoConcluida,
   onRegistrarPagamento,
   registrandoPagamento,
 }: Readonly<OrderFinanceCardProps>) {
@@ -1035,7 +1053,7 @@ function OrderFinanceCard({
   // SEM pendência; âmbar para tudo o mais — inclusive os "precisa de
   // atenção", que não podem pintar de verde só porque a frase começa com
   // "Pago" (pago e cancelado é dinheiro PRESO, não resolvido).
-  const situacao = fraseSituacaoDoPagamento(order);
+  const situacao = fraseSituacaoDoPagamento(order, devolucaoConcluida);
   // "Recebido no balcão" (D1, lote C4) é o MESMO fato que "Recebido na
   // entrega" num canal diferente — dinheiro entrou, sem pendência. Sem esta
   // linha, a venda de balcão paga ficava âmbar (cor de pendência), o
@@ -1081,6 +1099,7 @@ function OrderFinanceCard({
           paymentStatus={order.paymentStatus}
           orderStatus={order.status}
           canal={order.canal}
+          devolucaoConcluida={devolucaoConcluida}
           className={seloDaFicha}
         />
       </div>
@@ -2152,6 +2171,10 @@ export const OrderDetail = memo(function OrderDetail({
     idadeDoPedidoPendente(order.createdAt, order.status),
   );
 
+  // Entregue + estornado: a devolução foi concluída por inteiro (selo neutro)
+  // ou pode ser contestação perdida (selo de atenção)? Sem prova, atenção.
+  const devolucaoConcluida = useDevolucaoConcluidaDoPedido(order);
+
   const handleWhatsAppDirect = () => {
     if (!whatsappUrl) return;
     const message = `Olá ${order.customer?.name || "Cliente"}! Entramos em contato sobre o seu pedido #${numeroDoPedido(order.id)}.`;
@@ -2188,6 +2211,7 @@ export const OrderDetail = memo(function OrderDetail({
       <div className="mx-auto w-full max-w-[600px] space-y-4 px-4 pt-5 md:px-6 md:pt-6">
         <OrderHeader
           order={order}
+          devolucaoConcluida={devolucaoConcluida}
           avisoDeEspera={avisoDeEspera}
           motivoDeNaoImprimir={motivoDeNaoImprimir}
         />
@@ -2200,6 +2224,7 @@ export const OrderDetail = memo(function OrderDetail({
 
         <OrderFinanceCard
           order={order}
+          devolucaoConcluida={devolucaoConcluida}
           onRegistrarPagamento={
             onRegistrarPagamento ? handleRegistrarPagamento : undefined
           }
@@ -2210,7 +2235,7 @@ export const OrderDetail = memo(function OrderDetail({
             de DINHEIRO, que é outra coisa (estorno do pedido). */}
         {order.status === "delivered" && (
           <DevolucaoDoPedidoAdminCard
-            key={order.id}
+            key={`devolucao-do-produto-${order.id}`}
             orderId={order.id}
             onAbrirDevolucoes={onAbrirDevolucoes}
           />
@@ -2224,7 +2249,11 @@ export const OrderDetail = memo(function OrderDetail({
           (order.paymentStatus === "pago" ||
             order.paymentStatus === "pago_apos_expirar" ||
             order.paymentStatus === "estornado") && (
-            <EstornoCard key={order.id} order={order} isOffline={isOffline} />
+            <EstornoCard
+              key={`estorno-${order.id}`}
+              order={order}
+              isOffline={isOffline}
+            />
           )}
 
         <OrderDeliveryCard

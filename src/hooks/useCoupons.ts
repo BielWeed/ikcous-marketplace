@@ -27,6 +27,12 @@ export interface ClienteEncontradoParaCupom {
   readonly email: string | null;
 }
 
+/** A página que a busca devolve: `total` é o que o termo acha no banco inteiro. */
+export interface PaginaDeClientesParaCupom {
+  readonly clientes: readonly ClienteEncontradoParaCupom[];
+  readonly total: number;
+}
+
 /**
  * Em quantos minutos volta a vaga do cupom presa num pedido cancelado do
  * cliente logado — ou `null` quando não há o que dizer. NUNCA lança e `null`
@@ -461,7 +467,7 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
   /** Busca de contas para a lista do exclusivo (mesma RPC da tela de
    * Clientes e do balcão; a porta de admin é no servidor; sem CPF). */
   const buscarClientesParaCupom = useCallback(
-    async (termo: string): Promise<ClienteEncontradoParaCupom[]> => {
+    async (termo: string): Promise<PaginaDeClientesParaCupom> => {
       const { data, error } = await supabase.rpc("get_admin_customers_paged", {
         p_search: termo,
         p_sort_field: "created_at",
@@ -470,13 +476,23 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
         p_page_size: 8,
       });
       if (error) throw error;
-      const linhas = ((data as { data?: unknown[] } | null)?.data ??
-        []) as Array<Record<string, unknown>>;
-      return linhas.map((l) => ({
+      const resposta = data as {
+        data?: unknown[];
+        total_count?: unknown;
+      } | null;
+      const linhas = (resposta?.data ?? []) as Array<Record<string, unknown>>;
+      const clientes = linhas.map((l) => ({
         id: String(l.id),
         full_name: typeof l.full_name === "string" ? l.full_name : null,
         email: typeof l.email === "string" ? l.email : null,
       }));
+      // `total_count` é quantas contas o termo acha no banco inteiro, não só
+      // nas 8 desta página — é o que deixa a tela avisar que há mais.
+      const total = Number(resposta?.total_count);
+      return {
+        clientes,
+        total: Number.isFinite(total) ? total : clientes.length,
+      };
     },
     [],
   );

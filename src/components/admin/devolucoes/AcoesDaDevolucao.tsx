@@ -8,7 +8,7 @@ import {
   Unlock,
   X,
 } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 import {
   LocalBufferedInput,
@@ -16,6 +16,7 @@ import {
 } from "@/components/admin/LocalBufferedInput";
 import { Switch } from "@/components/ui/switch";
 import type { FichaDaDevolucao } from "@/hooks/useDevolucoesAdmin";
+import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
 import {
   CONDICOES,
   acoesDoLojista,
@@ -69,8 +70,18 @@ export function pagoPeloApp(detalhe: DevolucaoDetalhe): boolean {
   );
 }
 
-const nomesDosItens = (itens: readonly { product_name: string | null }[]) =>
-  itens.map((item) => item.product_name || "Produto").join(", ");
+/** Nome do item na tela e no leitor de tela: duas linhas do mesmo produto em
+ * cores/tamanhos diferentes só se distinguem pela variação ("Camiseta (Cor
+ * Azul · Tamanho P)"). Sem variação lida, o nome é o de sempre. */
+const nomeComVariacao = (
+  item: { product_name: string | null; variant_id: string | null },
+  rotulos: Readonly<Record<string, string>>,
+  padrao: string,
+) => {
+  const nome = item.product_name || padrao;
+  const rotulo = item.variant_id ? rotulos[item.variant_id] : undefined;
+  return rotulo ? `${nome} (${rotulo})` : nome;
+};
 
 /** Confirmação em linha (mesmo desenho da etiqueta de ida): aviso + "Confirmar"
  * + "Cancelar". Quem chama decide o que a confirmação dispara. */
@@ -139,6 +150,15 @@ export function AcoesDaDevolucao({
 }>) {
   const acoes = acoesDoLojista(detalhe);
   const resolucoes = resolucoesDaConclusao(detalhe.tipo);
+  // Qual cor/tamanho cada linha devolvida é: o item só guarda o id da variação.
+  const itensParaRotular = useMemo(
+    () =>
+      detalhe.itens.map((item) => ({
+        variantId: item.variant_id ?? undefined,
+      })),
+    [detalhe.itens],
+  );
+  const rotulosDasVariacoes = useRotulosDasVariacoes(itensParaRotular);
   // O que o servidor ainda deixa devolver deste pedido (a mesma conta que ele
   // faz ao concluir). `null` = ainda não lido, ou ilegível: aí vale o padrão.
   const [disponivel, setDisponivel] = useState<number | null>(null);
@@ -687,9 +707,18 @@ export function AcoesDaDevolucao({
                     <p className="truncate text-xs font-bold text-white">
                       {item.quantidade}× {item.product_name || "Produto"}
                     </p>
+                    {item.variant_id &&
+                      rotulosDasVariacoes[item.variant_id] && (
+                        <p
+                          data-testid="variacao-do-item-a-conferir"
+                          className="break-words text-[11px] text-zinc-400"
+                        >
+                          {rotulosDasVariacoes[item.variant_id]}
+                        </p>
+                      )}
                     <div
                       role="group"
-                      aria-label={`Condição de ${item.product_name || "item"}`}
+                      aria-label={`Condição de ${nomeComVariacao(item, rotulosDasVariacoes, "item")}`}
                       className="grid grid-cols-2 gap-1.5 sm:grid-cols-4"
                     >
                       {CONDICOES.map((c) => (
@@ -717,7 +746,7 @@ export function AcoesDaDevolucao({
                       <Switch
                         checked={!!i?.reestocar && i?.condicao !== "ausente"}
                         disabled={!i?.condicao || i.condicao === "ausente"}
-                        aria-label={`Voltar ${item.product_name || "item"} ao estoque`}
+                        aria-label={`Voltar ${nomeComVariacao(item, rotulosDasVariacoes, "item")} ao estoque`}
                         onCheckedChange={(v) => mudarReestoque(item.id, v)}
                         className="data-[state=checked]:bg-foreground"
                       />
@@ -794,7 +823,7 @@ export function AcoesDaDevolucao({
                         <p className="flex items-start gap-2">
                           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                           <span>
-                            {`Você marcou ${nomesDosItens(itensAusentes)} como "Não veio": o valor sugerido já desconta ${formatarReais(centavosAusentes / 100)} ${itensAusentes.length > 1 ? "desses itens" : "desse item"}.`}
+                            {`Você marcou ${itensAusentes.map((item) => nomeComVariacao(item, rotulosDasVariacoes, "Produto")).join(", ")} como "Não veio": o valor sugerido já desconta ${formatarReais(centavosAusentes / 100)} ${itensAusentes.length > 1 ? "desses itens" : "desse item"}.`}
                             {detalhe.valor_frete_ida > 0 &&
                               " O frete de ida continua somado: confira se deve devolvê-lo."}
                           </span>
@@ -804,7 +833,7 @@ export function AcoesDaDevolucao({
                         <p className="flex items-start gap-2">
                           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                           <span>
-                            {`Você marcou ${nomesDosItens(itensDanificados)} como "Danificada": o valor sugerido continua cheio. Confira se deve devolver tudo.`}
+                            {`Você marcou ${itensDanificados.map((item) => nomeComVariacao(item, rotulosDasVariacoes, "Produto")).join(", ")} como "Danificada": o valor sugerido continua cheio. Confira se deve devolver tudo.`}
                           </span>
                         </p>
                       )}

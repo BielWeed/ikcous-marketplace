@@ -234,7 +234,8 @@ describe("AdminProductFormView — a mesma combinação de variação não entra
     expect(mocks.toastError.mock.calls[0][0]).toBe(
       "Essa combinação já existe.",
     );
-    expect(naLista()).toEqual(["Tamanho: GG", "Tamanho: P"]);
+    // Abre na ordem da loja (P antes de GG), não na de chegada.
+    expect(naLista()).toEqual(["Tamanho: P", "Tamanho: GG"]);
     // A janela fica aberta para a lojista corrigir o valor.
     expect(janelaAberta()).toBe(true);
   });
@@ -278,7 +279,8 @@ describe("AdminProductFormView — a mesma combinação de variação não entra
     expect(mocks.toastError.mock.calls[0][0]).toBe(
       "Essa combinação já existe.",
     );
-    expect(naLista()).toEqual(["Tamanho: GG", "Tamanho: P"]);
+    // Abre na ordem da loja (P antes de GG), não na de chegada.
+    expect(naLista()).toEqual(["Tamanho: P", "Tamanho: GG"]);
   });
 
   it("produto que JÁ veio com a combinação repetida: editar uma delas sem trocar a combinação ainda salva", async () => {

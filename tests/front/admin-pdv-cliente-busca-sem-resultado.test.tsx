@@ -6,6 +6,7 @@
 import {
   ClienteDaVenda,
   type LinhaDeClienteEncontrado,
+  type PaginaDeClientesEncontrados,
 } from "@/components/admin/pdv/ClienteDaVenda";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -60,7 +61,7 @@ async function digitar(valor: string) {
 }
 
 it("busca que volta vazia mostra 'Nenhum cliente encontrado' e aponta o cliente avulso", async () => {
-  buscar.mockResolvedValueOnce([]);
+  buscar.mockResolvedValueOnce({ clientes: [], total: 0 });
   await digitar("Zuleica");
   expect(buscar).toHaveBeenCalledWith("Zuleica");
   expect(hospedeiro.textContent).toContain(FRASE);
@@ -88,7 +89,7 @@ it("não aparece com menos de 2 letras", async () => {
 });
 
 it("some quando a busca seguinte acha alguém", async () => {
-  buscar.mockResolvedValueOnce([]);
+  buscar.mockResolvedValueOnce({ clientes: [], total: 0 });
   await digitar("Zuleica");
   expect(hospedeiro.textContent).toContain(FRASE);
   const achada: LinhaDeClienteEncontrado = {
@@ -97,14 +98,14 @@ it("some quando a busca seguinte acha alguém", async () => {
     email: null,
     phone: "11999999999",
   };
-  buscar.mockResolvedValueOnce([achada]);
+  buscar.mockResolvedValueOnce({ clientes: [achada], total: 1 });
   await digitar("Maria");
   expect(hospedeiro.textContent).not.toContain(FRASE);
   expect(hospedeiro.textContent).toContain("Maria");
 });
 
 it("a resposta vazia de uma rodada velha não mostra a frase por engano", async () => {
-  let resolver!: (r: LinhaDeClienteEncontrado[]) => void;
+  let resolver!: (r: PaginaDeClientesEncontrados) => void;
   buscar.mockReturnValueOnce(
     new Promise((resolve) => {
       resolver = resolve;
@@ -113,7 +114,7 @@ it("a resposta vazia de uma rodada velha não mostra a frase por engano", async 
   await digitar("Zu");
   await digitar("");
   await act(async () => {
-    resolver([]);
+    resolver({ clientes: [], total: 0 });
   });
   expect(hospedeiro.textContent).not.toContain(FRASE);
 });

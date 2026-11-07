@@ -11,6 +11,7 @@ import type {
   AmbienteDaHospedagem,
   HospedagemConfig,
 } from "../../src/hospedagem/contrato";
+import { montarConsultaDeVariacoes } from "../../src/hospedagem/precoDaPrevia";
 
 const ID = "3f2b1c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
 const ORIGEM = "https://abcdefghijklmnopqrst.supabase.co";
@@ -200,8 +201,10 @@ describe("worker", () => {
       expect(html).toContain(
         '<meta name="twitter:title" content="Tênis &quot;Aero&quot; &lt;novo&gt; | Loja &amp; Cia">',
       );
-      expect(chamadas).toHaveLength(1);
+      // Duas leituras: a view do produto e as variações (preço de vitrine).
+      expect(chamadas).toHaveLength(2);
       expect(chamadas[0].url).toBe(montarConsulta(ORIGEM, ID));
+      expect(chamadas[1].url).toBe(montarConsultaDeVariacoes(ORIGEM, ID));
     },
   );
 
@@ -522,6 +525,157 @@ describe("worker", () => {
     const html = await r.text();
     expect(html).not.toContain("og:image:width");
     expect(html).not.toContain("og:image:height");
+  });
+
+  // r46-e: a prévia do link anunciava o preço-base (R$ 50), mas a loja mostra
+  // o menor preço entre as opções à venda (R$ 40, "a partir de"). Aqui o dublê
+  // responde por ROTA: a view do produto e a tabela das variações.
+  describe("preço da prévia = preço de vitrine (menor preço das variações à venda)", () => {
+    const variacoes = (...linhas: Record<string, unknown>[]) =>
+      linhas.map((l) => ({
+        name: "Tamanho",
+        active: true,
+        stock_increment: 5,
+        price_override: null,
+        ...l,
+      }));
+
+    function fetchPorRota(
+      respostaDasVariacoes: () => Response | Promise<Response>,
+      baseDoProduto = 50,
+    ) {
+      const chamadas: string[] = [];
+      const impl = vi.fn(async (url: string | URL | Request) => {
+        const alvo = String(url);
+        chamadas.push(alvo);
+        if (alvo.includes("/rest/v1/product_variants"))
+          return respostaDasVariacoes();
+        return new Response(
+          JSON.stringify([{ ...produto, preco_venda: baseDoProduto }]),
+          { status: 200 },
+        );
+      });
+      return { impl, chamadas };
+    }
+
+    async function ogTitle(impl: typeof fetch) {
+      const { env } = ambiente();
+      const r = await criarWorker(config(), { fetchImpl: impl }).fetch(
+        new Request(`https://loja.exemplo/product-detail?id=${ID}`, {
+          headers: ROBO,
+        }),
+        env,
+      );
+      expect(r.headers.get("x-ikcous-og")).toBe("produto");
+      return (await r.text()).match(
+        /<meta property="og:title" content="([^"]*)">/,
+      )?.[1];
+    }
+
+    it("base 50, P a 40 e G a 90, as duas com estoque -> R$ 40,00 (o que o card e a página mostram)", async () => {
+      const { impl, chamadas } = fetchPorRota(
+        () =>
+          new Response(
+            // As duas opções são do mesmo grupo ("Tamanho"): P e G.
+            JSON.stringify(
+              variacoes({ price_override: 40 }, { price_override: 90 }),
+            ),
+            { status: 200 },
+          ),
+      );
+      expect(await ogTitle(impl as unknown as typeof fetch)).toBe(
+        "Tênis &quot;Aero&quot; &lt;novo&gt; - R$ 40,00 | Loja &amp; Cia",
+      );
+      // A leitura das variações é a MESMA da página: só as 4 colunas que a
+      // regra de preço usa, filtradas pelo produto.
+      expect(
+        chamadas.some(
+          (c) =>
+            c ===
+            `${ORIGEM}/rest/v1/product_variants?product_id=eq.${ID}&select=name,active,stock_increment,price_override`,
+        ),
+      ).toBe(true);
+    });
+
+    it("variação sem estoque não puxa o preço: G a 90 com estoque e P a 40 esgotada -> R$ 90,00", async () => {
+      const { impl } = fetchPorRota(
+        () =>
+          new Response(
+            JSON.stringify(
+              variacoes(
+                { price_override: 40, stock_increment: 0 },
+                { price_override: 90 },
+              ),
+            ),
+            { status: 200 },
+          ),
+      );
+      expect(await ogTitle(impl as unknown as typeof fetch)).toContain(
+        "- R$ 90,00 |",
+      );
+    });
+
+    it("variação sem preço próprio vale o preço-base do produto", async () => {
+      const { impl } = fetchPorRota(
+        () =>
+          new Response(JSON.stringify(variacoes({ price_override: null })), {
+            status: 200,
+          }),
+      );
+      expect(await ogTitle(impl as unknown as typeof fetch)).toContain(
+        "- R$ 50,00 |",
+      );
+    });
+
+    it.each([
+      ["lista vazia", () => new Response("[]", { status: 200 })],
+      [
+        "permissão negada",
+        () => new Response('{"code":"42501"}', { status: 401 }),
+      ],
+      ["JSON inválido", () => new Response("<html>", { status: 200 })],
+      ["rede caiu", () => Promise.reject(new TypeError("Failed to fetch"))],
+      [
+        "corpo acima do limite",
+        () =>
+          new Response(`[${"x".repeat(CORPO_MAXIMO + 1)}]`, { status: 200 }),
+      ],
+    ])(
+      "consulta das variações com %s -> a prévia continua no preço-base, sem quebrar",
+      async (_, resposta) => {
+        const { impl } = fetchPorRota(resposta);
+        expect(await ogTitle(impl as unknown as typeof fetch)).toContain(
+          "- R$ 50,00 |",
+        );
+      },
+    );
+
+    it("variações penduradas além do prazo não seguram a prévia: cai no preço-base", async () => {
+      const { env } = ambiente();
+      const impl = vi.fn(
+        (url: string | URL | Request, init?: RequestInit) =>
+          new Promise<Response>((resolve, reject) => {
+            if (!String(url).includes("/rest/v1/product_variants")) {
+              resolve(new Response(JSON.stringify([produto]), { status: 200 }));
+              return;
+            }
+            init?.signal?.addEventListener("abort", () =>
+              reject(init.signal?.reason),
+            );
+          }),
+      );
+      const r = await criarWorker(config(), {
+        fetchImpl: impl,
+        prazoMs: 30,
+      }).fetch(
+        new Request(`https://loja.exemplo/product-detail?id=${ID}`, {
+          headers: ROBO,
+        }),
+        env,
+      );
+      expect(r.headers.get("x-ikcous-og")).toBe("produto");
+      expect(await r.text()).toContain("- R$ 199,90 |");
+    });
   });
 
   it("HEAD de robô com produto devolve os cabeçalhos e nenhum corpo", async () => {

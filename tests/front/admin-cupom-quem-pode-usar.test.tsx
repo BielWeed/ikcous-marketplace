@@ -154,9 +154,12 @@ describe("formulário de cupom — Quem pode usar", () => {
   });
 
   it("exclusivo novo: cria o cupom e depois grava a lista escolhida", async () => {
-    buscarClientesParaCupom.mockResolvedValue([
-      { id: "u-ana", full_name: "Ana Prova", email: "ana@prova.teste" },
-    ]);
+    buscarClientesParaCupom.mockResolvedValue({
+      clientes: [
+        { id: "u-ana", full_name: "Ana Prova", email: "ana@prova.teste" },
+      ],
+      total: 1,
+    });
     addCoupon.mockResolvedValue({ id: "cupom-novo" });
     definirClientesDoCupom.mockResolvedValue(undefined);
 
@@ -182,9 +185,10 @@ describe("formulário de cupom — Quem pode usar", () => {
   });
 
   it("a lista falha depois de criar: a tela avisa que ninguém consegue usar", async () => {
-    buscarClientesParaCupom.mockResolvedValue([
-      { id: "u-ana", full_name: "Ana Prova", email: null },
-    ]);
+    buscarClientesParaCupom.mockResolvedValue({
+      clientes: [{ id: "u-ana", full_name: "Ana Prova", email: null }],
+      total: 1,
+    });
     addCoupon.mockResolvedValue({ id: "cupom-novo" });
     definirClientesDoCupom.mockRejectedValue(new Error("rede"));
 
@@ -274,9 +278,10 @@ describe("formulário de cupom — Quem pode usar", () => {
         resolver = r;
       }),
     );
-    buscarClientesParaCupom.mockResolvedValue([
-      { id: "u-caio", full_name: "Caio Novo", email: null },
-    ]);
+    buscarClientesParaCupom.mockResolvedValue({
+      clientes: [{ id: "u-caio", full_name: "Caio Novo", email: null }],
+      total: 1,
+    });
     updateCoupon.mockResolvedValue(undefined);
     definirClientesDoCupom.mockResolvedValue(undefined);
     await montar("cupom-2");
@@ -369,9 +374,10 @@ describe("formulário de cupom — Quem pode usar", () => {
     };
     estadoCoupons = { coupons: [cupom], loading: false };
     listarClientesDoCupom.mockReturnValue(new Promise(() => {}));
-    buscarClientesParaCupom.mockResolvedValue([
-      { id: "u-ana", full_name: "Ana Prova", email: null },
-    ]);
+    buscarClientesParaCupom.mockResolvedValue({
+      clientes: [{ id: "u-ana", full_name: "Ana Prova", email: null }],
+      total: 1,
+    });
     const redesenhar = async () => {
       await act(async () => {
         root?.render(
@@ -509,9 +515,10 @@ describe("formulário de cupom — Quem pode usar", () => {
     });
 
     it("a lista não grava: o aviso não manda 'salvar de novo', que não adiantaria", async () => {
-      buscarClientesParaCupom.mockResolvedValue([
-        { id: "u-ana", full_name: "Ana Prova", email: null },
-      ]);
+      buscarClientesParaCupom.mockResolvedValue({
+        clientes: [{ id: "u-ana", full_name: "Ana Prova", email: null }],
+        total: 1,
+      });
       addCoupon.mockResolvedValue({ id: "cupom-novo" });
       definirClientesDoCupom.mockRejectedValue({
         code: "42501",

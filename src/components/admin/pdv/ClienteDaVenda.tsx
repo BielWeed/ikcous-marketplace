@@ -35,12 +35,20 @@ export interface LinhaDeClienteEncontrado {
   readonly email: string | null;
 }
 
+/** A página que a busca devolve. `total` é quantas contas o termo acha no
+ * banco inteiro (`total_count` da RPC), não só nas linhas desta página — é o
+ * que deixa a tela dizer "Mostrando 8 de 143" em vez de parecer que só existem 8. */
+export interface PaginaDeClientesEncontrados {
+  readonly clientes: readonly LinhaDeClienteEncontrado[];
+  readonly total: number;
+}
+
 export interface PropsDoClienteDaVenda {
   readonly cliente: ClienteDaVendaEstado;
   readonly despachar: (acao: AcaoDaVenda) => void;
   readonly buscarClientes: (
     termo: string,
-  ) => Promise<readonly LinhaDeClienteEncontrado[]>;
+  ) => Promise<PaginaDeClientesEncontrados>;
 }
 
 type ModoDeEscolha = "sem_cliente" | "buscar" | "avulso";
@@ -61,6 +69,7 @@ export function ClienteDaVenda({
   const [resultados, setResultados] = useState<
     readonly LinhaDeClienteEncontrado[]
   >([]);
+  const [totalDaBusca, setTotalDaBusca] = useState(0);
   const [buscando, setBuscando] = useState(false);
   const [erroDeBusca, setErroDeBusca] = useState(false);
   // Só da rodada atual: liga quando a resposta chega, desliga ao digitar de novo.
@@ -85,6 +94,7 @@ export function ClienteDaVenda({
     setErroDeBusca(false);
     setBuscaConcluida(false);
     setResultados([]);
+    setTotalDaBusca(0);
     const termoLimpo = valor.trim();
     if (termoLimpo.length < 2) {
       setBuscando(false);
@@ -92,9 +102,10 @@ export function ClienteDaVenda({
     }
     setBuscando(true);
     try {
-      const linhas = await buscarClientes(termoLimpo);
+      const pagina = await buscarClientes(termoLimpo);
       if (rodada !== rodadaRef.current) return;
-      setResultados(linhas);
+      setResultados(pagina.clientes);
+      setTotalDaBusca(pagina.total);
       setBuscaConcluida(true);
     } catch (erro) {
       if (rodada !== rodadaRef.current) return;
@@ -261,6 +272,12 @@ export function ClienteDaVenda({
                   </li>
                 ))}
               </ul>
+            )}
+            {resultados.length > 0 && totalDaBusca > resultados.length && (
+              <p role="status" className="pdv-muted">
+                Mostrando {resultados.length} de {totalDaBusca}. Digite o nome
+                completo, o e-mail ou o WhatsApp para achar a pessoa.
+              </p>
             )}
           </div>
         )}

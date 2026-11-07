@@ -284,6 +284,14 @@ interface PaymentStatusBadgeProps {
    * "presencial" e o pagamento já entrou.
    */
   canal?: CanalDaVenda;
+  /**
+   * PROVA de que o pedido ENTREGUE e `estornado` foi devolvido por inteiro
+   * pelo app (devolução concluída) — só então o selo fica neutro. Opcional,
+   * padrão `false`: sem a prova (chargeback perdido tem o mesmo par de
+   * status), o selo pede atenção como sempre. Quem sabe é a ficha do pedido
+   * (`useDevolucaoConcluidaDoPedido`); lista e planilha não passam.
+   */
+  devolucaoConcluida?: boolean;
   className?: string;
   /**
    * Rótulo CURTO (`shortLabel`) para grades de cards: "Pago fora do fluxo —
@@ -324,13 +332,22 @@ const PAGO_E_CANCELADO: PaymentStatusEntry = {
 };
 
 /**
- * Pedido CANCELADO e devolvido por inteiro: caso RESOLVIDO. O dinheiro voltou
- * ao cliente e o estoque já voltou à prateleira — não há o que fazer, então
- * sem "precisa de atenção" e sem piscar (o selo de `estornado` pede os dois
- * porque, num pedido ATIVO, devolução é anomalia). Tom neutro, o mesmo de
+ * Pedido CANCELADO ou ENTREGUE e devolvido por inteiro: caso RESOLVIDO. O
+ * dinheiro voltou ao cliente — no cancelado o estoque já voltou à prateleira;
+ * no entregue a devolução concluída fez o reembolso do valor todo e o pedido
+ * segue "Entregue". Não há o que fazer, então sem "precisa de atenção" e sem
+ * piscar (o selo de `estornado` pede os dois porque, num pedido que AINDA NÃO
+ * CHEGOU à cliente, devolução é anomalia). Tom neutro, o mesmo de
  * `expirado`/`sem_cobranca`.
+ *
+ * 🔴 `estornado` + ENTREGUE só entra aqui com a prova `devolucaoConcluida`
+ * (a devolução desse pedido foi concluída por inteiro — ver
+ * `devolucaoConcluidaPorInteiro`). O par de status sozinho NÃO distingue a
+ * devolução de um chargeback (contestação no cartão) perdido, e ali a lojista
+ * perde mercadoria E dinheiro: sem a prova, o padrão é o alerta de sempre. Só
+ * a ficha do pedido tem a prova; lista e planilha seguem no alerta.
  */
-const ESTORNADO_E_CANCELADO: PaymentStatusEntry = {
+const ESTORNADO_RESOLVIDO: PaymentStatusEntry = {
   label: "Estornado",
   color: paymentStatusConfig.expirado.color,
   bgColor: paymentStatusConfig.expirado.bgColor,
@@ -343,7 +360,7 @@ const ESTORNADO_E_CANCELADO: PaymentStatusEntry = {
  * desiste do PIX, a loja que cancela um pedido ainda não pago). O selo âmbar
  * "Aguardando pagamento" num pedido morto mandava esperar um dinheiro que não
  * vem — e a planilha exportava a mesma mentira. Caso resolvido, sem dinheiro
- * em jogo: mesmo tom neutro de `ESTORNADO_E_CANCELADO`, sem atenção e sem piscar.
+ * em jogo: mesmo tom neutro de `ESTORNADO_RESOLVIDO`, sem atenção e sem piscar.
  */
 const CANCELADO_SEM_PAGAMENTO: PaymentStatusEntry = {
   label: "Cancelado — sem pagamento",
@@ -371,6 +388,7 @@ function configDoPagamento(
   paymentStatus: PaymentStatus | null | undefined,
   orderStatus?: OrderStatus | null,
   canal?: CanalDaVenda,
+  devolucaoConcluida = false,
 ): PaymentStatusEntry {
   const key = paymentStatusKey(paymentStatus);
   // O cruzamento com `cancelled` VENCE o canal: venda de balcão cancelada
@@ -384,8 +402,12 @@ function configDoPagamento(
   ) {
     return PAGO_E_CANCELADO;
   }
-  if (key === "estornado" && orderStatus === "cancelled") {
-    return ESTORNADO_E_CANCELADO;
+  if (
+    key === "estornado" &&
+    (orderStatus === "cancelled" ||
+      (orderStatus === "delivered" && devolucaoConcluida))
+  ) {
+    return ESTORNADO_RESOLVIDO;
   }
   if (key === "aguardando" && orderStatus === "cancelled") {
     return CANCELADO_SEM_PAGAMENTO;
@@ -400,8 +422,14 @@ export function rotuloDoPagamento(
   paymentStatus: PaymentStatus | null | undefined,
   orderStatus?: OrderStatus | null,
   canal?: CanalDaVenda,
+  devolucaoConcluida = false,
 ): string {
-  return configDoPagamento(paymentStatus, orderStatus, canal).label;
+  return configDoPagamento(
+    paymentStatus,
+    orderStatus,
+    canal,
+    devolucaoConcluida,
+  ).label;
 }
 
 /**
@@ -411,7 +439,8 @@ export function rotuloDoPagamento(
  *
  * `orderStatus` é opcional e só muda alguma coisa nos cruzamentos que pedem
  * atenção hoje: `pago` + `cancelled` e `recebido_na_entrega` + `cancelled`
- * (e `estornado` + `cancelled`, que é o contrário: caso resolvido)
+ * (e `estornado` + `cancelled`, ou `estornado` + `delivered` COM
+ * `devolucaoConcluida`, que é o contrário: caso resolvido)
  * (Task 3b de docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md).
  * Todo o resto do Record segue exatamente como antes desta correção.
  */
@@ -419,6 +448,7 @@ export const PaymentStatusBadge = memo(function PaymentStatusBadge({
   paymentStatus,
   orderStatus,
   canal,
+  devolucaoConcluida = false,
   className,
   compact = false,
   tamanho = "padrao",
@@ -427,8 +457,18 @@ export const PaymentStatusBadge = memo(function PaymentStatusBadge({
   // docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md) entra no
   // mesmo cruzamento que `pago`: dinheiro que entrou fora do gateway e o
   // pedido morreu depois é exatamente o mesmo alerta.
-  const cfg = configDoPagamento(paymentStatus, orderStatus, canal);
-  const label = rotuloDoPagamento(paymentStatus, orderStatus, canal);
+  const cfg = configDoPagamento(
+    paymentStatus,
+    orderStatus,
+    canal,
+    devolucaoConcluida,
+  );
+  const label = rotuloDoPagamento(
+    paymentStatus,
+    orderStatus,
+    canal,
+    devolucaoConcluida,
+  );
 
   return (
     <div

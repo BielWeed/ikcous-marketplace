@@ -77,9 +77,12 @@ export interface QuemPodeUsarOCupomProps {
   /** A lista gravada não carregou: nada de editar/salvar até carregar. */
   readonly falhaAoCarregar?: boolean;
   readonly onCarregarDeNovo?: () => void;
-  readonly buscarClientes: (
-    termo: string,
-  ) => Promise<readonly ClienteEncontrado[]>;
+  /** `total` é quantas contas o termo acha no banco inteiro (a página traz só
+   * as primeiras): é o que deixa a tela avisar que há mais. */
+  readonly buscarClientes: (termo: string) => Promise<{
+    readonly clientes: readonly ClienteEncontrado[];
+    readonly total: number;
+  }>;
   /** Vitrine sem limite de uso nem validade: o aviso aparece. */
   readonly semLimiteNemValidade: boolean;
   /**
@@ -108,6 +111,7 @@ export function QuemPodeUsarOCupom({
   const [resultados, setResultados] = useState<readonly ClienteEncontrado[]>(
     [],
   );
+  const [totalDaBusca, setTotalDaBusca] = useState(0);
   const [buscando, setBuscando] = useState(false);
   const [erroDaBusca, setErroDaBusca] = useState(false);
   const rodadaRef = useRef(0);
@@ -123,6 +127,7 @@ export function QuemPodeUsarOCupom({
     if (limpo.length < 2) {
       rodadaRef.current++;
       setResultados([]);
+      setTotalDaBusca(0);
       setBuscando(false);
       setErroDaBusca(false);
       return;
@@ -132,12 +137,14 @@ export function QuemPodeUsarOCupom({
       setBuscando(true);
       setErroDaBusca(false);
       try {
-        const linhas = await buscarClientes(limpo);
+        const pagina = await buscarClientes(limpo);
         if (rodada !== rodadaRef.current) return;
-        setResultados(linhas);
+        setResultados(pagina.clientes);
+        setTotalDaBusca(pagina.total);
       } catch {
         if (rodada !== rodadaRef.current) return;
         setResultados([]);
+        setTotalDaBusca(0);
         setErroDaBusca(true);
       } finally {
         if (rodada === rodadaRef.current) setBuscando(false);
@@ -307,6 +314,12 @@ export function QuemPodeUsarOCupom({
                 );
               })}
             </ul>
+          )}
+          {resultados.length > 0 && totalDaBusca > resultados.length && (
+            <p className="text-sm leading-relaxed text-zinc-400" role="status">
+              Mostrando {resultados.length} de {totalDaBusca}. Digite o nome
+              completo, o e-mail ou o WhatsApp para achar a pessoa.
+            </p>
           )}
 
           <div className="border-t border-admin-border pt-2">

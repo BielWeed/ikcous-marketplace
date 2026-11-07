@@ -81,6 +81,13 @@ interface SolicitarDevolucaoSheetProps {
   ) => Promise<Desfecho<string>>;
   /** Apaga fotos já enviadas que não vão ser usadas (melhor esforço). */
   readonly descartarFotos?: (caminhos: readonly string[]) => Promise<void>;
+  /**
+   * Cor/tamanho de cada linha do pedido ("Cor Azul · Tamanho P"), por
+   * `order_item_id`. A elegibilidade do servidor não traz a variação; sem isto
+   * duas linhas do mesmo produto aparecem idênticas. Opcional: sem o mapa (ou
+   * sem a linha nele), a folha mostra só o nome, como sempre.
+   */
+  readonly rotulosDosItens?: Readonly<Record<string, string>>;
 }
 
 type Passo = 1 | 2 | 3 | 4;
@@ -288,6 +295,7 @@ function FluxoDaDevolucao({
   solicitar,
   enviarFoto,
   descartarFotos,
+  rotulosDosItens,
   aoMudarRascunho,
 }: SolicitarDevolucaoSheetProps & {
   readonly aoMudarRascunho: (estado: EstadoDoRascunho) => void;
@@ -613,6 +621,10 @@ function FluxoDaDevolucao({
               {itensDisponiveis.map((item) => {
                 const qtd = selecao.get(item.order_item_id) ?? 0;
                 const nome = item.product_name || "Produto";
+                const variacao = rotulosDosItens?.[item.order_item_id];
+                // Nome do botão para o leitor de tela: duas linhas do mesmo
+                // produto só se distinguem pela variação.
+                const nomeNoBotao = variacao ? `${nome} (${variacao})` : nome;
                 return (
                   <div
                     key={item.order_item_id}
@@ -636,6 +648,14 @@ function FluxoDaDevolucao({
                       <p className="line-clamp-2 break-words text-sm font-bold text-zinc-900">
                         {nome}
                       </p>
+                      {variacao && (
+                        <p
+                          data-testid="variacao-do-item-elegivel"
+                          className="break-words text-xs font-semibold text-zinc-700"
+                        >
+                          {variacao}
+                        </p>
+                      )}
                       <p className="text-xs text-zinc-500">
                         {formatarReais(item.valor_unitario)} · pode devolver{" "}
                         {item.disponivel}
@@ -644,7 +664,7 @@ function FluxoDaDevolucao({
                     <div className="flex shrink-0 items-center gap-1">
                       <button
                         type="button"
-                        aria-label={`Diminuir ${nome}`}
+                        aria-label={`Diminuir ${nomeNoBotao}`}
                         disabled={qtd === 0}
                         onClick={() =>
                           mudarQuantidade(item.order_item_id, qtd - 1)
@@ -661,7 +681,7 @@ function FluxoDaDevolucao({
                       </span>
                       <button
                         type="button"
-                        aria-label={`Aumentar ${nome}`}
+                        aria-label={`Aumentar ${nomeNoBotao}`}
                         disabled={qtd >= item.disponivel}
                         onClick={() =>
                           mudarQuantidade(item.order_item_id, qtd + 1)
@@ -882,6 +902,14 @@ function FluxoDaDevolucao({
                   >
                     <span className="line-clamp-2 min-w-0 break-words text-zinc-700">
                       {selecao.get(item.order_item_id)}× {item.product_name}
+                      {rotulosDosItens?.[item.order_item_id] && (
+                        <span
+                          data-testid="variacao-do-item-na-revisao"
+                          className="block break-words text-xs text-zinc-500"
+                        >
+                          {rotulosDosItens[item.order_item_id]}
+                        </span>
+                      )}
                     </span>
                     <span className="shrink-0 font-bold tabular-nums">
                       {formatarReais(
