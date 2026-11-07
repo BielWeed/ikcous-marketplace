@@ -3173,6 +3173,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "124a-conferir-as-recomendacoes-do-produto-contam-o-estoque-das-variacoes-aplicado",
     "125a-conferir-a-busca-de-pedidos-acha-o-telefone-colado-com-o-55-aplicado",
     "126a-conferir-a-busca-de-devolucao-ignora-o-acento-aplicado",
+    "127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado",
   ]);
 });
 

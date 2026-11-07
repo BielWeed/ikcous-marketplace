@@ -32,6 +32,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useBanners } from "@/hooks/useBanners";
 import { useCategories } from "@/hooks/useCategories";
+import { useFocoAposExcluir } from "@/hooks/useFocoAposExcluir";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
@@ -770,6 +771,7 @@ export const AdminBannersView = memo(function AdminBannersView({
     id: string;
     imageUrl: string;
   } | null>(null);
+  const foco = useFocoAposExcluir();
   // Fim da programação já passou: pede confirmação antes de salvar.
   const [confirmarFimVencido, setConfirmarFimVencido] = useState(false);
   const fimVencidoConfirmadoRef = useRef(false);
@@ -2281,7 +2283,10 @@ export const AdminBannersView = memo(function AdminBannersView({
           <>
             <header className="space-y-3">
               <div className="flex items-center justify-between">
-                <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-banners"]} />
+                <AdminPageHeader
+                  titulo={NOMES_DO_PAINEL["admin-banners"]}
+                  propsDoTitulo={foco.propsDoTitulo}
+                />
                 <Button
                   variant="ghost"
                   className="min-h-11 min-w-11 text-zinc-400"
@@ -3542,7 +3547,10 @@ export const AdminBannersView = memo(function AdminBannersView({
         open={bannerToDelete !== null}
         onOpenChange={(open) => !open && setBannerToDelete(null)}
       >
-        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-admin-surface">
+        <AlertDialogContent
+          {...foco.dialogo}
+          className="max-w-md rounded-3xl border border-admin-border bg-admin-surface"
+        >
           <AlertDialogHeader>
             <AlertDialogTitle className="text-lg font-black uppercase tracking-tight text-white">
               Excluir Banner?
@@ -3557,7 +3565,10 @@ export const AdminBannersView = memo(function AdminBannersView({
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmDeleteBanner}
+              onClick={() => {
+                foco.marcarExclusao();
+                confirmDeleteBanner();
+              }}
               className="min-h-11 bg-red-600 rounded-xl border-0 px-4 py-2 text-xs font-bold text-white hover:bg-red-700"
             >
               Excluir Banner

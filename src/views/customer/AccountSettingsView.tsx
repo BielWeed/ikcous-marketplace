@@ -1241,6 +1241,7 @@ export function AccountSettingsView() {
           <div className="relative z-10 my-2 flex w-full rounded-xl bg-zinc-100/80 p-1 shadow-inner">
             <button
               type="button"
+              aria-pressed={modalTab === "avatars"}
               onClick={() => {
                 setModalTab("avatars");
                 haptic.light();
@@ -1265,6 +1266,7 @@ export function AccountSettingsView() {
             </button>
             <button
               type="button"
+              aria-pressed={modalTab === "upload"}
               onClick={() => {
                 setModalTab("upload");
                 haptic.light();
@@ -1326,6 +1328,7 @@ export function AccountSettingsView() {
                             key={avatar.id}
                             whileHover={{ scale: 1.08 }}
                             whileTap={{ scale: 0.95 }}
+                            aria-pressed={isSelected}
                             onClick={() => handleSelectPredefinedAvatar(avatar)}
                             className={`group relative flex aspect-square cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 transition-all duration-300 ${
                               isSelected
@@ -1338,6 +1341,7 @@ export function AccountSettingsView() {
                                 ? `0 0 14px ${avatar.start}66, 0 4px 12px rgba(0,0,0,0.12)`
                                 : undefined,
                             }}
+                            aria-label={avatar.label}
                             title={avatar.label}
                           >
                             {/* Animated Emoji on Hover */}
@@ -1561,6 +1565,7 @@ export function AccountSettingsView() {
           <div className="my-3.5 flex rounded-2xl border border-zinc-100 bg-zinc-50/50 p-1">
             <button
               type="button"
+              aria-pressed={coverModalTab === "presets"}
               onClick={() => {
                 setCoverModalTab("presets");
                 haptic.light();
@@ -1575,6 +1580,7 @@ export function AccountSettingsView() {
             </button>
             <button
               type="button"
+              aria-pressed={coverModalTab === "upload"}
               onClick={() => {
                 setCoverModalTab("upload");
                 haptic.light();
@@ -1609,6 +1615,7 @@ export function AccountSettingsView() {
                         whileTap={{ scale: 0.96 }}
                         type="button"
                         key={cover.id}
+                        aria-pressed={isSelected || isDefault}
                         onClick={() => handleSelectPredefinedCover(cover)}
                         disabled={isUpdatingCover}
                         className={`group relative flex aspect-[16/10] flex-col justify-end overflow-hidden rounded-xl border-2 p-1.5 transition-all active:scale-95 ${

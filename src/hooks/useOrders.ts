@@ -3,6 +3,7 @@ import { clearAnalyticsCache } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import {
+  JANELA_DA_ACAO_PROPRIA_MS,
   esquecerAcaoPropriaDoPedido,
   marcarAcaoPropriaDoPedido,
 } from "@/lib/acao-propria-do-painel";
@@ -3717,6 +3718,34 @@ export function useOrders(
             throw new ErroCancelamentoOfflineRecusado();
           }
 
+          // r43-e: a etapa que a lojista VIA ao confirmar. A edge compara com a
+          // do servidor e devolve "mudou" se o pedido já andou (tela velha:
+          // conexão em tempo real caída, app voltando do segundo plano) — o
+          // avanço sempre conferiu isso, o cancelamento não. Só o painel
+          // manda: o cliente cancelando o próprio pedido já é barrado pelo
+          // servidor em pedido entregue, e o checkout trata o desfecho dele.
+          // Sem etapa conhecida (pedido fora da memória), vai sem: edge antiga
+          // e etapa desconhecida seguem como sempre.
+          const etapaQueATelaViu = isAdmin
+            ? (statusEsperado ?? order?.status)
+            : undefined;
+
+          // r43-e: o aviso do realtime ("Pedido #N atualizado para Cancelado")
+          // não repete o que a própria lojista acaba de pedir. A edge grava o
+          // cancelamento ANTES de responder, então o evento pode chegar antes
+          // da resposta — a marca nasce antes da chamada, com janela que cobre
+          // o prazo da espera da tela (o Mercado Pago pode demorar mais que os
+          // 15 s da janela padrão). Se não cancelou, o `catch` mais abaixo
+          // desfaz a marca (mesmo caminho da gravação que falha).
+          if (isAdmin && !silent) {
+            marcarAcaoPropriaDoPedido(
+              orderId,
+              "cancelled",
+              Date.now(),
+              PRAZO_DO_CANCELAMENTO_MS + JANELA_DA_ACAO_PROPRIA_MS,
+            );
+          }
+
           let resposta: RespostaDoCancelamento;
           try {
             // O prazo cobre a chamada e a leitura do corpo da resposta: o
@@ -3727,7 +3756,13 @@ export function useOrders(
                 const { data, error } = await (
                   supabase as any
                 ).functions.invoke("criar-pagamento", {
-                  body: { orderId, metodo: "cancelar" },
+                  body: {
+                    orderId,
+                    metodo: "cancelar",
+                    ...(etapaQueATelaViu
+                      ? { statusEsperado: etapaQueATelaViu }
+                      : {}),
+                  },
                 });
                 return lerRespostaDoCancelamento(data, error);
               })(),
@@ -3748,6 +3783,25 @@ export function useOrders(
           }
 
           if (resposta.desfecho !== "cancelado") {
+            // r43-e: o pedido já andou de etapa — a tela passa a mostrar a do
+            // servidor (sem isso o botão Cancelar velho continuaria lá e o
+            // mesmo toque daria o mesmo aviso). Só quando a edge foi
+            // consultada com a etapa da tela; nunca marca cancelado.
+            const etapaDoServidor = resposta.pedido?.status;
+            if (
+              resposta.desfecho === "mudou" &&
+              etapaQueATelaViu !== undefined &&
+              typeof etapaDoServidor === "string"
+            ) {
+              const mostrarEtapaDoServidor = (o: Order): Order =>
+                o.id === orderId && o.status !== etapaDoServidor
+                  ? { ...o, status: etapaDoServidor as OrderStatus }
+                  : o;
+              cachedAdminOrders = cachedAdminOrders
+                ? cachedAdminOrders.map(mostrarEtapaDoServidor)
+                : cachedAdminOrders;
+              setOrders((prev) => prev.map(mostrarEtapaDoServidor));
+            }
             if (!silent) {
               if (resposta.desfecho === "recuperavel") {
                 toast.error(resposta.mensagem);
@@ -3756,6 +3810,12 @@ export function useOrders(
               }
             }
             throw new ErroCancelamentoNaoConcluido(resposta);
+          }
+
+          // Cancelamento PROVADO: a marca volta à janela padrão (o eco que
+          // ainda chega logo depois da resposta continua coberto).
+          if (isAdmin && !silent) {
+            marcarAcaoPropriaDoPedido(orderId, "cancelled");
           }
 
           // Só agora, com o cancelamento PROVADO, a tela muda.
@@ -3795,11 +3855,17 @@ export function useOrders(
         // L-9 front (08/09/2026): a lojista está com a ficha aberta
         // mostrando um status que o servidor já não tem mais — o cliente
         // cancelou entre a leitura que preencheu a tela e o clique em
-        // "Avançar". Só entra aqui para admin avançando (não cancelando —
-        // a RPC já guarda esse caminho contra os dois lados) e só com
-        // rede (offline cai direto na fila abaixo; sem rede não há como
-        // reler). Roda ANTES do update otimista, de propósito: se o
-        // status mudou, a gravação nem começa.
+        // "Avançar". Só entra aqui para admin e só com rede (offline cai
+        // direto na fila abaixo; sem rede não há como reler). Roda ANTES do
+        // update otimista, de propósito: se o status mudou, a gravação nem
+        // começa.
+        //
+        // r43-e: vale também para o CANCELAMENTO que não vai pela edge
+        // (pedido que não é pagamento online). Antes ele ficava de fora
+        // ("a RPC já guarda esse caminho"), mas a RPC só barra o CLIENTE em
+        // pedido entregue: para o admin não há trava de etapa de origem, e a
+        // tela velha cancelava um pedido já entregue. O cancelamento pela
+        // edge confere a etapa no servidor (`statusEsperado`).
         //
         // Rodada 2 (achado 1 do laudo): a condição original exigia `order`
         // — quando o pedido não está na página carregada (deep link,
@@ -3811,19 +3877,17 @@ export function useOrders(
         // A guarda não exige que o pedido esteja em `orders`.
         const esperado = statusEsperado ?? order?.status;
 
-        if (
-          isAdmin &&
-          status !== "cancelled" &&
-          (typeof navigator === "undefined" || navigator.onLine)
-        ) {
+        // A frase de "não consegui conferir" fala do que a pessoa está fazendo.
+        const acaoNaFrase = status === "cancelled" ? "cancelar" : "avançar";
+
+        if (isAdmin && (typeof navigator === "undefined" || navigator.onLine)) {
           if (esperado === undefined) {
             // Nem `orders` nem o chamador sabem o status atual: não há o
             // que reler. "Não sei" nunca vira "pode avançar" — falha
             // FECHADA, sem consultar o servidor e sem gravar nada.
             if (!silent) {
               toast.warning("Não foi possível conferir o pedido agora.", {
-                description:
-                  "Confira sua conexão e tente avançar de novo em instantes.",
+                description: `Confira sua conexão e tente ${acaoNaFrase} de novo em instantes.`,
               });
             }
             throw new ErroStatusEsperadoDesconhecido();
@@ -3850,8 +3914,7 @@ export function useOrders(
             // real, nem update otimista nem RPC.
             if (!silent) {
               toast.warning("Não foi possível conferir o pedido agora.", {
-                description:
-                  "Confira sua conexão e tente avançar de novo em instantes.",
+                description: `Confira sua conexão e tente ${acaoNaFrase} de novo em instantes.`,
               });
             }
             throw new ErroReleituraDeStatusFalhou(erroReleitura);

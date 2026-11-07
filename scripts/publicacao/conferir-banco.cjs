@@ -3000,7 +3000,19 @@ const ROL_DA_126 = [
   "admin_devolucoes_listar: o corpo traz a busca sem acento do protocolo e do nome (uma vez)",
   "admin_devolucoes_listar: uma assinatura so, atributos e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, STABLE, retorno jsonb; authenticated e service_role, sem anon e sem PUBLIC)",
 ];
+// Lote 127 (20261399920000, o sino do pedido vencido fala do vencimento: notifica_cliente_de_mudanca_de_status ganha o aviso do prazo do pagamento no ramo 'cancelled'). A 127a e a 127b tem o MESMO rol de
+// 4 linhas; a 127a espera o corpo da migration nova e a 127b o vigente de antes (o da 20261233000000). Nenhuma le pedido nem notificacao e nenhuma dispara a trigger.
+const ROL_DA_127 = [
+  "controle: funcoes de public visiveis a este papel",
+  "notifica_cliente_de_mudanca_de_status: corpo exato (md5)",
+  "notifica_cliente_de_mudanca_de_status: o corpo traz o aviso do pedido vencido (uma vez)",
+  "notifica_cliente_de_mudanca_de_status: uma assinatura so, atributos, trigger e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno trigger; tr_pedido_avisa_o_cliente AFTER UPDATE OF status por linha; EXECUTE aberto por heranca do PUBLIC)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado":
+    ROL_DA_127,
+  "127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente":
+    ROL_DA_127,
   "126a-conferir-a-busca-de-devolucao-ignora-o-acento-aplicado": ROL_DA_126,
   "126b-antes-a-busca-de-devolucao-ignora-o-acento-base-vigente": ROL_DA_126,
   "125a-conferir-a-busca-de-pedidos-acha-o-telefone-colado-com-o-55-aplicado":

@@ -1,5 +1,11 @@
 import { useCamadaDeTelaCheia } from "@/hooks/useCamadaDeTelaCheia";
 import { classeDoScrimDoBanner } from "@/lib/banner-scrim";
+import { canvasParaBlobNoFormato } from "@/lib/canvas-para-blob";
+import {
+  aplicarFiltrosDeCor,
+  canvasAplicaFiltro,
+  filtrosDeCorSaoNeutros,
+} from "@/lib/filtro-de-cor-por-pixel";
 import {
   getBaseScale as calcularEscalaBase,
   calcularParametrosDeRecorte,
@@ -965,9 +971,18 @@ export function ImageAdjuster({
 
   const isAdjusting = isDragging || isPinching;
 
+  // Recorte em andamento (do toque até o envio terminar). `loading` é o da
+  // prévia e `isSubmitting` só liga DEPOIS que o recorte já baixou a foto de
+  // novo e gerou o arquivo: nessa janela um segundo toque em "Salvar Ajuste"
+  // disparava um segundo recorte e um segundo envio (arquivo órfão no
+  // armazenamento). Um ref (e não estado) fecha a janela no mesmo instante.
+  const cropEmAndamento = useRef(false);
+
   // Perform canvas cropping and submit
   const handleCrop = async () => {
     if (!imageRef.current || loading) return;
+    if (cropEmAndamento.current) return;
+    cropEmAndamento.current = true;
 
     try {
       const canvas = document.createElement("canvas");
@@ -1015,49 +1030,99 @@ export function ImageAdjuster({
         fineRotation,
       });
 
-      ctx.save();
+      // Filtros de cor. O canvas do Safari (todo navegador de iPhone) NÃO tem
+      // `ctx.filter`: atribuir não dá erro, só cria uma propriedade sem efeito, e
+      // a foto salva saía com as cores originais enquanto a prévia (filtro CSS)
+      // mostrava o P&B/Vívido escolhido. A checagem vem ANTES de qualquer
+      // atribuição (depois dela, no Safari, daria "sim"). Sem suporte, a foto é
+      // desenhada numa camada transparente à parte, os pixels são filtrados na
+      // mesma ordem do CSS (src/lib/filtro-de-cor-por-pixel.ts) e a camada vai
+      // por cima do fundo branco: o fundo não é filtrado, como no `ctx.filter`.
+      const filtros = {
+        brightness,
+        contrast,
+        saturation,
+        grayscale,
+        sepia,
+      };
+      const canvasFiltra = canvasAplicaFiltro(ctx);
+      const filtrarPorPixel = !canvasFiltra && !filtrosDeCorSaoNeutros(filtros);
+
+      let camada: HTMLCanvasElement | null = null;
+      let ctxDoDesenho = ctx;
+      if (filtrarPorPixel) {
+        camada = document.createElement("canvas");
+        camada.width = targetWidth;
+        camada.height = targetHeight;
+        const ctxDaCamada = camada.getContext("2d");
+        if (!ctxDaCamada) {
+          throw new Error("Não foi possível obter contexto do canvas");
+        }
+        ctxDoDesenho = ctxDaCamada;
+      }
+
+      ctxDoDesenho.save();
 
       // Apply image filters to canvas context
-      ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) grayscale(${grayscale}%) sepia(${sepia}%)`;
+      if (canvasFiltra) {
+        ctxDoDesenho.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) grayscale(${grayscale}%) sepia(${sepia}%)`;
+      }
 
       // Move to center of canvas
-      ctx.translate(params.translateParaCentro.x, params.translateParaCentro.y);
+      ctxDoDesenho.translate(
+        params.translateParaCentro.x,
+        params.translateParaCentro.y,
+      );
 
       // Convert the image's offset from viewport to canvas coordinates and
       // translate BEFORE rotation
-      ctx.translate(
+      ctxDoDesenho.translate(
         params.translateAntesDaRotacao.x,
         params.translateAntesDaRotacao.y,
       );
 
       // Rotate around the center of the translated image
-      ctx.rotate(params.anguloEmRadianos);
+      ctxDoDesenho.rotate(params.anguloEmRadianos);
 
       // Now draw the image centered on this coordinate
-      ctx.drawImage(
+      ctxDoDesenho.drawImage(
         img,
         params.desenho.x,
         params.desenho.y,
         params.desenho.largura,
         params.desenho.altura,
       );
-      ctx.restore();
+      ctxDoDesenho.restore();
 
-      // Convert canvas to Blob
-      canvas.toBlob(
-        async (blob) => {
-          if (blob) {
-            await onConfirm(blob);
-          } else {
-            toast.error("Erro ao processar imagem final");
-          }
-        },
+      if (camada) {
+        const pixels = ctxDoDesenho.getImageData(
+          0,
+          0,
+          targetWidth,
+          targetHeight,
+        );
+        aplicarFiltrosDeCor(pixels.data, filtros);
+        ctxDoDesenho.putImageData(pixels, 0, 0);
+        ctx.drawImage(camada, 0, 0);
+      }
+
+      // Convert canvas to Blob. O Safari não gera WebP e devolve PNG pesado:
+      // nesse caso `canvasParaBlobNoFormato` refaz em JPEG.
+      const blob = await canvasParaBlobNoFormato(
+        canvas,
         exportFormat,
         exportQuality / 100,
       );
+      if (blob) {
+        await onConfirm(blob);
+      } else {
+        toast.error("Erro ao processar imagem final");
+      }
     } catch (error) {
       console.error("Error cropping image:", error);
       toast.error("Erro ao recortar a imagem. Tente novamente.");
+    } finally {
+      cropEmAndamento.current = false;
     }
   };
 
@@ -1090,7 +1155,7 @@ export function ImageAdjuster({
       aria-modal="true"
       aria-label="Ajustar imagem"
       tabIndex={-1}
-      className="fixed inset-0 z-[130] flex h-screen w-screen flex-col bg-zinc-950 outline-none"
+      className="pt-safe pb-safe fixed inset-0 z-[130] flex h-screen w-screen flex-col bg-zinc-950 outline-none"
     >
       <motion.div
         initial={{ opacity: 0 }}

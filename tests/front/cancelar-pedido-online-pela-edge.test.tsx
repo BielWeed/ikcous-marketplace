@@ -104,29 +104,71 @@ type Atualiza = (
   status: OrderStatus,
   notes?: string,
   silent?: boolean,
+  statusEsperado?: OrderStatus,
 ) => Promise<void>;
 
 async function montarSonda(
   pedido: Order | null,
   isAdmin = false,
 ): Promise<{ pegarOrders: () => Order[]; atualizar: Atualiza }> {
-  if (pedido) {
+  if (pedido && !isAdmin) {
     armazem.set(`ikcous_orders_cache_${usuario.id}`, JSON.stringify([pedido]));
   }
   const { useOrders } = await import("@/hooks/useOrders");
   let ordersAtuais: Order[] = [];
   let atualizar: Atualiza = async () => {};
+  let carregar: (
+    pagina?: number,
+    tamanho?: number,
+    filtro?: string,
+  ) => Promise<unknown> = async () => ({});
   function Sonda() {
-    const { orders, updateOrderStatus } = useOrders(false, isAdmin);
+    // O painel (admin) liga o hook; o cliente não (a lista vem do cache).
+    const { orders, updateOrderStatus, loadOrders } = useOrders(
+      isAdmin,
+      isAdmin,
+    );
     useEffect(() => {
       ordersAtuais = orders;
       atualizar = updateOrderStatus as Atualiza;
+      carregar = loadOrders;
     });
     return null;
   }
   await act(async () => {
     raiz.render(<Sonda />);
   });
+  if (pedido && isAdmin) {
+    // O painel carrega a lista pela RPC paginada (o cache do cliente é outra
+    // chave): é o caminho real que deixa o pedido na memória da tela.
+    rpc.mockImplementation((nome: string) =>
+      nome === "get_admin_orders_paged"
+        ? {
+            abortSignal: () =>
+              Promise.resolve({
+                data: {
+                  data: [
+                    {
+                      id: pedido.id,
+                      status: pedido.status,
+                      payment_status: pedido.paymentStatus,
+                      payment_method: pedido.paymentMethod,
+                      created_at: pedido.createdAt,
+                      updated_at: pedido.updatedAt,
+                    },
+                  ],
+                  total_count: 1,
+                },
+                error: null,
+              }),
+          }
+        : Promise.resolve({ error: null }),
+    );
+    await act(async () => {
+      await carregar(0, 20, "open");
+    });
+    rpc.mockClear();
+  }
   return {
     pegarOrders: () => ordersAtuais,
     atualizar: (...a) => atualizar(...a),
@@ -150,6 +192,9 @@ function erroHttp(status: number, corpo: unknown) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // O hook guarda a lista do painel num cache de módulo: sem isto, o pedido de
+  // um teste de admin aparece "na memória" do teste seguinte.
+  vi.resetModules();
   rpc.mockReset();
   invoke.mockReset();
   rpc.mockResolvedValue({ error: null });
@@ -177,10 +222,19 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function cancelar(atualizar: Atualiza): Promise<unknown> {
+async function cancelar(
+  atualizar: Atualiza,
+  statusEsperado?: OrderStatus,
+): Promise<unknown> {
   let erro: unknown = null;
   await act(async () => {
-    erro = await atualizar("pedido-1", "cancelled").then(
+    erro = await atualizar(
+      "pedido-1",
+      "cancelled",
+      undefined,
+      false,
+      statusEsperado,
+    ).then(
       () => null,
       (e: unknown) => e,
     );
@@ -361,6 +415,133 @@ describe("S1 — cancelar pedido online vai pela edge e só a resposta `cancelad
       "update_order_status_atomic",
       expect.objectContaining({ p_new_status: "cancelled" }),
     );
+  });
+});
+
+// r43-e: a tela velha não cancela o que já mudou de etapa. O avanço sempre
+// conferiu a etapa de origem; o cancelamento (a ação mais destrutiva) ia sem
+// ela, e a edge cancelava um pedido já entregue. Agora o painel manda a etapa
+// que a lojista VIA (`statusEsperado`) e a edge compara com a do servidor.
+describe("r43-e — o painel manda a etapa que a lojista via ao cancelar pela edge", () => {
+  it("ADMIN com a etapa capturada pela ficha: o corpo leva `statusEsperado` (a captura da ficha prevalece sobre a memória)", async () => {
+    invoke.mockResolvedValue({
+      data: { cancelamento: "cancelado" },
+      error: null,
+    });
+    const { atualizar } = await montarSonda(
+      pedidoOnline({ status: "delivered", paymentStatus: "pago" }),
+      true,
+    );
+
+    expect(await cancelar(atualizar, "processing")).toBeNull();
+
+    expect(invoke).toHaveBeenCalledWith("criar-pagamento", {
+      body: {
+        orderId: "pedido-1",
+        metodo: "cancelar",
+        statusEsperado: "processing",
+      },
+    });
+  });
+
+  it("ADMIN sem etapa explícita: usa a etapa que a tela tem em memória", async () => {
+    invoke.mockResolvedValue({
+      data: { cancelamento: "cancelado" },
+      error: null,
+    });
+    const { atualizar } = await montarSonda(
+      pedidoOnline({ status: "processing", paymentStatus: "pago" }),
+      true,
+    );
+
+    expect(await cancelar(atualizar)).toBeNull();
+
+    expect(invoke).toHaveBeenCalledWith("criar-pagamento", {
+      body: {
+        orderId: "pedido-1",
+        metodo: "cancelar",
+        statusEsperado: "processing",
+      },
+    });
+  });
+
+  it("borda: ADMIN com pedido fora da memória e sem etapa (deep link): nada para conferir, o corpo segue como antes", async () => {
+    invoke.mockResolvedValue({
+      data: { cancelamento: "cancelado" },
+      error: null,
+    });
+    const { atualizar } = await montarSonda(null, true);
+
+    expect(await cancelar(atualizar)).toBeNull();
+
+    expect(invoke).toHaveBeenCalledWith("criar-pagamento", {
+      body: { orderId: "pedido-1", metodo: "cancelar" },
+    });
+  });
+
+  it("CLIENTE cancelando o próprio pedido: o corpo NÃO leva `statusEsperado` (o servidor já barra o cliente em pedido entregue)", async () => {
+    invoke.mockResolvedValue({
+      data: { cancelamento: "cancelado" },
+      error: null,
+    });
+    const { atualizar } = await montarSonda(
+      pedidoOnline({ status: "processing", paymentStatus: "pago" }),
+    );
+
+    expect(await cancelar(atualizar, "processing")).toBeNull();
+
+    expect(invoke).toHaveBeenCalledWith("criar-pagamento", {
+      body: { orderId: "pedido-1", metodo: "cancelar" },
+    });
+  });
+
+  it("a edge diz que o pedido JÁ MUDOU de etapa: não cancela, mostra a frase UMA vez e a tela passa a mostrar a etapa verdadeira", async () => {
+    const FRASE =
+      "O pedido mudou de situação enquanto você olhava. Confira o pedido e tente de novo.";
+    invoke.mockResolvedValue({
+      data: {
+        cancelamento: "mudou",
+        mensagem: FRASE,
+        pedido: { status: "delivered", paymentStatus: "pago" },
+      },
+      error: null,
+    });
+    const { ErroCancelamentoNaoConcluido } = await import("@/hooks/useOrders");
+    const { pegarOrders, atualizar } = await montarSonda(
+      pedidoOnline({ status: "processing", paymentStatus: "pago" }),
+      true,
+    );
+
+    const erro = await cancelar(atualizar, "processing");
+
+    expect(erro).toBeInstanceOf(ErroCancelamentoNaoConcluido);
+    expect(
+      (erro as InstanceType<typeof ErroCancelamentoNaoConcluido>).desfecho,
+    ).toBe("mudou");
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(toast.warning).toHaveBeenCalledWith(FRASE);
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+    const pedido = pegarOrders().find((o) => o.id === "pedido-1");
+    // Nunca cancelado; e sem o botão Cancelar velho: a etapa é a do servidor.
+    expect(pedido?.status).toBe("delivered");
+    expect(pedido?.paymentStatus).toBe("pago");
+  });
+
+  it("borda: 'mudou' por causa do PAGAMENTO (mesma etapa) não mexe na etapa da tela", async () => {
+    invoke.mockResolvedValue({
+      data: {
+        cancelamento: "mudou",
+        mensagem: "A cobrança deste pedido mudou. Confira o pedido.",
+        pedido: { status: "pending", paymentStatus: "pago" },
+      },
+      error: null,
+    });
+    const { pegarOrders, atualizar } = await montarSonda(pedidoOnline(), true);
+
+    await cancelar(atualizar, "pending");
+
+    expect(pegarOrders()[0]?.status).toBe("pending");
   });
 });
 

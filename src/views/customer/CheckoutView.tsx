@@ -3946,10 +3946,18 @@ export function CheckoutViewDaConta({
 
     switch (DESTINO_POR_ACAO.get(acao)) {
       case "carrinho":
-        // Preço mudou / estoque caiu: o carrinho só ajuda se reler o catálogo
-        // ANTES de a cliente chegar lá (com teto, nunca a prende). As demais
-        // saídas do carrinho (frete, variação, remover) não dependem disso.
-        if (acao === "reconferir_carrinho" || acao === "ajustar_estoque") {
+        // Preço mudou / estoque caiu / produto pausado ou sem a opção: o
+        // carrinho só ajuda se reler o catálogo ANTES de a cliente chegar lá
+        // (com teto, nunca a prende). Sem a releitura, o item pausado
+        // continuava no carrinho, sem aviso de qual era, e Finalizar devolvia a
+        // mesma recusa. É seguro: a recusa prova que nenhum pedido nasceu. As
+        // demais saídas do carrinho (frete) não dependem disso.
+        if (
+          acao === "reconferir_carrinho" ||
+          acao === "ajustar_estoque" ||
+          acao === "remover_item" ||
+          acao === "escolher_variacao"
+        ) {
           irAoCarrinhoRelido(() => onNavigate("cart"));
           return;
         }

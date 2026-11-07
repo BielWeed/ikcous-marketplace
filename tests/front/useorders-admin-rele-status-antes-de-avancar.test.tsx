@@ -453,7 +453,12 @@ describe("updateOrderStatus (admin) relê o status no servidor antes de gravar �
     });
   });
 
-  it("critério 4 — admin CANCELANDO: sem releitura (o servidor já guarda esse caminho) — `from` não é chamado, a RPC é chamada normalmente", async () => {
+  // r43-e: o cancelamento pela RPC (pedido que NÃO é pagamento online) também
+  // confere a etapa. Antes, "sem releitura (o servidor já guarda esse
+  // caminho)": o servidor só guarda o CLIENTE; para o admin não há trava de
+  // etapa, e a tela velha cancelava um pedido já entregue.
+  it("critério 4 — admin CANCELANDO com a etapa confirmada pelo servidor: relê (uma vez) e a RPC é chamada normalmente", async () => {
+    respostaDaReleitura = { data: { status: "processing" }, error: null };
     const { updateOrderStatus } = await montarSondaAdmin(
       pedidoFake("processing"),
     );
@@ -463,11 +468,86 @@ describe("updateOrderStatus (admin) relê o status no servidor antes de gravar �
       await updateOrderStatus("pedido-1", "cancelled");
     });
 
-    expect(from).not.toHaveBeenCalled();
+    expect(from).toHaveBeenCalledTimes(1);
     expect(chamadasUpdateOrderStatus).toHaveLength(1);
     expect(chamadasUpdateOrderStatus[0]).toMatchObject({
       p_new_status: "cancelled",
     });
+  });
+
+  it("critério 4b — admin CANCELANDO com a tela velha (o servidor já entregou): a RPC NÃO é chamada, a ficha mostra a etapa verdadeira e o aviso é um só", async () => {
+    const { ErroPedidoMudou } = await import("@/hooks/useOrders");
+    respostaDaReleitura = { data: { status: "delivered" }, error: null };
+    const { pegarOrders, updateOrderStatus } = await montarSondaAdmin(
+      pedidoFake("processing"),
+    );
+
+    let erro: unknown;
+    await act(async () => {
+      try {
+        await updateOrderStatus("pedido-1", "cancelled");
+      } catch (e) {
+        erro = e;
+      }
+    });
+
+    expect(erro).toBeInstanceOf(ErroPedidoMudou);
+    expect((erro as { statusVerdadeiro: string }).statusVerdadeiro).toBe(
+      "delivered",
+    );
+    expect(chamadasUpdateOrderStatus).toHaveLength(0);
+    expect(pegarOrders().find((o) => o.id === "pedido-1")?.status).toBe(
+      "delivered",
+    );
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("critério 4c — a etapa capturada pela ficha prevalece: ficha viu 'processing', servidor já está em 'shipping' → não cancela", async () => {
+    respostaDaReleitura = { data: { status: "shipping" }, error: null };
+    const { updateOrderStatus } = await montarSondaAdmin(
+      pedidoFake("processing"),
+    );
+
+    await act(async () => {
+      await expect(
+        updateOrderStatus(
+          "pedido-1",
+          "cancelled",
+          undefined,
+          false,
+          "processing",
+        ),
+      ).rejects.toMatchObject({ statusVerdadeiro: "shipping" });
+    });
+    expect(chamadasUpdateOrderStatus).toHaveLength(0);
+  });
+
+  it("critério 4d — não consegue reler (rede caiu): NÃO cancela às cegas, e o aviso fala em CANCELAR (não em avançar)", async () => {
+    const { ErroReleituraDeStatusFalhou } = await import("@/hooks/useOrders");
+    respostaDaReleitura = { data: null, error: { message: "pool" } };
+    const { updateOrderStatus } = await montarSondaAdmin(
+      pedidoFake("processing"),
+    );
+
+    let erro: unknown;
+    await act(async () => {
+      try {
+        await updateOrderStatus("pedido-1", "cancelled");
+      } catch (e) {
+        erro = e;
+      }
+    });
+
+    expect(erro).toBeInstanceOf(ErroReleituraDeStatusFalhou);
+    expect(chamadasUpdateOrderStatus).toHaveLength(0);
+    const [, opcoes] = vi.mocked(toast.warning).mock.calls[0] as [
+      string,
+      { description: string },
+    ];
+    expect(opcoes.description).toContain("cancelar");
+    expect(opcoes.description).not.toContain("avançar");
   });
 
   it("critério 6 — offline: cai na fila do localStorage como hoje, sem releitura (`from` não é chamado, RPC não é chamada)", async () => {

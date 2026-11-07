@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import type { ReactNode } from "react";
+import type { ComponentPropsWithRef, ReactNode } from "react";
 
 /**
  * Título de página do painel admin — fórmula "Elite Header" padronizada
@@ -29,12 +29,18 @@ import type { ReactNode } from "react";
  * de encolher o título. Aqui a prop existe como opt-in por prop para não
  * mudar nada nas outras telas (default preserva as mesmas classes de
  * sempre).
+ *
+ * `propsDoTitulo`: o que a tela quer pôr no h1 — hoje só o `ref` e o
+ * `tabIndex={-1}` de `useFocoAposExcluir` (o título vira alvo de foco por
+ * código, fora da ordem do Tab: é para onde o foco vai depois de excluir um
+ * item da lista). Sem a prop, nada muda.
  */
 export function AdminPageHeader({
   titulo,
   children,
   acoes,
   tituloEncolhe = false,
+  propsDoTitulo,
 }: {
   /** Texto do título — a view passa o MESMO texto de antes. */
   titulo: string;
@@ -49,11 +55,15 @@ export function AdminPageHeader({
    * idêntico ao de sempre.
    */
   tituloEncolhe?: boolean;
+  /** Atributos extras do h1 (ver acima). */
+  propsDoTitulo?: ComponentPropsWithRef<"h1">;
 }) {
   return (
     <>
       <h1
+        {...propsDoTitulo}
         className={cn(
+          "focus:outline-none",
           "flex select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl",
           tituloEncolhe ? "min-w-0" : "shrink-0",
         )}

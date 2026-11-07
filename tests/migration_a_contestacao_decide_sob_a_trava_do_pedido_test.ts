@@ -710,6 +710,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399910000: a busca de Devolucoes ignora o acento (admin_devolucoes_listar compara protocolo e nome do cliente com f_unaccent nos dois lados; controle com o corpo da 20261395000000 na mesma fixture,
     // mutantes, rollback byte a byte, pre/pos-voo e consultas 126a/126b).
     "tests/banco/a-busca-de-devolucao-ignora-o-acento-viva.cjs",
+    // 20261399920000: o sino do pedido vencido fala do vencimento (notifica_cliente_de_mudanca_de_status avisa "Prazo do pagamento terminou" no cancelamento com payment_status expirado, que a varredura grava junto;
+    // controle com o corpo da 20261233000000 na mesma fixture, a varredura real, mutantes, dado existente intacto, rollback byte a byte, pre/pos-voo e consultas 127a/127b).
+    "tests/banco/o-sino-do-pedido-vencido-fala-do-vencimento-viva.cjs",
     // Auditoria 11/10: medicao (nao e portao, sai sempre 0) das portas que o anonimo abriria, em ROLLBACK.
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",

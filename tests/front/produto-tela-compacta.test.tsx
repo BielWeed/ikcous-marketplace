@@ -368,18 +368,18 @@ describe("AdminProductFormView — tela compacta (u186)", () => {
       await montar();
       const cartao = q('[aria-label="Fotos do produto"]') as HTMLElement;
       const capa = cartao.querySelector(
-        'label[for="product-image-upload"].produto-fotos-envio',
+        "button.produto-fotos-envio",
       ) as HTMLElement;
       expect(capa).not.toBeNull();
       expect(capa.textContent).toContain("Capa");
       expect(cartao.textContent).toContain("Até 10 · a primeira é a capa");
 
       const camera = cartao.querySelector(
-        'label[for="product-image-capture"]',
+        "button.produto-fotos-camera",
       ) as HTMLElement;
       expect(camera.textContent).toContain("Tirar foto");
       const galeria = cartao.querySelector(
-        'label.produto-fotos-galeria[for="product-image-upload"]',
+        "button.produto-fotos-galeria",
       ) as HTMLElement;
       expect(galeria.textContent).toContain("Galeria");
     });
@@ -403,7 +403,7 @@ describe("AdminProductFormView — tela compacta (u186)", () => {
 
     it("arrastar um arquivo sobre a capa avisa 'Solte' (o arraste de sempre)", async () => {
       await montar();
-      const capa = q("label.produto-fotos-envio") as HTMLElement;
+      const capa = q("button.produto-fotos-envio") as HTMLElement;
       await act(async () => {
         capa.dispatchEvent(
           new Event("dragover", { bubbles: true, cancelable: true }),

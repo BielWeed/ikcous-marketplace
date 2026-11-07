@@ -163,7 +163,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
     >
       {/* Barra de cima: segue o tema do painel (Escuro, Claro ou Confortável)
           pelos tokens, sem verde de marca — o celular abaixo é que tem tema fixo. */}
-      <div className="flex items-center justify-between gap-3 border-b border-solid border-border bg-card/90 px-4 py-3 backdrop-blur-md">
+      <div className="flex items-center justify-between gap-3 border-b border-solid border-border bg-card/90 px-4 pb-3 pt-[calc(0.75rem+var(--safe-area-top,0px))] backdrop-blur-md">
         <div className="flex min-w-0 items-center gap-3">
           <div className="hidden size-10 shrink-0 items-center justify-center rounded-full border border-solid border-border bg-muted text-muted-foreground sm:flex">
             <Smartphone aria-hidden="true" className="size-5" />

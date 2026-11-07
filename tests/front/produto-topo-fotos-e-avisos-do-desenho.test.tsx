@@ -507,7 +507,7 @@ describe("AdminProductFormView — o que faltava para chegar no desenho", () => 
         await esperar(900);
       });
       expect(q('[aria-label="Galeria de fotos do produto"]')).toBeNull();
-      expect(q("label.produto-fotos-envio")).not.toBeNull();
+      expect(q("button.produto-fotos-envio")).not.toBeNull();
     });
 
     it("com o limite de 10 fotos: 10 miniaturas, contagem '10 de 10' e a faixa rola (não quebra a linha)", async () => {

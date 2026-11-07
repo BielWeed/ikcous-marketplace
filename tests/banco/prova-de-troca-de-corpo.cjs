@@ -63,6 +63,11 @@ function criar(cfg) {
     consulta, // { a, b, rotulos: [4 rotulos], fixos: [rotulos que ficam ok nos dois estados], marca: rotulo da marca }
     inverso, // (corpoNovo) => corpo vivo (a troca desfeita, escrita a parte)
     estragosDaConsulta = [], // [[sql sabotagem, rotulo que cai]]
+    // Funcao ABERTA por heranca do PUBLIC (lote 43, o gatilho do sino: `EXECUTE` a PUBLIC e' o estado de sempre): GRANT a PUBLIC/anon/authenticated/
+    // service_role nao muda nada e REVOKE de um papel nomeado tambem nao (o PUBLIC segue valendo), entao o unico estrago de ACL que o pre-voo,
+    // o pos-voo e a consulta `a` enxergam e' FECHAR o PUBLIC; DROP FUNCTION precisa de CASCADE (a trigger depende da funcao). `consulta.acl` e'
+    // o rotulo da linha de EXECUTE da consulta. Sem a flag, tudo como antes.
+    aclAberta = false,
   } = cfg;
 
   const MIGRATION = lerMigration(arq);
@@ -266,14 +271,18 @@ function criar(cfg) {
       T.emTransacao(async () => {
         const original = await retrato();
         assert.equal(original.src, sha256(ANTIGA.corpo));
+        // Ordena no JS (ordem de codigo, igual dos dois lados): o ORDER BY do Postgres segue a collation do servidor, e a de
+        // um servidor en_US poe '=X/postgres' (PUBLIC) no fim enquanto a de um C poe no comeco.
         assert.deepEqual(
-          (
-            await T.C.query(
-              "SELECT coalesce(array_agg(x::text ORDER BY x::text), '{}') AS a FROM pg_proc p, unnest(coalesce(p.proacl, acldefault('f', p.proowner))) x WHERE p.oid = to_regprocedure($1)",
-              [sig],
-            )
-          ).rows[0].a,
-          aclDeSempre,
+          [
+            ...(
+              await T.C.query(
+                "SELECT coalesce(array_agg(x::text), '{}') AS a FROM pg_proc p, unnest(coalesce(p.proacl, acldefault('f', p.proowner))) x WHERE p.oid = to_regprocedure($1)",
+                [sig],
+              )
+            ).rows[0].a,
+          ].sort(),
+          [...aclDeSempre].sort(),
         );
         assert.equal(await T.aplicar(MIGRATION), null);
         const um = await retrato();
@@ -323,14 +332,22 @@ function criar(cfg) {
       T.C.query(
         `CREATE FUNCTION public.${fn}(x integer, y integer, z integer, w integer, v integer, u integer) RETURNS integer LANGUAGE sql AS 'SELECT 1'`,
       ),
-    "funcao ausente (apagada)": () => T.C.query(`DROP FUNCTION ${sig}`),
-    "ACL aberta (PUBLIC executa)": () =>
-      T.C.query(`GRANT EXECUTE ON FUNCTION ${sig} TO PUBLIC`),
-    [rotuloAnon]: () => T.C.query(estragoAnon),
-    "authenticated sem EXECUTE": () =>
-      T.C.query(`REVOKE EXECUTE ON FUNCTION ${sig} FROM authenticated`),
-    "service_role sem EXECUTE": () =>
-      T.C.query(`REVOKE EXECUTE ON FUNCTION ${sig} FROM service_role`),
+    "funcao ausente (apagada)": () =>
+      T.C.query(`DROP FUNCTION ${sig}${aclAberta ? " CASCADE" : ""}`),
+    ...(aclAberta
+      ? {
+          "ACL fechada (PUBLIC sem EXECUTE)": () =>
+            T.C.query(`REVOKE EXECUTE ON FUNCTION ${sig} FROM PUBLIC`),
+        }
+      : {
+          "ACL aberta (PUBLIC executa)": () =>
+            T.C.query(`GRANT EXECUTE ON FUNCTION ${sig} TO PUBLIC`),
+          [rotuloAnon]: () => T.C.query(estragoAnon),
+          "authenticated sem EXECUTE": () =>
+            T.C.query(`REVOKE EXECUTE ON FUNCTION ${sig} FROM authenticated`),
+          "service_role sem EXECUTE": () =>
+            T.C.query(`REVOKE EXECUTE ON FUNCTION ${sig} FROM service_role`),
+        }),
     ...(cfg.estadosRuinsExtras || {}),
   };
   prova(
@@ -429,22 +446,35 @@ function criar(cfg) {
             () => T.C.query(`ALTER FUNCTION ${sig} ${trocaVolatil}`),
             /atributos de .* mudaram/,
           ],
-          [
-            "PUBLIC aberto",
-            () => T.C.query(`GRANT EXECUTE ON FUNCTION ${sig} TO PUBLIC`),
-            /ACL de/,
-          ],
-          [
-            anonPode ? "anon sem EXECUTE" : "anon aberto",
-            () => T.C.query(estragoAnon),
-            /ACL de/,
-          ],
-          [
-            "authenticated sem EXECUTE",
-            () =>
-              T.C.query(`REVOKE EXECUTE ON FUNCTION ${sig} FROM authenticated`),
-            /ACL de/,
-          ],
+          ...(aclAberta
+            ? [
+                [
+                  "PUBLIC fechado",
+                  () =>
+                    T.C.query(`REVOKE EXECUTE ON FUNCTION ${sig} FROM PUBLIC`),
+                  /ACL de/,
+                ],
+              ]
+            : [
+                [
+                  "PUBLIC aberto",
+                  () => T.C.query(`GRANT EXECUTE ON FUNCTION ${sig} TO PUBLIC`),
+                  /ACL de/,
+                ],
+                [
+                  anonPode ? "anon sem EXECUTE" : "anon aberto",
+                  () => T.C.query(estragoAnon),
+                  /ACL de/,
+                ],
+                [
+                  "authenticated sem EXECUTE",
+                  () =>
+                    T.C.query(
+                      `REVOKE EXECUTE ON FUNCTION ${sig} FROM authenticated`,
+                    ),
+                  /ACL de/,
+                ],
+              ]),
         ];
         for (const [nome, estrago, padrao] of estragos) {
           await T.C.query("SAVEPOINT estrago");
@@ -554,10 +584,20 @@ function criar(cfg) {
       for (const [item, ok] of Object.entries(mapa(antes.a)))
         assert.equal(ok, consulta.fixos.includes(item), `a ANTES: ${item}`);
       const casos = [
-        [`GRANT EXECUTE ON FUNCTION ${sig} TO PUBLIC`, consulta.attr],
-        [estragoAnon, consulta.attr],
-        [`REVOKE EXECUTE ON FUNCTION ${sig} FROM authenticated`, consulta.attr],
-        [`REVOKE EXECUTE ON FUNCTION ${sig} FROM service_role`, consulta.attr],
+        ...(aclAberta
+          ? [[`REVOKE EXECUTE ON FUNCTION ${sig} FROM PUBLIC`, consulta.acl]]
+          : [
+              [`GRANT EXECUTE ON FUNCTION ${sig} TO PUBLIC`, consulta.attr],
+              [estragoAnon, consulta.attr],
+              [
+                `REVOKE EXECUTE ON FUNCTION ${sig} FROM authenticated`,
+                consulta.attr,
+              ],
+              [
+                `REVOKE EXECUTE ON FUNCTION ${sig} FROM service_role`,
+                consulta.attr,
+              ],
+            ]),
         [`ALTER FUNCTION ${sig} SECURITY INVOKER`, consulta.attr],
         [
           decl(NOVA, `${NOVA.corpo}\n-- sabotagem\n`),

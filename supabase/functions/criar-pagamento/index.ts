@@ -1792,6 +1792,8 @@ async function handler(
       json,
       obterCredenciais: async () => deps.credenciaisMp ?? await resolverCredenciaisMp(supabase),
       verificarAdminAtual: deps.verificarAdminAtual ?? verificarAdminAtualReal,
+      // Opcional: o front antigo não manda e segue como sempre (r43-e).
+      statusEsperado: typeof body.statusEsperado === "string" ? body.statusEsperado : null,
       fetchImpl: deps.fetchImpl,
     });
   }

@@ -90,13 +90,25 @@ export function SaidaDaRecusa({
 }: SaidaDaRecusaProps) {
   const { acao, mensagem, produto, disponivel } = recusa;
 
+  // Quem perdeu a corrida pela última unidade: não sobrou quantidade alguma
+  // para "deixar disponível". A saída é a mesma (carrinho relido), mas o
+  // rótulo e a frase não podem falar de quantidade.
+  const estoqueZerado =
+    acao === "ajustar_estoque" &&
+    typeof disponivel === "number" &&
+    disponivel <= 0;
+
   // O detalhe do estoque só aparece quando o banco informou os dois: nome e
   // quantidade. Com `disponivel` ausente, escrever "ainda há undefined" seria
   // pior que não escrever nada.
-  const detalheDoEstoque =
-    acao === "ajustar_estoque" && produto && typeof disponivel === "number"
-      ? `Ainda há ${disponivel} de "${produto}" disponível.`
-      : null;
+  let detalheDoEstoque: string | null = null;
+  if (acao === "ajustar_estoque" && produto && typeof disponivel === "number") {
+    // "no que você escolheu": a frase do banco traz só o nome do produto, e o
+    // zero pode ser de uma opção (tamanho, cor), não do produto inteiro.
+    detalheDoEstoque = estoqueZerado
+      ? `Acabou o estoque de "${produto}" no que você escolheu.`
+      : `Ainda há ${disponivel} de "${produto}" disponível.`;
+  }
 
   return (
     <div
@@ -136,7 +148,9 @@ export function SaidaDaRecusa({
               onClick={() => onAgir(acao)}
               className="inline-flex min-h-11 items-center justify-center rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-amber-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
             >
-              {ROTULO_POR_ACAO.get(acao)}
+              {estoqueZerado
+                ? ROTULO_DA_ACAO.reconferir_carrinho
+                : ROTULO_POR_ACAO.get(acao)}
             </button>
             {onFalarComALoja && (
               <BotaoWhatsapp

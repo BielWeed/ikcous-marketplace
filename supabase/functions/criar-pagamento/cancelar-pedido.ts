@@ -83,6 +83,9 @@ export const MENSAGENS_DO_CANCELAMENTO = {
     "Não achamos cobrança deste pedido no Mercado Pago. Confira no painel do Mercado Pago se nenhum cartão foi cobrado.",
   pagamentoAntigo:
     "Esta cobrança é de um formato antigo e não pode ser anulada automaticamente. Fale com o suporte antes de cancelar.",
+  // O pedido andou de etapa depois que a tela foi desenhada (r43-e): a pessoa
+  // confirmou um cancelamento lendo uma etapa que já não é a do pedido.
+  mudouDeEtapa: "O pedido mudou de situação enquanto você olhava. Confira o pedido e tente de novo.",
 } as const;
 
 /**
@@ -117,6 +120,13 @@ export type ArgsCancelarPedido = {
   obterCredenciais: () => Promise<CredenciaisMp>;
   /** Devolve o id do usuário se ele é admin AGORA; null caso contrário. */
   verificarAdminAtual: (authorization: string | null) => Promise<string | null>;
+  /**
+   * A etapa (`marketplace_orders.status`) que a TELA mostrava quando a pessoa
+   * confirmou o cancelamento. OPCIONAL: ausente (front antigo, ou texto que
+   * não é uma etapa) = comportamento de sempre. Presente e diferente da etapa
+   * gravada = "mudou", sem tocar no MP nem no banco.
+   */
+  statusEsperado?: string | null;
   fetchImpl?: typeof fetch;
 };
 
@@ -161,6 +171,28 @@ export async function cancelarPedidoPelaEdge(args: ArgsCancelarPedido): Promise<
   if (pedido.status === "cancelled") {
     return responder("cancelado", {
       jaEstava: true,
+      pedido: { status: pedido.status, paymentStatus: pedido.payment_status },
+    });
+  }
+
+  // O cancelamento confere a etapa de origem como o avanço já confere
+  // (`avancar_status_do_pedido`): tela velha (conexão em tempo real caída, app
+  // voltando do segundo plano) mostra "Em separação" de um pedido que outro
+  // aparelho já entregou — e cancelar entregue não abre estorno nem devolve
+  // estoque. Roda DEPOIS da conferência de quem age (o 404 acima não vaza a
+  // etapa de pedido alheio) e ANTES de qualquer efeito no MP. "Já cancelado"
+  // fica acima de propósito: o desfecho pedido já existe.
+  //
+  // NÃO é atômico: entre esta leitura e a RPC há uma janela de milissegundos
+  // (a RPC compara vaga e pagamento sob o lock, não a etapa). Fecha a janela
+  // de segundos-a-minutos da tela velha, que é a que acontece de verdade; a
+  // janela de milissegundos pediria `p_status_esperado` na RPC (migration).
+  const statusEsperado = typeof args.statusEsperado === "string" && args.statusEsperado.length > 0
+    ? args.statusEsperado
+    : null;
+  if (statusEsperado !== null && pedido.status !== statusEsperado) {
+    return responder("mudou", {
+      mensagem: MENSAGENS_DO_CANCELAMENTO.mudouDeEtapa,
       pedido: { status: pedido.status, paymentStatus: pedido.payment_status },
     });
   }

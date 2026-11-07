@@ -2816,6 +2816,38 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261399920000: o sino do pedido vencido fala do vencimento (notifica_cliente_de_mudanca_de_status). Troca SO o ramo WHEN 'cancelled': o pedido com payment_status 'expirado' avisa o prazo do pagamento (a frase da tela do
+  // pedido, com o aviso de quem ja pagou); o cancelamento de antes, a retirada, a entrega, o preparo e as duas guardas (convidado e mudanca real de status) ficam, cada um com a contagem exata. A consulta 127a confere o
+  // corpo exato (md5), os atributos, a trigger e a ACL; a prova viva mede o comportamento.
+  "20261399920000_o_sino_do_pedido_vencido_fala_do_vencimento.sql": [
+    {
+      funcao: "notifica_cliente_de_mudanca_de_status",
+      esperado: [
+        {
+          texto: "IF NEW.payment_status IS NOT DISTINCT FROM 'expirado' THEN",
+          vezes: 1,
+        },
+        { texto: "Prazo do pagamento terminou", vezes: 1 },
+        {
+          texto:
+            "Se você já pagou, aguarde alguns minutos antes de comprar de novo. Se não pagou, é só comprar de novo.",
+          vezes: 1,
+        },
+        {
+          texto: "Seu pedido foi cancelado. Se tiver dúvidas, fale com a loja.",
+          vezes: 1,
+        },
+        { texto: "Pedido cancelado", vezes: 1 },
+        { texto: "Pedido pronto para retirar", vezes: 1 },
+        { texto: "Pedido retirado", vezes: 1 },
+        { texto: "Pedido em preparo", vezes: 1 },
+        { texto: "Pedido a caminho", vezes: 1 },
+        { texto: "Pedido entregue", vezes: 1 },
+        { texto: "NEW.user_id IS NULL", vezes: 1 },
+        { texto: "OLD.status IS NOT DISTINCT FROM NEW.status", vezes: 1 },
+      ],
+    },
+  ],
   "20261234000000_o_lucro_so_conta_produto_com_custo.sql": [
     {
       // O lucro só conta produto com custo (14/10/2026): o lucro por dia e o top 5 do CRM deixam de tratar custo
