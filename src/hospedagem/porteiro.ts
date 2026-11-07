@@ -518,7 +518,7 @@ export function respostaManutencao(
   caderneta: EstadoCaderneta,
 ): Response {
   // Mesmo padrão de public/offline.html: ajuste ao celular, recarga sozinha a
-  // cada 10 s e um link para a própria página como botão. SEM script e sem
+  // cada 30 s e um link para a própria página como botão. SEM script e sem
   // atributo de evento de propósito: a CSP de produção só libera 1 hash em
   // script-src. O texto é o mesmo para todo motivo e para toda loja (nada de
   // marca nem de dado do banco: falha fechada).

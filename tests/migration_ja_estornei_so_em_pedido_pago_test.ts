@@ -270,7 +270,9 @@ Deno.test("contrato com o painel: recusa 22023 do 'Já estornei' mostra o TEXTO 
   const tela = norm(lerArquivo("src/views/admin/AdminOrdersView.tsx"));
   assertStringIncludes(
     tela,
-    'supabase.rpc("registrar_estorno_manual", { p_order_id: pedido.id, });',
+    // A chamada vive dentro de `aguardarComPrazo(Promise.resolve(...))` (1.5.156):
+    // o contrato é a RPC com o id do pedido, não o `;` logo depois dela.
+    'supabase.rpc("registrar_estorno_manual", { p_order_id: pedido.id, })',
   );
   assertStringIncludes(
     tela,
