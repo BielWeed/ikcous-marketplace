@@ -6,10 +6,10 @@
     "correcoes": [
       "Loja, Perfil e Conta: nome feito só de espaços ou caracteres invisíveis é recusado no cadastro e nos ajustes; salvar com a internet lenta confirma relendo o perfil; o perfil público sem capa mostra a capa padrão laranja, igual à dos Ajustes.",
       "Loja, Produto: produto sem foto mostra “Sem foto” na própria tela, sem pedir imagem a outro site, e o texto fica legível também no tema escuro.",
-      "Loja, Política de trocas, Sobre a loja e Avaliação: se a política não carregar, aparece “Tentar de novo”; a página Sobre a loja ainda sem dados diz isso em vez de ficar vazia; a avaliação do pedido não fecha enquanto é enviada nem perde o que foi escrito.",
+      "Loja, Política de trocas e Sobre a loja: se a política não carregar, aparece “Tentar de novo”; a página Sobre a loja ainda sem dados diz isso em vez de ficar vazia.",
       "Painel, Fotos: banners em WebP e AVIF são reduzidos antes de subir (animados sobem como vieram), GIF acima de 3 MB é recusado com uma frase clara, e foto da devolução que não abre avisa na hora.",
       "Painel, Equipe e Clientes: abrir o painel direto pelo endereço não é mais negado por um atalho velho do aparelho; promover ou rebaixar com a internet ruim avisa para conferir e relê a lista.",
-      "Painel, Produtos: copiar um produto duas vezes mantém a grade de variações e marca o nome com “-COPIA”."
+      "Painel, Produtos: o código (SKU) da cópia de um produto passa a terminar em “-COPIA” (antes “-COPY”)."
     ]
   },
   "1.5.154": {
