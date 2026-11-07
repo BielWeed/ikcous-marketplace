@@ -68,7 +68,7 @@ export const TEXTOS_DA_CLIENTE = {
   recarregar: "Ver de novo meus pedidos",
 
   falhaDeRede:
-    "Sem conexão agora. Seu pedido não foi enviado. Confira a internet e tente de novo.",
+    "Sem conexão agora. Não conseguimos confirmar o envio. Confira se o pedido aparece na lista antes de tentar de novo.",
   falhaJaExiste:
     "Você já tem um pedido igual esperando resposta da loja. Não precisa pedir de novo.",
   falhaSemSessao:
@@ -126,7 +126,7 @@ export const TEXTOS_DA_LOJA = {
   marcarRecusado: "Não posso atender",
   salvando: "Salvando…",
   falhaAoDecidir:
-    "Não consegui salvar a resposta. Confira a internet e tente de novo.",
+    "Não conseguimos confirmar se a resposta foi salva. Confira se a resposta aparece na lista antes de tentar de novo.",
   falhaJaDecidido:
     "Este pedido já tinha sido respondido ou você não tem mais permissão. A lista foi atualizada.",
   semBotaoDeApagar:

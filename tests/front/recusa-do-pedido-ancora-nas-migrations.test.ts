@@ -32,7 +32,7 @@ const MIGRATIONS = import.meta.glob<string>("/supabase/migrations/*.sql", {
 const FRASES_DO_BANCO = [
   "Endereço inválido ou não pertence ao usuário.",
   "Quantidade inválida para um dos itens.",
-  "Escolha uma variação para o produto %",
+  "Escolha uma variação para o produto %.",
   "Produto % não disponível.",
   "Estoque insuficiente para o produto % (Disponível: %, Solicitado: %)",
   "Entrega local não disponível para o CEP informado.",
@@ -99,39 +99,121 @@ const FRASES_DO_BANCO = [
   "O pagamento pelo app é feito em outra etapa. Para este pedido, escolha pagar na retirada ou na entrega.",
 ];
 
-const sql = Object.values(MIGRATIONS).join("\n");
+// Preserva literais SQL (inclusive apóstrofo escapado), mas não deixa uma
+// frase antiga em comentário mascarar a retirada de um RAISE vigente.
+function semComentarios(sql: string) {
+  return sql.replace(/'(?:''|[^'])*'|--[^\n]*|\/\*[\s\S]*?\*\//g, (trecho) =>
+    trecho.startsWith("'") ? trecho : " ",
+  );
+}
 
-describe("as mensagens que o classificador reconhece continuam existindo no SQL", () => {
-  // As DUAS travas de vacuidade. So' o tamanho nao basta: um glob que casasse
-  // UM arquivo grande passaria no piso de caracteres e ainda assim estaria
-  // lendo quase nada.
-  it("o glob casou o diretorio inteiro de migrations", () => {
-    // 🔴 O piso e' 20, e NAO a contagem de hoje (142), de proposito. O ADR
-    // `docs/decisoes/0002-baseline-do-ledger-de-migrations.md` deixou em aberto,
-    // amarrado a issue #131, arquivar as 98 migrations pre-baseline. Se isso for
-    // feito, sobram ~44 arquivos -- e um piso colado em 100 deixaria ESTE teste
-    // vermelho sem nada de errado ter acontecido, mandando quem fez o
-    // arquivamento caçar um defeito que nao existe.
-    //
-    // 20 continua pegando a falha que esta trava existe para pegar: glob
-    // quebrado, que casa ZERO ou UM arquivo. E o piso de tamanho abaixo NAO
-    // cobre esse caso sozinho -- o baseline tem ~200 KB e passaria em
-    // `sql.length > 100000` sozinho, lendo um arquivo so'.
+function corpoMaisNovo(arquivos: Record<string, string>, funcao: string) {
+  const definicoes = Object.entries(arquivos)
+    .map(([caminho, sql]) => ({
+      nome: caminho.split("/").pop() ?? caminho,
+      sql: semComentarios(sql),
+    }))
+    .filter(({ nome }) => !nome.startsWith("rollback-manual-"))
+    .sort((a, b) => a.nome.localeCompare(b.nome))
+    .flatMap(({ nome, sql }) => {
+      const cabecalho =
+        /\b(?:CREATE\s+FUNCTION|CREATE\s+OR\s+REPLACE\s+FUNCTION)\s+public\.([a-z0-9_]+)\s*\(/gi;
+      return [...sql.matchAll(cabecalho)]
+        .filter((achado) => achado[1].toLowerCase() === funcao)
+        .map((achado) => ({
+          nome,
+          corpo:
+            /\bAS\s+(\$[A-Za-z0-9_]*\$)([\s\S]*?)\1/i.exec(
+              sql.slice(achado.index),
+            )?.[2] ?? "",
+        }));
+    });
+  return definicoes.at(-1) ?? null;
+}
+
+function frasesDeRecusa(corpo: string) {
+  return [
+    ...semComentarios(corpo).matchAll(
+      /\bRAISE\s+EXCEPTION\s+'((?:''|[^'])*)'/gi,
+    ),
+  ].map((achado) => achado[1].replace(/''/g, "'"));
+}
+
+const SOMENTE_V23 =
+  "O pagamento pelo app é feito em outra etapa. Para este pedido, escolha pagar na retirada ou na entrega.";
+const SOMENTE_V24 =
+  "Este pedido não tem valor a pagar pelo app. Escolha pagar na retirada ou na entrega, ou fale com a loja.";
+const DO_GATILHO = "Os cupons estão desativados nesta loja.";
+const COMUNS = FRASES_DO_BANCO.filter(
+  (frase) => ![SOMENTE_V23, SOMENTE_V24, DO_GATILHO].includes(frase),
+);
+
+describe("extração do corpo vigente, não do histórico", () => {
+  it("uma reescrita não pode ser escondida pela frase antiga nem pelo rollback", () => {
+    const antiga =
+      "CREATE FUNCTION public.exemplo() RETURNS void AS $$ BEGIN RAISE EXCEPTION 'Estoque antigo'; END; $$ LANGUAGE plpgsql;";
+    const nova =
+      "CREATE OR REPLACE FUNCTION public.exemplo() RETURNS void AS $corpo$ BEGIN RAISE EXCEPTION 'Sem estoque suficiente'; END; $corpo$ LANGUAGE plpgsql;";
+    const atual = corpoMaisNovo(
+      {
+        "/20260101.sql": antiga,
+        "/20260102.sql": nova,
+        "/rollback-manual-20260102.sql": antiga,
+      },
+      "exemplo",
+    );
+    expect(atual?.nome).toBe("20260102.sql");
+    expect(atual?.corpo).toContain("Sem estoque suficiente");
+    expect(atual?.corpo).not.toContain("Estoque antigo");
+  });
+});
+
+describe("as recusas continuam no corpo mais novo de cada função", () => {
+  it("o glob casou o diretório, não apenas uma migration antiga", () => {
     expect(Object.keys(MIGRATIONS).length).toBeGreaterThan(20);
   });
 
-  it("o corpus lido nao esta vazio -- senao tudo abaixo passa por vacuidade", () => {
-    expect(sql.length).toBeGreaterThan(100000);
-  });
-
-  for (const frase of FRASES_DO_BANCO) {
-    it(`ainda existe em alguma migration: ${frase.slice(0, 45)}`, () => {
-      expect(
-        sql.includes(frase),
-        "A frase acima sumiu das migrations. Se ela foi REESCRITA, " +
-          "src/lib/recusaDoPedido.ts precisa da regra nova NA MESMA rodada -- senao a " +
-          "recusa cai no caso generico e a pessoa volta a ficar sem acao no ultimo clique.",
-      ).toBe(true);
+  for (const [funcao, frases] of [
+    ["create_marketplace_order_v23", [...COMUNS, SOMENTE_V23]],
+    ["create_marketplace_order_v24", [...COMUNS, SOMENTE_V24]],
+    ["pedido_com_cupom_exige_a_chave_ligada", [DO_GATILHO]],
+  ] as const) {
+    const atual = corpoMaisNovo(MIGRATIONS, funcao);
+    it(`${funcao}: a definição vigente foi encontrada e tem corpo`, () => {
+      expect(atual).not.toBeNull();
+      expect(atual?.corpo.length).toBeGreaterThan(100);
+      expect(frasesDeRecusa(atual?.corpo ?? "").length).toBeGreaterThan(0);
     });
+
+    for (const frase of frases) {
+      it(`${funcao}: ainda recusa com "${frase}"`, () => {
+        expect(
+          frasesDeRecusa(atual?.corpo ?? ""),
+          `${atual?.nome}: frase reescrita exige atualizar recusaDoPedido.ts na mesma rodada.`,
+        ).toContain(frase);
+      });
+    }
   }
+
+  it("comentário e outra função não contam como recusa; aspas e acentos são preservados", () => {
+    const atual = corpoMaisNovo(
+      {
+        "/20260101.sql": `
+        -- CREATE FUNCTION public.exemplo() AS $$ falso $$;
+        CREATE OR REPLACE FUNCTION public.exemplo() RETURNS void AS $fn$
+        BEGIN
+          -- RAISE EXCEPTION 'antiga';
+          /* RAISE EXCEPTION 'também antiga'; */
+          RAISE EXCEPTION 'Não há estoque d''água';
+        END; $fn$ LANGUAGE plpgsql;
+        CREATE FUNCTION public.outra() RETURNS void AS $$ BEGIN RAISE EXCEPTION 'antiga'; END; $$ LANGUAGE plpgsql;
+      `,
+      },
+      "exemplo",
+    );
+    expect(frasesDeRecusa(atual?.corpo ?? "")).toEqual([
+      "Não há estoque d'água",
+    ]);
+    expect(corpoMaisNovo({}, "exemplo")).toBeNull();
+  });
 });

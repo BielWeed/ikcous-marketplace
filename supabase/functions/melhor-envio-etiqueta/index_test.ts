@@ -4818,3 +4818,77 @@ Deno.test("gerar_devolucao_reversa - achado 5: a resposta 409 honesta (vínculo 
         assertEquals(eventoDoCodigoOrfao.ator, 'sistema')
     })
 })
+
+// ── r57-g: falha ao LER os itens do pedido não é "o pedido não tem itens" ──
+// Antes, `{ data: null, error }` virava lista vazia e a lojista lia o 400
+// "O pedido não tem itens registrados" — falso: o pedido tem itens, a leitura é
+// que falhou, e tentar de novo resolve. Nada é pago nem reservado nesse ponto.
+
+// Cliente em que SÓ a leitura de `marketplace_order_items` falha; o resto
+// (pedido, produtos, credencial) segue do cliente falso normal.
+function clienteComLeituraDeItensQuebrada(base: ReturnType<typeof clienteFalso>, erro: Record<string, unknown>) {
+    return {
+        from(tabela: string) {
+            if (tabela !== 'marketplace_order_items') return base.cliente.from(tabela)
+            const api: any = {
+                select: () => api,
+                eq: () => api,
+                then: (ok: any, ko: any) => Promise.resolve({ data: null, error: erro }).then(ok, ko),
+            }
+            return api
+        },
+    }
+}
+
+for (const [rotulo, erro, codigoNoLog] of [
+    ['com código', { code: '57014', message: 'canceling statement due to statement timeout — item do pedido vazou aqui' }, '57014'],
+    ['só com mensagem', { message: 'FetchError: conexão caiu com o valor secreto-do-driver' }, null],
+] as const) {
+    Deno.test(`handler - erro de BANCO ao ler os itens do pedido (${rotulo}): 500 'tente de novo', NUNCA 'o pedido não tem itens', nada pago nem reservado, loga só o código`, async () => {
+        await comEnvAdmin(async () => {
+            const base = clienteFalso({ pedido: PEDIDO_FELIZ })
+            const clienteComBancoQuebrado = clienteComLeituraDeItensQuebrada(base, erro as Record<string, unknown>)
+            const me = buscarMeFalso()
+            let res!: Response
+            const linhas = await comConsoleErrorCapturado(async () => {
+                res = await comAdminFalso(() =>
+                    handler(requisicaoGerar(), { supabase: clienteComBancoQuebrado as any, buscar: me.buscar }))
+            })
+            assertEquals(res.status, 500)
+            const corpo = await res.json()
+            assertEquals(corpo.success, undefined)
+            const texto = String(corpo.error).toLowerCase()
+            assertEquals(texto.includes('itens do pedido'), true)
+            assertEquals(texto.includes('nada foi pago'), true)
+            assertEquals(texto.includes('tente de novo'), true)
+            assertEquals(texto.includes('não tem itens'), false)
+            // Dinheiro: ZERO chamadas ao Melhor Envio e nada gravado no pedido.
+            assertEquals(me.registro.chamadasMe, 0)
+            assertEquals(me.registro.carrinho, 0)
+            assertEquals(me.registro.checkouts, 0)
+            assertEquals(base.registro.reivindicacoes.length, 0)
+            assertEquals(base.registro.liberacoes.length, 0)
+            assertEquals(base.registro.completacoes.length, 0)
+            // Log: só o CÓDIGO (ou 'erro') — a mensagem crua do driver pode ecoar dado.
+            const logJuntado = linhas.join('\n')
+            assertEquals(logJuntado.includes('itens do pedido'), true)
+            if (codigoNoLog) assertEquals(logJuntado.includes(codigoNoLog), true)
+            assertEquals(logJuntado.toLowerCase().includes('vazou'), false)
+            assertEquals(logJuntado.toLowerCase().includes('timeout'), false)
+            assertEquals(logJuntado.includes('secreto-do-driver'), false)
+        })
+    })
+}
+
+Deno.test("handler - CONTROLE dos itens: leitura OK que volta VAZIA segue sendo 400 'o pedido não tem itens', sem chamar o ME", async () => {
+    await comEnvAdmin(async () => {
+        const base = clienteFalso({ pedido: PEDIDO_FELIZ, itens: [] })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() =>
+            handler(requisicaoGerar(), { supabase: base.cliente as any, buscar: me.buscar }))
+        assertEquals(res.status, 400)
+        assertEquals(String((await res.json()).error).includes('não tem itens'), true)
+        assertEquals(me.registro.chamadasMe, 0)
+        assertEquals(base.registro.reivindicacoes.length, 0)
+    })
+})

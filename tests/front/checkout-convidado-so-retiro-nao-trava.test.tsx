@@ -14,9 +14,12 @@
 // e o botão renderiza via portal):
 //   - só retiro + retirada MARCADA + CEP de fora: sem aviso (o convidado
 //     compra);
-//   - só retiro SEM a retirada marcada (nada, "Entrega Local" velha vinda de
-//     app/cache, transportadora): o aviso e o bloqueio continuam — nada é
-//     escolhido sozinho e nada fica liberado por acidente;
+//   - só retiro SEM nenhuma opção marcada: o bloqueio continua (nada é
+//     escolhido sozinho), mas o AVISO de conta não aparece — a retirada está
+//     na tela esperando o toque (r57-c);
+//   - só retiro com uma opção que NÃO é a retirada ("Entrega Local" velha vinda
+//     de app/cache, transportadora): o aviso e o bloqueio continuam — nada fica
+//     liberado por acidente;
 //   - nos outros dois modos a retirada NUNCA libera o convidado de fora;
 //   - CEP local: nenhum aviso em nenhum modo (como sempre foi);
 //   - logada: nunca vê o aviso (controle — ver o comentário do caso).
@@ -246,14 +249,37 @@ describe("CheckoutView (convidado) × só retiro — a trava de 'fora da cidade'
     expect(texto).not.toContain(AVISO);
   });
 
-  it("SÓ RETIRO sem nenhuma opção marcada + CEP de fora: aviso e bloqueio continuam (nada é escolhido sozinho)", async () => {
+  it("SÓ RETIRO sem nenhuma opção marcada + CEP de fora: o bloqueio continua (nada é escolhido sozinho), mas o aviso de conta NÃO aparece antes de a retirada ser tocada", async () => {
     const texto = await cenario({
       modo: MODO.soRetiro,
       opcao: null,
       cep: CEP_DE_FORA,
     });
-    expect(texto).toContain(AVISO);
+    // r57-c: a loja não entrega em lugar nenhum e a retirada está na tela
+    // esperando o toque — pedir conta aqui mentia sobre a regra.
+    expect(texto).not.toContain(AVISO);
+    expect(texto).not.toContain("Entrar ou criar conta");
+    expect(texto).not.toContain("Crie sua conta para receber em outro CEP");
+    // O portão do botão NÃO mudou: segue apagado até a retirada ser marcada.
     expect(botaoFinalizar().disabled).toBe(true);
+  });
+
+  it("ENTREGO sem nenhuma opção marcada + CEP de fora: o aviso de conta continua (a isenção é só do 'Só retiro')", async () => {
+    const texto = await cenario({
+      modo: MODO.entrego,
+      opcao: null,
+      cep: CEP_DE_FORA,
+    });
+    expect(texto).toContain(AVISO);
+  });
+
+  it("ENTREGO E RETIRO sem nenhuma opção marcada + CEP de fora: o aviso de conta continua", async () => {
+    const texto = await cenario({
+      modo: MODO.entregoERetiro,
+      opcao: null,
+      cep: CEP_DE_FORA,
+    });
+    expect(texto).toContain(AVISO);
   });
 
   it("SÓ RETIRO com a 'Entrega Local' VELHA marcada (app/cache antigo) + CEP de fora: continua barrado", async () => {

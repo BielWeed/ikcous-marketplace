@@ -17,6 +17,8 @@
 // escreve (mesmas linhas citadas no comentário de cada `if`) — reescrevê-las
 // aqui criaria DUAS verdades sobre a mesma recusa (risco medido na tarefa).
 
+import { ehConsultaSemResposta } from "@/lib/prazo-da-requisicao";
+
 /** O que a tela precisa para decidir o que mostrar e se vale oferecer um
  * botão de "tentar de novo" — nunca a mensagem crua do erro. */
 export interface FalhaDaVendaTraduzida {
@@ -72,6 +74,11 @@ function mensagemDoErro(erro: unknown): string | null {
  * (22023, ex.: lixo da leitora com mais de 64 caracteres) e acesso negado
  * (42501) nunca se resolvem tentando de novo. */
 export function fraseDaFalhaDoCodigo(erro: unknown): string {
+  // Prazo da tela estourado (`aguardarComPrazo`): a rede está pendurada. A
+  // consulta é só leitura, então "bipe de novo" é seguro.
+  if (ehConsultaSemResposta(erro)) {
+    return "A conexão está lenta, bipe de novo.";
+  }
   const codigo = codigoDoErro(erro);
   if (codigo === "22023") {
     return "Esse código não parece válido. Confira a etiqueta.";

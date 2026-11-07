@@ -294,6 +294,13 @@ export function AdminArea({
   isTransitionSupported,
   userId,
 }: AdminAreaProps) {
+  // A ficha é uma pausa na visita ao CRM, não uma abertura nova da tela.
+  const [visitaCrm, setVisitaCrm] = useState(currentView === "admin-crm");
+  useEffect(() => {
+    if (currentView === "admin-crm") setVisitaCrm(true);
+    else if (currentView !== "admin-user-detail") setVisitaCrm(false);
+  }, [currentView]);
+
   const isMainTab = [
     "admin-dashboard",
     "admin",
@@ -553,9 +560,29 @@ export function AdminArea({
           </motion.div>
         )}
 
+        {(currentView === "admin-crm" ||
+          (visitaCrm && currentView === "admin-user-detail")) && (
+          <div
+            hidden={currentView !== "admin-crm"}
+            className={cn(
+              "admin-scroll-container absolute left-0 top-0 size-full overflow-y-auto scroll-smooth",
+              currentView === "admin-crm"
+                ? "active-scroll-container"
+                : "hidden",
+            )}
+          >
+            <LocalErrorBoundary key="admin-crm">
+              <PreloadedOrLazy
+                component={AdminCrm}
+                props={{ onNavigate, active: currentView === "admin-crm" }}
+              />
+            </LocalErrorBoundary>
+          </div>
+        )}
+
         {/* Secondary Views */}
         <AnimatePresence mode="wait">
-          {!isMainTab && (
+          {!isMainTab && currentView !== "admin-crm" && (
             <motion.div
               key={currentView}
               initial={{ opacity: 0 }}
@@ -619,18 +646,6 @@ export function AdminArea({
                             active: currentView === "admin-pdv",
                             onSetDirty: setIsAdminDirty,
                             onSetBackOverride: setBackOverride,
-                          }}
-                        />
-                      </LocalErrorBoundary>
-                    );
-                  case "admin-crm":
-                    return (
-                      <LocalErrorBoundary key="admin-crm">
-                        <PreloadedOrLazy
-                          component={AdminCrm}
-                          props={{
-                            onNavigate: onNavigate,
-                            active: currentView === "admin-crm",
                           }}
                         />
                       </LocalErrorBoundary>
@@ -777,7 +792,9 @@ export function AdminArea({
                           component={AdminUserDetail}
                           props={{
                             userId: selectedProductId || "",
-                            onBack: handleAdminUserDetailBack,
+                            onBack: visitaCrm
+                              ? () => onNavigate("admin-crm")
+                              : handleAdminUserDetailBack,
                             onNavigate: onNavigate,
                           }}
                         />

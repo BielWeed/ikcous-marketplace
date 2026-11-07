@@ -376,6 +376,74 @@ describe("Balcão — cancelar a venda limpa o cupom inteiro", () => {
     expect(hospedeiro.textContent).not.toContain("Nada é registrado");
   });
 
+  it("recarregar o app depois da falha de rede NÃO apaga o aviso: o Cancelar continua sem jurar 'nada registrado'", async () => {
+    registrarImplRef.atual = async () => {
+      throw new TypeError("Failed to fetch");
+    };
+    await montar();
+    await bipar();
+    await clicar("Fechar venda");
+    await clicar("Dinheiro");
+    await clicar("Registrar venda");
+    expect(hospedeiro.textContent).toContain(
+      "Não consegui falar com o servidor",
+    );
+    // O rascunho grava com atraso (debounce): deixa assentar no disco.
+    await avancar(400);
+    expect(armazem.get(CHAVE_DO_RASCUNHO)).toContain("talvezGravada");
+
+    // F5 / fechar e abrir o app: a tela é desmontada e montada de novo.
+    await act(async () => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+    await montar();
+
+    // O cupom volta com os mesmos itens e o aviso vermelho também.
+    expect(hospedeiro.textContent).toContain("Camiseta Lisa");
+    expect(hospedeiro.textContent).toContain(
+      "Não consegui falar com o servidor",
+    );
+
+    await clicar("Cancelar venda");
+    expect(hospedeiro.textContent).toContain(
+      "Se a venda chegou a ser gravada, ela está em Pedidos.",
+    );
+    expect(hospedeiro.textContent).not.toContain("Nada é registrado");
+  });
+
+  it("recarregar depois de uma recusa comum (estoque) volta SEM o aviso de rede", async () => {
+    registrarImplRef.atual = async () => ({
+      data: null,
+      error: {
+        code: "22023",
+        message: "Estoque insuficiente (Disponível: 0, Solicitado: 1)",
+      },
+    });
+    await montar();
+    await bipar();
+    await clicar("Fechar venda");
+    await clicar("Dinheiro");
+    await clicar("Registrar venda");
+    await avancar(400);
+    expect(armazem.get(CHAVE_DO_RASCUNHO)).not.toContain("talvezGravada");
+
+    await act(async () => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+    await montar();
+
+    await clicar("Cancelar venda");
+    expect(hospedeiro.textContent).toContain("Nada é registrado");
+  });
+
   it("depois de CONCLUIR uma venda, a seguinte não herda o cliente nem a forma de pagamento", async () => {
     registrarImplRef.atual = async () => ({
       data: {

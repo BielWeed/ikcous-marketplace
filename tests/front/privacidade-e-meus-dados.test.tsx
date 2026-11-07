@@ -310,7 +310,7 @@ describe("PrivacidadeEMeusDados", () => {
     expect(botao("Corrigir meu e-mail")).toBeUndefined();
   });
 
-  it("sem rede: diz com franqueza que o pedido NÃO foi enviado, mantém a pergunta aberta e não finge sucesso", async () => {
+  it("sem rede: orienta conferir a lista, mantém a pergunta aberta e não finge sucesso", async () => {
     banco.insercaoQuebra = new TypeError("Failed to fetch");
     await montar();
     act(() => botao("Pedir exclusão da minha conta")?.click());
@@ -318,7 +318,10 @@ describe("PrivacidadeEMeusDados", () => {
       botao("Sim, pedir exclusão", dialogo() as HTMLElement)?.click();
     });
     await assentar();
-    expect(dialogo()?.textContent).toContain("Seu pedido não foi enviado.");
+    expect(dialogo()?.textContent).toContain(
+      "Confira se o pedido aparece na lista antes de tentar de novo.",
+    );
+    expect(dialogo()?.textContent).not.toContain("não foi enviado");
     expect(corpo()).not.toContain("Pedido enviado em");
     // Dá para tentar de novo, e o botão voltou a funcionar.
     const confirmar = botao("Sim, pedir exclusão", dialogo() as HTMLElement);

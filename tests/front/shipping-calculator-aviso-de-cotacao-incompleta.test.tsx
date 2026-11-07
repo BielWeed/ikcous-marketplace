@@ -321,6 +321,30 @@ describe("ShippingCalculator — cotação incompleta avisa e não é guardada",
     expect(botaoTentarDeNovo()).toBeUndefined();
   });
 
+  // r57-c: "CEP não encontrado" também é recusa definitiva daquele CEP (a edge só
+  // devolve `cep_invalido` quando nenhuma transportadora respondeu e a recusa
+  // foi 422 sobre o CEP de destino). Cada toque em "Tentar de novo" refazia a
+  // mesma cotação, devolvia o mesmo erro, gastava o limite de consultas da loja
+  // e sujava o histórico de cotações. Trocar o endereço continua recotando
+  // sozinho (efeito de `cepDestino`), então nenhum caminho de saída se perde.
+  it("cep_invalido não oferece 'Tentar de novo' (o servidor não conhece aquele CEP)", async () => {
+    invoke.mockResolvedValue(
+      erroHttp(
+        new Response(JSON.stringify({ codigo: "cep_invalido" }), {
+          status: 400,
+        }),
+      ),
+    );
+    await cotar();
+
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toBe(
+      "CEP não encontrado. Confira o CEP do endereço de entrega.",
+    );
+    expect(botaoTentarDeNovo()).toBeUndefined();
+    // A cotação saiu uma única vez: nada ficou rodando por trás da tela.
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     [429, { codigo: "muitas_consultas" }],
     [400, { codigo: "carrinho_grande_demais" }],

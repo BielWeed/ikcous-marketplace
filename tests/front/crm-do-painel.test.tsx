@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   rpc: vi.fn(),
   respostas: new Map<string, { data: unknown; error: unknown }>(),
+  aoMudarPedido: null as null | (() => void),
 }));
 
 vi.mock("@/lib/supabase", () => ({
@@ -34,13 +35,40 @@ vi.mock("@/lib/supabase", () => ({
     },
     channel: () => {
       const canal: Record<string, unknown> = {
-        on: () => canal,
+        on: (_: string, filtro: { table: string }, callback: () => void) => {
+          if (filtro.table === "marketplace_orders") {
+            h.aoMudarPedido = callback;
+            canal.escutaPedidos = true;
+          }
+          return canal;
+        },
         subscribe: () => canal,
       };
       return canal;
     },
-    removeChannel: vi.fn(),
+    // Remover o canal de pedidos desliga de verdade a escuta: quem sai de cena
+    // não pode mais receber o evento.
+    removeChannel: (canal: Record<string, unknown>) => {
+      if (canal.escutaPedidos) h.aoMudarPedido = null;
+    },
   },
+}));
+
+vi.mock("@/components/layouts/AdminLayout", () => ({
+  AdminLayout: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+vi.mock("@/views/admin/AdminCouponsView", () => ({
+  AdminCouponsView: () => <p>Cupons fictícios</p>,
+}));
+vi.mock("@/views/admin/AdminCustomersView", () => ({
+  AdminCustomersView: () => <p>Clientes fictícios</p>,
+}));
+vi.mock("@/views/admin/AdminUserDetailView", () => ({
+  AdminUserDetailView: ({ onBack }: { onBack: () => void }) => (
+    <button type="button" onClick={onBack}>
+      Voltar da ficha
+    </button>
+  ),
 }));
 
 vi.mock("@/hooks/useAnalytics", () => ({
@@ -188,6 +216,7 @@ describe("Dashboard CRM", () => {
   let hospedeiro: HTMLDivElement;
   let raiz: Root;
   const onNavigate = vi.fn();
+  const scrollToOriginal = HTMLElement.prototype.scrollTo;
 
   beforeEach(() => {
     // Relógio fixo só no Date (os setTimeout continuam reais): 12h de
@@ -195,6 +224,8 @@ describe("Dashboard CRM", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-09-26T15:00:00Z"));
     vi.resetModules();
+    HTMLElement.prototype.scrollTo = vi.fn();
+    h.aoMudarPedido = null;
     h.rpc.mockClear();
     h.respostas.clear();
     h.respostas.set("crm_visao", { data: VISAO, error: null });
@@ -208,6 +239,7 @@ describe("Dashboard CRM", () => {
   afterEach(() => {
     act(() => raiz.unmount());
     hospedeiro.remove();
+    HTMLElement.prototype.scrollTo = scrollToOriginal;
     vi.useRealTimers();
   });
 
@@ -218,6 +250,320 @@ describe("Dashboard CRM", () => {
     });
     await esperarAte(() => chamadasDe("crm_visao").length >= 1);
   }
+
+  it("ao voltar da ficha conserva aba, período, grupo, busca e página; sair do CRM reinicia", async () => {
+    vi.useRealTimers();
+    h.respostas.set("crm_clientes", {
+      data: { ...CLIENTES, total: 45 },
+      error: null,
+    });
+    const { AdminArea } = await import("@/components/layouts/AdminArea");
+    let tela: import("@/types").View = "admin-crm";
+    const voltarAntigo = vi.fn();
+    const navegar = (nova: import("@/types").View) => {
+      tela = nova;
+      desenhar();
+    };
+    const desenhar = () =>
+      raiz.render(
+        <AdminArea
+          currentView={tela}
+          onNavigate={navegar}
+          selectedProductId="u-1"
+          setIsAdminDirty={vi.fn()}
+          setBackOverride={vi.fn()}
+          handleAdminUserDetailBack={voltarAntigo}
+          backOverride={null}
+          isTransitionSupported={true}
+        />,
+      );
+    await act(async () => desenhar());
+    await esperarAte(
+      () => !!hospedeiro.querySelector('[aria-label="Seções do CRM"]'),
+    );
+    await act(async () => botao(hospedeiro, "7 dias").click());
+    await act(async () => botao(hospedeiro, "Clientes").click());
+    await esperarAte(() => texto(hospedeiro).includes("Ana Souza"));
+    const grupo = [
+      ...hospedeiro.querySelectorAll<HTMLButtonElement>("button"),
+    ].find(
+      (b) =>
+        b.hasAttribute("aria-pressed") && texto(b).includes("Podem não voltar"),
+    )!;
+    await act(async () => grupo.click());
+    const busca = hospedeiro.querySelector<HTMLInputElement>("input")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(busca, "Ana");
+      busca.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await esperarAte(
+      () => chamadasDe("crm_clientes").at(-1)?.p_busca === "Ana",
+    );
+    await act(async () => botao(hospedeiro, "Próximo").click());
+    await esperarAte(() => chamadasDe("crm_clientes").at(-1)?.p_offset === 20);
+    await act(async () => botao(hospedeiro, "Ver cliente").click());
+    await esperarAte(() => texto(hospedeiro).includes("Voltar da ficha"));
+    await act(async () => botao(hospedeiro, "Voltar da ficha").click());
+    expect(voltarAntigo).not.toHaveBeenCalled();
+    expect(tela).toBe("admin-crm");
+    expect(
+      hospedeiro
+        .querySelector('[aria-label="Clientes"]')
+        ?.getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(hospedeiro.querySelector<HTMLInputElement>("input")?.value).toBe(
+      "Ana",
+    );
+    expect(chamadasDe("crm_clientes").at(-1)).toMatchObject({
+      p_busca: "Ana",
+      p_segmento: "em_risco",
+      p_offset: 20,
+    });
+    expect(
+      texto(hospedeiro.querySelector('[data-testid="paginacao-admin"]')),
+    ).toContain("Exibindo 21 - 40 de 45");
+    expect(
+      [...hospedeiro.querySelectorAll("button")]
+        .find(
+          (b) =>
+            b.hasAttribute("aria-pressed") &&
+            texto(b).includes("Podem não voltar"),
+        )
+        ?.getAttribute("aria-pressed"),
+    ).toBe("true");
+    // O voltar do navegador muda a rota sem usar o botão interno da ficha.
+    await act(async () => navegar("admin-user-detail"));
+    await esperarAte(() => texto(hospedeiro).includes("Voltar da ficha"));
+    await act(async () => navegar("admin-crm"));
+    expect(
+      hospedeiro
+        .querySelector('[aria-label="Clientes"]')
+        ?.getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(
+      texto(hospedeiro.querySelector('[data-testid="paginacao-admin"]')),
+    ).toContain("Exibindo 21 - 40 de 45");
+    await act(async () => botao(hospedeiro, "Visão").click());
+    expect(botao(hospedeiro, "7 dias").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    // Navegar para outra seção encerra esta visita; uma abertura nova começa limpa.
+    await act(async () => navegar("admin-coupons"));
+    await esperarAte(
+      () => !hospedeiro.querySelector('[aria-label="Seções do CRM"]'),
+    );
+    await act(async () => navegar("admin-crm"));
+    expect(
+      hospedeiro
+        .querySelector('[aria-label="Visão geral"]')
+        ?.getAttribute("aria-selected"),
+    ).toBe("true");
+    const periodoNovo = hospedeiro.querySelector('[aria-label="Período"]')!;
+    expect(
+      [...periodoNovo.querySelectorAll("button")]
+        .find((b) => texto(b) === "30 dias")
+        ?.getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("Próximo e Anterior levam ao topo do contêiner da lista", async () => {
+    h.respostas.set("crm_clientes", {
+      data: { ...CLIENTES, total: 45 },
+      error: null,
+    });
+    hospedeiro.className = "admin-scroll-container";
+    const scrollTo = vi.fn();
+    hospedeiro.scrollTo = scrollTo;
+    await montar();
+    await act(async () => botao(hospedeiro, "Clientes").click());
+    await esperarAte(() => texto(hospedeiro).includes("Ana Souza"));
+    expect(scrollTo).not.toHaveBeenCalled();
+    await act(async () => botao(hospedeiro, "Próximo").click());
+    await esperarAte(() => chamadasDe("crm_clientes").at(-1)?.p_offset === 20);
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: "instant" });
+    scrollTo.mockClear();
+    await act(async () => botao(hospedeiro, "Anterior").click());
+    await esperarAte(() => chamadasDe("crm_clientes").at(-1)?.p_offset === 0);
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: "instant" });
+  });
+
+  it("a rolagem ao topo vale só para a troca de página, não para recarga em tempo real nem para a busca", async () => {
+    vi.useRealTimers();
+    h.respostas.set("crm_clientes", {
+      data: { ...CLIENTES, total: 45 },
+      error: null,
+    });
+    hospedeiro.className = "admin-scroll-container";
+    const scrollTo = vi.fn();
+    hospedeiro.scrollTo = scrollTo;
+    await montar();
+    await act(async () => botao(hospedeiro, "Clientes").click());
+    await esperarAte(() => texto(hospedeiro).includes("Ana Souza"));
+    await act(async () => botao(hospedeiro, "Próximo").click());
+    await esperarAte(() => chamadasDe("crm_clientes").at(-1)?.p_offset === 20);
+    await esperarAte(() => scrollTo.mock.calls.length >= 1);
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+
+    // Recarga por tempo real (pedido novo): a lista muda, a tela não pula.
+    scrollTo.mockClear();
+    const antesDoPedido = chamadasDe("crm_clientes").length;
+    expect(h.aoMudarPedido).toBeTypeOf("function");
+    await act(async () => {
+      h.aoMudarPedido!();
+      await new Promise((resolve) => setTimeout(resolve, 1700));
+    });
+    await esperarAte(() => chamadasDe("crm_clientes").length > antesDoPedido);
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 100)));
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    // Digitar na busca também recarrega a lista, sem levar ao topo.
+    const busca = hospedeiro.querySelector<HTMLInputElement>("input")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(busca, "Ana");
+      busca.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await esperarAte(
+      () => chamadasDe("crm_clientes").at(-1)?.p_busca === "Ana",
+    );
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 100)));
+    expect(scrollTo).not.toHaveBeenCalled();
+  }, 15000);
+
+  it("com a ficha aberta, o CRM escondido não busca clientes de novo quando entra pedido", async () => {
+    vi.useRealTimers();
+    const { AdminArea } = await import("@/components/layouts/AdminArea");
+    let tela: import("@/types").View = "admin-crm";
+    const navegar = (nova: import("@/types").View) => {
+      tela = nova;
+      desenhar();
+    };
+    const desenhar = () =>
+      raiz.render(
+        <AdminArea
+          currentView={tela}
+          onNavigate={navegar}
+          selectedProductId="u-1"
+          setIsAdminDirty={vi.fn()}
+          setBackOverride={vi.fn()}
+          handleAdminUserDetailBack={vi.fn()}
+          backOverride={null}
+          isTransitionSupported={true}
+        />,
+      );
+    await act(async () => desenhar());
+    await esperarAte(
+      () => !!hospedeiro.querySelector('[aria-label="Seções do CRM"]'),
+    );
+    await act(async () => botao(hospedeiro, "Clientes").click());
+    await esperarAte(() => texto(hospedeiro).includes("Ana Souza"));
+    expect(h.aoMudarPedido).toBeTypeOf("function");
+    await act(async () => botao(hospedeiro, "Ver cliente").click());
+    await esperarAte(() => texto(hospedeiro).includes("Voltar da ficha"));
+    // O CRM segue montado (guarda aba e página), só que escondido.
+    expect(
+      hospedeiro.querySelector('[aria-label="Seções do CRM"]'),
+    ).not.toBeNull();
+
+    // Deixa assentar a carga de entrada das telas (o dublê de analytics muda
+    // de função a cada render e refaz a escuta) antes de simular o evento.
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 800)));
+    const antes = chamadasDe("crm_clientes").length;
+    // Escondido, o CRM já não escuta pedidos. Se ainda escutasse, o evento
+    // recarregaria a lista escondida depois da espera de 1,5 s + 0,15 s; as
+    // atualizações de estado só aparecem fora do `act` que dispara o evento.
+    await act(async () => {
+      h.aoMudarPedido?.();
+    });
+    for (let i = 0; i < 21; i++) {
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 100)));
+    }
+    expect(chamadasDe("crm_clientes")).toHaveLength(antes);
+    expect(h.aoMudarPedido).toBeNull();
+  }, 15000);
+
+  it("Clientes na barra depois do CRM encerra a visita: abrir cliente e Voltar usa o voltar antigo, não o CRM", async () => {
+    vi.useRealTimers();
+    const { AdminArea } = await import("@/components/layouts/AdminArea");
+    let tela: import("@/types").View = "admin-crm";
+    const voltarAntigo = vi.fn();
+    const navegar = (nova: import("@/types").View) => {
+      tela = nova;
+      desenhar();
+    };
+    const desenhar = () =>
+      raiz.render(
+        <AdminArea
+          currentView={tela}
+          onNavigate={navegar}
+          selectedProductId="u-1"
+          setIsAdminDirty={vi.fn()}
+          setBackOverride={vi.fn()}
+          handleAdminUserDetailBack={voltarAntigo}
+          backOverride={null}
+          isTransitionSupported={true}
+        />,
+      );
+    await act(async () => desenhar());
+    await esperarAte(
+      () => !!hospedeiro.querySelector('[aria-label="Seções do CRM"]'),
+    );
+    await act(async () => navegar("admin-customers"));
+    await esperarAte(() => texto(hospedeiro).includes("Clientes fictícios"));
+    expect(hospedeiro.querySelector('[aria-label="Seções do CRM"]')).toBeNull();
+    await act(async () => navegar("admin-user-detail"));
+    await esperarAte(() => texto(hospedeiro).includes("Voltar da ficha"));
+    // Esta ficha não veio do CRM: o CRM não pode reaparecer escondido nem ser o destino.
+    expect(hospedeiro.querySelector('[aria-label="Seções do CRM"]')).toBeNull();
+    await act(async () => botao(hospedeiro, "Voltar da ficha").click());
+    expect(voltarAntigo).toHaveBeenCalledTimes(1);
+    expect(tela).not.toBe("admin-crm");
+  });
+
+  it("mudança em tempo real atualiza a lista junto dos números sem recarga infinita", async () => {
+    vi.useRealTimers();
+    await montar();
+    await act(async () => botao(hospedeiro, "Clientes").click());
+    await esperarAte(() => texto(hospedeiro).includes("Ana Souza"));
+    const antes = chamadasDe("crm_clientes").length;
+    const resumosAntes = chamadasDe("crm_visao").length;
+    expect(h.aoMudarPedido).toBeTypeOf("function");
+    h.respostas.set("crm_clientes", {
+      data: {
+        ...CLIENTES,
+        total: 3,
+        clientes: [
+          ...CLIENTES.clientes,
+          {
+            ...CLIENTES.clientes[0],
+            chave: "u-3",
+            user_id: "u-3",
+            nome: "Clara Fictícia",
+          },
+        ],
+      },
+      error: null,
+    });
+    await act(async () => {
+      h.aoMudarPedido!();
+      await new Promise((resolve) => setTimeout(resolve, 1700));
+    });
+    await esperarAte(
+      () =>
+        chamadasDe("crm_clientes").length > antes &&
+        chamadasDe("crm_visao").length > resumosAntes,
+    );
+    expect(chamadasDe("crm_clientes")).toHaveLength(antes + 1);
+    expect(texto(hospedeiro)).toContain("Clara Fictícia");
+    expect(chamadasDe("crm_visao").length).toBeGreaterThan(resumosAntes);
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 1700)));
+    expect(chamadasDe("crm_clientes")).toHaveLength(antes + 1);
+  });
 
   it("abre em 30 dias e cada chip de período chama crm_visao com as datas certas", async () => {
     await montar();

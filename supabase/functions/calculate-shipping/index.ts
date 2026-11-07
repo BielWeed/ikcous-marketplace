@@ -607,16 +607,16 @@ export function getCartHash(cart: any[]): string {
     // do pedido compara este texto com o `product_id` que o cliente manda, e o
     // Postgres aceita o mesmo uuid em outras grafias — só a canônica casa.
     const sorted = [...cart].sort((a, b) => {
-        const idA = (idCanonico(a.product?.id || a.productId) ?? '') + (idCanonico(a.variantId) ?? '')
-        const idB = (idCanonico(b.product?.id || b.productId) ?? '') + (idCanonico(b.variantId) ?? '')
+        const idA = (idCanonico(a?.product?.id || a?.productId) ?? '') + (idCanonico(a?.variantId) ?? '')
+        const idB = (idCanonico(b?.product?.id || b?.productId) ?? '') + (idCanonico(b?.variantId) ?? '')
         return idA.localeCompare(idB)
     })
     
     return sorted.map((item: any) => {
-        const bruto = item.product?.id || item.productId
+        const bruto = item?.product?.id || item?.productId
         const prodId = idCanonico(bruto) ?? bruto
-        const variantId = idCanonico(item.variantId) ?? ''
-        const quantity = item.quantity || 1
+        const variantId = idCanonico(item?.variantId) ?? ''
+        const quantity = item?.quantity || 1
         return `${prodId}:${variantId}:${quantity}`
     }).join(',')
 }
@@ -651,6 +651,15 @@ export function carrinhoGrandeDemais(cart: unknown): boolean {
     if (cart.length > MAX_LINHAS_DO_CARRINHO) return true
     return cart.some((item: any) =>
         idLongoDemais(item?.product?.id) || idLongoDemais(item?.productId) || idLongoDemais(item?.variantId))
+}
+
+/**
+ * Algum item do carrinho não é um objeto? (`null`, número, texto ou lista).
+ * `cart` que não é lista segue a regra de sempre (lista vazia), então não conta.
+ */
+export function carrinhoComItemInvalido(cart: unknown): boolean {
+    if (!Array.isArray(cart)) return false
+    return cart.some((item: unknown) => item === null || typeof item !== 'object' || Array.isArray(item))
 }
 
 /** Só texto ou número entram no histórico, cortados no teto do id. */
@@ -841,7 +850,16 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
     // junto com o caminho de taxa fixa — exceção inesperada é falha fechada
     // (500), sem preço nenhum.
     try {
-        const body = await req.json()
+        // JSON quebrado é erro de QUEM CHAMOU (400), não falha da loja: sem este
+        // try próprio ele caía no `catch` de topo e voltava como 500 "Tente de novo".
+        // `null`, lista, número e texto são JSON válido e seguem as regras de
+        // sempre (`body ?? {}` → sem CEP → 400).
+        let body: any
+        try {
+            body = await req.json()
+        } catch {
+            return respostaJson({ error: 'Corpo inválido.' }, 400)
+        }
         const { cep, cart, action } = body ?? {}
         // Só o booleano `true` EXATO: "true", 1, objeto… = app que não pediu.
         const aceitaRetirada = body?.aceitaRetirada === true
@@ -876,6 +894,12 @@ export async function handler(req: Request, deps: CalculateShippingDeps = {}): P
         // de admin (elas não têm carrinho).
         if (carrinhoGrandeDemais(cart)) {
             return respostaJson({ error: 'Carrinho grande demais para calcular o frete.', codigo: 'carrinho_grande_demais' }, 400)
+        }
+        // Item que não é objeto (`null`, número, texto, lista) nunca vem do app e
+        // só estourava em `getCartHash`, DEPOIS de ler credenciais e provedores e
+        // antes do limite por origem. Recusa aqui, antes de qualquer leitura.
+        if (carrinhoComItemInvalido(cart)) {
+            return respostaJson({ error: 'Carrinho inválido.', codigo: 'carrinho_invalido' }, 400)
         }
 
         // `cota`: o limite por origem gasta UMA unidade por pedido de cotação, mesmo que a revisão mude e

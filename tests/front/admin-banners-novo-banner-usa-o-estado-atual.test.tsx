@@ -191,6 +191,37 @@ describe("AdminBannersView - Novo banner pelo evento usa o estado ATUAL", () => 
     expect(ordem?.value).toBe("4");
   });
 
+  it("voltar ao setor original preserva a ordem do banner editado", async () => {
+    estado.banners = [bannerDoMeio(1), bannerDoMeio(2), bannerDoMeio(3)];
+    await renderizar();
+    const editar = document.querySelector<HTMLButtonElement>(
+      'button[title="Editar"]',
+    );
+    expect(editar).toBeTruthy();
+    await act(async () => editar!.click());
+    await abrirMaisOpcoes();
+    const posicao =
+      document.querySelector<HTMLSelectElement>("#banner-position")!;
+    for (const valor of ["home_top", "home_middle"]) {
+      await act(async () => {
+        posicao.value = valor;
+        posicao.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    }
+    expect(
+      document.querySelector<HTMLInputElement>(
+        "#banner-order, #banner-simple-order",
+      )!.value,
+    ).toBe("1");
+    const salvar = [...document.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Salvar Alterações",
+    )!;
+    await act(async () => salvar.click());
+    expect(
+      updateBanner.mock.calls.every(([, dados]) => !("order" in dados)),
+    ).toBe(true);
+  });
+
   it("evento antes de a lista carregar nao abre o editor; depois de carregar abre", async () => {
     estado.isLoaded = false;
     await renderizar();

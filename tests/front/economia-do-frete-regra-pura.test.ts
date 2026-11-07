@@ -20,6 +20,26 @@ function base(): Parameters<typeof modoDeEconomiaDoFrete>[0] {
   };
 }
 
+describe("linha 0: transportadora escolhida não pede outra cotação", () => {
+  it.each([
+    { price: 0, esperado: { tipo: "zero" } },
+    { price: 0, precoCheio: 0, esperado: { tipo: "zero" } },
+    { price: 20, precoCheio: 20, esperado: { tipo: "zero" } },
+    { price: 20, precoCheio: 15, esperado: { tipo: "zero" } },
+    { price: 20, precoCheio: 35, esperado: { tipo: "opcao", valor: 15 } },
+  ])(
+    "price=$price, precoCheio=$precoCheio",
+    ({ price, precoCheio, esperado }) => {
+      expect(
+        modoDeEconomiaDoFrete({
+          ...base(),
+          opcaoSelecionada: { id: "melhorenvio-pac", price, precoCheio },
+        }),
+      ).toEqual(esperado);
+    },
+  );
+});
+
 describe("modoDeEconomiaDoFrete — tabela decidida com o critico de desenho (12/09/2026)", () => {
   it("linha 1: freteGratis falso -> zero, mesmo com CEP local e tudo mais favoravel", () => {
     const modo = modoDeEconomiaDoFrete({

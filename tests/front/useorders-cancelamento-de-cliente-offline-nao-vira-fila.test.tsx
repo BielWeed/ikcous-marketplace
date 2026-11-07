@@ -40,6 +40,7 @@ const exposto = vi.hoisted(() => ({
   // não achou o pedido para mudar" — os dois cenários dão `[]` do mesmo
   // jeito. Só um pedido SEMEADO no cache prova a ordem certa.
   orders: [] as Order[],
+  estados: [] as string[],
 }));
 
 /** Mesma fixture de `cancelar-enviado-otimista-marca-que-precisa-devolver.
@@ -102,6 +103,9 @@ function Alvo({ isAdmin }: { isAdmin: boolean }) {
       ...args: unknown[]
     ) => Promise<unknown>;
     exposto.orders = hook.orders;
+    exposto.estados.push(
+      hook.orders.find((o) => o.id === "pedido-1")?.status ?? "ausente",
+    );
   });
   return null;
 }
@@ -112,6 +116,7 @@ describe("useOrders — cancelamento de cliente offline não vira fila (achado 1
 
   beforeEach(() => {
     mockIsAdmin = false;
+    exposto.estados = [];
     rpcMock.mockReset();
     rpcMock.mockResolvedValue({ data: null, error: null });
     toasts.warning.mockClear();
@@ -237,6 +242,68 @@ describe("useOrders — cancelamento de cliente offline não vira fila (achado 1
     expect(
       localStorage.getItem("orders_offline_updates_queue:cliente-1"),
     ).toBeNull();
+  });
+
+  it.each([
+    ["delivered", "cancelled", "Este pedido não pode mais ser cancelado"],
+    ["shipping", "delivered", "Usuários só podem cancelar pedidos"],
+    ["pending", "processing", "Usuários só podem cancelar pedidos"],
+  ] as const)(
+    "cliente: pedido %s não pode virar %s nem por um instante",
+    async (anterior, solicitado, mensagem) => {
+      localStorage.setItem(
+        "ikcous_orders_cache_cliente-1",
+        JSON.stringify([pedidoFake(anterior)]),
+      );
+      vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+      await act(async () => {
+        raiz.render(<Alvo isAdmin={false} />);
+      });
+      expect(exposto.orders.find((o) => o.id === "pedido-1")?.status).toBe(
+        anterior,
+      );
+
+      // Alvo registra todos os commits, não apenas o estado após rollback.
+      let erro: unknown;
+      await act(async () => {
+        try {
+          await exposto.updateOrderStatus!("pedido-1", solicitado);
+        } catch (capturado) {
+          erro = capturado;
+        }
+      });
+      expect(erro).toBeInstanceOf(Error);
+      expect((erro as Error).message).toBe(mensagem);
+      expect(rpcMock).not.toHaveBeenCalled();
+      expect(exposto.orders.find((o) => o.id === "pedido-1")?.status).toBe(
+        anterior,
+      );
+      expect(exposto.estados.length).toBeGreaterThan(0);
+      expect(exposto.estados.every((estado) => estado === anterior)).toBe(true);
+    },
+  );
+
+  it("controle: cliente pode cancelar pedido que já saiu para entrega", async () => {
+    localStorage.setItem(
+      "ikcous_orders_cache_cliente-1",
+      JSON.stringify([pedidoFake("shipping")]),
+    );
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+    await act(async () => {
+      raiz.render(<Alvo isAdmin={false} />);
+    });
+    expect(exposto.orders[0]?.status).toBe("shipping");
+    await act(async () => {
+      await exposto.updateOrderStatus!("pedido-1", "cancelled");
+    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      "update_order_status_atomic",
+      expect.objectContaining({
+        p_order_id: "pedido-1",
+        p_new_status: "cancelled",
+      }),
+    );
+    expect(exposto.orders[0]?.status).toBe("cancelled");
   });
 
   it("controle: o ramo de fila OFFLINE continua vivo para o ADMIN — este achado é só do cliente", async () => {

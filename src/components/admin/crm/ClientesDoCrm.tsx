@@ -598,6 +598,8 @@ export function ClientesDoCrm({
 }>) {
   const { config } = useStore();
   const loja = nomeDaLoja(config);
+  const raizRef = useRef<HTMLDivElement>(null);
+  const rolarAoTopo = useRef(false);
   const [busca, setBusca] = useState("");
   const [gruposAbertos, setGruposAbertos] = useState(false);
   // Página amarrada ao filtro: trocar segmento ou busca volta à página 1
@@ -616,6 +618,15 @@ export function ClientesDoCrm({
     porPagina: POR_PAGINA,
     active,
   });
+
+  useEffect(() => {
+    if (!rolarAoTopo.current || carregando) return;
+    const container =
+      raizRef.current?.closest(".admin-scroll-container") ??
+      document.querySelector(".active-scroll-container");
+    container?.scrollTo({ top: 0, behavior: "instant" });
+    rolarAoTopo.current = false;
+  }, [lista, carregando]);
 
   // Trocar filtro invalida a lista anterior no mesmo render, antes de o
   // hook iniciar a busca. Só uma nova lista pode fornecer o total do filtro.
@@ -686,7 +697,7 @@ export function ClientesDoCrm({
     busca.trim() !== "" ? totalDaListaAtual : undefined;
 
   return (
-    <div className="min-w-0 space-y-2">
+    <div ref={raizRef} className="min-w-0 space-y-2">
       {!carregandoSegmentos &&
         erroDosSegmentos &&
         segmentosDisponiveis &&
@@ -1028,9 +1039,10 @@ export function ClientesDoCrm({
             totalPaginas={totalPaginas}
             totalItens={total}
             itensPorPagina={POR_PAGINA}
-            aoMudar={(novaPagina) =>
-              setPaginacao({ chave: chaveDoFiltro, pagina: novaPagina })
-            }
+            aoMudar={(novaPagina) => {
+              rolarAoTopo.current = true;
+              setPaginacao({ chave: chaveDoFiltro, pagina: novaPagina });
+            }}
           />
         </div>
       </section>

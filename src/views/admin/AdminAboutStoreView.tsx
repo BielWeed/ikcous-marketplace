@@ -617,19 +617,25 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
           </label>
           <textarea
             id="store-description"
+            aria-describedby="store-description-ajuda"
             value={descricao}
             disabled={saving || !active}
             onChange={(event) => {
-              usuarioEditou.current = true;
-              setDescricao(event.target.value);
+              const valor = event.target.value;
+              usuarioEditou.current = valor !== baselineDescricao;
+              setDescricao(valor);
             }}
             rows={5}
             maxLength={4000}
             placeholder="Conte a história da loja, o que vende e o que a diferencia…"
             className="mt-2 w-full rounded-xl border border-admin-border bg-black/50 px-3.5 py-3 text-sm leading-relaxed text-white"
           />
-          <p className="mt-1.5 text-[11px] text-zinc-500">
-            Texto simples, sem negrito nem imagens.
+          <p
+            id="store-description-ajuda"
+            className="mt-1.5 text-[11px] text-zinc-500"
+          >
+            Texto simples, sem negrito nem imagens. Até 4.000 caracteres.{" "}
+            <span>{descricao.length}/4000</span>
           </p>
         </BlocoNumerado>
 

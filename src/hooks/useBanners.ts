@@ -54,6 +54,8 @@ async function imagemAbre(file: File): Promise<boolean> {
 
 export async function normalizeBannersOrder(
   pos: "home_top" | "home_middle" | "home_bottom",
+  prioritarioId?: string,
+  salvoDepoisDoEmpate = false,
 ) {
   try {
     const { data, error } = await supabase
@@ -66,7 +68,15 @@ export async function normalizeBannersOrder(
     if (error) throw error;
     if (!data || data.length === 0) return;
 
+    // Subir/criar entra antes do empate; descer entra depois, na posição pedida.
     const updates = data
+      .sort(
+        (a, b) =>
+          (a.order ?? 0) - (b.order ?? 0) ||
+          (salvoDepoisDoEmpate ? -1 : 1) *
+            (Number(b.id === prioritarioId) - Number(a.id === prioritarioId)) ||
+          a.id.localeCompare(b.id),
+      )
       .map((b: any, idx: number) => {
         const targetOrder = idx + 1;
         if (b.order !== targetOrder) {
@@ -148,11 +158,18 @@ export function useBanners(adminMode = false) {
     (
       pos: "home_top" | "home_middle" | "home_bottom",
       currentList: Banner[],
+      prioritarioId?: string,
+      salvoDepoisDoEmpate = false,
     ): Banner[] => {
       const samePosBanners = currentList
         .filter((b) => b.position === pos)
         .sort(
-          (a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id),
+          (a, b) =>
+            (a.order ?? 0) - (b.order ?? 0) ||
+            (salvoDepoisDoEmpate ? -1 : 1) *
+              (Number(b.id === prioritarioId) -
+                Number(a.id === prioritarioId)) ||
+            a.id.localeCompare(b.id),
         );
 
       const orderMap = new Map(samePosBanners.map((b, idx) => [b.id, idx + 1]));
@@ -409,12 +426,14 @@ export function useBanners(adminMode = false) {
       const updatedBanners = normalizeLocalBannersOrder(
         data.position as "home_top" | "home_middle" | "home_bottom",
         [...banners, newBanner],
+        data.id,
       );
       applyLocalBanners(updatedBanners);
 
       // Async normalization of position order in DB
       normalizeBannersOrder(
         data.position as "home_top" | "home_middle" | "home_bottom",
+        data.id,
       ).catch(() => {});
 
       toast.success("Banner adicionado com sucesso!");
@@ -433,6 +452,11 @@ export function useBanners(adminMode = false) {
       );
 
     const oldBanner = banners.find((b) => b.id === id);
+    const salvoDepoisDoEmpate =
+      !!oldBanner &&
+      (!updates.position || updates.position === oldBanner.position) &&
+      typeof updates.order === "number" &&
+      updates.order > (oldBanner.order ?? 0);
 
     // Optimistic Update
     const previousBanners = [...banners];
@@ -444,9 +468,14 @@ export function useBanners(adminMode = false) {
       updates.position !== oldBanner.position
     ) {
       updated = normalizeLocalBannersOrder(oldBanner.position, updated);
-      updated = normalizeLocalBannersOrder(updates.position, updated);
+      updated = normalizeLocalBannersOrder(updates.position, updated, id);
     } else if (updates.order !== undefined && oldBanner) {
-      updated = normalizeLocalBannersOrder(oldBanner.position, updated);
+      updated = normalizeLocalBannersOrder(
+        oldBanner.position,
+        updated,
+        id,
+        salvoDepoisDoEmpate,
+      );
     }
 
     applyLocalBanners(updated);
@@ -514,12 +543,16 @@ export function useBanners(adminMode = false) {
       if (oldBanner) {
         if (updates.position && updates.position !== oldBanner.position) {
           normalizeBannersOrder(oldBanner.position).catch(() => {});
-          normalizeBannersOrder(updates.position).catch(() => {});
+          normalizeBannersOrder(updates.position, id).catch(() => {});
         } else if (
           updates.order !== undefined ||
           updates.position !== undefined
         ) {
-          normalizeBannersOrder(oldBanner.position).catch(() => {});
+          normalizeBannersOrder(
+            oldBanner.position,
+            id,
+            salvoDepoisDoEmpate,
+          ).catch(() => {});
         }
       }
 

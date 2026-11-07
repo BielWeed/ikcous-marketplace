@@ -62,7 +62,10 @@ import {
   precosDaVendaRecusada,
 } from "@/lib/erro-da-venda-presencial";
 import type { Leitura } from "@/lib/leitor/decodificador";
-import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
+import {
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
 import type { View } from "@/types";
@@ -79,6 +82,11 @@ import { toast } from "sonner";
 /** Quanto o balconista espera pelo registro da venda antes de ver a frase de
  * rede e poder tentar de novo (a retentativa é idempotente). */
 const PRAZO_DO_REGISTRO_DA_VENDA_MS = 20_000;
+
+/** Quanto a tela espera pela consulta de um código bipado antes de avisar que
+ * a conexão está lenta. É só leitura: passado o prazo, a resposta que chegar
+ * depois é descartada, então quem bipa de novo não leva a peça em dobro. */
+const PRAZO_DA_CONSULTA_DO_CODIGO_MS = 10_000;
 
 /** Quanto o recibo espera pelo tamanho/cor de uma peça que a tela não tem. A
  * venda JÁ está gravada: passado o prazo, o recibo sai sem o rótulo. */
@@ -307,12 +315,27 @@ export function AdminPdvView({
   async function buscarPorCodigo(codigo: string): Promise<RespostaDoCodigo> {
     // `leitura.codigo` vai DIRETO, sem normalizar (pdv-c2.json é explícito:
     // a RPC casa por igualdade e o campo é texto).
-    const { data, error } = await supabase.rpc("buscar_por_codigo_barras", {
-      p_codigo: codigo,
-    });
+    //
+    // Com prazo: rede "pendurada" conecta e não responde, e sem ele o aparelho
+    // apitava e nada mais acontecia. É uma LEITURA (nada é gravado), então
+    // desistir de esperar é seguro; a resposta tardia é descartada.
+    const { data, error } = await aguardarComPrazo(
+      Promise.resolve(
+        supabase.rpc("buscar_por_codigo_barras", {
+          p_codigo: codigo,
+        }),
+      ),
+      PRAZO_DA_CONSULTA_DO_CODIGO_MS,
+      () => erroDeConsultaSemResposta(),
+    );
     if (error) throw error;
     return data as unknown as RespostaDoCodigo;
   }
+
+  // Quantas consultas de código estão no ar. Conta (não é um sim/não): dois
+  // bips pendurados a seguir valem duas consultas, e o aviso só some quando a
+  // última termina.
+  const [consultasDeCodigoNoAr, setConsultasDeCodigoNoAr] = useState(0);
 
   // Chave da venda em andamento: a resposta de uma leitura só vale para a
   // venda em que o código foi lido. Cancelar a venda gira a chave, e a
@@ -329,6 +352,7 @@ export function AdminPdvView({
       return;
     }
     const chaveDaLeitura = chaveDaVendaRef.current;
+    setConsultasDeCodigoNoAr((n) => n + 1);
     try {
       const resposta = await buscarPorCodigo(leitura.codigo);
       if (chaveDaLeitura !== chaveDaVendaRef.current) return;
@@ -342,6 +366,8 @@ export function AdminPdvView({
     } catch (erro) {
       console.error("Erro ao consultar código de barras no balcão:", erro);
       toast.error(fraseDaFalhaDoCodigo(erro));
+    } finally {
+      setConsultasDeCodigoNoAr((n) => n - 1);
     }
   }
 
@@ -850,6 +876,14 @@ export function AdminPdvView({
           dica="Aponte para o código de barras"
         />
       </div>
+
+      {/* Texto VISÍVEL (a câmera só tem o "Código lido" para leitor de tela):
+          o aparelho já apitou, e sem isto parecia que o bip tinha falhado. */}
+      {estado.etapa === "cupom" && consultasDeCodigoNoAr > 0 && (
+        <p role="status" className="pdv-heading">
+          Consultando…
+        </p>
+      )}
 
       {estado.etapa !== "recibo" && (
         <div

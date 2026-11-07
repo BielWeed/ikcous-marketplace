@@ -408,6 +408,55 @@ describe("AdminAboutStoreView — hidratação assíncrona do config (NULL → v
     expect(botao.getAttribute("aria-disabled")).toBe("true");
   });
 
+  it("mostra o limite e atualiza o contador da descrição", async () => {
+    await renderizarTela();
+    const campo = hospedeiro.querySelector(
+      "#store-description",
+    ) as HTMLTextAreaElement;
+    const dica = document.getElementById(
+      campo.getAttribute("aria-describedby") ?? "",
+    );
+    expect(dica?.textContent).toContain("Até 4.000 caracteres");
+    expect(dica?.textContent).toContain("0/4000");
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      setter?.call(campo, "História");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(dica?.textContent).toContain("8/4000");
+  });
+
+  it("digitar e desfazer permite receber a descrição de outro aparelho sem pendência", async () => {
+    configAtual = { ...BASE_CONFIG, storeDescription: "<p>Original</p>" };
+    await renderizarTela();
+    const campo = hospedeiro.querySelector(
+      "#store-description",
+    ) as HTMLTextAreaElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set;
+    for (const valor of ["Originalx", "Original"]) {
+      await act(async () => {
+        setter?.call(campo, valor);
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+    expect(onSetDirty).toHaveBeenLastCalledWith(false);
+    await act(async () => {
+      configAtual = {
+        ...BASE_CONFIG,
+        storeDescription: "<p>Texto do outro aparelho</p>",
+      };
+      raiz.render(<Componente onNavigate={() => {}} onSetDirty={onSetDirty} />);
+    });
+    expect(campo.value).toBe("Texto do outro aparelho");
+    expect(onSetDirty).toHaveBeenLastCalledWith(false);
+  });
+
   it("a atualização do config NÃO apaga edição real em andamento do lojista", async () => {
     await renderizarTela();
 

@@ -5,6 +5,7 @@ import {
   lerPedidosDePrivacidade,
 } from "@/lib/pedidos-de-privacidade";
 import { supabase } from "@/lib/supabase";
+import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
@@ -167,15 +168,20 @@ export function usePedidosDePrivacidadeAdmin(): UsePedidosDePrivacidadeAdmin {
         // `.eq("situacao", "aberto")` + `.select()`: devolve a linha SE e só se
         // este toque a decidiu. Zero linha = alguém decidiu antes, ou a pessoa
         // não é mais administradora (a RLS filtra em silêncio).
-        const { data, error } = await supabase
-          .from("pedidos_de_privacidade")
-          .update({
-            situacao,
-            observacao: observacao.trim() === "" ? null : observacao.trim(),
-          })
-          .eq("id", id)
-          .eq("situacao", "aberto")
-          .select("id");
+        const { data, error } = await comPrazo(
+          Promise.resolve(
+            supabase
+              .from("pedidos_de_privacidade")
+              .update({
+                situacao,
+                observacao: observacao.trim() === "" ? null : observacao.trim(),
+              })
+              .eq("id", id)
+              .eq("situacao", "aberto")
+              .select("id"),
+          ),
+          15_000,
+        );
         if (error) {
           // 55000 = o gatilho do banco recusou: o pedido já tinha sido decidido.
           const falha = classificarFalhaDaDecisao(error);
@@ -189,6 +195,9 @@ export function usePedidosDePrivacidadeAdmin(): UsePedidosDePrivacidadeAdmin {
         await recarregar();
         return { ok: true };
       } catch (erro) {
+        // A resposta pode ter sido salva. A releitura não deve prolongar a
+        // espera da confirmação se a rede continuar sem responder.
+        if (erro instanceof PrazoEsgotado) void recarregar();
         return { ok: false, falha: classificarFalhaDaDecisao(erro) };
       } finally {
         decidindoRef.current = false;

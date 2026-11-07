@@ -1040,7 +1040,7 @@ function FormularioDoCupom({
                     // é gravada quando a data fica válida.
                     setRascunhoValidade(e.target.value);
                   }}
-                  className={`${CAMPO} pl-10 [color-scheme:dark]`}
+                  className={`${CAMPO} pl-10`}
                 />
               </div>
               <p id="coupon-valid-until-dica" className="text-xs text-zinc-400">

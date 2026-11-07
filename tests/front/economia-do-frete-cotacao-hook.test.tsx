@@ -122,6 +122,17 @@ describe("useEconomiaDoFreteExibida", () => {
     });
   }
 
+  it("transportadora grátis já escolhida sem preço cheio nunca chama a edge", async () => {
+    await renderizar(
+      paramsBase({
+        opcaoSelecionada: { id: "melhorenvio-pac", price: 0 },
+      }),
+    );
+    await esperarDebounce();
+    expect(ultimoValor).toBe(0);
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
   it("freteGratis falso: nunca chama a edge, economia 0", async () => {
     await renderizar(paramsBase({ freteGratis: false }));
     await esperarDebounce();

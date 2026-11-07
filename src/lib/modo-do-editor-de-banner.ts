@@ -5,11 +5,9 @@
  * da loja e não vai para o banco. Mesma família de chave do rascunho do
  * formulário (`admin_banner_form_draft`).
  *
- * O PERIGO DE DADO: salvar um banner em Simples APAGA título, subtítulo,
- * botão, selo, cores e fonte (`handleSubmit` da `AdminBannersView`). Por isso
- * o modo lembrado só vale para banner NOVO ou sem texto; banner com texto
- * abre SEMPRE em Completo (`modoAoAbrirOBanner`), qualquer que seja a
- * preferência.
+ * Simples esconde os textos sem apagar o conteúdo da campanha. Banner com
+ * textos escondidos reabre em Simples; com textos visíveis, em Completo.
+ * Banner novo ou sem texto segue a preferência deste aparelho.
  *
  * `localStorage` pode lançar (modo privado, cota, política do navegador) ou
  * nem existir: leitura e gravação nunca quebram a tela.
@@ -44,9 +42,10 @@ interface BannerComTexto {
   readonly subtitle?: string | null;
   readonly buttonText?: string | null;
   readonly badgeText?: string | null;
+  readonly showTextOverlay?: boolean | null;
 }
 
-/** O banner tem algum dos quatro textos que o modo Simples apagaria? */
+/** O banner tem algum dos quatro textos da campanha? */
 export function bannerTemTexto(banner: BannerComTexto): boolean {
   return Boolean(
     banner.title?.trim() ||
@@ -58,12 +57,13 @@ export function bannerTemTexto(banner: BannerComTexto): boolean {
 
 /**
  * Em que modo o editor abre. Banner novo (ou sem texto) segue o modo
- * lembrado; banner com texto abre em Completo, sempre.
+ * lembrado; banner com texto abre em Completo, salvo se os textos estão escondidos.
  */
 export function modoAoAbrirOBanner(
   banner: BannerComTexto | null | undefined,
   modoLembrado: ModoDoEditor,
 ): ModoDoEditor {
+  if (banner?.showTextOverlay === false) return "simple";
   if (banner && bannerTemTexto(banner)) return "complete";
   return modoLembrado;
 }

@@ -2432,6 +2432,12 @@ export function CheckoutViewDaConta({
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const hasPushedAddressModalState = useRef(false);
+  // Identidade da janela do endereço que está aberta AGORA (r57-c): um objeto
+  // novo a cada abertura e `null` com ela fechada. `handleNewAddressSubmit`
+  // guarda a identidade no toque em Salvar e a confere quando a rede responde:
+  // o state da closure é velho nessa hora, e um booleano não distinguiria "a
+  // mesma janela" de "outra, aberta depois do Voltar".
+  const janelaDoEnderecoRef = useRef<object | null>(null);
   // Painel de resumo do pedido (aberto ao tocar no bloco do total, na barra
   // fixa do rodapé) — mesmo padrão do modal de endereço logo abaixo: um
   // estado de UI simples e um `history.pushState` próprio, para o voltar do
@@ -2897,6 +2903,16 @@ export function CheckoutViewDaConta({
     }
   }, [isAddressModalOpen, showSuccess]);
 
+  // Cada abertura da janela do endereço ganha uma identidade; fechar (ou
+  // desmontar a tela) a zera. Ver `janelaDoEnderecoRef`.
+  useEffect(() => {
+    if (!isAddressModalOpen) return;
+    janelaDoEnderecoRef.current = {};
+    return () => {
+      janelaDoEnderecoRef.current = null;
+    };
+  }, [isAddressModalOpen]);
+
   // Push virtual history state when modal opens to intercept browser back button
   useEffect(() => {
     if (isAddressModalOpen && !hasPushedAddressModalState.current) {
@@ -2984,6 +3000,10 @@ export function CheckoutViewDaConta({
   useEffect(() => {
     if (isAddressModalOpen) {
       onSetBackOverride(() => () => {
+        // Síncrono, no mesmo instante do Voltar: o efeito que zera a ref só
+        // roda depois do próximo desenho, e uma resposta de salvamento que
+        // chegasse no meio ainda se acharia dona da janela.
+        janelaDoEnderecoRef.current = null;
         setIsAddressModalOpen(false);
         setEditingAddressId(null);
       });
@@ -3812,6 +3832,20 @@ export function CheckoutViewDaConta({
     config.shippingCoverage === "local" &&
     modoDaEntregaNaCidade(config) !== "so_retiro";
 
+  // O AVISO "entrega fora da cidade é só com conta" (r57-c): só o BLOCO, nunca o
+  // portão do botão (`convidadoForaDaCidade` segue travando o Finalizar). Em
+  // "Só retiro" a calculadora oferece a retirada e nunca a marca sozinha, então
+  // o visitante de outro CEP via o aviso — e o convite para criar conta —
+  // ANTES de tocar na retirada, numa loja que nem entrega em lugar nenhum. A
+  // regra de conta não existe para esse visitante: basta tocar na retirada (o
+  // botão segue apagado até lá, e a seção de entrega já pede "escolha uma
+  // opção"). Com uma opção que NÃO é a retirada marcada (transportadora, ou a
+  // "Entrega Local" velha de cache antigo) o aviso continua inteiro.
+  const mostrarAvisoDeConta =
+    convidadoForaDaCidade &&
+    !lojaSoEntregaNaRegiao &&
+    !(modoDaEntregaNaCidade(config) === "so_retiro" && !selectedShippingOption);
+
   // TETO DE UNIDADES DO VISITANTE (caça 11-A #2, migration 20261394000000): sem
   // conta o pedido aceita até 10 unidades SOMADAS (o banco soma as linhas), e o
   // visitante só descobria no último toque. Avisa antes, com a frase do banco.
@@ -4173,6 +4207,11 @@ export function CheckoutViewDaConta({
   const handleNewAddressSubmit = async (
     data: Omit<Address, "id" | "user_id">,
   ): Promise<void> => {
+    // A janela em que a cliente tocou em Salvar. O salvamento espera a rede
+    // por até 15 s e o Voltar do aparelho fecha a janela nesse meio-tempo (só
+    // o botão Cancelar é travado). Se ela já fechou — ou foi fechada e aberta
+    // de novo — a resposta não é mais desta janela (r57-c).
+    const minhaJanela = janelaDoEnderecoRef.current;
     let result;
     if (editingAddressId) {
       const success = await updateAddress(editingAddressId, data);
@@ -4181,6 +4220,14 @@ export function CheckoutViewDaConta({
       }
     } else {
       result = await addAddress(data);
+    }
+
+    // O endereço já ficou gravado (a lista o mostra), mas quem apertou Voltar
+    // desistiu: nada de segundo passo para trás (que a tiraria do checkout,
+    // gastando a entrada da página, não a da janela) nem de trocar o endereço
+    // de entrega — e o frete junto — por conta própria.
+    if (minhaJanela === null || janelaDoEnderecoRef.current !== minhaJanela) {
+      return;
     }
 
     if (result) {
@@ -7800,7 +7847,7 @@ export function CheckoutViewDaConta({
                         voltar para finalizar
                       </p>
                     )}
-                    {convidadoForaDaCidade && !lojaSoEntregaNaRegiao && (
+                    {mostrarAvisoDeConta && (
                       // Motivo visível da regra do convidado (decisão do
                       // Gabriel, 30/08/2026): entrega para fora da cidade é
                       // só com conta — sem cadastro não há como acompanhar

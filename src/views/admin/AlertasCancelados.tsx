@@ -290,7 +290,7 @@ export function AlertasCancelados({
           aria-hidden="true"
           data-testid="alertas-cancelados-veu"
           onClick={() => setAberto(false)}
-          className="fixed inset-0 z-40 bg-black/50 sm:hidden"
+          className="fixed inset-0 z-40 bg-[rgb(0_0_0/0.5)] sm:hidden"
         />
       )}
 

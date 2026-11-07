@@ -69,6 +69,10 @@ function clienteFalso(opts: {
   variantes?: Array<Record<string, unknown>>;
   falhaVariantes?: "erro" | "lanca" | "rejeita";
   consultasDeVariantes?: Array<{ colunas: string; coluna: string; ids: unknown[] }>;
+  // A consulta do e-mail da CONTA (`auth.admin.getUserById`): por padrão devolve
+  // "usuário sem e-mail" sem erro; os testes de falha passageira trocam por uma
+  // função que devolve `{ error }` ou lança.
+  getUserById?: (id: string) => Promise<{ data: unknown; error: unknown }>;
 }) {
   const chamadas = opts.chamadas ?? [];
 
@@ -143,7 +147,8 @@ function clienteFalso(opts: {
     },
     auth: {
       admin: {
-        getUserById: async (_id: string) => ({ data: { user: null }, error: null }),
+        getUserById:
+          opts.getUserById ?? (async (_id: string) => ({ data: { user: null }, error: null })),
       },
     },
   };
@@ -1314,4 +1319,138 @@ Deno.test("fonteDoEnderecoDoComprovante: preferência cópia > linha da conta > 
   );
   assertEquals(fonteDoEnderecoDoComprovante(null, null), null);
   assertEquals(fonteDoEnderecoDoComprovante({}, null), null);
+});
+
+// --- a consulta do e-mail da CONTA falha: não é "sem e-mail" (r57-g) ----------
+//
+// O pedido de quem tem conta nasce sem e-mail dentro dele; o e-mail mora na
+// conta. Antes, um erro passageiro de `getUserById` (só `data` era lido) virava
+// `sem_destinatario` + o aviso FALSO "sem e-mail de cliente", e o reenvio do
+// aviso do Mercado Pago não recupera (o banco já responde 'ja_pago').
+
+const PEDIDO_DE_QUEM_TEM_CONTA = {
+  id: UUID_PEDIDO,
+  user_id: "11111111-2222-4333-8444-555555555555",
+  customer_data: {},
+  subtotal: 100,
+  total: 100,
+  payment_method: "online",
+  payment_status: "pago",
+};
+
+async function comprovanteComConta(getUserById: (id: string) => Promise<{ data: unknown; error: unknown }>) {
+  const chamadas: Chamada[] = [];
+  const envios: Array<{ para: string }> = [];
+  let consultasDaConta = 0;
+  const supabase = clienteFalso({
+    pedido: PEDIDO_DE_QUEM_TEM_CONTA,
+    itens: [{ product_name: "Blusa", quantity: 1, price: 100 }],
+    reservou: true,
+    chamadas,
+    getUserById: (id) => {
+      consultasDaConta++;
+      return getUserById(id);
+    },
+  });
+  const avisos: string[] = [];
+  const erros: string[] = [];
+  const avisoOriginal = console.warn;
+  const erroOriginal = console.error;
+  console.warn = (...a: unknown[]) => void avisos.push(a.join(" "));
+  console.error = (...a: unknown[]) => void erros.push(a.join(" "));
+  let desfecho;
+  try {
+    desfecho = await enviarComprovantePedido({
+      supabase: supabase as never,
+      orderId: UUID_PEDIDO,
+      deps: {
+        resolverRemetente: async () => REMETENTE_DE_TESTE,
+        enviarEmail: async (args) => {
+          envios.push({ para: args.para });
+        },
+      },
+    });
+  } finally {
+    console.warn = avisoOriginal;
+    console.error = erroOriginal;
+  }
+  const reservas = chamadas.filter((c) => c.tipo === "rpc" && c.nome === "reivindicar_email_de_confirmacao").length;
+  return { desfecho, envios, reservas, consultasDaConta, avisos, erros };
+}
+
+Deno.test("conta: a consulta do e-mail falha (500) nas duas tentativas -> envio_falhou, sem reservar, sem enviar e sem dizer 'sem e-mail'", async () => {
+  const r = await comprovanteComConta(async () => ({ data: { user: null }, error: { status: 500 } }));
+  assertEquals(r.desfecho, { ok: false, motivo: "envio_falhou" });
+  assertEquals(r.reservas, 0, "a reserva continua livre para o botão de reenvio");
+  assertEquals(r.envios.length, 0);
+  assertEquals(r.consultasDaConta, 2);
+  assertEquals(r.avisos.some((l) => l.includes("sem e-mail")), false, "o aviso falso 'sem e-mail de cliente' não pode sair");
+  assertEquals(r.erros.some((l) => l.includes("500")), true, "o log diz o status da falha, sem dado pessoal");
+});
+
+Deno.test("conta: a consulta LANÇA exceção nas duas tentativas -> envio_falhou (nunca sem_destinatario, nunca lança)", async () => {
+  const r = await comprovanteComConta(async () => {
+    throw new Error("fetch failed");
+  });
+  assertEquals(r.desfecho, { ok: false, motivo: "envio_falhou" });
+  assertEquals(r.reservas, 0);
+  assertEquals(r.envios.length, 0);
+  assertEquals(r.consultasDaConta, 2);
+});
+
+Deno.test("conta: falha na 1a tentativa e acerto na 2a -> o comprovante sai UMA vez, para o e-mail da conta", async () => {
+  let n = 0;
+  const r = await comprovanteComConta(async () => {
+    n++;
+    return n === 1
+      ? { data: { user: null }, error: { status: 503 } }
+      : { data: { user: { email: "dona@exemplo.com" } }, error: null };
+  });
+  assertEquals(r.desfecho, { ok: true });
+  assertEquals(r.consultasDaConta, 2);
+  assertEquals(r.reservas, 1);
+  assertEquals(r.envios, [{ para: "dona@exemplo.com" }]);
+});
+
+Deno.test("conta: acerto de primeira -> UMA consulta, UMA reserva, UM envio (a nova tentativa não é automática)", async () => {
+  const r = await comprovanteComConta(async () => ({ data: { user: { email: "dona@exemplo.com" } }, error: null }));
+  assertEquals(r.desfecho, { ok: true });
+  assertEquals(r.consultasDaConta, 1);
+  assertEquals(r.reservas, 1);
+  assertEquals(r.envios, [{ para: "dona@exemplo.com" }]);
+});
+
+for (const [rotulo, erro] of [
+  ["status 404", { status: 404 }],
+  ["code user_not_found", { code: "user_not_found", status: 400 }],
+] as const) {
+  Deno.test(`conta: usuário que NÃO existe (${rotulo}) segue sendo sem_destinatario, sem repetir a consulta e sem gastar a reserva`, async () => {
+    const r = await comprovanteComConta(async () => ({ data: { user: null }, error: erro }));
+    assertEquals(r.desfecho, { ok: false, motivo: "sem_destinatario" });
+    assertEquals(r.consultasDaConta, 1);
+    assertEquals(r.reservas, 0);
+    assertEquals(r.envios.length, 0);
+  });
+}
+
+Deno.test("conta: pedido que já traz o e-mail dentro NÃO consulta a conta", async () => {
+  const chamadas: Chamada[] = [];
+  let consultas = 0;
+  const supabase = clienteFalso({
+    pedido: { ...PEDIDO_DE_QUEM_TEM_CONTA, customer_data: { email: "no-pedido@exemplo.com" } },
+    itens: [{ product_name: "Blusa", quantity: 1, price: 100 }],
+    reservou: true,
+    chamadas,
+    getUserById: async () => {
+      consultas++;
+      return { data: { user: null }, error: { status: 500 } };
+    },
+  });
+  const desfecho = await enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: { resolverRemetente: async () => REMETENTE_DE_TESTE, enviarEmail: async () => {} },
+  });
+  assertEquals(desfecho, { ok: true });
+  assertEquals(consultas, 0);
 });
