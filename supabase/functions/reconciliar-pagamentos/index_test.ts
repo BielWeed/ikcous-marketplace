@@ -2774,6 +2774,34 @@ Deno.test("PEÇA 5 - resultado 'pago' via reconciliação -> dispara o comprovan
   assertEquals(chamadasAvisoAtrasado.length, 0);
 });
 
+Deno.test("r59-f: e-mail do comprovante que demora NÃO prende a fila: o próximo pagamento é confirmado dentro do teto", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+  const idOrder = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";
+  const candidatos = [
+    { order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder },
+    { order_id: UUID_PEDIDO_2, gateway_payment_id: idOrder },
+  ];
+  const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "pago", registro });
+  const fetchImpl = fetchConsulta(200, { id: idOrder, status: "processed", total_amount: "149.90", status_detail: "accredited" });
+  const req = requisicaoComSegredo(SEGREDO);
+  const comprovantes: string[] = [];
+  const demorado = async (args: { orderId: string }) => {
+    comprovantes.push(args.orderId);
+    await new Promise((r) => setTimeout(r, 300));
+  };
+
+  const inicio = performance.now();
+  const resposta = await handler(req, { supabase, fetchImpl, enviarComprovante: demorado, tetoDoEmailMs: 30 });
+  const decorrido = performance.now() - inicio;
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.confirmados, 2);
+  assertEquals(comprovantes.length, 2, "o segundo pagamento tem de chegar ao seu comprovante");
+  assertEquals(decorrido < 500, true, `a fila esperou os dois e-mails por inteiro (${Math.round(decorrido)} ms)`);
+  await new Promise((r) => setTimeout(r, 350)); // deixa os envios lentos terminarem sozinhos
+});
+
 Deno.test("PEÇA 5 - resultado 'pago_apos_expirar' via reconciliação -> dispara o aviso HONESTO, NUNCA o comprovante padrão", async () => {
   const registro = { chamadasConfirmar: [], chamouCandidatos: false };
   const idOrder = "ORDTST01KZZ4D94WC79335A68CZ5NZ7X";

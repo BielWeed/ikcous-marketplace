@@ -2703,6 +2703,28 @@ Deno.test("resultado 'pago' -> dispara TAMBÉM o comprovante ao cliente, com o o
   assertEquals((chamadasComprovante[0] as { orderId: string }).orderId, UUID_PEDIDO);
 });
 
+Deno.test("r59-f: e-mail do comprovante que demora NÃO segura a resposta ao Mercado Pago além do teto (o pedido já está pago)", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada("999");
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_PAGAMENTO_DO_MP,
+    status: "approved",
+    transaction_amount: 149.9,
+    external_reference: UUID_PEDIDO,
+  });
+  const enviarPush = async (_args: unknown) => {};
+  const demorado = () => new Promise<void>((r) => setTimeout(r, 200));
+
+  const inicio = performance.now();
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPush, enviarComprovante: demorado, tetoDoEmailMs: 30 });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(performance.now() - inicio < 150, true, "o webhook esperou o e-mail sem teto");
+  await new Promise((r) => setTimeout(r, 250)); // deixa o envio lento terminar sozinho
+});
+
 Deno.test("resultado 'pago_apos_expirar' -> NÃO dispara o comprovante padrão, mas dispara o aviso honesto de pagamento atrasado", async () => {
   const registro = { chamadasRpc: [] };
   const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };

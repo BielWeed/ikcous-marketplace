@@ -109,7 +109,8 @@ const BusinessHoursEditor = memo(function BusinessHoursEditor({
       />
       {error && (
         <p role="alert">
-          Não foi possível salvar o horário. O texto foi preservado.
+          Não foi possível confirmar que o horário foi salvo. O texto foi
+          preservado.
         </p>
       )}
       <div className="flex flex-wrap gap-3">

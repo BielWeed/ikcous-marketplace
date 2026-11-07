@@ -52,7 +52,12 @@
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { dispararPushContadoReal } from "./aviso-ao-lojista.ts";
-import { devolverReserva, enviarComprovantePedido } from "./comprovante.ts";
+import {
+  devolverReserva,
+  enviarComprovantePedido,
+  lerEmailDaConta,
+  ORCAMENTO_DO_ENVIO_MS,
+} from "./comprovante.ts";
 import { escaparHtml, formatarBRL, numeroDoPedido } from "./pedido.ts";
 import { resolverRemetente } from "./email-da-loja.ts";
 import { enviarEmail } from "./smtp.ts";
@@ -64,6 +69,14 @@ type Aviso = { title: string; body: string; url: string };
 /** O teto de espera que o cron usa (`tetoDoPushMs`): o push continua em voo e,
  * no Edge Runtime, `comTempoLimite` mantém o isolado vivo. */
 export const TETO_DO_PUSH_MS = 5000;
+
+/** O teto de espera pelo e-mail (comprovante ou aviso atrasado) de quem espera os
+ * efeitos — o webhook responde ao Mercado Pago e o cron segue para o próximo
+ * pagamento. Acima do orçamento do próprio envio (`ORCAMENTO_DO_ENVIO_MS`), que é
+ * quem estoura de verdade; este cobre o resto (leituras do banco, consulta da
+ * conta). Passado o teto o e-mail segue em voo (`comTempoLimite` mantém o isolado
+ * vivo); só quem espera deixa de esperar. */
+export const TETO_DO_EMAIL_MS = ORCAMENTO_DO_ENVIO_MS + 5000;
 
 export type DepsDosEfeitos = {
   enviarPush?: (args: { supabase: Supabase; aviso: Aviso }) => Promise<void>;
@@ -147,6 +160,12 @@ export async function aplicarEfeitosDoPagamentoConfirmado(args: {
    * teto em volta de TUDO, `dispararSemEsperarCliente`; o cron passa
    * `TETO_DO_PUSH_MS`). Opção da chamada, não dublê de teste. */
   tetoDoPushMs?: number;
+  /** Teto de espera pelo e-mail ao cliente (webhook e cron passam
+   * `TETO_DO_EMAIL_MS`). Ausente = sem teto, como o push: a confirmação imediata
+   * tem o próprio teto em volta de TUDO (`dispararSemEsperarCliente`), e um
+   * `comTempoLimite` aninhado registraria um segundo `waitUntil`. O e-mail é o
+   * último efeito e nenhum outro depende dele. */
+  tetoDoEmailMs?: number;
 } & DepsDosEfeitos): Promise<void> {
   const { supabase, orderId, resultado } = args;
   if (!desfechoComEfeito(resultado)) return;
@@ -181,13 +200,18 @@ export async function aplicarEfeitosDoPagamentoConfirmado(args: {
     }
 
     try {
+      // O e-mail não pode prender quem espera (webhook, cron): com teto, como o
+      // push do cron. Estourou o teto, o envio segue em voo e a reserva do
+      // e-mail volta pelo prazo do próprio envio.
+      let emVoo: Promise<void>;
       if (resultado === "pago") {
         const enviarComprovante = args.enviarComprovante ?? dispararComprovanteReal;
-        await enviarComprovante({ supabase, orderId });
+        emVoo = enviarComprovante({ supabase, orderId });
       } else {
         const enviarAvisoAtrasado = args.enviarAvisoAtrasado ?? dispararAvisoDePagamentoAtrasadoReal;
-        await enviarAvisoAtrasado({ supabase, orderId });
+        emVoo = enviarAvisoAtrasado({ supabase, orderId });
       }
+      await (args.tetoDoEmailMs ? comTempoLimite(emVoo, args.tetoDoEmailMs) : emVoo);
     } catch (_erro) {
       console.error("efeitos-do-pagamento: aviso ao cliente falhou", { orderId, resultado });
     }
@@ -282,7 +306,12 @@ export async function dispararAvisoDePagamentoAtrasadoReal(args: {
   supabase: Supabase;
   orderId: string;
   /** Costura de teste: em produção, o resolvedor e o envio reais. */
-  deps?: { resolverRemetente?: typeof resolverRemetente; enviarEmail?: typeof enviarEmail };
+  deps?: {
+    resolverRemetente?: typeof resolverRemetente;
+    enviarEmail?: typeof enviarEmail;
+    /** Só o teste encurta; em produção vale `ORCAMENTO_DO_ENVIO_MS`. */
+    orcamentoDoEnvioMs?: number;
+  };
 }): Promise<void> {
   const { supabase, orderId } = args;
   const resolver = args.deps?.resolverRemetente ?? resolverRemetente;
@@ -309,8 +338,15 @@ export async function dispararAvisoDePagamentoAtrasadoReal(args: {
       linha.customer_data ? (linha.customer_data as Record<string, unknown>).email ?? "" : "",
     ).trim();
     if (!destinatario && linha.user_id) {
-      const { data: conta } = await supabase.auth.admin.getUserById(String(linha.user_id));
-      destinatario = String(conta?.user?.email ?? "").trim();
+      // Duas tentativas, como o comprovante. Falha de LEITURA não é "sem e-mail":
+      // para ANTES de reservar (a reserva fica livre para a reentrega do webhook)
+      // e o log não mente dizendo que o pedido não tem e-mail.
+      const conta = await lerEmailDaConta(supabase, String(linha.user_id), "efeitos-do-pagamento");
+      if (conta.falhou) {
+        console.error("efeitos-do-pagamento: leitura do e-mail da conta falhou — aviso de pagamento atrasado não enviado", orderId);
+        return;
+      }
+      destinatario = String(conta.email ?? "").trim();
     }
     if (!destinatario) {
       console.warn("efeitos-do-pagamento: pedido pago_apos_expirar sem e-mail de cliente", orderId);
@@ -330,11 +366,14 @@ export async function dispararAvisoDePagamentoAtrasadoReal(args: {
       .maybeSingle();
     const nomeDaLoja = String((config as Record<string, unknown> | null)?.store_name ?? "");
     try {
+      // Prazo TOTAL contado daqui: só o SMTP gasta o orçamento. Estourou ->
+      // ETIMEDOUT -> o `catch` abaixo devolve a reserva.
+      const prazoFinalMs = performance.now() + (args.deps?.orcamentoDoEnvioMs ?? ORCAMENTO_DO_ENVIO_MS);
       await enviar({
         para: destinatario,
         assunto: assuntoDoAvisoDePagamentoAtrasado(orderId, nomeDaLoja),
         html: htmlDoAvisoDePagamentoAtrasado({ orderId, nomeDaLoja }),
-      }, remetente);
+      }, remetente, { prazoFinalMs });
     } catch (erroEnvio) {
       // EST-EDGE-DIN-3: o cliente do Supabase NÃO rejeita em falha — resolve
       // com `{ error }`, que o `.then(undefined, …)` de antes jamais via: a
@@ -376,6 +415,8 @@ export async function reenviarAvisoPendenteDoPagamentoAtrasado(args: {
   supabase: Supabase;
   orderId: string;
   enviarAvisoAtrasado?: DepsDosEfeitos["enviarAvisoAtrasado"];
+  /** Teto de espera pelo aviso (o webhook passa `TETO_DO_EMAIL_MS`); ausente = sem teto. */
+  tetoDoEmailMs?: number;
 }): Promise<void> {
   const { supabase, orderId } = args;
   try {
@@ -393,7 +434,8 @@ export async function reenviarAvisoPendenteDoPagamentoAtrasado(args: {
     // um e-mail que talvez já tenha saído.
     if (pedido.confirmation_email_sent_at !== null) return;
     const enviarAvisoAtrasado = args.enviarAvisoAtrasado ?? dispararAvisoDePagamentoAtrasadoReal;
-    await enviarAvisoAtrasado({ supabase, orderId });
+    const emVoo = enviarAvisoAtrasado({ supabase, orderId });
+    await (args.tetoDoEmailMs ? comTempoLimite(emVoo, args.tetoDoEmailMs) : emVoo);
   } catch (_erro) {
     console.error("efeitos-do-pagamento: reenvio do aviso de pagamento atrasado falhou", { orderId });
   }

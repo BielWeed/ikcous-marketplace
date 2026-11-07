@@ -3855,31 +3855,25 @@ export function CheckoutViewDaConta({
     cart.reduce((soma, item) => soma + item.quantity, 0) >
       LIMITE_DE_UNIDADES_DO_VISITANTE;
 
-  // Achado da revisão (18/08/2026): a Tarefa 7 deste bloco fez a
-  // `calculate-shipping` recusar cotar quando a loja não configurou o CEP de
-  // origem — correto. Mas este botão só olhava `isValid` (validade do
-  // FORMULÁRIO), nunca a existência de uma opção de frete. `shipping`
-  // (= CartContext `shippingFee`, CartContext.tsx:745-770) cai para
-  // `config.shippingFee` (padrão R$ 15) quando não há `selectedShippingOption`
-  // — o MESMO fallback que `create_marketplace_order_v24` usa no servidor
-  // quando `p_shipping_option_id` chega nulo. Resultado sem esta guarda:
-  // cotação falha, tela não mostra opção nenhuma, e o pedido fechava mesmo
-  // assim cobrando o frete de fallback sem entrega correspondente.
+  // GUARDA DE FRETE DO FINALIZAR — a história e o que vale hoje.
+  // Origem (18/08/2026): a `calculate-shipping` passou a recusar cotar quando a
+  // loja não configurou o CEP de origem, e o botão só olhava `isValid` (a
+  // validade do FORMULÁRIO), nunca a existência de uma opção de frete. Sem
+  // opção selecionada, `shipping` (o `shippingFee` do CartContext) cai para
+  // `config.shippingFee`: a tela mostrava e tentava fechar um total com um
+  // frete sem entrega correspondente. O servidor NÃO tem esse fallback:
+  // `create_marketplace_order_v24` recusa pedido sem opção de entrega
+  // ("Escolha uma opção de entrega antes de finalizar o pedido.") e nunca
+  // inventa frete — a guarda abaixo existe para o botão nem deixar tentar.
   //
-  // `shipping > 0 && !selectedShippingOption` não reinventa a regra de
-  // frete grátis: o CartContext já devolve `shipping === 0` para os dois
-  // caminhos legítimos sem opção selecionada — item com `freeShipping`
-  // (CartContext.tsx:748-749) e limite de frete grátis atingido por
-  // cliente logado (CartContext.tsx:751-756) — então o único jeito de
-  // `shipping` vir POSITIVO sem opção selecionada é o fallback do defeito
-  // acima descrito.
-  // Laudo 31/08 (B2): a guarda migrou para `finalizarBloqueadoPorFrete`
-  // (src/lib/guarda-de-frete.ts) — função pura, testada com o par
-  // mutante-killer. A diferença da guarda velha: a bandeira
-  // `freteIndefinido` entra na conta — provedor de cotação com taxa 0
-  // configurada deixava `shipping === 0`, a guarda antiga não disparava, e
-  // o pedido fechava com frete R$ 0 sem cotação nenhuma, depois do
-  // carrinho ter dito "A calcular".
+  // Hoje a regra mora em `finalizarBloqueadoPorFrete` (src/lib/guarda-de-frete.ts,
+  // laudo 31/08, B2): função pura, testada com o par mutante-killer. Com o
+  // carrinho cheio, ela bloqueia sempre que NÃO há opção de frete selecionada;
+  // os argumentos `shipping` e `freteIndefinido` já não decidem nada. No
+  // CartContext a conta ficou assim: com o carrinho cheio e sem opção escolhida,
+  // `freteIndefinido` é verdadeiro e `freteGratis` é falso (o `shippingFee` vira
+  // o fallback acima); frete grátis é o preço FINAL da opção escolhida ser zero
+  // (`precoFinalDaOpcao`) — não existe frete grátis sem opção selecionada.
   // (`semFreteSelecionado` subiu para antes dos efeitos de pagamento — ver
   // o comentário "COMPRA QUE FECHA EM R$ 0,00", acima dos efeitos.)
 
@@ -3911,7 +3905,7 @@ export function CheckoutViewDaConta({
   });
 
   // Achado 1 do BLOQUEANTE (12/09/2026): `finalTotal` sempre soma `shipping`
-  // com fallback 0 quando `ctxFreteIndefinido` (linha ~350) — então SEM
+  // com fallback 0 quando `ctxFreteIndefinido` (lido do `useCart`, no topo) — então SEM
   // cotação válida `finalTotal` já é "produtos, frete zero", nunca "produtos,
   // frete desconhecido". A linha de Entrega ganhou "a calcular", mas o Total
   // (painel e barra de baixo) continuava mostrando esse número fechado, e o

@@ -5,6 +5,7 @@ import {
 import {
   enviarComprovantePedido,
   fonteDoEnderecoDoComprovante,
+  ORCAMENTO_DO_ENVIO_MS,
 } from "./comprovante.ts";
 
 /**
@@ -1453,4 +1454,97 @@ Deno.test("conta: pedido que já traz o e-mail dentro NÃO consulta a conta", as
   });
   assertEquals(desfecho, { ok: true });
   assertEquals(consultas, 0);
+});
+
+// --- prazo TOTAL do envio (r59-f) ----------------------------------------------
+//
+// O envio do comprovante ia ao SMTP sem prazo. Um servidor que aceita a conexão e
+// para de responder prendia o webhook do Mercado Pago e o laço do cron até o teto
+// do nodemailer (minutos), e, se a plataforma matasse a função no meio, a reserva
+// gravada ANTES do envio nunca voltava: a cliente ficava sem comprovante e o botão
+// do lojista só dizia "já enviado". O prazo faz o envio estourar sozinho, cair no
+// `catch` e devolver a reserva.
+
+/** SMTP falso que RESPEITA o prazo, como o real (`smtp.ts`): sem `prazoFinalMs`
+ * ele "demora" além do que o teste espera e termina bem, para o defeito aparecer
+ * como desfecho errado, não como teste pendurado. */
+function smtpQueEstouraNoPrazo(registro: { chamadas: number; semPrazo: boolean }) {
+  return async (_mensagem: unknown, _remetente: unknown, deps?: { prazoFinalMs?: number }) => {
+    registro.chamadas++;
+    if (deps?.prazoFinalMs === undefined) {
+      registro.semPrazo = true;
+      await new Promise((r) => setTimeout(r, 400));
+      return { origem: "ambiente" };
+    }
+    await new Promise((r) => setTimeout(r, Math.max(0, deps.prazoFinalMs! - performance.now())));
+    throw Object.assign(new Error("SMTP: envio recusado (ETIMEDOUT)"), { code: "ETIMEDOUT" });
+  };
+}
+
+Deno.test("prazo: o envio do comprovante leva um prazo TOTAL (prazoFinalMs) dentro do orçamento, nunca sem teto", async () => {
+  const { supabase } = clienteComLiberacao([]);
+  let prazo: unknown = "ausente";
+  const antes = performance.now();
+  const desfecho = await enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: {
+      resolverRemetente: async () => REMETENTE_DE_TESTE,
+      enviarEmail: async (_m, _r, deps) => {
+        prazo = deps?.prazoFinalMs;
+        return { origem: "ambiente" };
+      },
+    },
+  });
+  assertEquals(desfecho, { ok: true });
+  assertEquals(typeof prazo, "number", "sem prazoFinalMs o nodemailer espera até 10 min");
+  assertEquals((prazo as number) > antes, true);
+  assertEquals((prazo as number) <= performance.now() + ORCAMENTO_DO_ENVIO_MS, true);
+});
+
+Deno.test("prazo: SMTP que trava estoura no prazo -> envio_falhou, a reserva VOLTA, o reenvio manda UM e-mail e a seguinte já não manda", async () => {
+  const { supabase, estado } = clienteComLiberacao([]);
+  const travado = { chamadas: 0, semPrazo: false };
+  const entregues: unknown[] = [];
+  const original = console.error;
+  console.error = () => {};
+  const inicio = performance.now();
+  let primeira;
+  try {
+    primeira = await enviarComprovantePedido({
+      supabase: supabase as never,
+      orderId: UUID_PEDIDO,
+      deps: {
+        resolverRemetente: async () => REMETENTE_DE_TESTE,
+        enviarEmail: smtpQueEstouraNoPrazo(travado),
+        orcamentoDoEnvioMs: 40,
+      },
+    });
+  } finally {
+    console.error = original;
+  }
+  assertEquals(travado.semPrazo, false, "o envio foi chamado sem prazo");
+  assertEquals(primeira, { ok: false, motivo: "envio_falhou" });
+  assertEquals(performance.now() - inicio < 300, true, "o envio não pode esperar além do orçamento");
+  assertEquals(estado.liberacoes, 1);
+  assertEquals(estado.reservado, false, "reserva presa = a cliente nunca recebe e o botão do lojista diz 'já enviado'");
+
+  // Reenvio (botão do lojista / nova entrega): a reserva está livre e SAI um e-mail.
+  const reenviar = () =>
+    enviarComprovantePedido({
+      supabase: supabase as never,
+      orderId: UUID_PEDIDO,
+      deps: {
+        resolverRemetente: async () => REMETENTE_DE_TESTE,
+        enviarEmail: async (m) => {
+          entregues.push(m);
+          return { origem: "ambiente" };
+        },
+      },
+    });
+  assertEquals(await reenviar(), { ok: true });
+  assertEquals(entregues.length, 1);
+  // O primeiro (agora) chegou: a reserva fica gasta e nenhum outro e-mail sai.
+  assertEquals(await reenviar(), { ok: false, motivo: "ja_enviado" });
+  assertEquals(entregues.length, 1, "dois e-mails para a mesma compra");
 });

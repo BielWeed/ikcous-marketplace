@@ -102,7 +102,7 @@ describe("cupons com respostas fora de ordem", () => {
     expect(estado.loading).toBe(false);
   }
 
-  it("falha restaura o valor anterior do cupom alterado", async () => {
+  it("falha mantém o valor confirmado do cupom alterado", async () => {
     await montar();
     const gravacao = pendente<RespostaDaGravacao>();
     gravar.mockReturnValueOnce(gravacao.promessa);
@@ -112,7 +112,7 @@ describe("cupons com respostas fora de ordem", () => {
         .updateCoupon("a", { active: false })
         .catch((erro: unknown) => erro);
     });
-    expect(estado.coupons.map((c) => c.active)).toEqual([false, true]);
+    expect(estado.coupons.map((c) => c.active)).toEqual([true, true]);
     await act(async () => {
       gravacao.resolver({ error: { code: "42501" } });
       await resultado;
@@ -120,7 +120,7 @@ describe("cupons com respostas fora de ordem", () => {
     expect(estado.coupons.map((c) => c.active)).toEqual([true, true]);
   });
 
-  it("falha em A restaura apenas A após B ser salvo e recarregado", async () => {
+  it("falha em A não desfaz B confirmado e recarregado", async () => {
     await montar();
     const gravacaoA = pendente<RespostaDaGravacao>();
     const gravacaoB = pendente<RespostaDaGravacao>();
@@ -137,7 +137,7 @@ describe("cupons com respostas fora de ordem", () => {
     await act(async () => {
       resultadoB = estado.updateCoupon("b", { active: false });
     });
-    expect(estado.coupons.map((c) => c.active)).toEqual([false, false]);
+    expect(estado.coupons.map((c) => c.active)).toEqual([true, true]);
 
     consultar.mockResolvedValueOnce({ data: linhas(true, false), error: null });
     await act(async () => {

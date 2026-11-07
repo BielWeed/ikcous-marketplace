@@ -20,6 +20,18 @@ import { cachedCouponsData, setCachedCouponsData } from "@/utils/admin_cache";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+const PRAZO_DA_GRAVACAO_DO_CUPOM_MS = 15_000;
+const MENSAGEM_GRAVACAO_SEM_RESPOSTA =
+  "Sem resposta da rede. Confira se a mudança no cupom apareceu antes de tentar de novo.";
+
+function aguardarGravacaoDoCupom<T>(requisicao: PromiseLike<T>): Promise<T> {
+  return aguardarComPrazo(
+    Promise.resolve(requisicao),
+    PRAZO_DA_GRAVACAO_DO_CUPOM_MS,
+    () => erroDeConsultaSemResposta(MENSAGEM_GRAVACAO_SEM_RESPOSTA),
+  );
+}
+
 /** Uma linha da busca de clientes do painel (sem CPF). */
 export interface ClienteEncontradoParaCupom {
   readonly id: string;
@@ -161,39 +173,48 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
 
   // `silencioso`: a releitura DEPOIS de salvar/apagar não liga o `loading`,
   // que esmaece e trava a lista inteira (o 2º toque em seguida se perdia).
-  const fetchCoupons = useCallback(async (silencioso = false) => {
-    const rodada = ++rodadaRef.current;
-    try {
-      if (silencioso !== true) setLoading(true);
+  const fetchCoupons = useCallback(
+    async (silencioso = false, avisarErro = true) => {
+      const rodada = ++rodadaRef.current;
+      try {
+        if (silencioso !== true) setLoading(true);
 
-      const { data, error } = await supabase
-        .from("coupons")
-        .select("*")
-        .order("created_at", { ascending: false });
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("coupons")
+              .select("*")
+              .order("created_at", { ascending: false }),
+          ),
+          PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+          () => erroDeConsultaSemResposta(),
+        );
 
-      if (rodada !== rodadaRef.current) return;
+        if (rodada !== rodadaRef.current) return;
 
-      if (error) throw error;
+        if (error) throw error;
 
-      // PAINEL-12 + frente B: o mapeador único do cupom (usage_count só, `?? 0`;
-      // alcance: banco sem a coluna = secreto).
-      const formattedCoupons: Coupon[] =
-        data?.map((c) => cupomDoBanco(c)) || [];
+        // PAINEL-12 + frente B: o mapeador único do cupom (usage_count só, `?? 0`;
+        // alcance: banco sem a coluna = secreto).
+        const formattedCoupons: Coupon[] =
+          data?.map((c) => cupomDoBanco(c)) || [];
 
-      setCachedCouponsData(formattedCoupons);
-      setCoupons(formattedCoupons);
-      setErroDaListagem(null);
-    } catch (error) {
-      if (rodada !== rodadaRef.current) return;
-      console.error("Error fetching coupons:", error);
-      setErroDaListagem(
-        "Não conseguimos carregar os cupons agora. Seus cupons não sumiram.",
-      );
-      toast.error("Não foi possível carregar os cupons.");
-    } finally {
-      if (rodada === rodadaRef.current) setLoading(false);
-    }
-  }, []);
+        setCachedCouponsData(formattedCoupons);
+        setCoupons(formattedCoupons);
+        setErroDaListagem(null);
+      } catch (error) {
+        if (rodada !== rodadaRef.current) return;
+        console.error("Error fetching coupons:", error);
+        setErroDaListagem(
+          "Não conseguimos carregar os cupons agora. Seus cupons não sumiram.",
+        );
+        if (avisarErro) toast.error("Não foi possível carregar os cupons.");
+      } finally {
+        if (rodada === rodadaRef.current) setLoading(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (autoFetch) {
@@ -249,27 +270,29 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       return null;
     }
     try {
-      const { data, error } = await supabase
-        .from("coupons")
-        .insert([
-          {
-            code: coupon.code,
-            type: coupon.type,
-            value: coupon.value,
-            min_purchase: coupon.minPurchase,
-            usage_limit: coupon.usageLimit,
-            valid_until: coupon.validUntil,
-            active: coupon.active ?? true,
-            usage_count: 0,
-            // Frente B: só vai quando NÃO é o padrão — criar cupom secreto
-            // continua funcionando com o banco de antes da 20261208000000.
-            ...(coupon.alcance && coupon.alcance !== "codigo"
-              ? { alcance: coupon.alcance }
-              : {}),
-          },
-        ])
-        .select()
-        .single();
+      const { data, error } = await aguardarGravacaoDoCupom(
+        supabase
+          .from("coupons")
+          .insert([
+            {
+              code: coupon.code,
+              type: coupon.type,
+              value: coupon.value,
+              min_purchase: coupon.minPurchase,
+              usage_limit: coupon.usageLimit,
+              valid_until: coupon.validUntil,
+              active: coupon.active ?? true,
+              usage_count: 0,
+              // Frente B: só vai quando NÃO é o padrão — criar cupom secreto
+              // continua funcionando com o banco de antes da 20261208000000.
+              ...(coupon.alcance && coupon.alcance !== "codigo"
+                ? { alcance: coupon.alcance }
+                : {}),
+            },
+          ])
+          .select()
+          .single(),
+      );
 
       if (error) throw error;
 
@@ -280,7 +303,12 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       console.error("Error adding coupon:", error);
       // Laudo 0109 (A4): a recusa mais comum — código repetido — chegava
       // como aviso genérico; o lojista não tinha como saber o motivo real.
-      toast.error(mensagemDeErroDoCupom(error, "Erro ao criar cupom"));
+      if (ehConsultaSemResposta(error)) {
+        toast.error(MENSAGEM_GRAVACAO_SEM_RESPOSTA);
+        void fetchCoupons(true, false);
+      } else {
+        toast.error(mensagemDeErroDoCupom(error, "Erro ao criar cupom"));
+      }
       throw error;
     }
   };
@@ -295,15 +323,9 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       return;
     }
 
-    // O formulário pode gravar regras e clientes em duas chamadas. Só
-    // confirmar localmente depois das duas: trocar o alcance antes disso
-    // dispara a carga da lista antiga e apaga os clientes recém-escolhidos.
+    // O estado mostrado só muda depois da confirmação do banco, inclusive
+    // quando o formulário grava as regras e os clientes em duas chamadas.
     const anterior = coupons.find((c) => c.id === id);
-    if (clientes === undefined) {
-      setCoupons((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
-      );
-    }
 
     /*
       O UPDATE é montado por PRESENÇA DE CHAVE, não por valor (ADMIN-050, #96).
@@ -355,11 +377,9 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       if (Object.keys(dbUpdates).length > 0) {
         // `.select("id")`: o banco responde sucesso com 0 linhas quando a
         // política de acesso barra o UPDATE (ou o cupom não existe mais).
-        const { data: gravadas, error } = await supabase
-          .from("coupons")
-          .update(dbUpdates)
-          .eq("id", id)
-          .select("id");
+        const { data: gravadas, error } = await aguardarGravacaoDoCupom(
+          supabase.from("coupons").update(dbUpdates).eq("id", id).select("id"),
+        );
 
         if (error) throw error;
         if (!gravadas?.length) throw new Error("Nenhum cupom foi alterado.");
@@ -367,10 +387,10 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
 
       if (clientes !== undefined) {
         await definirClientesDoCupom(id, clientes);
-        setCoupons((prev) =>
-          prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
-        );
       }
+      setCoupons((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+      );
 
       toast.success("Cupom atualizado");
       if (autoFetch) fetchCoupons(true);
@@ -378,17 +398,20 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       console.error("Error updating coupon:", error);
       // Mesma régua do addCoupon (laudo 0109, A4): trocar o código por um
       // que já existe é recusa de constraint, não "revise as regras".
-      toast.error(
-        mensagemDeErroDoCupom(
-          error,
-          clientes !== undefined
-            ? "Não foi possível salvar o cupom. Confira e tente de novo."
-            : "Erro ao atualizar cupom",
-        ),
-      );
-      if (clientes === undefined && anterior) {
-        // A falha deste cupom preserva os demais já salvos.
-        setCoupons((prev) => prev.map((c) => (c.id === id ? anterior : c)));
+      if (ehConsultaSemResposta(error)) {
+        toast.error(MENSAGEM_GRAVACAO_SEM_RESPOSTA);
+        // Não espera a releitura para liberar quem está salvando. A escrita
+        // pode ter chegado: nunca restaurar uma foto antiga por conta do prazo.
+        void fetchCoupons(true, false);
+      } else {
+        toast.error(
+          mensagemDeErroDoCupom(
+            error,
+            clientes !== undefined
+              ? "Não foi possível salvar o cupom. Confira e tente de novo."
+              : "Erro ao atualizar cupom",
+          ),
+        );
       }
       throw error;
     }
@@ -401,11 +424,9 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
     }
     try {
       // `.select("id")`: 0 linhas apagadas também vem como sucesso.
-      const { data: apagadas, error } = await supabase
-        .from("coupons")
-        .delete()
-        .eq("id", id)
-        .select("id");
+      const { data: apagadas, error } = await aguardarGravacaoDoCupom(
+        supabase.from("coupons").delete().eq("id", id).select("id"),
+      );
 
       if (error) throw error;
       if (!apagadas?.length) throw new Error("Nenhum cupom foi apagado.");
@@ -419,7 +440,10 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       // a saída que existe: DESATIVAR o cupom.
       const codigo = (error as { code?: string })?.code ?? "";
       const mensagem = String((error as { message?: string })?.message ?? "");
-      if (
+      if (ehConsultaSemResposta(error)) {
+        toast.error(MENSAGEM_GRAVACAO_SEM_RESPOSTA);
+        void fetchCoupons(true, false);
+      } else if (
         codigo === "23503" ||
         mensagem.includes("foreign key") ||
         mensagem.includes("23503")
@@ -455,10 +479,12 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
   /** Troca a lista inteira (atômica no servidor; só administradora ATUAL). */
   const definirClientesDoCupom = useCallback(
     async (couponId: string, clientes: readonly string[]): Promise<void> => {
-      const { error } = await supabase.rpc("admin_cupom_definir_clientes", {
-        p_coupon_id: couponId,
-        p_clientes: [...clientes],
-      });
+      const { error } = await aguardarGravacaoDoCupom(
+        supabase.rpc("admin_cupom_definir_clientes", {
+          p_coupon_id: couponId,
+          p_clientes: [...clientes],
+        }),
+      );
       if (error) throw error;
     },
     [],

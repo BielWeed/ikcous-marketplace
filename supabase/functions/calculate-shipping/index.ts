@@ -1289,7 +1289,9 @@ async function cotarUmaVez(
             status: 'error',
             error_message: apiError || 'Nenhum método de envio retornado.',
         })
-        if (responderam.length === 0 && falhas.some((r) => r.falha?.motivo === 'cep_invalido')) {
+        // "CEP não encontrado" só quando TODO provedor que falhou recusou o CEP: um
+        // provedor fora do ar ao lado de outro que recusa não prova CEP errado.
+        if (responderam.length === 0 && falhas.length > 0 && falhas.every((r) => r.falha?.motivo === 'cep_invalido')) {
             return respostaJson({ error: 'CEP não encontrado. Confira o número e tente de novo.', codigo: 'cep_invalido' }, 400)
         }
         const retirada = await retiradaDeFora()

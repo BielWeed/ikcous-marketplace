@@ -95,7 +95,7 @@ export function AdminFreeShippingCardView({
       toast.success("Card de frete grátis salvo.");
     } catch {
       toast.error(
-        "Não foi possível salvar o card. Confira a conexão e tente novamente.",
+        "Não foi possível confirmar que o card foi salvo. Confira se a mudança apareceu antes de tentar de novo.",
       );
     } finally {
       trava.current = false;

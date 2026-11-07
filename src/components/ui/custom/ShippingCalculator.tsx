@@ -99,13 +99,19 @@ const AVISO_COTACAO_PARCIAL =
   "Algumas transportadoras não responderam agora. Toque em Tentar de novo para ver todas as opções.";
 // Definitiva para aquele CEP: sem "Tentar de novo" (refaz a mesma recusa).
 const FRASE_FORA_DA_AREA = "Esta loja entrega apenas na região dela.";
-// Recusas DEFINITIVAS para aquele CEP — "fora da área" e "CEP não encontrado"
-// (r57-c): repetir a consulta devolve a mesma resposta, gasta o limite de
-// consultas de frete da loja e suja o histórico de cotações da lojista. Sem o
-// botão; trocar o endereço recota sozinho (efeito de `cepDestino`).
+// O servidor recusou o carrinho (item que não é um item de verdade): repetir a
+// consulta com o mesmo carrinho devolve a mesma recusa.
+const FRASE_CARRINHO_INVALIDO =
+  "Seu carrinho mudou. Volte ao carrinho e confira os itens.";
+// Recusas DEFINITIVAS para aquele CEP (ou carrinho) — "fora da área", "CEP não
+// encontrado" (r57-c) e "carrinho inválido": repetir a consulta devolve a
+// mesma resposta, gasta o limite de consultas de frete da loja e suja o
+// histórico de cotações da lojista. Sem o botão; trocar o endereço recota
+// sozinho (efeito de `cepDestino`) e mexer no carrinho também.
 const FRASES_DEFINITIVAS = new Set<string>([
   FRASE_FORA_DA_AREA,
   MENSAGEM_CEP_NAO_ENCONTRADO,
+  FRASE_CARRINHO_INVALIDO,
 ]);
 // Recusas do servidor que têm frase própria (escolhida pelo `codigo`, nunca
 // pelo texto vindo de fora).
@@ -116,6 +122,7 @@ const FRASE_POR_CODIGO_DA_EDGE = new Map<string, string>([
     "Muitas consultas de frete em pouco tempo. Aguarde alguns minutos e tente de novo.",
   ],
   ["fora_da_area", FRASE_FORA_DA_AREA],
+  ["carrinho_invalido", FRASE_CARRINHO_INVALIDO],
   [
     "carrinho_grande_demais",
     "O carrinho tem itens demais para calcular o frete de uma vez. Tire alguns itens e tente de novo.",

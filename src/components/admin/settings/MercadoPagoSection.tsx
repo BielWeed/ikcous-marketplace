@@ -8,6 +8,7 @@ import { lerSupabaseUrl } from "@/lib/env-valores";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import { haptic } from "@/utils/haptic";
 import {
   AlertCircle,
@@ -200,7 +201,42 @@ function textoDaFalta(falta: string): string {
 const SERVICO_DE_CHAVES_INATIVO =
   "O serviço de chaves do Mercado Pago ainda não está ativado nesta instalação. Fale com o suporte para ativá-lo no servidor.";
 
-async function erroAmigavel(error: unknown, generico: string): Promise<string> {
+/**
+ * PRAZOS DA SEÇÃO (07/11/2026). Rede "pendurada" conecta e não responde: sem
+ * prazo a leitura ficava em "Lendo…" para sempre (sem "Tentar de novo") e os
+ * botões de salvar, testar e pausar ficavam girando e travando uns aos outros.
+ * O prazo só limita a ESPERA da tela: a edge não é cancelada e pode ter
+ * gravado. Por isso o estouro nunca diz que a mudança foi ou não foi feita --
+ * manda conferir -- e a seção relê o estado real (`reler`). A resposta que
+ * chegar depois do prazo é descartada pelo `comPrazo`.
+ */
+const PRAZO_DE_LER_MS = 15_000;
+const PRAZO_DE_GRAVAR_MS = 20_000;
+
+const SEM_RESPOSTA_AO_LER =
+  "Sem resposta da rede. Confira a conexão e toque em Tentar de novo.";
+const SEM_RESPOSTA_AO_SALVAR =
+  "Sem resposta da rede. Confira o estado das chaves na tela antes de tentar de novo.";
+const SEM_RESPOSTA_AO_TESTAR =
+  "Sem resposta da rede. Confira o resultado do teste na tela antes de tentar de novo.";
+const SEM_RESPOSTA_AO_PAUSAR_OU_RETOMAR =
+  "Sem resposta da rede. Confira o estado do pagamento pelo app na tela antes de tentar de novo.";
+
+function chamarEdge(corpo: Record<string, unknown>, prazoMs: number) {
+  return comPrazo(
+    Promise.resolve(
+      supabase.functions.invoke("credenciais-mercado-pago", { body: corpo }),
+    ),
+    prazoMs,
+  );
+}
+
+async function erroAmigavel(
+  error: unknown,
+  generico: string,
+  semResposta: string,
+): Promise<string> {
+  if (error instanceof PrazoEsgotado) return semResposta;
   try {
     const detalhes = error as { name?: unknown; context?: unknown };
     if (
@@ -387,13 +423,22 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
     onPixAlternadoRef.current = onPixAlternado;
   }, [onPixAlternado]);
 
+  // Geração das ações (ler, salvar, testar, pausar/retomar): cada uma soma 1
+  // ao COMEÇAR. A releitura silenciosa guarda o valor de quando nasceu e
+  // DESCARTA a resposta se o contador andou -- uma ação mais nova já trouxe um
+  // retrato mais recente do servidor, e a resposta velha desfaria o estado
+  // (e o aviso ao painel de Ajustes) que ela confirmou. Mesmo molde de
+  // `geracaoDaConfigRef` no StoreContext.
+  const geracaoRef = useRef(0);
+
   const ler = useCallback(async () => {
+    geracaoRef.current += 1;
     setCarregando(true);
     setErroCarga(null);
     try {
-      const { data, error } = await supabase.functions.invoke(
-        "credenciais-mercado-pago",
-        { body: { acao: "ler" } },
+      const { data, error } = await chamarEdge(
+        { acao: "ler" },
+        PRAZO_DE_LER_MS,
       );
       if (error) throw error;
       const lida = comoConfig(data);
@@ -416,6 +461,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
         await erroAmigavel(
           err,
           "Não consegui ler as chaves salvas agora. Tente de novo em instantes.",
+          SEM_RESPOSTA_AO_LER,
         ),
       );
     } finally {
@@ -426,6 +472,28 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   useEffect(() => {
     ler();
   }, [ler]);
+
+  // Releitura SILENCIOSA depois de um estouro de prazo: traz o estado real do
+  // servidor (a gravação pode ter chegado) sem mexer em `carregando`, sem
+  // sobrescrever o que a lojista digitou e sem aviso nenhum -- quem avisa é o
+  // próprio estouro. Falha aqui não muda nada: a frase do estouro já mandou
+  // conferir.
+  const reler = useCallback(async () => {
+    const geracao = geracaoRef.current;
+    try {
+      const { data, error } = await chamarEdge(
+        { acao: "ler" },
+        PRAZO_DE_LER_MS,
+      );
+      if (error) return;
+      if (geracao !== geracaoRef.current) return;
+      const lida = comoConfig(data);
+      setConfig(lida);
+      onPixAlternadoRef.current?.(lida.pix_ligado, lida.public_key_na_loja);
+    } catch {
+      // sem resposta de novo: a tela segue como está
+    }
+  }, []);
 
   // Sujo = algo na tela que ainda não é verdade no servidor. Public Key
   // diferente da salva OU qualquer segredo digitado.
@@ -458,6 +526,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       return;
     }
 
+    geracaoRef.current += 1;
     setSalvando(true);
     haptic.medium();
     try {
@@ -470,10 +539,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       if (accessToken.trim()) corpo.access_token = accessToken.trim();
       if (webhookSecret.trim()) corpo.webhook_secret = webhookSecret.trim();
 
-      const { data, error } = await supabase.functions.invoke(
-        "credenciais-mercado-pago",
-        { body: corpo },
-      );
+      const { data, error } = await chamarEdge(corpo, PRAZO_DE_GRAVAR_MS);
       if (error) throw error;
 
       const salva = comoConfig(data);
@@ -514,8 +580,10 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
         await erroAmigavel(
           err,
           "Não consegui salvar as chaves agora. Tente de novo.",
+          SEM_RESPOSTA_AO_SALVAR,
         ),
       );
+      if (err instanceof PrazoEsgotado) void reler();
     } finally {
       setSalvando(false);
     }
@@ -561,12 +629,13 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
     }
     if (testando || alternandoPix || dirty || !config.configurado) return;
 
+    geracaoRef.current += 1;
     setTestando(true);
     haptic.light();
     try {
-      const { data, error } = await supabase.functions.invoke(
-        "credenciais-mercado-pago",
-        { body: { acao: "testar" } },
+      const { data, error } = await chamarEdge(
+        { acao: "testar" },
+        PRAZO_DE_GRAVAR_MS,
       );
       if (error) throw error;
       const resultado = (data ?? {}) as EstadoDevolvido & {
@@ -606,8 +675,10 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
         await erroAmigavel(
           err,
           "Não consegui testar a conexão agora. Tente de novo.",
+          SEM_RESPOSTA_AO_TESTAR,
         ),
       );
+      if (err instanceof PrazoEsgotado) void reler();
     } finally {
       setTestando(false);
     }
@@ -631,15 +702,16 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
     // do servidor correm juntas, e a pausa perderia a corrida.
     if (alternandoPix || carregando || testando || salvando) return;
 
+    geracaoRef.current += 1;
     setAlternandoPix(true);
     setAvisoPix(null);
     setEcoDaVitrine(false);
     setConfirmandoPausa(false);
     haptic.medium();
     try {
-      const { data, error } = await supabase.functions.invoke(
-        "credenciais-mercado-pago",
-        { body: { acao: retomar ? "ligar_pix" : "desligar_pix" } },
+      const { data, error } = await chamarEdge(
+        { acao: retomar ? "ligar_pix" : "desligar_pix" },
+        PRAZO_DE_GRAVAR_MS,
       );
       if (error) throw error;
       aplicarEstadoDoServidor((data ?? {}) as EstadoDevolvido);
@@ -652,8 +724,10 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           retomar
             ? "Não consegui retomar o pagamento pelo app agora. Tente de novo."
             : "Não consegui pausar o pagamento pelo app agora. Tente de novo.",
+          SEM_RESPOSTA_AO_PAUSAR_OU_RETOMAR,
         ),
       );
+      if (err instanceof PrazoEsgotado) void reler();
     } finally {
       setAlternandoPix(false);
     }

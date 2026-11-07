@@ -126,6 +126,7 @@ import {
   type DepsDosEfeitos,
   desfechoComEfeito,
   reenviarAvisoPendenteDoPagamentoAtrasado,
+  TETO_DO_EMAIL_MS,
 } from "../_shared/efeitos-do-pagamento.ts";
 // Os testes e o contrato antigo importam estes dois DAQUI: a definição é uma só.
 export {
@@ -906,6 +907,9 @@ async function handler(
     dormir?: (ms: number) => Promise<void>;
     enviarComprovante?: DepsDosEfeitos["enviarComprovante"];
     enviarAvisoAtrasado?: DepsDosEfeitos["enviarAvisoAtrasado"];
+    // Teto de espera pelo e-mail ao cliente (o teste o encurta); em produção
+    // vale `TETO_DO_EMAIL_MS`: o SMTP lento não pode segurar a resposta ao MP.
+    tetoDoEmailMs?: number;
   } = {},
 ): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -2359,6 +2363,7 @@ async function handler(
       enviarPush: deps.enviarPush,
       enviarComprovante: deps.enviarComprovante,
       enviarAvisoAtrasado: deps.enviarAvisoAtrasado,
+      tetoDoEmailMs: deps.tetoDoEmailMs ?? TETO_DO_EMAIL_MS,
     });
   } else if (resultado === "ja_pago") {
     // EST-EDGE-DIN-3 (16/10/2026): 'ja_pago' continua sem push e sem
@@ -2371,6 +2376,7 @@ async function handler(
       supabase,
       orderId,
       enviarAvisoAtrasado: deps.enviarAvisoAtrasado,
+      tetoDoEmailMs: deps.tetoDoEmailMs ?? TETO_DO_EMAIL_MS,
     });
   } else if (resultado === "divergente" || resultado === "inexistente") {
     // error, não warn: ao contrário dos outros retornos deste laço (ja_pago,
