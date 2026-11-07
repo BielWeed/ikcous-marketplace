@@ -6,7 +6,7 @@
     "correcoes": [
       "Loja, Busca: dá para achar um produto pela cor ou pelo tamanho; os que estão em estoque vêm antes dos esgotados, que ganham o selo “Esgotado”; produto com preços diferentes mostra “A partir de”; na tela de busca a ordem passa a ser pela relevância quando há termo.",
       "Loja, Carrinho e Checkout: antes de finalizar, o carrinho confere preço e estoque atuais; o frete é cotado de novo quando o preço muda; a chave do pedido só nasce depois de confirmar a sessão, então sessão vencida ou internet ruim não deixam o pedido preso.",
-      "Loja, Cupons e Favoritos: “Vence hoje” e “Vence amanhã” seguem o dia da loja (Brasília); favoritos só aparecem como indisponíveis depois que o catálogo foi lido por inteiro.",
+      "Loja, Cupons e Favoritos: “Vence hoje” e “Vence amanhã” seguem o dia da loja (Brasília); os favoritos indisponíveis de quem não tem conta também aparecem, com um botão para limpá-los do aparelho.",
       "Loja, Avisos do celular e Endereços: ligar ou desligar avisos e excluir ou trocar o endereço principal têm prazo e soltam o botão quando a internet não responde, relendo o estado real.",
       "Loja, Central de avisos: se a atualização falhar, a lista antiga continua na tela com um aviso e o botão “Tentar de novo”.",
       "Painel, CRM e relatórios: períodos sem venda não inventam mais números nem gráficos; a taxa de devolução mostra “—” em vez de 0% quando não houve pedido; o simulador de margem não afirma nada sem preço e custo.",
