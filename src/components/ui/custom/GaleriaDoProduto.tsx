@@ -1,5 +1,6 @@
 import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
+import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
 import {
   comMarcaDeTentativa,
   conjuntoComMarcaDeTentativa,
@@ -87,6 +88,19 @@ interface FotoDaFaixaProps {
 function FotoDaFaixa({ foto, nome, posicao, comTransicao }: FotoDaFaixaProps) {
   const { ciclo, desistiu, aoFalhar, tentarDeNovo } =
     useFotoQueTentaDeNovo(foto);
+  if (!foto || ehMarcadorDeFoto(foto)) {
+    return (
+      <div
+        role="img"
+        aria-label={`${nome} (sem foto)`}
+        className="flex size-full items-center justify-center bg-zinc-100"
+      >
+        <span className="px-2 text-center text-xs font-medium text-zinc-600">
+          Sem foto
+        </span>
+      </div>
+    );
+  }
   return (
     <>
       {!desistiu && (
@@ -144,6 +158,16 @@ function FotoDaFaixa({ foto, nome, posicao, comTransicao }: FotoDaFaixaProps) {
 /** A miniatura do computador: tenta de novo sozinha (o aviso fica na foto grande). */
 function Miniatura({ foto }: { foto: string }) {
   const { ciclo, aoFalhar } = useFotoQueTentaDeNovo(foto);
+  if (!foto || ehMarcadorDeFoto(foto)) {
+    return (
+      <span
+        aria-hidden="true"
+        className="flex size-full items-center justify-center bg-zinc-100 text-[10px] text-zinc-600"
+      >
+        Sem foto
+      </span>
+    );
+  }
   return (
     <img
       key={ciclo}
@@ -283,6 +307,9 @@ export function GaleriaDoProduto({
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary",
           )}
         >
+          {total === 0 && (
+            <FotoDaFaixa foto="" nome={nome} posicao={0} comTransicao={false} />
+          )}
           {fotos.map((foto, posicao) => (
             <div
               key={`${foto}-${posicao}`}

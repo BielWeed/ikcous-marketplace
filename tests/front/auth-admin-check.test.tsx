@@ -229,6 +229,8 @@ describe("AuthContext — verificação de admin (issues #121 e #123)", () => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     vi.useRealTimers();
+    // Os testes do atalho do cache mudam o endereço: volta para a vitrine.
+    window.history.replaceState(null, "", "/");
   });
 
   /** Monta o Provider com um boot sem sessão (getSession resolve `null`),
@@ -540,9 +542,12 @@ describe("AuthContext — verificação de admin (issues #121 e #123)", () => {
     expect(ultimoEstado(aoAtualizar)?.adminStatus).toBe("admin");
   });
 
-  it("7. localStorage[cacheKey] === 'false' resolve 'not-admin' de imediato, sem esperar a rede", async () => {
+  it("7. FORA do painel, localStorage[cacheKey] === 'false' resolve 'not-admin' de imediato, sem esperar a rede", async () => {
     const { supabase, AuthContext, AuthProvider } = await montarProvider();
 
+    // O atalho do cache só vale fora do painel (ver os testes 7a a 7d): aqui
+    // o endereço é a vitrine.
+    window.history.replaceState(null, "", "/");
     semearSessaoCache("user-cache-false", {});
     localStorage.setItem("ikcous_is_admin_user-cache-false", "false");
 
@@ -592,6 +597,158 @@ describe("AuthContext — verificação de admin (issues #121 e #123)", () => {
     expect(ultimoEstado(aoAtualizar)?.adminStatus).toBe("not-admin");
     expect(ultimoEstado(aoAtualizar)?.isAdmin).toBe(false);
   });
+
+  // ---------------------------------------------------------------------
+  // Recém-promovida (r63-b, achado 17): o aparelho dela guarda "false" de
+  // quando era cliente. Abrir /admin direto no boot NÃO pode decidir por esse
+  // cache: a promoção já valeu no banco, e o atalho a mandava embora com
+  // "Acesso restrito" antes de a rede responder. No painel, espera a RPC.
+  // ---------------------------------------------------------------------
+
+  /** Boot de quem tem sessão guardada e "false" no aparelho, num endereço
+   * escolhido pelo teste, com `is_admin` controlada pela fila devolvida. */
+  async function montarBootComCacheFalse(
+    userId: string,
+    caminho: string,
+    relogioFalso = false,
+  ) {
+    const { supabase, AuthContext, AuthProvider } = await montarProvider();
+    // Com relógio falso, `esperarMicrotarefas` (setTimeout) nunca dispararia:
+    // a fila é drenada pelo próprio relógio (ver o teste 4).
+    if (relogioFalso)
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const drenar = () =>
+      relogioFalso ? vi.advanceTimersByTimeAsync(0) : esperarMicrotarefas();
+    window.history.replaceState(null, "", caminho);
+    semearSessaoCache(userId, {});
+    localStorage.setItem(`ikcous_is_admin_${userId}`, "false");
+    (
+      supabase.auth.getSession as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({
+      data: {
+        session: {
+          user: { id: userId, app_metadata: {} },
+          access_token: `tok-${userId}`,
+        },
+      },
+      error: null,
+    });
+    (
+      supabase.auth.getUser as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({
+      data: { user: { id: userId, app_metadata: {} } },
+      error: null,
+    });
+    (
+      supabase.auth.onAuthStateChange as unknown as ReturnType<typeof vi.fn>
+    ).mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } });
+    const filaIsAdmin = configurarRpcControlada(supabase);
+    const aoAtualizar = vi.fn();
+    await act(async () => {
+      raiz.render(
+        <AuthProvider>
+          <Sonda authContext={AuthContext} aoAtualizar={aoAtualizar} />
+        </AuthProvider>,
+      );
+    });
+    await act(async () => {
+      await drenar();
+      await drenar();
+    });
+    return { filaIsAdmin, aoAtualizar };
+  }
+
+  const algumRenderDisse = (
+    aoAtualizar: ReturnType<typeof vi.fn>,
+    status: AdminStatus,
+  ) =>
+    aoAtualizar.mock.calls.some(
+      (chamada) => (chamada[0] as Snapshot).adminStatus === status,
+    );
+
+  it("7a. aberta DIRETO em /admin com cache 'false' e a RPC confirma admin: nunca vira 'not-admin' e o painel libera", async () => {
+    const { filaIsAdmin, aoAtualizar } = await montarBootComCacheFalse(
+      "user-promovida",
+      "/admin",
+    );
+
+    // A RPC foi pedida, mas não respondeu: o estado é "ainda verificando".
+    expect(filaIsAdmin.length).toBeGreaterThan(0);
+    expect(ultimoEstado(aoAtualizar)?.adminStatus).toBe("unknown");
+    expect(ultimoEstado(aoAtualizar)?.isAdmin).toBe(false);
+
+    filaIsAdmin[0].resolve({ data: true, error: null });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    expect(ultimoEstado(aoAtualizar)?.adminStatus).toBe("admin");
+    expect(ultimoEstado(aoAtualizar)?.isAdmin).toBe(true);
+    // Em NENHUM momento a tela viu "not-admin" (era o que expulsava).
+    expect(algumRenderDisse(aoAtualizar, "not-admin")).toBe(false);
+    // O veredito real corrige o aparelho.
+    expect(localStorage.getItem("ikcous_is_admin_user-promovida")).toBe("true");
+  });
+
+  it("7b. em /admin com cache 'false' e a RPC diz que NÃO é admin: só então vira 'not-admin' (e o aparelho segue 'false')", async () => {
+    const { filaIsAdmin, aoAtualizar } = await montarBootComCacheFalse(
+      "user-cliente-no-painel",
+      "/admin",
+    );
+    expect(ultimoEstado(aoAtualizar)?.adminStatus).toBe("unknown");
+
+    filaIsAdmin[0].resolve({ data: false, error: null });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    expect(ultimoEstado(aoAtualizar)?.adminStatus).toBe("not-admin");
+    expect(ultimoEstado(aoAtualizar)?.isAdmin).toBe(false);
+    expect(localStorage.getItem("ikcous_is_admin_user-cliente-no-painel")).toBe(
+      "false",
+    );
+  });
+
+  it("7c. em /admin com cache 'false' e a rede NÃO responde: fica 'unknown' (cai no 'Tentar de novo'), nunca 'not-admin'", async () => {
+    const { filaIsAdmin, aoAtualizar } = await montarBootComCacheFalse(
+      "user-rede-muda",
+      "/admin",
+      true,
+    );
+    expect(filaIsAdmin.length).toBeGreaterThan(0);
+    expect(ultimoEstado(aoAtualizar)?.adminStatus).toBe("unknown");
+
+    // O prazo de 3 s da checagem estoura sem a RPC ter respondido.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_500);
+    });
+
+    expect(ultimoEstado(aoAtualizar)?.adminStatus).toBe("unknown");
+    expect(algumRenderDisse(aoAtualizar, "not-admin")).toBe(false);
+    // Não-veredito: nada foi gravado no aparelho.
+    expect(localStorage.getItem("ikcous_is_admin_user-rede-muda")).toBe(
+      "false",
+    );
+  });
+
+  it.each([
+    ["/admin-orders", "unknown"],
+    ["/admin/", "unknown"],
+    // Fora do painel o atalho segue igual: decide na hora, sem rede.
+    ["/admin-login", "not-admin"],
+    ["/administracao", "not-admin"],
+    ["/", "not-admin"],
+    ["/produto/admin", "not-admin"],
+  ] as const)(
+    "7d. cache 'false' em %s: o estado logo após o boot é %s",
+    async (caminho, esperado) => {
+      const { aoAtualizar } = await montarBootComCacheFalse(
+        "user-rota",
+        caminho,
+      );
+      expect(ultimoEstado(aoAtualizar)?.adminStatus).toBe(esperado);
+    },
+  );
 
   // ---------------------------------------------------------------------
   // Anotado 3 (revisão #121/#123) — o `finally` de `networkCheck` comparava

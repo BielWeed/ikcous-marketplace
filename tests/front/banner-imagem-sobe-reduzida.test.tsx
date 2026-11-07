@@ -242,10 +242,25 @@ describe("foto do banner sobe reduzida", () => {
     expect(url).toMatch(/^https:\/\/loja\.test\/banners\//);
   });
 
+  it("banner WebP de 8 MB (exportado de um editor) sobe reduzido, ainda WebP", async () => {
+    decodificaComo(4000, 3000);
+    const original = arquivoComPeso("capa.webp", "image/webp", 8 * MB);
+
+    await act(async () => {
+      await uploadBannerImage(original);
+    });
+
+    const enviado = arquivoEnviado();
+    expect(enviado).not.toBe(original);
+    expect(enviado.size).toBeLessThan(original.size);
+    expect(enviado.type).toBe("image/webp");
+    expect(h.upload.mock.calls[0][0]).toMatch(/\.webp$/);
+    expect(canvasCriado).toEqual({ width: 1600, height: 1200 });
+  });
+
   it.each([
     ["animacao.gif", "image/gif"],
     ["vetor.svg", "image/svg+xml"],
-    ["recorte.webp", "image/webp"],
   ])(
     "%s passa intacto (rasterizar mataria o GIF animado e o SVG)",
     async (nome, tipo) => {

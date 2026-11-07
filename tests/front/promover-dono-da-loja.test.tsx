@@ -80,6 +80,7 @@ describe("useDonoDaLoja", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     act(() => raiz.unmount());
     hospedeiro.remove();
   });
@@ -259,5 +260,104 @@ describe("useDonoDaLoja", () => {
     await montar();
     expect(ultimo).toMatchObject({ souODono: false, carregando: false });
     expect(h.from).not.toHaveBeenCalled();
+  });
+
+  describe("rede que conecta e não responde (r63-b, achado 15)", () => {
+    // O relógio falso entra ANTES de montar (o prazo nasce na montagem) e a
+    // fila é drenada por ele mesmo: `esperar` usa setTimeout e travaria.
+    async function montarComRelogioFalso() {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      await act(async () => {
+        raiz.render(<Sonda />);
+        await vi.advanceTimersByTimeAsync(0);
+      });
+    }
+
+    it("leitura pendurada: segue 'carregando' até ~12 s e então desiste, sem dono, sem toast e sem lançar", async () => {
+      let tardia: (v: unknown) => void = () => {};
+      h.from.mockImplementation(() => ({
+        select: () => ({
+          maybeSingle: () =>
+            new Promise((r) => {
+              tardia = r;
+            }),
+        }),
+      }));
+      await montarComRelogioFalso();
+      expect(ultimo).toMatchObject({ souODono: false, carregando: true });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(11_000);
+      });
+      expect(ultimo).toMatchObject({ souODono: false, carregando: true });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_500);
+      });
+      expect(ultimo).toMatchObject({
+        souODono: false,
+        carregando: false,
+        donoId: null,
+      });
+      expect(toast.error).not.toHaveBeenCalled();
+
+      // A resposta que chega TARDE (era o dono) é descartada: nem vira dono
+      // nesta tela, nem fica gravada como leitura feita.
+      await act(async () => {
+        tardia({ data: { user_id: "dono-1" }, error: null });
+        await vi.advanceTimersByTimeAsync(10);
+      });
+      expect(ultimo).toMatchObject({ souODono: false, carregando: false });
+      expect(historico.every((r) => !r.souODono)).toBe(true);
+    });
+
+    it("estourar o prazo NÃO é gravado: a próxima abertura lê de novo e acha o dono", async () => {
+      h.from.mockImplementationOnce(() => ({
+        select: () => ({ maybeSingle: () => new Promise(() => {}) }),
+      }));
+      await montarComRelogioFalso();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(13_000);
+      });
+      expect(ultimo).toMatchObject({ souODono: false, carregando: false });
+      expect(h.from).toHaveBeenCalledTimes(1);
+
+      // Abre a folha de novo (nova montagem), agora com a rede boa.
+      await act(async () => raiz.unmount());
+      vi.useRealTimers();
+      responde({ data: { user_id: "dono-1" }, error: null });
+      raiz = createRoot(hospedeiro);
+      await montar();
+      expect(h.from).toHaveBeenCalledTimes(2);
+      expect(ultimo).toMatchObject({ souODono: true, carregando: false });
+    });
+
+    it("duas instâncias dividem a MESMA espera e as duas soltam no prazo", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      h.from.mockImplementation(() => ({
+        select: () => ({ maybeSingle: () => new Promise(() => {}) }),
+      }));
+      await act(async () => {
+        raiz.render(
+          <>
+            <Sonda />
+            <Sonda />
+          </>,
+        );
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(13_000);
+      });
+      expect(h.from).toHaveBeenCalledTimes(1);
+      expect(ultimo).toMatchObject({ souODono: false, carregando: false });
+    });
+
+    it("resposta dentro do prazo segue igual: dono, e lê UMA vez", async () => {
+      responde({ data: { user_id: "dono-1" }, error: null });
+      await montar();
+      expect(ultimo).toMatchObject({ souODono: true, carregando: false });
+      expect(h.from).toHaveBeenCalledTimes(1);
+    });
   });
 });

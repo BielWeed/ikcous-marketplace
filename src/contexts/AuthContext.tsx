@@ -51,6 +51,7 @@ import {
 } from "@/lib/recuperacao-de-senha-em-andamento";
 import { supabase } from "@/lib/supabase";
 import { limparCachesDeAdmin } from "@/utils/admin_cache";
+import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import {
   isAuthApiError,
   isAuthRetryableFetchError,
@@ -83,6 +84,14 @@ export interface ResetPasswordResult {
 // verificação (a RPC `is_admin`, do servidor) ainda está em voo. `isAdmin`
 // continua existindo, derivado: `adminStatus === "admin"`.
 export type AdminStatus = "unknown" | "admin" | "not-admin";
+
+// O endereço aberto é do painel? Mesmo critério de `painelSemContaPedeEntrada`
+// (`admin*`, menos `admin-login`, a entrada pública), olhado no caminho:
+// `/admin`, `/admin/...` e `/admin-orders`; não `/admin-login`, nem um caminho
+// que só começa com as mesmas letras (`/administracao`).
+function enderecoEhDoPainel(caminho: string): boolean {
+  return /^\/admin(?:\/|$|-(?!login(?:\/|$)))/.test(caminho);
+}
 
 // A1-fix4 — `MENSAGEM_ERRO_LOGIN_GENERICA`, `MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA`
 // e o tipo `LoginAudience` moraram aqui até este arquivo importar
@@ -572,7 +581,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const cachedAdmin = localStorage.getItem(cacheKey);
     // Quem o servidor já confirmou nesta sessão não toma o atalho: um "false"
     // no aparelho (de outra aba, de antes) não rebaixa antes de a rede falar.
-    if (cachedAdmin === "false" && !jaConfirmadoNestaSessao()) {
+    //
+    // NO PAINEL o atalho não vale (r63-b): quem acabou de ser promovida ainda
+    // guarda "false" do tempo de cliente, e abrir /admin direto a mandava
+    // embora com "Acesso restrito" ANTES de a rede dizer que já é lojista.
+    // No painel `adminStatus` fica "unknown" (carregando) até a RPC responder;
+    // falha ou estouro cai no "Tentar de novo" (ramo da rede, logo abaixo).
+    // Fora do painel o atalho segue igual: a vitrine não espera a rede.
+    if (
+      cachedAdmin === "false" &&
+      !jaConfirmadoNestaSessao() &&
+      !enderecoEhDoPainel(window.location.pathname)
+    ) {
       setAdminStatus("not-admin");
       // Run background check to sync with potential admin status updates without blocking initial load
       networkCheck()
@@ -1733,9 +1753,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             p_cover_url: updates.cover_url ?? null,
           },
           contaEsperada,
+          // Gravação que chega depois do prazo de 20 s: a tela já disse "não
+          // deu para confirmar", então só relê o perfil para se corrigir sozinha.
+          () => {
+            void comPrazo(Promise.resolve(fetchProfile()), 15_000).catch(
+              () => {},
+            );
+          },
         );
         if (!resultado.ok) throw resultado;
-        await fetchProfile();
+        // A gravação JÁ deu certo. Se a releitura pendurar na rede, solta a
+        // tela depois do prazo em vez de prender a foto/capa (a releitura
+        // atrasada ainda aplica o perfil quando chegar).
+        try {
+          await comPrazo(Promise.resolve(fetchProfile()), 15_000);
+        } catch (erroDaReleitura) {
+          if (!(erroDaReleitura instanceof PrazoEsgotado))
+            throw erroDaReleitura;
+        }
         return true;
       } catch (err: any) {
         // `update_my_profile_secure` não tem nenhum `RAISE EXCEPTION` (ver
@@ -1746,9 +1781,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // `err.message`. A troca de conta reconhecida antes do envio tem
         // seu próprio aviso fixo.
         console.error("[Auth] Error updating profile:", err);
+        // Prazo esgotado: a gravação pode ter chegado ao banco depois, então
+        // a frase manda CONFERIR antes de tentar de novo (a mesma de Ajustes
+        // da conta) em vez de afirmar que falhou.
         toast.error(
-          err?.motivo === "conta_trocada"
-            ? mensagemFalhaCpf("conta_trocada")
+          err?.motivo === "conta_trocada" || err?.motivo === "prazo_esgotado"
+            ? mensagemFalhaCpf(err.motivo)
             : "Não foi possível atualizar seu perfil. Tente novamente.",
         );
         return false;

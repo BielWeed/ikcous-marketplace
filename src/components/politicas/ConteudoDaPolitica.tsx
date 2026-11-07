@@ -1,4 +1,4 @@
-import { Mail, MapPin } from "lucide-react";
+import { Mail, MapPin, RefreshCw } from "lucide-react";
 import { useMemo } from "react";
 
 import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
@@ -48,6 +48,26 @@ export function ConteudoDaPolitica({
       <p className="text-sm leading-relaxed text-muted-foreground">
         {documento.resumo}
       </p>
+
+      {tipo === "trocas" && trocas.estado === "indisponivel" && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-3 rounded-2xl border border-border p-4"
+        >
+          <p className="min-w-0 flex-1 text-sm leading-relaxed text-foreground">
+            Não conseguimos carregar as regras desta loja agora. Abaixo está o
+            mínimo previsto em lei.
+          </p>
+          <button
+            type="button"
+            onClick={trocas.tentarDeNovo}
+            className="flex min-h-11 items-center gap-2 rounded-xl border border-border px-4 text-sm font-bold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <RefreshCw aria-hidden="true" className="size-4" />
+            Tentar de novo
+          </button>
+        </div>
+      )}
 
       {tipo === "trocas" && trocas.estado === "carregando" ? (
         <p

@@ -19,6 +19,7 @@ import {
   mensagemFalhaCpf,
 } from "@/lib/cpf-da-conta";
 import { descartarPendenteDaConta } from "@/lib/cpf-pendente-do-cadastro";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { supabase } from "@/lib/supabase";
 import {
   celularBrasileiroCompleto,
@@ -32,6 +33,7 @@ import {
 } from "@/utils/avatars";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import {
+  CAPA_PADRAO_URL,
   PREDEFINED_COVERS,
   compressCoverImage,
   getPredefinedCoverSvg,
@@ -55,7 +57,7 @@ import {
   UploadCloud,
   User,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 // Linguagem "Tinta" (redesenho de 23/10/2026): cor só pelas variáveis do tema.
@@ -164,11 +166,6 @@ export function AccountSettingsView() {
     setIsUpdatingAvatar(false);
     setIsUpdatingCover(false);
   }, [user?.id]);
-
-  const defaultCover = useMemo(
-    () => getPredefinedCoverSvg("#FF512F", "#DD2476", "waves"),
-    [],
-  );
 
   const openAvatarModal = () => {
     setModalTab("avatars");
@@ -441,6 +438,12 @@ export function AccountSettingsView() {
     email: "",
   });
   const [profileDataOriginal, setProfileDataOriginal] = useState(profileData);
+  // O telefone que a tela mostra AGORA: o salvamento lê por aqui, depois dos
+  // `await`, se a pessoa digitou outro número enquanto o envio estava no ar.
+  const telefoneAtualRef = useRef(profileData.phone);
+  useEffect(() => {
+    telefoneAtualRef.current = profileData.phone;
+  });
 
   // CONTA-01: a carga do perfil tem três estados OBSERVÁVEIS, não só
   // "chegou dado válido". Antes desta correção o `useEffect` abaixo só
@@ -638,9 +641,11 @@ export function AccountSettingsView() {
 
     // O nome é aparado antes de tudo: só espaços conta como vazio, e o que vai
     // para o banco nunca leva espaço nas pontas. Vazio é recusado aqui — a RPC
-    // não é chamada e o aviso de sucesso não aparece.
+    // não é chamada e o aviso de sucesso não aparece. Nome só de caracteres
+    // invisíveis (U+200B, U+2800, U+3164...) também é vazio: o `trim()` não os
+    // tira, e o nome ficaria em branco no Perfil e nas avaliações.
     const nomeAparado = profileData.name.trim();
-    if (!nomeAparado) {
+    if (!nomeTemConteudoVisivel(nomeAparado)) {
       setNomeErro(true);
       // Quem rolou a tela até o botão não vê a mensagem inline: o aviso
       // visível e o foco no campo levam a pessoa até ela (mesmo padrão do
@@ -732,6 +737,14 @@ export function AccountSettingsView() {
 
       // O nome já foi salvo, mas uma edição feita durante o envio fica na tela.
       setProfileDataOriginal({ ...perfilEnviado, name: nomeAparado });
+      // O WhatsApp enviado já está no banco: a marca de "editado" volta a
+      // desligada, senão o próximo salvamento (só do nome, por exemplo)
+      // mandaria de novo este número, já velho, por cima do que outro
+      // aparelho tenha gravado. Se a pessoa digitou outro número durante o
+      // envio, a marca fica ligada para ele ir no próximo salvamento.
+      if (telefoneAtualRef.current === perfilEnviado.phone) {
+        setWhatsappEditado(false);
+      }
       setProfileData((p) =>
         p.name === perfilEnviado.name ? { ...p, name: nomeAparado } : p,
       );
@@ -1671,7 +1684,7 @@ export function AccountSettingsView() {
           {/* Live Preview Banner */}
           <div className="group relative mb-2 mt-3 h-20 w-full overflow-hidden rounded-2xl border border-zinc-100 shadow-inner">
             <img
-              src={profile?.cover_url || defaultCover}
+              src={profile?.cover_url || CAPA_PADRAO_URL}
               alt="Capa de Perfil"
               className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
             />

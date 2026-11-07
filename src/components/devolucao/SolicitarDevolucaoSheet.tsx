@@ -54,6 +54,7 @@ import {
   tipoPrevisto,
   valorDaSelecao,
 } from "@/lib/devolucao";
+import { imagemAbre } from "@/lib/imagem-abre";
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import { cn } from "@/lib/utils";
 import type {
@@ -119,11 +120,16 @@ const previaDe = (arquivo: File) =>
 /**
  * Por que a foto não serve (mesmas regras de `enviarFoto`, que segue
  * conferindo ao enviar), ou `null`. O limite vale depois da redução, que só
- * vale a pena para o que já passa do limite.
+ * vale a pena para o que já passa do limite. O tipo vem da extensão do arquivo:
+ * por isso a foto também precisa ABRIR (um HEIC ou arquivo estragado salvo como
+ * .jpg entraria e viraria um quadrado cinza, sem prova do defeito para a loja).
  */
 async function recusaDaFoto(arquivo: File): Promise<string | null> {
   if (!TIPOS_DE_FOTO.includes(arquivo.type)) {
     return `A foto "${arquivo.name}" não é JPG, PNG ou WEBP. Escolha outra.`;
+  }
+  if (!(await imagemAbre(arquivo))) {
+    return `A foto "${arquivo.name}" não abre neste aparelho. Escolha outra.`;
   }
   if (
     arquivo.size > TAMANHO_MAXIMO_DA_FOTO &&

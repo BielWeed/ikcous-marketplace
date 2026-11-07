@@ -10,6 +10,7 @@ import {
   semearBannersDoCofre,
 } from "@/lib/banners-da-vitrine";
 import { DataVault } from "@/lib/dataVault";
+import { imagemAbre } from "@/lib/imagem-abre";
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import { supabase } from "@/lib/supabase";
 import type { Banner } from "@/types";
@@ -17,40 +18,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const FETCH_THROTTLE = 60000; // 1 minute throttle for network checks
-
-/**
- * O aparelho consegue abrir esta imagem? Primeiro pelo bitmap; se ele falhar,
- * pelo próprio <img> do navegador (a segunda opinião evita recusar foto boa
- * que o bitmap não pegou). Só diz "não abre" quando as DUAS conferências
- * falham; ambiente sem como conferir segue (fail-open, como o redimensionamento).
- */
-async function imagemAbre(file: File): Promise<boolean> {
-  if (typeof createImageBitmap === "function") {
-    try {
-      const bitmap = await createImageBitmap(file);
-      bitmap.close?.();
-      return true;
-    } catch {
-      // cai na segunda opinião
-    }
-  }
-  let endereco: string;
-  try {
-    endereco = URL.createObjectURL(file);
-  } catch {
-    return true;
-  }
-  try {
-    return await new Promise<boolean>((resolve) => {
-      const img = new Image();
-      img.onload = () => resolve(true);
-      img.onerror = () => resolve(false);
-      img.src = endereco;
-    });
-  } finally {
-    URL.revokeObjectURL(endereco);
-  }
-}
 
 export async function normalizeBannersOrder(
   pos: "home_top" | "home_middle" | "home_bottom",

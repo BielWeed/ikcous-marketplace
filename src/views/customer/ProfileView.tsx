@@ -40,6 +40,7 @@ import {
   mensagemDaFalhaDeImagem,
 } from "@/utils/avatars";
 import {
+  CAPA_PADRAO_URL,
   PREDEFINED_COVERS,
   compressCoverImage,
   getPredefinedCoverSvg,
@@ -221,11 +222,6 @@ export function ProfileView({
   useVoltarFechaAFolha(isAvatarModalOpen, () => setIsAvatarModalOpen(false));
   useVoltarFechaAFolha(isCoverModalOpen, () => setIsCoverModalOpen(false));
   useVoltarFechaAFolha(confirmandoSaida, () => setConfirmandoSaida(false));
-
-  const defaultCover = useMemo(
-    () => getPredefinedCoverSvg("#FF512F", "#DD2476", "waves"),
-    [],
-  );
 
   const openAvatarModal = () => {
     setModalTab("avatars");
@@ -513,7 +509,7 @@ export function ProfileView({
     <div className="pb-customer min-h-full bg-background text-foreground">
       <div className="relative h-[120px] w-full overflow-hidden bg-muted">
         <img
-          src={profile?.cover_url || defaultCover}
+          src={profile?.cover_url || CAPA_PADRAO_URL}
           alt="Capa de Perfil"
           className="size-full object-cover"
         />
@@ -1271,7 +1267,7 @@ export function ProfileView({
           {/* Live Preview Banner */}
           <div className="relative mb-2 mt-3 h-20 w-full overflow-hidden rounded-2xl border border-border">
             <img
-              src={profile?.cover_url || defaultCover}
+              src={profile?.cover_url || CAPA_PADRAO_URL}
               alt="Capa de Perfil"
               className="size-full object-cover"
             />

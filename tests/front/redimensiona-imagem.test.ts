@@ -58,15 +58,33 @@ describe("planoDaImagem — o que o upload redimensiona", () => {
     expect(plano.mime).toBe("image/png");
   });
 
-  it("GIF, SVG, webp e HEIC passam intactos (rasterizar os mata)", () => {
-    for (const mime of [
-      "image/gif",
-      "image/svg+xml",
-      "image/webp",
-      "image/heic",
-    ]) {
+  it("GIF, SVG e HEIC passam intactos (rasterizar os mata)", () => {
+    for (const mime of ["image/gif", "image/svg+xml", "image/heic"]) {
       expect(
         planoDaImagem(mime, 5 * 1024 * 1024, 4000, 3000).redimensionar,
+      ).toBe(false);
+    }
+  });
+
+  it("WebP grande redimensiona e continua WebP (a transparência sobrevive)", () => {
+    const plano = planoDaImagem("image/webp", 6 * 1024 * 1024, 4000, 3000);
+    expect(plano.redimensionar).toBe(true);
+    expect(plano.lado).toBe(LADO_MAXIMO_UPLOAD);
+    expect(plano.mime).toBe("image/webp");
+  });
+
+  it("AVIF grande redimensiona e vira WebP (o navegador não grava AVIF; WebP guarda a transparência)", () => {
+    const plano = planoDaImagem("image/avif", 6 * 1024 * 1024, 4000, 3000);
+    expect(plano.redimensionar).toBe(true);
+    expect(plano.lado).toBe(LADO_MAXIMO_UPLOAD);
+    expect(plano.mime).toBe("image/webp");
+  });
+
+  it("WebP e AVIF leves (abaixo do peso mínimo) passam intactos", () => {
+    for (const mime of ["image/webp", "image/avif"]) {
+      expect(
+        planoDaImagem(mime, PESO_MINIMO_PARA_REDIMENSIONAR - 1, 4000, 3000)
+          .redimensionar,
       ).toBe(false);
     }
   });

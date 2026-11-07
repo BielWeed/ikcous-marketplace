@@ -209,7 +209,7 @@ describe("OrderDetailsView — fechar a avaliação não joga fora o texto", () 
     await abrirAFolhaDeAvaliacao();
     await digitar("Chegou rápido e serve certinho");
     const fundo = document.body.querySelector<HTMLElement>(
-      '[aria-label="Fechar avaliacao"]',
+      '[role="button"][aria-label="Fechar avaliação"]',
     );
     await clicar(fundo);
 

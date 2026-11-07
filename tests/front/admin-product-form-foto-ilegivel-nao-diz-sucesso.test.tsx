@@ -199,6 +199,45 @@ describe("AdminProductFormView — foto ilegível não diz 'sucesso'", () => {
     expect(aviso?.[1]).toEqual({ id: ID_DO_AVISO });
   });
 
+  // 50 KB: ABAIXO do piso em que a foto passava direto sem nem ser aberta --
+  // o arquivo pequeno que o aparelho não abre era publicado com "sucesso".
+  const fotoPequena = (nome: string) => {
+    const f = new File(["x"], nome, { type: "image/jpeg", lastModified: 1 });
+    Object.defineProperty(f, "size", { value: 50 * 1024 });
+    return f;
+  };
+
+  it("foto PEQUENA (menos de 100 KB) que não abre: nada sobe, só o vermelho, sem 'sucesso'", async () => {
+    await montar();
+    await enviar([fotoPequena("ruim.jpg")]);
+
+    expect(mocks.uploadProductImages).not.toHaveBeenCalled();
+    expect(textoDosErros()).toMatch(/ruim\.jpg/);
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();
+    expect(mocks.toastDismiss).toHaveBeenCalledWith(ID_DO_AVISO);
+  });
+
+  it("uma pequena boa e uma pequena que não abre: diz '1 de 2 fotos enviadas', sem 'sucesso'", async () => {
+    await montar();
+    await enviar([fotoPequena("boa.jpg"), fotoPequena("ruim.jpg")]);
+
+    expect(mocks.uploadProductImages).toHaveBeenCalledTimes(1);
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();
+    expect(String(mocks.toastWarning.mock.calls.at(-1)?.[0])).toBe(
+      "1 de 2 fotos enviadas; 1 não abriu.",
+    );
+  });
+
+  it("controle: foto pequena que abre sobe intacta e dá o aviso de sucesso", async () => {
+    await montar();
+    const boa = fotoPequena("boa.jpg");
+    await enviar([boa]);
+
+    expect(mocks.uploadProductImages).toHaveBeenCalledTimes(1);
+    expect(mocks.uploadProductImages.mock.calls[0][0][0]).toBe(boa);
+    expect(mocks.toastSuccess).toHaveBeenCalledTimes(1);
+  });
+
   it("controle: todas boas continuam dando o aviso de sucesso", async () => {
     await montar();
     await enviar([foto("a.jpg"), foto("b.jpg")]);

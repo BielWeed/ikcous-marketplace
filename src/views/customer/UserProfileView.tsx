@@ -4,7 +4,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { supabase } from "@/lib/supabase";
 import { tempoRelativo } from "@/lib/tempo-relativo";
 import type { View } from "@/types";
-import { getPredefinedCoverSvg } from "@/utils/covers";
+import { CAPA_PADRAO_URL } from "@/utils/covers";
 import { haptic } from "@/utils/haptic";
 import { format } from "date-fns/format";
 import { ptBR } from "date-fns/locale/pt-BR";
@@ -154,11 +154,6 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
   const [tentativa, setTentativa] = useState(0);
   const [activeTab, setActiveTab] = useState<"reviews" | "questions">(
     "reviews",
-  );
-
-  const defaultCover = useMemo(
-    () => getPredefinedCoverSvg("#4F46E5", "#06B6D4", "waves"),
-    [],
   );
 
   // Regra de produto (11/09/2026, invertida em 13/09/2026 — #487/#561): o
@@ -420,7 +415,7 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
       {/* Header Cover Banner */}
       <div className="group relative h-44 w-full overflow-hidden bg-zinc-100 shadow-inner">
         <img
-          src={profile.cover_url || defaultCover}
+          src={profile.cover_url || CAPA_PADRAO_URL}
           alt="Capa de Perfil"
           className="group-hover:scale-102 size-full object-cover transition-transform duration-700"
         />

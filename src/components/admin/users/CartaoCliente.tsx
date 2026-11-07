@@ -110,6 +110,7 @@ export const CartaoCliente = memo(function CartaoCliente({
   onNavigate,
   onPrefetch,
   onCargoMudou,
+  onCargoIncerto,
 }: {
   readonly customer: Customer;
   readonly detalhado?: boolean;
@@ -117,6 +118,8 @@ export const CartaoCliente = memo(function CartaoCliente({
   readonly onPrefetch: () => void;
   /** Avisa a lista que o cargo mudou (para o selo mudar sem recarregar). */
   readonly onCargoMudou?: (id: string, novoCargo: CargoDaConta) => void;
+  /** A rede não respondeu ao mudar o cargo: a lista relê o que o banco tem. */
+  readonly onCargoIncerto?: () => void;
 }) {
   const [menuAberto, setMenuAberto] = useState(false);
   // Ação de cargo escolhida na folha. A confirmação é um diálogo à parte: a
@@ -340,6 +343,7 @@ export const CartaoCliente = memo(function CartaoCliente({
           customer={customer}
           aoFechar={fecharConfirmacao}
           aoConcluir={(id, cargo) => onCargoMudou?.(id, cargo)}
+          aoFicarIncerto={() => onCargoIncerto?.()}
           retornoDoFoco={gatilhoRef}
         />
       </div>
