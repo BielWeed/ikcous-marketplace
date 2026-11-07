@@ -1,4 +1,5 @@
 import { Switch } from "@/components/ui/switch";
+import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
 import {
   type LayoutDeOfertas,
   normalizarLayoutDeOfertas,
@@ -15,6 +16,7 @@ import {
   Hand,
   Tag,
 } from "lucide-react";
+import { useState } from "react";
 import {
   QUANTIDADE_PADRAO,
   type SecaoDaHome,
@@ -64,6 +66,28 @@ const OPCOES_DE_LAYOUT: readonly {
  * Desligada: borda tracejada, fundo vazado, nome e fotos apagados — dá para
  * ver de longe o que a loja não está mostrando.
  */
+/**
+ * Foto de 42 px: pede a versão pequena, cai para a original se a pequena falha
+ * e, se nem assim, troca para o ícone (antes ficava o ícone de imagem quebrada).
+ */
+function FotoDaMiniatura({ foto }: { readonly foto: string | undefined }) {
+  const [fotoComErro, setFotoComErro] = useState<string | null>(null);
+  if (!foto || foto === fotoComErro)
+    return <Tag className="size-4 text-zinc-600" />;
+  return (
+    <img
+      src={imagemRedimensionada(foto, { width: 120, quality: 70 })}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      onError={(e) => {
+        if (!usarImagemOriginal(e.currentTarget, foto)) setFotoComErro(foto);
+      }}
+      className="size-full object-cover"
+    />
+  );
+}
+
 export function CartaoDaVitrine({
   secao,
   indice,
@@ -203,17 +227,7 @@ export function CartaoDaVitrine({
                 className="relative flex size-[42px] shrink-0 items-center justify-center overflow-hidden rounded-[12px] border border-admin-border bg-zinc-800"
                 title={produto.name}
               >
-                {produto.images?.[0] ? (
-                  <img
-                    src={produto.images[0]}
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                    className="size-full object-cover"
-                  />
-                ) : (
-                  <Tag className="size-4 text-zinc-600" />
-                )}
+                <FotoDaMiniatura foto={produto.images?.[0]} />
               </span>
             ))
           )}

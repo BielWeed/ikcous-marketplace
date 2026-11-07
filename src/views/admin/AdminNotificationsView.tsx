@@ -313,7 +313,10 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
       data-aviso={aviso.tipo}
       onClick={() => {
         if (aviso.destino.limparFiltros) {
-          limparGuardadosAoChegarPorAviso(aviso.destino.view);
+          limparGuardadosAoChegarPorAviso(
+            aviso.destino.view,
+            aviso.destino.soEmModeracao ? { soEmModeracao: true } : {},
+          );
         }
         onNavigate(aviso.destino.view, aviso.destino.id);
       }}

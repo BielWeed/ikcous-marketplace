@@ -34,6 +34,11 @@ export interface Aviso {
     id?: string;
     /** A tela guarda filtro/busca/página: ao chegar por este aviso, zera. */
     limparFiltros?: true;
+    /**
+     * Depois de zerar, a tela Avaliações abre só com a fila "Em moderação"
+     * (a avaliação que o aviso cita ainda não está publicada).
+     */
+    soEmModeracao?: true;
   };
   contaNoCracha: boolean;
 }
@@ -216,6 +221,11 @@ export interface AvaliacaoSemResposta {
   nomeDoProduto: string | null;
   rating: number;
   created_at: string;
+  /**
+   * `pendente` = ainda nao publicada (espera o Aprovar da loja). Opcional:
+   * ausente = lida sem o campo, tratada como ja publicada.
+   */
+  status?: string | null;
 }
 
 export interface ProdutoComEstoque {
@@ -404,13 +414,19 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
   }
 
   for (const avaliacao of entrada.avaliacoes) {
+    // Avaliacao `pendente` ainda nao esta no produto: o ato que falta e' o
+    // Aprovar, nao a resposta. Responder nao a publica, entao o titulo diz
+    // "aguardando aprovacao" e a tela abre ja em "Em moderacao".
+    const aguardaAprovacao = avaliacao.status === "pendente";
     avisos.push({
       id: `avaliacao:${avaliacao.id}`,
       tipo: "avaliacao",
-      titulo: `Avaliação de ${avaliacao.rating} estrela${avaliacao.rating === 1 ? "" : "s"} sem resposta`,
+      titulo: `Avaliação de ${avaliacao.rating} estrela${avaliacao.rating === 1 ? "" : "s"} ${aguardaAprovacao ? "aguardando aprovação" : "sem resposta"}`,
       detalhe: avaliacao.nomeDoProduto || "Produto",
       quando: avaliacao.created_at,
-      destino: { view: "admin-reviews", limparFiltros: true },
+      destino: aguardaAprovacao
+        ? { view: "admin-reviews", limparFiltros: true, soEmModeracao: true }
+        : { view: "admin-reviews", limparFiltros: true },
       contaNoCracha: true,
     });
   }

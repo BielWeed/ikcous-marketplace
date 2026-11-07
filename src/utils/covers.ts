@@ -168,20 +168,20 @@ export const compressCoverImage = (
     img.src = base64Str;
     img.onload = () => {
       const canvas = document.createElement("canvas");
-      let width = img.width;
-      let height = img.height;
 
-      if (width / height > maxWidth / maxHeight) {
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-        }
-      } else {
-        if (height > maxHeight) {
-          width = Math.round((width * maxHeight) / height);
-          height = maxHeight;
-        }
-      }
+      // A faixa da capa é larga e baixa (object-cover): só o recorte central
+      // nesse formato aparece. Encaixar a foto inteira na caixa deixava 400x300
+      // (ou ~225x300 em pé) e a faixa esticava o arquivo 3 a 5 vezes.
+      let sw = img.width;
+      let sh = img.height;
+      if (sw * maxHeight > sh * maxWidth) sw = (sh * maxWidth) / maxHeight;
+      else sh = (sw * maxHeight) / maxWidth;
+      const sx = (img.width - sw) / 2;
+      const sy = (img.height - sh) / 2;
+
+      // Sem ampliar: foto pequena fica no tamanho do recorte.
+      const width = Math.round(Math.min(maxWidth, sw));
+      const height = Math.round((width * maxHeight) / maxWidth);
 
       canvas.width = width;
       canvas.height = height;
@@ -193,7 +193,7 @@ export const compressCoverImage = (
         ctx.fillStyle = "#FFFFFF";
         ctx.fillRect(0, 0, width, height);
       }
-      ctx?.drawImage(img, 0, 0, width, height);
+      ctx?.drawImage(img, sx, sy, sw, sh, 0, 0, width, height);
       resolve(canvas.toDataURL("image/jpeg", 0.85)); // 85% quality
     };
     img.onerror = () => {

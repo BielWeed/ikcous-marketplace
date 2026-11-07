@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useProducts } from "@/hooks/useProducts";
+import { FILTRO_POSTGREST_AVALIACAO_PARA_ATENDER } from "@/lib/avaliacoes-para-atender";
 import { contagemDe, lerListaAdmin } from "@/lib/devolucao";
 import {
   FILTRO_POSTGREST_PARA_PREPARAR,
@@ -76,6 +77,7 @@ interface AvaliacaoCrua {
   product_id: string;
   rating: number;
   created_at: string;
+  status: string | null;
 }
 
 // A regra unica "para preparar" (onda F, F2b) — a mesma do selo de Pedidos
@@ -145,11 +147,12 @@ async function buscarPedidosDePrivacidadeAbertos(): Promise<number> {
   return count;
 }
 
-// `.is(null)` e nao "null ou string vazia": o SQL do painel trata resposta em
-// branco como pendente, mas o app nunca grava uma — as duas telas de resposta
-// barram com `if (!replyText.trim()) return` (AdminReviewsView) antes de
-// chamar a RPC. Alargar a consulta por um caso que o proprio app nao produz
-// custaria um `.or` e nenhuma verdade a mais.
+// `merchant_reply.is.null` e nao "null ou string vazia": o SQL do painel trata
+// resposta em branco como pendente, mas o app nunca grava uma — as duas telas
+// de resposta barram com `if (!replyText.trim()) return` (AdminReviewsView)
+// antes de chamar a RPC. Alem de "sem resposta" entra a avaliacao `pendente`
+// (ainda nao publicada): responder nao a publica, entao ela continua no sino
+// ate o Aprovar (`@/lib/avaliacoes-para-atender`, a mesma regra da bolinha).
 interface LeituraDeAvaliacoes {
   avaliacoes: AvaliacaoSemResposta[];
   /** Havia mais sem resposta que o teto: esta lista traz so as mais novas. */
@@ -159,8 +162,8 @@ interface LeituraDeAvaliacoes {
 async function buscarAvaliacoesSemResposta(): Promise<LeituraDeAvaliacoes> {
   const { data, error, count } = await supabase
     .from("reviews")
-    .select("id, product_id, rating, created_at", { count: "exact" })
-    .is("merchant_reply", null)
+    .select("id, product_id, rating, created_at, status", { count: "exact" })
+    .or(FILTRO_POSTGREST_AVALIACAO_PARA_ATENDER)
     .order("created_at", { ascending: false })
     .limit(TETO_DE_AVALIACOES);
 

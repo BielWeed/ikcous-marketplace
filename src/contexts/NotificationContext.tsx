@@ -46,6 +46,23 @@ function campanhaValeParaACliente(
   return Number.isNaN(conta) || criada >= conta;
 }
 
+// Quantos avisos próprios a tela lê de uma vez. Se a consulta voltar CHEIA,
+// pode haver avisos mais antigos fora da lista — a tela avisa a cliente.
+const LIMITE_DOS_AVISOS_PROPRIOS = 50;
+
+// "Marcar como lida" grava só os ids que a cliente tinha na mão. Os ids vão
+// na URL do pedido (`id=in.(...)`): em lotes, para uma lista grande não
+// estourar o tamanho da URL.
+const IDS_POR_PEDIDO_AO_BANCO = 100;
+
+function emLotes<T>(itens: T[], tamanho = IDS_POR_PEDIDO_AO_BANCO): T[][] {
+  const lotes: T[][] = [];
+  for (let i = 0; i < itens.length; i += tamanho) {
+    lotes.push(itens.slice(i, i + tamanho));
+  }
+  return lotes;
+}
+
 interface EstadoLocalDaCampanha {
   lidas: Set<string>;
   ocultas: Set<string>;
@@ -95,6 +112,9 @@ export function NotificationProvider({
   // "Tudo em ordem" para uma cliente com avisos não lidos que a consulta
   // não conseguiu trazer.
   const [erro, setErro] = useState<string | null>(null);
+  // A última consulta dos avisos próprios voltou cheia: a lista pode ter
+  // avisos mais antigos que não aparecem.
+  const [listaCortada, setListaCortada] = useState(false);
   // Troca direta de conta (A→B sem passar por deslogado): o efeito de limpeza
   // roda DEPOIS do primeiro quadro, que mostraria os avisos de A para B. Zerar
   // durante a renderização faz o React descartar esse quadro antes de pintar.
@@ -102,6 +122,7 @@ export function NotificationProvider({
   if (donoDosAvisos !== (user?.id ?? null)) {
     setDonoDosAvisos(user?.id ?? null);
     setNotifications([]);
+    setListaCortada(false);
     setErro(null);
     // O efeito logo abaixo busca os avisos da conta nova: até lá o quadro já
     // diz "carregando", em vez de anunciar uma caixa vazia ("Tudo em ordem").
@@ -126,6 +147,7 @@ export function NotificationProvider({
       // Troca direta de conta também encerra os dados da sessão anterior,
       // antes de buscar os avisos da nova conta (mesmo se a consulta falhar).
       setNotifications([]);
+      setListaCortada(false);
       campanhaIdsRef.current = new Set();
       setErro(null);
     }
@@ -137,6 +159,7 @@ export function NotificationProvider({
       if (!user) {
         rodadaRef.current++;
         setNotifications([]);
+        setListaCortada(false);
         campanhaIdsRef.current = new Set();
         setLoading(false);
         // Este ramo NÃO é o caminho do logout (o efeito lá embaixo é, e a
@@ -173,7 +196,7 @@ export function NotificationProvider({
             .select("*")
             .eq("usuario_id", user.id)
             .order("created_at", { ascending: false })
-            .limit(50),
+            .limit(LIMITE_DOS_AVISOS_PROPRIOS),
           supabase
             .from("notificacoes")
             .select("*")
@@ -220,6 +243,9 @@ export function NotificationProvider({
 
         campanhaIdsRef.current = campanhaIds;
         setNotifications(mappedData);
+        setListaCortada(
+          (dosProprios.data || []).length >= LIMITE_DOS_AVISOS_PROPRIOS,
+        );
         setErro(null);
       } catch (err) {
         if (ehVelha()) return;
@@ -329,17 +355,23 @@ export function NotificationProvider({
 
       const donoDaOperacao = user.id;
       try {
-        const { error } = await supabase
-          .from("notificacoes")
-          .update({ lida: true })
-          .eq("usuario_id", donoDaOperacao)
-          .eq("lida", false)
-          .contains("dados", { order_id: orderId });
-        if (error) throw error;
+        // O UPDATE vai FILTRADO pelos ids que a cliente tinha na mão: sem o
+        // filtro de ids, o banco marcava também o aviso do mesmo pedido que
+        // nasceu enquanto o pedido de gravar ainda viajava.
+        for (const lote of emLotes(Array.from(idsDoPedido))) {
+          const { error } = await supabase
+            .from("notificacoes")
+            .update({ lida: true })
+            .in("id", lote)
+            .eq("usuario_id", donoDaOperacao)
+            .eq("lida", false)
+            .contains("dados", { order_id: orderId });
+          if (error) throw error;
+        }
         if (usuarioAtualIdRef.current !== donoDaOperacao) return;
         invalidarConsultasEmVoo();
         // Só os que estavam na lista quando a chamada saiu: aviso que chegou
-        // durante o UPDATE continua não lido.
+        // durante o UPDATE continua não lido (na tela e no banco).
         setNotifications((prev) =>
           prev.map((n) => (idsDoPedido.has(n.id) ? { ...n, read: true } : n)),
         );
@@ -361,12 +393,27 @@ export function NotificationProvider({
     const idsDeCampanhaNaoLidos = Array.from(idsNaoLidos).filter((id) =>
       campanhaIdsRef.current.has(id),
     );
+    // Só os avisos PRÓPRIOS que a cliente tinha na tela: o UPDATE vai
+    // filtrado por esses ids. Sem o filtro, o banco marcava também o aviso
+    // que nasceu durante o toque e os mais antigos que a lista de 50 nunca
+    // mostrou. Lotes sequenciais: o primeiro que falhar interrompe o resto.
+    const idsPropriosNaoLidos = Array.from(idsNaoLidos).filter(
+      (id) => !campanhaIdsRef.current.has(id),
+    );
     try {
-      const { error } = await supabase
-        .from("notificacoes")
-        .update({ lida: true })
-        .eq("usuario_id", donoDaOperacao)
-        .eq("lida", false);
+      let error: unknown = null;
+      for (const lote of emLotes(idsPropriosNaoLidos)) {
+        const resposta = await supabase
+          .from("notificacoes")
+          .update({ lida: true })
+          .in("id", lote)
+          .eq("usuario_id", donoDaOperacao)
+          .eq("lida", false);
+        if (resposta.error) {
+          error = resposta.error;
+          break;
+        }
+      }
 
       const contaMudou = usuarioAtualIdRef.current !== donoDaOperacao;
       if (error) {
@@ -389,7 +436,8 @@ export function NotificationProvider({
       if (contaMudou) return;
       invalidarConsultasEmVoo();
 
-      // Avisos que chegaram durante o UPDATE continuam não lidos.
+      // Avisos que chegaram durante o UPDATE continuam não lidos (na tela e,
+      // agora, também no banco).
       setNotifications((prev) =>
         prev.map((n) => (idsNaoLidos.has(n.id) ? { ...n, read: true } : n)),
       );
@@ -540,6 +588,7 @@ export function NotificationProvider({
       };
     }
     setNotifications([]);
+    setListaCortada(false);
     setLoading(false);
     // ESTE é o caminho do logout — o efeito não chama `fetchNotifications`
     // quando `user` some, então limpar `erro` lá dentro não alcança aqui.
@@ -561,6 +610,7 @@ export function NotificationProvider({
       unreadCount,
       loading,
       erro,
+      listaCortada,
       semConta: !user && !carregandoConta,
       markAsRead,
       markOrderAsRead,
@@ -573,6 +623,7 @@ export function NotificationProvider({
       unreadCount,
       loading,
       erro,
+      listaCortada,
       user,
       carregandoConta,
       markAsRead,

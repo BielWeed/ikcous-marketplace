@@ -395,7 +395,7 @@ export function ProductQA({
                         </div>
                         <p
                           className={cn(
-                            "break-words pl-0.5 font-medium italic leading-relaxed text-zinc-700",
+                            "whitespace-pre-line break-words pl-0.5 font-medium italic leading-relaxed text-zinc-700",
                             "lg:text-sm",
                           )}
                         >
@@ -413,10 +413,10 @@ export function ProductQA({
                   {replyingTo === q.id ? (
                     <div className="space-y-2 duration-200 animate-in fade-in">
                       <div className="relative">
-                        <input
+                        <textarea
                           id={`qa-reply-${q.id}`}
                           name="replyText"
-                          type="text"
+                          rows={3}
                           value={replyText}
                           onChange={(e) => {
                             respostaVersaoRef.current += 1;

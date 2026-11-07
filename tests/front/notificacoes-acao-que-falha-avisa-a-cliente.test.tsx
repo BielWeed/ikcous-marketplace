@@ -71,10 +71,17 @@ const respostaComErro = { data: null, error: erroDeRede };
 
 function fabricarFrom() {
   return {
+    // O provider consulta em duas pontas: avisos próprios (`.eq`) e campanha
+    // (`.is`). A consulta de campanha volta vazia.
     select: () => ({
-      or: () => ({
+      eq: () => ({
         order: () => ({
           limit: () => Promise.resolve({ data: [linhaDaCliente], error: null }),
+        }),
+      }),
+      is: () => ({
+        order: () => ({
+          limit: () => Promise.resolve({ data: [], error: null }),
         }),
       }),
     }),
@@ -83,6 +90,12 @@ function fabricarFrom() {
         Object.assign(Promise.resolve(respostaComErro), {
           eq: () => Promise.resolve(respostaComErro),
         }),
+      // `markAllAsRead` filtra por ids: `.in().eq().eq()`.
+      in: () => ({
+        eq: () => ({
+          eq: () => Promise.resolve(respostaComErro),
+        }),
+      }),
     }),
     delete: () => ({
       eq: () => Promise.resolve(respostaComErro),

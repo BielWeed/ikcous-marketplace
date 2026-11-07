@@ -95,12 +95,17 @@ function localizarBotaoPorTexto(texto: string, dentroDe: HTMLElement) {
 }
 
 // Mesmo padrão de tests/front/checkout-guest-cep.test.tsx: dispara o setter
-// nativo do input (não a propriedade do React) para que o onChange
-// controlado do componente veja o novo valor.
+// nativo do campo (não a propriedade do React) para que o onChange
+// controlado do componente veja o novo valor. A resposta da loja é um
+// <textarea> (várias linhas), a pergunta é um <input>: o setter é do tipo certo.
 function digitar(id: string, valor: string) {
-  const el = document.getElementById(id) as HTMLInputElement;
+  const el = document.getElementById(id) as
+    | HTMLInputElement
+    | HTMLTextAreaElement;
   const setter = Object.getOwnPropertyDescriptor(
-    globalThis.HTMLInputElement.prototype,
+    el.tagName === "TEXTAREA"
+      ? globalThis.HTMLTextAreaElement.prototype
+      : globalThis.HTMLInputElement.prototype,
     "value",
   )!.set!;
   setter.call(el, valor);

@@ -47,6 +47,11 @@ import {
 } from "@/lib/financeiro";
 import { soFotosReais } from "@/lib/foto-do-produto";
 import { mesmaCategoria } from "@/lib/gestao-de-categorias";
+import {
+  comMarcaDeTentativa,
+  imagemRedimensionada,
+  usarImagemOriginal,
+} from "@/lib/imageUrl";
 import { percentualComUmaCasa } from "@/lib/percentual";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
@@ -2372,31 +2377,94 @@ interface AdminProductCardProps {
   readonly onPrefetch?: () => void;
 }
 
+// Espera (ms) antes de cada nova tentativa AUTOMÁTICA da foto do catálogo;
+// o tamanho da lista é o teto -- depois dela só a rede voltando tenta de novo.
+const ESPERAS_DA_FOTO_DO_CATALOGO_MS: readonly number[] = [1500, 3000];
+
 /** A mesma foto, ações e nomes acessíveis nos dois modos do catálogo. */
 function FotoDoCatalogo({ product }: { readonly product: any }) {
   const foto = soFotosReais(product.images)[0];
-  const [fotoComErro, setFotoComErro] = useState<string | null>(null);
+  // Rede oscilando: a falha não é definitiva na primeira vez (antes, um solavanco
+  // de 2 s deixava "Foto indisponível" até recarregar a tela, e a lojista podia
+  // achar que perdeu a foto). `tentativa` serve de `key` do <img> (pedido novo)
+  // e de marca na URL (`_r=N`, para não reaproveitar uma falha guardada).
+  const [fotoVista, setFotoVista] = useState(foto);
+  const [tentativa, setTentativa] = useState(0);
+  const [desistiu, setDesistiu] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Foto nova: as falhas da antiga não valem para ela.
+  if (foto !== fotoVista) {
+    setFotoVista(foto);
+    setTentativa(0);
+    setDesistiu(false);
+  }
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = null;
+    },
+    [foto],
+  );
+  // Desistiu e a internet voltou: mais um pedido (não é laço: precisa de um
+  // novo evento de rede para repetir).
+  useEffect(() => {
+    if (!desistiu) return;
+    const aoVoltarARede = () => {
+      setDesistiu(false);
+      setTentativa((t) => t + 1);
+    };
+    window.addEventListener("online", aoVoltarARede);
+    return () => window.removeEventListener("online", aoVoltarARede);
+  }, [desistiu]);
+
   // A foto fica dentro do gatilho do menu: o aviso de erro não pode criar outro botão.
-  return foto && foto !== fotoComErro ? (
+  if (!foto || desistiu) {
+    return (
+      <span
+        data-tema-fixo=""
+        className="flex size-full flex-col items-center justify-center gap-1 bg-zinc-100 p-2 text-center text-[11px] text-zinc-600"
+      >
+        <Camera aria-hidden="true" className="size-5 shrink-0 text-slate-600" />
+        <span>{foto ? "Foto indisponível" : "Sem foto"}</span>
+      </span>
+    );
+  }
+  // Miniatura: o catálogo não precisa da original inteira (que em produto
+  // antigo chega a vários MB e falha mais fácil na rede ruim).
+  const pequena = imagemRedimensionada(foto, { width: 320, quality: 70 });
+  return (
     <img
-      src={foto}
+      key={tentativa}
+      src={comMarcaDeTentativa(pequena, tentativa)}
       alt={product.name}
       loading="lazy"
       decoding="async"
-      onError={() => setFotoComErro(foto)}
+      onError={(e) => {
+        // Primeira queda: a foto pequena falhou, tenta a original.
+        if (
+          pequena !== foto &&
+          usarImagemOriginal(
+            e.currentTarget,
+            comMarcaDeTentativa(foto, tentativa),
+          )
+        )
+          return;
+        const espera = ESPERAS_DA_FOTO_DO_CATALOGO_MS.at(tentativa);
+        if (espera === undefined) {
+          setDesistiu(true);
+          return;
+        }
+        if (timerRef.current) return;
+        timerRef.current = setTimeout(() => {
+          timerRef.current = null;
+          setTentativa((t) => t + 1);
+        }, espera);
+      }}
       className={cn(
         "size-full object-contain",
         !product.isActive && "opacity-40 grayscale",
       )}
     />
-  ) : (
-    <span
-      data-tema-fixo=""
-      className="flex size-full flex-col items-center justify-center gap-1 bg-zinc-100 p-2 text-center text-[11px] text-zinc-600"
-    >
-      <Camera aria-hidden="true" className="size-5 shrink-0 text-slate-600" />
-      <span>{foto ? "Foto indisponível" : "Sem foto"}</span>
-    </span>
   );
 }
 

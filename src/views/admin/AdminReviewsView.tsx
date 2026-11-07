@@ -268,13 +268,15 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   // Removed ref tracking for filter changes in favor of direct state resets
 
   // Chegou pelo aviso "avaliação sem resposta": lista inteira, sem filtro,
-  // busca nem página guardados (mesmos setters do "limpar").
+  // busca nem página guardados (mesmos setters do "limpar"). O aviso de
+  // avaliação aguardando aprovação chega com "Em moderação" ligado.
   useEffect(
     () =>
-      aoChegarPorAviso("admin-reviews", () => {
+      aoChegarPorAviso("admin-reviews", (opcoes) => {
         setSearchQuery("");
         setRatingFilter("all");
-        setStatusFilter("todas");
+        // Aviso de avaliação aguardando aprovação: abre só a fila.
+        setStatusFilter(opcoes.soEmModeracao ? "pendente" : "todas");
         setPage(0);
       }),
     [setSearchQuery, setRatingFilter, setStatusFilter, setPage],

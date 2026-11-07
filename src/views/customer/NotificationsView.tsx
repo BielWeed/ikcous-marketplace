@@ -140,6 +140,7 @@ export function NotificationsView({
     deleteNotification,
     markAsRead,
     semConta,
+    listaCortada,
   } = useNotificationCenter();
 
   const [activeTab, setActiveTab] = useState<TabType>("todas");
@@ -532,6 +533,13 @@ export function NotificationsView({
               {visitante ? "Entrar" : "Explorar Ofertas"}
             </Button>
           </div>
+        )}
+        {/* A consulta traz os 50 avisos mais recentes: sem este recado, quem
+         * tem mais que isso acha que viu o histórico inteiro. */}
+        {listaCortada && filteredNotifications.length > 0 && (
+          <p className="px-2 py-6 text-center text-[13px] leading-5 text-muted-foreground">
+            Mostrando os 50 avisos mais recentes.
+          </p>
         )}
       </div>
     </div>

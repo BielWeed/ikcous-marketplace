@@ -12,6 +12,7 @@
 // Dinheiro sempre em CENTAVOS inteiros antes de somar/subtrair — `50 - 4.23`
 // em ponto flutuante dá `45.769999…`, não `45.77`.
 
+import { semMenosZero } from "@/lib/percentual";
 import { reaisComVirgula } from "@/lib/utils";
 import type {
   CaixaAtual,
@@ -99,8 +100,10 @@ export function formatarBRLCompacto(valor: number): string {
 /** "12,3%" ou "—" quando não há base. */
 export function formatarPercentual(percentual: number | null): string {
   if (percentual === null || !Number.isFinite(percentual)) return "—";
-  const texto = FORMATADOR_PERCENTUAL.format(Math.abs(percentual));
-  return `${percentual < 0 ? SINAL_DE_MENOS : ""}${texto}%`;
+  // O sinal é decidido DEPOIS do arredondamento: -0,025 vira "0,0%", não "−0,0%".
+  const valor = semMenosZero(percentual, 1);
+  const texto = FORMATADOR_PERCENTUAL.format(Math.abs(valor));
+  return `${valor < 0 ? SINAL_DE_MENOS : ""}${texto}%`;
 }
 
 const SO_DIGITOS = /^\d+$/;

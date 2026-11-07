@@ -60,10 +60,15 @@ function pendente<T>() {
   return { promessa, resolver };
 }
 
+// A pergunta é um <input>; a resposta da loja é um <textarea> (várias linhas).
+type Campo = HTMLInputElement | HTMLTextAreaElement;
+
 function campo(id: string) {
   const input = document.getElementById(id);
-  expect(input).toBeInstanceOf(HTMLInputElement);
-  return input as HTMLInputElement;
+  expect(
+    input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement,
+  ).toBe(true);
+  return input as Campo;
 }
 
 function digitar(id: string, valor: string) {
@@ -71,10 +76,14 @@ function digitar(id: string, valor: string) {
     const input = campo(id);
     expect(input.disabled).toBe(false);
     expect(input.readOnly).toBe(false);
-    Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      "value",
-    )!.set!.call(input, valor);
+    const prototipo =
+      input instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(prototipo, "value")!.set!.call(
+      input,
+      valor,
+    );
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }

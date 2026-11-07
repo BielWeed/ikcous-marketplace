@@ -25,7 +25,20 @@ const CHAVES_GUARDADAS = new Map<View, readonly string[]>([
 
 const EVENTO = "ikcous:chegada-por-aviso";
 
-export function limparGuardadosAoChegarPorAviso(view: View): void {
+/** O que o aviso pede além de zerar: hoje, só a fila "Em moderação" das Avaliações. */
+export interface OpcoesDeChegada {
+  soEmModeracao?: true;
+}
+
+interface DetalheDaChegada {
+  view: View;
+  opcoes: OpcoesDeChegada;
+}
+
+export function limparGuardadosAoChegarPorAviso(
+  view: View,
+  opcoes: OpcoesDeChegada = {},
+): void {
   if (typeof window === "undefined") return;
   for (const chave of CHAVES_GUARDADAS.get(view) ?? []) {
     try {
@@ -34,14 +47,32 @@ export function limparGuardadosAoChegarPorAviso(view: View): void {
       // Sem armazenamento: a tela já abre nos padrões.
     }
   }
-  window.dispatchEvent(new CustomEvent<View>(EVENTO, { detail: view }));
+  // Tela ainda por abrir: o filtro de moderação nasce do armazenamento (mesma
+  // chave e formato do `useLocalStorage` da tela).
+  if (view === "admin-reviews" && opcoes.soEmModeracao) {
+    try {
+      window.localStorage.setItem(
+        "admin_reviews_status_filter",
+        JSON.stringify("pendente"),
+      );
+    } catch {
+      // Sem armazenamento: abre em "todas", com a avaliação na lista.
+    }
+  }
+  window.dispatchEvent(
+    new CustomEvent<DetalheDaChegada>(EVENTO, { detail: { view, opcoes } }),
+  );
 }
 
 /** Escuta a chegada por aviso à tela `view`; devolve o cancelamento. */
-export function aoChegarPorAviso(view: View, aoChegar: () => void) {
+export function aoChegarPorAviso(
+  view: View,
+  aoChegar: (opcoes: OpcoesDeChegada) => void,
+) {
   if (typeof window === "undefined") return () => {};
   const ouvinte = (evento: Event) => {
-    if ((evento as CustomEvent<View>).detail === view) aoChegar();
+    const detalhe = (evento as CustomEvent<DetalheDaChegada>).detail;
+    if (detalhe.view === view) aoChegar(detalhe.opcoes);
   };
   window.addEventListener(EVENTO, ouvinte);
   return () => window.removeEventListener(EVENTO, ouvinte);

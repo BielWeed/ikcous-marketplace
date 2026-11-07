@@ -191,6 +191,7 @@ vi.mock("@/hooks/useProducts", () => ({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 interface AvisoLido {
+  id: string;
   tipo: string;
   contaNoCracha: boolean;
   titulo: string;
@@ -676,16 +677,44 @@ describe("useAvisosDoLojista", () => {
     const consulta = CONSULTAS_DE_AVALIACOES[0];
     expect(consulta).toContainEqual([
       "select",
-      "id, product_id, rating, created_at",
+      "id, product_id, rating, created_at, status",
       { count: "exact" },
     ]);
-    expect(consulta).toContainEqual(["is", "merchant_reply", null]);
+    expect(consulta).toContainEqual([
+      "or",
+      "merchant_reply.is.null,status.eq.pendente",
+    ]);
     expect(consulta).toContainEqual([
       "order",
       "created_at",
       { ascending: false },
     ]);
     expect(consulta).toContainEqual(["limit", 100]);
+  });
+
+  it("avaliacao pendente (mesmo ja respondida) acende o sino com aviso de aprovacao", async () => {
+    // O servidor devolve a pendente porque a consulta pede `status = pendente`
+    // alem de "sem resposta"; o hook leva o `status` ate o titulo.
+    RESPOSTA_AVALIACOES = {
+      data: [
+        { ...avaliacaoDeExemplo(), id: "av-pend", status: "pendente" },
+        { ...avaliacaoDeExemplo(), id: "av-pub", status: "publicada" },
+      ],
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+
+    const titulos = Object.fromEntries(
+      atual()
+        .avisos.filter((a) => a.tipo === "avaliacao")
+        .map((a) => [a.id, a.titulo]),
+    );
+    expect(titulos).toEqual({
+      "avaliacao:av-pend": "Avaliação de 2 estrelas aguardando aprovação",
+      "avaliacao:av-pub": "Avaliação de 2 estrelas sem resposta",
+    });
+    expect(atual().quantidadeNoCracha).toBeGreaterThanOrEqual(2);
   });
 
   it("mais de 100 avaliacoes sem resposta: mostra as 100 e avisa que a lista esta cortada", async () => {

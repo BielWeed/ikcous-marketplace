@@ -24,6 +24,7 @@
 // dentro de `FechamentoDaVenda` — esta view deixa o erro CRU subir.
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AvisoDeVendaAntiga } from "@/components/admin/pdv/AvisoDeVendaAntiga";
 import { BuscaDeProduto } from "@/components/admin/pdv/BuscaDeProduto";
 import type {
   PaginaDeProdutosEncontrados,
@@ -103,6 +104,8 @@ export function AdminPdvView({
     despachar,
     subtotal,
     limparCupom: limparCupomDaVenda,
+    rascunhoAntigo,
+    continuarVendaAntiga,
   } = useVendaPresencial({
     userId: user?.id,
   });
@@ -756,6 +759,17 @@ export function AdminPdvView({
         <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-pdv"]} />
         <p className="pdv-muted">balcão</p>
       </div>
+
+      {/* Cupom que voltou e NÃO é de hoje: a lojista decide (continuar ou
+          descartar); nada é registrado nem apagado sozinho. */}
+      {rascunhoAntigo && estado.etapa === "cupom" && (
+        <AvisoDeVendaAntiga
+          salvoEm={rascunhoAntigo.salvoEm}
+          lidoEm={rascunhoAntigo.lidoEm}
+          aoContinuar={continuarVendaAntiga}
+          aoDescartar={limparCupom}
+        />
+      )}
 
       {estado.etapa === "cupom" && (
         <div
