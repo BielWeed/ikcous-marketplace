@@ -18,7 +18,8 @@ import {
 import { ordenacaoValida } from "@/lib/ordenacao-da-home";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { cn } from "@/lib/utils";
-import { ordenarParaVitrine } from "@/lib/vitrine";
+import { ordenarParaVitrine, produtoDisponivel } from "@/lib/vitrine";
+import { destaquesDaVitrine, ofertasDaVitrine } from "@/lib/vitrine-do-painel";
 import type { Product, SortOption, View } from "@/types";
 import {
   ArrowDown,
@@ -248,8 +249,8 @@ export const HomeView = React.memo(function HomeView({
 
     // Sort with availability (in-stock first) prioritization, preserving sort order
     result.sort((a, b) => {
-      const aAvailable = a.stock > 0 ? 1 : 0;
-      const bAvailable = b.stock > 0 ? 1 : 0;
+      const aAvailable = produtoDisponivel(a) ? 1 : 0;
+      const bAvailable = produtoDisponivel(b) ? 1 : 0;
       if (aAvailable !== bAvailable) {
         return bAvailable - aAvailable;
       }
@@ -325,20 +326,16 @@ export const HomeView = React.memo(function HomeView({
     );
   }, [produtosAVenda]);
 
-  const offerProducts = useMemo(() => {
-    return (
-      produtosAVenda
-        // UI-191 (G3): oferta é preço de VITRINE abaixo do "De" -- o menor entre
-        // as opções à venda --, não o preço-base do produto.
-        .filter((p) => precoDeVitrine(p).precoOriginal !== null)
-        .sort((a, b) => {
-          const aAvailable = a.stock > 0 ? 1 : 0;
-          const bAvailable = b.stock > 0 ? 1 : 0;
-          return bAvailable - aAvailable;
-        })
-        .slice(0, LIMITE_MAX_ITENS_CARROSSEL)
-    );
-  }, [produtosAVenda]);
+  // Ofertas e Destaques: a MESMA regra do preview do painel
+  // (src/lib/vitrine-do-painel.ts). A escolha NÃO pode depender da posição na
+  // lista -- ela muda com o cache e o Realtime --, então vale o critério da
+  // vitrine (com estoque primeiro, mais novo primeiro, id no empate). UI-191
+  // (G3): oferta é preço de VITRINE abaixo do "De" -- o menor entre as opções
+  // à venda --, não o preço-base do produto.
+  const offerProducts = useMemo(
+    () => ofertasDaVitrine(produtosAVenda).slice(0, LIMITE_MAX_ITENS_CARROSSEL),
+    [produtosAVenda],
+  );
 
   // Quantas ofertas a faixa de Ofertas MOSTRA (mesma conta do render: lista escolhida à mão ou derivada, cortada
   // pelo maxItems). O "Lateral em duas fileiras" tem 1 fileira com 1 oferta e 2 com várias: a memória guarda
@@ -356,16 +353,11 @@ export const HomeView = React.memo(function HomeView({
     return Math.min(max, offerProducts.length);
   }, [config.homeSections, produtosAVenda, offerProducts]);
 
-  const bestsellerProducts = useMemo(() => {
-    return produtosAVenda
-      .filter((p) => p.isBestseller)
-      .sort((a, b) => {
-        const aAvailable = a.stock > 0 ? 1 : 0;
-        const bAvailable = b.stock > 0 ? 1 : 0;
-        return bAvailable - aAvailable;
-      })
-      .slice(0, LIMITE_MAX_ITENS_CARROSSEL);
-  }, [produtosAVenda]);
+  const bestsellerProducts = useMemo(
+    () =>
+      destaquesDaVitrine(produtosAVenda).slice(0, LIMITE_MAX_ITENS_CARROSSEL),
+    [produtosAVenda],
+  );
 
   // Grava a memória desta visita (frente cls-ressalva1-0409): quando dados
   // E banners resolveram, os três booleanos da home viva viram o snapshot
