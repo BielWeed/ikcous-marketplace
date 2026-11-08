@@ -1,5 +1,10 @@
 import { useAuth } from "@/hooks/useAuth";
 import { DataVault } from "@/lib/dataVault";
+import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { useCallback, useEffect, useState } from "react";
 
@@ -55,6 +60,19 @@ async function callRpcWithRetry<T>(
     }
   }
   return { data: null, error: lastError };
+}
+
+// Rede que conecta e não responde: sem prazo, `callRpcWithRetry` ficava pendurada
+// e a tela girava para sempre. O prazo cobre a chamada INTEIRA, tentativas
+// incluídas. Estourou: rejeita, e o catch de quem chama trata como qualquer erro.
+function callRpcComPrazo<T>(
+  fn: () => Promise<{ data: T | null; error: any }>,
+): Promise<{ data: T | null; error: any }> {
+  return aguardarComPrazo(
+    callRpcWithRetry<T>(fn),
+    PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+    erroDeConsultaSemResposta,
+  );
 }
 
 export interface DashboardStats {
@@ -318,6 +336,10 @@ export function useAnalytics() {
         console.warn(
           "[useAnalytics] fetchExecutiveSummary bypassed: user session not active in client",
         );
+        // Sem erro registrado, a tela afirmava "Nenhum dado disponível" (ou
+        // deixava números velhos sem aviso): agora o aviso com "Tentar de novo"
+        // aparece, como nos outros ramos.
+        setError(mensagemParaLojista(null, "carregar o resumo do painel"));
         return null;
       }
 
@@ -345,7 +367,7 @@ export function useAnalytics() {
         // Background revalidation
         (async () => {
           try {
-            const { data, error: err } = await callRpcWithRetry<DashboardStats>(
+            const { data, error: err } = await callRpcComPrazo<DashboardStats>(
               async () => {
                 const { data, error } = await supabase.rpc(
                   "get_admin_analytics_v2",
@@ -393,7 +415,7 @@ export function useAnalytics() {
         setSummaryLoading(true);
         setError(null);
 
-        const { data, error: err } = await callRpcWithRetry<DashboardStats>(
+        const { data, error: err } = await callRpcComPrazo<DashboardStats>(
           async () => {
             const { data, error } = await supabase.rpc(
               "get_admin_analytics_v2",
@@ -471,6 +493,11 @@ export function useAnalytics() {
         console.warn(
           "[useAnalytics] fetchCategoryAnalytics bypassed: user session not active in client",
         );
+        // Mesmo motivo do resumo: sem erro, a tela dizia "Nenhuma categoria
+        // registrou faturamento".
+        setCategoryError(
+          mensagemParaLojista(null, "carregar os dados de categorias"),
+        );
         return null;
       }
 
@@ -499,7 +526,7 @@ export function useAnalytics() {
         // RPC quebrada em segundo plano desaparecia sem deixar rastro.
         (async () => {
           try {
-            const { data, error: err } = await callRpcWithRetry<any>(() =>
+            const { data, error: err } = await callRpcComPrazo<any>(() =>
               (supabase as any).rpc("get_category_analytics", {
                 start_date: start,
                 end_date: end,
@@ -545,7 +572,7 @@ export function useAnalytics() {
 
       try {
         setCategoryLoading(true);
-        const { data, error } = await callRpcWithRetry<any>(() =>
+        const { data, error } = await callRpcComPrazo<any>(() =>
           (supabase as any).rpc("get_category_analytics", {
             start_date: start,
             end_date: end,
