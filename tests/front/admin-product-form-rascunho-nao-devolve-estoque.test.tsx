@@ -88,6 +88,7 @@ vi.mock("sonner", () => ({
     error: vi.fn(),
     warning: vi.fn(),
     loading: vi.fn(),
+    dismiss: vi.fn(),
   },
 }));
 

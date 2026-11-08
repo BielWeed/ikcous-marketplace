@@ -73,6 +73,7 @@ vi.mock("sonner", () => ({
     success: toastSuccess,
     error: toastError,
     loading: vi.fn(),
+    dismiss: vi.fn(),
   },
 }));
 
@@ -448,7 +449,7 @@ describe("AdminProductFormView — #98 auto-save apaga rascunho ao abrir para ed
 
     expect(toastInfo).toHaveBeenCalledWith(
       "Rascunho não salvo encontrado para este produto",
-      expect.objectContaining({ duration: 10000 }),
+      expect.objectContaining({ duration: Number.POSITIVE_INFINITY }),
     );
   });
 
@@ -473,42 +474,47 @@ describe("AdminProductFormView — #98 auto-save apaga rascunho ao abrir para ed
     expect(armazem.get(draftKey)).toBe(JSON.stringify(rascunhoDivergente));
   });
 
-  it("achado que bloqueou a #99: digitar enquanto o toast de rascunho está aberto (sem decisão) volta a gravar a cada 1s", async () => {
-    // Este é o teste que prova o conserto do achado que bloqueou a revisão:
-    // uma versão anterior baixava `draftResolvedRef.current` para `false` ao
-    // detectar o rascunho divergente e só voltava a `true` nos onClick dos
-    // botões do toast (Restaurar/Descartar). O toast tem `duration: 10000` e
-    // nenhum onAutoClose — se o admin não clicasse em nada, a flag ficava
-    // presa em `false` pelo RESTO da sessão de edição, e o efeito de
-    // auto-save (que checava a flag) retornava cedo em toda mudança de
-    // `formData` dali em diante. Resultado: o admin digitava por 15 minutos e
-    // nada era gravado — o `localStorage` continuava com o rascunho de ontem.
-    //
-    // Este teste falha se a guarda da flag voltar: ela nunca sobe para
-    // `true` sem um clique explícito no toast, então o `setItem` abaixo
-    // jamais aconteceria e o `armazem.get(draftKey)` continuaria igual ao
-    // rascunho antigo.
+  it("achado que bloqueou a #99, revisto em 08/11/2026: digitar com o aviso aberto (sem decisão) NÃO grava por cima do rascunho antigo; decidiu, volta a gravar", async () => {
+    // A #99 temia a guarda presa para sempre com um aviso de 10 s que sumia sem
+    // decisão (o admin digitava 15 minutos e nada era gravado). O outro lado
+    // dessa troca era pior em silêncio: o auto-save gravava por cima e o
+    // rascunho antigo (fotos já enviadas, variações digitadas) se perdia sem
+    // escolha dela. Agora o aviso NÃO some (duração infinita, sem fechar por
+    // gesto): a decisão está sempre ao alcance e a guarda cai ao decidir.
+    // (Os testes de cair ao sair da tela e ao salvar estão em
+    // admin-product-form-rascunho-antigo-espera-a-decisao.test.tsx.)
     await abrirProdutoParaEdicao({ comFakeTimers: true });
 
-    // Sanidade: o toast de rascunho pendente está aberto, ninguém decidiu.
+    // Sanidade: o aviso de rascunho pendente está aberto, ninguém decidiu.
     expect(toastInfo).toHaveBeenCalledWith(
       "Rascunho não salvo encontrado para este produto",
-      expect.objectContaining({ duration: 10000 }),
+      expect.objectContaining({ duration: Number.POSITIVE_INFINITY }),
     );
     expect(armazem.get(draftKey)).toBe(JSON.stringify(rascunhoDivergente));
 
-    // Admin digita, sem clicar em nada do toast.
+    // Admin digita, sem clicar em nada do aviso.
     await act(async () => {
       digitarInput("product-name", "Editado depois de 15 minutos");
       // Flush do debounce de 200ms do LocalBufferedInput.
       await vi.advanceTimersByTimeAsync(200);
     });
 
-    // Flush do debounce de 1s do auto-save.
+    // Flush do debounce de 1s do auto-save: não grava por cima.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
+    expect(armazem.get(draftKey)).toBe(JSON.stringify(rascunhoDivergente));
 
+    // Decidiu (Descartar): a guarda cai e o que ela digitou passa a ser guardado.
+    const chamada = toastInfo.mock.calls.find(
+      (c) => c[0] === "Rascunho não salvo encontrado para este produto",
+    );
+    await act(async () => {
+      chamada![1].cancel.onClick();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
     const gravado = armazem.get(draftKey);
     expect(gravado).toBeDefined();
     expect(gravado).not.toBe(JSON.stringify(rascunhoDivergente));
