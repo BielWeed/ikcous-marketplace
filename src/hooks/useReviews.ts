@@ -7,6 +7,7 @@ import {
   updateReviewsCacheSeMesmaGeracao,
 } from "@/lib/cache-de-avaliacoes";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
+import { EVENTO_AVALIACAO_EXCLUIDA } from "@/lib/evento-avaliacao-excluida";
 import {
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
   aguardarComPrazo,
@@ -838,6 +839,46 @@ export function useReviews() {
         );
 
         if (error) throw error;
+
+        // A função do banco devolve vazio mesmo quando não achou a avaliação
+        // (excluída em outro aparelho): confere que ela ainda existe. Se esta
+        // conferência falhar, vale o que o banco aceitou — só uma lista vazia
+        // e sem erro prova que nada foi gravado.
+        let aindaExiste: unknown = null;
+        let erroDaConferencia: unknown = null;
+        try {
+          ({ data: aindaExiste, error: erroDaConferencia } =
+            await aguardarComPrazo(
+              Promise.resolve(
+                supabase
+                  .from("reviews" as any)
+                  .select("id")
+                  .eq("id", reviewId),
+              ),
+              PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+              () => erroDeConsultaSemResposta(),
+            ));
+        } catch {
+          erroDaConferencia = true;
+        }
+        if (
+          !erroDaConferencia &&
+          Array.isArray(aindaExiste) &&
+          !aindaExiste.length
+        ) {
+          setAdminReviews((prev) => prev.filter((r) => r.id !== reviewId));
+          window.dispatchEvent(new Event("admin:recontar-avisos"));
+          // A tela de avaliações descarta o rascunho desta avaliação.
+          window.dispatchEvent(
+            new CustomEvent(EVENTO_AVALIACAO_EXCLUIDA, {
+              detail: { id: reviewId },
+            }),
+          );
+          toast.error(
+            "Esta avaliação já foi excluída. A resposta não foi enviada.",
+          );
+          return false;
+        }
 
         // 2. Optimistic Update
         setAdminReviews((prev) =>
