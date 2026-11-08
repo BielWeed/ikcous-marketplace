@@ -48,10 +48,16 @@ vi.mock("@/lib/supabase", () => ({
             }),
         }),
       }),
-      upsert: (valores: unknown, opcoes: unknown) => {
-        gravarNota(tabela, valores, opcoes);
-        return Promise.resolve({ error: null });
-      },
+      // Anotação nova (a ficha leu "sem anotação"): grava com `insert`.
+      insert: (valores: unknown) => ({
+        select: () => {
+          gravarNota(tabela, valores);
+          return Promise.resolve({
+            data: [{ updated_at: "2026-11-08T10:00:00+00:00" }],
+            error: null,
+          });
+        },
+      }),
       // Só rastreio continua no pedido; anotações têm tabela privada.
       update: (valores: unknown) => {
         atualizarPedido(tabela, valores);
@@ -879,7 +885,6 @@ describe("ficha do pedido (redesenho 08/10/2026)", () => {
       expect(gravarNota).toHaveBeenCalledWith(
         "marketplace_order_internal_notes",
         { order_id: "ped-redesenho-123456", note: "Só uma observação nova" },
-        { onConflict: "order_id" },
       );
       expect(atualizarPedido).not.toHaveBeenCalled();
     });
