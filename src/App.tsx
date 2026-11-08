@@ -33,6 +33,7 @@ import {
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { descartarRascunhoDoProduto } from "@/lib/rascunho-do-produto";
+import { instalarReceptorDoPedidoDoAviso } from "@/lib/receptor-do-pedido-do-aviso";
 import { esquecerRolagemDoProdutoAberto } from "@/lib/rolagemDaEntradaNova";
 import { rolarAoCatalogo } from "@/lib/rolar-ao-catalogo";
 
@@ -1630,6 +1631,26 @@ const AppContent = () => {
 
     globalThis.addEventListener("keydown", handleKeyDown);
     return () => globalThis.removeEventListener("keydown", handleKeyDown);
+  }, [isAdmin, handleNavigate]);
+
+  // Toque no aviso "Pedido novo" com o painel já aberto: o Service Worker foca
+  // a janela e pede por aqui que o pedido seja aberto (recarregar a janela
+  // apagava a anotação digitada e não salva). Só com o painel liberado: sem
+  // confirmação do app o Service Worker segue o caminho de antes (navegar).
+  useEffect(() => {
+    if (!isAdmin) return;
+    return instalarReceptorDoPedidoDoAviso({
+      abrirPedido: (pedidoId) => {
+        void handleNavigate("admin-orders", pedidoId);
+      },
+      avisarPedidoNovo: () => {
+        toast.info("Chegou um pedido novo", {
+          id: "pedido-novo-do-aviso",
+          description:
+            "Quando terminar o que está fazendo, abra a lista de Pedidos para ver.",
+        });
+      },
+    });
   }, [isAdmin, handleNavigate]);
 
   const handleProductClick = useCallback(

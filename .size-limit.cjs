@@ -185,7 +185,8 @@ module.exports = [
     // 07/11/2026 (1.5.156): 641 -> 643 kB (avisos que abrem o pedido, prazos honestos, favoritos, avaliacoes, preco parcial e banners; mediu 642,05 kB local). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 07/11/2026 (1.5.155): 639 -> 641 kB (perfil e conta, galeria do produto sem foto, envio de fotos e equipe do painel; mediu 639,61 kB local). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 07/11/2026 (1.5.154): 638 -> 639 kB (busca por cor e tamanho, carrinho que relê preço e estoque, avisos e endereços com prazo; mediu 638,01 kB local). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
-    limit: "643 kB",
+    // 08/11/2026 (1.5.158): 643 -> 646 kB (aviso de pedido novo que nao recarrega o app, vitrine por opcao, carrinho, entrar e perfil; o PR mediu 643,26 kB no CI, 263 B acima). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
+    limit: "646 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
@@ -331,7 +332,8 @@ module.exports = [
     // 07/11/2026 (mesma regra): 518 -> 519 kB na 1.5.151 (mediu 517,80 kB local). Regra do dono: o teto sobe.
     // 07/11/2026 (mesma regra): 522 -> 526 kB na 1.5.156 (mediu 524,49 kB local: avisos que abrem o pedido, acoes do pedido com prazo, cupons, produtos e banners). Regra do dono: o teto sobe.
     // 07/11/2026 (mesma regra): 519 -> 522 kB na 1.5.153 (mediu 520,37 kB local: prazos e avisos honestos de cupons, devolucao, Mercado Pago e configuracoes). Regra do dono: o teto sobe.
-    limit: "526 kB",
+    // 08/11/2026 (1.5.158): 526 -> 530 kB (prazos e avisos honestos do Inicio, CRM, Pedidos, banners e categorias; o painel media 525,62 kB, sem folga para os lotes de rede ruim). Regra do dono: o teto sobe.
+    limit: "530 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },

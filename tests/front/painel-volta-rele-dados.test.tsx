@@ -2,7 +2,7 @@
 import { useCrmVisao, useDashboardClassico } from "@/hooks/useCrm";
 import { AdminQAView } from "@/views/admin/AdminQAView";
 import { AdminReviewsView } from "@/views/admin/AdminReviewsView";
-import { act } from "react";
+import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -183,15 +183,22 @@ it.each(["focus", "pageshow"])(
 
 it("CRM mantém retrato, relê velho e não duplica leitura pendente ou fresca", async () => {
   const intervalo = { inicio: `2026-10-${++periodo}`, fim: "2026-11-07" };
-  function Sonda() {
-    const { visao, carregando } = useCrmVisao(intervalo, true);
+  let atualizarDaSonda = null as (() => void) | null;
+  function Sonda({ aoLer }: { aoLer: (atualizar: () => void) => void }) {
+    const { visao, carregando, atualizar } = useCrmVisao(intervalo, true);
+    useEffect(() => {
+      aoLer(atualizar);
+    }, [aoLer, atualizar]);
     return (
       <p>
         {visao?.kpis.pedidos ?? "sem dado"} {carregando ? "esqueleto" : ""}
       </p>
     );
   }
-  await act(async () => root.render(<Sonda />));
+  const aoLer = (atualizar: () => void) => {
+    atualizarDaSonda = atualizar;
+  };
+  await act(async () => root.render(<Sonda aoLer={aoLer} />));
   await avancar(300);
   expect(host.textContent).toContain("3");
   await voltar();
@@ -205,14 +212,28 @@ it("CRM mantém retrato, relê velho e não duplica leitura pendente ou fresca",
   expect(h.rpc).toHaveBeenCalledTimes(2);
   expect(host.textContent).toContain("3");
   expect(host.textContent).not.toContain("esqueleto");
-  await avancar(31_000);
-  await voltar();
-  await avancar(300);
-  expect(h.rpc).toHaveBeenCalledTimes(2);
   await act(async () =>
     leitura.resolver({ data: { kpis: { pedidos: 7 } }, error: null }),
   );
   expect(host.textContent).toContain("7");
+
+  // Leitura pendente aberta por "Sincronizar" (que nao passa pelo intervalo de 30 s
+  // entre voltas): so o `podeReler` (nenhuma consulta em voo) impede que voltar ao
+  // app abra uma segunda leitura enquanto ela esta dentro do prazo de 20 s.
+  await avancar(31_000);
+  const sincronizando = pendente<{ data: unknown; error: null }>();
+  h.rpc.mockReturnValueOnce(sincronizando.promessa);
+  await act(async () => atualizarDaSonda?.());
+  await avancar(300);
+  expect(h.rpc).toHaveBeenCalledTimes(3);
+  await avancar(10_000);
+  await voltar();
+  await avancar(300);
+  expect(h.rpc).toHaveBeenCalledTimes(3);
+  await act(async () =>
+    sincronizando.resolver({ data: { kpis: { pedidos: 9 } }, error: null }),
+  );
+  expect(host.textContent).toContain("9");
 });
 
 it("dashboard clássico relê ao restaurar sem esconder números e respeita aba inativa", async () => {

@@ -70,6 +70,12 @@ export const MENSAGEM_PRODUTO_EDICAO_SEM_RESPOSTA =
 export const MENSAGEM_PRODUTO_LEITURA_SEM_RESPOSTA =
   "A conexão está lenta e o produto não carregou. Confira a conexão e tente de novo.";
 
+// PRAZO DAS CONSULTAS DO PAINEL (Início e CRM): rede que conecta e não responde
+// deixava o "carregando" ligado para sempre, o botão Sincronizar preso e a volta
+// ao app sem reler. 20 s, o mesmo do Início (`usePainelInicio`). Estourou = falha
+// com "Tentar de novo"; só encerra a ESPERA da tela, a consulta não grava nada.
+export const PRAZO_DA_CONSULTA_DO_PAINEL_MS = 20_000;
+
 /** Frase para quem está na tela: o que aconteceu e o que fazer. */
 export const MENSAGEM_CONEXAO_LENTA =
   "A conexão está lenta. Toque em Tentar de novo.";

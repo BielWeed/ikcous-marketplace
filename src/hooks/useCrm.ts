@@ -9,6 +9,11 @@ import {
   lerVisitasDoCrm,
   mensagemDeErroDoPainel,
 } from "@/lib/crm";
+import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type {
   IntervaloDeDatas,
@@ -103,10 +108,20 @@ export function useCrmVisao(
       leiturasDaVisaoEmVoo.set(chave, rodada);
       recargaAtendidaRef.current = pedidoDeRecarga;
       try {
-        const { data, error } = await supabase.rpc("crm_visao", {
-          p_inicio: intervalo.inicio,
-          p_fim: intervalo.fim,
-        });
+        // Rede que conecta e não responde: sem prazo, `consultasEmVooRef` ficava
+        // em 1 para sempre (o "carregando" não saía, o Sincronizar ficava preso
+        // e a volta ao app nunca relia). Estourou: cai no `catch` abaixo, que
+        // mostra o erro com "Tentar de novo"; o `finally` solta a vaga.
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase.rpc("crm_visao", {
+              p_inicio: intervalo.inicio,
+              p_fim: intervalo.fim,
+            }),
+          ),
+          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          () => erroDeConsultaSemResposta(),
+        );
         const lida = error ? null : lerVisaoDoCrm(data);
         // Guarda no período dela, mesmo após trocar de chip. Uma leitura
         // mais nova DO MESMO período continua tendo preferência no cache.

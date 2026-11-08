@@ -40,6 +40,12 @@ interface RetratoDoPainel {
   readonly lidoEm: number;
   /** `geracaoDoPainel` quando a busca SAIU: se mudou, o retrato não é fresco. */
   readonly geracao: number;
+  /**
+   * Uma releitura silenciosa falhou e este retrato (de hoje, mas de horas atrás)
+   * foi mantido no lugar dela: o selo não pode dizer "Ao vivo". Some quando uma
+   * leitura nova chega (ela vem sem a marca).
+   */
+  readonly releituraFalhou?: boolean;
 }
 
 const FRESCOR_MS = 30_000;
@@ -234,6 +240,11 @@ interface EstadoDoPainelInicio {
   readonly carregando: boolean;
   readonly erro: string | null;
   readonly erroAssinatura: string | null;
+  /**
+   * Os números na tela são de uma leitura anterior porque a última releitura de
+   * fundo falhou. Não é erro (sem faixa vermelha): só o selo deixa de dizer "Ao vivo".
+   */
+  readonly desatualizado: boolean;
   readonly atualizar: () => Promise<void>;
 }
 
@@ -284,7 +295,14 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
         diaDaLeitura(anterior) === hojeEmSaoPaulo() &&
         novo.erroPainel !== null
       ) {
-        if (retratoEmCache === novo) retratoEmCache = anterior;
+        // O retrato bom volta com a idade de antes, mas marcado: o selo passa a
+        // dizer "Sem atualizar" em vez de "Ao vivo" por cima de números velhos
+        // (sem faixa vermelha). A próxima leitura que der certo vem sem a marca.
+        if (retratoEmCache === novo) {
+          const mantido = { ...anterior, releituraFalhou: true };
+          retratoEmCache = mantido;
+          if (montadoRef.current) setRetrato(mantido);
+        }
         return;
       }
       if (montadoRef.current) setRetrato(novo);
@@ -416,6 +434,7 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
     carregando: carregando || (retratoDeHoje === null && active && temSessao),
     erro: retrato?.erroPainel ?? null,
     erroAssinatura: retrato?.erroAssinatura ?? null,
+    desatualizado: retratoDeHoje?.releituraFalhou === true,
     atualizar,
   };
 }
