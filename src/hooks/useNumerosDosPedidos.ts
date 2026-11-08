@@ -150,9 +150,26 @@ export function useNumerosDosPedidos(ativo: boolean): NumerosDosPedidos {
     [ativo, pedirRecarga],
   );
 
-  // O ÚNICO disparo automático: ao ficar ativa. Troca de filtro, busca ou
-  // página NÃO recarrega — as contagens não dependem deles. Depois disso só
-  // `pedirRecarga` (tempo real, ação na tela, volta da conexão).
+  // Volta do app para a frente (tela desbloqueada, outra aba do navegador):
+  // a conexão ao vivo dorme com a tela bloqueada e os pedidos que chegaram
+  // nesse meio-tempo não geram evento nenhum. A lista já se relê ao voltar
+  // (`useOrders`); sem isto o topo ficava no número de antes. Pelo mesmo
+  // `pedirRecarga`: a janela de coalescência junta voltas seguidas numa
+  // rodada só, e não há relógio próprio.
+  useEffect(() => {
+    if (!ativo) return;
+    const aoVoltarParaAFrente = () => {
+      if (document.visibilityState === "visible") pedirRecarga();
+    };
+    document.addEventListener("visibilitychange", aoVoltarParaAFrente);
+    return () =>
+      document.removeEventListener("visibilitychange", aoVoltarParaAFrente);
+  }, [ativo, pedirRecarga]);
+
+  // O disparo automático de montagem: ao ficar ativa. Troca de filtro, busca
+  // ou página NÃO recarrega — as contagens não dependem deles. Depois disso
+  // `pedirRecarga` (tempo real, ação na tela, volta da conexão, volta do app
+  // para a frente).
   useEffect(() => {
     if (ativo) void recarregar();
   }, [ativo, recarregar]);
