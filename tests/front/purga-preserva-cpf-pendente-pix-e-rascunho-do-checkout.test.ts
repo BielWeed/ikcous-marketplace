@@ -113,16 +113,17 @@ describe("lista branca do sessionStorage (purga do botão 'Recarregar o app')", 
       contaEsperada: null,
       semConta: true,
     };
-    const gravadas: string[] = [];
-    const original = Storage.prototype.setItem;
-    Storage.prototype.setItem = function (chave: string, valor: string) {
-      gravadas.push(chave);
-      original.call(this, chave, valor);
-    };
+    // Lê as chaves que o módulo gravou pelo próprio sessionStorage, sem mexer no
+    // protótipo de `Storage` (não existe como global em todo ambiente de teste).
+    sessionStorage.clear();
+    let gravadas: string[] = [];
     try {
       guardarPedidoSemResposta(pedido);
+      gravadas = Array.from(
+        { length: sessionStorage.length },
+        (_, i) => sessionStorage.key(i) ?? "",
+      );
     } finally {
-      Storage.prototype.setItem = original;
       sessionStorage.clear();
     }
     expect(gravadas).toHaveLength(1);
