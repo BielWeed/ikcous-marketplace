@@ -278,7 +278,19 @@ export function CartView({
   // o "Finalizar Compra" continua livre (o endereço também pode ser
   // informado na finalização). O convidado não tem cadastro: o destino dele
   // é o CEP da última cotação feita no checkout, se houver.
-  const { addresses, fetchAddresses } = useAddresses();
+  const {
+    addresses,
+    fetchAddresses,
+    loading: enderecosCarregando,
+    erroAoCarregar: enderecosNaoCarregaram,
+  } = useAddresses();
+  // Lista vazia NÃO prova "sem endereço": num aparelho sem lista guardada, é
+  // também o que sobra enquanto a leitura roda ou depois que ela falhou. Só
+  // com a leitura terminada e boa é que "Cadastrar endereço" é verdade
+  // (mesmo tratamento do checkout).
+  const lendoOsEnderecos = enderecosCarregando && addresses.length === 0;
+  const enderecosFalharam =
+    !enderecosCarregando && enderecosNaoCarregaram && addresses.length === 0;
   const enderecoDestino = user
     ? enderecoDeEntregaEfetivo(addresses, enderecoSelecionadoId)
     : undefined;
@@ -991,12 +1003,25 @@ export function CartView({
                               : null
                           }
                           mensagemSemDestino={
-                            user
-                              ? "Cadastre um endereço para ver o frete e o prazo — ou continue e informe o endereço na finalização."
-                              : "O frete é calculado pelo endereço de entrega, que você informa na finalização da compra."
+                            !user
+                              ? "O frete é calculado pelo endereço de entrega, que você informa na finalização da compra."
+                              : lendoOsEnderecos
+                                ? "Carregando seus endereços…"
+                                : enderecosFalharam
+                                  ? "Não conseguimos carregar seus endereços agora."
+                                  : "Cadastre um endereço para ver o frete e o prazo — ou continue e informe o endereço na finalização."
                           }
                           acaoDoEndereco={
-                            !user ? null : addresses.length > 0 ? (
+                            !user ||
+                            lendoOsEnderecos ? null : enderecosFalharam ? (
+                              <button
+                                type="button"
+                                onClick={() => void fetchAddresses()}
+                                className="min-h-11 select-none rounded-xl border border-solid border-border bg-background px-3 text-[13px] font-semibold text-foreground transition-colors hover:bg-muted"
+                              >
+                                Tentar de novo
+                              </button>
+                            ) : addresses.length > 0 ? (
                               <button
                                 ref={botaoTrocarRef}
                                 type="button"
