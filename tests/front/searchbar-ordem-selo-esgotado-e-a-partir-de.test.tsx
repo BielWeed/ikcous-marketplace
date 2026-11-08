@@ -13,7 +13,9 @@ import type { Product } from "@/types";
 
 const base = {
   description: "",
-  images: [],
+  // Com foto: a sugestão sem foto vira o quadrado "Sem foto" (sem <img>), e
+  // este teste localiza a sugestão pelo <img alt=nome>.
+  images: ["https://loja.example.com/foto.jpg"],
   category: "Joias",
   sold: 0,
   isActive: true,

@@ -227,7 +227,9 @@ const catalogo = vi.hoisted(() => [
     description: "",
     category: "Vestidos",
     price: 100,
-    images: [],
+    // Com foto: a sugestão sem foto vira o quadrado "Sem foto" (sem <img>), e
+    // este teste localiza a sugestão pelo <img alt=nome>.
+    images: ["https://loja.example.com/foto.jpg"],
     stock: 5,
     sold: 0,
     isActive: true,

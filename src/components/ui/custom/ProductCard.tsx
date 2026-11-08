@@ -21,6 +21,7 @@ import { imagemRedimensionada } from "@/lib/imageUrl";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
+import { produtoDisponivel } from "@/lib/vitrine";
 import type { Product, ProductVariant } from "@/types";
 import {
   pontoDeSaidaVisivel,
@@ -412,11 +413,10 @@ export const ProductCard = memo(function ProductCard({
   // estoque: sem isso a folha abre só com chips riscados e nada pode ser
   // escolhido -- a única saída seria fechar, o que parece a tela travada com
   // o card coberto pela folha.
+  // A pergunta é a MESMA da ordenação da vitrine (`produtoDisponivel`): o
+  // card, o botão e a posição na lista nunca discordam.
   const nenhumaOpcaoDisponivel =
-    temGruposDeOpcao &&
-    Array.from(variantGroups.values()).some((valores) =>
-      valores.every((v) => (v.stockIncrement ?? 0) <= 0),
-    );
+    temGruposDeOpcao && !produtoDisponivel(product);
 
   // Safely determine if this specific card should have the view transition name applied.
   // We apply it strictly to the clicked instance (via activeTransitionCardId) to avoid duplicate transition names.
@@ -454,6 +454,9 @@ export const ProductCard = memo(function ProductCard({
   const semEstoqueNoCard = temGruposDeOpcao
     ? nenhumaOpcaoDisponivel
     : estoqueAtual <= 0;
+  // Selo "Esgotado" do card em grade: o que o botão diz OU o que a escolha
+  // feita já esgotou (estoque do item vivo em zero).
+  const seloEsgotado = semEstoqueNoCard || estoqueAtual <= 0;
   const rotuloAcessivelDoBotao =
     cartStatus !== "idle"
       ? undefined
@@ -1054,7 +1057,7 @@ export const ProductCard = memo(function ProductCard({
                     className={cn(
                       "rounded-full animate-pulse",
                       showRating ? "w-1 h-1" : "w-1.5 h-1.5",
-                      estoqueAtual <= 0
+                      seloEsgotado
                         ? "bg-zinc-400"
                         : estoqueAtual <= 5
                           ? "bg-rose-500"
@@ -1063,14 +1066,14 @@ export const ProductCard = memo(function ProductCard({
                   />
                   <span
                     className={
-                      estoqueAtual <= 0
+                      seloEsgotado
                         ? "text-zinc-500"
                         : estoqueAtual <= 5
                           ? "text-rose-600"
                           : "text-emerald-700"
                     }
                   >
-                    {estoqueAtual <= 0
+                    {seloEsgotado
                       ? "Esgotado"
                       : estoqueAtual <= 5
                         ? textoEstoqueBaixo(estoqueAtual)
