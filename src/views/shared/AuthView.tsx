@@ -296,6 +296,18 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
 
     setIsLoading(true);
 
+    // A resposta do login pode chegar depois de a pessoa trocar para Cadastro ou
+    // "Esqueceu?" (internet lenta). Fora do fluxo de origem a faixa vermelha de
+    // "entrar" não pode acender sobre a tela errada: vira só um aviso (toast),
+    // como o cadastro e a recuperação já fazem.
+    const mostrarErroDeEntrar = (mensagem: string) => {
+      if (fluxoDaTela.current === fluxoEnviado) {
+        setLoginError(mensagem);
+      } else {
+        toast.error(`Sua tentativa de entrar não deu certo. ${mensagem}`);
+      }
+    };
+
     try {
       if (viewMode === "login") {
         // A1-fix3 (R1) — `audience` é OBRIGATÓRIO em `login` (AuthContext):
@@ -316,7 +328,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           // Sem `error` o servidor não respondeu no prazo (rede pendurada, ver
           // `PRAZO_DA_AUTENTICACAO_MS` em AuthContext.tsx): não há causa para
           // traduzir, e `message` já é a frase de conexão lenta.
-          setLoginError(message);
+          mostrarErroDeEntrar(message);
         } else if (error) {
           // Tratamento de Erro - Localização de mensagens do Supabase
           let message = MENSAGEM_ERRO_LOGIN_GENERICA;
@@ -412,7 +424,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
           // mesmo caso, para que a pessoa nunca leia duas frases diferentes
           // para o mesmo erro).
 
-          setLoginError(message);
+          mostrarErroDeEntrar(message);
         }
       } else if (viewMode === "signup") {
         if (
@@ -525,7 +537,14 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
       }
     } catch (err) {
       console.error(err);
-      setLoginError("Ocorreu um erro inesperado na autenticação.");
+      const erroInesperado = "Ocorreu um erro inesperado na autenticação.";
+      // A faixa vermelha é da tela de entrar; nos outros modos (ou depois de
+      // trocar de tela) o aviso vai pelo toast, para não sumir nem pousar errado.
+      if (viewMode === "login" && fluxoDaTela.current === fluxoEnviado) {
+        setLoginError(erroInesperado);
+      } else {
+        toast.error(erroInesperado);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -539,6 +558,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
     if (reenvioConfirmacaoEmCurso.current) return;
     reenvioConfirmacaoEmCurso.current = true;
     setReenviandoConfirmacao(true);
+    const fluxoEnviado = fluxoDaTela.current;
     try {
       await resendConfirmationEmail(
         showConfirmation ? emailDaConfirmacao : email.trim(),
@@ -547,8 +567,10 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
       console.error(err);
       const message =
         "Não foi possível reenviar o e-mail de confirmação. Tente novamente.";
-      if (showConfirmation) toast.error(message);
-      else setLoginError(message);
+      // A faixa é da tela de entrar: se a pessoa já trocou de tela, vai por toast.
+      if (showConfirmation || fluxoDaTela.current !== fluxoEnviado) {
+        toast.error(message);
+      } else setLoginError(message);
     } finally {
       reenvioConfirmacaoEmCurso.current = false;
       setReenviandoConfirmacao(false);
@@ -1146,7 +1168,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
                 </div>
               )}
 
-              {loginError && (
+              {viewMode === "login" && loginError && (
                 <motion.div
                   role="alert"
                   initial={reduzirMovimento ? false : { opacity: 0, height: 0 }}

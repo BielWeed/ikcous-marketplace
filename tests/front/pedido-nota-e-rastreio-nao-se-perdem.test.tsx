@@ -17,48 +17,84 @@ const { salvar, atualizar, ler, gravarNota, apagarNota, banco } = vi.hoisted(
   }),
 );
 
+// A anotação interna só é gravada se o carimbo (`updated_at`) lido ao abrir o
+// editor ainda for o do banco; aqui o carimbo é derivado do texto (`v-<texto>`),
+// então "outro aparelho mudou" = texto diferente no `banco`.
+const carimboDe = (nota: string) => `v-${nota}`;
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    from: (tabela: string) => ({
-      select: (colunas: string) => ({
-        eq: (coluna: string, id: string) => ({
-          maybeSingle: () =>
-            tabela === "config_mototaxi"
-              ? Promise.resolve({
-                  data: { whatsapp: null, nome: null },
-                  error: null,
-                })
-              : ler(tabela, colunas, coluna, id),
-        }),
-      }),
-      upsert: (
-        valores: { order_id: string; note: string },
-        opcoes: unknown,
-      ) => {
-        gravarNota(tabela, valores, opcoes);
-        return Promise.resolve(salvar("order_id", valores.order_id)).then(
-          (resposta: { error: Error | null }) => {
-            if (!resposta.error) banco.set(valores.order_id, valores.note);
-            return resposta;
+    from: (tabela: string) => {
+      const cadeiaDaNota = (operacao: "update" | "delete", note?: string) => {
+        const filtros = new Map<string, unknown>();
+        const cadeia = {
+          eq: (coluna: string, valor: unknown) => {
+            filtros.set(coluna, valor);
+            return cadeia;
           },
-        );
-      },
-      delete: () => ({
-        eq: (coluna: string, id: string) => {
-          apagarNota(tabela, coluna, id);
-          return Promise.resolve(salvar(coluna, id)).then(
-            (resposta: { error: Error | null }) => {
-              if (!resposta.error) banco.delete(id);
-              return resposta;
-            },
-          );
+          select: () => {
+            const id = filtros.get("order_id") as string;
+            if (operacao === "delete") apagarNota(tabela, "order_id", id);
+            else gravarNota(tabela, { order_id: id, note });
+            return Promise.resolve(salvar("order_id", id)).then(
+              (resposta: { error: Error | null }) => {
+                if (resposta.error) return resposta;
+                const bate =
+                  banco.has(id) &&
+                  filtros.get("updated_at") === carimboDe(banco.get(id) ?? "");
+                if (!bate) return { data: [], error: null };
+                if (operacao === "delete") banco.delete(id);
+                else banco.set(id, note as string);
+                return {
+                  data: [{ updated_at: carimboDe(note ?? "") }],
+                  error: null,
+                };
+              },
+            );
+          },
+        };
+        return cadeia;
+      };
+      return {
+        select: (colunas: string) => ({
+          eq: (coluna: string, id: string) => ({
+            maybeSingle: () =>
+              tabela === "config_mototaxi"
+                ? Promise.resolve({
+                    data: { whatsapp: null, nome: null },
+                    error: null,
+                  })
+                : ler(tabela, colunas, coluna, id),
+          }),
+        }),
+        insert: (valores: { order_id: string; note: string }) => ({
+          select: () => {
+            gravarNota(tabela, valores);
+            return Promise.resolve(salvar("order_id", valores.order_id)).then(
+              (resposta: { error: Error | null }) => {
+                if (resposta.error) return resposta;
+                if (banco.has(valores.order_id)) {
+                  return { data: null, error: { code: "23505" } };
+                }
+                banco.set(valores.order_id, valores.note);
+                return {
+                  data: [{ updated_at: carimboDe(valores.note) }],
+                  error: null,
+                };
+              },
+            );
+          },
+        }),
+        delete: () => cadeiaDaNota("delete"),
+        update: (valores: { note?: string }) => {
+          if (tabela === "marketplace_order_internal_notes") {
+            return cadeiaDaNota("update", valores.note);
+          }
+          atualizar(tabela, valores);
+          return { eq: salvar };
         },
-      }),
-      update: (valores: unknown) => {
-        atualizar(tabela, valores);
-        return { eq: salvar };
-      },
-    }),
+      };
+    },
     functions: { invoke: vi.fn() },
   },
 }));
@@ -125,7 +161,12 @@ describe("pedido — anotações e rastreio não se perdem", () => {
       .mockImplementation(
         (_tabela: string, _colunas: string, _coluna: string, id: string) =>
           Promise.resolve({
-            data: banco.has(id) ? { note: banco.get(id) } : null,
+            data: banco.has(id)
+              ? {
+                  note: banco.get(id),
+                  updated_at: carimboDe(banco.get(id) ?? ""),
+                }
+              : null,
             error: null,
           }),
       );
@@ -202,7 +243,6 @@ describe("pedido — anotações e rastreio não se perdem", () => {
     expect(gravarNota).toHaveBeenCalledWith(
       "marketplace_order_internal_notes",
       { order_id: "A", note: "Nova nota de A" },
-      { onConflict: "order_id" },
     );
     expect(atualizar).not.toHaveBeenCalled();
     expect(salvar).toHaveBeenCalledWith("order_id", "A");
@@ -279,7 +319,6 @@ describe("pedido — anotações e rastreio não se perdem", () => {
     expect(gravarNota).toHaveBeenCalledWith(
       "marketplace_order_internal_notes",
       { order_id: "A", note: "Entregar depois das 18h" },
-      { onConflict: "order_id" },
     );
     expect(atualizar).not.toHaveBeenCalled();
   });
@@ -376,7 +415,6 @@ describe("pedido — anotações e rastreio não se perdem", () => {
     expect(gravarNota).toHaveBeenCalledWith(
       "marketplace_order_internal_notes",
       { order_id: "A", note: "Somente equipe" },
-      { onConflict: "order_id" },
     );
     expect(atualizar).not.toHaveBeenCalled();
   });
@@ -395,7 +433,7 @@ describe("pedido — anotações e rastreio não se perdem", () => {
     expect(hospedeiro.textContent).toContain("Interna de A");
     expect(ler).toHaveBeenCalledWith(
       "marketplace_order_internal_notes",
-      "note",
+      "note, updated_at",
       "order_id",
       "A",
     );
@@ -414,7 +452,6 @@ describe("pedido — anotações e rastreio não se perdem", () => {
     expect(gravarNota).toHaveBeenCalledWith(
       "marketplace_order_internal_notes",
       { order_id: "A", note: "Rascunho a preservar" },
-      { onConflict: "order_id" },
     );
   });
 
@@ -441,7 +478,7 @@ describe("pedido — anotações e rastreio não se perdem", () => {
     expect(hospedeiro.textContent).toContain("Interna de B");
     expect(ler).toHaveBeenLastCalledWith(
       "marketplace_order_internal_notes",
-      "note",
+      "note, updated_at",
       "order_id",
       "B",
     );
@@ -451,7 +488,6 @@ describe("pedido — anotações e rastreio não se perdem", () => {
     expect(gravarNota).toHaveBeenCalledWith(
       "marketplace_order_internal_notes",
       { order_id: "B", note: "Nova interna de B" },
-      { onConflict: "order_id" },
     );
     expect(atualizar).not.toHaveBeenCalled();
   });
@@ -495,7 +531,6 @@ describe("pedido — anotações e rastreio não se perdem", () => {
     expect(gravarNota).toHaveBeenCalledWith(
       "marketplace_order_internal_notes",
       { order_id: "A", note: "Rascunho atual de A" },
-      { onConflict: "order_id" },
     );
     expect(atualizar).not.toHaveBeenCalled();
   });
@@ -512,7 +547,7 @@ describe("pedido — anotações e rastreio não se perdem", () => {
     expect(ler).toHaveBeenCalledTimes(leiturasAntes + 1);
     expect(ler).toHaveBeenLastCalledWith(
       "marketplace_order_internal_notes",
-      "note",
+      "note, updated_at",
       "order_id",
       "A",
     );
@@ -775,7 +810,6 @@ describe("pedido — anotações e rastreio não se perdem", () => {
     expect(gravarNota).toHaveBeenCalledWith(
       "marketplace_order_internal_notes",
       { order_id: "B", note: "Nota da ficha atual" },
-      { onConflict: "order_id" },
     );
     expect(atualizar).not.toHaveBeenCalled();
   });

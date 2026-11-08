@@ -1,4 +1,14 @@
 {
+  "1.5.157": {
+    "titulo": "Devolução e avisos que não ficam presos com a internet ruim",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Painel, Devoluções: se a internet não responder ao pedir o reembolso de novo, marcar “Já devolvi por fora” ou salvar a política de devolução, o botão volta e avisa que não dá para saber se foi feito, pedindo para conferir a ficha antes de repetir; o que você digitou na política continua na tela.",
+      "Loja, Devolução: o pedido cancelado e pago deixa de ficar em “Conferindo sua devolução…” com a internet sem resposta, e depois de pedir a devolução o protocolo aparece na hora.",
+      "Painel, Avisos: o aviso de pedido cancelado some quando você já fez o que ele pede; a tela de Notificações atualiza quando o número do sino muda; com mais de 100 pagamentos por marcar, a tela avisa que mostra só os mais recentes."
+    ]
+  },
   "1.5.156": {
     "titulo": "Avisos que abrem o pedido certo, telas que não travam com internet ruim e painel mais claro",
     "novidades": [],

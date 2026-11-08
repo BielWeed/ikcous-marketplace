@@ -44,6 +44,7 @@ vi.mock("@/hooks/useAuth", () => ({
       created_at: estado.userCriadoEm,
     },
     profile: estado.profile,
+    fetchProfile: async () => {},
     logout,
     isAdmin: estado.isAdmin,
     loading: false,

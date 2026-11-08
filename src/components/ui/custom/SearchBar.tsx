@@ -11,6 +11,7 @@ import {
   pontuadorDaBusca,
   produtoCombinaComBusca,
 } from "@/lib/busca-de-produtos";
+import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
 import { miniaturaDaSugestao, usarImagemOriginal } from "@/lib/imageUrl";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
@@ -519,26 +520,36 @@ export function SearchBar({
                     >
                       <div className="flex min-w-0 items-center gap-3.5 pr-2">
                         <div className="shadow-2xs relative size-12 flex-shrink-0 overflow-hidden rounded-xl border border-zinc-200/80 bg-zinc-100">
-                          <img
-                            // Miniatura leve (em 3G eram várias fotos grandes
-                            // por letra digitada). O mesmo helper alimenta o
-                            // useCacheWarmer: a string aquecida é esta.
-                            src={
-                              item.images[0]
-                                ? miniaturaDaSugestao(item.images[0])
-                                : "https://images.unsplash.com/photo-1555529669-e69e7aa0ba9a?auto=format&fit=crop&q=80&w=100"
-                            }
-                            onError={(event) =>
-                              usarImagemOriginal(
-                                event.currentTarget,
-                                item.images[0],
-                              )
-                            }
-                            alt={item.name}
-                            className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
-                            loading="lazy"
-                            decoding="async"
-                          />
+                          {/* Sem foto de verdade (lista vazia ou a foto de reserva
+                              do mapper, que mora no site de um terceiro): o
+                              mesmo "Sem foto" local do resto da loja, sem pedir
+                              nada à rede -- sem internet a miniatura não quebra. */}
+                          {!item.images[0] ||
+                          ehMarcadorDeFoto(item.images[0]) ? (
+                            <div
+                              data-sem-foto
+                              className="flex size-full items-center justify-center px-0.5 text-center text-[9px] font-medium leading-tight text-zinc-600"
+                            >
+                              Sem foto
+                            </div>
+                          ) : (
+                            <img
+                              // Miniatura leve (em 3G eram várias fotos grandes
+                              // por letra digitada). O mesmo helper alimenta o
+                              // useCacheWarmer: a string aquecida é esta.
+                              src={miniaturaDaSugestao(item.images[0])}
+                              onError={(event) =>
+                                usarImagemOriginal(
+                                  event.currentTarget,
+                                  item.images[0],
+                                )
+                              }
+                              alt={item.name}
+                              className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              loading="lazy"
+                              decoding="async"
+                            />
+                          )}
                           {item.isBestseller && (
                             <span className="absolute right-0.5 top-0.5 size-2.5 rounded-full bg-amber-500 ring-2 ring-white" />
                           )}

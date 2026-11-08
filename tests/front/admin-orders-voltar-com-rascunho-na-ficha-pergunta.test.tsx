@@ -114,10 +114,16 @@ function builder() {
   b.eq = vi.fn(() => b);
   b.single = vi.fn(() => Promise.resolve({ data: linhaCrua(), error: null }));
   b.maybeSingle = vi.fn(() => Promise.resolve({ data: null, error: null }));
-  b.upsert = vi.fn((valores: unknown) => {
-    gravarNota(valores);
-    return Promise.resolve({ error: null });
-  });
+  // Anotação nova (a ficha leu "sem anotação"): grava com `insert`.
+  b.insert = vi.fn((valores: unknown) => ({
+    select: () => {
+      gravarNota(valores);
+      return Promise.resolve({
+        data: [{ updated_at: "2026-11-08T10:00:00+00:00" }],
+        error: null,
+      });
+    },
+  }));
   return b;
 }
 
