@@ -675,6 +675,30 @@ export const FavoritesView = React.memo(function FavoritesView({
         onTentarAgora={() => retentarPendentes({ avisarFalha: true })}
       />
 
+      {/* A releitura falhou DEPOIS de a lista carregar: o contexto mantém a
+       * lista antiga e só grava `erro`. Sem este recado, a lista velha parecia
+       * atual (favorito tirado em outro aparelho seguia com o coração cheio).
+       * Com a lista vazia o erro tem tela própria (mais acima). O `erro` é
+       * limpo no próximo sucesso, e o recado some junto. */}
+      {favoritosErro && (
+        <div
+          role="status"
+          className="mx-4 mb-2 flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 text-[13px] leading-5 text-amber-800 dark:text-amber-300"
+        >
+          <p className="py-2">
+            Não conseguimos atualizar seus favoritos. A lista pode estar
+            desatualizada.
+          </p>
+          <button
+            type="button"
+            onClick={() => favoritosRefresh()}
+            className="min-h-11 shrink-0 rounded-xl px-2 font-bold underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Tentar de novo
+          </button>
+        </div>
+      )}
+
       {mostrarAtalhos && (
         <nav
           aria-label="Categorias"
