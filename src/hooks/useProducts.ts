@@ -13,6 +13,19 @@ import {
   separarItensVencidos,
 } from "@/lib/fila-offline-por-usuario";
 import { mapProductFromDB } from "@/lib/mappers";
+import {
+  MENSAGEM_PRODUTO_EDICAO_SEM_RESPOSTA,
+  MENSAGEM_PRODUTO_LEITURA_SEM_RESPOSTA,
+  MENSAGEM_PRODUTO_NOVO_GRADE_SEM_RESPOSTA,
+  MENSAGEM_PRODUTO_NOVO_SEM_RESPOSTA,
+  PRAZO_DE_CONFERIR_O_SKU_MS,
+  PRAZO_DE_GRAVAR_O_PRODUTO_MS,
+  PRAZO_DE_LER_O_PRODUTO_MS,
+  PRAZO_DO_QUE_SOBRA_APOS_GRAVAR_O_PRODUTO_MS,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import { sessaoAindaEhDoDono } from "@/lib/sessao-ainda-e-do-dono";
 import { supabase } from "@/lib/supabase";
@@ -573,6 +586,51 @@ export function mensagemAmigavelErroProduto(
     : "Não foi possível atualizar o produto agora. Confira os dados e tente novamente.";
 }
 
+/** O aviso de "sem resposta" manda ela conferir a lista: precisa de tempo para ler. */
+const DURACAO_DO_AVISO_SEM_RESPOSTA_MS = 15_000;
+
+/**
+ * O aviso de falha de gravar produto. Sem resposta da rede (prazo estourado) a
+ * frase é a de conferir a lista e fica mais tempo na tela; qualquer outra
+ * falha segue exatamente como antes.
+ */
+function avisarFalhaDoProduto(
+  error: unknown,
+  acao: "cadastrar" | "atualizar",
+): void {
+  const frase = mensagemAmigavelErroProduto(error, acao);
+  if (ehConsultaSemResposta(error)) {
+    toast.error(frase, { duration: DURACAO_DO_AVISO_SEM_RESPOSTA_MS });
+    return;
+  }
+  toast.error(frase);
+}
+
+/**
+ * Espera o que sobra DEPOIS de a gravação principal ter dado certo (reler o
+ * catálogo inteiro, copiar para o backup a foto removida), sem deixar isso
+ * segurar o botão em "Salvando…": passou do prazo, a tela segue e o resto
+ * termina em segundo plano. A falha dessa parte é engolida — o produto JÁ
+ * está gravado, e dizer "não consegui salvar" aqui levaria a repetir o
+ * cadastro e duplicar o produto. O catálogo se relê na próxima abertura.
+ */
+async function esperarOQueSobraDepoisDeGravar(
+  tarefa: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    await aguardarComPrazo(
+      (async () => tarefa())(),
+      PRAZO_DO_QUE_SOBRA_APOS_GRAVAR_O_PRODUTO_MS,
+      () => erroDeConsultaSemResposta(),
+    );
+  } catch (erro) {
+    console.warn(
+      "[useProducts] O que sobrou depois de gravar não terminou a tempo:",
+      erro,
+    );
+  }
+}
+
 /**
  * O SKU da VARIAÇÃO é único na loja inteira (`product_variants_sku_key`,
  * baseline do schema) — o do PRODUTO (`produtos.codigo`) não tem constraint.
@@ -635,6 +693,9 @@ class RecusaDoCadastroDeProduto extends Error {
  */
 function traduzirRecusaConhecida(error: unknown): string | null {
   if (error instanceof RecusaDoCadastroDeProduto) return error.message;
+  // O prazo da tela estourou (`aguardarComPrazo`): a frase já nasceu em
+  // português e diz o que fazer, sem afirmar se gravou ou não.
+  if (ehConsultaSemResposta(error)) return (error as Error).message;
 
   const detalhes = (error ?? {}) as {
     message?: unknown;
@@ -746,10 +807,19 @@ async function conferirSkusDasVariacoes(
   }
 
   try {
-    const { data, error } = await supabase
-      .from("product_variants")
-      .select("id, sku, product_id, produtos(nome, deleted_at)" as any)
-      .in("sku", skus);
+    // Com prazo: rede pendurada não pode segurar o salvar aqui. Estourou, cai
+    // no `catch` abaixo — sem veredito, o cadastro segue (como em qualquer
+    // falha desta consulta).
+    const { data, error } = await aguardarComPrazo(
+      Promise.resolve(
+        supabase
+          .from("product_variants")
+          .select("id, sku, product_id, produtos(nome, deleted_at)" as any)
+          .in("sku", skus),
+      ),
+      PRAZO_DE_CONFERIR_O_SKU_MS,
+      () => erroDeConsultaSemResposta(),
+    );
     if (error) throw error;
 
     const idsRegravados = new Set(
@@ -969,6 +1039,14 @@ export function useProducts({
       try {
         setLoading(true);
 
+        // Rede "pendurada": sem prazo o formulário ficava no esqueleto cinza
+        // para sempre, sem erro. As DUAS consultas em sequência dividem UM
+        // prazo (a segunda leva só o que sobrou), e o estouro vira o erro de
+        // "não consegui carregar" que a tela já mostra, com Recarregar e Voltar.
+        const inicio = Date.now();
+        const semResposta = () =>
+          erroDeConsultaSemResposta(MENSAGEM_PRODUTO_LEITURA_SEM_RESPOSTA);
+
         // Use the base table for admins to see 'custo' and other hidden fields
         let pQuery: any;
         if (isAdmin) {
@@ -986,7 +1064,11 @@ export function useProducts({
             .single();
         }
 
-        const { data: p, error: pErr } = await pQuery;
+        const { data: p, error: pErr } = await aguardarComPrazo(
+          Promise.resolve(pQuery) as Promise<{ data: any; error: any }>,
+          PRAZO_DE_LER_O_PRODUTO_MS,
+          semResposta,
+        );
 
         // B2 da 2a revisao: PGRST116 e "0 linhas casam" do .single() —
         // produto que de FACTO nao existe ou foi soft-deleted. Sem esta
@@ -1001,10 +1083,13 @@ export function useProducts({
           throw pErr;
         }
 
-        const { data: v, error: vErr } = await supabase
-          .from("product_variants")
-          .select("*")
-          .eq("product_id", id);
+        const { data: v, error: vErr } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase.from("product_variants").select("*").eq("product_id", id),
+          ),
+          Math.max(0, PRAZO_DE_LER_O_PRODUTO_MS - (Date.now() - inicio)),
+          semResposta,
+        );
 
         if (vErr) throw vErr;
 
@@ -1436,43 +1521,52 @@ export function useProducts({
         );
         if (recusaDeSku) throw new RecusaDoCadastroDeProduto(recusaDeSku);
 
-        const { data, error } = await supabase
-          .from("vw_produtos_admin")
-          .insert({
-            nome: productData.name,
-            descricao: productData.description,
-            preco_venda: productData.price,
-            // null = sem custo medido, 0 = custo zero de propósito (a
-            // migration 20261024000000 derrubou o NOT NULL de produtos.custo).
-            // O `|| 0` daqui fundia os dois — era a origem da ambiguidade do
-            // achado 8 (gatilho em AdminProductsView, hasCost).
-            custo: productData.costPrice ?? null,
-            preco_original: productData.originalPrice,
-            estoque: productData.stock,
-            // `undefined` fica de fora (o banco aplica o padrão da coluna);
-            // `null` e zero vão como estão.
-            ...(productData.estoqueMinimo !== undefined
-              ? { estoque_minimo: productData.estoqueMinimo }
-              : {}),
-            categoria: productData.category,
-            imagem_url: productData.images[0] || null,
-            imagem_urls: productData.images,
-            ativo: productData.isActive,
-            is_bestseller: productData.isBestseller,
-            frete_gratis: productData.freeShipping,
-            meta_title: productData.metaTitle,
-            meta_description: productData.metaDescription,
-            tags: productData.tags || [],
-            codigo: productData.sku || null,
-            codigo_barras: productData.codigoBarras || null,
-            sold: 0,
-            peso_kg: productData.weightKg,
-            largura_cm: productData.widthCm,
-            altura_cm: productData.heightCm,
-            comprimento_cm: productData.lengthCm,
-          } as any)
-          .select()
-          .single();
+        // Com prazo: rede "pendurada" deixava o botão em "Salvando…" para sempre
+        // e o produto podia JÁ estar criado no servidor — repetir o cadastro o
+        // duplicava. Estourou: a frase manda conferir a lista (não afirma nada).
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("vw_produtos_admin")
+              .insert({
+                nome: productData.name,
+                descricao: productData.description,
+                preco_venda: productData.price,
+                // null = sem custo medido, 0 = custo zero de propósito (a
+                // migration 20261024000000 derrubou o NOT NULL de produtos.custo).
+                // O `|| 0` daqui fundia os dois — era a origem da ambiguidade do
+                // achado 8 (gatilho em AdminProductsView, hasCost).
+                custo: productData.costPrice ?? null,
+                preco_original: productData.originalPrice,
+                estoque: productData.stock,
+                // `undefined` fica de fora (o banco aplica o padrão da coluna);
+                // `null` e zero vão como estão.
+                ...(productData.estoqueMinimo !== undefined
+                  ? { estoque_minimo: productData.estoqueMinimo }
+                  : {}),
+                categoria: productData.category,
+                imagem_url: productData.images[0] || null,
+                imagem_urls: productData.images,
+                ativo: productData.isActive,
+                is_bestseller: productData.isBestseller,
+                frete_gratis: productData.freeShipping,
+                meta_title: productData.metaTitle,
+                meta_description: productData.metaDescription,
+                tags: productData.tags || [],
+                codigo: productData.sku || null,
+                codigo_barras: productData.codigoBarras || null,
+                sold: 0,
+                peso_kg: productData.weightKg,
+                largura_cm: productData.widthCm,
+                altura_cm: productData.heightCm,
+                comprimento_cm: productData.lengthCm,
+              } as any)
+              .select()
+              .single(),
+          ),
+          PRAZO_DE_GRAVAR_O_PRODUTO_MS,
+          () => erroDeConsultaSemResposta(MENSAGEM_PRODUTO_NOVO_SEM_RESPOSTA),
+        );
 
         if (error) throw error;
 
@@ -1485,7 +1579,11 @@ export function useProducts({
           // Quando a grade falha, quem chamou precisa saber (o produto existe,
           // mas está sem variação) para NÃO dar "Salvo" nem sair da tela, e
           // para tentar de novo SEM criar outro produto.
-          let gradeNaoSalva: { motivo: string | null } | undefined;
+          // `semResposta`: o prazo estourou e NÃO se sabe se as variações
+          // entraram (a tela não pode dizer que "não foram salvas").
+          let gradeNaoSalva:
+            | { motivo: string | null; semResposta?: boolean }
+            | undefined;
 
           if (productData.variants && productData.variants.length > 0) {
             const variantsToInsert = productData.variants.map((v) => ({
@@ -1500,12 +1598,48 @@ export function useProducts({
               active: v.active,
               image_url: v.imageUrl || null,
             }));
-            const { data: insertedVariants, error: varErr } = await supabase
-              .from("product_variants")
-              .insert(variantsToInsert)
-              .select();
+            // A grade tem prazo: o produto JÁ existe (temos o id) e, sem
+            // resposta, não se sabe se as variações entraram. Estourar NÃO pode
+            // virar erro do cadastro: a tela perderia o id e o "Publicar"
+            // criaria o produto de novo. Vira o mesmo retorno de "grade não
+            // salva" que a recusa do banco já usa (a tela leva à edição dele e
+            // move o rascunho), só que dizendo a verdade: não se sabe.
+            let insertedVariants: unknown[] | null = null;
+            let varErr: unknown = null;
+            let gradeSemResposta = false;
+            try {
+              const resposta = await aguardarComPrazo(
+                Promise.resolve(
+                  supabase
+                    .from("product_variants")
+                    .insert(variantsToInsert)
+                    .select(),
+                ),
+                PRAZO_DE_GRAVAR_O_PRODUTO_MS,
+                () =>
+                  erroDeConsultaSemResposta(
+                    MENSAGEM_PRODUTO_NOVO_GRADE_SEM_RESPOSTA,
+                  ),
+              );
+              insertedVariants = resposta.data;
+              varErr = resposta.error;
+            } catch (erroDaGrade) {
+              if (!ehConsultaSemResposta(erroDaGrade)) throw erroDaGrade;
+              gradeSemResposta = true;
+              varErr = erroDaGrade;
+            }
 
-            if (varErr) {
+            if (gradeSemResposta) {
+              variantesFalharam = true;
+              console.error("Variants on creation sem resposta:", varErr);
+              gradeNaoSalva = {
+                motivo: MENSAGEM_PRODUTO_NOVO_GRADE_SEM_RESPOSTA,
+                semResposta: true,
+              };
+              toast.error(MENSAGEM_PRODUTO_NOVO_GRADE_SEM_RESPOSTA, {
+                duration: 30000,
+              });
+            } else if (varErr) {
               variantesFalharam = true;
               console.error("Error adding variants on creation:", varErr);
               // Laudo 0109 (A3): o erro era só console — a tela dizia
@@ -1545,7 +1679,9 @@ export function useProducts({
           cachedAdminProductsTotal += 1;
           setLocalProducts((prev) => [newProduct, ...prev]);
           clearAnalyticsCache();
-          await refreshContext();
+          // O produto JÁ está criado: reler o catálogo não pode segurar o
+          // botão nem, se falhar, virar "não consegui cadastrar".
+          await esperarOQueSobraDepoisDeGravar(() => refreshContext());
           // Não dizer "sucesso" em cima do aviso de variação falha (laudo
           // 0109, A3): dois toasts com mensagens opostas na mesma tela é o
           // ruído que ensina o lojista a ignorar os dois.
@@ -1556,11 +1692,16 @@ export function useProducts({
             gradeNaoSalva
               ? { ...newProduct, variantesNaoSalvas: gradeNaoSalva }
               : newProduct
-          ) as Product & { variantesNaoSalvas?: { motivo: string | null } };
+          ) as Product & {
+            variantesNaoSalvas?: {
+              motivo: string | null;
+              semResposta?: boolean;
+            };
+          };
         }
       } catch (err: any) {
         console.error("Error adding product:", err);
-        toast.error(mensagemAmigavelErroProduto(err, "cadastrar"));
+        avisarFalhaDoProduto(err, "cadastrar");
         throw err;
       }
     },
@@ -1733,9 +1874,18 @@ export function useProducts({
           *,
           product_variants(*)
         `);
-        const { data, error } = await (conferenciaDeEstoque
-          ? retorno.maybeSingle()
-          : retorno.single());
+        // Com prazo: o UPDATE pendurado deixava o botão em "Salvando…" para
+        // sempre. Estourou: não se sabe se gravou. Repetir é seguro — sem
+        // conferência o UPDATE é o mesmo; com ela, se o primeiro gravou, a
+        // versão mudou e a segunda tentativa recarrega o produto em vez de
+        // sobrescrever.
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            conferenciaDeEstoque ? retorno.maybeSingle() : retorno.single(),
+          ) as Promise<{ data: any; error: any }>,
+          PRAZO_DE_GRAVAR_O_PRODUTO_MS,
+          () => erroDeConsultaSemResposta(MENSAGEM_PRODUTO_EDICAO_SEM_RESPOSTA),
+        );
 
         // Nenhuma linha casou: ou o produto foi excluído em outro aparelho, ou
         // (só com conferência) o estoque mudou. `.single()` devolve isso como
@@ -1769,17 +1919,6 @@ export function useProducts({
         if (data) {
           const updatedProduct = mapProductFromDB(data);
 
-          // Clean up removed images from storage
-          if (updates.images !== undefined) {
-            const newImages = updates.images;
-            const removedImages = oldImages.filter(
-              (img) => !newImages.includes(img),
-            );
-            for (const img of removedImages) {
-              await backupStorageFile(img);
-            }
-          }
-
           cachedAdminProducts = (cachedAdminProducts || []).map((p) =>
             p.id === id ? updatedProduct : p,
           );
@@ -1787,13 +1926,26 @@ export function useProducts({
             prev.map((p) => (p.id === id ? updatedProduct : p)),
           );
           clearAnalyticsCache();
-          await refreshContext();
+          // A gravação JÁ deu certo: copiar para o backup a foto removida (uma
+          // de cada vez) e reler o catálogo não seguram o botão além do prazo.
+          await esperarOQueSobraDepoisDeGravar(async () => {
+            if (updates.images !== undefined) {
+              const newImages = updates.images;
+              const removedImages = oldImages.filter(
+                (img) => !newImages.includes(img),
+              );
+              for (const img of removedImages) {
+                await backupStorageFile(img);
+              }
+            }
+            await refreshContext();
+          });
           toast.success("Produto atualizado!");
           return updatedProduct;
         }
       } catch (err: any) {
         console.error("Error updating product:", err);
-        toast.error(mensagemAmigavelErroProduto(err, "atualizar"));
+        avisarFalhaDoProduto(err, "atualizar");
         throw err;
       }
     },
@@ -1850,26 +2002,45 @@ export function useProducts({
             "Não consegui conferir a versão do estoque. Recarregue o produto antes de salvar de novo.",
           );
         }
+        // Leitura antes de gravar (nada foi escrito ainda): com prazo, para a
+        // rede pendurada não segurar o botão aqui.
         const imagensDasApagadas =
           apagar.length > 0
-            ? await supabase
-                .from("product_variants")
-                .select("id, image_url")
-                .eq("product_id", id)
-                .in("id", apagar)
+            ? await aguardarComPrazo(
+                Promise.resolve(
+                  supabase
+                    .from("product_variants")
+                    .select("id, image_url")
+                    .eq("product_id", id)
+                    .in("id", apagar),
+                ),
+                PRAZO_DE_LER_O_PRODUTO_MS,
+                () =>
+                  erroDeConsultaSemResposta(
+                    MENSAGEM_PRODUTO_LEITURA_SEM_RESPOSTA,
+                  ),
+              )
             : null;
         if (imagensDasApagadas?.error) throw imagensDasApagadas.error;
 
         // O tipo da RPC chega junto com a migration na integração do backend.
-        const { data, error } = await (supabase.rpc as any)(
-          "salvar_produto_com_grade",
-          {
-            p_produto_id: id,
-            p_base_atualizado_em: baseUpdatedAt ?? null,
-            p_produto: atualizacoesDoProdutoParaBanco(updates),
-            p_variantes: variacoesParaBanco(variantes),
-            p_apagar: apagar,
-          },
+        // Com prazo: a RPC pendurada deixava o botão em "Salvando…" para
+        // sempre. Estourou: não se sabe se a transação comitou. Repetir é
+        // seguro — a RPC confere a versão-base (PRD01): se a primeira gravou,
+        // a segunda recusa e a tela recarrega o produto em vez de repetir as
+        // variações novas.
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            (supabase.rpc as any)("salvar_produto_com_grade", {
+              p_produto_id: id,
+              p_base_atualizado_em: baseUpdatedAt ?? null,
+              p_produto: atualizacoesDoProdutoParaBanco(updates),
+              p_variantes: variacoesParaBanco(variantes),
+              p_apagar: apagar,
+            }),
+          ) as Promise<{ data: any; error: any }>,
+          PRAZO_DE_GRAVAR_O_PRODUTO_MS,
+          () => erroDeConsultaSemResposta(MENSAGEM_PRODUTO_EDICAO_SEM_RESPOSTA),
         );
         if (error?.code === "PRD01") {
           const produtoAtual = await fetchProduct(id).catch(() => null);
@@ -1888,19 +2059,29 @@ export function useProducts({
           apagadas: string[];
           recusadas: string[];
         };
-        for (const imagem of atual?.images ?? []) {
-          if (
-            updates.images !== undefined &&
-            !updates.images.includes(imagem)
-          ) {
-            await backupStorageFile(imagem);
+        // As cópias de backup das fotos removidas (uma de cada vez) começam
+        // já, junto com a releitura abaixo, e entram no prazo do "que sobra":
+        // a gravação JÁ deu certo e elas não seguram o botão.
+        const copiasDeBackup = (async () => {
+          for (const imagem of atual?.images ?? []) {
+            if (
+              updates.images !== undefined &&
+              !updates.images.includes(imagem)
+            ) {
+              await backupStorageFile(imagem);
+            }
           }
-        }
-        for (const variante of imagensDasApagadas?.data ?? []) {
-          if (variante.image_url && resultado.apagadas.includes(variante.id)) {
-            await backupStorageFile(variante.image_url);
+          for (const variante of imagensDasApagadas?.data ?? []) {
+            if (
+              variante.image_url &&
+              resultado.apagadas.includes(variante.id)
+            ) {
+              await backupStorageFile(variante.image_url);
+            }
           }
-        }
+        })().catch((erroDaCopia) => {
+          console.warn("[useProducts] Cópia de backup falhou:", erroDaCopia);
+        });
 
         // Reler inclui os ids das novas variações e a versão depois dos gatilhos.
         // Se a leitura falhar, a tela precisa travar a repetição do INSERT.
@@ -1914,7 +2095,10 @@ export function useProducts({
           prev.map((p) => (p.id === id ? produto : p)),
         );
         clearAnalyticsCache();
-        await refreshContext();
+        await esperarOQueSobraDepoisDeGravar(async () => {
+          await copiasDeBackup;
+          await refreshContext();
+        });
         if (resultado.recusadas.length === 0)
           toast.success("Produto atualizado!");
         return { produto, recusadas: resultado.recusadas };
@@ -1931,7 +2115,7 @@ export function useProducts({
           toast.error(recusa.message);
           throw recusa;
         }
-        toast.error(mensagemAmigavelErroProduto(err, "atualizar"));
+        avisarFalhaDoProduto(err, "atualizar");
         throw err;
       }
     },

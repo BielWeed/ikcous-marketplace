@@ -246,9 +246,13 @@ export const AdminQAView = memo(function AdminQAView({
   }, [selectedQuestion]);
 
   const initialAnswerRef = useRef("");
+  // Pergunta cuja mudança em outro aparelho já foi avisada: o segundo toque em
+  // "Publicar resposta" publica de propósito.
+  const mudancaAvisadaRef = useRef<string | null>(null);
 
   // Sincronizar preenchimento com selectedQuestion e resetar ao fechar
   useEffect(() => {
+    mudancaAvisadaRef.current = null;
     if (selectedQuestion) {
       const isAnswered =
         selectedQuestion.answers && selectedQuestion.answers.length > 0;
@@ -265,6 +269,22 @@ export const AdminQAView = memo(function AdminQAView({
       initialAnswerRef.current = "";
     }
   }, [selectedQuestion]);
+
+  // `selectedQuestion` é uma cópia da hora em que a folha abriu. Se outro
+  // aparelho respondeu desde então e o campo continua intacto, ele acompanha a
+  // resposta nova; campo já mexido nunca é trocado (o envio avisa antes).
+  useEffect(() => {
+    const aberta = formularioAtual.current.selectedQuestion;
+    if (!aberta) return;
+    const naLista = questions.find((q) => q.id === aberta.id);
+    if (!naLista) return;
+    const respostaNova = naLista.answers.at(-1)?.answer ?? "";
+    if (respostaNova === initialAnswerRef.current) return;
+    if (formularioAtual.current.answer === initialAnswerRef.current) {
+      initialAnswerRef.current = respostaNova;
+      setAnswer(respostaNova);
+    }
+  }, [questions]);
 
   // Fechar a folha nunca deixa alteração pendente. Efeito à parte para não
   // refazer o preenchimento acima se `onSetDirty` mudar de identidade. Sem
@@ -358,6 +378,24 @@ export const AdminQAView = memo(function AdminQAView({
     if (!cleanAnswer) {
       toast.error("A resposta não pode ser vazia.");
       return;
+    }
+
+    // A resposta mudou (ou a pergunta saiu da lista) em outro aparelho depois
+    // que esta folha abriu: publicar agora apagaria a mais nova sem ninguém
+    // ver. Lista que falhou ou ainda carrega não prova nada.
+    if (mudancaAvisadaRef.current !== selectedQuestion.id) {
+      const naLista = questions.find((q) => q.id === selectedQuestion.id);
+      const mudouFora = naLista
+        ? (naLista.answers.at(-1)?.answer ?? "") !== initialAnswerRef.current
+        : !loading && !erroDaListagemAdmin;
+      if (mudouFora) {
+        mudancaAvisadaRef.current = selectedQuestion.id;
+        toast.error("Esta pergunta mudou em outro aparelho.", {
+          description:
+            "Ela pode ter sido respondida ou excluída. Confira a lista; se ainda quiser publicar, toque em Publicar resposta de novo.",
+        });
+        return;
+      }
     }
 
     setIsSubmitting(true);

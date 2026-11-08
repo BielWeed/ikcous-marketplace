@@ -39,7 +39,13 @@ import {
   parsePrevistos,
   parseResumo,
 } from "@/lib/financeiro";
-import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
+import {
+  MENSAGEM_CONEXAO_LENTA,
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { Json } from "@/types/database.types";
 import type {
@@ -125,7 +131,15 @@ function useConsultaFinanceira<T>(
             carregando: true,
           },
     );
-    carregarRef.current().then(
+    // Rede "pendurada" (conecta e não responde): sem prazo o esqueleto girava
+    // para sempre e o valor de antes ficava na tela sem aviso. Estourou = erro
+    // (com "Tentar de novo" e, havendo dado antigo, "Valor de antes"). O prazo só
+    // encerra a ESPERA da tela: é leitura, não grava nada.
+    aguardarComPrazo(
+      carregarRef.current(),
+      PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+      erroDeConsultaSemResposta,
+    ).then(
       (dados) => {
         if (!viva) return;
         cache?.set(chave, dados);
@@ -136,7 +150,9 @@ function useConsultaFinanceira<T>(
         setEstado((anterior) => ({
           chave,
           dados: anterior.chave === chave ? anterior.dados : null,
-          erro: mensagemDeErroFinanceiro(erro),
+          erro: ehConsultaSemResposta(erro)
+            ? MENSAGEM_CONEXAO_LENTA
+            : mensagemDeErroFinanceiro(erro),
           carregando: false,
         }));
       },

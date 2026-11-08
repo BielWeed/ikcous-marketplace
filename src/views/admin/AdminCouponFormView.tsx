@@ -37,7 +37,12 @@ import {
 import { porcentagem } from "@/lib/cupons-do-checkout";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { pluralizar } from "@/lib/pluralizar";
-import { ehConsultaSemResposta } from "@/lib/prazo-da-requisicao";
+import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { ClienteDoCupom, Coupon, View } from "@/types";
 import { camposQueMudaram } from "@/utils/campos-mexidos-do-produto";
@@ -607,6 +612,60 @@ function FormularioDoCupom({
           if (onSetDirty) onSetDirty(false);
           onNavigate("admin-coupons");
           return;
+        }
+        // A lista que a tela leu ao abrir pode ter mudado em outro aparelho
+        // (o celular acrescentou uma cliente enquanto o computador estava
+        // aberto). O banco apaga quem não está na lista enviada, então gravar
+        // a lista antiga desfazia a mudança de lá e a tela dizia "Cupom
+        // atualizado". Relê ANTES de gravar qualquer coisa (nem as regras
+        // vão, para não deixar salvo só um pedaço). Só vale para a lista que a
+        // tela de fato leu (`ok`) e para uma lista que fica: esvaziar ao sair
+        // do exclusivo é a intenção dela, e a lista deixa de valer.
+        if (
+          clientesParaSalvar !== undefined &&
+          clientesParaSalvar.length > 0 &&
+          listaDoExclusivo === "ok"
+        ) {
+          let doBanco: ClienteDoCupom[];
+          try {
+            doBanco = await aguardarComPrazo(
+              listarClientesDoCupom(editingCoupon.id),
+              PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+              () => erroDeConsultaSemResposta(),
+            );
+          } catch (erroDaLeitura) {
+            console.error(
+              "Erro ao conferir os clientes do cupom:",
+              erroDaLeitura,
+            );
+            recusarCampo(
+              "clientes",
+              "Não deu para conferir a lista de clientes deste cupom agora. Nada foi salvo e o que você mexeu continua na tela. Toque em Salvar Cupom de novo.",
+            );
+            return;
+          }
+          const idsDoBanco = doBanco.map((c) => c.id).sort();
+          if (idsDoBanco.join(",") !== clientesIniciais.join(",")) {
+            // Junta as duas mãos: o que o banco tem agora, menos quem ELA
+            // tirou, mais quem ELA acrescentou. Ela confere e salva de novo.
+            const jaTinha = new Set(clientesIniciais);
+            const tiradosPorEla = new Set(
+              clientesIniciais.filter((id) => !idsDosClientes.includes(id)),
+            );
+            const noBanco = new Set(idsDoBanco);
+            setClientes([
+              ...doBanco.filter((c) => !tiradosPorEla.has(c.id)),
+              ...clientes.filter(
+                (c) => !jaTinha.has(c.id) && !noBanco.has(c.id),
+              ),
+            ]);
+            setClientesIniciais(idsDoBanco);
+            recusarCampo(
+              "clientes",
+              "A lista de clientes deste cupom mudou em outro aparelho. Nada foi salvo. Juntamos o que mudou lá com o que você mexeu aqui: confira a lista e toque em Salvar Cupom de novo.",
+            );
+            return;
+          }
         }
         if (clientesParaSalvar !== undefined) {
           await updateCoupon(
