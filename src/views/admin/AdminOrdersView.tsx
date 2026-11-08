@@ -863,6 +863,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // efeito refaz a busca SEM acender o spinner (a ficha continua montada).
   const [revalidacaoDaFicha, setRevalidacaoDaFicha] = useState(0);
   const revalidacaoSilenciosaRef = useRef(false);
+  // Id da ficha cuja revalidação silenciosa está NO AR. Quando a lista de
+  // pedidos recarrega junto (reconexão), `orders` ganha nova referência, o
+  // efeito abaixo roda de novo e a limpeza descarta a busca em andamento; sem
+  // isto o efeito, vendo o id já resolvido, voltaria sem refazê-la e a ficha
+  // ficaria no retrato antigo. Com isto ele a refaz, também em silêncio.
+  const revalidacaoNoArRef = useRef<string | null>(null);
   useEffect(() => {
     if (!active) return;
 
@@ -871,6 +877,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       : null;
     const isIdChanged = lastSelectedOrderIdRef.current !== selectedOrderId;
     lastSelectedOrderIdRef.current = selectedOrderId;
+    if (isIdChanged) revalidacaoNoArRef.current = null;
 
     const updateState = (order: Order | null) => {
       setSelectedOrder(order);
@@ -910,6 +917,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     }
 
     if (nextOrder) {
+      revalidacaoNoArRef.current = null;
       resolvedOrderIdRef.current = selectedOrderId;
       triggerUpdate(nextOrder);
       return;
@@ -920,7 +928,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // uma busca anterior que teve sucesso), não refaz a busca nem acende o
     // spinner só porque `orders` mudou de referência por causa de OUTRO
     // pedido — é exatamente isso que desmontava a ficha em edição.
-    const revalidar = revalidacaoSilenciosaRef.current;
+    const revalidar =
+      revalidacaoSilenciosaRef.current ||
+      revalidacaoNoArRef.current === selectedOrderId;
     revalidacaoSilenciosaRef.current = false;
     if (resolvedOrderIdRef.current === selectedOrderId && !revalidar) return;
 
@@ -929,7 +939,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     const fetchSingleOrder = async () => {
       // Na revalidação a ficha já está na tela: nada de spinner de tela
       // cheia (era ele que desmontava o OrderDetail em edição).
-      if (!revalidar) setLoadingDetail(true);
+      if (revalidar) revalidacaoNoArRef.current = selectedOrderId;
+      else setLoadingDetail(true);
       setDetailError(false);
       setDetailNaoExiste(false);
       try {
@@ -951,7 +962,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         }
       } catch (err) {
         console.error("Error fetching single order:", err);
-        if (isCurrent) {
+        // Revalidação silenciosa que falhou (rede que acabou de voltar, por
+        // exemplo): a ficha que já está na tela fica como está. Trocá-la pela
+        // tela de erro apagaria a anotação que a lojista estiver digitando.
+        if (isCurrent && !revalidar) {
           // PGRST116 = `.single()` não achou linha; 22P02 = o id do link nem
           // é um uuid (link truncado). Os dois: o pedido não existe.
           const codigoDoErro = (err as { code?: string } | null)?.code;
@@ -966,7 +980,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           setDetailError(true);
         }
       } finally {
-        if (isCurrent) setLoadingDetail(false);
+        if (isCurrent) {
+          revalidacaoNoArRef.current = null;
+          setLoadingDetail(false);
+        }
       }
     };
 
@@ -975,6 +992,29 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       isCurrent = false;
     };
   }, [selectedOrderId, orders, active, revalidacaoDaFicha]);
+
+  // Ficha de deep link (pedido fora de `orders`): o evento ao vivo é a única
+  // atualização dela, e ele se perde com a rede fora ou a aba em segundo plano.
+  // Ao a rede voltar e ao a aba voltar a ficar visível, revalida em silêncio
+  // pelo mesmo caminho do evento ao vivo (sem spinner, sem desmontar a ficha).
+  useEffect(() => {
+    if (!active || !selectedOrderId) return;
+    const revalidarFichaDeLink = () => {
+      if (resolvedOrderIdRef.current !== selectedOrderId) return;
+      if (orders.some((o) => o.id === selectedOrderId)) return;
+      revalidacaoSilenciosaRef.current = true;
+      setRevalidacaoDaFicha((n) => n + 1);
+    };
+    const aoMudarAVisibilidade = () => {
+      if (document.visibilityState === "visible") revalidarFichaDeLink();
+    };
+    globalThis.addEventListener("online", revalidarFichaDeLink);
+    document.addEventListener("visibilitychange", aoMudarAVisibilidade);
+    return () => {
+      globalThis.removeEventListener("online", revalidarFichaDeLink);
+      document.removeEventListener("visibilitychange", aoMudarAVisibilidade);
+    };
+  }, [active, selectedOrderId, orders]);
 
   useEffect(() => {
     const container =

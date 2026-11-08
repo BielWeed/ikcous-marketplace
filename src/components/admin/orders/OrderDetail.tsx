@@ -296,14 +296,57 @@ const globalSkuCache: Record<string, string> = {};
 const globalVariacaoCache = new Map<string, string>();
 const filaNotas = new Map<string, Promise<unknown>>();
 
+// Carimbo (`updated_at`, posto pelo servidor) da anotação como ESTA tela a viu
+// por último, por pedido; `null` = não havia anotação. Salvar só vale se a
+// anotação ainda tiver esse carimbo: sem isso, dois aparelhos no mesmo pedido
+// se apagam em silêncio (o último "ganha"). Vive no módulo, como `filaNotas`,
+// porque quem lê é a gravação que sai da fila, depois do clique: um segundo
+// salvar atrás de um primeiro ainda no ar usa o carimbo que o primeiro deixou.
+const versoesDasNotas = new Map<string, string | null>();
+
+// Código que o servidor devolve quando o `insert` esbarra numa anotação que
+// já existe (um aparelho criou depois que o outro leu "sem anotação").
+const CODIGO_LINHA_JA_EXISTE = "23505";
+
 const lerNotaInterna = async (pedidoId: string) => {
   const { data, error } = await supabase
     .from("marketplace_order_internal_notes")
-    .select("note")
+    .select("note, updated_at")
     .eq("order_id", pedidoId)
     .maybeSingle();
   if (error) throw error;
-  return data?.note || "";
+  return {
+    note: data?.note || "",
+    updatedAt: data ? data.updated_at : null,
+  };
+};
+
+// Grava a anotação SÓ se ela ainda estiver como esta tela a viu pela última
+// vez. `conflito` = nenhuma linha foi gravada porque outro aparelho mexeu
+// antes (nada foi sobrescrito).
+const gravarNotaInterna = async (pedidoId: string, note: string) => {
+  const tabela = supabase.from("marketplace_order_internal_notes");
+  const visto = versoesDasNotas.get(pedidoId) ?? null;
+  if (visto === null) {
+    // Não havia anotação quando a tela leu.
+    if (!note) return { error: null, conflito: false };
+    const { data, error } = await tabela
+      .insert({ order_id: pedidoId, note })
+      .select("updated_at");
+    if (error?.code === CODIGO_LINHA_JA_EXISTE) {
+      return { error: null, conflito: true };
+    }
+    if (!error) versoesDasNotas.set(pedidoId, data?.[0]?.updated_at ?? null);
+    return { error, conflito: false };
+  }
+  const filtrada = note
+    ? tabela.update({ note }).eq("order_id", pedidoId).eq("updated_at", visto)
+    : tabela.delete().eq("order_id", pedidoId).eq("updated_at", visto);
+  const { data, error } = await filtrada.select("updated_at");
+  if (error) return { error, conflito: false };
+  if (!data?.length) return { error: null, conflito: true };
+  versoesDasNotas.set(pedidoId, note ? (data[0].updated_at ?? null) : null);
+  return { error: null, conflito: false };
 };
 
 // Redesenho da ficha (08/10/2026, aprovado pelo dono): a MESMA linguagem do
@@ -1341,6 +1384,8 @@ interface OrderNotesCardProps {
   localNotes: string;
   isEditingNotes: boolean;
   notesValue: string;
+  /** Anotação como está salva agora, quando outro aparelho a mudou. */
+  notaDeOutroAparelho: string | null;
   isSavingNotes: boolean;
   isOffline: boolean;
   notesStatus: "loading" | "ready" | "error";
@@ -1357,6 +1402,7 @@ function OrderNotesCard({
   localNotes,
   isEditingNotes,
   notesValue,
+  notaDeOutroAparelho,
   isSavingNotes,
   isOffline,
   notesStatus,
@@ -1404,6 +1450,19 @@ function OrderNotesCard({
         <p id="notes-ajuda" className="text-xs text-zinc-400">
           Só você e sua equipe veem esta anotação. A cliente não vê.
         </p>
+        {notaDeOutroAparelho !== null && (
+          <div
+            role="status"
+            className="space-y-1 rounded-xl border border-admin-gold/30 bg-admin-gold/5 p-3"
+          >
+            <p className="text-xs font-medium text-zinc-200">
+              Esta anotação mudou em outro aparelho. Salva agora:
+            </p>
+            <p className="whitespace-pre-line break-words text-sm text-zinc-200">
+              {notaDeOutroAparelho || "(a anotação foi apagada)"}
+            </p>
+          </div>
+        )}
         <textarea
           id="notes-textarea"
           aria-describedby="notes-ajuda"
@@ -1537,6 +1596,11 @@ export const OrderDetail = memo(function OrderDetail({
   const [localNotes, setLocalNotes] = useState("");
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notesValue, setNotesValue] = useState("");
+  // Anotação como está salva agora, mostrada ao lado do rascunho quando o
+  // "Salvar" descobriu que outro aparelho a mudou (`null` = sem aviso).
+  const [notaDeOutroAparelho, setNotaDeOutroAparelho] = useState<string | null>(
+    null,
+  );
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [leituraNotas, setLeituraNotas] = useState<{
     pedidoId: string;
@@ -1761,9 +1825,41 @@ export const OrderDetail = memo(function OrderDetail({
     }
   };
 
+  // O código salvo SEMPRE acompanha o pedido (ele chega ao vivo, inclusive o
+  // que outro aparelho salvou). O texto que a lojista está DIGITANDO só é
+  // trocado se ela não mexeu nele — e sempre quando a ficha passa a outro
+  // pedido. O estado de agora vai num ref (escrito no render, como
+  // `orderIdAtualRef`) para o efeito rodar só quando o pedido ou o código
+  // mudam, sem reabrir o campo a cada tecla.
+  const rastreioDaTelaRef = useRef({
+    pedidoId: order.id,
+    editando: false,
+    digitado: "",
+    salvo: "",
+  });
+  rastreioDaTelaRef.current = {
+    pedidoId: rastreioDaTelaRef.current.pedidoId,
+    editando: isEditingTracking,
+    digitado: trackingValue,
+    salvo: localTrackingCode,
+  };
   useEffect(() => {
-    setLocalTrackingCode(order.trackingCode || "");
-    setTrackingValue(order.trackingCode || "");
+    const novo = order.trackingCode || "";
+    const tela = rastreioDaTelaRef.current;
+    const mudouPedido = tela.pedidoId !== order.id;
+    rastreioDaTelaRef.current.pedidoId = order.id;
+    const rascunho =
+      !mudouPedido && tela.editando && tela.digitado !== tela.salvo;
+    setLocalTrackingCode(novo);
+    if (!rascunho) {
+      setTrackingValue(novo);
+      return;
+    }
+    if (novo !== tela.salvo) {
+      toast.info(
+        "O código de rastreio mudou em outro aparelho. O que você digitou foi mantido.",
+      );
+    }
   }, [order.id, order.trackingCode]);
 
   useEffect(() => {
@@ -1775,7 +1871,7 @@ export const OrderDetail = memo(function OrderDetail({
     const carregar = async () => {
       try {
         await filaNotas.get(pedidoId);
-        const note = await lerNotaInterna(pedidoId);
+        const { note } = await lerNotaInterna(pedidoId);
         if (!vigente || orderIdAtualRef.current !== pedidoId) return;
         setLocalNotes(note);
         setNotesValue(note);
@@ -1796,6 +1892,7 @@ export const OrderDetail = memo(function OrderDetail({
     setIsEditingTracking(false);
     setIsSavingTracking(false);
     setIsEditingNotes(false);
+    setNotaDeOutroAparelho(null);
     setIsSavingNotes(false);
     setAbrindoEdicao(false);
     salvamentoNotasRef.current++;
@@ -2064,10 +2161,12 @@ export const OrderDetail = memo(function OrderDetail({
       salvamentoNotasRef.current === salvamento;
     setAbrindoEdicao(true);
     try {
-      const note = await lerNotaInterna(pedidoId);
+      const { note, updatedAt } = await lerNotaInterna(pedidoId);
       if (!vigente()) return;
+      versoesDasNotas.set(pedidoId, updatedAt);
       setLocalNotes(note);
       setNotesValue(note);
+      setNotaDeOutroAparelho(null);
       setIsEditingNotes(true);
     } catch {
       if (vigente()) {
@@ -2092,14 +2191,7 @@ export const OrderDetail = memo(function OrderDetail({
       salvamentoNotasRef.current === salvamento;
     try {
       setIsSavingNotes(true);
-      const tabela = supabase.from("marketplace_order_internal_notes");
-      const gravar = () =>
-        note
-          ? tabela.upsert(
-              { order_id: pedidoId, note },
-              { onConflict: "order_id" },
-            )
-          : tabela.delete().eq("order_id", pedidoId);
+      const gravar = () => gravarNotaInterna(pedidoId, note);
       const fila = filaNotas;
       const vez = (fila.get(pedidoId) ?? Promise.resolve()).then(gravar);
       const pendente = vez.catch(() => undefined);
@@ -2111,7 +2203,7 @@ export const OrderDetail = memo(function OrderDetail({
       // (um novo salvar não passa na frente, então nada duplica nem se
       // reordena). Estourou: o `catch` abaixo conta que NÃO se sabe se
       // gravou, solta o campo COM o texto digitado e relê a anotação gravada.
-      const { error } = await aguardarComPrazo(
+      const { error, conflito } = await aguardarComPrazo(
         vez,
         PRAZO_DAS_ACOES_DO_PEDIDO_MS,
         () => erroDeConsultaSemResposta(MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA),
@@ -2120,6 +2212,31 @@ export const OrderDetail = memo(function OrderDetail({
       // A resposta só pode alterar a ficha deste pedido E deste salvamento.
       if (!vigente()) return;
       if (error) throw error;
+      if (conflito) {
+        // Outro aparelho mexeu na anotação depois que o editor abriu: nada foi
+        // gravado. O que ela digitou FICA no editor; a anotação como está
+        // salva agora aparece junto para comparar, e o carimbo novo vale para
+        // o próximo "Salvar" (que ela só dá depois de ver a nova).
+        toast.error(
+          "Esta anotação mudou em outro aparelho. O que você digitou continua aqui; compare com a anotação nova e salve de novo se quiser.",
+        );
+        try {
+          const atual = await aguardarComPrazo(
+            lerNotaInterna(pedidoId),
+            PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+            () => erroDeConsultaSemResposta(),
+          );
+          if (vigente()) {
+            versoesDasNotas.set(pedidoId, atual.updatedAt);
+            setLocalNotes(atual.note);
+            setNotaDeOutroAparelho(atual.note);
+          }
+        } catch {
+          // Sem a leitura nova o carimbo antigo continua valendo: salvar de
+          // novo dará o mesmo aviso (nunca sobrescreve em silêncio).
+        }
+        return;
+      }
       setLocalNotes(note);
       setNotesValue(note);
       setIsEditingNotes(false);
@@ -2139,7 +2256,7 @@ export const OrderDetail = memo(function OrderDetail({
               PRAZO_DAS_ACOES_DO_PEDIDO_MS,
               () => erroDeConsultaSemResposta(),
             );
-            if (vigente()) setLocalNotes(gravada);
+            if (vigente()) setLocalNotes(gravada.note);
           } catch {
             // Releitura em silêncio: a frase acima já mandou conferir.
           }
@@ -2428,6 +2545,7 @@ export const OrderDetail = memo(function OrderDetail({
             localNotes={localNotes}
             isEditingNotes={isEditingNotes}
             notesValue={notesValue}
+            notaDeOutroAparelho={notaDeOutroAparelho}
             isSavingNotes={isSavingNotes}
             isOffline={isOffline}
             notesStatus={notesStatus}

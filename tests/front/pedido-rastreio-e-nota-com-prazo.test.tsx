@@ -30,33 +30,85 @@ const { atualizar, salvar, ler, gravarNota, banco } = vi.hoisted(() => ({
   banco: new Map<string, string>(),
 }));
 
+// A anotação só é gravada se o carimbo (`updated_at`) lido ao abrir o editor
+// ainda for o do banco; aqui o carimbo é derivado do texto (`v-<texto>`).
+const carimboDe = (nota: string) => `v-${nota}`;
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    from: (tabela: string) => ({
-      select: (colunas: string) => ({
-        eq: (coluna: string, id: string) => ({
-          maybeSingle: () =>
-            tabela === "config_mototaxi"
-              ? Promise.resolve({
-                  data: { whatsapp: null, nome: null },
+    from: (tabela: string) => {
+      const cadeiaDaNota = (operacao: "update" | "delete", note?: string) => {
+        const filtros = new Map<string, unknown>();
+        const cadeia = {
+          eq: (coluna: string, valor: unknown) => {
+            filtros.set(coluna, valor);
+            return cadeia;
+          },
+          select: () => {
+            const id = filtros.get("order_id") as string;
+            if (operacao === "update")
+              gravarNota(tabela, { order_id: id, note });
+            return Promise.resolve(salvar("nota", id)).then(
+              (resposta: { error: Error | null }) => {
+                if (resposta.error) return resposta;
+                const bate =
+                  banco.has(id) &&
+                  filtros.get("updated_at") === carimboDe(banco.get(id) ?? "");
+                if (!bate) return { data: [], error: null };
+                if (operacao === "delete") banco.delete(id);
+                else banco.set(id, note as string);
+                return {
+                  data: [{ updated_at: carimboDe(note ?? "") }],
                   error: null,
-                })
-              : ler(tabela, colunas, coluna, id),
+                };
+              },
+            );
+          },
+        };
+        return cadeia;
+      };
+      return {
+        select: (colunas: string) => ({
+          eq: (coluna: string, id: string) => ({
+            maybeSingle: () =>
+              tabela === "config_mototaxi"
+                ? Promise.resolve({
+                    data: { whatsapp: null, nome: null },
+                    error: null,
+                  })
+                : ler(tabela, colunas, coluna, id),
+          }),
         }),
-      }),
-      upsert: (valores: { order_id: string; note: string }) => {
-        gravarNota(tabela, valores);
-        return Promise.resolve(salvar("nota", valores.order_id));
-      },
-      delete: () => ({
-        eq: (_coluna: string, id: string) =>
-          Promise.resolve(salvar("nota", id)),
-      }),
-      update: (valores: unknown) => {
-        atualizar(tabela, valores);
-        return { eq: (_coluna: string, id: string) => salvar("rastreio", id) };
-      },
-    }),
+        insert: (valores: { order_id: string; note: string }) => ({
+          select: () => {
+            gravarNota(tabela, valores);
+            return Promise.resolve(salvar("nota", valores.order_id)).then(
+              (resposta: { error: Error | null }) => {
+                if (resposta.error) return resposta;
+                if (banco.has(valores.order_id)) {
+                  return { data: null, error: { code: "23505" } };
+                }
+                banco.set(valores.order_id, valores.note);
+                return {
+                  data: [{ updated_at: carimboDe(valores.note) }],
+                  error: null,
+                };
+              },
+            );
+          },
+        }),
+        delete: () => cadeiaDaNota("delete"),
+        update: (valores: { note?: string }) => {
+          if (tabela === "marketplace_order_internal_notes") {
+            return cadeiaDaNota("update", valores.note);
+          }
+          atualizar(tabela, valores);
+          return {
+            eq: (_coluna: string, id: string) => salvar("rastreio", id),
+          };
+        },
+      };
+    },
     functions: { invoke: vi.fn() },
   },
 }));
@@ -139,7 +191,12 @@ describe("ficha do pedido — rastreio e anotação: a espera da tela tem prazo"
             tabela === "marketplace_orders"
               ? { data: { tracking_code: rastreioNoServidor }, error: null }
               : {
-                  data: banco.has(id) ? { note: banco.get(id) } : null,
+                  data: banco.has(id)
+                    ? {
+                        note: banco.get(id),
+                        updated_at: carimboDe(banco.get(id) ?? ""),
+                      }
+                    : null,
                   error: null,
                 },
           ),

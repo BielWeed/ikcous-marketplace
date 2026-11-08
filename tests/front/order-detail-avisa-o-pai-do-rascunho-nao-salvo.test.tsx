@@ -32,10 +32,16 @@ vi.mock("@/lib/supabase", () => ({
               : ler(tabela, colunas, coluna, id),
         }),
       }),
-      upsert: (valores: { order_id: string; note: string }) => {
-        gravarNota(tabela, valores);
-        return Promise.resolve({ error: null });
-      },
+      // Anotação nova (a ficha leu "sem anotação"): grava com `insert`.
+      insert: (valores: { order_id: string; note: string }) => ({
+        select: () => {
+          gravarNota(tabela, valores);
+          return Promise.resolve({
+            data: [{ updated_at: "2026-11-08T10:00:00+00:00" }],
+            error: null,
+          });
+        },
+      }),
       delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
       update: (valores: unknown) => {
         atualizar(tabela, valores);
