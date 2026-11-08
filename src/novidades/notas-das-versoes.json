@@ -1,4 +1,24 @@
 {
+  "1.5.158": {
+    "titulo": "Painel que avisa quando a internet falha, sem produto duplicado, e vitrine mais correta",
+    "novidades": [],
+    "melhorias": [
+      "Painel, Aviso de pedido novo: tocar no aviso de pedido novo com o app já aberto leva direto ao pedido, sem recarregar a tela.",
+      "Painel, Pedidos: ao voltar para o app depois de bloquear o celular, os números do topo (Para preparar, Aguardando pagamento, A caminho) se atualizam sozinhos."
+    ],
+    "correcoes": [
+      "Loja, Vitrine e Busca: as ofertas da Home escolhem os produtos de forma estável, a busca mostra produto sem foto e o cartão de produto esgotado fica correto.",
+      "Loja, Carrinho: o carrinho não diz mais que falta endereço antes de ler o endereço salvo, o frete é recalculado ao mudar o endereço e o cupom vencido sai sozinho.",
+      "Loja, Entrar e Perfil: um erro de entrar que chega atrasado não aparece mais na tela errada, e o Perfil usa o nome do cadastro.",
+      "Painel, Pedido: a anotação interna e o código de rastreio ficam protegidos quando o pedido está aberto em dois aparelhos.",
+      "Painel, Produtos: salvar, publicar ou abrir um produto com a internet sem resposta não deixa mais o botão em “Salvando…” para sempre. Passados 20 segundos, o aviso manda conferir a lista antes de publicar de novo, para não criar o produto duas vezes; o rascunho antigo espera você decidir entre Restaurar e Descartar.",
+      "Painel, Banners e Categorias: adicionar, editar, reordenar, esconder ou excluir com a internet sem resposta solta a tela com um aviso honesto, e o que você digitou continua lá; banner de produto excluído mostra um aviso no cartão.",
+      "Painel, Início, CRM e Pedidos: consulta sem resposta vira o aviso com “Tentar de novo”, em vez de carregar para sempre ou mostrar número velho como se fosse de agora.",
+      "Painel, Financeiro: com a internet sem resposta, as telas (Visão, Extrato, Pagar e receber, Resultado, Caixa) deixam de ficar cinzas para sempre: depois de 20 segundos aparece o aviso com “Tentar de novo”, e o valor de antes avisa que pode estar desatualizado.",
+      "Painel, Cupons: se outra pessoa mexeu na lista de clientes de um cupom enquanto você editava, nada é gravado por cima: você vê o aviso e a lista já juntada para conferir; se o cupom salvou mas a lista não, o aviso diz isso e como resolver.",
+      "Painel, Avaliações e Perguntas: responder uma avaliação já excluída avisa que a resposta não foi enviada; “Ver mais” aparece quando o texto está cortado no celular; uma resposta mais nova feita em outro aparelho não é apagada sem aviso."
+    ]
+  },
   "1.5.157": {
     "titulo": "Devolução e avisos que não ficam presos com a internet ruim",
     "novidades": [],
