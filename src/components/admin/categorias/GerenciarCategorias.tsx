@@ -13,6 +13,11 @@ import {
   mensagemDaFalhaDeCategoria,
 } from "@/lib/gestao-de-categorias";
 import { IconeDaCategoria, iconeDaCategoria } from "@/lib/icones-de-categoria";
+import {
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { Eye, EyeOff, Layers, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -39,6 +44,10 @@ interface GerenciarCategoriasProps {
   readonly aberta: boolean;
   readonly onFechar: () => void;
 }
+
+// Releitura da lista depois de uma ação que JÁ deu certo: se a rede pendurar
+// aqui, a tela solta os botões mesmo assim (a frase de sucesso já está na tela).
+const PRAZO_DA_RELEITURA_MS = 15_000;
 
 const BOTAO =
   "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-3.5 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40";
@@ -148,15 +157,22 @@ function ConteudoDaGestao() {
       depois?.();
       setAviso(frase);
       toast.success(frase);
-      await recarregar();
+      await aguardarComPrazo(recarregar(), PRAZO_DA_RELEITURA_MS, () =>
+        erroDeConsultaSemResposta(),
+      ).catch(() => {});
     } catch (e) {
+      const semResposta = ehConsultaSemResposta(e);
+      // Sem resposta: a frase do hook diz que NÃO se sabe se gravou (o texto
+      // genérico abaixo diria "nada foi mudado"). O que ela digitou fica na
+      // tela, os botões soltam e a lista é relida em segundo plano.
       setFalha({
         id,
         mensagem:
-          e instanceof ErroDeCategoria
-            ? e.message
+          semResposta || e instanceof ErroDeCategoria
+            ? (e as Error).message
             : mensagemDaFalhaDeCategoria(e),
       });
+      if (semResposta) void recarregar();
     } finally {
       emVooRef.current = false;
       setOcupado(null);

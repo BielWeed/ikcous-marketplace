@@ -36,6 +36,7 @@ import { useFocoAposExcluir } from "@/hooks/useFocoAposExcluir";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
+import { useProdutosExcluidosDosBanners } from "@/hooks/useProdutosExcluidosDosBanners";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
@@ -69,6 +70,7 @@ import {
   EVENTO_NOVO_BANNER,
   consumirPedidoDeNovoBanner,
 } from "@/lib/novo-banner-pendente";
+import { ehConsultaSemResposta } from "@/lib/prazo-da-requisicao";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import {
   AVISO_BANNER_ALTERADO_DEPOIS,
@@ -383,6 +385,11 @@ const MENSAGEM_FOTO_ILEGIVEL =
 // pausar o banner junto ou trocar o produto.
 const AVISO_PRODUTO_PAUSADO =
   "Este produto está pausado: o toque no banner leva à Home";
+// Produto excluído: mesmo destino (a Home), e o produto não volta sozinho.
+// Só aparece quando o banco CONFIRMA a exclusão. O painel não desliga nem
+// apaga o banner: quem decide é a lojista.
+const AVISO_PRODUTO_EXCLUIDO =
+  "O produto deste banner foi excluído: o toque no banner leva à Home";
 
 /** O prefixo da frase de preço do banner: o mesmo no subtítulo automático e na sugestão. */
 const prefixoDoPreco = (vitrine: { aPartirDe: boolean }) =>
@@ -403,6 +410,8 @@ interface CartaoDoBannerProps {
   readonly banner: Banner;
   /** O produto do link está pausado (só quando a lista o achou pausado). */
   readonly produtoPausado: boolean;
+  /** O banco confirmou que o produto do link foi excluído. */
+  readonly produtoExcluido: boolean;
   /** Rótulo curto da posição (mostrado só quando a lista mistura setores). */
   readonly posicaoCurta: string | null;
   readonly indice: number;
@@ -439,6 +448,7 @@ function InterruptorDoBanner({
 const CartaoDoBanner = memo(function CartaoDoBanner({
   banner,
   produtoPausado,
+  produtoExcluido,
   posicaoCurta,
   indice,
   total,
@@ -545,10 +555,16 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
               </div>
             )}
 
-            {produtoPausado && (
+            {produtoExcluido ? (
               <p className="text-[11px] font-medium text-amber-400">
-                {AVISO_PRODUTO_PAUSADO}
+                {AVISO_PRODUTO_EXCLUIDO}
               </p>
+            ) : (
+              produtoPausado && (
+                <p className="text-[11px] font-medium text-amber-400">
+                  {AVISO_PRODUTO_PAUSADO}
+                </p>
+              )
             )}
 
             {banner.startDate &&
@@ -1213,6 +1229,18 @@ export const AdminBannersView = memo(function AdminBannersView({
     () =>
       new Set(products.filter((p) => p.isActive === false).map((p) => p.id)),
     [products],
+  );
+
+  const idsDeProdutosDosBanners = useMemo(
+    () =>
+      banners
+        .map((b) => idDoProdutoDoLink(b.link))
+        .filter((id): id is string => id !== null),
+    [banners],
+  );
+  const idsDeProdutosExcluidos = useProdutosExcluidosDosBanners(
+    idsDeProdutosDosBanners,
+    active,
   );
 
   const productSuggestions = useMemo(() => {
@@ -2165,7 +2193,15 @@ export const AdminBannersView = memo(function AdminBannersView({
       setIsDialogOpen(false);
     } catch (error) {
       console.error("Erro ao salvar banner:", error);
-      if (!(error instanceof Error && error.name === "BannerIndisponivel")) {
+      if (ehConsultaSemResposta(error)) {
+        // O hook já avisou que NÃO se sabe se gravou e o editor segue aberto
+        // com o que ela digitou. O servidor pode ter gravado o banner com a
+        // foto enviada: ela deixa de ser "órfã provada", então fechar o editor
+        // não pode apagá-la (apagar deixaria um banner publicado sem imagem).
+        imagemEnviadaNaoSalvaRef.current = null;
+      } else if (
+        !(error instanceof Error && error.name === "BannerIndisponivel")
+      ) {
         toast.error("Erro ao salvar as configurações do banner.");
       }
     } finally {
@@ -2193,7 +2229,9 @@ export const AdminBannersView = memo(function AdminBannersView({
       await deleteBanner(bannerToDelete.id, bannerToDelete.imageUrl);
     } catch (error) {
       console.error("Erro ao deletar banner:", error);
-      toast.error("Erro ao excluir o banner.");
+      // Sem resposta: o hook já avisou que não se sabe se excluiu.
+      if (!ehConsultaSemResposta(error))
+        toast.error("Erro ao excluir o banner.");
     } finally {
       setIsProcessing(false);
       setActiveAction(null);
@@ -2218,7 +2256,10 @@ export const AdminBannersView = memo(function AdminBannersView({
       // Igual aos irmãos confirmDeleteBanner/moveBanner: sem isto o Switch só
       // voltava a ficar habilitado em silêncio e o lojista achava que a
       // troca tinha sido aplicada quando na verdade falhou.
-      toast.error("Erro ao alternar status do banner.");
+      // Sem resposta: o hook já avisou que não se sabe se a mudança gravou.
+      if (!ehConsultaSemResposta(error)) {
+        toast.error("Erro ao alternar status do banner.");
+      }
     } finally {
       setIsProcessing(false);
       setActiveAction(null);
@@ -2514,6 +2555,9 @@ export const AdminBannersView = memo(function AdminBannersView({
                           key={b.id}
                           banner={b}
                           produtoPausado={idsDeProdutosPausados.has(
+                            idDoProdutoDoLink(b.link) ?? "",
+                          )}
+                          produtoExcluido={idsDeProdutosExcluidos.has(
                             idDoProdutoDoLink(b.link) ?? "",
                           )}
                           posicaoCurta={null}
