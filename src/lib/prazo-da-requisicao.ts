@@ -70,6 +70,16 @@ export const MENSAGEM_PRODUTO_EDICAO_SEM_RESPOSTA =
 export const MENSAGEM_PRODUTO_LEITURA_SEM_RESPOSTA =
   "A conexão está lenta e o produto não carregou. Confira a conexão e tente de novo.";
 
+// DUPLICAR PRODUTO (08/11/2026): a cópia de cada foto no armazenamento tinha
+// prazo nenhum e prendia o diálogo em "Duplicando…" com rede que conecta e não
+// responde. 15 s por foto (as cópias saem em paralelo; é uma cópia dentro do
+// servidor, sem subir arquivo). Estourou: o diálogo se solta e a frase NÃO diz
+// que falhou nem que deu certo — manda conferir a lista antes de repetir, para
+// não criar a cópia duas vezes.
+export const PRAZO_DE_COPIAR_A_FOTO_PARA_DUPLICAR_MS = 15_000;
+export const MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA =
+  "Sem resposta da rede. Não dá para saber se a cópia foi criada. Confira a lista de Produtos antes de duplicar de novo, para não criar a cópia duas vezes.";
+
 // PRAZO DAS CONSULTAS DO PAINEL (Início e CRM): rede que conecta e não responde
 // deixava o "carregando" ligado para sempre, o botão Sincronizar preso e a volta
 // ao app sem reler. 20 s, o mesmo do Início (`usePainelInicio`). Estourou = falha
