@@ -53,6 +53,10 @@ import {
   usarImagemOriginal,
 } from "@/lib/imageUrl";
 import { percentualComUmaCasa } from "@/lib/percentual";
+import {
+  MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA,
+  ehConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { Product, View } from "@/types";
@@ -1049,6 +1053,7 @@ export const AdminProductsView = memo(function AdminProductsView({
 
   const confirmDelete = useCallback(async () => {
     if (!productToDelete) return;
+    const idConfirmado = productToDelete;
     if (isOffline) {
       toast.error("Você está offline", {
         description: "Não é possível confirmar a exclusão sem conexão.",
@@ -1107,7 +1112,10 @@ export const AdminProductsView = memo(function AdminProductsView({
         description: "Não foi possível remover o produto.",
       });
     } finally {
-      setProductToDelete(null);
+      // Só fecha a pergunta se ainda for a DESTE produto: a exclusão demora, e
+      // nesse intervalo a lojista pode ter aberto a pergunta de OUTRO produto —
+      // zerar sem olhar fechava essa pergunta sozinha.
+      setProductToDelete((atual) => (atual === idConfirmado ? null : atual));
     }
   }, [deleteProduct, productToDelete, isOffline, refreshFinancialStats]);
 
@@ -1151,6 +1159,9 @@ export const AdminProductsView = memo(function AdminProductsView({
     }
     duplicandoRef.current = true;
     setDuplicando(true);
+    // Em que passo a cópia estava quando algo falhou: só muda o que dizer quando
+    // a rede não responde (ver o `catch`).
+    let passo: "copiando-fotos" | "gravando-a-copia" = "copiando-fotos";
     try {
       // Laudo 0109 (A2): a cópia nasce com arquivos PRÓPRIOS no storage —
       // do produto e de cada variação. Reusar as URLs do original fazia a
@@ -1227,6 +1238,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       };
 
       // O aviso de sucesso é desta tela ("Produto Duplicado"): o hook cala o dele.
+      passo = "gravando-a-copia";
       const copia = await addProduct(duplicateData, { avisarSucesso: false });
       // A cópia existe (mesmo a que ficou sem grade): recarrega a lista, como a
       // exclusão, para ela entrar na ordem e no total em vez de aparecer solta
@@ -1259,9 +1271,21 @@ export const AdminProductsView = memo(function AdminProductsView({
     } catch (err) {
       console.error("Error duplicating product:", err);
       haptic.error();
-      toast.error("Erro na Duplicação", {
-        description: "Não foi possível duplicar o produto.",
-      });
+      if (ehConsultaSemResposta(err)) {
+        // A rede não respondeu: não se sabe se a cópia foi criada, então a tela
+        // não diz "não foi possível duplicar" (ela pode existir) nem "duplicado".
+        // Gravando a cópia, o hook já mostrou o aviso dele (conferir a lista):
+        // repetir aqui empilharia dois. Copiando as fotos o hook não avisa nada.
+        if (passo === "copiando-fotos") {
+          toast.error(MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA, {
+            duration: 15_000,
+          });
+        }
+      } else {
+        toast.error("Erro na Duplicação", {
+          description: "Não foi possível duplicar o produto.",
+        });
+      }
     } finally {
       duplicandoRef.current = false;
       setDuplicando(false);

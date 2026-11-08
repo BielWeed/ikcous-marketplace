@@ -14,11 +14,14 @@ import {
 } from "@/lib/fila-offline-por-usuario";
 import { mapProductFromDB } from "@/lib/mappers";
 import {
+  MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA,
   MENSAGEM_PRODUTO_EDICAO_SEM_RESPOSTA,
   MENSAGEM_PRODUTO_LEITURA_SEM_RESPOSTA,
   MENSAGEM_PRODUTO_NOVO_GRADE_SEM_RESPOSTA,
   MENSAGEM_PRODUTO_NOVO_SEM_RESPOSTA,
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   PRAZO_DE_CONFERIR_O_SKU_MS,
+  PRAZO_DE_COPIAR_A_FOTO_PARA_DUPLICAR_MS,
   PRAZO_DE_GRAVAR_O_PRODUTO_MS,
   PRAZO_DE_LER_O_PRODUTO_MS,
   PRAZO_DO_QUE_SOBRA_APOS_GRAVAR_O_PRODUTO_MS,
@@ -61,9 +64,16 @@ export async function copiarImagemParaDuplicacao(url: string): Promise<string> {
   const desmarcar = marcarOperacaoSensivel("copia-de-imagem-do-produto");
   try {
     const novoCaminho = caminhoDaCopia(caminho);
-    const { error } = await supabase.storage
-      .from("products")
-      .copy(caminho, novoCaminho);
+    // Com prazo: rede "pendurada" prendia o diálogo de duplicar em "Duplicando…".
+    // Estourou: o erro é o de "sem resposta" (a tela solta o diálogo e manda
+    // conferir a lista); a cópia do arquivo pode ter terminado no servidor.
+    const { error } = await aguardarComPrazo(
+      Promise.resolve(
+        supabase.storage.from("products").copy(caminho, novoCaminho),
+      ),
+      PRAZO_DE_COPIAR_A_FOTO_PARA_DUPLICAR_MS,
+      () => erroDeConsultaSemResposta(MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA),
+    );
     if (error) {
       throw new Error(
         `Não foi possível copiar a imagem do produto no storage: ${error.message}`,
@@ -1129,8 +1139,12 @@ export function useProducts({
 
         if (isAdmin) {
           // Use the new optimized get_admin_products_paged RPC
-          const { data: rpcData, error: rpcError } =
-            await callRpcWithRetry<any>(async () => {
+          // Com prazo: rede "pendurada" deixava a lista em "Recarregando…" ou no
+          // esqueleto para sempre. Estourou = falha de leitura (`null`), que a
+          // tela já mostra como "Erro ao Carregar Produtos" com "Tentar
+          // Novamente". Só encerra a ESPERA da tela; a leitura não grava nada.
+          const { data: rpcData, error: rpcError } = await aguardarComPrazo(
+            callRpcWithRetry<any>(async () => {
               const query = (supabase.rpc as any)("get_admin_products_paged", {
                 p_search: filters?.search || "",
                 p_category: filters?.category || "all",
@@ -1140,7 +1154,10 @@ export function useProducts({
                 p_page_size: pageSize,
               });
               return query.abortSignal(signal);
-            });
+            }),
+            PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+            () => erroDeConsultaSemResposta(),
+          );
 
           if (rpcError) throw rpcError;
 
@@ -1261,6 +1278,11 @@ export function useProducts({
           err?.message === "Fetch is aborted" ||
           err?.message?.includes("aborted")
         ) {
+          return null;
+        }
+        // Leitura velha que estourou o prazo depois de uma mais nova ter
+        // vencido: o aviso seria sobre uma lista que já não importa.
+        if (ehConsultaSemResposta(err) && loadId !== lastLoadId.current) {
           return null;
         }
         console.error("Error loading products:", err);
