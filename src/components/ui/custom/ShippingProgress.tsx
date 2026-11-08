@@ -1,3 +1,4 @@
+import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
 import { usarImagemOriginal } from "@/lib/imageUrl";
 import { miniaturaDeCompra } from "@/lib/miniatura-de-compra";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -262,6 +263,7 @@ export function ShippingProgress({
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return;
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
                       goToProduct();
@@ -270,14 +272,20 @@ export function ShippingProgress({
                   className="w-[148px] flex-shrink-0 cursor-pointer rounded-[14px] border border-border p-2 transition-colors hover:border-foreground/40"
                 >
                   <div className="mb-2 aspect-square overflow-hidden rounded-lg bg-muted">
-                    <img
-                      src={miniaturaDeCompra(p.images[0])}
-                      onError={(e) =>
-                        usarImagemOriginal(e.currentTarget, p.images[0])
-                      }
-                      alt={p.name}
-                      className="size-full object-cover"
-                    />
+                    {!p.images[0] || ehMarcadorDeFoto(p.images[0]) ? (
+                      <div className="flex size-full items-center justify-center px-2 text-center text-xs font-medium text-muted-foreground">
+                        Sem foto
+                      </div>
+                    ) : (
+                      <img
+                        src={miniaturaDeCompra(p.images[0])}
+                        onError={(e) =>
+                          usarImagemOriginal(e.currentTarget, p.images[0])
+                        }
+                        alt={p.name}
+                        className="size-full object-cover"
+                      />
+                    )}
                   </div>
                   <p className="mb-1 line-clamp-2 min-h-10 text-[13px] font-medium leading-tight text-foreground">
                     {p.name}
@@ -292,7 +300,7 @@ export function ShippingProgress({
                         e.stopPropagation();
                         updateQuantity(p.id, -1);
                       }}
-                      aria-label="Diminuir quantidade"
+                      aria-label={`Diminuir quantidade de ${p.name}`}
                       className="flex size-11 items-center justify-center rounded-full text-foreground active:scale-90"
                     >
                       <Minus className="size-4" />
@@ -305,7 +313,7 @@ export function ShippingProgress({
                         e.stopPropagation();
                         updateQuantity(p.id, 1);
                       }}
-                      aria-label="Aumentar quantidade"
+                      aria-label={`Aumentar quantidade de ${p.name}`}
                       className="flex size-11 items-center justify-center rounded-full text-foreground active:scale-90"
                     >
                       <Plus className="size-4" />

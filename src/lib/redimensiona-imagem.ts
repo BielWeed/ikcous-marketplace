@@ -45,7 +45,7 @@ const ascii = (bytes: Uint8Array, de: number, ate: number) =>
  * animação (bit 0x02) no bloco VP8X; o AVIF animado declara a marca "avis" na
  * caixa `ftyp`. Na dúvida (cabeçalho que não bate com nada), diz que não é.
  */
-async function ehAnimada(file: File): Promise<boolean> {
+export async function ehAnimada(file: File): Promise<boolean> {
   const bytes = new Uint8Array(await file.slice(0, 64).arrayBuffer());
   if (file.type === "image/webp") {
     return (

@@ -163,7 +163,7 @@ export function CorpoDaFolhaDeOpcoes({
           )}
         </div>
         <div className="flex min-h-[72px] min-w-0 flex-1 flex-col justify-center gap-1">
-          <SheetTitle className="max-h-[60px] overflow-hidden break-words text-[15px] font-semibold leading-5 text-zinc-900">
+          <SheetTitle className="line-clamp-2 break-words text-[15px] font-semibold leading-5 text-zinc-900">
             {product.name}
           </SheetTitle>
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">

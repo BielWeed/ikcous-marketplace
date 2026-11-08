@@ -254,20 +254,20 @@ export const HomeView = React.memo(function HomeView({
         return bAvailable - aAvailable;
       }
 
+      const porData = (b.createdTime ?? 0) - (a.createdTime ?? 0);
+      const desempate = porData || a.id.localeCompare(b.id);
       switch (sortBy) {
         // Ordena pelo preço que o card ANUNCIA (menor das opções à venda).
         case "price-asc":
-          return precoDeVitrine(a).preco - precoDeVitrine(b).preco;
+          return precoDeVitrine(a).preco - precoDeVitrine(b).preco || desempate;
         case "price-desc":
-          return precoDeVitrine(b).preco - precoDeVitrine(a).preco;
+          return precoDeVitrine(b).preco - precoDeVitrine(a).preco || desempate;
         default:
-          // Sem busca vale "mais novos primeiro" (a régua de ordenarParaVitrine):
-          // produto novo do Realtime entra no fim da lista, e depois de pausar
-          // ou sem internet ela vem em ordem de uuid. Datas iguais: o sort é
-          // estável e fica a ordem em que a lista chegou.
+          // Busca e preco nao dependem da ordem de chegada do cache ou Realtime.
+          // A data e depois o id desempatam tambem sem termo de busca.
           return pontos
-            ? (pontos.get(b.id) ?? 0) - (pontos.get(a.id) ?? 0)
-            : (b.createdTime ?? 0) - (a.createdTime ?? 0);
+            ? (pontos.get(b.id) ?? 0) - (pontos.get(a.id) ?? 0) || desempate
+            : desempate;
       }
     });
 
@@ -679,8 +679,11 @@ export const HomeView = React.memo(function HomeView({
       {!termoDaBusca &&
         (!bannersLoaded && middleBanners.length === 0 ? (
           memoriaDaUltimaVisita?.temBannerMeio === false ? null : (
-            <div className="mx-4 w-full py-4">
-              <div className="h-[120px] w-[calc(100%-2rem)] animate-pulse rounded-[2rem] bg-zinc-100 sm:h-[200px]" />
+            <div className="w-full py-4">
+              <div
+                data-testid="esqueleto-banner-meio"
+                className="aspect-[2/1] w-full animate-pulse bg-zinc-100 md:mx-auto md:max-w-[1040px]"
+              />
             </div>
           )
         ) : middleBanners.length > 0 ? (

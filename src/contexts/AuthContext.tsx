@@ -1457,7 +1457,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     // `scope: 'local'`: o padrão do supabase-js é 'global' e revoga os tokens da
     // conta em TODOS os aparelhos; Sair aqui só encerra este.
-    const { error } = await supabase.auth.signOut({ scope: "local" });
+    let error: { message: string } | null;
+    try {
+      ({ error } = await aguardarComPrazo(
+        supabase.auth.signOut({ scope: "local" }),
+        10_000,
+        () => erroDeConsultaSemResposta("Saída sem resposta no prazo."),
+      ));
+    } catch {
+      // Prazo ou rejeição de rede: a conta não pode continuar aberta neste
+      // aparelho. A resposta tardia não tem continuação que restaure a sessão.
+      error = { message: "Não foi possível confirmar a saída." };
+    }
     if (error) {
       // #122 — `signOut()` devolvendo erro (rede caída, por exemplo) não
       // dispara o evento `SIGNED_OUT`: sem este ramo, o app continuava
@@ -1471,7 +1482,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // resto deste bloco), então a mensagem só avisa que o servidor não
       // confirmou, sem apontar uma causa que não foi verificada.
       toast.error(
-        "Não foi possível confirmar a saída no servidor, mas sua sessão local foi encerrada.",
+        "Você saiu deste aparelho, mas não foi possível confirmar a saída no servidor.",
       );
       // Revisão de contexto limpo do diff (achado 1) — sem isto, uma checagem
       // de admin (`checkAdmin`, RPC `is_admin`) que estivesse em voo no
@@ -1704,7 +1715,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // parâmetro, rede) fica genérico.
         console.error("[Auth] Erro ao atualizar senha:", error.message);
         let message = "Não foi possível atualizar sua senha. Tente novamente.";
-        if (error.code === "same_password") {
+        if (error.name === "AuthSessionMissingError") {
+          message = "Este link expirou ou já foi usado. Peça um novo link.";
+          setIsPasswordRecovery(false);
+          setErroDoLinkNoEndereco("recuperacao");
+        } else if (error.code === "same_password") {
           message = "A nova senha precisa ser diferente da senha atual.";
         } else if (error.code === "weak_password") {
           message =

@@ -105,7 +105,7 @@ export function montarAviso(pedido: any) {
   return {
     title: "Pedido novo",
     body: `${numeroDoPedido(pedido.id)} · ${formatarBRL(valor)} · ${cliente}`,
-    url: "/admin-orders",
+    url: `/admin-orders?id=${encodeURIComponent(pedido.id)}`,
   };
 }
 

@@ -51,6 +51,7 @@ export function FolhaEditarVitrine({
   readonly travado?: boolean;
 }) {
   const [busca, setBusca] = useState("");
+  const [limite, setLimite] = useState(60);
   const manual = (secao.productIds?.length ?? 0) > 0;
   const maximo = secao.maxItems ?? QUANTIDADE_PADRAO;
   const { rotulo } = tipoDaVitrine(secao);
@@ -276,7 +277,7 @@ export function FolhaEditarVitrine({
       </fieldset>
       <p className="mt-2 px-0.5 text-xs leading-snug text-zinc-400">
         {manual
-          ? 'Aparecem na ordem em que você marcar. "Automático" volta a loja a escolher sozinha.'
+          ? 'Aparecem na ordem em que você marcar. "Automático" descarta esta lista e volta a loja a escolher sozinha.'
           : produtos.length === 0
             ? "Sua loja ainda não tem produtos. Quando cadastrar, esta vitrine passa a escolher sozinha."
             : idsEmExibicao.length === 0
@@ -289,7 +290,10 @@ export function FolhaEditarVitrine({
         <input
           type="text"
           value={busca}
-          onChange={(evento) => setBusca(evento.target.value)}
+          onChange={(evento) => {
+            setBusca(evento.target.value);
+            setLimite(60);
+          }}
           placeholder="Buscar por nome ou categoria"
           aria-label="Buscar produto"
           className="h-11 w-full rounded-[14px] border border-admin-border bg-zinc-900 pl-10 pr-9 text-sm font-medium text-white placeholder:text-zinc-600 focus:border-admin-gold focus:outline-none"
@@ -298,7 +302,10 @@ export function FolhaEditarVitrine({
           <button
             type="button"
             aria-label="Limpar busca"
-            onClick={() => setBusca("")}
+            onClick={() => {
+              setBusca("");
+              setLimite(60);
+            }}
             className="absolute right-0 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center text-zinc-400 hover:text-white"
           >
             <X className="size-4" />
@@ -320,7 +327,7 @@ export function FolhaEditarVitrine({
             </p>
           ) : null
         ) : (
-          lista.map((produto) => {
+          lista.slice(0, limite).map((produto) => {
             const posicaoNaVitrine = idsEmExibicao.indexOf(produto.id);
             const marcado = posicaoNaVitrine !== -1;
             return (
@@ -380,6 +387,21 @@ export function FolhaEditarVitrine({
           })
         )}
       </div>
+      {lista.length > limite ? (
+        <div className="mt-3 text-center">
+          <p className="text-xs text-zinc-400">
+            Mostrando {limite} de {lista.length} — use a busca para achar os
+            outros.
+          </p>
+          <button
+            type="button"
+            onClick={() => setLimite((atual) => atual + 60)}
+            className="mt-2 min-h-11 rounded-xl border border-admin-border px-4 text-sm font-semibold text-white"
+          >
+            Mostrar mais
+          </button>
+        </div>
+      ) : null}
     </FolhaInferior>
   );
 }

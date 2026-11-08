@@ -1162,6 +1162,77 @@ for (
   });
 }
 
+// Texto que a cliente lê na caixa de erro do pagamento quando o Mercado Pago
+// não responde: português simples, sem "gateway", e SEM afirmar nem negar
+// cobrança (a resposta pode ter se perdido depois de o MP processar).
+const FRASE_SEM_RESPOSTA_DO_MP =
+  "Não deu para falar com o Mercado Pago agora. Confira seus pedidos antes de tentar de novo.";
+const FRASE_RESPOSTA_ILEGIVEL_DO_MP =
+  "O Mercado Pago respondeu de um jeito que não deu para entender. Confira seus pedidos antes de tentar de novo.";
+const FRASE_CONSULTA_FALHOU = "Não foi possível consultar a cobrança.";
+
+Deno.test("handler: PIX com o Mercado Pago sem responder (rede/tempo) -> 502 com frase de leigo, sem a palavra gateway, status e fluxo inalterados", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
+  const registro = { chamadasUpdate: 0 };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
+
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: fetchMPRecusando(0) },
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 502);
+  assertEquals(corpo.terminal, undefined);
+  assertEquals(corpo.error, FRASE_SEM_RESPOSTA_DO_MP);
+  assertEquals(String(corpo.error).toLowerCase().includes("gateway"), false);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("handler: PIX com 2xx do Mercado Pago SEM id -> 502 com frase de leigo (resposta ilegível), sem a palavra gateway", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
+  const registro = { chamadasUpdate: 0 };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
+  const fetchImpl = async (_url: string, _init?: RequestInit) =>
+    new Response(JSON.stringify({ status: "created" }), { status: 201 });
+
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl },
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 502);
+  assertEquals(corpo.terminal, undefined);
+  assertEquals(corpo.error, FRASE_RESPOSTA_ILEGIVEL_DO_MP);
+  assertEquals(String(corpo.error).toLowerCase().includes("gateway"), false);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("handler: reconsulta da cobrança (id de ORDER e id legado) com o Mercado Pago sem responder -> 502 'Não foi possível consultar a cobrança.', sem gateway", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  for (const idNaVaga of ["ORD500", "112233445566"]) {
+    const pedido = pedidoBase({ gateway_payment_id: idNaVaga });
+    const supabase = clienteFalso({ pedido, gravado: null });
+    const fetchImpl = async (_url: string, _init?: RequestInit) => {
+      throw new TypeError("network error");
+    };
+
+    const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }), {
+      supabase,
+      fetchImpl,
+    });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 502, idNaVaga);
+    assertEquals(corpo.terminal, undefined, idNaVaga);
+    assertEquals(corpo.error, FRASE_CONSULTA_FALHOU, idNaVaga);
+    assertEquals(String(corpo.error).toLowerCase().includes("gateway"), false, idNaVaga);
+  }
+});
+
 Deno.test("handler: o corpo Orders enviado ao MP NÃO leva notification_url — a Orders API não tem esse campo (issue #212, operacional)", async () => {
   // Tarefa 2 (CHECKOUT-070), migração para a Orders API: este teste cobria
   // o caminho clássico (montarCorpoPix aceita notificationUrl e o handler
@@ -2730,7 +2801,7 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
       // trata como falha. Praticamente inalcançável, mas sem isto um bug de
       // formato na resposta do MP gravaria gateway_payment_id = "null"
       // (String(null)) em vez de recusar.
-      "Resposta inválida do gateway.",
+      "O Mercado Pago respondeu de um jeito que não deu para entender. Confira seus pedidos antes de tentar de novo.",
       "a ORDER 2xx não trouxe um id utilizável; nada foi gravado, retry é seguro",
     ],
   ]);
@@ -2807,7 +2878,8 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // ponto de retorno) — e acrescentou dois pontos de retorno NOVOS,
   // exclusivos do caminho PIX: o catch do throw de montarCorpoPixOrders
   // (502, "Não foi possível gerar a cobrança.") e a defesa contra ORDER 2xx
-  // sem id utilizável (502, "Resposta inválida do gateway."). Antes: 13, não
+  // sem id utilizável (502, "O Mercado Pago respondeu de um jeito que não deu
+  // para entender. Confira seus pedidos antes de tentar de novo."). Antes: 13, não
   // mais 12 — o antigo `if (error || !pedido) ...` (um só ponto de retorno)
   // virou dois — falha de LEITURA (503) e "não existe" (404) — porque as
   // duas causas eram opostas e tinham que responder diferente (achado da
@@ -12218,11 +12290,11 @@ for (
 // ═══════════════════════════════════════════════════════════════════════════
 
 const VAGA_CI = "ORDTST04CONFIRMACAOIMEDIATA00";
-const PUSH_PAGO_CI = { title: "Pedido pago", body: "#4F5A6B · R$ 100,00", url: "/admin-orders" };
+const PUSH_PAGO_CI = { title: "Pedido pago", body: "#4F5A6B · R$ 100,00", url: `/admin-orders?id=${UUID}` };
 const PUSH_FORA_DO_FLUXO_CI = {
   title: "Pagamento fora do fluxo",
   body: "#4F5A6B · R$ 100,00 · estoque já devolvido",
-  url: "/admin-orders",
+  url: `/admin-orders?id=${UUID}`,
 };
 
 const cartaoPagoCI = (extra: Record<string, unknown> = {}) => ({

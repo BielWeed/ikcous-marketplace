@@ -179,6 +179,8 @@ export function _syncOfflineUpdatesParaTeste(userId: string): Promise<boolean> {
  */
 /** Versões que o servidor devolveu ao gravar a fila offline (id → versão). */
 const versoesAposSincronizar = new Map<string, string>();
+// A instância que ganha a trava pode não ser a que desenha a lista.
+const ouvintesDaSincronizacao = new Set<(userId: string) => void>();
 
 /**
  * Trava do módulo: vários `useProducts` montados (uma tela do painel cada) pedem
@@ -857,7 +859,14 @@ function variacoesParaBanco(variants: Array<any>, productId?: string) {
   });
 }
 
-export function useProducts({ autoFetch = true } = {}) {
+export function useProducts({
+  autoFetch = true,
+  onSincronizado,
+}: { autoFetch?: boolean; onSincronizado?: () => void } = {}) {
+  const onSincronizadoRef = useRef(onSincronizado);
+  useEffect(() => {
+    onSincronizadoRef.current = onSincronizado;
+  });
   const {
     products: contextProducts,
     loadingProducts: contextLoading,
@@ -873,6 +882,17 @@ export function useProducts({ autoFetch = true } = {}) {
   // tablet offline; `supabase.auth.getSession()` não serviria: sem rede e com
   // o token vencido devolve sessão nula).
   const { isAdmin, user } = useAuth();
+  useEffect(() => {
+    const userId = user?.id;
+    if (!userId) return;
+    const avisar = (donoDaFila: string) => {
+      if (donoDaFila === userId) onSincronizadoRef.current?.();
+    };
+    ouvintesDaSincronizacao.add(avisar);
+    return () => {
+      ouvintesDaSincronizacao.delete(avisar);
+    };
+  }, [user?.id]);
   const lastLoadId = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -1353,9 +1373,9 @@ export function useProducts({ autoFetch = true } = {}) {
               setLocalProducts((prev) => comVersao(prev));
             }
             refreshContext().catch(() => {});
-            if (!autoFetch && isAdmin) {
-              loadProducts(0, 10, { silent: true }).catch(() => {});
-            }
+            // Quem desenha a lista conhece a página e os filtros atuais.
+            // Não comece outra leitura aqui: ela cancelaria a leitura da tela.
+            for (const avisar of ouvintesDaSincronizacao) avisar(userId);
           }
         });
       }, 1000);
@@ -1371,7 +1391,7 @@ export function useProducts({ autoFetch = true } = {}) {
       for (const timer of timersPendentes) clearTimeout(timer);
       timersPendentes.clear();
     };
-  }, [refreshContext, autoFetch, isAdmin, loadProducts, user?.id]);
+  }, [refreshContext, isAdmin, user?.id]);
 
   const getProductById = useCallback(
     (id: string) => {

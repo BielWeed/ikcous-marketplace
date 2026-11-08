@@ -23,9 +23,8 @@
 //                                diz "Erro ao atualizar", o rodapé "Não foi
 //                                possível carregar agora"; JAMAIS "0", "0%"
 //                                nem "Fila de perguntas limpa"
-//   2. loja legitimamente vazia -> "Fila de perguntas limpa" TEM de aparecer
-//                                (controle positivo: sem isto, um teste que só
-//                                checa ausência passaria até com tela em branco)
+//   2. loja sem perguntas    -> explica onde as primeiras dúvidas aparecem,
+//                              sem afirmar que dúvidas foram respondidas
 //   3. loja com pendências    -> números na tela, nenhum sinal de erro
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -241,7 +240,7 @@ describe("AdminQAView na tela — erro de estatística nunca vira 'Fila Limpa'",
     expect((aberta.match(/—/g) ?? []).length).toBe(5);
   });
 
-  it("CASO 2 — controle positivo: fila legitimamente vazia MOSTRA 'Fila de perguntas limpa'", async () => {
+  it("CASO 2 — loja sem perguntas explica onde as primeiras dúvidas aparecem", async () => {
     h.estado.stats = {
       status: "ok",
       total: 0,
@@ -254,10 +253,11 @@ describe("AdminQAView na tela — erro de estatística nunca vira 'Fila Limpa'",
 
     const tela = texto();
 
-    // Zero de verdade tem direito ao selo — é ele que distingue este estado
-    // do de erro. Se alguém "consertar" escondendo o rótulo também aqui,
-    // este teste cai junto.
-    expect(tela).toContain("Fila de perguntas limpa");
+    expect(tela).not.toContain("Fila de perguntas limpa");
+    expect(tela).not.toContain("Todos os clientes estão bem informados");
+    expect(tela).toContain(
+      "As dúvidas que os clientes deixarem nas páginas dos produtos aparecem aqui.",
+    );
 
     // Os zeros de contagem são verdade e aparecem SEM cara de erro; já a
     // PORCENTAGEM de uma loja sem nenhuma pergunta não tem base: nada de

@@ -1292,9 +1292,28 @@ export function resumoSemDadoPessoal(entrada: unknown): string {
  * `rotulo` mantém as linhas de log de cada chamador exatamente como eram
  * ("mercadopago: orders recusou", "mercadopago: orders (consulta) recusou").
  */
+// Frases que chegam a quem usa (a cliente lê na caixa de erro do pagamento: a
+// criar-pagamento repassa `erro` tal qual no 502). Português simples, sem
+// "gateway". Na CRIAÇÃO elas não afirmam nem negam cobrança: a resposta pode
+// ter se perdido depois de o Mercado Pago processar a order, então mandam a
+// cliente conferir os pedidos antes de tentar de novo. O texto do literal de
+// `criar-pagamento/index.ts` ("order sem id utilizável") repete a segunda.
+const MSG_CRIACAO_SEM_RESPOSTA =
+  "Não deu para falar com o Mercado Pago agora. Confira seus pedidos antes de tentar de novo.";
+const MSG_CRIACAO_RESPOSTA_ILEGIVEL =
+  "O Mercado Pago respondeu de um jeito que não deu para entender. Confira seus pedidos antes de tentar de novo.";
+const MSG_CONSULTA_FALHOU = "Não foi possível consultar a cobrança.";
+const MSG_CANCELAMENTO_FALHOU = "Não foi possível cancelar a cobrança.";
+
 async function interpretarRespostaDeOrder(
   resposta: Response,
-  opcoes: { rotulo: string; mensagemDeFalha: string; corpoNoLog: boolean },
+  opcoes: {
+    rotulo: string;
+    mensagemDeFalha: string;
+    /** Frase para 2xx com corpo ilegível ou sem `id` (diferente da recusa do MP na criação). */
+    mensagemIlegivel: string;
+    corpoNoLog: boolean;
+  },
 ): Promise<ResultadoOrder> {
   if (!resposta.ok) {
     // O corpo do erro do MP vai para o log da função, NUNCA para o cliente:
@@ -1328,7 +1347,7 @@ async function interpretarRespostaDeOrder(
     json = await resposta.json();
   } catch (_err) {
     console.error(`mercadopago: ${opcoes.rotulo} 2xx com corpo ilegível`, resposta.status);
-    return { ok: false, erro: "Resposta inválida do gateway.", status: resposta.status };
+    return { ok: false, erro: opcoes.mensagemIlegivel, status: resposta.status };
   }
 
   if (json?.id === undefined || json?.id === null) {
@@ -1337,7 +1356,7 @@ async function interpretarRespostaDeOrder(
       resposta.status,
       opcoes.corpoNoLog ? JSON.stringify(json) : "(corpo omitido: pode ter dado do pagador)",
     );
-    return { ok: false, erro: "Resposta inválida do gateway.", status: resposta.status };
+    return { ok: false, erro: opcoes.mensagemIlegivel, status: resposta.status };
   }
 
   return { ok: true, order: json };
@@ -1408,12 +1427,13 @@ export async function criarOrder(args: {
     );
   } catch (_err) {
     // status 0 = nem chegou a haver resposta HTTP.
-    return { ok: false, erro: "Falha ao falar com o gateway.", status: 0 };
+    return { ok: false, erro: MSG_CRIACAO_SEM_RESPOSTA, status: 0 };
   }
 
   return interpretarRespostaDeOrder(resposta, {
     rotulo: "orders",
     mensagemDeFalha: "Não foi possível gerar a cobrança.",
+    mensagemIlegivel: MSG_CRIACAO_RESPOSTA_ILEGIVEL,
     corpoNoLog: args.corpoNoLog !== false,
   });
 }
@@ -1456,12 +1476,13 @@ export async function cancelarOrder(args: {
       args.tempoLimiteMs,
     );
   } catch (_err) {
-    return { ok: false, erro: "Falha ao falar com o gateway.", status: 0 };
+    return { ok: false, erro: MSG_CANCELAMENTO_FALHOU, status: 0 };
   }
 
   return interpretarRespostaDeOrder(resposta, {
     rotulo: "orders (cancelamento)",
-    mensagemDeFalha: "Não foi possível cancelar a cobrança.",
+    mensagemDeFalha: MSG_CANCELAMENTO_FALHOU,
+    mensagemIlegivel: MSG_CANCELAMENTO_FALHOU,
     corpoNoLog: false,
   });
 }
@@ -1530,12 +1551,13 @@ export async function consultarOrder(args: {
       args.tempoLimiteMs,
     );
   } catch (_err) {
-    return { ok: false, erro: "Falha ao falar com o gateway.", status: 0 };
+    return { ok: false, erro: MSG_CONSULTA_FALHOU, status: 0 };
   }
 
   return interpretarRespostaDeOrder(resposta, {
     rotulo: "orders (consulta)",
-    mensagemDeFalha: "Não foi possível consultar a cobrança.",
+    mensagemDeFalha: MSG_CONSULTA_FALHOU,
+    mensagemIlegivel: MSG_CONSULTA_FALHOU,
     corpoNoLog: args.corpoNoLog !== false,
   });
 }
@@ -2073,10 +2095,10 @@ export async function consultarPagamento(args: {
       args.tempoLimiteMs,
     );
   } catch (_err) {
-    return { ok: false, erro: "Falha ao falar com o gateway.", status: 0 };
+    return { ok: false, erro: MSG_CONSULTA_FALHOU, status: 0 };
   }
 
-  return interpretarRespostaDePagamento(resposta, "Não foi possível consultar a cobrança.");
+  return interpretarRespostaDePagamento(resposta, MSG_CONSULTA_FALHOU);
 }
 
 /**
@@ -2116,7 +2138,7 @@ async function interpretarRespostaDePagamento(
     json = await resposta.json();
   } catch (_err) {
     console.error("mercadopago: resposta 2xx com corpo ilegível", resposta.status);
-    return { ok: false, erro: "Resposta inválida do gateway.", status: resposta.status };
+    return { ok: false, erro: mensagemDeFalha, status: resposta.status };
   }
 
   if (json?.id === undefined || json?.id === null) {
@@ -2124,7 +2146,7 @@ async function interpretarRespostaDePagamento(
     // UNIQUE parcial, e a segunda ocorrência estoura 23505.
     // R9: o corpo de um pagamento é do pagador — só o resumo vai ao log.
     console.error("mercadopago: resposta 2xx sem id", resposta.status, resumoSemDadoPessoal(json));
-    return { ok: false, erro: "Resposta inválida do gateway.", status: resposta.status };
+    return { ok: false, erro: mensagemDeFalha, status: resposta.status };
   }
 
   const dados =

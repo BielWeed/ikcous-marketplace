@@ -327,6 +327,46 @@ describe("AdminProductsView — achado 14: 'Potencial' sempre com duas casas dec
     },
   );
 
+  it.each([
+    { price: "1", cost: "0.9", faixa: "Margem Apertada" },
+    { price: "1", cost: "0.8", faixa: "Margem Saudável" },
+    { price: "1.4", cost: "0.91", faixa: "Margem Excelente" },
+    { price: "100", cost: "80.01", faixa: "Margem Apertada" },
+  ])(
+    "simulador: preço $price e custo $cost ficam em $faixa",
+    async ({ price, cost, faixa }) => {
+      montarProduto({ price: 100, costPrice: 20, stock: 2 });
+      await montar();
+      await act(async () =>
+        hospedeiro
+          .querySelector<HTMLButtonElement>(
+            'button[aria-label="Guia e simulador"]',
+          )!
+          .click(),
+      );
+      const simulador = [...document.querySelectorAll("button")].find(
+        (el) => el.textContent?.trim() === "Simulador",
+      )!;
+      await act(async () => simulador.click());
+      for (const [id, valor] of [
+        ["sim-price", price],
+        ["sim-cost", cost],
+      ]) {
+        const campo = document.getElementById(id) as HTMLInputElement;
+        await act(async () => {
+          Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype,
+            "value",
+          )?.set?.call(campo, valor);
+          campo.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+      }
+      expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+        faixa,
+      );
+    },
+  );
+
   it("simulador usa cor no resultado e risco, sem bloco colorido", async () => {
     montarProduto({ price: 100, costPrice: 20, stock: 2 });
     await montar();

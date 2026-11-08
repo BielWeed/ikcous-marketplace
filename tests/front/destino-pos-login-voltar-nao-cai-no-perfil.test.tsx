@@ -114,10 +114,12 @@ vi.mock("@/views/customer/HomeView", () => ({
 vi.mock("@/views/customer/CartView", () => ({
   CartView: ({
     onNavigate,
+    initialTab,
   }: {
     readonly onNavigate: (view: string) => void;
+    readonly initialTab: string;
   }) => (
-    <div data-testid="tela-carrinho">
+    <div data-testid="tela-carrinho" data-aba={initialTab}>
       <button
         type="button"
         data-testid="ir-para-checkout"
@@ -153,7 +155,21 @@ vi.mock("@/views/customer/CheckoutView", () => ({
   ),
 }));
 vi.mock("@/views/customer/ProductView", () => ({
-  ProductView: () => <div data-testid="tela-produto" />,
+  ProductView: ({ product }: { readonly product: { id: string } }) => (
+    <div data-testid="tela-produto" data-produto-id={product.id} />
+  ),
+}));
+vi.mock("@/views/customer/OrderDetailsView", () => ({
+  OrderDetailsView: ({ onBack }: { readonly onBack: () => void }) => (
+    <div data-testid="ficha-pedido">
+      <button type="button" data-testid="voltar-aos-pedidos" onClick={onBack}>
+        Voltar aos pedidos
+      </button>
+      <button type="button" data-testid="consultar-de-novo" onClick={onBack}>
+        Consultar de novo
+      </button>
+    </div>
+  ),
 }));
 vi.mock("@/views/customer/ProfileView", () => ({
   ProfileView: () => <div data-testid="tela-perfil-proprio" />,
@@ -475,6 +491,82 @@ describe("a entrada de login não sobrevive ao login (Voltar não cai no Perfil)
     });
     await assentar();
   };
+
+  it.each([
+    ["/Cart", "cart"],
+    ["/cart", "cart"],
+    ["/Orders", "orders"],
+    ["/orders", "orders"],
+  ])(
+    "entrada %s abre a aba correta (inclui controle minúsculo)",
+    async (url, aba) => {
+      globalThis.history.replaceState(null, "", url);
+      await act(async () => {
+        raiz?.render(<App />);
+      });
+      await assentar();
+      expect(
+        container
+          ?.querySelector('[data-testid="tela-carrinho"]')
+          ?.getAttribute("data-aba"),
+      ).toBe(aba);
+      expect(globalThis.location.pathname).toBe(url);
+    },
+  );
+
+  it.each(["/Product-Detail", "/product-detail"])(
+    "entrada %s mantém o id misto do produto",
+    async (url) => {
+      globalThis.history.replaceState(null, "", `${url}?id=produto-A`);
+      await act(async () => {
+        raiz?.render(<App />);
+      });
+      await assentar();
+      expect(
+        container
+          ?.querySelector('[data-testid="tela-produto"]')
+          ?.getAttribute("data-produto-id"),
+      ).toBe("produto-A");
+      expect(globalThis.location.search).toBe("?id=produto-A");
+    },
+  );
+
+  it.each([
+    ["voltar-aos-pedidos", undefined],
+    ["consultar-de-novo", undefined],
+    ["voltar-aos-pedidos", "profile"],
+    ["consultar-de-novo", "orders"],
+    ["voltar-aos-pedidos", "orders"],
+  ])(
+    "%s com origem %s não deixa ficha morta atrás da lista",
+    async (botao, origem) => {
+      const anterior = origem ?? "cart";
+      if (origem === "profile") estadoAuth.user = { id: "pessoa-logada" };
+      globalThis.history.replaceState({ view: anterior }, "", `/${anterior}`);
+      globalThis.history.pushState(
+        { view: "order-details", ...(origem ? { from: origem } : {}) },
+        "",
+        "/order-details?id=Pedido-AbC",
+      );
+      await act(async () => {
+        raiz?.render(<App />);
+      });
+      await assentar();
+      expect(existe("ficha-pedido")).toBe(true);
+      const espiaBack = vi.spyOn(globalThis.history, "back");
+      const espiaPush = vi.spyOn(globalThis.history, "pushState");
+
+      await clicar(botao);
+      expect(globalThis.location.pathname).toBe("/orders");
+      expect(espiaPush).not.toHaveBeenCalled();
+      expect(espiaBack).toHaveBeenCalledTimes(origem === "orders" ? 1 : 0);
+      expect(existe("ficha-pedido")).toBe(false);
+
+      await voltarDoAparelho();
+      expect(globalThis.location.pathname).not.toBe("/order-details");
+      expect(existe("ficha-pedido")).toBe(false);
+    },
+  );
 
   it("checkout -> login -> entrar -> seta Voltar: cai no CARRINHO, nunca no Perfil, e nenhuma entrada de login resta atrás", async () => {
     await abrir();

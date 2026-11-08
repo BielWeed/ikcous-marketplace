@@ -30,7 +30,7 @@ describe("textos pequenos e cinza claro da conta", () => {
     expect(lista).not.toContain("truncate text-[11px] font-bold text-zinc-900");
     expect(lista).not.toContain("max-w-[150px]");
     expect(lista).toContain(
-      "mt-0.5 truncate text-xs font-medium text-zinc-600",
+      "mt-0.5 break-words text-xs font-medium text-zinc-600",
     );
   });
 

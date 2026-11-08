@@ -182,9 +182,10 @@ module.exports = [
     // 07/11/2026 (mesma regra): 631 -> 633 kB na 1.5.150 (lote de 9 correcoes: avisos do lojista, balcao, banners, sino; o commit de juncao mediu 631,07 kB). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 07/11/2026 (mesma regra): 633 -> 635 kB na 1.5.151 (lote de 10 correcoes da caca 27: busca, favoritos, checkout, painel; mediu 632,65 kB local, folga de 0,35 kB cobria pouco o ruido entre maquina e CI). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 07/11/2026 (mesma regra): 635 -> 638 kB na 1.5.153 (3 partes de lotes de prazo de rede, devolucao, cupons, comprovante e foco do painel; mediu 636,67 kB local). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
+    // 07/11/2026 (1.5.156): 641 -> 643 kB (avisos que abrem o pedido, prazos honestos, favoritos, avaliacoes, preco parcial e banners; mediu 642,05 kB local). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 07/11/2026 (1.5.155): 639 -> 641 kB (perfil e conta, galeria do produto sem foto, envio de fotos e equipe do painel; mediu 639,61 kB local). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 07/11/2026 (1.5.154): 638 -> 639 kB (busca por cor e tamanho, carrinho que relê preço e estoque, avisos e endereços com prazo; mediu 638,01 kB local). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
-    limit: "641 kB",
+    limit: "643 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
@@ -328,8 +329,9 @@ module.exports = [
     // 06/11/2026 (mesma regra): 513 -> 515 kB na 1.5.147 (mediu 513,51 kB no build local, 510 B acima do teto). Nada foi trocado por algo mais arriscado.
     // 06/11/2026 (mesma regra): 515 -> 518 kB na 1.5.148 (foto do produto por teclado, foco apos excluir, editor de foto no iPhone; mediu 515,05 kB). Nada foi trocado por algo mais arriscado.
     // 07/11/2026 (mesma regra): 518 -> 519 kB na 1.5.151 (mediu 517,80 kB local). Regra do dono: o teto sobe.
+    // 07/11/2026 (mesma regra): 522 -> 526 kB na 1.5.156 (mediu 524,49 kB local: avisos que abrem o pedido, acoes do pedido com prazo, cupons, produtos e banners). Regra do dono: o teto sobe.
     // 07/11/2026 (mesma regra): 519 -> 522 kB na 1.5.153 (mediu 520,37 kB local: prazos e avisos honestos de cupons, devolucao, Mercado Pago e configuracoes). Regra do dono: o teto sobe.
-    limit: "522 kB",
+    limit: "526 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },

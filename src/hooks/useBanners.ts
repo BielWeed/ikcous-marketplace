@@ -260,9 +260,43 @@ export function useBanners(adminMode = false) {
     }
   }, [fetchBanners, isLoaded, adminMode]);
 
+  // Só acorda na próxima mudança de agenda; não relê o banco.
+  const [agora, setAgora] = useState(Date.now);
+  useEffect(() => {
+    if (adminMode) return;
+    const atualizarRelogio = () => setAgora(Date.now());
+    const aoVoltar = () => {
+      if (!document.hidden) atualizarRelogio();
+    };
+    const instante = Date.now();
+    let proxima = Number.POSITIVE_INFINITY;
+    for (const banner of banners) {
+      if (!banner.active) continue;
+      for (const limite of [
+        banner.startDate ? new Date(banner.startDate).getTime() : Number.NaN,
+        // O fim é inclusivo, como na regra de exibição abaixo.
+        banner.endDate ? new Date(banner.endDate).getTime() + 1 : Number.NaN,
+      ]) {
+        if (limite > instante) proxima = Math.min(proxima, limite);
+      }
+    }
+    const timer = Number.isFinite(proxima)
+      ? window.setTimeout(
+          atualizarRelogio,
+          Math.min(proxima - instante, 2147483647),
+        )
+      : undefined;
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", aoVoltar);
+    };
+  }, [banners, adminMode, agora]);
+
+  const agoraNaTela = Date.now();
   const getBannersByPosition = useCallback(
     (position: Banner["position"]) => {
-      const now = new Date();
+      const now = new Date(agoraNaTela);
       return banners
         .filter((b) => {
           if (b.position !== position) return false;
@@ -282,7 +316,7 @@ export function useBanners(adminMode = false) {
         })
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     },
-    [banners, adminMode],
+    [banners, adminMode, agoraNaTela],
   );
 
   const uploadBannerImage = async (file: File): Promise<string> => {
@@ -495,7 +529,11 @@ export function useBanners(adminMode = false) {
         .select("id");
 
       if (error) throw error;
-      if (!gravadas?.length) throw new Error("Nenhum banner foi alterado.");
+      if (!gravadas?.length) {
+        const indisponivel = new Error("Nenhum banner foi alterado.");
+        indisponivel.name = "BannerIndisponivel";
+        throw indisponivel;
+      }
 
       // If image changed, clean up old file from storage
       if (
@@ -526,8 +564,15 @@ export function useBanners(adminMode = false) {
       toast.success("Banner atualizado com sucesso!");
     } catch (error) {
       console.error("Error updating banner:", error);
-      toast.error("Erro ao atualizar banner.");
       applyLocalBanners(previousBanners);
+      if (error instanceof Error && error.name === "BannerIndisponivel") {
+        toast.error(
+          "Este banner foi excluído em outro aparelho ou você não tem mais acesso a ele.",
+        );
+        await fetchBanners(false, true);
+      } else {
+        toast.error("Erro ao atualizar banner.");
+      }
       throw error;
     }
   };

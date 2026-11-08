@@ -2,6 +2,7 @@ import { QuantitySelector } from "@/components/ui/custom/QuantitySelector";
 import { useStore } from "@/contexts/StoreContext";
 import { chaveDaLinha, estoqueDaLinha } from "@/lib/escolhas-do-item";
 import { fotoDoItemDoCarrinho } from "@/lib/foto-do-item-do-carrinho";
+import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
 import { usarImagemOriginal } from "@/lib/imageUrl";
 import { miniaturaDeCompra } from "@/lib/miniatura-de-compra";
 import { precoVendido } from "@/lib/preco-vendido";
@@ -119,19 +120,22 @@ const CartItemCard = memo(function CartItemCard({
         )}
       >
         <div className="size-16 flex-shrink-0 overflow-hidden rounded-xl bg-muted min-[380px]:size-20">
-          <img
-            src={
-              miniaturaDeCompra(fotoDaLinha) ||
-              "https://placehold.co/600x400?text=Sem+Imagem"
-            }
-            onError={(e) => usarImagemOriginal(e.currentTarget, fotoDaLinha)}
-            alt={
-              variantText
-                ? `${item.product.name} - ${variantText}`
-                : item.product.name
-            }
-            className="size-full object-cover"
-          />
+          {!fotoDaLinha || ehMarcadorDeFoto(fotoDaLinha) ? (
+            <div className="flex size-full items-center justify-center px-2 text-center text-xs font-medium text-muted-foreground">
+              Sem foto
+            </div>
+          ) : (
+            <img
+              src={miniaturaDeCompra(fotoDaLinha)}
+              onError={(e) => usarImagemOriginal(e.currentTarget, fotoDaLinha)}
+              alt={
+                variantText
+                  ? `${item.product.name} - ${variantText}`
+                  : item.product.name
+              }
+              className="size-full object-cover"
+            />
+          )}
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col">

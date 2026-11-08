@@ -261,7 +261,7 @@ export function DetalheDaDevolucao({
                 )}
               </dl>
               {detalhe.detalhe && (
-                <p className="whitespace-pre-line rounded-xl bg-zinc-950/60 p-3 text-xs leading-relaxed text-zinc-300">
+                <p className="whitespace-pre-line break-words rounded-xl bg-zinc-950/60 p-3 text-xs leading-relaxed text-zinc-300">
                   “{detalhe.detalhe}”
                 </p>
               )}
@@ -439,7 +439,7 @@ export function DetalheDaDevolucao({
                 {detalhe.mensagem_loja && (
                   <div className="rounded-xl bg-zinc-950/60 p-3">
                     <p className={TITULO_SECAO}>Sua mensagem ao cliente</p>
-                    <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-zinc-300">
+                    <p className="mt-1 whitespace-pre-line break-words text-xs leading-relaxed text-zinc-300">
                       {detalhe.mensagem_loja}
                     </p>
                   </div>
@@ -447,7 +447,7 @@ export function DetalheDaDevolucao({
                 {detalhe.observacao_inspecao && (
                   <div className="rounded-xl bg-zinc-950/60 p-3">
                     <p className={TITULO_SECAO}>Inspeção</p>
-                    <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-zinc-300">
+                    <p className="mt-1 whitespace-pre-line break-words text-xs leading-relaxed text-zinc-300">
                       {detalhe.observacao_inspecao}
                     </p>
                   </div>
@@ -472,7 +472,7 @@ export function DetalheDaDevolucao({
                       </span>
                     </p>
                     {evento.nota && (
-                      <p className="mt-0.5 whitespace-pre-line text-[11px] leading-relaxed text-zinc-400">
+                      <p className="mt-0.5 whitespace-pre-line break-words text-[11px] leading-relaxed text-zinc-400">
                         {reaisComVirgula(evento.nota)}
                       </p>
                     )}

@@ -141,6 +141,58 @@ describe("AdminProductFormView — compressImage (foto do produto) não pinta a 
     });
   }
 
+  it.each(["image/gif", "image/webp", "image/avif"])(
+    "preserva o original animado %s acima de 100 KB",
+    async (tipo) => {
+      const { compressProductImage } = await import(
+        "@/views/admin/AdminProductFormView"
+      );
+      const bytes = new Uint8Array(150 * 1024);
+      const cabecalho =
+        tipo === "image/webp"
+          ? "RIFFxxxxWEBPVP8X"
+          : `${String.fromCharCode(0, 0, 0, 24)}ftypavis`;
+      bytes.set([...cabecalho].map((letra) => letra.charCodeAt(0)));
+      if (tipo === "image/webp") bytes[20] = 2;
+      const arquivo = new File([bytes], "animada", { type: tipo });
+      // jsdom não oferece Blob.arrayBuffer: os bytes são os do arquivo acima.
+      Object.defineProperty(arquivo, "slice", {
+        value: (de: number, ate: number) => ({
+          arrayBuffer: async () => bytes.slice(de, ate).buffer,
+        }),
+      });
+      const resultado = await compressProductImage(arquivo);
+      expect(resultado).toBe(arquivo);
+      expect(resultado.type).toBe(tipo);
+      expect(contexto.drawImage).not.toHaveBeenCalled();
+    },
+  );
+
+  it("GIF sem tipo também é conferido e preservado", async () => {
+    const { compressProductImage } = await import(
+      "@/views/admin/AdminProductFormView"
+    );
+    const arquivo = new File([new Uint8Array(150 * 1024)], "animada.gif");
+    expect(await compressProductImage(arquivo)).toBe(arquivo);
+    expect(URL.createObjectURL).toHaveBeenCalledWith(arquivo);
+    expect(contexto.drawImage).not.toHaveBeenCalled();
+  });
+
+  it("GIF ilegível não passa só por ser animado", async () => {
+    const { compressProductImage } = await import(
+      "@/views/admin/AdminProductFormView"
+    );
+    class ImagemQueNaoAbre extends ImagemFalsa {
+      set src(_valor: string) {
+        queueMicrotask(() => this.onerror?.());
+      }
+    }
+    vi.stubGlobal("Image", ImagemQueNaoAbre);
+    await expect(
+      compressProductImage(arquivoGrande("image/gif")),
+    ).rejects.toThrow();
+  });
+
   it("pinta um fundo BRANCO antes de desenhar a imagem — senão a área transparente vira preto na foto do produto", async () => {
     const { compressProductImage } = await import(
       "@/views/admin/AdminProductFormView"

@@ -58,6 +58,7 @@ function Sonda({ pedidos = 0 }: { pedidos?: number }) {
       visao={lerVisaoDoCrm({
         kpis: {
           pedidos,
+          ticket_medio: pedidos > 0 ? 25 : 0,
           taxa_recompra: 0.5,
           receita_recorrente_pct: 0,
           taxa_devolucao: 0,
@@ -104,6 +105,21 @@ it("erro de categorias não é escondido por carregamento", async () => {
   await montar();
   expect(host.textContent).toContain("Sem conexão");
   expect(host.textContent).not.toContain("Sem dados registrados");
+});
+
+it("sem vendas no período mas com histórico: valor médio é traço, não R$ 0,00", async () => {
+  await montar();
+  const texto = cartao("Valor médio por venda").textContent;
+  expect(texto).toContain("—");
+  expect(texto).not.toContain("0,00");
+  expect(texto).toContain("Sem venda neste período");
+});
+
+it("com venda no período: valor médio continua igual", async () => {
+  await montar(2);
+  expect(
+    cartao("Valor médio por venda").textContent?.replace(/\s+/g, " "),
+  ).toContain("R$ 25,00");
 });
 
 it("período sem venda: devolução e receita recorrente não afirmam 0%", async () => {

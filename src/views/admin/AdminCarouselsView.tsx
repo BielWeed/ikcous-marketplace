@@ -145,6 +145,10 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   const [criandoVitrine, setCriandoVitrine] = useState(false);
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [confirmarRestaurar, setConfirmarRestaurar] = useState(false);
+  const [vitrineParaAutomatico, setVitrineParaAutomatico] = useState<
+    string | null
+  >(null);
+  const [anuncioDaOrdem, setAnuncioDaOrdem] = useState("");
   const [vitrineParaExcluir, setVitrineParaExcluir] =
     useState<SecaoDaHome | null>(null);
   const foco = useFocoAposExcluir();
@@ -364,7 +368,14 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     updated[index] = updated[targetIndex];
     updated[targetIndex] = temp;
 
-    handleUpdateHomeSections(updated, false);
+    setAnuncioDaOrdem("");
+    void handleUpdateHomeSections(updated, false).then((salvou) => {
+      if (salvou) {
+        setAnuncioDaOrdem(
+          `Vitrine ${tituloExibido(temp)} agora é a ${targetIndex + 1}ª de ${updated.length}`,
+        );
+      }
+    });
   };
 
   // ── Arrastar para reordenar ───────────────────────────────────────────
@@ -548,8 +559,16 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
         : [...initialIds, productId];
       return { ...sec, productIds: newIds };
     });
-    const salvou = await handleUpdateHomeSections(updated, false);
     const nova = updated.find((sec) => sec.id === sectionId);
+    if (
+      nova?.productIds?.length === 0 &&
+      (homeSections.find((sec) => sec.id === sectionId)?.productIds?.length ??
+        0) > 0
+    ) {
+      setVitrineParaAutomatico(sectionId);
+      return;
+    }
+    const salvou = await handleUpdateHomeSections(updated, false);
     if (salvou && nova?.productIds?.includes(productId)) {
       avisarSePassouDoMaximo(
         soOsQueExistem(nova.productIds, idsDoCatalogo).length,
@@ -821,7 +840,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             handleToggleProductInCuration(secaoEmEdicao.id, idDoProduto)
           }
           aoVoltarAoAutomatico={() =>
-            handleVoltarAoAutomatico(secaoEmEdicao.id)
+            setVitrineParaAutomatico(secaoEmEdicao.id)
           }
           aoEscolherManualmente={() =>
             handleEscolherManualmente(secaoEmEdicao.id)
@@ -839,6 +858,45 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           }
         />
       )}
+
+      <p role="status" aria-live="polite" className="sr-only">
+        {anuncioDaOrdem}
+      </p>
+      <AlertDialog
+        open={vitrineParaAutomatico !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto) setVitrineParaAutomatico(null);
+        }}
+      >
+        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Voltar ao automático?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Voltar ao automático remove{" "}
+              {homeSections.find((s) => s.id === vitrineParaAutomatico)
+                ?.productIds?.length ?? 0}{" "}
+              {homeSections.find((s) => s.id === vitrineParaAutomatico)
+                ?.productIds?.length === 1
+                ? "produto"
+                : "produtos"}{" "}
+              da lista que você escolheu. Sem produtos escolhidos, a loja volta
+              a escolher sozinha.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={salvandoVitrines}
+              onClick={() => {
+                if (vitrineParaAutomatico)
+                  void handleVoltarAoAutomatico(vitrineParaAutomatico);
+              }}
+            >
+              Voltar ao automático
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Confirmação: restaurar as vitrines de fábrica */}
       <AlertDialog

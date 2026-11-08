@@ -1,4 +1,25 @@
 {
+  "1.5.156": {
+    "titulo": "Avisos que abrem o pedido certo, telas que não travam com internet ruim e painel mais claro",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Abrir o app: se o app não carregar, aparece “Não conseguimos abrir o app” com “Tentar de novo”, em vez da rodinha girando para sempre; a página de loja em manutenção ganhou “Tentar novamente”.",
+      "Loja, Produto e Busca: escolhida só a cor ou só o tamanho, o “A partir de” vale para as combinações que sobraram; tocar em Adicionar enquanto o item entra no carrinho avisa para aguardar; a busca ignora palavras como “de” e “para”.",
+      "Loja, Avaliações: quem escreveu a avaliação não vê o botão “Útil” nela, e produto com muitas avaliações ou perguntas não falha mais ao carregar.",
+      "Loja, Carrinho e Checkout: produto sem foto mostra “Sem foto”; com a letra grande do celular, Subtotal e Entrega não cobrem mais o Total; nome e endereço feitos só de espaços ou caracteres invisíveis são recusados.",
+      "Loja, Pagamento: quando o Mercado Pago não responde, a frase diz para conferir seus pedidos antes de tentar de novo, sem termo técnico e sem afirmar se houve cobrança.",
+      "Loja, Conta e senha: Sair com a internet sem resposta encerra a sessão neste aparelho em até 10 segundos; link de nova senha vencido volta para “Esqueci a senha” com a explicação.",
+      "Loja, Pedidos e Favoritos: o detalhe do pedido avisa quando não conseguiu se atualizar e oferece “Tentar de novo”; favoritos e os dados da loja não ficam presos carregando com a internet ruim.",
+      "Painel, Avisos no celular: tocar num aviso de pedido (novo, pago, cancelado ou cobrança para conferir) abre direto aquele pedido.",
+      "Painel, Pedidos: “Em aberto” vazio diz “Nada para preparar agora”; o tempo de espera se atualiza a cada minuto; o pedido que passa a ter o pagamento filtrado entra na lista sozinho; a planilha usa o horário de Brasília.",
+      "Painel, Ações no pedido: pagamento recebido, “O produto voltou”, “Já estornei”, rastreio e anotação têm prazo e, sem resposta da internet, pedem para conferir o pedido antes de repetir.",
+      "Painel, Cupons, Entrega e Frete grátis: se as configurações não carregarem, interruptores e Salvar travam com “Tentar de novo”, sem gravar o padrão de fábrica por cima; no cupom, o erro aparece junto do campo.",
+      "Painel, Produtos: fotos animadas sobem sem perder a animação, o envio ganhou “Cancelar envio” e as fotos podem ser soltas em qualquer ponto do formulário; depois de sincronizar edições feitas sem internet a lista recarrega na mesma página e com os mesmos filtros, e voltar da edição não reabre um “estoque baixo” antigo.",
+      "Painel, Vitrines, Banners e Avaliações: “Voltar ao automático” pede confirmação; a vitrine mostra 60 produtos por vez com “Mostrar mais”; com filtro ligado, os banners não se reordenam; avaliação longa ganhou “Ver mais”; nos banners, Editar e Excluir dizem de qual banner são, salvar um banner já excluído em outro aparelho explica o motivo, e o banner que vence com a loja aberta sai sozinho.",
+      "Painel, Minha loja e Balcão: WhatsApp da loja com dígitos a mais é recusado em vez de virar outro número; o Balcão sem produto oferece “Cadastrar produto”; o valor médio por venda mostra “—” sem vendas."
+    ]
+  },
   "1.5.155": {
     "titulo": "Perfil e fotos mais confiáveis, página do produto sem foto e painel que não deixa ninguém sem acesso",
     "novidades": [],

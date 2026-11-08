@@ -207,7 +207,7 @@ it("excluir a avaliação descarta o rascunho e tira o aviso de alteração pend
   await clicar(cancelar!);
   expect(sujo).toHaveBeenLastCalledWith(true);
   const excluir = host.querySelector<HTMLButtonElement>(
-    'button[aria-label="Excluir avaliação"]',
+    'button[aria-label^="Excluir avaliação de "]',
   );
   await clicar(excluir!);
   const confirmar = [

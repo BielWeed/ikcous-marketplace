@@ -18,6 +18,7 @@ let avaliacoesDoHook: Review[] = [];
 vi.mock("@/hooks/useReviews", () => ({
   useReviews: () => ({
     reviews: avaliacoesDoHook,
+    userIdAtual: "cliente-atual",
     loading: false,
     getReviewsByProduct: vi.fn(),
     markHelpful: vi.fn(),
@@ -146,6 +147,21 @@ describe("ProductView — título quebra palavra longa e avaliações vêm de 10
     Array.from(hospedeiro.querySelectorAll("#reviews-section button")).find(
       (b) => b.textContent?.includes("Ver mais avaliações"),
     ) as HTMLButtonElement | undefined;
+
+  it("a página esconde Útil só na avaliação da conta atual", async () => {
+    avaliacoesDoHook = [
+      { ...avaliacao(1), userId: "cliente-atual", status: "publicada" },
+      { ...avaliacao(2), userId: "outra-cliente", status: "publicada" },
+    ];
+    await montar();
+    const botoes = Array.from(
+      hospedeiro.querySelectorAll("#reviews-section button"),
+    ).filter((b) => b.textContent?.includes("Útil"));
+    expect(botoes).toHaveLength(1);
+    expect(botoes[0].closest(".rounded-3xl")?.textContent).toContain(
+      "Cliente 2",
+    );
+  });
 
   it("o título do produto leva break-words", async () => {
     await montar({ ...produto, name: `Caneca${"x".repeat(80)}` });

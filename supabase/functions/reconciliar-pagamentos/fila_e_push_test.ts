@@ -169,7 +169,7 @@ Deno.test("C-D - 'pago_apos_expirar' -> UM push ao admin ('Pagamento fora do flu
   });
   assertEquals(r.status, 200);
   assertEquals(r.pushes.length, 1);
-  assertEquals(r.pushes[0], { title: "Pagamento fora do fluxo", body: "#4F5A6B · R$ 149,90 · estoque já devolvido", url: "/admin-orders" });
+  assertEquals(r.pushes[0], { title: "Pagamento fora do fluxo", body: "#4F5A6B · R$ 149,90 · estoque já devolvido", url: `/admin-orders?id=${PEDIDO_1}` });
   assertEquals(marcar(r.chamadas).map((c) => c.args), [{ p_visitados: [PEDIDO_1], p_terminais: [], p_cobrancas_terminais: [] }]);
 });
 
@@ -180,7 +180,7 @@ Deno.test("FASE 2 - 'pago' -> UM push ao lojista ('Pedido pago', #pedido, valor)
     confirmar: () => "pago",
   });
   assertEquals(r.status, 200);
-  assertEquals(r.pushes, [{ title: "Pedido pago", body: "#4F5A6B · R$ 149,90", url: "/admin-orders" }]);
+  assertEquals(r.pushes, [{ title: "Pedido pago", body: "#4F5A6B · R$ 149,90", url: `/admin-orders?id=${PEDIDO_1}` }]);
 });
 
 for (const resultado of ["ja_pago", "ignorado", "divergente", "ja_estornado"]) {

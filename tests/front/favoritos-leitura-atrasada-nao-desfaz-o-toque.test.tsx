@@ -207,6 +207,87 @@ afterEach(() => {
   hospedeiro.remove();
   Reflect.deleteProperty(navigator, "onLine");
   vi.unstubAllGlobals();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe("Favoritos — prazo da rede", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  it("encerra a leitura pendurada, mostra nova tentativa e ignora a resposta vencida", async () => {
+    mundo.linhas.add("conta-a|caneca");
+    await renderizar();
+    expect(atual().loading).toBe(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(atual().loading).toBe(false);
+    expect(atual().erro).toBe("Não conseguimos carregar seus favoritos.");
+    mundo.linhas.clear();
+    await act(async () => atual().refresh());
+    expect(atual().loading).toBe(true);
+    await responderLeitura(1);
+    expect(atual().loading).toBe(false);
+    expect(atual().erro).toBeNull();
+    await responderLeitura(0);
+    conferirCaneca(false);
+  });
+
+  it.each([false, true])(
+    "desfaz a gravação pendurada e libera a fila (remoção: %s)",
+    async (remover) => {
+      if (remover) mundo.linhas.add("conta-a|caneca");
+      await renderizar();
+      await responderLeitura(0);
+      await tocarCoracao();
+      conferirCaneca(!remover);
+      await notificarOutraAba();
+      await responderLeitura(1); // Descartada enquanto a gravação está em voo.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      conferirCaneca(remover);
+      expect(toast.error).toHaveBeenCalledWith(
+        remover ? "Erro ao remover favorito" : "Erro ao salvar favorito",
+      );
+      expect(mundo.leituras).toHaveLength(3); // A fila liberou a releitura.
+      await responderLeitura(2);
+      conferirCaneca(remover);
+      await tocarCoracao();
+      expect(mundo.gravacoes).toHaveLength(2); // A próxima escrita não ficou presa.
+      await concluirGravacao(1);
+      conferirCaneca(!remover);
+      await concluirGravacao(0); // Resposta antiga não mexe no estado nem no aviso.
+      conferirCaneca(!remover);
+      expect(toast.success).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("preserva os favoritos do visitante e termina o login quando a mesclagem pendura", async () => {
+    localStorage.setItem("ikcous_favorites", JSON.stringify([produtos[0]]));
+    await renderizar();
+    expect(mundo.gravacoes).toHaveLength(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+    expect(mundo.leituras).toHaveLength(1);
+    await responderLeitura(0);
+    expect(atual().loading).toBe(false);
+    expect(atual().pendingCount).toBe(1);
+    conferirCaneca(false);
+    expect(toast.error).toHaveBeenCalled();
+    await concluirGravacao(0);
+    expect(atual().pendingCount).toBe(1);
+    expect(
+      JSON.parse(localStorage.getItem("ikcous_favorites_pendentes:conta-a")!),
+    ).toHaveLength(1);
+    await notificarOutraAba();
+    await responderLeitura(1);
+    conferirCaneca(true);
+  });
 });
 
 describe("Favoritos — leitura atrasada não desfaz o toque", () => {

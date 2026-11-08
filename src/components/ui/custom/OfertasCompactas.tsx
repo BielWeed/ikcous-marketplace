@@ -295,7 +295,8 @@ function CartaoOfertaCompacta({
                   ? `Adicionado ao carrinho: ${product.name}`
                   : `${rotuloCompra} ${product.name} ao carrinho`
           }
-          disabled={esgotado || cartStatus !== "idle"}
+          disabled={esgotado}
+          aria-disabled={!esgotado && cartStatus !== "idle" ? true : undefined}
           className={cn(
             "relative z-10 mt-2 flex min-h-11 min-w-11 w-full shrink-0 items-center justify-center gap-1 rounded-xl border px-2 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-2",
             esgotado

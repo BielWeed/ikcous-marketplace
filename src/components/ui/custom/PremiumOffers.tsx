@@ -710,7 +710,10 @@ function HeroOfferCard({
           <div className="flex gap-2">
             <button
               onClick={handleAddToCartClick}
-              disabled={product.stock <= 0 || cartStatus !== "idle"}
+              disabled={product.stock <= 0}
+              aria-disabled={
+                product.stock > 0 && cartStatus !== "idle" ? true : undefined
+              }
               className={cn(
                 "flex-grow-2 flex-[2] min-h-11 py-2.5 px-3 rounded-full text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.97] shadow-sm flex items-center justify-center gap-1.5 border",
                 product.stock <= 0

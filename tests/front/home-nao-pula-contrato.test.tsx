@@ -548,7 +548,17 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
       });
       bannersDaLoja = { isLoaded: false, banners: [] };
       await montar([]);
-      expect(hospedeiro.querySelector(".h-\\[120px\\]") !== null).toBe(reserva);
+      const esqueleto = hospedeiro.querySelector(
+        '[data-testid="esqueleto-banner-meio"]',
+      );
+      expect(esqueleto !== null).toBe(reserva);
+      if (reserva) {
+        expect(esqueleto?.className).toContain("aspect-[2/1]");
+        expect(esqueleto?.className).toContain("w-full");
+        expect(esqueleto?.className).toContain("md:max-w-[1040px]");
+        expect(esqueleto?.className).not.toContain("rounded-");
+        expect(esqueleto?.parentElement?.className).toBe("w-full py-4");
+      }
     },
   );
 

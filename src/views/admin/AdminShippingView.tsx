@@ -1,4 +1,5 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
+import { AvisoDaLojaSemDados } from "@/components/admin/AvisoDaLojaSemDados";
 import { normalizarNumeroMototaxi } from "@/components/admin/minha-loja/contato";
 import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
 import {
@@ -263,7 +264,14 @@ export const AdminShippingView = memo(function AdminShippingView({
   onSetDirty,
   painelInicial,
 }: Readonly<AdminShippingViewProps>) {
-  const { config, isLoaded, updateConfig } = useStore();
+  const { config, isLoaded, updateConfig, configIndisponivel, refresh } =
+    useStore();
+  // A leitura da config falhou e não há cópia no aparelho: `config` é a de
+  // fábrica. Mexer numa resposta de "Fora da região" manda os cinco campos
+  // juntos lidos DELA por cima da regra de verdade, então os campos que gravam
+  // config e o Salvar ficam travados até a leitura funcionar. `=== true`:
+  // contexto sem o campo lê como "não falhou".
+  const configFalhou = configIndisponivel === true;
   const isOffline = useOnlineStatus();
   const mototaxi = useMototaxi(active);
   const [contatoMototaxi, setContatoMototaxi] = useState({
@@ -733,6 +741,9 @@ export const AdminShippingView = memo(function AdminShippingView({
       });
       return;
     }
+    // Segunda trava (a primeira é o botão desabilitado): com a leitura falha
+    // a tela mostra a config de FÁBRICA e gravar dela apagaria a de verdade.
+    if (configFalhou) return;
     if (isSaving || erroMototaxi) return;
     if (!soMototaxiPendente && erroLocal) {
       setPainelAberto((prev) => ({ ...prev, estrategiasLocais: true }));
@@ -1044,6 +1055,7 @@ export const AdminShippingView = memo(function AdminShippingView({
   const podeClicarSalvar =
     !isSaving &&
     !isOffline &&
+    !configFalhou &&
     isFormDirty &&
     !erroMototaxi &&
     (soMototaxiPendente ||
@@ -1200,6 +1212,11 @@ export const AdminShippingView = memo(function AdminShippingView({
           </div>
         ) : (
           <>
+            {configFalhou && (
+              <AvisoDaLojaSemDados
+                onTentarDeNovo={() => void refresh({ onlyConfig: true })}
+              />
+            )}
             {isOffline && (
               <p
                 role="status"
@@ -1346,7 +1363,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                 uf={config?.storeState}
                 semOrigem={!config?.originCep}
                 cepDaLoja={config?.originCep}
-                desabilitado={isOffline}
+                desabilitado={isOffline || configFalhou}
                 modo={formData.modo}
                 onModo={(modo) =>
                   atualizarFormData((prev) => ({ ...prev, modo }))
@@ -1472,7 +1489,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                 onCoverage={(shippingCoverage) =>
                   atualizarFormData((prev) => ({ ...prev, shippingCoverage }))
                 }
-                desabilitado={isOffline}
+                desabilitado={isOffline || configFalhou}
               >
                 <TransportadorasSection
                   active={active}
@@ -1543,7 +1560,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                   onAcimaDe={(acimaDe) =>
                     atualizarFormData((prev) => ({ ...prev, acimaDe }))
                   }
-                  desabilitado={isOffline}
+                  desabilitado={isOffline || configFalhou}
                 />
               </div>
               <div
@@ -1581,7 +1598,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                       alcance,
                     }))
                   }
-                  desabilitado={isOffline}
+                  desabilitado={isOffline || configFalhou}
                 />
                 {erroNacional && (
                   <p role="alert" className="mt-2 text-[12.5px] text-red-300">

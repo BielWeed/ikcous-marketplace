@@ -90,6 +90,13 @@ describe("Header — o logo baixa a versão reduzida, com o original de reserva"
     act(() => imagem().dispatchEvent(new Event("error")));
   }
 
+  it("reserva a largura antes da logo carregar e preserva o alinhamento à esquerda", async () => {
+    await renderizar(LOGO_PNG);
+    expect(imagem().parentElement?.className).toContain("w-[100px]");
+    expect(imagem().parentElement?.className).toContain("xs:w-[120px]");
+    expect(imagem().className).toContain("object-left");
+  });
+
   it("logo PNG da loja: pede a versão de 240 px, não o arquivo original", async () => {
     await renderizar(LOGO_PNG);
     expect(imagem().getAttribute("src")).toBe(LOGO_REDUZIDO);

@@ -93,6 +93,7 @@ import {
 } from "@/lib/forma-de-pagamento";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { fotoDoItemDoCarrinho } from "@/lib/foto-do-item-do-carrinho";
+import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
 import {
   conferirFreteEscolhidoComACotacao,
   ehModalidadeDaLoja,
@@ -108,6 +109,7 @@ import {
 import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
   formasDePagamentoParaTotalZero,
@@ -194,6 +196,7 @@ import {
 } from "lucide-react";
 import {
   type ComponentType,
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -770,12 +773,13 @@ function GatilhoDoResumoDoPedido({
           return (
             <span
               key={item.product.id}
+              aria-hidden="true"
               className={cn(
                 "relative size-6 shrink-0 overflow-hidden rounded-full border-2 border-white bg-zinc-100",
                 indice > 0 && "-ml-2.5",
               )}
             >
-              {foto && (
+              {foto && !ehMarcadorDeFoto(foto) && (
                 <img
                   src={miniaturaDoResumo(foto, 96)}
                   onError={(e) => usarImagemOriginal(e.currentTarget, foto)}
@@ -1074,6 +1078,7 @@ export function CheckoutViewDaConta({
           .string()
           .trim()
           .min(1, "Nome é obrigatório")
+          .refine(nomeTemConteudoVisivel, "Nome é obrigatório")
           .max(TETO_NOME_DO_CHECKOUT, avisoDeTeto(TETO_NOME_DO_CHECKOUT)),
         whatsapp: z.string(),
         cep: z.string().optional(),
@@ -1907,6 +1912,38 @@ export function CheckoutViewDaConta({
   const [isCancelandoPedido, setIsCancelandoPedido] = useState(false);
   const isCancelandoPedidoRef = useRef(false);
   const [erroCancelamento, setErroCancelamento] = useState<string | null>(null);
+  // Lote r64-a (acessibilidade): enquanto cancela, o botão fica desabilitado e
+  // o navegador larga o foco dele (cai no corpo da página). Quando a tentativa
+  // termina com erro, o foco volta ao botão — ou, se a falha trocou o botão por
+  // outra saída (guarda do cartão), à última ação da caixa. Só se o foco estava
+  // perdido: quem foi para outro lugar enquanto esperava não é puxado de volta.
+  const caixaDoErroRef = useRef<HTMLDivElement>(null);
+  const botaoCancelarRef = useRef<HTMLButtonElement>(null);
+  const devolverFocoDoCancelarRef = useRef(false);
+  // Conta cada tentativa: sem rede o erro nasce no mesmo gesto do clique, e
+  // limpar e repor a MESMA frase não muda nada na tela — o leitor de tela só fala
+  // o que ENTRA nela. A chave refaz o aviso a cada tentativa.
+  const [tentativasDeCancelar, setTentativasDeCancelar] = useState(0);
+  useEffect(() => {
+    if (
+      isCancelandoPedido ||
+      !erroCancelamento ||
+      !devolverFocoDoCancelarRef.current
+    )
+      return;
+    devolverFocoDoCancelarRef.current = false;
+    const ativo = document.activeElement;
+    const perdeuOFoco =
+      !ativo ||
+      ativo === document.body ||
+      ativo === botaoCancelarRef.current ||
+      !document.contains(ativo);
+    if (!perdeuOFoco) return;
+    const acoes = caixaDoErroRef.current?.querySelectorAll("button") ?? [];
+    (botaoCancelarRef.current ?? acoes[acoes.length - 1])?.focus({
+      preventScroll: true,
+    });
+  }, [isCancelandoPedido, erroCancelamento, tentativasDeCancelar]);
   // Achado 1, rodada 6 da revisão de risco pré-publicação (26/09/2026,
   // migration 80 — outra frente): a própria RPC já recusou este pedido com
   // P0001 dizendo que o cartão pode estar em confirmação — isso É a prova de
@@ -2524,7 +2561,12 @@ export function CheckoutViewDaConta({
   // abrir pelo resumo; "Editar" ao recolher pelo cabeçalho). Só os dois
   // gestos abaixo pedem isso: outras aberturas (submit inválido, aviso da
   // barra) já levam o foco ao campo que precisa de correção.
-  const focoAposAlternarRef = useRef<"cabecalho" | "resumo" | null>(null);
+  // Escolher um endereço da lista (lote r64-a) também recolhe a seção, com o
+  // foco dentro do cartão tocado: vai para o "Trocar" do resumo do endereço,
+  // que assume o lugar dele (sem ele, "Editar" dos dados).
+  const focoAposAlternarRef = useRef<
+    "cabecalho" | "resumo" | "endereco" | null
+  >(null);
   useEffect(() => {
     if (focoAposAlternarRef.current === "cabecalho" && identificacaoExpandida)
       document.getElementById("cabecalho-dados-e-entrega")?.focus();
@@ -2533,8 +2575,19 @@ export function CheckoutViewDaConta({
       !identificacaoExpandida
     )
       document.getElementById("resumo-editar-dados")?.focus();
+    else if (
+      focoAposAlternarRef.current === "endereco" &&
+      !identificacaoExpandida
+    )
+      (
+        document.getElementById("resumo-trocar-endereco") ??
+        document.getElementById("resumo-editar-dados")
+      )?.focus();
     focoAposAlternarRef.current = null;
   }, [identificacaoExpandida]);
+  // Fala qual endereço ficou escolhido. A região (logo acima dos resumos) existe
+  // SEMPRE, vazia: região que nasce já preenchida não é anunciada.
+  const [avisoDoEnderecoEscolhido, setAvisoDoEnderecoEscolhido] = useState("");
   const abrirPeloResumo = () => {
     focoAposAlternarRef.current = "cabecalho";
     setIdentificacaoAbertaManual(true);
@@ -4988,6 +5041,8 @@ export function CheckoutViewDaConta({
     // aqui não pegaria o segundo clique a tempo. Mutação de ref é síncrona.
     if (isCancelandoPedidoRef.current) return;
     isCancelandoPedidoRef.current = true;
+    devolverFocoDoCancelarRef.current = true;
+    setTentativasDeCancelar((n) => n + 1);
 
     setIsCancelandoPedido(true);
     setErroCancelamento(null);
@@ -5416,9 +5471,13 @@ export function CheckoutViewDaConta({
       // "Seu pedido está reservado…" de ponta a ponta em tela larga.
       <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
         {!pedidoMortoNaTela && (
-          <h1 className="text-lg font-bold text-zinc-900">
+          <TituloQueRecebeOFoco
+            nivel={1}
+            semFocoNaAbertura
+            className="text-lg font-bold text-zinc-900"
+          >
             Finalize o pagamento
-          </h1>
+          </TituloQueRecebeOFoco>
         )}
         {valorFinalDiferenteDoCarrinho && (
           <p className="text-sm font-medium text-zinc-900">
@@ -5537,7 +5596,10 @@ export function CheckoutViewDaConta({
             )}
           </div>
         ) : erroPagamento ? (
-          <div className="space-y-3 rounded-2xl border border-red-100 bg-red-50 p-4">
+          <div
+            ref={caixaDoErroRef}
+            className="space-y-3 rounded-2xl border border-red-100 bg-red-50 p-4"
+          >
             <div className="flex items-start gap-3">
               <AlertCircle className="mt-0.5 size-5 shrink-0 text-red-500" />
               <p
@@ -5679,6 +5741,7 @@ export function CheckoutViewDaConta({
               )
             ) : user ? (
               <Button
+                ref={botaoCancelarRef}
                 onClick={handleCancelarPedidoESairDoPagamento}
                 disabled={isCancelandoPedido}
                 variant={
@@ -5716,8 +5779,17 @@ export function CheckoutViewDaConta({
                 cancelar agora, entre na sua conta.
               </p>
             )}
+            {/* `role="alert"`: o toast deste caminho é desligado de propósito
+                (`silent`), então esta frase é a única forma de quem não vê a
+                tela saber que o pedido NÃO foi cancelado. Monta junto com o
+                erro (e remonta a cada tentativa: o erro anterior é limpo ao
+                clicar), que é quando o leitor de tela a anuncia. */}
             {erroCancelamento && (
-              <p className="text-xs font-medium text-red-700">
+              <p
+                key={tentativasDeCancelar}
+                role="alert"
+                className="text-xs font-medium text-red-700"
+              >
                 {erroCancelamento}
               </p>
             )}
@@ -6239,6 +6311,10 @@ export function CheckoutViewDaConta({
           </div>
         )}
 
+        <p role="status" className="sr-only">
+          {avisoDoEnderecoEscolhido}
+        </p>
+
         {/* PASSO A1 (22/10/2026): recolhida, a seção vira DOIS resumos
             compactos — "Seus dados" e "Endereço de entrega" —, cada um com o
             selo de ok quando está completo e uma ação discreta ("Editar"/
@@ -6311,6 +6387,7 @@ export function CheckoutViewDaConta({
               acao={
                 user && !enderecoEfetivo ? undefined : (
                   <AcaoDeResumo
+                    id={user ? "resumo-trocar-endereco" : undefined}
                     controla="secao-dados-e-entrega"
                     onClick={abrirPeloResumo}
                   >
@@ -6952,6 +7029,10 @@ export function CheckoutViewDaConta({
                       // recolhido avisa a pendência (data-testid
                       // `checkout-resumo-falta-cpf`) em vez de forçar a
                       // seção aberta; quem quer corrigir toca em "Editar".
+                      setAvisoDoEnderecoEscolhido(
+                        `Endereço escolhido: ${endereco.name}. ${resumoDoEndereco(endereco)}`,
+                      );
+                      focoAposAlternarRef.current = "endereco";
                       setIdentificacaoAbertaManual(false);
                     }}
                     onEdit={handleEditAddress}
@@ -7544,7 +7625,7 @@ export function CheckoutViewDaConta({
                   >
                     {/* `max-w-md` (não `max-w-screen-md`) para o total e o botão
                         ficarem na mesma coluna dos cards do formulário. */}
-                    <div className="mx-auto flex max-w-md flex-col gap-3">
+                    <div className="checkout-barra mx-auto flex max-w-md flex-col gap-3">
                       {/* Anuncia a espera e o motivo do frete SEM interromper
                           (`status`, nunca `alert`) e SEM ocupar lugar
                           (`sr-only` fica fora do fluxo). A região existe
@@ -7994,6 +8075,40 @@ function rotuloDaFormaNaTelaDeSucesso(
   return ehRetirada ? rotulo.replace(" na entrega", " na retirada") : rotulo;
 }
 
+// Acessibilidade (lote r64-a): "Pedido recebido!", "Pagamento Confirmado!" e
+// "Finalize o pagamento" SUBSTITUEM a tela inteira, e o botão que tinha o foco
+// (Finalizar, "Copiar código Pix") some junto — o foco caía no corpo da página
+// e o leitor de tela ficava em silêncio. O título recebe o foco UMA vez, quando
+// a tela aparece (efeito sem dependência de render): o leitor fala o título e o
+// teclado recomeça dali; redesenhos seguintes não puxam o foco de volta, para
+// não tirar a pessoa do "Copiar código Pix". `semFocoNaAbertura` poupa quem só
+// abriu/recarregou a página sem tocar em nada (mesma regra do foco do <main>
+// no App.tsx: não atropelar o "Pular para o conteúdo").
+function TituloQueRecebeOFoco({
+  nivel,
+  semFocoNaAbertura = false,
+  className,
+  children,
+}: Readonly<{
+  nivel: 1 | 2;
+  semFocoNaAbertura?: boolean;
+  className: string;
+  children: ReactNode;
+}>) {
+  const ref = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (semFocoNaAbertura && navigator.userActivation?.hasBeenActive === false)
+      return;
+    ref.current?.focus({ preventScroll: true });
+  }, [semFocoNaAbertura]);
+  const Titulo = nivel === 1 ? "h1" : "h2";
+  return (
+    <Titulo ref={ref} tabIndex={-1} className={cn(className, "outline-none")}>
+      {children}
+    </Titulo>
+  );
+}
+
 interface SuccessViewProps {
   orderId: string;
   appliedCoupon: { code: string; discount: number } | null;
@@ -8061,9 +8176,12 @@ function SuccessView({
         <div className="absolute -bottom-2 -left-2 size-6 animate-pulse rounded-full bg-primary/30 blur-lg delay-500" />
       </div>
 
-      <h2 className="mb-4 text-4xl font-black leading-tight tracking-tighter text-zinc-900 duration-700 animate-in slide-in-from-bottom-4">
+      <TituloQueRecebeOFoco
+        nivel={2}
+        className="mb-4 text-4xl font-black leading-tight tracking-tighter text-zinc-900 duration-700 animate-in slide-in-from-bottom-4"
+      >
         Pedido recebido!
-      </h2>
+      </TituloQueRecebeOFoco>
 
       <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
         <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
@@ -8163,9 +8281,12 @@ function PagamentoConfirmadoView({
         <div className="absolute -bottom-2 -left-2 size-6 animate-pulse rounded-full bg-primary/30 blur-lg delay-500" />
       </div>
 
-      <h2 className="mb-4 text-4xl font-black leading-tight tracking-tighter text-zinc-900 duration-700 animate-in slide-in-from-bottom-4">
+      <TituloQueRecebeOFoco
+        nivel={2}
+        className="mb-4 text-4xl font-black leading-tight tracking-tighter text-zinc-900 duration-700 animate-in slide-in-from-bottom-4"
+      >
         Pagamento Confirmado!
-      </h2>
+      </TituloQueRecebeOFoco>
 
       <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
         <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">

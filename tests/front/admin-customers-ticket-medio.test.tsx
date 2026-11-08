@@ -253,7 +253,7 @@ describe("AdminCustomersView — o card Ticket Médio", () => {
       global_orders: 12, // 11 + o pedido pendente
       new_customers_30d: 0,
     };
-    mockAnalyticsStats = analyticsStatsFake(40.95); // sem o pedido pendente
+    mockAnalyticsStats = analyticsStatsFake(40.95, 11); // sem o pedido pendente
 
     await abrirTela();
 
@@ -276,7 +276,7 @@ describe("AdminCustomersView — o card Ticket Médio", () => {
     expect(texto()).not.toContain("R$ 0,00");
   });
 
-  it("loja sem nenhum pedido: avgTicket medido como 0 aparece como R$ 0,00, porque foi medido", async () => {
+  it("loja sem nenhum pedido: não existe média por venda, mostra traço", async () => {
     estadoDaRpc.stats = {
       total_customers: 5,
       global_ltv: 0,
@@ -287,7 +287,11 @@ describe("AdminCustomersView — o card Ticket Médio", () => {
 
     await abrirTela();
 
-    expect(texto()).toContain("R$ 0,00");
+    const cartao = hospedeiro.querySelector(
+      '[aria-label="Valor médio por venda"]',
+    );
+    expect(cartao?.textContent).toContain("—");
+    expect(cartao?.textContent).not.toContain("R$ 0,00");
     expect(texto()).not.toMatch(/NaN|Infinity/);
   });
 
@@ -358,7 +362,7 @@ describe("AdminCustomersView — o card Ticket Médio", () => {
   });
 
   it("o rótulo de apoio descreve a média por pedido, não por cliente", async () => {
-    mockAnalyticsStats = analyticsStatsFake(40.95);
+    mockAnalyticsStats = analyticsStatsFake(40.95, 11);
 
     await abrirTela();
 

@@ -78,7 +78,9 @@ describe("banner sem destino: película", () => {
       "@/components/ui/custom/BannerCarousel"
     );
     act(() => {
-      raiz.render(<BannerCarousel banners={[banner]} autoPlay={false} />);
+      raiz.render(
+        <BannerCarousel primeiraSemFade banners={[banner]} autoPlay={false} />,
+      );
     });
   }
 

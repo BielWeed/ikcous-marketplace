@@ -138,14 +138,14 @@ export function avisoAoLojista(orderId: string, resultado: string, valor: unknow
     return {
       title: "Pagamento fora do fluxo",
       body: `${numeroDoPedido(orderId)} · ${formatarBRL(valor)} · estoque já devolvido`,
-      url: "/admin-orders",
+      url: `/admin-orders?id=${encodeURIComponent(orderId)}`,
     };
   }
   if (resultado === "pago") {
     return {
       title: "Pedido pago",
       body: `${numeroDoPedido(orderId)} · ${formatarBRL(valor)}`,
-      url: "/admin-orders",
+      url: `/admin-orders?id=${encodeURIComponent(orderId)}`,
     };
   }
   return null;

@@ -151,7 +151,12 @@ export const AdminProductsView = memo(function AdminProductsView({
     loadProducts,
     loadProductsSemCusto,
     copiarImagemParaDuplicacao,
-  } = useProducts({ autoFetch: false });
+  } = useProducts({
+    autoFetch: false,
+    onSincronizado: () => {
+      void recarregarAtualRef.current(true);
+    },
+  });
   const { stats, error: erroDoResumo, fetchExecutiveSummary } = useAnalytics();
   const { categories: dbCategories } = useCategories();
   const isOffline = useOnlineStatus();
@@ -210,6 +215,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     "admin_products_search_term",
     "",
   );
+  const termoDeBusca = searchTerm.trim();
   const [isTyping, setIsTyping] = useState(false);
   const [filterCategory, setFilterCategory] = useLocalStorage<string>(
     "admin_products_filter_category",
@@ -393,7 +399,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       cargaEmAndamento.current = Date.now();
       try {
         const filtros = {
-          search: searchTerm || undefined,
+          search: termoDeBusca || undefined,
           category: filterCategory === "all" ? undefined : filterCategory,
           ...(modoEstoqueBaixo && { stock: "low", status: "active" }),
           ...(silenciosa && { silent: true }),
@@ -467,7 +473,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       modoSemCusto,
       modoEstoqueBaixo,
       pageSize,
-      searchTerm,
+      termoDeBusca,
       filterCategory,
       setCurrentPage,
     ],
@@ -479,7 +485,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       loadData(currentPage);
     }, 320);
     return () => clearTimeout(timer);
-  }, [currentPage, searchTerm, filterCategory, active, loadData]);
+  }, [currentPage, termoDeBusca, filterCategory, active, loadData]);
 
   // A exclusão pode demorar: quando termina, a recarga usa a página e os
   // filtros ATUAIS, não os do clique de confirmar.
@@ -532,7 +538,9 @@ export const AdminProductsView = memo(function AdminProductsView({
 
     const unitProfit = price - cost;
     const temBase = price > 0 && cost > 0;
-    const margin = temBase ? (unitProfit / price) * 100 : null;
+    const margin = temBase
+      ? Math.round((unitProfit / price) * 10000) / 100
+      : null;
     const roi = temBase ? (unitProfit / cost) * 100 : null;
     const totalCost = cost * stock;
     const totalRevenue = price * stock;
@@ -575,9 +583,9 @@ export const AdminProductsView = memo(function AdminProductsView({
 
   // "Nenhum produto" com busca ou categoria escolhida é o filtro que não achou
   // nada — não o catálogo vazio. A tela diz o que está filtrado e oferece sair.
-  const temBuscaOuFiltro = !!searchTerm || filterCategory !== "all";
+  const temBuscaOuFiltro = !!termoDeBusca || filterCategory !== "all";
   const descricaoDoFiltro = [
-    searchTerm ? `a busca "${searchTerm}"` : null,
+    termoDeBusca ? `a busca "${termoDeBusca}"` : null,
     filterCategory !== "all" ? `a categoria "${filterCategory}"` : null,
   ]
     .filter(Boolean)
@@ -599,7 +607,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       // dela na visão que está abrindo.
       geracaoDaRecarga.current += 1;
       filtrosAntesDaVisao.current ??= {
-        busca: searchTerm,
+        busca: termoDeBusca,
         categoria: filterCategory,
         pagina: currentPage,
       };
@@ -615,15 +623,25 @@ export const AdminProductsView = memo(function AdminProductsView({
     }
     setPedidoDeRolagem((n) => n + 1);
   };
-  // Vindo do Relatórios ("Cadastrar custo"): a lista abre já na visão. Espera a
-  // tela ficar ativa e só age quando o pedido muda ou a tela volta a abrir.
+  // O id é um pedido de abertura, não um filtro permanente da entrada.
+  // Consumi-lo preserva a lista ao voltar do formulário pelo histórico.
+  const consumirPedidoDeVisao = (visao: string) => {
+    const estado = window.history.state;
+    if (estado?.view !== "admin-products" || estado.id !== visao) return;
+    const proximo = { ...estado, id: undefined };
+    window.history.replaceState(proximo, "", window.location.href);
+  };
+  // Vindo do Relatórios ("Cadastrar custo"): espera a tela ficar ativa.
   const pedeVisaoSemCusto = visaoInicial === VISAO_SEM_CUSTO;
   const abrirVisaoSemCustoRef = useRef(abrirVisaoSemCusto);
   useEffect(() => {
     abrirVisaoSemCustoRef.current = abrirVisaoSemCusto;
   });
   useEffect(() => {
-    if (active && pedeVisaoSemCusto) abrirVisaoSemCustoRef.current();
+    if (active && pedeVisaoSemCusto) {
+      consumirPedidoDeVisao(VISAO_SEM_CUSTO);
+      abrirVisaoSemCustoRef.current();
+    }
   }, [active, pedeVisaoSemCusto]);
   // Vindo do Início (card "N produtos com estoque baixo"): mesma ideia, com
   // a lista do servidor já filtrada. Começa na página 1 e sem busca/categoria.
@@ -631,7 +649,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     if (!modoEstoqueBaixo) {
       geracaoDaRecarga.current += 1;
       filtrosAntesDaVisao.current ??= {
-        busca: searchTerm,
+        busca: termoDeBusca,
         categoria: filterCategory,
         pagina: currentPage,
       };
@@ -652,7 +670,10 @@ export const AdminProductsView = memo(function AdminProductsView({
     abrirVisaoEstoqueBaixoRef.current = abrirVisaoEstoqueBaixo;
   });
   useEffect(() => {
-    if (active && pedeVisaoEstoqueBaixo) abrirVisaoEstoqueBaixoRef.current();
+    if (active && pedeVisaoEstoqueBaixo) {
+      consumirPedidoDeVisao(VISAO_ESTOQUE_BAIXO);
+      abrirVisaoEstoqueBaixoRef.current();
+    }
   }, [active, pedeVisaoEstoqueBaixo]);
   const verTodos = () => {
     const antes = filtrosAntesDaVisao.current;
@@ -665,7 +686,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     setSemCusto(null);
     setPaginaSemCusto(0);
     setLoadError(false);
-    if (antes && !searchTerm && filterCategory === "all") {
+    if (antes && !termoDeBusca && filterCategory === "all") {
       // Nada foi mexido dentro da visão: a lista volta como estava.
       setSearchTerm(antes.busca);
       setFilterCategory(antes.categoria);
@@ -849,7 +870,9 @@ export const AdminProductsView = memo(function AdminProductsView({
         accent: "text-sky-300",
         // Sem as despesas o líquido não existe: o cartão diz o que falta e abre
         // a folha onde o lojista as informa (antes só o (i) do cabeçalho levava lá).
-        ...(liquidoEstimado === null
+        ...(liquidoEstimado === null &&
+        !financialStats.semEstoque &&
+        !financialStats.semNenhumCusto
           ? {
               dica: "Informar despesas",
               aoToque: () =>
@@ -862,7 +885,11 @@ export const AdminProductsView = memo(function AdminProductsView({
         subValue:
           liquidoEstimado !== null
             ? `Estimado${financialStats.parcial ? " · Parcial" : ""} · despesas informadas nesta tela`
-            : "Toque em Entender valores e informe as despesas previstas",
+            : financialStats.semEstoque
+              ? "Cadastre um produto com estoque"
+              : financialStats.semNenhumCusto
+                ? "Cadastre o custo dos produtos"
+                : "Toque em Entender valores e informe as despesas previstas",
       },
       {
         id: "roi-portfolio",
@@ -891,7 +918,7 @@ export const AdminProductsView = memo(function AdminProductsView({
           ? "Só sem custo"
           : modoEstoqueBaixo
             ? "Só estoque baixo"
-            : searchTerm
+            : termoDeBusca
               ? "Resultados da busca"
               : filterCategory !== "all"
                 ? "Só desta categoria"
@@ -905,7 +932,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       modoSemCusto,
       modoEstoqueBaixo,
       semCusto,
-      searchTerm,
+      termoDeBusca,
       filterCategory,
     ],
   );
@@ -1291,7 +1318,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       ? `Sincronizado · ${totalDaLista} sem custo`
                       : modoEstoqueBaixo
                         ? `Sincronizado · ${totalProducts} com estoque baixo`
-                        : `Sincronizado · ${totalProducts} ${searchTerm ? "na busca" : filterCategory !== "all" ? "nesta categoria" : "no catálogo"}`}
+                        : `Sincronizado · ${totalProducts} ${termoDeBusca ? "na busca" : filterCategory !== "all" ? "nesta categoria" : "no catálogo"}`}
             </span>
           </div>
         </div>
@@ -1465,9 +1492,13 @@ export const AdminProductsView = memo(function AdminProductsView({
               <p role="status" className="text-sm text-white">
                 {liquidoEstimado !== null
                   ? `Líquido estimado${financialStats.parcial ? " (parcial)" : ""}: R$ ${liquidoEstimado.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  : financialStats.potential === null
-                    ? "Aguarde os custos para calcular o líquido."
-                    : "Informe as despesas e aplique a estimativa."}
+                  : financialStats.semEstoque
+                    ? "Cadastre um produto com estoque para calcular o líquido."
+                    : financialStats.semNenhumCusto
+                      ? "Cadastre o custo dos produtos para calcular o líquido."
+                      : !financialStats.coberturaConferida
+                        ? "Aguarde os custos para calcular o líquido."
+                        : "Informe as despesas e aplique a estimativa."}
               </p>
               <p className="text-xs text-zinc-400">
                 Simulação nesta tela. Não altera o Financeiro; confirme

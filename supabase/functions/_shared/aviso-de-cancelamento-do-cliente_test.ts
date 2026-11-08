@@ -162,7 +162,7 @@ Deno.test("cliente cancelou pedido PAGO e NAO enviado -> 1 aviso, chave por even
   assertEquals(r.avisos[0].aviso, {
     title: "Cliente cancelou o pedido",
     body: "#4F5A6B · R$ 149,90 · Maria Silva — pago, o reembolso é automático",
-    url: "/admin-orders",
+    url: `/admin-orders?id=${PEDIDO}`,
   });
   assertEquals(r.resumo, { candidatos: 1, avisados: 1, ignorados: 0, falhas: 0 });
 });
@@ -408,4 +408,20 @@ Deno.test("sem candidatos: nao toca nas outras tabelas", async () => {
   const r = await rodar({ historico: [], pedidos: [pedido()], perfis });
   assertEquals(r.banco.leituras.map((l) => l.tabela), ["marketplace_order_history"]);
   assertEquals(r.resumo, { candidatos: 0, avisados: 0, ignorados: 0, falhas: 0 });
+});
+
+Deno.test("aviso de cancelamento: o toque leva ao pedido do aviso — id na url, codificado, em todas as frases", () => {
+  const casos = [
+    [{ payment_status: "pago" }, { old_status: "pending" }],
+    [{ payment_status: "pago", cancelled_after_shipping: true }, { old_status: "shipping" }],
+    [{ payment_status: "pago_apos_expirar" }, { old_status: "pending" }],
+    [{ payment_status: null }, { old_status: "pending" }],
+  ] as const;
+  for (const [extra, historico] of casos) {
+    assertEquals(
+      montarAvisoDeCancelamento({ id: "a b&id=outro", ...extra }, historico).url,
+      "/admin-orders?id=a%20b%26id%3Doutro",
+    );
+    assertEquals(montarAvisoDeCancelamento({ id: PEDIDO, ...extra }, historico).url, `/admin-orders?id=${PEDIDO}`);
+  }
 });

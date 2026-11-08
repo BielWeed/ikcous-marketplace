@@ -197,6 +197,38 @@ describe("Produtos sem nenhum produto com estoque", () => {
     expect(venda?.textContent).not.toContain("0,00");
   });
 
+  it.each([
+    ["sem estoque", SEM_ESTOQUE, "Cadastre um produto com estoque"],
+    [
+      "sem custo",
+      resumo({
+        totalCost: 0,
+        totalValue: 0,
+        totalRevenue: 60,
+        revenueWithoutCost: 60,
+        productsWithoutCost: 3,
+        productsWithCost: 0,
+      }),
+      "Cadastre o custo dos produtos",
+    ],
+  ])(
+    "%s: o cartão não pede despesas e a folha explica o que falta",
+    async (_, stats, orientacao) => {
+      await montar(stats);
+      const cartao = hospedeiro.querySelector(
+        '[aria-label="Lucro líquido potencial"]',
+      );
+      expect(cartao?.textContent).toContain(orientacao);
+      expect(cartao?.textContent).not.toContain("Informar despesas");
+      expect(cartao?.querySelector("button")).toBeNull();
+      await abrirValores();
+      expect(document.body.textContent).toContain(
+        `${orientacao} para calcular o líquido.`,
+      );
+      expect(document.body.textContent).not.toContain("Aguarde os custos");
+    },
+  );
+
   it("com estoque e custo completo o aviso verde e os valores continuam iguais", async () => {
     await montar(COM_CUSTO);
     expect(hospedeiro.textContent).toContain(TEXTO_VERDE);

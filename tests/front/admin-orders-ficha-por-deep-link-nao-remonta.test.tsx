@@ -315,6 +315,25 @@ describe("AdminOrdersView — ficha aberta por deep link não remonta quando `or
     return hospedeiro.textContent?.includes("Carregando Pedido");
   }
 
+  it("r66 sair da aba Pedidos retira o recibo do body, mantendo a ficha", async () => {
+    await renderizar(vi.fn(), PEDIDO_ID);
+    expect(
+      document.body.querySelector('[class~="print:block"]'),
+    ).not.toBeNull();
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(
+        <AdminOrdersView
+          onNavigate={vi.fn()}
+          active={false}
+          selectedOrderId={PEDIDO_ID}
+        />,
+      );
+    });
+    expect(document.body.querySelector('[class~="print:block"]')).toBeNull();
+    expect(botaoAdicionarAnotacao()).toBeDefined();
+  });
+
   it("a porta de Devoluções da tela abre a lista de devoluções sem usar o evento do clique como id", async () => {
     const onNavigate = vi.fn();
     await renderizar(onNavigate, "");

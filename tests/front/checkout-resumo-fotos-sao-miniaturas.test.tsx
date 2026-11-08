@@ -219,6 +219,23 @@ describe("CheckoutView — fotos do resumo do pedido usam a miniatura, não o or
     );
   });
 
+  it("marcador do produto vira círculo neutro decorativo, sem texto nem imagem externa", async () => {
+    await abrir([
+      {
+        product: produto({
+          images: ["https://placehold.co/600x400?text=Sem+Imagem"],
+        }),
+        quantity: 1,
+      },
+    ]);
+    expect(gatilho().querySelector("img")).toBeNull();
+    expect(gatilho().textContent).not.toContain("Sem foto");
+    const circulo = gatilho().querySelector("span.rounded-full.bg-zinc-100");
+    expect(circulo).not.toBeNull();
+    expect(circulo?.getAttribute("aria-hidden")).toBe("true");
+    expect(circulo?.textContent).toBe("");
+  });
+
   it("produto sem foto: continua sem <img> na bolinha", async () => {
     await abrir([{ product: produto({ images: [] }), quantity: 1 }]);
 

@@ -239,6 +239,123 @@ describe("AdminProductFormView — foto que chega DEPOIS do prazo não vira arqu
     });
 
   describe("lote de fotos novas", () => {
+    it("cancelar libera o lote sem perder a foto enviada e limpa a que chega depois", async () => {
+      await montarPreenchido();
+      const envio = envioAdiado();
+      mocks.uploadProductImages
+        .mockResolvedValueOnce([urlDe("aceita.jpg")])
+        .mockReturnValueOnce(envio.promessa);
+      relogioFalso();
+      await act(async () =>
+        escolherFotos([foto("a.jpg"), foto("b.jpg"), foto("c.jpg")]),
+      );
+      await drenar();
+      expect(mocks.uploadProductImages).toHaveBeenCalledTimes(2);
+      expect(botaoPorTexto("Cancelar envio")).toBeTruthy();
+      await act(async () => clicar("Cancelar envio"));
+      await drenar();
+      expect(fotoNaTela(urlDe("aceita.jpg"))).toBe(true);
+      expect(textoDe("fotos-com-falha")).toMatch(/b\.jpg.*envio cancelado/i);
+      expect(textoDe("fotos-com-falha")).toContain("c.jpg");
+      expect(mocks.toastError).toHaveBeenCalledWith(
+        "2 de 3 fotos não subiram.",
+        expect.anything(),
+      );
+      expect(botaoPorTexto("Cancelar envio")).toBeUndefined();
+      expect(botaoPorTexto("Tentar de novo")?.disabled).toBe(false);
+      envio.resolver([urlDe("11111111-1111-4111-8111-aaaaaaaaaaaa.jpg")]);
+      await drenar();
+      expect(mocks.storageRemove).toHaveBeenCalledWith([
+        "11111111-1111-4111-8111-aaaaaaaaaaaa.jpg",
+      ]);
+      expect(mocks.uploadProductImages).toHaveBeenCalledTimes(2);
+      expect(
+        fotoNaTela(urlDe("11111111-1111-4111-8111-aaaaaaaaaaaa.jpg")),
+      ).toBe(false);
+    });
+
+    it("cancelar também está disponível antes da primeira foto terminar", async () => {
+      await montarPreenchido();
+      mocks.uploadProductImages.mockReturnValueOnce(new Promise(() => {}));
+      await act(async () => escolherFotos([foto("a.jpg"), foto("b.jpg")]));
+      expect(botaoPorTexto("Cancelar envio")).toBeTruthy();
+      await act(async () => clicar("Cancelar envio"));
+      await drenar();
+      expect(textoDe("fotos-com-falha")).toContain("a.jpg");
+      expect(textoDe("fotos-com-falha")).toContain("b.jpg");
+      expect(botaoPorTexto("Tentar de novo")?.disabled).toBe(false);
+      expect(mocks.uploadProductImages).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(["prazo", "falha"])(
+      "para as fotos restantes depois de %s, sem outra espera",
+      async (motivo) => {
+        await montarPreenchido();
+        if (motivo === "prazo") {
+          mocks.uploadProductImages.mockReturnValueOnce(new Promise(() => {}));
+        } else {
+          mocks.uploadProductImages.mockRejectedValueOnce(
+            new Error("rede caiu"),
+          );
+        }
+        relogioFalso();
+        await act(async () =>
+          escolherFotos([foto("a.jpg"), foto("b.jpg"), foto("c.jpg")]),
+        );
+        if (motivo === "prazo") await avancar(PRAZO_DA_FOTO_MS + 1);
+        await drenar();
+        expect(mocks.uploadProductImages).toHaveBeenCalledTimes(1);
+        expect(textoDe("fotos-com-falha")).toContain("b.jpg");
+        expect(textoDe("fotos-com-falha")).toContain("c.jpg");
+        expect(botaoPorTexto("Tentar de novo")?.disabled).toBe(false);
+        expect(mocks.toastError).toHaveBeenCalledWith(
+          "3 de 3 fotos não subiram.",
+          expect.anything(),
+        );
+      },
+    );
+
+    it("soltar outra foto no formulário preenchido impede abrir o arquivo e envia a nova foto", async () => {
+      await montarPreenchido();
+      mocks.uploadProductImages
+        .mockResolvedValueOnce([urlDe("primeira.jpg")])
+        .mockResolvedValueOnce([urlDe("segunda.jpg")]);
+      await act(async () => escolherFotos([foto("a.jpg")]));
+      const formulario = document.querySelector(".produto-formulario")!;
+      const arraste = new Event("dragover", {
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(arraste, "dataTransfer", {
+        value: { types: ["Files"], files: [] },
+      });
+      formulario.dispatchEvent(arraste);
+      expect(arraste.defaultPrevented).toBe(true);
+      const soltar = new Event("drop", { bubbles: true, cancelable: true });
+      Object.defineProperty(soltar, "dataTransfer", {
+        value: { types: ["Files"], files: [foto("b.jpg")] },
+      });
+      await act(async () => formulario.dispatchEvent(soltar));
+      expect(soltar.defaultPrevented).toBe(true);
+      expect(mocks.uploadProductImages).toHaveBeenCalledTimes(2);
+      expect(fotoNaTela(urlDe("primeira.jpg"))).toBe(true);
+      expect(fotoNaTela(urlDe("segunda.jpg"))).toBe(true);
+    });
+
+    it("soltar um TEXTO (não arquivo) no formulário não é interceptado: o navegador segue inserindo no campo", async () => {
+      await montarPreenchido();
+      const formulario = document.querySelector(".produto-formulario")!;
+      for (const tipo of ["dragover", "drop"]) {
+        const evento = new Event(tipo, { bubbles: true, cancelable: true });
+        Object.defineProperty(evento, "dataTransfer", {
+          value: { types: ["text/plain"], files: [] },
+        });
+        await act(async () => formulario.dispatchEvent(evento));
+        expect(evento.defaultPrevented).toBe(false);
+      }
+      expect(mocks.uploadProductImages).not.toHaveBeenCalled();
+    });
+
     it("o envio termina com sucesso DEPOIS do prazo: a tela dá a foto por falha e apaga o objeto que esse envio criou", async () => {
       await montarPreenchido();
       const envio = envioAdiado();

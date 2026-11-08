@@ -126,6 +126,7 @@ async function montarHome() {
       <BannerCarousel
         banners={getBannersByPosition("home_top")}
         autoPlay={false}
+        primeiraSemFade
       />
     );
   }

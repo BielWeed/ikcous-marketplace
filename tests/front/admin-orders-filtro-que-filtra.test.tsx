@@ -364,6 +364,44 @@ describe("AdminOrdersView — o estado vazio não mente quando há filtro estrei
     expect(hospedeiro.textContent).toContain("Todos");
   });
 
+  it("Em Aberto vazio, sem busca nem período nem canal nem pagamento → 'Nada para preparar agora'; 'Ver todos os pedidos' manda 'all'", async () => {
+    // Achado 14: o filtro padrão vazio não é "filtro errado" — é a loja com
+    // tudo em dia. A saída é ver Todos, e o botão diz isso.
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
+    });
+    await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
+
+    expect(hospedeiro.textContent).toContain("Nada para preparar agora");
+    expect(hospedeiro.textContent).not.toContain("Nenhum pedido neste recorte");
+    expect(hospedeiro.textContent).not.toContain("Limpar busca e filtros");
+    const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Ver todos os pedidos",
+    );
+    expect(botao).toBeTruthy();
+
+    mockLoadOrders.mockClear();
+    await act(async () => botao!.click());
+    await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
+    expect(ultimoStatusFilterEnviado()).toBe("all");
+  });
+
+  it("Em Aberto + só o canal ligado e lista vazia → continua o texto de canal, não o de 'nada para preparar'", async () => {
+    armazem.set("admin_orders_canal_filter", JSON.stringify("presencial"));
+
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
+    });
+    await esperarAte(() => mockLoadOrders.mock.calls.length > 0);
+
+    expect(hospedeiro.textContent).toContain("Nenhum pedido nesse canal");
+    expect(hospedeiro.textContent).not.toContain("Nada para preparar agora");
+  });
+
   it("filtro 'Todos' + busca que não casa + lista vazia → a busca sozinha já é estreitamento, mensagem nova (não a absoluta)", async () => {
     armazem.set("admin_orders_filter_v2", JSON.stringify("all"));
     armazem.set(

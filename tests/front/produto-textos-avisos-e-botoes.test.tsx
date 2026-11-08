@@ -330,6 +330,28 @@ describe("AdminProductFormView — textos, avisos e botões (u179)", () => {
   });
 
   describe("4. análise do lucro", () => {
+    it.each([
+      { price: 3.5, costPrice: 2.45 },
+      { price: 100, costPrice: 70 },
+    ])(
+      "margem exata de 30% com venda $price e custo $costPrice é boa, inclusive a barra",
+      async ({ price, costPrice }) => {
+        fetchProduct.mockResolvedValue({ ...produtoDoBanco, price, costPrice });
+        await montar("prod-1");
+        const analise = [...document.querySelectorAll("p")].find((p) =>
+          p.textContent?.startsWith("Análise do Sistema ·"),
+        )!;
+        expect(analise.textContent).toContain("Lucro bom");
+        expect(analise.className).toContain("text-emerald-300");
+        expect(
+          secao("Custo e lucro").querySelector(".bg-emerald-400"),
+        ).not.toBeNull();
+        expect(
+          secao("Custo e lucro").querySelector(".bg-orange-400"),
+        ).toBeNull();
+      },
+    );
+
     async function comCusto(custoEmCentavos: string) {
       await montar();
       await digitarCampo("product-sale-price", "10000");

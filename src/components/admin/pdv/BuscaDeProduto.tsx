@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import type { AcaoDaVenda, ItemDoCupom } from "@/hooks/useVendaPresencial";
 import { chaveDoItemDoCupom } from "@/hooks/useVendaPresencial";
 import { cn } from "@/lib/utils";
+import type { View } from "@/types";
 import { ChevronDown, PackagePlus, Plus, Search } from "lucide-react";
 import {
   type ReactElement,
@@ -57,6 +58,7 @@ interface PropsDaBuscaDeProduto {
   ) => Promise<PaginaDeProdutosEncontrados>;
   readonly visivel: boolean;
   readonly agora?: () => number;
+  readonly onNavigate?: (view: View) => void;
 }
 
 function reais(valor: number): string {
@@ -122,6 +124,7 @@ export function BuscaDeProduto({
   buscarProdutos,
   visivel,
   agora = () => Date.now(),
+  onNavigate,
 }: PropsDaBuscaDeProduto): ReactElement {
   const [termoDeBusca, setTermoDeBusca] = useState("");
   const [resultadosDaBusca, setResultadosDaBusca] = useState<
@@ -287,7 +290,20 @@ export function BuscaDeProduto({
         resultadosDaBusca.length === 0 && (
           <div role="status" className="pdv-card pdv-stack">
             {termoBuscado === "" ? (
-              <p className="pdv-heading">Nenhum produto ativo cadastrado</p>
+              <>
+                <p className="pdv-heading">Nenhum produto ativo cadastrado</p>
+                {onNavigate && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="pdv-secondary"
+                    onClick={() => onNavigate("admin-product-form")}
+                  >
+                    <PackagePlus aria-hidden="true" className="pdv-icon" />
+                    Cadastrar produto
+                  </Button>
+                )}
+              </>
             ) : (
               <>
                 <p className="pdv-heading">Nenhum produto encontrado</p>

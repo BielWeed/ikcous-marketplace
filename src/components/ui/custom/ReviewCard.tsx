@@ -9,6 +9,7 @@ import { StarRating } from "./StarRating";
 interface ReviewCardProps {
   review: Review;
   jaVotou?: boolean;
+  userIdAtual?: string;
   // A união abaixo é deliberada: o chamador pode passar um handler síncrono
   // (void) ou um que devolve o resultado da gravação (Promise<boolean>), e os
   // dois já existem no código. Estreitar isso é mudança de contrato de uma prop
@@ -22,6 +23,7 @@ interface ReviewCardProps {
 export function ReviewCard({
   review,
   jaVotou,
+  userIdAtual,
   onHelpful,
   onNavigate,
 }: ReviewCardProps) {
@@ -191,25 +193,26 @@ export function ReviewCard({
       <div className="flex flex-col gap-3">
         {/* Só avaliação publicada recebe voto: o banco recusa a que está em
             análise, e o botão ativo só devolvia erro. */}
-        {review.status !== "pendente" && (
-          <button
-            onClick={handleHelpful}
-            disabled={hasMarkedHelpful || votoEmVoo}
-            className={`flex min-h-11 w-fit items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
-              hasMarkedHelpful
-                ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                : "border-secondary/20 bg-secondary/10 text-primary hover:bg-secondary/20 active:scale-95"
-            }`}
-          >
-            <ThumbsUp
-              className={`size-3 ${hasMarkedHelpful ? "fill-current" : ""}`}
-            />
-            {/* O contador vem do objeto confirmado pela releitura de
+        {review.status !== "pendente" &&
+          (!userIdAtual || review.userId !== userIdAtual) && (
+            <button
+              onClick={handleHelpful}
+              disabled={hasMarkedHelpful || votoEmVoo}
+              className={`flex min-h-11 w-fit items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
+                hasMarkedHelpful
+                  ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                  : "border-secondary/20 bg-secondary/10 text-primary hover:bg-secondary/20 active:scale-95"
+              }`}
+            >
+              <ThumbsUp
+                className={`size-3 ${hasMarkedHelpful ? "fill-current" : ""}`}
+              />
+              {/* O contador vem do objeto confirmado pela releitura de
                 useReviews.markHelpful — somar +1 aqui contava o clique duas
                 vezes. */}
-            <span>Útil ({review.helpful})</span>
-          </button>
-        )}
+              <span>Útil ({review.helpful})</span>
+            </button>
+          )}
 
         {review.merchantReply && (
           <div className="relative mt-1 rounded-2xl border border-zinc-100 bg-zinc-50/80 p-3.5 text-xs duration-300 animate-in slide-in-from-left-1">

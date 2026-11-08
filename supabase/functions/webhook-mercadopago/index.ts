@@ -862,7 +862,7 @@ async function registrarDesfechoDoEstorno(args: {
       await args.avisar(`estorno_externo_nao_cabe:${orderId}:${refundId}`, {
         title: "Devolução do Mercado Pago para conferir",
         body: `${numeroDoPedido(orderId)} · o Mercado Pago registrou uma devolução que passa do que este pedido ainda podia devolver — o app não registrou essa devolução; confira no painel do Mercado Pago`,
-        url: "/admin-orders",
+        url: `/admin-orders?id=${encodeURIComponent(orderId)}`,
       });
     }
   }
@@ -1711,7 +1711,7 @@ async function handler(
       const avisoEstornoOrfao = {
         title: "Estorno de cobrança sem registro",
         body: `${numeroDoPedido(orderId)} · confira o painel do Mercado Pago antes de mexer neste pedido`,
-        url: "/admin-orders",
+        url: `/admin-orders?id=${encodeURIComponent(orderId)}`,
       };
       await comTempoLimite(
         (deps.enviarPush ?? disparoPushReal)({ supabase, aviso: avisoEstornoOrfao }),
@@ -2050,7 +2050,7 @@ async function handler(
       aviso: {
         title: "Pagamento precisa de conferência",
         body: `${numeroDoPedido(orderId)} · ${divergente ? "valor divergente; confira no painel do Mercado Pago" : "valor não conferido; tentando novamente"}`,
-        url: "/admin-orders",
+        url: `/admin-orders?id=${encodeURIComponent(orderId)}`,
       },
     }), 5000);
     return json({
@@ -2169,7 +2169,7 @@ async function handler(
           const avisoDivergenteAposCorrida = {
             title: "Cobrança de cartão duplicada?",
             body: `${numeroDoPedido(orderId)} · confira o painel do Mercado Pago`,
-            url: "/admin-orders",
+            url: `/admin-orders?id=${encodeURIComponent(orderId)}`,
           };
           // C-P: uma vez por (pedido, order); quem chega junto espera o resultado
           // da outra entrega — ver `avisarCobrancaDuplicadaUmaVez` (e os limites lá).
@@ -2209,7 +2209,7 @@ async function handler(
       const avisoDivergente = {
         title: "Cobrança de cartão duplicada?",
         body: `${numeroDoPedido(orderId)} · confira o painel do Mercado Pago`,
-        url: "/admin-orders",
+        url: `/admin-orders?id=${encodeURIComponent(orderId)}`,
       };
       // C-P: uma vez por (pedido, order); quem chega junto espera o resultado
       // da outra entrega — ver `avisarCobrancaDuplicadaUmaVez` (e os limites lá).

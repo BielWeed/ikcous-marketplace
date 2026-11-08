@@ -7,6 +7,7 @@ import {
   gravarCopiaPorProduto,
 } from "@/lib/copias-por-produto";
 import {
+  PRAZO_DAS_ACOES_DO_PEDIDO_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
@@ -246,14 +247,15 @@ export function useQuestions() {
 
           const questionIds = data.map((q: any) => q.id);
           const answersByQuestion = new Map<string, any[]>();
-          if (questionIds.length > 0) {
+          // Cada endereço leva no máximo cem ids.
+          for (let i = 0; i < questionIds.length; i += 100) {
             const { data: answersData, error: answersError } =
               await aguardarComPrazo(
                 Promise.resolve(
                   supabase
                     .from("answers" as any)
                     .select("id, question_id, answer, created_at")
-                    .in("question_id", questionIds)
+                    .in("question_id", questionIds.slice(i, i + 100))
                     .abortSignal(signal),
                 ),
                 15000,
@@ -357,25 +359,34 @@ export function useQuestions() {
         }
 
         // Fetch verified status for these users/product
-        const userIds = data.map((q: any) => q.user_id);
-        let orders: any[] | null = null;
-        if (userIds.length > 0) {
-          const query = supabase
-            .from("marketplace_orders")
-            .select(
-              "user_id, status, marketplace_order_items!inner(product_id)",
-            )
-            .in("user_id", userIds)
-            .eq("status", "delivered")
-            .eq("marketplace_order_items.product_id", productId);
-          const { data: ordersData, error: ordersError } =
-            await aguardarComPrazo(
-              Promise.resolve((query as any).abortSignal(signal)),
-              15000,
-              erroDeConsultaSemResposta,
-            );
+        const userIds = [...new Set(data.map((q: any) => q.user_id))];
+        const orders: any[] = [];
+        for (let i = 0; i < userIds.length; i += 100) {
+          try {
+            const query = supabase
+              .from("marketplace_orders")
+              .select(
+                "user_id, status, marketplace_order_items!inner(product_id)",
+              )
+              .in("user_id", userIds.slice(i, i + 100))
+              .eq("status", "delivered")
+              .eq("marketplace_order_items.product_id", productId);
+            const { data: ordersData, error: ordersError } =
+              await aguardarComPrazo(
+                Promise.resolve((query as any).abortSignal(signal)),
+                15000,
+                erroDeConsultaSemResposta,
+              );
 
-          if (ordersError) {
+            if (ordersError) throw ordersError;
+            orders.push(...(ordersData || []));
+          } catch (erro) {
+            const ordersError = erro as {
+              name?: string;
+              message?: string;
+              hint?: string;
+              details?: string;
+            };
             const isAbort =
               ordersError.name === "AbortError" ||
               ordersError.message?.includes("aborted") ||
@@ -384,8 +395,6 @@ export function useQuestions() {
             if (!isAbort) {
               console.error("Error fetching verified status:", ordersError);
             }
-          } else {
-            orders = ordersData;
           }
         }
 
@@ -580,7 +589,7 @@ export function useQuestions() {
       }
       try {
         // ZENITH v21.7: Rely on AuthContext's verified user
-        if (!user) {
+        if (!user?.id) {
           if (!options?.silent) toast.error("Login necessário.");
           return false;
         }
@@ -590,12 +599,15 @@ export function useQuestions() {
         // (issue #100) a RPC faz upsert por question_id no banco, então não
         // há — e não deve haver — um segundo caminho de UPDATE aqui no
         // front. Apagar uma resposta pela UI continua fora do escopo.
-        const { error } = await (supabase.rpc as any)(
-          "answer_question_atomic",
-          {
-            p_question_id: answer.questionId,
-            p_answer: answer.answer,
-          },
+        const { error } = await aguardarComPrazo(
+          Promise.resolve(
+            (supabase.rpc as any)("answer_question_atomic", {
+              p_question_id: answer.questionId,
+              p_answer: answer.answer,
+            }),
+          ) as Promise<{ error: unknown }>,
+          PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+          () => erroDeConsultaSemResposta(),
         );
 
         if (error) throw error;
@@ -603,11 +615,17 @@ export function useQuestions() {
         return true;
       } catch (err: any) {
         console.error(err);
-        if (!options?.silent) toast.error("Erro ao responder");
+        // Mesmo no modo silencioso, o prazo exige avisar que a gravação
+        // pode ter ocorrido; não é seguro oferecer apenas "tente de novo".
+        if (ehConsultaSemResposta(err))
+          toast.error(
+            "Sem resposta da rede. Confira na lista antes de tentar de novo.",
+          );
+        else if (!options?.silent) toast.error("Erro ao responder");
         return false;
       }
     },
-    [user, isAdmin],
+    [user?.id, isAdmin],
   );
 
   const getAllQuestions = useCallback(
@@ -809,6 +827,8 @@ export function useQuestions() {
           return { questions: [], total: 0, falhou: true };
         }
         console.error("Error fetching all questions:", error);
+        // Releitura de bastidor: a última lista boa continua na tela e no cache.
+        if (silent) return { questions: [], total: 0, falhou: true };
         toast.error("Erro ao carregar perguntas.");
         // A lista e o cache da leitura anterior saem, para a falha não parecer
         // o resultado de outro filtro/busca (contrato do useReviews).
@@ -831,11 +851,17 @@ export function useQuestions() {
       }
       try {
         // `.select("id")`: 0 linhas apagadas (política de acesso) vem como sucesso.
-        const { data: apagadas, error } = await supabase
-          .from("questions" as any)
-          .delete()
-          .eq("id", questionId)
-          .select("id");
+        const { data: apagadas, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("questions" as any)
+              .delete()
+              .eq("id", questionId)
+              .select("id"),
+          ),
+          PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+          () => erroDeConsultaSemResposta(),
+        );
 
         if (error) throw error;
         if (!apagadas?.length) throw new Error("Nenhuma pergunta apagada.");
@@ -848,7 +874,11 @@ export function useQuestions() {
         return true;
       } catch (error) {
         console.error("Error deleting question:", error);
-        if (!options?.silent) toast.error("Erro ao remover pergunta.");
+        if (ehConsultaSemResposta(error))
+          toast.error(
+            "Sem resposta da rede. Confira na lista antes de tentar de novo.",
+          );
+        else if (!options?.silent) toast.error("Erro ao remover pergunta.");
         return false;
       }
     },

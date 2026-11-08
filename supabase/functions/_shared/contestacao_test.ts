@@ -3,6 +3,7 @@
 // toca a rede: o fetch é dublê.
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  avisoContestacaoParaConferir,
   consultarContestacao,
   decisaoDoCaso,
   lerContestacoesDaOrder,
@@ -424,4 +425,10 @@ Deno.test("consultarContestacao: 302 para OUTRO host -> não lê o caso (não tr
   }
   assertEquals(chamadas.map((c) => c.url), ["https://api.mercadopago.com/v1/chargebacks/CASE9"]);
   assertEquals(chamadas[0].redirect, "manual");
+});
+
+Deno.test("aviso de contestação para conferir: o toque leva ao pedido do aviso — id na url, codificado", () => {
+  const id = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
+  assertEquals(avisoContestacaoParaConferir(id).url, `/admin-orders?id=${id}`);
+  assertEquals(avisoContestacaoParaConferir("a b&id=outro").url, "/admin-orders?id=a%20b%26id%3Doutro");
 });

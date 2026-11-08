@@ -143,9 +143,10 @@ describe("painel: UPDATE/DELETE que não mexeu em linha nenhuma não vira sucess
   }
 
   describe("banner", () => {
-    it("atualizar com 0 linhas: avisa erro, recusa e volta ao título de antes", async () => {
+    it("atualizar com 0 linhas: explica a ausência e relê a lista", async () => {
       const banners = await montar(() => useBanners(true));
       expect(banners().banners[0].title).toBe("Antigo");
+      h.linhasBanner = [];
 
       let recusou = false;
       await act(async () => {
@@ -157,9 +158,11 @@ describe("painel: UPDATE/DELETE que não mexeu em linha nenhuma não vira sucess
       });
 
       expect(recusou).toBe(true);
-      expect(toast.error).toHaveBeenCalledWith("Erro ao atualizar banner.");
+      expect(toast.error).toHaveBeenCalledExactlyOnceWith(
+        "Este banner foi excluído em outro aparelho ou você não tem mais acesso a ele.",
+      );
       expect(toast.success).not.toHaveBeenCalled();
-      expect(banners().banners[0].title).toBe("Antigo");
+      expect(banners().banners).toEqual([]);
     });
 
     it("excluir com 0 linhas: avisa erro, recusa e o banner continua na lista", async () => {

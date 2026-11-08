@@ -52,6 +52,7 @@ import { resumoParaPrevia } from "@/lib/resumo-para-previa";
 import { textoEstoqueBaixo, textoSoRestam } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
+import { dividirEmAtributos } from "@/utils/atributos-da-variacao";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
 import { criarEixosDaVariacao, eixoEhCor } from "@/utils/eixos-da-variacao";
 import {
@@ -136,7 +137,6 @@ export const ProductView = React.memo(function ProductView({
   isFavorite,
   onToggleFavorite,
   onAddToCart,
-  onBack,
   onProductClick,
   onAddToCartProduct,
   onQuickBuy,
@@ -178,6 +178,7 @@ export const ProductView = React.memo(function ProductView({
     getReviewsByProduct,
     markHelpful,
     votosUteis,
+    userIdAtual,
     subscribeToReviews,
   } = useReviews();
   const { trackRecommendationClick, fetchRecommendations } = useProducts({
@@ -515,8 +516,26 @@ export const ProductView = React.memo(function ProductView({
   // Antes de a cliente escolher, a página diz o MESMO que o card da vitrine
   // (menor preço à venda, "A partir de", "De" e % OFF só se forem reais), em
   // vez do preço base. Escolhida a variação, vale `currentPrice`.
+  // A escolha parcial restringe a vitrine às combinações ainda possíveis.
+  // Não altera o preço calculado nem a identidade enviada ao carrinho.
+  const escolhasParciais = Object.entries(selectedVariants);
+  const linhasDaVitrine =
+    !legadoIndependente && escolhasParciais.length > 0
+      ? product.variants?.filter(
+          (v) =>
+            v.active &&
+            escolhasParciais.every(([nome, valor]) =>
+              dividirEmAtributos(v.name, v.value).some(
+                (atributo) =>
+                  atributo.name === nome && atributo.value === valor,
+              ),
+            ),
+        )
+      : product.variants;
   const vitrine =
-    selectedVariantObjects.length === 0 ? precoDeVitrine(product) : null;
+    selectedVariantObjects.length === 0
+      ? precoDeVitrine({ ...product, variants: linhasDaVitrine })
+      : null;
   const precoExibido = vitrine ? vitrine.preco : currentPrice;
   const originalExibido = vitrine
     ? vitrine.precoOriginal
@@ -717,7 +736,19 @@ export const ProductView = React.memo(function ProductView({
   );
 
   const handleAddToCart = (e?: React.MouseEvent<HTMLButtonElement>) => {
-    if (cartStatus !== "idle" || isOutOfStock) return;
+    if (isOutOfStock) return;
+    if (cartStatus !== "idle") {
+      toast.info(
+        cartStatus === "success"
+          ? "Adicionado ao carrinho"
+          : "Adicionando ao carrinho",
+        {
+          description:
+            "Aguarde o botão voltar a Adicionar para incluir outra opção.",
+        },
+      );
+      return;
+    }
 
     const missingVariations = Object.keys(variantGroups).filter(
       (groupName) => !selectedVariants[groupName],
@@ -997,8 +1028,9 @@ export const ProductView = React.memo(function ProductView({
               )}
             >
               <button
-                onClick={onBack}
-                className="transition-colors hover:text-zinc-900"
+                type="button"
+                onClick={() => onNavigate?.("home")}
+                className="min-h-11 rounded-sm py-2 transition-colors hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 Início
               </button>
@@ -1583,7 +1615,7 @@ export const ProductView = React.memo(function ProductView({
                                 <span className="bg-gradient-to-br from-white to-zinc-400 bg-clip-text text-5xl font-extrabold tracking-tighter text-transparent">
                                   {notaComVirgula}
                                 </span>
-                                <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                                <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">
                                   / 5
                                 </span>
                               </div>
@@ -1594,7 +1626,7 @@ export const ProductView = React.memo(function ProductView({
                                   readonly
                                 />
                               </div>
-                              <span className="mt-4 block text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+                              <span className="mt-4 block text-xs font-bold uppercase tracking-widest text-zinc-400">
                                 Baseado em {reviewCount}{" "}
                                 {reviewCount === 1
                                   ? "experiência"
@@ -1617,7 +1649,7 @@ export const ProductView = React.memo(function ProductView({
                                     key={star}
                                     className="group/row flex items-center gap-3.5"
                                   >
-                                    <span className="w-3 text-[10px] font-bold text-zinc-500 transition-colors group-hover/row:text-white">
+                                    <span className="w-3 text-xs font-bold text-zinc-400 transition-colors group-hover/row:text-white">
                                       {star}
                                     </span>
                                     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-800/60 p-px">
@@ -1626,7 +1658,7 @@ export const ProductView = React.memo(function ProductView({
                                         style={{ width: `${percentage}%` }}
                                       />
                                     </div>
-                                    <span className="w-8 text-right text-[10px] font-bold text-zinc-600 transition-colors group-hover/row:text-zinc-300">
+                                    <span className="w-8 text-right text-xs font-bold text-zinc-400 transition-colors group-hover/row:text-zinc-300">
                                       {count}
                                     </span>
                                   </div>
@@ -1642,6 +1674,7 @@ export const ProductView = React.memo(function ProductView({
                             key={review.id}
                             review={review}
                             jaVotou={votosUteis?.has(review.id)}
+                            userIdAtual={userIdAtual}
                             onHelpful={markHelpful}
                             onNavigate={onNavigate}
                           />

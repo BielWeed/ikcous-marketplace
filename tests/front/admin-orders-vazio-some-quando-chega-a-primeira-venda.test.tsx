@@ -164,7 +164,9 @@ describe("AdminOrdersView — a primeira venda desfaz o 'ainda não há pedidos'
     expect(hospedeiro.textContent).not.toContain(
       "Quando chegar a primeira venda",
     );
-    expect(hospedeiro.textContent).toContain("Limpar busca e filtros");
+    // Em Aberto vazio e sem nenhum outro filtro: o botão é "Ver todos os
+    // pedidos" (achado 14), não "Limpar busca e filtros".
+    expect(hospedeiro.textContent).toContain("Ver todos os pedidos");
   });
 
   it("lista que passou a ter pedidos desmente o 0: quando esvazia de novo, mede de novo em vez de repetir o convite", async () => {
@@ -212,7 +214,7 @@ describe("AdminOrdersView — a primeira venda desfaz o 'ainda não há pedidos'
     expect(hospedeiro.textContent).not.toContain(
       "Quando chegar a primeira venda",
     );
-    expect(hospedeiro.textContent).toContain("Limpar busca e filtros");
+    expect(hospedeiro.textContent).toContain("Ver todos os pedidos");
   });
 
   it("se a nova contagem ainda for 0 (evento de outra tabela/ruído), o convite continua", async () => {

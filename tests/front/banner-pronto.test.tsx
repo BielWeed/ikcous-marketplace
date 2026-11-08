@@ -39,7 +39,11 @@ const criarBanner = (extras: Partial<Banner> = {}): Banner => ({
 function montar(extras: Partial<Banner> = {}) {
   act(() =>
     raiz.render(
-      <BannerCarousel banners={[criarBanner(extras)]} autoPlay={false} />,
+      <BannerCarousel
+        primeiraSemFade
+        banners={[criarBanner(extras)]}
+        autoPlay={false}
+      />,
     ),
   );
 }
@@ -133,6 +137,7 @@ describe("banner pronto no carrossel", () => {
     act(() =>
       raiz.render(
         <BannerCarousel
+          primeiraSemFade
           banners={[criarBanner(), criarBanner({ id: "b2" })]}
           autoPlay={false}
         />,
@@ -146,6 +151,7 @@ describe("banner pronto no carrossel", () => {
     act(() =>
       raiz.render(
         <BannerCarousel
+          primeiraSemFade
           banners={[criarBanner(), criarBanner({ id: "b2", imageUrl: "" })]}
           autoPlay={false}
         />,

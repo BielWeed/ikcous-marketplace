@@ -11,6 +11,13 @@ const updateBanner = vi.fn();
 const deleteStorageFile = vi.fn();
 const uploadBannerImage = vi.fn();
 const onNavigate = vi.fn();
+const reorderBanners = vi.fn(async (id: string, outroId: string) => {
+  const a = BANNERS.find((b) => b.id === id)!;
+  const b = BANNERS.find((b) => b.id === outroId)!;
+  [a.order, b.order] = [b.order, a.order];
+  // Remover/reinserir um cartão no DOM pode perder o foco no navegador.
+  (document.activeElement as HTMLElement)?.blur();
+});
 
 // Só precisa de um banner publicado para o botão "Novo Banner" renderizar
 // (AdminBannersView: `isLoaded && banners.length > 0`).
@@ -57,7 +64,7 @@ vi.mock("@/hooks/useBanners", () => ({
     updateBanner,
     deleteBanner: vi.fn(),
     deleteStorageFile,
-    reorderBanners: vi.fn(),
+    reorderBanners,
     refreshBanners: vi.fn(),
   }),
 }));
@@ -115,6 +122,8 @@ describe("lote 222 — banners filtrados", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    BANNERS[0].order = 1;
+    BANNERS[1].order = 2;
     vi.stubGlobal("IntersectionObserver", IntersectionObserverStub);
     vi.stubGlobal("ResizeObserver", ResizeObserverStub);
     vi.stubGlobal("matchMedia", (query: string) => ({
@@ -196,6 +205,83 @@ describe("lote 222 — banners filtrados", () => {
     // posição realmente vazia continua convidando a criar o primeiro
     expect(secao("Rodapé da Página").textContent).toContain(
       "Adicionar Primeiro Banner",
+    );
+  });
+
+  it("busca trava as setas sem mexer em banner escondido e explica como reordenar", async () => {
+    await montar();
+    await buscar("dois");
+    const seta = hospedeiro.querySelector<HTMLButtonElement>(
+      '[title="Limpe o filtro para reordenar"]',
+    );
+    expect(seta).not.toBeNull();
+    expect(seta!.getAttribute("aria-disabled")).toBe("true");
+    await act(async () => {
+      seta!.click();
+    });
+    expect(reorderBanners).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain("#2");
+  });
+
+  it("mover mantém foco na seta do mesmo banner e anuncia sua posição", async () => {
+    await montar();
+    const seta = hospedeiro.querySelector<HTMLButtonElement>(
+      '[aria-label="Subir banner Alfa dois"]',
+    )!;
+    expect(seta).not.toBeNull();
+    seta.focus();
+    await act(async () => {
+      seta.click();
+    });
+    expect(reorderBanners).toHaveBeenCalledWith("b2", "b1");
+    expect(document.activeElement).toBe(seta);
+    expect(seta.disabled).toBe(false);
+    expect(seta.getAttribute("aria-disabled")).toBe("true");
+    await act(async () => {
+      seta.click();
+    });
+    expect(reorderBanners).toHaveBeenCalledTimes(1);
+    expect(
+      hospedeiro.querySelector('[aria-live="polite"]')?.textContent,
+    ).toContain("Banner Alfa dois agora é o 1º de 2");
+  });
+
+  it("o filtro de situação também trava reordenação e limpar devolve a seta", async () => {
+    await montar();
+    const filtro = hospedeiro.querySelector<HTMLSelectElement>(
+      "#banner-status-filter",
+    )!;
+    await act(async () => {
+      filtro.value = "active";
+      filtro.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const seta = hospedeiro.querySelector<HTMLButtonElement>(
+      '[aria-label="Subir banner Alfa dois"]',
+    )!;
+    expect(seta.getAttribute("aria-disabled")).toBe("true");
+    await act(async () => {
+      seta.click();
+    });
+    expect(reorderBanners).not.toHaveBeenCalled();
+    await act(async () => {
+      filtro.value = "all";
+      filtro.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(seta.getAttribute("aria-disabled")).toBe("false");
+  });
+
+  it("sem a ordem ter mudado não anuncia uma posição que não foi gravada", async () => {
+    reorderBanners.mockImplementationOnce(async () => {});
+    await montar();
+    const seta = hospedeiro.querySelector<HTMLButtonElement>(
+      '[aria-label="Subir banner Alfa dois"]',
+    )!;
+    await act(async () => {
+      seta.click();
+    });
+    expect(reorderBanners).toHaveBeenCalledOnce();
+    expect(hospedeiro.querySelector('[aria-live="polite"]')?.textContent).toBe(
+      "",
     );
   });
 

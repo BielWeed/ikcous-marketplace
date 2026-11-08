@@ -504,7 +504,8 @@ describe("Ofertas Lateral em duas fileiras", () => {
       host.querySelectorAll<HTMLButtonElement>("[data-compra-oferta]"),
     );
     await clicar(botoes[0]);
-    expect(botoes[0].disabled).toBe(true);
+    expect(botoes[0].disabled).toBe(false);
+    expect(botoes[0].getAttribute("aria-disabled")).toBe("true");
     expect(botoes[0].querySelector(".animate-spin")).not.toBeNull();
     expect(botoes[1].disabled).toBe(false);
     await clicar(botoes[0]);

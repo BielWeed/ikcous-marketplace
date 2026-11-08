@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/contexts/StoreContext";
 import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import {
   type PassosDoEndereco,
   passosDoEndereco,
@@ -35,11 +36,11 @@ const TETO_NOME = 120;
 const TETO_NUMERO = 20;
 
 const addressSchema = z.object({
-  // Aparar só para validar mantém os valores válidos enviados como antes.
+  // Recusar texto sem desenho mantém os valores válidos enviados como antes.
   name: z
     .string()
     .max(120, "Máximo de 120 caracteres")
-    .refine((v) => v.trim().length > 0, "Nome/Apelido é obrigatório"),
+    .refine(nomeTemConteudoVisivel, "Nome/Apelido é obrigatório"),
   // A máscara devolve "12345-67" para 7 dígitos — 8 CARACTERES contando o
   // hífen, o que passava num min(8) e gravava CEP incompleto como endereço
   // de entrega. O que valida CEP é a contagem de DÍGITOS: sempre 8.
@@ -49,11 +50,11 @@ const addressSchema = z.object({
   street: z
     .string()
     .max(200, "Máximo de 200 caracteres")
-    .refine((v) => v.trim().length > 0, "Logradouro é obrigatório"),
+    .refine(nomeTemConteudoVisivel, "Logradouro é obrigatório"),
   number: z
     .string()
     .max(20, "Máximo de 20 caracteres")
-    .refine((v) => v.trim().length > 0, "Número é obrigatório"),
+    .refine(nomeTemConteudoVisivel, "Número é obrigatório"),
   complement: z
     .string()
     .max(200, "Máximo de 200 caracteres")
@@ -62,8 +63,8 @@ const addressSchema = z.object({
   neighborhood: z
     .string()
     .max(120, "Máximo de 120 caracteres")
-    .refine((v) => v.trim().length > 0, "Bairro é obrigatório"),
-  city: z.string().refine((v) => v.trim().length > 0, "Cidade é obrigatória"),
+    .refine(nomeTemConteudoVisivel, "Bairro é obrigatório"),
+  city: z.string().refine(nomeTemConteudoVisivel, "Cidade é obrigatória"),
   state: z
     .string()
     .refine((v) => v.trim().length > 0, "Estado é obrigatório")
@@ -76,7 +77,7 @@ const addressSchema = z.object({
   recipient_name: z
     .string()
     .max(120, "Máximo de 120 caracteres")
-    .refine((v) => v.trim().length > 0, "Nome do destinatário é obrigatório"),
+    .refine(nomeTemConteudoVisivel, "Nome do destinatário é obrigatório"),
   is_default: z.boolean(),
 });
 

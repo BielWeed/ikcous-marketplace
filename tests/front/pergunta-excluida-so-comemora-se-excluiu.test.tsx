@@ -290,7 +290,9 @@ describe("AdminQAView — 'Pergunta excluída' só comemora se excluiu de verdad
     });
 
     expect(toastError).toHaveBeenCalledWith(
-      expect.stringContaining("Não foi possível excluir"),
+      // 1.5.156: a falha pode ter sido só a resposta que não voltou, então o
+      // aviso manda conferir a lista em vez de afirmar que não excluiu.
+      expect.stringContaining("Não foi possível confirmar a exclusão"),
     );
   });
 });

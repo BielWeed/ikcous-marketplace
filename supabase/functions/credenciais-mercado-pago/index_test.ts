@@ -809,19 +809,41 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                     { supabase: cliente },
                 )
             );
-            const resposta = await comFetch(fetchSemRede, () =>
-                handler(requisicao({ acao: "testar" }), { supabase: cliente })
-            );
+            const errosNoConsole: string[] = [];
+            const consoleErrorOriginal = console.error;
+            console.error = (...args: unknown[]) => {
+                errosNoConsole.push(args.map((a) => String(a)).join(" "));
+            };
+            let resposta: Response;
+            try {
+                resposta = await comFetch(fetchSemRede, () =>
+                    handler(requisicao({ acao: "testar" }), { supabase: cliente })
+                );
+            } finally {
+                console.error = consoleErrorOriginal;
+            }
             assertEquals(resposta.status, 200);
             const corpo = await resposta.json();
             assertEquals(corpo.conectado, false);
-            // O recado honesto diz QUEM falhou (este servidor, não o navegador
-            // do lojista), carrega o nome do erro e aponta para os registros.
+            // A causa técnica (nome do erro e texto) sai da tela mas continua
+            // nos registros do servidor, que é onde quem mantém a loja olha.
+            const logDaCausa = errosNoConsole.join("\n");
+            assertEquals(logDaCausa.includes("TypeError"), true);
+            assertEquals(logDaCausa.includes("falha de rede simulada"), true);
+            assertEquals(logDaCausa.includes(TOKEN_FALSO), false);
+            // O recado diz QUEM falhou (o Mercado Pago não foi alcançado, não
+            // a internet do lojista) em português simples: sem nome de erro
+            // (TypeError), sem "API" e sem apontar para os registros da
+            // function, que a lojista não tem onde abrir. A causa técnica
+            // fica só no console.error do servidor.
             assertEquals(
-                corpo.mensagem.includes("o servidor não conseguiu chamar a API do Mercado Pago"),
-                true,
+                corpo.mensagem,
+                "Não consegui falar com o Mercado Pago agora. Tente de novo em instantes.",
             );
-            assertEquals(corpo.mensagem.includes("TypeError"), true);
+            assertEquals(corpo.mensagem.includes("TypeError"), false);
+            assertEquals(corpo.mensagem.includes("API"), false);
+            assertEquals(corpo.mensagem.includes("function"), false);
+            assertEquals(corpo.mensagem.includes("registros"), false);
             assertEquals(corpo.mensagem.includes("Confira a internet"), false);
             // A falha fica gravada como falha — e nada do token aparece.
             assertEquals(JSON.stringify(corpo).includes(TOKEN_FALSO), false);

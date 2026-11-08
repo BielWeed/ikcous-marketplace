@@ -69,6 +69,7 @@ export function WhatsAppDaLoja({
           type="tel"
           useShadcn
           mask="phone"
+          preservarExcessoTelefone
           delay={350}
           value={valor}
           onFlush={onMudar}

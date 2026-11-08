@@ -53,7 +53,7 @@ export function avisoContestacaoParaConferir(orderId: string) {
   return {
     title: "Contestação de pagamento para conferir",
     body: `${numeroDoPedido(orderId)} · o Mercado Pago avisou de uma contestação que o app não conseguiu registrar sozinho — confira no painel do Mercado Pago antes de mexer neste pedido`,
-    url: "/admin-orders",
+    url: `/admin-orders?id=${encodeURIComponent(orderId)}`,
   };
 }
 
@@ -371,12 +371,12 @@ async function entregarDecisaoAoLedger(args: {
   const avisoSaldo = {
     title: "Contestação maior que o saldo do pedido",
     body: `${numeroDoPedido(orderId)} · a contestação do Mercado Pago não cabe no que ainda pode ser devolvido deste pedido — o app reservou o que dava e não concluiu nada; confira no painel do Mercado Pago`,
-    url: "/admin-orders",
+    url: `/admin-orders?id=${encodeURIComponent(orderId)}`,
   };
   const avisoRevertida = {
     title: "Contestação mudou de resultado",
     body: `${numeroDoPedido(orderId)} · o Mercado Pago mudou a decisão de uma contestação já registrada — confira no painel do Mercado Pago; o app não desfaz isso sozinho`,
-    url: "/admin-orders",
+    url: `/admin-orders?id=${encodeURIComponent(orderId)}`,
   };
   const { data, error } = await supabase.rpc("registrar_contestacao_no_ledger", {
     p_order_id: orderId,

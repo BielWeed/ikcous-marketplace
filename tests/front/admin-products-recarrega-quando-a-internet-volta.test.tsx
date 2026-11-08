@@ -11,7 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type Resultado = { products: Product[]; total: number } | null;
 
-const consultar = vi.fn<() => Promise<Resultado>>();
+const consultar = vi.fn<(...args: any[]) => Promise<Resultado>>();
+let aoSincronizar: (() => void) | undefined;
 const fetchExecutiveSummary = vi.fn();
 const onNavigate = vi.fn();
 let semInternet = false;
@@ -20,13 +21,14 @@ let semInternet = false;
 const ouvintesDoSinal = new Set<() => void>();
 
 vi.mock("@/hooks/useProducts", () => ({
-  useProducts: () => {
+  useProducts: (opcoes: { onSincronizado?: () => void }) => {
+    aoSincronizar = opcoes.onSincronizado;
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(false);
-    const loadProducts = useCallback(async () => {
+    const loadProducts = useCallback(async (...args: any[]) => {
       setLoading(true);
       try {
-        const resultado = await consultar();
+        const resultado = await consultar(...args);
         if (resultado) setProducts(resultado.products);
         return resultado;
       } finally {
@@ -171,6 +173,40 @@ describe("AdminProductsView — recarrega a lista quando a internet volta", () =
     expect(hospedeiro.textContent).toContain("Produto de depois da queda");
     expect(hospedeiro.textContent).not.toContain("Produto de antes da queda");
     expect(hospedeiro.textContent).toContain("Sincronizado");
+  });
+
+  it("após enviar a fila offline, relê silenciosamente a página e os filtros atuais", async () => {
+    localStorage.setItem(
+      "admin_products_search_term",
+      JSON.stringify("camiseta"),
+    );
+    localStorage.setItem(
+      "admin_products_filter_category",
+      JSON.stringify("Roupas"),
+    );
+    localStorage.setItem("admin_products_current_page", JSON.stringify(2));
+    consultar.mockResolvedValue({
+      products: [produto("a", "Camiseta atual")],
+      total: 40,
+    });
+    await primeiraCarga();
+    expect(consultar).toHaveBeenLastCalledWith(
+      2,
+      12,
+      expect.objectContaining({ search: "camiseta", category: "Roupas" }),
+    );
+    expect(aoSincronizar).toBeTypeOf("function");
+    await act(async () => aoSincronizar!());
+    expect(consultar).toHaveBeenLastCalledWith(
+      2,
+      12,
+      expect.objectContaining({
+        search: "camiseta",
+        category: "Roupas",
+        silent: true,
+      }),
+    );
+    expect(hospedeiro.textContent).not.toContain("Erro ao Carregar Produtos");
   });
 
   it("sem queda de sinal, redesenhar não busca de novo", async () => {

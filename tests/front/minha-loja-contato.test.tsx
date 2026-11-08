@@ -172,6 +172,70 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
     });
   }
 
+  async function digitarTeclaATecla(numero: string) {
+    await digitarWhatsApp("");
+    const campo = hospedeiro.querySelector(
+      "#settings-whatsapp",
+    ) as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    for (const digito of numero) {
+      await act(async () => {
+        setter?.call(campo, campo.value + digito);
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+    await act(async () => {
+      campo.blur();
+      await esperar(400);
+    });
+  }
+
+  it.each(["553499802821", "5534998028216"])(
+    "excesso digitado tecla a tecla (%s) fica visível, avisa e não salva",
+    async (numero) => {
+      await abrirTela();
+      await digitarTeclaATecla(numero);
+      const campo = hospedeiro.querySelector(
+        "#settings-whatsapp",
+      ) as HTMLInputElement;
+      expect(campo.value.replace(/\D/g, "")).toBe(numero);
+      expect(campo.getAttribute("aria-invalid")).toBe("true");
+      expect(blocoContato()?.textContent).toContain(
+        "Informe DDD + número (10 ou 11 dígitos)",
+      );
+      await clicarSalvarContato();
+      expect(toast.error).toHaveBeenCalledWith("WhatsApp inválido");
+      expect(updateConfigMock).not.toHaveBeenCalled();
+      expect(toast.success).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["3432123456", "34998028216", "55991234567"])(
+    "número nacional %s digitado tecla a tecla salva sem trocar o DDD",
+    async (numero) => {
+      await abrirTela();
+      await digitarTeclaATecla(numero);
+      await clicarSalvarContato();
+      expect(updateConfigMock).toHaveBeenCalledWith(
+        { whatsappNumber: `55${numero}` },
+        { silentSuccess: true },
+      );
+    },
+  );
+
+  it("colar com +55 continua salvando o número nacional", async () => {
+    await abrirTela();
+    await digitarWhatsApp("+55 34 99802-8216");
+    await clicarSalvarContato();
+    expect(updateConfigMock).toHaveBeenCalledWith(
+      { whatsappNumber: "5534998028216" },
+      { silentSuccess: true },
+    );
+  });
+
   async function clicarSalvarContato() {
     await act(async () => {
       botaoSalvarContato().click();
@@ -493,6 +557,32 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
 });
 
 describe("regras do número de WhatsApp (contato.ts)", () => {
+  it.each(["553499802821", "5534998028216", "349980282167"])(
+    "whatsappParaGravar recusa excesso nacional sem reinterpretar 55: %s",
+    (numero) => {
+      expect(whatsappParaGravar(numero, true)).toEqual({ valido: false });
+    },
+  );
+
+  it("whatsappParaGravar aceita país explícito e preserva legado ao carregar", () => {
+    expect(whatsappParaGravar("+55 34 99802-8216")).toEqual({
+      valido: true,
+      valor: "5534998028216",
+    });
+    expect(whatsappParaGravar(numeroParaOCampo("5534998028216"))).toEqual({
+      valido: true,
+      valor: "5534998028216",
+    });
+  });
+
+  it("legado com excesso sem país continua visível, mas precisa corrigir para salvar", () => {
+    const legado = "349980282167";
+    expect(numeroParaOCampo(legado)).toBe(legado);
+    expect(whatsappParaGravar(numeroParaOCampo(legado))).toEqual({
+      valido: false,
+    });
+  });
+
   it("numeroParaOCampo tira o 55 só de número COM país (12 ou 13 dígitos)", () => {
     expect(numeroParaOCampo("5534999998888")).toBe("34999998888");
     expect(numeroParaOCampo("553432123456")).toBe("3432123456");

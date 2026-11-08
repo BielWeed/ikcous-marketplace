@@ -446,21 +446,50 @@ describe("Avisar clientes — destino escolhido por lista", () => {
     expect(urlEnviada()).toBe("/product-detail?id=p-bota");
   });
 
-  it("o caminho digitado no Avançado é o que o aviso envia, sem tratar", async () => {
+  it("um caminho real no Avançado preserva query e hash no envio", async () => {
     await abrirTela();
     await preencherMensagem();
 
     const campo =
       hospedeiro.querySelector<HTMLInputElement>("#push-custom-path")!;
     await act(async () => {
-      digitar(campo, "/promocao-do-mes");
+      digitar(campo, "/about-store?origem=aviso#contato");
     });
     await act(async () => {
       await esperar(260);
     });
     await enviar();
 
-    expect(urlEnviada()).toBe("/promocao-do-mes");
+    expect(urlEnviada()).toBe("/about-store?origem=aviso#contato");
+  });
+
+  it.each([
+    "/promocoes",
+    "/produto/123",
+    "/product/123",
+    "/admin",
+    "/admin-orders",
+    "about-store",
+    "//about-store",
+    // O app lê o caminho inteiro: tela conhecida + subcaminho não é tela.
+    "/orders/123",
+    "/cart/x",
+  ])("recusa caminho desconhecido ou do painel: %s", async (caminho) => {
+    await abrirTela();
+    await preencherMensagem();
+    await act(async () => {
+      digitar(campoManual(), caminho);
+    });
+    await act(async () => {
+      await esperar(260);
+    });
+    await enviar();
+    expect(invokeSendPush).not.toHaveBeenCalled();
+    expect(inserts.pushLog).toEqual([]);
+    const { toast } = await import("sonner");
+    expect(toast.error).toHaveBeenCalledWith(
+      "Esse endereço não existe no app: a cliente cairia na página inicial",
+    );
   });
 
   it("escolher uma tela da lista depois de digitar o caminho manual troca a URL", async () => {
@@ -470,7 +499,7 @@ describe("Avisar clientes — destino escolhido por lista", () => {
     const campo =
       hospedeiro.querySelector<HTMLInputElement>("#push-custom-path")!;
     await act(async () => {
-      digitar(campo, "/promocao-do-mes");
+      digitar(campo, "/about-store?origem=aviso#contato");
     });
     await act(async () => {
       await esperar(260);
@@ -527,7 +556,7 @@ describe("Avisar clientes — destino escolhido por lista", () => {
     await preencherMensagem();
 
     await act(async () => {
-      digitar(campoManual(), "/promo");
+      digitar(campoManual(), "/about-store");
     });
     await act(async () => {
       await esperar(260);
@@ -554,13 +583,13 @@ describe("Avisar clientes — destino escolhido por lista", () => {
     await preencherMensagem();
 
     await act(async () => {
-      digitar(campoManual(), "/promo");
+      digitar(campoManual(), "/about-store");
     });
     await act(async () => {
       await esperar(260);
     });
     await enviar();
-    expect(urlEnviada()).toBe("/promo");
+    expect(urlEnviada()).toBe("/about-store");
 
     expect(campoManual().value).toBe("");
     expect(seletorDoDestino().value).toBe("home");

@@ -1,5 +1,6 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AvisoDaLojaSemDados } from "@/components/admin/AvisoDaLojaSemDados";
 import {
   FOCO,
   INTERRUPTOR,
@@ -109,7 +110,19 @@ export const AdminCouponsView = memo(function AdminCouponsView({
     refreshCoupons,
   } = useCoupons(true);
   const isOffline = useOnlineStatus();
-  const { config, isLoaded: configLoaded, updateConfig } = useStore();
+  const {
+    config,
+    isLoaded: configLoaded,
+    updateConfig,
+    configIndisponivel,
+    refresh,
+  } = useStore();
+  // A leitura da config falhou e não há cópia no aparelho: `config` é a de
+  // fábrica, e a chave geral de cupons mostraria o estado de fábrica como se
+  // fosse o da loja. Ligar ou desligar às cegas muda o checkout de todos os
+  // clientes, então a chave fica travada até a leitura funcionar. `=== true`:
+  // contexto sem o campo lê como "não falhou".
+  const configFalhou = configIndisponivel === true;
   // Mesma regra do formulario: sem nenhuma forma 'na retirada/entrega', a loja
   // so recebe pelo app e um cupom que zera a compra deixa a cliente sem caminho.
   const lojaSoRecebePeloApp =
@@ -126,7 +139,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
   >({});
 
   const handleToggleCoupons = async (checked: boolean) => {
-    if (configEmVooRef.current) return;
+    if (configEmVooRef.current || configFalhou) return;
     if (isOffline) {
       toast.error("Você está offline");
       return;
@@ -456,6 +469,11 @@ export const AdminCouponsView = memo(function AdminCouponsView({
             ))}
         </section>
 
+        {configLoaded && configFalhou && (
+          <AvisoDaLojaSemDados
+            onTentarDeNovo={() => void refresh({ onlyConfig: true })}
+          />
+        )}
         {configLoaded && (
           <section className="rounded-[20px] border border-admin-border bg-admin-surface p-3.5">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -482,7 +500,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                   checked={config.enableCoupons}
                   onCheckedChange={handleToggleCoupons}
                   className={INTERRUPTOR}
-                  disabled={isOffline || isUpdatingConfig}
+                  disabled={isOffline || isUpdatingConfig || configFalhou}
                 />
               </div>
               <button
