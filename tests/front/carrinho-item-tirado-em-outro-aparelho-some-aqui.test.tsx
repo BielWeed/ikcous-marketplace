@@ -58,6 +58,14 @@ const produtos = [
     ativo: true,
     imagens: [],
   },
+  {
+    id: "p3",
+    nome: "Boné",
+    preco_venda: 20,
+    estoque: 20,
+    ativo: true,
+    imagens: [],
+  },
 ];
 vi.mock("@/lib/supabase", () => ({
   supabase: {
@@ -256,6 +264,59 @@ describe("carrinho: o que outro aparelho tirou some aqui (e só isso)", () => {
       ["p1", 3],
       ["p2", 1],
     ]);
+  });
+
+  it("item novo vindo do banco entra aqui e NÃO provoca regravação do carrinho", async () => {
+    mundo.itens = [linhaDoBanco("p1")];
+    await montar();
+    await sincronizar();
+    const gravacoes = mundo.rpc.mock.calls.length;
+
+    mundo.itens = [linhaDoBanco("p1"), linhaDoBanco("p2")];
+    await chegaEventoDoBanco();
+    expect(idsDoCarrinho()).toEqual(["p1", "p2"]);
+    await sincronizar();
+
+    // O banco já tem exatamente essas linhas: regravar só repetiria uma
+    // visão de segundos atrás por cima do que o outro aparelho gravar agora.
+    expect(mundo.rpc.mock.calls.length).toBe(gravacoes);
+  });
+
+  it("dois aparelhos intercalados: o item que o celular põe no meio não some do banco", async () => {
+    // O banco de verdade: a gravação do computador SUBSTITUI o carrinho salvo.
+    mundo.rpc.mockImplementation(
+      async (
+        _nome: string,
+        args: { p_cart_items: { product_id: string; quantity: number }[] },
+      ) => {
+        mundo.itens = args.p_cart_items.map((i) =>
+          linhaDoBanco(i.product_id, i.quantity),
+        );
+        return { error: null };
+      },
+    );
+    mundo.itens = [linhaDoBanco("p1")];
+    await montar();
+    await sincronizar();
+
+    // Celular põe p2 (já gravou); o computador lê e adota.
+    mundo.itens = [linhaDoBanco("p1"), linhaDoBanco("p2")];
+    await chegaEventoDoBanco();
+    expect(idsDoCarrinho()).toEqual(["p1", "p2"]);
+
+    // Antes de o computador "ecoar" qualquer coisa, o celular grava p3.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    mundo.itens = [linhaDoBanco("p1"), linhaDoBanco("p2"), linhaDoBanco("p3")];
+    await sincronizar();
+
+    // O computador não apagou o p3 do banco...
+    expect(mundo.itens.map((i) => i.product_id)).toEqual(["p1", "p2", "p3"]);
+    // ...e quando o aviso do p3 chega, ele entra aqui também.
+    await chegaEventoDoBanco();
+    expect(idsDoCarrinho()).toEqual(["p1", "p2", "p3"]);
+    expect(mundo.itens.map((i) => i.product_id)).toEqual(["p1", "p2", "p3"]);
   });
 
   it("releitura sem mudança não mexe no carrinho nem grava de novo", async () => {

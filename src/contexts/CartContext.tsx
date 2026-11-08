@@ -918,22 +918,28 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
           setCart((prev) => {
             const tombstones = loadTombstones();
-            const bancoMandaAgora =
-              bancoManda && retratoDoCarrinho(prev) === retratoAlinhado.current;
-            let tirouDeAqui = false;
+            // Nada pendente aqui: o carrinho de agora é o último que o banco
+            // confirmou ter igual ao daqui.
+            const nadaPendente =
+              retratoAlinhado.current !== null &&
+              retratoDoCarrinho(prev) === retratoAlinhado.current;
+            const bancoMandaAgora = bancoManda && nadaPendente;
             // O carrinho que sai desta junção igual ao que o banco tem fica
             // registrado como "confirmado pelo banco" (a próxima releitura sabe
-            // que nada daqui está pendente). Se a junção tirou linhas, o banco
-            // já está assim: o efeito de gravação não precisa reenviar (e
-            // reenviar uma visão de segundos atrás apagaria o que o outro
-            // aparelho acabou de pôr).
+            // que nada daqui está pendente). Com nada pendente, o efeito de
+            // gravação também não reenvia: o banco já tem exatamente essas
+            // linhas e quantidades (tirou ou acrescentou, tanto faz), e reenviar
+            // uma visão de segundos atrás apagaria o que o outro aparelho
+            // gravar nesse meio tempo. Se o catálogo ajustou a quantidade, o
+            // retrato difere e a gravação segue como sempre; aparelho que não
+            // estava alinhado também segue como sempre.
             const fechar = (resultado: CartItem[]) => {
               if (
                 semGravacaoNoMeio() &&
                 retratoDoCarrinho(resultado) === retratoDoBanco
               ) {
                 retratoAlinhado.current = retratoDoBanco;
-                if (tirouDeAqui) {
+                if (nadaPendente) {
                   lastSyncedCart.current = JSON.stringify(resultado);
                 }
               }
@@ -975,10 +981,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                 return;
               }
               // Outro aparelho tirou esta linha e nada daqui está pendente.
-              if (bancoMandaAgora && !linhasNoBanco.has(key)) {
-                tirouDeAqui = true;
-                return;
-              }
+              if (bancoMandaAgora && !linhasNoBanco.has(key)) return;
               mergedMap.set(key, {
                 ...item,
                 lastModifiedAt: item.lastModifiedAt || 0,
