@@ -422,6 +422,7 @@ interface AdminProductFormViewProps {
 
 const ESTOQUE_MAXIMO_DO_PRODUTO = 10000;
 const ID_DO_AVISO_DA_GRADE_PENDENTE = "rascunho-da-grade-pendente";
+const ID_DA_OFERTA_DE_RASCUNHO_ANTIGO = "rascunho-antigo-do-produto";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -1031,6 +1032,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // (ou tocar Salvar sem restaurar) perdia a grade. Cai ao descartar ou quando a
   // grade grava (o salvar apaga o rascunho e a tela segue).
   const gradeDoRascunhoPendenteRef = useRef(false);
+  // Ao abrir o produto havia um rascunho antigo e ela ainda não decidiu (nem
+  // Restaurar nem Descartar). Enquanto isso o salvamento automático NÃO grava:
+  // a primeira edição, 1 s depois, trocava o rascunho antigo (fotos já enviadas,
+  // variações digitadas) pelo que está na tela, e ele se perdia sem aviso. O
+  // aviso fica na tela até ela decidir (não some sozinho nem por gesto) e cai
+  // sozinho ao sair da tela ou quando o rascunho deixa de existir (salvou).
+  // Estado para o salvamento automático rodar de novo na decisão; ref para o
+  // desmonte, que precisa saber se há aviso para tirar.
+  const [ofertaDeRascunhoPendente, setOfertaDeRascunhoPendente] =
+    useState(false);
+  const ofertaDeRascunhoPendenteRef = useRef(false);
   // A chave do rascunho que o salvamento automático gravou NESTA abertura: só
   // ele pode apagá-la ao voltar ao que está no banco (o rascunho que já estava
   // lá antes fica esperando a decisão dela).
@@ -1552,6 +1564,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       pularOfertaDeRascunhoRef.current = false;
       return;
     }
+    // Tira o aviso do rascunho antigo e solta o salvamento automático. Só age
+    // se há oferta pendente (não toca no `toast` à toa).
+    const retirarOfertaDeRascunho = () => {
+      if (!ofertaDeRascunhoPendenteRef.current) return;
+      ofertaDeRascunhoPendenteRef.current = false;
+      setOfertaDeRascunhoPendente(false);
+      toast.dismiss(ID_DA_OFERTA_DE_RASCUNHO_ANTIGO);
+    };
     if (productId && !isLoading) {
       const draftKey = chaveDoRascunhoDoProduto(userId, productId);
       // Rascunho com mais de 7 dias já sai daqui descartado (vira `null`).
@@ -1645,7 +1665,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             // Grade que só existe neste rascunho (o produto foi criado e as
             // variações não gravaram): o aviso fica até ela decidir.
             const pendente = parsed.variacoesPendentes === true;
+            // Decidiu (Restaurar ou Descartar): o salvamento automático volta
+            // a gravar. Idempotente.
+            const decidiuOfertaDeRascunho = () => {
+              ofertaDeRascunhoPendenteRef.current = false;
+              setOfertaDeRascunhoPendente(false);
+            };
             const restaurar = () => {
+              decidiuOfertaDeRascunho();
               setVariacoesPendentes(false);
               restaurarPendenteRef.current = null;
               setFormData(draftFields);
@@ -1680,6 +1707,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             setVariacoesPendentes(pendente);
             gradeDoRascunhoPendenteRef.current = pendente;
             restaurarPendenteRef.current = pendente ? restaurar : null;
+            // O rascunho antigo espera a decisão: até lá o salvamento
+            // automático não grava por cima dele (a grade pendente já tem a
+            // trava própria, `variacoesPendentes`).
+            ofertaDeRascunhoPendenteRef.current = !pendente;
+            setOfertaDeRascunhoPendente(!pendente);
             toast.info("Rascunho não salvo encontrado para este produto", {
               description: `Deseja restaurar as alterações que você fez anteriormente?${
                 estoqueDoRascunhoDiferia
@@ -1690,6 +1722,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               cancel: {
                 label: "Descartar",
                 onClick: () => {
+                  decidiuOfertaDeRascunho();
                   setVariacoesPendentes(false);
                   gradeDoRascunhoPendenteRef.current = false;
                   restaurarPendenteRef.current = null;
@@ -1697,8 +1730,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   toast.info("Rascunho descartado.");
                 },
               },
-              duration: pendente ? Number.POSITIVE_INFINITY : 10000,
-              ...(pendente ? { id: ID_DO_AVISO_DA_GRADE_PENDENTE } : {}),
+              // O aviso fica até a decisão: não some em 10 s (o que deixava o
+              // rascunho sem dono e o salvamento automático o sobrescrevia) e
+              // não fecha por gesto — só Restaurar ou Descartar.
+              duration: Number.POSITIVE_INFINITY,
+              ...(pendente
+                ? { id: ID_DO_AVISO_DA_GRADE_PENDENTE }
+                : { id: ID_DA_OFERTA_DE_RASCUNHO_ANTIGO, dismissible: false }),
             });
           } else {
             // Draft matches database state, clean it up
@@ -1712,16 +1750,25 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             e,
           );
         }
+      } else {
+        // Sem rascunho (ela salvou e a chave foi apagada, ou ele já não
+        // existe): um aviso de uma rodada anterior não pode ficar oferecendo o
+        // que já não há, nem manter o salvamento automático parado.
+        retirarOfertaDeRascunho();
       }
       setDraftChecked(true);
     }
   }, [productId, isLoading, initialData, userId]);
 
-  // O aviso que não some sozinho (grade pendente) não sobrevive à tela.
+  // Os avisos que não somem sozinhos (grade pendente e rascunho antigo à espera
+  // de decisão) não sobrevivem à tela.
   useEffect(
     () => () => {
       if (restaurarPendenteRef.current) {
         toast.dismiss(ID_DO_AVISO_DA_GRADE_PENDENTE);
+      }
+      if (ofertaDeRascunhoPendenteRef.current) {
+        toast.dismiss(ID_DA_OFERTA_DE_RASCUNHO_ANTIGO);
       }
     },
     [],
@@ -2101,11 +2148,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // trocava a perda de trabalho da #98 (rascunho velho apagado) por outra
   // (edições novas nunca salvas), no mesmo caminho.
   //
-  // A guarda foi removida porque não defendia nada que já não estivesse
-  // defendido: o botão "Restaurar" aplica `draftFields`, uma variável
-  // capturada no closure do toast, não uma releitura do `localStorage` — o
-  // auto-save pode sobrescrever a chave enquanto o toast está aberto sem
-  // quebrar o Restaurar.
+  // A guarda foi removida na época porque o Restaurar não relê o
+  // `localStorage` (usa `draftFields`, do closure do toast) — o que escapou
+  // dali é que o auto-save, ao gravar por cima, ERA o fim do rascunho antigo:
+  // fotos já enviadas e variações digitadas se perdiam sem decisão dela
+  // (08/11/2026). A guarda voltou, agora sem o defeito da #99: o aviso não some
+  // sozinho nem por gesto (a decisão está sempre ao alcance) e a bandeira cai em
+  // TODA saída — decidir, sair da tela, ou salvar (o rascunho some e o efeito
+  // de verificação retira o aviso). Nada fica preso "pelo resto da sessão".
   useEffect(() => {
     if (isLoading || !draftChecked) return;
 
@@ -2121,6 +2171,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       if (isSubmitting) return;
       // A grade que não gravou só existe no rascunho: não troca por outro.
       if (variacoesPendentes) return;
+      // O rascunho antigo ainda espera a decisão dela: gravar agora o
+      // sobrescreveria. Quando ela decidir, este efeito roda de novo.
+      if (ofertaDeRascunhoPendente) return;
       const isDirty = isProductFormDirty(formData, initialData);
       const draftKey = chaveDoRascunhoDoProduto(userId, productId);
       if (isDirty && draftKey) {
@@ -2169,6 +2222,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     precisaRecarregar,
     isSubmitting,
     variacoesPendentes,
+    ofertaDeRascunhoPendente,
   ]);
 
   const processAndUploadImages = useCallback(
@@ -3662,12 +3716,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           Verifique a conexão — o formulário fica bloqueado para proteger os
           dados
         </p>
-        <button
-          onClick={() => window.location.reload()}
-          className="mt-4 min-h-11 rounded-lg border border-admin-border bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
-        >
-          Recarregar
-        </button>
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+          <button
+            onClick={() => window.location.reload()}
+            className="min-h-11 rounded-lg border border-admin-border bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
+          >
+            Recarregar
+          </button>
+          {/* Sem isto, com sinal fraco a lojista só saía recarregando. */}
+          <button
+            onClick={() => onNavigate("admin-products")}
+            className="min-h-11 rounded-lg border border-admin-border bg-transparent px-4 py-2 text-[11px] font-black uppercase tracking-widest text-zinc-300 hover:border-amber-500/30 hover:text-white"
+          >
+            Voltar para Produtos
+          </button>
+        </div>
       </div>
     );
   }

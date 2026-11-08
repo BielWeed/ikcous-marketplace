@@ -41,6 +41,35 @@ export const PRAZO_DAS_ACOES_DO_PEDIDO_MS = 20_000;
 export const MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA =
   "Sem resposta da rede. Confira o pedido antes de tentar de novo.";
 
+// PRAZOS DE ABRIR E SALVAR UM PRODUTO NO PAINEL (08/11/2026). Rede "pendurada"
+// conecta e não responde: o botão ficava em "Salvando…" para sempre e o produto
+// abria num esqueleto cinza sem saída. Como nas ações do pedido, o prazo só
+// encerra a ESPERA DA TELA: o servidor pode ter gravado.
+//
+// - 20 s: a gravação principal (um INSERT/UPDATE ou a RPC da grade). Sem
+//   resposta, a frase NÃO diz que falhou nem que deu certo: manda conferir a
+//   lista antes de repetir (produto novo repetido = produto duplicado na loja).
+// - 15 s: abrir um produto (duas consultas em sequência, sob UM prazo só).
+// - 10 s: conferir SKU de variação antes de gravar. Sem veredito o cadastro
+//   segue (já era assim: a colisão real vira o 23505 traduzido).
+// - 5 s: o que sobra DEPOIS de a gravação ter dado certo (reler o catálogo,
+//   copiar a foto removida para o backup). Não pode segurar o botão: passou
+//   disso, a tela diz "Salvo" e o resto termina em segundo plano.
+export const PRAZO_DE_GRAVAR_O_PRODUTO_MS = 20_000;
+export const PRAZO_DE_LER_O_PRODUTO_MS = 15_000;
+export const PRAZO_DE_CONFERIR_O_SKU_MS = 10_000;
+export const PRAZO_DO_QUE_SOBRA_APOS_GRAVAR_O_PRODUTO_MS = 5_000;
+export const MENSAGEM_PRODUTO_NOVO_SEM_RESPOSTA =
+  "Sem resposta da rede. Não dá para saber se o produto foi salvo. Confira a lista de Produtos antes de publicar de novo, para não criar o produto duas vezes.";
+// A grade sem resposta DEPOIS de o produto já ter voltado criado: o produto
+// existe (isso se sabe), o que não se sabe é se as variações entraram.
+export const MENSAGEM_PRODUTO_NOVO_GRADE_SEM_RESPOSTA =
+  "O produto foi criado, mas a rede não respondeu ao salvar as variações e não dá para saber se elas entraram. Abra a lista de Produtos e confira o produto antes de publicar de novo, para não criar outro.";
+export const MENSAGEM_PRODUTO_EDICAO_SEM_RESPOSTA =
+  "Sem resposta da rede. Não dá para saber se as alterações foram salvas. Confira o produto na lista de Produtos antes de salvar de novo.";
+export const MENSAGEM_PRODUTO_LEITURA_SEM_RESPOSTA =
+  "A conexão está lenta e o produto não carregou. Confira a conexão e tente de novo.";
+
 /** Frase para quem está na tela: o que aconteceu e o que fazer. */
 export const MENSAGEM_CONEXAO_LENTA =
   "A conexão está lenta. Toque em Tentar de novo.";
