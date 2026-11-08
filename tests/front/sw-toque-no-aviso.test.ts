@@ -119,6 +119,146 @@ describe("toque no aviso (notificationclick)", () => {
     );
   });
 
+  // Aviso "Pedido novo" do painel: a ficha aberta pode ter anotação ou código de
+  // rastreio digitados e não salvos (só em estado local). `client.navigate` =
+  // recarga completa = texto perdido. O SW foca a janela e AVISA o app; o app
+  // responde (ack) por um canal e, sem resposta (app velho, aba travada), o SW
+  // volta ao comportamento de antes: navegar.
+  describe("aviso de pedido novo do painel (/admin-orders)", () => {
+    const ALVO = "/admin-orders?id=B";
+    const MENSAGEM = {
+      tipo: "ikcous:abrir-pedido-do-aviso",
+      pedidoId: "B",
+    };
+
+    // Janela cujo app responde (ou não) ao aviso, como o receptor real faz.
+    function janelaDoPainel(
+      url: string,
+      app: "responde" | "mudo" | "sem-postmessage" | "postmessage-quebra",
+    ) {
+      const navegarPara = vi.fn();
+      const j = janela(url, navegarPara) as ReturnType<typeof janela> & {
+        postMessage?: ReturnType<typeof vi.fn>;
+      };
+      navegarPara.mockResolvedValue(j);
+      if (app === "responde") {
+        j.postMessage = vi.fn((_msg: unknown, portas: MessagePort[]) => {
+          portas[0].postMessage({ ok: true });
+        });
+      } else if (app === "mudo") {
+        j.postMessage = vi.fn();
+      } else if (app === "postmessage-quebra") {
+        j.postMessage = vi.fn(() => {
+          throw new Error("janela fechada");
+        });
+      }
+      return { j, navegarPara };
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("app responde: a janela só ganha foco e o app é avisado — NÃO recarrega (o texto digitado fica)", async () => {
+      const { j, navegarPara } = janelaDoPainel(
+        `${ORIGEM}/admin-orders?id=A`,
+        "responde",
+      );
+      const { clique, openWindow } = await importar([j]);
+
+      await tocar(clique, { url: ALVO, orderId: "B" });
+
+      expect(j.focus).toHaveBeenCalledOnce();
+      expect(j.postMessage).toHaveBeenCalledExactlyOnceWith(MENSAGEM, [
+        expect.anything(),
+      ]);
+      expect(navegarPara).not.toHaveBeenCalled();
+      expect(openWindow).not.toHaveBeenCalled();
+    });
+
+    it("a lojista está na LISTA de pedidos: mesmo caminho, o app é avisado", async () => {
+      const { j, navegarPara } = janelaDoPainel(
+        `${ORIGEM}/admin-orders`,
+        "responde",
+      );
+      const { clique } = await importar([j]);
+
+      await tocar(clique, { url: ALVO });
+
+      expect(j.postMessage).toHaveBeenCalledOnce();
+      expect(navegarPara).not.toHaveBeenCalled();
+    });
+
+    it("app VELHO (não responde): depois de uma espera curta volta a navegar, como antes", async () => {
+      vi.useFakeTimers();
+      const { j, navegarPara } = janelaDoPainel(
+        `${ORIGEM}/admin-orders?id=A`,
+        "mudo",
+      );
+      const { clique, openWindow } = await importar([j]);
+
+      const feito = tocar(clique, { url: ALVO });
+      await vi.advanceTimersByTimeAsync(10_000);
+      await feito;
+
+      expect(j.postMessage).toHaveBeenCalledOnce();
+      expect(navegarPara).toHaveBeenCalledExactlyOnceWith(`${ORIGEM}${ALVO}`);
+      expect(openWindow).not.toHaveBeenCalled();
+    });
+
+    it("janela sem postMessage: navega direto, sem esperar", async () => {
+      const { j, navegarPara } = janelaDoPainel(
+        `${ORIGEM}/admin-orders?id=A`,
+        "sem-postmessage",
+      );
+      const { clique } = await importar([j]);
+
+      await tocar(clique, { url: ALVO });
+
+      expect(navegarPara).toHaveBeenCalledExactlyOnceWith(`${ORIGEM}${ALVO}`);
+    });
+
+    it("postMessage que lança (janela morrendo): navega, nunca perde o aviso", async () => {
+      const { j, navegarPara } = janelaDoPainel(
+        `${ORIGEM}/admin-orders?id=A`,
+        "postmessage-quebra",
+      );
+      const { clique } = await importar([j]);
+
+      await tocar(clique, { url: ALVO });
+
+      expect(navegarPara).toHaveBeenCalledExactlyOnceWith(`${ORIGEM}${ALVO}`);
+    });
+
+    it("já está na ficha do pedido do aviso: só foca, sem avisar o app nem navegar", async () => {
+      const { j, navegarPara } = janelaDoPainel(
+        `${ORIGEM}/admin-orders?id=B`,
+        "responde",
+      );
+      const { clique } = await importar([j]);
+
+      await tocar(clique, { url: ALVO });
+
+      expect(j.focus).toHaveBeenCalledOnce();
+      expect(j.postMessage).not.toHaveBeenCalled();
+      expect(navegarPara).not.toHaveBeenCalled();
+    });
+
+    it("janela em OUTRA tela do painel (PDV): abre janela nova, sem mexer no PDV", async () => {
+      const { j, navegarPara } = janelaDoPainel(
+        `${ORIGEM}/admin-pdv`,
+        "responde",
+      );
+      const { clique, openWindow } = await importar([j]);
+
+      await tocar(clique, { url: ALVO });
+
+      expect(openWindow).toHaveBeenCalledExactlyOnceWith(`${ORIGEM}${ALVO}`);
+      expect(j.postMessage).not.toHaveBeenCalled();
+      expect(navegarPara).not.toHaveBeenCalled();
+    });
+  });
+
   it("aviso SEM url (campanha comum) continua indo para '/': foca a janela da loja em /?source=pwa", async () => {
     const navegarPara = vi.fn();
     const aberta = janela(`${ORIGEM}/?source=pwa`, navegarPara);

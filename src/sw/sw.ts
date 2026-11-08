@@ -9,7 +9,10 @@ import {
   CAMINHO_IDENTIDADE_JSON,
   FICHA_DA_LOJA_ID,
 } from "../config/fichaDaLojaContract";
-import { decidirToqueNoAviso } from "../lib/alvo-do-aviso";
+import {
+  TIPO_ABRIR_PEDIDO_DO_AVISO,
+  decidirToqueNoAviso,
+} from "../lib/alvo-do-aviso";
 import {
   TIPO_PURGAR_ARQUIVOS_PRIVADOS,
   ehArquivoPublicoDoStorage,
@@ -947,6 +950,43 @@ sw.addEventListener("push", (event: any) => {
   }
 });
 
+// Quanto o SW espera o app confirmar que recebeu o aviso de pedido novo antes
+// de recarregar a janela. A resposta é imediata (um `postMessage` de volta);
+// passar disto é app sem o receptor (versão anterior) ou aba travada.
+const ESPERA_DA_RESPOSTA_DO_APP_MS = 1500;
+
+/** Entrega ao app da janela o pedido do aviso e diz se ele CONFIRMOU o recebimento
+ * (aberto por dentro, ou só avisado por ter texto não salvo). Nunca rejeita. */
+function avisarOApp(client: any, pedidoId: string): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    if (typeof client.postMessage !== "function") return resolve(false);
+    let canal: MessageChannel;
+    try {
+      canal = new MessageChannel();
+    } catch {
+      return resolve(false);
+    }
+    const encerrar = (respondeu: boolean) => {
+      clearTimeout(limite);
+      canal.port1.onmessage = null;
+      canal.port1.close();
+      resolve(respondeu);
+    };
+    const limite = setTimeout(
+      () => encerrar(false),
+      ESPERA_DA_RESPOSTA_DO_APP_MS,
+    );
+    canal.port1.onmessage = () => encerrar(true);
+    try {
+      client.postMessage({ tipo: TIPO_ABRIR_PEDIDO_DO_AVISO, pedidoId }, [
+        canal.port2,
+      ]);
+    } catch {
+      encerrar(false);
+    }
+  });
+}
+
 sw.addEventListener("notificationclick", (event: any) => {
   event.notification.close();
   const targetUrl = event.notification.data?.url || "/";
@@ -975,8 +1015,7 @@ sw.addEventListener("notificationclick", (event: any) => {
         if (decisao.acao === "focar") {
           return janelas[decisao.indice].focus();
         }
-        if (decisao.acao === "navegar") {
-          const client = janelas[decisao.indice];
+        const navegarJanela = (client: any) => {
           if (typeof client.navigate !== "function") return abrirJanelaNova();
           // `navigate` só vale para janela controlada por este SW; se
           // rejeitar, cai na janela nova (o mesmo destino, nunca a vitrine).
@@ -984,6 +1023,24 @@ sw.addEventListener("notificationclick", (event: any) => {
             (navegada: any) => (navegada ?? client).focus(),
             abrirJanelaNova,
           );
+        };
+        if (decisao.acao === "navegar") {
+          return navegarJanela(janelas[decisao.indice]);
+        }
+        if (decisao.acao === "avisar-app") {
+          // Painel de pedidos: navegar recarrega a janela e apaga a anotação
+          // ou o rastreio digitados e ainda não salvos. Foca primeiro (o
+          // `focus` só vale enquanto o toque está sendo tratado) e pede ao
+          // APP que abra o pedido por dentro — ele decide se pode. Sem
+          // resposta (app de antes desta mudança, aba travada), faz o que
+          // sempre fez: navega.
+          const client = janelas[decisao.indice];
+          return Promise.resolve(client.focus())
+            .catch(() => undefined)
+            .then(() => avisarOApp(client, decisao.pedidoId))
+            .then((respondeu) =>
+              respondeu ? undefined : navegarJanela(client),
+            );
         }
         return abrirJanelaNova();
       }),
