@@ -217,10 +217,19 @@ export function promessasDeFrete(config: ConfigDeFrete): PromessasDeFrete {
     return { local: desligada, nacional: desligada, iguais: true };
   }
   const preset = presetDoConfig(config.freeShippingMin);
-  const local: PromessaDeCanal = {
+  const regraLocalSalva: PromessaDeCanal = {
     estrategia: preset,
     minimo: preset === "acima_de_valor" ? config.freeShippingMin : 0,
   };
+  // "Só retirada" COM transportadora: quem é da cidade só retira (e a retirada
+  // já é grátis); não existe entrega local a que a regra salva se refira. Ela
+  // sobra do tempo em que a loja entregava e não pode virar selo "na cidade",
+  // meta do carrinho nem aviso da Home. `iguais` segue comparando a regra SALVA
+  // (é o que o lembrete do carrinho lê), então só `local` é zerada.
+  const local: PromessaDeCanal =
+    modoDaEntregaNaCidade(config) === "so_retiro"
+      ? { estrategia: "desligado", minimo: 0 }
+      : regraLocalSalva;
   // Defesa em tempo de execução (o tipo `ConfigDeFrete` diz que estas 5
   // colunas SEMPRE existem — StoreContext garante isso, mirror do
   // `espelhoLegado` incluso): configs hand-rolled em teste (ou qualquer
@@ -241,8 +250,9 @@ export function promessasDeFrete(config: ConfigDeFrete): PromessasDeFrete {
     minimo: estrategiaNacional === "acima_de_valor" ? minimoNacional : 0,
   };
   const iguais =
-    local.estrategia === nacional.estrategia &&
-    (local.estrategia !== "acima_de_valor" || local.minimo === nacional.minimo);
+    regraLocalSalva.estrategia === nacional.estrategia &&
+    (regraLocalSalva.estrategia !== "acima_de_valor" ||
+      regraLocalSalva.minimo === nacional.minimo);
   return { local, nacional, iguais };
 }
 

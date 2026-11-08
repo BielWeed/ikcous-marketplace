@@ -67,6 +67,13 @@ export function AvisoDeFreteGratis({
   const preset = presetDoConfig(config.freeShippingMin);
   const promessas = promessasDeFrete(config);
   const soLocal = !promessas.iguais;
+  // "Só retirada" com transportadora e a regra local sobrada: a Home só sabe
+  // anunciar a promessa LOCAL (sem CEP), e não há entrega na cidade — dizer
+  // "na cidade"/"na entrega local" seria prometer o que a loja não faz. Se a
+  // transportadora tem a MESMA regra (`iguais`), o aviso de antes vale.
+  if (promessas.local.estrategia === "desligado" && soLocal) {
+    return null;
+  }
 
   // FRETE V2: a sentinela 0,01 = "sempre grátis". Sem este ramo, a Home
   // mostrava a meta real de R$ 0,01: "Ganhe frete grátis em compras acima de
