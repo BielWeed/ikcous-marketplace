@@ -202,7 +202,7 @@ describe("useLeitorDeCodigo", () => {
     expect(texto("motor")).toBe("nativo");
   });
 
-  it("2. debounce de 1,5s: mesma leitura em todo quadro só chama aoLer 1x até o relógio avançar 1,6s", async () => {
+  it("2. código PARADO na frente da câmera é lido uma vez só, por mais tempo que fique (não soma unidade sem a pessoa pedir)", async () => {
     const leitura: Leitura = { codigo: "7891000315507", formato: "ean_13" };
     const detectar = vi.fn(async () => [leitura]);
     const dec = criarDecodificadorDuble({
@@ -226,7 +226,43 @@ describe("useLeitorDeCodigo", () => {
     expect(aoLer).toHaveBeenCalledTimes(1);
     expect(aoLer).toHaveBeenCalledWith(leitura);
 
-    await avancar(1600); // atravessa a janela de repetição de 1,5s
+    // Segue parado bem além de 1,5 s (e além de qualquer outra janela): o
+    // código nunca saiu do quadro, então continua sendo UMA leitura.
+    await avancar(10_000);
+    expect(detectar.mock.calls.length).toBeGreaterThan(20);
+    expect(aoLer).toHaveBeenCalledTimes(1);
+  });
+
+  it("2b. o mesmo código que SAIU do quadro e voltou é outra leitura", async () => {
+    const leitura: Leitura = { codigo: "7891000315507", formato: "ean_13" };
+    let noQuadro = true;
+    const detectar = vi.fn(async () => (noQuadro ? [leitura] : []));
+    const dec = criarDecodificadorDuble({
+      motor: "nativo",
+      entrada: "video",
+      detectar,
+    });
+    const aoLer = vi.fn();
+
+    await montar({
+      ativo: true,
+      aoLer,
+      intervaloMs: 100,
+      midia: { getUserMedia: vi.fn(async () => criarStreamDuble(pararTrack)) },
+      criarDecodificador: vi.fn(async () => dec),
+    });
+    await avancar(0);
+    await avancar(300);
+    expect(aoLer).toHaveBeenCalledTimes(1);
+
+    // A peça sai do quadro por alguns segundos…
+    noQuadro = false;
+    await avancar(3000);
+    expect(aoLer).toHaveBeenCalledTimes(1);
+
+    // …e entra uma segunda peça igual.
+    noQuadro = true;
+    await avancar(300);
     expect(aoLer).toHaveBeenCalledTimes(2);
   });
 

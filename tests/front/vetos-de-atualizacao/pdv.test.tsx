@@ -115,9 +115,12 @@ describe("gravação da venda do PDV veta a atualização", () => {
           p_idempotency_key: "chave-fixa",
         });
         expect(haOperacaoSensivel()).toBe(true);
-        expect(motivosDeOperacaoSensivel()).toEqual([
+        // Além da marca do registro, a venda com peça no cupom (o estado
+        // dublado tem uma) segura a atualização por conta própria — a prova
+        // aqui é só da marca do REGISTRO.
+        expect(motivosDeOperacaoSensivel()).toContain(
           "registro-de-venda-do-pdv",
-        ]);
+        );
         expect(rede.despachar).not.toHaveBeenCalled();
       } finally {
         await act(async () => {
@@ -158,7 +161,9 @@ describe("gravação da venda do PDV veta a atualização", () => {
           await resultado;
         });
       }
-      expect(haOperacaoSensivel()).toBe(false);
+      expect(motivosDeOperacaoSensivel()).not.toContain(
+        "registro-de-venda-do-pdv",
+      );
       const chamadasEsperadas = desfecho === "sucesso" ? 1 : 0;
       expect(rede.despachar).toHaveBeenCalledTimes(chamadasEsperadas);
       expect(rede.invoke).toHaveBeenCalledTimes(chamadasEsperadas);
