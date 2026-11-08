@@ -222,6 +222,24 @@ export function mensagemDaFalhaDaVenda(erro: unknown): FalhaDaVendaTraduzida {
   }
 
   if (codigo === "22023") {
+    // Peça do cupom que saiu do catálogo (desativada, apagada, ou com a
+    // variação desativada) depois de entrar na venda. O banco recusa com
+    // "Produto <nome> não disponível." e, como a peça não é achada, o nome vem
+    // vazio e a frase sai "Produto não encontrado não disponível." (migration
+    // 20261280000000, perto de "não disponível"). Convida a tirar a peça e
+    // registrar de novo — sem travar o botão e sem mandar apagar a venda.
+    const peca = mensagemDoBanco?.match(/^Produto (.+) não disponível\.$/);
+    if (peca) {
+      const qual =
+        peca[1] === "não encontrado"
+          ? "Alguma peça desta venda saiu do catálogo (foi desativada ou apagada)."
+          : `A peça "${peca[1]}" saiu do catálogo (foi desativada ou apagada).`;
+      return {
+        mensagem: `${qual} Volte à venda, tire a peça que saiu e registre de novo.`,
+        podeTentarDeNovo: true,
+        precisaEntrarDeNovo: false,
+      };
+    }
     return {
       mensagem: mensagemDoBanco ?? "Não foi possível registrar a venda.",
       podeTentarDeNovo:

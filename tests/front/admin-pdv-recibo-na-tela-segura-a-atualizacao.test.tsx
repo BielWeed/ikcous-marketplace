@@ -181,7 +181,6 @@ describe("AdminPdvView — o recibo na tela segura a atualização do app", () =
 
     expect(reciboNaTela()).toBe(false);
     expect(motivosDeOperacaoSensivel()).not.toContain("recibo-do-pdv");
-    expect(haOperacaoSensivel()).toBe(false);
   });
 
   it("com o recibo na tela: há operação sensível e o app em segundo plano NÃO instala a atualização", async () => {
@@ -209,8 +208,10 @@ describe("AdminPdvView — o recibo na tela segura a atualização do app", () =
     await montarERegistrar();
 
     expect(reciboNaTela()).toBe(true);
+    // O balcão não liga o aviso de "alterações não salvas" em momento nenhum
+    // (nem com a venda em montagem, nem com o recibo na tela).
     const chamadas = onSetDirty.mock.calls.map((c) => c[0]);
-    expect(chamadas.at(-1)).toBe(false);
+    expect(chamadas).not.toContain(true);
   });
 
   it("'Nova venda' solta a marca: a atualização pode instalar de novo", async () => {

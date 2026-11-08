@@ -18,6 +18,11 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  haOperacaoSensivel,
+  motivosDeOperacaoSensivel,
+} from "@/lib/atualizacao/operacao-sensivel";
+
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -367,19 +372,24 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
     expect(backSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("caso 5a — bipar um item liga o dirty (true)", async () => {
+  // A venda em andamento NÃO liga o `dirty` do painel ("Alterações Não
+  // Salvas — serão perdidas permanentemente" era falso: o cupom fica guardado
+  // no aparelho). O que o dirty segurava de brinde, a atualização do app,
+  // passou a ser segurado pela marca de operação sensível.
+  it("caso 5a — bipar um item NÃO liga o dirty, e a atualização do app passa a esperar", async () => {
     await montar();
-    expect(onSetDirty).toHaveBeenLastCalledWith(false);
+    expect(haOperacaoSensivel()).toBe(false);
 
     await bipar(PRODUTO_SIMPLES.codigo);
 
-    expect(onSetDirty).toHaveBeenLastCalledWith(true);
+    expect(onSetDirty).not.toHaveBeenCalledWith(true);
+    expect(motivosDeOperacaoSensivel()).toContain("venda-em-andamento-do-pdv");
   });
 
-  it("caso 5b — esvaziar o cupom desliga o dirty (false)", async () => {
+  it("caso 5b — esvaziar o cupom solta a atualização do app", async () => {
     await montar();
     await bipar(PRODUTO_SIMPLES.codigo);
-    expect(onSetDirty).toHaveBeenLastCalledWith(true);
+    expect(haOperacaoSensivel()).toBe(true);
 
     const botaoRemover = hospedeiro.querySelector(
       'button[aria-label^="Remover"]',
@@ -390,7 +400,8 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
     });
     await avancar();
 
-    expect(onSetDirty).toHaveBeenLastCalledWith(false);
+    expect(onSetDirty).not.toHaveBeenCalledWith(true);
+    expect(haOperacaoSensivel()).toBe(false);
   });
 
   it("caso 5c — venda registrada com camada aberta devolve a entrada com history.back(), mas só com o desvio de uso único armado para engolir o popstate (sem ele, o diálogo 'alterações não salvas' abria sobre o recibo — relato do dono, 19/09; e com replaceState({}) cada venda deixava uma entrada: o Voltar 'não fazia nada')", async () => {
@@ -519,24 +530,23 @@ describe("AdminPdvView — Voltar por camada e dirty (C3.3)", () => {
     expect(hospedeiro.textContent).not.toContain("Maria digitada na tela");
   });
 
-  it("caso 5c — desmontar com item ainda no cupom desliga o dirty (false) no unmount", async () => {
+  it("caso 5c — desmontar com item ainda no cupom solta a atualização do app", async () => {
     await montar();
     await bipar(PRODUTO_SIMPLES.codigo);
-    expect(onSetDirty).toHaveBeenLastCalledWith(true);
+    expect(haOperacaoSensivel()).toBe(true);
 
-    // Desmonta com o ITEM AINDA NO CUPOM — sem o efeito de cleanup
-    // dedicado ao unmount, o painel ficaria pedindo confirmação de
-    // navegação para sempre depois que a pessoa sai desta tela.
+    // Desmonta com o ITEM AINDA NO CUPOM — a marca não pode ficar presa
+    // segurando a atualização para sempre depois que a pessoa sai da tela.
     act(() => {
       raiz.unmount();
     });
 
-    expect(onSetDirty).toHaveBeenLastCalledWith(false);
+    expect(haOperacaoSensivel()).toBe(false);
   });
 });
 
-describe("AdminPdvView — dirty cai com a venda registrada, mesmo com itens na lista (caso 6)", () => {
-  it("etapa 'recibo' com recibo preenchido: onSetDirty recebe false", async () => {
+describe("AdminPdvView — a venda registrada não segura mais como venda em andamento, mesmo com itens na lista (caso 6)", () => {
+  it("etapa 'recibo' com recibo preenchido: sem marca de venda em andamento e sem dirty", async () => {
     // C3.3 não chama `registrar_venda_presencial` (é C3.4, que ainda
     // aguarda a migration da RPC) nem edita `useVendaPresencial.ts` (fora
     // de `arquivos_permitidos`) — então este caso mocka o HOOK, não a
@@ -598,6 +608,9 @@ describe("AdminPdvView — dirty cai com a venda registrada, mesmo com itens na 
     const { AdminPdvView: AdminPdvViewComRecibo } = await import(
       "@/views/admin/AdminPdvView"
     );
+    // `vi.resetModules()` deu à view uma cópia NOVA do registro de operações
+    // sensíveis: a leitura tem de vir da mesma cópia, não do import do topo.
+    const sensiveis = await import("@/lib/atualizacao/operacao-sensivel");
 
     const onSetDirtyLocal = vi.fn();
     const hospedeiroLocal = document.createElement("div");
@@ -615,7 +628,12 @@ describe("AdminPdvView — dirty cai com a venda registrada, mesmo com itens na 
     });
 
     expect(hospedeiroLocal.textContent).toContain("Compra na loja");
-    expect(onSetDirtyLocal).toHaveBeenLastCalledWith(false);
+    expect(onSetDirtyLocal).not.toHaveBeenCalledWith(true);
+    // O recibo tem a marca dele; a da venda em andamento já caiu.
+    expect(sensiveis.motivosDeOperacaoSensivel()).toContain("recibo-do-pdv");
+    expect(sensiveis.motivosDeOperacaoSensivel()).not.toContain(
+      "venda-em-andamento-do-pdv",
+    );
 
     act(() => {
       raizLocal.unmount();
