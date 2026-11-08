@@ -248,7 +248,9 @@ describe("Ofertas Compactas", () => {
 
   it("variação ativa abre o produto; esgotado bloqueia; coração não abre produto", async () => {
     const variante = produto("opções", {
-      variants: [{ id: "v", active: true }] as Product["variants"],
+      variants: [
+        { id: "v", name: "Tamanho", active: true, stockIncrement: 5 },
+      ] as Product["variants"],
     });
     await montar(
       [variante, produto("fim", { stock: 0 }), produto("favorito")],
@@ -377,7 +379,9 @@ describe("Ofertas Compactas", () => {
       produto("ultima", { stock: 1 }),
       produto("fim", { stock: 0 }),
       produto("opções", {
-        variants: [{ id: "v", active: true }] as Product["variants"],
+        variants: [
+          { id: "v", name: "Tamanho", active: true, stockIncrement: 5 },
+        ] as Product["variants"],
       }),
     ]);
     expect(host.textContent).toContain("Restam 3");
@@ -422,7 +426,9 @@ describe("Ofertas Compactas", () => {
     await montar([
       produto("Bola"),
       produto("camisa", {
-        variants: [{ id: "v", active: true }] as Product["variants"],
+        variants: [
+          { id: "v", name: "Tamanho", active: true, stockIncrement: 5 },
+        ] as Product["variants"],
       }),
       produto("fim", { stock: 0 }),
     ]);
