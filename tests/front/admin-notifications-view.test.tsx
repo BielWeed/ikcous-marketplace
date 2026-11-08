@@ -572,6 +572,37 @@ describe("Notificações v5 — funções preservadas", () => {
     expect(aviso?.querySelector("button")).toBeNull();
   });
 
+  it("pagamentos por marcar cortados: diz que sao os mais recentes, sem botao e sem acusar falha (08/11/2026)", async () => {
+    // O sino conta TODOS os pagamentos por marcar; a lista traz so 100. Antes a
+    // tela nao dizia nada e ainda fechava com "100 avisos no total".
+    LISTAS_CORTADAS = ["recebimento"];
+    await montar();
+
+    const aviso = container?.querySelector(
+      '[data-lista-cortada="recebimento"]',
+    );
+    expect(aviso?.textContent).toContain(
+      "Há mais pagamentos por marcar do que cabem nesta tela",
+    );
+    expect(aviso?.textContent).toContain("os mais recentes");
+    expect(aviso?.textContent).not.toContain("undefined");
+    expect(aviso?.querySelector("button")).toBeNull();
+    expect(container?.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("lista cortada: o rodape nao afirma 'no total' (a conta seria falsa); sem corte, continua 'no total'", async () => {
+    await montar();
+    expect(container?.textContent).toContain("4 avisos no total");
+
+    act(() => raiz?.unmount());
+    document.body.innerHTML = "";
+    LISTAS_CORTADAS = ["recebimento"];
+    await montar();
+
+    expect(container?.textContent).toContain("4 avisos mostrados");
+    expect(container?.textContent).not.toContain("no total");
+  });
+
   it("lista cortada e falha ao mesmo tempo: os dois recados aparecem, cada um com o seu texto", async () => {
     LISTAS_CORTADAS = ["estoque"];
     FONTES_COM_FALHA = ["pergunta"];

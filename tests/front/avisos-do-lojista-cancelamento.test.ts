@@ -87,10 +87,21 @@ describe("selecionarCancelamentosDoCliente — so o que o CLIENTE cancelou e ja 
     expect(c.situacao).toBe("pago_depois");
   });
 
-  it("estornado (a rotina ja devolveu o dinheiro) tambem entra", () => {
+  it("estornado (a rotina ja devolveu o dinheiro): se o produto nao saiu, o aviso ja nao tem o que pedir e some; se saiu e nao voltou, ainda entra", () => {
     expect(
       selecionarCancelamentosDoCliente(
         [linha({}, { payment_status: "estornado" })],
+        SEM_ADMIN,
+      ),
+    ).toEqual([]);
+    expect(
+      selecionarCancelamentosDoCliente(
+        [
+          linha(
+            { old_status: "shipping" },
+            { payment_status: "estornado", cancelled_after_shipping: true },
+          ),
+        ],
         SEM_ADMIN,
       ),
     ).toHaveLength(1);

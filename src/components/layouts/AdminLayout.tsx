@@ -227,8 +227,21 @@ export function AdminLayout({
       }, ATRASO_COALESCENCIA_BADGES_MS);
     };
 
+    // O ultimo numero que cada fonte do sino devolveu. Serve so para saber se uma
+    // releitura TROUXE um numero diferente: se trouxe, a lista da tela de
+    // Notificacoes (que le por conta propria) precisa reler tambem, senao ela
+    // diz "Tudo em dia" com a bolinha acesa. A primeira leitura de cada fonte so
+    // grava (a lista acabou de nascer e le sozinha).
+    const ultimasContagens = new Map<string, number>();
+
     const fetchInitialCounts = async () => {
       const rodada = ++rodadaAtual;
+      let algumNumeroMudou = false;
+      const anotarContagem = (fonte: string, valor: number) => {
+        const antes = ultimasContagens.get(fonte);
+        if (antes !== undefined && antes !== valor) algumNumeroMudou = true;
+        ultimasContagens.set(fonte, valor);
+      };
       // Só esta rodada pode gravar estado: se uma rodada mais nova já
       // começou (ou o componente saiu), o veredito desta aqui chegou
       // atrasado e não vale mais nada.
@@ -258,6 +271,7 @@ export function AdminLayout({
               falhouAlgumaConsulta = true;
             } else if (ordersCount !== null && podeGravar()) {
               setPendingOrdersCount(ordersCount);
+              anotarContagem("pedidos", ordersCount);
             }
           },
 
@@ -277,6 +291,7 @@ export function AdminLayout({
               falhouAlgumaConsulta = true;
             } else if (qData && podeGravar()) {
               setPendingQuestionsCount(qData.total_count || 0);
+              anotarContagem("perguntas", qData.total_count || 0);
             }
           },
 
@@ -295,6 +310,7 @@ export function AdminLayout({
               falhouAlgumaConsulta = true;
             } else if (reviewsCount !== null && podeGravar()) {
               setPendingReviewsCount(reviewsCount);
+              anotarContagem("avaliacoes", reviewsCount);
             }
           },
 
@@ -311,9 +327,9 @@ export function AdminLayout({
             if (devolucoesErr || !devolucoes) {
               falhouAlgumaConsulta = true;
             } else if (podeGravar()) {
-              setDevolucoesSolicitadasCount(
-                contagemDe(devolucoes.contagem, "solicitada"),
-              );
+              const solicitadas = contagemDe(devolucoes.contagem, "solicitada");
+              setDevolucoesSolicitadasCount(solicitadas);
+              anotarContagem("devolucoes", solicitadas);
             }
           },
 
@@ -331,6 +347,7 @@ export function AdminLayout({
               falhouAlgumaConsulta = true;
             } else if (podeGravar()) {
               setPrivacidadeAbertosCount(privacidadeCount);
+              anotarContagem("privacidade", privacidadeCount);
             }
           },
 
@@ -354,6 +371,7 @@ export function AdminLayout({
               falhouAlgumaConsulta = true;
             } else if (recebimentosCount !== null && podeGravar()) {
               setRecebimentosPorMarcarCount(recebimentosCount);
+              anotarContagem("recebimentos", recebimentosCount);
             }
           },
         ];
@@ -383,6 +401,10 @@ export function AdminLayout({
       } finally {
         if (podeGravar()) {
           setNaoConseguiuConferirAvisos(falhouAlgumaConsulta);
+          // A lista de Notificacoes (`useAvisosDoLojista`) ouve este aviso.
+          if (algumNumeroMudou) {
+            window.dispatchEvent(new Event("admin:sino-mudou"));
+          }
 
           if (timeoutDeRetentativa) {
             clearTimeout(timeoutDeRetentativa);

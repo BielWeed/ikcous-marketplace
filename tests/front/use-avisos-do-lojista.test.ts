@@ -97,7 +97,12 @@ function criarBuilder(tabela: string) {
       (c) => c[0] === "eq" && c[1] === "status" && c[2] === "delivered",
     );
   builder.select = vi.fn((...argumentos: unknown[]) => {
-    if (tabela === "reviews") calls.push(["select", ...argumentos]);
+    if (tabela === "reviews" || tabela === "marketplace_orders") {
+      calls.push(["select", ...argumentos]);
+    }
+    if (tabela === "marketplace_order_history") {
+      FILTROS_DO_HISTORICO.push(["select", ...argumentos]);
+    }
     return builder;
   });
   builder.maybeSingle = vi.fn(() =>
@@ -1199,6 +1204,163 @@ describe("useAvisosDoLojista — tela aberta acompanha o que chega depois", () =
     await act(async () => {
       document.dispatchEvent(new Event("visibilitychange"));
       window.dispatchEvent(new Event("admin:recontar-avisos"));
+    });
+
+    expect(tabelasConsultadas.length).toBe(consultasAntes);
+  });
+});
+
+describe("useAvisosDoLojista — o aviso de cancelamento ja resolvido (08/11/2026)", () => {
+  const CLIENTE = "c1111111-1111-4111-8111-111111111111";
+  const PEDIDO = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
+
+  function linhaDeRetirada(pedido: Record<string, unknown> = {}) {
+    return {
+      id: "h1",
+      order_id: PEDIDO,
+      old_status: "shipping",
+      created_by: CLIENTE,
+      created_at: "2026-11-08T09:00:00.000Z",
+      marketplace_orders: {
+        id: PEDIDO,
+        user_id: CLIENTE,
+        customer_name: "Maria Silva",
+        total: 149.9,
+        payment_status: "pago",
+        status: "cancelled",
+        cancelled_after_shipping: true,
+        pickup_address: "Rua da Loja, 10",
+        ...pedido,
+      },
+    };
+  }
+
+  beforeEach(() => {
+    RESPOSTA_PERFIS = {
+      data: [{ id: CLIENTE, role: "customer" }],
+      error: null,
+    };
+  });
+
+  it("a consulta do historico pede junto o retorno do produto (mesma leitura, sem tabela nova)", async () => {
+    RESPOSTA_CANCELAMENTOS = { data: [linhaDeRetirada()], error: null };
+
+    await montarSonda();
+
+    const select = FILTROS_DO_HISTORICO.find((f) => f[0] === "select");
+    expect(String(select?.[1])).toContain("returned_to_seller_at");
+  });
+
+  it("retirada pronta cancelada, produto ja marcado como voltou: a lista nao traz o aviso", async () => {
+    RESPOSTA_CANCELAMENTOS = {
+      data: [
+        linhaDeRetirada({ returned_to_seller_at: "2026-11-08T10:00:00.000Z" }),
+      ],
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().avisos.map((a) => a.tipo)).not.toContain("cancelamento");
+    expect(atual().fontesComFalha).toEqual([]);
+  });
+
+  it("controle: o produto ainda nao voltou, o aviso continua", async () => {
+    RESPOSTA_CANCELAMENTOS = { data: [linhaDeRetirada()], error: null };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().avisos.map((a) => a.tipo)).toContain("cancelamento");
+  });
+});
+
+describe("useAvisosDoLojista — mais pagamentos por marcar do que o teto (08/11/2026)", () => {
+  function cemRecebimentos() {
+    return Array.from({ length: TETO_DE_RECEBIMENTOS }, (_, i) => ({
+      id: `ped-${String(i).padStart(4, "0")}`,
+      customer_name: "Maria",
+      total: 50,
+      updated_at: "2026-10-12T15:00:00.000Z",
+    }));
+  }
+
+  it("a consulta pede a contagem exata, para saber se cortou", async () => {
+    await montarSonda();
+
+    const calls = CONSULTAS_DE_PEDIDOS.find((c) =>
+      c.some((x) => x[0] === "eq" && x[2] === "delivered"),
+    );
+    const select = calls?.find((c) => c[0] === "select");
+    expect(select?.[2]).toEqual({ count: "exact" });
+  });
+
+  it("130 por marcar e so 100 na lista: a lista fica marcada como cortada (a tela diz a verdade)", async () => {
+    RESPOSTA_RECEBIMENTOS = {
+      data: cemRecebimentos(),
+      count: 130,
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().avisos.filter((a) => a.tipo === "recebimento")).toHaveLength(
+      100,
+    );
+    expect(atual().listasCortadas).toContain("recebimento");
+    // Cortar nao e falha: o botao de tentar de novo nao serve.
+    expect(atual().fontesComFalha).toEqual([]);
+  });
+
+  it("controle: exatamente 100 por marcar nao e corte", async () => {
+    RESPOSTA_RECEBIMENTOS = {
+      data: cemRecebimentos(),
+      count: 100,
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().listasCortadas).not.toContain("recebimento");
+  });
+
+  it("controle: resposta sem numero de contagem nao inventa corte", async () => {
+    RESPOSTA_RECEBIMENTOS = { data: cemRecebimentos(), error: null };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().listasCortadas).not.toContain("recebimento");
+  });
+});
+
+describe("useAvisosDoLojista — a lista acompanha o sino (08/11/2026)", () => {
+  it("quando o sino muda de numero (admin:sino-mudou), a lista relê e mostra o que chegou", async () => {
+    RESPOSTA_PEDIDOS = { data: [], error: null };
+    RESPOSTA_PERGUNTAS = { data: { total_count: 0 }, error: null };
+    RESPOSTA_AVALIACOES = { data: [], error: null };
+    RESPOSTA_PRODUTOS = { products: [], total: 0 };
+    const { atual } = await montarSonda();
+    expect(atual().avisos).toEqual([]);
+    RESPOSTA_PEDIDOS = { data: [pedidoDeExemplo()], error: null };
+
+    await act(async () => {
+      window.dispatchEvent(new Event("admin:sino-mudou"));
+    });
+    await act(async () => {});
+
+    expect(atual().avisos.map((a) => a.tipo)).toEqual(["pedido"]);
+  });
+
+  it("desmontada, a lista para de ouvir o sino", async () => {
+    await montarSonda();
+    for (const raiz of raizes.splice(0)) {
+      act(() => {
+        raiz.unmount();
+      });
+    }
+    const consultasAntes = tabelasConsultadas.length;
+
+    await act(async () => {
+      window.dispatchEvent(new Event("admin:sino-mudou"));
     });
 
     expect(tabelasConsultadas.length).toBe(consultasAntes);

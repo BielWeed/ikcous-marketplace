@@ -230,7 +230,7 @@ async function buscarCancelamentosDoCliente(): Promise<
   const { data, error } = await supabase
     .from("marketplace_order_history")
     .select(
-      "id, order_id, old_status, created_by, created_at, marketplace_orders(id, user_id, customer_name, total, payment_status, status, cancelled_after_shipping, customer_data->>pickup_address)",
+      "id, order_id, old_status, created_by, created_at, marketplace_orders(id, user_id, customer_name, total, payment_status, status, cancelled_after_shipping, returned_to_seller_at, customer_data->>pickup_address)",
     )
     .eq("new_status", "cancelled")
     .not("created_by", "is", null)
@@ -266,10 +266,16 @@ async function buscarCancelamentosDoCliente(): Promise<
 // cliente. A regra (e o porque) mora em `@/lib/recebimentos-por-marcar`, lida
 // tambem pela bolinha do sino (`AdminLayout`). Falha de leitura LANCA: vira
 // falha da FONTE, nunca "nenhum pedido por marcar".
-async function buscarRecebimentosPorMarcar(): Promise<RecebimentoPorMarcar[]> {
-  const { data, error } = await supabase
+interface LeituraDeRecebimentos {
+  recebimentos: RecebimentoPorMarcar[];
+  /** Havia mais por marcar que o teto: esta lista traz so os mais recentes. */
+  truncou: boolean;
+}
+
+async function buscarRecebimentosPorMarcar(): Promise<LeituraDeRecebimentos> {
+  const { data, error, count } = await supabase
     .from("marketplace_orders")
-    .select("id, customer_name, total, updated_at")
+    .select("id, customer_name, total, updated_at", { count: "exact" })
     .eq("status", "delivered")
     .or(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA)
     .is("payment_status", null)
@@ -278,7 +284,13 @@ async function buscarRecebimentosPorMarcar(): Promise<RecebimentoPorMarcar[]> {
     .limit(TETO_DE_RECEBIMENTOS);
 
   if (error) throw error;
-  return (data ?? []) as unknown as RecebimentoPorMarcar[];
+  const recebimentos = (data ?? []) as unknown as RecebimentoPorMarcar[];
+  // O sino conta todos; a lista traz ate o teto. Sem numero na resposta nao ha
+  // como afirmar corte: nao se inventa aviso.
+  return {
+    recebimentos,
+    truncou: typeof count === "number" && count > recebimentos.length,
+  };
 }
 
 interface LeituraDeProdutos {
@@ -436,10 +448,17 @@ export function useAvisosDoLojista(): AvisosDoLojista {
       rPrivacidade.status === "fulfilled" ? rPrivacidade.value : 0;
     if (rPrivacidade.status === "rejected") falhas.push("privacidade");
     const recebimentosPorMarcar =
-      rRecebimentos.status === "fulfilled" ? rRecebimentos.value : [];
+      rRecebimentos.status === "fulfilled"
+        ? rRecebimentos.value.recebimentos
+        : [];
     if (rRecebimentos.status === "rejected") falhas.push("recebimento");
 
     const cortadas: TipoDeAviso[] = [];
+    // Mais pagamentos por marcar que o teto: a lista traz os mais recentes e a
+    // tela precisa dizer isso (o sino conta todos).
+    if (rRecebimentos.status === "fulfilled" && rRecebimentos.value.truncou) {
+      cortadas.push("recebimento");
+    }
 
     const avaliacoes =
       rAvaliacoes.status === "fulfilled" ? rAvaliacoes.value.avaliacoes : [];
@@ -489,10 +508,14 @@ export function useAvisosDoLojista(): AvisosDoLojista {
     };
     document.addEventListener("visibilitychange", aoMudarAVisibilidade);
     window.addEventListener("admin:recontar-avisos", reler);
+    // O sino da barra mudou de numero (chegou pedido, pergunta...): a lista
+    // relê, senao ela diz "Tudo em dia" com a bolinha acesa.
+    window.addEventListener("admin:sino-mudou", reler);
     return () => {
       ativoRef.current = false;
       document.removeEventListener("visibilitychange", aoMudarAVisibilidade);
       window.removeEventListener("admin:recontar-avisos", reler);
+      window.removeEventListener("admin:sino-mudou", reler);
     };
   }, [buscar]);
 
