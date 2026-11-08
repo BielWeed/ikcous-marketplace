@@ -137,16 +137,28 @@ describe("AdminShippingView: valores de frete grátis em centavos", () => {
     });
   }
 
-  it("49.999 vai para o banco como 50 (o que ele guardaria), e o campo mostra 50", async () => {
+  // O campo "a partir de" do frete local é TEXTO (iPhone/vírgula, lote r79-d): lê
+  // dinheiro como o app inteiro lê, e "49.999" é quarenta e nove mil (ponto =
+  // milhar, como no Brasil). Mais de 2 casas ("49,999") não é dinheiro: recusa,
+  // em vez de arredondar sem avisar. O arredondamento em centavos do que é
+  // ENVIADO segue valendo para o mínimo nacional (teste mais abaixo).
+  it("49.999 é quarenta e nove mil (ponto de milhar) e o campo mostra o que ela escreveu", async () => {
     await abrir();
     await digitar("frete-gratis-acima-de", "49.999");
     await salvar();
     expect(updateConfig).toHaveBeenCalledTimes(1);
-    expect(updateConfig.mock.calls[0][0].freeShippingMin).toBe(50);
+    expect(updateConfig.mock.calls[0][0].freeShippingMin).toBe(49999);
     expect(
       (hospedeiro.querySelector("#frete-gratis-acima-de") as HTMLInputElement)
         .value,
-    ).toBe("50");
+    ).toBe("49.999");
+  });
+
+  it("49,999 (3 casas) não é dinheiro: o Salvar é recusado, nada é gravado", async () => {
+    await abrir();
+    await digitar("frete-gratis-acima-de", "49,999");
+    await salvar();
+    expect(updateConfig).not.toHaveBeenCalled();
   });
 
   it("acima do máximo da coluna, grava o máximo (99999999.99)", async () => {
@@ -177,7 +189,7 @@ describe("AdminShippingView: valores de frete grátis em centavos", () => {
 
   it("um valor que arredonda para zero é recusado, não vira 'desligado'", async () => {
     await abrir();
-    await digitar("frete-gratis-acima-de", "0.004");
+    await digitar("frete-gratis-acima-de", "0,004");
     await salvar();
     expect(updateConfig).not.toHaveBeenCalled();
   });
