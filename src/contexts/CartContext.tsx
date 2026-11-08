@@ -318,6 +318,29 @@ function saveTombstones(map: Map<string, CartTombstone>) {
   }
 }
 
+/** A sessão de agora é mesmo desta conta? Qualquer falha diz "não". */
+async function sessaoConfirmaAConta(uid: string | null): Promise<boolean> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return !!uid && data?.session?.user?.id === uid;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * O que o banco enxerga do carrinho: cada linha e a sua quantidade (preço,
+ * estoque e carimbo de hora não entram). É a régua para saber se ESTE aparelho
+ * tem alguma edição que o banco ainda não viu: carrinho de agora com o mesmo
+ * retrato do último que o banco confirmou = nada pendente.
+ */
+function retratoDoCarrinho(itens: readonly CartItem[]): string {
+  return itens
+    .map((item) => `${chaveDoItem(item)}=${item.quantity}`)
+    .sort()
+    .join("|");
+}
+
 // localStorage pode lançar (modo privado, cota cheia, acesso bloqueado):
 // o carrinho segue em memória, sem persistir, em vez de derrubar o Provider.
 function lerSeguro(chave: string): string | null {
@@ -558,6 +581,22 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     remotoMescladoRef.current = remotoMesclado;
   }, [remotoMesclado]);
 
+  // Gravação do carrinho no banco: uma por vez (`syncPending`), com o retrato
+  // do último carrinho enviado (`lastSyncedCart`, o JSON inteiro).
+  const syncPending = useRef(false);
+  const lastSyncedCart = useRef<string>("");
+  // Retrato (ver `retratoDoCarrinho`) do último carrinho que o BANCO confirmou
+  // ter igual ao daqui: o que este aparelho enviou com sucesso, ou o que leu e
+  // mesclou sem sobrar nada só daqui. `null` = desconhecido. Carrinho de agora
+  // com este mesmo retrato = nenhuma edição pendente: se uma releitura ao vivo
+  // não traz uma linha, outro aparelho a tirou (o banco manda). Diferente (ou
+  // `null`) = a cliente mexeu e o banco ainda não viu: a junção de sempre.
+  const retratoAlinhado = useRef<string | null>(null);
+  // Sobe quando uma gravação começa e quando termina: a releitura que atravessou
+  // uma gravação tem um retrato do banco de ANTES dela e não vale para tirar
+  // nada daqui.
+  const geracaoDaGravacao = useRef(0);
+
   // Leitura inicial que falhou: relê com espera crescente e teto (mesmos
   // limites do reenvio da gravação), e ainda ao voltar online, ao ficar
   // visível e na próxima edição da cliente (ver os efeitos mais abaixo).
@@ -662,6 +701,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (!isInitialLoad.current && !force) return;
 
       const uidDaLeitura = userId;
+      // Como estava a conversa com o banco quando ESTA leitura começou: só vale
+      // "o banco manda" para a releitura que começou depois da primeira junção
+      // e sem gravação em voo (ver `bancoManda` abaixo).
+      const leituraDepoisDaJuncao = remotoMescladoRef.current;
+      const gravandoNoInicio = syncPending.current;
+      const geracaoNaLeitura = geracaoDaGravacao.current;
       try {
         const startTime = Date.now();
         console.log(
@@ -831,13 +876,80 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
               ? aplicarCatalogoAoCarrinho(itens, catalogo)
               : itens;
 
+          // Nenhuma gravação estava em voo, começou ou terminou desde que esta
+          // leitura saiu: o retrato do banco que ela trouxe ainda é o de agora.
+          const semGravacaoNoMeio = () =>
+            !gravandoNoInicio &&
+            !syncPending.current &&
+            geracaoDaGravacao.current === geracaoNaLeitura;
+          // As linhas que o banco tem (inclusive as de produto que o catálogo
+          // não devolveu: essas ficam como sempre ficaram).
+          const linhasNoBanco = new Set(
+            dbItems.map(
+              (dbItem) =>
+                `${dbItem.product_id}-${normalizarChave(dbItem.variant_id)}`,
+            ),
+          );
+          const retratoDoBanco = retratoDoCarrinho(reconstructedCart);
+
+          // O BANCO MANDA: releitura ao vivo (depois da primeira junção), sem
+          // gravação no meio, sem pedido sem resposta (a chave do pedido nasce
+          // do carrinho e não pode girar), e com a conta confirmada pela
+          // sessão -- uma leitura vazia de quem perdeu a sessão não é "o
+          // outro aparelho esvaziou". Só aqui as linhas que o banco não tem
+          // saem do carrinho daqui; se há edição pendente (o retrato de agora
+          // difere do último confirmado, conferido dentro do estado abaixo),
+          // vale a junção de sempre.
+          let bancoManda =
+            leituraDepoisDaJuncao &&
+            !catalogoEmEspera &&
+            retratoAlinhado.current !== null &&
+            semGravacaoNoMeio();
+          if (
+            bancoManda &&
+            cartRef.current.some(
+              (item) => !linhasNoBanco.has(chaveDoItem(item)),
+            )
+          ) {
+            bancoManda = await sessaoConfirmaAConta(uidDaLeitura);
+            if (userIdAtualRef.current !== (uidDaLeitura ?? null)) return;
+            bancoManda = bancoManda && semGravacaoNoMeio();
+          }
+
           setCart((prev) => {
             const tombstones = loadTombstones();
+            // Nada pendente aqui: o carrinho de agora é o último que o banco
+            // confirmou ter igual ao daqui.
+            const nadaPendente =
+              retratoAlinhado.current !== null &&
+              retratoDoCarrinho(prev) === retratoAlinhado.current;
+            const bancoMandaAgora = bancoManda && nadaPendente;
+            // O carrinho que sai desta junção igual ao que o banco tem fica
+            // registrado como "confirmado pelo banco" (a próxima releitura sabe
+            // que nada daqui está pendente). Com nada pendente, o efeito de
+            // gravação também não reenvia: o banco já tem exatamente essas
+            // linhas e quantidades (tirou ou acrescentou, tanto faz), e reenviar
+            // uma visão de segundos atrás apagaria o que o outro aparelho
+            // gravar nesse meio tempo. Se o catálogo ajustou a quantidade, o
+            // retrato difere e a gravação segue como sempre; aparelho que não
+            // estava alinhado também segue como sempre.
+            const fechar = (resultado: CartItem[]) => {
+              if (
+                semGravacaoNoMeio() &&
+                retratoDoCarrinho(resultado) === retratoDoBanco
+              ) {
+                retratoAlinhado.current = retratoDoBanco;
+                if (nadaPendente) {
+                  lastSyncedCart.current = JSON.stringify(resultado);
+                }
+              }
+              return resultado;
+            };
             const prevHash = JSON.stringify(prev);
             const reconHash = JSON.stringify(reconstructedCart);
             if (prevHash === reconHash && tombstones.size === 0) {
               // Skip updating state if the lists match exactly to prevent cycles
-              return comOCatalogo(prev);
+              return fechar(comOCatalogo(prev));
             }
 
             // If local cart is empty AND no tombstones exist, adopt remote
@@ -845,11 +957,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
               console.log(
                 "[CartContext] ✅ Remote cart adopted (local was empty, no tombstones).",
               );
-              return comOCatalogo(
-                reconstructedCart.map((item) => ({
-                  ...item,
-                  lastModifiedAt: item.lastModifiedAt || Date.now(),
-                })),
+              return fechar(
+                comOCatalogo(
+                  reconstructedCart.map((item) => ({
+                    ...item,
+                    lastModifiedAt: item.lastModifiedAt || Date.now(),
+                  })),
+                ),
               );
             }
 
@@ -866,6 +980,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
               ) {
                 return;
               }
+              // Outro aparelho tirou esta linha e nada daqui está pendente.
+              if (bancoMandaAgora && !linhasNoBanco.has(key)) return;
               mergedMap.set(key, {
                 ...item,
                 lastModifiedAt: item.lastModifiedAt || 0,
@@ -901,7 +1017,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             });
 
             const mergedArray = Array.from(mergedMap.values());
-            return comOCatalogo(mergedArray);
+            return fechar(comOCatalogo(mergedArray));
           });
           // Carrinho do banco lido e mesclado: agora a gravação sabe o que
           // vai substituir. No mesmo lote da junção (ver `remotoMesclado`).
@@ -973,6 +1089,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       // O carrinho do banco da conta anterior não diz nada sobre o desta.
       remotoMescladoRef.current = false;
       setRemotoMesclado(false);
+      retratoAlinhado.current = null;
       falhasDeLeitura.current = 0;
       cancelarReleitura();
       // Conta nova a ler: o carrinho NÃO é "vazio" enquanto a leitura não volta
@@ -1087,8 +1204,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     cartBc?.close();
   }, [userId, isLeader, syncFromDB]); // Added authLoading to deps
 
-  const syncPending = useRef(false);
-  const lastSyncedCart = useRef<string>("");
   // O carrinho mudou enquanto um sync ainda esperava o servidor: o efeito
   // abaixo pula (um por vez) e, sem isto, ninguém reagendava ao fim — a
   // alteração só ia ao banco na próxima mudança do carrinho. O contador
@@ -1154,6 +1269,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (cartHash === lastSyncedCart.current && !immediate) return;
 
       syncPending.current = true;
+      geracaoDaGravacao.current += 1;
       try {
         // Verify session before syncing to avoid transient auth errors
         const {
@@ -1212,6 +1328,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
         if (syncError) throw syncError;
         lastSyncedCart.current = cartHash;
+        // O banco acabou de receber ESTE carrinho (a conta ainda é a mesma).
+        if (userIdAtualRef.current === user.id) {
+          retratoAlinhado.current = retratoDoCarrinho(currentCart);
+        }
         falhasSeguidas.current = 0;
         syncPending.current = false;
         pedirReenvioSeDevido();
@@ -1222,6 +1342,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         // reagendamento limitado abaixo cobre o evento que já passou.
         reenvioDevido.current = true;
         agendarReenvioAposFalha();
+      } finally {
+        geracaoDaGravacao.current += 1;
       }
     },
     [user, authLoading, pedirReenvioSeDevido, agendarReenvioAposFalha],
