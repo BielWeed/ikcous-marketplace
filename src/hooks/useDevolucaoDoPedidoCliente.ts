@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import {
+  PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { LinhaDevolucaoDoCliente } from "@/lib/texto-estorno-do-cliente";
 
@@ -87,16 +92,27 @@ export function useDevolucaoDoPedidoCliente(
         setDesistiuDe(orderId);
         return;
       }
+      if (novaTentativaRef.current) clearTimeout(novaTentativaRef.current);
       novaTentativaRef.current = setTimeout(() => {
         void carregarRef.current();
       }, ATRASO_DA_NOVA_TENTATIVA_MS);
     };
     try {
-      const { data, error } = await supabase
-        .from("order_refunds")
-        .select("amount, status, solicitado_por, concluido_em")
-        .eq("order_id", orderId)
-        .order("created_at", { ascending: true });
+      // Rede "pendurada" conecta e não responde: sem prazo, "Conferindo sua
+      // devolução…" ficava na tela para sempre. O estouro cai no `catch` e
+      // conta como falha (entra na contagem de tentativas); a resposta que
+      // chegar tarde é descartada.
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase
+            .from("order_refunds")
+            .select("amount, status, solicitado_por, concluido_em")
+            .eq("order_id", orderId)
+            .order("created_at", { ascending: true }),
+        ),
+        PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+        () => erroDeConsultaSemResposta(),
+      );
 
       if (!valeAinda()) return;
 
@@ -129,6 +145,24 @@ export function useDevolucaoDoPedidoCliente(
     return () => {
       ativoRef.current = false;
       if (novaTentativaRef.current) clearTimeout(novaTentativaRef.current);
+    };
+  }, [habilitado, carregar]);
+
+  // Tela aberta por muito tempo, ou conexão que caiu e voltou: relê ao voltar
+  // à aba ou à rede (a guarda de rodada de `carregar` descarta a resposta
+  // velha; o que já está na tela fica até a nova chegar). Depende do id do
+  // pedido e de `habilitado`, via `carregar`.
+  useEffect(() => {
+    if (!habilitado) return;
+    const aoVoltarAba = () => {
+      if (document.visibilityState === "visible") void carregar();
+    };
+    const aoVoltarConexao = () => void carregar();
+    document.addEventListener("visibilitychange", aoVoltarAba);
+    window.addEventListener("online", aoVoltarConexao);
+    return () => {
+      document.removeEventListener("visibilitychange", aoVoltarAba);
+      window.removeEventListener("online", aoVoltarConexao);
     };
   }, [habilitado, carregar]);
 

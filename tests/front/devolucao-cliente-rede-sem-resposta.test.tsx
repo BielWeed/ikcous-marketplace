@@ -207,6 +207,44 @@ describe("devolução com rede conectada e sem resposta", () => {
     },
   );
 
+  it("pedido registrado: o protocolo volta na hora, sem esperar a releitura do pedido", async () => {
+    await montar();
+    consultasPendentes = true;
+    let desfecho: unknown;
+    await act(async () => {
+      void leitura.solicitar(DADOS).then((r) => {
+        desfecho = r;
+      });
+    });
+
+    // Nenhum relógio andou: antes, a cliente esperava até 12 s em
+    // "Registrando o pedido…" por causa da releitura que vinha depois.
+    expect(desfecho).toMatchObject({ ok: true, valor: { protocolo: "DV1" } });
+
+    // A releitura em segundo plano que pendura vira erro de leitura, mas o
+    // protocolo já entregue não se perde.
+    await avancar(12_000);
+    expect(leitura.erro).toBe(true);
+    expect(leitura.carregando).toBe(false);
+    expect(desfecho).toMatchObject({ ok: true, valor: { protocolo: "DV1" } });
+  });
+
+  it("pedido registrado: a releitura segue em segundo plano e atualiza o pedido", async () => {
+    await montar();
+    expect(leitura.devolucoes).toHaveLength(0);
+    lista = [DEVOLUCAO];
+    await act(async () => {
+      await leitura.solicitar(DADOS);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(chamadas("devolucoes_do_pedido")).toBeGreaterThan(1);
+    expect(leitura.devolucoes).toHaveLength(1);
+    expect(leitura.erro).toBe(false);
+  });
+
   it("a leitura inicial termina em erro em vez de manter o giro", async () => {
     consultasPendentes = true;
     await montar();
