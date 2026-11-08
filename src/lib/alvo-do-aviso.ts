@@ -22,7 +22,20 @@ export function caminhoDoPedidoNoAviso(orderId: string): string {
 export type AcaoDoToqueNoAviso =
   | { acao: "focar"; indice: number }
   | { acao: "navegar"; indice: number }
+  // Painel de pedidos: a janela é só focada e o APP é avisado de qual pedido
+  // abrir (ele decide se pode: anotação digitada e não salva segura a troca).
+  // Recarregar a janela (`navegar`) apagaria esse texto.
+  | { acao: "avisar-app"; indice: number; pedidoId: string }
   | { acao: "abrir" };
+
+/** Tipo da mensagem que o Service Worker manda à janela do painel (e que o app
+ * reconhece em `receptor-do-pedido-do-aviso.ts`). Mensagem desconhecida é
+ * ignorada por quem não a entende, então SW novo + app velho (e o inverso) não
+ * quebram. */
+export const TIPO_ABRIR_PEDIDO_DO_AVISO = "ikcous:abrir-pedido-do-aviso";
+
+/** Tela do painel que guarda anotação/rastreio só em estado local. */
+const CAMINHO_DOS_PEDIDOS_DO_PAINEL = "/admin-orders";
 
 function lerUrl(url: string): URL | null {
   try {
@@ -42,7 +55,8 @@ function lerUrl(url: string): URL | null {
  *   antes desta função.
  * - Senão, janela no mesmo caminho mas com outros parâmetros (outro pedido):
  *   navega até o alvo. Antes só se dava foco e a cliente ficava vendo o
- *   pedido errado.
+ *   pedido errado. Exceção: no painel (`/admin-orders?id=X`) NÃO se navega —
+ *   `avisar-app` (a ficha aberta pode ter texto não salvo).
  * - Senão: abre uma janela nova (não derruba a tela em que a cliente está).
  */
 export function decidirToqueNoAviso(
@@ -72,7 +86,10 @@ export function decidirToqueNoAviso(
     if (jaNoDestino) return { acao: "focar", indice: i };
     if (navegavel === -1) navegavel = i;
   }
-  return navegavel === -1
-    ? { acao: "abrir" }
-    : { acao: "navegar", indice: navegavel };
+  if (navegavel === -1) return { acao: "abrir" };
+  const pedidoId = alvo.searchParams.get("id");
+  if (alvo.pathname === CAMINHO_DOS_PEDIDOS_DO_PAINEL && pedidoId) {
+    return { acao: "avisar-app", indice: navegavel, pedidoId };
+  }
+  return { acao: "navegar", indice: navegavel };
 }

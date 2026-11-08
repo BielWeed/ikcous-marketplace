@@ -96,6 +96,57 @@ describe("decidirToqueNoAviso", () => {
       janelas: ["https://outra.example/order-details?id=A"],
       esperado: { acao: "abrir" },
     },
+    // Aviso "Pedido novo" do painel (notify-new-order: /admin-orders?id=B). A
+    // ficha aberta guarda anotação e rastreio só em estado local; navegar a
+    // janela = recarga completa = texto perdido. Aqui o app é AVISADO e decide.
+    {
+      nome: "painel: janela na ficha de OUTRO pedido, aviso de pedido novo: avisa o app (não recarrega)",
+      alvo: `${ORIGEM}/admin-orders?id=B`,
+      janelas: [`${ORIGEM}/admin-orders?id=A`],
+      esperado: { acao: "avisar-app", indice: 0, pedidoId: "B" },
+    },
+    {
+      nome: "painel: janela na LISTA de pedidos (sem id): avisa o app",
+      alvo: `${ORIGEM}/admin-orders?id=B`,
+      janelas: [`${ORIGEM}/admin-orders`],
+      esperado: { acao: "avisar-app", indice: 0, pedidoId: "B" },
+    },
+    {
+      nome: "painel: já está na ficha do pedido do aviso: só foca",
+      alvo: `${ORIGEM}/admin-orders?id=B`,
+      janelas: [`${ORIGEM}/admin-orders?id=B`],
+      esperado: { acao: "focar", indice: 0 },
+    },
+    {
+      nome: "painel: duas janelas, a segunda já na ficha do aviso: foca a segunda (não avisa a primeira)",
+      alvo: `${ORIGEM}/admin-orders?id=B`,
+      janelas: [`${ORIGEM}/admin-orders?id=A`, `${ORIGEM}/admin-orders?id=B`],
+      esperado: { acao: "focar", indice: 1 },
+    },
+    {
+      nome: "painel: janela em OUTRA tela do painel (PDV) e aviso de pedido: abre nova (como hoje)",
+      alvo: `${ORIGEM}/admin-orders?id=B`,
+      janelas: [`${ORIGEM}/admin-pdv`],
+      esperado: { acao: "abrir" },
+    },
+    {
+      nome: "painel: sem janela aberta: abre nova (como hoje)",
+      alvo: `${ORIGEM}/admin-orders?id=B`,
+      janelas: [],
+      esperado: { acao: "abrir" },
+    },
+    {
+      nome: "painel: aviso sem id (só o caminho) e janela na ficha: foca, nunca avisa",
+      alvo: `${ORIGEM}/admin-orders`,
+      janelas: [`${ORIGEM}/admin-orders?id=A`],
+      esperado: { acao: "focar", indice: 0 },
+    },
+    {
+      nome: "painel: id do aviso vazio não vira aviso ao app (cai no navegar de sempre)",
+      alvo: `${ORIGEM}/admin-orders?id=&x=1`,
+      janelas: [`${ORIGEM}/admin-orders?id=A`],
+      esperado: { acao: "navegar", indice: 0 },
+    },
     {
       nome: "endereço de janela inválido é ignorado, sem quebrar",
       alvo: `${ORIGEM}/order-details?id=A`,

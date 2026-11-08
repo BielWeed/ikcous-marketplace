@@ -1955,6 +1955,13 @@ const LIMITE_DE_CARONA_NA_CONSULTA_MS = 15_000;
 // outra coisa. O estouro vira falha comum (`ordersLoadError`), nunca aborto.
 export const PRAZO_DA_CONSULTA_DE_PEDIDOS_MS = 20_000;
 
+// Quanto a TELA do painel espera pela lista de pedidos (`get_admin_orders_paged`,
+// uma página). Mesma razão da leitura da cliente acima: rede "pendurada"
+// conecta e não responde, e a lista ficava apagada ("Sincronizando pedidos…")
+// para sempre, sem erro e sem "Tentar de novo". 20 s, o mesmo prazo por página
+// do CSV. O estouro vira falha comum (`erroDaListagem`), nunca aborto.
+export const PRAZO_DA_LISTA_DO_PAINEL_MS = 20_000;
+
 function consultarPedidosDoCliente(
   userId: string,
   signal: AbortSignal,
@@ -2292,8 +2299,9 @@ export function useOrders(
       if (adminOrdersAbortControllerRef.current) {
         adminOrdersAbortControllerRef.current.abort();
       }
-      adminOrdersAbortControllerRef.current = new AbortController();
-      const signal = adminOrdersAbortControllerRef.current.signal;
+      const controlador = new AbortController();
+      adminOrdersAbortControllerRef.current = controlador;
+      const signal = controlador.signal;
       const idsNoInicio = new Set(ordersRef.current.map((pedido) => pedido.id));
 
       try {
@@ -2316,7 +2324,16 @@ export function useOrders(
           p_canal: canal || "all",
         }).abortSignal(signal);
 
-        const { data, error } = await query;
+        // Prazo da ESPERA da tela: o erro de estouro é uma falha comum, nunca
+        // um aborto (o catch abaixo engole aborto em silêncio e devolveria a
+        // lista vazia sem erro e sem "Tentar de novo"). `rpc` devolve um
+        // "thenable", não uma Promise: sem o `Promise.resolve` o tipo do
+        // retorno vira `unknown`.
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(query),
+          PRAZO_DA_LISTA_DO_PAINEL_MS,
+          () => erroDeConsultaSemResposta(),
+        );
 
         if (error) throw error;
 
@@ -2355,16 +2372,29 @@ export function useOrders(
         if (
           err?.name === "AbortError" ||
           err?.message === "Fetch is aborted" ||
-          err?.message?.includes("aborted")
+          err?.message?.includes("aborted") ||
+          // Consulta já substituída por outra (troca de filtro): o prazo
+          // dela estourando não é falha da lista que está na tela.
+          signal.aborted
         ) {
           return { orders: [], total: 0 };
         }
         console.error("Error loading orders:", err);
+        // Estourou o prazo: larga a requisição pendurada. Aqui e não no
+        // estouro: abortar antes faria a consulta rejeitar com AbortError e
+        // vencer a corrida contra o erro do prazo.
+        if (ehConsultaSemResposta(err)) controlador.abort();
         setErroDaListagem(
           "Não conseguimos carregar os pedidos agora. Seus pedidos não sumiram.",
         );
         // Recarga silenciosa evita só o toast; a falha permanece na tela.
-        if (!silent) toast.error("Erro ao carregar pedidos");
+        if (!silent) {
+          toast.error(
+            ehConsultaSemResposta(err)
+              ? err.message
+              : "Erro ao carregar pedidos",
+          );
+        }
         return { orders: [], total: 0 };
       } finally {
         // Só a consulta mais nova desliga o carregando: a cancelada termina
