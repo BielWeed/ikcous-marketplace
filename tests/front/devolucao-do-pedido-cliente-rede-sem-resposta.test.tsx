@@ -6,7 +6,7 @@
 // "o dinheiro volta sozinho" / "fale com a loja". Aqui o estouro conta como
 // falha (entra na contagem de tentativas) e a leitura é refeita quando a
 // conexão volta. Só a rede é dublada; o hook é o de verdade.
-import { act } from "react";
+import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -43,8 +43,14 @@ let raiz: Root;
 let hospedeiro: HTMLDivElement;
 let leitura: Leitura;
 
+function aoLer(l: Leitura) {
+  leitura = l;
+}
 function Sonda() {
-  leitura = useDevolucaoDoPedidoCliente("pedido-1", true);
+  const l = useDevolucaoDoPedidoCliente("pedido-1", true);
+  useEffect(() => {
+    aoLer(l);
+  });
   return null;
 }
 async function avancar(ms: number) {
