@@ -912,6 +912,24 @@ export function ShippingCalculator({
     if (alvo) calculateShipping(alvo, false);
   };
 
+  // A REDE VOLTOU com "Sem conexão com a internet." na tela: o aviso era
+  // verdade quando saiu e deixou de ser — sem isto ele ficava até a cliente
+  // tocar em "Tentar de novo". Recota sozinho, UMA vez por volta (só a virada
+  // de "sem rede" para "com rede" dispara, nunca o estado) e só se o erro
+  // da tela é o da falta de conexão: outro erro (fora da área, transportadora
+  // fora do ar) não é desfeito por voltar a internet.
+  const semRedeVistoRef = useRef(isOffline);
+  useEffect(() => {
+    const estavaSemRede = semRedeVistoRef.current;
+    semRedeVistoRef.current = isOffline;
+    if (!estavaSemRede || isOffline) return;
+    if (error !== MENSAGEM_SEM_CONEXAO_FRETE) return;
+    const alvo = cepAdotadoRef.current;
+    if (!alvo || cart.length === 0) return;
+    calculateShipping(alvo, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOffline]);
+
   const destinoValido = soDigitosDoCep(cepDestino).length === 8;
   // Derivado EM RENDER: no primeiro pintar depois de o destino aparecer,
   // antes de o efeito de adoção rodar, o status já é "cotando" — nunca
