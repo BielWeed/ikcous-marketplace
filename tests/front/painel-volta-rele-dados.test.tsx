@@ -205,7 +205,10 @@ it("CRM mantém retrato, relê velho e não duplica leitura pendente ou fresca",
   expect(h.rpc).toHaveBeenCalledTimes(2);
   expect(host.textContent).toContain("3");
   expect(host.textContent).not.toContain("esqueleto");
-  await avancar(31_000);
+  // A leitura pendente ainda esta dentro do prazo de 20 s (PRAZO_DA_CONSULTA_DO_PAINEL_MS):
+  // voltar de novo nao abre uma segunda leitura. Depois do prazo ela vira falha e solta a
+  // fila (coberto em crm-consultas-penduradas-tem-prazo.test.tsx).
+  await avancar(15_000);
   await voltar();
   await avancar(300);
   expect(h.rpc).toHaveBeenCalledTimes(2);
