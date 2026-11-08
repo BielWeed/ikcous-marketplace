@@ -11,6 +11,11 @@ import {
 } from "@/lib/banners-da-vitrine";
 import { DataVault } from "@/lib/dataVault";
 import { imagemAbre } from "@/lib/imagem-abre";
+import {
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import { supabase } from "@/lib/supabase";
 import type { Banner } from "@/types";
@@ -18,6 +23,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const FETCH_THROTTLE = 60000; // 1 minute throttle for network checks
+
+// Prazo da ESPERA da tela numa gravação de banner (mesmos 20 s das demais
+// gravações do painel). Rede pendurada conecta e não responde: sem prazo o
+// editor ficava em "Salvando…" e a lista com todos os botões apagados. O prazo
+// só encerra a espera — o servidor pode ter gravado —, por isso a frase NÃO diz
+// que falhou: diz que não houve resposta e manda conferir a lista.
+const PRAZO_DA_GRAVACAO_DO_BANNER_MS = 20_000;
+const SEM_RESPOSTA_DO_BANNER = "Sem resposta da rede. Não sabemos se";
+const CONFIRA_A_LISTA = "Confira na lista de banners antes de tentar de novo.";
+const TEXTO_SEM_RESPOSTA_AO_ADICIONAR = `${SEM_RESPOSTA_DO_BANNER} o banner foi salvo. ${CONFIRA_A_LISTA}`;
+const TEXTO_SEM_RESPOSTA_AO_EDITAR = `${SEM_RESPOSTA_DO_BANNER} a mudança foi salva. ${CONFIRA_A_LISTA}`;
+const TEXTO_SEM_RESPOSTA_AO_REORDENAR = `${SEM_RESPOSTA_DO_BANNER} a nova ordem foi salva. ${CONFIRA_A_LISTA}`;
+const TEXTO_SEM_RESPOSTA_AO_EXCLUIR = `${SEM_RESPOSTA_DO_BANNER} o banner foi excluído. ${CONFIRA_A_LISTA}`;
 
 export async function normalizeBannersOrder(
   pos: "home_top" | "home_middle" | "home_bottom",
@@ -236,6 +254,15 @@ export function useBanners(adminMode = false) {
     [],
   );
 
+  // Gravação que estourou o prazo: a tela é solta com o aviso da operação e a
+  // lista é relida (sem esperar) para mostrar o que o servidor de fato guardou.
+  const aoFicarSemResposta = (erro: unknown): boolean => {
+    if (!ehConsultaSemResposta(erro)) return false;
+    toast.warning((erro as Error).message, { duration: 12_000 });
+    void fetchBanners(false, true);
+    return true;
+  };
+
   // Painel: o cache pode ter sido semeado pelo pedido do boot ANTES do login,
   // e sem sessão o banco só devolve os banners públicos (pausados, agendados e
   // vencidos ficam de fora). O throttle de 60 s tratava isso como fresco e a
@@ -364,35 +391,41 @@ export function useBanners(adminMode = false) {
         "Acesso negado: Apenas administradores podem adicionar banners.",
       );
     try {
-      const { data, error } = await supabase
-        .from("banners")
-        .insert([
-          {
-            image_url: banner.imageUrl,
-            title: banner.title,
-            link: banner.link,
-            position: banner.position,
-            active: banner.active,
-            order: banner.order,
-            subtitle: banner.subtitle,
-            title_color: banner.titleColor,
-            subtitle_color: banner.subtitleColor,
-            button_text: banner.buttonText,
-            button_bg_color: banner.buttonBgColor,
-            button_text_color: banner.buttonTextColor,
-            font_family: banner.fontFamily,
-            overlay_color: banner.overlayColor,
-            overlay_opacity: banner.overlayOpacity,
-            badge_text: banner.badgeText,
-            template_type: banner.templateType,
-            product_id: banner.productId || null,
-            start_date: banner.startDate || null,
-            end_date: banner.endDate || null,
-            show_text_overlay: banner.showTextOverlay ?? true,
-          },
-        ])
-        .select()
-        .single();
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase
+            .from("banners")
+            .insert([
+              {
+                image_url: banner.imageUrl,
+                title: banner.title,
+                link: banner.link,
+                position: banner.position,
+                active: banner.active,
+                order: banner.order,
+                subtitle: banner.subtitle,
+                title_color: banner.titleColor,
+                subtitle_color: banner.subtitleColor,
+                button_text: banner.buttonText,
+                button_bg_color: banner.buttonBgColor,
+                button_text_color: banner.buttonTextColor,
+                font_family: banner.fontFamily,
+                overlay_color: banner.overlayColor,
+                overlay_opacity: banner.overlayOpacity,
+                badge_text: banner.badgeText,
+                template_type: banner.templateType,
+                product_id: banner.productId || null,
+                start_date: banner.startDate || null,
+                end_date: banner.endDate || null,
+                show_text_overlay: banner.showTextOverlay ?? true,
+              },
+            ])
+            .select()
+            .single(),
+        ),
+        PRAZO_DA_GRAVACAO_DO_BANNER_MS,
+        () => erroDeConsultaSemResposta(TEXTO_SEM_RESPOSTA_AO_ADICIONAR),
+      );
 
       if (error) throw error;
 
@@ -441,7 +474,7 @@ export function useBanners(adminMode = false) {
       return data;
     } catch (error) {
       console.error("Error adding banner:", error);
-      toast.error("Erro ao adicionar banner.");
+      if (!aoFicarSemResposta(error)) toast.error("Erro ao adicionar banner.");
       throw error;
     }
   };
@@ -522,11 +555,13 @@ export function useBanners(adminMode = false) {
 
       // `.select("id")`: o banco responde sucesso com 0 linhas quando a
       // política de acesso barra o UPDATE (ou o banner não existe mais).
-      const { data: gravadas, error } = await supabase
-        .from("banners")
-        .update(dbUpdates)
-        .eq("id", id)
-        .select("id");
+      const { data: gravadas, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase.from("banners").update(dbUpdates).eq("id", id).select("id"),
+        ),
+        PRAZO_DA_GRAVACAO_DO_BANNER_MS,
+        () => erroDeConsultaSemResposta(TEXTO_SEM_RESPOSTA_AO_EDITAR),
+      );
 
       if (error) throw error;
       if (!gravadas?.length) {
@@ -565,7 +600,12 @@ export function useBanners(adminMode = false) {
     } catch (error) {
       console.error("Error updating banner:", error);
       applyLocalBanners(previousBanners);
-      if (error instanceof Error && error.name === "BannerIndisponivel") {
+      if (aoFicarSemResposta(error)) {
+        // Aviso e releitura já saíram: nada a acrescentar.
+      } else if (
+        error instanceof Error &&
+        error.name === "BannerIndisponivel"
+      ) {
         toast.error(
           "Este banner foi excluído em outro aparelho ou você não tem mais acesso a ele.",
         );
@@ -647,17 +687,23 @@ export function useBanners(adminMode = false) {
         applyLocalBanners(cachedBanners);
       }
 
-      const { error } = await supabase.rpc("reorder_banners_atomic", {
-        p_position: activePosition,
-        p_banner_id_1: activeBannerId,
-        p_banner_id_2: overBannerId,
-      });
+      const { error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase.rpc("reorder_banners_atomic", {
+            p_position: activePosition,
+            p_banner_id_1: activeBannerId,
+            p_banner_id_2: overBannerId,
+          }),
+        ),
+        PRAZO_DA_GRAVACAO_DO_BANNER_MS,
+        () => erroDeConsultaSemResposta(TEXTO_SEM_RESPOSTA_AO_REORDENAR),
+      );
 
       if (error) throw error;
     } catch (error) {
       applyLocalBanners(previousBanners);
       console.error("Error reordering banners:", error);
-      toast.error("Erro ao reordenar banners.");
+      if (!aoFicarSemResposta(error)) toast.error("Erro ao reordenar banners.");
     }
   };
 
@@ -668,11 +714,13 @@ export function useBanners(adminMode = false) {
       );
     try {
       // `.select("id")`: 0 linhas apagadas também vem como sucesso.
-      const { data: apagadas, error } = await supabase
-        .from("banners")
-        .delete()
-        .eq("id", id)
-        .select("id");
+      const { data: apagadas, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase.from("banners").delete().eq("id", id).select("id"),
+        ),
+        PRAZO_DA_GRAVACAO_DO_BANNER_MS,
+        () => erroDeConsultaSemResposta(TEXTO_SEM_RESPOSTA_AO_EXCLUIR),
+      );
 
       if (error) throw error;
       if (!apagadas?.length) throw new Error("Nenhum banner foi apagado.");
@@ -693,7 +741,7 @@ export function useBanners(adminMode = false) {
       toast.success("Banner excluído com sucesso!");
     } catch (error) {
       console.error("Error deleting banner:", error);
-      toast.error("Erro ao excluir banner.");
+      if (!aoFicarSemResposta(error)) toast.error("Erro ao excluir banner.");
       throw error;
     }
   };
