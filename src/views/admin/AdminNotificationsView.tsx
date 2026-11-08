@@ -115,6 +115,11 @@ const TEXTO_DE_LISTA_CORTADA = new Map<TipoDeAviso, string>([
     "avaliacao",
     "Há mais avaliações sem resposta do que cabem nesta tela: aqui estão as mais novas. Veja o resto em Avaliações.",
   ],
+  [
+    // O sino conta todos os pagamentos por marcar; a lista traz os mais recentes.
+    "recebimento",
+    "Há mais pagamentos por marcar do que cabem nesta tela: aqui estão os mais recentes. Quando você marcar estes, os mais antigos aparecem.",
+  ],
 ]);
 
 function formatarQuando(quando: string): string {
@@ -303,8 +308,8 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
           ? "Confira o pedido"
           : ""
       : "";
-  // Cancelamento não ganha selo "Pago": o hook também entrega pedidos já estornados
-  // com a mesma frase, e o selo afirmaria um estado financeiro que ele não sabe.
+  // Cancelamento não ganha selo "Pago": o aviso não carrega o estado financeiro
+  // do pedido (só a frase da situação), e o selo afirmaria o que ele não sabe.
   const status = recebimento ? "Entregue" : "";
 
   return (
@@ -656,7 +661,9 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
         />
         {avisos.length > 0 && (
           <p className={`py-2 text-center ${ROTULO_MONO}`}>
-            {avisos.length} {avisos.length === 1 ? "aviso" : "avisos"} no total
+            {avisos.length} {avisos.length === 1 ? "aviso" : "avisos"}{" "}
+            {/* Lista cortada: dizer "no total" seria falso, o sino conta mais. */}
+            {listasCortadas.length > 0 ? "mostrados" : "no total"}
           </p>
         )}
       </div>

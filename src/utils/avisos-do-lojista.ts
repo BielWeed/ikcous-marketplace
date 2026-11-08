@@ -102,6 +102,11 @@ interface PedidoDoCancelamento {
   status: string | null;
   cancelled_after_shipping: boolean | null;
   /**
+   * Quando a lojista tocou em "O produto voltou" (`returned_to_seller_at`).
+   * Opcional: ausente = lido sem o campo, tratado como "ainda nao voltou".
+   */
+  returned_to_seller_at?: string | null;
+  /**
    * `customer_data->>pickup_address`: o retrato do endereco da loja gravado so'
    * no pedido de RETIRADA NA LOJA (a mesma regra de
    * `enderecoDeRetiradaDoCustomerData`). Opcional: ausente/vazio = entrega.
@@ -119,8 +124,8 @@ export interface LinhaDeCancelamento {
   marketplace_orders: PedidoDoCancelamento | PedidoDoCancelamento[] | null;
 }
 
-// `estornado` entra: a rotina pode ter devolvido o dinheiro antes de a tela
-// abrir, e o cancelamento continua tendo sido do cliente.
+// `estornado` entra na leitura (o cancelamento foi do cliente), mas o aviso so
+// fica se ainda faltar algo: ver `selecionarCancelamentosDoCliente`.
 const PAGAMENTO_QUE_ENTROU = ["pago", "pago_apos_expirar", "estornado"];
 
 function ehRetirada(pedido: PedidoDoCancelamento): boolean {
@@ -144,6 +149,13 @@ function ehRetirada(pedido: PedidoDoCancelamento): boolean {
  * ATENCAO: esta e' a mesma regra do push da rotina de 10 minutos
  * (supabase/functions/_shared/aviso-de-cancelamento-do-cliente.ts); mudou aqui,
  * mude la.
+ *
+ * O aviso SOME quando a lojista ja fez o que ele pede (o pedido embutido e
+ * lido agora, nao no instante do cancelamento): produto que saiu e ja foi
+ * marcado como "voltou" (`returned_to_seller_at`), ou produto que nao saiu e
+ * cujo dinheiro ja foi devolvido (`payment_status` = estornado). Produto que
+ * saiu e foi estornado mas nao voltou continua: o retorno ainda falta.
+ * (O push da rotina de 10 minutos nao precisa disto: sai na hora do cancelamento.)
  *
  * Autor ausente de `admins` conta como nao-admin: so admin tem papel para
  * cancelar pedido de OUTRA pessoa, e o dono so cancela o que e dele.
@@ -171,6 +183,10 @@ export function selecionarCancelamentosDoCliente(
       // ou enviar: produto que ja saiu tem outro assunto (o transporte).
       if (jaSaiu) continue;
     } else if (!PAGAMENTO_QUE_ENTROU.includes(pagamento)) {
+      continue;
+    }
+    // Ja resolvido pela lojista: o aviso nao manda fazer de novo o que foi feito.
+    if (jaSaiu ? !!pedido.returned_to_seller_at : pagamento === "estornado") {
       continue;
     }
     escolhidos.push({
