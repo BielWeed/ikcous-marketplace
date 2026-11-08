@@ -3454,12 +3454,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           const chaveDoNovo = chaveDoRascunhoDoProduto(userId);
           if (chaveDoNovo) localStorage.removeItem(chaveDoNovo);
           const motivo = criado.variantesNaoSalvas.motivo;
-          toast.error(
-            `O produto foi criado, mas as variações NÃO foram salvas.${
-              motivo ? ` ${motivo}` : ""
-            } Você está na edição dele: corrija e toque em Salvar para tentar de novo -- isso atualiza este produto, não cria outro.`,
-            { duration: 30000 },
-          );
+          // Sem resposta da rede o hook já avisou, com a frase certa (não se
+          // sabe se as variações entraram: conferir antes de restaurar).
+          if (!criado.variantesNaoSalvas.semResposta) {
+            toast.error(
+              `O produto foi criado, mas as variações NÃO foram salvas.${
+                motivo ? ` ${motivo}` : ""
+              } Você está na edição dele: corrija e toque em Salvar para tentar de novo -- isso atualiza este produto, não cria outro.`,
+              { duration: 30000 },
+            );
+          }
           setIsSubmitting(false);
           onSetDirty?.(false);
           onNavigate("admin-product-form", criado.id, true);

@@ -337,33 +337,100 @@ describe("Gravar e abrir produto no painel: a espera da tela tem prazo", () => {
       );
     });
 
-    it("as variações penduradas depois do produto criado também soltam, dizendo que o produto existe", async () => {
+    const comGrade = (sku?: string) =>
+      dadosNovos({
+        variants: [
+          {
+            id: "temp-1",
+            name: "Cor",
+            value: "Rosa",
+            ...(sku ? { sku } : {}),
+            stockIncrement: 1,
+            active: true,
+          },
+        ],
+      });
+
+    it("as variações penduradas depois do produto criado NÃO viram erro: devolve o produto (com o id) marcado como grade sem resposta", async () => {
+      // Se lançasse erro a tela perderia o id e o "Publicar" criaria o produto
+      // de novo. O contrato é o mesmo da recusa do banco: produto + grade não
+      // salva, para a tela levar à edição dele e mover o rascunho.
       banco.insereVariantes.mockImplementation(PENDURADO);
-      const { desfecho } = disparar(() =>
-        api.addProduct(
-          dadosNovos({
-            variants: [
-              {
-                id: "temp-1",
-                name: "Cor",
-                value: "Rosa",
-                stockIncrement: 1,
-                active: true,
-              },
-            ],
-          }),
-        ),
-      );
+      const { desfecho } = disparar(() => api.addProduct(comGrade()));
       await passar(PRAZO_DE_GRAVAR_O_PRODUTO_MS);
+      await passar(PRAZO_DO_QUE_SOBRA_APOS_GRAVAR_O_PRODUTO_MS);
 
       expect(desfecho.settled).toBe(true);
-      expect(ehConsultaSemResposta(desfecho.erro)).toBe(true);
+      expect(desfecho.erro).toBeUndefined();
+      const criado = desfecho.valor as any;
+      expect(criado?.id).toBe("novo-1");
+      expect(criado.variantesNaoSalvas).toEqual({
+        motivo: MENSAGEM_PRODUTO_NOVO_GRADE_SEM_RESPOSTA,
+        semResposta: true,
+      });
+      // Um aviso só, honesto: o produto existe, não se sabe se a grade entrou,
+      // e manda conferir antes de restaurar o rascunho (para não repetir).
       expect(banco.erro).toHaveBeenCalledTimes(1);
-      // O produto existe (isso se sabe); o que não se sabe é se a grade entrou.
-      const [frase] = banco.erro.mock.calls[0];
+      const [frase, opcoes] = banco.erro.mock.calls[0];
       expect(frase).toBe(MENSAGEM_PRODUTO_NOVO_GRADE_SEM_RESPOSTA);
-      expect(frase).toContain("publicar de novo");
+      expect(frase).toContain("criado");
+      expect(frase).toContain("confira as variações");
+      expect(frase).toContain("restaurar o rascunho");
+      expect(frase).not.toMatch(/não foram salvas/i);
+      expect(opcoes).toEqual({ duration: 30000 });
       expect(banco.sucesso).not.toHaveBeenCalled();
+    });
+
+    it("grade que responde DEPOIS do prazo não muda nada na tela (o produto já foi devolvido)", async () => {
+      let liberar: (v: unknown) => void = () => {};
+      banco.insereVariantes.mockImplementation(
+        () => new Promise((resolve) => (liberar = resolve)),
+      );
+      const { desfecho } = disparar(() => api.addProduct(comGrade()));
+      await passar(PRAZO_DE_GRAVAR_O_PRODUTO_MS);
+      await passar(PRAZO_DO_QUE_SOBRA_APOS_GRAVAR_O_PRODUTO_MS);
+      expect((desfecho.valor as any)?.variantesNaoSalvas).toBeDefined();
+
+      await act(async () => {
+        liberar({ data: [{ id: "v-1" }], error: null });
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(banco.erro).toHaveBeenCalledTimes(1);
+      expect(banco.sucesso).not.toHaveBeenCalled();
+    });
+
+    it("conferir SKU pendurado E a grade pendurada: o cadastro segue sem veredito e termina devolvendo o produto, não erro", async () => {
+      banco.leSkus.mockImplementation(PENDURADO);
+      banco.insereVariantes.mockImplementation(PENDURADO);
+      const { desfecho } = disparar(() => api.addProduct(comGrade("AB-1")));
+
+      await passar(PRAZO_DE_CONFERIR_O_SKU_MS);
+      await passar(PRAZO_DE_GRAVAR_O_PRODUTO_MS);
+      await passar(PRAZO_DO_QUE_SOBRA_APOS_GRAVAR_O_PRODUTO_MS);
+
+      expect(desfecho.settled).toBe(true);
+      expect(desfecho.erro).toBeUndefined();
+      expect((desfecho.valor as any)?.id).toBe("novo-1");
+      expect((desfecho.valor as any)?.variantesNaoSalvas?.semResposta).toBe(
+        true,
+      );
+      expect(banco.insereProduto).toHaveBeenCalledTimes(1);
+    });
+
+    it("recusa do banco na grade continua com o aviso e o retorno de antes (sem semResposta)", async () => {
+      banco.insereVariantes.mockResolvedValue({
+        data: null,
+        error: { code: "42501", message: "permission denied" },
+      });
+      const { desfecho } = disparar(() => api.addProduct(comGrade()));
+      await passar(0);
+
+      const criado = desfecho.valor as any;
+      expect(criado?.id).toBe("novo-1");
+      expect(criado.variantesNaoSalvas.semResposta).toBeUndefined();
+      expect(String(banco.erro.mock.calls[0][0])).toContain(
+        "VARIAÇÕES não foram salvas",
+      );
     });
 
     it("reler o catálogo pendurado NÃO segura o cadastro: o produto já foi criado, mostra Salvo", async () => {

@@ -11,9 +11,13 @@
 //   já ter sido criado; apagar o rascunho aqui é o que levava ao produto em
 //   dobro) e a tela não dá "Salvo" nem sai para a lista.
 // - Salvar edição sem resposta: o mesmo.
+// - Grade sem resposta DEPOIS de o produto novo ser criado (o hook devolve o
+//   produto com `variantesNaoSalvas.semResposta`): a tela vai para a edição dele
+//   e tira a chave de produto novo, para o "Publicar" não criar a cópia.
 import {
   MENSAGEM_PRODUTO_EDICAO_SEM_RESPOSTA,
   MENSAGEM_PRODUTO_LEITURA_SEM_RESPOSTA,
+  MENSAGEM_PRODUTO_NOVO_GRADE_SEM_RESPOSTA,
   MENSAGEM_PRODUTO_NOVO_SEM_RESPOSTA,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
@@ -289,5 +293,68 @@ describe("AdminProductFormView — rede sem resposta", () => {
     expect(onNavigate).not.toHaveBeenCalled();
     expect(armazem.has(CHAVE_EDICAO)).toBe(true);
     expect(JSON.parse(armazem.get(CHAVE_EDICAO)!).name).toBe("Nome editado");
+  });
+
+  it("grade sem resposta depois de o produto ser criado: vai para a edição, move o rascunho e o Publicar NÃO cria segundo produto", async () => {
+    addProduct.mockResolvedValue({
+      id: "novo-1",
+      variantesNaoSalvas: {
+        motivo: MENSAGEM_PRODUTO_NOVO_GRADE_SEM_RESPOSTA,
+        semResposta: true,
+      },
+    });
+    await montar();
+    await act(async () => {
+      digitarInput("product-name", "Produto Teste");
+      digitarTextarea("product-description", "Descrição de teste");
+      digitarInput("product-sale-price", "1000");
+      digitarInput("product-stock", "5");
+      escolherCategoriaDoProduto("Geral");
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    await passar(1500);
+    expect(armazem.has(CHAVE_NOVO)).toBe(true);
+
+    await act(async () => {
+      botaoDaBarra("Publicar")!.click();
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await passar(2000);
+
+    expect(addProduct).toHaveBeenCalledTimes(1);
+    // Vai para a edição do produto criado (bypass do aviso de alterações).
+    expect(onNavigate).toHaveBeenCalledExactlyOnceWith(
+      "admin-product-form",
+      "novo-1",
+      true,
+    );
+    // A chave de produto NOVO sumiu e não volta (nem recarregando); o
+    // rascunho foi para a chave de edição, marcado como grade pendente.
+    expect(armazem.has(CHAVE_NOVO)).toBe(false);
+    const daEdicao = JSON.parse(
+      armazem.get("ikcous_product_form_draft_edit_novo-1:lojista-1") ?? "{}",
+    );
+    expect(daEdicao.name).toBe("Produto Teste");
+    expect(daEdicao.variacoesPendentes).toBe(true);
+    // Sem o aviso "NÃO foram salvas" (não se sabe): o do hook é o único.
+    expect(toastError).not.toHaveBeenCalledWith(
+      expect.stringContaining("NÃO foram salvas"),
+      expect.anything(),
+    );
+    expect(toastSuccess).not.toHaveBeenCalled();
+
+    // A tela segue montada (o App troca de rota): um novo toque em Publicar
+    // NÃO chama o cadastro de novo.
+    const botao = botaoDaBarra("Publicar");
+    if (botao && !botao.disabled) {
+      await act(async () => {
+        botao.click();
+        await vi.advanceTimersByTimeAsync(0);
+      });
+    }
+    await passar(3000);
+    expect(addProduct).toHaveBeenCalledTimes(1);
+    expect(armazem.has(CHAVE_NOVO)).toBe(false);
   });
 });

@@ -1579,7 +1579,11 @@ export function useProducts({
           // Quando a grade falha, quem chamou precisa saber (o produto existe,
           // mas está sem variação) para NÃO dar "Salvo" nem sair da tela, e
           // para tentar de novo SEM criar outro produto.
-          let gradeNaoSalva: { motivo: string | null } | undefined;
+          // `semResposta`: o prazo estourou e NÃO se sabe se as variações
+          // entraram (a tela não pode dizer que "não foram salvas").
+          let gradeNaoSalva:
+            | { motivo: string | null; semResposta?: boolean }
+            | undefined;
 
           if (productData.variants && productData.variants.length > 0) {
             const variantsToInsert = productData.variants.map((v) => ({
@@ -1594,11 +1598,17 @@ export function useProducts({
               active: v.active,
               image_url: v.imageUrl || null,
             }));
-            // A grade tem o mesmo prazo e a mesma frase: o produto já existe,
-            // mas sem resposta não se sabe se as variações entraram. Quem
-            // repetir o cadastro agora criaria outro produto.
-            const { data: insertedVariants, error: varErr } =
-              await aguardarComPrazo(
+            // A grade tem prazo: o produto JÁ existe (temos o id) e, sem
+            // resposta, não se sabe se as variações entraram. Estourar NÃO pode
+            // virar erro do cadastro: a tela perderia o id e o "Publicar"
+            // criaria o produto de novo. Vira o mesmo retorno de "grade não
+            // salva" que a recusa do banco já usa (a tela leva à edição dele e
+            // move o rascunho), só que dizendo a verdade: não se sabe.
+            let insertedVariants: unknown[] | null = null;
+            let varErr: unknown = null;
+            let gradeSemResposta = false;
+            try {
+              const resposta = await aguardarComPrazo(
                 Promise.resolve(
                   supabase
                     .from("product_variants")
@@ -1611,8 +1621,25 @@ export function useProducts({
                     MENSAGEM_PRODUTO_NOVO_GRADE_SEM_RESPOSTA,
                   ),
               );
+              insertedVariants = resposta.data;
+              varErr = resposta.error;
+            } catch (erroDaGrade) {
+              if (!ehConsultaSemResposta(erroDaGrade)) throw erroDaGrade;
+              gradeSemResposta = true;
+              varErr = erroDaGrade;
+            }
 
-            if (varErr) {
+            if (gradeSemResposta) {
+              variantesFalharam = true;
+              console.error("Variants on creation sem resposta:", varErr);
+              gradeNaoSalva = {
+                motivo: MENSAGEM_PRODUTO_NOVO_GRADE_SEM_RESPOSTA,
+                semResposta: true,
+              };
+              toast.error(MENSAGEM_PRODUTO_NOVO_GRADE_SEM_RESPOSTA, {
+                duration: 30000,
+              });
+            } else if (varErr) {
               variantesFalharam = true;
               console.error("Error adding variants on creation:", varErr);
               // Laudo 0109 (A3): o erro era só console — a tela dizia
@@ -1665,7 +1692,12 @@ export function useProducts({
             gradeNaoSalva
               ? { ...newProduct, variantesNaoSalvas: gradeNaoSalva }
               : newProduct
-          ) as Product & { variantesNaoSalvas?: { motivo: string | null } };
+          ) as Product & {
+            variantesNaoSalvas?: {
+              motivo: string | null;
+              semResposta?: boolean;
+            };
+          };
         }
       } catch (err: any) {
         console.error("Error adding product:", err);

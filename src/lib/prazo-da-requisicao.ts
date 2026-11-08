@@ -64,7 +64,7 @@ export const MENSAGEM_PRODUTO_NOVO_SEM_RESPOSTA =
 // A grade sem resposta DEPOIS de o produto já ter voltado criado: o produto
 // existe (isso se sabe), o que não se sabe é se as variações entraram.
 export const MENSAGEM_PRODUTO_NOVO_GRADE_SEM_RESPOSTA =
-  "O produto foi criado, mas a rede não respondeu ao salvar as variações e não dá para saber se elas entraram. Abra a lista de Produtos e confira o produto antes de publicar de novo, para não criar outro.";
+  "O produto foi criado, mas a rede não respondeu ao salvar as variações e não dá para saber se elas entraram. Abra o produto e confira as variações antes de cadastrá-las de novo ou de restaurar o rascunho, para não repetir as que já entraram.";
 export const MENSAGEM_PRODUTO_EDICAO_SEM_RESPOSTA =
   "Sem resposta da rede. Não dá para saber se as alterações foram salvas. Confira o produto na lista de Produtos antes de salvar de novo.";
 export const MENSAGEM_PRODUTO_LEITURA_SEM_RESPOSTA =
