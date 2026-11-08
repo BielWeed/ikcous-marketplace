@@ -8,7 +8,7 @@
     ],
     "correcoes": [
       "Loja, Carrinho e Frete grátis: com a loja só em retirada, o carrinho não promete mais frete grátis onde não há entrega, e o aviso do carrinho acompanha a mesma regra.",
-      "Loja, Carrinho: um item tirado do carrinho em outro aparelho some aqui também, e um item novo vindo do outro aparelho não apaga mais o que você acabou de adicionar.",
+      "Loja, Carrinho: um item tirado do carrinho em outro aparelho some aqui também, e um item que você acabou de pôr em outro aparelho não é mais apagado por este aparelho ao salvar o carrinho.",
       "Loja, Favoritos: quando a lista não pôde ser atualizada, aparece o aviso “pode estar desatualizada” com “Tentar de novo”.",
       "Loja, Ofertas: produto sem combinação possível aparece como Esgotado nas faixas de Ofertas, em vez de parecer comprável.",
       "Painel, Balcão: o rascunho da venda é guardado ao sair da tela, e uma peça que saiu do catálogo mostra uma frase clara.",
