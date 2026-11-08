@@ -1,4 +1,20 @@
 {
+  "1.5.159": {
+    "titulo": "Frete grátis mais claro, carrinho que acompanha outro aparelho e balcão mais firme",
+    "novidades": [],
+    "melhorias": [
+      "Painel, Frete grátis: o valor mínimo agora é um campo de texto com teclado de números e aceita vírgula (ex.: 199,90).",
+      "Painel, Balcão: a leitura pela câmera só aceita a mesma peça de novo depois que ela sai do quadro, e “Leitura repetida” ganhou o botão Fechar."
+    ],
+    "correcoes": [
+      "Loja, Carrinho e Frete grátis: com a loja só em retirada, o carrinho não promete mais frete grátis onde não há entrega, e o aviso do carrinho acompanha a mesma regra.",
+      "Loja, Carrinho: um item tirado do carrinho em outro aparelho some aqui também, e um item que você acabou de pôr em outro aparelho não é mais apagado por este aparelho ao salvar o carrinho.",
+      "Loja, Favoritos: quando a lista não pôde ser atualizada, aparece o aviso “pode estar desatualizada” com “Tentar de novo”.",
+      "Loja, Ofertas: produto sem combinação possível aparece como Esgotado nas faixas de Ofertas, em vez de parecer comprável.",
+      "Painel, Balcão: o rascunho da venda é guardado ao sair da tela, e uma peça que saiu do catálogo mostra uma frase clara.",
+      "Painel, Produtos: os atalhos de estoque baixo e sem custo abrem a lista já filtrada também em aparelhos antigos; duplicar com a internet sem resposta solta a tela e manda conferir a lista antes de tentar de novo; a lista de Produtos deixa de carregar para sempre; e excluir um produto não fecha a pergunta de exclusão de outro."
+    ]
+  },
   "1.5.158": {
     "titulo": "Painel que avisa quando a internet falha, sem produto duplicado, e vitrine mais correta",
     "novidades": [],
