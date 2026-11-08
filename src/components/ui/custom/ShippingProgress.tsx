@@ -273,7 +273,7 @@ export function ShippingProgress({
                 >
                   <div className="mb-2 aspect-square overflow-hidden rounded-lg bg-muted">
                     {!p.images[0] || ehMarcadorDeFoto(p.images[0]) ? (
-                      <div className="flex size-full items-center justify-center px-2 text-center text-[10px] font-medium text-muted-foreground">
+                      <div className="flex size-full items-center justify-center px-2 text-center text-xs font-medium text-muted-foreground">
                         Sem foto
                       </div>
                     ) : (

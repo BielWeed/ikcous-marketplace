@@ -121,7 +121,7 @@ const CartItemCard = memo(function CartItemCard({
       >
         <div className="size-16 flex-shrink-0 overflow-hidden rounded-xl bg-muted min-[380px]:size-20">
           {!fotoDaLinha || ehMarcadorDeFoto(fotoDaLinha) ? (
-            <div className="flex size-full items-center justify-center px-2 text-center text-[10px] font-medium text-muted-foreground">
+            <div className="flex size-full items-center justify-center px-2 text-center text-xs font-medium text-muted-foreground">
               Sem foto
             </div>
           ) : (
