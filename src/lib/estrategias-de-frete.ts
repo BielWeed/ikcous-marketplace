@@ -221,15 +221,6 @@ export function promessasDeFrete(config: ConfigDeFrete): PromessasDeFrete {
     estrategia: preset,
     minimo: preset === "acima_de_valor" ? config.freeShippingMin : 0,
   };
-  // "Só retirada" COM transportadora: quem é da cidade só retira (e a retirada
-  // já é grátis); não existe entrega local a que a regra salva se refira. Ela
-  // sobra do tempo em que a loja entregava e não pode virar selo "na cidade",
-  // meta do carrinho nem aviso da Home. `iguais` segue comparando a regra SALVA
-  // (é o que o lembrete do carrinho lê), então só `local` é zerada.
-  const local: PromessaDeCanal =
-    modoDaEntregaNaCidade(config) === "so_retiro"
-      ? { estrategia: "desligado", minimo: 0 }
-      : regraLocalSalva;
   // Defesa em tempo de execução (o tipo `ConfigDeFrete` diz que estas 5
   // colunas SEMPRE existem — StoreContext garante isso, mirror do
   // `espelhoLegado` incluso): configs hand-rolled em teste (ou qualquer
@@ -253,6 +244,18 @@ export function promessasDeFrete(config: ConfigDeFrete): PromessasDeFrete {
     regraLocalSalva.estrategia === nacional.estrategia &&
     (regraLocalSalva.estrategia !== "acima_de_valor" ||
       regraLocalSalva.minimo === nacional.minimo);
+  // "Só retirada" COM transportadora: quem é da cidade só retira (e a retirada
+  // já é grátis); não existe entrega local a que a regra salva se refira. Se a
+  // transportadora NÃO tem a mesma regra (`!iguais`), ela é só sobra do tempo
+  // em que a loja entregava e não pode virar selo "na cidade", meta do carrinho
+  // nem aviso da Home/lembrete: a promessa local é nenhuma. Se tem a MESMA
+  // regra (`iguais`, ex.: legado sem as colunas nacionais), a regra vale para a
+  // transportadora e a barra do carrinho continua — `iguais` já faz os textos
+  // não dizerem "na cidade".
+  const local: PromessaDeCanal =
+    modoDaEntregaNaCidade(config) === "so_retiro" && !iguais
+      ? { estrategia: "desligado", minimo: 0 }
+      : regraLocalSalva;
   return { local, nacional, iguais };
 }
 

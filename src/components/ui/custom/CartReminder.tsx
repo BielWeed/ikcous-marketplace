@@ -42,13 +42,20 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
   const preset = presetDoConfig(config.freeShippingMin);
   // Só retirada e sem transportadora: não há entrega a que o grátis se
   // refira — o lembrete só conta os itens, como numa loja sem a regra.
-  const hasFreeShippingGoal =
-    config.freeShippingMin > 0 && !semMetaDeFreteGratis(config);
-  const isSempreGratis = hasFreeShippingGoal && preset === "sempre";
+  const promessas = promessasDeFrete(config);
   // T3: qualificador "na cidade" quando a regra nacional diverge da local —
   // sem CEP da cliente aqui (é o carrinho flutuante), a única promessa
   // segura de anunciar é a local, com escopo declarado.
-  const soLocal = !promessasDeFrete(config).iguais;
+  const soLocal = !promessas.iguais;
+  // "Só retirada" com transportadora e a regra local sobrada (a nacional é
+  // outra): a promessa local não existe — não há entrega na cidade — e o
+  // lembrete só conhece a local. Mesma guarda da Home (FreeShippingBlock).
+  const localSemEntrega = promessas.local.estrategia === "desligado" && soLocal;
+  const hasFreeShippingGoal =
+    config.freeShippingMin > 0 &&
+    !semMetaDeFreteGratis(config) &&
+    !localSemEntrega;
+  const isSempreGratis = hasFreeShippingGoal && preset === "sempre";
   const isFree =
     isSempreGratis ||
     (hasFreeShippingGoal &&

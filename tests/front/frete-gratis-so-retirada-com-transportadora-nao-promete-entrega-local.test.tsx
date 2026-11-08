@@ -10,12 +10,14 @@
 // O que este arquivo prende:
 //   1. `promessasDeFrete`: sem entrega na cidade, a promessa LOCAL é nenhuma,
 //      mas a nacional (a da transportadora) segue como a loja configurou;
-//   2. o selo dos produtos e a meta do carrinho não usam a regra local sobrada;
-//   3. a Home não anuncia "na cidade" nem "entrega local" nessa loja;
+//   2. o selo dos produtos não usa a regra local sobrada (a barra do CARRINHO
+//      é provada com a tela de verdade em
+//      frete-gratis-so-retirada-carrinho-sem-meta-na-cidade.test.tsx);
+//   3. a Home e o lembrete do carrinho não anunciam "na cidade" nem "entrega
+//      local" nessa loja;
 //   4. quem entrega na cidade (entrego / entrego e retiro) não muda nada.
 import {
   fraseDoSeloDeFreteGratis,
-  metaDeFreteGratisPorValor,
   promessasDeFrete,
 } from "@/lib/estrategias-de-frete";
 import type { ConfigDeFrete } from "@/lib/estrategias-de-frete";
@@ -33,6 +35,13 @@ vi.mock("@/contexts/StoreContext", () => ({
 }));
 vi.mock("@/contexts/CartContext", () => ({
   useCartContext: () => ({ cartTotal: estado.total }),
+}));
+vi.mock("@/hooks/useCart", () => ({
+  useCart: () => ({
+    cart: [{ product: { id: "p1" }, quantity: 1 }],
+    cartCount: 1,
+    cartTotal: estado.total,
+  }),
 }));
 
 // @ts-expect-error flag interna do React, sem tipo público.
@@ -74,6 +83,17 @@ describe("promessasDeFrete — só retirada com transportadora", () => {
     });
   });
 
+  it("transportadora com a MESMA regra (legado sem colunas nacionais): a regra local segue, só não diz 'na cidade'", () => {
+    const { nationalShippingStrategy: _a, ...semNacional } =
+      SO_RETIRADA_COM_TRANSPORTADORA;
+    const promessas = promessasDeFrete(semNacional as unknown as ConfigDeFrete);
+    expect(promessas.iguais).toBe(true);
+    expect(promessas.local).toEqual({
+      estrategia: "acima_de_valor",
+      minimo: 150,
+    });
+  });
+
   it("selo: 'sempre grátis' sobrado não vira 'Frete grátis na cidade'", () => {
     const promessas = promessasDeFrete({
       ...SO_RETIRADA_COM_TRANSPORTADORA,
@@ -85,20 +105,11 @@ describe("promessasDeFrete — só retirada com transportadora", () => {
   it("selo: com a transportadora grátis, só o Brasil é prometido (não a cidade)", () => {
     const promessas = promessasDeFrete({
       ...SO_RETIRADA_COM_TRANSPORTADORA,
-      freeShippingMin: 0.01,
       nationalShippingStrategy: "sempre",
     });
     expect(fraseDoSeloDeFreteGratis(promessas, false)).toBe(
       "Frete grátis para todo o Brasil",
     );
-  });
-
-  it("carrinho: CEP da cidade não ganha meta de valor (só retira, de graça)", () => {
-    const promessas = promessasDeFrete(SO_RETIRADA_COM_TRANSPORTADORA);
-    expect(metaDeFreteGratisPorValor(promessas, true)).toEqual({
-      minimo: null,
-      alcance: null,
-    });
   });
 
   it.each([
@@ -179,5 +190,74 @@ describe("Home — só retirada com transportadora não anuncia entrega local", 
     expect(texto).toContain("Falta pouquinho");
     expect(texto).toContain("R$ 50,00");
     expect(texto).toContain("na Cidade");
+  });
+});
+
+describe("Lembrete do carrinho — só retirada com transportadora", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    estado.config = { ...SO_RETIRADA_COM_TRANSPORTADORA };
+    estado.total = 100;
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+  });
+
+  async function lembrete() {
+    const { CartReminder } = await import(
+      "@/components/ui/custom/CartReminder"
+    );
+    await act(async () => {
+      raiz.render(<CartReminder docked onAction={() => {}} />);
+    });
+    // Modo acoplado: o lembrete aparece 500 ms depois de haver item.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 700));
+    });
+    return normalizar(hospedeiro.textContent);
+  }
+
+  it("regra local sobrada de R$ 150, carrinho de R$ 100: só conta os itens", async () => {
+    const texto = await lembrete();
+    expect(texto).toContain("1 item no seu carrinho");
+    expect(texto).not.toContain("Faltam");
+    expect(texto).not.toMatch(/frete gr/i);
+  });
+
+  it("'sempre grátis' sobrado: também não diz 'Frete grátis na cidade'", async () => {
+    estado.config = { ...estado.config, freeShippingMin: 0.01 };
+    const texto = await lembrete();
+    expect(texto).toContain("1 item no seu carrinho");
+    expect(texto).not.toMatch(/frete gr/i);
+  });
+
+  it("modo 'entrego' com a transportadora desligada: 'Faltam R$ 50,00 ... na Cidade' continua", async () => {
+    estado.config = {
+      ...estado.config,
+      localDeliveryEnabled: true,
+      enabledShippingMethods: ["sedex"],
+    };
+    const texto = await lembrete();
+    expect(texto).toContain("Faltam R$ 50,00");
+    expect(texto).toContain("Frete Grátis na Cidade");
+  });
+
+  it("transportadora com a MESMA regra (iguais): o lembrete de antes continua, sem 'na cidade'", async () => {
+    // Sem as colunas nacionais a regra nacional espelha a local (legado).
+    const { nationalShippingStrategy: _a, ...semNacional } =
+      SO_RETIRADA_COM_TRANSPORTADORA;
+    estado.config = { ...semNacional };
+    const texto = await lembrete();
+    expect(texto).toContain("Faltam R$ 50,00");
+    expect(texto).not.toContain("Cidade");
   });
 });
