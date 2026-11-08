@@ -155,6 +155,7 @@ function CartaoOfertaLateral({
 }) {
   const {
     cartStatus,
+    esgotado,
     handleCardClick,
     handleAddToCartClick,
     handleFavoriteClick,
@@ -170,7 +171,6 @@ function CartaoOfertaLateral({
     onQuickBuy,
   });
   const { prefetchView } = usePrefetchOnHover();
-  const esgotado = product.stock <= 0;
   const estoque =
     esgotado || product.stock <= 10
       ? esgotado

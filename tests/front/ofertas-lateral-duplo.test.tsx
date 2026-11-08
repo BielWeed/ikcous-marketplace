@@ -523,7 +523,9 @@ describe("Ofertas Lateral em duas fileiras", () => {
 
   it("com variação o botão vira 'Escolher opções' e NUNCA adiciona direto", async () => {
     const variante = produto("camisa", {
-      variants: [{ id: "v", active: true }] as Product["variants"],
+      variants: [
+        { id: "v", name: "Tamanho", active: true, stockIncrement: 5 },
+      ] as Product["variants"],
     });
     await montar([variante, produto("b")]);
     const botao = host.querySelector(

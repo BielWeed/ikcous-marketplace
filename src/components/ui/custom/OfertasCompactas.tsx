@@ -131,6 +131,7 @@ function CartaoOfertaCompacta({
 }) {
   const {
     cartStatus,
+    esgotado,
     handleCardClick,
     handleAddToCartClick,
     handleFavoriteClick,
@@ -147,7 +148,6 @@ function CartaoOfertaCompacta({
     onQuickBuy,
   });
   const { prefetchView } = usePrefetchOnHover();
-  const esgotado = product.stock <= 0;
   const desconto =
     precoAntigo && discount > 0 ? (
       <span
