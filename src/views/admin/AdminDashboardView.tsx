@@ -242,6 +242,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
     carregando,
     erro,
     erroAssinatura,
+    desatualizado,
     atualizar,
   } = usePainelInicio(ativo);
   const [mostrarAjuda, setMostrarAjuda] = useState(false);
@@ -348,7 +349,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
           <EstadoDaConexao
             offline={isOffline}
             carregando={carregando}
-            falhou={erro !== null}
+            falhou={erro !== null || desatualizado}
           />
         </div>
       </div>

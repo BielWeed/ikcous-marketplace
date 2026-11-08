@@ -41,6 +41,12 @@ export const PRAZO_DAS_ACOES_DO_PEDIDO_MS = 20_000;
 export const MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA =
   "Sem resposta da rede. Confira o pedido antes de tentar de novo.";
 
+// PRAZO DAS CONSULTAS DO PAINEL (Início e CRM): rede que conecta e não responde
+// deixava o "carregando" ligado para sempre, o botão Sincronizar preso e a volta
+// ao app sem reler. 20 s, o mesmo do Início (`usePainelInicio`). Estourou = falha
+// com "Tentar de novo"; só encerra a ESPERA da tela, a consulta não grava nada.
+export const PRAZO_DA_CONSULTA_DO_PAINEL_MS = 20_000;
+
 /** Frase para quem está na tela: o que aconteceu e o que fazer. */
 export const MENSAGEM_CONEXAO_LENTA =
   "A conexão está lenta. Toque em Tentar de novo.";
