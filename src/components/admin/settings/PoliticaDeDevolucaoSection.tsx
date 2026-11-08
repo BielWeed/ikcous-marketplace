@@ -35,10 +35,24 @@ import {
   rotuloMetodo,
 } from "@/lib/devolucao";
 import { trocarNomeNaLista } from "@/lib/gestao-de-categorias";
+import {
+  PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { MetodoDevolucao, PoliticaDevolucao } from "@/types/devolucao";
 import { haptic } from "@/utils/haptic";
+
+// Rede "pendurada" conecta e não responde: sem prazo, o formulário ficava
+// travado em "salvando" para sempre. O prazo encerra só a ESPERA da tela (a
+// gravação pode ter chegado ao servidor), por isso o aviso não diz que falhou.
+// Salvar de novo é seguro: a RPC só regrava a linha única da política (UPDATE
+// do id 1), então repetir o mesmo pedido deixa o mesmo resultado.
+const SEM_RESPOSTA_AO_SALVAR =
+  "Sem resposta da rede. Não dá para saber se a política foi salva. O que você digitou continua na tela: toque em Salvar política de novo e espere o aviso de que foi salva.";
 
 /** O formulário: prazos em texto (o campo pode ficar vazio enquanto digita). */
 interface FormDaPolitica {
@@ -370,27 +384,30 @@ export function PoliticaDeDevolucaoSection({
     setSalvando(true);
     haptic.light();
     try {
-      const { data, error } = await supabase.rpc(
-        "salvar_politica_de_devolucao",
-        {
-          p: {
-            prazo_arrependimento_dias: Number(form.prazo_arrependimento_dias),
-            prazo_troca_dias: Number(form.prazo_troca_dias),
-            prazo_vicio_dias: Number(form.prazo_vicio_dias),
-            aceita_troca: form.aceita_troca,
-            aceita_vale: form.aceita_vale,
-            exige_fotos_vicio: form.exige_fotos_vicio,
-            metodos_locais: form.metodos_locais,
-            metodos_nacionais: form.metodos_nacionais,
-            reembolso_momento: form.reembolso_momento,
-            frete_troca_pago_por: form.frete_troca_pago_por,
-            ...(listaMexida
-              ? { categorias_sem_troca: form.categorias_sem_troca }
-              : {}),
-            texto_politica: form.texto_politica.trim(),
-            endereco_devolucao: form.endereco_devolucao,
-          },
-        },
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase.rpc("salvar_politica_de_devolucao", {
+            p: {
+              prazo_arrependimento_dias: Number(form.prazo_arrependimento_dias),
+              prazo_troca_dias: Number(form.prazo_troca_dias),
+              prazo_vicio_dias: Number(form.prazo_vicio_dias),
+              aceita_troca: form.aceita_troca,
+              aceita_vale: form.aceita_vale,
+              exige_fotos_vicio: form.exige_fotos_vicio,
+              metodos_locais: form.metodos_locais,
+              metodos_nacionais: form.metodos_nacionais,
+              reembolso_momento: form.reembolso_momento,
+              frete_troca_pago_por: form.frete_troca_pago_por,
+              ...(listaMexida
+                ? { categorias_sem_troca: form.categorias_sem_troca }
+                : {}),
+              texto_politica: form.texto_politica.trim(),
+              endereco_devolucao: form.endereco_devolucao,
+            },
+          }),
+        ),
+        PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+        () => erroDeConsultaSemResposta(),
       );
       if (error) {
         toast.error(
@@ -411,7 +428,13 @@ export function PoliticaDeDevolucaoSection({
       window.dispatchEvent(new Event("admin:recontar-avisos"));
       toast.success("Política de trocas e devoluções salva.");
     } catch (e) {
-      toast.error(mensagemDoErro(e, "Não foi possível salvar a política."));
+      // A resposta que chegar tarde foi descartada pelo prazo: não vira aviso
+      // de sucesso nem troca o que a lojista digitou.
+      if (ehConsultaSemResposta(e)) {
+        toast.warning(SEM_RESPOSTA_AO_SALVAR, { duration: 12_000 });
+      } else {
+        toast.error(mensagemDoErro(e, "Não foi possível salvar a política."));
+      }
     } finally {
       setSalvando(false);
     }
