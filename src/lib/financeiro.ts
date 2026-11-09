@@ -1835,6 +1835,36 @@ export function ehLancamentoJaResolvido(erro: unknown): boolean {
 }
 
 /**
+ * A resposta se perdeu sem o servidor dizer nada (queda de rede, "Failed to
+ * fetch", resposta de gateway sem corpo do banco): erro SEM código. Quem
+ * respondeu de verdade traz código (recusa de negócio, permissão, dado
+ * inválido), então aqui não conta. O prazo estourado tem a própria classe, e
+ * o formato fora do contrato e a função ausente têm a própria frase.
+ *
+ * Numa gravação que só insere, isto não diz que NÃO gravou: o servidor pode
+ * ter gravado e a resposta é que não chegou.
+ */
+export function ehFalhaDeRedeSemCodigo(erro: unknown): boolean {
+  if (
+    erro instanceof ErroDePrazoFinanceiro ||
+    erro instanceof ErroDeFormatoFinanceiro
+  ) {
+    return false;
+  }
+  const { codigo, mensagem } = codigoEMensagem(erro);
+  if (codigo) return false;
+  return !mensagem?.includes("Could not find the function");
+}
+
+/** A frase de "não deu para confirmar", para a falha de rede sem código. */
+export function fraseDeGravacaoSemConfirmacao(
+  feito: string,
+  onde: string,
+): string {
+  return `A conexão falhou e não deu para confirmar se ${feito}. Feche esta tela e confira ${onde} antes de tentar de novo.`;
+}
+
+/**
  * Traduz a falha de uma RPC `fin_*`. As recusas de negócio das RPCs
  * (`RAISE EXCEPTION` com texto em português: "já existe um caixa aberto",
  * "lançamento realizado não se edita"…) chegam como P0001/22023 e são

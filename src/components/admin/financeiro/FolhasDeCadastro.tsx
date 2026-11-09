@@ -10,6 +10,8 @@ import {
   type FormularioDaConta,
   TIPOS_DE_CONTA,
   ajudaDoGrupoDre,
+  ehFalhaDeRedeSemCodigo,
+  fraseDeGravacaoSemConfirmacao,
   gruposDaNatureza,
   mensagemDeErroFinanceiro,
   rotuloDoGrupoDre,
@@ -119,14 +121,17 @@ export function ContaFolha({
   aoFechar,
   aoSalvar,
   aoSemResposta,
+  aoMudarEnviando,
   aoMudarSujo,
 }: {
   readonly conta: ContaFinanceira | null;
   readonly hoje: DataIso;
   readonly aoFechar: () => void;
   readonly aoSalvar: (mensagem: string) => void;
-  /** A gravação estourou o prazo: a tela relê a lista ao fechar a folha. */
+  /** A gravação ficou sem resposta (prazo ou rede): a tela relê a lista ao fechar a folha. */
   readonly aoSemResposta?: () => void;
+  /** Avisa a view que há gravação no ar: enquanto dura, a folha não fecha. */
+  readonly aoMudarEnviando?: (enviando: boolean) => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
   const confirmarVisualmente = useConfirmacaoFinanceira();
@@ -167,6 +172,7 @@ export function ContaFolha({
     const resultado = validarConta(form, hoje);
     if (!resultado.ok) return;
     trava.current = true;
+    aoMudarEnviando?.(true);
     setEnviando(true);
     try {
       await salvarConta(resultado.payload);
@@ -195,13 +201,25 @@ export function ContaFolha({
       });
       aoSalvar(conta ? "Conta atualizada." : "Conta criada.");
     } catch (erro) {
-      if (erro instanceof ErroDePrazoFinanceiro) {
+      // Conta NOVA com a resposta perdida (prazo ou queda de rede sem código):
+      // pode ter sido criada, e repetir criaria outra com o saldo inicial em
+      // dobro. Editar (com id) repete sem risco: atualiza a mesma linha.
+      const redeCaiu = !conta && ehFalhaDeRedeSemCodigo(erro);
+      if (erro instanceof ErroDePrazoFinanceiro || redeCaiu) {
         aoSemResposta?.();
         if (!conta) setSemResposta(true);
       }
-      setErroDoServidor(mensagemDeErroFinanceiro(erro));
+      setErroDoServidor(
+        redeCaiu
+          ? fraseDeGravacaoSemConfirmacao(
+              "a conta foi salva",
+              "a lista de contas",
+            )
+          : mensagemDeErroFinanceiro(erro),
+      );
     } finally {
       trava.current = false;
+      aoMudarEnviando?.(false);
       setEnviando(false);
     }
   }
@@ -213,6 +231,7 @@ export function ContaFolha({
       matiz="#7AA2FF"
       descricao="Onde o dinheiro da loja mora: gaveta, banco, Mercado Pago, cofre."
       aoFechar={aoFechar}
+      fecharBloqueado={enviando}
       rodape={
         <Rodape
           erro={erroDoServidor}
@@ -310,13 +329,16 @@ export function CategoriaFolha({
   aoFechar,
   aoSalvar,
   aoSemResposta,
+  aoMudarEnviando,
   aoMudarSujo,
 }: {
   readonly categoria: CategoriaFinanceira | null;
   readonly aoFechar: () => void;
   readonly aoSalvar: (mensagem: string) => void;
-  /** A gravação estourou o prazo: a tela relê a lista ao fechar a folha. */
+  /** A gravação ficou sem resposta (prazo ou rede): a tela relê a lista ao fechar a folha. */
   readonly aoSemResposta?: () => void;
+  /** Avisa a view que há gravação no ar: enquanto dura, a folha não fecha. */
+  readonly aoMudarEnviando?: (enviando: boolean) => void;
   readonly aoMudarSujo: (sujo: boolean) => void;
 }) {
   const confirmarVisualmente = useConfirmacaoFinanceira();
@@ -370,6 +392,7 @@ export function CategoriaFolha({
     const resultado = validarCategoria(form);
     if (!resultado.ok) return;
     trava.current = true;
+    aoMudarEnviando?.(true);
     setEnviando(true);
     try {
       await salvarCategoria(resultado.payload);
@@ -394,13 +417,24 @@ export function CategoriaFolha({
       });
       aoSalvar(categoria ? "Categoria atualizada." : "Categoria criada.");
     } catch (erro) {
-      if (erro instanceof ErroDePrazoFinanceiro) {
+      // Mesma regra da conta: categoria NOVA com a resposta perdida pode ter
+      // sido criada; editar (com id) repete sem risco.
+      const redeCaiu = !categoria && ehFalhaDeRedeSemCodigo(erro);
+      if (erro instanceof ErroDePrazoFinanceiro || redeCaiu) {
         aoSemResposta?.();
         if (!categoria) setSemResposta(true);
       }
-      setErroDoServidor(mensagemDeErroFinanceiro(erro));
+      setErroDoServidor(
+        redeCaiu
+          ? fraseDeGravacaoSemConfirmacao(
+              "a categoria foi salva",
+              "a lista de categorias",
+            )
+          : mensagemDeErroFinanceiro(erro),
+      );
     } finally {
       trava.current = false;
+      aoMudarEnviando?.(false);
       setEnviando(false);
     }
   }
@@ -412,6 +446,7 @@ export function CategoriaFolha({
       matiz="#BA9AFF"
       descricao="A categoria diz em que linha do resultado o valor aparece."
       aoFechar={aoFechar}
+      fecharBloqueado={enviando}
       rodape={
         <Rodape
           erro={erroDoServidor}

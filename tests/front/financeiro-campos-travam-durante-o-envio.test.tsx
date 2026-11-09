@@ -119,6 +119,8 @@ interface Caso {
   readonly rpc: string;
   readonly payload: Readonly<Record<string, unknown>>;
   readonly salvar: string;
+  /** Cadastro NOVO: resposta perdida pode ter criado; o Salvar fica parado. */
+  readonly cadastroNovo?: boolean;
 }
 
 const LANCAMENTOS: {
@@ -222,6 +224,7 @@ const CASOS: Caso[] = [
         ativa: true,
       },
       salvar: "Salvar",
+      cadastroNovo: !sistema,
     },
     {
       nome: sistema ? "categoria do sistema" : "nova categoria",
@@ -244,6 +247,7 @@ const CASOS: Caso[] = [
         ativa: true,
       },
       salvar: "Salvar",
+      cadastroNovo: !sistema,
     },
   ]),
 ];
@@ -302,13 +306,19 @@ describe.each(CASOS)("Financeiro — $nome", (caso) => {
       expect(campos().map((campo) => campo.disabled)).toEqual(
         desabilitadosAntes,
       );
-      expect(botao(caso.salvar).disabled).toBe(false);
+      // Erro de rede sem código em cadastro NOVO: o servidor pode ter criado,
+      // então o Salvar não volta (repetir criaria outro igual).
+      expect(botao(caso.salvar).disabled).toBe(
+        desfecho === "erro" && caso.cadastroNovo === true,
+      );
       expect(conteudoDosCampos()).toEqual(conteudo);
       expect(rpcFalso).toHaveBeenCalledTimes(1);
       if (desfecho === "erro") {
         expect(aoSalvar).not.toHaveBeenCalled();
         expect(folha()).toBe(aberta);
-        expect(aberta.textContent).toContain("Confira a conexão");
+        expect(aberta.textContent).toContain(
+          caso.cadastroNovo ? "não deu para confirmar" : "Confira a conexão",
+        );
         await digitar(caso.campoDeTexto, "Correção após a falha");
         expect(
           (document.getElementById(caso.campoDeTexto) as HTMLInputElement)
