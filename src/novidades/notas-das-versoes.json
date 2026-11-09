@@ -1,4 +1,14 @@
 {
+  "1.5.160": {
+    "titulo": "Início mais claro, reenvio de comprovante que não trava e aviso de duplicar mais honesto",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Painel, Início: o cartão “Para fazer” não conta mais uma pendência que a lista não mostra; quando só há pedidos para preparar, diz “Nada mais para resolver” e aponta para o cartão acima, em vez de “Tudo em dia”.",
+      "Loja, Pedido: “Reenviar comprovante” não fica mais em “Reenviando…” para sempre com a internet sem resposta: depois de 20 segundos o botão volta e o aviso manda conferir a caixa de entrada e o spam. O botão deixa de aparecer em pedido cancelado.",
+      "Painel, Produtos: ao duplicar com a internet sem resposta na cópia das fotos, o aviso diz que o produto ainda não foi duplicado e que dá para tentar de novo."
+    ]
+  },
   "1.5.159": {
     "titulo": "Frete grátis mais claro, carrinho que acompanha outro aparelho e balcão mais firme",
     "novidades": [],
