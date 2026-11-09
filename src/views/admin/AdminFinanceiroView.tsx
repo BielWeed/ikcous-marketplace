@@ -576,6 +576,7 @@ export function AdminFinanceiroView({
             aoFechar={pedirParaFechar}
             aoSalvar={aoSalvar}
             aoSemResposta={marcarSemResposta}
+            aoMudarEnviando={aoMudarEnviando}
             aoMudarSujo={setSujo}
           />
         );
@@ -586,6 +587,7 @@ export function AdminFinanceiroView({
             aoFechar={pedirParaFechar}
             aoSalvar={aoSalvar}
             aoSemResposta={marcarSemResposta}
+            aoMudarEnviando={aoMudarEnviando}
             aoMudarSujo={setSujo}
           />
         );

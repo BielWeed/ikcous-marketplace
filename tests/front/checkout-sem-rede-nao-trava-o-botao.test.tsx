@@ -228,7 +228,23 @@ describe("decidirSaidaDoCheckout — falha de rede vira tentar_de_novo, não con
       message: "TypeError: Failed to fetch",
     });
     expect(r.acao).toBe("tentar_de_novo");
-    expect(r.mensagem).toContain("não foi confirmado");
+    expect(r.mensagem).toContain("não sabemos se o pedido foi confirmado");
+    // Quem tem conta não tem compra congelada: a chave pode girar se o cupom
+    // ou o total mudou, então a frase NÃO promete "não sai em dobro" — manda
+    // conferir Meus pedidos antes de tentar de novo.
+    expect(r.mensagem).not.toContain("não sai em dobro");
+    expect(r.mensagem).toContain("Meus pedidos");
+  });
+
+  it("controle: convidada (semConta) com a mesma falha de rede segue com o reenvio garantido e a frase 'não sai em dobro'", async () => {
+    const { decidirSaidaDoCheckout } = await import(
+      "@/views/customer/CheckoutView"
+    );
+    const r = decidirSaidaDoCheckout(
+      { code: "", message: "TypeError: Failed to fetch" },
+      { semConta: true },
+    );
+    expect(r.acao).toBe("reenviar_mesma_compra");
     expect(r.mensagem).toContain("não sai em dobro");
   });
 
