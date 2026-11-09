@@ -20,8 +20,10 @@ import { ehModalidadeDaLoja, ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
   EVENTO_RETRATO_LIMPO,
+  PRAZO_DO_RETRATO_MS,
   lerRetratoDoConvidado,
   limparRetratoDoConvidado,
+  retratoVenceu,
   textoDoRetrato,
 } from "@/lib/retrato-do-convidado";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -480,6 +482,9 @@ export function CartView({
   // antigo, sem horário) e contador que REMONTA a busca em "Consultar de novo".
   const [retratoEm, setRetratoEm] = useState<number | null>(null);
   const [buscaDoRastreio, setBuscaDoRastreio] = useState(0);
+  // A lista do rastreio sem conta saiu da tela porque o retrato venceu (60 min):
+  // a tela explica e manda consultar de novo, em vez de sumir sem dizer nada.
+  const [retratoSaiuDaTela, setRetratoSaiuDaTela] = useState(false);
 
   // Directional Orders Sub-tab Transitions
   const [ordersTabDirection, setOrdersTabDirection] = useState<number>(0);
@@ -561,11 +566,53 @@ export function CartView({
     const aoLimpar = () => {
       setPedidosConvidado([]);
       setRetratoEm(null);
+      setRetratoSaiuDaTela(false);
       setBuscaDoRastreio((n) => n + 1);
     };
     globalThis.addEventListener(EVENTO_RETRATO_LIMPO, aoLimpar);
     return () => globalThis.removeEventListener(EVENTO_RETRATO_LIMPO, aoLimpar);
   }, []);
+
+  // O retrato venceu (60 min) com a lista ainda na memória da tela: esta tela
+  // fica montada o tempo todo, e só o aparelho soltava o dado — a lista velha
+  // seguia à vista e "Ver detalhes" caía em "Entre na conta" para quem nunca
+  // teve conta. A lista sai da memória no mesmo instante (mesma régua do
+  // aparelho: `retratoVenceu`) e a tela manda consultar de novo.
+  //
+  // Três gatilhos para o mesmo esvaziamento, porque o relógio sozinho não basta:
+  // o `setTimeout` do navegador pode dormir com o aparelho (volta à aba, troca de
+  // `isActive`/`activeTab`) e a volta ao primeiro plano (`visibilitychange`) é o
+  // que o acorda sem a pessoa trocar de aba.
+  //
+  // Só vale para o que tem horário (`retratoEm`): a lista de uma consulta recém
+  // feita com o aparelho sem armazenamento vive na memória e segue valendo até o
+  // prazo, como antes. Conta aberta não passa por aqui (a lista dela é viva).
+  useEffect(() => {
+    if (user || retratoEm === null || pedidosConvidado.length === 0) return;
+    const esvaziar = () => {
+      setPedidosConvidado([]);
+      setRetratoEm(null);
+      setRetratoSaiuDaTela(true);
+      // A leitura apaga o retrato vencido do aparelho, se ainda estiver lá.
+      lerRetratoDoConvidado();
+    };
+    if (retratoVenceu(retratoEm)) {
+      esvaziar();
+      return;
+    }
+    const aoVoltarAoPrimeiroPlano = () => {
+      if (document.visibilityState === "visible" && retratoVenceu(retratoEm)) {
+        esvaziar();
+      }
+    };
+    document.addEventListener("visibilitychange", aoVoltarAoPrimeiroPlano);
+    const faltam = retratoEm + PRAZO_DO_RETRATO_MS - Date.now();
+    const relogio = setTimeout(esvaziar, faltam + 1);
+    return () => {
+      clearTimeout(relogio);
+      document.removeEventListener("visibilitychange", aoVoltarAoPrimeiroPlano);
+    };
+  }, [user, retratoEm, pedidosConvidado.length, isActive, activeTab]);
 
   useEffect(() => {
     // `isActive` entra aqui porque a aba não troca mais por baixo do detalhe
@@ -591,6 +638,7 @@ export function CartView({
         if (retrato && retrato.pedidos.length > 0) {
           setPedidosConvidado(retrato.pedidos);
           setRetratoEm(retrato.consultadoEm);
+          setRetratoSaiuDaTela(false);
         }
       }
     }
@@ -1462,6 +1510,18 @@ export function CartView({
               }}
               className="flex w-full flex-1 flex-col px-4 pb-6 pt-0 focus:outline-none min-[380px]:px-5"
             >
+              {!user && retratoSaiuDaTela && orders.length === 0 && (
+                <div
+                  data-testid="aviso-retrato-venceu"
+                  role="status"
+                  className="mb-4 rounded-2xl border border-solid border-border bg-background px-4 py-3 text-[13px] font-medium text-foreground"
+                >
+                  Por segurança, os pedidos que você consultou saem da tela
+                  depois de 1 hora. Consulte de novo com o seu e-mail e o código
+                  do pedido.
+                </div>
+              )}
+
               {orderViewMode === "guest" && (
                 <OrderSearch
                   key={buscaDoRastreio}
@@ -1475,6 +1535,7 @@ export function CartView({
                     // pedidos achados estão, não atrás de "Nenhum pedido em
                     // andamento".
                     setRetratoEm(Date.now());
+                    setRetratoSaiuDaTela(false);
                     trocarAbaDosPedidos(abaDosPedidos(foundOrders));
                   }}
                 />
