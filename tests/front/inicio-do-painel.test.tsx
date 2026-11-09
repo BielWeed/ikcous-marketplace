@@ -317,8 +317,9 @@ describe("Início do painel", () => {
     }
     // A contagem dos pedidos mora na linha âmbar acima do botão do destaque.
     expect(texto(hospedeiro)).toContain("5 pedidos esperando para preparar");
-    // 4 pendências acesas: preparar, devolução, vencidas, estoque.
-    expect(texto(hospedeiro)).toContain("4 pendências");
+    // 3 pendências na lista: devolução, vencidas, estoque. Os pedidos para
+    // preparar ficam no cartão de cima e não entram nesta contagem.
+    expect(texto(hospedeiro)).toContain("3 pendências");
   });
 
   it("caixa fechado não promete exigência: o balcão vende sem abrir o caixa", async () => {
