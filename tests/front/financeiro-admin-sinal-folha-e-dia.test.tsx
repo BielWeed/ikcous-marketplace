@@ -391,7 +391,7 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
     expect(campo("fin-lanc-descricao").value).toBe("");
   });
 
-  it("resposta de uma geração anterior não fecha nem limpa a folha nova", async () => {
+  it("cadastro em envio não deixa fechar nem abrir outra folha: a resposta dele só cai na própria folha", async () => {
     const envio = pendente();
     await montarPainel();
     // "Contas e categorias" saiu da fila de abas (22/10/2026): abre pelo chip
@@ -403,55 +403,35 @@ describe("Financeiro — sinal, envio da folha e virada do dia", () => {
       if (nome === "fin_conta_salvar") return envio.promessa;
       return Promise.resolve({ data: [], error: null });
     });
-    await clicar(botaoEm(folha(), "Salvar"));
+    const atual = folha();
+    await clicar(botaoEm(atual, "Salvar"));
     expect(rpcFalso).toHaveBeenCalledWith(
       "fin_conta_salvar",
       expect.anything(),
     );
-    // Outro cadastro ainda pode sair enquanto espera: exercita a defesa da
-    // view contra resposta antiga, independentemente da trava do lançamento.
-    await fecharDescartando(folha());
-    await clicar(botaoEm(hospedeiro, "Novo lançamento"));
-    await digitar("fin-lanc-descricao", "Lançamento B");
-    const nova = folha();
+    // Antes (21/10) o cadastro não avisava a tela: dava para descartar a folha
+    // com a gravação no ar e abrir outra por cima (e salvar a conta de novo).
+    // Agora a folha trava como as de lançamento e caixa.
+    expect(botaoX(atual).disabled).toBe(true);
+    await clicar(botaoX(atual));
+    await act(async () => {
+      atual.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(folha()).toBe(atual);
+    expect(
+      [...hospedeiro.querySelectorAll("button")].some(
+        (b) => (b.textContent ?? "").trim() === "Novo lançamento",
+      ),
+    ).toBe(false);
+
     await act(async () => envio.resolver({ data: null, error: null }));
     await esperar();
-    expect(folha()).toBe(nova);
-    expect(campo("fin-lanc-descricao").value).toBe("Lançamento B");
-    expect(onSetDirty).toHaveBeenLastCalledWith(true);
-  });
-
-  it("sucesso do cadastro antigo não destrava o novo lançamento ainda em envio", async () => {
-    const cadastro = pendente();
-    const lancamento = pendente();
-    await montarPainel();
-    // "Contas e categorias" saiu da fila de abas (22/10/2026): abre pelo chip
-    // "Contas" do cabeçalho.
-    await clicar(botaoEm(hospedeiro, "Contas"));
-    await clicar(botaoEm(hospedeiro, "Nova conta"));
-    await digitar("fin-conta-nome", "Conta A");
-    rpcFalso.mockImplementation((nome: string) => {
-      if (nome === "fin_conta_salvar") return cadastro.promessa;
-      if (nome === "fin_lancamento_salvar") return lancamento.promessa;
-      return Promise.resolve({ data: [], error: null });
-    });
-    await clicar(botaoEm(folha(), "Salvar"));
-    await fecharDescartando(folha());
-    await abrirLancamentoValido();
-    await digitar("fin-lanc-descricao", "Lançamento B");
-    await clicar(botaoEm(folha(), "Salvar lançamento"));
-    const nova = folha();
-    await act(async () => cadastro.resolver({ data: null, error: null }));
-    await esperar();
-    expect(folha()).toBe(nova);
-    expect(botaoX(nova).disabled).toBe(true);
-    expect(campo("fin-lanc-descricao").value).toBe("Lançamento B");
-    expect(onSetDirty).toHaveBeenLastCalledWith(true);
-    await act(async () =>
-      lancamento.resolver({ data: { ids: ["b"] }, error: null }),
-    );
-    await esperar();
     expect(document.querySelector('[data-slot="sheet-content"]')).toBeNull();
+    await clicar(botaoEm(hospedeiro, "Novo lançamento"));
+    expect(campo("fin-lanc-descricao").value).toBe("");
   });
 
   it("libera o cancelamento depois de uma falha de gravação", async () => {
