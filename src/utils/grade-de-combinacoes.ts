@@ -18,9 +18,9 @@
  *     pontas), nunca pela string pronta — "azul / pp" e "Amarela / PP" são a
  *     mesma combinação, e o banco NÃO tem UNIQUE (product_id, name, value)
  *     para segurar a duplicata: a proteção inteira é esta função.
- *  2. O valor digitado não pode conter "/" — ele é o separador que o
- *     `dividirEmAtributos` usa para desmontar a linha na edição. Valor com
- *     "/" viraria linha que não desmonta.
+ *  2. Só " / " (com espaços) separa atributos na edição; "34/36" é texto.
+ *     A junção também não pode criar esse separador DENTRO de um pedaço:
+ *     "P /" antes de outro valor desmontaria em pares diferentes.
  *
  * Linha DESATIVADA continua existindo: entra no conjunto de existentes e a
  * grade não a recria nem a reativa — quem quiser a combinação de volta usa
@@ -115,7 +115,7 @@ export function gerarGrade(
 
   const limpos: { name: string; valores: string[] }[] = [];
   const nomesVistos = new Set<string>();
-  for (const atributo of atributos) {
+  for (const [indice, atributo] of atributos.entries()) {
     const nome = atributo.name.trim();
     if (nome === "") {
       return {
@@ -123,10 +123,14 @@ export function gerarGrade(
         erro: "O nome do atributo (ex: Cor, Tamanho) é obrigatório.",
       };
     }
-    if (nome.includes("/")) {
+    if (
+      nome.includes(SEPARADOR_DE_ATRIBUTOS) ||
+      (indice < atributos.length - 1 &&
+        nome.endsWith(SEPARADOR_DE_ATRIBUTOS.trimEnd()))
+    ) {
       return {
         linhas: [],
-        erro: `O atributo "${nome}" não pode conter "/" — ele é o separador entre atributos.`,
+        erro: `O atributo "${nome}" se confunde com o separador " / " entre atributos. Retire os espaços junto da barra.`,
       };
     }
     const chaveDoNome = chaveMinuscula(nome);
@@ -139,16 +143,21 @@ export function gerarGrade(
     nomesVistos.add(chaveDoNome);
 
     // Vazio é ignorado (sobra de digitação não bloqueia a grade), duplicado
-    // é fundido na primeira grafia, "/" é recusado — é o separador da casa.
+    // é fundido na primeira grafia. Só o separador exato é reservado; " /"
+    // no fim também o forma ao receber o espaço da junção com o próximo.
     const valores: string[] = [];
     const valoresVistos = new Set<string>();
     for (const valorBruto of atributo.valores) {
       const valor = valorBruto.trim();
       if (valor === "") continue;
-      if (valor.includes("/")) {
+      if (
+        valor.includes(SEPARADOR_DE_ATRIBUTOS) ||
+        (indice < atributos.length - 1 &&
+          valor.endsWith(SEPARADOR_DE_ATRIBUTOS.trimEnd()))
+      ) {
         return {
           linhas: [],
-          erro: `O valor "${valor}" (em ${nome}) não pode conter "/" — ele é o separador entre atributos.`,
+          erro: `O valor "${valor}" (em ${nome}) se confunde com o separador " / " entre atributos. Retire os espaços junto da barra.`,
         };
       }
       const chaveDoValor = chaveMinuscula(valor);
