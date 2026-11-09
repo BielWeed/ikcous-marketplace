@@ -1103,13 +1103,28 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   // Leitura inicial que ainda não teve sucesso: o que sobra de gatilho além da
   // espera crescente é a rede voltar ou o app voltar a ficar visível.
-  // Leitura inicial JÁ feita (ou sem conta): ao voltar do segundo plano o que
-  // pode ter mudado é o catálogo (preço, promoção, pausa, estoque) — relê só
-  // ele, no máximo a cada `INTERVALO_MIN_RENOVAR_VISIVEL_MS`.
+  // Leitura inicial JÁ feita, SEM conta: ao voltar do segundo plano o que pode
+  // ter mudado é o catálogo (preço, promoção, pausa, estoque) — relê só ele, no
+  // máximo a cada `INTERVALO_MIN_RENOVAR_VISIVEL_MS`.
+  // Leitura inicial JÁ feita, COM conta: o carrinho do banco também pode ter
+  // mudado (outro aparelho pôs ou tirou uma linha) e o aviso ao vivo que chegou
+  // com o socket caído (celular em segundo plano, rede trocada) não é
+  // reenviado. Sem reler, a próxima edição gravava o carrinho velho inteiro e
+  // a RPC (que substitui o carrinho salvo) apagava a linha do outro aparelho.
+  // A releitura é a MESMA do aviso ao vivo (`syncFromDB(true)`: edição pendente
+  // daqui nunca é sobrescrita; sem ela o banco manda) e já traz o catálogo
+  // junto, então substitui a leitura só do catálogo.
   const ultimaRenovacaoVisivel = useRef(0);
   useEffect(() => {
     const reler = () => {
-      if (!userId || remotoMescladoRef.current) return;
+      if (!userId) return;
+      if (remotoMescladoRef.current) {
+        // A rede voltou: o aviso ao vivo que passou com ela fora se perdeu. O
+        // carrinho não muda por baixo com pedido sem confirmação (ver abaixo).
+        if (authLoading || haChaveDoPedidoVigente(userId)) return;
+        void syncFromDB(true);
+        return;
+      }
       falhasDeLeitura.current = 0;
       cancelarReleitura();
       void syncFromDB(true);
@@ -1134,6 +1149,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       // vence sozinha em 30 min (uma recusa também espera esse prazo).
       if (haChaveDoPedidoVigente(userId ?? null)) return;
       ultimaRenovacaoVisivel.current = agora;
+      if (userId) {
+        void syncFromDB(true);
+        return;
+      }
       void renovarPeloCatalogo({ respeitarPedidoPendente: true });
     };
     window.addEventListener("online", reler);
