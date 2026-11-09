@@ -1,11 +1,13 @@
-import { AddressForm } from "@/components/ui/custom/AddressForm";
+import {
+  AddressForm,
+  type DadosDoFormularioDeEndereco,
+} from "@/components/ui/custom/AddressForm";
 import { useStore } from "@/contexts/StoreContext";
 import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { cn } from "@/lib/utils";
-import type { Address } from "@/types";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface AddressFormViewProps {
   addressId?: string | null;
@@ -41,16 +43,33 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
   // checkout usa para o nome do comprador).
   const nomeDaConta = profile?.full_name || user?.user_metadata?.name || "";
 
-  const handleSubmit = async (data: Omit<Address, "id" | "user_id">) => {
+  // Esta tela ainda é a da cliente? O Salvar espera a rede por até 15 s e o
+  // Voltar do aparelho não é travado (só o botão Cancelar): se ela voltou
+  // nesse meio-tempo, o App já desmontou esta tela e mostra o Perfil -- e um
+  // `onBack()` agora olharia o histórico do PERFIL e a levaria mais uma tela
+  // para trás, sem ela tocar em nada. O endereço já ficou gravado.
+  const montadaRef = useRef(false);
+  useEffect(() => {
+    montadaRef.current = true;
+    return () => {
+      montadaRef.current = false;
+    };
+  }, []);
+
+  const handleSubmit = async (data: DadosDoFormularioDeEndereco) => {
     let success;
     if (addressId) {
       success = await updateAddress(addressId, data);
     } else {
-      const newAddr = await addAddress(data);
+      // Endereço novo: o formulário sempre manda `is_default`.
+      const newAddr = await addAddress({
+        ...data,
+        is_default: data.is_default ?? false,
+      });
       success = !!newAddr;
     }
 
-    if (success) {
+    if (success && montadaRef.current) {
       onBack();
     }
   };

@@ -22,7 +22,10 @@ import {
 } from "@/components/icons/IconesDePagamento";
 import { FraseDeAceite } from "@/components/politicas/LinksDasPoliticas";
 import { Button } from "@/components/ui/button";
-import { AddressForm } from "@/components/ui/custom/AddressForm";
+import {
+  AddressForm,
+  type DadosDoFormularioDeEndereco,
+} from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
 import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { HEADER_CENTER_SLOT_ID } from "@/components/ui/custom/Header";
@@ -4252,7 +4255,7 @@ export function CheckoutViewDaConta({
   };
 
   const handleNewAddressSubmit = async (
-    data: Omit<Address, "id" | "user_id">,
+    data: DadosDoFormularioDeEndereco,
   ): Promise<void> => {
     // A janela em que a cliente tocou em Salvar. O salvamento espera a rede
     // por até 15 s e o Voltar do aparelho fecha a janela nesse meio-tempo (só
@@ -4266,7 +4269,11 @@ export function CheckoutViewDaConta({
         result = addresses.find((a) => a.id === editingAddressId);
       }
     } else {
-      result = await addAddress(data);
+      // Endereço novo: o formulário sempre manda `is_default`.
+      result = await addAddress({
+        ...data,
+        is_default: data.is_default ?? false,
+      });
     }
 
     // O endereço já ficou gravado (a lista o mostra), mas quem apertou Voltar
@@ -8438,7 +8445,7 @@ function PagamentoForaDoPrazoView({
 interface AddressSelectionViewProps {
   editingAddressId: string | null;
   addresses: Address[];
-  onNewAddressSubmit: (data: Omit<Address, "id" | "user_id">) => Promise<void>;
+  onNewAddressSubmit: (data: DadosDoFormularioDeEndereco) => Promise<void>;
   onCancel: () => void;
   /** Nome da conta: já vem em "Quem vai receber" do endereço novo. */
   nomeDaConta?: string;
