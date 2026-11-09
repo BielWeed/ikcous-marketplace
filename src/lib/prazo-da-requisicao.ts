@@ -73,12 +73,12 @@ export const MENSAGEM_PRODUTO_LEITURA_SEM_RESPOSTA =
 // DUPLICAR PRODUTO (08/11/2026): a cópia de cada foto no armazenamento tinha
 // prazo nenhum e prendia o diálogo em "Duplicando…" com rede que conecta e não
 // responde. 15 s por foto (as cópias saem em paralelo; é uma cópia dentro do
-// servidor, sem subir arquivo). Estourou: o diálogo se solta e a frase NÃO diz
-// que falhou nem que deu certo — manda conferir a lista antes de repetir, para
-// não criar a cópia duas vezes.
+// servidor, sem subir arquivo). Estourou: o diálogo se solta e a frase diz a verdade
+// desta etapa — a cópia das fotos vem ANTES de gravar o produto, então nenhum produto
+// foi criado ainda e repetir é seguro. (A etapa de gravar a cópia tem o aviso do hook.)
 export const PRAZO_DE_COPIAR_A_FOTO_PARA_DUPLICAR_MS = 15_000;
 export const MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA =
-  "Sem resposta da rede. Não dá para saber se a cópia foi criada. Confira a lista de Produtos antes de duplicar de novo, para não criar a cópia duas vezes.";
+  "Sem resposta da rede ao copiar as fotos. O produto ainda não foi duplicado: tente de novo em instantes.";
 
 // PRAZO DAS CONSULTAS DO PAINEL (Início e CRM): rede que conecta e não responde
 // deixava o "carregando" ligado para sempre, o botão Sincronizar preso e a volta

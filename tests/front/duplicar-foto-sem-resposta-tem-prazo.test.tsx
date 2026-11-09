@@ -139,13 +139,11 @@ describe("Duplicar: a cópia de cada foto tem prazo", () => {
     expect((desfecho.erro as Error).message).toBe(
       MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA,
     );
-    // Não afirma falha nem sucesso.
+    // Diz a verdade da etapa (fotos vêm antes de gravar): nada foi criado; repetir é seguro.
     expect(MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA).toMatch(
-      /não dá para saber se a cópia foi criada/i,
+      /ainda não foi duplicado/i,
     );
-    expect(MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA).not.toMatch(
-      /não foi (possível|criada)|deu certo|foi duplicad/i,
-    );
+    expect(MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA).not.toMatch(/deu certo/i);
   });
 
   it("resposta um instante ANTES do prazo é cópia normal (sem falso estouro)", async () => {
