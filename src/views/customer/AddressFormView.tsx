@@ -7,7 +7,8 @@ import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState } from "react";
+import { useIsPresent } from "framer-motion";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 interface AddressFormViewProps {
   addressId?: string | null;
@@ -43,20 +44,20 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
   // checkout usa para o nome do comprador).
   const nomeDaConta = profile?.full_name || user?.user_metadata?.name || "";
 
-  // Esta tela ainda é a da cliente? O Salvar espera a rede por até 15 s e o
-  // Voltar do aparelho não é travado (só o botão Cancelar): se ela voltou
-  // nesse meio-tempo, o App já desmontou esta tela e mostra o Perfil -- e um
-  // `onBack()` agora olharia o histórico do PERFIL e a levaria mais uma tela
-  // para trás, sem ela tocar em nada. O endereço já ficou gravado.
-  const montadaRef = useRef(false);
-  useEffect(() => {
-    montadaRef.current = true;
+  // A saída animada mantém esta tela montada, mas o histórico já é de outra.
+  // Cada presença ativa ganha uma permissão própria: sair a invalida já no
+  // commit, mesmo se a saída for interrompida e a mesma instância voltar.
+  const presente = useIsPresent();
+  const permissaoDeVoltarRef = useRef<symbol | null>(null);
+  useLayoutEffect(() => {
+    permissaoDeVoltarRef.current = presente ? Symbol() : null;
     return () => {
-      montadaRef.current = false;
+      permissaoDeVoltarRef.current = null;
     };
-  }, []);
+  }, [presente]);
 
   const handleSubmit = async (data: DadosDoFormularioDeEndereco) => {
+    const permissao = permissaoDeVoltarRef.current;
     let success;
     if (addressId) {
       success = await updateAddress(addressId, data);
@@ -69,7 +70,11 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
       success = !!newAddr;
     }
 
-    if (success && montadaRef.current) {
+    if (
+      success &&
+      permissao !== null &&
+      permissaoDeVoltarRef.current === permissao
+    ) {
       onBack();
     }
   };

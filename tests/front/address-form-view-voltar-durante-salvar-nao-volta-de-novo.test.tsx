@@ -4,8 +4,8 @@
 //
 // A cliente toca em Salvar e a rede está lenta: a gravação espera até 15 s, e
 // só o botão Cancelar fica travado -- o Voltar do aparelho não. Ela aperta
-// Voltar, o app desmonta a tela e mostra o Perfil. Quando a gravação termina,
-// a função da tela já desmontada ainda chamava `onBack()`: o `handleBack` do
+// Voltar, o app mostra o Perfil (a animação pode reter a tela de endereço).
+// Quando a gravação termina, a tela que saiu ainda chamava `onBack()`: o `handleBack` do
 // App olha o histórico da entrada ATUAL (o Perfil) e voltava mais um passo,
 // expulsando a cliente do Perfil sem ela tocar em nada. O endereço fica salvo
 // de qualquer jeito; o que não pode é um segundo "voltar" por uma tela que
@@ -151,6 +151,42 @@ describe("AddressFormView — Voltar do aparelho durante o Salvar", () => {
     return onBack;
   }
 
+  // Mesmo fallback do App quando não há startViewTransition. Não substituímos
+  // o shell nem AnimatePresence: a própria animação retém a tela que saiu.
+  async function abrirNoShell(addressId?: string) {
+    const onBack = vi.fn();
+    const { AddressFormView } = await import(
+      "@/views/customer/AddressFormView"
+    );
+    const { SecondaryViewMotionShell } = await import(
+      "@/components/layouts/AppMotionFallbacks"
+    );
+    const mostrar = async (ativa: boolean) => {
+      await act(async () => {
+        raiz.render(
+          <>
+            {!ativa && <div data-testid="perfil" />}
+            <SecondaryViewMotionShell
+              active={ativa}
+              viewKey="address_form"
+              direction="back"
+              transitionScroll={{ oldScroll: 0, newScroll: 0 }}
+              duration={0.34}
+            >
+              <AddressFormView addressId={addressId} onBack={onBack} />
+            </SecondaryViewMotionShell>
+          </>,
+        );
+      });
+    };
+    await mostrar(true);
+    // Deixa a animação de entrada começar antes de solicitar a saída.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    return { onBack, mostrar };
+  }
+
   async function preencherNovo() {
     await act(async () => {
       digitar("cep", "38500000");
@@ -232,6 +268,99 @@ describe("AddressFormView — Voltar do aparelho durante o Salvar", () => {
 
     expect(onBack).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    { modo: "NOVO", addressId: undefined },
+    { modo: "EDIÇÃO", addressId: "end-1" },
+  ])(
+    "$modo: resposta durante a saída animada não volta de novo",
+    async ({ addressId }) => {
+      if (addressId) lista.itens = [salvo];
+      const gravacao = gravacaoEmVoo<boolean | { id: string }>();
+      const gravador = addressId ? updateAddress : addAddress;
+      gravador.mockReturnValue(gravacao.promessa);
+      const tela = await abrirNoShell(addressId);
+      if (!addressId) await preencherNovo();
+      await tocarEmSalvar();
+      expect(gravador).toHaveBeenCalledTimes(1);
+      const formulario = hospedeiro.querySelector("form");
+
+      await tela.mostrar(false);
+      expect(hospedeiro.querySelector('[data-testid="perfil"]')).not.toBeNull();
+      // A rota já saiu, mas a MESMA instância ainda está no DOM pelo exit real.
+      expect(formulario).not.toBeNull();
+      expect(hospedeiro.querySelector("form")).toBe(formulario);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      });
+      expect(hospedeiro.querySelector("form")).toBe(formulario);
+      await act(async () => {
+        gravacao.terminar(addressId ? true : { id: "novo" });
+      });
+      await esvaziar();
+
+      expect(tela.onBack).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { modo: "NOVO", addressId: undefined },
+    { modo: "EDIÇÃO", addressId: "end-1" },
+  ])(
+    "$modo: enquanto o shell está ativo o sucesso volta uma vez",
+    async ({ addressId }) => {
+      if (addressId) lista.itens = [salvo];
+      const gravacao = gravacaoEmVoo<boolean | { id: string }>();
+      const gravador = addressId ? updateAddress : addAddress;
+      gravador.mockReturnValue(gravacao.promessa);
+      const tela = await abrirNoShell(addressId);
+      if (!addressId) await preencherNovo();
+      await tocarEmSalvar();
+      expect(gravador).toHaveBeenCalledTimes(1);
+      expect(tela.onBack).not.toHaveBeenCalled();
+
+      await act(async () => {
+        gravacao.terminar(addressId ? true : { id: "novo" });
+      });
+      await esvaziar();
+      expect(tela.onBack).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([
+    { modo: "NOVO", addressId: undefined },
+    { modo: "EDIÇÃO", addressId: "end-1" },
+  ])(
+    "$modo: interromper a saída não devolve permissão à gravação antiga",
+    async ({ addressId }) => {
+      if (addressId) lista.itens = [salvo];
+      const gravacao = gravacaoEmVoo<boolean | { id: string }>();
+      const gravador = addressId ? updateAddress : addAddress;
+      gravador.mockReturnValue(gravacao.promessa);
+      const tela = await abrirNoShell(addressId);
+      if (!addressId) await preencherNovo();
+      await tocarEmSalvar();
+      expect(gravador).toHaveBeenCalledTimes(1);
+      const formulario = hospedeiro.querySelector("form");
+
+      await tela.mostrar(false);
+      expect(formulario).not.toBeNull();
+      expect(hospedeiro.querySelector("form")).toBe(formulario);
+      await tela.mostrar(true);
+      expect(hospedeiro.querySelector("form")).toBe(formulario);
+      await act(async () => {
+        gravacao.terminar(addressId ? true : { id: "antigo" });
+      });
+      await esvaziar();
+      expect(tela.onBack).not.toHaveBeenCalled();
+
+      // A nova presença não fica travada: só uma NOVA gravação pode navegar.
+      gravador.mockResolvedValue(addressId ? true : { id: "novo" });
+      await tocarEmSalvar();
+      expect(gravador).toHaveBeenCalledTimes(2);
+      expect(tela.onBack).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("CONTROLE: a cliente saiu e a gravação FALHA -- nada volta e nada quebra", async () => {
     const gravacao = gravacaoEmVoo<null>();
