@@ -588,11 +588,21 @@ export function CartView({
   // feita com o aparelho sem armazenamento vive na memória e segue valendo até o
   // prazo, como antes. Conta aberta não passa por aqui (a lista dela é viva).
   useEffect(() => {
-    if (user || retratoEm === null || pedidosConvidado.length === 0) return;
+    // Entrou numa conta: o aviso de "saiu da tela" é do convidado e não volta
+    // quando a pessoa sair da conta depois.
+    if (user) {
+      setRetratoSaiuDaTela(false);
+      return;
+    }
+    if (retratoEm === null || pedidosConvidado.length === 0) return;
     const esvaziar = () => {
       setPedidosConvidado([]);
       setRetratoEm(null);
       setRetratoSaiuDaTela(true);
+      // Remonta a busca do zero (mesmo gesto do "Consultar de novo"): o
+      // formulário não pode ficar no passo do código com o e-mail, o WhatsApp e
+      // o código antigos na tela depois de a tela dizer que eles saíram.
+      setBuscaDoRastreio((n) => n + 1);
       // A leitura apaga o retrato vencido do aparelho, se ainda estiver lá.
       lerRetratoDoConvidado();
     };

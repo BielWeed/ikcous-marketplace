@@ -24,6 +24,7 @@ const { duble } = vi.hoisted(() => ({
   duble: {
     pedidosDoHook: [] as any[],
     achados: [] as any[],
+    montagensDaBusca: 0,
     usuario: null as null | { id: string },
   },
 }));
@@ -83,19 +84,45 @@ vi.mock("@/components/ui/custom/CartFooterSummary", () => ({
 vi.mock("@/components/ui/custom/EmptyCart", () => ({
   EmptyCart: () => <div />,
 }));
-vi.mock("@/components/ui/custom/OrderSearch", () => ({
-  OrderSearch: (props: { onOrdersFound?: (pedidos: any[]) => void }) => (
-    <div data-testid="busca-pedido">
-      <button
-        type="button"
-        data-testid="achar"
-        onClick={() => props.onOrdersFound?.(duble.achados)}
-      >
-        achar
-      </button>
-    </div>
-  ),
-}));
+// O dublê guarda o que a pessoa "digitou" em estado PRÓPRIO, como o formulário
+// real (e-mail, WhatsApp, código): só some se a CartView o REMONTAR (troca da
+// `key`). É o que separa "a lista saiu" de "o formulário voltou limpo".
+vi.mock("@/components/ui/custom/OrderSearch", async () => {
+  const { useEffect, useState } = await import("react");
+  return {
+    OrderSearch: (props: {
+      onOrdersFound?: (pedidos: any[]) => void;
+      abrirNoRastreio?: boolean;
+    }) => {
+      const [digitado, setDigitado] = useState("");
+      useEffect(() => {
+        duble.montagensDaBusca += 1;
+      }, []);
+      return (
+        <div
+          data-testid="busca-pedido"
+          data-abre-no-rastreio={String(Boolean(props.abrirNoRastreio))}
+        >
+          <span data-testid="digitado">{digitado}</span>
+          <button
+            type="button"
+            data-testid="digitar"
+            onClick={() => setDigitado("fulana@x.com")}
+          >
+            digitar
+          </button>
+          <button
+            type="button"
+            data-testid="achar"
+            onClick={() => props.onOrdersFound?.(duble.achados)}
+          >
+            achar
+          </button>
+        </div>
+      );
+    },
+  };
+});
 vi.mock("@/components/ui/custom/OrderList", () => ({
   OrderList: ({ orders }: { orders: any[] }) => (
     <ul data-testid="lista-pedidos">
@@ -148,6 +175,7 @@ describe("CartView — retrato do rastreio sem conta vencido tira a lista da tel
 
     duble.pedidosDoHook = [];
     duble.achados = [];
+    duble.montagensDaBusca = 0;
     duble.usuario = null;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -270,6 +298,77 @@ describe("CartView — retrato do rastreio sem conta vencido tira a lista da tel
       expect(lista()).not.toBeNull();
       await passar(31 * MIN);
       await assentar();
+      expect(lista()).toBeNull();
+    });
+
+    it("ao vencer, o formulário de consulta volta LIMPO (remontado), sem o que a pessoa digitou", async () => {
+      duble.achados = [enviando];
+      await montar();
+      await act(async () => {
+        (
+          hospedeiro.querySelector(
+            '[data-testid="digitar"]',
+          ) as HTMLButtonElement
+        ).click();
+      });
+      await achar();
+      expect(
+        hospedeiro.querySelector('[data-testid="digitado"]')?.textContent,
+      ).toBe("fulana@x.com");
+      const montagensAntes = duble.montagensDaBusca;
+
+      await passar(PRAZO_DO_RETRATO_MS + 1_000);
+      await assentar();
+
+      expect(lista()).toBeNull();
+      expect(duble.montagensDaBusca).toBe(montagensAntes + 1);
+      expect(
+        hospedeiro.querySelector('[data-testid="digitado"]')?.textContent,
+      ).toBe("");
+      expect(
+        hospedeiro
+          .querySelector('[data-testid="busca-pedido"]')
+          ?.getAttribute("data-abre-no-rastreio"),
+      ).toBe("true");
+    });
+
+    it("CONTROLE: antes do prazo o formulário NÃO é remontado nem perde o que foi digitado", async () => {
+      duble.achados = [enviando];
+      await montar();
+      await act(async () => {
+        (
+          hospedeiro.querySelector(
+            '[data-testid="digitar"]',
+          ) as HTMLButtonElement
+        ).click();
+      });
+      await achar();
+      const montagensAntes = duble.montagensDaBusca;
+
+      await passar(59 * MIN);
+      await assentar();
+
+      expect(duble.montagensDaBusca).toBe(montagensAntes);
+      expect(
+        hospedeiro.querySelector('[data-testid="digitado"]')?.textContent,
+      ).toBe("fulana@x.com");
+    });
+
+    it("LIMITE: o aviso não volta se a pessoa entra numa conta e depois sai", async () => {
+      duble.achados = [enviando];
+      await montar();
+      await achar();
+      await passar(PRAZO_DO_RETRATO_MS + 1_000);
+      await assentar();
+      expect(texto()).toContain("Consulte de novo");
+
+      duble.usuario = usuarioLogado;
+      await remontarComIsActive(true);
+      expect(texto()).not.toContain("Consulte de novo");
+
+      duble.usuario = null;
+      await remontarComIsActive(true);
+      expect(texto()).not.toContain("Consulte de novo");
       expect(lista()).toBeNull();
     });
 
