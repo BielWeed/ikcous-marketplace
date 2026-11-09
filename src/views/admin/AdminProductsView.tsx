@@ -1272,9 +1272,9 @@ export const AdminProductsView = memo(function AdminProductsView({
       console.error("Error duplicating product:", err);
       haptic.error();
       if (ehConsultaSemResposta(err)) {
-        // A rede não respondeu: não se sabe se a cópia foi criada, então a tela
-        // não diz "não foi possível duplicar" (ela pode existir) nem "duplicado".
-        // Gravando a cópia, o hook já mostrou o aviso dele (conferir a lista):
+        // A rede não respondeu. Copiando as fotos (etapa ANTES de gravar) nenhum
+        // produto foi criado: a frase diz isso e que repetir é seguro. Gravando a
+        // cópia não se sabe se existe, e o hook já mostrou o aviso dele (conferir a lista):
         // repetir aqui empilharia dois. Copiando as fotos o hook não avisa nada.
         if (passo === "copiando-fotos") {
           toast.error(MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA, {

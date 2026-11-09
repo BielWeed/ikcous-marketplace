@@ -196,11 +196,11 @@ describe("AdminProductsView: duplicar sem resposta da rede solta o diálogo e n�
     // Não diz que falhou, nem que deu certo.
     expect(avisosDeErro()).not.toContain("Erro na Duplicação");
     expect(h.toastSuccess).not.toHaveBeenCalled();
-    // A frase manda conferir a lista antes de repetir.
+    // A frase diz a verdade da etapa: nada foi criado, repetir é seguro.
     expect(MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA).toMatch(
-      /não dá para saber se a cópia foi criada/i,
+      /ainda não foi duplicado/i,
     );
-    expect(MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA).toMatch(/confira a lista/i);
+    expect(MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA).toMatch(/tente de novo/i);
   });
 
   it("depois do estouro dá para duplicar de novo (a trava foi solta)", async () => {
