@@ -1467,6 +1467,11 @@ export function useVendaPresencial(
           { duration: 10_000 },
         );
       }
+    } else if (EDICOES_DO_CUPOM.has(acao.tipo) && estadoRef.current.enviando) {
+      // Busca manual, cliente e desconto também caem no descarte do envio
+      // pendente (o "Voltar à venda" leva ao cupom mesmo com o envio no ar):
+      // sem aviso, o toque parecia ignorado. O mesmo texto do bipe.
+      toast.error("Aguarde: a venda está sendo registrada.");
     }
     despachar(acao);
   }, []);
