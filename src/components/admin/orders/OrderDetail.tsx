@@ -2292,6 +2292,7 @@ export const OrderDetail = memo(function OrderDetail({
     order.valorEstornado,
     order.shippingLabelId,
     order.retiradaNaLoja,
+    !order.userId,
   ]);
   // Escrita no corpo do render (como `orderIdAtualRef`): a continuação do
   // "sim" roda em microtarefa e precisa ler o pedido de AGORA, não o da
@@ -2330,6 +2331,8 @@ export const OrderDetail = memo(function OrderDetail({
       shipping_label_id: order.shippingLabelId,
       // Retirada pronta (gravada como `shipping`): o produto nunca saiu.
       retiradaNaLoja: order.retiradaNaLoja,
+      // Convidado (sem conta): o cancelamento não manda aviso no aplicativo.
+      clienteSemConta: !order.userId,
     });
     cancelamentoEmConfirmacaoRef.current = foto;
     let confirmado = false;

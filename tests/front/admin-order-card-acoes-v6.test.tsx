@@ -176,6 +176,7 @@ it.each([
       payment_status: order.paymentStatus,
       cancelledAfterShipping: order.cancelledAfterShipping,
       valorEstornado: order.valorEstornado,
+      clienteSemConta: !order.userId,
     });
     expect(document.body.textContent).toContain(texto);
     expect(avancar).not.toHaveBeenCalled();
@@ -381,3 +382,23 @@ it("balcão do dia mantém motivo e confirmação explícita; sem telefone a aç
   expect(botao("Confirmar anulação")?.disabled).toBe(true);
   expect(anular).not.toHaveBeenCalled();
 });
+
+it.each([
+  { rotulo: "convidado (sem conta)", userId: undefined, promete: false },
+  { rotulo: "cliente com conta", userId: "user-1", promete: true },
+])(
+  "cancelar pedido de $rotulo: a confirmação só promete aviso no aplicativo para quem tem conta",
+  async ({ userId, promete }) => {
+    montar(pedido({ paymentStatus: "aguardando", userId }));
+    await abrirAcoes();
+    await clicar("Cancelar pedido");
+    const tela = document.body.textContent ?? "";
+    if (promete) {
+      expect(tela).toContain("o cliente é avisado no aplicativo");
+    } else {
+      expect(tela).not.toContain("avisado no aplicativo");
+      expect(tela).toContain("NÃO recebe aviso");
+    }
+    expect(avancar).not.toHaveBeenCalled();
+  },
+);
