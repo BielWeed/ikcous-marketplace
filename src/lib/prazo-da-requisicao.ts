@@ -41,6 +41,19 @@ export const PRAZO_DAS_ACOES_DO_PEDIDO_MS = 20_000;
 export const MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA =
   "Sem resposta da rede. Confira o pedido antes de tentar de novo.";
 
+// PRAZO DO "REENVIAR COMPROVANTE" NA FICHA DO PEDIDO DA CLIENTE (08/11/2026).
+// Rede "pendurada" conecta e não responde: o botão ficava em "Reenviando…",
+// desabilitado e girando, sem aviso, até a cliente sair da tela. 20 s: o mesmo
+// do envio do código por e-mail (a edge gasta até 10 s de SMTP, mais as
+// leituras do banco). Só encerra a ESPERA DA TELA: o e-mail pode ter saído (e
+// gasto a vaga única de e-mail do pedido). Por isso a frase NÃO diz que falhou
+// nem que deu certo: diz que não dá para saber e manda conferir a caixa de
+// entrada e o spam antes de repetir. A resposta tardia é descartada: depois
+// deste aviso a tela nunca mais diz "reenviado".
+export const PRAZO_DO_REENVIO_DO_COMPROVANTE_MS = 20_000;
+export const MENSAGEM_REENVIO_DO_COMPROVANTE_SEM_RESPOSTA =
+  "Sem resposta da rede. Não dá para saber se o comprovante foi enviado. Confira sua caixa de entrada e o spam antes de tentar de novo.";
+
 // PRAZOS DE ABRIR E SALVAR UM PRODUTO NO PAINEL (08/11/2026). Rede "pendurada"
 // conecta e não responde: o botão ficava em "Salvando…" para sempre e o produto
 // abria num esqueleto cinza sem saída. Como nas ações do pedido, o prazo só

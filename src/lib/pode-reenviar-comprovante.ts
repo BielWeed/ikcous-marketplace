@@ -17,13 +17,18 @@ import type { Order } from "@/types";
  *  - qualquer outro caso (aguardando, recusado, expirado, estornado, pago depois
  *    de expirar; `online` sem status; forma de entrega com status de cobrança
  *    online): não aparece. No online, o backend também protege a reserva.
+ *  - pedido CANCELADO (qualquer forma, qualquer pagamento): não aparece. A edge
+ *    não lê o status do pedido: o e-mail sairia como "Recebemos seu pedido.
+ *    Guarde este e-mail", sem uma palavra sobre o cancelamento, e gastaria a
+ *    reserva única com esse texto, enquanto a tela do pedido diz "cancelado".
  *
  * Conservador de propósito: na dúvida o botão some. Esta função só decide
  * a TELA; a autorização e a proteção da reserva continuam no backend.
  */
 export function podeReenviarComprovante(
-  pedido: Pick<Order, "paymentMethod" | "paymentStatus">,
+  pedido: Pick<Order, "paymentMethod" | "paymentStatus" | "status">,
 ): boolean {
+  if (pedido.status === "cancelled") return false;
   const pagamento = pedido.paymentStatus ?? null;
   if (pagamento === "pago") return true;
   if (pagamento === null || pagamento === "recebido_na_entrega") {

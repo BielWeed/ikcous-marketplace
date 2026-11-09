@@ -38,6 +38,7 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { podeReenviarComprovante } from "@/lib/pode-reenviar-comprovante";
 import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 import {
+  MENSAGEM_REENVIO_DO_COMPROVANTE_SEM_RESPOSTA,
   aguardarComPrazo,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
@@ -1039,6 +1040,10 @@ export function OrderDetailsView({
         toast.error(
           "A loja ainda não configurou o envio de e-mails. Fale com o lojista.",
         );
+      } else if (desfecho.motivo === "sem_resposta") {
+        // Prazo da tela estourado: o e-mail pode ter saído. Nem "reenviado",
+        // nem "não conseguimos": manda conferir antes de tentar de novo.
+        toast.error(MENSAGEM_REENVIO_DO_COMPROVANTE_SEM_RESPOSTA);
       } else {
         toast.error(
           "Não conseguimos reenviar o comprovante agora. Tente de novo em instantes.",
@@ -2063,11 +2068,13 @@ export function OrderDetailsView({
           {/* Laudo 0109 (B2): segunda chance do comprovante — ver o
               comentário do handleResendReceipt. Fora do bloco do cancelar
               de propósito: o reenvio faz sentido em QUALQUER estágio do
-              pedido, inclusive entregue ou cancelado — MAS só quando o
-              e-mail que a edge mandaria é o comprovante de verdade (ver
+              pedido, inclusive entregue — MAS só quando o e-mail que a edge
+              mandaria é o comprovante de verdade (ver
               `podeReenviarComprovante`): com PIX online ainda aguardando,
               o toque gastava a única vaga de e-mail do pedido com o texto
-              de "aguardando" e o de "pago" nunca mais saía. */}
+              de "aguardando" e o de "pago" nunca mais saía. Pedido
+              cancelado também não oferece: o e-mail diria "Recebemos seu
+              pedido" sem falar do cancelamento. */}
           {/* O reenvio exige sessao (a edge recusa sem ela): quem acompanha
               por codigo, sem conta, nao ve um botao que sempre falharia. */}
           {!!user && podeReenviarComprovante(order) && (
