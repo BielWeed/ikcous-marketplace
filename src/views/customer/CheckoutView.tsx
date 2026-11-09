@@ -409,10 +409,17 @@ const decidirSaidaDaTela = (error: unknown): RecusaDoPedido => {
     // o banco nunca escreveu esta frase — ela fala do cliente, não do pedido.
     // O toast do catch usa ESTA mesma frase (ver handleSubmitEvent): toast e
     // painel nunca podem dizer coisas opostas sobre a mesma falha.
+    //
+    // A frase NÃO promete "não sai em dobro": quem chega aqui TEM CONTA (a
+    // convidada é desviada para `reenviar_mesma_compra` em
+    // `decidirSaidaDoCheckout`, que congela a compra e garante a mesma chave).
+    // Com conta não há compra congelada — se a resposta se perdeu depois de o
+    // pedido ser gravado e o cupom ou o total mudou, a chave gira e o servidor
+    // cria um segundo pedido. Por isso manda conferir Meus pedidos primeiro.
     return {
       acao: "tentar_de_novo",
       mensagem:
-        "Sem conexão — o pedido não foi confirmado. Tente de novo quando a internet voltar: ele não sai em dobro.",
+        "Sem conexão — não sabemos se o pedido foi confirmado. Antes de tentar de novo, confira em Meus pedidos se ele já aparece; se não aparecer, é só tentar de novo.",
     };
   }
   return classificarRecusaDoPedido(error);
