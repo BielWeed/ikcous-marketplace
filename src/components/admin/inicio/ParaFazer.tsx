@@ -151,16 +151,20 @@ export function ParaFazer({
       alvo: VISAO_ESTOQUE_BAIXO,
     },
   ];
-  const pendentes = itens.filter((item) => item.pendente).length;
   // Loja que ainda não vendeu: o Início mostra "Sua loja começa por aqui"
   // acima, então dizer "Tudo em dia" aqui contradiz a tela.
   const semPedidosAinda = lojaSemVendasAinda(painel);
   const esqueleto = carregando && !painel;
+  // Com o cartão "Preparar pedidos" já acima, a linha "preparar" sai da lista
+  // (`preparoEmDestaque`): ela também sai da contagem do cabeçalho e do "Tudo
+  // em dia", que têm de falar só do que a lista mostra.
+  const preparoSoNoCartaoDeCima = preparoEmDestaque && (preparar ?? 0) > 0;
   const visiveis = itens.filter(
     (item) =>
-      !(item.chave === "preparar" && preparoEmDestaque && item.pendente) &&
+      !(item.chave === "preparar" && preparoSoNoCartaoDeCima) &&
       (item.pendente || item.chave === "caixa" || item.contagem == null),
   );
+  const pendentes = visiveis.filter((item) => item.pendente).length;
 
   return (
     <section
@@ -201,14 +205,18 @@ export function ParaFazer({
                       classeDoTexto("positivo"),
                     )}
                   >
-                    {semPedidosAinda
-                      ? "Sem pedidos por enquanto"
-                      : "Tudo em dia"}
+                    {preparoSoNoCartaoDeCima
+                      ? "Nada mais para resolver"
+                      : semPedidosAinda
+                        ? "Sem pedidos por enquanto"
+                        : "Tudo em dia"}
                   </p>
                   <p className="mt-0.5 text-sm text-zinc-400">
-                    {semPedidosAinda
-                      ? "Quando chegar o primeiro pedido, ele aparece aqui."
-                      : "Nenhuma pendência para resolver."}
+                    {preparoSoNoCartaoDeCima
+                      ? "Falta só preparar os pedidos, no cartão acima."
+                      : semPedidosAinda
+                        ? "Quando chegar o primeiro pedido, ele aparece aqui."
+                        : "Nenhuma pendência para resolver."}
                   </p>
                 </div>
               </li>
