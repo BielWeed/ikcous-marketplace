@@ -1,4 +1,14 @@
 {
+  "1.5.161": {
+    "titulo": "Balcão avisa quando uma edição é barrada, checkout sem promessa falsa e Financeiro sem duplicatas",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Painel, Balcão: enquanto a venda está sendo registrada, tocar em produto, cliente ou desconto agora mostra “Aguarde: a venda está sendo registrada.”, em vez de não fazer nada.",
+      "Loja, Finalizar compra: com a internet sem resposta, o aviso para quem tem conta não promete mais que o pedido “não sai em dobro”; manda conferir em Meus pedidos se ele já aparece e, se não aparecer, tentar de novo.",
+      "Painel, Financeiro: se a internet cair ao salvar uma conta ou categoria nova, o botão Salvar trava e o aviso manda conferir a lista antes de repetir, para não criar duas iguais. A folha também não fecha enquanto o salvamento está no ar."
+    ]
+  },
   "1.5.160": {
     "titulo": "Início mais claro, reenvio de comprovante que não trava e aviso de duplicar mais honesto",
     "novidades": [],
