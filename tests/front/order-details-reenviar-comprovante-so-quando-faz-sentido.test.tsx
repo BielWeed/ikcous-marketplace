@@ -108,7 +108,20 @@ const CASOS: Caso[] = [
     "delivered",
     true,
   ],
-  ["pagar na entrega, cancelado", "cash", null, "cancelled", true],
+  // Pedido CANCELADO (achado da onda 50, 08/11/2026): a edge não olha o status
+  // e monta o e-mail de "Recebemos seu pedido", sem uma palavra sobre o
+  // cancelamento, enquanto a tela do mesmo pedido diz "cancelado". O botão some
+  // em qualquer forma e em qualquer pagamento (era `true` para os dois
+  // primeiros destes quatro casos).
+  ["pagar na entrega, cancelado", "cash", null, "cancelled", false],
+  [
+    "pagar na entrega, recebido pela loja, depois cancelado",
+    "cash",
+    "recebido_na_entrega",
+    "cancelled",
+    false,
+  ],
+  ["online + pago, depois cancelado", "online", "pago", "cancelled", false],
   // Pagamento online que NÃO é `pago`: o e-mail sairia como "aguardando" e
   // gastaria a única vaga — o botão some.
   ["online + aguardando", "online", "aguardando", "pending", false],

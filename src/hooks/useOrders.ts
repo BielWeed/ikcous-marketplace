@@ -24,7 +24,9 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { pluralizar } from "@/lib/pluralizar";
 import {
   MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA,
+  MENSAGEM_REENVIO_DO_COMPROVANTE_SEM_RESPOSTA,
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+  PRAZO_DO_REENVIO_DO_COMPROVANTE_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
@@ -4608,18 +4610,39 @@ export function useOrders(
    * desfecho `ja_enviado`, não uma segunda mensagem — e o `send-order-
    * confirmation` só libera a reserva de novo quando o envio de verdade
    * falhou.
+   *
+   * Rede "pendurada" (conecta e não responde): sem prazo o botão ficava em
+   * "Reenviando…" para sempre. O prazo cobre a chamada E a leitura do corpo do
+   * erro (`desfechoDoReenvio`), e só encerra a ESPERA DA TELA: o e-mail pode ter
+   * saído. O desfecho é `sem_resposta` (nem enviado, nem falhou); a resposta
+   * que chegar depois é descartada pela corrida do prazo.
    */
-  const reenviarComprovante = useCallback(async (orderId: string) => {
-    try {
-      const { data, error } = await (supabase as any).functions.invoke(
-        "send-order-confirmation",
-        { body: { orderId } },
-      );
-      return await desfechoDoReenvio(data, error);
-    } catch {
-      return { ok: false, motivo: "envio_falhou" as const };
-    }
-  }, []);
+  const reenviarComprovante = useCallback(
+    async (orderId: string): Promise<{ ok: boolean; motivo?: string }> => {
+      try {
+        return await aguardarComPrazo(
+          (async () => {
+            const { data, error } = await (supabase as any).functions.invoke(
+              "send-order-confirmation",
+              { body: { orderId } },
+            );
+            return await desfechoDoReenvio(data, error);
+          })(),
+          PRAZO_DO_REENVIO_DO_COMPROVANTE_MS,
+          () =>
+            erroDeConsultaSemResposta(
+              MENSAGEM_REENVIO_DO_COMPROVANTE_SEM_RESPOSTA,
+            ),
+        );
+      } catch (err) {
+        if (ehConsultaSemResposta(err)) {
+          return { ok: false, motivo: "sem_resposta" };
+        }
+        return { ok: false, motivo: "envio_falhou" };
+      }
+    },
+    [],
+  );
 
   const createOrder = useCallback(
     async (orderData: any, opts?: { comPagamentoOnline?: boolean }) => {

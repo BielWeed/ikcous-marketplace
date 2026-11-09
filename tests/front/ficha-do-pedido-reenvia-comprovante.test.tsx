@@ -200,4 +200,59 @@ describe("botão reenviar comprovante na ficha do pedido", () => {
       expect.stringContaining("Não conseguimos reenviar"),
     );
   });
+
+  // Rede "pendurada" (achado da onda 50, 08/11/2026): o botão ficava em
+  // "Reenviando…" para sempre, sem aviso. O hook (prazo de 20 s) entrega
+  // `sem_resposta`; a tela solta o botão e diz a verdade: não dá para saber se
+  // o e-mail saiu — nem "reenviado", nem "não deu".
+  it("sem resposta da rede: solta o botão e avisa que NÃO dá para saber se o e-mail saiu", async () => {
+    let terminar!: (desfecho: { ok: boolean; motivo: string }) => void;
+    reenviarComprovante.mockReturnValue(
+      new Promise((resolve) => {
+        terminar = resolve;
+      }),
+    );
+    await montarFicha();
+
+    await act(async () => {
+      acharBotaoReenvio()?.click();
+    });
+    // enquanto espera: "Reenviando…", desabilitado
+    const esperando = Array.from(container?.querySelectorAll("button") ?? [])
+      .filter((b) => b.textContent?.includes("Reenviando"))
+      .at(0);
+    expect(esperando).toBeDefined();
+    expect(esperando?.disabled).toBe(true);
+    expect(toastError).not.toHaveBeenCalled();
+
+    await act(async () => {
+      terminar({ ok: false, motivo: "sem_resposta" });
+    });
+
+    // o botão voltou, habilitado, com o nome de sempre
+    const solto = acharBotaoReenvio();
+    expect(solto).not.toBeNull();
+    expect(solto?.disabled).toBe(false);
+    expect(container?.textContent).not.toContain("Reenviando");
+
+    // aviso honesto: não afirma envio nem falha; manda conferir antes de repetir
+    expect(toastError).toHaveBeenCalledTimes(1);
+    const frase = String(toastError.mock.calls[0]?.[0]);
+    expect(frase).toMatch(/sem resposta/i);
+    expect(frase).toMatch(/caixa de entrada/i);
+    expect(frase).toMatch(/spam/i);
+    expect(frase).toMatch(/antes de tentar de novo/i);
+    expect(frase).not.toMatch(/Não conseguimos reenviar/);
+    expect(frase).not.toMatch(/reenviado/i);
+    expect(toastSuccess).not.toHaveBeenCalled();
+    expect(toastInfo).not.toHaveBeenCalled();
+
+    // e dá para tentar de novo (o botão solto funciona)
+    reenviarComprovante.mockResolvedValue({ ok: true });
+    await act(async () => {
+      acharBotaoReenvio()?.click();
+    });
+    expect(reenviarComprovante).toHaveBeenCalledTimes(2);
+    expect(toastSuccess).toHaveBeenCalledTimes(1);
+  });
 });
