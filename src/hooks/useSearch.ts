@@ -3,6 +3,7 @@ import {
   produtoCombinaComBusca,
 } from "@/lib/busca-de-produtos";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
+import { produtoDisponivel } from "@/lib/vitrine";
 import type { Product } from "@/types";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDebounce } from "./useDebounce";
@@ -26,10 +27,13 @@ export interface FiltrosDaBusca {
 export interface MemoriaDosFiltros {
   iniciais?: FiltrosDaBusca;
   aoMudar?: (filtros: FiltrosDaBusca) => void;
+  /** O termo que o App guardou. Vale desde o primeiro desenho (e já entra no
+   * debounce), para a lista não aparecer inteira por 300 ms ao voltar. */
+  termoInicial?: string;
 }
 
 export function useSearch(products: Product[], memoria?: MemoriaDosFiltros) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(memoria?.termoInicial ?? "");
   // `iniciais` vale só no nascimento (useState ignora a mudança depois).
   const [category, setCategory] = useState(
     memoria?.iniciais?.category ?? "Todas",
@@ -90,8 +94,8 @@ export function useSearch(products: Product[], memoria?: MemoriaDosFiltros) {
         );
       })
       .sort((a, b) => {
-        const aAvailable = a.stock > 0 ? 1 : 0;
-        const bAvailable = b.stock > 0 ? 1 : 0;
+        const aAvailable = produtoDisponivel(a) ? 1 : 0;
+        const bAvailable = produtoDisponivel(b) ? 1 : 0;
         if (aAvailable !== bAvailable) {
           return bAvailable - aAvailable;
         }
