@@ -396,10 +396,25 @@ export const AdminProductsView = memo(function AdminProductsView({
     };
   }, []);
 
+  // Ocorrências de troca de busca/filtros. A geração só muda quando a PRÓXIMA
+  // leitura começa (320 ms depois de trocar a categoria): nesse intervalo a
+  // resposta da categoria antiga ainda chegava e corrigia a página -- ou trocava
+  // a lista -- da categoria nova. Contar a OCORRÊNCIA (e não comparar valores)
+  // também descarta a resposta quando o filtro volta ao valor antigo (A -> B -> A).
+  const versaoDosFiltrosRef = useRef(0);
+  useEffect(() => {
+    versaoDosFiltrosRef.current += 1;
+  }, [termoDeBusca, filterCategory, modoSemCusto, modoEstoqueBaixo]);
+
   const loadData = useCallback(
     async (pageToFetch: number, silenciosa = false) => {
       if (!catalogoMontado.current) return;
       const geracao = ++geracaoDaRecarga.current;
+      const versaoDosFiltros = versaoDosFiltrosRef.current;
+      const leituraSuperada = () =>
+        !catalogoMontado.current ||
+        geracao !== geracaoDaRecarga.current ||
+        versaoDosFiltrosRef.current !== versaoDosFiltros;
       cargaEmAndamento.current = Date.now();
       try {
         const filtros = {
@@ -410,12 +425,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         };
         if (modoSemCusto) {
           const achados = await loadProductsSemCusto(filtros);
-          if (
-            !catalogoMontado.current ||
-            geracao !== geracaoDaRecarga.current
-          ) {
-            return;
-          }
+          if (leituraSuperada()) return;
           if (achados || !silenciosa) setLoadError(!achados);
           if (achados) {
             setSemCusto(achados.products);
@@ -424,9 +434,7 @@ export const AdminProductsView = memo(function AdminProductsView({
           return;
         }
         const result = await loadProducts(pageToFetch, pageSize, filtros);
-        if (!catalogoMontado.current || geracao !== geracaoDaRecarga.current) {
-          return;
-        }
+        if (leituraSuperada()) return;
         if (result) {
           ultimaCargaBemSucedida.current = Date.now();
           setLoadError(false);
@@ -445,12 +453,7 @@ export const AdminProductsView = memo(function AdminProductsView({
             // produto nenhum no filtro (total 0) o vazio é verdade: nada a buscar.
             if (result.total > 0) {
               const ultima = await loadProducts(maxPage, pageSize, filtros);
-              if (
-                !catalogoMontado.current ||
-                geracao !== geracaoDaRecarga.current
-              ) {
-                return;
-              }
+              if (leituraSuperada()) return;
               if (ultima) {
                 setTotalProducts(ultima.total);
                 if (!modoEstoqueBaixo) cachedProductsTotal = ultima.total;
