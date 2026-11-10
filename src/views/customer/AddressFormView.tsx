@@ -1,11 +1,14 @@
-import { AddressForm } from "@/components/ui/custom/AddressForm";
+import {
+  AddressForm,
+  type DadosDoFormularioDeEndereco,
+} from "@/components/ui/custom/AddressForm";
 import { useStore } from "@/contexts/StoreContext";
 import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { cn } from "@/lib/utils";
-import type { Address } from "@/types";
-import { useEffect, useState } from "react";
+import { useIsPresent } from "framer-motion";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 interface AddressFormViewProps {
   addressId?: string | null;
@@ -41,16 +44,37 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
   // checkout usa para o nome do comprador).
   const nomeDaConta = profile?.full_name || user?.user_metadata?.name || "";
 
-  const handleSubmit = async (data: Omit<Address, "id" | "user_id">) => {
+  // A saída animada mantém esta tela montada, mas o histórico já é de outra.
+  // Cada presença ativa ganha uma permissão própria: sair a invalida já no
+  // commit, mesmo se a saída for interrompida e a mesma instância voltar.
+  const presente = useIsPresent();
+  const permissaoDeVoltarRef = useRef<symbol | null>(null);
+  useLayoutEffect(() => {
+    permissaoDeVoltarRef.current = presente ? Symbol() : null;
+    return () => {
+      permissaoDeVoltarRef.current = null;
+    };
+  }, [presente]);
+
+  const handleSubmit = async (data: DadosDoFormularioDeEndereco) => {
+    const permissao = permissaoDeVoltarRef.current;
     let success;
     if (addressId) {
       success = await updateAddress(addressId, data);
     } else {
-      const newAddr = await addAddress(data);
+      // Endereço novo: o formulário sempre manda `is_default`.
+      const newAddr = await addAddress({
+        ...data,
+        is_default: data.is_default ?? false,
+      });
       success = !!newAddr;
     }
 
-    if (success) {
+    if (
+      success &&
+      permissao !== null &&
+      permissaoDeVoltarRef.current === permissao
+    ) {
       onBack();
     }
   };
