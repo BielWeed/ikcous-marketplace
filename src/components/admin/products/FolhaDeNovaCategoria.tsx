@@ -19,9 +19,10 @@ import {
   categoriaParecida,
   erroDoNomeDaCategoria,
 } from "@/lib/gestao-de-categorias";
+import { ehConsultaSemResposta } from "@/lib/prazo-da-requisicao";
 import type { Category } from "@/types";
 import { Loader2, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const AVISO_ICONE_NAO_SALVO =
@@ -82,6 +83,22 @@ export function FolhaDeNovaCategoria({
   // fecha a janela entre o toque e a tela se atualizar.
   const [criando, setCriando] = useState(false);
   const criandoRef = useRef(false);
+  // Navegar para fora do formulário também desmonta a folha. A resposta não
+  // pode selecionar categoria, fechar outra tela nem avisar depois da saída.
+  const montadaRef = useRef(true);
+  const avisoPendenteRef = useRef<ReturnType<typeof toast.loading> | null>(
+    null,
+  );
+  useEffect(() => {
+    montadaRef.current = true;
+    return () => {
+      montadaRef.current = false;
+      if (avisoPendenteRef.current !== null) {
+        toast.dismiss(avisoPendenteRef.current);
+        avisoPendenteRef.current = null;
+      }
+    };
+  }, []);
 
   const nomeLimpo = nome.trim();
 
@@ -115,14 +132,17 @@ export function FolhaDeNovaCategoria({
     criandoRef.current = true;
     setCriando(true);
     const loadingId = toast.loading("Criando categoria...");
+    avisoPendenteRef.current = loadingId;
     try {
       const criada = await adicionar(
         { name: nomeLimpo, description: "", isActive: true },
         true,
       );
+      if (!montadaRef.current) return;
       aoCriada(nomeLimpo);
       const comIcone = escolha.icone !== null || escolha.forma !== null;
       if (!comIcone) {
+        avisoPendenteRef.current = null;
         toast.success("Categoria criada com sucesso!", { id: loadingId });
       } else {
         let iconeSalvo = false;
@@ -138,6 +158,8 @@ export function FolhaDeNovaCategoria({
         } catch {
           // A categoria já existe: só o ícone ficou de fora.
         }
+        if (!montadaRef.current) return;
+        avisoPendenteRef.current = null;
         if (iconeSalvo) {
           toast.success("Categoria criada com sucesso!", { id: loadingId });
         } else {
@@ -146,13 +168,17 @@ export function FolhaDeNovaCategoria({
       }
       aoFechar();
     } catch (e) {
+      if (!montadaRef.current) return;
+      avisoPendenteRef.current = null;
       toast.error(
-        e instanceof ErroDeCategoria ? e.message : "Erro ao salvar categoria",
+        e instanceof ErroDeCategoria || ehConsultaSemResposta(e)
+          ? (e as Error).message
+          : "Erro ao salvar categoria",
         { id: loadingId },
       );
     } finally {
       criandoRef.current = false;
-      setCriando(false);
+      if (montadaRef.current) setCriando(false);
     }
   };
 

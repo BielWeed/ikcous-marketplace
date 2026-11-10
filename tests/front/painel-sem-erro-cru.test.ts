@@ -58,8 +58,10 @@ type Excecao = {
   arquivo: string;
   /** Trecho que a chamada tem que conter (a exceção é só dessa chamada). */
   chamadaContem: string;
-  /** Regex que tem que casar nos 900 caracteres ANTES da chamada. */
+  /** Regex que tem que casar na janela ANTES da chamada (padrão: 900). */
   contexto: RegExp;
+  /** Exceção localizada para fluxos maiores; não amplia as outras chamadas. */
+  janelaDeContexto?: number;
   motivo: string;
 };
 
@@ -82,8 +84,11 @@ const EXCECOES: Excecao[] = [
     arquivo: "src/components/admin/products/FolhaDeNovaCategoria.tsx",
     chamadaContem: "e instanceof ErroDeCategoria",
     contexto: /await adicionar\(/,
+    // O tratamento do ícone e do aviso pendente separa o await do catch em 1109 caracteres.
+    // Continua sendo só esta chamada tipada, no mesmo arquivo, usada exatamente uma vez.
+    janelaDeContexto: 1200,
     motivo:
-      "O ramo só mostra e.message quando o erro é ErroDeCategoria (src/lib/gestao-de-categorias.ts), classe que só nasce com frase em português escrita para a lojista (nome reservado, 'Não foi possível mudar a categoria…' ou mensagemDaFalhaDeCategoria, que troca o texto cru do Postgres por frase nossa); qualquer outro erro cai na frase fixa 'Erro ao salvar categoria'.",
+      "O ramo mostra mensagem curada de ErroDeCategoria (src/lib/gestao-de-categorias.ts) ou do timeout deste fluxo, criado por erroDeConsultaSemResposta(semRespostaDaCategoria(...)) em useCategories com frase própria de resultado desconhecido. Qualquer erro sem essas guardas cai em 'Erro ao salvar categoria'. A janela maior só alcança o await adicionar deste mesmo fluxo; arquivo, guarda de tipo e uso único continuam obrigatórios.",
   },
 ];
 
@@ -143,7 +148,7 @@ function excecaoQueLibera(
     (e) =>
       e.arquivo === arquivo &&
       chamada.includes(e.chamadaContem) &&
-      e.contexto.test(textoAntes.slice(-900)),
+      e.contexto.test(textoAntes.slice(-(e.janelaDeContexto ?? 900))),
   );
 }
 
@@ -415,6 +420,52 @@ describe("painel sem erro cru — toast não mostra error.message", () => {
       ).toEqual([]);
       expect(
         acharErroCru(criarSetor, "src/views/admin/AdminOutraView.tsx"),
+      ).toHaveLength(1);
+    });
+
+    it("a mensagem curada da categoria continua reconhecida após o tratamento do ícone", () => {
+      const criarSetor = `
+        await adicionar(x, true);
+        ${" ".repeat(1000)}
+      } catch (e) {
+        toast.error(
+          e instanceof ErroDeCategoria || ehConsultaSemResposta(e)
+            ? (e as Error).message
+            : "Erro ao salvar categoria",
+          { id: loadingId },
+        );
+      }`;
+      expect(
+        acharErroCru(
+          criarSetor,
+          "src/components/admin/products/FolhaDeNovaCategoria.tsx",
+        ),
+      ).toEqual([]);
+    });
+
+    it("a janela da categoria não libera toast cru sem a guarda de tipo", () => {
+      const solto = `
+        await adicionar(x, true);
+        ${" ".repeat(1000)}
+      } catch (e) {
+        toast.error(e.message);
+      }`;
+      expect(
+        acharErroCru(
+          solto,
+          "src/components/admin/products/FolhaDeNovaCategoria.tsx",
+        ),
+      ).toHaveLength(1);
+    });
+
+    it("as outras exceções continuam limitadas aos 900 caracteres anteriores", () => {
+      const distante = `
+        if (error.code === "22023") {
+          ${" ".repeat(1000)}
+          toast.error(error.message);
+        }`;
+      expect(
+        acharErroCru(distante, "src/views/admin/AdminOrdersView.tsx"),
       ).toHaveLength(1);
     });
 

@@ -15,6 +15,12 @@ import {
   lerCategoriasComUso,
   mensagemDaFalhaDeCategoria,
 } from "@/lib/gestao-de-categorias";
+import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -36,7 +42,11 @@ export function useUsoDasCategorias(): {
     setCarregando(true);
     setErro(null);
     try {
-      const { data, error } = await supabase.rpc("categorias_com_uso");
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(supabase.rpc("categorias_com_uso")),
+        PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+        erroDeConsultaSemResposta,
+      );
       if (error) {
         throw new ErroDeCategoria(
           mensagemDaFalhaDeCategoria(error),
@@ -48,8 +58,8 @@ export function useUsoDasCategorias(): {
     } catch (e) {
       if (meu === pedidoRef.current) {
         setErro(
-          e instanceof ErroDeCategoria
-            ? e.message
+          e instanceof ErroDeCategoria || ehConsultaSemResposta(e)
+            ? (e as Error).message
             : mensagemDaFalhaDeCategoria(e),
         );
       }

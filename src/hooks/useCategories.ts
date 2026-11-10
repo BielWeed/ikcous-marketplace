@@ -388,16 +388,25 @@ export function useCategories() {
       });
 
       try {
-        const { data, error } = await supabase
-          .from("categorias")
-          .insert({
-            nome: category.name,
-            slug,
-            descricao: category.description,
-            ativo: category.isActive,
-          })
-          .select()
-          .single();
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("categorias")
+              .insert({
+                nome: category.name,
+                slug,
+                descricao: category.description,
+                ativo: category.isActive,
+              })
+              .select()
+              .single(),
+          ),
+          PRAZO_DA_GRAVACAO_DA_CATEGORIA_MS,
+          () =>
+            erroDeConsultaSemResposta(
+              semRespostaDaCategoria("a categoria foi criada"),
+            ),
+        );
 
         if (error) throw error;
 
@@ -433,7 +442,12 @@ export function useCategories() {
           if (!silent) toast.error(MENSAGEM_CATEGORIA_JA_EXISTE);
           throw new ErroDeCategoria(MENSAGEM_CATEGORIA_JA_EXISTE, "23505");
         }
-        if (!silent) toast.error("Erro ao criar categoria");
+        if (!silent)
+          toast.error(
+            ehConsultaSemResposta(error)
+              ? (error as Error).message
+              : "Erro ao criar categoria",
+          );
         throw error;
       }
     },

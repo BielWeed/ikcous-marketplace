@@ -16,6 +16,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const h = vi.hoisted(() => ({
   rpc: vi.fn(),
   atualizar: vi.fn(),
+  inserir: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
 }));
@@ -38,6 +39,9 @@ vi.mock("@/lib/supabase", () => ({
           ],
           error: null,
         }),
+      }),
+      insert: (valores: unknown) => ({
+        select: () => ({ single: () => h.inserir(valores) }),
       }),
       update: (valores: unknown) => ({
         eq: (_coluna: string, id: string) => ({
@@ -77,6 +81,7 @@ describe("useCategories — gravação que nunca responde", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     h.rpc.mockReset().mockImplementation(pendurada);
     h.atualizar.mockReset().mockImplementation(pendurada);
+    h.inserir.mockReset().mockImplementation(pendurada);
     h.toastSuccess.mockReset();
     h.toastError.mockReset();
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -142,6 +147,62 @@ describe("useCategories — gravação que nunca responde", () => {
     // Nunca promete que nada mudou: o servidor pode ter gravado.
     expect(frase).not.toMatch(/nada foi mudado/i);
   }
+
+  it.each([true, false])(
+    "criar (silencioso=%s): encerra aos 20 s, retira a provisória e ignora sucesso tardio",
+    async (silencioso) => {
+      let responder!: (resposta: unknown) => void;
+      h.inserir.mockReturnValue(
+        new Promise((resolve) => {
+          responder = resolve;
+        }),
+      );
+      let erro: unknown;
+      let terminou = false;
+      await act(async () => {
+        void hook()
+          .addCategory(
+            { name: "Jogos", description: "", isActive: true },
+            silencioso,
+          )
+          .catch((e) => {
+            erro = e;
+            terminou = true;
+          });
+      });
+      expect(hospedeiro.textContent).toBe("Brinquedo|trueJogos|true");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(19_999);
+      });
+      expect(terminou).toBe(false);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+
+      expect(terminou).toBe(true);
+      confereFraseDeQueNaoSeSabe(erro, "a categoria foi criada");
+      expect(hospedeiro.textContent).toBe("Brinquedo|true");
+      if (silencioso) expect(h.toastError).not.toHaveBeenCalled();
+      else expect(h.toastError).toHaveBeenCalledWith((erro as Error).message);
+
+      await act(async () => {
+        responder({
+          data: {
+            id: "c2",
+            nome: "Jogos",
+            slug: "jogos",
+            descricao: "",
+            ativo: true,
+            created_at: "2026-01-02T00:00:00Z",
+          },
+          error: null,
+        });
+      });
+      expect(hospedeiro.textContent).toBe("Brinquedo|true");
+      expect(h.toastSuccess).not.toHaveBeenCalled();
+      expect(h.inserir).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("renomear: solta a espera com a frase de não saber se trocou", async () => {
     const r = await esperarOPrazo(() => hook().renameCategory("c1", "Jogos"));
