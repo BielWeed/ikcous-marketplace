@@ -7507,7 +7507,7 @@ export function CheckoutViewDaConta({
                                 {item.product.name}
                               </p>
                               {item.variantNames && (
-                                <p className="truncate text-[11px] text-zinc-600">
+                                <p className="break-words text-[11px] text-zinc-600">
                                   {item.variantNames}
                                 </p>
                               )}
