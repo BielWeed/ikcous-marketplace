@@ -307,6 +307,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
     valorEstornado: order.valorEstornado,
     shipping_label_id: order.shippingLabelId,
     retiradaNaLoja: order.retiradaNaLoja,
+    clienteSemConta: !order.userId,
   });
 
   return (
