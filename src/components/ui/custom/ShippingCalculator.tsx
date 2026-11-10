@@ -706,6 +706,10 @@ export function ShippingCalculator({
       };
       if (!cotacaoSaiuIncompleta && !cotacaoSaiuParcial) {
         gravarNoCache(cacheKey, JSON.stringify(envelope));
+      } else {
+        // A resposta mais nova já está na tela. A cópia completa anterior
+        // não pode virar "preço fresco" na conferência do Finalizar.
+        removerDoCache(cacheKey);
       }
       gravarNoCache("ikcous_last_shipping_cep", cepFormatado);
 
