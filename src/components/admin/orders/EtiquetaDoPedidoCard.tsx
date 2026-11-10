@@ -106,7 +106,10 @@ interface OpcoesDeLeitura {
  * `null` se a mensagem for outra (aí vale a frase do servidor).
  */
 function traducaoDaRecusaPorStatus(mensagem: string): string | null {
-  const casou = /^Pedido com status "([^"]*)" não gera etiqueta/.exec(mensagem);
+  const casou =
+    /^Pedido com status "([^"]*)" não (?:gera etiqueta|recebe alteração de CPF)/.exec(
+      mensagem,
+    );
   return casou ? motivoDoStatusSemEtiqueta(casou[1]) : null;
 }
 
@@ -500,9 +503,16 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
           "Não foi possível falar com o servidor de etiquetas. Tente de novo.",
       });
       if (orderIdAtualRef.current !== orderIdDoClique) return;
-      setCpfErro(mensagem);
+      const motivoPorStatus = traducaoDaRecusaPorStatus(mensagem);
+      const detalhe = motivoPorStatus ?? mensagem;
+      setCpfErro(detalhe);
+      if (motivoPorStatus) {
+        // Pedido mudou em outro aparelho: relê para sair de "precisa_cpf".
+        await fetchPedido();
+        if (orderIdAtualRef.current !== orderIdDoClique) return;
+      }
       haptic.error();
-      toast.error(mensagem);
+      toast.error(detalhe);
     } finally {
       cpfEmVoo.delete(orderIdDoClique);
       // `cpfSalvando` é um `boolean` ÚNICO (não isolado por pedido, como o
