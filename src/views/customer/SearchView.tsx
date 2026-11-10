@@ -17,6 +17,7 @@ import { useProducts } from "@/hooks/useProducts";
 import { type FiltrosDaBusca, useSearch } from "@/hooks/useSearch";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
+import { produtoDisponivel } from "@/lib/vitrine";
 import type { Product, View } from "@/types";
 import {
   ArrowLeft,
@@ -154,6 +155,7 @@ export const SearchView = React.memo(function SearchView({
   } = useSearch(produtosAVenda, {
     iniciais: filtrosIniciais,
     aoMudar: aoMudarFiltros,
+    termoInicial: initialQuery,
   });
 
   const { isFavorite, toggleFavorite } = useFavorites();
@@ -245,8 +247,8 @@ export const SearchView = React.memo(function SearchView({
   const trendingProducts = useMemo(() => {
     return [...produtosAVenda]
       .sort((a, b) => {
-        const aAvailable = a.stock > 0 ? 1 : 0;
-        const bAvailable = b.stock > 0 ? 1 : 0;
+        const aAvailable = produtoDisponivel(a) ? 1 : 0;
+        const bAvailable = produtoDisponivel(b) ? 1 : 0;
         return bAvailable - aAvailable;
       })
       .slice(0, 4);
