@@ -279,9 +279,9 @@ export function ModalVarianteGrade({
   const adicionarValorDigitado = (grupo: GrupoNoForm) => {
     const valor = grupo.rascunho.trim();
     if (valor === "") return;
-    if (valor.includes("/")) {
+    if (valor.includes(SEPARADOR_DE_ATRIBUTOS)) {
       toast.error(
-        `O valor "${valor}" não pode conter "/" — ele é o separador entre atributos.`,
+        `O valor "${valor}" não pode conter " / " — ele é o separador entre atributos.`,
       );
       return;
     }
