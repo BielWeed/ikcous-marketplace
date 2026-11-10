@@ -1,6 +1,11 @@
 import { StarRating } from "@/components/ui/custom/StarRating";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStore } from "@/contexts/StoreContext";
+import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { tempoRelativo } from "@/lib/tempo-relativo";
 import type { View } from "@/types";
@@ -186,11 +191,18 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
         // não existe, e "tentar de novo" repetiria o mesmo link. Qualquer
         // outro erro é FALHA — e falha não pode virar "usuário removido" na
         // tela de quem só teve a rede oscilando.
-        const { data: profileData, error: profileError } = await supabase
-          .from("public_profiles")
-          .select("*")
-          .eq("id", userId)
-          .single();
+        const { data: profileData, error: profileError } =
+          await aguardarComPrazo(
+            Promise.resolve(
+              supabase
+                .from("public_profiles")
+                .select("*")
+                .eq("id", userId)
+                .single(),
+            ),
+            PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+            erroDeConsultaSemResposta,
+          );
 
         if (profileError) {
           const codigoDoErro = (profileError as { code?: string }).code;
@@ -206,9 +218,12 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
         // 2. Fetch public reviews — cada sub-consulta com seu próprio erro:
         // uma falhar não pode apagar o resto nem mentir zero no contador.
         try {
-          const { data, error } = await supabase.rpc(
-            "perfil_publico_avaliacoes",
-            { p_autor: userId },
+          const { data, error } = await aguardarComPrazo(
+            Promise.resolve(
+              supabase.rpc("perfil_publico_avaliacoes", { p_autor: userId }),
+            ),
+            PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+            erroDeConsultaSemResposta,
           );
           if (error) throw error;
           const reviewsData = ((data || []) as PerfilPublicoAvaliacaoRow[]).map(
@@ -243,9 +258,12 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
 
         // 3. Fetch public questions with product details and answers
         try {
-          const { data, error } = await supabase.rpc(
-            "perfil_publico_perguntas",
-            { p_autor: userId },
+          const { data, error } = await aguardarComPrazo(
+            Promise.resolve(
+              supabase.rpc("perfil_publico_perguntas", { p_autor: userId }),
+            ),
+            PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+            erroDeConsultaSemResposta,
           );
           if (error) throw error;
           const questionsData = (
