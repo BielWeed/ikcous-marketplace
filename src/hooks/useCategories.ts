@@ -55,6 +55,7 @@ export function ordenarCategorias(lista: readonly Category[]): Category[] {
 // Module-level cache to persist data across component mounts
 let globalCategoriesCache: Category[] | null = null;
 let categoriesFetchPromise: Promise<Category[]> | null = null;
+let geracaoDaLeitura = 0;
 let lastCategoriesFetchTime = 0;
 const FETCH_THROTTLE = 60000; // 1 minute throttle for network checks
 
@@ -223,19 +224,22 @@ export function useCategories() {
   const fetchCategories = useCallback(
     async (isSilent = false, forceRefresh = false) => {
       if (categoriesFetchPromise && !forceRefresh) {
+        const geracao = geracaoDaLeitura;
         try {
           const data = await categoriesFetchPromise;
+          if (geracao !== geracaoDaLeitura) return;
           setCategories(data);
           setIsLoading(false);
         } catch {
           /* fallback */
           // A consulta que esta tela pegou carona falhou: sem isto o
           // "carregando" ficava ligado para sempre.
-          setIsLoading(false);
+          if (geracao === geracaoDaLeitura) setIsLoading(false);
         }
         return;
       }
 
+      const geracao = ++geracaoDaLeitura;
       try {
         if (!isSilent) {
           setIsLoading(true);
@@ -269,6 +273,9 @@ export function useCategories() {
                 icone_forma: null,
               })) ?? null;
           }
+          // Uma releitura forçada mais nova já assumiu a lista. A resposta
+          // anterior não pode desfazer a troca do ícone, nem os avisos de rede.
+          if (geracao !== geracaoDaLeitura) return globalCategoriesCache ?? [];
           if (error) throw error;
 
           // Mesma régua do cofre: a ordem do banco pode diferir da do aparelho
@@ -295,12 +302,16 @@ export function useCategories() {
           cancelarNovaTentativa();
           persistToVault(adaptedCategories);
           return adaptedCategories;
-        })();
+        })().catch((error) => {
+          if (geracao !== geracaoDaLeitura) return globalCategoriesCache ?? [];
+          throw error;
+        });
 
         categoriesFetchPromise = queryPromise;
         const data = await queryPromise;
-        setCategories(data);
+        if (geracao === geracaoDaLeitura) setCategories(data);
       } catch (error) {
+        if (geracao !== geracaoDaLeitura) return;
         console.error("Error fetching categories:", error);
         // Sem nada na tela, ainda há nova tentativa automática? Então o aviso
         // espera (um toast por tentativa seria barulho); quando as tentativas
@@ -309,8 +320,10 @@ export function useCategories() {
         const vaiTentarDeNovo = falhouSemNadaNaTela && agendarNovaTentativa();
         if (!vaiTentarDeNovo) toast.error("Erro ao carregar categorias");
       } finally {
-        setIsLoading(false);
-        categoriesFetchPromise = null;
+        if (geracao === geracaoDaLeitura) {
+          setIsLoading(false);
+          categoriesFetchPromise = null;
+        }
       }
     },
     [persistToVault],
