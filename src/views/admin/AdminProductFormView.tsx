@@ -3254,8 +3254,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // foto que outro aparelho acabou de pôr: mexer nas fotos confere a
         // versão como o estoque (recusa e recarrega em vez de apagar).
         const mexeuNasFotos = camposDoProduto.images !== undefined;
+        // A variação existente também vai inteira: até trocar só o código de
+        // barras pode devolver o preço próprio antigo de outro aparelho.
+        const mexeuNaGradeExistente = variantesAMandar.some(
+          (v) => !v.id.startsWith("temp-"),
+        );
         const conferencia =
-          mexeuNoEstoque || mexeuNasFotos
+          mexeuNoEstoque || mexeuNasFotos || mexeuNaGradeExistente
             ? { baseUpdatedAt: currentProduct?.updatedAt }
             : undefined;
         let naoApagadas: string[] = [];
