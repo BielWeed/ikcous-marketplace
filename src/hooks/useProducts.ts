@@ -2410,8 +2410,11 @@ export function useProducts({
     [isAdmin, localProducts, refreshContext],
   );
 
+  const statusEmGravacao = useRef(new Set<string>());
   const toggleProductStatus = useCallback(
     async (id: string, currentStatus: boolean) => {
+      if (statusEmGravacao.current.has(id)) return false;
+      statusEmGravacao.current.add(id);
       cachedAdminProducts = (cachedAdminProducts || []).map((p) => {
         if (p.id === id) {
           const updated = Object.assign({}, p);
@@ -2473,6 +2476,8 @@ export function useProducts({
           }),
         );
         throw err;
+      } finally {
+        statusEmGravacao.current.delete(id);
       }
     },
     [updateProduct],
