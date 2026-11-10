@@ -24,9 +24,10 @@ import {
   vi,
 } from "vitest";
 
+import type { DadosDoFormularioDeEndereco } from "@/components/ui/custom/AddressForm";
 import type { Address } from "@/types";
 
-type EnviarEndereco = (a: Omit<Address, "id" | "user_id">) => Promise<void>;
+type EnviarEndereco = (a: DadosDoFormularioDeEndereco) => Promise<void>;
 
 const { mockConfig } = vi.hoisted(() => ({
   mockConfig: { shippingCoverage: "local", originCep: "38500-000" },
