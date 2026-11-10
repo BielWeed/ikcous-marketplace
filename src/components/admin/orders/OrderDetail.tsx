@@ -436,8 +436,12 @@ function OrderHeader({
   motivoDeNaoImprimir = null,
 }: Readonly<OrderHeaderProps>) {
   const criadoEm = new Date(order.createdAt);
-  const data = criadoEm.toLocaleDateString("pt-BR");
+  // Mesmo calendário de Brasília usado pelo filtro da lista de pedidos.
+  const data = criadoEm.toLocaleDateString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+  });
   const hora = criadoEm.toLocaleTimeString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
     hour: "2-digit",
     minute: "2-digit",
   });

@@ -442,9 +442,9 @@ export function useAddresses() {
       // Resposta da conta anterior não grava nada, nem avisa sucesso.
       if (usuarioAtualRef.current !== idDaConta) return false;
 
-      // Edição que manda `is_default: false` (o formulário real sempre manda
-      // `is_default`): se sobrar outro endereço e a conta ficar sem principal,
-      // o mais recente assume --
+      // Edição que manda `is_default: false`: o formulário só envia a marca
+      // se a cliente mexeu nela (endereço novo sempre envia). Se sobrar outro
+      // endereço e a conta ficar sem principal, o mais recente assume --
       // mas QUEM ESTÁ SEM PRINCIPAL se decide pela lista do SERVIDOR, não pela
       // do aparelho: outro aparelho pode ter marcado outro principal (promover
       // o "próximo" da lista velha tiraria a marca dele) ou ter feito deste o

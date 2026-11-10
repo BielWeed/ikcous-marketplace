@@ -257,6 +257,17 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           const customersList = data.data || [];
           const totalCount = data.total_count || 0;
           const stats = data.stats;
+          const maxPage = Math.max(0, Math.ceil(totalCount / PAGE_SIZE) - 1);
+          // A página deixou de existir: o efeito relê a última válida, sem
+          // guardar o vazio como se a loja não tivesse clientes.
+          if (
+            customersList.length === 0 &&
+            totalCount > 0 &&
+            pageToFetch > maxPage
+          ) {
+            setPage(maxPage);
+            return;
+          }
 
           setCachedCustomersData({
             customers: customersList,
