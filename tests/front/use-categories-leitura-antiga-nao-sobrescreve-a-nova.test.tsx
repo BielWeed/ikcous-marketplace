@@ -77,6 +77,8 @@ describe("useCategories — leitura antiga não sobrescreve a nova", () => {
     typeof import("@/hooks/useCategories").useCategories
   >;
   let emMemoria!: () => Category[] | null;
+  let segunda!: typeof hook;
+  let montarDuas!: () => Promise<void>;
 
   beforeEach(async () => {
     vi.resetModules();
@@ -87,19 +89,31 @@ describe("useCategories — leitura antiga não sobrescreve a nova", () => {
       "@/hooks/useCategories"
     );
     emMemoria = categoriasEmMemoria;
-    let atual!: ReturnType<typeof useCategories>;
-    function Sonda() {
+    const atuais = new Map<number, ReturnType<typeof useCategories>>();
+    function Sonda({ indice }: { indice: number }) {
       const valor = useCategories();
       useEffect(() => {
-        atual = valor;
+        atuais.set(indice, valor);
       });
       return <p>{valor.categories.map((c) => c.icone).join(",")}</p>;
     }
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
-    await act(async () => raiz.render(<Sonda />));
-    hook = () => atual;
+    await act(async () => raiz.render(<Sonda indice={0} />));
+    hook = () => atuais.get(0)!;
+    segunda = () => atuais.get(1)!;
+    montarDuas = async () => {
+      await act(async () =>
+        raiz.render(
+          <>
+            <Sonda indice={0} />
+            <Sonda indice={1} />
+          </>,
+        ),
+      );
+      expect(hospedeiro.textContent).toBe("antigoantigo");
+    };
     expect(hospedeiro.textContent).toBe("antigo");
     h.salvar.mockClear();
   });
@@ -138,10 +152,10 @@ describe("useCategories — leitura antiga não sobrescreve a nova", () => {
       if (antigaPrimeiro) {
         await act(async () => {
           antiga.responder(resposta("antigo"));
-          await esperaAntiga;
         });
         await act(async () => {
           nova.responder(resposta("novo"));
+          await esperaAntiga;
         });
       } else {
         await act(async () => {
@@ -160,6 +174,88 @@ describe("useCategories — leitura antiga não sobrescreve a nova", () => {
       expect(h.erro).not.toHaveBeenCalled();
     },
   );
+
+  it.each([false, true])(
+    "duas instâncias recebem a leitura nova e encerram a espera (antiga primeiro=%s)",
+    async (antigaPrimeiro) => {
+      await montarDuas();
+      const antiga = leituraControlada();
+      const nova = leituraControlada();
+      h.consultar
+        .mockReturnValueOnce(antiga.promessa)
+        .mockReturnValueOnce(nova.promessa);
+      let esperaAntiga!: Promise<void>;
+      let esperaNova!: Promise<void>;
+      await act(async () => {
+        esperaAntiga = hook().fetchCategories(false, true);
+        esperaNova = segunda().fetchCategories(false, true);
+      });
+      expect(hook().isLoading).toBe(true);
+      expect(segunda().isLoading).toBe(true);
+      if (antigaPrimeiro) {
+        await act(async () => {
+          antiga.responder(resposta("antigo"));
+        });
+        // A tela X continua esperando B; A não solta a consulta global de B.
+        expect(hook().isLoading).toBe(true);
+        expect(segunda().isLoading).toBe(true);
+        await act(async () => {
+          nova.responder(resposta("novo"));
+        });
+      } else {
+        await act(async () => {
+          nova.responder(resposta("novo"));
+        });
+        const gravacoes = h.salvar.mock.calls.length;
+        await act(async () => {
+          antiga.responder(resposta("antigo"));
+        });
+        expect(h.salvar).toHaveBeenCalledTimes(gravacoes);
+      }
+      await act(async () => {
+        await Promise.all([esperaAntiga, esperaNova]);
+      });
+      expect(hospedeiro.textContent).toBe("novonovo");
+      expect(hook().isLoading).toBe(false);
+      expect(segunda().isLoading).toBe(false);
+      expect(emMemoria()?.[0].icone).toBe("novo");
+      expect(h.salvar).toHaveBeenLastCalledWith(
+        "categories",
+        expect.arrayContaining([expect.objectContaining({ icone: "novo" })]),
+      );
+      expect(h.erro).not.toHaveBeenCalled();
+    },
+  );
+
+  it("a falha da leitura nova alcança as duas instâncias que a aguardam", async () => {
+    await montarDuas();
+    const antiga = leituraControlada();
+    const nova = leituraControlada();
+    h.consultar
+      .mockReturnValueOnce(antiga.promessa)
+      .mockReturnValueOnce(nova.promessa);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let esperaAntiga!: Promise<void>;
+    let esperaNova!: Promise<void>;
+    await act(async () => {
+      esperaAntiga = hook().fetchCategories(false, true);
+      esperaNova = segunda().fetchCategories(false, true);
+    });
+    await act(async () => {
+      antiga.responder(resposta("antigo"));
+    });
+    await act(async () => {
+      nova.rejeitar(new Error("Falha da leitura nova"));
+      await Promise.all([esperaAntiga, esperaNova]);
+    });
+    expect(hospedeiro.textContent).toBe("antigoantigo");
+    expect(hook().isLoading).toBe(false);
+    expect(segunda().isLoading).toBe(false);
+    expect(emMemoria()?.[0].icone).toBe("antigo");
+    expect(h.salvar).not.toHaveBeenCalled();
+    expect(h.erro).toHaveBeenCalledTimes(2);
+    expect(h.erro).toHaveBeenCalledWith("Erro ao carregar categorias");
+  });
 
   it("uma única leitura aplica normalmente na tela, memória e cofre", async () => {
     h.consultar.mockResolvedValueOnce(resposta("novo"));

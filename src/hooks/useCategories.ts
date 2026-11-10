@@ -224,17 +224,15 @@ export function useCategories() {
   const fetchCategories = useCallback(
     async (isSilent = false, forceRefresh = false) => {
       if (categoriesFetchPromise && !forceRefresh) {
-        const geracao = geracaoDaLeitura;
         try {
           const data = await categoriesFetchPromise;
-          if (geracao !== geracaoDaLeitura) return;
           setCategories(data);
           setIsLoading(false);
         } catch {
           /* fallback */
           // A consulta que esta tela pegou carona falhou: sem isto o
           // "carregando" ficava ligado para sempre.
-          if (geracao === geracaoDaLeitura) setIsLoading(false);
+          setIsLoading(false);
         }
         return;
       }
@@ -246,72 +244,75 @@ export function useCategories() {
         }
 
         const queryPromise = (async () => {
-          ultimaConsultaEm = Date.now();
-          let { data, error } = await supabase
-            .from("categorias")
-            .select("*")
-            .order("nome");
-
-          // select("*") funciona mesmo sem icone: a propriedade ausente
-          // vira null no mapeamento abaixo. Este fallback é só defensivo se
-          // a camada de consulta devolver erro explícito de coluna; não é o
-          // caminho normal de um banco antigo. Erro de rede não vira vazio.
-          if (
-            error &&
-            ["42703", "PGRST204"].includes(error.code) &&
-            /icone/i.test(error.message)
-          ) {
-            const antiga = await supabase
+          try {
+            ultimaConsultaEm = Date.now();
+            let { data, error } = await supabase
               .from("categorias")
-              .select("id,nome,slug,descricao,ativo,created_at")
+              .select("*")
               .order("nome");
-            error = antiga.error;
-            data =
-              antiga.data?.map((item) => ({
-                ...item,
-                icone: null,
-                icone_forma: null,
-              })) ?? null;
-          }
-          // Uma releitura forçada mais nova já assumiu a lista. A resposta
-          // anterior não pode desfazer a troca do ícone, nem os avisos de rede.
-          if (geracao !== geracaoDaLeitura) return globalCategoriesCache ?? [];
-          if (error) throw error;
 
-          // Mesma régua do cofre: a ordem do banco pode diferir da do aparelho
-          // (ordenação de acento e maiúscula), e a lista não pode pular de
-          // lugar quando a origem muda.
-          const adaptedCategories: Category[] = ordenarCategorias(
-            (data || []).map((item) => ({
-              id: item.id,
-              name: item.nome,
-              slug: item.slug || "",
-              description: item.descricao || "",
-              isActive: item.ativo ?? true,
-              icone: item.icone ?? null,
-              // Cache ou banco sem a coluna: cai no `icone` e na dedução pelo nome.
-              iconeForma: item.icone_forma ?? null,
-              createdAt: item.created_at,
-            })),
-          );
-          globalCategoriesCache = adaptedCategories;
-          lastCategoriesFetchTime = Date.now();
-          // Resposta de verdade (lista vazia inclusive): a falha acabou.
-          falhouSemNadaNaTela = false;
-          tentativasAutomaticas = 0;
-          cancelarNovaTentativa();
-          persistToVault(adaptedCategories);
-          return adaptedCategories;
-        })().catch((error) => {
-          if (geracao !== geracaoDaLeitura) return globalCategoriesCache ?? [];
-          throw error;
-        });
+            // select("*") funciona mesmo sem icone: a propriedade ausente
+            // vira null no mapeamento abaixo. Este fallback é só defensivo se
+            // a camada de consulta devolver erro explícito de coluna; não é o
+            // caminho normal de um banco antigo. Erro de rede não vira vazio.
+            if (
+              error &&
+              ["42703", "PGRST204"].includes(error.code) &&
+              /icone/i.test(error.message)
+            ) {
+              const antiga = await supabase
+                .from("categorias")
+                .select("id,nome,slug,descricao,ativo,created_at")
+                .order("nome");
+              error = antiga.error;
+              data =
+                antiga.data?.map((item) => ({
+                  ...item,
+                  icone: null,
+                  icone_forma: null,
+                })) ?? null;
+            }
+            // Cada tela espera a leitura mais nova, sem deixar a anterior
+            // desfazer a troca do ícone no cache global e no cofre.
+            if (geracao !== geracaoDaLeitura)
+              return categoriesFetchPromise ?? globalCategoriesCache ?? [];
+            if (error) throw error;
+
+            // Mesma régua do cofre: a ordem do banco pode diferir da do aparelho
+            // (ordenação de acento e maiúscula), e a lista não pode pular de
+            // lugar quando a origem muda.
+            const adaptedCategories: Category[] = ordenarCategorias(
+              (data || []).map((item) => ({
+                id: item.id,
+                name: item.nome,
+                slug: item.slug || "",
+                description: item.descricao || "",
+                isActive: item.ativo ?? true,
+                icone: item.icone ?? null,
+                // Cache ou banco sem a coluna: cai no `icone` e na dedução pelo nome.
+                iconeForma: item.icone_forma ?? null,
+                createdAt: item.created_at,
+              })),
+            );
+            globalCategoriesCache = adaptedCategories;
+            lastCategoriesFetchTime = Date.now();
+            // Resposta de verdade (lista vazia inclusive): a falha acabou.
+            falhouSemNadaNaTela = false;
+            tentativasAutomaticas = 0;
+            cancelarNovaTentativa();
+            persistToVault(adaptedCategories);
+            return adaptedCategories;
+          } catch (error) {
+            if (geracao !== geracaoDaLeitura)
+              return categoriesFetchPromise ?? globalCategoriesCache ?? [];
+            throw error;
+          }
+        })();
 
         categoriesFetchPromise = queryPromise;
         const data = await queryPromise;
-        if (geracao === geracaoDaLeitura) setCategories(data);
+        setCategories(data);
       } catch (error) {
-        if (geracao !== geracaoDaLeitura) return;
         console.error("Error fetching categories:", error);
         // Sem nada na tela, ainda há nova tentativa automática? Então o aviso
         // espera (um toast por tentativa seria barulho); quando as tentativas
@@ -320,10 +321,8 @@ export function useCategories() {
         const vaiTentarDeNovo = falhouSemNadaNaTela && agendarNovaTentativa();
         if (!vaiTentarDeNovo) toast.error("Erro ao carregar categorias");
       } finally {
-        if (geracao === geracaoDaLeitura) {
-          setIsLoading(false);
-          categoriesFetchPromise = null;
-        }
+        setIsLoading(false);
+        if (geracao === geracaoDaLeitura) categoriesFetchPromise = null;
       }
     },
     [persistToVault],
