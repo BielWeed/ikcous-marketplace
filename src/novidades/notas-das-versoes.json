@@ -1,4 +1,16 @@
 {
+  "1.5.164": {
+    "titulo": "Variação completa no resumo, produto mais seguro de editar e busca que não trava na categoria",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Finalizar compra: o nome da variação (tamanho, cor) aparece inteiro no resumo do pedido, sem ser cortado.",
+      "Loja, Busca: se a categoria escolhida some ou é desativada, a busca volta para “Todas” em vez de ficar presa numa lista vazia.",
+      "Painel, Produto: ao editar nome, preço, código ou foto de uma variação, o app confere se outro aparelho mexeu no produto; se mexeu, avisa e, ao salvar de novo, não devolve o valor antigo.",
+      "Painel, Produto: ao recuperar um rascunho depois de o produto mudar em outro aparelho, as fotos e a capa que você escolheu são mantidas.",
+      "Painel, Produtos: tocar duas vezes rápido em pausar ou ativar não deixa mais a tela diferente do que foi gravado."
+    ]
+  },
   "1.5.163": {
     "titulo": "Frete que não volta ao preço antigo, perfil que não trava e datas no horário da loja",
     "novidades": [],
