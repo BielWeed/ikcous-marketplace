@@ -133,6 +133,7 @@ export const SearchView = React.memo(function SearchView({
   const promessasDaLoja = useMemo(() => promessasDeFrete(config), [config]);
   const { prefetchView } = usePrefetchOnHover();
   const { products: allProducts } = useProducts();
+  const { categories, isLoading: carregandoCategorias } = useCategories();
   // O catálogo da dona da loja inclui pausados. A busca, a contagem e as
   // categorias precisam mostrar só o que está à venda, como a vitrine.
   const produtosAVenda = useMemo(
@@ -152,11 +153,18 @@ export const SearchView = React.memo(function SearchView({
     setSort,
     filteredProducts,
     totalResults,
-  } = useSearch(produtosAVenda, {
-    iniciais: filtrosIniciais,
-    aoMudar: aoMudarFiltros,
-    termoInicial: initialQuery,
-  });
+  } = useSearch(
+    produtosAVenda,
+    {
+      iniciais: filtrosIniciais,
+      aoMudar: aoMudarFiltros,
+      termoInicial: initialQuery,
+    },
+    {
+      carregando: loadingProducts || carregandoCategorias,
+      categorias: categories,
+    },
+  );
 
   const { isFavorite, toggleFavorite } = useFavorites();
   const handleProductClick = useCallback(
@@ -257,7 +265,6 @@ export const SearchView = React.memo(function SearchView({
   // Categorias dos filtros: as dos produtos à venda, menos as que a lojista
   // escondeu (a Home só mostra as ativas). Só tira o que sabe estar escondido:
   // se a lista de categorias não chegou, os filtros seguem como eram.
-  const { categories } = useCategories();
   const escondidas = new Set(
     categories
       .filter((c) => !c.isActive)

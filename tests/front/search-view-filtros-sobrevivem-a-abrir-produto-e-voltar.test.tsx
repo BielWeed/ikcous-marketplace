@@ -267,7 +267,7 @@ describe("SearchView — categoria, ordem e faixa de preço sobrevivem a abrir u
     expect(botaoFiltros().textContent).not.toContain("(");
   });
 
-  it("LIMITE: categoria guardada que a loja não vende mais não esconde a lista sem aviso — o botão a conta e 'Limpar Tudo' a tira", async () => {
+  it("LIMITE: categoria guardada que sumiu cai em Todas sem prender a lista", async () => {
     lembrados = {
       category: "Categoria Que Sumiu",
       minPrice: "",
@@ -275,9 +275,11 @@ describe("SearchView — categoria, ordem e faixa de preço sobrevivem a abrir u
       sort: "newest",
     };
     await montar();
-    await clicar(botaoFiltros());
-    expect(botaoFiltros().textContent).toContain("(1)");
-    await clicar(botaoPorTexto("Limpar Tudo") as HTMLElement);
     expect(botaoFiltros().textContent).not.toContain("(");
+    expect(lembrados?.category).toBe("Todas");
+    expect(textoDaTela()).toContain("Vestido Floral");
+    expect(textoDaTela()).toContain("Sandália Rasa");
+    await clicar(botaoFiltros());
+    expect(botaoPorTexto("Todas")?.getAttribute("aria-pressed")).toBe("true");
   });
 });
