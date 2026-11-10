@@ -84,6 +84,7 @@ import type { Product, ProductVariant, View } from "@/types";
 import {
   camposQueMudaram,
   fotosAposConflito,
+  variacoesAposConflito,
   variacoesQueMudaram,
 } from "@/utils/campos-mexidos-do-produto";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
@@ -3540,8 +3541,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         const criadasEmOutroAparelho = variants.filter(
           (v) => !idsNoFormulario.has(v.id) && !idsExcluidosAqui.has(v.id),
         );
+        const gradeMesclada = variacoesAposConflito(
+          formData.variants,
+          initialData.variants,
+          variants,
+        );
         const gradeRecarregada = juntarVariacoesDeOutroAparelho(
-          variacoesDoRascunhoComEstoqueDoBanco(formData.variants, variants),
+          // As novas do banco entram pelo juntador para manter a conferência
+          // de combinação repetida e respeitar as exclusões feitas aqui.
+          gradeMesclada.filter((v) => idsNoFormulario.has(v.id)),
           criadasEmOutroAparelho,
         );
         setFormData(

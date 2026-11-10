@@ -251,6 +251,34 @@ describe("variação editada confere a versão da abertura", () => {
     expect(banco.gravacoes).toBe(1);
   });
 
+  it("salvar de novo após PRD01 mantém o preço do outro aparelho e grava só a decisão local", async () => {
+    await montar();
+    await editarSoCodigoDeBarras();
+    banco.variacoes[0].price_override = 120;
+    banco.produto.ultima_atualizacao = "2026-11-10T13:00:01.123456+00:00";
+
+    await clicar("Salvar alterações");
+    expect(banco.recusas).toEqual(["PRD01"]);
+    expect(banco.gravacoes).toBe(0);
+    expect(banco.toastSuccess).not.toHaveBeenCalledWith("Produto atualizado!");
+
+    await clicar("Salvar alterações");
+
+    expect(banco.chamadasRpc).toHaveLength(2);
+    expect(banco.chamadasRpc[1].p_base_atualizado_em).toBe(
+      "2026-11-10T13:00:01.123456+00:00",
+    );
+    expect(banco.chamadasRpc[1].p_variantes).toMatchObject([
+      { id: "v-1", codigo_barras: "NOVA-ETIQUETA", price_override: 120 },
+    ]);
+    expect(banco.variacoes[0]).toMatchObject({
+      codigo_barras: "NOVA-ETIQUETA",
+      price_override: 120,
+    });
+    expect(banco.gravacoes).toBe(1);
+    expect(banco.toastSuccess).toHaveBeenCalledWith("Produto atualizado!");
+  });
+
   it("PRD01 avisa e preserva o rascunho sem anunciar produto atualizado nem desfazer o preço", async () => {
     await montar();
     await editarSoCodigoDeBarras();

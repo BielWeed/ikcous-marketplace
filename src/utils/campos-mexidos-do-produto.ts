@@ -103,6 +103,63 @@ export function variacoesQueMudaram<V extends VariacaoComparavel>(
 }
 
 /**
+ * Depois de uma recusa, campo que a lojista não tocou acompanha o banco;
+ * campo que ela editou fica. Comparar com a abertura ANTES de trocar a base
+ * impede que o segundo salvar trate o preço velho da tela como edição dela.
+ * Estoque existente sempre vem do banco; nova local mantém sua quantidade.
+ */
+export function variacoesAposConflito<
+  V extends VariacaoComparavel & { stock?: number },
+>(tela: V[], abertura: V[], banco: V[]): V[] {
+  const antesPorId = new Map(abertura.map((v) => [v.id, v]));
+  const hojePorId = new Map(banco.map((v) => [v.id, v]));
+  const mescladas = tela.flatMap((v): V[] => {
+    if (v.id.startsWith("temp-")) return [v];
+    const antes = antesPorId.get(v.id);
+    const hoje = hojePorId.get(v.id);
+    if (!hoje) {
+      // Como no rascunho: a apagada só fica se ela realmente a editou.
+      const editou =
+        !antes ||
+        variacaoMudou({ ...v, stockIncrement: antes.stockIncrement }, antes);
+      return editou ? [v] : [];
+    }
+    const { stock: _estoqueAntigo, ...resto } = v;
+    const comEstoqueAtual = {
+      ...resto,
+      stockIncrement: hoje.stockIncrement,
+      ...(hoje.stock !== undefined ? { stock: hoje.stock } : {}),
+    } as V;
+    if (!antes) return [comEstoqueAtual];
+    return [
+      {
+        ...comEstoqueAtual,
+        name: v.name === antes.name ? hoje.name : v.name,
+        value: v.value === antes.value ? hoje.value : v.value,
+        sku:
+          vazioViraNulo(v.sku) === vazioViraNulo(antes.sku) ? hoje.sku : v.sku,
+        codigoBarras:
+          vazioViraNulo(v.codigoBarras) === vazioViraNulo(antes.codigoBarras)
+            ? hoje.codigoBarras
+            : v.codigoBarras,
+        priceOverride:
+          (v.priceOverride ?? null) === (antes.priceOverride ?? null)
+            ? hoje.priceOverride
+            : v.priceOverride,
+        active: v.active === antes.active ? hoje.active : v.active,
+        imageUrl:
+          vazioViraNulo(v.imageUrl) === vazioViraNulo(antes.imageUrl)
+            ? hoje.imageUrl
+            : v.imageUrl,
+      },
+    ];
+  });
+  // Não ressuscita a que ela excluiu aqui: só acrescenta a que nunca viu.
+  const idsConhecidos = new Set([...tela, ...abertura].map((v) => v.id));
+  return [...mescladas, ...banco.filter((v) => !idsConhecidos.has(v.id))];
+}
+
+/**
  * As fotos que o formulário passa a mostrar depois de o salvar ser recusado
  * porque OUTRO aparelho mexeu no produto (a versão lida na abertura ficou
  * velha). `formulario` é o que a lojista tem na tela, `abertura` o que a tela
