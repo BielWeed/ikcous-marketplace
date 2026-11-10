@@ -18,7 +18,7 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Address } from "@/types";
+import type { DadosDoFormularioDeEndereco } from "@/components/ui/custom/AddressForm";
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
@@ -112,9 +112,7 @@ describe("AddressForm — CEP colado com máscara e CEP redigitado", () => {
     await act(async () => {
       raiz.render(
         <AddressForm
-          onSubmit={vi.fn<
-            (a: Omit<Address, "id" | "user_id">) => Promise<void>
-          >()}
+          onSubmit={vi.fn<(a: DadosDoFormularioDeEndereco) => Promise<void>>()}
           onCancel={vi.fn()}
         />,
       );

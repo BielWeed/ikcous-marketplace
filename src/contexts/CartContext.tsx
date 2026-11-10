@@ -638,11 +638,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   // do segundo plano): se a chave do pedido nasceu enquanto a leitura estava em
   // voo, o resultado é descartado — o catálogo já vê o estoque que o PRÓPRIO
   // pedido consumiu. A ação explícita da recusa não passa a opção e aplica sempre.
+  // Duas leituras podem se sobrepor (abertura + volta ao app). Só a MAIS NOVA
+  // vale: a antiga trazia estoque e preço de antes da reposição e, ao terminar
+  // depois, cortava a quantidade que a cliente já tinha escolhido.
+  const geracaoDoCatalogoRef = useRef(0);
   const renovarPeloCatalogo = useCallback(
     async (opcoes?: { respeitarPedidoPendente?: boolean }) => {
       const uidDaLeitura = userIdAtualRef.current;
       const ids = Array.from(new Set(cartRef.current.map((i) => i.product.id)));
       if (ids.length === 0) return;
+      const geracao = ++geracaoDoCatalogoRef.current;
+      const superada = () => geracao !== geracaoDoCatalogoRef.current;
       // Só a ação da cliente ("Atualizar o carrinho") avisa que não deu: seguir
       // sem travar é a regra, mas calar fazia ela cair de novo na mesma recusa.
       // A frase é o `id`: falhas seguidas mostram UM aviso.
@@ -654,9 +660,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       };
       try {
         const lido = await lerProdutosEVariacoes(ids);
+        if (superada()) return;
         if (lido.variantesFalharam) return avisarQueNaoDeu();
         const catalogo = montarCatalogo(ids, lido.produtos, lido.variantes);
         const avisos = await avisosDoCarrinho(cartRef.current, catalogo);
+        // Uma leitura mais nova começou enquanto esta esperava: o resultado
+        // desta já é velho e não pode cortar quantidade nem avisar.
+        if (superada()) return;
         // A conta mudou durante a leitura: o carrinho de agora não é o que foi
         // perguntado.
         if (userIdAtualRef.current !== uidDaLeitura) return;
@@ -670,7 +680,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         avisarDoCarrinho(avisos);
       } catch (err) {
         console.error("[CartContext] ❌ Catalog refresh failed:", err);
-        avisarQueNaoDeu();
+        if (!superada()) avisarQueNaoDeu();
       }
     },
     [],

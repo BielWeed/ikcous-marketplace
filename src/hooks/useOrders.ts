@@ -2035,6 +2035,7 @@ export function useOrders(
   const { isLeader } = useLeaderElection();
   const userOrdersAbortControllerRef = useRef<AbortController | null>(null);
   const adminOrdersAbortControllerRef = useRef<AbortController | null>(null);
+  const recarregarAdminDepoisDoVooRef = useRef(false);
   const [orders, setOrders] = useState<Order[]>(() => {
     if (isAdmin) return cachedAdminOrders || [];
     if (typeof window === "undefined" || !user?.id) return [];
@@ -2303,6 +2304,8 @@ export function useOrders(
       }
       const controlador = new AbortController();
       adminOrdersAbortControllerRef.current = controlador;
+      // Uma leitura nova já nasce depois dos eventos que invalidaram a anterior.
+      recarregarAdminDepoisDoVooRef.current = false;
       const signal = controlador.signal;
       const idsNoInicio = new Set(ordersRef.current.map((pedido) => pedido.id));
 
@@ -2403,7 +2406,23 @@ export function useOrders(
         // DEPOIS de a nova ligá-lo e o apagaria (a lista do filtro antigo
         // apareceria como se fosse o resultado novo).
         if (adminOrdersAbortControllerRef.current?.signal === signal) {
+          adminOrdersAbortControllerRef.current = null;
           setLoading(false);
+          const precisaRecarregar = recarregarAdminDepoisDoVooRef.current;
+          recarregarAdminDepoisDoVooRef.current = false;
+          // O pedido ausente pode vir no retrato antigo. Relê só DEPOIS dele,
+          // para a resposta atrasada não sobrescrever a recarga corretiva.
+          if (precisaRecarregar && !signal.aborted) {
+            if (debounceRecarregarInsertRef.current) {
+              clearTimeout(debounceRecarregarInsertRef.current);
+            }
+            debounceRecarregarInsertRef.current = setTimeout(() => {
+              debounceRecarregarInsertRef.current = null;
+              recarregarAposReconexaoRef
+                .current({ silencioso: true })
+                .catch(() => {});
+            }, DEBOUNCE_RECARREGAR_INSERT_MS);
+          }
         }
       }
     },
@@ -3090,6 +3109,17 @@ export function useOrders(
       const jaNaLista = ordersRef.current.some(
         (pedido) => pedido.id === updatedOrder.id,
       );
+      // Ausente da memória, mas talvez presente na página ainda em voo: não
+      // há versão atual para a reconciliação preservar. Invalida essa leitura.
+      if (
+        isAdmin &&
+        filtroConhecido &&
+        !casaStatus &&
+        !jaNaLista &&
+        adminOrdersAbortControllerRef.current?.signal.aborted === false
+      ) {
+        recarregarAdminDepoisDoVooRef.current = true;
+      }
       // Filtro de PAGAMENTO ligado (qualquer um) e um pedido que está na lista
       // passou a outro pagamento: ele sai do recorte. O corte da página é no
       // front, mas o total, o "1–12 de 15" e o CSV vêm do servidor — sem reler,
