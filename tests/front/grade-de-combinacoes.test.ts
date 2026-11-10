@@ -20,7 +20,10 @@ import {
   recadoDoTetoDeVariacoes,
   skusDaGrade,
 } from "@/utils/grade-de-combinacoes";
-import { SEPARADOR_DE_ATRIBUTOS } from "@/utils/variante-composta";
+import {
+  SEPARADOR_DE_ATRIBUTOS,
+  dividirEmAtributos,
+} from "@/utils/variante-composta";
 
 const atributo = (name: string, ...valores: string[]): AtributoDaGrade => ({
   name,
@@ -160,10 +163,13 @@ describe("gerarGrade — valores vazios, duplicados e com /", () => {
     expect(erro).toContain('valor para "Cor"');
   });
 
-  it("recusa valor com / — ele é o separador da casa", () => {
-    const { linhas, erro } = gerarGrade([atributo("Cor", "Preto/Branco")], []);
+  it("recusa valor com o separador exato entre atributos", () => {
+    const { linhas, erro } = gerarGrade(
+      [atributo("Cor", "Preto / Branco")],
+      [],
+    );
     expect(linhas).toEqual([]);
-    expect(erro).toContain('"/"');
+    expect(erro).toContain('" / "');
   });
 
   it("recusa atributo sem nome e atributo repetido", () => {
@@ -181,6 +187,137 @@ describe("gerarGrade — valores vazios, duplicados e com /", () => {
   it("recusa grade sem atributo nenhum", () => {
     const { erro } = gerarGrade([], []);
     expect(erro).toContain("Escolha os atributos");
+  });
+});
+
+describe("gerarGrade — barras comuns preservam os pares", () => {
+  it.each([
+    ["34/36", "34/36 / Preto", "34/36 / Branco"],
+    ["P/M", "P/M / Preto", "P/M / Branco"],
+    ["110/220V", "110/220V / Preto", "110/220V / Branco"],
+  ])(
+    "aceita %s, reabre os pares e não duplica na regeneração",
+    (valor, preto, branco) => {
+      const atributos = [
+        atributo("Medida", valor),
+        atributo("Cor", "Preto", "Branco"),
+      ];
+      const primeira = gerarGrade(atributos, []);
+      expect(primeira.erro).toBeNull();
+      expect(primeira.linhas).toEqual([
+        { name: "Medida / Cor", value: preto },
+        { name: "Medida / Cor", value: branco },
+      ]);
+      expect(dividirEmAtributos("Medida / Cor", preto)).toEqual([
+        { name: "Medida", value: valor },
+        { name: "Cor", value: "Preto" },
+      ]);
+      expect(gerarGrade(atributos, primeira.linhas)).toEqual({
+        linhas: [],
+        erro: null,
+      });
+    },
+  );
+
+  it("aceita nomes com barra e três atributos, aparando só as pontas", () => {
+    const grade = gerarGrade(
+      [
+        atributo(" Entrada/Saída ", " 110/220V "),
+        atributo("Tamanho", " P/M "),
+        atributo("Cor", "Preto/Branco"),
+      ],
+      [],
+    );
+    expect(grade.erro).toBeNull();
+    expect(grade.linhas).toEqual([
+      {
+        name: "Entrada/Saída / Tamanho / Cor",
+        value: "110/220V / P/M / Preto/Branco",
+      },
+    ]);
+    expect(
+      dividirEmAtributos(
+        "Entrada/Saída / Tamanho / Cor",
+        "110/220V / P/M / Preto/Branco",
+      ),
+    ).toEqual([
+      { name: "Entrada/Saída", value: "110/220V" },
+      { name: "Tamanho", value: "P/M" },
+      { name: "Cor", value: "Preto/Branco" },
+    ]);
+  });
+
+  it.each([
+    ["/P", "/P / Preto"],
+    ["P/", "P/ / Preto"],
+    ["/ P", "/ P / Preto"],
+    ["P /M", "P /M / Preto"],
+    ["P/ M", "P/ M / Preto"],
+    ["  /  ", "/ / Preto"],
+  ])("a borda segura %j não muda o par ao juntar", (bruto, gravado) => {
+    const grade = gerarGrade(
+      [atributo("Tamanho", bruto), atributo("Cor", "Preto")],
+      [],
+    );
+    expect(grade.erro).toBeNull();
+    expect(grade.linhas).toEqual([
+      {
+        name: "Tamanho / Cor",
+        value: gravado,
+      },
+    ]);
+    expect(dividirEmAtributos("Tamanho / Cor", gravado)).toEqual([
+      { name: "Tamanho", value: bruto.trim() },
+      { name: "Cor", value: "Preto" },
+    ]);
+  });
+
+  it.each([0, 1])(
+    "recusa barra com espaço no fim antes de outro atributo (posição %s)",
+    (posicao) => {
+      const base = [
+        atributo("Tamanho", "P"),
+        atributo("Voltagem", "110V"),
+        atributo("Cor", "Preto"),
+      ];
+      for (const campo of ["nome", "valor"]) {
+        const atributos = base.map((a, i) =>
+          i !== posicao
+            ? a
+            : {
+                name: campo === "nome" ? "Medida /" : a.name,
+                valores: campo === "valor" ? ["P /"] : a.valores,
+              },
+        );
+        const grade = gerarGrade(atributos, []);
+        expect(grade.linhas).toEqual([]);
+        expect(grade.erro).toContain('" / "');
+      }
+    },
+  );
+
+  it("barra com espaço no fim do último atributo é segura", () => {
+    const grade = gerarGrade(
+      [atributo("Cor", "Preto"), atributo("Medida /", "P /")],
+      [],
+    );
+    expect(grade.erro).toBeNull();
+    expect(grade.linhas).toEqual([
+      {
+        name: "Cor / Medida /",
+        value: "Preto / P /",
+      },
+    ]);
+    expect(dividirEmAtributos("Cor / Medida /", "Preto / P /")).toEqual([
+      { name: "Cor", value: "Preto" },
+      { name: "Medida /", value: "P /" },
+    ]);
+  });
+
+  it("recusa nome que já contém o separador exato", () => {
+    const grade = gerarGrade([atributo("Cor / Tamanho", "Preto")], []);
+    expect(grade.linhas).toEqual([]);
+    expect(grade.erro).toContain('" / "');
   });
 });
 

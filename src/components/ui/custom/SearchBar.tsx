@@ -15,6 +15,7 @@ import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
 import { miniaturaDaSugestao, usarImagemOriginal } from "@/lib/imageUrl";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
+import { produtoDisponivel } from "@/lib/vitrine";
 import type { Product } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { ArrowRight, Search, Sparkles, Tag, X } from "lucide-react";
@@ -310,7 +311,8 @@ export function SearchBar({
       .map((product) => ({ ...product, score: pontuar(product) }))
       .sort(
         (a, b) =>
-          (b.stock > 0 ? 1 : 0) - (a.stock > 0 ? 1 : 0) || b.score - a.score,
+          (produtoDisponivel(b) ? 1 : 0) - (produtoDisponivel(a) ? 1 : 0) ||
+          b.score - a.score,
       );
   }, [products, deferredLocalValue]);
 
@@ -570,7 +572,7 @@ export function SearchBar({
                             <span className="text-xs font-black text-zinc-800">
                               {formatCurrency(precoDeVitrine(item).preco)}
                             </span>
-                            {item.stock <= 0 && (
+                            {!produtoDisponivel(item) && (
                               <span className="rounded-full bg-zinc-200 px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none tracking-wider text-zinc-700">
                                 Esgotado
                               </span>

@@ -28,6 +28,18 @@ export const EVENTO_RETRATO_LIMPO = "retrato-do-convidado-limpo";
 /** Quanto tempo o retrato vale depois da consulta (60 min). */
 export const PRAZO_DO_RETRATO_MS = 60 * 60_000;
 
+/**
+ * O retrato consultado em `consultadoEm` já passou do prazo? Uma única régua,
+ * usada pela leitura do aparelho e pela CartView (que guarda a lista também em
+ * memória e precisa soltá-la no mesmo instante em que o aparelho solta o retrato).
+ */
+export function retratoVenceu(
+  consultadoEm: number,
+  agora: number = Date.now(),
+): boolean {
+  return agora - consultadoEm > PRAZO_DO_RETRATO_MS;
+}
+
 export interface RetratoDoConvidado {
   pedidos: Order[];
   /** Instante da consulta (ms); `null` no formato antigo, que não o guardava. */
@@ -74,10 +86,7 @@ export function lerRetratoDoConvidado(): RetratoDoConvidado | null {
     );
     if (!retrato) return null;
     const { consultadoEm } = retrato;
-    if (
-      consultadoEm !== null &&
-      Date.now() - consultadoEm <= PRAZO_DO_RETRATO_MS
-    ) {
+    if (consultadoEm !== null && !retratoVenceu(consultadoEm)) {
       return retrato;
     }
     try {

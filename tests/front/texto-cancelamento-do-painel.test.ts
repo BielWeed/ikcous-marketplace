@@ -370,3 +370,63 @@ describe("textoCancelamentoDoPainel — etiqueta de envio já comprada (shipping
     }
   });
 });
+
+// Achado da onda 52: o texto prometia "o cliente é avisado no aplicativo" para
+// QUALQUER pedido sem pagamento — mas o pedido de convidado (sem conta, user_id
+// nulo) não tem para quem mandar o aviso, e o lojista, lendo a promessa,
+// deixava de avisar por conta própria. O texto passa a dizer a verdade.
+describe("textoCancelamentoDoPainel — cliente sem conta (convidado) não é avisado no aplicativo", () => {
+  const VOLTOU_DE_NOVO = "2026-10-20T12:00:00Z";
+  const casos = [
+    {
+      rotulo: "pedido novo sem dinheiro",
+      pedido: { status: "pending", payment_status: "aguardando" },
+    },
+    {
+      rotulo: "reativado, com o produto de volta e sem pagamento",
+      pedido: {
+        status: "processing",
+        payment_status: null,
+        cancelledAfterShipping: true,
+        returnedToSellerAt: VOLTOU_DE_NOVO,
+      },
+    },
+  ];
+
+  it.each(casos)(
+    "$rotulo, de convidado: não promete aviso, diz que o cliente não recebe e manda avisar pelo WhatsApp",
+    ({ pedido }) => {
+      const texto = textoCancelamentoDoPainel({
+        ...pedido,
+        clienteSemConta: true,
+      });
+      expect(texto).not.toMatch(/é avisado/i);
+      expect(texto).not.toContain("no aplicativo.");
+      expect(texto).toContain("não tem conta");
+      expect(texto).toContain("NÃO recebe aviso");
+      expect(texto).toContain("WhatsApp");
+      expect(texto.endsWith("Cancelar?")).toBe(true);
+    },
+  );
+
+  it.each(casos)(
+    "controle — $rotulo, com conta (ou sem a informação): a frase atual continua igual",
+    ({ pedido }) => {
+      const atual = textoCancelamentoDoPainel(pedido);
+      expect(atual).toMatch(/o cliente é avisado no aplicativo/i);
+      expect(
+        textoCancelamentoDoPainel({ ...pedido, clienteSemConta: false }),
+      ).toBe(atual);
+      expect(
+        textoCancelamentoDoPainel({ ...pedido, clienteSemConta: null }),
+      ).toBe(atual);
+    },
+  );
+
+  it("convidado em pedido que não promete aviso (pago, em trânsito): o texto não muda", () => {
+    const pedido = { status: "shipping", payment_status: "pago" };
+    expect(
+      textoCancelamentoDoPainel({ ...pedido, clienteSemConta: true }),
+    ).toBe(textoCancelamentoDoPainel(pedido));
+  });
+});
