@@ -29,7 +29,7 @@ import {
 } from "@/utils/variante-composta";
 import { AnimatePresence, motion } from "framer-motion";
 import { Layers } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
@@ -239,6 +239,72 @@ export function ModalVarianteGrade({
   // (duplo clique, ou o que chega durante a animação de saída do modal) não
   // pode entregar o mesmo lote de novo.
   const jaEfetivouRef = useRef(false);
+  const dialogoRef = useRef<HTMLDivElement>(null);
+
+  const controlesDoDialogo = (dialogo: HTMLElement) =>
+    [
+      ...dialogo.querySelectorAll<HTMLElement>(
+        "button, input, select, textarea, a[href], [tabindex]",
+      ),
+    ].filter(
+      (elemento) =>
+        elemento.tabIndex >= 0 &&
+        !elemento.matches(':disabled, input[type="hidden"]') &&
+        !elemento.closest("[hidden], [inert]") &&
+        getComputedStyle(elemento).display !== "none" &&
+        getComputedStyle(elemento).visibility !== "hidden",
+    );
+
+  useEffect(() => {
+    if (!aberto) return;
+    const origem = document.activeElement;
+    return () => {
+      if (origem instanceof HTMLElement && origem.isConnected) origem.focus();
+    };
+  }, [aberto]);
+
+  useEffect(() => {
+    const dialogo = dialogoRef.current;
+    if (!aberto || !dialogo || dialogo.contains(document.activeElement)) return;
+    const controles = controlesDoDialogo(dialogo);
+    const campo = controles.find((elemento) =>
+      elemento.matches("input, select, textarea"),
+    );
+    (campo ?? dialogo).focus();
+    // O reset da abertura troca os grupos e pode remover o campo focado.
+  }, [aberto, grupos]);
+
+  const aoTeclarNoDialogo = (evento: KeyboardEvent<HTMLDivElement>) => {
+    if (!aberto) return;
+    if (evento.key === "Escape") {
+      evento.preventDefault();
+      evento.stopPropagation();
+      onFechar();
+      return;
+    }
+    if (evento.key !== "Tab") return;
+    const controles = controlesDoDialogo(evento.currentTarget);
+    const primeiro = controles.at(0);
+    const ultimo = controles.at(-1);
+    if (!primeiro || !ultimo) {
+      evento.preventDefault();
+      evento.currentTarget.focus();
+    } else if (
+      evento.shiftKey &&
+      (document.activeElement === primeiro ||
+        document.activeElement === evento.currentTarget)
+    ) {
+      evento.preventDefault();
+      ultimo.focus();
+    } else if (
+      !evento.shiftKey &&
+      (document.activeElement === ultimo ||
+        document.activeElement === evento.currentTarget)
+    ) {
+      evento.preventDefault();
+      primeiro.focus();
+    }
+  };
 
   // Abrir o modal é começar limpo: o estado anterior (de uma grade efetivada
   // ou cancelada) nunca vaza para a próxima abertura.
@@ -589,6 +655,9 @@ export function ModalVarianteGrade({
           <motion.div
             initial={{ scale: 0.9, y: 20 }}
             animate={{ scale: 1, y: 0 }}
+            ref={dialogoRef}
+            tabIndex={-1}
+            onKeyDown={aoTeclarNoDialogo}
             role="dialog"
             aria-modal="true"
             aria-labelledby="titulo-da-grade"
