@@ -53,7 +53,7 @@ describe("rascunhoSobreOBancoDeHoje", () => {
     expect(bancoMudou).toBe(false);
   });
 
-  it("fotos editadas nos dois aparelhos: preserva a foto do banco e acrescenta a do rascunho", () => {
+  it("fotos editadas nos dois aparelhos: preserva a ordem do rascunho e acrescenta a foto do banco", () => {
     const banco = { ...base, images: ["a.jpg", "b.jpg"] };
     const rascunho = {
       ...base,
@@ -63,7 +63,7 @@ describe("rascunhoSobreOBancoDeHoje", () => {
 
     const { campos, bancoMudou } = rascunhoSobreOBancoDeHoje(rascunho, banco);
 
-    expect(campos.images).toEqual(["a.jpg", "b.jpg", "x.jpg"]);
+    expect(campos.images).toEqual(["a.jpg", "x.jpg", "b.jpg"]);
     expect(bancoMudou).toBe(true);
   });
 
@@ -110,7 +110,53 @@ describe("rascunhoSobreOBancoDeHoje", () => {
 
     const { campos, bancoMudou } = rascunhoSobreOBancoDeHoje(rascunho, banco);
 
-    expect(campos.images).toEqual(["a.jpg", "b.jpg", "x.jpg"]);
+    expect(campos.images).toEqual(["a.jpg", "x.jpg", "b.jpg"]);
+    expect(bancoMudou).toBe(true);
+  });
+
+  it.each([
+    {
+      caso: "capa cortada fica na mesma posição",
+      editadas: ["a2.jpg", "b.jpg"],
+      hoje: ["a.jpg", "b.jpg", "c.jpg"],
+      esperado: ["a2.jpg", "b.jpg", "c.jpg"],
+    },
+    {
+      caso: "Tornar principal preserva a capa escolhida",
+      editadas: ["b.jpg", "a.jpg"],
+      hoje: ["a.jpg", "b.jpg", "c.jpg"],
+      esperado: ["b.jpg", "a.jpg", "c.jpg"],
+    },
+    {
+      caso: "foto apagada no outro aparelho não volta com a inclusão dela",
+      editadas: ["a.jpg", "b.jpg", "x.jpg"],
+      hoje: ["a.jpg"],
+      esperado: ["a.jpg", "x.jpg"],
+    },
+    {
+      caso: "foto apagada nos dois aparelhos sai e a nova do banco fica",
+      editadas: ["a.jpg"],
+      hoje: ["a.jpg", "c.jpg"],
+      esperado: ["a.jpg", "c.jpg"],
+    },
+    {
+      caso: "foto removida por ela sai sem perder a inclusão do outro aparelho",
+      editadas: ["b.jpg"],
+      hoje: ["a.jpg", "b.jpg", "c.jpg"],
+      esperado: ["b.jpg", "c.jpg"],
+    },
+  ])("$caso", ({ editadas, hoje, esperado }) => {
+    const baseComDuasFotos = { ...base, images: ["a.jpg", "b.jpg"] };
+    const rascunho = {
+      ...baseComDuasFotos,
+      images: editadas,
+      baseDoRascunho: baseComDuasFotos,
+    };
+    const banco = { ...baseComDuasFotos, images: hoje };
+
+    const { campos, bancoMudou } = rascunhoSobreOBancoDeHoje(rascunho, banco);
+
+    expect(campos.images).toEqual(esperado);
     expect(bancoMudou).toBe(true);
   });
 
