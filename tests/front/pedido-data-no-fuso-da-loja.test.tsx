@@ -23,26 +23,46 @@ vi.mock("@/lib/supabase", () => ({
 
 let raiz: Root;
 let hospedeiro: HTMLDivElement;
+// Guardados antes de qualquer espião, para o espião não chamar a si mesmo.
+const originalDeDataEHora = Date.prototype.toLocaleString;
+const originalDeData = Date.prototype.toLocaleDateString;
+const originalDeHora = Date.prototype.toLocaleTimeString;
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   hospedeiro = document.createElement("div");
   document.body.appendChild(hospedeiro);
   raiz = createRoot(hospedeiro);
   // Simula aparelho em UTC sem depender do TZ mutável do processo.
-  for (const metodo of [
-    "toLocaleString",
-    "toLocaleDateString",
-    "toLocaleTimeString",
-  ] as const) {
-    const original = Date.prototype[metodo];
-    vi.spyOn(Date.prototype, metodo).mockImplementation(function (
-      this: Date,
-      locales,
-      options,
-    ) {
-      return original.call(this, locales, { timeZone: "UTC", ...options });
+  vi.spyOn(Date.prototype, "toLocaleString").mockImplementation(function (
+    this: Date,
+    locales,
+    options,
+  ) {
+    return originalDeDataEHora.call(this, locales, {
+      timeZone: "UTC",
+      ...options,
     });
-  }
+  });
+  vi.spyOn(Date.prototype, "toLocaleDateString").mockImplementation(function (
+    this: Date,
+    locales,
+    options,
+  ) {
+    return originalDeData.call(this, locales, {
+      timeZone: "UTC",
+      ...options,
+    });
+  });
+  vi.spyOn(Date.prototype, "toLocaleTimeString").mockImplementation(function (
+    this: Date,
+    locales,
+    options,
+  ) {
+    return originalDeHora.call(this, locales, {
+      timeZone: "UTC",
+      ...options,
+    });
+  });
 });
 afterEach(() => {
   act(() => raiz.unmount());
