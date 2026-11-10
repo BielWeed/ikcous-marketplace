@@ -53,24 +53,87 @@ describe("rascunhoSobreOBancoDeHoje", () => {
     expect(bancoMudou).toBe(false);
   });
 
-  it("lista (fotos) editada volta; lista não editada vale o banco", () => {
+  it("fotos editadas nos dois aparelhos: preserva a foto do banco e acrescenta a do rascunho", () => {
     const banco = { ...base, images: ["a.jpg", "b.jpg"] };
-    const editou = {
+    const rascunho = {
       ...base,
-      images: ["a.jpg", "c.jpg"],
+      images: ["a.jpg", "x.jpg"],
       baseDoRascunho: base,
     };
-    const naoEditou = { ...base, baseDoRascunho: base };
 
-    expect(rascunhoSobreOBancoDeHoje(editou, banco).campos.images).toEqual([
-      "a.jpg",
-      "c.jpg",
-    ]);
-    expect(rascunhoSobreOBancoDeHoje(naoEditou, banco).campos.images).toEqual([
-      "a.jpg",
-      "b.jpg",
-    ]);
+    const { campos, bancoMudou } = rascunhoSobreOBancoDeHoje(rascunho, banco);
+
+    expect(campos.images).toEqual(["a.jpg", "b.jpg", "x.jpg"]);
+    expect(bancoMudou).toBe(true);
   });
+
+  it("foto removida no rascunho sai, mas a adicionada em outro aparelho fica", () => {
+    const banco = { ...base, images: ["a.jpg", "b.jpg"] };
+    const rascunho = { ...base, images: [], baseDoRascunho: base };
+
+    const { campos, bancoMudou } = rascunhoSobreOBancoDeHoje(rascunho, banco);
+
+    expect(campos.images).toEqual(["b.jpg"]);
+    expect(bancoMudou).toBe(true);
+  });
+
+  it("fotos editadas só no rascunho voltam como estão, sem aviso", () => {
+    const rascunho = {
+      ...base,
+      images: ["a.jpg", "x.jpg"],
+      baseDoRascunho: base,
+    };
+
+    const { campos, bancoMudou } = rascunhoSobreOBancoDeHoje(rascunho, base);
+
+    expect(campos.images).toEqual(["a.jpg", "x.jpg"]);
+    expect(bancoMudou).toBe(false);
+  });
+
+  it("fotos não editadas no rascunho valem as do banco de hoje, com aviso", () => {
+    const banco = { ...base, images: ["a.jpg", "b.jpg"] };
+    const rascunho = { ...base, baseDoRascunho: base };
+
+    const { campos, bancoMudou } = rascunhoSobreOBancoDeHoje(rascunho, banco);
+
+    expect(campos.images).toEqual(["a.jpg", "b.jpg"]);
+    expect(bancoMudou).toBe(true);
+  });
+
+  it("foto adicionada no rascunho que já está no banco não se duplica pela mesma URL", () => {
+    const banco = { ...base, images: ["a.jpg", "b.jpg", "x.jpg"] };
+    const rascunho = {
+      ...base,
+      images: ["a.jpg", "x.jpg"],
+      baseDoRascunho: base,
+    };
+
+    const { campos, bancoMudou } = rascunhoSobreOBancoDeHoje(rascunho, banco);
+
+    expect(campos.images).toEqual(["a.jpg", "b.jpg", "x.jpg"]);
+    expect(bancoMudou).toBe(true);
+  });
+
+  it.each([
+    { lado: "rascunho", antes: ["a.jpg"], editadas: null, hoje: ["b.jpg"] },
+    { lado: "base", antes: null, editadas: ["x.jpg"], hoje: ["b.jpg"] },
+    { lado: "banco", antes: ["a.jpg"], editadas: ["x.jpg"], hoje: null },
+  ])(
+    "fotos sem array no $lado mantêm o comportamento anterior",
+    ({ antes, editadas, hoje }) => {
+      const rascunho = {
+        ...base,
+        images: editadas,
+        baseDoRascunho: { ...base, images: antes },
+      };
+      const banco = { ...base, images: hoje };
+
+      const { campos, bancoMudou } = rascunhoSobreOBancoDeHoje(rascunho, banco);
+
+      expect(campos.images).toEqual(editadas);
+      expect(bancoMudou).toBe(false);
+    },
+  );
 
   it("variação: a que ela editou volta; a que não editou vale o banco; a nova fica", () => {
     const editada = variacao("v1", "Rosa pink");

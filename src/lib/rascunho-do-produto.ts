@@ -284,6 +284,30 @@ export function rascunhoSobreOBancoDeHoje<R extends Record<string, any>>(
       !daBase.has(campo) ||
       !igual(doRascunho.get(campo), daBase.get(campo))
     ) {
+      const fotosDoRascunho = doRascunho.get(campo);
+      const fotosDaBase = daBase.get(campo);
+      const fotosDoBanco = doBanco.get(campo);
+      if (
+        campo === "images" &&
+        Array.isArray(fotosDoRascunho) &&
+        Array.isArray(fotosDaBase) &&
+        Array.isArray(fotosDoBanco) &&
+        !igual(fotosDoBanco, fotosDaBase)
+      ) {
+        // Aplica só as inclusões e exclusões dela às fotos de hoje: uma
+        // foto que outro aparelho acrescentou não pode sumir ao restaurar.
+        const removidas = new Set(
+          fotosDaBase.filter((foto) => !fotosDoRascunho.includes(foto)),
+        );
+        const adicionadas = fotosDoRascunho.filter(
+          (foto) => !fotosDaBase.includes(foto) && !fotosDoBanco.includes(foto),
+        );
+        campos.set(campo, [
+          ...fotosDoBanco.filter((foto) => !removidas.has(foto)),
+          ...adicionadas,
+        ]);
+        bancoMudou = true;
+      }
       continue;
     }
     campos.set(campo, doBanco.get(campo));
