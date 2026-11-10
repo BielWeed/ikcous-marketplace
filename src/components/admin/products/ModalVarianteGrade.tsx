@@ -266,12 +266,11 @@ export function ModalVarianteGrade({
   useEffect(() => {
     const dialogo = dialogoRef.current;
     if (!aberto || !dialogo || dialogo.contains(document.activeElement)) return;
-    const controles = controlesDoDialogo(dialogo);
-    const campo = controles.find((elemento) =>
-      elemento.matches("input, select, textarea"),
-    );
-    (campo ?? dialogo).focus();
-    // O reset da abertura troca os grupos e pode remover o campo focado.
+    // O foco entra no PRÓPRIO diálogo (nomeado por aria-labelledby), não num
+    // campo: no celular um campo focado abre o teclado na hora, e um campo
+    // focado também segura o valor digitado ao trocar a peça da grade.
+    // O reset da abertura troca os grupos e pode remover o elemento focado.
+    dialogo.focus();
   }, [aberto, grupos]);
 
   const aoTeclarNoDialogo = (evento: KeyboardEvent<HTMLDivElement>) => {

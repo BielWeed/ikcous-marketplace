@@ -67,13 +67,11 @@ describe("ModalVarianteGrade — foco e teclado", () => {
     return evento;
   }
 
-  it("leva o foco do botão de origem para o primeiro campo ao abrir", async () => {
+  it("leva o foco do botão de origem para o diálogo ao abrir", async () => {
     await renderizar(false);
     expect(document.activeElement).toBe(origem);
     await renderizar();
-    expect(document.activeElement).toBe(
-      dialogo().querySelector("input, select, textarea"),
-    );
+    expect(document.activeElement).toBe(dialogo());
   });
 
   it("prende Tab e Shift+Tab entre os controles habilitados do diálogo", async () => {
