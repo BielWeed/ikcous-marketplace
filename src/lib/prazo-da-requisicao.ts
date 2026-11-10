@@ -114,6 +114,14 @@ export function erroDeConsultaSemResposta(
   });
 }
 
+/** Sem rejeição identificada do servidor, a gravação pode ter sido concluída. */
+export function ehGravacaoIncerta(erro: unknown): boolean {
+  if (typeof erro !== "object" || erro === null) return false;
+  const { code, name } = erro as { code?: unknown; name?: unknown };
+  if (name === "BannerIndisponivel") return false;
+  return ehConsultaSemResposta(erro) || typeof code !== "string" || code === "";
+}
+
 export function ehConsultaSemResposta(erro: unknown): boolean {
   return (
     typeof erro === "object" &&

@@ -197,10 +197,10 @@ describe("AdminBannersView — gravação sem resposta solta a tela", () => {
     expect(deleteStorageFile).not.toHaveBeenCalled();
   });
 
-  it("controle: salvar com erro de verdade continua apagando a foto órfã ao fechar", async () => {
+  it("controle: rejeição definitiva continua apagando a foto órfã ao fechar", async () => {
     await montar();
     await subirImagemNoEditorNovo();
-    addBanner.mockRejectedValue(new Error("falha de rede simulada"));
+    addBanner.mockRejectedValue({ code: "23505", message: "Banner rejeitado" });
 
     await act(async () => {
       botaoPorTexto("Salvar Banner")!.click();

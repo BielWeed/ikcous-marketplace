@@ -70,7 +70,10 @@ import {
   EVENTO_NOVO_BANNER,
   consumirPedidoDeNovoBanner,
 } from "@/lib/novo-banner-pendente";
-import { ehConsultaSemResposta } from "@/lib/prazo-da-requisicao";
+import {
+  ehConsultaSemResposta,
+  ehGravacaoIncerta,
+} from "@/lib/prazo-da-requisicao";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import {
   AVISO_BANNER_ALTERADO_DEPOIS,
@@ -2193,13 +2196,15 @@ export const AdminBannersView = memo(function AdminBannersView({
       setIsDialogOpen(false);
     } catch (error) {
       console.error("Erro ao salvar banner:", error);
-      if (ehConsultaSemResposta(error)) {
-        // O hook já avisou que NÃO se sabe se gravou e o editor segue aberto
-        // com o que ela digitou. O servidor pode ter gravado o banner com a
-        // foto enviada: ela deixa de ser "órfã provada", então fechar o editor
-        // não pode apagá-la (apagar deixaria um banner publicado sem imagem).
+      if (ehGravacaoIncerta(error)) {
+        // Sem resposta ou com falha de rede sem rejeição definitiva, o servidor
+        // pode ter gravado o banner com a foto enviada: ela deixa de ser "órfã
+        // provada", então fechar o editor não pode apagá-la (apagar deixaria
+        // um banner publicado sem imagem). O rascunho segue no editor.
         imagemEnviadaNaoSalvaRef.current = null;
-      } else if (
+      }
+      if (
+        !ehConsultaSemResposta(error) &&
         !(error instanceof Error && error.name === "BannerIndisponivel")
       ) {
         toast.error("Erro ao salvar as configurações do banner.");
