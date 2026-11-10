@@ -13,6 +13,7 @@ import {
   interpretarRetrato,
   lerRetratoDoConvidado,
   limparRetratoDoConvidado,
+  retratoVenceu,
   textoDoRetrato,
 } from "@/lib/retrato-do-convidado";
 
@@ -193,5 +194,21 @@ describe("textoDoRetrato — de que hora é o status", () => {
     expect(textoDoRetrato(null)).toBe(
       "Status de quando você consultou — pode ter mudado",
     );
+  });
+});
+
+describe("retratoVenceu — a régua única do prazo (a mesma da leitura do aparelho)", () => {
+  const consulta = 1_700_000_000_000;
+
+  it("no instante do prazo ainda vale; um milissegundo depois venceu", () => {
+    expect(retratoVenceu(consulta, consulta + PRAZO_DO_RETRATO_MS)).toBe(false);
+    expect(retratoVenceu(consulta, consulta + PRAZO_DO_RETRATO_MS + 1)).toBe(
+      true,
+    );
+  });
+
+  it("recém consultado não venceu (e o relógio atrás da consulta também não)", () => {
+    expect(retratoVenceu(consulta, consulta)).toBe(false);
+    expect(retratoVenceu(consulta, consulta - 5_000)).toBe(false);
   });
 });
