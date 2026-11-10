@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 //
-// PREPARADO, AINDA NÃO EXECUTADO (onda54-A).
+// Onda 54-A: a correção veio depois do vermelho observado (quantidade 1 em
+// vez de 5 quando A termina depois de B).
 // CartProvider, mapeador, catálogo e avisos REAIS. Só as fronteiras de dados,
 // autenticação e armazenamento são dubladas. A lê estoque 1 e espera pelas
 // variantes; B lê estoque 5 e termina primeiro. Após a cliente escolher 5,
