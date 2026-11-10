@@ -1,4 +1,15 @@
 {
+  "1.5.163": {
+    "titulo": "Frete que não volta ao preço antigo, perfil que não trava e datas no horário da loja",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Finalizar compra: depois que o frete mostra o preço novo, tocar em Finalizar não volta mais ao preço antigo.",
+      "Loja, Perfil público: se a internet não responde, o perfil não fica mais preso na tela de carregamento; depois de 20 segundos aparece o aviso com o botão “Tentar de novo”.",
+      "Painel, Clientes: se a página aberta deixa de existir, a lista volta para a última página em vez de mostrar “Nenhum cliente ainda”.",
+      "Painel, Pedidos: a data e a hora do pedido, na ficha e no recibo, seguem o horário de Brasília, igual ao filtro da lista, mesmo em aparelho com outro fuso."
+    ]
+  },
   "1.5.162": {
     "titulo": "Telas que não mostram dado velho, rastreio e endereço mais seguros",
     "novidades": [],
