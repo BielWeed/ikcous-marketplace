@@ -254,7 +254,10 @@ describe("useCategories — leitura antiga não sobrescreve a nova", () => {
     expect(emMemoria()?.[0].icone).toBe("antigo");
     expect(h.salvar).not.toHaveBeenCalled();
     expect(h.erro).toHaveBeenCalledTimes(2);
-    expect(h.erro).toHaveBeenCalledWith("Erro ao carregar categorias");
+    // Mesmo id nas duas chamadas: o Sonner mostra UM aviso só.
+    expect(h.erro).toHaveBeenCalledWith("Erro ao carregar categorias", {
+      id: "Erro ao carregar categorias",
+    });
   });
 
   it("uma única leitura aplica normalmente na tela, memória e cofre", async () => {

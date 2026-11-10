@@ -319,7 +319,12 @@ export function useCategories() {
         // acabam, ou quando já há lista na tela, o aviso sai como sempre.
         falhouSemNadaNaTela = globalCategoriesCache === null;
         const vaiTentarDeNovo = falhouSemNadaNaTela && agendarNovaTentativa();
-        if (!vaiTentarDeNovo) toast.error("Erro ao carregar categorias");
+        // A frase é o `id`: duas telas que aguardaram a MESMA consulta que falhou
+        // mostram UM aviso.
+        if (!vaiTentarDeNovo) {
+          const frase = "Erro ao carregar categorias";
+          toast.error(frase, { id: frase });
+        }
       } finally {
         setIsLoading(false);
         if (geracao === geracaoDaLeitura) categoriesFetchPromise = null;
