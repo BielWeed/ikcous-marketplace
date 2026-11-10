@@ -1,4 +1,18 @@
 {
+  "1.5.162": {
+    "titulo": "Telas que não mostram dado velho, rastreio e endereço mais seguros",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Carrinho: ao voltar do segundo plano, o carrinho com conta confere o banco de novo, e uma resposta atrasada do catálogo não corta mais a quantidade que você escolheu.",
+      "Loja, Busca: a busca usa a disponibilidade real da vitrine e já abre filtrada.",
+      "Loja, Rastreio sem conta: quando o acesso vence, a lista some da tela e o formulário volta limpo; cancelar um pedido de convidado não promete mais aviso no aplicativo.",
+      "Loja, Endereço: voltar durante o salvar não expulsa mais do perfil, e uma resposta de salvamento que chega depois de você sair da tela é ignorada.",
+      "Painel, Produtos: uma resposta atrasada de outra categoria não muda mais a página da categoria que você escolheu; a janela “+ Grade” leva o foco para dentro, aceita Esc e Tab e devolve o foco ao fechar; valores da grade com barras comuns são aceitos; foto sem tipo declarado também é conferida antes do envio.",
+      "Painel, Categorias: uma leitura antiga não desfaz o ícone recém-salvo, cada tela recebe a leitura mais nova, a falha de carregamento mostra um aviso só e a nova categoria libera a espera quando a rede não responde.",
+      "Painel, Pedidos: se um pedido for cancelado enquanto a lista ainda está carregando, ele não aparece mais como pendente."
+    ]
+  },
   "1.5.161": {
     "titulo": "Balcão avisa quando uma edição é barrada, checkout sem promessa falsa e Financeiro sem duplicatas",
     "novidades": [],
