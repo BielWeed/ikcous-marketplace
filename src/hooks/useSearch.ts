@@ -2,9 +2,10 @@ import {
   pontuadorDaBusca,
   produtoCombinaComBusca,
 } from "@/lib/busca-de-produtos";
+import { categoriaValidaDaBusca } from "@/lib/categoria-valida-da-busca";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { produtoDisponivel } from "@/lib/vitrine";
-import type { Product } from "@/types";
+import type { Category, Product } from "@/types";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDebounce } from "./useDebounce";
 
@@ -32,12 +33,31 @@ export interface MemoriaDosFiltros {
   termoInicial?: string;
 }
 
-export function useSearch(products: Product[], memoria?: MemoriaDosFiltros) {
+export function useSearch(
+  products: Product[],
+  memoria?: MemoriaDosFiltros,
+  catalogo?: {
+    carregando?: boolean;
+    categorias?: readonly Pick<Category, "name" | "isActive">[];
+  },
+) {
   const [query, setQuery] = useState(memoria?.termoInicial ?? "");
   // `iniciais` vale só no nascimento (useState ignora a mudança depois).
-  const [category, setCategory] = useState(
+  const [categoriaSelecionada, setCategory] = useState(
     memoria?.iniciais?.category ?? "Todas",
   );
+  // Usa o valor reconciliado já neste desenho: não mostra um vazio por um frame.
+  // Depois guarda o mesmo valor no estado, inclusive para a memória do App.
+  const category = categoriaValidaDaBusca(
+    categoriaSelecionada,
+    products,
+    catalogo?.carregando,
+    catalogo?.categorias,
+  );
+  useEffect(() => {
+    if (category !== categoriaSelecionada) setCategory(category);
+  }, [category, categoriaSelecionada]);
+
   const [minPrice, setMinPrice] = useState<number | "">(
     memoria?.iniciais?.minPrice ?? "",
   );
