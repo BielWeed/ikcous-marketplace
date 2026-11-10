@@ -123,9 +123,11 @@ describe("variacoesAposConflito", () => {
     ).toEqual([]);
   });
 
-  it("variação apagada no banco e editada fica, como no rascunho", () => {
-    const tela = variante({ codigoBarras: "LOCAL" });
-    expect(variacoesAposConflito([tela], [variante()], [])).toEqual([tela]);
+  it("variação apagada no banco sai mesmo se a lojista a editou aqui", () => {
+    // Mantê-la somaria o estoque velho dela ao do produto no segundo salvar
+    // (estoque fantasma). O rascunho também a tira.
+    const tela = variante({ codigoBarras: "LOCAL", stockIncrement: 5 });
+    expect(variacoesAposConflito([tela], [variante()], [])).toEqual([]);
   });
 
   it("nova local permanece e nova do banco entra uma só vez", () => {

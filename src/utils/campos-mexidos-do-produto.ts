@@ -117,13 +117,10 @@ export function variacoesAposConflito<
     if (v.id.startsWith("temp-")) return [v];
     const antes = antesPorId.get(v.id);
     const hoje = hojePorId.get(v.id);
-    if (!hoje) {
-      // Como no rascunho: a apagada só fica se ela realmente a editou.
-      const editou =
-        !antes ||
-        variacaoMudou({ ...v, stockIncrement: antes.stockIncrement }, antes);
-      return editou ? [v] : [];
-    }
+    // Apagada em outro aparelho: sai da grade, editada ou não. Mantê-la
+    // somaria o estoque velho dela ao do produto no segundo salvar, e a RPC
+    // ignoraria a linha inexistente (estoque fantasma). Igual ao rascunho.
+    if (!hoje) return [];
     const { stock: _estoqueAntigo, ...resto } = v;
     const comEstoqueAtual = {
       ...resto,
