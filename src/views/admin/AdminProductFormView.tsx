@@ -309,7 +309,10 @@ export const compressProductImage = async (
   }
   return new Promise<File>((resolve, reject) => {
     if (!file.type.startsWith("image/")) {
-      resolve(file);
+      // O filtro aceita a extensão com MIME vazio/genérico, mas precisa abrir.
+      void imagemAbre(file).then((abre) =>
+        abre ? resolve(file) : reject(new FotoIlegivel()),
+      );
       return;
     }
     // Pequena demais para reduzir, mas NÃO pode passar sem abrir: um arquivo
