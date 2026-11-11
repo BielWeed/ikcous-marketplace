@@ -45,6 +45,7 @@ import {
   temMarcadorPendente,
 } from "@/lib/modelos-de-campanha";
 import { motivoDaFalhaEmPortugues } from "@/lib/motivo-da-falha-de-push";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { intercalarPorServico } from "@/lib/ordem-do-envio-de-push";
 import { primeiraLetra } from "@/lib/primeira-letra";
 import { supabase } from "@/lib/supabase";
@@ -822,7 +823,8 @@ export const AdminPushView = memo(function AdminPushView({
   // rascunho" — afirmava uma perda que o código nunca produziu (revisão do
   // lote B, 12/09/2026).
   const rascunhoPendente =
-    notification.title.trim().length > 0 || notification.body.trim().length > 0;
+    nomeTemConteudoVisivel(notification.title) ||
+    nomeTemConteudoVisivel(notification.body);
 
   useEffect(() => {
     if (!onSetDirty) return;
@@ -859,7 +861,12 @@ export const AdminPushView = memo(function AdminPushView({
       });
       return;
     }
-    if (!notification.title.trim() || !notification.body.trim()) {
+    // `trim()` não tira U+200B, U+00AD, marcas de direção...: o aviso sairia em
+    // branco para todos os clientes (e envio não se desfaz).
+    if (
+      !nomeTemConteudoVisivel(notification.title) ||
+      !nomeTemConteudoVisivel(notification.body)
+    ) {
       toast.error("Preencha título e mensagem");
       return;
     }
