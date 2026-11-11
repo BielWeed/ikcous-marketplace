@@ -759,6 +759,9 @@ jobs:
       - name: Prova viva o bucket das fotos de devolucao so aceita imagem
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-bucket-das-fotos-de-devolucao-so-aceita-imagem-viva.cjs
+      - name: Prova viva cancelar pedido so abre estorno se pago de verdade
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cancelar-pedido-so-abre-estorno-se-pago-viva.cjs
       - name: Prova viva o comprador nao escreve no livro do estorno nem na devolucao
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-comprador-nao-escreve-no-ledger-de-estorno-viva.cjs
