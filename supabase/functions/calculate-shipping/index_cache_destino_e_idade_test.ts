@@ -13,19 +13,19 @@ function bancoComCacheFiltrado() {
         return {
             select: () => {
                 const filtros = []
-                let ordenar = (a, b) => 0
+                let ordenar = (_a, _b) => 0
                 let limite = Infinity
                 const consulta = {
                     eq: (coluna, valor) => {
-                        filtros.push((linha) => linha[coluna] === valor)
+                        filtros.push((linha) => Reflect.get(linha, coluna) === valor)
                         return consulta
                     },
                     gt: (coluna, valor) => {
-                        filtros.push((linha) => Date.parse(linha[coluna]) > Date.parse(valor))
+                        filtros.push((linha) => Date.parse(Reflect.get(linha, coluna)) > Date.parse(valor))
                         return consulta
                     },
                     order: (coluna, { ascending }) => {
-                        ordenar = (a, b) => (Date.parse(a[coluna]) - Date.parse(b[coluna])) * (ascending ? 1 : -1)
+                        ordenar = (a, b) => (Date.parse(Reflect.get(a, coluna)) - Date.parse(Reflect.get(b, coluna))) * (ascending ? 1 : -1)
                         return consulta
                     },
                     limit: (n) => {
