@@ -606,6 +606,9 @@ jobs:
       - name: Prova viva pagamento sem conta e repetido nao avisa
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/pagamento-sem-conta-ou-repetido-nao-avisa-viva.cjs
+      - name: Prova viva ajuste de estoque nulo nao apaga o saldo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/ajuste-de-estoque-nulo-nao-apaga-o-saldo-viva.cjs
       - name: Prova viva estoque considera somente reestoque feito
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/estoque-desconta-so-devolucao-reestocada-viva.cjs
