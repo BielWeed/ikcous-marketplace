@@ -423,6 +423,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
   // contagem segue a lista; nenhuma prova pode sumir na soma.
   const PROVAS_DO_DINHEIRO = [
     "tests/banco/avanco-status-esperado-viva.cjs",
+    // solicitar_estorno vivo: pagamento inelegivel, pedido nao cancelado e produto nao devolvido recusam sem linha; duas chamadas disputam o saldo (mutantes no clone).
+    "tests/banco/solicitar-estorno-recusas-e-corrida-viva.cjs",
     "tests/banco/reembolso-manual-reserva-viva.cjs",
     // 20261347000000: o codigo de barras nao repete entre produto e variacao (gatilhos, corrida real com 2 conexoes, duplicata antiga, pre-voo e rollback sem tocar dado).
     "tests/banco/codigo-de-barras-entre-tabelas-viva.cjs",
@@ -718,6 +720,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",
     "tests/banco/portas-anon-exploracao-estoque-otp.cjs",
+    // solicitar_devolucao (pedido/item de outra conta, nao entregue) e create_marketplace_order_v24 direto (cupom vencido, abaixo do minimo): recusam sem efeito; mutantes no clone.
+    "tests/banco/solicitar-devolucao-e-cupom-recusas-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
