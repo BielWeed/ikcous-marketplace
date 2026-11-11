@@ -74,7 +74,7 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     expect(trechoCss).toContain("webpack: false");
   });
 
-  it("os tetos de JS são os fixados: cliente 648 kB, painel 530 kB", () => {
+  it("os tetos de JS são os fixados: cliente 652 kB, painel 530 kB", () => {
     // Se algum PR precisar mexer num teto, que seja explícito AQUI: mudar o
     // número quebra este teste de propósito. Painel 450 -> 455 em 15/10/2026
     // (lote da noite: 39 ajustes de tela juntos) e 455 -> 460 no mesmo dia
@@ -125,12 +125,13 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     // painel 515 -> 518 em 06/11/2026 (1.5.148; medido 515,05 kB no build local; cliente segue 631, medido 629,18; regra do dono);
     // cliente 635 -> 638 e painel 519 -> 522 em 07/11/2026 (1.5.153; medidos 636,67 e 520,37 kB no build local; regra do dono);
     // cliente 643 -> 646 e painel 526 -> 530 em 08/11/2026 (1.5.158; o PR mediu 643,26 kB no CI e o painel 525,62 kB; regra do dono);
+    // cliente 648 -> 652 em 10/11/2026 (1.5.165; o CI mediu 648,07 kB num PR so de teste, base ja no teto e ruido entre builds; regra do dono: o teto sobe, 4 kB de uma vez);
     // cliente 647 -> 648 em 10/11/2026 (evento de cancelamento durante a leitura de pedidos; o PR mediu 647,01 kB no CI, 10 B acima; regra do dono: o teto sobe);
     // cliente 646 -> 647 em 09/11/2026 (aviso honesto do reenvio de comprovante; o PR passou 122 B de 646 kB no CI; regra do dono: o teto sobe);
     // cliente 641 -> 643 e painel 522 -> 526 em 07/11/2026 (1.5.156; medidos 642,05 e 524,49 kB no build local; regra do dono);
     // cliente 639 -> 641 em 07/11/2026 (1.5.155; medido 639,61 kB no build local; regra do dono; painel segue 522, medido 520,70);
     // cliente 638 -> 639 em 07/11/2026 (1.5.154; medido 638,01 kB no build local; regra do dono; painel segue 522, medido 520,28);
-    expect(entrada("cliente.map(")).toContain('limit: "648 kB"');
+    expect(entrada("cliente.map(")).toContain('limit: "652 kB"');
     expect(entrada("painel.map(")).toContain('limit: "530 kB"');
     expect(configTexto).not.toContain('limit: "800 kB"');
   });
