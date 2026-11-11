@@ -113,6 +113,16 @@ const ORCAMENTO_DE_TEMPO_MS = 50_000;
 export const TTL_DO_STATUS_DO_PEDIDO_S = 24 * 60 * 60;
 export const TTL_DA_CAMPANHA_S = 3 * 24 * 60 * 60;
 
+/** `data.type === "order_status"`: o aviso é sobre UM pedido, de UMA pessoa. */
+export function ehAvisoDeStatusDoPedido(data: unknown): boolean {
+  return (
+    data !== null &&
+    typeof data === "object" &&
+    !Array.isArray(data) &&
+    (data as { type?: unknown }).type === "order_status"
+  );
+}
+
 /** `data.type === "order_status"` (o que o painel de pedidos manda) vale 24 h; o resto, 3 dias. */
 export function opcoesDeEnvioDoAviso(data: unknown): { ttl: number } {
   const tipo =
@@ -257,6 +267,14 @@ export async function handler(req: Request): Promise<Response> {
         auth: t.keys?.auth || t.auth,
       }));
     } else {
+      // Aviso de STATUS DE PEDIDO sem destinatário nunca vai para todos: o
+      // texto ("Seu pedido #X agora está: ...") é de UMA pessoa. Campanha do
+      // admin sem alvo continua indo para todos (não tem `data.type`).
+      if (!targetUserId && ehAvisoDeStatusDoPedido(data)) {
+        throw new Error(
+          "Aviso de status de pedido exige o destinatário (targetUserId): sem ele iria para todos os clientes",
+        );
+      }
       // Paginado (index-133): era `select('*')` sem `.limit()`, carregando
       // a base de inscritos inteira de uma vez. `.order("id")` fixa uma
       // ordem estável entre páginas — sem ela o `.range()` pode repetir ou
