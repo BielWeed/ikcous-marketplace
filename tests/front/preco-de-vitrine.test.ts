@@ -159,6 +159,25 @@ describe("precoDeVitrine", () => {
       expect(r.aPartirDe).toBe(true);
     });
 
+    it("Tamanho esgotado usa a Cor mais barata mesmo sem estoque, preservando o desconto do fallback", () => {
+      const r = precoDeVitrine({
+        price: 50,
+        originalPrice: 70,
+        variants: [
+          v("azul", { name: "Cor", priceOverride: 30, stockIncrement: 0 }),
+          v("verde", { name: "Cor", priceOverride: 90 }),
+          v("P", { name: "Tamanho", stockIncrement: 0 }),
+        ],
+      });
+      expect(r).toEqual({
+        preco: 30,
+        aPartirDe: true,
+        precoOriginal: 70,
+        desconto: 57,
+        economia: 40,
+      });
+    });
+
     it("um grupo sem nenhuma opção com estoque: nada se compra, cai no menor preço das ativas", () => {
       const r = precoDeVitrine({
         price: 50,
