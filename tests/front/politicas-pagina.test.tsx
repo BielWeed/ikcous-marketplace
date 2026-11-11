@@ -163,6 +163,81 @@ describe("páginas de política", () => {
     expect(hospedeiro.textContent).toContain("Av. Brasil, 500");
   });
 
+  // O toque no botão de WhatsApp do contato: o link tem que sair com o DDI 55
+  // só quando falta (10/11 dígitos), com a frase da loja, em aba isolada, e
+  // com o endereço CRU (espaço = %20, acento = %C3%A1 — nada solto na URL).
+  async function tocarWhatsappDoContato(numero: string) {
+    const abrir = vi.fn();
+    vi.stubGlobal("open", abrir);
+    configAtual.valor = { storeName: "Loja da Ana", whatsappNumber: numero };
+    await montar("termos");
+    const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.trim().startsWith("WhatsApp"),
+    );
+    expect(botao).toBeDefined();
+    await act(async () => {
+      botao?.click();
+    });
+    return abrir;
+  }
+
+  it("contato: tocar no WhatsApp abre wa.me com DDI 55, a frase da loja e a aba isolada", async () => {
+    try {
+      const abrir = await tocarWhatsappDoContato("(34) 99999-8888");
+
+      expect(abrir).toHaveBeenCalledTimes(1);
+      const [url, alvo, recursos] = abrir.mock.calls[0] as [
+        string,
+        string,
+        string,
+      ];
+      expect(url).toBe(
+        "https://wa.me/5534999998888?text=Ol%C3%A1!%20Vim%20pelo%20app%20da%20loja.",
+      );
+      expect(alvo).toBe("_blank");
+      expect(recursos).toBe("noopener,noreferrer");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("contato: fixo de 10 dígitos também ganha o 55; número que já traz o DDI não ganha de novo", async () => {
+    try {
+      const fixo = await tocarWhatsappDoContato("3433334444");
+      expect((fixo.mock.calls[0] as [string])[0]).toContain(
+        "https://wa.me/553433334444?text=",
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    act(() => raiz.unmount());
+    raiz = createRoot(hospedeiro);
+    try {
+      const comDdi = await tocarWhatsappDoContato("+55 34 99999-8888");
+      const [url] = comDdi.mock.calls[0] as [string];
+      expect(url).toContain("https://wa.me/5534999998888?text=");
+      expect(url).not.toContain("wa.me/5555");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("contato: número curto demais (menos de 10 dígitos) não mostra o botão e nunca abre o WhatsApp", async () => {
+    const abrir = vi.fn();
+    vi.stubGlobal("open", abrir);
+    try {
+      configAtual.valor = { storeName: "Loja da Ana", whatsappNumber: "123" };
+      await montar("termos");
+      const botao = [...hospedeiro.querySelectorAll("button")].find((b) =>
+        b.textContent?.includes("WhatsApp"),
+      );
+      expect(botao).toBeUndefined();
+      expect(abrir).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("contato: loja sem nada cadastrado diz isso, não aponta canal inventado", async () => {
     await montar("termos");
     expect(hospedeiro.textContent).toContain(
