@@ -320,20 +320,27 @@ export function useReviews() {
           return null;
         }
 
-        // Check if user already reviewed (optional, good practice)
-        /*
-      const { data: existing } = await supabase
-        .from('reviews')
-        .select('id')
-        .eq('product_id', review.productId)
-        .eq('user_id', user.id)
-        .single();
-      
-      if (existing) {
-        toast.error('Você já avaliou este produto.');
-        return null;
-      }
-      */
+        try {
+          const { data: existentes, error: erroDaConsulta } =
+            await aguardarComPrazo(
+              Promise.resolve(
+                supabase
+                  .from("reviews" as any)
+                  .select("id")
+                  .eq("product_id", review.productId)
+                  .eq("user_id", user.id)
+                  .limit(1),
+              ),
+              15000,
+              erroDeConsultaSemResposta,
+            );
+          if (!erroDaConsulta && existentes?.length) {
+            toast.error("Você já avaliou este produto.");
+            return null;
+          }
+        } catch {
+          // Falha na checagem não pode impedir quem ainda não avaliou.
+        }
 
         const { data, error } = await aguardarComPrazo(
           Promise.resolve(
