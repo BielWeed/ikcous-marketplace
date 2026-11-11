@@ -114,7 +114,7 @@ describe("Minha loja › Contato — não grava nem edita o horário (A1)", () =
 
   it("salvar o WhatsApp manda updateConfig SEM a chave businessHours", async () => {
     await abrirTela({});
-    await digitarWhatsApp("1198765432");
+    await digitarWhatsApp("11987654321");
 
     await act(async () => {
       botao("Salvar")!.dispatchEvent(
@@ -129,7 +129,7 @@ describe("Minha loja › Contato — não grava nem edita o horário (A1)", () =
     )[0];
     expect(enviado).not.toHaveProperty("businessHours");
     expect(enviado).toEqual({
-      whatsappNumber: "551198765432",
+      whatsappNumber: "5511987654321",
     });
   });
 
@@ -162,7 +162,7 @@ describe("Minha loja › Contato — não grava nem edita o horário (A1)", () =
     await act(async () => {
       await esperar(50);
     });
-    await digitarWhatsApp("1198765432");
+    await digitarWhatsApp("11987654321");
 
     await act(async () => {
       botao("Salvar alterações")!.dispatchEvent(
