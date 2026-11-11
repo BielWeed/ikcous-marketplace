@@ -797,6 +797,26 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/cupom-com-limite-zero-vale-como-sem-limite-viva.cjs",
     // Onda 111-d: fin__saldos so soma desde o saldo inicial, sobra/quebra do caixa com o tipo certo e gasto em dinheiro sem dupla contagem; mutantes por MUTANTE_R111D.
     "tests/banco/o-saldo-da-conta-e-o-ajuste-do-caixa-batem-viva.cjs",
+    // Onda 112-a: get_segmented_push_targets/count: vip, inactive, new, UUID e all alcancam so o publico certo e count = targets; mutantes por MUTANTE_R112A.
+    "tests/banco/o-aviso-em-massa-so-chega-ao-segmento-escolhido-viva.cjs",
+    // Onda 112-b: v23/v24 exigem a variacao, recusam variacao inativa e produto pausado/arquivado; mutantes por MUTANTE_R112B.
+    "tests/banco/a-compra-so-vende-variacao-ativa-de-produto-ativo-viva.cjs",
+    // Onda 112-c: a v24 amarra a cotacao de frete ao conteudo do carrinho (1 para 5, A para A+B, menor); a v23 recusa transportadora; mutantes por MUTANTE_R112C.
+    "tests/banco/o-frete-cotado-para-um-carrinho-nao-vale-para-outro-viva.cjs",
+    // Onda 112-d: is_local_cep (prefixo, faixas, bordas, lixo) e ponta a ponta v23/v24; mutantes por MUTANTE_R112D.
+    "tests/banco/o-cep-local-so-vale-para-o-cep-da-loja-viva.cjs",
+    // Onda 112-e: get_admin_orders_paged: corte de periodo (bordas), Em Aberto, total_count e paginas; mutantes por MUTANTE_R112E.
+    "tests/banco/a-lista-de-pedidos-do-painel-respeita-periodo-e-em-aberto-viva.cjs",
+    // Onda 112-e: get_admin_questions_paged conta e lista so as pendentes; mutantes por MUTANTE_R112E.
+    "tests/banco/o-sino-de-perguntas-do-painel-conta-so-as-pendentes-viva.cjs",
+    // Onda 112-f: registrar_venda_presencial recusa variacao ausente/inativa/de outro produto, produto pausado/arquivado, estoque e quantidade invalidos; mutantes por MUTANTE_R112F.
+    "tests/banco/a-venda-de-balcao-so-vende-variacao-valida-e-produto-ativo-viva.cjs",
+    // Onda 113-a: cancelar_devolucao e informar_envio_devolucao: posse, status e metodo de retorno; mutantes por MUTANTE_R113A.
+    "tests/banco/a-cliente-so-cancela-e-despacha-a-propria-devolucao-no-status-certo-viva.cjs",
+    // Onda 113-b: confirmar_retorno_do_produto nao credita estoque de pedido reativado nem de pedido nao enviado e e idempotente; mutantes por MUTANTE_R113B.
+    "tests/banco/produto-voltou-so-credita-pedido-cancelado-depois-de-enviado-viva.cjs",
+    // Onda 113-c: solicitar_devolucao: teto de 6 fotos, formato do caminho, .. e 200 caracteres; mutantes por MUTANTE_R113C.
+    "tests/banco/a-devolucao-so-aceita-fotos-no-formato-e-no-teto-certos-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

@@ -702,6 +702,36 @@ jobs:
       - name: Prova viva saldo da conta e ajuste do caixa batem
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-saldo-da-conta-e-o-ajuste-do-caixa-batem-viva.cjs
+      - name: Prova viva o aviso em massa so chega ao segmento escolhido
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-aviso-em-massa-so-chega-ao-segmento-escolhido-viva.cjs
+      - name: Prova viva a compra so vende variacao ativa de produto ativo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-compra-so-vende-variacao-ativa-de-produto-ativo-viva.cjs
+      - name: Prova viva o frete cotado para um carrinho nao vale para outro
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-frete-cotado-para-um-carrinho-nao-vale-para-outro-viva.cjs
+      - name: Prova viva o CEP local so vale para o CEP da loja
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-cep-local-so-vale-para-o-cep-da-loja-viva.cjs
+      - name: Prova viva a lista de pedidos do painel respeita periodo e em aberto
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-lista-de-pedidos-do-painel-respeita-periodo-e-em-aberto-viva.cjs
+      - name: Prova viva o sino de perguntas do painel conta so as pendentes
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-sino-de-perguntas-do-painel-conta-so-as-pendentes-viva.cjs
+      - name: Prova viva a venda de balcao so vende variacao valida e produto ativo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-venda-de-balcao-so-vende-variacao-valida-e-produto-ativo-viva.cjs
+      - name: Prova viva a cliente so cancela e despacha a propria devolucao no status certo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-cliente-so-cancela-e-despacha-a-propria-devolucao-no-status-certo-viva.cjs
+      - name: Prova viva produto voltou so credita pedido cancelado depois de enviado
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/produto-voltou-so-credita-pedido-cancelado-depois-de-enviado-viva.cjs
+      - name: Prova viva a devolucao so aceita fotos no formato e no teto certos
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-devolucao-so-aceita-fotos-no-formato-e-no-teto-certos-viva.cjs
       - name: Prova viva do avanco com status esperado (345)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/avanco-status-esperado-viva.cjs
