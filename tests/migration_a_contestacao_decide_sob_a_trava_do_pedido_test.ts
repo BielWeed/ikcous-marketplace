@@ -835,6 +835,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-estoque-do-produto-nunca-fica-negativo-viva.cjs",
     // Onda 118: o bucket devolucoes e privado, 5 MB e so JPG/PNG/WEBP; mutantes por MUTANTE_R125C.
     "tests/banco/o-bucket-das-fotos-de-devolucao-so-aceita-imagem-viva.cjs",
+    // Onda 119: cancelar so abre order_refunds para pago/pago_apos_expirar com paid_at, em pending/processing; mutantes por MUTANTE_R130D.
+    "tests/banco/cancelar-pedido-so-abre-estorno-se-pago-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
