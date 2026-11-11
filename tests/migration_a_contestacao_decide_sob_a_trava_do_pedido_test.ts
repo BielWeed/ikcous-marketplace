@@ -817,6 +817,12 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/produto-voltou-so-credita-pedido-cancelado-depois-de-enviado-viva.cjs",
     // Onda 113-c: solicitar_devolucao: teto de 6 fotos, formato do caminho, .. e 200 caracteres; mutantes por MUTANTE_R113C.
     "tests/banco/a-devolucao-so-aceita-fotos-no-formato-e-no-teto-certos-viva.cjs",
+    // Onda 114-c: a v24 reserva o estoque por 30 min (expires_at), a varredura nao expira antes e devolve o estoque depois; mutantes por MUTANTE_R114C.
+    "tests/banco/a-reserva-do-pedido-online-dura-trinta-minutos-viva.cjs",
+    // Onda 114-c: marcar_visitas_da_reconciliacao pareia pedido e cobranca terminal; cobranca nova volta a fila; tamanhos diferentes 22023; mutantes por MUTANTE_R114C.
+    "tests/banco/a-reconciliacao-marca-a-cobranca-terminal-certa-viva.cjs",
+    // Onda 115-a: pedido__mudar_status: posse (inclui convidado) e origem pending/processing/shipping, pela RPC e pela porta da edge; mutantes por MUTANTE_R115A.
+    "tests/banco/o-comprador-so-cancela-o-proprio-pedido-e-so-antes-da-entrega-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
