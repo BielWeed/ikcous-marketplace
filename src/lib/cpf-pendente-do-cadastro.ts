@@ -147,7 +147,8 @@ function lerRegistroValido(): PendenteCpf | null {
 export function lerPendente(): PendenteCpf | null {
   const dado = lerRegistroValido();
   if (!dado) return null;
-  if (Date.now() > dado.expiraEm) {
+  const agora = Date.now();
+  if (agora > dado.expiraEm || dado.expiraEm > agora + TTL_MS) {
     removerPendente();
     return null;
   }
@@ -214,7 +215,8 @@ export async function retomarCpfPendente(sessao: {
     removerPendente();
     return "outra_conta";
   }
-  if (Date.now() > pendente.expiraEm) {
+  const agora = Date.now();
+  if (agora > pendente.expiraEm || pendente.expiraEm > agora + TTL_MS) {
     removerPendente();
     return "expirado";
   }

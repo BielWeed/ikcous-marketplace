@@ -37,7 +37,10 @@ export function retratoVenceu(
   consultadoEm: number,
   agora: number = Date.now(),
 ): boolean {
-  return agora - consultadoEm > PRAZO_DO_RETRATO_MS;
+  return (
+    agora - consultadoEm > PRAZO_DO_RETRATO_MS ||
+    consultadoEm > agora + 5 * 60_000
+  );
 }
 
 export interface RetratoDoConvidado {

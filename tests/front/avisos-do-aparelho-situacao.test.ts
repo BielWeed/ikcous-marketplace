@@ -143,6 +143,25 @@ describe("o adiamento (Agora não)", () => {
     expect(adiamentoEstaValendo(ate, ate)).toBe(false);
   });
 
+  it("relógio corrigido não mantém o Agora não gravado mais de sete dias no futuro", () => {
+    const agora = 1_700_000_000_000;
+    const relogio = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(agora + 30 * 24 * 60 * 60_000);
+    adiarOsAvisos(Date.now());
+
+    relogio.mockReturnValue(agora);
+    expect(adiamentoEstaValendo(lerAdiamentoDosAvisos(), Date.now())).toBe(
+      false,
+    );
+    expect(
+      adiamentoEstaValendo(agora + PRAZO_DO_ADIAMENTO_DOS_AVISOS_MS, agora),
+    ).toBe(true);
+    expect(
+      adiamentoEstaValendo(agora + PRAZO_DO_ADIAMENTO_DOS_AVISOS_MS + 1, agora),
+    ).toBe(false);
+  });
+
   it("sem registro, ou com lixo gravado, não há adiamento", () => {
     expect(lerAdiamentoDosAvisos()).toBeNull();
     localStorage.setItem(CHAVE_DO_ADIAMENTO_DOS_AVISOS, "talvez");

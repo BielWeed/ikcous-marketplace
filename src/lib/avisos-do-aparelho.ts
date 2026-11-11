@@ -187,5 +187,9 @@ export function adiamentoEstaValendo(
   ate: number | null,
   agora: number,
 ): boolean {
-  return ate !== null && agora < ate;
+  return (
+    ate !== null &&
+    agora < ate &&
+    ate <= agora + PRAZO_DO_ADIAMENTO_DOS_AVISOS_MS
+  );
 }

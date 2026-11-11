@@ -169,6 +169,52 @@ describe("cpf-pendente-do-cadastro", () => {
     expect(armazem.getItem(CHAVE)).toBeNull();
   });
 
+  it("lerPendente apaga o CPF gravado com o relógio adiantado após corrigir a hora", async () => {
+    vi.useFakeTimers();
+    const agora = 1_700_000_000_000;
+    vi.setSystemTime(agora + 365 * 24 * 60 * 60 * 1000);
+    const { salvarPendente, lerPendente } = await import(
+      "@/lib/cpf-pendente-do-cadastro"
+    );
+    salvarPendente({ userId: USER_ID, email: EMAIL, cpf: CPF });
+
+    vi.setSystemTime(agora);
+    expect(lerPendente()).toBeNull();
+    expect(armazem.getItem(CHAVE)).toBeNull();
+  });
+
+  it("o prazo exato de 24 horas ainda permite ler e retomar o CPF", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_700_000_000_000);
+    const { salvarPendente, lerPendente, retomarCpfPendente } = await import(
+      "@/lib/cpf-pendente-do-cadastro"
+    );
+    salvarPendente({ userId: USER_ID, email: EMAIL, cpf: CPF });
+    rpc.mockResolvedValueOnce({ data: null, error: null });
+
+    expect(lerPendente()?.cpf).toBe(CPF);
+    expect(await retomarCpfPendente({ userId: USER_ID, email: EMAIL })).toBe(
+      "gravado",
+    );
+  });
+
+  it("retomarCpfPendente não envia o CPF gravado com o relógio adiantado", async () => {
+    vi.useFakeTimers();
+    const agora = 1_700_000_000_000;
+    vi.setSystemTime(agora + 365 * 24 * 60 * 60 * 1000);
+    const { salvarPendente, retomarCpfPendente } = await import(
+      "@/lib/cpf-pendente-do-cadastro"
+    );
+    salvarPendente({ userId: USER_ID, email: EMAIL, cpf: CPF });
+
+    vi.setSystemTime(agora);
+    expect(await retomarCpfPendente({ userId: USER_ID, email: EMAIL })).toBe(
+      "expirado",
+    );
+    expect(rpc).not.toHaveBeenCalled();
+    expect(armazem.getItem(CHAVE)).toBeNull();
+  });
+
   it("lerPendente devolve o registro dentro do TTL", async () => {
     vi.spyOn(Date, "now").mockReturnValue(1_000_000);
     armazem.setItem(
