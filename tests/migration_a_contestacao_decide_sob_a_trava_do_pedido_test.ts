@@ -422,6 +422,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
   // integração das branches, as listas se SOMAM (união dos nomes) e a
   // contagem segue a lista; nenhuma prova pode sumir na soma.
   const PROVAS_DO_DINHEIRO = [
+    // Guardas vivas do Financeiro: categorias automaticas, conta de sistema e recusas da baixa.
+    "tests/banco/financeiro-recusas-da-baixa-conta-e-categoria-viva.cjs",
     "tests/banco/avanco-status-esperado-viva.cjs",
     "tests/banco/reembolso-manual-reserva-viva.cjs",
     // 20261347000000: o codigo de barras nao repete entre produto e variacao (gatilhos, corrida real com 2 conexoes, duplicata antiga, pre-voo e rollback sem tocar dado).
