@@ -77,11 +77,17 @@ const sinalDaMoeda = (val: string, permiteNegativo: boolean) => {
     : "";
 };
 
+// Dígitos sem fim chegam a 1e21 (o `toFixed` devolveria "1e+21", lido depois
+// como 121) e a Infinity (a tela mostraria "∞"). O número é limitado antes de
+// virar texto; 1e18 continua acima de qualquer teto de preço.
+const reaisDosCentavos = (clean: string) =>
+  Math.min(Number.parseFloat(clean) / 100, 1e18);
+
 const formatCurrency = (val: string, permiteNegativo = false) => {
   const sinal = sinalDaMoeda(val, permiteNegativo);
   const clean = val.replace(/\D/g, "");
   if (clean.length === 0) return sinal;
-  const num = Number.parseFloat(clean) / 100;
+  const num = reaisDosCentavos(clean);
   return (
     sinal +
     num.toLocaleString("pt-BR", {
@@ -95,7 +101,7 @@ const parseCurrencyToFloatString = (val: string, permiteNegativo = false) => {
   const sinal = sinalDaMoeda(val, permiteNegativo);
   const clean = val.replace(/\D/g, "");
   if (clean.length === 0) return sinal;
-  const num = Number.parseFloat(clean) / 100;
+  const num = reaisDosCentavos(clean);
   return sinal + num.toFixed(2);
 };
 

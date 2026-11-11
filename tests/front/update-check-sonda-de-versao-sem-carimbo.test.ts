@@ -33,6 +33,16 @@ const FONTES = import.meta.glob<string>("/src/hooks/useUpdateCheck.ts", {
 
 const CAMINHO = "/src/hooks/useUpdateCheck.ts";
 
+// A chamada de `fetch` mora, desde a peça do prazo (r136-f), na leitura do
+// contrato único (`lerVersaoComPrazo`, em versao-do-servidor.ts): o hook só a
+// chama. O que este arquivo guarda — sem carimbo, com no-store — vale para a
+// chamada ONDE ela está agora.
+const FONTES_DA_LEITURA = import.meta.glob<string>(
+  "/src/lib/versao-do-servidor.ts",
+  { query: "?raw", import: "default", eager: true },
+);
+const [FONTE_DA_LEITURA = ""] = Object.values(FONTES_DA_LEITURA);
+
 // Sem acesso por chave variável (o eslint `security/detect-object-injection`
 // reprova, e a catraca de lint reprova warning novo): o glob casa um arquivo
 // só, então o valor sai por desestruturação.
@@ -62,16 +72,27 @@ describe("useUpdateCheck — a busca de /version.json", () => {
   });
 
   it("busca /version.json SEM carimbo de tempo e com cache: no-store", () => {
-    const src = normalizar(FONTE_DO_HOOK);
+    const hook = normalizar(FONTE_DO_HOOK);
+    const leitura = normalizar(FONTE_DA_LEITURA);
 
     expect({
-      chamadaEscrita: src.includes(
-        'fetch("/version.json", { cache: "no-store" })',
+      leituraAchada: leitura.includes(
+        "export async function lerVersaoComPrazo",
       ),
-      temCarimboDeTempo: src.includes("version.json?"),
+      chamadaEscrita: leitura.includes(
+        'buscar("/version.json", { cache: "no-store", signal: controle.signal, })',
+      ),
+      hookUsaALeitura: hook.includes(
+        "lerVersaoComPrazo(PRAZO_SONDA_DE_REDE_MS)",
+      ),
+      carimboNoHook: hook.includes("version.json?"),
+      carimboNaLeitura: leitura.includes("version.json?"),
     }).toEqual({
+      leituraAchada: true,
       chamadaEscrita: true,
-      temCarimboDeTempo: false,
+      hookUsaALeitura: true,
+      carimboNoHook: false,
+      carimboNaLeitura: false,
     });
   });
 });

@@ -584,6 +584,10 @@ const numeroOpcionalDoCampo = (val: string): number | undefined => {
  * trocado por 0 sem aviso é exatamente o que o campo acusa. Zero e vazio valem.
  */
 const erroDaMedida = (texto: string): string => {
+  // "1e3" (o campo numérico aceita): `limparNumeroDoCampo` arranca o "e" e leria
+  // 13. Recusa, como o estoque.
+  if (/e/i.test(texto))
+    return "Número inválido. Use só dígitos, vírgula ou ponto.";
   const numero = numeroOpcionalDoCampo(texto);
   return numero !== undefined && numero < 0 ? "Não pode ser negativo." : "";
 };
@@ -3855,7 +3859,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // Frete (PAC/SEDEX) vai até 30 kg: acima disso, quem pensa em gramas digitou 350.
   const pesoVal = Number.parseFloat(formData.weightKg);
   const pesoEmGramasTalvez =
-    pesoVal > 30
+    !pesoError && pesoVal > 30
       ? {
           kg: (pesoVal / 1000).toLocaleString("pt-BR", {
             minimumFractionDigits: 3,

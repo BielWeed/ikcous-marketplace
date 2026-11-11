@@ -43,6 +43,31 @@ export function nucleoSemver(versao: string | null | undefined): string | null {
   return partes ? partes.join(".") : null;
 }
 
+/** BUSCA `/version.json` e lê o resultado (o contrato de baixo), SEM carimbo
+ * de tempo e com `cache: "no-store"`. Leitura sem prazo pendura para sempre em
+ * rede lenta ou conexão meia-aberta — e com ela o portão de atualização (a
+ * checagem do service worker espera por esta leitura). Aqui o pedido leva um
+ * prazo e é ABORTADO nele (o mesmo padrão da sonda `verificarRedeDeVerdade`,
+ * que recebe o mesmo valor de `PRAZO_SONDA_DE_REDE_MS`); o prazo vale também
+ * para o corpo da resposta. Estourado ele, o `fetch` rejeita com AbortError —
+ * quem chama trata como qualquer outro erro de rede (aqui nada é engolido). */
+export async function lerVersaoComPrazo(
+  prazoMs: number,
+  buscar: typeof fetch = fetch,
+): Promise<string | null> {
+  const controle = new AbortController();
+  const prazo = setTimeout(() => controle.abort(), prazoMs);
+  try {
+    const resposta = await buscar("/version.json", {
+      cache: "no-store",
+      signal: controle.signal,
+    });
+    return await versaoLegivelDeResposta(resposta);
+  } finally {
+    clearTimeout(prazo);
+  }
+}
+
 /** A leitura ÚNICA da resposta de `/version.json`: só vale status ok +
  * content-type json declarado + corpo JSON com campo `version` string não
  * vazia. O content-type declarado é o que um portal cativo / proxy mentindo
