@@ -46,17 +46,20 @@ function bancoQueAplicaFiltros(perfis: Perfil[], inscricoes: Inscricao[]) {
     const q = {
       eq(coluna: string, valor: unknown) {
         chamadas.eq.push({ tabela, coluna, valor });
+        // eslint-disable-next-line security/detect-object-injection -- fixture de teste: coluna/id vem do proprio teste
         filtros.push((l) => l[coluna] === valor);
         return q;
       },
       in(coluna: string, valores: unknown[]) {
         chamadas.in.push({ tabela, coluna, valores });
+        // eslint-disable-next-line security/detect-object-injection -- fixture de teste: coluna/id vem do proprio teste
         filtros.push((l) => valores.includes(l[coluna]));
         return q;
       },
       then(resolve: (r: unknown) => unknown, rejeita?: (e: unknown) => unknown) {
         const data = linhas
           .filter((l) => filtros.every((f) => f(l)))
+        // eslint-disable-next-line security/detect-object-injection -- fixture de teste: coluna/id vem do proprio teste
           .map((l) => Object.fromEntries(colunas.map((c) => [c, l[c]])));
         return Promise.resolve({ data, error: null }).then(resolve, rejeita);
       },

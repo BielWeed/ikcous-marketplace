@@ -64,6 +64,7 @@ function bancoFalso(pedidos: Array<Record<string, unknown>>, contas: Record<stri
       admin: {
         getUserById: async (id: string) => {
           idsDeConta.push(id);
+          // eslint-disable-next-line security/detect-object-injection -- fixture de teste: coluna/id vem do proprio teste
           if (id in contas) return { data: { user: { email: contas[id].email } }, error: null };
           // id que nao e' de conta nenhuma (ex.: id do pedido): e-mail de
           // "terceiro" — consultar o id errado aparece no `para`.

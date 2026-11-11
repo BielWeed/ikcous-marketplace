@@ -136,6 +136,7 @@ function bancoFalso(opts: {
         getUserById: async (id: string) => {
           idsDeConta.push(id);
           if (id in opts.contas) {
+            // eslint-disable-next-line security/detect-object-injection -- fixture de teste: coluna/id vem do proprio teste
             return { data: { user: { email: opts.contas[id].email } }, error: null };
           }
           // id que nao e' de nenhuma conta real (ex.: id de pedido): e-mail de
