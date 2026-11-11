@@ -737,6 +737,18 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/carrinho-sincronizar-so-mexe-no-meu-viva.cjs",
     "tests/banco/devolver-cupom-nao-deixa-contador-negativo-viva.cjs",
     "tests/banco/caixa-abrir-recusa-quem-nao-e-admin-atual-viva.cjs",
+    // Onda 100-y: onze guardas vivas; cada arquivo tem controle mutante no clone descartavel.
+    "tests/banco/itens-do-pedido-so-do-comprador-viva.cjs",
+    "tests/banco/endereco-principal-nao-desmarca-outra-conta-viva.cjs",
+    "tests/banco/avisos-globais-nao-podem-ser-alterados-viva.cjs",
+    "tests/banco/detalhe-do-cliente-so-traz-seus-enderecos-viva.cjs",
+    "tests/banco/resposta-de-avaliacao-recusa-rebaixado-viva.cjs",
+    "tests/banco/pagamento-sem-conta-ou-repetido-nao-avisa-viva.cjs",
+    "tests/banco/estoque-desconta-so-devolucao-reestocada-viva.cjs",
+    "tests/banco/estorno-preserva-data-informada-no-pedido-viva.cjs",
+    "tests/banco/lancamento-inativo-nao-grava-viva.cjs",
+    "tests/banco/caixa-contrapartida-inativa-nao-grava-viva.cjs",
+    "tests/banco/baixa-concorrente-impede-edicao-do-lancamento-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
