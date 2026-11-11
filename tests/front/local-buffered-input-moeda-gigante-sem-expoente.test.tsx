@@ -107,6 +107,25 @@ describe("LocalBufferedInput — moeda com dígitos demais nunca vira expoente",
     expect(acimaDoTetoDePreco(texto)).toBe(true);
   });
 
+  it("o valor limitado que volta do formulário não é mostrado como R$ 1,22", async () => {
+    // O formulário devolve ao campo o texto entregue. Com limite de 1e20 o
+    // `Math.round(v*100).toString()` virava "1e+22" e o campo mostrava "1,22".
+    await montar();
+    await digitar("1".repeat(25));
+    const devolvido = entregue();
+    await act(async () => {
+      raiz.render(
+        <LocalBufferedInput
+          value={devolvido}
+          mask="currency"
+          onFlush={aoSalvar}
+        />,
+      );
+    });
+    expect(campo().value).not.toBe("1,22");
+    expect(campo().value).toBe("1.000.000.000.000.000.000,00");
+  });
+
   it("preço normal segue idêntico (controle)", async () => {
     await montar();
     await digitar("8990");
