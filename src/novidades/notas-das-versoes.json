@@ -1,4 +1,13 @@
 {
+  "1.5.165": {
+    "titulo": "Banner que não perde a foto se a internet cai e recusa de CPF explicada em português",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Painel, Banners: se a internet cai na hora de salvar um banner, a foto enviada é mantida e o rascunho continua no editor, em vez de apagar a imagem de um banner que pode ter sido publicado.",
+      "Painel, Pedido: ao corrigir o CPF de um pedido que já mudou de situação em outro aparelho, o app explica o motivo em português e atualiza a tela do pedido."
+    ]
+  },
   "1.5.164": {
     "titulo": "Variação completa no resumo, produto mais seguro de editar e busca que não trava na categoria",
     "novidades": [],
