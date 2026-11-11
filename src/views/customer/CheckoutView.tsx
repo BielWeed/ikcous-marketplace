@@ -1139,7 +1139,7 @@ export function CheckoutViewDaConta({
           // Os tetos só valem aqui, no formulário do VISITANTE: quem tem conta
           // usa o endereço salvo, que já nasceu com teto no AddressForm, e um
           // valor residual comprido nestes campos não pode prendê-lo.
-          if (!data.street || data.street.trim() === "") {
+          if (!data.street || !nomeTemConteudoVisivel(data.street)) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               message: "Rua é obrigatória",
@@ -1152,7 +1152,7 @@ export function CheckoutViewDaConta({
               path: ["street"],
             });
           }
-          if (!data.number || data.number.trim() === "") {
+          if (!data.number || !nomeTemConteudoVisivel(data.number)) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               message: "Número é obrigatório",
@@ -1165,7 +1165,10 @@ export function CheckoutViewDaConta({
               path: ["number"],
             });
           }
-          if (!data.neighborhood || data.neighborhood.trim() === "") {
+          if (
+            !data.neighborhood ||
+            !nomeTemConteudoVisivel(data.neighborhood)
+          ) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               message: "Bairro é obrigatório",
@@ -1178,7 +1181,7 @@ export function CheckoutViewDaConta({
               path: ["neighborhood"],
             });
           }
-          if (!data.city || data.city.trim() === "") {
+          if (!data.city || !nomeTemConteudoVisivel(data.city)) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               message: "Cidade é obrigatória",
@@ -2537,10 +2540,14 @@ export function CheckoutViewDaConta({
   const faltaWhatsapp = !celularBrasileiroCompleto(whatsappAtual);
   const enderecoConvidadoCompleto =
     soDigitos(cepDigitadoNoFormulario ?? "").length === 8 &&
-    !!ruaAtual?.trim() &&
-    !!numeroAtual?.trim() &&
-    !!bairroAtual?.trim() &&
-    !!cidadeAtual?.trim() &&
+    !!ruaAtual &&
+    nomeTemConteudoVisivel(ruaAtual) &&
+    !!numeroAtual &&
+    nomeTemConteudoVisivel(numeroAtual) &&
+    !!bairroAtual &&
+    nomeTemConteudoVisivel(bairroAtual) &&
+    !!cidadeAtual &&
+    nomeTemConteudoVisivel(cidadeAtual) &&
     ufBrasileiraValida(estadoAtual);
   // O PRIMEIRO campo de endereço de convidado que falta ou está inválido, na
   // ordem da tela (a mesma de `ORDEM_CAMPOS_FOCO`). O aviso da barra leva o
@@ -2548,10 +2555,13 @@ export function CheckoutViewDaConta({
   const idDoPrimeiroCampoDeEnderecoQueFalta = (): string | null => {
     if (soDigitos(cepDigitadoNoFormulario ?? "").length !== 8)
       return "guest-cep";
-    if (!numeroAtual?.trim()) return "guest-number";
-    if (!ruaAtual?.trim()) return "guest-street";
-    if (!bairroAtual?.trim()) return "guest-neighborhood";
-    if (!cidadeAtual?.trim()) return "guest-city";
+    if (!numeroAtual || !nomeTemConteudoVisivel(numeroAtual))
+      return "guest-number";
+    if (!ruaAtual || !nomeTemConteudoVisivel(ruaAtual)) return "guest-street";
+    if (!bairroAtual || !nomeTemConteudoVisivel(bairroAtual))
+      return "guest-neighborhood";
+    if (!cidadeAtual || !nomeTemConteudoVisivel(cidadeAtual))
+      return "guest-city";
     if (!ufBrasileiraValida(estadoAtual)) return "guest-state";
     return null;
   };
