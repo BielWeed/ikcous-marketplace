@@ -967,4 +967,30 @@ describe("CheckoutView — o pagamento pendente sobrevive à recarga da página"
     expect(toastInfo).not.toHaveBeenCalled();
     expect(onNavigate).toHaveBeenCalledWith("home");
   });
+
+  // r140-e, achado 1: o aviso do Voltar fala de PIX ("o Pix continua
+  // reservado... Retomar pagamento"). Num pedido de CARTÃO essa frase seria
+  // mentira: a cliente nunca viu um Pix. O Voltar leva ao Início em silêncio;
+  // o par com Pix aberto é o primeiro teste desta seção. Cartão com a tela de
+  // pagamento aberta = pedido de cartão SEM order na vaga (formulário), o único
+  // estado de cartão em que o Voltar passa por este ramo (com order na vaga a
+  // retomada vai à verificação, que não liga `aguardandoPagamento`).
+  it("Voltar com um pedido de CARTÃO na tela de pagamento: vai ao Início SEM o aviso do Pix", async () => {
+    linhaDoPedido({ metodo_online: "credito", gateway_payment_id: null });
+    const toastInfo = vi.spyOn(toast, "info").mockImplementation(() => 1);
+    onSetBackOverride.mockClear();
+    await renderizarNaMesmaInstancia(PEDIDO);
+
+    // Pré-condição: é de fato a tela do cartão (formulário montado), sem QR de
+    // Pix nem a frase de reserva do Pix; e nenhuma cobrança foi criada.
+    expect(create).toHaveBeenCalled();
+    expect(hospedeiro.textContent).not.toContain(QR_DO_PEDIDO);
+    expect(hospedeiro.textContent).not.toContain("Seu pedido está reservado");
+
+    voltarDoAparelho()();
+
+    expect(toastInfo).not.toHaveBeenCalled();
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(onNavigate).toHaveBeenCalledWith("home");
+  });
 });
