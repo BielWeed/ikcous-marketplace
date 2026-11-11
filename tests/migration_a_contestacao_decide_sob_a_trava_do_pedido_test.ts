@@ -433,6 +433,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/codigo-de-barras-entre-tabelas-viva.cjs",
     // 20261352000000: o produto e a grade salvam numa transacao so (travas da compra online, versao conferida, PRD01, mutantes, 2 conexoes reais, rollback e consultas 84a/84b).
     "tests/banco/salvar-produto-com-grade-viva.cjs",
+    "tests/banco/variante-estoque-negativo-e-recusado-no-banco-viva.cjs",
+    "tests/banco/variante-sku-repetido-e-recusado-no-banco-viva.cjs",
     // 20261351000000: a forma (path SVG) do icone da categoria, CHECK, ACL/RLS e rollback.
     "tests/banco/forma-do-icone-viva.cjs",
     // 20261350000000: a compra online trava o preco-base (OF v, p) e a mesma chave espera a primeira (advisory lock): duas conexoes reais, rollback, pre/pos-voo e consultas 81a/81b.

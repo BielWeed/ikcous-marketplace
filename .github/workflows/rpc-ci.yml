@@ -1025,6 +1025,12 @@ jobs:
       - name: Prova viva do produto e da grade numa transacao so (migration 20261352000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/salvar-produto-com-grade-viva.cjs
+      - name: Prova viva da variante com estoque negativo recusada no banco
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/variante-estoque-negativo-e-recusado-no-banco-viva.cjs
+      - name: Prova viva da variante com SKU repetido recusada no banco
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/variante-sku-repetido-e-recusado-no-banco-viva.cjs
       # Migration 20261380000000 (o aviso de cancelados antigos conta so pendencia real): fora_da_janela de
       # get_admin_orders_cancelados_recentes so conta o antigo com dinheiro a devolver ou mercadoria a voltar; antigo
       # sem pagamento e sem envio, ou ja estornado, nao conta; recente nunca entra; p_dias NULL da 0; total_count e
