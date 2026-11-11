@@ -365,6 +365,9 @@ export const HomeView = React.memo(function HomeView({
   // Sem isto a próxima visita cai na aposta da 1ª visita (comportamento de
   // hoje) — memória é otimização, nunca fonte de verdade.
   React.useEffect(() => {
+    // Carga que FALHOU não é "a loja ficou sem conteúdo": a lista vem vazia
+    // por causa da rede e gravar isso apagaria a memória da última visita boa.
+    if (catalogoErro) return;
     if (isLoading || !bannersLoaded || !configLoaded) return;
     gravarMemoriaDaHome({
       temBanner: topBanners.length > 0,
@@ -375,6 +378,7 @@ export const HomeView = React.memo(function HomeView({
       qtdOfertas: qtdOfertasNaFaixa,
     });
   }, [
+    catalogoErro,
     isLoading,
     bannersLoaded,
     configLoaded,

@@ -73,8 +73,13 @@ const matchMediaStub = (consulta: string) => ({
 
 let configDaLoja: Record<string, unknown> = {};
 let configCarregada = true;
+let catalogoComErro = false;
 vi.mock("@/contexts/StoreContext", () => ({
-  useStore: () => ({ config: configDaLoja, isLoaded: configCarregada }),
+  useStore: () => ({
+    config: configDaLoja,
+    isLoaded: configCarregada,
+    catalogoErro: catalogoComErro,
+  }),
 }));
 
 // Banners controláveis por caso: `bannersDaLoja.isLoaded` decide se o
@@ -441,6 +446,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
   beforeEach(() => {
     configDaLoja = {};
     configCarregada = true;
+    catalogoComErro = false;
     bannersDaLoja = { isLoaded: true, banners: [] };
     bannersDoMeio = [];
     // O jsdom deste runner não entrega localStorage funcional (o hook lê
@@ -999,6 +1005,43 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     expect(memoriaGravada()).toMatchObject({
       temOfertas: false,
       qtdOfertas: 0,
+    });
+  });
+
+  it("carga que FALHOU (catalogoErro) não apaga a memória da última visita", async () => {
+    // Rede caiu: o catálogo vem vazio, mas isso não é "a loja não tem
+    // ofertas". Regravar aqui trocaria os três true por false e a próxima
+    // visita (já com rede) perderia o esqueleto reservado -- salto de layout.
+    semearMemoria({
+      temBanner: true,
+      temOfertas: true,
+      temBestsellers: true,
+    });
+    catalogoComErro = true;
+    bannersDaLoja = { isLoaded: true, banners: [] };
+    await montar([], false);
+
+    expect(memoriaGravada()).toMatchObject({
+      temBanner: true,
+      temOfertas: true,
+      temBestsellers: true,
+    });
+  });
+
+  it("controle: carga que deu CERTO e veio vazia grava a ausência (sem erro)", async () => {
+    semearMemoria({
+      temBanner: true,
+      temOfertas: true,
+      temBestsellers: true,
+    });
+    catalogoComErro = false;
+    bannersDaLoja = { isLoaded: true, banners: [] };
+    await montar([], false);
+
+    expect(memoriaGravada()).toMatchObject({
+      temBanner: false,
+      temOfertas: false,
+      temBestsellers: false,
     });
   });
 
