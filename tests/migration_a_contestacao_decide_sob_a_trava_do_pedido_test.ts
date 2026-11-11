@@ -837,6 +837,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-bucket-das-fotos-de-devolucao-so-aceita-imagem-viva.cjs",
     // Onda 119: cancelar so abre order_refunds para pago/pago_apos_expirar com paid_at, em pending/processing; mutantes por MUTANTE_R130D.
     "tests/banco/cancelar-pedido-so-abre-estorno-se-pago-viva.cjs",
+    // Onda 136-c: o prazo legal da devolucao (arrependimento, troca, vicio) conta o dia do calendario de Sao Paulo na solicitacao e na elegibilidade (fronteiras 7/8, 30/31, 15/16 e entrega as 23:50); mutantes por MUTANTE_R136C.
+    "tests/banco/o-prazo-da-devolucao-conta-dia-de-sao-paulo-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
