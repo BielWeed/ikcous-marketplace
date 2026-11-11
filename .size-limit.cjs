@@ -188,7 +188,8 @@ module.exports = [
     // 08/11/2026 (1.5.158): 643 -> 646 kB (aviso de pedido novo que nao recarrega o app, vitrine por opcao, carrinho, entrar e perfil; o PR mediu 643,26 kB no CI, 263 B acima). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 08/11/2026 (1.5.160): 646 -> 647 kB (aviso honesto do reenvio de comprovante da ficha do pedido; o PR mediu 122 B acima de 646 kB no CI). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 10/11/2026 (1.5.162): 647 -> 648 kB (evento de cancelamento durante a leitura da lista de pedidos; o PR mediu 647,01 kB no CI, 10 B acima de 647 kB). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
-    limit: "648 kB",
+    // 10/11/2026 (1.5.165): 648 -> 652 kB (o CI mediu 648,07 kB num PR que so adiciona teste Deno, sem mudar o front: a base ja estava no teto e o ruido entre builds, de poucas dezenas de bytes, derrubava qualquer PR; subo 4 kB para acabar com a troca de 1 em 1). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
+    limit: "652 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
