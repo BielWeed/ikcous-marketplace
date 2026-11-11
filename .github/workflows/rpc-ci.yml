@@ -606,6 +606,12 @@ jobs:
       - name: Prova viva pagamento sem conta e repetido nao avisa
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/pagamento-sem-conta-ou-repetido-nao-avisa-viva.cjs
+      - name: Prova viva recancelar nao sobrescreve a auditoria
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-recancelar-nao-sobrescreve-a-auditoria-viva.cjs
+      - name: Prova viva codigo repetido de cupom e recusado no banco
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-codigo-repetido-e-recusado-no-banco-viva.cjs
       - name: Prova viva estoque considera somente reestoque feito
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/estoque-desconta-so-devolucao-reestocada-viva.cjs
