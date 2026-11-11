@@ -666,6 +666,15 @@ jobs:
       - name: Prova viva criar categoria recusa slug repetido
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/categoria-slug-repetido-e-recusado-no-banco-viva.cjs
+      - name: Prova viva retirada sem endereco da loja e recusada na v23
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/retirada-sem-endereco-da-loja-e-recusada-na-v23-viva.cjs
+      - name: Prova viva o total comprado do cliente so conta pagamento reconhecido
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-total-comprado-do-cliente-so-conta-pagamento-reconhecido-viva.cjs
+      - name: Prova viva o painel cresce e conta cancelados pagos
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-painel-de-numeros-cresce-e-conta-cancelados-pagos-viva.cjs
       - name: Prova viva do avanco com status esperado (345)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/avanco-status-esperado-viva.cjs

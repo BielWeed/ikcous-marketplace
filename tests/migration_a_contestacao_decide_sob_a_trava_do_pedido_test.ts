@@ -773,6 +773,12 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/perfil-alterar-so-o-nome-nao-apaga-o-whatsapp-viva.cjs",
     // Onda 107-r: o CPF (dado pessoal) so e lido/gravado na propria conta; CPF03 sem linha em profiles; mutantes por MUTANTE_R107R.
     "tests/banco/o-cpf-so-mexe-na-propria-conta-viva.cjs",
+    // Onda 106-o: a v23 recusa a retirada sem endereco fisico da loja (NULL, vazio, so espacos) sem pedido nem baixa de estoque; controle com endereco; mutante no clone.
+    "tests/banco/retirada-sem-endereco-da-loja-e-recusada-na-v23-viva.cjs",
+    // Onda 108-a: o "total comprado" (LTV) do cliente e o global so somam pagamento reconhecido de pedido nao cancelado; mutantes por MUTANTE_R108A.
+    "tests/banco/o-total-comprado-do-cliente-so-conta-pagamento-reconhecido-viva.cjs",
+    // Onda 108-b: crescimento vs 30 dias e contadores paidOnCancelled/deliveredTotal do painel; mutantes por MUTANTE_R108B.
+    "tests/banco/o-painel-de-numeros-cresce-e-conta-cancelados-pagos-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
