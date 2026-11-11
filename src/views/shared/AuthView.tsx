@@ -221,6 +221,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   const [senhaErro, setSenhaErro] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const envioEmCurso = useRef(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [emailDaConfirmacao, setEmailDaConfirmacao] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -280,6 +281,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (envioEmCurso.current) return;
     const emailEnviado = email.trim();
     const fluxoEnviado = fluxoDaTela.current;
     setLoginError(null);
@@ -294,6 +296,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
       }
     }
 
+    envioEmCurso.current = true;
     setIsLoading(true);
 
     // A resposta do login pode chegar depois de a pessoa trocar para Cadastro ou
@@ -546,6 +549,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
         toast.error(erroInesperado);
       }
     } finally {
+      envioEmCurso.current = false;
       setIsLoading(false);
     }
   };
