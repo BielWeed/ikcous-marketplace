@@ -53,9 +53,16 @@ beforeEach(() => {
   });
   h.from.mockReturnValue({
     insert: h.insert,
-    select: () => ({
-      eq: () => ({ order: async () => ({ data: [], error: null }) }),
-    }),
+    select: (colunas?: string) =>
+      colunas === "id"
+        ? {
+            eq: () => ({
+              eq: () => ({ limit: async () => ({ data: [], error: null }) }),
+            }),
+          }
+        : {
+            eq: () => ({ order: async () => ({ data: [], error: null }) }),
+          },
   });
   hospedeiro = document.createElement("div");
   document.body.appendChild(hospedeiro);

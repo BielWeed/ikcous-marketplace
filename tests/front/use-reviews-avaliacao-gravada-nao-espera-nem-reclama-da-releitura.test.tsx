@@ -45,19 +45,26 @@ vi.mock("@/lib/supabase", () => ({
             }),
         }),
       }),
-      select: () => ({
-        eq: () => ({
-          order: () => {
-            h.releituras += 1;
-            if (h.pendurarReleitura) {
-              return new Promise((resolve) => {
-                h.soltarReleitura = () => resolve(h.releitura);
-              });
+      select: (colunas?: string) =>
+        colunas === "id"
+          ? {
+              eq: () => ({
+                eq: () => ({ limit: async () => ({ data: [], error: null }) }),
+              }),
             }
-            return Promise.resolve(h.releitura);
-          },
-        }),
-      }),
+          : {
+              eq: () => ({
+                order: () => {
+                  h.releituras += 1;
+                  if (h.pendurarReleitura) {
+                    return new Promise((resolve) => {
+                      h.soltarReleitura = () => resolve(h.releitura);
+                    });
+                  }
+                  return Promise.resolve(h.releitura);
+                },
+              }),
+            },
     }),
   },
 }));

@@ -61,14 +61,21 @@ vi.mock("@/lib/supabase", () => ({
         };
       },
       // getReviewsByProduct: .from("reviews").select(...).eq(...).order(...)
-      select: () => ({
-        eq: (...args: unknown[]) => {
-          h.eqs.push(args);
-          return {
-            order: () => Promise.resolve(h.lista),
-          };
-        },
-      }),
+      select: (colunas?: string) =>
+        colunas === "id"
+          ? {
+              eq: () => ({
+                eq: () => ({ limit: async () => ({ data: [], error: null }) }),
+              }),
+            }
+          : {
+              eq: (...args: unknown[]) => {
+                h.eqs.push(args);
+                return {
+                  order: () => Promise.resolve(h.lista),
+                };
+              },
+            },
     }),
   },
 }));
