@@ -678,6 +678,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-desconto-do-cupom-e-arredondado-ao-centavo-viva.cjs",
     // sem migration: o frete que o pedido grava segue a regra viva da loja (limite de frete gratis, por produto, nacional e cotacao velha recusada; 58 cenarios e 2 controles).
     "tests/banco/o-frete-do-pedido-segue-a-regra-da-loja-viva.cjs",
+    "tests/banco/cotacao-de-frete-de-outra-origem-ou-velha-nao-vira-preco-viva.cjs",
     // 20261398000000: o Inicio compara o mes anterior ate a mesma hora (o ultimo dia dos mesmos dias do mes anterior corta na hora de agora; dia 1, 15, 28 a 31,
     // fevereiro de 28 e 29 dias, virada de ano, hora exata, corte em UTC; oraculo em JS e 12 mutantes, controle com o corpo anterior, rollback, pre/pos-voo, leitor concorrente e consultas 116a/116b).
     "tests/banco/o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-viva.cjs",
@@ -730,6 +731,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-perfil-completo-so-devolve-a-propria-conta-viva.cjs",
     "tests/banco/os-favoritos-nao-passam-para-outra-conta-viva.cjs",
     "tests/banco/a-avaliacao-so-nasce-em-nome-da-propria-conta-viva.cjs",
+    "tests/banco/avaliacao-nao-nasce-publicada-nem-verificada-viva.cjs",
     "tests/banco/analise-por-categoria-periodo-e-subtotal-zero-viva.cjs",
     "tests/banco/balcao-recusa-admin-rebaixado-viva.cjs",
     "tests/banco/configuracao-recusa-admin-rebaixado-viva.cjs",
@@ -744,12 +746,20 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/detalhe-do-cliente-so-traz-seus-enderecos-viva.cjs",
     "tests/banco/resposta-de-avaliacao-recusa-rebaixado-viva.cjs",
     "tests/banco/pagamento-sem-conta-ou-repetido-nao-avisa-viva.cjs",
+    "tests/banco/ajuste-de-estoque-nulo-nao-apaga-o-saldo-viva.cjs",
+    "tests/banco/lista-de-pedidos-filtro-de-pagamento-viva.cjs",
     "tests/banco/estoque-desconta-so-devolucao-reestocada-viva.cjs",
     "tests/banco/estorno-preserva-data-informada-no-pedido-viva.cjs",
     "tests/banco/devolucao-encerrada-nao-reabre-viva.cjs",
     "tests/banco/lancamento-inativo-nao-grava-viva.cjs",
     "tests/banco/caixa-contrapartida-inativa-nao-grava-viva.cjs",
     "tests/banco/baixa-concorrente-impede-edicao-do-lancamento-viva.cjs",
+    "tests/banco/cupom-inativo-e-teto-do-desconto-na-v24-viva.cjs",
+    // Onda 102-b: duas guardas vivas; cada arquivo tem controle mutante no clone descartavel.
+    "tests/banco/comprador-nao-avanca-o-proprio-pedido-viva.cjs",
+    "tests/banco/banner-vencido-nao-aparece-ao-visitante-viva.cjs",
+    // Onda 102-c: o balcao recusa desconto negativo (R$110 por R$100) e forma de pagamento fora de cash/pix/card; ambas com mutante e controles positivos.
+    "tests/banco/balcao-recusa-desconto-negativo-e-pagamento-invalido-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
