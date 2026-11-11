@@ -506,6 +506,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/subtotal-vazia-provada-viva.cjs",
     // 20261203000000: cupons desligados não dão desconto (gatilho + validação).
     "tests/banco/cupons-desligados-viva.cjs",
+    "tests/banco/cupom-ultima-vaga-corrida-viva.cjs",
     // 20261203000000: o portão da release (consultas 10a e 10b do lote) decide certo.
     "tests/banco/cupons-desligados-portao-viva.cjs",
     // 20261204000000: a venda do balcão se anula no mesmo dia (só o admin de agora).
