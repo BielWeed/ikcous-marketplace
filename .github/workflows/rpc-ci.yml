@@ -612,6 +612,9 @@ jobs:
       - name: Prova viva das devoluções
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/devolucoes-viva.cjs
+      - name: Prova viva das recusas de devolução e cupom na chamada direta
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/solicitar-devolucao-e-cupom-recusas-viva.cjs
       - name: Prova viva do cartão online
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cartao-online-viva.cjs
