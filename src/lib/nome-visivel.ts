@@ -17,12 +17,18 @@ const PREENCHIMENTOS_SEM_DESENHO = new Set([
   0x17b5, // Khmer, vogal inerente (sem som e sem desenho)
 ]);
 
+/** Este caractere (um só, por código) não desenha nada na tela? */
+export function caractereSemDesenho(caractere: string): boolean {
+  return (
+    SEM_DESENHO.test(caractere) ||
+    PREENCHIMENTOS_SEM_DESENHO.has(caractere.codePointAt(0) ?? 0)
+  );
+}
+
 /** Diz se o nome tem ao menos um caractere que aparece na tela. */
 export function nomeTemConteudoVisivel(nome: string): boolean {
   for (const caractere of nome) {
-    if (SEM_DESENHO.test(caractere)) continue;
-    if (PREENCHIMENTOS_SEM_DESENHO.has(caractere.codePointAt(0) ?? 0)) continue;
-    return true;
+    if (!caractereSemDesenho(caractere)) return true;
   }
   return false;
 }
