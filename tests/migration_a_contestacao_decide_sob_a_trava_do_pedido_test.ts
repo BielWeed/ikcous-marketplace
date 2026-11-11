@@ -730,6 +730,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-perfil-completo-so-devolve-a-propria-conta-viva.cjs",
     "tests/banco/os-favoritos-nao-passam-para-outra-conta-viva.cjs",
     "tests/banco/a-avaliacao-so-nasce-em-nome-da-propria-conta-viva.cjs",
+    "tests/banco/avaliacao-nao-nasce-publicada-nem-verificada-viva.cjs",
     "tests/banco/analise-por-categoria-periodo-e-subtotal-zero-viva.cjs",
     "tests/banco/balcao-recusa-admin-rebaixado-viva.cjs",
     "tests/banco/configuracao-recusa-admin-rebaixado-viva.cjs",
