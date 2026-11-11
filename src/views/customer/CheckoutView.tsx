@@ -133,6 +133,7 @@ import {
 import {
   PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
   aguardarComPrazo,
+  erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
@@ -5099,11 +5100,17 @@ export function CheckoutViewDaConta({
         erroRpc = erro;
       }
 
-      const { data, error: erroLeitura } = await supabase
-        .from("marketplace_orders")
-        .select("status")
-        .eq("id", orderId)
-        .single();
+      const { data, error: erroLeitura } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase
+            .from("marketplace_orders")
+            .select("status")
+            .eq("id", orderId)
+            .single(),
+        ),
+        PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+        () => erroDeConsultaSemResposta(),
+      ).catch((erro: unknown) => ({ data: null, error: erro }));
 
       const statusFinal = data?.status;
       if (erroLeitura || statusFinal !== "cancelled") {
