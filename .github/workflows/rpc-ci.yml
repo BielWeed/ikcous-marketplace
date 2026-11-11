@@ -621,6 +621,12 @@ jobs:
       - name: Prova viva baixa concorrente protege lancamento
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/baixa-concorrente-impede-edicao-do-lancamento-viva.cjs
+      - name: Prova viva comprador nao avanca o proprio pedido
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/comprador-nao-avanca-o-proprio-pedido-viva.cjs
+      - name: Prova viva banner vencido nao aparece ao visitante
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/banner-vencido-nao-aparece-ao-visitante-viva.cjs
       - name: Prova viva do avanco com status esperado (345)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/avanco-status-esperado-viva.cjs
