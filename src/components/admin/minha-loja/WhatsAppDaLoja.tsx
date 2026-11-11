@@ -23,6 +23,9 @@ function validarWhatsapp(digitado: string): string | null {
   // botão de WhatsApp some da loja. Erro só quando digitar errado.
   if (!digitado) return null;
   const digitos = digitado.replace(/\D/g, "");
+  if (digitos.length === 10 && digitos[2] === "9") {
+    return "Confira o WhatsApp: faltou um número (DDD + 9 + 8 dígitos)";
+  }
   if (digitos.length < 10 || digitos.length > 11) {
     return "Informe DDD + número (10 ou 11 dígitos)";
   }
