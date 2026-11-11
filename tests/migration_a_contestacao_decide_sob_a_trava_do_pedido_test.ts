@@ -750,6 +750,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/lancamento-inativo-nao-grava-viva.cjs",
     "tests/banco/caixa-contrapartida-inativa-nao-grava-viva.cjs",
     "tests/banco/baixa-concorrente-impede-edicao-do-lancamento-viva.cjs",
+    "tests/banco/reordenar-banners-com-id-invalido-nao-apaga-a-ordem-viva.cjs",
+    "tests/banco/categoria-slug-repetido-e-recusado-no-banco-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
