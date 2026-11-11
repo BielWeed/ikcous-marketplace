@@ -615,6 +615,9 @@ jobs:
       - name: Prova viva lancamento exige contas ativas
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/lancamento-inativo-nao-grava-viva.cjs
+      - name: Prova viva cupom inativo e teto do desconto na v24
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-inativo-e-teto-do-desconto-na-v24-viva.cjs
       - name: Prova viva caixa exige contrapartida ativa
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/caixa-contrapartida-inativa-nao-grava-viva.cjs
