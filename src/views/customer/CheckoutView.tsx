@@ -53,6 +53,7 @@ import {
   mensagemAmigavelErroPedido,
   useOrders,
 } from "@/hooks/useOrders";
+import { useReleituraDosEnderecosAoVoltar } from "@/hooks/useReleituraDosEnderecosAoVoltar";
 import { cepEhLocal } from "@/lib/cep-local";
 import {
   type GerenciadorDeChaveDaCompra,
@@ -3547,6 +3548,10 @@ export function CheckoutViewDaConta({
       fetchAddresses();
     }
   }, [user, fetchAddresses]);
+  // Outro aparelho pode ter editado ou apagado o endereço enquanto o app ficou
+  // em segundo plano: relê ao voltar (o efeito abaixo ajusta a escolha). A tela
+  // só existe montada quando é a visível, então `ativa` é sempre true.
+  useReleituraDosEnderecosAoVoltar(user?.id, true, fetchAddresses);
 
   const handleSelectAddress = useCallback(
     (address: Address) => {
