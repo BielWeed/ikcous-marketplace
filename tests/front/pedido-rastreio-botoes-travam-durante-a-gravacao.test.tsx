@@ -5,9 +5,13 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { salvar, atualizar } = vi.hoisted(() => ({
+const { salvar, atualizar, comLinhaGravada } = vi.hoisted(() => ({
   salvar: vi.fn(),
   atualizar: vi.fn(),
+  // `.select("id")` pede a linha gravada de volta: o banco só a devolve quando
+  // o update valeu (0 linhas = a política filtrou, e a ficha não diz "salvo").
+  comLinhaGravada: <T extends { error: unknown }>(resposta: T) =>
+    resposta.error ? resposta : { ...resposta, data: [{ id: "A" }] },
 }));
 
 vi.mock("@/lib/supabase", () => ({
@@ -15,7 +19,12 @@ vi.mock("@/lib/supabase", () => ({
     from: () => ({
       update: (valores: unknown) => {
         atualizar(valores);
-        return { eq: salvar };
+        return {
+          eq: (...filtro: unknown[]) => ({
+            select: () =>
+              Promise.resolve(salvar(...filtro)).then(comLinhaGravada),
+          }),
+        };
       },
     }),
     functions: { invoke: vi.fn() },

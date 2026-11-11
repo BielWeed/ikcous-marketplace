@@ -22,13 +22,18 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { atualizar, salvar, ler, gravarNota, banco } = vi.hoisted(() => ({
-  atualizar: vi.fn(),
-  salvar: vi.fn(),
-  ler: vi.fn(),
-  gravarNota: vi.fn(),
-  banco: new Map<string, string>(),
-}));
+const { atualizar, salvar, ler, gravarNota, banco, comLinhaGravada } =
+  vi.hoisted(() => ({
+    atualizar: vi.fn(),
+    salvar: vi.fn(),
+    ler: vi.fn(),
+    gravarNota: vi.fn(),
+    banco: new Map<string, string>(),
+    // `.select("id")` pede a linha gravada de volta: o banco só a devolve quando
+    // o update valeu (0 linhas = a política filtrou, e a ficha não diz "salvo").
+    comLinhaGravada: <T extends { error: unknown }>(resposta: T) =>
+      resposta.error ? resposta : { ...resposta, data: [{ id: "A" }] },
+  }));
 
 // A anotação só é gravada se o carimbo (`updated_at`) lido ao abrir o editor
 // ainda for o do banco; aqui o carimbo é derivado do texto (`v-<texto>`).
@@ -104,7 +109,10 @@ vi.mock("@/lib/supabase", () => ({
           }
           atualizar(tabela, valores);
           return {
-            eq: (_coluna: string, id: string) => salvar("rastreio", id),
+            eq: (_coluna: string, id: string) => ({
+              select: () =>
+                Promise.resolve(salvar("rastreio", id)).then(comLinhaGravada),
+            }),
           };
         },
       };
