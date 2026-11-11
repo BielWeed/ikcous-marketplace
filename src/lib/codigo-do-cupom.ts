@@ -1,14 +1,23 @@
+import { caractereSemDesenho } from "@/lib/nome-visivel";
+
 /**
  * Código do cupom como o painel grava: maiúsculas, sem espaço e SEM ACENTO.
  *
  * O servidor compara o código sem ignorar acento. Se o painel gravasse
  * "VERÃO10", a cliente que digita "VERAO10" recebia "Cupom inválido ou
  * expirado". Mesma técnica de `normalizeText` (NFD + tirar os sinais).
+ *
+ * Também tira o caractere invisível (U+200B, U+200E, U+FEFF...) que vem de
+ * texto colado do WhatsApp/Word: o `\s` não o pega, o cupom era gravado com
+ * ele e ninguém conseguia digitar o código. Mesma definição de "invisível"
+ * do `nome-visivel` (o checkout já a usa).
  */
 export function normalizarCodigoDoCupom(
   valor: string | null | undefined,
 ): string {
-  return (valor || "")
+  return Array.from(valor || "")
+    .filter((caractere) => !caractereSemDesenho(caractere))
+    .join("")
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
     .toUpperCase()
