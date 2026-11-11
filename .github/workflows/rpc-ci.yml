@@ -621,6 +621,9 @@ jobs:
       - name: Prova viva baixa concorrente protege lancamento
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/baixa-concorrente-impede-edicao-do-lancamento-viva.cjs
+      - name: Prova viva balcao recusa desconto negativo e pagamento invalido
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/balcao-recusa-desconto-negativo-e-pagamento-invalido-viva.cjs
       - name: Prova viva do avanco com status esperado (345)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/avanco-status-esperado-viva.cjs

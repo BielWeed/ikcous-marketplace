@@ -749,6 +749,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/lancamento-inativo-nao-grava-viva.cjs",
     "tests/banco/caixa-contrapartida-inativa-nao-grava-viva.cjs",
     "tests/banco/baixa-concorrente-impede-edicao-do-lancamento-viva.cjs",
+    // Onda 102-c: o balcao recusa desconto negativo (R$110 por R$100) e forma de pagamento fora de cash/pix/card; ambas com mutante e controles positivos.
+    "tests/banco/balcao-recusa-desconto-negativo-e-pagamento-invalido-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
