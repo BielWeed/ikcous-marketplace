@@ -823,6 +823,10 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-reconciliacao-marca-a-cobranca-terminal-certa-viva.cjs",
     // Onda 115-a: pedido__mudar_status: posse (inclui convidado) e origem pending/processing/shipping, pela RPC e pela porta da edge; mutantes por MUTANTE_R115A.
     "tests/banco/o-comprador-so-cancela-o-proprio-pedido-e-so-antes-da-entrega-viva.cjs",
+    // Onda 115-a: crm_visao kpis.taxa_devolucao so soma estorno concluido e devolucao concluida com reembolso manual; mutantes por MUTANTE_R119A.
+    "tests/banco/a-taxa-de-devolucao-do-crm-so-conta-o-que-voltou-viva.cjs",
+    // Onda 115-b: fin_resumo e fin_extrato recusam periodo nulo, invertido ou acima de 400 dias (22023); mutantes por MUTANTE_R119B.
+    "tests/banco/o-financeiro-recusa-periodo-invalido-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

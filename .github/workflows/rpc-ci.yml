@@ -741,6 +741,12 @@ jobs:
       - name: Prova viva o comprador so cancela o proprio pedido e so antes da entrega
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-comprador-so-cancela-o-proprio-pedido-e-so-antes-da-entrega-viva.cjs
+      - name: Prova viva a taxa de devolucao do CRM so conta o que voltou
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-taxa-de-devolucao-do-crm-so-conta-o-que-voltou-viva.cjs
+      - name: Prova viva o financeiro recusa periodo invalido
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-financeiro-recusa-periodo-invalido-viva.cjs
       - name: Prova viva do avanco com status esperado (345)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/avanco-status-esperado-viva.cjs
