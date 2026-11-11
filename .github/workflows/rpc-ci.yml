@@ -762,6 +762,9 @@ jobs:
       - name: Prova viva cancelar pedido so abre estorno se pago de verdade
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cancelar-pedido-so-abre-estorno-se-pago-viva.cjs
+      - name: Prova viva os numeros do Inicio e do funil do CRM
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/os-numeros-do-inicio-e-do-funil-do-crm-viva.cjs
       - name: Prova viva o prazo da devolucao conta o dia de Sao Paulo
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-prazo-da-devolucao-conta-dia-de-sao-paulo-viva.cjs
