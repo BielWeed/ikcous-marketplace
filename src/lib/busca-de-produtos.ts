@@ -154,11 +154,14 @@ const PALAVRAS_DE_LIGACAO = new Set([
 
 /**
  * Formas aceitas de cada palavra, sem ligacoes quando ha outros termos.
- * A pontuacao das pontas nao conta ("camiseta."), a do meio fica ("3.5").
+ * A pontuacao das pontas nao conta ("camiseta."), a do meio fica ("3.5"),
+ * menos hifen e barra: separam palavras ("guarda-chuva" = "guarda chuva").
+ * So a busca precisa separar: o nome ("Guarda-Chuva") ja contem os trechos.
  */
 export function palavrasDaBusca(busca: string): FormaDaPalavra[][] {
   const palavras = normalizeText(busca).split(/\s+/).filter(Boolean);
   const aparadas = palavras
+    .flatMap((palavra) => palavra.split(/[-/]+/))
     .map((palavra) => palavra.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ""))
     .filter(Boolean);
   // Sem nenhuma letra ou numero (so emoji ou simbolo) a busca segue como antes:
