@@ -748,6 +748,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/pagamento-sem-conta-ou-repetido-nao-avisa-viva.cjs",
     "tests/banco/ajuste-de-estoque-nulo-nao-apaga-o-saldo-viva.cjs",
     "tests/banco/lista-de-pedidos-filtro-de-pagamento-viva.cjs",
+    "tests/banco/financeiro-recancelar-nao-sobrescreve-a-auditoria-viva.cjs",
+    "tests/banco/cupom-codigo-repetido-e-recusado-no-banco-viva.cjs",
     "tests/banco/estoque-desconta-so-devolucao-reestocada-viva.cjs",
     "tests/banco/estorno-preserva-data-informada-no-pedido-viva.cjs",
     "tests/banco/devolucao-encerrada-nao-reabre-viva.cjs",
