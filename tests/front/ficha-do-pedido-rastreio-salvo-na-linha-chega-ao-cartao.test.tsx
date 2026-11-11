@@ -48,7 +48,13 @@ vi.mock("@/lib/supabase", () => ({
       }),
       update: (campos: Record<string, unknown>) => {
         atualizacoes.push(campos);
-        return { eq: () => Promise.resolve({ error: null }) };
+        // `.select("id")` devolve a linha gravada (0 linhas = não gravou).
+        return {
+          eq: () => ({
+            select: () =>
+              Promise.resolve({ data: [{ id: "ped-teste" }], error: null }),
+          }),
+        };
       },
     })),
     functions: { invoke: vi.fn() },

@@ -308,6 +308,9 @@ const versoesDasNotas = new Map<string, string | null>();
 // já existe (um aparelho criou depois que o outro leu "sem anotação").
 const CODIGO_LINHA_JA_EXISTE = "23505";
 
+const MENSAGEM_RASTREIO_NAO_GRAVADO =
+  "O código de rastreio não foi salvo. Tente de novo ou recarregue a página: sua sessão pode ter expirado.";
+
 const lerNotaInterna = async (pedidoId: string) => {
   const { data, error } = await supabase
     .from("marketplace_order_internal_notes")
@@ -2101,12 +2104,13 @@ export const OrderDetail = memo(function OrderDetail({
       // Prazo só da espera da tela (rede "pendurada"): estourou, o `catch`
       // abaixo conta que NÃO se sabe se gravou, solta o campo COM o que foi
       // digitado e relê o código gravado. Repetir é seguro ("último vale").
-      const { error } = await aguardarComPrazo(
+      const { data, error } = await aguardarComPrazo(
         Promise.resolve(
           supabase
             .from("marketplace_orders")
             .update({ tracking_code: codigo || null })
-            .eq("id", pedidoId),
+            .eq("id", pedidoId)
+            .select("id"),
         ),
         PRAZO_DAS_ACOES_DO_PEDIDO_MS,
         () => erroDeConsultaSemResposta(MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA),
@@ -2115,6 +2119,13 @@ export const OrderDetail = memo(function OrderDetail({
       // Só o salvamento vigente pode alterar a ficha.
       if (!vigente()) return;
       if (error) throw error;
+      // A política de update filtra em silêncio quando a sessão deixou de ser
+      // admin: 0 linhas e `error: null`. Sem linha gravada NÃO há "salvo": o
+      // campo fica aberto com o que foi digitado e o aviso diz o que fazer.
+      if (!data?.length) {
+        toast.error(MENSAGEM_RASTREIO_NAO_GRAVADO);
+        return;
+      }
       setLocalTrackingCode(codigo);
       setIsEditingTracking(false);
       toast.success("Código de rastreio salvo!");
