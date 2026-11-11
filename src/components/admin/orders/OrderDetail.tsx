@@ -2566,7 +2566,8 @@ export const OrderDetail = memo(function OrderDetail({
         </section>
       </div>
 
-      {!pedidoCancelado && active && (
+      {/* Ctrl+P também espera a leitura das variações, sem recuperar papel incompleto. */}
+      {!pedidoCancelado && !motivoDeNaoImprimir && active && (
         <OrderReceipt
           order={order}
           storeName={storeName}
