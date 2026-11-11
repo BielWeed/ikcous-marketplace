@@ -52,6 +52,7 @@ describe("lojaSaiuDaManutencao — a pergunta à ficha ATUAL", () => {
     expect(buscar).toHaveBeenCalledTimes(1);
     expect(buscar).toHaveBeenCalledWith("/identidade.json", {
       cache: "no-store",
+      signal: expect.any(AbortSignal),
     });
   });
 

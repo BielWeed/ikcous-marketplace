@@ -126,6 +126,7 @@ describe("tela de manutenção — checagem automática", () => {
     expect(buscar).toHaveBeenCalledTimes(3);
     expect(buscar).toHaveBeenCalledWith("/identidade.json", {
       cache: "no-store",
+      signal: expect.any(AbortSignal),
     });
     expect(navegar).not.toHaveBeenCalled();
     expect(apagouDoCache).not.toHaveBeenCalled();

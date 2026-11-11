@@ -29,7 +29,11 @@ import {
 } from "@/lib/versao-do-servidor";
 
 const FONTES = import.meta.glob<string>(
-  ["/src/hooks/useUpdateCheck.ts", "/src/lib/recuperacao-chunk.ts"],
+  [
+    "/src/hooks/useUpdateCheck.ts",
+    "/src/lib/recuperacao-chunk.ts",
+    "/src/lib/versao-do-servidor.ts",
+  ],
   { query: "?raw", import: "default", eager: true },
 );
 
@@ -137,6 +141,7 @@ describe("contrato por fonte — o portão (useUpdateCheck) falha aberto", () =>
   // CONTROLE: glob vazio faz "não contém" passar de graça.
   const FONTE_DO_HOOK = FONTES["/src/hooks/useUpdateCheck.ts"] ?? "";
   const FONTE_DA_ESCADA = FONTES["/src/lib/recuperacao-chunk.ts"] ?? "";
+  const FONTE_DO_CONTRATO = FONTES["/src/lib/versao-do-servidor.ts"] ?? "";
 
   function normalizar(texto: string): string {
     return texto.replace(/\s+/g, " ");
@@ -149,10 +154,16 @@ describe("contrato por fonte — o portão (useUpdateCheck) falha aberto", () =>
 
   it("a sonda do portão é versaoLegivelDeResposta (contrato único), sem leitura fraca paralela", () => {
     const fonte = normalizar(FONTE_DO_HOOK);
+    // O hook lê pela função do contrato único COM prazo (r136-f), e é essa
+    // função que entrega o corpo a `versaoLegivelDeResposta`.
     expect({
-      usaOContratoUnico: fonte.includes(
-        "return await versaoLegivelDeResposta(response)",
-      ),
+      usaOContratoUnico:
+        fonte.includes(
+          "return await lerVersaoComPrazo(PRAZO_SONDA_DE_REDE_MS)",
+        ) &&
+        normalizar(FONTE_DO_CONTRATO).includes(
+          "return await versaoLegivelDeResposta(resposta)",
+        ),
       leituraFracaVelha: fonte.includes("data.version as string"),
       devNemBusca: fonte.includes(
         "if (import.meta.env.DEV) return SAFE_APP_VERSION",
