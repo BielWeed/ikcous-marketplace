@@ -621,6 +621,9 @@ jobs:
       - name: Prova viva caixa exige contrapartida ativa
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/caixa-contrapartida-inativa-nao-grava-viva.cjs
+      - name: Prova viva alterar so o nome preserva o WhatsApp
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/perfil-alterar-so-o-nome-nao-apaga-o-whatsapp-viva.cjs
       - name: Prova viva baixa concorrente protege lancamento
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/baixa-concorrente-impede-edicao-do-lancamento-viva.cjs
