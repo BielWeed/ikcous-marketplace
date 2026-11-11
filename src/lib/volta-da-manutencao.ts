@@ -54,18 +54,35 @@ const MAXIMO_DE_RECARGAS_NA_JANELA = 3;
 /** Quanto esperar a limpeza do cache antes de navegar assim mesmo. */
 const PRAZO_DA_LIMPEZA_MS = 2_000;
 
-/** A loja já saiu da manutenção, segundo a ficha ATUAL? Nunca lança. */
+/** Prazo da pergunta "a loja voltou?": o MESMO da sonda de rede
+ * (`PRAZO_SONDA_DE_REDE_MS`, 5 s, em recuperacao-chunk — teste confere a
+ * igualdade). Valor local e não import de lá: este módulo só puxa dali a
+ * navegação, e os testes da tela mockam aquele módulo só com ela. */
+export const PRAZO_DA_PERGUNTA_MS = 5_000;
+
+/** A loja já saiu da manutenção, segundo a ficha ATUAL? Nunca lança. A
+ * pergunta tem prazo e é ABORTADA nele (o prazo cobre o corpo): sem isso, rede
+ * pendurada deixava a pergunta aberta e o hook nunca mais perguntava. */
 export async function lojaSaiuDaManutencao(): Promise<boolean> {
   try {
-    const resposta = await fetch(CAMINHO_IDENTIDADE_JSON, {
-      cache: "no-store",
-    });
-    if (!resposta.ok) return false;
-    const ficha: unknown = await resposta.json();
-    if (ficha === null || typeof ficha !== "object") return false;
-    const { configuracao } = ficha as { configuracao?: unknown };
-    if (configuracao === null || typeof configuracao !== "object") return false;
-    return (configuracao as { manutencao?: unknown }).manutencao === false;
+    const controle = new AbortController();
+    const prazo = setTimeout(() => controle.abort(), PRAZO_DA_PERGUNTA_MS);
+    try {
+      const resposta = await fetch(CAMINHO_IDENTIDADE_JSON, {
+        cache: "no-store",
+        signal: controle.signal,
+      });
+      if (!resposta.ok) return false;
+      const ficha: unknown = await resposta.json();
+      if (ficha === null || typeof ficha !== "object") return false;
+      const { configuracao } = ficha as { configuracao?: unknown };
+      if (configuracao === null || typeof configuracao !== "object") {
+        return false;
+      }
+      return (configuracao as { manutencao?: unknown }).manutencao === false;
+    } finally {
+      clearTimeout(prazo);
+    }
   } catch {
     return false;
   }
