@@ -612,6 +612,9 @@ jobs:
       - name: Prova viva estorno preserva data informada
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/estorno-preserva-data-informada-no-pedido-viva.cjs
+      - name: Prova viva devolucao encerrada nao reabre nem perde reembolso manual
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/devolucao-encerrada-nao-reabre-viva.cjs
       - name: Prova viva lancamento exige contas ativas
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/lancamento-inativo-nao-grava-viva.cjs
