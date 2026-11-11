@@ -747,6 +747,15 @@ jobs:
       - name: Prova viva o financeiro recusa periodo invalido
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-financeiro-recusa-periodo-invalido-viva.cjs
+      - name: Prova viva a limpeza dos logs de frete guarda 30 dias
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-limpeza-dos-logs-de-frete-guarda-30-dias-viva.cjs
+      - name: Prova viva a limpeza do cache de cotacao so apaga o velho
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-limpeza-do-cache-de-cotacao-so-apaga-o-velho-viva.cjs
+      - name: Prova viva o estoque do produto nunca fica negativo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-estoque-do-produto-nunca-fica-negativo-viva.cjs
       - name: Prova viva do avanco com status esperado (345)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/avanco-status-esperado-viva.cjs

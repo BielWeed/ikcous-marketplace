@@ -827,6 +827,12 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-taxa-de-devolucao-do-crm-so-conta-o-que-voltou-viva.cjs",
     // Onda 115-b: fin_resumo e fin_extrato recusam periodo nulo, invertido ou acima de 400 dias (22023); mutantes por MUTANTE_R119B.
     "tests/banco/o-financeiro-recusa-periodo-invalido-viva.cjs",
+    // Onda 117: o gatilho dos logs de frete apaga so o que passou de 30 dias; mutantes por MUTANTE_R122C.
+    "tests/banco/a-limpeza-dos-logs-de-frete-guarda-30-dias-viva.cjs",
+    // Onda 117: o gatilho do cache de cotacao apaga so o que passou de 2 h; mutantes por MUTANTE_R122C.
+    "tests/banco/a-limpeza-do-cache-de-cotacao-so-apaga-o-velho-viva.cjs",
+    // Onda 117: CHECK de estoque e segunda trava do balcao; mutantes por MUTANTE_R122C.
+    "tests/banco/o-estoque-do-produto-nunca-fica-negativo-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
