@@ -3220,7 +3220,14 @@ export function CheckoutViewDaConta({
   }, [authLoading, user, paymentMethod]);
 
   // Values are now passed from props to ensure consistency
-  const discount = appliedCoupon?.discount || 0;
+  // Nunca passa dos produtos (o servidor também limita): com o carrinho que
+  // encolheu e o desconto antigo ainda na tela, o total não fica negativo.
+  // Compra concluída NÃO limita: o carrinho esvazia (subtotal 0) e a tela de
+  // sucesso segue mostrando o desconto que valeu no pedido.
+  const descontoDoCupom = appliedCoupon?.discount || 0;
+  const discount = compraConcluida
+    ? descontoDoCupom
+    : Math.min(descontoDoCupom, subtotal);
   const finalTotal = arredondarParaCentavos(total - discount);
 
   // Laudo 31/08 (B2): a guarda migrou para `finalizarBloqueadoPorFrete`
@@ -3238,6 +3245,23 @@ export function CheckoutViewDaConta({
       temOpcaoSelecionada: !!selectedShippingOption,
     });
 
+  // CUPOM EM CONFERÊNCIA (dinheiro): o cupom da tela ainda não foi conferido
+  // para o subtotal e a conta de AGORA — restaurado do rascunho com desconto 0,
+  // ou com o subtotal que mudou depois da última conferência. Enviar assim leva
+  // o total sem o desconto (ou com o antigo) e o servidor, que só tolera R$ 0,05
+  // de diferença, recusa ou cria um pedido que a cliente não esperava. Resolve
+  // sozinho: conferência válida ou inválida termina o estado; sem resposta da
+  // rede, a cliente remove o cupom (aviso na tela) e finaliza sem ele.
+  const cupomConferido = cupomConferidoRef.current;
+  const cupomEmConferencia =
+    !compraConcluida &&
+    !!appliedCoupon &&
+    !(
+      cupomConferido?.code === appliedCoupon.code &&
+      cupomConferido.subtotal === subtotal &&
+      cupomConferido.conta === contaDoCheckout
+    );
+
   // COMPRA QUE FECHA EM R$ 0,00 (decisão do dono, 14/10/2026): cupom que zera
   // o produto + frete grátis (ou retirada) deixa o total em zero, e o app não
   // cobra pedido sem valor (`criar-pagamento` recusa). Com total zero a tela
@@ -3248,7 +3272,8 @@ export function CheckoutViewDaConta({
   // calcular" nunca vira "sem valor a pagar".
   const totalZero = formasDePagamentoParaTotalZero({
     totalFinal: finalTotal,
-    freteFechado: cart.length > 0 && !semFreteSelecionado,
+    freteFechado:
+      cart.length > 0 && !semFreteSelecionado && !cupomEmConferencia,
     modalidadeDaLoja: ehEntregaLocal,
     formasNaEntrega: formasPagamentoNaEntregaValidas(
       config.formasPagamentoEntrega,
@@ -4060,23 +4085,6 @@ export function CheckoutViewDaConta({
   const aguardandoConferenciaDaRecusa =
     recusaDoUltimoClique?.acao === "conferir_antes" ||
     recusaDoUltimoClique?.acao === "reenviar_mesma_compra";
-
-  // CUPOM EM CONFERÊNCIA (dinheiro): o cupom da tela ainda não foi conferido
-  // para o subtotal e a conta de AGORA — restaurado do rascunho com desconto 0,
-  // ou com o subtotal que mudou depois da última conferência. Enviar assim leva
-  // o total sem o desconto (ou com o antigo) e o servidor, que só tolera R$ 0,05
-  // de diferença, recusa ou cria um pedido que a cliente não esperava. Resolve
-  // sozinho: conferência válida ou inválida termina o estado; sem resposta da
-  // rede, a cliente remove o cupom (aviso na tela) e finaliza sem ele.
-  const cupomConferido = cupomConferidoRef.current;
-  const cupomEmConferencia =
-    !compraConcluida &&
-    !!appliedCoupon &&
-    !(
-      cupomConferido?.code === appliedCoupon.code &&
-      cupomConferido.subtotal === subtotal &&
-      cupomConferido.conta === contaDoCheckout
-    );
 
   // Fonte ÚNICA da condição de "Finalizar Pedido" apagado. Antes desta
   // constante, o `disabled` do botão e o `cn(...)` que decide a APARÊNCIA
