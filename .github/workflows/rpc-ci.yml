@@ -732,6 +732,15 @@ jobs:
       - name: Prova viva a devolucao so aceita fotos no formato e no teto certos
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-devolucao-so-aceita-fotos-no-formato-e-no-teto-certos-viva.cjs
+      - name: Prova viva a reserva do pedido online dura trinta minutos
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-reserva-do-pedido-online-dura-trinta-minutos-viva.cjs
+      - name: Prova viva a reconciliacao marca a cobranca terminal certa
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-reconciliacao-marca-a-cobranca-terminal-certa-viva.cjs
+      - name: Prova viva o comprador so cancela o proprio pedido e so antes da entrega
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-comprador-so-cancela-o-proprio-pedido-e-so-antes-da-entrega-viva.cjs
       - name: Prova viva do avanco com status esperado (345)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/avanco-status-esperado-viva.cjs
