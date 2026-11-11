@@ -636,6 +636,9 @@ jobs:
       - name: Prova viva banner vencido nao aparece ao visitante
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/banner-vencido-nao-aparece-ao-visitante-viva.cjs
+      - name: Prova viva balcao recusa desconto negativo e pagamento invalido
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/balcao-recusa-desconto-negativo-e-pagamento-invalido-viva.cjs
       - name: Prova viva do avanco com status esperado (345)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/avanco-status-esperado-viva.cjs

@@ -755,6 +755,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // Onda 102-b: duas guardas vivas; cada arquivo tem controle mutante no clone descartavel.
     "tests/banco/comprador-nao-avanca-o-proprio-pedido-viva.cjs",
     "tests/banco/banner-vencido-nao-aparece-ao-visitante-viva.cjs",
+    // Onda 102-c: o balcao recusa desconto negativo (R$110 por R$100) e forma de pagamento fora de cash/pix/card; ambas com mutante e controles positivos.
+    "tests/banco/balcao-recusa-desconto-negativo-e-pagamento-invalido-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
