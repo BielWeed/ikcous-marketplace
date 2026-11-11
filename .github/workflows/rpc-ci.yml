@@ -771,6 +771,9 @@ jobs:
       - name: Prova viva o cliente nao escreve no perfil publico
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-cliente-nao-escreve-no-perfil-publico-viva.cjs
+      - name: Prova viva o prazo da devolucao conta o dia de Sao Paulo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-prazo-da-devolucao-conta-dia-de-sao-paulo-viva.cjs
       - name: Prova viva do avanco com status esperado (345)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/avanco-status-esperado-viva.cjs
