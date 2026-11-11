@@ -708,6 +708,9 @@ jobs:
       - name: Prova viva das recusas de devolução e cupom na chamada direta
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/solicitar-devolucao-e-cupom-recusas-viva.cjs
+      - name: Prova viva de que nao se insere no carrinho de outra conta
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/carrinho-nao-insere-no-carrinho-de-outra-conta-viva.cjs
       - name: Prova viva de que sincronizar o carrinho só mexe na própria conta
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/carrinho-sincronizar-so-mexe-no-meu-viva.cjs

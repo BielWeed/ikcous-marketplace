@@ -736,6 +736,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/balcao-recusa-admin-rebaixado-viva.cjs",
     "tests/banco/configuracao-recusa-admin-rebaixado-viva.cjs",
     "tests/banco/grade-recusa-admin-rebaixado-viva.cjs",
+    "tests/banco/carrinho-nao-insere-no-carrinho-de-outra-conta-viva.cjs",
     "tests/banco/carrinho-sincronizar-so-mexe-no-meu-viva.cjs",
     "tests/banco/devolver-cupom-nao-deixa-contador-negativo-viva.cjs",
     "tests/banco/caixa-abrir-recusa-quem-nao-e-admin-atual-viva.cjs",
