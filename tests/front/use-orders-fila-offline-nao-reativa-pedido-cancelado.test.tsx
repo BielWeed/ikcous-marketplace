@@ -229,7 +229,7 @@ describe("useOrders — a fila offline não reativa pedido cancelado/entregue", 
     );
   });
 
-  it("cancelar pela fila não relê o servidor (não reativa nada, RPC já guarda esse caminho)", async () => {
+  it("cancelar pela fila sem statusEsperado (fila legada) não relê o servidor e segue sendo enviado", async () => {
     const itemDeCancelamento = {
       orderId: "pedido-B",
       status: "cancelled",
