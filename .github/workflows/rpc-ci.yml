@@ -893,6 +893,9 @@ jobs:
       - name: Prova viva da compra online que trava o preço e espera a mesma chave (migration 20261350000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/compra-online-travas-viva.cjs
+      - name: Prova viva da disputa pelo ultimo uso do cupom com compras distintas
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-ultima-vaga-corrida-viva.cjs
       # Migration 20261352000000 (o produto e a grade salvam numa transacao so: salvar_produto_com_grade): o caminho
       # antigo (duas requisicoes) restaura o estoque que uma compra do meio baixou (defeito reproduzido); a RPC espera a
       # compra, ve a versao mudada, recusa com PRD01 e nao escreve nada (controles sem a conferencia e sem as travas
