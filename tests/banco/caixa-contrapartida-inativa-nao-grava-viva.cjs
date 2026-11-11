@@ -5,8 +5,6 @@
 // Fixtures e sabotagens sao desfeitas pelo ROLLBACK de cada caso.
 const P = require("./prova-de-objeto-novo.cjs");
 const { assert, prova } = P;
-const A = "b100c000-0000-4000-8000-000000000001";
-const B = "b100c000-0000-4000-8000-000000000002";
 const ADMIN = "b100c000-0000-4000-8000-000000000003";
 const id = (n) => `b100c000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const sessao = (uid) => ({
@@ -54,9 +52,8 @@ async function mutar(nome, assinatura, trecho, substituto) {
   console.log(`MUTANTE aplicado: ${nome}`);
 }
 
-const CONTA = id(20),
-  DESTINO = id(21);
-const CATEGORIA = "f2000000-0000-4000-8000-000000000020";
+const CONTA = id(20);
+const DESTINO = id(21);
 async function contas() {
   await pessoa(ADMIN, "admin");
   await P.conexao().query(
@@ -65,22 +62,6 @@ async function contas() {
     [CONTA, DESTINO],
   );
 }
-const dados = (mais = {}) => ({
-  tipo: "saida",
-  status: "realizado",
-  valor: 30,
-  descricao: "Despesa ficticia",
-  conta_id: CONTA,
-  categoria_id: CATEGORIA,
-  ...mais,
-});
-const salvar = (p) =>
-  P.tentar(
-    "authenticated",
-    "SELECT public.fin_lancamento_salvar($1::jsonb) AS r",
-    [JSON.stringify(p)],
-    sessao(ADMIN),
-  );
 
 const CAIXA = "f1000000-0000-4000-8000-000000000001";
 const SIG =

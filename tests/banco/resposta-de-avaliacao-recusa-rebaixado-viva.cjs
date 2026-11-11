@@ -6,7 +6,6 @@
 const P = require("./prova-de-objeto-novo.cjs");
 const { assert, prova } = P;
 const A = "b100c000-0000-4000-8000-000000000001";
-const B = "b100c000-0000-4000-8000-000000000002";
 const ADMIN = "b100c000-0000-4000-8000-000000000003";
 const id = (n) => `b100c000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const sessao = (uid) => ({
@@ -54,8 +53,8 @@ async function mutar(nome, assinatura, trecho, substituto) {
   console.log(`MUTANTE aplicado: ${nome}`);
 }
 
-const PRODUTO = id(10),
-  REVIEW = id(11);
+const PRODUTO = id(10);
+const REVIEW = id(11);
 const GUARDA = `    IF NOT public.is_admin_atual() THEN
         RAISE EXCEPTION 'Unauthorized: Only admins can reply to reviews.';
     END IF;`;

@@ -6,7 +6,6 @@
 const P = require("./prova-de-objeto-novo.cjs");
 const { assert, prova } = P;
 const A = "b100c000-0000-4000-8000-000000000001";
-const B = "b100c000-0000-4000-8000-000000000002";
 const ADMIN = "b100c000-0000-4000-8000-000000000003";
 const id = (n) => `b100c000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const sessao = (uid) => ({
@@ -27,31 +26,6 @@ async function pessoa(uid, cargo = "customer") {
     "INSERT INTO public.profiles (id,full_name,role) VALUES ($1,'Pessoa ficticia',$2)",
     [uid, cargo],
   );
-}
-
-async function mutar(nome, assinatura, trecho, substituto) {
-  if (process.env.MUTANTE_R100 !== nome) return;
-  const c = P.conexao();
-  const original = (
-    await c.query("SELECT pg_get_functiondef($1::regprocedure) AS d", [
-      assinatura,
-    ])
-  ).rows[0].d.replace(/\r/g, "");
-  assert.equal(
-    original.split(trecho).length - 1,
-    1,
-    `mutante ${nome}: alvo deve ocorrer uma vez`,
-  );
-  const alterado = original.replace(trecho, substituto);
-  assert.notEqual(alterado, original, "sabotagem nao aplicada");
-  await c.query(alterado);
-  const depois = (
-    await c.query("SELECT pg_get_functiondef($1::regprocedure) AS d", [
-      assinatura,
-    ])
-  ).rows[0].d.replace(/\r/g, "");
-  assert.equal(depois, alterado, "o banco nao instalou exatamente o mutante");
-  console.log(`MUTANTE aplicado: ${nome}`);
 }
 
 async function sabotar() {

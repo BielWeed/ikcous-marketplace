@@ -6,17 +6,7 @@
 const P = require("./prova-de-objeto-novo.cjs");
 const { assert, prova } = P;
 const A = "b100c000-0000-4000-8000-000000000001";
-const B = "b100c000-0000-4000-8000-000000000002";
-const ADMIN = "b100c000-0000-4000-8000-000000000003";
 const id = (n) => `b100c000-0000-4000-8000-${String(n).padStart(12, "0")}`;
-const sessao = (uid) => ({
-  uid,
-  claims: JSON.stringify({
-    sub: uid,
-    role: "authenticated",
-    app_metadata: { role: uid === ADMIN ? "admin" : "customer" },
-  }),
-});
 
 async function pessoa(uid, cargo = "customer") {
   await P.conexao().query(

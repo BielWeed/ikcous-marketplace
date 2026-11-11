@@ -29,31 +29,6 @@ async function pessoa(uid, cargo = "customer") {
   );
 }
 
-async function mutar(nome, assinatura, trecho, substituto) {
-  if (process.env.MUTANTE_R100 !== nome) return;
-  const c = P.conexao();
-  const original = (
-    await c.query("SELECT pg_get_functiondef($1::regprocedure) AS d", [
-      assinatura,
-    ])
-  ).rows[0].d.replace(/\r/g, "");
-  assert.equal(
-    original.split(trecho).length - 1,
-    1,
-    `mutante ${nome}: alvo deve ocorrer uma vez`,
-  );
-  const alterado = original.replace(trecho, substituto);
-  assert.notEqual(alterado, original, "sabotagem nao aplicada");
-  await c.query(alterado);
-  const depois = (
-    await c.query("SELECT pg_get_functiondef($1::regprocedure) AS d", [
-      assinatura,
-    ])
-  ).rows[0].d.replace(/\r/g, "");
-  assert.equal(depois, alterado, "o banco nao instalou exatamente o mutante");
-  console.log(`MUTANTE aplicado: ${nome}`);
-}
-
 prova(
   "cada comprador le exatamente seus itens; filtro de item alheio devolve zero",
   () =>
