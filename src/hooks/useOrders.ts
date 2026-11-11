@@ -590,10 +590,15 @@ async function processarFilaOfflineDePedidos(
       // enfileirado offline (ex.: pending -> processing) aplicado por cima
       // de um cancelamento feito nesse meio-tempo reativa um pedido morto
       // sem re-debitar o estoque que `devolver_estoque` já devolveu.
-      // Cancelar (status === "cancelled") fica de fora da releitura: não
-      // reativa nada, e é o próprio caminho terminal que a RPC já guarda do
-      // lado não-admin.
-      if (status !== "cancelled") {
+      // r136-d: o CANCELAMENTO também confere a etapa — a RPC só o guarda do
+      // lado não-admin; para admin, cancelar um pedido que outro aparelho
+      // já entregou o carimbaria `cancelled_after_shipping`. Só confere
+      // quando a fila gravou a etapa que a lojista via (`statusEsperado`):
+      // item legado sem ela sai como antes. Cancelar não "reativa nada", por
+      // isso `cancelled`/`delivered` só descartam AVANÇO; no cancelamento
+      // vale apenas a diferença para a etapa esperada.
+      const conferirEtapa = status !== "cancelled" || esperado !== undefined;
+      if (conferirEtapa) {
         try {
           const { data: linhaAtual, error: erroReleitura } = await supabase
             .from("marketplace_orders")
@@ -607,8 +612,8 @@ async function processarFilaOfflineDePedidos(
           if (statusAtual === undefined)
             throw new ErroStatusEsperadoDesconhecido();
           if (
-            statusAtual === "cancelled" ||
-            statusAtual === "delivered" ||
+            (status !== "cancelled" &&
+              (statusAtual === "cancelled" || statusAtual === "delivered")) ||
             (esperado !== undefined && statusAtual !== esperado)
           ) {
             // Pedido morreu (cancelado) ou já foi concluído (entregue)
@@ -644,8 +649,8 @@ async function processarFilaOfflineDePedidos(
       // meio. Se a sessão já não é a dele, o envio NÃO sai: a passada
       // encerra, o que já saiu é tirado da fila DELE (abaixo, mesma
       // mescla), o resto continua lá, e nada é gravado em outra chave.
-      // Sem releitura (cancelamento) a conferência do topo já é a imediata.
-      if (status !== "cancelled" && !(await sessaoAindaEhDoDono(userId))) {
+      // Sem releitura (cancelamento legado) a conferência do topo já é a imediata.
+      if (conferirEtapa && !(await sessaoAindaEhDoDono(userId))) {
         interrompida = true;
         remainingQueue.push(...queue.slice(indice));
         break;
