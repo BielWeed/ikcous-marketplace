@@ -762,6 +762,15 @@ jobs:
       - name: Prova viva cancelar pedido so abre estorno se pago de verdade
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cancelar-pedido-so-abre-estorno-se-pago-viva.cjs
+      - name: Prova viva o comprador nao escreve no livro do estorno nem na devolucao
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-comprador-nao-escreve-no-ledger-de-estorno-viva.cjs
+      - name: Prova viva a vitrine so mostra avaliacao publicada
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-vitrine-so-mostra-avaliacao-publicada-viva.cjs
+      - name: Prova viva o cliente nao escreve no perfil publico
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-cliente-nao-escreve-no-perfil-publico-viva.cjs
       - name: Prova viva os numeros do Inicio e do funil do CRM
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/os-numeros-do-inicio-e-do-funil-do-crm-viva.cjs
