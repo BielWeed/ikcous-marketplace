@@ -678,6 +678,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-desconto-do-cupom-e-arredondado-ao-centavo-viva.cjs",
     // sem migration: o frete que o pedido grava segue a regra viva da loja (limite de frete gratis, por produto, nacional e cotacao velha recusada; 58 cenarios e 2 controles).
     "tests/banco/o-frete-do-pedido-segue-a-regra-da-loja-viva.cjs",
+    "tests/banco/cotacao-de-frete-de-outra-origem-ou-velha-nao-vira-preco-viva.cjs",
     // 20261398000000: o Inicio compara o mes anterior ate a mesma hora (o ultimo dia dos mesmos dias do mes anterior corta na hora de agora; dia 1, 15, 28 a 31,
     // fevereiro de 28 e 29 dias, virada de ano, hora exata, corte em UTC; oraculo em JS e 12 mutantes, controle com o corpo anterior, rollback, pre/pos-voo, leitor concorrente e consultas 116a/116b).
     "tests/banco/o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-viva.cjs",

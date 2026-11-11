@@ -857,6 +857,9 @@ jobs:
       - name: Prova viva do frete que o pedido grava e da cotacao de frete velha recusada
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-frete-do-pedido-segue-a-regra-da-loja-viva.cjs
+      - name: Prova viva cotacao de outra origem ou velha nao vira preco
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cotacao-de-frete-de-outra-origem-ou-velha-nao-vira-preco-viva.cjs
       # Migration 20261396000000 (cada conta tem no maximo 10 aparelhos com aviso ligado): gatilho BEFORE INSERT em push_subscriptions recusa a 11a
       # inscricao NOVA da conta (cliente que nao e' administrador), sem apagar nada; o re-registro do mesmo aparelho (upsert por endpoint, que
       # dispara o gatilho antes do conflito) nao conta; conta acima de 10 de antes renova e desliga mas nao cadastra novo; duas conexoes reais
