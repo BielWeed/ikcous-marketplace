@@ -651,6 +651,12 @@ jobs:
       - name: Prova viva balcao recusa desconto negativo e pagamento invalido
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/balcao-recusa-desconto-negativo-e-pagamento-invalido-viva.cjs
+      - name: Prova viva reordenar banner invalido preserva a ordem
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/reordenar-banners-com-id-invalido-nao-apaga-a-ordem-viva.cjs
+      - name: Prova viva criar categoria recusa slug repetido
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/categoria-slug-repetido-e-recusado-no-banco-viva.cjs
       - name: Prova viva do avanco com status esperado (345)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/avanco-status-esperado-viva.cjs

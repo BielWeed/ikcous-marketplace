@@ -762,6 +762,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/banner-vencido-nao-aparece-ao-visitante-viva.cjs",
     // Onda 102-c: o balcao recusa desconto negativo (R$110 por R$100) e forma de pagamento fora de cash/pix/card; ambas com mutante e controles positivos.
     "tests/banco/balcao-recusa-desconto-negativo-e-pagamento-invalido-viva.cjs",
+    "tests/banco/reordenar-banners-com-id-invalido-nao-apaga-a-ordem-viva.cjs",
+    "tests/banco/categoria-slug-repetido-e-recusado-no-banco-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
