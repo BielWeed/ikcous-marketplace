@@ -765,6 +765,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/balcao-recusa-desconto-negativo-e-pagamento-invalido-viva.cjs",
     "tests/banco/reordenar-banners-com-id-invalido-nao-apaga-a-ordem-viva.cjs",
     "tests/banco/categoria-slug-repetido-e-recusado-no-banco-viva.cjs",
+    "tests/banco/perfil-alterar-so-o-nome-nao-apaga-o-whatsapp-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
