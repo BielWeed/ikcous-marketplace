@@ -567,6 +567,27 @@ jobs:
       # `!cancelled()` só troca o "pare no primeiro erro" por "rode todas e
       # reprove no fim". Sem as migrations aplicadas, nenhuma prova roda (o
       # passo `aplica` já reprovou o job).
+      - name: Prova viva do perfil completo restrito a propria conta
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-perfil-completo-so-devolve-a-propria-conta-viva.cjs
+      - name: Prova viva dos favoritos isolados entre contas
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/os-favoritos-nao-passam-para-outra-conta-viva.cjs
+      - name: Prova viva da avaliacao em nome da propria conta
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-avaliacao-so-nasce-em-nome-da-propria-conta-viva.cjs
+      - name: Prova viva da analise por categoria no periodo e com subtotal zero
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/analise-por-categoria-periodo-e-subtotal-zero-viva.cjs
+      - name: Prova viva do balcao recusando admin rebaixado com JWT antigo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/balcao-recusa-admin-rebaixado-viva.cjs
+      - name: Prova viva da configuracao recusando cliente e admin rebaixado
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/configuracao-recusa-admin-rebaixado-viva.cjs
+      - name: Prova viva da grade recusando admin rebaixado com JWT antigo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/grade-recusa-admin-rebaixado-viva.cjs
       - name: Prova viva do avanco com status esperado (345)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/avanco-status-esperado-viva.cjs
@@ -618,6 +639,15 @@ jobs:
       - name: Prova viva das recusas de devolução e cupom na chamada direta
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/solicitar-devolucao-e-cupom-recusas-viva.cjs
+      - name: Prova viva de que sincronizar o carrinho só mexe na própria conta
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/carrinho-sincronizar-so-mexe-no-meu-viva.cjs
+      - name: Prova viva de que devolver cupom não deixa o contador negativo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/devolver-cupom-nao-deixa-contador-negativo-viva.cjs
+      - name: Prova viva de que abrir o caixa exige admin atual
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/caixa-abrir-recusa-quem-nao-e-admin-atual-viva.cjs
       - name: Prova viva do cartão online
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cartao-online-viva.cjs
