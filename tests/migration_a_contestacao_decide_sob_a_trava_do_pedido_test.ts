@@ -719,6 +719,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",
     "tests/banco/portas-anon-exploracao-estoque-otp.cjs",
+    // solicitar_devolucao (pedido/item de outra conta, nao entregue) e create_marketplace_order_v24 direto (cupom vencido, abaixo do minimo): recusam sem efeito; mutantes no clone.
+    "tests/banco/solicitar-devolucao-e-cupom-recusas-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
