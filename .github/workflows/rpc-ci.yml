@@ -642,6 +642,9 @@ jobs:
       - name: Prova viva alterar so o nome preserva o WhatsApp
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/perfil-alterar-so-o-nome-nao-apaga-o-whatsapp-viva.cjs
+      - name: Prova viva o CPF so mexe na propria conta
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-cpf-so-mexe-na-propria-conta-viva.cjs
       - name: Prova viva baixa concorrente protege lancamento
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/baixa-concorrente-impede-edicao-do-lancamento-viva.cjs

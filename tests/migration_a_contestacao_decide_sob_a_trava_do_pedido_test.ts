@@ -769,6 +769,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/reordenar-banners-com-id-invalido-nao-apaga-a-ordem-viva.cjs",
     "tests/banco/categoria-slug-repetido-e-recusado-no-banco-viva.cjs",
     "tests/banco/perfil-alterar-so-o-nome-nao-apaga-o-whatsapp-viva.cjs",
+    // Onda 107-r: o CPF (dado pessoal) so e lido/gravado na propria conta; CPF03 sem linha em profiles; mutantes por MUTANTE_R107R.
+    "tests/banco/o-cpf-so-mexe-na-propria-conta-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
