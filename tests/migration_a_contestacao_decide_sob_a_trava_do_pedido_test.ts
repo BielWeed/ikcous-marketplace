@@ -789,6 +789,14 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-loja-nunca-fica-sem-forma-de-pagamento-viva.cjs",
     // Onda 110-b: o indice unico parcial de gateway_payment_id impede a mesma cobranca em dois pedidos (23505); mutantes por MUTANTE_R110B.
     "tests/banco/a-mesma-cobranca-nao-liga-a-dois-pedidos-viva.cjs",
+    // Onda 111-a: as politicas admin de INSERT e DELETE de marketplace_orders: comprador comum nao fabrica pedido pago nem apaga o proprio; mutantes por MUTANTE_R111A.
+    "tests/banco/o-comprador-nao-cria-nem-apaga-pedido-direto-no-banco-viva.cjs",
+    // Onda 111-b: notificacoes_insert_policy (recado global so admin) e cart_items_update_policy (carrinho alheio so leitura); mutantes por MUTANTE_R111B.
+    "tests/banco/aviso-global-so-do-admin-e-carrinho-alheio-so-leitura-viva.cjs",
+    // Onda 111-c: usage_limit 0/-1/NULL vale como sem limite em validate, lista, v23 e v24, com contraprova de limite 1; mutantes por MUTANTE_R111C.
+    "tests/banco/cupom-com-limite-zero-vale-como-sem-limite-viva.cjs",
+    // Onda 111-d: fin__saldos so soma desde o saldo inicial, sobra/quebra do caixa com o tipo certo e gasto em dinheiro sem dupla contagem; mutantes por MUTANTE_R111D.
+    "tests/banco/o-saldo-da-conta-e-o-ajuste-do-caixa-batem-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

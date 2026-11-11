@@ -690,6 +690,18 @@ jobs:
       - name: Prova viva a mesma cobranca nao liga a dois pedidos
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-mesma-cobranca-nao-liga-a-dois-pedidos-viva.cjs
+      - name: Prova viva o comprador nao cria nem apaga pedido direto
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-comprador-nao-cria-nem-apaga-pedido-direto-no-banco-viva.cjs
+      - name: Prova viva aviso global so do admin e carrinho alheio so leitura
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/aviso-global-so-do-admin-e-carrinho-alheio-so-leitura-viva.cjs
+      - name: Prova viva cupom com limite zero vale como sem limite
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-com-limite-zero-vale-como-sem-limite-viva.cjs
+      - name: Prova viva saldo da conta e ajuste do caixa batem
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-saldo-da-conta-e-o-ajuste-do-caixa-batem-viva.cjs
       - name: Prova viva do avanco com status esperado (345)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/avanco-status-esperado-viva.cjs
