@@ -779,6 +779,12 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-total-comprado-do-cliente-so-conta-pagamento-reconhecido-viva.cjs",
     // Onda 108-b: crescimento vs 30 dias e contadores paidOnCancelled/deliveredTotal do painel; mutantes por MUTANTE_R108B.
     "tests/banco/o-painel-de-numeros-cresce-e-conta-cancelados-pagos-viva.cjs",
+    // Onda 109-a: a pergunta publica so nasce em nome da propria conta (questions_insert_policy); anon e user_id alheio recusados; mutantes por MUTANTE_R109A.
+    "tests/banco/a-pergunta-so-nasce-em-nome-da-propria-conta-viva.cjs",
+    // Onda 109-b: perfil_publico_avaliacoes/perguntas so devolvem avaliacao publicada e produto publico (NULL quando inativo/apagado), sem user_id; mutantes por MUTANTE_R109B.
+    "tests/banco/o-perfil-publico-so-mostra-avaliacao-publicada-e-produto-publico-viva.cjs",
+    // Onda 109-c: o selo verified so com pedido pago nao cancelado, na criacao da avaliacao e no UPDATE do pagamento; mutantes por MUTANTE_R109C.
+    "tests/banco/o-selo-de-compra-verificada-so-vale-com-pedido-pago-e-vivo-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
