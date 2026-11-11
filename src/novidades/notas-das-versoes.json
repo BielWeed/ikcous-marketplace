@@ -1,4 +1,17 @@
 {
+  "1.5.166": {
+    "titulo": "Cupons sempre atualizados, avaliação sem duplicidade e cancelamento de pedido que não trava",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Painel, Cupons: ao voltar para o app, a lista de cupons se atualiza sozinha e mostra se outro aparelho desativou ou esgotou um cupom.",
+      "Avaliações: o app recusa avaliar o mesmo produto duas vezes, em vez de registrar uma avaliação repetida.",
+      "Checkout: cancelar um pedido não fica mais preso quando a confirmação demora a responder.",
+      "Painel: no primeiro acesso do administrador, a tela não trava se a configuração da loja demora a ser criada.",
+      "Painel, Minha loja: o WhatsApp da loja recusa um celular com um dígito faltando.",
+      "Painel, Pedido: o recibo só aparece depois que o tamanho e a cor do item terminam de carregar."
+    ]
+  },
   "1.5.165": {
     "titulo": "Banner que não perde a foto se a internet cai e recusa de CPF explicada em português",
     "novidades": [],
