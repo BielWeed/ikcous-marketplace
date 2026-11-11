@@ -759,6 +759,15 @@ jobs:
       - name: Prova viva o bucket das fotos de devolucao so aceita imagem
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-bucket-das-fotos-de-devolucao-so-aceita-imagem-viva.cjs
+      - name: Prova viva o comprador nao escreve no livro do estorno nem na devolucao
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-comprador-nao-escreve-no-ledger-de-estorno-viva.cjs
+      - name: Prova viva a vitrine so mostra avaliacao publicada
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-vitrine-so-mostra-avaliacao-publicada-viva.cjs
+      - name: Prova viva o cliente nao escreve no perfil publico
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-cliente-nao-escreve-no-perfil-publico-viva.cjs
       - name: Prova viva do avanco com status esperado (345)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/avanco-status-esperado-viva.cjs

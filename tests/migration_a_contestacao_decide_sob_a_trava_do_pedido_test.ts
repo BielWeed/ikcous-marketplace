@@ -835,6 +835,12 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-estoque-do-produto-nunca-fica-negativo-viva.cjs",
     // Onda 118: o bucket devolucoes e privado, 5 MB e so JPG/PNG/WEBP; mutantes por MUTANTE_R125C.
     "tests/banco/o-bucket-das-fotos-de-devolucao-so-aceita-imagem-viva.cjs",
+    // Onda 134: order_refunds, devolucao_itens e devolucao_eventos so se leem pela cliente (REVOKE de escrita + sem policy de escrita); mutantes por MUTANTE_R134D.
+    "tests/banco/o-comprador-nao-escreve-no-ledger-de-estorno-viva.cjs",
+    // Onda 134: vw_reviews_public so devolve avaliacao publicada e so as colunas esperadas (sem user_id nem status); mutantes por MUTANTE_R134D.
+    "tests/banco/a-vitrine-so-mostra-avaliacao-publicada-viva.cjs",
+    // Onda 134: public_profiles so tem policy de leitura; nome e foto da vitrine so mudam pelo gatilho de profiles; mutantes por MUTANTE_R134D.
+    "tests/banco/o-cliente-nao-escreve-no-perfil-publico-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
