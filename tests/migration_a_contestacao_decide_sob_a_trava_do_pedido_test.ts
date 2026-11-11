@@ -433,6 +433,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/codigo-de-barras-entre-tabelas-viva.cjs",
     // 20261352000000: o produto e a grade salvam numa transacao so (travas da compra online, versao conferida, PRD01, mutantes, 2 conexoes reais, rollback e consultas 84a/84b).
     "tests/banco/salvar-produto-com-grade-viva.cjs",
+    "tests/banco/variante-estoque-negativo-e-recusado-no-banco-viva.cjs",
+    "tests/banco/variante-sku-repetido-e-recusado-no-banco-viva.cjs",
     // 20261351000000: a forma (path SVG) do icone da categoria, CHECK, ACL/RLS e rollback.
     "tests/banco/forma-do-icone-viva.cjs",
     // 20261350000000: a compra online trava o preco-base (OF v, p) e a mesma chave espera a primeira (advisory lock): duas conexoes reais, rollback, pre/pos-voo e consultas 81a/81b.
@@ -524,6 +526,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/contador-duplicado-viva.cjs",
     // 20261207000000: o portao da release (consultas 14a e 14b do lote) decide certo.
     "tests/banco/contador-duplicado-portao-viva.cjs",
+    "tests/banco/cupom-tipo-invalido-e-recusado-no-banco-viva.cjs",
     // 20261208000000: o checkout mostra os cupons da cliente (lista, exclusivo, gatilho com o atalho de retentativa, painel do admin atual, ida e volta).
     "tests/banco/cupons-do-checkout-viva.cjs",
     "tests/banco/cupons-do-checkout-portao-viva.cjs",
@@ -736,6 +739,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/balcao-recusa-admin-rebaixado-viva.cjs",
     "tests/banco/configuracao-recusa-admin-rebaixado-viva.cjs",
     "tests/banco/grade-recusa-admin-rebaixado-viva.cjs",
+    "tests/banco/carrinho-nao-insere-no-carrinho-de-outra-conta-viva.cjs",
     "tests/banco/carrinho-sincronizar-so-mexe-no-meu-viva.cjs",
     "tests/banco/devolver-cupom-nao-deixa-contador-negativo-viva.cjs",
     "tests/banco/caixa-abrir-recusa-quem-nao-e-admin-atual-viva.cjs",
@@ -748,6 +752,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/pagamento-sem-conta-ou-repetido-nao-avisa-viva.cjs",
     "tests/banco/ajuste-de-estoque-nulo-nao-apaga-o-saldo-viva.cjs",
     "tests/banco/lista-de-pedidos-filtro-de-pagamento-viva.cjs",
+    "tests/banco/financeiro-recancelar-nao-sobrescreve-a-auditoria-viva.cjs",
+    "tests/banco/cupom-codigo-repetido-e-recusado-no-banco-viva.cjs",
     "tests/banco/estoque-desconta-so-devolucao-reestocada-viva.cjs",
     "tests/banco/estorno-preserva-data-informada-no-pedido-viva.cjs",
     "tests/banco/devolucao-encerrada-nao-reabre-viva.cjs",
@@ -760,6 +766,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/banner-vencido-nao-aparece-ao-visitante-viva.cjs",
     // Onda 102-c: o balcao recusa desconto negativo (R$110 por R$100) e forma de pagamento fora de cash/pix/card; ambas com mutante e controles positivos.
     "tests/banco/balcao-recusa-desconto-negativo-e-pagamento-invalido-viva.cjs",
+    "tests/banco/reordenar-banners-com-id-invalido-nao-apaga-a-ordem-viva.cjs",
+    "tests/banco/categoria-slug-repetido-e-recusado-no-banco-viva.cjs",
+    "tests/banco/perfil-alterar-so-o-nome-nao-apaga-o-whatsapp-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
