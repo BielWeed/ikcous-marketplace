@@ -117,7 +117,11 @@ export function whatsappParaGravar(
   // 55 sem "+" esconderia o excesso digitado tecla a tecla. A carga legada
   // continua aceitando o país sem "+" antes de entregar o número ao campo.
   const digitos = limparTelefoneBrasileiro(digitado, { colagem: !jaNacional });
-  if (digitos.length > 11 || (digitos.length > 0 && digitos.length < 10))
+  if (
+    digitos.length > 11 ||
+    (digitos.length > 0 && digitos.length < 10) ||
+    (digitos.length === 10 && digitos[2] === "9")
+  )
     return { valido: false };
   return { valido: true, valor: numeroComPais(digitos) || null };
 }
