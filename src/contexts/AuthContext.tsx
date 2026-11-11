@@ -832,7 +832,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                       console.warn(
                         "[Auth] Stale/Invalid late session detected. Forcing signOut.",
                       );
-                      await supabase.auth.signOut();
+                      await supabase.auth.signOut({ scope: "local" });
                       setSession(null);
                       setUser(null);
                       activeUserIdRef.current = null;
@@ -877,7 +877,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     }
                   } else if (sessaoSegueAtiva) {
                     // O servidor respondeu que não há user para esta sessão.
-                    await supabase.auth.signOut();
+                    await supabase.auth.signOut({ scope: "local" });
                     setSession(null);
                     setUser(null);
                     activeUserIdRef.current = null;
@@ -929,7 +929,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                   console.warn(
                     "[Auth] Stale/Invalid session detected. Forcing signOut.",
                   );
-                  await supabase.auth.signOut();
+                  await supabase.auth.signOut({ scope: "local" });
                   setSession(null);
                   setUser(null);
                   activeUserIdRef.current = null;
@@ -998,7 +998,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                   console.error("[Auth] init checkAdmin error:", err),
                 );
               } else {
-                await supabase.auth.signOut();
+                await supabase.auth.signOut({ scope: "local" });
                 activeUserIdRef.current = null;
               }
             } catch (err) {
