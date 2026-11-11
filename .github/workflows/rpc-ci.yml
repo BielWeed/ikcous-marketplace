@@ -1442,6 +1442,10 @@ jobs:
       - name: Prova viva do reembolso em duvida que prende o saldo (migration 20261241)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/reembolso-em-duvida-viva.cjs
+      # Guardas do solicitar_estorno VIVO: recusas sem linha e duas RPCs disputando o saldo; mutantes no clone.
+      - name: Prova viva das recusas e da corrida ao solicitar estorno
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/solicitar-estorno-recusas-e-corrida-viva.cjs
       # E o PORTAO da release desse lote: as consultas 43a (DEPOIS, 21 linhas) e 43b (ANTES, 14 linhas). BLOQUEANTE. CLONE proprio.
       - name: Prova viva do portao do reembolso em duvida (consultas 43a e 43b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
