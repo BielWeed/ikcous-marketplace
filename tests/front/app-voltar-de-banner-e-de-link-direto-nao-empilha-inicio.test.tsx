@@ -68,7 +68,9 @@ vi.mock("framer-motion", async () => {
 });
 
 // Mutável de propósito: o teste loga a pessoa NO MEIO da jornada.
-const { estadoAuth } = vi.hoisted(() => ({
+const { estadoAuth, bannerDaHome } = vi.hoisted(() => ({
+  // Destino que o painel gravou no banner da Home do teste.
+  bannerDaHome: { link: "/product-detail?id=produto-A" },
   estadoAuth: {
     user: null as { id: string } | null,
     isAdmin: false,
@@ -105,7 +107,6 @@ vi.mock("@/views/customer/HomeView", async () => {
     position: "home_top",
     active: true,
     order: 1,
-    link: "/product-detail?id=produto-A",
   };
   return {
     HomeView: ({
@@ -121,7 +122,10 @@ vi.mock("@/views/customer/HomeView", async () => {
         >
           Card
         </button>
-        <BannerCarousel banners={[banner as never]} autoPlay={false} />
+        <BannerCarousel
+          banners={[{ ...banner, link: bannerDaHome.link } as never]}
+          autoPlay={false}
+        />
       </div>
     ),
   };
@@ -395,6 +399,7 @@ describe("Voltar de um produto sem 'de onde veio' não empilha outra Início", (
 
   beforeEach(() => {
     estadoAuth.user = null;
+    bannerDaHome.link = "/product-detail?id=produto-A";
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -564,5 +569,28 @@ describe("Voltar de um produto sem 'de onde veio' não empilha outra Início", (
     await clicar('[data-testid="seta-voltar"]');
     expect(existe("home")).toBe(true);
     expect(existe("tela-produto")).toBe(false);
+  });
+
+  it("CARACTERIZAÇÃO: banner com link de caminho que o app não conhece não leva a lugar nenhum — fica na Início, sem tela quebrada", async () => {
+    // O painel só recusa link com esquema perigoso ou fora da loja; um caminho
+    // como "/tela-que-nao-existe" é salvo. Hoje o toque grava essa entrada,
+    // o App não reconhece o endereço e o troca pela Início (replaceState).
+    // Resultado: a cliente toca e nada acontece (decisão de produto: validar a
+    // rota no painel). Este teste TRAVA o que acontece hoje -- sem tela em
+    // branco, sem produto, sem sair da loja -- e fica vermelho se isso mudar.
+    bannerDaHome.link = "/tela-que-nao-existe";
+    await abrir();
+    expect(existe("home")).toBe(true);
+
+    const entradasAntes = globalThis.history.length;
+    await clicar('[role="button"]');
+
+    // O toque DISPAROU a navegação (uma entrada nova no histórico), que o App
+    // desfez trocando-a pela Início: sem isto o teste passaria com o banner morto.
+    expect(globalThis.history.length).toBe(entradasAntes + 1);
+    expect(existe("home")).toBe(true);
+    expect(existe("tela-produto")).toBe(false);
+    expect(globalThis.location.pathname).toBe("/");
+    expect(globalThis.history.state?.view).toBe("home");
   });
 });
