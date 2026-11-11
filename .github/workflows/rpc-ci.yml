@@ -576,6 +576,9 @@ jobs:
       - name: Prova viva da avaliacao em nome da propria conta
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-avaliacao-so-nasce-em-nome-da-propria-conta-viva.cjs
+      - name: Prova viva avaliacao nao nasce publicada nem verificada
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/avaliacao-nao-nasce-publicada-nem-verificada-viva.cjs
       - name: Prova viva da analise por categoria no periodo e com subtotal zero
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/analise-por-categoria-periodo-e-subtotal-zero-viva.cjs
