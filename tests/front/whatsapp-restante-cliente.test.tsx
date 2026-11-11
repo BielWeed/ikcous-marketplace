@@ -228,6 +228,24 @@ describe("pedido do cliente (OrderDetailsView): contato com o desenho original",
     }
   });
 
+  // O `#` do número do pedido é o que mais quebra: `encodeURI` (ou nenhum
+  // encode) o deixa solto, e o WhatsApp lê o resto como âncora e corta a
+  // mensagem. Os testes acima decodificam a URL e não veem isso.
+  it("o endereço dos dois cliques é CRU: o # do pedido sai %23, sem espaço nem # soltos", async () => {
+    await renderizar();
+    for (const pegar of [topo, linha]) {
+      abrir.mockClear();
+      await act(async () => {
+        pegar()?.click();
+      });
+      const [url] = abrir.mock.calls[0] as [string];
+      expect(url).toContain(`%23${numeroDoPedido(pedido.id)}`);
+      expect(url).not.toContain("#");
+      expect(url).not.toMatch(/\s/);
+      expect(url.split("?")).toHaveLength(2);
+    }
+  });
+
   it("sem WhatsApp cadastrado os dois somem (mesma regra de antes)", async () => {
     config.whatsappNumber = "";
     await renderizar();
