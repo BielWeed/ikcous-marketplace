@@ -833,6 +833,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/a-limpeza-do-cache-de-cotacao-so-apaga-o-velho-viva.cjs",
     // Onda 117: CHECK de estoque e segunda trava do balcao; mutantes por MUTANTE_R122C.
     "tests/banco/o-estoque-do-produto-nunca-fica-negativo-viva.cjs",
+    // Onda 119: cancelar so abre order_refunds para pago/pago_apos_expirar com paid_at, em pending/processing; mutantes por MUTANTE_R130D.
+    "tests/banco/cancelar-pedido-so-abre-estorno-se-pago-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
