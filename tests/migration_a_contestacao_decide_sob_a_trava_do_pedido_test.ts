@@ -839,6 +839,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/cancelar-pedido-so-abre-estorno-se-pago-viva.cjs",
     // Onda 132: pedidos_criados e carrinhos do funil, serie_14d, hoje.pedidos/presencial, ticket medio e a esteira do CRM, com numeros calculados fora do SQL; mutantes por MUTANTE_R132C.
     "tests/banco/os-numeros-do-inicio-e-do-funil-do-crm-viva.cjs",
+    // Onda 136-c: o prazo legal da devolucao (arrependimento, troca, vicio) conta o dia do calendario de Sao Paulo na solicitacao e na elegibilidade (fronteiras 7/8, 30/31, 15/16 e entrega as 23:50); mutantes por MUTANTE_R136C.
+    "tests/banco/o-prazo-da-devolucao-conta-dia-de-sao-paulo-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
