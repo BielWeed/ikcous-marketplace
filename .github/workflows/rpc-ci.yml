@@ -573,6 +573,9 @@ jobs:
       - name: Prova viva dos favoritos isolados entre contas
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/os-favoritos-nao-passam-para-outra-conta-viva.cjs
+      - name: Prova viva do favorito repetido na mesma conta recusado no banco
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/favorito-repetido-na-mesma-conta-e-recusado-no-banco-viva.cjs
       - name: Prova viva da avaliacao em nome da propria conta
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/a-avaliacao-so-nasce-em-nome-da-propria-conta-viva.cjs
