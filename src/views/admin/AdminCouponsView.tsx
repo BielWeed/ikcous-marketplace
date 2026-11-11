@@ -207,6 +207,20 @@ export const AdminCouponsView = memo(function AdminCouponsView({
     wasOfflineRef.current = isOffline;
   }, [isOffline, active, refreshCoupons]);
 
+  // Ao voltar ao app, outra pessoa pode ter alterado o cupom ou seus usos.
+  useEffect(() => {
+    if (!active || isOffline) return;
+    const aoMudarAVisibilidade = () => {
+      if (document.visibilityState === "visible") {
+        void refreshCoupons(true);
+      }
+    };
+    document.addEventListener("visibilitychange", aoMudarAVisibilidade);
+    return () => {
+      document.removeEventListener("visibilitychange", aoMudarAVisibilidade);
+    };
+  }, [active, isOffline, refreshCoupons]);
+
   // Reset states when active is false to prevent focus traps and scroll lock
   useEffect(() => {
     if (!active) {
