@@ -113,7 +113,7 @@ function clienteFalso() {
                     if (tabela !== 'marketplace_orders') throw new Error('Tabela fora do roteiro do teste')
                     // A leitura é um snapshot; a escrita só muda a linha quando
                     // os filtros casam, tal como o banco (não basta registrar).
-                    const bate = filtros.every(([coluna, valor]) => pedidoAtual[coluna] === valor)
+                    const bate = filtros.every(([coluna, valor]) => Reflect.get(pedidoAtual, coluna) === valor)
                     if (acao === 'update') {
                         atualizacoes.push({ valores: { ...valores }, filtros: [...filtros] })
                         if (bate) Object.assign(pedidoAtual, valores)
