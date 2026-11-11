@@ -990,8 +990,10 @@ export function StoreProvider({
       if (error) {
         console.error("[StoreContext] Config fetch error:", error);
         // PGRST116 = "nenhuma linha": o servidor respondeu.
-        if (error.code === "PGRST116") configResolvidaRef.current = true;
-        else semResposta = true;
+        if (error.code === "PGRST116") {
+          // Admin só encerra a recuperação quando a inicialização responder.
+          if (!isAdmin) configResolvidaRef.current = true;
+        } else semResposta = true;
         if (isAdmin && error.code === "PGRST116") {
           // Initialize if missing (admin only)
           const dbInsert = {
@@ -1032,16 +1034,23 @@ export function StoreProvider({
             home_sections: defaultStoreConfig.homeSections,
           };
 
-          const { data: newData, error: insertError } = (await supabase
-            .from("store_config")
-            .insert([dbInsert as any])
-            .select()
-            .single()) as any;
+          const { data: newData, error: insertError } = await aguardarComPrazo(
+            Promise.resolve(
+              supabase
+                .from("store_config")
+                .insert([dbInsert as any])
+                .select()
+                .single(),
+            ),
+            PRAZO_DE_SALVAR_A_CONFIG_MS,
+            () => erroDeConsultaSemResposta(),
+          );
 
           if (geracao !== geracaoDaConfigRef.current) {
             pedirReleituraDaGeracaoNova();
             return;
           }
+          configResolvidaRef.current = true;
           if (!insertError && newData) {
             const mapped = mapConfig(newData);
             setConfig((prev) => {
