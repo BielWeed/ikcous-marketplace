@@ -733,6 +733,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // admin rebaixado recusado no balcao, na configuracao, na grade e no caixa; cupom sem contador negativo; analise por categoria); todas com mutante.
     "tests/banco/o-perfil-completo-so-devolve-a-propria-conta-viva.cjs",
     "tests/banco/os-favoritos-nao-passam-para-outra-conta-viva.cjs",
+    // Onda 106-m: UNIQUE por conta/produto recusa duplicata e sustenta o upsert do app.
+    "tests/banco/favorito-repetido-na-mesma-conta-e-recusado-no-banco-viva.cjs",
     "tests/banco/a-avaliacao-so-nasce-em-nome-da-propria-conta-viva.cjs",
     "tests/banco/avaliacao-nao-nasce-publicada-nem-verificada-viva.cjs",
     "tests/banco/analise-por-categoria-periodo-e-subtotal-zero-viva.cjs",
