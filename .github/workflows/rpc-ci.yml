@@ -588,6 +588,39 @@ jobs:
       - name: Prova viva da grade recusando admin rebaixado com JWT antigo
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/grade-recusa-admin-rebaixado-viva.cjs
+      - name: Prova viva itens isolados por comprador
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/itens-do-pedido-so-do-comprador-viva.cjs
+      - name: Prova viva endereco principal restrito a conta
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/endereco-principal-nao-desmarca-outra-conta-viva.cjs
+      - name: Prova viva avisos globais protegidos
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/avisos-globais-nao-podem-ser-alterados-viva.cjs
+      - name: Prova viva detalhe do cliente isola enderecos
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/detalhe-do-cliente-so-traz-seus-enderecos-viva.cjs
+      - name: Prova viva resposta recusa admin rebaixado
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/resposta-de-avaliacao-recusa-rebaixado-viva.cjs
+      - name: Prova viva pagamento sem conta e repetido nao avisa
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/pagamento-sem-conta-ou-repetido-nao-avisa-viva.cjs
+      - name: Prova viva estoque considera somente reestoque feito
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/estoque-desconta-so-devolucao-reestocada-viva.cjs
+      - name: Prova viva estorno preserva data informada
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/estorno-preserva-data-informada-no-pedido-viva.cjs
+      - name: Prova viva lancamento exige contas ativas
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/lancamento-inativo-nao-grava-viva.cjs
+      - name: Prova viva caixa exige contrapartida ativa
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/caixa-contrapartida-inativa-nao-grava-viva.cjs
+      - name: Prova viva baixa concorrente protege lancamento
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/baixa-concorrente-impede-edicao-do-lancamento-viva.cjs
       - name: Prova viva do avanco com status esperado (345)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/avanco-status-esperado-viva.cjs
