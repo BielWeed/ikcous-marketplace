@@ -968,6 +968,9 @@ jobs:
       - name: Prova viva da compra online que trava o preço e espera a mesma chave (migration 20261350000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/compra-online-travas-viva.cjs
+      - name: Prova viva de que tipo invalido de cupom e recusado no banco
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-tipo-invalido-e-recusado-no-banco-viva.cjs
       - name: Prova viva da disputa pelo ultimo uso do cupom com compras distintas
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-ultima-vaga-corrida-viva.cjs
