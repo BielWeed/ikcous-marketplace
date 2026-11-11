@@ -1,4 +1,23 @@
 {
+  "1.5.168": {
+    "titulo": "Busca com hífen, favoritos entre abas, aviso do lojista sem texto em branco e checkout que se atualiza sozinho",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Busca: pesquisar com hífen ou barra (guarda-chuva, manga/curta) agora encontra o produto cadastrado sem eles.",
+      "Loja, Favoritos: com duas abas abertas, um favorito não apaga mais o da outra.",
+      "Loja, Finalizar compra: ao voltar para o app o endereço é lido de novo, e o total não fica negativo com um cupom antigo.",
+      "Loja, Pagamento com cartão: voltar para a aba com o relógio do aparelho atrasado volta a conferir o pagamento.",
+      "Loja, Início: se a internet falha na abertura, o app não esquece o formato da última visita.",
+      "Loja: sair da conta em um aparelho não derruba a sessão dos outros.",
+      "Painel, Avisos: título ou mensagem só com caracteres invisíveis deixam de ser enviados em branco a todas as clientes.",
+      "Painel, Produto: preço e medidas recusam números gigantes em vez de gravar um valor errado.",
+      "App: se a internet pendura, a checagem de nova versão e a tela de manutenção desistem em 5 segundos.",
+      "Loja, Finalizar compra (sem conta): endereço só com caractere invisível passa a ser recusado.",
+      "Painel, Pedido: o rastreio só aparece como salvo depois que o banco confirma.",
+      "Avisos de status do pedido: o servidor recusa enviar sem destinatário."
+    ]
+  },
   "1.5.167": {
     "titulo": "Endereço do visitante sem espaço invisível, rastreio que só diz salvo quando salvou e aviso de pedido só para quem é dono",
     "novidades": [],
