@@ -785,6 +785,10 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-perfil-publico-so-mostra-avaliacao-publicada-e-produto-publico-viva.cjs",
     // Onda 109-c: o selo verified so com pedido pago nao cancelado, na criacao da avaliacao e no UPDATE do pagamento; mutantes por MUTANTE_R109C.
     "tests/banco/o-selo-de-compra-verificada-so-vale-com-pedido-pago-e-vivo-viva.cjs",
+    // Onda 110-a: store_config nunca fica sem forma de pagar (gatilho LOJA_SEM_FORMA_DE_PAGAMENTO + CHECKs de valor e duplicata), inclusive pelo painel e no ON CONFLICT; mutantes por MUTANTE_R110A.
+    "tests/banco/a-loja-nunca-fica-sem-forma-de-pagamento-viva.cjs",
+    // Onda 110-b: o indice unico parcial de gateway_payment_id impede a mesma cobranca em dois pedidos (23505); mutantes por MUTANTE_R110B.
+    "tests/banco/a-mesma-cobranca-nao-liga-a-dois-pedidos-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

@@ -684,6 +684,12 @@ jobs:
       - name: Prova viva o selo de compra verificada so vale com pedido pago e vivo
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-selo-de-compra-verificada-so-vale-com-pedido-pago-e-vivo-viva.cjs
+      - name: Prova viva a loja nunca fica sem forma de pagamento
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-nunca-fica-sem-forma-de-pagamento-viva.cjs
+      - name: Prova viva a mesma cobranca nao liga a dois pedidos
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-mesma-cobranca-nao-liga-a-dois-pedidos-viva.cjs
       - name: Prova viva do avanco com status esperado (345)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/avanco-status-esperado-viva.cjs
