@@ -686,6 +686,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  // Duas leituras da MESMA conta podem se sobrepor (aviso ao vivo + rede que
+  // volta). Só a MAIS NOVA vale: a antiga trazia o retrato do banco e o estoque
+  // de antes e, ao terminar depois, cortava a quantidade e devolvia a linha que
+  // outro aparelho tirou. Mesmo padrão de `geracaoDoCatalogoRef`.
+  const geracaoDaLeituraDaConta = useRef(0);
   const syncFromDB = useCallback(
     async (force = false) => {
       if (authLoading) {
@@ -711,6 +716,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (!isInitialLoad.current && !force) return;
 
       const uidDaLeitura = userId;
+      const geracaoDaLeitura = ++geracaoDaLeituraDaConta.current;
+      const superada = () =>
+        geracaoDaLeitura !== geracaoDaLeituraDaConta.current;
       // Como estava a conversa com o banco quando ESTA leitura começou: só vale
       // "o banco manda" para a releitura que começou depois da primeira junção
       // e sem gravação em voo (ver `bancoManda` abaixo).
@@ -868,6 +876,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           // A conta saiu/trocou durante a leitura: o carrinho dela não é de
           // quem está agora (o efeito de troca já limpou o estado).
           if (userIdAtualRef.current !== (uidDaLeitura ?? null)) return;
+          // Uma leitura mais nova começou enquanto esta esperava: o retrato e o
+          // catálogo daqui já são velhos e não valem para mexer no carrinho.
+          if (superada()) return;
 
           // Pedido enviado e ainda sem confirmação (ao abrir o app de novo, ou
           // numa releitura qualquer): o catálogo vê o estoque que o PRÓPRIO
@@ -923,6 +934,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           ) {
             bancoManda = await sessaoConfirmaAConta(uidDaLeitura);
             if (userIdAtualRef.current !== (uidDaLeitura ?? null)) return;
+            if (superada()) return;
             bancoManda = bancoManda && semGravacaoNoMeio();
           }
 
@@ -1052,7 +1064,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         // conta atual (que tem a própria leitura em curso). Destrava a TELA e
         // o carrinho local; a gravação no servidor segue presa a
         // `remotoMesclado`, que só a junção bem-sucedida libera.
-        if (userIdAtualRef.current === (uidDaLeitura ?? null)) {
+        // Leitura superada também não destrava: quem a superou destrava ao
+        // terminar, já com o carrinho do banco junto.
+        if (userIdAtualRef.current === (uidDaLeitura ?? null) && !superada()) {
           syncLocked.current = false;
           setIsLoading(false);
           isInitialLoad.current = false;
