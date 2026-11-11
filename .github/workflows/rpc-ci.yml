@@ -609,6 +609,9 @@ jobs:
       - name: Prova viva ajuste de estoque nulo nao apaga o saldo
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/ajuste-de-estoque-nulo-nao-apaga-o-saldo-viva.cjs
+      - name: Prova viva lista de pedidos filtra pagamento na contagem e na pagina
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/lista-de-pedidos-filtro-de-pagamento-viva.cjs
       - name: Prova viva estoque considera somente reestoque feito
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/estoque-desconta-so-devolucao-reestocada-viva.cjs
