@@ -14,21 +14,31 @@ function lerValorCompativel<T>(item: string | null, initialValue: T): T {
   return value as T;
 }
 
+// `entreAbas`: a chave é compartilhada entre abas (favoritos do visitante).
+// Grava a partir do DISCO, não da memória da aba, e ouve o evento `storage`:
+// sem isso, duas abas se apagam (a lista velha de uma sobrescreve a da outra).
 export function useLocalStorage<T>(
   key: string,
   initialValue: T,
+  { entreAbas = false }: { entreAbas?: boolean } = {},
 ): [T, (value: T | ((prev: T) => T)) => void] {
-  // Use a lazy initializer for state to avoid useEffect-driven cascading renders on mount
-  const [storedValue, setStoredValue] = useState<T>(() => {
-    if (typeof window === "undefined") return initialValue;
+  // Leitura única do disco na montagem: o texto fica de referência (abaixo).
+  const [lido] = useState(() => {
+    if (typeof window === "undefined")
+      return { texto: null, valor: initialValue };
     try {
-      const item = window.localStorage.getItem(key);
-      return lerValorCompativel(item, initialValue);
+      const texto = window.localStorage.getItem(key);
+      return { texto, valor: lerValorCompativel(texto, initialValue) };
     } catch (error) {
       console.error("Error reading from localStorage:", error);
-      return initialValue;
+      return { texto: null, valor: initialValue };
     }
   });
+  const [storedValue, setStoredValue] = useState<T>(lido.valor);
+  // Último texto que esta aba sabe que está no disco (lido ou gravado). Se o
+  // disco é outro, foi OUTRA aba que mexeu; se é o mesmo, a memória manda
+  // (inclusive quando a gravação falhou e o disco ficou para trás dela).
+  const textoNoDiscoRef = useRef<string | null>(lido.texto);
 
   const isFirstRender = useRef(true);
   // `initialValue` costuma chegar como literal novo a cada render (`[]`, `{}`):
@@ -43,6 +53,23 @@ export function useLocalStorage<T>(
   useEffect(() => {
     valorRef.current = storedValue;
   }, [storedValue]);
+  useEffect(() => {
+    if (!entreAbas || typeof window === "undefined") return;
+    const aoMudarNoDisco = (e: StorageEvent) => {
+      if (e.key !== key && e.key !== null) return;
+      try {
+        const texto = window.localStorage.getItem(key);
+        const novo = lerValorCompativel(texto, initialValueRef.current);
+        textoNoDiscoRef.current = texto;
+        valorRef.current = novo;
+        setStoredValue(novo);
+      } catch (error) {
+        console.error("Error reading from localStorage:", error);
+      }
+    };
+    window.addEventListener("storage", aoMudarNoDisco);
+    return () => window.removeEventListener("storage", aoMudarNoDisco);
+  }, [entreAbas, key]);
 
   // Sync with localStorage when key changes
   useEffect(() => {
@@ -75,18 +102,30 @@ export function useLocalStorage<T>(
   const setValue = useCallback(
     (value: T | ((prev: T) => T)) => {
       try {
-        const valueToStore =
-          value instanceof Function ? value(valorRef.current) : value;
+        let base = valorRef.current;
+        if (entreAbas && typeof window !== "undefined") {
+          try {
+            const noDisco = window.localStorage.getItem(key);
+            if (noDisco !== textoNoDiscoRef.current) {
+              base = lerValorCompativel(noDisco, initialValueRef.current);
+            }
+          } catch {
+            // Disco ilegível: segue com a memória e regrava uma lista válida.
+          }
+        }
+        const valueToStore = value instanceof Function ? value(base) : value;
         valorRef.current = valueToStore;
         setStoredValue(valueToStore);
         if (typeof window !== "undefined") {
-          window.localStorage.setItem(key, JSON.stringify(valueToStore));
+          const texto = JSON.stringify(valueToStore);
+          window.localStorage.setItem(key, texto);
+          textoNoDiscoRef.current = texto;
         }
       } catch (error) {
         console.error("Error saving to localStorage:", error);
       }
     },
-    [key],
+    [key, entreAbas],
   );
 
   return [storedValue, setValue];
