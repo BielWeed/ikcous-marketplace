@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { DataVault } from "@/lib/dataVault";
+import { geracaoDoCofre } from "@/lib/geracao-do-cofre";
 import {
   PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
@@ -362,6 +363,9 @@ export function useAnalytics() {
       const minhaChamada = ++ultimaChamadaExecutiva;
       const chamadaFicouAtrasada = () =>
         minhaChamada !== ultimaChamadaExecutiva;
+      // O "Sair" apaga o resumo do cofre e sobe a geração: resposta que
+      // chega depois dele não regrava o disco (mesmo contador do motor).
+      const geracao = geracaoDoCofre();
 
       if (cachedStats && !forceRefresh) {
         // Background revalidation
@@ -387,6 +391,7 @@ export function useAnalytics() {
               // Persist in DataVault
               DataVault.init()
                 .then((vault) => {
+                  if (geracaoDoCofre() !== geracao) return;
                   vault.put("store_config", {
                     id: "admin_dashboard_stats",
                     data: cachedStats,
@@ -438,6 +443,7 @@ export function useAnalytics() {
         // Persist in DataVault
         DataVault.init()
           .then((vault) => {
+            if (geracaoDoCofre() !== geracao) return;
             vault.put("store_config", {
               id: "admin_dashboard_stats",
               data: cachedStats,
@@ -517,6 +523,8 @@ export function useAnalytics() {
       const minhaChamada = ++ultimaChamadaDeCategorias;
       const chamadaFicouAtrasada = () =>
         minhaChamada !== ultimaChamadaDeCategorias;
+      // Mesma guarda do resumo: o Sair apagou o cofre com a consulta em voo.
+      const geracao = geracaoDoCofre();
 
       if (cachedCategoryData && !forceRefresh) {
         setCategoryLoading(false);
@@ -552,6 +560,7 @@ export function useAnalytics() {
               DataVault.init()
                 .then((vault) => {
                   if (chamadaFicouAtrasada()) return;
+                  if (geracaoDoCofre() !== geracao) return;
                   vault.put("store_config", {
                     id: "admin_category_data",
                     data,
@@ -591,6 +600,7 @@ export function useAnalytics() {
         DataVault.init()
           .then((vault) => {
             if (chamadaFicouAtrasada()) return;
+            if (geracaoDoCofre() !== geracao) return;
             vault.put("store_config", {
               id: "admin_category_data",
               data,
