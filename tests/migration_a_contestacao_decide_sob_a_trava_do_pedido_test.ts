@@ -725,6 +725,18 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/portas-anon-exploracao-estoque-otp.cjs",
     // solicitar_devolucao (pedido/item de outra conta, nao entregue) e create_marketplace_order_v24 direto (cupom vencido, abaixo do minimo): recusam sem efeito; mutantes no clone.
     "tests/banco/solicitar-devolucao-e-cupom-recusas-viva.cjs",
+    // Onda 100: permissao e dado de cliente (perfil, favoritos e avaliacao so da propria conta; carrinho so mexe no meu;
+    // admin rebaixado recusado no balcao, na configuracao, na grade e no caixa; cupom sem contador negativo; analise por categoria); todas com mutante.
+    "tests/banco/o-perfil-completo-so-devolve-a-propria-conta-viva.cjs",
+    "tests/banco/os-favoritos-nao-passam-para-outra-conta-viva.cjs",
+    "tests/banco/a-avaliacao-so-nasce-em-nome-da-propria-conta-viva.cjs",
+    "tests/banco/analise-por-categoria-periodo-e-subtotal-zero-viva.cjs",
+    "tests/banco/balcao-recusa-admin-rebaixado-viva.cjs",
+    "tests/banco/configuracao-recusa-admin-rebaixado-viva.cjs",
+    "tests/banco/grade-recusa-admin-rebaixado-viva.cjs",
+    "tests/banco/carrinho-sincronizar-so-mexe-no-meu-viva.cjs",
+    "tests/banco/devolver-cupom-nao-deixa-contador-negativo-viva.cjs",
+    "tests/banco/caixa-abrir-recusa-quem-nao-e-admin-atual-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
