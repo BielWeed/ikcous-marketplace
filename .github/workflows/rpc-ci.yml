@@ -573,6 +573,9 @@ jobs:
       - name: Prova viva do reembolso manual com reserva (343)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/reembolso-manual-reserva-viva.cjs
+      - name: Prova viva da analise por categoria so com pedido pago
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/analise-por-categoria-so-conta-pedido-pago-viva.cjs
       - name: Prova viva dos icones de categoria e ACL preservada (300)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/categorias-icones-viva.cjs
