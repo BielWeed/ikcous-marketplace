@@ -1,4 +1,14 @@
 {
+  "1.5.167": {
+    "titulo": "Endereço do visitante sem espaço invisível, rastreio que só diz salvo quando salvou e aviso de pedido só para quem é dono",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Finalizar compra (sem conta): rua, número, bairro e cidade escritos só com caractere invisível passam a ser recusados, em vez de gerar um pedido com endereço em branco.",
+      "Painel, Pedido: o código de rastreio só aparece como salvo depois que o banco confirma a gravação; se a sessão expirou, o app avisa em vez de dizer que salvou.",
+      "Avisos de status do pedido: o servidor recusa enviar um aviso de pedido sem destinatário, para nunca chegar a clientes que não têm relação com o pedido."
+    ]
+  },
   "1.5.166": {
     "titulo": "Cupons sempre atualizados, avaliação sem duplicidade e cancelamento de pedido que não trava",
     "novidades": [],
