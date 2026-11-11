@@ -211,9 +211,12 @@ export function FavoritesProvider({
   // acima) porque o primeiro render lê o disco como ele estiver — um
   // aparelho antigo ainda tem o `Product` inteiro aqui, e a migração
   // (efeito abaixo) só tem chance de agir DEPOIS desse primeiro render.
+  // `entreAbas`: o visitante pode ter duas abas abertas; sem isso uma apaga o
+  // favorito da outra, e o login subiria para a conta o que o aparelho já
+  // não tem (o login lê esta lista, que o evento `storage` mantém em dia).
   const [localFavoritesRaw, setLocalFavoritesRaw] = useLocalStorage<
     EntradaFavoritoLocal[]
-  >(FAVORITES_KEY, []);
+  >(FAVORITES_KEY, [], { entreAbas: true });
   // Cache EM MEMÓRIA (nunca em disco — o disco só guarda id, de propósito)
   // do último retrato conhecido de cada favorito do visitante. Ela só entra
   // em jogo quando o id não bate com NENHUM produto de `allProducts` — ou
