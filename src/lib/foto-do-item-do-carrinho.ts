@@ -1,8 +1,10 @@
 import type { CartItem } from "@/types";
+import { criarEixosDaVariacao, eixoEhCor } from "@/utils/eixos-da-variacao";
 
 /**
  * Qual foto uma linha do carrinho mostra: a da cor/variação que a cliente
- * escolheu, quando ela tem foto própria; senão a primeira do produto.
+ * escolheu, quando ela tem foto própria; senão a da mesma cor em outro tamanho
+ * (como a página do produto); senão a primeira do produto.
  *
  * Antes o carrinho e o resumo do pedido liam sempre `product.images[0]`, e duas
  * linhas do mesmo produto em cores diferentes mostravam a MESMA foto (a página
@@ -16,10 +18,27 @@ import type { CartItem } from "@/types";
  */
 export function fotoDoItemDoCarrinho(item: CartItem): string | undefined {
   const variacoes = item.product.variants ?? [];
-  for (const id of [item.variantId, ...(item.outrasVariantIds ?? [])]) {
+  const ids = [item.variantId, ...(item.outrasVariantIds ?? [])];
+  const temFoto = (url?: string) => !!url && url.trim() !== "";
+  for (const id of ids) {
     if (!id) continue;
     const foto = variacoes.find((v) => v.id === id)?.imageUrl;
-    if (foto && foto.trim() !== "") return foto;
+    if (temFoto(foto)) return foto;
+  }
+  // Sem foto própria: a foto da cor costuma estar numa linha só da grade.
+  const { grupos } = criarEixosDaVariacao(variacoes);
+  for (const id of ids) {
+    for (const g of grupos) {
+      const escolhida = g.linhas.find((l) => l.variante.id === id);
+      const foto = g.linhas.find(
+        (l) =>
+          temFoto(l.variante.imageUrl) &&
+          g.eixos
+            .filter(eixoEhCor)
+            .some((e) => l.valores[e.indice] === escolhida?.valores[e.indice]),
+      )?.variante.imageUrl;
+      if (escolhida && foto) return foto;
+    }
   }
   return item.product.images?.[0];
 }
