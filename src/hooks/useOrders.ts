@@ -444,17 +444,29 @@ export function mesclarFilaOfflineAposPassada(
   filaFresca: unknown,
   processados: ReadonlyMap<string, number>,
   reserva: readonly ItemDaFila[],
+  // Destino que a passada acabou de GRAVAR com sucesso, por pedido. O item mais
+  // novo que entrou durante o envio herdou o `statusEsperado` antigo (a origem
+  // de antes do envio): a origem confirmada agora e o destino gravado. Item
+  // legado (sem `statusEsperado`) continua sem.
+  statusEnviados?: ReadonlyMap<string, string>,
 ): ItemDaFila[] {
   if (!Array.isArray(filaFresca)) return [...reserva];
-  return filaFresca.filter((item): item is ItemDaFila => {
-    if (!item || typeof item.orderId !== "string") return false;
-    const timestampProcessado = processados.get(item.orderId);
-    return (
-      timestampProcessado === undefined ||
-      (typeof item.timestamp === "number" &&
-        item.timestamp > timestampProcessado)
-    );
-  });
+  return filaFresca
+    .filter((item): item is ItemDaFila => {
+      if (!item || typeof item.orderId !== "string") return false;
+      const timestampProcessado = processados.get(item.orderId);
+      return (
+        timestampProcessado === undefined ||
+        (typeof item.timestamp === "number" &&
+          item.timestamp > timestampProcessado)
+      );
+    })
+    .map((item) => {
+      const enviado = statusEnviados?.get(item.orderId);
+      return enviado !== undefined && item.statusEsperado !== undefined
+        ? { ...item, statusEsperado: enviado }
+        : item;
+    });
 }
 
 // L10 — a passada em voo é POR USUÁRIO (mesmo padrão de `checkInFlight` no
@@ -552,6 +564,7 @@ async function processarFilaOfflineDePedidos(
 
     const remainingQueue: ItemDaFila[] = [];
     const processados = new Map<string, number>();
+    const statusEnviados = new Map<string, string>();
     const tentados = new Map<string, number>();
     let syncedAny = false;
     let falhasTransitorias = 0;
@@ -676,6 +689,7 @@ async function processarFilaOfflineDePedidos(
         if (error) throw error;
         syncedAny = true;
         processados.set(orderId, timestamp);
+        statusEnviados.set(orderId, status);
       } catch (err) {
         if (erroDeSincronizacaoEhTerminal(err)) {
           if (
@@ -711,6 +725,7 @@ async function processarFilaOfflineDePedidos(
       filaFresca,
       processados,
       remainingQueue,
+      statusEnviados,
     );
 
     if (final.length > 0) {
