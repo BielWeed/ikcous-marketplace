@@ -239,6 +239,25 @@ Deno.test("paridade: o e-mail de pagamento atrasado (assunto e HTML) é BYTE A B
   }
 });
 
+Deno.test("aviso atrasado: escapa o nome da loja e o número do pedido; sem nome, omite o parágrafo da loja", () => {
+  const nomeDaLoja = "  <b>Loja & Cia</b>  ";
+  const html = htmlDoAvisoDePagamentoAtrasado({ orderId: PEDIDO, nomeDaLoja });
+  const paragrafoDaLoja = '<p style="margin: 0 0 20px; font-size: 18px; font-weight: 800;">';
+  assertEquals(html.includes("<b>Loja"), false);
+  assertEquals(html.includes(`${paragrafoDaLoja}&lt;b&gt;Loja &amp; Cia&lt;/b&gt;</p>`), true);
+  assertEquals(html.includes("Pedido #4F5A6B"), true);
+
+  const htmlComPedidoEstranho = htmlDoAvisoDePagamentoAtrasado({ orderId: "pedido<&abcd", nomeDaLoja });
+  assertEquals(htmlComPedidoEstranho.includes("Pedido #&lt;&amp;ABCD"), true);
+  assertEquals(htmlComPedidoEstranho.includes("Pedido #<&ABCD"), false);
+
+  for (const nomeDaLoja of ["", "   "]) {
+    const semLoja = htmlDoAvisoDePagamentoAtrasado({ orderId: PEDIDO, nomeDaLoja });
+    assertEquals(semLoja.includes(paragrafoDaLoja), false);
+    assertEquals(semLoja.includes("Pedido #4F5A6B"), true);
+  }
+});
+
 Deno.test("avisoAoLojista: só 'pago' e 'pago_apos_expirar' têm aviso", () => {
   assertEquals(avisoAoLojista(PEDIDO, "ja_pago", 10), null);
   assertEquals(avisoAoLojista(PEDIDO, "divergente", 10), null);
