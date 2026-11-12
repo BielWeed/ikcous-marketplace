@@ -488,6 +488,34 @@ describe("AdminReviewsView — redesenho", () => {
     );
   });
 
+  it.each([
+    String.fromCodePoint(0x200b, 0x200b),
+    String.fromCodePoint(0x200e),
+    String.fromCodePoint(0x2060),
+    String.fromCodePoint(0x2800),
+    String.fromCodePoint(0x3164),
+  ])("não publica resposta sem desenho: %j", async (texto) => {
+    await montar();
+    await tocar(botaoPorTexto("Responder", 0));
+    const campo = hospedeiro.querySelector<HTMLTextAreaElement>("textarea")!;
+    await digitar(campo, texto);
+    const publicar = botaoPorTexto("Publicar resposta");
+    expect(publicar.disabled).toBe(true);
+    await tocar(publicar);
+    expect(h.addMerchantReply).not.toHaveBeenCalled();
+  });
+
+  it("apara os espaços da resposta sem alterar o texto visível", async () => {
+    await montar();
+    await tocar(botaoPorTexto("Responder", 0));
+    const campo = hospedeiro.querySelector<HTMLTextAreaElement>("textarea")!;
+    await digitar(campo, "  Obrigado  ");
+    const publicar = botaoPorTexto("Publicar resposta");
+    expect(publicar.disabled).toBe(false);
+    await tocar(publicar);
+    expect(h.addMerchantReply).toHaveBeenCalledWith("r-1", "Obrigado");
+  });
+
   it("Cancelar fecha o formulário sem enviar nada", async () => {
     await montar();
     await tocar(botaoPorTexto("Responder", 0));

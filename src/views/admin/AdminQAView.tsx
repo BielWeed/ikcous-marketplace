@@ -36,6 +36,7 @@ import { useQuestions } from "@/hooks/useQuestions";
 import type { Question } from "@/hooks/useQuestions";
 import { useRevalidarAoVoltar } from "@/hooks/useRevalidarAoVoltar";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -375,7 +376,7 @@ export const AdminQAView = memo(function AdminQAView({
     // Texto puro: o React escapa na exibição e a resposta não vai a nenhum
     // HTML (tela da loja, painel e aviso do sino), então "<P>" é só texto.
     const cleanAnswer = answer.trim();
-    if (!cleanAnswer) {
+    if (!nomeTemConteudoVisivel(cleanAnswer)) {
       toast.error("A resposta não pode ser vazia.");
       return;
     }
