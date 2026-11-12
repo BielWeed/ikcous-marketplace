@@ -1134,7 +1134,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       setUser((prev) => {
         if (!session) return prev && event === "INITIAL_SESSION" ? prev : null;
-        if (prev?.id === session?.user?.id) return prev; // PREVENT INFINITE EFFECT LOOPS
+        // PREVENT INFINITE EFFECT LOOPS: cada evento traz um objeto novo, então
+        // só se troca o `user` quando a conta ou o e-mail mudou de verdade (a
+        // loja corrigiu o e-mail, ou a cliente confirmou a troca em outro
+        // aparelho: "Minha conta" não pode seguir mostrando o endereço velho).
+        if (
+          prev?.id === session?.user?.id &&
+          prev?.email === session?.user?.email
+        )
+          return prev;
         return session.user;
       });
 
