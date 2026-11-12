@@ -83,7 +83,7 @@ function produto(): Product {
   };
 }
 const CARRINHO: CartItem[] = [{ product: produto(), quantity: 1 }];
-const ASSINATURA = "prod-tenis-teste::1:59.9";
+const ASSINATURA = "prod-tenis-teste::1:59.9:0";
 
 const PAC_ANTIGO_COM_SEGURO: ShippingOption = {
   id: "superfrete-1",
