@@ -2037,7 +2037,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                         "Quanto você lucra para cada R$ 100 que pagou. No catálogo, usa o estoque com custo. Custo zero aparece como —.",
                       formula: "((Preço − Custo) ÷ Custo) × 100",
                       exemplo:
-                        "Custo R$10 / Venda R$15 ➜ Lucro sobre o custo = 50,0%",
+                        "Custo R$ 10 / Venda R$ 15 ➜ Lucro sobre o custo = 50,0%",
                     },
                     {
                       titulo: "Margem de Lucro",
@@ -2046,7 +2046,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       descricao:
                         "A parte do preço de venda que corresponde ao lucro bruto.",
                       formula: "((Preço − Custo) ÷ Preço) × 100",
-                      exemplo: "Custo R$10 / Venda R$15 ➜ Margem = 33,3%",
+                      exemplo: "Custo R$ 10 / Venda R$ 15 ➜ Margem = 33,3%",
                     },
                     {
                       titulo: "Lucro bruto do estoque",

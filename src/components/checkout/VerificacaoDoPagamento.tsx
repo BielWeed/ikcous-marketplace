@@ -427,13 +427,15 @@ export function VerificacaoDoPagamento({
 
   return (
     <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
-      <h1 className="text-lg font-bold text-zinc-900">Situação do pagamento</h1>
+      <h1 className="text-lg font-bold text-foreground">
+        Situação do pagamento
+      </h1>
 
       {/* Região viva sempre montada: o leitor de tela só anuncia mudança em
           região que já existia. As falhas vão no `role="alert"` abaixo. */}
       <div role="status" aria-live="polite" className="space-y-3">
         {situacao.tipo === "consultando" && (
-          <p className="flex items-center gap-2 text-sm text-zinc-600">
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 aria-hidden="true" className="size-4 animate-spin" />
             Consultando o pagamento com o banco…
           </p>

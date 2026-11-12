@@ -213,7 +213,7 @@ describe("F3 — produto no computador e celular preservado", () => {
         "h1",
         // Caça 30 (06/11): `break-words` entrou no título (nome com palavra ou
         // link longo saía cortado na borda da tela).
-        "break-words text-xl font-black leading-tight tracking-tight text-zinc-900",
+        "break-words text-xl font-black leading-tight tracking-tight text-foreground",
         "lg:text-3xl",
       );
       classe(
@@ -269,7 +269,7 @@ describe("F3 — produto no computador e celular preservado", () => {
     expect(pill!.classList.contains("lg:rounded-full")).toBe(true);
     classe(
       "#details-section p",
-      "text-sm leading-relaxed text-gray-600",
+      "text-sm leading-relaxed text-muted-foreground",
       "lg:text-base",
     );
     expect(

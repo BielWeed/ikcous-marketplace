@@ -1069,8 +1069,10 @@ export const ProductView = React.memo(function ProductView({
             <div className="mb-3 flex flex-col gap-1">
               <h1
                 className={cn(
-                  "break-words text-xl font-black leading-tight tracking-tight text-zinc-900",
-                  "lg:text-3xl lg:tracking-tighter",
+                  "break-words text-xl font-black leading-tight tracking-tight text-foreground",
+                  // No computador o nome mora no cartão `lg:bg-white` (fixo, não muda
+                  // com o tema): ali o escuro fixo é o certo.
+                  "lg:text-3xl lg:tracking-tighter lg:text-zinc-900",
                 )}
               >
                 {product.name}
