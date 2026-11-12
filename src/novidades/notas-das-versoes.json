@@ -1,4 +1,15 @@
 {
+  "1.5.171": {
+    "titulo": "Frete grátis que acompanha a loja, busca que não fecha o produto e Início do painel que mostra as vendas",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Carrinho: se a loja tirar o frete grátis de um produto, o carrinho refaz o frete em vez de mostrar \"grátis\" guardado.",
+      "Loja, Busca: tocar no produto sugerido logo depois de digitar não o fecha sozinho.",
+      "Painel, Início: se a assinatura demorar, as vendas e pendências de hoje continuam aparecendo.",
+      "Painel, Clientes: a mensagem do grupo Novos agradece pela compra, sem dizer que é a primeira."
+    ]
+  },
   "1.5.170": {
     "titulo": "Cartão à vista conferido pelo valor, filas sem internet que não perdem a mudança e atualização do app que não trava",
     "novidades": [],
