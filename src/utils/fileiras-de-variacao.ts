@@ -61,7 +61,7 @@ function chaveDoValor(valor: string): { grupo: number; posicao: number } {
 /** Ordem DETERMINÍSTICA dos valores de uma fileira. O banco devolve as variações
  *  sem ORDER BY e a linha vendida pode ir para o fim: a ordem dos chips não pode
  *  depender disso. Desempate: português, e por fim o texto cru (ordem total). */
-function compararValores(a: string, b: string): number {
+export function compararValores(a: string, b: string): number {
   const x = chaveDoValor(a);
   const y = chaveDoValor(b);
   if (x.grupo !== y.grupo) return x.grupo - y.grupo;
