@@ -283,6 +283,9 @@ async function sincronizarFilaDoUsuario(userId: string): Promise<boolean> {
 
     const remainingQueue: any[] = [];
     const discarded: string[] = [];
+    // Só o que ESTA passada gravou (o `versoesAposSincronizar` do módulo pode
+    // ter sobra de outra passada).
+    const versoesDestaPassada = new Map<string, string>();
     let conflitos = 0;
     let syncedCount = 0;
     let interrompida = false;
@@ -411,6 +414,7 @@ async function sincronizarFilaDoUsuario(userId: string): Promise<boolean> {
           .ultima_atualizacao;
         if (typeof novaVersao === "string") {
           versoesAposSincronizar.set(id, novaVersao);
+          versoesDestaPassada.set(id, novaVersao);
         }
       } catch (err) {
         console.error("[Offline Sync] Failed to sync product %s:", id, err);
@@ -431,10 +435,19 @@ async function sincronizarFilaDoUsuario(userId: string): Promise<boolean> {
     } catch {
       filaFresca = [];
     }
-    const novos = filaFresca.filter((i: any) => {
-      const enviado = idsEnviados.get(i?.id);
-      return enviado === undefined || (Number(i.timestamp) || 0) > enviado;
-    });
+    // Reedição de um produto que ESTA passada acabou de gravar: a primeira
+    // gravação já mudou a versão no servidor, e a reedição (que já leva os
+    // campos da primeira, fundidos) guarda a base antiga. Sem avançá-la, a
+    // próxima passada daria 0 linhas e descartaria a edição como conflito.
+    const novos = filaFresca
+      .filter((i: any) => {
+        const enviado = idsEnviados.get(i?.id);
+        return enviado === undefined || (Number(i.timestamp) || 0) > enviado;
+      })
+      .map((i: any) => {
+        const versao = versoesDestaPassada.get(i.id);
+        return versao ? { ...i, baseUpdatedAt: versao } : i;
+      });
     const idsNovos = new Set(novos.map((i: any) => i.id));
     // `naoTentados` (passada interrompida por troca de sessão) volta para a
     // fila do dono como o que falhou volta: sem eles, `idsEnviados` os daria
