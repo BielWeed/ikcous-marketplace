@@ -4137,6 +4137,11 @@ export function CheckoutViewDaConta({
     // Quem remove o cupom escolhe: o do rascunho que esperava a conta não volta depois.
     cupomPendenteDoRascunhoRef.current = null;
     cupomConferidoRef.current = null;
+    // Cupom em conferência (rede lenta) fica para trás: a resposta dele, quando
+    // chegar, é descartada, e a trava solta — senão o cupom tirado de propósito
+    // (ou o outro, que ela tocou antes de tirar) se aplicaria sozinho.
+    aplicacaoDoCupomEmVooRef.current = null;
+    setAplicandoCupom(null);
     setAppliedCoupon(null);
     esquecerCupomDoRascunho();
     setCouponError("");
@@ -4237,7 +4242,11 @@ export function CheckoutViewDaConta({
     const contaQuePediu = contaRef.current;
     try {
       let result = await validateCoupon(code, subtotal);
-      if (contaRef.current !== contaQuePediu) return;
+      if (
+        contaRef.current !== contaQuePediu ||
+        aplicacaoDoCupomEmVooRef.current !== minhaAplicacao
+      )
+        return;
 
       // Código digitado com acento ou espaço ("verão10"): o painel grava SEM
       // os dois. Tentou-se como digitado (cupom antigo gravado com acento
@@ -4252,7 +4261,11 @@ export function CheckoutViewDaConta({
         ehRecusaDeCupomInexistente(result.message)
       ) {
         result = await validateCoupon(alternativo, subtotal);
-        if (contaRef.current !== contaQuePediu) return;
+        if (
+          contaRef.current !== contaQuePediu ||
+          aplicacaoDoCupomEmVooRef.current !== minhaAplicacao
+        )
+          return;
         codigoAceito = alternativo;
       }
 
@@ -4274,7 +4287,10 @@ export function CheckoutViewDaConta({
       }
     } catch (error) {
       console.error("Error applying coupon:", error);
-      if (contaRef.current === contaQuePediu) {
+      if (
+        contaRef.current === contaQuePediu &&
+        aplicacaoDoCupomEmVooRef.current === minhaAplicacao
+      ) {
         setCouponError("Erro ao validar cupom");
       }
     } finally {

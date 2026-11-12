@@ -1854,6 +1854,16 @@ export const OrderDetail = memo(function OrderDetail({
     digitado: trackingValue,
     salvo: localTrackingCode,
   };
+  // Com rascunho, o código "salvo" (referência da gravação condicionada) NÃO
+  // acompanha o pedido: continua o que ela viu ao começar a digitar. Assim o
+  // Salvar dela esbarra no código do outro aparelho, avisa e só então troca a
+  // referência. O código de fora fica aqui até o rascunho acabar (cancelar);
+  // se a referência já foi trocada por outro caminho (gravou, releu), vale o
+  // que essa troca decidiu e o código retido é descartado.
+  const codigoDeForaRetidoRef = useRef<{
+    novo: string;
+    referencia: string;
+  } | null>(null);
   useEffect(() => {
     const novo = order.trackingCode || "";
     const tela = rastreioDaTelaRef.current;
@@ -1861,7 +1871,11 @@ export const OrderDetail = memo(function OrderDetail({
     rastreioDaTelaRef.current.pedidoId = order.id;
     const rascunho =
       !mudouPedido && tela.editando && tela.digitado !== tela.salvo;
-    setLocalTrackingCode(novo);
+    const retido = rascunho && novo !== tela.digitado && novo !== tela.salvo;
+    codigoDeForaRetidoRef.current = retido
+      ? { novo, referencia: tela.salvo }
+      : null;
+    if (!retido) setLocalTrackingCode(novo);
     if (!rascunho) {
       setTrackingValue(novo);
       return;
@@ -1872,6 +1886,14 @@ export const OrderDetail = memo(function OrderDetail({
       );
     }
   }, [order.id, order.trackingCode]);
+  useEffect(() => {
+    const retido = codigoDeForaRetidoRef.current;
+    if (isEditingTracking || retido === null) return;
+    codigoDeForaRetidoRef.current = null;
+    if (rastreioDaTelaRef.current.salvo !== retido.referencia) return;
+    setLocalTrackingCode(retido.novo);
+    setTrackingValue(retido.novo);
+  }, [isEditingTracking]);
 
   useEffect(() => {
     const pedidoId = order.id;
