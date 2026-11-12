@@ -350,6 +350,10 @@ const TETO_BAIRRO_DO_CHECKOUT = 120;
 const TETO_CIDADE_DO_CHECKOUT = 120;
 const avisoDeTeto = (teto: number) => `Máximo de ${teto} caracteres`;
 
+/** O que o visitante lê no lugar dos campos de endereço quando retira na loja. */
+const FRASE_RETIRADA_SEM_ENDERECO =
+  "Retirada na loja: não precisamos do seu endereço";
+
 /**
  * Qual campo do formulário cada <input> da seção "Seus dados e entrega"
  * desenha. É por ele que o `onBlur` da seção (um só, na `<div>`) descobre de
@@ -1137,6 +1141,14 @@ export function CheckoutViewDaConta({
               path: ["cep"],
             });
           }
+        }
+        // RETIRADA NA LOJA (12/11/2026): o visitante que vai buscar no balcão
+        // só informa o CEP (acima) — a opção "Retirar na loja" nasce da
+        // cotação por CEP, e o banco só exige o CEP na retirada (não lê rua,
+        // número, bairro, cidade nem estado). Os campos continuam no
+        // formulário (escondidos, sem apagar o que foi digitado): voltar para
+        // a entrega os traz de volta preenchidos e exigidos.
+        if (!user && !ehRetirada) {
           // Os tetos só valem aqui, no formulário do VISITANTE: quem tem conta
           // usa o endereço salvo, que já nasceu com teto no AddressForm, e um
           // valor residual comprido nestes campos não pode prendê-lo.
@@ -1204,7 +1216,7 @@ export function CheckoutViewDaConta({
           }
         }
       });
-  }, [user, exigeCpfDoDestinatario]);
+  }, [user, exigeCpfDoDestinatario, ehRetirada]);
 
   const form = useForm<CheckoutFormValues>({
     resolver: zodResolver(dynamicSchema),
@@ -1269,6 +1281,9 @@ export function CheckoutViewDaConta({
   // sem argumento revalida o formulário INTEIRO contra o schema atual; os
   // campos ainda vazios passam a carregar erro no estado do formulário (o
   // mesmo que o `mode: "onChange"` já faria ao primeiro toque).
+  // RETIRADA NA LOJA (12/11/2026): `ehRetirada` entra na mesma conta pelo mesmo
+  // motivo — para o visitante, marcar ou desmarcar a retirada liga/desliga a
+  // exigência de rua, número, bairro, cidade e estado sem tocar nenhum campo.
   const exigeCpfMontadoRef = useRef(false);
   useEffect(() => {
     // SÓ depois do primeiro paint: no MOUNT, `form.trigger()` validaria o
@@ -1281,7 +1296,7 @@ export function CheckoutViewDaConta({
       return;
     }
     form.trigger();
-  }, [exigeCpfDoDestinatario, form]);
+  }, [exigeCpfDoDestinatario, ehRetirada, form]);
 
   // O CPF MORA NA CONTA (23/09/2026): logado, ao montar, se o campo ainda
   // está vazio, tenta preencher com o CPF já gravado na conta —
@@ -2539,23 +2554,28 @@ export function CheckoutViewDaConta({
   const estadoAtual = form.watch("state");
   const faltaNome = !nomeAtual?.trim();
   const faltaWhatsapp = !celularBrasileiroCompleto(whatsappAtual);
+  // RETIRADA NA LOJA (12/11/2026): com a retirada marcada, o CEP completo é
+  // tudo que o visitante precisa informar — a mesma régua do `dynamicSchema`.
   const enderecoConvidadoCompleto =
     soDigitos(cepDigitadoNoFormulario ?? "").length === 8 &&
-    !!ruaAtual &&
-    nomeTemConteudoVisivel(ruaAtual) &&
-    !!numeroAtual &&
-    nomeTemConteudoVisivel(numeroAtual) &&
-    !!bairroAtual &&
-    nomeTemConteudoVisivel(bairroAtual) &&
-    !!cidadeAtual &&
-    nomeTemConteudoVisivel(cidadeAtual) &&
-    ufBrasileiraValida(estadoAtual);
+    (ehRetirada ||
+      (!!ruaAtual &&
+        nomeTemConteudoVisivel(ruaAtual) &&
+        !!numeroAtual &&
+        nomeTemConteudoVisivel(numeroAtual) &&
+        !!bairroAtual &&
+        nomeTemConteudoVisivel(bairroAtual) &&
+        !!cidadeAtual &&
+        nomeTemConteudoVisivel(cidadeAtual) &&
+        ufBrasileiraValida(estadoAtual)));
   // O PRIMEIRO campo de endereço de convidado que falta ou está inválido, na
   // ordem da tela (a mesma de `ORDEM_CAMPOS_FOCO`). O aviso da barra leva o
   // foco até ele; os mesmos testes de "completo" de `enderecoConvidadoCompleto`.
   const idDoPrimeiroCampoDeEnderecoQueFalta = (): string | null => {
     if (soDigitos(cepDigitadoNoFormulario ?? "").length !== 8)
       return "guest-cep";
+    // Na retirada só o CEP é pedido (os outros campos nem estão na tela).
+    if (ehRetirada) return null;
     if (!numeroAtual || !nomeTemConteudoVisivel(numeroAtual))
       return "guest-number";
     if (!ruaAtual || !nomeTemConteudoVisivel(ruaAtual)) return "guest-street";
@@ -4680,24 +4700,29 @@ export function CheckoutViewDaConta({
       shippingOptionId: selectedShippingOption?.id ?? null,
       paymentMethod,
       addressId: user ? selectedAddressId : null,
+      // Visitante que RETIRA na loja (12/11/2026): sem endereço de casa — o
+      // CEP já viaja em `destinationCep` e o banco usa o da cotação (a retirada
+      // nunca leva CPF, então não sobra chave nenhuma para mandar).
       addressData: user
         ? cpfParaRpc
           ? { cpf: cpfParaRpc }
           : null
-        : {
-            cep: data.cep,
-            street: data.street,
-            number: data.number,
-            neighborhood: data.neighborhood,
-            city: data.city,
-            // A caixa da UF vai normalizada: "sp" digitado sai "SP" (a regra
-            // `ufBrasileiraValida` já aceita os dois, o pedido grava um só).
-            state: data.state?.trim().toUpperCase(),
-            complement: nomeTemConteudoVisivel(data.complement)
-              ? data.complement?.trim()
-              : undefined,
-            ...(cpfParaRpc ? { cpf: cpfParaRpc } : {}),
-          },
+        : ehRetirada
+          ? null
+          : {
+              cep: data.cep,
+              street: data.street,
+              number: data.number,
+              neighborhood: data.neighborhood,
+              city: data.city,
+              // A caixa da UF vai normalizada: "sp" digitado sai "SP" (a regra
+              // `ufBrasileiraValida` já aceita os dois, o pedido grava um só).
+              state: data.state?.trim().toUpperCase(),
+              complement: nomeTemConteudoVisivel(data.complement)
+                ? data.complement?.trim()
+                : undefined,
+              ...(cpfParaRpc ? { cpf: cpfParaRpc } : {}),
+            },
 
       couponCode: appliedCoupon?.code,
       notes: finalNotes,
@@ -6491,6 +6516,10 @@ export function CheckoutViewDaConta({
                     className="size-4 shrink-0 text-zinc-500"
                   />
                 </button>
+              ) : enderecoConvidadoCompleto && ehRetirada ? (
+                <p className="break-words text-sm font-medium text-zinc-600">
+                  {FRASE_RETIRADA_SEM_ENDERECO}
+                </p>
               ) : enderecoConvidadoCompleto ? (
                 <p className="break-words text-sm font-medium text-zinc-600">
                   {resumoDoEndereco({
@@ -6772,7 +6801,7 @@ export function CheckoutViewDaConta({
                       checkout tem `max-w-md` em toda largura, então não existe
                       mais o alargamento que o `md:` compensava — ele só
                       apertaria. */}
-                  <div className="col-span-3">
+                  <div className={ehRetirada ? "col-span-6" : "col-span-3"}>
                     <label
                       htmlFor="guest-cep"
                       className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
@@ -6849,175 +6878,201 @@ export function CheckoutViewDaConta({
                       </p>
                     )}
                   </div>
-                  <div className="col-span-3">
-                    <label
-                      htmlFor="guest-number"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
+                  {/* RETIRADA NA LOJA (12/11/2026): o visitante que busca no
+                      balcão só informa o CEP — de onde nasce a opção "Retirar
+                      na loja". Os demais campos SAEM da tela, mas seguem no
+                      formulário (`shouldUnregister` é falso): voltar para a
+                      entrega os traz de volta preenchidos e exigidos. */}
+                  {ehRetirada ? (
+                    <p
+                      data-testid="checkout-retirada-sem-endereco"
+                      className="col-span-6 text-sm font-medium text-zinc-600"
                     >
-                      Número
-                    </label>
-                    <input
-                      id="guest-number"
-                      maxLength={TETO_NUMERO_DO_CHECKOUT}
-                      {...form.register("number")}
-                      placeholder="123"
-                      aria-invalid={erroDoCampo("number") ? true : undefined}
-                      aria-describedby={
-                        erroDoCampo("number") ? "erro-guest-number" : undefined
-                      }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
-                    />
-                    {erroDoCampo("number") && (
-                      <p
-                        id="erro-guest-number"
-                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
-                      >
-                        {erroDoCampo("number")?.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className="col-span-6">
-                    <label
-                      htmlFor="guest-street"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
-                    >
-                      Rua
-                    </label>
-                    <input
-                      id="guest-street"
-                      maxLength={TETO_RUA_DO_CHECKOUT}
-                      {...registrarCampoDoEndereco("street")}
-                      autoComplete="address-line1"
-                      placeholder="Nome da rua"
-                      aria-invalid={erroDoCampo("street") ? true : undefined}
-                      aria-describedby={
-                        erroDoCampo("street") ? "erro-guest-street" : undefined
-                      }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
-                    />
-                    {erroDoCampo("street") && (
-                      <p
-                        id="erro-guest-street"
-                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
-                      >
-                        {erroDoCampo("street")?.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className="col-span-6">
-                    <label
-                      htmlFor="guest-neighborhood"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
-                    >
-                      Bairro
-                    </label>
-                    <input
-                      id="guest-neighborhood"
-                      maxLength={TETO_BAIRRO_DO_CHECKOUT}
-                      {...registrarCampoDoEndereco("neighborhood")}
-                      autoComplete="address-level3"
-                      placeholder="Seu bairro"
-                      aria-invalid={
-                        erroDoCampo("neighborhood") ? true : undefined
-                      }
-                      aria-describedby={
-                        erroDoCampo("neighborhood")
-                          ? "erro-guest-neighborhood"
-                          : undefined
-                      }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
-                    />
-                    {erroDoCampo("neighborhood") && (
-                      <p
-                        id="erro-guest-neighborhood"
-                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
-                      >
-                        {erroDoCampo("neighborhood")?.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className="col-span-3">
-                    <label
-                      htmlFor="guest-city"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
-                    >
-                      Cidade
-                    </label>
-                    <input
-                      id="guest-city"
-                      maxLength={TETO_CIDADE_DO_CHECKOUT}
-                      {...registrarCampoDoEndereco("city")}
-                      autoComplete="address-level2"
-                      placeholder="Cidade"
-                      aria-invalid={erroDoCampo("city") ? true : undefined}
-                      aria-describedby={
-                        erroDoCampo("city") ? "erro-guest-city" : undefined
-                      }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
-                    />
-                    {erroDoCampo("city") && (
-                      <p
-                        id="erro-guest-city"
-                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
-                      >
-                        {erroDoCampo("city")?.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className="col-span-3">
-                    <label
-                      htmlFor="guest-state"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
-                    >
-                      Estado
-                    </label>
-                    <input
-                      id="guest-state"
-                      {...registrarCampoDoEndereco("state")}
-                      autoComplete="address-level1"
-                      maxLength={2}
-                      // O exemplo da loja vai como exemplo ("UF (ex.: SP)"):
-                      // um "SP" cinza sozinho parecia valor já preenchido, e a
-                      // pessoa passava direto pelo campo vazio.
-                      placeholder={(() => {
-                        const estadoDaLoja =
-                          config.shippingCoverage !== "national" &&
-                          config.storeState?.trim().toUpperCase();
-                        return estadoDaLoja
-                          ? `UF (ex.: ${estadoDaLoja})`
-                          : "UF";
-                      })()}
-                      aria-invalid={erroDoCampo("state") ? true : undefined}
-                      aria-describedby={
-                        erroDoCampo("state") ? "erro-guest-state" : undefined
-                      }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
-                    />
-                    {erroDoCampo("state") && (
-                      <p
-                        id="erro-guest-state"
-                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
-                      >
-                        {erroDoCampo("state")?.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className="col-span-6">
-                    <label
-                      htmlFor="guest-complement"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
-                    >
-                      Complemento (Opcional)
-                    </label>
-                    <input
-                      id="guest-complement"
-                      {...form.register("complement")}
-                      maxLength={100}
-                      autoComplete="address-line2"
-                      placeholder="Apto, Bloco, Fundos, etc."
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
-                    />
-                  </div>
+                      {FRASE_RETIRADA_SEM_ENDERECO}
+                    </p>
+                  ) : (
+                    <>
+                      <div className="col-span-3">
+                        <label
+                          htmlFor="guest-number"
+                          className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
+                        >
+                          Número
+                        </label>
+                        <input
+                          id="guest-number"
+                          maxLength={TETO_NUMERO_DO_CHECKOUT}
+                          {...form.register("number")}
+                          placeholder="123"
+                          aria-invalid={
+                            erroDoCampo("number") ? true : undefined
+                          }
+                          aria-describedby={
+                            erroDoCampo("number")
+                              ? "erro-guest-number"
+                              : undefined
+                          }
+                          className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
+                        />
+                        {erroDoCampo("number") && (
+                          <p
+                            id="erro-guest-number"
+                            className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                          >
+                            {erroDoCampo("number")?.message}
+                          </p>
+                        )}
+                      </div>
+                      <div className="col-span-6">
+                        <label
+                          htmlFor="guest-street"
+                          className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
+                        >
+                          Rua
+                        </label>
+                        <input
+                          id="guest-street"
+                          maxLength={TETO_RUA_DO_CHECKOUT}
+                          {...registrarCampoDoEndereco("street")}
+                          autoComplete="address-line1"
+                          placeholder="Nome da rua"
+                          aria-invalid={
+                            erroDoCampo("street") ? true : undefined
+                          }
+                          aria-describedby={
+                            erroDoCampo("street")
+                              ? "erro-guest-street"
+                              : undefined
+                          }
+                          className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
+                        />
+                        {erroDoCampo("street") && (
+                          <p
+                            id="erro-guest-street"
+                            className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                          >
+                            {erroDoCampo("street")?.message}
+                          </p>
+                        )}
+                      </div>
+                      <div className="col-span-6">
+                        <label
+                          htmlFor="guest-neighborhood"
+                          className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
+                        >
+                          Bairro
+                        </label>
+                        <input
+                          id="guest-neighborhood"
+                          maxLength={TETO_BAIRRO_DO_CHECKOUT}
+                          {...registrarCampoDoEndereco("neighborhood")}
+                          autoComplete="address-level3"
+                          placeholder="Seu bairro"
+                          aria-invalid={
+                            erroDoCampo("neighborhood") ? true : undefined
+                          }
+                          aria-describedby={
+                            erroDoCampo("neighborhood")
+                              ? "erro-guest-neighborhood"
+                              : undefined
+                          }
+                          className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
+                        />
+                        {erroDoCampo("neighborhood") && (
+                          <p
+                            id="erro-guest-neighborhood"
+                            className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                          >
+                            {erroDoCampo("neighborhood")?.message}
+                          </p>
+                        )}
+                      </div>
+                      <div className="col-span-3">
+                        <label
+                          htmlFor="guest-city"
+                          className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
+                        >
+                          Cidade
+                        </label>
+                        <input
+                          id="guest-city"
+                          maxLength={TETO_CIDADE_DO_CHECKOUT}
+                          {...registrarCampoDoEndereco("city")}
+                          autoComplete="address-level2"
+                          placeholder="Cidade"
+                          aria-invalid={erroDoCampo("city") ? true : undefined}
+                          aria-describedby={
+                            erroDoCampo("city") ? "erro-guest-city" : undefined
+                          }
+                          className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
+                        />
+                        {erroDoCampo("city") && (
+                          <p
+                            id="erro-guest-city"
+                            className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                          >
+                            {erroDoCampo("city")?.message}
+                          </p>
+                        )}
+                      </div>
+                      <div className="col-span-3">
+                        <label
+                          htmlFor="guest-state"
+                          className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
+                        >
+                          Estado
+                        </label>
+                        <input
+                          id="guest-state"
+                          {...registrarCampoDoEndereco("state")}
+                          autoComplete="address-level1"
+                          maxLength={2}
+                          // O exemplo da loja vai como exemplo ("UF (ex.: SP)"):
+                          // um "SP" cinza sozinho parecia valor já preenchido, e a
+                          // pessoa passava direto pelo campo vazio.
+                          placeholder={(() => {
+                            const estadoDaLoja =
+                              config.shippingCoverage !== "national" &&
+                              config.storeState?.trim().toUpperCase();
+                            return estadoDaLoja
+                              ? `UF (ex.: ${estadoDaLoja})`
+                              : "UF";
+                          })()}
+                          aria-invalid={erroDoCampo("state") ? true : undefined}
+                          aria-describedby={
+                            erroDoCampo("state")
+                              ? "erro-guest-state"
+                              : undefined
+                          }
+                          className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
+                        />
+                        {erroDoCampo("state") && (
+                          <p
+                            id="erro-guest-state"
+                            className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-700"
+                          >
+                            {erroDoCampo("state")?.message}
+                          </p>
+                        )}
+                      </div>
+                      <div className="col-span-6">
+                        <label
+                          htmlFor="guest-complement"
+                          className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-600"
+                        >
+                          Complemento (Opcional)
+                        </label>
+                        <input
+                          id="guest-complement"
+                          {...form.register("complement")}
+                          maxLength={100}
+                          autoComplete="address-line2"
+                          placeholder="Apto, Bloco, Fundos, etc."
+                          className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}

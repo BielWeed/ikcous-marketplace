@@ -455,8 +455,10 @@ export async function validar() {
  ];
  for (const user of [null, {id:"pessoa-ficticia"}]) {
   for (const exigeCpfDoDestinatario of [false,true]) {
-   const dynamicSchema = ${checkout};
-   cenarios.push([dynamicSchema, [compra,{}, {...compra,whatsapp:"1134567890"}, {...compra,cep:"12345-67",street:" ",number:""}, {...compra,cpf:""}, {...compra,cpf:"11111111111"}, {...compra,street:"x".repeat(300),number:"9".repeat(30)}]]);
+   for (const ehRetirada of [false,true]) {
+    const dynamicSchema = ${checkout};
+    cenarios.push([dynamicSchema, [compra,{}, {...compra,whatsapp:"1134567890"}, {...compra,cep:"12345-67",street:" ",number:""}, {...compra,cpf:""}, {...compra,cpf:"11111111111"}, {...compra,street:"x".repeat(300),number:"9".repeat(30)}, {...compra,street:"",number:"",neighborhood:"",city:"",state:""}]]);
+   }
   }
  }
  return Promise.all(cenarios.map(async ([schema, entradas]) => Promise.all(entradas.map(async (dados) => {
@@ -476,7 +478,7 @@ export async function validar() {
       resultado: { data?: unknown; issues?: unknown };
     }[][];
     expect(await enxuto.api.validar()).toEqual(esperado);
-    expect(esperado).toHaveLength(6);
+    expect(esperado).toHaveLength(10);
     expect(esperado[0][0].resultado.data).toBeDefined();
     expect(esperado[0][2].resultado.issues).toBeDefined();
     expect(esperado[1][2].resultado.issues).toBeDefined();
@@ -487,11 +489,20 @@ export async function validar() {
     // Tetos de endereço do checkout (r50-c): valem para o visitante (os dois
     // primeiros cenários do checkout, `user = null`) e NÃO para quem tem conta
     // (os dois últimos, `user = { id }`), que usa o endereço salvo.
+    // Ordem dos cenários: conta (fora/dentro) x CPF x retirada (não/sim).
+    // Retirada na loja (12/11/2026): o visitante que retira só precisa do
+    // CEP — rua, número, bairro, cidade e estado deixam de ser exigidos (e
+    // os tetos deles deixam de valer), como já era para quem tem conta.
     for (const [i, casos] of esperado.slice(2).entries()) {
-      const comConta = i >= 2;
+      const comConta = i >= 4;
+      const ehRetirada = i % 2 === 1;
       expect(casos[6].resultado.issues === undefined, `cenário ${i}`).toBe(
-        comConta,
+        comConta || ehRetirada,
       );
+      expect(
+        casos[7].resultado.issues === undefined,
+        `endereço vazio, cenário ${i}`,
+      ).toBe(comConta || ehRetirada);
     }
   }, 30_000);
 });

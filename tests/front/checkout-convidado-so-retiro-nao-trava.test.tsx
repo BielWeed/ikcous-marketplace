@@ -354,6 +354,9 @@ describe("CheckoutView (convidado) × só retiro — a trava de 'fora da cidade'
   // todo preenchido — então o Finalizar só pode estar apagado pela regra do
   // convidado, e a diferença entre os dois modos é a prova de que a trava
   // saiu do caminho dele (e só dele).
+  // "Completo" para quem RETIRA na loja (12/11/2026) é nome, WhatsApp e CEP:
+  // rua, número, bairro, cidade e estado não são mais pedidos (nem estão na
+  // tela) quando a retirada está marcada — antes o teste os digitava.
   async function cenarioComFormularioCompleto(args: {
     modo: Record<string, unknown>;
     opcao: unknown;
@@ -373,22 +376,11 @@ describe("CheckoutView (convidado) × só retiro — a trava de 'fora da cidade'
     await act(async () => {
       digitar("checkout-name", "Cliente Teste");
       digitar("checkout-tel", "34999999999");
-      digitar("guest-street", "Rua Teste");
-      digitar("guest-number", "100");
-      digitar("guest-neighborhood", "Centro");
       await micro();
       await micro();
     });
     await act(async () => {
       digitar("guest-cep", "01310-100");
-      await micro();
-    });
-    await act(async () => {
-      digitar("guest-city", "Cidade Teste");
-      await micro();
-    });
-    await act(async () => {
-      digitar("guest-state", "SP");
       await micro();
     });
     await act(async () => {
