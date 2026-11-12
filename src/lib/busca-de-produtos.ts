@@ -49,8 +49,8 @@ import { normalizeText } from "@/lib/utils";
  * usado por outras telas, que comparam texto literal.
  */
 const APOSTROFOS = /['‘’ʼ´`]/g;
-const normalizarParaBusca = (texto: string | null | undefined): string =>
-  normalizeText(texto).replace(APOSTROFOS, "");
+export const normalizarParaBusca = (texto: string | null | undefined): string =>
+  normalizeText(texto).replace(APOSTROFOS, "").trim();
 
 const TAMANHO_MINIMO_PARA_TIRAR_O_S = 4;
 /** Singular derivado menor que isto vira ruido ("mais" -> "mal" acharia "malha"). */
@@ -181,7 +181,14 @@ export function palavrasDaBusca(busca: string): FormaDaPalavra[][] {
   // So caractere invisivel (U+200B, U+2800, U+3164...) o `trim()` nao tira: e
   // busca VAZIA, como a busca so com espacos.
   if (!nomeTemConteudoVisivel(busca)) return [];
-  const palavras = normalizarParaBusca(busca).split(/\s+/).filter(Boolean);
+  // Busca SO de apostrofo ("'", "’"): tirando-os sobra nada, e lista vazia aqui
+  // quer dizer "busca vazia = mostrar tudo". Como sempre foi, ela nao acha
+  // nada: cai no termo literal, que nao aparece em nenhum texto (os textos
+  // comparados tambem estao sem apostrofo).
+  const semApostrofo = normalizarParaBusca(busca);
+  const palavras = (semApostrofo || normalizeText(busca))
+    .split(/\s+/)
+    .filter(Boolean);
   const aparadas = palavras
     .flatMap((palavra) => palavra.split(/[-/]+/))
     .map((palavra) => palavra.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ""))
@@ -275,7 +282,7 @@ export function produtoCombinaComBusca(
  */
 export function pontuadorDaBusca(busca: string) {
   const query = normalizarParaBusca(busca);
-  const palavras = palavrasDaBusca(query);
+  const palavras = palavrasDaBusca(busca);
 
   return (produto: {
     name: string;

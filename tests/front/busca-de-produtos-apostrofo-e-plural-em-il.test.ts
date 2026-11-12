@@ -7,6 +7,7 @@
 //    plural ja achava o singular (tirar o "s" deixa "refi", que esta dentro de
 //    "refil"); faltava o caminho de volta: "refil" nao achava "Refis".
 import {
+  palavrasDaBusca,
   pontuadorDaBusca,
   produtoCombinaComBusca,
 } from "@/lib/busca-de-produtos";
@@ -62,6 +63,37 @@ describe("apostrofo reto e curvo sao a mesma coisa na busca", () => {
     ).toBe(false);
     expect(produtoCombinaComBusca(produto("Bolsa Grande"), "d'agua")).toBe(
       false,
+    );
+  });
+});
+
+// Busca feita SO de apostrofo nao pode virar "busca vazia = mostrar tudo": antes
+// da regra do apostrofo ela nao achava nada, e continua nao achando.
+describe("busca so de apostrofo nao mostra o catalogo inteiro", () => {
+  it.each([["'"], ["''"], ["’"], ["‘"], ["'  '"], [" ' "], ["`"]])(
+    "%s nao combina com produto nenhum",
+    (busca) => {
+      for (const p of [
+        produto("Caixa d’água"),
+        produto("Perfume O'Brien"),
+        produto("Bolsa Grande", "Bolsas", "Descrição"),
+      ]) {
+        expect(produtoCombinaComBusca(p, busca)).toBe(false);
+      }
+    },
+  );
+
+  it.each([["'"], ["''"], ["’"], ["'  '"]])(
+    "palavrasDaBusca(%s) nao devolve lista vazia (vazia = tudo)",
+    (busca) => {
+      expect(palavrasDaBusca(busca).length).toBeGreaterThan(0);
+    },
+  );
+
+  it("busca vazia continua achando tudo, e apostrofo solto no meio e ignorado", () => {
+    expect(produtoCombinaComBusca(produto("Bolsa Grande"), "")).toBe(true);
+    expect(produtoCombinaComBusca(produto("Bolsa Grande"), "' bolsa")).toBe(
+      true,
     );
   });
 });

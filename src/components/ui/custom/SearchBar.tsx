@@ -7,6 +7,7 @@ import { useCategories } from "@/hooks/useCategories";
 import { useProducts } from "@/hooks/useProducts";
 import {
   formaAparece,
+  normalizarParaBusca,
   palavrasDaBusca,
   pontuadorDaBusca,
   produtoCombinaComBusca,
@@ -55,7 +56,7 @@ const categoriaCombina = (
   categoria: string,
   palavras: ReturnType<typeof palavrasDaBusca>,
 ): boolean => {
-  const texto = normalizeText(categoria);
+  const texto = normalizarParaBusca(categoria);
   return (
     palavras.length > 0 &&
     palavras.every((formas) => formas.some((f) => formaAparece(texto, f)))
@@ -72,7 +73,7 @@ const categoriaComecaCom = (
   query: string,
   palavras: ReturnType<typeof palavrasDaBusca>,
 ): boolean => {
-  const texto = normalizeText(categoria);
+  const texto = normalizarParaBusca(categoria);
   if (texto.startsWith(query)) return true;
   if (palavras.length !== 1) return false;
   return palavras[0].some(
@@ -234,7 +235,7 @@ export function SearchBar({
   const predictedTerms = useMemo<string[]>(() => {
     // BUSCA-010 (#20): compara SEM acento nos dois lados, mas exibe o termo
     // como ele foi cadastrado -- quem digita "alianca" ve "Alianca" sugerido.
-    const query = normalizeText(deferredLocalValue);
+    const query = normalizarParaBusca(deferredLocalValue);
     if (!query) return [];
     const palavras = palavrasDaBusca(query);
 
@@ -282,7 +283,7 @@ export function SearchBar({
 
   // Matching categories
   const matchingCategories = useMemo<string[]>(() => {
-    const query = normalizeText(deferredLocalValue);
+    const query = normalizarParaBusca(deferredLocalValue);
     if (!query) return [];
     const palavras = palavrasDaBusca(query);
 
@@ -307,7 +308,7 @@ export function SearchBar({
   // decide quem entra. Antes dela vem a disponibilidade, como na lista da Home:
   // com muitos achados, os 6 da caixinha nao podem ser todos esgotados.
   const allResults = useMemo<ScoredProduct[]>(() => {
-    const query = normalizeText(deferredLocalValue);
+    const query = normalizarParaBusca(deferredLocalValue);
     if (!query) return [];
     const pontuar = pontuadorDaBusca(query);
 
