@@ -139,7 +139,13 @@ export const OrderReceipt = memo(function OrderReceipt({
           {!presencial && (
             <div className="flex justify-between">
               <span>Frete</span>
-              <span>R$ {reais(order?.shipping || 0)}</span>
+              {/* Entrega com frete zero diz "Grátis", igual à tela da cliente
+                  (OrderDetailsView); a retirada na loja segue com o valor. */}
+              <span>
+                {(order?.shipping || 0) <= 0 && !order.retiradaNaLoja
+                  ? "Grátis"
+                  : `R$ ${reais(order?.shipping || 0)}`}
+              </span>
             </div>
           )}
           {(order?.discount || 0) > 0 && (
