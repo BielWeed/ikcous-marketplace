@@ -131,6 +131,26 @@ describe("BannerCarousel: o dedo no banner pausa o autoplay", () => {
     expect(emblaApi.scrollNext).toHaveBeenCalledTimes(1);
   });
 
+  it("dois dedos: soltar um não solta a pausa; só o último dedo solta", () => {
+    const comContatos = (tipo: string, restantes: number) =>
+      act(() => {
+        const evento = new Event(tipo, { bubbles: true });
+        Object.defineProperty(evento, "touches", {
+          value: { length: restantes },
+        });
+        regiao().dispatchEvent(evento);
+      });
+    disparar("touchstart");
+    disparar("touchstart");
+    comContatos("touchend", 1); // um dedo saiu, outro continua em cima
+    passar(INTERVALO * 3);
+    expect(emblaApi.scrollNext).not.toHaveBeenCalled();
+
+    comContatos("touchend", 0); // o último saiu
+    passar(INTERVALO);
+    expect(emblaApi.scrollNext).toHaveBeenCalledTimes(1);
+  });
+
   it("toque cancelado pelo sistema (touchcancel) também solta o autoplay", () => {
     disparar("touchstart");
     passar(INTERVALO * 3);

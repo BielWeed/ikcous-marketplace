@@ -9,7 +9,14 @@ import { rolarAoCatalogo } from "@/lib/rolar-ao-catalogo";
 import { cn } from "@/lib/utils";
 import type { Banner } from "@/types";
 import useEmblaCarousel from "embla-carousel-react";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type TouchEvent,
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { BannerPronto } from "./BannerPronto";
 
 interface BannerCarouselProps {
@@ -62,10 +69,15 @@ export const BannerCarousel = memo(function BannerCarousel({
     registrarToque();
     setToqueAtivo(true);
   }, [registrarToque]);
-  const handleTouchFim = useCallback(() => {
-    registrarToque();
-    setToqueAtivo(false);
-  }, [registrarToque]);
+  const handleTouchFim = useCallback(
+    (evento: TouchEvent<HTMLDivElement>) => {
+      registrarToque();
+      // Com dois dedos, soltar um deles dispara `touchend` mas o outro segue
+      // em cima: só solta a pausa quando não resta nenhum contato.
+      setToqueAtivo((evento.touches?.length ?? 0) > 0);
+    },
+    [registrarToque],
+  );
   // O navegador pode perder o `touchend` (troca de app com o dedo na tela):
   // ao ocultar a aba, o toque deixa de valer e a pausa não fica presa.
   useEffect(() => {
