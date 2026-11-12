@@ -1,4 +1,20 @@
 {
+  "1.5.170": {
+    "titulo": "Cartão à vista conferido pelo valor, filas sem internet que não perdem a mudança e atualização do app que não trava",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Pagamento com cartão à vista: o pedido só é dado como pago quando o valor recebido cobre o pedido.",
+      "Loja, Carrinho e Cupom: o carrinho aberto em dois aparelhos se atualiza quando a conexão cai e volta, e tirar um cupom durante a conferência de outro não traz o outro de volta.",
+      "Loja, Rastrear sem conta: o código vale para o pedido que pediu o código, e com internet ruim o botão não fica preso em \"Gerando Código...\".",
+      "Loja, Minha conta e Entrar: mudar só o nome não desfaz o telefone trocado em outro aparelho, o e-mail corrigido aparece sem sair e entrar, e corrigir o e-mail durante a espera não manda o link de confirmação para o endereço errado.",
+      "Loja, Devolução: confirmar antes de a foto terminar de ser preparada não deixa a foto de fora.",
+      "Painel, Produtos e Pedidos sem internet: editar de novo o mesmo produto ou avançar de novo o mesmo pedido enquanto a fila envia não perde a última mudança.",
+      "Painel, Pedido e Minha loja: salvar o rastreio depois de uma atualização ao vivo não apaga o do outro atendente, e salvar só a frase de compartilhar não desfaz o WhatsApp trocado em outro aparelho.",
+      "Painel, Avisar clientes: se a lista de aparelhos demorar, o botão volta em 20 segundos e avisa que nada foi enviado.",
+      "App: se a conexão travar durante a atualização, a nova versão termina de instalar e o aviso aparece."
+    ]
+  },
   "1.5.169": {
     "titulo": "Compra mais firme, painel sem repetições e caixa que recusa valor inválido",
     "novidades": [],
