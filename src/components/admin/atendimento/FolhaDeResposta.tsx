@@ -12,6 +12,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useAlturaDoTeclado } from "@/hooks/useAlturaDoTeclado";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { pluralizar } from "@/lib/pluralizar";
 import { cn } from "@/lib/utils";
 import { Loader2, Send, X } from "lucide-react";
@@ -187,7 +188,9 @@ export function FolhaDeResposta({
             <button
               type="button"
               onClick={aoPublicar}
-              disabled={enviando || !resposta.trim() || semConexao}
+              disabled={
+                enviando || !nomeTemConteudoVisivel(resposta) || semConexao
+              }
               className={cn(BOTAO_NEUTRO, "min-h-12 flex-[2]")}
             >
               {enviando ? (

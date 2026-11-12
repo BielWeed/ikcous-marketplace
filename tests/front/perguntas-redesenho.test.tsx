@@ -25,6 +25,7 @@ const h = vi.hoisted(() => {
     } as unknown,
     perguntas: [] as any[],
     offline: false,
+    publicar: () => {},
   };
   const addAnswer = vi.fn(async (..._args: unknown[]) => true);
   const deleteQuestion = vi.fn(async (..._args: unknown[]) => true);
@@ -53,6 +54,26 @@ vi.mock("@/hooks/useQuestions", () => ({
     getQAStats: h.getQAStats,
   }),
 }));
+
+// A folha real continua montada. Guardamos apenas a porta do pai para provar
+// que a validação de envio também protege chamadas sem o botão (defesa dupla).
+vi.mock(
+  "@/components/admin/atendimento/FolhaDeResposta",
+  async (importOriginal) => {
+    const original =
+      await importOriginal<
+        typeof import("@/components/admin/atendimento/FolhaDeResposta")
+      >();
+    return {
+      FolhaDeResposta: (
+        props: React.ComponentProps<typeof original.FolhaDeResposta>,
+      ) => {
+        h.estado.publicar = props.aoPublicar;
+        return <original.FolhaDeResposta {...props} />;
+      },
+    };
+  },
+);
 
 vi.mock("@/hooks/useOnlineStatus", () => ({
   useOnlineStatus: () => h.estado.offline,
@@ -418,6 +439,61 @@ describe("AdminQAView — redesenho", () => {
     await tocar(publicar as HTMLElement);
     expect(h.addAnswer).toHaveBeenCalledWith(
       { questionId: "q-1", answer: "Oi, Isadora! Que bom que gostou." },
+      { silent: true },
+    );
+  });
+
+  it.each([
+    String.fromCodePoint(0x200b, 0x200b),
+    String.fromCodePoint(0x200e),
+    String.fromCodePoint(0x2060),
+    String.fromCodePoint(0x2800),
+    String.fromCodePoint(0x3164),
+  ])("não publica resposta sem desenho: %j", async (texto) => {
+    await montar();
+    await tocar(botaoPorTexto("Responder"));
+    const campo = document.querySelector<HTMLTextAreaElement>(
+      "textarea#merchant-answer",
+    )!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )?.set?.call(campo, texto);
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      await esperar();
+    });
+    const publicar = botaoPorTexto("Publicar resposta");
+    expect(publicar.disabled).toBe(true);
+    await tocar(publicar);
+    expect(h.addAnswer).not.toHaveBeenCalled();
+    // Mesmo sem a trava visual, o pai recusa e não chama o hook.
+    await act(async () => {
+      await h.estado.publicar();
+      await esperar();
+    });
+    expect(h.addAnswer).not.toHaveBeenCalled();
+  });
+
+  it("apara os espaços da resposta sem alterar o texto visível", async () => {
+    await montar();
+    await tocar(botaoPorTexto("Responder"));
+    const campo = document.querySelector<HTMLTextAreaElement>(
+      "textarea#merchant-answer",
+    )!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )?.set?.call(campo, "  Obrigado  ");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      await esperar();
+    });
+    const publicar = botaoPorTexto("Publicar resposta");
+    expect(publicar.disabled).toBe(false);
+    await tocar(publicar);
+    expect(h.addAnswer).toHaveBeenCalledWith(
+      { questionId: "q-1", answer: "Obrigado" },
       { silent: true },
     );
   });

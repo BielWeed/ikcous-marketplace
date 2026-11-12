@@ -27,6 +27,7 @@ import { useRevalidarAoVoltar } from "@/hooks/useRevalidarAoVoltar";
 import { useReviews } from "@/hooks/useReviews";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { EVENTO_AVALIACAO_EXCLUIDA } from "@/lib/evento-avaliacao-excluida";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { pluralizar } from "@/lib/pluralizar";
 import { supabase } from "@/lib/supabase";
 import { classeDoTexto } from "@/lib/tons-de-estado";
@@ -270,7 +271,8 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   };
 
   const enviarResposta = async (id: string) => {
-    if (envioDeRespostaRef.current || !replyText.trim()) return;
+    if (envioDeRespostaRef.current || !nomeTemConteudoVisivel(replyText))
+      return;
     if (isOffline) {
       haptic.error();
       toast.error("Você está offline", {
@@ -299,7 +301,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     setIsSubmittingReply(true);
     haptic.light();
     try {
-      const success = await addMerchantReply(id, replyText);
+      const success = await addMerchantReply(id, replyText.trim());
       if (success) {
         haptic.success();
         respostasDeOrigemRef.current.delete(id);
@@ -776,7 +778,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         <button
           type="button"
           onClick={() => enviarResposta(reviewId)}
-          disabled={isSubmittingReply || !replyText.trim() || isOffline}
+          disabled={
+            isSubmittingReply || !nomeTemConteudoVisivel(replyText) || isOffline
+          }
           className={cn(BOTAO_NEUTRO, "flex-[2]")}
         >
           <Send aria-hidden="true" className="size-4" />
