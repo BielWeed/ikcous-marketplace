@@ -854,12 +854,15 @@ export function usePushNotifications() {
     void inscrever(true);
   }, [userId, isSupported, sondado, subscription, permission, inscrever]);
 
-  const unsubscribe = useCallback(async () => {
+  // Devolve `true` quando o aparelho ficou sem inscrição (inclusive quando já
+  // não havia) e `false` quando falhou: o aviso passageiro é daqui, mas quem
+  // chama precisa saber para não fingir que desligou.
+  const unsubscribe = useCallback(async (): Promise<boolean> => {
     geracaoDaInscricao.current += 1;
     // Desligar é de propósito: primeiro esquece, antes de qualquer espera ou
     // falha, para nenhuma limpeza do app religar o que a pessoa desligou.
     if (userId) esquecerAvisosLigados(userId);
-    if (!subscription) return;
+    if (!subscription) return true;
 
     comecarAMexerNaInscricao();
     let saiuDoNavegador = false;
@@ -882,10 +885,12 @@ export function usePushNotifications() {
 
       setSubscription(null);
       toast.success("Você não receberá mais notificações.");
+      return true;
     } catch (error) {
       prazoEsgotado = error instanceof PrazoEsgotado;
       console.error("Error unsubscribing:", error);
       toast.error("Erro ao cancelar inscrição");
+      return false;
     } finally {
       terminarDeMexerNaInscricao(
         saiuDoNavegador,
