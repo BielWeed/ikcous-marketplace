@@ -128,11 +128,63 @@ describe("CheckoutView (convidado) — rótulos, erros e preenchimento", () => {
   });
 
   it("o CEP não é desabilitado durante a busca (não perde o foco): fora da busca não é readOnly", async () => {
+    // A busca é segurada PENDENTE: `disabled` num input focado tira o foco dele
+    // e fecha o teclado do celular no meio da digitação.
+    let responder!: (dados: unknown) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise((resolve) => {
+            responder = (dados) =>
+              resolve({ json: () => Promise.resolve(dados) } as Response);
+          }),
+      ),
+    );
     await montar();
     const cep = document.getElementById("guest-cep") as HTMLInputElement;
-    expect(cep.disabled).toBe(false);
+    cep.focus();
+    expect(document.activeElement).toBe(cep);
     expect(cep.readOnly).toBe(false);
     expect(cep.getAttribute("aria-busy")).toBe("false");
+
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        globalThis.HTMLInputElement.prototype,
+        "value",
+      )!.set!;
+      setter.call(cep, "01310100");
+      cep.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    // Busca em voo: o campo segue habilitado e com o foco.
+    expect(responder).toBeTypeOf("function");
+    expect(cep.getAttribute("aria-busy")).toBe("true");
+    expect(cep.disabled).toBe(false);
+    expect(document.activeElement).toBe(cep);
+
+    await act(async () => {
+      responder({
+        logradouro: "Avenida Paulista",
+        bairro: "Bela Vista",
+        localidade: "São Paulo",
+        uf: "SP",
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Busca terminou: campo livre, ainda focado, endereço preenchido.
+    expect(cep.getAttribute("aria-busy")).toBe("false");
+    expect(cep.readOnly).toBe(false);
+    expect(cep.disabled).toBe(false);
+    expect(document.activeElement).toBe(cep);
+    const valor = (id: string) =>
+      (document.getElementById(id) as HTMLInputElement).value;
+    expect(valor("guest-street")).toBe("Avenida Paulista");
+    expect(valor("guest-neighborhood")).toBe("Bela Vista");
+    expect(valor("guest-city")).toBe("São Paulo");
+    expect(valor("guest-state")).toBe("SP");
   });
 
   it("as mensagens de erro do formulário do convidado são red-700 (5,9:1), não red-500", () => {
