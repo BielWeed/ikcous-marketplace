@@ -4,6 +4,7 @@ import type { FormaDePagamentoNaEntrega } from "@/lib/formas-de-pagamento-na-ent
 import {
   type ChaveDosSeisPassos,
   type ConfigDosSeisPassos,
+  type ProdutoDoPrimeiroPasso,
   avisoDaFaixaDeCep,
   contagemDosPassos,
   entradaDosSeisPassos,
@@ -48,9 +49,7 @@ import {
  * moram dentro do cartão "Sua loja" do Início, que desenha o cartão e o título.
  */
 
-interface ProdutoMinimo {
-  readonly isActive: boolean;
-}
+type ProdutoMinimo = ProdutoDoPrimeiroPasso;
 
 interface LojaProntaEEstoqueBaixoProps {
   readonly somenteBoasVindas?: boolean;

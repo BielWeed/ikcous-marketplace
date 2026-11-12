@@ -662,7 +662,16 @@ export function AccountSettingsView() {
     // que já estava salvo (dado legado) não pode travar a troca do nome —
     // ele nem vai ser reenviado (ver `p_whatsapp` abaixo). A régua é a do
     // checkout (celular completo), que puxa este número já preenchido.
-    if (whatsappEditado) {
+    //
+    // "Editado" é campo TOCADO; o que vai (e o que se valida) é o campo que
+    // MUDOU: por dígitos, contra o número com que a tela abriu ou foi salva por
+    // último. Quem mexe no telefone e o devolve ao mesmo número não o reenvia —
+    // outro aparelho pode ter gravado um telefone novo nesse meio tempo.
+    const whatsappMudou =
+      whatsappEditado &&
+      profileData.phone.replace(/\D/g, "") !==
+        profileDataOriginal.phone.replace(/\D/g, "");
+    if (whatsappMudou) {
       const digitosWhatsapp = profileData.phone.replace(/\D/g, "");
       if (
         digitosWhatsapp.length > 0 &&
@@ -716,7 +725,7 @@ export function AccountSettingsView() {
       const resultado = await gravarPerfilDaConta(
         {
           p_full_name: nomeMudou ? nomeAparado : null,
-          p_whatsapp: whatsappEditado ? perfilEnviado.phone : null,
+          p_whatsapp: whatsappMudou ? perfilEnviado.phone : null,
         },
         contaDonaId,
         () => relerDepoisDoPrazo(contaDonaId),

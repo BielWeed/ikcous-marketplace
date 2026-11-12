@@ -1,5 +1,6 @@
 import type { ProductVariant } from "@/types";
 import { posicaoDoAtributo } from "./atributos-da-variacao";
+import { compararValores } from "./fileiras-de-variacao";
 import { dividirEmAtributos } from "./variante-composta";
 
 export interface EixoDaVariacao {
@@ -17,6 +18,13 @@ interface GrupoDeEixos {
 export interface ModeloDeEixos {
   eixos: EixoDaVariacao[];
   grupos: GrupoDeEixos[];
+}
+
+// Valores únicos do eixo. Tamanho/Voltagem seguem a ordem da página do produto
+// (P, M, G, GG; números por número; "Único" no fim); cor e o resto, a do cadastro.
+function valoresDoEixo(nome: string, brutos: string[]): string[] {
+  const unicos = [...new Set(brutos)];
+  return posicaoDoAtributo(nome) === 0 ? unicos.sort(compararValores) : unicos;
 }
 
 // A decomposição é só da TELA. Identidade, preço e estoque continuam na linha
@@ -44,13 +52,12 @@ export function criarEixosDaVariacao(
         nome: n,
         grupo: nome,
         indice,
-        valores: [
-          ...new Set(
-            linhas.map((v, i) =>
-              decompor ? pares.at(i)!.at(indice)!.value : v.value,
-            ),
+        valores: valoresDoEixo(
+          n,
+          linhas.map((v, i) =>
+            decompor ? pares.at(i)!.at(indice)!.value : v.value,
           ),
-        ],
+        ),
       }),
     );
     return {

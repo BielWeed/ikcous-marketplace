@@ -1,7 +1,8 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import type { CargoDaConta } from "@/lib/cargo-da-conta";
-import { formatarInteiro } from "@/lib/crm";
+import { formatarData, formatarInteiro } from "@/lib/crm";
+import { nomeOuReserva } from "@/lib/nome-visivel";
 import { rotuloDoPapel } from "@/lib/papel-da-conta";
 import { primeiraLetra } from "@/lib/primeira-letra";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
@@ -78,7 +79,7 @@ function IdentidadeCliente({
             detalhado && "text-base",
           )}
         >
-          {customer.full_name || "Usuário"}
+          {nomeOuReserva(customer.full_name, "Usuário")}
         </h4>
         <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-zinc-400">
           <Badge
@@ -242,7 +243,7 @@ export const CartaoCliente = memo(function CartaoCliente({
           <div className="w-full border-t border-admin-border pt-2 text-[11px] md:hidden">
             <span className="flex items-center gap-1">
               <Calendar aria-hidden="true" className="size-3 text-violet-300" />
-              Desde {new Date(customer.created_at).toLocaleDateString("pt-BR")}
+              Desde {formatarData(customer.created_at)}
             </span>
             {!customer.orders_count && (
               <p className="mt-1">Sem compras ainda</p>
@@ -260,7 +261,7 @@ export const CartaoCliente = memo(function CartaoCliente({
             className="size-3 shrink-0 text-violet-300"
           />
           {customer.last_order_date
-            ? new Date(customer.last_order_date).toLocaleDateString("pt-BR")
+            ? formatarData(customer.last_order_date)
             : "—"}
         </div>
       )}
@@ -281,7 +282,7 @@ export const CartaoCliente = memo(function CartaoCliente({
             <button
               ref={gatilhoRef}
               type="button"
-              aria-label={`Gestão de Cliente: ${customer.full_name || "Usuário"}`}
+              aria-label={`Gestão de Cliente: ${nomeOuReserva(customer.full_name, "Usuário")}`}
               className={`flex size-11 shrink-0 items-center justify-center rounded-full border border-admin-border bg-admin-raised text-zinc-300 hover:bg-admin-hover ${FOCO_CLIENTES}`}
             >
               <MoreHorizontal aria-hidden="true" className="size-5" />
@@ -328,8 +329,8 @@ export const CartaoCliente = memo(function CartaoCliente({
                   Notificação Push
                 </span>
                 <span className="block text-xs text-zinc-400">
-                  Abre Avisar clientes com {customer.full_name || "Usuário"} já
-                  escolhido.
+                  Abre Avisar clientes com{" "}
+                  {nomeOuReserva(customer.full_name, "Usuário")} já escolhido.
                 </span>
               </span>
               <ChevronRight aria-hidden="true" className="size-4 shrink-0" />

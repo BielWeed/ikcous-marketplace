@@ -7,12 +7,14 @@ import { useCategories } from "@/hooks/useCategories";
 import { useProducts } from "@/hooks/useProducts";
 import {
   formaAparece,
+  normalizarParaBusca,
   palavrasDaBusca,
   pontuadorDaBusca,
   produtoCombinaComBusca,
 } from "@/lib/busca-de-produtos";
 import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
 import { miniaturaDaSugestao, usarImagemOriginal } from "@/lib/imageUrl";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import { produtoDisponivel } from "@/lib/vitrine";
@@ -54,7 +56,7 @@ const categoriaCombina = (
   categoria: string,
   palavras: ReturnType<typeof palavrasDaBusca>,
 ): boolean => {
-  const texto = normalizeText(categoria);
+  const texto = normalizarParaBusca(categoria);
   return (
     palavras.length > 0 &&
     palavras.every((formas) => formas.some((f) => formaAparece(texto, f)))
@@ -71,7 +73,7 @@ const categoriaComecaCom = (
   query: string,
   palavras: ReturnType<typeof palavrasDaBusca>,
 ): boolean => {
-  const texto = normalizeText(categoria);
+  const texto = normalizarParaBusca(categoria);
   if (texto.startsWith(query)) return true;
   if (palavras.length !== 1) return false;
   return palavras[0].some(
@@ -139,10 +141,14 @@ export function SearchBar({
     }
   }, [localValue]);
 
+  // Texto que a cliente ja "gastou" ao abrir um produto pela sugestao: o envio
+  // pendente dele levaria o App a tira-la da tela do produto de volta a Home.
+  const textoGastoNoProduto = useRef<string | null>(null);
+
   // Debounced update to parent for catalog filter
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (localValue !== value) {
+      if (localValue !== value && localValue !== textoGastoNoProduto.current) {
         onChange(localValue);
       }
     }, 150);
@@ -172,7 +178,8 @@ export function SearchBar({
   // a caixa e volta ao campo. So o campo e o veu tratavam Esc: quem navegava
   // por Tab ate uma sugestao nao tinha como sair pelo teclado. O proprio campo
   // ja trata o Esc (tira o foco dele), entao fica de fora.
-  const showDropdown = isOpen && localValue.trim().length > 0;
+  // Texto so de invisivel (U+200B, U+2800...) o `trim()` nao tira: e busca vazia.
+  const showDropdown = isOpen && nomeTemConteudoVisivel(localValue);
   useEffect(() => {
     if (!showDropdown) return;
     const handleEscape = (event: KeyboardEvent) => {
@@ -202,6 +209,7 @@ export function SearchBar({
   const handleSuggestionClick = (suggestion: string, productId?: string) => {
     haptic.medium();
     if (productId && onProductClick) {
+      textoGastoNoProduto.current = localValue;
       onProductClick(productId);
       setIsOpen(false);
       return;
@@ -227,7 +235,7 @@ export function SearchBar({
   const predictedTerms = useMemo<string[]>(() => {
     // BUSCA-010 (#20): compara SEM acento nos dois lados, mas exibe o termo
     // como ele foi cadastrado -- quem digita "alianca" ve "Alianca" sugerido.
-    const query = normalizeText(deferredLocalValue);
+    const query = normalizarParaBusca(deferredLocalValue);
     if (!query) return [];
     const palavras = palavrasDaBusca(query);
 
@@ -275,7 +283,7 @@ export function SearchBar({
 
   // Matching categories
   const matchingCategories = useMemo<string[]>(() => {
-    const query = normalizeText(deferredLocalValue);
+    const query = normalizarParaBusca(deferredLocalValue);
     if (!query) return [];
     const palavras = palavrasDaBusca(query);
 
@@ -300,7 +308,7 @@ export function SearchBar({
   // decide quem entra. Antes dela vem a disponibilidade, como na lista da Home:
   // com muitos achados, os 6 da caixinha nao podem ser todos esgotados.
   const allResults = useMemo<ScoredProduct[]>(() => {
-    const query = normalizeText(deferredLocalValue);
+    const query = normalizarParaBusca(deferredLocalValue);
     if (!query) return [];
     const pontuar = pontuadorDaBusca(query);
 
@@ -357,6 +365,7 @@ export function SearchBar({
           }}
           onChange={(e) => {
             const val = e.target.value;
+            textoGastoNoProduto.current = null;
             setLocalValue(val);
             setIsOpen(val.trim().length > 0);
           }}

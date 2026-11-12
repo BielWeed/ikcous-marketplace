@@ -1,5 +1,6 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AvisoDaLojaSemDados } from "@/components/admin/AvisoDaLojaSemDados";
 import { CartaoDaVitrine } from "@/components/admin/vitrines/CartaoDaVitrine";
 import { FolhaEditarVitrine } from "@/components/admin/vitrines/FolhaEditarVitrine";
 import { FolhaNovaVitrine } from "@/components/admin/vitrines/FolhaNovaVitrine";
@@ -30,9 +31,13 @@ import { useFocoAposExcluir } from "@/hooks/useFocoAposExcluir";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import type { LayoutDeOfertas } from "@/lib/layout-de-ofertas";
-import { ordenarParaVitrine } from "@/lib/vitrine";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import {
+  type FaixaAutomatica,
   destaquesDaVitrine,
+  foraDaFaixaAutomatica,
+  fraseDoQueFicouFora,
+  lancamentosDaVitrine,
   ofertasDaVitrine,
   produtosAVenda,
 } from "@/lib/vitrine-do-painel";
@@ -45,13 +50,14 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 interface AdminCarouselsViewProps {
   onNavigate: (view: View) => void;
   active?: boolean;
   onSetDirty?: (dirty: boolean) => void;
+  onSetBackOverride?: (fn: (() => void) | null) => void;
 }
 
 /** Uma linha do diálogo de restaurar; `chave` é estável e única por linha. */
@@ -122,9 +128,23 @@ function soOsQueExistem(
 export const AdminCarouselsView = memo(function AdminCarouselsView({
   onNavigate: _onNavigate,
   onSetDirty,
+  onSetBackOverride,
 }: AdminCarouselsViewProps) {
-  const { config, updateConfig, loadingProducts, catalogoErro, fetchProducts } =
-    useStore();
+  const {
+    config,
+    updateConfig,
+    loadingProducts,
+    catalogoErro,
+    fetchProducts,
+    configIndisponivel,
+    refresh,
+  } = useStore();
+  // A leitura da config falhou e não há cópia no aparelho: `homeSections` cai
+  // nas 3 vitrines de fábrica, e gravar qualquer coisa a partir delas
+  // substituiria as vitrines reais (e os produtos escolhidos) da loja. Tudo que
+  // grava fica travado até a leitura funcionar. `=== true`: contexto sem o
+  // campo lê como "não falhou".
+  const configFalhou = configIndisponivel === true;
   const { products } = useProducts();
   // Lista vazia por não ter lido ainda (ou por erro) não é "loja sem produtos".
   const catalogoFora =
@@ -221,6 +241,9 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     updated: typeof homeSections,
     showToast = false,
   ): Promise<boolean> => {
+    // Última defesa: com a leitura da loja falha `updated` nasce da lista de
+    // fábrica e gravaria por cima das vitrines reais.
+    if (configFalhou) return Promise.resolve(false);
     // Toda ação substitui a MESMA lista no banco. Travas por vitrine ou só
     // por estado React deixam duas gravações sair sobre a mesma base antiga.
     const chave = JSON.stringify(updated);
@@ -266,7 +289,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   };
 
   const handleToggleSectionActive = (sectionId: string) => {
-    if (gravacaoEmAndamentoRef.current) return;
+    if (gravacaoEmAndamentoRef.current || configFalhou) return;
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description: "Você precisa estar online para alterar a visibilidade.",
@@ -285,7 +308,8 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     sectionId: string,
     newTitle: string,
   ): Promise<boolean> => {
-    if (!newTitle.trim()) {
+    if (configFalhou) return false;
+    if (!nomeTemConteudoVisivel(newTitle)) {
       toast.error("Informe um título para a vitrine");
       return false;
     }
@@ -320,6 +344,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   };
 
   const handleUpdateMaxItems = (sectionId: string, maxItems: number) => {
+    if (configFalhou) return;
     const atual = homeSections.find((s) => s.id === sectionId);
     if ((atual?.maxItems ?? QUANTIDADE_PADRAO) === maxItems) {
       return;
@@ -342,6 +367,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   };
 
   const handleUpdateLayout = (sectionId: string, layout: LayoutDeOfertas) => {
+    if (configFalhou) return;
     if (isOffline) {
       toast.error("Sem conexão", { description: "Você precisa estar online." });
       return;
@@ -353,7 +379,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   };
 
   const moveSection = (index: number, direction: "up" | "down") => {
-    if (gravacaoEmAndamentoRef.current) return;
+    if (gravacaoEmAndamentoRef.current || configFalhou) return;
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description: "Você precisa estar online para reordenar.",
@@ -393,7 +419,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   const secoesNaLista = ordemArrastada ?? homeSections;
 
   const handleReordenando = (novaOrdem: SecaoDaHome[]) => {
-    if (gravacaoEmAndamentoRef.current) return;
+    if (gravacaoEmAndamentoRef.current || configFalhou) return;
     ordemArrastadaRef.current = novaOrdem;
     setOrdemArrastada(novaOrdem);
   };
@@ -403,6 +429,10 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     const novaOrdem = ordemArrastadaRef.current;
     ordemArrastadaRef.current = null;
     if (!novaOrdem) return;
+    if (configFalhou) {
+      setOrdemArrastada(null);
+      return;
+    }
 
     // A ordem vem do arrasto, mas o CONTEÚDO vem das vitrines de agora, por
     // id: uma mudança confirmada durante o arrasto (desligar, renomear) não
@@ -445,8 +475,8 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   };
 
   const handleAddCustomVitrine = async () => {
-    if (gravacaoEmAndamentoRef.current) return;
-    if (!newVitrineTitle.trim()) {
+    if (gravacaoEmAndamentoRef.current || configFalhou) return;
+    if (!nomeTemConteudoVisivel(newVitrineTitle)) {
       toast.error("Informe um título para a vitrine");
       return;
     }
@@ -478,6 +508,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   };
 
   const handleDeleteVitrine = async (sectionId: string) => {
+    if (configFalhou) return;
     if (isOffline) {
       toast.error("Sem conexão com a internet");
       return;
@@ -487,6 +518,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   };
 
   const handleResetDefaultVitrines = async () => {
+    if (configFalhou) return;
     if (isOffline) {
       toast.error("Sem conexão com a internet");
       return;
@@ -521,15 +553,34 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
       } else if (sec.id === "bestsellers") {
         map[sec.id] = destaquesDaVitrine(aVenda).slice(0, max);
       } else {
-        // new_arrivals or default custom — a MESMA ordenação da loja
-        // (ordenarParaVitrine, src/lib/vitrine.ts): sem-estoque no fim antes
-        // de cortar. Item 15 do laudo de 29/08: o preview ordenava só por
-        // data e a lojista montava a vitrine vendo uma ordem que a loja não
-        // mostrava.
-        map[sec.id] = ordenarParaVitrine(aVenda).slice(0, max);
+        // new_arrivals or default custom — a MESMA regra da loja
+        // (lancamentosDaVitrine, src/lib/vitrine-do-painel.ts): só produto à
+        // venda e com foto, mais novo primeiro. Item 15 do laudo de 29/08: o
+        // preview ordenava só por data e a lojista montava a vitrine vendo uma
+        // ordem que a loja não mostrava.
+        map[sec.id] = lancamentosDaVitrine(aVenda).slice(0, max);
       }
     });
 
+    return map;
+  }, [homeSections, products]);
+
+  // "Ficaram de fora desta faixa: 2 esgotados, 1 sem foto": só nas vitrines
+  // AUTOMÁTICAS (a escolhida à mão mostra tudo o que a lojista escolheu). Sem
+  // este aviso o destaque que esgota some e a lojista acha que o app quebrou.
+  const foraDasFaixas = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    const aVenda = produtosAVenda(products);
+    homeSections.forEach((sec) => {
+      if (sec.productIds && sec.productIds.length > 0) return;
+      const faixa: FaixaAutomatica =
+        sec.id === "offers"
+          ? "ofertas"
+          : sec.id === "bestsellers"
+            ? "destaques"
+            : "lancamentos";
+      map[sec.id] = fraseDoQueFicouFora(foraDaFaixaAutomatica(faixa, aVenda));
+    });
     return map;
   }, [homeSections, products]);
 
@@ -537,6 +588,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     sectionId: string,
     productId: string,
   ) => {
+    if (configFalhou) return;
     if (isOffline) {
       toast.error("Sem conexão com a internet");
       return;
@@ -579,6 +631,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
 
   /** "Automático": a loja volta a escolher sozinha (lista de produtos vazia). */
   const handleVoltarAoAutomatico = async (sectionId: string) => {
+    if (configFalhou) return;
     const atual = homeSections.find((s) => s.id === sectionId);
     if (!atual || (atual.productIds?.length ?? 0) === 0) return;
     if (isOffline) {
@@ -599,6 +652,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
    * e pôr a partir dali.
    */
   const handleEscolherManualmente = async (sectionId: string) => {
+    if (configFalhou) return;
     const atual = homeSections.find((s) => s.id === sectionId);
     if (!atual || (atual.productIds?.length ?? 0) > 0) return;
     const idsHoje = (previewProducts[sectionId] || []).map((p) => p.id);
@@ -651,6 +705,44 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     return homeSections.find((s) => s.id === editingSectionId) ?? null;
   }, [editingSectionId, homeSections]);
 
+  const fecharFolha = useCallback(() => setEditingSectionId(null), []);
+  const folhaAberta = secaoEmEdicao !== null;
+  const jaFechouPeloVoltarRef = useRef(false);
+  useEffect(() => {
+    if (folhaAberta) {
+      jaFechouPeloVoltarRef.current = false;
+      onSetBackOverride?.(() => () => {
+        if (jaFechouPeloVoltarRef.current) return;
+        jaFechouPeloVoltarRef.current = true;
+        fecharFolha();
+      });
+    } else {
+      onSetBackOverride?.(null);
+    }
+    return () => onSetBackOverride?.(null);
+  }, [folhaAberta, onSetBackOverride, fecharFolha]);
+
+  // Mesmo padrão de Banners: o Voltar físico consome só a entrada da folha.
+  // Se o navegador já a consumiu, fechar não pode voltar uma segunda vez.
+  const temEntradaDeHistoricoRef = useRef(false);
+  useEffect(() => {
+    if (folhaAberta) {
+      if (!temEntradaDeHistoricoRef.current) {
+        window.history.pushState(
+          { ...window.history.state, modal: "vitrine" },
+          "",
+          window.location.pathname + window.location.search,
+        );
+        temEntradaDeHistoricoRef.current = true;
+      }
+    } else if (temEntradaDeHistoricoRef.current) {
+      temEntradaDeHistoricoRef.current = false;
+      if (window.history.state?.modal === "vitrine") {
+        window.history.back();
+      }
+    }
+  }, [folhaAberta]);
+
   const idsEmExibicaoNaEdicao = useMemo(() => {
     if (!secaoEmEdicao) return [];
     if (secaoEmEdicao.productIds && secaoEmEdicao.productIds.length > 0) {
@@ -690,7 +782,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                         type="button"
                         aria-label="Mais ações"
                         title="Mais ações"
-                        disabled={salvandoVitrines}
+                        disabled={salvandoVitrines || configFalhou}
                         className="group flex min-h-11 min-w-11 items-center justify-center rounded-[12px]"
                       >
                         <span
@@ -748,13 +840,19 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           <button
             type="button"
             onClick={() => setShowAddVitrineModal(true)}
-            disabled={salvandoVitrines}
+            disabled={salvandoVitrines || configFalhou}
             className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-foreground px-6 text-[14.5px] font-extrabold text-background transition-all hover:opacity-90 active:scale-[0.99] disabled:opacity-60 sm:h-auto sm:w-56"
           >
             <Plus className="size-[18px] stroke-[2.5]" />
             Nova vitrine
           </button>
         </div>
+
+        {configFalhou && (
+          <AvisoDaLojaSemDados
+            onTentarDeNovo={() => void refresh({ onlyConfig: true })}
+          />
+        )}
 
         {catalogoFora && (
           <div
@@ -799,13 +897,14 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
               indice={index}
               total={secoesNaLista.length}
               produtosEmExibicao={previewProducts[sec.id] ?? []}
+              foraDaFaixa={foraDasFaixas[sec.id] ?? null}
               escolhidos={soOsQueExistem(sec.productIds, idsDoCatalogo).length}
               aoAbrir={setEditingSectionId}
               aoAlternarAtiva={handleToggleSectionActive}
               aoMover={moveSection}
               aoSoltar={handleSoltou}
               aoAlterarLayout={handleUpdateLayout}
-              travado={salvandoVitrines}
+              travado={salvandoVitrines || configFalhou}
               catalogoFora={catalogoFora}
             />
           ))}
@@ -819,7 +918,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           aoMudarTitulo={setNewVitrineTitle}
           aoCriar={handleAddCustomVitrine}
           aoFechar={() => setShowAddVitrineModal(false)}
-          criando={criandoVitrine || salvandoVitrines}
+          criando={criandoVitrine || salvandoVitrines || configFalhou}
         />
       )}
 
@@ -830,8 +929,8 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           posicao={homeSections.findIndex((s) => s.id === secaoEmEdicao.id) + 1}
           produtos={products}
           idsEmExibicao={idsEmExibicaoNaEdicao}
-          travado={salvandoVitrines}
-          aoFechar={() => setEditingSectionId(null)}
+          travado={salvandoVitrines || configFalhou}
+          aoFechar={fecharFolha}
           aoRenomear={(titulo) => handleRenameSection(secaoEmEdicao.id, titulo)}
           aoMudarQuantidade={(quantidade) =>
             handleUpdateMaxItems(secaoEmEdicao.id, quantidade)
@@ -886,7 +985,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              disabled={salvandoVitrines}
+              disabled={salvandoVitrines || configFalhou}
               onClick={() => {
                 if (vitrineParaAutomatico)
                   void handleVoltarAoAutomatico(vitrineParaAutomatico);
@@ -935,7 +1034,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
-              disabled={salvandoVitrines}
+              disabled={salvandoVitrines || configFalhou}
               onClick={handleResetDefaultVitrines}
               className="h-11 rounded-[14px] border-0 bg-red-600 px-5 text-sm font-bold text-white hover:bg-red-700"
             >
@@ -982,7 +1081,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
-              disabled={salvandoVitrines}
+              disabled={salvandoVitrines || configFalhou}
               onClick={() => {
                 foco.marcarExclusao();
                 if (vitrineParaExcluir) {

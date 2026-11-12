@@ -435,6 +435,7 @@ export function AdminFinanceiroView({
     };
     onSetBackOverride?.(() => concluir);
     // Rede de segurança: se o popstate nunca chegar, não deixa o desvio preso.
+    clearTimeout(relogioDaEntrada.current);
     relogioDaEntrada.current = window.setTimeout(concluir, 1500);
     globalThis.history.back();
   }, [folhaAberta, empurrarEntrada, temDesvio, onSetBackOverride]);

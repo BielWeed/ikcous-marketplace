@@ -13,6 +13,8 @@
  * Sem React, sem Supabase, sem `import.meta.env`.
  */
 
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
+
 export interface PartesDoEndereco {
   /** Com ou sem hífen; só os dígitos contam. */
   readonly cep: string;
@@ -159,6 +161,25 @@ export function lerEnderecoConferido(
   return lido;
 }
 
+/**
+ * O endereço da loja numa frase corrida, para os Termos: "Rua, nº[, compl.] -
+ * Bairro, Cidade/UF, CEP 00000-000" (o travessão dos blocos vira hífen: a frase
+ * que o recebe já usa travessão como separador). Endereço fora do formato (texto
+ * livre de antes) sai como a lojista escreveu, só com os espaços arrumados.
+ * Sem endereço: `null` — quem chama não escreve nada, nem placeholder.
+ */
+export function enderecoEmUmaFrase(
+  storeAddress: string | null | undefined,
+): string | null {
+  const lido = lerEnderecoDaLoja(storeAddress);
+  if (!lido) return espacosEmUm(storeAddress ?? "") || null;
+  const { cep, rua, numero, complemento, bairro, cidade, uf } =
+    normalizarPartes(lido);
+  const lugar = [rua, numero, ...(complemento ? [complemento] : [])].join(", ");
+  const regiao = [...(bairro ? [bairro] : []), `${cidade}/${uf}`].join(", ");
+  return `${lugar} - ${regiao}, CEP ${cep}`;
+}
+
 /** Por que ainda não dá para gravar (o texto que a lojista lê), ou `null`. */
 export function motivoDoEnderecoIncompleto(
   partes: PartesDoEndereco,
@@ -166,9 +187,11 @@ export function motivoDoEnderecoIncompleto(
   if (digitosDoCep(partes.cep).length !== 8) {
     return "Digite o CEP completo (8 números) para preencher o endereço.";
   }
-  if (!parte(partes.rua)) return "Falta a rua.";
-  if (!parte(partes.numero)) return "Falta o número do endereço.";
-  if (!parte(partes.cidade)) return "Falta a cidade.";
+  if (!nomeTemConteudoVisivel(parte(partes.rua))) return "Falta a rua.";
+  if (!nomeTemConteudoVisivel(parte(partes.numero))) {
+    return "Falta o número do endereço.";
+  }
+  if (!nomeTemConteudoVisivel(parte(partes.cidade))) return "Falta a cidade.";
   if (!/^[A-Za-z]{2}$/.test(parte(partes.uf))) {
     return "Falta a UF (2 letras).";
   }

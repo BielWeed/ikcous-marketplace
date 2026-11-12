@@ -125,6 +125,7 @@ describe("OrderSearch — Já tenho o código", () => {
     await clicar(host, BOTAO);
 
     expect(porPlaceholder(host, CAMPO_CODIGO)).not.toBeNull();
+    expect(document.activeElement).toBe(porPlaceholder(host, CAMPO_CODIGO));
     expect(generateOrderOtp).not.toHaveBeenCalled();
   });
 
@@ -166,6 +167,7 @@ describe("OrderSearch — Já tenho o código", () => {
     await preencher(host);
     await enviar(host);
     expect(porPlaceholder(host, CAMPO_CODIGO)).not.toBeNull();
+    expect(document.activeElement).toBe(porPlaceholder(host, CAMPO_CODIGO));
 
     await clicar(host, "Voltar");
     expect(porPlaceholder(host, CAMPO_CODIGO)).toBeNull();

@@ -16,7 +16,7 @@ import {
   Phone,
   User,
 } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
 /**
@@ -41,6 +41,12 @@ const fragmentoValido = (valor: string) =>
 // texto digitado fica em caixa normal; só o rótulo-exemplo vem em maiúsculas.
 const campo =
   "h-12 w-full rounded-[14px] border border-input bg-muted/40 pl-11 pr-4 text-base text-foreground placeholder:text-sm placeholder:text-muted-foreground transition-colors focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground/20";
+
+interface TrioDaConsulta {
+  email: string;
+  whatsapp: string;
+  fragmento: string;
+}
 
 interface OrderSearchProps {
   onNavigate: (view: View) => void;
@@ -84,11 +90,21 @@ export function OrderSearch({
   const [whatsapp, setWhatsapp] = useState("");
   const [orderFragment, setOrderFragment] = useState("");
   const [otp, setOtp] = useState("");
+  // O trio do envio que DEU CERTO. Durante a espera da rede os campos seguem
+  // editáveis: a verificação confere contra o trio que pediu o código, não
+  // contra o que está digitado agora. Só um envio com sucesso o fixa; "Voltar"
+  // o solta (e "Já tenho o código", sem envio, usa os campos).
+  const [trioEnviado, setTrioEnviado] = useState<TrioDaConsulta | null>(null);
 
   // Loading/Wizard states
   const [step, setStep] = useState<"request" | "verify">("request");
   const [isLoading, setIsLoading] = useState(false);
   const envioOtpEmCurso = useRef(false);
+  const campoCodigo = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (step === "verify") campoCodigo.current?.focus();
+  }, [step]);
 
   const handleWhatsappChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = mascaraWhatsappBr(e.target.value, whatsapp);
@@ -143,16 +159,23 @@ export function OrderSearch({
       return;
     }
 
+    // Lido AGORA, no clique: é a este trio que o código fica amarrado.
+    const trio: TrioDaConsulta = {
+      email: email.trim().toLowerCase(),
+      whatsapp: cleanWhatsapp,
+      fragmento,
+    };
     envioOtpEmCurso.current = true;
     setIsLoading(true);
     try {
       const success = await generateOrderOtp(
-        email.trim().toLowerCase(),
-        cleanWhatsapp,
-        fragmento,
+        trio.email,
+        trio.whatsapp,
+        trio.fragmento,
       );
       if (success) {
         toast.success("Código de verificação enviado para seu e-mail!");
+        setTrioEnviado(trio);
         setStep("verify");
       }
     } catch (error) {
@@ -175,15 +198,17 @@ export function OrderSearch({
     setIsLoading(true);
     try {
       // O mesmo trio que pediu o código: a verificação só alcança o código
-      // do pedido que confere com ele (get_orders_by_otp_v2).
-      const foundOrders = await fetchOrdersByOtp(
-        email.trim().toLowerCase(),
-        otp.trim(),
-        {
-          whatsapp: whatsapp.replaceAll(/\D/g, ""),
-          fragmento: limparFragmentoDoPedido(orderFragment),
-        },
-      );
+      // do pedido que confere com ele (get_orders_by_otp_v2). Sem envio nesta
+      // tela ("Já tenho o código"), valem os campos, que nesta etapa não mudam.
+      const trio: TrioDaConsulta = trioEnviado ?? {
+        email: email.trim().toLowerCase(),
+        whatsapp: whatsapp.replaceAll(/\D/g, ""),
+        fragmento: limparFragmentoDoPedido(orderFragment),
+      };
+      const foundOrders = await fetchOrdersByOtp(trio.email, otp.trim(), {
+        whatsapp: trio.whatsapp,
+        fragmento: trio.fragmento,
+      });
       if (foundOrders && foundOrders.length > 0) {
         toast.success(
           foundOrders.length === 1
@@ -452,7 +477,7 @@ export function OrderSearch({
                   <div className="flex items-center gap-2 rounded-[14px] border border-border p-3 text-amber-700 dark:text-amber-400">
                     <KeyRound className="size-4 flex-shrink-0" />
                     <span className="min-w-0 break-words text-sm font-medium">
-                      Código enviado para {email}
+                      Código enviado para {trioEnviado?.email ?? email}
                     </span>
                   </div>
 
@@ -461,6 +486,7 @@ export function OrderSearch({
                       type="text"
                       inputMode="numeric"
                       autoComplete="one-time-code"
+                      ref={campoCodigo}
                       required
                       aria-label="Código de 6 dígitos"
                       placeholder="DIGITE O CÓDIGO DE 6 DÍGITOS"
@@ -483,6 +509,7 @@ export function OrderSearch({
                         haptic.light();
                         setStep("request");
                         setOtp("");
+                        setTrioEnviado(null);
                       }}
                       className="h-[52px] flex-1 rounded-2xl border border-solid border-border text-base font-semibold text-foreground transition-colors hover:bg-muted/40 active:scale-[0.98]"
                     >

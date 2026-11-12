@@ -25,10 +25,33 @@ export function caractereSemDesenho(caractere: string): boolean {
   );
 }
 
-/** Diz se o nome tem ao menos um caractere que aparece na tela. */
-export function nomeTemConteudoVisivel(nome: string): boolean {
-  for (const caractere of nome) {
-    if (!caractereSemDesenho(caractere)) return true;
+// Marca combinante (\p{M}: U+034F, acento solto, U+FE0F...) só desenha junto de
+// um caractere base antes dela. Texto feito só de marcas não aparece na tela.
+const MARCA_COMBINANTE = /^\p{M}$/u;
+
+/**
+ * Diz se o nome tem ao menos um caractere que aparece na tela. A marca
+ * combinante sozinha não conta; se vier depois de uma letra, é a letra que
+ * torna o texto visível.
+ */
+export function nomeTemConteudoVisivel(
+  nome: string | null | undefined,
+): boolean {
+  for (const caractere of nome ?? "") {
+    if (!caractereSemDesenho(caractere) && !MARCA_COMBINANTE.test(caractere)) {
+      return true;
+    }
   }
   return false;
+}
+
+/**
+ * O nome para mostrar: aparado quando tem conteúdo visível, `reserva` quando
+ * é vazio, só espaço ou só caractere invisível (que o `||` tomaria por nome).
+ */
+export function nomeOuReserva(
+  nome: string | null | undefined,
+  reserva: string,
+): string {
+  return nomeTemConteudoVisivel(nome) ? (nome ?? "").trim() : reserva;
 }

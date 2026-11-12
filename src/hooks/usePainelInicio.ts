@@ -8,7 +8,7 @@ import {
 import { hojeEmSaoPaulo } from "@/lib/financeiro";
 import { supabase } from "@/lib/supabase";
 import type { AssinaturaDaLoja, PainelInicio } from "@/types/painel";
-import { comPrazo } from "@/utils/com-prazo";
+import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
@@ -90,6 +90,17 @@ let geracaoDaBuscaEmVoo = 0;
 // Recarga FORÇADA pedida com uma busca em voo: roda uma busca depois dela.
 let buscaForcadaSeguinte: Promise<RetratoDoPainel> | null = null;
 
+// O prazo vale POR leitura: a que estoura vira o erro DELA (`error`) e a outra
+// continua valendo — a assinatura pendurada não apaga os números de hoje.
+function comPrazoDaLeitura<R>(leitura: PromiseLike<R>) {
+  return comPrazo(Promise.resolve(leitura), PRAZO_DA_BUSCA_MS).catch(
+    (erro: unknown) => {
+      if (erro instanceof PrazoEsgotado) return { data: null, error: erro };
+      throw erro;
+    },
+  );
+}
+
 /**
  * `iniciadaEm` é o instante em que a busca SAIU, não o em que voltou: os
  * números refletem o servidor naquele momento. Uma busca que sai às 23:59:59 e
@@ -101,8 +112,8 @@ async function buscarRetrato(
   geracao: number,
 ): Promise<RetratoDoPainel> {
   const [respostaPainel, respostaAssinatura] = await Promise.all([
-    supabase.rpc("painel_inicio"),
-    supabase.rpc("assinatura_da_loja_ler"),
+    comPrazoDaLeitura(supabase.rpc("painel_inicio")),
+    comPrazoDaLeitura(supabase.rpc("assinatura_da_loja_ler")),
   ]);
 
   let painel: PainelInicio | null = null;
@@ -241,8 +252,9 @@ interface EstadoDoPainelInicio {
   readonly erro: string | null;
   readonly erroAssinatura: string | null;
   /**
-   * Os números na tela são de uma leitura anterior porque a última releitura de
-   * fundo falhou. Não é erro (sem faixa vermelha): só o selo deixa de dizer "Ao vivo".
+   * O canal não está confirmado, a releitura após a queda ainda não terminou,
+   * ou a última releitura de fundo falhou. O selo deixa de dizer "Ao vivo"
+   * sem apagar os números nem mostrar uma faixa vermelha.
    */
   readonly desatualizado: boolean;
   readonly atualizar: () => Promise<void>;
@@ -255,6 +267,7 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
     retratoEmCache,
   );
   const [carregando, setCarregando] = useState(false);
+  const [canalVivo, setCanalVivo] = useState(false);
   const montadoRef = useRef(true);
 
   useEffect(() => {
@@ -333,15 +346,26 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
 
   // Tempo real em marketplace_orders — só com a tela ativa.
   useEffect(() => {
+    setCanalVivo(false);
     if (!active || !temSessao) return;
     let espera: ReturnType<typeof setTimeout> | null = null;
     let sujoEscondido = false;
+    let encerrado = false;
+    let conectado = false;
+    let canalJaCaiu = false;
+    let geracaoDoCanal = 0;
 
     const recarregarJa = () => {
       if (espera) clearTimeout(espera);
       espera = setTimeout(() => {
         espera = null;
-        void carregar(true);
+        const geracao = geracaoDoCanal;
+        void carregar(true, canalJaCaiu).then(() => {
+          if (!encerrado && conectado && geracao === geracaoDoCanal) {
+            canalJaCaiu = false;
+            setCanalVivo(true);
+          }
+        });
       }, ESPERA_DO_TEMPO_REAL_MS);
     };
 
@@ -379,10 +403,32 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
         { event: "*", schema: "public", table: "marketplace_orders" },
         aoMudarPedido,
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (encerrado) return;
+        if (status === "SUBSCRIBED") {
+          const voltou = !conectado;
+          conectado = true;
+          // Mesmo padrão das notificações: abertura já lê, reconexão relê.
+          if (canalJaCaiu) {
+            if (voltou) aoMudarPedido();
+          } else {
+            setCanalVivo(true);
+          }
+        } else if (
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT" ||
+          status === "CLOSED"
+        ) {
+          conectado = false;
+          canalJaCaiu = true;
+          geracaoDoCanal += 1;
+          setCanalVivo(false);
+        }
+      });
     document.addEventListener("visibilitychange", aoMudarVisibilidade);
 
     return () => {
+      encerrado = true;
       if (espera) clearTimeout(espera);
       document.removeEventListener("visibilitychange", aoMudarVisibilidade);
       supabase.removeChannel(canal);
@@ -434,7 +480,7 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
     carregando: carregando || (retratoDeHoje === null && active && temSessao),
     erro: retrato?.erroPainel ?? null,
     erroAssinatura: retrato?.erroAssinatura ?? null,
-    desatualizado: retratoDeHoje?.releituraFalhou === true,
+    desatualizado: !canalVivo || retratoDeHoje?.releituraFalhou === true,
     atualizar,
   };
 }

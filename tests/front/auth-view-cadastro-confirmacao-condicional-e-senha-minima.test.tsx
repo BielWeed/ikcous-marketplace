@@ -111,6 +111,8 @@ describe("AuthView — cadastro: texto condicional e senha mínima", () => {
       expect(texto).toContain("Verifique seu e-mail");
       expect(texto).toMatch(/se este e-?mail ainda não tinha conta/i);
       expect(texto).toMatch(/se você já tem conta/i);
+      // Link no spam: reenviar não resolve, então a tela manda olhar lá.
+      expect(texto).toMatch(/pasta de spam ou lixo\s+eletrônico/i);
       // O endereço continua visível (ajuda quem digitou errado).
       expect(texto).toContain("pessoa@example.com");
       // A frase antiga afirmava o envio de forma categórica.

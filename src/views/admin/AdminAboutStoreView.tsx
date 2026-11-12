@@ -396,7 +396,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         // diferença de normalização deixava o botão habilitado para sempre).
         // O endereço se re-sincroniza sozinho pelo config que chega.
         usuarioEditou.current = false;
-        setDescricao(descricao.trim());
+        setDescricao(textoDaLoja(descricaoDaLojaParaHtml(descricao)));
         // Este resultado confirma só o pacote de endereço e descrição.
         toast.success(
           alcanceNovo === null

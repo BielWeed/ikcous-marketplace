@@ -21,6 +21,7 @@ import {
   AVISO_ENVIO_DO_CHECKOUT_EM_CURSO,
   haEnvioDoCheckoutEmCurso,
 } from "@/lib/envio-do-checkout-em-curso";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import {
   PRAZO_DA_SESSAO_NA_RECARGA_MS,
   esquecerPedidoPendenteDoCheckout,
@@ -247,7 +248,7 @@ import { CartProvider } from "@/contexts/CartContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { StoreProvider, useStore } from "@/contexts/StoreContext";
 import { useCartActions, useCartState } from "@/hooks/useCart";
-import type { FiltrosDaBusca } from "@/hooks/useSearch";
+import type { FiltrosDaBusca, QuantidadeDaBusca } from "@/hooks/useSearch";
 import {
   chaveDoItem,
   estoqueDaLinha,
@@ -887,6 +888,15 @@ const AppContent = () => {
   const guardarFiltrosDaBusca = useCallback((filtros: FiltrosDaBusca) => {
     filtrosDaBuscaRef.current = filtros;
   }, []);
+  // Quantos resultados a /search já tinha carregado ("rolar para ver mais"):
+  // volta com a tela, para a rolagem guardada cair na lista já comprida.
+  const quantidadeDaBuscaRef = useRef<QuantidadeDaBusca | null>(null);
+  const guardarQuantidadeDaBusca = useCallback(
+    (quantidade: QuantidadeDaBusca) => {
+      quantidadeDaBuscaRef.current = quantidade;
+    },
+    [],
+  );
   const [scrollProgress, setScrollProgress] = useState(0);
   const [isHeaderDocked, setIsHeaderDocked] = useState(false);
   // O convite de avisos (z-[999]) cobre o lembrete do carrinho: os dois nunca
@@ -1544,7 +1554,11 @@ const AppContent = () => {
     (query: string) => {
       setSearchQuery(query);
       const telaAtual = currentViewRef.current;
-      if (query.trim() && telaAtual !== "home" && telaAtual !== "search") {
+      if (
+        nomeTemConteudoVisivel(query) &&
+        telaAtual !== "home" &&
+        telaAtual !== "search"
+      ) {
         void handleNavigate("home");
       }
     },
@@ -2591,6 +2605,7 @@ const AppContent = () => {
       setSearchQuery("");
       // Saiu da busca de propósito: os filtros vão junto com o termo.
       filtrosDaBuscaRef.current = null;
+      quantidadeDaBuscaRef.current = null;
     }
   }, [currentView]);
 
@@ -2602,7 +2617,7 @@ const AppContent = () => {
       currentView !== "search" &&
       currentView !== "home" &&
       searchQuery &&
-      !searchQuery.trim()
+      !nomeTemConteudoVisivel(searchQuery)
     ) {
       setSearchQuery("");
     }
@@ -3092,6 +3107,8 @@ const AppContent = () => {
               onAddToCart: handleAddToCart,
               filtrosIniciais: filtrosDaBuscaRef.current ?? undefined,
               aoMudarFiltros: guardarFiltrosDaBusca,
+              quantidadeInicial: quantidadeDaBuscaRef.current ?? undefined,
+              aoMudarQuantidade: guardarQuantidadeDaBusca,
             }}
           />
         );

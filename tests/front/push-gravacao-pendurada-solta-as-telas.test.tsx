@@ -25,7 +25,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 interface Estado {
   subscription: PushSubscription | null;
   subscribe: () => Promise<unknown>;
-  unsubscribe: () => Promise<void>;
+  unsubscribe: () => Promise<boolean>;
 }
 describe("gravação de avisos pendurada", () => {
   let raiz: Root;

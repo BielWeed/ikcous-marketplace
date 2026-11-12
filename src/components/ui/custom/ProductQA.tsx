@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuestions } from "@/hooks/useQuestions";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { iniciaisDaLoja } from "@/lib/iniciais-da-loja";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { tempoRelativo } from "@/lib/tempo-relativo";
 import { cn } from "@/lib/utils";
 import { Check, MessageSquare, Reply, Send } from "lucide-react";
@@ -73,7 +74,8 @@ export function ProductQA({
   const [enviandoPergunta, setEnviandoPergunta] = useState(false);
 
   const handleAsk = async () => {
-    if (!newQuestion.trim() || perguntaEmVooRef.current) return;
+    if (!nomeTemConteudoVisivel(newQuestion) || perguntaEmVooRef.current)
+      return;
     perguntaEmVooRef.current = true;
     setEnviandoPergunta(true);
     try {
@@ -102,13 +104,13 @@ export function ProductQA({
   };
 
   const handleReply = async (questionId: string) => {
-    if (!replyText.trim()) return;
+    if (!nomeTemConteudoVisivel(replyText)) return;
     // Mesma regra do handleAsk: addAnswer devolve false na falha — fechar
     // a caixa e limpar a resposta aí seria jogar fora o texto digitado.
     const versaoEnviada = respostaVersaoRef.current;
     const respondida = await addAnswer({
       questionId,
-      answer: replyText,
+      answer: replyText.trim(),
     });
     if (respondida && respostaVersaoRef.current === versaoEnviada) {
       respostaVersaoRef.current += 1;
@@ -198,7 +200,9 @@ export function ProductQA({
             />
             <button
               type="submit"
-              disabled={!newQuestion.trim() || enviandoPergunta}
+              disabled={
+                !nomeTemConteudoVisivel(newQuestion) || enviandoPergunta
+              }
               className="absolute right-1 top-1 flex size-11 items-center justify-center rounded-full bg-foreground text-background hover:opacity-90 disabled:opacity-30"
               title="Enviar pergunta"
               aria-label="Enviar pergunta"
@@ -287,7 +291,7 @@ export function ProductQA({
           questions.map((q, index) => (
             <div
               key={q.id}
-              className="space-y-4 rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm transition-all duration-300 duration-500 animate-in fade-in slide-in-from-bottom-4 hover:shadow-md"
+              className="min-w-0 space-y-4 rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm transition-all duration-300 duration-500 animate-in fade-in slide-in-from-bottom-4 hover:shadow-md"
               style={{ animationDelay: `${index * 50}ms` }}
             >
               {/* Question Header */}
@@ -396,7 +400,7 @@ export function ProductQA({
                           </AvatarFallback>
                         </Avatar>
                       </div>
-                      <div className="flex-1 space-y-1.5">
+                      <div className="min-w-0 flex-1 space-y-1.5">
                         <div className="flex items-center justify-between gap-1.5">
                           <div className="flex items-center gap-1.5">
                             <span className="text-xs font-black uppercase tracking-wider text-zinc-900">
@@ -445,7 +449,7 @@ export function ProductQA({
                         />
                         <button
                           onClick={() => handleReply(q.id)}
-                          disabled={!replyText.trim()}
+                          disabled={!nomeTemConteudoVisivel(replyText)}
                           title={
                             q.answers.length > 0
                               ? "Salvar edição"

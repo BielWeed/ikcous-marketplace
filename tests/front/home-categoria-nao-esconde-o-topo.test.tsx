@@ -110,7 +110,7 @@ const umProduto = (
     description: "",
     price: 10,
     originalPrice,
-    images: [],
+    images: ["https://cdn.exemplo/foto.jpg"],
     category,
     stock: 5,
     isActive: true,

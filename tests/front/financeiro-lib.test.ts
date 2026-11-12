@@ -219,6 +219,18 @@ describe("dinheiro em pt-BR", () => {
     expect(formatarPercentual(0.04)).toBe("0,0%");
   });
 
+  it.each([
+    [-1, "−0,1%"],
+    [1, "0,1%"],
+  ] as const)(
+    "resultado de R$ %i em R$ 2.000 arredonda meio décimo de margem para %s",
+    (resultado, esperado) => {
+      expect(formatarPercentual(percentualDaReceita(resultado, 2000))).toBe(
+        esperado,
+      );
+    },
+  );
+
   it("divide parcelas em centavos e diz quando não fecha", () => {
     expect(valorDaParcela(90, 3)).toEqual({ parcela: 30, exata: true });
     expect(valorDaParcela(100, 3)).toEqual({ parcela: 33.33, exata: false });
@@ -809,6 +821,17 @@ describe("a pagar / a receber", () => {
     expect(textoDoVencimento("2026-09-25", hoje)).toBe("Venceu ontem");
     expect(textoDoVencimento("2026-09-27", hoje)).toBe("Vence amanhã");
     expect(textoDoVencimento("2026-10-20", hoje)).toBe("Vence em 20/10/2026");
+  });
+
+  it("texto do vencimento: 'Vence em N dias' até 7 dias, data cheia depois, sem data", () => {
+    expect(textoDoVencimento("2026-09-26", hoje)).toBe("Vence hoje");
+    expect(textoDoVencimento("2026-09-28", hoje)).toBe("Vence em 2 dias");
+    // 7 dias é o último que ainda fala em "dias" (mesma fronteira da "semana").
+    expect(textoDoVencimento("2026-10-03", hoje)).toBe("Vence em 7 dias");
+    // 8 dias já mostra a data cheia.
+    expect(textoDoVencimento("2026-10-04", hoje)).toBe("Vence em 04/10/2026");
+    expect(textoDoVencimento(null, hoje)).toBe("Sem vencimento");
+    expect(textoDoVencimento("", hoje)).toBe("Sem vencimento");
   });
 
   it("totais e ordem por vencimento", () => {

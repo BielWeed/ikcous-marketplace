@@ -423,12 +423,26 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
     expect(chamadasAoBanco.total).toBe(0);
   });
 
-  it("depois de salvar com sucesso, descarta o cache de frete do navegador (rota do pacote C)", async () => {
+  it("depois de salvar com cache pendente, avisa sobre o preço antigo e descarta o cache do navegador", async () => {
     await abrir();
+    const { toast } = await import("sonner");
+    invoke.mockImplementation((_n: string, opcoes: any) =>
+      Promise.resolve({
+        data:
+          opcoes?.body?.action === "ler_configuracao_frete"
+            ? RESPOSTA_LEGADO
+            : { success: true, cache: "pendente" },
+        error: null,
+      }),
+    );
     const [tokenME] = camposToken();
     await digitar(tokenME, "tok-me-novo-ficticio");
     await clicar(botoes(/^Salvar transportadora$/)[0]);
     expect(descartarCache).toHaveBeenCalledTimes(1);
+    expect(toast.success).toHaveBeenCalledWith("Transportadora salva!", {
+      description:
+        "Clientes que já calcularam o frete podem continuar vendo o preço antigo por até 2 horas.",
+    });
   });
 
   it("SuperFrete sem e-mail válido: Salvar recusa localmente, sem chamar a edge", async () => {
@@ -682,7 +696,12 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
           });
         }
         return Promise.resolve({
-          data: { success: true, ligados: [], espelho: "pendente" },
+          data: {
+            success: true,
+            ligados: [],
+            espelho: "pendente",
+            cache: "pendente",
+          },
           error: null,
         });
       });
@@ -691,7 +710,9 @@ describe("TransportadorasSection — modelo por provedor (1.5.7 v2)", () => {
       expect(toast.success).toHaveBeenCalledWith(
         "Provedores atualizados!",
         expect.objectContaining({
-          description: expect.stringMatching(/indicador antigo não atualizou/i),
+          description:
+            "Transportadoras salvas, mas a configuração antiga de frete da loja não foi atualizada. Salve de novo. " +
+            "Clientes que já calcularam o frete podem continuar vendo o preço antigo por até 2 horas.",
         }),
       );
     });

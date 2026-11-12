@@ -17,7 +17,9 @@ import {
   type PromessasDeFrete,
   fraseDoSeloDeFreteGratis,
 } from "@/lib/estrategias-de-frete";
+import { soFotosReais } from "@/lib/foto-do-produto";
 import { imagemRedimensionada } from "@/lib/imageUrl";
+import { percentualDeDesconto } from "@/lib/percentual-de-desconto";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -399,7 +401,11 @@ export const ProductCard = memo(function ProductCard({
       : product.stock
     : product.stock;
   const imagemDaVariante = selecionadasObjs.find((v) => v?.imageUrl)?.imageUrl;
-  const srcImagem = imagemDaVariante || product.images[0];
+  // Mesma capa da página do produto: a primeira foto REAL. Cadastro antigo
+  // guarda [marcador, foto real] e o cartão cinza aparecia aqui. Sem foto real,
+  // fica o marcador que o mapper devolve ("Sem foto").
+  const capaDoProduto = soFotosReais(product.images)[0] ?? product.images[0];
+  const srcImagem = imagemDaVariante || capaDoProduto;
 
   // A quantidade nunca passa do estoque do item VIVO: trocar a variação com
   // quantidade 5 na mão para uma com estoque 3 tem que descer para 3 — sem
@@ -487,10 +493,7 @@ export const ProductCard = memo(function ProductCard({
   const promocional = precoOriginalMostrado !== null;
   const discount =
     precoOriginalMostrado !== null
-      ? Math.round(
-          ((precoOriginalMostrado - precoMostrado) / precoOriginalMostrado) *
-            100,
-        )
+      ? percentualDeDesconto(precoOriginalMostrado, precoMostrado)
       : 0;
   const textoDoBotao = semEstoqueNoCard
     ? "Esgotado"
@@ -558,7 +561,7 @@ export const ProductCard = memo(function ProductCard({
     setCartStatus("loading");
 
     const startEl = (e.currentTarget as HTMLElement) || document.body;
-    triggerFlyingCartAnimation(startEl, product.images[0]);
+    triggerFlyingCartAnimation(startEl, capaDoProduto);
 
     const idLoading = window.setTimeout(() => {
       setCartStatus("success");
@@ -610,7 +613,7 @@ export const ProductCard = memo(function ProductCard({
     const variantNames = Array.from(selecionadas)
       .map(([nome, valor]) => `${nome}: ${valor}`)
       .join(", ");
-    const imgSrc = imagemDaVariante || product.images?.[0] || "";
+    const imgSrc = imagemDaVariante || capaDoProduto || "";
 
     const entrou = onAddToCartWithVariants?.(
       product,
@@ -1197,7 +1200,9 @@ export const ProductCard = memo(function ProductCard({
                 {cartStatus === "idle" && !semEstoqueNoCard && (
                   <ShoppingCart className="size-3 shrink-0 max-[359px]:hidden" />
                 )}
-                <span className="truncate">{textoDoBotao}</span>
+                <span className="min-w-0 whitespace-normal break-words text-center leading-tight">
+                  {textoDoBotao}
+                </span>
               </button>
               {/* Região viva SEMPRE montada e invisível (sr-only): fala o
               "Adicionado ao carrinho" que o leitor de tela não ouvia
@@ -1310,7 +1315,7 @@ export const ProductCard = memo(function ProductCard({
               escolhas={escolhasDosEixos}
               eixoAberto={eixoAberto}
               aviso={avisoDaEscolha}
-              imagem={imagemDaVariante || fotoDaCor || product.images[0]}
+              imagem={imagemDaVariante || fotoDaCor || capaDoProduto}
               preco={precoMostrado}
               estoque={estoqueAtual}
               quantidade={quantidade}

@@ -60,7 +60,7 @@ const LOJA_SF: Partial<StoreConfig> = {
   storeAddress: "",
 };
 const REVISAO_FIXA_DO_TESTE = "rev-fixa-do-teste";
-const ASSINATURA = "prod-tenis-teste::1:59.9";
+const ASSINATURA = "prod-tenis-teste::1:59.9:0";
 const UMA_HORA_MS = 60 * 60 * 1000;
 const UM_ANO_MS = 365 * 24 * UMA_HORA_MS;
 

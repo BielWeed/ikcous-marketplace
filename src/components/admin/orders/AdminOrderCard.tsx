@@ -138,6 +138,8 @@ export const AdminOrderCard = memo(function AdminOrderCard({
   const criadoEm = Number.isNaN(data.getTime())
     ? null
     : data.toLocaleDateString("pt-BR", {
+        // Mesmo calendário de Brasília da ficha e do filtro da lista.
+        timeZone: "America/Sao_Paulo",
         day: "2-digit",
         month: "2-digit",
         hour: "2-digit",
@@ -455,6 +457,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
           <span>
             Recebido em{" "}
             {new Date(order.pagamentoRecebidoEm).toLocaleDateString("pt-BR", {
+              timeZone: "America/Sao_Paulo",
               day: "2-digit",
               month: "2-digit",
               hour: "2-digit",

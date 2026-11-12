@@ -52,6 +52,7 @@ import {
 } from "@/lib/retrato-do-convidado";
 import {
   ROTULOS_DAS_ETAPAS,
+  ROTULO_RETIRADA_FEITA,
   ROTULO_RETIRADA_PRONTA,
 } from "@/lib/rotulos-das-etapas";
 import { supabase } from "@/lib/supabase";
@@ -192,10 +193,10 @@ const PRONTO_PARA_RETIRAR = {
  * entregue com sucesso" -- a cliente foi BUSCAR. So o texto muda.
  */
 const RETIRADO_NA_LOJA = {
-  label: "Retirado",
+  label: ROTULO_RETIRADA_FEITA,
   icon: CheckCircle,
   description: "Pedido retirado na loja. Aproveite sua experiência!",
-  heroTitle: "Retirado",
+  heroTitle: ROTULO_RETIRADA_FEITA,
 };
 
 /**
@@ -1985,7 +1986,7 @@ export function OrderDetailsView({
                 // neutro — nenhum prazo inventado: a loja confirma quando
                 // o pedido está separado.
                 <div className="mt-1 space-y-0.5">
-                  <p className="text-sm font-bold text-zinc-900">
+                  <p className="break-words text-sm font-bold text-zinc-900">
                     Retire em: {order.enderecoDeRetirada}
                   </p>
                   {avisoDaRetirada(order.status) && (
@@ -2010,7 +2011,7 @@ export function OrderDetailsView({
               {/* As mesmas linhas do recibo e da ficha da loja: rua, número e
                   complemento; bairro, cidade/UF e CEP. A cidade é a do
                   PEDIDO, nunca a da loja — é o endereço de quem comprou. */}
-              <p className="mt-0.5 text-xs font-medium leading-relaxed text-zinc-500">
+              <p className="mt-0.5 break-words text-xs font-medium leading-relaxed text-zinc-500">
                 {linhasDoEndereco(order.customer).map((linha, i) => (
                   <Fragment key={linha}>
                     {i > 0 && <br />}

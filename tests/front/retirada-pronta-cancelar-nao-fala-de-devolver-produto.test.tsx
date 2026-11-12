@@ -429,7 +429,7 @@ describe("OrderTimeline — retirada pronta não é 'Em rota'", () => {
       "Recebido",
       "Separado",
       "Pronto para retirar",
-      "Entregue",
+      "Retirado",
     ]);
     expect(hospedeiro.textContent).not.toContain("A caminho");
   });

@@ -107,21 +107,23 @@ export function SaidaDaRecusa({
     // zero pode ser de uma opção (tamanho, cor), não do produto inteiro.
     detalheDoEstoque = estoqueZerado
       ? `Acabou o estoque de "${produto}" no que você escolheu.`
-      : `Ainda há ${disponivel} de "${produto}" disponível.`;
+      : disponivel === 1
+        ? `Ainda há 1 unidade de "${produto}" disponível.`
+        : `Ainda há ${disponivel} unidades de "${produto}" disponíveis.`;
   }
 
   return (
     <div
       role="alert"
-      className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4"
+      className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4"
     >
       <div className="flex items-start gap-3">
         <AlertTriangle
-          className="mt-0.5 size-5 shrink-0 text-amber-500"
+          className="mt-0.5 size-5 shrink-0 text-amber-700"
           aria-hidden="true"
         />
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-amber-200">
+          <p className="font-semibold text-amber-900">
             Não deu para fechar o pedido
           </p>
 
@@ -131,12 +133,10 @@ export function SaidaDaRecusa({
             criaria um segundo texto para a mesma falha, que é o defeito que a
             revisão de 28/08 achou entre este caminho e o toast.
           */}
-          <p className="mt-1 break-words text-sm text-amber-100/90">
-            {mensagem}
-          </p>
+          <p className="mt-1 break-words text-sm text-amber-900">{mensagem}</p>
 
           {detalheDoEstoque && (
-            <p className="mt-1 text-sm font-medium text-amber-100">
+            <p className="mt-1 text-sm font-medium text-amber-900">
               {detalheDoEstoque}
             </p>
           )}
@@ -167,7 +167,7 @@ export function SaidaDaRecusa({
           type="button"
           onClick={onFechar}
           aria-label="Fechar o aviso"
-          className="shrink-0 rounded p-1 text-amber-200/70 transition-colors hover:text-amber-100"
+          className="shrink-0 rounded p-1 text-amber-800 transition-colors hover:text-amber-900"
         >
           <X className="size-4" aria-hidden="true" />
         </button>

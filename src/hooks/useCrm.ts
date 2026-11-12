@@ -2,6 +2,10 @@ import { type DashboardStats, useAnalytics } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { useRevalidarAoVoltar } from "@/hooks/useRevalidarAoVoltar";
+import {
+  cacheDaVisao,
+  lerGeracaoDaVisaoDoCrm,
+} from "@/lib/cache-da-visao-do-crm";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import {
   lerClientesDoCrm,
@@ -37,7 +41,6 @@ interface VisaoEmCache {
 }
 
 // Cache por intervalo: voltar a um chip já visto mostra o número na hora.
-const cacheDaVisao = new Map<string, VisaoEmCache>();
 const leiturasDaVisaoEmVoo = new Map<string, symbol>();
 
 function guardarNoCache(chave: string, valor: VisaoEmCache) {
@@ -104,6 +107,7 @@ export function useCrmVisao(
     setCarregando(!emCache);
     const timer = setTimeout(async () => {
       consultasEmVooRef.current += 1;
+      const geracao = lerGeracaoDaVisaoDoCrm();
       const rodada = Symbol();
       leiturasDaVisaoEmVoo.set(chave, rodada);
       recargaAtendidaRef.current = pedidoDeRecarga;
@@ -122,6 +126,9 @@ export function useCrmVisao(
           PRAZO_DA_CONSULTA_DO_PAINEL_MS,
           () => erroDeConsultaSemResposta(),
         );
+        // Cancelamento/estorno durante a consulta invalida também a resposta
+        // em voo: ela não pode devolver o retrato antigo ao cache ou à tela.
+        if (geracao !== lerGeracaoDaVisaoDoCrm()) return;
         const lida = error ? null : lerVisaoDoCrm(data);
         // Guarda no período dela, mesmo após trocar de chip. Uma leitura
         // mais nova DO MESMO período continua tendo preferência no cache.
@@ -268,12 +275,18 @@ export function useCrmClientes({
     setErro(null);
     const timer = setTimeout(async () => {
       try {
-        const { data, error } = await supabase.rpc("crm_clientes", {
-          p_segmento: segmento,
-          p_busca: termo === "" ? null : termo,
-          p_limite: porPagina,
-          p_offset: pagina * porPagina,
-        });
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase.rpc("crm_clientes", {
+              p_segmento: segmento,
+              p_busca: termo === "" ? null : termo,
+              p_limite: porPagina,
+              p_offset: pagina * porPagina,
+            }),
+          ),
+          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          erroDeConsultaSemResposta,
+        );
         if (cancelada) return;
         if (error) {
           console.error("[useCrmClientes] crm_clientes falhou:", error);

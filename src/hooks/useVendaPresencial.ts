@@ -28,6 +28,7 @@ import {
 import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import { hojeEmSaoPaulo } from "@/lib/financeiro";
 import { JANELA_DE_REPETICAO_MS } from "@/lib/leitor/debounce-de-leitura";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { gerarUuidV4 } from "@/lib/uuid-v4";
 import {
   useCallback,
@@ -636,8 +637,9 @@ export function vendaPodeSerRegistrada(
     // migration 20261162000000:280
     return { ok: false, motivo: "O desconto não pode ser negativo." };
   }
-  if (estado.desconto > 0 && estado.motivoDoDesconto.trim() === "") {
-    // migration 20261162000000:286
+  if (estado.desconto > 0 && !nomeTemConteudoVisivel(estado.motivoDoDesconto)) {
+    // migration 20261162000000:286. `trim()` não tira U+200B & cia.: um motivo
+    // só de caracteres invisíveis é motivo em branco para quem lê o relatório.
     return { ok: false, motivo: "Informe o motivo do desconto." };
   }
   if (
@@ -949,7 +951,7 @@ export function reducerDaVenda(
       }
 
       const novaQuantidade = item.quantidade + acao.delta;
-      if (novaQuantidade > item.estoque) {
+      if (acao.delta > 0 && novaQuantidade > item.estoque) {
         return {
           ...estado,
           aviso:
@@ -1148,18 +1150,20 @@ type EstadoPersistidoNoRascunho = Omit<
  * se a venda ainda estivesse em curso (risco medido na tarefa).
  *
  * Única exceção, e só como FATO: se `erro` é exatamente a frase de rede
- * (`MENSAGEM_DE_REDE_DA_VENDA` — "a venda pode ter sido gravada"), grava
- * `talvezGravada: true`. Sem isso o F5 apagava o aviso e o Cancelar passava a
- * dizer "Nada é registrado", levando a refazer uma venda que já existia. O
- * texto nunca vai ao disco; recusa antiga (estoque, permissão) também não.
+ * (`MENSAGEM_DE_REDE_DA_VENDA` — "a venda pode ter sido gravada") OU se o
+ * envio está no ar (`enviando`: a resposta ainda não chegou, a venda pode já
+ * estar no banco), grava `talvezGravada: true`. Sem isso o F5 apagava o aviso
+ * e o Cancelar passava a dizer "Nada é registrado", levando a refazer uma
+ * venda que já existia. O texto nunca vai ao disco; recusa antiga (estoque,
+ * permissão) também não.
  */
 export function serializarRascunho(
   estado: EstadoDaVenda,
   salvoEm: number | null = Date.now(),
 ): string {
-  const { recibo: _recibo, enviando: _enviando, erro, ...persistido } = estado;
+  const { recibo: _recibo, enviando, erro, ...persistido } = estado;
   const comIncerteza =
-    erro === MENSAGEM_DE_REDE_DA_VENDA
+    enviando || erro === MENSAGEM_DE_REDE_DA_VENDA
       ? { ...persistido, talvezGravada: true }
       : persistido;
   // O carimbo (`salvoEm`, ISO) mora SÓ no disco: `lerRascunhoComIdade` o tira

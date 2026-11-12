@@ -1,5 +1,6 @@
 import { LazyImage } from "@/components/LazyImage";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { cn } from "@/lib/utils";
 import type { Review, View } from "@/types";
 import { Check, ThumbsUp } from "lucide-react";
@@ -160,7 +161,7 @@ export function ReviewCard({
       </div>
 
       {/* Comment (opcional: avaliação só com estrelas não leva parágrafo) */}
-      {review.comment && (
+      {nomeTemConteudoVisivel(review.comment) && (
         <p
           className={cn(
             "mb-4 mt-3 whitespace-pre-wrap break-words text-xs font-normal leading-relaxed text-zinc-600 md:text-sm",

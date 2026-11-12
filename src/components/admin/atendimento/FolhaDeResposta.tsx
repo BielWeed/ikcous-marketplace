@@ -12,10 +12,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useAlturaDoTeclado } from "@/hooks/useAlturaDoTeclado";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { pluralizar } from "@/lib/pluralizar";
 import { cn } from "@/lib/utils";
 import { Loader2, Send, X } from "lucide-react";
 import { useEffect } from "react";
+import { PerguntaDeDescarte } from "./PerguntaDeDescarte";
 
 /**
  * Folha de baixo para responder uma pergunta (desenho aprovado em 22/10/2026).
@@ -40,6 +42,9 @@ export function FolhaDeResposta({
   aoPublicar,
   enviando,
   semConexao,
+  perguntandoDescarte = false,
+  aoContinuarEditando,
+  aoDescartar,
 }: {
   readonly aberta: boolean;
   readonly aoFechar: () => void;
@@ -51,8 +56,16 @@ export function FolhaDeResposta({
   readonly aoPublicar: () => void;
   readonly enviando: boolean;
   readonly semConexao: boolean;
+  readonly perguntandoDescarte?: boolean;
+  readonly aoContinuarEditando?: () => void;
+  readonly aoDescartar?: () => void;
 }) {
   const { altura: teclado, alturaVisivel } = useAlturaDoTeclado();
+  // A pergunta de descarte só existe com os DOIS handlers: a mesma condição
+  // governa a pergunta na tela, o `inert` do fundo e o que Esc/véu fazem —
+  // sem isto, `perguntandoDescarte` sozinho travaria a folha sem pergunta.
+  const perguntando =
+    perguntandoDescarte && !!aoContinuarEditando && !!aoDescartar;
 
   // Ao focar o campo, traz ele à vista dentro do corpo que rola (o teclado
   // leva um tempo para abrir: o segundo efeito refaz a rolagem quando a
@@ -92,7 +105,10 @@ export function FolhaDeResposta({
     <Sheet
       open={aberta}
       onOpenChange={(abrir) => {
-        if (!abrir) aoFechar();
+        if (!abrir) {
+          if (perguntando) aoContinuarEditando?.();
+          else aoFechar();
+        }
       }}
     >
       <SheetContent
@@ -109,7 +125,10 @@ export function FolhaDeResposta({
         }
         className="max-h-[94dvh] gap-0 rounded-t-3xl border-admin-border bg-admin-bg p-0 text-white"
       >
-        <div className="mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col">
+        <div
+          inert={perguntando}
+          className="mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col"
+        >
           <SheetHeader className="flex-row items-start justify-between gap-3 px-5 pb-3 pt-5 text-left">
             <div className="min-w-0">
               <SheetTitle className="text-xl font-bold leading-tight text-white">
@@ -187,7 +206,9 @@ export function FolhaDeResposta({
             <button
               type="button"
               onClick={aoPublicar}
-              disabled={enviando || !resposta.trim() || semConexao}
+              disabled={
+                enviando || !nomeTemConteudoVisivel(resposta) || semConexao
+              }
               className={cn(BOTAO_NEUTRO, "min-h-12 flex-[2]")}
             >
               {enviando ? (
@@ -204,6 +225,12 @@ export function FolhaDeResposta({
             </button>
           </SheetFooter>
         </div>
+        {perguntando ? (
+          <PerguntaDeDescarte
+            aoContinuar={aoContinuarEditando}
+            aoDescartar={aoDescartar}
+          />
+        ) : null}
       </SheetContent>
     </Sheet>
   );

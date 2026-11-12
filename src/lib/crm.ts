@@ -490,7 +490,7 @@ export function infoDoSegmento(segmento: SegmentoCrm): InfoDoSegmento {
     case "novos":
       return {
         rotulo: "Novos",
-        descricao: "Primeira compra recente",
+        descricao: "Compra recente",
         tom: "crescendo",
       };
     case "promissores":
@@ -613,7 +613,7 @@ export function mensagemDoSegmento(
     case "promissores":
       return `${oi} Que bom ter você por perto! Chegaram novidades que combinam com o que você levou. Posso te mostrar?`;
     case "novos":
-      return `${oi} Obrigado pela sua primeira compra! Deu tudo certo com o seu pedido? Qualquer dúvida, é só me chamar por aqui.`;
+      return `${oi} Obrigado pela sua compra! Deu tudo certo com o seu pedido? Qualquer dúvida, é só me chamar por aqui.`;
     case "precisam_atencao":
     case "quase_dormindo":
       return `${oi} Faz um tempinho que você não passa por aqui e sentimos sua falta. Temos novidades — quer ver?`;

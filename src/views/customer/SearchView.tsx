@@ -14,7 +14,11 @@ import { useCategories } from "@/hooks/useCategories";
 import { useFavorites } from "@/hooks/useFavorites";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
-import { type FiltrosDaBusca, useSearch } from "@/hooks/useSearch";
+import {
+  type FiltrosDaBusca,
+  type QuantidadeDaBusca,
+  useSearch,
+} from "@/hooks/useSearch";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import { produtoDisponivel } from "@/lib/vitrine";
@@ -57,6 +61,12 @@ interface SearchViewProps {
   filtrosIniciais?: FiltrosDaBusca;
   /** Avisa o App a cada mudança dos filtros, para ele guardá-los. */
   aoMudarFiltros?: (filtros: FiltrosDaBusca) => void;
+  /** Quantos resultados a tela já mostrava na última visita (só vale ao montar,
+   * e só se o termo for o mesmo): sem isto a lista volta com 12 e a rolagem
+   * guardada pelo App cai numa lista curta. */
+  quantidadeInicial?: QuantidadeDaBusca;
+  /** Avisa o App a cada mudança da quantidade (ou do termo), para guardá-la. */
+  aoMudarQuantidade?: (quantidade: QuantidadeDaBusca) => void;
 }
 
 interface SearchInputProps {
@@ -100,7 +110,7 @@ const SearchInput = React.memo(function SearchInput({
         }}
         placeholder="O que você deseja hoje?"
         aria-label="Buscar produtos"
-        className="h-12 rounded-2xl border-zinc-100 bg-zinc-50 pl-11 pr-4 text-sm transition-all placeholder:text-zinc-400 focus:border-zinc-200 focus:ring-black/5"
+        className="h-12 rounded-2xl border-zinc-100 bg-zinc-50 pl-11 pr-4 text-sm text-zinc-900 transition-all placeholder:text-zinc-500 focus:border-zinc-200 focus:ring-black/5"
       />
     </div>
   );
@@ -115,6 +125,8 @@ export const SearchView = React.memo(function SearchView({
   onAddToCart,
   filtrosIniciais,
   aoMudarFiltros,
+  quantidadeInicial,
+  aoMudarQuantidade,
 }: SearchViewProps) {
   const { config, catalogoErro, loadingProducts, fetchProducts } = useStore();
   const [tentandoBusca, setTentandoBusca] = useState(false);
@@ -203,7 +215,14 @@ export const SearchView = React.memo(function SearchView({
   useVoltarFechaAFolha(isFilterOpen, () => {
     setIsFilterOpen(false);
   });
-  const [visibleCount, setVisibleCount] = useState(12);
+  // A quantidade guardada só vale para o MESMO termo; não é cortada pelo total
+  // aqui porque a lista pode ainda não ter chegado (cortar em 0 apagaria o que
+  // foi guardado). O `slice` já mostra só o que existe.
+  const [visibleCount, setVisibleCount] = useState(() =>
+    quantidadeInicial && quantidadeInicial.termo === initialQuery
+      ? Math.max(12, quantidadeInicial.quantidade)
+      : 12,
+  );
   const observerRef = useRef<IntersectionObserver | null>(null);
 
   const observerTargetRef = useCallback(
@@ -244,10 +263,59 @@ export const SearchView = React.memo(function SearchView({
     };
   }, []);
 
-  // Reset pagination when any query filters change
+  // Reset pagination when any query filters change. Compara com o desenho
+  // anterior em vez de rodar a cada montagem: ao voltar do produto a primeira
+  // execução não pode apagar a quantidade restaurada.
+  //
+  // E leva a página ao topo dos resultados: a lista reordenada/refiltrada volta
+  // a ter 12, mas quem tinha rolado várias linhas ficava no meio ou no fim dela,
+  // sem ver os primeiros. A rolagem para na borda do cabeçalho fixo (que cobriria
+  // o topo da lista), "instant" como na Home ("auto" herdaria o scroll-smooth da
+  // tela) e só quando um filtro muda de verdade: carregar mais por rolagem e
+  // montar a tela não passam por aqui. (`?.` porque o jsdom não tem `scrollIntoView`.)
+  const cabecalhoRef = useRef<HTMLDivElement | null>(null);
+  const resultadosRef = useRef<HTMLDivElement | null>(null);
+  const filtrosAnterioresRef = useRef({
+    query,
+    category,
+    minPrice,
+    maxPrice,
+    sort,
+  });
   useEffect(() => {
-    setVisibleCount(12);
+    const antes = filtrosAnterioresRef.current;
+    if (
+      antes.query !== query ||
+      antes.category !== category ||
+      antes.minPrice !== minPrice ||
+      antes.maxPrice !== maxPrice ||
+      antes.sort !== sort
+    ) {
+      setVisibleCount(12);
+      const resultados = resultadosRef.current;
+      if (resultados) {
+        resultados.style.scrollMarginTop = `${cabecalhoRef.current?.offsetHeight ?? 0}px`;
+        resultados.scrollIntoView?.({ block: "start", behavior: "instant" });
+      }
+    }
+    filtrosAnterioresRef.current = {
+      query,
+      category,
+      minPrice,
+      maxPrice,
+      sort,
+    };
   }, [query, category, minPrice, maxPrice, sort]);
+
+  // Guarda no App o que já foi carregado (o aviso pode ser função nova a cada
+  // render do pai, então fica fora das dependências — como em useSearch).
+  const aoMudarQuantidadeRef = useRef(aoMudarQuantidade);
+  useEffect(() => {
+    aoMudarQuantidadeRef.current = aoMudarQuantidade;
+  });
+  useEffect(() => {
+    aoMudarQuantidadeRef.current?.({ termo: query, quantidade: visibleCount });
+  }, [query, visibleCount]);
   // Get trending products for empty state (prioritizing available products).
   // Defeito irmão do da prova de rua (01/09, sugestões de favoritos): para o
   // dono da loja (admin) a lista carrega o catálogo inteiro — trending só
@@ -331,7 +399,10 @@ export const SearchView = React.memo(function SearchView({
   return (
     <div className="pb-customer min-h-full bg-white selection:bg-black selection:text-white">
       {/* Premium Sticky Search Header */}
-      <div className="sticky top-[-2px] z-50 border-b border-zinc-100 bg-white/90 backdrop-blur-2xl">
+      <div
+        ref={cabecalhoRef}
+        className="sticky top-[-2px] z-50 border-b border-zinc-100 bg-white/90 backdrop-blur-2xl"
+      >
         <div className="mx-auto max-w-7xl space-y-4 p-4">
           <div className="flex items-center gap-3">
             <button
@@ -377,7 +448,7 @@ export const SearchView = React.memo(function SearchView({
 
                 <div className="space-y-8 pb-10">
                   <div>
-                    <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-zinc-600">
+                    <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-zinc-600 dark:text-zinc-400">
                       Categorias
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -399,7 +470,7 @@ export const SearchView = React.memo(function SearchView({
                   </div>
 
                   <div>
-                    <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-zinc-600">
+                    <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-zinc-600 dark:text-zinc-400">
                       Ordenação
                     </p>
                     <div className="grid grid-cols-2 gap-3">
@@ -459,7 +530,7 @@ export const SearchView = React.memo(function SearchView({
       </div>
 
       {/* Content Area */}
-      <div className="mx-auto max-w-7xl px-4 py-8">
+      <div ref={resultadosRef} className="mx-auto max-w-7xl px-4 py-8">
         {loadingProducts || tentandoBusca ? (
           <p role="status" className="py-20 text-center text-sm text-zinc-500">
             Carregando busca…

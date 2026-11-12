@@ -4,11 +4,19 @@ import { classeDoScrimDoBanner } from "@/lib/banner-scrim";
 import { carrosselPodeGirar } from "@/lib/carrossel-visivel";
 import { destinoDoBanner } from "@/lib/destino-do-banner";
 import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { rolarAoCatalogo } from "@/lib/rolar-ao-catalogo";
 import { cn } from "@/lib/utils";
 import type { Banner } from "@/types";
 import useEmblaCarousel from "embla-carousel-react";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type TouchEvent,
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { BannerPronto } from "./BannerPronto";
 
 interface BannerCarouselProps {
@@ -49,11 +57,38 @@ export const BannerCarousel = memo(function BannerCarousel({
   // (ex.: mouse sai com o foco ainda dentro não pode destravar o autoplay).
   const [hoverAtivo, setHoverAtivo] = useState(false);
   const [focoAtivo, setFocoAtivo] = useState(false);
+  // Terceiro motivo: o dedo em cima do banner (no celular não há mouse nem
+  // foco, e o slide avançava no meio do arrasto).
+  const [toqueAtivo, setToqueAtivo] = useState(false);
   const ultimoToqueEm = useRef(0);
-  const pausado = hoverAtivo || focoAtivo;
+  const pausado = hoverAtivo || focoAtivo || toqueAtivo;
   const registrarToque = useCallback(() => {
     ultimoToqueEm.current = Date.now();
   }, []);
+  const handleTouchStart = useCallback(() => {
+    registrarToque();
+    setToqueAtivo(true);
+  }, [registrarToque]);
+  const handleTouchFim = useCallback(
+    (evento: TouchEvent<HTMLDivElement>) => {
+      registrarToque();
+      // Com dois dedos, soltar um deles dispara `touchend` mas o outro segue
+      // em cima: só solta a pausa quando não resta nenhum contato.
+      setToqueAtivo((evento.touches?.length ?? 0) > 0);
+    },
+    [registrarToque],
+  );
+  // O navegador pode perder o `touchend` (troca de app com o dedo na tela):
+  // ao ocultar a aba, o toque deixa de valer e a pausa não fica presa.
+  useEffect(() => {
+    if (!toqueAtivo) return;
+    const aoMudarVisibilidade = () => {
+      if (document.hidden) setToqueAtivo(false);
+    };
+    document.addEventListener("visibilitychange", aoMudarVisibilidade);
+    return () =>
+      document.removeEventListener("visibilitychange", aoMudarVisibilidade);
+  }, [toqueAtivo]);
   const handleMouseEnter = useCallback(() => {
     // Mouse emulado após toque não tem mouseleave até o próximo toque fora.
     if (Date.now() - ultimoToqueEm.current < 1000) return;
@@ -150,16 +185,19 @@ export const BannerCarousel = memo(function BannerCarousel({
         // `from` (como o card do produto grava) diz à seta Voltar do App que
         // há uma tela atrás: ela recua de verdade (history.back) em vez de
         // empilhar outra Início por cima do destino.
-        globalThis.history.pushState(
-          {
-            view: viewName,
-            id,
-            from: globalThis.history.state?.view ?? "home",
-          },
-          "",
-          link,
-        );
-        globalThis.dispatchEvent(new PopStateEvent("popstate"));
+        // Repetir o destino atual não cria uma parada vazia no Voltar.
+        if (url.href !== window.location.href) {
+          globalThis.history.pushState(
+            {
+              view: viewName,
+              id,
+              from: globalThis.history.state?.view ?? "home",
+            },
+            "",
+            link,
+          );
+          globalThis.dispatchEvent(new PopStateEvent("popstate"));
+        }
         // Toque no banner é intenção explícita: rola mesmo se a categoria
         // já for a atual.
         if (searchParams.has("category")) rolarAoCatalogo();
@@ -201,8 +239,9 @@ export const BannerCarousel = memo(function BannerCarousel({
       role="region"
       aria-roledescription="carousel"
       aria-label="Destaques e Promoções"
-      onTouchStart={registrarToque}
-      onTouchEnd={registrarToque}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchFim}
+      onTouchCancel={handleTouchFim}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={() => setHoverAtivo(false)}
       onFocus={handleFocus}
@@ -271,12 +310,11 @@ export const BannerCarousel = memo(function BannerCarousel({
                   {(() => {
                     const hasOverlayText =
                       banner.showTextOverlay !== false &&
-                      ((banner.title && banner.title.trim() !== "") ||
-                        (banner.subtitle && banner.subtitle.trim() !== "") ||
+                      (nomeTemConteudoVisivel(banner.title) ||
+                        nomeTemConteudoVisivel(banner.subtitle) ||
                         (destino !== null &&
-                          banner.buttonText &&
-                          banner.buttonText.trim() !== "") ||
-                        (banner.badgeText && banner.badgeText.trim() !== ""));
+                          nomeTemConteudoVisivel(banner.buttonText)) ||
+                        nomeTemConteudoVisivel(banner.badgeText));
 
                     if (!hasOverlayText) return null;
 
@@ -321,22 +359,21 @@ export const BannerCarousel = memo(function BannerCarousel({
                                 "bg-black/40 backdrop-blur-md border border-white/10 rounded-3xl p-6 sm:p-8 text-center items-center mx-auto",
                             )}
                           >
-                            {banner.badgeText &&
-                              banner.badgeText.trim() !== "" && (
-                                <span
-                                  className={cn(
-                                    "inline-block rounded-full bg-[#FFBF00] text-black px-3.5 py-1 text-[10px] sm:text-xs font-black uppercase tracking-widest mb-1 w-fit",
-                                    banner.templateType === "split_right" &&
-                                      "self-end",
-                                    banner.templateType === "split_center" &&
-                                      "mx-auto",
-                                  )}
-                                >
-                                  {banner.badgeText}
-                                </span>
-                              )}
+                            {nomeTemConteudoVisivel(banner.badgeText) && (
+                              <span
+                                className={cn(
+                                  "inline-block rounded-full bg-[#FFBF00] text-black px-3.5 py-1 text-[10px] sm:text-xs font-black uppercase tracking-widest mb-1 w-fit",
+                                  banner.templateType === "split_right" &&
+                                    "self-end",
+                                  banner.templateType === "split_center" &&
+                                    "mx-auto",
+                                )}
+                              >
+                                {banner.badgeText}
+                              </span>
+                            )}
 
-                            {banner.title && banner.title.trim() !== "" && (
+                            {nomeTemConteudoVisivel(banner.title) && (
                               <h2
                                 className={cn(
                                   "text-2xl font-black leading-none tracking-tighter drop-shadow-2xl sm:text-4xl",
@@ -361,21 +398,19 @@ export const BannerCarousel = memo(function BannerCarousel({
                               </h2>
                             )}
 
-                            {banner.subtitle &&
-                              banner.subtitle.trim() !== "" && (
-                                <p
-                                  className="max-w-full truncate text-xs font-medium text-zinc-300 drop-shadow-md sm:text-sm"
-                                  style={{
-                                    color: banner.subtitleColor || undefined,
-                                  }}
-                                >
-                                  {banner.subtitle}
-                                </p>
-                              )}
+                            {nomeTemConteudoVisivel(banner.subtitle) && (
+                              <p
+                                className="max-w-full truncate text-xs font-medium text-zinc-300 drop-shadow-md sm:text-sm"
+                                style={{
+                                  color: banner.subtitleColor || undefined,
+                                }}
+                              >
+                                {banner.subtitle}
+                              </p>
+                            )}
 
                             {destino !== null &&
-                              banner.buttonText &&
-                              banner.buttonText.trim() !== "" && (
+                              nomeTemConteudoVisivel(banner.buttonText) && (
                                 <button
                                   type="button"
                                   className={cn(

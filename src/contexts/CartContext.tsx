@@ -28,6 +28,11 @@ import {
   MAX_ITEM_QUANTITY,
 } from "@/lib/limite-de-quantidade";
 import { mapProductFromDB } from "@/lib/mappers";
+import {
+  PRAZO_DE_GRAVAR_O_CARRINHO_MS,
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
   lerRascunhoDoCheckout,
@@ -1202,6 +1207,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
     if (userId) {
       let channel: any = null;
+      // Estado do canal DESTA assinatura: o primeiro SUBSCRIBED não relê (o
+      // carrinho foi lido na entrada); o que volta depois de uma queda, sim.
+      let jaAssinou = false;
+      let caiu = false;
+      let cancelado = false;
 
       if (isLeader) {
         console.log(
@@ -1228,7 +1238,24 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
               cartBc?.postMessage({ type: "cart_update" });
             },
           )
-          .subscribe();
+          .subscribe((status: string) => {
+            if (cancelado) return;
+            if (status !== "SUBSCRIBED") {
+              // Queda do canal (a rede segue "online": nem `online` nem
+              // `visibilitychange` disparam). O aviso que passou com ele fora
+              // não é reenviado.
+              if (jaAssinou) caiu = true;
+              return;
+            }
+            const eraReconexao = jaAssinou && caiu;
+            jaAssinou = true;
+            caiu = false;
+            if (!eraReconexao) return;
+            // Mesmas travas das outras releituras (ver o efeito `reler`).
+            if (authLoading || haChaveDoPedidoVigente(userId)) return;
+            syncFromDB(true);
+            cartBc?.postMessage({ type: "cart_update" });
+          });
       } else {
         console.log(
           "[CartContext-Realtime] Secondary tab listening to BroadcastChannel...",
@@ -1246,6 +1273,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
 
       return () => {
+        cancelado = true;
         if (channel) {
           supabase.removeChannel(channel).catch(() => {});
         }
@@ -1253,7 +1281,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       };
     }
     cartBc?.close();
-  }, [userId, isLeader, syncFromDB]); // Added authLoading to deps
+  }, [userId, isLeader, authLoading, syncFromDB]);
 
   // O carrinho mudou enquanto um sync ainda esperava o servidor: o efeito
   // abaixo pula (um por vez) e, sem isto, ninguém reagendava ao fim — a
@@ -1370,11 +1398,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           }
         });
 
-        const { error: syncError } = await (supabase.rpc as any)(
-          "sync_cart_atomic",
-          {
+        // Rede pendurada: sem prazo a trava `syncPending` ficava ligada para
+        // sempre. Estourou = falha recuperável pelo `catch` de sempre (solta a
+        // trava e reagenda); a resposta tardia desta chamada é descartada.
+        const { error: syncError } = await aguardarComPrazo(
+          (supabase.rpc as any)("sync_cart_atomic", {
             p_cart_items: Array.from(itemMap.values()),
-          },
+          }) as Promise<{ error: unknown }>,
+          PRAZO_DE_GRAVAR_O_CARRINHO_MS,
+          () => erroDeConsultaSemResposta(),
         );
 
         if (syncError) throw syncError;

@@ -6,6 +6,7 @@ import {
   retiradaLigadaNaLista,
 } from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { produtoDisponivel } from "@/lib/vitrine";
 import type { View } from "@/types";
 
 /**
@@ -314,13 +315,19 @@ export interface ConfigDosSeisPassos {
   readonly localDeliveryEnabled?: boolean | null;
 }
 
+/** Só o que o passo "Primeiro produto" lê do produto: ativo e como vender. */
+export type ProdutoDoPrimeiroPasso = {
+  readonly isActive: boolean;
+} & Parameters<typeof produtoDisponivel>[0];
+
 /** Os fatos que NÃO vêm da config. */
 export interface FatosDosSeisPassos {
   /** PIX online pronto: flag de build ligada E chave pública no deploy. */
   readonly pixOk: boolean;
   /** `config.formasPagamentoEntrega`. */
   readonly formasNaEntrega: readonly FormaDePagamentoNaEntrega[];
-  readonly produtos: readonly { readonly isActive: boolean }[];
+  /** Ativo E com estoque (a régua da vitrine) é o que conta como "à venda". */
+  readonly produtos: readonly ProdutoDoPrimeiroPasso[];
   readonly configCarregando: boolean;
   readonly produtosCarregando: boolean;
   /**
@@ -347,6 +354,12 @@ export interface EntradaDosSeisPassos {
   readonly entregaAlcanceCurto?: boolean;
   /** Os 5 primeiros números do CEP da loja — o que a explicação do passo cita. */
   readonly entregaPrefixo?: string | null;
+  /**
+   * Existe produto ativo, mas todos estão esgotados — o passo "produto" fica
+   * pendente por falta de ESTOQUE, não de cadastro. Só muda o texto dele;
+   * ausente = falta cadastrar (o texto de antes).
+   */
+  readonly produtoSemEstoque?: boolean;
 }
 
 function textoPreenchido(texto: string | null | undefined): boolean {
@@ -376,8 +389,17 @@ export function entradaDosSeisPassos(
   const enderecoPronto =
     lerEnderecoConferido(config.storeAddress, config.originCep) !== null;
 
+  const vendeAgora = (produto: ProdutoDoPrimeiroPasso) =>
+    produto.isActive && produtoDisponivel(produto);
+
   return {
     pixOk,
+    // Há produto ativo, mas nenhum com estoque: é a pendência "repor", não
+    // "cadastrar". Só muda o texto do passo "produto".
+    produtoSemEstoque:
+      !fatos.produtosCarregando &&
+      produtos.some((produto) => produto.isActive) &&
+      !produtos.some(vendeAgora),
     // `estados.entrega` é o fato que quem chama entregou (`estadoDaEntrega`);
     // aqui só se descobre, com a MESMA função do aviso, QUAL é a pendência.
     entregaAlcanceCurto:
@@ -391,9 +413,11 @@ export function entradaDosSeisPassos(
       whatsapp: daConfig(lojaTemWhatsapp(config.whatsappNumber)),
       recebe,
       entrega: fatos.entrega,
-      // `.some(isActive)`, nunca `produtos.length`: o cofre do admin também
-      // guarda produto desativado (realtimeSyncEngine.ts seleciona `ativo` e só
-      // filtra `deleted_at`).
+      // `.some(ativo E disponível)`, nunca `produtos.length`: o cofre do admin
+      // também guarda produto desativado (realtimeSyncEngine.ts seleciona
+      // `ativo` e só filtra `deleted_at`). E ativo-mas-esgotado não vende:
+      // `produtoDisponivel` é a régua da vitrine (estoque e variações), a mesma
+      // que decide o botão "Esgotado" que a cliente vê.
       //
       // Limitação conhecida (achado do laudo de 08/09/2026, fora desta frente):
       // `produtos` vem de `useStore().products`, que o `StoreContext` busca
@@ -404,7 +428,7 @@ export function entradaDosSeisPassos(
       // depende do StoreContext expor esse sinal — reservado por outra frente.
       produto: fatos.produtosCarregando
         ? "carregando"
-        : produtos.some((produto) => produto.isActive)
+        : produtos.some(vendeAgora)
           ? "feito"
           : "pendente",
     },
@@ -420,6 +444,7 @@ export function seisPassosDaLojaPronta(
     pixOk,
     entregaAlcanceCurto = false,
     entregaPrefixo = null,
+    produtoSemEstoque = false,
   } = entrada;
   return [
     {
@@ -479,7 +504,12 @@ export function seisPassosDaLojaPronta(
       chave: "produto",
       rotulo: "Primeiro produto",
       rotuloFeito: "Pelo menos 1 produto ativo à venda",
-      rotuloPendente: "Cadastrar um produto ativo",
+      rotuloPendente: produtoSemEstoque
+        ? "Repor o estoque de um produto"
+        : "Cadastrar um produto ativo",
+      ...(produtoSemEstoque && {
+        explicacaoPendente: "Seus produtos ativos estão sem estoque",
+      }),
       estado: estados.produto,
       destino: "admin-products",
     },

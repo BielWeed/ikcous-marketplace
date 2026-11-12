@@ -83,6 +83,36 @@ const addressSchema = z.object({
 
 type AddressFormValues = z.infer<typeof addressSchema>;
 
+// CEP, rua, bairro, cidade e UF são UM bloco só: um endereço do CEP de um lugar
+// com a rua de outro não existe. Quando chega versão nova do mesmo endereço,
+// ou a pessoa mexeu em algum campo do bloco (o bloco inteiro fica dela) ou não
+// mexeu em nenhum (o bloco inteiro vem do servidor) — nunca metade de cada.
+const BLOCO_DO_CEP: readonly string[] = [
+  "cep",
+  "street",
+  "neighborhood",
+  "city",
+  "state",
+];
+
+// O endereço salvo, no formato do formulário (a única tradução, usada em toda
+// aplicação do endereço ao formulário).
+function valoresDoEndereco(a: Address): AddressFormValues {
+  return {
+    name: a.name || "",
+    cep: a.cep || "",
+    street: a.street || "",
+    number: a.number || "",
+    complement: a.complement || "",
+    neighborhood: a.neighborhood || "",
+    city: a.city || "",
+    state: a.state || "",
+    reference: a.reference || "",
+    recipient_name: a.recipient_name || "",
+    is_default: !!a.is_default,
+  };
+}
+
 /**
  * O que o formulário entrega ao salvar. Em ENDEREÇO NOVO `is_default` vai
  * sempre; ao EDITAR só vai quando a pessoa mexeu no botão "Endereço principal"
@@ -282,6 +312,10 @@ export function AddressForm({
   } = useBuscaCep(
     (endereco) => {
       const cepDaResposta = cepEmBuscaRef.current;
+      // A resposta só escreve se ainda descreve o CEP que está no campo: a
+      // busca pode ter ficado para trás se o CEP mudou por outro caminho (a
+      // versão nova do endereço chegando do servidor) enquanto ela corria.
+      if (formatarCep(form.getValues("cep")).limpo !== cepDaResposta) return;
       const eraDeOutroCep =
         cepAssociadoRef.current !== null &&
         cepAssociadoRef.current !== cepDaResposta;
@@ -316,19 +350,7 @@ export function AddressForm({
         ? formatarCep(initialData.cep).limpo
         : null;
       if (initialData) {
-        form.reset({
-          name: initialData.name || "",
-          cep: initialData.cep || "",
-          street: initialData.street || "",
-          number: initialData.number || "",
-          complement: initialData.complement || "",
-          neighborhood: initialData.neighborhood || "",
-          city: initialData.city || "",
-          state: initialData.state || "",
-          reference: initialData.reference || "",
-          recipient_name: initialData.recipient_name || "",
-          is_default: !!initialData.is_default,
-        });
+        form.reset(valoresDoEndereco(initialData));
       } else {
         // A cobertura de entrega da loja decide para onde ela entrega,
         // nunca onde o cliente mora — por isso o `isNational` que existia
@@ -361,19 +383,49 @@ export function AddressForm({
         : null;
       setReferenciaAberta(!!initialData.reference);
       setApelidoOutro(false);
-      form.reset({
-        name: initialData.name || "",
-        cep: initialData.cep || "",
-        street: initialData.street || "",
-        number: initialData.number || "",
-        complement: initialData.complement || "",
-        neighborhood: initialData.neighborhood || "",
-        city: initialData.city || "",
-        state: initialData.state || "",
-        reference: initialData.reference || "",
-        recipient_name: initialData.recipient_name || "",
-        is_default: !!initialData.is_default,
-      });
+      form.reset(valoresDoEndereco(initialData));
+      return;
+    }
+    // MESMO endereço, conteúdo NOVO (outro aparelho corrigiu e a releitura
+    // chegou com o formulário já aberto): só os campos que a pessoa ainda não
+    // mexeu recebem o valor novo. Sem isto, salvar mandava de volta, por cima
+    // da correção, o valor velho dos campos que ela nem tocou.
+    const aplicado = initialDataAplicadoRef.current;
+    if (
+      hasInitializedRef.current &&
+      initialData &&
+      aplicado &&
+      initialData.id === aplicado.id
+    ) {
+      const antes = new Map(Object.entries(valoresDoEndereco(aplicado)));
+      const novos = valoresDoEndereco(initialData);
+      const campos = Object.keys(novos);
+      if (Object.entries(novos).every(([c, v]) => antes.get(c) === v)) return;
+      const agora = new Map(Object.entries(form.getValues()));
+      // Mexido = difere do que foi aplicado (digitação OU busca de CEP). O
+      // bloco do CEP é um só: mexeu em qualquer campo dele (até só a UF), o
+      // bloco inteiro é dela, mesmo se a busca trouxe o mesmo texto de antes.
+      // Fora do bloco vale a regra por campo. O botão "principal" entra nela
+      // (`principalTocadoRef` segue como está).
+      const blocoMexido = BLOCO_DO_CEP.some(
+        (c) => agora.get(c) !== antes.get(c),
+      );
+      const guardados = campos.filter((c) =>
+        BLOCO_DO_CEP.includes(c) ? blocoMexido : agora.get(c) !== antes.get(c),
+      );
+      initialDataAplicadoRef.current = initialData;
+      if (!blocoMexido) {
+        cepAssociadoRef.current = initialData.cep
+          ? formatarCep(initialData.cep).limpo
+          : null;
+      }
+      if (initialData.reference) setReferenciaAberta(true);
+      form.reset(novos);
+      for (const c of guardados) {
+        form.setValue(c as keyof AddressFormValues, agora.get(c) as never, {
+          shouldDirty: true,
+        });
+      }
     }
   }, [isLoaded, initialData, form, nomePadrao]);
 
@@ -446,6 +498,9 @@ export function AddressForm({
   useEffect(() => {
     if (!resultadoCep || resultadoCep.tipo === "achou") return;
     const cepDaBusca = cepEmBuscaRef.current;
+    // Mesma guarda da resposta "achou": o aviso de uma busca que já não
+    // descreve o CEP do campo não limpa o endereço de outro CEP.
+    if (formatarCep(form.getValues("cep")).limpo !== cepDaBusca) return;
     if (
       cepAssociadoRef.current !== null &&
       cepAssociadoRef.current !== cepDaBusca
@@ -482,7 +537,9 @@ export function AddressForm({
         cep: values.cep,
         street: values.street,
         number: values.number,
-        complement: values.complement?.trim() || "",
+        complement: nomeTemConteudoVisivel(values.complement)
+          ? values.complement!.trim()
+          : "",
         neighborhood: values.neighborhood,
         city: values.city,
         // UF vai para a etiqueta do Melhor Envio: sempre em maiúsculas.
@@ -493,7 +550,9 @@ export function AddressForm({
         ...(!initialData || principalTocadoRef.current
           ? { is_default: values.is_default }
           : {}),
-        reference: values.reference?.trim() || "",
+        reference: nomeTemConteudoVisivel(values.reference)
+          ? values.reference!.trim()
+          : "",
         recipient_name: values.recipient_name,
       };
       await onSubmit(cleanData);

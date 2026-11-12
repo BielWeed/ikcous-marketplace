@@ -54,11 +54,16 @@ const PAGOS = new Set(["pago", "pago_apos_expirar", "recebido_na_entrega"]);
  * de dado legado, linha já existente) ficam para a lista "Devolver agora",
  * que lê as linhas de verdade e marca "Devolução em andamento".
  *
- * Quarta condição (rodada 2, G4): `valorEstornado > 0` — já houve devolução
- * CONCLUÍDA neste pedido. O servidor só grava a linha automática se NÃO
- * existir linha `concluido` (`NOT EXISTS ... 'concluido'`), e
- * `valor_estornado` só cresce por `concluir_estorno`, que conclui uma linha:
- * valor estornado > 0 implica linha concluída, logo nenhuma linha nova.
+ * `valorEstornado > 0` (devolução parcial já CONCLUÍDA) NÃO tira o pedido
+ * daqui. A regra velha (rodada 2, G4: "só grava a linha se NÃO existir linha
+ * `concluido`") foi SUBSTITUÍDA pela migration 20261198 (R11, bloco "LEDGER
+ * DO ESTORNO" de `update_order_status_atomic`): o servidor abre a linha com o
+ * REMANESCENTE (`pedido__saldo_a_estornar`: total − já confirmado − em voo −
+ * reembolso manual de devolução) se for > 0 — um pago 100 com 30 já devolvidos
+ * abre os 70 restantes, e o cron paga. O painel não conhece "em voo" nem o
+ * manual, então não inventa o valor: `cancelarDevolveSozinho` segue verdadeira
+ * e `textoBaseDoCancelamento` troca a frase por uma que fala do "que ainda
+ * falta devolver". Dizer "devolva você" ali paga o cliente duas vezes.
  *
  * `cancelledAfterShipping` ausente conta como "não enviado" de propósito: o
  * erro do outro lado (dizer "devolva você" quando o app já devolve) é o que
@@ -74,9 +79,13 @@ function cancelarDevolveSozinho(pedido: PedidoParaConfirmarCancelamento) {
     PAGOS_PELO_MERCADO_PAGO.has(pedido.payment_status as string) &&
     Boolean(pedido.status) &&
     AINDA_NAO_SAIU.has(pedido.status as string) &&
-    pedido.cancelledAfterShipping !== true &&
-    !((pedido.valorEstornado ?? 0) > 0)
+    pedido.cancelledAfterShipping !== true
   );
+}
+
+// Já houve devolução concluída: o banco abre a linha só do que FALTA (R11).
+function jaDevolveuParte(pedido: PedidoParaConfirmarCancelamento) {
+  return (pedido.valorEstornado ?? 0) > 0;
 }
 // Status reais do app (src/types/index.ts OrderStatus + CHECK do banco):
 // quem saiu para entrega está em "shipping". (A 1ª versão usava
@@ -137,6 +146,9 @@ function textoBaseDoCancelamento(
   // Prazo: o cron roda a cada 10 min e pega a linha depois de 2 min — "em
   // alguns minutos", nunca um número que o código não garante.
   if (cancelarDevolveSozinho(pedido)) {
+    if (jaDevolveuParte(pedido)) {
+      return 'Este pedido está PAGO, ainda não saiu para entrega e uma parte do valor já foi devolvida. Ao cancelar, o app pede sozinho ao Mercado Pago, em alguns minutos, a devolução do que ainda falta devolver (não do valor total do pedido). NÃO devolva o restante por outro meio (PIX, dinheiro, transferência): o cliente receberia duas vezes. Antes de qualquer devolução por fora, confira na lista "Devolver agora" o valor que ainda falta e se há devolução em andamento. Se você já devolveu o restante por fora, toque em "Já estornei no Mercado Pago" logo depois de cancelar. Cancelar mesmo assim?';
+    }
     return 'Este pedido está PAGO e ainda não saiu para entrega. Ao cancelar, o app pede sozinho ao Mercado Pago, em alguns minutos, que devolva o valor ao cliente. NÃO devolva o dinheiro por outro meio (PIX, dinheiro, transferência): o cliente receberia duas vezes. Se você já devolveu por fora, toque em "Já estornei no Mercado Pago" na lista "Devolver agora" logo depois de cancelar. Cancelar mesmo assim?';
   }
   // Pago que JÁ SAIU e o produto JÁ VOLTOU (enviado, cancelado, devolvido,

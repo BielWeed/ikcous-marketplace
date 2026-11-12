@@ -489,6 +489,9 @@ export function erroDoFormularioNacional(
     return "Informe um valor mínimo maior que R$ 0 para o grátis acima de um valor.";
   }
   if (form.estrategia === "desconto_na_mais_barata") {
+    if (!Number.isFinite(form.minimo) || form.minimo < 0) {
+      return "Informe um pedido mínimo válido, de R$ 0 ou mais, para o desconto.";
+    }
     if (form.tipoDesconto === null) {
       return "Escolha o tipo de desconto: percentual ou valor fixo.";
     }

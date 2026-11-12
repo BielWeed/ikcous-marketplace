@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/sheet";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO } from "@/lib/cor-do-preco-promocional";
+import { percentualDeDesconto } from "@/lib/percentual-de-desconto";
 import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product } from "@/types";
@@ -133,7 +134,7 @@ export function CorpoDaFolhaDeOpcoes({
   const pendente = modelo.eixos.find((e) => !escolhas.has(e.chave));
   const oferta = !!product.originalPrice && product.originalPrice > preco;
   const desconto = oferta
-    ? Math.round((1 - preco / product.originalPrice!) * 100)
+    ? percentualDeDesconto(product.originalPrice, preco)
     : 0;
 
   return (

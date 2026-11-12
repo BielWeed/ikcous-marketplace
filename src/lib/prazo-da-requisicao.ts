@@ -30,6 +30,13 @@ export async function aguardarComPrazo<T>(
 export const PRAZO_DA_CONSULTA_DO_CHECKOUT_MS = 12_000;
 export const PRAZO_DA_COTACAO_DO_FRETE_MS = 15_000;
 
+// LER O CORPO DE UM ERRO HTTP DA EDGE (12/11/2026): os cabeçalhos do erro podem
+// chegar e o corpo ficar pendurado na rede; o `catch` da cotação aguarda o
+// código lá dentro e, sem prazo, o frete ficava em "cotando" para sempre. 5 s:
+// o corpo de um erro é um JSON de poucas linhas, já em trânsito. Estourou =
+// código desconhecido (a frase genérica que já existe para erro sem código).
+export const PRAZO_DE_LER_O_CORPO_DO_ERRO_MS = 5_000;
+
 // PRAZO DAS AÇÕES DO LOJISTA QUE GRAVAM NO PEDIDO (07/11/2026): marcar
 // pagamento recebido (e desfazer), "O produto voltou", código de rastreio,
 // anotação interna e "Já estornei". Uma gravação de uma RPC/linha, sem
@@ -80,6 +87,11 @@ export const MENSAGEM_PRODUTO_NOVO_GRADE_SEM_RESPOSTA =
   "O produto foi criado, mas a rede não respondeu ao salvar as variações e não dá para saber se elas entraram. Abra o produto e confira as variações antes de cadastrá-las de novo ou de restaurar o rascunho, para não repetir as que já entraram.";
 export const MENSAGEM_PRODUTO_EDICAO_SEM_RESPOSTA =
   "Sem resposta da rede. Não dá para saber se as alterações foram salvas. Confira o produto na lista de Produtos antes de salvar de novo.";
+// EXCLUIR PRODUTO (11/11/2026): o UPDATE do soft-delete sob o mesmo prazo de
+// gravar. Estourou: a rede não respondeu e o servidor pode ter excluído — a
+// frase não diz que falhou. Repetir é seguro (o mesmo UPDATE de `deleted_at`).
+export const MENSAGEM_PRODUTO_EXCLUSAO_SEM_RESPOSTA =
+  "Sem resposta da rede. Não dá para saber se o produto foi excluído. Confira a lista de Produtos antes de tentar de novo.";
 export const MENSAGEM_PRODUTO_LEITURA_SEM_RESPOSTA =
   "A conexão está lenta e o produto não carregou. Confira a conexão e tente de novo.";
 
@@ -98,6 +110,22 @@ export const MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA =
 // ao app sem reler. 20 s, o mesmo do Início (`usePainelInicio`). Estourou = falha
 // com "Tentar de novo"; só encerra a ESPERA da tela, a consulta não grava nada.
 export const PRAZO_DA_CONSULTA_DO_PAINEL_MS = 20_000;
+
+// PRAZO DA GRAVAÇÃO DO CARRINHO NO SERVIDOR (12/11/2026): a RPC que sincroniza
+// o carrinho (uma por vez) numa rede que conecta e não responde deixava a trava
+// de "gravação em andamento" ligada para sempre — a tela mostrava a quantidade
+// nova e nenhum envio acontecia até recarregar o app. 20 s, como as outras
+// gravações de uma RPC. Estourou = falha recuperável (mesmo reenvio de sempre,
+// com o carrinho de AGORA); a resposta tardia da gravação abandonada é ignorada.
+export const PRAZO_DE_GRAVAR_O_CARRINHO_MS = 20_000;
+
+// PRAZO DE "VOCÊ TAMBÉM PODE GOSTAR" NA PÁGINA DO PRODUTO (12/11/2026): rede que
+// conecta e não responde deixava a seção em esqueletos cinza para sempre. São duas
+// consultas em sequência (a função das recomendações e as variações das peças),
+// sob UM prazo só: 15 s, o mesmo de abrir um produto. Estourou = cai no caminho
+// de falha que já existe (a seção some, ou fica a cópia guardada); só encerra a
+// ESPERA da tela, a consulta não grava nada.
+export const PRAZO_DAS_RECOMENDACOES_DO_PRODUTO_MS = 15_000;
 
 /** Frase para quem está na tela: o que aconteceu e o que fazer. */
 export const MENSAGEM_CONEXAO_LENTA =

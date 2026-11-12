@@ -18,6 +18,7 @@ import {
   totalAbertas,
 } from "@/lib/devolucao";
 import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
@@ -164,12 +165,18 @@ export function useDevolucoesAdmin(args: {
       const valeAinda = () => ativoRef.current && rodada === rodadaRef.current;
       setCarregando(true);
       try {
-        const { data, error } = await supabase.rpc("admin_devolucoes_listar", {
-          p_status: status,
-          p_busca: busca.trim() || null,
-          p_limite: limite,
-          p_offset: offset,
-        });
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase.rpc("admin_devolucoes_listar", {
+              p_status: status,
+              p_busca: busca.trim() || null,
+              p_limite: limite,
+              p_offset: offset,
+            }),
+          ),
+          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          () => erroDeConsultaSemResposta(),
+        );
         if (!valeAinda()) return;
         const lista = error ? null : lerListaAdmin(data);
         if (!lista) {
@@ -431,9 +438,11 @@ export function useDevolucaoAdmin(
       idRef.current === id && rodada === rodadaRef.current;
     setCarregando(true);
     try {
-      const { data, error } = await supabase.rpc("devolucao_detalhe", {
-        p_id: id,
-      });
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(supabase.rpc("devolucao_detalhe", { p_id: id })),
+        PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+        () => erroDeConsultaSemResposta(),
+      );
       if (!valeAinda()) return;
       const lida = error ? null : lerDevolucaoDetalhe(data);
       if (!lida) {

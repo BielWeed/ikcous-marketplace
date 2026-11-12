@@ -15,25 +15,27 @@ export function horarioRelativo(iso: string, agora: Date = new Date()): string {
   if (difMin < 2) return "agora mesmo";
   if (difMin < 60) return `há ${difMin} min`;
 
+  const timeZone = "America/Sao_Paulo";
   const hora = data.toLocaleTimeString("pt-BR", {
+    timeZone,
     hour: "2-digit",
     minute: "2-digit",
   });
-  const mesmoDia = (a: Date, b: Date) =>
-    a.getDate() === b.getDate() &&
-    a.getMonth() === b.getMonth() &&
-    a.getFullYear() === b.getFullYear();
+  const diaEmBrasilia = (d: Date) =>
+    d.toLocaleDateString("sv-SE", { timeZone });
+  const diaDoPedido = diaEmBrasilia(data);
+  const hoje = diaEmBrasilia(agora);
+  if (diaDoPedido === hoje) return `hoje ${hora}`;
 
-  if (mesmoDia(data, agora)) return `hoje ${hora}`;
-
-  const ontem = new Date(agora);
-  ontem.setDate(ontem.getDate() - 1);
-  if (mesmoDia(data, ontem)) return `ontem ${hora}`;
+  // Mesmo calendário do filtro de pedidos: Brasil sem horário de verão desde 2019.
+  const ontem = diaEmBrasilia(new Date(agora.getTime() - 86_400_000));
+  if (diaDoPedido === ontem) return `ontem ${hora}`;
 
   const dia = data.toLocaleDateString("pt-BR", {
+    timeZone,
     day: "2-digit",
     month: "2-digit",
   });
-  if (data.getFullYear() === agora.getFullYear()) return dia;
-  return `${dia}/${String(data.getFullYear()).slice(-2)}`;
+  if (diaDoPedido.slice(0, 4) === hoje.slice(0, 4)) return dia;
+  return `${dia}/${diaDoPedido.slice(2, 4)}`;
 }

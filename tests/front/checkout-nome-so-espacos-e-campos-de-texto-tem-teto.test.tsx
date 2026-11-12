@@ -258,7 +258,7 @@ describe("CheckoutView (visitante) — nome e campos de texto livre", () => {
     expect(createOrder).not.toHaveBeenCalled();
   });
 
-  it.each(["​", "⠀"])(
+  it.each(["\u{200B}", "\u{2800}"])(
     "nome invisível %j não libera o pedido e mostra o erro no campo",
     async (nome) => {
       await montarEPreencher(nome);
@@ -289,6 +289,93 @@ describe("CheckoutView (visitante) — nome e campos de texto livre", () => {
     });
     expect(createOrder).toHaveBeenCalledTimes(1);
     expect(createOrder.mock.calls[0][0].customer.name).toBe("Maria Teste");
+  });
+
+  it.each(["   ", "\u{200B}\u{2800}\u{3164}"])(
+    "r173: observação e complemento vazios visualmente %j não vão no pedido",
+    async (texto) => {
+      createOrder.mockResolvedValue({ id: "ped-1" });
+      await montarEPreencher("Cliente Teste", () => {
+        digitar("guest-complement", texto);
+        const notas = document.getElementById("order-notes")!;
+        Object.getOwnPropertyDescriptor(
+          HTMLTextAreaElement.prototype,
+          "value",
+        )!.set!.call(notas, texto);
+        notas.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      expect(botaoFinalizar()!.disabled).toBe(false);
+      await act(async () => {
+        botaoFinalizar()!.click();
+        await esperarMicrotarefas();
+      });
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      expect(createOrder.mock.calls[0][0].notes).toBe(
+        "Frete Escolhido: Entrega Local (Prazo: 1 dia)",
+      );
+      expect(
+        createOrder.mock.calls[0][0].addressData.complement,
+      ).toBeUndefined();
+    },
+  );
+
+  it.each([
+    ["   ", "Produto Teste: Cor: Azul"],
+    ["\u{200B}\u{2800}", "Produto Teste: Cor: Azul"],
+    [
+      "  Deixar na portaria  ",
+      "Deixar na portaria\n\nProduto Teste: Cor: Azul",
+    ],
+  ])(
+    "r173: observação %j não cria prefixo vazio nas escolhas",
+    async (texto, esperado) => {
+      estado.cart = [
+        { product: produto, quantity: 1, variantNames: "Cor: Azul" },
+      ];
+      createOrder.mockResolvedValue({ id: "ped-1" });
+      await montarEPreencher("Cliente Teste", () => {
+        digitar("guest-complement", "  Casa dos fundos  ");
+        const notas = document.getElementById("order-notes")!;
+        Object.getOwnPropertyDescriptor(
+          HTMLTextAreaElement.prototype,
+          "value",
+        )!.set!.call(notas, texto);
+        notas.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => {
+        botaoFinalizar()!.click();
+        await esperarMicrotarefas();
+      });
+      expect(createOrder).toHaveBeenCalledTimes(1);
+      expect(createOrder.mock.calls[0][0].notes).toBe(
+        `${esperado}\n\nFrete Escolhido: Entrega Local (Prazo: 1 dia)`,
+      );
+      expect(createOrder.mock.calls[0][0].addressData.complement).toBe(
+        "Casa dos fundos",
+      );
+    },
+  );
+
+  it("observação de exatamente 500 caracteres chega inteira ao pedido", async () => {
+    const texto = `${"a".repeat(499)}z`;
+    createOrder.mockResolvedValue({ id: "ped-1" });
+    await montarEPreencher("Cliente Teste", () => {
+      const notas = document.getElementById("order-notes")!;
+      Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!.call(notas, texto);
+      notas.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(botaoFinalizar()!.disabled).toBe(false);
+    await act(async () => {
+      botaoFinalizar()!.click();
+      await esperarMicrotarefas();
+    });
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(createOrder.mock.calls[0][0].notes).toBe(
+      `${texto}\n\nFrete Escolhido: Entrega Local (Prazo: 1 dia)`,
+    );
   });
 
   it("a1: observação do pedido e complemento têm teto de tamanho no próprio campo (500 e 100)", async () => {

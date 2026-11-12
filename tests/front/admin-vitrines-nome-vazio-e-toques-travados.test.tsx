@@ -109,7 +109,8 @@ const sairDoCampo = () =>
   });
 
 describe("Folha de editar vitrine: nome vazio", () => {
-  for (const texto of ["", "   "]) {
+  // r150-f: `trim()` não tira U+200B, U+200E (cola do WhatsApp) nem U+2800.
+  for (const texto of ["", "   ", "\u200b", "\u200e\u200e", "\u2800"]) {
     it(`sair do campo com ${JSON.stringify(texto)} avisa, não grava e devolve o nome anterior`, async () => {
       await abrirFolha();
       await digitarENaoSair(texto);
@@ -198,6 +199,14 @@ describe("Vitrine na loja: título", () => {
     await mostrar("   ");
     expect(document.querySelector("h2")).toBeNull();
   });
+
+  it.each(["\u200b", "\u200e\u200e", "\u2800", "\u3164"])(
+    "título só de caractere invisível (%j) não desenha um <h2> vazio",
+    async (invisivel) => {
+      await mostrar(invisivel);
+      expect(document.querySelector("h2")).toBeNull();
+    },
+  );
 
   it("título gigante sem espaço quebra a palavra em vez de vazar", async () => {
     await mostrar("Promocaoooooooooooooooooooooooooooooooooooo");

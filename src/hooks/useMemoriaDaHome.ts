@@ -27,6 +27,12 @@ export interface MemoriaDaHome {
   temBannerMeio?: boolean;
   temOfertas: boolean;
   temBestsellers: boolean;
+  /**
+   * A última visita tinha produto nos Últimos Lançamentos (à venda e com foto)? Sem isto, a loja que ficou sem
+   * produto à venda veria o esqueleto da faixa nascer e sumir. Ausente (memória gravada por versão anterior) =
+   * aposta de hoje: reserva o esqueleto.
+   */
+  temLancamentos?: boolean;
   layoutOfertas?: LayoutDeOfertas;
   /**
    * Quantas ofertas a faixa mostrou na última visita. Só o "Lateral em duas fileiras" lê isto: com 1 oferta
@@ -71,6 +77,10 @@ function parseMemoria(bruto: string | null): MemoriaDaHome | null {
           : undefined,
       temOfertas: memo.temOfertas,
       temBestsellers: memo.temBestsellers,
+      temLancamentos:
+        typeof memo.temLancamentos === "boolean"
+          ? memo.temLancamentos
+          : undefined,
       layoutOfertas: normalizarLayoutDeOfertas(memo.layoutOfertas),
       // Só inteiro >= 1 vale: lixo gravado à mão ou por outra versão vira "sem informação", nunca erro.
       qtdOfertas:

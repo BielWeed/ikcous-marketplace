@@ -355,6 +355,21 @@ describe("CheckoutView — total nunca negativo com o cupom velho na tela", () =
     vi.restoreAllMocks();
   });
 
+  // A exibição usa o checkout real, não uma conta repetida no teste. Porém,
+  // formatCurrency também arredonda: estes casos não detectam a retirada do
+  // arredondarParaCentavos de finalTotal (mutante conferido separadamente).
+  it.each([
+    [29.95, 3, "R$ 26,95"],
+    [0.3, 0.1, "R$ 0,20"],
+  ])(
+    "subtotal R$ %s e desconto R$ %s: o checkout renderizado mostra %s",
+    async (subtotal, desconto, esperado) => {
+      await abrirComCupomConferido(subtotal, 0, desconto);
+      expect(totaisNaTela()).not.toHaveLength(0);
+      for (const total of totaisNaTela()) expect(total).toBe(esperado);
+    },
+  );
+
   it("controle: com o cupom conferido, o Total mostra produtos − desconto + frete", async () => {
     await abrirComCupomConferido(100, 10, 60);
     expect(totaisNaTela()).not.toHaveLength(0);
@@ -372,8 +387,7 @@ describe("CheckoutView — total nunca negativo com o cupom velho na tela", () =
 
     expect(totaisNaTela()).not.toHaveLength(0);
     for (const total of totaisNaTela()) {
-      expect(total).not.toMatch(/-/);
-      expect(total).toMatch(/^R\$ \d/);
+      expect(total).toBe("R$ 10,00");
     }
     expect(document.body.textContent).not.toContain("não tem valor a pagar");
     expect(formaMarcada()).toEqual(marcadaAntes);
@@ -397,8 +411,7 @@ describe("CheckoutView — total nunca negativo com o cupom velho na tela", () =
 
     expect(totaisNaTela()).not.toHaveLength(0);
     for (const total of totaisNaTela()) {
-      expect(total).not.toMatch(/-/);
-      expect(total).toMatch(/^R\$ \d/);
+      expect(total).toBe("R$ 10,00");
     }
     expect(document.body.textContent).not.toContain("não tem valor a pagar");
     expect(formaMarcada()).toEqual(marcadaAntes);
@@ -412,7 +425,8 @@ describe("CheckoutView — total nunca negativo com o cupom velho na tela", () =
     const marcadaAntes = formaMarcada();
 
     await encolherCarrinho(30, 0);
-    for (const total of totaisNaTela()) expect(total).not.toMatch(/-/);
+    expect(totaisNaTela()).not.toHaveLength(0);
+    for (const total of totaisNaTela()) expect(total).toBe("R$ 0,00");
     expect(document.body.textContent).not.toContain("não tem valor a pagar");
     expect(formaMarcada()).toEqual(marcadaAntes);
 

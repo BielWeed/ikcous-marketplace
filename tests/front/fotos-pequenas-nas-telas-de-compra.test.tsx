@@ -65,7 +65,7 @@ describe("fotos pequenas nas telas de compra", () => {
     expect(src).toContain("width=");
   }
 
-  it("CartItemsList pede a versão pequena e cai na original no erro", async () => {
+  it("CartItemsList tenta a original, mostra Sem foto se falhar e tenta uma foto nova", async () => {
     const { CartItemsList } = await import(
       "@/components/ui/custom/CartItemsList"
     );
@@ -84,6 +84,27 @@ describe("fotos pequenas nas telas de compra", () => {
       img.dispatchEvent(new Event("error"));
     });
     expect(img.getAttribute("src")).toBe(ORIGINAL);
+    await act(async () => {
+      img.dispatchEvent(new Event("error"));
+    });
+    expect(host.querySelector("img")).toBeNull();
+    expect(host.textContent).toContain("Sem foto");
+
+    const novaFoto = ORIGINAL.replace("foto.jpg", "nova.jpg");
+    const novaImg = await montar(
+      <CartItemsList
+        cart={[{ product: { ...produto, images: [novaFoto] }, quantity: 1 }]}
+        removingId={null}
+        onUpdateQuantity={() => {}}
+        onRemove={() => {}}
+        handleClearCart={() => {}}
+      />,
+    );
+    exigirPequena(novaImg);
+    await act(async () => {
+      novaImg.dispatchEvent(new Event("error"));
+    });
+    expect(novaImg.getAttribute("src")).toBe(novaFoto);
   });
 
   it.each([{ images: [] }, { images: [PLACEHOLDER] }])(
@@ -106,7 +127,7 @@ describe("fotos pequenas nas telas de compra", () => {
     },
   );
 
-  it("OrderList pede a versão pequena da foto do pedido", async () => {
+  it("OrderList tenta a original, mostra o pacote se falhar e tenta uma foto nova", async () => {
     const { OrderList } = await import("@/components/ui/custom/OrderList");
     const pedido = {
       id: "abc123def456",
@@ -134,6 +155,33 @@ describe("fotos pequenas nas telas de compra", () => {
       <OrderList orders={[pedido]} onNavigate={() => {}} />,
     );
     exigirPequena(img);
+    await act(async () => {
+      img.dispatchEvent(new Event("error"));
+    });
+    expect(img.getAttribute("src")).toBe(ORIGINAL);
+    await act(async () => {
+      img.dispatchEvent(new Event("error"));
+    });
+    expect(host.querySelector("img")).toBeNull();
+    expect(host.querySelector(".size-14 .lucide-package")).not.toBeNull();
+
+    const novaFoto = ORIGINAL.replace("foto.jpg", "nova.jpg");
+    const novaImg = await montar(
+      <OrderList
+        orders={[
+          {
+            ...pedido,
+            items: [{ ...pedido.items[0], image: novaFoto }],
+          },
+        ]}
+        onNavigate={() => {}}
+      />,
+    );
+    exigirPequena(novaImg);
+    await act(async () => {
+      novaImg.dispatchEvent(new Event("error"));
+    });
+    expect(novaImg.getAttribute("src")).toBe(novaFoto);
   });
 
   it("FotoDoItemDoPedido pede a versão pequena e cai na original no erro", async () => {

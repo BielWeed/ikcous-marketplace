@@ -22,6 +22,22 @@ function base(): Parameters<typeof modoDeEconomiaDoFrete>[0] {
 
 describe("linha 0: transportadora escolhida não pede outra cotação", () => {
   it.each([
+    [35.9, 20, 15.9],
+    [0.3, 0.1, 0.2],
+  ])(
+    "preço cheio R$ %s e cobrado R$ %s preservam R$ %s de economia com centavos",
+    (precoCheio, price, esperado) => {
+      const modo = modoDeEconomiaDoFrete({
+        ...base(),
+        opcaoSelecionada: { id: "melhorenvio-pac", price, precoCheio },
+      });
+      expect(modo.tipo).toBe("opcao");
+      if (modo.tipo !== "opcao") throw new Error("economia nacional ausente");
+      expect(modo.valor).toBeCloseTo(esperado, 2);
+    },
+  );
+
+  it.each([
     { price: 0, esperado: { tipo: "zero" } },
     { price: 0, precoCheio: 0, esperado: { tipo: "zero" } },
     { price: 20, precoCheio: 20, esperado: { tipo: "zero" } },
@@ -38,6 +54,47 @@ describe("linha 0: transportadora escolhida não pede outra cotação", () => {
       ).toEqual(esperado);
     },
   );
+});
+
+describe("retirada na loja escolhida: não existe frete a economizar, nunca cota", () => {
+  // Loja "Só retiro" aceita a retirada para QUALQUER CEP (CartContext já diz
+  // freteGratis=true com preço 0). Sem esta linha, a cliente logada de outra
+  // cidade caía na linha 6 e disparava uma cotação real que o checkout
+  // descartava (gasta cota do lojista e suja o Histórico de Cotações).
+  it("fora da cidade, logada, preset sempre -> zero (nunca cotar)", () => {
+    const modo = modoDeEconomiaDoFrete({
+      ...base(),
+      opcaoSelecionada: { id: "store-pickup", price: 0 },
+    });
+    expect(modo).toEqual({ tipo: "zero" });
+  });
+
+  it("fora da cidade, logada, preset acima_de_valor -> zero (nunca cotar)", () => {
+    const modo = modoDeEconomiaDoFrete({
+      ...base(),
+      freeShippingMin: 100,
+      opcaoSelecionada: { id: "store-pickup", price: 0 },
+    });
+    expect(modo).toEqual({ tipo: "zero" });
+  });
+
+  it("CEP local -> zero, nunca a taxa da entrega local (retirada não paga entrega)", () => {
+    const modo = modoDeEconomiaDoFrete({
+      ...base(),
+      cepDeEntrega: "38500000",
+      opcaoSelecionada: { id: "store-pickup", price: 0 },
+    });
+    expect(modo).toEqual({ tipo: "zero" });
+  });
+
+  it("controle: entrega local escolhida em CEP local segue valendo a taxa", () => {
+    const modo = modoDeEconomiaDoFrete({
+      ...base(),
+      cepDeEntrega: "38500000",
+      opcaoSelecionada: { id: "local-delivery", price: 0 },
+    });
+    expect(modo).toEqual({ tipo: "local", valor: 12.9 });
+  });
 });
 
 describe("modoDeEconomiaDoFrete — tabela decidida com o critico de desenho (12/09/2026)", () => {

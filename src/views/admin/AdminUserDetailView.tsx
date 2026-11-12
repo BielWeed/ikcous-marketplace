@@ -36,11 +36,18 @@ import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
+import { formatarData } from "@/lib/crm";
 import { chaveDaLinha, separarChave } from "@/lib/escolhas-do-item";
 import { mapOrderFromDB, mapProductFromDB } from "@/lib/mappers";
+import { nomeOuReserva } from "@/lib/nome-visivel";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { papel } from "@/lib/papeis-aria-da-tabela";
 import { rotuloDoPapel } from "@/lib/papel-da-conta";
+import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import { primeiraLetra } from "@/lib/primeira-letra";
 import { supabase } from "@/lib/supabase";
@@ -49,7 +56,6 @@ import { formatCurrency } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Address, CartItem, Order, View } from "@/types";
 import { haptic } from "@/utils/haptic";
-import { format } from "date-fns/format";
 import {
   Check,
   ChevronRight,
@@ -258,9 +264,15 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         setCopiedField(null);
       }
       try {
-        const { data, error } = await supabase.rpc("get_admin_user_detail", {
-          p_user_id: userId,
-        });
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase.rpc("get_admin_user_detail", {
+              p_user_id: userId,
+            }),
+          ),
+          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          erroDeConsultaSemResposta,
+        );
 
         if (consulta !== consultaFicha.current) return;
         if (error) throw error;
@@ -281,10 +293,16 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
           const productIds = payload.cart_items.map(
             (item: any) => item.product_id,
           );
-          const { data: products, error: prodError } = await supabase
-            .from("vw_produtos_admin")
-            .select("*, product_variants(*)")
-            .in("id", productIds);
+          const { data: products, error: prodError } = await aguardarComPrazo(
+            Promise.resolve(
+              supabase
+                .from("vw_produtos_admin")
+                .select("*, product_variants(*)")
+                .in("id", productIds),
+            ),
+            PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+            erroDeConsultaSemResposta,
+          );
 
           if (consulta !== consultaFicha.current) return;
           if (prodError) throw prodError;
@@ -713,13 +731,11 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
               <div className="flex min-w-0 flex-1 flex-col items-start">
                 <CardTitle className="break-words text-lg font-bold tracking-tight text-white">
-                  {profile?.full_name || "Usuário Não-Nomeado"}
+                  {nomeOuReserva(profile?.full_name, "Usuário Não-Nomeado")}
                 </CardTitle>
                 <p className="mt-1 text-xs text-zinc-400">
                   Cliente desde{" "}
-                  {profile?.created_at
-                    ? format(new Date(profile.created_at), "dd/MM/yyyy")
-                    : "—"}
+                  {profile?.created_at ? formatarData(profile.created_at) : "—"}
                 </p>
                 <Badge className="mt-2 rounded-full border border-admin-border bg-admin-surface px-2 py-0.5 text-[11px] font-semibold text-zinc-400">
                   {rotuloDoPapel(profile?.role)}
@@ -901,7 +917,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   </span>
                   <span className="break-words text-sm font-bold tracking-tight text-white sm:text-base">
                     {resumo.ultimaCompra
-                      ? format(resumo.ultimaCompra, "dd/MM/yyyy")
+                      ? formatarData(resumo.ultimaCompra.toISOString())
                       : "—"}
                   </span>
                 </div>
@@ -1078,10 +1094,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                     {...papel("cell")}
                                     className="col-start-1 row-start-2 min-w-0 whitespace-normal p-0 text-[11px] font-medium text-zinc-400 sm:p-2 sm:py-4"
                                   >
-                                    {format(
-                                      new Date(order.createdAt),
-                                      "dd/MM/yyyy",
-                                    )}
+                                    {formatarData(order.createdAt)}
                                   </TableCell>
                                   <TableCell
                                     {...papel("cell")}

@@ -53,7 +53,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 interface Estado {
   subscription: PushSubscription | null;
-  unsubscribe: () => Promise<void>;
+  unsubscribe: () => Promise<boolean>;
 }
 
 const ENDPOINT_A = "https://push.example/aparelho-a";

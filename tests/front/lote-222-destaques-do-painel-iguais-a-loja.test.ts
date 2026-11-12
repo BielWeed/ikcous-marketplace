@@ -1,7 +1,8 @@
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 // Lote 222 (M1): o painel de Destaques usa as MESMAS regras da loja
-// (HomeView): só produto ativo; esgotado no fim em Ofertas e Destaques em
-// Alta; "oferta" pelo menor preço entre as opções à venda.
+// (HomeView): só produto ativo; esgotado e sem foto real fora de Ofertas e
+// Destaques em Alta (faixas automáticas só mostram o que se compra e tem foto);
+// "oferta" pelo menor preço entre as opções à venda.
 import {
   destaquesDaVitrine,
   ofertasDaVitrine,
@@ -16,6 +17,7 @@ function prod(id: string, extra: Partial<Product> = {}): Product {
     name: id,
     price: 100,
     stock: 5,
+    images: ["https://cdn.exemplo/foto.jpg"],
     isActive: true,
     isBestseller: false,
     variants: [],
@@ -23,18 +25,20 @@ function prod(id: string, extra: Partial<Product> = {}): Product {
   } as unknown as Product;
 }
 
-// A regra escrita como a HomeView a escreve (HomeView.tsx ~207 e ~258-307).
+// A regra escrita por extenso, sem as funções do app: ativo, à venda (estoque)
+// e com foto real.
+const vende = (p: Product) => p.stock > 0 && p.images.length > 0;
 function ofertasDaLoja(products: Product[]) {
   return products
     .filter((p) => p.isActive)
     .filter((p) => precoDeVitrine(p).precoOriginal !== null)
-    .sort((a, b) => (b.stock > 0 ? 1 : 0) - (a.stock > 0 ? 1 : 0));
+    .filter(vende);
 }
 function destaquesDaLoja(products: Product[]) {
   return products
     .filter((p) => p.isActive)
     .filter((p) => p.isBestseller)
-    .sort((a, b) => (b.stock > 0 ? 1 : 0) - (a.stock > 0 ? 1 : 0));
+    .filter(vende);
 }
 
 const catalogo = [
@@ -67,19 +71,19 @@ describe("lote 222 — Destaques do painel == loja", () => {
     );
   });
 
-  it("Ofertas: ativo, esgotado no fim, oferta pelo preço de vitrine", () => {
+  it("Ofertas: ativo, à venda, oferta pelo preço de vitrine", () => {
     const painel = ofertasDaVitrine(produtosAVenda(catalogo)).map((p) => p.id);
     expect(painel).toEqual(ofertasDaLoja(catalogo).map((p) => p.id));
     expect(painel).not.toContain("pausado-em-oferta");
     expect(painel).toContain("opcao-em-promocao");
-    expect(painel[painel.length - 1]).toBe("esgotado-em-oferta");
+    expect(painel).not.toContain("esgotado-em-oferta");
   });
 
-  it("Destaques em Alta: ativo e esgotado no fim", () => {
+  it("Destaques em Alta: ativo e à venda", () => {
     const painel = destaquesDaVitrine(produtosAVenda(catalogo)).map(
       (p) => p.id,
     );
     expect(painel).toEqual(destaquesDaLoja(catalogo).map((p) => p.id));
-    expect(painel).toEqual(["destaque-normal", "esgotado-destaque"]);
+    expect(painel).toEqual(["destaque-normal"]);
   });
 });

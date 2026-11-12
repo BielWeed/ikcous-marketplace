@@ -60,7 +60,7 @@ function propsDoCartao(parcial: Partial<Props> = {}): Props {
     ligado: true,
     chaveOk: true,
     formasNaEntrega: [],
-    produtos: [{ isActive: true }],
+    produtos: [{ isActive: true, stock: 5 }],
     configCarregando: false,
     produtosCarregando: false,
     onNavigate: vi.fn(),
@@ -443,7 +443,9 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
     await montar({ produtos: [{ isActive: false }] });
     expect(hospedeiro.textContent).toContain("5 de 6 passos concluídos");
 
-    await montar({ produtos: [{ isActive: false }, { isActive: true }] });
+    await montar({
+      produtos: [{ isActive: false }, { isActive: true, stock: 5 }],
+    });
     expect(hospedeiro.textContent).toContain("Cadastro completo");
   });
 

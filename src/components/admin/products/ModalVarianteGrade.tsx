@@ -6,6 +6,16 @@ import {
   SeletorDeAtributo,
   tipoDoNome,
 } from "@/components/admin/products/SeletorDeAtributo";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import type { ProductVariant } from "@/types";
 import { erroDoEstoqueDaVariacao } from "@/utils/estoque-da-variacao";
@@ -240,6 +250,20 @@ export function ModalVarianteGrade({
   // pode entregar o mesmo lote de novo.
   const jaEfetivouRef = useRef(false);
   const dialogoRef = useRef<HTMLDivElement>(null);
+  // A pergunta "Descartar a grade?" do Esc (só quando há o que perder).
+  const [confirmandoDescarte, setConfirmandoDescarte] = useState(false);
+  // "Sujo" = fechar jogaria fora trabalho da lojista: há linhas geradas (o
+  // estoque, o preço e o código do passo 2 nascem delas, e ficam mesmo depois de
+  // "Voltar") ou valores escolhidos/digitados no passo 1. Grade intacta fecha
+  // direto. O reset da abertura leva tudo isso embora, por isso o Esc pergunta.
+  const temAlgoParaPerder =
+    linhas.length > 0 ||
+    grupos.some(
+      (g) =>
+        g.selecionados.length > 0 ||
+        g.adicionados.length > 0 ||
+        g.rascunho.trim() !== "",
+    );
 
   const controlesDoDialogo = (dialogo: HTMLElement) =>
     [
@@ -278,7 +302,8 @@ export function ModalVarianteGrade({
     if (evento.key === "Escape") {
       evento.preventDefault();
       evento.stopPropagation();
-      onFechar();
+      if (temAlgoParaPerder) setConfirmandoDescarte(true);
+      else onFechar();
       return;
     }
     if (evento.key !== "Tab") return;
@@ -317,6 +342,8 @@ export function ModalVarianteGrade({
       setSkuBase(skuBaseSugerida);
       jaEfetivouRef.current = false;
     }
+    // Abrindo ou fechando, nunca sobra a pergunta do Esc pendurada.
+    setConfirmandoDescarte(false);
     // O estado inicial lê as variantes NO MOMENTO de abrir; mudanças depois
     // disso não podem resetar o que o lojista está digitando.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -900,6 +927,45 @@ export function ModalVarianteGrade({
               )}
             </div>
           </motion.div>
+          {/* Irmã do diálogo (não filha): o Esc de dentro da pergunta não
+              sobe pelo `aoTeclarNoDialogo` e não a reabre. Acima do z-[100]
+              da grade, como a folha de `useConfirmarAcao`. */}
+          <AlertDialog
+            open={confirmandoDescarte}
+            onOpenChange={setConfirmandoDescarte}
+          >
+            <AlertDialogContent
+              overlayClassName="z-[130]"
+              className="z-[130] max-w-md rounded-3xl border border-admin-border bg-zinc-950"
+              // Sem gatilho (a pergunta abre pelo Esc), o Radix não tem para onde
+              // devolver o foco ao fechar: ele se perderia e o Tab sairia da
+              // grade. Devolve ao diálogo da grade (o mesmo foco de quando abre).
+              onCloseAutoFocus={(evento) => {
+                evento.preventDefault();
+                dialogoRef.current?.focus();
+              }}
+            >
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-xl font-bold text-zinc-50">
+                  Descartar a grade?
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-sm leading-relaxed text-zinc-400">
+                  O que você já escolheu e preencheu aqui será perdido.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter className="mt-2 gap-2">
+                <AlertDialogCancel className="min-h-11 rounded-xl border border-admin-border bg-white/5 px-4 text-sm font-semibold text-white hover:bg-white/10">
+                  Continuar editando
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={onFechar}
+                  className="min-h-11 rounded-xl border border-red-900/60 bg-transparent px-4 text-sm font-semibold text-red-300 hover:bg-red-950/40"
+                >
+                  Descartar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </motion.div>
       )}
     </AnimatePresence>,

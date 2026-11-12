@@ -192,12 +192,14 @@ describe("Ficha do pedido — o confirm de cancelar diz quem devolve o dinheiro 
     expect(texto).not.toContain("sozinho");
   });
 
-  it("G4: pago e não enviado, mas com devolução anterior concluída (valorEstornado): o confirm NÃO promete devolução automática", async () => {
+  it("R11 (migration 20261198): pago e não enviado, com devolução parcial anterior (valorEstornado): o confirm diz que o app pede sozinho o que ainda falta e proíbe devolver por fora", async () => {
     const texto = await textoDoConfirmAoCancelar(
       pedidoPago({ status: "processing", valorEstornado: 10 }),
     );
-    expect(texto).toContain("não devolve o dinheiro automaticamente");
-    expect(texto).not.toContain("sozinho");
+    expect(texto).toContain("sozinho");
+    expect(texto).toContain("ainda falta");
+    expect(texto).toContain("NÃO devolva");
+    expect(texto).not.toContain("não devolve o dinheiro automaticamente");
   });
 
   it("pago e em rota (shipping): o confirm NÃO promete devolução automática", async () => {

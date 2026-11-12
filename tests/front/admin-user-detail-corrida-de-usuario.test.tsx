@@ -152,6 +152,32 @@ describe("ficha do cliente — respostas pertencem ao usuário atual", () => {
     vi.restoreAllMocks();
   });
 
+  it.each(["ficha", "produtos"])(
+    "%s sem resposta sai do carregando e permite tentar novamente",
+    async (etapa) => {
+      vi.useFakeTimers();
+      try {
+        await renderizar("A");
+        if (etapa === "produtos") {
+          mocks.produtos.mockImplementation(() => new Promise(() => undefined));
+          await resolver(consultaA, ficha("A"));
+        }
+        await act(async () => vi.advanceTimersByTimeAsync(20_000));
+        expect(texto()).toContain("Tentar novamente");
+        mocks.rpc.mockResolvedValue(ficha("A"));
+        mocks.produtos.mockResolvedValue(produtos("A"));
+        const tentar = [...hospedeiro.querySelectorAll("button")].find(
+          (botao) => botao.textContent?.includes("Tentar novamente"),
+        );
+        await act(async () => tentar?.click());
+        expect(texto()).toContain("Cliente A");
+        expect(texto()).not.toContain("Tentar novamente");
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   const texto = () => hospedeiro.textContent ?? "";
 
   async function renderizar(id: string) {

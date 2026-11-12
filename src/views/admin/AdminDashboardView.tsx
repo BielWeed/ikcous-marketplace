@@ -220,6 +220,12 @@ function PerfilDaLojaComDados({
   );
 }
 
+/** Usa o catálogo já carregado, isolando o contexto no boundary do cartão. */
+function ParaFazerComProdutos(props: Parameters<typeof ParaFazer>[0]) {
+  const { products } = useStore();
+  return <ParaFazer {...props} produtos={products} />;
+}
+
 /**
  * Início do painel (rota `admin-dashboard`, a porta do painel): o perfil da
  * loja, o dinheiro de hoje e do mês, o que está pendente, a assinatura e os
@@ -407,7 +413,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
               />
             </LocalErrorBoundary>
             <LocalErrorBoundary>
-              <ParaFazer
+              <ParaFazerComProdutos
                 painel={painel}
                 carregando={semNumeros}
                 onNavigate={irPara}

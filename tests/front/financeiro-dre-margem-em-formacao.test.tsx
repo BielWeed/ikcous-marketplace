@@ -123,6 +123,19 @@ describe("Financeiro — Resultado: margem em formação no começo do mês", ()
         .lastElementChild?.textContent,
     );
 
+  it("a tabela do período fica em uma região que rola horizontalmente", async () => {
+    await montar(NOVEMBRO);
+    const tabela = [...hospedeiro.querySelectorAll("table")].find((el) =>
+      el
+        .querySelector("caption")
+        ?.textContent?.includes("resultado do período"),
+    );
+    expect(tabela).toBeDefined();
+    expect(
+      tabela?.closest("section")?.classList.contains("overflow-x-auto"),
+    ).toBe(true);
+  });
+
   it("dia 3 do mês corrente com margem muito negativa: 'Margem em formação' no lugar do percentual", async () => {
     await montar(NOVEMBRO);
 

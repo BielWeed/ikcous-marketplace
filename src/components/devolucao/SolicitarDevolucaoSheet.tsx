@@ -328,6 +328,10 @@ function FluxoDaDevolucao({
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [progresso, setProgresso] = useState("");
+  // Fotos escolhidas que ainda estão sendo conferidas (o ref espelha o valor
+  // atual para `confirmar`, que pode rodar antes do React redesenhar).
+  const [preparando, setPreparando] = useState(0);
+  const preparandoRef = useRef(0);
   const [resultado, setResultado] = useState<ResultadoSolicitacao | null>(null);
   const entradaDeFotoRef = useRef<HTMLInputElement>(null);
   const areaRolavelRef = useRef<HTMLDivElement>(null);
@@ -424,6 +428,18 @@ function FluxoDaDevolucao({
     if (estadoDoRascunho === "nenhum") return;
     return marcarOperacaoSensivel("rascunho-de-devolucao");
   }, [estadoDoRascunho]);
+  // F5, recarregar ou fechar a aba também apagam o rascunho (fotos e texto não
+  // vão para o armazenamento): enquanto houver algo a perder, o navegador pede
+  // confirmação. Pedido aceito, descartado ou folha fechada: sem aviso.
+  useEffect(() => {
+    if (estadoDoRascunho === "nenhum") return;
+    const avisarAntesDeSair = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", avisarAntesDeSair);
+    return () => window.removeEventListener("beforeunload", avisarAntesDeSair);
+  }, [estadoDoRascunho]);
 
   const tipo = motivo ? tipoPrevisto(motivo, janelas) : null;
   const permitidas = resolucoesPermitidas(motivo, janelas, politica);
@@ -496,24 +512,34 @@ function FluxoDaDevolucao({
     if (escolhidas.length > vagas) {
       toast.info(`Envie no máximo ${MAXIMO_DE_FOTOS} fotos.`);
     }
-    // A foto ruim é barrada aqui, com o nome dela; as outras da escolha entram.
-    const aceitas: File[] = [];
-    for (const arquivo of escolhidas.slice(0, vagas)) {
-      const recusa = await recusaDaFoto(arquivo);
-      if (recusa) toast.error(recusa);
-      else aceitas.push(arquivo);
+    // Conferir a foto demora: até ela entrar na lista, confirmar mandaria o
+    // pedido sem ela. O contador sobe aqui e só desce no `finally`, depois do
+    // `setFotos` (os dois entram no mesmo lote e o botão não pisca liberado).
+    preparandoRef.current += 1;
+    setPreparando(preparandoRef.current);
+    try {
+      // A foto ruim é barrada aqui, com o nome dela; as outras da escolha entram.
+      const aceitas: File[] = [];
+      for (const arquivo of escolhidas.slice(0, vagas)) {
+        const recusa = await recusaDaFoto(arquivo);
+        if (recusa) toast.error(recusa);
+        else aceitas.push(arquivo);
+      }
+      if (desmontadaRef.current) return;
+      setFotos((antes) => [
+        ...antes,
+        ...aceitas.map((arquivo) => ({
+          chave: `${arquivo.name}-${arquivo.size}-${Math.random()}`,
+          arquivo,
+          previa: previaDe(arquivo),
+          caminho: null,
+        })),
+      ]);
+      setErro(null);
+    } finally {
+      preparandoRef.current -= 1;
+      setPreparando(preparandoRef.current);
     }
-    if (desmontadaRef.current) return;
-    setFotos((antes) => [
-      ...antes,
-      ...aceitas.map((arquivo) => ({
-        chave: `${arquivo.name}-${arquivo.size}-${Math.random()}`,
-        arquivo,
-        previa: previaDe(arquivo),
-        caminho: null,
-      })),
-    ]);
-    setErro(null);
   }
 
   function removerFoto(chave: string) {
@@ -529,7 +555,8 @@ function FluxoDaDevolucao({
   }
 
   async function confirmar() {
-    if (enviando || !motivo || !resolucaoValida || !metodo) return;
+    if (enviando || preparandoRef.current > 0) return;
+    if (!motivo || !resolucaoValida || !metodo) return;
     setEnviando(true);
     enviandoRef.current = true;
     setErro(null);
@@ -1017,11 +1044,17 @@ function FluxoDaDevolucao({
           <button
             type="button"
             onClick={() => void confirmar()}
-            disabled={enviando}
+            disabled={enviando || preparando > 0}
             className="flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl bg-zinc-900 text-sm font-bold text-white transition-all active:scale-[0.98] disabled:opacity-60"
           >
-            {enviando && <Loader2 className="size-4 animate-spin" />}
-            {enviando ? progresso || "Enviando…" : "Confirmar devolução"}
+            {(enviando || preparando > 0) && (
+              <Loader2 className="size-4 animate-spin" />
+            )}
+            {enviando
+              ? progresso || "Enviando…"
+              : preparando > 0
+                ? "Preparando a foto…"
+                : "Confirmar devolução"}
           </button>
         )}
       </div>
@@ -1201,7 +1234,7 @@ function Sucesso({
   }
   return (
     <div
-      className="flex flex-col items-center gap-3 px-6 pb-[calc(1.25rem+var(--safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-8 text-center"
+      className="flex min-h-0 flex-1 flex-col items-center gap-3 overflow-y-auto overscroll-contain px-6 pb-[calc(1.25rem+var(--safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-8 text-center"
       data-testid="devolucao-sucesso"
     >
       <div className="flex size-14 items-center justify-center rounded-full bg-emerald-50">

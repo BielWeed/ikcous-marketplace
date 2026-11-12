@@ -140,7 +140,7 @@ const criarProduto = (
   name: overrides.id,
   description: "produto de teste",
   price: 100,
-  images: [],
+  images: ["https://cdn.exemplo/foto.jpg"],
   category: "geral",
   stock: 10,
   sold: 0,

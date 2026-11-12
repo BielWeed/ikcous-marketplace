@@ -32,6 +32,20 @@ describe("cepEhLocal — espelha is_local_cep do banco", () => {
     );
   });
 
+  it("faixa explícita longa inclui as bordas e exclui os CEPs vizinhos", () => {
+    expect(cepEhLocal("38500000", "38500000", "38500000-38505000")).toBe(true);
+    expect(cepEhLocal("38500000", "38505000", "38500000-38505000")).toBe(true);
+    expect(cepEhLocal("38500000", "38499999", "38500000-38505000")).toBe(false);
+    expect(cepEhLocal("38500000", "38505001", "38500000-38505000")).toBe(false);
+  });
+
+  it("faixa abreviada inclui toda a região das bordas", () => {
+    expect(cepEhLocal("38500000", "38500000", "385000-385050")).toBe(true);
+    expect(cepEhLocal("38500000", "38505099", "385000-385050")).toBe(true);
+    expect(cepEhLocal("38500000", "38499999", "385000-385050")).toBe(false);
+    expect(cepEhLocal("38500000", "38505100", "385000-385050")).toBe(false);
+  });
+
   it("faixa invertida ainda casa (a cópia ordena)", () => {
     expect(cepEhLocal("38500-000", "38501-000", "38505000-38500000")).toBe(
       true,
@@ -55,6 +69,11 @@ describe("cepEhLocal — espelha is_local_cep do banco", () => {
   it("item curto na faixa vale como prefixo", () => {
     expect(cepEhLocal("00000-000", "38500-777", "38500")).toBe(true);
     expect(cepEhLocal("00000-000", "38501-000", "38500")).toBe(false);
+  });
+
+  it("prefixo de um dígito inclui só os CEPs que começam com ele", () => {
+    expect(cepEhLocal("00000000", "38500777", "3")).toBe(true);
+    expect(cepEhLocal("00000000", "48500777", "3")).toBe(false);
   });
 
   it("o literal de sentinela NÃO é mais caso de teste — regra pura", () => {

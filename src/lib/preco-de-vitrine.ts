@@ -4,6 +4,8 @@
 // (`tests/front/porteiro-grafo-da-borda-so-modulos-puros.test.ts`). Por isso os
 // tipos abaixo descrevem só os campos que a regra lê; `Product` e
 // `ProductVariant` do app cabem neles por estrutura.
+import { percentualDeDesconto } from "./percentual-de-desconto";
+
 interface VarianteDeVitrine {
   name: string;
   active: boolean;
@@ -98,9 +100,7 @@ export function precoDeVitrine(produto: ProdutoDeVitrine): PrecoDeVitrine {
     preco,
     aPartirDe,
     precoOriginal: comDesconto ? original : null,
-    desconto: comDesconto
-      ? Math.round(((original - preco) / original) * 100)
-      : 0,
+    desconto: comDesconto ? percentualDeDesconto(original, preco) : 0,
     economia: comDesconto ? original - preco : 0,
   };
 }

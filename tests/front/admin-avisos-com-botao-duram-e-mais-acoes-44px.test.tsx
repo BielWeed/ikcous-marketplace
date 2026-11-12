@@ -31,7 +31,7 @@ describe("vitrines: 'Mais ações' com 44 px de toque", () => {
     const trecho = fonte.slice(inicio, inicio + 900);
     // o próprio botão (não o desenho) leva a medida de 44 px
     expect(trecho).toMatch(
-      /disabled=\{salvandoVitrines\}\n\s+className="group flex min-h-11 min-w-11 /,
+      /disabled=\{salvandoVitrines \|\| configFalhou\}\n\s+className="group flex min-h-11 min-w-11 /,
     );
     expect(trecho).toContain("size-9");
   });

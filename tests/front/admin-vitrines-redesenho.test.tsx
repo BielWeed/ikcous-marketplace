@@ -792,6 +792,25 @@ describe("Nova vitrine", () => {
     expect(toastError).toHaveBeenCalled();
   });
 
+  // r150-f: nome colado só com U+200B/U+200E/U+2800/U+3164 não é nome (o
+  // `trim()` não os tira): recusa como o vazio, não grava e não fecha o painel.
+  it.each(["\u200b", "\u200e\u200e", "\u2800", "\u3164"])(
+    "nome só de caractere invisível (%j): não cria, avisa e o painel continua aberto",
+    async (invisivel) => {
+      await abrirNova();
+      const campo = painel()?.querySelector<HTMLInputElement>(
+        "#titulo-da-nova-vitrine",
+      ) as HTMLInputElement;
+      await digitar(campo, invisivel);
+      await clicar(botaoComTexto("Criar vitrine", painel() as HTMLElement));
+      expect(updateConfig).not.toHaveBeenCalled();
+      expect(toastError).toHaveBeenCalledWith(
+        "Informe um título para a vitrine",
+      );
+      expect(painel()).not.toBeNull();
+    },
+  );
+
   it("com nome, grava no fim da lista, ligada, com limite 6 e sem produtos", async () => {
     await abrirNova();
     const campo = painel()?.querySelector<HTMLInputElement>(

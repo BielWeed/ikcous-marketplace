@@ -11,6 +11,7 @@
  * Os rótulos moram em `Map` (e não em objeto indexado por chave dinâmica)
  * pela mesma razão do resto do painel: `security/detect-object-injection`.
  */
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { formatCurrency, reaisComVirgula } from "@/lib/utils";
 import type {
   AtorDoEvento,
@@ -536,7 +537,7 @@ export function erroDoMotivo(args: {
   if (!tipoPrevisto(motivo, janelas)) {
     return porqueMotivoIndisponivel(motivo, prazos);
   }
-  if (motivo === "outro" && detalhe.trim().length === 0) {
+  if (motivo === "outro" && !nomeTemConteudoVisivel(detalhe)) {
     return "Conte em poucas palavras o motivo da devolução.";
   }
   if (detalhe.length > 1000) return "Use no máximo 1000 caracteres.";
@@ -1413,7 +1414,7 @@ export function mensagemDoErro(erro: unknown, generica: string): string {
 export async function corpoDoErroDaEdge(erro: unknown): Promise<unknown> {
   try {
     const contexto = ehObjeto(erro) ? campo(erro, "context") : undefined;
-    const ler = ehObjeto(contexto) ? campo(contexto, "json") : undefined;
+    const ler = ehObjeto(contexto) ? Reflect.get(contexto, "json") : undefined;
     if (typeof ler === "function") {
       return await (ler as () => Promise<unknown>).call(contexto);
     }

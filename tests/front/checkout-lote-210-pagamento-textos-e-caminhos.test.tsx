@@ -397,6 +397,23 @@ describe("CheckoutView — lote 210: textos e caminhos do pagamento", () => {
   });
 
   describe("valor recebido com ponto de milhar", () => {
+    it("o título de pagamento tardio cabe na largura e quebra palavras com letra grande", async () => {
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await fecharPedidoCom(CheckoutView, "Pagar agora com PIX");
+      await act(async () => {
+        onRealtimeEventCapturado?.({
+          eventType: "UPDATE",
+          new: { id: "ped-999", payment_status: "pago_apos_expirar" },
+        });
+      });
+      const titulo = [...hospedeiro.querySelectorAll("h2")].find(
+        (el) => el.textContent === "Pagamento Recebido",
+      );
+      expect(titulo).toBeDefined();
+      expect(titulo?.classList.contains("max-w-full")).toBe(true);
+      expect(titulo?.classList.contains("break-words")).toBe(true);
+    });
+
     it("PIX confirmado: R$ 1.234,50 recebido (não 'R$ 1234,50')", async () => {
       createOrder.mockResolvedValue({ id: "ped-999", totalAmount: 1234.5 });
       const { CheckoutView } = await import("@/views/customer/CheckoutView");

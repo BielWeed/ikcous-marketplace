@@ -47,6 +47,7 @@ import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
 import { montarMensagemDeCompartilhar } from "@/lib/mensagem-de-compartilhar";
+import { percentualDeDesconto } from "@/lib/percentual-de-desconto";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { resumoParaPrevia } from "@/lib/resumo-para-previa";
 import { textoEstoqueBaixo, textoSoRestam } from "@/lib/texto-estoque-baixo";
@@ -713,9 +714,16 @@ export const ProductView = React.memo(function ProductView({
   // carrinho e o card seguem vendendo pelo produto base. Só trava a opção
   // ESCOLHIDA que deixou de existir numa fileira que continua na tela.
   const variacaoIndisponivel = escolhaIndisponivel;
-  const isOutOfStock = currentStock <= 0 || variacaoIndisponivel;
+  // Cadastro antigo com grupos separados (Cor e Tamanho): se UM grupo não tem
+  // nenhuma opção com estoque, nenhuma combinação se compra, mesmo que o
+  // outro grupo tenha unidades. Mesma conta de `disponivel` das fileiras.
+  const grupoSemEstoque = fileirasDeVariacao(product.variants).fileiras.some(
+    (f) => f.valores.every((v) => !v.disponivel),
+  );
+  const isOutOfStock =
+    currentStock <= 0 || variacaoIndisponivel || grupoSemEstoque;
   const discount = originalExibido
-    ? Math.round(((originalExibido - precoExibido) / originalExibido) * 100)
+    ? percentualDeDesconto(originalExibido, precoExibido)
     : 0;
 
   // ProductCard-520 + T3 (23/09): `product.freeShipping` só é verdade
@@ -895,12 +903,14 @@ export const ProductView = React.memo(function ProductView({
     abrirWhatsapp(url);
   };
 
+  const fotosReais = soFotosReais(product.images);
+
   // Schema.org JSON-LD
   const structuredData = {
     "@context": "https://schema.org/",
     "@type": "Product",
     name: product.name,
-    image: product.images,
+    ...(fotosReais.length > 0 && { image: fotosReais }),
     description: product.description,
     sku: product.id,
     offers: {
@@ -930,7 +940,7 @@ export const ProductView = React.memo(function ProductView({
     product.metaDescription || resumoParaPrevia(product.description ?? "", 150);
   const metaTitle = product.metaTitle || product.name;
   const nomeDaLoja = config.storeName?.trim() || branding.appName;
-  const metaImage = product.images?.[0] || "";
+  const metaImage = fotosReais[0] || "";
 
   useDocumentMeta({
     title: product.metaTitle || `${product.name} | ${nomeDaLoja}`,
@@ -1060,8 +1070,10 @@ export const ProductView = React.memo(function ProductView({
             <div className="mb-3 flex flex-col gap-1">
               <h1
                 className={cn(
-                  "break-words text-xl font-black leading-tight tracking-tight text-zinc-900",
-                  "lg:text-3xl lg:tracking-tighter",
+                  "break-words text-xl font-black leading-tight tracking-tight text-foreground",
+                  // No computador o nome mora no cartão `lg:bg-white` (fixo, não muda
+                  // com o tema): ali o escuro fixo é o certo.
+                  "lg:text-3xl lg:tracking-tighter lg:text-zinc-900",
                 )}
               >
                 {product.name}

@@ -27,7 +27,13 @@ import {
   Sparkles,
   User,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 interface AuthViewProps {
@@ -181,6 +187,12 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
   const avisoVisivel =
     avisoDoLink !== null && (viewMode === "forgot" || viewMode === "login");
   const [email, setEmail] = useState("");
+  // Espelho do campo para as respostas assíncronas do login: um closure de
+  // `email` fica velho se a pessoa corrige o e-mail enquanto espera.
+  const emailAtual = useRef(email);
+  useLayoutEffect(() => {
+    emailAtual.current = email;
+  }, [email]);
   const [password, setPassword] = useState("");
   const [confirmaSenha, setConfirmaSenha] = useState("");
   const [fullName, setFullName] = useState("");
@@ -358,8 +370,17 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
             error.code === "email_not_confirmed" ||
             error.message?.includes("Email not confirmed")
           ) {
+            // O "não confirmado" é da conta que PEDIU o login. Se a pessoa
+            // corrigiu o campo enquanto esperava, o aviso e o botão de reenvio
+            // (que manda para o que está no campo) cairiam em outro e-mail.
+            if (
+              emailAtual.current.trim().toLowerCase() !==
+              emailEnviado.toLowerCase()
+            ) {
+              return;
+            }
             message =
-              "Seu e-mail ainda não foi confirmado. Verifique sua caixa de entrada.";
+              "Seu e-mail ainda não foi confirmado. Verifique sua caixa de entrada e a pasta de spam.";
             // #200 — este é o único ramo em que a conta comprovadamente
             // existe e só falta confirmar: o botão de reenvio (abaixo, no
             // JSX) só aparece quando esta flag está ligada.
@@ -657,6 +678,10 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               <br />
               Se você já tem conta, não precisa esperar: toque em "Retornar ao
               Login" e entre. Se não lembra a senha, use "Esqueceu?".
+              <br />
+              <br />
+              Não achou o e-mail? Olhe também a pasta de spam ou lixo
+              eletrônico.
             </motion.p>
 
             <motion.div

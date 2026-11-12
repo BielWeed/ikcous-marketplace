@@ -3020,10 +3020,31 @@ const ROL_DA_128 = [
   "fin_conta_salvar: assinatura e atributos conhecidos",
   "fin_conta_salvar: EXECUTE authenticated, sem PUBLIC ou anon",
 ];
+// 129b: medicao ANTES, so catalogo. Sem 129a ou liberacao de apply neste lote.
+const ROL_DA_129B = [
+  "controle: funcoes de public visiveis a este papel",
+  "avancar_status_do_pedido: corpo exato (md5)",
+  "avancar_status_do_pedido: assinatura e atributos conhecidos",
+  "avancar_status_do_pedido: EXECUTE so authenticated, sem PUBLIC, anon ou service_role",
+  "pedido__mudar_status: corpo exato (md5)",
+  "pedido__mudar_status: assinatura e atributos conhecidos",
+  "pedido__mudar_status: sem EXECUTE para PUBLIC, anon, authenticated ou service_role",
+  "cancelar_pedido_com_cobranca: corpo exato (md5)",
+  "cancelar_pedido_com_cobranca: assinatura e atributos conhecidos",
+  "cancelar_pedido_com_cobranca: EXECUTE so service_role, sem PUBLIC, anon ou authenticated",
+  "is_admin_atual(): existe",
+  "cancelar_pedido_na_etapa: ausente em todas as assinaturas",
+  "cancelar_pedido_com_cobranca_na_etapa: ausente em todas as assinaturas",
+  "marketplace_orders.payment_status: coluna existe",
+  "marketplace_orders.status: coluna existe",
+  "marketplace_orders.user_id: coluna existe",
+  "marketplace_orders.stock_returned_at: coluna existe",
+  "marketplace_orders.estorno_manual_registrado_em: coluna existe",
+];
 // Lote 129 (20261399940000, o cadastro cria o perfil em toda loja: o gatilho on_auth_user_created de auth.users, que a Savy clonada do baseline nunca teve, mais o reparo de quem se cadastrou sem perfil).
 // A 129a (6 linhas) prova o gatilho como desenhado (estrutura do catalogo), ligado, sem concorrente, a funcao SECURITY DEFINER e que nenhum usuario de cliente de tamanho valido esta sem perfil (so uma
 // CONTAGEM); a 129b (3 linhas) prova o estado de antes (gatilho ausente). Nenhuma devolve nome, telefone, CPF ou e-mail.
-const ROL_DA_129A = [
+const ROL_DA_129A_PERFIL = [
   "controle: catalogo publico visivel",
   "auth.users: gatilho on_auth_user_created existe, AFTER INSERT por linha, chama public.handle_new_user(), sem condicao nem lista de colunas",
   "auth.users: o gatilho on_auth_user_created esta LIGADO (nao desabilitado)",
@@ -3031,14 +3052,15 @@ const ROL_DA_129A = [
   "so existe UM gatilho em auth.users que chama handle_new_user: nenhum concorrente",
   "nenhum usuario de cliente (papel customer ou sem papel, nome ate 120 e telefone ate 20) esta sem perfil",
 ];
-const ROL_DA_129B = [
+const ROL_DA_129B_PERFIL = [
   "controle: catalogo publico visivel",
   "auth.users tem id, raw_user_meta_data e raw_app_meta_data; profiles tem id, full_name, whatsapp, cpf e role; handle_new_user() existe (trigger, SECURITY DEFINER)",
   "nenhum gatilho on_auth_user_created existe ainda em auth.users",
 ];
 const ROL_FECHADO_POR_CONSULTA = {
-  "129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado": ROL_DA_129A,
-  "129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente": ROL_DA_129B,
+  "129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado": ROL_DA_129A_PERFIL,
+  "129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente": ROL_DA_129B_PERFIL,
+  "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente": ROL_DA_129B,
   "128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado":
     ROL_DA_128,
   "128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente":

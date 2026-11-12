@@ -356,13 +356,20 @@ describe("BannerCarousel: o carrossel para de passar sozinho", () => {
     expect(emblaApi.scrollNext).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["touchstart", "touchend"])(
-    "%s seguido de mouse emulado não prende o autoplay",
-    async (evento) => {
+  // `touchstart` agora pausa enquanto o dedo está na tela (ver
+  // carrossel-pausa-o-autoplay-enquanto-o-dedo-esta-nele.test.tsx): o toque
+  // completo é o par touchstart + touchend, seguido do mouse emulado.
+  it.each([
+    { nome: "touchstart + touchend", eventos: ["touchstart", "touchend"] },
+    { nome: "touchend", eventos: ["touchend"] },
+  ])(
+    "$nome seguido de mouse emulado não prende o autoplay",
+    async ({ eventos }) => {
       vi.useFakeTimers();
       await montar(doisBanners(), { interval: 2000 });
       act(() => {
-        regiao().dispatchEvent(new Event(evento, { bubbles: true }));
+        for (const evento of eventos)
+          regiao().dispatchEvent(new Event(evento, { bubbles: true }));
         regiao().dispatchEvent(
           new MouseEvent("mouseover", {
             bubbles: true,

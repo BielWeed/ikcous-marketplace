@@ -10,7 +10,11 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { montarPolitica, textoCorrido } from "@/lib/textos-das-politicas";
+import {
+  montarPolitica,
+  rotuloDaVersao,
+  textoCorrido,
+} from "@/lib/textos-das-politicas";
 
 const { configAtual } = vi.hoisted(() => ({
   configAtual: { valor: {} as Record<string, unknown> },
@@ -273,6 +277,156 @@ describe("identidade legal nas políticas", () => {
       });
       const folha = document.querySelector('[data-testid="folha-politica"]');
       expect(folha?.textContent).toContain(LINHA_COM_EMAIL);
+    });
+  });
+
+  describe("o endereço da loja na linha do responsável dos Termos", () => {
+    const ENDERECO_GRAVADO =
+      "Rua das Flores, 10 — Centro, Alfenas/MG — CEP 37130-000";
+    const ENDERECO_NA_FRASE =
+      "Rua das Flores, 10 - Centro, Alfenas/MG, CEP 37130-000";
+
+    it("montarPolitica: com responsável, o endereço vai NA MESMA linha; sem responsável, uma linha só dele", () => {
+      const comLinha = montarPolitica(
+        "termos",
+        { nome: "L", responsavel: LINHA, endereco: ENDERECO_NA_FRASE },
+        null,
+      );
+      expect(comLinha.secoes[0].paragrafos).toHaveLength(2);
+      expect(comLinha.secoes[0].paragrafos.at(-1)).toBe(
+        `${LINHA} — endereço: ${ENDERECO_NA_FRASE}`,
+      );
+      const semLinha = montarPolitica(
+        "termos",
+        { nome: "L", endereco: ENDERECO_NA_FRASE },
+        null,
+      );
+      expect(semLinha.secoes[0].paragrafos.at(-1)).toBe(
+        `Endereço da loja: ${ENDERECO_NA_FRASE}`,
+      );
+      expect(textoCorrido(semLinha)).not.toContain("Responsável:");
+    });
+
+    it("endereço vazio, só espaços ou ausente: o documento é IDÊNTICO ao de antes", () => {
+      const antes = textoCorrido(
+        montarPolitica("termos", { nome: "L", responsavel: LINHA }, null),
+      );
+      for (const endereco of [null, undefined, "", "   "]) {
+        expect(
+          textoCorrido(
+            montarPolitica(
+              "termos",
+              { nome: "L", responsavel: LINHA, endereco },
+              null,
+            ),
+          ),
+        ).toBe(antes);
+      }
+    });
+
+    it("Privacidade e Trocas não ganham o endereço (o pedido é só dos Termos)", () => {
+      for (const tipo of ["privacidade", "trocas"] as const) {
+        expect(
+          textoCorrido(
+            montarPolitica(
+              tipo,
+              { nome: "L", responsavel: LINHA, endereco: ENDERECO_NA_FRASE },
+              null,
+            ),
+          ),
+        ).not.toContain("Rua das Flores");
+      }
+    });
+
+    it("a página dos Termos mostra o endereço na seção 'Quem vende', na linha do responsável", async () => {
+      configAtual.valor = { ...COM_IDENTIDADE, storeAddress: ENDERECO_GRAVADO };
+      await montarPagina("termos");
+      const secao = hospedeiro.querySelector(
+        'section[aria-labelledby="politica-quem-somos"]',
+      );
+      expect(secao?.textContent).toContain(
+        `${LINHA_COM_EMAIL} — endereço: ${ENDERECO_NA_FRASE}`,
+      );
+      expect(secao?.textContent).not.toContain("undefined");
+    });
+
+    it("sem endereço cadastrado a seção fica como era (nada de placeholder)", async () => {
+      configAtual.valor = COM_IDENTIDADE;
+      await montarPagina("termos");
+      const secao = hospedeiro.querySelector(
+        'section[aria-labelledby="politica-quem-somos"]',
+      );
+      expect(secao?.textContent).toContain(LINHA_COM_EMAIL);
+      expect(secao?.textContent).not.toMatch(/endereço/i);
+    });
+
+    it("endereço sem nenhum dado legal: aparece sozinho, sem 'Responsável:'", async () => {
+      configAtual.valor = {
+        storeName: "Loja da Ana",
+        storeAddress: ENDERECO_GRAVADO,
+      };
+      await montarPagina("termos");
+      const secao = hospedeiro.querySelector(
+        'section[aria-labelledby="politica-quem-somos"]',
+      );
+      expect(secao?.textContent).toContain(
+        `Endereço da loja: ${ENDERECO_NA_FRASE}`,
+      );
+      expect(secao?.textContent).not.toContain("Responsável:");
+    });
+
+    it("a Privacidade não repete o endereço na seção de quem cuida dos dados", async () => {
+      configAtual.valor = { ...COM_IDENTIDADE, storeAddress: ENDERECO_GRAVADO };
+      await montarPagina("privacidade");
+      const secao = hospedeiro.querySelector(
+        'section[aria-labelledby="politica-quem-cuida"]',
+      );
+      expect(secao?.textContent).toContain(LINHA_COM_EMAIL);
+      expect(secao?.textContent).not.toContain("Rua das Flores");
+    });
+  });
+
+  describe("a versão do texto no topo", () => {
+    it.each(["termos", "privacidade"] as const)(
+      "%s: 'Versão N, atualizada em DD/MM/AAAA' aparece antes do resumo, na página",
+      async (tipo) => {
+        await montarPagina(tipo);
+        const versao = hospedeiro.querySelector(
+          '[data-testid="politica-versao"]',
+        ) as HTMLElement;
+        expect(versao, "linha da versão").not.toBeNull();
+        expect(versao.textContent).toBe(rotuloDaVersao());
+        expect(versao.textContent).toMatch(
+          /^Versão \d+, atualizada em \d{2}\/\d{2}\/\d{4}$/,
+        );
+        const conteudo = hospedeiro.querySelector(
+          `[data-testid="politica-${tipo}"]`,
+        ) as HTMLElement;
+        expect(conteudo.firstElementChild).toBe(versao);
+        expect(versao.className).toContain("text-muted-foreground");
+      },
+    );
+
+    it("Trocas e devoluções não ganha versão (o texto dela é a política que a lojista configura)", async () => {
+      await montarPagina("trocas");
+      expect(
+        hospedeiro.querySelector('[data-testid="politica-versao"]'),
+      ).toBeNull();
+      expect(hospedeiro.textContent).not.toMatch(/atualizada em/);
+    });
+
+    it("a folha (checkout, produto, cadastro) mostra a mesma versão", async () => {
+      const { PoliticaEmFolha } = await import(
+        "@/components/politicas/PoliticaEmFolha"
+      );
+      await act(async () => {
+        raiz.render(<PoliticaEmFolha tipo="privacidade" onFechar={vi.fn()} />);
+      });
+      await act(async () => {
+        await esperar();
+      });
+      const folha = document.querySelector('[data-testid="folha-politica"]');
+      expect(folha?.textContent).toContain(rotuloDaVersao());
     });
   });
 

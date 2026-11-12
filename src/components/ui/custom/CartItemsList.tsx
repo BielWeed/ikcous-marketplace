@@ -5,13 +5,14 @@ import { fotoDoItemDoCarrinho } from "@/lib/foto-do-item-do-carrinho";
 import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
 import { usarImagemOriginal } from "@/lib/imageUrl";
 import { miniaturaDeCompra } from "@/lib/miniatura-de-compra";
+import { percentualDeDesconto } from "@/lib/percentual-de-desconto";
 import { precoVendido } from "@/lib/preco-vendido";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { CartItem } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { AnimatePresence, motion } from "framer-motion";
 import { Trash2 } from "lucide-react";
-import { memo } from "react";
+import { memo, useState } from "react";
 
 interface CartItemCardProps {
   item: CartItem;
@@ -86,6 +87,7 @@ const CartItemCard = memo(function CartItemCard({
 
   // A foto é a da cor escolhida (quando tem) ou a do produto.
   const fotoDaLinha = fotoDoItemDoCarrinho(item);
+  const [urlQueFalhou, setUrlQueFalhou] = useState<string | null>(null);
 
   const variant = item.variantId
     ? item.product.variants?.find((v) => v.id === item.variantId)
@@ -98,10 +100,7 @@ const CartItemCard = memo(function CartItemCard({
   // Desconto abaixo de meio por cento arredonda para 0: o selo "-0%" não
   // aparece, mas o preço riscado continua.
   const pctOff = hasDiscount
-    ? Math.round(
-        ((item.product.originalPrice! - price) / item.product.originalPrice!) *
-          100,
-      )
+    ? percentualDeDesconto(item.product.originalPrice, price)
     : 0;
 
   return (
@@ -120,14 +119,19 @@ const CartItemCard = memo(function CartItemCard({
         )}
       >
         <div className="size-16 flex-shrink-0 overflow-hidden rounded-xl bg-muted min-[380px]:size-20">
-          {!fotoDaLinha || ehMarcadorDeFoto(fotoDaLinha) ? (
+          {!fotoDaLinha ||
+          ehMarcadorDeFoto(fotoDaLinha) ||
+          fotoDaLinha === urlQueFalhou ? (
             <div className="flex size-full items-center justify-center px-2 text-center text-xs font-medium text-muted-foreground">
               Sem foto
             </div>
           ) : (
             <img
               src={miniaturaDeCompra(fotoDaLinha)}
-              onError={(e) => usarImagemOriginal(e.currentTarget, fotoDaLinha)}
+              onError={(e) => {
+                if (!usarImagemOriginal(e.currentTarget, fotoDaLinha))
+                  setUrlQueFalhou(fotoDaLinha);
+              }}
               alt={
                 variantText
                   ? `${item.product.name} - ${variantText}`
@@ -174,13 +178,13 @@ const CartItemCard = memo(function CartItemCard({
                 frase, a cliente não sabe por quê (até 3, o "Só N restantes"
                 ao lado já conta). */}
             {estoqueDaEscolha > 3 && item.quantity >= estoqueDaEscolha && (
-              <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-semibold text-amber-700 dark:text-amber-400">
+              <span className="inline-flex min-w-0 items-center gap-1.5 break-words font-semibold text-amber-700 dark:text-amber-400">
                 <span className="size-1.5 rounded-full bg-amber-500" />
                 Máximo disponível: {estoqueDaEscolha}
               </span>
             )}
             {estoqueDaEscolha <= 3 && estoqueDaEscolha > 0 && (
-              <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-semibold text-amber-700 dark:text-amber-400">
+              <span className="inline-flex min-w-0 items-center gap-1.5 break-words font-semibold text-amber-700 dark:text-amber-400">
                 <span className="size-1.5 rounded-full bg-amber-500" />
                 Só {estoqueDaEscolha}{" "}
                 {estoqueDaEscolha === 1 ? "restante" : "restantes"}

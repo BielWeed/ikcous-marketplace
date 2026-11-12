@@ -118,9 +118,22 @@ interface AdminLayoutProps {
   onBack?: () => void;
 }
 
-/** Registra o fim anormal de um canal de avisos do painel (só log, sem efeito na tela). */
-function aoMudarOStatusDoCanal(nome: string) {
-  return (status: any, err?: any) => {
+/** Como nas notificações: só a assinatura DEPOIS de uma queda pede releitura. */
+function aoMudarOStatusDoCanal(nome: string, reler: () => void) {
+  let canalJaCaiu = false;
+  return (status: string, err?: any) => {
+    if (status === "SUBSCRIBED") {
+      if (canalJaCaiu) {
+        canalJaCaiu = false;
+        reler();
+      }
+    } else if (
+      status === "CHANNEL_ERROR" ||
+      status === "TIMED_OUT" ||
+      status === "CLOSED"
+    ) {
+      canalJaCaiu = true;
+    }
     if (status !== "CHANNEL_ERROR") return;
     const errMessage = err?.message || (typeof err === "string" ? err : "");
     if (errMessage.includes("1000") || errMessage.includes("normal")) {
@@ -193,6 +206,7 @@ export function AdminLayout({
     let isMounted = true;
     let ordersChannel: any = null;
     let questionsChannel: any = null;
+    let encerrarAssinaturas = () => {};
     // Numero da rodada corrente. Sem ele, a rodada VELHA que termina por
     // ULTIMO vence — inclusive escrevendo o veredito velho (falhou) por
     // cima do veredito novo (deu certo). Mesmo padrao de
@@ -441,6 +455,21 @@ export function AdminLayout({
     const subscribe = () => {
       if (ordersChannel || questionsChannel) return; // already subscribed
 
+      // Callback de um canal removido não agenda nada na aba escondida.
+      let assinaturasAtivas = true;
+      const aoReconectar = () => {
+        if (
+          isMounted &&
+          assinaturasAtivas &&
+          document.visibilityState === "visible"
+        ) {
+          pedirConferenciaDeAvisos();
+        }
+      };
+      encerrarAssinaturas = () => {
+        assinaturasAtivas = false;
+      };
+
       // Toda aba VISÍVEL do painel assina os próprios canais. Antes só a aba
       // "líder" assinava e as outras esperavam um aviso por BroadcastChannel:
       // se a líder era uma aba da vitrine ou estava escondida, a bolinha do
@@ -453,7 +482,7 @@ export function AdminLayout({
           { event: "*", schema: "public", table: "marketplace_orders" },
           pedirConferenciaDeAvisos,
         )
-        .subscribe(aoMudarOStatusDoCanal("Orders"));
+        .subscribe(aoMudarOStatusDoCanal("Orders", aoReconectar));
 
       questionsChannel = supabase
         .channel("admin-layout-questions-badge")
@@ -467,10 +496,11 @@ export function AdminLayout({
           { event: "*", schema: "public", table: "answers" },
           pedirConferenciaDeAvisos,
         )
-        .subscribe(aoMudarOStatusDoCanal("Questions"));
+        .subscribe(aoMudarOStatusDoCanal("Questions", aoReconectar));
     };
 
     const unsubscribe = () => {
+      encerrarAssinaturas();
       if (ordersChannel) {
         supabase.removeChannel(ordersChannel);
         ordersChannel = null;

@@ -764,6 +764,15 @@ function OrderDeliveryCard({
   // endereço, se existir, continua gravado no banco; só não é mostrado.
   const ehBalcao = tipoDeEntregaDoPedido(order) === "balcao";
 
+  // Visitante que RETIRA na loja é gravado sem endereço de casa (só CEP, nome
+  // e WhatsApp). Sem rua, bairro e cidade não há o que copiar nem apontar no
+  // mapa: a ficha diz isso em uma linha em vez de um bloco vazio.
+  const semEnderecoDeCasa =
+    order.retiradaNaLoja &&
+    [order.customer.address, order.customer.neighborhood, order.customer.city]
+      .map((parte) => (parte ?? "").trim())
+      .every((parte) => parte === "");
+
   return (
     <section
       data-testid="bloco-entrega"
@@ -811,7 +820,19 @@ function OrderDeliveryCard({
         </div>
       )}
 
-      {!ehBalcao && (
+      {!ehBalcao && semEnderecoDeCasa && (
+        <p className="border-t border-admin-border pt-4 text-sm leading-relaxed text-zinc-400">
+          Cliente retira na loja — não informou endereço de casa
+          {order.customer.cep?.trim() ? (
+            <>
+              <br />
+              CEP: {order.customer.cep.trim()}
+            </>
+          ) : null}
+        </p>
+      )}
+
+      {!ehBalcao && !semEnderecoDeCasa && (
         <div className="space-y-2 border-t border-admin-border pt-4">
           <p className="text-xs text-zinc-400">
             {order.retiradaNaLoja
@@ -1177,7 +1198,11 @@ function OrderFinanceCard({
                 Recebido em{" "}
                 {new Date(order.pagamentoRecebidoEm).toLocaleDateString(
                   "pt-BR",
-                  { day: "2-digit", month: "short" },
+                  {
+                    timeZone: "America/Sao_Paulo",
+                    day: "2-digit",
+                    month: "short",
+                  },
                 )}
               </span>
               <DesfazerRecebimento
@@ -1850,6 +1875,16 @@ export const OrderDetail = memo(function OrderDetail({
     digitado: trackingValue,
     salvo: localTrackingCode,
   };
+  // Com rascunho, o código "salvo" (referência da gravação condicionada) NÃO
+  // acompanha o pedido: continua o que ela viu ao começar a digitar. Assim o
+  // Salvar dela esbarra no código do outro aparelho, avisa e só então troca a
+  // referência. O código de fora fica aqui até o rascunho acabar (cancelar);
+  // se a referência já foi trocada por outro caminho (gravou, releu), vale o
+  // que essa troca decidiu e o código retido é descartado.
+  const codigoDeForaRetidoRef = useRef<{
+    novo: string;
+    referencia: string;
+  } | null>(null);
   useEffect(() => {
     const novo = order.trackingCode || "";
     const tela = rastreioDaTelaRef.current;
@@ -1857,7 +1892,11 @@ export const OrderDetail = memo(function OrderDetail({
     rastreioDaTelaRef.current.pedidoId = order.id;
     const rascunho =
       !mudouPedido && tela.editando && tela.digitado !== tela.salvo;
-    setLocalTrackingCode(novo);
+    const retido = rascunho && novo !== tela.digitado && novo !== tela.salvo;
+    codigoDeForaRetidoRef.current = retido
+      ? { novo, referencia: tela.salvo }
+      : null;
+    if (!retido) setLocalTrackingCode(novo);
     if (!rascunho) {
       setTrackingValue(novo);
       return;
@@ -1868,6 +1907,14 @@ export const OrderDetail = memo(function OrderDetail({
       );
     }
   }, [order.id, order.trackingCode]);
+  useEffect(() => {
+    const retido = codigoDeForaRetidoRef.current;
+    if (isEditingTracking || retido === null) return;
+    codigoDeForaRetidoRef.current = null;
+    if (rastreioDaTelaRef.current.salvo !== retido.referencia) return;
+    setLocalTrackingCode(retido.novo);
+    setTrackingValue(retido.novo);
+  }, [isEditingTracking]);
 
   useEffect(() => {
     const pedidoId = order.id;
@@ -2046,6 +2093,7 @@ export const OrderDetail = memo(function OrderDetail({
     order.customer.cep ? `CEP: ${order.customer.cep}` : "",
     order.customer.reference ? `Ref: ${order.customer.reference}` : "",
   ]
+    .map((parte) => (parte ?? "").trim())
     .filter(Boolean)
     .join(" - ");
 
@@ -2071,6 +2119,11 @@ export const OrderDetail = memo(function OrderDetail({
   // `copiarParaClipboard` devolve false quando a API recusa (permissão,
   // janela sem foco), e aí o aviso é de erro, não de sucesso.
   const handleCopyAddress = async () => {
+    // Pedido sem nenhum texto de endereço: nada a copiar, nada a comemorar.
+    if (displayAddress === "") {
+      toast.error("Este pedido não tem endereço para copiar.");
+      return;
+    }
     const ok = await copiarParaClipboard(displayAddress);
     if (!ok) {
       toast.error("Não foi possível copiar.");
@@ -2101,17 +2154,18 @@ export const OrderDetail = memo(function OrderDetail({
       salvamentoRastreioRef.current === salvamento;
     try {
       setIsSavingTracking(true);
-      // Prazo só da espera da tela (rede "pendurada"): estourou, o `catch`
-      // abaixo conta que NÃO se sabe se gravou, solta o campo COM o que foi
-      // digitado e relê o código gravado. Repetir é seguro ("último vale").
+      // A gravação só vale se o código lido ainda for o mesmo no banco.
+      const gravacao = supabase
+        .from("marketplace_orders")
+        .update({ tracking_code: codigo || null })
+        .eq("id", pedidoId);
+      // O mapper representa tanto null quanto texto vazio como sem rastreio.
+      const condicionada = localTrackingCode
+        ? gravacao.eq("tracking_code", localTrackingCode)
+        : gravacao.or("tracking_code.is.null,tracking_code.eq.");
+      // O prazo encerra só a espera; o catch relê sem apagar o rascunho.
       const { data, error } = await aguardarComPrazo(
-        Promise.resolve(
-          supabase
-            .from("marketplace_orders")
-            .update({ tracking_code: codigo || null })
-            .eq("id", pedidoId)
-            .select("id"),
-        ),
+        Promise.resolve(condicionada.select("id")),
         PRAZO_DAS_ACOES_DO_PEDIDO_MS,
         () => erroDeConsultaSemResposta(MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA),
       );
@@ -2119,11 +2173,35 @@ export const OrderDetail = memo(function OrderDetail({
       // Só o salvamento vigente pode alterar a ficha.
       if (!vigente()) return;
       if (error) throw error;
-      // A política de update filtra em silêncio quando a sessão deixou de ser
-      // admin: 0 linhas e `error: null`. Sem linha gravada NÃO há "salvo": o
-      // campo fica aberto com o que foi digitado e o aviso diz o que fazer.
+      // Zero linhas pode ser conflito ou sessão sem permissão. Relê o salvo,
+      // mas nunca troca o rascunho nem comemora uma gravação que não ocorreu.
       if (!data?.length) {
-        toast.error(MENSAGEM_RASTREIO_NAO_GRAVADO);
+        let mensagem = MENSAGEM_RASTREIO_NAO_GRAVADO;
+        try {
+          const atual = await aguardarComPrazo(
+            Promise.resolve(
+              supabase
+                .from("marketplace_orders")
+                .select("tracking_code")
+                .eq("id", pedidoId)
+                .maybeSingle(),
+            ),
+            PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+            () => erroDeConsultaSemResposta(),
+          );
+          if (!vigente()) return;
+          if (!atual.error && atual.data) {
+            const salvo = atual.data.tracking_code ?? "";
+            setLocalTrackingCode(salvo);
+            if (salvo !== localTrackingCode) {
+              mensagem =
+                "O código de rastreio mudou em outro aparelho. O que você digitou foi mantido. Confira antes de salvar de novo.";
+            }
+          }
+        } catch {
+          // Sem leitura confiável, mantém o aviso de gravação não confirmada.
+        }
+        if (vigente()) toast.error(mensagem);
         return;
       }
       setLocalTrackingCode(codigo);
@@ -2340,7 +2418,8 @@ export const OrderDetail = memo(function OrderDetail({
       cancelledAfterShipping: order.cancelledAfterShipping,
       // Enviado, devolvido à loja e reativado: o texto fala da lista certa.
       returnedToSellerAt: order.returnedToSellerAt,
-      // G4: devolução parcial já concluída também impede a linha nova.
+      // R11 (migration 20261198): devolução parcial já concluída — o banco abre
+      // a linha só do que falta; o texto diz isso em vez de "devolva você".
       valorEstornado: order.valorEstornado,
       // Cancelar o pedido não cancela a etiqueta já paga no Melhor Envio.
       shipping_label_id: order.shippingLabelId,

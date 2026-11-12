@@ -92,10 +92,17 @@ export const ContatoDaLoja = memo(function ContatoDaLoja({
     }
     if (salvando) return false;
 
+    // O número só vai (e só é validado) se a lojista o mexeu: reenviar o da
+    // tela, que pode estar velho (ela o trocou em outro aparelho), desfaria a
+    // troca e a loja voltaria a receber pedidos no número antigo. Sem nada
+    // mudado, segue como antes (manda o número).
+    const numeroMudou = numeroComPais(whatsapp) !== numeroComPais(baseWhatsapp);
+    const mandarNumero = numeroMudou || texto === baseTexto;
+
     // Vazio grava NULL (decisão do Gabriel, 30/08: WhatsApp é configuração DA
     // lojista); preenchido, 10-11 dígitos (DDD + número) ganham o 55.
-    const paraGravar = whatsappParaGravar(whatsapp, true);
-    if (!paraGravar.valido) {
+    const paraGravar = mandarNumero ? whatsappParaGravar(whatsapp, true) : null;
+    if (paraGravar && !paraGravar.valido) {
       toast.error("WhatsApp inválido");
       return false;
     }
@@ -110,7 +117,7 @@ export const ContatoDaLoja = memo(function ContatoDaLoja({
       // único aviso, o "Contato salvo" daqui (o de erro continua do contexto).
       const salvou = await updateConfig(
         {
-          whatsappNumber: paraGravar.valor,
+          ...(paraGravar?.valido ? { whatsappNumber: paraGravar.valor } : {}),
           // Só manda a frase se ela mudou: reenviar a de sempre "congelava" o
           // nome da loja nela (a leitura só acompanha o nome enquanto o texto
           // for o padrão).

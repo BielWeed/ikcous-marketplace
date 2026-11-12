@@ -7,6 +7,7 @@ import { miniaturaDeCompra } from "@/lib/miniatura-de-compra";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
   ROTULOS_DAS_ETAPAS,
+  ROTULO_RETIRADA_FEITA,
   ROTULO_RETIRADA_PRONTA_CURTO,
 } from "@/lib/rotulos-das-etapas";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,29 @@ import {
 } from "lucide-react";
 import { type ReactNode, memo, useState } from "react";
 import { toast } from "sonner";
+
+function FotoDaListaDePedidos({
+  item,
+}: {
+  readonly item: Order["items"][number] | undefined;
+}) {
+  const [urlQueFalhou, setUrlQueFalhou] = useState<string | null>(null);
+  const foto = item?.image;
+  if (!foto || foto === urlQueFalhou)
+    return <Package className="size-6 text-muted-foreground" />;
+  return (
+    <img
+      src={miniaturaDeCompra(foto)}
+      onError={(e) => {
+        if (!usarImagemOriginal(e.currentTarget, foto)) setUrlQueFalhou(foto);
+      }}
+      alt={item.name || ""}
+      loading="lazy"
+      decoding="async"
+      className="size-full object-cover"
+    />
+  );
+}
 
 // Cada situação é uma frase; o ponto colorido do cartão faz o papel do ícone.
 const statusConfig: Record<OrderStatus, { desc: string }> = {
@@ -50,7 +74,7 @@ const trailStepsRetirada: string[] = [
   ROTULOS_DAS_ETAPAS.recebido,
   ROTULOS_DAS_ETAPAS.separado,
   ROTULO_RETIRADA_PRONTA_CURTO,
-  ROTULOS_DAS_ETAPAS.entregue,
+  ROTULO_RETIRADA_FEITA,
 ];
 
 // `Map.get` em vez de indexar o Record: mesma escolha de
@@ -418,7 +442,7 @@ export const OrderList = memo(function OrderList({
               ? "Acesse para ver seu histórico."
               : guestMessage ||
                 "Seus pedidos são vinculados à sua conta. Acesse para visualizar seu histórico completo."
-            : "Seu carrinho de pedidos está vazio. Que tal começar a comprar?")}
+            : "Você ainda não fez nenhum pedido. Que tal começar a comprar?")}
         {!isGuest && !compact && (
           <span className="mt-6 block">
             <button
@@ -508,23 +532,7 @@ export const OrderList = memo(function OrderList({
               <div className="flex min-w-0 items-start gap-3">
                 <div className="relative size-14 flex-shrink-0">
                   <div className="flex size-full items-center justify-center overflow-hidden rounded-xl bg-muted">
-                    {order.items[0]?.image ? (
-                      <img
-                        src={miniaturaDeCompra(order.items[0].image)}
-                        onError={(e) =>
-                          usarImagemOriginal(
-                            e.currentTarget,
-                            order.items[0].image,
-                          )
-                        }
-                        alt={order.items[0].name || ""}
-                        loading="lazy"
-                        decoding="async"
-                        className="size-full object-cover"
-                      />
-                    ) : (
-                      <Package className="size-6 text-muted-foreground" />
-                    )}
+                    <FotoDaListaDePedidos item={order.items[0]} />
                   </div>
                   {order.items.length > 1 && (
                     <span className="absolute -bottom-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-background bg-foreground px-1 text-xs font-bold text-background">

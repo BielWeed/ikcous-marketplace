@@ -326,6 +326,8 @@ on:
           - 128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente
           - 129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado
           - 129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente
+          - 129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente
+          - 129m-medir-corrida-e-avanco-com-estorno
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

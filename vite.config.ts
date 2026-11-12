@@ -266,6 +266,14 @@ export default defineConfig(async (context): Promise<UserConfig> => {
             if (normalizedId.endsWith("/src/utils/variante-composta.ts")) {
               return "variante-composta";
             }
+            // 12/11/2026: whatsapp-do-cliente (fixo no painel-ui abaixo) passou a
+            // normalizar o número por telefone-br, que a vitrine também usa. Sem
+            // chunk próprio o Rollup o arrastava para o painel-ui e a vitrine
+            // passava a baixar o bloco inteiro do painel (+16,8 kB no teto do
+            // cliente, medido). Módulo sem dependências: o chunk próprio é seguro.
+            if (normalizedId.endsWith("/src/lib/telefone-br.ts")) {
+              return "telefone-br";
+            }
             // Peças pequenas compartilham imports, minificação e dicionário
             // Brotli. Lista fechada: não absorver telas ou dependências novas
             // por uma regra genérica de diretório. (O nome sem Admin* era para

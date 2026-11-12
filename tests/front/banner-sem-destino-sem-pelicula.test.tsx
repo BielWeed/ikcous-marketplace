@@ -94,4 +94,51 @@ describe("banner sem destino: película", () => {
     await loja({ ...base, link: "/?category=Bebidas" });
     expect(hospedeiro.querySelector('div[style*="opacity"]')).not.toBeNull();
   });
+
+  // r150-f: `trim()` não tira U+200B, U+200E (cola do WhatsApp), U+2800 nem
+  // U+3164. Texto só disso é AUSENTE: sem pílula amarela vazia, sem botão sem
+  // rótulo e sem película escura sobre a foto.
+  const comLink = {
+    ...base,
+    link: "/?category=Bebidas",
+    buttonText: "",
+    title: "",
+  };
+  const CAMPOS = [
+    ["badgeText", "span.rounded-full"],
+    ["title", "h2"],
+    ["subtitle", "p"],
+    ["buttonText", "button"],
+  ] as const;
+  const INVISIVEIS = ["\u200b", "\u200e\u200e", "\u2800", "\u3164"];
+
+  it.each(
+    CAMPOS.flatMap(([campo, seletor]) =>
+      INVISIVEIS.map((invisivel) => [campo, seletor, invisivel] as const),
+    ),
+  )(
+    "%s só de caractere invisível (%s -> %j): sem texto e sem película",
+    async (campo, _seletor, invisivel) => {
+      await loja({ ...comLink, [campo]: invisivel });
+      expect(hospedeiro.querySelector("img")).not.toBeNull();
+      expect(hospedeiro.querySelector('div[style*="opacity"]')).toBeNull();
+      for (const [, seletor] of CAMPOS) {
+        expect(hospedeiro.querySelector(seletor)).toBeNull();
+      }
+    },
+  );
+
+  it.each(CAMPOS)(
+    "%s invisível ao lado de um texto de verdade: o texto real aparece e o invisível não desenha nada",
+    async (campo, seletor) => {
+      const [, seletorReal] = campo === "title" ? CAMPOS[2] : CAMPOS[1];
+      const real = campo === "title" ? "subtitle" : "title";
+      await loja({ ...comLink, [real]: "Promoção real", [campo]: "\u200b" });
+      expect(hospedeiro.querySelector(seletorReal)?.textContent).toBe(
+        "Promoção real",
+      );
+      expect(hospedeiro.querySelector('div[style*="opacity"]')).not.toBeNull();
+      expect(hospedeiro.querySelector(seletor)).toBeNull();
+    },
+  );
 });

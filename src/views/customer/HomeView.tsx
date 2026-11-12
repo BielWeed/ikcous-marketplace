@@ -15,11 +15,16 @@ import {
   type LayoutDeOfertas,
   normalizarLayoutDeOfertas,
 } from "@/lib/layout-de-ofertas";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { ordenacaoValida } from "@/lib/ordenacao-da-home";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { cn } from "@/lib/utils";
-import { ordenarParaVitrine, produtoDisponivel } from "@/lib/vitrine";
-import { destaquesDaVitrine, ofertasDaVitrine } from "@/lib/vitrine-do-painel";
+import { produtoDisponivel } from "@/lib/vitrine";
+import {
+  destaquesDaVitrine,
+  lancamentosDaVitrine,
+  ofertasDaVitrine,
+} from "@/lib/vitrine-do-painel";
 import type { Product, SortOption, View } from "@/types";
 import {
   ArrowDown,
@@ -209,9 +214,11 @@ export const HomeView = React.memo(function HomeView({
     [onAddToCart],
   );
 
-  // Um espaço (ou vários) na caixinha do topo é busca VAZIA: toda a Home usa
+  // Um espaço (ou vários, ou só caractere invisível) na caixinha do topo é busca VAZIA: toda a Home usa
   // este termo aparado, para banners, vitrines, título e filtro concordarem.
-  const termoDaBusca = searchQuery.trim();
+  const termoDaBusca = nomeTemConteudoVisivel(searchQuery)
+    ? searchQuery.trim()
+    : "";
 
   const produtosAVenda = useMemo(
     () => products.filter((p) => p.isActive),
@@ -314,11 +321,12 @@ export const HomeView = React.memo(function HomeView({
   }, [selectedCategory, sortBy]);
 
   const newArrivals = useMemo(() => {
-    // A ordenação mora em ordenarParaVitrine (src/lib/vitrine.ts) — a MESMA
-    // função que o preview do painel usa (item 15 do laudo de 29/08: preview
-    // e loja ordenavam diferente). Comportamento byte a byte o de antes.
+    // As três faixas automáticas (Lançamentos, Ofertas, Destaques) vêm de
+    // src/lib/vitrine-do-painel.ts — a MESMA regra que a prévia do painel usa:
+    // só produto À VENDA e com foto de verdade, mais novo primeiro. O esgotado
+    // e o sem foto seguem no Catálogo (`filteredProducts`), que não passa por aqui.
     return (
-      ordenarParaVitrine(produtosAVenda)
+      lancamentosDaVitrine(produtosAVenda)
         // LIMITE_MAX_ITENS_CARROSSEL, nunca literal: o 6 fixo travava a vitrine
         // abaixo do que o seletor de maxItems promete (defeito 20260825-1050).
         // O corte real por seção continua no render, pelo `max` escolhido.
@@ -374,6 +382,7 @@ export const HomeView = React.memo(function HomeView({
       temBannerMeio: middleBanners.length > 0,
       temOfertas: offerProducts.length > 0,
       temBestsellers: bestsellerProducts.length > 0,
+      temLancamentos: newArrivals.length > 0,
       layoutOfertas,
       qtdOfertas: qtdOfertasNaFaixa,
     });
@@ -388,6 +397,7 @@ export const HomeView = React.memo(function HomeView({
     middleBanners.length,
     offerProducts.length,
     bestsellerProducts.length,
+    newArrivals.length,
   ]);
 
   const sortOptions: {
@@ -615,15 +625,21 @@ export const HomeView = React.memo(function HomeView({
           // morre). Primeira visita (sem memória) = aposta de hoje
           // (develop): esqueleto — ninguém piora em relação ao build
           // atual; quem VOLTA fica estável nas duas pontas.
+          //
+          // Lançamentos (e vitrine personalizada automática) também nascem de
+          // filtro desde que só mostram produto à venda e com foto: loja que
+          // ficou sem nenhum não pode ver o esqueleto nascer e sumir. Memória
+          // ausente ou de versão anterior (`temLancamentos` indefinido) segue
+          // reservando, como sempre.
           const secaoCurada =
             !!section.productIds && section.productIds.length > 0;
-          const derivadaPorFiltro =
-            !secaoCurada &&
-            (section.id === "offers" || section.id === "bestsellers");
+          const derivadaPorFiltro = !secaoCurada;
           const ultimaVisitaTinhaConteuto =
             section.id === "offers"
               ? memoriaDaUltimaVisita?.temOfertas
-              : memoriaDaUltimaVisita?.temBestsellers;
+              : section.id === "bestsellers"
+                ? memoriaDaUltimaVisita?.temBestsellers
+                : memoriaDaUltimaVisita?.temLancamentos;
 
           if (secProducts.length === 0) {
             if (!isLoading) return null;

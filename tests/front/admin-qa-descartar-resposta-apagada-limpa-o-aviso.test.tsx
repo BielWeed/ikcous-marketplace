@@ -160,7 +160,9 @@ describe("AdminQAView: descartar resposta apagada", () => {
     await act(async () => {
       botaoComTexto("Descartar")[0]?.click();
     });
-    expect(document.body.textContent).toContain("Descartar a resposta?");
+    expect(document.body.textContent).toContain(
+      "Descartar o que você escreveu?",
+    );
     const confirmar = botaoComTexto("Descartar");
     await act(async () => {
       confirmar[confirmar.length - 1].click();

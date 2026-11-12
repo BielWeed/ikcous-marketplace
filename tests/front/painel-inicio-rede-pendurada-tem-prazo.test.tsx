@@ -114,7 +114,8 @@ describe("usePainelInicio — rede pendurada não prende o Início", () => {
     expect(saida.atual?.carregando).toBe(false);
     expect(saida.atual?.painel).toBeNull();
     expect(saida.atual?.erro).toBe(
-      "Não foi possível carregar o Início agora. Tente de novo em instantes.",
+      // O prazo vale por leitura: o painel pendurado vira o erro DOS NÚMEROS.
+      "Não foi possível carregar os números da loja agora. Tente de novo em instantes.",
     );
     // Nada de texto técnico do prazo na tela.
     expect(saida.atual?.erro).not.toMatch(/prazo|ms|esgotad/i);

@@ -1,4 +1,116 @@
 {
+  "1.5.175": {
+    "titulo": "Enter salva no cadastro financeiro e de categoria, Voltar do celular fecha só a folha da vitrine e retirada termina em Retirado",
+    "novidades": [],
+    "melhorias": [
+      "Loja, Cadastro: a tela de confirmar o e-mail manda olhar também a pasta de spam, e o aviso de e-mail não confirmado diz o mesmo.",
+      "Painel, Frete: os avisos das transportadoras explicam, em palavras simples, que clientes que já calcularam o frete podem ver o preço antigo por até 2 horas."
+    ],
+    "correcoes": [
+      "Painel, Financeiro: apertar Enter no nome de uma conta ou categoria nova salva, como o botão.",
+      "Painel, Produtos: concluir pelo teclado do celular na tela Nova categoria cria a categoria.",
+      "Painel, Vitrines: o Voltar do celular fecha só a folha de editar vitrine, sem sair da lista, e o botão Fechar ganhou área de toque maior.",
+      "Loja, Perfil: o pedido de retirada termina em \"Retirado\" na linha do tempo e na próxima etapa da lista, em vez de \"Entregue\".",
+      "Loja, Avaliação e Pedido: o erro de escolher as estrelas é lido por leitor de tela, e ao buscar um pedido o cursor vai direto para o campo do código.",
+      "Loja, Produto: resposta ou pergunta com link ou palavra muito longa quebra dentro do cartão em vez de ultrapassar a largura.",
+      "Loja, Busca: no tema escuro, o texto digitado no campo de busca e os rótulos do painel de filtros ficam legíveis."
+    ]
+  },
+  "1.5.174": {
+    "titulo": "Retirada na loja só com CEP, pedido feito que não some ao recarregar e balcão que deixa corrigir a quantidade",
+    "novidades": [],
+    "melhorias": [
+      "Loja, Avisos: a cliente desliga os avisos do aparelho sem sair da conta."
+    ],
+    "correcoes": [
+      "Loja, Finalizar compra: quem compra sem conta e escolhe \"Retirar na loja\" informa só nome, WhatsApp e CEP.",
+      "Loja, Finalizar compra: depois do pedido feito, recarregar a página avisa que o pedido já foi feito, em vez de mostrar o carrinho vazio.",
+      "Loja, Home: as faixas automáticas só mostram produto à venda e com foto, e o banner para de passar enquanto o dedo está nele.",
+      "Loja, Busca: aplicar filtro ou ordem volta a lista ao topo, e voltar do produto mantém os resultados já carregados.",
+      "Loja, Produto: o cartão mostra a mesma capa da página do produto, a folha de opções ordena os tamanhos como a página, e letra grande não corta nome, aviso de estoque nem botão.",
+      "Loja, Tema escuro: o nome e a descrição do produto, as telas de retomar o pagamento e a situação do pagamento ficam legíveis.",
+      "Painel, Produtos: Esc na grade de variações não descarta o que foi digitado, e a categoria nova aparece na tela seguinte.",
+      "Painel, Pedidos: pedido de retirada sem endereço de casa não mostra mais um bloco de endereço vazio, e o comprovante de uma entrega com frete zero diz \"grátis\".",
+      "Painel, Balcão: o botão \"−\" reduz a quantidade mesmo quando o estoque caiu abaixo dela.",
+      "Painel, Atendimento: a pergunta de descartar a resposta aparece dentro da folha, onde dá para tocar.",
+      "Painel, Sobre a loja: salvar a descrição com linhas vazias a mais não deixa um aviso falso de alteração pendente."
+    ]
+  },
+  "1.5.173": {
+    "titulo": "Selo de desconto igual em todas as telas, busca que entende apóstrofo e cancelamento com devolução parcial explicado",
+    "novidades": [],
+    "melhorias": [
+      "Loja, Termos: as políticas mostram o endereço da loja e os textos legais passam a ter versão e data."
+    ],
+    "correcoes": [
+      "Loja, Produto e Carrinho: o selo de desconto mostra o mesmo percentual no cartão, nas opções, na página do produto e no carrinho.",
+      "Loja, Busca: \"d'água\" com apóstrofo curvo é achado e \"refil\" acha \"Refis\".",
+      "Loja, Finalizar compra: o aviso de pedido recusado e os botões do checkout ficam legíveis, e o endereço longo quebra a linha no celular.",
+      "Loja, Devolução: recarregar a página com a devolução preenchida avisa antes de perder, e a mensagem de erro da loja aparece de verdade.",
+      "Loja: telas pequenas com letra grande não cortam mais, e a foto que falha mostra um espaço em vez de ficar vazia.",
+      "Painel, Pedido: cancelar um pedido pago com devolução parcial diz que o app devolve só o que falta e que não se deve devolver por fora.",
+      "Painel, Pedidos: o pedido que chegou com a conexão caída entra na lista quando ela volta.",
+      "Painel, Balcão: recarregar a tela durante o envio não deixa refazer uma venda já gravada.",
+      "Painel, Vitrines: se a leitura da loja falhar, a lista de fábrica não é gravada por cima das suas vitrines.",
+      "Painel, Devolução: aprovar com a coleta já passada não avisa o cliente de um dia antigo.",
+      "Painel, Início: o passo \"primeiro produto\" só conta com produto em estoque, e o painel avisa quando uma numeração se esgota."
+    ]
+  },
+  "1.5.172": {
+    "titulo": "Foto da cor certa no carrinho, comprovante que chega depois e data do pedido em Brasília",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Carrinho: a foto da cor escolhida aparece mesmo sem foto no tamanho.",
+      "Pagamento: se o e-mail do comprovante falhar, ele é reenviado quando o Mercado Pago avisar de novo do pagamento (pedidos do site, até 24 horas depois).",
+      "Painel, Pedidos: a data do pedido na lista usa o horário de Brasília, como a ficha.",
+      "Painel, Financeiro: fechar e reabrir uma folha rápido não deixa um relógio antigo mexer no botão Voltar."
+    ]
+  },
+  "1.5.171": {
+    "titulo": "Frete grátis que acompanha a loja, busca que não fecha o produto e Início do painel que mostra as vendas",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Carrinho: se a loja tirar o frete grátis de um produto, o carrinho refaz o frete em vez de mostrar \"grátis\" guardado.",
+      "Loja, Busca: tocar no produto sugerido logo depois de digitar não o fecha sozinho.",
+      "Painel, Início: se a assinatura demorar, as vendas e pendências de hoje continuam aparecendo.",
+      "Painel, Clientes: a mensagem do grupo Novos agradece pela compra, sem dizer que é a primeira."
+    ]
+  },
+  "1.5.170": {
+    "titulo": "Cartão à vista conferido pelo valor, filas sem internet que não perdem a mudança e atualização do app que não trava",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Pagamento com cartão à vista: o pedido só é dado como pago quando o valor recebido cobre o pedido.",
+      "Loja, Carrinho e Cupom: o carrinho aberto em dois aparelhos se atualiza quando a conexão cai e volta, e tirar um cupom durante a conferência de outro não traz o outro de volta.",
+      "Loja, Rastrear sem conta: o código vale para o pedido que pediu o código, e com internet ruim o botão não fica preso em \"Gerando Código...\".",
+      "Loja, Minha conta e Entrar: mudar só o nome não desfaz o telefone trocado em outro aparelho, o e-mail corrigido aparece sem sair e entrar, e corrigir o e-mail durante a espera não manda o link de confirmação para o endereço errado.",
+      "Loja, Devolução: confirmar antes de a foto terminar de ser preparada não deixa a foto de fora.",
+      "Painel, Produtos e Pedidos sem internet: editar de novo o mesmo produto ou avançar de novo o mesmo pedido enquanto a fila envia não perde a última mudança.",
+      "Painel, Pedido e Minha loja: salvar o rastreio depois de uma atualização ao vivo não apaga o do outro atendente, e salvar só a frase de compartilhar não desfaz o WhatsApp trocado em outro aparelho.",
+      "Painel, Avisar clientes: se a lista de aparelhos demorar, o botão volta em 20 segundos e avisa que nada foi enviado.",
+      "App: se a conexão travar durante a atualização, a nova versão termina de instalar e o aviso aparece."
+    ]
+  },
+  "1.5.169": {
+    "titulo": "Compra mais firme, painel sem repetições e caixa que recusa valor inválido",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Finalizar compra: o frete não fica preso em \"cotando\", a retirada na loja não pede cotação e observação só com espaço invisível não vai ao pedido.",
+      "Loja, Carrinho: o produto colocado de novo não some, e uma gravação que não responde não trava as próximas.",
+      "Loja, Produto: quando um grupo de variação acaba, o produto aparece esgotado.",
+      "Loja, Entrar e sair: com o aparelho sem espaço, entrar não apaga os favoritos de quem visitava, e uma resposta atrasada não derruba outra conta.",
+      "Loja, Avisos: se a internet não responde, a lista mostra o erro com a opção de tentar de novo.",
+      "Painel, Pedidos: dia e hora no horário de Brasília, rastreio salvo em outro aparelho não é apagado e pedido novo não aparece repetido.",
+      "Painel, Produtos, Cupons e Clientes: sem aviso falso de duplicado, cupom editado em dois aparelhos não mistura tipo e valor, e WhatsApp com zero na frente funciona.",
+      "Painel, Financeiro e Balcão: abrir o caixa e salvar uma conta recusam valor que não é número, e motivo só com espaço invisível é recusado.",
+      "Painel, Minha loja: o endereço só salva depois que a busca do CEP termina.",
+      "Avaliações e perguntas: respostas só com caracteres invisíveis não são publicadas."
+    ]
+  },
   "1.5.168": {
     "titulo": "Busca com hífen, favoritos entre abas, aviso do lojista sem texto em branco e checkout que se atualiza sozinho",
     "novidades": [],

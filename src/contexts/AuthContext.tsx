@@ -42,6 +42,7 @@ import {
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
+import { esquecerReciboDoCheckout } from "@/lib/recibo-do-checkout";
 import {
   esquecerRecuperacao,
   garantirRecuperacao,
@@ -285,6 +286,9 @@ function clearLocalUserData() {
   // `localStorage` varrido abaixo; o próprio módulo protege o acesso (nunca
   // lança), por isso fica antes do `return` sem `window`.
   esquecerTodosOsPedidosPendentesDoCheckout();
+  // O recibo ("Seu pedido já foi feito" no F5) é da sessão de quem saiu:
+  // numa aba compartilhada, a próxima pessoa nunca lê o pedido da anterior.
+  esquecerReciboDoCheckout();
   esquecerRastreioDeConvidado();
   esquecerDadosLocaisDaConta();
 }
@@ -917,6 +921,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 error: verifyError,
               } = await supabase.auth.getUser();
 
+              // A resposta é da conta que abriu o boot (`initSes`). Se a
+              // pessoa saiu ou entrou em outra conta enquanto ela vinha, é
+              // velha: reaplicá-la traria a conta anterior de volta (ou o
+              // `signOut` abaixo derrubaria a nova). Mesma guarda de
+              // `fetchProfile`/`checkAdmin`.
+              if (activeUserIdRef.current !== initSes.user.id) return;
+
               if (verifyError) {
                 console.error(
                   "[Auth] Session verification failed:",
@@ -1127,7 +1138,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       setUser((prev) => {
         if (!session) return prev && event === "INITIAL_SESSION" ? prev : null;
-        if (prev?.id === session?.user?.id) return prev; // PREVENT INFINITE EFFECT LOOPS
+        // PREVENT INFINITE EFFECT LOOPS: cada evento traz um objeto novo, então
+        // só se troca o `user` quando a conta ou o e-mail mudou de verdade (a
+        // loja corrigiu o e-mail, ou a cliente confirmou a troca em outro
+        // aparelho: "Minha conta" não pode seguir mostrando o endereço velho).
+        if (
+          prev?.id === session?.user?.id &&
+          prev?.email === session?.user?.email
+        )
+          return prev;
         return session.user;
       });
 

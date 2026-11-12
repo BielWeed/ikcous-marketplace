@@ -26,6 +26,7 @@ import {
   MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA,
   MENSAGEM_REENVIO_DO_COMPROVANTE_SEM_RESPOSTA,
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+  PRAZO_DE_LER_O_CORPO_DO_ERRO_MS,
   PRAZO_DO_REENVIO_DO_COMPROVANTE_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
@@ -443,17 +444,29 @@ export function mesclarFilaOfflineAposPassada(
   filaFresca: unknown,
   processados: ReadonlyMap<string, number>,
   reserva: readonly ItemDaFila[],
+  // Destino que a passada acabou de GRAVAR com sucesso, por pedido. O item mais
+  // novo que entrou durante o envio herdou o `statusEsperado` antigo (a origem
+  // de antes do envio): a origem confirmada agora e o destino gravado. Item
+  // legado (sem `statusEsperado`) continua sem.
+  statusEnviados?: ReadonlyMap<string, string>,
 ): ItemDaFila[] {
   if (!Array.isArray(filaFresca)) return [...reserva];
-  return filaFresca.filter((item): item is ItemDaFila => {
-    if (!item || typeof item.orderId !== "string") return false;
-    const timestampProcessado = processados.get(item.orderId);
-    return (
-      timestampProcessado === undefined ||
-      (typeof item.timestamp === "number" &&
-        item.timestamp > timestampProcessado)
-    );
-  });
+  return filaFresca
+    .filter((item): item is ItemDaFila => {
+      if (!item || typeof item.orderId !== "string") return false;
+      const timestampProcessado = processados.get(item.orderId);
+      return (
+        timestampProcessado === undefined ||
+        (typeof item.timestamp === "number" &&
+          item.timestamp > timestampProcessado)
+      );
+    })
+    .map((item) => {
+      const enviado = statusEnviados?.get(item.orderId);
+      return enviado !== undefined && item.statusEsperado !== undefined
+        ? { ...item, statusEsperado: enviado }
+        : item;
+    });
 }
 
 // L10 — a passada em voo é POR USUÁRIO (mesmo padrão de `checkInFlight` no
@@ -551,6 +564,7 @@ async function processarFilaOfflineDePedidos(
 
     const remainingQueue: ItemDaFila[] = [];
     const processados = new Map<string, number>();
+    const statusEnviados = new Map<string, string>();
     const tentados = new Map<string, number>();
     let syncedAny = false;
     let falhasTransitorias = 0;
@@ -675,6 +689,7 @@ async function processarFilaOfflineDePedidos(
         if (error) throw error;
         syncedAny = true;
         processados.set(orderId, timestamp);
+        statusEnviados.set(orderId, status);
       } catch (err) {
         if (erroDeSincronizacaoEhTerminal(err)) {
           if (
@@ -710,6 +725,7 @@ async function processarFilaOfflineDePedidos(
       filaFresca,
       processados,
       remainingQueue,
+      statusEnviados,
     );
 
     if (final.length > 0) {
@@ -1386,6 +1402,17 @@ export function mesclarAtualizacaoRealtime(
   linhaNova: Parameters<typeof mapOrderFromDB>[0],
 ): Order {
   const mapeado = mapOrderFromDB(linhaNova);
+  // UPDATE ATRASADO (socket lento, repasse entre abas, rajada após a
+  // reconexão) não desfaz o que a lista já sabe: versão ESTRITAMENTE anterior
+  // à da memória é descartada — mesma regra de `mesclarPedidosDaConsulta` (a
+  // leitura) e `escolherVersaoDoPedido` (o detalhe), que a lista não tinha.
+  // Data ausente/ilegível não é "velha" (decide o conteúdo, como sempre), e
+  // data IGUAL aplica: a atualização otimista muda o status sem mexer nela.
+  const tAtual = Date.parse(pedidoAtual.updatedAt);
+  const tNova = Date.parse(mapeado.updatedAt);
+  if (Number.isFinite(tAtual) && Number.isFinite(tNova) && tNova < tAtual) {
+    return pedidoAtual;
+  }
   // Escritos por nome, não num laço percorrendo uma lista de chaves: a
   // versão anterior (`for (const campo of [...]) resultado[campo] =
   // pedidoAtual[campo]`) acessava os dois objetos por chave vinda de
@@ -1409,6 +1436,7 @@ function mesclarPedidosDaConsulta(
   atuais: Order[],
   resposta: Order[],
   idsNoInicio: Set<string>,
+  limiteDaPagina?: number,
 ): Order[] {
   const porId = new Map(atuais.map((pedido) => [pedido.id, pedido]));
   const idsDaResposta = new Set(resposta.map((pedido) => pedido.id));
@@ -1427,6 +1455,11 @@ function mesclarPedidosDaConsulta(
   if (chegaramNoVoo.length > 0) {
     mudou = true;
     mesclados.unshift(...chegaramNoVoo);
+    // Mesmo corte do INSERT do realtime: a página 1 não passa de `pageSize`.
+    // O que sai do fim é o primeiro da página 2 (o total já soma o novo).
+    if (limiteDaPagina !== undefined && mesclados.length > limiteDaPagina) {
+      mesclados.length = limiteDaPagina;
+    }
   }
   // Nada a preservar: devolve a MESMA lista da resposta (o cache de módulo e o
   // estado continuam apontando para o mesmo array, como antes).
@@ -2361,13 +2394,22 @@ export function useOrders(
               idsInseridosPeloRealtimeRef.current,
             );
 
+          // Só a página 1 recebe pedido novo do realtime (e só ela é cortada).
+          const limiteDaPagina =
+            page === 0 && pageSize > 0 ? pageSize : undefined;
           const mappedOrders = mesclarPedidosDaConsulta(
             ordersRef.current,
             respostaMapeada,
             idsNoInicio,
+            limiteDaPagina,
           );
           setOrders((atual) =>
-            mesclarPedidosDaConsulta(atual, mappedOrders, idsNoInicio),
+            mesclarPedidosDaConsulta(
+              atual,
+              mappedOrders,
+              idsNoInicio,
+              limiteDaPagina,
+            ),
           );
           setTotalOrders(totalCount);
 
@@ -2994,19 +3036,56 @@ export function useOrders(
   > | null>(null);
   const DEBOUNCE_RECARREGAR_INSERT_MS = 400;
 
+  /**
+   * Pedidos da cliente cujo INSERT ainda está consultando o banco (id ->
+   * última linha de UPDATE que chegou nesse meio-tempo, ou `null`). Sem isto o
+   * UPDATE de um pedido AINDA AUSENTE da lista era descartado, e a consulta —
+   * um retrato anterior a ele — entrava velha (o PIX confirmado no meio do
+   * voo ficava "aguardando"). Entrada nasce no início do INSERT e sai logo
+   * que a consulta responde (`finally`): nada fica guardado para sempre.
+   */
+  const insertsEmVooRef = useRef(new Map<string, any>());
+
   const handleRealtimeInsert = useCallback(
     async (newPayload: any) => {
-      const { data, error } = await supabase
-        .from("marketplace_orders")
-        .select(
-          "*, items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)), address:user_addresses(*)",
-        )
-        .eq("id", newPayload.id)
-        .single();
+      // DONO DA CHAMADA, capturado ANTES do await: a conta que estava logada
+      // quando o evento chegou. Depois da consulta confere-se contra a conta
+      // de AGORA (`userIdAtualRef`), como `fetchUserOrders` já faz.
+      const donoNaChamada = user?.id ?? null;
+      const emVoo = insertsEmVooRef.current;
+      emVoo.set(newPayload.id, null);
+      let consulta;
+      let updateDoMeioDoVoo: any = null;
+      try {
+        consulta = await supabase
+          .from("marketplace_orders")
+          .select(
+            "*, items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)), address:user_addresses(*)",
+          )
+          .eq("id", newPayload.id)
+          .single();
+      } finally {
+        updateDoMeioDoVoo = emVoo.get(newPayload.id) ?? null;
+        emVoo.delete(newPayload.id);
+      }
+      const { data, error } = consulta;
+
+      // A consulta levou tempo: a cliente pode ter saído, trocado de conta ou
+      // a tela pode ter fechado. Nenhum efeito (lista, aviso, consulta
+      // compartilhada) pode sair da conta que já não é a desta instância.
+      if (desmontadoRef.current || userIdAtualRef.current !== donoNaChamada) {
+        return;
+      }
 
       if (!error && data) {
         if (!isAdmin && data.user_id !== user?.id) return;
-        const newOrder = mapOrderFromDB(data as any);
+        const newOrderDaConsulta = mapOrderFromDB(data as any);
+        // O UPDATE que chegou durante o voo (o pedido ainda não estava na
+        // lista para recebê-lo) vale se for mais novo que a consulta.
+        const newOrder =
+          !isAdmin && updateDoMeioDoVoo
+            ? mesclarAtualizacaoRealtime(newOrderDaConsulta, updateDoMeioDoVoo)
+            : newOrderDaConsulta;
 
         if (isAdmin) {
           // useOrders-1508: NÃO existe mais um único "insere sempre" pra
@@ -3114,6 +3193,25 @@ export function useOrders(
       const jaNaLista = ordersRef.current.some(
         (pedido) => pedido.id === updatedOrder.id,
       );
+      // Pedido da cliente que o INSERT ainda está consultando: guarda a linha
+      // mais nova para o INSERT aplicar quando o pedido entrar (ver
+      // `insertsEmVooRef`). Só guarda o que há de mais recente.
+      if (
+        !isAdmin &&
+        !jaNaLista &&
+        insertsEmVooRef.current.has(updatedOrder.id)
+      ) {
+        const guardado = insertsEmVooRef.current.get(updatedOrder.id);
+        const tGuardado = Date.parse(guardado?.updated_at);
+        const tChegou = Date.parse(updatedOrder.updated_at);
+        const chegouMaisVelho =
+          Number.isFinite(tGuardado) &&
+          Number.isFinite(tChegou) &&
+          tChegou < tGuardado;
+        if (!chegouMaisVelho) {
+          insertsEmVooRef.current.set(updatedOrder.id, updatedOrder);
+        }
+      }
       // Ausente da memória, mas talvez presente na página ainda em voo: não
       // há versão atual para a reconciliação preservar. Invalida essa leitura.
       if (
@@ -3286,6 +3384,12 @@ export function useOrders(
     let isUnmounting = false;
     let isConnecting = false;
     let retryCount = 0;
+    // O canal caiu e ainda não voltou a SUBSCRIBED. A recarga do
+    // `handleReconnect` roda ANTES de o SDK reabrir o socket (setupRealtime só
+    // reaproveita o canal), então o pedido emitido no intervalo só chega por
+    // uma recarga feita quando o SUBSCRIBED volta. O primeiro SUBSCRIBED de um
+    // canal novo não passa por aqui: a lista já foi carregada.
+    let precisaReconciliar = false;
     let reconnectTimeout: ReturnType<typeof setTimeout> | undefined;
     let onlineTimeout: ReturnType<typeof setTimeout> | undefined;
 
@@ -3501,6 +3605,12 @@ export function useOrders(
 
           if (status === "SUBSCRIBED") {
             retryCount = 0;
+            if (precisaReconciliar) {
+              precisaReconciliar = false;
+              recarregarAposReconexaoRef
+                .current({ silencioso: true })
+                .catch(() => {});
+            }
             console.log(`[Realtime] Active shared channel: ${channelId}`);
           } else if (status === "CHANNEL_ERROR") {
             const errMessage =
@@ -3541,6 +3651,7 @@ export function useOrders(
 
     const handleReconnect = (initialDelay?: number) => {
       if (isUnmounting) return;
+      precisaReconciliar = true;
 
       const timeout = initialDelay || Math.min(1000 * 1.5 ** retryCount, 30000);
       retryCount++;
@@ -4992,9 +5103,20 @@ export function useOrders(
         if (error && !data) {
           console.error("Error generating OTP:", error);
           toast.error(NAO_ENVIOU);
-          const corpo = await (error as any).context
-            ?.json?.()
-            .catch(() => null);
+          // O corpo também pode ficar pendurado na rede (cabeçalhos chegaram,
+          // corpo não): `.catch` não trata promessa pendente, e sem prazo o
+          // botão ficava em "Gerando Código..." para sempre. Estourou = corpo
+          // desconhecido (`null`): o aviso já saiu e nenhuma falha é lembrada.
+          let corpo: { motivo?: unknown } | null = null;
+          try {
+            corpo = await aguardarComPrazo(
+              (error as any).context?.json?.(),
+              PRAZO_DE_LER_O_CORPO_DO_ERRO_MS,
+              () => new Error("corpo do erro sem resposta"),
+            );
+          } catch {
+            corpo = null;
+          }
           if (corpo?.motivo === "envio_falhou") falhas.set(chave, Date.now());
           return false;
         }

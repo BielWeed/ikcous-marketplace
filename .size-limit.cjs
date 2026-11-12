@@ -189,7 +189,9 @@ module.exports = [
     // 08/11/2026 (1.5.160): 646 -> 647 kB (aviso honesto do reenvio de comprovante da ficha do pedido; o PR mediu 122 B acima de 646 kB no CI). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 10/11/2026 (1.5.162): 647 -> 648 kB (evento de cancelamento durante a leitura da lista de pedidos; o PR mediu 647,01 kB no CI, 10 B acima de 647 kB). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 10/11/2026 (1.5.165): 648 -> 652 kB (o CI mediu 648,07 kB num PR que so adiciona teste Deno, sem mudar o front: a base ja estava no teto e o ruido entre builds, de poucas dezenas de bytes, derrubava qualquer PR; subo 4 kB para acabar com a troca de 1 em 1). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
-    limit: "652 kB",
+    // 12/11/2026 (1.5.173): 652 -> 656 kB (textos do checkout, fotos quebradas, avisos de numeracao e telas pequenas: os PRs do dia somaram ~650 kB e deixaram a base com 0,1 kB de folga, entao cada PR novo reprovava; subo 4 kB, o mesmo passo de 10/11, para acabar com a troca de 1 em 1). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
+    // 12/11/2026 (1.5.174): 656 -> 660 kB (a base fechou em 655,96 kB, ~0,04 kB de folga, e cada PR novo voltaria a reprovar; subo 4 kB, o mesmo passo do 1.5.173). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
+    limit: "660 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
@@ -336,7 +338,8 @@ module.exports = [
     // 07/11/2026 (mesma regra): 522 -> 526 kB na 1.5.156 (mediu 524,49 kB local: avisos que abrem o pedido, acoes do pedido com prazo, cupons, produtos e banners). Regra do dono: o teto sobe.
     // 07/11/2026 (mesma regra): 519 -> 522 kB na 1.5.153 (mediu 520,37 kB local: prazos e avisos honestos de cupons, devolucao, Mercado Pago e configuracoes). Regra do dono: o teto sobe.
     // 08/11/2026 (1.5.158): 526 -> 530 kB (prazos e avisos honestos do Inicio, CRM, Pedidos, banners e categorias; o painel media 525,62 kB, sem folga para os lotes de rede ruim). Regra do dono: o teto sobe.
-    limit: "530 kB",
+    // 12/11/2026 (1.5.173): 530 -> 534 kB (aviso de numeracao esgotada no Inicio, lista de cupons e textos do painel; a base ficou a ~0,03 kB do teto e cada PR novo reprovava; subo 4 kB, mesmo passo do vitrine). Regra do dono: o teto sobe.
+    limit: "534 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },

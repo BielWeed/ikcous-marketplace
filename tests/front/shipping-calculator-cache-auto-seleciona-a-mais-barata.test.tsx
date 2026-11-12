@@ -168,7 +168,7 @@ describe("ShippingCalculator — o acerto de cache do navegador auto-seleciona a
       "ikcous_shipping_cache_v2_69000000",
       JSON.stringify({
         contexto: contextoDaLojaParaFrete(undefined),
-        assinatura: "prod-1::1:100",
+        assinatura: "prod-1::1:100:0",
         gravadoEm: Date.now(),
         revisaoConfig: REVISAO,
         opcoes: [

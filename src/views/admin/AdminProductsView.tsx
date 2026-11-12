@@ -1262,6 +1262,10 @@ export const AdminProductsView = memo(function AdminProductsView({
         // não foi salva: anunciar sucesso a esconderia, e um segundo aviso aqui
         // empilharia dois erros para a mesma falha.
         haptic.error();
+      } else if (!copia) {
+        // O hook devolveu vazio (ex.: "Permissão negada"): ele já avisou o
+        // motivo e nenhuma cópia existe, então anunciar sucesso mentiria.
+        haptic.error();
       } else {
         haptic.success();
         toast.success("Produto Duplicado", {
@@ -1518,7 +1522,7 @@ export const AdminProductsView = memo(function AdminProductsView({
               </div>
               <p role="status" className="text-sm text-white">
                 {liquidoEstimado !== null
-                  ? `Líquido estimado${financialStats.parcial ? " (parcial)" : ""}: R$ ${liquidoEstimado.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  ? `Líquido estimado${financialStats.parcial ? " (parcial)" : ""}: ${lucroEmReais(liquidoEstimado)}`
                   : financialStats.semEstoque
                     ? "Cadastre um produto com estoque para calcular o líquido."
                     : financialStats.semNenhumCusto
@@ -1594,12 +1598,10 @@ export const AdminProductsView = memo(function AdminProductsView({
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}{" "}
-                      = lucro bruto{financialStats.parcial ? " parcial" : ""}:
-                      R${" "}
-                      {financialStats.potential?.toLocaleString("pt-BR", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
+                      = lucro bruto{financialStats.parcial ? " parcial" : ""}:{" "}
+                      {financialStats.potential !== null
+                        ? lucroEmReais(financialStats.potential)
+                        : "—"}
                       .
                     </p>
                   )}
@@ -2033,7 +2035,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                         "Quanto você lucra para cada R$ 100 que pagou. No catálogo, usa o estoque com custo. Custo zero aparece como —.",
                       formula: "((Preço − Custo) ÷ Custo) × 100",
                       exemplo:
-                        "Custo R$10 / Venda R$15 ➜ Lucro sobre o custo = 50,0%",
+                        "Custo R$ 10 / Venda R$ 15 ➜ Lucro sobre o custo = 50,0%",
                     },
                     {
                       titulo: "Margem de Lucro",
@@ -2042,7 +2044,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       descricao:
                         "A parte do preço de venda que corresponde ao lucro bruto.",
                       formula: "((Preço − Custo) ÷ Preço) × 100",
-                      exemplo: "Custo R$10 / Venda R$15 ➜ Margem = 33,3%",
+                      exemplo: "Custo R$ 10 / Venda R$ 15 ➜ Margem = 33,3%",
                     },
                     {
                       titulo: "Lucro bruto do estoque",

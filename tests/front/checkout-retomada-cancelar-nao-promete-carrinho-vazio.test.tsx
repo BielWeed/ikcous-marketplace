@@ -205,6 +205,23 @@ describe("CheckoutView — retomar pagamento e cancelar: o botão não promete u
     });
   }
 
+  it("cancelar tem alvo de 44 px e cresce quando o texto quebra linha", async () => {
+    await retomarEFalharOPagamento();
+    const botao = botaoQueComeca("Cancelar pedido");
+    for (const classe of ["min-h-11", "h-auto", "whitespace-normal", "py-2"]) {
+      expect(botao?.classList.contains(classe), classe).toBe(true);
+    }
+  });
+
+  it("a mensagem de erro pode quebrar palavras dentro da linha com ícone", async () => {
+    await retomarEFalharOPagamento();
+    const mensagem = [...hospedeiro.querySelectorAll("p")].find((el) =>
+      el.textContent?.includes("Este pagamento foi recusado"),
+    );
+    expect(mensagem?.classList.contains("min-w-0")).toBe(true);
+    expect(mensagem?.classList.contains("break-words")).toBe(true);
+  });
+
   it("na retomada (lista de itens vazia) o botão diz só 'Cancelar pedido'", async () => {
     await retomarEFalharOPagamento();
 

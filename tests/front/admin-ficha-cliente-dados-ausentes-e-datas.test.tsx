@@ -44,7 +44,7 @@ vi.mock("@/lib/supabase", () => ({
               status: "delivered",
               total: 100,
               payment_status: "pago",
-              created_at: "2026-08-10T12:00:00Z",
+              created_at: "2026-08-11T02:30:00Z",
             },
           ],
           cart_items: estado.carrinho,
@@ -138,7 +138,7 @@ describe("AdminUserDetailView — dado ausente e datas", () => {
       id: "cliente-1",
       full_name: "Cliente de Prova",
       role: "customer",
-      created_at: "2026-02-07T12:00:00Z",
+      created_at: "2026-02-08T02:30:00Z",
       email: "prova@exemplo.com",
       whatsapp: "34999999999",
     };
