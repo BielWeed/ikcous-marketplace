@@ -291,7 +291,7 @@ export function ProductQA({
           questions.map((q, index) => (
             <div
               key={q.id}
-              className="space-y-4 rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm transition-all duration-300 duration-500 animate-in fade-in slide-in-from-bottom-4 hover:shadow-md"
+              className="min-w-0 space-y-4 rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm transition-all duration-300 duration-500 animate-in fade-in slide-in-from-bottom-4 hover:shadow-md"
               style={{ animationDelay: `${index * 50}ms` }}
             >
               {/* Question Header */}
@@ -400,7 +400,7 @@ export function ProductQA({
                           </AvatarFallback>
                         </Avatar>
                       </div>
-                      <div className="flex-1 space-y-1.5">
+                      <div className="min-w-0 flex-1 space-y-1.5">
                         <div className="flex items-center justify-between gap-1.5">
                           <div className="flex items-center gap-1.5">
                             <span className="text-xs font-black uppercase tracking-wider text-zinc-900">
