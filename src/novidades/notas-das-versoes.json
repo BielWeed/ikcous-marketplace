@@ -1,4 +1,25 @@
 {
+  "1.5.174": {
+    "titulo": "Retirada na loja só com CEP, pedido feito que não some ao recarregar e balcão que deixa corrigir a quantidade",
+    "novidades": [],
+    "melhorias": [
+      "Loja, Avisos: a cliente desliga os avisos do aparelho sem sair da conta."
+    ],
+    "correcoes": [
+      "Loja, Finalizar compra: quem compra sem conta e escolhe \"Retirar na loja\" informa só nome, WhatsApp e CEP.",
+      "Loja, Finalizar compra: depois do pedido feito, recarregar a página avisa que o pedido já foi feito, em vez de mostrar o carrinho vazio.",
+      "Loja, Home: as faixas automáticas só mostram produto à venda e com foto, e o banner para de passar enquanto o dedo está nele.",
+      "Loja, Busca: aplicar filtro ou ordem volta a lista ao topo, e voltar do produto mantém os resultados já carregados.",
+      "Loja, Produto: o cartão mostra a mesma capa da página do produto, a folha de opções ordena os tamanhos como a página, e letra grande não corta nome, aviso de estoque nem botão.",
+      "Loja: textos do produto, da busca, da avaliação e do e-mail da conta ficam legíveis no tema escuro, e o texto de compartilhar não cita outra loja.",
+      "Loja: o aviso de estoque, a tela de pedidos vazia e o Enter no código de rastreio da devolução ficam corretos.",
+      "Painel, Produtos: salvar o produto não leva a outra tela depois de você sair; Esc na grade de variações não descarta o que foi digitado; a categoria nova aparece na tela seguinte.",
+      "Painel, Pedidos: pedido de retirada sem endereço de casa não mostra mais um bloco de endereço vazio.",
+      "Painel, Balcão: o botão \"−\" reduz a quantidade mesmo quando o estoque caiu abaixo dela; o comprovante diz \"grátis\" no frete zero.",
+      "Painel, Atendimento: a pergunta de descartar a resposta aparece dentro da folha, onde dá para tocar.",
+      "Painel, Sobre a loja: salvar a descrição com linhas vazias a mais não deixa um aviso falso de alteração pendente."
+    ]
+  },
   "1.5.173": {
     "titulo": "Selo de desconto igual em todas as telas, busca que entende apóstrofo e cancelamento com devolução parcial explicado",
     "novidades": [],
