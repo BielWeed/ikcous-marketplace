@@ -1420,6 +1420,7 @@ function mesclarPedidosDaConsulta(
   atuais: Order[],
   resposta: Order[],
   idsNoInicio: Set<string>,
+  limiteDaPagina?: number,
 ): Order[] {
   const porId = new Map(atuais.map((pedido) => [pedido.id, pedido]));
   const idsDaResposta = new Set(resposta.map((pedido) => pedido.id));
@@ -1438,6 +1439,11 @@ function mesclarPedidosDaConsulta(
   if (chegaramNoVoo.length > 0) {
     mudou = true;
     mesclados.unshift(...chegaramNoVoo);
+    // Mesmo corte do INSERT do realtime: a página 1 não passa de `pageSize`.
+    // O que sai do fim é o primeiro da página 2 (o total já soma o novo).
+    if (limiteDaPagina !== undefined && mesclados.length > limiteDaPagina) {
+      mesclados.length = limiteDaPagina;
+    }
   }
   // Nada a preservar: devolve a MESMA lista da resposta (o cache de módulo e o
   // estado continuam apontando para o mesmo array, como antes).
@@ -2372,13 +2378,22 @@ export function useOrders(
               idsInseridosPeloRealtimeRef.current,
             );
 
+          // Só a página 1 recebe pedido novo do realtime (e só ela é cortada).
+          const limiteDaPagina =
+            page === 0 && pageSize > 0 ? pageSize : undefined;
           const mappedOrders = mesclarPedidosDaConsulta(
             ordersRef.current,
             respostaMapeada,
             idsNoInicio,
+            limiteDaPagina,
           );
           setOrders((atual) =>
-            mesclarPedidosDaConsulta(atual, mappedOrders, idsNoInicio),
+            mesclarPedidosDaConsulta(
+              atual,
+              mappedOrders,
+              idsNoInicio,
+              limiteDaPagina,
+            ),
           );
           setTotalOrders(totalCount);
 

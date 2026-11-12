@@ -165,7 +165,8 @@ describe("AdminCouponFormView — aviso do cupom que pode cobrir a compra inteir
   });
 
   it("o aviso NÃO bloqueia: o cupom de 100% salva normalmente", async () => {
-    // Edição manda só o que mudou (lote 260): leva o cupom de 90 a 100.
+    // Edição manda só o que mudou (lote 260): leva o cupom de 90 a 100 — e o
+    // tipo do desconto vai junto do valor (par que ela confirmou na tela).
     mockCoupons = [cupom({ value: 90 })];
     await abrirTela("c1");
     expect(aviso()).toBeNull();
@@ -180,6 +181,9 @@ describe("AdminCouponFormView — aviso do cupom que pode cobrir a compra inteir
     });
 
     expect(updateCoupon).toHaveBeenCalledTimes(1);
-    expect(updateCoupon.mock.calls[0][1]).toEqual({ value: 100 });
+    expect(updateCoupon.mock.calls[0][1]).toEqual({
+      type: "percentage",
+      value: 100,
+    });
   });
 });

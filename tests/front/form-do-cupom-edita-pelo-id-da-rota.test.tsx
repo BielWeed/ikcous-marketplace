@@ -237,7 +237,10 @@ describe("form de cupom — A4: a decisão é do couponId da rota", () => {
 
     expect(updateCoupon).toHaveBeenCalledTimes(1);
     expect(updateCoupon.mock.calls[0][0]).toBe("cupom-1");
-    expect(updateCoupon.mock.calls[0][1]).toEqual({ value: 30 });
+    expect(updateCoupon.mock.calls[0][1]).toEqual({
+      type: "percentage",
+      value: 30,
+    });
     expect(addCoupon).not.toHaveBeenCalled();
     expect(onNavigate).toHaveBeenCalledWith("admin-coupons");
   });
@@ -273,9 +276,13 @@ describe("form de cupom — A5: a chegada tardia da carga não apaga o digitado"
     expect(campo("code")).toBe("NATAL");
 
     // ...mas edição manda só o que mudou (lote 260): o tipo que ela trocou
-    // ANTES da carga chegar é mudança dela, e só ele vai.
+    // ANTES da carga chegar é mudança dela; tipo e valor do desconto vão como
+    // par (o valor é o que ela viu na tela: R$ 25).
     expect(updateCoupon).toHaveBeenCalledTimes(1);
-    expect(updateCoupon.mock.calls[0][1]).toEqual({ type: "fixed" });
+    expect(updateCoupon.mock.calls[0][1]).toEqual({
+      type: "fixed",
+      value: 25,
+    });
   });
 
   it("depois de inicializado, refetch nenhum re-inicializa o form", async () => {
