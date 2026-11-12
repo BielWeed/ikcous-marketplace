@@ -42,6 +42,7 @@ import {
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
+import { esquecerReciboDoCheckout } from "@/lib/recibo-do-checkout";
 import {
   esquecerRecuperacao,
   garantirRecuperacao,
@@ -285,6 +286,9 @@ function clearLocalUserData() {
   // `localStorage` varrido abaixo; o próprio módulo protege o acesso (nunca
   // lança), por isso fica antes do `return` sem `window`.
   esquecerTodosOsPedidosPendentesDoCheckout();
+  // O recibo ("Seu pedido já foi feito" no F5) é da sessão de quem saiu:
+  // numa aba compartilhada, a próxima pessoa nunca lê o pedido da anterior.
+  esquecerReciboDoCheckout();
   esquecerRastreioDeConvidado();
   esquecerDadosLocaisDaConta();
 }
