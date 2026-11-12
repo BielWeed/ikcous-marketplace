@@ -5,9 +5,9 @@
     "melhorias": [],
     "correcoes": [
       "Loja, Finalizar compra: o frete não fica preso em \"cotando\", a retirada na loja não pede cotação e observação só com espaço invisível não vai ao pedido.",
-      "Loja, Carrinho: o produto colocado de novo não some, e uma gravação lenta não trava as próximas.",
+      "Loja, Carrinho: o produto colocado de novo não some, e uma gravação que não responde não trava as próximas.",
       "Loja, Produto: quando um grupo de variação acaba, o produto aparece esgotado.",
-      "Loja, Entrar e sair: entrar não apaga os favoritos de quem visitava, e uma resposta atrasada não derruba outra conta.",
+      "Loja, Entrar e sair: com o aparelho sem espaço, entrar não apaga os favoritos de quem visitava, e uma resposta atrasada não derruba outra conta.",
       "Loja, Avisos: se a internet não responde, a lista mostra o erro com a opção de tentar de novo.",
       "Painel, Pedidos: dia e hora no horário de Brasília, rastreio salvo em outro aparelho não é apagado e pedido novo não aparece repetido.",
       "Painel, Produtos, Cupons e Clientes: sem aviso falso de duplicado, cupom editado em dois aparelhos não mistura tipo e valor, e WhatsApp com zero na frente funciona.",
