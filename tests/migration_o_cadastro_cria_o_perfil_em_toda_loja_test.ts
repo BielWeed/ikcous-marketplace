@@ -151,11 +151,12 @@ Deno.test("1399940: o reparo usa a MESMA expressao de handle_new_user, so de que
   for (const e of Deno.readDirSync(new URL("supabase/migrations/", DIR))) {
     if (!e.isFile || !e.name.endsWith(".sql") || e.name.startsWith("rollback-"))
       continue;
-    if (
-      /CREATE\s+(OR\s+REPLACE\s+)?FUNCTION\s+(public\.)?"?handle_new_user"?\s*\(/i.test(
-        ler(e.name),
-      )
-    )
+    // "OR REPLACE" sai antes do teste: a opcao dentro de um grupo repetivel e' regex insegura
+    const sql = ler(e.name).replace(
+      /CREATE\s+OR\s+REPLACE\s+FUNCTION/gi,
+      "CREATE FUNCTION",
+    );
+    if (/CREATE\s+FUNCTION\s+(public\.)?"?handle_new_user"?\s*\(/i.test(sql))
       redefinicoes.push(e.name);
   }
   assert.deepEqual(redefinicoes, [
