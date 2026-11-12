@@ -147,8 +147,7 @@
     "https://esm.sh/nodemailer@9.0.5/denonext/nodemailer.mjs": "0ae2eeb3aaa828c14d33419735432b8934940dfdc1c65d09e83edaa5542e761a",
     "https://esm.sh/nodemailer@9.0.5?target=denonext": "35ccd04068f898944ea3a7bffba880ab886e58cb14afeab04577224e2e01d0b8",
     "https://esm.sh/standardwebhooks@1.1.1/deno/standardwebhooks.mjs": "1caa06fbb918f844e0477cd4aa5a3042082b861c588a2991d7c1205994df8b42",
-    "https://esm.sh/standardwebhooks@1.1.1?target=deno": "fa71dca1144194aad3e6ab6c3ae66a4bdede9317ba821626aad5662c657e4beb",
-    "https://esm.sh/tslib@2.8.1/denonext/tslib.mjs": "c38da5dd6da6281964435002ce204cd586634fe3bdfb24a0ee116f48cf3292e9"
+    "https://esm.sh/standardwebhooks@1.1.1?target=deno": "fa71dca1144194aad3e6ab6c3ae66a4bdede9317ba821626aad5662c657e4beb"
   },
   "workspace": {
     "packageJson": {
