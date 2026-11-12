@@ -1,6 +1,11 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
+import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { Notification } from "@/types";
 import type React from "react";
@@ -190,20 +195,29 @@ export function NotificationProvider({
         // que o lojista mandou "para todos", nem no contador de não lidas.
         // As duas pontas andam em paralelo, cada uma com o seu limite;
         // campanha é rara (uma linha por envio), 20 já sobra.
-        const [dosProprios, deCampanha] = await Promise.all([
-          supabase
-            .from("notificacoes")
-            .select("*")
-            .eq("usuario_id", user.id)
-            .order("created_at", { ascending: false })
-            .limit(LIMITE_DOS_AVISOS_PROPRIOS),
-          supabase
-            .from("notificacoes")
-            .select("*")
-            .is("usuario_id", null)
-            .order("created_at", { ascending: false })
-            .limit(20),
-        ]);
+        // Rede "pendurada" conecta e não responde: se UMA das duas nunca
+        // voltava, o `loading` ficava ligado para sempre, sem erro e sem
+        // "Tentar de novo". O prazo só encerra a ESPERA da tela (a consulta
+        // não grava nada): estourou = cai no `catch` abaixo. A resposta tardia
+        // da consulta abandonada é descartada por `ehVelha()`.
+        const [dosProprios, deCampanha] = await aguardarComPrazo(
+          Promise.all([
+            supabase
+              .from("notificacoes")
+              .select("*")
+              .eq("usuario_id", user.id)
+              .order("created_at", { ascending: false })
+              .limit(LIMITE_DOS_AVISOS_PROPRIOS),
+            supabase
+              .from("notificacoes")
+              .select("*")
+              .is("usuario_id", null)
+              .order("created_at", { ascending: false })
+              .limit(20),
+          ]),
+          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          () => erroDeConsultaSemResposta(),
+        );
 
         if (ehVelha()) return;
         if (dosProprios.error) throw dosProprios.error;
