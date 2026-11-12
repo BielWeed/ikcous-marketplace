@@ -19,6 +19,11 @@ import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import type { CargoDaConta } from "@/lib/cargo-da-conta";
 import { formatarInteiro } from "@/lib/crm";
+import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -235,15 +240,18 @@ export const AdminCustomersView = memo(function AdminCustomersView({
       try {
         setLoading(true);
 
-        const { data, error } = await (supabase.rpc as any)(
-          "get_admin_customers_paged",
-          {
-            p_search: searchTerm,
-            p_sort_field: sortField,
-            p_sort_direction: sortDirection,
-            p_page: pageToFetch,
-            p_page_size: PAGE_SIZE,
-          },
+        const { data, error } = await aguardarComPrazo<any>(
+          Promise.resolve(
+            (supabase.rpc as any)("get_admin_customers_paged", {
+              p_search: searchTerm,
+              p_sort_field: sortField,
+              p_sort_direction: sortDirection,
+              p_page: pageToFetch,
+              p_page_size: PAGE_SIZE,
+            }),
+          ),
+          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          erroDeConsultaSemResposta,
         );
 
         if (error) throw error;

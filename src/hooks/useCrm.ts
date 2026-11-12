@@ -268,12 +268,18 @@ export function useCrmClientes({
     setErro(null);
     const timer = setTimeout(async () => {
       try {
-        const { data, error } = await supabase.rpc("crm_clientes", {
-          p_segmento: segmento,
-          p_busca: termo === "" ? null : termo,
-          p_limite: porPagina,
-          p_offset: pagina * porPagina,
-        });
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase.rpc("crm_clientes", {
+              p_segmento: segmento,
+              p_busca: termo === "" ? null : termo,
+              p_limite: porPagina,
+              p_offset: pagina * porPagina,
+            }),
+          ),
+          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          erroDeConsultaSemResposta,
+        );
         if (cancelada) return;
         if (error) {
           console.error("[useCrmClientes] crm_clientes falhou:", error);

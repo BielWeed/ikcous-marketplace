@@ -42,6 +42,7 @@ describe("CartaoCliente — dado ausente", () => {
   afterEach(() => {
     act(() => raiz.unmount());
     hospedeiro.remove();
+    vi.restoreAllMocks();
   });
 
   async function mostrar(c: Customer) {
@@ -67,6 +68,26 @@ describe("CartaoCliente — dado ausente", () => {
     expect(texto).not.toContain("--");
     expect(texto).toContain("—");
   });
+
+  it.each(["UTC", "America/Manaus", "America/Sao_Paulo"])(
+    "cadastro e última compra respeitam São Paulo com aparelho em %s",
+    async (timeZone) => {
+      const original = Date.prototype.toLocaleDateString;
+      vi.spyOn(Date.prototype, "toLocaleDateString").mockImplementation(
+        function (this: Date, locales, options) {
+          return original.call(this, locales, { timeZone, ...options });
+        },
+      );
+      const texto = await mostrar(
+        cliente({
+          created_at: "2026-11-11T02:30:00Z",
+          last_order_date: "2026-11-11T03:30:00Z",
+        }),
+      );
+      expect(texto).toContain("Desde 10/11/2026");
+      expect(texto).toMatch(/11\/11\/2026$/);
+    },
+  );
 
   it("com os dados, mostra e-mail e datas em dd/MM/aaaa", async () => {
     const texto = await mostrar(
