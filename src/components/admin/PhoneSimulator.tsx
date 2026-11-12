@@ -11,6 +11,7 @@ import {
   promessasDeFrete,
 } from "@/lib/estrategias-de-frete";
 import { entregaPropriaLigada } from "@/lib/guarda-de-frete";
+import { percentualDeDesconto } from "@/lib/percentual-de-desconto";
 import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
 import { cn } from "@/lib/utils";
 import type { ProductVariant } from "@/types";
@@ -107,9 +108,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
   const percentualDoSelo = (() => {
     const original = Number.parseFloat(formData.originalPrice);
     const preco = Number.parseFloat(displayPrice);
-    return original > preco
-      ? Math.round(((original - preco) / original) * 100)
-      : 0;
+    return percentualDeDesconto(original, preco);
   })();
 
   const validImages = React.useMemo(() => {

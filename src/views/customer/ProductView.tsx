@@ -47,6 +47,7 @@ import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
 import { montarMensagemDeCompartilhar } from "@/lib/mensagem-de-compartilhar";
+import { percentualDeDesconto } from "@/lib/percentual-de-desconto";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { resumoParaPrevia } from "@/lib/resumo-para-previa";
 import { textoEstoqueBaixo, textoSoRestam } from "@/lib/texto-estoque-baixo";
@@ -722,7 +723,7 @@ export const ProductView = React.memo(function ProductView({
   const isOutOfStock =
     currentStock <= 0 || variacaoIndisponivel || grupoSemEstoque;
   const discount = originalExibido
-    ? Math.round(((originalExibido - precoExibido) / originalExibido) * 100)
+    ? percentualDeDesconto(originalExibido, precoExibido)
     : 0;
 
   // ProductCard-520 + T3 (23/09): `product.freeShipping` só é verdade
