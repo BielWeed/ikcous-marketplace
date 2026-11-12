@@ -103,6 +103,22 @@ describe("OrderList — forma de pagamento, etapas e pedido sem itens (lote 208)
     expect(texto).not.toContain("Separação");
   });
 
+  it.each([
+    { retiradaNaLoja: true, proxima: "Retirado", ausente: "Entregue" },
+    { retiradaNaLoja: false, proxima: "Entregue", ausente: "Retirado" },
+  ])(
+    "próxima etapa de pedido pronto é $proxima (retirada=$retiradaNaLoja)",
+    async ({ retiradaNaLoja, proxima, ausente }) => {
+      await renderizar({ ...pedidoBase, status: "shipping", retiradaNaLoja });
+      const trilha = hospedeiro.querySelector('[role="progressbar"]');
+      expect(trilha?.getAttribute("aria-valuetext")).toContain(
+        `Próxima: ${proxima}`,
+      );
+      expect(trilha?.textContent).toContain(proxima);
+      expect(trilha?.textContent).not.toContain(ausente);
+    },
+  );
+
   it("pedido sem itens mostra 'Pedido', nunca 'N/A'", async () => {
     const texto = await renderizar({ ...pedidoBase, items: [] } as Order);
     expect(texto).not.toContain("N/A");

@@ -15,5 +15,6 @@ export const ROTULOS_DAS_ETAPAS = {
   entregue: "Entregue",
 } as const;
 
+export const ROTULO_RETIRADA_FEITA = "Retirado";
 export const ROTULO_RETIRADA_PRONTA = "Pronto para retirar";
 export const ROTULO_RETIRADA_PRONTA_CURTO = "Pronto p/ retirar";

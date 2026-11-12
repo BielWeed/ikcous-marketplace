@@ -47,6 +47,38 @@ describe("OrderTimeline -- lista ordenada com etapa atual anunciada e rótulos l
     });
   }
 
+  it.each([
+    { compacto: true, retiradaNaLoja: true, rotulo: "Retirado" },
+    { compacto: false, retiradaNaLoja: true, rotulo: "Retirado" },
+    { compacto: true, retiradaNaLoja: false, rotulo: "Entregue" },
+    { compacto: false, retiradaNaLoja: false, rotulo: "Entregue" },
+  ])(
+    "última etapa $rotulo (compacto=$compacto, retirada=$retiradaNaLoja)",
+    async ({ compacto, retiradaNaLoja, rotulo }) => {
+      await act(async () => {
+        raiz.render(
+          <OrderTimeline
+            status="delivered"
+            compacto={compacto}
+            retiradaNaLoja={retiradaNaLoja}
+          />,
+        );
+      });
+
+      const ultima = hospedeiro.querySelector("li:last-child");
+      expect(
+        ultima?.querySelector(":scope > span:not(.sr-only)")?.textContent,
+      ).toBe(rotulo);
+      expect(ultima?.textContent).not.toContain(
+        retiradaNaLoja ? "Entregue" : "Retirado",
+      );
+      expect(ultima?.getAttribute("aria-current")).toBe("step");
+      expect(ultima?.querySelector(".sr-only")?.textContent).toBe(
+        "etapa atual",
+      );
+    },
+  );
+
   // `display: contents` some da árvore de acessibilidade (MDN, seção Accessibility de
   // Web/CSS/display-box) e, em algumas versões de navegador, arrasta os <li> e o
   // sr-only junto. jsdom não calcula estilo computado, então este teste não vê o

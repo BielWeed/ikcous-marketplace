@@ -7,6 +7,7 @@ import { miniaturaDeCompra } from "@/lib/miniatura-de-compra";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
   ROTULOS_DAS_ETAPAS,
+  ROTULO_RETIRADA_FEITA,
   ROTULO_RETIRADA_PRONTA_CURTO,
 } from "@/lib/rotulos-das-etapas";
 import { cn } from "@/lib/utils";
@@ -73,7 +74,7 @@ const trailStepsRetirada: string[] = [
   ROTULOS_DAS_ETAPAS.recebido,
   ROTULOS_DAS_ETAPAS.separado,
   ROTULO_RETIRADA_PRONTA_CURTO,
-  ROTULOS_DAS_ETAPAS.entregue,
+  ROTULO_RETIRADA_FEITA,
 ];
 
 // `Map.get` em vez de indexar o Record: mesma escolha de
