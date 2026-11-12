@@ -22,6 +22,22 @@ function base(): Parameters<typeof modoDeEconomiaDoFrete>[0] {
 
 describe("linha 0: transportadora escolhida não pede outra cotação", () => {
   it.each([
+    [35.9, 20, 15.9],
+    [0.3, 0.1, 0.2],
+  ])(
+    "preço cheio R$ %s e cobrado R$ %s preservam R$ %s de economia com centavos",
+    (precoCheio, price, esperado) => {
+      const modo = modoDeEconomiaDoFrete({
+        ...base(),
+        opcaoSelecionada: { id: "melhorenvio-pac", price, precoCheio },
+      });
+      expect(modo.tipo).toBe("opcao");
+      if (modo.tipo !== "opcao") throw new Error("economia nacional ausente");
+      expect(modo.valor).toBeCloseTo(esperado, 2);
+    },
+  );
+
+  it.each([
     { price: 0, esperado: { tipo: "zero" } },
     { price: 0, precoCheio: 0, esperado: { tipo: "zero" } },
     { price: 20, precoCheio: 20, esperado: { tipo: "zero" } },
