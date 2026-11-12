@@ -222,6 +222,46 @@ describe("AdminProductFormView — #98 duplo clique cria produto duplicado", () 
     expect(addProduct).toHaveBeenCalledTimes(1);
   });
 
+  it("sair antes da resposta de salvar não navega nem limpa a outra tela", async () => {
+    await preencherFormularioValido();
+    vi.useFakeTimers();
+    let concluirGravacao!: (produto: { id: string }) => void;
+    addProduct.mockImplementationOnce(
+      () =>
+        new Promise<{ id: string }>((resolve) => {
+          concluirGravacao = resolve;
+        }),
+    );
+
+    await act(async () => {
+      localizarBotaoPorTexto(acoesDoProduto(), "Publicar")!.click();
+    });
+    expect(addProduct).toHaveBeenCalledTimes(1);
+    expect(onNavigate).not.toHaveBeenCalled();
+
+    await act(async () => {
+      raiz.unmount();
+    });
+    // Conta só chamadas depois de sair, não as que marcam o formulário sujo.
+    onSetDirty.mockClear();
+
+    await act(async () => {
+      concluirGravacao({ id: "novo-produto-1" });
+      await Promise.resolve();
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
+    // Recria a raiz antes das asserções para o afterEach também rodar no vermelho.
+    hospedeiro.remove();
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(onSetDirty).not.toHaveBeenCalled();
+  });
+
   it("desmontar durante a janela de 'Salvo' cancela a navegação pendente", async () => {
     // preencherFormularioValido() espera 300ms REAIS para o debounce do
     // LocalBufferedInput flushar — vira fake timers só DEPOIS disso, senão

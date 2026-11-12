@@ -1007,6 +1007,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // cancelá-lo se o admin sair da tela antes dos 1,5s — sem isto, onNavigate
   // dispara mesmo com o componente já desmontado.
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const montadoRef = useRef(true);
   const [isAdjusterOpen, setIsAdjusterOpen] = useState(false);
   const [adjustingImgUrl, setAdjustingImgUrl] = useState("");
   const [adjustingImgIndex, setAdjustingImgIndex] = useState<number | null>(
@@ -3494,6 +3495,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         }
       }
 
+      if (!montadoRef.current) return;
       setIsSubmitting(false);
       setShowSuccess(true);
       // Achado da re-revisão da #98: iguala formData/initialData depois de
@@ -3590,7 +3592,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // componente desmontar antes dele disparar (ex.: admin clica em Voltar
   // logo depois de salvar).
   useEffect(() => {
+    montadoRef.current = true;
     return () => {
+      montadoRef.current = false;
       if (successTimerRef.current) clearTimeout(successTimerRef.current);
     };
   }, []);
