@@ -22,11 +22,17 @@ import { useRef, useState } from "react";
  * nenhuma página desfaz um bloqueio), iPhone/iPad no Safari fora do app
  * instalado (explica como instalar: é a única porta para o aviso chegar lá) ou
  * desligado mas liberado (um toque liga, pelo MESMO `subscribe()` do convite).
- * Quem já recebe, quem não tem conta e quem está num navegador sem push (ou num
- * iOS velho demais) não vê nada: não há ação a oferecer.
+ * Quem já recebe vê "Avisos ligados" com o botão de desligar (pelo MESMO
+ * `unsubscribe()` do hook, que tira a inscrição do navegador e do banco): pedir
+ * e retirar o consentimento têm de ser simétricos, sem precisar sair da conta.
+ * Quem não tem conta e quem está num navegador sem push (ou num iOS velho
+ * demais) não vê nada: não há ação a oferecer.
  * Voltou das configurações já liberado? O hook relê a permissão ao voltar à
  * tela e o cartão troca sozinho de "bloqueado" para o botão de ligar.
  */
+const FALHA_AO_DESLIGAR =
+  "Não foi possível desligar os avisos agora. Tente de novo em instantes.";
+
 export function AvisosDoAparelhoDaCliente() {
   const {
     isSupported,
@@ -35,11 +41,15 @@ export function AvisosDoAparelhoDaCliente() {
     semConta,
     sondado,
     subscribe,
+    unsubscribe,
   } = usePushNotifications();
   const [ligando, setLigando] = useState(false);
   const [erroDeLigar, setErroDeLigar] = useState<string | null>(null);
+  const [desligando, setDesligando] = useState(false);
+  const [erroDeDesligar, setErroDeDesligar] = useState<string | null>(null);
   // Trava de toque duplo: o estado só muda no render seguinte, e dois toques
-  // no mesmo instante pediriam a permissão e gravariam a inscrição duas vezes.
+  // no mesmo instante pediriam a permissão e gravariam a inscrição duas vezes
+  // (ou apagariam a mesma inscrição duas vezes).
   const emVoo = useRef(false);
 
   if (semConta) return null;
@@ -81,6 +91,69 @@ export function AvisosDoAparelhoDaCliente() {
       setLigando(false);
     }
   };
+
+  const desligar = async () => {
+    if (emVoo.current) return;
+    emVoo.current = true;
+    setDesligando(true);
+    setErroDeDesligar(null);
+    try {
+      // O hook já avisa a causa num aviso passageiro e devolve `false`; aqui a
+      // falha fica FIXA e o botão volta, para ela tentar de novo.
+      const desligou = await unsubscribe();
+      if (!desligou) setErroDeDesligar(FALHA_AO_DESLIGAR);
+    } catch {
+      setErroDeDesligar(FALHA_AO_DESLIGAR);
+    } finally {
+      emVoo.current = false;
+      setDesligando(false);
+    }
+  };
+
+  if (situacao === "ligados") {
+    return (
+      <section
+        aria-label="Avisos neste aparelho"
+        className="mt-3 rounded-[18px] border border-solid border-border p-4"
+      >
+        <div className="flex items-start gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-[14px] bg-muted/40">
+            <BellRing
+              className="size-5 text-emerald-700 dark:text-emerald-400"
+              aria-hidden="true"
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[16px] font-semibold leading-6 text-foreground">
+              Avisos ligados neste aparelho
+            </h2>
+            <p className="text-[14px] leading-5 text-muted-foreground">
+              Você recebe no celular o "Pedido a caminho" e os comunicados da
+              loja.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void desligar()}
+              disabled={desligando}
+              aria-busy={desligando}
+              className="mt-3 h-11 rounded-xl px-4 text-[14px] font-semibold"
+            >
+              {desligando ? "Desligando..." : "Desligar avisos neste aparelho"}
+            </Button>
+            {erroDeDesligar ? (
+              <p
+                role="alert"
+                className="mt-3 text-[14px] leading-5 text-red-700 dark:text-red-400"
+              >
+                {erroDeDesligar}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   if (situacao === "bloqueado") {
     return (

@@ -9,7 +9,8 @@
 // quê, e quem se arrependeu não tinha botão. Agora a tela da cliente mostra:
 //   - bloqueado: por que não chega e COMO liberar (nenhuma página desfaz isso);
 //   - desligado mas liberado: um botão que liga pelo mesmo `subscribe()`.
-// E fica CALADA quando não há o que fazer (já recebe, sem conta, sem suporte).
+// E fica CALADA quando não há o que fazer (sem conta, sem suporte). Quem já
+// recebe vê "Avisos ligados" e o botão de desligar (arquivo ao lado).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -159,7 +160,6 @@ describe("avisos do aparelho na tela da cliente", () => {
   });
 
   it.each([
-    ["já recebe os avisos", { permission: "granted", subscription: {} }],
     ["visitante sem conta", { semConta: true }],
     ["ainda sondando o navegador", { sondado: false }],
     ["navegador sem push", { isSupported: false }],
@@ -179,11 +179,19 @@ describe("avisos do aparelho na tela da cliente", () => {
     expect(texto()).toContain("Sua caixa está limpa!");
   });
 
-  it("CONTROLE — na tela de notificações, quem já recebe não vê o cartão", () => {
+  it("na tela de notificações, quem já recebe vê UM cartão 'ligados' (e o resto da tela segue igual)", () => {
+    // Desligar mora em avisos-do-aparelho-da-cliente-desligar.test.tsx.
     push.estado.permission = "granted";
     push.estado.subscription = {};
     desenhar(<NotificationsView onNavigate={vi.fn()} />);
 
-    expect(texto()).not.toContain("neste aparelho");
+    expect(texto()).toContain("Avisos ligados neste aparelho");
+    expect(texto()).not.toContain("Avisos desligados neste aparelho");
+    expect(
+      hospedeiro.querySelectorAll(
+        'section[aria-label="Avisos neste aparelho"]',
+      ),
+    ).toHaveLength(1);
+    expect(texto()).toContain("Sua caixa está limpa!");
   });
 });

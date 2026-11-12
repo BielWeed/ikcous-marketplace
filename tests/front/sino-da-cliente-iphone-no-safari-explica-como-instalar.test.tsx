@@ -168,14 +168,15 @@ describe("avisos do aparelho na tela da cliente — iPhone fora do app instalado
     expect(texto()).toBe("");
   });
 
-  it("CONTROLE — iPhone que já recebe os avisos não vê o cartão", () => {
+  it("CONTROLE — iPhone que já recebe os avisos não vê instruções de instalar (só o cartão de ligados)", () => {
     push.estado.permission = "granted";
     push.estado.subscription = {};
     definirNavegador({ userAgent: USER_AGENT_IPHONE });
     instaladoNaTela(true);
     desenhar();
 
-    expect(texto()).toBe("");
+    expect(texto()).toContain("Avisos ligados neste aparelho");
+    expect(texto()).not.toContain("Adicionar à Tela de Início");
   });
 
   it("CONTROLE — navegador sem push fora da Apple (não é iPhone) continua calado", () => {
