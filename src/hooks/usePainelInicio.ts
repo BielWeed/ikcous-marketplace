@@ -8,7 +8,7 @@ import {
 import { hojeEmSaoPaulo } from "@/lib/financeiro";
 import { supabase } from "@/lib/supabase";
 import type { AssinaturaDaLoja, PainelInicio } from "@/types/painel";
-import { comPrazo } from "@/utils/com-prazo";
+import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
@@ -90,6 +90,17 @@ let geracaoDaBuscaEmVoo = 0;
 // Recarga FORÇADA pedida com uma busca em voo: roda uma busca depois dela.
 let buscaForcadaSeguinte: Promise<RetratoDoPainel> | null = null;
 
+// O prazo vale POR leitura: a que estoura vira o erro DELA (`error`) e a outra
+// continua valendo — a assinatura pendurada não apaga os números de hoje.
+function comPrazoDaLeitura<R>(leitura: PromiseLike<R>) {
+  return comPrazo(Promise.resolve(leitura), PRAZO_DA_BUSCA_MS).catch(
+    (erro: unknown) => {
+      if (erro instanceof PrazoEsgotado) return { data: null, error: erro };
+      throw erro;
+    },
+  );
+}
+
 /**
  * `iniciadaEm` é o instante em que a busca SAIU, não o em que voltou: os
  * números refletem o servidor naquele momento. Uma busca que sai às 23:59:59 e
@@ -101,8 +112,8 @@ async function buscarRetrato(
   geracao: number,
 ): Promise<RetratoDoPainel> {
   const [respostaPainel, respostaAssinatura] = await Promise.all([
-    supabase.rpc("painel_inicio"),
-    supabase.rpc("assinatura_da_loja_ler"),
+    comPrazoDaLeitura(supabase.rpc("painel_inicio")),
+    comPrazoDaLeitura(supabase.rpc("assinatura_da_loja_ler")),
   ]);
 
   let painel: PainelInicio | null = null;
