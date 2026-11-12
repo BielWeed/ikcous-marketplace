@@ -165,6 +165,38 @@ describe("texto de compartilhar produto sem marca de outra loja", () => {
     expect(visto.config?.shareText).toBe("Olha que achei na Loja Aurora!");
   });
 
+  // O banco nasceu com DEFAULT 'Confira os produtos da Ikous!' em
+  // store_config.share_text: loja que nunca editou o texto herdou a marca da
+  // plataforma e a mandava aos clientes dela.
+  it("padrão herdado do banco ('Ikous') + nome da loja: troca pelo nome dela", async () => {
+    await montar({
+      id: 1,
+      share_text: "Confira os produtos da Ikous!",
+      store_name: "Loja da Ana",
+    });
+    expect(visto.config?.shareText).toBe("Olha que achei na Loja da Ana!");
+  });
+
+  it("padrão herdado do banco ('Ikous') e sem nome da loja: volta ao neutro", async () => {
+    await montar({
+      id: 1,
+      share_text: "Confira os produtos da Ikous!",
+      store_name: null,
+    });
+    expect(visto.config?.shareText).toBe(defaultStoreConfig.shareText);
+  });
+
+  it("texto customizado que não é padrão nenhum continua intacto", async () => {
+    await montar({
+      id: 1,
+      share_text: "Venha conferir a nossa nova coleção!",
+      store_name: "Loja da Ana",
+    });
+    expect(visto.config?.shareText).toBe(
+      "Venha conferir a nossa nova coleção!",
+    );
+  });
+
   it("texto escrito pela lojista nunca é trocado", async () => {
     await montar({
       id: 1,

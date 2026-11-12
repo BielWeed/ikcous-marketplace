@@ -348,8 +348,10 @@ const StoreContext = createContext<StoreContextType | undefined>(undefined);
 // branding.appName quebrava essa igualdade e disparava um put a cada
 // primeiro carregamento). O padrão ANTIGO ("...na IKCOUS!"), que lojas
 // criadas antes carregam no banco, conta como padrão. Texto customizado
-// nunca é sobrescrito.
+// nunca é sobrescrito. O DEFAULT da coluna no banco ("Confira os produtos da
+// Ikous!") também conta: loja que nunca editou o texto o herdou.
 const SHARE_TEXT_PADRAO_ANTIGO = "Olha que achei na IKCOUS!";
+const SHARE_TEXT_PADRAO_DO_BANCO = "Confira os produtos da Ikous!";
 function componhaShareText(
   bruto: string | undefined,
   storeName: string | undefined,
@@ -357,7 +359,8 @@ function componhaShareText(
   const texto = bruto ?? defaultStoreConfig.shareText;
   if (
     texto !== defaultStoreConfig.shareText &&
-    texto !== SHARE_TEXT_PADRAO_ANTIGO
+    texto !== SHARE_TEXT_PADRAO_ANTIGO &&
+    texto !== SHARE_TEXT_PADRAO_DO_BANCO
   ) {
     return texto;
   }
