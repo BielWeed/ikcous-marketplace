@@ -13,8 +13,8 @@
       "Loja, Produto: o cartão mostra a mesma capa da página do produto, a folha de opções ordena os tamanhos como a página, e letra grande não corta nome, aviso de estoque nem botão.",
       "Loja, Tema escuro: o nome e a descrição do produto, as telas de retomar o pagamento e a situação do pagamento ficam legíveis.",
       "Painel, Produtos: Esc na grade de variações não descarta o que foi digitado, e a categoria nova aparece na tela seguinte.",
-      "Painel, Pedidos: pedido de retirada sem endereço de casa não mostra mais um bloco de endereço vazio.",
-      "Painel, Balcão: o botão \"−\" reduz a quantidade mesmo quando o estoque caiu abaixo dela; o comprovante diz \"grátis\" no frete zero.",
+      "Painel, Pedidos: pedido de retirada sem endereço de casa não mostra mais um bloco de endereço vazio, e o comprovante de uma entrega com frete zero diz \"grátis\".",
+      "Painel, Balcão: o botão \"−\" reduz a quantidade mesmo quando o estoque caiu abaixo dela.",
       "Painel, Atendimento: a pergunta de descartar a resposta aparece dentro da folha, onde dá para tocar.",
       "Painel, Sobre a loja: salvar a descrição com linhas vazias a mais não deixa um aviso falso de alteração pendente."
     ]
