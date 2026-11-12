@@ -16,7 +16,11 @@ import { supabase } from "@/lib/supabase";
 import { arredondarParaCentavos } from "@/lib/utils";
 import type { ClienteDoCupom, Coupon } from "@/types";
 import type { Database } from "@/types/database.types";
-import { cachedCouponsData, setCachedCouponsData } from "@/utils/admin_cache";
+import {
+  cachedCouponsData,
+  lerGeracaoDosCachesDeAdmin,
+  setCachedCouponsData,
+} from "@/utils/admin_cache";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -176,6 +180,7 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
   const fetchCoupons = useCallback(
     async (silencioso = false, avisarErro = true) => {
       const rodada = ++rodadaRef.current;
+      const geracao = lerGeracaoDosCachesDeAdmin();
       try {
         if (silencioso !== true) setLoading(true);
 
@@ -190,7 +195,11 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
           () => erroDeConsultaSemResposta(),
         );
 
-        if (rodada !== rodadaRef.current) return;
+        if (
+          rodada !== rodadaRef.current ||
+          geracao !== lerGeracaoDosCachesDeAdmin()
+        )
+          return;
 
         if (error) throw error;
 

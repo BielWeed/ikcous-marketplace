@@ -2769,6 +2769,7 @@ export function CheckoutViewDaConta({
         } else {
           cupomConferidoRef.current = null;
           setAppliedCoupon(null);
+          esquecerCupomDoRascunho();
           setCouponError(resultado.message || "Cupom inválido");
         }
       } catch {
@@ -4137,6 +4138,7 @@ export function CheckoutViewDaConta({
     cupomPendenteDoRascunhoRef.current = null;
     cupomConferidoRef.current = null;
     setAppliedCoupon(null);
+    esquecerCupomDoRascunho();
     setCouponError("");
   };
 

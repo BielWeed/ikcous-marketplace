@@ -16,6 +16,7 @@ import { supabase } from "@/lib/supabase";
 import type { Database } from "@/types/database.types";
 import {
   cachedQuestionsData,
+  lerGeracaoDosCachesDeAdmin,
   setCachedQuestionsData,
 } from "@/utils/admin_cache";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -641,6 +642,7 @@ export function useQuestions() {
       }
       allQuestionsAbortControllerRef.current = new AbortController();
       const signal = allQuestionsAbortControllerRef.current.signal;
+      const geracao = lerGeracaoDosCachesDeAdmin();
 
       try {
         if (!silent) {
@@ -659,6 +661,7 @@ export function useQuestions() {
             },
           ).abortSignal(signal);
 
+          if (geracao !== lerGeracaoDosCachesDeAdmin()) return;
           if (error) throw error;
 
           const rpcData = data as any;
