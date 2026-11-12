@@ -104,13 +104,13 @@ export function ProductQA({
   };
 
   const handleReply = async (questionId: string) => {
-    if (!replyText.trim()) return;
+    if (!nomeTemConteudoVisivel(replyText)) return;
     // Mesma regra do handleAsk: addAnswer devolve false na falha — fechar
     // a caixa e limpar a resposta aí seria jogar fora o texto digitado.
     const versaoEnviada = respostaVersaoRef.current;
     const respondida = await addAnswer({
       questionId,
-      answer: replyText,
+      answer: replyText.trim(),
     });
     if (respondida && respostaVersaoRef.current === versaoEnviada) {
       respostaVersaoRef.current += 1;
@@ -449,7 +449,7 @@ export function ProductQA({
                         />
                         <button
                           onClick={() => handleReply(q.id)}
-                          disabled={!replyText.trim()}
+                          disabled={!nomeTemConteudoVisivel(replyText)}
                           title={
                             q.answers.length > 0
                               ? "Salvar edição"
