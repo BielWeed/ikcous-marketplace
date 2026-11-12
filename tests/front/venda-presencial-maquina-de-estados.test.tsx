@@ -1169,9 +1169,12 @@ describe("rascunho (serializarRascunho / lerRascunho)", () => {
   });
 
   it("não guarda recibo/enviando/erro — são de sessão, não da venda", () => {
+    // `enviando: true` NÃO entra aqui de propósito: um envio no ar grava o FATO
+    // `talvezGravada` (a venda pode já estar no banco) — ver
+    // tests/front/pdv-rascunho-recarregar-durante-o-envio.test.tsx.
     const estadoComRecibo: EstadoDaVenda = {
       ...estadoBase(),
-      enviando: true,
+      enviando: false,
       erro: "algum erro de sessão",
       recibo: {
         orderId: "abc-123",
