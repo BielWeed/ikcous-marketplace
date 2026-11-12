@@ -298,7 +298,10 @@ em vez de prometer "seguro por construção".**
 > continua perguntando, e nem hook nem `allow` a vencem; só `deny` vence tudo. As 34 regras de uso comum que eram
 > `ask` (`git push/commit/add/checkout/...`, `gh pr`, `curl`, `npm install`, `rm`, `mv`, ...) foram para `allow`; as 9
 > que carregam arquivo escolhido (`npx eslint -f/--format`, `npx knip --reporter/--preprocessor`,
-> `npx commitlint -o/--format`, `npx shadcn`) foram para `deny`. O `deny` anterior ficou intacto. Onde o texto abaixo
+> `npx commitlint -o/--format`, `npx shadcn`) foram para `deny`. O `deny` anterior ficou intacto, e a revisão Opus
+> acrescentou ao `deny` as variantes destrutivas que o `ask` antigo segurava (`rm -Rf`/`rm dir -rf`, `git checkout .`,
+> `git push ... --force`/`--delete` com a opção no fim, `git restore .`, `git stash drop/clear`, `curl` com `.env`).
+> Onde o texto abaixo
 > disser **ask**, leia **deny** (as flags) ou **allow** (o uso comum). O teste
 > `tests/front/paralelo-permissoes.test.ts` falha se um `ask` voltar ou se uma regra de `deny` sumir.
 
