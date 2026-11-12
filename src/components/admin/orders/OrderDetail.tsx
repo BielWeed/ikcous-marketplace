@@ -764,6 +764,15 @@ function OrderDeliveryCard({
   // endereço, se existir, continua gravado no banco; só não é mostrado.
   const ehBalcao = tipoDeEntregaDoPedido(order) === "balcao";
 
+  // Visitante que RETIRA na loja é gravado sem endereço de casa (só CEP, nome
+  // e WhatsApp). Sem rua, bairro e cidade não há o que copiar nem apontar no
+  // mapa: a ficha diz isso em uma linha em vez de um bloco vazio.
+  const semEnderecoDeCasa =
+    order.retiradaNaLoja &&
+    [order.customer.address, order.customer.neighborhood, order.customer.city]
+      .map((parte) => (parte ?? "").trim())
+      .every((parte) => parte === "");
+
   return (
     <section
       data-testid="bloco-entrega"
@@ -811,7 +820,19 @@ function OrderDeliveryCard({
         </div>
       )}
 
-      {!ehBalcao && (
+      {!ehBalcao && semEnderecoDeCasa && (
+        <p className="border-t border-admin-border pt-4 text-sm leading-relaxed text-zinc-400">
+          Cliente retira na loja — não informou endereço de casa
+          {order.customer.cep?.trim() ? (
+            <>
+              <br />
+              CEP: {order.customer.cep.trim()}
+            </>
+          ) : null}
+        </p>
+      )}
+
+      {!ehBalcao && !semEnderecoDeCasa && (
         <div className="space-y-2 border-t border-admin-border pt-4">
           <p className="text-xs text-zinc-400">
             {order.retiradaNaLoja
@@ -2072,6 +2093,7 @@ export const OrderDetail = memo(function OrderDetail({
     order.customer.cep ? `CEP: ${order.customer.cep}` : "",
     order.customer.reference ? `Ref: ${order.customer.reference}` : "",
   ]
+    .map((parte) => (parte ?? "").trim())
     .filter(Boolean)
     .join(" - ");
 
@@ -2097,6 +2119,11 @@ export const OrderDetail = memo(function OrderDetail({
   // `copiarParaClipboard` devolve false quando a API recusa (permissão,
   // janela sem foco), e aí o aviso é de erro, não de sucesso.
   const handleCopyAddress = async () => {
+    // Pedido sem nenhum texto de endereço: nada a copiar, nada a comemorar.
+    if (displayAddress === "") {
+      toast.error("Este pedido não tem endereço para copiar.");
+      return;
+    }
     const ok = await copiarParaClipboard(displayAddress);
     if (!ok) {
       toast.error("Não foi possível copiar.");
