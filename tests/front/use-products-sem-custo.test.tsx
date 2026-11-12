@@ -11,6 +11,7 @@
 // lidos da linha), RPC dublada que respeita `p_page`/`p_page_size` e registra
 // cada chamada.
 import { useProducts } from "@/hooks/useProducts";
+import { PRAZO_DA_CONSULTA_DO_PAINEL_MS } from "@/lib/prazo-da-requisicao";
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -117,6 +118,7 @@ describe("useProducts.loadProductsSemCusto: lista completa, mesma regra do selo"
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     act(() => raiz.unmount());
     hospedeiro.remove();
     vi.restoreAllMocks();
@@ -303,6 +305,34 @@ describe("useProducts.loadProductsSemCusto: lista completa, mesma regra do selo"
     const r = await api.loadProductsSemCusto();
     expect(mock.chamadas).toHaveLength(6);
     expect(r).toBeNull();
+    expect(mock.toastError).toHaveBeenCalledWith("Erro ao listar produtos");
+  });
+
+  it("rede pendurada (a RPC nunca responde): passado o prazo devolve null, avisa e solta o 'carregando'", async () => {
+    // Sem prazo a tela ficava em "Procurando os produtos sem custo…" para
+    // sempre, sem erro e sem "Tentar Novamente". Como `loadProducts`, o prazo
+    // só encerra a ESPERA da tela; a leitura não grava nada.
+    mock.linhas = [produto(1)];
+    await montar();
+    mock.segura = new Promise<void>(() => {});
+    vi.useFakeTimers();
+    let resultado: unknown = "pendente";
+    await act(async () => {
+      void api.loadProductsSemCusto().then((r) => {
+        resultado = r;
+      });
+      await vi.advanceTimersByTimeAsync(PRAZO_DA_CONSULTA_DO_PAINEL_MS - 1);
+    });
+    // Ainda dentro do prazo: segue esperando, sem aviso.
+    expect(resultado).toBe("pendente");
+    expect(api.loading).toBe(true);
+    expect(mock.toastError).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(resultado).toBeNull();
+    expect(api.loading).toBe(false);
     expect(mock.toastError).toHaveBeenCalledWith("Erro ao listar produtos");
   });
 

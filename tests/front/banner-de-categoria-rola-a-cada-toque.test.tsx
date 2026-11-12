@@ -55,6 +55,7 @@ describe("BannerCarousel: rolagem até o Catálogo", () => {
   afterEach(() => {
     act(() => raiz.unmount());
     hospedeiro.remove();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     globalThis.history.replaceState({}, "", "/");
   });
@@ -84,6 +85,71 @@ describe("BannerCarousel: rolagem até o Catálogo", () => {
     await act(async () => alvo?.click());
     expect(rolar).toHaveBeenCalledTimes(2);
   });
+
+  it.each(["/", "/?category=Vestidos"])(
+    "dois toques no endereço atual %s não empilham histórico",
+    async (endereco) => {
+      globalThis.history.replaceState({ view: "home" }, "", endereco);
+      const estadoAntes = globalThis.history.state;
+      const tamanhoAntes = globalThis.history.length;
+      const empilhar = vi.spyOn(globalThis.history, "pushState");
+      const popstate = vi.fn();
+      globalThis.addEventListener("popstate", popstate);
+      try {
+        const alvo = await montar(endereco);
+        expect(alvo).not.toBeNull();
+        for (let toque = 0; toque < 2; toque++) {
+          await act(async () => alvo?.click());
+          expect(empilhar).not.toHaveBeenCalled();
+          expect(globalThis.history.length).toBe(tamanhoAntes);
+          expect(globalThis.history.state).toEqual(estadoAntes);
+          expect(popstate).not.toHaveBeenCalled();
+        }
+        expect(rolar).toHaveBeenCalledTimes(
+          endereco.includes("category") ? 2 : 0,
+        );
+      } finally {
+        globalThis.removeEventListener("popstate", popstate);
+      }
+    },
+  );
+
+  it.each(["/?category=Sapatos", "/profile"])(
+    "destino diferente %s ainda navega uma vez",
+    async (destino) => {
+      globalThis.history.replaceState(
+        { view: "home" },
+        "",
+        "/?category=Vestidos",
+      );
+      const tamanhoAntes = globalThis.history.length;
+      const empilhar = vi.spyOn(globalThis.history, "pushState");
+      const popstate = vi.fn();
+      globalThis.addEventListener("popstate", popstate);
+      try {
+        const alvo = await montar(destino);
+        expect(alvo).not.toBeNull();
+        await act(async () => alvo?.click());
+        expect(empilhar).toHaveBeenCalledTimes(1);
+        expect(globalThis.history.length).toBe(tamanhoAntes + 1);
+        expect(globalThis.location.pathname + globalThis.location.search).toBe(
+          destino,
+        );
+        expect(globalThis.history.state).toEqual({
+          view: destino === "/profile" ? "profile" : "home",
+          id: undefined,
+          from: "home",
+        });
+        expect(popstate).toHaveBeenCalledTimes(1);
+        await act(async () => alvo?.click());
+        expect(empilhar).toHaveBeenCalledTimes(1);
+        expect(globalThis.history.length).toBe(tamanhoAntes + 1);
+        expect(popstate).toHaveBeenCalledTimes(1);
+      } finally {
+        globalThis.removeEventListener("popstate", popstate);
+      }
+    },
+  );
 
   it("banner que leva a outra tela não rola", async () => {
     const alvo = await montar("/profile");
