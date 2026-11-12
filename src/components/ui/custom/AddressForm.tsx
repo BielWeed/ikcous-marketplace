@@ -83,8 +83,12 @@ const addressSchema = z.object({
 
 type AddressFormValues = z.infer<typeof addressSchema>;
 
-// Os campos que moram no CEP: mudar o CEP muda o dono deles.
-const CAMPOS_DO_CEP: readonly string[] = [
+// CEP, rua, bairro, cidade e UF são UM bloco só: um endereço do CEP de um lugar
+// com a rua de outro não existe. Quando chega versão nova do mesmo endereço,
+// ou a pessoa mexeu em algum campo do bloco (o bloco inteiro fica dela) ou não
+// mexeu em nenhum (o bloco inteiro vem do servidor) — nunca metade de cada.
+const BLOCO_DO_CEP: readonly string[] = [
+  "cep",
   "street",
   "neighborhood",
   "city",
@@ -394,18 +398,19 @@ export function AddressForm({
       const campos = Object.keys(novos);
       if (Object.entries(novos).every(([c, v]) => antes.get(c) === v)) return;
       const agora = new Map(Object.entries(form.getValues()));
-      const cepTrocado = agora.get("cep") !== antes.get("cep");
-      // Mexido = difere do que foi aplicado (digitação OU busca de CEP). Com o
-      // CEP trocado, rua/bairro/cidade/UF são do CEP dela, mesmo se a busca
-      // trouxe o mesmo texto de antes. O botão "principal" entra na mesma
-      // regra (`principalTocadoRef` segue como está).
-      const guardados = campos.filter(
-        (c) =>
-          agora.get(c) !== antes.get(c) ||
-          (cepTrocado && CAMPOS_DO_CEP.includes(c)),
+      // Mexido = difere do que foi aplicado (digitação OU busca de CEP). O
+      // bloco do CEP é um só: mexeu em qualquer campo dele (até só a UF), o
+      // bloco inteiro é dela, mesmo se a busca trouxe o mesmo texto de antes.
+      // Fora do bloco vale a regra por campo. O botão "principal" entra nela
+      // (`principalTocadoRef` segue como está).
+      const blocoMexido = BLOCO_DO_CEP.some(
+        (c) => agora.get(c) !== antes.get(c),
+      );
+      const guardados = campos.filter((c) =>
+        BLOCO_DO_CEP.includes(c) ? blocoMexido : agora.get(c) !== antes.get(c),
       );
       initialDataAplicadoRef.current = initialData;
-      if (!cepTrocado) {
+      if (!blocoMexido) {
         cepAssociadoRef.current = initialData.cep
           ? formatarCep(initialData.cep).limpo
           : null;

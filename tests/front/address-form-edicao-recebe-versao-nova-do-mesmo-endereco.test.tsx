@@ -276,6 +276,102 @@ describe("AddressForm — versão nova do MESMO endereço chega com o formulári
     expect(dados.street).toBe("Rua do Comércio");
   });
 
+  // CEP, rua, bairro, cidade e UF são UM bloco: quem decide é a pessoa, nas
+  // duas direções. Mexeu em qualquer um, o bloco inteiro fica dela (nada do
+  // servidor entra, senão sai um endereço misturado: CEP de um lugar com a rua
+  // de outro). Não mexeu em nenhum, o bloco inteiro vem do servidor.
+  async function abrirOsCampos() {
+    const editar = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent === "Editar",
+    );
+    expect(editar, "o cartão do endereço tem o botão Editar").toBeDefined();
+    await act(async () => {
+      editar!.click();
+    });
+    await esvaziar();
+  }
+
+  const servidorMudouTudo = () =>
+    casa({
+      cep: "38500-001",
+      street: "Rua Nova",
+      neighborhood: "Bairro Novo",
+      city: "Uberaba",
+      state: "GO",
+    });
+
+  it("bloco do CEP: ela editou SÓ a rua e o servidor trocou CEP, bairro e cidade: o bloco inteiro fica o dela, nada misturado", async () => {
+    await mostrar(casa());
+    await abrirOsCampos();
+    await act(async () => {
+      digitar("street", "Rua do Comércio Corrigida");
+    });
+
+    await mostrar(servidorMudouTudo());
+    await salvar();
+
+    const dados = enviado();
+    expect(dados.street).toBe("Rua do Comércio Corrigida");
+    expect(dados.cep).toBe("38500-000");
+    expect(dados.neighborhood).toBe("Centro");
+    expect(dados.city).toBe("Monte Carmelo");
+    expect(dados.state).toBe("MG");
+  });
+
+  it("bloco do CEP: ela editou SÓ a cidade e o servidor trocou a rua (e o resto): o bloco inteiro fica o dela", async () => {
+    await mostrar(casa());
+    await abrirOsCampos();
+    await act(async () => {
+      digitar("city", "Monte Carmelo II");
+    });
+
+    await mostrar(servidorMudouTudo());
+    await salvar();
+
+    const dados = enviado();
+    expect(dados.city).toBe("Monte Carmelo II");
+    expect(dados.street).toBe("Rua do Comércio");
+    expect(dados.cep).toBe("38500-000");
+    expect(dados.neighborhood).toBe("Centro");
+    expect(dados.state).toBe("MG");
+  });
+
+  it("bloco do CEP: ela editou SÓ a UF e o servidor trocou o resto do bloco: o bloco inteiro fica o dela", async () => {
+    await mostrar(casa());
+    await abrirOsCampos();
+    await act(async () => {
+      digitar("state", "SP");
+    });
+
+    await mostrar(servidorMudouTudo());
+    await salvar();
+
+    const dados = enviado();
+    expect(dados.state).toBe("SP");
+    expect(dados.cep).toBe("38500-000");
+    expect(dados.street).toBe("Rua do Comércio");
+    expect(dados.neighborhood).toBe("Centro");
+    expect(dados.city).toBe("Monte Carmelo");
+  });
+
+  it("bloco do CEP: ela editou SÓ o número e o servidor trocou o bloco todo: o bloco vem do servidor e o número é dela", async () => {
+    await mostrar(casa());
+    await act(async () => {
+      digitar("number", "55");
+    });
+
+    await mostrar(servidorMudouTudo());
+    await salvar();
+
+    const dados = enviado();
+    expect(dados.number).toBe("55");
+    expect(dados.cep).toBe("38500-001");
+    expect(dados.street).toBe("Rua Nova");
+    expect(dados.neighborhood).toBe("Bairro Novo");
+    expect(dados.city).toBe("Uberaba");
+    expect(dados.state).toBe("GO");
+  });
+
   it("principal: ela não mexeu no botão e o servidor trocou a marca: continua NÃO mandando is_default", async () => {
     await mostrar(casa({ is_default: true }));
     await mostrar(casa({ is_default: false }));
