@@ -318,6 +318,14 @@ function saveTombstones(map: Map<string, CartTombstone>) {
   }
 }
 
+// Pôr a linha de novo (de verdade) vale mais que a lápide dela: a lápide é
+// comparada por relógio, e hora de aparelho que voltou atrás a faria esconder
+// o que a cliente acabou de pôr.
+function esquecerLapide(key: string) {
+  const lapides = loadTombstones();
+  if (lapides.delete(key)) saveTombstones(lapides);
+}
+
 /** A sessão de agora é mesmo desta conta? Qualquer falha diz "não". */
 async function sessaoConfirmaAConta(uid: string | null): Promise<boolean> {
   try {
@@ -1451,6 +1459,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       );
       if (previsto.aviso) toast.error(previsto.aviso);
       cartRef.current = previsto.cart;
+      if (previsto.entrou > 0) {
+        esquecerLapide(chaveDoItem({ product, variantId, outrasVariantIds }));
+      }
       setCart(
         (prev) =>
           somarAoCarrinho(
@@ -1637,6 +1648,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
               );
             }
 
+            esquecerLapide(chaveDoItem(item));
             return [
               {
                 ...item,

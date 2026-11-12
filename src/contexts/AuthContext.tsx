@@ -307,6 +307,9 @@ function esquecerDadosLocaisDaConta() {
   localStorage.removeItem("admin_banner_form_draft");
   localStorage.removeItem("ikcous_product_form_draft");
   localStorage.removeItem("marketplace_cart_v1");
+  // As lápides (CartContext) dizem "esta linha foi tirada às T" por até 7 dias:
+  // se ficam, a conta que entra tem a linha dela escondida por um tirar da outra.
+  localStorage.removeItem("marketplace_cart_tombstones_v1");
   localStorage.removeItem("ikcous_recently_viewed");
   localStorage.removeItem("ikcous_is_admin");
   // Revisão de contexto limpo do diff (achado 2) — o CEP também é PII do
