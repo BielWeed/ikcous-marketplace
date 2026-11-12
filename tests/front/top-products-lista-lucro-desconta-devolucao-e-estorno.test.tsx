@@ -20,7 +20,7 @@ class IntersectionObserverStub {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const SEM_NBSP = (t: string | null) =>
-  (t ?? "").replace(/ /g, " ").replace(/\s+/g, " ");
+  (t ?? "").split(String.fromCharCode(160)).join(" ").replace(/\s+/g, " ");
 
 describe("TopProductsList — o lucro desconta devolução e estorno", () => {
   let hospedeiro: HTMLDivElement;

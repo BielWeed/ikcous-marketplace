@@ -18,6 +18,9 @@
 //
 // USO: CI_BANCO_EFEMERO=1 DATABASE_URL=postgres://postgres@127.0.0.1:<porta>/postgres \
 //        node tests/banco/rodar-isolado.cjs tests/banco/o-ranking-de-lucro-desconta-a-devolucao-viva.cjs
+/* eslint-disable security/detect-object-injection --
+ * Os indices vem de contadores e de listas fechadas deste arquivo (itens do cenario, dias do grafico), nunca de entrada de rede. */
+
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
