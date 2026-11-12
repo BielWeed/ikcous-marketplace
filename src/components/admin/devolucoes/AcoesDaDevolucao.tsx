@@ -28,6 +28,7 @@ import {
   rotuloCondicao,
   rotuloResolucao,
 } from "@/lib/devolucao";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import {
   RPC_DO_REEMBOLSO_R1,
   chamarRpcDoR1,
@@ -296,7 +297,7 @@ export function AcoesDaDevolucao({
   }
 
   async function recusar() {
-    if (!motivo.trim()) {
+    if (!nomeTemConteudoVisivel(motivo)) {
       setErro("Explique ao cliente o motivo da recusa.");
       return;
     }
@@ -304,7 +305,7 @@ export function AcoesDaDevolucao({
   }
 
   async function reprovar() {
-    if (!motivo.trim()) {
+    if (!nomeTemConteudoVisivel(motivo)) {
       setErro("Explique ao cliente por que o produto não foi aceito.");
       return;
     }

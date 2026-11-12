@@ -11,6 +11,7 @@
  * Os rótulos moram em `Map` (e não em objeto indexado por chave dinâmica)
  * pela mesma razão do resto do painel: `security/detect-object-injection`.
  */
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { formatCurrency, reaisComVirgula } from "@/lib/utils";
 import type {
   AtorDoEvento,
@@ -536,7 +537,7 @@ export function erroDoMotivo(args: {
   if (!tipoPrevisto(motivo, janelas)) {
     return porqueMotivoIndisponivel(motivo, prazos);
   }
-  if (motivo === "outro" && detalhe.trim().length === 0) {
+  if (motivo === "outro" && !nomeTemConteudoVisivel(detalhe)) {
     return "Conte em poucas palavras o motivo da devolução.";
   }
   if (detalhe.length > 1000) return "Use no máximo 1000 caracteres.";
