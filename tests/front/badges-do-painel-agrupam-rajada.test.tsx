@@ -18,17 +18,23 @@ let handlersPorCanal: Map<string, (payload?: any) => void> = new Map();
 // não "qualquer consulta": a mesma conferência também lê reviews e
 // perguntas, e contar tudo dobraria o número.
 let conferenciasDePedidos = 0;
+const statusPorCanal = new Map<string, (status: string) => void>();
 
 function builderOrders() {
+  let preparo = false;
   const builder: any = {};
   builder.select = vi.fn(() => builder);
   builder.eq = vi.fn(() => builder);
-  builder.in = vi.fn(() => builder);
+  builder.in = vi.fn(() => {
+    preparo = true;
+    return builder;
+  });
   builder.or = vi.fn(() => builder);
   builder.is = vi.fn(() => builder);
+  builder.gte = vi.fn(() => builder);
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
   builder.then = (resolve: any, reject?: any) => {
-    conferenciasDePedidos += 1;
+    if (preparo) conferenciasDePedidos += 1;
     return Promise.resolve({ count: 0, error: null }).then(resolve, reject);
   };
   return builder;
@@ -41,6 +47,7 @@ function builderSemContador() {
   builder.in = vi.fn(() => builder);
   builder.or = vi.fn(() => builder);
   builder.is = vi.fn(() => builder);
+  builder.gte = vi.fn(() => builder);
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
   builder.then = (resolve: any, reject?: any) =>
     Promise.resolve({ count: 0, error: null }).then(resolve, reject);
@@ -92,7 +99,10 @@ vi.mock("@/lib/supabase", () => ({
           return canal;
         },
       );
-      canal.subscribe = vi.fn();
+      canal.subscribe = vi.fn((status: (status: string) => void) => {
+        statusPorCanal.set(_nome, status);
+        return canal;
+      });
       return canal;
     }),
     removeChannel: vi.fn(),
@@ -145,6 +155,7 @@ describe("AdminLayout — rajada de eventos vira UMA conferência de badges", ()
       dispatchEvent: () => false,
     }));
     handlersPorCanal = new Map();
+    statusPorCanal.clear();
     conferenciasDePedidos = 0;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -223,6 +234,67 @@ describe("AdminLayout — rajada de eventos vira UMA conferência de badges", ()
     await esperarAte(() => conferenciasDePedidos > depoisDaMontagem);
     expect(conferenciasDePedidos).toBe(depoisDaMontagem + 1);
   });
+
+  it.each(["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"])(
+    "os dois canais voltam de %s: uma conferência, sem duplicar a primeira assinatura",
+    async (queda) => {
+      const { AdminLayout } = await import("@/components/layouts/AdminLayout");
+      await act(async () => {
+        raiz.render(
+          <AdminLayout currentView="admin-orders" onNavigate={vi.fn()}>
+            <div />
+          </AdminLayout>,
+        );
+      });
+      await esperarAte(() => conferenciasDePedidos >= 1);
+      const antes = conferenciasDePedidos;
+      const pedidos = statusPorCanal.get("admin-layout-orders-badge");
+      const perguntas = statusPorCanal.get("admin-layout-questions-badge");
+      expect(pedidos).toBeTypeOf("function");
+      expect(perguntas).toBeTypeOf("function");
+      await act(async () => {
+        pedidos?.("SUBSCRIBED");
+        perguntas?.("SUBSCRIBED");
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+      });
+      expect(conferenciasDePedidos).toBe(antes);
+      await act(async () => {
+        pedidos?.(queda);
+        perguntas?.(queda);
+        pedidos?.("SUBSCRIBED");
+        perguntas?.("SUBSCRIBED");
+        pedidos?.("SUBSCRIBED");
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+      });
+      expect(conferenciasDePedidos).toBe(antes + 1);
+    },
+  );
+
+  it.each(["admin-layout-orders-badge", "admin-layout-questions-badge"])(
+    "%s reconecta sozinho e relê os avisos",
+    async (nome) => {
+      const { AdminLayout } = await import("@/components/layouts/AdminLayout");
+      await act(async () => {
+        raiz.render(
+          <AdminLayout currentView="admin-orders" onNavigate={vi.fn()}>
+            <div />
+          </AdminLayout>,
+        );
+      });
+      const antes = conferenciasDePedidos;
+      const status = statusPorCanal.get(nome);
+      expect(status).toBeTypeOf("function");
+      await act(async () => {
+        status?.("SUBSCRIBED");
+        status?.("CLOSED");
+        status?.("SUBSCRIBED");
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+      });
+      expect(conferenciasDePedidos).toBe(antes + 1);
+    },
+  );
 
   it("um evento isolado também confere (a coalescência não engole o primeiro)", async () => {
     const { AdminLayout } = await import("@/components/layouts/AdminLayout");
