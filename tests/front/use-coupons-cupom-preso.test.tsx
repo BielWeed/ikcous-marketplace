@@ -284,7 +284,8 @@ describe("useCoupons.validateCoupon — cupom preso", () => {
       expect(r).toEqual({
         valid: false,
         discount: 0,
-        message: "Erro na conexão com servidor",
+        message:
+          "Não conseguimos conferir o cupom agora por falha de conexão. Confira sua internet e tente aplicar o cupom de novo.",
         networkError: true,
       });
       expect(chamadasDaVaga()).toHaveLength(0);
