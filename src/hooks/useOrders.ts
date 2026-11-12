@@ -1386,6 +1386,17 @@ export function mesclarAtualizacaoRealtime(
   linhaNova: Parameters<typeof mapOrderFromDB>[0],
 ): Order {
   const mapeado = mapOrderFromDB(linhaNova);
+  // UPDATE ATRASADO (socket lento, repasse entre abas, rajada após a
+  // reconexão) não desfaz o que a lista já sabe: versão ESTRITAMENTE anterior
+  // à da memória é descartada — mesma regra de `mesclarPedidosDaConsulta` (a
+  // leitura) e `escolherVersaoDoPedido` (o detalhe), que a lista não tinha.
+  // Data ausente/ilegível não é "velha" (decide o conteúdo, como sempre), e
+  // data IGUAL aplica: a atualização otimista muda o status sem mexer nela.
+  const tAtual = Date.parse(pedidoAtual.updatedAt);
+  const tNova = Date.parse(mapeado.updatedAt);
+  if (Number.isFinite(tAtual) && Number.isFinite(tNova) && tNova < tAtual) {
+    return pedidoAtual;
+  }
   // Escritos por nome, não num laço percorrendo uma lista de chaves: a
   // versão anterior (`for (const campo of [...]) resultado[campo] =
   // pedidoAtual[campo]`) acessava os dois objetos por chave vinda de
@@ -2994,19 +3005,56 @@ export function useOrders(
   > | null>(null);
   const DEBOUNCE_RECARREGAR_INSERT_MS = 400;
 
+  /**
+   * Pedidos da cliente cujo INSERT ainda está consultando o banco (id ->
+   * última linha de UPDATE que chegou nesse meio-tempo, ou `null`). Sem isto o
+   * UPDATE de um pedido AINDA AUSENTE da lista era descartado, e a consulta —
+   * um retrato anterior a ele — entrava velha (o PIX confirmado no meio do
+   * voo ficava "aguardando"). Entrada nasce no início do INSERT e sai logo
+   * que a consulta responde (`finally`): nada fica guardado para sempre.
+   */
+  const insertsEmVooRef = useRef(new Map<string, any>());
+
   const handleRealtimeInsert = useCallback(
     async (newPayload: any) => {
-      const { data, error } = await supabase
-        .from("marketplace_orders")
-        .select(
-          "*, items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)), address:user_addresses(*)",
-        )
-        .eq("id", newPayload.id)
-        .single();
+      // DONO DA CHAMADA, capturado ANTES do await: a conta que estava logada
+      // quando o evento chegou. Depois da consulta confere-se contra a conta
+      // de AGORA (`userIdAtualRef`), como `fetchUserOrders` já faz.
+      const donoNaChamada = user?.id ?? null;
+      const emVoo = insertsEmVooRef.current;
+      emVoo.set(newPayload.id, null);
+      let consulta;
+      let updateDoMeioDoVoo: any = null;
+      try {
+        consulta = await supabase
+          .from("marketplace_orders")
+          .select(
+            "*, items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)), address:user_addresses(*)",
+          )
+          .eq("id", newPayload.id)
+          .single();
+      } finally {
+        updateDoMeioDoVoo = emVoo.get(newPayload.id) ?? null;
+        emVoo.delete(newPayload.id);
+      }
+      const { data, error } = consulta;
+
+      // A consulta levou tempo: a cliente pode ter saído, trocado de conta ou
+      // a tela pode ter fechado. Nenhum efeito (lista, aviso, consulta
+      // compartilhada) pode sair da conta que já não é a desta instância.
+      if (desmontadoRef.current || userIdAtualRef.current !== donoNaChamada) {
+        return;
+      }
 
       if (!error && data) {
         if (!isAdmin && data.user_id !== user?.id) return;
-        const newOrder = mapOrderFromDB(data as any);
+        const newOrderDaConsulta = mapOrderFromDB(data as any);
+        // O UPDATE que chegou durante o voo (o pedido ainda não estava na
+        // lista para recebê-lo) vale se for mais novo que a consulta.
+        const newOrder =
+          !isAdmin && updateDoMeioDoVoo
+            ? mesclarAtualizacaoRealtime(newOrderDaConsulta, updateDoMeioDoVoo)
+            : newOrderDaConsulta;
 
         if (isAdmin) {
           // useOrders-1508: NÃO existe mais um único "insere sempre" pra
@@ -3114,6 +3162,25 @@ export function useOrders(
       const jaNaLista = ordersRef.current.some(
         (pedido) => pedido.id === updatedOrder.id,
       );
+      // Pedido da cliente que o INSERT ainda está consultando: guarda a linha
+      // mais nova para o INSERT aplicar quando o pedido entrar (ver
+      // `insertsEmVooRef`). Só guarda o que há de mais recente.
+      if (
+        !isAdmin &&
+        !jaNaLista &&
+        insertsEmVooRef.current.has(updatedOrder.id)
+      ) {
+        const guardado = insertsEmVooRef.current.get(updatedOrder.id);
+        const tGuardado = Date.parse(guardado?.updated_at);
+        const tChegou = Date.parse(updatedOrder.updated_at);
+        const chegouMaisVelho =
+          Number.isFinite(tGuardado) &&
+          Number.isFinite(tChegou) &&
+          tChegou < tGuardado;
+        if (!chegouMaisVelho) {
+          insertsEmVooRef.current.set(updatedOrder.id, updatedOrder);
+        }
+      }
       // Ausente da memória, mas talvez presente na página ainda em voo: não
       // há versão atual para a reconciliação preservar. Invalida essa leitura.
       if (
