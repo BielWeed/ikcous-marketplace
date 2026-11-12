@@ -127,12 +127,16 @@ describe("formulário de cupom — troca de identidade sem desmontar a tela", ()
     // Edição manda só o que mudou (lote 260): sem mexer em B nada é salvo...
     await act(async () => botao("Salvar Cupom").click());
     expect(atualizar).not.toHaveBeenCalled();
-    // ...e o que ela muda em B vai sozinho: nada de A (mínimo 80, limite 5,
+    // ...e o que ela muda em B vai sozinho (tipo e valor do desconto são um par:
+    // mexeu em um, vão os dois): nada de A (mínimo 80, limite 5,
     // validade, "inativo") chega junto.
     await act(async () => botao("R$ Fixo").click());
     await act(async () => botao("Salvar Cupom").click());
     expect(atualizar).toHaveBeenCalledTimes(1);
-    expect(atualizar.mock.calls[0]).toEqual(["cupom-b", { type: "fixed" }]);
+    expect(atualizar.mock.calls[0]).toEqual([
+      "cupom-b",
+      { type: "fixed", value: 30 },
+    ]);
   });
 
   it("limpa A enquanto B não chegou e não reaplica uma carga tardia de A", async () => {
