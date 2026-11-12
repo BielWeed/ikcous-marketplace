@@ -185,6 +185,13 @@ const BOTOES_ANTIGOS_SEM_BORDA_SOLIDA: Record<string, readonly string[]> = {
     "rounded-lg border border-zinc-900 px-3 py-1.5 text-xs font-bold normal-case tracking-normal text-zinc-900 active:scale-[0.98]",
     "flex min-h-[44px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20",
     "flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95",
+    // Os dois botões abaixo SÃO dois dos acima ("Entrar ou criar conta" do
+    // aviso do convidado e "Ver Meus Pedidos" do pagamento fora do prazo), só
+    // com o texto trocado de `text-primary` para `text-zinc-900` (contraste AA,
+    // checkout-textos-contraste-aa.test.tsx). A string mudou; a dívida (sem
+    // border-solid) é a mesma, não uma nova.
+    "flex min-h-[44px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-zinc-900 transition-colors hover:bg-primary/20",
+    "flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-zinc-900 transition-all hover:border-primary active:scale-95",
   ],
 };
 

@@ -100,7 +100,7 @@ const SearchInput = React.memo(function SearchInput({
         }}
         placeholder="O que você deseja hoje?"
         aria-label="Buscar produtos"
-        className="h-12 rounded-2xl border-zinc-100 bg-zinc-50 pl-11 pr-4 text-sm transition-all placeholder:text-zinc-400 focus:border-zinc-200 focus:ring-black/5"
+        className="h-12 rounded-2xl border-zinc-100 bg-zinc-50 pl-11 pr-4 text-sm transition-all placeholder:text-zinc-500 focus:border-zinc-200 focus:ring-black/5"
       />
     </div>
   );

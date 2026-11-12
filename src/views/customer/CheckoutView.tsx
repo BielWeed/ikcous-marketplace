@@ -6731,7 +6731,7 @@ export function CheckoutViewDaConta({
               <div className="space-y-4 border-t border-zinc-100/50 pt-4">
                 <div className="mb-1 flex items-center gap-2">
                   <MapPin className="size-4 text-zinc-400" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600">
                     Endereço de Entrega
                   </span>
                 </div>
@@ -7031,7 +7031,7 @@ export function CheckoutViewDaConta({
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <MapPin className="size-4 text-zinc-400" />
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-600">
                       Endereço de Entrega
                     </span>
                   </div>
@@ -8011,7 +8011,7 @@ export function CheckoutViewDaConta({
                       // O bloco encolhe de ~137px para ~120px de altura e
                       // cresce menos para cima sobre o formulário.
                       <div className="mx-auto mt-1.5 flex max-w-md flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5">
-                        <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase text-amber-600">
+                        <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase text-amber-800">
                           <AlertCircle className="size-3.5 shrink-0" />
                           Entrega fora da cidade é só com conta
                         </p>
@@ -8021,7 +8021,7 @@ export function CheckoutViewDaConta({
                             haptic.light();
                             onNavigate("auth");
                           }}
-                          className="flex min-h-[44px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                          className="flex min-h-[44px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-zinc-900 transition-colors hover:bg-primary/20"
                         >
                           Entrar ou criar conta
                         </button>
@@ -8464,7 +8464,7 @@ function PagamentoForaDoPrazoView({
           Pedido:{" "}
           <span className="text-zinc-900">#{numeroDoPedido(orderId)}</span>
         </p>
-        <p className="text-lg font-black text-amber-600">
+        <p className="text-lg font-black text-amber-700">
           {formatCurrency(valor)} recebido
         </p>
         <div className="mx-auto max-w-[300px]">
@@ -8486,7 +8486,7 @@ function PagamentoForaDoPrazoView({
         )}
         <button
           onClick={() => onNavigate("orders")}
-          className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
+          className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-zinc-900 transition-all hover:border-primary active:scale-95"
         >
           Ver Meus Pedidos
         </button>
