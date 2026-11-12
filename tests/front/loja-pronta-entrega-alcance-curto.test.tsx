@@ -152,7 +152,7 @@ describe("o passo 'Como você entrega' diz o motivo com palavras de lojista", ()
       entradaDosSeisPassos(config, {
         pixOk: true,
         formasNaEntrega: [],
-        produtos: [{ isActive: true }],
+        produtos: [{ isActive: true, stock: 5 }],
         configCarregando: false,
         produtosCarregando: false,
         entrega: estadoDaEntrega(config, false),
@@ -239,7 +239,7 @@ describe("o cartão do Início", () => {
           ligado={true}
           chaveOk={true}
           formasNaEntrega={[]}
-          produtos={[{ isActive: true }]}
+          produtos={[{ isActive: true, stock: 5 }]}
           configCarregando={false}
           produtosCarregando={false}
           onNavigate={vi.fn()}

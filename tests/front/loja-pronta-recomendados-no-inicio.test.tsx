@@ -56,7 +56,7 @@ function propsDoCartao(parcial: Partial<Props> = {}): Props {
     ligado: false,
     chaveOk: false,
     formasNaEntrega: ["cash"],
-    produtos: [{ isActive: true }],
+    produtos: [{ isActive: true, stock: 5 }],
     configCarregando: false,
     produtosCarregando: false,
     onNavigate: vi.fn(),

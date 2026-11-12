@@ -46,7 +46,7 @@ function loja(config: Partial<Config> = {}, fatos: Partial<Fatos> = {}) {
       {
         pixOk: true,
         formasNaEntrega: [],
-        produtos: [{ isActive: true }],
+        produtos: [{ isActive: true, stock: 5 }],
         configCarregando: false,
         produtosCarregando: false,
         entrega: "feito",
@@ -222,7 +222,9 @@ describe("seisPassosDaLojaPronta", () => {
         passoDosSeis(
           "produto",
           {},
-          { produtos: [{ isActive: false }, { isActive: true }] },
+          {
+            produtos: [{ isActive: false }, { isActive: true, stock: 5 }],
+          },
         ).estado,
       ).toBe("feito");
     });
