@@ -107,7 +107,9 @@ export function SaidaDaRecusa({
     // zero pode ser de uma opção (tamanho, cor), não do produto inteiro.
     detalheDoEstoque = estoqueZerado
       ? `Acabou o estoque de "${produto}" no que você escolheu.`
-      : `Ainda há ${disponivel} de "${produto}" disponível.`;
+      : disponivel === 1
+        ? `Ainda há 1 unidade de "${produto}" disponível.`
+        : `Ainda há ${disponivel} unidades de "${produto}" disponíveis.`;
   }
 
   return (

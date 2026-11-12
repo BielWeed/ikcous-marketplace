@@ -453,7 +453,13 @@ export function DevolucaoDoPedidoCard({
       )}
 
       {acoes.includes("informar_envio") && !codigoDaEtiqueta && (
-        <div className="mt-4 space-y-2">
+        <form
+          className="mt-4 space-y-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void informarEnvio();
+          }}
+        >
           <label
             htmlFor={`rastreio-devolucao-${atual.id}`}
             className="text-xs font-bold text-zinc-500"
@@ -472,8 +478,7 @@ export function DevolucaoDoPedidoCard({
               className="h-12 min-w-0 flex-1 rounded-2xl border border-zinc-200 px-3 font-mono text-sm uppercase text-zinc-900 outline-none placeholder:normal-case placeholder:text-zinc-400 focus:border-zinc-900"
             />
             <button
-              type="button"
-              onClick={() => void informarEnvio()}
+              type="submit"
               disabled={enviando !== null}
               className="flex h-12 shrink-0 items-center justify-center gap-1.5 rounded-2xl bg-zinc-900 px-4 text-sm font-bold text-white transition-all active:scale-95 disabled:opacity-50"
             >
@@ -483,7 +488,7 @@ export function DevolucaoDoPedidoCard({
               Enviar
             </button>
           </div>
-        </div>
+        </form>
       )}
 
       {erro && (
