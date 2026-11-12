@@ -811,7 +811,7 @@ Deno.test("r200-a - falha FECHADA: campo AUSENTE na leitura (undefined = 'não s
   assertEquals(controle.length, 1, "controle: a linha completa envia (senão o teste abaixo não prova nada)");
   for (const campo of ["confirmation_email_sent_at", "paid_at", "payment_method", "canal"]) {
     const linha: Record<string, unknown> = { ...completo };
-    delete linha[campo];
+    Reflect.deleteProperty(linha, campo);
     const enviados: unknown[] = [];
     await reenviarPago(bancoDoPedido({ linha }), async (a) => void enviados.push(a));
     assertEquals(enviados.length, 0, `sem ${campo} na resposta`);
