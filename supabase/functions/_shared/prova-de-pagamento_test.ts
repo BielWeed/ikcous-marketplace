@@ -107,7 +107,9 @@ for (const tipo of ["bank_transfer", "credit_card", "debit_card"]) {
       pagamento(o).payment_method = { type: tipo, installments: 1 };
       const prova = provarPagamentoPelaConsulta(base(o, { totalRelido: 50.02 }));
       assertEquals(prova.provado, esperado);
-      if (!esperado) assertEquals(prova.motivo, "valor_pago");
+      // Cartão recusa já na conferência de valor compartilhada (a mesma do webhook
+      // e do cron); o PIX só na captura da prova completa.
+      if (!esperado) assertEquals(prova.motivo, tipo === "bank_transfer" ? "valor_pago" : "valor_divergente");
     });
   }
 }
@@ -401,12 +403,12 @@ for (
     {
       nome: "raiz processed/accredited com total_paid_amount 0",
       montar: () => base({ ...cartao(), total_paid_amount: "0.00" }),
-      motivo: "valor_pago",
+      motivo: "valor_divergente",
     },
     {
       nome: "pago PARCIAL na raiz (60 de 100)",
       montar: () => base({ ...cartao(), total_paid_amount: "60.00" }),
-      motivo: "valor_pago",
+      motivo: "valor_divergente",
     },
     {
       nome: "pago PARCIAL no pagamento (60 de 100), sem a raiz",
@@ -416,7 +418,7 @@ for (
         pagamento(o).paid_amount = "60.00";
         return base(o);
       },
-      motivo: "valor_pago",
+      motivo: "valor_divergente",
     },
     {
       nome: "valor pago ilegível na raiz",
