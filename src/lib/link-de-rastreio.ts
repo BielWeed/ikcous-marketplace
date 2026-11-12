@@ -21,7 +21,9 @@ const BASE_DO_RASTREIO = "https://www.melhorrastreio.com.br/rastreio/";
  * nada.
  */
 export function normalizarCodigoDeRastreio(codigo: string): string {
-  return (codigo ?? "").replace(/\s+/g, "").toUpperCase();
+  return (codigo ?? "")
+    .replace(/[\p{Z}\p{Cc}\p{Cf}\u{2800}]+/gu, "")
+    .toUpperCase();
 }
 
 export function linkDeRastreio(codigo: string): string {

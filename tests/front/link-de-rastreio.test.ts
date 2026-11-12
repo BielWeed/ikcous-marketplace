@@ -57,6 +57,19 @@ describe("normalizarCodigoDeRastreio", () => {
     );
   });
 
+  it.each(["​", "‌", "‍", "⁠", "﻿", "­", "⠀"])(
+    "remove o invisível %j do meio e não cria link só com ele",
+    (invisivel) => {
+      expect(normalizarCodigoDeRastreio(`aa123${invisivel}456789br`)).toBe(
+        "AA123456789BR",
+      );
+      expect(linkDeRastreio(`aa123${invisivel}456789br`)).toBe(
+        `${BASE}AA123456789BR`,
+      );
+      expect(linkDeRastreio(invisivel)).toBe("");
+    },
+  );
+
   it("código já limpo não muda", () => {
     expect(normalizarCodigoDeRastreio("AA123456789BR")).toBe("AA123456789BR");
   });
