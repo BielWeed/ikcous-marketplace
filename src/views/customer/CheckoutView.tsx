@@ -5298,14 +5298,14 @@ export function CheckoutViewDaConta({
   ) {
     return (
       <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
-        <h1 className="text-lg font-bold text-zinc-900">
+        <h1 className="text-lg font-bold text-foreground">
           Retomar o pagamento do pedido
         </h1>
         {retomadaFalhouNaLeitura !== "falhou" ? (
           <p
             role="status"
             aria-live="polite"
-            className="flex items-center gap-2 text-sm text-zinc-600"
+            className="flex items-center gap-2 text-sm text-muted-foreground"
           >
             <Loader2 className="size-4 animate-spin" />
             Abrindo o pedido…
@@ -5364,10 +5364,10 @@ export function CheckoutViewDaConta({
   if (retomadaSemPagamentoPendente) {
     return (
       <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
-        <h1 className="text-lg font-bold text-zinc-900">
+        <h1 className="text-lg font-bold text-foreground">
           Este pedido não está aguardando pagamento
         </h1>
-        <p className="text-sm text-zinc-600">
+        <p className="text-sm text-muted-foreground">
           Ele já foi pago, cancelado ou o prazo para pagar acabou. Abra "Ver
           meus pedidos" para conferir a situação dele.
         </p>
@@ -5385,7 +5385,7 @@ export function CheckoutViewDaConta({
   if (retomadaEscolhendoForma) {
     return (
       <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
-        <h1 className="text-lg font-bold text-zinc-900">
+        <h1 className="text-lg font-bold text-foreground">
           Como você quer pagar este pedido?
         </h1>
         {/* `role="alert"`, não `status`: o aviso nasce JUNTO com a troca
@@ -5396,7 +5396,7 @@ export function CheckoutViewDaConta({
             {avisoDaRetomada}
           </p>
         )}
-        <p className="text-sm text-zinc-600">
+        <p className="text-sm text-muted-foreground">
           Nada é cobrado até você escolher e confirmar o pagamento.
         </p>
         {/* A lista de formas SÓ aparece quando a config do cartão está
@@ -5410,7 +5410,7 @@ export function CheckoutViewDaConta({
           <p
             role="status"
             aria-live="polite"
-            className="flex items-center gap-2 text-sm text-zinc-600"
+            className="flex items-center gap-2 text-sm text-muted-foreground"
           >
             <Loader2 className="size-4 animate-spin" />
             Carregando formas de pagamento…

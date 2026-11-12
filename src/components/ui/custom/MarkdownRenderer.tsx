@@ -15,8 +15,10 @@ import React from "react";
  *   descrição; agora é um <hr/> discreto.
  * - Emojis (already supported by unicode strings)
  *
- * O literal do parágrafo ("text-sm leading-relaxed text-gray-600" +
+ * O literal do parágrafo ("text-sm leading-relaxed text-muted-foreground" +
  * "lg:text-base") é contrato do teste F3.6 — não editar, apenas acrescentar.
+ * As cores são tokens do tema (a descrição fica sobre o fundo da loja, que muda
+ * entre claro, escuro e vidro); cor fixa de zinc/gray sumia no tema escuro.
  */
 interface MarkdownRendererProps {
   content: string;
@@ -60,7 +62,7 @@ function renderLista(itens: string[], chave: number) {
         <li
           key={lineIdx}
           className={cn(
-            "text-sm leading-relaxed text-gray-600",
+            "text-sm leading-relaxed text-muted-foreground",
             "lg:text-base",
           )}
         >
@@ -102,7 +104,7 @@ function renderCorpo(lines: string[], i: number) {
       <React.Fragment key={i}>
         <p
           className={cn(
-            "text-sm leading-relaxed text-gray-600",
+            "text-sm leading-relaxed text-muted-foreground",
             "lg:text-base",
           )}
         >
@@ -117,7 +119,10 @@ function renderCorpo(lines: string[], i: number) {
   return (
     <p
       key={i}
-      className={cn("text-sm leading-relaxed text-gray-600", "lg:text-base")}
+      className={cn(
+        "text-sm leading-relaxed text-muted-foreground",
+        "lg:text-base",
+      )}
     >
       {lines.map((line, lineIdx) => (
         <React.Fragment key={lineIdx}>
@@ -156,7 +161,7 @@ export function MarkdownRenderer({
           const abaixo = lines.slice(lines.indexOf(primeiraLinha!) + 1);
           return (
             <React.Fragment key={i}>
-              <h3 className="mb-2 mt-6 text-lg font-black text-zinc-900">
+              <h3 className="mb-2 mt-6 text-lg font-black text-foreground">
                 {titulo}
               </h3>
               {abaixo.some((l) => l.trim() !== "")
@@ -179,7 +184,7 @@ function processInline(text: string) {
   return parts.map((part, index) => {
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
-        <strong key={index} className="font-black text-zinc-900">
+        <strong key={index} className="font-black text-foreground">
           {part.slice(2, -2)}
         </strong>
       );

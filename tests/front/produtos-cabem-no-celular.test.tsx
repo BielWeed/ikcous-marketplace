@@ -1009,7 +1009,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       expect(titulo, "conceito de margem ausente").toBeDefined();
       const exemplo = [
         ...(titulo?.parentElement?.querySelectorAll("span") ?? []),
-      ].find((el) => el.textContent?.includes("Custo R$10 / Venda R$15"));
+      ].find((el) => el.textContent?.includes("Custo R$ 10 / Venda R$ 15"));
       expect(exemplo, "exemplo da margem ausente").toBeDefined();
       expect(exemplo?.textContent).toContain("33,3%");
       expect(exemplo?.textContent).not.toContain("33.3%");

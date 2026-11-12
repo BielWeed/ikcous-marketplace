@@ -69,7 +69,7 @@ describe("MarkdownRenderer — listas, separador e parágrafo", () => {
     const alvo = await renderizar("Descrição da blusa");
     const p = alvo.querySelector("p")!;
     expect(p.className).toBe(
-      "text-sm leading-relaxed text-gray-600 lg:text-base",
+      "text-sm leading-relaxed text-muted-foreground lg:text-base",
     );
   });
 
@@ -105,7 +105,7 @@ describe("MarkdownRenderer — listas, separador e parágrafo", () => {
     expect(p.textContent).toBe("Largura: 10 cmAltura: 5 cm");
     expect(p.querySelectorAll("br").length).toBe(1);
     expect(p.className).toBe(
-      "text-sm leading-relaxed text-gray-600 lg:text-base",
+      "text-sm leading-relaxed text-muted-foreground lg:text-base",
     );
   });
 
