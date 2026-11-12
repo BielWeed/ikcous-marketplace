@@ -110,7 +110,7 @@ const SearchInput = React.memo(function SearchInput({
         }}
         placeholder="O que você deseja hoje?"
         aria-label="Buscar produtos"
-        className="h-12 rounded-2xl border-zinc-100 bg-zinc-50 pl-11 pr-4 text-sm transition-all placeholder:text-zinc-500 focus:border-zinc-200 focus:ring-black/5"
+        className="h-12 rounded-2xl border-zinc-100 bg-zinc-50 pl-11 pr-4 text-sm text-zinc-900 transition-all placeholder:text-zinc-500 focus:border-zinc-200 focus:ring-black/5"
       />
     </div>
   );
@@ -448,7 +448,7 @@ export const SearchView = React.memo(function SearchView({
 
                 <div className="space-y-8 pb-10">
                   <div>
-                    <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-zinc-600">
+                    <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-zinc-600 dark:text-zinc-400">
                       Categorias
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -470,7 +470,7 @@ export const SearchView = React.memo(function SearchView({
                   </div>
 
                   <div>
-                    <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-zinc-600">
+                    <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-zinc-600 dark:text-zinc-400">
                       Ordenação
                     </p>
                     <div className="grid grid-cols-2 gap-3">
