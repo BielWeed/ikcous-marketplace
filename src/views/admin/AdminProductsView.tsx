@@ -1522,7 +1522,7 @@ export const AdminProductsView = memo(function AdminProductsView({
               </div>
               <p role="status" className="text-sm text-white">
                 {liquidoEstimado !== null
-                  ? `Líquido estimado${financialStats.parcial ? " (parcial)" : ""}: R$ ${liquidoEstimado.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  ? `Líquido estimado${financialStats.parcial ? " (parcial)" : ""}: ${lucroEmReais(liquidoEstimado)}`
                   : financialStats.semEstoque
                     ? "Cadastre um produto com estoque para calcular o líquido."
                     : financialStats.semNenhumCusto
@@ -1598,12 +1598,10 @@ export const AdminProductsView = memo(function AdminProductsView({
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}{" "}
-                      = lucro bruto{financialStats.parcial ? " parcial" : ""}:
-                      R${" "}
-                      {financialStats.potential?.toLocaleString("pt-BR", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
+                      = lucro bruto{financialStats.parcial ? " parcial" : ""}:{" "}
+                      {financialStats.potential !== null
+                        ? lucroEmReais(financialStats.potential)
+                        : "—"}
                       .
                     </p>
                   )}
