@@ -151,16 +151,19 @@ export const BannerCarousel = memo(function BannerCarousel({
         // `from` (como o card do produto grava) diz à seta Voltar do App que
         // há uma tela atrás: ela recua de verdade (history.back) em vez de
         // empilhar outra Início por cima do destino.
-        globalThis.history.pushState(
-          {
-            view: viewName,
-            id,
-            from: globalThis.history.state?.view ?? "home",
-          },
-          "",
-          link,
-        );
-        globalThis.dispatchEvent(new PopStateEvent("popstate"));
+        // Repetir o destino atual não cria uma parada vazia no Voltar.
+        if (url.href !== window.location.href) {
+          globalThis.history.pushState(
+            {
+              view: viewName,
+              id,
+              from: globalThis.history.state?.view ?? "home",
+            },
+            "",
+            link,
+          );
+          globalThis.dispatchEvent(new PopStateEvent("popstate"));
+        }
         // Toque no banner é intenção explícita: rola mesmo se a categoria
         // já for a atual.
         if (searchParams.has("category")) rolarAoCatalogo();
