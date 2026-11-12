@@ -245,5 +245,27 @@ describe("usePainelInicio — leitura pendurada não apaga o que a outra trouxe"
     });
     expect(saida.atual?.assinatura).toEqual(ASSINATURA);
     expect(saida.atual?.erroAssinatura).toBeNull();
+
+    // O cache de módulo também não foi pisado: uma tela que abre agora (outra
+    // montagem do hook) parte do retrato novo, não do dado antigo tardio.
+    const mod = await import("@/hooks/usePainelInicio");
+    const outraTela = document.createElement("div");
+    document.body.appendChild(outraTela);
+    const outraRaiz = createRoot(outraTela);
+    const lida: { atual: ReturnType<typeof mod.usePainelInicio> | null } = {
+      atual: null,
+    };
+    function Outra() {
+      const estado = mod.usePainelInicio(false);
+      useEffect(() => {
+        lida.atual = estado;
+      });
+      return null;
+    }
+    await act(async () => outraRaiz.render(<Outra />));
+    expect(lida.atual?.assinatura).toEqual(ASSINATURA);
+    expect(lida.atual?.erroAssinatura).toBeNull();
+    act(() => outraRaiz.unmount());
+    outraTela.remove();
   });
 });
