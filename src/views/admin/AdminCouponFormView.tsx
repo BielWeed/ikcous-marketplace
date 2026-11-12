@@ -554,15 +554,21 @@ function FormularioDoCupom({
     // validade...) pode ter sido mudado em outro aparelho — mandar o
     // formulário inteiro desfazia isso e a tela dizia "Cupom atualizado".
     // Cupom novo manda tudo.
+    const remendoAtual = remendoDoCupom(formData, cleanCode);
     const { validUntil: validadeMexida, ...mexidos } = couponId
-      ? camposQueMudaram(
-          remendoDoCupom(formData, cleanCode),
-          remendoDoCupom(lido, lido.code ?? ""),
-        )
+      ? camposQueMudaram(remendoAtual, remendoDoCupom(lido, lido.code ?? ""))
       : {};
+    // Tipo e valor do desconto são UM par (R$ 50 não é 50%): o que ela
+    // confirmou na tela. Se qualquer um mudou, vão os dois — mandar só um
+    // deixava o outro aparelho ter trocado o tipo e o banco virava um
+    // desconto que ninguém escolheu. Nenhum mudou: nenhum vai.
+    const descontoMexido = "type" in mexidos || "value" in mexidos;
     const dataToSubmit: Partial<Coupon> = couponId
       ? {
           ...mexidos,
+          ...(descontoMexido && remendoAtual.type !== undefined
+            ? { type: remendoAtual.type, value: remendoAtual.value }
+            : {}),
           // `null` = ela limpou a validade: a chave vai (com `undefined`) e o
           // hook grava vazio de verdade; chave ausente = não mexe.
           ...(validadeMexida !== undefined
