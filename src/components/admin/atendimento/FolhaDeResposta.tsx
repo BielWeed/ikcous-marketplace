@@ -61,6 +61,11 @@ export function FolhaDeResposta({
   readonly aoDescartar?: () => void;
 }) {
   const { altura: teclado, alturaVisivel } = useAlturaDoTeclado();
+  // A pergunta de descarte só existe com os DOIS handlers: a mesma condição
+  // governa a pergunta na tela, o `inert` do fundo e o que Esc/véu fazem —
+  // sem isto, `perguntandoDescarte` sozinho travaria a folha sem pergunta.
+  const perguntando =
+    perguntandoDescarte && !!aoContinuarEditando && !!aoDescartar;
 
   // Ao focar o campo, traz ele à vista dentro do corpo que rola (o teclado
   // leva um tempo para abrir: o segundo efeito refaz a rolagem quando a
@@ -101,7 +106,7 @@ export function FolhaDeResposta({
       open={aberta}
       onOpenChange={(abrir) => {
         if (!abrir) {
-          if (perguntandoDescarte) aoContinuarEditando?.();
+          if (perguntando) aoContinuarEditando?.();
           else aoFechar();
         }
       }}
@@ -121,7 +126,7 @@ export function FolhaDeResposta({
         className="max-h-[94dvh] gap-0 rounded-t-3xl border-admin-border bg-admin-bg p-0 text-white"
       >
         <div
-          inert={perguntandoDescarte}
+          inert={perguntando}
           className="mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col"
         >
           <SheetHeader className="flex-row items-start justify-between gap-3 px-5 pb-3 pt-5 text-left">
@@ -220,7 +225,7 @@ export function FolhaDeResposta({
             </button>
           </SheetFooter>
         </div>
-        {perguntandoDescarte && aoContinuarEditando && aoDescartar ? (
+        {perguntando ? (
           <PerguntaDeDescarte
             aoContinuar={aoContinuarEditando}
             aoDescartar={aoDescartar}
