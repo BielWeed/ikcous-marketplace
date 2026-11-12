@@ -3,7 +3,10 @@
 // inteira, na mesma ordem. Plural ("shorts", "saias") tambem nao achava. Agora
 // a busca quebra em palavras: TODAS tem de aparecer (nome, categoria ou
 // descricao), em qualquer ordem, ignorando acento, maiuscula e "s" final.
-import { produtoCombinaComBusca } from "@/lib/busca-de-produtos";
+import {
+  palavrasDaBusca,
+  produtoCombinaComBusca,
+} from "@/lib/busca-de-produtos";
 import { describe, expect, it } from "vitest";
 
 const produto = (
@@ -237,6 +240,43 @@ describe("produtoCombinaComBusca — cor e tamanho das variacoes", () => {
     expect(produtoCombinaComBusca(bolsa, "azul")).toBe(false);
     expect(
       produtoCombinaComBusca({ ...bolsa, variants: undefined }, "bolsa"),
+    ).toBe(true);
+  });
+});
+
+// Busca colada so com caractere invisivel (espaco de largura zero, marca de
+// direcao, Braille em branco, preenchimento Hangul) e busca VAZIA, como a busca
+// so com espacos: antes a "palavra" invisivel nao achava nada e a lista dizia
+// "nenhum produto". Os invisiveis vao escapados (\uXXXX) de proposito.
+describe("busca so com caractere invisivel e busca vazia", () => {
+  const INVISIVEIS = [
+    "\u200B",
+    "\u2060",
+    "\u200E",
+    "\u2800",
+    "\u3164",
+    "\u200B \u2060\u3164 ",
+  ];
+
+  it.each(INVISIVEIS)("busca %j nao tem palavra nenhuma", (busca) => {
+    expect(palavrasDaBusca(busca)).toEqual([]);
+  });
+
+  it.each(INVISIVEIS)("busca %j deixa o produto passar", (busca) => {
+    expect(produtoCombinaComBusca(bolsa, busca)).toBe(true);
+  });
+
+  it("CONTROLE: texto real com invisivel ou espaco nas pontas ainda busca pelo texto", () => {
+    for (const busca of ["\u200Bbolsa\u2060", " bolsa ", "bolsa\u3164"]) {
+      expect(produtoCombinaComBusca(bolsa, busca)).toBe(true);
+      expect(produtoCombinaComBusca(vestido, busca)).toBe(false);
+    }
+  });
+
+  it("CONTROLE: so simbolo visivel (emoji) segue buscando pelo simbolo", () => {
+    expect(produtoCombinaComBusca(bolsa, "\u{1F6CD}")).toBe(false);
+    expect(
+      produtoCombinaComBusca(produto("Bolsa \u{1F6CD}"), "\u{1F6CD}"),
     ).toBe(true);
   });
 });
