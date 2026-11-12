@@ -1,4 +1,21 @@
 {
+  "1.5.175": {
+    "titulo": "Enter salva no cadastro financeiro e de categoria, Voltar do celular fecha só a folha da vitrine e retirada termina em Retirado",
+    "novidades": [],
+    "melhorias": [
+      "Loja, Cadastro: a tela de confirmar o e-mail manda olhar também a pasta de spam, e o aviso de e-mail não confirmado diz o mesmo.",
+      "Painel, Frete: os avisos das transportadoras explicam, em palavras simples, que clientes que já calcularam o frete podem ver o preço antigo por até 2 horas."
+    ],
+    "correcoes": [
+      "Painel, Financeiro: apertar Enter no nome de uma conta ou categoria nova salva, como o botão.",
+      "Painel, Produtos: concluir pelo teclado do celular na tela Nova categoria cria a categoria.",
+      "Painel, Vitrines: o Voltar do celular fecha só a folha de editar vitrine, sem sair da lista, e o botão Fechar ganhou área de toque maior.",
+      "Loja, Perfil: o pedido de retirada termina em \"Retirado\" na linha do tempo e na próxima etapa da lista, em vez de \"Entregue\".",
+      "Loja, Avaliação e Pedido: o erro de escolher as estrelas é lido por leitor de tela, e ao buscar um pedido o cursor vai direto para o campo do código.",
+      "Loja, Produto: resposta ou pergunta com link ou palavra muito longa quebra dentro do cartão em vez de ultrapassar a largura.",
+      "Loja, Busca: no tema escuro, o texto digitado no campo de busca e os rótulos do painel de filtros ficam legíveis."
+    ]
+  },
   "1.5.174": {
     "titulo": "Retirada na loja só com CEP, pedido feito que não some ao recarregar e balcão que deixa corrigir a quantidade",
     "novidades": [],
