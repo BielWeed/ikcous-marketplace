@@ -470,6 +470,17 @@ describe("precoComDescontoNacional — mesma conta em centavos da edge (aplicarE
     expect(precoComDescontoNacional(41.3, "fixo", 5)).toBeCloseTo(36.3, 2);
   });
 
+  // `1.15 * 100` dá 114.99999999999999 e `0.29 * 100` dá 28.999999999999996:
+  // sem `Math.round` o desconto perderia 1 centavo. Esperado contado à mão em
+  // centavos inteiros: 2490 − 115 = 2375 e 4130 − 29 = 4101.
+  it("fixo de R$ 1,15 em R$ 24,90 = R$ 23,75 (desconto com centavo não se perde)", () => {
+    expect(precoComDescontoNacional(24.9, "fixo", 1.15)).toBe(23.75);
+  });
+
+  it("fixo de R$ 0,29 em R$ 41,30 = R$ 41,01 (desconto com centavo não se perde)", () => {
+    expect(precoComDescontoNacional(41.3, "fixo", 0.29)).toBe(41.01);
+  });
+
   it("fixo maior que o preço cheio nunca fica negativo — vira R$ 0", () => {
     expect(precoComDescontoNacional(24.9, "fixo", 50)).toBe(0);
   });
