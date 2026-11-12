@@ -636,6 +636,39 @@ describe("erroDoFormularioNacional — espelha os CHECKs da migration 2026117100
     ).toBeNull();
   });
 
+  it.each([
+    -100,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ])("desconto rejeita pedido mínimo inválido: %s", (minimo) => {
+    expect(
+      erroDoFormularioNacional(
+        formBase({
+          estrategia: "desconto_na_mais_barata",
+          minimo,
+          tipoDesconto: "fixo",
+          valorDesconto: 15,
+        }),
+      ),
+    ).toBe(
+      "Informe um pedido mínimo válido, de R$ 0 ou mais, para o desconto.",
+    );
+  });
+
+  it.each([0, 0.01, 1500])("desconto aceita pedido mínimo %s", (minimo) => {
+    expect(
+      erroDoFormularioNacional(
+        formBase({
+          estrategia: "desconto_na_mais_barata",
+          minimo,
+          tipoDesconto: "fixo",
+          valorDesconto: 15,
+        }),
+      ),
+    ).toBeNull();
+  });
+
   it("desconto sem tipo escolhido é inválido", () => {
     expect(
       erroDoFormularioNacional(
