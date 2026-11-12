@@ -917,6 +917,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 error: verifyError,
               } = await supabase.auth.getUser();
 
+              // A resposta é da conta que abriu o boot (`initSes`). Se a
+              // pessoa saiu ou entrou em outra conta enquanto ela vinha, é
+              // velha: reaplicá-la traria a conta anterior de volta (ou o
+              // `signOut` abaixo derrubaria a nova). Mesma guarda de
+              // `fetchProfile`/`checkAdmin`.
+              if (activeUserIdRef.current !== initSes.user.id) return;
+
               if (verifyError) {
                 console.error(
                   "[Auth] Session verification failed:",
