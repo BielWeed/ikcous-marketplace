@@ -289,10 +289,17 @@ export function AcoesDaDevolucao({
   async function aprovar() {
     // `datetime-local` é hora do aparelho; o banco guarda instante (ISO).
     const quando = coletaEm ? new Date(coletaEm) : null;
+    const valida = quando !== null && !Number.isNaN(quando.getTime());
+    // Coleta que já passou avisaria o cliente de um dia que ficou para trás.
+    // 5 min de folga: o relógio do aparelho nunca é exato.
+    if (valida && quando.getTime() < Date.now() - 5 * 60_000) {
+      setErro("Escolha um dia e hora da coleta que ainda não passaram.");
+      return;
+    }
+    setErro(null);
     await ficha.aprovar({
       mensagem,
-      coletaEm:
-        quando && !Number.isNaN(quando.getTime()) ? quando.toISOString() : null,
+      coletaEm: valida ? quando.toISOString() : null,
     });
   }
 
