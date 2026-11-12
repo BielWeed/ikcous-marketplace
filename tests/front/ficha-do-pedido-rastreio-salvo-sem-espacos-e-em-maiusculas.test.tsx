@@ -158,7 +158,7 @@ describe("ficha do pedido — rastreio salvo: sem espaços, em maiúsculas, vazi
   });
 
   it("campo apagado (ou só espaços) em pedido que já tinha código: o banco recebe NULL, não string vazia", async () => {
-    for (const apagado of ["", "   "]) {
+    for (const apagado of ["", "   ", "​‌‍⁠﻿­⠀"]) {
       atualizar.mockClear();
       await mostrar(pedido("AA123456789BR"));
       clicar("Editar Código");

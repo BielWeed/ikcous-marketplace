@@ -86,6 +86,17 @@ describe("OrderList — código de rastreio no cartão do pedido (#105)", () => 
     expect(texto).not.toContain("Rastreio");
   });
 
+  it("código só invisível conta como ausente", async () => {
+    await renderizar({ ...pedidoBase, trackingCode: "​‍⁠﻿­⠀" });
+    expect(hospedeiro.textContent).toContain("Blusa Teste");
+    expect(hospedeiro.textContent).not.toContain("Rastreio");
+  });
+
+  it("código misturado com invisíveis aparece limpo", async () => {
+    await renderizar({ ...pedidoBase, trackingCode: "aa123​456﻿789⁠br" });
+    expect(hospedeiro.textContent).toContain("Rastreio AA123456789BR");
+  });
+
   it("código só com espaços conta como ausente", async () => {
     await renderizar({ ...pedidoBase, trackingCode: "  " });
 

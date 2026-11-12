@@ -32,7 +32,10 @@ import {
 } from "@/lib/forma-de-pagamento";
 import { manterItensEEnderecoDaTela } from "@/lib/fundir-pedido-do-hook";
 import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
-import { linkDeRastreio } from "@/lib/link-de-rastreio";
+import {
+  linkDeRastreio,
+  normalizarCodigoDeRastreio,
+} from "@/lib/link-de-rastreio";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { podeReenviarComprovante } from "@/lib/pode-reenviar-comprovante";
@@ -984,7 +987,8 @@ export function OrderDetailsView({
    * o que sobra no banco é `""` ou espaço. Bloco "Código de Rastreio" em branco
    * é pior que bloco nenhum — parece que o envio saiu e não saiu.
    */
-  const codigoDeRastreio = order?.trackingCode?.trim() || null;
+  const codigoDeRastreio =
+    normalizarCodigoDeRastreio(order?.trackingCode ?? "") || null;
 
   const handleCopyTracking = async () => {
     if (!codigoDeRastreio) return;

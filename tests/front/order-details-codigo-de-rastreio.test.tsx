@@ -152,6 +152,15 @@ describe("OrderDetailsView — código de rastreio para quem comprou (#105)", ()
     );
   });
 
+  it("código só invisível não mostra cartão nem botão de rastreio", async () => {
+    pedidoAtual = { ...pedidoBase, trackingCode: "​‍⁠﻿­⠀" };
+    await renderizar();
+    expect(hospedeiro.textContent).toContain("Blusa Teste");
+    expect(hospedeiro.textContent).not.toContain("Código de rastreio");
+    expect(hospedeiro.textContent).not.toContain("Rastrear");
+    expect(hospedeiro.querySelector('a[title="Rastrear entrega"]')).toBeNull();
+  });
+
   it("código só com espaços: nenhum botão Rastrear", async () => {
     pedidoAtual = { ...pedidoBase, trackingCode: "   " };
 
