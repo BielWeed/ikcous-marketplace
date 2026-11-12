@@ -357,12 +357,24 @@ export function useHistoricoDoCaixa(
   );
 }
 
-/** Não encerrar uma divergência sem conseguir reler os registros do caixa. */
+/**
+ * Não encerrar uma divergência sem conseguir reler os registros do caixa. Rede
+ * "pendurada" (conecta e não responde): sem prazo a folha de onde veio a
+ * divergência ficava em "Abrindo…"/"Salvando…" para sempre, sem poder fechar.
+ * Estourou = rejeita, a folha solta e manda conferir o caixa. É só leitura.
+ */
 export async function conferirCaixaParaReconciliar(): Promise<void> {
-  const [atual, historico] = await Promise.all([
-    supabase.rpc("fin_caixa_atual"),
-    supabase.rpc("fin_caixa_historico", { p_limite: 30 }),
-  ]);
+  const [atual, historico] = await aguardarComPrazo(
+    Promise.all([
+      supabase.rpc("fin_caixa_atual"),
+      supabase.rpc("fin_caixa_historico", { p_limite: 30 }),
+    ]),
+    PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+    () =>
+      new ErroDePrazoFinanceiro(
+        "A internet demorou demais para conferir o caixa. Feche esta tela e confira o caixa antes de tentar de novo.",
+      ),
+  );
   if (atual.error) throw atual.error;
   if (historico.error) throw historico.error;
   parseCaixaAtual(atual.data);
