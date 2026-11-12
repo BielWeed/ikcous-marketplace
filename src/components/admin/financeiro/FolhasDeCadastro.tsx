@@ -166,10 +166,10 @@ export function ContaFolha({
     if (!semResposta) setErroDoServidor(null);
   };
 
-  async function salvar() {
-    if (trava.current) return;
+  async function salvar(nome = form.nome) {
+    if (trava.current || semResposta) return;
     setTentou(true);
-    const resultado = validarConta(form, hoje);
+    const resultado = validarConta({ ...form, nome }, hoje);
     if (!resultado.ok) return;
     trava.current = true;
     aoMudarEnviando?.(true);
@@ -248,6 +248,13 @@ export function ContaFolha({
         <Campo id="fin-conta-nome" rotulo="Nome" erro={erros.nome}>
           <LocalBufferedInput
             id="fin-conta-nome"
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+              e.preventDefault();
+              // O buffer acaba de ser descarregado, mas o estado ainda pode
+              // ser o anterior neste evento: use o nome que está no campo.
+              void salvar(e.currentTarget.value);
+            }}
             disabled={enviando}
             value={form.nome}
             maxLength={60}
@@ -386,10 +393,10 @@ export function CategoriaFolha({
     });
   }
 
-  async function salvar() {
-    if (trava.current) return;
+  async function salvar(nome = form.nome) {
+    if (trava.current || semResposta) return;
     setTentou(true);
-    const resultado = validarCategoria(form);
+    const resultado = validarCategoria({ ...form, nome });
     if (!resultado.ok) return;
     trava.current = true;
     aoMudarEnviando?.(true);
@@ -463,6 +470,13 @@ export function CategoriaFolha({
         <Campo id="fin-categoria-nome" rotulo="Nome" erro={erros.nome}>
           <LocalBufferedInput
             id="fin-categoria-nome"
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+              e.preventDefault();
+              // O buffer acaba de ser descarregado, mas o estado ainda pode
+              // ser o anterior neste evento: use o nome que está no campo.
+              void salvar(e.currentTarget.value);
+            }}
             disabled={enviando}
             value={form.nome}
             maxLength={60}

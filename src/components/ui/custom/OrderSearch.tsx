@@ -16,7 +16,7 @@ import {
   Phone,
   User,
 } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
 /**
@@ -100,6 +100,11 @@ export function OrderSearch({
   const [step, setStep] = useState<"request" | "verify">("request");
   const [isLoading, setIsLoading] = useState(false);
   const envioOtpEmCurso = useRef(false);
+  const campoCodigo = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (step === "verify") campoCodigo.current?.focus();
+  }, [step]);
 
   const handleWhatsappChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = mascaraWhatsappBr(e.target.value, whatsapp);
@@ -481,6 +486,7 @@ export function OrderSearch({
                       type="text"
                       inputMode="numeric"
                       autoComplete="one-time-code"
+                      ref={campoCodigo}
                       required
                       aria-label="Código de 6 dígitos"
                       placeholder="DIGITE O CÓDIGO DE 6 DÍGITOS"

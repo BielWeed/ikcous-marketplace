@@ -201,7 +201,10 @@ export function ReviewForm({
                     ))}
                   </div>
                 </FormControl>
-                <FormMessage className="text-[11px] font-bold uppercase tracking-wider text-red-700" />
+                <FormMessage
+                  role="alert"
+                  className="text-[11px] font-bold uppercase tracking-wider text-red-700"
+                />
               </FormItem>
             )}
           />
