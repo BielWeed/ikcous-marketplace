@@ -39,6 +39,7 @@
  * Presenca" e "gases" acha "Botijao de Gas". Forma de 2 letras nunca vale.
  * Sem tolerancia a erro de digitacao, de proposito.
  */
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { normalizeText } from "@/lib/utils";
 
 const TAMANHO_MINIMO_PARA_TIRAR_O_S = 4;
@@ -159,6 +160,9 @@ const PALAVRAS_DE_LIGACAO = new Set([
  * So a busca precisa separar: o nome ("Guarda-Chuva") ja contem os trechos.
  */
 export function palavrasDaBusca(busca: string): FormaDaPalavra[][] {
+  // So caractere invisivel (U+200B, U+2800, U+3164...) o `trim()` nao tira: e
+  // busca VAZIA, como a busca so com espacos.
+  if (!nomeTemConteudoVisivel(busca)) return [];
   const palavras = normalizeText(busca).split(/\s+/).filter(Boolean);
   const aparadas = palavras
     .flatMap((palavra) => palavra.split(/[-/]+/))

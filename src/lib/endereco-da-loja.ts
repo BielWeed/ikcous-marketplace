@@ -13,6 +13,8 @@
  * Sem React, sem Supabase, sem `import.meta.env`.
  */
 
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
+
 export interface PartesDoEndereco {
   /** Com ou sem hífen; só os dígitos contam. */
   readonly cep: string;
@@ -166,9 +168,11 @@ export function motivoDoEnderecoIncompleto(
   if (digitosDoCep(partes.cep).length !== 8) {
     return "Digite o CEP completo (8 números) para preencher o endereço.";
   }
-  if (!parte(partes.rua)) return "Falta a rua.";
-  if (!parte(partes.numero)) return "Falta o número do endereço.";
-  if (!parte(partes.cidade)) return "Falta a cidade.";
+  if (!nomeTemConteudoVisivel(parte(partes.rua))) return "Falta a rua.";
+  if (!nomeTemConteudoVisivel(parte(partes.numero))) {
+    return "Falta o número do endereço.";
+  }
+  if (!nomeTemConteudoVisivel(parte(partes.cidade))) return "Falta a cidade.";
   if (!/^[A-Za-z]{2}$/.test(parte(partes.uf))) {
     return "Falta a UF (2 letras).";
   }

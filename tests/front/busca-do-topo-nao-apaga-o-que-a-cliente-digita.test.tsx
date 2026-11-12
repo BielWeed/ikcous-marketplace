@@ -568,6 +568,20 @@ describe("a busca do topo nao apaga o que a cliente digita fora da Home", () => 
     expect(campo().value).toBe("");
   });
 
+  it("campo so com invisivel (U+200B, U+3164) fora da Home tambem nao navega e e zerado", async () => {
+    await abrir();
+    await irPara("carrinho", "/cart");
+
+    await digitar("\u200B\u3164");
+    await aguardar(() => {
+      expect(campo().value).toBe("");
+    });
+    await esperarQueNadaAconteca(250);
+
+    expect(caminho()).toBe("/cart");
+    expect(campo().value).toBe("");
+  });
+
   it("na tela de busca, digitar no topo NAO leva a Home (ela filtra sozinha)", async () => {
     await abrir();
     await irPara("tela-de-busca", "/search");

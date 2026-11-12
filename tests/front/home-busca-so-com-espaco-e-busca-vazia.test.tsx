@@ -193,6 +193,32 @@ describe("HomeView — busca só com espaços é busca vazia", () => {
     },
   );
 
+  // Texto colado so com invisivel (U+200B, U+2060, U+200E, U+2800, U+3164) nao
+  // desenha nada: tambem e busca vazia. Antes a Home sumia com banners e
+  // vitrines e dizia "Nenhum produto". Escapados de proposito (\uXXXX).
+  it.each(["\u200B", "\u2060", "\u200E", "\u2800", "\u3164", " \u200B\u3164 "])(
+    "busca só com invisível %j: topo, vitrines e título 'Catálogo' ficam como sem busca",
+    async (busca) => {
+      await montar(busca);
+      expect(tem("banner-home_top")).toBe(true);
+      expect(tem("frete-gratis")).toBe(true);
+      expect(tem("vitrine-ofertas")).toBe(true);
+      expect(tem("banner-home_middle")).toBe(true);
+      expect(tem("banner-home_bottom")).toBe(true);
+      expect(hospedeiro.textContent).toContain("Catálogo");
+      expect(hospedeiro.textContent).not.toContain("Resultados da busca");
+      expect(nomesNaLista()).toBe("Sabonete,Creme,Toalha");
+    },
+  );
+
+  it("CONTROLE: texto com invisível colado ainda busca pelo texto", async () => {
+    await montar("\u200Bcreme\u2060");
+    expect(tem("banner-home_top")).toBe(false);
+    expect(tem("vitrine-ofertas")).toBe(false);
+    expect(hospedeiro.textContent).toContain("Resultados da busca");
+    expect(nomesNaLista()).toBe("Creme");
+  });
+
   it("CONTROLE: busca de verdade com espaços nas pontas ainda mostra só os resultados", async () => {
     await montar(" creme ");
     expect(tem("banner-home_top")).toBe(false);
