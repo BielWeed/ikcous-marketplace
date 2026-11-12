@@ -5,6 +5,7 @@
 // igual ou mais rígido que o `char_length` do banco: nada que ela aceita é recusado).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchProfile = vi.fn();
@@ -88,7 +89,9 @@ describe("AccountSettingsView — teto do nome", () => {
           error: null,
         });
       }
-      return Promise.resolve({ error: null });
+      return Object.assign(Promise.resolve({ error: null }), {
+        setHeader: vi.fn().mockReturnThis(),
+      });
     });
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -102,7 +105,7 @@ describe("AccountSettingsView — teto do nome", () => {
     hospedeiro.remove();
   });
 
-  it("o campo de nome completo limita a digitação a 120 caracteres", async () => {
+  async function montarConta() {
     const { AccountSettingsView } = await import(
       "@/views/customer/AccountSettingsView"
     );
@@ -113,7 +116,42 @@ describe("AccountSettingsView — teto do nome", () => {
       const nome = document.getElementById("full_name") as HTMLInputElement;
       return !nome.disabled && nome.value === "Fulano de Tal";
     });
+  }
+
+  it("o campo de nome completo limita a digitação a 120 caracteres", async () => {
+    await montarConta();
     const campo = document.getElementById("full_name") as HTMLInputElement;
     expect(campo.getAttribute("maxlength")).toBe("120");
+  });
+
+  it("nome de exatamente 120 caracteres chega inteiro ao salvar a conta", async () => {
+    await montarConta();
+    const nome = `${"n".repeat(119)}z`;
+    const campo = document.getElementById("full_name") as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(campo, nome);
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const salvar = [...document.body.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Salvar alterações"),
+    ) as HTMLButtonElement;
+    expect(salvar).toBeDefined();
+    expect(salvar.disabled).toBe(false);
+    await act(async () => salvar.click());
+    await esperarAte(() =>
+      rpc.mock.calls.some(
+        ([chamada]) => chamada === "update_my_profile_secure",
+      ),
+    );
+    expect(rpc).toHaveBeenCalledWith(
+      "update_my_profile_secure",
+      expect.objectContaining({ p_full_name: nome }),
+    );
+    await esperarAte(() => vi.mocked(toast.success).mock.calls.length > 0);
+    expect(toast.success).toHaveBeenCalledWith("Perfil atualizado com sucesso");
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });

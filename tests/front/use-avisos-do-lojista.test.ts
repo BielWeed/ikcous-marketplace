@@ -596,6 +596,19 @@ describe("useAvisosDoLojista", () => {
     expect(atual().listasCortadas).toEqual([]);
   });
 
+  it("exatamente 2.000 produtos lidos sem corte nao gera aviso de lista incompleta", async () => {
+    servidorComProdutosAcabando(2000);
+
+    const { atual } = await montarSonda();
+
+    expect(loadProductsFalso).toHaveBeenCalledTimes(10);
+    expect(atual().avisos.filter((a) => a.tipo === "estoque")).toHaveLength(
+      2000,
+    );
+    expect(atual().listasCortadas).toEqual([]);
+    expect(atual().fontesComFalha).toEqual([]);
+  });
+
   it("acima do teto de seguranca (2.000): para ali e diz que a lista de estoque esta cortada, sem acusar falha", async () => {
     // Falha seria mentira (a rede esta boa) e atualizar nao resolve: o aviso
     // e de lista cortada, a tela manda o lojista para onde ver o resto.
@@ -720,6 +733,26 @@ describe("useAvisosDoLojista", () => {
       "avaliacao:av-pub": "Avaliação de 2 estrelas sem resposta",
     });
     expect(atual().quantidadeNoCracha).toBeGreaterThanOrEqual(2);
+  });
+
+  it("exatamente 100 avaliacoes com total 100 nao gera aviso de avaliacoes ocultas", async () => {
+    RESPOSTA_AVALIACOES = {
+      data: Array.from({ length: 100 }, (_, i) => ({
+        ...avaliacaoDeExemplo(),
+        id: `av-${i}`,
+        product_id: `prod-${i}`,
+      })),
+      count: 100,
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().avisos.filter((a) => a.tipo === "avaliacao")).toHaveLength(
+      100,
+    );
+    expect(atual().listasCortadas).toEqual([]);
+    expect(atual().fontesComFalha).toEqual([]);
   });
 
   it("mais de 100 avaliacoes sem resposta: mostra as 100 e avisa que a lista esta cortada", async () => {

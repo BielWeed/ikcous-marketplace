@@ -219,6 +219,18 @@ describe("dinheiro em pt-BR", () => {
     expect(formatarPercentual(0.04)).toBe("0,0%");
   });
 
+  it.each([
+    [-1, "−0,1%"],
+    [1, "0,1%"],
+  ] as const)(
+    "resultado de R$ %i em R$ 2.000 arredonda meio décimo de margem para %s",
+    (resultado, esperado) => {
+      expect(formatarPercentual(percentualDaReceita(resultado, 2000))).toBe(
+        esperado,
+      );
+    },
+  );
+
   it("divide parcelas em centavos e diz quando não fecha", () => {
     expect(valorDaParcela(90, 3)).toEqual({ parcela: 30, exata: true });
     expect(valorDaParcela(100, 3)).toEqual({ parcela: 33.33, exata: false });
