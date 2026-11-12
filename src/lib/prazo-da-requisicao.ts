@@ -30,6 +30,13 @@ export async function aguardarComPrazo<T>(
 export const PRAZO_DA_CONSULTA_DO_CHECKOUT_MS = 12_000;
 export const PRAZO_DA_COTACAO_DO_FRETE_MS = 15_000;
 
+// LER O CORPO DE UM ERRO HTTP DA EDGE (12/11/2026): os cabeçalhos do erro podem
+// chegar e o corpo ficar pendurado na rede; o `catch` da cotação aguarda o
+// código lá dentro e, sem prazo, o frete ficava em "cotando" para sempre. 5 s:
+// o corpo de um erro é um JSON de poucas linhas, já em trânsito. Estourou =
+// código desconhecido (a frase genérica que já existe para erro sem código).
+export const PRAZO_DE_LER_O_CORPO_DO_ERRO_MS = 5_000;
+
 // PRAZO DAS AÇÕES DO LOJISTA QUE GRAVAM NO PEDIDO (07/11/2026): marcar
 // pagamento recebido (e desfazer), "O produto voltou", código de rastreio,
 // anotação interna e "Já estornei". Uma gravação de uma RPC/linha, sem

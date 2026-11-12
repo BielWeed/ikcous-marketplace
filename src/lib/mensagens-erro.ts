@@ -1,3 +1,8 @@
+import {
+  PRAZO_DE_LER_O_CORPO_DO_ERRO_MS,
+  aguardarComPrazo,
+} from "@/lib/prazo-da-requisicao";
+
 // Tradução do erro cru de invocação de Edge Function (via
 // `supabase.functions.invoke`) para o que quem usa o app lê na tela.
 //
@@ -123,7 +128,15 @@ export async function codigoDoErroDeEdgeFunction(
       return null;
     }
 
-    const corpo: unknown = await detalhes.context.clone().json();
+    // Os cabeçalhos do erro podem ter chegado com o corpo pendurado na rede:
+    // sem prazo, quem aguarda o código (o `catch` da cotação do frete) nunca
+    // chegava ao `finally` e a tela ficava em "cotando". Estourou = null
+    // (código desconhecido), pelo `catch` abaixo.
+    const corpo: unknown = await aguardarComPrazo(
+      detalhes.context.clone().json(),
+      PRAZO_DE_LER_O_CORPO_DO_ERRO_MS,
+      () => new Error("corpo do erro sem resposta"),
+    );
     if (!corpo || typeof corpo !== "object" || !("codigo" in corpo))
       return null;
     return typeof corpo.codigo === "string" ? corpo.codigo : null;
