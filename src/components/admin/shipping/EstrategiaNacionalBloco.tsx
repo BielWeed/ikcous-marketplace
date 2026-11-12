@@ -5,9 +5,10 @@ import {
   precoComDescontoNacional,
   resumoDaEstrategiaNacional,
 } from "@/lib/estrategias-de-frete";
+import { parseValorBR } from "@/lib/financeiro";
 import type { EstrategiaDeFreteNacional } from "@/types";
 import { AlertCircle } from "lucide-react";
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 
 /**
  * Seção "Estratégia" da tela `AdminShippingNationalView` (T4, 23/09/2026) —
@@ -63,6 +64,12 @@ const ESTRATEGIAS: readonly {
 
 const PREVIEW_EXEMPLOS = [24.9, 41.3] as const;
 
+// Vazio é sem mínimo; texto que não é dinheiro chega ao pai como NaN,
+// para o Salvar recusar em vez de transformar o mínimo em zero.
+function minimoDoTexto(texto: string): number {
+  return texto.trim() === "" ? 0 : (parseValorBR(texto) ?? Number.NaN);
+}
+
 /** Dinheiro como a pessoa escreve, sempre com centavos: "R$ 24,90". */
 function reaisComCentavos(valor: number): string {
   const seguro = Number.isFinite(valor) ? valor : 0;
@@ -98,7 +105,24 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
   readonly desabilitado?: boolean;
   readonly mostrarCabecalho?: boolean;
 }) {
+  const [textoDoMinimo, setTextoDoMinimo] = useState(() =>
+    minimo === 0 ? "" : String(minimo),
+  );
+  // Preserve a escrita (inclusive inválida); sincronize apenas mudanças
+  // externas, como a configuração carregada ou a resposta do Salvar.
+  useEffect(() => {
+    setTextoDoMinimo((atual) =>
+      Object.is(minimoDoTexto(atual), minimo)
+        ? atual
+        : minimo === 0
+          ? ""
+          : String(minimo),
+    );
+  }, [minimo]);
   const ehDesconto = estrategia === "desconto_na_mais_barata";
+  const minimoInvalido = ehDesconto
+    ? !Number.isFinite(minimo) || minimo < 0
+    : minimo <= 0;
   const mostraMinimo = estrategia === "acima_de_valor" || ehDesconto;
   const mostraAlcance = estrategiaTemAlcanceEditavel(estrategia);
 
@@ -287,16 +311,29 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
             <span className="text-xs font-semibold text-zinc-500">R$</span>
             <input
               aria-label={ehDesconto ? "Pedido mínimo" : "A partir de"}
-              aria-invalid={!ehDesconto && minimo <= 0}
+              aria-invalid={minimoInvalido}
+              aria-describedby={
+                ehDesconto && minimoInvalido
+                  ? "erro-minimo-desconto"
+                  : undefined
+              }
               id="frete-nacional-minimo"
-              type="number"
+              type={ehDesconto ? "text" : "number"}
               min={ehDesconto ? "0" : "0.01"}
               step="5"
               inputMode="decimal"
-              value={minimo === 0 ? "" : minimo}
-              onChange={(ev) =>
-                onMinimo(ev.target.value === "" ? 0 : Number(ev.target.value))
-              }
+              value={ehDesconto ? textoDoMinimo : minimo === 0 ? "" : minimo}
+              onChange={(ev) => {
+                const texto = ev.target.value;
+                setTextoDoMinimo(texto);
+                onMinimo(
+                  ehDesconto
+                    ? minimoDoTexto(texto)
+                    : texto === ""
+                      ? 0
+                      : Number(texto),
+                );
+              }}
               placeholder={ehDesconto ? "opcional" : "199"}
               disabled={desabilitado}
               className="w-28 bg-transparent text-center text-xl font-bold tabular-nums text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-0 disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none"
@@ -307,6 +344,15 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
               ? "mínimo de compra para o desconto valer — vazio é sem mínimo"
               : "a partir deste valor, o frete nacional sai grátis"}
           </span>
+          {ehDesconto && minimoInvalido && (
+            <p
+              id="erro-minimo-desconto"
+              role="alert"
+              className="w-full text-xs text-red-300"
+            >
+              Informe um pedido mínimo válido, de R$ 0 ou mais, para o desconto.
+            </p>
+          )}
         </div>
       )}
 
