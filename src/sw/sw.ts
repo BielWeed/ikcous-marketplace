@@ -271,7 +271,12 @@ sw.addEventListener("install", (event: any) => {
   // se o porteiro estiver fora do ar ou o build ainda for o antigo (que não
   // serve este caminho) — daí um waitUntil separado, com o erro contido nele.
   event.waitUntil(
-    fetch(CAMINHO_IDENTIDADE_JSON, { cache: "no-store" })
+    // Com prazo: conexão que conecta e não responde deixaria este waitUntil
+    // aberto para sempre e o service worker novo "instalando" sem fim.
+    fetch(CAMINHO_IDENTIDADE_JSON, {
+      cache: "no-store",
+      signal: sinalComPrazo(PRAZO_DA_REDE_NO_SW_MS),
+    })
       .then((resposta: any) => {
         if (!resposta?.ok) return;
         return caches
