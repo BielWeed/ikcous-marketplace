@@ -140,10 +140,14 @@ export function SearchBar({
     }
   }, [localValue]);
 
+  // Texto que a cliente ja "gastou" ao abrir um produto pela sugestao: o envio
+  // pendente dele levaria o App a tira-la da tela do produto de volta a Home.
+  const textoGastoNoProduto = useRef<string | null>(null);
+
   // Debounced update to parent for catalog filter
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (localValue !== value) {
+      if (localValue !== value && localValue !== textoGastoNoProduto.current) {
         onChange(localValue);
       }
     }, 150);
@@ -204,6 +208,7 @@ export function SearchBar({
   const handleSuggestionClick = (suggestion: string, productId?: string) => {
     haptic.medium();
     if (productId && onProductClick) {
+      textoGastoNoProduto.current = localValue;
       onProductClick(productId);
       setIsOpen(false);
       return;
@@ -359,6 +364,7 @@ export function SearchBar({
           }}
           onChange={(e) => {
             const val = e.target.value;
+            textoGastoNoProduto.current = null;
             setLocalValue(val);
             setIsOpen(val.trim().length > 0);
           }}
