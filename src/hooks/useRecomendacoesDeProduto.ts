@@ -2,6 +2,11 @@ import {
   PREFIXO_DE_RECOMENDACOES,
   gravarCopiaPorProduto,
 } from "@/lib/copias-por-produto";
+import {
+  PRAZO_DAS_RECOMENDACOES_DO_PRODUTO_MS,
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import type { Product } from "@/types";
 import { useEffect, useRef, useState } from "react";
 
@@ -133,12 +138,20 @@ export function useRecomendacoesDeProduto(
     const loadRecs = async () => {
       let recs: Product[];
       try {
-        recs = await buscarRef.current(productId);
+        // Sem prazo, rede que conecta e não responde deixava os esqueletos
+        // para sempre. Estourou = cai na falha abaixo; a resposta tardia da
+        // busca abandonada é ignorada (nem tela nem cópia).
+        recs = await aguardarComPrazo(
+          buscarRef.current(productId),
+          PRAZO_DAS_RECOMENDACOES_DO_PRODUTO_MS,
+          () => erroDeConsultaSemResposta(),
+        );
       } catch (err) {
         if (!isMounted) return;
-        // Falha da busca NÃO é "sem recomendações": mantém o que já está na
-        // tela e a cópia guardada (memória + aparelho). Sem cópia, a lista
-        // segue vazia e a seção some como sempre.
+        // Falha da busca (ou falta de resposta no prazo) NÃO é "sem
+        // recomendações": mantém o que já está na tela e a cópia guardada
+        // (memória + aparelho). Sem cópia, a lista segue vazia e a seção some
+        // como sempre.
         console.error("Failed to load recommendations", err);
         setCarregando(false);
         setConsultado(true);
