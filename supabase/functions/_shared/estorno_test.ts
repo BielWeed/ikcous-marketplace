@@ -283,6 +283,30 @@ Deno.test("E4 - montar: id de order vai para a Orders API com a transacao; parci
   });
 });
 
+Deno.test("E4b - montar: parcial quase igual ao total (centavos de diferenca) continua PARCIAL e diz o valor", () => {
+  // Pedido de R$ 100,00: devolver R$ 99,60 ou R$ 99,99 NAO e devolucao total.
+  // Comparar em reais inteiros trataria os dois como total e mandaria devolver
+  // R$ 100,00 (R$ 0,40 / R$ 0,01 a mais do que a lojista pediu).
+  for (const [valor, texto] of [[99.6, "99.60"], [99.99, "99.99"], [0.1 + 0.2, "0.30"]] as const) {
+    const classico = montarRequisicao(
+      linhaCom({ amount: valor }),
+      pedidoPagoCom({ gateway_payment_id: "123456789" }),
+    );
+    assertEquals(classico.body, { amount: valor }, `Payments classica, valor ${valor}`);
+
+    const order = montarRequisicao(
+      linhaCom({ amount: valor }),
+      pedidoOrder(),
+      "PAY01XYZEXEMPLODETRANSA1",
+    );
+    assertEquals(
+      order.body,
+      { transactions: [{ id: "PAY01XYZEXEMPLODETRANSA1", amount: texto }] },
+      `Orders API, valor ${valor}`,
+    );
+  }
+});
+
 // ---------------------------------------------------------------------------
 // E5–E12 — tabela de interpretacao: Payments classica
 // ---------------------------------------------------------------------------
