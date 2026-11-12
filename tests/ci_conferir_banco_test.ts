@@ -2193,6 +2193,17 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "28ab512e291378a01d110e298af7a402",
           versao: "20261370000000",
         },
+        // 11/11/2026 (onda 150, lote E): o caixa e a conta recusam valor que nao e numero (as cadeias 199 -> 370 -> 3999300 e 199 -> 3999300).
+        {
+          fn: "fin_caixa_abrir",
+          h: "367d298dcc78bc2829fc4e0048005a0c",
+          versao: "20261399930000",
+        },
+        {
+          fn: "fin_conta_salvar",
+          h: "1dc6cfdb075e3a1a0882398e1220d0f1",
+          versao: "20261399930000",
+        },
         {
           fn: "fin_dre",
           h: "afc3e13805ce37819cfdcd094043087c",

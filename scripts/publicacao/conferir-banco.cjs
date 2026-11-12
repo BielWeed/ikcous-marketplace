@@ -3008,7 +3008,23 @@ const ROL_DA_127 = [
   "notifica_cliente_de_mudanca_de_status: o corpo traz o aviso do pedido vencido (uma vez)",
   "notifica_cliente_de_mudanca_de_status: uma assinatura so, atributos, trigger e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno trigger; tr_pedido_avisa_o_cliente AFTER UPDATE OF status por linha; EXECUTE aberto por heranca do PUBLIC)",
 ];
+// Lote 128 (20261399930000, o caixa e a conta recusam valor que nao e numero: fin_caixa_abrir e fin_conta_salvar ganham a recusa de NaN/infinito/acima do teto antes de escrever). A 128a e a 128b tem o MESMO
+// rol de 7 linhas (controle e, para cada funcao, o md5, os atributos e a ACL); a 128a espera os corpos da migration nova e a 128b os vigentes de antes (20261370000000 e 20261199000000). So catalogo: nenhuma
+// le linha financeira.
+const ROL_DA_128 = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin_caixa_abrir: corpo exato (md5)",
+  "fin_caixa_abrir: assinatura e atributos conhecidos",
+  "fin_caixa_abrir: EXECUTE authenticated, sem PUBLIC ou anon",
+  "fin_conta_salvar: corpo exato (md5)",
+  "fin_conta_salvar: assinatura e atributos conhecidos",
+  "fin_conta_salvar: EXECUTE authenticated, sem PUBLIC ou anon",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado":
+    ROL_DA_128,
+  "128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente":
+    ROL_DA_128,
   "127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado":
     ROL_DA_127,
   "127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente":

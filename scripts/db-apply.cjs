@@ -2848,6 +2848,47 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // 20261399930000: o caixa e a conta recusam valor que nao e numero (fin_caixa_abrir e fin_conta_salvar). A recusa de NaN/infinito/acima do teto fica ANTES do cast e das escritas, uma vez cada
+  // (a frase de fin_caixa_abrir aparece duas vezes: a guarda nova e a de nulo/negativo, que continua). As duas travas de admin (is_admin e is_admin_atual) seguem uma vez em cada corpo. A consulta
+  // 128a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
+  "20261399930000_o_caixa_e_a_conta_recusam_valor_que_nao_e_numero.sql": [
+    {
+      funcao: "fin_caixa_abrir",
+      esperado: [
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        {
+          texto:
+            "IF p_valor_abertura = 'NaN'::numeric OR abs(p_valor_abertura) > 9999999999.99 THEN",
+          vezes: 1,
+        },
+        { texto: "v_valor := round(p_valor_abertura, 2);", vezes: 1 },
+        { texto: "IF v_valor IS NULL OR v_valor < 0 THEN", vezes: 1 },
+        {
+          texto:
+            "RAISE EXCEPTION 'Informe quanto dinheiro há no caixa (pode ser zero).' USING ERRCODE = '22023';",
+          vezes: 2,
+        },
+      ],
+    },
+    {
+      funcao: "fin_conta_salvar",
+      esperado: [
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        {
+          texto:
+            "OR abs((p ->> 'saldo_inicial')::numeric) > 9999999999.99) THEN",
+          vezes: 1,
+        },
+        {
+          texto:
+            "RAISE EXCEPTION 'Informe o saldo inicial como um número válido.' USING ERRCODE = '22023';",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   "20261234000000_o_lucro_so_conta_produto_com_custo.sql": [
     {
       // O lucro só conta produto com custo (14/10/2026): o lucro por dia e o top 5 do CRM deixam de tratar custo

@@ -137,6 +137,9 @@ const NOMES = [
   // A busca de devolucao ignora o acento: admin_devolucoes_listar sucede o corpo da 395 (a CADEIA 99 -> 395 -> 3999100: o `hashVigente` da 3999100 e o
   // `hashDesta` da 395). O rollback da 395 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
   "20261399910000_a_busca_de_devolucao_ignora_o_acento.sql",
+  // O caixa e a conta recusam valor que nao e numero: fin_caixa_abrir sucede o corpo da 370 (a CADEIA 99 -> 370 -> 3999300: o `hashVigente` da 3999300 e o `hashDesta` da 370) e
+  // fin_conta_salvar o da 99 (a CADEIA 99 -> 3999300): duas entradas, o rollback-manual dela desfaz as duas de uma vez. O rollback da 370 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261399930000_o_caixa_e_a_conta_recusam_valor_que_nao_e_numero.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
@@ -150,6 +153,7 @@ const PARES_POR_MIGRATION = new Map([
   ["20261394000000_o_pedido_de_visitante_na_entrega_tem_freio.sql", 2],
   ["20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql", 3],
   ["20261399300000_o_estorno_em_andamento_nao_e_conta_vencida.sql", 2],
+  ["20261399930000_o_caixa_e_a_conta_recusam_valor_que_nao_e_numero.sql", 2],
 ]);
 
 const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");

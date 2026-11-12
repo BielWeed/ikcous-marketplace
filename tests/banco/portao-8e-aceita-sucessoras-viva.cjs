@@ -180,7 +180,12 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // (a-busca-de-pedidos-posterior.cjs e a-busca-de-devolucao-posterior.cjs, que chama a-busca-de-devolucao-ignora-o-acento-posterior.cjs primeiro), como a 392/3921.
     s.nome !==
       "20261399900000_a_busca_de_pedidos_acha_o_telefone_colado_com_o_55.sql" &&
-    s.nome !== "20261399910000_a_busca_de_devolucao_ignora_o_acento.sql",
+    s.nome !== "20261399910000_a_busca_de_devolucao_ignora_o_acento.sql" &&
+    // A 20261399930000 (o caixa e a conta recusam valor que nao e numero) e a SEGUNDA sucessora de fin_caixa_abrir (99 -> 370 -> 3999300) e a PRIMEIRA de fin_conta_salvar (99 -> 3999300): UMA
+    // migration, duas funcoes da 8e, com a PROVA PROPRIA do que as consultas 128a/128b e a 8e fazem com ela em tests/banco/o-caixa-e-a-conta-recusam-nan-viva.cjs; `noEstado` a desfaz antes
+    // (o-caixa-e-a-conta-recusam-nan-posterior.cjs, o rollback dela devolve as duas funcoes de uma vez), como a 370.
+    s.nome !==
+      "20261399930000_o_caixa_e_a_conta_recusam_valor_que_nao_e_numero.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");
@@ -346,6 +351,10 @@ let C; // a conexão única com o clone do rodar-isolado
 async function noEstado(montar, textos = [SQL_8E]) {
   await C.query("BEGIN");
   try {
+    // A 20261399930000 (o caixa e a conta recusam valor que nao e numero) sucede a 370 em fin_caixa_abrir e a 99 em fin_conta_salvar: sai PRIMEIRO (ordem inversa da aplicacao; so se no ar).
+    await require("./o-caixa-e-a-conta-recusam-nan-posterior.cjs").desfazerCaixaEContaSemNanNaTransacao(
+      C,
+    );
     await require("./pdv-total-conferido-posterior.cjs").desfazerTotalConferidoNaTransacao(
       C,
     );
