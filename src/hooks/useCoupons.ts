@@ -109,6 +109,8 @@ interface ResultadoDaValidacaoDoCupom {
  */
 const MENSAGEM_CUPOM_CONEXAO_LENTA =
   "A conexão está lenta. Tente aplicar o cupom de novo.";
+const MENSAGEM_CUPOM_FALHA_DE_CONEXAO =
+  "Não conseguimos conferir o cupom agora por falha de conexão. Confira sua internet e tente aplicar o cupom de novo.";
 
 /**
  * A consulta em si (sem prazo — quem chama é que limita a espera). LANÇA em
@@ -265,7 +267,7 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
           discount: 0,
           message: ehConsultaSemResposta(error)
             ? MENSAGEM_CUPOM_CONEXAO_LENTA
-            : "Erro na conexão com servidor",
+            : MENSAGEM_CUPOM_FALHA_DE_CONEXAO,
           networkError: true,
         };
       }

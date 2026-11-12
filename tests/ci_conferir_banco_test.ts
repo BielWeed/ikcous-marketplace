@@ -121,6 +121,144 @@ try {
   MIGRACAO_82_EXISTE = false;
 }
 
+// 129: medicao ANTES; nao autoriza apply nem registra uma prova de pos-aplicacao.
+const CONSULTAS_129 = [
+  "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente",
+  "129m-medir-corrida-e-avanco-com-estorno",
+];
+
+Deno.test("129 — as duas consultas existem, sao um SELECT/WITH sem escrita e estao no menu e no RPC CI", async () => {
+  const { contarStatements, listarConsultas } = require(SCRIPT);
+  const workflow = await Deno.readTextFile(WORKFLOW);
+  const rpc = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  for (const nome of CONSULTAS_129) {
+    assert(listarConsultas().includes(nome), `falta a consulta ${nome}`);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    const limpo = sqlSemComentarios(sql).replace(/'(?:[^']|'')*'/g, "''");
+    assertEquals(contarStatements(sql), 1);
+    assert(/^\s*(SELECT|WITH)\b/i.test(limpo));
+    assert(
+      !/\b(INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|INTO|LOCK)\b/i.test(
+        limpo,
+      ),
+    );
+    assertStringIncludes(workflow, `- ${nome}\n`);
+    assertEquals(
+      rpc.split(`"scripts/publicacao/consultas/${nome}.sql"`).length - 1,
+      2,
+    );
+  }
+});
+
+Deno.test("129b — hashes extraidos dos corpos sem CR, so catalogo e rol fechado recusa linha ausente ou duplicada", async () => {
+  const { createHash } = require("node:crypto");
+  const { ROL_FECHADO_POR_CONSULTA, estruturaDoRolFechado } = require(SCRIPT);
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    "../scripts/frota/publicar-release.mjs"
+  );
+  const nome = CONSULTAS_129[0];
+  const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+  const fontes = [
+    [
+      "avancar_status_do_pedido",
+      "20261345000000_o_avanco_confere_o_status_esperado.sql",
+      "fa38bcea0cc69ffff200d8e2c81bd0d3",
+    ],
+    [
+      "pedido__mudar_status",
+      "20261198000000_cancelar_pedido_anula_a_cobranca.sql",
+      "4623b27a07468553d6ac00a888e04db4",
+    ],
+    [
+      "cancelar_pedido_com_cobranca",
+      "20261198000000_cancelar_pedido_anula_a_cobranca.sql",
+      "e924c8fd33bb87e86a4a3fbd4fefde4e",
+    ],
+  ];
+  for (const [fn, arquivo, hash] of fontes) {
+    const fonte = (
+      await Deno.readTextFile(`${MIGRATIONS_DIR}/${arquivo}`)
+    ).replace(/\r/g, "");
+    const ini = fonte.indexOf(`CREATE OR REPLACE FUNCTION public.${fn}(`);
+    assert(ini >= 0);
+    const definicao = fonte.slice(ini, fonte.indexOf("\n$$;", ini) + 4);
+    const corpo = definicao.split("AS $$")[1].slice(0, -3);
+    assertEquals(createHash("md5").update(corpo).digest("hex"), hash);
+    assertStringIncludes(sql, hash);
+  }
+  assert(!/\b(?:FROM|JOIN)\s+public\./i.test(sqlSemComentarios(sql)));
+  const itens = [...sql.matchAll(/SELECT '([^']+)'/g)].map((m) => m[1]);
+  assertEquals(
+    itens,
+    new Map(Object.entries(ROL_FECHADO_POR_CONSULTA)).get(nome),
+  );
+  assertEquals(itens.length, 18);
+  assert(CONSULTAS_DE_ROL_FECHADO.has(nome));
+  assert(!CONSULTAS_DE_ROL_FECHADO.has(CONSULTAS_129[1]));
+  const linhas = itens.map((item) => ({
+    item,
+    esperado: "sim",
+    vivo: "sim",
+    ok: true,
+  }));
+  assertEquals(estruturaDoRolFechado(linhas, itens), null);
+  assert(estruturaDoRolFechado(linhas.slice(1), itens) !== null);
+  assert(estruturaDoRolFechado([...linhas, linhas[0]], itens) !== null);
+});
+
+Deno.test("129m — a projecao publica contem APENAS oito contagens, nunca id, nome, email, telefone ou valor individual", async () => {
+  const sql = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${CONSULTAS_129[1]}.sql`),
+  ).trim();
+  assert(/^SELECT\s/.test(sql));
+  assert(/\nFROM public\.marketplace_orders o;\s*$/.test(sql));
+  const projecoes = sql
+    .replace(/^SELECT\s+/, "")
+    .replace(/\nFROM public\.marketplace_orders o;\s*$/, "")
+    .split(/,\n {2}/);
+  const aliases = projecoes.map((p) => {
+    const t = p.trim();
+    const ehContagem =
+      t.startsWith("count(*) AS ") || t.startsWith("count(*) FILTER (WHERE");
+    const m = ehContagem ? t.match(/ AS ([a-z_]+)$/) : null;
+    assert(m, `projecao nao e contagem anonima: ${p}`);
+    assert(
+      !/(?:^|_)(id|nome|name|email|telefone|phone|valor)(?:_|$)/i.test(m[1]),
+    );
+    return m[1];
+  });
+  assertEquals(aliases, [
+    "vivos_com_pagamento_estornado",
+    "pedidos_avancados_depois_do_estorno",
+    "cancelados_ate_dois_minutos_apos_avanco_por_outro_ator",
+    "cancelados_vindos_de_entregue_fora_do_balcao",
+    "pedidos_reativados",
+    "vivos_com_estoque_devolvido",
+    "estorno_integral_sem_selo",
+    "total_de_pedidos",
+  ]);
+  assertStringIncludes(sql, "a.created_at > o.estorno_manual_registrado_em");
+  assertStringIncludes(
+    sql,
+    "a.new_status IN ('processing', 'shipping', 'delivered')",
+  );
+  assertStringIncludes(sql, "c.created_at > a.created_at");
+  assertStringIncludes(
+    sql,
+    "c.created_at <= a.created_at + interval '2 minutes'",
+  );
+  assertStringIncludes(sql, "c.created_by <> a.created_by");
+  assertStringIncludes(sql, "o.canal IS DISTINCT FROM 'presencial'");
+  assertStringIncludes(sql, "c.old_status = 'delivered'");
+  assertStringIncludes(
+    sql,
+    "r.old_status = 'cancelled' AND r.new_status <> 'cancelled'",
+  );
+  assertStringIncludes(sql, "o.stock_returned_at IS NOT NULL");
+  assertStringIncludes(sql, "o.valor_estornado >= o.total AND o.total > 0");
+  assertStringIncludes(sql, "o.payment_status <> 'estornado'");
+});
+
 const TOKEN_FALSO = "sbp_segredo-de-teste-nunca-pode-aparecer-no-log";
 const REF_LOJA = "cafkrminfnokvgjqtkle";
 const REF_SANDBOX = "lofznuxcvezrhxsgjqyg";

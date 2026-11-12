@@ -64,7 +64,7 @@ describe("ehRecusaPorLimiteDeUso", () => {
       "Valor mínimo não atingido.",
       "Os cupons estão desativados nesta loja.",
       "Erro ao validar cupom",
-      "Erro na conexão com servidor",
+      "Não conseguimos conferir o cupom agora por falha de conexão. Confira sua internet e tente aplicar o cupom de novo.",
       "",
     ]) {
       expect(ehRecusaPorLimiteDeUso(outra), outra).toBe(false);

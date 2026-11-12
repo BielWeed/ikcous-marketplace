@@ -823,6 +823,17 @@ describe("a pagar / a receber", () => {
     expect(textoDoVencimento("2026-10-20", hoje)).toBe("Vence em 20/10/2026");
   });
 
+  it("texto do vencimento: 'Vence em N dias' até 7 dias, data cheia depois, sem data", () => {
+    expect(textoDoVencimento("2026-09-26", hoje)).toBe("Vence hoje");
+    expect(textoDoVencimento("2026-09-28", hoje)).toBe("Vence em 2 dias");
+    // 7 dias é o último que ainda fala em "dias" (mesma fronteira da "semana").
+    expect(textoDoVencimento("2026-10-03", hoje)).toBe("Vence em 7 dias");
+    // 8 dias já mostra a data cheia.
+    expect(textoDoVencimento("2026-10-04", hoje)).toBe("Vence em 04/10/2026");
+    expect(textoDoVencimento(null, hoje)).toBe("Sem vencimento");
+    expect(textoDoVencimento("", hoje)).toBe("Sem vencimento");
+  });
+
   it("totais e ordem por vencimento", () => {
     const itens = parsePrevistos([
       { id: "3", valor: 5, vencimento: null },

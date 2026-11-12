@@ -3,6 +3,7 @@
   "ramoDaRelease": "claude/app-major-upgrade-wmc8x2",
   "funcoesNaoPublicadas": ["send-order-whatsapp"],
   "validadeDaEvidenciaHoras": 6,
+  "_comentarioMedicao129": "ANTES do lote de cancelamento e avanco: 129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente (so catalogo, rol fechado de 18 linhas; negativa = PARAR) e 129m-medir-corrida-e-avanco-com-estorno (somente oito contagens anonimas, sem veredito de apply). Executar pelo workflow conferir-banco-da-loja nas duas lojas, nao nas lojas de teste. NENHUMA migration ou prova de pos-aplicacao e registrada aqui neste passo: 129a e versao do lote entram somente com a migration revisada. Nenhum banco foi consultado por esta entrega.",
   "provasDeObjetos": [
     {
       "consulta": "8e-conferir-92-a-202-aplicado",

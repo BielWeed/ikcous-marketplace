@@ -3020,6 +3020,27 @@ const ROL_DA_128 = [
   "fin_conta_salvar: assinatura e atributos conhecidos",
   "fin_conta_salvar: EXECUTE authenticated, sem PUBLIC ou anon",
 ];
+// 129b: medicao ANTES, so catalogo. Sem 129a ou liberacao de apply neste lote.
+const ROL_DA_129B = [
+  "controle: funcoes de public visiveis a este papel",
+  "avancar_status_do_pedido: corpo exato (md5)",
+  "avancar_status_do_pedido: assinatura e atributos conhecidos",
+  "avancar_status_do_pedido: EXECUTE so authenticated, sem PUBLIC, anon ou service_role",
+  "pedido__mudar_status: corpo exato (md5)",
+  "pedido__mudar_status: assinatura e atributos conhecidos",
+  "pedido__mudar_status: sem EXECUTE para PUBLIC, anon, authenticated ou service_role",
+  "cancelar_pedido_com_cobranca: corpo exato (md5)",
+  "cancelar_pedido_com_cobranca: assinatura e atributos conhecidos",
+  "cancelar_pedido_com_cobranca: EXECUTE so service_role, sem PUBLIC, anon ou authenticated",
+  "is_admin_atual(): existe",
+  "cancelar_pedido_na_etapa: ausente em todas as assinaturas",
+  "cancelar_pedido_com_cobranca_na_etapa: ausente em todas as assinaturas",
+  "marketplace_orders.payment_status: coluna existe",
+  "marketplace_orders.status: coluna existe",
+  "marketplace_orders.user_id: coluna existe",
+  "marketplace_orders.stock_returned_at: coluna existe",
+  "marketplace_orders.estorno_manual_registrado_em: coluna existe",
+];
 // Lote 135 (20261399970000, o ranking de lucro desconta a devolucao e o estorno: get_admin_analytics_v2 redefinida, sem objeto novo). A 135a e a 135b tem o MESMO rol de 4 linhas (controle, corpo exato (md5),
 // atributos e ACL); a 135a espera o corpo da migration nova e a 135b o vigente de antes (o da 20261251000000). So catalogo: nenhuma le pedido, devolucao ou estorno e nenhuma chama a funcao.
 const ROL_DA_135 = [
@@ -3031,6 +3052,7 @@ const ROL_DA_135 = [
 const ROL_FECHADO_POR_CONSULTA = {
   "135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado": ROL_DA_135,
   "135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente": ROL_DA_135,
+  "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente": ROL_DA_129B,
   "128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado":
     ROL_DA_128,
   "128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente":

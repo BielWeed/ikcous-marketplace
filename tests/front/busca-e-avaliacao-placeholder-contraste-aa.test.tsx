@@ -89,6 +89,40 @@ describe("placeholders da busca e da avaliação (contraste AA)", () => {
     );
   });
 
+  it("busca no tema escuro: o texto DIGITADO tem cor própria e passa de 4,5:1 (a página é branca, a cor herdada do tema escuro é quase branca)", async () => {
+    const { SearchView } = await import("@/views/customer/SearchView");
+    await act(async () => {
+      raiz.render(<SearchView onNavigate={() => {}} onBack={() => {}} />);
+    });
+    const campo = hospedeiro.querySelector("#search-input") as HTMLElement;
+    // Sem classe `text-zinc-*` o texto herda `--foreground`, que no tema escuro
+    // é quase branco: branco sobre o `bg-zinc-50` do campo, invisível.
+    expect(campo.className).toMatch(/(^|\s)text-zinc-\d+(\s|$)/);
+    const fundo = corDaClasse(campo.className, "bg", [255, 255, 255]);
+    const texto = corDaClasse(campo.className, "text", fundo);
+    expect(razao(texto, fundo), campo.className).toBeGreaterThanOrEqual(AA);
+  });
+
+  it("filtros no tema escuro: os rótulos 'Categorias' e 'Ordenação' têm variante dark: (o painel usa o fundo do tema)", async () => {
+    const { SearchView } = await import("@/views/customer/SearchView");
+    await act(async () => {
+      raiz.render(<SearchView onNavigate={() => {}} onBack={() => {}} />);
+    });
+    const filtros = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.startsWith("Filtros"),
+    );
+    await act(async () => {
+      filtros!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    for (const rotulo of ["Categorias", "Ordenação"]) {
+      const p = Array.from(document.body.querySelectorAll("p")).find(
+        (el) => el.textContent?.trim() === rotulo,
+      );
+      expect(p, rotulo).toBeDefined();
+      expect(p!.className, rotulo).toContain("dark:text-zinc-");
+    }
+  });
+
   it("avaliação: o placeholder do comentário passa de 4,5:1 sobre o fundo do campo", async () => {
     const { ReviewForm } = await import("@/components/ui/custom/ReviewForm");
     await act(async () => {
