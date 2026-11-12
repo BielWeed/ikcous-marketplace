@@ -10,7 +10,12 @@ import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ rpc: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  rpc: vi.fn(),
+  fetchProduct: vi.fn(),
+  uploadProductImages: vi.fn(),
+  recorteSalvo: vi.fn(),
+}));
 
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
@@ -18,8 +23,8 @@ vi.mock("@/hooks/useProducts", () => ({
     updateProduct: vi.fn(),
     upsertVariants: vi.fn().mockResolvedValue(true),
     deleteVariants: vi.fn().mockResolvedValue(undefined),
-    uploadProductImages: vi.fn(),
-    fetchProduct: vi.fn(),
+    uploadProductImages: mocks.uploadProductImages,
+    fetchProduct: mocks.fetchProduct,
   }),
 }));
 
@@ -49,7 +54,7 @@ vi.mock("@/components/ui/select", () => ({
 vi.mock("sonner", () => ({
   toast: {
     info: vi.fn(),
-    success: vi.fn(),
+    success: mocks.recorteSalvo,
     error: vi.fn(),
     warning: vi.fn(),
     loading: vi.fn(),
@@ -74,6 +79,26 @@ vi.mock("@/components/admin/pdv/LeitorDeCodigo", () => ({
     <div data-testid="duble-leitor">
       <button type="button" onClick={aoFechar}>
         Fechar leitor
+      </button>
+    </div>
+  ),
+}));
+
+// O canvas pertence aos testes do editor; aqui exercitamos o envio real do formulário.
+vi.mock("@/components/ui/custom/ImageAdjuster", () => ({
+  ImageAdjuster: ({
+    onConfirm,
+    isSubmitting,
+  }: {
+    onConfirm: (blob: Blob) => void;
+    isSubmitting: boolean;
+  }) => (
+    <div data-testid="recorte" data-enviando={isSubmitting}>
+      <button
+        type="button"
+        onClick={() => onConfirm(new Blob(["recorte"], { type: "image/webp" }))}
+      >
+        Confirmar recorte
       </button>
     </div>
   ),
@@ -137,13 +162,14 @@ describe("AdminProductFormView — Voltar do celular fecha só a camada aberta",
     vi.restoreAllMocks();
   });
 
-  async function montar() {
+  async function montar(productId?: string) {
     const { AdminProductFormView } = await import(
       "@/views/admin/AdminProductFormView"
     );
     await act(async () => {
       raiz.render(
         <AdminProductFormView
+          productId={productId}
           userId="u-teste"
           onNavigate={vi.fn()}
           onSetDirty={vi.fn()}
@@ -153,6 +179,103 @@ describe("AdminProductFormView — Voltar do celular fecha só a camada aberta",
     });
     await esperar();
   }
+
+  const FOTO = "https://fotos.fixture.invalid/original.webp";
+  const RECORTADA = "https://fotos.fixture.invalid/recortada.webp";
+  const recorte = () => document.querySelector('[data-testid="recorte"]');
+  async function abrirRecorte() {
+    mocks.fetchProduct.mockResolvedValue({
+      id: "produto-fixture",
+      name: "Camiseta",
+      description: "Algodão",
+      price: 50,
+      stock: 10,
+      sold: 0,
+      category: "Geral",
+      images: [FOTO],
+      variants: [],
+      isActive: true,
+    });
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    await montar("produto-fixture");
+    await act(async () => {
+      (
+        document.querySelector(
+          'button[title="Ajustar e Cortar"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    expect(recorte()).not.toBeNull();
+    expect(overrideAtual).toBeInstanceOf(Function);
+  }
+
+  it("Voltar sem envio fecha só o recorte e permite ajustar novamente a foto", async () => {
+    await abrirRecorte();
+    await voltarFisico();
+
+    expect(recorte()).toBeNull();
+    expect(overrideAtual).toBeNull();
+    expect(document.getElementById("product-name")).not.toBeNull();
+    expect(mocks.uploadProductImages).not.toHaveBeenCalled();
+    await act(async () => {
+      (
+        document.querySelector(
+          'button[title="Ajustar e Cortar"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    expect(recorte()).not.toBeNull();
+  });
+
+  it("Voltar durante o envio mantém o recorte aberto e a foto só é trocada uma vez", async () => {
+    let concluir!: (urls: string[]) => void;
+    mocks.uploadProductImages.mockReturnValue(
+      new Promise<string[]>((resolve) => {
+        concluir = resolve;
+      }),
+    );
+    await abrirRecorte();
+    // Guarda também o desvio anterior ao render do envio: o ref deve valer
+    // imediatamente, sem depender de registrar outro callback no App.
+    const voltar = overrideAtual;
+    await act(async () => {
+      botaoPorTexto("Confirmar recorte")?.click();
+      voltar?.();
+    });
+    expect(mocks.uploadProductImages).toHaveBeenCalledTimes(1);
+    expect(recorte()).not.toBeNull();
+    expect(recorte()?.getAttribute("data-enviando")).toBe("true");
+
+    await voltarFisico();
+    expect(recorte()).not.toBeNull();
+    expect(document.querySelector(`img[src="${FOTO}"]`)).not.toBeNull();
+    expect(document.querySelector(`img[src="${RECORTADA}"]`)).toBeNull();
+    await act(async () => {
+      concluir([RECORTADA]);
+    });
+    await esperar(60);
+    expect(recorte()).toBeNull();
+    expect(document.querySelector(`img[src="${FOTO}"]`)).toBeNull();
+    expect(
+      document.querySelectorAll(
+        `[data-testid="foto-em-foco"] img[src="${RECORTADA}"]`,
+      ),
+    ).toHaveLength(1);
+    expect(
+      document
+        .querySelector('[data-testid="foto-em-foco"]')
+        ?.getAttribute("aria-label"),
+    ).toBe("Foto 1 de 1");
+    expect(mocks.uploadProductImages).toHaveBeenCalledTimes(1);
+    expect(mocks.recorteSalvo).toHaveBeenCalledTimes(1);
+  });
 
   const previaAberta = () =>
     document.querySelector('[data-testid="previa"]') !== null;

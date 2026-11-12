@@ -1153,6 +1153,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // formulário e por fim a ajuda.
         if (leitorAberto !== null) setLeitorAberto(null);
         else if (isAdjusterOpen) {
+          if (ajusteEmAndamentoRef.current) return;
           setIsAdjusterOpen(false);
           setAdjustingImgIndex(null);
         } else if (isPreviewOpen) setIsPreviewOpen(false);
