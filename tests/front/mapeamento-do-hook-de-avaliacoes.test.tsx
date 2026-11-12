@@ -51,6 +51,7 @@ vi.mock("sonner", () => ({
 }));
 
 vi.mock("@/utils/admin_cache", () => ({
+  lerGeracaoDosCachesDeAdmin: () => 0,
   cachedReviewsData: null,
   setCachedReviewsData: vi.fn(),
 }));

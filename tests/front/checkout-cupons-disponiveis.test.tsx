@@ -13,6 +13,7 @@
 // dirigem o campo "Tem um código de cupom?" valem antes e depois da seção de
 // cartões (o campo continua na tela); as dos cartões ficam no fim.
 import type { CupomDisponivel } from "@/lib/cupons-do-checkout";
+import { CheckoutView } from "@/views/customer/CheckoutView";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -59,21 +60,33 @@ vi.mock("@/contexts/StoreContext", () => ({
 // banco; aqui o dublê só entrega e anota com que argumentos foi chamado.
 let mockCupons: CupomDisponivel[] = [];
 const tentarDeNovo = vi.fn();
+const rpc = vi.fn();
+let usarHookReal = false;
 const chamadasDoHook: Array<{
   subtotal: number;
   userId: string | null;
   ligado: boolean;
 }> = [];
-vi.mock("@/hooks/useCuponsDoCheckout", () => ({
-  useCuponsDoCheckout: (args: {
-    subtotal: number;
-    userId: string | null;
-    ligado: boolean;
-  }) => {
-    chamadasDoHook.push(args);
-    return { cupons: mockCupons, situacao: "pronto", tentarDeNovo };
-  },
-}));
+vi.mock("@/hooks/useCuponsDoCheckout", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("@/hooks/useCuponsDoCheckout")>();
+  return {
+    useCuponsDoCheckout: (args: {
+      subtotal: number;
+      userId: string | null;
+      ligado: boolean;
+    }) => {
+      const real = original.useCuponsDoCheckout({
+        ...args,
+        ligado: usarHookReal && args.ligado,
+      });
+      chamadasDoHook.push(args);
+      return usarHookReal
+        ? real
+        : { cupons: mockCupons, situacao: "pronto", tentarDeNovo };
+    },
+  };
+});
 
 vi.mock("@/hooks/useAddresses", () => ({
   useAddresses: () => ({
@@ -141,7 +154,9 @@ vi.mock("@/hooks/useOrders", () => ({
 }));
 
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
-vi.mock("@/lib/supabase", () => ({ supabase: {} }));
+vi.mock("@/lib/supabase", () => ({
+  supabase: { rpc: (...args: unknown[]) => rpc(...args) },
+}));
 vi.mock("canvas-confetti", () => ({ default: vi.fn() }));
 vi.mock("@/lib/flags", () => ({
   pagamentoOnlineLigado: () => false,
@@ -160,7 +175,6 @@ let hospedeiro: HTMLDivElement;
 type Props = { subtotal?: number };
 
 async function renderizar(props: Props = {}) {
-  const { CheckoutView } = await import("@/views/customer/CheckoutView");
   await act(async () => {
     raiz.render(
       <CheckoutView
@@ -212,6 +226,8 @@ async function aplicarPeloCampo(codigo: string) {
 beforeEach(() => {
   validateCoupon.mockClear();
   tentarDeNovo.mockClear();
+  usarHookReal = false;
+  rpc.mockReset().mockResolvedValue({ data: null, error: null });
   chamadasDoHook.length = 0;
   mockCupons = [];
   mockConfig.enableCoupons = true;
@@ -699,6 +715,50 @@ describe("CheckoutView — o desconto vale para o subtotal de agora, sem validar
     expect(hospedeiro.textContent).toContain("Você economiza R$\u00a015,00");
   });
 
+  it.each(["Remover", "revalidação"] as const)(
+    "formulário vazio: cupom tirado por %s não volta ao remontar",
+    async (motivo) => {
+      mockUser = { id: "conta-sem-perfil" };
+      const CheckoutView = await renderizar({ subtotal: 100 });
+      await aplicarPeloCampo("PROMO10");
+      await esvaziarFila();
+      expect(rascunhoGravado().cupom).toBe("PROMO10");
+      expect(
+        (document.getElementById("checkout-name") as HTMLInputElement).value,
+      ).toBe("");
+      expect(localStorage.getItem("ikcous_last_shipping_cep")).toBeNull();
+
+      if (motivo === "Remover") {
+        await act(async () => {
+          (
+            hospedeiro.querySelector(
+              'button[aria-label="Remover cupom"]',
+            ) as HTMLButtonElement
+          ).click();
+        });
+      } else {
+        respostaDaValidacao = async () => ({
+          valid: false,
+          discount: 0,
+          message: "Compra mínima de R$ 100,00.",
+        });
+        await redesenhar(CheckoutView, { subtotal: 60 });
+      }
+      await esvaziarFila();
+      expect(hospedeiro.textContent).not.toContain("PROMO10 aplicado");
+      expect(rascunhoGravado().cupom ?? null).toBeNull();
+      expect(rascunhoGravado().contaDoCupom ?? null).toBeNull();
+
+      act(() => raiz.unmount());
+      raiz = createRoot(hospedeiro);
+      validateCoupon.mockClear();
+      await renderizar({ subtotal: 100 });
+      await esvaziarFila();
+      expect(hospedeiro.textContent).not.toContain("PROMO10 aplicado");
+      expect(validateCoupon).not.toHaveBeenCalled();
+    },
+  );
+
   it("remover e aplicar de novo o mesmo cupom valida uma vez a cada toque", async () => {
     await renderizar();
     await aplicarPeloCampo("VIP15");
@@ -832,6 +892,71 @@ describe("CheckoutView — a seção 'Cupons' com os cartões (tarefa 22)", () =
     await esvaziarFila();
     expect(hospedeiro.textContent).toContain("VIP15 aplicado");
     expect(validateCoupon).toHaveBeenCalledTimes(1);
+  });
+
+  it("recusa atrasada relê os cartões pelo subtotal atual com o hook real", async () => {
+    usarHookReal = true;
+    let soltar!: (resposta: RespostaDaValidacao) => void;
+    respostaDaValidacao = () =>
+      new Promise((resolve) => {
+        soltar = resolve;
+      });
+    // VIP15 pode ser tocado em 40; GRANDE50 denuncia uma releitura com o subtotal velho.
+    rpc.mockImplementation((_nome, { p_subtotal }) =>
+      Promise.resolve({
+        data: [
+          {
+            codigo: "VIP15",
+            tipo: "fixed",
+            valor: 15,
+            minimo: 0,
+            aplica: true,
+            falta: 0,
+            desconto: 15,
+          },
+          {
+            codigo: "GRANDE50",
+            tipo: "fixed",
+            valor: 50,
+            minimo: 100,
+            aplica: p_subtotal >= 100,
+            falta: Math.max(100 - p_subtotal, 0),
+            desconto: 50,
+          },
+        ],
+        error: null,
+      }),
+    );
+    const esperarLista = () =>
+      act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 450));
+      });
+    const CheckoutView = await renderizar({ subtotal: 40 });
+    await esperarLista();
+    await act(async () => botaoAplicarVip()!.click());
+    expect(validateCoupon).toHaveBeenCalledWith("VIP15", 40);
+    await redesenhar(CheckoutView, { subtotal: 120 });
+    await esperarLista();
+    expect(hospedeiro.textContent).not.toContain("Faltam R$");
+    await act(async () =>
+      soltar({
+        valid: false,
+        discount: 0,
+        message: "Cupom atingiu o limite de uso.",
+      }),
+    );
+    await esvaziarFila();
+    expect(rpc).toHaveBeenLastCalledWith("cupons_do_checkout", {
+      p_subtotal: 120,
+    });
+    expect(hospedeiro.textContent).not.toContain("Faltam R$");
+    expect(
+      (
+        hospedeiro.querySelector(
+          'button[aria-label="Aplicar o cupom GRANDE50"]',
+        ) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
   });
 
   it("cartão recusado pelo servidor mostra o motivo e manda a lista buscar de novo", async () => {

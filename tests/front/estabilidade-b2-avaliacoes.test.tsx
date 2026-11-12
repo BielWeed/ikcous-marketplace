@@ -25,6 +25,7 @@ vi.mock("@/hooks/useLeaderElection", () => ({
   useLeaderElection: () => ({ isLeader: false }),
 }));
 vi.mock("@/utils/admin_cache", () => ({
+  lerGeracaoDosCachesDeAdmin: () => 0,
   cachedReviewsData: null,
   setCachedReviewsData: h.cache,
 }));

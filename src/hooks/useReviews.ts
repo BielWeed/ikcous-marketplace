@@ -16,7 +16,11 @@ import {
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { Review } from "@/types";
-import { cachedReviewsData, setCachedReviewsData } from "@/utils/admin_cache";
+import {
+  cachedReviewsData,
+  lerGeracaoDosCachesDeAdmin,
+  setCachedReviewsData,
+} from "@/utils/admin_cache";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -492,9 +496,11 @@ export function useReviews() {
       },
     ) => {
       const rodada = ++rodadaAdminRef.current;
+      const geracaoAdmin = lerGeracaoDosCachesDeAdmin();
       const geracao = geracaoAtualDoCache();
       const atual = () =>
         rodada === rodadaAdminRef.current &&
+        geracaoAdmin === lerGeracaoDosCachesDeAdmin() &&
         geracao === geracaoAtualDoCache() &&
         usuarioAtualRef.current === user?.id;
       if (!atual()) return;

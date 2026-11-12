@@ -142,6 +142,34 @@ describe("useCuponsDoCheckout", () => {
     expect(ultimo?.cupons).toEqual([]);
   });
 
+  it("tentar de novo guardado antes da mudança usa o subtotal atual", async () => {
+    rpc.mockImplementation((_nome, { p_subtotal }) =>
+      Promise.resolve({
+        data: [
+          {
+            ...linha("MINIMO100"),
+            aplica: p_subtotal >= 100,
+            falta: Math.max(100 - p_subtotal, 0),
+          },
+        ],
+        error: null,
+      }),
+    );
+    const trocar = await montar({ subtotal: 40, userId: null, ligado: true });
+    await esperarPausa();
+    const tentarDoToque = ultimo!.tentarDeNovo;
+    await trocar({ subtotal: 120, userId: null, ligado: true });
+    await esperarPausa();
+    expect(ultimo?.cupons[0].aplica).toBe(true);
+
+    await act(async () => tentarDoToque());
+    expect(rpc).toHaveBeenLastCalledWith("cupons_do_checkout", {
+      p_subtotal: 120,
+    });
+    expect(ultimo?.cupons[0].aplica).toBe(true);
+    expect(ultimo?.cupons[0].falta).toBe(0);
+  });
+
   it("resposta atrasada de um subtotal velho é descartada", async () => {
     let soltarVelha: (v: unknown) => void = () => {};
     rpc
