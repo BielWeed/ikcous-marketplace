@@ -258,6 +258,8 @@ on:
       - "scripts/publicacao/consultas/126b-antes-a-busca-de-devolucao-ignora-o-acento-base-vigente.sql"
       - "scripts/publicacao/consultas/127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado.sql"
       - "scripts/publicacao/consultas/127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente.sql"
+      - "scripts/publicacao/consultas/128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado.sql"
+      - "scripts/publicacao/consultas/128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -485,6 +487,8 @@ on:
       - "scripts/publicacao/consultas/126b-antes-a-busca-de-devolucao-ignora-o-acento-base-vigente.sql"
       - "scripts/publicacao/consultas/127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado.sql"
       - "scripts/publicacao/consultas/127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente.sql"
+      - "scripts/publicacao/consultas/128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado.sql"
+      - "scripts/publicacao/consultas/128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -1096,6 +1100,17 @@ jobs:
       - name: Prova viva do sino do pedido vencido que fala do vencimento (20261399920000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-sino-do-pedido-vencido-fala-do-vencimento-viva.cjs
+      # Migration 20261399930000 (o caixa e a conta recusam valor que nao e numero): fin_caixa_abrir e fin_conta_salvar recusam NaN, infinito e acima do teto com 22023 ANTES de qualquer escrita
+      # (como fin_caixa_fechar_sessao). Controle com os corpos anteriores na MESMA fixture (aceitavam 'NaN' e gravavam), dado antigo intacto, negativo/nulo/zero iguais, permissao antes da guarda,
+      # mutantes por MUTANTE_R150E, ACL/atributos/dono iguais, reaplicar, rollback byte a byte, pre-voo e consultas 128a/128b. CLONE proprio.
+      - name: Prova viva do caixa e da conta que recusam valor que nao e numero (20261399930000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-caixa-e-a-conta-recusam-nan-viva.cjs
+      # Onda 150 (SEM migration): registrar_venda_presencial recusa p_itens vazio, que nao e lista (objeto, null, escalar, NULL) e com mais de 200 linhas, com 22023 e a frase da loja, sem escrever pedido, item,
+      # historico, financeiro nem estoque; 200 (o limite) entra. Mutantes por MUTANTE_R150E. CLONE proprio.
+      - name: Prova viva do balcao que recusa venda sem item e com itens demais
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs

@@ -153,6 +153,8 @@ WITH corpos AS (
     ('admin_devolucoes_listar', '82d381944fb7b3337e7272a258b65260', '20261399910000'),
     ('get_admin_orders_cancelados_recentes', '9567454f17698f3f0624cca0b06458cd', '20261380000000'),
     ('fin_caixa_abrir', '28ab512e291378a01d110e298af7a402', '20261370000000'),
+    ('fin_caixa_abrir', '367d298dcc78bc2829fc4e0048005a0c', '20261399930000'),
+    ('fin_conta_salvar', '1dc6cfdb075e3a1a0882398e1220d0f1', '20261399930000'),
     ('painel_inicio', 'f11d22d076c59ab54d1beb280954dd15', '20261212000000'),
     ('get_admin_analytics_v2', '0a5f8c75bbeeda3777a6a7326a0e281c', '20261214000000'),
     ('crm_visao', 'c33073503fccc6caa5f1085265501eae', '20261227000000'),

@@ -847,6 +847,10 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/os-numeros-do-inicio-e-do-funil-do-crm-viva.cjs",
     // Onda 136-c: o prazo legal da devolucao (arrependimento, troca, vicio) conta o dia do calendario de Sao Paulo na solicitacao e na elegibilidade (fronteiras 7/8, 30/31, 15/16 e entrega as 23:50); mutantes por MUTANTE_R136C.
     "tests/banco/o-prazo-da-devolucao-conta-dia-de-sao-paulo-viva.cjs",
+    // 20261399930000: o caixa e a conta recusam NaN, infinito e acima do teto antes de escrever (controle com o corpo anterior, mutantes por MUTANTE_R150E, rollback e consultas 128a/128b).
+    "tests/banco/o-caixa-e-a-conta-recusam-nan-viva.cjs",
+    // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
+    "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
