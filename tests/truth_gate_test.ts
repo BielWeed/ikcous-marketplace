@@ -109,6 +109,25 @@ Deno.test("produto: axiomas de valor abortam", async (t) => {
   }
 });
 
+Deno.test("produto: o estoque aceita o piso 0 e o teto 10000 e recusa um passo além", async (t) => {
+  // 0 é como a lojista marca esgotado (e como o painel zera o produto ao
+  // desligar a última variação); 10000 é o último valor dentro do teto. Os
+  // casos de recusa ficam colados na borda para pegar `<` virando `<=` e
+  // `>` virando `>=`.
+  await t.step("estoque 0 passa", () => {
+    assertEquals(violacoes({ stock: 0 }), []);
+  });
+  await t.step("estoque 10000 passa", () => {
+    assertEquals(violacoes({ stock: 10000 }), []);
+  });
+  await t.step("estoque -1 aborta como negativo", () => {
+    assertEquals(violacoes({ stock: -1 }), ["stock_negative"]);
+  });
+  await t.step("estoque 10001 aborta como acima do teto", () => {
+    assertEquals(violacoes({ stock: 10001 }), ["stock_limit_exceeded"]);
+  });
+});
+
 Deno.test("produto: valor presente tem que ser numérico", async (t) => {
   const invalidos = [
     ["null", null],
@@ -250,6 +269,41 @@ Deno.test("variante: axiomas próprios", async (t) => {
 
   await t.step("patch parcial passa", () => {
     assertEquals(violacoes({ active: false }, undefined, "variant"), []);
+  });
+});
+
+Deno.test("variante: o estoque aceita o piso 0 e o teto 10000 e recusa um passo além", async (t) => {
+  await t.step("estoque 0 passa", () => {
+    assertEquals(
+      violacoes({ ...VARIANTE_OK, stockIncrement: 0 }, undefined, "variant"),
+      [],
+    );
+  });
+  await t.step("estoque 10000 passa", () => {
+    assertEquals(
+      violacoes(
+        { ...VARIANTE_OK, stockIncrement: 10000 },
+        undefined,
+        "variant",
+      ),
+      [],
+    );
+  });
+  await t.step("estoque -1 aborta como negativo", () => {
+    assertEquals(
+      violacoes({ ...VARIANTE_OK, stockIncrement: -1 }, undefined, "variant"),
+      ["variant_stock_negative"],
+    );
+  });
+  await t.step("estoque 10001 aborta como acima do teto", () => {
+    assertEquals(
+      violacoes(
+        { ...VARIANTE_OK, stockIncrement: 10001 },
+        undefined,
+        "variant",
+      ),
+      ["variant_stock_limit_exceeded"],
+    );
   });
 });
 
