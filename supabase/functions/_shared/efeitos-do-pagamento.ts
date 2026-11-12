@@ -35,9 +35,10 @@
  * garantia dele é só essa transição única — por isso a regra "efeito só
  * depois de a RPC dizer que ESTE chamador confirmou" vale para o push e o
  * comprovante. ÚNICA exceção: o webhook, em 'ja_pago' de pedido
- * 'pago_apos_expirar' cujo aviso por e-mail ainda não saiu, reenvia SÓ esse
- * aviso (`reenviarAvisoPendenteDoPagamentoAtrasado`); a reserva atômica
- * decide quem envia.
+ * 'pago_apos_expirar' cujo aviso por e-mail ainda não saiu — ou de pedido
+ * 'pago' online e recente cujo comprovante ainda não saiu — reenvia SÓ esse
+ * e-mail (`reenviarEmailPendenteDoPagamento`); a reserva atômica decide quem
+ * envia.
  *
  * O TEXTO MORA AQUI, UMA VEZ: `webhook-mercadopago/index.ts` e
  * `reconciliar-pagamentos/index.ts` chamam `serve()` no import (guardado só
@@ -266,7 +267,9 @@ export async function dispararComprovanteReal(args: { supabase: Supabase; orderI
  * cliente que CANCELA pelo app com o QR na mão e paga o PIX segundos depois)
  * — só "já estava cancelado" e "estoque já tinha voltado" são verdade nos
  * dois. Não promete estoque nem reenvio automático: diz só o que é fato — o
- * pagamento chegou, o pedido foi cancelado antes, e a loja vai resolver.
+ * pagamento chegou, o pedido foi cancelado antes, e a loja vai resolver. NÃO
+ * diz "a loja já foi avisada": o push ao lojista pode ter entregue a ninguém
+ * (sem inscrito, chave inválida) e essa contagem não chega até aqui.
  */
 export function htmlDoAvisoDePagamentoAtrasado(args: {
   orderId: string;
@@ -284,7 +287,7 @@ export function htmlDoAvisoDePagamentoAtrasado(args: {
         Recebemos a confirmação do seu pagamento para este pedido, mas ele já estava cancelado e o estoque já tinha voltado para a loja quando o pagamento foi confirmado — por isso não entrou na fila de separação.
       </p>
       <p style="margin: 0; font-size: 14px; line-height: 20px; color: #3f3f46;">
-        A loja já foi avisada do pagamento e vai entrar em contato para resolver (reenvio, se ainda houver estoque, ou devolução do valor pago).
+        A loja vai entrar em contato para resolver (reenvio, se ainda houver estoque, ou devolução do valor pago).
       </p>
     </div>
   `;
@@ -389,54 +392,96 @@ export async function dispararAvisoDePagamentoAtrasadoReal(args: {
   }
 }
 
+/** A janela em que o comprovante de um pedido 'pago' ainda pode ser reenviado pela
+ * reentrega do MP: 24 h a partir do `paid_at`. Cobre o caso que motivou o reenvio
+ * (o SMTP caiu e voltou em minutos ou horas; as notificações irmãs do MP chegam em
+ * segundos ou minutos) e deixa de fora o pedido antigo: `confirmation_email_sent_at`
+ * nasceu em 21/08/2026 SEM preenchimento retroativo, então todo pedido pago antes
+ * disso tem a reserva nula sem nunca ter sido "esquecido". */
+export const JANELA_DO_REENVIO_DO_COMPROVANTE_MS = 24 * 60 * 60 * 1000;
+
+/** Quanto um `paid_at` pode estar à frente do relógio desta função (relógios de máquinas diferentes). */
+const TOLERANCIA_DE_RELOGIO_MS = 5 * 60 * 1000;
+
 /**
- * EST-EDGE-DIN-3 (16/10/2026) — a REENTREGA do aviso de pagamento atrasado.
+ * Falha FECHADA: só vale o que a leitura afirma. Pago pelo site (`online` no
+ * método E no canal — venda de balcão e pagamento na entrega nunca chegam
+ * aqui) e com `paid_at` legível dentro da janela. Qualquer campo ausente,
+ * nulo ou fora do formato é "não sei" e na dúvida não se manda e-mail.
+ */
+function comprovanteDeReentregaPermitido(pedido: Record<string, unknown>, agoraMs: number): boolean {
+  if (pedido.payment_method !== "online" || pedido.canal !== "online") return false;
+  if (typeof pedido.paid_at !== "string") return false;
+  const idadeMs = agoraMs - Date.parse(pedido.paid_at);
+  if (!Number.isFinite(idadeMs)) return false;
+  return idadeMs <= JANELA_DO_REENVIO_DO_COMPROVANTE_MS && idadeMs >= -TOLERANCIA_DE_RELOGIO_MS;
+}
+
+/**
+ * EST-EDGE-DIN-3 (16/10/2026) — a REENTREGA do e-mail que não saiu. Nasceu só
+ * para o aviso de 'pago_apos_expirar'; desde 12/11/2026 cobre também o
+ * comprovante do pedido 'pago'.
  *
- * O buraco: o pedido vira 'pago_apos_expirar', o SMTP falha, a reserva do
- * e-mail é devolvida e o webhook responde 200. A notificação seguinte do MP
- * (ou a reentrega) recebe 'ja_pago' da RPC e, pela regra "efeito só para quem
+ * O buraco: o pedido vira 'pago' (ou 'pago_apos_expirar'), o SMTP falha, a
+ * reserva do e-mail é devolvida e o webhook responde 200. A notificação
+ * seguinte do MP recebe 'ja_pago' da RPC e, pela regra "efeito só para quem
  * fez a transição", não fazia NADA; o cron também não ajuda (exclui pedido com
- * `paid_at`). O cliente que pagou depois do cancelamento nunca era avisado.
+ * `paid_at`). O cliente que pagou ficava sem e-mail e sem saber.
  *
- * O que faz: só quando o pedido está em 'pago_apos_expirar' E a reserva do
- * e-mail está livre (`confirmation_email_sent_at` nulo — ninguém enviou nem
- * está enviando), repete UM efeito, o aviso ao cliente. Nada de push (o
- * lojista já foi avisado na transição, e o push não tem reserva própria) e
- * nada para 'pago' comum: o comprovante tem o botão de reenvio do lojista e
- * esta frente não o cobre.
+ * O que faz: só quando a reserva do e-mail está livre (`confirmation_email_sent_at`
+ * nulo — ninguém enviou nem está enviando), repete UM efeito, o e-mail ao
+ * cliente: o aviso para 'pago_apos_expirar'; o comprovante para 'pago', este
+ * só dentro de `comprovanteDeReentregaPermitido`. Nada de push (o lojista já foi
+ * avisado na transição, e o push não tem reserva própria), nada de estoque,
+ * status ou dinheiro. Qualquer outro `payment_status` não faz nada.
+ *
+ * SÓ É CHAMADA no caminho 'ja_pago' do webhook, nunca na primeira confirmação
+ * (que tem o efeito normal em `aplicarEfeitosDoPagamentoConfirmado`).
  *
  * IDEMPOTENTE e à prova de corrida pela MESMA reserva do comprovante: a leitura
  * daqui é só um filtro barato (poupa o SMTP e a leitura do remetente nas
  * reentregas comuns); quem decide de verdade é `reivindicar_email_de_confirmacao`,
- * um UPDATE condicional atômico dentro do próprio aviso — duas reentregas
+ * um UPDATE condicional atômico dentro do próprio envio — duas reentregas
  * simultâneas com a reserva livre mandam UM e-mail. Nunca lança.
  */
-export async function reenviarAvisoPendenteDoPagamentoAtrasado(args: {
+export async function reenviarEmailPendenteDoPagamento(args: {
   supabase: Supabase;
   orderId: string;
   enviarAvisoAtrasado?: DepsDosEfeitos["enviarAvisoAtrasado"];
-  /** Teto de espera pelo aviso (o webhook passa `TETO_DO_EMAIL_MS`); ausente = sem teto. */
+  enviarComprovante?: DepsDosEfeitos["enviarComprovante"];
+  /** Teto de espera pelo e-mail (o webhook passa `TETO_DO_EMAIL_MS`); ausente = sem teto. */
   tetoDoEmailMs?: number;
+  /** Só o teste fixa o relógio; em produção vale `Date.now()`. */
+  agoraMs?: number;
 }): Promise<void> {
   const { supabase, orderId } = args;
   try {
     const { data, error } = await supabase
       .from("marketplace_orders")
-      .select("payment_status, confirmation_email_sent_at")
+      .select("payment_status, confirmation_email_sent_at, paid_at, payment_method, canal")
       .eq("id", orderId)
       .maybeSingle();
     if (error) throw error;
     const pedido = data as Record<string, unknown> | null;
     if (!pedido) return;
-    if (pedido.payment_status !== "pago_apos_expirar") return;
     // Falha FECHADA: só o `null` explícito do banco é "reserva livre". Coluna
     // ausente na resposta (`undefined`) é "não sei" — e na dúvida não se manda
     // um e-mail que talvez já tenha saído.
     if (pedido.confirmation_email_sent_at !== null) return;
-    const enviarAvisoAtrasado = args.enviarAvisoAtrasado ?? dispararAvisoDePagamentoAtrasadoReal;
-    const emVoo = enviarAvisoAtrasado({ supabase, orderId });
+    let emVoo: Promise<void>;
+    if (pedido.payment_status === "pago_apos_expirar") {
+      const enviarAvisoAtrasado = args.enviarAvisoAtrasado ?? dispararAvisoDePagamentoAtrasadoReal;
+      emVoo = enviarAvisoAtrasado({ supabase, orderId });
+    } else if (
+      pedido.payment_status === "pago" && comprovanteDeReentregaPermitido(pedido, args.agoraMs ?? Date.now())
+    ) {
+      const enviarComprovante = args.enviarComprovante ?? dispararComprovanteReal;
+      emVoo = enviarComprovante({ supabase, orderId });
+    } else {
+      return;
+    }
     await (args.tetoDoEmailMs ? comTempoLimite(emVoo, args.tetoDoEmailMs) : emVoo);
   } catch (_erro) {
-    console.error("efeitos-do-pagamento: reenvio do aviso de pagamento atrasado falhou", { orderId });
+    console.error("efeitos-do-pagamento: reenvio do e-mail pendente do pagamento falhou", { orderId });
   }
 }
