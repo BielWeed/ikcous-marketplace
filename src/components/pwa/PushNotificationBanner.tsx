@@ -1,7 +1,10 @@
 import { useStore } from "@/contexts/StoreContext";
 import { useHaCamadaAberta } from "@/hooks/useHaCamadaAberta";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
-import { CHAVE_DO_ADIAMENTO_DO_CONVITE } from "@/lib/avisos-do-aparelho";
+import {
+  CHAVE_DO_ADIAMENTO_DO_CONVITE,
+  adiamentoEstaValendo,
+} from "@/lib/avisos-do-aparelho";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
@@ -111,7 +114,10 @@ export function PushNotificationBanner({
     // 4. Verificar se a cliente dispensou nos ultimos 7 dias
     try {
       const dismissedUntil = localStorage.getItem(DISMISS_KEY);
-      if (dismissedUntil && Date.now() < Number.parseInt(dismissedUntil, 10)) {
+      if (
+        dismissedUntil &&
+        adiamentoEstaValendo(Number.parseInt(dismissedUntil, 10), Date.now())
+      ) {
         setIsVisible(false);
         return;
       }

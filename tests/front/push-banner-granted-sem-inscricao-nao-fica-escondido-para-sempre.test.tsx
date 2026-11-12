@@ -176,6 +176,29 @@ describe("PushNotificationBanner — 'granted' sem inscrição não esconde o co
     expect(container.textContent).not.toContain("Quero Receber!");
   });
 
+  it("dispensar com relógio adiantado não esconde o convite após corrigir a hora", () => {
+    const agora = 1_700_000_000_000;
+    vi.setSystemTime(agora + 30 * 24 * 60 * 60_000);
+    usePushNotificationsMock.mockReturnValue(estadoPadrao({}));
+    montar();
+    avancarDelayDeExibicao();
+    const fechar = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Fechar"]',
+    );
+    expect(fechar).not.toBeNull();
+    act(() => fechar!.click());
+    expect(Number(localStorage.getItem(DISMISS_KEY))).toBeGreaterThan(
+      agora + 7 * 24 * 60 * 60_000,
+    );
+
+    act(() => root.unmount());
+    root = createRoot(container);
+    vi.setSystemTime(agora);
+    montar();
+    avancarDelayDeExibicao();
+    expect(container.textContent).toContain("Quero Receber!");
+  });
+
   // Caminho ainda pendente (nunca respondeu ao balão) não pode ter
   // regredido: continua aparecendo, do jeito que já era antes do conserto.
   it("permissão ainda pendente ('default'): continua aparecendo, como antes", () => {

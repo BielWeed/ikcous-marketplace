@@ -110,6 +110,18 @@ describe("gravar / ler / limpar no sessionStorage", () => {
       expect(dados.has("guest_tracked_orders")).toBe(true);
     });
 
+    it("consulta com relógio adiantado é vencida e apagada após corrigir a hora", () => {
+      const agora = Date.now();
+      vi.setSystemTime(agora + 24 * 60 * 60_000);
+      gravarRetratoDoConvidado([pedido]);
+      const consultadoEm = Date.now();
+
+      vi.setSystemTime(agora);
+      expect(retratoVenceu(consultadoEm)).toBe(true);
+      expect(lerRetratoDoConvidado()).toBeNull();
+      expect(dados.has("guest_tracked_orders")).toBe(false);
+    });
+
     it("passou do prazo: devolve null e apaga a chave do aparelho", () => {
       gravarRetratoDoConvidado([pedido]);
       vi.advanceTimersByTime(PRAZO_DO_RETRATO_MS + 1);
@@ -205,6 +217,11 @@ describe("retratoVenceu — a régua única do prazo (a mesma da leitura do apar
     expect(retratoVenceu(consulta, consulta + PRAZO_DO_RETRATO_MS + 1)).toBe(
       true,
     );
+  });
+
+  it("tolera até cinco minutos no futuro, mas não um milissegundo além", () => {
+    expect(retratoVenceu(consulta + 5 * 60_000, consulta)).toBe(false);
+    expect(retratoVenceu(consulta + 5 * 60_000 + 1, consulta)).toBe(true);
   });
 
   it("recém consultado não venceu (e o relógio atrás da consulta também não)", () => {
