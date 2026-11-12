@@ -305,7 +305,11 @@ describe("realtimeSyncEngine — sem variação ativa o estoque de base vale, nu
   // Dublê com os dois cofres que o motor toca nos eventos de variação: o de
   // `product_variants` (para achar o produto da variação apagada) e o de
   // `products`.
-  function criarCofreDeProdutoEVariacoes(produto: any, variacaoApagada?: any) {
+  function criarCofreDeProdutoEVariacoes(
+    produtoInicial: any,
+    variacaoApagada?: any,
+  ) {
+    let produto = produtoInicial;
     return {
       async mutate<T>(
         store: string,
@@ -316,7 +320,9 @@ describe("realtimeSyncEngine — sem variação ativa o estoque de base vale, nu
         if (registro !== undefined) await this.put(store, registro);
         return registro;
       },
-      put: vi.fn(async (_store: string, _registro: any) => undefined),
+      put: vi.fn(async (store: string, registro: any) => {
+        if (store === "products") produto = registro;
+      }),
       deleteById: vi.fn(async (_store: string, _id: string) => undefined),
       setLastSync: vi.fn(async () => undefined),
       getById: vi.fn(async (store: string, _id: string) =>
@@ -325,6 +331,80 @@ describe("realtimeSyncEngine — sem variação ativa o estoque de base vale, nu
       getByIndex: vi.fn(async () => []),
     };
   }
+
+  // Sem guardar a base do evento de produtos, o último evento de variação
+  // reaproveita a soma anterior (5), em vez do zero gravado pela lojista.
+  it.each(["UPDATE", "DELETE"] as const)(
+    "%s da última variação ativa usa a base recebida antes, não a soma antiga",
+    async (ultimoEvento) => {
+      const vault = criarCofreDeProdutoEVariacoes(
+        {
+          id: "prod-camiseta",
+          name: "Camiseta",
+          stock: 8,
+          variants: [
+            variacaoDoCofre("var-p", 3, true),
+            variacaoDoCofre("var-m", 5, true),
+          ],
+        },
+        variacaoDoCofre("var-m", 5, true),
+      );
+
+      // A RPC grava produtos antes de desligar as variações.
+      await RealtimeSyncEngine._applyChangeAndNotify(
+        vault as any,
+        configDe("produtos"),
+        "UPDATE",
+        {
+          id: "prod-camiseta",
+          nome: "Camiseta",
+          preco_venda: 49.9,
+          estoque: 0,
+          ativo: true,
+        },
+        {},
+      );
+      expect((await vault.getById("products", "prod-camiseta")).stock).toBe(8);
+
+      await RealtimeSyncEngine._applyChangeAndNotify(
+        vault as any,
+        configDe("product_variants"),
+        "UPDATE",
+        {
+          id: "var-p",
+          product_id: "prod-camiseta",
+          name: "Tamanho",
+          value: "P",
+          stock_increment: 3,
+          active: false,
+        },
+        {},
+      );
+      // Enquanto sobrar uma ativa, vale a soma, mesmo com base zero.
+      expect((await vault.getById("products", "prod-camiseta")).stock).toBe(5);
+
+      await RealtimeSyncEngine._applyChangeAndNotify(
+        vault as any,
+        configDe("product_variants"),
+        ultimoEvento,
+        ultimoEvento === "UPDATE"
+          ? {
+              id: "var-m",
+              product_id: "prod-camiseta",
+              name: "Tamanho",
+              value: "M",
+              stock_increment: 5,
+              active: false,
+            }
+          : {},
+        ultimoEvento === "DELETE" ? { id: "var-m" } : {},
+      );
+
+      const gravado = await vault.getById("products", "prod-camiseta");
+      expect(gravado.variants.every((v: any) => !v.active)).toBe(true);
+      expect(gravado.stock).toBe(0);
+    },
+  );
 
   it("UPDATE de produtos com as variações do cofre todas desligadas: fica o estoque de base (7), não 0", async () => {
     const vault = criarCofreDeProdutoEVariacoes({

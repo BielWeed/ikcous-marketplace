@@ -655,6 +655,7 @@ export const RealtimeSyncEngine = {
               config.store === "products" &&
               !Array.isArray((raw as any)?.product_variants)
             ) {
+              mapped.estoqueDeBase = mapped.stock;
               await vault.mutate<Product>(
                 "products",
                 mapped.id,
@@ -692,7 +693,10 @@ export const RealtimeSyncEngine = {
                     variants.push(variant);
                   }
                   product.variants = variants;
-                  product.stock = estoqueDasAtivas(variants, product.stock);
+                  product.stock = estoqueDasAtivas(
+                    variants,
+                    product.estoqueDeBase ?? product.stock,
+                  );
                   return product;
                 },
               );
@@ -749,7 +753,10 @@ export const RealtimeSyncEngine = {
                     (v) => v.id !== deleteId,
                   );
                   product.variants = variants;
-                  product.stock = estoqueDasAtivas(variants, product.stock);
+                  product.stock = estoqueDasAtivas(
+                    variants,
+                    product.estoqueDeBase ?? product.stock,
+                  );
                   return product;
                 },
               );
