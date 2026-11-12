@@ -36,11 +36,12 @@ vi.mock("@/lib/supabase", () => ({
       update: (valores: unknown) => {
         atualizar(tabela, valores);
         // `.select("id")` devolve a linha gravada (0 linhas = não gravou).
-        return {
-          eq: () => ({
-            select: () => Promise.resolve({ data: [{ id: "A" }], error: null }),
-          }),
+        const cadeia = {
+          eq: () => cadeia,
+          or: () => cadeia,
+          select: () => Promise.resolve({ data: [{ id: "A" }], error: null }),
         };
+        return cadeia;
       },
     }),
     functions: { invoke: vi.fn() },

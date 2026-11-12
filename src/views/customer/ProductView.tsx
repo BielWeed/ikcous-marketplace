@@ -713,7 +713,14 @@ export const ProductView = React.memo(function ProductView({
   // carrinho e o card seguem vendendo pelo produto base. Só trava a opção
   // ESCOLHIDA que deixou de existir numa fileira que continua na tela.
   const variacaoIndisponivel = escolhaIndisponivel;
-  const isOutOfStock = currentStock <= 0 || variacaoIndisponivel;
+  // Cadastro antigo com grupos separados (Cor e Tamanho): se UM grupo não tem
+  // nenhuma opção com estoque, nenhuma combinação se compra, mesmo que o
+  // outro grupo tenha unidades. Mesma conta de `disponivel` das fileiras.
+  const grupoSemEstoque = fileirasDeVariacao(product.variants).fileiras.some(
+    (f) => f.valores.every((v) => !v.disponivel),
+  );
+  const isOutOfStock =
+    currentStock <= 0 || variacaoIndisponivel || grupoSemEstoque;
   const discount = originalExibido
     ? Math.round(((originalExibido - precoExibido) / originalExibido) * 100)
     : 0;

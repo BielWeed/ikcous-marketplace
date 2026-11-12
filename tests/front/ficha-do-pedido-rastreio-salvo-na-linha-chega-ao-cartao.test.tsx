@@ -49,12 +49,13 @@ vi.mock("@/lib/supabase", () => ({
       update: (campos: Record<string, unknown>) => {
         atualizacoes.push(campos);
         // `.select("id")` devolve a linha gravada (0 linhas = não gravou).
-        return {
-          eq: () => ({
-            select: () =>
-              Promise.resolve({ data: [{ id: "ped-teste" }], error: null }),
-          }),
+        const cadeia = {
+          eq: () => cadeia,
+          or: () => cadeia,
+          select: () =>
+            Promise.resolve({ data: [{ id: "ped-teste" }], error: null }),
         };
+        return cadeia;
       },
     })),
     functions: { invoke: vi.fn() },

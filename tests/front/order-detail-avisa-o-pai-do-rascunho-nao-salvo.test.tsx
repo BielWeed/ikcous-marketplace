@@ -51,12 +51,17 @@ vi.mock("@/lib/supabase", () => ({
       delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
       update: (valores: unknown) => {
         atualizar(tabela, valores);
-        return {
-          eq: (...filtro: unknown[]) => ({
-            select: () =>
-              Promise.resolve(salvar(...filtro)).then(comLinhaGravada),
-          }),
+        let filtroId: unknown[] = [];
+        const cadeia = {
+          eq: (...filtro: unknown[]) => {
+            if (filtro[0] === "id") filtroId = filtro;
+            return cadeia;
+          },
+          or: () => cadeia,
+          select: () =>
+            Promise.resolve(salvar(...filtroId)).then(comLinhaGravada),
         };
+        return cadeia;
       },
     }),
     functions: { invoke: vi.fn() },

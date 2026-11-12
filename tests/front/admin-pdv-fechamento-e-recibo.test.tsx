@@ -248,6 +248,104 @@ describe("FechamentoDaVenda (C3.2)", () => {
     expect(botao.disabled).toBe(true);
   });
 
+  // Motivo "vazio de verdade": o `trim()` do JS não tira U+200B/U+2060, então
+  // uma justificativa que a lojista não enxerga passava como motivo. Os
+  // caracteres vão SEMPRE em escape (\uXXXX), nunca literais.
+  async function montarComDescontoDeCincoReais(
+    motivo: string | null,
+    aoRegistrarVenda: () => Promise<void>,
+  ): Promise<void> {
+    await act(async () => {
+      raiz.render(
+        <HospedeiroDoFechamento
+          itensIniciais={[ITEM]}
+          pagamentoInicial="cash"
+          aoRegistrarVenda={aoRegistrarVenda}
+        />,
+      );
+    });
+    await avancar();
+    await act(async () => {
+      digitarInput("desconto-da-venda", "500"); // vira R$ 5,00
+    });
+    await avancar(300);
+    if (motivo !== null) {
+      await act(async () => {
+        digitarInput("motivo-do-desconto", motivo);
+      });
+      await avancar(300);
+    }
+  }
+
+  it.each([
+    ["só espaço de largura zero (U+200B)", "\u200b"],
+    ["só espaços comuns", "   "],
+    ["espaço de largura zero + espaço + word joiner", "\u200b \u2060"],
+  ])(
+    "caso 3b — desconto com motivo invisível (%s) bloqueia o registro e pede o motivo",
+    async (_nome, motivo) => {
+      const aoRegistrarVenda = vi.fn().mockResolvedValue(undefined);
+      await montarComDescontoDeCincoReais(motivo, aoRegistrarVenda);
+
+      const botao = localizarBotaoPorTexto(
+        hospedeiro,
+        "Registrar venda",
+      ) as HTMLButtonElement;
+      expect(botao.disabled).toBe(true);
+      expect(hospedeiro.textContent).toContain("Informe o motivo do desconto.");
+      await act(async () => {
+        botao.click();
+      });
+      expect(aoRegistrarVenda).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["motivo normal", "Fidelidade"],
+    ["motivo com acento e emoji", "Mostruário \u{1F600}"],
+    ["motivo de uma letra acentuada só", "é"],
+    ["motivo de um emoji só", "\u{1F600}"],
+  ])("caso 3c — desconto com %s registra a venda", async (_nome, motivo) => {
+    const aoRegistrarVenda = vi.fn().mockResolvedValue(undefined);
+    await montarComDescontoDeCincoReais(motivo, aoRegistrarVenda);
+
+    const botao = localizarBotaoPorTexto(
+      hospedeiro,
+      "Registrar venda",
+    ) as HTMLButtonElement;
+    expect(hospedeiro.textContent).not.toContain(
+      "Informe o motivo do desconto.",
+    );
+    expect(botao.disabled).toBe(false);
+    await act(async () => {
+      botao.click();
+    });
+    expect(aoRegistrarVenda).toHaveBeenCalledTimes(1);
+  });
+
+  it("caso 3d — sem desconto o motivo não é exigido e a venda registra", async () => {
+    const aoRegistrarVenda = vi.fn().mockResolvedValue(undefined);
+    await act(async () => {
+      raiz.render(
+        <HospedeiroDoFechamento
+          itensIniciais={[ITEM]}
+          pagamentoInicial="cash"
+          aoRegistrarVenda={aoRegistrarVenda}
+        />,
+      );
+    });
+    await avancar();
+
+    const botao = localizarBotaoPorTexto(
+      hospedeiro,
+      "Registrar venda",
+    ) as HTMLButtonElement;
+    expect(hospedeiro.textContent).not.toContain(
+      "Informe o motivo do desconto.",
+    );
+    expect(botao.disabled).toBe(false);
+  });
+
   it("caso 4 — offline desabilita o botão, mostra a frase do D3 e o cupom continua na tela", async () => {
     isOfflineRef.atual = true; // `useOnlineStatus` devolve `true` quando está OFFLINE.
     const aoRegistrarVenda = vi.fn().mockResolvedValue(undefined);
