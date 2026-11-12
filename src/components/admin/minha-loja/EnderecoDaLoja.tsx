@@ -256,7 +256,13 @@ export const EnderecoDaLoja = memo(function EnderecoDaLoja({
     }));
 
   // ── O que a tela de cima recebe ───────────────────────────────────────
-  const motivo = motivoDoEnderecoIncompleto(partes);
+  // CEP trocado e busca no ar: o CEP já é o novo, mas rua/bairro/cidade ainda
+  // são os do CEP de antes — não vale gravar até a busca responder. (Só a
+  // busca que REFAZ o endereço: conferir/completar não trocam o que está salvo.)
+  const refazendoPeloCep = buscando && modoDoResultado === "preencher";
+  const motivo =
+    motivoDoEnderecoIncompleto(partes) ??
+    (refazendoPeloCep ? "aguarde a busca do CEP terminar." : null);
   const valores = useMemo(
     () => (motivo ? null : montarEnderecoDaLoja(partes)),
     [motivo, partes],

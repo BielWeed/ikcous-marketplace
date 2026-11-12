@@ -28,6 +28,7 @@ import {
 import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
 import { hojeEmSaoPaulo } from "@/lib/financeiro";
 import { JANELA_DE_REPETICAO_MS } from "@/lib/leitor/debounce-de-leitura";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { gerarUuidV4 } from "@/lib/uuid-v4";
 import {
   useCallback,
@@ -636,8 +637,9 @@ export function vendaPodeSerRegistrada(
     // migration 20261162000000:280
     return { ok: false, motivo: "O desconto não pode ser negativo." };
   }
-  if (estado.desconto > 0 && estado.motivoDoDesconto.trim() === "") {
-    // migration 20261162000000:286
+  if (estado.desconto > 0 && !nomeTemConteudoVisivel(estado.motivoDoDesconto)) {
+    // migration 20261162000000:286. `trim()` não tira U+200B & cia.: um motivo
+    // só de caracteres invisíveis é motivo em branco para quem lê o relatório.
     return { ok: false, motivo: "Informe o motivo do desconto." };
   }
   if (
