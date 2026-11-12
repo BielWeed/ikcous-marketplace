@@ -540,6 +540,7 @@ export function AbaDre({
       </div>
 
       <CartaoSecao
+        className="overflow-x-auto"
         titulo="Demonstração do resultado"
         subtitulo={`${rotuloDoPeriodo} · pelo mês de referência`}
       >

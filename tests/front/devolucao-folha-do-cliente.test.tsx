@@ -196,6 +196,21 @@ describe("SolicitarDevolucaoSheet — pedido de devolução do cliente", () => {
     );
   });
 
+  it("o sucesso mantém Fechar dentro de um corpo com rolagem interna", async () => {
+    await ateOPassoDoMetodo();
+    await clicar(radio("reembolso"));
+    await clicar(radio("envio_proprio"));
+    await clicar(botao("Continuar"));
+    await clicar(botao("Confirmar devolução"));
+    const sucesso = document.querySelector('[data-testid="devolucao-sucesso"]');
+    expect(sucesso?.classList.contains("overflow-y-auto")).toBe(true);
+    expect(sucesso?.classList.contains("min-h-0")).toBe(true);
+    expect(sucesso?.classList.contains("flex-1")).toBe(true);
+    expect(sucesso?.querySelector("button:last-child")?.textContent).toBe(
+      "Fechar",
+    );
+  });
+
   it("envio próprio: o passo do método mostra para onde mandar o pacote", async () => {
     await ateOPassoDoMetodo();
     expect(folha()?.textContent).toContain("Envie para: Rua A, 10");
