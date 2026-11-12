@@ -442,19 +442,27 @@ export function useCategories() {
 
         if (error) throw error;
 
+        const definitiva: Category = {
+          id: data.id,
+          name: data.nome,
+          slug: data.slug || "",
+          description: data.descricao || "",
+          isActive: data.ativo ?? true,
+          createdAt: data.created_at,
+        };
+        // A lista em memória do módulo é de onde nasce a PRÓXIMA tela (e ela
+        // pula a rede dentro do minuto de espera): só a definitiva entra, a
+        // provisória nunca saiu do estado desta tela. Sem lista carregada, nada
+        // a atualizar: a primeira leitura traz tudo.
+        if (globalCategoriesCache) {
+          globalCategoriesCache = ordenarCategorias([
+            ...globalCategoriesCache.filter((c) => c.id !== definitiva.id),
+            definitiva,
+          ]);
+        }
+
         setCategories((prev) => {
-          const final = prev.map((c) =>
-            c.id === tempId
-              ? {
-                  id: data.id,
-                  name: data.nome,
-                  slug: data.slug || "",
-                  description: data.descricao || "",
-                  isActive: data.ativo ?? true,
-                  createdAt: data.created_at,
-                }
-              : c,
-          );
+          const final = prev.map((c) => (c.id === tempId ? definitiva : c));
           persistToVault(final);
           return final;
         });
