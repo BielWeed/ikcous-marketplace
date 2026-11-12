@@ -30,6 +30,9 @@ export default defineConfig([
     ".serena",
     ".playwright-mcp",
     "scratch",
+    // Cópia local do tslib (bytes minificados do esm.sh, só para os testes
+    // Deno): código de terceiros que não é nosso para corrigir.
+    "supabase/functions/_shared/vendor",
   ]),
   ...tailwindcss.configs["flat/recommended"],
   security.configs.recommended,
