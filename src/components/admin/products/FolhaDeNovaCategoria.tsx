@@ -107,7 +107,8 @@ export function FolhaDeNovaCategoria({
     aoFechar();
   };
 
-  const criar = async () => {
+  const criar = async (nomeDigitado = nome) => {
+    const nomeLimpo = nomeDigitado.trim();
     if (criandoRef.current || !nomeLimpo) return;
     // A mesma régua do "renomear": só emoji ou símbolo (sem letra nem número)
     // ou nome acima do limite são recusados antes de chamar o banco.
@@ -254,6 +255,13 @@ export function FolhaDeNovaCategoria({
               maxLength={LIMITE_DO_NOME_DA_CATEGORIA}
               autoComplete="off"
               enterKeyHint="done"
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+                e.preventDefault();
+                // O buffer foi descarregado, mas o estado ainda pode ser o
+                // anterior neste evento: use o nome que está no campo.
+                void criar(e.currentTarget.value);
+              }}
               className="min-h-11 w-full rounded-xl border border-solid border-admin-border bg-admin-surface px-4 py-3 text-base font-semibold text-foreground placeholder:font-normal placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               placeholder="Ex.: Vestuário"
             />
