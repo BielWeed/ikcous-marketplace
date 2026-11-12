@@ -202,6 +202,7 @@ describe("CSV de pedidos com tamanho e cor", () => {
       raiz.unmount();
     });
     hospedeiro.remove();
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -246,5 +247,91 @@ describe("CSV de pedidos com tamanho e cor", () => {
     expect(mocks.erro).toHaveBeenCalledTimes(1);
     expect(mocks.erro.mock.calls[0][0]).toMatch(/tamanho e a cor/);
     expect(botao().disabled).toBe(false);
+  });
+
+  describe("quando a busca do tamanho conecta e nunca responde", () => {
+    const MENSAGEM_SEM_TAMANHO =
+      "Não deu para ler o tamanho e a cor das peças, então a planilha não foi gerada. Tente de novo.";
+    const rotulo = () => botao().getAttribute("aria-label");
+
+    it("depois de 20 s avisa, não baixa nada e solta o botão", async () => {
+      variacoes = () => new Promise(() => {});
+      await montarTela();
+      vi.useFakeTimers();
+
+      await act(async () => {
+        botao().click();
+      });
+      expect(rotulo()).toBe("Gerando CSV...");
+      expect(botao().disabled).toBe(true);
+      expect(mocks.erro).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+
+      expect(mocks.erro).toHaveBeenCalledTimes(1);
+      expect(mocks.erro).toHaveBeenCalledWith(MENSAGEM_SEM_TAMANHO);
+      expect(baixar).not.toHaveBeenCalled();
+      expect(rotulo()).toMatch(/Exportar CSV/);
+      expect(botao().disabled).toBe(false);
+    });
+
+    it("o segundo clique refaz a consulta: a trava da exportação foi solta", async () => {
+      variacoes = () => new Promise(() => {});
+      await montarTela();
+      vi.useFakeTimers();
+
+      await act(async () => {
+        botao().click();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      expect(mocks.em).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        botao().click();
+      });
+      expect(mocks.em).toHaveBeenCalledTimes(2);
+      expect(rotulo()).toBe("Gerando CSV...");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      expect(mocks.erro).toHaveBeenCalledTimes(2);
+      expect(baixar).not.toHaveBeenCalled();
+    });
+
+    it("resposta aos 19 s ainda cabe no prazo: baixa a planilha com o tamanho", async () => {
+      variacoes = (ids) =>
+        new Promise((resolve) => {
+          setTimeout(
+            () =>
+              resolve({
+                data: ids.map((id) => ({
+                  id,
+                  name: "Tamanho",
+                  value: id === "var-m" ? "M" : "GG",
+                })),
+                error: null,
+              }),
+            19_000,
+          );
+        });
+      await montarTela();
+      vi.useFakeTimers();
+
+      await act(async () => {
+        botao().click();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(19_000);
+      });
+
+      expect(mocks.erro).not.toHaveBeenCalled();
+      expect(baixar).toHaveBeenCalledTimes(1);
+      expect(textoCsv).toContain("Camiseta Básica - Tamanho M (1 x 49,90)");
+      expect(rotulo()).toMatch(/Exportar CSV/);
+    });
   });
 });
