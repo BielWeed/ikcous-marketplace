@@ -5,9 +5,9 @@
 // sincronização (produto novo chega pelo Realtime no fim da lista). Resultado:
 // a faixa ficava com os mesmos 6 de antes e o produto recém-cadastrado, que é o
 // mais novo, podia nunca entrar. A escolha agora é pelo critério da casa
-// (`ordenarParaVitrine`): com estoque primeiro, mais novo primeiro, e o id
-// decide quando as datas empatam — a mesma lista dá a mesma faixa em qualquer
-// ordem de chegada.
+// (`ordenarParaVitrine`): mais novo primeiro, e o id decide quando as datas
+// empatam — a mesma lista dá a mesma faixa em qualquer ordem de chegada. As
+// faixas só mostram produto à venda e com foto (fixture com foto real).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -95,7 +95,7 @@ const produto = (id: string, extras: Partial<Product> = {}): Product => ({
   name: `Produto ${id}`,
   description: "",
   price: 100,
-  images: [],
+  images: ["https://cdn.exemplo/foto.jpg"],
   category: "Roupas",
   stock: 5,
   sold: 0,
@@ -198,8 +198,8 @@ describe("HomeView — Ofertas e Destaques não dependem da posição na lista",
     expect(naFaixa("Ofertas Imperdíveis")).toEqual(["a", "b", "c"]);
   });
 
-  it("esgotado continua indo para o fim da faixa, mesmo sendo o mais novo", async () => {
-    await render([
+  it("esgotado, mesmo sendo o mais novo, não entra na faixa; volta quando repõe", async () => {
+    const lista = [
       produto("velho", { createdTime: 1000, isBestseller: true }),
       produto("esgotado-novo", {
         createdTime: 9000,
@@ -207,11 +207,16 @@ describe("HomeView — Ofertas e Destaques não dependem da posição na lista",
         stock: 0,
       }),
       produto("novo", { createdTime: 5000, isBestseller: true }),
-    ]);
+    ];
+    await render(lista);
+    expect(naFaixa("Destaques em Alta")).toEqual(["novo", "velho"]);
+    await render(
+      lista.map((p) => (p.id === "esgotado-novo" ? { ...p, stock: 4 } : p)),
+    );
     expect(naFaixa("Destaques em Alta")).toEqual([
+      "esgotado-novo",
       "novo",
       "velho",
-      "esgotado-novo",
     ]);
   });
 });

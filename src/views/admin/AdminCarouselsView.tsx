@@ -32,9 +32,12 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import type { LayoutDeOfertas } from "@/lib/layout-de-ofertas";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
-import { ordenarParaVitrine } from "@/lib/vitrine";
 import {
+  type FaixaAutomatica,
   destaquesDaVitrine,
+  foraDaFaixaAutomatica,
+  fraseDoQueFicouFora,
+  lancamentosDaVitrine,
   ofertasDaVitrine,
   produtosAVenda,
 } from "@/lib/vitrine-do-painel";
@@ -548,15 +551,34 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
       } else if (sec.id === "bestsellers") {
         map[sec.id] = destaquesDaVitrine(aVenda).slice(0, max);
       } else {
-        // new_arrivals or default custom — a MESMA ordenação da loja
-        // (ordenarParaVitrine, src/lib/vitrine.ts): sem-estoque no fim antes
-        // de cortar. Item 15 do laudo de 29/08: o preview ordenava só por
-        // data e a lojista montava a vitrine vendo uma ordem que a loja não
-        // mostrava.
-        map[sec.id] = ordenarParaVitrine(aVenda).slice(0, max);
+        // new_arrivals or default custom — a MESMA regra da loja
+        // (lancamentosDaVitrine, src/lib/vitrine-do-painel.ts): só produto à
+        // venda e com foto, mais novo primeiro. Item 15 do laudo de 29/08: o
+        // preview ordenava só por data e a lojista montava a vitrine vendo uma
+        // ordem que a loja não mostrava.
+        map[sec.id] = lancamentosDaVitrine(aVenda).slice(0, max);
       }
     });
 
+    return map;
+  }, [homeSections, products]);
+
+  // "Ficaram de fora desta faixa: 2 esgotados, 1 sem foto": só nas vitrines
+  // AUTOMÁTICAS (a escolhida à mão mostra tudo o que a lojista escolheu). Sem
+  // este aviso o destaque que esgota some e a lojista acha que o app quebrou.
+  const foraDasFaixas = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    const aVenda = produtosAVenda(products);
+    homeSections.forEach((sec) => {
+      if (sec.productIds && sec.productIds.length > 0) return;
+      const faixa: FaixaAutomatica =
+        sec.id === "offers"
+          ? "ofertas"
+          : sec.id === "bestsellers"
+            ? "destaques"
+            : "lancamentos";
+      map[sec.id] = fraseDoQueFicouFora(foraDaFaixaAutomatica(faixa, aVenda));
+    });
     return map;
   }, [homeSections, products]);
 
@@ -835,6 +857,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
               indice={index}
               total={secoesNaLista.length}
               produtosEmExibicao={previewProducts[sec.id] ?? []}
+              foraDaFaixa={foraDasFaixas[sec.id] ?? null}
               escolhidos={soOsQueExistem(sec.productIds, idsDoCatalogo).length}
               aoAbrir={setEditingSectionId}
               aoAlternarAtiva={handleToggleSectionActive}

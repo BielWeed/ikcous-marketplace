@@ -287,11 +287,11 @@ describe("seções da home: esqueleto durante o load (87% do salto)", () => {
     expect(home).toMatch(
       /const secaoCurada =\s*\n\s*!!section\.productIds && section\.productIds\.length > 0;/,
     );
+    // Desde que Lançamentos só mostra produto à venda e com foto, ele também
+    // nasce de filtro: a seção não curada, qualquer que seja, consulta a memória.
+    expect(home).toContain("const derivadaPorFiltro = !secaoCurada;");
     expect(home).toMatch(
-      /const derivadaPorFiltro =\s*\n\s*!secaoCurada &&\s*\n\s*\(section\.id === "offers" \|\| section\.id === "bestsellers"\);/,
-    );
-    expect(home).toMatch(
-      /const ultimaVisitaTinhaConteuto =\s*\n\s*section\.id === "offers"\s*\n\s*\? memoriaDaUltimaVisita\?\.temOfertas\s*\n\s*: memoriaDaUltimaVisita\?\.temBestsellers;/,
+      /const ultimaVisitaTinhaConteuto =\s*\n\s*section\.id === "offers"\s*\n\s*\? memoriaDaUltimaVisita\?\.temOfertas\s*\n\s*: section\.id === "bestsellers"\s*\n\s*\? memoriaDaUltimaVisita\?\.temBestsellers\s*\n\s*: memoriaDaUltimaVisita\?\.temLancamentos;/,
     );
     // A guarda devolve null DEPOIS do !isLoading e ANTES de qualquer
     // esqueleto: a ordem no fonte é parte do contrato (guarda solta no
@@ -520,7 +520,7 @@ describe("memória da última visita, comportamental: o DOM durante o load", () 
     name: overrides.id,
     description: "produto de teste",
     price: 100,
-    images: [],
+    images: ["https://cdn.exemplo/foto.jpg"],
     category: "geral",
     stock: 10,
     sold: 0,

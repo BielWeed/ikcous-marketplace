@@ -36,6 +36,7 @@ function prod(id: string, extra: Partial<Product> = {}): Product {
     name: id,
     price: 100,
     stock: 5,
+    images: ["https://cdn.exemplo/foto.jpg"],
     isActive: true,
     isBestseller: false,
     ...extra,
@@ -107,13 +108,12 @@ describe("ordenação e faixas usam a mesma pergunta", () => {
     );
   });
 
-  it("Ofertas e Destaques também", () => {
+  it("Ofertas e Destaques também: o meio esgotado nem entra na faixa", () => {
     expect(ofertasDaVitrine([meioEsgotado, normal]).map((p) => p.id)).toEqual([
       "normal",
-      "meio-esgotado",
     ]);
     expect(destaquesDaVitrine([meioEsgotado, normal]).map((p) => p.id)).toEqual(
-      ["normal", "meio-esgotado"],
+      ["normal"],
     );
   });
 
