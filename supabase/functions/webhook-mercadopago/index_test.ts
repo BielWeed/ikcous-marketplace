@@ -8519,6 +8519,39 @@ Deno.test("D7 webhook: raiz financiada confirma; acima do teto ou captura menor 
   }
 });
 
+// Cartão À VISTA (crédito 1x e débito) com captura menor que o pedido: o webhook só chama
+// `conferirValorDoPagamento`, e ela só recusava captura abaixo do pedido para o parcelado.
+Deno.test("webhook: cartão à vista com captura MENOR que o pedido NÃO confirma; borda de 5 centavos", async () => {
+  for (const [tipo, pago, esperado] of [
+    ["credit_card", "60.00", false],
+    ["debit_card", "60.00", false],
+    ["credit_card", "149.84", false],
+    ["credit_card", "149.85", true],
+    ["debit_card", "149.85", true],
+    ["credit_card", "149.90", true],
+  ]) {
+    ambienteDoWebhook();
+    const registro = { chamadasRpc: [], chamadasLiberar: [], chamadasUpdateMarketplaceOrders: [] };
+    const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: ID_ORDER_CARTAO_MP };
+    const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+    const o = orderParceladaComJuros(1, pago);
+    o.transactions.payments[0].payment_method.type = tipo;
+    const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+    const erroReal = console.error;
+    console.error = () => {};
+    let r;
+    try {
+      r = await handler(req, { supabase, fetchImpl: fetchConsulta(200, o), enviarPush: async () => {}, enviarComprovante: async () => {} });
+    } finally {
+      console.error = erroReal;
+    }
+    const rotulo = `${tipo} pago ${pago}`;
+    assertEquals(r.status, 200, rotulo);
+    assertEquals(registro.chamadasRpc.length, esperado ? 1 : 0, rotulo);
+    if (!esperado) assertEquals((await r.json()).ignorado, "valor divergente", rotulo);
+  }
+});
+
 const PARCELADOS_COM_JUROS = [
   { parcelas: 1, pago: "149.90" },
   { parcelas: 2, pago: "164.35" },

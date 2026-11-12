@@ -166,9 +166,12 @@ export function conferirValorDoPagamento(
   }
   // Captura parcial ou acima do teto não confirma. Principal exato não
   // exige installment_amount: juros podem existir só no total capturado.
+  // Captura abaixo do pedido vale para TODO cartão (à vista também): o webhook
+  // e a reconciliação só chamam esta função, não a prova completa.
   if (order && orderEhDeCartao(order) && presente(valorCapturado(order))) {
     const pago = comoNumero(valorCapturado(order));
     if ((parcelado && (pago === null || Math.round(pago * 100) < Math.round(total * 100))) ||
+      (pago !== null && totalEmCentavos - Math.round(pago * 100) > toleranciaEmCentavos) ||
       (pago !== null && Math.round(pago * 100) - totalEmCentavos > toleranciaEmCentavos &&
         (!parcelado || Math.round(pago * 100) > Math.floor(Math.round(total * 100) * TETO_DE_JUROS)))) {
       return { provado: false, motivo: "valor_divergente" };
