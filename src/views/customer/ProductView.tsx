@@ -895,12 +895,14 @@ export const ProductView = React.memo(function ProductView({
     abrirWhatsapp(url);
   };
 
+  const fotosReais = soFotosReais(product.images);
+
   // Schema.org JSON-LD
   const structuredData = {
     "@context": "https://schema.org/",
     "@type": "Product",
     name: product.name,
-    image: product.images,
+    ...(fotosReais.length > 0 && { image: fotosReais }),
     description: product.description,
     sku: product.id,
     offers: {
@@ -930,7 +932,7 @@ export const ProductView = React.memo(function ProductView({
     product.metaDescription || resumoParaPrevia(product.description ?? "", 150);
   const metaTitle = product.metaTitle || product.name;
   const nomeDaLoja = config.storeName?.trim() || branding.appName;
-  const metaImage = product.images?.[0] || "";
+  const metaImage = fotosReais[0] || "";
 
   useDocumentMeta({
     title: product.metaTitle || `${product.name} | ${nomeDaLoja}`,
