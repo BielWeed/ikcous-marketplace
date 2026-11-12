@@ -50,7 +50,7 @@ describe("AuthView (cadastro) — teto do nome", () => {
     host.remove();
   });
 
-  it("o campo de nome completo limita a digitação a 120 caracteres", async () => {
+  async function montarCadastro() {
     const { AuthProvider } = await import("@/contexts/AuthContext");
     const { AuthView } = await import("@/views/shared/AuthView");
     const { supabase } = await import("@/lib/supabase");
@@ -79,9 +79,50 @@ describe("AuthView (cadastro) — teto do nome", () => {
     await act(async () => {
       await tick();
     });
+  }
 
+  it("o campo de nome completo limita a digitação a 120 caracteres", async () => {
+    await montarCadastro();
     const campo = document.getElementById("fullName") as HTMLInputElement;
     expect(campo).not.toBeNull();
     expect(campo.getAttribute("maxlength")).toBe("120");
+  });
+
+  it("nome de exatamente 120 caracteres chega inteiro ao cadastro", async () => {
+    await montarCadastro();
+    const { supabase } = await import("@/lib/supabase");
+    vi.mocked(supabase.auth.signUp)
+      .mockClear()
+      .mockResolvedValue({
+        data: { user: null, session: null },
+        error: null,
+      });
+    const nome = `${"n".repeat(119)}z`;
+    await act(async () => {
+      for (const [id, valor] of [
+        ["fullName", nome],
+        ["phone", "(34) 99999-8888"],
+        ["email", "pessoa@example.com"],
+        ["password", "senha12345"],
+      ]) {
+        const campo = document.getElementById(id) as HTMLInputElement;
+        Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value",
+        )!.set!.call(campo, valor);
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
+    await act(async () => {
+      [...document.body.querySelectorAll("button")]
+        .find((b) => b.textContent?.trim() === "FINALIZAR REGISTRO")
+        ?.click();
+      await tick();
+    });
+    expect(supabase.auth.signUp).toHaveBeenCalledTimes(1);
+    expect(
+      vi.mocked(supabase.auth.signUp).mock.calls[0][0].options?.data,
+    ).toMatchObject({ full_name: nome });
+    expect(host.textContent).toContain("Verifique seu e-mail");
   });
 });

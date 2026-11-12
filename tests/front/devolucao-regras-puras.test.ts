@@ -779,6 +779,25 @@ describe("regras do pedido do cliente", () => {
   });
 
   it.each([
+    [1000, null] as const,
+    [1001, "Use no máximo 1000 caracteres."] as const,
+  ])(
+    "detalhe com %i caracteres respeita a fronteira de 1000",
+    (tamanho, erro) => {
+      expect(
+        erroDoMotivo({
+          motivo: "outro",
+          detalhe: "x".repeat(tamanho),
+          quantidadeDeFotos: 0,
+          janelas: todas,
+          prazos: PRAZOS_ABERTOS,
+          politica: POLITICA,
+        }),
+      ).toBe(erro);
+    },
+  );
+
+  it.each([
     ...[0x200b, 0x200e, 0x2800, 0x3164].map((codigo) =>
       String.fromCodePoint(codigo),
     ),

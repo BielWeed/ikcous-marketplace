@@ -356,6 +356,28 @@ describe("CheckoutView (visitante) — nome e campos de texto livre", () => {
     },
   );
 
+  it("observação de exatamente 500 caracteres chega inteira ao pedido", async () => {
+    const texto = `${"a".repeat(499)}z`;
+    createOrder.mockResolvedValue({ id: "ped-1" });
+    await montarEPreencher("Cliente Teste", () => {
+      const notas = document.getElementById("order-notes")!;
+      Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )!.set!.call(notas, texto);
+      notas.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(botaoFinalizar()!.disabled).toBe(false);
+    await act(async () => {
+      botaoFinalizar()!.click();
+      await esperarMicrotarefas();
+    });
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(createOrder.mock.calls[0][0].notes).toBe(
+      `${texto}\n\nFrete Escolhido: Entrega Local (Prazo: 1 dia)`,
+    );
+  });
+
   it("a1: observação do pedido e complemento têm teto de tamanho no próprio campo (500 e 100)", async () => {
     await montarEPreencher("Cliente Teste");
 

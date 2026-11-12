@@ -128,6 +128,21 @@ describe("aviso discreto no fim de Para fazer", () => {
     );
     expect(html).toContain("O produto ainda tem estoque nas outras variações.");
   });
+  it("exatamente três variações esgotadas mostra todas sem dizer e mais", () => {
+    const html = renderToStaticMarkup(
+      <ParaFazer
+        painel={painel}
+        carregando={false}
+        onNavigate={vi.fn()}
+        produtos={[produto([0, 0, 0, 20])]}
+      />,
+    );
+    expect(html.match(/ esgotou/g)).toHaveLength(3);
+    expect(html).toContain("Tamanho P esgotou");
+    expect(html).toContain("Tamanho M esgotou");
+    expect(html).toContain("Tamanho G esgotou");
+    expect(html).not.toContain("e mais");
+  });
   it("limita a três detalhes e informa as duas restantes", () => {
     const html = renderToStaticMarkup(
       <ParaFazer
