@@ -38,3 +38,55 @@ describe("linkWhatsappDoCliente — null quando não abre conversa (laudo 0109, 
     );
   });
 });
+
+// Cadastro antigo guarda o telefone com o zero de tronco ("034 99999-1234").
+// O link saía `wa.me/034999991234`, sem o 55, e a ficha do cliente habilitava
+// "Conversar no WhatsApp" para um número que não abre conversa nenhuma.
+describe("linkWhatsappDoCliente — zero de tronco, operadora e 0055 (painel de clientes)", () => {
+  it("zero de tronco + DDD + celular: tira o zero e põe o 55 uma vez", () => {
+    expect(linkWhatsappDoCliente("034 99999-1234")).toBe(
+      "https://wa.me/5534999991234",
+    );
+    expect(linkWhatsappDoCliente("(034) 99999-1234")).toBe(
+      "https://wa.me/5534999991234",
+    );
+  });
+
+  it("zero de tronco + fixo de 10 dígitos: tira o zero e põe o 55", () => {
+    expect(linkWhatsappDoCliente("034 3333-4444")).toBe(
+      "https://wa.me/553433334444",
+    );
+  });
+
+  it("zero + operadora (014) + DDD + celular: tira zero e operadora", () => {
+    expect(linkWhatsappDoCliente("014 34 99999-1234")).toBe(
+      "https://wa.me/5534999991234",
+    );
+  });
+
+  it("discagem internacional 0055: sai o 00 e o 55 não dobra", () => {
+    expect(linkWhatsappDoCliente("0055 34 99999-1234")).toBe(
+      "https://wa.me/5534999991234",
+    );
+  });
+
+  it("controles: +55, 55 já presente, número normal e estrangeiro ficam como estavam", () => {
+    expect(linkWhatsappDoCliente("+55 34 99999-1234")).toBe(
+      "https://wa.me/5534999991234",
+    );
+    expect(linkWhatsappDoCliente("55 34 99999-1234")).toBe(
+      "https://wa.me/5534999991234",
+    );
+    expect(linkWhatsappDoCliente("34 99999-1234")).toBe(
+      "https://wa.me/5534999991234",
+    );
+    expect(linkWhatsappDoCliente("+44 7911 123456")).toBe(
+      "https://wa.me/447911123456",
+    );
+  });
+
+  it("zero na frente de número curto demais continua sem link", () => {
+    expect(linkWhatsappDoCliente("099999-9999")).toBeNull();
+    expect(linkWhatsappDoCliente("034 9999")).toBeNull();
+  });
+});
