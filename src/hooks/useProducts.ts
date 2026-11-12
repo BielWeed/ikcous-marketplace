@@ -16,6 +16,7 @@ import { mapProductFromDB } from "@/lib/mappers";
 import {
   MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA,
   MENSAGEM_PRODUTO_EDICAO_SEM_RESPOSTA,
+  MENSAGEM_PRODUTO_EXCLUSAO_SEM_RESPOSTA,
   MENSAGEM_PRODUTO_LEITURA_SEM_RESPOSTA,
   MENSAGEM_PRODUTO_NOVO_GRADE_SEM_RESPOSTA,
   MENSAGEM_PRODUTO_NOVO_SEM_RESPOSTA,
@@ -1360,15 +1361,23 @@ export function useProducts({
           let totalDaPrimeira: number | null = null;
           let mudou = false;
           for (let pagina = 0; pagina < LIMITE_DE_PAGINAS; pagina++) {
-            const { data, error } = await callRpcWithRetry<any>(async () =>
-              (supabase.rpc as any)("get_admin_products_paged", {
-                p_search: filters?.search || "",
-                p_category: filters?.category || "all",
-                p_status: "active",
-                p_stock: "all",
-                p_page: pagina,
-                p_page_size: TAMANHO_DA_PAGINA,
-              }).abortSignal(signal),
+            // Com prazo POR PÁGINA, como `loadProducts`: rede "pendurada" deixava
+            // "Procurando os produtos sem custo…" para sempre, sem erro e sem
+            // "Tentar Novamente". Estourou = falha de leitura (cai no `catch`:
+            // `null` + aviso). Só encerra a ESPERA da tela; a leitura não grava nada.
+            const { data, error } = await aguardarComPrazo(
+              callRpcWithRetry<any>(async () =>
+                (supabase.rpc as any)("get_admin_products_paged", {
+                  p_search: filters?.search || "",
+                  p_category: filters?.category || "all",
+                  p_status: "active",
+                  p_stock: "all",
+                  p_page: pagina,
+                  p_page_size: TAMANHO_DA_PAGINA,
+                }).abortSignal(signal),
+              ),
+              PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+              () => erroDeConsultaSemResposta(),
             );
             if (error) throw error;
             if (loadId !== lastLoadId.current) return null;
@@ -2250,13 +2259,25 @@ export function useProducts({
         // fotos já tinham sido movidas: produto "de volta" com todas as URLs
         // quebradas. Com o soft-delete primeiro, uma falha aqui não move
         // arquivo nenhum.
-        const { error } = await supabase
-          .from("produtos")
-          .update({
-            deleted_at: new Date().toISOString(),
-            ativo: false,
-          })
-          .eq("id", id);
+        //
+        // Com prazo: o UPDATE pendurado deixava a tela em "Recarregando…" para
+        // sempre, sem dizer se excluiu. Estourou: não se sabe se excluiu (cai
+        // no `catch`: o produto volta à lista e a frase manda conferir). Repetir
+        // é seguro: é o mesmo UPDATE de `deleted_at`.
+        const { error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("produtos")
+              .update({
+                deleted_at: new Date().toISOString(),
+                ativo: false,
+              })
+              .eq("id", id),
+          ) as Promise<{ error: any }>,
+          PRAZO_DE_GRAVAR_O_PRODUTO_MS,
+          () =>
+            erroDeConsultaSemResposta(MENSAGEM_PRODUTO_EXCLUSAO_SEM_RESPOSTA),
+        );
 
         if (error) throw error;
 
@@ -2276,7 +2297,13 @@ export function useProducts({
         cachedAdminProducts = originalCache;
         cachedAdminProductsTotal = originalTotal;
         setLocalProducts(originalProducts);
-        toast.error("Erro ao excluir produto");
+        if (ehConsultaSemResposta(err)) {
+          toast.error(err.message, {
+            duration: DURACAO_DO_AVISO_SEM_RESPOSTA_MS,
+          });
+        } else {
+          toast.error("Erro ao excluir produto");
+        }
         return false;
       }
     },

@@ -21,6 +21,10 @@
 // arquivo testa é o que `deleteProduct` faz com `product.images`, não o
 // mapeamento de linha do banco — isso já é coberto em mappers.test.ts.
 import { useProducts } from "@/hooks/useProducts";
+import {
+  MENSAGEM_PRODUTO_EXCLUSAO_SEM_RESPOSTA,
+  PRAZO_DE_GRAVAR_O_PRODUTO_MS,
+} from "@/lib/prazo-da-requisicao";
 import { act, useEffect } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -49,6 +53,8 @@ const mock = vi.hoisted(() => ({
   fetchProductsContext: vi.fn().mockResolvedValue(undefined),
   ordem: [] as Chamada[],
   resultadoUpdateProdutos: [] as Array<{ error: any }>,
+  /** Rede pendurada: o UPDATE do soft-delete nunca responde. */
+  updateProdutosPendurado: false,
   resultadoMove: (async () => ({ error: null })) as () => Promise<{
     error: any;
   }>,
@@ -126,6 +132,8 @@ vi.mock("@/lib/supabase", () => ({
         eq: async (_col: string, id: string) => {
           if (tabela === "produtos") {
             mock.ordem.push({ tipo: "update", tabela, payload, id });
+            if (mock.updateProdutosPendurado)
+              return new Promise<never>(() => {});
             const proximo = mock.resultadoUpdateProdutos.shift();
             return proximo ?? { error: null };
           }
@@ -226,6 +234,7 @@ describe("useProducts.deleteProduct — #99 ordem das fases", () => {
     mock.fetchProductsContext.mockResolvedValue(undefined);
     mock.ordem.length = 0;
     mock.resultadoUpdateProdutos.length = 0;
+    mock.updateProdutosPendurado = false;
     mock.resultadoMove = async () => ({ error: null });
     mock.resultadoUpdateVariant = { error: null };
     mock.rpcRowsAdmin = [produtoComDuasImagens];
@@ -244,6 +253,7 @@ describe("useProducts.deleteProduct — #99 ordem das fases", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     act(() => {
       raiz.unmount();
     });
@@ -318,6 +328,42 @@ describe("useProducts.deleteProduct — #99 ordem das fases", () => {
 
     // Rollback: o produto continua na lista local.
     expect(apiRef!.products.map((p) => p.id)).toContain("prod-del-1");
+  });
+
+  // Rede "pendurada" (conecta e não responde): sem prazo o UPDATE do
+  // soft-delete nunca voltava, `deleteProduct` nunca devolvia e a tela ficava
+  // em "Recarregando…" para sempre, sem dizer se excluiu. Estourou: devolve
+  // `false`, o produto volta à lista e a frase NÃO afirma que falhou (o
+  // servidor pode ter excluído): manda conferir a lista. Nenhuma foto é movida.
+  it("UPDATE do soft-delete pendurado: passado o prazo devolve false, restaura o produto e manda conferir a lista", async () => {
+    await montarECarregar();
+    mock.updateProdutosPendurado = true;
+    vi.useFakeTimers();
+
+    let resultado: boolean | undefined | "pendente" = "pendente";
+    await act(async () => {
+      void apiRef!.deleteProduct("prod-del-1").then((r) => {
+        resultado = r;
+      });
+      await vi.advanceTimersByTimeAsync(PRAZO_DE_GRAVAR_O_PRODUTO_MS - 1);
+    });
+    // Dentro do prazo: segue esperando, o produto já saiu da lista (otimista).
+    expect(resultado).toBe("pendente");
+    expect(apiRef!.products.map((p) => p.id)).not.toContain("prod-del-1");
+    expect(mock.toastError).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(resultado).toBe(false);
+    expect(mock.toastError).toHaveBeenCalledTimes(1);
+    expect(mock.toastError).toHaveBeenCalledWith(
+      MENSAGEM_PRODUTO_EXCLUSAO_SEM_RESPOSTA,
+      expect.objectContaining({ duration: expect.any(Number) }),
+    );
+    expect(mock.toastSuccess).not.toHaveBeenCalled();
+    expect(apiRef!.products.map((p) => p.id)).toContain("prod-del-1");
+    expect(mock.ordem.filter((c) => c.tipo === "copy")).toHaveLength(0);
   });
 
   // Achado da revisão de contexto limpo (Trilha 1, #98/#99): o nome original

@@ -205,7 +205,8 @@ export function useCategories() {
           const cached = ordenarCategorias(
             await vault.getAll<Category>("categories"),
           );
-          if (cached.length > 0 && !cancelled) {
+          // A rede pode ter respondido enquanto o disco estava lendo (vazio também vale).
+          if (cached.length > 0 && !cancelled && !globalCategoriesCache) {
             globalCategoriesCache = cached;
             setCategories(cached);
             setIsLoading(false);
