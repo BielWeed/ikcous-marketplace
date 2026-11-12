@@ -153,7 +153,7 @@ async function main() {
     // com 42703 (undefined_column) já na 2ª passada de aplicação (achado da
     // re-revisão de risco, 27/09/2026; mesma coluna que tests/banco/
     // provisionar.cjs já tinha para a frente rpc-ci). raw_user_meta_data (nulável, como na
-    // plataforma): o reparo da 20261399930000 lê nome/telefone/CPF do cadastro nele.
+    // plataforma): o reparo da 20261399940000 lê nome/telefone/CPF do cadastro nele.
     await cliente.query(
       `CREATE TABLE auth.users (
          id uuid PRIMARY KEY,

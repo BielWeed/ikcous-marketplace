@@ -201,6 +201,21 @@ describe("Balcão — a busca de produto por nome mostra tudo o que existe", () 
     expect(nomesNaLista()).toHaveLength(0);
   });
 
+  it("catálogo vazio oferece cadastrar produto e navega para o formulário", async () => {
+    rpcMock.mockImplementation(bancoComVestidos(0));
+    const navegar = vi.fn();
+    await act(async () =>
+      raiz.render(<AdminPdvView onNavigate={navegar} active />),
+    );
+    await act(async () => botaoPorTexto(hospedeiro, "Buscar")!.click());
+    await avancar();
+    expect(hospedeiro.textContent).toContain("Nenhum produto ativo cadastrado");
+    const cadastrar = botaoPorTexto(hospedeiro, "Cadastrar produto");
+    expect(cadastrar).toBeDefined();
+    await act(async () => cadastrar!.click());
+    expect(navegar).toHaveBeenCalledExactlyOnceWith("admin-product-form");
+  });
+
   it("uma letra mantém a lista base sem buscar esse termo e usa o estado vazio de produtos ativos", async () => {
     rpcMock.mockImplementation(bancoComVestidos(0));
     await act(async () => {

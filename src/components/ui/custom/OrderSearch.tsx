@@ -16,7 +16,7 @@ import {
   Phone,
   User,
 } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
 /**
@@ -88,6 +88,7 @@ export function OrderSearch({
   // Loading/Wizard states
   const [step, setStep] = useState<"request" | "verify">("request");
   const [isLoading, setIsLoading] = useState(false);
+  const envioOtpEmCurso = useRef(false);
 
   const handleWhatsappChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = mascaraWhatsappBr(e.target.value, whatsapp);
@@ -115,6 +116,7 @@ export function OrderSearch({
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (envioOtpEmCurso.current) return;
     haptic.light();
 
     if (!emailValido(email)) {
@@ -141,6 +143,7 @@ export function OrderSearch({
       return;
     }
 
+    envioOtpEmCurso.current = true;
     setIsLoading(true);
     try {
       const success = await generateOrderOtp(
@@ -155,6 +158,7 @@ export function OrderSearch({
     } catch (error) {
       console.error(error);
     } finally {
+      envioOtpEmCurso.current = false;
       setIsLoading(false);
     }
   };

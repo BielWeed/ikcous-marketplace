@@ -175,7 +175,9 @@ describe("useCategories — rede falhando na consulta", () => {
     expect(esperas).toEqual([1_000, 2_000, 4_000]);
     // o erro continua visivel para quem usa, uma vez so, no caso final
     expect(avisos.erro).toHaveBeenCalledTimes(1);
-    expect(avisos.erro).toHaveBeenCalledWith("Erro ao carregar categorias");
+    expect(avisos.erro).toHaveBeenCalledWith("Erro ao carregar categorias", {
+      id: "Erro ao carregar categorias",
+    });
     expect(vi.getTimerCount()).toBe(0);
   });
 

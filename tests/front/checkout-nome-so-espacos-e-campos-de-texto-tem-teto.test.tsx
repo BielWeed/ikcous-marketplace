@@ -258,6 +258,25 @@ describe("CheckoutView (visitante) — nome e campos de texto livre", () => {
     expect(createOrder).not.toHaveBeenCalled();
   });
 
+  it.each(["​", "⠀"])(
+    "nome invisível %j não libera o pedido e mostra o erro no campo",
+    async (nome) => {
+      await montarEPreencher(nome);
+      expect(botaoFinalizar()!.disabled).toBe(true);
+      await act(async () => {
+        (document.getElementById("checkout-name") as HTMLInputElement).focus();
+      });
+      await act(async () => {
+        (document.getElementById("checkout-name") as HTMLInputElement).blur();
+        await esperarMicrotarefas();
+      });
+      expect(document.getElementById("erro-checkout-name")?.textContent).toBe(
+        "Nome é obrigatório",
+      );
+      expect(createOrder).not.toHaveBeenCalled();
+    },
+  );
+
   it("a0 (borda): nome com espaços nas pontas continua válido, e o pedido leva o nome já aparado", async () => {
     createOrder.mockResolvedValue({ id: "ped-1" });
     await montarEPreencher("  Maria Teste  ");

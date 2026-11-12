@@ -396,6 +396,7 @@ export function ConfirmarExclusao({
   readonly aoCancelar: () => void;
   readonly aoConfirmar: () => unknown;
 }) {
+  const fraseId = useId();
   const cancelar = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     cancelar.current?.focus();
@@ -414,8 +415,10 @@ export function ConfirmarExclusao({
     }
   }
   return (
-    <div>
-      <p className="text-base text-zinc-100">{frase}</p>
+    <div role="alertdialog" aria-labelledby={fraseId}>
+      <p id={fraseId} className="text-base text-zinc-100">
+        {frase}
+      </p>
       <div className="mt-3 flex gap-2">
         <button
           ref={cancelar}

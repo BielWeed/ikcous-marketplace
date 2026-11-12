@@ -502,7 +502,55 @@ describe("painel de edição (sobe de baixo)", () => {
   it("'Automático' devolve a vitrine à escolha da loja (productIds vazio)", async () => {
     await abrirKits();
     await clicar(botaoComTexto("Automático", painel() as HTMLElement));
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(confirmacao()?.textContent).toContain("2 produtos");
+    await clicar(botaoComTexto("Cancelar", confirmacao()!));
+    expect(updateConfig).not.toHaveBeenCalled();
+    await clicar(botaoComTexto("Automático", painel() as HTMLElement));
+    await clicar(botaoComTexto("Voltar ao automático", confirmacao()!));
     expect(ultimaGravacao().homeSections[1].productIds).toEqual([]);
+  });
+
+  it("desmarcar o último produto pede confirmação e cancelar preserva a escolha", async () => {
+    configDaLoja.homeSections = [{ ...secaoKits, productIds: ["p1"] }];
+    await abrirKits();
+    await clicar(
+      painel()!.querySelector('[data-produto-id="p1"]') as HTMLElement,
+    );
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(confirmacao()?.textContent).toContain("1 produto");
+    await clicar(botaoComTexto("Cancelar", confirmacao()!));
+    expect(updateConfig).not.toHaveBeenCalled();
+    await clicar(
+      painel()!.querySelector('[data-produto-id="p1"]') as HTMLElement,
+    );
+    await clicar(botaoComTexto("Voltar ao automático", confirmacao()!));
+    expect(ultimaGravacao().homeSections[0].productIds).toEqual([]);
+  });
+
+  it("seta preserva o foco no mesmo item no limite e anuncia a posição gravada", async () => {
+    await montar();
+    const seta = porRotulo(
+      "Descer vitrine Kits de presente",
+    ) as HTMLButtonElement;
+    seta.focus();
+    updateConfig.mockImplementationOnce(async () => {
+      // Simula a perda de foco ao reposicionar o nó no navegador.
+      seta.blur();
+      return true;
+    });
+    await clicar(seta);
+    configDaLoja.homeSections = ultimaGravacao().homeSections;
+    await montar();
+    expect(document.activeElement).toBe(seta);
+    expect(seta.disabled).toBe(false);
+    expect(seta.getAttribute("aria-disabled")).toBe("true");
+    expect(
+      document.querySelector('[aria-live="polite"]')?.textContent,
+    ).toContain("Vitrine Kits de presente agora é a 3ª de 3");
+    updateConfig.mockClear();
+    await clicar(seta);
+    expect(updateConfig).not.toHaveBeenCalled();
   });
 
   it("numa vitrine automática, marcar o primeiro produto parte dos que já aparecem", async () => {
@@ -571,10 +619,14 @@ describe("reordenar", () => {
   it("a primeira não sobe e a última não desce", async () => {
     await montar();
     expect(
-      porRotulo("Subir vitrine Últimos Lançamentos").hasAttribute("disabled"),
+      porRotulo("Subir vitrine Últimos Lançamentos").getAttribute(
+        "aria-disabled",
+      ) === "true",
     ).toBe(true);
     expect(
-      porRotulo("Descer vitrine Destaques em Alta").hasAttribute("disabled"),
+      porRotulo("Descer vitrine Destaques em Alta").getAttribute(
+        "aria-disabled",
+      ) === "true",
     ).toBe(true);
   });
 
@@ -847,7 +899,9 @@ describe("lista travada enquanto a ordem arrastada é gravada", () => {
     await soltarComGravacaoPendente();
     expect(updateConfig).toHaveBeenCalledTimes(1);
 
-    const desabilitado = (el: Element) => el.hasAttribute("disabled");
+    const desabilitado = (el: Element) =>
+      el.hasAttribute("disabled") ||
+      el.getAttribute("aria-disabled") === "true";
     const interruptorDestaques = cartaoDe("Destaques em Alta").querySelector(
       '[role="switch"]',
     ) as HTMLElement;

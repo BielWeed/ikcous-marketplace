@@ -139,7 +139,7 @@ async function main() {
     }
     console.log("[aplicar] sentinela de objetos pós-apply: OK");
 
-    // O gatilho de cadastro (20261399930000: on_auth_user_created, que cria o perfil
+    // O gatilho de cadastro (20261399940000: on_auth_user_created, que cria o perfil
     // quando nasce um usuário em auth.users) fica DESLIGADO no efêmero das provas: as
     // ~110 provas daqui semeiam auth.users e depois INSERT em profiles à mão, e com o
     // gatilho ligado a linha de profiles já existiria (profiles_pkey duplicada). Foi
@@ -149,17 +149,17 @@ async function main() {
       "SELECT 1 FROM pg_trigger WHERE tgrelid = 'auth.users'::regclass AND tgname = 'on_auth_user_created' AND NOT tgisinternal",
     );
     // Várias provas aplicam só uma FAIXA da raiz (base "pre1192", "pre60"...), e nelas a
-    // 20261399930000 nem entrou: sem o gatilho é o esperado. Quando ELA foi aplicada e o
+    // 20261399940000 nem entrou: sem o gatilho é o esperado. Quando ELA foi aplicada e o
     // gatilho não está lá, o desligamento seria pular em silêncio e a prova viva do
     // gatilho mediria o nada: falha ALTA.
     const aplicouAMigrationDoGatilho = aplicados.some((nome) =>
-      String(nome).includes("20261399930000"),
+      String(nome).includes("20261399940000"),
     );
     if (gatilhoDeCadastro.rowCount !== 1) {
       if (aplicouAMigrationDoGatilho) {
         falhar(
           "FALHOU",
-          "on_auth_user_created ausente depois de aplicar a 20261399930000 (ela devia tê-lo criado em auth.users)",
+          "on_auth_user_created ausente depois de aplicar a 20261399940000 (ela devia tê-lo criado em auth.users)",
         );
       }
     } else {

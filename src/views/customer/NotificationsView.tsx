@@ -49,7 +49,8 @@ export function navegarPorUrl(
     const parsedUrl = new URL(url, window.location.origin);
     const pathname = parsedUrl.pathname;
     const searchParams = parsedUrl.searchParams;
-    const cleanPath = pathname.replace(/^\/+|\/+$/g, "");
+    const caminhoOriginal = pathname.replace(/^\/+|\/+$/g, "");
+    const cleanPath = caminhoOriginal.toLowerCase();
 
     // Link de categoria (`/?category=Vestidos`): o celular abre o app já na
     // categoria. Aqui o App só guarda a categoria no `handleCategoryChange`
@@ -74,7 +75,9 @@ export function navegarPorUrl(
     // (`destinoDaUrl`): o id vem no CAMINHO, `/product/<id>`. Sem id
     // (`/product/`) o caminho vira "product" e segue o fluxo normal.
     if (cleanPath.startsWith("product/")) {
-      const idNoCaminho = cleanPath.slice("product/".length).split("/")[0];
+      const idNoCaminho = caminhoOriginal
+        .slice("product/".length)
+        .split("/")[0];
       if (idNoCaminho) {
         onNavigate?.("product-detail", idNoCaminho);
         return;

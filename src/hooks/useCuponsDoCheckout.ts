@@ -60,6 +60,10 @@ export function useCuponsDoCheckout({ subtotal, userId, ligado }: Parametros) {
   const rodadaRef = useRef(0);
   const contaRef = useRef<string | null>(userId);
   const ausenteRef = useRef(semCliente());
+  const subtotalRef = useRef(subtotal);
+  useEffect(() => {
+    subtotalRef.current = subtotal;
+  }, [subtotal]);
 
   const buscar = useCallback(async (valor: number) => {
     const rodada = ++rodadaRef.current;
@@ -134,8 +138,8 @@ export function useCuponsDoCheckout({ subtotal, userId, ligado }: Parametros) {
   const tentarDeNovo = useCallback(() => {
     if (!ligado || ausenteRef.current) return;
     setSituacao("carregando");
-    void buscar(subtotal);
-  }, [buscar, subtotal, ligado]);
+    void buscar(subtotalRef.current);
+  }, [buscar, ligado]);
 
   return { cupons, situacao, tentarDeNovo };
 }

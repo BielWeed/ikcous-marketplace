@@ -8,6 +8,10 @@ import {
   STATUS_PARA_PREPARAR,
 } from "@/lib/pedidos-para-preparar";
 import {
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
+import {
   FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA,
   TETO_DE_RECEBIMENTOS,
   inicioDaJanelaDoSino,
@@ -50,6 +54,20 @@ const TETO_DE_SEGURANCA_DE_PRODUTOS = 2000;
  * conta todas; a diferenca vira o aviso de lista cortada.
  */
 const TETO_DE_AVALIACOES = 100;
+
+/**
+ * Quanto a tela espera CADA fonte antes de contar que ela nao respondeu.
+ * Rede "pendurada" conecta e nao responde: sem prazo, uma fonte parada segurava
+ * a lista inteira em "Atualizando os avisos..." (nem a falha aparecia, porque
+ * ela so aparece quando a fonte REJEITA). Estourou = rejeicao, entra em
+ * `fontesComFalha` e as outras fontes aparecem normalmente.
+ */
+const PRAZO_DA_FONTE_DE_AVISO_MS = 15_000;
+
+const comPrazoDaFonte = <T>(fonte: Promise<T>): Promise<T> =>
+  aguardarComPrazo(fonte, PRAZO_DA_FONTE_DE_AVISO_MS, () =>
+    erroDeConsultaSemResposta(),
+  );
 
 export interface AvisosDoLojista {
   avisos: Aviso[];
@@ -212,7 +230,7 @@ async function buscarCancelamentosDoCliente(): Promise<
   const { data, error } = await supabase
     .from("marketplace_order_history")
     .select(
-      "id, order_id, old_status, created_by, created_at, marketplace_orders(id, user_id, customer_name, total, payment_status, status, cancelled_after_shipping, customer_data->>pickup_address)",
+      "id, order_id, old_status, created_by, created_at, marketplace_orders(id, user_id, customer_name, total, payment_status, status, cancelled_after_shipping, returned_to_seller_at, customer_data->>pickup_address)",
     )
     .eq("new_status", "cancelled")
     .not("created_by", "is", null)
@@ -248,10 +266,16 @@ async function buscarCancelamentosDoCliente(): Promise<
 // cliente. A regra (e o porque) mora em `@/lib/recebimentos-por-marcar`, lida
 // tambem pela bolinha do sino (`AdminLayout`). Falha de leitura LANCA: vira
 // falha da FONTE, nunca "nenhum pedido por marcar".
-async function buscarRecebimentosPorMarcar(): Promise<RecebimentoPorMarcar[]> {
-  const { data, error } = await supabase
+interface LeituraDeRecebimentos {
+  recebimentos: RecebimentoPorMarcar[];
+  /** Havia mais por marcar que o teto: esta lista traz so os mais recentes. */
+  truncou: boolean;
+}
+
+async function buscarRecebimentosPorMarcar(): Promise<LeituraDeRecebimentos> {
+  const { data, error, count } = await supabase
     .from("marketplace_orders")
-    .select("id, customer_name, total, updated_at")
+    .select("id, customer_name, total, updated_at", { count: "exact" })
     .eq("status", "delivered")
     .or(FILTRO_POSTGREST_PAGAMENTO_NA_ENTREGA)
     .is("payment_status", null)
@@ -260,7 +284,13 @@ async function buscarRecebimentosPorMarcar(): Promise<RecebimentoPorMarcar[]> {
     .limit(TETO_DE_RECEBIMENTOS);
 
   if (error) throw error;
-  return (data ?? []) as unknown as RecebimentoPorMarcar[];
+  const recebimentos = (data ?? []) as unknown as RecebimentoPorMarcar[];
+  // O sino conta todos; a lista traz ate o teto. Sem numero na resposta nao ha
+  // como afirmar corte: nao se inventa aviso.
+  return {
+    recebimentos,
+    truncou: typeof count === "number" && count > recebimentos.length,
+  };
 }
 
 interface LeituraDeProdutos {
@@ -288,14 +318,18 @@ async function buscarProdutosComEstoqueBaixo(
   // Pagina por pagina (o `loadProducts` aborta a consulta anterior, entao
   // nada de paralelo) ate cobrir o total do servidor ou bater o teto.
   for (let pagina = 0; pagina < maximoDePaginas; pagina++) {
-    const resultado = await carregar(pagina, TAMANHO_DA_PAGINA_DE_PRODUTOS, {
-      silent: true,
-      // So os ativos com estoque baixo: a conta e a do servidor, igual a
-      // `precisaDeReposicao`. O `.filter` abaixo e `montarAvisos` continuam
-      // conferindo (a copia de offline do `loadProducts` nao e filtrada).
-      stock: "low",
-      status: "active",
-    });
+    // Prazo POR PAGINA: o estoque le ate 10 paginas em serie, entao um prazo
+    // so para a fonte inteira cortaria uma leitura que esta andando, so lenta.
+    const resultado = await comPrazoDaFonte(
+      carregar(pagina, TAMANHO_DA_PAGINA_DE_PRODUTOS, {
+        silent: true,
+        // So os ativos com estoque baixo: a conta e a do servidor, igual a
+        // `precisaDeReposicao`. O `.filter` abaixo e `montarAvisos` continuam
+        // conferindo (a copia de offline do `loadProducts` nao e filtrada).
+        stock: "low",
+        status: "active",
+      }),
+    );
 
     // `loadProducts` engole o erro e devolve `null`. `null` NAO e "zero
     // produtos", e "nao sei" — tratar como lista vazia esconderia a falha e a
@@ -374,18 +408,19 @@ export function useAvisosDoLojista(): AvisosDoLojista {
       rPrivacidade,
       rRecebimentos,
     ] = await Promise.allSettled([
-      buscarPedidosPendentes(),
-      buscarPerguntasPendentes(),
-      buscarAvaliacoesSemResposta(),
+      comPrazoDaFonte(buscarPedidosPendentes()),
+      comPrazoDaFonte(buscarPerguntasPendentes()),
+      comPrazoDaFonte(buscarAvaliacoesSemResposta()),
+      // O prazo do estoque e por pagina (dentro da funcao).
       buscarProdutosComEstoqueBaixo(
         loadProducts as unknown as Parameters<
           typeof buscarProdutosComEstoqueBaixo
         >[0],
       ),
-      buscarDevolucoesSolicitadas(),
-      buscarCancelamentosDoCliente(),
-      buscarPedidosDePrivacidadeAbertos(),
-      buscarRecebimentosPorMarcar(),
+      comPrazoDaFonte(buscarDevolucoesSolicitadas()),
+      comPrazoDaFonte(buscarCancelamentosDoCliente()),
+      comPrazoDaFonte(buscarPedidosDePrivacidadeAbertos()),
+      comPrazoDaFonte(buscarRecebimentosPorMarcar()),
     ]);
 
     // Componente desmontado, ou rodada atropelada por outra mais nova: em
@@ -413,10 +448,17 @@ export function useAvisosDoLojista(): AvisosDoLojista {
       rPrivacidade.status === "fulfilled" ? rPrivacidade.value : 0;
     if (rPrivacidade.status === "rejected") falhas.push("privacidade");
     const recebimentosPorMarcar =
-      rRecebimentos.status === "fulfilled" ? rRecebimentos.value : [];
+      rRecebimentos.status === "fulfilled"
+        ? rRecebimentos.value.recebimentos
+        : [];
     if (rRecebimentos.status === "rejected") falhas.push("recebimento");
 
     const cortadas: TipoDeAviso[] = [];
+    // Mais pagamentos por marcar que o teto: a lista traz os mais recentes e a
+    // tela precisa dizer isso (o sino conta todos).
+    if (rRecebimentos.status === "fulfilled" && rRecebimentos.value.truncou) {
+      cortadas.push("recebimento");
+    }
 
     const avaliacoes =
       rAvaliacoes.status === "fulfilled" ? rAvaliacoes.value.avaliacoes : [];
@@ -466,10 +508,14 @@ export function useAvisosDoLojista(): AvisosDoLojista {
     };
     document.addEventListener("visibilitychange", aoMudarAVisibilidade);
     window.addEventListener("admin:recontar-avisos", reler);
+    // O sino da barra mudou de numero (chegou pedido, pergunta...): a lista
+    // relê, senao ela diz "Tudo em dia" com a bolinha acesa.
+    window.addEventListener("admin:sino-mudou", reler);
     return () => {
       ativoRef.current = false;
       document.removeEventListener("visibilitychange", aoMudarAVisibilidade);
       window.removeEventListener("admin:recontar-avisos", reler);
+      window.removeEventListener("admin:sino-mudou", reler);
     };
   }, [buscar]);
 

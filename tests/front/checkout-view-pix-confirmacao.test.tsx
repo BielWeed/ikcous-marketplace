@@ -596,6 +596,93 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
     ).toBeUndefined();
   });
 
+  // O toque em "Falar com a loja" é a única saída de quem pagou e teve o pedido
+  // cancelado por prazo. Os testes acima só provam QUANDO o botão existe; aqui
+  // se prova O QUE o toque abre: número com DDI 55 só quando falta (10/11
+  // dígitos), mensagem com o pedido, aba isolada, e o endereço CRU (o '#' do
+  // pedido sai %23 — `encodeURI` o deixaria solto e o WhatsApp leria o resto
+  // como âncora).
+  async function tocarFalarComALojaForaDoPrazo() {
+    const abrir = vi.fn();
+    vi.stubGlobal("open", abrir);
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+    await act(async () => {
+      onRealtimeEventCapturado?.({
+        eventType: "UPDATE",
+        new: { id: "ped-999", payment_status: "pago_apos_expirar" },
+      });
+    });
+    const botao = localizarBotaoPorTexto(hospedeiro, "Falar com a Loja");
+    expect(botao).toBeDefined();
+    await act(async () => {
+      botao?.click();
+    });
+    return abrir;
+  }
+
+  it("fora do prazo, tocar em 'Falar com a Loja' abre o wa.me com DDI 55, a mensagem do pedido e a aba isolada", async () => {
+    const abrir = await tocarFalarComALojaForaDoPrazo();
+
+    expect(abrir).toHaveBeenCalledTimes(1);
+    const [url, alvo, recursos] = abrir.mock.calls[0] as [
+      string,
+      string,
+      string,
+    ];
+    expect(url.startsWith("https://wa.me/5534999998888?text=")).toBe(true);
+    expect(decodeURIComponent(url.split("?text=")[1] ?? "")).toBe(
+      "Olá! Paguei o pedido #ED-999, mas o prazo de reserva venceu. Podem me ajudar?",
+    );
+    expect(alvo).toBe("_blank");
+    expect(recursos).toBe("noopener,noreferrer");
+  });
+
+  it("fora do prazo, o endereço do wa.me é CRU: '#' do pedido como %23, sem espaço nem '#' soltos", async () => {
+    const abrir = await tocarFalarComALojaForaDoPrazo();
+
+    const [url] = abrir.mock.calls[0] as [string];
+    expect(url).toContain("%23ED-999");
+    expect(url).not.toContain("#");
+    expect(url).not.toMatch(/\s/);
+    expect(url.split("?")).toHaveLength(2);
+  });
+
+  it("fora do prazo, número com máscara de 10 dígitos (fixo) também ganha o 55", async () => {
+    mockWhatsappNumber = "(34) 3333-4444";
+    const abrir = await tocarFalarComALojaForaDoPrazo();
+
+    const [url] = abrir.mock.calls[0] as [string];
+    expect(url.startsWith("https://wa.me/553433334444?text=")).toBe(true);
+  });
+
+  it("fora do prazo, número que já traz o DDI (13 dígitos) NÃO ganha 55 de novo", async () => {
+    mockWhatsappNumber = "+55 34 99999-8888";
+    const abrir = await tocarFalarComALojaForaDoPrazo();
+
+    const [url] = abrir.mock.calls[0] as [string];
+    expect(url.startsWith("https://wa.me/5534999998888?text=")).toBe(true);
+    expect(url).not.toContain("wa.me/5555");
+  });
+
+  it("fora do prazo, número inválido (curto) não mostra o botão e o WhatsApp nunca é aberto", async () => {
+    mockWhatsappNumber = "123";
+    const abrir = vi.fn();
+    vi.stubGlobal("open", abrir);
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+    await act(async () => {
+      onRealtimeEventCapturado?.({
+        eventType: "UPDATE",
+        new: { id: "ped-999", payment_status: "pago_apos_expirar" },
+      });
+    });
+
+    const botao = localizarBotaoPorTexto(hospedeiro, "Falar com a Loja");
+    expect(botao).toBeUndefined();
+    expect(abrir).not.toHaveBeenCalled();
+  });
+
   it("evento de realtime para OUTRO pedido é ignorado — não confirma a tela por engano", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNaTelaDeAguardarPagamento(CheckoutView);

@@ -99,6 +99,26 @@ async function digitarBusca(texto: string) {
 const tela = () => (document.body.textContent ?? "").replace(/\s+/g, " ");
 
 describe("FolhaEditarVitrine — vazios", () => {
+  it("catálogo grande: abre em lotes, busca no catálogo inteiro e volta ao primeiro lote", async () => {
+    const produtos = Array.from({ length: 300 }, (_, i) =>
+      produto(`p-${i}`, `Produto ${i}`),
+    );
+    await abrirFolha(produtos);
+    const botoes = () => document.querySelectorAll("button[data-produto-id]");
+    expect(botoes()).toHaveLength(60);
+    expect(tela()).toContain("Mostrando 60 de 300");
+    const mais = [...document.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Mostrar mais",
+    )!;
+    await act(async () => mais.click());
+    expect(botoes()).toHaveLength(120);
+    await digitarBusca("Produto 299");
+    expect(botoes()).toHaveLength(1);
+    expect(botoes()[0].getAttribute("data-produto-id")).toBe("p-299");
+    await digitarBusca("");
+    expect(botoes()).toHaveLength(60);
+  });
+
   it("catálogo vazio: diz que não há produtos cadastrados, sem falar de busca", async () => {
     await abrirFolha([]);
     expect(tela()).toContain(

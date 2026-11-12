@@ -94,7 +94,7 @@ export const ContatoDaLoja = memo(function ContatoDaLoja({
 
     // Vazio grava NULL (decisão do Gabriel, 30/08: WhatsApp é configuração DA
     // lojista); preenchido, 10-11 dígitos (DDD + número) ganham o 55.
-    const paraGravar = whatsappParaGravar(whatsapp);
+    const paraGravar = whatsappParaGravar(whatsapp, true);
     if (!paraGravar.valido) {
       toast.error("WhatsApp inválido");
       return false;

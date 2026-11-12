@@ -153,6 +153,7 @@ describe("AuthContext — limpeza local de sessão (issue #122)", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     act(() => {
       raiz.unmount();
     });
@@ -236,6 +237,65 @@ describe("AuthContext — limpeza local de sessão (issue #122)", () => {
     expect(restantes.some((k) => k.includes("-code-verifier"))).toBe(false);
   });
 
+  it.each(["sucesso", "erro"] as const)(
+    "signOut pendurado libera o Sair e limpa a sessão em 10 s; %s atrasado não a restaura",
+    async (respostaTardia) => {
+      const { supabase, aoAtualizar } = await montarLogado();
+      const { toast } = await import("sonner");
+      let responder: (valor: { error: null }) => void = () => {};
+      let rejeitar: (erro: Error) => void = () => {};
+      vi.mocked(supabase.auth.signOut).mockReturnValue(
+        new Promise((resolve, reject) => {
+          responder = resolve;
+          rejeitar = reject;
+        }),
+      );
+      localStorage.setItem("sb-teste-auth-token", "sessao-ficticia");
+      localStorage.setItem("sb-teste-code-verifier", "verificador-ficticio");
+      localStorage.setItem("ikcous_orders_cache_user-a", "[]");
+      localStorage.setItem("ikcous_addresses_cache_user-a", "[]");
+
+      vi.useFakeTimers();
+      let terminou = false;
+      await act(async () => {
+        void ultimoEstado(aoAtualizar)!
+          .logout()
+          .then(() => {
+            terminou = true;
+          });
+        await vi.advanceTimersByTimeAsync(9_999);
+      });
+      expect(terminou).toBe(false);
+      expect(ultimoEstado(aoAtualizar)!.hasSession).toBe(true);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(terminou).toBe(true);
+      expect(ultimoEstado(aoAtualizar)!.hasSession).toBe(false);
+      expect(ultimoEstado(aoAtualizar)!.userId).toBeNull();
+      expect(localStorage.getItem("sb-teste-auth-token")).toBeNull();
+      expect(localStorage.getItem("sb-teste-code-verifier")).toBeNull();
+      expect(localStorage.getItem("ikcous_orders_cache_user-a")).toBeNull();
+      expect(localStorage.getItem("ikcous_addresses_cache_user-a")).toBeNull();
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /saiu deste aparelho.*não foi possível confirmar/i,
+        ),
+      );
+
+      await act(async () => {
+        if (respostaTardia === "sucesso") responder({ error: null });
+        else rejeitar(new Error("Falha fictícia atrasada"));
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(ultimoEstado(aoAtualizar)!.hasSession).toBe(false);
+      expect(ultimoEstado(aoAtualizar)!.userId).toBeNull();
+      expect(localStorage.getItem("sb-teste-auth-token")).toBeNull();
+      expect(toast.error).toHaveBeenCalledTimes(1);
+    },
+  );
+
   // Encerrar a sessão NESTE aparelho não pode derrubar a conta nos outros: o
   // padrão do supabase-js é `scope: 'global'`, que revoga todos os refresh
   // tokens da pessoa (celular, outro navegador, o PDV do balcão).
@@ -290,6 +350,23 @@ describe("AuthContext — limpeza local de sessão (issue #122)", () => {
     });
 
     expect(localStorage.getItem("marketplace_cart_v1")).toBeNull();
+  });
+
+  it("3b. as lápides do carrinho (linhas que a conta que saiu tirou) também são apagadas no SIGNED_OUT", async () => {
+    const { callback } = await montarLogado();
+
+    localStorage.setItem(
+      "marketplace_cart_tombstones_v1",
+      JSON.stringify([{ key: "p1-", deletedAt: Date.now() }]),
+    );
+
+    const cb = callback();
+    await act(async () => {
+      cb("SIGNED_OUT", null);
+      await esperarMicrotarefas();
+    });
+
+    expect(localStorage.getItem("marketplace_cart_tombstones_v1")).toBeNull();
   });
 
   it("4. ikcous_last_shipping_cep e o prefixo ikcous_shipping_cache_ são removidos no SIGNED_OUT", async () => {
@@ -438,6 +515,7 @@ describe("AuthContext — pedido de purga ao service worker no logout (R12)", ()
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     act(() => {
       raiz.unmount();
     });

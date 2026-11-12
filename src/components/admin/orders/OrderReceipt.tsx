@@ -79,7 +79,9 @@ export const OrderReceipt = memo(function OrderReceipt({
           <p className="text-xs">Pedido #{numeroDoPedido(order.id)}</p>
           <p className="text-xs">
             {order?.createdAt
-              ? new Date(order.createdAt).toLocaleString("pt-BR")
+              ? new Date(order.createdAt).toLocaleString("pt-BR", {
+                  timeZone: "America/Sao_Paulo",
+                })
               : "Data Indisponível"}
           </p>
         </div>

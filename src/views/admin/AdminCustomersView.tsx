@@ -257,6 +257,17 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           const customersList = data.data || [];
           const totalCount = data.total_count || 0;
           const stats = data.stats;
+          const maxPage = Math.max(0, Math.ceil(totalCount / PAGE_SIZE) - 1);
+          // A página deixou de existir: o efeito relê a última válida, sem
+          // guardar o vazio como se a loja não tivesse clientes.
+          if (
+            customersList.length === 0 &&
+            totalCount > 0 &&
+            pageToFetch > maxPage
+          ) {
+            setPage(maxPage);
+            return;
+          }
 
           setCachedCustomersData({
             customers: customersList,
@@ -408,14 +419,11 @@ export const AdminCustomersView = memo(function AdminCustomersView({
         // Enquanto o número não chegou, o card NÃO mostra "R$ 0,00" — isso
         // afirmaria um fato que ninguém mediu. Mostra um espaço reservado.
         //
-        // `??` e não `||`, de propósito: com `||`, um ticket médio MEDIDO
-        // como zero (loja sem pedido nenhum) cairia no ramo seguinte e
-        // acabaria indistinguível de "não sei". Com `??`, zero medido é
-        // zero e ausência é ausência. E a cadeia termina em `null`, não em
-        // `0`: `analyticsStats` pode existir sem `executive` — o hook
-        // também restaura resumo do cache em disco, que pode ser de uma
-        // versão anterior do payload.
+        // Sem pedidos não existe média por venda. Com pedidos, preservamos
+        // inclusive uma média zero; sem resumo, o traço continua reservado.
+        // O cache pode vir de uma versão anterior, sem o bloco executivo.
         value: (() => {
+          if (analyticsStats?.executive?.totalOrders === 0) return "—";
           const medido =
             analyticsStats?.averageTicket ??
             analyticsStats?.executive?.avgTicket ??

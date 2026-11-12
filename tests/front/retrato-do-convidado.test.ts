@@ -13,6 +13,7 @@ import {
   interpretarRetrato,
   lerRetratoDoConvidado,
   limparRetratoDoConvidado,
+  retratoVenceu,
   textoDoRetrato,
 } from "@/lib/retrato-do-convidado";
 
@@ -109,6 +110,18 @@ describe("gravar / ler / limpar no sessionStorage", () => {
       expect(dados.has("guest_tracked_orders")).toBe(true);
     });
 
+    it("consulta com relógio adiantado é vencida e apagada após corrigir a hora", () => {
+      const agora = Date.now();
+      vi.setSystemTime(agora + 24 * 60 * 60_000);
+      gravarRetratoDoConvidado([pedido]);
+      const consultadoEm = Date.now();
+
+      vi.setSystemTime(agora);
+      expect(retratoVenceu(consultadoEm)).toBe(true);
+      expect(lerRetratoDoConvidado()).toBeNull();
+      expect(dados.has("guest_tracked_orders")).toBe(false);
+    });
+
     it("passou do prazo: devolve null e apaga a chave do aparelho", () => {
       gravarRetratoDoConvidado([pedido]);
       vi.advanceTimersByTime(PRAZO_DO_RETRATO_MS + 1);
@@ -193,5 +206,26 @@ describe("textoDoRetrato — de que hora é o status", () => {
     expect(textoDoRetrato(null)).toBe(
       "Status de quando você consultou — pode ter mudado",
     );
+  });
+});
+
+describe("retratoVenceu — a régua única do prazo (a mesma da leitura do aparelho)", () => {
+  const consulta = 1_700_000_000_000;
+
+  it("no instante do prazo ainda vale; um milissegundo depois venceu", () => {
+    expect(retratoVenceu(consulta, consulta + PRAZO_DO_RETRATO_MS)).toBe(false);
+    expect(retratoVenceu(consulta, consulta + PRAZO_DO_RETRATO_MS + 1)).toBe(
+      true,
+    );
+  });
+
+  it("tolera até cinco minutos no futuro, mas não um milissegundo além", () => {
+    expect(retratoVenceu(consulta + 5 * 60_000, consulta)).toBe(false);
+    expect(retratoVenceu(consulta + 5 * 60_000 + 1, consulta)).toBe(true);
+  });
+
+  it("recém consultado não venceu (e o relógio atrás da consulta também não)", () => {
+    expect(retratoVenceu(consulta, consulta)).toBe(false);
+    expect(retratoVenceu(consulta, consulta - 5_000)).toBe(false);
   });
 });

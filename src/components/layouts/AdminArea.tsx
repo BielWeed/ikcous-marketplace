@@ -495,6 +495,9 @@ export function AdminArea({
                     props={{
                       onNavigate: onNavigate,
                       active: currentView === "admin-products",
+                      // Igual ao ramo com View Transitions: sem isto o cartão
+                      // "estoque baixo" abria a lista inteira, sem filtro.
+                      visaoInicial: selectedProductId,
                     }}
                   />
                 </DeferredTabContent>

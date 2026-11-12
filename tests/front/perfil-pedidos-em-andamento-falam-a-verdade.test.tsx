@@ -15,6 +15,7 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 
 let pedidosAtuais: Order[] = [];
@@ -188,6 +189,36 @@ describe("ProfileView — cartão Pedidos em Andamento fala a verdade", () => {
       await Promise.resolve();
     });
   }
+
+  it("detalhes e retomada identificam cada um dos dois pedidos", async () => {
+    const pedidos = [
+      pedido({
+        id: "11111111-2222-3333-4444-555555555555",
+        paymentStatus: "aguardando",
+      }),
+      pedido({
+        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        paymentStatus: "aguardando",
+      }),
+    ];
+    await renderizar(pedidos, vi.fn());
+    const expandir = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Ver mais"),
+    );
+    if (expandir) await act(async () => expandir.click());
+    for (const texto of ["Ver detalhes", "Retomar pagamento"]) {
+      const botoes = [...hospedeiro.querySelectorAll("button")].filter(
+        (b) => b.textContent?.trim() === texto,
+      );
+      expect(botoes).toHaveLength(2);
+      expect(botoes.map((b) => b.getAttribute("aria-label"))).toEqual(
+        pedidos.map((p) => `${texto} do pedido #${numeroDoPedido(p.id)}`),
+      );
+      expect(
+        new Set(botoes.map((b) => b.getAttribute("aria-label"))).size,
+      ).toBe(2);
+    }
+  });
 
   function botaoRetomar(): HTMLButtonElement | undefined {
     return [...hospedeiro.querySelectorAll("button")].find((b) =>

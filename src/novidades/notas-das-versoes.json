@@ -1,4 +1,179 @@
 {
+  "1.5.168": {
+    "titulo": "Busca com hífen, favoritos entre abas, aviso do lojista sem texto em branco e checkout que se atualiza sozinho",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Busca: pesquisar com hífen ou barra (guarda-chuva, manga/curta) agora encontra o produto cadastrado sem eles.",
+      "Loja, Favoritos: com duas abas abertas, um favorito não apaga mais o da outra.",
+      "Loja, Finalizar compra: ao voltar para o app o endereço é lido de novo, e o total não fica negativo com um cupom antigo.",
+      "Loja, Pagamento com cartão: voltar para a aba com o relógio do aparelho atrasado volta a conferir o pagamento.",
+      "Loja, Início: se a internet falha na abertura, o app não esquece o formato da última visita.",
+      "Loja e Painel: ao abrir o app com uma sessão vencida, ele desconecta só este aparelho, sem derrubar a conta nos outros.",
+      "Painel, Avisos: título ou mensagem só com caracteres invisíveis deixam de ser enviados em branco a todas as clientes.",
+      "Painel, Produto: preço com dígitos demais é recusado em vez de virar outro valor, e peso e medidas escritos como 1e3 deixam de ser lidos errado.",
+      "App: se a internet pendura, a checagem de nova versão e a tela de manutenção desistem em 5 segundos.",
+      "Loja, Finalizar compra (sem conta): endereço só com caractere invisível passa a ser recusado.",
+      "Painel, Pedido: o rastreio só aparece como salvo depois que o banco confirma.",
+      "Avisos de status do pedido: o servidor recusa enviar sem destinatário."
+    ]
+  },
+  "1.5.167": {
+    "titulo": "Endereço do visitante sem espaço invisível, rastreio que só diz salvo quando salvou e aviso de pedido só para quem é dono",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Finalizar compra (sem conta): rua, número, bairro e cidade escritos só com caractere invisível passam a ser recusados, em vez de gerar um pedido com endereço em branco.",
+      "Painel, Pedido: o código de rastreio só aparece como salvo depois que o banco confirma a gravação; se a sessão expirou, o app avisa em vez de dizer que salvou.",
+      "Avisos de status do pedido: o servidor recusa enviar um aviso de pedido sem destinatário, para nunca chegar a clientes que não têm relação com o pedido."
+    ]
+  },
+  "1.5.166": {
+    "titulo": "Cupons sempre atualizados, avaliação sem duplicidade e cancelamento de pedido que não trava",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Painel, Cupons: ao voltar para o app, a lista de cupons se atualiza sozinha e mostra se outro aparelho desativou ou esgotou um cupom.",
+      "Avaliações: o app recusa avaliar o mesmo produto duas vezes, em vez de registrar uma avaliação repetida.",
+      "Checkout: cancelar um pedido não fica mais preso quando a confirmação demora a responder.",
+      "Painel: no primeiro acesso do administrador, a tela não trava se a configuração da loja demora a ser criada.",
+      "Painel, Minha loja: o WhatsApp da loja recusa um celular com um dígito faltando.",
+      "Painel, Pedido: o recibo só aparece depois que o tamanho e a cor do item terminam de carregar."
+    ]
+  },
+  "1.5.165": {
+    "titulo": "Banner que não perde a foto se a internet cai e recusa de CPF explicada em português",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Painel, Banners: se a internet cai na hora de salvar um banner, a foto enviada é mantida e o rascunho continua no editor, em vez de apagar a imagem de um banner que pode ter sido publicado.",
+      "Painel, Pedido: ao corrigir o CPF de um pedido que já mudou de situação em outro aparelho, o app explica o motivo em português e atualiza a tela do pedido."
+    ]
+  },
+  "1.5.164": {
+    "titulo": "Variação completa no resumo, produto mais seguro de editar e busca que não trava na categoria",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Finalizar compra: o nome da variação (tamanho, cor) aparece inteiro no resumo do pedido, sem ser cortado.",
+      "Loja, Busca: se a categoria escolhida some ou é desativada, a busca volta para “Todas” em vez de ficar presa numa lista vazia.",
+      "Painel, Produto: ao editar nome, preço, código ou foto de uma variação, o app confere se outro aparelho mexeu no produto; se mexeu, avisa e, ao salvar de novo, não devolve o valor antigo.",
+      "Painel, Produto: ao recuperar um rascunho depois de o produto mudar em outro aparelho, as fotos e a capa que você escolheu são mantidas.",
+      "Painel, Produtos: tocar duas vezes rápido em pausar ou ativar não deixa mais a tela diferente do que foi gravado."
+    ]
+  },
+  "1.5.163": {
+    "titulo": "Frete que não volta ao preço antigo, perfil que não trava e datas no horário da loja",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Finalizar compra: depois que o frete mostra o preço novo, tocar em Finalizar não volta mais ao preço antigo.",
+      "Loja, Perfil público: se a internet não responde, o perfil não fica mais preso na tela de carregamento; depois de 20 segundos aparece o aviso com o botão “Tentar de novo”.",
+      "Painel, Clientes: se a página aberta deixa de existir, a lista volta para a última página em vez de mostrar “Nenhum cliente ainda”.",
+      "Painel, Pedidos: a data e a hora do pedido, na ficha e no recibo, seguem o horário de Brasília, igual ao filtro da lista, mesmo em aparelho com outro fuso."
+    ]
+  },
+  "1.5.162": {
+    "titulo": "Telas que não mostram dado velho, rastreio e endereço mais seguros",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Carrinho: ao voltar do segundo plano, o carrinho com conta confere o banco de novo, e uma resposta atrasada do catálogo não corta mais a quantidade que você escolheu.",
+      "Loja, Busca: a busca usa a disponibilidade real da vitrine e já abre filtrada.",
+      "Loja, Rastreio sem conta: quando o acesso vence, a lista some da tela e o formulário volta limpo; cancelar um pedido de convidado não promete mais aviso no aplicativo.",
+      "Loja, Endereço: voltar durante o salvar não expulsa mais do perfil, e uma resposta de salvamento que chega depois de você sair da tela é ignorada.",
+      "Painel, Produtos: uma resposta atrasada de outra categoria não muda mais a página da categoria que você escolheu; a janela “+ Grade” leva o foco para dentro, aceita Esc e Tab e devolve o foco ao fechar; valores da grade com barras comuns são aceitos; foto sem tipo declarado também é conferida antes do envio.",
+      "Painel, Categorias: uma leitura antiga não desfaz o ícone recém-salvo, cada tela recebe a leitura mais nova, a falha de carregamento mostra um aviso só e a nova categoria libera a espera quando a rede não responde.",
+      "Painel, Pedidos: se um pedido for cancelado enquanto a lista ainda está carregando, ele não aparece mais como pendente."
+    ]
+  },
+  "1.5.161": {
+    "titulo": "Balcão avisa quando uma edição é barrada, checkout sem promessa falsa e Financeiro sem duplicatas",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Painel, Balcão: enquanto a venda está sendo registrada, tocar em produto, cliente ou desconto agora mostra “Aguarde: a venda está sendo registrada.”, em vez de não fazer nada.",
+      "Loja, Finalizar compra: com a internet sem resposta, o aviso para quem tem conta não promete mais que o pedido “não sai em dobro”; manda conferir em Meus pedidos se ele já aparece e, se não aparecer, tentar de novo.",
+      "Painel, Financeiro: se a internet cair ao salvar uma conta ou categoria nova, o botão Salvar trava e o aviso manda conferir a lista antes de repetir, para não criar duas iguais. A folha também não fecha enquanto o salvamento está no ar."
+    ]
+  },
+  "1.5.160": {
+    "titulo": "Início mais claro, reenvio de comprovante que não trava e aviso de duplicar mais honesto",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Painel, Início: o cartão “Para fazer” não conta mais uma pendência que a lista não mostra; quando só há pedidos para preparar, diz “Nada mais para resolver” e aponta para o cartão acima, em vez de “Tudo em dia”.",
+      "Loja, Pedido: “Reenviar comprovante” não fica mais em “Reenviando…” para sempre com a internet sem resposta: depois de 20 segundos o botão volta e o aviso manda conferir a caixa de entrada e o spam. O botão deixa de aparecer em pedido cancelado.",
+      "Painel, Produtos: ao duplicar com a internet sem resposta na cópia das fotos, o aviso diz que o produto ainda não foi duplicado e que dá para tentar de novo."
+    ]
+  },
+  "1.5.159": {
+    "titulo": "Frete grátis mais claro, carrinho que acompanha outro aparelho e balcão mais firme",
+    "novidades": [],
+    "melhorias": [
+      "Painel, Frete grátis: o valor mínimo agora é um campo de texto com teclado de números e aceita vírgula (ex.: 199,90).",
+      "Painel, Balcão: a leitura pela câmera só aceita a mesma peça de novo depois que ela sai do quadro, e “Leitura repetida” ganhou o botão Fechar."
+    ],
+    "correcoes": [
+      "Loja, Carrinho e Frete grátis: com a loja só em retirada, o carrinho não promete mais frete grátis onde não há entrega, e o aviso do carrinho acompanha a mesma regra.",
+      "Loja, Carrinho: um item tirado do carrinho em outro aparelho some aqui também, e um item que você acabou de pôr em outro aparelho não é mais apagado por este aparelho ao salvar o carrinho.",
+      "Loja, Favoritos: quando a lista não pôde ser atualizada, aparece o aviso “pode estar desatualizada” com “Tentar de novo”.",
+      "Loja, Ofertas: produto sem combinação possível aparece como Esgotado nas faixas de Ofertas, em vez de parecer comprável.",
+      "Painel, Balcão: o rascunho da venda é guardado ao sair da tela, e uma peça que saiu do catálogo mostra uma frase clara.",
+      "Painel, Produtos: os atalhos de estoque baixo e sem custo abrem a lista já filtrada também em aparelhos antigos; duplicar com a internet sem resposta solta a tela e manda conferir a lista antes de tentar de novo; a lista de Produtos deixa de carregar para sempre; e excluir um produto não fecha a pergunta de exclusão de outro."
+    ]
+  },
+  "1.5.158": {
+    "titulo": "Painel que avisa quando a internet falha, sem produto duplicado, e vitrine mais correta",
+    "novidades": [],
+    "melhorias": [
+      "Painel, Aviso de pedido novo: tocar no aviso de pedido novo com o app já aberto leva direto ao pedido, sem recarregar a tela.",
+      "Painel, Pedidos: ao voltar para o app depois de bloquear o celular, os números do topo (Para preparar, Aguardando pagamento, A caminho) se atualizam sozinhos."
+    ],
+    "correcoes": [
+      "Loja, Vitrine e Busca: as ofertas da Home escolhem os produtos de forma estável, a busca mostra produto sem foto e o cartão de produto esgotado fica correto.",
+      "Loja, Carrinho: o carrinho não diz mais que falta endereço antes de ler o endereço salvo, o frete é recalculado ao mudar o endereço e o cupom vencido sai sozinho.",
+      "Loja, Entrar e Perfil: um erro de entrar que chega atrasado não aparece mais na tela errada, e o Perfil usa o nome do cadastro.",
+      "Painel, Pedido: a anotação interna e o código de rastreio ficam protegidos quando o pedido está aberto em dois aparelhos.",
+      "Painel, Produtos: salvar, publicar ou abrir um produto com a internet sem resposta não deixa mais o botão em “Salvando…” para sempre. Passados 20 segundos, o aviso manda conferir a lista antes de publicar de novo, para não criar o produto duas vezes; o rascunho antigo espera você decidir entre Restaurar e Descartar.",
+      "Painel, Banners e Categorias: adicionar, editar, reordenar, esconder ou excluir com a internet sem resposta solta a tela com um aviso honesto, e o que você digitou continua lá; banner de produto excluído mostra um aviso no cartão.",
+      "Painel, Início, CRM e Pedidos: consulta sem resposta vira o aviso com “Tentar de novo”, em vez de carregar para sempre ou mostrar número velho como se fosse de agora.",
+      "Painel, Financeiro: com a internet sem resposta, as telas (Visão, Extrato, Pagar e receber, Resultado, Caixa) deixam de ficar cinzas para sempre: depois de 20 segundos aparece o aviso com “Tentar de novo”, e o valor de antes avisa que pode estar desatualizado.",
+      "Painel, Cupons: se outra pessoa mexeu na lista de clientes de um cupom enquanto você editava, nada é gravado por cima: você vê o aviso e a lista já juntada para conferir; se o cupom salvou mas a lista não, o aviso diz isso e como resolver.",
+      "Painel, Avaliações e Perguntas: responder uma avaliação já excluída avisa que a resposta não foi enviada; “Ver mais” aparece quando o texto está cortado no celular; uma resposta mais nova feita em outro aparelho não é apagada sem aviso."
+    ]
+  },
+  "1.5.157": {
+    "titulo": "Devolução e avisos que não ficam presos com a internet ruim",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Painel, Devoluções: se a internet não responder ao pedir o reembolso de novo, marcar “Já devolvi por fora” ou salvar a política de devolução, o botão volta e avisa que não dá para saber se foi feito, pedindo para conferir a ficha antes de repetir; o que você digitou na política continua na tela.",
+      "Loja, Devolução: o pedido cancelado e pago deixa de ficar em “Conferindo sua devolução…” com a internet sem resposta, e depois de pedir a devolução o protocolo aparece na hora.",
+      "Painel, Avisos: o aviso de pedido cancelado some quando você já fez o que ele pede; a tela de Notificações atualiza quando o número do sino muda; com mais de 100 pagamentos por marcar, a tela avisa que mostra só os mais recentes."
+    ]
+  },
+  "1.5.156": {
+    "titulo": "Avisos que abrem o pedido certo, telas que não travam com internet ruim e painel mais claro",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Abrir o app: se o app não carregar, aparece “Não conseguimos abrir o app” com “Tentar de novo”, em vez da rodinha girando para sempre; a página de loja em manutenção ganhou “Tentar novamente”.",
+      "Loja, Produto e Busca: escolhida só a cor ou só o tamanho, o “A partir de” vale para as combinações que sobraram; tocar em Adicionar enquanto o item entra no carrinho avisa para aguardar; a busca ignora palavras como “de” e “para”.",
+      "Loja, Avaliações: quem escreveu a avaliação não vê o botão “Útil” nela, e produto com muitas avaliações ou perguntas não falha mais ao carregar.",
+      "Loja, Carrinho e Checkout: produto sem foto mostra “Sem foto”; com a letra grande do celular, Subtotal e Entrega não cobrem mais o Total; nome e endereço feitos só de espaços ou caracteres invisíveis são recusados.",
+      "Loja, Pagamento: quando o Mercado Pago não responde, a frase diz para conferir seus pedidos antes de tentar de novo, sem termo técnico e sem afirmar se houve cobrança.",
+      "Loja, Conta e senha: Sair com a internet sem resposta encerra a sessão neste aparelho em até 10 segundos; link de nova senha vencido volta para “Esqueci a senha” com a explicação.",
+      "Loja, Pedidos e Favoritos: o detalhe do pedido avisa quando não conseguiu se atualizar e oferece “Tentar de novo”; favoritos e os dados da loja não ficam presos carregando com a internet ruim.",
+      "Painel, Avisos no celular: tocar num aviso de pedido (novo, pago, cancelado ou cobrança para conferir) abre direto aquele pedido.",
+      "Painel, Pedidos: “Em aberto” vazio diz “Nada para preparar agora”; o tempo de espera se atualiza a cada minuto; o pedido que passa a ter o pagamento filtrado entra na lista sozinho; a planilha usa o horário de Brasília.",
+      "Painel, Ações no pedido: pagamento recebido, “O produto voltou”, “Já estornei”, rastreio e anotação têm prazo e, sem resposta da internet, pedem para conferir o pedido antes de repetir.",
+      "Painel, Cupons, Entrega e Frete grátis: se as configurações não carregarem, interruptores e Salvar travam com “Tentar de novo”, sem gravar o padrão de fábrica por cima; no cupom, o erro aparece junto do campo.",
+      "Painel, Produtos: fotos animadas sobem sem perder a animação, o envio ganhou “Cancelar envio” e as fotos podem ser soltas em qualquer ponto do formulário; depois de sincronizar edições feitas sem internet a lista recarrega na mesma página e com os mesmos filtros, e voltar da edição não reabre um “estoque baixo” antigo.",
+      "Painel, Vitrines, Banners e Avaliações: “Voltar ao automático” pede confirmação; a vitrine mostra 60 produtos por vez com “Mostrar mais”; com filtro ligado, os banners não se reordenam; avaliação longa ganhou “Ver mais”; nos banners, Editar e Excluir dizem de qual banner são, salvar um banner já excluído em outro aparelho explica o motivo, e o banner que vence com a loja aberta sai sozinho.",
+      "Painel, Minha loja e Balcão: WhatsApp da loja com dígitos a mais é recusado em vez de virar outro número; o Balcão sem produto oferece “Cadastrar produto”; o valor médio por venda mostra “—” sem vendas."
+    ]
+  },
   "1.5.155": {
     "titulo": "Perfil e fotos mais confiáveis, página do produto sem foto e painel que não deixa ninguém sem acesso",
     "novidades": [],

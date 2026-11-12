@@ -95,6 +95,9 @@ const PRAZO_DO_ROTULO_DA_VARIACAO_MS = 4_000;
 export interface AdminPdvViewProps {
   readonly onNavigate: (view: View, id?: string) => void;
   readonly active?: boolean;
+  /** O painel passa o mesmo conjunto de props a todas as telas; o balcão não
+   * o usa (venda em andamento não é "alteração não salva" — ver o comentário
+   * de `vendaEmAndamento`). */
   readonly onSetDirty?: (dirty: boolean) => void;
   readonly onSetBackOverride?: (fn: (() => void) | null) => void;
 }
@@ -102,7 +105,6 @@ export interface AdminPdvViewProps {
 export function AdminPdvView({
   onNavigate,
   active,
-  onSetDirty,
   onSetBackOverride,
 }: AdminPdvViewProps): ReactElement {
   // L10: o rascunho do caixa é do usuário que está nele (`:<uid>`).
@@ -267,29 +269,28 @@ export function AdminPdvView({
     };
   }, [camadaAberta, estado.etapa, onSetBackOverride, despachar]);
 
-  // Dirty enquanto houver cupom montado (plano §5.3, parágrafo final):
-  // liga o `beforeunload`, o diálogo de navegação não-salva e — de
-  // brinde — a supressão do aviso de atualização do PWA (tarefa
-  // UpdateNotification-138, que lê o mesmo `isAdminDirty`). Depois da
-  // venda registrada a etapa vira "recibo" e o dirty tem de CAIR mesmo
-  // com os itens ainda na lista (é o recibo mostrando o que foi vendido,
-  // não uma venda em aberto) — por isso a derivação olha `recibo`, não só
-  // `itens.length`.
-  const dirty = estado.itens.length > 0 && estado.recibo === null;
+  // Venda em andamento (cupom com peça, sem recibo) NÃO é "alteração não
+  // salva": o cupom é gravado no aparelho (`useVendaPresencial`, inclusive ao
+  // sair da tela) e volta quando o balcão é reaberto. Por isso a tela NÃO liga
+  // o `dirty` do painel — ele abria "Alterações Não Salvas — serão perdidas
+  // permanentemente" ao tocar em outra aba, no Voltar ou em "Cadastrar
+  // produto", o que era falso e prendia a lojista na tela com medo de perder a
+  // venda. Navegar com cupom montado simplesmente navega.
+  //
+  // O que o `dirty` fazia "de brinde" (segurar o aviso de atualização do app)
+  // continua valendo, pelo registro de operações sensíveis: com peça no cupom
+  // a atualização espera, e solta quando a venda acaba ou a tela fecha. Depois
+  // da venda registrada a marca do cupom cai (o recibo tem a sua própria,
+  // abaixo) — por isso a derivação olha `recibo`, não só `itens.length`.
+  const vendaEmAndamento = estado.itens.length > 0 && estado.recibo === null;
   useEffect(() => {
-    onSetDirty?.(dirty);
-  }, [dirty, onSetDirty]);
-  // Efeito PRÓPRIO só para o unmount: sem separar dos dois de cima, todo
-  // clique que muda `dirty` disparava um `onSetDirty(false)` de limpeza
-  // entre um render e outro (falso "ficou limpo" por um instante) antes
-  // do valor novo chegar — o painel não pode achar que a pessoa saiu no
-  // meio do caminho.
-  useEffect(() => {
-    return () => onSetDirty?.(false);
-  }, [onSetDirty]);
+    if (!vendaEmAndamento) return;
+    return marcarOperacaoSensivel("venda-em-andamento-do-pdv");
+  }, [vendaEmAndamento]);
 
   // O recibo vive SÓ em memória (useVendaPresencial não o grava no rascunho
-  // de propósito) e `dirty` cai quando ele aparece — então, sozinho, nada
+  // de propósito) e a marca da venda em andamento cai quando ele aparece —
+  // então, sozinho, nada
   // segurava uma atualização esperando: a lojista toca em "Enviar por
   // WhatsApp", o app vai para segundo plano (ponto de parada do momento
   // seguro), a atualização instala e o recibo some antes de ser enviado.
@@ -893,6 +894,7 @@ export function AdminPdvView({
           hidden={estado.etapa !== "cupom" || modoDeProduto !== "buscar"}
         >
           <BuscaDeProduto
+            onNavigate={onNavigate}
             despachar={despachar}
             buscarProdutos={buscarProdutos}
             visivel={

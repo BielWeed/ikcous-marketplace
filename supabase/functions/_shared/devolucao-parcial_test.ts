@@ -428,6 +428,58 @@ Deno.test("contestação presente (raiz, transactions ou pagamento) NÃO prova",
   );
 });
 
+// O Mercado Pago manda `chargebacks: []` quando NÃO há contestação (o caso normal de toda devolução parcial real):
+// lista VAZIA não é contestação. Se `temRegistro` virasse só `presente`, toda devolução parcial legítima seria
+// recusada como "contestacao" e o pedido pago ficaria "aguardando". Os três lugares que a regra lê:
+Deno.test("contestação com lista VAZIA (raiz) NÃO é contestação -> segue provando", () => {
+  const decisao = devolucaoParcialProvaPagamento({ order: orderParcial({ chargebacks: [] }), pedido: pedido() });
+  assertEquals(decisao, {
+    provado: true,
+    valorOriginal: 100,
+    devolvido: 20,
+    devolucoes: [{ id: "REF01", valor: 20 }],
+  });
+});
+
+Deno.test("contestação com lista VAZIA (transactions.chargebacks) NÃO é contestação -> segue provando", () => {
+  const order = orderParcial();
+  order.transactions.chargebacks = [];
+  assertEquals(devolucaoParcialProvaPagamento({ order, pedido: pedido() }).provado, true);
+});
+
+Deno.test("contestação com lista VAZIA (payments[0].chargebacks) NÃO é contestação -> segue provando", () => {
+  const decisao = devolucaoParcialProvaPagamento({ order: comPagamento({ chargebacks: [] }), pedido: pedido() });
+  assertEquals(decisao.provado, true);
+});
+
+Deno.test("contestação: lista vazia nos TRÊS lugares ao mesmo tempo também prova (o formato real do MP)", () => {
+  const order = comPagamento({ chargebacks: [] }, orderParcial({ chargebacks: [] }));
+  order.transactions.chargebacks = [];
+  assertEquals(devolucaoParcialProvaPagamento({ order, pedido: pedido() }).provado, true);
+});
+
+// Controle do mesmo contrato: a lista vazia não recusa, mas QUALQUER registro recusa — inclusive o ilegível
+// (`[null]`, objeto solto): na dúvida sobre dinheiro contestado, "ainda não".
+Deno.test("contestação: lista com item (mesmo ilegível) ou objeto solto recusa nos três lugares; `null` não recusa", () => {
+  for (const registro of [[{ id: "c1" }], [null], [{}], { id: "c1" }]) {
+    assertEquals(
+      devolucaoParcialProvaPagamento({ order: orderParcial({ chargebacks: registro }), pedido: pedido() }).motivo,
+      "contestacao",
+    );
+    const emTransactions = orderParcial();
+    emTransactions.transactions.chargebacks = registro;
+    assertEquals(devolucaoParcialProvaPagamento({ order: emTransactions, pedido: pedido() }).motivo, "contestacao");
+    assertEquals(
+      devolucaoParcialProvaPagamento({ order: comPagamento({ chargebacks: registro }), pedido: pedido() }).motivo,
+      "contestacao",
+    );
+  }
+  assertEquals(
+    devolucaoParcialProvaPagamento({ order: orderParcial({ chargebacks: null }), pedido: pedido() }).provado,
+    true,
+  );
+});
+
 Deno.test("moeda diferente de BRL NÃO prova", () => {
   assertEquals(devolucaoParcialProvaPagamento({ order: orderParcial({ currency: "USD" }), pedido: pedido() }).motivo, "moeda");
   assertEquals(devolucaoParcialProvaPagamento({ order: orderParcial({ currency_id: "ARS" }), pedido: pedido() }).motivo, "moeda");

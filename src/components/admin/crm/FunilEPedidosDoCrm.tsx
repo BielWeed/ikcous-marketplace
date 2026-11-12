@@ -5,6 +5,7 @@ import {
   CartaoDoCrm,
   EstadoVazioDoCrm,
 } from "@/components/admin/crm/PecasDoCrm";
+import { useAgoraDoPainel } from "@/hooks/useAgoraDoPainel";
 import {
   conversaoEmVenda,
   estadoDasVisitas,
@@ -36,7 +37,7 @@ import {
   Truck,
   XCircle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 interface DefinicaoDeEtapa {
   readonly chave: keyof FunilDoCrm;
@@ -225,13 +226,8 @@ function Pipeline({
 }>) {
   // Entregue e cancelado já saíram da fila — não são "pedidos em aberto".
   const ordenadas = ordenarPipeline(pipelineEmAberto(etapas));
-  // "Agora" é fotografado junto com os dados: cada leitura nova do pipeline
-  // recalcula as idades (render continua puro).
-  const [agora, setAgora] = useState(() => Date.now());
+  const agora = useAgoraDoPainel();
   const [expandido, setExpandido] = useState(false);
-  useEffect(() => {
-    setAgora(Date.now());
-  }, [etapas]);
 
   return (
     <CartaoDoCrm

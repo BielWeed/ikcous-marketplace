@@ -103,7 +103,7 @@ export function montarAvisoDeCancelamento(
   return {
     title: "Cliente cancelou o pedido",
     body: `${numeroDoPedido(pedido.id)} · ${formatarBRL(valor)} · ${cliente} — ${frase}`,
-    url: "/admin-orders",
+    url: `/admin-orders?id=${encodeURIComponent(pedido.id)}`,
   };
 }
 

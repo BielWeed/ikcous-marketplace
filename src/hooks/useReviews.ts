@@ -7,14 +7,20 @@ import {
   updateReviewsCacheSeMesmaGeracao,
 } from "@/lib/cache-de-avaliacoes";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
+import { EVENTO_AVALIACAO_EXCLUIDA } from "@/lib/evento-avaliacao-excluida";
 import {
+  PRAZO_DAS_ACOES_DO_PEDIDO_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { Review } from "@/types";
-import { cachedReviewsData, setCachedReviewsData } from "@/utils/admin_cache";
+import {
+  cachedReviewsData,
+  lerGeracaoDosCachesDeAdmin,
+  setCachedReviewsData,
+} from "@/utils/admin_cache";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -244,22 +250,30 @@ export function useReviews() {
         // dizem quais botões já devem nascer marcados, numa consulta em lote.
         if (user && formattedReviews.length > 0) {
           try {
-            const { data: votos, error: erroDosVotos } = await aguardarComPrazo(
-              Promise.resolve(
-                supabase
-                  .from("review_votes")
-                  .select("review_id")
-                  .eq("user_id", user.id)
-                  .in(
-                    "review_id",
-                    formattedReviews.map((review) => review.id),
+            const votos: { review_id: string }[] = [];
+            // Cem ids por endereço, sem ultrapassar o limite do gateway.
+            for (let i = 0; i < formattedReviews.length; i += 100) {
+              const { data: lote, error: erroDosVotos } =
+                await aguardarComPrazo(
+                  Promise.resolve(
+                    supabase
+                      .from("review_votes")
+                      .select("review_id")
+                      .eq("user_id", user.id)
+                      .in(
+                        "review_id",
+                        formattedReviews
+                          .slice(i, i + 100)
+                          .map((review) => review.id),
+                      ),
                   ),
-              ),
-              15000,
-              erroDeConsultaSemResposta,
-            );
-            if (!atual()) return;
-            if (erroDosVotos) throw erroDosVotos;
+                  15000,
+                  erroDeConsultaSemResposta,
+                );
+              if (!atual()) return;
+              if (erroDosVotos) throw erroDosVotos;
+              votos.push(...(lote || []));
+            }
             setVotosUteis((atuais) => {
               if (!atual()) return atuais;
               // Não existe desvoto: uma leitura iniciada antes do clique não
@@ -310,20 +324,27 @@ export function useReviews() {
           return null;
         }
 
-        // Check if user already reviewed (optional, good practice)
-        /*
-      const { data: existing } = await supabase
-        .from('reviews')
-        .select('id')
-        .eq('product_id', review.productId)
-        .eq('user_id', user.id)
-        .single();
-      
-      if (existing) {
-        toast.error('Você já avaliou este produto.');
-        return null;
-      }
-      */
+        try {
+          const { data: existentes, error: erroDaConsulta } =
+            await aguardarComPrazo(
+              Promise.resolve(
+                supabase
+                  .from("reviews" as any)
+                  .select("id")
+                  .eq("product_id", review.productId)
+                  .eq("user_id", user.id)
+                  .limit(1),
+              ),
+              15000,
+              erroDeConsultaSemResposta,
+            );
+          if (!erroDaConsulta && existentes?.length) {
+            toast.error("Você já avaliou este produto.");
+            return null;
+          }
+        } catch {
+          // Falha na checagem não pode impedir quem ainda não avaliou.
+        }
 
         const { data, error } = await aguardarComPrazo(
           Promise.resolve(
@@ -475,9 +496,11 @@ export function useReviews() {
       },
     ) => {
       const rodada = ++rodadaAdminRef.current;
+      const geracaoAdmin = lerGeracaoDosCachesDeAdmin();
       const geracao = geracaoAtualDoCache();
       const atual = () =>
         rodada === rodadaAdminRef.current &&
+        geracaoAdmin === lerGeracaoDosCachesDeAdmin() &&
         geracao === geracaoAtualDoCache() &&
         usuarioAtualRef.current === user?.id;
       if (!atual()) return;
@@ -689,6 +712,8 @@ export function useReviews() {
       } catch (error) {
         if (!atual()) return;
         console.error("Error fetching all reviews:", error);
+        // Releitura de bastidor: a última lista boa continua na tela e no cache.
+        if (filters?.silent) return;
         toast.error("Erro ao carregar avaliações.");
         // Contrato da B2: a lista e o cache da leitura anterior saem, para a
         // falha não parecer o resultado de outro filtro/busca.
@@ -714,11 +739,17 @@ export function useReviews() {
       }
       try {
         // `.select("id")`: 0 linhas apagadas (política de acesso) vem como sucesso.
-        const { data: apagadas, error } = await supabase
-          .from("reviews" as any)
-          .delete()
-          .eq("id", reviewId)
-          .select("id");
+        const { data: apagadas, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("reviews" as any)
+              .delete()
+              .eq("id", reviewId)
+              .select("id"),
+          ),
+          PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+          () => erroDeConsultaSemResposta(),
+        );
 
         if (error) throw error;
         if (!apagadas?.length) throw new Error("Nenhuma avaliação apagada.");
@@ -730,7 +761,11 @@ export function useReviews() {
         return true;
       } catch (error) {
         console.error("Error deleting review:", error);
-        toast.error("Erro ao remover avaliação.");
+        toast.error(
+          ehConsultaSemResposta(error)
+            ? "Sem resposta da rede. Confira na lista antes de tentar de novo."
+            : "Erro ao remover avaliação.",
+        );
         return false;
       }
     },
@@ -753,11 +788,17 @@ export function useReviews() {
       }
       try {
         // `.select("id")`: 0 linhas publicadas (política de acesso) vem como sucesso.
-        const { data: publicadas, error } = await supabase
-          .from("reviews" as any)
-          .update({ status: "publicada" })
-          .eq("id", reviewId)
-          .select("id");
+        const { data: publicadas, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("reviews" as any)
+              .update({ status: "publicada" })
+              .eq("id", reviewId)
+              .select("id"),
+          ),
+          PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+          () => erroDeConsultaSemResposta(),
+        );
 
         if (error) throw error;
         if (!publicadas?.length)
@@ -774,7 +815,11 @@ export function useReviews() {
         return true;
       } catch (error) {
         console.error("Error approving review:", error);
-        toast.error("Erro ao publicar avaliação.");
+        toast.error(
+          ehConsultaSemResposta(error)
+            ? "Sem resposta da rede. Confira na lista antes de tentar de novo."
+            : "Erro ao publicar avaliação.",
+        );
         return false;
       }
     },
@@ -789,18 +834,64 @@ export function useReviews() {
       }
       try {
         // ZENITH v21.7: Rely on AuthContext's verified user
-        if (!user) {
+        if (!user?.id) {
           toast.error("Administrador não autenticado.");
           return false;
         }
 
         // 1. Execute Atomic Reply & Log via RPC
-        const { error } = await (supabase.rpc as any)("reply_review_atomic", {
-          p_review_id: reviewId,
-          p_reply: reply,
-        });
+        const { error } = await aguardarComPrazo(
+          Promise.resolve(
+            (supabase.rpc as any)("reply_review_atomic", {
+              p_review_id: reviewId,
+              p_reply: reply,
+            }),
+          ) as Promise<{ error: unknown }>,
+          PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+          () => erroDeConsultaSemResposta(),
+        );
 
         if (error) throw error;
+
+        // A função do banco devolve vazio mesmo quando não achou a avaliação
+        // (excluída em outro aparelho): confere que ela ainda existe. Se esta
+        // conferência falhar, vale o que o banco aceitou — só uma lista vazia
+        // e sem erro prova que nada foi gravado.
+        let aindaExiste: unknown = null;
+        let erroDaConferencia: unknown = null;
+        try {
+          ({ data: aindaExiste, error: erroDaConferencia } =
+            await aguardarComPrazo(
+              Promise.resolve(
+                supabase
+                  .from("reviews" as any)
+                  .select("id")
+                  .eq("id", reviewId),
+              ),
+              PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+              () => erroDeConsultaSemResposta(),
+            ));
+        } catch {
+          erroDaConferencia = true;
+        }
+        if (
+          !erroDaConferencia &&
+          Array.isArray(aindaExiste) &&
+          !aindaExiste.length
+        ) {
+          setAdminReviews((prev) => prev.filter((r) => r.id !== reviewId));
+          window.dispatchEvent(new Event("admin:recontar-avisos"));
+          // A tela de avaliações descarta o rascunho desta avaliação.
+          window.dispatchEvent(
+            new CustomEvent(EVENTO_AVALIACAO_EXCLUIDA, {
+              detail: { id: reviewId },
+            }),
+          );
+          toast.error(
+            "Esta avaliação já foi excluída. A resposta não foi enviada.",
+          );
+          return false;
+        }
 
         // 2. Optimistic Update
         setAdminReviews((prev) =>
@@ -814,11 +905,15 @@ export function useReviews() {
         return true;
       } catch (error) {
         console.error("Error adding merchant reply:", error);
-        toast.error("Erro ao enviar resposta.");
+        toast.error(
+          ehConsultaSemResposta(error)
+            ? "Sem resposta da rede. Confira na lista antes de tentar de novo."
+            : "Erro ao enviar resposta.",
+        );
         return false;
       }
     },
-    [user, isAdmin],
+    [user?.id, isAdmin],
   );
 
   const subscribeToReviews = useCallback(
@@ -926,6 +1021,7 @@ export function useReviews() {
   );
 
   return {
+    userIdAtual: user?.id,
     reviews: donoDasAvaliacoes === user?.id ? reviews : [],
     votosUteis:
       donoDasAvaliacoes === user?.id && user ? votosUteis : new Set<string>(),

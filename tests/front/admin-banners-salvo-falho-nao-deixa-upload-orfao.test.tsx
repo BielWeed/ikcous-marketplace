@@ -10,7 +10,7 @@
 //
 // Duas provas, os dois caminhos que a bandeira decide:
 //
-// 1. Salvar que FALHA não pode marcar a sessão como salva: fechar o
+// 1. Salvar com rejeição DEFINITIVA não marca a sessão como salva: fechar o
 //    diálogo depois tem que apagar o upload que não virou banner (órfão) —
 //    e é isso que impede o vazamento de espaço.
 // 2. Salvar com SUCESSO marca como salva: a imagem passa a ser referenciada
@@ -218,11 +218,11 @@ describe("AdminBannersView — salvar que falha não deixa upload órfão no buc
     expect(uploadBannerImage).toHaveBeenCalledWith(arquivo);
   }
 
-  it("salvar que FALHA não marca como salvo: fechar o diálogo apaga o upload órfão", async () => {
+  it("salvar com rejeição definitiva não marca como salvo: fechar apaga o upload órfão", async () => {
     await montar();
     await abrirDialogoESubirImagem();
 
-    addBanner.mockRejectedValue(new Error("falha de rede simulada"));
+    addBanner.mockRejectedValue({ code: "23505", message: "Banner rejeitado" });
 
     const botaoSalvar = localizarBotaoPorTexto(hospedeiro, "Salvar Banner")!;
     expect(botaoSalvar).toBeDefined();

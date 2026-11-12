@@ -23,8 +23,10 @@ import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { useRevalidarAoVoltar } from "@/hooks/useRevalidarAoVoltar";
 import { useReviews } from "@/hooks/useReviews";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { EVENTO_AVALIACAO_EXCLUIDA } from "@/lib/evento-avaliacao-excluida";
 import { pluralizar } from "@/lib/pluralizar";
 import { supabase } from "@/lib/supabase";
 import { classeDoTexto } from "@/lib/tons-de-estado";
@@ -158,9 +160,35 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   );
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const campoRespostaRef = useRef<HTMLTextAreaElement>(null);
+  const botoesResposta = useRef(new Map<string, HTMLButtonElement>());
+  const botoesExcluir = useRef(new Map<string, HTMLButtonElement>());
+  const tituloListaRef = useRef<HTMLHeadingElement>(null);
+  const focoPendente = useRef<(() => HTMLElement | null) | null>(null);
+  const ultimaRespostaRef = useRef<string | null>(null);
+  const [expandidas, setExpandidas] = useState<ReadonlySet<string>>(new Set());
+
+  useEffect(() => {
+    if (!active) return;
+    if (replyingTo) {
+      ultimaRespostaRef.current = replyingTo;
+      campoRespostaRef.current?.focus();
+    } else if (ultimaRespostaRef.current) {
+      botoesResposta.current.get(ultimaRespostaRef.current)?.focus();
+      ultimaRespostaRef.current = null;
+    }
+  }, [replyingTo, active]);
+
+  useEffect(() => {
+    if (!active) return;
+    focoPendente.current?.()?.focus();
+    focoPendente.current = null;
+  }, [confirmDeleteId, active]);
   const [rascunhos, setRascunhos] = useState<Record<string, string>>({});
   const replyText = replyingTo ? (rascunhos[replyingTo] ?? "") : "";
   const editorAtualRef = useRef<string | null>(null);
+  // Por avaliação: a resposta da loja que existia quando o rascunho nasceu.
+  const respostasDeOrigemRef = useRef(new Map<string, string>());
   const envioDeRespostaRef = useRef(false);
   const publicandoRef = useRef<Set<string>>(new Set());
   const [publicando, setPublicando] = useState<ReadonlySet<string>>(new Set());
@@ -208,6 +236,11 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     editorAtualRef.current = id;
     // Editar: o campo abre com a resposta de hoje (sem pisar num rascunho; ""
     // — o que fica depois de um envio — conta como sem rascunho).
+    if (!new Map(Object.entries(rascunhos)).get(id)) {
+      // De que resposta o rascunho partiu: é com ela que se vê se o outro
+      // aparelho mudou a resposta enquanto este campo estava aberto.
+      respostasDeOrigemRef.current.set(id, respostaAtual ?? "");
+    }
     if (respostaAtual) {
       setRascunhos((anteriores) =>
         new Map(Object.entries(anteriores)).get(id)
@@ -245,6 +278,23 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       });
       return;
     }
+    // A resposta da loja mudou em outro aparelho depois que este campo abriu:
+    // publicar agora apagaria a mais nova sem ninguém ver. Avisa uma vez; o
+    // segundo toque publica de propósito.
+    const naLista = adminReviews.find((r) => r.id === id);
+    const respostaNaLista = naLista?.merchantReply ?? "";
+    if (
+      naLista &&
+      respostaNaLista !== (respostasDeOrigemRef.current.get(id) ?? "")
+    ) {
+      respostasDeOrigemRef.current.set(id, respostaNaLista);
+      haptic.error();
+      toast.error("A resposta desta avaliação mudou em outro aparelho.", {
+        description:
+          "Veja o texto novo acima do campo. Se ainda quiser trocar, toque em Publicar resposta de novo.",
+      });
+      return;
+    }
     envioDeRespostaRef.current = true;
     setIsSubmittingReply(true);
     haptic.light();
@@ -252,6 +302,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       const success = await addMerchantReply(id, replyText);
       if (success) {
         haptic.success();
+        respostasDeOrigemRef.current.delete(id);
         setRascunhos((anteriores) => ({ ...anteriores, [id]: "" }));
         // Uma resposta tardia só fecha o editor que fez o envio.
         if (editorAtualRef.current === id) {
@@ -297,10 +348,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   // senão a mais velha, chegando por último, sobrescreve os totais. Mesmo
   // padrão de AdminCustomersView.
   const rodadaRef = useRef(0);
+  const leiturasEmVooRef = useRef(0);
 
   const loadReviews = useCallback(
     async (pageToFetch: number, silent = false) => {
       const rodada = ++rodadaRef.current;
+      leiturasEmVooRef.current += 1;
       try {
         const result = await getAllReviews(pageToFetch, pageSize, {
           rating: ratingFilter,
@@ -342,6 +395,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         console.error("[AdminReviewsView] Failed to load reviews:", err);
         if (rodada === rodadaRef.current) setFilaFalhou(true);
       } finally {
+        leiturasEmVooRef.current -= 1;
         firstLoadRef.current = false;
       }
     },
@@ -370,6 +424,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     subscribeToReviews,
   ]);
 
+  useRevalidarAoVoltar(
+    active && !isOffline,
+    () => loadReviews(page, true),
+    () => leiturasEmVooRef.current === 0,
+  );
+
   // Auto-refresh when coming back online
   const wasOfflineRef = useRef(isOffline);
   useEffect(() => {
@@ -382,9 +442,52 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     wasOfflineRef.current = isOffline;
   }, [isOffline, active, page, loadReviews]);
 
+  // O outro aparelho mudou a resposta e este campo está intacto (o texto ainda
+  // é o de origem): o campo acompanha. Campo já mexido nunca é trocado.
+  useEffect(() => {
+    const rascunhoDe = new Map(Object.entries(rascunhos));
+    const novas = new Map<string, string>();
+    for (const r of adminReviews) {
+      const origem = respostasDeOrigemRef.current.get(r.id);
+      const hoje = r.merchantReply ?? "";
+      if (origem === undefined || !hoje || hoje === origem) continue;
+      if (rascunhoDe.get(r.id) === origem && origem !== "")
+        novas.set(r.id, hoje);
+    }
+    if (novas.size === 0) return;
+    for (const [id, hoje] of novas) respostasDeOrigemRef.current.set(id, hoje);
+    setRascunhos((anteriores) => ({
+      ...anteriores,
+      ...Object.fromEntries(novas),
+    }));
+  }, [adminReviews, rascunhos]);
+
+  // Avaliação excluída em outro aparelho, descoberta ao tentar responder: o
+  // rascunho dela não tem mais para onde ir e não pode manter a tela "suja".
+  useEffect(() => {
+    const aoExcluir = (evento: Event) => {
+      const id = (evento as CustomEvent<{ id?: string }>).detail?.id;
+      if (!id) return;
+      respostasDeOrigemRef.current.delete(id);
+      setRascunhos((anteriores) => {
+        if (!(id in anteriores)) return anteriores;
+        const { [id]: _removido, ...restantes } = anteriores;
+        return restantes;
+      });
+      if (editorAtualRef.current === id) {
+        editorAtualRef.current = null;
+        setReplyingTo(null);
+      }
+    };
+    window.addEventListener(EVENTO_AVALIACAO_EXCLUIDA, aoExcluir);
+    return () =>
+      window.removeEventListener(EVENTO_AVALIACAO_EXCLUIDA, aoExcluir);
+  }, []);
+
   // Comunicar estado dirty para o roteador global
   useEffect(() => {
-    // "Sujo" = texto novo, diferente da resposta que a loja já tem.
+    // "Sujo" = texto novo, diferente da resposta de que o rascunho partiu (a
+    // avaliação pode já nem estar nesta página: filtro, busca ou outra página).
     const respostaDeHoje = new Map(
       adminReviews.map((r) => [r.id, r.merchantReply ?? ""]),
     );
@@ -392,7 +495,11 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       active &&
         Object.entries(rascunhos).some(
           ([id, texto]) =>
-            texto.trim().length > 0 && texto !== (respostaDeHoje.get(id) ?? ""),
+            texto.trim().length > 0 &&
+            texto !==
+              (respostasDeOrigemRef.current.get(id) ??
+                respostaDeHoje.get(id) ??
+                ""),
         ),
     );
   }, [active, rascunhos, adminReviews, onSetDirty]);
@@ -441,6 +548,8 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     // Laudo 0109 (A-10): o hook devolve booleano — vibração de sucesso e
     // recarga só quando a exclusão de verdade aconteceu.
     const ok = await deleteReview(id);
+    focoPendente.current = () =>
+      ok ? tituloListaRef.current : (botoesExcluir.current.get(id) ?? null);
     setConfirmDeleteId(null);
     if (!ok) return; // o toast de erro já foi dado no hook (useReviews)
     // A avaliação saiu: o rascunho dela não pode manter a tela "com alterações".
@@ -606,7 +715,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     );
 
   const renderFormularioDeResposta = (reviewId: string) => (
-    <div className="space-y-3">
+    <div role="group" aria-label="Responder à avaliação" className="space-y-3">
       <div className="space-y-2">
         <span className="block text-sm font-medium text-zinc-300">
           Resposta rápida
@@ -634,6 +743,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       </div>
 
       <textarea
+        ref={campoRespostaRef}
         value={replyText}
         onChange={(e) => setReplyText(e.target.value)}
         onFocus={(e) => {
@@ -678,6 +788,13 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
   const renderReview = (review: (typeof adminReviews)[number]) => {
     const pendente = review.status === "pendente";
+    const aberto = detalhado || expandidas.has(review.id);
+    // No modo compacto o comentário cabe em 3 linhas e a resposta em 2; num
+    // celular estreito (320 a 360 px) isso corta a partir de uns 90 e uns 60
+    // caracteres, então o botão aparece daí em diante.
+    const textoLongo =
+      (review.comment?.length ?? 0) > 80 ||
+      (review.merchantReply?.length ?? 0) > 55;
     return (
       <li
         key={review.id}
@@ -730,7 +847,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         <p
           className={cn(
             "mt-3 break-words text-base italic text-zinc-100",
-            detalhado ? "whitespace-pre-wrap" : "line-clamp-3",
+            aberto ? "whitespace-pre-wrap" : "line-clamp-3",
           )}
         >
           {review.comment
@@ -758,7 +875,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
             <p
               className={cn(
                 "mt-1.5 break-words text-base text-zinc-100",
-                detalhado ? "whitespace-pre-wrap" : "line-clamp-2",
+                aberto ? "whitespace-pre-wrap" : "line-clamp-2",
               )}
             >
               {review.merchantReply}
@@ -766,11 +883,34 @@ export const AdminReviewsView = memo(function AdminReviewsView({
           </div>
         )}
 
+        {!detalhado && textoLongo && (
+          <button
+            type="button"
+            aria-expanded={aberto}
+            aria-label={`${aberto ? "Ver menos" : "Ver mais"} da avaliação de ${review.customerName}`}
+            className={cn(BOTAO_NEUTRO, "mt-3")}
+            onClick={() =>
+              setExpandidas((anteriores) => {
+                const proximas = new Set(anteriores);
+                if (proximas.has(review.id)) proximas.delete(review.id);
+                else proximas.add(review.id);
+                return proximas;
+              })
+            }
+          >
+            {aberto ? "Ver menos" : "Ver mais"}
+          </button>
+        )}
+
         <div className="mt-3">
           {confirmDeleteId === review.id ? (
             <ConfirmarExclusao
               frase="Excluir esta avaliação? Não dá para desfazer."
-              aoCancelar={() => setConfirmDeleteId(null)}
+              aoCancelar={() => {
+                focoPendente.current = () =>
+                  botoesExcluir.current.get(review.id) ?? null;
+                setConfirmDeleteId(null);
+              }}
               aoConfirmar={() => handleDelete(review.id)}
             />
           ) : replyingTo === review.id ? (
@@ -805,6 +945,11 @@ export const AdminReviewsView = memo(function AdminReviewsView({
               <button
                 type="button"
                 disabled={isOffline || isSubmittingReply}
+                ref={(botao) => {
+                  if (botao) botoesResposta.current.set(review.id, botao);
+                  else botoesResposta.current.delete(review.id);
+                }}
+                aria-label={`${review.merchantReply ? "Editar resposta" : "Responder"} a ${review.customerName}`}
                 onClick={() => abrirResposta(review.id, review.merchantReply)}
                 className={cn(BOTAO_NEUTRO, "min-w-0 flex-1")}
               >
@@ -815,7 +960,11 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                 type="button"
                 onClick={() => setConfirmDeleteId(review.id)}
                 disabled={isOffline}
-                aria-label="Excluir avaliação"
+                ref={(botao) => {
+                  if (botao) botoesExcluir.current.set(review.id, botao);
+                  else botoesExcluir.current.delete(review.id);
+                }}
+                aria-label={`Excluir avaliação de ${review.customerName}`}
                 title="Excluir avaliação"
                 className={cn(BOTAO_DE_ICONE_EXCLUIR, "ml-auto")}
               >
@@ -840,6 +989,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({
           some da vista: o alternador logo abaixo já diz "Avaliações". */}
       <div className="sr-only">
         <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-reviews"]} />
+        <h2 ref={tituloListaRef} tabIndex={-1}>
+          Lista de avaliações
+        </h2>
       </div>
 
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-4 pt-3">

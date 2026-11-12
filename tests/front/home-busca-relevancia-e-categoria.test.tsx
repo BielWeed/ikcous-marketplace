@@ -97,10 +97,11 @@ const produto = (
 // A ordem do catálogo é a da lista (mais novo primeiro): camisa, bolsa, ...
 const PRODUTOS = [
   produto("camisa", "Camisa Nova", "Roupas", {
+    createdTime: 3000,
     description: "Combina com a bolsa preta",
   }),
-  produto("bolsa", "Bolsa Preta", "Bolsas"),
-  produto("camiseta", "Camiseta Azul", "Roupas"),
+  produto("bolsa", "Bolsa Preta", "Bolsas", { createdTime: 2000 }),
+  produto("camiseta", "Camiseta Azul", "Roupas", { createdTime: 1000 }),
   produto("bolsa-esgotada", "Bolsa Vermelha", "Bolsas", { stock: 0 }),
 ];
 
@@ -173,7 +174,7 @@ describe("HomeView — a busca usa a relevância e olha a loja inteira", () => {
 
     it("escolhida a ordem por preço, o preço manda e a relevância não interfere", async () => {
       await render({ searchQuery: "bolsa", sortBy: "price-asc" });
-      // Preços iguais: a ordem do catálogo se mantém.
+      // Precos iguais: vence a data mais nova, nao a pontuacao de relevancia.
       expect(ordemNaTela()).toEqual(["camisa", "bolsa", "bolsa-esgotada"]);
     });
   });

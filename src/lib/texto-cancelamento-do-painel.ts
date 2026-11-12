@@ -27,6 +27,10 @@ export interface PedidoParaConfirmarCancelamento {
    * é gravado como `shipping`, mas o produto NUNCA saiu da loja: não há
    * transporte nem produto "voltando". */
   retiradaNaLoja?: boolean | null;
+  /** Pedido de convidado: sem conta (`Order.userId` ausente). Não há para quem
+   * mandar o aviso no aplicativo — a confirmação não pode prometê-lo. Ausente
+   * ou `false` mantém a frase de sempre. */
+  clienteSemConta?: boolean | null;
 }
 
 const PAGOS = new Set(["pago", "pago_apos_expirar", "recebido_na_entrega"]);
@@ -108,6 +112,10 @@ const PASSO_DA_RETIRADA_CANCELADA =
 
 const AVISO_DA_ETIQUETA_PAGA =
   "A etiqueta de envio já foi paga. Cancele a etiqueta no Melhor Envio para recuperar o saldo.";
+// Pedido de convidado: o cancelamento não manda aviso nenhum (não há conta para
+// receber o push), então a confirmação manda o lojista avisar por conta própria.
+const FRASE_CLIENTE_SEM_CONTA =
+  "Este cliente não tem conta no aplicativo e NÃO recebe aviso do cancelamento: avise-o você mesmo, por exemplo pelo WhatsApp.";
 // Toda frase abaixo fecha com a pergunta ("Cancelar?" / "Cancelar mesmo
 // assim?"); o aviso da etiqueta entra logo ANTES dela, para o lojista ler a
 // consequência e só então decidir.
@@ -179,7 +187,15 @@ function textoBaseDoCancelamento(
   // Sem pagamento, enviado, devolvido e reativado: o estoque já foi acertado
   // quando a loja confirmou o retorno — cancelar não o credita de novo.
   if (produtoJaVoltouParaALoja(pedido)) {
-    return "O produto que tinha saído deste pedido já voltou para a loja e o estoque já foi acertado. O cliente é avisado no aplicativo. Cancelar?";
+    return `O produto que tinha saído deste pedido já voltou para a loja e o estoque já foi acertado. ${
+      pedido.clienteSemConta === true
+        ? FRASE_CLIENTE_SEM_CONTA
+        : "O cliente é avisado no aplicativo."
+    } Cancelar?`;
   }
-  return "Tem certeza que deseja cancelar este pedido? O estoque volta para o produto e o cliente é avisado no aplicativo. Cancelar?";
+  return `Tem certeza que deseja cancelar este pedido? O estoque volta para o produto${
+    pedido.clienteSemConta === true
+      ? `. ${FRASE_CLIENTE_SEM_CONTA}`
+      : " e o cliente é avisado no aplicativo."
+  } Cancelar?`;
 }

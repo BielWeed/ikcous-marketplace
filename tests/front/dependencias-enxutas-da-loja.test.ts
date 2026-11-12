@@ -440,6 +440,7 @@ import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { cpfValido } from "@/lib/cpf";
 import { ufBrasileiraValida } from "@/lib/uf-brasileira";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { celularBrasileiroCompleto, mensagemDeWhatsappIncompleto } from "@/lib/telefone-br";
 const addressSchema = ${endereco};
 const reviewSchema = ${avaliacao};

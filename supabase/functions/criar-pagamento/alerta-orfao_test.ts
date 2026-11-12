@@ -12,7 +12,7 @@
  */
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { inscricaoDeTeste, parVapidDeTeste, pushServiceFalso } from "../_shared/webpush_fixtures.ts";
-import { alertarAdminCartaoOrfaoReal } from "./index.ts";
+import { alertarAdminCartaoOrfaoReal, avisoDoCartaoOrfao } from "./index.ts";
 
 function supabaseFalso(inscricoes: unknown[]) {
   return {
@@ -56,4 +56,21 @@ Deno.test("aviso de cartão órfão sai com Urgency: high e mantém o TTL padrã
     }
     await service.encerrar();
   }
+});
+
+Deno.test("aviso de cartão órfão: o toque leva ao pedido do aviso (id na url, codificado), com o texto padrão ou com o do chamador", () => {
+  const id = "5a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+  const padrao = avisoDoCartaoOrfao(id);
+  assertEquals(padrao, {
+    title: "Cobrança de cartão sem registro",
+    body: "Pedido #2B3C4D · confira o painel do Mercado Pago",
+    url: `/admin-orders?id=${id}`,
+  });
+  // O texto do chamador (cartão em verificação etc.) é preservado; só a url é do pedido.
+  assertEquals(avisoDoCartaoOrfao(id, { title: "T", body: "B", url: "/qualquer" } as never), {
+    title: "T",
+    body: "B",
+    url: `/admin-orders?id=${id}`,
+  });
+  assertEquals(avisoDoCartaoOrfao("a b&id=outro").url, "/admin-orders?id=a%20b%26id%3Doutro");
 });

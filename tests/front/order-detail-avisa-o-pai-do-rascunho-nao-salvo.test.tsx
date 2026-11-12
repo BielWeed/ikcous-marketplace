@@ -11,12 +11,18 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { salvar, atualizar, ler, gravarNota } = vi.hoisted(() => ({
-  salvar: vi.fn(),
-  atualizar: vi.fn(),
-  ler: vi.fn(),
-  gravarNota: vi.fn(),
-}));
+const { salvar, atualizar, ler, gravarNota, comLinhaGravada } = vi.hoisted(
+  () => ({
+    salvar: vi.fn(),
+    atualizar: vi.fn(),
+    ler: vi.fn(),
+    gravarNota: vi.fn(),
+    // `.select("id")` pede a linha gravada de volta: o banco só a devolve quando
+    // o update valeu (0 linhas = a política filtrou, e a ficha não diz "salvo").
+    comLinhaGravada: <T extends { error: unknown }>(resposta: T) =>
+      resposta.error ? resposta : { ...resposta, data: [{ id: "A" }] },
+  }),
+);
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
@@ -32,14 +38,25 @@ vi.mock("@/lib/supabase", () => ({
               : ler(tabela, colunas, coluna, id),
         }),
       }),
-      upsert: (valores: { order_id: string; note: string }) => {
-        gravarNota(tabela, valores);
-        return Promise.resolve({ error: null });
-      },
+      // Anotação nova (a ficha leu "sem anotação"): grava com `insert`.
+      insert: (valores: { order_id: string; note: string }) => ({
+        select: () => {
+          gravarNota(tabela, valores);
+          return Promise.resolve({
+            data: [{ updated_at: "2026-11-08T10:00:00+00:00" }],
+            error: null,
+          });
+        },
+      }),
       delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
       update: (valores: unknown) => {
         atualizar(tabela, valores);
-        return { eq: salvar };
+        return {
+          eq: (...filtro: unknown[]) => ({
+            select: () =>
+              Promise.resolve(salvar(...filtro)).then(comLinhaGravada),
+          }),
+        };
       },
     }),
     functions: { invoke: vi.fn() },
@@ -156,6 +173,32 @@ describe("ficha do pedido — avisa o pai quando há rascunho não salvo", () =>
       elemento.dispatchEvent(new Event("input", { bubbles: true }));
     });
   }
+
+  it("r66 aba inativa não deixa recibo no body e preserva o rascunho ao reativar", async () => {
+    const order = pedido();
+    await mostrar(order);
+    expect(
+      document.body.querySelector('[class~="print:block"]'),
+    ).not.toBeNull();
+    await editarNotas();
+    digitar("#notes-textarea", "Rascunho preservado");
+    await act(async () => {
+      raiz.render(
+        <OrderDetail
+          order={order}
+          active={false}
+          onStatusChange={onStatusChange}
+        />,
+      );
+    });
+    expect(document.body.querySelector('[class~="print:block"]')).toBeNull();
+    expect(campo("#notes-textarea").value).toBe("Rascunho preservado");
+    await mostrar(order);
+    expect(
+      document.body.querySelector('[class~="print:block"]'),
+    ).not.toBeNull();
+    expect(campo("#notes-textarea").value).toBe("Rascunho preservado");
+  });
 
   it("sem rascunho a ficha avisa 'não'; só abrir o campo da anotação também não é rascunho", async () => {
     await mostrar(pedido());

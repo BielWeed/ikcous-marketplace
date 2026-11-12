@@ -5,7 +5,7 @@
 // (ou sem internet) a lista vinha em ordem de uuid. Em "Relevância" sem busca a
 // Home agora desempata pela data de cadastro (a mesma régua de
 // `ordenarParaVitrine`), depois do "com estoque na frente". Quando as datas
-// empatam, vale a ordem em que a lista chegou. Ordem por preço não muda.
+// empatam, o id decide. Preco diferente continua valendo antes da data.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -142,7 +142,7 @@ describe("HomeView — Catálogo em 'Relevância' sem busca: mais novos primeiro
     ]);
   });
 
-  it("datas iguais (ou sem data) mantêm a ordem em que a lista chegou", async () => {
+  it("datas iguais (ou sem data) desempatam pelo id", async () => {
     await render([
       produto("c"),
       produto("a", { createdTime: 100 }),
@@ -150,9 +150,25 @@ describe("HomeView — Catálogo em 'Relevância' sem busca: mais novos primeiro
       produto("d", { createdTime: 100 }),
     ]);
 
-    // Com data na frente (empatadas entre si: ordem de chegada); sem data (0) depois.
-    expect(ordemNaTela()).toEqual(["a", "d", "c", "b"]);
+    // Com data na frente; id decide entre datas iguais e tambem entre ausentes.
+    expect(ordemNaTela()).toEqual(["a", "d", "b", "c"]);
   });
+
+  it.each(["price-asc", "price-desc", "default"] as const)(
+    "%s desempata por mais novo e id, independente da chegada",
+    async (sortBy) => {
+      const produtos = [
+        produto("z", { createdTime: 1000 }),
+        produto("c", { createdTime: 3000 }),
+        produto("a", { createdTime: 3000 }),
+        produto("esgotado", { createdTime: 5000 }, 0),
+      ];
+      for (const lista of [produtos, [...produtos].reverse()]) {
+        await render(lista, { sortBy, searchQuery: "produto" });
+        expect(ordemNaTela()).toEqual(["a", "c", "z", "esgotado"]);
+      }
+    },
+  );
 
   it("ordem por preço não é mexida pela data", async () => {
     await render(

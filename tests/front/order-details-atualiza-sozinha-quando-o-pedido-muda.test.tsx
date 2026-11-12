@@ -152,6 +152,53 @@ describe("OrderDetailsView — a tela acompanha o pedido quando ele muda na list
     });
   }
 
+  it("rede falhou com cache: avisa que o pedido pode estar desatualizado e permite reler", async () => {
+    ordersLoadError = "Falha ao carregar";
+    fetchUserOrders.mockResolvedValue([]);
+    await renderizar();
+    const aviso =
+      "Não conseguimos atualizar este pedido agora. O que aparece pode estar desatualizado.";
+    expect(hospedeiro.textContent).toContain("Blusa Teste");
+    expect(hospedeiro.querySelector('[role="status"]')?.textContent).toContain(
+      aviso,
+    );
+    const tentar = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Tentar de novo",
+    );
+    expect(tentar).toBeTruthy();
+    let terminar!: (pedidos: Order[]) => void;
+    fetchUserOrders.mockReturnValue(
+      new Promise<Order[]>((resolve) => {
+        terminar = resolve;
+      }),
+    );
+    await act(async () => tentar!.click());
+    const carregando = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Carregando…",
+    );
+    expect(carregando?.getAttribute("aria-disabled")).toBe("true");
+    expect(carregando?.disabled).toBe(true);
+    await act(async () => carregando!.click());
+    expect(fetchUserOrders).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      ordersLoadError = null;
+      lista = [pedidoPago];
+      terminar(lista);
+    });
+    await renderizar();
+    expect(fetchUserOrders).toHaveBeenCalledTimes(2);
+    expect(hospedeiro.textContent).not.toContain(aviso);
+    expect(hospedeiro.textContent).toContain("Pagamento confirmado");
+  });
+
+  it("pedido relido sem erro não mostra aviso de desatualização", async () => {
+    await renderizar();
+    expect(hospedeiro.textContent).not.toContain(
+      "O que aparece pode estar desatualizado.",
+    );
+    expect(hospedeiro.textContent).not.toContain("Tentar de novo");
+  });
+
   it("rede falhou sem cache: mostra erro e permite tentar de novo até uma consulta vazia de verdade", async () => {
     lista = [];
     ordersLoadError = "Falha ao carregar";

@@ -2,9 +2,12 @@
 //
 // O redesenho do Perfil mexeu no AddressList, que o checkout e o carrinho
 // também usam (`selectable`). Estas travas congelam, byte a byte, o que o
-// modo `selectable` desenhava ANTES (commit 383fbcd0): classes, tamanho e nome
-// acessível do Editar/Excluir, o selo e os textos do cartão expandido e o
-// estado vazio. Sem elas, o furo passou despercebido: o botão Editar do
+// modo `selectable` desenhava ANTES (commit 383fbcd0): classes e tamanho do
+// Editar/Excluir, o selo e os textos do cartão expandido e o estado vazio. O
+// NOME acessível do Editar/Excluir deixou de ser congelado em "Editar"/"Excluir"
+// no lote r64-a (acessibilidade): com vários endereços, os botões se chamavam
+// todos igual; agora levam o nome do endereço (ver
+// address-list-checkout-diz-qual-esta-escolhido.test.tsx). Sem elas, o furo passou despercebido: o botão Editar do
 // checkout virou círculo transparente de 44 px chamado "Editar endereço Casa".
 import { AddressList } from "@/components/ui/custom/AddressList";
 import type { Address } from "@/types";
@@ -64,7 +67,7 @@ describe("AddressList — checkout e carrinho (selectable) desenham como antes",
 
   const renderizar = (el: React.ReactElement) => act(() => raiz.render(el));
 
-  it("expandido com selectable: Editar e Excluir ficam como na base (classes, tamanho e nome acessível)", () => {
+  it("expandido com selectable: Editar e Excluir ficam como na base (classes e tamanho; o nome acessível agora diz o endereço)", () => {
     renderizar(
       <AddressList
         addresses={[CASA]}
@@ -76,10 +79,10 @@ describe("AddressList — checkout e carrinho (selectable) desenham como antes",
     );
     const botoes = [...hospedeiro.querySelectorAll("button")];
     const editar = botoes.find(
-      (b) => b.getAttribute("aria-label") === "Editar",
+      (b) => b.getAttribute("aria-label") === "Editar endereço Casa",
     );
     const excluir = botoes.find(
-      (b) => b.getAttribute("aria-label") === "Excluir",
+      (b) => b.getAttribute("aria-label") === "Excluir endereço Casa",
     );
     expect(editar?.className).toBe(EDITAR_BASE);
     expect(excluir?.className).toBe(EXCLUIR_BASE);

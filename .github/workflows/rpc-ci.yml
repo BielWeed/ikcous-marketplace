@@ -258,8 +258,10 @@ on:
       - "scripts/publicacao/consultas/126b-antes-a-busca-de-devolucao-ignora-o-acento-base-vigente.sql"
       - "scripts/publicacao/consultas/127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado.sql"
       - "scripts/publicacao/consultas/127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente.sql"
-      - "scripts/publicacao/consultas/128a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado.sql"
-      - "scripts/publicacao/consultas/128b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente.sql"
+      - "scripts/publicacao/consultas/128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado.sql"
+      - "scripts/publicacao/consultas/128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente.sql"
+      - "scripts/publicacao/consultas/129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado.sql"
+      - "scripts/publicacao/consultas/129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -487,8 +489,10 @@ on:
       - "scripts/publicacao/consultas/126b-antes-a-busca-de-devolucao-ignora-o-acento-base-vigente.sql"
       - "scripts/publicacao/consultas/127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado.sql"
       - "scripts/publicacao/consultas/127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente.sql"
-      - "scripts/publicacao/consultas/128a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado.sql"
-      - "scripts/publicacao/consultas/128b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente.sql"
+      - "scripts/publicacao/consultas/128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado.sql"
+      - "scripts/publicacao/consultas/128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente.sql"
+      - "scripts/publicacao/consultas/129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado.sql"
+      - "scripts/publicacao/consultas/129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -571,12 +575,225 @@ jobs:
       # `!cancelled()` só troca o "pare no primeiro erro" por "rode todas e
       # reprove no fim". Sem as migrations aplicadas, nenhuma prova roda (o
       # passo `aplica` já reprovou o job).
+      - name: Prova viva do perfil completo restrito a propria conta
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-perfil-completo-so-devolve-a-propria-conta-viva.cjs
+      - name: Prova viva dos favoritos isolados entre contas
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/os-favoritos-nao-passam-para-outra-conta-viva.cjs
+      - name: Prova viva do favorito repetido na mesma conta recusado no banco
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/favorito-repetido-na-mesma-conta-e-recusado-no-banco-viva.cjs
+      - name: Prova viva da avaliacao em nome da propria conta
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-avaliacao-so-nasce-em-nome-da-propria-conta-viva.cjs
+      - name: Prova viva avaliacao nao nasce publicada nem verificada
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/avaliacao-nao-nasce-publicada-nem-verificada-viva.cjs
+      - name: Prova viva da analise por categoria no periodo e com subtotal zero
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/analise-por-categoria-periodo-e-subtotal-zero-viva.cjs
+      - name: Prova viva do balcao recusando admin rebaixado com JWT antigo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/balcao-recusa-admin-rebaixado-viva.cjs
+      - name: Prova viva da configuracao recusando cliente e admin rebaixado
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/configuracao-recusa-admin-rebaixado-viva.cjs
+      - name: Prova viva da grade recusando admin rebaixado com JWT antigo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/grade-recusa-admin-rebaixado-viva.cjs
+      - name: Prova viva itens isolados por comprador
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/itens-do-pedido-so-do-comprador-viva.cjs
+      - name: Prova viva endereco principal restrito a conta
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/endereco-principal-nao-desmarca-outra-conta-viva.cjs
+      - name: Prova viva avisos globais protegidos
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/avisos-globais-nao-podem-ser-alterados-viva.cjs
+      - name: Prova viva detalhe do cliente isola enderecos
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/detalhe-do-cliente-so-traz-seus-enderecos-viva.cjs
+      - name: Prova viva resposta recusa admin rebaixado
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/resposta-de-avaliacao-recusa-rebaixado-viva.cjs
+      - name: Prova viva pagamento sem conta e repetido nao avisa
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/pagamento-sem-conta-ou-repetido-nao-avisa-viva.cjs
+      - name: Prova viva ajuste de estoque nulo nao apaga o saldo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/ajuste-de-estoque-nulo-nao-apaga-o-saldo-viva.cjs
+      - name: Prova viva lista de pedidos filtra pagamento na contagem e na pagina
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/lista-de-pedidos-filtro-de-pagamento-viva.cjs
+      - name: Prova viva recancelar nao sobrescreve a auditoria
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-recancelar-nao-sobrescreve-a-auditoria-viva.cjs
+      - name: Prova viva codigo repetido de cupom e recusado no banco
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-codigo-repetido-e-recusado-no-banco-viva.cjs
+      - name: Prova viva estoque considera somente reestoque feito
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/estoque-desconta-so-devolucao-reestocada-viva.cjs
+      - name: Prova viva estorno preserva data informada
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/estorno-preserva-data-informada-no-pedido-viva.cjs
+      - name: Prova viva devolucao encerrada nao reabre nem perde reembolso manual
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/devolucao-encerrada-nao-reabre-viva.cjs
+      - name: Prova viva lancamento exige contas ativas
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/lancamento-inativo-nao-grava-viva.cjs
+      - name: Prova viva cupom inativo e teto do desconto na v24
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-inativo-e-teto-do-desconto-na-v24-viva.cjs
+      - name: Prova viva caixa exige contrapartida ativa
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/caixa-contrapartida-inativa-nao-grava-viva.cjs
+      - name: Prova viva alterar so o nome preserva o WhatsApp
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/perfil-alterar-so-o-nome-nao-apaga-o-whatsapp-viva.cjs
+      - name: Prova viva o CPF so mexe na propria conta
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-cpf-so-mexe-na-propria-conta-viva.cjs
+      - name: Prova viva baixa concorrente protege lancamento
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/baixa-concorrente-impede-edicao-do-lancamento-viva.cjs
+      - name: Prova viva comprador nao avanca o proprio pedido
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/comprador-nao-avanca-o-proprio-pedido-viva.cjs
+      - name: Prova viva banner vencido nao aparece ao visitante
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/banner-vencido-nao-aparece-ao-visitante-viva.cjs
+      - name: Prova viva balcao recusa desconto negativo e pagamento invalido
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/balcao-recusa-desconto-negativo-e-pagamento-invalido-viva.cjs
+      - name: Prova viva reordenar banner invalido preserva a ordem
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/reordenar-banners-com-id-invalido-nao-apaga-a-ordem-viva.cjs
+      - name: Prova viva criar categoria recusa slug repetido
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/categoria-slug-repetido-e-recusado-no-banco-viva.cjs
+      - name: Prova viva retirada sem endereco da loja e recusada na v23
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/retirada-sem-endereco-da-loja-e-recusada-na-v23-viva.cjs
+      - name: Prova viva o total comprado do cliente so conta pagamento reconhecido
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-total-comprado-do-cliente-so-conta-pagamento-reconhecido-viva.cjs
+      - name: Prova viva o painel cresce e conta cancelados pagos
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-painel-de-numeros-cresce-e-conta-cancelados-pagos-viva.cjs
+      - name: Prova viva a pergunta so nasce em nome da propria conta
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-pergunta-so-nasce-em-nome-da-propria-conta-viva.cjs
+      - name: Prova viva o perfil publico so mostra avaliacao publicada e produto publico
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-perfil-publico-so-mostra-avaliacao-publicada-e-produto-publico-viva.cjs
+      - name: Prova viva o selo de compra verificada so vale com pedido pago e vivo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-selo-de-compra-verificada-so-vale-com-pedido-pago-e-vivo-viva.cjs
+      - name: Prova viva a loja nunca fica sem forma de pagamento
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-nunca-fica-sem-forma-de-pagamento-viva.cjs
+      - name: Prova viva a mesma cobranca nao liga a dois pedidos
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-mesma-cobranca-nao-liga-a-dois-pedidos-viva.cjs
+      - name: Prova viva o comprador nao cria nem apaga pedido direto
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-comprador-nao-cria-nem-apaga-pedido-direto-no-banco-viva.cjs
+      - name: Prova viva aviso global so do admin e carrinho alheio so leitura
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/aviso-global-so-do-admin-e-carrinho-alheio-so-leitura-viva.cjs
+      - name: Prova viva cupom com limite zero vale como sem limite
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-com-limite-zero-vale-como-sem-limite-viva.cjs
+      - name: Prova viva saldo da conta e ajuste do caixa batem
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-saldo-da-conta-e-o-ajuste-do-caixa-batem-viva.cjs
+      - name: Prova viva o aviso em massa so chega ao segmento escolhido
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-aviso-em-massa-so-chega-ao-segmento-escolhido-viva.cjs
+      - name: Prova viva a compra so vende variacao ativa de produto ativo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-compra-so-vende-variacao-ativa-de-produto-ativo-viva.cjs
+      - name: Prova viva o frete cotado para um carrinho nao vale para outro
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-frete-cotado-para-um-carrinho-nao-vale-para-outro-viva.cjs
+      - name: Prova viva o CEP local so vale para o CEP da loja
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-cep-local-so-vale-para-o-cep-da-loja-viva.cjs
+      - name: Prova viva a lista de pedidos do painel respeita periodo e em aberto
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-lista-de-pedidos-do-painel-respeita-periodo-e-em-aberto-viva.cjs
+      - name: Prova viva o sino de perguntas do painel conta so as pendentes
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-sino-de-perguntas-do-painel-conta-so-as-pendentes-viva.cjs
+      - name: Prova viva a venda de balcao so vende variacao valida e produto ativo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-venda-de-balcao-so-vende-variacao-valida-e-produto-ativo-viva.cjs
+      - name: Prova viva a cliente so cancela e despacha a propria devolucao no status certo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-cliente-so-cancela-e-despacha-a-propria-devolucao-no-status-certo-viva.cjs
+      - name: Prova viva produto voltou so credita pedido cancelado depois de enviado
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/produto-voltou-so-credita-pedido-cancelado-depois-de-enviado-viva.cjs
+      - name: Prova viva a devolucao so aceita fotos no formato e no teto certos
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-devolucao-so-aceita-fotos-no-formato-e-no-teto-certos-viva.cjs
+      - name: Prova viva a reserva do pedido online dura trinta minutos
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-reserva-do-pedido-online-dura-trinta-minutos-viva.cjs
+      - name: Prova viva a reconciliacao marca a cobranca terminal certa
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-reconciliacao-marca-a-cobranca-terminal-certa-viva.cjs
+      - name: Prova viva o comprador so cancela o proprio pedido e so antes da entrega
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-comprador-so-cancela-o-proprio-pedido-e-so-antes-da-entrega-viva.cjs
+      - name: Prova viva a taxa de devolucao do CRM so conta o que voltou
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-taxa-de-devolucao-do-crm-so-conta-o-que-voltou-viva.cjs
+      - name: Prova viva o financeiro recusa periodo invalido
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-financeiro-recusa-periodo-invalido-viva.cjs
+      - name: Prova viva a limpeza dos logs de frete guarda 30 dias
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-limpeza-dos-logs-de-frete-guarda-30-dias-viva.cjs
+      - name: Prova viva a limpeza do cache de cotacao so apaga o velho
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-limpeza-do-cache-de-cotacao-so-apaga-o-velho-viva.cjs
+      - name: Prova viva o estoque do produto nunca fica negativo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-estoque-do-produto-nunca-fica-negativo-viva.cjs
+      - name: Prova viva o bucket das fotos de devolucao so aceita imagem
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-bucket-das-fotos-de-devolucao-so-aceita-imagem-viva.cjs
+      - name: Prova viva cancelar pedido so abre estorno se pago de verdade
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cancelar-pedido-so-abre-estorno-se-pago-viva.cjs
+      - name: Prova viva o comprador nao escreve no livro do estorno nem na devolucao
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-comprador-nao-escreve-no-ledger-de-estorno-viva.cjs
+      - name: Prova viva a vitrine so mostra avaliacao publicada
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-vitrine-so-mostra-avaliacao-publicada-viva.cjs
+      - name: Prova viva o cliente nao escreve no perfil publico
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-cliente-nao-escreve-no-perfil-publico-viva.cjs
+      - name: Prova viva os numeros do Inicio e do funil do CRM
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/os-numeros-do-inicio-e-do-funil-do-crm-viva.cjs
+      - name: Prova viva o prazo da devolucao conta o dia de Sao Paulo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-prazo-da-devolucao-conta-dia-de-sao-paulo-viva.cjs
       - name: Prova viva do avanco com status esperado (345)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/avanco-status-esperado-viva.cjs
       - name: Prova viva do reembolso manual com reserva (343)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/reembolso-manual-reserva-viva.cjs
+      - name: Prova viva da analise por categoria so com pedido pago
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/analise-por-categoria-so-conta-pedido-pago-viva.cjs
       - name: Prova viva dos icones de categoria e ACL preservada (300)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/categorias-icones-viva.cjs
@@ -616,6 +833,21 @@ jobs:
       - name: Prova viva das devoluções
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/devolucoes-viva.cjs
+      - name: Prova viva das recusas de devolução e cupom na chamada direta
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/solicitar-devolucao-e-cupom-recusas-viva.cjs
+      - name: Prova viva de que nao se insere no carrinho de outra conta
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/carrinho-nao-insere-no-carrinho-de-outra-conta-viva.cjs
+      - name: Prova viva de que sincronizar o carrinho só mexe na própria conta
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/carrinho-sincronizar-so-mexe-no-meu-viva.cjs
+      - name: Prova viva de que devolver cupom não deixa o contador negativo
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/devolver-cupom-nao-deixa-contador-negativo-viva.cjs
+      - name: Prova viva de que abrir o caixa exige admin atual
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/caixa-abrir-recusa-quem-nao-e-admin-atual-viva.cjs
       - name: Prova viva do cartão online
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cartao-online-viva.cjs
@@ -771,6 +1003,9 @@ jobs:
       - name: Prova viva do frete que o pedido grava e da cotacao de frete velha recusada
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-frete-do-pedido-segue-a-regra-da-loja-viva.cjs
+      - name: Prova viva cotacao de outra origem ou velha nao vira preco
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cotacao-de-frete-de-outra-origem-ou-velha-nao-vira-preco-viva.cjs
       # Migration 20261396000000 (cada conta tem no maximo 10 aparelhos com aviso ligado): gatilho BEFORE INSERT em push_subscriptions recusa a 11a
       # inscricao NOVA da conta (cliente que nao e' administrador), sem apagar nada; o re-registro do mesmo aparelho (upsert por endpoint, que
       # dispara o gatilho antes do conflito) nao conta; conta acima de 10 de antes renova e desliga mas nao cadastra novo; duas conexoes reais
@@ -869,17 +1104,31 @@ jobs:
       - name: Prova viva do sino do pedido vencido que fala do vencimento (20261399920000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-sino-do-pedido-vencido-fala-do-vencimento-viva.cjs
-      # Migration 20261399930000 (o cadastro cria o perfil em toda loja): o gatilho on_auth_user_created de auth.users (AFTER INSERT por linha, chama handle_new_user), que a loja clonada do baseline
+      # Migration 20261399930000 (o caixa e a conta recusam valor que nao e numero): fin_caixa_abrir e fin_conta_salvar recusam NaN, infinito e acima do teto com 22023 ANTES de qualquer escrita
+      # (como fin_caixa_fechar_sessao). Controle com os corpos anteriores na MESMA fixture (aceitavam 'NaN' e gravavam), dado antigo intacto, negativo/nulo/zero iguais, permissao antes da guarda,
+      # mutantes por MUTANTE_R150E, ACL/atributos/dono iguais, reaplicar, rollback byte a byte, pre-voo e consultas 128a/128b. CLONE proprio.
+      - name: Prova viva do caixa e da conta que recusam valor que nao e numero (20261399930000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-caixa-e-a-conta-recusam-nan-viva.cjs
+      # Onda 150 (SEM migration): registrar_venda_presencial recusa p_itens vazio, que nao e lista (objeto, null, escalar, NULL) e com mais de 200 linhas, com 22023 e a frase da loja, sem escrever pedido, item,
+      # historico, financeiro nem estoque; 200 (o limite) entra. Mutantes por MUTANTE_R150E. CLONE proprio.
+      - name: Prova viva do balcao que recusa venda sem item e com itens demais
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs
+      # Migration 20261399940000 (o cadastro cria o perfil em toda loja): o gatilho on_auth_user_created de auth.users (AFTER INSERT por linha, chama handle_new_user), que a loja clonada do baseline
       # nunca teve, so se ausente, e o reparo de quem ja se cadastrou sem perfil (ganha a mesma linha que o gatilho criaria; quem ja tem perfil, quem tem papel admin/gerente/vendedor e quem tem nome
       # ou telefone acima do teto NAO sao tocados). Este passo LIGA o gatilho no clone dele: o efemero das outras provas o deixa DESLIGADO (aplicar-migrations.cjs). Controle sem o gatilho (o defeito),
       # cadastro com e sem metadado, teto de nome/telefone recusado, papel sem EXECUTE na funcao ainda cria o perfil, mutantes, reaplicar 2x e CRLF, rollback sem tocar dado, pre-voo, conferencia,
-      # atomicidade, lock_timeout em auth.users e consultas 128a/128b. CLONE proprio.
-      - name: Prova viva do cadastro que cria o perfil em toda loja (20261399930000)
+      # atomicidade, lock_timeout em auth.users e consultas 129a/129b. CLONE proprio.
+      - name: Prova viva do cadastro que cria o perfil em toda loja (20261399940000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-cadastro-cria-o-perfil-em-toda-loja-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs
+      - name: Prova viva das recusas da baixa, conta e categoria do Financeiro
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-recusas-da-baixa-conta-e-categoria-viva.cjs
       # confirmar_pagamento e registrar_pagamento_recebido (as duas RPCs que
       # escrevem o payment_status): transições, devolução de estoque uma vez,
       # expiração, permissão por papel e CONCORRÊNCIA com duas conexões reais
@@ -905,6 +1154,12 @@ jobs:
       - name: Prova viva da compra online que trava o preço e espera a mesma chave (migration 20261350000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/compra-online-travas-viva.cjs
+      - name: Prova viva de que tipo invalido de cupom e recusado no banco
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-tipo-invalido-e-recusado-no-banco-viva.cjs
+      - name: Prova viva da disputa pelo ultimo uso do cupom com compras distintas
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-ultima-vaga-corrida-viva.cjs
       # Migration 20261352000000 (o produto e a grade salvam numa transacao so: salvar_produto_com_grade): o caminho
       # antigo (duas requisicoes) restaura o estoque que uma compra do meio baixou (defeito reproduzido); a RPC espera a
       # compra, ve a versao mudada, recusa com PRD01 e nao escreve nada (controles sem a conferencia e sem as travas
@@ -914,6 +1169,12 @@ jobs:
       - name: Prova viva do produto e da grade numa transacao so (migration 20261352000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/salvar-produto-com-grade-viva.cjs
+      - name: Prova viva da variante com estoque negativo recusada no banco
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/variante-estoque-negativo-e-recusado-no-banco-viva.cjs
+      - name: Prova viva da variante com SKU repetido recusada no banco
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/variante-sku-repetido-e-recusado-no-banco-viva.cjs
       # Migration 20261380000000 (o aviso de cancelados antigos conta so pendencia real): fora_da_janela de
       # get_admin_orders_cancelados_recentes so conta o antigo com dinheiro a devolver ou mercadoria a voltar; antigo
       # sem pagamento e sem envio, ou ja estornado, nao conta; recente nunca entra; p_dias NULL da 0; total_count e
@@ -1454,6 +1715,10 @@ jobs:
       - name: Prova viva do reembolso em duvida que prende o saldo (migration 20261241)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/reembolso-em-duvida-viva.cjs
+      # Guardas do solicitar_estorno VIVO: recusas sem linha e duas RPCs disputando o saldo; mutantes no clone.
+      - name: Prova viva das recusas e da corrida ao solicitar estorno
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/solicitar-estorno-recusas-e-corrida-viva.cjs
       # E o PORTAO da release desse lote: as consultas 43a (DEPOIS, 21 linhas) e 43b (ANTES, 14 linhas). BLOQUEANTE. CLONE proprio.
       - name: Prova viva do portao do reembolso em duvida (consultas 43a e 43b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}

@@ -504,7 +504,8 @@ describe("Ofertas Lateral em duas fileiras", () => {
       host.querySelectorAll<HTMLButtonElement>("[data-compra-oferta]"),
     );
     await clicar(botoes[0]);
-    expect(botoes[0].disabled).toBe(true);
+    expect(botoes[0].disabled).toBe(false);
+    expect(botoes[0].getAttribute("aria-disabled")).toBe("true");
     expect(botoes[0].querySelector(".animate-spin")).not.toBeNull();
     expect(botoes[1].disabled).toBe(false);
     await clicar(botoes[0]);
@@ -522,7 +523,9 @@ describe("Ofertas Lateral em duas fileiras", () => {
 
   it("com variação o botão vira 'Escolher opções' e NUNCA adiciona direto", async () => {
     const variante = produto("camisa", {
-      variants: [{ id: "v", active: true }] as Product["variants"],
+      variants: [
+        { id: "v", name: "Tamanho", active: true, stockIncrement: 5 },
+      ] as Product["variants"],
     });
     await montar([variante, produto("b")]);
     const botao = host.querySelector(

@@ -80,7 +80,9 @@ describe("BannerCarousel: teclado dentro do slide", () => {
       "@/components/ui/custom/BannerCarousel"
     );
     act(() => {
-      raiz.render(<BannerCarousel banners={[banner]} autoPlay={false} />);
+      raiz.render(
+        <BannerCarousel primeiraSemFade banners={[banner]} autoPlay={false} />,
+      );
     });
   }
 

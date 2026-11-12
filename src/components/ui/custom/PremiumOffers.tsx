@@ -15,6 +15,7 @@ import {
 import type { LayoutDeOfertas } from "@/lib/layout-de-ofertas";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { cn, formatCurrency } from "@/lib/utils";
+import { produtoDisponivel } from "@/lib/vitrine";
 import type { Product } from "@/types";
 import { LIMIAR_PADRAO_DE_ESTOQUE } from "@/utils/avisos-do-lojista";
 import { triggerFlyingCartAnimation } from "@/utils/cartAnimation";
@@ -356,8 +357,8 @@ export function ordenarOfertas(products: Product[]) {
   // primeiro. `Array.prototype.sort` é estável: empate mantém a ordem recebida
   // (a que a lojista escolheu à mão no painel).
   return [...offerItems].sort((a, b) => {
-    const aDisponivel = a.product.stock > 0 ? 1 : 0;
-    const bDisponivel = b.product.stock > 0 ? 1 : 0;
+    const aDisponivel = produtoDisponivel(a.product) ? 1 : 0;
+    const bDisponivel = produtoDisponivel(b.product) ? 1 : 0;
     if (aDisponivel !== bDisponivel) return bDisponivel - aDisponivel;
     return b.discount - a.discount;
   });
@@ -465,7 +466,12 @@ export function useAcoesDaOferta({
   const vitrine = precoDeVitrine(product);
   const savings = vitrine.economia;
   const precoAntigo = vitrine.precoOriginal;
+  // A mesma pergunta da grade do catálogo e da ordenação (`produtoDisponivel`):
+  // com Cor e Tamanho, um grupo inteiro zerado não deixa levar nada, mesmo
+  // com `stock` (a soma das opções) positivo. Os quatro desenhos usam esta.
+  const esgotado = !produtoDisponivel(product);
   return {
+    esgotado,
     preco: vitrine.preco,
     aPartirDe: vitrine.aPartirDe,
     cartStatus,
@@ -494,6 +500,7 @@ function HeroOfferCard({
 }: HeroOfferCardProps) {
   const {
     cartStatus,
+    esgotado,
     handleCardClick,
     hasActiveVariant,
     handleAddToCartClick,
@@ -689,7 +696,7 @@ function HeroOfferCard({
                 LIMIAR_PADRAO_DE_ESTOQUE): com 60 unidades dizer "apenas 60"
                 era falsa escassez. */}
             <div className="mb-4 max-w-sm text-[9px] font-extrabold uppercase tracking-wide text-slate-500">
-              {product.stock <= 0
+              {esgotado
                 ? "Sem estoque"
                 : product.stock === 1
                   ? "Só resta 1!"
@@ -710,10 +717,13 @@ function HeroOfferCard({
           <div className="flex gap-2">
             <button
               onClick={handleAddToCartClick}
-              disabled={product.stock <= 0 || cartStatus !== "idle"}
+              disabled={esgotado}
+              aria-disabled={
+                !esgotado && cartStatus !== "idle" ? true : undefined
+              }
               className={cn(
                 "flex-grow-2 flex-[2] min-h-11 py-2.5 px-3 rounded-full text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.97] shadow-sm flex items-center justify-center gap-1.5 border",
-                product.stock <= 0
+                esgotado
                   ? "bg-zinc-100 text-zinc-400 border-zinc-200/50 cursor-not-allowed shadow-none"
                   : cartStatus === "success"
                     ? "bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700"
@@ -724,11 +734,11 @@ function HeroOfferCard({
                 <Loader2 className="size-3 animate-spin" />
               )}
               {cartStatus === "success" && <Check className="size-3" />}
-              {cartStatus === "idle" && product.stock > 0 && (
+              {cartStatus === "idle" && !esgotado && (
                 <ShoppingCart className="animate-bounce-subtle size-3" />
               )}
               <span>
-                {product.stock <= 0
+                {esgotado
                   ? "Esgotado"
                   : hasActiveVariant
                     ? "Escolher opções"
@@ -743,10 +753,10 @@ function HeroOfferCard({
             {!hasActiveVariant && (
               <button
                 onClick={handleQuickBuyClick}
-                disabled={product.stock <= 0}
+                disabled={esgotado}
                 className={cn(
                   "flex-grow-1 flex-[1] min-h-11 py-2.5 px-4 rounded-full text-[10px] font-black uppercase tracking-wider transition-all active:scale-[0.97] border shadow-sm",
-                  product.stock <= 0
+                  esgotado
                     ? "bg-zinc-50 text-zinc-300 border-zinc-100 cursor-not-allowed shadow-none"
                     : "bg-secondary/10 hover:bg-secondary/20 text-primary border-secondary/20",
                 )}

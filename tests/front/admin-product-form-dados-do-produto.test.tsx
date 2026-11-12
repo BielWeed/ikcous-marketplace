@@ -475,15 +475,21 @@ describe("AdminProductFormView — dados do produto", () => {
       expect(regravado.variacoesPendentes).toBeUndefined();
     });
 
-    it("controle: edição comum com rascunho (sem grade pendente) segue o aviso de 10 s", async () => {
+    it("controle: edição comum com rascunho (sem grade pendente) também espera a decisão, sem prazo (08/11/2026: o de 10 s deixava o salvamento automático gravar por cima do rascunho antigo)", async () => {
       mocks.fetchProduct.mockResolvedValue(produtoDoBanco());
       armazem.set(CHAVE_EDICAO, JSON.stringify(rascunho({ name: "Outro" })));
       await montar("p-1");
 
       const opcoes = perguntaDoRascunho()?.[1] as unknown as {
         duration?: number;
+        dismissible?: boolean;
+        id?: string;
       };
-      expect(opcoes.duration).toBe(10000);
+      expect(opcoes.duration).toBe(Number.POSITIVE_INFINITY);
+      expect(opcoes.dismissible).toBe(false);
+      // Id próprio: não é o aviso da grade pendente (esse segue como era).
+      expect(opcoes.id).toBeDefined();
+      expect(opcoes.id).not.toBe("rascunho-da-grade-pendente");
     });
   });
 

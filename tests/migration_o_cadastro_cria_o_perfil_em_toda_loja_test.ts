@@ -1,7 +1,7 @@
 // @ts-nocheck
-// O CADASTRO CRIA O PERFIL EM TODA LOJA — prova offline do par 20261399930000 + rollback (07/11/2026).
+// O CADASTRO CRIA O PERFIL EM TODA LOJA — prova offline do par 20261399940000 + rollback (07/11/2026).
 // O COMPORTAMENTO (o gatilho cria o perfil; o reparo de quem ja se cadastrou sem perfil; admin e cadastro acima do teto de fora; mutantes;
-// reaplicar; rollback; pre-voo; consultas 128a/128b; lock_timeout em auth.users) e' provado em
+// reaplicar; rollback; pre-voo; consultas 129a/129b; lock_timeout em auth.users) e' provado em
 // tests/banco/o-cadastro-cria-o-perfil-em-toda-loja-viva.cjs. Aqui fica o que se prova so lendo o texto.
 //
 // Riscos: a migration cria UM gatilho em auth.users (so se ausente) e INSERE perfis de quem nao tem; o reparo tem de usar a MESMA
@@ -17,9 +17,9 @@ const {
 } = require("../scripts/db-prove-rollback.cjs");
 
 const DIR = new URL("../", import.meta.url);
-const NOME = "20261399930000_o_cadastro_cria_o_perfil_em_toda_loja.sql";
-const A = "128a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado";
-const B = "128b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente";
+const NOME = "20261399940000_o_cadastro_cria_o_perfil_em_toda_loja.sql";
+const A = "129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado";
+const B = "129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente";
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));
 const ler = (n) => lerBruto(n).replace(/\r\n/g, "\n");
@@ -35,7 +35,7 @@ const semComentario = (s) =>
     .join("\n")
     .replace(/\s+/g, " ");
 
-Deno.test("1399930: avaliarFase0 nao recusa o par; sem BEGIN/COMMIT; LF; SET LOCAL lock_timeout antes do pre-voo (nada a restaurar)", () => {
+Deno.test("1399940: avaliarFase0 nao recusa o par; sem BEGIN/COMMIT; LF; SET LOCAL lock_timeout antes do pre-voo (nada a restaurar)", () => {
   const res = avaliarFase0({
     sqlMigration: migration,
     sqlRollback: rollback,
@@ -58,7 +58,7 @@ Deno.test("1399930: avaliarFase0 nao recusa o par; sem BEGIN/COMMIT; LF; SET LOC
     assert.ok(!lerBruto(n).includes("\r"), n);
 });
 
-Deno.test("1399930: a migration so CRIA um gatilho e INSERE perfis ausentes — sem DROP, UPDATE, DELETE, GRANT/REVOKE, funcao nova", () => {
+Deno.test("1399940: a migration so CRIA um gatilho e INSERE perfis ausentes — sem DROP, UPDATE, DELETE, GRANT/REVOKE, funcao nova", () => {
   const codigo = semComentario(migration);
   assert.doesNotMatch(codigo, /\bDROP\b/i);
   assert.doesNotMatch(
@@ -84,11 +84,11 @@ Deno.test("1399930: a migration so CRIA um gatilho e INSERE perfis ausentes — 
   assert.ok(migration.includes("IF NOT EXISTS (SELECT 1 FROM pg_trigger t"));
 });
 
-Deno.test("1399930: ordem pre-voo, gatilho, reparo, conferencia; o pre-voo recusa gatilho homonimo diferente e funcao sem SECURITY DEFINER", () => {
-  const iPre = migration.indexOf("DO $preflight_20261399930000$");
-  const iGat = migration.indexOf("DO $gatilho_20261399930000$");
-  const iRep = migration.indexOf("DO $reparo_20261399930000$");
-  const iConf = migration.indexOf("DO $conferencia_20261399930000$");
+Deno.test("1399940: ordem pre-voo, gatilho, reparo, conferencia; o pre-voo recusa gatilho homonimo diferente e funcao sem SECURITY DEFINER", () => {
+  const iPre = migration.indexOf("DO $preflight_20261399940000$");
+  const iGat = migration.indexOf("DO $gatilho_20261399940000$");
+  const iRep = migration.indexOf("DO $reparo_20261399940000$");
+  const iConf = migration.indexOf("DO $conferencia_20261399940000$");
   assert.ok(iPre >= 0 && iPre < iGat && iGat < iRep && iRep < iConf);
   const pre = migration.slice(iPre, iGat);
   assert.ok(pre.includes("B1_BASELINE_DIVERGENT"));
@@ -103,11 +103,11 @@ Deno.test("1399930: ordem pre-voo, gatilho, reparo, conferencia; o pre-voo recus
     "gatilho homonimo: condicao WHEN",
   );
   const conf = migration.slice(iConf);
-  assert.ok(conf.includes("conferencia 20261399930000"));
+  assert.ok(conf.includes("conferencia 20261399940000"));
   assert.ok(conf.includes("t.tgtype = 5"));
 });
 
-Deno.test("1399930: o reparo usa a MESMA expressao de handle_new_user, so de quem nao tem perfil, so papel customer, so dentro dos tetos, sem sobrescrever", () => {
+Deno.test("1399940: o reparo usa a MESMA expressao de handle_new_user, so de quem nao tem perfil, so papel customer, so dentro dos tetos, sem sobrescrever", () => {
   const baseline = ler("20260806000000_baseline_do_schema_vivo.sql");
   const corpo = baseline.slice(
     baseline.indexOf("CREATE FUNCTION public.handle_new_user()"),
@@ -163,7 +163,7 @@ Deno.test("1399930: o reparo usa a MESMA expressao de handle_new_user, so de que
   ]);
 });
 
-Deno.test("1399930: o teto do banco e' o da tela (a tela impede o que o gatilho passaria a recusar no cadastro)", () => {
+Deno.test("1399940: o teto do banco e' o da tela (a tela impede o que o gatilho passaria a recusar no cadastro)", () => {
   assert.ok(/maxLength=\{120\}/.test(lerRepo("src/views/shared/AuthView.tsx")));
   assert.ok(
     lerRepo("src/lib/telefone-br.ts").includes("return novo.slice(0, 15);"),
@@ -176,7 +176,7 @@ Deno.test("1399930: o teto do banco e' o da tela (a tela impede o que o gatilho 
   );
 });
 
-Deno.test("1399930: o rollback tira so o gatilho, com pre-voo antes de apagar, conferencia final e os avisos (perfis ficam; nunca na IKCOUS)", () => {
+Deno.test("1399940: o rollback tira so o gatilho, com pre-voo antes de apagar, conferencia final e os avisos (perfis ficam; nunca na IKCOUS)", () => {
   assert.ok(
     rollback.includes(
       "DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;",
@@ -187,9 +187,9 @@ Deno.test("1399930: o rollback tira so o gatilho, com pre-voo antes de apagar, c
     limpo(rollback),
     /\b(INSERT|UPDATE|DELETE|TRUNCATE|GRANT|REVOKE|CREATE)\b(?!\s*(ON|TO)\b)/i,
   );
-  const iPre = rollback.indexOf("DO $preflight_rollback_20261399930000$");
+  const iPre = rollback.indexOf("DO $preflight_rollback_20261399940000$");
   const iApaga = rollback.indexOf("\nDROP TRIGGER");
-  const iConf = rollback.indexOf("DO $conferencia_rollback_20261399930000$");
+  const iConf = rollback.indexOf("DO $conferencia_rollback_20261399940000$");
   assert.ok(iPre >= 0 && iPre < iApaga && iApaga < iConf);
   assert.ok(rollback.slice(iPre, iApaga).includes("B1_BASELINE_DIVERGENT"));
   // o cabecalho do rollback avisa o que NAO desfaz e onde nao rodar
@@ -199,7 +199,7 @@ Deno.test("1399930: o rollback tira so o gatilho, com pre-voo antes de apagar, c
   assert.ok(cab.includes("NUNCA RODAR NA IKCOUS"));
 });
 
-Deno.test("1399930: o efemero das outras provas deixa o gatilho DESLIGADO e tem raw_user_meta_data; so a prova do gatilho o liga", () => {
+Deno.test("1399940: o efemero das outras provas deixa o gatilho DESLIGADO e tem raw_user_meta_data; so a prova do gatilho o liga", () => {
   const aplicar = lerRepo("tests/banco/aplicar-migrations.cjs");
   assert.ok(
     aplicar.includes(
@@ -232,13 +232,13 @@ Deno.test("1399930: o efemero das outras provas deixa o gatilho DESLIGADO e tem 
   );
 });
 
-Deno.test("1399930: publicacao — lote unico (128a/128b), rol fechado de 6 e 3 linhas, consultas so de leitura e sem dado pessoal, workflows, release e prova viva; sem entrada no db-apply (nao ha funcao)", () => {
+Deno.test("1399940: publicacao — lote unico (129a/129b), rol fechado de 6 e 3 linhas, consultas so de leitura e sem dado pessoal, workflows, release e prova viva; sem entrada no db-apply (nao ha funcao)", () => {
   const canais = JSON.parse(lerRepo("scripts/frota/canais-de-backend.json"));
   const lote = canais.provasDeObjetos.filter((p) =>
-    p.versoes.includes("20261399930000"),
+    p.versoes.includes("20261399940000"),
   );
   assert.equal(lote.length, 1);
-  assert.deepEqual(lote[0].versoes, ["20261399930000"]);
+  assert.deepEqual(lote[0].versoes, ["20261399940000"]);
   assert.equal(lote[0].consulta, A);
   assert.equal(lote[0].ausenciaConfirmadaPor, B);
   for (const campo of ["backfillLedger", "nuncaAplicar", "soNosRefs"])
@@ -256,7 +256,7 @@ Deno.test("1399930: publicacao — lote unico (128a/128b), rol fechado de 6 e 3 
     "esperado 0 nas duas lojas",
   ])
     assert.ok(c.includes(frase), frase);
-  // a Savy ganhou o gatilho a mao em 07/11/2026: nenhum texto pode mais dizer que a 128a sai negativa la
+  // a Savy ganhou o gatilho a mao em 07/11/2026: nenhum texto pode mais dizer que a 129a sai negativa la
   assert.doesNotMatch(c, /na Savy esperado 1|esperado na Savy/);
   const {
     ROL_FECHADO_POR_CONSULTA,

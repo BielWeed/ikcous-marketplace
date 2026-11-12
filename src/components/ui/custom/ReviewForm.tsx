@@ -244,10 +244,10 @@ export function ReviewForm({
             {isSubmitting ? (
               <div className="flex items-center justify-center gap-2">
                 <div className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground/20 border-t-primary-foreground" />
-                <span>Publicando...</span>
+                <span>Enviando...</span>
               </div>
             ) : (
-              "Publicar Avaliação"
+              "Enviar avaliação"
             )}
           </Button>
         </div>

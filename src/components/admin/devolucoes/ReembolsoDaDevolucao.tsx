@@ -7,6 +7,12 @@ import {
   mensagemDoErro,
 } from "@/lib/devolucao";
 import {
+  PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
+import {
   AVISO_DE_DOBRO,
   BOTAO_POR_FORA_APOS_ESPERA,
   type LinhaDoSaldo,
@@ -29,6 +35,16 @@ import { BOTAO_SECUNDARIO } from "./AcoesDaDevolucao";
 
 const ERRO = "Não foi possível concluir agora. Tente de novo.";
 const MUDOU = "A devolução mudou. Os dados foram atualizados.";
+
+// Prazos da ESPERA da tela (a gravação pode chegar ao servidor depois). Rede
+// "pendurada" conecta e não responde: sem prazo, "Tentar de novo" e "Já devolvi
+// por fora" ficavam apagados para sempre, sem aviso, e a ficha nunca relia.
+// Mesmos valores da ficha (useDevolucoesAdmin): RPC de gravação 20 s, edge com
+// o Mercado Pago por trás 30 s, releitura 15 s.
+const PRAZO_DA_EDGE_MS = 30_000;
+const PRAZO_DA_RELEITURA_MS = 15_000;
+const SEM_RESPOSTA =
+  "Sem resposta da rede. Não dá para saber se o pedido foi feito. Confira o reembolso na ficha, que foi atualizada, antes de tentar de novo.";
 
 /**
  * Aviso de cada `resultado` da reemissão (edge `estornar-pagamento`, ação
@@ -115,10 +131,14 @@ export function ReembolsoDaDevolucao({
     const rodada = ++rodadaRef.current;
     let desta: LinhaDoSaldo | null = null;
     try {
-      const { data, error } = await chamarRpcDoR1(
-        supabase,
-        RPC_DO_REEMBOLSO_R1.saldo,
-        { p_order_id: order_id },
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          chamarRpcDoR1(supabase, RPC_DO_REEMBOLSO_R1.saldo, {
+            p_order_id: order_id,
+          }),
+        ),
+        PRAZO_DA_RELEITURA_MS,
+        () => erroDeConsultaSemResposta(),
       );
       if (!error) {
         desta =
@@ -147,7 +167,15 @@ export function ReembolsoDaDevolucao({
     try {
       return (await passo()) === true;
     } catch (e) {
-      toast.error(mensagemDoErro(e, ERRO));
+      // A gravação pode ter chegado ao servidor: nunca dizer "não foi feito".
+      // A resposta que chegar tarde foi descartada pelo prazo: não vira aviso.
+      // O `finally` solta os botões e a ficha relê, para repetir só olhando
+      // a situação real.
+      if (ehConsultaSemResposta(e)) {
+        toast.warning(SEM_RESPOSTA, { duration: 12_000 });
+      } else {
+        toast.error(mensagemDoErro(e, ERRO));
+      }
       return false;
     } finally {
       emVooRef.current = false;
@@ -178,24 +206,34 @@ export function ReembolsoDaDevolucao({
       `Pedir de novo ao Mercado Pago o reembolso de ${valor}? O app confere antes se o anterior não saiu.`,
     ) &&
     executar(async () => {
-      const { data, error } = await supabase.functions.invoke(
-        "estornar-pagamento",
-        {
-          body: {
-            acao: "reemitir",
-            devolucao_id: id,
-            refund_esperado: linha.id,
-          },
-        },
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase.functions.invoke("estornar-pagamento", {
+            body: {
+              acao: "reemitir",
+              devolucao_id: id,
+              refund_esperado: linha.id,
+            },
+          }),
+        ),
+        PRAZO_DA_EDGE_MS,
+        () => erroDeConsultaSemResposta(),
       );
       const c = avisar(error ? await corpoDoErroDaEdge(error) : data);
       if (c.resultado !== "reemitido") return false;
       // A tentativa nova nasce `solicitado`; o clique a executa (o mesmo
       // caminho do EstornoCard). Falhar aqui não é falha: o cron
       // `reconciliar-pagamentos` a executa em até 10 minutos.
-      await supabase.functions
-        .invoke("estornar-pagamento", { body: { refund_id: c.refund_id } })
-        .catch(() => null);
+      // Sem prazo, esta espera segurava os botões apagados.
+      await aguardarComPrazo(
+        Promise.resolve(
+          supabase.functions.invoke("estornar-pagamento", {
+            body: { refund_id: c.refund_id },
+          }),
+        ),
+        PRAZO_DA_EDGE_MS,
+        () => erroDeConsultaSemResposta(),
+      ).catch(() => null);
       return true;
     });
 
@@ -204,9 +242,15 @@ export function ReembolsoDaDevolucao({
       `Registrar que você devolveu ${valor} por fora (PIX ou dinheiro)? O app não pede mais este reembolso ao Mercado Pago.`,
     ) &&
     executar(async () => {
-      const { data, error } = await supabase.rpc(
-        RPC_DO_REEMBOLSO_R1.porForaDaDevolucao,
-        { p_devolucao_id: id, p_refund_esperado: linha.id },
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase.rpc(RPC_DO_REEMBOLSO_R1.porForaDaDevolucao, {
+            p_devolucao_id: id,
+            p_refund_esperado: linha.id,
+          }),
+        ),
+        PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+        () => erroDeConsultaSemResposta(),
       );
       if (error) throw error;
       return avisar(data).resultado === "combinado";
@@ -215,10 +259,16 @@ export function ReembolsoDaDevolucao({
   const porForaAposEspera7 = () =>
     confirmouPorForaAposEspera(valor) &&
     executar(async () => {
-      const { data, error } = await chamarRpcDoR1(
-        supabase,
-        RPC_DO_REEMBOLSO_R1.porForaAposEsperaDaDevolucao,
-        parametrosPorForaAposEspera.devolucao(id, linha.id),
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          chamarRpcDoR1(
+            supabase,
+            RPC_DO_REEMBOLSO_R1.porForaAposEsperaDaDevolucao,
+            parametrosPorForaAposEspera.devolucao(id, linha.id),
+          ),
+        ),
+        PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+        () => erroDeConsultaSemResposta(),
       );
       if (error) throw error;
       // Recusa do servidor vem SEM erro (`resultado` no jsonb).

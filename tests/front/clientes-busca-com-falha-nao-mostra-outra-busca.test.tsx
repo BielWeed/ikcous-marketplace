@@ -264,6 +264,30 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
     },
   );
 
+  it("volta à última página válida quando a página de clientes deixou de existir", async () => {
+    const clientes = Array.from({ length: 12 }, (_, i) =>
+      cliente(`cliente-${i}`, `Cliente recuperado ${i}`),
+    );
+    rpc.mockResolvedValueOnce(sucesso([cliente("joao", "João Silva")], 24));
+    rpc.mockResolvedValueOnce(sucesso([], 12));
+    rpc.mockResolvedValueOnce(sucesso(clientes, 12));
+    await abrirTela();
+
+    await clicar("Próximo");
+    await avancar(320);
+    expect(hospedeiro.textContent).not.toContain("Nenhum cliente ainda");
+    await avancar(320);
+
+    for (const recuperado of clientes) {
+      expect(hospedeiro.textContent).toContain(recuperado.full_name);
+    }
+    expect(rpc.mock.calls.map(([, parametros]) => parametros.p_page)).toEqual([
+      0, 1, 0,
+    ]);
+    await avancar(1000);
+    expect(rpc).toHaveBeenCalledTimes(3);
+  });
+
   it("loja sem nenhum cliente e sem busca diz que ainda não há clientes, não 'revise os filtros'", async () => {
     rpc.mockResolvedValueOnce(sucesso([]));
 

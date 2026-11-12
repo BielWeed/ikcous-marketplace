@@ -203,6 +203,20 @@ describe("Perfil — o botão de WhatsApp do pedido é o original do WhatsApp", 
     expect(recursos).toBe("noopener,noreferrer");
   });
 
+  // O `#` do número do pedido vai escapado (%23): solto, o WhatsApp lê o resto
+  // como âncora e corta a mensagem. O teste acima decodifica a URL e não vê isso.
+  it("o endereço é CRU: o # do pedido sai %23, sem espaço nem # soltos", async () => {
+    await renderizar();
+    await act(async () => {
+      botaoWhatsapp()?.click();
+    });
+    const [url] = abrir.mock.calls[0] as [string];
+    expect(url).toContain(`%23${numeroDoPedido(pedido.id)}`);
+    expect(url).not.toContain("#");
+    expect(url).not.toMatch(/\s/);
+    expect(url.split("?")).toHaveLength(2);
+  });
+
   it("loja sem WhatsApp cadastrado: o botão continua sumindo", async () => {
     config.whatsappNumber = null;
     await renderizar();

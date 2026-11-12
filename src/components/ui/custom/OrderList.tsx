@@ -2,6 +2,7 @@ import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadg
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
 import { usarImagemOriginal } from "@/lib/imageUrl";
+import { normalizarCodigoDeRastreio } from "@/lib/link-de-rastreio";
 import { miniaturaDeCompra } from "@/lib/miniatura-de-compra";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
@@ -452,6 +453,9 @@ export const OrderList = memo(function OrderList({
           order.retiradaNaLoja === true && order.status === "shipping";
         // Compra no balcão (canal presencial): nada foi enviado nem entregue.
         const noBalcao = order.canal === "presencial";
+        const codigoDeRastreio = normalizarCodigoDeRastreio(
+          order.trackingCode ?? "",
+        );
         const desc =
           noBalcao && order.status === "delivered"
             ? "Compra na loja"
@@ -605,14 +609,14 @@ export const OrderList = memo(function OrderList({
 
                 {/* Código livre nunca é cortado; substitui a próxima etapa,
                     sem esconder rastreio já existente no histórico. */}
-                {order.trackingCode?.trim() ? (
+                {codigoDeRastreio ? (
                   <div className="mt-2 flex min-w-0 items-start gap-1 text-xs leading-4 text-muted-foreground">
                     <Truck
                       aria-hidden="true"
                       className="mt-px size-3 shrink-0"
                     />
                     <span className="break-all font-mono font-semibold">
-                      Rastreio {order.trackingCode.trim()}
+                      Rastreio {codigoDeRastreio}
                     </span>
                   </div>
                 ) : order.status !== "cancelled" &&
@@ -674,6 +678,7 @@ export const OrderList = memo(function OrderList({
                 <button
                   onClick={() => onNavigate("order-details", order.id)}
                   data-testid="order-card-open"
+                  aria-label={`Ver detalhes do pedido #${numeroDoPedido(order.id)}`}
                   className="ml-auto flex h-11 flex-shrink-0 items-center justify-center rounded-2xl bg-foreground px-5 text-[15px] font-semibold text-background transition-opacity after:absolute after:inset-0 after:rounded-[18px] after:content-[''] hover:opacity-90 active:scale-[0.97]"
                 >
                   Ver detalhes

@@ -80,6 +80,28 @@ describe("OrderList — card do pedido redesenhado", () => {
     });
   }
 
+  it("os detalhes de dois pedidos têm nomes distintos para o leitor de tela", async () => {
+    const { OrderList } = await import("@/components/ui/custom/OrderList");
+    const pedidos = [
+      pedidoBase,
+      { ...pedidoBase, id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" },
+    ];
+    await act(async () => {
+      raiz.render(<OrderList orders={pedidos} onNavigate={onNavigate} />);
+    });
+    const botoes = [
+      ...hospedeiro.querySelectorAll('[data-testid="order-card-open"]'),
+    ];
+    expect(botoes).toHaveLength(2);
+    expect(botoes.map((b) => b.getAttribute("aria-label"))).toEqual(
+      pedidos.map((p) => `Ver detalhes do pedido #${numeroDoPedido(p.id)}`),
+    );
+    expect(new Set(botoes.map((b) => b.getAttribute("aria-label"))).size).toBe(
+      2,
+    );
+    for (const b of botoes) expect(b.textContent?.trim()).toBe("Ver detalhes");
+  });
+
   it.each<[OrderStatus, string, number]>([
     ["pending", "Recebido", 1],
     ["processing", "Separado", 2],

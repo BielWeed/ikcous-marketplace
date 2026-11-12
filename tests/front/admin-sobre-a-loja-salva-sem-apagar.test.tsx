@@ -112,6 +112,7 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
   let onSetDirty: Mock<(dirty: boolean) => void>;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     configAtual = { ...BASE_CONFIG };
     updateConfigMock = vi.fn(async () => true);
     onSetDirty = vi.fn((_dirty: boolean) => {});
@@ -249,7 +250,10 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
       storeDescription: "<p>Nossa história</p>",
     });
     const { toast } = await import("sonner");
-    expect(toast.success).toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledTimes(1);
+    expect(toast.success).toHaveBeenLastCalledWith(
+      "Endereço e descrição salvos",
+    );
   });
 
   it("CEP digitado sem número: o Salvar recusa o bloco, com o motivo à vista; nada é gravado", async () => {
@@ -297,7 +301,10 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
     // a falha é AVISADA (silent:true suprime os toasts de dentro do
     // updateConfig — o aviso de falha é responsabilidade da tela)
     const { toast } = await import("sonner");
-    expect(toast.error).toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    expect(toast.error).toHaveBeenLastCalledWith(
+      "Não foi possível confirmar que as alterações foram salvas. O texto foi preservado — tente novamente.",
+    );
   });
 
   it("updateConfig lançando (rede fora): o erro é avisado em frase de pessoa e o rascunho não some", async () => {
@@ -340,6 +347,7 @@ describe("AdminAboutStoreView — hidratação assíncrona do config (NULL → v
   }>;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     configAtual = {
       ...BASE_CONFIG,
       storeAddress: null,

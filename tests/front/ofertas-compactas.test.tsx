@@ -31,6 +31,8 @@ vi.mock("@/components/LazyImage", () => ({
 }));
 
 await import("@/components/ui/custom/OfertasCompactas");
+await import("@/components/ui/custom/OfertasLateral");
+await import("@/components/ui/custom/OfertasLateralDuplo");
 
 const embla = vi.hoisted(() => ({
   selectedScrollSnap: vi.fn(() => 0),
@@ -99,6 +101,41 @@ const clicar = async (el: Element) => {
 };
 
 describe("Ofertas Compactas", () => {
+  it.each(["compacto", "lateral", "lateral-duplo", "padrao"])(
+    "%s: confirmação mantém foco e bloqueia repetição sem desativar o botão",
+    async (layout) => {
+      vi.useFakeTimers();
+      await montar([produto("Bola")], layout);
+      const botao = Array.from(
+        host.querySelectorAll<HTMLButtonElement>("button"),
+      ).find(
+        (el) =>
+          el.hasAttribute("data-compra-oferta") ||
+          el.textContent?.trim() === "Adicionar" ||
+          el.getAttribute("aria-label") === "Adicionar Bola ao carrinho",
+      )!;
+      botao.focus();
+      await clicar(botao);
+      expect(adicionar).toHaveBeenCalledTimes(1);
+      expect(botao.disabled).toBe(false);
+      expect(botao.getAttribute("aria-disabled")).toBe("true");
+      expect(document.activeElement).toBe(botao);
+      await clicar(botao);
+      expect(adicionar).toHaveBeenCalledTimes(1);
+      await act(async () => vi.advanceTimersByTime(600));
+      expect(botao.disabled).toBe(false);
+      expect(botao.getAttribute("aria-disabled")).toBe("true");
+      expect(document.activeElement).toBe(botao);
+      await clicar(botao);
+      expect(adicionar).toHaveBeenCalledTimes(1);
+      await act(async () => vi.advanceTimersByTime(1500));
+      expect(botao.getAttribute("aria-disabled")).toBeNull();
+      await clicar(botao);
+      expect(adicionar).toHaveBeenCalledTimes(2);
+      expect(abrir).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     [1, 350, 0],
     [2, 165, 0],
@@ -211,7 +248,9 @@ describe("Ofertas Compactas", () => {
 
   it("variação ativa abre o produto; esgotado bloqueia; coração não abre produto", async () => {
     const variante = produto("opções", {
-      variants: [{ id: "v", active: true }] as Product["variants"],
+      variants: [
+        { id: "v", name: "Tamanho", active: true, stockIncrement: 5 },
+      ] as Product["variants"],
     });
     await montar(
       [variante, produto("fim", { stock: 0 }), produto("favorito")],
@@ -317,7 +356,8 @@ describe("Ofertas Compactas", () => {
     );
     await clicar(botoes[0]);
     expect(botoes[0].textContent).toBe("Adicionando");
-    expect(botoes[0].disabled).toBe(true);
+    expect(botoes[0].disabled).toBe(false);
+    expect(botoes[0].getAttribute("aria-disabled")).toBe("true");
     expect(botoes[0].querySelector(".animate-spin")).not.toBeNull();
     expect(botoes[1].textContent).toBe("Adicionar");
     expect(botoes[1].disabled).toBe(false);
@@ -339,7 +379,9 @@ describe("Ofertas Compactas", () => {
       produto("ultima", { stock: 1 }),
       produto("fim", { stock: 0 }),
       produto("opções", {
-        variants: [{ id: "v", active: true }] as Product["variants"],
+        variants: [
+          { id: "v", name: "Tamanho", active: true, stockIncrement: 5 },
+        ] as Product["variants"],
       }),
     ]);
     expect(host.textContent).toContain("Restam 3");
@@ -384,7 +426,9 @@ describe("Ofertas Compactas", () => {
     await montar([
       produto("Bola"),
       produto("camisa", {
-        variants: [{ id: "v", active: true }] as Product["variants"],
+        variants: [
+          { id: "v", name: "Tamanho", active: true, stockIncrement: 5 },
+        ] as Product["variants"],
       }),
       produto("fim", { stock: 0 }),
     ]);

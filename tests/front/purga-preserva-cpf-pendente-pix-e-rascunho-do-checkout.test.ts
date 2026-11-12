@@ -10,7 +10,8 @@
 // DEFEITO 2 (PIX pendente e rascunho do checkout): `handleReset` do
 // GlobalErrorBoundary fazia `sessionStorage.clear()` e levava junto o pedido
 // que estava sendo pago e o formulário do checkout. Agora há uma lista branca
-// de sessionStorage com SÓ essas duas chaves.
+// de sessionStorage com SÓ essas duas chaves. O lote r66-b acrescentou a
+// terceira: o pedido de visitante com resposta perdida (pedido-sem-resposta.ts).
 //
 // As duas chaves de sessionStorage não são exportadas pelos módulos dela; o
 // teste amarra o literal da lista ao módulo de verdade GRAVANDO por ele e
@@ -29,6 +30,10 @@ import {
   chaveSobreviveAPurga,
 } from "@/lib/localStoragePurgeWhitelist";
 import { chaveDoPedidoPendenteDoCheckout } from "@/lib/pedido-pendente-do-checkout";
+import {
+  type PedidoCongelado,
+  guardarPedidoSemResposta,
+} from "@/lib/pedido-sem-resposta";
 import {
   rascunhoVazio,
   salvarRascunhoDoCheckout,
@@ -97,7 +102,44 @@ describe("lista branca do sessionStorage (purga do botão 'Recarregar o app')", 
     ).toBe(false);
   });
 
-  it("a lista tem só as duas entradas nomeadas (nada de segredo entra por aqui)", () => {
-    expect(SESSIONSTORAGE_PURGE_WHITELIST).toHaveLength(2);
+  it("preserva o pedido de visitante com resposta perdida, na chave que o módulo dele realmente usa", () => {
+    const pedido: PedidoCongelado = {
+      orderData: { idempotencyKey: "k1", items: [] },
+      ehOnline: false,
+      metodoOnline: "pix",
+      itens: [],
+      valor: 10,
+      cpfParaRpc: undefined,
+      contaEsperada: null,
+      semConta: true,
+    };
+    // Lê as chaves que o módulo gravou pelo próprio sessionStorage, sem mexer no
+    // protótipo de `Storage` (não existe como global em todo ambiente de teste).
+    sessionStorage.clear();
+    let gravadas: string[] = [];
+    try {
+      guardarPedidoSemResposta(pedido);
+      gravadas = Array.from(
+        { length: sessionStorage.length },
+        (_, i) => sessionStorage.key(i) ?? "",
+      );
+    } finally {
+      sessionStorage.clear();
+    }
+    expect(gravadas).toHaveLength(1);
+    expect(chaveDeSessaoSobreviveAPurga(gravadas[0] ?? "")).toBe(true);
+  });
+
+  it("não aceita o pedido sem resposta de OUTRA versão da chave", () => {
+    expect(chaveDeSessaoSobreviveAPurga("ikcous-pedido-sem-resposta-v2")).toBe(
+      false,
+    );
+    expect(
+      chaveDeSessaoSobreviveAPurga("x-ikcous-pedido-sem-resposta-v1"),
+    ).toBe(false);
+  });
+
+  it("a lista tem só as três entradas nomeadas (nada de segredo entra por aqui)", () => {
+    expect(SESSIONSTORAGE_PURGE_WHITELIST).toHaveLength(3);
   });
 });

@@ -3008,10 +3008,22 @@ const ROL_DA_127 = [
   "notifica_cliente_de_mudanca_de_status: o corpo traz o aviso do pedido vencido (uma vez)",
   "notifica_cliente_de_mudanca_de_status: uma assinatura so, atributos, trigger e EXECUTE de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno trigger; tr_pedido_avisa_o_cliente AFTER UPDATE OF status por linha; EXECUTE aberto por heranca do PUBLIC)",
 ];
-// Lote 128 (20261399930000, o cadastro cria o perfil em toda loja: o gatilho on_auth_user_created de auth.users, que a Savy clonada do baseline nunca teve, mais o reparo de quem se cadastrou sem perfil).
-// A 128a (6 linhas) prova o gatilho como desenhado (estrutura do catalogo), ligado, sem concorrente, a funcao SECURITY DEFINER e que nenhum usuario de cliente de tamanho valido esta sem perfil (so uma
-// CONTAGEM); a 128b (3 linhas) prova o estado de antes (gatilho ausente). Nenhuma devolve nome, telefone, CPF ou e-mail.
-const ROL_DA_128A = [
+// Lote 128 (20261399930000, o caixa e a conta recusam valor que nao e numero: fin_caixa_abrir e fin_conta_salvar ganham a recusa de NaN/infinito/acima do teto antes de escrever). A 128a e a 128b tem o MESMO
+// rol de 7 linhas (controle e, para cada funcao, o md5, os atributos e a ACL); a 128a espera os corpos da migration nova e a 128b os vigentes de antes (20261370000000 e 20261199000000). So catalogo: nenhuma
+// le linha financeira.
+const ROL_DA_128 = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin_caixa_abrir: corpo exato (md5)",
+  "fin_caixa_abrir: assinatura e atributos conhecidos",
+  "fin_caixa_abrir: EXECUTE authenticated, sem PUBLIC ou anon",
+  "fin_conta_salvar: corpo exato (md5)",
+  "fin_conta_salvar: assinatura e atributos conhecidos",
+  "fin_conta_salvar: EXECUTE authenticated, sem PUBLIC ou anon",
+];
+// Lote 129 (20261399940000, o cadastro cria o perfil em toda loja: o gatilho on_auth_user_created de auth.users, que a Savy clonada do baseline nunca teve, mais o reparo de quem se cadastrou sem perfil).
+// A 129a (6 linhas) prova o gatilho como desenhado (estrutura do catalogo), ligado, sem concorrente, a funcao SECURITY DEFINER e que nenhum usuario de cliente de tamanho valido esta sem perfil (so uma
+// CONTAGEM); a 129b (3 linhas) prova o estado de antes (gatilho ausente). Nenhuma devolve nome, telefone, CPF ou e-mail.
+const ROL_DA_129A = [
   "controle: catalogo publico visivel",
   "auth.users: gatilho on_auth_user_created existe, AFTER INSERT por linha, chama public.handle_new_user(), sem condicao nem lista de colunas",
   "auth.users: o gatilho on_auth_user_created esta LIGADO (nao desabilitado)",
@@ -3019,14 +3031,18 @@ const ROL_DA_128A = [
   "so existe UM gatilho em auth.users que chama handle_new_user: nenhum concorrente",
   "nenhum usuario de cliente (papel customer ou sem papel, nome ate 120 e telefone ate 20) esta sem perfil",
 ];
-const ROL_DA_128B = [
+const ROL_DA_129B = [
   "controle: catalogo publico visivel",
   "auth.users tem id, raw_user_meta_data e raw_app_meta_data; profiles tem id, full_name, whatsapp, cpf e role; handle_new_user() existe (trigger, SECURITY DEFINER)",
   "nenhum gatilho on_auth_user_created existe ainda em auth.users",
 ];
 const ROL_FECHADO_POR_CONSULTA = {
-  "128a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado": ROL_DA_128A,
-  "128b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente": ROL_DA_128B,
+  "129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado": ROL_DA_129A,
+  "129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente": ROL_DA_129B,
+  "128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado":
+    ROL_DA_128,
+  "128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente":
+    ROL_DA_128,
   "127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado":
     ROL_DA_127,
   "127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente":

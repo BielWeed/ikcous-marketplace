@@ -84,8 +84,11 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { pedidosParaCsv } from "@/lib/pedidos-csv";
 import { STATUS_PARA_PREPARAR } from "@/lib/pedidos-para-preparar";
 import {
+  MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA,
+  PRAZO_DAS_ACOES_DO_PEDIDO_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
@@ -860,6 +863,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // efeito refaz a busca SEM acender o spinner (a ficha continua montada).
   const [revalidacaoDaFicha, setRevalidacaoDaFicha] = useState(0);
   const revalidacaoSilenciosaRef = useRef(false);
+  // Id da ficha cuja revalidação silenciosa está NO AR. Quando a lista de
+  // pedidos recarrega junto (reconexão), `orders` ganha nova referência, o
+  // efeito abaixo roda de novo e a limpeza descarta a busca em andamento; sem
+  // isto o efeito, vendo o id já resolvido, voltaria sem refazê-la e a ficha
+  // ficaria no retrato antigo. Com isto ele a refaz, também em silêncio.
+  const revalidacaoNoArRef = useRef<string | null>(null);
   useEffect(() => {
     if (!active) return;
 
@@ -868,6 +877,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       : null;
     const isIdChanged = lastSelectedOrderIdRef.current !== selectedOrderId;
     lastSelectedOrderIdRef.current = selectedOrderId;
+    if (isIdChanged) revalidacaoNoArRef.current = null;
 
     const updateState = (order: Order | null) => {
       setSelectedOrder(order);
@@ -907,6 +917,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     }
 
     if (nextOrder) {
+      revalidacaoNoArRef.current = null;
       resolvedOrderIdRef.current = selectedOrderId;
       triggerUpdate(nextOrder);
       return;
@@ -917,7 +928,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // uma busca anterior que teve sucesso), não refaz a busca nem acende o
     // spinner só porque `orders` mudou de referência por causa de OUTRO
     // pedido — é exatamente isso que desmontava a ficha em edição.
-    const revalidar = revalidacaoSilenciosaRef.current;
+    const revalidar =
+      revalidacaoSilenciosaRef.current ||
+      revalidacaoNoArRef.current === selectedOrderId;
     revalidacaoSilenciosaRef.current = false;
     if (resolvedOrderIdRef.current === selectedOrderId && !revalidar) return;
 
@@ -926,7 +939,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     const fetchSingleOrder = async () => {
       // Na revalidação a ficha já está na tela: nada de spinner de tela
       // cheia (era ele que desmontava o OrderDetail em edição).
-      if (!revalidar) setLoadingDetail(true);
+      if (revalidar) revalidacaoNoArRef.current = selectedOrderId;
+      else setLoadingDetail(true);
       setDetailError(false);
       setDetailNaoExiste(false);
       try {
@@ -948,7 +962,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         }
       } catch (err) {
         console.error("Error fetching single order:", err);
-        if (isCurrent) {
+        // Revalidação silenciosa que falhou (rede que acabou de voltar, por
+        // exemplo): a ficha que já está na tela fica como está. Trocá-la pela
+        // tela de erro apagaria a anotação que a lojista estiver digitando.
+        if (isCurrent && !revalidar) {
           // PGRST116 = `.single()` não achou linha; 22P02 = o id do link nem
           // é um uuid (link truncado). Os dois: o pedido não existe.
           const codigoDoErro = (err as { code?: string } | null)?.code;
@@ -963,7 +980,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           setDetailError(true);
         }
       } finally {
-        if (isCurrent) setLoadingDetail(false);
+        if (isCurrent) {
+          revalidacaoNoArRef.current = null;
+          setLoadingDetail(false);
+        }
       }
     };
 
@@ -972,6 +992,29 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       isCurrent = false;
     };
   }, [selectedOrderId, orders, active, revalidacaoDaFicha]);
+
+  // Ficha de deep link (pedido fora de `orders`): o evento ao vivo é a única
+  // atualização dela, e ele se perde com a rede fora ou a aba em segundo plano.
+  // Ao a rede voltar e ao a aba voltar a ficar visível, revalida em silêncio
+  // pelo mesmo caminho do evento ao vivo (sem spinner, sem desmontar a ficha).
+  useEffect(() => {
+    if (!active || !selectedOrderId) return;
+    const revalidarFichaDeLink = () => {
+      if (resolvedOrderIdRef.current !== selectedOrderId) return;
+      if (orders.some((o) => o.id === selectedOrderId)) return;
+      revalidacaoSilenciosaRef.current = true;
+      setRevalidacaoDaFicha((n) => n + 1);
+    };
+    const aoMudarAVisibilidade = () => {
+      if (document.visibilityState === "visible") revalidarFichaDeLink();
+    };
+    globalThis.addEventListener("online", revalidarFichaDeLink);
+    document.addEventListener("visibilitychange", aoMudarAVisibilidade);
+    return () => {
+      globalThis.removeEventListener("online", revalidarFichaDeLink);
+      document.removeEventListener("visibilitychange", aoMudarAVisibilidade);
+    };
+  }, [active, selectedOrderId, orders]);
 
   useEffect(() => {
     const container =
@@ -1221,9 +1264,21 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     if (!confirmado || abandonou()) return;
     setEstornandoId(pedido.id);
     try {
-      const { error } = await supabase.rpc("registrar_estorno_manual", {
-        p_order_id: pedido.id,
-      });
+      // Prazo só da espera da tela (rede "pendurada"). Estourou: o `catch`
+      // abaixo conta que NÃO se sabe se registrou e relê os cancelados. Tocar
+      // de novo é seguro: a RPC é idempotente (pedido já estornado devolve ok
+      // sem gravar nada de novo).
+      const { error } = await aguardarComPrazo(
+        // `rpc` devolve um "thenable", não uma Promise: sem isto o tipo do
+        // retorno vira `unknown`.
+        Promise.resolve(
+          supabase.rpc("registrar_estorno_manual", {
+            p_order_id: pedido.id,
+          }),
+        ),
+        PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+        () => erroDeConsultaSemResposta(MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA),
+      );
       if (error) {
         // R4 (B1b): a recusa de NEGÓCIO do servidor (SQLSTATE 22023) chega
         // com texto leigo escrito para o lojista — "o Mercado Pago já está
@@ -1247,7 +1302,16 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       await fetchPedidosCancelados().catch(() => {});
     } catch (e) {
       console.error("Erro ao registrar estorno manual:", e);
-      toast.error("Não consegui registrar o estorno. Tente de novo.");
+      if (ehConsultaSemResposta(e)) {
+        // Sem resposta: o estorno pode ter sido registrado. NUNCA dizer que
+        // não foi feito; a frase manda conferir e a lista de cancelados é
+        // relida SEM esperar (a releitura também pode pendurar e o botão
+        // tem de soltar já); a resposta tardia é descartada, nunca vira aviso.
+        toast.error(MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA);
+        void fetchPedidosCancelados().catch(() => {});
+      } else {
+        toast.error("Não consegui registrar o estorno. Tente de novo.");
+      }
     } finally {
       setEstornandoId(null);
     }
@@ -1915,6 +1979,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       <LocalErrorBoundary>
         <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
           <OrderDetail
+            active={active}
             order={selectedOrder}
             onStatusChange={handleStatusChange}
             isOffline={isOffline}
@@ -2645,6 +2710,24 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         datas ou limpe o período para ver os pedidos.
                       </p>
                     </>
+                  ) : filter === "open" &&
+                    searchQuery.trim() === "" &&
+                    !dateRange.start &&
+                    !dateRange.end ? (
+                    // Em Aberto vazio e NENHUM outro filtro ligado (pagamento,
+                    // canal e período inválido já foram tratados acima): a
+                    // causa é certa, não há pedido em aberto. Culpar "o filtro
+                    // de status, a busca ou o período" fazia quem está com
+                    // tudo em dia ler pedido sumido ou filtro errado.
+                    <>
+                      <h3 className="text-lg font-bold leading-snug text-zinc-100">
+                        Nada para preparar agora
+                      </h3>
+                      <p className="mt-2 max-w-md text-sm leading-relaxed text-zinc-400">
+                        Todos os pedidos em aberto já foram atendidos. Os
+                        finalizados e cancelados continuam em Todos.
+                      </p>
+                    </>
                   ) : filter !== "all" ||
                     searchQuery.trim() !== "" ||
                     dateRange.start ||
@@ -2705,7 +2788,17 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         }}
                       >
                         <X aria-hidden="true" className="size-4" />
-                        Limpar busca e filtros
+                        {filter === "open" &&
+                        paymentFilter === "all" &&
+                        canalFilter === "all" &&
+                        searchQuery.trim() === "" &&
+                        !dateRange.start &&
+                        !dateRange.end
+                          ? // Só o status padrão está ligado: não há busca nem
+                            // filtro para limpar, só o recorte "Em Aberto" a
+                            // trocar por Todos.
+                            "Ver todos os pedidos"
+                          : "Limpar busca e filtros"}
                       </button>
                     </div>
                   )}

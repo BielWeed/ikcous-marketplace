@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * PROVA VIVA da migration 20261399930000_o_cadastro_cria_o_perfil_em_toda_loja.sql contra o Postgres EFEMERO (clone do
+ * PROVA VIVA da migration 20261399940000_o_cadastro_cria_o_perfil_em_toda_loja.sql contra o Postgres EFEMERO (clone do
  * rodar-isolado.cjs: a arvore migrada). Nunca banco de loja. Esqueleto: tests/banco/prova-de-objeto-novo.cjs; a irma e'
  * o-nome-do-perfil-tem-teto-no-banco-viva.cjs (20261399100000).
  *
@@ -27,7 +27,7 @@
  *  MIGRATION   reaplicar (2x) e CRLF = mesmo estado e 0 perfis novos; gatilho desligado de antes e' aceito e nao e' religado; rollback tira
  *              so o gatilho (perfis ficam), 2x no-op, ida e volta igual; o pre-voo recusa SEM escrever (gatilho homonimo diferente, funcao
  *              sem SECURITY DEFINER, coluna ausente); a conferencia final recusa cada estrago; o pre-voo do rollback recusa o que nao
- *              e' dele; consultas 128a/128b.
+ *              e' dele; consultas 129a/129b.
  *  ATOMICIDADE conexao SEM BEGIN: a conferencia sabotada derruba o arquivo inteiro (sem gatilho e sem perfil reparado); gravacao em voo em
  *              auth.users faz a migration FALHAR LIMPA no lock_timeout e depois aplica.
  *
@@ -40,7 +40,7 @@ const { assert, prova, emCRLF } = P;
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera } = require("./efemero.cjs");
 
-const NOME = "20261399930000_o_cadastro_cria_o_perfil_em_toda_loja.sql";
+const NOME = "20261399940000_o_cadastro_cria_o_perfil_em_toda_loja.sql";
 const MIGRATION = P.lerMigration(NOME);
 const ROLLBACK = P.lerMigration(`rollback-manual-${NOME}`);
 const GATILHO = "on_auth_user_created";
@@ -438,7 +438,7 @@ prova(
   async () => {
     const res = await roteiro(MIGRATION);
     assert.deepEqual(falhas(res), []);
-    const aviso = res.avisos.find((a) => a.includes("20261399930000:"));
+    const aviso = res.avisos.find((a) => a.includes("20261399940000:"));
     assert.ok(aviso, `sem NOTICE: ${JSON.stringify(res.avisos)}`);
     assert.match(aviso, /: 3 perfil\(is\) criado\(s\)/);
     assert.match(aviso, /; 1 usuário\(s\) sem perfil com outro papel/);
@@ -457,7 +457,7 @@ prova(
         const f1 = await foto();
         assert.deepEqual({ ...f1, gatilhos: [] }, { ...f0, gatilhos: [] });
         assert.match(
-          avisos.find((a) => a.includes("20261399930000:")),
+          avisos.find((a) => a.includes("20261399940000:")),
           /: 0 perfil\(is\) criado\(s\)/,
         );
       },
@@ -533,7 +533,7 @@ prova(
     assert.notEqual(antesDoInsert, MIGRATION);
     const r4 = await roteiro(antesDoInsert);
     assert.ok(
-      r4.r && /conferencia 20261399930000: o gatilho/.test(r4.r.erro),
+      r4.r && /conferencia 20261399940000: o gatilho/.test(r4.r.erro),
       JSON.stringify(r4.r),
     );
   },
@@ -570,7 +570,7 @@ prova("REAPLICAR 2x e em CRLF = mesmo estado, com 0 perfis novos", async () => {
       assert.equal(await P.aplicar(MIGRATION), null);
       assert.deepEqual(await foto(), f1, "a 2a aplicacao mudou algo");
       assert.match(
-        avisos.find((a) => a.includes("20261399930000:")),
+        avisos.find((a) => a.includes("20261399940000:")),
         /: 0 perfil\(is\) criado\(s\)/,
       );
       assert.equal(await P.aplicar(emCRLF(MIGRATION)), null);
@@ -700,7 +700,7 @@ prova(
 prova(
   "a conferencia final recusa cada estrago (gatilho ausente, gatilho trocado, usuario de cliente sem perfil) e aceita o estado certo e o admin sem perfil",
   async () => {
-    const bloco = P.blocoDe(MIGRATION, "conferencia_20261399930000");
+    const bloco = P.blocoDe(MIGRATION, "conferencia_20261399940000");
     const estragos = [
       [
         /o gatilho on_auth_user_created/,
@@ -769,26 +769,26 @@ prova(
   },
 );
 
-const A128 = "128a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado";
-const B128 = "128b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente";
+const A129 = "129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado";
+const B129 = "129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente";
 prova(
-  "consultas 128a/128b nos dois sentidos, com o rol fechado, e cada linha reprova no estrago certo",
+  "consultas 129a/129b nos dois sentidos, com o rol fechado, e cada linha reprova no estrago certo",
   async () => {
     await P.emTransacao(
       async () => {
-        assert.deepEqual(await P.consulta(A128), [], "128a no estado DEPOIS");
+        assert.deepEqual(await P.consulta(A129), [], "129a no estado DEPOIS");
         assert.equal(
-          (await P.consulta(B128)).length,
+          (await P.consulta(B129)).length,
           1,
-          "128b depois do apply devia reprovar so a linha do gatilho ausente",
+          "129b depois do apply devia reprovar so a linha do gatilho ausente",
         );
         await antes();
-        assert.deepEqual(await P.consulta(B128), [], "128b no estado ANTES");
-        const naoAplicado = await P.consulta(A128);
+        assert.deepEqual(await P.consulta(B129), [], "129b no estado ANTES");
+        const naoAplicado = await P.consulta(A129);
         assert.equal(
           naoAplicado.length,
           3,
-          `128a no estado ANTES: ${JSON.stringify(naoAplicado)}`,
+          `129a no estado ANTES: ${JSON.stringify(naoAplicado)}`,
         );
         await depois();
         for (const [estrago, linha] of [
@@ -821,21 +821,21 @@ prova(
         ]) {
           await q("SAVEPOINT estrago");
           await q(estrago);
-          const reprovadas = await P.consulta(A128);
+          const reprovadas = await P.consulta(A129);
           assert.ok(
             reprovadas.some((i) => linha.test(i)),
-            `a 128a nao reprovou a linha certa para '${estrago.slice(0, 70)}': ${JSON.stringify(reprovadas)}`,
+            `a 129a nao reprovou a linha certa para '${estrago.slice(0, 70)}': ${JSON.stringify(reprovadas)}`,
           );
           await q("ROLLBACK TO SAVEPOINT estrago");
         }
-        // admin sem perfil, de fora do reparo, NAO reprova a 128a
+        // admin sem perfil, de fora do reparo, NAO reprova a 129a
         await q(
           `SET LOCAL session_replication_role = replica;
          INSERT INTO auth.users (id, email, raw_app_meta_data, raw_user_meta_data) VALUES ('${U.u4}'::uuid, 'adm@399930.teste', '{"role":"admin"}'::jsonb, '{"full_name":"Admin"}'::jsonb);
          SET LOCAL session_replication_role = origin`,
         );
         assert.deepEqual(
-          await P.consulta(A128),
+          await P.consulta(A129),
           [],
           "admin sem perfil nao e' cliente",
         );
@@ -860,7 +860,7 @@ prova(
         [U.u1],
       );
       assert.equal(await temGatilho(c3), false);
-      const i = MIGRATION.indexOf("DO $conferencia_20261399930000$");
+      const i = MIGRATION.indexOf("DO $conferencia_20261399940000$");
       const quebrada =
         MIGRATION.slice(0, i) +
         MIGRATION.slice(i).replace("AND t.tgtype = 5", "AND t.tgtype = 6");
@@ -871,7 +871,7 @@ prova(
       );
       await assert.rejects(
         () => c3.query(quebrada),
-        /conferencia 20261399930000: o gatilho/,
+        /conferencia 20261399940000: o gatilho/,
       );
       assert.equal(
         await temGatilho(c3),

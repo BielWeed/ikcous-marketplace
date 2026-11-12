@@ -1,3 +1,4 @@
+import { erroDeConsultaSemResposta } from "@/lib/prazo-da-requisicao";
 import { cachedCouponsData, setCachedCouponsData } from "@/utils/admin_cache";
 import { AdminCouponFormView } from "@/views/admin/AdminCouponFormView";
 // @vitest-environment jsdom
@@ -164,11 +165,24 @@ function listaNaTela() {
     ?.textContent;
 }
 
-function esperarFalhaSemPerderCampos() {
+const SALVO_SEM_A_LISTA = "O cupom foi salvo, mas a lista de clientes NÃO.";
+
+// `descricao`: o trecho que diz a ela o que fazer. Sem ele, o aviso é o genérico
+// de quando NADA foi gravado (as regras falharam antes da lista).
+function esperarFalhaSemPerderCampos(descricao?: string) {
   expect(erro).toHaveBeenCalledTimes(1);
-  expect(erro).toHaveBeenCalledWith(
-    "Não foi possível salvar o cupom. Confira e tente de novo.",
-  );
+  if (descricao === undefined) {
+    expect(erro).toHaveBeenCalledWith(
+      "Não foi possível salvar o cupom. Confira e tente de novo.",
+    );
+  } else {
+    expect(erro).toHaveBeenCalledWith(
+      SALVO_SEM_A_LISTA,
+      expect.objectContaining({
+        description: expect.stringContaining(descricao),
+      }),
+    );
+  }
   expect(sucesso).not.toHaveBeenCalled();
   expect(navegar).not.toHaveBeenCalled();
   expect(marcarSujo).toHaveBeenLastCalledWith(true);
@@ -192,7 +206,13 @@ describe("edição do cupom — confirmação das regras e dos clientes", () => 
       await digitar("#coupon-code", "VIPNOVO");
       await clicar("Salvar Cupom");
 
-      esperarFalhaSemPerderCampos();
+      // As regras já estão no banco: o aviso diz isso e que a lista NÃO foi,
+      // e o motivo real quando é permissão (entrar de novo, não "tentar").
+      esperarFalhaSemPerderCampos(
+        falha === "rede caiu"
+          ? "continua na tela"
+          : "não tem mais permissão de administrador",
+      );
       expect(listaNaTela()).toContain("Bia");
       expect(listaNaTela()).toContain("Ana");
       // Falha parcial: o UPDATE já chegou ao banco, mas não é sucesso do formulário.
@@ -270,7 +290,7 @@ describe("edição do cupom — confirmação das regras e dos clientes", () => 
     await escolherBia();
     await digitar("#coupon-code", "VIPNOVO");
     await clicar("Salvar Cupom");
-    esperarFalhaSemPerderCampos();
+    esperarFalhaSemPerderCampos("continua na tela");
     expect(listaNaTela()).toContain("Bia");
     expect(listaNaTela()).not.toContain("Ana");
     expect(listarClientes).not.toHaveBeenCalled();
@@ -283,11 +303,82 @@ describe("edição do cupom — confirmação das regras e dos clientes", () => 
     await clicar("Quem tiver o código");
     await digitar("#coupon-code", "VIPNOVO");
     await clicar("Salvar Cupom");
-    esperarFalhaSemPerderCampos();
+    esperarFalhaSemPerderCampos("continua na tela");
     expect(clientesNoBanco).toEqual(["u-ana"]);
     expect(cupomNoBanco.alcance).toBe("codigo");
     await clicar("Salvar Cupom");
     expect(clientesNoBanco).toEqual([]);
+    expect(navegar).toHaveBeenCalledWith("admin-coupons");
+  });
+
+  it("só a lista mudou e ela falha: nada do cupom foi gravado, então o aviso NÃO diz que o cupom foi salvo", async () => {
+    gravarClientes.mockRejectedValueOnce(new Error("rede"));
+    await montar();
+    await escolherBia();
+    await clicar("Salvar Cupom");
+
+    expect(gravarCupom).not.toHaveBeenCalled();
+    expect(erro).toHaveBeenCalledTimes(1);
+    expect(erro).toHaveBeenCalledWith(
+      "Não foi possível salvar o cupom. Confira e tente de novo.",
+    );
+    expect(listaNaTela()).toContain("Bia");
+    expect(navegar).not.toHaveBeenCalled();
+  });
+
+  it("sem resposta da rede na lista, depois de salvar as regras: diz que o cupom foi salvo, mantém a tela e não recarrega por cima", async () => {
+    gravarClientes.mockRejectedValueOnce(erroDeConsultaSemResposta());
+    await montar();
+    await escolherBia();
+    await digitar("#coupon-code", "VIPNOVO");
+    await clicar("Salvar Cupom");
+
+    expect(erro).toHaveBeenCalledTimes(1);
+    expect(erro).toHaveBeenCalledWith(
+      expect.stringContaining("O cupom foi salvo"),
+      expect.objectContaining({
+        description: expect.stringContaining("continua na tela"),
+      }),
+    );
+    expect(cupomNoBanco.code).toBe("VIPNOVO");
+    expect(listaNaTela()).toContain("Bia");
+    expect(listaNaTela()).toContain("Ana");
+    expect(navegar).not.toHaveBeenCalled();
+    // Nada de reler os cupons por cima do que ela escolheu.
+    expect(consultarCupons).toHaveBeenCalledTimes(1);
+    expect((tela.querySelector("#coupon-code") as HTMLInputElement).value).toBe(
+      "VIPNOVO",
+    );
+  });
+
+  it("sem resposta, mas a lista chegou ao banco: no novo salvar a tela confere, mostra a lista certa e o toque seguinte conclui", async () => {
+    gravarClientes.mockImplementationOnce(async (lista: string[]) => {
+      // A gravação chegou ao servidor, só a resposta se perdeu.
+      clientesNoBanco = [...lista];
+      throw erroDeConsultaSemResposta();
+    });
+    await montar();
+    await escolherBia();
+    await digitar("#coupon-code", "VIPNOVO");
+    await clicar("Salvar Cupom");
+    expect(clientesNoBanco).toEqual(["u-ana", "u-bia"]);
+    erro.mockClear();
+
+    // Segundo toque: a conferência acha a lista diferente da que a tela leu
+    // ao abrir; não grava nada e mostra a lista que o banco já tem.
+    await clicar("Salvar Cupom");
+    expect(erro).toHaveBeenCalledTimes(1);
+    expect(String(erro.mock.calls[0][0])).toContain("mudou em outro aparelho");
+    expect(listaNaTela()).toContain("Ana");
+    expect(listaNaTela()).toContain("Bia");
+    expect(navegar).not.toHaveBeenCalled();
+
+    // Terceiro toque: lista já igual à do banco, conclui sem erro.
+    erro.mockClear();
+    await clicar("Salvar Cupom");
+    expect(erro).not.toHaveBeenCalled();
+    expect(clientesNoBanco).toEqual(["u-ana", "u-bia"]);
+    expect(sucesso).toHaveBeenCalledTimes(1);
     expect(navegar).toHaveBeenCalledWith("admin-coupons");
   });
 });

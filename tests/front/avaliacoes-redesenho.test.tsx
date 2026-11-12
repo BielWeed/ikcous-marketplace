@@ -222,7 +222,11 @@ describe("AdminReviewsView — redesenho", () => {
     return achados[indice];
   }
   const porRotulo = (rotulo: string) =>
-    botoes().filter((b) => b.getAttribute("aria-label") === rotulo);
+    botoes().filter(
+      (b) =>
+        b.getAttribute("aria-label") === rotulo ||
+        b.getAttribute("aria-label")?.startsWith(`${rotulo} de `),
+    );
   async function tocar(el: HTMLElement) {
     await act(async () => {
       el.click();
@@ -239,6 +243,94 @@ describe("AdminReviewsView — redesenho", () => {
       await esperar();
     });
   }
+
+  it("r66 abre resposta com cursor e devolve foco ao cancelar e publicar", async () => {
+    await montar();
+    await tocar(botaoPorTexto("Responder"));
+    const campo = hospedeiro.querySelector("textarea")!;
+    expect(document.activeElement).toBe(campo);
+    expect(campo.closest('[role="group"]')?.getAttribute("aria-label")).toBe(
+      "Responder à avaliação",
+    );
+    await tocar(botaoPorTexto("Cancelar"));
+    expect(document.activeElement).toBe(botaoPorTexto("Responder"));
+    await tocar(botaoPorTexto("Editar resposta"));
+    await tocar(botaoPorTexto("Publicar resposta"));
+    expect(document.activeElement).toBe(botaoPorTexto("Editar resposta"));
+  });
+
+  it("r66 confirmação anuncia a frase e cancelar devolve a lixeira do mesmo cartão", async () => {
+    await montar();
+    await tocar(botaoPorTexto("Responder"));
+    const cartao = [...hospedeiro.querySelectorAll("li")].find((li) =>
+      li.textContent?.includes("Marina"),
+    )!;
+    const excluir = cartao.querySelector<HTMLButtonElement>(
+      '[title="Excluir avaliação"]',
+    )!;
+    await tocar(excluir);
+    const aviso = cartao.querySelector('[role="alertdialog"]')!;
+    expect(aviso).not.toBeNull();
+    expect(
+      document.getElementById(aviso.getAttribute("aria-labelledby")!)
+        ?.textContent,
+    ).toBe("Excluir esta avaliação? Não dá para desfazer.");
+    const cancelar = cartao.querySelector<HTMLButtonElement>("button")!;
+    expect(document.activeElement === cancelar).toBe(true);
+    await tocar(cancelar);
+    expect(document.activeElement).toBe(
+      cartao.querySelector('[aria-label="Excluir avaliação de Marina"]'),
+    );
+    expect(
+      cartao.querySelector('[aria-label="Editar resposta a Marina"]'),
+    ).not.toBeNull();
+  });
+
+  it("r66 após excluir de verdade o foco fica no título da lista", async () => {
+    h.deleteReview.mockImplementationOnce(async () => {
+      h.estado.adminReviews = h.estado.adminReviews.filter(
+        (r) => r.id !== PUBLICADA.id,
+      );
+      return true;
+    });
+    await montar();
+    await tocar(
+      hospedeiro.querySelector<HTMLButtonElement>(
+        '[title="Excluir avaliação"]',
+      )!,
+    );
+    await tocar(botaoPorTexto("Excluir"));
+    expect(document.activeElement?.textContent).toBe("Lista de avaliações");
+    expect(
+      hospedeiro.querySelector(
+        '[aria-label="Excluir avaliação de Isadora Bernardes"]',
+      ),
+    ).toBeNull();
+  });
+
+  it("r66 ver mais abre só o cartão longo, inclusive a resposta, e ver menos recolhe", async () => {
+    const longo = "Texto comprido para ler antes de responder. ".repeat(8);
+    h.estado.adminReviews = [
+      { ...PUBLICADA, comment: longo, merchantReply: longo },
+      PENDENTE,
+    ];
+    await montar();
+    const cartao = [...hospedeiro.querySelectorAll("li")].find((li) =>
+      li.textContent?.includes(longo),
+    )!;
+    const abrir = botaoPorTexto("Ver mais");
+    expect(abrir.getAttribute("aria-expanded")).toBe("false");
+    expect(cartao.querySelector(".line-clamp-3")).not.toBeNull();
+    await tocar(abrir);
+    expect(cartao.querySelector(".line-clamp-3")).toBeNull();
+    expect(cartao.querySelector(".line-clamp-2")).toBeNull();
+    expect(hospedeiro.querySelectorAll(".line-clamp-3")).toHaveLength(1);
+    expect(botaoPorTexto("Ver menos").getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    await tocar(botaoPorTexto("Ver menos"));
+    expect(cartao.querySelector(".line-clamp-3")).not.toBeNull();
+  });
 
   it("o filtro por nota tem Todas e de 5 a 1 estrelas, e tocar numa nota refaz a busca", async () => {
     await montar();

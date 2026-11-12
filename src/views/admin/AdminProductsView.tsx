@@ -53,6 +53,10 @@ import {
   usarImagemOriginal,
 } from "@/lib/imageUrl";
 import { percentualComUmaCasa } from "@/lib/percentual";
+import {
+  MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA,
+  ehConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { Product, View } from "@/types";
@@ -151,7 +155,12 @@ export const AdminProductsView = memo(function AdminProductsView({
     loadProducts,
     loadProductsSemCusto,
     copiarImagemParaDuplicacao,
-  } = useProducts({ autoFetch: false });
+  } = useProducts({
+    autoFetch: false,
+    onSincronizado: () => {
+      void recarregarAtualRef.current(true);
+    },
+  });
   const { stats, error: erroDoResumo, fetchExecutiveSummary } = useAnalytics();
   const { categories: dbCategories } = useCategories();
   const isOffline = useOnlineStatus();
@@ -210,6 +219,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     "admin_products_search_term",
     "",
   );
+  const termoDeBusca = searchTerm.trim();
   const [isTyping, setIsTyping] = useState(false);
   const [filterCategory, setFilterCategory] = useLocalStorage<string>(
     "admin_products_filter_category",
@@ -386,26 +396,36 @@ export const AdminProductsView = memo(function AdminProductsView({
     };
   }, []);
 
+  // Ocorrências de troca de busca/filtros. A geração só muda quando a PRÓXIMA
+  // leitura começa (320 ms depois de trocar a categoria): nesse intervalo a
+  // resposta da categoria antiga ainda chegava e corrigia a página -- ou trocava
+  // a lista -- da categoria nova. Contar a OCORRÊNCIA (e não comparar valores)
+  // também descarta a resposta quando o filtro volta ao valor antigo (A -> B -> A).
+  const versaoDosFiltrosRef = useRef(0);
+  useEffect(() => {
+    versaoDosFiltrosRef.current += 1;
+  }, [termoDeBusca, filterCategory, modoSemCusto, modoEstoqueBaixo]);
+
   const loadData = useCallback(
     async (pageToFetch: number, silenciosa = false) => {
       if (!catalogoMontado.current) return;
       const geracao = ++geracaoDaRecarga.current;
+      const versaoDosFiltros = versaoDosFiltrosRef.current;
+      const leituraSuperada = () =>
+        !catalogoMontado.current ||
+        geracao !== geracaoDaRecarga.current ||
+        versaoDosFiltrosRef.current !== versaoDosFiltros;
       cargaEmAndamento.current = Date.now();
       try {
         const filtros = {
-          search: searchTerm || undefined,
+          search: termoDeBusca || undefined,
           category: filterCategory === "all" ? undefined : filterCategory,
           ...(modoEstoqueBaixo && { stock: "low", status: "active" }),
           ...(silenciosa && { silent: true }),
         };
         if (modoSemCusto) {
           const achados = await loadProductsSemCusto(filtros);
-          if (
-            !catalogoMontado.current ||
-            geracao !== geracaoDaRecarga.current
-          ) {
-            return;
-          }
+          if (leituraSuperada()) return;
           if (achados || !silenciosa) setLoadError(!achados);
           if (achados) {
             setSemCusto(achados.products);
@@ -414,9 +434,7 @@ export const AdminProductsView = memo(function AdminProductsView({
           return;
         }
         const result = await loadProducts(pageToFetch, pageSize, filtros);
-        if (!catalogoMontado.current || geracao !== geracaoDaRecarga.current) {
-          return;
-        }
+        if (leituraSuperada()) return;
         if (result) {
           ultimaCargaBemSucedida.current = Date.now();
           setLoadError(false);
@@ -435,12 +453,7 @@ export const AdminProductsView = memo(function AdminProductsView({
             // produto nenhum no filtro (total 0) o vazio é verdade: nada a buscar.
             if (result.total > 0) {
               const ultima = await loadProducts(maxPage, pageSize, filtros);
-              if (
-                !catalogoMontado.current ||
-                geracao !== geracaoDaRecarga.current
-              ) {
-                return;
-              }
+              if (leituraSuperada()) return;
               if (ultima) {
                 setTotalProducts(ultima.total);
                 if (!modoEstoqueBaixo) cachedProductsTotal = ultima.total;
@@ -467,7 +480,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       modoSemCusto,
       modoEstoqueBaixo,
       pageSize,
-      searchTerm,
+      termoDeBusca,
       filterCategory,
       setCurrentPage,
     ],
@@ -479,7 +492,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       loadData(currentPage);
     }, 320);
     return () => clearTimeout(timer);
-  }, [currentPage, searchTerm, filterCategory, active, loadData]);
+  }, [currentPage, termoDeBusca, filterCategory, active, loadData]);
 
   // A exclusão pode demorar: quando termina, a recarga usa a página e os
   // filtros ATUAIS, não os do clique de confirmar.
@@ -532,7 +545,9 @@ export const AdminProductsView = memo(function AdminProductsView({
 
     const unitProfit = price - cost;
     const temBase = price > 0 && cost > 0;
-    const margin = temBase ? (unitProfit / price) * 100 : null;
+    const margin = temBase
+      ? Math.round((unitProfit / price) * 10000) / 100
+      : null;
     const roi = temBase ? (unitProfit / cost) * 100 : null;
     const totalCost = cost * stock;
     const totalRevenue = price * stock;
@@ -575,9 +590,9 @@ export const AdminProductsView = memo(function AdminProductsView({
 
   // "Nenhum produto" com busca ou categoria escolhida é o filtro que não achou
   // nada — não o catálogo vazio. A tela diz o que está filtrado e oferece sair.
-  const temBuscaOuFiltro = !!searchTerm || filterCategory !== "all";
+  const temBuscaOuFiltro = !!termoDeBusca || filterCategory !== "all";
   const descricaoDoFiltro = [
-    searchTerm ? `a busca "${searchTerm}"` : null,
+    termoDeBusca ? `a busca "${termoDeBusca}"` : null,
     filterCategory !== "all" ? `a categoria "${filterCategory}"` : null,
   ]
     .filter(Boolean)
@@ -599,7 +614,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       // dela na visão que está abrindo.
       geracaoDaRecarga.current += 1;
       filtrosAntesDaVisao.current ??= {
-        busca: searchTerm,
+        busca: termoDeBusca,
         categoria: filterCategory,
         pagina: currentPage,
       };
@@ -615,15 +630,25 @@ export const AdminProductsView = memo(function AdminProductsView({
     }
     setPedidoDeRolagem((n) => n + 1);
   };
-  // Vindo do Relatórios ("Cadastrar custo"): a lista abre já na visão. Espera a
-  // tela ficar ativa e só age quando o pedido muda ou a tela volta a abrir.
+  // O id é um pedido de abertura, não um filtro permanente da entrada.
+  // Consumi-lo preserva a lista ao voltar do formulário pelo histórico.
+  const consumirPedidoDeVisao = (visao: string) => {
+    const estado = window.history.state;
+    if (estado?.view !== "admin-products" || estado.id !== visao) return;
+    const proximo = { ...estado, id: undefined };
+    window.history.replaceState(proximo, "", window.location.href);
+  };
+  // Vindo do Relatórios ("Cadastrar custo"): espera a tela ficar ativa.
   const pedeVisaoSemCusto = visaoInicial === VISAO_SEM_CUSTO;
   const abrirVisaoSemCustoRef = useRef(abrirVisaoSemCusto);
   useEffect(() => {
     abrirVisaoSemCustoRef.current = abrirVisaoSemCusto;
   });
   useEffect(() => {
-    if (active && pedeVisaoSemCusto) abrirVisaoSemCustoRef.current();
+    if (active && pedeVisaoSemCusto) {
+      consumirPedidoDeVisao(VISAO_SEM_CUSTO);
+      abrirVisaoSemCustoRef.current();
+    }
   }, [active, pedeVisaoSemCusto]);
   // Vindo do Início (card "N produtos com estoque baixo"): mesma ideia, com
   // a lista do servidor já filtrada. Começa na página 1 e sem busca/categoria.
@@ -631,7 +656,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     if (!modoEstoqueBaixo) {
       geracaoDaRecarga.current += 1;
       filtrosAntesDaVisao.current ??= {
-        busca: searchTerm,
+        busca: termoDeBusca,
         categoria: filterCategory,
         pagina: currentPage,
       };
@@ -652,7 +677,10 @@ export const AdminProductsView = memo(function AdminProductsView({
     abrirVisaoEstoqueBaixoRef.current = abrirVisaoEstoqueBaixo;
   });
   useEffect(() => {
-    if (active && pedeVisaoEstoqueBaixo) abrirVisaoEstoqueBaixoRef.current();
+    if (active && pedeVisaoEstoqueBaixo) {
+      consumirPedidoDeVisao(VISAO_ESTOQUE_BAIXO);
+      abrirVisaoEstoqueBaixoRef.current();
+    }
   }, [active, pedeVisaoEstoqueBaixo]);
   const verTodos = () => {
     const antes = filtrosAntesDaVisao.current;
@@ -665,7 +693,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     setSemCusto(null);
     setPaginaSemCusto(0);
     setLoadError(false);
-    if (antes && !searchTerm && filterCategory === "all") {
+    if (antes && !termoDeBusca && filterCategory === "all") {
       // Nada foi mexido dentro da visão: a lista volta como estava.
       setSearchTerm(antes.busca);
       setFilterCategory(antes.categoria);
@@ -849,7 +877,9 @@ export const AdminProductsView = memo(function AdminProductsView({
         accent: "text-sky-300",
         // Sem as despesas o líquido não existe: o cartão diz o que falta e abre
         // a folha onde o lojista as informa (antes só o (i) do cabeçalho levava lá).
-        ...(liquidoEstimado === null
+        ...(liquidoEstimado === null &&
+        !financialStats.semEstoque &&
+        !financialStats.semNenhumCusto
           ? {
               dica: "Informar despesas",
               aoToque: () =>
@@ -862,7 +892,11 @@ export const AdminProductsView = memo(function AdminProductsView({
         subValue:
           liquidoEstimado !== null
             ? `Estimado${financialStats.parcial ? " · Parcial" : ""} · despesas informadas nesta tela`
-            : "Toque em Entender valores e informe as despesas previstas",
+            : financialStats.semEstoque
+              ? "Cadastre um produto com estoque"
+              : financialStats.semNenhumCusto
+                ? "Cadastre o custo dos produtos"
+                : "Toque em Entender valores e informe as despesas previstas",
       },
       {
         id: "roi-portfolio",
@@ -891,7 +925,7 @@ export const AdminProductsView = memo(function AdminProductsView({
           ? "Só sem custo"
           : modoEstoqueBaixo
             ? "Só estoque baixo"
-            : searchTerm
+            : termoDeBusca
               ? "Resultados da busca"
               : filterCategory !== "all"
                 ? "Só desta categoria"
@@ -905,7 +939,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       modoSemCusto,
       modoEstoqueBaixo,
       semCusto,
-      searchTerm,
+      termoDeBusca,
       filterCategory,
     ],
   );
@@ -1022,6 +1056,7 @@ export const AdminProductsView = memo(function AdminProductsView({
 
   const confirmDelete = useCallback(async () => {
     if (!productToDelete) return;
+    const idConfirmado = productToDelete;
     if (isOffline) {
       toast.error("Você está offline", {
         description: "Não é possível confirmar a exclusão sem conexão.",
@@ -1080,7 +1115,10 @@ export const AdminProductsView = memo(function AdminProductsView({
         description: "Não foi possível remover o produto.",
       });
     } finally {
-      setProductToDelete(null);
+      // Só fecha a pergunta se ainda for a DESTE produto: a exclusão demora, e
+      // nesse intervalo a lojista pode ter aberto a pergunta de OUTRO produto —
+      // zerar sem olhar fechava essa pergunta sozinha.
+      setProductToDelete((atual) => (atual === idConfirmado ? null : atual));
     }
   }, [deleteProduct, productToDelete, isOffline, refreshFinancialStats]);
 
@@ -1124,6 +1162,9 @@ export const AdminProductsView = memo(function AdminProductsView({
     }
     duplicandoRef.current = true;
     setDuplicando(true);
+    // Em que passo a cópia estava quando algo falhou: só muda o que dizer quando
+    // a rede não responde (ver o `catch`).
+    let passo: "copiando-fotos" | "gravando-a-copia" = "copiando-fotos";
     try {
       // Laudo 0109 (A2): a cópia nasce com arquivos PRÓPRIOS no storage —
       // do produto e de cada variação. Reusar as URLs do original fazia a
@@ -1200,6 +1241,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       };
 
       // O aviso de sucesso é desta tela ("Produto Duplicado"): o hook cala o dele.
+      passo = "gravando-a-copia";
       const copia = await addProduct(duplicateData, { avisarSucesso: false });
       // A cópia existe (mesmo a que ficou sem grade): recarrega a lista, como a
       // exclusão, para ela entrar na ordem e no total em vez de aparecer solta
@@ -1232,9 +1274,21 @@ export const AdminProductsView = memo(function AdminProductsView({
     } catch (err) {
       console.error("Error duplicating product:", err);
       haptic.error();
-      toast.error("Erro na Duplicação", {
-        description: "Não foi possível duplicar o produto.",
-      });
+      if (ehConsultaSemResposta(err)) {
+        // A rede não respondeu. Copiando as fotos (etapa ANTES de gravar) nenhum
+        // produto foi criado: a frase diz isso e que repetir é seguro. Gravando a
+        // cópia não se sabe se existe, e o hook já mostrou o aviso dele (conferir a lista):
+        // repetir aqui empilharia dois. Copiando as fotos o hook não avisa nada.
+        if (passo === "copiando-fotos") {
+          toast.error(MENSAGEM_PRODUTO_DUPLICAR_SEM_RESPOSTA, {
+            duration: 15_000,
+          });
+        }
+      } else {
+        toast.error("Erro na Duplicação", {
+          description: "Não foi possível duplicar o produto.",
+        });
+      }
     } finally {
       duplicandoRef.current = false;
       setDuplicando(false);
@@ -1291,7 +1345,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       ? `Sincronizado · ${totalDaLista} sem custo`
                       : modoEstoqueBaixo
                         ? `Sincronizado · ${totalProducts} com estoque baixo`
-                        : `Sincronizado · ${totalProducts} ${searchTerm ? "na busca" : filterCategory !== "all" ? "nesta categoria" : "no catálogo"}`}
+                        : `Sincronizado · ${totalProducts} ${termoDeBusca ? "na busca" : filterCategory !== "all" ? "nesta categoria" : "no catálogo"}`}
             </span>
           </div>
         </div>
@@ -1465,9 +1519,13 @@ export const AdminProductsView = memo(function AdminProductsView({
               <p role="status" className="text-sm text-white">
                 {liquidoEstimado !== null
                   ? `Líquido estimado${financialStats.parcial ? " (parcial)" : ""}: R$ ${liquidoEstimado.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  : financialStats.potential === null
-                    ? "Aguarde os custos para calcular o líquido."
-                    : "Informe as despesas e aplique a estimativa."}
+                  : financialStats.semEstoque
+                    ? "Cadastre um produto com estoque para calcular o líquido."
+                    : financialStats.semNenhumCusto
+                      ? "Cadastre o custo dos produtos para calcular o líquido."
+                      : !financialStats.coberturaConferida
+                        ? "Aguarde os custos para calcular o líquido."
+                        : "Informe as despesas e aplique a estimativa."}
               </p>
               <p className="text-xs text-zinc-400">
                 Simulação nesta tela. Não altera o Financeiro; confirme

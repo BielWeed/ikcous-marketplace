@@ -317,8 +317,8 @@ describe("gravações concorrentes das vitrines", () => {
     expect(updateConfig).toHaveBeenCalledTimes(1);
     expect(cartaoDe("Kits de presente").dataset.ativa).toBe("true");
     expect(
-      porRotulo("Subir vitrine Kits de presente").hasAttribute("disabled"),
-    ).toBe(true);
+      porRotulo("Subir vitrine Kits de presente").getAttribute("aria-disabled"),
+    ).toBe("true");
     await confirmar(true);
     expect(cartaoDe("Kits de presente").dataset.ativa).toBe("false");
   });

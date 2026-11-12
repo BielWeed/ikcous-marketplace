@@ -422,12 +422,19 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
   // integração das branches, as listas se SOMAM (união dos nomes) e a
   // contagem segue a lista; nenhuma prova pode sumir na soma.
   const PROVAS_DO_DINHEIRO = [
+    // Guardas vivas do Financeiro: categorias automaticas, conta de sistema e recusas da baixa.
+    "tests/banco/financeiro-recusas-da-baixa-conta-e-categoria-viva.cjs",
     "tests/banco/avanco-status-esperado-viva.cjs",
+    // solicitar_estorno vivo: pagamento inelegivel, pedido nao cancelado e produto nao devolvido recusam sem linha; duas chamadas disputam o saldo (mutantes no clone).
+    "tests/banco/solicitar-estorno-recusas-e-corrida-viva.cjs",
     "tests/banco/reembolso-manual-reserva-viva.cjs",
+    "tests/banco/analise-por-categoria-so-conta-pedido-pago-viva.cjs",
     // 20261347000000: o codigo de barras nao repete entre produto e variacao (gatilhos, corrida real com 2 conexoes, duplicata antiga, pre-voo e rollback sem tocar dado).
     "tests/banco/codigo-de-barras-entre-tabelas-viva.cjs",
     // 20261352000000: o produto e a grade salvam numa transacao so (travas da compra online, versao conferida, PRD01, mutantes, 2 conexoes reais, rollback e consultas 84a/84b).
     "tests/banco/salvar-produto-com-grade-viva.cjs",
+    "tests/banco/variante-estoque-negativo-e-recusado-no-banco-viva.cjs",
+    "tests/banco/variante-sku-repetido-e-recusado-no-banco-viva.cjs",
     // 20261351000000: a forma (path SVG) do icone da categoria, CHECK, ACL/RLS e rollback.
     "tests/banco/forma-do-icone-viva.cjs",
     // 20261350000000: a compra online trava o preco-base (OF v, p) e a mesma chave espera a primeira (advisory lock): duas conexoes reais, rollback, pre/pos-voo e consultas 81a/81b.
@@ -502,6 +509,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/subtotal-vazia-provada-viva.cjs",
     // 20261203000000: cupons desligados não dão desconto (gatilho + validação).
     "tests/banco/cupons-desligados-viva.cjs",
+    "tests/banco/cupom-ultima-vaga-corrida-viva.cjs",
     // 20261203000000: o portão da release (consultas 10a e 10b do lote) decide certo.
     "tests/banco/cupons-desligados-portao-viva.cjs",
     // 20261204000000: a venda do balcão se anula no mesmo dia (só o admin de agora).
@@ -518,6 +526,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/contador-duplicado-viva.cjs",
     // 20261207000000: o portao da release (consultas 14a e 14b do lote) decide certo.
     "tests/banco/contador-duplicado-portao-viva.cjs",
+    "tests/banco/cupom-tipo-invalido-e-recusado-no-banco-viva.cjs",
     // 20261208000000: o checkout mostra os cupons da cliente (lista, exclusivo, gatilho com o atalho de retentativa, painel do admin atual, ida e volta).
     "tests/banco/cupons-do-checkout-viva.cjs",
     "tests/banco/cupons-do-checkout-portao-viva.cjs",
@@ -672,6 +681,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-desconto-do-cupom-e-arredondado-ao-centavo-viva.cjs",
     // sem migration: o frete que o pedido grava segue a regra viva da loja (limite de frete gratis, por produto, nacional e cotacao velha recusada; 58 cenarios e 2 controles).
     "tests/banco/o-frete-do-pedido-segue-a-regra-da-loja-viva.cjs",
+    "tests/banco/cotacao-de-frete-de-outra-origem-ou-velha-nao-vira-preco-viva.cjs",
     // 20261398000000: o Inicio compara o mes anterior ate a mesma hora (o ultimo dia dos mesmos dias do mes anterior corta na hora de agora; dia 1, 15, 28 a 31,
     // fevereiro de 28 e 29 dias, virada de ano, hora exata, corte em UTC; oraculo em JS e 12 mutantes, controle com o corpo anterior, rollback, pre/pos-voo, leitor concorrente e consultas 116a/116b).
     "tests/banco/o-inicio-compara-o-mes-anterior-ate-a-mesma-hora-viva.cjs",
@@ -683,8 +693,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // recusados para todos e a vitrine nunca devolve nome acima de 120; a migration se recusa se ja houver perfil acima do teto (o CHECK travaria foto, CPF e cargo da conta);
     // mutantes, rollback byte a byte, pre/pos-voo, atomicidade e lock_timeout nas duas tabelas).
     "tests/banco/o-nome-do-perfil-tem-teto-no-banco-viva.cjs",
-    // 20261399930000: o cadastro cria o perfil em toda loja (gatilho on_auth_user_created so se ausente; reparo de quem ficou sem perfil sem rebaixar admin nem violar os tetos de nome e WhatsApp;
-    // controle sem o gatilho, papel sem EXECUTE, mutantes, rollback, pre-voo, atomicidade e consultas 128a/128b).
+    // 20261399940000: o cadastro cria o perfil em toda loja (gatilho on_auth_user_created so se ausente; reparo de quem ficou sem perfil sem rebaixar admin nem violar os tetos de nome e WhatsApp;
+    // controle sem o gatilho, papel sem EXECUTE, mutantes, rollback, pre-voo, atomicidade e consultas 129a/129b).
     "tests/banco/o-cadastro-cria-o-perfil-em-toda-loja-viva.cjs",
     // 20261399200000: a busca de produtos do painel e do balcao acha por palavras (todas as palavras, qualquer ordem, nome/codigo/SKU/nome e valor das variacoes ativas; codigo de barras por
     // igualdade; % _ e barra valem como letras; controle com o corpo da 385; mutantes, rollback byte a byte, pre/pos-voo, atomicidade e consultas 119a/119b).
@@ -720,6 +730,130 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/portas-anon-exploracao-dinheiro.cjs",
     "tests/banco/portas-anon-exploracao-dados.cjs",
     "tests/banco/portas-anon-exploracao-estoque-otp.cjs",
+    // solicitar_devolucao (pedido/item de outra conta, nao entregue) e create_marketplace_order_v24 direto (cupom vencido, abaixo do minimo): recusam sem efeito; mutantes no clone.
+    "tests/banco/solicitar-devolucao-e-cupom-recusas-viva.cjs",
+    // Onda 100: permissao e dado de cliente (perfil, favoritos e avaliacao so da propria conta; carrinho so mexe no meu;
+    // admin rebaixado recusado no balcao, na configuracao, na grade e no caixa; cupom sem contador negativo; analise por categoria); todas com mutante.
+    "tests/banco/o-perfil-completo-so-devolve-a-propria-conta-viva.cjs",
+    "tests/banco/os-favoritos-nao-passam-para-outra-conta-viva.cjs",
+    // Onda 106-m: UNIQUE por conta/produto recusa duplicata e sustenta o upsert do app.
+    "tests/banco/favorito-repetido-na-mesma-conta-e-recusado-no-banco-viva.cjs",
+    "tests/banco/a-avaliacao-so-nasce-em-nome-da-propria-conta-viva.cjs",
+    "tests/banco/avaliacao-nao-nasce-publicada-nem-verificada-viva.cjs",
+    "tests/banco/analise-por-categoria-periodo-e-subtotal-zero-viva.cjs",
+    "tests/banco/balcao-recusa-admin-rebaixado-viva.cjs",
+    "tests/banco/configuracao-recusa-admin-rebaixado-viva.cjs",
+    "tests/banco/grade-recusa-admin-rebaixado-viva.cjs",
+    "tests/banco/carrinho-nao-insere-no-carrinho-de-outra-conta-viva.cjs",
+    "tests/banco/carrinho-sincronizar-so-mexe-no-meu-viva.cjs",
+    "tests/banco/devolver-cupom-nao-deixa-contador-negativo-viva.cjs",
+    "tests/banco/caixa-abrir-recusa-quem-nao-e-admin-atual-viva.cjs",
+    // Onda 100-y: onze guardas vivas; cada arquivo tem controle mutante no clone descartavel.
+    "tests/banco/itens-do-pedido-so-do-comprador-viva.cjs",
+    "tests/banco/endereco-principal-nao-desmarca-outra-conta-viva.cjs",
+    "tests/banco/avisos-globais-nao-podem-ser-alterados-viva.cjs",
+    "tests/banco/detalhe-do-cliente-so-traz-seus-enderecos-viva.cjs",
+    "tests/banco/resposta-de-avaliacao-recusa-rebaixado-viva.cjs",
+    "tests/banco/pagamento-sem-conta-ou-repetido-nao-avisa-viva.cjs",
+    "tests/banco/ajuste-de-estoque-nulo-nao-apaga-o-saldo-viva.cjs",
+    "tests/banco/lista-de-pedidos-filtro-de-pagamento-viva.cjs",
+    "tests/banco/financeiro-recancelar-nao-sobrescreve-a-auditoria-viva.cjs",
+    "tests/banco/cupom-codigo-repetido-e-recusado-no-banco-viva.cjs",
+    "tests/banco/estoque-desconta-so-devolucao-reestocada-viva.cjs",
+    "tests/banco/estorno-preserva-data-informada-no-pedido-viva.cjs",
+    "tests/banco/devolucao-encerrada-nao-reabre-viva.cjs",
+    "tests/banco/lancamento-inativo-nao-grava-viva.cjs",
+    "tests/banco/caixa-contrapartida-inativa-nao-grava-viva.cjs",
+    "tests/banco/baixa-concorrente-impede-edicao-do-lancamento-viva.cjs",
+    "tests/banco/cupom-inativo-e-teto-do-desconto-na-v24-viva.cjs",
+    // Onda 102-b: duas guardas vivas; cada arquivo tem controle mutante no clone descartavel.
+    "tests/banco/comprador-nao-avanca-o-proprio-pedido-viva.cjs",
+    "tests/banco/banner-vencido-nao-aparece-ao-visitante-viva.cjs",
+    // Onda 102-c: o balcao recusa desconto negativo (R$110 por R$100) e forma de pagamento fora de cash/pix/card; ambas com mutante e controles positivos.
+    "tests/banco/balcao-recusa-desconto-negativo-e-pagamento-invalido-viva.cjs",
+    "tests/banco/reordenar-banners-com-id-invalido-nao-apaga-a-ordem-viva.cjs",
+    "tests/banco/categoria-slug-repetido-e-recusado-no-banco-viva.cjs",
+    "tests/banco/perfil-alterar-so-o-nome-nao-apaga-o-whatsapp-viva.cjs",
+    // Onda 107-r: o CPF (dado pessoal) so e lido/gravado na propria conta; CPF03 sem linha em profiles; mutantes por MUTANTE_R107R.
+    "tests/banco/o-cpf-so-mexe-na-propria-conta-viva.cjs",
+    // Onda 106-o: a v23 recusa a retirada sem endereco fisico da loja (NULL, vazio, so espacos) sem pedido nem baixa de estoque; controle com endereco; mutante no clone.
+    "tests/banco/retirada-sem-endereco-da-loja-e-recusada-na-v23-viva.cjs",
+    // Onda 108-a: o "total comprado" (LTV) do cliente e o global so somam pagamento reconhecido de pedido nao cancelado; mutantes por MUTANTE_R108A.
+    "tests/banco/o-total-comprado-do-cliente-so-conta-pagamento-reconhecido-viva.cjs",
+    // Onda 108-b: crescimento vs 30 dias e contadores paidOnCancelled/deliveredTotal do painel; mutantes por MUTANTE_R108B.
+    "tests/banco/o-painel-de-numeros-cresce-e-conta-cancelados-pagos-viva.cjs",
+    // Onda 109-a: a pergunta publica so nasce em nome da propria conta (questions_insert_policy); anon e user_id alheio recusados; mutantes por MUTANTE_R109A.
+    "tests/banco/a-pergunta-so-nasce-em-nome-da-propria-conta-viva.cjs",
+    // Onda 109-b: perfil_publico_avaliacoes/perguntas so devolvem avaliacao publicada e produto publico (NULL quando inativo/apagado), sem user_id; mutantes por MUTANTE_R109B.
+    "tests/banco/o-perfil-publico-so-mostra-avaliacao-publicada-e-produto-publico-viva.cjs",
+    // Onda 109-c: o selo verified so com pedido pago nao cancelado, na criacao da avaliacao e no UPDATE do pagamento; mutantes por MUTANTE_R109C.
+    "tests/banco/o-selo-de-compra-verificada-so-vale-com-pedido-pago-e-vivo-viva.cjs",
+    // Onda 110-a: store_config nunca fica sem forma de pagar (gatilho LOJA_SEM_FORMA_DE_PAGAMENTO + CHECKs de valor e duplicata), inclusive pelo painel e no ON CONFLICT; mutantes por MUTANTE_R110A.
+    "tests/banco/a-loja-nunca-fica-sem-forma-de-pagamento-viva.cjs",
+    // Onda 110-b: o indice unico parcial de gateway_payment_id impede a mesma cobranca em dois pedidos (23505); mutantes por MUTANTE_R110B.
+    "tests/banco/a-mesma-cobranca-nao-liga-a-dois-pedidos-viva.cjs",
+    // Onda 111-a: as politicas admin de INSERT e DELETE de marketplace_orders: comprador comum nao fabrica pedido pago nem apaga o proprio; mutantes por MUTANTE_R111A.
+    "tests/banco/o-comprador-nao-cria-nem-apaga-pedido-direto-no-banco-viva.cjs",
+    // Onda 111-b: notificacoes_insert_policy (recado global so admin) e cart_items_update_policy (carrinho alheio so leitura); mutantes por MUTANTE_R111B.
+    "tests/banco/aviso-global-so-do-admin-e-carrinho-alheio-so-leitura-viva.cjs",
+    // Onda 111-c: usage_limit 0/-1/NULL vale como sem limite em validate, lista, v23 e v24, com contraprova de limite 1; mutantes por MUTANTE_R111C.
+    "tests/banco/cupom-com-limite-zero-vale-como-sem-limite-viva.cjs",
+    // Onda 111-d: fin__saldos so soma desde o saldo inicial, sobra/quebra do caixa com o tipo certo e gasto em dinheiro sem dupla contagem; mutantes por MUTANTE_R111D.
+    "tests/banco/o-saldo-da-conta-e-o-ajuste-do-caixa-batem-viva.cjs",
+    // Onda 112-a: get_segmented_push_targets/count: vip, inactive, new, UUID e all alcancam so o publico certo e count = targets; mutantes por MUTANTE_R112A.
+    "tests/banco/o-aviso-em-massa-so-chega-ao-segmento-escolhido-viva.cjs",
+    // Onda 112-b: v23/v24 exigem a variacao, recusam variacao inativa e produto pausado/arquivado; mutantes por MUTANTE_R112B.
+    "tests/banco/a-compra-so-vende-variacao-ativa-de-produto-ativo-viva.cjs",
+    // Onda 112-c: a v24 amarra a cotacao de frete ao conteudo do carrinho (1 para 5, A para A+B, menor); a v23 recusa transportadora; mutantes por MUTANTE_R112C.
+    "tests/banco/o-frete-cotado-para-um-carrinho-nao-vale-para-outro-viva.cjs",
+    // Onda 112-d: is_local_cep (prefixo, faixas, bordas, lixo) e ponta a ponta v23/v24; mutantes por MUTANTE_R112D.
+    "tests/banco/o-cep-local-so-vale-para-o-cep-da-loja-viva.cjs",
+    // Onda 112-e: get_admin_orders_paged: corte de periodo (bordas), Em Aberto, total_count e paginas; mutantes por MUTANTE_R112E.
+    "tests/banco/a-lista-de-pedidos-do-painel-respeita-periodo-e-em-aberto-viva.cjs",
+    // Onda 112-e: get_admin_questions_paged conta e lista so as pendentes; mutantes por MUTANTE_R112E.
+    "tests/banco/o-sino-de-perguntas-do-painel-conta-so-as-pendentes-viva.cjs",
+    // Onda 112-f: registrar_venda_presencial recusa variacao ausente/inativa/de outro produto, produto pausado/arquivado, estoque e quantidade invalidos; mutantes por MUTANTE_R112F.
+    "tests/banco/a-venda-de-balcao-so-vende-variacao-valida-e-produto-ativo-viva.cjs",
+    // Onda 113-a: cancelar_devolucao e informar_envio_devolucao: posse, status e metodo de retorno; mutantes por MUTANTE_R113A.
+    "tests/banco/a-cliente-so-cancela-e-despacha-a-propria-devolucao-no-status-certo-viva.cjs",
+    // Onda 113-b: confirmar_retorno_do_produto nao credita estoque de pedido reativado nem de pedido nao enviado e e idempotente; mutantes por MUTANTE_R113B.
+    "tests/banco/produto-voltou-so-credita-pedido-cancelado-depois-de-enviado-viva.cjs",
+    // Onda 113-c: solicitar_devolucao: teto de 6 fotos, formato do caminho, .. e 200 caracteres; mutantes por MUTANTE_R113C.
+    "tests/banco/a-devolucao-so-aceita-fotos-no-formato-e-no-teto-certos-viva.cjs",
+    // Onda 114-c: a v24 reserva o estoque por 30 min (expires_at), a varredura nao expira antes e devolve o estoque depois; mutantes por MUTANTE_R114C.
+    "tests/banco/a-reserva-do-pedido-online-dura-trinta-minutos-viva.cjs",
+    // Onda 114-c: marcar_visitas_da_reconciliacao pareia pedido e cobranca terminal; cobranca nova volta a fila; tamanhos diferentes 22023; mutantes por MUTANTE_R114C.
+    "tests/banco/a-reconciliacao-marca-a-cobranca-terminal-certa-viva.cjs",
+    // Onda 115-a: pedido__mudar_status: posse (inclui convidado) e origem pending/processing/shipping, pela RPC e pela porta da edge; mutantes por MUTANTE_R115A.
+    "tests/banco/o-comprador-so-cancela-o-proprio-pedido-e-so-antes-da-entrega-viva.cjs",
+    // Onda 115-a: crm_visao kpis.taxa_devolucao so soma estorno concluido e devolucao concluida com reembolso manual; mutantes por MUTANTE_R119A.
+    "tests/banco/a-taxa-de-devolucao-do-crm-so-conta-o-que-voltou-viva.cjs",
+    // Onda 115-b: fin_resumo e fin_extrato recusam periodo nulo, invertido ou acima de 400 dias (22023); mutantes por MUTANTE_R119B.
+    "tests/banco/o-financeiro-recusa-periodo-invalido-viva.cjs",
+    // Onda 117: o gatilho dos logs de frete apaga so o que passou de 30 dias; mutantes por MUTANTE_R122C.
+    "tests/banco/a-limpeza-dos-logs-de-frete-guarda-30-dias-viva.cjs",
+    // Onda 117: o gatilho do cache de cotacao apaga so o que passou de 2 h; mutantes por MUTANTE_R122C.
+    "tests/banco/a-limpeza-do-cache-de-cotacao-so-apaga-o-velho-viva.cjs",
+    // Onda 117: CHECK de estoque e segunda trava do balcao; mutantes por MUTANTE_R122C.
+    "tests/banco/o-estoque-do-produto-nunca-fica-negativo-viva.cjs",
+    // Onda 118: o bucket devolucoes e privado, 5 MB e so JPG/PNG/WEBP; mutantes por MUTANTE_R125C.
+    "tests/banco/o-bucket-das-fotos-de-devolucao-so-aceita-imagem-viva.cjs",
+    // Onda 119: cancelar so abre order_refunds para pago/pago_apos_expirar com paid_at, em pending/processing; mutantes por MUTANTE_R130D.
+    "tests/banco/cancelar-pedido-so-abre-estorno-se-pago-viva.cjs",
+    // Onda 134: order_refunds, devolucao_itens e devolucao_eventos so se leem pela cliente (REVOKE de escrita + sem policy de escrita); mutantes por MUTANTE_R134D.
+    "tests/banco/o-comprador-nao-escreve-no-ledger-de-estorno-viva.cjs",
+    // Onda 134: vw_reviews_public so devolve avaliacao publicada e so as colunas esperadas (sem user_id nem status); mutantes por MUTANTE_R134D.
+    "tests/banco/a-vitrine-so-mostra-avaliacao-publicada-viva.cjs",
+    // Onda 134: public_profiles so tem policy de leitura; nome e foto da vitrine so mudam pelo gatilho de profiles; mutantes por MUTANTE_R134D.
+    "tests/banco/o-cliente-nao-escreve-no-perfil-publico-viva.cjs",
+    // Onda 132: pedidos_criados e carrinhos do funil, serie_14d, hoje.pedidos/presencial, ticket medio e a esteira do CRM, com numeros calculados fora do SQL; mutantes por MUTANTE_R132C.
+    "tests/banco/os-numeros-do-inicio-e-do-funil-do-crm-viva.cjs",
+    // Onda 136-c: o prazo legal da devolucao (arrependimento, troca, vicio) conta o dia do calendario de Sao Paulo na solicitacao e na elegibilidade (fronteiras 7/8, 30/31, 15/16 e entrega as 23:50); mutantes por MUTANTE_R136C.
+    "tests/banco/o-prazo-da-devolucao-conta-dia-de-sao-paulo-viva.cjs",
+    // 20261399930000: o caixa e a conta recusam NaN, infinito e acima do teto antes de escrever (controle com o corpo anterior, mutantes por MUTANTE_R150E, rollback e consultas 128a/128b).
+    "tests/banco/o-caixa-e-a-conta-recusam-nan-viva.cjs",
+    // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
+    "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

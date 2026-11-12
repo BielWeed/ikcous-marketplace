@@ -1367,6 +1367,16 @@ async function main() {
         "20261399910000_a_busca_de_devolucao_ignora_o_acento.sql",
         "public.admin_devolucoes_listar(text,text,integer,integer)",
       ],
+      // A 20261399930000 (o caixa e a conta recusam valor que nao e numero): fin_caixa_abrir sobre o corpo da 370 (cadeia 99 -> 370 -> 3999300) e fin_conta_salvar sobre o da 99 (99 -> 3999300),
+      // funcoes de fora destas tres que a 17a nao le. O rollback dela devolve os dois corpos de uma vez (o molde, acima, desfaz e mede).
+      [
+        "20261399930000_o_caixa_e_a_conta_recusam_valor_que_nao_e_numero.sql",
+        "public.fin_caixa_abrir(numeric,uuid)",
+      ],
+      [
+        "20261399930000_o_caixa_e_a_conta_recusam_valor_que_nao_e_numero.sql",
+        "public.fin_conta_salvar(jsonb)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

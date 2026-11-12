@@ -1506,4 +1506,152 @@ describe("EtiquetaDoPedidoCard", () => {
       await esperarMicrotarefas();
     });
   });
+
+  // ── Teclado e leitor de tela (lote r66-a) ────────────────────────────────
+  // O botão "Gerar etiqueta" SAI da tela quando a confirmação abre (e a
+  // confirmação sai quando se cancela): sem mandar o foco, ele caía no corpo
+  // da página e o aviso de custo ("comprada com o saldo da SUA conta") nunca
+  // era lido. O foco vai para "Cancelar" (o lado seguro) -- NUNCA para
+  // "Confirmar e gerar", que gasta o saldo.
+  describe("foco e anúncio da confirmação de compra", () => {
+    it("ao abrir a confirmação o foco vai para 'Cancelar' e NÃO para 'Confirmar e gerar'", async () => {
+      await abrirCard();
+      await act(async () => {
+        botao("Gerar etiqueta")?.click();
+      });
+
+      expect(botao("Cancelar")).toBeTruthy();
+      expect(document.activeElement).toBe(botao("Cancelar"));
+      expect(document.activeElement).not.toBe(botao("Confirmar e gerar"));
+      // Só moveu o foco: nada foi comprado.
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it("o quadro de confirmação é um alertdialog com nome e descrição que trazem o aviso de custo", async () => {
+      await abrirCard();
+      await act(async () => {
+        botao("Gerar etiqueta")?.click();
+      });
+
+      const quadro = hospedeiro.querySelector('[role="alertdialog"]');
+      expect(quadro).toBeTruthy();
+      const nome = document.getElementById(
+        quadro!.getAttribute("aria-labelledby") ?? "",
+      );
+      const descricao = document.getElementById(
+        quadro!.getAttribute("aria-describedby") ?? "",
+      );
+      expect(nome?.textContent).toMatch(/saldo da SUA conta/i);
+      expect(descricao?.textContent).toMatch(/R\$\s*24,90/);
+      expect(descricao?.textContent).toMatch(/CPF do destinatário/);
+      // O quadro contém os dois botões (o foco em 'Cancelar' fica DENTRO dele).
+      expect(quadro?.contains(document.activeElement)).toBe(true);
+    });
+
+    it("'Cancelar' devolve o foco ao botão 'Gerar etiqueta' sem invocar a edge", async () => {
+      await abrirCard();
+      await act(async () => {
+        botao("Gerar etiqueta")?.click();
+      });
+      await act(async () => {
+        botao("Cancelar")?.click();
+      });
+
+      expect(botao("Confirmar e gerar")).toBeUndefined();
+      expect(botao("Gerar etiqueta")).toBeTruthy();
+      expect(document.activeElement).toBe(botao("Gerar etiqueta"));
+      expect(invokeMock).not.toHaveBeenCalled();
+    });
+
+    it("abrir, cancelar e abrir de novo: o foco acompanha cada passo", async () => {
+      await abrirCard();
+      for (let volta = 0; volta < 2; volta++) {
+        await act(async () => {
+          botao("Gerar etiqueta")?.click();
+        });
+        expect(document.activeElement).toBe(botao("Cancelar"));
+        await act(async () => {
+          botao("Cancelar")?.click();
+        });
+        expect(document.activeElement).toBe(botao("Gerar etiqueta"));
+      }
+    });
+
+    it("só carregar o card NÃO rouba o foco de quem já estava em outro campo", async () => {
+      const outro = document.createElement("input");
+      document.body.appendChild(outro);
+      outro.focus();
+      try {
+        await abrirCard();
+        expect(botao("Gerar etiqueta")).toBeTruthy();
+        expect(document.activeElement).toBe(outro);
+      } finally {
+        outro.remove();
+      }
+    });
+
+    it("compra recusada (a confirmação continua na tela) NÃO move o foco por conta própria", async () => {
+      invokeMock.mockResolvedValue({
+        data: null,
+        error: {
+          name: "FunctionsHttpError",
+          context: new Response(
+            JSON.stringify({
+              error: "Pedido com problema.",
+              endereco_mudou: true,
+            }),
+            { status: 409 },
+          ),
+        },
+      });
+      await abrirCard();
+      await act(async () => {
+        botao("Gerar etiqueta")?.click();
+      });
+      // A pessoa foi até "Confirmar e gerar" por conta própria.
+      const confirmar = botao("Confirmar e gerar")!;
+      confirmar.focus();
+      expect(document.activeElement).toBe(confirmar);
+      await act(async () => {
+        confirmar.click();
+        await esperarMicrotarefas();
+      });
+      await act(async () => {
+        await esperarMicrotarefas();
+      });
+
+      // Voltou para a confirmação com o erro; o foco ficou onde ela o deixou.
+      expect(
+        hospedeiro.querySelector('[data-testid="erro-etiqueta"]'),
+      ).toBeTruthy();
+      expect(document.activeElement).not.toBe(botao("Cancelar"));
+    });
+
+    it("compra concluída (volta a 'ocioso' sem clique em Cancelar) NÃO puxa o foco para 'Gerar etiqueta'", async () => {
+      invokeMock.mockResolvedValue({
+        data: {
+          success: true,
+          already: false,
+          tracking_code: "ME1",
+          label_url: null,
+          label_id: "lbl-1",
+        },
+      });
+      await abrirCard();
+      await act(async () => {
+        botao("Gerar etiqueta")?.click();
+      });
+      await act(async () => {
+        botao("Confirmar e gerar")?.click();
+        await esperarMicrotarefas();
+      });
+      await act(async () => {
+        await esperarMicrotarefas();
+      });
+
+      expect(invokeMock).toHaveBeenCalledTimes(1);
+      expect(botao("Gerar etiqueta")).toBeUndefined();
+      expect(document.activeElement).not.toBe(botao("Gerar etiqueta"));
+    });
+  });
 });

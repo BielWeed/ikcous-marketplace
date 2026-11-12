@@ -1529,7 +1529,9 @@ export function PagamentoComCartao({
     if (typeof document === "undefined") return;
     const aoVoltar = () => {
       if (document.visibilityState !== "visible") return;
-      if (Date.now() - ultimaConsultaEmRef.current < 30_000) return;
+      const desdeAUltima = Date.now() - ultimaConsultaEmRef.current;
+      // Relógio recuado (diferença negativa) = o prazo passou, não "agora".
+      if (desdeAUltima >= 0 && desdeAUltima < 30_000) return;
       setRetomadasPelaAba({
         chave: chaveDaConsulta,
         vezes: retomadasAqui + 1,

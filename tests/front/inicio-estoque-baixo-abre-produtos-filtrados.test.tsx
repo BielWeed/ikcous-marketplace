@@ -253,6 +253,61 @@ describe("Produtos: a visão 'estoque baixo'", () => {
     expect(h.loadProducts.mock.lastCall![2]?.stock).toBeUndefined();
   });
 
+  it.each(["estoque-baixo", "sem-custo"])(
+    "consome %s no histórico: voltar da edição preserva a busca, nova escolha abre a visão",
+    async (visao) => {
+      const estadoAnterior = history.state;
+      const urlAnterior = location.href;
+      try {
+        history.replaceState(
+          { view: "admin-products", id: visao, from: "admin-dashboard" },
+          "",
+          "/admin-products",
+        );
+        localStorage.setItem(
+          "admin_products_search_term",
+          JSON.stringify("camiseta"),
+        );
+        localStorage.setItem(
+          "admin_products_filter_category",
+          JSON.stringify("Roupas"),
+        );
+        await renderizar(true, visao);
+        const entradaDaLista = history.state;
+        expect(entradaDaLista).toEqual({
+          view: "admin-products",
+          from: "admin-dashboard",
+        });
+        await act(async () => botaoVerTodos()!.click());
+        await esperar(360);
+        await renderizar(false, "produto-1");
+        // É o id que syncWithUrl lê da entrada ao receber o popstate.
+        await renderizar(true, entradaDaLista.id ?? null);
+        expect(
+          hospedeiro.querySelector("[data-visao-estoque-baixo]"),
+        ).toBeNull();
+        expect(hospedeiro.querySelector("[data-visao-sem-custo]")).toBeNull();
+        expect(h.loadProducts.mock.lastCall![2]).toMatchObject({
+          search: "camiseta",
+          category: "Roupas",
+        });
+        await renderizar(false, null);
+        history.replaceState(
+          { view: "admin-products", id: visao },
+          "",
+          "/admin-products",
+        );
+        await renderizar(true, visao);
+        expect(
+          hospedeiro.querySelector(`[data-visao-${visao}]`),
+        ).not.toBeNull();
+      } finally {
+        history.replaceState(estadoAnterior, "", urlAnterior);
+        localStorage.clear();
+      }
+    },
+  );
+
   it("sem pedido (ou com valor qualquer) a lista abre normal, sem filtro", async () => {
     await renderizar(true, null);
     expect(faixa()).toBeNull();

@@ -33,11 +33,13 @@ vi.mock("@/lib/supabase", () => ({
           typeof resposta
         > & {
           eq: () => typeof consulta;
+          limit: () => typeof consulta;
           order: () => typeof consulta;
           maybeSingle: () => typeof consulta;
           abortSignal: () => typeof consulta;
         };
         consulta.eq = () => consulta;
+        consulta.limit = () => consulta;
         consulta.order = () => consulta;
         consulta.maybeSingle = () => consulta;
         consulta.abortSignal = () => consulta;

@@ -662,6 +662,120 @@ describe("Confirmação do cartão depois do 3DS: nunca mais um spinner sem fim"
     expect(botao("Verificar de novo")).toBeDefined();
   });
 
+  // r140-e, achado 2: a guarda de 30 s da volta para a aba (no máximo UMA
+  // rodada a cada 30 s desde a última consulta). Estes casos prendem os dois
+  // lados dela: voltar CEDO não consulta nem gasta retomada; voltar com o
+  // relógio do aparelho RECUADO (diferença negativa) conta como "passou o
+  // prazo" — antes, o aparelho ficava mudo até o relógio alcançar a última
+  // consulta (uma hora recuada = uma hora sem retomar).
+
+  /**
+   * A cadência automática inteira (rede caindo): a tela para NO MESMO instante
+   * da última consulta — daí o relógio estar exatamente a 0 ms dela.
+   */
+  async function ateACadenciaParar() {
+    await chegarAoConfirmando();
+    criarPagamento.mockRejectedValue(new Error("Failed to fetch"));
+    await avancar(ESPERAS_DA_CONFIRMACAO_MS.reduce((a, b) => a + b, 0));
+    expect(chamadasVerificar()).toBe(ESPERAS_DA_CONFIRMACAO_MS.length);
+    expect(hospedeiro.textContent).toContain(SEM_RESPOSTA);
+  }
+
+  const RODADA_MANUAL_MS = ESPERAS_DA_RODADA_MANUAL_MS.reduce(
+    (a, b) => a + b,
+    0,
+  );
+
+  async function voltarParaAAba() {
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+  }
+
+  it("volta para a aba 5 s depois da última consulta: zero chamadas e NENHUMA retomada gasta (as 3 de direito continuam inteiras)", async () => {
+    await ateACadenciaParar();
+    const depoisDaCadencia = chamadasVerificar();
+
+    await avancar(5_000);
+    await voltarParaAAba();
+    await avancar(RODADA_MANUAL_MS + 5_000);
+    expect(chamadasVerificar()).toBe(depoisDaCadencia);
+    expect(hospedeiro.textContent).toContain(SEM_RESPOSTA);
+    expect(botao("Verificar de novo")).toBeDefined();
+
+    // A volta barrada não gastou retomada: as RETOMADAS_PELA_ABA inteiras
+    // ainda abrem (uma rodada completa cada), e só elas.
+    for (
+      let volta = 0;
+      volta < RETOMADAS_PELA_ABA_DA_CONFIRMACAO + 2;
+      volta++
+    ) {
+      await avancar(31_000);
+      await voltarParaAAba();
+      await avancar(RODADA_MANUAL_MS + 5_000);
+    }
+    expect(chamadasVerificar() - depoisDaCadencia).toBe(
+      RETOMADAS_PELA_ABA_DA_CONFIRMACAO * ESPERAS_DA_RODADA_MANUAL_MS.length,
+    );
+  });
+
+  it("limite exato: 29 999 ms depois da última consulta ainda barra; 30 000 ms já reabre uma rodada", async () => {
+    await ateACadenciaParar();
+    const depoisDaCadencia = chamadasVerificar();
+
+    await avancar(29_999);
+    await voltarParaAAba();
+    await avancar(0);
+    expect(chamadasVerificar()).toBe(depoisDaCadencia);
+
+    await avancar(1); // agora são exatamente 30 000 ms
+    await voltarParaAAba();
+    await avancar(RODADA_MANUAL_MS + 5_000);
+    expect(chamadasVerificar() - depoisDaCadencia).toBe(
+      ESPERAS_DA_RODADA_MANUAL_MS.length,
+    );
+  });
+
+  it.each([
+    ["5 s (ajuste de relógio)", 5_000],
+    ["1 hora (relógio mexido à mão)", 3_600_000],
+  ])(
+    "relógio do aparelho RECUADO %s: a volta para a aba reabre a rodada, não fica barrada até o relógio alcançar",
+    async (_nome, recuoMs) => {
+      await ateACadenciaParar();
+      const depoisDaCadencia = chamadasVerificar();
+
+      vi.setSystemTime(new Date(Date.now() - recuoMs));
+      await voltarParaAAba();
+      await avancar(RODADA_MANUAL_MS + 5_000);
+
+      expect(chamadasVerificar() - depoisDaCadencia).toBe(
+        ESPERAS_DA_RODADA_MANUAL_MS.length,
+      );
+      nenhumOutroPostDeCartao();
+    },
+  );
+
+  it("relógio recuado a cada volta NÃO fura o teto de retomadas pela aba", async () => {
+    await ateACadenciaParar();
+    const depoisDaCadencia = chamadasVerificar();
+
+    for (
+      let volta = 0;
+      volta < RETOMADAS_PELA_ABA_DA_CONFIRMACAO + 2;
+      volta++
+    ) {
+      vi.setSystemTime(new Date(Date.now() - 3_600_000));
+      await voltarParaAAba();
+      await avancar(RODADA_MANUAL_MS + 5_000);
+    }
+
+    expect(chamadasVerificar() - depoisDaCadencia).toBe(
+      RETOMADAS_PELA_ABA_DA_CONFIRMACAO * ESPERAS_DA_RODADA_MANUAL_MS.length,
+    );
+    nenhumOutroPostDeCartao();
+  });
+
   it("resposta velha depois que o pai já encerrou a tentativa (C6) não sobrescreve a recusa", async () => {
     await chegarAoConfirmando();
     const pendurada = adiada<unknown>();

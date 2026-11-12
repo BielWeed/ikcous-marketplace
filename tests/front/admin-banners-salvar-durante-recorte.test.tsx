@@ -313,7 +313,8 @@ describe("salvar banner e recortar não disputam a imagem publicada", () => {
         banner.id,
         expect.objectContaining({ imageUrl: imagemAjustada }),
       );
-      expect(deleteStorageFile.mock.calls).toEqual([[imagemNova]]);
+      // A rede pode ter gravado a imagem anterior; o recorte não prova que é órfã.
+      expect(deleteStorageFile).not.toHaveBeenCalled();
     },
   );
 

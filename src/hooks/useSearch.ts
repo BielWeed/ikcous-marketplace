@@ -2,8 +2,10 @@ import {
   pontuadorDaBusca,
   produtoCombinaComBusca,
 } from "@/lib/busca-de-produtos";
+import { categoriaValidaDaBusca } from "@/lib/categoria-valida-da-busca";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
-import type { Product } from "@/types";
+import { produtoDisponivel } from "@/lib/vitrine";
+import type { Category, Product } from "@/types";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDebounce } from "./useDebounce";
 
@@ -26,14 +28,36 @@ export interface FiltrosDaBusca {
 export interface MemoriaDosFiltros {
   iniciais?: FiltrosDaBusca;
   aoMudar?: (filtros: FiltrosDaBusca) => void;
+  /** O termo que o App guardou. Vale desde o primeiro desenho (e já entra no
+   * debounce), para a lista não aparecer inteira por 300 ms ao voltar. */
+  termoInicial?: string;
 }
 
-export function useSearch(products: Product[], memoria?: MemoriaDosFiltros) {
-  const [query, setQuery] = useState("");
+export function useSearch(
+  products: Product[],
+  memoria?: MemoriaDosFiltros,
+  catalogo?: {
+    carregando?: boolean;
+    categorias?: readonly Pick<Category, "name" | "isActive">[];
+  },
+) {
+  const [query, setQuery] = useState(memoria?.termoInicial ?? "");
   // `iniciais` vale só no nascimento (useState ignora a mudança depois).
-  const [category, setCategory] = useState(
+  const [categoriaSelecionada, setCategory] = useState(
     memoria?.iniciais?.category ?? "Todas",
   );
+  // Usa o valor reconciliado já neste desenho: não mostra um vazio por um frame.
+  // Depois guarda o mesmo valor no estado, inclusive para a memória do App.
+  const category = categoriaValidaDaBusca(
+    categoriaSelecionada,
+    products,
+    catalogo?.carregando,
+    catalogo?.categorias,
+  );
+  useEffect(() => {
+    if (category !== categoriaSelecionada) setCategory(category);
+  }, [category, categoriaSelecionada]);
+
   const [minPrice, setMinPrice] = useState<number | "">(
     memoria?.iniciais?.minPrice ?? "",
   );
@@ -90,18 +114,25 @@ export function useSearch(products: Product[], memoria?: MemoriaDosFiltros) {
         );
       })
       .sort((a, b) => {
-        const aAvailable = a.stock > 0 ? 1 : 0;
-        const bAvailable = b.stock > 0 ? 1 : 0;
+        const aAvailable = produtoDisponivel(a) ? 1 : 0;
+        const bAvailable = produtoDisponivel(b) ? 1 : 0;
         if (aAvailable !== bAvailable) {
           return bAvailable - aAvailable;
         }
 
+        const desempate =
+          (b.createdTime ?? 0) - (a.createdTime ?? 0) ||
+          a.id.localeCompare(b.id);
         switch (sort) {
           // Ordena pelo preço que o card ANUNCIA (menor das opções à venda).
           case "price_asc":
-            return precoDeVitrine(a).preco - precoDeVitrine(b).preco;
+            return (
+              precoDeVitrine(a).preco - precoDeVitrine(b).preco || desempate
+            );
           case "price_desc":
-            return precoDeVitrine(b).preco - precoDeVitrine(a).preco;
+            return (
+              precoDeVitrine(b).preco - precoDeVitrine(a).preco || desempate
+            );
           case "name_asc":
             return a.name.localeCompare(b.name);
           case "newest": {
@@ -117,7 +148,7 @@ export function useSearch(products: Product[], memoria?: MemoriaDosFiltros) {
               const diferenca = pontosDe(b) - pontosDe(a);
               if (diferenca !== 0) return diferenca;
             }
-            return (b.createdTime ?? 0) - (a.createdTime ?? 0);
+            return desempate;
           }
           default:
             return 0;

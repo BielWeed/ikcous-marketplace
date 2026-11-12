@@ -25,7 +25,7 @@ import {
   PackageCheck,
   RefreshCw,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
 /**
@@ -106,7 +106,10 @@ interface OpcoesDeLeitura {
  * `null` se a mensagem for outra (aí vale a frase do servidor).
  */
 function traducaoDaRecusaPorStatus(mensagem: string): string | null {
-  const casou = /^Pedido com status "([^"]*)" não gera etiqueta/.exec(mensagem);
+  const casou =
+    /^Pedido com status "([^"]*)" não (?:gera etiqueta|recebe alteração de CPF)/.exec(
+      mensagem,
+    );
   return casou ? motivoDoStatusSemEtiqueta(casou[1]) : null;
 }
 
@@ -194,6 +197,19 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
   const [cpfInput, setCpfInput] = useState("");
   const [cpfErro, setCpfErro] = useState<string | null>(null);
   const [cpfSalvando, setCpfSalvando] = useState(false);
+
+  // Teclado e leitor de tela: o botão "Gerar etiqueta" SAI da tela quando a
+  // confirmação abre (e a confirmação sai quando se cancela), então o foco
+  // precisava ser mandado de propósito -- sem isso ele caía no corpo da
+  // página e o aviso de custo não era lido. Só um CLIQUE da pessoa move o
+  // foco (o ref abaixo guarda para onde): carregar o card, reler o pedido ou
+  // a compra terminar nunca tiram o foco de onde ela estava. O foco vai para
+  // "Cancelar" (o lado seguro), NUNCA para "Confirmar e gerar" (gasta saldo).
+  const focoPendenteRef = useRef<"cancelar" | "gerar" | null>(null);
+  const cancelarBtnRef = useRef<HTMLButtonElement>(null);
+  const gerarBtnRef = useRef<HTMLButtonElement>(null);
+  const tituloDaConfirmacaoId = useId();
+  const detalhesDaConfirmacaoId = useId();
 
   // Guarda de geração (mesmo padrão do card antigo, src/hooks/useOnlineStatus.ts):
   // descarta a resposta de uma consulta em voo se o `orderId` mudou antes
@@ -295,6 +311,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
   // buscar — o pedido antigo não pode continuar na tela com o rótulo do
   // pedido novo por um instante.
   useEffect(() => {
+    focoPendenteRef.current = null;
     setCompraFase("ocioso");
     setMensagemResultado(null);
     setPedido(null);
@@ -486,9 +503,16 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
           "Não foi possível falar com o servidor de etiquetas. Tente de novo.",
       });
       if (orderIdAtualRef.current !== orderIdDoClique) return;
-      setCpfErro(mensagem);
+      const motivoPorStatus = traducaoDaRecusaPorStatus(mensagem);
+      const detalhe = motivoPorStatus ?? mensagem;
+      setCpfErro(detalhe);
+      if (motivoPorStatus) {
+        // Pedido mudou em outro aparelho: relê para sair de "precisa_cpf".
+        await fetchPedido();
+        if (orderIdAtualRef.current !== orderIdDoClique) return;
+      }
       haptic.error();
-      toast.error(mensagem);
+      toast.error(detalhe);
     } finally {
       cpfEmVoo.delete(orderIdDoClique);
       // `cpfSalvando` é um `boolean` ÚNICO (não isolado por pedido, como o
@@ -563,12 +587,26 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
 
   const abrirConfirmacao = useCallback(() => {
     setMensagemResultado(null);
+    focoPendenteRef.current = "cancelar";
     setCompraFase("confirmar");
   }, []);
 
   const cancelarConfirmacao = useCallback(() => {
+    focoPendenteRef.current = "gerar";
     setCompraFase("ocioso");
   }, []);
+
+  // Roda depois do desenho: o botão novo já existe quando o foco é pedido.
+  useEffect(() => {
+    const destino = focoPendenteRef.current;
+    if (destino === "cancelar" && compraFase === "confirmar") {
+      focoPendenteRef.current = null;
+      cancelarBtnRef.current?.focus();
+    } else if (destino === "gerar" && compraFase === "ocioso") {
+      focoPendenteRef.current = null;
+      gerarBtnRef.current?.focus();
+    }
+  }, [compraFase]);
 
   // Redesenho da ficha (08/10/2026): o card vira UMA LINHA da lista de envio
   // (a casca com borda mora em OrderDetail; aqui só o conteúdo da linha). A
@@ -792,6 +830,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
 
           {elegibilidade.estado === "disponivel" && compraFase === "ocioso" && (
             <button
+              ref={gerarBtnRef}
               type="button"
               onClick={abrirConfirmacao}
               disabled={isOffline}
@@ -803,24 +842,33 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
           )}
 
           {elegibilidade.estado === "disponivel" && compraFase !== "ocioso" && (
-            <div className="space-y-3 rounded-xl border border-admin-border bg-admin-surface p-3 duration-200 animate-in fade-in">
+            <div
+              role="alertdialog"
+              aria-labelledby={tituloDaConfirmacaoId}
+              aria-describedby={detalhesDaConfirmacaoId}
+              className="space-y-3 rounded-xl border border-admin-border bg-admin-surface p-3 duration-200 animate-in fade-in"
+            >
               <p className="flex items-start gap-2 text-sm font-medium leading-snug text-amber-400">
                 <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-400" />
                 <span>
-                  A etiqueta é comprada com o saldo da SUA conta no Melhor
-                  Envio.
-                  <span className="mt-1 block font-normal text-zinc-300">
-                    Serviço: {elegibilidade.servico}
+                  <span id={tituloDaConfirmacaoId}>
+                    A etiqueta é comprada com o saldo da SUA conta no Melhor
+                    Envio.
                   </span>
-                  <span className="mt-1 block font-normal text-zinc-300">
-                    Frete pago pelo cliente:{" "}
-                    {formatCurrency(freteEfetivoDoPedido(pedido))}
-                  </span>
-                  <span
-                    data-testid="cpf-mascarado"
-                    className="mt-1 block font-normal text-zinc-300"
-                  >
-                    CPF do destinatário: {mascararCpf(pedido.cpf)}
+                  <span id={detalhesDaConfirmacaoId} className="block">
+                    <span className="mt-1 block font-normal text-zinc-300">
+                      Serviço: {elegibilidade.servico}
+                    </span>
+                    <span className="mt-1 block font-normal text-zinc-300">
+                      Frete pago pelo cliente:{" "}
+                      {formatCurrency(freteEfetivoDoPedido(pedido))}
+                    </span>
+                    <span
+                      data-testid="cpf-mascarado"
+                      className="mt-1 block font-normal text-zinc-300"
+                    >
+                      CPF do destinatário: {mascararCpf(pedido.cpf)}
+                    </span>
                   </span>
                 </span>
               </p>
@@ -843,6 +891,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                   </span>
                 </button>
                 <button
+                  ref={cancelarBtnRef}
                   type="button"
                   onClick={cancelarConfirmacao}
                   disabled={compraFase === "gerando"}

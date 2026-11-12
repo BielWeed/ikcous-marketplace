@@ -138,7 +138,7 @@ Deno.test("efeitos 'pago': push 'Pedido pago' com número e valor + comprovante 
   const db = bancoDoPedido();
   const c = coletores();
   await aplicarEfeitosDoPagamentoConfirmado({ supabase: db as never, orderId: PEDIDO, resultado: "pago", ...c.deps });
-  assertEquals(c.pushes, [{ title: "Pedido pago", body: "#4F5A6B · R$ 100,00", url: "/admin-orders" }]);
+  assertEquals(c.pushes, [{ title: "Pedido pago", body: "#4F5A6B · R$ 100,00", url: `/admin-orders?id=${PEDIDO}` }]);
   assertEquals(c.comprovantes, [PEDIDO]);
   assertEquals(c.atrasados, []);
   assertEquals(db.leituras, ["marketplace_orders:id, customer_name, total, total_amount"]);
@@ -156,7 +156,7 @@ Deno.test("efeitos 'pago_apos_expirar': push 'Pagamento fora do fluxo' + aviso A
   assertEquals(c.pushes, [{
     title: "Pagamento fora do fluxo",
     body: "#4F5A6B · R$ 100,00 · estoque já devolvido",
-    url: "/admin-orders",
+    url: `/admin-orders?id=${PEDIDO}`,
   }]);
   assertEquals(c.comprovantes, []);
   assertEquals(c.atrasados, [PEDIDO]);
@@ -210,7 +210,7 @@ Deno.test("efeitos: a leitura do valor FALHA -> o push sai assim mesmo (sem o va
   await emSilencio(() =>
     aplicarEfeitosDoPagamentoConfirmado({ supabase: db as never, orderId: PEDIDO, resultado: "pago", ...c.deps })
   );
-  assertEquals(c.pushes, [{ title: "Pedido pago", body: "#4F5A6B · R$ 0,00", url: "/admin-orders" }]);
+  assertEquals(c.pushes, [{ title: "Pedido pago", body: "#4F5A6B · R$ 0,00", url: `/admin-orders?id=${PEDIDO}` }]);
   assertEquals(c.comprovantes, [PEDIDO]);
 });
 
@@ -218,7 +218,7 @@ Deno.test("efeitos: valor cai em total_amount quando total não vem (mesma ordem
   const db = bancoDoPedido({ linha: { id: PEDIDO, total_amount: 1234.5 } });
   const c = coletores();
   await aplicarEfeitosDoPagamentoConfirmado({ supabase: db as never, orderId: PEDIDO, resultado: "pago", ...c.deps });
-  assertEquals(c.pushes, [{ title: "Pedido pago", body: "#4F5A6B · R$ 1.234,50", url: "/admin-orders" }]);
+  assertEquals(c.pushes, [{ title: "Pedido pago", body: "#4F5A6B · R$ 1.234,50", url: `/admin-orders?id=${PEDIDO}` }]);
 });
 
 // ── Paridade com o webhook ────────────────────────────────────────────────
@@ -699,3 +699,14 @@ for (const resultado of ["pago", "pago_apos_expirar"]) {
     await new Promise((r) => setTimeout(r, 250)); // deixa o envio lento terminar sozinho
   });
 }
+
+// ── O toque no aviso abre o PEDIDO do aviso (07/11/2026) ──────────────────
+
+Deno.test("avisoAoLojista: os dois avisos levam o id do pedido na url, codificado (nunca o id cru numa query)", () => {
+  const idEstranho = "a b&id=outro#x";
+  for (const resultado of ["pago", "pago_apos_expirar"]) {
+    const aviso = avisoAoLojista(idEstranho, resultado, 10);
+    assertEquals(aviso?.url, "/admin-orders?id=a%20b%26id%3Doutro%23x");
+  }
+  assertEquals(avisoAoLojista(PEDIDO, "pago", 10)?.url, `/admin-orders?id=${PEDIDO}`);
+});

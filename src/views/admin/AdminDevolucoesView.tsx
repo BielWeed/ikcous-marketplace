@@ -18,6 +18,7 @@ import { instanteDoDia, useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import {
   STATUS_EM_ORDEM,
   contagemDe,
+  rotuloStatus,
   rotuloStatusPlural,
   totalGeral,
 } from "@/lib/devolucao";
@@ -340,7 +341,7 @@ export function AdminDevolucoesView({
                   {busca.trim()
                     ? `Nada para “${busca.trim()}”${status ? ` em ${rotuloStatusPlural(status).toLowerCase()}` : ""}`
                     : status
-                      ? `Nenhuma devolução ${rotuloStatusPlural(status).toLowerCase()}`
+                      ? `Nenhuma devolução ${rotuloStatus(status).toLowerCase()}`
                       : "Nenhuma devolução ainda"}
                 </p>
                 {busca.trim() ? (

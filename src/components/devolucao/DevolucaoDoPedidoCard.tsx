@@ -311,7 +311,7 @@ export function DevolucaoDoPedidoCard({
             <p className="text-[11px] font-bold text-zinc-500">
               Mensagem da loja
             </p>
-            <p className="whitespace-pre-line text-[13px] leading-relaxed text-zinc-800">
+            <p className="whitespace-pre-line break-words text-[13px] leading-relaxed text-zinc-800">
               {atual.mensagem_loja}
             </p>
           </div>

@@ -22,7 +22,10 @@ import {
 } from "@/components/icons/IconesDePagamento";
 import { FraseDeAceite } from "@/components/politicas/LinksDasPoliticas";
 import { Button } from "@/components/ui/button";
-import { AddressForm } from "@/components/ui/custom/AddressForm";
+import {
+  AddressForm,
+  type DadosDoFormularioDeEndereco,
+} from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
 import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { HEADER_CENTER_SLOT_ID } from "@/components/ui/custom/Header";
@@ -50,6 +53,7 @@ import {
   mensagemAmigavelErroPedido,
   useOrders,
 } from "@/hooks/useOrders";
+import { useReleituraDosEnderecosAoVoltar } from "@/hooks/useReleituraDosEnderecosAoVoltar";
 import { cepEhLocal } from "@/lib/cep-local";
 import {
   type GerenciadorDeChaveDaCompra,
@@ -93,6 +97,7 @@ import {
 } from "@/lib/forma-de-pagamento";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { fotoDoItemDoCarrinho } from "@/lib/foto-do-item-do-carrinho";
+import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
 import {
   conferirFreteEscolhidoComACotacao,
   ehModalidadeDaLoja,
@@ -108,6 +113,7 @@ import {
 import { imagemRedimensionada, usarImagemOriginal } from "@/lib/imageUrl";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { medirRodapeCliente } from "@/lib/medir-rodape-cliente";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
   formasDePagamentoParaTotalZero,
@@ -128,6 +134,7 @@ import {
 import {
   PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
   aguardarComPrazo,
+  erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
@@ -194,6 +201,7 @@ import {
 } from "lucide-react";
 import {
   type ComponentType,
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -406,10 +414,17 @@ const decidirSaidaDaTela = (error: unknown): RecusaDoPedido => {
     // o banco nunca escreveu esta frase — ela fala do cliente, não do pedido.
     // O toast do catch usa ESTA mesma frase (ver handleSubmitEvent): toast e
     // painel nunca podem dizer coisas opostas sobre a mesma falha.
+    //
+    // A frase NÃO promete "não sai em dobro": quem chega aqui TEM CONTA (a
+    // convidada é desviada para `reenviar_mesma_compra` em
+    // `decidirSaidaDoCheckout`, que congela a compra e garante a mesma chave).
+    // Com conta não há compra congelada — se a resposta se perdeu depois de o
+    // pedido ser gravado e o cupom ou o total mudou, a chave gira e o servidor
+    // cria um segundo pedido. Por isso manda conferir Meus pedidos primeiro.
     return {
       acao: "tentar_de_novo",
       mensagem:
-        "Sem conexão — o pedido não foi confirmado. Tente de novo quando a internet voltar: ele não sai em dobro.",
+        "Sem conexão — não sabemos se o pedido foi confirmado. Antes de tentar de novo, confira em Meus pedidos se ele já aparece; se não aparecer, é só tentar de novo.",
     };
   }
   return classificarRecusaDoPedido(error);
@@ -770,12 +785,13 @@ function GatilhoDoResumoDoPedido({
           return (
             <span
               key={item.product.id}
+              aria-hidden="true"
               className={cn(
                 "relative size-6 shrink-0 overflow-hidden rounded-full border-2 border-white bg-zinc-100",
                 indice > 0 && "-ml-2.5",
               )}
             >
-              {foto && (
+              {foto && !ehMarcadorDeFoto(foto) && (
                 <img
                   src={miniaturaDoResumo(foto, 96)}
                   onError={(e) => usarImagemOriginal(e.currentTarget, foto)}
@@ -1074,6 +1090,7 @@ export function CheckoutViewDaConta({
           .string()
           .trim()
           .min(1, "Nome é obrigatório")
+          .refine(nomeTemConteudoVisivel, "Nome é obrigatório")
           .max(TETO_NOME_DO_CHECKOUT, avisoDeTeto(TETO_NOME_DO_CHECKOUT)),
         whatsapp: z.string(),
         cep: z.string().optional(),
@@ -1123,7 +1140,7 @@ export function CheckoutViewDaConta({
           // Os tetos só valem aqui, no formulário do VISITANTE: quem tem conta
           // usa o endereço salvo, que já nasceu com teto no AddressForm, e um
           // valor residual comprido nestes campos não pode prendê-lo.
-          if (!data.street || data.street.trim() === "") {
+          if (!data.street || !nomeTemConteudoVisivel(data.street)) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               message: "Rua é obrigatória",
@@ -1136,7 +1153,7 @@ export function CheckoutViewDaConta({
               path: ["street"],
             });
           }
-          if (!data.number || data.number.trim() === "") {
+          if (!data.number || !nomeTemConteudoVisivel(data.number)) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               message: "Número é obrigatório",
@@ -1149,7 +1166,10 @@ export function CheckoutViewDaConta({
               path: ["number"],
             });
           }
-          if (!data.neighborhood || data.neighborhood.trim() === "") {
+          if (
+            !data.neighborhood ||
+            !nomeTemConteudoVisivel(data.neighborhood)
+          ) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               message: "Bairro é obrigatório",
@@ -1162,7 +1182,7 @@ export function CheckoutViewDaConta({
               path: ["neighborhood"],
             });
           }
-          if (!data.city || data.city.trim() === "") {
+          if (!data.city || !nomeTemConteudoVisivel(data.city)) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               message: "Cidade é obrigatória",
@@ -1907,6 +1927,38 @@ export function CheckoutViewDaConta({
   const [isCancelandoPedido, setIsCancelandoPedido] = useState(false);
   const isCancelandoPedidoRef = useRef(false);
   const [erroCancelamento, setErroCancelamento] = useState<string | null>(null);
+  // Lote r64-a (acessibilidade): enquanto cancela, o botão fica desabilitado e
+  // o navegador larga o foco dele (cai no corpo da página). Quando a tentativa
+  // termina com erro, o foco volta ao botão — ou, se a falha trocou o botão por
+  // outra saída (guarda do cartão), à última ação da caixa. Só se o foco estava
+  // perdido: quem foi para outro lugar enquanto esperava não é puxado de volta.
+  const caixaDoErroRef = useRef<HTMLDivElement>(null);
+  const botaoCancelarRef = useRef<HTMLButtonElement>(null);
+  const devolverFocoDoCancelarRef = useRef(false);
+  // Conta cada tentativa: sem rede o erro nasce no mesmo gesto do clique, e
+  // limpar e repor a MESMA frase não muda nada na tela — o leitor de tela só fala
+  // o que ENTRA nela. A chave refaz o aviso a cada tentativa.
+  const [tentativasDeCancelar, setTentativasDeCancelar] = useState(0);
+  useEffect(() => {
+    if (
+      isCancelandoPedido ||
+      !erroCancelamento ||
+      !devolverFocoDoCancelarRef.current
+    )
+      return;
+    devolverFocoDoCancelarRef.current = false;
+    const ativo = document.activeElement;
+    const perdeuOFoco =
+      !ativo ||
+      ativo === document.body ||
+      ativo === botaoCancelarRef.current ||
+      !document.contains(ativo);
+    if (!perdeuOFoco) return;
+    const acoes = caixaDoErroRef.current?.querySelectorAll("button") ?? [];
+    (botaoCancelarRef.current ?? acoes[acoes.length - 1])?.focus({
+      preventScroll: true,
+    });
+  }, [isCancelandoPedido, erroCancelamento, tentativasDeCancelar]);
   // Achado 1, rodada 6 da revisão de risco pré-publicação (26/09/2026,
   // migration 80 — outra frente): a própria RPC já recusou este pedido com
   // P0001 dizendo que o cartão pode estar em confirmação — isso É a prova de
@@ -2489,10 +2541,14 @@ export function CheckoutViewDaConta({
   const faltaWhatsapp = !celularBrasileiroCompleto(whatsappAtual);
   const enderecoConvidadoCompleto =
     soDigitos(cepDigitadoNoFormulario ?? "").length === 8 &&
-    !!ruaAtual?.trim() &&
-    !!numeroAtual?.trim() &&
-    !!bairroAtual?.trim() &&
-    !!cidadeAtual?.trim() &&
+    !!ruaAtual &&
+    nomeTemConteudoVisivel(ruaAtual) &&
+    !!numeroAtual &&
+    nomeTemConteudoVisivel(numeroAtual) &&
+    !!bairroAtual &&
+    nomeTemConteudoVisivel(bairroAtual) &&
+    !!cidadeAtual &&
+    nomeTemConteudoVisivel(cidadeAtual) &&
     ufBrasileiraValida(estadoAtual);
   // O PRIMEIRO campo de endereço de convidado que falta ou está inválido, na
   // ordem da tela (a mesma de `ORDEM_CAMPOS_FOCO`). O aviso da barra leva o
@@ -2500,10 +2556,13 @@ export function CheckoutViewDaConta({
   const idDoPrimeiroCampoDeEnderecoQueFalta = (): string | null => {
     if (soDigitos(cepDigitadoNoFormulario ?? "").length !== 8)
       return "guest-cep";
-    if (!numeroAtual?.trim()) return "guest-number";
-    if (!ruaAtual?.trim()) return "guest-street";
-    if (!bairroAtual?.trim()) return "guest-neighborhood";
-    if (!cidadeAtual?.trim()) return "guest-city";
+    if (!numeroAtual || !nomeTemConteudoVisivel(numeroAtual))
+      return "guest-number";
+    if (!ruaAtual || !nomeTemConteudoVisivel(ruaAtual)) return "guest-street";
+    if (!bairroAtual || !nomeTemConteudoVisivel(bairroAtual))
+      return "guest-neighborhood";
+    if (!cidadeAtual || !nomeTemConteudoVisivel(cidadeAtual))
+      return "guest-city";
     if (!ufBrasileiraValida(estadoAtual)) return "guest-state";
     return null;
   };
@@ -2524,7 +2583,12 @@ export function CheckoutViewDaConta({
   // abrir pelo resumo; "Editar" ao recolher pelo cabeçalho). Só os dois
   // gestos abaixo pedem isso: outras aberturas (submit inválido, aviso da
   // barra) já levam o foco ao campo que precisa de correção.
-  const focoAposAlternarRef = useRef<"cabecalho" | "resumo" | null>(null);
+  // Escolher um endereço da lista (lote r64-a) também recolhe a seção, com o
+  // foco dentro do cartão tocado: vai para o "Trocar" do resumo do endereço,
+  // que assume o lugar dele (sem ele, "Editar" dos dados).
+  const focoAposAlternarRef = useRef<
+    "cabecalho" | "resumo" | "endereco" | null
+  >(null);
   useEffect(() => {
     if (focoAposAlternarRef.current === "cabecalho" && identificacaoExpandida)
       document.getElementById("cabecalho-dados-e-entrega")?.focus();
@@ -2533,8 +2597,19 @@ export function CheckoutViewDaConta({
       !identificacaoExpandida
     )
       document.getElementById("resumo-editar-dados")?.focus();
+    else if (
+      focoAposAlternarRef.current === "endereco" &&
+      !identificacaoExpandida
+    )
+      (
+        document.getElementById("resumo-trocar-endereco") ??
+        document.getElementById("resumo-editar-dados")
+      )?.focus();
     focoAposAlternarRef.current = null;
   }, [identificacaoExpandida]);
+  // Fala qual endereço ficou escolhido. A região (logo acima dos resumos) existe
+  // SEMPRE, vazia: região que nasce já preenchida não é anunciada.
+  const [avisoDoEnderecoEscolhido, setAvisoDoEnderecoEscolhido] = useState("");
   const abrirPeloResumo = () => {
     focoAposAlternarRef.current = "cabecalho";
     setIdentificacaoAbertaManual(true);
@@ -2694,6 +2769,7 @@ export function CheckoutViewDaConta({
         } else {
           cupomConferidoRef.current = null;
           setAppliedCoupon(null);
+          esquecerCupomDoRascunho();
           setCouponError(resultado.message || "Cupom inválido");
         }
       } catch {
@@ -3145,7 +3221,14 @@ export function CheckoutViewDaConta({
   }, [authLoading, user, paymentMethod]);
 
   // Values are now passed from props to ensure consistency
-  const discount = appliedCoupon?.discount || 0;
+  // Nunca passa dos produtos (o servidor também limita): com o carrinho que
+  // encolheu e o desconto antigo ainda na tela, o total não fica negativo.
+  // Compra concluída NÃO limita: o carrinho esvazia (subtotal 0) e a tela de
+  // sucesso segue mostrando o desconto que valeu no pedido.
+  const descontoDoCupom = appliedCoupon?.discount || 0;
+  const discount = compraConcluida
+    ? descontoDoCupom
+    : Math.min(descontoDoCupom, subtotal);
   const finalTotal = arredondarParaCentavos(total - discount);
 
   // Laudo 31/08 (B2): a guarda migrou para `finalizarBloqueadoPorFrete`
@@ -3163,6 +3246,23 @@ export function CheckoutViewDaConta({
       temOpcaoSelecionada: !!selectedShippingOption,
     });
 
+  // CUPOM EM CONFERÊNCIA (dinheiro): o cupom da tela ainda não foi conferido
+  // para o subtotal e a conta de AGORA — restaurado do rascunho com desconto 0,
+  // ou com o subtotal que mudou depois da última conferência. Enviar assim leva
+  // o total sem o desconto (ou com o antigo) e o servidor, que só tolera R$ 0,05
+  // de diferença, recusa ou cria um pedido que a cliente não esperava. Resolve
+  // sozinho: conferência válida ou inválida termina o estado; sem resposta da
+  // rede, a cliente remove o cupom (aviso na tela) e finaliza sem ele.
+  const cupomConferido = cupomConferidoRef.current;
+  const cupomEmConferencia =
+    !compraConcluida &&
+    !!appliedCoupon &&
+    !(
+      cupomConferido?.code === appliedCoupon.code &&
+      cupomConferido.subtotal === subtotal &&
+      cupomConferido.conta === contaDoCheckout
+    );
+
   // COMPRA QUE FECHA EM R$ 0,00 (decisão do dono, 14/10/2026): cupom que zera
   // o produto + frete grátis (ou retirada) deixa o total em zero, e o app não
   // cobra pedido sem valor (`criar-pagamento` recusa). Com total zero a tela
@@ -3173,7 +3273,8 @@ export function CheckoutViewDaConta({
   // calcular" nunca vira "sem valor a pagar".
   const totalZero = formasDePagamentoParaTotalZero({
     totalFinal: finalTotal,
-    freteFechado: cart.length > 0 && !semFreteSelecionado,
+    freteFechado:
+      cart.length > 0 && !semFreteSelecionado && !cupomEmConferencia,
     modalidadeDaLoja: ehEntregaLocal,
     formasNaEntrega: formasPagamentoNaEntregaValidas(
       config.formasPagamentoEntrega,
@@ -3473,6 +3574,10 @@ export function CheckoutViewDaConta({
       fetchAddresses();
     }
   }, [user, fetchAddresses]);
+  // Outro aparelho pode ter editado ou apagado o endereço enquanto o app ficou
+  // em segundo plano: relê ao voltar (o efeito abaixo ajusta a escolha). A tela
+  // só existe montada quando é a visível, então `ativa` é sempre true.
+  useReleituraDosEnderecosAoVoltar(user?.id, true, fetchAddresses);
 
   const handleSelectAddress = useCallback(
     (address: Address) => {
@@ -3982,23 +4087,6 @@ export function CheckoutViewDaConta({
     recusaDoUltimoClique?.acao === "conferir_antes" ||
     recusaDoUltimoClique?.acao === "reenviar_mesma_compra";
 
-  // CUPOM EM CONFERÊNCIA (dinheiro): o cupom da tela ainda não foi conferido
-  // para o subtotal e a conta de AGORA — restaurado do rascunho com desconto 0,
-  // ou com o subtotal que mudou depois da última conferência. Enviar assim leva
-  // o total sem o desconto (ou com o antigo) e o servidor, que só tolera R$ 0,05
-  // de diferença, recusa ou cria um pedido que a cliente não esperava. Resolve
-  // sozinho: conferência válida ou inválida termina o estado; sem resposta da
-  // rede, a cliente remove o cupom (aviso na tela) e finaliza sem ele.
-  const cupomConferido = cupomConferidoRef.current;
-  const cupomEmConferencia =
-    !compraConcluida &&
-    !!appliedCoupon &&
-    !(
-      cupomConferido?.code === appliedCoupon.code &&
-      cupomConferido.subtotal === subtotal &&
-      cupomConferido.conta === contaDoCheckout
-    );
-
   // Fonte ÚNICA da condição de "Finalizar Pedido" apagado. Antes desta
   // constante, o `disabled` do botão e o `cn(...)` que decide a APARÊNCIA
   // dele repetiam a mesma expressão em dois lugares — e as duas estavam
@@ -4050,6 +4138,7 @@ export function CheckoutViewDaConta({
     cupomPendenteDoRascunhoRef.current = null;
     cupomConferidoRef.current = null;
     setAppliedCoupon(null);
+    esquecerCupomDoRascunho();
     setCouponError("");
   };
 
@@ -4199,7 +4288,7 @@ export function CheckoutViewDaConta({
   };
 
   const handleNewAddressSubmit = async (
-    data: Omit<Address, "id" | "user_id">,
+    data: DadosDoFormularioDeEndereco,
   ): Promise<void> => {
     // A janela em que a cliente tocou em Salvar. O salvamento espera a rede
     // por até 15 s e o Voltar do aparelho fecha a janela nesse meio-tempo (só
@@ -4213,7 +4302,11 @@ export function CheckoutViewDaConta({
         result = addresses.find((a) => a.id === editingAddressId);
       }
     } else {
-      result = await addAddress(data);
+      // Endereço novo: o formulário sempre manda `is_default`.
+      result = await addAddress({
+        ...data,
+        is_default: data.is_default ?? false,
+      });
     }
 
     // O endereço já ficou gravado (a lista o mostra), mas quem apertou Voltar
@@ -4988,6 +5081,8 @@ export function CheckoutViewDaConta({
     // aqui não pegaria o segundo clique a tempo. Mutação de ref é síncrona.
     if (isCancelandoPedidoRef.current) return;
     isCancelandoPedidoRef.current = true;
+    devolverFocoDoCancelarRef.current = true;
+    setTentativasDeCancelar((n) => n + 1);
 
     setIsCancelandoPedido(true);
     setErroCancelamento(null);
@@ -5030,11 +5125,17 @@ export function CheckoutViewDaConta({
         erroRpc = erro;
       }
 
-      const { data, error: erroLeitura } = await supabase
-        .from("marketplace_orders")
-        .select("status")
-        .eq("id", orderId)
-        .single();
+      const { data, error: erroLeitura } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase
+            .from("marketplace_orders")
+            .select("status")
+            .eq("id", orderId)
+            .single(),
+        ),
+        PRAZO_DA_CONSULTA_DO_CHECKOUT_MS,
+        () => erroDeConsultaSemResposta(),
+      ).catch((erro: unknown) => ({ data: null, error: erro }));
 
       const statusFinal = data?.status;
       if (erroLeitura || statusFinal !== "cancelled") {
@@ -5416,9 +5517,13 @@ export function CheckoutViewDaConta({
       // "Seu pedido está reservado…" de ponta a ponta em tela larga.
       <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
         {!pedidoMortoNaTela && (
-          <h1 className="text-lg font-bold text-zinc-900">
+          <TituloQueRecebeOFoco
+            nivel={1}
+            semFocoNaAbertura
+            className="text-lg font-bold text-zinc-900"
+          >
             Finalize o pagamento
-          </h1>
+          </TituloQueRecebeOFoco>
         )}
         {valorFinalDiferenteDoCarrinho && (
           <p className="text-sm font-medium text-zinc-900">
@@ -5537,7 +5642,10 @@ export function CheckoutViewDaConta({
             )}
           </div>
         ) : erroPagamento ? (
-          <div className="space-y-3 rounded-2xl border border-red-100 bg-red-50 p-4">
+          <div
+            ref={caixaDoErroRef}
+            className="space-y-3 rounded-2xl border border-red-100 bg-red-50 p-4"
+          >
             <div className="flex items-start gap-3">
               <AlertCircle className="mt-0.5 size-5 shrink-0 text-red-500" />
               <p
@@ -5679,6 +5787,7 @@ export function CheckoutViewDaConta({
               )
             ) : user ? (
               <Button
+                ref={botaoCancelarRef}
                 onClick={handleCancelarPedidoESairDoPagamento}
                 disabled={isCancelandoPedido}
                 variant={
@@ -5716,8 +5825,17 @@ export function CheckoutViewDaConta({
                 cancelar agora, entre na sua conta.
               </p>
             )}
+            {/* `role="alert"`: o toast deste caminho é desligado de propósito
+                (`silent`), então esta frase é a única forma de quem não vê a
+                tela saber que o pedido NÃO foi cancelado. Monta junto com o
+                erro (e remonta a cada tentativa: o erro anterior é limpo ao
+                clicar), que é quando o leitor de tela a anuncia. */}
             {erroCancelamento && (
-              <p className="text-xs font-medium text-red-700">
+              <p
+                key={tentativasDeCancelar}
+                role="alert"
+                className="text-xs font-medium text-red-700"
+              >
                 {erroCancelamento}
               </p>
             )}
@@ -6239,6 +6357,10 @@ export function CheckoutViewDaConta({
           </div>
         )}
 
+        <p role="status" className="sr-only">
+          {avisoDoEnderecoEscolhido}
+        </p>
+
         {/* PASSO A1 (22/10/2026): recolhida, a seção vira DOIS resumos
             compactos — "Seus dados" e "Endereço de entrega" —, cada um com o
             selo de ok quando está completo e uma ação discreta ("Editar"/
@@ -6311,6 +6433,7 @@ export function CheckoutViewDaConta({
               acao={
                 user && !enderecoEfetivo ? undefined : (
                   <AcaoDeResumo
+                    id={user ? "resumo-trocar-endereco" : undefined}
                     controla="secao-dados-e-entrega"
                     onClick={abrirPeloResumo}
                   >
@@ -6952,6 +7075,10 @@ export function CheckoutViewDaConta({
                       // recolhido avisa a pendência (data-testid
                       // `checkout-resumo-falta-cpf`) em vez de forçar a
                       // seção aberta; quem quer corrigir toca em "Editar".
+                      setAvisoDoEnderecoEscolhido(
+                        `Endereço escolhido: ${endereco.name}. ${resumoDoEndereco(endereco)}`,
+                      );
+                      focoAposAlternarRef.current = "endereco";
                       setIdentificacaoAbertaManual(false);
                     }}
                     onEdit={handleEditAddress}
@@ -7412,7 +7539,7 @@ export function CheckoutViewDaConta({
                                 {item.product.name}
                               </p>
                               {item.variantNames && (
-                                <p className="truncate text-[11px] text-zinc-600">
+                                <p className="break-words text-[11px] text-zinc-600">
                                   {item.variantNames}
                                 </p>
                               )}
@@ -7544,7 +7671,7 @@ export function CheckoutViewDaConta({
                   >
                     {/* `max-w-md` (não `max-w-screen-md`) para o total e o botão
                         ficarem na mesma coluna dos cards do formulário. */}
-                    <div className="mx-auto flex max-w-md flex-col gap-3">
+                    <div className="checkout-barra mx-auto flex max-w-md flex-col gap-3">
                       {/* Anuncia a espera e o motivo do frete SEM interromper
                           (`status`, nunca `alert`) e SEM ocupar lugar
                           (`sr-only` fica fora do fluxo). A região existe
@@ -7994,6 +8121,40 @@ function rotuloDaFormaNaTelaDeSucesso(
   return ehRetirada ? rotulo.replace(" na entrega", " na retirada") : rotulo;
 }
 
+// Acessibilidade (lote r64-a): "Pedido recebido!", "Pagamento Confirmado!" e
+// "Finalize o pagamento" SUBSTITUEM a tela inteira, e o botão que tinha o foco
+// (Finalizar, "Copiar código Pix") some junto — o foco caía no corpo da página
+// e o leitor de tela ficava em silêncio. O título recebe o foco UMA vez, quando
+// a tela aparece (efeito sem dependência de render): o leitor fala o título e o
+// teclado recomeça dali; redesenhos seguintes não puxam o foco de volta, para
+// não tirar a pessoa do "Copiar código Pix". `semFocoNaAbertura` poupa quem só
+// abriu/recarregou a página sem tocar em nada (mesma regra do foco do <main>
+// no App.tsx: não atropelar o "Pular para o conteúdo").
+function TituloQueRecebeOFoco({
+  nivel,
+  semFocoNaAbertura = false,
+  className,
+  children,
+}: Readonly<{
+  nivel: 1 | 2;
+  semFocoNaAbertura?: boolean;
+  className: string;
+  children: ReactNode;
+}>) {
+  const ref = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (semFocoNaAbertura && navigator.userActivation?.hasBeenActive === false)
+      return;
+    ref.current?.focus({ preventScroll: true });
+  }, [semFocoNaAbertura]);
+  const Titulo = nivel === 1 ? "h1" : "h2";
+  return (
+    <Titulo ref={ref} tabIndex={-1} className={cn(className, "outline-none")}>
+      {children}
+    </Titulo>
+  );
+}
+
 interface SuccessViewProps {
   orderId: string;
   appliedCoupon: { code: string; discount: number } | null;
@@ -8061,9 +8222,12 @@ function SuccessView({
         <div className="absolute -bottom-2 -left-2 size-6 animate-pulse rounded-full bg-primary/30 blur-lg delay-500" />
       </div>
 
-      <h2 className="mb-4 text-4xl font-black leading-tight tracking-tighter text-zinc-900 duration-700 animate-in slide-in-from-bottom-4">
+      <TituloQueRecebeOFoco
+        nivel={2}
+        className="mb-4 text-4xl font-black leading-tight tracking-tighter text-zinc-900 duration-700 animate-in slide-in-from-bottom-4"
+      >
         Pedido recebido!
-      </h2>
+      </TituloQueRecebeOFoco>
 
       <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
         <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
@@ -8163,9 +8327,12 @@ function PagamentoConfirmadoView({
         <div className="absolute -bottom-2 -left-2 size-6 animate-pulse rounded-full bg-primary/30 blur-lg delay-500" />
       </div>
 
-      <h2 className="mb-4 text-4xl font-black leading-tight tracking-tighter text-zinc-900 duration-700 animate-in slide-in-from-bottom-4">
+      <TituloQueRecebeOFoco
+        nivel={2}
+        className="mb-4 text-4xl font-black leading-tight tracking-tighter text-zinc-900 duration-700 animate-in slide-in-from-bottom-4"
+      >
         Pagamento Confirmado!
-      </h2>
+      </TituloQueRecebeOFoco>
 
       <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
         <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
@@ -8317,7 +8484,7 @@ function PagamentoForaDoPrazoView({
 interface AddressSelectionViewProps {
   editingAddressId: string | null;
   addresses: Address[];
-  onNewAddressSubmit: (data: Omit<Address, "id" | "user_id">) => Promise<void>;
+  onNewAddressSubmit: (data: DadosDoFormularioDeEndereco) => Promise<void>;
   onCancel: () => void;
   /** Nome da conta: já vem em "Quem vai receber" do endereço novo. */
   nomeDaConta?: string;

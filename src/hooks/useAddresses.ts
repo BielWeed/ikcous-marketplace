@@ -442,9 +442,9 @@ export function useAddresses() {
       // Resposta da conta anterior não grava nada, nem avisa sucesso.
       if (usuarioAtualRef.current !== idDaConta) return false;
 
-      // Edição que manda `is_default: false` (o formulário real sempre manda
-      // `is_default`): se sobrar outro endereço e a conta ficar sem principal,
-      // o mais recente assume --
+      // Edição que manda `is_default: false`: o formulário só envia a marca
+      // se a cliente mexeu nela (endereço novo sempre envia). Se sobrar outro
+      // endereço e a conta ficar sem principal, o mais recente assume --
       // mas QUEM ESTÁ SEM PRINCIPAL se decide pela lista do SERVIDOR, não pela
       // do aparelho: outro aparelho pode ter marcado outro principal (promover
       // o "próximo" da lista velha tiraria a marca dele) ou ter feito deste o
@@ -452,6 +452,7 @@ export function useAddresses() {
       // guardada, como antes: o que a cliente fez não se desfaz.
       let promovidoId: string | null = null;
       let promocaoSemResposta = false;
+      let principalMudouEmOutroAparelho = false;
       let listaFresca: Address[] | null = null;
       if (updates.is_default === false) {
         listaFresca = await lerEnderecosDoServidor(idDaConta).catch(() => null);
@@ -512,6 +513,19 @@ export function useAddresses() {
           true,
         );
       } else if (prev.dono === idDaConta) {
+        // Edição que NÃO fala de principal (o formulário só manda `is_default`
+        // quando a cliente mexeu nele): a linha devolvida traz a marca que o
+        // servidor tem AGORA. Se ela difere da que este aparelho achava, outro
+        // aparelho mudou o principal desde a última leitura e a lista daqui
+        // ficaria sem principal (ou com dois) -- relê depois de publicar.
+        const antes = prev.itens.find((a) => a.id === id);
+        if (
+          updates.is_default === undefined &&
+          antes &&
+          !!antes.is_default !== !!formattedAddress.is_default
+        ) {
+          principalMudouEmOutroAparelho = true;
+        }
         const promovido = prev.itens.find((a) => a.id === promovidoId);
         const updated: Address[] = promovido
           ? [
@@ -534,6 +548,8 @@ export function useAddresses() {
 
       // Só depois da publicação local: ela invalida consultas anteriores.
       if (promocaoSemResposta) void fetchAddresses();
+      else if (principalMudouEmOutroAparelho)
+        void fetchAddresses({ silencioso: true });
       toast.success("Endereço atualizado");
       return true;
     } catch (error) {

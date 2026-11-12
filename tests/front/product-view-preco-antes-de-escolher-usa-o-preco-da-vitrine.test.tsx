@@ -12,6 +12,7 @@
 // product-view-share-usa-o-preco-da-variacao.test.tsx.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Product, ProductVariant } from "@/types";
@@ -118,9 +119,13 @@ describe("ProductView — antes de escolher, o preço é o da vitrine", () => {
   let raiz: Root;
   let hospedeiro: HTMLElement;
   let textoCopiado: string;
+  const navegar = vi.fn();
+  const voltar = vi.fn();
+  const adicionar = vi.fn();
 
   beforeEach(() => {
     textoCopiado = "";
+    vi.clearAllMocks();
     vi.stubGlobal("IntersectionObserver", IntersectionObserverStub);
     vi.stubGlobal("CSS", { escape: (v: string) => v });
     const armazem = new Map<string, string>();
@@ -154,6 +159,7 @@ describe("ProductView — antes de escolher, o preço é o da vitrine", () => {
     hospedeiro.remove();
     document.getElementById("product-structured-data")?.remove();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   async function montar(product: Product) {
@@ -164,8 +170,9 @@ describe("ProductView — antes de escolher, o preço é o da vitrine", () => {
           product={product}
           isFavorite={false}
           onToggleFavorite={() => {}}
-          onAddToCart={() => {}}
-          onBack={() => {}}
+          onAddToCart={adicionar}
+          onBack={voltar}
+          onNavigate={navegar}
         />,
       );
     });
@@ -244,6 +251,132 @@ describe("ProductView — antes de escolher, o preço é o da vitrine", () => {
     expect(hospedeiro.textContent).toContain("14% OFF");
     expect(precoDoJsonLd()).toBe(60);
   });
+
+  function gradeComposta(precoAzul = 90) {
+    return produtoCom(
+      ["P / Azul", "P / Preto", "G / Azul", "G / Preto"].map((valor) => ({
+        ...variante(
+          valor,
+          5,
+          valor.startsWith("P") ? 50 : valor.endsWith("Azul") ? precoAzul : 90,
+        ),
+        name: "Tamanho / Cor",
+      })),
+    );
+  }
+
+  it("grade composta: só G marcado já restringe o preço no bloco, barra, folha e compartilhar", async () => {
+    await montar(gradeComposta());
+    expect(hospedeiro.textContent).toContain("A partir de");
+    await escolher("G");
+    expect(precoGrande()?.trim()).toBe("R$ 90,00");
+    expect(hospedeiro.textContent).not.toContain("A partir de");
+    expect(barraFixa()?.textContent).toContain("R$ 90,00");
+    expect(barraFixa()?.textContent).not.toContain("A partir de");
+    expect(await compartilhar()).toContain("por R$ 90,00");
+    await abrirAFolhaPelaBarra();
+    expect(folha()?.textContent).toContain("R$ 90,00");
+    expect(folha()?.textContent).not.toContain("A partir de");
+    await escolherNaFolha("Azul");
+    expect(precoGrande()?.trim()).toBe("R$ 90,00");
+  });
+
+  it("grade composta: G com cores de preços diferentes continua A partir de, mas do menor G", async () => {
+    await montar(gradeComposta(100));
+    await escolher("G");
+    expect(precoGrande()?.trim()).toBe("R$ 90,00");
+    expect(hospedeiro.textContent).toContain("A partir de");
+    await escolher("Azul");
+    expect(precoGrande()?.trim()).toBe("R$ 100,00");
+    expect(hospedeiro.textContent).not.toContain("A partir de");
+  });
+
+  it.each([
+    ["sem variação", produtoCom([])],
+    [
+      "todas as variações com o mesmo preço",
+      produtoCom([variante("P", 5, 50), variante("G", 5, 50)]),
+    ],
+  ])("controle: %s não inventa A partir de", async (_nome, produto) => {
+    await montar(produto);
+    expect(precoGrande()?.trim()).toBe("R$ 50,00");
+    expect(hospedeiro.textContent).not.toContain("A partir de");
+  });
+
+  it("Início navega para home sem chamar o voltar do aparelho", async () => {
+    await montar(doisPrecosAVenda);
+    const inicio = hospedeiro.querySelector<HTMLButtonElement>(
+      'nav[aria-label="Caminho"] button',
+    );
+    expect(inicio?.textContent?.trim()).toBe("Início");
+    await act(async () => {
+      inicio!.click();
+    });
+    expect(navegar).toHaveBeenCalledWith("home");
+    expect(voltar).not.toHaveBeenCalled();
+  });
+
+  it.each(["página", "barra", "folha"])(
+    "clique extra pela %s avisa o estado atual sem duplicar item",
+    async (origem) => {
+      vi.useFakeTimers();
+      await montar(doisPrecosAVenda);
+      await escolher("P");
+      const principal = () =>
+        [...hospedeiro.querySelectorAll<HTMLButtonElement>("button")].find(
+          (b) =>
+            /Adicionar ao Carrinho|Adicionando|Adicionado/i.test(
+              b.textContent ?? "",
+            ),
+        )!;
+      await act(async () => {
+        principal().click();
+      });
+      await act(async () => {
+        principal().click();
+      });
+      expect(toast.info).toHaveBeenCalledWith("Adicionando ao carrinho", {
+        description:
+          "Aguarde o botão voltar a Adicionar para incluir outra opção.",
+      });
+      expect(adicionar).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        vi.advanceTimersByTime(750);
+      });
+      if (origem === "folha") {
+        await act(async () => {
+          barraFixa()?.querySelector<HTMLButtonElement>("button")?.click();
+        });
+        expect(folha()).not.toBeNull();
+        await escolherNaFolha("G");
+      } else {
+        await escolher("G");
+      }
+      const destino =
+        origem === "página"
+          ? hospedeiro
+          : origem === "barra"
+            ? barraFixa()
+            : folha();
+      const botao = [
+        ...(destino?.querySelectorAll<HTMLButtonElement>("button") ?? []),
+      ].find((b) =>
+        /Adicionado|Adicionar ao Carrinho/i.test(b.textContent ?? ""),
+      )!;
+      expect(botao).toBeTruthy();
+      await act(async () => {
+        botao.click();
+      });
+      expect(toast.info).toHaveBeenCalledWith("Adicionado ao carrinho", {
+        description:
+          "Aguarde o botão voltar a Adicionar para incluir outra opção.",
+      });
+      expect(adicionar).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        vi.advanceTimersByTime(1500);
+      });
+    },
+  );
 
   // A barra fixa de baixo e a folha de opções NÃO moram dentro do `main` (são
   // portais no `body`): quem lê só `hospedeiro` nunca as vê. Elas repetem o

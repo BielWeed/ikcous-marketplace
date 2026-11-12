@@ -192,6 +192,16 @@ describe("Política de Privacidade", () => {
 });
 
 describe("Trocas e devoluções — usa o que a lojista configurou", () => {
+  it.each([1, 2, 30])("prazo de troca %i concorda em dia ou dias", (dias) => {
+    const troca = montarPolitica("trocas", LOJA, {
+      ...POLITICA,
+      prazo_troca_dias: dias,
+    }).secoes.find((secao) => secao.id === "troca");
+    expect(troca?.paragrafos[0]).toBe(
+      `Você pode trocar por outro tamanho, cor ou modelo em até ${dias} ${dias === 1 ? "dia" : "dias"} depois de receber.`,
+    );
+  });
+
   it("prazos da loja aparecem como configurados", () => {
     const texto = textoCorrido(
       montarPolitica("trocas", LOJA, {

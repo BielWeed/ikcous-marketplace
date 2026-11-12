@@ -95,8 +95,15 @@ import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 import { primeiraLetra } from "@/lib/primeira-letra";
+import { comPrazo } from "@/utils/com-prazo";
 import { haptic } from "@/utils/haptic";
 import { formatarWhatsAppParaExibicao } from "@/utils/telefone";
+
+// Texto guardado na conta no cadastro (`user_metadata`): só vale string com
+// conteúdo; qualquer outra coisa vira "sem valor" e a tela cai no próximo plano.
+function textoDoCadastro(valor: unknown): string {
+  return typeof valor === "string" ? valor.trim() : "";
+}
 
 // Rótulo mono de seção, cartão e cabeçalho de seção do Perfil (linguagem Tinta).
 const ROTULO =
@@ -166,6 +173,7 @@ export function ProfileView({
   const {
     user,
     profile,
+    fetchProfile,
     logout,
     isAdmin,
     loading: authLoading,
@@ -423,15 +431,21 @@ export function ProfileView({
     }
   };
 
+  // O cadastro grava `full_name` e `phone` na conta (não `name`). Enquanto o
+  // perfil não chega (rede ruim), é de lá, da conta ATUAL, que vêm o nome e o
+  // WhatsApp — antes a tela mostrava o pedaço do e-mail como se fosse o nome.
+  const nomeDoCadastro = textoDoCadastro(user?.user_metadata?.full_name);
+  const telefoneDoCadastro = textoDoCadastro(user?.user_metadata?.phone);
   const profileName = useMemo(() => {
     if (!user) return "Seu Nome";
     return (
       profile?.full_name ||
+      nomeDoCadastro ||
       user.user_metadata?.name ||
       user.email?.split("@")[0] ||
       "Seu Nome"
     );
-  }, [user, profile]);
+  }, [user, profile, nomeDoCadastro]);
 
   const handleWhatsAppSupport = (orderId: string) => {
     const message = `Olá! Tenho uma dúvida sobre meu pedido #${numeroDoPedido(orderId)}.`;
@@ -458,6 +472,15 @@ export function ProfileView({
   // A aba fica montada no fundo: outro aparelho pode ter mudado a lista de
   // endereços enquanto ela estava escondida ou o app em segundo plano.
   useReleituraDosEnderecosAoVoltar(user?.id, isActive, fetchAddresses);
+
+  // Perfil que não veio (rede ruim ao entrar): pede de novo ao abrir a aba — uma
+  // tentativa por abertura, com o prazo do resto do app. Depende só do ID da
+  // conta e de "tem perfil ou não": se a busca falhar nada muda e nada repete.
+  const semPerfil = !profile;
+  useEffect(() => {
+    if (!usuarioId || authLoading || !isActive || !semPerfil) return;
+    void comPrazo(Promise.resolve(fetchProfile()), 15_000).catch(() => {});
+  }, [usuarioId, authLoading, isActive, semPerfil, fetchProfile]);
 
   // Sem sessão, o login só aparece quando o Perfil é a aba VISÍVEL (o botão
   // Sair, ou o visitante que toca em Perfil). A aba fica montada escondida
@@ -495,7 +518,11 @@ export function ProfileView({
       .replace(".", "");
     return `${mes}/${data.getFullYear()}`;
   }, [user, profile]);
-  const whatsapp = String(profile?.whatsapp ?? "").trim();
+  // Perfil carregado manda (mesmo sem WhatsApp: aí é "Adicionar"). Só enquanto
+  // ele não veio é que vale o telefone do cadastro.
+  const whatsapp = profile
+    ? String(profile.whatsapp ?? "").trim()
+    : telefoneDoCadastro;
 
   if (authLoading) {
     return <ProfileSkeleton />;
@@ -704,6 +731,7 @@ export function ProfileView({
                         }) && (
                           <Button
                             onClick={() => onRetomarPagamento(order.id)}
+                            aria-label={`Retomar pagamento do pedido #${numeroDoPedido(order.id)}`}
                             className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-foreground text-base font-semibold text-background hover:bg-foreground/90"
                           >
                             <CreditCard className="size-4" aria-hidden="true" />
@@ -714,6 +742,7 @@ export function ProfileView({
                       <div className="flex flex-wrap gap-2">
                         <Button
                           onClick={() => onNavigate("order-details", order.id)}
+                          aria-label={`Ver detalhes do pedido #${numeroDoPedido(order.id)}`}
                           className="h-12 flex-1 rounded-2xl bg-foreground text-base font-semibold text-background hover:bg-foreground/90"
                         >
                           Ver detalhes
@@ -775,7 +804,7 @@ export function ProfileView({
                 {profileName}
               </p>
             </div>
-            {profile &&
+            {(profile || whatsapp) &&
               (whatsapp ? (
                 <div className="py-3.5">
                   <p className={ROTULO}>WhatsApp</p>

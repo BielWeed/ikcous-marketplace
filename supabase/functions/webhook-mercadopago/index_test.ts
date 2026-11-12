@@ -2542,6 +2542,9 @@ Deno.test("W-orfa (rota order): reembolso da ÓRFÃ no painel do MP NÃO mexe no
   assertEquals(pedido.payment_status, "pago");
   assertEquals(registro.insertsOrderRefunds.length, 0);
   assertEquals(chamadasPush.length, 1, "o admin precisa ser avisado — dinheiro estornado sem dono no ledger");
+  // O toque no aviso abre o PEDIDO do aviso (não a lista com o filtro da última visita).
+  assertEquals((chamadasPush[0] as { aviso: { title: string; url: string } }).aviso.title, "Estorno de cobrança sem registro");
+  assertEquals((chamadasPush[0] as { aviso: { url: string } }).aviso.url, `/admin-orders?id=${UUID_PEDIDO}`);
   assertEquals(resposta.status, 200);
 });
 
@@ -4477,6 +4480,7 @@ Deno.test("Lote A R1 - avisos da RPC: 'revertida' e 'saldo' viram UM push cada e
     await semLogs(() => entregarContestacao(supabase, fn, pushes));
     assertEquals(pushes.length, 1, aviso);
     assertEquals(pushes[0].title, titulo, aviso);
+    assertEquals(pushes[0].url, `/admin-orders?id=${UUID_PEDIDO}`, aviso);
   }
 });
 
@@ -4590,6 +4594,7 @@ Deno.test("Lote A (bloqueio 2) - REF que NÃO cabe no saldo (sobreposição inco
   assertEquals(registro.chamadasExternoDoMp[0].args.p_valor, 100, "nunca recortado para caber");
   const doRef = pushes.filter((p) => String(p.title).includes("Devolução do Mercado Pago"));
   assertEquals(doRef.length, 1, "um aviso só");
+  assertEquals(doRef[0].url, `/admin-orders?id=${UUID_PEDIDO}`);
   semEscritaDireta(registro);
 });
 
@@ -7765,6 +7770,7 @@ Deno.test("C-P (a) — 3 entregas com push ENTREGUE -> 1 push, confirmado; o log
   assertEquals(rodadas.map((r) => r.status), [200, 200, 200]);
   assertEquals(rodadas.map((r) => r.pushes.length), [1, 0, 0]);
   assertEquals(rodadas[0].pushes[0].title, "Cobrança de cartão duplicada?");
+  assertEquals(rodadas[0].pushes[0].url, `/admin-orders?id=${UUID_PEDIDO}`);
   assertEquals(rodadas.map((r) => r.avisoRpcs), [["reservar", "confirmar"], ["reservar"], ["reservar"]]);
   assertEquals(rodadas[0].registro.chamadasAviso.map((c) => c.args), [{ p_chave: CHAVE_DIVERGENTE }, { p_chave: CHAVE_DIVERGENTE }]);
   assertEquals([...avisos.entries()], [[CHAVE_DIVERGENTE, { enviado: true }]]);
@@ -7876,6 +7882,7 @@ Deno.test("C-P — ramo S5 (adoção perdeu a corrida) reserva a MESMA chave do 
   const reentrega = await entregarOrderDivergente({ avisos });
   assert(reentrega.erros.some((e) => e.includes("a vaga já tem OUTRA cobrança gravada")), "a 2a entrega tem de passar pelo ramo divergente");
   assertEquals([s5.pushes.length, reentrega.pushes.length], [1, 0]);
+  assertEquals(s5.pushes[0].url, `/admin-orders?id=${UUID_PEDIDO}`, "o aviso do ramo S5 também leva ao pedido");
 });
 
 Deno.test("C-P — aprovação NORMAL (vaga vazia adotada, ou já com a própria order) nunca chama a reserva", async () => {
@@ -8487,6 +8494,7 @@ Deno.test("R1 webhook: divergência avisa o admin uma vez, sem confirmar", async
   assertEquals(alertas.length, 1);
   assertEquals(alertas[0].title, "Pagamento precisa de conferência");
   assertEquals(alertas[0].body.includes("valor divergente"), true);
+  assertEquals(alertas[0].url, `/admin-orders?id=${UUID_PEDIDO}`);
 });
 
 Deno.test("D7 webhook: raiz financiada confirma; acima do teto ou captura menor segue em revisão", async () => {

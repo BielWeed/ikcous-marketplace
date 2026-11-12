@@ -611,8 +611,11 @@ async function executarTesteDeConexao(
             causa,
         );
         semResposta = true;
+        // Sem nome de erro nem de function na tela: a lojista não tem onde abrir
+        // os registros, e a frase fica gravada em `ultimo_teste`. A causa
+        // técnica está no console.error acima.
         mensagem =
-            `Não consegui falar com o Mercado Pago agora: o servidor não conseguiu chamar a API do Mercado Pago (${err instanceof Error ? err.name : "erro"}). Tente de novo em instantes; se continuar, a causa está nos registros da function credenciais-mercado-pago.`;
+            "Não consegui falar com o Mercado Pago agora. Tente de novo em instantes.";
     }
     return {
         ultimoTeste: {

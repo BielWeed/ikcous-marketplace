@@ -126,6 +126,13 @@ describe("AdminProductFormView — foto ilegível não diz 'sucesso'", () => {
         }
       },
     );
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn(async (file: File) => {
+        if (file.name.includes("ruim")) throw new Error("Foto ilegível");
+        return { width: 800, height: 800, close: vi.fn() };
+      }),
+    );
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
     vi.spyOn(console, "error").mockImplementation(() => {});
     const armazem = new Map<string, string>();
@@ -186,6 +193,60 @@ describe("AdminProductFormView — foto ilegível não diz 'sucesso'", () => {
     expect(mocks.toastSuccess).not.toHaveBeenCalled();
     expect(mocks.toastDismiss).toHaveBeenCalledWith(ID_DO_AVISO);
   });
+
+  it.each(["", "application/octet-stream"])(
+    "foto ilegível aceita pela extensão, com MIME %j: não tenta upload nem oferece reenvio",
+    async (type) => {
+      await montar();
+      const ruim = new File(["foto corrompida"], "ruim.jpg", {
+        type,
+        lastModified: 1,
+      });
+      await enviar([ruim]);
+
+      expect(mocks.uploadProductImages).not.toHaveBeenCalled();
+      expect(mocks.toastError).toHaveBeenCalledWith(
+        'Não conseguimos abrir a foto "ruim.jpg". Salve como JPG ou PNG e tente de novo.',
+      );
+      expect(mocks.toastSuccess).not.toHaveBeenCalled();
+      expect(mocks.toastWarning).not.toHaveBeenCalled();
+      expect(mocks.toastDismiss).toHaveBeenCalledWith(ID_DO_AVISO);
+      expect(
+        [...document.querySelectorAll("button")].some(
+          (b) => b.textContent?.trim() === "Tentar de novo",
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it.each(["", "application/octet-stream"])(
+    "controle: foto que abre com MIME %j sobe como o próprio arquivo, sem recompressão",
+    async (type) => {
+      await montar();
+      const boa = new File(
+        ["foto sintética aceita pelo decodificador"],
+        "boa.jpg",
+        {
+          type,
+          lastModified: 1,
+        },
+      );
+      await enviar([boa]);
+
+      expect(mocks.uploadProductImages).toHaveBeenCalledTimes(1);
+      const enviada = mocks.uploadProductImages.mock.calls[0][0][0] as File;
+      expect(enviada).toBe(boa);
+      expect(enviada.type).toBe(type);
+      expect(enviada.name).toBe("boa.jpg");
+      expect(enviada.lastModified).toBe(1);
+      expect(HTMLCanvasElement.prototype.getContext).not.toHaveBeenCalled();
+      expect(mocks.toastError).not.toHaveBeenCalled();
+      expect(mocks.toastSuccess).toHaveBeenCalledWith(
+        "Imagens processadas e enviadas com sucesso!",
+        { id: ID_DO_AVISO },
+      );
+    },
+  );
 
   it("uma boa e uma que não abre: diz '1 de 2 fotos enviadas', sem 'sucesso'", async () => {
     await montar();

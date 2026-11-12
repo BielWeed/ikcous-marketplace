@@ -1,7 +1,28 @@
 import { GrupoDeOpcoes } from "@/components/admin/GrupoDeOpcoes";
 import { CabecaDeSecao } from "@/components/admin/shipping/primitivas-direcao-d";
+import { parseValorBR } from "@/lib/financeiro";
 import type { PresetFreteGratis } from "@/lib/presets-de-frete-gratis";
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
+
+/**
+ * O valor é digitado como TEXTO: o campo `type="number"` devolvia vazio ao
+ * Safari do iPhone para o que ele não entendia como número ("99,90"), e vazio
+ * virava 0 — o campo apagava o que ela escreveu e pedia o valor de novo. Aqui
+ * "99,90", "99.90" e "1.234,50" valem (helper de moeda do app); vazio é 0 (a
+ * tela pede o valor); o que não é dinheiro vira NaN — o pai recusa o Salvar em
+ * vez de gravar 0.
+ */
+function valorDoTexto(texto: string): number {
+  if (texto.trim() === "") return 0;
+  return parseValorBR(texto) ?? Number.NaN;
+}
+
+function textoDoValor(valor: number): string {
+  if (!Number.isFinite(valor) || valor === 0) return "";
+  return Number.isInteger(valor)
+    ? String(valor)
+    : valor.toFixed(2).replace(".", ",");
+}
 
 /** Os valores continuam em presets-de-frete-gratis; aqui só se escolhe. */
 const PRESETS: readonly {
@@ -61,6 +82,18 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
    * dobro. Default `true` preserva o uso isolado (e os testes). */
   readonly mostrarCabecalho?: boolean;
 }) {
+  // O que está escrito no campo. Só é reescrito quando o valor muda POR FORA
+  // (config chegou, salvou) e o texto já não o produz — "99," digitado não vira
+  // "99" sob o dedo.
+  const [texto, setTexto] = useState(() => textoDoValor(acimaDe));
+  useEffect(() => {
+    setTexto((atual) =>
+      Object.is(valorDoTexto(atual), acimaDe) ? atual : textoDoValor(acimaDe),
+    );
+  }, [acimaDe]);
+  const textoInvalido = Number.isNaN(valorDoTexto(texto));
+  const semValor = acimaDe <= 0 || textoInvalido;
+
   return (
     <section
       id="bloco-frete-local-estrategias"
@@ -144,34 +177,35 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
             A partir de
           </label>
           <div
-            className={`flex min-h-12 items-center gap-1.5 rounded-xl border bg-admin-raised px-4 py-2 ${acimaDe <= 0 ? "border-red-400" : "border-admin-border"}`}
+            className={`flex min-h-12 items-center gap-1.5 rounded-xl border bg-admin-raised px-4 py-2 ${semValor ? "border-red-400" : "border-admin-border"}`}
           >
             <span className="text-xs font-semibold text-zinc-500">R$</span>
             <input
-              aria-invalid={acimaDe <= 0}
-              aria-describedby={acimaDe <= 0 ? "erro-gratis-local" : undefined}
+              aria-invalid={semValor}
+              aria-describedby={semValor ? "erro-gratis-local" : undefined}
               id="frete-gratis-acima-de"
-              type="number"
-              min="0.01"
-              step="5"
+              type="text"
               inputMode="decimal"
-              value={acimaDe === 0 ? "" : acimaDe}
-              onChange={(e) =>
-                onAcimaDe(e.target.value === "" ? 0 : Number(e.target.value))
-              }
+              autoComplete="off"
+              value={texto}
+              onChange={(e) => {
+                setTexto(e.target.value);
+                onAcimaDe(valorDoTexto(e.target.value));
+              }}
               placeholder="100"
               disabled={desabilitado}
               className="w-24 bg-transparent text-center text-xl font-bold tabular-nums text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-0 disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none"
             />
           </div>
-          {acimaDe <= 0 && (
+          {semValor && (
             <p
               id="erro-gratis-local"
               role="alert"
               className="w-full text-[12.5px] leading-snug text-red-300"
             >
-              Escreva o valor. Para não dar frete grátis, escolha a primeira
-              opção.
+              {textoInvalido
+                ? "Escreva o valor em reais, como 99,90."
+                : "Escreva o valor. Para não dar frete grátis, escolha a primeira opção."}
             </p>
           )}
         </div>

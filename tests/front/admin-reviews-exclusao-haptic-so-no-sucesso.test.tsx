@@ -140,7 +140,7 @@ describe("AdminReviewsView — o haptic de sucesso só toca na exclusão que deu
     // A lixeira do cartão tem o nome "Excluir avaliação"; a confirmação é uma
     // frase com Cancelar | Excluir dentro do cartão.
     const lixeira = Array.from(hospedeiro.querySelectorAll("button")).find(
-      (b) => b.getAttribute("aria-label") === "Excluir avaliação",
+      (b) => b.getAttribute("aria-label")?.startsWith("Excluir avaliação de "),
     );
     expect(lixeira).toBeTruthy();
     await act(async () => {

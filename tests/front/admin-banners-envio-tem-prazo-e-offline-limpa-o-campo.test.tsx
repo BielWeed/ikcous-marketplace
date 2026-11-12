@@ -14,7 +14,27 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const estado = vi.hoisted(() => ({ offline: false }));
+const estado = vi.hoisted(() => ({
+  offline: false,
+  escolherImagem: null as ((file: File) => void) | null,
+}));
+vi.mock(
+  "@/components/admin/banners/CriarBannerComIa",
+  async (importarOriginal) => {
+    const original =
+      await importarOriginal<
+        typeof import("@/components/admin/banners/CriarBannerComIa")
+      >();
+    return {
+      CriarBannerComIa: (
+        props: Parameters<typeof original.CriarBannerComIa>[0],
+      ) => {
+        estado.escolherImagem = props.aoEscolherImagem;
+        return <original.CriarBannerComIa {...props} />;
+      },
+    };
+  },
+);
 const uploadBannerImage = vi.fn<(file: File) => Promise<string>>();
 const deleteStorageFile = vi.fn<(url: string) => Promise<void>>();
 const toastError = vi.fn();
@@ -193,6 +213,64 @@ describe("AdminBannersView — envio da imagem: prazo, foto ilegível e campo li
     act(async () => {
       await vi.advanceTimersByTimeAsync(ms);
     });
+
+  it("a imagem pronta da IA avisa quando a internet cai, sem enviar em silêncio", async () => {
+    const { abrirNovoBannerPelaBarra } = await import(
+      "./helpers/editor-de-banner"
+    );
+    const { AdminBannersView } = await import("@/views/admin/AdminBannersView");
+    await act(async () =>
+      raiz.render(<AdminBannersView active={true} onNavigate={vi.fn()} />),
+    );
+    await abrirNovoBannerPelaBarra();
+    const criar = [...document.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Criar com IA"),
+    );
+    expect(criar).toBeTruthy();
+    await act(async () => criar!.click());
+    await refazerATela(true);
+    const campo = document.querySelector<HTMLInputElement>(
+      'input[aria-label="Escolher imagem pronta"]',
+    )!;
+    expect(campo).toBeTruthy();
+    await act(async () => selecionar(campo));
+    expect(uploadBannerImage).not.toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalledWith(
+      "Sem conexão com a internet",
+      expect.anything(),
+    );
+  });
+
+  it("a segunda escolha pela IA durante um envio avisa para esperar, sem duplicar", async () => {
+    const { abrirNovoBannerPelaBarra } = await import(
+      "./helpers/editor-de-banner"
+    );
+    const { AdminBannersView } = await import("@/views/admin/AdminBannersView");
+    await act(async () =>
+      raiz.render(<AdminBannersView active={true} onNavigate={vi.fn()} />),
+    );
+    await abrirNovoBannerPelaBarra();
+    const criar = [...document.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Criar com IA"),
+    )!;
+    await act(async () => criar.click());
+    const escolher = estado.escolherImagem!;
+    let terminar!: (url: string) => void;
+    uploadBannerImage.mockReturnValueOnce(
+      new Promise((resolve) => {
+        terminar = resolve;
+      }),
+    );
+    await act(async () => {
+      escolher(arquivo);
+      escolher(arquivo);
+    });
+    expect(uploadBannerImage).toHaveBeenCalledTimes(1);
+    expect(toastError).toHaveBeenCalledWith(
+      "Aguarde o envio ou salvamento atual terminar e escolha a imagem de novo.",
+    );
+    await act(async () => terminar("https://loja.test/nova.webp"));
+  });
 
   it("sem internet: o campo é esvaziado e, de volta online, a MESMA foto dispara o envio", async () => {
     await abrir();

@@ -171,6 +171,7 @@ function CartaoOfertaDuplo({
   // As MESMAS ações do Lateral e dos outros desenhos: comprar, variação, favoritar e abrir.
   const {
     cartStatus,
+    esgotado,
     handleCardClick,
     handleAddToCartClick,
     handleFavoriteClick,
@@ -186,7 +187,6 @@ function CartaoOfertaDuplo({
     onQuickBuy,
   });
   const { prefetchView } = usePrefetchOnHover();
-  const esgotado = product.stock <= 0;
   const estoque =
     esgotado || product.stock <= 10
       ? esgotado
@@ -331,7 +331,8 @@ function CartaoOfertaDuplo({
         data-compra-oferta
         aria-label={rotuloCompra}
         title={rotuloCompra}
-        disabled={esgotado || cartStatus !== "idle"}
+        disabled={esgotado}
+        aria-disabled={!esgotado && cartStatus !== "idle" ? true : undefined}
         className={cn(
           "absolute bottom-2 right-2.5 z-20 flex size-11 shrink-0 items-center justify-center rounded-full border border-solid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           esgotado

@@ -232,6 +232,7 @@ export const AddressList = memo(function AddressList({
             <div
               key={address.id}
               role={selectable ? "button" : undefined}
+              aria-pressed={selectable ? selectedId === address.id : undefined}
               tabIndex={selectable ? 0 : undefined}
               className={`flex items-center justify-between rounded-2xl border px-3 py-2.5 transition-all duration-300 ${
                 selectable && selectedId === address.id
@@ -275,7 +276,7 @@ export const AddressList = memo(function AddressList({
                       </span>
                     )}
                   </div>
-                  <p className="mt-0.5 truncate text-xs font-medium text-zinc-600">
+                  <p className="mt-0.5 break-words text-xs font-medium text-zinc-600">
                     {address.street}, {address.number} • {address.city}
                   </p>
                 </div>
@@ -307,6 +308,7 @@ export const AddressList = memo(function AddressList({
             <div
               key={address.id}
               role={selectable ? "button" : undefined}
+              aria-pressed={selectable ? selectedId === address.id : undefined}
               tabIndex={selectable ? 0 : undefined}
               className={`relative rounded-2xl border-2 ${selectable ? "bg-zinc-50/50" : "bg-muted/50"} p-4 transition-all duration-500 sm:p-5 ${
                 selectable && selectedId === address.id
@@ -340,6 +342,11 @@ export const AddressList = memo(function AddressList({
                     >
                       {address.name}
                     </span>
+                    {/* Só o leitor de tela: a borda e o ícone do escolhido
+                        não falam. O modo compacto já tem o selo visível. */}
+                    {selectable && selectedId === address.id && (
+                      <span className="sr-only">Selecionado</span>
+                    )}
                     {address.is_default && (
                       <span
                         className={
@@ -370,11 +377,7 @@ export const AddressList = memo(function AddressList({
                           ? "relative flex size-8 items-center justify-center rounded-lg bg-white text-zinc-600 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-zinc-900 hover:text-white"
                           : "flex size-11 items-center justify-center rounded-full text-foreground/70 transition-colors hover:bg-muted"
                       }
-                      aria-label={
-                        selectable
-                          ? "Editar"
-                          : `Editar endereço ${address.name}`
-                      }
+                      aria-label={`Editar endereço ${address.name}`}
                     >
                       <Edit className={selectable ? "size-3.5" : "size-5"} />
                     </button>
@@ -389,11 +392,7 @@ export const AddressList = memo(function AddressList({
                             ? "relative flex size-8 items-center justify-center rounded-lg bg-white text-red-400 shadow-sm transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-red-50 hover:text-red-500"
                             : "flex size-11 items-center justify-center rounded-full text-red-600 transition-colors hover:bg-red-50"
                         }
-                        aria-label={
-                          selectable
-                            ? "Excluir"
-                            : `Excluir endereço ${address.name}`
-                        }
+                        aria-label={`Excluir endereço ${address.name}`}
                       >
                         <Trash2
                           className={selectable ? "size-3.5" : "size-5"}

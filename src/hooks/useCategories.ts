@@ -12,10 +12,25 @@ import {
   mensagemDaFalhaDeCategoria,
   slugDaCategoria,
 } from "@/lib/gestao-de-categorias";
+import {
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { Category } from "@/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+// Prazo da ESPERA da tela numa gravação de categoria (mesmos 20 s das demais
+// gravações do painel). Rede pendurada conecta e não responde: sem prazo a folha
+// de Gerenciar categorias ficava em "Salvando…/Apagando…" com todos os botões
+// apagados, e só reabrir a folha destravava. O prazo só encerra a espera — o
+// servidor pode ter gravado —, por isso a frase NÃO diz "nada foi mudado": diz
+// que não se sabe e manda conferir a lista.
+const PRAZO_DA_GRAVACAO_DA_CATEGORIA_MS = 20_000;
+const semRespostaDaCategoria = (oQue: string) =>
+  `Sem resposta da rede. Não sabemos se ${oQue}. Confira na lista antes de tentar de novo.`;
+
 // Pode ser uma categoria ESCONDIDA da loja (não aparece na escolha do produto):
 // a frase não manda "usar a que já existe" como se ela estivesse à vista.
 const MENSAGEM_CATEGORIA_JA_EXISTE =
@@ -40,6 +55,7 @@ export function ordenarCategorias(lista: readonly Category[]): Category[] {
 // Module-level cache to persist data across component mounts
 let globalCategoriesCache: Category[] | null = null;
 let categoriesFetchPromise: Promise<Category[]> | null = null;
+let geracaoDaLeitura = 0;
 let lastCategoriesFetchTime = 0;
 const FETCH_THROTTLE = 60000; // 1 minute throttle for network checks
 
@@ -221,65 +237,76 @@ export function useCategories() {
         return;
       }
 
+      const geracao = ++geracaoDaLeitura;
       try {
         if (!isSilent) {
           setIsLoading(true);
         }
 
         const queryPromise = (async () => {
-          ultimaConsultaEm = Date.now();
-          let { data, error } = await supabase
-            .from("categorias")
-            .select("*")
-            .order("nome");
-
-          // select("*") funciona mesmo sem icone: a propriedade ausente
-          // vira null no mapeamento abaixo. Este fallback é só defensivo se
-          // a camada de consulta devolver erro explícito de coluna; não é o
-          // caminho normal de um banco antigo. Erro de rede não vira vazio.
-          if (
-            error &&
-            ["42703", "PGRST204"].includes(error.code) &&
-            /icone/i.test(error.message)
-          ) {
-            const antiga = await supabase
+          try {
+            ultimaConsultaEm = Date.now();
+            let { data, error } = await supabase
               .from("categorias")
-              .select("id,nome,slug,descricao,ativo,created_at")
+              .select("*")
               .order("nome");
-            error = antiga.error;
-            data =
-              antiga.data?.map((item) => ({
-                ...item,
-                icone: null,
-                icone_forma: null,
-              })) ?? null;
-          }
-          if (error) throw error;
 
-          // Mesma régua do cofre: a ordem do banco pode diferir da do aparelho
-          // (ordenação de acento e maiúscula), e a lista não pode pular de
-          // lugar quando a origem muda.
-          const adaptedCategories: Category[] = ordenarCategorias(
-            (data || []).map((item) => ({
-              id: item.id,
-              name: item.nome,
-              slug: item.slug || "",
-              description: item.descricao || "",
-              isActive: item.ativo ?? true,
-              icone: item.icone ?? null,
-              // Cache ou banco sem a coluna: cai no `icone` e na dedução pelo nome.
-              iconeForma: item.icone_forma ?? null,
-              createdAt: item.created_at,
-            })),
-          );
-          globalCategoriesCache = adaptedCategories;
-          lastCategoriesFetchTime = Date.now();
-          // Resposta de verdade (lista vazia inclusive): a falha acabou.
-          falhouSemNadaNaTela = false;
-          tentativasAutomaticas = 0;
-          cancelarNovaTentativa();
-          persistToVault(adaptedCategories);
-          return adaptedCategories;
+            // select("*") funciona mesmo sem icone: a propriedade ausente
+            // vira null no mapeamento abaixo. Este fallback é só defensivo se
+            // a camada de consulta devolver erro explícito de coluna; não é o
+            // caminho normal de um banco antigo. Erro de rede não vira vazio.
+            if (
+              error &&
+              ["42703", "PGRST204"].includes(error.code) &&
+              /icone/i.test(error.message)
+            ) {
+              const antiga = await supabase
+                .from("categorias")
+                .select("id,nome,slug,descricao,ativo,created_at")
+                .order("nome");
+              error = antiga.error;
+              data =
+                antiga.data?.map((item) => ({
+                  ...item,
+                  icone: null,
+                  icone_forma: null,
+                })) ?? null;
+            }
+            // Cada tela espera a leitura mais nova, sem deixar a anterior
+            // desfazer a troca do ícone no cache global e no cofre.
+            if (geracao !== geracaoDaLeitura)
+              return categoriesFetchPromise ?? globalCategoriesCache ?? [];
+            if (error) throw error;
+
+            // Mesma régua do cofre: a ordem do banco pode diferir da do aparelho
+            // (ordenação de acento e maiúscula), e a lista não pode pular de
+            // lugar quando a origem muda.
+            const adaptedCategories: Category[] = ordenarCategorias(
+              (data || []).map((item) => ({
+                id: item.id,
+                name: item.nome,
+                slug: item.slug || "",
+                description: item.descricao || "",
+                isActive: item.ativo ?? true,
+                icone: item.icone ?? null,
+                // Cache ou banco sem a coluna: cai no `icone` e na dedução pelo nome.
+                iconeForma: item.icone_forma ?? null,
+                createdAt: item.created_at,
+              })),
+            );
+            globalCategoriesCache = adaptedCategories;
+            lastCategoriesFetchTime = Date.now();
+            // Resposta de verdade (lista vazia inclusive): a falha acabou.
+            falhouSemNadaNaTela = false;
+            tentativasAutomaticas = 0;
+            cancelarNovaTentativa();
+            persistToVault(adaptedCategories);
+            return adaptedCategories;
+          } catch (error) {
+            if (geracao !== geracaoDaLeitura)
+              return categoriesFetchPromise ?? globalCategoriesCache ?? [];
+            throw error;
+          }
         })();
 
         categoriesFetchPromise = queryPromise;
@@ -292,10 +319,15 @@ export function useCategories() {
         // acabam, ou quando já há lista na tela, o aviso sai como sempre.
         falhouSemNadaNaTela = globalCategoriesCache === null;
         const vaiTentarDeNovo = falhouSemNadaNaTela && agendarNovaTentativa();
-        if (!vaiTentarDeNovo) toast.error("Erro ao carregar categorias");
+        // A frase é o `id`: duas telas que aguardaram a MESMA consulta que falhou
+        // mostram UM aviso.
+        if (!vaiTentarDeNovo) {
+          const frase = "Erro ao carregar categorias";
+          toast.error(frase, { id: frase });
+        }
       } finally {
         setIsLoading(false);
-        categoriesFetchPromise = null;
+        if (geracao === geracaoDaLeitura) categoriesFetchPromise = null;
       }
     },
     [persistToVault],
@@ -373,16 +405,25 @@ export function useCategories() {
       });
 
       try {
-        const { data, error } = await supabase
-          .from("categorias")
-          .insert({
-            nome: category.name,
-            slug,
-            descricao: category.description,
-            ativo: category.isActive,
-          })
-          .select()
-          .single();
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("categorias")
+              .insert({
+                nome: category.name,
+                slug,
+                descricao: category.description,
+                ativo: category.isActive,
+              })
+              .select()
+              .single(),
+          ),
+          PRAZO_DA_GRAVACAO_DA_CATEGORIA_MS,
+          () =>
+            erroDeConsultaSemResposta(
+              semRespostaDaCategoria("a categoria foi criada"),
+            ),
+        );
 
         if (error) throw error;
 
@@ -418,7 +459,12 @@ export function useCategories() {
           if (!silent) toast.error(MENSAGEM_CATEGORIA_JA_EXISTE);
           throw new ErroDeCategoria(MENSAGEM_CATEGORIA_JA_EXISTE, "23505");
         }
-        if (!silent) toast.error("Erro ao criar categoria");
+        if (!silent)
+          toast.error(
+            ehConsultaSemResposta(error)
+              ? (error as Error).message
+              : "Erro ao criar categoria",
+          );
         throw error;
       }
     },
@@ -452,10 +498,19 @@ export function useCategories() {
     async (id: string, novoNome: string): Promise<ResultadoDoRenome> => {
       const reservado = erroDoNomeReservado(novoNome);
       if (reservado) throw new ErroDeCategoria(reservado, "22023");
-      const { data, error } = await supabase.rpc("renomear_categoria", {
-        p_id: id,
-        p_novo_nome: novoNome,
-      });
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase.rpc("renomear_categoria", {
+            p_id: id,
+            p_novo_nome: novoNome,
+          }),
+        ),
+        PRAZO_DA_GRAVACAO_DA_CATEGORIA_MS,
+        () =>
+          erroDeConsultaSemResposta(
+            semRespostaDaCategoria("o nome foi trocado"),
+          ),
+      );
       if (error) {
         throw new ErroDeCategoria(
           mensagemDaFalhaDeCategoria(error),
@@ -485,9 +540,18 @@ export function useCategories() {
 
   const deleteCategory = useCallback(
     async (id: string): Promise<ResultadoDoApagar> => {
-      const { data, error } = await supabase.rpc("apagar_categoria_vazia", {
-        p_id: id,
-      });
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase.rpc("apagar_categoria_vazia", {
+            p_id: id,
+          }),
+        ),
+        PRAZO_DA_GRAVACAO_DA_CATEGORIA_MS,
+        () =>
+          erroDeConsultaSemResposta(
+            semRespostaDaCategoria("a categoria foi apagada"),
+          ),
+      );
       if (error) {
         throw new ErroDeCategoria(
           mensagemDaFalhaDeCategoria(error),
@@ -509,11 +573,18 @@ export function useCategories() {
     async (id: string, ativa: boolean) => {
       // `.select("id")` porque o PostgREST responde sucesso mesmo quando a
       // política de acesso não deixa nenhuma linha passar (0 linhas, sem erro).
-      const { data, error } = await supabase
-        .from("categorias")
-        .update({ ativo: ativa })
-        .eq("id", id)
-        .select("id");
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase
+            .from("categorias")
+            .update({ ativo: ativa })
+            .eq("id", id)
+            .select("id"),
+        ),
+        PRAZO_DA_GRAVACAO_DA_CATEGORIA_MS,
+        () =>
+          erroDeConsultaSemResposta(semRespostaDaCategoria("a vitrine mudou")),
+      );
       if (error) {
         throw new ErroDeCategoria(
           mensagemDaFalhaDeCategoria(error),
@@ -563,11 +634,20 @@ export function useCategories() {
             mudanca.icone = naLista.icone = updates.icone;
           if (updates.iconeForma !== undefined)
             mudanca.icone_forma = naLista.iconeForma = updates.iconeForma;
-          const { data, error } = await supabase
-            .from("categorias")
-            .update(mudanca)
-            .eq("id", id)
-            .select("id");
+          const { data, error } = await aguardarComPrazo(
+            Promise.resolve(
+              supabase
+                .from("categorias")
+                .update(mudanca)
+                .eq("id", id)
+                .select("id"),
+            ),
+            PRAZO_DA_GRAVACAO_DA_CATEGORIA_MS,
+            () =>
+              erroDeConsultaSemResposta(
+                semRespostaDaCategoria("o ícone mudou"),
+              ),
+          );
           if (error) throw error;
           if (!data?.length) {
             throw new ErroDeCategoria(
@@ -596,8 +676,8 @@ export function useCategories() {
         console.error("Error updating category:", error);
         if (!silent)
           toast.error(
-            error instanceof ErroDeCategoria
-              ? error.message
+            error instanceof ErroDeCategoria || ehConsultaSemResposta(error)
+              ? (error as Error).message
               : "Erro ao atualizar categoria",
           );
         throw error;

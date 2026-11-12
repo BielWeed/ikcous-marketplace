@@ -78,11 +78,13 @@ import {
   variacoesExcluidasNoRascunho,
 } from "@/lib/rascunho-do-produto";
 import { recusaDeFoto } from "@/lib/recusa-de-foto";
+import { ehAnimada } from "@/lib/redimensiona-imagem";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { Product, ProductVariant, View } from "@/types";
 import {
   camposQueMudaram,
   fotosAposConflito,
+  variacoesAposConflito,
   variacoesQueMudaram,
 } from "@/utils/campos-mexidos-do-produto";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
@@ -276,7 +278,7 @@ const TRAVA_DAS_ACOES_DE_FOTO_MS = 400;
 interface FotoComFalha {
   id: string;
   file: File;
-  motivo: "demorou demais" | "não foi enviada";
+  motivo: "demorou demais" | "não foi enviada" | "teve o envio cancelado";
 }
 
 // Exportado só para o teste chamar direto (não passa pelo componente inteiro)
@@ -287,16 +289,31 @@ interface FotoComFalha {
 // quando os dois se chamam igual.
 /** A foto não pôde ser lida (formato que o aparelho não abre, arquivo ruim). */
 class FotoIlegivel extends Error {}
+class EnvioCancelado extends Error {}
 
-export const compressProductImage = (
+export const compressProductImage = async (
   file: File,
   maxWidth = 1200,
   maxHeight = 1200,
   quality = 0.85,
 ): Promise<File> => {
-  return new Promise((resolve, reject) => {
+  // O canvas só guarda o primeiro quadro; animação sobe como veio.
+  if (
+    file.type === "image/gif" ||
+    ((!file.type || file.type === "application/octet-stream") &&
+      /\.gif$/i.test(file.name)) ||
+    ((file.type === "image/webp" || file.type === "image/avif") &&
+      (await ehAnimada(file)))
+  ) {
+    if (!(await imagemAbre(file))) throw new FotoIlegivel();
+    return file;
+  }
+  return new Promise<File>((resolve, reject) => {
     if (!file.type.startsWith("image/")) {
-      resolve(file);
+      // O filtro aceita a extensão com MIME vazio/genérico, mas precisa abrir.
+      void imagemAbre(file).then((abre) =>
+        abre ? resolve(file) : reject(new FotoIlegivel()),
+      );
       return;
     }
     // Pequena demais para reduzir, mas NÃO pode passar sem abrir: um arquivo
@@ -409,6 +426,7 @@ interface AdminProductFormViewProps {
 
 const ESTOQUE_MAXIMO_DO_PRODUTO = 10000;
 const ID_DO_AVISO_DA_GRADE_PENDENTE = "rascunho-da-grade-pendente";
+const ID_DA_OFERTA_DE_RASCUNHO_ANTIGO = "rascunho-antigo-do-produto";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -566,6 +584,10 @@ const numeroOpcionalDoCampo = (val: string): number | undefined => {
  * trocado por 0 sem aviso é exatamente o que o campo acusa. Zero e vazio valem.
  */
 const erroDaMedida = (texto: string): string => {
+  // "1e3" (o campo numérico aceita): `limparNumeroDoCampo` arranca o "e" e leria
+  // 13. Recusa, como o estoque.
+  if (/e/i.test(texto))
+    return "Número inválido. Use só dígitos, vírgula ou ponto.";
   const numero = numeroOpcionalDoCampo(texto);
   return numero !== undefined && numero < 0 ? "Não pode ser negativo." : "";
 };
@@ -992,6 +1014,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   );
   const [isUploadingAdjusted, setIsUploadingAdjusted] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const cancelarEnvioRef = useRef<(() => void) | null>(null);
   // "Foto 1 de 3" do lote em andamento, para o aviso do botão desligado.
   const [progressoDoEnvio, setProgressoDoEnvio] = useState<{
     atual: number;
@@ -1017,6 +1040,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // (ou tocar Salvar sem restaurar) perdia a grade. Cai ao descartar ou quando a
   // grade grava (o salvar apaga o rascunho e a tela segue).
   const gradeDoRascunhoPendenteRef = useRef(false);
+  // Ao abrir o produto havia um rascunho antigo e ela ainda não decidiu (nem
+  // Restaurar nem Descartar). Enquanto isso o salvamento automático NÃO grava:
+  // a primeira edição, 1 s depois, trocava o rascunho antigo (fotos já enviadas,
+  // variações digitadas) pelo que está na tela, e ele se perdia sem aviso. O
+  // aviso fica na tela até ela decidir (não some sozinho nem por gesto) e cai
+  // sozinho ao sair da tela ou quando o rascunho deixa de existir (salvou).
+  // Estado para o salvamento automático rodar de novo na decisão; ref para o
+  // desmonte, que precisa saber se há aviso para tirar.
+  const [ofertaDeRascunhoPendente, setOfertaDeRascunhoPendente] =
+    useState(false);
+  const ofertaDeRascunhoPendenteRef = useRef(false);
   // A chave do rascunho que o salvamento automático gravou NESTA abertura: só
   // ele pode apagá-la ao voltar ao que está no banco (o rascunho que já estava
   // lá antes fica esperando a decisão dela).
@@ -1538,6 +1572,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       pularOfertaDeRascunhoRef.current = false;
       return;
     }
+    // Tira o aviso do rascunho antigo e solta o salvamento automático. Só age
+    // se há oferta pendente (não toca no `toast` à toa).
+    const retirarOfertaDeRascunho = () => {
+      if (!ofertaDeRascunhoPendenteRef.current) return;
+      ofertaDeRascunhoPendenteRef.current = false;
+      setOfertaDeRascunhoPendente(false);
+      toast.dismiss(ID_DA_OFERTA_DE_RASCUNHO_ANTIGO);
+    };
     if (productId && !isLoading) {
       const draftKey = chaveDoRascunhoDoProduto(userId, productId);
       // Rascunho com mais de 7 dias já sai daqui descartado (vira `null`).
@@ -1631,7 +1673,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             // Grade que só existe neste rascunho (o produto foi criado e as
             // variações não gravaram): o aviso fica até ela decidir.
             const pendente = parsed.variacoesPendentes === true;
+            // Decidiu (Restaurar ou Descartar): o salvamento automático volta
+            // a gravar. Idempotente.
+            const decidiuOfertaDeRascunho = () => {
+              ofertaDeRascunhoPendenteRef.current = false;
+              setOfertaDeRascunhoPendente(false);
+            };
             const restaurar = () => {
+              decidiuOfertaDeRascunho();
               setVariacoesPendentes(false);
               restaurarPendenteRef.current = null;
               setFormData(draftFields);
@@ -1666,6 +1715,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             setVariacoesPendentes(pendente);
             gradeDoRascunhoPendenteRef.current = pendente;
             restaurarPendenteRef.current = pendente ? restaurar : null;
+            // O rascunho antigo espera a decisão: até lá o salvamento
+            // automático não grava por cima dele (a grade pendente já tem a
+            // trava própria, `variacoesPendentes`).
+            ofertaDeRascunhoPendenteRef.current = !pendente;
+            setOfertaDeRascunhoPendente(!pendente);
             toast.info("Rascunho não salvo encontrado para este produto", {
               description: `Deseja restaurar as alterações que você fez anteriormente?${
                 estoqueDoRascunhoDiferia
@@ -1676,6 +1730,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               cancel: {
                 label: "Descartar",
                 onClick: () => {
+                  decidiuOfertaDeRascunho();
                   setVariacoesPendentes(false);
                   gradeDoRascunhoPendenteRef.current = false;
                   restaurarPendenteRef.current = null;
@@ -1683,8 +1738,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   toast.info("Rascunho descartado.");
                 },
               },
-              duration: pendente ? Number.POSITIVE_INFINITY : 10000,
-              ...(pendente ? { id: ID_DO_AVISO_DA_GRADE_PENDENTE } : {}),
+              // O aviso fica até a decisão: não some em 10 s (o que deixava o
+              // rascunho sem dono e o salvamento automático o sobrescrevia) e
+              // não fecha por gesto — só Restaurar ou Descartar.
+              duration: Number.POSITIVE_INFINITY,
+              ...(pendente
+                ? { id: ID_DO_AVISO_DA_GRADE_PENDENTE }
+                : { id: ID_DA_OFERTA_DE_RASCUNHO_ANTIGO, dismissible: false }),
             });
           } else {
             // Draft matches database state, clean it up
@@ -1698,16 +1758,25 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             e,
           );
         }
+      } else {
+        // Sem rascunho (ela salvou e a chave foi apagada, ou ele já não
+        // existe): um aviso de uma rodada anterior não pode ficar oferecendo o
+        // que já não há, nem manter o salvamento automático parado.
+        retirarOfertaDeRascunho();
       }
       setDraftChecked(true);
     }
   }, [productId, isLoading, initialData, userId]);
 
-  // O aviso que não some sozinho (grade pendente) não sobrevive à tela.
+  // Os avisos que não somem sozinhos (grade pendente e rascunho antigo à espera
+  // de decisão) não sobrevivem à tela.
   useEffect(
     () => () => {
       if (restaurarPendenteRef.current) {
         toast.dismiss(ID_DO_AVISO_DA_GRADE_PENDENTE);
+      }
+      if (ofertaDeRascunhoPendenteRef.current) {
+        toast.dismiss(ID_DA_OFERTA_DE_RASCUNHO_ANTIGO);
       }
     },
     [],
@@ -2087,11 +2156,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // trocava a perda de trabalho da #98 (rascunho velho apagado) por outra
   // (edições novas nunca salvas), no mesmo caminho.
   //
-  // A guarda foi removida porque não defendia nada que já não estivesse
-  // defendido: o botão "Restaurar" aplica `draftFields`, uma variável
-  // capturada no closure do toast, não uma releitura do `localStorage` — o
-  // auto-save pode sobrescrever a chave enquanto o toast está aberto sem
-  // quebrar o Restaurar.
+  // A guarda foi removida na época porque o Restaurar não relê o
+  // `localStorage` (usa `draftFields`, do closure do toast) — o que escapou
+  // dali é que o auto-save, ao gravar por cima, ERA o fim do rascunho antigo:
+  // fotos já enviadas e variações digitadas se perdiam sem decisão dela
+  // (08/11/2026). A guarda voltou, agora sem o defeito da #99: o aviso não some
+  // sozinho nem por gesto (a decisão está sempre ao alcance) e a bandeira cai em
+  // TODA saída — decidir, sair da tela, ou salvar (o rascunho some e o efeito
+  // de verificação retira o aviso). Nada fica preso "pelo resto da sessão".
   useEffect(() => {
     if (isLoading || !draftChecked) return;
 
@@ -2107,6 +2179,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       if (isSubmitting) return;
       // A grade que não gravou só existe no rascunho: não troca por outro.
       if (variacoesPendentes) return;
+      // O rascunho antigo ainda espera a decisão dela: gravar agora o
+      // sobrescreveria. Quando ela decidir, este efeito roda de novo.
+      if (ofertaDeRascunhoPendente) return;
       const isDirty = isProductFormDirty(formData, initialData);
       const draftKey = chaveDoRascunhoDoProduto(userId, productId);
       if (isDirty && draftKey) {
@@ -2155,12 +2230,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     precisaRecarregar,
     isSubmitting,
     variacoesPendentes,
+    ofertaDeRascunhoPendente,
   ]);
 
   const processAndUploadImages = useCallback(
     async (arquivos: File[]) => {
       let files = arquivos;
-      if (files.length === 0) return;
+      if (files.length === 0 || cancelarEnvioRef.current) return;
 
       // O tamanho conta por foto ORIGINAL; o total não, porque cada uma é
       // reduzida antes de subir. A quantidade entra até o máximo de 10.
@@ -2193,8 +2269,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       let ilegiveis = 0;
       const fim = marcarOperacaoSensivel("upload-de-foto-do-produto");
       try {
-        // Uma foto por vez, cada uma com o próprio prazo: a que trava não
-        // arrasta as outras, e a lojista vê "N de M" andar.
+        // Uma foto por vez; se a rede falha, o restante fica para tentar de
+        // novo, sem acumular um prazo de espera por foto.
         for (const [indice, file] of files.entries()) {
           setProgressoDoEnvio({ atual: indice + 1, total: files.length });
           setImageUploadStep("compressing");
@@ -2202,30 +2278,37 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           // de uma foto que a tela já deu por falha (evita arquivo órfão no
           // armazenamento e um estado "uploading" depois do fim).
           let estourou = false;
+          const cancelamento = new Promise<never>((_, rejeitar) => {
+            cancelarEnvioRef.current = () => {
+              estourou = true;
+              rejeitar(new EnvioCancelado());
+            };
+          });
           try {
             const url = await comPrazo(
-              (async () => {
-                const comprimida = await compressProductImage(file);
-                if (estourou) throw new PrazoEsgotado(PRAZO_POR_FOTO_MS);
-                setImageUploadStep("uploading");
-                toast.loading(
-                  `Enviando foto ${indice + 1} de ${files.length}...`,
-                  { id: loadingToast },
-                );
-                const urls = await uploadProductImages([comprimida]);
-                if (!urls || urls.length === 0) {
-                  throw new Error("Falha no upload.");
-                }
-                return urls[0];
-              })(),
+              Promise.race([
+                cancelamento,
+                (async () => {
+                  const comprimida = await compressProductImage(file);
+                  if (estourou) throw new PrazoEsgotado(PRAZO_POR_FOTO_MS);
+                  setImageUploadStep("uploading");
+                  toast.loading(
+                    `Enviando foto ${indice + 1} de ${files.length}...`,
+                    { id: loadingToast },
+                  );
+                  const urls = await uploadProductImages([comprimida]);
+                  if (!urls || urls.length === 0) {
+                    throw new Error("Falha no upload.");
+                  }
+                  // O upload por baixo não aceita cancelamento. Se chegou
+                  // depois do prazo OU do cancelamento, apaga só o que ele criou.
+                  if (estourou) void descartarFotosDoProduto([urls[0]]);
+                  return urls[0];
+                })(),
+              ]),
               PRAZO_POR_FOTO_MS,
               () => {
                 estourou = true;
-              },
-              // O upload (que ninguém cancela) terminou depois de a tela dar a
-              // foto por falha: apaga o objeto que ELE gravou.
-              (urlTardia) => {
-                void descartarFotosDoProduto([urlTardia]);
               },
             );
             setFormData((prev) => ({
@@ -2246,10 +2329,27 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               id: `${Date.now()}-${indice}-${file.name}`,
               file,
               motivo:
-                error instanceof PrazoEsgotado
-                  ? "demorou demais"
-                  : "não foi enviada",
+                error instanceof EnvioCancelado
+                  ? "teve o envio cancelado"
+                  : error instanceof PrazoEsgotado
+                    ? "demorou demais"
+                    : "não foi enviada",
             });
+            for (const [restante, pendente] of files
+              .slice(indice + 1)
+              .entries()) {
+              falhas.push({
+                id: `${Date.now()}-pendente-${restante}-${pendente.name}`,
+                file: pendente,
+                motivo:
+                  error instanceof EnvioCancelado
+                    ? "teve o envio cancelado"
+                    : "não foi enviada",
+              });
+            }
+            break;
+          } finally {
+            cancelarEnvioRef.current = null;
           }
         }
 
@@ -2271,9 +2371,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         } else {
           setFotosComFalha((prev) => [...prev, ...falhas]);
           toast.error(
-            enviadas > 0
-              ? `${falhas.length} de ${files.length} fotos não subiram.`
-              : "Erro ao processar ou enviar imagens.",
+            `${falhas.length} de ${files.length} ${files.length === 1 ? "foto não subiu" : "fotos não subiram"}.`,
             {
               id: loadingToast,
               description:
@@ -3161,8 +3259,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // foto que outro aparelho acabou de pôr: mexer nas fotos confere a
         // versão como o estoque (recusa e recarrega em vez de apagar).
         const mexeuNasFotos = camposDoProduto.images !== undefined;
+        // A variação existente também vai inteira: até trocar só o código de
+        // barras pode devolver o preço próprio antigo de outro aparelho.
+        const mexeuNaGradeExistente = variantesAMandar.some(
+          (v) => !v.id.startsWith("temp-"),
+        );
         const conferencia =
-          mexeuNoEstoque || mexeuNasFotos
+          mexeuNoEstoque || mexeuNasFotos || mexeuNaGradeExistente
             ? { baseUpdatedAt: currentProduct?.updatedAt }
             : undefined;
         let naoApagadas: string[] = [];
@@ -3364,12 +3467,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           const chaveDoNovo = chaveDoRascunhoDoProduto(userId);
           if (chaveDoNovo) localStorage.removeItem(chaveDoNovo);
           const motivo = criado.variantesNaoSalvas.motivo;
-          toast.error(
-            `O produto foi criado, mas as variações NÃO foram salvas.${
-              motivo ? ` ${motivo}` : ""
-            } Você está na edição dele: corrija e toque em Salvar para tentar de novo -- isso atualiza este produto, não cria outro.`,
-            { duration: 30000 },
-          );
+          // Sem resposta da rede o hook já avisou, com a frase certa (não se
+          // sabe se as variações entraram: conferir antes de restaurar).
+          if (!criado.variantesNaoSalvas.semResposta) {
+            toast.error(
+              `O produto foi criado, mas as variações NÃO foram salvas.${
+                motivo ? ` ${motivo}` : ""
+              } Você está na edição dele: corrija e toque em Salvar para tentar de novo -- isso atualiza este produto, não cria outro.`,
+              { duration: 30000 },
+            );
+          }
           setIsSubmitting(false);
           onSetDirty?.(false);
           onNavigate("admin-product-form", criado.id, true);
@@ -3438,8 +3545,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         const criadasEmOutroAparelho = variants.filter(
           (v) => !idsNoFormulario.has(v.id) && !idsExcluidosAqui.has(v.id),
         );
+        const gradeMesclada = variacoesAposConflito(
+          formData.variants,
+          initialData.variants,
+          variants,
+        );
         const gradeRecarregada = juntarVariacoesDeOutroAparelho(
-          variacoesDoRascunhoComEstoqueDoBanco(formData.variants, variants),
+          // As novas do banco entram pelo juntador para manter a conferência
+          // de combinação repetida e respeitar as exclusões feitas aqui.
+          gradeMesclada.filter((v) => idsNoFormulario.has(v.id)),
           criadasEmOutroAparelho,
         );
         setFormData(
@@ -3626,12 +3740,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           Verifique a conexão — o formulário fica bloqueado para proteger os
           dados
         </p>
-        <button
-          onClick={() => window.location.reload()}
-          className="mt-4 min-h-11 rounded-lg border border-admin-border bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
-        >
-          Recarregar
-        </button>
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+          <button
+            onClick={() => window.location.reload()}
+            className="min-h-11 rounded-lg border border-admin-border bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
+          >
+            Recarregar
+          </button>
+          {/* Sem isto, com sinal fraco a lojista só saía recarregando. */}
+          <button
+            onClick={() => onNavigate("admin-products")}
+            className="min-h-11 rounded-lg border border-admin-border bg-transparent px-4 py-2 text-[11px] font-black uppercase tracking-widest text-zinc-300 hover:border-amber-500/30 hover:text-white"
+          >
+            Voltar para Produtos
+          </button>
+        </div>
       </div>
     );
   }
@@ -3720,7 +3843,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     variants: formData.variants,
   });
   const marginPct =
-    priceVal > 0 ? ((priceVal - costPriceVal) / priceVal) * 100 : 0;
+    priceVal > 0
+      ? Math.round(((priceVal - costPriceVal) / priceVal) * 10000) / 100
+      : 0;
   // Quatro rótulos em palavras simples: prejuízo, sem lucro, lucro baixo
   // (< 30%) e lucro bom.
   const [analiseDoLucro, corDoLucro] =
@@ -3734,7 +3859,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // Frete (PAC/SEDEX) vai até 30 kg: acima disso, quem pensa em gramas digitou 350.
   const pesoVal = Number.parseFloat(formData.weightKg);
   const pesoEmGramasTalvez =
-    pesoVal > 30
+    !pesoError && pesoVal > 30
       ? {
           kg: (pesoVal / 1000).toLocaleString("pt-BR", {
             minimumFractionDigits: 3,
@@ -3775,7 +3900,27 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   );
 
   return (
-    <div className="produto-formulario pb-admin relative h-auto min-h-full overflow-x-clip text-white lg:pb-12">
+    <div
+      className="produto-formulario pb-admin relative h-auto min-h-full overflow-x-clip text-white lg:pb-12"
+      onDragOver={(e) => {
+        // Só ARQUIVO é tratado aqui: soltar um texto selecionado dentro de um
+        // campo continua funcionando como o navegador faz.
+        if (Array.from(e.dataTransfer?.types ?? []).includes("Files")) {
+          e.preventDefault();
+        }
+      }}
+      onDrop={async (e) => {
+        if (!Array.from(e.dataTransfer?.types ?? []).includes("Files")) return;
+        e.preventDefault();
+        setIsDragging(false);
+        if (isOffline) {
+          toast.error("Não é possível enviar imagens offline.");
+          return;
+        }
+        if (isImageUploading || isSubmitting || showSuccess) return;
+        await processAndUploadImages(Array.from(e.dataTransfer.files || []));
+      }}
+    >
       {gerenciandoCategorias && (
         <LimiteDePedaco
           pedacos={[GerenciarCategorias]}
@@ -4413,17 +4558,6 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         setIsDragging(true);
                       }}
                       onDragLeave={() => setIsDragging(false)}
-                      onDrop={async (e) => {
-                        e.preventDefault();
-                        setIsDragging(false);
-                        if (isOffline) {
-                          toast.error("Não é possível enviar imagens offline.");
-                          return;
-                        }
-                        if (isImageUploading) return;
-                        const files = Array.from(e.dataTransfer.files || []);
-                        await processAndUploadImages(files);
-                      }}
                       className={cn(
                         "produto-fotos-envio relative flex cursor-pointer select-none flex-col items-center justify-center gap-1 overflow-hidden transition-all",
                         isDragging
@@ -4664,6 +4798,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       </span>
                     )}
                   </div>
+                )}
+                {isUploadingImages && (
+                  <button
+                    type="button"
+                    onClick={() => cancelarEnvioRef.current?.()}
+                    className="mt-2 min-h-11 rounded-xl border border-admin-border px-3 text-sm font-bold text-white"
+                  >
+                    Cancelar envio
+                  </button>
                 )}
                 {fotosComFalha.length > 0 && (
                   <ul data-testid="fotos-com-falha" className="mt-3 space-y-2">

@@ -790,4 +790,54 @@ describe("CheckoutView — com conta o painel de 'conferir antes' continua exata
     expect(document.body.textContent).toContain("Ver meus pedidos");
     expect(botaoFinalizar()!.disabled).toBe(true);
   });
+
+  it("logada, falha de rede: o aviso e o toast NÃO prometem 'não sai em dobro' e mandam conferir Meus pedidos", async () => {
+    // A cliente com conta não tem compra congelada: se a resposta se perdeu
+    // depois de o pedido ser gravado e o cupom/total mudou, a chave gira e o
+    // reenvio cria OUTRO pedido. A promessa só vale para a convidada (o teste
+    // acima), que reenvia exatamente a mesma compra.
+    createOrder.mockRejectedValueOnce({
+      code: "",
+      message: "TypeError: Failed to fetch",
+    });
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+    await act(async () => {
+      digitar("checkout-name", "Cliente Teste");
+      digitar("checkout-tel", "34999999999");
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 420));
+    });
+    await act(async () => {
+      botaoPorTexto("Dinheiro na Entrega")?.click();
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      botaoFinalizar()!.click();
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    // Confirma o ramo antes de julgar a frase: o painel é o de rede, sem trava.
+    expect(
+      document.querySelector('button[data-acao="tentar_de_novo"]'),
+    ).not.toBeNull();
+    const alerta = document.querySelector('[role="alert"]')!.textContent!;
+    expect(alerta).not.toContain("não sai em dobro");
+    expect(alerta).toContain("Meus pedidos");
+    const textoDoToast = String(toastError.mock.calls.at(-1)?.[0]);
+    expect(textoDoToast).not.toContain("não sai em dobro");
+    expect(textoDoToast).toContain("Meus pedidos");
+  });
 });

@@ -94,7 +94,10 @@ describe("AddressList — teclado no cartão selecionável", () => {
   it("Enter e Espaço no Editar não escolhem o endereço e deixam o clique nativo acontecer", () => {
     montar();
     for (const tecla of ["Enter", " "]) {
-      const acaoPadraoPreservada = apertar(botao("Editar"), tecla);
+      const acaoPadraoPreservada = apertar(
+        botao("Editar endereço Casa"),
+        tecla,
+      );
       expect(acaoPadraoPreservada).toBe(true);
     }
     expect(onSelect).not.toHaveBeenCalled();
@@ -103,14 +106,14 @@ describe("AddressList — teclado no cartão selecionável", () => {
   it("Enter e Espaço no Excluir também não escolhem o endereço", () => {
     montar();
     for (const tecla of ["Enter", " "]) {
-      expect(apertar(botao("Excluir"), tecla)).toBe(true);
+      expect(apertar(botao("Excluir endereço Casa"), tecla)).toBe(true);
     }
     expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("o clique no Editar continua editando sem escolher", () => {
     montar();
-    act(() => botao("Editar").click());
+    act(() => botao("Editar endereço Casa").click());
     expect(onEdit).toHaveBeenCalledWith(CASA);
     expect(onSelect).not.toHaveBeenCalled();
   });

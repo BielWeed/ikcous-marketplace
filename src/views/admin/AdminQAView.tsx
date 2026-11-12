@@ -34,6 +34,7 @@ import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useQuestions } from "@/hooks/useQuestions";
 import type { Question } from "@/hooks/useQuestions";
+import { useRevalidarAoVoltar } from "@/hooks/useRevalidarAoVoltar";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
@@ -116,6 +117,14 @@ export const AdminQAView = memo(function AdminQAView({
     "compact",
   );
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const botoesExcluir = useRef(new Map<string, HTMLButtonElement>());
+  const tituloListaRef = useRef<HTMLHeadingElement>(null);
+  const focoPendente = useRef<(() => HTMLElement | null) | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    focoPendente.current?.()?.focus();
+    focoPendente.current = null;
+  }, [confirmDeleteId, active]);
   const [expandedQuestionId, setExpandedQuestionId] = useState<string | null>(
     null,
   );
@@ -149,10 +158,17 @@ export const AdminQAView = memo(function AdminQAView({
 
   const pageSize = 10;
 
+  const leiturasEmVooRef = useRef(0);
+  const rodadaStatsRef = useRef(0);
+  const rodadaListaRef = useRef(0);
+
   // --- 3. CALLBACKS ---
   const fetchStats = useCallback(async () => {
+    const rodada = ++rodadaStatsRef.current;
+    leiturasEmVooRef.current += 1;
     try {
       const stats = await getQAStats();
+      if (rodada !== rodadaStatsRef.current) return;
       if (stats.status === "error") {
         console.error("Error fetching QA stats:", stats.error);
         // Mantém os últimos números bons no cache, mas marca a tela:
@@ -167,15 +183,21 @@ export const AdminQAView = memo(function AdminQAView({
       setResponseRate(stats.rate);
       setStatsUnavailable(false);
     } catch (error) {
+      if (rodada !== rodadaStatsRef.current) return;
       console.error("Error fetching QA stats:", error);
       setStatsUnavailable(true);
+    } finally {
+      leiturasEmVooRef.current -= 1;
     }
   }, [getQAStats]);
 
   const loadQuestions = useCallback(
     (pageToFetch: number, silent = false) => {
-      getAllQuestions(pageToFetch, pageSize, filter, searchQuery, silent)
+      const rodada = ++rodadaListaRef.current;
+      leiturasEmVooRef.current += 1;
+      return getAllQuestions(pageToFetch, pageSize, filter, searchQuery, silent)
         .then((result) => {
+          if (rodada !== rodadaListaRef.current) return;
           if (result && !result.falhou) {
             setTotalQuestions(result.total);
             const maxPage = Math.max(0, Math.ceil(result.total / pageSize) - 1);
@@ -186,10 +208,19 @@ export const AdminQAView = memo(function AdminQAView({
           firstLoadRef.current = false;
         })
         .catch(() => {
-          firstLoadRef.current = false;
+          if (rodada === rodadaListaRef.current) firstLoadRef.current = false;
+        })
+        .finally(() => {
+          leiturasEmVooRef.current -= 1;
         });
     },
     [getAllQuestions, pageSize, filter, searchQuery, setPage],
+  );
+
+  useRevalidarAoVoltar(
+    active && !isOffline,
+    () => Promise.all([loadQuestions(page, true), fetchStats()]),
+    () => leiturasEmVooRef.current === 0,
   );
 
   // Keep ref up to date with latest loadQuestions and page state without recreating subcription effect
@@ -215,9 +246,13 @@ export const AdminQAView = memo(function AdminQAView({
   }, [selectedQuestion]);
 
   const initialAnswerRef = useRef("");
+  // Pergunta cuja mudança em outro aparelho já foi avisada: o segundo toque em
+  // "Publicar resposta" publica de propósito.
+  const mudancaAvisadaRef = useRef<string | null>(null);
 
   // Sincronizar preenchimento com selectedQuestion e resetar ao fechar
   useEffect(() => {
+    mudancaAvisadaRef.current = null;
     if (selectedQuestion) {
       const isAnswered =
         selectedQuestion.answers && selectedQuestion.answers.length > 0;
@@ -234,6 +269,22 @@ export const AdminQAView = memo(function AdminQAView({
       initialAnswerRef.current = "";
     }
   }, [selectedQuestion]);
+
+  // `selectedQuestion` é uma cópia da hora em que a folha abriu. Se outro
+  // aparelho respondeu desde então e o campo continua intacto, ele acompanha a
+  // resposta nova; campo já mexido nunca é trocado (o envio avisa antes).
+  useEffect(() => {
+    const aberta = formularioAtual.current.selectedQuestion;
+    if (!aberta) return;
+    const naLista = questions.find((q) => q.id === aberta.id);
+    if (!naLista) return;
+    const respostaNova = naLista.answers.at(-1)?.answer ?? "";
+    if (respostaNova === initialAnswerRef.current) return;
+    if (formularioAtual.current.answer === initialAnswerRef.current) {
+      initialAnswerRef.current = respostaNova;
+      setAnswer(respostaNova);
+    }
+  }, [questions]);
 
   // Fechar a folha nunca deixa alteração pendente. Efeito à parte para não
   // refazer o preenchimento acima se `onSetDirty` mudar de identidade. Sem
@@ -329,6 +380,24 @@ export const AdminQAView = memo(function AdminQAView({
       return;
     }
 
+    // A resposta mudou (ou a pergunta saiu da lista) em outro aparelho depois
+    // que esta folha abriu: publicar agora apagaria a mais nova sem ninguém
+    // ver. Lista que falhou ou ainda carrega não prova nada.
+    if (mudancaAvisadaRef.current !== selectedQuestion.id) {
+      const naLista = questions.find((q) => q.id === selectedQuestion.id);
+      const mudouFora = naLista
+        ? (naLista.answers.at(-1)?.answer ?? "") !== initialAnswerRef.current
+        : !loading && !erroDaListagemAdmin;
+      if (mudouFora) {
+        mudancaAvisadaRef.current = selectedQuestion.id;
+        toast.error("Esta pergunta mudou em outro aparelho.", {
+          description:
+            "Ela pode ter sido respondida ou excluída. Confira a lista; se ainda quiser publicar, toque em Publicar resposta de novo.",
+        });
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       const success = await addAnswer(
@@ -343,7 +412,11 @@ export const AdminQAView = memo(function AdminQAView({
       // este ramo, falha (rede, permissão, sessão vencida) deixava a tela
       // muda, com o diálogo aberto como se nada tivesse acontecido.
       if (!success) {
-        toast.error("Não foi possível enviar a resposta. Tente de novo.");
+        // Sem "tente de novo" seco: se o aviso de rede sem resposta (do hook)
+        // aparecer junto, os dois dizem a mesma coisa — conferir a lista.
+        toast.error(
+          "Não foi possível confirmar o envio da resposta. Confira na lista antes de tentar de novo.",
+        );
         return;
       }
 
@@ -396,12 +469,14 @@ export const AdminQAView = memo(function AdminQAView({
       // acontecia, nenhum aviso aparecia e o dialogo ficava aberto. Ela
       // nao tinha como saber se falhou ou se o clique nao pegou.
       toast.error(
-        "Não foi possível excluir a pergunta. Tente de novo em instantes.",
+        "Não foi possível confirmar a exclusão da pergunta. Confira na lista antes de tentar de novo.",
       );
+      focoPendente.current = () => botoesExcluir.current.get(id) ?? null;
       setConfirmDeleteId(null);
       return;
     }
 
+    focoPendente.current = () => tituloListaRef.current;
     toast.success("Pergunta excluída");
     setConfirmDeleteId(null);
     setRefreshTrigger((prev) => prev + 1);
@@ -511,7 +586,7 @@ export const AdminQAView = memo(function AdminQAView({
         />
       );
     }
-    if (filter === "pending") {
+    if (filter === "pending" && !semBase) {
       return (
         <VazioDaLista
           icone={Check}
@@ -615,7 +690,11 @@ export const AdminQAView = memo(function AdminQAView({
           {isConfirmingDelete ? (
             <ConfirmarExclusao
               frase="Excluir esta pergunta? Não dá para desfazer."
-              aoCancelar={() => setConfirmDeleteId(null)}
+              aoCancelar={() => {
+                focoPendente.current = () =>
+                  botoesExcluir.current.get(q.id) ?? null;
+                setConfirmDeleteId(null);
+              }}
               aoConfirmar={() => handleDelete(q.id)}
             />
           ) : (
@@ -628,6 +707,7 @@ export const AdminQAView = memo(function AdminQAView({
               <button
                 type="button"
                 disabled={isOffline}
+                aria-label={`${isAnswered ? "Editar resposta" : "Responder"} a ${q.customerName}`}
                 onClick={() => setSelectedQuestion(q)}
                 className={cn(BOTAO_NEUTRO, "min-w-0 flex-1")}
               >
@@ -638,7 +718,11 @@ export const AdminQAView = memo(function AdminQAView({
                 type="button"
                 disabled={isOffline}
                 onClick={() => setConfirmDeleteId(q.id)}
-                aria-label="Excluir pergunta"
+                ref={(botao) => {
+                  if (botao) botoesExcluir.current.set(q.id, botao);
+                  else botoesExcluir.current.delete(q.id);
+                }}
+                aria-label={`Excluir pergunta de ${q.customerName}`}
                 title="Excluir pergunta"
                 className={BOTAO_DE_ICONE_EXCLUIR}
               >
@@ -649,7 +733,7 @@ export const AdminQAView = memo(function AdminQAView({
                   type="button"
                   onClick={alternar}
                   aria-expanded={aberto}
-                  aria-label="Mostrar detalhes"
+                  aria-label={`Mostrar detalhes da pergunta de ${q.customerName}`}
                   className={BOTAO_DE_ICONE}
                 >
                   {aberto ? (
@@ -698,6 +782,9 @@ export const AdminQAView = memo(function AdminQAView({
           some da vista: o alternador logo abaixo já diz "Perguntas". */}
       <div className="sr-only">
         <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-qa"]} />
+        <h2 ref={tituloListaRef} tabIndex={-1}>
+          Lista de perguntas
+        </h2>
       </div>
 
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-4 pt-3">

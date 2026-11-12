@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/contexts/StoreContext";
 import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import {
   type PassosDoEndereco,
   passosDoEndereco,
@@ -35,11 +36,11 @@ const TETO_NOME = 120;
 const TETO_NUMERO = 20;
 
 const addressSchema = z.object({
-  // Aparar só para validar mantém os valores válidos enviados como antes.
+  // Recusar texto sem desenho mantém os valores válidos enviados como antes.
   name: z
     .string()
     .max(120, "Máximo de 120 caracteres")
-    .refine((v) => v.trim().length > 0, "Nome/Apelido é obrigatório"),
+    .refine(nomeTemConteudoVisivel, "Nome/Apelido é obrigatório"),
   // A máscara devolve "12345-67" para 7 dígitos — 8 CARACTERES contando o
   // hífen, o que passava num min(8) e gravava CEP incompleto como endereço
   // de entrega. O que valida CEP é a contagem de DÍGITOS: sempre 8.
@@ -49,11 +50,11 @@ const addressSchema = z.object({
   street: z
     .string()
     .max(200, "Máximo de 200 caracteres")
-    .refine((v) => v.trim().length > 0, "Logradouro é obrigatório"),
+    .refine(nomeTemConteudoVisivel, "Logradouro é obrigatório"),
   number: z
     .string()
     .max(20, "Máximo de 20 caracteres")
-    .refine((v) => v.trim().length > 0, "Número é obrigatório"),
+    .refine(nomeTemConteudoVisivel, "Número é obrigatório"),
   complement: z
     .string()
     .max(200, "Máximo de 200 caracteres")
@@ -62,8 +63,8 @@ const addressSchema = z.object({
   neighborhood: z
     .string()
     .max(120, "Máximo de 120 caracteres")
-    .refine((v) => v.trim().length > 0, "Bairro é obrigatório"),
-  city: z.string().refine((v) => v.trim().length > 0, "Cidade é obrigatória"),
+    .refine(nomeTemConteudoVisivel, "Bairro é obrigatório"),
+  city: z.string().refine(nomeTemConteudoVisivel, "Cidade é obrigatória"),
   state: z
     .string()
     .refine((v) => v.trim().length > 0, "Estado é obrigatório")
@@ -76,15 +77,26 @@ const addressSchema = z.object({
   recipient_name: z
     .string()
     .max(120, "Máximo de 120 caracteres")
-    .refine((v) => v.trim().length > 0, "Nome do destinatário é obrigatório"),
+    .refine(nomeTemConteudoVisivel, "Nome do destinatário é obrigatório"),
   is_default: z.boolean(),
 });
 
 type AddressFormValues = z.infer<typeof addressSchema>;
 
+/**
+ * O que o formulário entrega ao salvar. Em ENDEREÇO NOVO `is_default` vai
+ * sempre; ao EDITAR só vai quando a pessoa mexeu no botão "Endereço principal"
+ * (senão o valor que o formulário guardou na abertura, já velho se outro
+ * aparelho trocou o principal, devolveria a marca ao endereço errado).
+ */
+export type DadosDoFormularioDeEndereco = Omit<
+  Address,
+  "id" | "user_id" | "is_default"
+> & { is_default?: boolean };
+
 interface AddressFormProps {
   initialData?: Address;
-  onSubmit: (address: Omit<Address, "id" | "user_id">) => Promise<void>;
+  onSubmit: (address: DadosDoFormularioDeEndereco) => Promise<void>;
   onCancel: () => void;
   /**
    * Nome da conta de quem está comprando: já vem em "Quem vai receber" num
@@ -197,6 +209,9 @@ export function AddressForm({
   });
 
   const hasInitializedRef = useRef(false);
+  // A pessoa mexeu no botão "Endereço principal" desde que o formulário foi
+  // preenchido com o endereço atual? Só então a edição manda `is_default`.
+  const principalTocadoRef = useRef(false);
   // Guarda o endereço já aplicado ao formulário. A EDIÇÃO pode chegar
   // DEPOIS do mount: sem cache local de endereços, o fetch do pai ainda
   // corria quando isLoaded subiu, o reset único travou os campos vazios e o
@@ -295,6 +310,7 @@ export function AddressForm({
   useEffect(() => {
     if (isLoaded && !hasInitializedRef.current) {
       hasInitializedRef.current = true;
+      principalTocadoRef.current = false;
       initialDataAplicadoRef.current = initialData;
       cepAssociadoRef.current = initialData?.cep
         ? formatarCep(initialData.cep).limpo
@@ -339,6 +355,7 @@ export function AddressForm({
       initialData.id !== initialDataAplicadoRef.current?.id
     ) {
       initialDataAplicadoRef.current = initialData;
+      principalTocadoRef.current = false;
       cepAssociadoRef.current = initialData.cep
         ? formatarCep(initialData.cep).limpo
         : null;
@@ -460,7 +477,7 @@ export function AddressForm({
   const handleSubmit = async (values: AddressFormValues) => {
     setLoading(true);
     try {
-      const cleanData: Omit<Address, "id" | "user_id"> = {
+      const cleanData: DadosDoFormularioDeEndereco = {
         name: values.name,
         cep: values.cep,
         street: values.street,
@@ -470,7 +487,12 @@ export function AddressForm({
         city: values.city,
         // UF vai para a etiqueta do Melhor Envio: sempre em maiúsculas.
         state: values.state.toUpperCase(),
-        is_default: values.is_default,
+        // Editando, o principal só vai se a pessoa mexeu nele: o valor do
+        // formulário é o da abertura, e outro aparelho pode ter mudado o
+        // principal desde então.
+        ...(!initialData || principalTocadoRef.current
+          ? { is_default: values.is_default }
+          : {}),
         reference: values.reference?.trim() || "",
         recipient_name: values.recipient_name,
       };
@@ -1085,7 +1107,10 @@ export function AddressForm({
                   id="is_default"
                   name="is_default"
                   checked={field.value}
-                  onCheckedChange={field.onChange}
+                  onCheckedChange={(ligado) => {
+                    principalTocadoRef.current = true;
+                    field.onChange(ligado);
+                  }}
                   disabled={loading}
                   // Ligado em tinta (não na cor da loja), como os chips.
                   className="data-[state=checked]:bg-foreground"

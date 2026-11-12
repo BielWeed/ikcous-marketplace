@@ -246,7 +246,7 @@ export const BannerCarousel = memo(function BannerCarousel({
               {modeloDoBanner(banner.templateType) ? (
                 <BannerPronto
                   banner={banner}
-                  prioridade={index === 0}
+                  prioridade={primeiraSemFade && index === 0}
                   semFade={primeiraSemFade && index === 0}
                   carregarCedo={index > 0 && primeiraCarregou}
                   aoCarregar={index === 0 ? aoCarregarAPrimeira : undefined}
@@ -259,7 +259,7 @@ export const BannerCarousel = memo(function BannerCarousel({
                     src={banner.imageUrl}
                     alt={descricao}
                     className="size-full transition-transform [transition-duration:2000ms] [transition-timing-function:cubic-bezier(0.4,0,0.2,1)] group-hover:scale-105"
-                    priority={index === 0}
+                    priority={primeiraSemFade && index === 0}
                     semFade={primeiraSemFade && index === 0}
                     carregarCedo={index > 0 && primeiraCarregou}
                     aoCarregar={index === 0 ? aoCarregarAPrimeira : undefined}

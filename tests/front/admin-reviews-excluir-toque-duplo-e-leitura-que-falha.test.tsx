@@ -161,7 +161,7 @@ describe("AdminReviewsView — excluir e leitura que falha", () => {
       await act(async () => {
         hospedeiro
           .querySelector<HTMLButtonElement>(
-            'button[aria-label="Excluir avaliação"]',
+            'button[aria-label^="Excluir avaliação de "]',
           )
           ?.click();
       });
@@ -201,7 +201,7 @@ describe("AdminReviewsView — excluir e leitura que falha", () => {
       await act(async () => {
         hospedeiro
           .querySelector<HTMLButtonElement>(
-            'button[aria-label="Excluir avaliação"]',
+            'button[aria-label^="Excluir avaliação de "]',
           )
           ?.click();
       });
@@ -226,7 +226,7 @@ describe("AdminReviewsView — excluir e leitura que falha", () => {
       await act(async () => {
         hospedeiro
           .querySelector<HTMLButtonElement>(
-            'button[aria-label="Excluir avaliação"]',
+            'button[aria-label^="Excluir avaliação de "]',
           )
           ?.click();
       });

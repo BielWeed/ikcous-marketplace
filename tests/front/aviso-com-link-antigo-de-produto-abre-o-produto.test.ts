@@ -27,6 +27,30 @@ function destinoDe(url: string) {
 }
 
 describe("navegarPorUrl — link antigo de produto", () => {
+  it.each(["/Cart", "/CART", "/cart", "/Orders", "/orders"])(
+    "%s reconhece a tela sem depender de maiúsculas",
+    (url) => {
+      expect(destinoDe(url)).toHaveBeenCalledWith(
+        url.slice(1).toLowerCase(),
+        undefined,
+      );
+    },
+  );
+
+  it.each([
+    "/Product-Detail?id=Produto-AbC",
+    "/product-detail?id=Produto-AbC",
+    "/Product?id=Produto-AbC",
+    "/Product/Produto-AbC",
+    "/product/Produto-AbC",
+    "/PRODUCT/Produto-AbC/",
+  ])("%s preserva as letras do id", (url) => {
+    expect(destinoDe(url)).toHaveBeenCalledWith(
+      "product-detail",
+      "Produto-AbC",
+    );
+  });
+
   it("/product/<id> abre o produto", () => {
     const navegar = destinoDe("/product/abc");
     expect(navegar).toHaveBeenCalledTimes(1);

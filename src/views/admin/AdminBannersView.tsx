@@ -36,6 +36,7 @@ import { useFocoAposExcluir } from "@/hooks/useFocoAposExcluir";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
+import { useProdutosExcluidosDosBanners } from "@/hooks/useProdutosExcluidosDosBanners";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
@@ -69,6 +70,10 @@ import {
   EVENTO_NOVO_BANNER,
   consumirPedidoDeNovoBanner,
 } from "@/lib/novo-banner-pendente";
+import {
+  ehConsultaSemResposta,
+  ehGravacaoIncerta,
+} from "@/lib/prazo-da-requisicao";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import {
   AVISO_BANNER_ALTERADO_DEPOIS,
@@ -101,6 +106,7 @@ import {
   type ComponentProps,
   memo,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -382,6 +388,11 @@ const MENSAGEM_FOTO_ILEGIVEL =
 // pausar o banner junto ou trocar o produto.
 const AVISO_PRODUTO_PAUSADO =
   "Este produto está pausado: o toque no banner leva à Home";
+// Produto excluído: mesmo destino (a Home), e o produto não volta sozinho.
+// Só aparece quando o banco CONFIRMA a exclusão. O painel não desliga nem
+// apaga o banner: quem decide é a lojista.
+const AVISO_PRODUTO_EXCLUIDO =
+  "O produto deste banner foi excluído: o toque no banner leva à Home";
 
 /** O prefixo da frase de preço do banner: o mesmo no subtítulo automático e na sugestão. */
 const prefixoDoPreco = (vitrine: { aPartirDe: boolean }) =>
@@ -402,11 +413,14 @@ interface CartaoDoBannerProps {
   readonly banner: Banner;
   /** O produto do link está pausado (só quando a lista o achou pausado). */
   readonly produtoPausado: boolean;
+  /** O banco confirmou que o produto do link foi excluído. */
+  readonly produtoExcluido: boolean;
   /** Rótulo curto da posição (mostrado só quando a lista mistura setores). */
   readonly posicaoCurta: string | null;
   readonly indice: number;
   readonly total: number;
   readonly detalhado: boolean;
+  readonly reordenacaoFiltrada: boolean;
   readonly isProcessing: boolean;
   readonly isOffline: boolean;
   readonly activeAction: ControleAtivo | null;
@@ -437,10 +451,12 @@ function InterruptorDoBanner({
 const CartaoDoBanner = memo(function CartaoDoBanner({
   banner,
   produtoPausado,
+  produtoExcluido,
   posicaoCurta,
   indice,
   total,
   detalhado,
+  reordenacaoFiltrada,
   isProcessing,
   isOffline,
   activeAction,
@@ -449,6 +465,17 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
   onEditar,
   onExcluir,
 }: CartaoDoBannerProps) {
+  const setaAcionada = useRef<HTMLButtonElement | null>(null);
+  useLayoutEffect(() => {
+    if (isProcessing || !setaAcionada.current) return;
+    const seta = setaAcionada.current;
+    setaAcionada.current = null;
+    if (
+      document.activeElement === document.body ||
+      document.activeElement === seta
+    )
+      seta.focus();
+  }, [isProcessing, indice]);
   const situacao = situacaoDoBanner(banner);
   const ocupado = activeAction?.id === banner.id;
 
@@ -531,10 +558,16 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
               </div>
             )}
 
-            {produtoPausado && (
+            {produtoExcluido ? (
               <p className="text-[11px] font-medium text-amber-400">
-                {AVISO_PRODUTO_PAUSADO}
+                {AVISO_PRODUTO_EXCLUIDO}
               </p>
+            ) : (
+              produtoPausado && (
+                <p className="text-[11px] font-medium text-amber-400">
+                  {AVISO_PRODUTO_PAUSADO}
+                </p>
+              )
             )}
 
             {banner.startDate &&
@@ -573,10 +606,31 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
           <div className="flex flex-wrap items-center gap-1.5">
             <div className="flex items-center rounded-lg border border-admin-border bg-admin-raised p-0.5">
               <button
-                onClick={() => onMover(banner, "up")}
-                disabled={indice === 0 || isProcessing || isOffline}
-                className="flex size-11 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-25 disabled:hover:bg-transparent"
-                title="Mover para cima"
+                onClick={(evento) => {
+                  if (
+                    !reordenacaoFiltrada &&
+                    indice > 0 &&
+                    !isProcessing &&
+                    !isOffline
+                  ) {
+                    if (document.activeElement === evento.currentTarget)
+                      setaAcionada.current = evento.currentTarget;
+                    onMover(banner, "up");
+                  }
+                }}
+                aria-label={`Subir banner ${banner.title || "sem título"}`}
+                aria-disabled={
+                  reordenacaoFiltrada ||
+                  indice === 0 ||
+                  isProcessing ||
+                  isOffline
+                }
+                className="flex size-11 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-white/5 hover:text-white aria-disabled:opacity-25 aria-disabled:hover:bg-transparent"
+                title={
+                  reordenacaoFiltrada
+                    ? "Limpe o filtro para reordenar"
+                    : "Mover para cima"
+                }
               >
                 {ocupado && activeAction?.type === "up" ? (
                   <Loader2 className="size-4 motion-safe:animate-spin text-zinc-200" />
@@ -585,10 +639,31 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
                 )}
               </button>
               <button
-                onClick={() => onMover(banner, "down")}
-                disabled={indice === total - 1 || isProcessing || isOffline}
-                className="flex size-11 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-25 disabled:hover:bg-transparent"
-                title="Mover para baixo"
+                onClick={(evento) => {
+                  if (
+                    !reordenacaoFiltrada &&
+                    indice < total - 1 &&
+                    !isProcessing &&
+                    !isOffline
+                  ) {
+                    if (document.activeElement === evento.currentTarget)
+                      setaAcionada.current = evento.currentTarget;
+                    onMover(banner, "down");
+                  }
+                }}
+                aria-label={`Descer banner ${banner.title || "sem título"}`}
+                aria-disabled={
+                  reordenacaoFiltrada ||
+                  indice === total - 1 ||
+                  isProcessing ||
+                  isOffline
+                }
+                className="flex size-11 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-white/5 hover:text-white aria-disabled:opacity-25 aria-disabled:hover:bg-transparent"
+                title={
+                  reordenacaoFiltrada
+                    ? "Limpe o filtro para reordenar"
+                    : "Mover para baixo"
+                }
               >
                 {ocupado && activeAction?.type === "down" ? (
                   <Loader2 className="size-4 motion-safe:animate-spin text-zinc-200" />
@@ -618,6 +693,7 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
               disabled={isProcessing || isOffline}
               className="flex size-11 items-center justify-center rounded-lg border border-admin-border bg-admin-raised text-zinc-400 transition-colors hover:bg-white/5 hover:text-white disabled:pointer-events-none disabled:opacity-40"
               title="Editar"
+              aria-label={`Editar banner ${banner.title || "sem título"}`}
             >
               <Edit className="size-4 text-zinc-200" />
             </button>
@@ -626,6 +702,7 @@ const CartaoDoBanner = memo(function CartaoDoBanner({
               disabled={isProcessing || isOffline}
               className="flex size-11 items-center justify-center rounded-lg border border-rose-500/20 bg-rose-500/10 text-rose-400 transition-colors hover:bg-rose-500 hover:text-white disabled:pointer-events-none disabled:opacity-40"
               title="Excluir"
+              aria-label={`Excluir banner ${banner.title || "sem título"}`}
             >
               {ocupado && activeAction?.type === "delete" ? (
                 <Loader2 className="size-4 motion-safe:animate-spin" />
@@ -776,6 +853,24 @@ export const AdminBannersView = memo(function AdminBannersView({
   const [confirmarFimVencido, setConfirmarFimVencido] = useState(false);
   const fimVencidoConfirmadoRef = useRef(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [anuncioDaOrdem, setAnuncioDaOrdem] = useState("");
+  const movimentoPendente = useRef<{ id: string; indice: number } | null>(null);
+  useEffect(() => {
+    if (isProcessing || !movimentoPendente.current) return;
+    const movimento = movimentoPendente.current;
+    movimentoPendente.current = null;
+    const movido = banners.find((b) => b.id === movimento.id);
+    if (!movido) return;
+    const lista = banners
+      .filter((b) => b.position === movido.position)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const indice = lista.findIndex((b) => b.id === movido.id);
+    if (indice === movimento.indice) {
+      setAnuncioDaOrdem(
+        `Banner ${movido.title || "sem título"} agora é o ${indice + 1}º de ${lista.length}`,
+      );
+    }
+  }, [banners, isProcessing]);
   const [activeAction, setActiveAction] = useState<{
     id: string;
     type: "up" | "down" | "toggle" | "delete";
@@ -1137,6 +1232,18 @@ export const AdminBannersView = memo(function AdminBannersView({
     () =>
       new Set(products.filter((p) => p.isActive === false).map((p) => p.id)),
     [products],
+  );
+
+  const idsDeProdutosDosBanners = useMemo(
+    () =>
+      banners
+        .map((b) => idDoProdutoDoLink(b.link))
+        .filter((id): id is string => id !== null),
+    [banners],
+  );
+  const idsDeProdutosExcluidos = useProdutosExcluidosDosBanners(
+    idsDeProdutosDosBanners,
+    active,
   );
 
   const productSuggestions = useMemo(() => {
@@ -1882,12 +1989,21 @@ export const AdminBannersView = memo(function AdminBannersView({
       toast.error(recusa);
       return;
     }
+    if (isOffline) {
+      toast.error("Sem conexão com a internet", {
+        description: "Conecte-se à internet e escolha a imagem de novo.",
+      });
+      return;
+    }
     if (
-      isOffline ||
       isSubmittingRef.current ||
       geracaoDoUploadPendente.current === geracaoDoEditor.current
-    )
+    ) {
+      toast.error(
+        "Aguarde o envio ou salvamento atual terminar e escolha a imagem de novo.",
+      );
       return;
+    }
 
     const geracaoDoUpload = geracaoDoEditor.current;
     geracaoDoUploadPendente.current = geracaoDoUpload;
@@ -2080,7 +2196,19 @@ export const AdminBannersView = memo(function AdminBannersView({
       setIsDialogOpen(false);
     } catch (error) {
       console.error("Erro ao salvar banner:", error);
-      toast.error("Erro ao salvar as configurações do banner.");
+      if (ehGravacaoIncerta(error)) {
+        // Sem resposta ou com falha de rede sem rejeição definitiva, o servidor
+        // pode ter gravado o banner com a foto enviada: ela deixa de ser "órfã
+        // provada", então fechar o editor não pode apagá-la (apagar deixaria
+        // um banner publicado sem imagem). O rascunho segue no editor.
+        imagemEnviadaNaoSalvaRef.current = null;
+      }
+      if (
+        !ehConsultaSemResposta(error) &&
+        !(error instanceof Error && error.name === "BannerIndisponivel")
+      ) {
+        toast.error("Erro ao salvar as configurações do banner.");
+      }
     } finally {
       fim();
       setIsSubmitting(false);
@@ -2106,7 +2234,9 @@ export const AdminBannersView = memo(function AdminBannersView({
       await deleteBanner(bannerToDelete.id, bannerToDelete.imageUrl);
     } catch (error) {
       console.error("Erro ao deletar banner:", error);
-      toast.error("Erro ao excluir o banner.");
+      // Sem resposta: o hook já avisou que não se sabe se excluiu.
+      if (!ehConsultaSemResposta(error))
+        toast.error("Erro ao excluir o banner.");
     } finally {
       setIsProcessing(false);
       setActiveAction(null);
@@ -2131,14 +2261,20 @@ export const AdminBannersView = memo(function AdminBannersView({
       // Igual aos irmãos confirmDeleteBanner/moveBanner: sem isto o Switch só
       // voltava a ficar habilitado em silêncio e o lojista achava que a
       // troca tinha sido aplicada quando na verdade falhou.
-      toast.error("Erro ao alternar status do banner.");
+      // Sem resposta: o hook já avisou que não se sabe se a mudança gravou.
+      if (!ehConsultaSemResposta(error)) {
+        toast.error("Erro ao alternar status do banner.");
+      }
     } finally {
       setIsProcessing(false);
       setActiveAction(null);
     }
   };
 
+  const reordenacaoFiltrada =
+    searchQueryList.trim() !== "" || statusFilter !== "all";
   const moveBanner = async (banner: Banner, direction: "up" | "down") => {
+    if (isProcessing || reordenacaoFiltrada) return;
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description:
@@ -2156,6 +2292,8 @@ export const AdminBannersView = memo(function AdminBannersView({
 
     if (targetIndex >= 0 && targetIndex < bannersInPosition.length) {
       const targetBanner = bannersInPosition[targetIndex];
+      setAnuncioDaOrdem("");
+      movimentoPendente.current = { id: banner.id, indice: targetIndex };
       setIsProcessing(true);
       setActiveAction({ id: banner.id, type: direction });
       try {
@@ -2267,6 +2405,9 @@ export const AdminBannersView = memo(function AdminBannersView({
       ref={viewRef}
       className="min-h-full w-full bg-admin-bg pb-admin font-sans text-zinc-400"
     >
+      <p role="status" aria-live="polite" className="sr-only">
+        {anuncioDaOrdem}
+      </p>
       <div className="mx-auto w-full max-w-3xl space-y-6 p-4 sm:p-6">
         {isOffline && (
           <p
@@ -2421,12 +2562,16 @@ export const AdminBannersView = memo(function AdminBannersView({
                           produtoPausado={idsDeProdutosPausados.has(
                             idDoProdutoDoLink(b.link) ?? "",
                           )}
+                          produtoExcluido={idsDeProdutosExcluidos.has(
+                            idDoProdutoDoLink(b.link) ?? "",
+                          )}
                           posicaoCurta={null}
                           indice={todosNaPosicao.findIndex(
                             (t) => t.id === b.id,
                           )}
                           total={todosNaPosicao.length}
                           detalhado={viewMode === "detailed"}
+                          reordenacaoFiltrada={reordenacaoFiltrada}
                           isProcessing={isProcessing}
                           isOffline={isOffline}
                           activeAction={activeAction}

@@ -113,13 +113,21 @@ describe("BannerCarousel — as fotos seguintes baixam depois da primeira", () =
   ];
 
   it("antes da primeira carregar, so ela e pedida (nao competir com o banner 1)", () => {
-    act(() => raiz.render(<BannerCarousel banners={tres} autoPlay={false} />));
+    act(() =>
+      raiz.render(
+        <BannerCarousel primeiraSemFade banners={tres} autoPlay={false} />,
+      ),
+    );
     expect(fotos()).toHaveLength(1);
     expect(fotos()[0].getAttribute("src")).toContain("um.jpg");
   });
 
   it("quando a primeira carrega, a segunda e a terceira passam a ser pedidas sem prioridade alta", () => {
-    act(() => raiz.render(<BannerCarousel banners={tres} autoPlay={false} />));
+    act(() =>
+      raiz.render(
+        <BannerCarousel primeiraSemFade banners={tres} autoPlay={false} />,
+      ),
+    );
     carregar(fotos()[0]);
     const imgs = fotos();
     expect(imgs).toHaveLength(3);
@@ -136,7 +144,9 @@ describe("BannerCarousel — as fotos seguintes baixam depois da primeira", () =
       banner("p2", { templateType: "pronto_destaque" }),
     ];
     act(() =>
-      raiz.render(<BannerCarousel banners={prontos} autoPlay={false} />),
+      raiz.render(
+        <BannerCarousel primeiraSemFade banners={prontos} autoPlay={false} />,
+      ),
     );
     expect(fotos()).toHaveLength(1);
     carregar(fotos()[0]);
@@ -144,9 +154,46 @@ describe("BannerCarousel — as fotos seguintes baixam depois da primeira", () =
     expect(fotos()[1].getAttribute("loading")).toBe("eager");
   });
 
+  it("no meio, espera aparecer e carrega a primeira sem prioridade alta; depois antecipa as seguintes", () => {
+    const aoAparecer: (() => void)[] = [];
+    class ObservadorControlado {
+      private readonly callback: IntersectionObserverCallback;
+      constructor(callback: IntersectionObserverCallback) {
+        this.callback = callback;
+      }
+      observe(target: Element) {
+        aoAparecer.push(() =>
+          this.callback(
+            [{ isIntersecting: true, target } as IntersectionObserverEntry],
+            this as unknown as IntersectionObserver,
+          ),
+        );
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("IntersectionObserver", ObservadorControlado);
+    act(() => raiz.render(<BannerCarousel banners={tres} autoPlay={false} />));
+    expect(fotos()).toHaveLength(0);
+    expect(aoAparecer.length).toBeGreaterThan(0);
+    act(() => aoAparecer[0]());
+    expect(fotos()).toHaveLength(1);
+    expect(fotos()[0].getAttribute("src")).toContain("um.jpg");
+    expect(fotos()[0].getAttribute("loading")).toBe("lazy");
+    expect(fotos()[0].getAttribute("fetchpriority")).toBe("auto");
+    carregar(fotos()[0]);
+    expect(fotos()).toHaveLength(3);
+    for (const img of fotos().slice(1)) {
+      expect(img.getAttribute("loading")).toBe("eager");
+      expect(img.getAttribute("fetchpriority")).toBe("auto");
+    }
+  });
+
   it("banner unico: nada muda", () => {
     act(() =>
-      raiz.render(<BannerCarousel banners={[tres[0]]} autoPlay={false} />),
+      raiz.render(
+        <BannerCarousel primeiraSemFade banners={[tres[0]]} autoPlay={false} />,
+      ),
     );
     carregar(fotos()[0]);
     expect(fotos()).toHaveLength(1);

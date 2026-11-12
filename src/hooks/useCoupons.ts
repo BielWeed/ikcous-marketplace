@@ -16,7 +16,11 @@ import { supabase } from "@/lib/supabase";
 import { arredondarParaCentavos } from "@/lib/utils";
 import type { ClienteDoCupom, Coupon } from "@/types";
 import type { Database } from "@/types/database.types";
-import { cachedCouponsData, setCachedCouponsData } from "@/utils/admin_cache";
+import {
+  cachedCouponsData,
+  lerGeracaoDosCachesDeAdmin,
+  setCachedCouponsData,
+} from "@/utils/admin_cache";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -176,6 +180,7 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
   const fetchCoupons = useCallback(
     async (silencioso = false, avisarErro = true) => {
       const rodada = ++rodadaRef.current;
+      const geracao = lerGeracaoDosCachesDeAdmin();
       try {
         if (silencioso !== true) setLoading(true);
 
@@ -190,7 +195,11 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
           () => erroDeConsultaSemResposta(),
         );
 
-        if (rodada !== rodadaRef.current) return;
+        if (
+          rodada !== rodadaRef.current ||
+          geracao !== lerGeracaoDosCachesDeAdmin()
+        )
+          return;
 
         if (error) throw error;
 
@@ -370,6 +379,11 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       if (mudou) dbUpdates.alcance = updates.alcance;
     }
 
+    // As regras (primeiro passo) já chegaram ao banco? Se a lista (segundo
+    // passo) falhar DEPOIS disso, o cupom está salvo e a lista não: o aviso
+    // tem de dizer isso, senão "não foi possível salvar" mente — o cupom pode
+    // ter virado "Clientes escolhidos" com a lista de antes (ou vazia).
+    let regrasJaGravadas = false;
     try {
       // Remendo vazio (só a lista de clientes mudou, ou o alcance escolhido já é
       // o do banco): o UPDATE sem coluna não altera linha nenhuma e viraria
@@ -383,6 +397,7 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
 
         if (error) throw error;
         if (!gravadas?.length) throw new Error("Nenhum cupom foi alterado.");
+        regrasJaGravadas = true;
       }
 
       if (clientes !== undefined) {
@@ -398,7 +413,24 @@ export function useCoupons(autoFetch = false, sondarAlcance = false) {
       console.error("Error updating coupon:", error);
       // Mesma régua do addCoupon (laudo 0109, A4): trocar o código por um
       // que já existe é recusa de constraint, não "revise as regras".
-      if (ehConsultaSemResposta(error)) {
+      if (regrasJaGravadas && clientes !== undefined) {
+        // Falha parcial: cupom salvo, lista não. A tela não recarrega os
+        // cupons por cima (o que ela escolheu fica para a nova tentativa) e
+        // quem chamou mantém o formulário aberto.
+        const semResposta = ehConsultaSemResposta(error);
+        toast.error(
+          semResposta
+            ? "Sem resposta da rede. O cupom foi salvo, mas não sabemos se a lista de clientes também foi."
+            : "O cupom foi salvo, mas a lista de clientes NÃO.",
+          {
+            description:
+              (error as { code?: string } | null)?.code === "42501"
+                ? 'Por enquanto vale a lista que estava salva antes (um cupom que acabou de virar "Clientes escolhidos" não vale para ninguém). Sua conta não tem mais permissão de administrador: entre de novo e salve o cupom outra vez.'
+                : 'Por enquanto vale a lista que estava salva antes (um cupom que acabou de virar "Clientes escolhidos" não vale para ninguém). O que você escolheu continua na tela: toque em Salvar Cupom de novo para gravar a lista.',
+            duration: 10000,
+          },
+        );
+      } else if (ehConsultaSemResposta(error)) {
         toast.error(MENSAGEM_GRAVACAO_SEM_RESPOSTA);
         // Não espera a releitura para liberar quem está salvando. A escrita
         // pode ter chegado: nunca restaurar uma foto antiga por conta do prazo.

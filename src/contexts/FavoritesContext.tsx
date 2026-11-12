@@ -3,6 +3,10 @@ import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useProducts } from "@/hooks/useProducts";
 import { criarCanalDeAbas } from "@/lib/canal-de-abas";
+import {
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types";
 import React, {
@@ -15,6 +19,24 @@ import React, {
 import { toast } from "sonner";
 
 const FAVORITES_KEY = "ikcous_favorites";
+const PRAZO_DA_LEITURA_MS = 15_000;
+const PRAZO_DA_GRAVACAO_MS = 20_000;
+
+// Limita a espera dentro da fila: a próxima escrita pode seguir mesmo sem
+// resposta. A conclusão tardia não executa limpeza de pendências nem rollback.
+async function aguardarGravacaoDeFavorito(
+  requisicao: PromiseLike<{ error: unknown }>,
+): Promise<{ error: unknown }> {
+  try {
+    return await aguardarComPrazo(
+      Promise.resolve(requisicao),
+      PRAZO_DA_GRAVACAO_MS,
+      erroDeConsultaSemResposta,
+    );
+  } catch (error) {
+    return { error };
+  }
+}
 
 // Achado 2 da revisão de contexto limpo (26/08/2026) — a chave anônima
 // (FAVORITES_KEY) estava guardando DUAS coisas diferentes: (a) o favorito
@@ -172,6 +194,7 @@ export function FavoritesProvider({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const { user } = useAuth();
+  const userId = user?.id;
   const { isLeader } = useLeaderElection();
   const {
     products: allProducts,
@@ -188,9 +211,12 @@ export function FavoritesProvider({
   // acima) porque o primeiro render lê o disco como ele estiver — um
   // aparelho antigo ainda tem o `Product` inteiro aqui, e a migração
   // (efeito abaixo) só tem chance de agir DEPOIS desse primeiro render.
+  // `entreAbas`: o visitante pode ter duas abas abertas; sem isso uma apaga o
+  // favorito da outra, e o login subiria para a conta o que o aparelho já
+  // não tem (o login lê esta lista, que o evento `storage` mantém em dia).
   const [localFavoritesRaw, setLocalFavoritesRaw] = useLocalStorage<
     EntradaFavoritoLocal[]
-  >(FAVORITES_KEY, []);
+  >(FAVORITES_KEY, [], { entreAbas: true });
   // Cache EM MEMÓRIA (nunca em disco — o disco só guarda id, de propósito)
   // do último retrato conhecido de cada favorito do visitante. Ela só entra
   // em jogo quando o id não bate com NENHUM produto de `allProducts` — ou
@@ -282,11 +308,12 @@ export function FavoritesProvider({
   }, [user]);
 
   const fetchDbFavorites = useCallback(
-    async function consultarFavoritos() {
-      if (!user || usuarioAtualIdRef.current !== user.id) return;
+    async function consultarFavoritos(mostrarCarregamento = false) {
+      if (!userId || usuarioAtualIdRef.current !== userId) return;
+      if (mostrarCarregamento) setLoading(true);
       const rodada = ++rodadaRef.current;
       ultimaLeituraEmRef.current = Date.now();
-      const donoDaRodada = user.id;
+      const donoDaRodada = userId;
       const gravacoes = gravacoesRef.current;
       gravacoes.ultimaLeitura = rodada;
       const ehVelha = () => {
@@ -309,10 +336,16 @@ export function FavoritesProvider({
         return false;
       };
       try {
-        const { data, error } = await supabase
-          .from("favorites")
-          .select("product_id, created_at")
-          .eq("user_id", user.id);
+        const { data, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("favorites")
+              .select("product_id, created_at")
+              .eq("user_id", userId),
+          ),
+          PRAZO_DA_LEITURA_MS,
+          erroDeConsultaSemResposta,
+        );
 
         if (ehVelha()) return;
         if (error) {
@@ -329,9 +362,17 @@ export function FavoritesProvider({
         if (ehVelha()) return;
         console.error("Fetch favorites failed", err);
         setErro("Não conseguimos carregar seus favoritos.");
+      } finally {
+        if (
+          usuarioAtualIdRef.current === donoDaRodada &&
+          gravacoes === gravacoesRef.current &&
+          rodada === gravacoes.ultimaLeitura &&
+          gravacoes.pendentes === 0
+        )
+          setLoading(false);
       }
     },
-    [user],
+    [userId],
   );
 
   // Fila serializada de gravações por produto de cada conta: toque do usuário
@@ -365,7 +406,7 @@ export function FavoritesProvider({
           if (gravacoes.pendentes === 0 && gravacoes.reconsultar) {
             gravacoes.reconsultar = false;
             // Deixa o chamador concluir seu rollback antes de aplicar a releitura.
-            void Promise.resolve().then(fetchDbFavorites);
+            void Promise.resolve().then(() => fetchDbFavorites());
           }
         }
       }
@@ -432,12 +473,14 @@ export function FavoritesProvider({
           ) {
             return { error: null };
           }
-          return await supabase
-            .from("favorites")
-            .upsert(
-              { user_id: userId, product_id: p.id },
-              { onConflict: "user_id,product_id", ignoreDuplicates: true },
-            );
+          return await aguardarGravacaoDeFavorito(
+            supabase
+              .from("favorites")
+              .upsert(
+                { user_id: userId, product_id: p.id },
+                { onConflict: "user_id,product_id", ignoreDuplicates: true },
+              ),
+          );
         });
         resultados.push({ produto: p, error });
       }
@@ -886,12 +929,14 @@ export function FavoritesProvider({
           resultado: { error },
           ultima,
         } = await enfileirarGravacao(`${user.id}:${product.id}`, async () => {
-          const resposta = await supabase
-            .from("favorites")
-            .upsert(
-              { user_id: user.id, product_id: product.id },
-              { onConflict: "user_id,product_id", ignoreDuplicates: true },
-            );
+          const resposta = await aguardarGravacaoDeFavorito(
+            supabase
+              .from("favorites")
+              .upsert(
+                { user_id: user.id, product_id: product.id },
+                { onConflict: "user_id,product_id", ignoreDuplicates: true },
+              ),
+          );
           // A fila em DISCO é da conta que gravou: limpa mesmo que a pessoa
           // já tenha trocado de conta (senão a retentativa dela, no próximo
           // login, regravaria o que já está no servidor).
@@ -985,11 +1030,13 @@ export function FavoritesProvider({
           resultado: { error },
           ultima,
         } = await enfileirarGravacao(`${user.id}:${productId}`, async () => {
-          const resposta = await supabase
-            .from("favorites")
-            .delete()
-            .eq("user_id", user.id)
-            .eq("product_id", productId);
+          const resposta = await aguardarGravacaoDeFavorito(
+            supabase
+              .from("favorites")
+              .delete()
+              .eq("user_id", user.id)
+              .eq("product_id", productId),
+          );
           if (!resposta.error) {
             // Dentro da fila, antes de a próxima gravação do produto começar
             // (a drenagem confere este contador) e mesmo que a pessoa já
@@ -1119,7 +1166,7 @@ export function FavoritesProvider({
       isFavorite,
       loading,
       erro,
-      refresh: () => void fetchDbFavorites(),
+      refresh: () => void fetchDbFavorites(true),
       pendingCount: pendingFavorites.length,
       retentarPendentes,
       limparIndisponiveis,

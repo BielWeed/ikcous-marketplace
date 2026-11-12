@@ -428,9 +428,14 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     const campoValor = hospedeiro.querySelector(
       "#frete-gratis-acima-de",
     ) as HTMLInputElement;
-    // `min="0.01"`: 0 é "desligado" no contrato de presets — nunca é limiar.
-    expect(campoValor.min).toBe("0.01");
-    // E a consequência é dita ANTES do salvar, não no susto da reabertura.
+    // O campo é de TEXTO (vírgula no iPhone, lote r79-d), então `min="0.01"`
+    // não existe mais: 0 é "desligado" no contrato de presets — nunca é
+    // limiar — e quem o recusa é o aviso, dito ANTES do salvar.
+    await digitarNoCampo(campoValor, "0");
+    expect(texto()).toContain("Escreva o valor");
+    expect(campoValor.getAttribute("aria-invalid")).toBe("true");
+    await digitarNoCampo(campoValor, "-5");
+    expect(texto()).toContain("Escreva o valor");
     expect(texto()).toContain("A partir de");
   });
 

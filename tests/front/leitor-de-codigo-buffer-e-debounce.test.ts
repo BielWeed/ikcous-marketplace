@@ -164,7 +164,7 @@ describe("buffer do leitor físico (USB/Bluetooth)", () => {
   });
 });
 
-describe("debounce de leitura (janela de 1,5s)", () => {
+describe("debounce de leitura (janela de 1,5s + saída do quadro)", () => {
   let t = 0;
   const agora = () => t;
 
@@ -188,20 +188,42 @@ describe("debounce de leitura (janela de 1,5s)", () => {
     expect(debounce.aceita("X")).toBe(true);
   });
 
-  it("14. a recusa NÃO empurra a janela: código parado na frente da câmera é aceito de novo 1,5s depois do PRIMEIRO aceite, não do último quadro", () => {
+  it("14. código PARADO na frente da câmera conta uma vez só, por mais tempo que fique (não soma unidade que a pessoa não pediu)", () => {
     const debounce = criarDebounceDeLeitura({ agora });
     t = 0;
     expect(debounce.aceita("X")).toBe(true);
-    t = 500;
-    expect(debounce.aceita("X")).toBe(false);
-    t = 1000;
-    expect(debounce.aceita("X")).toBe(false);
-    t = 1400;
-    expect(debounce.aceita("X")).toBe(false);
-    t = 1500;
-    // Se cada recusa tivesse empurrado o instante lembrado, este código
-    // nunca mais seria aceito — é exatamente o defeito clássico desta peça.
+    // A câmera decodifica o mesmo código várias vezes por segundo, por 10 s.
+    let aceitasDepoisDaPrimeira = 0;
+    for (t = 150; t <= 10_000; t += 150) {
+      if (debounce.aceita("X")) aceitasDepoisDaPrimeira += 1;
+    }
+    expect(aceitasDepoisDaPrimeira).toBe(0);
+  });
+
+  it("14b. depois que o código SAIU do quadro e voltou, vale de novo (é outra unidade)", () => {
+    const debounce = criarDebounceDeLeitura({ agora });
+    t = 0;
     expect(debounce.aceita("X")).toBe(true);
+    // Fica uns instantes na frente da câmera…
+    for (t = 150; t <= 600; t += 150) {
+      expect(debounce.aceita("X")).toBe(false);
+    }
+    // …sai do quadro (nenhuma leitura por 3 s) e volta.
+    t = 3600;
+    expect(debounce.aceita("X")).toBe(true);
+  });
+
+  it("14c. sumiu só por um instante (quadro borrado) e voltou: continua sendo a MESMA peça parada", () => {
+    const debounce = criarDebounceDeLeitura({ agora });
+    t = 0;
+    expect(debounce.aceita("X")).toBe(true);
+    for (t = 150; t <= 1500; t += 150) {
+      expect(debounce.aceita("X")).toBe(false);
+    }
+    // Dois quadros sem decodificar (300 ms) e o código reaparece, já passada a
+    // janela de 1,5 s do primeiro aceite.
+    t = 1800;
+    expect(debounce.aceita("X")).toBe(false);
   });
 
   it("15. códigos diferentes não se atrapalham", () => {

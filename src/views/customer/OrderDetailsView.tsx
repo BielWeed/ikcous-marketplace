@@ -32,12 +32,16 @@ import {
 } from "@/lib/forma-de-pagamento";
 import { manterItensEEnderecoDaTela } from "@/lib/fundir-pedido-do-hook";
 import { linhasDoEndereco } from "@/lib/linhas-do-endereco-do-pedido";
-import { linkDeRastreio } from "@/lib/link-de-rastreio";
+import {
+  linkDeRastreio,
+  normalizarCodigoDeRastreio,
+} from "@/lib/link-de-rastreio";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { podeReenviarComprovante } from "@/lib/pode-reenviar-comprovante";
 import { podeRetomarPagamento } from "@/lib/pode-retomar-pagamento";
 import {
+  MENSAGEM_REENVIO_DO_COMPROVANTE_SEM_RESPOSTA,
   aguardarComPrazo,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
@@ -503,6 +507,7 @@ export function OrderDetailsView({
     return porLinha;
   }, [order?.items, rotulosDasVariacoes]);
   const [loading, setLoading] = useState(true);
+  const [relendoPedido, setRelendoPedido] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   // Espelho de `isCancelling` para o efeito que acompanha a lista (ele não
   // pode depender do estado: religar o efeito ao terminar o cancelamento
@@ -982,7 +987,8 @@ export function OrderDetailsView({
    * o que sobra no banco é `""` ou espaço. Bloco "Código de Rastreio" em branco
    * é pior que bloco nenhum — parece que o envio saiu e não saiu.
    */
-  const codigoDeRastreio = order?.trackingCode?.trim() || null;
+  const codigoDeRastreio =
+    normalizarCodigoDeRastreio(order?.trackingCode ?? "") || null;
 
   const handleCopyTracking = async () => {
     if (!codigoDeRastreio) return;
@@ -1038,6 +1044,10 @@ export function OrderDetailsView({
         toast.error(
           "A loja ainda não configurou o envio de e-mails. Fale com o lojista.",
         );
+      } else if (desfecho.motivo === "sem_resposta") {
+        // Prazo da tela estourado: o e-mail pode ter saído. Nem "reenviado",
+        // nem "não conseguimos": manda conferir antes de tentar de novo.
+        toast.error(MENSAGEM_REENVIO_DO_COMPROVANTE_SEM_RESPOSTA);
       } else {
         toast.error(
           "Não conseguimos reenviar o comprovante agora. Tente de novo em instantes.",
@@ -1397,6 +1407,35 @@ export function OrderDetailsView({
               className="min-h-11 rounded-xl bg-zinc-900 px-4 text-sm font-bold text-white transition-all active:scale-95"
             >
               Consultar de novo
+            </button>
+          </div>
+        )}
+
+        {ordersLoadError && !retratoDoConvidado && (
+          <div
+            role="status"
+            className="flex items-center justify-between gap-3 rounded-[14px] border border-border px-3 py-2 text-left text-xs font-medium text-amber-700 dark:text-amber-400"
+          >
+            <span>
+              Não conseguimos atualizar este pedido agora. O que aparece pode
+              estar desatualizado.
+            </span>
+            <button
+              type="button"
+              onClick={async () => {
+                if (relendoPedido) return;
+                setRelendoPedido(true);
+                try {
+                  await loadOrder();
+                } finally {
+                  setRelendoPedido(false);
+                }
+              }}
+              disabled={relendoPedido}
+              aria-disabled={relendoPedido}
+              className="min-h-11 shrink-0 rounded-xl border border-solid border-border px-3 text-xs font-semibold text-foreground active:scale-95 aria-disabled:opacity-60"
+            >
+              {relendoPedido ? "Carregando…" : "Tentar de novo"}
             </button>
           </div>
         )}
@@ -2033,11 +2072,13 @@ export function OrderDetailsView({
           {/* Laudo 0109 (B2): segunda chance do comprovante — ver o
               comentário do handleResendReceipt. Fora do bloco do cancelar
               de propósito: o reenvio faz sentido em QUALQUER estágio do
-              pedido, inclusive entregue ou cancelado — MAS só quando o
-              e-mail que a edge mandaria é o comprovante de verdade (ver
+              pedido, inclusive entregue — MAS só quando o e-mail que a edge
+              mandaria é o comprovante de verdade (ver
               `podeReenviarComprovante`): com PIX online ainda aguardando,
               o toque gastava a única vaga de e-mail do pedido com o texto
-              de "aguardando" e o de "pago" nunca mais saía. */}
+              de "aguardando" e o de "pago" nunca mais saía. Pedido
+              cancelado também não oferece: o e-mail diria "Recebemos seu
+              pedido" sem falar do cancelamento. */}
           {/* O reenvio exige sessao (a edge recusa sem ela): quem acompanha
               por codigo, sem conta, nao ve um botao que sempre falharia. */}
           {!!user && podeReenviarComprovante(order) && (

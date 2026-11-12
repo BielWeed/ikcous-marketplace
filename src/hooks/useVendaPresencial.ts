@@ -1467,6 +1467,11 @@ export function useVendaPresencial(
           { duration: 10_000 },
         );
       }
+    } else if (EDICOES_DO_CUPOM.has(acao.tipo) && estadoRef.current.enviando) {
+      // Busca manual, cliente e desconto também caem no descarte do envio
+      // pendente (o "Voltar à venda" leva ao cupom mesmo com o envio no ar):
+      // sem aviso, o toque parecia ignorado. O mesmo texto do bipe.
+      toast.error("Aguarde: a venda está sendo registrada.");
     }
     despachar(acao);
   }, []);
@@ -1571,7 +1576,15 @@ export function useVendaPresencial(
   // leitura, sempre, restaurando ou não) resolve isto: este efeito não
   // toca no armazenamento até o PRÓXIMO commit, o que garante que `estado`
   // já é o estado restaurado quando ele decide gravar ou apagar.
+  //
+  // A gravação PENDENTE (a que o `setTimeout` ainda não disparou) fica numa ref
+  // para quem SAI da tela poder adiantá-la — ver o efeito de "grava ao sair"
+  // logo abaixo. Cada rodada deste efeito começa zerando a ref: o ramo de
+  // "nada a guardar" (e o de recibo) não pode deixar para trás a gravação
+  // pendente de uma rodada anterior.
+  const gravacaoPendenteRef = useRef<(() => void) | null>(null);
   useEffect(() => {
+    gravacaoPendenteRef.current = null;
     if (!prontoParaGravar || !chaveDoRascunho) return;
 
     const armazenamento = armazenamentoRef.current;
@@ -1592,7 +1605,9 @@ export function useVendaPresencial(
       return;
     }
 
-    const identificador = setTimeout(() => {
+    const gravar = () => {
+      clearTimeout(identificador);
+      gravacaoPendenteRef.current = null;
       try {
         armazenamento.setItem(
           chaveDoRascunho,
@@ -1609,8 +1624,13 @@ export function useVendaPresencial(
         // vivo em memória; só o rascunho em disco fica desatualizado.
         console.error("Erro ao salvar rascunho da venda no balcão:", erro);
       }
-    }, atrasoDeGravacaoMs);
+    };
+    gravacaoPendenteRef.current = gravar;
+    const identificador = setTimeout(gravar, atrasoDeGravacaoMs);
 
+    // Só cancela o relógio: a ref NÃO é zerada aqui, porque no desmonte o
+    // efeito de "grava ao sair" (abaixo) ainda precisa dela. Em toda rodada
+    // nova ela é zerada ou reescrita no começo do efeito.
     return () => clearTimeout(identificador);
   }, [
     estado,
@@ -1619,6 +1639,21 @@ export function useVendaPresencial(
     chaveDoRascunho,
     rascunhoAntigo,
   ]);
+
+  // GRAVA AO SAIR. O atraso acima evita escrever a cada toque, mas o cleanup
+  // dele cancela o relógio — e sair da tela (o balcão fecha) ou esconder/fechar
+  // a página dentro desse atraso deixava o último bipe só na memória, quando a
+  // tela promete que "a venda fica guardada e volta ao reabrir". Aqui a gravação
+  // que ainda estava pendente é adiantada. É só o que estava pendente: o que já
+  // foi gravado (ou apagado, no cupom vazio) não é tocado.
+  useEffect(() => {
+    const gravarAgora = () => gravacaoPendenteRef.current?.();
+    window.addEventListener("pagehide", gravarAgora);
+    return () => {
+      window.removeEventListener("pagehide", gravarAgora);
+      gravarAgora();
+    };
+  }, []);
 
   // "Continuar esta venda": a decisão pendente cai, e o efeito de gravar acima
   // (que depende dela) regrava o MESMO cupom com a hora de agora.

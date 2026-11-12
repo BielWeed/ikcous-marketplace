@@ -15,15 +15,16 @@ import {
 } from "@/lib/motivo-de-recarga";
 import {
   PRAZO_APLICACAO_UPDATE_MS,
+  PRAZO_SONDA_DE_REDE_MS,
   apagarCachesDoApp,
   apagarIndexedDBAguardando,
   aplicarAtualizacaoPendenteERecarregar,
   navegarPreservandoEndereco,
 } from "@/lib/recuperacao-chunk";
 import {
+  lerVersaoComPrazo,
   nucleoSemver,
   partesDoNucleoSemver,
-  versaoLegivelDeResposta,
 } from "@/lib/versao-do-servidor";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -110,8 +111,12 @@ export function useUpdateCheck() {
       // (HTML, 404, corpo mentido, campo ausente) devolve NULL = "sem
       // informação de versão = sem atualização": nunca overlay, nunca versão
       // inventada na tela.
-      const response = await fetch("/version.json", { cache: "no-store" });
-      return await versaoLegivelDeResposta(response);
+      //
+      // COM PRAZO (a mesma sonda de rede, 5 s): leitura pendurada segurava a
+      // checagem do service worker, a detecção da versão mínima e a tentativa
+      // da trava da purga. Estourado o prazo o pedido é abortado e cai no
+      // catch como qualquer erro de rede: null, e a próxima leitura tenta de novo.
+      return await lerVersaoComPrazo(PRAZO_SONDA_DE_REDE_MS);
     } catch (e) {
       console.error("[Update] Failed to fetch server version:", e);
     }

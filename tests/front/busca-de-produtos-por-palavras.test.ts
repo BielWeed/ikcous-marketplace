@@ -20,6 +20,49 @@ const short = produto("Short Jeans Cintura Alta", "Shorts");
 const saia = produto("Saia Midi Plissada", "Saias");
 
 describe("produtoCombinaComBusca", () => {
+  it.each([
+    ["Vestido Festa Longo", "vestido de festa"],
+    ["Óculos Sol Feminino", "oculos de sol"],
+    ["Bolsa Notebook", "bolsa para notebook"],
+    ["Bolsa Couro", "bolsa com couro"],
+  ])("frase natural acha %s buscando %s", (nome, busca) => {
+    expect(produtoCombinaComBusca(produto(nome), busca)).toBe(true);
+  });
+
+  it.each([
+    "de",
+    "da",
+    "do",
+    "das",
+    "dos",
+    "para",
+    "com",
+    "e",
+    "em",
+    "a",
+    "o",
+    "um",
+    "uma",
+  ])("ligacao %s nao e obrigatoria junto de outros termos", (ligacao) => {
+    expect(
+      produtoCombinaComBusca(produto("Kit Lux", "Xyz"), `kit ${ligacao} lux`),
+    ).toBe(true);
+  });
+
+  it("ligacoes sozinhas preservam a busca antiga e tamanho continua obrigatorio", () => {
+    expect(produtoCombinaComBusca(produto("Verde"), "de")).toBe(true);
+    expect(produtoCombinaComBusca(produto("Verde"), "e")).toBe(true);
+    expect(produtoCombinaComBusca(produto("Bolsa"), "a o")).toBe(true);
+    expect(produtoCombinaComBusca(produto("Vestido Festa"), "de")).toBe(false);
+    expect(produtoCombinaComBusca(produto("Uma bolsa"), "uma")).toBe(true);
+    expect(produtoCombinaComBusca(produto("Vestido Festa"), "de para")).toBe(
+      false,
+    );
+    expect(produtoCombinaComBusca(produto("Camisa Polo"), "camisa de m")).toBe(
+      false,
+    );
+  });
+
   it("bolsa preta acha Bolsa Grande Preta (palavras separadas)", () => {
     expect(produtoCombinaComBusca(bolsa, "bolsa preta")).toBe(true);
   });
@@ -148,6 +191,37 @@ describe("produtoCombinaComBusca — cor e tamanho das variacoes", () => {
     expect(produtoCombinaComBusca(calca, "calca m")).toBe(false);
     expect(produtoCombinaComBusca(calca, "calca 42")).toBe(true);
     expect(produtoCombinaComBusca(calca, "calca 4")).toBe(false);
+  });
+
+  it.each(["p", "m", "g", "pp", "gg", "xg", "ab"])(
+    "tamanho %s nao casa dentro do nome, categoria ou descricao",
+    (tamanho) => {
+      const polo = {
+        ...produto("Camisa Polo", "Roupas", `Estampa ${tamanho}extra`),
+        variants: [variacao("Tamanho", "42")],
+      };
+      expect(produtoCombinaComBusca(polo, `camisa ${tamanho}`)).toBe(false);
+      expect(
+        produtoCombinaComBusca(
+          {
+            ...polo,
+            variants: [variacao("Tamanho", tamanho)],
+          },
+          `camisa ${tamanho}`,
+        ),
+      ).toBe(true);
+      expect(
+        produtoCombinaComBusca(
+          produto(`Camisa ${tamanho}`),
+          `camisa ${tamanho}`,
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it("uma letra so e palavra inteira, duas letras sozinhas ainda completam", () => {
+    expect(produtoCombinaComBusca(produto("Camisa Social"), "m")).toBe(false);
+    expect(produtoCombinaComBusca(produto("Camisa Social"), "ca")).toBe(true);
   });
 
   it("valor composto 'Azul / M' acha por cada palavra", () => {

@@ -18,7 +18,8 @@ import {
 import { ordenacaoValida } from "@/lib/ordenacao-da-home";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { cn } from "@/lib/utils";
-import { ordenarParaVitrine } from "@/lib/vitrine";
+import { ordenarParaVitrine, produtoDisponivel } from "@/lib/vitrine";
+import { destaquesDaVitrine, ofertasDaVitrine } from "@/lib/vitrine-do-painel";
 import type { Product, SortOption, View } from "@/types";
 import {
   ArrowDown,
@@ -248,26 +249,26 @@ export const HomeView = React.memo(function HomeView({
 
     // Sort with availability (in-stock first) prioritization, preserving sort order
     result.sort((a, b) => {
-      const aAvailable = a.stock > 0 ? 1 : 0;
-      const bAvailable = b.stock > 0 ? 1 : 0;
+      const aAvailable = produtoDisponivel(a) ? 1 : 0;
+      const bAvailable = produtoDisponivel(b) ? 1 : 0;
       if (aAvailable !== bAvailable) {
         return bAvailable - aAvailable;
       }
 
+      const porData = (b.createdTime ?? 0) - (a.createdTime ?? 0);
+      const desempate = porData || a.id.localeCompare(b.id);
       switch (sortBy) {
         // Ordena pelo preço que o card ANUNCIA (menor das opções à venda).
         case "price-asc":
-          return precoDeVitrine(a).preco - precoDeVitrine(b).preco;
+          return precoDeVitrine(a).preco - precoDeVitrine(b).preco || desempate;
         case "price-desc":
-          return precoDeVitrine(b).preco - precoDeVitrine(a).preco;
+          return precoDeVitrine(b).preco - precoDeVitrine(a).preco || desempate;
         default:
-          // Sem busca vale "mais novos primeiro" (a régua de ordenarParaVitrine):
-          // produto novo do Realtime entra no fim da lista, e depois de pausar
-          // ou sem internet ela vem em ordem de uuid. Datas iguais: o sort é
-          // estável e fica a ordem em que a lista chegou.
+          // Busca e preco nao dependem da ordem de chegada do cache ou Realtime.
+          // A data e depois o id desempatam tambem sem termo de busca.
           return pontos
-            ? (pontos.get(b.id) ?? 0) - (pontos.get(a.id) ?? 0)
-            : (b.createdTime ?? 0) - (a.createdTime ?? 0);
+            ? (pontos.get(b.id) ?? 0) - (pontos.get(a.id) ?? 0) || desempate
+            : desempate;
       }
     });
 
@@ -325,20 +326,16 @@ export const HomeView = React.memo(function HomeView({
     );
   }, [produtosAVenda]);
 
-  const offerProducts = useMemo(() => {
-    return (
-      produtosAVenda
-        // UI-191 (G3): oferta é preço de VITRINE abaixo do "De" -- o menor entre
-        // as opções à venda --, não o preço-base do produto.
-        .filter((p) => precoDeVitrine(p).precoOriginal !== null)
-        .sort((a, b) => {
-          const aAvailable = a.stock > 0 ? 1 : 0;
-          const bAvailable = b.stock > 0 ? 1 : 0;
-          return bAvailable - aAvailable;
-        })
-        .slice(0, LIMITE_MAX_ITENS_CARROSSEL)
-    );
-  }, [produtosAVenda]);
+  // Ofertas e Destaques: a MESMA regra do preview do painel
+  // (src/lib/vitrine-do-painel.ts). A escolha NÃO pode depender da posição na
+  // lista -- ela muda com o cache e o Realtime --, então vale o critério da
+  // vitrine (com estoque primeiro, mais novo primeiro, id no empate). UI-191
+  // (G3): oferta é preço de VITRINE abaixo do "De" -- o menor entre as opções
+  // à venda --, não o preço-base do produto.
+  const offerProducts = useMemo(
+    () => ofertasDaVitrine(produtosAVenda).slice(0, LIMITE_MAX_ITENS_CARROSSEL),
+    [produtosAVenda],
+  );
 
   // Quantas ofertas a faixa de Ofertas MOSTRA (mesma conta do render: lista escolhida à mão ou derivada, cortada
   // pelo maxItems). O "Lateral em duas fileiras" tem 1 fileira com 1 oferta e 2 com várias: a memória guarda
@@ -356,16 +353,11 @@ export const HomeView = React.memo(function HomeView({
     return Math.min(max, offerProducts.length);
   }, [config.homeSections, produtosAVenda, offerProducts]);
 
-  const bestsellerProducts = useMemo(() => {
-    return produtosAVenda
-      .filter((p) => p.isBestseller)
-      .sort((a, b) => {
-        const aAvailable = a.stock > 0 ? 1 : 0;
-        const bAvailable = b.stock > 0 ? 1 : 0;
-        return bAvailable - aAvailable;
-      })
-      .slice(0, LIMITE_MAX_ITENS_CARROSSEL);
-  }, [produtosAVenda]);
+  const bestsellerProducts = useMemo(
+    () =>
+      destaquesDaVitrine(produtosAVenda).slice(0, LIMITE_MAX_ITENS_CARROSSEL),
+    [produtosAVenda],
+  );
 
   // Grava a memória desta visita (frente cls-ressalva1-0409): quando dados
   // E banners resolveram, os três booleanos da home viva viram o snapshot
@@ -373,6 +365,9 @@ export const HomeView = React.memo(function HomeView({
   // Sem isto a próxima visita cai na aposta da 1ª visita (comportamento de
   // hoje) — memória é otimização, nunca fonte de verdade.
   React.useEffect(() => {
+    // Carga que FALHOU não é "a loja ficou sem conteúdo": a lista vem vazia
+    // por causa da rede e gravar isso apagaria a memória da última visita boa.
+    if (catalogoErro) return;
     if (isLoading || !bannersLoaded || !configLoaded) return;
     gravarMemoriaDaHome({
       temBanner: topBanners.length > 0,
@@ -383,6 +378,7 @@ export const HomeView = React.memo(function HomeView({
       qtdOfertas: qtdOfertasNaFaixa,
     });
   }, [
+    catalogoErro,
     isLoading,
     bannersLoaded,
     configLoaded,
@@ -679,8 +675,11 @@ export const HomeView = React.memo(function HomeView({
       {!termoDaBusca &&
         (!bannersLoaded && middleBanners.length === 0 ? (
           memoriaDaUltimaVisita?.temBannerMeio === false ? null : (
-            <div className="mx-4 w-full py-4">
-              <div className="h-[120px] w-[calc(100%-2rem)] animate-pulse rounded-[2rem] bg-zinc-100 sm:h-[200px]" />
+            <div className="w-full py-4">
+              <div
+                data-testid="esqueleto-banner-meio"
+                className="aspect-[2/1] w-full animate-pulse bg-zinc-100 md:mx-auto md:max-w-[1040px]"
+              />
             </div>
           )
         ) : middleBanners.length > 0 ? (

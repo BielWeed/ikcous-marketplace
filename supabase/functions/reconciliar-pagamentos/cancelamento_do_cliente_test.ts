@@ -228,7 +228,7 @@ Deno.test("a rotina avisa o lojista quando o CLIENTE cancelou pedido pago (UM pu
   assertEquals(r.pushes, [{
     title: "Cliente cancelou o pedido",
     body: "#4F5A6B · R$ 149,90 · Maria Silva — pago, o reembolso é automático",
-    url: "/admin-orders",
+    url: `/admin-orders?id=${PEDIDO}`,
   }]);
   assertEquals(r.corpo.cancelamentos, { candidatos: 1, avisados: 1, ignorados: 0, falhas: 0 });
 });

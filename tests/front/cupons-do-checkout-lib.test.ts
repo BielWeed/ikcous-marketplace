@@ -141,7 +141,8 @@ describe("texto do cartão", () => {
     expect(validadeDoCupom("2027-01-10T02:59:59.999Z", agora)).toBe(
       "Válido até 09/01/2027",
     );
-    expect(validadeDoCupom("2026-12-31T05:00:00.000Z", agora)).toBe(
+    // 31/12 23:59:59.999 em Brasília (ainda não passou: 01/01 02:59 UTC).
+    expect(validadeDoCupom("2027-01-01T02:59:59.999Z", agora)).toBe(
       "Vence hoje",
     );
   });

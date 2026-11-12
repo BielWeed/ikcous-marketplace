@@ -217,7 +217,7 @@ export function promessasDeFrete(config: ConfigDeFrete): PromessasDeFrete {
     return { local: desligada, nacional: desligada, iguais: true };
   }
   const preset = presetDoConfig(config.freeShippingMin);
-  const local: PromessaDeCanal = {
+  const regraLocalSalva: PromessaDeCanal = {
     estrategia: preset,
     minimo: preset === "acima_de_valor" ? config.freeShippingMin : 0,
   };
@@ -241,8 +241,21 @@ export function promessasDeFrete(config: ConfigDeFrete): PromessasDeFrete {
     minimo: estrategiaNacional === "acima_de_valor" ? minimoNacional : 0,
   };
   const iguais =
-    local.estrategia === nacional.estrategia &&
-    (local.estrategia !== "acima_de_valor" || local.minimo === nacional.minimo);
+    regraLocalSalva.estrategia === nacional.estrategia &&
+    (regraLocalSalva.estrategia !== "acima_de_valor" ||
+      regraLocalSalva.minimo === nacional.minimo);
+  // "Só retirada" COM transportadora: quem é da cidade só retira (e a retirada
+  // já é grátis); não existe entrega local a que a regra salva se refira. Se a
+  // transportadora NÃO tem a mesma regra (`!iguais`), ela é só sobra do tempo
+  // em que a loja entregava e não pode virar selo "na cidade", meta do carrinho
+  // nem aviso da Home/lembrete: a promessa local é nenhuma. Se tem a MESMA
+  // regra (`iguais`, ex.: legado sem as colunas nacionais), a regra vale para a
+  // transportadora e a barra do carrinho continua — `iguais` já faz os textos
+  // não dizerem "na cidade".
+  const local: PromessaDeCanal =
+    modoDaEntregaNaCidade(config) === "so_retiro" && !iguais
+      ? { estrategia: "desligado", minimo: 0 }
+      : regraLocalSalva;
   return { local, nacional, iguais };
 }
 

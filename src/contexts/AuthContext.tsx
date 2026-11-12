@@ -307,6 +307,9 @@ function esquecerDadosLocaisDaConta() {
   localStorage.removeItem("admin_banner_form_draft");
   localStorage.removeItem("ikcous_product_form_draft");
   localStorage.removeItem("marketplace_cart_v1");
+  // As lápides (CartContext) dizem "esta linha foi tirada às T" por até 7 dias:
+  // se ficam, a conta que entra tem a linha dela escondida por um tirar da outra.
+  localStorage.removeItem("marketplace_cart_tombstones_v1");
   localStorage.removeItem("ikcous_recently_viewed");
   localStorage.removeItem("ikcous_is_admin");
   // Revisão de contexto limpo do diff (achado 2) — o CEP também é PII do
@@ -832,7 +835,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                       console.warn(
                         "[Auth] Stale/Invalid late session detected. Forcing signOut.",
                       );
-                      await supabase.auth.signOut();
+                      await supabase.auth.signOut({ scope: "local" });
                       setSession(null);
                       setUser(null);
                       activeUserIdRef.current = null;
@@ -877,7 +880,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     }
                   } else if (sessaoSegueAtiva) {
                     // O servidor respondeu que não há user para esta sessão.
-                    await supabase.auth.signOut();
+                    await supabase.auth.signOut({ scope: "local" });
                     setSession(null);
                     setUser(null);
                     activeUserIdRef.current = null;
@@ -929,7 +932,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                   console.warn(
                     "[Auth] Stale/Invalid session detected. Forcing signOut.",
                   );
-                  await supabase.auth.signOut();
+                  await supabase.auth.signOut({ scope: "local" });
                   setSession(null);
                   setUser(null);
                   activeUserIdRef.current = null;
@@ -998,7 +1001,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                   console.error("[Auth] init checkAdmin error:", err),
                 );
               } else {
-                await supabase.auth.signOut();
+                await supabase.auth.signOut({ scope: "local" });
                 activeUserIdRef.current = null;
               }
             } catch (err) {
@@ -1457,7 +1460,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     // `scope: 'local'`: o padrão do supabase-js é 'global' e revoga os tokens da
     // conta em TODOS os aparelhos; Sair aqui só encerra este.
-    const { error } = await supabase.auth.signOut({ scope: "local" });
+    let error: { message: string } | null;
+    try {
+      ({ error } = await aguardarComPrazo(
+        supabase.auth.signOut({ scope: "local" }),
+        10_000,
+        () => erroDeConsultaSemResposta("Saída sem resposta no prazo."),
+      ));
+    } catch {
+      // Prazo ou rejeição de rede: a conta não pode continuar aberta neste
+      // aparelho. A resposta tardia não tem continuação que restaure a sessão.
+      error = { message: "Não foi possível confirmar a saída." };
+    }
     if (error) {
       // #122 — `signOut()` devolvendo erro (rede caída, por exemplo) não
       // dispara o evento `SIGNED_OUT`: sem este ramo, o app continuava
@@ -1471,7 +1485,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // resto deste bloco), então a mensagem só avisa que o servidor não
       // confirmou, sem apontar uma causa que não foi verificada.
       toast.error(
-        "Não foi possível confirmar a saída no servidor, mas sua sessão local foi encerrada.",
+        "Você saiu deste aparelho, mas não foi possível confirmar a saída no servidor.",
       );
       // Revisão de contexto limpo do diff (achado 1) — sem isto, uma checagem
       // de admin (`checkAdmin`, RPC `is_admin`) que estivesse em voo no
@@ -1486,6 +1500,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       activeUserIdRef.current = null;
       setSession(null);
       setUser(null);
+      setProfile(null);
       setAdminStatus("not-admin");
       setAdminVerificacaoFalhou(false);
       setIsPasswordRecovery(false);
@@ -1704,7 +1719,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         // parâmetro, rede) fica genérico.
         console.error("[Auth] Erro ao atualizar senha:", error.message);
         let message = "Não foi possível atualizar sua senha. Tente novamente.";
-        if (error.code === "same_password") {
+        if (error.name === "AuthSessionMissingError") {
+          message = "Este link expirou ou já foi usado. Peça um novo link.";
+          setIsPasswordRecovery(false);
+          setErroDoLinkNoEndereco("recuperacao");
+        } else if (error.code === "same_password") {
           message = "A nova senha precisa ser diferente da senha atual.";
         } else if (error.code === "weak_password") {
           message =

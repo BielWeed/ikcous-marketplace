@@ -3,6 +3,10 @@ import { supabase } from "@/lib/supabase";
 
 let geracaoDosCachesDeAdmin = 0;
 
+export function lerGeracaoDosCachesDeAdmin() {
+  return geracaoDosCachesDeAdmin;
+}
+
 export interface Customer {
   id: string;
   email: string | null;

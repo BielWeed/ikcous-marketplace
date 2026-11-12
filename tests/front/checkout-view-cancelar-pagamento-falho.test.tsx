@@ -825,6 +825,206 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
     );
   });
 
+  // Lote r64-a (acessibilidade): o toast do cancelamento é desligado de
+  // propósito (`silent`), então a mensagem de erro é a ÚNICA forma de a pessoa
+  // saber que o pedido NÃO foi cancelado — tem de ser anunciada, e o foco, que
+  // se perde enquanto o botão fica desabilitado, tem de voltar.
+  describe("erro do cancelamento é anunciado e o foco volta (r64-a)", () => {
+    async function ateOBotaoDeCancelar(
+      CheckoutViewComponente: TelaCheckout,
+      semRede = false,
+    ) {
+      await chegarNaTelaDeAguardarPagamento(CheckoutViewComponente);
+      // Ligado DEPOIS de a tela de pagamento existir e ANTES do render que
+      // mostra o botão: o clique lê `isOffline` do último render.
+      mockIsOffline = semRede;
+      await act(async () => {
+        pagamentoOnlineOnErro[0](
+          "Este pagamento foi recusado e não pode ser tentado novamente.",
+          "terminal",
+        );
+      });
+      return localizarBotaoPorTexto(
+        hospedeiro,
+        "Cancelar pedido e voltar ao carrinho",
+      )!;
+    }
+
+    // O que o Firefox (e leitores de tela sobre um botão apagado) fazem: o
+    // foco sai do botão que ficou desabilitado e cai no corpo da página. O
+    // jsdom não faz isso sozinho nem deixa `blur()` agir num botão desabilitado;
+    // tirar do DOM um elemento focado leva o foco ao corpo, como no navegador.
+    const soltarOFoco = () =>
+      act(async () => {
+        const passageiro = document.createElement("button");
+        hospedeiro.appendChild(passageiro);
+        passageiro.focus();
+        passageiro.remove();
+      });
+
+    const alertaCom = (texto: string) =>
+      [...hospedeiro.querySelectorAll('[role="alert"]')].find((el) =>
+        el.textContent?.includes(texto),
+      );
+
+    it("a falha (RPC e releitura não confirmam) aparece num role='alert': o leitor de tela fala 'não foi cancelado'", async () => {
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      const botaoCancelar = await ateOBotaoDeCancelar(CheckoutView);
+      updateOrderStatus.mockRejectedValueOnce(new Error("Falha de rede."));
+      mockStatusAposCancelar = "pending";
+
+      await act(async () => {
+        botaoCancelar.click();
+        await esperarMicrotarefas();
+        await esperarMicrotarefas();
+      });
+
+      const alerta = alertaCom("Não foi possível confirmar o cancelamento");
+      expect(alerta).toBeDefined();
+      expect(alerta?.tagName).toBe("P");
+    });
+
+    it("sem conexão: a frase 'o pedido não foi cancelado' também é anunciada", async () => {
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      const botaoCancelar = await ateOBotaoDeCancelar(CheckoutView, true);
+
+      await act(async () => {
+        botaoCancelar.click();
+        await esperarMicrotarefas();
+        await esperarMicrotarefas();
+      });
+
+      expect(alertaCom("O pedido não foi cancelado")).toBeDefined();
+    });
+
+    it("limite: apertar de novo e falhar com a MESMA frase (sem rede) anuncia outra vez — o aviso é refeito, não reaproveitado", async () => {
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      const botaoCancelar = await ateOBotaoDeCancelar(CheckoutView, true);
+
+      await act(async () => {
+        botaoCancelar.click();
+        await esperarMicrotarefas();
+      });
+      const primeiro = alertaCom("O pedido não foi cancelado");
+      expect(primeiro).toBeDefined();
+
+      // Sem rede o erro nasce NA HORA (sem esperar resposta): limpar e repor a
+      // mesma frase no mesmo gesto não muda nada na tela — e o leitor de tela só
+      // fala o que ENTRA na tela. Um aviso novo (nó novo) é o que fala de novo.
+      await act(async () => {
+        botaoCancelar.click();
+        await esperarMicrotarefas();
+      });
+      const segundo = alertaCom("O pedido não foi cancelado");
+      expect(segundo).toBeDefined();
+      expect(segundo).not.toBe(primeiro);
+    });
+
+    it("depois da falha, o foco volta ao botão de cancelar (o navegador o tinha largado enquanto ele estava desabilitado)", async () => {
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      const botaoCancelar = await ateOBotaoDeCancelar(CheckoutView);
+      let falhar: (e: Error) => void = () => {};
+      updateOrderStatus.mockImplementation(
+        () =>
+          new Promise<void>((_, rejeitar) => {
+            falhar = rejeitar;
+          }),
+      );
+      mockStatusAposCancelar = "pending";
+
+      botaoCancelar.focus();
+      expect(document.activeElement).toBe(botaoCancelar);
+      await act(async () => {
+        botaoCancelar.click();
+      });
+      expect(botaoCancelar.disabled).toBe(true);
+      await soltarOFoco();
+      expect(document.activeElement).toBe(document.body);
+
+      await act(async () => {
+        falhar(new Error("Falha de rede."));
+        await esperarMicrotarefas();
+        await esperarMicrotarefas();
+      });
+
+      expect(botaoCancelar.disabled).toBe(false);
+      expect(document.activeElement).toBe(botaoCancelar);
+    });
+
+    it("limite: quem foi para outro lugar enquanto esperava NÃO é puxado de volta ao botão", async () => {
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      const botaoCancelar = await ateOBotaoDeCancelar(CheckoutView);
+      let falhar: (e: Error) => void = () => {};
+      updateOrderStatus.mockImplementation(
+        () =>
+          new Promise<void>((_, rejeitar) => {
+            falhar = rejeitar;
+          }),
+      );
+      mockStatusAposCancelar = "pending";
+
+      await act(async () => {
+        botaoCancelar.click();
+      });
+      const outroLugar = document.createElement("button");
+      hospedeiro.appendChild(outroLugar);
+      outroLugar.focus();
+
+      await act(async () => {
+        falhar(new Error("Falha de rede."));
+        await esperarMicrotarefas();
+        await esperarMicrotarefas();
+      });
+
+      expect(
+        alertaCom("Não foi possível confirmar o cancelamento"),
+      ).toBeDefined();
+      expect(document.activeElement).toBe(outroLugar);
+    });
+
+    it("limite: se a falha troca o botão de cancelar por outra saída (a guarda do cartão), o foco vai para ela, não para o corpo da página", async () => {
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      const botaoCancelar = await ateOBotaoDeCancelar(CheckoutView);
+      const erroDaGuarda = new Error(
+        "Este pedido tem uma cobrança no cartão em confirmação com o banco. Aguarde a confirmação ou fale com a loja antes de cancelar.",
+      ) as Error & { code: string };
+      erroDaGuarda.code = "P0001";
+      let falhar: (e: Error) => void = () => {};
+      updateOrderStatus.mockImplementation(
+        () =>
+          new Promise<void>((_, rejeitar) => {
+            falhar = rejeitar;
+          }),
+      );
+      mockStatusAposCancelar = "pending";
+
+      botaoCancelar.focus();
+      await act(async () => {
+        botaoCancelar.click();
+      });
+      await soltarOFoco();
+
+      await act(async () => {
+        falhar(erroDaGuarda);
+        await esperarMicrotarefas();
+        await esperarMicrotarefas();
+      });
+
+      // O botão de cancelar saiu de cena; sem WhatsApp, a saída é "Ver meus
+      // pedidos".
+      expect(
+        localizarBotaoPorTexto(
+          hospedeiro,
+          "Cancelar pedido e voltar ao carrinho",
+        ),
+      ).toBeUndefined();
+      const saida = localizarBotaoPorTexto(hospedeiro, "Ver meus pedidos")!;
+      expect(saida).toBeDefined();
+      expect(document.activeElement).toBe(saida);
+      expect(alertaCom("Aguarde a confirmação")).toBeDefined();
+    });
+  });
+
   // Reescrito (16/08/2026, pagamento online exige conta — decisão do
   // Gabriel, achado da revisão): este teste chamava
   // `chegarNaTelaDeAguardarPagamento` já como CONVIDADO — isso sim deixou

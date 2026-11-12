@@ -4,6 +4,10 @@ import { toast } from "sonner";
 import { mensagemDoErro } from "@/lib/devolucao";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
+import {
   AVISO_DE_DOBRO,
   type LinhaDoSaldo,
   RPC_DO_REEMBOLSO_R1,
@@ -106,6 +110,10 @@ const ESTADOS_EM_CURSO: readonly StatusEstorno[] = [
 
 const INTERVALO_DE_RECARGA_MS = 15_000;
 
+/** Quanto a tela espera a leitura do saldo e do histórico antes de dizer que
+ * não conseguiu ler (mesmo prazo da cotação do frete, 15 s). */
+const PRAZO_DA_LEITURA_DO_ESTORNO_MS = 15_000;
+
 const ERRO_GENERICO = "Não foi possível concluir agora. Tente de novo.";
 
 /** Os avisos de `solicitarEstorno` são toasts GLOBAIS: se o lojista trocar de
@@ -191,18 +199,27 @@ export function useEstornosDoPedido(
     const fotoDaLeitura = fotoDoPedidoRef.current;
     setCarregando(true);
     try {
-      const [respostaLinhas, respostaSaldo] = await Promise.all([
-        supabase
-          .from("order_refunds")
-          .select(
-            "id, amount, status, solicitado_por, mp_status, mp_status_detail, tentativas, ultimo_erro, motivo, created_at, concluido_em",
-          )
-          .eq("order_id", orderId)
-          .order("created_at", { ascending: true }),
-        chamarRpcDoR1(supabase, RPC_DO_REEMBOLSO_R1.saldo, {
-          p_order_id: orderId,
-        }),
-      ]);
+      // Prazo: rede "pendurada" conecta e nao responde. Sem ele a leitura
+      // nunca termina e o cartao fica em "Carregando…" sem erro e sem botao.
+      // Estourou = erro de leitura (cai no `catch`: "Não consegui carregar" +
+      // Tentar carregar de novo), NUNCA "sem devolucao" — sobre dinheiro,
+      // "nao sei" nao vira zero.
+      const [respostaLinhas, respostaSaldo] = await aguardarComPrazo(
+        Promise.all([
+          supabase
+            .from("order_refunds")
+            .select(
+              "id, amount, status, solicitado_por, mp_status, mp_status_detail, tentativas, ultimo_erro, motivo, created_at, concluido_em",
+            )
+            .eq("order_id", orderId)
+            .order("created_at", { ascending: true }),
+          chamarRpcDoR1(supabase, RPC_DO_REEMBOLSO_R1.saldo, {
+            p_order_id: orderId,
+          }),
+        ]),
+        PRAZO_DA_LEITURA_DO_ESTORNO_MS,
+        () => erroDeConsultaSemResposta(),
+      );
 
       if (!valeAinda()) return;
 

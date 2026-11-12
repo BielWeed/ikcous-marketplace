@@ -268,6 +268,14 @@ export function CupomDaVenda({
             Já bipei o código {estado.aviso.codigo} há pouco — bipe de novo se
             for mesmo outra unidade.
           </p>
+          <Button
+            type="button"
+            variant="outline"
+            className="pdv-secondary"
+            onClick={() => despachar({ tipo: "aviso_limpo" })}
+          >
+            Fechar
+          </Button>
         </div>
       )}
 

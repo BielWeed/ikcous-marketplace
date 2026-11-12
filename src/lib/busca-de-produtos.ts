@@ -136,19 +136,40 @@ function formasDaPalavra(palavra: string): FormaDaPalavra[] {
   return [...formas.values()];
 }
 
+const PALAVRAS_DE_LIGACAO = new Set([
+  "de",
+  "da",
+  "do",
+  "das",
+  "dos",
+  "para",
+  "com",
+  "e",
+  "em",
+  "a",
+  "o",
+  "um",
+  "uma",
+]);
+
 /**
- * Para cada palavra digitada, as formas aceitas (qualquer uma serve). A
- * pontuacao das PONTAS da palavra nao conta ("camiseta." e "camiseta," -- o
- * ponto do iPhone na barra de espaco dupla); a do meio fica ("3.5").
+ * Formas aceitas de cada palavra, sem ligacoes quando ha outros termos.
+ * A pontuacao das pontas nao conta ("camiseta."), a do meio fica ("3.5"),
+ * menos hifen e barra: separam palavras ("guarda-chuva" = "guarda chuva").
+ * So a busca precisa separar: o nome ("Guarda-Chuva") ja contem os trechos.
  */
 export function palavrasDaBusca(busca: string): FormaDaPalavra[][] {
   const palavras = normalizeText(busca).split(/\s+/).filter(Boolean);
   const aparadas = palavras
+    .flatMap((palavra) => palavra.split(/[-/]+/))
     .map((palavra) => palavra.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ""))
     .filter(Boolean);
   // Sem nenhuma letra ou numero (so emoji ou simbolo) a busca segue como antes:
   // acha so quem tem aquilo no nome, nunca vira "lista inteira".
-  return (aparadas.length > 0 ? aparadas : palavras).map(formasDaPalavra);
+  const termos = aparadas.length > 0 ? aparadas : palavras;
+  const semLigacoes = termos.filter((termo) => !PALAVRAS_DE_LIGACAO.has(termo));
+  // So ligacoes: preserva a busca antiga. P/M/G e outros tamanhos nao sao ligacoes.
+  return (semLigacoes.length > 0 ? semLigacoes : termos).map(formasDaPalavra);
 }
 
 const ehLetraOuNumero = (caractere: string | undefined): boolean =>
@@ -201,7 +222,18 @@ export function produtoCombinaComBusca(
   const variacoes = textoDasVariacoes(produto.variants);
   return palavras.every(
     (formas) =>
-      formas.some((forma) => formaAparece(texto, forma)) ||
+      formas.some((forma) =>
+        formaAparece(texto, {
+          texto: forma.texto,
+          // Termo de uma letra nao e trecho; duas so com outro termo.
+          // "ca" sozinho completa "camisa"; so ligacoes mantem a busca antiga.
+          palavraInteira:
+            forma.palavraInteira ||
+            (!PALAVRAS_DE_LIGACAO.has(forma.texto) &&
+              (forma.texto.length === 1 ||
+                (palavras.length > 1 && forma.texto.length < 3))),
+        }),
+      ) ||
       formas.some((forma) =>
         formaAparece(variacoes, {
           texto: forma.texto,

@@ -108,10 +108,20 @@ export type WhatsappParaGravar =
 /** O que digitaram → o que vai ao banco (`null` = vazio, ausência honesta). */
 export function whatsappParaGravar(
   digitado: string | null | undefined,
+  /** O campo já removeu país e operadora; não normalizar o país duas vezes. */
+  jaNacional = false,
 ): WhatsappParaGravar {
   // Mesma limpeza do campo (zero na frente, +55): o que se grava é o que a
   // máscara mostra, mesmo se o valor chegar cru (preenchimento automático).
-  const digitos = limparTelefoneBrasileiro(digitado);
-  if (digitos.length > 0 && digitos.length < 10) return { valido: false };
+  // Quando já veio do campo, só +55 explícito identifica país: reinterpretar
+  // 55 sem "+" esconderia o excesso digitado tecla a tecla. A carga legada
+  // continua aceitando o país sem "+" antes de entregar o número ao campo.
+  const digitos = limparTelefoneBrasileiro(digitado, { colagem: !jaNacional });
+  if (
+    digitos.length > 11 ||
+    (digitos.length > 0 && digitos.length < 10) ||
+    (digitos.length === 10 && digitos[2] === "9")
+  )
+    return { valido: false };
   return { valido: true, valor: numeroComPais(digitos) || null };
 }

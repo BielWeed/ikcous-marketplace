@@ -351,19 +351,19 @@ describe("AdminProductFormView — modal Nova variante em grade (produto novo)",
     expect(valorDoCampo("grade-valor-0")).toBe("");
   });
 
-  it("RECUSA valor com / na digitação, antes de gerar qualquer linha", async () => {
+  it("RECUSA o separador exato com espaços na digitação, antes de gerar qualquer linha", async () => {
     await montar();
     await act(async () => {
       clicarObrigatorio("+ Grade");
     });
     await escolherAtributo(0, "Cor", "grade-nome-0", digitarCampo);
-    await digitarCampo("grade-valor-0", "Preto/Branco");
+    await digitarCampo("grade-valor-0", "Preto / Branco");
     await act(async () => {
       clicarPorRotulo("Adicionar valor do atributo 1");
     });
 
     expect(toastError).toHaveBeenCalledTimes(1);
-    expect(toastError.mock.calls[0][0]).toContain('"/"');
+    expect(toastError.mock.calls[0][0]).toContain('" / "');
     // O valor recusado não virou chip selecionado.
     await act(async () => {
       clicarObrigatorio(BOTAO_GERAR_GRADE);

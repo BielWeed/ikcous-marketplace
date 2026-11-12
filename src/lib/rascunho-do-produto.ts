@@ -284,6 +284,30 @@ export function rascunhoSobreOBancoDeHoje<R extends Record<string, any>>(
       !daBase.has(campo) ||
       !igual(doRascunho.get(campo), daBase.get(campo))
     ) {
+      const fotosDoRascunho = doRascunho.get(campo);
+      const fotosDaBase = daBase.get(campo);
+      const fotosDoBanco = doBanco.get(campo);
+      if (
+        campo === "images" &&
+        Array.isArray(fotosDoRascunho) &&
+        Array.isArray(fotosDaBase) &&
+        Array.isArray(fotosDoBanco) &&
+        !igual(fotosDoBanco, fotosDaBase)
+      ) {
+        // Preserva a ordem dela (inclusive a capa cortada ou escolhida),
+        // tira o que o outro aparelho apagou e acrescenta as fotos novas dele.
+        campos.set(campo, [
+          ...fotosDoRascunho.filter(
+            (foto) =>
+              !(fotosDaBase.includes(foto) && !fotosDoBanco.includes(foto)),
+          ),
+          ...fotosDoBanco.filter(
+            (foto) =>
+              !fotosDaBase.includes(foto) && !fotosDoRascunho.includes(foto),
+          ),
+        ]);
+        bancoMudou = true;
+      }
       continue;
     }
     campos.set(campo, doBanco.get(campo));

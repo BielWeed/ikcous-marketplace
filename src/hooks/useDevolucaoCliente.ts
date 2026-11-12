@@ -280,7 +280,11 @@ export function useDevolucaoCliente(
             erro: "Não conseguimos confirmar o pedido. Confira se ele apareceu no pedido antes de tentar de novo.",
           };
         }
-        await carregar();
+        // Pedido registrado: o protocolo já está na mão. A releitura segue em
+        // segundo plano (`carregar` nunca rejeita e tem prazo próprio); esperar
+        // por ela deixava a cliente até 12 s olhando "Registrando o pedido…"
+        // com a rede lenta. Se ela falhar, só o aviso de leitura aparece.
+        void carregar();
         return { ok: true, valor: resultado };
       } catch (e) {
         if (e instanceof PrazoEsgotado) {

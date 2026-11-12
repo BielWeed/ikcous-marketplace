@@ -234,6 +234,21 @@ describe("AdminProductsView — a lista não mente quando há busca ou filtro", 
       b.textContent?.includes(texto),
     ) as HTMLButtonElement | undefined;
 
+  it("espaços guardados no aparelho não contam como busca", async () => {
+    guardarFiltro({ busca: "   " });
+    loadProducts.mockResolvedValue({ products: [], total: 0 });
+    await montarEEsperarPrimeiraBusca();
+    expect(loadProducts).toHaveBeenLastCalledWith(
+      0,
+      12,
+      expect.objectContaining({ search: undefined }),
+    );
+    expect(hospedeiro.textContent).toContain("Nenhum produto cadastrado");
+    expect(hospedeiro.textContent).not.toContain("Resultados da busca");
+    expect(hospedeiro.textContent).not.toContain("na busca");
+    expect(botao("Limpar busca e filtros")).toBeUndefined();
+  });
+
   describe("(a) estado vazio", () => {
     it("sem busca nem filtro e nenhum produto: segue 'Nenhum produto cadastrado', sem botão de limpar", async () => {
       loadProducts.mockResolvedValue({ products: [], total: 0 });
