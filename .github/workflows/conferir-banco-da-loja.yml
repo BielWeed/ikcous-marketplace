@@ -324,6 +324,8 @@ on:
           - 127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente
           - 128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado
           - 128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente
+          - 129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente
+          - 129m-medir-corrida-e-avanco-com-estorno
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:
