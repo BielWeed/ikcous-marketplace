@@ -45,8 +45,10 @@ const mockConfig = {
 };
 
 vi.mock("@/contexts/StoreContext", () => ({
-  useStore: () => ({ config: mockConfig, isLoaded: true }),
+  useStore: () => ({ config: mockConfig, isLoaded: configCarregada }),
 }));
+// Só a prova da segunda consulta atrasa a config da loja (ver o fim do arquivo).
+let configCarregada = true;
 
 let mockCupons: CupomDisponivel[] = [];
 const tentarDeNovo = vi.fn();
@@ -255,6 +257,7 @@ beforeEach(() => {
   mockConfig.enableCoupons = true;
   respostaDaValidacao = async () => ({ valid: true, discount: 15 });
   seguradas = [];
+  configCarregada = true;
   sessionStorage.clear();
   const armazem = new Map<string, string>();
   vi.stubGlobal("localStorage", {
@@ -372,5 +375,111 @@ describe("CheckoutView — remover o cupom com outro sendo conferido (r185-b)", 
     await esvaziarFila();
     expect(hospedeiro.textContent).toContain("Erro ao validar cupom");
     erro.mockRestore();
+  });
+});
+
+// r206-a: o código DIGITADO com acento ("verão10") faz o checkout consultar
+// duas vezes — como digitado e, se o servidor disse "não existe", normalizado.
+// A resposta da SEGUNDA consulta tem a mesma regra da primeira: se a cliente já
+// tirou o cupom, ela é descartada. O campo de digitar só existe sem cupom
+// aplicado, e "Remover" só com cupom: o cupom aparece no meio da conferência
+// quando a config da loja chega DEPOIS do toque em "Aplicar" e devolve o
+// cupom do rascunho da sessão.
+describe("CheckoutView — remover o cupom durante a SEGUNDA consulta do código digitado (r206-a)", () => {
+  const NAO_EXISTE: RespostaDaValidacao = {
+    valid: false,
+    discount: 0,
+    message: "Cupom inválido ou expirado.",
+  };
+
+  /** "VERÃO10" não existe (resposta na hora), "VERAO10" fica pendente; o do rascunho vale. */
+  function segurarASegundaConsulta() {
+    seguradas = [];
+    respostaDaValidacao = (codigo) => {
+      if (codigo === "VERÃO10") return Promise.resolve(NAO_EXISTE);
+      if (codigo === "VERAO10")
+        return new Promise<RespostaDaValidacao>((soltar, rejeitar) => {
+          seguradas.push({ codigo, soltar, rejeitar });
+        });
+      return Promise.resolve({ valid: true, discount: 15 });
+    };
+  }
+
+  const renderizar = () =>
+    act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+
+  /** Digita "verão10" no campo e toca em Aplicar: a primeira consulta recusa e a segunda fica pendente. */
+  async function digitarEComecarASegundaConsulta() {
+    segurarASegundaConsulta();
+    await renderizar();
+    const campo = hospedeiro.querySelector(
+      "#coupon-code-input",
+    ) as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(campo, "verão10");
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () =>
+      (
+        campo
+          .closest("form")!
+          .querySelector('button[type="submit"]') as HTMLButtonElement
+      ).click(),
+    );
+    await esvaziarFila();
+    // A recusa de "não existe" levou à segunda consulta, e ela está pendente.
+    expect(validateCoupon.mock.calls.map((c) => c[0])).toEqual([
+      "VERÃO10",
+      "VERAO10",
+    ]);
+    expect(seguradas).toHaveLength(1);
+    expect(hospedeiro.textContent).toContain("Aplicando");
+  }
+
+  it("tirar o cupom com a segunda consulta pendente: a resposta válida dela não aplica o código e não deixa erro", async () => {
+    configCarregada = false;
+    sessionStorage.setItem(
+      "ikcous-rascunho-do-checkout-v1",
+      JSON.stringify({ notas: "x", cupom: "CUPOMR" }),
+    );
+    await digitarEComecarASegundaConsulta();
+
+    // A config chega no meio da conferência: o cupom do rascunho entra na tela.
+    configCarregada = true;
+    await renderizar();
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("CUPOMR aplicado");
+
+    await act(async () => botaoRemover()!.click());
+    expect(hospedeiro.textContent).not.toContain("CUPOMR aplicado");
+    expect(hospedeiro.textContent).not.toContain("Aplicando");
+
+    await act(async () => seguradas[0]!.soltar({ valid: true, discount: 15 }));
+    await esvaziarFila();
+
+    expect(hospedeiro.textContent).not.toContain("VERAO10 aplicado");
+    expect(hospedeiro.textContent).not.toContain("aplicado");
+    expect(hospedeiro.textContent).not.toContain("Erro ao validar cupom");
+    expect(
+      sessionStorage.getItem("ikcous-rascunho-do-checkout-v1") ?? "",
+    ).not.toContain("VERAO10");
+  });
+
+  it("controle: sem tirar nada, a resposta válida da segunda consulta aplica o código normalizado", async () => {
+    await digitarEComecarASegundaConsulta();
+    await act(async () => seguradas[0]!.soltar({ valid: true, discount: 15 }));
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("VERAO10 aplicado");
+    expect(hospedeiro.textContent).not.toContain("VERÃO10");
   });
 });
