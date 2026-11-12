@@ -15,6 +15,7 @@ import {
   type LayoutDeOfertas,
   normalizarLayoutDeOfertas,
 } from "@/lib/layout-de-ofertas";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { ordenacaoValida } from "@/lib/ordenacao-da-home";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { cn } from "@/lib/utils";
@@ -209,9 +210,11 @@ export const HomeView = React.memo(function HomeView({
     [onAddToCart],
   );
 
-  // Um espaço (ou vários) na caixinha do topo é busca VAZIA: toda a Home usa
+  // Um espaço (ou vários, ou só caractere invisível) na caixinha do topo é busca VAZIA: toda a Home usa
   // este termo aparado, para banners, vitrines, título e filtro concordarem.
-  const termoDaBusca = searchQuery.trim();
+  const termoDaBusca = nomeTemConteudoVisivel(searchQuery)
+    ? searchQuery.trim()
+    : "";
 
   const produtosAVenda = useMemo(
     () => products.filter((p) => p.isActive),
