@@ -18,27 +18,23 @@ import { criarEixosDaVariacao, eixoEhCor } from "@/utils/eixos-da-variacao";
  */
 export function fotoDoItemDoCarrinho(item: CartItem): string | undefined {
   const variacoes = item.product.variants ?? [];
-  const ids = [item.variantId, ...(item.outrasVariantIds ?? [])];
-  const temFoto = (url?: string) => !!url && url.trim() !== "";
-  for (const id of ids) {
-    if (!id) continue;
-    const foto = variacoes.find((v) => v.id === id)?.imageUrl;
-    if (temFoto(foto)) return foto;
+  for (const id of [item.variantId, ...(item.outrasVariantIds ?? [])]) {
+    const foto = id && variacoes.find((v) => v.id === id)?.imageUrl;
+    if (foto && foto.trim() !== "") return foto;
   }
   // Sem foto própria: a foto da cor costuma estar numa linha só da grade.
-  const { grupos } = criarEixosDaVariacao(variacoes);
-  for (const id of ids) {
-    for (const g of grupos) {
-      const escolhida = g.linhas.find((l) => l.variante.id === id);
-      const foto = g.linhas.find(
+  for (const g of criarEixosDaVariacao(variacoes).grupos) {
+    const eixo = g.eixos.find(eixoEhCor);
+    const escolhida = g.linhas.find((l) => l.variante.id === item.variantId);
+    const foto =
+      eixo &&
+      escolhida &&
+      g.linhas.find(
         (l) =>
-          temFoto(l.variante.imageUrl) &&
-          g.eixos
-            .filter(eixoEhCor)
-            .some((e) => l.valores[e.indice] === escolhida?.valores[e.indice]),
+          l.valores[eixo.indice] === escolhida.valores[eixo.indice] &&
+          l.variante.imageUrl?.trim(),
       )?.variante.imageUrl;
-      if (escolhida && foto) return foto;
-    }
+    if (foto) return foto;
   }
   return item.product.images?.[0];
 }
