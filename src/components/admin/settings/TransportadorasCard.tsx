@@ -987,7 +987,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
         if (data.cache === "pendente") {
           toast.success("Transportadora salva!", {
             description:
-              "As cotações antigas em cache podem demorar um pouco a atualizar.",
+              "Clientes que já calcularam o frete podem continuar vendo o preço antigo por até 2 horas.",
           });
         } else {
           toast.success("Transportadora salva!");
@@ -1102,11 +1102,13 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       const avisos: string[] = [];
       if (data.espelho === "pendente") {
         avisos.push(
-          "provedores salvos; o indicador antigo não atualizou — salve de novo para sincronizar.",
+          "Transportadoras salvas, mas a configuração antiga de frete da loja não foi atualizada. Salve de novo.",
         );
       }
       if (data.cache === "pendente") {
-        avisos.push("as cotações antigas em cache podem demorar a atualizar.");
+        avisos.push(
+          "Clientes que já calcularam o frete podem continuar vendo o preço antigo por até 2 horas.",
+        );
       }
       haptic.success();
       toast.success("Provedores atualizados!", {
