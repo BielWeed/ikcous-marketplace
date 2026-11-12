@@ -43,15 +43,13 @@ vi.mock("@/lib/supabase", () => ({
       }),
       update: (valores: unknown) => {
         atualizar(tabela, valores);
-        // Como o cliente do Supabase: `eq()` já é "esperável" (forma antiga,
-        // sem pedir linhas de volta) e também encadeia `.select()`; as duas
-        // formas resolvem com o que o teste mandou em `resposta.atual`.
-        return {
-          eq: () =>
-            Object.assign(Promise.resolve(resposta.atual), {
-              select: () => Promise.resolve(resposta.atual),
-            }),
+        // Os filtros encadeiam; select devolve as linhas realmente gravadas.
+        const cadeia = {
+          eq: () => cadeia,
+          or: () => cadeia,
+          select: () => Promise.resolve(resposta.atual),
         };
+        return cadeia;
       },
     }),
     functions: { invoke: vi.fn() },
