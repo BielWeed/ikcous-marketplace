@@ -80,6 +80,11 @@ export const MENSAGEM_PRODUTO_NOVO_GRADE_SEM_RESPOSTA =
   "O produto foi criado, mas a rede não respondeu ao salvar as variações e não dá para saber se elas entraram. Abra o produto e confira as variações antes de cadastrá-las de novo ou de restaurar o rascunho, para não repetir as que já entraram.";
 export const MENSAGEM_PRODUTO_EDICAO_SEM_RESPOSTA =
   "Sem resposta da rede. Não dá para saber se as alterações foram salvas. Confira o produto na lista de Produtos antes de salvar de novo.";
+// EXCLUIR PRODUTO (11/11/2026): o UPDATE do soft-delete sob o mesmo prazo de
+// gravar. Estourou: a rede não respondeu e o servidor pode ter excluído — a
+// frase não diz que falhou. Repetir é seguro (o mesmo UPDATE de `deleted_at`).
+export const MENSAGEM_PRODUTO_EXCLUSAO_SEM_RESPOSTA =
+  "Sem resposta da rede. Não dá para saber se o produto foi excluído. Confira a lista de Produtos antes de tentar de novo.";
 export const MENSAGEM_PRODUTO_LEITURA_SEM_RESPOSTA =
   "A conexão está lenta e o produto não carregou. Confira a conexão e tente de novo.";
 

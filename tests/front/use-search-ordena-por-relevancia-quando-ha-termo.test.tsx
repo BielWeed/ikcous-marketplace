@@ -106,6 +106,26 @@ describe("useSearch — relevância quando há termo", () => {
     ]);
   });
 
+  it.each(["\u200B", "\u2060\u2800", "\u3164 \u200E"])(
+    "termo só com invisível %j é termo vazio: lista completa, do mais novo ao mais antigo",
+    (invisivel) => {
+      digitar(invisivel);
+      expect(ids()).toEqual([
+        "novo",
+        "frente",
+        "comeca",
+        "exato",
+        "tras",
+        "esgotado",
+      ]);
+    },
+  );
+
+  it("CONTROLE: termo com invisível colado ao texto ainda busca pelo texto", () => {
+    digitar("\u200Bcarteira\u2060");
+    expect(ids()).toEqual(["novo"]);
+  });
+
   it("com termo e ordenação padrão: nome igual vem antes de nome que começa e de só descrição", () => {
     digitar("bolsa");
     expect(ids()).toEqual([

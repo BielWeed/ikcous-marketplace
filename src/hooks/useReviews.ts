@@ -340,7 +340,8 @@ export function useReviews() {
             );
           if (!erroDaConsulta && existentes?.length) {
             toast.error("Você já avaliou este produto.");
-            return null;
+            // Resultado distinto de falha: o formulário pode concluir sem inserir.
+            return { jaAvaliado: true };
           }
         } catch {
           // Falha na checagem não pode impedir quem ainda não avaliou.

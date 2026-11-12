@@ -19,6 +19,8 @@ const fetchExecutiveSummary = vi.fn();
 const onNavigate = vi.fn();
 const toastSuccess = vi.fn();
 const toastError = vi.fn();
+const hapticSuccess = vi.fn();
+const hapticError = vi.fn();
 
 const produtoTeste = {
   id: "prod-1",
@@ -134,6 +136,17 @@ vi.mock("@/components/ui/alert-dialog", () => ({
       {children}
     </button>
   ),
+}));
+vi.mock("@/utils/haptic", () => ({
+  haptic: {
+    success: hapticSuccess,
+    error: hapticError,
+    light: vi.fn(),
+    medium: vi.fn(),
+    heavy: vi.fn(),
+    warning: vi.fn(),
+    selection: vi.fn(),
+  },
 }));
 vi.mock("sonner", () => ({
   toast: { success: toastSuccess, error: toastError, loading: vi.fn() },
@@ -316,5 +329,24 @@ describe("AdminProductsView — duplicar: uma cópia, um aviso", () => {
       await new Promise((r) => setTimeout(r, 0));
     });
     expect(toastSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it("o hook não devolveu a cópia (ex.: sem permissão naquele instante): a tela NÃO anuncia 'Produto Duplicado'", async () => {
+    // O hook já mostrou o motivo (ex.: "Permissão negada") e devolveu vazio:
+    // nenhuma cópia existe, então um "sucesso" aqui mentiria para a lojista.
+    await montarEAbrirConfirmacao();
+    await confirmar();
+    await act(async () => {
+      concluirCopia!(undefined);
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    expect(toastSuccess).not.toHaveBeenCalled();
+    expect(hapticSuccess).not.toHaveBeenCalled();
+    expect(hapticError).toHaveBeenCalledTimes(1);
+    // Nada fica preso: o diálogo fecha e o botão volta ao normal.
+    expect(hospedeiro.textContent).not.toContain("Confirmar Duplicação");
+    expect(hospedeiro.textContent).not.toContain("Duplicando…");
+    expect(botao(hospedeiro, "Duplicar Produto")!.disabled).toBe(false);
   });
 });

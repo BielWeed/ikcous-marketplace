@@ -13,6 +13,7 @@ import {
 } from "@/lib/busca-de-produtos";
 import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
 import { miniaturaDaSugestao, usarImagemOriginal } from "@/lib/imageUrl";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import { produtoDisponivel } from "@/lib/vitrine";
@@ -172,7 +173,8 @@ export function SearchBar({
   // a caixa e volta ao campo. So o campo e o veu tratavam Esc: quem navegava
   // por Tab ate uma sugestao nao tinha como sair pelo teclado. O proprio campo
   // ja trata o Esc (tira o foco dele), entao fica de fora.
-  const showDropdown = isOpen && localValue.trim().length > 0;
+  // Texto so de invisivel (U+200B, U+2800...) o `trim()` nao tira: e busca vazia.
+  const showDropdown = isOpen && nomeTemConteudoVisivel(localValue);
   useEffect(() => {
     if (!showDropdown) return;
     const handleEscape = (event: KeyboardEvent) => {
