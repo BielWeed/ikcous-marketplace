@@ -849,6 +849,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/o-prazo-da-devolucao-conta-dia-de-sao-paulo-viva.cjs",
     // 20261399930000: o caixa e a conta recusam NaN, infinito e acima do teto antes de escrever (controle com o corpo anterior, mutantes por MUTANTE_R150E, rollback e consultas 128a/128b).
     "tests/banco/o-caixa-e-a-conta-recusam-nan-viva.cjs",
+    // 20261399970000: o ranking de lucro desconta a devolucao e o estorno (get_admin_analytics_v2: topProducts e o lucro do grafico diario; controle com o corpo da 251 na mesma fixture, JSON inteiro igual sem devolucao,
+    // cupom, mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 135a/135b).
+    "tests/banco/o-ranking-de-lucro-desconta-a-devolucao-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
     "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
   ];

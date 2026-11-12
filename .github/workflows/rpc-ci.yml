@@ -260,6 +260,8 @@ on:
       - "scripts/publicacao/consultas/127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente.sql"
       - "scripts/publicacao/consultas/128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado.sql"
       - "scripts/publicacao/consultas/128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente.sql"
+      - "scripts/publicacao/consultas/135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado.sql"
+      - "scripts/publicacao/consultas/135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -489,6 +491,8 @@ on:
       - "scripts/publicacao/consultas/127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente.sql"
       - "scripts/publicacao/consultas/128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado.sql"
       - "scripts/publicacao/consultas/128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente.sql"
+      - "scripts/publicacao/consultas/135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado.sql"
+      - "scripts/publicacao/consultas/135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
@@ -1106,6 +1110,13 @@ jobs:
       - name: Prova viva do caixa e da conta que recusam valor que nao e numero (20261399930000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-caixa-e-a-conta-recusam-nan-viva.cjs
+      # Migration 20261399970000 (o ranking de lucro desconta a devolucao e o estorno): get_admin_analytics_v2 troca a conta do lucro do ranking Produtos que mais dao lucro e do grafico diario por
+      # (vendidas - devolvidas) x (preco - custo - cupom - cortesia) - perdidas x custo; devolvida = devolucao concluida com reembolso ou vale (troca nao conta), perdida = nao voltou a prateleira, cortesia =
+      # valor_estornado menos o estorno ligado a devolucao. Controle com o corpo da 251 na MESMA fixture (o defeito), pedido sem devolucao e sem estorno com o JSON inteiro igual ao da 251, cupom, mutantes,
+      # ACL/atributos/dono iguais, reaplicar (LF e CRLF), conexao sem BEGIN com conferencia sabotada, rollback byte a byte, pre-voo, 8e/35a/45a/48a/53a/54a aceitando o corpo novo e consultas 135a/135b. CLONE proprio.
+      - name: Prova viva do ranking de lucro que desconta a devolucao e o estorno (20261399970000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-ranking-de-lucro-desconta-a-devolucao-viva.cjs
       # Onda 150 (SEM migration): registrar_venda_presencial recusa p_itens vazio, que nao e lista (objeto, null, escalar, NULL) e com mais de 200 linhas, com 22023 e a frase da loja, sem escrever pedido, item,
       # historico, financeiro nem estoque; 200 (o limite) entra. Mutantes por MUTANTE_R150E. CLONE proprio.
       - name: Prova viva do balcao que recusa venda sem item e com itens demais

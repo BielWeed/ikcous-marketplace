@@ -185,7 +185,11 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // migration, duas funcoes da 8e, com a PROVA PROPRIA do que as consultas 128a/128b e a 8e fazem com ela em tests/banco/o-caixa-e-a-conta-recusam-nan-viva.cjs; `noEstado` a desfaz antes
     // (o-caixa-e-a-conta-recusam-nan-posterior.cjs, o rollback dela devolve as duas funcoes de uma vez), como a 370.
     s.nome !==
-      "20261399930000_o_caixa_e_a_conta_recusam_valor_que_nao_e_numero.sql",
+      "20261399930000_o_caixa_e_a_conta_recusam_valor_que_nao_e_numero.sql" &&
+    // A 20261399970000 (o ranking de lucro desconta a devolucao) e a SETIMA sucessora de get_admin_analytics_v2 (99 -> 214 -> 234 -> 242 -> 245 -> 250 -> 251 -> 3997): tem a PROVA PROPRIA
+    // do que a 8e, a 35a, a 45a, a 48a, a 53a e a 54a fazem com ela em tests/banco/o-ranking-de-lucro-desconta-a-devolucao-viva.cjs; `noEstado` a desfaz antes
+    // (lucro-do-estoque-posterior.cjs chama o-ranking-de-lucro-posterior.cjs primeiro), como faz com a 251.
+    s.nome !== "20261399970000_o_ranking_de_lucro_desconta_a_devolucao.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");

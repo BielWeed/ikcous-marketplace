@@ -203,6 +203,11 @@ async function main() {
   const c = new Client({ connectionString: url });
   await c.connect();
   await c.query("BEGIN");
+  // A 20261399970000 (o ranking de lucro desconta a devolucao) sucede o corpo da 251: sai PRIMEIRO, pelo rollback-manual dela
+  // (esta prova mede a 251 isolada; a prova propria da 3997 mede o que ela faz).
+  await require("./o-ranking-de-lucro-posterior.cjs").desfazerRankingDeLucroNaTransacao(
+    c,
+  );
   const passou = [];
   const marcar = (s) => {
     passou.push(s);

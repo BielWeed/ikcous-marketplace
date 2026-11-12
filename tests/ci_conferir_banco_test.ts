@@ -2261,6 +2261,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "060c9ab5b1505dc375b41e4436e9d3a8",
           versao: "20261251000000",
         },
+        // 12/11/2026 (lote 135): o ranking de lucro desconta a devolucao e o estorno (99 -> 214 -> 234 -> 242 -> 245 -> 250 -> 251 -> 3997).
+        {
+          fn: "get_admin_analytics_v2",
+          h: "e9b8671e919d885277dbbff74496fc46",
+          versao: "20261399970000",
+        },
         {
           fn: "get_admin_customers_paged",
           h: "d6c092c3e0d8069891af795147d65e9e",
@@ -8073,6 +8079,27 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       .update(corpo51.replace(/\n/g, "\r\n"))
       .digest("hex"),
   };
+  // A 20261399970000 (o ranking de lucro desconta a devolucao e o estorno) sucede a 251 em get_admin_analytics_v2.
+  const texto3997 = (
+    await Deno.readTextFile(
+      `${MIGRATIONS_DIR}/20261399970000_o_ranking_de_lucro_desconta_a_devolucao.sql`,
+    )
+  ).replace(/\r/g, "");
+  const ini3997 = texto3997.indexOf(
+    cabecalhoDepois17("get_admin_analytics_v2"),
+  );
+  assert(ini3997 >= 0);
+  const abre3997 = texto3997.indexOf("AS $$", ini3997) + 5;
+  const corpo3997 = texto3997.slice(
+    abre3997,
+    texto3997.indexOf("$$;", abre3997),
+  );
+  const shaSucessora3997 = {
+    lf: criarHash("sha256").update(corpo3997).digest("hex"),
+    crlf: criarHash("sha256")
+      .update(corpo3997.replace(/\n/g, "\r\n"))
+      .digest("hex"),
+  };
   const shaSucessora50 = {
     lf: criarHash("sha256").update(corpo50).digest("hex"),
     crlf: criarHash("sha256")
@@ -8173,6 +8200,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                 shaSucessora50.crlf,
                 shaSucessora51.lf,
                 shaSucessora51.crlf,
+                shaSucessora3997.lf,
+                shaSucessora3997.crlf,
                 shaSucessora81.lf,
                 shaSucessora81.crlf,
                 shaSucessora85.lf,
@@ -8226,6 +8255,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                     shaSucessora50.crlf,
                     shaSucessora51.lf,
                     shaSucessora51.crlf,
+                    shaSucessora3997.lf,
+                    shaSucessora3997.crlf,
                     x.lf,
                   ]
                 : lado === "depois" && f.nome === "get_admin_products_paged"
@@ -8268,6 +8299,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
               shaSucessora42.crlf,
               shaSucessora45.lf,
               shaSucessora45.crlf,
+              shaSucessora3997.lf,
+              shaSucessora3997.crlf,
               shaSucessora81.lf,
               shaSucessora81.crlf,
               shaSucessora85.lf,
@@ -14656,9 +14689,14 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
       // retirando exatamente as duas fórmulas declaradas, antes de comparar a regra histórica à 44m.
       assertEquals(
         vigente,
-        "20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql",
+        "20261399970000_o_ranking_de_lucro_desconta_a_devolucao.sql",
         "o painel mudou de corpo: refaca a regra da 44m contra o corpo novo",
       );
+      // A 3997 (o ranking de lucro desconta a devolucao e o estorno) so troca a conta do lucro das vendas COM devolucao concluida ou
+      // estorno: sem elas o numero e o da 251 (provado no CI por tests/banco/o-ranking-de-lucro-desconta-a-devolucao-viva.cjs, JSON inteiro
+      // igual). A 44m mede a regra historica SEM devolucao, entao segue comparada ao corpo da 251, o ultimo antes dela.
+      const corpoDaRegraHistorica =
+        "20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql";
       const funcao = (sql: string) => {
         const i = sql.indexOf(
           "CREATE OR REPLACE FUNCTION public.get_admin_analytics_v2(",
@@ -14668,10 +14706,9 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
         return sql.slice(i, fim + 3);
       };
       const atual = funcao(
-        (await Deno.readTextFile(`${MIGRATIONS_DIR}/${vigente}`)).replace(
-          /\r/g,
-          "",
-        ),
+        (
+          await Deno.readTextFile(`${MIGRATIONS_DIR}/${corpoDaRegraHistorica}`)
+        ).replace(/\r/g, ""),
       )
         .replace(
           "    inv_revenue_without_cost numeric;\n    inv_products_without_cost bigint;\n    inv_products_with_cost bigint;\n",

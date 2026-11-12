@@ -1377,6 +1377,12 @@ async function main() {
         "20261399930000_o_caixa_e_a_conta_recusam_valor_que_nao_e_numero.sql",
         "public.fin_conta_salvar(jsonb)",
       ],
+      // A 20261399970000 (o ranking de lucro desconta a devolucao): get_admin_analytics_v2 sobre o corpo da 251 (a mesma funcao da 14/34/42/45/50/51 acima).
+      // O rollback dela devolve o corpo da 251 (o molde, acima, desfaz e mede).
+      [
+        "20261399970000_o_ranking_de_lucro_desconta_a_devolucao.sql",
+        "public.get_admin_analytics_v2(integer)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );
