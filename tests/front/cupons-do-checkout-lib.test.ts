@@ -164,6 +164,15 @@ describe("melhorCupom e progresso", () => {
     expect(melhorCupom([cupons[2], cupons[2]])).toBeNull();
   });
 
+  it("empate de desconto: a ordem da lista decide, fica o primeiro", () => {
+    const empatados = lerCuponsDoCheckout([
+      linha({ codigo: "A", desconto: 10 }),
+      linha({ codigo: "B", desconto: 10 }),
+    ]);
+    expect(melhorCupom(empatados)).toBe("A");
+    expect(melhorCupom([...empatados].reverse())).toBe("B");
+  });
+
   it("progresso até o mínimo, preso entre 0 e 100", () => {
     expect(progressoAteOMinimo({ minimo: 100, falta: 30 })).toBe(70);
     expect(progressoAteOMinimo({ minimo: 0, falta: 0 })).toBe(100);
