@@ -229,7 +229,7 @@ Deno.test("129m — a projecao publica contem APENAS oito contagens, nunca id, n
   });
   assertEquals(aliases, [
     "vivos_com_pagamento_estornado",
-    "pedidos_avancados_depois_do_estorno_manual",
+    "pedidos_avancados_depois_do_estorno",
     "cancelados_ate_dois_minutos_apos_avanco_por_outro_ator",
     "cancelados_vindos_de_entregue_fora_do_balcao",
     "pedidos_reativados",
