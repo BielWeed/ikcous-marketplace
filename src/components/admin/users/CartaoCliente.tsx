@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import type { CargoDaConta } from "@/lib/cargo-da-conta";
-import { formatarInteiro } from "@/lib/crm";
+import { formatarData, formatarInteiro } from "@/lib/crm";
 import { rotuloDoPapel } from "@/lib/papel-da-conta";
 import { primeiraLetra } from "@/lib/primeira-letra";
 import { classeDoTexto, tomDoValor } from "@/lib/tons-de-estado";
@@ -242,7 +242,7 @@ export const CartaoCliente = memo(function CartaoCliente({
           <div className="w-full border-t border-admin-border pt-2 text-[11px] md:hidden">
             <span className="flex items-center gap-1">
               <Calendar aria-hidden="true" className="size-3 text-violet-300" />
-              Desde {new Date(customer.created_at).toLocaleDateString("pt-BR")}
+              Desde {formatarData(customer.created_at)}
             </span>
             {!customer.orders_count && (
               <p className="mt-1">Sem compras ainda</p>
@@ -260,7 +260,7 @@ export const CartaoCliente = memo(function CartaoCliente({
             className="size-3 shrink-0 text-violet-300"
           />
           {customer.last_order_date
-            ? new Date(customer.last_order_date).toLocaleDateString("pt-BR")
+            ? formatarData(customer.last_order_date)
             : "—"}
         </div>
       )}

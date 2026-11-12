@@ -102,6 +102,35 @@ describe("CRM — consulta pendurada tem prazo", () => {
     vi.restoreAllMocks();
   });
 
+  it("lista de clientes pendurada sai do carregando, mostra erro e permite tentar de novo", async () => {
+    h.penduradas.add("crm_clientes");
+    const { useCrmClientes } = await import("@/hooks/useCrm");
+    let ultimo!: ReturnType<typeof useCrmClientes>;
+    function Sonda() {
+      const lido = useCrmClientes({
+        segmento: null,
+        busca: "",
+        pagina: 0,
+        porPagina: 20,
+        active: true,
+      });
+      useEffect(() => {
+        ultimo = lido;
+      });
+      return null;
+    }
+    await act(async () => raiz.render(<Sonda />));
+    await passar(150);
+    expect(ultimo.carregando).toBe(true);
+    await passar(20_000);
+    expect(ultimo.carregando).toBe(false);
+    expect(ultimo.erro).toContain("carregar os clientes");
+    act(() => ultimo.atualizar());
+    await passar(150);
+    expect(quantas("crm_clientes")).toBe(2);
+    expect(ultimo.carregando).toBe(true);
+  });
+
   it("crm_visao pendurada: depois de 20 s o carregando sai, o erro aparece e a volta ao app lê de novo", async () => {
     h.penduradas.add("crm_visao");
     const { useCrmVisao } = await import("@/hooks/useCrm");

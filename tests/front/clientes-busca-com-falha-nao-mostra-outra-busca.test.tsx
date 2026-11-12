@@ -136,6 +136,16 @@ describe("Clientes — falha de leitura não vira vazio nem resultado de outra c
     await act(async () => botao(rotulo).click());
   }
 
+  it("rede pendurada sai do esqueleto em 20 s e permite tentar de novo", async () => {
+    rpc.mockImplementation(() => new Promise(() => undefined));
+    await abrirTela();
+    await avancar(20_000);
+    esperarFalhaSemResultadoAntigo();
+    rpc.mockResolvedValue(sucesso([cliente("teste", "Cliente de teste")]));
+    await clicar("Tentar de novo");
+    expect(hospedeiro.textContent).toContain("Cliente de teste");
+  });
+
   async function buscarMaria() {
     const campo =
       hospedeiro.querySelector<HTMLInputElement>("#customers-search");
