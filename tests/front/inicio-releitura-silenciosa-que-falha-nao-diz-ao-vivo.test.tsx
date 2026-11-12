@@ -43,7 +43,10 @@ vi.mock("@/lib/supabase", () => ({
     channel: vi.fn(() => {
       const canal: Record<string, unknown> = {
         on: () => canal,
-        subscribe: () => canal,
+        subscribe: (status?: (status: string) => void) => {
+          status?.("SUBSCRIBED");
+          return canal;
+        },
       };
       return canal;
     }),

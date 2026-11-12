@@ -80,6 +80,27 @@ describe("rascunho-do-checkout", () => {
     );
   });
 
+  it.each(["   ", "\u{200B}\u{2800}\u{3164}"])(
+    "notas ou complemento só com espaço/invisível %j não são conteúdo",
+    (texto) => {
+      expect(rascunhoTemConteudo({ ...rascunhoVazio(), notas: texto })).toBe(
+        false,
+      );
+      expect(
+        rascunhoTemConteudo({ ...rascunhoVazio(), complemento: texto }),
+      ).toBe(false);
+      expect(
+        rascunhoTemConteudo({
+          ...rascunhoVazio(),
+          notas: "  Deixar na portaria  ",
+        }),
+      ).toBe(true);
+      expect(
+        rascunhoTemConteudo({ ...rascunhoVazio(), complemento: "Casa" }),
+      ).toBe(true);
+    },
+  );
+
   it("escrever falhado (storage cheio) não derruba a compra", () => {
     const storageCheio: ArmazenamentoSimples = {
       getItem: () => null,

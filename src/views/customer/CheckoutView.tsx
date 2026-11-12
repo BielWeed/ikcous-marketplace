@@ -4634,7 +4634,9 @@ export function CheckoutViewDaConta({
     // do banco — ver o relatório da tarefa que introduziu este bloco.
     const cpfParaRpc =
       exigeCpfDoDestinatario && customerInfo.cpf ? customerInfo.cpf : undefined;
-    const observations = notes || undefined;
+    const observations = nomeTemConteudoVisivel(notes)
+      ? notes.trim()
+      : undefined;
 
     // O pedido só recebe UM variant_id por linha; produto de cadastro antigo
     // com cor e tamanho separados leva as duas escolhas (e a quantidade de cada
@@ -4675,7 +4677,9 @@ export function CheckoutViewDaConta({
             // A caixa da UF vai normalizada: "sp" digitado sai "SP" (a regra
             // `ufBrasileiraValida` já aceita os dois, o pedido grava um só).
             state: data.state?.trim().toUpperCase(),
-            complement: data.complement,
+            complement: nomeTemConteudoVisivel(data.complement)
+              ? data.complement?.trim()
+              : undefined,
             ...(cpfParaRpc ? { cpf: cpfParaRpc } : {}),
           },
 
