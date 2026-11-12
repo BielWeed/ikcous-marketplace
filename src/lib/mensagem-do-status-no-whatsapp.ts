@@ -4,6 +4,7 @@ import {
 } from "@/lib/link-de-rastreio";
 import {
   ROTULOS_DAS_ETAPAS,
+  ROTULO_RETIRADA_FEITA,
   ROTULO_RETIRADA_PRONTA,
 } from "@/lib/rotulos-das-etapas";
 
@@ -26,7 +27,9 @@ export function rotuloDoStatusParaACliente(
         : ROTULOS_DAS_ETAPAS.aCaminho;
     case "delivered":
       // Na retirada ninguém "entrega" nada: o app da cliente diz "Retirado".
-      return retiradaNaLoja ? "Retirado" : ROTULOS_DAS_ETAPAS.entregue;
+      return retiradaNaLoja
+        ? ROTULO_RETIRADA_FEITA
+        : ROTULOS_DAS_ETAPAS.entregue;
     case "cancelled":
       return "Cancelado";
     default:

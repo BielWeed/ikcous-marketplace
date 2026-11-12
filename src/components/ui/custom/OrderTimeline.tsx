@@ -1,5 +1,6 @@
 import {
   ROTULOS_DAS_ETAPAS,
+  ROTULO_RETIRADA_FEITA,
   ROTULO_RETIRADA_PRONTA,
 } from "@/lib/rotulos-das-etapas";
 import type { OrderStatus } from "@/types";
@@ -27,7 +28,13 @@ export function OrderTimeline({
     retiradaNaLoja
       ? { key: "shipping", label: ROTULO_RETIRADA_PRONTA, icon: Store }
       : { key: "shipping", label: ROTULOS_DAS_ETAPAS.aCaminho, icon: Truck },
-    { key: "delivered", label: ROTULOS_DAS_ETAPAS.entregue, icon: Home },
+    {
+      key: "delivered",
+      label: retiradaNaLoja
+        ? ROTULO_RETIRADA_FEITA
+        : ROTULOS_DAS_ETAPAS.entregue,
+      icon: Home,
+    },
   ];
 
   if (status === "cancelled") {

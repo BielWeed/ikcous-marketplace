@@ -52,6 +52,7 @@ import {
 } from "@/lib/retrato-do-convidado";
 import {
   ROTULOS_DAS_ETAPAS,
+  ROTULO_RETIRADA_FEITA,
   ROTULO_RETIRADA_PRONTA,
 } from "@/lib/rotulos-das-etapas";
 import { supabase } from "@/lib/supabase";
@@ -192,10 +193,10 @@ const PRONTO_PARA_RETIRAR = {
  * entregue com sucesso" -- a cliente foi BUSCAR. So o texto muda.
  */
 const RETIRADO_NA_LOJA = {
-  label: "Retirado",
+  label: ROTULO_RETIRADA_FEITA,
   icon: CheckCircle,
   description: "Pedido retirado na loja. Aproveite sua experiência!",
-  heroTitle: "Retirado",
+  heroTitle: ROTULO_RETIRADA_FEITA,
 };
 
 /**
