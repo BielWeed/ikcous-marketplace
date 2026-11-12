@@ -694,6 +694,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente",
   "129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado",
   "129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente",
+  "135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado",
+  "135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente",
   "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente",
 ]);
 

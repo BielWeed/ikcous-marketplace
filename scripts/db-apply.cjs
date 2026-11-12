@@ -716,6 +716,20 @@ const VERIFICACOES = {
         ],
       },
     ],
+  // 20261399970000: o ranking "Produtos que mais dao lucro" e o lucro do grafico diario descontam a devolucao e o estorno (get_admin_analytics_v2). O corpo e o da 20261251000000 com a conta do lucro
+  // trocada em DOIS lugares (o ranking e o grafico diario): (q - devolvidas) x (preco - custo - cupom - cortesia) - perdidas x custo. Cada marcador e' contado no corpo da propria migration. A consulta 135a
+  // confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
+  "20261399970000_o_ranking_de_lucro_desconta_a_devolucao.sql": {
+    funcao: "get_admin_analytics_v2",
+    esperado: [
+      { texto: "- dev.perdidas * COALESCE(oic.custo, p.custo)", vezes: 2 },
+      { texto: "resolucao_final IN ('reembolso', 'vale')", vezes: 4 },
+      { texto: "AND rf.status = 'concluido'", vezes: 2 },
+      { texto: "SUM(oi.quantity - dev.devolvidas)::int", vezes: 1 },
+      { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+      { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+    ],
+  },
   // 20261397000000: o desconto do cupom de porcentagem e' arredondado ao centavo. As TRES funcoes (create_marketplace_order_v23/v24 e
   // validate_coupon_secure_v2) trocam SO a linha da conta do desconto percentual: `round(<subtotal * valor / 100>, 2)` no lugar da conta crua.
   // Cada marcador aparece UMA vez no corpo (o marcador nao admite "zero vezes": a ausencia da conta antiga e' do pos-voo da migration e da

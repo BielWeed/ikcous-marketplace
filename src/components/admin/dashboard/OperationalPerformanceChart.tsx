@@ -378,8 +378,7 @@ export const OperationalPerformanceChart = memo(
 
         {!loading && stats && chartMode === "roi" && (
           <p className="text-admin-text-soft shrink-0 text-[11px] leading-tight">
-            Lucro das vendas. Devolução parcial e estorno só são descontados na
-            aba Resultado do Financeiro.
+            Lucro das vendas, descontadas as devoluções e os estornos.
           </p>
         )}
 

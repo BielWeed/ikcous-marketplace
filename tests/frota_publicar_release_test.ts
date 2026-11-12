@@ -3176,6 +3176,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado",
     "128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado",
     "129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado",
+    "135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado",
   ]);
 });
 

@@ -134,7 +134,7 @@ describe("tela do lucro avisa produtos sem custo", () => {
 
   describe("OperationalPerformanceChart", () => {
     it.each([undefined, 0, 3])(
-      "o lucro avisa visivelmente sobre devolução parcial e estorno mesmo com %s produtos sem custo",
+      "o lucro avisa visivelmente que desconta devolução e estorno mesmo com %s produtos sem custo",
       async (semCusto) => {
         await act(async () =>
           raiz.render(
@@ -146,7 +146,7 @@ describe("tela do lucro avisa produtos sem custo", () => {
           ),
         );
         const aviso =
-          "Lucro das vendas. Devolução parcial e estorno só são descontados na aba Resultado do Financeiro.";
+          "Lucro das vendas, descontadas as devoluções e os estornos.";
         expect(hospedeiro.textContent).not.toContain(aviso);
         const retorno = [...hospedeiro.querySelectorAll("button")].find((b) =>
           b.textContent?.includes("Retorno do estoque"),

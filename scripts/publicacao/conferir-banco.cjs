@@ -3041,6 +3041,14 @@ const ROL_DA_129B = [
   "marketplace_orders.stock_returned_at: coluna existe",
   "marketplace_orders.estorno_manual_registrado_em: coluna existe",
 ];
+// Lote 135 (20261399970000, o ranking de lucro desconta a devolucao e o estorno: get_admin_analytics_v2 redefinida, sem objeto novo). A 135a e a 135b tem o MESMO rol de 4 linhas (controle, corpo exato (md5),
+// atributos e ACL); a 135a espera o corpo da migration nova e a 135b o vigente de antes (o da 20261251000000). So catalogo: nenhuma le pedido, devolucao ou estorno e nenhuma chama a funcao.
+const ROL_DA_135 = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_analytics_v2: corpo exato (md5)",
+  "get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)",
+  "get_admin_analytics_v2: EXECUTE so de authenticated e service_role (PUBLIC e anon nao)",
+];
 // Lote 129 (20261399940000, o cadastro cria o perfil em toda loja: o gatilho on_auth_user_created de auth.users, que a Savy clonada do baseline nunca teve, mais o reparo de quem se cadastrou sem perfil).
 // A 129a (6 linhas) prova o gatilho como desenhado (estrutura do catalogo), ligado, sem concorrente, a funcao SECURITY DEFINER e que nenhum usuario de cliente de tamanho valido esta sem perfil (so uma
 // CONTAGEM); a 129b (3 linhas) prova o estado de antes (gatilho ausente). Nenhuma devolve nome, telefone, CPF ou e-mail.
@@ -3062,6 +3070,8 @@ const ROL_FECHADO_POR_CONSULTA = {
     ROL_DA_129A_PERFIL,
   "129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente":
     ROL_DA_129B_PERFIL,
+  "135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado": ROL_DA_135,
+  "135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente": ROL_DA_135,
   "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente": ROL_DA_129B,
   "128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado":
     ROL_DA_128,
