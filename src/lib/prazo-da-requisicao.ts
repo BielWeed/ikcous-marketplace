@@ -119,6 +119,14 @@ export const PRAZO_DA_CONSULTA_DO_PAINEL_MS = 20_000;
 // com o carrinho de AGORA); a resposta tardia da gravação abandonada é ignorada.
 export const PRAZO_DE_GRAVAR_O_CARRINHO_MS = 20_000;
 
+// PRAZO DE "VOCÊ TAMBÉM PODE GOSTAR" NA PÁGINA DO PRODUTO (12/11/2026): rede que
+// conecta e não responde deixava a seção em esqueletos cinza para sempre. São duas
+// consultas em sequência (a função das recomendações e as variações das peças),
+// sob UM prazo só: 15 s, o mesmo de abrir um produto. Estourou = cai no caminho
+// de falha que já existe (a seção some, ou fica a cópia guardada); só encerra a
+// ESPERA da tela, a consulta não grava nada.
+export const PRAZO_DAS_RECOMENDACOES_DO_PRODUTO_MS = 15_000;
+
 /** Frase para quem está na tela: o que aconteceu e o que fazer. */
 export const MENSAGEM_CONEXAO_LENTA =
   "A conexão está lenta. Toque em Tentar de novo.";
