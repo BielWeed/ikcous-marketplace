@@ -461,13 +461,13 @@ describe("ficha do pedido (redesenho 08/10/2026)", () => {
       await renderizar(
         pedidoFake({
           paymentMethod: "cash",
-          pagamentoRecebidoEm: "2026-09-02T10:00:00.000Z",
+          pagamentoRecebidoEm: "2026-10-15T02:30:00Z",
         }),
         { onRegistrarPagamento: onRegistrar },
       );
 
       const dinheiro = porId("bloco-dinheiro");
-      expect(dinheiro?.textContent).toMatch(/Recebido em/);
+      expect(dinheiro?.textContent).toContain("Recebido em 14 de out.");
       expect(botao("Marcar como recebido")).toBeUndefined();
       const desfazer = botao("Desfazer");
       expect(dinheiro?.contains(desfazer as Node)).toBe(true);
