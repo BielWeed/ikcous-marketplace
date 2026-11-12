@@ -842,6 +842,24 @@ describe("regras do pedido do cliente", () => {
     ).toBe("Conte em poucas palavras o motivo da devolução.");
   });
 
+  // `0.29 * 100` dá 28.999999999999996 e `1.15 * 100` dá 114.99999999999999 em
+  // ponto flutuante: só `Math.round` devolve o centavo certo (29 e 115). Os
+  // esperados abaixo foram contados à mão em centavos inteiros (3 × 115 = 345).
+  it("valor da seleção não perde centavo de preço que o ponto flutuante deixa abaixo (R$ 0,29 e R$ 1,15)", () => {
+    expect(
+      valorDaSelecao(
+        [item({ valor_unitario: 0.29, quantidade: 1, disponivel: 1 })],
+        new Map([["oi-1", 1]]),
+      ),
+    ).toBe(0.29);
+    expect(
+      valorDaSelecao(
+        [item({ valor_unitario: 1.15, quantidade: 3, disponivel: 3 })],
+        new Map([["oi-1", 3]]),
+      ),
+    ).toBe(3.45);
+  });
+
   it("valor em centavos e frete de ida só quando o pedido volta inteiro", () => {
     const itens = [
       item(),
