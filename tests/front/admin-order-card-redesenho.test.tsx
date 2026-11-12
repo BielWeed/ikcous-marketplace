@@ -131,8 +131,8 @@ describe("AdminOrderCard — rodapé e leitura do pedido", () => {
   });
 
   it("já recebido: mostra a data e o 'Desfazer', e some o 'Marcar como recebido'", () => {
-    desenhar(pedido({ pagamentoRecebidoEm: "2026-10-05T12:00:00.000Z" }));
-    expect(hospedeiro.textContent).toMatch(/Recebido em/);
+    desenhar(pedido({ pagamentoRecebidoEm: "2026-10-15T02:30:00Z" }));
+    expect(hospedeiro.textContent).toMatch(/Recebido em 14\/10.*23:30/);
     expect(botao("Marcar como recebido")).toBeUndefined();
     act(() => {
       botao("Desfazer")?.dispatchEvent(
