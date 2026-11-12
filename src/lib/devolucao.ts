@@ -1414,7 +1414,7 @@ export function mensagemDoErro(erro: unknown, generica: string): string {
 export async function corpoDoErroDaEdge(erro: unknown): Promise<unknown> {
   try {
     const contexto = ehObjeto(erro) ? campo(erro, "context") : undefined;
-    const ler = ehObjeto(contexto) ? campo(contexto, "json") : undefined;
+    const ler = ehObjeto(contexto) ? Reflect.get(contexto, "json") : undefined;
     if (typeof ler === "function") {
       return await (ler as () => Promise<unknown>).call(contexto);
     }
