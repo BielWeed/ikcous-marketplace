@@ -25,8 +25,16 @@ import type { PoliticaDevolucao } from "@/types/devolucao";
 // CNPJ ou CPF e e-mail de atendimento a lojista pode declarar em Minha loja:
 // quando declarados, entram como UMA linha ("Responsável: …") na primeira seção
 // de Termos e de Privacidade (`DadosDaLoja.responsavel`); sem eles o texto é
-// o de sempre. O que o texto ainda não diz porque o app não guarda: prazo de
-// guarda dos dados — decisão do dono.
+// o de sempre. O endereço físico da loja (Minha loja › Endereço; Decreto
+// 7.962/2013) entra só nos Termos, na mesma linha do responsável
+// (`DadosDaLoja.endereco`). O que o texto ainda não diz porque o app não
+// guarda: prazo de guarda dos dados — decisão do dono.
+//
+// VERSÃO: Termos e Privacidade mostram "Versão N, atualizada em DD/MM/AAAA" no
+// topo (`VERSAO_DOS_TEXTOS`). Mudou o texto-base? Aumente a versão, ponha a data
+// de hoje e a nova impressão: o teste
+// `textos-das-politicas-versao-acompanha-o-texto` reprova até alguém fazer isso
+// e imprime a impressão certa.
 
 export interface SecaoDeTexto {
   readonly id: string;
@@ -49,15 +57,78 @@ export interface DadosDaLoja {
    * aos de uma loja que nunca preencheu nada.
    */
   readonly responsavel?: string | null;
+  /**
+   * O endereço da loja já em frase (`enderecoEmUmaFrase`). Só os Termos o usam.
+   * Ausente ou vazio: nada é escrito a mais.
+   */
+  readonly endereco?: string | null;
 }
 
-/** Acrescenta a linha do responsável ao fim dos parágrafos, só se existir. */
+/**
+ * A versão publicada dos Termos e da Privacidade. `impressaoDoTexto` é um hash
+ * (FNV-1a de 32 bits) do texto-base dos dois, montado com dados fixos de teste —
+ * o teste `textos-das-politicas-versao-acompanha-o-texto` o recalcula e reprova
+ * se o texto mudou sem a versão, a data e a impressão acompanharem.
+ */
+export interface VersaoDosTextos {
+  readonly versao: number;
+  /** AAAA-MM-DD: o dia em que o texto-base mudou pela última vez. */
+  readonly atualizadoEm: string;
+  readonly impressaoDoTexto: string;
+}
+
+export const VERSAO_DOS_TEXTOS: VersaoDosTextos = {
+  versao: 1,
+  atualizadoEm: "2026-11-12",
+  impressaoDoTexto: "b2adc854",
+};
+
+/**
+ * "Versão 1, atualizada em 12/11/2026". A data sai da string AAAA-MM-DD, sem
+ * `new Date()`: o dia não pode mudar com o fuso do aparelho.
+ */
+export function rotuloDaVersao(
+  versao: VersaoDosTextos = VERSAO_DOS_TEXTOS,
+): string {
+  const [ano, mes, dia] = versao.atualizadoEm.split("-");
+  return `Versão ${versao.versao}, atualizada em ${dia}/${mes}/${ano}`;
+}
+
+/** Acrescenta a linha ao fim dos parágrafos, só se existir. */
+function comLinha(
+  paragrafos: readonly string[],
+  linha: string | null | undefined,
+): readonly string[] {
+  const texto = linha?.trim();
+  return texto ? [...paragrafos, texto] : paragrafos;
+}
+
+/** O responsável (se declarado), sem endereço: Privacidade usa só isto. */
 function comResponsavel(
   paragrafos: readonly string[],
   loja: DadosDaLoja,
 ): readonly string[] {
-  const linha = loja.responsavel?.trim();
-  return linha ? [...paragrafos, linha] : paragrafos;
+  return comLinha(paragrafos, loja.responsavel);
+}
+
+/**
+ * Nos Termos o endereço físico da loja vai na MESMA linha do responsável. Sem
+ * responsável declarado, ele aparece sozinho ("Endereço da loja: …"); sem
+ * endereço, é só o responsável (ou nada).
+ */
+function comResponsavelEEndereco(
+  paragrafos: readonly string[],
+  loja: DadosDaLoja,
+): readonly string[] {
+  const responsavel = loja.responsavel?.trim();
+  const endereco = loja.endereco?.trim();
+  if (!endereco) return comLinha(paragrafos, responsavel);
+  return comLinha(
+    paragrafos,
+    responsavel
+      ? `${responsavel} — endereço: ${endereco}`
+      : `Endereço da loja: ${endereco}`,
+  );
 }
 
 /** Quando não há política carregada, vale o mínimo do CDC art. 49. */
@@ -73,7 +144,7 @@ function montarTermos(loja: DadosDaLoja): DocumentoDePolitica {
       {
         id: "quem-somos",
         titulo: "Quem vende",
-        paragrafos: comResponsavel(
+        paragrafos: comResponsavelEEndereco(
           [
             `Este app é a loja virtual da ${loja.nome}. Ao criar uma conta, navegar ou fazer um pedido por aqui, você concorda com estes termos.`,
           ],

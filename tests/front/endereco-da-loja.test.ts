@@ -7,6 +7,7 @@
 import {
   type PartesDoEndereco,
   divergenciaDoEndereco,
+  enderecoEmUmaFrase,
   lerEnderecoConferido,
   lerEnderecoDaLoja,
   montarEnderecoDaLoja,
@@ -228,4 +229,45 @@ describe("divergenciaDoEndereco", () => {
       divergenciaDoEndereco(undefined, undefined, "São Paulo", "SP"),
     ).toBeNull();
   });
+});
+
+// O endereço em UMA frase corrida, para os Termos (Decreto 7.962/2013: o
+// fornecedor informa o endereço físico). O formato gravado usa travessão como
+// separador de bloco; dentro de uma frase que já usa travessão (a linha do
+// responsável), vira hífen.
+describe("enderecoEmUmaFrase", () => {
+  it("endereço no formato do app vira 'Rua, nº - Bairro, Cidade/UF, CEP n'", () => {
+    expect(
+      enderecoEmUmaFrase(montarEnderecoDaLoja(PAULISTA).storeAddress),
+    ).toBe("Avenida Paulista, 1578 - Bela Vista, São Paulo/SP, CEP 01310-100");
+  });
+
+  it("com complemento, ele fica depois do número; sem bairro, o trecho some sem vírgula solta", () => {
+    expect(
+      enderecoEmUmaFrase(
+        montarEnderecoDaLoja({ ...PAULISTA, complemento: "Sala 12" })
+          .storeAddress,
+      ),
+    ).toBe(
+      "Avenida Paulista, 1578, Sala 12 - Bela Vista, São Paulo/SP, CEP 01310-100",
+    );
+    expect(
+      enderecoEmUmaFrase(
+        montarEnderecoDaLoja({ ...PAULISTA, bairro: "" }).storeAddress,
+      ),
+    ).toBe("Avenida Paulista, 1578 - São Paulo/SP, CEP 01310-100");
+  });
+
+  it("texto livre de antes (fora do formato) sai como a lojista escreveu, só com espaços arrumados", () => {
+    expect(enderecoEmUmaFrase("  Rua A,   10   Centro  ")).toBe(
+      "Rua A, 10 Centro",
+    );
+  });
+
+  it.each([null, undefined, "", "   "])(
+    "sem endereço (%j): nada, nunca 'undefined'",
+    (vazio) => {
+      expect(enderecoEmUmaFrase(vazio)).toBeNull();
+    },
+  );
 });

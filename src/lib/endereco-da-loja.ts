@@ -161,6 +161,25 @@ export function lerEnderecoConferido(
   return lido;
 }
 
+/**
+ * O endereço da loja numa frase corrida, para os Termos: "Rua, nº[, compl.] -
+ * Bairro, Cidade/UF, CEP 00000-000" (o travessão dos blocos vira hífen: a frase
+ * que o recebe já usa travessão como separador). Endereço fora do formato (texto
+ * livre de antes) sai como a lojista escreveu, só com os espaços arrumados.
+ * Sem endereço: `null` — quem chama não escreve nada, nem placeholder.
+ */
+export function enderecoEmUmaFrase(
+  storeAddress: string | null | undefined,
+): string | null {
+  const lido = lerEnderecoDaLoja(storeAddress);
+  if (!lido) return espacosEmUm(storeAddress ?? "") || null;
+  const { cep, rua, numero, complemento, bairro, cidade, uf } =
+    normalizarPartes(lido);
+  const lugar = [rua, numero, ...(complemento ? [complemento] : [])].join(", ");
+  const regiao = [...(bairro ? [bairro] : []), `${cidade}/${uf}`].join(", ");
+  return `${lugar} - ${regiao}, CEP ${cep}`;
+}
+
 /** Por que ainda não dá para gravar (o texto que a lojista lê), ou `null`. */
 export function motivoDoEnderecoIncompleto(
   partes: PartesDoEndereco,

@@ -5,6 +5,7 @@ import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { useStore } from "@/contexts/StoreContext";
 import { usePoliticaDeTrocasDaLoja } from "@/hooks/usePoliticaDeTrocasDaLoja";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
+import { enderecoEmUmaFrase } from "@/lib/endereco-da-loja";
 import {
   identidadeLegalDaLoja,
   linhaDoResponsavel,
@@ -16,6 +17,7 @@ import { telefoneDaLojaParaExibicao } from "@/lib/telefone-br";
 import {
   type DocumentoDePolitica,
   montarPolitica,
+  rotuloDaVersao,
 } from "@/lib/textos-das-politicas";
 
 /**
@@ -37,14 +39,28 @@ export function ConteudoDaPolitica({
   // "Responsável: razão social — CNPJ — contato" só existe se a lojista
   // declarou; sem isso o texto é exatamente o de sempre.
   const responsavel = linhaDoResponsavel(identidadeLegalDaLoja(config));
+  // O endereço físico entra na linha do responsável dos Termos (a mesma fonte
+  // do bloco de contato: Minha loja › Endereço). Sem endereço, nada a mais.
+  const endereco = enderecoEmUmaFrase(config.storeAddress);
 
   const documento: DocumentoDePolitica = useMemo(
-    () => montarPolitica(tipo, { nome, responsavel }, trocas.politica),
-    [tipo, nome, responsavel, trocas.politica],
+    () =>
+      montarPolitica(tipo, { nome, responsavel, endereco }, trocas.politica),
+    [tipo, nome, responsavel, endereco, trocas.politica],
   );
 
   return (
     <div data-testid={`politica-${tipo}`} className="space-y-6">
+      {/* Termos e Privacidade são texto-base do app, com versão; Trocas é a
+          política que a lojista configura e não tem. */}
+      {tipo !== "trocas" && (
+        <p
+          data-testid="politica-versao"
+          className="-mb-3 text-xs font-semibold text-muted-foreground"
+        >
+          {rotuloDaVersao()}
+        </p>
+      )}
       <p className="text-sm leading-relaxed text-muted-foreground">
         {documento.resumo}
       </p>
