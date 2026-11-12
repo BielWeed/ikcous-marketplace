@@ -9,11 +9,19 @@ import { describe, expect, it } from "vitest";
  * As regras de permissão do `.claude/settings.json` que seguram as frentes paralelas.
  *
  * O que este teste PROVA: com a semântica de casamento que a documentação do Claude Code garante
- * (`*` casa qualquer texto, `Bash(x *)` casa também `x` sozinho, `:*` final = ` *`; deny vence ask
- * vence allow; deny/ask valem para QUALQUER subcomando de um comando composto) e que foi conferida
- * contra o motor real (`claude -p` sem modelo, 09/10/2026), a forma LITERAL de cada flag que faz
- * uma ferramenta auto-aprovada carregar e EXECUTAR um arquivo escolhido pela frente é barrada, e o
- * uso legítimo (`npx eslint src/admin-card.tsx --quiet`) segue sem pedir confirmação.
+ * (`*` casa qualquer texto, `Bash(x *)` casa também `x` sozinho, `:*` final = ` *`; deny vence
+ * allow; deny vale para QUALQUER subcomando de um comando composto) e que foi conferida contra o
+ * motor real (`claude -p` sem modelo, 09/10/2026), a forma LITERAL de cada flag que faz uma
+ * ferramenta auto-aprovada carregar e EXECUTAR um arquivo escolhido pela frente é barrada, e o uso
+ * legítimo (`npx eslint src/admin-card.tsx --quiet`) segue sem pedir confirmação.
+ *
+ * DECISÃO DO DONO, 12/11/2026 ("não me peça mais nenhuma permissão para eu clicar em permitir"):
+ * o `ask` do `.claude/settings.json` é VAZIO. Causa medida na documentação oficial
+ * (https://code.claude.com/docs/en/permission-modes.md): no modo "Ignorar permissões" uma regra
+ * `ask` EXPLÍCITA continua perguntando; hook PreToolUse e regra `allow` não vencem `ask`, só `deny`
+ * vence tudo. Logo o que era `ask` virou `allow` (uso comum) ou `deny` (as flags que carregam
+ * arquivo escolhido), e quem protege é o `deny`: este teste falha se alguém tirar uma regra de
+ * `deny` ou reintroduzir um `ask`.
  *
  * O que NÃO prova (e por isso o último bloco documenta): o casamento é TEXTUAL. Aspas partidas,
  * barra invertida e ferramentas que leem configuração ao lado do arquivo escapam de qualquer
@@ -22,8 +30,10 @@ import { describe, expect, it } from "vitest";
 const RAIZ = resolve(__dirname, "../..");
 const settings = JSON.parse(
   readFileSync(join(RAIZ, ".claude/settings.json"), "utf8"),
-) as { permissions: { allow: string[]; ask: string[]; deny: string[] } };
-const { allow, ask, deny } = settings.permissions;
+) as { permissions: { allow: string[]; ask?: string[]; deny: string[] } };
+const { allow, deny } = settings.permissions;
+// Chave `ask` ausente equivale a lista vazia: as duas formas cumprem a decisão do dono.
+const ask = settings.permissions.ask ?? [];
 
 /** `Bash(<padrão>)` → o padrão, ou null se a regra é de outra ferramenta. */
 const padraoDeBash = (regra: string): string | null => {
@@ -46,10 +56,11 @@ function casa(padrao: string, comando: string): boolean {
   return new RegExp(`^${re}$`, "s").test(cmd);
 }
 
-type Decisao = "deny" | "ask" | "allow" | "pergunta";
+// Sem "ask": o `ask` é vazio por decisão do dono (ver cabeçalho). "pergunta" = nenhuma regra casou.
+type Decisao = "deny" | "allow" | "pergunta";
 
 /**
- * Descasque que a doc garante antes de casar deny/ask: `timeout`, `time`, `nice`, `nohup`, `stdbuf` e
+ * Descasque que a doc garante antes de casar deny: `timeout`, `time`, `nice`, `nohup`, `stdbuf` e
  * qualquer atribuição `VAR=valor` à frente (para allow o motor só descasca variáveis seguras; aqui o
  * allow usa o texto cru, que é o mais conservador).
  */
@@ -65,7 +76,7 @@ const semEmbrulho = (parte: string): string => {
   }
 };
 
-/** Decisão do motor para um comando: deny e ask valem se QUALQUER subcomando casa; allow, se TODOS. */
+/** Decisão do motor para um comando: deny vale se QUALQUER subcomando casa; allow, se TODOS. */
 function decidir(comando: string): Decisao {
   const partes = comando
     .split(/&&|\|\||;|\|/)
@@ -77,7 +88,6 @@ function decidir(comando: string): Decisao {
       return p !== null && casa(p, parte);
     });
   if (partes.some((p) => casaAlguma(deny, semEmbrulho(p)))) return "deny";
-  if (partes.some((p) => casaAlguma(ask, semEmbrulho(p)))) return "ask";
   if (partes.every((p) => casaAlguma(allow, p))) return "allow";
   return "pergunta";
 }
@@ -129,16 +139,25 @@ describe("permissões das frentes: flags que carregam arquivo da frente", () => 
     expect(decidir(cmd)).toBe("deny");
   });
 
-  const pedemConfirmacao = [
+  // Antes de 12/11/2026 estas flags eram `ask` (o dono clicava). Sem `ask`, a prova que importa
+  // continua: a flag que carrega e executa um arquivo escolhido pela frente NÃO passa — agora é
+  // `deny`, sem clique. `npx shadcn` (baixa e escreve código da rede) idem.
+  const gadgetsAntesAsk = [
     "npx eslint -f json src",
+    "npx eslint src -f json",
     "npx eslint --format ./f.js src",
+    "npx eslint src --format=./f.js",
     "npx knip --reporter ./r.js",
+    "npx knip --reporter=./r.js",
     "npx knip --preprocessor p",
     "npx commitlint -o x",
-    "git push origin main",
+    "npx commitlint --from HEAD~1 -o x",
+    "npx commitlint --format ./f.js",
+    "npx shadcn add button",
+    "echo ok && npx eslint -f ./f.js src",
   ];
-  it.each(pedemConfirmacao)("ask: %s", (cmd) => {
-    expect(decidir(cmd)).toBe("ask");
+  it.each(gadgetsAntesAsk)("deny (era ask): %s", (cmd) => {
+    expect(decidir(cmd)).toBe("deny");
   });
 
   const liberadas = [
@@ -167,37 +186,235 @@ describe("permissões das frentes: flags que carregam arquivo da frente", () => 
   it.each(liberadas)("allow: %s", (cmd) => {
     expect(decidir(cmd)).toBe("allow");
   });
+
+  // O que era `ask` e o dono clicava toda vez: agora passa direto (nenhum clique).
+  const liberadasQueEramAsk = [
+    "git push origin main",
+    "git push -u origin claude/x",
+    "git commit -F msg.txt",
+    "git checkout -b claude/x",
+    "git add src/a.ts",
+    "git merge --ff-only origin/main",
+    "git pull --ff-only",
+    "git stash push -m x",
+    "git switch main",
+    "gh pr create --body-file b.md",
+    "gh issue list",
+    "curl -s https://example.com",
+    "npm install",
+    "npm i -D x",
+    "mv a.txt b.txt",
+    "rm a.txt",
+    "supabase migration new x",
+    "vercel ls",
+    "python -m sqlfluff fix src/a.sql",
+  ];
+  it.each(liberadasQueEramAsk)("allow (era ask): %s", (cmd) => {
+    expect(decidir(cmd)).toBe("allow");
+  });
+
+  // Com os `ask` virando `allow`, é o `deny` que segura o perigoso: ele tem de vencer a regra allow
+  // vizinha (`git push:*`, `rm:*`, `vercel ...`), inclusive dentro de comando composto.
+  const denyVenceAllowVizinho = [
+    "git push --force origin main",
+    "git push -f origin main",
+    "git push --force-with-lease origin main",
+    "git push origin main && git push --force",
+    "rm -rf node_modules",
+    "rm -r src",
+    "git reset --hard HEAD~1",
+    "git clean -fd",
+    "supabase db push",
+    "vercel deploy --prod",
+    "vercel rollback",
+    "npm publish",
+    "psql -h x",
+  ];
+  it.each(denyVenceAllowVizinho)("deny (vence o allow vizinho): %s", (cmd) => {
+    expect(decidir(cmd)).toBe("deny");
+  });
 });
 
-describe("permissões das frentes: nada existente foi relaxado", () => {
-  it("as travas anteriores continuam onde estavam", () => {
-    for (const r of [
-      "Bash(git push --force:*)",
-      "Bash(git push -f:*)",
-      "Bash(git reset --hard:*)",
-      "Bash(rm -rf:*)",
-      "Bash(supabase db push:*)",
-      "Bash(vercel deploy:*)",
-      "Bash(psql:*)",
-      "Read(./.env)",
-    ]) {
-      expect(deny).toContain(r);
-    }
-    for (const r of [
-      "Bash(git push:*)",
-      "Bash(git checkout:*)",
-      "Bash(git commit:*)",
-      "Bash(curl:*)",
-      "Bash(npm install:*)",
-    ]) {
-      expect(ask).toContain(r);
-    }
+/**
+ * As 79 regras de `deny` que existiam ANTES da decisão do dono de 12/11/2026 (cópia literal,
+ * de propósito: é o piso). Tirar qualquer uma do `.claude/settings.json` tem de deixar este teste
+ * vermelho — com o `ask` vazio, é o `deny` que segura o perigoso. Para ACRESCENTAR trava, acrescente
+ * aqui também; para tirar uma, é decisão do dono, não de quem edita o teste.
+ */
+const DENY_ORIGINAIS = [
+  "Bash(Get-Content .env:*)",
+  "Bash(Remove-Item -Recurse:*)",
+  "Bash(cat ./.env:*)",
+  "Bash(cat .env:*)",
+  "Bash(git clean:*)",
+  "Bash(git diff*--output*)",
+  "Bash(git filter-branch:*)",
+  "Bash(git log*--output*)",
+  "Bash(git push --force-with-lease:*)",
+  "Bash(git push --force:*)",
+  "Bash(git push -f:*)",
+  "Bash(git reset --hard:*)",
+  "Bash(git show*--output*)",
+  "Bash(git update-ref:*)",
+  "Bash(npm install -g:*)",
+  "Bash(npm publish:*)",
+  "Bash(npx commitlint * -d*)",
+  "Bash(npx commitlint * -g*)",
+  "Bash(npx commitlint * -p*)",
+  "Bash(npx commitlint * -x*)",
+  "Bash(npx commitlint -d*)",
+  "Bash(npx commitlint -g*)",
+  "Bash(npx commitlint -p*)",
+  "Bash(npx commitlint -x*)",
+  "Bash(npx commitlint*--config*)",
+  "Bash(npx commitlint*--cwd*)",
+  "Bash(npx commitlint*--extends*)",
+  "Bash(npx commitlint*--parser-preset*)",
+  "Bash(npx cspell * -c*)",
+  "Bash(npx cspell -c*)",
+  "Bash(npx cspell*--config*)",
+  "Bash(npx eslint * -c*)",
+  "Bash(npx eslint -c*)",
+  "Bash(npx eslint*--config*)",
+  "Bash(npx eslint*--parser*)",
+  "Bash(npx eslint*--plugin*)",
+  "Bash(npx eslint*--flag*)",
+  "Bash(npx htmlhint * -R*)",
+  "Bash(npx htmlhint -R*)",
+  "Bash(npx htmlhint*--rulesdir*)",
+  "Bash(npx knip * -c*)",
+  "Bash(npx knip -c*)",
+  "Bash(npx knip*--config*)",
+  "Bash(npx knip*--directory*)",
+  "Bash(npx stylelint * -c*)",
+  "Bash(npx stylelint -c*)",
+  "Bash(npx stylelint*--config*)",
+  "Bash(npx stylelint*--custom-formatter*)",
+  "Bash(npx stylelint*--custom-syntax*)",
+  "Bash(npx vite build * -c*)",
+  "Bash(npx vite build -c*)",
+  "Bash(npx vite build*--config*)",
+  "Bash(npx vite preview * -c*)",
+  "Bash(npx vite preview -c*)",
+  "Bash(npx vite preview*--config*)",
+  "Bash(psql:*)",
+  "Bash(rm -fr:*)",
+  "Bash(rm -r:*)",
+  "Bash(rm -rf:*)",
+  "Bash(supabase db push:*)",
+  "Bash(supabase db remote:*)",
+  "Bash(supabase db reset:*)",
+  "Bash(supabase projects delete:*)",
+  "Bash(supabase secrets:*)",
+  "Bash(type .env:*)",
+  "Bash(vercel alias:*)",
+  "Bash(vercel deploy:*)",
+  "Bash(vercel env:*)",
+  "Bash(vercel promote:*)",
+  "Bash(vercel remove:*)",
+  "Bash(vercel rm:*)",
+  "Bash(vercel rollback:*)",
+  "Read(./.env)",
+  "Read(./.env.local)",
+  "Read(./.env.production)",
+  "Read(./.env.production.local)",
+  "Read(./.env.vercel.*)",
+  "Read(./.gh_token)",
+  "Read(./vapid_keys.json)",
+];
+
+/**
+ * As flags que antes eram `ask` e que carregam e executam arquivo escolhido (ou, no caso do
+ * `npx shadcn`, baixam código da rede): sem `ask`, viraram `deny` — bloqueadas, sem clique.
+ */
+const GADGETS_QUE_ERAM_ASK = [
+  "Bash(npx commitlint * -o*)",
+  "Bash(npx commitlint -o*)",
+  "Bash(npx commitlint*--format*)",
+  "Bash(npx eslint * -f*)",
+  "Bash(npx eslint -f*)",
+  "Bash(npx eslint*--format*)",
+  "Bash(npx knip*--preprocessor*)",
+  "Bash(npx knip*--reporter*)",
+  "Bash(npx shadcn:*)",
+];
+
+/** As regras que eram `ask` de uso comum e viraram `allow` (o dono não clica mais). */
+const ERAM_ASK_VIRARAM_ALLOW = [
+  "Bash(Invoke-WebRequest:*)",
+  "Bash(curl:*)",
+  "Bash(gh issue:*)",
+  "Bash(gh pr:*)",
+  "Bash(git add:*)",
+  "Bash(git checkout:*)",
+  "Bash(git commit:*)",
+  "Bash(git merge:*)",
+  "Bash(git pull:*)",
+  "Bash(git push:*)",
+  "Bash(git rebase:*)",
+  "Bash(git restore:*)",
+  "Bash(git revert:*)",
+  "Bash(git stash:*)",
+  "Bash(git switch:*)",
+  "Bash(mv:*)",
+  "Bash(npm i:*)",
+  "Bash(npm install:*)",
+  "Bash(npm uninstall:*)",
+  "Bash(npm update:*)",
+  "Bash(python -m sqlfluff fix:*)",
+  "Bash(rm:*)",
+  "Bash(supabase functions serve:*)",
+  "Bash(supabase link:*)",
+  "Bash(supabase migration new:*)",
+  "Bash(supabase start:*)",
+  "Bash(supabase stop:*)",
+  "Bash(vercel inspect:*)",
+  "Bash(vercel ls:*)",
+  "Bash(vercel whoami)",
+  "Edit(./package.json)",
+  "Edit(./src/config/branding.json)",
+  "Edit(./supabase/migrations/**)",
+  "Edit(./vercel.json)",
+];
+
+describe("permissões das frentes: a decisão do dono de 12/11/2026 (ask vazio, deny segura)", () => {
+  it("o ask é VAZIO: nenhuma regra pede clique de permitir", () => {
+    // No modo "Ignorar permissões" uma regra `ask` explícita continua perguntando (doc oficial
+    // permission-modes) e nem hook nem allow a vencem. Reintroduzir qualquer `ask` devolve os cliques.
+    expect(ask).toEqual([]);
+  });
+
+  it.each(DENY_ORIGINAIS)("deny original continua: %s", (regra) => {
+    expect(deny).toContain(regra);
+  });
+
+  it.each(GADGETS_QUE_ERAM_ASK)(
+    "gadget que era ask agora é deny: %s",
+    (regra) => {
+      expect(deny).toContain(regra);
+      expect(allow).not.toContain(regra);
+    },
+  );
+
+  it.each(ERAM_ASK_VIRARAM_ALLOW)("o que era ask virou allow: %s", (regra) => {
+    expect(allow).toContain(regra);
+    expect(deny).not.toContain(regra);
+  });
+
+  it("a lista de deny só cresce em relação ao piso (nenhuma sumiu)", () => {
+    expect(DENY_ORIGINAIS.filter((r) => !deny.includes(r))).toEqual([]);
+    expect(deny.length).toBeGreaterThanOrEqual(
+      DENY_ORIGINAIS.length + GADGETS_QUE_ERAM_ASK.length,
+    );
+  });
+
+  it("as travas de allow que sempre existiram continuam", () => {
     expect(allow).toContain("Bash(npx eslint:*)");
     expect(allow).toContain("Bash(deno test:*)");
   });
 
-  it("deny, ask e allow não repetem regra nem se contradizem na mesma string", () => {
-    for (const lista of [allow, ask, deny])
+  it("deny e allow não repetem regra nem se contradizem na mesma string", () => {
+    for (const lista of [allow, deny])
       expect(new Set(lista).size).toBe(lista.length);
     expect(deny.filter((r) => ask.includes(r) || allow.includes(r))).toEqual(
       [],
