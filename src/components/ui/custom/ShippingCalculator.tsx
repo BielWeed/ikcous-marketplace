@@ -760,12 +760,13 @@ export function ShippingCalculator({
 
   // Assinatura estável do carrinho: muda quando produto, variante, QUANTIDADE
   // OU PREÇO mudam. Itens ordenados por `productId+variantId`, cada um
-  // `${productId}:${variantId}:${quantity}:${preço vendido}`, juntos por
-  // vírgula. Só a TELA usa esta forma (a edge tem o `getCartHash` dela, sem
+  // `${productId}:${variantId}:${quantity}:${preço vendido}:${1|0 frete grátis
+  // do produto}`, juntos por vírgula. Só a TELA usa esta forma (a edge tem o `getCartHash` dela, sem
   // preço, e já invalida o próprio cache pelo valor lido do banco). O preço
   // entra porque o frete grátis e o desconto da transportadora dependem do
   // subtotal: mesmo produto, mesma variação e mesma quantidade com preço
-  // novo é outra cotação. Cotação guardada no formato sem preço nunca bate
+  // novo é outra cotação; a marca entra porque zera o preço da opção
+  // (`precoFinalDaOpcao`). Cotação guardada no formato antigo nunca bate
   // (recota uma vez, nunca serve o frete do subtotal velho).
   const cartSignature = useMemo(() => {
     if (cart.length === 0) return "";
@@ -782,7 +783,7 @@ export function ShippingCalculator({
               item.product.variants?.find((v) => v.id === item.variantId),
             )
           : "";
-        return `${item.product?.id}:${item.variantId || ""}:${item.quantity || 1}:${preco}`;
+        return `${item.product?.id}:${item.variantId || ""}:${item.quantity || 1}:${preco}:${item.product?.freeShipping ? 1 : 0}`;
       })
       .join(",");
   }, [cart]);

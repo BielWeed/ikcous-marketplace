@@ -76,7 +76,7 @@ function produto(): Product {
   };
 }
 const CARRINHO: CartItem[] = [{ product: produto(), quantity: 1 }];
-const ASSINATURA = "prod-teste::1:59.9";
+const ASSINATURA = "prod-teste::1:59.9:0";
 
 const opcao = (id: string, price: number): ShippingOption => ({
   id,

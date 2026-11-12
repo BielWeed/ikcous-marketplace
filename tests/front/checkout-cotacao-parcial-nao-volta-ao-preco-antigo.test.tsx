@@ -215,7 +215,7 @@ describe("cotação parcial nova × Finalizar com cópia completa antiga", () =>
       const contexto = contextoDaLojaParaFrete(undefined);
       const envelope = {
         contexto,
-        assinatura: "prod-1::1:100",
+        assinatura: "prod-1::1:100:0",
         gravadoEm: Date.now() - 60_000,
         revisaoConfig: "rev-antiga",
         opcoes: [PAC_ANTIGO],
@@ -223,7 +223,7 @@ describe("cotação parcial nova × Finalizar com cópia completa antiga", () =>
       expect(
         cotacaoCacheadaQueAindaServe(
           envelope,
-          "prod-1::1:100",
+          "prod-1::1:100:0",
           Date.now(),
           contexto,
         ),
