@@ -1,5 +1,6 @@
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { OPCOES_MAX_ITENS_CARROSSEL } from "@/config/carrossel";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Product } from "@/types";
 import { Hand, Search, Sparkles, Tag, Trash2, X } from "lucide-react";
@@ -193,10 +194,10 @@ export function FolhaEditarVitrine({
         // Nome vazio nunca sobe (apagar para digitar outro é normal); ao sair
         // do campo vazio, avisa e devolve o nome que já estava gravado.
         onFlush={(titulo) => {
-          if (titulo.trim()) void gravarNome(titulo);
+          if (nomeTemConteudoVisivel(titulo)) void gravarNome(titulo);
         }}
         onBlur={(evento) => {
-          if (evento.target.value.trim()) return;
+          if (nomeTemConteudoVisivel(evento.target.value)) return;
           toast.error("Informe um título para a vitrine");
           setChaveDoCampo((chave) => chave + 1);
         }}

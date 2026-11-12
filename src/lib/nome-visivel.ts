@@ -26,8 +26,10 @@ export function caractereSemDesenho(caractere: string): boolean {
 }
 
 /** Diz se o nome tem ao menos um caractere que aparece na tela. */
-export function nomeTemConteudoVisivel(nome: string): boolean {
-  for (const caractere of nome) {
+export function nomeTemConteudoVisivel(
+  nome: string | null | undefined,
+): boolean {
+  for (const caractere of nome ?? "") {
     if (!caractereSemDesenho(caractere)) return true;
   }
   return false;

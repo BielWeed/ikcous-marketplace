@@ -4,6 +4,7 @@ import { classeDoScrimDoBanner } from "@/lib/banner-scrim";
 import { carrosselPodeGirar } from "@/lib/carrossel-visivel";
 import { destinoDoBanner } from "@/lib/destino-do-banner";
 import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { rolarAoCatalogo } from "@/lib/rolar-ao-catalogo";
 import { cn } from "@/lib/utils";
 import type { Banner } from "@/types";
@@ -271,12 +272,11 @@ export const BannerCarousel = memo(function BannerCarousel({
                   {(() => {
                     const hasOverlayText =
                       banner.showTextOverlay !== false &&
-                      ((banner.title && banner.title.trim() !== "") ||
-                        (banner.subtitle && banner.subtitle.trim() !== "") ||
+                      (nomeTemConteudoVisivel(banner.title) ||
+                        nomeTemConteudoVisivel(banner.subtitle) ||
                         (destino !== null &&
-                          banner.buttonText &&
-                          banner.buttonText.trim() !== "") ||
-                        (banner.badgeText && banner.badgeText.trim() !== ""));
+                          nomeTemConteudoVisivel(banner.buttonText)) ||
+                        nomeTemConteudoVisivel(banner.badgeText));
 
                     if (!hasOverlayText) return null;
 
@@ -321,22 +321,21 @@ export const BannerCarousel = memo(function BannerCarousel({
                                 "bg-black/40 backdrop-blur-md border border-white/10 rounded-3xl p-6 sm:p-8 text-center items-center mx-auto",
                             )}
                           >
-                            {banner.badgeText &&
-                              banner.badgeText.trim() !== "" && (
-                                <span
-                                  className={cn(
-                                    "inline-block rounded-full bg-[#FFBF00] text-black px-3.5 py-1 text-[10px] sm:text-xs font-black uppercase tracking-widest mb-1 w-fit",
-                                    banner.templateType === "split_right" &&
-                                      "self-end",
-                                    banner.templateType === "split_center" &&
-                                      "mx-auto",
-                                  )}
-                                >
-                                  {banner.badgeText}
-                                </span>
-                              )}
+                            {nomeTemConteudoVisivel(banner.badgeText) && (
+                              <span
+                                className={cn(
+                                  "inline-block rounded-full bg-[#FFBF00] text-black px-3.5 py-1 text-[10px] sm:text-xs font-black uppercase tracking-widest mb-1 w-fit",
+                                  banner.templateType === "split_right" &&
+                                    "self-end",
+                                  banner.templateType === "split_center" &&
+                                    "mx-auto",
+                                )}
+                              >
+                                {banner.badgeText}
+                              </span>
+                            )}
 
-                            {banner.title && banner.title.trim() !== "" && (
+                            {nomeTemConteudoVisivel(banner.title) && (
                               <h2
                                 className={cn(
                                   "text-2xl font-black leading-none tracking-tighter drop-shadow-2xl sm:text-4xl",
@@ -361,21 +360,19 @@ export const BannerCarousel = memo(function BannerCarousel({
                               </h2>
                             )}
 
-                            {banner.subtitle &&
-                              banner.subtitle.trim() !== "" && (
-                                <p
-                                  className="max-w-full truncate text-xs font-medium text-zinc-300 drop-shadow-md sm:text-sm"
-                                  style={{
-                                    color: banner.subtitleColor || undefined,
-                                  }}
-                                >
-                                  {banner.subtitle}
-                                </p>
-                              )}
+                            {nomeTemConteudoVisivel(banner.subtitle) && (
+                              <p
+                                className="max-w-full truncate text-xs font-medium text-zinc-300 drop-shadow-md sm:text-sm"
+                                style={{
+                                  color: banner.subtitleColor || undefined,
+                                }}
+                              >
+                                {banner.subtitle}
+                              </p>
+                            )}
 
                             {destino !== null &&
-                              banner.buttonText &&
-                              banner.buttonText.trim() !== "" && (
+                              nomeTemConteudoVisivel(banner.buttonText) && (
                                 <button
                                   type="button"
                                   className={cn(

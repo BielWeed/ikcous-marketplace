@@ -30,6 +30,7 @@ import { useFocoAposExcluir } from "@/hooks/useFocoAposExcluir";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import type { LayoutDeOfertas } from "@/lib/layout-de-ofertas";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { ordenarParaVitrine } from "@/lib/vitrine";
 import {
   destaquesDaVitrine,
@@ -285,7 +286,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     sectionId: string,
     newTitle: string,
   ): Promise<boolean> => {
-    if (!newTitle.trim()) {
+    if (!nomeTemConteudoVisivel(newTitle)) {
       toast.error("Informe um título para a vitrine");
       return false;
     }
@@ -446,7 +447,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
 
   const handleAddCustomVitrine = async () => {
     if (gravacaoEmAndamentoRef.current) return;
-    if (!newVitrineTitle.trim()) {
+    if (!nomeTemConteudoVisivel(newVitrineTitle)) {
       toast.error("Informe um título para a vitrine");
       return;
     }

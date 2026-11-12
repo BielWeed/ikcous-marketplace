@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuestions } from "@/hooks/useQuestions";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { iniciaisDaLoja } from "@/lib/iniciais-da-loja";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { tempoRelativo } from "@/lib/tempo-relativo";
 import { cn } from "@/lib/utils";
 import { Check, MessageSquare, Reply, Send } from "lucide-react";
@@ -73,7 +74,8 @@ export function ProductQA({
   const [enviandoPergunta, setEnviandoPergunta] = useState(false);
 
   const handleAsk = async () => {
-    if (!newQuestion.trim() || perguntaEmVooRef.current) return;
+    if (!nomeTemConteudoVisivel(newQuestion) || perguntaEmVooRef.current)
+      return;
     perguntaEmVooRef.current = true;
     setEnviandoPergunta(true);
     try {
@@ -198,7 +200,9 @@ export function ProductQA({
             />
             <button
               type="submit"
-              disabled={!newQuestion.trim() || enviandoPergunta}
+              disabled={
+                !nomeTemConteudoVisivel(newQuestion) || enviandoPergunta
+              }
               className="absolute right-1 top-1 flex size-11 items-center justify-center rounded-full bg-foreground text-background hover:opacity-90 disabled:opacity-30"
               title="Enviar pergunta"
               aria-label="Enviar pergunta"

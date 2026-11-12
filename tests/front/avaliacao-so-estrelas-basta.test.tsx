@@ -82,6 +82,55 @@ describe("ReviewCard — avaliação só com estrelas", () => {
     );
     expect(vazios).toHaveLength(0);
   });
+
+  // r150-f: `trim()` não tira U+200B/U+200E/U+2800/U+3164; uma avaliação antiga
+  // gravada só com isso desenhava o parágrafo em branco.
+  it.each(["\u200b", "\u200e\u200e", "\u2800", "\u3164"])(
+    "comentário só de caractere invisível (%j) não desenha o parágrafo",
+    async (comment) => {
+      const { ReviewCard } = await import("@/components/ui/custom/ReviewCard");
+      await act(async () => {
+        raiz.render(
+          <ReviewCard
+            review={{
+              id: "r-1",
+              productId: "p-1",
+              customerName: "Cliente",
+              rating: 5,
+              comment,
+              helpful: 0,
+              verified: true,
+              createdAt: "2026-09-28T12:00:00Z",
+            }}
+          />,
+        );
+      });
+      expect(hospedeiro.querySelector("p.whitespace-pre-wrap")).toBeNull();
+    },
+  );
+
+  it("controle: comentário com texto de verdade continua desenhado", async () => {
+    const { ReviewCard } = await import("@/components/ui/custom/ReviewCard");
+    await act(async () => {
+      raiz.render(
+        <ReviewCard
+          review={{
+            id: "r-1",
+            productId: "p-1",
+            customerName: "Cliente",
+            rating: 5,
+            comment: "Chegou rápido",
+            helpful: 0,
+            verified: true,
+            createdAt: "2026-09-28T12:00:00Z",
+          }}
+        />,
+      );
+    });
+    expect(hospedeiro.querySelector("p.whitespace-pre-wrap")?.textContent).toBe(
+      "Chegou rápido",
+    );
+  });
 });
 
 describe("ReviewForm — comentário opcional", () => {
@@ -121,6 +170,43 @@ describe("ReviewForm — comentário opcional", () => {
       comment: "",
     });
   });
+
+  // r150-f: comentário só de U+200B/U+200E/U+2800/U+3164 vira "" no envio (as
+  // estrelas bastam) e NÃO conta como texto digitado (a folha não pergunta
+  // "descartar texto?" nem segura a atualização do app por ele).
+  it.each(["\u200b", "\u200e\u200e", "\u2800", "\u3164"])(
+    "comentário só de caractere invisível (%j) vai como vazio e não conta como texto",
+    async (invisivel) => {
+      const { ReviewForm } = await import("@/components/ui/custom/ReviewForm");
+      const temTextoRef = { current: false };
+      await act(async () => {
+        raiz.render(
+          <ReviewForm
+            productId="p-1"
+            initialRating={5}
+            temTextoRef={temTextoRef}
+          />,
+        );
+      });
+      const area = hospedeiro.querySelector("textarea") as HTMLTextAreaElement;
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )?.set;
+      await act(async () => {
+        setter?.call(area, invisivel);
+        area.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      expect(temTextoRef.current).toBe(false);
+      await enviar();
+
+      expect(addReview).toHaveBeenCalledWith({
+        productId: "p-1",
+        rating: 5,
+        comment: "",
+      });
+    },
+  );
 
   it("o campo se apresenta como opcional", async () => {
     await montar(3);

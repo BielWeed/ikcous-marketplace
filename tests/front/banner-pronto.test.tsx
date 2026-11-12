@@ -89,6 +89,44 @@ describe("banner pronto no carrossel", () => {
       expect(hospedeiro.querySelector("[data-botao]")).toBeNull();
     },
   );
+  // r150-f: `trim()` não tira U+200B, U+200E, U+2800 nem U+3164. Campo só disso
+  // é ausente (sem pílula, título, subtítulo ou botão vazios); os outros ficam.
+  const CAMPOS_DO_PRONTO = [
+    ["badgeText", "[data-selo]"],
+    ["title", "h2"],
+    ["subtitle", "p"],
+    ["buttonText", "[data-botao]"],
+  ] as const;
+  it.each(
+    CAMPOS_DO_PRONTO.flatMap(([campo, seletor]) =>
+      ["\u200b", "\u200e\u200e", "\u2800", "\u3164"].map(
+        (invisivel) => [campo, seletor, invisivel] as const,
+      ),
+    ),
+  )(
+    "%s só de caractere invisível (%s -> %j) não desenha o campo e os demais ficam",
+    (campo, seletor, invisivel) => {
+      montar({ [campo]: invisivel });
+      const pronto = hospedeiro.querySelector("[data-modelo]");
+      expect(pronto?.querySelector(seletor)).toBeNull();
+      for (const [outro, seletorDoOutro] of CAMPOS_DO_PRONTO) {
+        if (outro !== campo)
+          expect(pronto?.querySelector(seletorDoOutro)).not.toBeNull();
+      }
+    },
+  );
+  it("todos os textos só de caractere invisível deixam apenas a foto", () => {
+    montar({
+      title: "\u200b",
+      subtitle: "\u200e",
+      buttonText: "\u2800",
+      badgeText: "\u3164",
+    });
+    const pronto = hospedeiro.querySelector("[data-modelo]");
+    expect(
+      pronto?.querySelector("h2, p, [data-botao], [data-selo]"),
+    ).toBeNull();
+  });
   // Sem destino o slide nem é tocável: o botão "Comprar agora" seria falso.
   it.each(["", "   ", "javascript:alert(1)", "//outro-site.com"])(
     "link '%s' (sem destino): o botão não é desenhado e o resto fica",
