@@ -2105,17 +2105,18 @@ export const OrderDetail = memo(function OrderDetail({
       salvamentoRastreioRef.current === salvamento;
     try {
       setIsSavingTracking(true);
-      // Prazo só da espera da tela (rede "pendurada"): estourou, o `catch`
-      // abaixo conta que NÃO se sabe se gravou, solta o campo COM o que foi
-      // digitado e relê o código gravado. Repetir é seguro ("último vale").
+      // A gravação só vale se o código lido ainda for o mesmo no banco.
+      const gravacao = supabase
+        .from("marketplace_orders")
+        .update({ tracking_code: codigo || null })
+        .eq("id", pedidoId);
+      // O mapper representa tanto null quanto texto vazio como sem rastreio.
+      const condicionada = localTrackingCode
+        ? gravacao.eq("tracking_code", localTrackingCode)
+        : gravacao.or("tracking_code.is.null,tracking_code.eq.");
+      // O prazo encerra só a espera; o catch relê sem apagar o rascunho.
       const { data, error } = await aguardarComPrazo(
-        Promise.resolve(
-          supabase
-            .from("marketplace_orders")
-            .update({ tracking_code: codigo || null })
-            .eq("id", pedidoId)
-            .select("id"),
-        ),
+        Promise.resolve(condicionada.select("id")),
         PRAZO_DAS_ACOES_DO_PEDIDO_MS,
         () => erroDeConsultaSemResposta(MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA),
       );
@@ -2123,11 +2124,35 @@ export const OrderDetail = memo(function OrderDetail({
       // Só o salvamento vigente pode alterar a ficha.
       if (!vigente()) return;
       if (error) throw error;
-      // A política de update filtra em silêncio quando a sessão deixou de ser
-      // admin: 0 linhas e `error: null`. Sem linha gravada NÃO há "salvo": o
-      // campo fica aberto com o que foi digitado e o aviso diz o que fazer.
+      // Zero linhas pode ser conflito ou sessão sem permissão. Relê o salvo,
+      // mas nunca troca o rascunho nem comemora uma gravação que não ocorreu.
       if (!data?.length) {
-        toast.error(MENSAGEM_RASTREIO_NAO_GRAVADO);
+        let mensagem = MENSAGEM_RASTREIO_NAO_GRAVADO;
+        try {
+          const atual = await aguardarComPrazo(
+            Promise.resolve(
+              supabase
+                .from("marketplace_orders")
+                .select("tracking_code")
+                .eq("id", pedidoId)
+                .maybeSingle(),
+            ),
+            PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+            () => erroDeConsultaSemResposta(),
+          );
+          if (!vigente()) return;
+          if (!atual.error && atual.data) {
+            const salvo = atual.data.tracking_code ?? "";
+            setLocalTrackingCode(salvo);
+            if (salvo !== localTrackingCode) {
+              mensagem =
+                "O código de rastreio mudou em outro aparelho. O que você digitou foi mantido. Confira antes de salvar de novo.";
+            }
+          }
+        } catch {
+          // Sem leitura confiável, mantém o aviso de gravação não confirmada.
+        }
+        if (vigente()) toast.error(mensagem);
         return;
       }
       setLocalTrackingCode(codigo);
