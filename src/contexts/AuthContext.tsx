@@ -1497,6 +1497,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       activeUserIdRef.current = null;
       setSession(null);
       setUser(null);
+      setProfile(null);
       setAdminStatus("not-admin");
       setAdminVerificacaoFalhou(false);
       setIsPasswordRecovery(false);

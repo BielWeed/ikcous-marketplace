@@ -60,6 +60,56 @@ describe("OrderSearch — verificar não envia duas vezes", () => {
     host.remove();
   });
 
+  it.each(["recusa", "rejeição"] as const)(
+    "dois submits no mesmo act enviam um único código e liberam outra tentativa após %s",
+    async (resultado) => {
+      let responder!: (sucesso: boolean) => void;
+      let rejeitar!: (erro: Error) => void;
+      const pendente = new Promise<boolean>((resolve, reject) => {
+        responder = resolve;
+        rejeitar = reject;
+      });
+      generateOrderOtp.mockReturnValue(pendente);
+      const { OrderSearch } = await import(
+        "@/components/ui/custom/OrderSearch"
+      );
+      await act(async () => {
+        raiz.render(<OrderSearch onNavigate={() => {}} abrirNoRastreio />);
+      });
+      await act(async () => {
+        digitar(host, "SEU E-MAIL", "pessoa@fixture.invalid");
+        digitar(host, "SEU WHATSAPP", "11999999999");
+        digitar(host, "6 FINAIS DO ID DO PEDIDO", "abcdef");
+      });
+      const formulario = host.querySelector("form")!;
+      await act(async () => {
+        formulario.requestSubmit();
+        formulario.requestSubmit();
+      });
+      try {
+        expect(generateOrderOtp).toHaveBeenCalledTimes(1);
+        expect(generateOrderOtp).toHaveBeenCalledWith(
+          "pessoa@fixture.invalid",
+          "11999999999",
+          "abcdef",
+        );
+        expect(botaoPorTexto(host, "Gerando Código...").disabled).toBe(true);
+      } finally {
+        const erro = vi.spyOn(console, "error").mockImplementation(() => {});
+        await act(async () => {
+          if (resultado === "recusa") responder(false);
+          else rejeitar(new Error("falha fictícia"));
+        });
+        erro.mockRestore();
+      }
+      expect(botaoPorTexto(host, "Enviar Código").disabled).toBe(false);
+      generateOrderOtp.mockResolvedValueOnce(true);
+      await act(async () => formulario.requestSubmit());
+      expect(generateOrderOtp).toHaveBeenCalledTimes(2);
+      expect(host.textContent).toContain("Verificar");
+    },
+  );
+
   it("bloqueia o segundo clique enquanto verifica e libera ao concluir", async () => {
     let concluirConsulta!: (pedidos: []) => void;
     const consultaPendente = new Promise<[]>((resolve) => {
