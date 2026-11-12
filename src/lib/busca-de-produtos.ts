@@ -24,8 +24,9 @@
  *   - -oes/-aes:           cordoes -> cordao, paes -> pao
  *   - vogal + is:          aneis -> anel, lencois -> lencol, azuis -> azul
  *   - e/i/o/u + ns:        batons -> batom, bombons -> bombom
+ *   (refis -> refi ja acha "Refil": o "-il" nao precisa de regra de ida)
  * E o caminho de volta, para quem digita o singular e o cadastro esta no
- * plural irregular (palavra inteira): anel -> aneis, batom -> batons,
+ * plural irregular (palavra inteira): anel -> aneis, refil -> refis, batom -> batons,
  * cartao -> cartoes/cartaes/cartaos, pao -> paes/paos.
  * A forma e buscada POR TRECHO (basta estar dentro do texto) e a forma "sem o
  * s" e sempre um pedaco da palavra digitada, entao o que ja era achado
@@ -41,6 +42,15 @@
  */
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { normalizeText } from "@/lib/utils";
+
+/**
+ * Apostrofo some dos dois lados: "d'agua" (reto), "d’agua" (curvo do teclado do
+ * iPhone) e "dagua" viram a mesma palavra. Fica so na busca: `normalizeText` e'
+ * usado por outras telas, que comparam texto literal.
+ */
+const APOSTROFOS = /['‘’ʼ´`]/g;
+export const normalizarParaBusca = (texto: string | null | undefined): string =>
+  normalizeText(texto).replace(APOSTROFOS, "").trim();
 
 const TAMANHO_MINIMO_PARA_TIRAR_O_S = 4;
 /** Singular derivado menor que isto vira ruido ("mais" -> "mal" acharia "malha"). */
@@ -83,6 +93,14 @@ function formasNoPlural(palavra: string): FormaDaPalavra[] {
     /[aeou]l$/.test(palavra)
   ) {
     plurais.push(`${palavra.slice(0, -1)}is`);
+  }
+  // refil -> refis, funil -> funis, fuzil -> fuzis (consoante + il). Vogal + il
+  // ("facil") nao entra: o plural dela ("faceis") e outro.
+  if (
+    palavra.length >= TAMANHO_MINIMO_DO_SINGULAR_EM_L &&
+    /[^aeiou]il$/.test(palavra)
+  ) {
+    plurais.push(`${palavra.slice(0, -1)}s`);
   }
   // batom -> batons, bombom -> bombons
   if (
@@ -163,7 +181,14 @@ export function palavrasDaBusca(busca: string): FormaDaPalavra[][] {
   // So caractere invisivel (U+200B, U+2800, U+3164...) o `trim()` nao tira: e
   // busca VAZIA, como a busca so com espacos.
   if (!nomeTemConteudoVisivel(busca)) return [];
-  const palavras = normalizeText(busca).split(/\s+/).filter(Boolean);
+  // Busca SO de apostrofo ("'", "’"): tirando-os sobra nada, e lista vazia aqui
+  // quer dizer "busca vazia = mostrar tudo". Como sempre foi, ela nao acha
+  // nada: cai no termo literal, que nao aparece em nenhum texto (os textos
+  // comparados tambem estao sem apostrofo).
+  const semApostrofo = normalizarParaBusca(busca);
+  const palavras = (semApostrofo || normalizeText(busca))
+    .split(/\s+/)
+    .filter(Boolean);
   const aparadas = palavras
     .flatMap((palavra) => palavra.split(/[-/]+/))
     .map((palavra) => palavra.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ""))
@@ -205,7 +230,7 @@ interface VariacaoDaBusca {
 function textoDasVariacoes(variacoes?: VariacaoDaBusca[]): string {
   return (variacoes ?? [])
     .filter((variacao) => variacao.active)
-    .map((variacao) => normalizeText(variacao.value))
+    .map((variacao) => normalizarParaBusca(variacao.value))
     .join("\n");
 }
 
@@ -221,7 +246,7 @@ export function produtoCombinaComBusca(
   const palavras = palavrasDaBusca(busca);
   if (palavras.length === 0) return true;
   const texto = [produto.name, produto.category, produto.description]
-    .map(normalizeText)
+    .map(normalizarParaBusca)
     .join("\n");
   const variacoes = textoDasVariacoes(produto.variants);
   return palavras.every(
@@ -256,8 +281,8 @@ export function produtoCombinaComBusca(
  * todos os produtos.
  */
 export function pontuadorDaBusca(busca: string) {
-  const query = normalizeText(busca);
-  const palavras = palavrasDaBusca(query);
+  const query = normalizarParaBusca(busca);
+  const palavras = palavrasDaBusca(busca);
 
   return (produto: {
     name: string;
@@ -265,11 +290,11 @@ export function pontuadorDaBusca(busca: string) {
     category?: string | null;
   }): number => {
     let score = 0;
-    const name = normalizeText(produto.name);
+    const name = normalizarParaBusca(produto.name);
     // `description` pode vir nula do banco: `.toLowerCase()` direto quebrava a
-    // busca inteira. `normalizeText` aguenta nulo.
-    const description = normalizeText(produto.description);
-    const category = normalizeText(produto.category);
+    // busca inteira. `normalizarParaBusca` aguenta nulo.
+    const description = normalizarParaBusca(produto.description);
+    const category = normalizarParaBusca(produto.category);
 
     // Exact match
     if (name === query) score += 100;
