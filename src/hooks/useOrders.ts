@@ -26,6 +26,7 @@ import {
   MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA,
   MENSAGEM_REENVIO_DO_COMPROVANTE_SEM_RESPOSTA,
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+  PRAZO_DE_LER_O_CORPO_DO_ERRO_MS,
   PRAZO_DO_REENVIO_DO_COMPROVANTE_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
@@ -5074,9 +5075,20 @@ export function useOrders(
         if (error && !data) {
           console.error("Error generating OTP:", error);
           toast.error(NAO_ENVIOU);
-          const corpo = await (error as any).context
-            ?.json?.()
-            .catch(() => null);
+          // O corpo também pode ficar pendurado na rede (cabeçalhos chegaram,
+          // corpo não): `.catch` não trata promessa pendente, e sem prazo o
+          // botão ficava em "Gerando Código..." para sempre. Estourou = corpo
+          // desconhecido (`null`): o aviso já saiu e nenhuma falha é lembrada.
+          let corpo: { motivo?: unknown } | null = null;
+          try {
+            corpo = await aguardarComPrazo(
+              (error as any).context?.json?.(),
+              PRAZO_DE_LER_O_CORPO_DO_ERRO_MS,
+              () => new Error("corpo do erro sem resposta"),
+            );
+          } catch {
+            corpo = null;
+          }
           if (corpo?.motivo === "envio_falhou") falhas.set(chave, Date.now());
           return false;
         }
