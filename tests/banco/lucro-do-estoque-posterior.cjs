@@ -5,6 +5,10 @@ const path = require("node:path");
 
 // Desfaz a 251 PRIMEIRO nas provas de ancestrais, sem afrouxar seus preflights.
 async function desfazerLucroDoEstoqueNaTransacao(c) {
+  // A 20261399970000 (o ranking de lucro desconta a devolucao) sucede o analytics da 251: cai antes de qualquer rollback da 251.
+  await require("./o-ranking-de-lucro-posterior.cjs").desfazerRankingDeLucroNaTransacao(
+    c,
+  );
   const r =
     await c.query(`SELECT COALESCE((SELECT md5(replace(prosrc, chr(13), ''))
     FROM pg_proc WHERE oid = to_regprocedure('public.get_admin_analytics_v2(integer)'))

@@ -34,8 +34,8 @@ export const TopProductsList = memo(function TopProductsList({
       className="relative min-h-[282px] overflow-hidden"
       acao={
         <ExplicacaoDoRelatorio titulo="Produtos que mais dão lucro">
-          O valor é o lucro (preço menos custo). Produto sem custo cadastrado
-          não entra.
+          O valor é o lucro (preço menos custo), descontadas as devoluções e os
+          estornos. Produto sem custo cadastrado não entra.
         </ExplicacaoDoRelatorio>
       }
     >

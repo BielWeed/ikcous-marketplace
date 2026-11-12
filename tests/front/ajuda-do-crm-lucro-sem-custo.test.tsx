@@ -31,13 +31,13 @@ afterEach(() => {
 });
 
 describe("AjudaDoCrm — ranking de lucro e produto sem custo", () => {
-  it("explica visivelmente onde ver o lucro que desconta devolução parcial e estorno", () => {
+  it("explica visivelmente que o lucro dos gráficos desconta devolução e estorno, e quando o Financeiro os conta", () => {
     act(() => raiz.render(<AjudaDoCrm isOpen onClose={() => {}} />));
     const visivel = document.body.cloneNode(true) as HTMLElement;
     visivel.querySelectorAll(".sr-only, [hidden]").forEach((el) => el.remove());
     const texto = (visivel.textContent ?? "").replace(/\s+/g, " ");
     expect(texto).toContain(
-      "No lucro dos gráficos, devolução parcial e estorno só são descontados na aba Resultado do Financeiro.",
+      "O lucro dos gráficos desconta as devoluções e os estornos no dia da venda; a aba Resultado do Financeiro os conta no dia em que o dinheiro saiu.",
     );
   });
 

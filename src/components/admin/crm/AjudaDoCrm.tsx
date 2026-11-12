@@ -80,8 +80,9 @@ export function AjudaDoCrm({
             <li>
               <strong className="text-white">Histórico da loja:</strong>{" "}
               Histórico de pedidos e faturamento ao longo do tempo em gráficos
-              interativos. No lucro dos gráficos, devolução parcial e estorno só
-              são descontados na aba Resultado do Financeiro.
+              interativos. O lucro dos gráficos desconta as devoluções e os
+              estornos no dia da venda; a aba Resultado do Financeiro os conta
+              no dia em que o dinheiro saiu.
             </li>
             <li>
               <strong className="text-white">Vendas por categoria:</strong>{" "}
@@ -93,16 +94,16 @@ export function AjudaDoCrm({
                 Produtos que mais dão lucro:
               </strong>{" "}
               Os cinco produtos com maior lucro (preço de venda menos o custo
-              cadastrado) em pedidos válidos de todo o período. Venda sem custo
-              (nem guardado no dia, nem cadastrado hoje) fica fora da conta do
-              lucro, e a tela avisa quantos produtos ficaram de fora. Para achar
-              os sem custo hoje, abra Produtos, toque no botão ao lado da busca
-              ("Mostrar em lista com detalhes") e procure o selo "Sem Custo
-              Cadastrado"; cadastre o custo para ele entrar. A venda de um
-              produto que já tinha custo guarda o custo do dia: mudar o custo
-              depois não altera o lucro dela. As vendas feitas sem custo
-              cadastrado, e as feitas antes de o app passar a guardar o custo do
-              dia, usam o custo de hoje.
+              cadastrado, descontadas as devoluções e os estornos) em pedidos
+              válidos de todo o período. Venda sem custo (nem guardado no dia,
+              nem cadastrado hoje) fica fora da conta do lucro, e a tela avisa
+              quantos produtos ficaram de fora. Para achar os sem custo hoje,
+              abra Produtos, toque no botão ao lado da busca ("Mostrar em lista
+              com detalhes") e procure o selo "Sem Custo Cadastrado"; cadastre o
+              custo para ele entrar. A venda de um produto que já tinha custo
+              guarda o custo do dia: mudar o custo depois não altera o lucro
+              dela. As vendas feitas sem custo cadastrado, e as feitas antes de
+              o app passar a guardar o custo do dia, usam o custo de hoje.
             </li>
           </ul>
         </div>

@@ -140,6 +140,9 @@ const NOMES = [
   // O caixa e a conta recusam valor que nao e numero: fin_caixa_abrir sucede o corpo da 370 (a CADEIA 99 -> 370 -> 3999300: o `hashVigente` da 3999300 e o `hashDesta` da 370) e
   // fin_conta_salvar o da 99 (a CADEIA 99 -> 3999300): duas entradas, o rollback-manual dela desfaz as duas de uma vez. O rollback da 370 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
   "20261399930000_o_caixa_e_a_conta_recusam_valor_que_nao_e_numero.sql",
+  // O ranking de lucro desconta a devolucao e o estorno: get_admin_analytics_v2 sucede o corpo da 251 (a CADEIA 99 -> 214 -> 234 -> 242 -> 245 -> 250 -> 251 -> 3997:
+  // o `hashVigente` da 3997 e o `hashDesta` da 251). O rollback da 251 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261399970000_o_ranking_de_lucro_desconta_a_devolucao.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
