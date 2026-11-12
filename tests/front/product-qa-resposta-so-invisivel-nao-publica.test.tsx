@@ -73,7 +73,13 @@ function botaoPorTitle(title: string, dentroDe: HTMLElement) {
   ) as HTMLButtonElement | undefined;
 }
 
-const INVISIVEIS = ["​​​", "‎", "⁠", "⠀", "ㅤ"];
+const INVISIVEIS = [
+  "\u200b\u200b\u200b",
+  "\u200e",
+  "\u2060",
+  "\u2800",
+  "\u3164",
+];
 
 describe("ProductQA — resposta do admin só com caractere invisível não publica", () => {
   let raiz: Root;
