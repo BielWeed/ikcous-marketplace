@@ -462,6 +462,53 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     ).toBe(false);
   });
 
+  it("cartão na maquininha: só registra após conferir e envia card à RPC", async () => {
+    registrarImplRef.atual = async () => ({
+      data: {
+        ja_existia: false,
+        order: {
+          ...pedidoDeExemplo("11111111-1111-1111-1111-111111111111"),
+          payment_method: "card",
+        },
+        items: [],
+      },
+      error: null,
+    });
+    await montarAtePagamentoEscolhido();
+    await act(async () => {
+      localizarBotaoPorTexto(hospedeiro, "Cartão na maquininha")!.click();
+    });
+    await avancar();
+
+    const botao = localizarBotaoPorTexto(hospedeiro, "Registrar venda")!;
+    const conferencia = hospedeiro.querySelector(
+      'input[type="checkbox"]',
+    ) as HTMLInputElement;
+    expect(conferencia).not.toBeNull();
+    expect(conferencia.checked).toBe(false);
+    expect(botao.disabled).toBe(true);
+    await act(async () => {
+      botao.click();
+    });
+    await avancar();
+    expect(chamadasDeRegistro()).toHaveLength(0);
+
+    await act(async () => {
+      conferencia.click();
+    });
+    await avancar();
+    expect(conferencia.checked).toBe(true);
+    expect(botao.disabled).toBe(false);
+    await act(async () => {
+      botao.click();
+    });
+    await avancar();
+
+    expect(chamadasDeRegistro()).toHaveLength(1);
+    expect(chamadasDeRegistro()[0][1].p_pagamento).toBe("card");
+    expect(hospedeiro.textContent).toContain("Compra na loja");
+  });
+
   it.each(["cash", "pix"] as const)(
     "%s: valor mudou — atualiza preços sem perder cliente, desconto, pagamento ou chave, e exige nova conferência",
     async (pagamento) => {
@@ -576,6 +623,11 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
       const chamadas = chamadasDeRegistro();
       expect(chamadas).toHaveLength(2);
       expect(chamadas[0][1].p_total_esperado).toBe(114.7);
+      for (const [, params] of chamadas) {
+        expect(params.p_itens).toEqual([
+          { product_id: "produto-1", variant_id: "variante-1", quantity: 3 },
+        ]);
+      }
       expect(chamadas[1][1]).toMatchObject({
         p_total_esperado: 144.7,
         p_idempotency_key: "chave-da-venda-teste",
@@ -824,6 +876,10 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
     await avancar();
 
     expect(hospedeiro.textContent).toContain("Compra na loja");
+    expect(chamadasDeRegistro()).toHaveLength(1);
+    expect(chamadasDeRegistro()[0][1].p_itens).toEqual([
+      { product_id: "produto-1", variant_id: null, quantity: 2 },
+    ]);
     // O recibo mostra o que o BANCO gravou (1x), nunca o que a tela tinha
     // no momento do clique (2x) — senão o balconista cobra R$ 79,80 e o
     // pedido registrado (e o estoque baixado) são de R$ 39,90.
