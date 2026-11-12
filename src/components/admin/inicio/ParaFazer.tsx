@@ -5,7 +5,8 @@ import {
   classeDoTexto,
 } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
-import type { View } from "@/types";
+import { variacoesEsgotadas } from "@/lib/variacoes-esgotadas";
+import type { Product, View } from "@/types";
 import type { PainelInicio } from "@/types/painel";
 import { VISAO_ESTOQUE_BAIXO } from "@/utils/produtos-sem-custo";
 import {
@@ -49,12 +50,15 @@ export function ParaFazer({
   carregando,
   onNavigate,
   preparoEmDestaque = false,
+  produtos,
 }: Readonly<{
   painel: PainelInicio | null;
   carregando: boolean;
   onNavigate: (view: View, id?: string) => void;
   preparoEmDestaque?: boolean;
+  produtos?: readonly Product[];
 }>) {
+  const esgotadas = variacoesEsgotadas(produtos);
   const pend = painel?.pendencias;
   const preparar = pend?.pedidosParaPreparar ?? null;
   const devolucoes = pend?.devolucoesAbertas ?? null;
@@ -195,7 +199,7 @@ export function ParaFazer({
           </div>
         ) : (
           <ul className="divide-y divide-admin-border">
-            {painel && pendentes === 0 ? (
+            {painel && pendentes === 0 && esgotadas.length === 0 ? (
               <li className="flex items-center gap-3 py-3">
                 <TileDoInicio icone={CheckCircle2} tom="positivo" />
                 <div className="min-w-0 flex-1">
@@ -266,6 +270,22 @@ export function ParaFazer({
                 </button>
               </li>
             ))}
+            {esgotadas.slice(0, 3).map((aviso) => (
+              <li key={aviso.id}>
+                <button
+                  type="button"
+                  className={`${LINHA_INICIO} text-sm text-zinc-400`}
+                  onClick={() => onNavigate("admin-products", aviso.produtoId)}
+                >
+                  {aviso.texto} ({aviso.detalhe})
+                </button>
+              </li>
+            ))}
+            {esgotadas.length > 3 ? (
+              <li className="py-3 text-sm text-zinc-400">
+                e mais {esgotadas.length - 3}
+              </li>
+            ) : null}
           </ul>
         )}
       </div>
