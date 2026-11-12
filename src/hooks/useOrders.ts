@@ -3384,6 +3384,12 @@ export function useOrders(
     let isUnmounting = false;
     let isConnecting = false;
     let retryCount = 0;
+    // O canal caiu e ainda não voltou a SUBSCRIBED. A recarga do
+    // `handleReconnect` roda ANTES de o SDK reabrir o socket (setupRealtime só
+    // reaproveita o canal), então o pedido emitido no intervalo só chega por
+    // uma recarga feita quando o SUBSCRIBED volta. O primeiro SUBSCRIBED de um
+    // canal novo não passa por aqui: a lista já foi carregada.
+    let precisaReconciliar = false;
     let reconnectTimeout: ReturnType<typeof setTimeout> | undefined;
     let onlineTimeout: ReturnType<typeof setTimeout> | undefined;
 
@@ -3599,6 +3605,12 @@ export function useOrders(
 
           if (status === "SUBSCRIBED") {
             retryCount = 0;
+            if (precisaReconciliar) {
+              precisaReconciliar = false;
+              recarregarAposReconexaoRef
+                .current({ silencioso: true })
+                .catch(() => {});
+            }
             console.log(`[Realtime] Active shared channel: ${channelId}`);
           } else if (status === "CHANNEL_ERROR") {
             const errMessage =
@@ -3639,6 +3651,7 @@ export function useOrders(
 
     const handleReconnect = (initialDelay?: number) => {
       if (isUnmounting) return;
+      precisaReconciliar = true;
 
       const timeout = initialDelay || Math.min(1000 * 1.5 ** retryCount, 30000);
       retryCount++;
