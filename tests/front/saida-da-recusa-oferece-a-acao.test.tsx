@@ -218,11 +218,26 @@ describe("SaidaDaRecusa", () => {
       produto: "Camiseta",
       disponivel: 1,
     });
-    expect(container.textContent).toContain('Ainda há 1 de "Camiseta"');
+    expect(container.textContent).toContain(
+      'Ainda há 1 unidade de "Camiseta" disponível.',
+    );
     expect(container.textContent).not.toContain("Acabou o estoque");
     expect(container.querySelector("button[data-acao]")?.textContent).toBe(
       "Deixar a quantidade disponível",
     );
+  });
+
+  it("sobraram 2 ou mais: fala 'unidades' e 'disponíveis' no plural", () => {
+    render({
+      acao: "ajustar_estoque",
+      mensagem: "Estoque insuficiente para o produto solicitado.",
+      produto: "Camiseta",
+      disponivel: 3,
+    });
+    expect(container.textContent).toContain(
+      'Ainda há 3 unidades de "Camiseta" disponíveis.',
+    );
+    expect(container.textContent).not.toContain("unidade de");
   });
 
   it("conferir_antes NÃO oferece 'tentar de novo' — é assim que se duplica pedido", () => {

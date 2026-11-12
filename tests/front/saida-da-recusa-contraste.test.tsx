@@ -115,7 +115,7 @@ const montar = () => {
     painel,
     titulo: texto("Não deu para fechar o pedido"),
     frase: texto("Só restam 2 unidades"),
-    detalhe: texto("Ainda há 2"),
+    detalhe: texto("Ainda há 2 unidades"),
     icone: painel.querySelector("svg") as SVGElement,
     fechar: painel.querySelector(
       'button[aria-label="Fechar o aviso"]',

@@ -67,6 +67,14 @@ describe("OrderList — estado vazio no desenho Tinta", () => {
     expect(onNavigate).toHaveBeenCalledWith("home");
   });
 
+  it("cliente logada sem nenhum pedido: diz que ainda não fez pedido, não que o carrinho está vazio", async () => {
+    await renderizar({});
+    expect(hospedeiro.textContent).toContain(
+      "Você ainda não fez nenhum pedido. Que tal começar a comprar?",
+    );
+    expect(hospedeiro.textContent).not.toContain("carrinho de pedidos");
+  });
+
   it("convidado: mesmo desenho, mas sem 'Ver produtos'", async () => {
     await renderizar({ isGuest: true });
     expect(hospedeiro.querySelector("h3")?.textContent).toBe(
