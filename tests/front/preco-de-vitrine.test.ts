@@ -53,6 +53,20 @@ describe("precoDeVitrine", () => {
     });
   });
 
+  it.each([
+    { original: 70, preco: 50.25, economia: 19.75 },
+    { original: 0.3, preco: 0.1, economia: 0.2 },
+  ])(
+    "economia de $original por $preco preserva os centavos: $economia",
+    ({ original, preco, economia }) => {
+      const r = precoDeVitrine({ price: preco, originalPrice: original });
+
+      expect(r.preco).toBe(preco);
+      expect(r.precoOriginal).toBe(original);
+      expect(r.economia).toBeCloseTo(economia, 2);
+    },
+  );
+
   it("produto sem variação e sem 'De', ou com 'De' igual/menor: nada de riscado", () => {
     expect(precoDeVitrine({ price: 50 }).precoOriginal).toBeNull();
     expect(precoDeVitrine({ price: 50, originalPrice: null }).desconto).toBe(0);

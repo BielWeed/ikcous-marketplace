@@ -747,6 +747,32 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
     expect(botaoComTexto("Tentar de novo")).toBeUndefined();
   });
 
+  it.each([
+    { disponivel: 30, oferece: true },
+    { disponivel: 29.99, oferece: false },
+  ])(
+    "nova tentativa de R$ 30,00 com saldo $disponivel: oferece = $oferece",
+    async ({ disponivel, oferece }) => {
+      useEstornosDoPedidoMock.mockReturnValue(
+        hookPadrao({
+          disponivel,
+          linhas: [linhaDeExemplo({ status: "falhou", amount: 30 })],
+        }),
+      );
+
+      await montar();
+
+      expect(texto()).toContain("A devolução de R$ 30,00 não foi concluída");
+      const tentar = botaoComTexto("Tentar de novo");
+      if (oferece) {
+        expect(tentar).toBeDefined();
+        expect(tentar?.disabled).toBe(false);
+      } else {
+        expect(tentar).toBeUndefined();
+      }
+    },
+  );
+
   async function abrirCampoDeOutroValor(): Promise<HTMLInputElement> {
     const abrir = botaoComTexto("devolver outro valor");
     await act(async () => {
@@ -797,18 +823,61 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
     });
   });
 
-  it("campo 'outro valor': acima do disponível desabilita com a mensagem de faixa", async () => {
-    useEstornosDoPedidoMock.mockReturnValue(
-      hookPadrao({ pago: 45.77, devolvido: 0, disponivel: 45.77 }),
-    );
+  it.each([
+    { saldo: 45.77, digitado: "45,77", rotulo: "Devolver R$ 45,77" },
+    { saldo: 0.01, digitado: "0,01", rotulo: "Devolver R$ 0,01" },
+  ])(
+    "campo 'outro valor': aceita exatamente o saldo de $digitado, inclusive um centavo",
+    async ({ saldo, digitado, rotulo }) => {
+      useEstornosDoPedidoMock.mockReturnValue(
+        hookPadrao({ pago: saldo, devolvido: 0, disponivel: saldo }),
+      );
+      confirmMock = vi.fn().mockReturnValue(true);
+      vi.stubGlobal("confirm", confirmMock);
 
-    await montar();
-    const input = await abrirCampoDeOutroValor();
-    await digitar(input, "100");
+      await montar();
+      const input = await abrirCampoDeOutroValor();
+      await digitar(input, digitado);
 
-    expect(texto()).toContain("O valor tem de ficar entre R$ 0,01 e R$ 45,77");
-    expect(botaoComTexto("Devolver R$ 100,00")?.disabled).toBe(true);
-  });
+      expect(input.value).toBe(digitado);
+      expect(texto()).not.toContain("O valor tem de ficar entre");
+      const botao = botaoComTexto(rotulo);
+      expect(botao).toBeDefined();
+      expect(botao?.disabled).toBe(false);
+
+      await act(async () => {
+        botao?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await Promise.resolve();
+      });
+      expect(solicitarEstornoMock).toHaveBeenCalledExactlyOnceWith({
+        amount: saldo,
+        motivo: expect.any(String),
+      });
+    },
+  );
+
+  it.each([
+    { digitado: "100", rotulo: "Devolver R$ 100,00" },
+    { digitado: "45,78", rotulo: "Devolver R$ 45,78" },
+  ])(
+    "campo 'outro valor': $digitado acima do disponível desabilita com a mensagem de faixa",
+    async ({ digitado, rotulo }) => {
+      useEstornosDoPedidoMock.mockReturnValue(
+        hookPadrao({ pago: 45.77, devolvido: 0, disponivel: 45.77 }),
+      );
+
+      await montar();
+      const input = await abrirCampoDeOutroValor();
+      await digitar(input, digitado);
+
+      expect(texto()).toContain(
+        "O valor tem de ficar entre R$ 0,01 e R$ 45,77",
+      );
+      const botao = botaoComTexto(rotulo);
+      expect(botao).toBeDefined();
+      expect(botao?.disabled).toBe(true);
+    },
+  );
 
   it("campo 'outro valor': vazio desabilita o botão", async () => {
     useEstornosDoPedidoMock.mockReturnValue(
