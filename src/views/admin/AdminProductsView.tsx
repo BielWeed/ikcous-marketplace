@@ -1262,6 +1262,10 @@ export const AdminProductsView = memo(function AdminProductsView({
         // não foi salva: anunciar sucesso a esconderia, e um segundo aviso aqui
         // empilharia dois erros para a mesma falha.
         haptic.error();
+      } else if (!copia) {
+        // O hook devolveu vazio (ex.: "Permissão negada"): ele já avisou o
+        // motivo e nenhuma cópia existe, então anunciar sucesso mentiria.
+        haptic.error();
       } else {
         haptic.success();
         toast.success("Produto Duplicado", {
