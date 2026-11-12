@@ -180,6 +180,26 @@ describe("grade — Esc não descarta o que foi digitado", () => {
     expect(campo('input[aria-label="Estoque de M"]').value).toBe("7");
   });
 
+  it("(b5) fechar a pergunta devolve o foco ao diálogo da grade (o Tab não sai dela)", async () => {
+    // O Radix devolve o foco num timeout ao desmontar a pergunta.
+    const assentar = () =>
+      act(async () => {
+        await new Promise((resolver) => setTimeout(resolver, 20));
+      });
+    montar();
+    irParaOPasso2();
+    digitar(campo('input[aria-label="Estoque de M"]'), "7");
+    esc(dialogoDaGrade());
+    clicar(botao("Continuar editando"));
+    await assentar();
+    expect(dialogoDaGrade().contains(document.activeElement)).toBe(true);
+
+    esc(dialogoDaGrade());
+    esc(pergunta() as HTMLElement);
+    await assentar();
+    expect(dialogoDaGrade().contains(document.activeElement)).toBe(true);
+  });
+
   it("(c) só valores escolhidos no passo 1 (ainda sem gerar) também perguntam", () => {
     montar();
     clicar(botao("Tamanho"));

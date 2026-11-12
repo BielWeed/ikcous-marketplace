@@ -937,6 +937,13 @@ export function ModalVarianteGrade({
             <AlertDialogContent
               overlayClassName="z-[130]"
               className="z-[130] max-w-md rounded-3xl border border-admin-border bg-zinc-950"
+              // Sem gatilho (a pergunta abre pelo Esc), o Radix não tem para onde
+              // devolver o foco ao fechar: ele se perderia e o Tab sairia da
+              // grade. Devolve ao diálogo da grade (o mesmo foco de quando abre).
+              onCloseAutoFocus={(evento) => {
+                evento.preventDefault();
+                dialogoRef.current?.focus();
+              }}
             >
               <AlertDialogHeader>
                 <AlertDialogTitle className="text-xl font-bold text-zinc-50">
