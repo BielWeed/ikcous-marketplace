@@ -83,20 +83,24 @@ it("o cartão memorizado acompanha os minutos sem interação", () => {
 
 it.each([
   {
-    inicio: "2026-11-07T23:59:00",
-    criado: "2026-11-07T20:00:00",
+    inicio: "2026-11-07T23:59:00-03:00",
+    criado: "2026-11-07T20:00:00-03:00",
     antes: "hoje",
     depois: "ontem",
   },
   {
-    inicio: "2026-11-07T12:00:00",
-    criado: "2026-11-04T12:01:00",
+    inicio: "2026-11-07T12:00:00-03:00",
+    criado: "2026-11-04T12:01:00-03:00",
     antes: null,
     depois: "Este pedido espera você há 3 dias.",
   },
 ])(
   "o relógio atualiza a virada do dia e o aviso de espera: $depois",
   ({ inicio, criado, antes, depois }) => {
+    // A virada do dia é a de Brasília (o horário-relativo lê o calendário de
+    // São Paulo): as datas acima levam -03:00 e o fuso da máquina é fixado, para
+    // o caso não depender de onde roda (o CI é UTC; a máquina do dev, BRT).
+    vi.stubEnv("TZ", "America/Sao_Paulo");
     vi.useFakeTimers();
     vi.setSystemTime(new Date(inicio));
     vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");

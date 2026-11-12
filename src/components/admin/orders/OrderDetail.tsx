@@ -1177,7 +1177,11 @@ function OrderFinanceCard({
                 Recebido em{" "}
                 {new Date(order.pagamentoRecebidoEm).toLocaleDateString(
                   "pt-BR",
-                  { day: "2-digit", month: "short" },
+                  {
+                    timeZone: "America/Sao_Paulo",
+                    day: "2-digit",
+                    month: "short",
+                  },
                 )}
               </span>
               <DesfazerRecebimento

@@ -35,7 +35,7 @@ export type ModoDeEconomiaDoFrete =
   | { tipo: "cotar" };
 
 import { cepEhLocal } from "@/lib/cep-local";
-import { ehModalidadeDaLoja } from "@/lib/guarda-de-frete";
+import { ehModalidadeDaLoja, ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
 import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import { soDigitos } from "@/lib/reconciliacao-de-cep";
 import type { ShippingOption } from "@/types";
@@ -70,6 +70,15 @@ export function modoDeEconomiaDoFrete(params: {
     freeShippingMin,
     opcaoSelecionada,
   } = params;
+
+  // Linha 0a: RETIRADA na loja escolhida -- não há frete a economizar e a
+  // cotação seria descartada (o checkout zera a economia na retirada). Em
+  // loja "Só retiro" a retirada vale para qualquer CEP, então sem esta linha
+  // a cliente logada de fora da cidade caía na linha 6 e gastava cota do
+  // lojista (e enchia o Histórico de Cotações) à toa.
+  if (opcaoSelecionada && ehRetiradaNaLoja(opcaoSelecionada.id)) {
+    return { tipo: "zero" };
+  }
 
   // Linha 0 (T3, NOVA): opção NACIONAL já escolhida. A economia (grátis OU
   // desconto) é o que a PRÓPRIA opção carrega -- nunca uma cotação nova.

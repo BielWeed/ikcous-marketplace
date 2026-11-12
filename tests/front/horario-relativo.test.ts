@@ -1,16 +1,16 @@
 import { horarioRelativo } from "@/lib/horario-relativo";
 import { describe, expect, it } from "vitest";
 
-// Âncora fixa: 02/09/2026 15:00 local. Os casos passam ISO com o MESMO fuso
-// local via construtor de Date local (new Date(ano, mês, dia, h, min)).
-const AGORA = new Date(2026, 8, 2, 15, 0, 0);
-const iso = (d: Date) => d.toISOString();
-const haMinutos = (min: number) => iso(new Date(AGORA.getTime() - min * 60000));
+// Âncora fixa: 02/09/2026 15:00 em Brasília, independente do fuso do aparelho.
+const AGORA = new Date("2026-09-02T18:00:00Z");
+const haMinutos = (min: number) =>
+  new Date(AGORA.getTime() - min * 60000).toISOString();
 
 describe("horarioRelativo", () => {
-  it("menos de 2 min é agora mesmo", () => {
+  it("menos de 2 min é agora mesmo, inclusive data no futuro", () => {
     expect(horarioRelativo(haMinutos(0), AGORA)).toBe("agora mesmo");
     expect(horarioRelativo(haMinutos(1), AGORA)).toBe("agora mesmo");
+    expect(horarioRelativo(haMinutos(-5), AGORA)).toBe("agora mesmo");
   });
 
   it("menos de 1 hora usa há N min", () => {
@@ -18,30 +18,47 @@ describe("horarioRelativo", () => {
     expect(horarioRelativo(haMinutos(59), AGORA)).toBe("há 59 min");
   });
 
-  it("hoje mostra a hora", () => {
-    const d = new Date(2026, 8, 2, 8, 5, 0);
-    expect(horarioRelativo(iso(d), AGORA)).toMatch(/^hoje 08:05/);
+  it("hoje mostra a hora de Brasília", () => {
+    expect(horarioRelativo("2026-09-02T11:05:00Z", AGORA)).toBe("hoje 08:05");
   });
 
-  it("ontem mostra ontem e a hora", () => {
-    const d = new Date(2026, 8, 1, 23, 10, 0);
-    expect(horarioRelativo(iso(d), AGORA)).toMatch(/^ontem 23:10/);
+  it("ontem mostra ontem e a hora de Brasília", () => {
+    expect(horarioRelativo("2026-09-02T02:10:00Z", AGORA)).toBe("ontem 23:10");
   });
 
   it('"ontem" cruzando o mês (agora 01/09, pedido 31/08)', () => {
-    const agora = new Date(2026, 8, 1, 0, 30, 0);
-    const d = new Date(2026, 7, 31, 22, 15, 0);
-    expect(horarioRelativo(iso(d), agora)).toMatch(/^ontem 22:15/);
+    expect(
+      horarioRelativo("2026-09-01T01:15:00Z", new Date("2026-09-01T03:30:00Z")),
+    ).toBe("ontem 22:15");
+  });
+
+  it("o dia de Brasília prevalece sobre o dia UTC", () => {
+    expect(
+      horarioRelativo("2026-10-15T02:30:00Z", new Date("2026-10-15T14:00:00Z")),
+    ).toBe("ontem 23:30");
+    expect(
+      horarioRelativo("2026-10-15T02:30:00Z", new Date("2026-10-17T14:00:00Z")),
+    ).toBe("14/10");
   });
 
   it("antigo no mesmo ano mostra DD/MM", () => {
-    const d = new Date(2026, 7, 16, 10, 0, 0);
-    expect(horarioRelativo(iso(d), AGORA)).toBe("16/08");
+    expect(horarioRelativo("2026-08-16T13:00:00Z", AGORA)).toBe("16/08");
   });
 
   it("antigo em outro ano acrescenta o ano", () => {
-    const d = new Date(2024, 7, 16, 10, 0, 0);
-    expect(horarioRelativo(iso(d), AGORA)).toBe("16/08/24");
+    expect(horarioRelativo("2024-08-16T13:00:00Z", AGORA)).toBe("16/08/24");
+  });
+
+  it("a virada do ano também segue o calendário de Brasília", () => {
+    expect(
+      horarioRelativo("2026-01-01T02:30:00Z", new Date("2026-01-03T14:00:00Z")),
+    ).toBe("31/12/25");
+    expect(
+      horarioRelativo("2025-01-01T15:00:00Z", new Date("2026-01-01T02:30:00Z")),
+    ).toBe("01/01");
+    expect(
+      horarioRelativo("2026-01-01T02:30:00Z", new Date("2026-01-01T14:00:00Z")),
+    ).toBe("ontem 23:30");
   });
 
   it("data inválida devolve vazio", () => {
