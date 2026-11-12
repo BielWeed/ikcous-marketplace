@@ -25,12 +25,22 @@ export function caractereSemDesenho(caractere: string): boolean {
   );
 }
 
-/** Diz se o nome tem ao menos um caractere que aparece na tela. */
+// Marca combinante (\p{M}: U+034F, acento solto, U+FE0F...) só desenha junto de
+// um caractere base antes dela. Texto feito só de marcas não aparece na tela.
+const MARCA_COMBINANTE = /^\p{M}$/u;
+
+/**
+ * Diz se o nome tem ao menos um caractere que aparece na tela. A marca
+ * combinante sozinha não conta; se vier depois de uma letra, é a letra que
+ * torna o texto visível.
+ */
 export function nomeTemConteudoVisivel(
   nome: string | null | undefined,
 ): boolean {
   for (const caractere of nome ?? "") {
-    if (!caractereSemDesenho(caractere)) return true;
+    if (!caractereSemDesenho(caractere) && !MARCA_COMBINANTE.test(caractere)) {
+      return true;
+    }
   }
   return false;
 }
