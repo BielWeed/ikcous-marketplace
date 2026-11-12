@@ -326,7 +326,13 @@ describe("ProductView — opção única já vem marcada", () => {
   it("opção única esgotada não é marcada (o produto segue esgotado)", async () => {
     await montar(produtoCom([variante("var-m", "Tamanho", "M", 0)]));
     expect(marcado("M")).toBe("false");
-    await adicionar();
+    // Todo o grupo esgotado: o botão vira "Esgotado" (desabilitado), não há
+    // "Adicionar" para tocar.
+    expect(botaoAdicionar()).toBeUndefined();
+    const esgotado = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent === "Esgotado",
+    ) as HTMLButtonElement | undefined;
+    expect(esgotado?.disabled).toBe(true);
     expect(adicionarAoCarrinho).not.toHaveBeenCalled();
   });
 

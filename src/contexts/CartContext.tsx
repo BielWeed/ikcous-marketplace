@@ -28,6 +28,11 @@ import {
   MAX_ITEM_QUANTITY,
 } from "@/lib/limite-de-quantidade";
 import { mapProductFromDB } from "@/lib/mappers";
+import {
+  PRAZO_DE_GRAVAR_O_CARRINHO_MS,
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
   lerRascunhoDoCheckout,
@@ -1370,11 +1375,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           }
         });
 
-        const { error: syncError } = await (supabase.rpc as any)(
-          "sync_cart_atomic",
-          {
+        // Rede pendurada: sem prazo a trava `syncPending` ficava ligada para
+        // sempre. Estourou = falha recuperável pelo `catch` de sempre (solta a
+        // trava e reagenda); a resposta tardia desta chamada é descartada.
+        const { error: syncError } = await aguardarComPrazo(
+          (supabase.rpc as any)("sync_cart_atomic", {
             p_cart_items: Array.from(itemMap.values()),
-          },
+          }) as Promise<{ error: unknown }>,
+          PRAZO_DE_GRAVAR_O_CARRINHO_MS,
+          () => erroDeConsultaSemResposta(),
         );
 
         if (syncError) throw syncError;
