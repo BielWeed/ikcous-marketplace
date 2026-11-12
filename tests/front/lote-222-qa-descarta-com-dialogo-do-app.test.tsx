@@ -202,7 +202,9 @@ describe("lote 222 — AdminQAView descarta com diálogo do app", () => {
       descartar.click();
     });
     expect(nativo).not.toHaveBeenCalled();
-    expect(document.body.textContent).toContain("Descartar a resposta?");
+    expect(document.body.textContent).toContain(
+      "Descartar o que você escreveu?",
+    );
     // a folha segue aberta até a confirmação
     expect(document.getElementById("merchant-answer")).not.toBeNull();
     const confirmar = Array.from(
@@ -235,6 +237,8 @@ describe("lote 222 — AdminQAView descarta com diálogo do app", () => {
     ) as HTMLTextAreaElement | null;
     expect(campo).not.toBeNull();
     expect(campo?.value).toBe("Resposta A");
-    expect(document.body.textContent).not.toContain("Descartar a resposta?");
+    expect(document.body.textContent).not.toContain(
+      "Descartar o que você escreveu?",
+    );
   });
 });

@@ -19,16 +19,6 @@ import {
 } from "@/components/admin/atendimento/controles";
 import { AlternadorDeTelas } from "@/components/admin/primitivos/AlternadorDeTelas";
 import { EstadoComPonto } from "@/components/admin/primitivos/EstadoComPonto";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -947,35 +937,13 @@ export const AdminQAView = memo(function AdminQAView({
         aoPublicar={handleSendAnswer}
         enviando={isSubmitting}
         semConexao={isOffline}
+        perguntandoDescarte={confirmandoDescarte}
+        aoContinuarEditando={() => setConfirmandoDescarte(false)}
+        aoDescartar={() => {
+          setSelectedQuestion(null);
+          setConfirmandoDescarte(false);
+        }}
       />
-
-      <AlertDialog
-        open={confirmandoDescarte}
-        onOpenChange={setConfirmandoDescarte}
-      >
-        <AlertDialogContent className="max-w-md rounded-3xl border border-admin-border bg-zinc-950">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-2xl font-bold text-zinc-50">
-              Descartar a resposta?
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-sm leading-relaxed text-zinc-400">
-              Você possui alterações não salvas que serão perdidas. Deseja
-              realmente descartar e sair?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="mt-4 gap-2">
-            <AlertDialogCancel className={BOTAO_NEUTRO}>
-              Continuar editando
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => setSelectedQuestion(null)}
-              className={BOTAO_NEUTRO}
-            >
-              Descartar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Modal de Ajuda */}
       <AdminHelpModal

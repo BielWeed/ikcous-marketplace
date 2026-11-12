@@ -17,6 +17,7 @@ import { pluralizar } from "@/lib/pluralizar";
 import { cn } from "@/lib/utils";
 import { Loader2, Send, X } from "lucide-react";
 import { useEffect } from "react";
+import { PerguntaDeDescarte } from "./PerguntaDeDescarte";
 
 /**
  * Folha de baixo para responder uma pergunta (desenho aprovado em 22/10/2026).
@@ -41,6 +42,9 @@ export function FolhaDeResposta({
   aoPublicar,
   enviando,
   semConexao,
+  perguntandoDescarte = false,
+  aoContinuarEditando,
+  aoDescartar,
 }: {
   readonly aberta: boolean;
   readonly aoFechar: () => void;
@@ -52,6 +56,9 @@ export function FolhaDeResposta({
   readonly aoPublicar: () => void;
   readonly enviando: boolean;
   readonly semConexao: boolean;
+  readonly perguntandoDescarte?: boolean;
+  readonly aoContinuarEditando?: () => void;
+  readonly aoDescartar?: () => void;
 }) {
   const { altura: teclado, alturaVisivel } = useAlturaDoTeclado();
 
@@ -93,7 +100,10 @@ export function FolhaDeResposta({
     <Sheet
       open={aberta}
       onOpenChange={(abrir) => {
-        if (!abrir) aoFechar();
+        if (!abrir) {
+          if (perguntandoDescarte) aoContinuarEditando?.();
+          else aoFechar();
+        }
       }}
     >
       <SheetContent
@@ -110,7 +120,10 @@ export function FolhaDeResposta({
         }
         className="max-h-[94dvh] gap-0 rounded-t-3xl border-admin-border bg-admin-bg p-0 text-white"
       >
-        <div className="mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col">
+        <div
+          inert={perguntandoDescarte}
+          className="mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col"
+        >
           <SheetHeader className="flex-row items-start justify-between gap-3 px-5 pb-3 pt-5 text-left">
             <div className="min-w-0">
               <SheetTitle className="text-xl font-bold leading-tight text-white">
@@ -207,6 +220,12 @@ export function FolhaDeResposta({
             </button>
           </SheetFooter>
         </div>
+        {perguntandoDescarte && aoContinuarEditando && aoDescartar ? (
+          <PerguntaDeDescarte
+            aoContinuar={aoContinuarEditando}
+            aoDescartar={aoDescartar}
+          />
+        ) : null}
       </SheetContent>
     </Sheet>
   );
