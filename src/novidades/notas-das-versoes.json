@@ -1,4 +1,15 @@
 {
+  "1.5.172": {
+    "titulo": "Foto da cor certa no carrinho, comprovante que chega depois e data do pedido em Brasília",
+    "novidades": [],
+    "melhorias": [],
+    "correcoes": [
+      "Loja, Carrinho: a foto da cor escolhida aparece mesmo sem foto no tamanho.",
+      "Pagamento: quem pagou e teve o e-mail do comprovante falhando recebe na próxima notificação do Mercado Pago.",
+      "Painel, Pedidos: a data do pedido na lista usa o horário de Brasília, como a ficha.",
+      "Painel, Financeiro: fechar e reabrir uma folha rápido não deixa um relógio antigo mexer no botão Voltar."
+    ]
+  },
   "1.5.171": {
     "titulo": "Frete grátis que acompanha a loja, busca que não fecha o produto e Início do painel que mostra as vendas",
     "novidades": [],
