@@ -74,9 +74,10 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     expect(trechoCss).toContain("webpack: false");
   });
 
-  it("os tetos de JS são os fixados: cliente 652 kB, painel 530 kB", () => {
+  it("os tetos de JS são os fixados: cliente 656 kB, painel 534 kB", () => {
     // Se algum PR precisar mexer num teto, que seja explícito AQUI: mudar o
-    // número quebra este teste de propósito. Painel 450 -> 455 em 15/10/2026
+    // número quebra este teste de propósito. cliente 652 -> 656 e painel 530 -> 534 em 12/11/2026 (1.5.173; a base ficou sem folga e cada PR novo reprovava; regra do dono: o teto sobe).
+    // Painel 450 -> 455 em 15/10/2026
     // (lote da noite: 39 ajustes de tela juntos) e 455 -> 460 no mesmo dia
     // (integração dos lotes de banco 36 a 41, PR #885) e 460 -> 464,5 ao juntar
     // a base com o lote 4 (PR #883) e 464,5 -> 466 no lote R1 do reembolso e 466 -> 467 em 16/10/2026 e 467 -> 471 -> 472 em 17/10/2026 (ultima subida, redesenho do painel)
@@ -131,8 +132,8 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     // cliente 641 -> 643 e painel 522 -> 526 em 07/11/2026 (1.5.156; medidos 642,05 e 524,49 kB no build local; regra do dono);
     // cliente 639 -> 641 em 07/11/2026 (1.5.155; medido 639,61 kB no build local; regra do dono; painel segue 522, medido 520,70);
     // cliente 638 -> 639 em 07/11/2026 (1.5.154; medido 638,01 kB no build local; regra do dono; painel segue 522, medido 520,28);
-    expect(entrada("cliente.map(")).toContain('limit: "652 kB"');
-    expect(entrada("painel.map(")).toContain('limit: "530 kB"');
+    expect(entrada("cliente.map(")).toContain('limit: "656 kB"');
+    expect(entrada("painel.map(")).toContain('limit: "534 kB"');
     expect(configTexto).not.toContain('limit: "800 kB"');
   });
 });
