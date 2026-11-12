@@ -56,32 +56,110 @@ describe("textoCancelamentoDoPainel — pago e ainda não saiu: o app devolve so
   });
 });
 
-describe("textoCancelamentoDoPainel — devolução anterior já concluída (G4, rodada 2)", () => {
-  // O servidor só grava a linha automática se NÃO existir linha `concluido`
-  // no pedido (NOT EXISTS ... 'concluido', 20261180:352-371), e
-  // `valor_estornado` só cresce por `concluir_estorno`. Pedido pago com
-  // parte já devolvida pelo Mercado Pago, cancelado agora: nenhuma linha
-  // nova, então o texto não pode prometer devolução automática.
-  it("pago, não enviado, mas com valorEstornado > 0: NÃO diz que o app devolve sozinho", () => {
+describe("textoCancelamentoDoPainel — devolução parcial anterior já concluída (R11, migration 20261198)", () => {
+  // A regra velha (G4, rodada 2) dizia: o servidor só grava a linha
+  // automática se NÃO existir linha `concluido`. A migration 20261198 (R11)
+  // a SUBSTITUIU: ao cancelar pago que não saiu, o servidor abre um
+  // `order_refunds` com o REMANESCENTE (`pedido__saldo_a_estornar`) — um pago
+  // 100 com 30 já devolvidos abre os 70 restantes e o cron do Mercado Pago os
+  // paga. Dizer "devolva você" aqui paga o cliente duas vezes.
+  const FRASE_DO_CASO_ANTIGO_DE_PAGO = "Cancelar não devolve o dinheiro";
+
+  it.each(["processing", "pending"])(
+    "pago 100, 30 já estornados, %s: diz que o app pede sozinho o que AINDA FALTA e proíbe devolver o restante por fora",
+    (status) => {
+      const texto = textoCancelamentoDoPainel({
+        status,
+        payment_status: "pago",
+        cancelledAfterShipping: false,
+        valorEstornado: 30,
+      });
+      expect(texto).toContain("sozinho");
+      expect(texto).toContain("ainda falta");
+      expect(texto).toContain("Mercado Pago");
+      expect(texto).toContain("em alguns minutos");
+      expect(texto).toContain("NÃO devolva");
+      expect(texto).toContain("duas vezes");
+      expect(texto).toContain("Devolver agora");
+      expect(texto).toContain("Já estornei no Mercado Pago");
+      expect(texto).not.toContain(FRASE_DO_CASO_ANTIGO_DE_PAGO);
+      expect(texto).not.toContain(FRASE_ANTIGA);
+      expect(texto).not.toContain("combinar a devolução com o cliente");
+      // O front não conhece o saldo exato (em voo, manual de devolução):
+      // nenhum valor inventado no texto, nem prazo em número.
+      expect(texto).not.toMatch(/R\$\s*\d/);
+      expect(texto).not.toMatch(/\b\d+\s*(minuto|min\b|segundo|hora)/i);
+      expect(texto.endsWith("Cancelar mesmo assim?")).toBe(true);
+    },
+  );
+
+  it("pago_apos_expirar com devolução parcial também: o banco abre a linha do remanescente", () => {
     const texto = textoCancelamentoDoPainel({
       status: "processing",
-      payment_status: "pago",
+      payment_status: "pago_apos_expirar",
       cancelledAfterShipping: false,
-      valorEstornado: 10,
+      valorEstornado: 30,
     });
-    expect(texto).toContain(FRASE_ANTIGA);
-    expect(texto).not.toContain("sozinho");
+    expect(texto).toContain("sozinho");
+    expect(texto).toContain("ainda falta");
   });
 
-  it("valorEstornado 0 (ou ausente) não muda nada: continua o texto automático", () => {
-    for (const valorEstornado of [0, null, undefined]) {
+  it("o texto de devolução parcial não repete o do caso 100% automático (o painel diz o que é verdade para cada um)", () => {
+    const parcial = textoCancelamentoDoPainel({
+      status: "processing",
+      payment_status: "pago",
+      valorEstornado: 30,
+    });
+    const total = textoCancelamentoDoPainel({
+      status: "processing",
+      payment_status: "pago",
+    });
+    expect(parcial).not.toBe(total);
+    expect(total).not.toContain("ainda falta");
+  });
+
+  it("pago com devolução parcial que JÁ SAIU (shipping ou cancelledAfterShipping): segue no ramo 'já saiu' — o banco não abre linha", () => {
+    for (const pedido of [
+      { status: "shipping", payment_status: "pago", valorEstornado: 30 },
+      {
+        status: "processing",
+        payment_status: "pago",
+        cancelledAfterShipping: true,
+        valorEstornado: 30,
+      },
+    ]) {
+      const texto = textoCancelamentoDoPainel(pedido);
+      const rotulo = JSON.stringify(pedido);
+      expect(texto, rotulo).toContain(FRASE_ANTIGA);
+      expect(texto, rotulo).toContain("Esperando o produto voltar");
+      expect(texto, rotulo).not.toContain("sozinho");
+      expect(texto, rotulo).not.toContain("ainda falta");
+    }
+  });
+
+  it("pago na entrega (nunca passou pelo Mercado Pago) com valorEstornado > 0: texto antigo, inalterado", () => {
+    const texto = textoCancelamentoDoPainel({
+      status: "processing",
+      payment_status: "recebido_na_entrega",
+      cancelledAfterShipping: false,
+      valorEstornado: 30,
+    });
+    expect(texto).toBe(
+      'Este pedido está PAGO. Cancelar não devolve o dinheiro automaticamente: você precisa combinar a devolução com o cliente, e o pedido entra na lista "Devolver agora" até o estorno ser registrado. Cancelar mesmo assim?',
+    );
+  });
+
+  it("valorEstornado 0 (ou ausente) não muda nada: o texto do caso 100% automático, literal", () => {
+    const LITERAL =
+      'Este pedido está PAGO e ainda não saiu para entrega. Ao cancelar, o app pede sozinho ao Mercado Pago, em alguns minutos, que devolva o valor ao cliente. NÃO devolva o dinheiro por outro meio (PIX, dinheiro, transferência): o cliente receberia duas vezes. Se você já devolveu por fora, toque em "Já estornei no Mercado Pago" na lista "Devolver agora" logo depois de cancelar. Cancelar mesmo assim?';
+    for (const valorEstornado of [0, null, undefined, -5]) {
       const texto = textoCancelamentoDoPainel({
         status: "processing",
         payment_status: "pago",
         cancelledAfterShipping: false,
         valorEstornado,
       });
-      expect(texto, String(valorEstornado)).toContain("sozinho");
+      expect(texto, String(valorEstornado)).toBe(LITERAL);
     }
   });
 });

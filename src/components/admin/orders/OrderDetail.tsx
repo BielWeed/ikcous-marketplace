@@ -2391,7 +2391,8 @@ export const OrderDetail = memo(function OrderDetail({
       cancelledAfterShipping: order.cancelledAfterShipping,
       // Enviado, devolvido à loja e reativado: o texto fala da lista certa.
       returnedToSellerAt: order.returnedToSellerAt,
-      // G4: devolução parcial já concluída também impede a linha nova.
+      // R11 (migration 20261198): devolução parcial já concluída — o banco abre
+      // a linha só do que falta; o texto diz isso em vez de "devolva você".
       valorEstornado: order.valorEstornado,
       // Cancelar o pedido não cancela a etiqueta já paga no Melhor Envio.
       shipping_label_id: order.shippingLabelId,
