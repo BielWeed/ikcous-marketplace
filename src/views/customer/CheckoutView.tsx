@@ -7555,7 +7555,7 @@ export function CheckoutViewDaConta({
                               className="size-12 shrink-0 rounded-xl border border-zinc-100 bg-zinc-50 object-cover"
                             />
                             <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium text-zinc-800">
+                              <p className="line-clamp-2 break-words text-sm font-medium text-zinc-800">
                                 {item.product.name}
                               </p>
                               {item.variantNames && (

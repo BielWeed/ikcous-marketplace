@@ -1195,7 +1195,9 @@ export const ProductCard = memo(function ProductCard({
                 {cartStatus === "idle" && !semEstoqueNoCard && (
                   <ShoppingCart className="size-3 shrink-0 max-[359px]:hidden" />
                 )}
-                <span className="truncate">{textoDoBotao}</span>
+                <span className="min-w-0 whitespace-normal break-words text-center leading-tight">
+                  {textoDoBotao}
+                </span>
               </button>
               {/* Região viva SEMPRE montada e invisível (sr-only): fala o
               "Adicionado ao carrinho" que o leitor de tela não ouvia

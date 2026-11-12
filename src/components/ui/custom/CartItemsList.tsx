@@ -178,13 +178,13 @@ const CartItemCard = memo(function CartItemCard({
                 frase, a cliente não sabe por quê (até 3, o "Só N restantes"
                 ao lado já conta). */}
             {estoqueDaEscolha > 3 && item.quantity >= estoqueDaEscolha && (
-              <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-semibold text-amber-700 dark:text-amber-400">
+              <span className="inline-flex min-w-0 items-center gap-1.5 break-words font-semibold text-amber-700 dark:text-amber-400">
                 <span className="size-1.5 rounded-full bg-amber-500" />
                 Máximo disponível: {estoqueDaEscolha}
               </span>
             )}
             {estoqueDaEscolha <= 3 && estoqueDaEscolha > 0 && (
-              <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-semibold text-amber-700 dark:text-amber-400">
+              <span className="inline-flex min-w-0 items-center gap-1.5 break-words font-semibold text-amber-700 dark:text-amber-400">
                 <span className="size-1.5 rounded-full bg-amber-500" />
                 Só {estoqueDaEscolha}{" "}
                 {estoqueDaEscolha === 1 ? "restante" : "restantes"}
