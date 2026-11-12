@@ -1153,7 +1153,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // formulário e por fim a ajuda.
         if (leitorAberto !== null) setLeitorAberto(null);
         else if (isAdjusterOpen) {
-          if (ajusteEmAndamentoRef.current) return;
+          if (ajusteEmAndamentoRef.current) {
+            // O Voltar físico já gastou a entrada da camada: repõe, senão o
+            // próximo Voltar (envio falhou ou estourou o prazo) sairia da tela.
+            window.history.pushState(
+              { ...window.history.state, modal: "produto" },
+              "",
+              window.location.pathname + window.location.search,
+            );
+            return;
+          }
           setIsAdjusterOpen(false);
           setAdjustingImgIndex(null);
         } else if (isPreviewOpen) setIsPreviewOpen(false);

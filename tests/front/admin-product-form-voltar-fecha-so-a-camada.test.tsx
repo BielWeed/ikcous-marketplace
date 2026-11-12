@@ -255,6 +255,9 @@ describe("AdminProductFormView — Voltar do celular fecha só a camada aberta",
 
     await voltarFisico();
     expect(recorte()).not.toBeNull();
+    // O Voltar engolido gastou a entrada da camada: ela volta ao topo, senão
+    // o Voltar seguinte (envio que falhou) sairia do cadastro.
+    expect(window.history.state).toMatchObject({ modal: "produto" });
     expect(document.querySelector(`img[src="${FOTO}"]`)).not.toBeNull();
     expect(document.querySelector(`img[src="${RECORTADA}"]`)).toBeNull();
     await act(async () => {
