@@ -1222,7 +1222,7 @@ function Sucesso({
   }
   return (
     <div
-      className="flex flex-col items-center gap-3 px-6 pb-[calc(1.25rem+var(--safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-8 text-center"
+      className="flex min-h-0 flex-1 flex-col items-center gap-3 overflow-y-auto overscroll-contain px-6 pb-[calc(1.25rem+var(--safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-8 text-center"
       data-testid="devolucao-sucesso"
     >
       <div className="flex size-14 items-center justify-center rounded-full bg-emerald-50">

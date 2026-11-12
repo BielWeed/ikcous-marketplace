@@ -5441,7 +5441,7 @@ export function CheckoutViewDaConta({
           <Button
             onClick={() => escolherFormaDaRetomada("pix")}
             variant="outline"
-            className="w-full rounded-xl"
+            className="min-h-11 w-full rounded-xl"
           >
             Pagar com PIX
           </Button>
@@ -5670,7 +5670,7 @@ export function CheckoutViewDaConta({
               <AlertCircle className="mt-0.5 size-5 shrink-0 text-red-500" />
               <p
                 role={erroPagamento.anunciar ? "alert" : undefined}
-                className="text-sm font-medium text-red-700"
+                className="min-w-0 break-words text-sm font-medium text-red-700"
               >
                 {erroPagamento.mensagem}
               </p>
@@ -5814,7 +5814,7 @@ export function CheckoutViewDaConta({
                   erroPagamento.categoria === "terminal" ? "default" : "outline"
                 }
                 className={cn(
-                  "w-full rounded-xl gap-2",
+                  "h-auto min-h-11 w-full whitespace-normal rounded-xl gap-2 py-2",
                   erroPagamento.categoria === "terminal" &&
                     "bg-zinc-900 text-white hover:bg-zinc-900/90",
                 )}
@@ -8455,7 +8455,7 @@ function PagamentoForaDoPrazoView({
         </div>
       </div>
 
-      <h2 className="mb-4 text-4xl font-black leading-tight tracking-tighter text-zinc-900 duration-700 animate-in slide-in-from-bottom-4">
+      <h2 className="mb-4 max-w-full break-words text-4xl font-black leading-tight tracking-tighter text-zinc-900 duration-700 animate-in slide-in-from-bottom-4">
         Pagamento Recebido
       </h2>
 

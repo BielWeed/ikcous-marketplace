@@ -332,6 +332,14 @@ describe("CheckoutView — retomar pagamento respeita a forma do pedido", () => 
     });
   }
 
+  it("a escolha de PIX tem alvo mínimo de 44 px", async () => {
+    pedido("ped-alvo", {});
+    await retomar("ped-alvo");
+    expect(botaoExato("Pagar com PIX")?.classList.contains("min-h-11")).toBe(
+      true,
+    );
+  });
+
   // ── 1. Forma desconhecida ────────────────────────────────────────────────
 
   it("BUG do Gabriel: pedido de cartão sem cobrança (metodo_online NULL) não vira QR Code PIX sozinho", async () => {
