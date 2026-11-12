@@ -145,6 +145,10 @@ import {
   rascunhoTemConteudo,
   salvarRascunhoDoCheckout,
 } from "@/lib/rascunho-do-checkout";
+import {
+  guardarReciboDoCheckout,
+  lerReciboDoCheckout,
+} from "@/lib/recibo-do-checkout";
 import { cotacaoValeParaDestino, soDigitos } from "@/lib/reconciliacao-de-cep";
 import {
   type AcaoDeRecusa,
@@ -6055,6 +6059,12 @@ export function CheckoutViewDaConta({
     recusaDoUltimoClique === null
   ) {
     const lendoOCarrinho = lendoOCarrinhoSalvo === true && !propCart;
+    // F5 depois do pedido (12/11/2026): o carrinho vazio é o pedido já feito,
+    // não um carrinho esquecido. Só o recibo DESTA conta (ou do visitante)
+    // vale; sem recibo, a tela de sempre.
+    const pedidoDoRecibo = lendoOCarrinho
+      ? null
+      : lerReciboDoCheckout(user?.id);
     return (
       <div className="pb-customer mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
         {lendoOCarrinho ? (
@@ -6066,6 +6076,11 @@ export function CheckoutViewDaConta({
             <Loader2 className="size-4 animate-spin" />
             Carregando seu carrinho…
           </p>
+        ) : pedidoDoRecibo ? (
+          <PedidoJaFeitoNaTela
+            orderId={pedidoDoRecibo}
+            onNavigate={onNavigate}
+          />
         ) : (
           <>
             <h1 className="text-lg font-bold text-zinc-900">
@@ -8175,6 +8190,121 @@ function TituloQueRecebeOFoco({
   );
 }
 
+// O RECIBO (12/11/2026): as telas que dizem "o pedido está feito" ("Pedido
+// recebido!", "Pagamento Confirmado!") deixam na aba SÓ o id do pedido, para o
+// F5 não cair em "Seu carrinho está vazio" (ver recibo-do-checkout.ts). A conta
+// é a do instante em que a tela abriu: um ref, não a conta de agora — se o
+// logout apagar o recibo e esta tela redesenhar sem usuário, o efeito (que só
+// roda de novo se o PEDIDO mudar) nunca regrava o recibo como visitante.
+// A tela de pagamento FORA DO PRAZO não usa isto: o pedido pode ser cancelado.
+function useGuardarReciboDoPedido(orderId: string) {
+  const { user } = useAuth();
+  const contaNaAbertura = useRef(user?.id ?? null);
+  useEffect(() => {
+    guardarReciboDoCheckout(contaNaAbertura.current, orderId);
+  }, [orderId]);
+}
+
+// CheckoutView-3301 (16/09/2026): "Ver Meus Pedidos" leva ao OrderSearch,
+// que EXIGE e-mail válido (OrderSearch.tsx:63-66) para mandar o OTP — mas
+// o formulário de convidado nunca coletou e-mail, e `customer_data.email`
+// nasce vazio. O botão nunca poderia achar o pedido do convidado; era um
+// beco com cara de recurso. A correção de fundo (pedir e-mail e gravá-lo
+// em customer_data.email) exige mudar o payload de useOrders.createOrder
+// para create_marketplace_order_v23/v24 — nenhuma das duas RPCs aceita
+// `p_customer_email` hoje (conferido em 20261081000000, a versão mais
+// recente das duas), e useOrders.ts é arquivo de outra frente nesta
+// árvore agora. Enquanto isso não existe, quem não tem conta ganha o
+// mesmo mecanismo já usado em PagamentoForaDoPrazoView (linha ~3508
+// abaixo): WhatsApp da loja com o número do pedido na mensagem — nunca um
+// botão que promete um recurso que não funciona para ele.
+// Mesmo mecanismo de contato já usado em PagamentoForaDoPrazoView (WhatsApp da
+// loja com o número do pedido na mensagem), compartilhado pela tela de sucesso
+// e pela tela do recibo.
+function AcompanharPedidoSemConta({
+  orderId,
+  classeDoBotao,
+}: Readonly<{ orderId: string; classeDoBotao: string }>) {
+  const { config } = useStore();
+  const lojaTemWhatsappAgora = lojaTemWhatsapp(config.whatsappNumber);
+
+  const handleFalarComALoja = () => {
+    if (!lojaTemWhatsappAgora) return;
+    let numeroLimpo = (config.whatsappNumber || "").replace(/\D/g, "");
+    if (numeroLimpo.length === 11 || numeroLimpo.length === 10) {
+      numeroLimpo = `55${numeroLimpo}`;
+    }
+    const mensagem = `Olá! Quero acompanhar o meu pedido #${numeroDoPedido(orderId)}.`;
+    const url = `https://wa.me/${numeroLimpo}?text=${encodeURIComponent(mensagem)}`;
+    // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
+    // ganha `window.opener` apontando para esta tela — o destino (nem
+    // sempre sob nosso controle: é o wa.me/WhatsApp Web) poderia navegar
+    // esta aba por baixo (reverse tabnabbing). "noreferrer" some com o
+    // cabeçalho Referer para o wa.me. Só os 3 pontos deste arquivo (achado
+    // do revisor); outros `globalThis.open` de WhatsApp no app (grep
+    // "globalThis.open" fora daqui) ficam de fora do escopo desta rodada.
+    globalThis.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  if (lojaTemWhatsappAgora) {
+    return (
+      <BotaoWhatsapp onClick={handleFalarComALoja} className={classeDoBotao}>
+        Acompanhar pelo WhatsApp
+      </BotaoWhatsapp>
+    );
+  }
+  return (
+    <p className="text-xs leading-relaxed text-zinc-500">
+      Guarde o número do pedido acima — é por ele que a loja localiza o seu
+      pedido.
+    </p>
+  );
+}
+
+// F5 depois do pedido (12/11/2026): o carrinho está vazio PORQUE o pedido foi
+// feito. Diz "recebido" — nunca "pago": vale para qualquer forma de pagamento,
+// e o recibo não sabe se o dinheiro entrou. Mora dentro do mesmo invólucro da
+// tela de "carrinho vazio", de onde é chamada.
+function PedidoJaFeitoNaTela({
+  orderId,
+  onNavigate,
+}: Readonly<{
+  orderId: string;
+  onNavigate: (view: View, productId?: string) => void;
+}>) {
+  const { user } = useAuth();
+  return (
+    <>
+      <h1 className="text-lg font-bold text-zinc-900">
+        Seu pedido já foi feito
+      </h1>
+      <p className="text-sm text-zinc-600">
+        {`Pedido #${numeroDoPedido(orderId)} recebido. Você não precisa comprar de novo.`}
+      </p>
+      {user ? (
+        <Button
+          onClick={() => onNavigate("orders")}
+          className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
+        >
+          Ver meus pedidos
+        </Button>
+      ) : (
+        <AcompanharPedidoSemConta
+          orderId={orderId}
+          classeDoBotao="w-full whitespace-normal"
+        />
+      )}
+      <Button
+        onClick={() => onNavigate("home")}
+        variant="outline"
+        className="w-full rounded-xl"
+      >
+        Voltar à vitrine
+      </Button>
+    </>
+  );
+}
+
 interface SuccessViewProps {
   orderId: string;
   appliedCoupon: { code: string; discount: number } | null;
@@ -8196,40 +8326,11 @@ function SuccessView({
   ehRetirada,
   onNavigate,
 }: Readonly<SuccessViewProps>) {
-  // CheckoutView-3301 (16/09/2026): "Ver Meus Pedidos" leva ao OrderSearch,
-  // que EXIGE e-mail válido (OrderSearch.tsx:63-66) para mandar o OTP — mas
-  // o formulário de convidado nunca coletou e-mail, e `customer_data.email`
-  // nasce vazio. O botão nunca poderia achar o pedido do convidado; era um
-  // beco com cara de recurso. A correção de fundo (pedir e-mail e gravá-lo
-  // em customer_data.email) exige mudar o payload de useOrders.createOrder
-  // para create_marketplace_order_v23/v24 — nenhuma das duas RPCs aceita
-  // `p_customer_email` hoje (conferido em 20261081000000, a versão mais
-  // recente das duas), e useOrders.ts é arquivo de outra frente nesta
-  // árvore agora. Enquanto isso não existe, quem não tem conta ganha o
-  // mesmo mecanismo já usado em PagamentoForaDoPrazoView (linha ~3508
-  // abaixo): WhatsApp da loja com o número do pedido na mensagem — nunca um
-  // botão que promete um recurso que não funciona para ele.
+  // Quem não tem conta acompanha o pedido por `AcompanharPedidoSemConta`
+  // (acima): o "Ver Meus Pedidos" não serve a ele (CheckoutView-3301).
   const { user } = useAuth();
-  const { config } = useStore();
-  const lojaTemWhatsappAgora = lojaTemWhatsapp(config.whatsappNumber);
-
-  const handleFalarComALoja = () => {
-    if (!lojaTemWhatsappAgora) return;
-    let numeroLimpo = (config.whatsappNumber || "").replace(/\D/g, "");
-    if (numeroLimpo.length === 11 || numeroLimpo.length === 10) {
-      numeroLimpo = `55${numeroLimpo}`;
-    }
-    const mensagem = `Olá! Quero acompanhar o meu pedido #${numeroDoPedido(orderId)}.`;
-    const url = `https://wa.me/${numeroLimpo}?text=${encodeURIComponent(mensagem)}`;
-    // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
-    // ganha `window.opener` apontando para esta tela — o destino (nem
-    // sempre sob nosso controle: é o wa.me/WhatsApp Web) poderia navegar
-    // esta aba por baixo (reverse tabnabbing). "noreferrer" some com o
-    // cabeçalho Referer para o wa.me. Só os 3 pontos deste arquivo (achado
-    // do revisor); outros `globalThis.open` de WhatsApp no app (grep
-    // "globalThis.open" fora daqui) ficam de fora do escopo desta rodada.
-    globalThis.open(url, "_blank", "noopener,noreferrer");
-  };
+  // O F5 depois do pedido diz "Seu pedido já foi feito" (recibo-do-checkout.ts).
+  useGuardarReciboDoPedido(orderId);
 
   return (
     <div className="pb-customer flex min-h-full flex-col items-center justify-center bg-white px-6 text-center">
@@ -8302,18 +8403,11 @@ function SuccessView({
           >
             Ver Meus Pedidos
           </button>
-        ) : lojaTemWhatsappAgora ? (
-          <BotaoWhatsapp
-            onClick={handleFalarComALoja}
-            className="h-16 whitespace-normal text-[11px] font-black uppercase leading-snug tracking-[0.3em]"
-          >
-            Acompanhar pelo WhatsApp
-          </BotaoWhatsapp>
         ) : (
-          <p className="text-xs leading-relaxed text-zinc-500">
-            Guarde o número do pedido acima — é por ele que a loja localiza o
-            seu pedido.
-          </p>
+          <AcompanharPedidoSemConta
+            orderId={orderId}
+            classeDoBotao="h-16 whitespace-normal text-[11px] font-black uppercase leading-snug tracking-[0.3em]"
+          />
         )}
       </div>
     </div>
@@ -8336,6 +8430,8 @@ function PagamentoConfirmadoView({
   valor,
   onNavigate,
 }: Readonly<PagamentoConfirmadoViewProps>) {
+  // O F5 depois do Pix confirmado diz "Seu pedido já foi feito".
+  useGuardarReciboDoPedido(orderId);
   return (
     <div className="pb-customer flex min-h-full flex-col items-center justify-center bg-white px-6 text-center">
       <div className="group relative mb-12">
