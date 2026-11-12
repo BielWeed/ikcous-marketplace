@@ -24,7 +24,7 @@ BEGIN
 
   FOR r IN
     SELECT * FROM (VALUES
-        ('public.get_admin_analytics_v2(integer)', '060c9ab5b1505dc375b41e4436e9d3a8', 'e9b8671e919d885277dbbff74496fc46')
+        ('public.get_admin_analytics_v2(integer)', '060c9ab5b1505dc375b41e4436e9d3a8', '0ea0841208f326971e4f92241929e088')
     ) AS esperado(assinatura, hash_vigente, hash_desta)
   LOOP
     SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash FROM pg_proc

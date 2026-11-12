@@ -46,7 +46,7 @@ const md5 = (s) => crypto.createHash("md5").update(s).digest("hex");
 const CORPO_NOVO = corpoDe(migration);
 const CORPO_251 = corpoDe(ler(`supabase/migrations/${NOME_251}`));
 const CORPO_250 = corpoDe(ler(`supabase/migrations/${NOME_250}`));
-const HASH_NOVO = "e9b8671e919d885277dbbff74496fc46";
+const HASH_NOVO = "0ea0841208f326971e4f92241929e088";
 const HASH_251 = "060c9ab5b1505dc375b41e4436e9d3a8";
 const HASH_250 = "5746d8a1df216ca4a5569901c45a2a07";
 
@@ -129,13 +129,23 @@ async function produto(c, nome, preco, custo) {
   );
   return id;
 }
-// Linha do ledger. `ligada` = devolucao a que ela pertence (devolucoes.refund_id); sem ela, e estorno SEM devolucao.
-async function estorno(c, ped, amount, status = "concluido") {
+// Linha do ledger. A devolucao a que ela pertence aponta para ela (devolucoes.refund_id); sem isso, e estorno SEM devolucao.
+// `por` = quem pediu ('sistema' = o webhook do MP registrando devolucao feita pelo painel do MP); `minutos` = quando
+// nasceu em relacao a agora (a devolucao conclui "agora"); `contestacao` = id da contestacao (chargeback), se for o caso.
+async function estorno(
+  c,
+  ped,
+  amount,
+  status = "concluido",
+  { por = "lojista", minutos = 0, contestacao = null } = {},
+) {
   return (
     await c.query(
-      `INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por, status, concluido_em)
-       VALUES ($1, $2, 'fixture 3997', 'lojista', $3, CASE WHEN $3 = 'concluido' THEN now() END) RETURNING id`,
-      [ped.id, amount, status],
+      `INSERT INTO public.order_refunds
+         (order_id, amount, motivo, solicitado_por, status, concluido_em, created_at, mp_chargeback_id)
+       VALUES ($1, $2, 'fixture 3997', $4, $3, CASE WHEN $3 = 'concluido' THEN now() END,
+               now() + ($5::text || ' minutes')::interval, $6) RETURNING id`,
+      [ped.id, amount, status, por, minutos, contestacao],
     )
   ).rows[0].id;
 }
@@ -466,6 +476,122 @@ const CENARIOS = [
     nome: "cortesia maior que o pedido: cada peca perde no maximo o proprio preco",
     opts: { montar: cortesia(200) },
     novo: { v: [1, -4000], b: [1, -2000] },
+    antes: { v: [1, 6000], b: [1, 3000] },
+  },
+  {
+    nome: "reembolso da devolucao FALHOU e a lojista devolveu R$ 50 pelo painel do MP (linha 'sistema' depois da conclusao): nao conta de novo como cortesia",
+    opts: {
+      montar: async (c, ped) => {
+        const r = await estorno(c, ped, 50, "falhou");
+        await devolver(c, ped, 1, {
+          qtd: 1,
+          preco: 50,
+          refundId: r,
+          protocolo: protocolo(),
+        });
+        await estorno(c, ped, 50, "concluido", { por: "sistema", minutos: 5 });
+        return 50;
+      },
+    },
+    novo: { v: [1, 6000], b: [0, 0] },
+    antes: { v: [1, 6000], b: [1, 3000] },
+  },
+  {
+    nome: "o mesmo, mas a lojista marcou 'ja devolvi por fora' (a devolucao solta a linha que falhou): tambem nao conta de novo",
+    opts: {
+      montar: async (c, ped) => {
+        await estorno(c, ped, 50, "falhou");
+        await devolver(c, ped, 1, {
+          qtd: 1,
+          preco: 50,
+          protocolo: protocolo(),
+        });
+        await estorno(c, ped, 50, "concluido", { por: "sistema", minutos: 5 });
+        return 50;
+      },
+    },
+    novo: { v: [1, 6000], b: [0, 0] },
+    antes: { v: [1, 6000], b: [1, 3000] },
+  },
+  {
+    nome: "linha 'sistema' ANTERIOR a conclusao da devolucao (a linha ligada falhou): e outro dinheiro, continua cortesia",
+    opts: {
+      montar: async (c, ped) => {
+        const r = await estorno(c, ped, 50, "falhou");
+        await devolver(c, ped, 1, {
+          qtd: 1,
+          preco: 50,
+          refundId: r,
+          protocolo: protocolo(),
+        });
+        await estorno(c, ped, 50, "concluido", {
+          por: "sistema",
+          minutos: -60,
+        });
+        return 50;
+      },
+    },
+    novo: { v: [1, 1000], b: [0, 0] },
+    antes: { v: [1, 6000], b: [1, 3000] },
+  },
+  {
+    nome: "painel do MP devolveu R$ 50 pela devolucao e a lojista deu mais R$ 15 de cortesia: so os R$ 15 descontam da peca que ficou",
+    opts: {
+      montar: async (c, ped) => {
+        const r = await estorno(c, ped, 50, "falhou");
+        await devolver(c, ped, 1, {
+          qtd: 1,
+          preco: 50,
+          refundId: r,
+          protocolo: protocolo(),
+        });
+        await estorno(c, ped, 50, "concluido", { por: "sistema", minutos: 5 });
+        await estorno(c, ped, 15);
+        return 65;
+      },
+    },
+    novo: { v: [1, 4500], b: [0, 0] },
+    antes: { v: [1, 6000], b: [1, 3000] },
+  },
+  {
+    nome: "painel do MP devolveu so R$ 20 de uma devolucao de R$ 50 + cortesia de R$ 15: o abatimento nao passa do que o painel devolveu",
+    opts: {
+      montar: async (c, ped) => {
+        const r = await estorno(c, ped, 50, "falhou");
+        await devolver(c, ped, 1, {
+          qtd: 1,
+          preco: 50,
+          refundId: r,
+          protocolo: protocolo(),
+        });
+        await estorno(c, ped, 20, "concluido", { por: "sistema", minutos: 5 });
+        await estorno(c, ped, 15);
+        return 35;
+      },
+    },
+    novo: { v: [1, 4500], b: [0, 0] },
+    antes: { v: [1, 6000], b: [1, 3000] },
+  },
+  {
+    nome: "a linha 'sistema' e uma contestacao (chargeback): nao e devolucao pelo painel, continua cortesia",
+    opts: {
+      montar: async (c, ped) => {
+        const r = await estorno(c, ped, 50, "falhou");
+        await devolver(c, ped, 1, {
+          qtd: 1,
+          preco: 50,
+          refundId: r,
+          protocolo: protocolo(),
+        });
+        await estorno(c, ped, 50, "concluido", {
+          por: "sistema",
+          minutos: 5,
+          contestacao: "cb-3997",
+        });
+        return 50;
+      },
+    },
+    novo: { v: [1, 1000], b: [0, 0] },
     antes: { v: [1, 6000], b: [1, 3000] },
   },
   {
@@ -942,6 +1068,40 @@ async function main() {
             .join("COALESCE(SUM(di.quantidade), 0)::int AS devolvidas"),
         2,
       ],
+      [
+        "o painel do MP nao abate do residual (so a linha ligada abate)",
+        (s) =>
+          s
+            .split("AND sp.solicitado_por = 'sistema'")
+            .join("AND false AND sp.solicitado_por = 'sistema'"),
+        2,
+      ],
+      [
+        "abate o valor da devolucao sem limite pelo que o painel devolveu",
+        (s) =>
+          s
+            .split("SELECT LEAST(g.valor, COALESCE((")
+            .join("SELECT LEAST(g.valor, 1000000 + COALESCE(("),
+        2,
+      ],
+      [
+        "a linha do painel anterior a conclusao da devolucao tambem abate",
+        (s) => s.split("AND sp.created_at >= g.desde").join("AND true"),
+        2,
+      ],
+      [
+        "a contestacao (chargeback) conta como devolucao pelo painel",
+        (s) => s.split("AND sp.mp_chargeback_id IS NULL").join("AND true"),
+        2,
+      ],
+      [
+        "a devolucao resolvida por fora (refund_id solto) nao abate",
+        (s) =>
+          s
+            .split("(dvp.refund_id IS NULL AND dvp.reembolso_manual)")
+            .join("(false AND dvp.reembolso_manual)"),
+        2,
+      ],
     ];
     for (const [rotulo, mutar, vezes] of mutantes) {
       await isolado(c, async () => {
@@ -972,7 +1132,7 @@ async function main() {
     // O mutante nao deixou nada: o corpo novo continua intacto.
     assert.deepEqual(await funcao(c), topo);
     console.log(
-      `  PASSOU ${mutantes.length} mutantes reprovam (ignorar devolucao_itens, desconto em dobro do estorno ligado, contar troca, vale fora, sem perda do nao reestocado, sem filtro de concluida, sem cortesia, cortesia sem teto, quantidade cheia, grafico sem a conta, estorno pendente, devolvidas sem teto)`,
+      `  PASSOU ${mutantes.length} mutantes reprovam (ignorar devolucao_itens, desconto em dobro do estorno ligado, contar troca, vale fora, sem perda do nao reestocado, sem filtro de concluida, sem cortesia, cortesia sem teto, quantidade cheia, grafico sem a conta, estorno pendente, devolvidas sem teto, painel do MP sem abater, sem limite, linha anterior, contestacao, devolucao por fora)`,
     );
 
     // 5. Rollback: devolve o corpo da 251 byte a byte; repetir e inofensivo; corpo desconhecido recusa; a ida e volta nao toca nos dados.

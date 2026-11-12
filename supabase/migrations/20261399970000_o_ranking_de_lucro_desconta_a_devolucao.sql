@@ -8,7 +8,8 @@
 --   * d: unidades de devolucao_itens de devolucoes com status 'concluida' e resolucao_final 'reembolso' ou 'vale' (troca NAO conta: a peca sai de novo).
 --   * n: as de reestocado_em vazio; o custo vira perda (o mesmo olhar do Financeiro: o que volta a prateleira credita o custo, o que nao volta, nao).
 --   * cortesia: por pedido, valor_estornado MENOS a soma das linhas de order_refunds 'concluido' ligadas a uma devolucao do pedido (devolucoes.refund_id),
---     nunca abaixo de zero. O que sobra e dinheiro devolvido SEM peca de volta e sai do lucro, repartido entre as pecas que ficaram, pelo valor de cada uma
+--     e menos o que o painel do Mercado Pago devolveu por uma devolucao cujo reembolso ligado falhou ou foi recusado (linha 'sistema' concluida depois da
+--     conclusao; limitado ao valor dessa linha), nunca abaixo de zero. O que sobra e dinheiro devolvido SEM peca de volta e sai do lucro, repartido entre as pecas que ficaram, pelo valor de cada uma
 --     (a mesma conta do cupom). Descontar tambem o estorno ligado a devolucao contaria o mesmo dinheiro DUAS vezes.
 --   * a "quantidade" do ranking passa a ser q - d.
 -- O grafico diario (revenueHistory[].profit) usa a MESMA conta, no dia da VENDA: dois cartoes da mesma tela nao podem discordar.
@@ -44,7 +45,7 @@ BEGIN
 
   FOR r IN
     SELECT * FROM (VALUES
-        ('public.get_admin_analytics_v2(integer)', '060c9ab5b1505dc375b41e4436e9d3a8', 'e9b8671e919d885277dbbff74496fc46')
+        ('public.get_admin_analytics_v2(integer)', '060c9ab5b1505dc375b41e4436e9d3a8', '0ea0841208f326971e4f92241929e088')
     ) AS esperado(assinatura, hash_vigente, hash_desta)
   LOOP
     SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash FROM pg_proc
@@ -91,11 +92,18 @@ BEGIN
       ('order_refunds', 'order_id'),
       ('order_refunds', 'amount'),
       ('order_refunds', 'status'),
+      ('order_refunds', 'solicitado_por'),
+      ('order_refunds', 'mp_chargeback_id'),
+      ('order_refunds', 'created_at'),
       ('devolucoes', 'id'),
       ('devolucoes', 'order_id'),
       ('devolucoes', 'status'),
       ('devolucoes', 'resolucao_final'),
       ('devolucoes', 'refund_id'),
+      ('devolucoes', 'reembolso_manual'),
+      ('devolucoes', 'valor_reembolso'),
+      ('devolucoes', 'concluida_em'),
+      ('devolucoes', 'updated_at'),
       ('devolucao_itens', 'devolucao_id'),
       ('devolucao_itens', 'order_item_id'),
       ('devolucao_itens', 'quantidade'),
@@ -319,7 +327,32 @@ BEGIN
                           AND rf.status = 'concluido'
                           AND EXISTS (SELECT 1 FROM public.devolucoes dv_lig
                                        WHERE dv_lig.refund_id = rf.id
-                                         AND dv_lig.order_id = so.id)), 0)) AS residual,
+                                         AND dv_lig.order_id = so.id)), 0)
+                       -- Devolvido pelo painel do Mercado Pago: a linha ligada a devolucao falhou/foi recusada (ou a lojista marcou
+                       -- "ja devolvi por fora", que solta o refund_id) e o webhook gravou OUTRA linha 'sistema' concluida depois da
+                       -- conclusao (o mesmo criterio de reemitir_reembolso_da_devolucao). valor_estornado ja soma essa linha, mas o dinheiro
+                       -- saiu POR uma devolucao: sai do lucro pelas pecas devolvidas, nao de novo como cortesia. Limitado ao que o painel
+                       -- de fato devolveu (soma das linhas 'sistema'); sem essa linha, nada se desconta (ligada 'solicitado' continua cortesia).
+                       - COALESCE((
+                       SELECT LEAST(g.valor, COALESCE((
+                                  SELECT SUM(sp.amount)
+                                    FROM public.order_refunds sp
+                                   WHERE sp.order_id = so.id
+                                     AND sp.solicitado_por = 'sistema'
+                                     AND sp.status = 'concluido'
+                                     AND sp.mp_chargeback_id IS NULL
+                                     AND sp.created_at >= g.desde), 0))
+                         FROM (SELECT SUM(dvp.valor_reembolso) AS valor,
+                                      MIN(COALESCE(dvp.concluida_em, dvp.updated_at)) AS desde
+                                 FROM public.devolucoes dvp
+                                 LEFT JOIN public.order_refunds rlp ON rlp.id = dvp.refund_id
+                                WHERE dvp.order_id = so.id
+                                  AND dvp.status = 'concluida'
+                                  AND dvp.resolucao_final = 'reembolso'
+                                  AND dvp.valor_reembolso > 0
+                                  AND ((dvp.refund_id IS NULL AND dvp.reembolso_manual)
+                                       OR rlp.status IN ('falhou', 'recusado'))) g
+                        WHERE g.valor IS NOT NULL), 0)) AS residual,
                    (SELECT COALESCE(SUM((ri.quantity - COALESCE(rd.devolvidas, 0)) * ri.price), 0)
                       FROM public.marketplace_order_items ri
                       LEFT JOIN LATERAL (
@@ -411,7 +444,32 @@ BEGIN
                           AND rf.status = 'concluido'
                           AND EXISTS (SELECT 1 FROM public.devolucoes dv_lig
                                        WHERE dv_lig.refund_id = rf.id
-                                         AND dv_lig.order_id = so.id)), 0)) AS residual,
+                                         AND dv_lig.order_id = so.id)), 0)
+                       -- Devolvido pelo painel do Mercado Pago: a linha ligada a devolucao falhou/foi recusada (ou a lojista marcou
+                       -- "ja devolvi por fora", que solta o refund_id) e o webhook gravou OUTRA linha 'sistema' concluida depois da
+                       -- conclusao (o mesmo criterio de reemitir_reembolso_da_devolucao). valor_estornado ja soma essa linha, mas o dinheiro
+                       -- saiu POR uma devolucao: sai do lucro pelas pecas devolvidas, nao de novo como cortesia. Limitado ao que o painel
+                       -- de fato devolveu (soma das linhas 'sistema'); sem essa linha, nada se desconta (ligada 'solicitado' continua cortesia).
+                       - COALESCE((
+                       SELECT LEAST(g.valor, COALESCE((
+                                  SELECT SUM(sp.amount)
+                                    FROM public.order_refunds sp
+                                   WHERE sp.order_id = so.id
+                                     AND sp.solicitado_por = 'sistema'
+                                     AND sp.status = 'concluido'
+                                     AND sp.mp_chargeback_id IS NULL
+                                     AND sp.created_at >= g.desde), 0))
+                         FROM (SELECT SUM(dvp.valor_reembolso) AS valor,
+                                      MIN(COALESCE(dvp.concluida_em, dvp.updated_at)) AS desde
+                                 FROM public.devolucoes dvp
+                                 LEFT JOIN public.order_refunds rlp ON rlp.id = dvp.refund_id
+                                WHERE dvp.order_id = so.id
+                                  AND dvp.status = 'concluida'
+                                  AND dvp.resolucao_final = 'reembolso'
+                                  AND dvp.valor_reembolso > 0
+                                  AND ((dvp.refund_id IS NULL AND dvp.reembolso_manual)
+                                       OR rlp.status IN ('falhou', 'recusado'))) g
+                        WHERE g.valor IS NOT NULL), 0)) AS residual,
                    (SELECT COALESCE(SUM((ri.quantity - COALESCE(rd.devolvidas, 0)) * ri.price), 0)
                       FROM public.marketplace_order_items ri
                       LEFT JOIN LATERAL (
@@ -545,8 +603,8 @@ DECLARE
   v_hash text;
 BEGIN
   SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash FROM pg_proc WHERE oid = v_oid;
-  IF v_hash IS DISTINCT FROM 'e9b8671e919d885277dbbff74496fc46' THEN
-    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: corpo depois do CREATE OR REPLACE de % tem hash %; esperado e9b8671e919d885277dbbff74496fc46.', v_fn, COALESCE(v_hash, 'ausente');
+  IF v_hash IS DISTINCT FROM '0ea0841208f326971e4f92241929e088' THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: corpo depois do CREATE OR REPLACE de % tem hash %; esperado 0ea0841208f326971e4f92241929e088.', v_fn, COALESCE(v_hash, 'ausente');
   END IF;
   IF (SELECT count(*) FROM pg_proc p
        WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'get_admin_analytics_v2') <> 1 THEN

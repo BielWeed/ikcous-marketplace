@@ -13,7 +13,7 @@ const RANKING_DE_LUCRO = Object.freeze({
   nome: "20261399970000_o_ranking_de_lucro_desconta_a_devolucao.sql",
   noAr: `SELECT COALESCE((SELECT md5(replace(prosrc, chr(13), ''))
     FROM pg_proc WHERE oid = to_regprocedure('public.get_admin_analytics_v2(integer)'))
-    = 'e9b8671e919d885277dbbff74496fc46', false) AS sim`,
+    = '0ea0841208f326971e4f92241929e088', false) AS sim`,
 });
 async function desfazerRankingDeLucroNaTransacao(c) {
   if ((await c.query(RANKING_DE_LUCRO.noAr)).rows[0]?.sim !== true)

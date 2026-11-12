@@ -2402,7 +2402,7 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
         // 12/11/2026 (lote 135): o ranking de lucro desconta a devolucao e o estorno (99 -> 214 -> 234 -> 242 -> 245 -> 250 -> 251 -> 3997).
         {
           fn: "get_admin_analytics_v2",
-          h: "e9b8671e919d885277dbbff74496fc46",
+          h: "0ea0841208f326971e4f92241929e088",
           versao: "20261399970000",
         },
         {

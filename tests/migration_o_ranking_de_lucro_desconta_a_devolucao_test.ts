@@ -31,7 +31,7 @@ const sql = ler(`supabase/migrations/${nome}`);
 const rb = ler(`supabase/migrations/rollback-manual-${nome}`);
 const H = {
   antes: "060c9ab5b1505dc375b41e4436e9d3a8",
-  depois: "e9b8671e919d885277dbbff74496fc46",
+  depois: "0ea0841208f326971e4f92241929e088",
 };
 
 Deno.test("3997: os hashes das duas pontas batem com os corpos escritos; o rollback devolve o corpo da 251 byte a byte", () => {
@@ -77,6 +77,20 @@ Deno.test("3997: a funcao fica SECURITY DEFINER com search_path fixo, as duas gu
   assert.equal(def.split("AND rf.status = 'concluido'").length - 1, 2);
   // O estorno LIGADO a devolucao nao e cortesia: sai do residual (senao desconta duas vezes).
   assert.equal(def.split("dv_lig.refund_id = rf.id").length - 1, 2);
+  // Devolvido pelo painel do MP (a linha ligada falhou/foi recusada, ou "ja devolvi por fora"): a linha 'sistema' concluida, sem contestacao,
+  // criada depois da conclusao da devolucao, limitada ao que ela devolveu, abate do residual — nos dois blocos, nunca "sempre o valor_reembolso".
+  for (const trecho of [
+    "AND sp.solicitado_por = 'sistema'",
+    "AND sp.status = 'concluido'",
+    "AND sp.mp_chargeback_id IS NULL",
+    "AND sp.created_at >= g.desde",
+    "SELECT LEAST(g.valor, COALESCE((",
+    "WHERE g.valor IS NOT NULL",
+    "(dvp.refund_id IS NULL AND dvp.reembolso_manual)",
+    "OR rlp.status IN ('falhou', 'recusado')",
+  ]) {
+    assert.equal(def.split(trecho).length - 1, 2, trecho);
+  }
   // Os dois lugares trocam a conta; o resto do corpo e' o da 251.
   assert.equal(
     def.split("- dev.perdidas * COALESCE(oic.custo, p.custo)").length - 1,

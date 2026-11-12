@@ -25,7 +25,7 @@ WITH fn AS (
                      WHERE n.nspname = 'public') > 0 THEN '>0' ELSE '0' END
   UNION ALL
   SELECT 'get_admin_analytics_v2: corpo exato (md5)',
-         'e9b8671e919d885277dbbff74496fc46',
+         '0ea0841208f326971e4f92241929e088',
          COALESCE((SELECT f.m FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)',
