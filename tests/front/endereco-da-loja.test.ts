@@ -158,6 +158,29 @@ describe("motivoDoEnderecoIncompleto", () => {
     );
   });
 
+  // Achado da onda 132: parte() so tira espacos comuns; U+200B/200E/2060/2800/3164
+  // passavam como "numero" e a loja gravava um endereco sem numero visivel.
+  it.each(["\u200b", "\u200e", "\u2060", "\u2800", "\u3164"])(
+    "numero, rua ou cidade so com caractere invisivel (%j) contam como faltando",
+    (invisivel) => {
+      expect(
+        motivoDoEnderecoIncompleto({ ...PAULISTA, numero: invisivel }),
+      ).toMatch(/número/i);
+      expect(
+        motivoDoEnderecoIncompleto({ ...PAULISTA, rua: invisivel }),
+      ).toMatch(/rua/i);
+      expect(
+        motivoDoEnderecoIncompleto({ ...PAULISTA, cidade: invisivel }),
+      ).toMatch(/cidade/i);
+    },
+  );
+
+  it("numero com texto visivel e invisivel junto continua valendo", () => {
+    expect(
+      motivoDoEnderecoIncompleto({ ...PAULISTA, numero: "\u200b12" }),
+    ).toBeNull();
+  });
+
   it("CEP incompleto vem antes de tudo", () => {
     expect(
       motivoDoEnderecoIncompleto({ ...PAULISTA, cep: "0131", numero: "" }),
