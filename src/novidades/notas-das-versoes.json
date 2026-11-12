@@ -5,7 +5,7 @@
     "melhorias": [],
     "correcoes": [
       "Loja, Carrinho: a foto da cor escolhida aparece mesmo sem foto no tamanho.",
-      "Pagamento: quem pagou e teve o e-mail do comprovante falhando recebe na próxima notificação do Mercado Pago.",
+      "Pagamento: se o e-mail do comprovante falhar, ele é reenviado quando o Mercado Pago avisar de novo do pagamento (pedidos do site, até 24 horas depois).",
       "Painel, Pedidos: a data do pedido na lista usa o horário de Brasília, como a ficha.",
       "Painel, Financeiro: fechar e reabrir uma folha rápido não deixa um relógio antigo mexer no botão Voltar."
     ]
