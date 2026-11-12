@@ -10,6 +10,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useReviews } from "@/hooks/useReviews";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Star } from "lucide-react";
@@ -20,7 +21,8 @@ import { z } from "zod";
 const reviewSchema = z.object({
   rating: z.number().min(1, "Selecione uma nota de 1 a 5."),
   // As estrelas bastam: o banco aceita avaliação sem texto (reviews.comment é
-  // nullable, sem CHECK nem trigger). Só espaços conta como vazio (trim no envio).
+  // nullable, sem CHECK nem trigger). Só espaços, ou só caractere invisível
+  // (U+200B, U+2800...), conta como vazio (no envio).
   comment: z.string(),
 });
 
@@ -89,7 +91,7 @@ export function ReviewForm({
   });
 
   const tamanhoDoComentario = form.watch("comment").length;
-  const temTexto = form.watch("comment").trim() !== "";
+  const temTexto = nomeTemConteudoVisivel(form.watch("comment"));
   useEffect(() => {
     if (!temTextoRef) return;
     temTextoRef.current = temTexto;
@@ -112,7 +114,9 @@ export function ReviewForm({
       const result = await addReview({
         productId,
         rating: values.rating,
-        comment: values.comment.trim(),
+        comment: nomeTemConteudoVisivel(values.comment)
+          ? values.comment.trim()
+          : "",
       });
 
       if (result) {

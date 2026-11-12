@@ -6,6 +6,7 @@ import {
   tintaSobre,
 } from "@/lib/banner-modelos";
 import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import type { Banner } from "@/types";
 import "./banner-pronto.css";
 
@@ -74,19 +75,21 @@ export function BannerProntoPreview({
       <div className="banner-pronto-conteudo">
         {modelo !== "foto" && foto}
         <div className="banner-pronto-texto">
-          {selo?.trim() && (
+          {nomeTemConteudoVisivel(selo) && (
             <span data-selo className="banner-pronto-selo line-clamp-1">
               {selo}
             </span>
           )}
-          {titulo.trim() && (
+          {nomeTemConteudoVisivel(titulo) && (
             <h2 className="line-clamp-2">
               {linhas[0]}
               {linhas[1] && <span> {linhas[1]}</span>}
             </h2>
           )}
-          {subtitulo.trim() && <p className="line-clamp-2">{subtitulo}</p>}
-          {botao.trim() && (
+          {nomeTemConteudoVisivel(subtitulo) && (
+            <p className="line-clamp-2">{subtitulo}</p>
+          )}
+          {nomeTemConteudoVisivel(botao) && (
             <span data-botao className="banner-pronto-botao">
               {botao}
             </span>

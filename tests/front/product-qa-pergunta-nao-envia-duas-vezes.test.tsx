@@ -173,4 +173,39 @@ describe("ProductQA — 'Enviar pergunta' não envia duas vezes (V3)", () => {
     expect(addQuestion).toHaveBeenCalledTimes(2);
     expect(campo().value).toBe("");
   });
+
+  // r150-f: `trim()` não tira U+200B (espaço de largura zero), U+200E (marca
+  // que o WhatsApp cola), U+2800 (Braille em branco) nem U+3164 (Hangul). Uma
+  // pergunta só disso virava balão público vazio e aviso para a lojista.
+  it.each([
+    ["espaço de largura zero", "\u200b\u200b"],
+    ["marca de direção do WhatsApp", "\u200e\u200e"],
+    ["Braille em branco", "\u2800"],
+    ["preenchimento Hangul", "\u3164"],
+  ])(
+    "pergunta só de caractere invisível (%s): botão desligado, Enter não envia",
+    async (_nome, texto) => {
+      addQuestion.mockResolvedValue(perguntaCriada);
+      await montarEDigitar(texto);
+
+      expect(botao().disabled).toBe(true);
+      await act(async () => {
+        campo().form!.dispatchEvent(
+          new Event("submit", { bubbles: true, cancelable: true }),
+        );
+      });
+      expect(addQuestion).not.toHaveBeenCalled();
+    },
+  );
+
+  it("controle: texto de verdade com invisível junto ainda envia", async () => {
+    addQuestion.mockResolvedValue(perguntaCriada);
+    await montarEDigitar("\u200bTem em azul?");
+
+    expect(botao().disabled).toBe(false);
+    await act(async () => {
+      botao().click();
+    });
+    expect(addQuestion).toHaveBeenCalledTimes(1);
+  });
 });

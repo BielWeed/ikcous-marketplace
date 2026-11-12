@@ -1,6 +1,7 @@
 import { useStore } from "@/contexts/StoreContext";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { cn } from "@/lib/utils";
 import type { Product } from "@/types";
 import { haptic } from "@/utils/haptic";
@@ -150,7 +151,7 @@ export const ProductCarousel = React.memo(function ProductCarousel({
             </span>
           </div>
         )}
-        {title?.trim() ? (
+        {nomeTemConteudoVisivel(title) ? (
           <h2 className="break-words text-3xl font-black leading-[0.9] tracking-tighter text-zinc-950 sm:text-4xl">
             {title}
           </h2>
