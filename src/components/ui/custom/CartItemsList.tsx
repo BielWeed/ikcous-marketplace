@@ -11,7 +11,7 @@ import type { CartItem } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { AnimatePresence, motion } from "framer-motion";
 import { Trash2 } from "lucide-react";
-import { memo } from "react";
+import { memo, useState } from "react";
 
 interface CartItemCardProps {
   item: CartItem;
@@ -86,6 +86,7 @@ const CartItemCard = memo(function CartItemCard({
 
   // A foto é a da cor escolhida (quando tem) ou a do produto.
   const fotoDaLinha = fotoDoItemDoCarrinho(item);
+  const [urlQueFalhou, setUrlQueFalhou] = useState<string | null>(null);
 
   const variant = item.variantId
     ? item.product.variants?.find((v) => v.id === item.variantId)
@@ -120,14 +121,19 @@ const CartItemCard = memo(function CartItemCard({
         )}
       >
         <div className="size-16 flex-shrink-0 overflow-hidden rounded-xl bg-muted min-[380px]:size-20">
-          {!fotoDaLinha || ehMarcadorDeFoto(fotoDaLinha) ? (
+          {!fotoDaLinha ||
+          ehMarcadorDeFoto(fotoDaLinha) ||
+          fotoDaLinha === urlQueFalhou ? (
             <div className="flex size-full items-center justify-center px-2 text-center text-xs font-medium text-muted-foreground">
               Sem foto
             </div>
           ) : (
             <img
               src={miniaturaDeCompra(fotoDaLinha)}
-              onError={(e) => usarImagemOriginal(e.currentTarget, fotoDaLinha)}
+              onError={(e) => {
+                if (!usarImagemOriginal(e.currentTarget, fotoDaLinha))
+                  setUrlQueFalhou(fotoDaLinha);
+              }}
               alt={
                 variantText
                   ? `${item.product.name} - ${variantText}`
