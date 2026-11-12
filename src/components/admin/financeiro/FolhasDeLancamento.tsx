@@ -31,6 +31,7 @@ import {
   rotuloDoStatus,
   sentidoDoLancamento,
 } from "@/lib/financeiro";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import type {
   ContaFinanceira,
@@ -470,8 +471,11 @@ export function CancelarLancamentoDialogo({
   const enviandoRef = useRef(false);
 
   const motivoLimpo = motivo.trim();
+  // `trim()` não tira U+200B e afins: motivo só de invisíveis não vale.
+  const motivoValido =
+    motivoLimpo.length >= 3 && nomeTemConteudoVisivel(motivoLimpo);
   const erroMotivo =
-    tentou && motivoLimpo.length < 3
+    tentou && !motivoValido
       ? "Conte em poucas palavras por que está cancelando."
       : undefined;
 
@@ -482,7 +486,7 @@ export function CancelarLancamentoDialogo({
   async function confirmar() {
     if (enviandoRef.current) return;
     setTentou(true);
-    if (motivoLimpo.length < 3) return;
+    if (!motivoValido) return;
     enviandoRef.current = true;
     aoMudarEnviando?.(true);
     setEnviando(true);
