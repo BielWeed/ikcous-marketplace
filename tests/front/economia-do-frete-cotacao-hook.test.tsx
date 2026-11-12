@@ -133,6 +133,17 @@ describe("useEconomiaDoFreteExibida", () => {
     expect(mockInvoke).not.toHaveBeenCalled();
   });
 
+  it("retirada na loja escolhida (loja Só retiro, CEP de fora): nunca chama a edge, economia 0", async () => {
+    await renderizar(
+      paramsBase({
+        opcaoSelecionada: { id: "store-pickup", price: 0 },
+      }),
+    );
+    await esperarDebounce();
+    expect(ultimoValor).toBe(0);
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
   it("freteGratis falso: nunca chama a edge, economia 0", async () => {
     await renderizar(paramsBase({ freteGratis: false }));
     await esperarDebounce();
