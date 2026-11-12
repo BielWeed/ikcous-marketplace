@@ -15,6 +15,8 @@ export interface Product {
   images: string[];
   category: string;
   stock: number;
+  /** Estoque da linha de produtos, preservado antes da soma no Realtime. */
+  estoqueDeBase?: number;
   /**
    * Limiar de "estoque baixo" deste produto. Nulo significa "use o padrao do
    * projeto" (5), a mesma regra do KPI Estoque Baixo do painel. ZERO e' uma
