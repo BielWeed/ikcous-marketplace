@@ -102,6 +102,8 @@ function detalheDe(over: Partial<DevolucaoDetalhe> = {}): DevolucaoDetalhe {
 }
 
 const concluir = vi.fn();
+const recusar = vi.fn();
+const reprovar = vi.fn();
 let raiz: Root;
 let hospedeiro: HTMLDivElement;
 
@@ -135,7 +137,12 @@ async function montar(detalhe: DevolucaoDetalhe) {
   const { AcoesDaDevolucao } = await import(
     "@/components/admin/devolucoes/AcoesDaDevolucao"
   );
-  const ficha = { emVoo: null, concluir } as unknown as FichaDaDevolucao;
+  const ficha = {
+    emVoo: null,
+    concluir,
+    recusar,
+    reprovar,
+  } as unknown as FichaDaDevolucao;
   await act(async () => {
     raiz.render(
       <AcoesDaDevolucao
@@ -170,6 +177,68 @@ async function clicar(el: HTMLElement | null | undefined) {
   });
   await drenar();
 }
+
+// Retornar ao trim() permite gravar uma decisão sem justificativa legível.
+describe.each([
+  [
+    "recusar",
+    "solicitada",
+    "Recusar",
+    "Recusar devolução",
+    recusar,
+    "Explique ao cliente o motivo da recusa.",
+  ],
+  [
+    "reprovar",
+    "recebida",
+    "Reprovar",
+    "Reprovar na inspeção",
+    reprovar,
+    "Explique ao cliente por que o produto não foi aceito.",
+  ],
+] as const)(
+  "motivo visível para %s",
+  (modo, status, abrir, confirmar, enviar, erro) => {
+    async function preencher(texto: string) {
+      await montar(detalheDe({ status }));
+      await clicar(botao(abrir));
+      const campo = hospedeiro.querySelector<HTMLTextAreaElement>(
+        modo === "recusar" ? "#devolucao-recusa" : "#devolucao-reprovar",
+      );
+      expect(campo).toBeTruthy();
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(
+          HTMLTextAreaElement.prototype,
+          "value",
+        )?.set?.call(campo, texto);
+        campo?.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => {
+        campo?.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+      });
+      await clicar(botao(confirmar));
+    }
+
+    it.each([0x200b, 0x200e, 0x2800, 0x3164])(
+      "não envia justificativa só com invisível %j",
+      async (invisivel) => {
+        await preencher(String.fromCodePoint(invisivel));
+        expect(
+          hospedeiro.querySelector('[role="alert"]')?.textContent,
+        ).toContain(erro);
+        expect(enviar).not.toHaveBeenCalled();
+      },
+    );
+
+    it("envia justificativa legível sem alterar o texto", async () => {
+      await preencher("Produto voltou sem etiqueta.");
+      expect(hospedeiro.querySelector('[role="alert"]')).toBeNull();
+      expect(enviar).toHaveBeenCalledExactlyOnceWith(
+        "Produto voltou sem etiqueta.",
+      );
+    });
+  },
+);
 
 const campoValor = () =>
   hospedeiro.querySelector<HTMLInputElement>("#devolucao-valor");

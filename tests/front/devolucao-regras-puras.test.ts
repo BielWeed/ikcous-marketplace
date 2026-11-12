@@ -778,6 +778,28 @@ describe("regras do pedido do cliente", () => {
     ).toBeNull();
   });
 
+  it.each([
+    ...[0x200b, 0x200e, 0x2800, 0x3164].map((codigo) =>
+      String.fromCodePoint(codigo),
+    ),
+    "Veio diferente do pedido",
+  ])("outro motivo exige detalhe visível: %j", (detalhe) => {
+    expect(
+      erroDoMotivo({
+        motivo: "outro",
+        detalhe,
+        quantidadeDeFotos: 0,
+        janelas: todas,
+        prazos: PRAZOS_ABERTOS,
+        politica: POLITICA,
+      }),
+    ).toBe(
+      detalhe === "Veio diferente do pedido"
+        ? null
+        : "Conte em poucas palavras o motivo da devolução.",
+    );
+  });
+
   it("fotos obrigatórias só em problema e quando a política exige", () => {
     expect(fotosObrigatorias("defeito", { exige_fotos_vicio: true })).toBe(
       true,
