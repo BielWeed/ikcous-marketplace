@@ -7900,7 +7900,7 @@ export function CheckoutViewDaConta({
                                 haptic.light();
                                 onNavigate("cart");
                               }}
-                              className="flex min-h-[44px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                              className="flex min-h-[44px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-zinc-900 transition-colors hover:bg-primary/20"
                             >
                               Escolher outro frete
                             </button>
@@ -7912,7 +7912,7 @@ export function CheckoutViewDaConta({
                                 haptic.light();
                                 handleRemoveCoupon();
                               }}
-                              className="flex min-h-[44px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                              className="flex min-h-[44px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-zinc-900 transition-colors hover:bg-primary/20"
                             >
                               Tirar o cupom
                             </button>
@@ -8052,7 +8052,7 @@ export function CheckoutViewDaConta({
                               haptic.light();
                               onNavigate("auth");
                             }}
-                            className="flex min-h-11 items-center rounded-lg border border-solid border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                            className="flex min-h-11 items-center rounded-lg border border-solid border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-zinc-900 transition-colors hover:bg-primary/20"
                           >
                             Entrar ou criar conta
                           </button>
@@ -8298,7 +8298,7 @@ function SuccessView({
         {user ? (
           <button
             onClick={() => onNavigate("orders")}
-            className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
+            className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-zinc-900 transition-all hover:border-primary active:scale-95"
           >
             Ver Meus Pedidos
           </button>
@@ -8379,7 +8379,7 @@ function PagamentoConfirmadoView({
         </button>
         <button
           onClick={() => onNavigate("home")}
-          className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
+          className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-zinc-900 transition-all hover:border-primary active:scale-95"
         >
           Retornar à Vitrine
         </button>
@@ -8492,7 +8492,7 @@ function PagamentoForaDoPrazoView({
         </button>
         <button
           onClick={() => onNavigate("home")}
-          className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
+          className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-zinc-900 transition-all hover:border-primary active:scale-95"
         >
           Retornar à Vitrine
         </button>
