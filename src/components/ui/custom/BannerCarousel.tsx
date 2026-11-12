@@ -50,11 +50,33 @@ export const BannerCarousel = memo(function BannerCarousel({
   // (ex.: mouse sai com o foco ainda dentro não pode destravar o autoplay).
   const [hoverAtivo, setHoverAtivo] = useState(false);
   const [focoAtivo, setFocoAtivo] = useState(false);
+  // Terceiro motivo: o dedo em cima do banner (no celular não há mouse nem
+  // foco, e o slide avançava no meio do arrasto).
+  const [toqueAtivo, setToqueAtivo] = useState(false);
   const ultimoToqueEm = useRef(0);
-  const pausado = hoverAtivo || focoAtivo;
+  const pausado = hoverAtivo || focoAtivo || toqueAtivo;
   const registrarToque = useCallback(() => {
     ultimoToqueEm.current = Date.now();
   }, []);
+  const handleTouchStart = useCallback(() => {
+    registrarToque();
+    setToqueAtivo(true);
+  }, [registrarToque]);
+  const handleTouchFim = useCallback(() => {
+    registrarToque();
+    setToqueAtivo(false);
+  }, [registrarToque]);
+  // O navegador pode perder o `touchend` (troca de app com o dedo na tela):
+  // ao ocultar a aba, o toque deixa de valer e a pausa não fica presa.
+  useEffect(() => {
+    if (!toqueAtivo) return;
+    const aoMudarVisibilidade = () => {
+      if (document.hidden) setToqueAtivo(false);
+    };
+    document.addEventListener("visibilitychange", aoMudarVisibilidade);
+    return () =>
+      document.removeEventListener("visibilitychange", aoMudarVisibilidade);
+  }, [toqueAtivo]);
   const handleMouseEnter = useCallback(() => {
     // Mouse emulado após toque não tem mouseleave até o próximo toque fora.
     if (Date.now() - ultimoToqueEm.current < 1000) return;
@@ -205,8 +227,9 @@ export const BannerCarousel = memo(function BannerCarousel({
       role="region"
       aria-roledescription="carousel"
       aria-label="Destaques e Promoções"
-      onTouchStart={registrarToque}
-      onTouchEnd={registrarToque}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchFim}
+      onTouchCancel={handleTouchFim}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={() => setHoverAtivo(false)}
       onFocus={handleFocus}
