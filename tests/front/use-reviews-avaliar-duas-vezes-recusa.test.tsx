@@ -92,7 +92,7 @@ it.each([
   ["duas duplicatas antigas", [{ id: "anterior" }, { id: "duplicada" }]],
 ])("recusa quando já existe %s do próprio autor", async (_nome, linhas) => {
   h.consulta.data = linhas;
-  expect(await enviar()).toBeNull();
+  expect(await enviar()).toEqual({ jaAvaliado: true });
   expect(h.insert).not.toHaveBeenCalled();
   expect(h.erro).toHaveBeenCalledExactlyOnceWith(
     "Você já avaliou este produto.",
