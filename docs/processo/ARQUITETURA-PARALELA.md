@@ -292,6 +292,19 @@ login como "rotina") e **B2** (`lane.json` com só o nome trocado ou com `base` 
 corrigidos, com teste que falha sem a correção. **M1 não se fecha por `permissions`, e esta seção diz o porquê
 em vez de prometer "seguro por construção".**
 
+> **Atualização, 12/11/2026 (ordem do dono: "não me peça mais nenhuma permissão para eu clicar em permitir").**
+> O `ask` do `.claude/settings.json` agora é **vazio**. Causa medida na doc oficial
+> (<https://code.claude.com/docs/en/permission-modes.md>): no modo "Ignorar permissões" uma regra `ask` explícita
+> continua perguntando, e nem hook nem `allow` a vencem; só `deny` vence tudo. As 34 regras de uso comum que eram
+> `ask` (`git push/commit/add/checkout/...`, `gh pr`, `curl`, `npm install`, `rm`, `mv`, ...) foram para `allow`; as 9
+> que carregam arquivo escolhido (`npx eslint -f/--format`, `npx knip --reporter/--preprocessor`,
+> `npx commitlint -o/--format`, `npx shadcn`) foram para `deny`. O `deny` anterior ficou intacto, e a revisão Opus
+> acrescentou ao `deny` as variantes destrutivas que o `ask` antigo segurava (`rm -Rf`/`rm dir -rf`, `git checkout .`,
+> `git push ... --force`/`--delete` com a opção no fim, `git restore .`, `git stash drop/clear`, `curl` com `.env`).
+> Onde o texto abaixo
+> disser **ask**, leia **deny** (as flags) ou **allow** (o uso comum). O teste
+> `tests/front/paralelo-permissoes.test.ts` falha se um `ask` voltar ou se uma regra de `deny` sumir.
+
 ### O que a documentação oficial garante (e o que não)
 
 Fonte: <https://code.claude.com/docs/en/permissions>. Tudo abaixo foi **conferido no motor real**
@@ -341,15 +354,15 @@ Todas as linhas marcadas **sim** foram provadas com marcador inofensivo, não su
 | `supabase db lint/gen types/migration list/status/test db:*` | `test db` executa SQL da frente; com `--db-url`/`--linked`/`--project-id` fala com banco remoto | **risco residual**; só a falta de credencial ao alcance da frente segura (não testado) |
 | `Read(./.env.example)` | não | sem mudança |
 
-Nenhum `ask` ou `deny` anterior foi tocado (o teste `tests/front/paralelo-permissoes.test.ts` trava isso). As regras
-novas são só acréscimo: 41 `deny` e 8 `ask`.
+Nenhum `deny` anterior foi tocado (o teste `tests/front/paralelo-permissoes.test.ts` trava isso). As regras
+novas eram só acréscimo: 41 `deny` e 8 `ask` — os 8 `ask` viraram `deny` em 12/11/2026 (ver a atualização acima).
 
 ### O que isso significa na prática
 
 1. **O `allow` é um quebra-molas, não uma fronteira.** Barra a forma literal que um prompt injetado costuma digitar;
    não barra quem parte a flag com aspas, usa barra invertida, grava um `.sqlfluff`/`stylelint.config.cjs`/`cspell.config.cjs`
    ao lado do arquivo, ou roda `deno test --allow-all`. Código arbitrário rodando como o usuário lê `.env`, faz `git push`
-   por dentro (sem passar pelo `ask`) e fala com a rede.
+   por dentro (o `git push` simples hoje é `allow`; só o forçado é `deny`) e fala com a rede.
 2. **O que segura de fato é outra coisa:** nada se integra sozinho. `integrar` lê o manifesto **canônico** da árvore do
    integrador e reprova arquivo fora da faixa antes de qualquer merge; a revisão (`revisor`, `revisor-risco` onde o mapa
    manda) lê o diff; e o resultado entra por branch e PR, que o dono vê. Isso protege **o que entra no repositório**.
