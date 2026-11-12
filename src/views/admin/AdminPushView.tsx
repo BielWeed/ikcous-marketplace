@@ -44,10 +44,12 @@ import {
 import { motivoDaFalhaEmPortugues } from "@/lib/motivo-da-falha-de-push";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { intercalarPorServico } from "@/lib/ordem-do-envio-de-push";
+import { PRAZO_DA_CONSULTA_DO_PAINEL_MS } from "@/lib/prazo-da-requisicao";
 import { primeiraLetra } from "@/lib/primeira-letra";
 import { supabase } from "@/lib/supabase";
 import { normalizeText } from "@/lib/utils";
 import type { View } from "@/types";
+import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import {
   type ContagemMedida,
   rotuloDaContagem,
@@ -957,13 +959,21 @@ export const AdminPushView = memo(function AdminPushView({
       // A RPC devolve no máximo 1.000 linhas por chamada: pagina, senão o
       // envio para quem passa disso cortava o resto em silêncio. A ordem fixa
       // por `endpoint` mantém as páginas sem repetir nem pular aparelho.
+      // Cada página tem prazo: rede que conecta e não responde deixava o botão
+      // em "Enviando..." para sempre, sem nenhum envio começado. Estourou, cai
+      // no `catch` e o `finally` solta o botão. A leitura não grava nada.
       const { data: targets, error: targetError } = await lerEmPaginas(
         (de, ate) =>
-          (supabase.rpc as any)("get_segmented_push_targets", {
-            p_segment: segment,
-          })
-            .order("endpoint", { ascending: true })
-            .range(de, ate),
+          comPrazo(
+            Promise.resolve(
+              (supabase.rpc as any)("get_segmented_push_targets", {
+                p_segment: segment,
+              })
+                .order("endpoint", { ascending: true })
+                .range(de, ate),
+            ),
+            PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          ),
       );
 
       if (targetError) throw targetError;
@@ -1233,7 +1243,11 @@ export const AdminPushView = memo(function AdminPushView({
       if (segment !== "all") calculateReach();
     } catch (error) {
       console.error("Error sending push:", error);
-      toast.error("Falha ao registrar notificação no banco");
+      toast.error(
+        error instanceof PrazoEsgotado
+          ? "Demorou demais, tente de novo. Nada foi enviado."
+          : "Falha ao registrar notificação no banco",
+      );
     } finally {
       setLoading(false);
     }
