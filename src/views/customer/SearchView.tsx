@@ -266,6 +266,15 @@ export const SearchView = React.memo(function SearchView({
   // Reset pagination when any query filters change. Compara com o desenho
   // anterior em vez de rodar a cada montagem: ao voltar do produto a primeira
   // execução não pode apagar a quantidade restaurada.
+  //
+  // E leva a página ao topo dos resultados: a lista reordenada/refiltrada volta
+  // a ter 12, mas quem tinha rolado várias linhas ficava no meio ou no fim dela,
+  // sem ver os primeiros. A rolagem para na borda do cabeçalho fixo (que cobriria
+  // o topo da lista), "instant" como na Home ("auto" herdaria o scroll-smooth da
+  // tela) e só quando um filtro muda de verdade: carregar mais por rolagem e
+  // montar a tela não passam por aqui. (`?.` porque o jsdom não tem `scrollIntoView`.)
+  const cabecalhoRef = useRef<HTMLDivElement | null>(null);
+  const resultadosRef = useRef<HTMLDivElement | null>(null);
   const filtrosAnterioresRef = useRef({
     query,
     category,
@@ -283,6 +292,11 @@ export const SearchView = React.memo(function SearchView({
       antes.sort !== sort
     ) {
       setVisibleCount(12);
+      const resultados = resultadosRef.current;
+      if (resultados) {
+        resultados.style.scrollMarginTop = `${cabecalhoRef.current?.offsetHeight ?? 0}px`;
+        resultados.scrollIntoView?.({ block: "start", behavior: "instant" });
+      }
     }
     filtrosAnterioresRef.current = {
       query,
@@ -385,7 +399,10 @@ export const SearchView = React.memo(function SearchView({
   return (
     <div className="pb-customer min-h-full bg-white selection:bg-black selection:text-white">
       {/* Premium Sticky Search Header */}
-      <div className="sticky top-[-2px] z-50 border-b border-zinc-100 bg-white/90 backdrop-blur-2xl">
+      <div
+        ref={cabecalhoRef}
+        className="sticky top-[-2px] z-50 border-b border-zinc-100 bg-white/90 backdrop-blur-2xl"
+      >
         <div className="mx-auto max-w-7xl space-y-4 p-4">
           <div className="flex items-center gap-3">
             <button
@@ -513,7 +530,7 @@ export const SearchView = React.memo(function SearchView({
       </div>
 
       {/* Content Area */}
-      <div className="mx-auto max-w-7xl px-4 py-8">
+      <div ref={resultadosRef} className="mx-auto max-w-7xl px-4 py-8">
         {loadingProducts || tentandoBusca ? (
           <p role="status" className="py-20 text-center text-sm text-zinc-500">
             Carregando busca…
