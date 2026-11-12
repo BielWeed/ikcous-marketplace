@@ -14,7 +14,11 @@ import { useCategories } from "@/hooks/useCategories";
 import { useFavorites } from "@/hooks/useFavorites";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
-import { type FiltrosDaBusca, useSearch } from "@/hooks/useSearch";
+import {
+  type FiltrosDaBusca,
+  type QuantidadeDaBusca,
+  useSearch,
+} from "@/hooks/useSearch";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import { produtoDisponivel } from "@/lib/vitrine";
@@ -57,6 +61,12 @@ interface SearchViewProps {
   filtrosIniciais?: FiltrosDaBusca;
   /** Avisa o App a cada mudança dos filtros, para ele guardá-los. */
   aoMudarFiltros?: (filtros: FiltrosDaBusca) => void;
+  /** Quantos resultados a tela já mostrava na última visita (só vale ao montar,
+   * e só se o termo for o mesmo): sem isto a lista volta com 12 e a rolagem
+   * guardada pelo App cai numa lista curta. */
+  quantidadeInicial?: QuantidadeDaBusca;
+  /** Avisa o App a cada mudança da quantidade (ou do termo), para guardá-la. */
+  aoMudarQuantidade?: (quantidade: QuantidadeDaBusca) => void;
 }
 
 interface SearchInputProps {
@@ -115,6 +125,8 @@ export const SearchView = React.memo(function SearchView({
   onAddToCart,
   filtrosIniciais,
   aoMudarFiltros,
+  quantidadeInicial,
+  aoMudarQuantidade,
 }: SearchViewProps) {
   const { config, catalogoErro, loadingProducts, fetchProducts } = useStore();
   const [tentandoBusca, setTentandoBusca] = useState(false);
@@ -203,7 +215,14 @@ export const SearchView = React.memo(function SearchView({
   useVoltarFechaAFolha(isFilterOpen, () => {
     setIsFilterOpen(false);
   });
-  const [visibleCount, setVisibleCount] = useState(12);
+  // A quantidade guardada só vale para o MESMO termo; não é cortada pelo total
+  // aqui porque a lista pode ainda não ter chegado (cortar em 0 apagaria o que
+  // foi guardado). O `slice` já mostra só o que existe.
+  const [visibleCount, setVisibleCount] = useState(() =>
+    quantidadeInicial && quantidadeInicial.termo === initialQuery
+      ? Math.max(12, quantidadeInicial.quantidade)
+      : 12,
+  );
   const observerRef = useRef<IntersectionObserver | null>(null);
 
   const observerTargetRef = useCallback(
@@ -244,10 +263,45 @@ export const SearchView = React.memo(function SearchView({
     };
   }, []);
 
-  // Reset pagination when any query filters change
+  // Reset pagination when any query filters change. Compara com o desenho
+  // anterior em vez de rodar a cada montagem: ao voltar do produto a primeira
+  // execução não pode apagar a quantidade restaurada.
+  const filtrosAnterioresRef = useRef({
+    query,
+    category,
+    minPrice,
+    maxPrice,
+    sort,
+  });
   useEffect(() => {
-    setVisibleCount(12);
+    const antes = filtrosAnterioresRef.current;
+    if (
+      antes.query !== query ||
+      antes.category !== category ||
+      antes.minPrice !== minPrice ||
+      antes.maxPrice !== maxPrice ||
+      antes.sort !== sort
+    ) {
+      setVisibleCount(12);
+    }
+    filtrosAnterioresRef.current = {
+      query,
+      category,
+      minPrice,
+      maxPrice,
+      sort,
+    };
   }, [query, category, minPrice, maxPrice, sort]);
+
+  // Guarda no App o que já foi carregado (o aviso pode ser função nova a cada
+  // render do pai, então fica fora das dependências — como em useSearch).
+  const aoMudarQuantidadeRef = useRef(aoMudarQuantidade);
+  useEffect(() => {
+    aoMudarQuantidadeRef.current = aoMudarQuantidade;
+  });
+  useEffect(() => {
+    aoMudarQuantidadeRef.current?.({ termo: query, quantidade: visibleCount });
+  }, [query, visibleCount]);
   // Get trending products for empty state (prioritizing available products).
   // Defeito irmão do da prova de rua (01/09, sugestões de favoritos): para o
   // dono da loja (admin) a lista carrega o catálogo inteiro — trending só
