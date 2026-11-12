@@ -507,7 +507,7 @@ export function PrivacidadeEMeusDados({
           >
             <label
               htmlFor="privacidade-email-novo"
-              className="text-sm font-semibold text-zinc-900"
+              className="text-sm font-semibold text-foreground"
             >
               {TEXTOS_DA_CLIENTE.campoEmailRotulo}
             </label>
@@ -543,7 +543,10 @@ export function PrivacidadeEMeusDados({
                 {erroDoEmail}
               </p>
             ) : (
-              <p id="privacidade-email-dica" className="text-xs text-zinc-600">
+              <p
+                id="privacidade-email-dica"
+                className="text-xs text-muted-foreground"
+              >
                 {TEXTOS_DA_CLIENTE.campoEmailDica}
               </p>
             )}
