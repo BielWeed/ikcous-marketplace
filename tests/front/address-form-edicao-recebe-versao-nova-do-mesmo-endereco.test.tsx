@@ -372,6 +372,75 @@ describe("AddressForm — versão nova do MESMO endereço chega com o formulári
     expect(dados.state).toBe("GO");
   });
 
+  // A resposta de uma busca de CEP só pode escrever se AINDA descreve o CEP que
+  // está no campo. Ela apaga o último dígito e digita de novo o MESMO CEP (a
+  // busca dispara); com a busca em voo chega do servidor a versão com OUTRO
+  // CEP (o bloco, que ela não mexeu, vem do servidor). A busca antiga responde
+  // depois e não pode pôr rua/bairro/cidade/UF do CEP velho ao lado do CEP novo.
+  async function redigitarOMesmoCepComABuscaSegura(resposta: unknown) {
+    let soltar!: () => void;
+    const segurada = new Promise<void>((r) => {
+      soltar = r;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        segurada.then(() => ({
+          ok: true,
+          status: 200,
+          json: async () => resposta,
+        })),
+      ),
+    );
+    await mostrar(casa());
+    await act(async () => {
+      digitar("cep", "38500-00");
+    });
+    await act(async () => {
+      digitar("cep", "38500-000");
+    });
+    await esvaziar();
+
+    await mostrar(servidorMudouTudo());
+    expect(valor("cep")).toBe("38500-001");
+
+    await act(async () => {
+      soltar();
+    });
+    await esvaziar();
+  }
+
+  it("busca de CEP em voo: chega a versão do servidor com outro CEP e a busca antiga responde depois: nada do CEP velho entra", async () => {
+    await redigitarOMesmoCepComABuscaSegura({
+      logradouro: "Rua do Comércio",
+      bairro: "Centro",
+      localidade: "Monte Carmelo",
+      uf: "MG",
+    });
+
+    await salvar();
+
+    const dados = enviado();
+    expect(dados.cep).toBe("38500-001");
+    expect(dados.street).toBe("Rua Nova");
+    expect(dados.neighborhood).toBe("Bairro Novo");
+    expect(dados.city).toBe("Uberaba");
+    expect(dados.state).toBe("GO");
+  });
+
+  it("busca de CEP em voo que volta 'CEP não encontrado' depois do CEP já ter mudado: não limpa o endereço do servidor", async () => {
+    await redigitarOMesmoCepComABuscaSegura({ erro: true, code: "not_found" });
+
+    await salvar();
+
+    const dados = enviado();
+    expect(dados.cep).toBe("38500-001");
+    expect(dados.street).toBe("Rua Nova");
+    expect(dados.neighborhood).toBe("Bairro Novo");
+    expect(dados.city).toBe("Uberaba");
+    expect(dados.state).toBe("GO");
+  });
+
   it("principal: ela não mexeu no botão e o servidor trocou a marca: continua NÃO mandando is_default", async () => {
     await mostrar(casa({ is_default: true }));
     await mostrar(casa({ is_default: false }));

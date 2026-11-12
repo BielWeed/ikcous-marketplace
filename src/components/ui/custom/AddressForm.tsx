@@ -312,6 +312,10 @@ export function AddressForm({
   } = useBuscaCep(
     (endereco) => {
       const cepDaResposta = cepEmBuscaRef.current;
+      // A resposta só escreve se ainda descreve o CEP que está no campo: a
+      // busca pode ter ficado para trás se o CEP mudou por outro caminho (a
+      // versão nova do endereço chegando do servidor) enquanto ela corria.
+      if (formatarCep(form.getValues("cep")).limpo !== cepDaResposta) return;
       const eraDeOutroCep =
         cepAssociadoRef.current !== null &&
         cepAssociadoRef.current !== cepDaResposta;
@@ -494,6 +498,9 @@ export function AddressForm({
   useEffect(() => {
     if (!resultadoCep || resultadoCep.tipo === "achou") return;
     const cepDaBusca = cepEmBuscaRef.current;
+    // Mesma guarda da resposta "achou": o aviso de uma busca que já não
+    // descreve o CEP do campo não limpa o endereço de outro CEP.
+    if (formatarCep(form.getValues("cep")).limpo !== cepDaBusca) return;
     if (
       cepAssociadoRef.current !== null &&
       cepAssociadoRef.current !== cepDaBusca
