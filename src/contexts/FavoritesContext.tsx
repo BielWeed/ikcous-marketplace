@@ -70,8 +70,11 @@ function lerFavoritosPendentes(userId: string): Product[] {
   }
 }
 
-function gravarFavoritosPendentes(userId: string, items: Product[]): void {
-  if (typeof window === "undefined") return;
+// Devolve `true` só se o disco aceitou a gravação. O login depende disso para
+// decidir se pode apagar o balde do visitante (aparelho com o armazenamento no
+// limite recusa o `setItem`, e a fila guarda o Product inteiro).
+function gravarFavoritosPendentes(userId: string, items: Product[]): boolean {
+  if (typeof window === "undefined") return true;
   try {
     if (items.length === 0) {
       localStorage.removeItem(getPendingFavoritesKey(userId));
@@ -81,9 +84,50 @@ function gravarFavoritosPendentes(userId: string, items: Product[]): void {
         JSON.stringify(items),
       );
     }
+    return true;
   } catch (err) {
     console.error("Failed to write pending favorites", err);
+    return false;
   }
+}
+
+// Fila só de ids: a gravação no servidor usa apenas `product_id`, então o
+// retrato do Product (preço, fotos...) é peso morto na fila — e é ele que faz a
+// gravação estourar o armazenamento de um aparelho quase cheio.
+function soOsIds(items: Product[]): Product[] {
+  return items.map((p) => ({ id: p.id }) as unknown as Product);
+}
+
+// Write-ahead do login: guarda `candidatos` na fila da conta e diz se
+// conseguiu. Tenta o retrato completo, depois só os ids; por último, TROCA o
+// balde do visitante pela fila de ids (o balde também é só de ids, então o que
+// ele ocupa é o que a fila precisa) — tudo síncrono, sem janela em que a aba
+// possa morrer entre as duas escritas. Se nada couber, restaura o balde.
+function guardarFilaDoLogin(
+  userId: string,
+  candidatos: Product[],
+  haBalde: boolean,
+): boolean {
+  if (gravarFavoritosPendentes(userId, candidatos)) return true;
+  const ids = soOsIds(candidatos);
+  if (gravarFavoritosPendentes(userId, ids)) return true;
+  if (!haBalde || typeof window === "undefined") return false;
+  let baldeAnterior: string | null = null;
+  try {
+    baldeAnterior = localStorage.getItem(FAVORITES_KEY);
+    localStorage.removeItem(FAVORITES_KEY);
+  } catch {
+    return false;
+  }
+  if (gravarFavoritosPendentes(userId, ids)) return true;
+  try {
+    if (baldeAnterior !== null) {
+      localStorage.setItem(FAVORITES_KEY, baldeAnterior);
+    }
+  } catch (err) {
+    console.error("Failed to restore anonymous favorites", err);
+  }
+  return false;
 }
 
 // Correção (26/08/2026) — a fila pendente só sabia ENTRAR. `addToFavorites`
@@ -445,7 +489,11 @@ export function FavoritesProvider({
       if (candidatos.length === 0) {
         gravarFavoritosPendentes(userId, []);
         setPendingFavorites([]);
-        return { total: 0, sincronizados: 0 };
+        return {
+          total: 0,
+          sincronizados: 0,
+          naoSincronizadosIds: [] as string[],
+        };
       }
 
       // O cliente do Supabase não rejeita a promessa em falha
@@ -522,6 +570,7 @@ export function FavoritesProvider({
       return {
         total: resultados.length,
         sincronizados: resultados.length - naoSincronizados.length,
+        naoSincronizadosIds: naoSincronizados.map((p) => p.id),
       };
     },
     [enfileirarGravacao],
@@ -617,28 +666,60 @@ export function FavoritesProvider({
         // `removeFromFavorites` também retiram pontualmente (ver
         // `retirarDaFilaPendentes`). Isto continua valendo palavra por
         // palavra no redesenho: só MUDOU o que a fila alimenta na tela.
-        gravarFavoritosPendentes(user.id, candidatos);
+        // Achado (11/11/2026) — `gravarFavoritosPendentes` engolia o erro do
+        // `setItem` (aparelho com o armazenamento no limite) e o balde do
+        // visitante era apagado do mesmo jeito: com o servidor falhando
+        // também, a fila em disco ficava vazia e os favoritos sumiam, com o
+        // aviso dizendo "continuam salvos". Agora o balde só sai depois que a
+        // fila da conta FOI para o disco (completa, só de ids, ou trocando o
+        // balde pela fila — ver `guardarFilaDoLogin`). Se nada couber, o balde
+        // fica até o servidor confirmar (abaixo) e é o que a próxima abertura
+        // do app (`F5` ou novo login) volta a sincronizar.
+        const haBalde = localFavoritesRaw.length > 0;
+        const filaNoDisco = guardarFilaDoLogin(user.id, candidatos, haBalde);
         setPendingFavorites(candidatos);
 
-        if (localFavoritesRaw.length > 0) {
+        if (haBalde && filaNoDisco) {
           setLocalFavoritesRaw([]);
           if (typeof window !== "undefined") {
             localStorage.removeItem(FAVORITES_KEY);
           }
         }
 
+        // Achado (11/11/2026) — a lista da conta é lida ANTES da drenagem: a
+        // drenagem sobe os favoritos do visitante um a um (até 20 s cada) e,
+        // com N favoritos locais e rede lenta, a aba Favoritos ficava só
+        // esqueleto por até N x 20 s lendo uma lista que já estava pronta no
+        // servidor. A leitura de baixo (depois da drenagem) mescla o que subiu.
+        await fetchDbFavorites();
+        if (usuarioAtualIdRef.current === user.id) setLoading(false);
+
         if (candidatos.length > 0) {
-          const { total, sincronizados } = await tentarSincronizarComServidor(
-            user.id,
-            candidatos,
-          );
+          const { total, sincronizados, naoSincronizadosIds } =
+            await tentarSincronizarComServidor(user.id, candidatos);
 
           // O aviso é da conta que drenou: se a pessoa já trocou (A->B) ou
           // saiu, o toast de A não aparece na tela de quem está agora. A fila
           // em disco de A já foi atualizada lá dentro, incondicionalmente.
           if (usuarioAtualIdRef.current !== user.id) return;
 
-          if (sincronizados < total) {
+          if (!filaNoDisco) {
+            // Sem fila em disco o balde do visitante segue sendo o único
+            // dono. Tudo subiu: agora sim ele pode sair (e não vaza para o
+            // próximo visitante). Algo falhou: ele fica e NÃO se promete
+            // retentativa automática (`online` só lê a fila em disco).
+            if (naoSincronizadosIds.length === 0) {
+              setLocalFavoritesRaw([]);
+              if (typeof window !== "undefined") {
+                localStorage.removeItem(FAVORITES_KEY);
+              }
+              toast.success("Seus favoritos locais foram sincronizados!");
+            } else {
+              toast.error(
+                "Não conseguimos sincronizar todos os seus favoritos e o aparelho está sem espaço para guardá-los. Eles continuam neste aparelho: abra o app de novo com a conexão boa para tentar outra vez.",
+              );
+            }
+          } else if (sincronizados < total) {
             if (sincronizados > 0) {
               toast.error(
                 `${sincronizados} de ${total} favoritos foram sincronizados. Os demais continuam salvos e vamos tentar de novo quando a conexão voltar.`,
@@ -651,10 +732,10 @@ export function FavoritesProvider({
           } else {
             toast.success("Seus favoritos locais foram sincronizados!");
           }
-        }
 
-        // B. Fetch from DB
-        await fetchDbFavorites();
+          // Relê para mesclar o que a drenagem subiu (se subiu algo).
+          if (sincronizados > 0) await fetchDbFavorites();
+        }
       } catch (err) {
         console.error("Sync failed", err);
       } finally {

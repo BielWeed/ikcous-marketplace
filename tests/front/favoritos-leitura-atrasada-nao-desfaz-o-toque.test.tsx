@@ -269,12 +269,15 @@ describe("Favoritos — prazo da rede", () => {
   it("preserva os favoritos do visitante e termina o login quando a mesclagem pendura", async () => {
     localStorage.setItem("ikcous_favorites", JSON.stringify([produtos[0]]));
     await renderizar();
+    // A lista da conta é lida ANTES da drenagem (a tela não espera os 20 s).
+    expect(mundo.leituras).toHaveLength(1);
+    expect(mundo.gravacoes).toHaveLength(0);
+    await responderLeitura(0);
+    expect(atual().loading).toBe(false);
     expect(mundo.gravacoes).toHaveLength(1);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(20_000);
     });
-    expect(mundo.leituras).toHaveLength(1);
-    await responderLeitura(0);
     expect(atual().loading).toBe(false);
     expect(atual().pendingCount).toBe(1);
     conferirCaneca(false);
