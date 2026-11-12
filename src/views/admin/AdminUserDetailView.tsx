@@ -39,6 +39,7 @@ import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { formatarData } from "@/lib/crm";
 import { chaveDaLinha, separarChave } from "@/lib/escolhas-do-item";
 import { mapOrderFromDB, mapProductFromDB } from "@/lib/mappers";
+import { nomeOuReserva } from "@/lib/nome-visivel";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { papel } from "@/lib/papeis-aria-da-tabela";
 import { rotuloDoPapel } from "@/lib/papel-da-conta";
@@ -730,7 +731,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
 
               <div className="flex min-w-0 flex-1 flex-col items-start">
                 <CardTitle className="break-words text-lg font-bold tracking-tight text-white">
-                  {profile?.full_name || "Usuário Não-Nomeado"}
+                  {nomeOuReserva(profile?.full_name, "Usuário Não-Nomeado")}
                 </CardTitle>
                 <p className="mt-1 text-xs text-zinc-400">
                   Cliente desde{" "}

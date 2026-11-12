@@ -368,6 +368,89 @@ describe("EnderecoDaLoja — preenche pelo CEP", () => {
     expect(campo("endereco-cidade").value).toBe("Campinas");
   });
 
+  // ── Busca do CEP em andamento ─────────────────────────────────────────
+  // Trocou o CEP e clicou em Salvar ANTES de a busca responder: na tela só o
+  // CEP já era o novo e rua/bairro/cidade ainda eram os do CEP de antes —
+  // `onMudou` entregava esse meio-a-meio como pronto para gravar.
+  const SALVO_PAULISTA = {
+    originCep: "01310-100",
+    storeAddress:
+      "Avenida Paulista, 1578 — Bela Vista, São Paulo/SP — CEP 01310-100",
+    storeCity: "São Paulo",
+    storeState: "SP",
+  };
+
+  // A resposta do CEP só sai quando o teste manda (`liberar`).
+  function instalarProvedorQueEspera() {
+    const esperando: Array<() => void> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (url: string) =>
+          new Promise<Response>((resolve) => {
+            esperando.push(() => {
+              const cep = /(\d{8})/.exec(url)?.[1] ?? "";
+              resolve(
+                new Response(JSON.stringify(ENDERECOS_POR_CEP.get(cep) ?? {}), {
+                  status: 200,
+                }),
+              );
+            });
+          }),
+      ),
+    );
+    return async () => {
+      await act(async () => {
+        for (const sai of esperando.splice(0)) sai();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+    };
+  }
+
+  it("CEP trocado e busca ainda no ar: NÃO entrega CEP novo com o endereço antigo", async () => {
+    const liberar = instalarProvedorQueEspera();
+    await montar(SALVO_PAULISTA);
+    await liberar(); // a conferência do CEP salvo, ao abrir a tela
+    await digitar("endereco-cep", "13010000");
+
+    // rua/bairro/cidade ainda são os de São Paulo: não pode gravar assim
+    expect(campo("endereco-rua").value).toBe("Avenida Paulista");
+    expect(ultima()?.alterado).toBe(true);
+    expect(ultima()?.valores).toBeNull();
+    expect(ultima()?.motivo).toMatch(/busca do CEP/i);
+    expect(hospedeiro.textContent).toContain("busca do CEP");
+
+    // a busca respondeu: o endereço é o do CEP novo e o Salvar libera
+    await liberar();
+    expect(campo("endereco-rua").value).toBe("Rua Barão de Jaguara");
+    expect(ultima()?.motivo).toBeNull();
+    expect(ultima()?.valores).toEqual({
+      originCep: "13010-000",
+      storeAddress:
+        "Rua Barão de Jaguara, 1578 — Centro, Campinas/SP — CEP 13010-000",
+      storeCity: "Campinas",
+      storeState: "SP",
+    });
+  });
+
+  it("conferir o CEP salvo ao abrir a tela (busca no ar) NÃO trava o que já está salvo", async () => {
+    instalarProvedorQueEspera();
+    await montar(SALVO_PAULISTA);
+    await digitar("endereco-numero", "1600");
+
+    expect(ultima()?.motivo).toBeNull();
+    expect(ultima()?.valores?.storeAddress).toContain("1600");
+  });
+
+  it("CEP que a busca não conseguiu achar segue como antes: o que está escrito pode ser salvo", async () => {
+    await montar(SALVO_PAULISTA);
+    await digitarOCep("99999999");
+
+    expect(hospedeiro.textContent).toContain("CEP não encontrado");
+    expect(ultima()?.motivo).toBeNull();
+    expect(ultima()?.valores?.originCep).toBe("99999-999");
+  });
+
   it("número com vírgula: gravado normalizado e, salvo, a tela não fica 'alterada'", async () => {
     await montar();
     await digitarOCep("01310100");

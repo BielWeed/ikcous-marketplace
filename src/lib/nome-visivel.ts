@@ -34,3 +34,14 @@ export function nomeTemConteudoVisivel(
   }
   return false;
 }
+
+/**
+ * O nome para mostrar: aparado quando tem conteúdo visível, `reserva` quando
+ * é vazio, só espaço ou só caractere invisível (que o `||` tomaria por nome).
+ */
+export function nomeOuReserva(
+  nome: string | null | undefined,
+  reserva: string,
+): string {
+  return nomeTemConteudoVisivel(nome) ? (nome ?? "").trim() : reserva;
+}

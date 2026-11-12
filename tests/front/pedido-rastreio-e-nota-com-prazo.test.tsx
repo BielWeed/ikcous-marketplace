@@ -108,12 +108,19 @@ vi.mock("@/lib/supabase", () => ({
             return cadeiaDaNota("update", valores.note);
           }
           atualizar(tabela, valores);
-          return {
-            eq: (_coluna: string, id: string) => ({
-              select: () =>
-                Promise.resolve(salvar("rastreio", id)).then(comLinhaGravada),
-            }),
+          let pedidoId = "";
+          const cadeia = {
+            eq: (coluna: string, valor: string) => {
+              if (coluna === "id") pedidoId = valor;
+              return cadeia;
+            },
+            or: () => cadeia,
+            select: () =>
+              Promise.resolve(salvar("rastreio", pedidoId)).then(
+                comLinhaGravada,
+              ),
           };
+          return cadeia;
         },
       };
     },
