@@ -1,9 +1,5 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import {
-  LocalBufferedInput,
-  LocalBufferedTextarea,
-} from "@/components/admin/LocalBufferedInput";
 import { SecaoRecolhivel } from "@/components/admin/primitivos/SecaoRecolhivel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { buildIdentity } from "@/config/buildIdentity";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { TELAS_DE_ENTRADA } from "@/config/rotas";
@@ -1455,28 +1452,35 @@ export const AdminPushView = memo(function AdminPushView({
                       {notification.title.length}/60
                     </span>
                   </div>
-                  <LocalBufferedInput
-                    id="push-title"
-                    aria-label="Título da mensagem"
-                    name="title"
-                    autoComplete="off"
-                    // Trava da proposta (revisão do lote B, 12/09/2026): o
-                    // contador "{n}/60" só é honesto acompanhado do limite —
-                    // sem o atributo, o envio saía maior que 60.
-                    maxLength={60}
-                    value={notification.title}
-                    onFlush={(val) =>
-                      setNotification((prev) => ({ ...prev, title: val }))
-                    }
-                    disabled={isOffline || loading}
-                    placeholder={
-                      isOffline
-                        ? "Indisponível offline"
-                        : "Ex: Oferta especial liberada para você!"
-                    }
-                    useShadcn={true}
-                    className="h-auto min-h-10 rounded-none border-0 bg-transparent dark:bg-transparent px-0 py-1 text-[17px] md:text-[17px] font-medium text-white shadow-none motion-reduce:transition-none focus-visible:ring-0 placeholder:text-zinc-400 disabled:opacity-100 disabled:text-zinc-400"
-                  />
+                  <div className="flex w-full flex-col gap-1.5">
+                    <Input
+                      id="push-title"
+                      aria-label="Título da mensagem"
+                      name="title"
+                      autoComplete="off"
+                      // Trava da proposta (revisão do lote B, 12/09/2026): o
+                      // contador "{n}/60" só é honesto acompanhado do limite —
+                      // sem o atributo, o envio saía maior que 60.
+                      maxLength={60}
+                      value={notification.title}
+                      // Campo CONTROLADO, sem buffer (r160, 11/11/2026): o envio
+                      // é irreversível e lê `notification` do render do toque.
+                      // No iPhone o toque em Enviar não tira o foco do campo, o
+                      // `blur` que descarregava o buffer de 200 ms não vinha e o
+                      // aviso saía sem os últimos caracteres.
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setNotification((prev) => ({ ...prev, title: val }));
+                      }}
+                      disabled={isOffline || loading}
+                      placeholder={
+                        isOffline
+                          ? "Indisponível offline"
+                          : "Ex: Oferta especial liberada para você!"
+                      }
+                      className="h-auto min-h-10 rounded-none border-0 bg-transparent dark:bg-transparent px-0 py-1 text-[17px] md:text-[17px] font-medium text-white shadow-none motion-reduce:transition-none focus-visible:ring-0 placeholder:text-zinc-400 disabled:opacity-100 disabled:text-zinc-400"
+                    />
+                  </div>
                 </div>
 
                 <div className="min-h-[112px] rounded-2xl border border-admin-border bg-admin-card px-4 py-3 transition-shadow focus-within:border-admin-border-strong focus-within:ring-4 focus-within:ring-admin-border-strong motion-reduce:transition-none">
@@ -1491,29 +1495,32 @@ export const AdminPushView = memo(function AdminPushView({
                       {notification.body.length}/140
                     </span>
                   </div>
-                  <LocalBufferedTextarea
-                    id="push-body"
-                    aria-label="Texto da mensagem"
-                    name="body"
-                    autoComplete="off"
-                    // Mesma trava do título: 140 é o que a notificação real
-                    // carrega — sem o atributo, a prévia mostrava inteiro o
-                    // que o SO do cliente trunca.
-                    maxLength={140}
-                    value={notification.body}
-                    onFlush={(val) =>
-                      setNotification((prev) => ({ ...prev, body: val }))
-                    }
-                    disabled={isOffline || loading}
-                    placeholder={
-                      isOffline
-                        ? "Indisponível offline"
-                        : "Escreva aqui a mensagem curta que o cliente vai ver no celular..."
-                    }
-                    rows={2}
-                    useShadcn={true}
-                    className="min-h-[72px] resize-none rounded-none border-0 bg-transparent dark:bg-transparent px-0 py-1 text-[17px] md:text-[17px] font-medium leading-relaxed text-white shadow-none motion-reduce:transition-none focus-visible:ring-0 placeholder:text-zinc-400 disabled:opacity-100 disabled:text-zinc-400"
-                  />
+                  <div className="flex w-full flex-col gap-1.5">
+                    <Textarea
+                      id="push-body"
+                      aria-label="Texto da mensagem"
+                      name="body"
+                      autoComplete="off"
+                      // Mesma trava do título: 140 é o que a notificação real
+                      // carrega — sem o atributo, a prévia mostrava inteiro o
+                      // que o SO do cliente trunca.
+                      maxLength={140}
+                      value={notification.body}
+                      // Controlado, sem buffer: mesmo motivo do título.
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setNotification((prev) => ({ ...prev, body: val }));
+                      }}
+                      disabled={isOffline || loading}
+                      placeholder={
+                        isOffline
+                          ? "Indisponível offline"
+                          : "Escreva aqui a mensagem curta que o cliente vai ver no celular..."
+                      }
+                      rows={2}
+                      className="min-h-[72px] resize-none rounded-none border-0 bg-transparent dark:bg-transparent px-0 py-1 text-[17px] md:text-[17px] font-medium leading-relaxed text-white shadow-none motion-reduce:transition-none focus-visible:ring-0 placeholder:text-zinc-400 disabled:opacity-100 disabled:text-zinc-400"
+                    />
+                  </div>
                 </div>
 
                 {/* Marcador do modelo pronto ainda no texto: o envio está
@@ -1881,17 +1888,22 @@ export const AdminPushView = memo(function AdminPushView({
                       >
                         Endereço da página (comece com /)
                       </Label>
-                      <LocalBufferedInput
-                        id="push-custom-path"
-                        name="customPath"
-                        autoComplete="off"
-                        value={customPath}
-                        onFlush={handleCustomPathChange}
-                        disabled={isOffline || loading}
-                        placeholder="/nome-da-pagina"
-                        useShadcn={true}
-                        className="min-h-12 rounded-2xl border-admin-border bg-admin-card font-mono text-sm text-white focus-visible:border-admin-border-strong focus-visible:ring-admin-border-strong placeholder:text-zinc-400"
-                      />
+                      <div className="flex w-full flex-col gap-1.5">
+                        <Input
+                          id="push-custom-path"
+                          name="customPath"
+                          autoComplete="off"
+                          value={customPath}
+                          // Controlado, sem buffer: o endereço digitado vira a
+                          // URL do aviso, e o envio lê a URL do render do toque.
+                          onChange={(e) =>
+                            handleCustomPathChange(e.target.value)
+                          }
+                          disabled={isOffline || loading}
+                          placeholder="/nome-da-pagina"
+                          className="min-h-12 rounded-2xl border-admin-border bg-admin-card font-mono text-sm text-white focus-visible:border-admin-border-strong focus-visible:ring-admin-border-strong placeholder:text-zinc-400"
+                        />
+                      </div>
                     </div>
                   </SecaoRecolhivel>
                 </div>
