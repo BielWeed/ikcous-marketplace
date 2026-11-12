@@ -1,4 +1,24 @@
 {
+  "1.5.173": {
+    "titulo": "Selo de desconto igual em todas as telas, busca que entende apóstrofo e cancelamento com devolução parcial explicado",
+    "novidades": [],
+    "melhorias": [
+      "Loja, Termos: as políticas mostram o endereço da loja e os textos legais passam a ter versão e data."
+    ],
+    "correcoes": [
+      "Loja, Produto e Carrinho: o selo de desconto mostra o mesmo percentual no cartão, nas opções, na página do produto e no carrinho.",
+      "Loja, Busca: \"d'água\" com apóstrofo curvo é achado e \"refil\" acha \"Refis\".",
+      "Loja, Finalizar compra: o aviso de pedido recusado e os botões do checkout ficam legíveis, e o endereço longo quebra a linha no celular.",
+      "Loja, Devolução: recarregar a página com a devolução preenchida avisa antes de perder, e a mensagem de erro da loja aparece de verdade.",
+      "Loja: telas pequenas com letra grande não cortam mais, e a foto que falha mostra um espaço em vez de ficar vazia.",
+      "Painel, Pedido: cancelar um pedido pago com devolução parcial diz que o app devolve só o que falta e que não se deve devolver por fora.",
+      "Painel, Pedidos: o pedido que chegou com a conexão caída entra na lista quando ela volta.",
+      "Painel, Balcão: recarregar a tela durante o envio não deixa refazer uma venda já gravada.",
+      "Painel, Vitrines: se a leitura da loja falhar, a lista de fábrica não é gravada por cima das suas vitrines.",
+      "Painel, Devolução: aprovar com a coleta já passada não avisa o cliente de um dia antigo.",
+      "Painel, Início: o passo \"primeiro produto\" só conta com produto em estoque, e o painel avisa quando uma numeração se esgota."
+    ]
+  },
   "1.5.172": {
     "titulo": "Foto da cor certa no carrinho, comprovante que chega depois e data do pedido em Brasília",
     "novidades": [],
