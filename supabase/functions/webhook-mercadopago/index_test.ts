@@ -8686,12 +8686,12 @@ Deno.test("cartão parcelado 3x — CONTROLE: o MESMO parcelado com total_amount
 // aviso para sempre. Agora a reentrega repete SÓ o aviso pendente, e só com a
 // reserva livre; push ao lojista nunca (já foi avisado na transição).
 
-function webhookComJaPago(pedidoNoBanco: Record<string, unknown>) {
+function webhookComJaPago(pedidoNoBanco: Record<string, unknown>, resultadoDaRpc = "ja_pago") {
   const chamadasRpc: string[] = [];
   const supabase = {
     rpc: async (nome: string) => {
       chamadasRpc.push(nome);
-      if (nome === "confirmar_pagamento") return { data: "ja_pago", error: null };
+      if (nome === "confirmar_pagamento") return { data: resultadoDaRpc, error: null };
       return { data: null, error: null };
     },
     from(tabela: string) {
@@ -8709,8 +8709,8 @@ function webhookComJaPago(pedidoNoBanco: Record<string, unknown>) {
   return { supabase, chamadasRpc };
 }
 
-async function entregarJaPago(pedidoNoBanco: Record<string, unknown>) {
-  const { supabase, chamadasRpc } = webhookComJaPago(pedidoNoBanco);
+async function entregarJaPago(pedidoNoBanco: Record<string, unknown>, resultadoDaRpc = "ja_pago") {
+  const { supabase, chamadasRpc } = webhookComJaPago(pedidoNoBanco, resultadoDaRpc);
   const avisosAtrasados: unknown[] = [];
   const comprovantes: unknown[] = [];
   const pushes: unknown[] = [];
@@ -8757,11 +8757,62 @@ Deno.test("EST-EDGE-DIN-3 - 'ja_pago' com o e-mail JÁ enviado (reserva presa) n
   assertEquals(r.pushes.length, 0);
 });
 
-Deno.test("EST-EDGE-DIN-3 - 'ja_pago' num pedido 'pago' comum não dispara aviso atrasado nem comprovante (fora do escopo desta frente)", async () => {
-  const r = await entregarJaPago({ ...PEDIDO_PAGO_APOS_EXPIRAR, payment_status: "pago" });
+// r200-a (12/11/2026): o mesmo buraco para o pedido 'pago' comum. O comprovante
+// que o SMTP recusou na confirmação sai na reentrega 'ja_pago' — só para pedido
+// ONLINE pago há pouco, com a reserva livre (a reserva atômica decide o resto).
+const dezMinutosAtras = () => new Date(Date.now() - 10 * 60 * 1000).toISOString();
+const pedidoPagoOnlineRecente = () => ({
+  ...PEDIDO_PAGO_APOS_EXPIRAR,
+  payment_status: "pago",
+  paid_at: dezMinutosAtras(),
+  payment_method: "online",
+  canal: "online",
+});
+
+Deno.test("r200-a - 'ja_pago' num pedido 'pago' online e recente com a reserva LIVRE reenvia o COMPROVANTE uma vez, sem push e sem aviso atrasado", async () => {
+  const r = await entregarJaPago(pedidoPagoOnlineRecente());
   assertEquals(r.resposta.status, 200);
+  assertEquals((await r.resposta.json()).resultado, "ja_pago");
+  assertEquals(r.comprovantes.length, 1);
+  assertEquals((r.comprovantes[0] as { orderId: string }).orderId, UUID_PEDIDO);
+  assertEquals(r.pushes.length, 0);
   assertEquals(r.avisosAtrasados.length, 0);
-  assertEquals(r.comprovantes.length, 0);
+});
+
+Deno.test("r200-a - 'ja_pago' num pedido 'pago' com o e-mail JÁ reservado/enviado não reenvia nada", async () => {
+  const r = await entregarJaPago({ ...pedidoPagoOnlineRecente(), confirmation_email_sent_at: "2026-11-12T10:00:00Z" });
+  assertEquals(r.resposta.status, 200);
+  assertEquals([r.comprovantes.length, r.avisosAtrasados.length, r.pushes.length], [0, 0, 0]);
+});
+
+Deno.test("r200-a - 'ja_pago' num pedido 'pago' ANTIGO, de balcão, ou sem os dados do pagamento (falha fechada) não manda e-mail", async () => {
+  const casos: Array<[string, Record<string, unknown>]> = [
+    ["sem paid_at/payment_method/canal na leitura", { paid_at: undefined, payment_method: undefined, canal: undefined }],
+    ["pago há 3 dias", { paid_at: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString() }],
+    ["venda de balcão", { canal: "presencial" }],
+    ["reserva ausente na resposta (undefined)", { confirmation_email_sent_at: undefined }],
+  ];
+  for (const [rotulo, extras] of casos) {
+    const r = await entregarJaPago({ ...pedidoPagoOnlineRecente(), ...extras });
+    assertEquals(r.resposta.status, 200, rotulo);
+    assertEquals([r.comprovantes.length, r.avisosAtrasados.length], [0, 0], rotulo);
+  }
+});
+
+Deno.test("r200-a - a PRIMEIRA confirmação ('pago') manda UM comprovante: o ramo da reentrega não roda de novo por cima", async () => {
+  const r = await entregarJaPago(pedidoPagoOnlineRecente(), "pago");
+  assertEquals(r.resposta.status, 200);
+  assertEquals((await r.resposta.json()).resultado, "pago");
+  assertEquals(r.pushes.length, 1);
+  assertEquals(r.comprovantes.length, 1, "e-mail em dobro: a primeira confirmação também reenviou");
+  assertEquals(r.avisosAtrasados.length, 0);
+});
+
+Deno.test("r200-a - 'ja_pago' de pedido aguardando/recusado/estornado nunca dispara e-mail", async () => {
+  for (const payment_status of ["aguardando", "recusado", "estornado", "expirado"]) {
+    const r = await entregarJaPago({ ...pedidoPagoOnlineRecente(), payment_status });
+    assertEquals([r.comprovantes.length, r.avisosAtrasados.length, r.pushes.length], [0, 0, 0], payment_status);
+  }
 });
 
 Deno.test("EST-EDGE-DIN-3 - o reenvio que LANÇA não derruba o webhook: 200 e o evento sai da fila do MP", async () => {
