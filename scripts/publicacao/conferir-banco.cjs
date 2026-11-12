@@ -3058,8 +3058,10 @@ const ROL_DA_129B_PERFIL = [
   "nenhum gatilho on_auth_user_created existe ainda em auth.users",
 ];
 const ROL_FECHADO_POR_CONSULTA = {
-  "129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado": ROL_DA_129A_PERFIL,
-  "129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente": ROL_DA_129B_PERFIL,
+  "129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado":
+    ROL_DA_129A_PERFIL,
+  "129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente":
+    ROL_DA_129B_PERFIL,
   "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente": ROL_DA_129B,
   "128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado":
     ROL_DA_128,
