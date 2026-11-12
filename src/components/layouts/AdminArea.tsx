@@ -732,6 +732,7 @@ export function AdminArea({
                             onNavigate: onNavigate,
                             active: currentView === "admin-carousels",
                             onSetDirty: setIsAdminDirty,
+                            onSetBackOverride: setBackOverride,
                           }}
                         />
                       </LocalErrorBoundary>

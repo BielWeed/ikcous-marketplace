@@ -50,13 +50,14 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 interface AdminCarouselsViewProps {
   onNavigate: (view: View) => void;
   active?: boolean;
   onSetDirty?: (dirty: boolean) => void;
+  onSetBackOverride?: (fn: (() => void) | null) => void;
 }
 
 /** Uma linha do diálogo de restaurar; `chave` é estável e única por linha. */
@@ -127,6 +128,7 @@ function soOsQueExistem(
 export const AdminCarouselsView = memo(function AdminCarouselsView({
   onNavigate: _onNavigate,
   onSetDirty,
+  onSetBackOverride,
 }: AdminCarouselsViewProps) {
   const {
     config,
@@ -703,6 +705,44 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     return homeSections.find((s) => s.id === editingSectionId) ?? null;
   }, [editingSectionId, homeSections]);
 
+  const fecharFolha = useCallback(() => setEditingSectionId(null), []);
+  const folhaAberta = secaoEmEdicao !== null;
+  const jaFechouPeloVoltarRef = useRef(false);
+  useEffect(() => {
+    if (folhaAberta) {
+      jaFechouPeloVoltarRef.current = false;
+      onSetBackOverride?.(() => () => {
+        if (jaFechouPeloVoltarRef.current) return;
+        jaFechouPeloVoltarRef.current = true;
+        fecharFolha();
+      });
+    } else {
+      onSetBackOverride?.(null);
+    }
+    return () => onSetBackOverride?.(null);
+  }, [folhaAberta, onSetBackOverride, fecharFolha]);
+
+  // Mesmo padrão de Banners: o Voltar físico consome só a entrada da folha.
+  // Se o navegador já a consumiu, fechar não pode voltar uma segunda vez.
+  const temEntradaDeHistoricoRef = useRef(false);
+  useEffect(() => {
+    if (folhaAberta) {
+      if (!temEntradaDeHistoricoRef.current) {
+        window.history.pushState(
+          { ...window.history.state, modal: "vitrine" },
+          "",
+          window.location.pathname + window.location.search,
+        );
+        temEntradaDeHistoricoRef.current = true;
+      }
+    } else if (temEntradaDeHistoricoRef.current) {
+      temEntradaDeHistoricoRef.current = false;
+      if (window.history.state?.modal === "vitrine") {
+        window.history.back();
+      }
+    }
+  }, [folhaAberta]);
+
   const idsEmExibicaoNaEdicao = useMemo(() => {
     if (!secaoEmEdicao) return [];
     if (secaoEmEdicao.productIds && secaoEmEdicao.productIds.length > 0) {
@@ -890,7 +930,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           produtos={products}
           idsEmExibicao={idsEmExibicaoNaEdicao}
           travado={salvandoVitrines || configFalhou}
-          aoFechar={() => setEditingSectionId(null)}
+          aoFechar={fecharFolha}
           aoRenomear={(titulo) => handleRenameSection(secaoEmEdicao.id, titulo)}
           aoMudarQuantidade={(quantidade) =>
             handleUpdateMaxItems(secaoEmEdicao.id, quantidade)
