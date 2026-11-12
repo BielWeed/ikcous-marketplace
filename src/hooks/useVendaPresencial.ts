@@ -1150,18 +1150,20 @@ type EstadoPersistidoNoRascunho = Omit<
  * se a venda ainda estivesse em curso (risco medido na tarefa).
  *
  * Única exceção, e só como FATO: se `erro` é exatamente a frase de rede
- * (`MENSAGEM_DE_REDE_DA_VENDA` — "a venda pode ter sido gravada"), grava
- * `talvezGravada: true`. Sem isso o F5 apagava o aviso e o Cancelar passava a
- * dizer "Nada é registrado", levando a refazer uma venda que já existia. O
- * texto nunca vai ao disco; recusa antiga (estoque, permissão) também não.
+ * (`MENSAGEM_DE_REDE_DA_VENDA` — "a venda pode ter sido gravada") OU se o
+ * envio está no ar (`enviando`: a resposta ainda não chegou, a venda pode já
+ * estar no banco), grava `talvezGravada: true`. Sem isso o F5 apagava o aviso
+ * e o Cancelar passava a dizer "Nada é registrado", levando a refazer uma
+ * venda que já existia. O texto nunca vai ao disco; recusa antiga (estoque,
+ * permissão) também não.
  */
 export function serializarRascunho(
   estado: EstadoDaVenda,
   salvoEm: number | null = Date.now(),
 ): string {
-  const { recibo: _recibo, enviando: _enviando, erro, ...persistido } = estado;
+  const { recibo: _recibo, enviando, erro, ...persistido } = estado;
   const comIncerteza =
-    erro === MENSAGEM_DE_REDE_DA_VENDA
+    enviando || erro === MENSAGEM_DE_REDE_DA_VENDA
       ? { ...persistido, talvezGravada: true }
       : persistido;
   // O carimbo (`salvoEm`, ISO) mora SÓ no disco: `lerRascunhoComIdade` o tira
