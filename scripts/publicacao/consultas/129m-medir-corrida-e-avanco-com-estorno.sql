@@ -3,6 +3,10 @@
 -- Unidade: PEDIDOS distintos, nao eventos; EXISTS nao multiplica pedidos com varios eventos.
 -- Historico: marketplace_order_history (baseline 20260806000000); canal presencial = balcao
 -- (20261160000000). valor_estornado e o acumulado confirmado (2026110000000).
+-- pedidos_avancados_depois_do_estorno_manual enxerga SO o estorno manual (compara com
+-- estorno_manual_registrado_em); estorno pelo Mercado Pago ou por cancelar_pedido_com_cobranca
+-- nao grava esse carimbo, entao um pedido avancado depois dele NAO entra nesta contagem:
+-- zero aqui NAO prova ausencia de pedidos estornados avancados.
 -- Janela de corrida e apenas INDICIO: avanco anterior estrito, ate 2 min inclusive,
 -- atores conhecidos e diferentes; NULL em created_by nao prova dois atores.
 -- Cancelados vindos de delivered: ainda cancelados e com essa transicao no historico.
@@ -15,7 +19,7 @@ SELECT
     SELECT 1 FROM public.marketplace_order_history a
     WHERE a.order_id = o.id AND a.new_status IN ('processing', 'shipping', 'delivered')
       AND a.created_at > o.estorno_manual_registrado_em
-  )) AS pedidos_avancados_depois_do_estorno,
+  )) AS pedidos_avancados_depois_do_estorno_manual,
   count(*) FILTER (WHERE o.canal IS DISTINCT FROM 'presencial' AND EXISTS (
     SELECT 1 FROM public.marketplace_order_history c
     WHERE c.order_id = o.id AND c.new_status = 'cancelled' AND EXISTS (
