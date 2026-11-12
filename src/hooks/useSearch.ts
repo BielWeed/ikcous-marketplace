@@ -19,6 +19,13 @@ export interface FiltrosDaBusca {
   sort: SortOption;
 }
 
+/** Quantos resultados a tela já mostrava, presos ao termo a que pertencem: com
+ * outro termo a lista volta ao padrão em vez de herdar uma quantidade alheia. */
+export interface QuantidadeDaBusca {
+  termo: string;
+  quantidade: number;
+}
+
 /**
  * A tela de busca é desmontada ao abrir um produto. Quem a hospeda (o App)
  * guarda os filtros fora dela: `iniciais` é o que ficou guardado e `aoMudar`
