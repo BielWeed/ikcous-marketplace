@@ -25,6 +25,7 @@
 // globalThis.sessionStorage.
 
 import type { ArmazenamentoSimples } from "./chave-do-pedido";
+import { nomeTemConteudoVisivel } from "./nome-visivel";
 
 const CHAVE_DE_ARMAZENAMENTO = "ikcous-rascunho-do-checkout-v1";
 
@@ -189,8 +190,8 @@ export function rascunhoTemConteudo(r: RascunhoDoCheckout): boolean {
     r.bairro !== "" ||
     r.cidade !== "" ||
     r.estado !== "" ||
-    r.complemento !== "" ||
-    r.notas !== "" ||
+    nomeTemConteudoVisivel(r.complemento) ||
+    nomeTemConteudoVisivel(r.notas) ||
     r.cupom !== null
   );
 }
