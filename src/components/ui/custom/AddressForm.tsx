@@ -83,6 +83,32 @@ const addressSchema = z.object({
 
 type AddressFormValues = z.infer<typeof addressSchema>;
 
+// Os campos que moram no CEP: mudar o CEP muda o dono deles.
+const CAMPOS_DO_CEP: readonly string[] = [
+  "street",
+  "neighborhood",
+  "city",
+  "state",
+];
+
+// O endereço salvo, no formato do formulário (a única tradução, usada em toda
+// aplicação do endereço ao formulário).
+function valoresDoEndereco(a: Address): AddressFormValues {
+  return {
+    name: a.name || "",
+    cep: a.cep || "",
+    street: a.street || "",
+    number: a.number || "",
+    complement: a.complement || "",
+    neighborhood: a.neighborhood || "",
+    city: a.city || "",
+    state: a.state || "",
+    reference: a.reference || "",
+    recipient_name: a.recipient_name || "",
+    is_default: !!a.is_default,
+  };
+}
+
 /**
  * O que o formulário entrega ao salvar. Em ENDEREÇO NOVO `is_default` vai
  * sempre; ao EDITAR só vai quando a pessoa mexeu no botão "Endereço principal"
@@ -316,19 +342,7 @@ export function AddressForm({
         ? formatarCep(initialData.cep).limpo
         : null;
       if (initialData) {
-        form.reset({
-          name: initialData.name || "",
-          cep: initialData.cep || "",
-          street: initialData.street || "",
-          number: initialData.number || "",
-          complement: initialData.complement || "",
-          neighborhood: initialData.neighborhood || "",
-          city: initialData.city || "",
-          state: initialData.state || "",
-          reference: initialData.reference || "",
-          recipient_name: initialData.recipient_name || "",
-          is_default: !!initialData.is_default,
-        });
+        form.reset(valoresDoEndereco(initialData));
       } else {
         // A cobertura de entrega da loja decide para onde ela entrega,
         // nunca onde o cliente mora — por isso o `isNational` que existia
@@ -361,19 +375,48 @@ export function AddressForm({
         : null;
       setReferenciaAberta(!!initialData.reference);
       setApelidoOutro(false);
-      form.reset({
-        name: initialData.name || "",
-        cep: initialData.cep || "",
-        street: initialData.street || "",
-        number: initialData.number || "",
-        complement: initialData.complement || "",
-        neighborhood: initialData.neighborhood || "",
-        city: initialData.city || "",
-        state: initialData.state || "",
-        reference: initialData.reference || "",
-        recipient_name: initialData.recipient_name || "",
-        is_default: !!initialData.is_default,
-      });
+      form.reset(valoresDoEndereco(initialData));
+      return;
+    }
+    // MESMO endereço, conteúdo NOVO (outro aparelho corrigiu e a releitura
+    // chegou com o formulário já aberto): só os campos que a pessoa ainda não
+    // mexeu recebem o valor novo. Sem isto, salvar mandava de volta, por cima
+    // da correção, o valor velho dos campos que ela nem tocou.
+    const aplicado = initialDataAplicadoRef.current;
+    if (
+      hasInitializedRef.current &&
+      initialData &&
+      aplicado &&
+      initialData.id === aplicado.id
+    ) {
+      const antes = new Map(Object.entries(valoresDoEndereco(aplicado)));
+      const novos = valoresDoEndereco(initialData);
+      const campos = Object.keys(novos);
+      if (Object.entries(novos).every(([c, v]) => antes.get(c) === v)) return;
+      const agora = new Map(Object.entries(form.getValues()));
+      const cepTrocado = agora.get("cep") !== antes.get("cep");
+      // Mexido = difere do que foi aplicado (digitação OU busca de CEP). Com o
+      // CEP trocado, rua/bairro/cidade/UF são do CEP dela, mesmo se a busca
+      // trouxe o mesmo texto de antes. O botão "principal" entra na mesma
+      // regra (`principalTocadoRef` segue como está).
+      const guardados = campos.filter(
+        (c) =>
+          agora.get(c) !== antes.get(c) ||
+          (cepTrocado && CAMPOS_DO_CEP.includes(c)),
+      );
+      initialDataAplicadoRef.current = initialData;
+      if (!cepTrocado) {
+        cepAssociadoRef.current = initialData.cep
+          ? formatarCep(initialData.cep).limpo
+          : null;
+      }
+      if (initialData.reference) setReferenciaAberta(true);
+      form.reset(novos);
+      for (const c of guardados) {
+        form.setValue(c as keyof AddressFormValues, agora.get(c) as never, {
+          shouldDirty: true,
+        });
+      }
     }
   }, [isLoaded, initialData, form, nomePadrao]);
 
