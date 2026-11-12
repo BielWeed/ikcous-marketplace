@@ -93,6 +93,7 @@ export function CartaoDaVitrine({
   indice,
   total,
   produtosEmExibicao,
+  foraDaFaixa = null,
   escolhidos: escolhidosVivos,
   aoAbrir,
   aoAlternarAtiva,
@@ -106,6 +107,8 @@ export function CartaoDaVitrine({
   readonly indice: number;
   readonly total: number;
   readonly produtosEmExibicao: readonly Product[];
+  /** "Ficaram de fora desta faixa: 2 esgotados, 1 sem foto" (vitrine automática com exclusões). */
+  readonly foraDaFaixa?: string | null;
   /** Quantos dos escolhidos ainda existem na loja (o excluído não conta). */
   readonly escolhidos?: number;
   readonly aoAbrir: (id: string) => void;
@@ -248,6 +251,17 @@ export function CartaoDaVitrine({
             </span>
           ) : null}
         </div>
+        {foraDaFaixa ? (
+          <p
+            data-testid="vitrine-fora-da-faixa"
+            className={cn(
+              "pointer-events-none relative ml-7 mt-1.5 text-xs font-medium text-zinc-400",
+              !secao.active && "opacity-60",
+            )}
+          >
+            {foraDaFaixa}
+          </p>
+        ) : null}
 
         <div className="pointer-events-none relative ml-7 mt-3 flex flex-wrap items-center gap-1.5">
           <span
