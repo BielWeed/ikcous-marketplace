@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/useAuth";
+import { invalidarVisaoDoCrm } from "@/lib/cache-da-visao-do-crm";
 import { DataVault } from "@/lib/dataVault";
 import { geracaoDoCofre } from "@/lib/geracao-do-cofre";
 import {
@@ -186,6 +187,7 @@ function broadcastCategory(data: any) {
 }
 
 export function clearAnalyticsCache() {
+  invalidarVisaoDoCrm();
   cachedStats = null;
   cachedCategoryData = null;
   lastStatsFetchTime = 0;
