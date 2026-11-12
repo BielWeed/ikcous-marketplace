@@ -182,7 +182,20 @@
       "Bash(npx eslint*--format*)",
       "Bash(npx knip*--preprocessor*)",
       "Bash(npx knip*--reporter*)",
-      "Bash(npx shadcn:*)"
+      "Bash(npx shadcn:*)",
+      "Bash(rm -R:*)",
+      "Bash(rm --recursive:*)",
+      "Bash(rm -f -r:*)",
+      "Bash(rm -r -f:*)",
+      "Bash(git push *+*)",
+      "Bash(git push --delete:*)",
+      "Bash(git push --mirror:*)",
+      "Bash(git push -d:*)",
+      "Bash(git checkout -- .:*)",
+      "Bash(git restore .:*)",
+      "Bash(git stash drop:*)",
+      "Bash(git stash clear:*)",
+      "Bash(npx shadcn@:*)"
     ]
   },
   "worktree": {
