@@ -13,6 +13,7 @@ import {
   slugDaCategoria,
 } from "@/lib/gestao-de-categorias";
 import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
@@ -247,10 +248,17 @@ export function useCategories() {
         const queryPromise = (async () => {
           try {
             ultimaConsultaEm = Date.now();
-            let { data, error } = await supabase
-              .from("categorias")
-              .select("*")
-              .order("nome");
+            // Rede pendurada (aceita e nunca responde) sem prazo deixava a faixa
+            // de categorias em esqueleto para sempre. Estourou = o mesmo caminho
+            // de uma falha de rede (nova tentativa automática); a resposta tardia
+            // da consulta abandonada não é lida por ninguém.
+            let { data, error } = await aguardarComPrazo(
+              Promise.resolve(
+                supabase.from("categorias").select("*").order("nome"),
+              ),
+              PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+              erroDeConsultaSemResposta,
+            );
 
             // select("*") funciona mesmo sem icone: a propriedade ausente
             // vira null no mapeamento abaixo. Este fallback é só defensivo se
@@ -261,10 +269,16 @@ export function useCategories() {
               ["42703", "PGRST204"].includes(error.code) &&
               /icone/i.test(error.message)
             ) {
-              const antiga = await supabase
-                .from("categorias")
-                .select("id,nome,slug,descricao,ativo,created_at")
-                .order("nome");
+              const antiga = await aguardarComPrazo(
+                Promise.resolve(
+                  supabase
+                    .from("categorias")
+                    .select("id,nome,slug,descricao,ativo,created_at")
+                    .order("nome"),
+                ),
+                PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+                erroDeConsultaSemResposta,
+              );
               error = antiga.error;
               data =
                 antiga.data?.map((item) => ({
