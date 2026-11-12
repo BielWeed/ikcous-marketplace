@@ -67,7 +67,7 @@ export function FolhaInferior({
             </div>
             <SheetClose
               aria-label="Fechar"
-              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-zinc-400 transition-colors hover:text-white"
+              className="relative after:absolute after:-inset-1.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-zinc-400 transition-colors hover:text-white"
             >
               <X className="size-4" />
             </SheetClose>
