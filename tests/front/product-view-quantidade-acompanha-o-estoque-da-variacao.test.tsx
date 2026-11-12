@@ -463,6 +463,58 @@ describe("ProductView — a quantidade acompanha o estoque da variação", () =>
     expect(adicionarAoCarrinho.mock.calls[0][1]).toBeUndefined();
   });
 
+  // Cadastro antigo com Cor e Tamanho em grupos SEPARADOS: a cor Azul tem 5
+  // unidades, mas todos os tamanhos estão zerados. Nenhuma combinação pode ser
+  // comprada, então a página diz "Esgotado" em vez de deixar o "Adicionar"
+  // aceso e mandar a cliente escolher um tamanho que está todo bloqueado.
+  function botoesEsgotado() {
+    return [...document.querySelectorAll("button")].filter(
+      (b) => b.textContent === "Esgotado",
+    ) as HTMLButtonElement[];
+  }
+
+  it("Cor com estoque e TODOS os tamanhos zerados: o produto fica Esgotado, sem comprar", async () => {
+    await montar({
+      ...produtoCom([
+        cor("v-azul", "Azul", 5),
+        tamanho("v-p", "P", 0),
+        tamanho("v-m", "M", 0),
+      ]),
+      stock: 5,
+    });
+
+    const esgotados = botoesEsgotado();
+    expect(esgotados.length).toBeGreaterThan(0);
+    for (const botao of esgotados) {
+      expect(botao.disabled).toBe(true);
+      await tocar(botao);
+    }
+    // Escolher a cor não devolve uma compra impossível.
+    await tocar(opcao("Azul"));
+    expect(botoesEsgotado().length).toBeGreaterThan(0);
+    expect(hospedeiro.textContent).not.toContain("Adicionar ao Carrinho");
+    expect(adicionarAoCarrinho).not.toHaveBeenCalled();
+    expect(avisar).not.toHaveBeenCalled();
+  });
+
+  it("Cor com estoque e UM tamanho com estoque: segue comprável (controle)", async () => {
+    await montar({
+      ...produtoCom([
+        cor("v-azul", "Azul", 5),
+        tamanho("v-p", "P", 0),
+        tamanho("v-m", "M", 3),
+      ]),
+      stock: 8,
+    });
+
+    expect(botoesEsgotado()).toHaveLength(0);
+    await tocar(opcao("Azul"));
+    await tocar(opcao("M"));
+    await comprar();
+    expect(adicionarAoCarrinho).toHaveBeenCalledTimes(1);
+    expect(adicionarAoCarrinho.mock.calls[0][1]).toBe("v-azul~v-m");
+  });
+
   it("desmarcar funciona também com dois grupos", async () => {
     // Estoque da combinação cai a 0 por causa do OUTRO grupo: o botão da
     // escolha atual não pode virar armadilha (disabled sem como desmarcar).
