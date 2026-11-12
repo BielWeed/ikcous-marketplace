@@ -951,7 +951,7 @@ export function reducerDaVenda(
       }
 
       const novaQuantidade = item.quantidade + acao.delta;
-      if (novaQuantidade > item.estoque) {
+      if (acao.delta > 0 && novaQuantidade > item.estoque) {
         return {
           ...estado,
           aviso:
