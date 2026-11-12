@@ -18,7 +18,16 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-let RESPOSTA_LINHAS: unknown = { data: [], error: null };
+let RESPOSTA_LINHAS: {
+  data: Array<{
+    order_id: string;
+    id: string;
+    amount: number;
+    status: string;
+    solicitado_por: string;
+  }> | null;
+  error: { message: string } | null;
+} = { data: [], error: null };
 // Lote R1: o saldo vem PRONTO do servidor (`pedido_reembolsos_e_saldo`).
 const SALDO_PADRAO = {
   total: 100,
@@ -43,15 +52,31 @@ type Chamada =
 
 let CHAMADAS: Chamada[] = [];
 let tabelasConsultadas: string[] = [];
+const eqLinhasMock = vi.fn();
 
 function criarBuilderLinhas() {
+  const filtros: Array<{ coluna: string; valor: unknown }> = [];
   const builder: Record<string, unknown> = {};
   builder.select = vi.fn(() => builder);
-  builder.eq = vi.fn(() => builder);
+  builder.eq = vi.fn((coluna: string, valor: unknown) => {
+    eqLinhasMock(coluna, valor);
+    filtros.push({ coluna, valor });
+    return builder;
+  });
   builder.order = vi.fn(() => builder);
+  // Sem o eq, devolve também as linhas de outro pedido: o dublê não esconde a falta do filtro.
   // biome-ignore lint/suspicious/noThenProperty: dublê do query builder thenable do Supabase.
   builder.then = (resolve: unknown, reject?: unknown) =>
-    Promise.resolve(RESPOSTA_LINHAS).then(resolve as never, reject as never);
+    Promise.resolve({
+      ...RESPOSTA_LINHAS,
+      data:
+        RESPOSTA_LINHAS.data?.filter((linha) =>
+          filtros.every(
+            ({ coluna, valor }) =>
+              coluna === "order_id" && linha.order_id === valor,
+          ),
+        ) ?? null,
+    }).then(resolve as never, reject as never);
   return builder;
 }
 
@@ -270,6 +295,36 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
     expect(tabelasConsultadas.length).toBeGreaterThan(consultasAntes);
   });
 
+  it("a leitura filtra pelo pedido aberto e não mistura estornos de outro pedido", async () => {
+    RESPOSTA_LINHAS = {
+      data: [
+        {
+          order_id: "pedido-aberto",
+          id: "estorno-aberto",
+          amount: 10,
+          status: "falhou",
+          solicitado_por: "lojista",
+        },
+        {
+          order_id: "pedido-outro",
+          id: "estorno-outro",
+          amount: 20,
+          status: "falhou",
+          solicitado_por: "lojista",
+        },
+      ],
+      error: null,
+    };
+
+    const { atual } = await montarSonda("pedido-aberto");
+
+    expect(atual().erro).toBe(false);
+    expect(atual().linhas).toEqual([
+      expect.objectContaining({ id: "estorno-aberto", amount: 10 }),
+    ]);
+    expect(eqLinhasMock).toHaveBeenCalledWith("order_id", "pedido-aberto");
+  });
+
   // Lote R1: a conta do saldo é DO SERVIDOR. Estes testes mudam só a
   // resposta da RPC e provam que a tela segue a RPC — mesmo quando as linhas
   // de `order_refunds` diriam outra coisa se a tela ainda somasse.
@@ -277,12 +332,19 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
     RESPOSTA_LINHAS = {
       data: [
         {
+          order_id: "pedido-1",
           id: "r1",
           amount: 20,
           status: "solicitado",
           solicitado_por: "cliente",
         },
-        { id: "r2", amount: 10, status: "falhou", solicitado_por: "lojista" },
+        {
+          order_id: "pedido-1",
+          id: "r2",
+          amount: 10,
+          status: "falhou",
+          solicitado_por: "lojista",
+        },
       ],
       error: null,
     };
@@ -379,10 +441,28 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
   it("R1: o veredito (pode_ter_saido, por_fora_liberado_em, por_fora_apos_espera_liberado) chega em cada linha", async () => {
     RESPOSTA_LINHAS = {
       data: [
-        { id: "r1", amount: 10, status: "falhou", solicitado_por: "lojista" },
-        { id: "r2", amount: 15, status: "falhou", solicitado_por: "lojista" },
+        {
+          order_id: "pedido-1",
+          id: "r1",
+          amount: 10,
+          status: "falhou",
+          solicitado_por: "lojista",
+        },
+        {
+          order_id: "pedido-1",
+          id: "r2",
+          amount: 15,
+          status: "falhou",
+          solicitado_por: "lojista",
+        },
         // Linha que a RPC ainda não julgou (leituras em instantes diferentes).
-        { id: "r3", amount: 5, status: "falhou", solicitado_por: "lojista" },
+        {
+          order_id: "pedido-1",
+          id: "r3",
+          amount: 5,
+          status: "falhou",
+          solicitado_por: "lojista",
+        },
       ],
       error: null,
     };
@@ -506,6 +586,7 @@ describe("useEstornosDoPedido — a linha nasce no ledger, o clique só executa"
     RESPOSTA_LINHAS = {
       data: [
         {
+          order_id: "pedido-1",
           id: "refund-9",
           amount: 60,
           status: "em_processamento",

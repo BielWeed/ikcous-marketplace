@@ -44,6 +44,15 @@ function variantes(): ProductVariant[] {
       active: true,
     },
     {
+      id: "var-xg",
+      productId: "prod-selo",
+      name: "Tamanho",
+      value: "XG",
+      stockIncrement: 5,
+      priceOverride: 100,
+      active: true,
+    },
+    {
       id: "var-gg",
       productId: "prod-selo",
       name: "Tamanho",
@@ -153,6 +162,20 @@ describe("ProductCard — selo '% OFF' segue o preço mostrado (V1)", () => {
         expect(hospedeiro.textContent).toContain("90,00");
         expect(hospedeiro.textContent).toContain("10% OFF");
         expect(hospedeiro.textContent).not.toContain("20% OFF");
+      });
+
+      it("variação com preço próprio IGUAL ao original: sem riscado, selo ou De/Por", async () => {
+        await renderizar(layout);
+        await escolher("XG");
+
+        expect(hospedeiro.textContent).toContain("100,00");
+        expect(hospedeiro.textContent).not.toContain("% OFF");
+        expect(hospedeiro.querySelector(".line-through")).toBeNull();
+        const rotulos = Array.from(hospedeiro.querySelectorAll("span")).map(
+          (span) => span.textContent?.trim(),
+        );
+        expect(rotulos).not.toContain("De");
+        expect(rotulos).not.toContain("Por");
       });
 
       it("variação com preço próprio ACIMA do original: sem riscado e sem selo", async () => {
