@@ -428,6 +428,18 @@ function FluxoDaDevolucao({
     if (estadoDoRascunho === "nenhum") return;
     return marcarOperacaoSensivel("rascunho-de-devolucao");
   }, [estadoDoRascunho]);
+  // F5, recarregar ou fechar a aba também apagam o rascunho (fotos e texto não
+  // vão para o armazenamento): enquanto houver algo a perder, o navegador pede
+  // confirmação. Pedido aceito, descartado ou folha fechada: sem aviso.
+  useEffect(() => {
+    if (estadoDoRascunho === "nenhum") return;
+    const avisarAntesDeSair = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", avisarAntesDeSair);
+    return () => window.removeEventListener("beforeunload", avisarAntesDeSair);
+  }, [estadoDoRascunho]);
 
   const tipo = motivo ? tipoPrevisto(motivo, janelas) : null;
   const permitidas = resolucoesPermitidas(motivo, janelas, politica);
