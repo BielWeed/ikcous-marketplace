@@ -18,6 +18,7 @@ import {
   fraseDoSeloDeFreteGratis,
 } from "@/lib/estrategias-de-frete";
 import { imagemRedimensionada } from "@/lib/imageUrl";
+import { percentualDeDesconto } from "@/lib/percentual-de-desconto";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import { textoEstoqueBaixo } from "@/lib/texto-estoque-baixo";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -487,10 +488,7 @@ export const ProductCard = memo(function ProductCard({
   const promocional = precoOriginalMostrado !== null;
   const discount =
     precoOriginalMostrado !== null
-      ? Math.round(
-          ((precoOriginalMostrado - precoMostrado) / precoOriginalMostrado) *
-            100,
-        )
+      ? percentualDeDesconto(precoOriginalMostrado, precoMostrado)
       : 0;
   const textoDoBotao = semEstoqueNoCard
     ? "Esgotado"

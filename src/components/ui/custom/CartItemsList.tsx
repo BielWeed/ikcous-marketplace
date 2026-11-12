@@ -5,6 +5,7 @@ import { fotoDoItemDoCarrinho } from "@/lib/foto-do-item-do-carrinho";
 import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
 import { usarImagemOriginal } from "@/lib/imageUrl";
 import { miniaturaDeCompra } from "@/lib/miniatura-de-compra";
+import { percentualDeDesconto } from "@/lib/percentual-de-desconto";
 import { precoVendido } from "@/lib/preco-vendido";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { CartItem } from "@/types";
@@ -99,10 +100,7 @@ const CartItemCard = memo(function CartItemCard({
   // Desconto abaixo de meio por cento arredonda para 0: o selo "-0%" não
   // aparece, mas o preço riscado continua.
   const pctOff = hasDiscount
-    ? Math.round(
-        ((item.product.originalPrice! - price) / item.product.originalPrice!) *
-          100,
-      )
+    ? percentualDeDesconto(item.product.originalPrice, price)
     : 0;
 
   return (
