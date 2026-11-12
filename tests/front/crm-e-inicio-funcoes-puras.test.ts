@@ -729,7 +729,7 @@ describe("segmentos RFM e WhatsApp", () => {
   it("o texto usa o primeiro nome e a loja, e nunca promete desconto que não existe", () => {
     expect(
       mensagemDoSegmento("novos", { nome: "Ana Maria Souza", loja: "Loja X" }),
-    ).toMatch(/^Oi, Ana! Aqui é da Loja X\. Obrigado pela sua primeira compra/);
+    ).toMatch(/^Oi, Ana! Aqui é da Loja X\. Obrigado pela sua compra!/);
     expect(
       mensagemDoSegmento("em_risco", { nome: null, loja: "Loja X" }),
     ).toMatch(/^Oi! Aqui é da Loja X\./);
@@ -737,6 +737,19 @@ describe("segmentos RFM e WhatsApp", () => {
       const texto = mensagemDoSegmento(segmento, { nome: "Ana", loja: "L" });
       expect(texto).not.toMatch(/cupom|desconto|% off|grátis/i);
     }
+  });
+
+  it("novos: o segmento sai das notas de frequência e valor, não de ter 1 compra só; nem a mensagem nem a legenda dizem 'primeira'", () => {
+    // Quem tem 2 compras pagas recentes e receita baixa também cai em "novos":
+    // dizer "primeira compra" a essa cliente é falso.
+    expect(
+      mensagemDoSegmento("novos", { nome: "Ana Maria Souza", loja: "Loja X" }),
+    ).not.toMatch(/primeira/i);
+    expect(
+      mensagemDoSegmento("novos", { nome: null, loja: "Loja X" }),
+    ).not.toMatch(/primeira/i);
+    expect(infoDoSegmento("novos").descricao).not.toMatch(/primeira/i);
+    expect(infoDoSegmento("novos").descricao).toBe("Compra recente");
   });
 
   it("pediu_nao_pagou: a mensagem não afirma nada sobre pagamento (o pedido pode ter sido pago e cancelado/estornado depois)", () => {
