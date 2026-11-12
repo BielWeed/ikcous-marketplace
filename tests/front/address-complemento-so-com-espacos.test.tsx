@@ -137,6 +137,38 @@ describe("AddressForm — complemento e referência só com espaços", () => {
     expect(enviado.reference).toBe("");
   });
 
+  it.each(
+    [0x200b, 0x200e, 0x2800, 0x3164].map((codigo) =>
+      String.fromCodePoint(codigo),
+    ),
+  )(
+    "complemento invisível %j é enviado vazio sem alterar a referência visível",
+    async (invisivel) => {
+      const enviado = await preencherEEnviar({
+        complement: invisivel,
+        reference: " Perto da praça ",
+      });
+      expect(enviado.complement).toBe("");
+      expect(enviado.reference).toBe("Perto da praça");
+    },
+  );
+
+  it.each(
+    [0x200b, 0x200e, 0x2800, 0x3164].map((codigo) =>
+      String.fromCodePoint(codigo),
+    ),
+  )(
+    "referência invisível %j é enviada vazia sem alterar o complemento visível",
+    async (invisivel) => {
+      const enviado = await preencherEEnviar({
+        complement: " Apto 12 ",
+        reference: invisivel,
+      });
+      expect(enviado.complement).toBe("Apto 12");
+      expect(enviado.reference).toBe("");
+    },
+  );
+
   it("complemento com texto real vai igual, só sem os espaços das pontas", async () => {
     const enviado = await preencherEEnviar({
       complement: " Apto 12 ",

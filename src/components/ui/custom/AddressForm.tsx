@@ -482,7 +482,9 @@ export function AddressForm({
         cep: values.cep,
         street: values.street,
         number: values.number,
-        complement: values.complement?.trim() || "",
+        complement: nomeTemConteudoVisivel(values.complement)
+          ? values.complement!.trim()
+          : "",
         neighborhood: values.neighborhood,
         city: values.city,
         // UF vai para a etiqueta do Melhor Envio: sempre em maiúsculas.
@@ -493,7 +495,9 @@ export function AddressForm({
         ...(!initialData || principalTocadoRef.current
           ? { is_default: values.is_default }
           : {}),
-        reference: values.reference?.trim() || "",
+        reference: nomeTemConteudoVisivel(values.reference)
+          ? values.reference!.trim()
+          : "",
         recipient_name: values.recipient_name,
       };
       await onSubmit(cleanData);
