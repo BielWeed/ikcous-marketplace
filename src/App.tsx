@@ -21,6 +21,7 @@ import {
   AVISO_ENVIO_DO_CHECKOUT_EM_CURSO,
   haEnvioDoCheckoutEmCurso,
 } from "@/lib/envio-do-checkout-em-curso";
+import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import {
   PRAZO_DA_SESSAO_NA_RECARGA_MS,
   esquecerPedidoPendenteDoCheckout,
@@ -1544,7 +1545,11 @@ const AppContent = () => {
     (query: string) => {
       setSearchQuery(query);
       const telaAtual = currentViewRef.current;
-      if (query.trim() && telaAtual !== "home" && telaAtual !== "search") {
+      if (
+        nomeTemConteudoVisivel(query) &&
+        telaAtual !== "home" &&
+        telaAtual !== "search"
+      ) {
         void handleNavigate("home");
       }
     },
@@ -2602,7 +2607,7 @@ const AppContent = () => {
       currentView !== "search" &&
       currentView !== "home" &&
       searchQuery &&
-      !searchQuery.trim()
+      !nomeTemConteudoVisivel(searchQuery)
     ) {
       setSearchQuery("");
     }
