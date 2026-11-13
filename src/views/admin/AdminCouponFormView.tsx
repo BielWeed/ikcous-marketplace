@@ -337,9 +337,14 @@ function FormularioDoCupom({
     };
     lidoAoAbrirRef.current = carregado;
     setFormData(mesclado);
-    // `initialData` recebe o MESCLADO: "sujo" tem que significar mudança do
-    // lojista DEPOIS da carga, nunca a mesclagem em si.
-    setInitialData(mesclado);
+    // `initialData` recebe o que o BANCO tinha (`carregado`), nunca o
+    // MESCLADO: tudo que o compara com o formulário (o alcance a enviar, a
+    // validade que pede confirmação, o código que não se renomeia, o aviso de
+    // "descartar") pergunta "o que ela mudou em relação ao banco?". Com o
+    // mesclado, o que ela escolheu ANTES de a carga chegar virava "estado
+    // inicial" e sumia dessas perguntas: o cupom público seguia público
+    // enquanto a lista de clientes era gravada.
+    setInitialData(carregado);
     cupomInicializadoRef.current = couponId;
     // `formData` entra de propósito: a mesclagem precisa do que o lojista
     // já digitou nesta tela antes da carga chegar.
