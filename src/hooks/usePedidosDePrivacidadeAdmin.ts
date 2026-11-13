@@ -182,21 +182,25 @@ export function usePedidosDePrivacidadeAdmin(): UsePedidosDePrivacidadeAdmin {
           ),
           15_000,
         );
+        // Daqui em diante a decisão JÁ está no banco (ou já era de outra
+        // pessoa): a releitura da lista corre em segundo plano, porque as
+        // consultas dela não têm prazo e esperar por elas prendia os botões em
+        // "Salvando…" com a rede travada.
         if (error) {
           // 55000 = o gatilho do banco recusou: o pedido já tinha sido decidido.
           const falha = classificarFalhaDaDecisao(error);
           if (falha === "ja_decidido") {
-            await recarregar();
+            void recarregar();
             pedirRecontagemDoSino();
           }
           return { ok: false, falha };
         }
         if (!data || data.length === 0) {
-          await recarregar();
+          void recarregar();
           pedirRecontagemDoSino();
           return { ok: false, falha: "ja_decidido" };
         }
-        await recarregar();
+        void recarregar();
         pedirRecontagemDoSino();
         return { ok: true };
       } catch (erro) {

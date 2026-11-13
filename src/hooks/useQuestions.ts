@@ -13,6 +13,7 @@ import {
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
+import { TETO_DA_RESPOSTA_DA_LOJA } from "@/lib/teto-da-resposta-da-loja";
 import type { Database } from "@/types/database.types";
 import {
   cachedQuestionsData,
@@ -592,6 +593,18 @@ export function useQuestions() {
         // ZENITH v21.7: Rely on AuthContext's verified user
         if (!user?.id) {
           if (!options?.silent) toast.error("Login necessário.");
+          return false;
+        }
+
+        // A resposta vira texto público: o teto vale aqui também, porque o
+        // `maxLength` do campo não segura texto colado nem resposta antiga
+        // maior. Recusa sem chamar o servidor — e avisa até no modo
+        // silencioso, onde a tela só diria "confira na lista" (o problema é o
+        // texto, não a rede).
+        if (answer.answer.length > TETO_DA_RESPOSTA_DA_LOJA) {
+          toast.error(
+            `A resposta passou de ${TETO_DA_RESPOSTA_DA_LOJA} caracteres. Encurte o texto e envie de novo.`,
+          );
           return false;
         }
 

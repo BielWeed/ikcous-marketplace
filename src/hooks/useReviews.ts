@@ -15,6 +15,7 @@ import {
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
+import { TETO_DA_RESPOSTA_DA_LOJA } from "@/lib/teto-da-resposta-da-loja";
 import type { Review } from "@/types";
 import {
   cachedReviewsData,
@@ -837,6 +838,16 @@ export function useReviews() {
         // ZENITH v21.7: Rely on AuthContext's verified user
         if (!user?.id) {
           toast.error("Administrador não autenticado.");
+          return false;
+        }
+
+        // A resposta vira texto público: o teto vale aqui também, porque o
+        // `maxLength` do campo não segura texto colado. Recusa sem chamar o
+        // servidor; o problema é o texto, não a rede.
+        if (reply.length > TETO_DA_RESPOSTA_DA_LOJA) {
+          toast.error(
+            `A resposta passou de ${TETO_DA_RESPOSTA_DA_LOJA} caracteres. Encurte o texto e envie de novo.`,
+          );
           return false;
         }
 

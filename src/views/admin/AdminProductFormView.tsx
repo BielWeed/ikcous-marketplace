@@ -2195,38 +2195,47 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       if (ofertaDeRascunhoPendente) return;
       const isDirty = isProductFormDirty(formData, initialData);
       const draftKey = chaveDoRascunhoDoProduto(userId, productId);
-      if (isDirty && draftKey) {
-        // Com o carimbo de quando foi guardado: o rascunho vence em 7 dias. Na
-        // edição, com o produto-base: restaurar depois só usa o que ela editou.
-        const gradePendente =
-          gradeDoRascunhoPendenteRef.current &&
-          formData.variants.some((v) => v.id.startsWith("temp-"));
-        localStorage.setItem(
-          draftKey,
-          serializarRascunhoDoProduto({
-            ...formData,
-            ...(productId ? { baseDoRascunho: initialData } : {}),
-            ...(gradePendente ? { variacoesPendentes: true } : {}),
-          }),
-        );
-        gravouRascunhoRef.current = draftKey;
-      } else if (draftKey && gravouRascunhoRef.current === draftKey) {
-        // Voltou a ser igual ao banco: o rascunho que ESTA abertura gravou não
-        // tem mais o que oferecer.
-        gravouRascunhoRef.current = null;
-        if (
-          rascunhoRecuperadoRef.current === draftKey &&
-          localStorage.getItem(draftKey) !== null
-        ) {
-          // ...exceto o recuperado que ainda não foi salvo nem descartado
-          // (salvar e Descartar já apagaram a chave: aí não há o que guardar).
+      // Armazenamento cheio (QuotaExceededError: descrição enorme, fotos em
+      // rascunho) ou bloqueado não pode estourar do temporizador: ela segue
+      // editando, só o rascunho em disco fica para trás — e, sem gravar,
+      // `gravouRascunhoRef` não afirma que gravou. A próxima edição tenta de
+      // novo. Mesmo cuidado de src/hooks/useVendaPresencial.ts.
+      try {
+        if (isDirty && draftKey) {
+          // Com o carimbo de quando foi guardado: o rascunho vence em 7 dias. Na
+          // edição, com o produto-base: restaurar depois só usa o que ela editou.
+          const gradePendente =
+            gradeDoRascunhoPendenteRef.current &&
+            formData.variants.some((v) => v.id.startsWith("temp-"));
           localStorage.setItem(
             draftKey,
-            serializarRascunhoDoProduto({ ...formData }),
+            serializarRascunhoDoProduto({
+              ...formData,
+              ...(productId ? { baseDoRascunho: initialData } : {}),
+              ...(gradePendente ? { variacoesPendentes: true } : {}),
+            }),
           );
-        } else {
-          localStorage.removeItem(draftKey);
+          gravouRascunhoRef.current = draftKey;
+        } else if (draftKey && gravouRascunhoRef.current === draftKey) {
+          // Voltou a ser igual ao banco: o rascunho que ESTA abertura gravou não
+          // tem mais o que oferecer.
+          gravouRascunhoRef.current = null;
+          if (
+            rascunhoRecuperadoRef.current === draftKey &&
+            localStorage.getItem(draftKey) !== null
+          ) {
+            // ...exceto o recuperado que ainda não foi salvo nem descartado
+            // (salvar e Descartar já apagaram a chave: aí não há o que guardar).
+            localStorage.setItem(
+              draftKey,
+              serializarRascunhoDoProduto({ ...formData }),
+            );
+          } else {
+            localStorage.removeItem(draftKey);
+          }
         }
+      } catch (erro) {
+        console.error("Erro ao guardar o rascunho do produto:", erro);
       }
     }, 1000);
 
