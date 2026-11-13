@@ -454,6 +454,10 @@ async function main() {
       "os atores nasceram como o teste declara (o ex-admin e admin so em auth.users)",
     );
 
+    // A 20261399985000 (o grafico do Financeiro soma so as contas ativas) sucede o fin_resumo desta migration: sai PRIMEIRO (so se no ar).
+    await require("./o-grafico-do-financeiro-posterior.cjs").desfazerGraficoDoFinanceiroNaTransacao(
+      c,
+    );
     // ---- 0. O topo instalado pelo CI e o desta migration; os anteriores sao os conhecidos. ----
     const topo = await ambas(c);
     assert.equal(
@@ -1244,6 +1248,10 @@ async function main() {
   const ANTES = { p: H.painelAntes, r: H.resumoAntes };
   const NOVO = { p: H.painelNovo, r: H.resumoNovo };
   try {
+    // A 20261399985000 sucede o fin_resumo desta migration (commitada no clone): sai PRIMEIRO, e volta no fim.
+    await require("./o-grafico-do-financeiro-posterior.cjs").desfazerGraficoDoFinanceiroNaTransacao(
+      d,
+    );
     assert.deepEqual(await hashes(), NOVO);
     await d.query(rollback);
     assert.deepEqual(await hashes(), ANTES);
@@ -1377,6 +1385,13 @@ async function main() {
     // Garante o estado final do clone: os corpos novos.
     await d.query("ROLLBACK").catch(() => {});
     await d.query(migration).catch(() => {});
+    await d
+      .query(
+        ler(
+          "supabase/migrations/20261399985000_o_grafico_do_financeiro_soma_so_as_contas_ativas.sql",
+        ),
+      )
+      .catch(() => {});
     await leitor.end().catch(() => {});
     await d.end();
   }

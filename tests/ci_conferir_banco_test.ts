@@ -2369,6 +2369,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "a10e7f301eaf6b3edfac50bc87ff74bc",
           versao: "20261399300000",
         },
+        // 12/11/2026 (lote 141): o grafico do Financeiro soma so as contas ativas (a serie ganha variacao_saldo; 99 -> 3993 -> 39985).
+        {
+          fn: "fin_resumo",
+          h: "9e711b03cc63f610461915b850f2eb70",
+          versao: "20261399985000",
+        },
         {
           fn: "get_admin_analytics_v2",
           h: "0a5f8c75bbeeda3777a6a7326a0e281c",
