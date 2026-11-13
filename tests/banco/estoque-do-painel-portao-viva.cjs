@@ -1410,15 +1410,15 @@ async function main() {
       // 'ausente' na devolucao, nao mexe no estoque do painel; a 17a nao as le. O rollback dela devolve os tres corpos de uma vez.
       [
         "20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql",
+        "public.devolucao_detalhe(uuid)",
+      ],
+      [
+        "20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql",
         "public.devolucao_elegibilidade(uuid)",
       ],
       [
         "20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql",
         "public.solicitar_devolucao(uuid,jsonb,text,text,text,text,text[])",
-      ],
-      [
-        "20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql",
-        "public.devolucao_detalhe(uuid)",
       ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
