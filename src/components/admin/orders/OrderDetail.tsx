@@ -294,7 +294,24 @@ const globalSkuCache: Record<string, string> = {};
 // Rótulo da variação ("Cor Azul · Tamanho M") por id da variação, lido na
 // mesma consulta do código interno. O pedido só guarda o id (`variant_id`);
 // quem diz qual é a escolha é `product_variants`. "" = lida, sem texto.
-const globalVariacaoCache = new Map<string, string>();
+//
+// A cópia VENCE em 60 s (`lidoEm`): a lojista corrige o nome da opção no
+// produto e volta ao pedido, e o papel não pode sair com o nome antigo (a
+// exportação em CSV já lê o cadastro de novo a cada vez). Dentro do minuto a
+// ficha reaproveita, para abrir pedidos em sequência sem piscar nem repetir
+// consulta. Vencida = conta como "ainda não lida" e a ficha lê de novo.
+const VALIDADE_DO_ROTULO_DA_VARIACAO_MS = 60_000;
+const globalVariacaoCache = new Map<
+  string,
+  { rotulo: string; lidoEm: number }
+>();
+const rotuloDaVariacaoEmDia = (id: string): boolean => {
+  const copia = globalVariacaoCache.get(id);
+  return (
+    copia !== undefined &&
+    Date.now() - copia.lidoEm < VALIDADE_DO_ROTULO_DA_VARIACAO_MS
+  );
+};
 const filaNotas = new Map<string, Promise<unknown>>();
 
 // Carimbo (`updated_at`, posto pelo servidor) da anotação como ESTA tela a viu
@@ -1982,12 +1999,12 @@ export const OrderDetail = memo(function OrderDetail({
           (id) => !globalSkuCache[`prod-${id}`],
         );
         const missingVariantIds = variantIds.filter(
-          (id) => !globalSkuCache[`var-${id}`] || !globalVariacaoCache.has(id),
+          (id) => !globalSkuCache[`var-${id}`] || !rotuloDaVariacaoEmDia(id),
         );
         const variacoesLidas = () =>
           Object.fromEntries(
             variantIds.flatMap((id) => {
-              const rotulo = globalVariacaoCache.get(id);
+              const rotulo = globalVariacaoCache.get(id)?.rotulo;
               return rotulo ? [[id, rotulo] as const] : [];
             }),
           );
@@ -2043,9 +2060,19 @@ export const OrderDetail = memo(function OrderDetail({
         productsData?.forEach((p) => {
           if (p.codigo) globalSkuCache[`prod-${p.id}`] = p.codigo;
         });
+        // Leitura que deu certo e não achou a variação (apagada do catálogo):
+        // a cópia vencida dela não volta a valer.
+        missingVariantIds.forEach((id) => {
+          if (!variantsData?.some((v) => v.id === id)) {
+            globalVariacaoCache.delete(id);
+          }
+        });
         variantsData?.forEach((v) => {
           if (v.sku) globalSkuCache[`var-${v.id}`] = v.sku;
-          globalVariacaoCache.set(v.id, rotuloDaVariacao(v.name, v.value));
+          globalVariacaoCache.set(v.id, {
+            rotulo: rotuloDaVariacao(v.name, v.value),
+            lidoEm: Date.now(),
+          });
         });
         setVariacoes(variacoesLidas());
 
