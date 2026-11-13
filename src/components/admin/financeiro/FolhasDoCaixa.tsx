@@ -724,7 +724,7 @@ export function FecharCaixaFolha({
             rows={2}
             placeholder="Ex.: troco dado a mais na venda das 15h"
             onFlush={setObservacao}
-            className={`${CLASSE_CAMPO} py-2`}
+            className={CLASSE_CAMPO}
           />
         </Campo>
       </div>

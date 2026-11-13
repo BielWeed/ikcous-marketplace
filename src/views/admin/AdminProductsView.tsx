@@ -2945,6 +2945,7 @@ const AdminProductCard = memo(function AdminProductCard({
                 <Badge className={cn("produto-status", classeDoEstado)}>
                   {estado}
                 </Badge>
+                {estoqueBaixo && " "}
                 {estoqueBaixo && (
                   <Badge
                     className={cn(
