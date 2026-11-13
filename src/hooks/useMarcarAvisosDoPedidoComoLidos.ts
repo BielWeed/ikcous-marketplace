@@ -15,8 +15,14 @@ import { useContext, useEffect } from "react";
  * lista: marcar zera o booleano e o efeito para; um UPDATE que falhe não o
  * zera, mas também não o religa — sem repetição em laço. Um aviso novo do
  * mesmo pedido que chegue com a tela aberta religa o booleano e é marcado.
+ *
+ * `aguardar`: a tela ainda não mostra o que o aviso conta (a devolução está
+ * sendo relida por causa dele); marca só quando virar falso.
  */
-export function useMarcarAvisosDoPedidoComoLidos(orderId: string): void {
+export function useMarcarAvisosDoPedidoComoLidos(
+  orderId: string,
+  aguardar = false,
+): void {
   const centro = useContext(NotificationContext);
   const marcar = centro?.markOrderAsRead;
   const temAvisoNaoLido =
@@ -24,6 +30,6 @@ export function useMarcarAvisosDoPedidoComoLidos(orderId: string): void {
     false;
 
   useEffect(() => {
-    if (temAvisoNaoLido && marcar) void marcar(orderId);
-  }, [orderId, temAvisoNaoLido, marcar]);
+    if (temAvisoNaoLido && !aguardar && marcar) void marcar(orderId);
+  }, [orderId, temAvisoNaoLido, aguardar, marcar]);
 }
