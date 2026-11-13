@@ -3,9 +3,11 @@ import {
   LogoDaTransportadora,
   SeloDoAgregador,
 } from "@/components/shipping/MarcaDoFrete";
+import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { useContextoDoFreteDaLoja } from "@/contexts/ContextoDoFreteDaLoja";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import {
   type OrigemDaEscolhaDoFrete,
   resolverEscolhaDoFrete,
@@ -13,6 +15,7 @@ import {
 import { destaquesDoFrete } from "@/lib/destaques-do-frete";
 import { precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
 import { ehModalidadeDaLoja, ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
+import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { marcaDoFrete } from "@/lib/marca-do-frete";
 import {
   codigoDoErroDeEdgeFunction,
@@ -936,6 +939,15 @@ export function ShippingCalculator({
   }, [isOffline]);
 
   const destinoValido = soDigitosDoCep(cepDestino).length === 8;
+  // Cotação sem nenhuma opção: a conversa já nasce com o CEP (wa.me com DDI 55
+  // para número de 10/11 dígitos, mesmo mecanismo do checkout).
+  const combinarEntregaPeloWhatsapp = () => {
+    const cep = soDigitosDoCep(cepDestino);
+    let fone = (config.whatsappNumber || "").replace(/\D/g, "");
+    if (fone.length === 10 || fone.length === 11) fone = `55${fone}`;
+    const mensagem = `Olá! Quero combinar a entrega para o CEP ${cep.slice(0, 5)}-${cep.slice(5)}.`;
+    abrirWhatsapp(`https://wa.me/${fone}?text=${encodeURIComponent(mensagem)}`);
+  };
   // Derivado EM RENDER: no primeiro pintar depois de o destino aparecer,
   // antes de o efeito de adoção rodar, o status já é "cotando" — nunca
   // "pronto" com opções que não são deste destino.
@@ -1560,12 +1572,23 @@ export function ShippingCalculator({
             !loading &&
             !error &&
             options.length === 0 && (
-              <div className="flex items-start gap-1.5 rounded-2xl border border-zinc-100 bg-white p-2.5 text-[11px] font-medium text-zinc-500">
-                <Truck className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
-                <span>
-                  A calcular: nenhuma opção de entrega para este endereço —
-                  combine a entrega com a loja.
-                </span>
+              <div className="space-y-2">
+                <div className="flex items-start gap-1.5 rounded-2xl border border-zinc-100 bg-white p-2.5 text-[11px] font-medium text-zinc-500">
+                  <Truck className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
+                  <span>
+                    A calcular: nenhuma opção de entrega para este endereço —
+                    combine a entrega com a loja.
+                  </span>
+                </div>
+                {/* "Combine com a loja" precisa de um jeito de combinar: com
+                    WhatsApp cadastrado (mesma régua do checkout), o botão abre
+                    a conversa com o CEP dela. Só contato — não libera
+                    finalizar sem frete. */}
+                {lojaTemWhatsapp(config.whatsappNumber) && (
+                  <BotaoWhatsapp onClick={combinarEntregaPeloWhatsapp}>
+                    Combinar entrega pelo WhatsApp
+                  </BotaoWhatsapp>
+                )}
               </div>
             )}
         </>
