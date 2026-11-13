@@ -195,6 +195,10 @@ function ehInstrucaoDePermissao(error: unknown): boolean {
 // `toast.duration || duration do Toaster`), então o resto do app não muda.
 const DURACAO_DA_INSTRUCAO_DE_PERMISSAO_MS = 8000;
 
+// O aviso de "desligou no aparelho, o servidor não confirmou" tem duas orações
+// e uma ação: precisa do mesmo tempo de leitura da instrução de permissão.
+const DURACAO_DO_AVISO_DE_DESLIGAR_MS = 8000;
+
 // `navigator.serviceWorker.ready` NUNCA assenta (nem resolve, nem rejeita)
 // enquanto não há service worker ativo: instalação que falhou na primeira
 // visita, registro bloqueado. Sem prazo, a sonda ficava em "sondando" e o
@@ -226,6 +230,16 @@ let mexendoNaInscricao = 0;
 // Troca a cada começo de ligar/desligar: a resposta de uma leitura que começou
 // ANTES dele é descartada, senão ela apagaria o que a escrita acabou de gravar.
 let versaoDeEscrita = 0;
+
+// Quantas vezes a cliente DESLIGOU os avisos de propósito neste aparelho, de
+// QUALQUER instância do hook. A geração de cada instância (`geracaoDaInscricao`)
+// só invalida o que a própria instância começou; o desligar vem de uma tela e a
+// conferência de dono ("esta inscrição é desta conta?") pode estar no ar em
+// OUTRA, cuja resposta gravaria de volta o marcador de "avisos ligados" já
+// apagado e deixaria o religar automático inscrever o aparelho de novo. Quem
+// começa algo que pode gravar esse marcador anota este número e desiste se ele
+// mudou. Só sobe; nunca é lido para decidir ligar.
+let desligamentosDoAparelho = 0;
 
 function comecarAMexerNaInscricao() {
   mexendoNaInscricao += 1;
@@ -510,17 +524,21 @@ export function usePushNotifications() {
 
     let cancelado = false;
     const geracaoDaVerificacao = geracaoDaInscricao.current;
+    const desligamentosNoInicio = desligamentosDoAparelho;
     const verificar = async () => {
       const dono = await dequemEAInscricao(subscription.endpoint, userId);
       // Inscrição CONFIRMADA como desta conta = ela tem os avisos ligados neste
       // aparelho. É o que permite religar sozinho depois de uma limpeza do app
       // (ver `avisos-ligados-do-aparelho.ts`) também para quem ligou antes
       // deste marcador existir. Só se a pessoa não desligou no meio da consulta
-      // (desligar muda a geração) — senão o marcador voltaria depois de apagado.
+      // — senão o marcador voltaria depois de apagado. Desligar muda a geração
+      // DESTA instância e o contador do aparelho: o segundo cobre o desligar
+      // que veio de OUTRA tela (cada uma tem a sua geração).
       if (
         !cancelado &&
         dono === "esta-conta" &&
-        geracaoDaInscricao.current === geracaoDaVerificacao
+        geracaoDaInscricao.current === geracaoDaVerificacao &&
+        desligamentosDoAparelho === desligamentosNoInicio
       ) {
         marcarAvisosLigados(userId);
       }
@@ -552,6 +570,13 @@ export function usePushNotifications() {
       // Lido AO VIVO, não do estado: a permissão pode ter mudado desde a sonda.
       if (silencioso && Notification.permission !== "granted") return;
       const geracaoDaAtivacao = geracaoDaInscricao.current;
+      const desligamentosNoInicio = desligamentosDoAparelho;
+      // O religar automático é o único que ninguém pediu agora: se a cliente
+      // desligou os avisos (em QUALQUER tela) depois que ele começou, o desligar
+      // vence e nada é inscrito nem marcado. O toque dela é outra coisa: é um
+      // pedido novo, e vale o que ela fez por último.
+      const desligouNoMeio = () =>
+        silencioso && desligamentosDoAparelho !== desligamentosNoInicio;
       comecarAMexerNaInscricao();
       let inscreveu = false;
       let prazoEsgotado = false;
@@ -610,7 +635,12 @@ export function usePushNotifications() {
         const result: NotificationPermission = silencioso
           ? "granted"
           : await Notification.requestPermission();
-        if (geracaoDaInscricao.current !== geracaoDaAtivacao) return;
+        if (
+          geracaoDaInscricao.current !== geracaoDaAtivacao ||
+          desligouNoMeio()
+        ) {
+          return;
+        }
         setPermission(result);
 
         if (result === "denied") {
@@ -721,7 +751,10 @@ export function usePushNotifications() {
         const subJSON = newSubscription.toJSON();
 
         // A conta pode ter mudado enquanto o navegador criava a inscrição.
-        if (geracaoDaInscricao.current !== geracaoDaAtivacao) {
+        if (
+          geracaoDaInscricao.current !== geracaoDaAtivacao ||
+          desligouNoMeio()
+        ) {
           await desfazerInscricaoNova();
           return;
         }
@@ -743,7 +776,10 @@ export function usePushNotifications() {
         prazoEsgotado = error instanceof PrazoEsgotado;
 
         // Sair e voltar à mesma conta também invalida a resposta antiga.
-        if (geracaoDaInscricao.current !== geracaoDaAtivacao) {
+        if (
+          geracaoDaInscricao.current !== geracaoDaAtivacao ||
+          desligouNoMeio()
+        ) {
           await desfazerInscricaoNova();
           return;
         }
@@ -855,18 +891,22 @@ export function usePushNotifications() {
   }, [userId, isSupported, sondado, subscription, permission, inscrever]);
 
   // Devolve `true` quando o aparelho ficou sem inscrição (inclusive quando já
-  // não havia) e `false` quando falhou: o aviso passageiro é daqui, mas quem
-  // chama precisa saber para não fingir que desligou.
+  // não havia, e quando o navegador cancelou mas o banco não confirmou: o
+  // aparelho já parou de receber, e a tela já mostra isso) e `false` quando
+  // falhou e a inscrição segue no navegador: o aviso passageiro é daqui, mas
+  // quem chama precisa saber para não fingir que desligou.
   const unsubscribe = useCallback(async (): Promise<boolean> => {
     geracaoDaInscricao.current += 1;
-    // Desligar é de propósito: primeiro esquece, antes de qualquer espera ou
+    // Desligar é de propósito: invalida as conferências e religares que outras
+    // telas deixaram no ar e esquece o marcador, antes de qualquer espera ou
     // falha, para nenhuma limpeza do app religar o que a pessoa desligou.
+    desligamentosDoAparelho += 1;
     if (userId) esquecerAvisosLigados(userId);
     if (!subscription) return true;
 
     comecarAMexerNaInscricao();
     let saiuDoNavegador = false;
-    let prazoEsgotado = false;
+    let confirmouNoBanco = false;
     try {
       await subscription.unsubscribe();
       saiuDoNavegador = true;
@@ -883,18 +923,35 @@ export function usePushNotifications() {
 
       if (error) throw error;
 
+      confirmouNoBanco = true;
       setSubscription(null);
       toast.success("Você não receberá mais notificações.");
       return true;
     } catch (error) {
-      prazoEsgotado = error instanceof PrazoEsgotado;
       console.error("Error unsubscribing:", error);
+      if (saiuDoNavegador) {
+        // O navegador JÁ cancelou: o aparelho não recebe mais nada, mesmo que o
+        // banco não tenha confirmado (a linha que sobrou aponta para um
+        // endpoint morto, e o `send-push` a apaga na primeira resposta 404/410).
+        // Deixar o estado como estava mostraria "Avisos ligados" e nenhum
+        // botão de ligar para um aparelho que já não recebe. Esta tela também
+        // lê o estado real (abaixo, a origem do aviso é nova para ela).
+        setSubscription(null);
+        toast.error(
+          "Este aparelho já parou de receber os avisos, mas não deu para confirmar no servidor. Se voltar a receber, desligue de novo.",
+          { duration: DURACAO_DO_AVISO_DE_DESLIGAR_MS },
+        );
+        return true;
+      }
       toast.error("Erro ao cancelar inscrição");
       return false;
     } finally {
+      // Origem nova quando o navegador já cancelou e o banco não confirmou
+      // (erro ou prazo esgotado): a atualização às outras telas NÃO exclui a
+      // própria, que também relê o navegador.
       terminarDeMexerNaInscricao(
         saiuDoNavegador,
-        prazoEsgotado ? Symbol("reler após prazo") : quemSou.current,
+        confirmouNoBanco ? quemSou.current : Symbol("reler após desligar"),
       );
     }
   }, [subscription, userId]);
