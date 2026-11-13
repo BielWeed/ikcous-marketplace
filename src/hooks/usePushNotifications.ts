@@ -562,6 +562,7 @@ export function usePushNotifications() {
     let cancelado = false;
     const geracaoDaVerificacao = geracaoDaInscricao.current;
     const desligamentosNoInicio = desligamentosDoAparelho;
+    const marcadorNoInicio = avisosEstavamLigados(userId);
     const escritaNoInicio = versaoDeEscrita;
     const verificar = async () => {
       const dono = await dequemEAInscricao(subscription.endpoint, userId);
@@ -571,12 +572,19 @@ export function usePushNotifications() {
       // deste marcador existir. Só se a pessoa não desligou no meio da consulta
       // — senão o marcador voltaria depois de apagado. Desligar muda a geração
       // DESTA instância e o contador do aparelho: o segundo cobre o desligar
-      // que veio de OUTRA tela (cada uma tem a sua geração).
+      // que veio de OUTRA tela (cada uma tem a sua geração). Nenhum dos dois
+      // enxerga o desligar de OUTRA ABA do navegador (outro JavaScript, outros
+      // contadores): o único rastro dele é o marcador apagado do armazenamento
+      // compartilhado, relido AGORA — havia marcador quando a conferência
+      // começou e não há mais = consentimento retirado, nada se grava.
+      const retiradoEmOutraAba =
+        marcadorNoInicio && !avisosEstavamLigados(userId);
       if (
         !cancelado &&
         dono === "esta-conta" &&
         geracaoDaInscricao.current === geracaoDaVerificacao &&
-        desligamentosDoAparelho === desligamentosNoInicio
+        desligamentosDoAparelho === desligamentosNoInicio &&
+        !retiradoEmOutraAba
       ) {
         marcarAvisosLigados(userId);
       }
@@ -620,9 +628,14 @@ export function usePushNotifications() {
       // O religar automático é o único que ninguém pediu agora: se a cliente
       // desligou os avisos (em QUALQUER tela) depois que ele começou, o desligar
       // vence e nada é inscrito nem marcado. O toque dela é outra coisa: é um
-      // pedido novo, e vale o que ela fez por último.
+      // pedido novo, e vale o que ela fez por último. Desligar em OUTRA ABA não
+      // mexe no contador daqui (outro JavaScript): o rastro é o marcador, que o
+      // religar automático exige para começar e que o desligar apaga — sumiu,
+      // o consentimento foi retirado.
       const desligouNoMeio = () =>
-        silencioso && desligamentosDoAparelho !== desligamentosNoInicio;
+        silencioso &&
+        (desligamentosDoAparelho !== desligamentosNoInicio ||
+          (user !== null && !avisosEstavamLigados(user.id)));
       comecarAMexerNaInscricao();
       let inscreveu = false;
       let prazoEsgotado = false;

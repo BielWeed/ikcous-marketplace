@@ -81,6 +81,7 @@ import {
 } from "@/lib/mensagem-do-status-no-whatsapp";
 import { motivoDaFalhaEmPortugues } from "@/lib/motivo-da-falha-de-push";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { CAMPO_DO_CARIMBO_DO_AVISO } from "@/lib/ordem-do-aviso-do-pedido";
 import { pedidosParaCsv } from "@/lib/pedidos-csv";
 import { STATUS_PARA_PREPARAR } from "@/lib/pedidos-para-preparar";
 import {
@@ -1690,6 +1691,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     newStatus: OrderStatus,
     alvo: Order,
   ) => {
+    // Carimbo de ordem do aviso, tirado AGORA (status já gravado), antes de
+    // qualquer espera de rede: os avisos de status do mesmo pedido são
+    // disparados sem esperar um pelo outro e podem chegar trocados. O aparelho
+    // mantém na bandeja o de carimbo maior (`ordem-do-aviso-do-pedido.ts`).
+    const emitidoEm = Date.now();
     try {
       const title = "Status do Pedido Atualizado";
       const body = `Seu pedido #${numeroDoPedido(orderId)} agora está: ${rotuloDoStatusParaACliente(newStatus, alvo.retiradaNaLoja)}`;
@@ -1707,7 +1713,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             body,
             // Sem `url` o toque no aviso caía na vitrine ("/").
             url: caminhoDoPedidoNoAviso(orderId),
-            data: { orderId, type: "order_status" },
+            data: {
+              orderId,
+              type: "order_status",
+              [CAMPO_DO_CARIMBO_DO_AVISO]: emitidoEm,
+            },
           },
           headers: token
             ? {

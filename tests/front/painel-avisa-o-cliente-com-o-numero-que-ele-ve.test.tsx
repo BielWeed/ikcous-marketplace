@@ -276,10 +276,12 @@ describe("Painel — o aviso ao cliente usa o número que ele vê (#3884BE)", ()
     const chamada = invoke.mock.calls.find(([nome]) => nome === "send-push");
     expect(chamada).toBeTruthy();
     expect(chamada?.[1].body.url).toBe(`/order-details?id=${ID_DO_PEDIDO}`);
-    // O resto do aviso não muda.
+    // O resto do aviso não muda (o carimbo de ordem é coberto em
+    // painel-push-de-status-leva-ao-pedido.test.tsx).
     expect(chamada?.[1].body.data).toEqual({
       orderId: ID_DO_PEDIDO,
       type: "order_status",
+      emitidoEm: expect.any(Number),
     });
   });
 
