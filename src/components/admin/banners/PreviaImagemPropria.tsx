@@ -7,7 +7,7 @@ export function PreviaImagemPropria({
   comTexto,
 }: { formData: Partial<Banner>; comTexto: boolean }) {
   return (
-    <div className="relative aspect-[21/9] w-full select-none overflow-hidden rounded-xl border border-admin-border bg-zinc-900 shadow-inner motion-reduce:transition-none">
+    <div className="relative aspect-[2/1] w-full select-none overflow-hidden rounded-xl border border-admin-border bg-zinc-900 shadow-inner motion-reduce:transition-none">
       {formData.imageUrl ? (
         <img
           src={formData.imageUrl}
