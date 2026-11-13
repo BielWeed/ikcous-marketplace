@@ -2657,12 +2657,25 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     const combinacaoMudou =
       !editingVariant ||
       chaveDaIdentidade(editingVariant) !== chaveDaIdentidade(identidadeNova);
+    // O nome do tipo antigo, para achar as outras opções do grupo quando a
+    // edição o renomeia por inteiro (ver `renomeiaGrupoInteiro`).
+    const chaveDoGrupoAntigo = editingVariant
+      ? chaveDoGrupo(editingVariant.name)
+      : "";
+    // As irmãs são conferidas COMO FICAM: renomear o tipo e o valor juntos
+    // (Cor/P -> Cores/Pequeno) leva o tipo novo às irmãs, e a que já tinha
+    // "Pequeno" viraria gêmea da editada.
+    const comoFicaria = (v: { name: string; value: string }) =>
+      trava.renomeiaGrupoInteiro && chaveDoGrupo(v.name) === chaveDoGrupoAntigo
+        ? { name: nomeComposto, value: v.value }
+        : v;
     if (
       combinacaoMudou &&
       formData.variants.some(
         (v) =>
           v.id !== editingVariant?.id &&
-          chaveDaIdentidade(v) === chaveDaIdentidade(identidadeNova),
+          chaveDaIdentidade(comoFicaria(v)) ===
+            chaveDaIdentidade(identidadeNova),
       )
     ) {
       toast.error("Essa combinação já existe.", {
@@ -2782,11 +2795,6 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       imageUrl: variantFormData.imageUrl || undefined,
     };
 
-    // O nome do tipo antigo, para achar as outras opções do grupo quando a
-    // edição o renomeia por inteiro (ver `renomeiaGrupoInteiro`).
-    const chaveDoGrupoAntigo = editingVariant
-      ? chaveDoGrupo(editingVariant.name)
-      : "";
     const outrasDoGrupo = trava.renomeiaGrupoInteiro
       ? formData.variants.filter(
           (v) =>
