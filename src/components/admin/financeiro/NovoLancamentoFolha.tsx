@@ -367,6 +367,11 @@ export function NovoLancamentoFolha({
             disabled={enviando}
             value={form.valor}
             mask="currency"
+            // O valor aqui é sempre positivo (o tipo diz se entra ou sai), mas a
+            // máscara tem de CARREGAR o "-" digitado/colado: sem isto ela o
+            // descartava e "-10,00" virava +10 gravado. Com o sinal à vista,
+            // `validarLancamento` recusa ("Informe um valor maior que zero").
+            permiteNegativo
             inputMode="numeric"
             placeholder="0,00"
             autoComplete="off"

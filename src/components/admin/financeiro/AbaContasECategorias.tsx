@@ -1,4 +1,11 @@
-import { ChevronRight, Plus, Tags, Wallet } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronRight,
+  Plus,
+  RefreshCw,
+  Tags,
+  Wallet,
+} from "lucide-react";
 
 import type { ConsultaFinanceira } from "@/hooks/useFinanceiro";
 import {
@@ -6,6 +13,7 @@ import {
   rotuloDoGrupoDre,
   rotuloDoTipoDeConta,
 } from "@/lib/financeiro";
+import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type {
   CategoriaFinanceira,
@@ -47,6 +55,46 @@ function BotaoNovo({
       <Plus aria-hidden="true" className="size-4" />
       {rotulo}
     </button>
+  );
+}
+
+/**
+ * A releitura das contas falhou, mas a lista de antes continua na tela (o hook a
+ * preserva). Os saldos que ela mostra são os do último sucesso, e uma saída
+ * lançada desde então não está neles: avisa, em vez de fingir que são de agora.
+ */
+function AvisoDeSaldoDesatualizado({
+  aoTentarDeNovo,
+}: {
+  readonly aoTentarDeNovo: () => void;
+}) {
+  return (
+    <div
+      role="alert"
+      data-valor-desatualizado="true"
+      className="mb-4 flex flex-col items-start gap-3"
+    >
+      <p
+        className={cn(
+          "flex items-start gap-2 text-sm",
+          classeDoTexto("atencao"),
+        )}
+      >
+        <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+        <span>
+          Não deu para atualizar os saldos agora; estes valores podem estar
+          desatualizados.
+        </span>
+      </p>
+      <button
+        type="button"
+        onClick={aoTentarDeNovo}
+        className={CLASSE_BOTAO_SECUNDARIO}
+      >
+        <RefreshCw aria-hidden="true" className="size-4" />
+        Tentar de novo
+      </button>
+    </div>
   );
 }
 
@@ -212,20 +260,27 @@ export function AbaContasECategorias({
           />
         ) : !contas.dados ? (
           <EsqueletoDeLista linhas={3} />
-        ) : contas.dados.length === 0 ? (
-          <EstadoVazio
-            icone={Wallet}
-            titulo="Nenhuma conta"
-            texto="Cadastre onde o dinheiro da loja mora."
-            acao={
-              <BotaoNovo
-                rotulo="Nova conta"
-                aoClicar={() => abrirFolha({ tipo: "conta", conta: null })}
-              />
-            }
-          />
         ) : (
-          <ListaDeContas contas={contas.dados} abrirFolha={abrirFolha} />
+          <>
+            {contas.erro ? (
+              <AvisoDeSaldoDesatualizado aoTentarDeNovo={contas.recarregar} />
+            ) : null}
+            {contas.dados.length === 0 ? (
+              <EstadoVazio
+                icone={Wallet}
+                titulo="Nenhuma conta"
+                texto="Cadastre onde o dinheiro da loja mora."
+                acao={
+                  <BotaoNovo
+                    rotulo="Nova conta"
+                    aoClicar={() => abrirFolha({ tipo: "conta", conta: null })}
+                  />
+                }
+              />
+            ) : (
+              <ListaDeContas contas={contas.dados} abrirFolha={abrirFolha} />
+            )}
+          </>
         )}
       </CartaoSecao>
 
