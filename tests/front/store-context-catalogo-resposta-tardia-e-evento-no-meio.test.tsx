@@ -396,22 +396,26 @@ describe("StoreContext -- resposta tardia do catálogo não repõe estoque", () 
     expect(naTela?.stock).toBe(0);
   });
 
-  it("controle: evento COM variações (baixa de uma variação já mesclada pelo motor) substitui a grade da resposta", async () => {
+  async function tocarComGradeDoCofre(
+    estoques: Record<string, number>,
+    resposta: Linha[],
+  ) {
     await renderizar();
-
     controle.cofre.set("p1", {
-      ...produtoDoCofre("p1", 0),
+      // Como o motor deixa: `stock` é a soma das variações; a base fica à parte.
+      ...produtoDoCofre(
+        "p1",
+        Object.values(estoques).reduce((soma, n) => soma + n, 0),
+      ),
       estoqueDeBase: 9,
-      variants: [
-        {
-          id: "p1-P",
-          productId: "p1",
-          name: "Tamanho",
-          value: "P",
-          stockIncrement: 0,
-          active: true,
-        },
-      ],
+      variants: Object.entries(estoques).map(([valor, estoque]) => ({
+        id: `p1-${valor}`,
+        productId: "p1",
+        name: "Tamanho",
+        value: valor,
+        stockIncrement: estoque,
+        active: true,
+      })),
     });
     await avisar({
       table: "produtos",
@@ -419,16 +423,54 @@ describe("StoreContext -- resposta tardia do catálogo não repõe estoque", () 
       eventType: "UPDATE",
       newRecord: { id: "p1" },
     });
-    await responder(0, [
+    await responder(0, resposta);
+    return produtos.find((p) => p.id === "p1");
+  }
+
+  const gradeDaResposta = () => [
+    linhaDaView("p1", 9, [
+      variacaoDaView("p1", "P", 2),
+      variacaoDaView("p1", "M", 3),
+      variacaoDaView("p1", "G", 4),
+    ]),
+  ];
+  const estoquesDaGrade = (p?: Product) =>
+    p?.variants?.map((v) => `${v.value}:${v.stockIncrement}`);
+
+  it("grade PARCIAL do cofre (o motor montou só uma variação a partir de eventos) não apaga as outras da resposta: junta por id", async () => {
+    // Cofre vazio no começo: pedido com P e depois pedido com G dentro da
+    // janela da consulta -- o motor acrescentou só a G ao registro.
+    const naTela = await tocarComGradeDoCofre({ G: 1 }, gradeDaResposta());
+
+    expect(estoquesDaGrade(naTela)).toEqual(["P:2", "M:3", "G:1"]);
+    expect(naTela?.stock).toBe(6);
+    const gravado = (controle.replaceAll.mock.calls[0][1] as Product[]).find(
+      (p) => p.id === "p1",
+    );
+    expect(estoquesDaGrade(gravado)).toEqual(["P:2", "M:3", "G:1"]);
+    expect(gravado?.stock).toBe(6);
+  });
+
+  it("variação que o cofre tem e a resposta ainda não conhecia (criada durante a consulta) entra no fim da grade", async () => {
+    const naTela = await tocarComGradeDoCofre({ P: 0, GG: 5 }, [
       linhaDaView("p1", 9, [
         variacaoDaView("p1", "P", 2),
         variacaoDaView("p1", "M", 3),
       ]),
     ]);
 
-    const naTela = produtos.find((p) => p.id === "p1");
-    expect(naTela?.variants?.map((v) => v.stockIncrement)).toEqual([0]);
-    expect(naTela?.stock).toBe(0);
+    expect(estoquesDaGrade(naTela)).toEqual(["P:0", "M:3", "GG:5"]);
+    expect(naTela?.stock).toBe(8);
+  });
+
+  it("controle: grade COMPLETA do cofre, com os mesmos ids, vale por inteiro (a do evento manda sobre a da resposta)", async () => {
+    const naTela = await tocarComGradeDoCofre(
+      { P: 0, M: 1, G: 0 },
+      gradeDaResposta(),
+    );
+
+    expect(estoquesDaGrade(naTela)).toEqual(["P:0", "M:1", "G:0"]);
+    expect(naTela?.stock).toBe(1);
   });
 
   it("evento de ANTES da consulta nova não vale mais que ela: a nova leitura do servidor já o inclui", async () => {
