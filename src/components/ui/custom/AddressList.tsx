@@ -338,7 +338,7 @@ export const AddressList = memo(function AddressList({
                   </div>
                   <div className="min-w-0">
                     <span
-                      className={`block text-sm font-bold leading-tight ${selectable ? "text-zinc-900" : "text-foreground"}`}
+                      className={`block break-words text-sm font-bold leading-tight ${selectable ? "text-zinc-900" : "text-foreground"}`}
                     >
                       {address.name}
                     </span>
@@ -412,7 +412,7 @@ export const AddressList = memo(function AddressList({
                 }
               >
                 <p
-                  className={`mb-1 text-xs font-bold uppercase tracking-tighter ${selectable ? "text-zinc-900" : "text-foreground"}`}
+                  className={`mb-1 break-words text-xs font-bold uppercase tracking-tighter ${selectable ? "text-zinc-900" : "text-foreground"}`}
                 >
                   {address.recipient_name}
                 </p>
