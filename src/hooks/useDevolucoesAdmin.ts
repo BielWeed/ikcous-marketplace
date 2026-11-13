@@ -262,20 +262,38 @@ export function useDevolucoesAbertas(ativo = true): {
   useEffect(() => {
     if (!ativo) return;
     let vivo = true;
-    (async () => {
+    // Leitura mais nova atropela a mais velha: resposta atrasada não volta o
+    // número no tempo (mesmo padrão do `useAvisosDoLojista`).
+    let rodadaAtual = 0;
+    const ler = async () => {
+      const rodada = ++rodadaAtual;
       try {
         const { data, error } = await supabase.rpc("admin_devolucoes_listar", {
           p_limite: 1,
         });
         const lista = error ? null : lerListaAdmin(data);
-        if (vivo && lista) setContagem(lista.contagem);
+        if (vivo && rodada === rodadaAtual && lista) {
+          setContagem(lista.contagem);
+        }
       } catch {
         // Botão continua existindo, só sem o número: a tela de Devoluções
-        // diz a verdade quando aberta.
+        // diz a verdade quando aberta. Na releitura, o número anterior fica.
       }
-    })();
+    };
+    void ler();
+    // A tela de Pedidos fica aberta no balcão: relê quando a página volta ao
+    // foco (celular desbloqueado) e quando o painel pede recontagem (prazo de
+    // devolução salvo), os mesmos gatilhos do sino. Sem apagar o número.
+    const aoMudarAVisibilidade = () => {
+      if (document.visibilityState === "visible") void ler();
+    };
+    const aoPedirRecontagem = () => void ler();
+    document.addEventListener("visibilitychange", aoMudarAVisibilidade);
+    window.addEventListener(EVENTO_RECONTAR_AVISOS, aoPedirRecontagem);
     return () => {
       vivo = false;
+      document.removeEventListener("visibilitychange", aoMudarAVisibilidade);
+      window.removeEventListener(EVENTO_RECONTAR_AVISOS, aoPedirRecontagem);
     };
   }, [ativo]);
 
