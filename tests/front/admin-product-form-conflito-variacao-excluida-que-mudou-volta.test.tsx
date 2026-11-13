@@ -195,8 +195,10 @@ it("M excluída que o outro aparelho ligou com 10 peças volta à lista e o segu
     (document.getElementById("product-stock") as HTMLInputElement).value,
   ).toBe("12");
   expect(avisoAmarelo).toHaveBeenCalledTimes(1);
-  expect(avisoAmarelo.mock.calls[0]?.[0]).toContain("Cor: M");
-  expect(avisoAmarelo.mock.calls[0]?.[0]).toContain("outro aparelho");
+  // O mesmo texto do aviso de restaurar o rascunho (um formato só).
+  expect(avisoAmarelo.mock.calls[0]?.[0]).toBe(
+    "A variação Cor M foi alterada em outro aparelho e voltou para a lista; revise antes de excluir.",
+  );
 
   // O segundo clique não leva "vm" na lista de exclusões.
   await salvar();
