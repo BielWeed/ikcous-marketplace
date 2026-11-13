@@ -207,6 +207,48 @@ describe("Minha loja › Dados da empresa", () => {
     expect(email().value).toBe("oi@loja.com");
   });
 
+  it("aparelho com a cópia velha: editar só a razão social NÃO manda o e-mail (não apaga o que outro aparelho cadastrou)", async () => {
+    // Este aparelho abriu Minha loja sem e-mail; outro aparelho já cadastrou.
+    estado.config = { storeLegalName: "Loja antiga" };
+    await abrir();
+    await digitar(razao(), "Loja nova Ltda");
+    await salvar();
+
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    const [enviado] = updateConfig.mock.calls[0] as unknown as [
+      Record<string, unknown>,
+    ];
+    expect(enviado).toEqual({ storeLegalName: "Loja nova Ltda" });
+    expect(enviado).not.toHaveProperty("storeSupportEmail");
+    expect(enviado).not.toHaveProperty("storeLegalDocument");
+  });
+
+  it("editar só o e-mail manda só o e-mail", async () => {
+    estado.config = {
+      storeLegalName: "Loja da Ana Ltda",
+      storeLegalDocument: "11222333000181",
+    };
+    await abrir();
+    await digitar(email(), "oi@loja.com");
+    await salvar();
+    expect(updateConfig.mock.calls[0]?.[0]).toEqual({
+      storeSupportEmail: "oi@loja.com",
+    });
+  });
+
+  it("editar só o documento manda só o documento", async () => {
+    estado.config = {
+      storeLegalName: "Loja da Ana Ltda",
+      storeSupportEmail: "oi@loja.com",
+    };
+    await abrir();
+    await digitar(documento(), "529.982.247-25");
+    await salvar();
+    expect(updateConfig.mock.calls[0]?.[0]).toEqual({
+      storeLegalDocument: "52998224725",
+    });
+  });
+
   it("CPF também vale", async () => {
     await abrir();
     await digitar(documento(), "529.982.247-25");
