@@ -59,6 +59,8 @@ const mock = vi.hoisted(() => ({
     error: any;
   }>,
   resultadoUpdateVariant: { error: null } as { error: any },
+  /** O UPDATE de mídia (imagem_urls) do backup rejeita em vez de responder. */
+  updateDeMidiaRejeita: false,
   rpcRowsAdmin: [] as any[],
 }));
 
@@ -132,6 +134,8 @@ vi.mock("@/lib/supabase", () => ({
         eq: async (_col: string, id: string) => {
           if (tabela === "produtos") {
             mock.ordem.push({ tipo: "update", tabela, payload, id });
+            if (mock.updateDeMidiaRejeita && payload.imagem_urls)
+              throw new Error("rede caiu no UPDATE de mídia");
             if (mock.updateProdutosPendurado)
               return new Promise<never>(() => {});
             const proximo = mock.resultadoUpdateProdutos.shift();
@@ -235,6 +239,7 @@ describe("useProducts.deleteProduct — #99 ordem das fases", () => {
     mock.ordem.length = 0;
     mock.resultadoUpdateProdutos.length = 0;
     mock.updateProdutosPendurado = false;
+    mock.updateDeMidiaRejeita = false;
     mock.resultadoMove = async () => ({ error: null });
     mock.resultadoUpdateVariant = { error: null };
     mock.rpcRowsAdmin = [produtoComDuasImagens];
@@ -414,6 +419,63 @@ describe("useProducts.deleteProduct — #99 ordem das fases", () => {
     ).toBe(true);
   });
 
+  // A mídia é best-effort e roda DEPOIS do soft-delete confirmado e da lista
+  // atualizada. Antes, `deleteProduct` aguardava o backup (Storage + UPDATEs
+  // sem prazo): se uma chamada ficasse sem resposta, a função nunca devolvia
+  // e a tela de produtos ficava em "atualizando" — ao excluir o último
+  // produto, nunca chegava ao estado vazio.
+  it("backup das fotos PENDURADO: a exclusão já devolve true, atualiza a lista e avisa 'Produto removido'", async () => {
+    await montarECarregar();
+    mock.resultadoMove = () => new Promise<never>(() => {});
+
+    let resultado: boolean | undefined | "pendente" = "pendente";
+    await act(async () => {
+      void apiRef!.deleteProduct("prod-del-1").then((r) => {
+        resultado = r;
+      });
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    expect(resultado).toBe(true);
+    expect(mock.toastSuccess).toHaveBeenCalledWith("Produto removido");
+    expect(mock.toastError).not.toHaveBeenCalled();
+    expect(mock.fetchProductsContext).toHaveBeenCalled();
+    expect(apiRef!.products.map((p) => p.id)).not.toContain("prod-del-1");
+    // O backup foi disparado (a ordem soft-delete -> mídia continua), só não
+    // é esperado.
+    expect(mock.ordem[0]).toMatchObject({ tipo: "update", tabela: "produtos" });
+    expect(mock.ordem.some((c) => c.tipo === "copy")).toBe(true);
+  });
+
+  it("backup que REJEITA (Storage ou UPDATE de mídia): não vira 'Erro ao excluir produto' nem promessa rejeitada solta", async () => {
+    const naoTratadas: unknown[] = [];
+    const ouvir = (motivo: unknown) => naoTratadas.push(motivo);
+    process.on("unhandledRejection", ouvir);
+    try {
+      await montarECarregar();
+      mock.resultadoMove = async () => {
+        throw new Error("Storage derrubou a conexão");
+      };
+      mock.updateDeMidiaRejeita = true;
+
+      let resultado: boolean | undefined;
+      await act(async () => {
+        resultado = await apiRef!.deleteProduct("prod-del-1");
+        await new Promise((r) => setTimeout(r, 20));
+      });
+
+      expect(resultado).toBe(true);
+      expect(mock.toastSuccess).toHaveBeenCalledWith("Produto removido");
+      expect(mock.toastError).not.toHaveBeenCalled();
+      expect(apiRef!.products.map((p) => p.id)).not.toContain("prod-del-1");
+      // A falha só fica registrada no console, nada escapa.
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      expect(naoTratadas).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", ouvir);
+    }
+  });
+
   it("produto sem imagens não escreve imagem_urls/imagem_url à toa", async () => {
     mock.rpcRowsAdmin = [produtoSemImagens];
     await montarECarregar();
@@ -550,6 +612,7 @@ describe("useProducts.deleteProducts (lote) — #99 mesma ordem do unitário", (
     mock.fetchProductsContext.mockResolvedValue(undefined);
     mock.ordem.length = 0;
     mock.resultadoUpdateProdutos.length = 0;
+    mock.updateDeMidiaRejeita = false;
     mock.resultadoMove = async () => ({ error: null });
     mock.resultadoUpdateVariant = { error: null };
     mock.rpcRowsAdmin = [produtoComDuasImagens, produtoSemImagens];
@@ -646,6 +709,65 @@ describe("useProducts.deleteProducts (lote) — #99 mesma ordem do unitário", (
     expect(resultado).toBe(true);
     expect(mock.toastSuccess).toHaveBeenCalledWith("1 produto removido");
     expect(mock.toastSuccess).not.toHaveBeenCalledWith("1 produtos removidos");
+  });
+
+  // Mesma regra do unitário: o backup da mídia é best-effort e NÃO segura o
+  // lote. Antes, `deleteProducts` aguardava o backup de cada produto DENTRO do
+  // laço — um backup pendurado parava o lote no meio (os demais produtos nem
+  // eram excluídos) e a tela ficava em "atualizando" para sempre.
+  it("backup das fotos PENDURADO: o lote exclui TODOS os produtos, atualiza a lista e devolve true", async () => {
+    await montarECarregar();
+    mock.resultadoMove = () => new Promise<never>(() => {});
+
+    let resultado: boolean | undefined | "pendente" = "pendente";
+    await act(async () => {
+      void apiRef!.deleteProducts(["prod-del-1", "prod-del-2"]).then((r) => {
+        resultado = r;
+      });
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    expect(resultado).toBe(true);
+    expect(mock.toastSuccess).toHaveBeenCalledWith("2 produtos removidos");
+    expect(mock.toastError).not.toHaveBeenCalled();
+    expect(mock.fetchProductsContext).toHaveBeenCalled();
+    // Os DOIS soft-deletes aconteceram, mesmo com o backup do primeiro preso.
+    const softDeletes = mock.ordem.filter(
+      (c) =>
+        c.tipo === "update" &&
+        c.tabela === "produtos" &&
+        (c as any).payload.deleted_at,
+    );
+    expect(softDeletes.map((c: any) => c.id)).toEqual([
+      "prod-del-1",
+      "prod-del-2",
+    ]);
+  });
+
+  it("backup que REJEITA no lote: não vira 'Erro ao excluir produtos' nem promessa rejeitada solta", async () => {
+    const naoTratadas: unknown[] = [];
+    const ouvir = (motivo: unknown) => naoTratadas.push(motivo);
+    process.on("unhandledRejection", ouvir);
+    try {
+      await montarECarregar();
+      mock.resultadoMove = async () => {
+        throw new Error("Storage derrubou a conexão");
+      };
+      mock.updateDeMidiaRejeita = true;
+
+      let resultado: boolean | undefined;
+      await act(async () => {
+        resultado = await apiRef!.deleteProducts(["prod-del-1", "prod-del-2"]);
+        await new Promise((r) => setTimeout(r, 20));
+      });
+
+      expect(resultado).toBe(true);
+      expect(mock.toastSuccess).toHaveBeenCalledWith("2 produtos removidos");
+      expect(mock.toastError).not.toHaveBeenCalled();
+      expect(naoTratadas).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", ouvir);
+    }
   });
 
   it("lote com sucesso: mídia depois do soft-delete de CADA produto, best-effort", async () => {
