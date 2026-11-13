@@ -30,6 +30,10 @@ import { EVENTO_AVALIACAO_EXCLUIDA } from "@/lib/evento-avaliacao-excluida";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { pluralizar } from "@/lib/pluralizar";
 import { supabase } from "@/lib/supabase";
+import {
+  TETO_DA_RESPOSTA_DA_LOJA,
+  avisoDoTetoDaRespostaDaLoja,
+} from "@/lib/teto-da-resposta-da-loja";
 import { classeDoTexto } from "@/lib/tons-de-estado";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -756,7 +760,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({
             300,
           );
         }}
+        maxLength={TETO_DA_RESPOSTA_DA_LOJA}
         aria-label="Sua resposta"
+        aria-describedby={`contadorDaResposta${reviewId}`}
         placeholder={
           isOffline
             ? "Você está offline. Não é possível responder no momento."
@@ -765,6 +771,19 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         className="h-32 w-full resize-none rounded-2xl border border-solid border-admin-border-strong bg-admin-bg p-3.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus-visible:outline focus-visible:outline-2 disabled:opacity-40"
         disabled={isSubmittingReply || isOffline}
       />
+      <p
+        id={`contadorDaResposta${reviewId}`}
+        aria-live="polite"
+        className={cn(
+          "text-right text-xs text-zinc-400",
+          replyText.length >= TETO_DA_RESPOSTA_DA_LOJA * 0.9 && "text-red-400",
+        )}
+      >
+        {replyText.length > TETO_DA_RESPOSTA_DA_LOJA
+          ? `${avisoDoTetoDaRespostaDaLoja}. `
+          : ""}
+        {replyText.length}/{TETO_DA_RESPOSTA_DA_LOJA} caracteres
+      </p>
 
       <div className="flex gap-2">
         <button
@@ -779,7 +798,10 @@ export const AdminReviewsView = memo(function AdminReviewsView({
           type="button"
           onClick={() => enviarResposta(reviewId)}
           disabled={
-            isSubmittingReply || !nomeTemConteudoVisivel(replyText) || isOffline
+            isSubmittingReply ||
+            !nomeTemConteudoVisivel(replyText) ||
+            replyText.length > TETO_DA_RESPOSTA_DA_LOJA ||
+            isOffline
           }
           className={cn(BOTAO_NEUTRO, "flex-[2]")}
         >

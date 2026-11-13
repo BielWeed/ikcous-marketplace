@@ -6,6 +6,10 @@ import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import { iniciaisDaLoja } from "@/lib/iniciais-da-loja";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { tempoRelativo } from "@/lib/tempo-relativo";
+import {
+  TETO_DA_RESPOSTA_DA_LOJA,
+  avisoDoTetoDaRespostaDaLoja,
+} from "@/lib/teto-da-resposta-da-loja";
 import { cn } from "@/lib/utils";
 import { Check, MessageSquare, Reply, Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -444,12 +448,17 @@ export function ProductQA({
                             setReplyText(e.target.value);
                           }}
                           placeholder="Escreva sua resposta oficial..."
+                          maxLength={TETO_DA_RESPOSTA_DA_LOJA}
                           aria-label="Resposta oficial da loja"
+                          aria-describedby={`qa-reply-count-${q.id}`}
                           className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 pr-10 text-xs transition-all placeholder:text-zinc-400 focus:border-primary focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                         <button
                           onClick={() => handleReply(q.id)}
-                          disabled={!nomeTemConteudoVisivel(replyText)}
+                          disabled={
+                            !nomeTemConteudoVisivel(replyText) ||
+                            replyText.length > TETO_DA_RESPOSTA_DA_LOJA
+                          }
                           title={
                             q.answers.length > 0
                               ? "Salvar edição"
@@ -465,6 +474,20 @@ export function ProductQA({
                           <Send className="size-3" />
                         </button>
                       </div>
+                      <p
+                        id={`qa-reply-count-${q.id}`}
+                        aria-live="polite"
+                        className={cn(
+                          "text-right text-xs text-muted-foreground",
+                          replyText.length >= TETO_DA_RESPOSTA_DA_LOJA * 0.9 &&
+                            "text-red-600",
+                        )}
+                      >
+                        {replyText.length > TETO_DA_RESPOSTA_DA_LOJA
+                          ? `${avisoDoTetoDaRespostaDaLoja}. `
+                          : ""}
+                        {replyText.length}/{TETO_DA_RESPOSTA_DA_LOJA} caracteres
+                      </p>
                       <div className="flex justify-end">
                         <button
                           onClick={() => {
