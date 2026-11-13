@@ -11,6 +11,9 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MudancaDoEndereco } from "@/components/admin/minha-loja/EnderecoDaLoja";
+import { TIMEOUT_BUSCA_CEP_MS } from "@/hooks/useBuscaCep";
+
+import { pararABuscaDeCep } from "./duble-busca-de-cep";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -569,21 +572,123 @@ describe("EnderecoDaLoja — preenche pelo CEP", () => {
     expect(hospedeiro.textContent).not.toContain("Para salvar o endereço");
   });
 
-  it("falha de REDE na busca não é CEP inexistente: o que está escrito continua podendo ser salvo", async () => {
+  // ── CEP trocado e a busca NÃO respondeu (rede fora, demora) ─────────────
+  // Defeito medido: trocar só o CEP (São Paulo -> Campinas) com a busca
+  // falhando deixava o Salvar livre e a loja gravava o CEP novo com a rua e a
+  // cidade de antes (endereço misturado na vitrine). Falha de rede não prova
+  // que o CEP não existe (por isso a mensagem é outra), mas também não prova
+  // que o endereço de antes serve: sem busca ok e sem a lojista confirmar
+  // mexendo no endereço, não grava.
+  function instalarRedeFora() {
     const erro = vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        throw new TypeError("Failed to fetch");
-      }),
-    );
+    const fetchFora = vi.fn(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    vi.stubGlobal("fetch", fetchFora);
+    return { erro, fetchFora };
+  }
+
+  const MOTIVO_DA_REDE = /não conseguimos buscar o CEP novo/i;
+
+  it("falha de REDE na busca: CEP novo com o endereço de antes NÃO pode ser salvo, e a tela diz como seguir", async () => {
+    const { erro } = instalarRedeFora();
     await montar(SALVO_PAULISTA);
     await digitarOCep("13010000");
 
     expect(hospedeiro.textContent).toContain("Não foi possível buscar o CEP");
     expect(hospedeiro.textContent).not.toContain("esse CEP não foi encontrado");
+    expect(campo("endereco-rua").value).toBe("Avenida Paulista");
+    expect(ultima()?.alterado).toBe(true);
+    expect(ultima()?.valores).toBeNull();
+    expect(ultima()?.motivo).toMatch(MOTIVO_DA_REDE);
+    expect(ultima()?.motivo).toMatch(/Tente de novo ou preencha rua e cidade/);
+    expect(hospedeiro.textContent).toContain(
+      "Para salvar o endereço: não conseguimos buscar o CEP novo",
+    );
+    erro.mockRestore();
+  });
+
+  it("falha de REDE: preencher a rua à mão libera o Salvar com o endereço dela", async () => {
+    const { erro } = instalarRedeFora();
+    await montar(SALVO_PAULISTA);
+    await digitarOCep("13010000");
+    expect(ultima()?.valores).toBeNull();
+
+    await digitar("endereco-rua", "Rua Barão de Jaguara");
+    await digitar("endereco-bairro", "Centro");
+    await digitar("endereco-cidade", "Campinas");
     expect(ultima()?.motivo).toBeNull();
     expect(ultima()?.valores?.originCep).toBe("13010-000");
+    expect(ultima()?.valores?.storeCity).toBe("Campinas");
+    expect(hospedeiro.textContent).not.toContain("Para salvar o endereço");
+    erro.mockRestore();
+  });
+
+  it("falha de REDE: 'Tentar de novo' refaz a busca e, achando, o endereço do CEP novo libera o Salvar", async () => {
+    const { erro } = instalarRedeFora();
+    await montar(SALVO_PAULISTA);
+    await digitarOCep("13010000");
+    expect(ultima()?.valores).toBeNull();
+
+    instalarProvedorDeCep(); // a rede voltou
+    const tentar = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      (b.textContent ?? "").includes("Tentar de novo"),
+    );
+    expect(tentar).toBeDefined();
+    await act(async () => {
+      tentar?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+
+    expect(campo("endereco-rua").value).toBe("Rua Barão de Jaguara");
+    expect(ultima()?.motivo).toBeNull();
+    expect(ultima()?.valores?.originCep).toBe("13010-000");
+    expect(hospedeiro.textContent).not.toContain("Tentar de novo");
+    erro.mockRestore();
+  });
+
+  it("busca que DEMORA (estoura o prazo) também bloqueia o CEP novo com o endereço de antes", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      pararABuscaDeCep(); // nenhum provedor responde
+      await montar(SALVO_PAULISTA);
+      const cep = campo("endereco-cep");
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set;
+      await act(async () => {
+        cep.focus();
+        setter?.call(cep, "13010000");
+        cep.dispatchEvent(new Event("input", { bubbles: true }));
+        cep.blur(); // entrega o valor na hora
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(TIMEOUT_BUSCA_CEP_MS + 500);
+      });
+
+      expect(hospedeiro.textContent).toContain("Não foi possível buscar");
+      expect(ultima()?.valores).toBeNull();
+      expect(ultima()?.motivo).toMatch(MOTIVO_DA_REDE);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("CEP inalterado e a conferência dele falha: o endereço salvo segue podendo ser editado e salvo como antes", async () => {
+    const { erro } = instalarRedeFora();
+    await montar(SALVO_PAULISTA);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    expect(ultima()?.alterado).toBe(false);
+    expect(ultima()?.motivo).toBeNull();
+
+    await digitar("endereco-numero", "1600");
+    expect(ultima()?.alterado).toBe(true);
+    expect(ultima()?.motivo).toBeNull();
+    expect(ultima()?.valores?.storeAddress).toContain("1600");
+    expect(hospedeiro.textContent).not.toContain("Para salvar o endereço");
     erro.mockRestore();
   });
 

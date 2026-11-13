@@ -18,6 +18,7 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import type { Order, PaymentStatus } from "@/types";
 
 vi.mock("@/utils/haptic", () => ({
@@ -108,9 +109,8 @@ describe("OrderList — contraste do texto no cartão do pedido (WCAG AA)", () =
   it("data do pedido: usa text-muted-foreground (contraste AA), sem opacidade que reprovava", async () => {
     await renderizar(pedidoBase);
 
-    const dataFormatada = new Date(pedidoBase.createdAt).toLocaleDateString(
-      "pt-BR",
-    );
+    // A lista mostra a data no fuso da loja (como o painel), não no do aparelho.
+    const dataFormatada = dataNoFusoDaLoja(new Date(pedidoBase.createdAt));
     const data = acharSpanPorTexto(dataFormatada);
     expect(data).not.toBeUndefined();
     // A cor vive no contêiner do rodapé (número, ponto e data a herdam).
