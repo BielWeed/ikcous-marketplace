@@ -374,7 +374,10 @@ export function CategoriaFolha({
     aoMudarSujo(sujo);
   }, [sujo, aoMudarSujo]);
 
-  const validacao = useMemo(() => validarCategoria(form), [form]);
+  const validacao = useMemo(
+    () => validarCategoria(form, sistema),
+    [form, sistema],
+  );
   const erros = tentou && !validacao.ok ? validacao.erros : {};
   const grupos = gruposDaNatureza(form.natureza);
 
@@ -396,7 +399,7 @@ export function CategoriaFolha({
   async function salvar(nome = form.nome) {
     if (trava.current || semResposta) return;
     setTentou(true);
-    const resultado = validarCategoria({ ...form, nome });
+    const resultado = validarCategoria({ ...form, nome }, sistema);
     if (!resultado.ok) return;
     trava.current = true;
     aoMudarEnviando?.(true);
@@ -410,15 +413,19 @@ export function CategoriaFolha({
           {
             rotulo: "Natureza",
             texto:
-              resultado.payload.natureza === "receita" ? "Receita" : "Despesa",
+              (resultado.payload.natureza ?? form.natureza) === "receita"
+                ? "Receita"
+                : "Despesa",
           },
           {
             rotulo: "Linha do resultado",
-            texto: rotuloDoGrupoDre(resultado.payload.grupo_dre),
+            texto: rotuloDoGrupoDre(
+              resultado.payload.grupo_dre ?? form.grupoDre,
+            ),
           },
           {
             rotulo: "Categoria ativa",
-            texto: resultado.payload.ativa ? "Sim" : "Não",
+            texto: (resultado.payload.ativa ?? form.ativa) ? "Sim" : "Não",
           },
         ],
       });
@@ -528,7 +535,7 @@ export function CategoriaFolha({
               >
                 <input
                   type="radio"
-                  disabled={enviando}
+                  disabled={sistema || enviando}
                   name="fin-categoria-grupo"
                   value={grupo}
                   checked={escolhido}

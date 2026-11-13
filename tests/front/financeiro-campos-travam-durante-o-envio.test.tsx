@@ -239,13 +239,15 @@ const CASOS: Caso[] = [
       campoDeTexto: "fin-categoria-nome",
       texto: "Aluguel da loja",
       rpc: "fin_categoria_salvar",
-      payload: {
-        ...(sistema ? { id: CATEGORIA.id } : {}),
-        nome: "Aluguel da loja",
-        natureza: "despesa",
-        grupo_dre: "despesa_fixa",
-        ativa: true,
-      },
+      // Categoria do sistema: o banco recusa a presença de natureza/grupo_dre, só o nome viaja.
+      payload: sistema
+        ? { id: CATEGORIA.id, nome: "Aluguel da loja", ativa: true }
+        : {
+            nome: "Aluguel da loja",
+            natureza: "despesa",
+            grupo_dre: "despesa_fixa",
+            ativa: true,
+          },
       salvar: "Salvar",
       cadastroNovo: !sistema,
     },
