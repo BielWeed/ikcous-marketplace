@@ -16,6 +16,10 @@ import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useDevolucoesAdmin } from "@/hooks/useDevolucoesAdmin";
 import { instanteDoDia, useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import {
+  consumirPedidoDeDevolucoesSolicitadas,
+  haPedidoDeDevolucoesSolicitadas,
+} from "@/lib/aviso-leva-a-devolucoes-solicitadas";
+import {
   STATUS_EM_ORDEM,
   contagemDe,
   rotuloStatus,
@@ -67,7 +71,11 @@ export function AdminDevolucoesView({
   onSetDirty,
   onSetBackOverride,
 }: AdminDevolucoesViewProps) {
-  const [status, setStatus] = useState<StatusDevolucao | null>(null);
+  // Tela por abrir pelo aviso de devolução: já nasce em "Solicitadas" (só
+  // espia o recado; quem o gasta é o efeito abaixo).
+  const [status, setStatus] = useState<StatusDevolucao | null>(() =>
+    active !== false && haPedidoDeDevolucoesSolicitadas() ? "solicitada" : null,
+  );
   const [busca, setBusca] = useState("");
   const [digitando, setDigitando] = useState(false);
   // O roteador restaura o id da URL também no F5 e em links diretos.
@@ -98,6 +106,16 @@ export function AdminDevolucoesView({
   useEffect(() => {
     setSelecionada(selectedDevolucaoId ?? null);
   }, [selectedDevolucaoId]);
+
+  // Chegou pelo aviso "devolução esperando sua resposta": o aviso conta só as
+  // solicitadas, então a lista abre nelas e sem a busca que ficou escrita. A
+  // tela fica montada em segundo plano; abrir pelo menu não passa por aqui.
+  useEffect(() => {
+    if (active === false) return;
+    if (!consumirPedidoDeDevolucoesSolicitadas()) return;
+    setStatus("solicitada");
+    setBusca("");
+  }, [active]);
 
   useEffect(() => {
     sujoRef.current = sujo;
