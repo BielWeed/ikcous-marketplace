@@ -297,6 +297,56 @@ describe("Minha loja › Dados da empresa", () => {
     expect(documento().value).toBe("11.222.333/0001-81");
   });
 
+  // Defeito medido: 15 dígitos cabiam nos 18 caracteres do campo, a máscara de
+  // saída cortava em 14 e o CNPJ "novo" (válido) era gravado como se ela o
+  // tivesse digitado.
+  async function sairDoDocumento() {
+    await act(async () => {
+      documento().dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    });
+  }
+
+  it("documento com dígito a mais: a máscara NÃO corta, o aviso aparece e nada é gravado", async () => {
+    await abrir();
+    await digitar(documento(), "112223330001819");
+    await sairDoDocumento();
+    expect(documento().value).toBe("112223330001819");
+
+    await salvar();
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(
+      hospedeiro.querySelector("#empresa-documento-erro")?.textContent,
+    ).toContain("não confere");
+    expect(toastSuccess).not.toHaveBeenCalled();
+  });
+
+  it("colar CNPJ com máscara e um caractere sobrando também é recusado, não cortado", async () => {
+    await abrir();
+    await digitar(documento(), "11.222.333/0001-81X");
+    await sairDoDocumento();
+    expect(documento().value).toBe("11222333000181X");
+    await salvar();
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(hospedeiro.querySelector("#empresa-documento-erro")).not.toBeNull();
+  });
+
+  it("o campo de documento não tem maxlength (o corte do navegador vem antes da máscara e da conferência)", async () => {
+    await abrir();
+    expect(documento().hasAttribute("maxlength")).toBe(false);
+  });
+
+  it("CPF e CNPJ certos continuam sendo mascarados e gravados ao sair do campo", async () => {
+    await abrir();
+    await digitar(documento(), "52998224725");
+    await sairDoDocumento();
+    expect(documento().value).toBe("529.982.247-25");
+    await salvar();
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(
+      (updateConfig.mock.calls[0] as unknown as [Record<string, unknown>])[0],
+    ).toMatchObject({ storeLegalDocument: "52998224725" });
+  });
+
   it("falha ao gravar: não anuncia sucesso e o que ela digitou fica", async () => {
     updateConfig.mockResolvedValueOnce(false);
     await abrir();
