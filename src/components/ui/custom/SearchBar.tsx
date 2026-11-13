@@ -12,7 +12,7 @@ import {
   pontuadorDaBusca,
   produtoCombinaComBusca,
 } from "@/lib/busca-de-produtos";
-import { ehMarcadorDeFoto } from "@/lib/foto-do-produto";
+import { soFotosReais } from "@/lib/foto-do-produto";
 import { miniaturaDaSugestao, usarImagemOriginal } from "@/lib/imageUrl";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { precoDeVitrine } from "@/lib/preco-de-vitrine";
@@ -141,14 +141,10 @@ export function SearchBar({
     }
   }, [localValue]);
 
-  // Texto que a cliente ja "gastou" ao abrir um produto pela sugestao: o envio
-  // pendente dele levaria o App a tira-la da tela do produto de volta a Home.
-  const textoGastoNoProduto = useRef<string | null>(null);
-
   // Debounced update to parent for catalog filter
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (localValue !== value && localValue !== textoGastoNoProduto.current) {
+      if (localValue !== value) {
         onChange(localValue);
       }
     }, 150);
@@ -209,7 +205,14 @@ export function SearchBar({
   const handleSuggestionClick = (suggestion: string, productId?: string) => {
     haptic.medium();
     if (productId && onProductClick) {
-      textoGastoNoProduto.current = localValue;
+      // O texto digitado por cima do que o App guarda (os 150 ms ainda nao
+      // passaram) NAO e enviado: o App acharia a cliente na tela do produto,
+      // entenderia que ela buscou algo e a levaria de volta a Home. Mas o
+      // campo tambem nao pode seguir mostrando um texto que a lista nao usa:
+      // ao voltar, campo e lista discordariam. Ele volta ao termo que o App
+      // guarda (o mesmo que filtra a lista); a troca tambem cancela o envio
+      // pendente, porque o efeito do debounce so envia se campo e App diferem.
+      setLocalValue(value);
       onProductClick(productId);
       setIsOpen(false);
       return;
@@ -326,7 +329,17 @@ export function SearchBar({
 
   // A caixinha mostra no maximo 6, mas o numero do titulo e' o TOTAL: e' ele
   // que a lista inteira (o "Ver todos os resultados") vai mostrar.
-  const searchResults = useMemo(() => allResults.slice(0, 6), [allResults]);
+  // Cada um leva a capa pela MESMA regra do cartao do catalogo (ProductCard):
+  // a primeira foto REAL. Cadastro antigo guarda [marcador, foto real], e olhar
+  // so a posicao 0 anunciava "Sem foto" para um produto que tem foto.
+  const searchResults = useMemo(
+    () =>
+      allResults.slice(0, 6).map((item) => ({
+        ...item,
+        capa: soFotosReais(item.images)[0],
+      })),
+    [allResults],
+  );
 
   return (
     <div
@@ -365,7 +378,6 @@ export function SearchBar({
           }}
           onChange={(e) => {
             const val = e.target.value;
-            textoGastoNoProduto.current = null;
             setLocalValue(val);
             setIsOpen(val.trim().length > 0);
           }}
@@ -531,12 +543,12 @@ export function SearchBar({
                     >
                       <div className="flex min-w-0 items-center gap-3.5 pr-2">
                         <div className="shadow-2xs relative size-12 flex-shrink-0 overflow-hidden rounded-xl border border-zinc-200/80 bg-zinc-100">
-                          {/* Sem foto de verdade (lista vazia ou a foto de reserva
-                              do mapper, que mora no site de um terceiro): o
-                              mesmo "Sem foto" local do resto da loja, sem pedir
-                              nada à rede -- sem internet a miniatura não quebra. */}
-                          {!item.images[0] ||
-                          ehMarcadorDeFoto(item.images[0]) ? (
+                          {/* Sem foto de verdade (lista vazia ou so a foto de
+                              reserva do mapper, que mora no site de um
+                              terceiro): o mesmo "Sem foto" local do resto da
+                              loja, sem pedir nada à rede -- sem internet a
+                              miniatura não quebra. */}
+                          {item.capa === undefined ? (
                             <div
                               data-sem-foto
                               className="flex size-full items-center justify-center px-0.5 text-center text-[9px] font-medium leading-tight text-zinc-600"
@@ -548,11 +560,11 @@ export function SearchBar({
                               // Miniatura leve (em 3G eram várias fotos grandes
                               // por letra digitada). O mesmo helper alimenta o
                               // useCacheWarmer: a string aquecida é esta.
-                              src={miniaturaDaSugestao(item.images[0])}
+                              src={miniaturaDaSugestao(item.capa)}
                               onError={(event) =>
                                 usarImagemOriginal(
                                   event.currentTarget,
-                                  item.images[0],
+                                  item.capa,
                                 )
                               }
                               alt={item.name}

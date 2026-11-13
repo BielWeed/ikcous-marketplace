@@ -112,6 +112,35 @@ describe("SearchBar — produto sem foto usa o quadrado local 'Sem foto'", () =>
     ).toEqual([]);
   });
 
+  // Cadastro antigo guarda [marcador, foto real]. O cartão do catálogo usa a
+  // primeira foto REAL (`soFotosReais`); a caixinha olhava só a posição 0 e
+  // anunciava "Sem foto" para um produto que tem foto.
+  it("lista mista [marcador, foto real]: mostra a foto real, não 'Sem foto'", async () => {
+    catalogo = [produto("misto", [MARCADOR, FOTO_REAL])];
+    await abrirSugestoes();
+    const fontes = fontesDeImagem();
+    expect(fontes).toHaveLength(1);
+    expect(fontes[0]).toContain("vestido-azul.jpg");
+    expect(hospedeiro.textContent).not.toContain("Sem foto");
+    expect(hospedeiro.querySelector("[data-sem-foto]")).toBeNull();
+  });
+
+  it("lista mista com a foto real NA FRENTE do marcador: continua a foto real", async () => {
+    catalogo = [produto("misto-ordem", [FOTO_REAL, MARCADOR])];
+    await abrirSugestoes();
+    const fontes = fontesDeImagem();
+    expect(fontes).toHaveLength(1);
+    expect(fontes[0]).toContain("vestido-azul.jpg");
+    expect(hospedeiro.textContent).not.toContain("Sem foto");
+  });
+
+  it("só marcadores (nenhuma foto real): continua 'Sem foto', sem pedir imagem", async () => {
+    catalogo = [produto("so-marcadores", [MARCADOR, MARCADOR])];
+    await abrirSugestoes();
+    expect(fontesDeImagem()).toEqual([]);
+    expect(hospedeiro.textContent).toContain("Sem foto");
+  });
+
   it("controle: produto COM foto continua mostrando a foto", async () => {
     catalogo = [produto("com-foto", [FOTO_REAL])];
     await abrirSugestoes();

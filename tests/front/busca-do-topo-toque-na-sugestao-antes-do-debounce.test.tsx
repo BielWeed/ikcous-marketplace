@@ -74,6 +74,9 @@ describe("SearchBar: tocar na sugestao de produto antes dos 150 ms", () => {
 
   const campo = () =>
     hospedeiro.querySelector("#global-search") as HTMLInputElement;
+  /** O termo que o "App" (o envolucro) guarda e que filtraria a lista. */
+  const valorDoApp = () =>
+    hospedeiro.querySelector('[data-testid="valor-do-app"]')?.textContent;
   const botaoDoProduto = (nome: string) =>
     Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
       b.textContent?.includes(nome),
@@ -89,14 +92,17 @@ describe("SearchBar: tocar na sugestao de produto antes dos 150 ms", () => {
     function Involucro() {
       const [valor, setValor] = useState("");
       return (
-        <SearchBar
-          value={valor}
-          onChange={(v) => {
-            enviados.push(v);
-            setValor(v);
-          }}
-          onProductClick={(id) => produtosAbertos.push(id)}
-        />
+        <>
+          <output data-testid="valor-do-app">{valor}</output>
+          <SearchBar
+            value={valor}
+            onChange={(v) => {
+              enviados.push(v);
+              setValor(v);
+            }}
+            onProductClick={(id) => produtosAbertos.push(id)}
+          />
+        </>
       );
     }
     await act(async () => {
@@ -141,6 +147,56 @@ describe("SearchBar: tocar na sugestao de produto antes dos 150 ms", () => {
 
     expect(produtosAbertos).toEqual(["p-azul"]);
     expect(enviados).toEqual(["camiseta"]);
+  });
+
+  // O App guarda o ULTIMO termo recebido ("camiseta") e a lista filtra por ele.
+  // O texto novo nunca chega (abriria/fecharia o produto), entao o campo nao
+  // pode seguir mostrando "camiseta azul": ao voltar, campo e lista
+  // discordavam. O campo volta ao termo que o App guarda.
+  it("o campo volta ao termo que o App guarda, para campo e lista concordarem ao voltar", async () => {
+    await digitarEAcrescentar();
+
+    await act(async () => {
+      botaoDoProduto("Camiseta Azul").click();
+    });
+    await avancar(500);
+
+    expect(valorDoApp()).toBe("camiseta");
+    expect(campo().value).toBe(valorDoApp());
+    expect(produtosAbertos).toEqual(["p-azul"]);
+    expect(enviados).toEqual(["camiseta"]);
+  });
+
+  it("primeiro termo ainda nao enviado: o campo volta ao que o App guarda (vazio)", async () => {
+    await montar();
+    await digitar("camiseta");
+    expect(botaoDoProduto("Camiseta Azul")).toBeTruthy();
+
+    await act(async () => {
+      botaoDoProduto("Camiseta Azul").click();
+    });
+    await avancar(500);
+
+    expect(valorDoApp()).toBe("");
+    expect(campo().value).toBe("");
+    expect(produtosAbertos).toEqual(["p-azul"]);
+    expect(enviados).toEqual([]);
+  });
+
+  it("controle: tocar no produto DEPOIS dos 150 ms mantem o campo e o termo ja enviado", async () => {
+    await digitarEAcrescentar();
+    await avancar(200);
+    expect(enviados).toEqual(["camiseta", "camiseta azul"]);
+
+    await act(async () => {
+      botaoDoProduto("Camiseta Azul").click();
+    });
+    await avancar(500);
+
+    expect(valorDoApp()).toBe("camiseta azul");
+    expect(campo().value).toBe("camiseta azul");
+    expect(produtosAbertos).toEqual(["p-azul"]);
+    expect(enviados).toEqual(["camiseta", "camiseta azul"]);
   });
 
   it("digitar DEPOIS de abrir o produto volta a enviar o texto novo", async () => {
