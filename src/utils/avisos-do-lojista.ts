@@ -44,6 +44,11 @@ export interface Aviso {
      * (a avaliação que o aviso cita ainda não está publicada).
      */
     soEmModeracao?: true;
+    /**
+     * A tela Devoluções abre só em "Solicitadas": o aviso conta só essas, e a
+     * lista nasce em "Todas" (as concluídas, mais novas, vêm na frente).
+     */
+    soSolicitadas?: true;
   };
   contaNoCracha: boolean;
 }
@@ -377,7 +382,7 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
         : `${devolucoes} devoluções esperando sua resposta`,
       detalhe: "Clientes pediram para devolver ou trocar produtos",
       quando: "",
-      destino: { view: "admin-devolucoes" },
+      destino: { view: "admin-devolucoes", soSolicitadas: true },
       contaNoCracha: true,
     });
   }

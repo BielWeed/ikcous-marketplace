@@ -1,6 +1,7 @@
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAvisosDoLojista } from "@/hooks/useAvisosDoLojista";
+import { pedirDevolucoesSolicitadas } from "@/lib/aviso-leva-a-devolucoes-solicitadas";
 import {
   type Novidade,
   marcarNovidadeComoLida,
@@ -327,6 +328,7 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
                 : {},
           );
         }
+        if (aviso.destino.soSolicitadas) pedirDevolucoesSolicitadas();
         onNavigate(aviso.destino.view, aviso.destino.id);
       }}
       className={`group block min-h-11 w-full min-w-0 whitespace-pre-line break-words rounded-[18px] border border-solid border-border bg-muted/30 p-4 text-left text-foreground transition-colors hover:bg-muted/50 ${FOCO}`}
