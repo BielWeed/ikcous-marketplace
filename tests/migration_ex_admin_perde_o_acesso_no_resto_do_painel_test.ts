@@ -310,8 +310,13 @@ Deno.test("1381: inventario do aplicador, rol das consultas, canais, workflows e
       .filter((l: string) => l !== "" && !l.startsWith("//"));
     assertEquals(
       aposCargo,
-      ["PRECO_HISTORICO,", "...LIMITES_DE_ABUSO,", "AS_VISITAS,"],
-      `${arq}: so a PRECO_HISTORICO (20261386), os LIMITES_DE_ABUSO (20261396) e as AS_VISITAS (20261399) vem depois de DEFINIR_CARGO e fecham a lista`,
+      [
+        "PRECO_HISTORICO,",
+        "...LIMITES_DE_ABUSO,",
+        "AS_VISITAS,",
+        "REPETIR_A_DEVOLUCAO,",
+      ],
+      `${arq}: so a PRECO_HISTORICO (20261386), os LIMITES_DE_ABUSO (20261396), as AS_VISITAS (20261399) e a REPETIR_A_DEVOLUCAO (20261399991000) vem depois de DEFINIR_CARGO e fecham a lista`,
     );
     assertStringIncludes(
       t,

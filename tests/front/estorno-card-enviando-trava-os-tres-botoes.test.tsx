@@ -117,25 +117,28 @@ const acoes = [
     durante: "Devolvendo…",
     depois: "Devolver R$ 100,00",
     valor: 100,
+    repetindo: undefined,
   },
   {
     nome: "Tentar de novo",
     durante: "Tentar de novo",
     depois: "Tentar de novo",
     valor: 30,
+    repetindo: "refund-falhou",
   },
   {
     nome: "Já devolvi por fora",
     durante: "Já devolvi por fora",
     depois: "Já devolvi por fora",
     valor: null,
+    repetindo: undefined,
   },
 ];
 
 describe("EstornoCard — enviando trava as três ações financeiras", () => {
   it.each(acoes)(
     "$nome não abre confirmação nem envia; volta a funcionar quando termina",
-    async ({ durante, depois, valor }) => {
+    async ({ durante, depois, valor, repetindo }) => {
       const confirmar = vi.fn(() => true);
       const perguntar = vi.fn(() => "DEVOLVI POR FORA");
       vi.stubGlobal("confirm", confirmar);
@@ -177,10 +180,12 @@ describe("EstornoCard — enviando trava as três ações financeiras", () => {
         const aceitar = botoes?.[botoes.length - 1];
         expect(aceitar).toBeDefined();
         await act(async () => aceitar?.click());
-        expect(h.solicitarEstorno).toHaveBeenCalledExactlyOnceWith({
-          amount: valor,
-          motivo: "",
-        });
+        // Só o "Tentar de novo" leva o id da linha falhada; o "Devolver" comum não repete linha nenhuma.
+        expect(h.solicitarEstorno).toHaveBeenCalledExactlyOnceWith(
+          repetindo === undefined
+            ? { amount: valor, motivo: "" }
+            : { amount: valor, motivo: "", repetindo },
+        );
         expect(h.registrarPorForaAposEspera).not.toHaveBeenCalled();
         expect(perguntar).not.toHaveBeenCalled();
       }
