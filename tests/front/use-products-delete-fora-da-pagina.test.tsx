@@ -126,10 +126,14 @@ vi.mock("@/lib/supabase", () => ({
         return consulta;
       },
       update: (payload: any) => ({
-        eq: async (_col: string, id: string) => {
-          mock.ordem.push({ tipo: "update", tabela, payload, id });
-          return { error: null };
-        },
+        eq: (_col: string, id: string) =>
+          comSelect(
+            (async () => {
+              mock.ordem.push({ tipo: "update", tabela, payload, id });
+              return { error: null };
+            })(),
+            id,
+          ),
       }),
     }),
     storage: {
@@ -151,6 +155,17 @@ vi.mock("@/lib/supabase", () => ({
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+/**
+ * O `.eq()` do PostgREST: o `await` direto devolve `{ error }`; com
+ * `.select("id")` devolve também as linhas que o banco de fato mexeu.
+ */
+function comSelect<T extends { error: any }>(resposta: Promise<T>, id: string) {
+  return Object.assign(resposta, {
+    select: (_colunas: string) =>
+      resposta.then((r) => ({ ...r, data: r.error ? null : [{ id }] })),
+  });
+}
 
 type ApiUseProducts = ReturnType<typeof useProducts>;
 

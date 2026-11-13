@@ -87,7 +87,15 @@ vi.mock("@/lib/supabase", () => ({
           eq: (_coluna: string, id: string) => {
             const erro = mock.recusadas.get(id);
             if (!erro) mock.apagadas.push(id);
-            return Promise.resolve({ error: erro ?? null });
+            const resposta = Promise.resolve({ error: erro ?? null });
+            // `.select("id")` pede de volta as linhas que o banco apagou.
+            return Object.assign(resposta, {
+              select: (_colunas: string) =>
+                Promise.resolve({
+                  data: erro ? null : [{ id }],
+                  error: erro ?? null,
+                }),
+            });
           },
         }),
       };

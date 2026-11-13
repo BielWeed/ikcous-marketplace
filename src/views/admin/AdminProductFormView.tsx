@@ -750,6 +750,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     // `= []`: consumidor que não expõe a lista (testes de contrato da tela)
     // deixa a checagem de SKU global degenerar para o produto atual.
     products = [],
+    // Quem está na conta AGORA, para quem espera algo no meio do salvar (ver
+    // `handleSubmit`): o `isAdmin` e o `user` que o handler enxerga ficam
+    // presos à renderização em que ele nasceu, e outra aba pode ter trocado de
+    // conta nesse meio-tempo. `= () => undefined`: consumidor que não expõe a
+    // leitura (testes de contrato da tela) fica sem a trava, como antes.
+    idDaContaViva = () => undefined,
   } = useProducts({ autoFetch: false });
 
   // O SKU da variação é UNIQUE na loja INTEIRA, não por produto. A grade gera
@@ -3124,6 +3130,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       return;
     }
     setIsSubmitting(true);
+    // Quem tocou em Salvar. Depois de qualquer espera (a conferência dos
+    // códigos abaixo), só se grava se a conta viva ainda é esta.
+    const contaQueComecouOSalvar = idDaContaViva();
 
     // Ressalva da revisão da C5.2: o salvar ESPERA a checagem de duplicidade.
     // Sem este trecho, um clique durante uma checagem em voo (o blur do campo
@@ -3183,6 +3192,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         ),
       ),
     );
+    // A conta mudou (outra aba entrou em outra conta, ou saiu) enquanto o banco
+    // conferia: o hook gravaria com a sessão de AGORA uma edição que a conta
+    // anterior começou. Nada é gravado; ela confere a conta e salva de novo.
+    if (idDaContaViva() !== contaQueComecouOSalvar) {
+      toast.error(
+        "A conta do painel mudou enquanto você salvava. Nada foi salvo. Confira em qual conta você está e salve de novo.",
+      );
+      setIsSubmitting(false);
+      return;
+    }
     const recusa = mensagens.find((m) => m);
     if (recusa) {
       toast.error(recusa);

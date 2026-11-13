@@ -689,6 +689,19 @@ const MSG_SESSAO_OU_PERMISSAO =
 const MSG_PRODUTO_EXCLUIDO =
   "Este produto foi excluído em outro aparelho. Recarregue a lista.";
 
+/**
+ * O banco respondeu SEM erro mas não mexeu em linha nenhuma. É o que a regra de
+ * segurança (RLS) faz quando a conta deixou de ser admin (rebaixada em outro
+ * aparelho com o painel aberto): não recusa, só não toca em nada. Olhar só o
+ * `error` dava "removido" para um produto que seguia à venda.
+ */
+const MSG_PRODUTO_NAO_EXCLUIDO =
+  "O produto não foi excluído: o banco não alterou nada. Sua conta pode ter perdido a permissão de administradora. Saia da conta, entre de novo e confira a lista de Produtos.";
+const MSG_PRODUTOS_NAO_ALTERADOS =
+  "Nada foi alterado: o banco não mexeu em nenhum produto. Sua conta pode ter perdido a permissão de administradora. Saia da conta, entre de novo e confira a lista de Produtos.";
+const MSG_VARIACAO_NAO_EXCLUIDA =
+  "A variação não foi excluída: o banco não alterou nada. Sua conta pode ter perdido a permissão de administradora. Saia da conta, entre de novo e confira o produto.";
+
 const MSG_SEM_CONEXAO =
   "Sem conexão com a internet. Confira a conexão e tente salvar de novo.";
 
@@ -987,6 +1000,15 @@ export function useProducts({
       ouvintesDaSincronizacao.delete(avisar);
     };
   }, [user?.id]);
+  // A conta VIVA, lida de forma síncrona por quem espera algo no meio de um
+  // salvar: o `user` de cima fica preso ao render em que o handler nasceu, e
+  // outra aba pode ter trocado de conta enquanto ele esperava. Mesmo padrão do
+  // `usuarioAtualRef` de `useAddresses`/`useReviews`.
+  const usuarioAtualRef = useRef(user?.id);
+  useEffect(() => {
+    usuarioAtualRef.current = user?.id;
+  }, [user?.id]);
+  const idDaContaViva = useCallback(() => usuarioAtualRef.current, []);
   const lastLoadId = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -2277,7 +2299,11 @@ export function useProducts({
         // sempre, sem dizer se excluiu. Estourou: não se sabe se excluiu (cai
         // no `catch`: o produto volta à lista e a frase manda conferir). Repetir
         // é seguro: é o mesmo UPDATE de `deleted_at`.
-        const { error } = await aguardarComPrazo(
+        //
+        // `.select("id")`: com a conta já sem o cargo de admin o RLS não dá
+        // erro, só não mexe em linha nenhuma — e sem pedir as linhas de volta
+        // isso passava por "excluído".
+        const { data: excluidas, error } = await aguardarComPrazo(
           Promise.resolve(
             supabase
               .from("produtos")
@@ -2285,14 +2311,18 @@ export function useProducts({
                 deleted_at: new Date().toISOString(),
                 ativo: false,
               })
-              .eq("id", id),
-          ) as Promise<{ error: any }>,
+              .eq("id", id)
+              .select("id"),
+          ) as Promise<{ data: any; error: any }>,
           PRAZO_DE_GRAVAR_O_PRODUTO_MS,
           () =>
             erroDeConsultaSemResposta(MENSAGEM_PRODUTO_EXCLUSAO_SEM_RESPOSTA),
         );
 
         if (error) throw error;
+        if (!excluidas?.length) {
+          throw new RecusaDoCadastroDeProduto(MSG_PRODUTO_NAO_EXCLUIDO);
+        }
 
         clearAnalyticsCache();
         await refreshContext();
@@ -2315,6 +2345,10 @@ export function useProducts({
         cachedAdminProductsTotal = originalTotal;
         setLocalProducts(originalProducts);
         if (ehConsultaSemResposta(err)) {
+          toast.error(err.message, {
+            duration: DURACAO_DO_AVISO_SEM_RESPOSTA_MS,
+          });
+        } else if (err instanceof RecusaDoCadastroDeProduto) {
           toast.error(err.message, {
             duration: DURACAO_DO_AVISO_SEM_RESPOSTA_MS,
           });
@@ -2362,15 +2396,21 @@ export function useProducts({
           const product = originalProducts.find((p) => p.id === id);
           if (!product) continue;
 
-          const { error } = await supabase
+          // `.select("id")`: sem o cargo de admin o RLS não dá erro, só não
+          // mexe em linha nenhuma (ver `MSG_PRODUTO_NAO_EXCLUIDO`).
+          const { data: excluidas, error } = await supabase
             .from("produtos")
             .update({
               deleted_at: new Date().toISOString(),
               ativo: false,
             })
-            .eq("id", id);
+            .eq("id", id)
+            .select("id");
 
           if (error) throw error;
+          if (!excluidas?.length) {
+            throw new RecusaDoCadastroDeProduto(MSG_PRODUTO_NAO_EXCLUIDO);
+          }
           excluidos.push(id);
 
           // Mídia best-effort, depois do soft-delete confirmado deste
@@ -2396,7 +2436,11 @@ export function useProducts({
           originalTotal - excluidos.length,
         );
         setLocalProducts(originalProducts.filter(aindaExiste));
-        toast.error("Erro ao excluir produtos");
+        toast.error(
+          err instanceof RecusaDoCadastroDeProduto
+            ? err.message
+            : "Erro ao excluir produtos",
+        );
         return false;
       }
     },
@@ -2435,12 +2479,18 @@ export function useProducts({
       );
 
       try {
-        const { error } = await supabase
+        // `.select("id")`: sem o cargo de admin o RLS não dá erro, só não mexe
+        // em linha nenhuma (ver `MSG_PRODUTO_NAO_EXCLUIDO`).
+        const { data: alteradas, error } = await supabase
           .from("produtos")
           .update({ ativo: isActive })
-          .in("id", ids);
+          .in("id", ids)
+          .select("id");
 
         if (error) throw error;
+        if (!alteradas?.length) {
+          throw new RecusaDoCadastroDeProduto(MSG_PRODUTOS_NAO_ALTERADOS);
+        }
 
         await refreshContext();
         toast.success("Status atualizado");
@@ -2449,7 +2499,11 @@ export function useProducts({
         console.error("Error updating products status:", err);
         cachedAdminProducts = originalCache;
         setLocalProducts(originalProducts);
-        toast.error("Erro ao atualizar status");
+        toast.error(
+          err instanceof RecusaDoCadastroDeProduto
+            ? err.message
+            : "Erro ao atualizar status",
+        );
         return false;
       }
     },
@@ -2868,12 +2922,18 @@ export function useProducts({
           .eq("id", id)
           .single()) as any;
 
-        const { error } = await supabase
+        // `.select("id")`: sem o cargo de admin o RLS não dá erro, só não
+        // apaga linha nenhuma (ver `MSG_PRODUTO_NAO_EXCLUIDO`).
+        const { data: apagadas, error } = await supabase
           .from("product_variants")
           .delete()
-          .eq("id", id);
+          .eq("id", id)
+          .select("id");
 
         if (error) throw error;
+        if (!apagadas?.length) {
+          throw new RecusaDoCadastroDeProduto(MSG_VARIACAO_NAO_EXCLUIDA);
+        }
 
         if (variant?.image_url) {
           await backupStorageFile(variant.image_url);
@@ -2919,12 +2979,20 @@ export function useProducts({
         const apagadas: string[] = [];
         let primeiraRecusa: unknown = null;
         for (const id of ids) {
-          const { error } = await supabase
+          // `.select("id")`: sem o cargo de admin o RLS não dá erro, só não
+          // apaga linha nenhuma — essa também é recusa (ver
+          // `MSG_PRODUTO_NAO_EXCLUIDO`).
+          const { data: linhasApagadas, error } = await supabase
             .from("product_variants")
             .delete()
-            .eq("id", id);
-          if (error) {
-            if (primeiraRecusa === null) primeiraRecusa = error;
+            .eq("id", id)
+            .select("id");
+          if (error || !linhasApagadas?.length) {
+            if (primeiraRecusa === null) {
+              primeiraRecusa =
+                error ??
+                new RecusaDoCadastroDeProduto(MSG_VARIACAO_NAO_EXCLUIDA);
+            }
             recusadas.push(id);
           } else {
             apagadas.push(id);
@@ -3078,5 +3146,6 @@ export function useProducts({
     fetchProduct,
     getFreeShippingEligibleProducts,
     toggleProductStatus,
+    idDaContaViva,
   };
 }
