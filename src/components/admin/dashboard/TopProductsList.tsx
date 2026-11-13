@@ -34,8 +34,10 @@ export const TopProductsList = memo(function TopProductsList({
       className="relative min-h-[282px] overflow-hidden"
       acao={
         <ExplicacaoDoRelatorio titulo="Produtos que mais dão lucro">
-          O valor é o lucro (preço menos custo), descontadas as devoluções e os
-          estornos. Produto sem custo cadastrado não entra.
+          É o que a loja ganhou com cada produto: o preço pago menos o custo,
+          menos o dinheiro devolvido e o custo da peça que não voltou para a
+          prateleira. Conta no dia da venda e sem frete — por isso o total não é
+          o mesmo do Financeiro do mês. Produto sem custo cadastrado não entra.
         </ExplicacaoDoRelatorio>
       }
     >

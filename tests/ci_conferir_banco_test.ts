@@ -2429,6 +2429,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "de8648a7783c12f1be7abd7986c8a2fc",
           versao: "20261399994000",
         },
+        // 13/11/2026 (lote 447): o lucro do ranking casa com o Financeiro, pedido a pedido (... -> 251 -> 3997 -> 3994 -> 3995).
+        {
+          fn: "get_admin_analytics_v2",
+          h: "4f8fb94f6cb0018e10d0ef71541f1cbf",
+          versao: "20261399995000",
+        },
         {
           fn: "get_admin_customers_paged",
           h: "d6c092c3e0d8069891af795147d65e9e",
@@ -8301,6 +8307,27 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       .update(corpo3994.replace(/\n/g, "\r\n"))
       .digest("hex"),
   };
+  // A 20261399995000 (o lucro do ranking casa com o Financeiro) sucede a 3994 em get_admin_analytics_v2.
+  const texto3995 = (
+    await Deno.readTextFile(
+      `${MIGRATIONS_DIR}/20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql`,
+    )
+  ).replace(/\r/g, "");
+  const ini3995 = texto3995.indexOf(
+    cabecalhoDepois17("get_admin_analytics_v2"),
+  );
+  assert(ini3995 >= 0);
+  const abre3995 = texto3995.indexOf("AS $$", ini3995) + 5;
+  const corpo3995 = texto3995.slice(
+    abre3995,
+    texto3995.indexOf("$$;", abre3995),
+  );
+  const shaSucessora3995 = {
+    lf: criarHash("sha256").update(corpo3995).digest("hex"),
+    crlf: criarHash("sha256")
+      .update(corpo3995.replace(/\n/g, "\r\n"))
+      .digest("hex"),
+  };
   const shaSucessora50 = {
     lf: criarHash("sha256").update(corpo50).digest("hex"),
     crlf: criarHash("sha256")
@@ -8427,6 +8454,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                 shaSucessora3997.crlf,
                 shaSucessora3994.lf,
                 shaSucessora3994.crlf,
+                shaSucessora3995.lf,
+                shaSucessora3995.crlf,
                 shaSucessora81.lf,
                 shaSucessora81.crlf,
                 shaSucessora85.lf,
@@ -8486,6 +8515,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                     shaSucessora3997.crlf,
                     shaSucessora3994.lf,
                     shaSucessora3994.crlf,
+                    shaSucessora3995.lf,
+                    shaSucessora3995.crlf,
                     x.lf,
                   ]
                 : lado === "depois" && f.nome === "get_admin_products_paged"
@@ -8534,6 +8565,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
               shaSucessora3997.crlf,
               shaSucessora3994.lf,
               shaSucessora3994.crlf,
+              shaSucessora3995.lf,
+              shaSucessora3995.crlf,
               shaSucessora81.lf,
               shaSucessora81.crlf,
               shaSucessora85.lf,
@@ -14925,7 +14958,7 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
       // retirando exatamente as duas fórmulas declaradas, antes de comparar a regra histórica à 44m.
       assertEquals(
         vigente,
-        "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql",
+        "20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql",
         "o painel mudou de corpo: refaca a regra da 44m contra o corpo novo",
       );
       // A 3997 (o ranking de lucro desconta a devolucao e o estorno) so troca a conta do lucro das vendas COM devolucao concluida ou
@@ -14933,6 +14966,7 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
       // igual). A 44m mede a regra historica SEM devolucao, entao segue comparada ao corpo da 251, o ultimo antes dela.
       // A 3994 (o item "Nao veio" fica com a cliente) so muda a conta das vendas COM item "Nao veio" numa devolucao: tambem nao muda
       // o numero sem devolucao (tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs, JSON inteiro igual).
+      // A 3995 (o lucro do ranking casa com o Financeiro) tambem nao muda o numero sem devolucao nem estorno (tests/banco/o-lucro-do-ranking-casa-com-o-financeiro-viva.cjs, JSON inteiro igual).
       const corpoDaRegraHistorica =
         "20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql";
       const funcao = (sql: string) => {

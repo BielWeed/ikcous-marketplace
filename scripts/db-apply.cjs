@@ -856,6 +856,47 @@ const VERIFICACOES = {
         { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
       ],
     },
+  // 20261399995000: o lucro por produto (ranking "Produtos que mais dao lucro" e lucro do grafico diario, get_admin_analytics_v2) CASA COM O FINANCEIRO, pedido a pedido: o que a cliente pagou menos TODO o dinheiro
+  // devolvido (devolucao, estorno ou site do Mercado Pago, sem frete) menos o custo das pecas que nao voltaram a prateleira; o pedido 'estornado' entra. So os blocos 4 e 5 do corpo mudam (nos DOIS lugares: o ranking e o
+  // grafico diario). Cada marcador e' contado no corpo da propria migration. A consulta 147a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento contra o Financeiro.
+  "20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql":
+    {
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        {
+          texto:
+            "pc.q * (pc.pago - COALESCE(oic.custo, p.custo)) + COALESCE(oic.custo, p.custo) * pc.reestocadas - pc.dinheiro_dev",
+          vezes: 2,
+        },
+        {
+          texto:
+            "CASE WHEN x.vv > 0 THEN LEAST(m.pm, x.vv) / x.vv ELSE 0 END AS fv",
+          vezes: 2,
+        },
+        {
+          texto:
+            "CASE WHEN x.va > 0 THEN LEAST(GREATEST(m.pm - x.vv, 0), x.va) / x.va ELSE 0 END AS fa",
+          vezes: 2,
+        },
+        { texto: "GREATEST(0, m.pm - x.vv - x.va) AS excesso", vezes: 2 },
+        {
+          texto:
+            "LEAST(oi.quantity * pg.pago, COALESCE(dv.dinheiro, 0)) AS dinheiro_dev",
+          vezes: 2,
+        },
+        { texto: "(t.residual + t.excesso)", vezes: 2 },
+        { texto: "CASE WHEN t.estornado THEN 1", vezes: 2 },
+        { texto: "'recebido_na_entrega', 'estornado')", vezes: 6 },
+        { texto: "resolucao_final IN ('reembolso', 'vale')", vezes: 2 },
+        {
+          texto: "FILTER (WHERE o.payment_status <> 'estornado')",
+          vezes: 1,
+        },
+        { texto: "SUM(pc.q - pc.devolvidas)::int", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
   // 20261399980000: as listas de Produtos, Pedidos e Cancelados do painel nao repetem nem escondem ninguem entre as paginas. As TRES funcoes (get_admin_products_paged, get_admin_orders_paged e
   // get_admin_orders_cancelados_recentes) ganham SO o desempate pelo id no fim do ORDER BY (o marcador do ORDER BY aparece UMA vez em cada e a frase do comentario do desempate tambem). As duas travas de
   // admin (is_admin e is_admin_atual; a de produtos so tem a is_admin_atual) seguem UMA vez em cada corpo. A consulta 140a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.

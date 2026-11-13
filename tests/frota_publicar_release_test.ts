@@ -3183,6 +3183,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado",
     "145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado",
     "146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado",
+    "147a-conferir-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-aplicado",
   ]);
 });
 

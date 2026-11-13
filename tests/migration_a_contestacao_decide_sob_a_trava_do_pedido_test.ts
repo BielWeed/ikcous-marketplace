@@ -867,6 +867,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399994000: o item que a lojista marcou "Nao veio" fica com a cliente no ranking de lucro (get_admin_analytics_v2: topProducts e o lucro do grafico diario; controle com o corpo da 3997 na mesma fixture,
     // JSON inteiro igual sem item "Nao veio", 10 mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 146a/146b).
     "tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs",
+    // 20261399995000: o lucro do ranking casa com o Financeiro, pedido a pedido (get_admin_analytics_v2: topProducts e o lucro do grafico diario; cada cenario contra fin_dre, os 6 casos do dono de produto,
+    // controle com o corpo da 3994, JSON inteiro igual sem devolucao nem estorno, 19 mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 147a/147b).
+    "tests/banco/o-lucro-do-ranking-casa-com-o-financeiro-viva.cjs",
     // 20261399991000: repetir a devolucao que falhou nao paga duas vezes (solicitar_estorno_repetindo e order_refund_repeticao; controle com o caminho antigo, duas conexoes reais na mesma falhada, 17 recusas,
     // permissao, 15 mutantes, reaplicar, pre-voo, rollback que recusa com marca, conexao sem BEGIN e consultas 143a/143b).
     "tests/banco/repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-viva.cjs",

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 //
-// PAR da migration 20261399970000: o ranking "Produtos que mais dão lucro" (e o lucro do gráfico diário)
-// passa a descontar a devolução e o estorno. A explicação do cartão tem de dizer isso, e o cartão tem de
+// PAR das migrations 20261399970000 e 20261399995000: o ranking "Produtos que mais dão lucro" (e o lucro do gráfico diário)
+// desconta a devolução e o estorno, pedido a pedido como o Financeiro (o dinheiro devolvido de verdade, o custo da peça que não
+// voltou para a prateleira, sem frete, no dia da venda). A explicação do cartão tem de dizer isso, e o cartão tem de
 // mostrar sem tropeço o produto que voltou inteiro (0 unidades, lucro R$ 0,00) e o que perdeu dinheiro
 // (lucro negativo: a peça devolvida e não reestocada).
 import { TopProductsList } from "@/components/admin/dashboard/TopProductsList";
@@ -47,7 +48,7 @@ describe("TopProductsList — o lucro desconta devolução e estorno", () => {
     );
   }
 
-  it("a explicação do cartão diz que devoluções e estornos são descontados, e que produto sem custo não entra", () => {
+  it("a explicação do cartão diz que o dinheiro devolvido e a peça que não voltou são descontados, que a conta é do dia da venda e sem frete (por isso difere do Financeiro do mês), e que produto sem custo não entra", () => {
     montar([{ id: "p1", name: "Vestido", quantity: 1, total: 60, image: "" }]);
     const botao = hospedeiro.querySelector(
       'button[aria-label="Entender Produtos que mais dão lucro"]',
@@ -56,13 +57,14 @@ describe("TopProductsList — o lucro desconta devolução e estorno", () => {
     act(() => botao.click());
     const texto = SEM_NBSP(document.body.textContent);
     expect(texto).toContain(
-      "O valor é o lucro (preço menos custo), descontadas as devoluções e os estornos.",
+      "É o que a loja ganhou com cada produto: o preço pago menos o custo, menos o dinheiro devolvido e o custo da peça que não voltou para a prateleira. Conta no dia da venda e sem frete — por isso o total não é o mesmo do Financeiro do mês.",
     );
     expect(texto).toContain("Produto sem custo cadastrado não entra.");
-    // A frase antiga, que prometia só preço menos custo.
+    // As frases antigas: a que prometia só preço menos custo e a que só falava de devoluções e estornos.
     expect(texto).not.toContain(
       "O valor é o lucro (preço menos custo). Produto",
     );
+    expect(texto).not.toContain("descontadas as devoluções e os estornos");
   });
 
   it("produto devolvido por inteiro aparece com 0 unidades e R$ 0,00; peça perdida aparece com o menos antes do R$", () => {

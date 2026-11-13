@@ -1436,6 +1436,12 @@ async function main() {
         "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql",
         "public.get_admin_analytics_v2(integer)",
       ],
+      // A 20261399995000 (o lucro do ranking casa com o Financeiro): get_admin_analytics_v2 sobre o corpo da 3994 (a mesma funcao da 14/34/42/45/50/51/3997/3994 acima).
+      // O rollback dela devolve o corpo da 3994 (o molde, abaixo, desfaz e mede; a 3994 so cai depois dela, pela cadeia de posteriores).
+      [
+        "20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql",
+        "public.get_admin_analytics_v2(integer)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );
