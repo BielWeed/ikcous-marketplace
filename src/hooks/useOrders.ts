@@ -4547,6 +4547,16 @@ export function useOrders(
   const registrarPagamentoRecebido = useCallback(
     async (orderId: string, recebido: boolean) => {
       const fim = marcarOperacaoSensivel("registrar-pagamento-manual");
+      // Versão de cada lista quando o toque partiu: a resposta só vale sobre o
+      // pedido que ainda é esse. Chegou versão mais nova (outro aparelho, evento
+      // ao vivo)? A mais nova vale e a resposta antiga não é espalhada por cima.
+      const naLista = ordersRef.current.find((o) => o.id === orderId);
+      const nosCancelados = pedidosCanceladosRef.current.find(
+        (o) => o.id === orderId,
+      );
+      const maisNovo = (atual?: Order, partida?: Order) =>
+        Date.parse(atual?.updatedAt ?? "") >
+        Date.parse(partida?.updatedAt ?? "");
       try {
         // Prazo só da espera da tela (rede "pendurada"): estourou, o `catch`
         // abaixo conta que NÃO se sabe se gravou, o `finally` solta a marca
@@ -4586,13 +4596,22 @@ export function useOrders(
           pagamentoRecebidoPor,
         };
 
+        // A cópia guardada não recebe o evento ao vivo: se a lista da tela
+        // já tem versão mais nova, a cópia recebe ESSA, não a resposta antiga.
+        const naTela = ordersRef.current.find((o) => o.id === orderId);
         cachedAdminOrders = (cachedAdminOrders || []).map((o) =>
-          o.id === orderId ? { ...o, ...camposDoRecebimento } : o,
+          o.id !== orderId
+            ? o
+            : naTela && maisNovo(naTela, naLista)
+              ? naTela
+              : { ...o, ...camposDoRecebimento },
         );
 
         setOrders((prev) =>
           prev.map((o) =>
-            o.id === orderId ? { ...o, ...camposDoRecebimento } : o,
+            o.id === orderId && !maisNovo(o, naLista)
+              ? { ...o, ...camposDoRecebimento }
+              : o,
           ),
         );
 
@@ -4602,7 +4621,9 @@ export function useOrders(
         // AdminOrdersView.tsx desde o BLOQUEIA 1 da revisão de 26/08/2026.
         setPedidosCancelados((prev) =>
           prev.map((o) =>
-            o.id === orderId ? { ...o, ...camposDoRecebimento } : o,
+            o.id === orderId && !maisNovo(o, nosCancelados)
+              ? { ...o, ...camposDoRecebimento }
+              : o,
           ),
         );
 
