@@ -37,9 +37,9 @@ export const TopProductsList = memo(function TopProductsList({
           É o que a loja ganhou com cada produto: o que a cliente pagou pela
           peça (já com o cupom), menos todo dinheiro devolvido, menos o custo
           das peças que não voltaram para a prateleira. Reembolso total não tira
-          o pedido da lista; só sai o cancelado com a peça de volta no estoque.
-          Conta no dia da venda e sem frete, por isso difere do Financeiro do
-          mês. Produto sem custo não entra.
+          o pedido da lista; só sai o pedido cancelado. Conta no dia da venda e
+          sem frete, por isso difere do Financeiro do mês. Produto sem custo não
+          entra.
         </ExplicacaoDoRelatorio>
       }
     >

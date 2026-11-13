@@ -61,7 +61,7 @@ describe("TopProductsList — o lucro desconta devolução e estorno", () => {
     );
     // As duas regras do ranking: reembolso total não tira o pedido; só o cancelado com estoque de volta sai.
     expect(texto).toContain(
-      "Reembolso total não tira o pedido da lista; só sai o cancelado com a peça de volta no estoque.",
+      "Reembolso total não tira o pedido da lista; só sai o pedido cancelado.",
     );
     expect(texto).toContain(
       "Conta no dia da venda e sem frete, por isso difere do Financeiro do mês.",
