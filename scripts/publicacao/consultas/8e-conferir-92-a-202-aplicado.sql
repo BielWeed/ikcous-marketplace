@@ -33,7 +33,8 @@
 --                                e, DEPOIS dela, 20261234000000 (o lucro só conta produto com custo)
 --                                e, DEPOIS dela, 20261242000000 (o lucro usa o custo do dia da venda)
 --                                e, DEPOIS dela, 20261399970000 (o ranking de lucro desconta a devolucao e o estorno)
---                                e, DEPOIS dela, 20261399994000 (o item "Nao veio" fica com a cliente no ranking de lucro);
+--                                e, DEPOIS dela, 20261399994000 (o item "Nao veio" fica com a cliente no ranking de lucro)
+--                                e, DEPOIS dela, 20261399995000 (o lucro do ranking casa com o Financeiro, pedido a pedido);
 --   * `fin_dre`                → 20261242000000 (a DRE usa o custo do dia da venda; parte do corpo da 99);
 --                                e, DEPOIS dela, 20261382000000 (o resultado mostra tarifa, juro e quebra como despesa)
 --                                e, DEPOIS dela, 20261399600000 (o resultado credita o custo da devolucao de outro mes);
@@ -195,6 +196,7 @@ WITH corpos AS (
     ('get_admin_analytics_v2', '060c9ab5b1505dc375b41e4436e9d3a8', '20261251000000'),
     ('get_admin_analytics_v2', '0ea0841208f326971e4f92241929e088', '20261399970000'),
     ('get_admin_analytics_v2', 'de8648a7783c12f1be7abd7986c8a2fc', '20261399994000'),
+    ('get_admin_analytics_v2', '4f8fb94f6cb0018e10d0ef71541f1cbf', '20261399995000'),
     ('fin_dre', 'afc3e13805ce37819cfdcd094043087c', '20261242000000'),
     ('fin_dre', '2d191bc8120a9b188c04eeaaa0263110', '20261382000000'),
     ('fin_dre', 'eafc6a2c4663e33f5459791c6601b848', '20261399600000'),

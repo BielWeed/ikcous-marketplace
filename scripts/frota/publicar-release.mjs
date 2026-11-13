@@ -704,6 +704,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente",
   "146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado",
   "146b-antes-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-base-vigente",
+  "147a-conferir-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-aplicado",
+  "147b-antes-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-base-vigente",
   "145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado",
   "145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente",
   "144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado",

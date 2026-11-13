@@ -272,6 +272,8 @@ on:
       - "scripts/publicacao/consultas/143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente.sql"
       - "scripts/publicacao/consultas/146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado.sql"
       - "scripts/publicacao/consultas/146b-antes-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-base-vigente.sql"
+      - "scripts/publicacao/consultas/147a-conferir-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-aplicado.sql"
+      - "scripts/publicacao/consultas/147b-antes-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-base-vigente.sql"
       - "scripts/publicacao/consultas/145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -519,6 +521,8 @@ on:
       - "scripts/publicacao/consultas/143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente.sql"
       - "scripts/publicacao/consultas/146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado.sql"
       - "scripts/publicacao/consultas/146b-antes-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-base-vigente.sql"
+      - "scripts/publicacao/consultas/147a-conferir-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-aplicado.sql"
+      - "scripts/publicacao/consultas/147b-antes-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-base-vigente.sql"
       - "scripts/publicacao/consultas/145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -1179,6 +1183,13 @@ jobs:
       - name: Prova viva do item "Nao veio" que fica com a cliente no ranking de lucro (20261399994000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs
+      # Migration 20261399995000 (o lucro do ranking casa com o Financeiro, pedido a pedido): get_admin_analytics_v2 passa a calcular o lucro por produto como o Financeiro (o que a cliente pagou menos TODO o dinheiro
+      # devolvido menos o custo das pecas que nao voltaram a prateleira, sem frete); o pedido 'estornado' entra; o dinheiro devolvido pelo site do Mercado Pago depois da devolucao nao some. Ranking e grafico diario.
+      # Cada cenario contra fin_dre (oraculo), os 6 casos do dono de produto, controle com o corpo da 20261399994000 na MESMA fixture (JSON inteiro igual sem devolucao nem estorno), mutantes, reaplicar (LF e CRLF),
+      # rollback byte a byte, pre-voo, conexao sem BEGIN com conferencia sabotada e consultas 147a/147b (mais 8e, 35a, 45a, 48a, 53a, 54a, 135a e 146a). CLONE proprio.
+      - name: Prova viva do lucro do ranking que casa com o Financeiro (20261399995000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-lucro-do-ranking-casa-com-o-financeiro-viva.cjs
       # Migration 20261399993000 (o CRM e a lista de clientes nao contam a mesma pessoa duas vezes): crm__nunca_comprou tambem tira a conta cujo WhatsApp (com ou sem o 55) e o de um pedido do grupo "pediu e nao pagou"
       # (venda avulsa anulada, devolvida ou sem pagar) e get_admin_customers_paged toma UM endereco principal por cliente (o mais novo, desempate pelo menor id) antes de juntar os pedidos (a corrida dos dois
       # primeiros enderecos dobrava pedidos e total). Controle com os corpos da 20261183000000 e da 20261392000000 na MESMA fixture (o defeito), bordas (numero diferente, DDD 55, outra conta, sem WhatsApp, sem endereco,

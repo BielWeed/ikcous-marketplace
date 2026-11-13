@@ -213,7 +213,12 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // a 45a, a 48a, a 53a, a 54a e a 135a fazem com ela em tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs; `noEstado` a desfaz antes (lucro-do-estoque-posterior.cjs
     // chama o-ranking-de-lucro-posterior.cjs, que chama o-item-que-nao-veio-fica-com-a-cliente-posterior.cjs primeiro), como faz com a 3997 e a 251.
     s.nome !==
-      "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql",
+      "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql" &&
+    // A 20261399995000 (o lucro do ranking casa com o Financeiro) e a NONA sucessora de get_admin_analytics_v2 (... -> 251 -> 3997 -> 3994 -> 3995): tem a PROVA PROPRIA do que a 8e, a 35a,
+    // a 45a, a 48a, a 53a, a 54a, a 135a e a 146a fazem com ela em tests/banco/o-lucro-do-ranking-casa-com-o-financeiro-viva.cjs; `noEstado` a desfaz antes (lucro-do-estoque-posterior.cjs chama
+    // o-ranking-de-lucro-posterior.cjs, que chama o-item-que-nao-veio-fica-com-a-cliente-posterior.cjs, que chama o-lucro-do-ranking-casa-com-o-financeiro-posterior.cjs primeiro).
+    s.nome !==
+      "20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");
