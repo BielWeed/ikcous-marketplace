@@ -18,7 +18,14 @@ import {
   Info,
   OctagonX,
 } from "lucide-react";
-import { memo, useEffect, useRef, useState } from "react";
+import {
+  type FocusEvent,
+  type MouseEvent,
+  memo,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { SearchBar } from "./SearchBar";
 
 import { buildIdentity } from "@/config/buildIdentity";
@@ -65,8 +72,12 @@ export const Header = memo(function Header({
   // Estado do toast vem do canal ÚNICO (utils/headerToast.ts): o wrapper
   // BarraSuperiorCliente (App.tsx) lê o mesmo estado para o degrau z-[140]
   // — dispensar a cápsula desce o degrau junto, sem estados que divergem.
-  const { detalhe: activeToast, dispensar: dispensarToast } =
-    useToastDoHeader();
+  const {
+    detalhe: activeToast,
+    dispensar: dispensarToast,
+    pausar: pausarToast,
+    retomar: retomarToast,
+  } = useToastDoHeader();
   const atualizacaoAtiva = useIlhaDeAtualizacaoAtiva();
   const reduzMovimento = useReducedMotion();
   const logoUrl = config.logoUrl || null;
@@ -144,6 +155,31 @@ export const Header = memo(function Header({
   const avisoLongo =
     !!activeToast &&
     (!!activeToast.description || activeToast.message.length > 26);
+
+  // O prazo do aviso PARA enquanto o foco do teclado ou o mouse estão na
+  // cápsula (o "Desfazer" some em 6 s para quem usa Tab ou leitor de tela) e
+  // recomeça quando os DOIS saem. Lê o DOM em vez de guardar "foco"/"mouse":
+  // o botão focado pode desmontar sem `blur`, e a marca ficaria presa.
+  const pausaDoAviso = {
+    onFocus: () => pausarToast(),
+    onBlur: (e: FocusEvent<HTMLElement>) => {
+      if (e.currentTarget.contains(e.relatedTarget)) return;
+      if (!e.currentTarget.matches(":hover")) retomarToast();
+    },
+    onMouseEnter: () => pausarToast(),
+    onMouseLeave: (e: MouseEvent<HTMLElement>) => {
+      if (!e.currentTarget.contains(document.activeElement)) retomarToast();
+    },
+  };
+
+  // A cápsula pode sair do DOM com o foco/mouse nela, sem `blur` nem
+  // `mouseleave` (a ilha de atualização assume, ou o Header desmonta na ida ao
+  // painel): sem isto o aviso ficaria guardado sem relógio e voltaria preso.
+  // `retomar` não faz nada se o relógio não estava parado.
+  useEffect(() => {
+    if (atualizacaoAtiva) retomarToast();
+  }, [atualizacaoAtiva, retomarToast]);
+  useEffect(() => () => retomarToast(), [retomarToast]);
 
   // Helper to render type icon inside dynamic island toast
   const renderToastIcon = (type: HeaderToastData["type"]) => {
@@ -434,6 +470,7 @@ export const Header = memo(function Header({
                 <motion.div
                   layout
                   key={activeToast.id || "header-dynamic-island-toast"}
+                  {...pausaDoAviso}
                   initial={{ opacity: 0, scale: 0.8, width: 36 }}
                   animate={{ opacity: 1, scale: 1, width: "auto" }}
                   exit={{ opacity: 0, scale: 0.8, width: 36 }}
@@ -470,6 +507,9 @@ export const Header = memo(function Header({
                   </button>
                   <button
                     type="button"
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") dispensarToast();
+                    }}
                     onClick={() => {
                       haptic.light();
                       // Dispensa ANTES: a ação pode avisar na hora por que não deu
@@ -489,6 +529,7 @@ export const Header = memo(function Header({
                   type="button"
                   layout
                   key={activeToast.id || "header-dynamic-island-toast"}
+                  {...pausaDoAviso}
                   initial={{ opacity: 0, scale: 0.8, width: 36 }}
                   animate={{ opacity: 1, scale: 1, width: "auto" }}
                   exit={{ opacity: 0, scale: 0.8, width: 36 }}

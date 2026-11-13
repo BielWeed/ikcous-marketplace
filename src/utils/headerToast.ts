@@ -164,6 +164,8 @@ let toastDoHeader: HeaderToastData | null = null;
 const ouvintesDoToast = new Set<() => void>();
 let timerDoToast: ReturnType<typeof setTimeout> | null = null;
 let canalSobEscuta = false;
+// O relógio está parado porque o foco/mouse está na cápsula.
+let pausado = false;
 
 function avisarOuvintes() {
   ouvintesDoToast.forEach((avisar) => avisar());
@@ -181,19 +183,44 @@ function garantirCanalSobEscuta() {
     if (!customEvent.detail?.message) return;
     haptic.light();
     toastDoHeader = customEvent.detail;
-    if (timerDoToast) clearTimeout(timerDoToast);
-    timerDoToast = null;
-    // `duration: Infinity` (aviso fixo) fica até o toque: o setTimeout trata
-    // Infinity como 0 e o aviso sumiria na hora.
-    const ms = customEvent.detail.duration || 2600;
-    if (ms !== Number.POSITIVE_INFINITY) {
-      timerDoToast = setTimeout(() => {
-        toastDoHeader = null;
-        avisarOuvintes();
-      }, ms);
-    }
+    // Aviso novo = relógio novo: o foco/mouse que pausou o anterior morreu
+    // com o botão dele (o React não avisa o `blur` de quem desmonta).
+    pausado = false;
+    armarRelogioDoToast();
     avisarOuvintes();
   });
+}
+
+// Liga o relógio do aviso de pé: `duration || 2600`, e `Infinity` (aviso fixo)
+// fica até o toque -- o setTimeout trata Infinity como 0 e o aviso sumiria na
+// hora.
+function armarRelogioDoToast() {
+  if (timerDoToast) clearTimeout(timerDoToast);
+  timerDoToast = null;
+  const ms = toastDoHeader?.duration || 2600;
+  if (ms !== Number.POSITIVE_INFINITY) {
+    timerDoToast = setTimeout(() => {
+      toastDoHeader = null;
+      avisarOuvintes();
+    }, ms);
+  }
+}
+
+// Foco do teclado ou mouse dentro da cápsula: o prazo PARA (quem usa leitor de
+// tela ou teclado não alcança o "Desfazer" em 6 s) e recomeça inteiro quando
+// os dois saem. Recomeçar do zero, e não de onde parou, evita guardar a hora
+// e dá tempo de ler depois de sair.
+export function pausarToastDoHeader() {
+  if (!toastDoHeader || timerDoToast === null) return;
+  clearTimeout(timerDoToast);
+  timerDoToast = null;
+  pausado = true;
+}
+
+export function retomarToastDoHeader() {
+  if (!pausado) return;
+  pausado = false;
+  if (toastDoHeader) armarRelogioDoToast();
 }
 
 // O clique na cápsula (e o Esc nela) dispensam o aviso — o degrau do
@@ -204,6 +231,7 @@ export function dispensarToastDoHeader() {
     clearTimeout(timerDoToast);
     timerDoToast = null;
   }
+  pausado = false;
   toastDoHeader = null;
   avisarOuvintes();
 }
@@ -228,7 +256,7 @@ function obterToastDoHeader(): HeaderToastData | null {
 }
 
 /**
- * Estado atual do canal de toast do header: `{ ativo, detalhe, dispensar }`.
+ * Estado atual do canal de toast do header: `{ ativo, detalhe, dispensar, pausar, retomar }`.
  * `detalhe` carrega a mensagem/tipo enquanto a cápsula está de pé
  * (`duration || 2600`, `Infinity` sem timer, timer único reiniciado a cada aviso novo); `ativo` é
  * o que o wrapper usa para o degrau z-[140].
@@ -242,5 +270,7 @@ export function useToastDoHeader() {
     ativo: detalhe !== null,
     detalhe,
     dispensar: dispensarToastDoHeader,
+    pausar: pausarToastDoHeader,
+    retomar: retomarToastDoHeader,
   };
 }
