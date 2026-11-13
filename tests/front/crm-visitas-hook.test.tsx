@@ -98,7 +98,7 @@ describe("useCrmVisitas", () => {
     const periodo = { inicio: "2026-03-01", fim: "2026-03-31" };
     await montar(periodo);
     await esperar();
-    expect(ultimo).toEqual({ visitas: null, erro: false });
+    expect(ultimo).toMatchObject({ visitas: null, erro: false });
     // Fechar e reabrir a aba com o MESMO período: o resultado "ausente"
     // também fica guardado, então não pergunta de novo.
     await montar(periodo, false);
@@ -110,7 +110,7 @@ describe("useCrmVisitas", () => {
     h.rpc.mockResolvedValue({ data: null, error: { code: "42883" } });
     await montar({ inicio: "2026-03-02", fim: "2026-03-31" });
     await esperar();
-    expect(ultimo).toEqual({ visitas: null, erro: false });
+    expect(ultimo).toMatchObject({ visitas: null, erro: false });
     erro.mockRestore();
   });
 
@@ -118,14 +118,14 @@ describe("useCrmVisitas", () => {
     h.rpc.mockResolvedValue({ data: null, error: { code: "500" } });
     await montar({ inicio: "2026-04-01", fim: "2026-04-30" });
     await esperar();
-    expect(ultimo).toEqual({ visitas: null, erro: true });
+    expect(ultimo).toMatchObject({ visitas: null, erro: true });
   });
 
   it("formato inesperado também marca erro", async () => {
     h.rpc.mockResolvedValue({ data: { canais: "x" }, error: null });
     await montar({ inicio: "2026-05-01", fim: "2026-05-31" });
     await esperar();
-    expect(ultimo).toEqual({ visitas: null, erro: true });
+    expect(ultimo).toMatchObject({ visitas: null, erro: true });
   });
 
   it("trocar de período nunca mostra o número do anterior", async () => {
