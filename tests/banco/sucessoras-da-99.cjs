@@ -154,6 +154,10 @@ const NOMES = [
   // da 99, solicitar_devolucao o da 175; as duas primeiras sao das 42). O `hashVigente` de cada uma e o corpo da 99 (da 175 na solicitacao); o rollback-manual dela
   // desfaz as tres de uma vez e o da 99 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
   "20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql",
+  // O CRM e a lista de clientes nao contam a mesma pessoa duas vezes: UMA migration, DUAS funcoes. get_admin_customers_paged sucede o corpo da 392 (a
+  // CADEIA 99 -> 230 -> 392 -> 3993: o `hashVigente` da 3993 e o `hashDesta` da 392); crm__nunca_comprou nao e uma das 42 (vem da 183) mas entra porque o
+  // rollback-manual dela desfaz as duas de uma vez. O rollback da 392 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
@@ -173,6 +177,10 @@ const PARES_POR_MIGRATION = new Map([
     3,
   ],
   ["20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql", 3],
+  [
+    "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql",
+    2,
+  ],
 ]);
 
 const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");

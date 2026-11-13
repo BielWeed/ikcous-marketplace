@@ -3108,7 +3108,20 @@ const ROL_DA_144A = [
   "as tres: uma so de cada nome, atributos conhecidos (SECURITY DEFINER, plpgsql, volatilidade, retorno jsonb, search_path=public) e EXECUTE so do authenticated (nem PUBLIC nem anon)",
 ];
 const ROL_DA_144B = [...ROL_DA_144A];
+// Lote 145 (20261399993000, o CRM e a lista de clientes nao contam a mesma pessoa duas vezes: o corpo de DUAS funcoes muda, nenhuma ACL, nenhuma tabela). A 145a prova o estado novo (o md5 exato dos
+// dois corpos e atributos/ACL conhecidos); a 145b prova a base vigente (os corpos da 20261183000000 e da 20261392000000). So catalogo: nenhuma le perfil, endereco, pedido ou cliente e nenhuma chama as funcoes.
+const ROL_DA_145 = [
+  "controle: funcoes de public visiveis a este papel",
+  "crm__nunca_comprou: corpo exato (md5)",
+  "get_admin_customers_paged: corpo exato (md5)",
+  "crm__nunca_comprou: uma so, atributos conhecidos (sql, STABLE, SECURITY INVOKER, search_path=public) e sem EXECUTE para PUBLIC, anon ou authenticated",
+  "get_admin_customers_paged: uma so, atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, extensions) e EXECUTE so de authenticated e service_role (nem PUBLIC nem anon)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado":
+    ROL_DA_145,
+  "145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente":
+    ROL_DA_145,
   "144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado":
     ROL_DA_144A,
   "144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente":
