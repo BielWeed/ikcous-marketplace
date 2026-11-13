@@ -387,6 +387,8 @@ interface EstadoDoDashboardClassico {
 export function useDashboardClassico(
   active: boolean,
   aoMudarNoBanco?: () => void,
+  /** O dia de hoje da loja (`useDiaDeSaoPaulo`); a virada relê o resumo. */
+  dia?: string,
 ): EstadoDoDashboardClassico {
   const { session } = useAuth();
   // Só "há sessão ou não": o AuthContext troca o OBJETO a cada SIGNED_IN
@@ -555,14 +557,20 @@ export function useDashboardClassico(
     );
   }, [categoryData]);
 
+  // Dia da última leitura que saiu daqui: a virada do dia (`dia` mudou) relê
+  // à força e em silêncio — o gráfico de 30 dias é a janela móvel do servidor,
+  // e o resumo em cache (< 30 s) não pode segurar a janela de ontem.
+  const diaLidoRef = useRef(dia);
   useEffect(() => {
     if (temSessao && active) {
       const timer = setTimeout(() => {
-        loadDashboardData(false);
+        const viradaDeDia = diaLidoRef.current !== dia;
+        diaLidoRef.current = dia;
+        loadDashboardData(viradaDeDia, viradaDeDia);
       }, 320);
       return () => clearTimeout(timer);
     }
-  }, [loadDashboardData, temSessao, active]);
+  }, [loadDashboardData, temSessao, active, dia]);
 
   return {
     stats,
