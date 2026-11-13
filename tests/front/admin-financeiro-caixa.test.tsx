@@ -570,6 +570,16 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     expect(dt.nextElementSibling?.classList.contains(cor)).toBe(true);
   });
 
+  it("a observação do fechamento guarda o espaço do rótulo flutuante no topo", async () => {
+    await abrirSessao();
+    await clicar(botaoEm(hospedeiro, "Fechar caixa"));
+    const campo = document.getElementById("fin-caixa-observacao");
+    // `py-2` depois de `pt-7` faz o tailwind-merge descartar o `pt-7`, e o
+    // texto digitado sobe para baixo do rótulo absoluto.
+    expect(campo?.className).toMatch(/(^|\s)pt-7(\s|$)/);
+    expect(campo?.className).not.toMatch(/(^|\s)py-2(\s|$)/);
+  });
+
   async function abrirSessao() {
     await clicar(botaoEm(hospedeiro, "Abrir caixa"));
     await digitar("fin-caixa-abertura", "15000");
