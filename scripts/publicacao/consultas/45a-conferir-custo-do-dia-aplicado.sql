@@ -99,7 +99,7 @@ WITH alvo(chave, assinatura, nome, lingua, volatilidade, retorno) AS (
   SELECT 'get_admin_analytics_v2: corpo e o da 20261242000000, com o custo do dia da venda (md5)',
          'dceb62881ebf8fa404ba3ac295041691',
          -- A 45 sucede só o analytics: aceita os dois corpos EXATOS; normaliza ao esperado histórico do rol.
-         COALESCE((SELECT CASE WHEN f.m IN ('dceb62881ebf8fa404ba3ac295041691', 'ab25e738a3101cccbb0c09450b660ee0', '5746d8a1df216ca4a5569901c45a2a07', '060c9ab5b1505dc375b41e4436e9d3a8', '0ea0841208f326971e4f92241929e088')
+         COALESCE((SELECT CASE WHEN f.m IN ('dceb62881ebf8fa404ba3ac295041691', 'ab25e738a3101cccbb0c09450b660ee0', '5746d8a1df216ca4a5569901c45a2a07', '060c9ab5b1505dc375b41e4436e9d3a8', '0ea0841208f326971e4f92241929e088', 'de8648a7783c12f1be7abd7986c8a2fc')
                               THEN 'dceb62881ebf8fa404ba3ac295041691' ELSE f.m END FROM fn f WHERE f.chave = 'analytics'), 'AUSENTE')
   UNION ALL
   SELECT 'fin_dre: corpo e o da 20261242000000, com o custo do dia da venda (md5)',
