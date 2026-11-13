@@ -125,6 +125,28 @@ const ID_DA_REGIAO_DE_CLIENTES = "coupon-quem-pode-usar";
 
 const idDoErro = (campo: CampoDoCupom) => `${idDoCampo(campo)}-erro`;
 
+const AVISO_NUMERO_INCOMPLETO =
+  "Número incompleto: termine de digitar ou apague o campo.";
+
+/**
+ * Os três campos de número, na ordem da tela. Texto pela metade ("1e", "-")
+ * deixa o value do navegador vazio, com `validity.badInput`; o buffer do campo
+ * entrega "" e o Number("") dava 0, que em "Limite de uso" quer dizer
+ * ilimitado e em "Mínimo de compra", sem mínimo. Como na validade, vale o que o
+ * campo diz NA HORA de salvar: o salvar barra e avisa no campo, em vez de
+ * gravar um zero que ela não digitou. Zero digitado e campo apagado de
+ * propósito (sem `badInput`) seguem valendo.
+ */
+const CAMPOS_DE_NUMERO: readonly CampoDoCupom[] = [
+  "value",
+  "minPurchase",
+  "usageLimit",
+];
+
+const numeroDigitadoIncompleto = (campo: CampoDoCupom): boolean =>
+  (document.getElementById(idDoCampo(campo)) as HTMLInputElement | null)
+    ?.validity?.badInput === true;
+
 function ErroDoCampo({
   id,
   mensagem,
@@ -417,6 +439,13 @@ function FormularioDoCupom({
     if (!cleanCode) {
       recusarCampo("code", "O código do cupom é obrigatório.");
       return;
+    }
+
+    for (const campo of CAMPOS_DE_NUMERO) {
+      if (numeroDigitadoIncompleto(campo)) {
+        recusarCampo(campo, AVISO_NUMERO_INCOMPLETO);
+        return;
+      }
     }
 
     const value = formData.value ?? 0;
