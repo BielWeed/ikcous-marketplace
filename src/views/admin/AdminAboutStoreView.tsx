@@ -379,13 +379,19 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
           config.localCepRange,
         )
       : null;
+    // A descrição só vai quando a lojista a editou NESTA tela: salvar só o
+    // endereço com ela junto reenviava o texto velho (ou null) por cima da
+    // descrição que outro aparelho gravou antes.
+    const descricaoEditada = descricao !== baselineDescricao;
     setSaving(true);
     try {
       const success = await updateConfig(
         {
           ...(enderecoParaGravar ?? {}),
           ...(alcanceNovo !== null && { localCepRange: alcanceNovo }),
-          storeDescription: descricaoDaLojaParaHtml(descricao) || null,
+          ...(descricaoEditada && {
+            storeDescription: descricaoDaLojaParaHtml(descricao) || null,
+          }),
         },
         { isCurrent, silent: true },
       );
@@ -396,7 +402,8 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         // diferença de normalização deixava o botão habilitado para sempre).
         // O endereço se re-sincroniza sozinho pelo config que chega.
         usuarioEditou.current = false;
-        setDescricao(textoDaLoja(descricaoDaLojaParaHtml(descricao)));
+        if (descricaoEditada)
+          setDescricao(textoDaLoja(descricaoDaLojaParaHtml(descricao)));
         // Este resultado confirma só o pacote de endereço e descrição.
         toast.success(
           alcanceNovo === null
