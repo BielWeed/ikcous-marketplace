@@ -199,7 +199,11 @@ export function ReciboDaVenda({
             </h3>
             <p className="pdv-muted">
               Pedido #{recibo.numero} ·{" "}
-              {new Date(recibo.criadoEm).toLocaleString("pt-BR")}
+              {/* Hora da LOJA (Brasília), como o papel (`OrderReceipt`): sem
+                  o fuso, o aparelho de fora de SP mostrava outra hora. */}
+              {new Date(recibo.criadoEm).toLocaleString("pt-BR", {
+                timeZone: "America/Sao_Paulo",
+              })}
             </p>
           </div>
         </div>
