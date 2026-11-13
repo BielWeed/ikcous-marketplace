@@ -3117,13 +3117,13 @@ const ROL_DA_145 = [
   "crm__nunca_comprou: uma so, atributos conhecidos (sql, STABLE, SECURITY INVOKER, search_path=public) e sem EXECUTE para PUBLIC, anon ou authenticated",
   "get_admin_customers_paged: uma so, atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, extensions) e EXECUTE so de authenticated e service_role (nem PUBLIC nem anon)",
 ];
-// Lote 146 (20261399994000, o item "Nao veio" nao vira perda no ranking de lucro: get_admin_analytics_v2 redefinida pela segunda vez, sem objeto novo). A 146a e a 146b tem o MESMO rol de 4 linhas
+// Lote 146 (20261399994000, o item "Nao veio" fica com a cliente no ranking de lucro: get_admin_analytics_v2 redefinida pela segunda vez, sem objeto novo). A 146a e a 146b tem o MESMO rol de 4 linhas
 // da 135 (controle, corpo exato (md5), atributos e ACL); a 146a espera o corpo desta migration e a 146b o vigente de antes (o da 20261399970000). So catalogo: nenhuma le pedido, devolucao ou estorno e nenhuma chama a funcao.
 const ROL_DA_146 = [...ROL_DA_135];
 const ROL_FECHADO_POR_CONSULTA = {
-  "146a-conferir-o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-aplicado":
+  "146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado":
     ROL_DA_146,
-  "146b-antes-o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-base-vigente":
+  "146b-antes-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-base-vigente":
     ROL_DA_146,
   "145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado":
     ROL_DA_145,

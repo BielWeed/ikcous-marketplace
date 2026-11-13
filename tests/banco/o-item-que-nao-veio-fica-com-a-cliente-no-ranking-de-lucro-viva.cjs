@@ -2,23 +2,27 @@
 /* eslint-disable security/detect-non-literal-fs-filename, security/detect-object-injection --
  * Arquivos SQL locais do repositorio, todos com nomes literais fechados; os indices vem de contadores e de listas fechadas
  * deste arquivo (itens do cenario, dias do grafico), nunca de entrada de rede. */
-// Migration 20261399994000 (o item que a lojista marcou "Nao veio" nao vira PERDA no ranking de lucro): somente Postgres
+// Migration 20261399994000 (o item que a lojista marcou "Nao veio" fica com a cliente no ranking de lucro): somente Postgres
 // descartavel do rpc-ci, nunca banco de loja. A prova nao roda automaticamente fora do CI_BANCO_EFEMERO=1 + localhost.
 //
 // O que prova: get_admin_analytics_v2 (o cartao "Produtos que mais dao lucro", topProducts, e o lucro do grafico diario,
-// revenueHistory[].profit) deixa de cobrar o custo de uma peca devolvida marcada 'ausente' (a caixa chegou sem ela: a peca
-// nunca chegou a cliente e nunca saiu da loja). A regra da 20261399970000 continua a mesma para todo o resto:
-//   lucro do item = (q - d) x (preco - custo - cupom - cortesia) - n x custo
-//   d = pecas de devolucao CONCLUIDA com reembolso ou vale (troca NAO conta), 'ausente' INCLUSIVE (o dinheiro foi devolvido);
-//   n = as de d que NAO voltaram a prateleira (reestocado_em vazio) E cuja condicao NAO e 'ausente' (NULL conta, como antes).
-// O corpo anterior (o da 3997, devolvido pelo rollback desta migration) cobra o custo da peca ausente: o controle desta prova
-// o reproduz na MESMA fixture.
+// revenueHistory[].profit) trata a peca marcada "Nao veio" (devolucao_itens.condicao = 'ausente') como peca que FICOU com a
+// cliente (decisao de produto da 20261399992000): a venda vale, ela nao e devolvida nem perdida. O dinheiro que a loja
+// devolveu ALEM do valor das pecas que voltaram vira perda desse item, proporcional ao que foi devolvido.
+//   lucro do item = (q - d) x (preco - custo - cupom - cortesia) - n x custo - r
+//   d = pecas de devolucao CONCLUIDA com reembolso ou vale (troca NAO conta), SEM as 'ausente';
+//   n = as de d que NAO voltaram a prateleira (reestocado_em vazio) (condicao NULL conta, como antes);
+//   r = reembolso_sem_peca = LEAST(q x preco, soma das linhas 'ausente' qtd x valor_unitario x f), com
+//       f = LEAST(1, GREATEST(0, valor_reembolso - vv - valor_frete_ida) / va) quando resolucao_final = 'reembolso' e va > 0, senao 0
+//       (vv = valor das linhas que nao sao 'ausente' da devolucao; va = valor das linhas 'ausente').
+// O corpo anterior (o da 3997, devolvido pelo rollback desta migration) tratava o "Nao veio" como devolvida e perdida: o
+// controle desta prova o reproduz na MESMA fixture; um pedido SEM "Nao veio" mostra numeros IDENTICOS nos dois corpos.
 //
 // FIXTURE: cada cenario nasce e some dentro de um SAVEPOINT. Vestido R$100 (custo 40) + Blusa R$50 (custo 20), pedido 'pago' de
 // 3 dias atras; as vendas que ja existiam no clone sao postas como canceladas DENTRO da transacao (volta no fim).
 //
 // USO: CI_BANCO_EFEMERO=1 DATABASE_URL=postgres://postgres@127.0.0.1:<porta>/postgres \
-//        node tests/banco/rodar-isolado.cjs tests/banco/o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-viva.cjs
+//        node tests/banco/rodar-isolado.cjs tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs
 
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
@@ -28,7 +32,7 @@ const { Client } = require("pg");
 const { lerDatabaseUrlEfemera } = require("./efemero.cjs");
 
 const NOME =
-  "20261399994000_o_item_que_nao_veio_nao_vira_perda_no_ranking_de_lucro.sql";
+  "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql";
 const NOME_3997 = "20261399970000_o_ranking_de_lucro_desconta_a_devolucao.sql";
 const NOME_251 =
   "20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql";
@@ -45,12 +49,12 @@ const md5 = (s) => crypto.createHash("md5").update(s).digest("hex");
 const CORPO_NOVO = corpoDe(migration);
 const CORPO_3997 = corpoDe(ler(`supabase/migrations/${NOME_3997}`));
 const CORPO_251 = corpoDe(ler(`supabase/migrations/${NOME_251}`));
-const HASH_NOVO = "cd42b14ee70ab5acdc76427d6e105e11";
+const HASH_NOVO = "de8648a7783c12f1be7abd7986c8a2fc";
 const HASH_3997 = "0ea0841208f326971e4f92241929e088";
 const HASH_251 = "060c9ab5b1505dc375b41e4436e9d3a8";
+const FILTRO_3997 = "FILTER (WHERE di.reestocado_em IS NULL)";
 const FILTRO_NOVO =
   "FILTER (WHERE di.reestocado_em IS NULL AND di.condicao IS DISTINCT FROM 'ausente')";
-const FILTRO_3997 = "FILTER (WHERE di.reestocado_em IS NULL)";
 
 const ADMIN = "5e399994-0000-4000-8000-000000000001";
 const CLIENTE = "5e399994-0000-4000-8000-000000000002";
@@ -120,7 +124,15 @@ async function pedido(c, { dias, itens, desconto = 0, pagamento = "pago" }) {
       ).rows[0].id,
     );
   }
-  return { id: r.rows[0].id, dia: r.rows[0].dia, itens: ids };
+  // valor_unitario da devolucao = o preco do item ja com o rateio do cupom (como solicitar_devolucao grava).
+  const fator = subtotal > 0 ? (subtotal - desconto) / subtotal : 1;
+  return {
+    id: r.rows[0].id,
+    dia: r.rows[0].dia,
+    itens: ids,
+    unitario: itens.map((i) => Math.round(i.preco * fator * 100) / 100),
+    estornado: 0,
+  };
 }
 async function produto(c, nome, preco, custo) {
   const id = crypto.randomUUID();
@@ -132,41 +144,67 @@ async function produto(c, nome, preco, custo) {
   return id;
 }
 // Linha do ledger. A devolucao a que ela pertence aponta para ela (devolucoes.refund_id); sem isso, e estorno SEM devolucao.
-async function estorno(c, ped, amount, status = "concluido") {
+// `por` = quem pediu ('sistema' = o webhook do MP registrando devolucao feita pelo painel do MP); `minutos` = quando nasceu
+// em relacao a agora. O acumulado confirmado do pedido (valor_estornado) segue a soma das linhas 'concluido'.
+async function estorno(
+  c,
+  ped,
+  amount,
+  status = "concluido",
+  { por = "lojista", minutos = 0 } = {},
+) {
+  if (status === "concluido") ped.estornado += amount;
   return (
     await c.query(
       `INSERT INTO public.order_refunds
          (order_id, amount, motivo, solicitado_por, status, concluido_em, created_at)
-       VALUES ($1, $2, 'fixture 3994', 'lojista', $3, CASE WHEN $3 = 'concluido' THEN now() END, now())
+       VALUES ($1, $2, 'fixture 3994', $4, $3, CASE WHEN $3 = 'concluido' THEN now() END,
+               now() + ($5::text || ' minutes')::interval)
        RETURNING id`,
-      [ped.id, amount, status],
+      [ped.id, amount, status, por, minutos],
     )
   ).rows[0].id;
 }
-// Devolucao do item i do pedido. final: reembolso | vale | troca; status: concluida | recebida;
-// condicao: o que a lojista marcou ao concluir (null = devolucao de antes da marcacao existir).
-async function devolver(
+// Uma linha de devolucao: item i do pedido, quantidade, condicao marcada ao concluir e se voltou a prateleira.
+const L = (i, qtd, condicao = null, reestocada = false) => ({
+  i,
+  qtd,
+  condicao,
+  reestocada,
+});
+// UMA devolucao com varias linhas. final: reembolso | vale | troca; status: concluida | recebida; `reembolso` = valor_reembolso;
+// `frete` = valor_frete_ida; `via`: 'mp' (linha do ledger ligada em refund_id) ou 'manual' ("ja devolvi por fora": refund_id solto e a
+// linha 'sistema' que o webhook grava depois). O item 'ausente' NAO tem reembolso por padrao: o dinheiro e o que `reembolso` disser.
+async function devolucao(
   c,
   ped,
-  i,
   {
-    qtd,
-    preco,
+    linhas,
     final = "reembolso",
     status = "concluida",
-    reestocada = false,
-    condicao = null,
-    refundId = null,
+    reembolso = null,
+    frete = 0,
+    via = "mp",
     protocolo,
   },
 ) {
   const dev = crypto.randomUUID();
   const concluida = status === "concluida";
+  const comDinheiro = final === "reembolso" && concluida && reembolso !== null;
+  let refundId = null;
+  if (comDinheiro && via === "mp") refundId = await estorno(c, ped, reembolso);
+  if (comDinheiro && via === "manual")
+    await estorno(c, ped, reembolso, "concluido", {
+      por: "sistema",
+      minutos: 5,
+    });
+  const valorItens = linhas.reduce((s, l) => s + l.qtd * ped.unitario[l.i], 0);
   await c.query(
     `INSERT INTO public.devolucoes (id, protocolo, order_id, user_id, tipo, motivo, resolucao_desejada, resolucao_final,
-       modalidade, metodo_retorno, status, valor_itens, valor_reembolso, refund_id, reembolso_manual, prazo_ate, politica, concluida_em)
-     VALUES ($1, $2, $3, $4, $5, 'desisti', $6, $7, 'local', 'entrega_na_loja', $8, $9::numeric, $10, $11, $12,
-       current_date + 7, '{}'::jsonb, CASE WHEN $13 THEN now() END)`,
+       modalidade, metodo_retorno, status, valor_itens, valor_frete_ida, valor_reembolso, refund_id, reembolso_manual,
+       prazo_ate, politica, concluida_em)
+     VALUES ($1, $2, $3, $4, $5, 'desisti', $6, $7, 'local', 'entrega_na_loja', $8, $9::numeric, $10::numeric, $11, $12, $13,
+       current_date + 7, '{}'::jsonb, CASE WHEN $14 THEN now() END)`,
     [
       dev,
       protocolo,
@@ -176,19 +214,21 @@ async function devolver(
       final,
       final,
       status,
-      qtd * preco,
-      final === "reembolso" && concluida ? qtd * preco : null,
+      valorItens,
+      frete,
+      reembolso,
       refundId,
-      final === "reembolso" && concluida && refundId === null,
+      comDinheiro && via === "manual",
       concluida,
     ],
   );
-  await c.query(
-    `INSERT INTO public.devolucao_itens (devolucao_id, order_item_id, product_id, quantidade, valor_unitario, condicao, reestocar, reestocado_em)
-     VALUES ($1, $2, (SELECT product_id FROM public.marketplace_order_items WHERE id = $2), $3, $4, $5, $6,
-             CASE WHEN $6 THEN now() END)`,
-    [dev, ped.itens[i], qtd, preco, condicao, reestocada],
-  );
+  for (const l of linhas)
+    await c.query(
+      `INSERT INTO public.devolucao_itens (devolucao_id, order_item_id, product_id, quantidade, valor_unitario, condicao, reestocar, reestocado_em)
+       VALUES ($1, $2, (SELECT product_id FROM public.marketplace_order_items WHERE id = $2), $3, $4, $5, $6,
+               CASE WHEN $6 THEN now() END)`,
+      [dev, ped.itens[l.i], l.qtd, ped.unitario[l.i], l.condicao, l.reestocada],
+    );
   return dev;
 }
 
@@ -197,22 +237,17 @@ const BLUSA = { preco: 50, custo: 20 };
 let sequencia = 0;
 const protocolo = () =>
   `P3994-${++sequencia}-${crypto.randomUUID().slice(0, 8)}`;
-// A blusa (item 1) devolvida de uma vez, com o estorno ligado de R$ 50 por peca.
-const devolverBlusa = (opts) => async (c, ped) => {
-  const r = await estorno(c, ped, 50 * (opts.qtd ?? 1));
-  await devolver(c, ped, 1, {
-    qtd: 1,
-    preco: 50,
-    refundId: r,
-    protocolo: protocolo(),
-    ...opts,
-  });
-  return 50 * (opts.qtd ?? 1);
+// Atalho: `montar` recebe (c, ped) e chama devolucao(c, ped, {...}).
+const com = (opts) => async (c, ped) => {
+  await devolucao(c, ped, { protocolo: protocolo(), ...opts });
+};
+const cortesia = (valor) => async (c, ped) => {
+  await estorno(c, ped, valor);
 };
 
 /**
  * Monta o cenario e devolve o que a tela mostra: por produto, a quantidade e o lucro do ranking, e o lucro do dia no
- * grafico. `montar` recebe (c, ped, v, b) e cria devolucoes/estornos e devolve o valor_estornado do pedido.
+ * grafico. `montar` recebe (c, ped, v, b) e cria devolucoes e estornos; o valor_estornado do pedido e a soma do ledger concluido.
  */
 async function rodar(
   c,
@@ -229,12 +264,11 @@ async function rodar(
       { produto: b, qtd: qtdBlusa, preco: BLUSA.preco },
     ],
   });
-  const valorEstornado = await montar(c, ped, v, b);
-  if (valorEstornado !== undefined && valorEstornado !== null)
-    await c.query(
-      "UPDATE public.marketplace_orders SET valor_estornado = $2 WHERE id = $1",
-      [ped.id, valorEstornado],
-    );
+  await montar(c, ped, v, b);
+  await c.query(
+    "UPDATE public.marketplace_orders SET valor_estornado = $2 WHERE id = $1",
+    [ped.id, ped.estornado],
+  );
   const r = await analytics(c);
   const top = new Map(
     r.topProducts.map((p) => [
@@ -252,287 +286,363 @@ async function rodar(
   };
 }
 
-// Cada cenario: nome, como montar, o que o corpo NOVO mostra e o que o corpo ANTERIOR (3997) mostrava.
+// Cada cenario: nome, como montar, o que o corpo NOVO mostra e o que o corpo ANTERIOR (3997) mostrava, em [quantidade, lucro em centavos].
 // `undefined` = o produto nao aparece no ranking (pedido fora da conta). Sem `antes`, os dois corpos mostram o mesmo.
+// O item 'ausente' ("Nao veio") NAO tem reembolso por padrao: so o que `reembolso` disser (devolucao.valor_reembolso).
 const CENARIOS = [
+  // ---- controle: pedido SEM item 'ausente' mostra os MESMOS numeros nos dois corpos ----
+  { nome: "sem devolucao", opts: {}, novo: { v: [1, 6000], b: [1, 3000] } },
   {
-    nome: "sem devolucao",
-    opts: {},
-    novo: { v: [1, 6000], b: [1, 3000] },
-  },
-  {
-    nome: "blusa devolvida marcada 'Nao veio' (reembolso, nao reestocada): sem custo cobrado como perda",
-    opts: { montar: devolverBlusa({ condicao: "ausente" }) },
-    novo: { v: [1, 6000], b: [0, 0] },
-    antes: { v: [1, 6000], b: [0, -2000] },
-  },
-  {
-    nome: "o mesmo com vale-troca (sem dinheiro): a peca ausente tambem nao e perda",
+    nome: "blusa devolvida nova e reestocada, reembolso de R$ 50: sai do lucro e da quantidade",
     opts: {
-      montar: async (c, ped) => {
-        await devolver(c, ped, 1, {
-          qtd: 1,
-          preco: 50,
-          final: "vale",
-          condicao: "ausente",
-          protocolo: protocolo(),
-        });
-        return 0;
-      },
+      montar: com({ linhas: [L(1, 1, "nova", true)], reembolso: 50 }),
     },
     novo: { v: [1, 6000], b: [0, 0] },
-    antes: { v: [1, 6000], b: [0, -2000] },
   },
   {
-    nome: "blusa 'danificada' e nao reestocada: continua perda (o custo sai)",
-    opts: { montar: devolverBlusa({ condicao: "danificada" }) },
+    nome: "blusa 'danificada' e nao reestocada: o custo vira perda",
+    opts: {
+      montar: com({ linhas: [L(1, 1, "danificada")], reembolso: 50 }),
+    },
     novo: { v: [1, 6000], b: [0, -2000] },
   },
   {
-    nome: "blusa 'usada' e nao reestocada: continua perda",
-    opts: { montar: devolverBlusa({ condicao: "usada" }) },
+    nome: "blusa 'usada' e nao reestocada: o custo vira perda",
+    opts: { montar: com({ linhas: [L(1, 1, "usada")], reembolso: 50 }) },
     novo: { v: [1, 6000], b: [0, -2000] },
   },
   {
     nome: "devolucao concluida de ANTES da marcacao existir (condicao nula) e nao reestocada: continua perda",
-    opts: { montar: devolverBlusa({ condicao: null }) },
+    opts: { montar: com({ linhas: [L(1, 1, null)], reembolso: 50 }) },
     novo: { v: [1, 6000], b: [0, -2000] },
   },
   {
-    nome: "blusa 'nova' reestocada: sem perda",
-    opts: {
-      montar: devolverBlusa({ condicao: "nova", reestocada: true }),
-    },
-    novo: { v: [1, 6000], b: [0, 0] },
+    nome: "so cortesia de R$ 15, sem devolucao",
+    opts: { montar: cortesia(15) },
+    novo: { v: [1, 5000], b: [1, 2500] },
   },
   {
-    nome: "blusa x2: uma peca 'Nao veio' e outra 'danificada' em outra devolucao do mesmo item: so a danificada e perda",
-    opts: {
-      qtdBlusa: 2,
-      montar: async (c, ped) => {
-        const r1 = await estorno(c, ped, 50);
-        await devolver(c, ped, 1, {
-          qtd: 1,
-          preco: 50,
-          condicao: "ausente",
-          refundId: r1,
-          protocolo: protocolo(),
-        });
-        const r2 = await estorno(c, ped, 50);
-        await devolver(c, ped, 1, {
-          qtd: 1,
-          preco: 50,
-          condicao: "danificada",
-          refundId: r2,
-          protocolo: protocolo(),
-        });
-        return 100;
-      },
-    },
-    novo: { v: [1, 6000], b: [0, -2000] },
-    antes: { v: [1, 6000], b: [0, -4000] },
-  },
-  {
-    nome: "blusa x2: uma peca 'Nao veio' e outra 'nova' reestocada: nenhuma perda",
-    opts: {
-      qtdBlusa: 2,
-      montar: async (c, ped) => {
-        const r1 = await estorno(c, ped, 50);
-        await devolver(c, ped, 1, {
-          qtd: 1,
-          preco: 50,
-          condicao: "ausente",
-          refundId: r1,
-          protocolo: protocolo(),
-        });
-        const r2 = await estorno(c, ped, 50);
-        await devolver(c, ped, 1, {
-          qtd: 1,
-          preco: 50,
-          condicao: "nova",
-          reestocada: true,
-          refundId: r2,
-          protocolo: protocolo(),
-        });
-        return 100;
-      },
-    },
-    novo: { v: [1, 6000], b: [0, 0] },
-    antes: { v: [1, 6000], b: [0, -2000] },
-  },
-  {
-    nome: "o item 'Nao veio' devolvido DE NOVO no prazo (a 20261399992000 permite): a mesma peca nao conta duas vezes como devolvida nem como perdida",
-    opts: {
-      montar: async (c, ped) => {
-        const r1 = await estorno(c, ped, 50);
-        await devolver(c, ped, 1, {
-          qtd: 1,
-          preco: 50,
-          condicao: "ausente",
-          refundId: r1,
-          protocolo: protocolo(),
-        });
-        await devolver(c, ped, 1, {
-          qtd: 1,
-          preco: 50,
-          condicao: "nova",
-          reestocada: true,
-          protocolo: protocolo(),
-        });
-        return 50;
-      },
-    },
-    novo: { v: [1, 6000], b: [0, 0] },
-    antes: { v: [1, 6000], b: [0, -2000] },
-  },
-  {
-    nome: "o item 'Nao veio' devolvido de novo e dessa vez DANIFICADO: so a segunda devolucao e perda (uma peca)",
-    opts: {
-      montar: async (c, ped) => {
-        const r1 = await estorno(c, ped, 50);
-        await devolver(c, ped, 1, {
-          qtd: 1,
-          preco: 50,
-          condicao: "ausente",
-          refundId: r1,
-          protocolo: protocolo(),
-        });
-        await devolver(c, ped, 1, {
-          qtd: 1,
-          preco: 50,
-          condicao: "danificada",
-          protocolo: protocolo(),
-        });
-        return 50;
-      },
-    },
-    novo: { v: [1, 6000], b: [0, -2000] },
-  },
-  {
-    nome: "cupom de R$ 15 + blusa 'Nao veio' com o estorno de R$ 45 ligado: o cupom sai uma vez e a perda nao existe",
+    nome: "cupom de R$ 15 + blusa 'nova' devolvida com o estorno de R$ 45 ligado",
     opts: {
       desconto: 15,
-      montar: async (c, ped) => {
-        const r = await estorno(c, ped, 45);
-        await devolver(c, ped, 1, {
-          qtd: 1,
-          preco: 50,
-          condicao: "ausente",
-          refundId: r,
-          protocolo: protocolo(),
-        });
-        return 45;
-      },
+      montar: com({ linhas: [L(1, 1, "nova", true)], reembolso: 45 }),
     },
     novo: { v: [1, 5000], b: [0, 0] },
-    antes: { v: [1, 5000], b: [0, -2000] },
   },
   {
-    nome: "blusa 'Nao veio' (estorno de R$ 50 ligado) + cortesia de R$ 15: a cortesia cai so na peca que ficou",
+    nome: "devolucao do tipo troca (sem dinheiro): igual ao corpo anterior",
+    opts: { montar: com({ linhas: [L(1, 1, "nova", true)], final: "troca" }) },
+    novo: { v: [1, 6000], b: [1, 3000] },
+  },
+  {
+    nome: "devolucao ainda 'recebida' (nao concluida): igual ao corpo anterior",
+    opts: {
+      montar: com({ linhas: [L(1, 1, "nova", true)], status: "recebida" }),
+    },
+    novo: { v: [1, 6000], b: [1, 3000] },
+  },
+  {
+    nome: "vale-troca com blusa 'nova': conta como devolvida",
+    opts: { montar: com({ linhas: [L(1, 1, "nova", true)], final: "vale" }) },
+    novo: { v: [1, 6000], b: [0, 0] },
+  },
+  {
+    nome: "blusa x4: tres devolvidas ('nova' x2 e 'danificada' x1) em duas devolucoes",
+    opts: {
+      qtdBlusa: 4,
+      montar: async (c, ped) => {
+        await devolucao(c, ped, {
+          linhas: [L(1, 2, "nova", true)],
+          reembolso: 100,
+          protocolo: protocolo(),
+        });
+        await devolucao(c, ped, {
+          linhas: [L(1, 1, "danificada")],
+          reembolso: 50,
+          protocolo: protocolo(),
+        });
+      },
+    },
+    novo: { v: [1, 6000], b: [1, 1000] },
+  },
+  // ---- 'Nao veio': a peca FICOU com a cliente; so o dinheiro devolvido alem das pecas que voltaram vira perda ----
+  {
+    nome: "(A) o 'Nao veio' fica com a cliente e a lojista reembolsou so o que voltou: a blusa mostra preco - custo",
+    opts: {
+      montar: com({
+        linhas: [L(0, 1, "nova", true), L(1, 1, "ausente")],
+        reembolso: 100,
+      }),
+    },
+    novo: { v: [0, 0], b: [1, 3000] },
+    antes: { v: [0, 0], b: [0, -2000] },
+  },
+  {
+    nome: "so a blusa 'Nao veio', em vale-troca (sem dinheiro): a venda vale, nada e perda",
+    opts: { montar: com({ linhas: [L(1, 1, "ausente")], final: "vale" }) },
+    novo: { v: [1, 6000], b: [1, 3000] },
+    antes: { v: [1, 6000], b: [0, -2000] },
+  },
+  {
+    nome: "(B) so a blusa 'Nao veio' e a lojista reembolsou o valor cheio dela pelo Mercado Pago: perde o custo",
+    opts: { montar: com({ linhas: [L(1, 1, "ausente")], reembolso: 50 }) },
+    novo: { v: [1, 6000], b: [1, -2000] },
+    antes: { v: [1, 6000], b: [0, -2000] },
+  },
+  {
+    nome: "(B) o mesmo pelo caminho manual ('ja devolvi por fora': refund_id solto e linha 'sistema' do webhook)",
+    opts: {
+      montar: com({
+        linhas: [L(1, 1, "ausente")],
+        reembolso: 50,
+        via: "manual",
+      }),
+    },
+    novo: { v: [1, 6000], b: [1, -2000] },
+    antes: { v: [1, 6000], b: [0, -2000] },
+  },
+  {
+    nome: "reembolso parcial: R$ 125 por vestido (R$ 100) e blusa 'Nao veio' (R$ 50): metade da blusa foi devolvida",
+    opts: {
+      montar: com({
+        linhas: [L(0, 1, "nova", true), L(1, 1, "ausente")],
+        reembolso: 125,
+      }),
+    },
+    novo: { v: [0, 0], b: [1, 500] },
+    antes: { v: [0, 0], b: [0, -2000] },
+  },
+  {
+    nome: "reembolso MENOR que as pecas que voltaram (R$ 60 por um vestido de R$ 100): o 'Nao veio' nao ganha dinheiro negativo",
+    opts: {
+      montar: com({
+        linhas: [L(0, 1, "nova", true), L(1, 1, "ausente")],
+        reembolso: 60,
+      }),
+    },
+    novo: { v: [0, 0], b: [1, 3000] },
+    antes: { v: [0, 0], b: [0, -2000] },
+  },
+  {
+    nome: "frete de ida de R$ 10 no reembolso de R$ 110: o frete nao e dinheiro da peca 'Nao veio'",
+    opts: {
+      montar: com({
+        linhas: [L(0, 1, "nova", true), L(1, 1, "ausente")],
+        reembolso: 110,
+        frete: 10,
+      }),
+    },
+    novo: { v: [0, 0], b: [1, 3000] },
+    antes: { v: [0, 0], b: [0, -2000] },
+  },
+  {
+    nome: "frete de ida de R$ 10 e reembolso cheio de R$ 160 (o padrao do sistema): perde o custo da blusa",
+    opts: {
+      montar: com({
+        linhas: [L(0, 1, "nova", true), L(1, 1, "ausente")],
+        reembolso: 160,
+        frete: 10,
+      }),
+    },
+    novo: { v: [0, 0], b: [1, -2000] },
+    antes: { v: [0, 0], b: [0, -2000] },
+  },
+  {
+    nome: "cupom de R$ 15 e reembolso cheio de R$ 135 (vestido R$ 90 + blusa R$ 45): o cupom e o reembolso saem uma vez cada",
+    opts: {
+      desconto: 15,
+      montar: com({
+        linhas: [L(0, 1, "nova", true), L(1, 1, "ausente")],
+        reembolso: 135,
+      }),
+    },
+    novo: { v: [0, 0], b: [1, -2000] },
+    antes: { v: [0, 0], b: [0, -2000] },
+  },
+  {
+    nome: "cupom de R$ 15 e reembolso so do vestido (R$ 90): a blusa 'Nao veio' mostra preco - custo - cupom",
+    opts: {
+      desconto: 15,
+      montar: com({
+        linhas: [L(0, 1, "nova", true), L(1, 1, "ausente")],
+        reembolso: 90,
+      }),
+    },
+    novo: { v: [0, 0], b: [1, 2500] },
+    antes: { v: [0, 0], b: [0, -2000] },
+  },
+  {
+    nome: "(A) + cortesia de R$ 15: a cortesia se reparte tambem sobre a peca 'Nao veio' (ela ficou)",
     opts: {
       montar: async (c, ped) => {
-        const r = await estorno(c, ped, 50);
-        await devolver(c, ped, 1, {
-          qtd: 1,
-          preco: 50,
-          condicao: "ausente",
-          refundId: r,
+        await devolucao(c, ped, {
+          linhas: [L(0, 1, "nova", true), L(1, 1, "ausente")],
+          reembolso: 100,
           protocolo: protocolo(),
         });
         await estorno(c, ped, 15);
-        return 65;
       },
     },
-    novo: { v: [1, 4500], b: [0, 0] },
-    antes: { v: [1, 4500], b: [0, -2000] },
+    novo: { v: [0, 0], b: [1, 1500] },
+    antes: { v: [0, 0], b: [0, -2000] },
   },
   {
-    nome: "vestido 'Nao veio' (o item mais caro) e blusa 'danificada': so o custo da blusa e perda",
+    nome: "vale-troca com vestido 'nova' e blusa 'Nao veio': sem dinheiro, a blusa fica e vale a venda",
     opts: {
-      montar: async (c, ped) => {
-        const r1 = await estorno(c, ped, 100);
-        await devolver(c, ped, 0, {
-          qtd: 1,
-          preco: 100,
-          condicao: "ausente",
-          refundId: r1,
-          protocolo: protocolo(),
-        });
-        const r2 = await estorno(c, ped, 50);
-        await devolver(c, ped, 1, {
-          qtd: 1,
-          preco: 50,
-          condicao: "danificada",
-          refundId: r2,
-          protocolo: protocolo(),
-        });
-        return 150;
-      },
+      montar: com({
+        linhas: [L(0, 1, "nova", true), L(1, 1, "ausente")],
+        final: "vale",
+      }),
     },
-    novo: { v: [0, 0], b: [0, -2000] },
-    antes: { v: [0, -4000], b: [0, -2000] },
+    novo: { v: [0, 0], b: [1, 3000] },
+    antes: { v: [0, 0], b: [0, -2000] },
   },
   {
-    nome: "devolucao do tipo troca com item 'Nao veio': a troca nao conta como devolvida, igual ao corpo anterior",
+    nome: "vale-troca com 'Nao veio' e valor_reembolso preenchido por engano (R$ 50): vale nunca tem dinheiro, f = 0",
     opts: {
       montar: async (c, ped) => {
-        await devolver(c, ped, 1, {
-          qtd: 1,
-          preco: 50,
-          final: "troca",
-          condicao: "ausente",
-          protocolo: protocolo(),
-        });
-        return 0;
-      },
-    },
-    novo: { v: [1, 6000], b: [1, 3000] },
-  },
-  {
-    nome: "devolucao ainda 'recebida' (nao concluida) com item 'Nao veio': fora da conta, igual ao corpo anterior",
-    opts: {
-      montar: async (c, ped) => {
-        await devolver(c, ped, 1, {
-          qtd: 1,
-          preco: 50,
-          status: "recebida",
-          condicao: "ausente",
-          protocolo: protocolo(),
-        });
-        return 0;
-      },
-    },
-    novo: { v: [1, 6000], b: [1, 3000] },
-  },
-  {
-    nome: "dado inconsistente: 5 pecas 'Nao veio' de uma blusa vendida (a quantidade nunca fica negativa nem a perda aparece)",
-    opts: {
-      montar: async (c, ped) => {
-        await devolver(c, ped, 1, {
-          qtd: 5,
-          preco: 50,
+        await devolucao(c, ped, {
+          linhas: [L(1, 1, "ausente")],
           final: "vale",
-          condicao: "ausente",
           protocolo: protocolo(),
         });
-        return 0;
+        await c.query(
+          "UPDATE public.devolucoes SET valor_reembolso = 50 WHERE order_id = $1",
+          [ped.id],
+        );
+      },
+    },
+    novo: { v: [1, 6000], b: [1, 3000] },
+    antes: { v: [1, 6000], b: [0, -2000] },
+  },
+  {
+    nome: "troca com 'Nao veio': a troca nao conta como devolvida, igual ao corpo anterior",
+    opts: { montar: com({ linhas: [L(1, 1, "ausente")], final: "troca" }) },
+    novo: { v: [1, 6000], b: [1, 3000] },
+  },
+  {
+    nome: "devolucao ainda 'recebida' com item 'Nao veio': fora da conta, igual ao corpo anterior",
+    opts: {
+      montar: com({ linhas: [L(1, 1, "ausente")], status: "recebida" }),
+    },
+    novo: { v: [1, 6000], b: [1, 3000] },
+  },
+  {
+    nome: "peca pedida de novo: a 1a devolucao 'Nao veio' sem reembolso (vale) e a 2a devolve a blusa, reestoca e reembolsa: lucro 0",
+    opts: {
+      montar: async (c, ped) => {
+        await devolucao(c, ped, {
+          linhas: [L(1, 1, "ausente")],
+          final: "vale",
+          protocolo: protocolo(),
+        });
+        await devolucao(c, ped, {
+          linhas: [L(1, 1, "nova", true)],
+          reembolso: 50,
+          protocolo: protocolo(),
+        });
       },
     },
     novo: { v: [1, 6000], b: [0, 0] },
     antes: { v: [1, 6000], b: [0, -2000] },
+  },
+  {
+    nome: "peca pedida de novo e dessa vez 'danificada': so a segunda devolucao e perda (uma peca)",
+    opts: {
+      montar: async (c, ped) => {
+        await devolucao(c, ped, {
+          linhas: [L(1, 1, "ausente")],
+          final: "vale",
+          protocolo: protocolo(),
+        });
+        await devolucao(c, ped, {
+          linhas: [L(1, 1, "danificada")],
+          reembolso: 50,
+          protocolo: protocolo(),
+        });
+      },
+    },
+    novo: { v: [1, 6000], b: [0, -2000] },
+  },
+  {
+    nome: "blusa x2: uma peca 'Nao veio' reembolsada (R$ 50) e a outra devolvida 'nova' e reembolsada (R$ 50): -custo da que ficou",
+    opts: {
+      qtdBlusa: 2,
+      montar: async (c, ped) => {
+        await devolucao(c, ped, {
+          linhas: [L(1, 1, "ausente")],
+          reembolso: 50,
+          protocolo: protocolo(),
+        });
+        await devolucao(c, ped, {
+          linhas: [L(1, 1, "nova", true)],
+          reembolso: 50,
+          protocolo: protocolo(),
+        });
+      },
+    },
+    novo: { v: [1, 6000], b: [1, -2000] },
+    antes: { v: [1, 6000], b: [0, -2000] },
+  },
+  {
+    nome: "LIMITACAO CONHECIDA (regra do socio): a 1a devolucao reembolsou o 'Nao veio' (R$ 50) e a 2a, do mesmo item, devolve a peca num vale-troca: o dinheiro da 1a segue como perda (-R$ 50), embora a peca tenha voltado",
+    opts: {
+      montar: async (c, ped) => {
+        await devolucao(c, ped, {
+          linhas: [L(1, 1, "ausente")],
+          reembolso: 50,
+          protocolo: protocolo(),
+        });
+        await devolucao(c, ped, {
+          linhas: [L(1, 1, "nova", true)],
+          final: "vale",
+          protocolo: protocolo(),
+        });
+      },
+    },
+    novo: { v: [1, 6000], b: [0, -5000] },
+    antes: { v: [1, 6000], b: [0, -2000] },
+  },
+  {
+    nome: "reembolso maior que o valor das pecas (R$ 200 por R$ 150): o fator nunca passa de 1",
+    opts: {
+      qtdBlusa: 2,
+      montar: com({
+        linhas: [L(0, 1, "nova", true), L(1, 1, "ausente")],
+        reembolso: 200,
+      }),
+    },
+    novo: { v: [0, 0], b: [2, 1000] },
+    antes: { v: [0, 0], b: [1, 1000] },
+  },
+  {
+    nome: "dado inconsistente: 5 pecas 'Nao veio' de uma blusa vendida, com R$ 250 reembolsados: o prejuizo e limitado ao que o item vendeu",
+    opts: { montar: com({ linhas: [L(1, 5, "ausente")], reembolso: 250 }) },
+    novo: { v: [1, 6000], b: [1, -2000] },
+    antes: { v: [1, 6000], b: [0, -2000] },
+  },
+  {
+    nome: "vestido 'Nao veio' (o item mais caro) e blusa 'danificada', reembolso so da blusa (R$ 50): o vestido fica e vale a venda",
+    opts: {
+      montar: com({
+        linhas: [L(0, 1, "ausente"), L(1, 1, "danificada")],
+        reembolso: 50,
+      }),
+    },
+    novo: { v: [1, 6000], b: [0, -2000] },
+    antes: { v: [0, -4000], b: [0, -2000] },
   },
   {
     nome: "pedido estornado por inteiro com item 'Nao veio': fora do ranking, como antes",
     opts: {
       pagamento: "estornado",
       montar: async (c, ped) => {
-        await devolver(c, ped, 1, {
-          qtd: 1,
-          preco: 50,
-          condicao: "ausente",
+        await devolucao(c, ped, {
+          linhas: [L(1, 1, "ausente")],
+          final: "vale",
           protocolo: protocolo(),
         });
-        return 150;
+        await estorno(c, ped, 150);
       },
     },
     novo: { v: undefined, b: undefined },
@@ -540,6 +650,11 @@ const CENARIOS = [
 ];
 const alvo = (par) =>
   par === undefined ? undefined : { quantity: par[0], total: par[1] };
+const cenario = (inicio) => {
+  const achados = CENARIOS.filter((x) => x.nome.startsWith(inicio));
+  assert.equal(achados.length >= 1, true, `cenario "${inicio}" nao existe`);
+  return achados[0];
+};
 
 /** O comportamento que a migration promete, sobre todos os cenarios. Lanca no primeiro desvio. */
 async function conferir(c, qual = "novo") {
@@ -579,17 +694,45 @@ async function main() {
       "o corpo anterior nao e o da 3997",
     );
     assert.equal(md5(CORPO_251), HASH_251, "o corpo da 251 mudou");
-    // So o filtro das perdidas muda, nos DOIS lugares: o resto do corpo e o da 3997 byte a byte.
+    // Fora o que esta migration muda, o corpo e o da 3997 byte a byte: desfazendo cada trecho novo, volta-se ao da 3997.
     assert.equal(CORPO_NOVO.split(FILTRO_NOVO).length - 1, 2);
     assert.equal(CORPO_3997.split(FILTRO_3997).length - 1, 2);
+    const LATERAL_FR =
+      /\n *LEFT JOIN LATERAL \(\n *SELECT CASE WHEN dv\.resolucao_final[\s\S]*?WHERE dx\.devolucao_id = dv\.id\) x\) fr ON true/g;
     assert.equal(
-      CORPO_NOVO.split(FILTRO_NOVO)
-        .join(FILTRO_3997)
-        .split("\n")
-        .filter((l) => !l.includes("Exceto o item que a lojista marcou"))
-        .join("\n"),
+      CORPO_NOVO.match(LATERAL_FR).length,
+      2,
+      "a conta do fator f entra uma vez em cada bloco",
+    );
+    const desfeito = CORPO_NOVO.split("\n")
+      .filter(
+        (l) =>
+          !/^ *-- ('Nao veio' \(condicao|reembolso_sem_peca =|pecas 'Nao veio' de cada)/.test(
+            l,
+          ),
+      )
+      .join("\n")
+      .replace(LATERAL_FR, "")
+      .split(" FILTER (WHERE rdi.condicao IS DISTINCT FROM 'ausente')")
+      .join("")
+      .split(
+        "SUM(di.quantidade) FILTER (WHERE di.condicao IS DISTINCT FROM 'ausente'), 0))::int AS devolvidas",
+      )
+      .join("SUM(di.quantidade), 0))::int AS devolvidas")
+      .split(FILTRO_NOVO)
+      .join(FILTRO_3997)
+      .replace(
+        /::int AS perdidas,\n *LEAST\(oi\.quantity \* oi\.price, COALESCE\([^\n]*AS reembolso_sem_peca/g,
+        "::int AS perdidas",
+      )
+      .replace(
+        /(- dev\.perdidas \* COALESCE\(oic\.custo, p\.custo\))\n *- dev\.reembolso_sem_peca\)/g,
+        "$1)",
+      );
+    assert.equal(
+      desfeito,
       CORPO_3997,
-      "fora do filtro das perdidas e do comentario, o corpo tem de ser o da 3997",
+      "fora das mudancas desta migration (excecao do 'Nao veio', reembolso_sem_peca e o fator f), o corpo tem de ser o da 3997",
     );
 
     for (const [id, papel, metaAdmin] of [
@@ -632,17 +775,22 @@ async function main() {
       "o rollback mudou OID, dono, ACL ou atributo",
     );
     await conferir(c, "antes");
-    const controle = await isolado(c, () => rodar(c, CENARIOS[1].opts));
+    // O controle de verdade: os pedidos SEM item 'Nao veio' mostram os MESMOS numeros nos dois corpos (so os cenarios com
+    // 'Nao veio' tem `antes` diferente de `novo`).
+    const semAusente = CENARIOS.filter((x) => x.antes === undefined);
+    const comAusente = CENARIOS.filter((x) => x.antes !== undefined);
+    assert.equal(semAusente.length >= 12 && comAusente.length >= 15, true);
+    const controle = await isolado(c, () => rodar(c, cenario("(A)").opts));
     assert.equal(controle.b.quantity, 0);
     assert.equal(
       controle.b.total,
       -2000,
-      "controle: o corpo anterior cobrava R$ 20 de custo de uma blusa que nunca saiu da loja",
+      "controle: o corpo anterior mostrava a blusa 'Nao veio' como devolvida e perdida (-custo), mesmo sem reembolso da peca",
     );
     assert.equal(
       controle.dia,
       controle.somaDoRanking,
-      "controle: o grafico diario tambem cobrava",
+      "controle: o grafico diario tambem mostrava assim",
     );
     // E a conferencia do comportamento novo REPROVA no corpo anterior (o teste falha pelo motivo certo).
     await assert.rejects(
@@ -650,7 +798,7 @@ async function main() {
       (e) => e.code === "ERR_ASSERTION" && /Nao veio/.test(e.message),
     );
     console.log(
-      "  PASSOU controle: o corpo anterior mostrava a blusa 'Nao veio' com lucro -20,00 (custo cobrado como perda) e o novo mostra 0,00; o resto dos cenarios e igual nos dois",
+      `  PASSOU controle: o corpo anterior mostrava a blusa 'Nao veio' (so o vestido reembolsado) com lucro -20,00 e quantidade 0; o novo mostra +30,00 e quantidade 1; os ${semAusente.length} cenarios sem 'Nao veio' sao IDENTICOS nos dois corpos`,
     );
 
     // A migration, sobre a fixture que ja existia.
@@ -667,11 +815,12 @@ async function main() {
     );
     await conferir(c, "novo");
     console.log(
-      `  PASSOU ${CENARIOS.length} cenarios: o item 'Nao veio' sai do lucro e da quantidade mas nao vira perda (reembolso, vale, com cupom, com cortesia, devolvido de novo); danificada, usada e condicao nula continuam perda; nova reestocada, troca, devolucao nao concluida e pedido estornado como antes; grafico diario fecha com o ranking`,
+      `  PASSOU ${CENARIOS.length} cenarios: o 'Nao veio' fica com a cliente (a venda vale) e so o dinheiro devolvido alem das pecas que voltaram vira perda (so o que voltou, reembolso cheio pelo MP e pelo caminho manual, parcial, frete, cupom, cortesia, pedida de novo, vale/troca); danificada, usada e condicao nula continuam perda; nova reestocada, troca, devolucao nao concluida e pedido estornado como antes; grafico diario fecha com o ranking`,
     );
 
     // 1. O resto do JSON e' IGUAL ao do corpo da 3997 na MESMA base.
     //    (a) base com devolucao, perda e cortesia mas SEM item 'Nao veio': o JSON inteiro e' igual.
+    //    (b) a mesma base com a blusa 'Nao veio' num vale-troca (sem dinheiro): so topProducts e o profit do dia daquela venda mudam.
     const base = async (comAusente) => {
       const v = await produto(c, "Vestido 3994", 100, 40);
       const b = await produto(c, "Blusa 3994", 50, 20);
@@ -683,17 +832,15 @@ async function main() {
           { produto: b, qtd: 1, preco: 50 },
         ],
       });
-      const r = await estorno(c, p1, 50);
-      await devolver(c, p1, 1, {
-        qtd: 1,
-        preco: 50,
-        condicao: comAusente ? "ausente" : "danificada",
-        refundId: r,
+      await devolucao(c, p1, {
+        linhas: [L(1, 1, comAusente ? "ausente" : "danificada")],
+        final: comAusente ? "vale" : "reembolso",
+        reembolso: comAusente ? null : 50,
         protocolo: protocolo(),
       });
       await c.query(
-        "UPDATE public.marketplace_orders SET valor_estornado = 50 WHERE id = $1",
-        [p1.id],
+        "UPDATE public.marketplace_orders SET valor_estornado = $2 WHERE id = $1",
+        [p1.id, p1.estornado],
       );
       const p2 = await pedido(c, {
         dias: 2,
@@ -701,8 +848,8 @@ async function main() {
       });
       await estorno(c, p2, 20);
       await c.query(
-        "UPDATE public.marketplace_orders SET valor_estornado = 20 WHERE id = $1",
-        [p2.id],
+        "UPDATE public.marketplace_orders SET valor_estornado = $2 WHERE id = $1",
+        [p2.id, p2.estornado],
       );
       return [p1.dia, p2.dia];
     };
@@ -722,7 +869,6 @@ async function main() {
         "a base da comparacao ficou vazia",
       );
     });
-    //    (b) base COM item 'Nao veio': so topProducts e o profit do dia daquela venda mudam, e so por custo x pecas ausentes.
     await isolado(c, async () => {
       const [dia1] = await base(true);
       const novo = await analytics(c);
@@ -750,12 +896,13 @@ async function main() {
       );
       const por = (a) =>
         new Map(a.revenueHistory.map((d) => [d.date, cent(d.profit)]));
-      assert.equal(por(novo).get(dia1) - por(velho).get(dia1), 2000);
+      // 3997: a blusa 'Nao veio' saia da venda e ainda cobrava o custo (-20,00); agora a venda vale (+30,00): +50,00.
+      assert.equal(por(novo).get(dia1) - por(velho).get(dia1), 5000);
       const total = (a) => a.topProducts.reduce((s, p) => s + cent(p.total), 0);
-      assert.equal(total(novo) - total(velho), 2000);
+      assert.equal(total(novo) - total(velho), 5000);
     });
     console.log(
-      "  PASSOU base sem item 'Nao veio': o JSON inteiro e' igual ao da 3997; base com ele: so topProducts e o profit do dia daquela venda mudam, em R$ 20,00 (o custo da blusa que nunca saiu)",
+      "  PASSOU base sem item 'Nao veio': o JSON inteiro e' igual ao da 3997; base com ele (vale-troca, sem dinheiro): so topProducts e o profit do dia daquela venda mudam, em R$ 50,00 (a venda da blusa que ficou com a cliente, de -20,00 para +30,00)",
     );
 
     // 2. Porta e permissoes: nada de ACL mudou; quem nao e admin atual continua barrado.
@@ -850,6 +997,42 @@ async function main() {
         },
       ],
       [
+        "coluna da conta ausente (devolucao_itens.valor_unitario)",
+        async () => {
+          await instalar(c, CORPO_3997);
+          await c.query(
+            "ALTER TABLE public.devolucao_itens RENAME COLUMN valor_unitario TO valor_unitario_x",
+          );
+        },
+      ],
+      [
+        "coluna da conta ausente (devolucoes.valor_frete_ida)",
+        async () => {
+          await instalar(c, CORPO_3997);
+          await c.query(
+            "ALTER TABLE public.devolucoes RENAME COLUMN valor_frete_ida TO valor_frete_ida_x",
+          );
+        },
+      ],
+      [
+        "coluna da conta ausente (devolucoes.valor_reembolso)",
+        async () => {
+          await instalar(c, CORPO_3997);
+          await c.query(
+            "ALTER TABLE public.devolucoes RENAME COLUMN valor_reembolso TO valor_reembolso_x",
+          );
+        },
+      ],
+      [
+        "coluna da conta ausente (devolucoes.resolucao_final)",
+        async () => {
+          await instalar(c, CORPO_3997);
+          await c.query(
+            "ALTER TABLE public.devolucoes RENAME COLUMN resolucao_final TO resolucao_final_x",
+          );
+        },
+      ],
+      [
         "coluna da conta ausente (devolucao_itens.reestocado_em)",
         async () => {
           await instalar(c, CORPO_3997);
@@ -907,90 +1090,154 @@ async function main() {
     );
 
     // 4. MUTANTES: cada um deixa a conferencia do comportamento VERMELHA.
+    // [rotulo, como mutar, quantas LINHAS do corpo mudam (null = corpo inteiro trocado)]
+    const AUSENTE_FORA = "di.condicao IS DISTINCT FROM 'ausente'";
     const mutantes = [
+      ["o corpo da 3997 de volta (sem a regra nova)", () => CORPO_3997, null],
       [
-        "sem a excecao do 'Nao veio' (o corpo da 3997 de volta)",
-        (s) => s.split(FILTRO_NOVO).join(FILTRO_3997),
+        "o 'Nao veio' volta a ser perdida (a excecao some do filtro das perdidas)",
+        (x) => x.split(FILTRO_NOVO).join(FILTRO_3997),
         2,
       ],
       [
-        "a excecao vale so no ranking (o grafico diario ainda cobra)",
-        (s) => {
-          const i = s.indexOf(FILTRO_NOVO);
-          return s.slice(0, i) + FILTRO_3997 + s.slice(i + FILTRO_NOVO.length);
+        "a excecao das perdidas vale so no ranking (o grafico diario ainda cobra)",
+        (x) => {
+          const i = x.indexOf(FILTRO_NOVO);
+          return x.slice(0, i) + FILTRO_3997 + x.slice(i + FILTRO_NOVO.length);
         },
         1,
       ],
       [
-        "a excecao vale so no grafico diario (o ranking ainda cobra)",
-        (s) => {
-          const i = s.lastIndexOf(FILTRO_NOVO);
-          return s.slice(0, i) + FILTRO_3997 + s.slice(i + FILTRO_NOVO.length);
+        "a excecao das perdidas vale so no grafico diario (o ranking ainda cobra)",
+        (x) => {
+          const i = x.lastIndexOf(FILTRO_NOVO);
+          return x.slice(0, i) + FILTRO_3997 + x.slice(i + FILTRO_NOVO.length);
         },
         1,
       ],
       [
-        "invertida: so o 'Nao veio' vira perda",
-        (s) =>
-          s
-            .split("di.condicao IS DISTINCT FROM 'ausente'")
-            .join("di.condicao = 'ausente'"),
+        "o 'Nao veio' volta a contar como devolvida (a venda dele sai do lucro e da quantidade)",
+        (x) =>
+          x
+            .split(
+              `SUM(di.quantidade) FILTER (WHERE ${AUSENTE_FORA}), 0))::int AS devolvidas`,
+            )
+            .join("SUM(di.quantidade), 0))::int AS devolvidas"),
         2,
       ],
       [
-        "'<>' no lugar de 'IS DISTINCT FROM': a condicao nula (devolucao de antes) deixa de ser perda",
-        (s) =>
-          s
-            .split("di.condicao IS DISTINCT FROM 'ausente'")
-            .join("di.condicao <> 'ausente'"),
+        "o 'Nao veio' continua devolvido no resto da cortesia (CTE sobra)",
+        (x) =>
+          x
+            .split(" FILTER (WHERE rdi.condicao IS DISTINCT FROM 'ausente')")
+            .join(""),
         2,
+      ],
+      [
+        "invertida: so o 'Nao veio' conta como devolvido e perdido",
+        (x) => x.split(AUSENTE_FORA).join("di.condicao = 'ausente'"),
+        6,
+      ],
+      [
+        "'<>' no lugar de 'IS DISTINCT FROM': a condicao nula (devolucao de antes) deixa de contar",
+        (x) => x.split(AUSENTE_FORA).join("di.condicao <> 'ausente'"),
+        6,
       ],
       [
         "a 'danificada' tambem deixa de ser perda",
-        (s) =>
-          s
-            .split("di.condicao IS DISTINCT FROM 'ausente'")
+        (x) =>
+          x
+            .split(`di.reestocado_em IS NULL AND ${AUSENTE_FORA}`)
             .join(
-              "di.condicao IS DISTINCT FROM 'ausente' AND di.condicao IS DISTINCT FROM 'danificada'",
+              `di.reestocado_em IS NULL AND ${AUSENTE_FORA} AND di.condicao IS DISTINCT FROM 'danificada'`,
             ),
         2,
       ],
       [
         "a 'usada' tambem deixa de ser perda",
-        (s) =>
-          s
-            .split("di.condicao IS DISTINCT FROM 'ausente'")
+        (x) =>
+          x
+            .split(`di.reestocado_em IS NULL AND ${AUSENTE_FORA}`)
             .join(
-              "di.condicao IS DISTINCT FROM 'ausente' AND di.condicao IS DISTINCT FROM 'usada'",
+              `di.reestocado_em IS NULL AND ${AUSENTE_FORA} AND di.condicao IS DISTINCT FROM 'usada'`,
             ),
         2,
       ],
       [
-        "perde o filtro da prateleira (a peca reestocada vira perda ou some)",
-        (s) =>
-          s
+        "perde o filtro da prateleira (a peca reestocada vira perda)",
+        (x) =>
+          x
             .split("FILTER (WHERE di.reestocado_em IS NULL AND ")
             .join("FILTER (WHERE "),
         2,
       ],
       [
-        "o 'Nao veio' tambem deixa de contar como devolvida (a quantidade e o lucro cheio voltam)",
-        (s) =>
-          s
-            .split(
-              "LEAST(oi.quantity, COALESCE(SUM(di.quantidade), 0))::int AS devolvidas",
-            )
-            .join(
-              "LEAST(oi.quantity, COALESCE(SUM(di.quantidade) FILTER (WHERE di.condicao IS DISTINCT FROM 'ausente'), 0))::int AS devolvidas",
-            ),
+        "nao lanca a perda de ninguem",
+        (x) =>
+          x
+            .split("- dev.perdidas * COALESCE(oic.custo, p.custo)")
+            .join("- 0 * COALESCE(oic.custo, p.custo)"),
         2,
       ],
       [
-        "nao lanca a perda de ninguem",
-        (s) =>
-          s
-            .split("- dev.perdidas * COALESCE(oic.custo, p.custo)")
-            .join("- 0 * COALESCE(oic.custo, p.custo)"),
+        "o dinheiro devolvido sem a peca nao sai do ranking",
+        (x) =>
+          x.split("- dev.reembolso_sem_peca) as total").join("- 0) as total"),
+        1,
+      ],
+      [
+        "o dinheiro devolvido sem a peca nao sai do grafico diario",
+        (x) => x.split("- dev.reembolso_sem_peca) FILTER").join("- 0) FILTER"),
+        1,
+      ],
+      [
+        "o fator passa de 1 (reembolso maior que as pecas vira prejuizo maior)",
+        (x) =>
+          x
+            .split("THEN LEAST(1, GREATEST(0, ")
+            .join("THEN LEAST(2, GREATEST(0, "),
+        2,
+      ],
+      [
+        "o fator fica negativo (reembolso menor que as pecas que voltaram ganha dinheiro)",
+        (x) =>
+          x
+            .split("GREATEST(0, COALESCE(dv.valor_reembolso")
+            .join("GREATEST(-1000000, COALESCE(dv.valor_reembolso"),
+        2,
+      ],
+      [
+        "o frete de ida conta como dinheiro da peca 'Nao veio'",
+        (x) => x.split(" - COALESCE(dv.valor_frete_ida, 0)").join(" - 0"),
+        2,
+      ],
+      [
+        "o valor das pecas que voltaram nao e descontado do reembolso",
+        (x) => x.split(" - x.vv - ").join(" - 0 - "),
+        2,
+      ],
+      [
+        "vale e troca tambem tem dinheiro (a resolucao final nao e olhada)",
+        (x) =>
+          x
+            .split("WHEN dv.resolucao_final = 'reembolso' AND x.va > 0")
+            .join("WHEN x.va > 0"),
+        2,
+      ],
+      [
+        "o prejuizo do item nao tem teto (quantidade x preco do item vendido)",
+        (x) =>
+          x
+            .split("LEAST(oi.quantity * oi.price, COALESCE(")
+            .join("LEAST(oi.quantity * oi.price * 1000, COALESCE("),
+        2,
+      ],
+      [
+        "o dinheiro devolvido tambem e atribuido as linhas que nao sao 'Nao veio'",
+        (x) =>
+          x
+            .split("* fr.f) FILTER (WHERE di.condicao = 'ausente'), 0))")
+            .join("* fr.f), 0))"),
         2,
       ],
     ];
@@ -1002,15 +1249,17 @@ async function main() {
           CORPO_NOVO,
           `mutante "${rotulo}": o trecho nao existe no corpo`,
         );
-        const linhasAntes = CORPO_NOVO.split("\n");
-        const linhasDepois = mutado.split("\n");
-        assert.equal(linhasDepois.length, linhasAntes.length);
-        const n = linhasAntes.filter((l, i) => l !== linhasDepois[i]).length;
-        assert.equal(
-          n,
-          vezes,
-          `mutante "${rotulo}": mexeu em ${n} linhas, esperado ${vezes}`,
-        );
+        if (vezes !== null) {
+          const linhasAntes = CORPO_NOVO.split("\n");
+          const linhasDepois = mutado.split("\n");
+          assert.equal(linhasDepois.length, linhasAntes.length);
+          const n = linhasAntes.filter((l, i) => l !== linhasDepois[i]).length;
+          assert.equal(
+            n,
+            vezes,
+            `mutante "${rotulo}": mexeu em ${n} linhas, esperado ${vezes}`,
+          );
+        }
         await instalar(c, mutado);
         await assert.rejects(
           () => conferir(c, "novo"),
@@ -1023,7 +1272,7 @@ async function main() {
     // O mutante nao deixou nada: o corpo novo continua intacto.
     assert.deepEqual(await funcao(c), topo);
     console.log(
-      `  PASSOU ${mutantes.length} mutantes reprovam (sem a excecao, so no ranking, so no grafico, invertida, '<>' sem o nulo, danificada fora, usada fora, sem o filtro da prateleira, ausente fora das devolvidas, sem perda nenhuma)`,
+      `  PASSOU ${mutantes.length} mutantes reprovam (3997 de volta, 'Nao veio' perdido ou devolvido de novo, so no ranking ou so no grafico, invertida, '<>' sem o nulo, danificada ou usada fora, sem o filtro da prateleira, sem perda, reembolso sem peca fora do ranking ou do grafico, fator acima de 1 ou negativo, frete contado, pecas que voltaram nao descontadas, vale com dinheiro, sem teto, outras linhas com dinheiro)`,
     );
 
     // 5. Rollback: devolve o corpo da 3997 byte a byte; repetir e inofensivo; corpo desconhecido recusa; a ida e volta nao toca nos dados.
@@ -1066,9 +1315,9 @@ async function main() {
     );
     const consulta = (nome) => ler(`scripts/publicacao/consultas/${nome}.sql`);
     const A146 =
-      "146a-conferir-o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-aplicado";
+      "146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado";
     const B146 =
-      "146b-antes-o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-base-vigente";
+      "146b-antes-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-base-vigente";
     const A135 =
       "135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado";
     const B135 =
@@ -1239,13 +1488,13 @@ async function main() {
     await d.end();
   }
   console.log(
-    "[o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro] prova viva concluida (20261399994000).",
+    "[o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro] prova viva concluida (20261399994000).",
   );
 }
 
 main().catch((erro) => {
   console.error(
-    `[o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro] FALHOU: ${erro.stack || erro.message}`,
+    `[o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro] FALHOU: ${erro.stack || erro.message}`,
   );
   process.exit(1);
 });

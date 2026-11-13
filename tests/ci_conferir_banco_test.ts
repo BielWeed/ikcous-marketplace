@@ -2423,10 +2423,10 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "0ea0841208f326971e4f92241929e088",
           versao: "20261399970000",
         },
-        // 13/11/2026 (lote 436): o item que a lojista marcou "Nao veio" nao vira perda no ranking de lucro (... -> 251 -> 3997 -> 3994).
+        // 13/11/2026 (lote 436): o item que a lojista marcou "Nao veio" fica com a cliente no ranking de lucro (... -> 251 -> 3997 -> 3994).
         {
           fn: "get_admin_analytics_v2",
-          h: "cd42b14ee70ab5acdc76427d6e105e11",
+          h: "de8648a7783c12f1be7abd7986c8a2fc",
           versao: "20261399994000",
         },
         {
@@ -8280,10 +8280,10 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       .update(corpo3997.replace(/\n/g, "\r\n"))
       .digest("hex"),
   };
-  // A 20261399994000 (o item "Nao veio" nao vira perda no ranking de lucro) sucede a 3997 em get_admin_analytics_v2.
+  // A 20261399994000 (o item "Nao veio" fica com a cliente no ranking de lucro) sucede a 3997 em get_admin_analytics_v2.
   const texto3994 = (
     await Deno.readTextFile(
-      `${MIGRATIONS_DIR}/20261399994000_o_item_que_nao_veio_nao_vira_perda_no_ranking_de_lucro.sql`,
+      `${MIGRATIONS_DIR}/20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql`,
     )
   ).replace(/\r/g, "");
   const ini3994 = texto3994.indexOf(
@@ -14925,14 +14925,14 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
       // retirando exatamente as duas fórmulas declaradas, antes de comparar a regra histórica à 44m.
       assertEquals(
         vigente,
-        "20261399994000_o_item_que_nao_veio_nao_vira_perda_no_ranking_de_lucro.sql",
+        "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql",
         "o painel mudou de corpo: refaca a regra da 44m contra o corpo novo",
       );
       // A 3997 (o ranking de lucro desconta a devolucao e o estorno) so troca a conta do lucro das vendas COM devolucao concluida ou
       // estorno: sem elas o numero e o da 251 (provado no CI por tests/banco/o-ranking-de-lucro-desconta-a-devolucao-viva.cjs, JSON inteiro
       // igual). A 44m mede a regra historica SEM devolucao, entao segue comparada ao corpo da 251, o ultimo antes dela.
-      // A 3994 (o item "Nao veio" nao vira perda) so troca o filtro das pecas perdidas das vendas COM devolucao: tambem nao muda
-      // o numero sem devolucao (tests/banco/o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-viva.cjs, JSON inteiro igual).
+      // A 3994 (o item "Nao veio" fica com a cliente) so muda a conta das vendas COM item "Nao veio" numa devolucao: tambem nao muda
+      // o numero sem devolucao (tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs, JSON inteiro igual).
       const corpoDaRegraHistorica =
         "20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql";
       const funcao = (sql: string) => {

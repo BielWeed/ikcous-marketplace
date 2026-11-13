@@ -825,24 +825,37 @@ const VERIFICACOES = {
       { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
     ],
   },
-  // 20261399994000: o item que a lojista marcou "Nao veio" (condicao 'ausente') nao vira PERDA no ranking "Produtos que mais dao lucro" nem no lucro do grafico diario (get_admin_analytics_v2). O corpo e o da
-  // 20261399970000 com SO o filtro das pecas perdidas trocado, nos DOIS lugares (o ranking e o grafico diario): reestocado_em vazio E condicao diferente de 'ausente'. As devolvidas (o reembolso) e a cortesia seguem iguais.
+  // 20261399994000: o item que a lojista marcou "Nao veio" (condicao 'ausente') FICA COM A CLIENTE no ranking "Produtos que mais dao lucro" e no lucro do grafico diario (get_admin_analytics_v2): a venda vale (nao e devolvida nem perdida) e so o
+  // dinheiro devolvido ALEM das pecas que voltaram vira perda do item (reembolso_sem_peca, fator f). O corpo e o da 20261399970000 com esses trechos trocados, nos DOIS lugares (o ranking e o grafico diario) e no resto da cortesia (sobra).
   // Cada marcador e' contado no corpo da propria migration. A consulta 146a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
-  "20261399994000_o_item_que_nao_veio_nao_vira_perda_no_ranking_de_lucro.sql": {
-    funcao: "get_admin_analytics_v2",
-    esperado: [
-      {
-        texto:
-          "FILTER (WHERE di.reestocado_em IS NULL AND di.condicao IS DISTINCT FROM 'ausente')",
-        vezes: 2,
-      },
-      { texto: "- dev.perdidas * COALESCE(oic.custo, p.custo)", vezes: 2 },
-      { texto: "resolucao_final IN ('reembolso', 'vale')", vezes: 4 },
-      { texto: "SUM(oi.quantity - dev.devolvidas)::int", vezes: 1 },
-      { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
-      { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
-    ],
-  },
+  "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql":
+    {
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        {
+          texto:
+            "FILTER (WHERE di.reestocado_em IS NULL AND di.condicao IS DISTINCT FROM 'ausente')",
+          vezes: 2,
+        },
+        { texto: "- dev.perdidas * COALESCE(oic.custo, p.custo)", vezes: 2 },
+        { texto: "- dev.reembolso_sem_peca)", vezes: 2 },
+        { texto: "AS reembolso_sem_peca", vezes: 2 },
+        {
+          texto:
+            "SUM(di.quantidade) FILTER (WHERE di.condicao IS DISTINCT FROM 'ausente'), 0))::int AS devolvidas",
+          vezes: 2,
+        },
+        {
+          texto:
+            "THEN LEAST(1, GREATEST(0, COALESCE(dv.valor_reembolso, 0) - x.vv - COALESCE(dv.valor_frete_ida, 0)) / x.va)",
+          vezes: 2,
+        },
+        { texto: "resolucao_final IN ('reembolso', 'vale')", vezes: 4 },
+        { texto: "SUM(oi.quantity - dev.devolvidas)::int", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
   // 20261399980000: as listas de Produtos, Pedidos e Cancelados do painel nao repetem nem escondem ninguem entre as paginas. As TRES funcoes (get_admin_products_paged, get_admin_orders_paged e
   // get_admin_orders_cancelados_recentes) ganham SO o desempate pelo id no fim do ORDER BY (o marcador do ORDER BY aparece UMA vez em cada e a frase do comentario do desempate tambem). As duas travas de
   // admin (is_admin e is_admin_atual; a de produtos so tem a is_admin_atual) seguem UMA vez em cada corpo. A consulta 140a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.

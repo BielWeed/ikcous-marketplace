@@ -209,11 +209,11 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // (consulta 8e, CTE sucessoras); `noEstado` a desfaz antes (o-item-que-nao-veio-posterior.cjs, o rollback dela devolve as tres de uma vez), como a 3980.
     s.nome !==
       "20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql" &&
-    // A 20261399994000 (o item "Nao veio" nao vira perda no ranking de lucro) e a OITAVA sucessora de get_admin_analytics_v2 (... -> 251 -> 3997 -> 3994): tem a PROVA PROPRIA do que a 8e, a 35a,
-    // a 45a, a 48a, a 53a, a 54a e a 135a fazem com ela em tests/banco/o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-viva.cjs; `noEstado` a desfaz antes (lucro-do-estoque-posterior.cjs
-    // chama o-ranking-de-lucro-posterior.cjs, que chama o-item-que-nao-veio-nao-vira-perda-posterior.cjs primeiro), como faz com a 3997 e a 251.
+    // A 20261399994000 (o item "Nao veio" fica com a cliente no ranking de lucro) e a OITAVA sucessora de get_admin_analytics_v2 (... -> 251 -> 3997 -> 3994): tem a PROVA PROPRIA do que a 8e, a 35a,
+    // a 45a, a 48a, a 53a, a 54a e a 135a fazem com ela em tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs; `noEstado` a desfaz antes (lucro-do-estoque-posterior.cjs
+    // chama o-ranking-de-lucro-posterior.cjs, que chama o-item-que-nao-veio-fica-com-a-cliente-posterior.cjs primeiro), como faz com a 3997 e a 251.
     s.nome !==
-      "20261399994000_o_item_que_nao_veio_nao_vira_perda_no_ranking_de_lucro.sql",
+      "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");

@@ -1,6 +1,6 @@
--- 146a-conferir-o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-aplicado: DEPOIS da 20261399994000. SO LEITURA, catalogo, rol fechado de 4 linhas.
+-- 146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado: DEPOIS da 20261399994000. SO LEITURA, catalogo, rol fechado de 4 linhas.
 -- Corpo exato (md5 sem CR), assinatura/atributos e ACL iguais aos pre/pos-voos.
--- Comportamento e fail-closed provados por tests/banco/o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-viva.cjs no CI.
+-- Comportamento e fail-closed provados por tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs no CI.
 WITH fn AS (
   SELECT p.oid,
          md5(replace(p.prosrc, chr(13), '')) AS m,
@@ -25,7 +25,7 @@ WITH fn AS (
                      WHERE n.nspname = 'public') > 0 THEN '>0' ELSE '0' END
   UNION ALL
   SELECT 'get_admin_analytics_v2: corpo exato (md5)',
-         'cd42b14ee70ab5acdc76427d6e105e11',
+         'de8648a7783c12f1be7abd7986c8a2fc',
          COALESCE((SELECT f.m FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)',

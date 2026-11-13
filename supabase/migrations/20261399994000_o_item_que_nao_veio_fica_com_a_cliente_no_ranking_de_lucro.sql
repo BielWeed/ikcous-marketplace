@@ -1,27 +1,35 @@
--- Migration 20261399994000 — o item que a lojista marcou "Nao veio" nao vira PERDA no ranking de lucro (DINHEIRO ao lado: so a LEITURA do lucro muda).
--- DEFEITO: get_admin_analytics_v2 (o ranking "Produtos que mais dao lucro" e o lucro do grafico diario, regra da 20261399970000) conta como PERDIDA, e
--- desconta o custo, toda peca devolvida que nao voltou a prateleira (reestocado_em vazio). Mas o item de devolucao com condicao = 'ausente' (a lojista marcou
--- "Nao veio" ao concluir: a caixa chegou sem aquele item, a peca NUNCA chegou a cliente) nunca e reestocado (admin_devolucao_concluir so reestoca com condicao
--- diferente de 'ausente') e entrava no mesmo balaio do item que voltou quebrado: o custo de uma peca que nunca saiu da loja virava perda. Uma blusa de R$ 50 (custo 20)
--- com a devolucao concluida e a blusa marcada "Nao veio" mostrava lucro MENOR em R$ 20 do que o real: a lojista ainda tem a blusa, nao perdeu nada.
+-- Migration 20261399994000 — o item que a lojista marcou "Nao veio" FICA COM A CLIENTE no ranking de lucro; o dinheiro devolvido sem a peca vira perda (DINHEIRO ao lado: so a LEITURA do lucro muda).
+-- DEFEITO: get_admin_analytics_v2 (o ranking "Produtos que mais dao lucro" e o lucro do grafico diario, regra da 20261399970000) trata o item de devolucao com condicao = 'ausente' (a lojista marcou
+-- "Nao veio" ao concluir: a caixa chegou sem aquele item) como peca DEVOLVIDA e, como ele nunca e reestocado, tambem como PERDIDA. Mas a decisao de produto da 20261399992000 e outra: a peca "Nao veio"
+-- FICA COM A CLIENTE (ela pode ate pedir a devolucao dela de novo) e a tela da devolucao (AcoesDaDevolucao) sugere um reembolso que DESCONTA o item "Nao veio". Para uma blusa de R$ 50 (custo 20)
+-- marcada "Nao veio" o ranking mostrava R$ -20 (a venda saia do lucro e o custo era cobrado como perda) mesmo quando a lojista NAO reembolsou a peca e a cliente ficou com ela: o certo e +R$ 30
+-- (venda menos custo). Quando a lojista reembolsou a peca mesmo assim, o certo e -R$ 20 (o dinheiro devolvido sem a peca), mas com a quantidade e o custo contados como se a peca tivesse voltado.
 --
 -- REGRA NOVA (so o que muda; o resto do corpo e' o da 20261399970000, byte a byte):
---   perdidas = pecas devolvidas (devolucao concluida, reembolso ou vale) com reestocado_em vazio E condicao diferente de 'ausente'.
---   * 'ausente' continua contando em "devolvidas": o dinheiro foi devolvido, a venda daquela peca sai do lucro e da quantidade do ranking, e o rateio da cortesia
---     segue como estava. O que deixa de existir e' so o custo cobrado como perda.
---   * condicao NULL (devolucao ainda aberta; nem entra na conta, pois a devolucao tem de estar 'concluida') e as demais condicoes (nova, usada, danificada) contam como antes.
+--   * 'Nao veio' = peca que ficou com a cliente: a venda dela vale. NAO conta como devolvida (quantidade do ranking, lucro, rateio da cortesia) NEM como perdida (nao ha custo a perder).
+--       devolvidas = LEAST(q, SUM(quantidade) das linhas com condicao diferente de 'ausente')  [concluida, reembolso ou vale]
+--       perdidas   = o mesmo, so as de reestocado_em vazio
+--   * O dinheiro que a loja devolveu ALEM do valor das pecas que voltaram vira PERDA do item, proporcional ao que foi devolvido. Por devolucao concluida dv:
+--       vv = soma(quantidade x valor_unitario) das linhas que NAO sao 'ausente';  va = o mesmo das linhas 'ausente'
+--       f  = se dv.resolucao_final = 'reembolso' e va > 0:  LEAST(1, GREATEST(0, valor_reembolso - vv - valor_frete_ida) / va);  senao 0 (vale e troca nao tem dinheiro)
+--       reembolso_sem_peca (por item vendido) = LEAST(q x preco, soma sobre as linhas 'ausente' do item de quantidade x valor_unitario x f(dv))
+--   * lucro = (q - devolvidas) x (preco - custo - cupom - cortesia) - perdidas x custo - reembolso_sem_peca  (no grafico diario, dentro do mesmo FILTER de custo conhecido).
+--   * O "restante" que reparte a cortesia (CTE sobra, nos dois blocos) tambem trata o 'ausente' como peca que ficou.
+--   * Funciona igual para o reembolso pelo Mercado Pago e pelo caminho manual: a conta le devolucoes.valor_reembolso, nao a linha do ledger.
+--   * Casos: reembolso so do que voltou -> a peca "Nao veio" mostra preco - custo - cupom (+R$ 30); reembolso cheio incluindo a peca -> -custo (-R$ 20); parcial -> proporcional;
+--     vale/troca -> sem dinheiro, so a venda; condicao NULL (devolucao de antes da marcacao existir) segue contando como peca devolvida e perdida, como hoje.
 --   * Vale nos DOIS lugares: o ranking (topProducts) e o lucro diario (revenueHistory[].profit): dois cartoes da mesma tela nao podem discordar.
 --
--- O QUE NAO MUDA: assinatura, retorno, atributos, OID, dono e ACL; nenhum grant novo; nenhum objeto novo; reembolso, estoque e o Financeiro (fin_dre credita o custo so do que
--- foi reestocado: outro olhar, fora desta migration). Pedido sem item 'ausente' devolve os MESMOS numeros de antes, byte a byte no JSON.
--- DADO EXISTENTE: nenhuma linha e lida para escrita nem escrita ao aplicar. O lucro MOSTRADO de pedido cuja devolucao concluida ja tem item 'ausente' passa a sair
--- maior em custo x pecas ausentes (o certo); nada se grava, e desfazer (rollback) devolve o numero de antes.
--- ORDEM: depois da 20261399970000 (o pre-voo recusa corpo desconhecido, inclusive redefinicao posterior) e da coluna devolucao_itens.condicao (ja existe). Banco antes do front
--- (nenhum front muda). Sem ordem em relacao a 20261399992000 (a do "Nao veio" pode ser devolvido de novo): independentes.
+-- O QUE NAO MUDA: assinatura, retorno, atributos, OID, dono e ACL; nenhum grant novo; nenhum objeto novo; o reembolso, o estoque e o Financeiro (fin_dre credita o custo so do que foi reestocado:
+-- outro olhar, fora desta migration). Pedido SEM item 'ausente' devolve os MESMOS numeros de antes, byte a byte no JSON.
+-- DADO EXISTENTE: nenhuma linha e lida para escrita nem escrita ao aplicar. O lucro MOSTRADO de pedido cuja devolucao concluida ja tem item 'ausente' muda (para mais se a lojista nao reembolsou a peca,
+-- como a 3997 cobrava o custo e tirava a venda; para menos se reembolsou mais que as pecas que voltaram); nada se grava, e desfazer (rollback) devolve o numero de antes.
+-- ORDEM: depois da 20261399970000 (o pre-voo recusa corpo desconhecido, inclusive redefinicao posterior) e das colunas usadas (devolucao_itens.condicao e valor_unitario, devolucoes.valor_frete_ida, ja existem).
+-- Banco antes do front (nenhum front muda). Sem ordem em relacao a 20261399992000: independentes.
 -- IDEMPOTENTE: o pre-voo aceita tambem o corpo desta migration; reaplicar troca o corpo pelo mesmo corpo.
 -- ATOMICA: sem BEGIN/COMMIT (a transacao pertence ao aplicador, AGENTS.md); a conferencia final derruba o arquivo inteiro se corpo, atributos ou ACL divergirem.
--- Rollback manual (rollback-manual-20261399994000_o_item_que_nao_veio_nao_vira_perda_no_ranking_de_lucro.sql) devolve o corpo da 20261399970000 byte a byte.
--- Comportamento: tests/banco/o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-viva.cjs (so Postgres efemero do CI).
+-- Rollback manual (rollback-manual-20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql) devolve o corpo da 20261399970000 byte a byte.
+-- Comportamento: tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs (so Postgres efemero do CI).
 
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '30s';
@@ -44,7 +52,7 @@ BEGIN
 
   FOR r IN
     SELECT * FROM (VALUES
-        ('public.get_admin_analytics_v2(integer)', '0ea0841208f326971e4f92241929e088', 'cd42b14ee70ab5acdc76427d6e105e11')
+        ('public.get_admin_analytics_v2(integer)', '0ea0841208f326971e4f92241929e088', 'de8648a7783c12f1be7abd7986c8a2fc')
     ) AS esperado(assinatura, hash_vigente, hash_desta)
   LOOP
     SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash FROM pg_proc
@@ -107,7 +115,9 @@ BEGIN
       ('devolucao_itens', 'order_item_id'),
       ('devolucao_itens', 'quantidade'),
       ('devolucao_itens', 'reestocado_em'),
-      ('devolucao_itens', 'condicao')
+      ('devolucao_itens', 'condicao'),
+      ('devolucao_itens', 'valor_unitario'),
+      ('devolucoes', 'valor_frete_ida')
     ) AS coluna(tabela, nome)
   LOOP
     IF NOT EXISTS (SELECT 1 FROM pg_attribute a
@@ -356,7 +366,7 @@ BEGIN
                    (SELECT COALESCE(SUM((ri.quantity - COALESCE(rd.devolvidas, 0)) * ri.price), 0)
                       FROM public.marketplace_order_items ri
                       LEFT JOIN LATERAL (
-                          SELECT LEAST(ri.quantity, COALESCE(SUM(rdi.quantidade), 0))::int AS devolvidas
+                          SELECT LEAST(ri.quantity, COALESCE(SUM(rdi.quantidade) FILTER (WHERE rdi.condicao IS DISTINCT FROM 'ausente'), 0))::int AS devolvidas
                             FROM public.devolucao_itens rdi
                             JOIN public.devolucoes rdv ON rdv.id = rdi.devolucao_id
                            WHERE rdi.order_item_id = ri.id
@@ -388,7 +398,8 @@ BEGIN
                     WHEN COALESCE(s.residual, 0) <= 0 THEN 0
                     ELSE oi.price * LEAST(1, COALESCE(s.residual / NULLIF(s.restante, 0), 0))
                 END)
-                    - dev.perdidas * COALESCE(oic.custo, p.custo)) FILTER (WHERE COALESCE(oic.custo, p.custo) IS NOT NULL), 0) AS profit,
+                    - dev.perdidas * COALESCE(oic.custo, p.custo)
+                    - dev.reembolso_sem_peca) FILTER (WHERE COALESCE(oic.custo, p.custo) IS NOT NULL), 0) AS profit,
                 COALESCE(SUM(oi.quantity * COALESCE(oic.custo, p.custo, 0)), 0) AS cost_sold
             FROM public.marketplace_order_items oi
             JOIN public.marketplace_orders o ON oi.order_id = o.id
@@ -397,11 +408,22 @@ BEGIN
         LEFT JOIN LATERAL (
             -- Pecas devolvidas deste item: devolucao concluida com reembolso ou vale (troca NAO conta: a peca sai de novo).
             -- perdidas = as que nao voltaram a prateleira (reestocado_em vazio): o custo delas vira perda.
-            -- Exceto o item que a lojista marcou "Nao veio" (condicao 'ausente'): a peca nunca chegou a cliente, nunca saiu da loja, entao nao ha o que perder (20261399994000).
-            SELECT LEAST(oi.quantity, COALESCE(SUM(di.quantidade), 0))::int AS devolvidas,
-                   LEAST(oi.quantity, COALESCE(SUM(di.quantidade) FILTER (WHERE di.reestocado_em IS NULL AND di.condicao IS DISTINCT FROM 'ausente'), 0))::int AS perdidas
+            -- 'Nao veio' (condicao 'ausente'): a peca FICOU com a cliente; nao conta como devolvida nem como perdida, a venda dela vale (20261399994000).
+            -- reembolso_sem_peca = o dinheiro que a loja devolveu ALEM do valor das pecas que voltaram (valor_reembolso - pecas que voltaram - frete de ida), ate o valor das
+            -- pecas 'Nao veio' de cada devolucao (fator f de 0 a 1); so devolucao de reembolso (vale e troca nao tem dinheiro). Perda do item, limitada ao que o item vendeu.
+            SELECT LEAST(oi.quantity, COALESCE(SUM(di.quantidade) FILTER (WHERE di.condicao IS DISTINCT FROM 'ausente'), 0))::int AS devolvidas,
+                   LEAST(oi.quantity, COALESCE(SUM(di.quantidade) FILTER (WHERE di.reestocado_em IS NULL AND di.condicao IS DISTINCT FROM 'ausente'), 0))::int AS perdidas,
+                   LEAST(oi.quantity * oi.price, COALESCE(SUM(di.quantidade * di.valor_unitario * fr.f) FILTER (WHERE di.condicao = 'ausente'), 0)) AS reembolso_sem_peca
               FROM public.devolucao_itens di
               JOIN public.devolucoes dv ON dv.id = di.devolucao_id
+              LEFT JOIN LATERAL (
+                  SELECT CASE WHEN dv.resolucao_final = 'reembolso' AND x.va > 0
+                              THEN LEAST(1, GREATEST(0, COALESCE(dv.valor_reembolso, 0) - x.vv - COALESCE(dv.valor_frete_ida, 0)) / x.va)
+                              ELSE 0 END AS f
+                    FROM (SELECT COALESCE(SUM(dx.quantidade * dx.valor_unitario) FILTER (WHERE dx.condicao IS DISTINCT FROM 'ausente'), 0) AS vv,
+                                 COALESCE(SUM(dx.quantidade * dx.valor_unitario) FILTER (WHERE dx.condicao = 'ausente'), 0) AS va
+                            FROM public.devolucao_itens dx
+                           WHERE dx.devolucao_id = dv.id) x) fr ON true
              WHERE di.order_item_id = oi.id
                AND dv.status = 'concluida'
                AND dv.resolucao_final IN ('reembolso', 'vale')) dev ON true
@@ -474,7 +496,7 @@ BEGIN
                    (SELECT COALESCE(SUM((ri.quantity - COALESCE(rd.devolvidas, 0)) * ri.price), 0)
                       FROM public.marketplace_order_items ri
                       LEFT JOIN LATERAL (
-                          SELECT LEAST(ri.quantity, COALESCE(SUM(rdi.quantidade), 0))::int AS devolvidas
+                          SELECT LEAST(ri.quantity, COALESCE(SUM(rdi.quantidade) FILTER (WHERE rdi.condicao IS DISTINCT FROM 'ausente'), 0))::int AS devolvidas
                             FROM public.devolucao_itens rdi
                             JOIN public.devolucoes rdv ON rdv.id = rdi.devolucao_id
                            WHERE rdi.order_item_id = ri.id
@@ -501,7 +523,8 @@ BEGIN
                     WHEN COALESCE(s.residual, 0) <= 0 THEN 0
                     ELSE oi.price * LEAST(1, COALESCE(s.residual / NULLIF(s.restante, 0), 0))
                 END)
-                - dev.perdidas * COALESCE(oic.custo, p.custo)) as total,
+                - dev.perdidas * COALESCE(oic.custo, p.custo)
+                - dev.reembolso_sem_peca) as total,
             COALESCE(p.imagem_url, '') as image
         FROM public.produtos p
         JOIN public.marketplace_order_items oi ON p.id = oi.product_id
@@ -510,11 +533,22 @@ BEGIN
         LEFT JOIN LATERAL (
             -- Pecas devolvidas deste item: devolucao concluida com reembolso ou vale (troca NAO conta: a peca sai de novo).
             -- perdidas = as que nao voltaram a prateleira (reestocado_em vazio): o custo delas vira perda.
-            -- Exceto o item que a lojista marcou "Nao veio" (condicao 'ausente'): a peca nunca chegou a cliente, nunca saiu da loja, entao nao ha o que perder (20261399994000).
-            SELECT LEAST(oi.quantity, COALESCE(SUM(di.quantidade), 0))::int AS devolvidas,
-                   LEAST(oi.quantity, COALESCE(SUM(di.quantidade) FILTER (WHERE di.reestocado_em IS NULL AND di.condicao IS DISTINCT FROM 'ausente'), 0))::int AS perdidas
+            -- 'Nao veio' (condicao 'ausente'): a peca FICOU com a cliente; nao conta como devolvida nem como perdida, a venda dela vale (20261399994000).
+            -- reembolso_sem_peca = o dinheiro que a loja devolveu ALEM do valor das pecas que voltaram (valor_reembolso - pecas que voltaram - frete de ida), ate o valor das
+            -- pecas 'Nao veio' de cada devolucao (fator f de 0 a 1); so devolucao de reembolso (vale e troca nao tem dinheiro). Perda do item, limitada ao que o item vendeu.
+            SELECT LEAST(oi.quantity, COALESCE(SUM(di.quantidade) FILTER (WHERE di.condicao IS DISTINCT FROM 'ausente'), 0))::int AS devolvidas,
+                   LEAST(oi.quantity, COALESCE(SUM(di.quantidade) FILTER (WHERE di.reestocado_em IS NULL AND di.condicao IS DISTINCT FROM 'ausente'), 0))::int AS perdidas,
+                   LEAST(oi.quantity * oi.price, COALESCE(SUM(di.quantidade * di.valor_unitario * fr.f) FILTER (WHERE di.condicao = 'ausente'), 0)) AS reembolso_sem_peca
               FROM public.devolucao_itens di
               JOIN public.devolucoes dv ON dv.id = di.devolucao_id
+              LEFT JOIN LATERAL (
+                  SELECT CASE WHEN dv.resolucao_final = 'reembolso' AND x.va > 0
+                              THEN LEAST(1, GREATEST(0, COALESCE(dv.valor_reembolso, 0) - x.vv - COALESCE(dv.valor_frete_ida, 0)) / x.va)
+                              ELSE 0 END AS f
+                    FROM (SELECT COALESCE(SUM(dx.quantidade * dx.valor_unitario) FILTER (WHERE dx.condicao IS DISTINCT FROM 'ausente'), 0) AS vv,
+                                 COALESCE(SUM(dx.quantidade * dx.valor_unitario) FILTER (WHERE dx.condicao = 'ausente'), 0) AS va
+                            FROM public.devolucao_itens dx
+                           WHERE dx.devolucao_id = dv.id) x) fr ON true
              WHERE di.order_item_id = oi.id
                AND dv.status = 'concluida'
                AND dv.resolucao_final IN ('reembolso', 'vale')) dev ON true
@@ -605,8 +639,8 @@ DECLARE
   v_hash text;
 BEGIN
   SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash FROM pg_proc WHERE oid = v_oid;
-  IF v_hash IS DISTINCT FROM 'cd42b14ee70ab5acdc76427d6e105e11' THEN
-    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: corpo depois do CREATE OR REPLACE de % tem hash %; esperado cd42b14ee70ab5acdc76427d6e105e11.', v_fn, COALESCE(v_hash, 'ausente');
+  IF v_hash IS DISTINCT FROM 'de8648a7783c12f1be7abd7986c8a2fc' THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: corpo depois do CREATE OR REPLACE de % tem hash %; esperado de8648a7783c12f1be7abd7986c8a2fc.', v_fn, COALESCE(v_hash, 'ausente');
   END IF;
   IF (SELECT count(*) FROM pg_proc p
        WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'get_admin_analytics_v2') <> 1 THEN

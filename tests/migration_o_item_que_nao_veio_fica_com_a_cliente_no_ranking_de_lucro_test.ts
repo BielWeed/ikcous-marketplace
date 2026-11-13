@@ -1,6 +1,6 @@
-// O ITEM "NAO VEIO" NAO VIRA PERDA NO RANKING DE LUCRO: prova offline do par 20261399994000 + rollback (lote 146). O COMPORTAMENTO (reembolso, vale,
-// danificada/usada/condicao nula, devolvido de novo, cupom, cortesia, grafico diario, JSON igual ao da 3997, mutantes, rollback, conexao sem BEGIN e
-// consultas 146a/146b) e' provado em tests/banco/o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-viva.cjs, que so roda no Postgres efemero do CI.
+// O ITEM "NAO VEIO" FICA COM A CLIENTE NO RANKING DE LUCRO: prova offline do par 20261399994000 + rollback (lote 146). O COMPORTAMENTO (so o que voltou, reembolso cheio,
+// parcial, frete, cupom, cortesia, vale/troca, danificada/usada/condicao nula, pedido de novo, grafico diario, JSON igual ao da 3997, mutantes, rollback,
+// conexao sem BEGIN e consultas 146a/146b) e' provado em tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs, que so roda no Postgres efemero do CI.
 // Aqui fica o que se prova so lendo o texto.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const nome =
-  "20261399994000_o_item_que_nao_veio_nao_vira_perda_no_ranking_de_lucro.sql";
+  "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql";
 const ler = (rel: string) =>
   Deno.readTextFileSync(new URL(`../${rel}`, import.meta.url)).replace(
     /\r/g,
@@ -33,7 +33,7 @@ const sql = ler(`supabase/migrations/${nome}`);
 const rb = ler(`supabase/migrations/rollback-manual-${nome}`);
 const H = {
   antes: "0ea0841208f326971e4f92241929e088",
-  depois: "cd42b14ee70ab5acdc76427d6e105e11",
+  depois: "de8648a7783c12f1be7abd7986c8a2fc",
 };
 const FILTRO_NOVO =
   "FILTER (WHERE di.reestocado_em IS NULL AND di.condicao IS DISTINCT FROM 'ausente')";
@@ -77,29 +77,83 @@ Deno.test("3994: os hashes das duas pontas batem com os corpos escritos; o rollb
   assert.ok(!rb.includes("('devolucao_itens', 'condicao')"));
 });
 
-Deno.test("3994: so o filtro das pecas perdidas muda, nos DOIS lugares; o resto do corpo e' o da 3997 byte a byte", () => {
+Deno.test("3994: o Nao veio sai das devolvidas e das perdidas, o reembolso sem peca e o fator f entram nos DOIS lugares; o resto do corpo e' o da 3997 byte a byte", () => {
   const novo = corpo(sql);
   const velho = corpo(anterior);
   assert.equal(novo.split(FILTRO_NOVO).length - 1, 2);
   assert.equal(velho.split(FILTRO_ANTIGO).length - 1, 2);
   assert.equal(novo.split(FILTRO_ANTIGO).length - 1, 0);
-  // Voltando o filtro e tirando o comentario explicativo, o corpo e' exatamente o da 3997.
+  const lateralFr =
+    /\n *LEFT JOIN LATERAL \(\n *SELECT CASE WHEN dv\.resolucao_final[\s\S]*?WHERE dx\.devolucao_id = dv\.id\) x\) fr ON true/g;
+  assert.equal(novo.match(lateralFr)?.length, 2);
+  // Desfazendo cada trecho novo (e os comentarios que o explicam), o corpo e' exatamente o da 3997.
   const devolvido = novo
+    .split("\n")
+    .filter(
+      (l) =>
+        !/^ *-- ('Nao veio' \(condicao|reembolso_sem_peca =|pecas 'Nao veio' de cada)/.test(
+          l,
+        ),
+    )
+    .join("\n")
+    .replace(lateralFr, "")
+    .split(" FILTER (WHERE rdi.condicao IS DISTINCT FROM 'ausente')")
+    .join("")
+    .split(
+      "SUM(di.quantidade) FILTER (WHERE di.condicao IS DISTINCT FROM 'ausente'), 0))::int AS devolvidas",
+    )
+    .join("SUM(di.quantidade), 0))::int AS devolvidas")
     .split(FILTRO_NOVO)
     .join(FILTRO_ANTIGO)
-    .split("\n")
-    .filter((l) => !l.includes("Exceto o item que a lojista marcou"))
-    .join("\n");
+    .replace(
+      /::int AS perdidas,\n *LEAST\(oi\.quantity \* oi\.price, COALESCE\([^\n]*AS reembolso_sem_peca/g,
+      "::int AS perdidas",
+    )
+    .replace(
+      /(- dev\.perdidas \* COALESCE\(oic\.custo, p\.custo\))\n *- dev\.reembolso_sem_peca\)/g,
+      "$1)",
+    );
   assert.equal(devolvido, velho);
-  // A excecao usa IS DISTINCT FROM (a condicao nula, das devolucoes de antes da marcacao, continua perda): nunca "<>".
-  assert.ok(!novo.includes("di.condicao <> 'ausente'"));
-  // As devolvidas (o reembolso e a quantidade do ranking) nao ganham filtro de condicao.
-  assert.ok(
-    novo.includes(
-      "LEAST(oi.quantity, COALESCE(SUM(di.quantidade), 0))::int AS devolvidas",
-    ),
+  // A excecao usa IS DISTINCT FROM (a condicao nula, das devolucoes de antes da marcacao, continua contando): nunca "<>".
+  assert.ok(!novo.includes("condicao <> 'ausente'"));
+  // O Nao veio nao conta como devolvida (quantidade e lucro do ranking, rateio da cortesia) nem como perdida.
+  assert.equal(
+    novo.split(
+      "SUM(di.quantidade) FILTER (WHERE di.condicao IS DISTINCT FROM 'ausente'), 0))::int AS devolvidas",
+    ).length - 1,
+    2,
   );
-  assert.equal(novo.split("di.condicao").length - 1, 2);
+  assert.equal(
+    novo.split(
+      "SUM(rdi.quantidade) FILTER (WHERE rdi.condicao IS DISTINCT FROM 'ausente')",
+    ).length - 1,
+    2,
+  );
+  // O dinheiro devolvido sem a peca: fator f de 0 a 1 (so reembolso, nunca negativo, frete de ida fora), teto do item vendido,
+  // subtraido do lucro do ranking e do grafico diario.
+  assert.equal(
+    novo.split(
+      "THEN LEAST(1, GREATEST(0, COALESCE(dv.valor_reembolso, 0) - x.vv - COALESCE(dv.valor_frete_ida, 0)) / x.va)",
+    ).length - 1,
+    2,
+  );
+  assert.equal(
+    novo.split("dv.resolucao_final = 'reembolso' AND x.va > 0").length - 1,
+    2,
+  );
+  assert.equal(
+    novo.split(
+      "LEAST(oi.quantity * oi.price, COALESCE(SUM(di.quantidade * di.valor_unitario * fr.f) FILTER (WHERE di.condicao = 'ausente'), 0)) AS reembolso_sem_peca",
+    ).length - 1,
+    2,
+  );
+  assert.equal(
+    novo.split(
+      "- dev.reembolso_sem_peca) FILTER (WHERE COALESCE(oic.custo, p.custo) IS NOT NULL), 0) AS profit",
+    ).length - 1,
+    1,
+  );
+  assert.equal(novo.split("- dev.reembolso_sem_peca) as total").length - 1, 1);
   // Guardas, SECURITY DEFINER e search_path como na 3997.
   const def = definicao(sql);
   assert.match(
@@ -116,6 +170,8 @@ Deno.test("3994: so o filtro das pecas perdidas muda, nos DOIS lugares; o resto 
     def.split("- dev.perdidas * COALESCE(oic.custo, p.custo)").length - 1,
     2,
   );
+  // A premissa antiga (o Nao veio nunca saiu da loja) nao esta em lugar nenhum do arquivo.
+  assert.doesNotMatch(sql, /nunca (saiu|chegou)|nao vira perda/i);
 });
 
 Deno.test("3994: consultas 146a/146b so de catalogo, quatro linhas fechadas, hashes certos e registros de publicacao", async () => {
@@ -126,11 +182,11 @@ Deno.test("3994: consultas 146a/146b so de catalogo, quatro linhas fechadas, has
   );
   const consultas: Array<[string, string]> = [
     [
-      "146a-conferir-o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-aplicado",
+      "146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado",
       H.depois,
     ],
     [
-      "146b-antes-o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-base-vigente",
+      "146b-antes-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-base-vigente",
       H.antes,
     ],
   ];
@@ -180,7 +236,7 @@ Deno.test("3994: consultas 146a/146b so de catalogo, quatro linhas fechadas, has
   assert.equal(entrada.ausenciaConfirmadaPor, consultas[1][0]);
   assert.ok(
     ler(".github/workflows/rpc-ci.yml").includes(
-      "rodar-isolado.cjs tests/banco/o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-viva.cjs",
+      "rodar-isolado.cjs tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs",
     ),
   );
 });
@@ -238,7 +294,7 @@ Deno.test("3994: a migration esta na cadeia das sucessoras e a prova da 3997 des
   assert.equal(da3997.length, 1);
   assert.equal(da3997[0].hashDesta, dela[0].hashVigente);
   const posterior = ler(
-    "tests/banco/o-item-que-nao-veio-nao-vira-perda-posterior.cjs",
+    "tests/banco/o-item-que-nao-veio-fica-com-a-cliente-posterior.cjs",
   );
   assert.ok(
     posterior.includes("rollback-manual-${ITEM_NAO_VEIO_NO_LUCRO.nome}"),

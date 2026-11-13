@@ -1430,10 +1430,10 @@ async function main() {
         "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql",
         "public.get_admin_customers_paged(text,text,text,integer,integer)",
       ],
-      // A 20261399994000 (o item "Nao veio" nao vira perda no ranking de lucro): get_admin_analytics_v2 sobre o corpo da 3997 (a mesma funcao da 14/34/42/45/50/51/3997 acima).
+      // A 20261399994000 (o item "Nao veio" fica com a cliente no ranking de lucro): get_admin_analytics_v2 sobre o corpo da 3997 (a mesma funcao da 14/34/42/45/50/51/3997 acima).
       // O rollback dela devolve o corpo da 3997 (o molde, abaixo, desfaz e mede; a 3997 so cai depois dela, pela cadeia de posteriores).
       [
-        "20261399994000_o_item_que_nao_veio_nao_vira_perda_no_ranking_de_lucro.sql",
+        "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql",
         "public.get_admin_analytics_v2(integer)",
       ],
     ],

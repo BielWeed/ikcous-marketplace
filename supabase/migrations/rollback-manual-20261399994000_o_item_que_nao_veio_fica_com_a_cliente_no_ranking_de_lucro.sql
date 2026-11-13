@@ -1,4 +1,4 @@
--- Desfaz a 20261399994000: devolve o corpo da 20261399970000 BYTE A BYTE (o item "Nao veio" volta a contar o custo como perda no ranking de lucro e no lucro do grafico diario).
+-- Desfaz a 20261399994000: devolve o corpo da 20261399970000 BYTE A BYTE (o item "Nao veio" volta a contar como peca devolvida e perdida, e some o reembolso sem peca, no ranking de lucro e no grafico diario).
 -- Nenhum dado e tocado: so a LEITURA muda. Desfazer esta ANTES do rollback da 20261399970000 (o dela recusa corpo desconhecido).
 -- Pre-voo fechado: so aceita o corpo desta migration ou o da 20261399970000 (reaplicar o rollback e inofensivo); qualquer outro corpo, atributo ou ACL recusa SEM escrever.
 -- Sem BEGIN/COMMIT: a transacao pertence ao aplicador.
@@ -24,7 +24,7 @@ BEGIN
 
   FOR r IN
     SELECT * FROM (VALUES
-        ('public.get_admin_analytics_v2(integer)', '0ea0841208f326971e4f92241929e088', 'cd42b14ee70ab5acdc76427d6e105e11')
+        ('public.get_admin_analytics_v2(integer)', '0ea0841208f326971e4f92241929e088', 'de8648a7783c12f1be7abd7986c8a2fc')
     ) AS esperado(assinatura, hash_vigente, hash_desta)
   LOOP
     SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash FROM pg_proc

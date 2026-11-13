@@ -10,10 +10,10 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const ITEM_NAO_VEIO_NO_LUCRO = Object.freeze({
-  nome: "20261399994000_o_item_que_nao_veio_nao_vira_perda_no_ranking_de_lucro.sql",
+  nome: "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql",
   noAr: `SELECT COALESCE((SELECT md5(replace(prosrc, chr(13), ''))
     FROM pg_proc WHERE oid = to_regprocedure('public.get_admin_analytics_v2(integer)'))
-    = 'cd42b14ee70ab5acdc76427d6e105e11', false) AS sim`,
+    = 'de8648a7783c12f1be7abd7986c8a2fc', false) AS sim`,
 });
 async function desfazerItemQueNaoVeioNoLucroNaTransacao(c) {
   if ((await c.query(ITEM_NAO_VEIO_NO_LUCRO.noAr)).rows[0]?.sim !== true)

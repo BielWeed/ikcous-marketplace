@@ -26,9 +26,9 @@ WITH fn AS (
   UNION ALL
   SELECT 'get_admin_analytics_v2: corpo e o da 20261251000000, com o lucro do estoque por variante (md5)',
          '060c9ab5b1505dc375b41e4436e9d3a8',
-         -- A 20261399970000 (o ranking de lucro desconta a devolucao) sucede a 251 e so troca o lucro das vendas com devolucao ou estorno, e a 20261399994000 (o item "Nao veio" nao vira perda) sucede a 3997:
+         -- A 20261399970000 (o ranking de lucro desconta a devolucao) sucede a 251 e so troca o lucro das vendas com devolucao ou estorno, e a 20261399994000 (o item "Nao veio" fica com a cliente) sucede a 3997:
          -- aceita os dois corpos EXATOS; normaliza ao esperado historico do rol.
-         COALESCE((SELECT CASE WHEN f.m IN ('060c9ab5b1505dc375b41e4436e9d3a8', '0ea0841208f326971e4f92241929e088', 'cd42b14ee70ab5acdc76427d6e105e11')
+         COALESCE((SELECT CASE WHEN f.m IN ('060c9ab5b1505dc375b41e4436e9d3a8', '0ea0841208f326971e4f92241929e088', 'de8648a7783c12f1be7abd7986c8a2fc')
                                THEN '060c9ab5b1505dc375b41e4436e9d3a8' ELSE f.m END FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)',

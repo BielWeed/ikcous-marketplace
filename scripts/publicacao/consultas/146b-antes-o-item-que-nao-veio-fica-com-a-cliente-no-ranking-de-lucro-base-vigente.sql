@@ -1,6 +1,6 @@
--- 146b-antes-o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-base-vigente: ANTES da 20261399994000 (a base vigente e o corpo da 20261399970000). SO LEITURA, catalogo, rol fechado de 4 linhas.
+-- 146b-antes-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-base-vigente: ANTES da 20261399994000 (a base vigente e o corpo da 20261399970000). SO LEITURA, catalogo, rol fechado de 4 linhas.
 -- Corpo exato (md5 sem CR), assinatura/atributos e ACL iguais aos pre/pos-voos. Depois do apply a linha do corpo fica falsa, de proposito.
--- Comportamento e fail-closed provados por tests/banco/o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-viva.cjs no CI.
+-- Comportamento e fail-closed provados por tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs no CI.
 WITH fn AS (
   SELECT p.oid,
          md5(replace(p.prosrc, chr(13), '')) AS m,

@@ -30,7 +30,7 @@ const { lerDatabaseUrlEfemera } = require("./efemero.cjs");
 const {
   desfazerItemQueNaoVeioNoLucroNaTransacao: desfazerItemQueNaoVeio,
   ITEM_NAO_VEIO_NO_LUCRO,
-} = require("./o-item-que-nao-veio-nao-vira-perda-posterior.cjs");
+} = require("./o-item-que-nao-veio-fica-com-a-cliente-posterior.cjs");
 
 const NOME = "20261399970000_o_ranking_de_lucro_desconta_a_devolucao.sql";
 const NOME_251 =
@@ -634,7 +634,7 @@ async function main() {
   await c.connect();
   try {
     await c.query("BEGIN");
-    // A 20261399994000 (o item "Nao veio" nao vira perda) sucede esta: cai antes, na transacao, e o topo volta a ser o desta migration.
+    // A 20261399994000 (o item "Nao veio" fica com a cliente) sucede esta: cai antes, na transacao, e o topo volta a ser o desta migration.
     await desfazerItemQueNaoVeio(c);
     // O topo instalado pelo CI (todas as migrations do zero, menos a 3994 desfeita acima) e o desta migration.
     const topo = await funcao(c);

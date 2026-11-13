@@ -86,7 +86,7 @@ Deno.test("20261242 — a 45 sucede só o analytics: a 45a aceita o novo hash ex
   const h3994 = md5(
     corpoDe(
       ler(
-        "20261399994000_o_item_que_nao_veio_nao_vira_perda_no_ranking_de_lucro.sql",
+        "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql",
       ),
       ANALYTICS,
     ),

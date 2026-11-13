@@ -158,9 +158,9 @@ const NOMES = [
   // CADEIA 99 -> 230 -> 392 -> 3993: o `hashVigente` da 3993 e o `hashDesta` da 392); crm__nunca_comprou nao e uma das 42 (vem da 183) mas entra porque o
   // rollback-manual dela desfaz as duas de uma vez. O rollback da 392 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
   "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql",
-  // O item "Nao veio" nao vira perda no ranking de lucro: get_admin_analytics_v2 sucede o corpo da 3997 (a CADEIA 99 -> 214 -> 234 -> 242 -> 245 -> 250 -> 251 -> 3997 -> 3994:
+  // O item "Nao veio" fica com a cliente no ranking de lucro: get_admin_analytics_v2 sucede o corpo da 3997 (a CADEIA 99 -> 214 -> 234 -> 242 -> 245 -> 250 -> 251 -> 3997 -> 3994:
   // o `hashVigente` da 3994 e o `hashDesta` da 3997). O rollback da 3997 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
-  "20261399994000_o_item_que_nao_veio_nao_vira_perda_no_ranking_de_lucro.sql",
+  "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
