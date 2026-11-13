@@ -203,14 +203,21 @@ Deno.test("380: uma funcao so por arquivo, rollback e cabecalho identicos aos vi
   }
 });
 
-Deno.test("380: o corpo novo e o MAIS NOVO da arvore e o db-apply exige todas as guardas", () => {
+Deno.test("380: o corpo novo e o PENULTIMO da arvore (a 20261399980000, o desempate por id, o sucede) e o db-apply exige todas as guardas", () => {
   const fontes = [...Deno.readDirSync(dir)]
     .map((e) => e.name)
     .filter((n) => /^\d{14}_.*\.sql$/.test(n))
     .sort()
     .map((n) => ler(`supabase/migrations/${n}`))
     .filter((s) => definicao(s));
-  assert.equal(md5(corpo(fontes.at(-1)!)), md5(corpo(sql)));
+  // A sucessora (as listas do painel desempatam por id) tem o proprio teste:
+  // tests/migration_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas_test.ts.
+  assert.equal(md5(corpo(fontes.at(-2)!)), md5(corpo(sql)));
+  assert.ok(
+    fontes
+      .at(-1)!
+      .includes("as listas de Produtos, Pedidos e Cancelados do painel"),
+  );
   const { VERIFICACOES, avaliarChecagem } = require("../scripts/db-apply.cjs");
   // eslint-disable-next-line security/detect-object-injection -- Nome literal desta migration, nunca entrada externa.
   const checagem = VERIFICACOES[nome];
@@ -254,9 +261,20 @@ Deno.test("380: 8e e 9a conhecem o corpo novo (como sucessor e como corpo final)
   const a9 = ler(
     "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql",
   );
-  assert.ok(a9.includes(`('get_admin_orders_cancelados_recentes', '${novo}')`));
+  // O corpo FINAL da 9a e' o da sucessora (20261399980000, o desempate por id); o da 99 e o desta migration ainda no ar aparecem como ele.
+  const sucessor = "80ec13f92e224b21d5308a063e88fb6e";
+  assert.ok(
+    a9.includes(`('get_admin_orders_cancelados_recentes', '${sucessor}')`),
+  );
+  assert.ok(
+    !a9.includes(`('get_admin_orders_cancelados_recentes', '${novo}')`),
+  );
   assert.ok(
     !a9.includes(`('get_admin_orders_cancelados_recentes', '${HASH_99}')`),
+  );
+  assert.ok(
+    a9.includes(`(c.h = '${HASH_99}' OR c.h = '${novo}')
+              THEN '${sucessor}'`),
   );
 });
 

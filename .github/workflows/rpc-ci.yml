@@ -262,6 +262,8 @@ on:
       - "scripts/publicacao/consultas/128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente.sql"
       - "scripts/publicacao/consultas/135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado.sql"
       - "scripts/publicacao/consultas/135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente.sql"
+      - "scripts/publicacao/consultas/140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado.sql"
+      - "scripts/publicacao/consultas/140b-antes-as-listas-do-painel-nao-repetem-ninguem-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
       - "scripts/publicacao/consultas/129m-medir-corrida-e-avanco-com-estorno.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
@@ -495,6 +497,8 @@ on:
       - "scripts/publicacao/consultas/128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente.sql"
       - "scripts/publicacao/consultas/135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado.sql"
       - "scripts/publicacao/consultas/135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente.sql"
+      - "scripts/publicacao/consultas/140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado.sql"
+      - "scripts/publicacao/consultas/140b-antes-as-listas-do-painel-nao-repetem-ninguem-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
       - "scripts/publicacao/consultas/129m-medir-corrida-e-avanco-com-estorno.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
@@ -1121,6 +1125,14 @@ jobs:
       - name: Prova viva do ranking de lucro que desconta a devolucao e o estorno (20261399970000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-ranking-de-lucro-desconta-a-devolucao-viva.cjs
+      # Migration 20261399980000 (as listas de Produtos, Pedidos e Cancelados do painel nao repetem nem escondem ninguem entre as paginas): get_admin_products_paged, get_admin_orders_paged e
+      # get_admin_orders_cancelados_recentes ganham SO o desempate pelo id no fim do ORDER BY. Fixture COMMITADA no clone (100 registros de MESMA data por lista, mais os de data diferente) lida em
+      # paginas de varios tamanhos por conexoes com planos diferentes; controle com os tres corpos anteriores (repetem e escondem), mutantes (sem desempate, campo errado, id antes da data, id invertido,
+      # id antes do numero digitado), mesmo conjunto e total do corpo anterior, ACL/atributos/dono iguais, guarda de admin intacta, reaplicar, rollback byte a byte, estado misto, conexao sem BEGIN com
+      # conferencia sabotada, pre-voo, consultas 140a/140b e as vizinhas (8e, 9a, 85a, 86a, 90a, 92a, 119a, 125a). CLONE proprio.
+      - name: Prova viva das listas do painel que nao repetem nem escondem ninguem entre as paginas (20261399980000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/as-listas-do-painel-nao-repetem-ninguem-viva.cjs
       # Onda 150 (SEM migration): registrar_venda_presencial recusa p_itens vazio, que nao e lista (objeto, null, escalar, NULL) e com mais de 200 linhas, com 22023 e a frase da loja, sem escrever pedido, item,
       # historico, financeiro nem estoque; 200 (o limite) entra. Mutantes por MUTANTE_R150E. CLONE proprio.
       - name: Prova viva do balcao que recusa venda sem item e com itens demais

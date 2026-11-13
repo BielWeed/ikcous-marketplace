@@ -852,6 +852,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399970000: o ranking de lucro desconta a devolucao e o estorno (get_admin_analytics_v2: topProducts e o lucro do grafico diario; controle com o corpo da 251 na mesma fixture, JSON inteiro igual sem devolucao,
     // cupom, mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 135a/135b).
     "tests/banco/o-ranking-de-lucro-desconta-a-devolucao-viva.cjs",
+    // 20261399980000: as listas de Produtos, Pedidos e Cancelados do painel nao repetem nem escondem ninguem entre as paginas (desempate pelo id; controle com os corpos anteriores, mutantes,
+    // rollback byte a byte, conexao sem BEGIN, pre/pos-voo, admin e consultas 140a/140b).
+    "tests/banco/as-listas-do-painel-nao-repetem-ninguem-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
     "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
   ];

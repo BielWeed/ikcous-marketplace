@@ -17,6 +17,10 @@ const BUSCA_POR_PALAVRAS = Object.freeze({
     = '346063e900b8b7b63dfbeffe5070eedc', false) AS sim`,
 });
 async function desfazerBuscaPorPalavrasNaTransacao(c) {
+  // A 20261399980000 (as listas do painel desempatam por id) sucede esta no MESMO get_admin_products_paged: sai PRIMEIRO (so se no ar).
+  await require("./as-listas-do-painel-posterior.cjs").desfazerListasDoPainelNaTransacao(
+    c,
+  );
   if ((await c.query(BUSCA_POR_PALAVRAS.noAr)).rows[0]?.sim !== true)
     return false;
   await c.query(

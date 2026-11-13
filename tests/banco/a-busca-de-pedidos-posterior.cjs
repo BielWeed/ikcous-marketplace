@@ -32,6 +32,10 @@ const BUSCA_DE_PEDIDOS = Object.freeze({ nome: NOME, hashDesta: HASH_DESTA });
 
 /** Desfaz a 20261399900000 na transacao aberta, se no ar; repetir e' no-op. Devolve true se desfez. */
 async function desfazerBuscaDePedidosNaTransacao(cliente) {
+  // A 20261399980000 (as listas do painel desempatam por id) sucede esta no MESMO get_admin_orders_paged: sai PRIMEIRO (so se no ar).
+  await require("./as-listas-do-painel-posterior.cjs").desfazerListasDoPainelNaTransacao(
+    cliente,
+  );
   const r = await cliente.query(hashVivo);
   if (r.rows[0]?.h !== HASH_DESTA) return false;
   await cliente.query(

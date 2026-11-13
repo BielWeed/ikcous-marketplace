@@ -143,6 +143,10 @@ const NOMES = [
   // O ranking de lucro desconta a devolucao e o estorno: get_admin_analytics_v2 sucede o corpo da 251 (a CADEIA 99 -> 214 -> 234 -> 242 -> 245 -> 250 -> 251 -> 3997:
   // o `hashVigente` da 3997 e o `hashDesta` da 251). O rollback da 251 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
   "20261399970000_o_ranking_de_lucro_desconta_a_devolucao.sql",
+  // As listas de Produtos, Pedidos e Cancelados do painel nao repetem nem escondem ninguem entre as paginas: UMA migration, TRES funcoes da 99 (get_admin_products_paged sucede o corpo da
+  // 3992, get_admin_orders_paged o da 3999 e get_admin_orders_cancelados_recentes o da 380: as CADEIAS 99 -> 213 -> 381 -> 385 -> 3992 -> 3998, 99 -> 387 -> 3999 -> 3998 e 99 -> 380 -> 3998; o
+  // `hashVigente` de cada par e o `hashDesta` da anterior). Tres entradas: o rollback-manual dela desfaz as tres de uma vez. Os rollbacks da 3992, da 3999 e da 380 recusam com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
@@ -157,6 +161,10 @@ const PARES_POR_MIGRATION = new Map([
   ["20261397000000_o_desconto_do_cupom_e_arredondado_ao_centavo.sql", 3],
   ["20261399300000_o_estorno_em_andamento_nao_e_conta_vencida.sql", 2],
   ["20261399930000_o_caixa_e_a_conta_recusam_valor_que_nao_e_numero.sql", 2],
+  [
+    "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql",
+    3,
+  ],
 ]);
 
 const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");

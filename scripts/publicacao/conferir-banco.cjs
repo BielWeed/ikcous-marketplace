@@ -3049,7 +3049,24 @@ const ROL_DA_135 = [
   "get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)",
   "get_admin_analytics_v2: EXECUTE so de authenticated e service_role (PUBLIC e anon nao)",
 ];
+// Lote 140 (20261399980000, as listas de Produtos, Pedidos e Cancelados do painel nao repetem nem escondem ninguem entre as paginas: get_admin_products_paged, get_admin_orders_paged e
+// get_admin_orders_cancelados_recentes redefinidas, sem objeto novo). A 140a e a 140b tem o MESMO rol de 10 linhas (controle e, para cada funcao, corpo exato (md5), atributos e ACL); a 140a espera os
+// corpos da migration nova e a 140b os vigentes de antes (os da 20261399200000, 20261399900000 e 20261380000000). So catalogo: nenhuma le produto, pedido ou cliente e nenhuma chama as funcoes.
+const ROL_DA_140 = [
+  "controle: funcoes de public visiveis a este papel",
+  ...[
+    "get_admin_products_paged",
+    "get_admin_orders_paged",
+    "get_admin_orders_cancelados_recentes",
+  ].flatMap((fn) => [
+    `${fn}: corpo exato (md5)`,
+    `${fn}: assinatura e atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, extensions, uma so)`,
+    `${fn}: EXECUTE so authenticated e service_role (sem PUBLIC nem anon)`,
+  ]),
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado": ROL_DA_140,
+  "140b-antes-as-listas-do-painel-nao-repetem-ninguem-base-vigente": ROL_DA_140,
   "135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado": ROL_DA_135,
   "135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente": ROL_DA_135,
   "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente": ROL_DA_129B,
