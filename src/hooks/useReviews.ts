@@ -522,8 +522,9 @@ export function useReviews() {
       filters?: {
         rating?: number | "all";
         search?: string;
-        // "pendente" = só a fila de moderação (20261399700000); "todas" ou ausente = sem filtro de situação.
-        status?: "todas" | "pendente";
+        // "pendente" = só a fila de moderação (20261399700000); "sem_resposta" = só as sem resposta da loja
+        // (20261399996000); "todas" ou ausente = sem filtro de situação.
+        status?: "todas" | "pendente" | "sem_resposta";
         silent?: boolean;
       },
     ) => {
@@ -556,10 +557,11 @@ export function useReviews() {
                     : "all",
                 p_page: page,
                 p_page_size: pageSize,
-                // Só manda p_status com o filtro de moderação LIGADO: a lista sem filtro segue chamando com os 4
+                // Só manda p_status com um filtro de situação LIGADO: a lista sem filtro segue chamando com os 4
                 // parâmetros de sempre, então a loja que ainda não recebeu a migration 20261399700000 continua abrindo.
-                ...(filters?.status === "pendente"
-                  ? { p_status: "pendente" }
+                ...(filters?.status === "pendente" ||
+                filters?.status === "sem_resposta"
+                  ? { p_status: filters.status }
                   : {}),
               }),
             ) as Promise<{ data: unknown; error: unknown }>,

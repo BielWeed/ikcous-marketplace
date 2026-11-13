@@ -321,7 +321,11 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
         if (aviso.destino.limparFiltros) {
           limparGuardadosAoChegarPorAviso(
             aviso.destino.view,
-            aviso.destino.soEmModeracao ? { soEmModeracao: true } : {},
+            aviso.destino.soEmModeracao
+              ? { soEmModeracao: true }
+              : aviso.destino.soSemResposta
+                ? { soSemResposta: true }
+                : {},
           );
         }
         if (aviso.destino.soSolicitadas) pedirDevolucoesSolicitadas();
