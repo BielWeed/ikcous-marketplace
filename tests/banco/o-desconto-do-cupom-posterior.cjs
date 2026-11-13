@@ -98,6 +98,11 @@ const DESCONTO_DO_CUPOM = Object.freeze({
  * Devolve quantas funcoes voltaram.
  */
 async function desfazerODescontoDoCupomNaTransacao(cliente) {
+  // A 20261399997000 (o pedido guarda quem vai receber) sucede o corpo da v23 e da v24 desta migration: cai ANTES, senao o corpo vivo nao e o
+  // desta e nada abaixo desfaz. Ver o-pedido-guarda-quem-vai-receber-posterior.cjs.
+  await require("./o-pedido-guarda-quem-vai-receber-posterior.cjs").desfazerQuemVaiReceberNaTransacao(
+    cliente,
+  );
   let desfeitas = 0;
   for (const f of FUNCOES) {
     if ((await hashDe(cliente, f)) !== f.hashDesta) continue;
@@ -112,4 +117,20 @@ async function desfazerODescontoDoCupomNaTransacao(cliente) {
   return desfeitas;
 }
 
-module.exports = { DESCONTO_DO_CUPOM, desfazerODescontoDoCupomNaTransacao };
+/**
+ * Os corpos vivos que valem como "o da 20261397000000" para quem mede a CONTA DO DESCONTO: o desta migration e o das sucessoras que so
+ * acrescentam outra coisa e deixam a conta intacta (a 20261399997000 acrescenta uma chave a copia do endereco da v23 e da v24).
+ */
+function hashesVivosDoDesconto(f) {
+  const sucessora =
+    require("./o-pedido-guarda-quem-vai-receber-posterior.cjs").QUEM_VAI_RECEBER.funcoes.find(
+      (x) => x.nome === f.nome,
+    );
+  return sucessora ? [f.hashDesta, sucessora.hashDesta] : [f.hashDesta];
+}
+
+module.exports = {
+  DESCONTO_DO_CUPOM,
+  desfazerODescontoDoCupomNaTransacao,
+  hashesVivosDoDesconto,
+};

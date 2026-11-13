@@ -3142,7 +3142,23 @@ const ROL_DA_147 = [...ROL_DA_135];
 // Lote 148 (20261399996000, o painel de avaliacoes filtra o que esta sem resposta: get_admin_reviews_paged, a MESMA assinatura de 5 argumentos, ganha o terceiro valor de p_status; sem objeto novo).
 // A 148a e a 148b tem o MESMO rol de 4 linhas da 123; a 148a espera o corpo desta migration e a 148b o vigente de antes (o da 20261399700000). So catalogo: nenhuma le avaliacao nem chama a funcao.
 const ROL_DA_148 = [...ROL_DA_123];
+// Lote 150 (20261399997000, o pedido guarda quem vai receber: create_marketplace_order_v23 e v24 ganham UMA chave na copia do endereco, user_addresses.recipient_name; sem objeto novo).
+// A 150a e a 150b tem o MESMO rol de 9 linhas (controle e, para cada funcao, corpo exato (md5), a chave nova uma vez, atributos e ACL); a 150a espera os corpos da migration nova e a 150b os vigentes de
+// antes (os da 20261397000000). So catalogo: nenhuma le pedido, endereco nem cliente e nenhuma chama as funcoes.
+const ROL_DA_150 = [
+  "controle: funcoes de public visiveis a este papel",
+  ...["create_marketplace_order_v23", "create_marketplace_order_v24"].flatMap(
+    (f) => [
+      `${f}: corpo exato (md5)`,
+      `${f}: o corpo copia o nome de quem vai receber (uma vez)`,
+      `${f}: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno uuid)`,
+      `${f}: EXECUTE para anon, authenticated e service_role, sem PUBLIC`,
+    ],
+  ),
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "150a-conferir-o-pedido-guarda-quem-vai-receber-aplicado": ROL_DA_150,
+  "150b-antes-o-pedido-guarda-quem-vai-receber-base-vigente": ROL_DA_150,
   "149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado":
     ROL_DA_149A_PERFIL,
   "149b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente":
