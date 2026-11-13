@@ -84,6 +84,7 @@ import type { Product, ProductVariant, View } from "@/types";
 import {
   camposQueMudaram,
   fotosAposConflito,
+  variacaoMudou,
   variacoesAposConflito,
   variacoesQueMudaram,
 } from "@/utils/campos-mexidos-do-produto";
@@ -3588,7 +3589,30 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // o rascunho gravado a seguir faria Restaurar + Salvar apagá-la
         // (ver `variacoesExcluidasNoRascunho`).
         const idsNoFormulario = new Set(formData.variants.map((v) => v.id));
-        const idsExcluidosAqui = new Set(deletedVariantIds);
+        // A excluída aqui que o outro aparelho MEXEU (ligou, mudou estoque...)
+        // sai da fila e volta à lista com os dados novos: com a base já em
+        // dia, o próximo Salvar a apagaria sem a lojista ter visto a mudança.
+        // A que ninguém mexeu segue na fila (exclusão intencional).
+        const aberturaPorId = new Map(
+          initialData.variants.map((v) => [v.id, v]),
+        );
+        const voltaramDaExclusao = variants.filter((hoje) => {
+          const antes = aberturaPorId.get(hoje.id);
+          return (
+            deletedVariantIds.includes(hoje.id) &&
+            antes !== undefined &&
+            variacaoMudou(hoje, antes)
+          );
+        });
+        const idsQueVoltaram = new Set(voltaramDaExclusao.map((v) => v.id));
+        if (idsQueVoltaram.size > 0) {
+          setDeletedVariantIds((fila) =>
+            fila.filter((id) => !idsQueVoltaram.has(id)),
+          );
+        }
+        const idsExcluidosAqui = new Set(
+          deletedVariantIds.filter((id) => !idsQueVoltaram.has(id)),
+        );
         const criadasEmOutroAparelho = variants.filter(
           (v) => !idsNoFormulario.has(v.id) && !idsExcluidosAqui.has(v.id),
         );
@@ -3611,6 +3635,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         );
         if (gradeRecarregada.repetidas) {
           toast.warning(AVISO_COMBINACAO_JA_CRIADA);
+        }
+        if (voltaramDaExclusao.length > 0) {
+          const quais = voltaramDaExclusao
+            .map((v) => `${v.name}: ${v.value}`)
+            .join(", ");
+          toast.warning(
+            voltaramDaExclusao.length === 1
+              ? `A variação ${quais} foi alterada em outro aparelho e voltou para a lista; revise antes de excluir.`
+              : `As variações ${quais} foram alteradas em outro aparelho e voltaram para a lista; revise antes de excluir.`,
+          );
         }
       }
       setIsSubmitting(false);

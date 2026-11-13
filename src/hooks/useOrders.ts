@@ -42,6 +42,7 @@ import {
   PRAZO_DA_TRAVA_DA_FILA_MS,
   comTravaEntreAbas,
 } from "@/lib/trava-entre-abas";
+import { normalizeText } from "@/lib/utils";
 import type { DashboardSummary, Order, OrderStatus } from "@/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -1470,19 +1471,24 @@ function mesclarPedidosDaConsulta(
 // pedidos que o realtime inseriu durante a leitura e que a resposta (um
 // retrato anterior a eles) não contém já foram somados ao total na hora da
 // inserção — a contagem velha da resposta não pode apagá-los.
+//
+// Quem conta é o REGISTRO de ids inseridos, NÃO a lista da tela: a lista guarda
+// só uma página (o 13º pedido novo empurra o mais velho para fora), então
+// contar pelos pedidos visíveis perdia tudo o que passasse do tamanho da
+// página — o total encolhia (25 virava 24; com 24 novos, 36 virava 24). O
+// retrato `inseridosNoInicio` separa o que entrou ANTES desta leitura (a
+// resposta já o conta) do que chegou durante ela.
 function contarInseridosNoVoo(
-  atuais: Order[],
   resposta: Order[],
-  idsNoInicio: Set<string>,
+  inseridosNoInicio: Set<string>,
   idsInseridosPeloRealtime: Set<string>,
 ): number {
   const idsDaResposta = new Set(resposta.map((pedido) => pedido.id));
-  return atuais.filter(
-    (pedido) =>
-      !idsNoInicio.has(pedido.id) &&
-      !idsDaResposta.has(pedido.id) &&
-      idsInseridosPeloRealtime.has(pedido.id),
-  ).length;
+  let contados = 0;
+  for (const id of idsInseridosPeloRealtime) {
+    if (!inseridosNoInicio.has(id) && !idsDaResposta.has(id)) contados += 1;
+  }
+  return contados;
 }
 
 /**
@@ -1955,6 +1961,69 @@ export function decidirRealtimeInsertAdmin(
   return (page ?? 0) === 0 ? "inserir" : "recarregar";
 }
 
+/** Os campos que a busca do painel olha e que MUDAM depois da criação. */
+type CamposDaBuscaQueMudam = {
+  tracking_code?: string | null;
+  coupon_code?: string | null;
+};
+
+/**
+ * Um UPDATE do realtime pode mudar o que a BUSCA do painel mostra? (achado
+ * de 13/11/2026.) A busca do servidor (`get_admin_orders_paged`) casa o texto
+ * com rastreio e cupom, e os dois são gravados DEPOIS de o pedido existir —
+ * o rastreio é o caso do dia a dia: a lojista o salva na ficha, em outro
+ * aparelho. Sem reler, a lista da tela ficava velha nos dois sentidos: a
+ * busca por um rastreio que ainda não existia seguia vazia, e a busca pelo
+ * rastreio antigo seguia mostrando o pedido depois que ele mudou.
+ *
+ * O `old` do evento só traz a chave primária (RLS ligada), então o "antes" vem
+ * dele só quando o campo está lá; senão, do pedido que a tela já tinha. Pedido
+ * que a tela não tem (e `old` sem o campo) não tem "antes" conhecido: relê se
+ * o valor novo casa com a busca, porque ele pode ter acabado de entrar.
+ *
+ * Relê só quando o campo MUDOU e o texto casa com o valor de antes ou de
+ * depois — mudar um rastreio que não tem a ver com a busca não custa leitura.
+ * A comparação local é sem acento e sem diferença de maiúscula, como a do
+ * banco; só cobre rastreio e cupom. Nome, telefone, número e itens do pedido
+ * não mudam depois da criação (ver `mesclarAtualizacaoRealtime`).
+ */
+export function atualizacaoPodeMudarOResultadoDaBusca(
+  busca: string | undefined,
+  linhaNova: CamposDaBuscaQueMudam,
+  linhaAntiga: CamposDaBuscaQueMudam | null | undefined,
+  pedidoEmMemoria: Pick<Order, "trackingCode" | "couponCode"> | undefined,
+): boolean {
+  const termo = normalizeText(busca);
+  if (!termo) return false;
+  const casa = (valor: string) => normalizeText(valor).includes(termo);
+  const campos: [
+    novo: string | null | undefined,
+    velho: string | null | undefined,
+    memoria: string | undefined,
+  ][] = [
+    [
+      linhaNova.tracking_code,
+      linhaAntiga?.tracking_code,
+      pedidoEmMemoria?.trackingCode,
+    ],
+    [
+      linhaNova.coupon_code,
+      linhaAntiga?.coupon_code,
+      pedidoEmMemoria?.couponCode,
+    ],
+  ];
+  return campos.some(([novo, velho, memoria]) => {
+    // Evento sem o campo não decide nada.
+    if (novo === undefined) return false;
+    const depois = novo ?? "";
+    let antes: string | undefined;
+    if (velho !== undefined) antes = velho ?? "";
+    else if (pedidoEmMemoria) antes = memoria ?? "";
+    if (antes === depois) return false;
+    return casa(depois) || (antes !== undefined && casa(antes));
+  });
+}
+
 /**
  * Texto da falha de carregamento dos pedidos do cliente (`ordersLoadError`).
  * Exportado para a tela e os testes falarem do MESMO literal.
@@ -2365,6 +2434,9 @@ export function useOrders(
       recarregarAdminDepoisDoVooRef.current = false;
       const signal = controlador.signal;
       const idsNoInicio = new Set(ordersRef.current.map((pedido) => pedido.id));
+      // Quem o realtime já tinha inserido quando esta leitura saiu: a resposta
+      // o conta; só os que entrarem DEPOIS precisam ser somados ao total.
+      const inseridosNoInicio = new Set(idsInseridosPeloRealtimeRef.current);
 
       try {
         if (!silent) {
@@ -2407,9 +2479,8 @@ export function useOrders(
           const totalCount =
             (Number(data.total_count) || 0) +
             contarInseridosNoVoo(
-              ordersRef.current,
               respostaMapeada,
-              idsNoInicio,
+              inseridosNoInicio,
               idsInseridosPeloRealtimeRef.current,
             );
 
@@ -3270,12 +3341,26 @@ export function useOrders(
         updatedOrder.payment_status !== undefined &&
         (updatedOrder.payment_status ?? "sem_cobranca") === filtroDePagamento &&
         oldOrder?.payment_status !== updatedOrder.payment_status;
+      // BUSCA ativa e rastreio/cupom (campos que ela olha) mudou: o pedido pode
+      // ter entrado ou saído do resultado. Ver o docstring de
+      // `atualizacaoPodeMudarOResultadoDaBusca`. Pedido fora da lista só conta
+      // se casa o status da visão (como `entrouNoFiltroDePagamento`).
+      const buscaPodeTerMudado =
+        isAdmin &&
+        (jaNaLista || casaStatus) &&
+        atualizacaoPodeMudarOResultadoDaBusca(
+          ultimaConsultaAdminRef.current?.[3],
+          updatedOrder,
+          oldOrder,
+          ordersRef.current.find((pedido) => pedido.id === updatedOrder.id),
+        );
       // A RPC existente recompõe página e total quando alguém entra ou sai
       // do recorte. O mesmo debounce do INSERT absorve rajadas de eventos.
       if (
         (filtroConhecido && (casaStatus ? !jaNaLista : jaNaLista)) ||
         entrouNoFiltroDePagamento ||
-        saiuDoFiltroDePagamento
+        saiuDoFiltroDePagamento ||
+        buscaPodeTerMudado
       ) {
         if (debounceRecarregarInsertRef.current) {
           clearTimeout(debounceRecarregarInsertRef.current);

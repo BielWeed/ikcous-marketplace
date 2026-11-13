@@ -244,4 +244,87 @@ describe("total do painel com pedido que chegou pelo realtime durante a leitura"
     });
     expect(visto.totalOrders).toBe(57);
   });
+
+  // A lista guarda só uma página (12): o 13º pedido que chega empurra o mais
+  // velho para fora dela. O total, porém, soma TODOS os que chegaram — a
+  // reconciliação não pode contá-los pela janela da lista.
+  it("mais pedidos novos que a página: o total soma todos, não só os 12 visíveis", async () => {
+    await montar();
+    const doRetrato = Array.from({ length: 12 }, (_, i) => `r${i}`);
+    const entregar = respostaEmVoo(doRetrato, 12);
+    let promessa!: Promise<unknown>;
+    let devolvido!: { orders: { id: string }[]; total: number };
+    await act(async () => {
+      promessa = visto.carregar(0, 12, "all").then((r) => {
+        devolvido = r;
+      });
+    });
+    for (let i = 0; i < 13; i++) await chegaPeloRealtime(`n${i}`);
+    expect(visto.totalOrders).toBe(13);
+    expect(visto.ids).toHaveLength(12);
+    await act(async () => {
+      entregar();
+      await promessa;
+    });
+    expect(visto.totalOrders).toBe(25);
+    expect(devolvido.total).toBe(25);
+    // A lista continua uma página só, com os mais novos no topo.
+    expect(visto.ids).toHaveLength(12);
+  });
+
+  it("o dobro da página de pedidos novos: 12 do retrato + 24 = 36", async () => {
+    await montar();
+    const doRetrato = Array.from({ length: 12 }, (_, i) => `r${i}`);
+    const entregar = respostaEmVoo(doRetrato, 12);
+    let promessa!: Promise<unknown>;
+    await act(async () => {
+      promessa = visto.carregar(0, 12, "all");
+    });
+    for (let i = 0; i < 24; i++) await chegaPeloRealtime(`n${i}`);
+    await act(async () => {
+      entregar();
+      await promessa;
+    });
+    expect(visto.totalOrders).toBe(36);
+    expect(visto.ids).toHaveLength(12);
+  });
+
+  it("pedido que entrou ANTES da leitura e já saiu da janela não é contado de novo", async () => {
+    await montar();
+    // Primeira leitura (vazia) termina; 13 chegam depois dela, fora de voo.
+    respostaEmVoo([], 0)();
+    await act(async () => {
+      await visto.carregar(0, 12, "all");
+    });
+    for (let i = 0; i < 13; i++) await chegaPeloRealtime(`antes${i}`);
+    expect(visto.totalOrders).toBe(13);
+    // A segunda leitura já enxerga os 13 no total; nada chegou no voo.
+    const doServidor = Array.from({ length: 12 }, (_, i) => `antes${12 - i}`);
+    respostaEmVoo(doServidor, 13)();
+    await act(async () => {
+      await visto.carregar(0, 12, "all");
+    });
+    expect(visto.totalOrders).toBe(13);
+  });
+
+  it("pedido de antes da leitura, fora da janela, mais um que chegou no voo: soma só o do voo", async () => {
+    await montar();
+    respostaEmVoo([], 0)();
+    await act(async () => {
+      await visto.carregar(0, 12, "all");
+    });
+    for (let i = 0; i < 13; i++) await chegaPeloRealtime(`antes${i}`);
+    const doServidor = Array.from({ length: 12 }, (_, i) => `antes${12 - i}`);
+    const entregar = respostaEmVoo(doServidor, 13);
+    let promessa!: Promise<unknown>;
+    await act(async () => {
+      promessa = visto.carregar(0, 12, "all");
+    });
+    await chegaPeloRealtime("voo");
+    await act(async () => {
+      entregar();
+      await promessa;
+    });
+    expect(visto.totalOrders).toBe(14);
+  });
 });
