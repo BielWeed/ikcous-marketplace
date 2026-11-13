@@ -777,6 +777,7 @@ export function AdminFinanceiroView({
                     intervalo={intervalo}
                     versao={versao}
                     rotuloDoPeriodo={rotulo}
+                    onNavigate={onNavigate}
                   />
                 </TabsContent>
                 <TabsContent value="contas" className="flex flex-col gap-4">
