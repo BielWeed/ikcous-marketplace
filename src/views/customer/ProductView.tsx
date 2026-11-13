@@ -533,8 +533,17 @@ export const ProductView = React.memo(function ProductView({
             ),
         )
       : product.variants;
+  // Cadastro antigo, escolha incompleta SEM o grupo principal (o que o servidor
+  // cobra): o ajuste do outro grupo é um preço que nenhuma combinação paga.
+  const principalDoLegado = ordenarPelaGrade(
+    product.variants?.filter((v) => v.active) ?? [],
+  )[0]?.name;
+  const semOPrincipal =
+    legadoIndependente &&
+    faltaAlgo &&
+    !selectedVariantObjects.some((v) => v.name === principalDoLegado);
   const vitrine =
-    selectedVariantObjects.length === 0
+    selectedVariantObjects.length === 0 || semOPrincipal
       ? precoDeVitrine({ ...product, variants: linhasDaVitrine })
       : null;
   const precoExibido = vitrine ? vitrine.preco : currentPrice;
