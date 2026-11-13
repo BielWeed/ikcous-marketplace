@@ -369,6 +369,23 @@ describe("AuthContext — limpeza local de sessão (issue #122)", () => {
     expect(localStorage.getItem("marketplace_cart_tombstones_v1")).toBeNull();
   });
 
+  it("3c. a anotação das linhas que o banco confirmou no carrinho também é apagada no SIGNED_OUT", async () => {
+    const { callback } = await montarLogado();
+
+    localStorage.setItem(
+      "marketplace_cart_confirmado_v1",
+      JSON.stringify({ uid: "user-a", entradas: ["p1-=1"] }),
+    );
+
+    const cb = callback();
+    await act(async () => {
+      cb("SIGNED_OUT", null);
+      await esperarMicrotarefas();
+    });
+
+    expect(localStorage.getItem("marketplace_cart_confirmado_v1")).toBeNull();
+  });
+
   it("4. ikcous_last_shipping_cep e o prefixo ikcous_shipping_cache_ são removidos no SIGNED_OUT", async () => {
     const { callback } = await montarLogado();
 

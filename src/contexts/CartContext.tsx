@@ -295,6 +295,8 @@ const ESPERA_MAX_REENVIO_MS = 30_000;
 const INTERVALO_MIN_RENOVAR_VISIVEL_MS = 15_000;
 const CART_STORAGE_KEY = "marketplace_cart_v1";
 const CART_TOMBSTONES_KEY = "marketplace_cart_tombstones_v1";
+// As linhas que o banco já confirmou ter (ver `guardarConfirmado`).
+const CART_CONFIRMADO_KEY = "marketplace_cart_confirmado_v1";
 // Quanto tempo o aviso da lixeira oferece "Desfazer" (o padrão do aviso, ~4 s,
 // é curto para quem tocou sem querer).
 const DURACAO_DO_DESFAZER_MS = 6_000;
@@ -359,10 +361,71 @@ async function sessaoConfirmaAConta(uid: string | null): Promise<boolean> {
  * retrato do último que o banco confirmou = nada pendente.
  */
 function retratoDoCarrinho(itens: readonly CartItem[]): string {
-  return itens
-    .map((item) => `${chaveDoItem(item)}=${item.quantity}`)
-    .sort()
-    .join("|");
+  return entradasDoCarrinho(itens).join("|");
+}
+
+/** Uma linha e a sua quantidade: `chave=quantidade`, em ordem. */
+function entradaDoItem(item: CartItem): string {
+  return `${chaveDoItem(item)}=${item.quantity}`;
+}
+function entradasDoCarrinho(itens: readonly CartItem[]): string[] {
+  return itens.map(entradaDoItem).sort();
+}
+
+/**
+ * O app FECHADO por completo perde a memória de "o que o banco já confirmou"
+ * (`retratoAlinhado`). Sem ela, ao reabrir, uma linha guardada aqui que o banco
+ * não tem mais era tratada como "posta sem rede": voltava ao carrinho e ao
+ * banco, ainda que outro aparelho a tivesse tirado. Por isso o aparelho guarda,
+ * por conta, as linhas (com a quantidade) que o banco confirmou ter. Linha daqui
+ * que NÃO está nesta lista (posta sem rede, quantidade mexida e não enviada)
+ * nunca é apagada por esta regra. Sem a lista (cópia de uma versão antiga, ou
+ * de outra conta) nada muda: vale a junção de sempre.
+ */
+function guardarConfirmado(uid: string, itens: readonly CartItem[]): void {
+  gravarSeguro(
+    CART_CONFIRMADO_KEY,
+    JSON.stringify({ uid, entradas: entradasDoCarrinho(itens) }),
+  );
+}
+
+function lerConfirmado(): { uid: string; entradas: string[] } | null {
+  const texto = lerSeguro(CART_CONFIRMADO_KEY);
+  if (!texto) return null;
+  try {
+    const lido: unknown = JSON.parse(texto);
+    if (typeof lido !== "object" || lido === null) return null;
+    const { uid, entradas } = lido as { uid?: unknown; entradas?: unknown };
+    if (typeof uid !== "string" || !Array.isArray(entradas)) return null;
+    return {
+      uid,
+      entradas: entradas.filter((e): e is string => typeof e === "string"),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** As linhas confirmadas DESTA conta, ou `null` (sem lista, ou de outra conta). */
+function confirmadasDaConta(uid: string | null): Set<string> | null {
+  const guardado = lerConfirmado();
+  return guardado && uid && guardado.uid === uid
+    ? new Set(guardado.entradas)
+    : null;
+}
+
+/**
+ * A cliente mexeu numa linha (tirou, pôs de novo, mudou a quantidade): o que o
+ * banco confirmou dela já não vale para a linha de agora. Fica só o que o
+ * carrinho de agora ainda tem IGUAL ao confirmado.
+ */
+function podarConfirmado(itens: readonly CartItem[]): void {
+  const guardado = lerConfirmado();
+  if (!guardado) return;
+  const atuais = new Set(entradasDoCarrinho(itens));
+  const entradas = guardado.entradas.filter((e) => atuais.has(e));
+  if (entradas.length === guardado.entradas.length) return;
+  gravarSeguro(CART_CONFIRMADO_KEY, JSON.stringify({ ...guardado, entradas }));
 }
 
 // localStorage pode lançar (modo privado, cota cheia, acesso bloqueado):
@@ -546,6 +609,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     if (!syncLocked.current && !isInitialLoad.current) {
       gravarSeguro(CART_STORAGE_KEY, JSON.stringify(cart));
     }
+  }, [cart]);
+
+  // O que o banco confirmou de uma linha deixa de valer quando a cliente mexe
+  // nela (ver `guardarConfirmado`).
+  useEffect(() => {
+    podarConfirmado(cart);
   }, [cart]);
 
   // Track which user we have already synced for
@@ -968,13 +1037,41 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             bancoManda = bancoManda && semGravacaoNoMeio();
           }
 
+          // APP REABERTO (ainda sem o retrato em memória; com ele vale o
+          // `bancoManda` acima, que não muda): as linhas que o banco confirmou
+          // ter e que ele não tem mais foram tiradas em outro aparelho. Só
+          // entram aqui as que o aparelho guardou como confirmadas (ver
+          // `guardarConfirmado`); mesmas travas do `bancoManda`.
+          const confirmadas =
+            retratoAlinhado.current === null
+              ? confirmadasDaConta(uidDaLeitura ?? null)
+              : null;
+          const tiradaFora = (item: CartItem) =>
+            !!confirmadas &&
+            confirmadas.has(entradaDoItem(item)) &&
+            !linhasNoBanco.has(chaveDoItem(item));
+          let confirmadasSaem =
+            !!confirmadas &&
+            !catalogoEmEspera &&
+            semGravacaoNoMeio() &&
+            cartRef.current.some(tiradaFora);
+          if (confirmadasSaem) {
+            confirmadasSaem = await sessaoConfirmaAConta(uidDaLeitura);
+            if (userIdAtualRef.current !== (uidDaLeitura ?? null)) return;
+            if (superada()) return;
+            confirmadasSaem = confirmadasSaem && semGravacaoNoMeio();
+          }
+
           setCart((prev) => {
             const tombstones = loadTombstones();
             // Nada pendente aqui: o carrinho de agora é o último que o banco
-            // confirmou ter igual ao daqui.
+            // confirmou ter igual ao daqui (na memória, ou nas linhas que o
+            // aparelho guardou como confirmadas).
             const nadaPendente =
-              retratoAlinhado.current !== null &&
-              retratoDoCarrinho(prev) === retratoAlinhado.current;
+              (retratoAlinhado.current !== null &&
+                retratoDoCarrinho(prev) === retratoAlinhado.current) ||
+              (confirmadasSaem &&
+                prev.every((item) => confirmadas?.has(entradaDoItem(item))));
             const bancoMandaAgora = bancoManda && nadaPendente;
             // O carrinho que sai desta junção igual ao que o banco tem fica
             // registrado como "confirmado pelo banco" (a próxima releitura sabe
@@ -991,6 +1088,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                 retratoDoCarrinho(resultado) === retratoDoBanco
               ) {
                 retratoAlinhado.current = retratoDoBanco;
+                if (uidDaLeitura) guardarConfirmado(uidDaLeitura, resultado);
                 if (nadaPendente) {
                   lastSyncedCart.current = JSON.stringify(resultado);
                 }
@@ -1034,6 +1132,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
               }
               // Outro aparelho tirou esta linha e nada daqui está pendente.
               if (bancoMandaAgora && !linhasNoBanco.has(key)) return;
+              if (confirmadasSaem && tiradaFora(item)) return;
               mergedMap.set(key, {
                 ...item,
                 lastModifiedAt: item.lastModifiedAt || 0,
@@ -1141,6 +1240,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         setCart([]);
         removerSeguro(CART_STORAGE_KEY);
         removerSeguro(CART_TOMBSTONES_KEY);
+        removerSeguro(CART_CONFIRMADO_KEY);
       }
       // Troca de conta/saída não herda nada da sessão anterior: itens,
       // tombstones, cotação de frete e endereço escolhido.
@@ -1441,6 +1541,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         // O banco acabou de receber ESTE carrinho (a conta ainda é a mesma).
         if (userIdAtualRef.current === user.id) {
           retratoAlinhado.current = retratoDoCarrinho(currentCart);
+          guardarConfirmado(user.id, currentCart);
         }
         falhasSeguidas.current = 0;
         syncPending.current = false;

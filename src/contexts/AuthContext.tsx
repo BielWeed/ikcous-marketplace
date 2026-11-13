@@ -314,6 +314,8 @@ function esquecerDadosLocaisDaConta() {
   // As lápides (CartContext) dizem "esta linha foi tirada às T" por até 7 dias:
   // se ficam, a conta que entra tem a linha dela escondida por um tirar da outra.
   localStorage.removeItem("marketplace_cart_tombstones_v1");
+  // As linhas que o banco confirmou ter no carrinho da conta que saiu.
+  localStorage.removeItem("marketplace_cart_confirmado_v1");
   localStorage.removeItem("ikcous_recently_viewed");
   localStorage.removeItem("ikcous_is_admin");
   // Revisão de contexto limpo do diff (achado 2) — o CEP também é PII do
