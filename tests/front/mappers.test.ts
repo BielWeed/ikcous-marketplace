@@ -420,6 +420,20 @@ describe("mapOrderFromDB", () => {
     ).toBeUndefined();
   });
 
+  it("o link da etiqueta também chega ao pedido (a ficha aberta em outro aparelho relê quando ele aparece); sem link fica ausente", () => {
+    expect(
+      mapOrderFromDB(
+        pedido({ shipping_label_url: "https://melhorenvio.com.br/x" }),
+      ).shippingLabelUrl,
+    ).toBe("https://melhorenvio.com.br/x");
+    expect(
+      mapOrderFromDB(pedido({ shipping_label_url: null })).shippingLabelUrl,
+    ).toBeUndefined();
+    expect(
+      mapOrderFromDB(pedido({ shipping_label_url: "" })).shippingLabelUrl,
+    ).toBeUndefined();
+  });
+
   it("o snapshot do customer_data vence ao endereço do join (laudo #4, onda 2)", () => {
     // Era "prefere o endereço do join" — e era o defeito: o JOIN traz o
     // endereço ATUAL do perfil; deixá-lo vencer fazia editar/apagar endereço
