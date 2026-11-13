@@ -196,11 +196,23 @@ export function useCrmVisitas(intervalo: IntervaloDeDatas, active: boolean) {
   const temSessao = Boolean(session);
   const chave = `${intervalo.inicio}:${intervalo.fim}`;
   const [falha, setFalha] = useState({ chave: "", erro: false });
+  const [pedidoDeRecarga, setPedidoDeRecarga] = useState(0);
+  // Pedido explícito (o "Sincronizar" da lojista) ignora o cache de 30 s uma
+  // vez; só o efeito que de fato consulta consome o pedido.
+  const ignorarCacheRef = useRef(false);
+
+  const atualizar = useCallback(() => {
+    ignorarCacheRef.current = true;
+    setPedidoDeRecarga((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     const emCache = cacheDasVisitas.get(chave);
     if (!active || !temSessao) return;
-    if (emCache && Date.now() - emCache.lidoEm < FRESCOR_MS) return;
+    const ignorarCache = ignorarCacheRef.current;
+    if (!ignorarCache && emCache && Date.now() - emCache.lidoEm < FRESCOR_MS)
+      return;
+    ignorarCacheRef.current = false;
     let cancelada = false;
     const timer = setTimeout(async () => {
       let visitas: VisitasDoCrm | null = null;
@@ -222,11 +234,19 @@ export function useCrmVisitas(intervalo: IntervaloDeDatas, active: boolean) {
       cancelada = true;
       clearTimeout(timer);
     };
-  }, [chave, intervalo.inicio, intervalo.fim, active, temSessao]);
+  }, [
+    chave,
+    intervalo.inicio,
+    intervalo.fim,
+    active,
+    temSessao,
+    pedidoDeRecarga,
+  ]);
 
   return {
     visitas: cacheDasVisitas.get(chave)?.visitas ?? null,
     erro: falha.chave === chave && falha.erro,
+    atualizar,
   };
 }
 
@@ -238,6 +258,12 @@ interface FiltroDeClientes {
   readonly pagina: number;
   readonly porPagina: number;
   readonly active: boolean;
+  /**
+   * O dia de hoje da loja (`useDiaDeSaoPaulo`). Os grupos de clientes
+   * ("Novos", "Em risco"…) mudam com a data, não com o filtro: na virada do
+   * dia a lista precisa ser lida de novo.
+   */
+  readonly dia?: string;
 }
 
 interface EstadoDosClientes {
@@ -255,6 +281,7 @@ export function useCrmClientes({
   pagina,
   porPagina,
   active,
+  dia,
 }: FiltroDeClientes): EstadoDosClientes {
   const { session } = useAuth();
   const temSessao = Boolean(session);
@@ -315,7 +342,16 @@ export function useCrmClientes({
       clearTimeout(timer);
       setCarregando(false);
     };
-  }, [segmento, busca, pagina, porPagina, active, temSessao, pedidoDeRecarga]);
+  }, [
+    segmento,
+    busca,
+    pagina,
+    porPagina,
+    active,
+    temSessao,
+    pedidoDeRecarga,
+    dia,
+  ]);
 
   return { lista, carregando, erro, atualizar };
 }
