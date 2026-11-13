@@ -370,6 +370,24 @@ describe("CheckoutView — total nunca negativo com o cupom velho na tela", () =
     },
   );
 
+  // Valores escritos À MÃO (nada de refazer a conta aqui): o checkout real
+  // recebe produtos, frete e o desconto que a conferência do cupom devolveu, e
+  // o Total na tela tem de ser produtos − desconto + frete. Trocar
+  // `total - discount` por `total + discount` (ou ignorar o desconto, ou o
+  // frete) muda o número na tela e reprova — conferido com o mutante.
+  it.each([
+    // [produtos, frete, desconto do servidor, Total na tela]
+    [29.95, 8.9, 5, "R$ 33,85"],
+    [29.95, 8.9, 3, "R$ 35,85"],
+  ])(
+    "produtos R$ %s + frete R$ %s com desconto fixo de R$ %s: a barra e o resumo mostram %s",
+    async (subtotal, frete, desconto, esperado) => {
+      await abrirComCupomConferido(subtotal, frete, desconto);
+      expect(totaisNaTela()).not.toHaveLength(0);
+      for (const total of totaisNaTela()) expect(total).toBe(esperado);
+    },
+  );
+
   it("controle: com o cupom conferido, o Total mostra produtos − desconto + frete", async () => {
     await abrirComCupomConferido(100, 10, 60);
     expect(totaisNaTela()).not.toHaveLength(0);

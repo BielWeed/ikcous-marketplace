@@ -233,6 +233,54 @@ describe("salvarConfigDoCartao", () => {
     });
   });
 
+  // Nos testes acima o pedido, a resposta do banco e o esperado são IGUAIS:
+  // devolver o pedido (`return desejada`) em vez da linha confirmada passaria.
+  // Aqui o banco confirma OUTRA coisa (o gate, um CHECK ou um trigger podem
+  // ajustar) e o painel tem de mostrar o que o banco gravou, não o que o
+  // clique pediu.
+  it("devolve a configuração CONFIRMADA pelo banco, não a que foi pedida", async () => {
+    banco.rpc.mockResolvedValue({
+      data: { id: 1, credito: false, debito: true, parcelas_max: 3 },
+      error: null,
+    });
+    const gravada = await salvarConfigDoCartao({
+      credito: true,
+      debito: false,
+      parcelasMax: 12,
+    });
+    expect(gravada).toEqual({ credito: false, debito: true, parcelasMax: 3 });
+    expect(gravada).not.toEqual({
+      credito: true,
+      debito: false,
+      parcelasMax: 12,
+    });
+  });
+
+  it("manda à RPC exatamente os três parâmetros do pedido, em snake_case", async () => {
+    banco.rpc.mockResolvedValue({
+      data: { credito: false, debito: true, parcelas_max: 3 },
+      error: null,
+    });
+    await salvarConfigDoCartao({
+      credito: true,
+      debito: false,
+      parcelasMax: 12,
+    });
+    expect(banco.rpc).toHaveBeenCalledTimes(1);
+    expect(banco.rpc).toHaveBeenCalledWith("salvar_config_pagamento_cartao", {
+      p_credito: true,
+      p_debito: false,
+      p_parcelas_max: 12,
+    });
+  });
+
+  it("resposta do banco vazia ou torta vira cartão DESLIGADO, nunca o pedido", async () => {
+    banco.rpc.mockResolvedValue({ data: null, error: null });
+    await expect(
+      salvarConfigDoCartao({ credito: true, debito: true, parcelasMax: 12 }),
+    ).resolves.toEqual({ credito: false, debito: false, parcelasMax: 1 });
+  });
+
   it("salvar esquece o cache do checkout", async () => {
     banco.resposta = {
       data: { credito: true, debito: false, parcelas_max: 3 },
