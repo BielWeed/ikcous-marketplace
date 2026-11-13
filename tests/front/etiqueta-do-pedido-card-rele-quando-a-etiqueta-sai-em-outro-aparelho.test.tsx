@@ -223,6 +223,98 @@ describe("EtiquetaDoPedidoCard — relê o pedido quando a etiqueta sai em outro
     expect(eqChamadas).toHaveLength(1);
   });
 
+  // O APARELHO QUE COMPRA: a edge grava o id na reivindicação (antes de pagar)
+  // e a url só no fim. O id chegando pela lista ao vivo no meio da compra não
+  // pode derrubar o quadro "Gerando…" nem competir com a resposta da compra.
+  async function comprarEmVoo() {
+    let resolver: (v: unknown) => void = () => {};
+    invokeMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolver = resolve;
+      }),
+    );
+    await desenhar();
+    await act(async () => {
+      botao("Gerar etiqueta")?.click();
+    });
+    await act(async () => {
+      botao("Confirmar e gerar")?.click();
+    });
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(hospedeiro.textContent).toContain("Gerando…");
+    return resolver;
+  }
+
+  it("compra deste aparelho em voo + id novo pela lista ao vivo: NÃO relê e 'Gerando…' continua; ao terminar a url não some", async () => {
+    const resolver = await comprarEmVoo();
+
+    pedidoState.data = pedido({ shipping_label_id: "lbl-1" });
+    await desenhar({ shippingLabelIdDaFicha: "lbl-1" });
+
+    expect(eqChamadas).toHaveLength(1);
+    expect(hospedeiro.textContent).toContain("Gerando…");
+    expect(hospedeiro.textContent).not.toContain("Etiqueta emitida");
+
+    pedidoState.data = pedido({
+      shipping_label_id: "lbl-1",
+      shipping_label_url: URL_DA_ETIQUETA,
+      tracking_code: "ME123",
+    });
+    await act(async () => {
+      resolver({
+        data: {
+          success: true,
+          already: false,
+          tracking_code: "ME123",
+          label_url: URL_DA_ETIQUETA,
+          label_id: "lbl-1",
+        },
+      });
+      await esperarMicrotarefas();
+    });
+    await desenhar({
+      shippingLabelIdDaFicha: "lbl-1",
+      shippingLabelUrlDaFicha: URL_DA_ETIQUETA,
+    });
+
+    expect(hospedeiro.textContent).toContain(
+      "Etiqueta gerada e vinculada ao pedido!",
+    );
+    expect(linkAbrirEtiqueta()?.getAttribute("href")).toBe(URL_DA_ETIQUETA);
+  });
+
+  it("a compra termina SEM resposta/falha com o id já trocado no meio do voo: a mudança não se perde, relê ao terminar", async () => {
+    const resolver = await comprarEmVoo();
+
+    pedidoState.data = pedido({ shipping_label_id: "lbl-1" });
+    await desenhar({ shippingLabelIdDaFicha: "lbl-1" });
+    expect(eqChamadas).toHaveLength(1);
+
+    await act(async () => {
+      resolver({
+        data: null,
+        error: {
+          name: "FunctionsHttpError",
+          context: new Response(JSON.stringify({ error: "Falha qualquer." }), {
+            status: 500,
+          }),
+        },
+      });
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    expect(eqChamadas.length).toBeGreaterThanOrEqual(2);
+    expect(botao("Gerar etiqueta")).toBeUndefined();
+    expect(botao("Confirmar e gerar")).toBeUndefined();
+    expect(hospedeiro.textContent).toContain("Etiqueta emitida");
+  });
+
   it("trocar de pedido NÃO conta como mudança do vínculo: a leitura é uma só pelo pedido novo", async () => {
     await desenhar({ shippingLabelIdDaFicha: "lbl-1" });
     expect(eqChamadas).toEqual([ID]);

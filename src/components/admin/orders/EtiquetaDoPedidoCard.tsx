@@ -349,8 +349,18 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
   // parar de oferecer a etiqueta que a edge vai recusar -- ou o botão de
   // compra de uma etiqueta que já existe. A 1ª leitura (e a troca de pedido)
   // já é feita pelo efeito acima -- aqui só entra uma MUDANÇA do MESMO pedido.
+  //
+  // COMPRA DESTE APARELHO EM VOO: a edge grava o id na reivindicação (antes de
+  // pagar) e a url só no fim, então o id chega pela lista ao vivo no meio da
+  // compra. Reler aí derrubava o quadro "Gerando…" (o pedido já parece
+  // "emitido") e a leitura antiga podia terminar depois do resultado da compra
+  // e apagar a url/o rastreio. Durante o voo o id/url NÃO avançam no
+  // "último visto": quando a compra termina (`emVoo` muda, o efeito reavalia) a
+  // diferença ainda está lá e a releitura sai uma vez, sem perder a mudança.
+  // Status/pagamento seguem relendo em voo (a resposta da compra não se perde).
   const etiquetaId = shippingLabelIdDaFicha ?? null;
   const etiquetaUrl = shippingLabelUrlDaFicha ?? null;
+  const emVoo = compraFase === "gerando";
   const ultimaLeituraDaFichaRef = useRef({
     orderId,
     status,
@@ -360,24 +370,31 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
   });
   useEffect(() => {
     const anterior = ultimaLeituraDaFichaRef.current;
+    const mesmoPedido = anterior.orderId === orderId;
     ultimaLeituraDaFichaRef.current = {
       orderId,
       status,
       paymentStatus,
-      etiquetaId,
-      etiquetaUrl,
+      etiquetaId: emVoo && mesmoPedido ? anterior.etiquetaId : etiquetaId,
+      etiquetaUrl: emVoo && mesmoPedido ? anterior.etiquetaUrl : etiquetaUrl,
     };
-    if (anterior.orderId !== orderId) return;
-    if (
-      anterior.status === status &&
-      anterior.paymentStatus === paymentStatus &&
-      anterior.etiquetaId === etiquetaId &&
-      anterior.etiquetaUrl === etiquetaUrl
-    ) {
-      return;
-    }
+    if (!mesmoPedido) return;
+    const mudouStatus =
+      anterior.status !== status || anterior.paymentStatus !== paymentStatus;
+    const mudouEtiqueta =
+      anterior.etiquetaId !== etiquetaId ||
+      anterior.etiquetaUrl !== etiquetaUrl;
+    if (!mudouStatus && !(mudouEtiqueta && !emVoo)) return;
     void fetchPedido({ silencioso: true });
-  }, [orderId, status, paymentStatus, etiquetaId, etiquetaUrl, fetchPedido]);
+  }, [
+    orderId,
+    status,
+    paymentStatus,
+    etiquetaId,
+    etiquetaUrl,
+    emVoo,
+    fetchPedido,
+  ]);
 
   // O código salvo/apagado na linha da ficha chega aqui. Pedido ainda não lido
   // (`null`): nada a aplicar, a leitura que vem já traz o código gravado.
