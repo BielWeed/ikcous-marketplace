@@ -16,6 +16,12 @@ interface AddressFormViewProps {
   onBack: () => void;
 }
 
+// Texto guardado na conta (`user_metadata`): só vale string com conteúdo;
+// qualquer outra coisa vira "sem valor" e a tela cai no próximo plano.
+function textoDaConta(valor: unknown): string {
+  return typeof valor === "string" ? valor.trim() : "";
+}
+
 export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
   const { config } = useStore();
   const { user, profile } = useAuth();
@@ -41,9 +47,13 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
     ? addresses.find((a) => a.id === addressId)
     : undefined;
 
-  // "Quem vai receber" já nasce com o nome da conta (mesma fonte que o
-  // checkout usa para o nome do comprador).
-  const nomeDaConta = profile?.full_name || user?.user_metadata?.name || "";
+  // "Quem vai receber" já nasce com o nome da conta. O cadastro grava o nome em
+  // `user_metadata.full_name` (não `name`): é de lá que ele vem quando o perfil
+  // ainda não chegou (mesma ordem do Perfil: perfil, cadastro, `name`).
+  const nomeDaConta =
+    profile?.full_name ||
+    textoDaConta(user?.user_metadata?.full_name) ||
+    textoDaConta(user?.user_metadata?.name);
 
   // A saída animada mantém esta tela montada, mas o histórico já é de outra.
   // Cada presença ativa ganha uma permissão própria: sair a invalida já no
