@@ -1,4 +1,24 @@
 {
+  "1.5.181": {
+    "titulo": "Loja que abre com o armazenamento bloqueado, devolução do item que não veio e clientes sem duplicar",
+    "novidades": [],
+    "melhorias": [
+      "Painel, Pedidos: com a ficha do mesmo pedido aberta em dois aparelhos, a etiqueta gerada em um aparece no outro sozinha (\"Gerar etiqueta\" some e \"Abrir etiqueta\" aparece), sem piscar e sem perder o que estava digitado.",
+      "Painel, Início: a venda confirmada enquanto o \"Ao vivo\" ainda estava conectando aparece sozinha, sem esperar outro evento.",
+      "Painel, Virada do dia: com a tela aberta na meia-noite (horário de Brasília), o gráfico de 30 dias do CRM, o Financeiro, o sino e os Avisos, as Campanhas, os Clientes, os Cupons e os Banners passam a mostrar sozinhos o dia novo.",
+      "Checkout: o foco do teclado e do leitor de tela vai para o título da tela \"Novo/Editar endereço\" ao abrir e volta ao botão \"Novo\" ao sair.",
+      "Carrinho e produto: o aviso \"Produto removido do carrinho\" com Desfazer não some enquanto o foco ou o mouse estão nele, cancelar \"Esvaziar carrinho\" devolve o foco ao botão que abriu a caixa, e abrir um produto relacionado leva o foco ao conteúdo do produto novo."
+    ],
+    "correcoes": [
+      "Loja e Checkout: com o navegador bloqueando o armazenamento (\"Bloquear todos os cookies\", certos modos privados), a loja e o checkout abrem normalmente em vez de tela em branco; só não lembram o CEP nem o rascunho.",
+      "Devolução: o item que a lojista marcou \"Não veio\" pode ser pedido de novo dentro do prazo original, em vez de a cliente ler \"Todos os itens deste pedido já foram devolvidos\"; a lojista vê o aviso \"Este item já foi pedido antes e não veio\" e continua aprovando tudo.",
+      "Painel, Clientes e CRM: quem tem conta e uma venda avulsa não paga com o mesmo WhatsApp aparece em um grupo só, e quem tem dois endereços principais não tem as compras somadas duas vezes na lista de Clientes e no ranking.",
+      "Painel, Pedidos: um pedido finalizado em outro aparelho não volta para \"Em Trânsito\" ao tocar em Avançar com a tela velha, e o total e o \"Próximo\" acompanham o filtro quando um pedido sai do recorte.",
+      "Painel, Produtos: \"Repor em Produtos\" abre sempre na página 1, sem busca nem categoria antigas, e mostra todos os produtos que o cartão anunciava.",
+      "Checkout: colar um CEP com 9 dígitos por cima de um CEP já buscado mostra o endereço do CEP novo, em vez de manter a rua e o bairro do antigo.",
+      "Avisos (push): um aviso atrasado (\"Saiu para entrega\") não troca o mais novo (\"Entregue\"), e desligar os avisos em uma aba não é desfeito por uma aba antiga."
+    ]
+  },
   "1.5.180": {
     "titulo": "Balcão que não esconde a dúvida da venda, Ajustes que descarta de verdade e busca do topo com a foto certa",
     "novidades": [],
