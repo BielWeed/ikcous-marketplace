@@ -25,6 +25,7 @@ import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import { enderecoParaDevolver } from "@/lib/devolucao";
 import {
   pedidoSemValorAPagar,
@@ -1427,7 +1428,7 @@ export function OrderDetailsView({
             <Copy className="size-3 text-zinc-550" />
           </div>
           <span className="rounded-full border border-zinc-100 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-600 shadow-sm">
-            {new Date(order.createdAt).toLocaleDateString("pt-BR", {
+            {dataNoFusoDaLoja(new Date(order.createdAt), {
               day: "numeric",
               month: "short",
               year: "numeric",
