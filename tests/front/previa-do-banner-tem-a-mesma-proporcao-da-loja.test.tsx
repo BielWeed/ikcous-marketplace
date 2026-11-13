@@ -3,12 +3,11 @@
 // A previa da imagem propria no painel tem de ter a MESMA proporcao do banner
 // da loja (2:1, BannerCarousel). Em 21:9 a lojista aprovava a imagem inteira
 // e a cliente recebia as laterais cortadas.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import carrossel from "@/components/ui/custom/BannerCarousel.tsx?raw";
 import type { Banner } from "@/types";
 
 // @ts-expect-error flag interna do React, sem tipo público.
@@ -52,10 +51,6 @@ describe("prévia da imagem própria do banner", () => {
   });
 
   it("a loja desenha o carrossel na mesma proporção", () => {
-    const carrossel = readFileSync(
-      resolve(__dirname, "../../src/components/ui/custom/BannerCarousel.tsx"),
-      "utf8",
-    );
     expect(carrossel).toContain("aspect-[2/1]");
   });
 });
