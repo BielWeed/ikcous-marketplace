@@ -526,15 +526,21 @@ function FluxoDaDevolucao({
         else aceitas.push(arquivo);
       }
       if (desmontadaRef.current) return;
-      setFotos((antes) => [
-        ...antes,
-        ...aceitas.map((arquivo) => ({
-          chave: `${arquivo.name}-${arquivo.size}-${Math.random()}`,
-          arquivo,
-          previa: previaDe(arquivo),
-          caminho: null,
-        })),
-      ]);
+      const novas = aceitas.map((arquivo) => ({
+        chave: `${arquivo.name}-${arquivo.size}-${Math.random()}`,
+        arquivo,
+        previa: previaDe(arquivo),
+        caminho: null,
+      }));
+      // Duas escolhas em preparo ao mesmo tempo calcularam as `vagas` lá em
+      // cima com a MESMA lista velha (4 + 4 = 8). Só o `antes` do atualizador é
+      // a lista de verdade: o teto é aplicado aqui, e a sobra solta a prévia
+      // (soltar duas vezes é inofensivo — o React pode rodar o atualizador de novo).
+      setFotos((antes) => {
+        const cabem = Math.max(MAXIMO_DE_FOTOS - antes.length, 0);
+        for (const sobra of novas.slice(cabem)) soltarPrevia(sobra.previa);
+        return [...antes, ...novas.slice(0, cabem)];
+      });
       setErro(null);
     } finally {
       preparandoRef.current -= 1;
@@ -557,6 +563,12 @@ function FluxoDaDevolucao({
   async function confirmar() {
     if (enviando || preparandoRef.current > 0) return;
     if (!motivo || !resolucaoValida || !metodo) return;
+    // Cinto e suspensório: o teto já é aplicado ao entrar na lista, mas o que
+    // vai ao servidor é conferido de novo aqui (ele recusa mais de 6).
+    if (fotos.length > MAXIMO_DE_FOTOS) {
+      setErro(`Envie no máximo ${MAXIMO_DE_FOTOS} fotos.`);
+      return;
+    }
     setEnviando(true);
     enviandoRef.current = true;
     setErro(null);

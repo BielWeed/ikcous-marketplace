@@ -588,24 +588,52 @@ export function caminhoDaFoto(
 export type AcaoDoCliente = "cancelar" | "informar_envio";
 
 /**
+ * Espelho EXATO do guard de `cancelar_devolucao` (20261179000000, a definição
+ * vigente): nos status que a RPC aceita cancelar (solicitada e aprovada), um
+ * vínculo REAL do Melhor Envio (`me_reverse_id` que não é o token de reserva
+ * `reservando:`) sem código de postagem é o que o servidor recusa com "Se
+ * precisar cancelar, fale com a loja". A fase de reserva e o código já emitido
+ * NÃO entram: aí o servidor deixa cancelar. O guard não olha o método de
+ * retorno, e este espelho também não.
+ */
+export function cancelamentoDependeDaLoja(d: {
+  status: StatusDevolucao;
+  me_reverse_id?: string | null;
+  codigo_postagem?: string | null;
+}): boolean {
+  return (
+    (d.status === "solicitada" || d.status === "aprovada") &&
+    !!d.me_reverse_id &&
+    !d.me_reverse_id.startsWith("reservando:") &&
+    !d.codigo_postagem
+  );
+}
+
+/**
  * Espelho de `cancelar_devolucao` e `informar_envio_devolucao`. Na etiqueta
  * reversa o código de postagem JÁ É o rastreio dos Correios: o cliente só
  * informa o envio depois que a loja gerou o código (e manda o próprio
- * código, sem digitar nada).
+ * código, sem digitar nada). Com o vínculo real preso (ver
+ * `cancelamentoDependeDaLoja`) o "cancelar" não é oferecido: o servidor o
+ * recusaria depois da confirmação.
  */
 export function acoesDoCliente(d: {
   status: StatusDevolucao;
   metodo_retorno: MetodoDevolucao;
   codigo_postagem?: string | null;
+  me_reverse_id?: string | null;
 }): AcaoDoCliente[] {
-  if (d.status === "solicitada") return ["cancelar"];
+  const cancelar: AcaoDoCliente[] = cancelamentoDependeDaLoja(d)
+    ? []
+    : ["cancelar"];
+  if (d.status === "solicitada") return cancelar;
   if (d.status !== "aprovada") return [];
   if (d.metodo_retorno === "envio_proprio")
-    return ["informar_envio", "cancelar"];
+    return ["informar_envio", ...cancelar];
   if (d.metodo_retorno === "etiqueta_reversa" && d.codigo_postagem) {
-    return ["informar_envio", "cancelar"];
+    return ["informar_envio", ...cancelar];
   }
-  return ["cancelar"];
+  return cancelar;
 }
 
 export type AcaoDoLojista =
