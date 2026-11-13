@@ -3775,6 +3775,52 @@ Deno.test("emailDoToken: sem claim de e-mail, lixo ou e-mail sem @ devolve null"
   assertEquals(emailDoToken(`cabecalho.${semArroba}.assinatura`), null);
 });
 
+// Lentidão explorável (13/11/2026): `/^\S+@\S+\.\S+$/` com "@" repetido e sem
+// ponto custa o QUADRADO do tamanho (100.000 "@" ≈ 7 s de CPU medidos), e a
+// validação do e-mail do cartão roda ANTES de ler pedido/limites — qualquer
+// portador da chave pública queimaria a função. O teto de 254 caracteres (o
+// máximo do formato de e-mail) corta o custo ANTES da regex.
+
+Deno.test("e-mail do cartão: 100.000 '@' seguidos é recusado rápido (sem backtracking quadrático)", () => {
+  const gigante = "@".repeat(100_000);
+  const inicio = performance.now();
+  const r = validarCorpoDoCartao(corpoCartao({ email: gigante }));
+  const ms = performance.now() - inicio;
+  assertEquals(r.ok, false);
+  if (!r.ok) assertEquals(r.erro, "E-mail inválido.");
+  assertEquals(ms < 200, true, `levou ${ms.toFixed(0)} ms`);
+});
+
+Deno.test("e-mail do cartão: e-mails normais continuam aceitos, inclusive no limite de 254 caracteres", () => {
+  for (const email of ["ana@exemplo.com.br", "a.b+c@sub.dominio.com", `${"a".repeat(64)}@${"b".repeat(185)}.com`]) {
+    assertEquals(email.length <= 254, true, "fixture do teste");
+    const r = validarCorpoDoCartao(corpoCartao({ email }));
+    assertEquals(r.ok, true, email);
+    if (r.ok) assertEquals(r.dados.email, email);
+  }
+});
+
+Deno.test("e-mail do cartão: 255 caracteres ou mais é recusado; sem arroba, sem ponto no domínio e com espaço continuam recusados", () => {
+  const longo = `${"a".repeat(64)}@${"b".repeat(186)}.com`;
+  assertEquals(longo.length, 255);
+  for (const email of [longo, "a".repeat(300) + "@x.com", "sem-arroba", "a@b", "ana @exemplo.com", "ana@exemplo .com"]) {
+    const r = validarCorpoDoCartao(corpoCartao({ email }));
+    assertEquals(r.ok, false, email.slice(0, 40));
+    if (!r.ok) assertEquals(r.erro, "E-mail inválido.");
+  }
+});
+
+Deno.test("emailDoToken: claim de e-mail gigante e malformado devolve null rápido", () => {
+  const payload = btoa(JSON.stringify({ email: "@".repeat(100_000) }))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  const inicio = performance.now();
+  assertEquals(emailDoToken(`cabecalho.${payload}.assinatura`), null);
+  const ms = performance.now() - inicio;
+  assertEquals(ms < 200, true, `levou ${ms.toFixed(0)} ms`);
+});
+
 // ── Tarefa mp-2 (15/09/2026): de QUEM é o token que cobra o cliente ───────
 //
 // A chave do lojista (Ajustes > Pagamentos > Mercado Pago) passou a valer de
