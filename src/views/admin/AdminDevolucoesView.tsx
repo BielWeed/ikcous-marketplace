@@ -204,7 +204,8 @@ export function AdminDevolucoesView({
     (orderId: string) => {
       if (!podeDescartar()) return;
       setSujo(false);
-      onNavigate("admin-orders", orderId);
+      // O descarte já foi confirmado aqui; não abrir outro diálogo no App.
+      onNavigate("admin-orders", orderId, true);
     },
     [onNavigate, podeDescartar],
   );
