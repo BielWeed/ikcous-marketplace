@@ -541,6 +541,15 @@ export function StoreProvider({
   const tentativasDoCatalogoRef = useRef(0);
   const timerDoCatalogoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const consultaDoCatalogoRef = useRef(0);
+  // Produtos que o TEMPO REAL tocou enquanto a consulta MAIS NOVA do catálogo
+  // está em voo (id -> registro do cofre, ou `null` se foi excluído). A resposta
+  // sai do servidor antes desses eventos e trocaria a lista inteira pela cópia
+  // velha: o item que acabou de esgotar voltava a ter estoque. Nasce vazio a
+  // cada consulta e some quando ela termina.
+  const produtosTocadosNaConsultaRef = useRef<Map<
+    string,
+    Product | null
+  > | null>(null);
   const catalogoDaRedeAplicadoRef = useRef(false);
   const produtosNaTelaRef = useRef(0);
   const buscarProdutosRef = useRef<() => Promise<void>>(async () => {});
@@ -1179,6 +1188,8 @@ export function StoreProvider({
     // o efeito de montagem consulta de novo quando o lojista troca de fonte.
     const minhaConsulta = ++consultaDoCatalogoRef.current;
     const aindaVale = () => minhaConsulta === consultaDoCatalogoRef.current;
+    const tocadosNoVoo = new Map<string, Product | null>();
+    produtosTocadosNaConsultaRef.current = tocadosNoVoo;
     // Avisa o motor de sincronização que o catálogo está a caminho: a rodada
     // dele espera o cofre receber esta gravação em vez de achá-lo vazio e
     // baixar tudo de novo (src/lib/deposito-do-catalogo.ts). TEM de fechar em
@@ -1261,7 +1272,19 @@ export function StoreProvider({
       }
       setCatalogoErro(false);
 
-      const mapped = (data as any[]).map((item: any) => mapProductFromDB(item));
+      let mapped = (data as any[]).map((item: any) => mapProductFromDB(item));
+      // O que o tempo real tocou durante a consulta vale mais que a resposta
+      // (tirada do servidor antes do evento) -- na tela e no cofre offline.
+      for (const [id, registro] of tocadosNoVoo) {
+        mapped =
+          mesclarProdutoNaLista(
+            mapped,
+            registro
+              ? { eventType: "UPDATE", id, registro }
+              : { eventType: "DELETE", id },
+          ) ?? mapped;
+      }
+      produtosTocadosNaConsultaRef.current = null;
 
       catalogoDaRedeAplicadoRef.current = true;
       setCatalogoDaRedeAplicado(true);
@@ -1319,6 +1342,9 @@ export function StoreProvider({
       // Sucesso: quem fecha é o fim da gravação no cofre. Qualquer outro
       // desfecho (falha, consulta superada, lançou) fecha agora.
       if (!gravacaoDoCofreEmCurso) fecharCatalogoEmVoo();
+      if (produtosTocadosNaConsultaRef.current === tocadosNoVoo) {
+        produtosTocadosNaConsultaRef.current = null;
+      }
       if (minhaConsulta === consultaDoCatalogoRef.current) {
         setLoadingProducts(false);
       }
@@ -1739,6 +1765,7 @@ export function StoreProvider({
           (event.newRecord as any)?.id ?? (event.oldRecord as any)?.id;
 
         if (event.eventType === "DELETE" && eventoId) {
+          produtosTocadosNaConsultaRef.current?.set(eventoId, null);
           setProducts(
             (prev) =>
               mesclarProdutoNaLista(prev, {
@@ -1755,6 +1782,7 @@ export function StoreProvider({
         ) {
           const atualizado = await vault.getById<Product>("products", eventoId);
           if (atualizado) {
+            produtosTocadosNaConsultaRef.current?.set(eventoId, atualizado);
             setProducts(
               (prev) =>
                 mesclarProdutoNaLista(prev, {
