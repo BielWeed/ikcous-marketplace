@@ -11,6 +11,7 @@
  * Os rótulos moram em `Map` (e não em objeto indexado por chave dinâmica)
  * pela mesma razão do resto do painel: `security/detect-object-injection`.
  */
+import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { formatCurrency, reaisComVirgula } from "@/lib/utils";
 import type {
@@ -316,7 +317,9 @@ export function formatarDia(dia: string | null | undefined): string {
   if (m) return `${m[3]}/${m[2]}/${m[1]}`;
   const data = new Date(dia);
   if (Number.isNaN(data.getTime())) return "";
-  return data.toLocaleDateString("pt-BR");
+  // Carimbo de data/hora (`created_at`): o dia é o do calendário da loja, não
+  // o do fuso do aparelho (12/11 22h30 em Brasília é 13/11 em UTC).
+  return dataNoFusoDaLoja(data);
 }
 
 /** `YYYY-MM-DD` → `dd/mm`. */
