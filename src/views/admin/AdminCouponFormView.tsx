@@ -1237,7 +1237,7 @@ function FormularioDoCupom({
                 />
               </div>
               <p id="coupon-valid-until-dica" className="text-xs text-zinc-400">
-                Até 23:59 do dia escolhido, no seu fuso.
+                Até 23:59 do dia escolhido, no horário de Brasília.
               </p>
               {avisarValidade && (
                 <p
