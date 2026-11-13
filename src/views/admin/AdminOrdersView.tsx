@@ -1770,6 +1770,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     statusEsperado?: OrderStatus,
     silent = false,
   ) => {
+    // Etapa que a ficha tinha quando o toque partiu: o resultado só é aplicado
+    // se ela ainda está nela (ver o `setSelectedOrder` abaixo).
+    const etapaDePartida =
+      selectedOrder?.id === orderId ? selectedOrder.status : undefined;
     // A RPC VEM PRIMEIRO (PEDIDO-090, #87).
     //
     // Até aqui o push saía ANTES da gravação. Se a RPC falhasse — 401, sessão
@@ -1802,8 +1806,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // funcional lê o estado CORRENTE, nunca o capturado, e imuniza este
       // ponto contra qualquer `await` que venha a ser inserido antes dele
       // no futuro.
+      // Só se a ficha ainda está na etapa de onde o toque partiu: durante a
+      // espera pode ter chegado versão mais nova (outro aparelho avançou ou
+      // cancelou; ou o eco deste mesmo toque), e a resposta antiga a desfaria.
       setSelectedOrder((prev) =>
-        prev?.id === orderId ? { ...prev, status: newStatus } : prev,
+        prev?.id === orderId && prev.status === etapaDePartida
+          ? { ...prev, status: newStatus }
+          : prev,
       );
 
       loadStats();
