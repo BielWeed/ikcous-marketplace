@@ -12,7 +12,7 @@
 // tudo continua clicável como sempre.
 //
 // Mesmo harness de shipping-calculator-modo-resumo.test.tsx.
-import { act, useState } from "react";
+import { act, useEffect, useState } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -146,8 +146,11 @@ describe("ShippingCalculator — bloqueado enquanto o pedido está sendo enviado
       );
       const [cepDaSelecao, setCepDaSelecao] = useState<string | null>(null);
       const [travado, setTravado] = useState(bloqueado === true);
-      pai.selecionada = selecionada;
-      pai.ligarBloqueio = setTravado;
+      // Espelho em efeito — o render é imutável (react-hooks/immutability).
+      useEffect(() => {
+        pai.selecionada = selecionada;
+        pai.ligarBloqueio = setTravado;
+      }, [selecionada]);
       return (
         <ShippingCalculator
           cart={itens}
