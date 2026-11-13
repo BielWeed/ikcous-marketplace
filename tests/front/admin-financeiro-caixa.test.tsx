@@ -522,28 +522,49 @@ describe("Financeiro — abrir e fechar o caixa", () => {
     expect(aviso).not.toMatch(/sangria|registrou a saída/i);
   });
 
-  it("sangria acima do esperado não promete que o registro passa", async () => {
+  it("sangria acima do esperado avisa e não promete que o registro passa nem que falha", async () => {
     await abrirSessao();
     await clicar(botaoEm(hospedeiro, "Sangria"));
     await digitar("fin-caixa-mov-valor", "50000");
     const texto = normalizar(folha()!.textContent);
-    expect(texto).toContain(
-      "O sistema não registra uma sangria maior que o esperado",
-    );
+    expect(texto).toContain("É mais do que o esperado na gaveta");
+    expect(texto).toContain("só recusa se não houver o suficiente");
     expect(texto).not.toContain("não impede o registro");
+    expect(texto).not.toContain("não registra uma sangria");
   });
 
-  it("sangria acima do esperado deixa o botão de registrar desativado", async () => {
+  it("sangria acima do esperado da abertura da folha chega ao servidor (o saldo pode ter subido em outro aparelho)", async () => {
     await abrirSessao();
     await clicar(botaoEm(hospedeiro, "Sangria"));
     await digitar("fin-caixa-mov-valor", "50000");
     expect(botaoEm(folha() as HTMLElement, "Registrar sangria").disabled).toBe(
-      true,
-    );
-    await digitar("fin-caixa-mov-valor", "5000");
-    expect(botaoEm(folha() as HTMLElement, "Registrar sangria").disabled).toBe(
       false,
     );
+    await digitar("fin-caixa-mov-descricao", "Depósito");
+    await escolherConta(CONTA_BANCARIA);
+    await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+    expect(movimentos()).toHaveLength(1);
+    expect(movimentos()[0]).toMatchObject({ p_valor: 500 });
+  });
+
+  it("a recusa do servidor por saldo aparece na folha, sem registrar nada", async () => {
+    servidor.falhasMovimento.push({
+      code: "22023",
+      message:
+        "A sangria (R$ 500.00) é maior que o dinheiro esperado no caixa (R$ 150.00).",
+    });
+    await abrirSessao();
+    await clicar(botaoEm(hospedeiro, "Sangria"));
+    await digitar("fin-caixa-mov-valor", "50000");
+    await escolherConta(CONTA_BANCARIA);
+    await clicar(botaoEm(folha() as HTMLElement, "Registrar sangria"));
+    expect(normalizar(folha()?.textContent)).toContain(
+      "A sangria (R$ 500,00) é maior que o dinheiro esperado no caixa (R$ 150,00).",
+    );
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalledWith(
+      "Sangria registrada.",
+    );
+    expect(folha()).not.toBeNull();
   });
 
   it("aviso de sangria acima do esperado usa âmbar sem bloco pintado", async () => {
