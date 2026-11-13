@@ -224,6 +224,10 @@ export function AbrirCaixaFolha({
             id="fin-caixa-abertura"
             value={valor}
             mask="currency"
+            // O servidor recusa abertura negativa, mas a máscara tem de CARREGAR o "-"
+            // digitado/colado: sem isto ela o descartava e "-10,00" virava +10 gravado.
+            // Com o sinal à vista, a validação recusa (`numero < 0`).
+            permiteNegativo
             inputMode="numeric"
             placeholder="0,00"
             autoComplete="off"
@@ -468,6 +472,10 @@ export function MovimentarCaixaFolha({
             id="fin-caixa-mov-valor"
             value={valor}
             mask="currency"
+            // O servidor recusa valor <= 0, mas a máscara tem de CARREGAR o "-": sem isto
+            // "-10,00" virava +10 registrado (sangria ou suprimento de +10). Com o sinal
+            // à vista, a validação recusa (`numero <= 0`).
+            permiteNegativo
             inputMode="numeric"
             placeholder="0,00"
             autoComplete="off"
@@ -694,6 +702,10 @@ export function FecharCaixaFolha({
             id="fin-caixa-contado"
             value={valor}
             mask="currency"
+            // O servidor recusa contagem negativa, mas a máscara tem de CARREGAR o "-":
+            // sem isto "-10,00" virava +10 contado. Com o sinal à vista, a validação
+            // recusa (`contado < 0`).
+            permiteNegativo
             inputMode="numeric"
             placeholder="0,00"
             autoComplete="off"
