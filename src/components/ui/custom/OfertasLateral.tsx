@@ -26,8 +26,9 @@ export default function OfertasLateral({
   onAddToCart,
   onQuickBuy,
   title = "Super Descontos",
+  ordemDaLojista,
 }: PremiumOffersProps) {
-  const ofertas = ordenarOfertas(products);
+  const ofertas = ordenarOfertas(products, ordemDaLojista);
   const rola = ofertas.length > 1;
   const [pagina, setPagina] = useState(0);
   const [ref, api] = useEmblaCarousel({

@@ -43,8 +43,9 @@ export default function OfertasLateralDuplo({
   onAddToCart,
   onQuickBuy,
   title = "Super Descontos",
+  ordemDaLojista,
 }: PremiumOffersProps) {
-  const ofertas = ordenarOfertas(products);
+  const ofertas = ordenarOfertas(products, ordemDaLojista);
   const colunas = emColunas(ofertas);
   // Só rola com 3 ofertas ou mais (2 colunas); com 1 ou 2 a coluna ocupa a largura toda.
   const rola = ofertas.length > OFERTAS_POR_COLUNA;
