@@ -71,7 +71,9 @@ const {
 const { DEFINIR_CARGO } = require("./definir-cargo-posterior.cjs");
 const { LIMITES_DE_ABUSO } = require("./limites-de-abuso-posterior.cjs");
 const { AS_VISITAS } = require("./as-visitas-da-loja-posterior.cjs");
-const { REPETIR_A_DEVOLUCAO } = require("./repetir-a-devolucao-que-falhou-posterior.cjs");
+const {
+  REPETIR_A_DEVOLUCAO,
+} = require("./repetir-a-devolucao-que-falhou-posterior.cjs");
 const {
   PRECO_HISTORICO,
 } = require("./o-preco-do-produto-deixa-historico-posterior.cjs");
