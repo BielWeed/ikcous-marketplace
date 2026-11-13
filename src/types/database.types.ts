@@ -4050,6 +4050,10 @@ export type Database = {
         Args: { p_amount: number; p_motivo: string; p_order_id: string };
         Returns: Json;
       };
+      solicitar_estorno_repetindo: {
+        Args: { p_motivo: string; p_refund_id: string };
+        Returns: Json;
+      };
       swap_banner_order: {
         Args: { banner_id_1: string; banner_id_2: string };
         Returns: undefined;

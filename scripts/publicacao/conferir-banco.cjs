@@ -3082,7 +3082,27 @@ const ROL_DA_142 = [
   "crm__vendas: assinatura e atributos conhecidos (sql, STABLE, SECURITY INVOKER, search_path=public, uma so)",
   "crm__vendas: sem EXECUTE para PUBLIC, anon ou authenticated",
 ];
+// Lote 143 (20261399991000, repetir a devolucao que falhou nao paga duas vezes: funcao solicitar_estorno_repetindo e tabela order_refund_repeticao, objetos NOVOS). A 143a prova o estado novo
+// (corpo exato, atributos, EXECUTE so do authenticated, tabela so do servidor com PK/UNIQUE/CASCADE); a 143b prova a ausencia dos dois e o que a funcao nova chama (as duas portas de admin, a regra
+// unica "pode ter saido" e a conta do saldo, com o corpo da 20261241000000). So catalogo: nenhuma le devolucao, pedido ou marca e nenhuma chama a funcao.
+const ROL_DA_143A = [
+  "controle: funcoes de public visiveis a este papel",
+  "solicitar_estorno_repetindo: corpo exato (md5)",
+  "solicitar_estorno_repetindo: uma so, atributos conhecidos (SECURITY DEFINER, plpgsql, VOLATILE, retorno jsonb, search_path=public) e EXECUTE so do authenticated (nem PUBLIC, anon ou service_role)",
+  "order_refund_repeticao: so do servidor (RLS ligada, nenhuma policy, nenhum acesso de PUBLIC, anon, authenticated e service_role)",
+  "order_refund_repeticao: tres colunas (refund_id, nova_refund_id, created_at), PK em refund_id, UNIQUE em nova_refund_id e duas chaves estrangeiras ON DELETE CASCADE",
+];
+const ROL_DA_143B = [
+  "controle: catalogo publico visivel",
+  "solicitar_estorno_repetindo e order_refund_repeticao: ainda NAO existem",
+  "order_refund__pode_ter_saido e pedido__saldo_a_estornar: corpo da 20261241000000 (md5), o que a funcao nova chama",
+  "is_admin() e is_admin_atual() existem; order_refund_prova existe e devolucoes tem refund_id (uuid)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado":
+    ROL_DA_143A,
+  "143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente":
+    ROL_DA_143B,
   "142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado":
     ROL_DA_142,
   "142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente":

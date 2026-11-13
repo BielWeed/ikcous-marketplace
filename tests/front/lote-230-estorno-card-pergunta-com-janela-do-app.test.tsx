@@ -238,7 +238,12 @@ describe("lote 230 — Devolver R$ ... pergunta pela janela do app", () => {
 
     await tocar(botaoDa(janela() as HTMLElement, "Devolver R$ 30,00"));
     expect(solicitarEstorno).toHaveBeenCalledTimes(1);
-    expect(solicitarEstorno).toHaveBeenCalledWith({ amount: 30, motivo: "" });
+    // "Tentar de novo" repete ESSA linha: o id vai junto (o servidor repete uma vez só, mesmo em duas abas)
+    expect(solicitarEstorno).toHaveBeenCalledWith({
+      amount: 30,
+      motivo: "",
+      repetindo: "refund-falhou",
+    });
   });
 
   it("a pergunta aberta não some se o cartão passa a mostrar erro ou 'carregando' (saídas antecipadas)", async () => {
