@@ -26,6 +26,7 @@ import { Switch } from "@/components/ui/switch";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useCoupons } from "@/hooks/useCoupons";
+import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import { useFocoAposExcluir } from "@/hooks/useFocoAposExcluir";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
@@ -264,6 +265,13 @@ export const AdminCouponsView = memo(function AdminCouponsView({
       setCouponToDelete(null);
     }
   };
+
+  // O cupom vale até o fim do dia escolhido (23:59:59.999 de São Paulo) e vence
+  // na meia-noite: os selos e o cartão "Cupons Ativos" são calculados ao
+  // desenhar (`rotuloDoCupom` lê o relógio), e sem nada que desenhe de novo na
+  // virada a tela deixada aberta seguia com o cupom vencido verde e contado.
+  // O dia mudando redesenha a tela, sem ler o banco.
+  useDiaDeSaoPaulo(active);
 
   // Dynamic stats computation
   const totalCoupons = coupons.length;

@@ -17,6 +17,10 @@ import {
   TIPO_PURGAR_ARQUIVOS_PRIVADOS,
   ehArquivoPublicoDoStorage,
 } from "../lib/arquivo-publico-do-storage";
+import {
+  avisoMaisNovoQue,
+  carimboDoAviso,
+} from "../lib/ordem-do-aviso-do-pedido";
 
 const sw = self as any;
 
@@ -952,6 +956,21 @@ async function resolverIconesDaLoja(): Promise<{
   return { icon: ICONE_ASSADO, badge: BADGE_NEUTRO };
 }
 
+/** O aviso do mesmo pedido que já está na bandeja e é MAIS NOVO que `carimbo`, ou
+ * `null` (nenhum, sem `getNotifications` ou leitura falhou: mostra-se como sempre). */
+async function avisoMaisNovoNaBandeja(
+  tag: string,
+  carimbo: number,
+): Promise<any | null> {
+  try {
+    if (typeof sw.registration?.getNotifications !== "function") return null;
+    const naBandeja: any[] = await sw.registration.getNotifications({ tag });
+    return avisoMaisNovoQue(carimbo, naBandeja);
+  } catch {
+    return null;
+  }
+}
+
 sw.addEventListener("push", (event: any) => {
   if (!event.data) return;
   try {
@@ -962,11 +981,40 @@ sw.addEventListener("push", (event: any) => {
     // empilhar, e `renotify` faz o aparelho avisar de novo na troca (sem ele a
     // troca seria silenciosa). Sem pedido (campanha, teste), nada muda.
     const orderId = payload.data?.orderId;
-    const doPedido =
+    const tagDoPedido =
       typeof orderId === "string" && orderId !== ""
-        ? { tag: `pedido-${orderId}`, renotify: true }
-        : {};
-    const notificar = ({ icon, badge }: { icon: string; badge: string }) => {
+        ? `pedido-${orderId}`
+        : undefined;
+    const doPedido = tagDoPedido ? { tag: tagDoPedido, renotify: true } : {};
+    const carimbo = carimboDoAviso(payload.data);
+    const notificar = async ({
+      icon,
+      badge,
+    }: {
+      icon: string;
+      badge: string;
+    }) => {
+      // Aviso do pedido carimbado que chega DEPOIS de um mais novo do mesmo pedido
+      // (a rede atrasou o primeiro): não o substitui. Todo push precisa terminar
+      // numa notificação (sem ela o Chrome mostra um aviso genérico e o iOS
+      // revoga a permissão), então em vez de calar o atrasado regrava-se, sem
+      // avisar de novo, o conteúdo do mais novo. Lido aqui, logo antes de
+      // mostrar, depois da espera pelo ícone. Qualquer falha na leitura da
+      // bandeja = mostra como sempre.
+      const maisNovo =
+        carimbo !== null && tagDoPedido
+          ? await avisoMaisNovoNaBandeja(tagDoPedido, carimbo)
+          : null;
+      if (maisNovo) {
+        return sw.registration.showNotification(maisNovo.title, {
+          body: maisNovo.body,
+          icon: maisNovo.icon || icon,
+          badge: maisNovo.badge || badge,
+          tag: tagDoPedido,
+          renotify: false,
+          data: maisNovo.data,
+        });
+      }
       const options = {
         body: payload.body || "",
         icon,

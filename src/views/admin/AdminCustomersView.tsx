@@ -14,6 +14,7 @@ import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
@@ -310,13 +311,19 @@ export const AdminCustomersView = memo(function AdminCustomersView({
     void fetchCustomers(page);
   }, [fetchCustomers, page]);
 
+  // "Novos (30 dias)" é medido pelo servidor com o dia de HOJE dele: com o
+  // painel aberto de um dia para o outro, a virada (`dia` mudou) relê a página
+  // atual. Em silêncio — a lista fica na tela até a resposta chegar — e dentro
+  // dos mesmos 320 ms da abertura, então ficar ativa já no dia seguinte lê uma
+  // vez só.
+  const dia = useDiaDeSaoPaulo(active ?? false);
   useEffect(() => {
     if (!active) return;
     const timer = setTimeout(() => {
       fetchCustomers(page);
     }, 320);
     return () => clearTimeout(timer);
-  }, [searchTerm, sortField, sortDirection, page, active, fetchCustomers]);
+  }, [searchTerm, sortField, sortDirection, page, active, fetchCustomers, dia]);
 
   // O resumo guardado continua visível, mas cada abertura confere os números
   // atuais. Não refaz a consulta a cada atualização do próprio resumo.

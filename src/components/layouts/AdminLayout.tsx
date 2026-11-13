@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { useConnectionDiagnostics } from "@/hooks/useOnlineStatus";
 import { useOrders } from "@/hooks/useOrders";
@@ -208,6 +209,22 @@ export function AdminLayout({
   // sozinho a cada nova rodada de `fetchInitialCounts` que der certo.
   const [naoConseguiuConferirAvisos, setNaoConseguiuConferirAvisos] =
     React.useState(false);
+
+  // O corte dos recebimentos por marcar (janela do prazo de devolução, em dias
+  // de calendário da loja) avança à meia-noite e nada pedia a recontagem por
+  // passagem do tempo: a bolinha seguia com o pedido que acabou de sair da
+  // janela. A virada do dia pede o mesmo `admin:recontar-avisos` que a lista de
+  // Notificações e o sino já ouvem (um só, agrupado pelo sino). Aba escondida
+  // não bate na rede: a volta ao foco já reconta tudo com o corte novo.
+  const diaDeHoje = useDiaDeSaoPaulo();
+  const diaDaUltimaContagem = React.useRef(diaDeHoje);
+  React.useEffect(() => {
+    if (diaDaUltimaContagem.current === diaDeHoje) return;
+    diaDaUltimaContagem.current = diaDeHoje;
+    if (document.visibilityState === "visible") {
+      window.dispatchEvent(new Event("admin:recontar-avisos"));
+    }
+  }, [diaDeHoje]);
 
   React.useEffect(() => {
     let isMounted = true;

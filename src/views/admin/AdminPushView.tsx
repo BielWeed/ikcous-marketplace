@@ -18,6 +18,7 @@ import { TELAS_DE_ENTRADA } from "@/config/rotas";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
+import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useVOR } from "@/hooks/useVOR";
@@ -834,6 +835,22 @@ export const AdminPushView = memo(function AdminPushView({
       document.removeEventListener("visibilitychange", remedirAoVoltar);
     };
   }, [fetchSubscribers, fetchSegmentCounts, calculateReach, segment]);
+
+  // "Novos em 7 dias" e "Inativos há 30 dias" são medidos pelo servidor com o
+  // dia de HOJE dele: com a tela aberta de um dia para o outro os grupos
+  // seguiam com a janela de ontem. A virada do dia mede de novo, só na virada
+  // (a tela só existe montada enquanto é a atual; aba escondida deixa para a
+  // volta ao foco, que já mede).
+  const dia = useDiaDeSaoPaulo();
+  const diaMedido = useRef(dia);
+  useEffect(() => {
+    if (diaMedido.current === dia) return;
+    diaMedido.current = dia;
+    if (document.visibilityState !== "visible") return;
+    fetchSegmentCounts();
+    fetchSubscribers();
+    if (segment !== "all") calculateReach();
+  }, [dia, fetchSubscribers, fetchSegmentCounts, calculateReach, segment]);
 
   // Rascunho não enviado = pendência para o APP (onSetDirty): é guarda de
   // navegação — sair da tela com texto não enviado avisa antes de perder.

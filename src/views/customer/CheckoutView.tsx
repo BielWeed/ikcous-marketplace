@@ -56,6 +56,10 @@ import {
   useOrders,
 } from "@/hooks/useOrders";
 import { useReleituraDosEnderecosAoVoltar } from "@/hooks/useReleituraDosEnderecosAoVoltar";
+import {
+  localStorageSeguro,
+  sessionStorageSeguro,
+} from "@/lib/armazenamento-seguro";
 import { cepEhLocal } from "@/lib/cep-local";
 import {
   type GerenciadorDeChaveDaCompra,
@@ -855,9 +859,9 @@ function GatilhoDoResumoDoPedido({
  * exclusivo não fica esperando no armazenamento da aba (frente B).
  */
 function esquecerCupomDoRascunho(): void {
-  const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
+  const rascunho = lerRascunhoDoCheckout(sessionStorageSeguro());
   if (!rascunho?.cupom) return;
-  salvarRascunhoDoCheckout(globalThis.sessionStorage, {
+  salvarRascunhoDoCheckout(sessionStorageSeguro(), {
     ...rascunho,
     cupom: null,
     contaDoCupom: null,
@@ -1247,7 +1251,7 @@ export function CheckoutViewDaConta({
       cpf: "",
       name: perfilDaConta?.full_name || "",
       whatsapp: getDefaultWhatsApp(),
-      cep: localStorage.getItem("ikcous_last_shipping_cep") || "",
+      cep: localStorageSeguro().getItem("ikcous_last_shipping_cep") || "",
       city: "",
       state: "",
     },
@@ -1400,7 +1404,7 @@ export function CheckoutViewDaConta({
       // com IndexedDB lento). Lendo primeiro na memória, qualquer gravação
       // transitória dos resets é substituída, logo depois, pela gravação dos
       // valores restaurados.
-      const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
+      const rascunho = lerRascunhoDoCheckout(sessionStorageSeguro());
       // Revisão de segurança (23/09/2026): quando a config da loja chega
       // DEPOIS de `get_my_cpf`, os resets abaixo apagavam o CPF que a conta
       // acabou de preencher. O valor atual do campo (nunca o rascunho — CPF
@@ -1422,7 +1426,7 @@ export function CheckoutViewDaConta({
           cpf: cpfJaCarregado,
           name: perfilDaConta?.full_name || "",
           whatsapp: getDefaultWhatsApp(),
-          cep: localStorage.getItem("ikcous_last_shipping_cep") || "",
+          cep: localStorageSeguro().getItem("ikcous_last_shipping_cep") || "",
           city: "",
           state: "",
         });
@@ -1478,7 +1482,7 @@ export function CheckoutViewDaConta({
             whatsapp: doRascunho.whatsapp || getDefaultWhatsApp(),
             cep:
               doRascunho.cep ||
-              localStorage.getItem("ikcous_last_shipping_cep") ||
+              localStorageSeguro().getItem("ikcous_last_shipping_cep") ||
               "",
             street: doRascunho.rua,
             number: doRascunho.numero,
@@ -1570,7 +1574,7 @@ export function CheckoutViewDaConta({
   // 25/08/2026).
   const cepAssociadoRef = useRef<string | null>(
     (() => {
-      const cepDaVisitaAnterior = localStorage.getItem(
+      const cepDaVisitaAnterior = localStorageSeguro().getItem(
         "ikcous_last_shipping_cep",
       );
       return cepDaVisitaAnterior
@@ -2866,9 +2870,9 @@ export function CheckoutViewDaConta({
     setCupomTiradoPelaLoja(cupomGuardado.code);
     setAppliedCoupon(null);
     setCouponError("");
-    const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
+    const rascunho = lerRascunhoDoCheckout(sessionStorageSeguro());
     if (rascunho?.cupom) {
-      salvarRascunhoDoCheckout(globalThis.sessionStorage, {
+      salvarRascunhoDoCheckout(sessionStorageSeguro(), {
         ...rascunho,
         cupom: null,
       });
@@ -2944,7 +2948,7 @@ export function CheckoutViewDaConta({
           : (cupomPendenteDoRascunhoRef.current?.conta ?? null),
       };
       if (!rascunhoTemConteudo(rascunho)) return;
-      salvarRascunhoDoCheckout(globalThis.sessionStorage, rascunho);
+      salvarRascunhoDoCheckout(sessionStorageSeguro(), rascunho);
     };
     const subscription = form.watch((valores) =>
       gravarRascunho(valores as CheckoutFormValues),
@@ -2977,7 +2981,7 @@ export function CheckoutViewDaConta({
         : (cupomPendenteDoRascunhoRef.current?.conta ?? null),
     };
     if (!rascunhoTemConteudo(rascunho)) return;
-    salvarRascunhoDoCheckout(globalThis.sessionStorage, rascunho);
+    salvarRascunhoDoCheckout(sessionStorageSeguro(), rascunho);
   }, [notes, appliedCoupon, form]);
   // Achado 8 da revisão (17/08/2026): o painel precisa devolver o foco ao
   // botão que o abriu quando fecha (teclado) — `wasOpenRef` evita focar o
@@ -3557,7 +3561,8 @@ export function CheckoutViewDaConta({
       // Endereço e CEP: só onde a pessoa ainda não escreveu nada nesse meio
       // tempo (o CEP nasce da semente do aparelho, que também conta como
       // "ainda não escreveu").
-      const semente = localStorage.getItem("ikcous_last_shipping_cep") || "";
+      const semente =
+        localStorageSeguro().getItem("ikcous_last_shipping_cep") || "";
       const cepAtual = form.getValues("cep") ?? "";
       if (r.cep && (cepAtual === "" || cepAtual === semente)) {
         form.setValue("cep", r.cep);
@@ -4922,7 +4927,7 @@ export function CheckoutViewDaConta({
       gerenteDaChaveDe(pedido.contaEsperada).esquecer();
       pedidoCongeladoRef.current = null;
       limparPedidoSemResposta();
-      limparRascunhoDoCheckout(globalThis.sessionStorage);
+      limparRascunhoDoCheckout(sessionStorageSeguro());
       // Cancelar devolve só o que realmente saiu do carrinho.
       itensDoPedidoParaRestaurarRef.current = [];
       const carrinhoAtual = carrinhoAtualRef.current;
@@ -6942,7 +6947,7 @@ export function CheckoutViewDaConta({
                           // gravar a cada tecla deixava o pedaço ("0131")
                           // como semente da próxima visita.
                           if (limpo.length === 8)
-                            localStorage.setItem(
+                            localStorageSeguro().setItem(
                               "ikcous_last_shipping_cep",
                               formatado,
                             );

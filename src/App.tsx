@@ -11,6 +11,7 @@ import { TelaDeVerificacaoFalhou } from "@/components/layouts/TelaDeVerificacaoF
 import { MaintenanceView } from "@/components/pwa/MaintenanceView";
 import { aoIniciarAposAtualizacao } from "@/components/pwa/ao-iniciar-apos-atualizacao";
 import { applyThemeColor, branding } from "@/config/branding";
+import { sessionStorageSeguro } from "@/lib/armazenamento-seguro";
 import { instalarConsumidorDoAtalhoDoIcone } from "@/lib/atalho-do-icone";
 import { esquecerChaveDoPedidoDe } from "@/lib/chave-do-pedido";
 import {
@@ -471,7 +472,7 @@ export default function App() {
   useEffect(() => {
     if (
       globalThis.window !== undefined &&
-      sessionStorage.getItem("splash_shown")
+      sessionStorageSeguro().getItem("splash_shown")
     ) {
       const loader = document.getElementById("silent-guardian-loader");
       if (loader) loader.remove();
@@ -2828,7 +2829,7 @@ const AppContent = () => {
       removeLoader();
       // Mark splash as shown for the session to prevent it on every nav
       if (globalThis.window !== undefined) {
-        sessionStorage.setItem("splash_shown", "true");
+        sessionStorageSeguro().setItem("splash_shown", "true");
       }
     }
 
