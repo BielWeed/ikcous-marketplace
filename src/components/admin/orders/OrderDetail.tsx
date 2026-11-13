@@ -45,6 +45,7 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
   MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA,
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+  PRAZO_DA_LEITURA_DO_TAMANHO_E_COR_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
@@ -2006,30 +2007,46 @@ export const OrderDetail = memo(function OrderDetail({
 
         setLoadingSkus(true);
 
-        if (missingProductIds.length > 0) {
-          const { data: productsData, error: erroProdutos } = await supabase
-            .from("vw_produtos_admin")
-            .select("id, codigo")
-            .in("id", missingProductIds);
-          if (!consultaVigente) return;
-          if (erroProdutos) throw erroProdutos;
-          productsData?.forEach((p) => {
-            if (p.codigo) globalSkuCache[`prod-${p.id}`] = p.codigo;
-          });
-        }
-
-        if (missingVariantIds.length > 0) {
-          const { data: variantsData, error: erroVariantes } = await supabase
-            .from("product_variants")
-            .select("id, sku, name, value")
-            .in("id", missingVariantIds);
-          if (!consultaVigente) return;
-          if (erroVariantes) throw erroVariantes;
-          variantsData?.forEach((v) => {
-            if (v.sku) globalSkuCache[`var-${v.id}`] = v.sku;
-            globalVariacaoCache.set(v.id, rotuloDaVariacao(v.name, v.value));
-          });
-        }
+        // As duas consultas correm sob UM prazo: rede que conecta e não
+        // responde não pode deixar o Imprimir esperando para sempre. Estourou
+        // = a falha comum (aviso, Imprimir desligado e "Tentar de novo"). Só
+        // as leituras ficam sob o prazo; o cache só é gravado depois, e só se
+        // esta consulta ainda for a vigente (resposta tardia é descartada).
+        const lerOQueFalta = async () => {
+          const produtos =
+            missingProductIds.length > 0
+              ? await supabase
+                  .from("vw_produtos_admin")
+                  .select("id, codigo")
+                  .in("id", missingProductIds)
+              : null;
+          if (produtos?.error) throw produtos.error;
+          const variantes =
+            missingVariantIds.length > 0
+              ? await supabase
+                  .from("product_variants")
+                  .select("id, sku, name, value")
+                  .in("id", missingVariantIds)
+              : null;
+          if (variantes?.error) throw variantes.error;
+          return {
+            productsData: produtos?.data,
+            variantsData: variantes?.data,
+          };
+        };
+        const { productsData, variantsData } = await aguardarComPrazo(
+          lerOQueFalta(),
+          PRAZO_DA_LEITURA_DO_TAMANHO_E_COR_MS,
+          () => erroDeConsultaSemResposta(),
+        );
+        if (!consultaVigente) return;
+        productsData?.forEach((p) => {
+          if (p.codigo) globalSkuCache[`prod-${p.id}`] = p.codigo;
+        });
+        variantsData?.forEach((v) => {
+          if (v.sku) globalSkuCache[`var-${v.id}`] = v.sku;
+          globalVariacaoCache.set(v.id, rotuloDaVariacao(v.name, v.value));
+        });
         setVariacoes(variacoesLidas());
 
         const resultSkus: Record<string, string> = {};
