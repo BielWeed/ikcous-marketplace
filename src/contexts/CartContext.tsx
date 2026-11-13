@@ -181,6 +181,13 @@ const cartItemSchema = z.object({
 export interface CartState {
   cart: CartItem[];
   isLoading: boolean;
+  /** VERDADE quando a cliente tem conta, o carregamento já destravou (a leitura
+   *  do carrinho salvo falhou ou passou de 8 s) e esse carrinho do banco ainda
+   *  NÃO foi lido. Aí uma lista vazia não quer dizer "carrinho vazio": a tela
+   *  avisa que o carrinho salvo não carregou e oferece `relerCarrinhoSalvo`.
+   *  Cai sozinha quando a leitura dá certo. Só leitura: não muda sync nem
+   *  gravação (essas seguem presas a `remotoMesclado`). */
+  carrinhoSalvoNaoLido: boolean;
   cartTotal: number;
   cartCount: number;
   shippingFee: number;
@@ -268,6 +275,10 @@ export interface CartActions {
    *  leitura terminou e NUNCA rejeita — leitura que falha deixa o carrinho
    *  como estava. */
   renovarCarrinhoPeloCatalogo: () => Promise<void>;
+  /** Relê AGORA o carrinho salvo da conta (o botão "Tentar de novo" de
+   *  `carrinhoSalvoNaoLido`). Zera a contagem de falhas, então a espera
+   *  crescente recomeça. NUNCA rejeita; sem conta não faz nada. */
+  relerCarrinhoSalvo: () => Promise<void>;
 }
 
 export interface CartContextType extends CartState, CartActions {}
@@ -593,6 +604,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     remotoMescladoRef.current = remotoMesclado;
   }, [remotoMesclado]);
+  // A conta cuja leitura inicial já foi aberta (o efeito de troca de conta, mais
+  // abaixo, grava junto com o `isLoading(true)`). Só alimenta
+  // `carrinhoSalvoNaoLido`: no render em que a conta muda, `isLoading` e
+  // `remotoMesclado` ainda são os da conta de antes, e sem esta conferência o
+  // aviso piscaria um quadro a cada entrada na conta.
+  const [contaAberta, setContaAberta] = useState<string | null>(null);
 
   // Gravação do carrinho no banco: uma por vez (`syncPending`), com o retrato
   // do último carrinho enviado (`lastSyncedCart`, o JSON inteiro).
@@ -1099,6 +1116,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     syncFromDBRef.current = syncFromDB;
   }, [syncFromDB]);
 
+  // O botão "Tentar de novo" do aviso de carrinho salvo não lido: mesma
+  // releitura de quando a rede volta (zera as falhas e a espera, relê já).
+  const relerCarrinhoSalvo = useCallback(async () => {
+    if (!userIdAtualRef.current) return;
+    falhasDeLeitura.current = 0;
+    cancelarReleitura();
+    await syncFromDBRef.current(true);
+  }, [cancelarReleitura]);
+
   // Initial Sync from Supabase
   useEffect(() => {
     // Detection of user change: Reset state if the ID changes (null <-> UUID)
@@ -1132,6 +1158,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       // Conta nova a ler: o carrinho NÃO é "vazio" enquanto a leitura não volta
       // (o `finally` do `syncFromDB`, ou o tempo-limite, desliga de novo).
       if (currentUserId) setIsLoading(true);
+      setContaAberta(currentUserId);
       lastSessionUserId.current = currentUserId;
     }
 
@@ -1851,10 +1878,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const getCartCount = useCallback(() => cartCountRef.current, []);
 
+  // Tem conta, a leitura inicial desta conta já abriu e já destravou, mas o
+  // carrinho do banco não foi mesclado: lista vazia aqui NÃO é carrinho vazio.
+  const carrinhoSalvoNaoLido =
+    !!userId && contaAberta === userId && !remotoMesclado && !isLoading;
+
   const stateValue = React.useMemo(
     () => ({
       cart,
       isLoading,
+      carrinhoSalvoNaoLido,
       cartTotal,
       cartCount,
       shippingFee,
@@ -1869,6 +1902,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [
       cart,
       isLoading,
+      carrinhoSalvoNaoLido,
       cartTotal,
       cartCount,
       shippingFee,
@@ -1894,6 +1928,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       setShippingCep,
       setEnderecoSelecionadoId,
       renovarCarrinhoPeloCatalogo: renovarPeloCatalogo,
+      relerCarrinhoSalvo,
     }),
     [
       addToCart,
@@ -1904,6 +1939,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       getCartCount,
       setSelectedShippingOption,
       renovarPeloCatalogo,
+      relerCarrinhoSalvo,
     ],
   );
 
