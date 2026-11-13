@@ -1841,8 +1841,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // contra o segundo aviso: admin-orders-status-erro-cru-nao-duplica-
       // toast.test.tsx). Continua relançando o erro, como antes.
       if (err instanceof ErroPedidoMudou) {
+        // Só se a ficha ainda está na etapa de onde o toque partiu: o status
+        // do erro é o da releitura, e durante ela pode ter chegado versão mais
+        // nova (outro aparelho avançou, finalizou ou cancelou) — aplicá-lo
+        // faria a ficha regredir. Mesma regra do caminho de sucesso acima.
         setSelectedOrder((prev) =>
-          prev?.id === orderId
+          prev?.id === orderId && prev.status === etapaDePartida
             ? { ...prev, status: err.statusVerdadeiro }
             : prev,
         );

@@ -3127,6 +3127,16 @@ export function useOrders(
   const DEBOUNCE_RECARREGAR_INSERT_MS = 400;
 
   /**
+   * Geração do que o tempo real JÁ APLICOU por pedido (id -> quantos UPDATEs
+   * não-atrasados chegaram). `updateOrderStatus` anota a geração antes de reler
+   * o status no servidor e, na volta, só pinta o status relido se ela não
+   * andou: a releitura é um retrato anterior a qualquer evento que chegou
+   * enquanto ela estava no ar, e aplicá-la por cima fazia o pedido já
+   * "Finalizado" voltar a "Em Trânsito" na tela (o banco estava certo).
+   */
+  const geracaoDoPedidoNoRealtimeRef = useRef(new Map<string, number>());
+
+  /**
    * Pedidos (da cliente ou do painel) cujo INSERT ainda está consultando o banco
    * (id -> última linha de UPDATE que chegou nesse meio-tempo, ou `null`). Sem isto o
    * UPDATE de um pedido AINDA AUSENTE da lista era descartado, e a consulta —
@@ -3273,6 +3283,23 @@ export function useOrders(
   const handleRealtimeUpdate = useCallback(
     (updatedOrder: any, oldOrder: any) => {
       if (!updatedOrder.id) return;
+      // Mesma regra de `mesclarAtualizacaoRealtime`: versão ESTRITAMENTE mais
+      // velha que a da tela é descartada e não conta como "chegou mais novo".
+      const naTela = ordersRef.current.find(
+        (pedido) => pedido.id === updatedOrder.id,
+      );
+      const tNaTela = Date.parse(naTela?.updatedAt ?? "");
+      const tDoEvento = Date.parse(updatedOrder.updated_at);
+      const eventoAtrasado =
+        Number.isFinite(tNaTela) &&
+        Number.isFinite(tDoEvento) &&
+        tDoEvento < tNaTela;
+      if (!eventoAtrasado) {
+        geracaoDoPedidoNoRealtimeRef.current.set(
+          updatedOrder.id,
+          (geracaoDoPedidoNoRealtimeRef.current.get(updatedOrder.id) ?? 0) + 1,
+        );
+      }
       const filtro = isAdmin ? ultimaConsultaAdminRef.current?.[2] : undefined;
       const filtroConhecido =
         filtro === "open" || statusConfigByKey.has(filtro as OrderStatus);
@@ -3354,10 +3381,39 @@ export function useOrders(
           oldOrder,
           ordersRef.current.find((pedido) => pedido.id === updatedOrder.id),
         );
+      // Filtro de STATUS específico e um pedido que NÃO está na página carregada
+      // (está em outra) passou a outro status: ele sai do recorte sem que a
+      // lista o veja, e o total e o "Próximo" ficavam 1 acima até recarregar.
+      // O `old` do UPDATE chega só com a chave primária (RLS ligada): quando
+      // ele traz o status anterior, vale só quem estava no recorte; sem ele,
+      // não há como saber, e o fallback relê para filtro de status sem busca
+      // nem pagamento (com eles, o pedido podia nunca ter estado no recorte).
+      // O debounce abaixo absorve a rajada. Filtro "todos" nunca entra aqui
+      // (`filtroConhecido` falso).
+      const statusAnterior: unknown = oldOrder?.status;
+      const casavaOFiltroAntes =
+        typeof statusAnterior === "string"
+          ? filtro === "open"
+            ? !["cancelled", "delivered"].includes(statusAnterior)
+            : statusAnterior === filtro
+          : undefined;
+      // Com leitura em voo quem cuida é `recarregarAdminDepoisDoVooRef`, acima
+      // (invalida o retrato e relê depois do voo): um segundo agendamento aqui
+      // dispararia no meio dela.
+      const saiuDoRecorteDeStatusFora =
+        isAdmin &&
+        filtroConhecido &&
+        !casaStatus &&
+        !jaNaLista &&
+        adminOrdersAbortControllerRef.current?.signal.aborted !== false &&
+        (casavaOFiltroAntes ??
+          (!ultimaConsultaAdminRef.current?.[3] &&
+            (!filtroDePagamento || filtroDePagamento === "all")));
       // A RPC existente recompõe página e total quando alguém entra ou sai
       // do recorte. O mesmo debounce do INSERT absorve rajadas de eventos.
       if (
         (filtroConhecido && (casaStatus ? !jaNaLista : jaNaLista)) ||
+        saiuDoRecorteDeStatusFora ||
         entrouNoFiltroDePagamento ||
         saiuDoFiltroDePagamento ||
         buscaPodeTerMudado
@@ -4196,6 +4252,11 @@ export function useOrders(
             throw new ErroStatusEsperadoDesconhecido();
           }
 
+          // Geração do que o tempo real já aplicou deste pedido, ANTES de
+          // perguntar ao servidor (ver `geracaoDoPedidoNoRealtimeRef`).
+          const geracaoAntesDaReleitura =
+            geracaoDoPedidoNoRealtimeRef.current.get(orderId) ?? 0;
+
           // Nada foi gravado ainda: se a releitura pendurar (rede "pendurada"),
           // o prazo a trata como qualquer falha de releitura, que já falha
           // FECHADO (sem otimista e sem RPC), e a ficha sai de "Processando".
@@ -4238,14 +4299,24 @@ export function useOrders(
             // no-op — quem corrige a ficha nesse caso é o chamador, a
             // partir de `ErroPedidoMudou.statusVerdadeiro` (ver
             // AdminOrdersView.handleStatusChange).
-            cachedAdminOrders = (cachedAdminOrders || []).map((o) =>
-              o.id === orderId ? { ...o, status: statusVerdadeiro } : o,
-            );
-            setOrders((prev) =>
-              prev.map((o) =>
+            //
+            // Só se nenhum UPDATE deste pedido foi aplicado enquanto a
+            // releitura estava no ar: o que chegou por tempo real é mais novo
+            // que ela, e o status relido o desfaria. O aviso e o erro abaixo
+            // seguem iguais (o toque foi mesmo recusado).
+            const chegouMaisNovoDuranteAReleitura =
+              (geracaoDoPedidoNoRealtimeRef.current.get(orderId) ?? 0) !==
+              geracaoAntesDaReleitura;
+            if (!chegouMaisNovoDuranteAReleitura) {
+              cachedAdminOrders = (cachedAdminOrders || []).map((o) =>
                 o.id === orderId ? { ...o, status: statusVerdadeiro } : o,
-              ),
-            );
+              );
+              setOrders((prev) =>
+                prev.map((o) =>
+                  o.id === orderId ? { ...o, status: statusVerdadeiro } : o,
+                ),
+              );
+            }
             if (!silent) {
               toast.warning(
                 `Este pedido mudou há instantes: agora está "${rotulo}". A ficha foi atualizada.`,
