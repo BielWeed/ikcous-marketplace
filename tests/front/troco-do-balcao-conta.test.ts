@@ -122,4 +122,10 @@ describe("centavosDoTextoEmReais (o texto que o campo de dinheiro entrega)", () 
   it("número grande demais para ser exato: não é valor (nunca um troco inventado)", () => {
     expect(centavosDoTextoEmReais("1000000000000000000.00")).toBeNull();
   });
+
+  it('mais de um ponto ("50.00.00") não é valor e NÃO calcula troco', () => {
+    expect(centavosDoTextoEmReais("50.00.00")).toBeNull();
+    // Venda de R$ 29,95: sem valor lido, não há troco nem "faltam" a mostrar.
+    expect(calcularTroco(2995, centavosDoTextoEmReais("50.00.00"))).toBeNull();
+  });
 });

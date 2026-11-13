@@ -5,3 +5,6 @@
 export function normalizarCodigoBarras(valor: string): string {
   return valor.trim().replace(/\s+/g, "");
 }
+
+/** O formato que o campo "Código de barras" do cadastro aceita (já normalizado). */
+export const REGEX_CODIGO_BARRAS = /^[A-Za-z0-9-]{4,64}$/;

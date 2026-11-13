@@ -78,6 +78,7 @@ import { useAppBadge } from "@/hooks/useAppBadge";
 import { useBehavioralPrefetch } from "@/hooks/useBehavioralPrefetch";
 import { useCacheWarmer } from "@/hooks/useCacheWarmer";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
+import { useDescartarCodigoParaCadastro } from "@/hooks/useDescartarCodigoParaCadastro";
 import { useFavorites } from "@/hooks/useFavorites";
 import { useNetworkAdaptive } from "@/hooks/useNetworkAdaptive";
 import { usePredictiveNavigation } from "@/hooks/usePredictiveNavigation";
@@ -648,6 +649,7 @@ const AppContent = () => {
   const { config, incluirProduto } = useStore();
 
   const [currentView, setCurrentView] = useState<View>("home");
+  useDescartarCodigoParaCadastro(currentView);
   const [isStandalone, setIsStandalone] = useState(false);
   const [, setVisualBottomOffset] = useState(0);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);

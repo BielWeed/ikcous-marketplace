@@ -336,6 +336,22 @@ describe("ShippingCalculator — preço FINAL por modalidade (T3, 23/09/2026)", 
     expect(cartao?.textContent).toContain("20,00");
     expect(cartao?.textContent).toContain("Desconto da loja");
     expect(texto).not.toContain("GRÁTIS");
+
+    // Os papéis não podem se inverter: o riscado é o cheio e o destacado,
+    // no mesmo bloco de preços, é o que a cliente paga. O destacado é achado
+    // pela classe (não pela posição), e "Desconto da loja" não conta: usa
+    // `tracking-wide`, não `tracking-tight`.
+    const riscados = cartao?.querySelectorAll(".line-through") ?? [];
+    expect(riscados).toHaveLength(1);
+    expect(riscados[0]?.textContent).toContain("35,00");
+    expect(riscados[0]?.textContent).not.toContain("20,00");
+    const blocoDePrecos = riscados[0]?.parentElement;
+    const destacados = [
+      ...(blocoDePrecos?.querySelectorAll(".font-black.tracking-tight") ?? []),
+    ].filter((el) => !el.classList.contains("line-through"));
+    expect(destacados).toHaveLength(1);
+    expect(destacados[0]?.textContent).toContain("20,00");
+    expect(destacados[0]?.textContent).not.toContain("35,00");
   });
 
   it("a nota 'vale só na opção mais barata' aparece embaixo da opção NÃO beneficiada", async () => {
