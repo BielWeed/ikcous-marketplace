@@ -338,7 +338,7 @@ describe("sino da cliente — abrir o pedido marca os avisos DELE como lidos", (
       "src/views/customer/OrderDetailsView.tsx",
       "utf8",
     );
-    expect(fonte).toContain("useMarcarAvisosDoPedidoComoLidos(orderId);");
+    expect(fonte).toContain("useMarcarAvisosDoPedidoComoLidos(orderId, ");
   });
 
   it("UPDATE que falha: uma tentativa só, sem toast, e o aviso segue não lido", async () => {
