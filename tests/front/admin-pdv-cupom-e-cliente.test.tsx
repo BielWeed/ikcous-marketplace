@@ -303,6 +303,11 @@ describe("AdminPdvView — CupomDaVenda e ClienteDaVenda (C3.2)", () => {
     // Uma linha só na lista (mesma chave), não duas.
     const linhas = hospedeiro.querySelectorAll("li");
     expect(linhas.length).toBe(1);
+    // O total DA LINHA é preço x quantidade; o subtotal, que também mostra
+    // 79,80, não vale como prova dele.
+    expect(linhas[0]?.querySelector(".pdv-line-total")?.textContent).toBe(
+      "R$ 79,80",
+    );
   });
 
   it("caso 3 — código não cadastrado mostra o cartão de cadastro e NÃO põe item", async () => {

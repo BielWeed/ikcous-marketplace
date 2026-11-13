@@ -336,6 +336,17 @@ describe("ShippingCalculator — preço FINAL por modalidade (T3, 23/09/2026)", 
     expect(cartao?.textContent).toContain("20,00");
     expect(cartao?.textContent).toContain("Desconto da loja");
     expect(texto).not.toContain("GRÁTIS");
+
+    // Os papéis não podem se inverter: o riscado é o cheio e o destacado,
+    // logo depois, é o que a cliente paga.
+    const riscados = cartao?.querySelectorAll(".line-through") ?? [];
+    expect(riscados).toHaveLength(1);
+    expect(riscados[0]?.textContent).toContain("35,00");
+    expect(riscados[0]?.textContent).not.toContain("20,00");
+    const destacado = riscados[0]?.nextElementSibling;
+    expect(destacado?.classList.contains("font-black")).toBe(true);
+    expect(destacado?.textContent).toContain("20,00");
+    expect(destacado?.textContent).not.toContain("35,00");
   });
 
   it("a nota 'vale só na opção mais barata' aparece embaixo da opção NÃO beneficiada", async () => {
