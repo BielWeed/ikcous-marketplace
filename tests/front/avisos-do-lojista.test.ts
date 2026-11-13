@@ -102,7 +102,10 @@ describe("montarAvisos", () => {
     ]);
     const devolucao = avisos[1];
     expect(devolucao.titulo).toBe("1 devolução esperando sua resposta");
-    expect(devolucao.destino).toEqual({ view: "admin-devolucoes" });
+    expect(devolucao.destino).toEqual({
+      view: "admin-devolucoes",
+      soSolicitadas: true,
+    });
     expect(devolucao.contaNoCracha).toBe(true);
     expect(montarAvisos({ ...VAZIO, devolucoesSolicitadas: 0 })).toEqual([]);
   });
