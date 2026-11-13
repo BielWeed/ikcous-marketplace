@@ -69,6 +69,7 @@ import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import {
   AVISO_ESTOQUE_NAO_RESTAURADO,
   AVISO_PRODUTO_ALTERADO_DEPOIS,
+  apagarRascunhoDoProdutoPelaChave,
   avisoDeVariacoesAlteradasEmOutroAparelho,
   chaveDoRascunhoDoProduto,
   estoqueDoRascunhoDifereDoBanco,
@@ -3444,7 +3445,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           // espera, com a variação nova ainda como `temp-…` (restaurá-lo
           // inseriria a variação de novo).
           const chaveDoRascunho = chaveDoRascunhoDoProduto(userId, productId);
-          if (chaveDoRascunho) localStorage.removeItem(chaveDoRascunho);
+          if (chaveDoRascunho) {
+            apagarRascunhoDoProdutoPelaChave(chaveDoRascunho);
+          }
           const quais =
             devolvidas.length > 0
               ? devolvidas.map((v) => `${v.name}: ${v.value}`).join(", ")
@@ -3532,7 +3535,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             );
           }
           const chaveDoNovo = chaveDoRascunhoDoProduto(userId);
-          if (chaveDoNovo) localStorage.removeItem(chaveDoNovo);
+          if (chaveDoNovo) apagarRascunhoDoProdutoPelaChave(chaveDoNovo);
           const motivo = criado.variantesNaoSalvas.motivo;
           // Sem resposta da rede o hook já avisou, com a frase certa (não se
           // sabe se as variações entraram: conferir antes de restaurar).
@@ -3561,7 +3564,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       // rascunho de volta ~1s depois.
       setInitialData(formData);
       const chaveParaApagar = chaveDoRascunhoDoProduto(userId, productId);
-      if (chaveParaApagar) localStorage.removeItem(chaveParaApagar);
+      if (chaveParaApagar) apagarRascunhoDoProdutoPelaChave(chaveParaApagar);
 
       // #98 (ADMIN-060): guardado em ref e cancelado no unmount (efeito
       // logo abaixo) — sem isto, sair da tela na janela de "Salvo" ainda
@@ -3576,7 +3579,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       if ((error as { gradeGravada?: boolean })?.gradeGravada) {
         setPrecisaRecarregar(true);
         const chaveDoRascunho = chaveDoRascunhoDoProduto(userId, productId);
-        if (chaveDoRascunho) localStorage.removeItem(chaveDoRascunho);
+        if (chaveDoRascunho) apagarRascunhoDoProdutoPelaChave(chaveDoRascunho);
       }
       const atual = (error as { produtoAtual?: Product })?.produtoAtual;
       if (atual) {

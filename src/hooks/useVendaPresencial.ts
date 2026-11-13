@@ -1469,7 +1469,15 @@ function armazenamentoPadrao(): ArmazenamentoDoRascunho | null {
   // existe — a ausência de armazenamento vira "sem rascunho", não um
   // `throw` na primeira renderização.
   if (typeof window === "undefined") return null;
-  return window.localStorage;
+  // Navegador com "bloquear dados de sites" (ou política de empresa): o próprio
+  // ACESSO a `window.localStorage` lança SecurityError, e esta função roda no
+  // render. Mesma saída da ausência de DOM: sem rascunho, a venda segue em
+  // memória.
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
 }
 
 export interface VendaPresencialEmUso {
