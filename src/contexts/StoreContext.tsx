@@ -16,7 +16,10 @@ import {
   entregaPropriaLigada,
 } from "@/lib/guarda-de-frete";
 import { mapProductFromDB } from "@/lib/mappers";
-import { mesclarProdutoNaLista } from "@/lib/mescla-de-produtos";
+import {
+  mesclarProdutoNaLista,
+  registroTocadoSobreARespostaDoProduto,
+} from "@/lib/mescla-de-produtos";
 import {
   aguardarComPrazo,
   ehConsultaSemResposta,
@@ -1280,7 +1283,14 @@ export function StoreProvider({
           mesclarProdutoNaLista(
             mapped,
             registro
-              ? { eventType: "UPDATE", id, registro }
+              ? {
+                  eventType: "UPDATE",
+                  id,
+                  registro: registroTocadoSobreARespostaDoProduto(
+                    registro,
+                    mapped.find((p) => p.id === id),
+                  ),
+                }
               : { eventType: "DELETE", id },
           ) ?? mapped;
       }

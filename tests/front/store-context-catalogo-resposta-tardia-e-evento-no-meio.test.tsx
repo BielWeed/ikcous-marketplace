@@ -129,7 +129,27 @@ vi.mock("@/lib/supabase", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function linhaDaView(id: string, estoque: number): Linha {
+function variacaoDaView(
+  produto: string,
+  nome: string,
+  estoque: number,
+  ativa = true,
+): Linha {
+  return {
+    id: `${produto}-${nome}`,
+    product_id: produto,
+    name: "Tamanho",
+    value: nome,
+    stock_increment: estoque,
+    active: ativa,
+  };
+}
+
+function linhaDaView(
+  id: string,
+  estoque: number,
+  variacoes: Linha[] = [],
+): Linha {
   return {
     id,
     nome: `Produto ${id}`,
@@ -140,7 +160,7 @@ function linhaDaView(id: string, estoque: number): Linha {
     categoria: "Geral",
     imagem_urls: [],
     data_cadastro: "2026-01-01T00:00:00.000Z",
-    product_variants: [],
+    product_variants: variacoes,
   };
 }
 
@@ -316,6 +336,99 @@ describe("StoreContext -- resposta tardia do catálogo não repõe estoque", () 
     await responder(0, [linhaDaView("p1", 5)]);
 
     expect(produtos.map((p) => p.id).sort()).toEqual(["p1", "p9"]);
+  });
+
+  it("evento SEM variações (linha pura de `produtos`) não tira a grade P/M/G do produto que a resposta trouxe completo", async () => {
+    await renderizar();
+
+    // O motor com cofre vazio grava a linha pura: sem variações, com o
+    // estoque da coluna base. O nome mudou de verdade, e isso é do evento.
+    controle.cofre.set("p1", {
+      ...produtoDoCofre("p1", 9),
+      name: "Camiseta renomeada",
+      estoqueDeBase: 9,
+    });
+    await avisar({
+      table: "produtos",
+      store: "products",
+      eventType: "UPDATE",
+      newRecord: { id: "p1" },
+    });
+    await responder(0, [
+      linhaDaView("p1", 9, [
+        variacaoDaView("p1", "P", 2),
+        variacaoDaView("p1", "M", 3),
+        variacaoDaView("p1", "G", 0),
+      ]),
+    ]);
+
+    const naTela = produtos.find((p) => p.id === "p1");
+    expect(naTela?.name).toBe("Camiseta renomeada");
+    expect(naTela?.variants?.map((v) => v.value)).toEqual(["P", "M", "G"]);
+    // Com variação ativa o estoque é a soma delas, nunca a coluna base (9).
+    expect(naTela?.stock).toBe(5);
+    const gravado = (controle.replaceAll.mock.calls[0][1] as Product[]).find(
+      (p) => p.id === "p1",
+    );
+    expect(gravado?.variants).toHaveLength(3);
+    expect(gravado?.stock).toBe(5);
+  });
+
+  it("evento sem variações e grade toda inativa na resposta: vale o estoque de base do EVENTO (zerou)", async () => {
+    await renderizar();
+
+    controle.cofre.set("p1", {
+      ...produtoDoCofre("p1", 0),
+      estoqueDeBase: 0,
+    });
+    await avisar({
+      table: "produtos",
+      store: "products",
+      eventType: "UPDATE",
+      newRecord: { id: "p1" },
+    });
+    await responder(0, [
+      linhaDaView("p1", 6, [variacaoDaView("p1", "U", 4, false)]),
+    ]);
+
+    const naTela = produtos.find((p) => p.id === "p1");
+    expect(naTela?.variants).toHaveLength(1);
+    expect(naTela?.stock).toBe(0);
+  });
+
+  it("controle: evento COM variações (baixa de uma variação já mesclada pelo motor) substitui a grade da resposta", async () => {
+    await renderizar();
+
+    controle.cofre.set("p1", {
+      ...produtoDoCofre("p1", 0),
+      estoqueDeBase: 9,
+      variants: [
+        {
+          id: "p1-P",
+          productId: "p1",
+          name: "Tamanho",
+          value: "P",
+          stockIncrement: 0,
+          active: true,
+        },
+      ],
+    });
+    await avisar({
+      table: "produtos",
+      store: "products",
+      eventType: "UPDATE",
+      newRecord: { id: "p1" },
+    });
+    await responder(0, [
+      linhaDaView("p1", 9, [
+        variacaoDaView("p1", "P", 2),
+        variacaoDaView("p1", "M", 3),
+      ]),
+    ]);
+
+    const naTela = produtos.find((p) => p.id === "p1");
+    expect(naTela?.variants?.map((v) => v.stockIncrement)).toEqual([0]);
+    expect(naTela?.stock).toBe(0);
   });
 
   it("evento de ANTES da consulta nova não vale mais que ela: a nova leitura do servidor já o inclui", async () => {

@@ -1,3 +1,4 @@
+import { estoqueDasAtivas } from "@/lib/estoque-das-ativas";
 import type { Product } from "@/types";
 
 // ─── Merge fino do evento de realtime na lista de produtos ──────────────────
@@ -45,4 +46,29 @@ export function mesclarProdutoNaLista(
   const nova = lista.slice();
   nova[indice] = evento.registro;
   return nova;
+}
+
+/**
+ * Registro que o tempo real tocou DURANTE a consulta do catálogo, posto por
+ * cima do mesmo produto vindo na resposta. O evento de `produtos` traz a linha
+ * PURA (sem `product_variants`): aplicar só ele apagaria a grade P/M/G que a
+ * resposta trouxe completa. Mesma regra do motor de sincronização: sem
+ * variações no registro e com variações na resposta, ficam as da resposta e o
+ * estoque é recalculado sobre elas (`estoqueDeBase` do evento como base).
+ */
+export function registroTocadoSobreARespostaDoProduto(
+  registro: Product,
+  daResposta: Product | undefined,
+): Product {
+  if (registro.variants?.length || !daResposta?.variants?.length) {
+    return registro;
+  }
+  return {
+    ...registro,
+    variants: daResposta.variants,
+    stock: estoqueDasAtivas(
+      daResposta.variants,
+      registro.estoqueDeBase ?? registro.stock,
+    ),
+  };
 }
