@@ -371,7 +371,10 @@ const VERIFICACOES = {
     esperado: [
       { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
       { texto: "ORDER BY r.id", vezes: 1 },
-      { texto: "IF public.order_refund__pode_ter_saido(v_r.id) THEN", vezes: 1 },
+      {
+        texto: "IF public.order_refund__pode_ter_saido(v_r.id) THEN",
+        vezes: 1,
+      },
       { texto: "IF v_r.amount > v_saldo THEN", vezes: 1 },
       {
         texto:
