@@ -1,7 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { format } from "date-fns/format";
-import { ptBR } from "date-fns/locale/pt-BR";
+import { formatarData } from "@/lib/crm";
 import { HelpCircle, MessageSquare, Star } from "lucide-react";
 
 /**
@@ -63,8 +62,9 @@ interface VozClienteTabProps {
   onTentarDeNovo: () => void;
 }
 
-const dataCurta = (iso: string) =>
-  format(new Date(iso), "dd MMM yy", { locale: ptBR });
+// Mesma escrita e mesmo calendário (Brasília) das demais datas da ficha: o
+// fuso do aparelho mostrava o dia seguinte para o que foi escrito à noite.
+const dataCurta = (iso: string) => formatarData(iso);
 
 function Estrelas({ rating }: { rating: number }) {
   return (
