@@ -385,6 +385,9 @@ body:has(.produtos-tela[data-categorias])
   min-height: 56px;
   border-color: #edbd32;
   background: linear-gradient(#f8d658, #e3ac16);
+  /* O dourado traz o próprio texto: `text-background` (ex.: "Salvar nome") é quase
+     branco no tema Claro. */
+  color: #211a07;
 }
 body:has(.produtos-tela[data-categorias]) [role="dialog"] input {
   min-height: 48px;

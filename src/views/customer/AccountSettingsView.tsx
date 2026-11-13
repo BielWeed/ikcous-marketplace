@@ -516,6 +516,14 @@ export function AccountSettingsView() {
 
   const userId = user?.id;
   const userEmail = user?.email;
+  // O e-mail da sessão pode mudar com a MESMA conta aberta (a loja corrige o
+  // cadastro): ele não pode recriar `carregarPerfil`, senão a releitura do
+  // cadastro apagaria nome, WhatsApp e CPF que a cliente já digitou. A carga lê
+  // por aqui, e o efeito logo abaixo só atualiza o campo de e-mail.
+  const emailDaSessaoRef = useRef(userEmail);
+  useEffect(() => {
+    emailDaSessaoRef.current = userEmail;
+  });
   const carregarPerfil = useCallback(async () => {
     if (!userId) return;
     const rodada = ++cargaRef.current;
@@ -544,7 +552,7 @@ export function AccountSettingsView() {
       const dadosCarregados = {
         name: profile.full_name || "",
         phone: formatarWhatsAppParaExibicao(profile.whatsapp || ""),
-        email: userEmail || "",
+        email: emailDaSessaoRef.current || "",
       };
       setProfileData(dadosCarregados);
       setProfileDataOriginal(dadosCarregados);
@@ -586,11 +594,20 @@ export function AccountSettingsView() {
     } catch {
       if (atual()) setProfileLoadState("error");
     }
-  }, [userId, userEmail]);
+  }, [userId]);
 
   useEffect(() => {
     carregarPerfil();
   }, [carregarPerfil]);
+
+  // E-mail novo da mesma conta: troca só o e-mail, sem tocar no que foi digitado.
+  useEffect(() => {
+    const email = userEmail || "";
+    const comEmail = (p: { name: string; phone: string; email: string }) =>
+      p.email === email ? p : { ...p, email };
+    setProfileData(comEmail);
+    setProfileDataOriginal(comEmail);
+  }, [userEmail]);
 
   const relerDepoisDoPrazo = (
     contaDonaId: string | null,
