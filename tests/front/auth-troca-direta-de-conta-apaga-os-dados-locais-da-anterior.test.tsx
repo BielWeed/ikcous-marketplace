@@ -158,6 +158,7 @@ function semearDadosDaA() {
   localStorage.setItem("marketplace_cart_v1", "[]");
   // As lápides do carrinho (linhas que a A tirou) também são dela, não da B.
   localStorage.setItem("marketplace_cart_tombstones_v1", "[]");
+  localStorage.setItem("marketplace_cart_confirmado_v1", "{}");
   // Escrita pendente legítima e rascunho por usuário NÃO são apagados (nem no
   // Sair): são trabalho em curso do dono da conta, que os reencontra ao voltar.
   localStorage.setItem("orders_offline_updates_queue:A", "[]");
@@ -172,13 +173,14 @@ const dadosDaAAindaExistem = () =>
     "ikcous_addresses_cache_A",
     "marketplace_cart_v1",
     "marketplace_cart_tombstones_v1",
+    "marketplace_cart_confirmado_v1",
   ].filter((chave) => localStorage.getItem(chave) !== null);
 
 it("troca direta A -> B apaga o CEP e os pedidos guardados da A (a mesma limpeza do Sair)", async () => {
   await montar();
   await emitir("SIGNED_IN", "A");
   semearDadosDaA();
-  expect(dadosDaAAindaExistem()).toHaveLength(6);
+  expect(dadosDaAAindaExistem()).toHaveLength(7);
 
   await emitir("SIGNED_IN", "B");
 
@@ -197,7 +199,7 @@ it("limite: a MESMA conta reemitindo SIGNED_IN / TOKEN_REFRESHED não apaga nada
   await emitir("SIGNED_IN", "A");
   await emitir("TOKEN_REFRESHED", "A");
 
-  expect(dadosDaAAindaExistem()).toHaveLength(6);
+  expect(dadosDaAAindaExistem()).toHaveLength(7);
 });
 
 it("limite: visitante -> conta (sem conta anterior) não apaga o que o visitante guardou", async () => {
