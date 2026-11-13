@@ -360,6 +360,17 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   // padrão de AdminCustomersView.
   const rodadaRef = useRef(0);
   const leiturasEmVooRef = useRef(0);
+  // Retrato da consulta atual (página + filtros), sempre o de agora: a exclusão
+  // que termina tarde compara com ele para saber se a lista ainda é a dela.
+  const consultaAtualRef = useRef("");
+  useEffect(() => {
+    consultaAtualRef.current = JSON.stringify([
+      page,
+      ratingFilter,
+      searchQuery,
+      statusFilter,
+    ]);
+  }, [page, ratingFilter, searchQuery, statusFilter]);
 
   const loadReviews = useCallback(
     async (pageToFetch: number, silent = false) => {
@@ -566,6 +577,11 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       return;
     }
     haptic.medium();
+    // A decisão "era a última da página, volta uma" vale para a consulta de
+    // AGORA (antes da espera). Se a lojista trocar filtro/busca/página enquanto
+    // a rede demora, a lista é outra e a página nunca pode ser diminuída.
+    const consultaDaExclusao = consultaAtualRef.current;
+    const eraAUnicaDaPagina = adminReviews.length === 1 && page > 0;
     // Laudo 0109 (A-10): o hook devolve booleano — vibração de sucesso e
     // recarga só quando a exclusão de verdade aconteceu.
     const ok = await deleteReview(id);
@@ -580,8 +596,8 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       return restantes;
     });
     haptic.success();
-    if (adminReviews.length === 1 && page > 0) {
-      setPage((p) => p - 1);
+    if (eraAUnicaDaPagina && consultaAtualRef.current === consultaDaExclusao) {
+      setPage(page - 1);
     } else {
       triggerRefresh();
     }

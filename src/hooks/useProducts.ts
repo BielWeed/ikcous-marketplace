@@ -1014,6 +1014,11 @@ export function useProducts({
   }, [user?.id]);
   const idDaContaViva = useCallback(() => usuarioAtualRef.current, []);
   const lastLoadId = useRef(0);
+  // Quantas listas esta tela já recebeu de uma leitura. A exclusão que falha
+  // compara com o valor de quando partiu: se subiu, a lista que está na tela
+  // é mais nova (outra categoria, busca ou página) e o retrato guardado antes
+  // da exclusão não pode ser posto por cima dela.
+  const listasRecebidasRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Return context products if we are just doing a standard fetch
@@ -1298,6 +1303,7 @@ export function useProducts({
           const mappedProducts = (data as any[]).map((item: any) =>
             mapProductFromDB(item),
           );
+          listasRecebidasRef.current++;
           setLocalProducts(mappedProducts);
           // Leitura filtrada (estoque, situação, busca ou categoria) não vira a
           // cópia que a tela Produtos desenha enquanto carrega e usa sem rede:
@@ -1353,6 +1359,7 @@ export function useProducts({
             page === cachedAdminProductsPagina &&
             pageSize === cachedAdminProductsTamanho
           ) {
+            listasRecebidasRef.current++;
             setLocalProducts(cachedAdminProducts);
             return {
               products: cachedAdminProducts,
@@ -2288,11 +2295,13 @@ export function useProducts({
         ? [...cachedAdminProducts]
         : null;
       const originalTotal = cachedAdminProductsTotal;
+      const listasNaPartida = listasRecebidasRef.current;
 
       versaoDaLista++;
       cachedAdminProducts = (cachedAdminProducts || []).filter(
         (p) => p.id !== id,
       );
+      const cacheSemOProduto = cachedAdminProducts;
       cachedAdminProductsTotal = Math.max(0, cachedAdminProductsTotal - 1);
       setLocalProducts((prev) => prev.filter((p) => p.id !== id));
 
@@ -2361,9 +2370,16 @@ export function useProducts({
         return true;
       } catch (err: any) {
         console.error("Error deleting product:", err);
-        cachedAdminProducts = originalCache;
-        cachedAdminProductsTotal = originalTotal;
-        setLocalProducts(originalProducts);
+        // Enquanto a exclusão esperava, uma leitura pode ter trazido outra
+        // lista (a lojista trocou de categoria): ela é a verdade da tela e o
+        // retrato de antes não a pisa. A cópia sem filtro só é devolvida se
+        // ninguém a trocou nesse intervalo.
+        const outraListaChegou = listasRecebidasRef.current !== listasNaPartida;
+        if (!outraListaChegou || cachedAdminProducts === cacheSemOProduto) {
+          cachedAdminProducts = originalCache;
+          cachedAdminProductsTotal = originalTotal;
+        }
+        if (!outraListaChegou) setLocalProducts(originalProducts);
         if (ehConsultaSemResposta(err)) {
           toast.error(err.message, {
             duration: DURACAO_DO_AVISO_SEM_RESPOSTA_MS,
