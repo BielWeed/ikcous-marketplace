@@ -270,6 +270,8 @@ on:
       - "scripts/publicacao/consultas/142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql"
       - "scripts/publicacao/consultas/143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente.sql"
+      - "scripts/publicacao/consultas/146a-conferir-o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-aplicado.sql"
+      - "scripts/publicacao/consultas/146b-antes-o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-base-vigente.sql"
       - "scripts/publicacao/consultas/145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -515,6 +517,8 @@ on:
       - "scripts/publicacao/consultas/142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql"
       - "scripts/publicacao/consultas/143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente.sql"
+      - "scripts/publicacao/consultas/146a-conferir-o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-aplicado.sql"
+      - "scripts/publicacao/consultas/146b-antes-o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-base-vigente.sql"
       - "scripts/publicacao/consultas/145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -1168,6 +1172,13 @@ jobs:
       - name: Prova viva do CRM que nao duplica o comprador com e sem o 55 (20261399990000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-crm-nao-duplica-o-comprador-com-e-sem-55-viva.cjs
+      # Migration 20261399994000 (o item que a lojista marcou "Nao veio" nao vira perda no ranking de lucro): get_admin_analytics_v2 cobra o custo so da peca devolvida que nao voltou a prateleira E cuja
+      # condicao nao e 'ausente' (a peca que nunca chegou a cliente nao saiu da loja), no ranking (topProducts) e no lucro do grafico diario. Controle com o corpo da 20261399970000 na MESMA fixture (o defeito),
+      # 18 cenarios (danificada, usada e condicao nula seguem como perda; reembolso, vale, cupom, cortesia, devolvido de novo), JSON inteiro igual ao da 3997 sem item "Nao veio", 10 mutantes, ACL/atributos/dono
+      # iguais, reaplicar (LF e CRLF), rollback byte a byte, pre-voo, conexao sem BEGIN com conferencia sabotada e consultas 146a/146b (mais 8e, 35a, 45a, 48a, 53a, 54a e 135a). CLONE proprio.
+      - name: Prova viva do item "Nao veio" que nao vira perda no ranking de lucro (20261399994000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-item-que-nao-veio-nao-vira-perda-no-ranking-de-lucro-viva.cjs
       # Migration 20261399993000 (o CRM e a lista de clientes nao contam a mesma pessoa duas vezes): crm__nunca_comprou tambem tira a conta cujo WhatsApp (com ou sem o 55) e o de um pedido do grupo "pediu e nao pagou"
       # (venda avulsa anulada, devolvida ou sem pagar) e get_admin_customers_paged toma UM endereco principal por cliente (o mais novo, desempate pelo menor id) antes de juntar os pedidos (a corrida dos dois
       # primeiros enderecos dobrava pedidos e total). Controle com os corpos da 20261183000000 e da 20261392000000 na MESMA fixture (o defeito), bordas (numero diferente, DDD 55, outra conta, sem WhatsApp, sem endereco,
