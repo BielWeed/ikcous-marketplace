@@ -1,21 +1,21 @@
 {
   "1.5.176": {
-    "titulo": "Balcão com troco na tela, avisos de frete mais claros e telas do painel que não travam mais",
+    "titulo": "Balcão com troco na tela, frete que chama a loja no WhatsApp e telas do painel que não travam mais",
     "novidades": [
       "Balcão: o troco aparece na tela quando o pagamento é em dinheiro.",
       "Painel, Financeiro: o resultado com custo estimado leva direto ao cadastro de custos.",
       "Loja, Frete: sem opção de entrega, a cliente chama a loja no WhatsApp."
     ],
     "melhorias": [
-      "Painel, Financeiro e Início: o ranking de lucro desconta devolução e estorno.",
+      "Painel, Início: o ranking de produtos que mais dão lucro desconta devolução e estorno.",
       "Painel: as listas de produtos, pedidos e cancelados não repetem nem escondem ninguém entre as páginas.",
       "Painel, Frete e Transportadoras: o frete grátis e o desconto em R$ entendem \"1.234,50\", e o teste mostra mensagem simples.",
       "Painel: o Voltar do celular fecha filtros e perguntas abertas."
     ],
     "correcoes": [
-      "Loja, Cupom: a validade vai até 23:59 de Brasília, o recibo usa o horário de Brasília e a falha de conexão diz o que fazer.",
+      "Painel e Balcão, Cupom: a validade vai até 23:59 de Brasília e o recibo usa o horário de Brasília; na Loja, a falha de conexão no cupom diz o que fazer.",
       "Loja, Checkout: o endereço novo não perde o que a cliente digitou, nome comprido não estoura o cartão, e há foco, aviso de busca vazia e toque maior.",
-      "Loja, Vitrine: ofertas escolhidas à mão seguem a ordem da lojista, o selo de desconto mostra a mesma porcentagem em todas as telas, escolher só parte da variação não mostra preço que ninguém paga, e a busca acha d'água e \"refil\" acha Refis.",
+      "Loja, Vitrine: ofertas escolhidas à mão seguem a ordem da lojista e escolher só parte da variação não mostra preço que ninguém paga.",
       "Loja e Painel: se a leitura do carrinho salvo falha, não diz que está vazio; o catálogo velho se atualiza quando a rede volta em até um minuto; o voto Útil não trava com conexão pendurada.",
       "Painel, Pedidos: pedido pago não fica aguardando, pedido aberto por link não carrega para sempre, a planilha separa retirada, entrega própria e envio, e excluir produto não prende a lista.",
       "Painel, Devolução: o rastreio acompanha a etiqueta, Cancelar só aparece quando vale e as fotos respeitam o limite de 6; fila de privacidade, política de devolução e ajuste de foto não ficam mudos nem carregando para sempre.",
