@@ -5,6 +5,18 @@ import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/env";
 import type { Database } from "@/types/database.types";
 import { createClient } from "@supabase/supabase-js";
 
+// Chrome/Safari com "bloquear dados de sites" fazem o próprio ACESSO a
+// `localStorage` lançar SecurityError, e aqui isso aconteceria na avaliação do
+// módulo: tela em branco antes do React. Sem `storage`, o supabase-js guarda a
+// sessão só na memória (a loja abre; a cliente só não fica logada ao recarregar).
+function armazenamentoDaSessao(): Storage | undefined {
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
 export const supabase = createClient<Database>(
   SUPABASE_URL,
   SUPABASE_PUBLISHABLE_KEY,
@@ -13,7 +25,7 @@ export const supabase = createClient<Database>(
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
-      storage: globalThis.localStorage,
+      storage: armazenamentoDaSessao(),
     },
     realtime: {
       params: {
