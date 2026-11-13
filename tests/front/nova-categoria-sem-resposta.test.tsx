@@ -17,6 +17,8 @@ const h = vi.hoisted(() => ({
   criada: vi.fn(),
   fechou: vi.fn(),
   dispensar: vi.fn(),
+  // O que o "servidor" lista: a Geral, e a Jogos só se ele chegou a gravá-la.
+  servidor: vi.fn(),
 }));
 const registro = {
   id: "c2",
@@ -26,14 +28,12 @@ const registro = {
   ativo: true,
   created_at: "2026-01-02T00:00:00Z",
 };
+const GERAL = { ...registro, id: "c1", nome: "Geral", slug: "geral" };
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
       select: () => ({
-        order: async () => ({
-          data: [{ ...registro, id: "c1", nome: "Geral", slug: "geral" }],
-          error: null,
-        }),
+        order: async () => ({ data: h.servidor(), error: null }),
       }),
       insert: (valores: unknown) => ({
         select: () => ({ single: () => h.inserir(valores) }),
@@ -90,6 +90,7 @@ describe("Nova categoria — rede pendurada com hook real", () => {
         responder = resolve;
       }),
     );
+    h.servidor.mockReset().mockReturnValue([GERAL]);
     h.atualizar
       .mockReset()
       .mockResolvedValue({ data: [{ id: "c2" }], error: null });
@@ -229,6 +230,31 @@ describe("Nova categoria — rede pendurada com hook real", () => {
       expect(h.dispensar).not.toHaveBeenCalled();
     },
   );
+
+  it("sem resposta, a lista é relida: a categoria que o servidor gravou aparece e repetir não cria outra", async () => {
+    await digitar("Jogos");
+    await tocar("Criar categoria");
+    h.servidor.mockReturnValue([GERAL, registro]); // gravou, sem responder
+    await passar(20_000);
+    await passar(0);
+
+    expect(h.erro).toHaveBeenCalledTimes(1);
+    expect(String(h.erro.mock.calls[0][0])).toMatch(
+      /Não sabemos se a categoria foi criada/,
+    );
+    expect(h.sucesso).not.toHaveBeenCalled();
+    expect(h.criada).not.toHaveBeenCalled();
+    expect(
+      [...hospedeiro.querySelectorAll("li")].map((li) => li.textContent),
+    ).toEqual(["Geral", "Jogos"]);
+
+    // Repetir não cai em "já existe" vindo do banco: a folha já a enxerga.
+    await tocar("Criar categoria");
+    expect(h.inserir).toHaveBeenCalledTimes(1);
+    expect(h.erro).toHaveBeenLastCalledWith(
+      "Já existe uma categoria parecida: Jogos",
+    );
+  });
 
   it.each(["sucesso", "erro"])(
     "desmontar com INSERT pendente dispensa só seu aviso; resposta tardia de %s não tem efeitos",
