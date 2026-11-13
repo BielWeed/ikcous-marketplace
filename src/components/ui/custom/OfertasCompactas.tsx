@@ -22,8 +22,9 @@ export default function OfertasCompactas({
   onAddToCart,
   onQuickBuy,
   title = "Super Descontos",
+  ordemDaLojista,
 }: PremiumOffersProps) {
-  const ofertas = ordenarOfertas(products);
+  const ofertas = ordenarOfertas(products, ordemDaLojista);
   const rola = ofertas.length > 2;
   const [pagina, setPagina] = useState(0);
   const [ref, api] = useEmblaCarousel({
