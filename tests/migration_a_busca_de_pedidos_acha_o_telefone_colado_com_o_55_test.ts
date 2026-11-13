@@ -322,15 +322,25 @@ Deno.test("a ordem de desfazer esta declarada no cabecalho; a 92a, a 8e, a 9a, o
   );
   assert.ok(c92a.includes(`h IN ('${H_VIGENTE}', '${H_NOVO}')`));
   assert.ok(c92a.includes(`THEN '${H_VIGENTE}' ELSE h END`));
-  // O corpo FINAL da 9a e' o desta migration; o da 99 e o da 387 ainda no ar aparecem como ele.
+  // O corpo FINAL da 9a e' o da sucessora desta (20261399980000, o desempate por id); o da 99, o da 387 e o desta ainda no ar aparecem como ele.
   const c9a = lerRepo(
     "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql",
   );
-  assert.ok(c9a.includes(`('get_admin_orders_paged', '${H_NOVO}')`));
+  assert.ok(
+    c9a.includes(
+      "('get_admin_orders_paged', 'b404a8397a6490c86fb192d85fd5b6c9')",
+    ),
+  );
+  assert.ok(!c9a.includes(`('get_admin_orders_paged', '${H_NOVO}')`));
   assert.ok(!c9a.includes(`('get_admin_orders_paged', '${H_VIGENTE}')`));
   assert.ok(
     c9a.includes(
-      `(c.h = '${H_99}' OR c.h = '${H_VIGENTE}')\n              THEN '${H_NOVO}'`,
+      `(c.h = '${H_99}' OR c.h = '${H_VIGENTE}')\n              THEN 'b404a8397a6490c86fb192d85fd5b6c9'`,
+    ),
+  );
+  assert.ok(
+    c9a.includes(
+      `WHEN f.fn = 'get_admin_orders_paged' AND c.h = '${H_NOVO}'\n              THEN 'b404a8397a6490c86fb192d85fd5b6c9'`,
     ),
   );
   const sucessoras = lerRepo("tests/banco/sucessoras-da-99.cjs");
@@ -456,5 +466,13 @@ Deno.test("depois da 20261387000000 so este par redefine get_admin_orders_paged"
       )
     )
       posteriores.push(n);
-  assert.deepEqual(posteriores.sort(), [NOME, `rollback-manual-${NOME}`]);
+  // A 20261399980000 (as listas do painel desempatam por id) e' a unica depois desta: tem o proprio teste.
+  const SUCESSORA =
+    "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql";
+  assert.deepEqual(posteriores.sort(), [
+    NOME,
+    SUCESSORA,
+    `rollback-manual-${NOME}`,
+    `rollback-manual-${SUCESSORA}`,
+  ]);
 });

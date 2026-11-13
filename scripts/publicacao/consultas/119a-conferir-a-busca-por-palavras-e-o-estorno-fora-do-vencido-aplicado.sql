@@ -54,7 +54,8 @@ WITH fn AS (
     CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace) > 0 THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'get_admin_products_paged: corpo exato (md5)', '346063e900b8b7b63dfbeffe5070eedc',
-    COALESCE((SELECT h FROM fn WHERE k = 'busca'), 'AUSENTE')
+    -- A 20261399980000 (as listas do painel desempatam por id) sucede este corpo: so o desempate do ORDER BY e' novo. Aceita os dois corpos EXATOS; normaliza ao esperado.
+    COALESCE((SELECT CASE WHEN h IN ('346063e900b8b7b63dfbeffe5070eedc', '0f153b653338f6570da399493093cfae') THEN '346063e900b8b7b63dfbeffe5070eedc' ELSE h END FROM fn WHERE k = 'busca'), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_products_paged: assinatura e atributos conhecidos', 'sim',
     CASE WHEN COALESCE((SELECT atributos FROM fn WHERE k = 'busca'), false) THEN 'sim' ELSE 'nao' END

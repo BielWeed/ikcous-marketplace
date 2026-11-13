@@ -22,8 +22,8 @@ WITH fn AS (
   UNION ALL
   SELECT 'get_admin_orders_paged: corpo exato (md5)', 'f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6',
     -- A 20261399900000 (a busca de Pedidos acha o telefone colado com o +55) sucede este corpo: so o corte do 55 e' novo. Aceita os dois corpos
-    -- EXATOS; normaliza ao esperado historico do rol.
-    COALESCE((SELECT CASE WHEN h IN ('f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6', 'bf08545275eaa451a65e15feceb0ed8d') THEN 'f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6' ELSE h END FROM fn), 'AUSENTE')
+    -- EXATOS; normaliza ao esperado historico do rol. A 20261399980000 (o desempate pelo id no ORDER BY) sucede a 3999: o corpo dela tambem vale.
+    COALESCE((SELECT CASE WHEN h = 'b404a8397a6490c86fb192d85fd5b6c9' THEN 'f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6' WHEN h IN ('f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6', 'bf08545275eaa451a65e15feceb0ed8d') THEN 'f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6' ELSE h END FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_orders_paged: assinatura e atributos conhecidos', 'sim',
     CASE WHEN COALESCE((SELECT atributos FROM fn), false) THEN 'sim' ELSE 'nao' END

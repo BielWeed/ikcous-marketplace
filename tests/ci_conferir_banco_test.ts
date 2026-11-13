@@ -2422,6 +2422,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "9567454f17698f3f0624cca0b06458cd",
           versao: "20261380000000",
         },
+        // 12/11/2026 (lote 140): as listas do painel desempatam por id (cancelados: 99 -> 380 -> 3998).
+        {
+          fn: "get_admin_orders_cancelados_recentes",
+          h: "80ec13f92e224b21d5308a063e88fb6e",
+          versao: "20261399980000",
+        },
         // 26/10/2026: a busca de pedido pelo número não vira busca de telefone (regra do telefone e ORDER BY da página).
         {
           fn: "get_admin_orders_paged",
@@ -2433,6 +2439,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "get_admin_orders_paged",
           h: "bf08545275eaa451a65e15feceb0ed8d",
           versao: "20261399900000",
+        },
+        // 12/11/2026 (lote 140): as listas do painel desempatam por id (pedidos: 99 -> 387 -> 3999 -> 3998).
+        {
+          fn: "get_admin_orders_paged",
+          h: "b404a8397a6490c86fb192d85fd5b6c9",
+          versao: "20261399980000",
         },
         {
           fn: "painel_inicio",
@@ -3846,8 +3858,8 @@ Deno.test("9a — todo md5 de corpo é o da migration MAIS NOVA da árvore que d
     () => {
       assertEquals(dono, {
         buscar_por_codigo_barras: "20261393100000",
-        get_admin_orders_cancelados_recentes: "20261380000000",
-        get_admin_orders_paged: "20261399900000",
+        get_admin_orders_cancelados_recentes: "20261399980000",
+        get_admin_orders_paged: "20261399980000",
         get_product_recommendations: "20261399800000",
         limpar_cotacoes_fora_da_janela: "20261166000000",
         registrar_venda_presencial: "20261280000000",
@@ -8306,12 +8318,34 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       .update(corpo3992.replace(/\n/g, "\r\n"))
       .digest("hex"),
   };
+  // A sucessora da 3992 (a 20261399980000, as listas do painel desempatam por id): a 17a a aceita também (LF e CRLF); a 17b (o ANTES) nunca.
+  const texto3998 = (
+    await Deno.readTextFile(
+      `${MIGRATIONS_DIR}/20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql`,
+    )
+  ).replace(/\r/g, "");
+  const ini3998 = texto3998.indexOf(
+    "CREATE OR REPLACE FUNCTION public.get_admin_products_paged(",
+  );
+  assert(ini3998 >= 0, "a 20261399980000 não define get_admin_products_paged");
+  const abre3998 =
+    texto3998.indexOf("AS $function$", ini3998) + "AS $function$".length;
+  const corpo3998 = texto3998.slice(
+    abre3998,
+    texto3998.indexOf("$function$", abre3998),
+  );
+  const shaSucessora3998 = {
+    lf: criarHash("sha256").update(corpo3998).digest("hex"),
+    crlf: criarHash("sha256")
+      .update(corpo3998.replace(/\n/g, "\r\n"))
+      .digest("hex"),
+  };
   for (const [nome, sql, lado, outro, rotulo] of [
     [NOME_17A, sql17a, "depois", "antes", "do DEPOIS"],
     [NOME_17B, sql17b, "antes", "depois", "do ANTES"],
   ] as Array<[string, string, "antes" | "depois", "antes" | "depois", string]>)
     await t.step(
-      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 8 da sucessora de painel_inicio (a 20261228, a 20261390, a 20261398 e a 20261399300000) e os 6 da de get_admin_analytics_v2 (a 20261234, a 20261242 e a 20261245) e os 6 da de get_admin_products_paged (a 20261381, a 20261385 e a 20261399200000)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
+      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF)${lado === "depois" ? " mais os 8 da sucessora de painel_inicio (a 20261228, a 20261390, a 20261398 e a 20261399300000) e os 6 da de get_admin_analytics_v2 (a 20261234, a 20261242 e a 20261245) e os 8 da de get_admin_products_paged (a 20261381, a 20261385, a 20261399200000 e a 20261399980000)" : ""}, distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
       () => {
         const todos = FUNCOES_17.flatMap((f) => {
           const x = doLado(h.get(f.nome)!, lado);
@@ -8346,6 +8380,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                 shaSucessora85.crlf,
                 shaSucessora3992.lf,
                 shaSucessora3992.crlf,
+                shaSucessora3998.lf,
+                shaSucessora3998.crlf,
               ]
             : [];
         assertEquals(new Set(todos).size, 6);
@@ -8408,6 +8444,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                       shaSucessora85.crlf,
                       shaSucessora3992.lf,
                       shaSucessora3992.crlf,
+                      shaSucessora3998.lf,
+                      shaSucessora3998.crlf,
                       x.lf,
                     ]
                   : [x.lf, x.lf, x.crlf, x.lf],
@@ -8445,6 +8483,8 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
               shaSucessora85.crlf,
               shaSucessora3992.lf,
               shaSucessora3992.crlf,
+              shaSucessora3998.lf,
+              shaSucessora3998.crlf,
             ])
               assert(!sql.includes(proibido), `${nome} aceitaria a sucessora`);
         }

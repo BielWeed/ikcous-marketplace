@@ -121,6 +121,7 @@ const {
   conferirLista,
   desfazerSucessorasDa99,
 } = require("./sucessoras-da-99.cjs");
+const { LISTAS_DO_PAINEL } = require("./as-listas-do-painel-posterior.cjs");
 
 const REPO = path.resolve(__dirname, "..", "..");
 process.chdir(REPO);
@@ -1383,6 +1384,21 @@ async function main() {
         "20261399970000_o_ranking_de_lucro_desconta_a_devolucao.sql",
         "public.get_admin_analytics_v2(integer)",
       ],
+      // A 20261399980000 (as listas do painel nao repetem nem escondem ninguem entre as paginas): UMA migration, tres funcoes da 99
+      // (get_admin_products_paged e' a do lote 17 e sucede o corpo da 13 pela cadeia 99 -> 213 -> 381 -> 385 -> 3992 -> 3998; as outras duas, de
+      // fora destas tres). So acrescenta o desempate pelo id no ORDER BY; o rollback dela devolve os tres corpos de uma vez (o molde, abaixo, desfaz e mede).
+      [
+        "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql",
+        "public.get_admin_orders_cancelados_recentes(integer,integer,integer)",
+      ],
+      [
+        "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql",
+        "public.get_admin_orders_paged(text,text,text,text,integer,integer,text,text)",
+      ],
+      [
+        "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql",
+        "public.get_admin_products_paged(text,text,text,text,integer,integer)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );
@@ -1403,12 +1419,19 @@ async function main() {
   // O molde (clone do rodar-isolado) traz a arvore INTEIRA: as posteriores ao lote 17 saem dele, na
   // ordem inversa, cada uma pelo rollback-manual (com preflight proprio). O clone e' descartavel.
   await usar(MOLDE, async (c) => {
+    // A 20261399980000 (as listas do painel desempatam por id) e' a mais nova e redefine get_admin_products_paged: sai PRIMEIRO (so se no ar).
+    await require("./as-listas-do-painel-posterior.cjs").desfazerListasDoPainelNaTransacao(
+      c,
+    );
     // A 20261381000000 (o ex-admin perde o acesso na hora) sucede a 13 em get_admin_products_paged (so troca a guarda) e
     // nao e' uma das 42 da 99: sai primeiro, pelo rollback-manual dela (nao faz nada se nao esta no ar).
     await require("./ex-admin-resto-do-painel-posterior.cjs").desfazerExAdminRestoNaTransacao(
       c,
     );
     for (const s of [...POSTERIORES].reverse()) {
+      // As tres entradas da 3998 ja sairam ali em cima, de uma vez (o modulo confere os tres corpos anteriores byte a byte); depois da cadeia
+      // do ex-admin (381/385/3992) o corpo de get_admin_products_paged ja nao e o da 3992, entao a conferencia por entrada nao se aplica.
+      if (s.nome === LISTAS_DO_PAINEL.nome) continue;
       const vivo = (await c.query(`SELECT ${MD5_VIVO(s.assinatura)} AS h`))
         .rows[0].h;
       if (vivo === s.hashDesta) await c.query(lerLF(s.rollback));

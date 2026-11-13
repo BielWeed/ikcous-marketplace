@@ -211,7 +211,7 @@ Deno.test("3992: sem BEGIN/COMMIT, pre-voo antes do CREATE (corpo, atributos, do
     assert.ok(sql.includes(parte), `pre-voo sem: ${parte}`);
 });
 
-Deno.test("3992: a ultima redefinicao de get_admin_products_paged e' a desta migration; db-apply exige as guardas dos dois blocos", () => {
+Deno.test("3992: a penultima redefinicao de get_admin_products_paged e' a desta migration (a 20261399980000, o desempate por id, a sucede); db-apply exige as guardas dos dois blocos", () => {
   const fontes = [
     ...Deno.readDirSync(new URL("../supabase/migrations/", import.meta.url)),
   ]
@@ -219,12 +219,19 @@ Deno.test("3992: a ultima redefinicao de get_admin_products_paged e' a desta mig
     .filter((n) => /^\d{14}_.*\.sql$/.test(n))
     .sort()
     .filter((n) => definicao(ler(`supabase/migrations/${n}`)));
+  // A sucessora (as listas do painel desempatam por id) tem o proprio teste:
+  // tests/migration_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas_test.ts.
   assert.equal(
     fontes.at(-1),
-    nome,
-    "outra migration redefine get_admin_products_paged depois desta",
+    "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql",
+    "outra migration redefine get_admin_products_paged depois da 20261399980000",
   );
-  assert.equal(fontes.at(-2), nome85);
+  assert.equal(
+    fontes.at(-2),
+    nome,
+    "outra migration redefine get_admin_products_paged entre esta e a 20261399980000",
+  );
+  assert.equal(fontes.at(-3), nome85);
   const { VERIFICACOES, avaliarChecagem } = require("../scripts/db-apply.cjs");
   // eslint-disable-next-line security/detect-object-injection -- Nome literal desta migration, nunca entrada externa.
   const checagem = VERIFICACOES[nome];

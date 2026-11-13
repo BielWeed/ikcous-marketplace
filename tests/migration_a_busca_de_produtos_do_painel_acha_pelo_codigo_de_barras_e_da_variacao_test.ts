@@ -187,19 +187,25 @@ Deno.test("385: a ultima redefinicao de get_admin_products_paged antes da sucess
     .filter((n) => /^\d{14}_.*\.sql$/.test(n))
     .sort()
     .filter((n) => definicao(ler(`supabase/migrations/${n}`)));
-  // A UNICA redefinicao depois da 385 e' a 20261399200000 (a busca acha por palavras; prova propria em
-  // tests/banco/a-busca-do-painel-acha-por-palavras-viva.cjs e no teste offline dela).
+  // As UNICAS redefinicoes depois da 385 sao a 20261399200000 (a busca acha por palavras; prova propria em
+  // tests/banco/a-busca-do-painel-acha-por-palavras-viva.cjs e no teste offline dela) e a 20261399980000 (as listas do painel
+  // desempatam por id; prova propria em tests/banco/as-listas-do-painel-nao-repetem-ninguem-viva.cjs e no teste offline dela).
   assert.equal(
     fontes.at(-1),
+    "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql",
+    "outra migration redefine get_admin_products_paged depois da 20261399980000",
+  );
+  assert.equal(
+    fontes.at(-2),
     "20261399200000_a_busca_de_produtos_do_painel_acha_por_palavras.sql",
     "outra migration redefine get_admin_products_paged depois da 20261399200000",
   );
   assert.equal(
-    fontes.at(-2),
+    fontes.at(-3),
     nome,
     "outra migration redefine get_admin_products_paged depois da 385",
   );
-  assert.equal(fontes.at(-3), nome81);
+  assert.equal(fontes.at(-4), nome81);
   const { VERIFICACOES, avaliarChecagem } = require("../scripts/db-apply.cjs");
   // eslint-disable-next-line security/detect-object-injection -- Nome literal desta migration, nunca entrada externa.
   const checagem = VERIFICACOES[nome];

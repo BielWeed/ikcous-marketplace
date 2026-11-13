@@ -730,6 +730,49 @@ const VERIFICACOES = {
       { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
     ],
   },
+  // 20261399980000: as listas de Produtos, Pedidos e Cancelados do painel nao repetem nem escondem ninguem entre as paginas. As TRES funcoes (get_admin_products_paged, get_admin_orders_paged e
+  // get_admin_orders_cancelados_recentes) ganham SO o desempate pelo id no fim do ORDER BY (o marcador do ORDER BY aparece UMA vez em cada e a frase do comentario do desempate tambem). As duas travas de
+  // admin (is_admin e is_admin_atual; a de produtos so tem a is_admin_atual) seguem UMA vez em cada corpo. A consulta 140a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
+  "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql":
+    [
+      {
+        funcao: "get_admin_products_paged",
+        esperado: [
+          { texto: "ORDER BY p.data_cadastro DESC,", vezes: 1 },
+          {
+            texto: "-- (20261399980000). A ordem escolhida continua mandando.",
+            vezes: 1,
+          },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        ],
+      },
+      {
+        funcao: "get_admin_orders_paged",
+        esperado: [
+          { texto: "o.created_at DESC,", vezes: 1 },
+          {
+            texto:
+              "O pedido do numero digitado continua primeiro e a data continua mandando.",
+            vezes: 1,
+          },
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        ],
+      },
+      {
+        funcao: "get_admin_orders_cancelados_recentes",
+        esperado: [
+          { texto: "o.created_at DESC,", vezes: 1 },
+          {
+            texto:
+              "-- (20261399980000). A ordem de atencao do cancelamento continua mandando.",
+            vezes: 1,
+          },
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        ],
+      },
+    ],
   // 20261397000000: o desconto do cupom de porcentagem e' arredondado ao centavo. As TRES funcoes (create_marketplace_order_v23/v24 e
   // validate_coupon_secure_v2) trocam SO a linha da conta do desconto percentual: `round(<subtotal * valor / 100>, 2)` no lugar da conta crua.
   // Cada marcador aparece UMA vez no corpo (o marcador nao admite "zero vezes": a ausencia da conta antiga e' do pos-voo da migration e da

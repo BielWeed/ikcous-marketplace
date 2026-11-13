@@ -69,6 +69,8 @@
 -- JA DECIDIDO PARA `get_admin_products_paged` (04/11/2026): a 20261399200000 (a busca de produtos do painel e do balcao
 -- acha por palavras, em qualquer ordem) o redefine depois da 85, so trocando o filtro de busca. A mesma linha aceita
 -- tambem o corpo da 3992 (LF e CRLF).
+-- JA DECIDIDO PARA `get_admin_products_paged` (12/11/2026): a 20261399980000 (as listas do painel desempatam por id) o redefine depois da 3992, so
+-- acrescentando o id ao fim do ORDER BY. A mesma linha aceita tambem o corpo da 3998 (LF e CRLF).
 --
 -- sha256 = encode(sha256(convert_to(prosrc, 'UTF8')), 'hex'). Cada hash aparece aqui uma vez em
 -- LF e uma em CRLF; tests/ci_conferir_banco_test.ts os recalcula dos ARQUIVOS das migrations
@@ -177,10 +179,11 @@ WITH alvo(nome, assinatura) AS (
   UNION ALL
   SELECT 'get_admin_products_paged: corpo e o da 20261213000000 (sha256)',
          'ce2d99a8fc28deece0e72a2c678bb92ab0ea50073631e2307c0d053b70e98501',
-         -- 8 hashes aceitos: o corpo da 20261213000000 (LF e CRLF) OU o da SUCESSORA dele, a 20261381000000 (a
+         -- 10 hashes aceitos: o corpo da 20261213000000 (LF e CRLF) OU o da SUCESSORA dele, a 20261381000000 (a
          -- guarda passa de is_admin() para o admin atual; LF e CRLF) OU o da sucessora desta, a 20261385000000 (o filtro de
          -- busca acha tambem o codigo de barras e o codigo da variacao; LF e CRLF) OU o da sucessora desta, a 20261399200000
-         -- (a busca acha por palavras, em qualquer ordem; LF e CRLF). O `vivo` mostra o esperado.
+         -- (a busca acha por palavras, em qualquer ordem; LF e CRLF) OU o da sucessora desta, a 20261399980000 (o desempate pelo id no
+         -- ORDER BY; LF e CRLF). O `vivo` mostra o esperado.
          COALESCE((SELECT CASE WHEN f.h IN ('ce2d99a8fc28deece0e72a2c678bb92ab0ea50073631e2307c0d053b70e98501',
                                             '0924946faa9dc2c66de1622a9ddc60fabf7abb96147aeba2584ca44d7025ca81',
                                             'e1f5529f7da9735c92d2a55606e9cb309d5de1ab9bd40723d2b2be3f58d4de97',
@@ -188,7 +191,9 @@ WITH alvo(nome, assinatura) AS (
                                             '2602b946af80d90cc7519bd3fdf57a7ea69e57b1d659587da1b1f4a035dd30bc',
                                             '3152b3808fc8e5be2a5ad951a8f257384fd5c4ffc1a9204c62b693d94d73ff7d',
                                             '1bbb83b9758dfa35faf69f529cdce4c0ce66cb862f4bda0b5f5e9091e2453e32',
-                                            '8fa4076005a6b6898cef5a45eeb1670bec4e247f7ab5593c55aa37fdf26ccc68')
+                                            '8fa4076005a6b6898cef5a45eeb1670bec4e247f7ab5593c55aa37fdf26ccc68',
+                                            '3365e15676551a4db65680e5f06f535a0292b58d195a816079134c87f28ac6c2',
+                                            '0d2579e06101a237e938538a5fa0a0e236a6ba4e6b6c149570ae5b659cd1a024')
                                THEN 'ce2d99a8fc28deece0e72a2c678bb92ab0ea50073631e2307c0d053b70e98501'
                                ELSE f.h END
                      FROM fn f WHERE f.nome = 'get_admin_products_paged'), 'AUSENTE')

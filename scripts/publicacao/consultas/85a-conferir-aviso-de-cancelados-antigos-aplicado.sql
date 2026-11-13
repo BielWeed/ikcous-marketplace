@@ -21,7 +21,8 @@ WITH fn AS (
     CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace) > 0 THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'get_admin_orders_cancelados_recentes: corpo exato (md5)', '9567454f17698f3f0624cca0b06458cd',
-    COALESCE((SELECT h FROM fn), 'AUSENTE')
+    -- A 20261399980000 (as listas do painel desempatam por id) sucede este corpo: so o desempate do ORDER BY e' novo. Aceita os dois corpos EXATOS; normaliza ao esperado historico do rol.
+    COALESCE((SELECT CASE WHEN h IN ('9567454f17698f3f0624cca0b06458cd', '80ec13f92e224b21d5308a063e88fb6e') THEN '9567454f17698f3f0624cca0b06458cd' ELSE h END FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_orders_cancelados_recentes: assinatura e atributos conhecidos', 'sim',
     CASE WHEN COALESCE((SELECT atributos FROM fn), false) THEN 'sim' ELSE 'nao' END
