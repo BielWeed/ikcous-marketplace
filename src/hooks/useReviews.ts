@@ -130,6 +130,11 @@ export function useReviews() {
   const [erroDaListagemProduto, setErroDaListagemProduto] = useState<
     string | null
   >(null);
+  // Produto cuja lista a rede JÁ devolveu (vazia ou não): só então a contagem
+  // da tela vem da lista, não da contagem guardada no produto.
+  const [produtoRespondido, setProdutoRespondido] = useState<string | null>(
+    null,
+  );
   const latestProductIdRef = useRef<string | null>(null);
   const rodadaAdminRef = useRef(0);
   const consultaDoProdutoRef = useRef(0);
@@ -146,6 +151,7 @@ export function useReviews() {
     setAdminReviews([]);
     setErroDaListagemAdmin(null);
     setErroDaListagemProduto(null);
+    setProdutoRespondido(null);
     setLoading(false);
     setDonoDasAvaliacoes(user?.id);
   }, [user?.id]);
@@ -243,6 +249,7 @@ export function useReviews() {
         if (latestProductIdRef.current === productId) {
           setReviews(formattedReviews);
           setErroDaListagemProduto(null);
+          setProdutoRespondido(productId);
         }
         updateReviewsCacheSeMesmaGeracao(productId, formattedReviews, geracao);
         // A lista já chegou: o "Carregando" não espera a leitura dos votos.
@@ -1074,6 +1081,7 @@ export function useReviews() {
     loading,
     erroDaListagemAdmin,
     erroDaListagemProduto,
+    produtoRespondido,
     getReviewsByProduct,
     addReview,
     markHelpful,
