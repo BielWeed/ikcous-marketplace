@@ -26,6 +26,11 @@ export function guardarCodigoParaCadastro(
   recado = { codigo, em: agora };
 }
 
+/** Joga o recado fora: o destino (formulário de produto novo) foi abandonado. */
+export function descartarCodigoParaCadastro(): void {
+  recado = null;
+}
+
 /**
  * O código guardado, já na limpeza do campo, ou `null` se não há, venceu ou
  * não cabe no formato do campo (então o campo fica vazio, como sempre foi).

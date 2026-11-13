@@ -1,5 +1,6 @@
 import {
   VALIDADE_DO_CODIGO_PARA_CADASTRO_MS,
+  descartarCodigoParaCadastro,
   guardarCodigoParaCadastro,
   tomarCodigoParaCadastro,
 } from "@/lib/codigo-para-cadastro";
@@ -77,5 +78,12 @@ describe("codigo-para-cadastro", () => {
 
     guardarCodigoParaCadastro("AB-123", 1000);
     expect(tomarCodigoParaCadastro(1000)).toBe("AB-123");
+  });
+
+  it("descartar joga o recado fora", () => {
+    guardarCodigoParaCadastro("7891234567890", 1000);
+    descartarCodigoParaCadastro();
+
+    expect(tomarCodigoParaCadastro(1000)).toBeNull();
   });
 });
