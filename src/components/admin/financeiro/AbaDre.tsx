@@ -14,7 +14,9 @@ import {
 } from "@/lib/financeiro";
 import { margemEmFormacao } from "@/lib/margem-em-formacao";
 import { cn } from "@/lib/utils";
+import type { View } from "@/types";
 import type { DreFinanceira, IntervaloDeDatas } from "@/types/financeiro";
+import { VISAO_SEM_CUSTO } from "@/utils/produtos-sem-custo";
 import {
   CartaoSecao,
   Dinheiro,
@@ -440,11 +442,14 @@ export function AbaDre({
   intervalo,
   versao,
   rotuloDoPeriodo,
+  onNavigate,
 }: {
   readonly ativo: boolean;
   readonly intervalo: IntervaloDeDatas | null;
   readonly versao: number;
   readonly rotuloDoPeriodo: string;
+  /** Opcional: sem ele, o aviso de custo estimado não leva ao cadastro. */
+  readonly onNavigate?: (view: View, id?: string) => void;
 }) {
   const [modo, setModo] = useState<ModoDaDre>("periodo");
   const [abertas, setAbertas] = useState<ReadonlySet<ChaveDaDre>>(
@@ -584,6 +589,15 @@ export function AbaDre({
 
       <div className="flex flex-col gap-2 px-1 text-xs leading-relaxed text-zinc-400">
         {dados.cmvEstimado ? <p>{AVISO_CUSTO_ESTIMADO}.</p> : null}
+        {dados.cmvEstimado && onNavigate ? (
+          <button
+            type="button"
+            onClick={() => onNavigate("admin-products", VISAO_SEM_CUSTO)}
+            className="min-h-11 self-start font-bold text-white underline underline-offset-4"
+          >
+            Cadastrar custo dos produtos
+          </button>
+        ) : null}
         <p>
           Transferências entre contas, compra de mercadoria para estoque e
           aporte ou retirada do dono ficam fora do resultado: não são lucro nem
