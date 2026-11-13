@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/alert-dialog";
 // Sub-components
 import { AddressList } from "@/components/ui/custom/AddressList";
+import { CarrinhoSalvoNaoLido } from "@/components/ui/custom/CarrinhoSalvoNaoLido";
 import { CartFooterSummary } from "@/components/ui/custom/CartFooterSummary";
 import { CartItemsList } from "@/components/ui/custom/CartItemsList";
 import { EmptyCart } from "@/components/ui/custom/EmptyCart";
@@ -252,6 +253,8 @@ export function CartView({
   const {
     cart: ctxCart,
     isLoading: lendoOCarrinhoSalvo,
+    carrinhoSalvoNaoLido,
+    relerCarrinhoSalvo,
     shippingFee: ctxShippingFee,
     freteIndefinido,
     freteGratis,
@@ -997,6 +1000,19 @@ export function CartView({
                         Carregando seu carrinho…
                       </p>
                     </div>
+                  ) : carrinhoSalvoNaoLido && !propCart ? (
+                    // A leitura destravou sem conseguir ler o carrinho da
+                    // conta: lista vazia NÃO é "carrinho vazio" (a cliente
+                    // acharia que perdeu o que salvou). Cai sozinha quando a
+                    // releitura (automática ou o botão) dá certo.
+                    <CarrinhoSalvoNaoLido
+                      onTentarDeNovo={relerCarrinhoSalvo}
+                      onSair={() => {
+                        haptic.medium();
+                        onNavigate("home");
+                      }}
+                      rotuloDoSair="Explorar Produtos"
+                    />
                   ) : (
                     <EmptyCart onNavigate={onNavigate} />
                   )}

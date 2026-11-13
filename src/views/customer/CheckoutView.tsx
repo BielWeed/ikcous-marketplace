@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
 import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
+import { CarrinhoSalvoNaoLido } from "@/components/ui/custom/CarrinhoSalvoNaoLido";
 import { HEADER_CENTER_SLOT_ID } from "@/components/ui/custom/Header";
 import { SaidaDaRecusa } from "@/components/ui/custom/SaidaDaRecusa";
 import {
@@ -918,6 +919,8 @@ export function CheckoutViewDaConta({
   const {
     cart: ctxCart,
     isLoading: lendoOCarrinhoSalvo,
+    carrinhoSalvoNaoLido,
+    relerCarrinhoSalvo,
     cartTotal: ctxSubtotal,
     shippingFee: ctxShipping,
     clearCart: ctxClearCart,
@@ -6105,6 +6108,14 @@ export function CheckoutViewDaConta({
           <PedidoJaFeitoNaTela
             orderId={pedidoDoRecibo}
             onNavigate={onNavigate}
+          />
+        ) : carrinhoSalvoNaoLido && !propCart ? (
+          // A leitura do carrinho salvo da conta falhou: lista vazia NÃO é
+          // "vazio" (o recibo, acima, é a única prova de pedido já feito).
+          <CarrinhoSalvoNaoLido
+            onTentarDeNovo={relerCarrinhoSalvo}
+            onSair={() => onNavigate("cart")}
+            rotuloDoSair="Voltar ao carrinho"
           />
         ) : (
           <>
