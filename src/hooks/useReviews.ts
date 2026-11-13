@@ -1025,9 +1025,13 @@ export function useReviews() {
         );
         if (bc) {
           listener = (event: MessageEvent) => {
+            // Sem produto = painel (todas as avaliações): aceita o aviso de
+            // QUALQUER produto, porque o líder pode ser a aba de um produto e
+            // o aviso dele carrega só o id desse produto. Com produto, só o
+            // aviso do próprio produto acorda a página.
             if (
               event.data?.type === "reviews_change" &&
-              event.data?.productId === productId
+              (!productId || event.data?.productId === productId)
             ) {
               console.log(
                 "[Realtime-Reviews-Secondary] Received change signal from Leader tab",
