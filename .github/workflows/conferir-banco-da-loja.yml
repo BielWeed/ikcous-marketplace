@@ -402,7 +402,7 @@ jobs:
             fi
           fi
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - uses: actions/setup-node@v7
         with:
@@ -485,7 +485,7 @@ jobs:
             fi
           fi
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - uses: actions/setup-node@v7
         with:
@@ -512,7 +512,7 @@ jobs:
       group: verificar-pagamentos-ikcous-dek
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
@@ -529,7 +529,7 @@ jobs:
       group: verificar-pagamentos-ikcous-caf
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
