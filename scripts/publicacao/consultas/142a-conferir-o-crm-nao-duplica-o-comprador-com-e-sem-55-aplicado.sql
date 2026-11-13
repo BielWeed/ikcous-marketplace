@@ -1,4 +1,4 @@
--- 141b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente: ANTES da 20261399990000 (o da 20261178000000, md5 8a802f6324c86cdc0be214b4d5ac69bb).
+-- 142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado: DEPOIS da 20261399990000 (o desta migration, md5 bd683b55c36dff83eefa0282077d9a63).
 -- SO LEITURA, so catalogo; rol fechado de 4 linhas. Nao le nenhum pedido, perfil nem cliente e nao chama a crm__vendas.
 WITH fn AS (
   SELECT p.oid, md5(replace(p.prosrc, chr(13), '')) AS h,
@@ -17,7 +17,7 @@ WITH fn AS (
   SELECT 'controle: funcoes de public visiveis a este papel', 'sim',
     CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace) > 0 THEN 'sim' ELSE 'nao' END
   UNION ALL
-  SELECT 'crm__vendas: corpo exato (md5)', '8a802f6324c86cdc0be214b4d5ac69bb',
+  SELECT 'crm__vendas: corpo exato (md5)', 'bd683b55c36dff83eefa0282077d9a63',
     COALESCE((SELECT h FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'crm__vendas: assinatura e atributos conhecidos (sql, STABLE, SECURITY INVOKER, search_path=public, uma so)', 'sim',

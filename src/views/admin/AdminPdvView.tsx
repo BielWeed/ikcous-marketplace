@@ -63,6 +63,7 @@ import {
 } from "@/lib/erro-da-venda-presencial";
 import type { Leitura } from "@/lib/leitor/decodificador";
 import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
@@ -383,13 +384,23 @@ export function AdminPdvView({
     termo: string,
   ): Promise<PaginaDeClientesEncontrados> {
     const rodada = ++rodadaClientesRef.current;
-    const { data, error } = await supabase.rpc("get_admin_customers_paged", {
-      p_search: termo,
-      p_sort_field: "created_at",
-      p_sort_direction: "desc",
-      p_page: 0,
-      p_page_size: 8,
-    });
+    // Com prazo: rede "pendurada" conecta e não responde, e sem ele a tela
+    // ficava em "Buscando…" para sempre. É uma LEITURA: desistir de esperar é
+    // seguro e a resposta tardia é descartada. Estourou = cai no erro de busca
+    // que a tela já mostra, e repetir o mesmo termo refaz a consulta.
+    const { data, error } = await aguardarComPrazo(
+      Promise.resolve(
+        supabase.rpc("get_admin_customers_paged", {
+          p_search: termo,
+          p_sort_field: "created_at",
+          p_sort_direction: "desc",
+          p_page: 0,
+          p_page_size: 8,
+        }),
+      ),
+      PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+      () => erroDeConsultaSemResposta(),
+    );
     if (rodada !== rodadaClientesRef.current) return { clientes: [], total: 0 };
     if (error) throw error;
     const clientes = ((data as any)?.data ?? []) as LinhaDeClienteEncontrado[];
@@ -407,14 +418,23 @@ export function AdminPdvView({
     pagina: number,
   ): Promise<PaginaDeProdutosEncontrados> {
     const rodada = ++rodadaProdutosRef.current;
-    const { data, error } = await supabase.rpc("get_admin_products_paged", {
-      p_search: termo,
-      p_category: "all",
-      p_status: "active",
-      p_stock: "all",
-      p_page: pagina,
-      p_page_size: 8,
-    });
+    // Com prazo, pelo mesmo motivo da busca de clientes acima: leitura, então
+    // desistir de esperar é seguro; estourou = a falha de busca com "Tentar de
+    // novo" (que repete a MESMA página) e a resposta tardia é descartada.
+    const { data, error } = await aguardarComPrazo(
+      Promise.resolve(
+        supabase.rpc("get_admin_products_paged", {
+          p_search: termo,
+          p_category: "all",
+          p_status: "active",
+          p_stock: "all",
+          p_page: pagina,
+          p_page_size: 8,
+        }),
+      ),
+      PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+      () => erroDeConsultaSemResposta(),
+    );
     if (rodada !== rodadaProdutosRef.current) return { produtos: [], total: 0 };
     if (error) throw error;
     const produtos = ((data as any)?.data ?? []) as ProdutoEncontradoNaBusca[];

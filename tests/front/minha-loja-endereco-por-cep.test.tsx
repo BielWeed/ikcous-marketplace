@@ -442,13 +442,149 @@ describe("EnderecoDaLoja — preenche pelo CEP", () => {
     expect(ultima()?.valores?.storeAddress).toContain("1600");
   });
 
-  it("CEP que a busca não conseguiu achar segue como antes: o que está escrito pode ser salvo", async () => {
+  // ── CEP que NÃO existe ────────────────────────────────────────────────
+  // Defeito medido: trocar o CEP por um que nenhum provedor conhece deixava
+  // rua/número/cidade/UF do CEP ANTIGO na tela, o motivo ficava vazio e o
+  // Salvar gravava "99999-999" com o endereço de São Paulo. Agora o CEP que
+  // não existe SÓ libera se a lojista mexer no endereço (aí ela afirma que o
+  // endereço é daquele CEP, que pode ser novo demais para os provedores).
+  it("CEP que não existe, com o endereço de antes intacto: NÃO entrega CEP novo com endereço antigo", async () => {
     await montar(SALVO_PAULISTA);
     await digitarOCep("99999999");
 
     expect(hospedeiro.textContent).toContain("CEP não encontrado");
+    // o que estava escrito foi mantido na tela...
+    expect(campo("endereco-rua").value).toBe("Avenida Paulista");
+    // ...mas não vale gravar: é o endereço de OUTRO CEP
+    expect(ultima()?.alterado).toBe(true);
+    expect(ultima()?.valores).toBeNull();
+    expect(ultima()?.motivo).toMatch(/esse CEP não foi encontrado/i);
+    expect(hospedeiro.textContent).toContain(
+      "Para salvar o endereço: esse CEP não foi encontrado",
+    );
+  });
+
+  it("CEP que não existe: ela corrige a rua à mão e aí o endereço dela pode ser salvo", async () => {
+    await montar(SALVO_PAULISTA);
+    await digitarOCep("99999999");
+    expect(ultima()?.valores).toBeNull();
+
+    await digitar("endereco-rua", "Rua Nova do Bairro Novo");
+    expect(ultima()?.motivo).toBeNull();
+    expect(ultima()?.valores).toEqual({
+      originCep: "99999-999",
+      storeAddress:
+        "Rua Nova do Bairro Novo, 1578 — Bela Vista, São Paulo/SP — CEP 99999-999",
+      storeCity: "São Paulo",
+      storeState: "SP",
+    });
+    expect(hospedeiro.textContent).not.toContain("esse CEP não foi encontrado");
+  });
+
+  it("CEP que não existe: trocar só o número (rua longa com dois CEPs) também libera", async () => {
+    await montar(SALVO_PAULISTA);
+    await digitarOCep("99999999");
+    expect(ultima()?.valores).toBeNull();
+
+    await digitar("endereco-numero", "2900");
     expect(ultima()?.motivo).toBeNull();
     expect(ultima()?.valores?.originCep).toBe("99999-999");
+  });
+
+  it("CEP que não existe: sair e voltar ao campo do CEP não destrava, e a edição dela não é desfeita", async () => {
+    await montar(SALVO_PAULISTA);
+    await digitarOCep("99999999");
+    // reconsultar o MESMO CEP (blur) responde "não existe" de novo
+    await digitarOCep("99999999");
+    expect(ultima()?.valores).toBeNull();
+
+    await digitar("endereco-rua", "Rua Nova do Bairro Novo");
+    expect(ultima()?.valores?.originCep).toBe("99999-999");
+    await digitarOCep("99999999");
+    // ela já tinha confirmado o endereço: sair do campo não a trava de novo
+    expect(ultima()?.motivo).toBeNull();
+    expect(ultima()?.valores?.storeAddress).toContain(
+      "Rua Nova do Bairro Novo",
+    );
+  });
+
+  it("CEP que não existe e depois corrigido para um que existe: o endereço do CEP certo libera o salvar", async () => {
+    await montar(SALVO_PAULISTA);
+    await digitarOCep("99999999");
+    expect(ultima()?.valores).toBeNull();
+
+    await digitarOCep("13010000");
+    expect(campo("endereco-rua").value).toBe("Rua Barão de Jaguara");
+    expect(ultima()?.motivo).toBeNull();
+    expect(ultima()?.valores?.originCep).toBe("13010-000");
+  });
+
+  it("voltar ao CEP salvo (que os provedores não conhecem) com o endereço de OUTRO CEP na tela: não grava a mistura", async () => {
+    await montar({
+      originCep: "99999-999",
+      storeAddress:
+        "Rua Nova do Bairro Novo, 10 — Bairro Novo, Campinas/SP — CEP 99999-999",
+      storeCity: "Campinas",
+      storeState: "SP",
+    });
+    await digitarOCep("01310100"); // existe: o endereço vira o da Paulista
+    expect(campo("endereco-rua").value).toBe("Avenida Paulista");
+    await digitarOCep("99999999"); // volta ao CEP salvo, que ninguém conhece
+
+    expect(campo("endereco-rua").value).toBe("Avenida Paulista");
+    expect(ultima()?.alterado).toBe(true);
+    expect(ultima()?.valores).toBeNull();
+    expect(ultima()?.motivo).toMatch(/esse CEP não foi encontrado/i);
+  });
+
+  it("o CEP salvo que os provedores não conhecem, sem mexer em nada, não acusa nem altera nada", async () => {
+    await montar({
+      originCep: "99999-999",
+      storeAddress:
+        "Rua Nova do Bairro Novo, 10 — Bairro Novo, Campinas/SP — CEP 99999-999",
+      storeCity: "Campinas",
+      storeState: "SP",
+    });
+    await digitarOCep("99999999");
+
+    expect(ultima()?.alterado).toBe(false);
+    expect(ultima()?.motivo).toBeNull();
+    expect(hospedeiro.textContent).not.toContain("Para salvar o endereço");
+  });
+
+  it("errou um CEP e voltou ao CEP salvo (que ninguém conhece): tudo igual ao salvo, sem aviso de 'para salvar'", async () => {
+    await montar({
+      originCep: "99999-999",
+      storeAddress:
+        "Rua Nova do Bairro Novo, 10 — Bairro Novo, Campinas/SP — CEP 99999-999",
+      storeCity: "Campinas",
+      storeState: "SP",
+    });
+    await digitarOCep("88888888"); // não existe: trava, endereço é o de antes
+    expect(ultima()?.valores).toBeNull();
+    await digitarOCep("99999999"); // voltou ao salvo: nada a gravar
+
+    expect(ultima()?.alterado).toBe(false);
+    expect(ultima()?.motivo).toBeNull();
+    expect(hospedeiro.textContent).not.toContain("Para salvar o endereço");
+  });
+
+  it("falha de REDE na busca não é CEP inexistente: o que está escrito continua podendo ser salvo", async () => {
+    const erro = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+    await montar(SALVO_PAULISTA);
+    await digitarOCep("13010000");
+
+    expect(hospedeiro.textContent).toContain("Não foi possível buscar o CEP");
+    expect(hospedeiro.textContent).not.toContain("esse CEP não foi encontrado");
+    expect(ultima()?.motivo).toBeNull();
+    expect(ultima()?.valores?.originCep).toBe("13010-000");
+    erro.mockRestore();
   });
 
   it("número com vírgula: gravado normalizado e, salvo, a tela não fica 'alterada'", async () => {

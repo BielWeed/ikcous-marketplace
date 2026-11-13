@@ -194,7 +194,11 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // get_admin_orders_paged (99 -> 387 -> 3999 -> 3998) e de get_admin_orders_cancelados_recentes (99 -> 380 -> 3998): UMA migration, tres funcoes da 8e, com a PROVA PROPRIA em
     // tests/banco/as-listas-do-painel-nao-repetem-ninguem-viva.cjs; `noEstado` a desfaz antes (as-listas-do-painel-posterior.cjs, o rollback dela devolve as tres de uma vez).
     s.nome !==
-      "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql",
+      "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql" &&
+    // A 20261399985000 (o grafico do Financeiro soma so as contas ativas) e a SEGUNDA sucessora de fin_resumo (99 -> 3993 -> 39985): tem a PROVA PROPRIA em
+    // tests/banco/o-grafico-do-financeiro-soma-so-as-contas-ativas-viva.cjs; `noEstado` a desfaz antes (o-grafico-do-financeiro-posterior.cjs), como a 3993.
+    s.nome !==
+      "20261399985000_o_grafico_do_financeiro_soma_so_as_contas_ativas.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");
@@ -362,6 +366,10 @@ async function noEstado(montar, textos = [SQL_8E]) {
   try {
     // A 20261399980000 (as listas do painel desempatam por id) sucede os corpos da 3992, da 3999 e da 380: sai PRIMEIRO (ordem inversa da aplicacao; so se no ar).
     await require("./as-listas-do-painel-posterior.cjs").desfazerListasDoPainelNaTransacao(
+      C,
+    );
+    // A 20261399985000 (o grafico do Financeiro soma so as contas ativas) sucede o fin_resumo da 3993: sai PRIMEIRO (so se no ar).
+    await require("./o-grafico-do-financeiro-posterior.cjs").desfazerGraficoDoFinanceiroNaTransacao(
       C,
     );
     // A 20261399930000 (o caixa e a conta recusam valor que nao e numero) sucede a 370 em fin_caixa_abrir e a 99 em fin_conta_salvar: sai PRIMEIRO (ordem inversa da aplicacao; so se no ar).

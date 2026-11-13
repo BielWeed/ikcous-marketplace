@@ -44,8 +44,10 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { papel } from "@/lib/papeis-aria-da-tabela";
 import { rotuloDoPapel } from "@/lib/papel-da-conta";
 import {
+  PRAZO_DAS_ACOES_DO_PEDIDO_MS,
   PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
+  ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
@@ -81,6 +83,11 @@ interface Profile {
   role: string | null;
   created_at: string;
 }
+
+// Remover item e limpar carrinho são gravações: estourado o prazo (20 s, o das
+// outras ações do lojista) o servidor pode ter apagado. Nunca dizer que falhou.
+const MENSAGEM_CARRINHO_SEM_RESPOSTA =
+  "Sem resposta da rede. Não dá para saber se o carrinho foi alterado. Estamos conferindo o carrinho.";
 
 interface AdminUserDetailViewProps {
   userId: string;
@@ -150,18 +157,24 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     setAvaliacoes([]);
     setPerguntas([]);
     try {
-      const [resReviews, resQuestions] = await Promise.all([
-        supabase
-          .from("reviews")
-          .select("*, product:produtos(nome)")
-          .eq("user_id", userId)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("questions")
-          .select("*, product:produtos(nome), answers:answers(*)")
-          .eq("user_id", userId)
-          .order("created_at", { ascending: false }),
-      ]);
+      // Rede que conecta e não responde: sem prazo os esqueletos giravam para
+      // sempre. Estourou = cai no `catch` e mostra o erro com "Tentar novamente".
+      const [resReviews, resQuestions] = await aguardarComPrazo(
+        Promise.all([
+          supabase
+            .from("reviews")
+            .select("*, product:produtos(nome)")
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("questions")
+            .select("*, product:produtos(nome), answers:answers(*)")
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false }),
+        ]),
+        PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+        erroDeConsultaSemResposta,
+      );
       if (consulta !== consultaVoz.current) return;
       if (resReviews.error) throw resReviews.error;
       if (resQuestions.error) throw resQuestions.error;
@@ -417,7 +430,11 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
         query = query.is("variant_id", null);
       }
 
-      const { data, error } = await query;
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(query),
+        PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+        erroDeConsultaSemResposta,
+      );
 
       if (consulta !== consultaFicha.current) return;
       if (error) throw error;
@@ -448,7 +465,14 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     } catch (err) {
       if (consulta !== consultaFicha.current) return;
       console.error("Error removing cart item:", err);
-      toast.error("Erro ao remover item do carrinho");
+      if (ehConsultaSemResposta(err)) {
+        // Sem resposta a exclusão PODE ter sido feita: a frase não diz que
+        // falhou nem que deu certo, e a releitura mostra o carrinho real.
+        toast.error(MENSAGEM_CARRINHO_SEM_RESPOSTA);
+        fetchUserData(true);
+      } else {
+        toast.error("Erro ao remover item do carrinho");
+      }
     } finally {
       if (consulta === consultaFicha.current) setCartItemToRemove(null);
     }
@@ -467,11 +491,17 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       return;
     }
     try {
-      const { data, error } = await supabase
-        .from("cart_items")
-        .delete()
-        .select("id")
-        .eq("user_id", idCarregado);
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase
+            .from("cart_items")
+            .delete()
+            .select("id")
+            .eq("user_id", idCarregado),
+        ),
+        PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+        erroDeConsultaSemResposta,
+      );
 
       if (consulta !== consultaFicha.current) return;
       if (error) throw error;
@@ -493,7 +523,13 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
     } catch (err) {
       if (consulta !== consultaFicha.current) return;
       console.error("Error clearing user cart:", err);
-      toast.error("Erro ao limpar carrinho");
+      if (ehConsultaSemResposta(err)) {
+        // Mesmo caso do item único: a limpeza pode ter sido feita.
+        toast.error(MENSAGEM_CARRINHO_SEM_RESPOSTA);
+        fetchUserData(true);
+      } else {
+        toast.error("Erro ao limpar carrinho");
+      }
     } finally {
       if (consulta === consultaFicha.current) setIsClearingCart(false);
     }

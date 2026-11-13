@@ -335,7 +335,7 @@ const VERIFICACOES = {
   },
   // 20261399990000: o CRM nao duplica o comprador quando o WhatsApp vem com e sem o 55. crm__vendas ganha SO a CTE base_chave (o numero sem o 55, a
   // mesma expressao da 20261183000000) e a chave do balcao e a fusao com a conta passam a usar wa_chave no lugar de wa. A venda que conta (a CTE
-  // base, com o status fora de cancelled/returned) segue UMA vez. A consulta 141a confere o corpo exato (md5), os atributos e a ACL.
+  // base, com o status fora de cancelled/returned) segue UMA vez. A consulta 142a confere o corpo exato (md5), os atributos e a ACL.
   "20261399990000_o_crm_nao_duplica_o_comprador_com_e_sem_55.sql": {
     funcao: "crm__vendas",
     esperado: [
@@ -803,6 +803,37 @@ const VERIFICACOES = {
         ],
       },
     ],
+  // 20261399985000: o grafico do Financeiro soma so as contas ativas. fin_resumo ganha SO a chave serie[].variacao_saldo (a CTE variacao: quanto o saldo das contas ATIVAS mudou em cada dia, pela mesma conta de
+  // fin__saldos: so a partir do saldo_inicial_em de cada conta, ate hoje, transferencia sai de uma e entra na outra); serie[].entradas e saidas, o vencido sem estorno (20261399300000), as duas travas de admin e o
+  // resto do JSON ficam como estao (corpo da 20261399300000). A consulta 141a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
+  "20261399985000_o_grafico_do_financeiro_soma_so_as_contas_ativas.sql": [
+    {
+      funcao: "fin_resumo",
+      esperado: [
+        {
+          texto:
+            "JOIN public.fin_contas c ON c.ativa AND (m.conta_id = c.id OR m.conta_destino_id = c.id)",
+          vezes: 1,
+        },
+        {
+          texto: "WHERE m.data >= c.saldo_inicial_em AND m.data <= v_hoje",
+          vezes: 1,
+        },
+        {
+          texto:
+            "'variacao_saldo', COALESCE((SELECT sum(v.valor) FROM variacao v WHERE v.dia = d.dia::date), 0)",
+          vezes: 1,
+        },
+        {
+          texto:
+            "'vencido', COALESCE((SELECT sum(valor) FROM previstos WHERE tipo = 'saida' AND venc < v_hoje AND origem <> 'estorno'), 0),",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
   // 20261397000000: o desconto do cupom de porcentagem e' arredondado ao centavo. As TRES funcoes (create_marketplace_order_v23/v24 e
   // validate_coupon_secure_v2) trocam SO a linha da conta do desconto percentual: `round(<subtotal * valor / 100>, 2)` no lugar da conta crua.
   // Cada marcador aparece UMA vez no corpo (o marcador nao admite "zero vezes": a ausencia da conta antiga e' do pos-voo da migration e da

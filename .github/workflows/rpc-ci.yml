@@ -264,8 +264,10 @@ on:
       - "scripts/publicacao/consultas/135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente.sql"
       - "scripts/publicacao/consultas/140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado.sql"
       - "scripts/publicacao/consultas/140b-antes-as-listas-do-painel-nao-repetem-ninguem-base-vigente.sql"
-      - "scripts/publicacao/consultas/141a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado.sql"
-      - "scripts/publicacao/consultas/141b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql"
+      - "scripts/publicacao/consultas/141a-conferir-o-grafico-do-financeiro-soma-so-as-contas-ativas-aplicado.sql"
+      - "scripts/publicacao/consultas/141b-antes-o-grafico-do-financeiro-soma-so-as-contas-ativas-base-vigente.sql"
+      - "scripts/publicacao/consultas/142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado.sql"
+      - "scripts/publicacao/consultas/142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
       - "scripts/publicacao/consultas/129m-medir-corrida-e-avanco-com-estorno.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
@@ -501,8 +503,10 @@ on:
       - "scripts/publicacao/consultas/135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente.sql"
       - "scripts/publicacao/consultas/140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado.sql"
       - "scripts/publicacao/consultas/140b-antes-as-listas-do-painel-nao-repetem-ninguem-base-vigente.sql"
-      - "scripts/publicacao/consultas/141a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado.sql"
-      - "scripts/publicacao/consultas/141b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql"
+      - "scripts/publicacao/consultas/141a-conferir-o-grafico-do-financeiro-soma-so-as-contas-ativas-aplicado.sql"
+      - "scripts/publicacao/consultas/141b-antes-o-grafico-do-financeiro-soma-so-as-contas-ativas-base-vigente.sql"
+      - "scripts/publicacao/consultas/142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado.sql"
+      - "scripts/publicacao/consultas/142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
       - "scripts/publicacao/consultas/129m-medir-corrida-e-avanco-com-estorno.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
@@ -1137,10 +1141,18 @@ jobs:
       - name: Prova viva das listas do painel que nao repetem nem escondem ninguem entre as paginas (20261399980000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/as-listas-do-painel-nao-repetem-ninguem-viva.cjs
+      # Migration 20261399985000 (o grafico do Financeiro soma so as contas ativas): fin_resumo ganha SO a chave serie[].variacao_saldo (quanto o saldo das contas ATIVAS mudou em cada dia, pela mesma conta de
+      # fin__saldos). Fixture COMMITADA no clone (contas ativas, desativada com movimento, conta de saldo inicial tardio, transferencias entre ativa e desativada, vendas, estorno, movimento de data futura, previsto e
+      # cancelado): o saldo ao fim de cada dia reconstruido de saldo_total bate com fin__saldos no mesmo dia; controle com o corpo anterior (o grafico mostra o que nunca existiu), mutantes (sem o filtro de ativas, filtro
+      # invertido, desativada so no saldo, sem saldo_inicial_em, sem o teto de hoje, transferencia, sinais, arredondamento, previsto), resto do JSON identico ao corpo anterior, guarda de admin, reaplicar, rollback byte a
+      # byte, conexao sem BEGIN com conferencia sabotada, pre-voo, consultas 141a/141b e as vizinhas (8e, 119a). CLONE proprio.
+      - name: Prova viva do grafico do Financeiro que soma so as contas ativas (20261399985000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-grafico-do-financeiro-soma-so-as-contas-ativas-viva.cjs
       # Migration 20261399990000 (o CRM nao duplica o comprador quando o WhatsApp vem com e sem o 55): crm__vendas compara o numero SEM o 55 (12 ou 13 digitos comecando por 55) na chave do balcao e na
       # fusao com a conta, a mesma expressao de crm__pedidos_nao_pagos e crm__nunca_comprou (20261183000000, N4). Controle com o corpo da 20261178000000 na MESMA fixture (o defeito), bordas (numeros
       # diferentes, DDD 55, 12 digitos, sem numero, cancelada, duas contas), crm__clientes_rfm/crm_clientes/crm_visao/crm__nunca_comprou/crm__pedidos_nao_pagos, mutantes, linhas sem 55 iguais as do corpo
-      # anterior, ACL/atributos/dono iguais, reaplicar, rollback byte a byte, pre-voo, conexao sem BEGIN com conferencia sabotada e consultas 141a/141b. CLONE proprio.
+      # anterior, ACL/atributos/dono iguais, reaplicar, rollback byte a byte, pre-voo, conexao sem BEGIN com conferencia sabotada e consultas 142a/142b. CLONE proprio.
       - name: Prova viva do CRM que nao duplica o comprador com e sem o 55 (20261399990000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-crm-nao-duplica-o-comprador-com-e-sem-55-viva.cjs

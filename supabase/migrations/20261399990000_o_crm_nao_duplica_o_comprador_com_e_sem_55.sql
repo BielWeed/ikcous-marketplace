@@ -79,9 +79,9 @@
 --
 --   1. SELECT md5(replace(prosrc, E'\r', '')) FROM pg_proc WHERE oid = to_regprocedure('public.crm__vendas(timestamptz)');
 --      -- esperado: bd683b55c36dff83eefa0282077d9a63.
---   2. proacl, prosecdef e proconfig iguais antes e depois (consulta 141a/141b).
+--   2. proacl, prosecdef e proconfig iguais antes e depois (consulta 142a/142b).
 --   3. Dashboard CRM > Clientes: o comprador que aparecia duas vezes (um cartao com o 55, outro sem) aparece UMA vez.
---   PROVA VIVA: tests/banco/o-crm-nao-duplica-o-comprador-com-e-sem-55-viva.cjs (rpc-ci); portao da release: consultas 141a e 141b.
+--   PROVA VIVA: tests/banco/o-crm-nao-duplica-o-comprador-com-e-sem-55-viva.cjs (rpc-ci); portao da release: consultas 142a e 142b.
 -- ============================================================================
 
 SET LOCAL lock_timeout = '5s';

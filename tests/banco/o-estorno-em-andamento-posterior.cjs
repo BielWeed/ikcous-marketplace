@@ -18,6 +18,10 @@ const ESTORNO_FORA_DO_VENCIDO = Object.freeze({
     = '8d58e15e7410afe0d254f37f38251df4', false) AS sim`,
 });
 async function desfazerEstornoForaDoVencidoNaTransacao(c) {
+  // A 20261399985000 (o grafico do Financeiro soma so as contas ativas) sucede o fin_resumo desta migration: sai PRIMEIRO (so se no ar).
+  await require("./o-grafico-do-financeiro-posterior.cjs").desfazerGraficoDoFinanceiroNaTransacao(
+    c,
+  );
   if ((await c.query(ESTORNO_FORA_DO_VENCIDO.noAr)).rows[0]?.sim !== true)
     return false;
   await c.query(

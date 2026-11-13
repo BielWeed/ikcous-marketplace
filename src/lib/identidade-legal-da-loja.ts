@@ -97,10 +97,16 @@ export function documentoValido(
  * A máscara do documento. Para o que já tem DV certo é exata; no meio da
  * digitação segue o comprimento: até 11 dígitos, máscara de CPF; mais que isso
  * (ou com letra), máscara de CNPJ.
+ *
+ * Passou de 14 caracteres NÃO é documento: devolve tudo sem máscara. Cortar em
+ * 14 (como já foi) esconderia o excesso e transformaria `112223330001819` num
+ * CNPJ válido que a lojista nunca digitou — quem conferir (`documentoValido`)
+ * vê o valor inteiro e recusa.
  */
 export function formatarDocumento(valor: string | null | undefined): string {
-  const limpo = limparDocumento(valor).slice(0, 14);
+  const limpo = limparDocumento(valor);
   if (limpo.length === 0) return "";
+  if (limpo.length > 14) return limpo;
   if (limpo.length <= 11 && /^[0-9]+$/.test(limpo)) {
     let r = limpo.slice(0, 3);
     if (limpo.length > 3) r += `.${limpo.slice(3, 6)}`;

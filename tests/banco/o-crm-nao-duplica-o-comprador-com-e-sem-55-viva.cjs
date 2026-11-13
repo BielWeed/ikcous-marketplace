@@ -27,7 +27,7 @@
  *  (6) Pre-voo recusa sem escrever (corpo desconhecido, ACL aberta para anon, authenticated ou PUBLIC, atributo diferente,
  *      sobrecarga); o rollback recusa corpo desconhecido; a conferencia final sabotada derruba o arquivo inteiro, inclusive
  *      numa conexao SEM BEGIN (o arquivo e UM lote: ou cai tudo ou nao cai nada).
- *  (7) Consultas 141a/141b leem o estado certo nos dois sentidos, com o rol fechado do conferir-banco.
+ *  (7) Consultas 142a/142b leem o estado certo nos dois sentidos, com o rol fechado do conferir-banco.
  *
  * USO: CI_BANCO_EFEMERO=1 DATABASE_URL=postgres://postgres@localhost:<porta>/postgres \
  *        node tests/banco/rodar-isolado.cjs tests/banco/o-crm-nao-duplica-o-comprador-com-e-sem-55-viva.cjs
@@ -61,10 +61,10 @@ const CORPO_NOVO = corpoDe(migration);
 const HASH_ANTES = "8a802f6324c86cdc0be214b4d5ac69bb";
 const HASH_NOVO = "bd683b55c36dff83eefa0282077d9a63";
 const ASSINATURA = "public.crm__vendas(timestamptz)";
-const C141A =
-  "141a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado";
-const C141B =
-  "141b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente";
+const C142A =
+  "142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado";
+const C142B =
+  "142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente";
 // O cabecalho (CREATE OR REPLACE ... AS $$) da migration, para trocar so o corpo nos mutantes e nas sabotagens.
 const CABECALHO_DA_FUNCAO = migration.match(
   /CREATE OR REPLACE FUNCTION public\.crm__vendas\([^\n]*\)[\s\S]*?\nAS \$\$/,
@@ -682,7 +682,7 @@ async function main() {
       `  PASSOU pre-voo recusa sem escrever (${sabotagens.length} sabotagens, migration e rollback) e a conferencia que falha nao deixa nada`,
     );
 
-    // ---- 6. Consultas 141a/141b nos dois sentidos, com o rol fechado. ----
+    // ---- 6. Consultas 142a/142b nos dois sentidos, com o rol fechado. ----
     const consulta = async (nome) => {
       const rows = (
         await c.query(ler(`scripts/publicacao/consultas/${nome}.sql`))
@@ -694,25 +694,25 @@ async function main() {
       );
       return rows.filter((r) => r.ok !== true).map((r) => r.item);
     };
-    assert.deepEqual(await consulta(C141A), []);
-    assert.deepEqual(await consulta(C141B), ["crm__vendas: corpo exato (md5)"]);
+    assert.deepEqual(await consulta(C142A), []);
+    assert.deepEqual(await consulta(C142B), ["crm__vendas: corpo exato (md5)"]);
     await isolado(c, async () => {
       await c.query(rollback);
-      assert.deepEqual(await consulta(C141B), []);
-      assert.deepEqual(await consulta(C141A), [
+      assert.deepEqual(await consulta(C142B), []);
+      assert.deepEqual(await consulta(C142A), [
         "crm__vendas: corpo exato (md5)",
       ]);
     });
     await isolado(c, async () => {
       await c.query(`GRANT EXECUTE ON FUNCTION ${ASSINATURA} TO authenticated`);
-      for (const n of [C141A, C141B])
+      for (const n of [C142A, C142B])
         assert.ok(
           (await consulta(n)).some((i) => i.includes("EXECUTE")),
           `${n}: nao reprovou a ACL aberta`,
         );
     });
     console.log(
-      "  PASSOU consultas 141a/141b nos dois sentidos, rol fechado, e reprovam a ACL aberta",
+      "  PASSOU consultas 142a/142b nos dois sentidos, rol fechado, e reprovam a ACL aberta",
     );
     await c.query("ROLLBACK");
 

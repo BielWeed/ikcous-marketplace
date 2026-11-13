@@ -73,7 +73,8 @@ WITH fn AS (
     CASE WHEN COALESCE((SELECT acl FROM fn WHERE k = 'painel'), false) THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'fin_resumo: corpo exato (md5)', 'a10e7f301eaf6b3edfac50bc87ff74bc',
-    COALESCE((SELECT h FROM fn WHERE k = 'resumo'), 'AUSENTE')
+    -- A 20261399985000 (o grafico do Financeiro soma so as contas ativas) sucede este corpo: so a variacao diaria do saldo e' nova. Aceita os dois corpos EXATOS; normaliza ao esperado.
+    COALESCE((SELECT CASE WHEN h IN ('a10e7f301eaf6b3edfac50bc87ff74bc', '9e711b03cc63f610461915b850f2eb70') THEN 'a10e7f301eaf6b3edfac50bc87ff74bc' ELSE h END FROM fn WHERE k = 'resumo'), 'AUSENTE')
   UNION ALL
   SELECT 'fin_resumo: assinatura e atributos conhecidos', 'sim',
     CASE WHEN COALESCE((SELECT atributos FROM fn WHERE k = 'resumo'), false) THEN 'sim' ELSE 'nao' END

@@ -2,7 +2,7 @@
 // O CRM NAO DUPLICA O COMPRADOR COM E SEM O 55 -- prova offline do par 20261399990000 + rollback (a fonte de todo
 // comprador do CRM, public.crm__vendas; caca de 13/11/2026). O COMPORTAMENTO (o mesmo WhatsApp com e sem o 55 vira UM
 // comprador, numeros diferentes seguem diferentes, DDD 55 de 11 digitos nao perde o 55, sem numero nao junta ninguem, o
-// resto das linhas identico, rollback, pre-voo, atomicidade sem BEGIN, consultas 141a/141b) e' provado em
+// resto das linhas identico, rollback, pre-voo, atomicidade sem BEGIN, consultas 142a/142b) e' provado em
 // tests/banco/o-crm-nao-duplica-o-comprador-com-e-sem-55-viva.cjs. Aqui fica o que se prova so lendo o texto.
 //
 // Riscos: o corpo novo tem de ser o da 20261178000000 com SO a troca declarada; o corpo do rollback tem de ser o da
@@ -308,22 +308,22 @@ Deno.test("a ordem de desfazer, o alcance e o limite conhecido estao declarados 
     "crm__nunca_comprou",
     "DADOS EXISTENTES",
     "Sem BEGIN/COMMIT",
-    "141a",
-    "141b",
+    "142a",
+    "142b",
   ])
     assert.ok(migration.includes(trecho), trecho);
 });
 
-Deno.test("as consultas 141a e 141b leem o corpo certo (md5 de cada lado), so catalogo, rol fechado de 4 linhas, e estao no menu do conferir-banco e do release", () => {
+Deno.test("as consultas 142a e 142b leem o corpo certo (md5 de cada lado), so catalogo, rol fechado de 4 linhas, e estao no menu do conferir-banco e do release", () => {
   const a = Deno.readTextFileSync(
     new URL(
-      "scripts/publicacao/consultas/141a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado.sql",
+      "scripts/publicacao/consultas/142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado.sql",
       DIR,
     ),
   );
   const b = Deno.readTextFileSync(
     new URL(
-      "scripts/publicacao/consultas/141b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql",
+      "scripts/publicacao/consultas/142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql",
       DIR,
     ),
   );
@@ -356,19 +356,19 @@ Deno.test("as consultas 141a e 141b leem o corpo certo (md5 de cada lado), so ca
     Deno.readTextFileSync(new URL("scripts/frota/canais-de-backend.json", DIR)),
   );
   for (const nome of [
-    "141a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado",
-    "141b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente",
+    "142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado",
+    "142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente",
   ]) {
     assert.ok(
-      conferir.replace(/\s+/g, " ").includes(`"${nome}": ROL_DA_141`),
+      conferir.replace(/\s+/g, " ").includes(`"${nome}": ROL_DA_142`),
       nome,
     );
     assert.ok(release.includes(`"${nome}"`), nome);
   }
   const entrada = JSON.stringify(canais).includes(
-    '"consulta":"141a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado","versoes":["20261399990000"],"ausenciaConfirmadaPor":"141b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente"',
+    '"consulta":"142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado","versoes":["20261399990000"],"ausenciaConfirmadaPor":"142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente"',
   );
-  assert.ok(entrada, "canais-de-backend.json sem a entrada da 141a");
+  assert.ok(entrada, "canais-de-backend.json sem a entrada da 142a");
 });
 
 Deno.test("depois da 20261178000000 so este par redefine crm__vendas", () => {
