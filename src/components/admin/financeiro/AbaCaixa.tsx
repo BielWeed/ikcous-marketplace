@@ -91,8 +91,9 @@ function CaixaAberto({
       tipo: "caixa-movimentar",
       sessaoId: caixa.id,
       movimento,
-      // Leitura que falhou: o esperado guardado pode estar velho, então a
-      // folha não o usa para travar nem liberar a sangria (o servidor confere).
+      // Leitura que falhou: o esperado guardado pode estar velho, então a folha
+      // nem o mostra. Com leitura boa ele é o de agora, só como informação: a
+      // folha não trava a sangria por ele (o servidor confere o dinheiro real).
       esperado: desatualizado ? null : caixa.esperado,
       contaDoCaixa: caixa.contaId,
     });

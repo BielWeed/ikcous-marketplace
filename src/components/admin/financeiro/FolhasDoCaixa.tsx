@@ -301,9 +301,11 @@ export function MovimentarCaixaFolha({
   readonly sessaoId: string;
   readonly movimento: "sangria" | "suprimento";
   /**
+   * O esperado de quando a folha abriu. É só informação: outro aparelho pode
+   * ter registrado venda ou sangria depois, então ele NUNCA trava o botão (o
+   * servidor confere o dinheiro de agora ao registrar e recusa o que passa dele).
    * `null` = a leitura do caixa falhou e o valor guardado pode estar velho: a
-   * tela não o mostra nem barra a sangria por ele (o servidor confere o dinheiro
-   * de verdade ao registrar e recusa o que passa do esperado).
+   * tela nem o mostra.
    */
   readonly esperado: number | null;
   readonly contas: readonly ContaFinanceira[];
@@ -361,6 +363,7 @@ export function MovimentarCaixaFolha({
       : tentou && numero !== null && numero > VALOR_MAXIMO
         ? "Valor acima do limite."
         : undefined;
+  // Aviso, não trava: o esperado é o da abertura da folha (ver a prop).
   const passaDoEsperado =
     sangria &&
     esperado !== null &&
@@ -454,7 +457,7 @@ export function MovimentarCaixaFolha({
           rotulo={sangria ? "Registrar sangria" : "Registrar suprimento"}
           rotuloEnviando="Registrando…"
           enviando={enviando}
-          bloqueado={semOpcaoDeConta || passaDoEsperado}
+          bloqueado={semOpcaoDeConta}
           aoConfirmar={confirmar}
         />
       }
@@ -511,9 +514,11 @@ export function MovimentarCaixaFolha({
               className="mt-0.5 size-4 shrink-0"
             />
             <span>
-              É mais do que o esperado na gaveta (<Dinheiro valor={esperado} />
-              ). O sistema não registra uma sangria maior que o esperado:
-              confira a contagem.
+              É mais do que o esperado na gaveta (<Dinheiro valor={esperado} />)
+              quando esta tela abriu. Se outro aparelho registrou venda em
+              dinheiro depois, o sistema considera o dinheiro de agora ao
+              registrar e só recusa se não houver o suficiente. Confira a
+              contagem.
             </span>
           </p>
         ) : null}

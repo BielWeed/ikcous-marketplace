@@ -236,10 +236,10 @@ describe("folha de Sangria — esperado de leitura que falhou", () => {
     );
   }
 
-  it("controle: com esperado conhecido, sangria maior que ele continua bloqueada", async () => {
+  it("controle: com esperado conhecido, sangria maior que ele avisa mas não bloqueia (o servidor confere o saldo de agora)", async () => {
     await montarFolha(100);
     await digitarValor("150,00");
-    expect(botao("Registrar sangria")!.disabled).toBe(true);
+    expect(botao("Registrar sangria")!.disabled).toBe(false);
     expect(document.body.textContent).toMatch(/mais do que o esperado/);
   });
 
