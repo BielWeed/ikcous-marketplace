@@ -113,6 +113,27 @@ function valoresDoEndereco(a: Address): AddressFormValues {
   };
 }
 
+// Dos dados já limpos, só o que difere da base: campo a campo, exceto o bloco
+// do CEP (inteiro se qualquer parte mudou). `is_default` só existe em `limpos`
+// quando a regra do principal já o liberou.
+function soOQueMudou(
+  valores: AddressFormValues,
+  base: AddressFormValues,
+  limpos: DadosDoFormularioDeEndereco,
+): AlteracoesDoEndereco {
+  const agora = new Map(Object.entries(valores));
+  const antes = new Map(Object.entries(base));
+  const mexeu = (c: string) => agora.get(c) !== antes.get(c);
+  const mexeuNoBloco = BLOCO_DO_CEP.some(mexeu);
+  return Object.fromEntries(
+    Object.entries(limpos).filter(([c]) =>
+      c === "is_default" || BLOCO_DO_CEP.includes(c)
+        ? c === "is_default" || mexeuNoBloco
+        : mexeu(c),
+    ),
+  );
+}
+
 /**
  * O que o formulário entrega ao salvar. Em ENDEREÇO NOVO `is_default` vai
  * sempre; ao EDITAR só vai quando a pessoa mexeu no botão "Endereço principal"
@@ -124,9 +145,21 @@ export type DadosDoFormularioDeEndereco = Omit<
   "id" | "user_id" | "is_default"
 > & { is_default?: boolean };
 
+/**
+ * Só o que a pessoa mudou em relação ao que a tela abriu (2º argumento do
+ * `onSubmit`, só ao EDITAR). Campo intocado fica de fora: a tela pode estar
+ * velha, e reenviá-lo desfaria a correção feita em outro aparelho. O bloco do
+ * CEP vai inteiro se ela mexeu em qualquer parte dele. Quem grava uma edição
+ * usa ISTO, não os dados completos do 1º argumento.
+ */
+export type AlteracoesDoEndereco = Partial<DadosDoFormularioDeEndereco>;
+
 interface AddressFormProps {
   initialData?: Address;
-  onSubmit: (address: DadosDoFormularioDeEndereco) => Promise<void>;
+  onSubmit: (
+    address: DadosDoFormularioDeEndereco,
+    alteracoes?: AlteracoesDoEndereco,
+  ) => Promise<void>;
   onCancel: () => void;
   /**
    * Nome da conta de quem está comprando: já vem em "Quem vai receber" num
@@ -573,7 +606,16 @@ export function AddressForm({
           : "",
         recipient_name: values.recipient_name,
       };
-      await onSubmit(cleanData);
+      // Base: o endereço como a tela o aplicou (sem ela, manda tudo).
+      const aplicado = initialData && initialDataAplicadoRef.current;
+      if (aplicado) {
+        await onSubmit(
+          cleanData,
+          soOQueMudou(values, valoresDoEndereco(aplicado), cleanData),
+        );
+      } else {
+        await onSubmit(cleanData);
+      }
     } catch (error) {
       console.error("Submit error:", error);
     } finally {

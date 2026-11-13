@@ -24,6 +24,7 @@ import { FraseDeAceite } from "@/components/politicas/LinksDasPoliticas";
 import { Button } from "@/components/ui/button";
 import {
   AddressForm,
+  type AlteracoesDoEndereco,
   type DadosDoFormularioDeEndereco,
 } from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
@@ -4338,6 +4339,7 @@ export function CheckoutViewDaConta({
 
   const handleNewAddressSubmit = async (
     data: DadosDoFormularioDeEndereco,
+    alteracoes?: AlteracoesDoEndereco,
   ): Promise<void> => {
     // A janela em que a cliente tocou em Salvar. O salvamento espera a rede
     // por até 15 s e o Voltar do aparelho fecha a janela nesse meio-tempo (só
@@ -4346,7 +4348,8 @@ export function CheckoutViewDaConta({
     const minhaJanela = janelaDoEnderecoRef.current;
     let result;
     if (editingAddressId) {
-      const success = await updateAddress(editingAddressId, data);
+      // Só o que a cliente mudou (a tela pode estar velha).
+      const success = await updateAddress(editingAddressId, alteracoes ?? data);
       if (success) {
         result = addresses.find((a) => a.id === editingAddressId);
       }
@@ -8699,7 +8702,10 @@ function PagamentoForaDoPrazoView({
 interface AddressSelectionViewProps {
   editingAddressId: string | null;
   addresses: Address[];
-  onNewAddressSubmit: (data: DadosDoFormularioDeEndereco) => Promise<void>;
+  onNewAddressSubmit: (
+    data: DadosDoFormularioDeEndereco,
+    alteracoes?: AlteracoesDoEndereco,
+  ) => Promise<void>;
   onCancel: () => void;
   /** Nome da conta: já vem em "Quem vai receber" do endereço novo. */
   nomeDaConta?: string;
