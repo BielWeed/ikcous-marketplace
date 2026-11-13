@@ -67,7 +67,10 @@ export interface VariacaoComparavel {
 
 const vazioViraNulo = (valor: string | null | undefined) => valor || null;
 
-function variacaoMudou(a: VariacaoComparavel, b: VariacaoComparavel): boolean {
+export function variacaoMudou(
+  a: VariacaoComparavel,
+  b: VariacaoComparavel,
+): boolean {
   return (
     a.name !== b.name ||
     a.value !== b.value ||
