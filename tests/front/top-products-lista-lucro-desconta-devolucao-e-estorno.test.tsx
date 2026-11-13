@@ -57,9 +57,11 @@ describe("TopProductsList — o lucro desconta devolução e estorno", () => {
     act(() => botao.click());
     const texto = SEM_NBSP(document.body.textContent);
     expect(texto).toContain(
-      "É o que a loja ganhou com cada produto: o preço pago menos o custo, menos o dinheiro devolvido e o custo da peça que não voltou para a prateleira. Conta no dia da venda e sem frete — por isso o total não é o mesmo do Financeiro do mês.",
+      "É o que a loja ganhou com cada produto: o que a cliente pagou, menos o dinheiro devolvido, menos o custo das peças que não voltaram para a prateleira. Conta no dia da venda e sem frete — por isso o total não é o mesmo do Financeiro do mês.",
     );
     expect(texto).toContain("Produto sem custo cadastrado não entra.");
+    // A frase antiga lida ao pé da letra tirava o custo duas vezes ("preço menos o custo, menos ... o custo da peça").
+    expect(texto).not.toContain("o preço pago menos o custo");
     // As frases antigas: a que prometia só preço menos custo e a que só falava de devoluções e estornos.
     expect(texto).not.toContain(
       "O valor é o lucro (preço menos custo). Produto",

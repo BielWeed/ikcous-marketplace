@@ -17,7 +17,7 @@
 --   * Pedido com pagamento 'estornado' (devolvido por inteiro) ENTRA no ranking e no grafico, com tudo devolvido: sobra so -custo das pecas que nao voltaram. So o cancelado continua fora (o Financeiro tambem
 --     nao conta o custo de cancelado com estoque de volta).
 --   * Vale nos DOIS lugares: o ranking (topProducts) e o lucro diario (revenueHistory[].profit, no dia da VENDA): as duas copias da formula mudam juntas.
--- O QUE NAO MUDA: assinatura, retorno, atributos, OID, dono e ACL; nenhum grant novo; nenhum objeto novo; a quantidade do ranking (vendidas - devolvidas), a linha de faturamento do grafico, a contagem de pedidos, o
+-- O QUE NAO MUDA: assinatura, retorno, atributos, OID, dono e ACL; nenhum grant novo; nenhum objeto novo; a conta da quantidade do ranking (vendidas - devolvidas; so que o pedido 'estornado' agora entra e suas pecas contam na quantidade), a linha de faturamento do grafico, a contagem de pedidos, o
 -- custo vendido do dia (cost_sold) e todos os numeros de hoje; o pedido SEM devolucao e SEM estorno mostra o MESMO numero de antes (byte a byte no JSON). O Financeiro (fin_dre) nao e' tocado.
 -- Por data, frete e top 5 o ranking continua diferente do Financeiro do mes (legitimo): a conta aqui e' no dia da venda, sem frete, so dos 5 maiores.
 -- DADO EXISTENTE: nenhuma linha e lida para escrita nem escrita ao aplicar. O lucro MOSTRADO muda, tambem no passado, para as vendas com devolucao de reembolso menor que o valor das pecas, com estorno de pedido
