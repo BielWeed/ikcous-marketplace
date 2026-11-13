@@ -145,7 +145,6 @@ export const ProductView = React.memo(function ProductView({
 }: ProductViewProps) {
   const isReady = useDeferredRender(220);
   const [quantity, setQuantity] = useState(1);
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [cartStatus, setCartStatus] = useState<"idle" | "loading" | "success">(
     "idle",
   );
@@ -176,15 +175,24 @@ export const ProductView = React.memo(function ProductView({
     reviews,
     loading: loadingReviews,
     erroDaListagemProduto,
+    produtoRespondido,
     getReviewsByProduct,
     markHelpful,
     votosUteis,
     userIdAtual,
     subscribeToReviews,
   } = useReviews();
-  const { trackRecommendationClick, fetchRecommendations } = useProducts({
-    autoFetch: false,
-  });
+  const { trackRecommendationClick, fetchRecommendations, fetchProducts } =
+    useProducts({ autoFetch: false });
+  // A lojista pode pausar o produto em outro aparelho com a ficha aberta: ao
+  // voltar a ela, relê o catálogo (produto pausado/removido sai da tela).
+  useEffect(() => {
+    const aoVoltar = () => {
+      if (document.visibilityState === "visible") void fetchProducts();
+    };
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => document.removeEventListener("visibilitychange", aoVoltar);
+  }, [fetchProducts]);
   const { isFavorite: checkFavorite, toggleFavorite } = useFavorites();
   // Laudo 0109 (C1): o preload das recomendações passa pelo prefetchImage,
   // que tem a guarda de rede lenta — 4 imagens pesadas sem o cliente pedir
@@ -455,8 +463,10 @@ export const ProductView = React.memo(function ProductView({
   const avaliacoesPublicadas = reviews.filter(
     (r) => (r.status ?? "publicada") === "publicada",
   );
+  // Lista vazia: só a consulta que JÁ respondeu a esvazia de verdade; antes
+  // (ou se falhou) vale a contagem do produto.
   const reviewCount =
-    reviews.length > 0
+    reviews.length > 0 || produtoRespondido === product.id
       ? avaliacoesPublicadas.length
       : (product.reviewCount ?? 0);
   const averageRating =
@@ -624,6 +634,15 @@ export const ProductView = React.memo(function ProductView({
     return [...doProduto, ...new Set(extras)];
   };
   const fotosDaGaleria = fotosDaEscolha(selectedVariants);
+  // Onde a galeria para para uma escolha (-1: a escolha não aponta foto).
+  const posicaoDaFotoDaEscolha = (escolha: Record<string, string>) => {
+    const foto = fotosQueAEscolhaAponta(escolha)[0];
+    return foto ? fotosDaEscolha(escolha).indexOf(foto) : -1;
+  };
+  // Opção única já marcada ao abrir: a galeria nasce na foto dela.
+  const [currentImageIndex, setCurrentImageIndex] = useState(() =>
+    Math.max(posicaoDaFotoDaEscolha(selectedVariants), 0),
+  );
   // A faixa pode encolher (foto extra some ao desmarcar a variação).
   const indiceDaFoto = Math.min(
     currentImageIndex,
@@ -659,11 +678,8 @@ export const ProductView = React.memo(function ProductView({
           : `${soltas.join(" e ")} desmarcados`,
     );
     setSelectedVariants(proxima);
-    const fotoDaVariante = fotosQueAEscolhaAponta(proxima)[0];
-    if (fotoDaVariante) {
-      const posicao = fotosDaEscolha(proxima).indexOf(fotoDaVariante);
-      if (posicao >= 0) setCurrentImageIndex(posicao);
-    }
+    const posicao = posicaoDaFotoDaEscolha(proxima);
+    if (posicao >= 0) setCurrentImageIndex(posicao);
     const estoque = estoqueDaEscolha(proxima);
     if (estoque > 0 && quantity > estoque) {
       setQuantity(estoque);
@@ -729,8 +745,10 @@ export const ProductView = React.memo(function ProductView({
   const grupoSemEstoque = fileirasDeVariacao(product.variants).fileiras.some(
     (f) => f.valores.every((v) => !v.disponivel),
   );
-  const isOutOfStock =
-    currentStock <= 0 || variacaoIndisponivel || grupoSemEstoque;
+  // Pausado pela lojista com a ficha aberta: nada de compra.
+  const produtoPausado = product.isActive === false;
+  const indisponivel = variacaoIndisponivel || produtoPausado;
+  const isOutOfStock = currentStock <= 0 || indisponivel || grupoSemEstoque;
   const discount = originalExibido
     ? percentualDeDesconto(originalExibido, precoExibido)
     : 0;
@@ -1190,7 +1208,9 @@ export const ProductView = React.memo(function ProductView({
                   }
                 >
                   {isOutOfStock
-                    ? "Esgotado"
+                    ? produtoPausado
+                      ? "Indisponível"
+                      : "Esgotado"
                     : isLowStock
                       ? textoEstoqueBaixo(currentStock)
                       : `Em estoque: ${currentStock}`}
@@ -1232,10 +1252,16 @@ export const ProductView = React.memo(function ProductView({
               />
             )}
 
-            {variacaoIndisponivel && (
+            {indisponivel && (
               <p role="status" className="mb-3 text-sm text-zinc-600">
-                Esta opção não está mais disponível. Escolha outra para
-                continuar.
+                {produtoPausado ? (
+                  "Produto indisponível no momento"
+                ) : (
+                  <>
+                    Esta opção não está mais disponível. Escolha outra para
+                    continuar.
+                  </>
+                )}
               </p>
             )}
 
@@ -1315,7 +1341,7 @@ export const ProductView = React.memo(function ProductView({
                 )}
               >
                 {isOutOfStock ? (
-                  variacaoIndisponivel ? (
+                  indisponivel ? (
                     "Indisponível"
                   ) : (
                     "Esgotado"
@@ -1867,7 +1893,7 @@ export const ProductView = React.memo(function ProductView({
             className="min-h-[52px] w-full rounded-full bg-primary px-4 py-3 text-sm font-bold text-primary-foreground disabled:opacity-40"
           >
             {isOutOfStock
-              ? variacaoIndisponivel
+              ? indisponivel
                 ? "Indisponível"
                 : "Esgotado"
               : "Adicionar ao Carrinho"}
@@ -1979,7 +2005,7 @@ export const ProductView = React.memo(function ProductView({
                   )}
                 >
                   {isOutOfStock
-                    ? variacaoIndisponivel
+                    ? indisponivel
                       ? "Indisponível"
                       : "Esgotado"
                     : cartStatus === "loading"
