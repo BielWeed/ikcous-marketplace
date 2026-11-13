@@ -1379,6 +1379,9 @@ const AppContent = () => {
             "admin-orders",
             "admin-devolucoes",
             "admin-push",
+            // Editar endereço: o id na URL é o que faz o link aberto em outra
+            // aba editar o endereço, em vez de abrir "Novo endereço".
+            "address-form",
           ].includes(targetView) &&
           id
         ) {
@@ -2483,6 +2486,7 @@ const AppContent = () => {
                     "admin-orders",
                     "admin-devolucoes",
                     "admin-push",
+                    "address-form",
                   ].includes(currentViewRef.current) &&
                   selectedProductIdRef.current
                 ? `/${currentViewRef.current}?id=${selectedProductIdRef.current}`
@@ -2526,6 +2530,7 @@ const AppContent = () => {
                     "admin-orders",
                     "admin-devolucoes",
                     "admin-push",
+                    "address-form",
                   ].includes(currentView) && selectedProductId
                 ? `/${currentView}?id=${selectedProductId}`
                 : `/${currentView}`;
