@@ -1071,6 +1071,17 @@ describe("AdminPdvView — fechamento de verdade (C3.4)", () => {
       botaoNovaVenda.click();
     });
     await avancar();
+    // O toque só abre a pergunta; quem apaga a venda é o botão da janela.
+    await act(async () => {
+      Array.from(
+        document.querySelectorAll<HTMLButtonElement>(
+          '[data-testid="confirmar-acao"] button',
+        ),
+      )
+        .find((b) => b.textContent?.includes("Apagar e começar outra"))
+        ?.click();
+    });
+    await avancar();
 
     // Venda nova, do zero, com a chave nova.
     await act(async () => {
