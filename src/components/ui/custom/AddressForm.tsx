@@ -355,19 +355,25 @@ export function AddressForm({
         // A cobertura de entrega da loja decide para onde ela entrega,
         // nunca onde o cliente mora — por isso o `isNational` que existia
         // aqui saiu dos três campos de endereço do cliente.
-        form.reset({
-          name: APELIDO_CASA,
-          cep: "",
-          street: "",
-          number: "",
-          complement: "",
-          neighborhood: "",
-          city: "",
-          state: "",
-          reference: "",
-          recipient_name: nomePadrao,
-          is_default: false,
-        });
+        // `keepDirtyValues`: a pessoa pode ter começado a digitar antes de
+        // isLoaded subir (rede lenta, sem cache da loja) — o reset só dá o
+        // padrão ao que ela ainda não tocou.
+        form.reset(
+          {
+            name: APELIDO_CASA,
+            cep: "",
+            street: "",
+            number: "",
+            complement: "",
+            neighborhood: "",
+            city: "",
+            state: "",
+            reference: "",
+            recipient_name: nomePadrao,
+            is_default: false,
+          },
+          { keepDirtyValues: true },
+        );
       }
       return;
     }
