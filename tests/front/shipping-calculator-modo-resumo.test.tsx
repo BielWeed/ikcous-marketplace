@@ -232,4 +232,34 @@ describe("ShippingCalculator — modoResumo (checkout compacto)", () => {
     expect(hospedeiro.textContent).toContain("A calcular");
     expect(botaoDe("Trocar")).toBeUndefined();
   });
+
+  // Acessibilidade (13/11/2026): escolher na lista aberta desmonta a lista
+  // (o botão focado some); o foco precisa cair no "Trocar" do resumo.
+  it("escolher outra opção devolve o foco ao botão Trocar", async () => {
+    await montar(true);
+    await act(async () => {
+      botaoDe("Trocar")?.click();
+    });
+    const expressa = botaoDe("Entrega expressa");
+    expressa?.focus();
+    expect(document.activeElement).toBe(expressa);
+    await act(async () => {
+      expressa?.click();
+    });
+    expect(botaoDe("Entrega econômica")).toBeUndefined();
+    expect(document.activeElement).toBe(botaoDe("Trocar"));
+  });
+
+  it("abrir o checkout com a opção já escolhida NÃO rouba o foco", async () => {
+    await montar(true);
+    expect(botaoDe("Trocar")).toBeDefined();
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it("'Tentar de novo' tem área de toque de pelo menos 40 px (min-h-10)", async () => {
+    invoke.mockReset();
+    invoke.mockRejectedValue(new Error("Falha ao cotar frete."));
+    await montar(true);
+    expect(botaoDe("Tentar de novo")?.className).toContain("min-h-10");
+  });
 });

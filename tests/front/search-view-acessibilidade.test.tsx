@@ -293,3 +293,68 @@ describe("SearchView — acessibilidade e alvos", () => {
     expect(limpar?.className).toContain("min-h-11");
   });
 });
+
+// Acessibilidade (13/11/2026): a mensagem de "nenhum resultado" não estava
+// em região viva (só a contagem COM resultados estava). A região vive sempre
+// montada e só o texto dela muda — região criada junto com o texto nem
+// sempre é anunciada pelo leitor de tela.
+describe("SearchView — busca sem resultado é anunciada", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  async function montar(initialQuery: string) {
+    // O estado vazio sugere produtos da loja (LazyImage), e o jsdom não tem
+    // IntersectionObserver.
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+    mockedProducts = [produtoVestido];
+    const { SearchView } = await import("@/views/customer/SearchView");
+    await act(async () => {
+      raiz.render(
+        <SearchView
+          onNavigate={() => {}}
+          onBack={() => {}}
+          initialQuery={initialQuery}
+        />,
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+  }
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+    vi.unstubAllGlobals();
+  });
+
+  const regioes = () => [...hospedeiro.querySelectorAll('[role="status"]')];
+
+  it("sem resultado: uma região viva traz o texto de vazio", async () => {
+    await montar("zzzz-nao-existe");
+    expect(hospedeiro.textContent).toContain("Ué, nenhum resultado?");
+    expect(regioes().map((e) => e.textContent)).toContain(
+      "Nenhum resultado para essa busca.",
+    );
+  });
+
+  it("com resultado: a região de vazio já está montada, só que sem texto", async () => {
+    await montar("vestido");
+    // Filha direta da área de conteúdo (os cartões têm as regiões deles).
+    const regiao = regioes().filter((e) =>
+      e.parentElement?.className.includes("max-w-7xl"),
+    );
+    expect(regiao.map((e) => e.textContent)).toEqual([""]);
+  });
+});
