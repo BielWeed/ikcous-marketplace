@@ -1405,6 +1405,21 @@ async function main() {
         "20261399985000_o_grafico_do_financeiro_soma_so_as_contas_ativas.sql",
         "public.fin_resumo(date,date)",
       ],
+      // A 20261399992000 (o item que a lojista marcou "Nao veio" pode ser devolvido de novo): UMA migration, tres funcoes de fora destas tres
+      // (devolucao_elegibilidade e devolucao_detalhe sobre o corpo da 20261199, solicitar_devolucao sobre o da 20261175). So muda a conta de
+      // 'ausente' na devolucao, nao mexe no estoque do painel; a 17a nao as le. O rollback dela devolve os tres corpos de uma vez.
+      [
+        "20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql",
+        "public.devolucao_detalhe(uuid)",
+      ],
+      [
+        "20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql",
+        "public.devolucao_elegibilidade(uuid)",
+      ],
+      [
+        "20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql",
+        "public.solicitar_devolucao(uuid,jsonb,text,text,text,text,text[])",
+      ],
       // A 20261399993000 (o CRM e a lista de clientes nao contam a mesma pessoa duas vezes): UMA migration, DUAS entradas (crm__nunca_comprou, da 183, e get_admin_customers_paged sobre o corpo da
       // 392), funcoes de fora destas tres, o mesmo caso da 392 acima. O rollback dela devolve os dois corpos de uma vez (o molde, abaixo, desfaz e mede; a segunda entrada ja o encontra devolvido).
       [

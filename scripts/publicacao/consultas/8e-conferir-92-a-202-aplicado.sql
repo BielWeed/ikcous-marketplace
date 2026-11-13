@@ -198,7 +198,9 @@ WITH corpos AS (
     ('fin_dre', 'eafc6a2c4663e33f5459791c6601b848', '20261399600000'),
     ('registrar_pagamento_recebido', '88270bb1e228c90be73acca03a3cee4e', '20261243000000'),
     ('upsert_store_config', '391e8e1064400df5aea579f3472b203c', '20261244000000'),
-    ('fin_lancamento_salvar', '1356dbfc037a9202ef163ba598854891', '20261246000000')), colunas(tabela, coluna) AS (VALUES
+    ('fin_lancamento_salvar', '1356dbfc037a9202ef163ba598854891', '20261246000000'),
+    ('devolucao_elegibilidade', 'bedd211bba45261dfbf962241ca3c9dd', '20261399992000'),
+    ('devolucao_detalhe', 'a439e320641d553e3a21883c6606c6f2', '20261399992000')), colunas(tabela, coluna) AS (VALUES
     ('order_refunds', 'mp_chargeback_id'),
     ('order_refunds', 'mp_chargeback_case_id'),
     ('order_refunds', 'mp_chargeback_valor_do_caso'),

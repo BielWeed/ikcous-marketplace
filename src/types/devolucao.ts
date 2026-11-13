@@ -142,6 +142,12 @@ export interface ItemDevolvido {
   condicao: CondicaoItemDevolvido | null;
   reestocar: boolean | null;
   reestocado_em: string | null;
+  /**
+   * Uma devolução ANTERIOR e concluída deste mesmo item do pedido o marcou
+   * "Não veio" (campo de `devolucao_detalhe`, migration 20261399992000).
+   * Ausente em loja sem a migration: vale como `false`.
+   */
+  ja_pedido_e_nao_veio?: boolean;
 }
 
 export interface EventoDevolucao {

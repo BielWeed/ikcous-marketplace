@@ -3098,6 +3098,16 @@ const ROL_DA_143B = [
   "order_refund__pode_ter_saido e pedido__saldo_a_estornar: corpo da 20261241000000 (md5), o que a funcao nova chama",
   "is_admin() e is_admin_atual() existem; order_refund_prova existe e devolucoes tem refund_id (uuid)",
 ];
+// Lote 144 (20261399992000, o item que a lojista marcou "Nao veio" pode ser devolvido de novo: o corpo de TRES funcoes muda, nenhuma ACL, nenhuma tabela). A 144a prova o estado novo (o md5 exato dos tres
+// corpos e atributos/ACL conhecidos); a 144b prova a base vigente (os corpos da 20261199000000 e da 20261175000000). So catalogo: nenhuma le devolucao, pedido ou item e nenhuma chama as funcoes.
+const ROL_DA_144A = [
+  "controle: funcoes de public visiveis a este papel",
+  "devolucao_elegibilidade: corpo exato (md5)",
+  "solicitar_devolucao: corpo exato (md5)",
+  "devolucao_detalhe: corpo exato (md5)",
+  "as tres: uma so de cada nome, atributos conhecidos (SECURITY DEFINER, plpgsql, volatilidade, retorno jsonb, search_path=public) e EXECUTE so do authenticated (nem PUBLIC nem anon)",
+];
+const ROL_DA_144B = [...ROL_DA_144A];
 // Lote 145 (20261399993000, o CRM e a lista de clientes nao contam a mesma pessoa duas vezes: o corpo de DUAS funcoes muda, nenhuma ACL, nenhuma tabela). A 145a prova o estado novo (o md5 exato dos
 // dois corpos e atributos/ACL conhecidos); a 145b prova a base vigente (os corpos da 20261183000000 e da 20261392000000). So catalogo: nenhuma le perfil, endereco, pedido ou cliente e nenhuma chama as funcoes.
 const ROL_DA_145 = [
@@ -3112,6 +3122,10 @@ const ROL_FECHADO_POR_CONSULTA = {
     ROL_DA_145,
   "145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente":
     ROL_DA_145,
+  "144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado":
+    ROL_DA_144A,
+  "144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente":
+    ROL_DA_144B,
   "143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado":
     ROL_DA_143A,
   "143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente":

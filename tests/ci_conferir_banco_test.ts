@@ -2326,6 +2326,18 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "0dfda3ea5129c6f8aabfcf0052fd2936",
           versao: "20261232000000",
         },
+        // 13/11/2026: o item que a lojista marcou "Não veio" pode ser devolvido de novo (20261399992000): a elegibilidade
+        // e o detalhe da devolução ganham a sua sucessora (o solicitar_devolucao não é uma das 61).
+        {
+          fn: "devolucao_detalhe",
+          h: "a439e320641d553e3a21883c6606c6f2",
+          versao: "20261399992000",
+        },
+        {
+          fn: "devolucao_elegibilidade",
+          h: "bedd211bba45261dfbf962241ca3c9dd",
+          versao: "20261399992000",
+        },
         {
           fn: "fin_caixa_abrir",
           h: "28ab512e291378a01d110e298af7a402",
