@@ -6,8 +6,10 @@
 //     agora), enquanto o gráfico e o resumo contam DIAS DE CALENDÁRIO. Uma
 //     venda na borda entre as duas janelas fazia o selo dizer "+100%" ao lado
 //     de "R$ 0 e nenhum pedido" (e escondia/errava um crescimento legítimo).
-//     Com 60 dias de histórico, o selo sai do PRÓPRIO histórico; a RPC só
-//     serve de reserva quando o histórico é curto.
+//     Com 61 dias de histórico (60 FECHADOS + hoje), o selo sai do PRÓPRIO
+//     histórico; a RPC só serve de reserva quando o histórico é curto. O último
+//     dia (hoje) ainda é parcial e fica fora das duas janelas: loja de R$ 100
+//     por dia, olhada às 09:00, não pode mostrar queda por causa das 09:00.
 //  2. "Valor médio" somava reais em ponto flutuante: 10,00 + 10,01 = 20,009999…
 //     ÷ 2 = 10,004999… e aparecia R$ 10,00 onde o resumo do banco diz R$ 10,01.
 import { OperationalPerformanceChart } from "@/components/admin/dashboard/OperationalPerformanceChart";
@@ -66,14 +68,18 @@ function calendario(receitas: number[]): Dia[] {
   });
 }
 
-/** 60 dias zerados com as vendas pedidas nas posições dadas (0 = o mais
- * antigo, 29 = último dos "30 dias antes", 30 = primeiro dos "últimos 30"). */
-function sessentaDias(vendas: Record<number, number>): Dia[] {
+/** 60 dias FECHADOS zerados com as vendas pedidas nas posições dadas (0 = o
+ * mais antigo, 29 = último dos "30 dias antes", 30 = primeiro dos 30 dias
+ * atuais, 59 = ontem), mais o dia de hoje, ainda parcial, como 61º dia. */
+function sessentaFechadosMaisHoje(
+  vendas: Record<number, number>,
+  hoje = 0,
+): Dia[] {
   const receitas = Array<number>(60).fill(0);
   for (const [posicao, valor] of Object.entries(vendas)) {
     receitas[Number(posicao)] = valor;
   }
-  return calendario(receitas);
+  return calendario([...receitas, hoje]);
 }
 
 function stats(historico: Dia[], growth?: number): DashboardStats {
@@ -128,7 +134,7 @@ describe("Histórico da loja: selo e valor médio ao centavo", () => {
       // R$ 100 no ÚLTIMO dia dos "30 dias antes" (posição 29). Pelo relógio a
       // RPC a conta nos últimos 30 dias (growth 100); pelo calendário ela está
       // fora do período do gráfico, que mostra R$ 0 e nenhum pedido.
-      await montar(stats(sessentaDias({ 29: 100 }), 100));
+      await montar(stats(sessentaFechadosMaisHoje({ 29: 100 }), 100));
       expect(hospedeiro.textContent).not.toContain("+100");
       expect(textoDoSelo()).toContain("−100,0%");
       expect(textoDoSelo()).toContain("vs. 30 dias antes");
@@ -136,60 +142,91 @@ describe("Histórico da loja: selo e valor médio ao centavo", () => {
     });
 
     it("a mesma venda ao contrário (borda do outro lado): sem base, sem selo", async () => {
-      // R$ 100 no PRIMEIRO dia dos últimos 30 (posição 30): a RPC a conta nos
+      // R$ 100 no PRIMEIRO dia dos 30 atuais (posição 30): a RPC a conta nos
       // 30 dias antes (growth -100), mas pelo calendário os 30 dias antes são
       // zero — "de zero para algo" não é crescimento.
-      await montar(stats(sessentaDias({ 30: 100 }), -100));
+      await montar(stats(sessentaFechadosMaisHoje({ 30: 100 }), -100));
       expect(selo()).toBeNull();
     });
 
     it("crescimento legítimo (R$ 100 para R$ 200) aparece mesmo se a RPC discorda", async () => {
-      await montar(stats(sessentaDias({ 10: 100, 50: 200 }), 0));
+      await montar(stats(sessentaFechadosMaisHoje({ 10: 100, 50: 200 }), 0));
       expect(textoDoSelo()).toContain("+100,0%");
     });
 
     it("queda legítima sai do histórico, em vermelho", async () => {
-      await montar(stats(sessentaDias({ 10: 200, 50: 100 }), 7));
+      await montar(stats(sessentaFechadosMaisHoje({ 10: 200, 50: 100 }), 7));
       expect(textoDoSelo()).toContain("−50,0%");
       expect(selo()?.innerHTML).toContain("text-red-");
     });
 
     it("crescimento fracionado: R$ 300 para R$ 400 é +33,3%", async () => {
-      await montar(stats(sessentaDias({ 5: 100, 6: 200, 40: 400 }), 0));
+      await montar(
+        stats(sessentaFechadosMaisHoje({ 5: 100, 6: 200, 40: 400 }), 0),
+      );
       expect(textoDoSelo()).toContain("+33,3%");
     });
 
     it("histórico sem venda nos 60 dias: nenhum selo, mesmo com a RPC dizendo 0", async () => {
-      await montar(stats(sessentaDias({}), 0));
+      await montar(stats(sessentaFechadosMaisHoje({}), 0));
       expect(selo()).toBeNull();
     });
 
     it("vendeu igual nos dois períodos: 0% de verdade continua aparecendo", async () => {
-      await montar(stats(sessentaDias({ 10: 80, 50: 80 })));
+      await montar(stats(sessentaFechadosMaisHoje({ 10: 80, 50: 80 })));
       expect(textoDoSelo()).toContain("0,0%");
       expect(textoDoSelo()).not.toMatch(/[+−]0,0/);
     });
 
-    it("com 60 dias o histórico manda até quando a RPC nem veio", async () => {
-      await montar(stats(sessentaDias({ 10: 100, 50: 150 })));
+    it("loja de R$ 100 por dia, olhada com R$ 37,50 vendidos hoje: 0%, não -2,1%", async () => {
+      const constantes = Object.fromEntries(
+        Array.from({ length: 60 }, (_, i) => [i, 100]),
+      );
+      await montar(stats(sessentaFechadosMaisHoje(constantes, 37.5), 0));
+      expect(textoDoSelo()).toContain("0,0%");
+      expect(textoDoSelo()).not.toMatch(/[+−]\d/);
+      expect(selo()?.innerHTML).not.toContain("text-red-");
+    });
+
+    it("hoje (parcial) não entra em janela nenhuma: R$ 9.000 hoje não muda o selo", async () => {
+      await montar(
+        stats(sessentaFechadosMaisHoje({ 10: 200, 50: 100 }, 9000), 0),
+      );
+      expect(textoDoSelo()).toContain("−50,0%");
+    });
+
+    it("venda só hoje, nada nos 30 dias fechados atuais: queda de verdade, hoje não a esconde", async () => {
+      await montar(stats(sessentaFechadosMaisHoje({ 10: 100 }, 500), 0));
+      expect(textoDoSelo()).toContain("−100,0%");
+    });
+
+    it("venda só hoje e nenhuma base fechada: sem selo", async () => {
+      await montar(stats(sessentaFechadosMaisHoje({}, 500), 100));
+      expect(selo()).toBeNull();
+    });
+
+    it("com 61 dias o histórico manda até quando a RPC nem veio", async () => {
+      await montar(stats(sessentaFechadosMaisHoje({ 10: 100, 50: 150 })));
       expect(textoDoSelo()).toContain("+50,0%");
     });
 
-    it("histórico maior que 60 dias (Tudo): só os últimos 60 entram na conta", async () => {
-      // 100 dias: um R$ 9.999 antigo, fora das duas janelas, não pode pesar.
+    it("histórico maior que 61 dias (Tudo): só os 60 fechados entram na conta", async () => {
+      // 100 dias, o último é hoje (posição 99). 9.999 antigo fica fora; 100
+      // cai nos 30 dias antes (posições 39 a 68); 300 nos 30 atuais (69 a 98).
       const receitas = Array<number>(100).fill(0);
       receitas[0] = 9999;
-      receitas[60] = 100; // 40 dias antes de hoje: janela "antes"
-      receitas[95] = 300; // últimos 30
+      receitas[50] = 100;
+      receitas[95] = 300;
+      receitas[99] = 7777; // hoje, parcial
       await montar(stats(calendario(receitas), 0));
       expect(textoDoSelo()).toContain("+200,0%");
     });
 
-    it("enquanto carrega, nenhum selo (nem com histórico de 60 dias)", async () => {
+    it("enquanto carrega, nenhum selo (nem com histórico completo)", async () => {
       await act(async () => {
         raiz.render(
           <OperationalPerformanceChart
-            stats={stats(sessentaDias({ 10: 100, 50: 200 }), 100)}
+            stats={stats(sessentaFechadosMaisHoje({ 10: 100, 50: 200 }), 100)}
             loading
             active
           />,
@@ -198,19 +235,28 @@ describe("Histórico da loja: selo e valor médio ao centavo", () => {
       expect(selo()).toBeNull();
     });
 
-    it("histórico curto (menos de 60 dias) cai na reserva da RPC", async () => {
+    it("histórico curto (menos de 61 dias) cai na reserva da RPC", async () => {
       await montar(stats(calendario(Array<number>(20).fill(50)), 8));
       expect(textoDoSelo()).toContain("+8,0%");
     });
 
-    it("59 dias ainda é histórico curto: a RPC manda", async () => {
-      // Pelo histórico, seria +100%; a RPC diz 8 — com 59 dias não há base
-      // completa de 30 + 30, então vale a RPC.
-      const receitas = Array<number>(59).fill(0);
+    it("60 dias ainda é curto (tirando hoje sobram 59 fechados): a RPC manda", async () => {
+      // Pelo histórico, seria +100%; a RPC diz 8.
+      const receitas = Array<number>(60).fill(0);
       receitas[10] = 100;
       receitas[50] = 200;
       await montar(stats(calendario(receitas), 8));
       expect(textoDoSelo()).toContain("+8,0%");
+    });
+
+    it("61 dias é o mínimo para o histórico mandar", async () => {
+      // Mesma venda do teste acima, um dia a mais: agora há 60 fechados e o
+      // histórico vence a RPC (8).
+      const receitas = Array<number>(61).fill(0);
+      receitas[11] = 100;
+      receitas[51] = 200;
+      await montar(stats(calendario(receitas), 8));
+      expect(textoDoSelo()).toContain("+100,0%");
     });
 
     it("reserva mantém a guarda: +100 da RPC sem venda antes no histórico curto, sem selo", async () => {
