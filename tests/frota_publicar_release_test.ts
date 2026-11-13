@@ -3181,6 +3181,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado",
     "143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado",
     "144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado",
+    "145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado",
   ]);
 });
 

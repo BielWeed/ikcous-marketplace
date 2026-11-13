@@ -238,6 +238,17 @@ function buscarCoalescido(forcar = false): Promise<RetratoDoPainel> {
   return busca;
 }
 
+/**
+ * A consulta de abertura (200 ms depois de a tela ficar ativa) ainda vai SAIR
+ * depois do canal confirmar? Só então ela já enxerga o que o canal não ouviu:
+ * não pede busca em voo (saiu antes) nem retrato fresco (ela nem buscaria).
+ */
+function aberturaVaiLerDepois(aberturaPendente: boolean): boolean {
+  return (
+    aberturaPendente && buscaEmVoo === null && !retratoFresco(retratoEmCache)
+  );
+}
+
 /** Aquece o cache no hover da barra — não faz nada se ele ainda está fresco. */
 export function prefetchPainelInicio(): void {
   if (retratoFresco(retratoEmCache)) return;
@@ -269,6 +280,8 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
   const [carregando, setCarregando] = useState(false);
   const [canalVivo, setCanalVivo] = useState(false);
   const montadoRef = useRef(true);
+  // O respiro da abertura ainda não terminou: a consulta inicial não saiu.
+  const aberturaPendenteRef = useRef(false);
 
   useEffect(() => {
     montadoRef.current = true;
@@ -338,10 +351,15 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
   // rede (mesma ideia do atraso do dashboard antigo).
   useEffect(() => {
     if (!active || !temSessao) return;
+    aberturaPendenteRef.current = true;
     const timer = setTimeout(() => {
+      aberturaPendenteRef.current = false;
       void carregar(false);
     }, ESPERA_DA_ABERTURA_MS);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      aberturaPendenteRef.current = false;
+    };
   }, [active, temSessao, carregar]);
 
   // Tempo real em marketplace_orders — só com a tela ativa.
@@ -355,12 +373,12 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
     let canalJaCaiu = false;
     let geracaoDoCanal = 0;
 
-    const recarregarJa = () => {
+    const recarregarJa = (silenciosa = canalJaCaiu) => {
       if (espera) clearTimeout(espera);
       espera = setTimeout(() => {
         espera = null;
         const geracao = geracaoDoCanal;
-        void carregar(true, canalJaCaiu).then(() => {
+        void carregar(true, silenciosa).then(() => {
           if (!encerrado && conectado && geracao === geracaoDoCanal) {
             canalJaCaiu = false;
             setCanalVivo(true);
@@ -413,6 +431,15 @@ export function usePainelInicio(active: boolean): EstadoDoPainelInicio {
             if (voltou) aoMudarPedido();
           } else {
             setCanalVivo(true);
+            // Primeira confirmação: a consulta de abertura é independente do
+            // canal e, com conexão lenta, pode ter lido o banco ANTES de ele
+            // começar a ouvir — uma venda confirmada nesse intervalo não chega
+            // por evento. Uma releitura silenciosa fecha o buraco, a menos que
+            // a abertura ainda vá sair depois daqui (aí ela já lê o novo).
+            if (voltou && !aberturaVaiLerDepois(aberturaPendenteRef.current)) {
+              if (document.visibilityState === "hidden") sujoEscondido = true;
+              else recarregarJa(true);
+            }
           }
         } else if (
           status === "CHANNEL_ERROR" ||

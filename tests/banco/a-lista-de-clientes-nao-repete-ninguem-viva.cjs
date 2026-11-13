@@ -180,6 +180,11 @@ async function main() {
   await c.connect();
   const abertas = [c];
   try {
+    // A 20261399993000 (a lista toma UM endereco principal por cliente) sucede o corpo desta migration: sai do clone (descartavel) antes de medir o TOPO da 392;
+    // a prova propria dela e' o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-viva.cjs.
+    await require("./a-busca-de-clientes-posterior.cjs").desfazerListaDeEnderecoPrincipalNaTransacao(
+      c,
+    );
     // ---- 0. O topo instalado pelo CI e' o desta migration; o anterior e' o da 20261230000000. ----
     const topo = await funcao(c);
     assert.equal(
