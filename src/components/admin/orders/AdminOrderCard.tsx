@@ -77,8 +77,11 @@ interface AdminOrderCardProps {
 
 const FOCO =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300";
-const SECUNDARIO = `relative z-10 flex min-h-11 items-center justify-center gap-2 whitespace-normal rounded-2xl border border-admin-border bg-admin-raised px-3 py-2 text-sm font-semibold text-zinc-100 hover:bg-admin-hover disabled:cursor-not-allowed disabled:text-zinc-400 ${FOCO}`;
-const PRINCIPAL = `${SECUNDARIO} min-h-14 border-[#F6D365]/50 bg-gradient-to-b from-[#F6D365] to-[#E4AD18] text-[#211A05] hover:brightness-105`;
+// A cor do texto fica FORA da base: o tema remapeia `.text-zinc-100` e esse remapeado
+// ganharia do texto escuro do dourado, que o botão principal não pode herdar.
+const BASE_DO_BOTAO = `relative z-10 flex min-h-11 items-center justify-center gap-2 whitespace-normal rounded-2xl border border-admin-border bg-admin-raised px-3 py-2 text-sm font-semibold hover:bg-admin-hover disabled:cursor-not-allowed disabled:text-zinc-400 ${FOCO}`;
+const SECUNDARIO = `${BASE_DO_BOTAO} text-zinc-100`;
+const PRINCIPAL = `${BASE_DO_BOTAO} min-h-14 border-[#F6D365]/50 bg-gradient-to-b from-[#F6D365] to-[#E4AD18] text-[#211A05] hover:brightness-105`;
 const PERIGO = `${SECUNDARIO} border-red-300/15 bg-red-400/10 text-red-300 hover:bg-red-400/20`;
 const ETAPAS: readonly OrderStatus[] = [
   "pending",

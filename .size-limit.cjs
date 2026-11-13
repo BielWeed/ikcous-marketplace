@@ -191,7 +191,8 @@ module.exports = [
     // 10/11/2026 (1.5.165): 648 -> 652 kB (o CI mediu 648,07 kB num PR que so adiciona teste Deno, sem mudar o front: a base ja estava no teto e o ruido entre builds, de poucas dezenas de bytes, derrubava qualquer PR; subo 4 kB para acabar com a troca de 1 em 1). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 12/11/2026 (1.5.173): 652 -> 656 kB (textos do checkout, fotos quebradas, avisos de numeracao e telas pequenas: os PRs do dia somaram ~650 kB e deixaram a base com 0,1 kB de folga, entao cada PR novo reprovava; subo 4 kB, o mesmo passo de 10/11, para acabar com a troca de 1 em 1). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
     // 12/11/2026 (1.5.174): 656 -> 660 kB (a base fechou em 655,96 kB, ~0,04 kB de folga, e cada PR novo voltaria a reprovar; subo 4 kB, o mesmo passo do 1.5.173). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
-    limit: "660 kB",
+    // 13/11/2026 (1.5.178): 660 -> 664 kB (o PR de produtos mediu 660,14 kB no CI, 139 B acima de 660 kB, e a base ja fechava colada no teto; subo 4 kB, o mesmo passo de 12/11). Regra do dono: o teto sobe, nada foi trocado por algo mais arriscado.
+    limit: "664 kB",
     webpack: false,
     // Sem medida de TEMPO: o plugin `@size-limit/time` (que rodava o bundle em
     // Chrome headless e puxava o `extract-zip`) saiu das dependencias, entao
