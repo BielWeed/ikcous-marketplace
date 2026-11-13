@@ -3064,7 +3064,21 @@ const ROL_DA_140 = [
     `${fn}: EXECUTE so authenticated e service_role (sem PUBLIC nem anon)`,
   ]),
 ];
+// Lote 141 (20261399985000, o grafico do Financeiro soma so as contas ativas: fin_resumo redefinida, sem objeto novo). A 141a e a 141b tem o MESMO rol de 5 linhas (controle; de fin_resumo, corpo exato (md5), atributos
+// e ACL; e o corpo exato de fin__saldos, cuja conta o corpo novo repete); a 141a espera o corpo da migration nova e a 141b o vigente de antes (o da 20261399300000). So catalogo: nenhuma le conta, lancamento ou
+// pedido e nenhuma chama as funcoes.
+const ROL_DA_141 = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin_resumo: corpo exato (md5)",
+  "fin_resumo: assinatura e atributos conhecidos (plpgsql, SECURITY DEFINER, STABLE, search_path=public, uma so)",
+  "fin_resumo: EXECUTE authenticated, sem PUBLIC ou anon",
+  "fin__saldos: corpo exato (md5)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "141a-conferir-o-grafico-do-financeiro-soma-so-as-contas-ativas-aplicado":
+    ROL_DA_141,
+  "141b-antes-o-grafico-do-financeiro-soma-so-as-contas-ativas-base-vigente":
+    ROL_DA_141,
   "140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado": ROL_DA_140,
   "140b-antes-as-listas-do-painel-nao-repetem-ninguem-base-vigente": ROL_DA_140,
   "135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado": ROL_DA_135,

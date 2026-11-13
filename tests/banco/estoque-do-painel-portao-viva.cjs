@@ -1399,6 +1399,12 @@ async function main() {
         "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql",
         "public.get_admin_products_paged(text,text,text,text,integer,integer)",
       ],
+      // A 20261399985000 (o grafico do Financeiro soma so as contas ativas): fin_resumo sobre o corpo da 3993, funcao de fora destas tres, o mesmo caso da 3993 acima.
+      // O rollback dela devolve o corpo da 3993 (o molde, abaixo, desfaz e mede).
+      [
+        "20261399985000_o_grafico_do_financeiro_soma_so_as_contas_ativas.sql",
+        "public.fin_resumo(date,date)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

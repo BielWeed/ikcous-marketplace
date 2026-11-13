@@ -855,6 +855,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399980000: as listas de Produtos, Pedidos e Cancelados do painel nao repetem nem escondem ninguem entre as paginas (desempate pelo id; controle com os corpos anteriores, mutantes,
     // rollback byte a byte, conexao sem BEGIN, pre/pos-voo, admin e consultas 140a/140b).
     "tests/banco/as-listas-do-painel-nao-repetem-ninguem-viva.cjs",
+    // 20261399985000: o grafico do Financeiro soma so as contas ativas (fin_resumo ganha serie[].variacao_saldo; controle com o corpo anterior, saldo de cada dia = fin__saldos, mutantes,
+    // rollback byte a byte, conexao sem BEGIN, pre/pos-voo, admin e consultas 141a/141b).
+    "tests/banco/o-grafico-do-financeiro-soma-so-as-contas-ativas-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
     "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
   ];

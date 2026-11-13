@@ -328,6 +328,8 @@ on:
           - 135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente
           - 140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado
           - 140b-antes-as-listas-do-painel-nao-repetem-ninguem-base-vigente
+          - 141a-conferir-o-grafico-do-financeiro-soma-so-as-contas-ativas-aplicado
+          - 141b-antes-o-grafico-do-financeiro-soma-so-as-contas-ativas-base-vigente
           - 129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente
           - 129m-medir-corrida-e-avanco-com-estorno
           - 9a-conferir-60-a-66-aplicado

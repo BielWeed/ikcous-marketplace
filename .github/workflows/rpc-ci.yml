@@ -264,6 +264,8 @@ on:
       - "scripts/publicacao/consultas/135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente.sql"
       - "scripts/publicacao/consultas/140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado.sql"
       - "scripts/publicacao/consultas/140b-antes-as-listas-do-painel-nao-repetem-ninguem-base-vigente.sql"
+      - "scripts/publicacao/consultas/141a-conferir-o-grafico-do-financeiro-soma-so-as-contas-ativas-aplicado.sql"
+      - "scripts/publicacao/consultas/141b-antes-o-grafico-do-financeiro-soma-so-as-contas-ativas-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
       - "scripts/publicacao/consultas/129m-medir-corrida-e-avanco-com-estorno.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
@@ -499,6 +501,8 @@ on:
       - "scripts/publicacao/consultas/135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente.sql"
       - "scripts/publicacao/consultas/140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado.sql"
       - "scripts/publicacao/consultas/140b-antes-as-listas-do-painel-nao-repetem-ninguem-base-vigente.sql"
+      - "scripts/publicacao/consultas/141a-conferir-o-grafico-do-financeiro-soma-so-as-contas-ativas-aplicado.sql"
+      - "scripts/publicacao/consultas/141b-antes-o-grafico-do-financeiro-soma-so-as-contas-ativas-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
       - "scripts/publicacao/consultas/129m-medir-corrida-e-avanco-com-estorno.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
@@ -1133,6 +1137,14 @@ jobs:
       - name: Prova viva das listas do painel que nao repetem nem escondem ninguem entre as paginas (20261399980000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/as-listas-do-painel-nao-repetem-ninguem-viva.cjs
+      # Migration 20261399985000 (o grafico do Financeiro soma so as contas ativas): fin_resumo ganha SO a chave serie[].variacao_saldo (quanto o saldo das contas ATIVAS mudou em cada dia, pela mesma conta de
+      # fin__saldos). Fixture COMMITADA no clone (contas ativas, desativada com movimento, conta de saldo inicial tardio, transferencias entre ativa e desativada, vendas, estorno, movimento de data futura, previsto e
+      # cancelado): o saldo ao fim de cada dia reconstruido de saldo_total bate com fin__saldos no mesmo dia; controle com o corpo anterior (o grafico mostra o que nunca existiu), mutantes (sem o filtro de ativas, filtro
+      # invertido, desativada so no saldo, sem saldo_inicial_em, sem o teto de hoje, transferencia, sinais, arredondamento, previsto), resto do JSON identico ao corpo anterior, guarda de admin, reaplicar, rollback byte a
+      # byte, conexao sem BEGIN com conferencia sabotada, pre-voo, consultas 141a/141b e as vizinhas (8e, 119a). CLONE proprio.
+      - name: Prova viva do grafico do Financeiro que soma so as contas ativas (20261399985000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-grafico-do-financeiro-soma-so-as-contas-ativas-viva.cjs
       # Onda 150 (SEM migration): registrar_venda_presencial recusa p_itens vazio, que nao e lista (objeto, null, escalar, NULL) e com mais de 200 linhas, com 22023 e a frase da loja, sem escrever pedido, item,
       # historico, financeiro nem estoque; 200 (o limite) entra. Mutantes por MUTANTE_R150E. CLONE proprio.
       - name: Prova viva do balcao que recusa venda sem item e com itens demais
