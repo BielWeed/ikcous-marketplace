@@ -269,13 +269,14 @@ export interface PayloadDaConta {
   readonly ativa: boolean;
 }
 
-/** Corpo de `fin_categoria_salvar(p jsonb)`. */
+/** Corpo de `fin_categoria_salvar(p jsonb)`. Nas categorias do sistema só `id`, `nome` e
+ * `ativa=true` viajam: o banco recusa a PRESENÇA de `natureza`/`grupo_dre` ali. */
 export interface PayloadDaCategoria {
   readonly id?: string;
   readonly nome: string;
-  readonly natureza: NaturezaDaCategoria;
-  readonly grupo_dre: GrupoDaDre;
-  readonly ativa: boolean;
+  readonly natureza?: NaturezaDaCategoria;
+  readonly grupo_dre?: GrupoDaDre;
+  readonly ativa?: boolean;
 }
 
 export type PresetDePeriodo =

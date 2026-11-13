@@ -250,6 +250,32 @@ const CASOS: Caso[] = [
       cadastroNovo: !sistema,
     },
   ]),
+  // As duas categorias que o banco protege (Vendas): só o nome viaja.
+  {
+    nome: "categoria Vendas (só o nome)",
+    montar: (aoSalvar) => (
+      <CategoriaFolha
+        categoria={{
+          ...CATEGORIA,
+          id: "f2000000-0000-4000-8000-000000000001",
+          sistema: true,
+        }}
+        aoFechar={vi.fn()}
+        aoSalvar={aoSalvar}
+        aoMudarSujo={vi.fn()}
+      />
+    ),
+    campoDeTexto: "fin-categoria-nome",
+    texto: "Aluguel da loja",
+    rpc: "fin_categoria_salvar",
+    payload: {
+      id: "f2000000-0000-4000-8000-000000000001",
+      nome: "Aluguel da loja",
+      ativa: true,
+    },
+    salvar: "Salvar",
+    cadastroNovo: false,
+  },
 ];
 
 describe.each(CASOS)("Financeiro — $nome", (caso) => {
