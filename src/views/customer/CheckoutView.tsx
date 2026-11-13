@@ -3041,6 +3041,22 @@ export function CheckoutViewDaConta({
     }
   }, [isAddressModalOpen, showSuccess]);
 
+  // Fechou a tela do endereço (Cancelar, Voltar ou salvar: todos desligam
+  // `isAddressModalOpen`) depois de aberta por "Novo": o foco volta ao "Novo".
+  // O botão sumiu junto com o formulário e voltou como elemento novo, então a
+  // busca é por id; se a seção recolheu no meio (endereço escolhido), cai no
+  // botão que assume o lugar dele, como em `focoAposAlternarRef`.
+  const focoDeVoltaAoNovoEnderecoRef = useRef(false);
+  useEffect(() => {
+    if (isAddressModalOpen || !focoDeVoltaAoNovoEnderecoRef.current) return;
+    focoDeVoltaAoNovoEnderecoRef.current = false;
+    (
+      document.getElementById("checkout-novo-endereco") ??
+      document.getElementById("resumo-trocar-endereco") ??
+      document.getElementById("resumo-editar-dados")
+    )?.focus();
+  }, [isAddressModalOpen]);
+
   // Cada abertura da janela do endereço ganha uma identidade; fechar (ou
   // desmontar a tela) a zera. Ver `janelaDoEnderecoRef`.
   useEffect(() => {
@@ -6910,9 +6926,15 @@ export function CheckoutViewDaConta({
                         }
                         className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                         onChange={async (e) => {
-                          const { limpo, formatado } = formatarCep(
+                          const { limpo: digitos, formatado } = formatarCep(
                             e.target.value,
                           );
+                          // Sem o maxLength do campo, um 9º dígito colado não
+                          // pode deixar o CEP novo sem busca (rua e bairro do
+                          // CEP anterior ficariam com ele): vale o que o
+                          // campo mostra, os 8 primeiros. Mesmo corte do
+                          // AddressForm.tsx.
+                          const limpo = digitos.slice(0, 8);
                           form.setValue("cep", formatado, {
                             shouldValidate: true,
                           });
@@ -7178,10 +7200,12 @@ export function CheckoutViewDaConta({
                     </span>
                   </div>
                   <Button
+                    id="checkout-novo-endereco"
                     variant="ghost"
                     size="sm"
                     onClick={() => {
                       setEditingAddressId(null);
+                      focoDeVoltaAoNovoEnderecoRef.current = true;
                       setIsAddressModalOpen(true);
                     }}
                     className="flex h-11 items-center gap-1 rounded-xl bg-zinc-900 px-3 text-[11px] font-bold uppercase tracking-wider text-white transition-all hover:bg-black"
@@ -8754,10 +8778,16 @@ function AddressSelectionView({
           <div className="absolute bottom-0 left-0 -mb-12 -ml-12 size-24 rounded-full bg-white/5 blur-xl" />
 
           <div className="relative z-10 flex flex-col">
-            <h2 className="mb-1 flex items-center gap-2 text-2xl font-bold tracking-tight text-primary-foreground">
+            {/* A tela do endereço SUBSTITUI o checkout e o botão que tinha o
+                foco some junto: o título recebe o foco ao abrir, como nas
+                telas de sucesso (`TituloQueRecebeOFoco`). */}
+            <TituloQueRecebeOFoco
+              nivel={2}
+              className="mb-1 flex items-center gap-2 text-2xl font-bold tracking-tight text-primary-foreground"
+            >
               {editingAddressId ? "Editar Endereço" : "Novo Endereço"}
               <Sparkles className="size-4.5 animate-pulse text-amber-400" />
-            </h2>
+            </TituloQueRecebeOFoco>
             <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-primary-foreground/80">
               {editingAddressId
                 ? "Atualize os dados para entrega"
