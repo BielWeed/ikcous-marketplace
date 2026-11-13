@@ -47,10 +47,10 @@ interface OperationalPerformanceChartProps {
 }
 
 /**
- * Crescimento do faturamento: os últimos 30 dias contra os 30 anteriores (é o
- * que a RPC calcula — não muda com os botões 30/90/Tudo, então a legenda não
- * promete mais que isso). Queda em vermelho e alta em verde, com o sinal
- * escrito: a cor nunca é a única pista.
+ * Crescimento do faturamento: os últimos 30 dias contra os 30 anteriores (não
+ * muda com os botões 30/90/Tudo, então a legenda não promete mais que isso).
+ * Queda em vermelho e alta em verde, com o sinal escrito: a cor nunca é a
+ * única pista.
  */
 function SeloDeCrescimento({ valor }: { readonly valor: number }) {
   const arredondado = Math.round(valor * 10) / 10;
@@ -73,21 +73,49 @@ function SeloDeCrescimento({ valor }: { readonly valor: number }) {
   );
 }
 
+/** Dias de calendário de cada janela do selo (30 fechados e os 30 antes). */
+const DIAS_DA_JANELA_DO_SELO = 30;
+
+/** Soma em centavos inteiros: `0.1 + 0.2` não pode virar dinheiro. */
+const somaEmCentavos = (dias: readonly { revenue?: number | null }[]) =>
+  dias.reduce((soma, dia) => soma + Math.round((dia.revenue ?? 0) * 100), 0);
+
 /**
- * A RPC devolve +100 quando os 30 dias anteriores não tiveram venda e os
- * últimos 30 tiveram ("de zero para qualquer coisa"). Isso não é crescimento:
- * sem base, sem selo (mesmo critério dos chips de Receita/Pedidos do CRM).
- * A base sai do próprio histórico diário: os 30 dias antes dos últimos 30.
+ * Crescimento que o selo mostra, ou `null` quando não há o que comparar.
+ *
+ * A RPC conta "últimos 30 dias até a HORA de agora", e o gráfico/resumo contam
+ * DIAS DE CALENDÁRIO: uma venda na borda entre as duas janelas fazia o selo
+ * dizer "+100%" ao lado de "R$ 0 e nenhum pedido". Por isso, com histórico
+ * suficiente, o selo sai do PRÓPRIO histórico: 30 dias FECHADOS terminando
+ * ontem contra os 30 anteriores. O último dia do histórico é hoje, ainda
+ * parcial: contá-lo faria a loja de R$ 100 por dia, olhada às 09:00, mostrar
+ * queda (−2,1%) em vez de 0%. Sem base (30 dias antes zerados, inclusive as
+ * duas janelas zeradas) não é crescimento: sem selo, mesmo critério dos chips
+ * de Receita/Pedidos do CRM.
+ *
+ * Com histórico curto (< 61 dias: hoje + 60 fechados) a RPC é a reserva, com
+ * as guardas de sempre: +100 ("de zero para qualquer coisa") e 0 (nenhuma
+ * venda nos 60 dias) só valem se o histórico disponível confirma a base.
  */
-function semVendaNosTrintaDiasAntes(stats: DashboardStats): boolean {
+function crescimentoDoSelo(stats: DashboardStats): number | null {
+  const historico = stats.revenueHistory ?? [];
+  if (historico.length >= 2 * DIAS_DA_JANELA_DO_SELO + 1) {
+    // O fim em -1 deixa hoje (parcial) de fora: sobram só dias fechados.
+    const janelas = historico.slice(-(2 * DIAS_DA_JANELA_DO_SELO + 1), -1);
+    const antes = somaEmCentavos(janelas.slice(0, DIAS_DA_JANELA_DO_SELO));
+    const agora = somaEmCentavos(janelas.slice(DIAS_DA_JANELA_DO_SELO));
+    if (antes <= 0) return null;
+    return ((agora - antes) / antes) * 100;
+  }
+  const { growth } = stats;
+  if (typeof growth !== "number" || !Number.isFinite(growth)) return null;
   const temVenda = (dias: readonly { revenue?: number | null }[]) =>
     dias.some((dia) => (dia.revenue ?? 0) > 0);
-  const historico = stats.revenueHistory ?? [];
   // growth 0 sem nenhuma venda nos 60 dias: a RPC devolve 0 quando as duas
   // janelas são zero, e isso não é "0% de crescimento".
-  if (stats.growth === 0) return !temVenda(historico.slice(-60));
-  if (stats.growth !== 100) return false;
-  return !temVenda(historico.slice(-60, -30));
+  if (growth === 0) return temVenda(historico.slice(-60)) ? growth : null;
+  if (growth !== 100) return growth;
+  return temVenda(historico.slice(-60, -30)) ? growth : null;
 }
 
 /** Teto do percentual do cartão "Sobre o estoque de hoje": acima disso o
@@ -117,6 +145,7 @@ export const OperationalPerformanceChart = memo(
     onNavigate,
   }: OperationalPerformanceChartProps) {
     const semCusto = produtosSemCusto(stats);
+    const crescimento = !loading && stats ? crescimentoDoSelo(stats) : null;
     const _isMobile = useMediaQuery("(max-width: 1023px)");
     const [mounted, setMounted] = useState(false);
     useEffect(() => {
@@ -167,17 +196,16 @@ export const OperationalPerformanceChart = memo(
     // "-- executive stats (all-time)" — a lojista trocava o período no
     // seletor e via o gráfico mudar, mas os números ao lado continuavam
     // sendo o total histórico da loja inteira.
+    // Soma em centavos inteiros: 10,00 + 10,01 em ponto flutuante dá
+    // 20,009999… e a média arredondava para R$ 10,00 (o banco diz R$ 10,01).
     const periodTotals = useMemo(() => {
-      const revenue = filteredRevenueHistory.reduce(
-        (sum, day) => sum + (day.revenue ?? 0),
-        0,
-      );
+      const centavos = somaEmCentavos(filteredRevenueHistory);
       const orders = filteredRevenueHistory.reduce(
         (sum, day) => sum + (day.orders ?? 0),
         0,
       );
-      const avgTicket = orders > 0 ? revenue / orders : 0;
-      return { revenue, orders, avgTicket };
+      const avgTicket = orders > 0 ? Math.round(centavos / orders) / 100 : 0;
+      return { revenue: centavos / 100, orders, avgTicket };
     }, [filteredRevenueHistory]);
 
     // Process data for ROI chart
@@ -256,12 +284,7 @@ export const OperationalPerformanceChart = memo(
               </p>
             )}
           </div>
-          {!loading &&
-            typeof stats?.growth === "number" &&
-            Number.isFinite(stats.growth) &&
-            !semVendaNosTrintaDiasAntes(stats) && (
-              <SeloDeCrescimento valor={stats.growth} />
-            )}
+          {crescimento !== null && <SeloDeCrescimento valor={crescimento} />}
           <ExplicacaoDoRelatorio titulo="Histórico da loja">
             Conta pelo dia em que o pedido foi feito, por isso pode ficar um
             pouco diferente da Receita lá de cima.

@@ -74,6 +74,16 @@ function avisarMudancaDeCategorias() {
   for (const ouvinte of [...ouvintesDeMudanca]) ouvinte();
 }
 
+// Uma criação confirmada vale mais que qualquer leitura que COMEÇOU antes dela:
+// essa leitura pode não conhecer a categoria nova e, ao chegar, a apagaria da
+// tela, da memória e da cópia do aparelho. Sobe a geração (a leitura antiga cai
+// no caminho "superada" e devolve a lista em memória, que já tem a nova) e solta
+// a promessa em voo, para quem pegou carona nela não esperar por si mesma.
+function descartarLeiturasEmVoo() {
+  geracaoDaLeitura += 1;
+  categoriesFetchPromise = null;
+}
+
 // ── Rede ruim na PRIMEIRA carga ──
 // Sem nada na tela (nem cópia do aparelho), uma falha de rede deixava a
 // vitrine sem filtros até a cliente recarregar a página. Agora: até
@@ -459,6 +469,7 @@ export function useCategories() {
             ...globalCategoriesCache.filter((c) => c.id !== definitiva.id),
             definitiva,
           ]);
+          descartarLeiturasEmVoo();
         }
 
         setCategories((prev) => {
@@ -476,6 +487,10 @@ export function useCategories() {
           return reverted;
         });
         console.error("Error adding category:", error);
+        // Estourou o prazo: o servidor pode ter gravado. Não se afirma sucesso
+        // nem falha; relê a lista real (a categoria passa a aparecer, e repetir
+        // não cai em "já existe"). A releitura sobe a geração por conta própria.
+        if (ehConsultaSemResposta(error)) avisarMudancaDeCategorias();
         // Nome único e endereço único no banco: o 23505 quer dizer "já existe
         // uma assim", e a lojista lê isso, não o erro cru.
         if ((error as { code?: unknown } | null)?.code === "23505") {

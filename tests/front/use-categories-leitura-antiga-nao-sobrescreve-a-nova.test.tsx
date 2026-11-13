@@ -13,11 +13,13 @@ const h = vi.hoisted(() => ({
   consultar: vi.fn(),
   salvar: vi.fn(),
   erro: vi.fn(),
+  inserir: vi.fn(),
 }));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
       select: () => ({ order: h.consultar }),
+      insert: () => ({ select: () => ({ single: h.inserir }) }),
       update: () => ({
         eq: () => ({
           select: async () => ({ data: [{ id: "c1" }], error: null }),
@@ -85,6 +87,17 @@ describe("useCategories — leitura antiga não sobrescreve a nova", () => {
     h.consultar.mockReset().mockResolvedValue(resposta("antigo"));
     h.salvar.mockReset().mockResolvedValue(undefined);
     h.erro.mockReset();
+    h.inserir.mockReset().mockResolvedValue({
+      data: {
+        id: "c2",
+        nome: "Jogos",
+        slug: "jogos",
+        descricao: "",
+        ativo: true,
+        created_at: "2026-01-02T00:00:00Z",
+      },
+      error: null,
+    });
     const { useCategories, categoriasEmMemoria } = await import(
       "@/hooks/useCategories"
     );
@@ -292,6 +305,82 @@ describe("useCategories — leitura antiga não sobrescreve a nova", () => {
     });
     conferirNovo();
     expect(h.consultar).toHaveBeenCalledTimes(3); // carga inicial, A e B
+  });
+
+  // Criar categoria (sem ícone, sem trocar nada depois) também confirma uma
+  // lista nova: a leitura iniciada ANTES da criação não a conhece e não pode
+  // apagá-la da tela, da memória do módulo nem da cópia do aparelho.
+  const nomesNaTela = () => hook().categories.map((c) => c.name);
+  const conferirComJogos = () => {
+    expect(nomesNaTela()).toEqual(["Brinquedo", "Jogos"]);
+    expect(emMemoria()?.map((c) => c.name)).toEqual(["Brinquedo", "Jogos"]);
+    expect(h.salvar).toHaveBeenLastCalledWith(
+      "categories",
+      expect.arrayContaining([expect.objectContaining({ name: "Jogos" })]),
+    );
+  };
+  const NOVA = { name: "Jogos", description: "", isActive: true };
+
+  it.each(["responde", "falha"])(
+    "criar sem ícone: a leitura em voo iniciada antes que %s depois não apaga a categoria",
+    async (fim) => {
+      const antiga = leituraControlada();
+      h.consultar.mockReturnValueOnce(antiga.promessa);
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      let esperaAntiga!: Promise<void>;
+      await act(async () => {
+        esperaAntiga = hook().fetchCategories(true, true);
+      });
+      await act(async () => {
+        await hook().addCategory(NOVA, true);
+      });
+      conferirComJogos();
+      const gravacoes = h.salvar.mock.calls.length;
+      await act(async () => {
+        if (fim === "responde") antiga.responder(resposta("antigo"));
+        else antiga.rejeitar(new Error("Falha da consulta antiga"));
+        await esperaAntiga;
+      });
+      conferirComJogos();
+      expect(h.salvar).toHaveBeenCalledTimes(gravacoes);
+      expect(h.erro).not.toHaveBeenCalled();
+      expect(h.consultar).toHaveBeenCalledTimes(2); // carga inicial e a antiga
+    },
+  );
+
+  it("criar que o banco recusa deixa a leitura em voo valer como sempre", async () => {
+    const antiga = leituraControlada();
+    h.consultar.mockReturnValueOnce(antiga.promessa);
+    h.inserir.mockResolvedValue({
+      data: null,
+      error: { code: "08006", message: "connection failure" },
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let esperaAntiga!: Promise<void>;
+    await act(async () => {
+      esperaAntiga = hook().fetchCategories(true, true);
+    });
+    await act(async () => {
+      await hook()
+        .addCategory(NOVA, true)
+        .catch(() => {});
+    });
+    expect(nomesNaTela()).toEqual(["Brinquedo"]);
+    await act(async () => {
+      antiga.responder(resposta("lida"));
+      await esperaAntiga;
+    });
+    // Nada foi confirmado: a leitura em voo continua sendo a verdade mais nova.
+    expect(hospedeiro.textContent).toBe("lida");
+    expect(emMemoria()?.[0].icone).toBe("lida");
+  });
+
+  it("criar sem leitura em voo não faz leitura nova nem mexe na ordem", async () => {
+    await act(async () => {
+      await hook().addCategory(NOVA, true);
+    });
+    conferirComJogos();
+    expect(h.consultar).toHaveBeenCalledTimes(1);
   });
 
   it("falha tardia da leitura superada não avisa nem altera a lista nova", async () => {
