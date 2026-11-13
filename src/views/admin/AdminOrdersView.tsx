@@ -105,6 +105,7 @@ import type {
   PaymentStatus,
   View,
 } from "@/types";
+import { comPrazo } from "@/utils/com-prazo";
 import { haptic } from "@/utils/haptic";
 import { AlertasCancelados } from "@/views/admin/AlertasCancelados";
 import {
@@ -740,6 +741,32 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     [registrarPagamentoRecebido],
   );
 
+  // A função do hook atualiza só os pedidos que estão em `orders`; a ficha
+  // aberta por link/sino de um pedido fora da página carregada vive em
+  // `selectedOrder`, um estado à parte que só o evento ao vivo atualizava. Sem
+  // o tempo real a lojista registrava o "Recebi" e a ficha seguia oferecendo
+  // "Marcar como recebido". Aqui a resposta da gravação (a verdade do banco)
+  // é copiada para a ficha — mesmos campos que o hook copia para `orders`, e
+  // atualização funcional para não apagar um status que mudou no meio.
+  // Falha lança e deixa a ficha como está.
+  const registrarPagamentoNaFicha = useCallback(
+    async (orderId: string, recebido: boolean) => {
+      const data = await registrarPagamentoRecebido(orderId, recebido);
+      setSelectedOrder((prev) =>
+        prev?.id === orderId
+          ? {
+              ...prev,
+              paymentStatus: data?.payment_status ?? prev.paymentStatus,
+              pagamentoRecebidoEm: data?.pagamento_recebido_em ?? null,
+              pagamentoRecebidoPor: data?.pagamento_recebido_por ?? null,
+            }
+          : prev,
+      );
+      return data;
+    },
+    [registrarPagamentoRecebido],
+  );
+
   // PAINEL-05: número que não se sabe é "—", nunca "0" — um `0` afirma
   // "nenhum pedido" quando a consulta simplesmente falhou.
   const kpiCards = useMemo<readonly KpiCardConfig[]>(
@@ -944,15 +971,23 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       setDetailError(false);
       setDetailNaoExiste(false);
       try {
-        const { data, error } = await supabase
-          .from("marketplace_orders")
-          .select(`
+        // Com 15 s sem resposta (conexão pendurada) a busca cai no catch
+        // abaixo: aviso + tela de erro com "Voltar". Sem prazo, o spinner de
+        // "Carregando Pedido" ficava para sempre, sem saída.
+        const { data, error } = await comPrazo(
+          Promise.resolve(
+            supabase
+              .from("marketplace_orders")
+              .select(`
             *,
             items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)),
             address:user_addresses(*)
           `)
-          .eq("id", selectedOrderId)
-          .single();
+              .eq("id", selectedOrderId)
+              .single(),
+          ),
+          15_000,
+        );
 
         if (error) throw error;
         if (data && isCurrent) {
@@ -1983,7 +2018,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             order={selectedOrder}
             onStatusChange={handleStatusChange}
             isOffline={isOffline}
-            onRegistrarPagamento={registrarPagamentoRecebido}
+            onRegistrarPagamento={registrarPagamentoNaFicha}
             storeName={storeNameDaLoja}
             onAbrirDevolucoes={abrirDevolucoes}
             onRascunhoPendente={aoMudarRascunhoDaFicha}
