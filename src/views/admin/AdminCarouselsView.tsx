@@ -30,6 +30,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useFocoAposExcluir } from "@/hooks/useFocoAposExcluir";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import type { LayoutDeOfertas } from "@/lib/layout-de-ofertas";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import {
@@ -162,6 +163,11 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [showAddVitrineModal, setShowAddVitrineModal] = useState(false);
   const [newVitrineTitle, setNewVitrineTitle] = useState("");
+  // O Voltar do aparelho fecha só a folha de nova vitrine, como o botão Fechar
+  // (o nome digitado continua guardado). A folha de editar tem desvio próprio.
+  useVoltarFechaAFolha(showAddVitrineModal, () =>
+    setShowAddVitrineModal(false),
+  );
   const [criandoVitrine, setCriandoVitrine] = useState(false);
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [confirmarRestaurar, setConfirmarRestaurar] = useState(false);

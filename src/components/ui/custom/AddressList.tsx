@@ -9,6 +9,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { queryMapsDoEndereco } from "@/lib/query-maps-do-endereco";
 import type { Address } from "@/types";
 import { CheckCircle2, Edit, MapPin, Plus, Trash2 } from "lucide-react";
@@ -98,6 +99,13 @@ export const AddressList = memo(function AddressList({
   // O endereço cuja lixeira foi tocada, enquanto a pergunta está aberta.
   const [apagando, setApagando] = useState<Address | null>(null);
   const [excluindo, setExcluindo] = useState(false);
+  // O Voltar do aparelho cancela só a pergunta (o Perfil fica). Com a exclusão
+  // em andamento ela não fecha, como o Esc: `false` devolve a entrada.
+  useVoltarFechaAFolha(apagando !== null, () => {
+    if (excluindo) return false;
+    setApagando(null);
+    return true;
+  });
   const confirmacao = (
     <ConfirmaApagarEndereco
       endereco={apagando}

@@ -4,6 +4,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { Check } from "lucide-react";
 import { useRef, useState } from "react";
 
@@ -65,6 +66,8 @@ export function ConfirmarRecebimento({
   aoConfirmar: () => Promise<void>;
 }>) {
   const [aberto, setAberto] = useState(false);
+  // O Voltar do aparelho fecha só a pergunta: a ficha do pedido fica.
+  useVoltarFechaAFolha(aberto, () => setAberto(false));
   const emVoo = useRef(false);
   const confirmar = async () => {
     if (disabled || emVoo.current) return;
