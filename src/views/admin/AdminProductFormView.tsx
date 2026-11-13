@@ -69,6 +69,7 @@ import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import {
   AVISO_ESTOQUE_NAO_RESTAURADO,
   AVISO_PRODUTO_ALTERADO_DEPOIS,
+  avisoDeVariacoesAlteradasEmOutroAparelho,
   chaveDoRascunhoDoProduto,
   estoqueDoRascunhoDifereDoBanco,
   lerRascunhoVigenteDoProduto,
@@ -1629,9 +1630,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           // depois de "Restaurar" + "Salvar" (e o estoque gravado seria a soma
           // sem ela). O produto-base do rascunho diz o que foi exclusão DELA
           // (`apagar`) e o que veio de outro aparelho e ela nunca viu
-          // (`manter`: volta ao formulário, nunca é apagada em silêncio).
-          const { apagar: exclusoesDaLojista, manter: criadasEmOutroAparelho } =
-            variacoesExcluidasNoRascunho(parsed, initialData.variants);
+          // (`manter`: volta ao formulário, nunca é apagada em silêncio). A
+          // que ela excluiu e outro aparelho mexeu depois (`alteradas`) também
+          // volta: o salvar confere a versão da abertura, que já inclui a
+          // mudança, e a apagaria sem conflito.
+          const {
+            apagar: exclusoesDaLojista,
+            manter: voltamDoBanco,
+            alteradas: alteradasEmOutroAparelho,
+          } = variacoesExcluidasNoRascunho(parsed, initialData.variants);
           const gradeRestaurada = juntarVariacoesDeOutroAparelho(
             Array.isArray(parsed.variants)
               ? variacoesDoRascunhoComEstoqueDoBanco(
@@ -1639,11 +1646,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   initialData.variants,
                 )
               : initialData.variants,
-            Array.isArray(parsed.variants) ? criadasEmOutroAparelho : [],
+            Array.isArray(parsed.variants) ? voltamDoBanco : [],
           );
           const variacoesRestauradas = gradeRestaurada.variants;
           const gradeMudouPelaBase =
-            exclusoesDaLojista.length > 0 || criadasEmOutroAparelho.length > 0;
+            exclusoesDaLojista.length > 0 || voltamDoBanco.length > 0;
 
           // Only prompt if the draft actually contains modified data compared to DB (initialData)
           const draftFields = {
@@ -1704,6 +1711,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               if (gradeRestaurada.repetidas) {
                 toast.warning(AVISO_COMBINACAO_JA_CRIADA);
               }
+              const avisoDasAlteradas =
+                avisoDeVariacoesAlteradasEmOutroAparelho(
+                  alteradasEmOutroAparelho,
+                );
+              if (avisoDasAlteradas) toast.warning(avisoDasAlteradas);
               // As que ela excluiu saem do banco quando ela salvar (a RPC só
               // apaga o que vem em `p_apagar`).
               if (exclusoesDaLojista.length > 0) {
@@ -1742,7 +1754,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 estoqueDoRascunhoDiferia
                   ? ` ${AVISO_ESTOQUE_NAO_RESTAURADO}`
                   : ""
-              }${bancoMudou || criadasEmOutroAparelho.length > 0 ? ` ${AVISO_PRODUTO_ALTERADO_DEPOIS}` : ""}`,
+              }${bancoMudou || voltamDoBanco.length > 0 ? ` ${AVISO_PRODUTO_ALTERADO_DEPOIS}` : ""}`,
               action: { label: "Restaurar", onClick: restaurar },
               cancel: {
                 label: "Descartar",
