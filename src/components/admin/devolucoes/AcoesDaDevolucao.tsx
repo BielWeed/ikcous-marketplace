@@ -167,12 +167,18 @@ export function AcoesDaDevolucao({
   const [mensagem, setMensagem] = useState("");
   const [coletaEm, setColetaEm] = useState("");
   const [motivo, setMotivo] = useState("");
-  // Na etiqueta reversa o código de postagem é o rastreio dos Correios.
-  const codigoInicial =
+  // Na etiqueta reversa o código de postagem é o rastreio dos Correios. Gerar a
+  // etiqueta NÃO muda o status (a `key` não troca, o formulário não renasce):
+  // o código chega depois, na ficha relida. Por isso o campo guarda só o que a
+  // lojista DIGITOU (`null` = não mexeu) e segue o código de postagem — o
+  // mesmo molde do valor do reembolso. Sem isto o campo ficava vazio e o
+  // "Marcar a caminho" gravava rastreio nulo: a cliente perdia o "Rastrear".
+  const codigoPadrao =
     detalhe.metodo_retorno === "etiqueta_reversa"
       ? (detalhe.codigo_postagem ?? "")
       : "";
-  const [codigo, setCodigo] = useState(codigoInicial);
+  const [codigoDigitado, setCodigoDigitado] = useState<string | null>(null);
+  const codigo = codigoDigitado ?? codigoPadrao;
   const [inspecao, setInspecao] = useState<ReadonlyMap<string, Inspecao>>(
     () =>
       new Map(
@@ -243,7 +249,7 @@ export function AcoesDaDevolucao({
     mensagem.trim() !== "" ||
     coletaEm !== "" ||
     motivo.trim() !== "" ||
-    codigo.trim() !== codigoInicial ||
+    codigo.trim() !== codigoPadrao ||
     observacao.trim() !== "" ||
     valorDigitado !== null ||
     Array.from(inspecao.values()).some((i) => i.condicao !== null);
@@ -571,7 +577,14 @@ export function AcoesDaDevolucao({
                   <LocalBufferedInput
                     id="devolucao-rastreio"
                     value={codigo}
-                    onFlush={(v) => setCodigo(v.toUpperCase())}
+                    onFlush={(v) => {
+                      // Sair do campo sem mexer devolve o padrão (não "trava"
+                      // o vazio): o código gerado depois ainda preenche.
+                      const digitado = v.toUpperCase();
+                      setCodigoDigitado(
+                        digitado === codigoPadrao ? null : digitado,
+                      );
+                    }}
                     maxLength={40}
                     autoComplete="off"
                     placeholder="AB123456789BR"
