@@ -200,6 +200,22 @@ function idDaEntradaLocal(entrada: EntradaFavoritoLocal): string {
   return typeof entrada === "string" ? entrada : entrada.id;
 }
 
+// A chave anônima é lida do disco como ele estiver (versão velha, edição à
+// mão) e a recuperação do app a preserva (prefixo `ikcous_`): uma entrada
+// `null`, número ou objeto sem `id` fazia `idDaEntradaLocal` lançar dentro do
+// provedor que envolve a loja inteira. Só vale string não vazia ou objeto com
+// `id` string não vazio; o resto é descartado sem lançar.
+function entradaLocalValida(entrada: unknown): entrada is EntradaFavoritoLocal {
+  if (typeof entrada === "string") return entrada !== "";
+  if (typeof entrada !== "object" || entrada === null) return false;
+  const id = (entrada as { id?: unknown }).id;
+  return typeof id === "string" && id !== "";
+}
+
+function normalizarEntradasLocais(lista: unknown): EntradaFavoritoLocal[] {
+  return Array.isArray(lista) ? lista.filter(entradaLocalValida) : [];
+}
+
 interface FavoritesContextType {
   favorites: Product[];
   toggleFavorite: (product: Product) => void;
@@ -258,9 +274,29 @@ export function FavoritesProvider({
   // `entreAbas`: o visitante pode ter duas abas abertas; sem isso uma apaga o
   // favorito da outra, e o login subiria para a conta o que o aparelho já
   // não tem (o login lê esta lista, que o evento `storage` mantém em dia).
-  const [localFavoritesRaw, setLocalFavoritesRaw] = useLocalStorage<
+  const [favoritosGuardados, setFavoritosGuardados] = useLocalStorage<
     EntradaFavoritoLocal[]
   >(FAVORITES_KEY, [], { entreAbas: true });
+  // O que o disco trouxe passa pelo filtro ANTES de qualquer uso (ver
+  // `entradaLocalValida`); o setter normaliza o `prev` pelo mesmo motivo, e a
+  // primeira gravação já deixa o disco limpo.
+  const localFavoritesRaw = React.useMemo(
+    () => normalizarEntradasLocais(favoritosGuardados),
+    [favoritosGuardados],
+  );
+  const setLocalFavoritesRaw = useCallback(
+    (
+      valor:
+        | EntradaFavoritoLocal[]
+        | ((prev: EntradaFavoritoLocal[]) => EntradaFavoritoLocal[]),
+    ) =>
+      setFavoritosGuardados((prev) =>
+        valor instanceof Function
+          ? valor(normalizarEntradasLocais(prev))
+          : valor,
+      ),
+    [setFavoritosGuardados],
+  );
   // Cache EM MEMÓRIA (nunca em disco — o disco só guarda id, de propósito)
   // do último retrato conhecido de cada favorito do visitante. Ela só entra
   // em jogo quando o id não bate com NENHUM produto de `allProducts` — ou

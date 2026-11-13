@@ -24,6 +24,14 @@ let geracaoDoCache = 0;
 
 export const geracaoAtualDoCache = (): number => geracaoDoCache;
 
+// O que veio do disco é de quem escreveu antes (versão velha, extensão,
+// edição à mão): só é cache se for lista cujos itens são objetos.
+const ehListaDeAvaliacoes = (valor: unknown): valor is Review[] =>
+  Array.isArray(valor) &&
+  valor.every(
+    (item) => typeof item === "object" && item !== null && !Array.isArray(item),
+  );
+
 export const getReviewsCache = (productId: string): Review[] | null => {
   if (memoryReviewsCache.has(productId)) {
     return memoryReviewsCache.get(productId) as Review[];
@@ -34,9 +42,15 @@ export const getReviewsCache = (productId: string): Review[] | null => {
         `${REVIEWS_CACHE_KEY_PREFIX}${productId}`,
       );
       if (stored) {
-        const parsed = JSON.parse(stored);
-        memoryReviewsCache.set(productId, parsed);
-        return parsed;
+        const parsed: unknown = JSON.parse(stored);
+        if (ehListaDeAvaliacoes(parsed)) {
+          memoryReviewsCache.set(productId, parsed);
+          return parsed;
+        }
+        // Formato ruim (`{}`, texto, número, `[null]`): vale como "sem cache".
+        // A chave é apagada para não derrubar a página a cada abertura — a
+        // recuperação do app preserva o prefixo `ikcous_`.
+        localStorage.removeItem(`${REVIEWS_CACHE_KEY_PREFIX}${productId}`);
       }
     } catch (e) {
       console.error("Failed to parse reviews cache", e);
