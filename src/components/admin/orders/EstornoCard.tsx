@@ -306,7 +306,9 @@ export function EstornoCard({
   const botaoDesabilitado =
     estado !== "normal" ? true : enviando || isOffline || !campoValido;
 
-  async function pedirConfirmacaoEEnviar(amount: number) {
+  // `repetindo`: o id da linha falhada que o "Tentar de novo" repete. O servidor repete ESSA linha uma vez só,
+  // então duas abas (ou duas pessoas) tocando na mesma linha não mandam dois pedidos ao Mercado Pago.
+  async function pedirConfirmacaoEEnviar(amount: number, repetindo?: string) {
     const valor = formatCurrency(amount);
     const confirmado = await confirmar({
       titulo: "Devolver o dinheiro ao cliente?",
@@ -315,7 +317,11 @@ export function EstornoCard({
       valor,
     });
     if (!confirmado) return;
-    await solicitarEstorno({ amount, motivo: "" });
+    await solicitarEstorno({
+      amount,
+      motivo: "",
+      ...(repetindo ? { repetindo } : {}),
+    });
   }
 
   return (
@@ -440,7 +446,9 @@ export function EstornoCard({
                   size="sm"
                   className="min-h-11"
                   disabled={enviando || isOffline}
-                  onClick={() => pedirConfirmacaoEEnviar(linha.amount)}
+                  onClick={() =>
+                    pedirConfirmacaoEEnviar(linha.amount, linha.id)
+                  }
                 >
                   Tentar de novo
                 </Button>

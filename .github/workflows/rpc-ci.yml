@@ -268,6 +268,8 @@ on:
       - "scripts/publicacao/consultas/141b-antes-o-grafico-do-financeiro-soma-so-as-contas-ativas-base-vigente.sql"
       - "scripts/publicacao/consultas/142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado.sql"
       - "scripts/publicacao/consultas/142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql"
+      - "scripts/publicacao/consultas/143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado.sql"
+      - "scripts/publicacao/consultas/143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
       - "scripts/publicacao/consultas/129m-medir-corrida-e-avanco-com-estorno.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
@@ -507,6 +509,8 @@ on:
       - "scripts/publicacao/consultas/141b-antes-o-grafico-do-financeiro-soma-so-as-contas-ativas-base-vigente.sql"
       - "scripts/publicacao/consultas/142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado.sql"
       - "scripts/publicacao/consultas/142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql"
+      - "scripts/publicacao/consultas/143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado.sql"
+      - "scripts/publicacao/consultas/143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
       - "scripts/publicacao/consultas/129m-medir-corrida-e-avanco-com-estorno.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
@@ -1156,6 +1160,13 @@ jobs:
       - name: Prova viva do CRM que nao duplica o comprador com e sem o 55 (20261399990000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-crm-nao-duplica-o-comprador-com-e-sem-55-viva.cjs
+      # Migration 20261399991000 (repetir a devolucao que falhou nao paga duas vezes): solicitar_estorno_repetindo(p_refund_id, p_motivo) repete UMA linha falhada (o valor sai da linha, a 2a chamada devolve a MESMA
+      # repeticao com ja_repetida em vez de criar outra) e a tabela order_refund_repeticao (PK + UNIQUE) e a marca do servidor. Controle com o caminho antigo (duas linhas de R$ 30), DUAS conexoes reais na mesma falhada,
+      # bordas (17 recusas sem escrever nada), permissao (anon, service_role, cliente, admin rebaixado), 15 mutantes, reaplicar, pre-voo, rollback que recusa com marca, conexao sem BEGIN com conferencia sabotada e
+      # consultas 143a/143b. CLONE proprio.
+      - name: Prova viva de repetir a devolucao que falhou sem pagar duas vezes (20261399991000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-viva.cjs
       # Onda 150 (SEM migration): registrar_venda_presencial recusa p_itens vazio, que nao e lista (objeto, null, escalar, NULL) e com mais de 200 linhas, com 22023 e a frase da loja, sem escrever pedido, item,
       # historico, financeiro nem estoque; 200 (o limite) entra. Mutantes por MUTANTE_R150E. CLONE proprio.
       - name: Prova viva do balcao que recusa venda sem item e com itens demais
