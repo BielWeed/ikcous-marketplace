@@ -236,7 +236,7 @@ describe("AdminLayout — rajada de eventos vira UMA conferência de badges", ()
   });
 
   it.each(["CHANNEL_ERROR", "TIMED_OUT", "CLOSED"])(
-    "os dois canais voltam de %s: uma conferência, sem duplicar a primeira assinatura",
+    "os dois canais voltam de %s: uma conferência por confirmação, sem rajada",
     async (queda) => {
       const { AdminLayout } = await import("@/components/layouts/AdminLayout");
       await act(async () => {
@@ -252,12 +252,22 @@ describe("AdminLayout — rajada de eventos vira UMA conferência de badges", ()
       const perguntas = statusPorCanal.get("admin-layout-questions-badge");
       expect(pedidos).toBeTypeOf("function");
       expect(perguntas).toBeTypeOf("function");
+      // A primeira confirmação dos dois canais pede UMA releitura (a leitura
+      // da montagem saiu antes de a assinatura estar pronta); os dois canais
+      // juntos caem na mesma janela de agrupamento.
       await act(async () => {
         pedidos?.("SUBSCRIBED");
         perguntas?.("SUBSCRIBED");
         await new Promise((resolve) => setTimeout(resolve, 1100));
       });
-      expect(conferenciasDePedidos).toBe(antes);
+      expect(conferenciasDePedidos).toBe(antes + 1);
+      await act(async () => {
+        pedidos?.("SUBSCRIBED");
+        perguntas?.("SUBSCRIBED");
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+      });
+      // Confirmação repetida sem queda no meio: nada de novo.
+      expect(conferenciasDePedidos).toBe(antes + 1);
       await act(async () => {
         pedidos?.(queda);
         perguntas?.(queda);
@@ -268,7 +278,7 @@ describe("AdminLayout — rajada de eventos vira UMA conferência de badges", ()
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 1200));
       });
-      expect(conferenciasDePedidos).toBe(antes + 1);
+      expect(conferenciasDePedidos).toBe(antes + 2);
     },
   );
 
