@@ -37,6 +37,7 @@ import {
 import { trocarNomeNaLista } from "@/lib/gestao-de-categorias";
 import {
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
@@ -203,11 +204,22 @@ export function PoliticaDeDevolucaoSection({
     setErroDeLeitura(false);
     renomeadasNaLeituraRef.current = [];
     try {
-      const { data, error } = await supabase
-        .from("politica_devolucao")
-        .select(COLUNAS_DA_POLITICA)
-        .eq("id", 1)
-        .maybeSingle();
+      // Rede que conecta e não responde: sem prazo a tela ficava em "Carregando
+      // política…" para sempre, sem o "Tentar de novo". Estourou: cai no `catch`
+      // abaixo, que mostra o erro com o botão. Só encerra a ESPERA da tela: a
+      // leitura abandonada que chegar tarde é descartada pelo próprio prazo,
+      // então não sobrescreve a tela de uma nova tentativa.
+      const { data, error } = await aguardarComPrazo(
+        Promise.resolve(
+          supabase
+            .from("politica_devolucao")
+            .select(COLUNAS_DA_POLITICA)
+            .eq("id", 1)
+            .maybeSingle(),
+        ),
+        PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+        () => erroDeConsultaSemResposta(),
+      );
       const durante = renomeadasNaLeituraRef.current ?? [];
       renomeadasNaLeituraRef.current = null;
       if (!ativoRef.current) return;
