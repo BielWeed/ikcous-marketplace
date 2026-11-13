@@ -165,6 +165,16 @@ export const PRAZO_DA_CONSULTA_DO_RASTREIO_MS = 15_000;
 export const MENSAGEM_COMPRA_DA_ETIQUETA_SEM_RESPOSTA =
   "Sem resposta da rede. Não dá para saber se a etiqueta foi gerada. Confira o pedido e a sua conta do Melhor Envio (Meus envios) antes de tentar de novo.";
 
+// PRAZO DE LER O TAMANHO E A COR DOS ITENS NA FICHA DO PEDIDO (13/11/2026): a
+// ficha lê o código e o rótulo das variações (duas consultas em sequência, sob
+// UM prazo só) e o botão Imprimir espera essa leitura. Rede "pendurada"
+// conecta e não responde: o botão ficava desligado em "Carregando o tamanho e
+// a cor…" para sempre, sem aviso e sem "Tentar de novo". 15 s, o mesmo de abrir
+// um produto. Estourou = a falha comum da leitura (aviso na ficha, Imprimir
+// desligado com o motivo e "Tentar de novo"); só encerra a ESPERA da tela, a
+// consulta não grava nada, e a resposta tardia é descartada.
+export const PRAZO_DA_LEITURA_DO_TAMANHO_E_COR_MS = 15_000;
+
 /** Frase para quem está na tela: o que aconteceu e o que fazer. */
 export const MENSAGEM_CONEXAO_LENTA =
   "A conexão está lenta. Toque em Tentar de novo.";

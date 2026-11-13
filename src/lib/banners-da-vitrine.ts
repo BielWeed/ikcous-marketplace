@@ -61,6 +61,20 @@ export function gravarBannersLocais(items: Banner[]): void {
 }
 
 /**
+ * Atualização que chegou por Realtime (ou pela rodada de catch-up): o cofre já
+ * tem a lista nova, então a cópia compartilhada acompanha -- senão a próxima
+ * montagem (a Home depois do painel) nasce da cópia velha e o throttle de 60 s
+ * a trata como fresca. Só acompanha uma cópia que a rede já confirmou: com o
+ * cofre frio ele pode guardar um registro solto, e esse não é a lista da loja.
+ * Não conta como mutação local: não invalida a consulta em voo.
+ */
+export function acompanharBannersDoRealtime(items: Banner[]): void {
+  if (!cacheDeBanners) return;
+  cacheDeBanners = items;
+  horaDaUltimaConsulta = Date.now();
+}
+
+/**
  * Lista lida do cofre (offline-first). Só vale se a rede ainda não confirmou
  * nada -- a rede pode ter confirmado até uma lista vazia durante a leitura.
  */

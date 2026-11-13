@@ -45,6 +45,7 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import {
   MENSAGEM_ACAO_DO_PEDIDO_SEM_RESPOSTA,
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+  PRAZO_DA_LEITURA_DO_TAMANHO_E_COR_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
@@ -293,7 +294,24 @@ const globalSkuCache: Record<string, string> = {};
 // Rótulo da variação ("Cor Azul · Tamanho M") por id da variação, lido na
 // mesma consulta do código interno. O pedido só guarda o id (`variant_id`);
 // quem diz qual é a escolha é `product_variants`. "" = lida, sem texto.
-const globalVariacaoCache = new Map<string, string>();
+//
+// A cópia VENCE em 60 s (`lidoEm`): a lojista corrige o nome da opção no
+// produto e volta ao pedido, e o papel não pode sair com o nome antigo (a
+// exportação em CSV já lê o cadastro de novo a cada vez). Dentro do minuto a
+// ficha reaproveita, para abrir pedidos em sequência sem piscar nem repetir
+// consulta. Vencida = conta como "ainda não lida" e a ficha lê de novo.
+const VALIDADE_DO_ROTULO_DA_VARIACAO_MS = 60_000;
+const globalVariacaoCache = new Map<
+  string,
+  { rotulo: string; lidoEm: number }
+>();
+const rotuloDaVariacaoEmDia = (id: string): boolean => {
+  const copia = globalVariacaoCache.get(id);
+  return (
+    copia !== undefined &&
+    Date.now() - copia.lidoEm < VALIDADE_DO_ROTULO_DA_VARIACAO_MS
+  );
+};
 const filaNotas = new Map<string, Promise<unknown>>();
 
 // Carimbo (`updated_at`, posto pelo servidor) da anotação como ESTA tela a viu
@@ -1981,12 +1999,12 @@ export const OrderDetail = memo(function OrderDetail({
           (id) => !globalSkuCache[`prod-${id}`],
         );
         const missingVariantIds = variantIds.filter(
-          (id) => !globalSkuCache[`var-${id}`] || !globalVariacaoCache.has(id),
+          (id) => !globalSkuCache[`var-${id}`] || !rotuloDaVariacaoEmDia(id),
         );
         const variacoesLidas = () =>
           Object.fromEntries(
             variantIds.flatMap((id) => {
-              const rotulo = globalVariacaoCache.get(id);
+              const rotulo = globalVariacaoCache.get(id)?.rotulo;
               return rotulo ? [[id, rotulo] as const] : [];
             }),
           );
@@ -2006,30 +2024,56 @@ export const OrderDetail = memo(function OrderDetail({
 
         setLoadingSkus(true);
 
-        if (missingProductIds.length > 0) {
-          const { data: productsData, error: erroProdutos } = await supabase
-            .from("vw_produtos_admin")
-            .select("id, codigo")
-            .in("id", missingProductIds);
-          if (!consultaVigente) return;
-          if (erroProdutos) throw erroProdutos;
-          productsData?.forEach((p) => {
-            if (p.codigo) globalSkuCache[`prod-${p.id}`] = p.codigo;
+        // As duas consultas correm sob UM prazo: rede que conecta e não
+        // responde não pode deixar o Imprimir esperando para sempre. Estourou
+        // = a falha comum (aviso, Imprimir desligado e "Tentar de novo"). Só
+        // as leituras ficam sob o prazo; o cache só é gravado depois, e só se
+        // esta consulta ainda for a vigente (resposta tardia é descartada).
+        const lerOQueFalta = async () => {
+          const produtos =
+            missingProductIds.length > 0
+              ? await supabase
+                  .from("vw_produtos_admin")
+                  .select("id, codigo")
+                  .in("id", missingProductIds)
+              : null;
+          if (produtos?.error) throw produtos.error;
+          const variantes =
+            missingVariantIds.length > 0
+              ? await supabase
+                  .from("product_variants")
+                  .select("id, sku, name, value")
+                  .in("id", missingVariantIds)
+              : null;
+          if (variantes?.error) throw variantes.error;
+          return {
+            productsData: produtos?.data,
+            variantsData: variantes?.data,
+          };
+        };
+        const { productsData, variantsData } = await aguardarComPrazo(
+          lerOQueFalta(),
+          PRAZO_DA_LEITURA_DO_TAMANHO_E_COR_MS,
+          () => erroDeConsultaSemResposta(),
+        );
+        if (!consultaVigente) return;
+        productsData?.forEach((p) => {
+          if (p.codigo) globalSkuCache[`prod-${p.id}`] = p.codigo;
+        });
+        // Leitura que deu certo e não achou a variação (apagada do catálogo):
+        // a cópia vencida dela não volta a valer.
+        missingVariantIds.forEach((id) => {
+          if (!variantsData?.some((v) => v.id === id)) {
+            globalVariacaoCache.delete(id);
+          }
+        });
+        variantsData?.forEach((v) => {
+          if (v.sku) globalSkuCache[`var-${v.id}`] = v.sku;
+          globalVariacaoCache.set(v.id, {
+            rotulo: rotuloDaVariacao(v.name, v.value),
+            lidoEm: Date.now(),
           });
-        }
-
-        if (missingVariantIds.length > 0) {
-          const { data: variantsData, error: erroVariantes } = await supabase
-            .from("product_variants")
-            .select("id, sku, name, value")
-            .in("id", missingVariantIds);
-          if (!consultaVigente) return;
-          if (erroVariantes) throw erroVariantes;
-          variantsData?.forEach((v) => {
-            if (v.sku) globalSkuCache[`var-${v.id}`] = v.sku;
-            globalVariacaoCache.set(v.id, rotuloDaVariacao(v.name, v.value));
-          });
-        }
+        });
         setVariacoes(variacoesLidas());
 
         const resultSkus: Record<string, string> = {};

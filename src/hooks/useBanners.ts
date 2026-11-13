@@ -1,6 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useSyncListener } from "@/hooks/useDataVault";
 import {
+  acompanharBannersDoRealtime,
   bannersEmCache,
   consultaDeBannersEmVoo,
   geracaoDasMutacoesDeBanners,
@@ -766,6 +767,7 @@ export function useBanners(adminMode = false) {
             vaultRef.current = await DataVault.init();
           }
           const fresh = await vaultRef.current.getAllOrThrow<Banner>("banners");
+          acompanharBannersDoRealtime(fresh);
           setBanners(fresh);
         } catch (err) {
           // Leitura do cofre falhou -- manter o que já está na tela é
