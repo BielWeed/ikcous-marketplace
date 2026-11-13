@@ -11,6 +11,7 @@ import { TelaDeVerificacaoFalhou } from "@/components/layouts/TelaDeVerificacaoF
 import { MaintenanceView } from "@/components/pwa/MaintenanceView";
 import { aoIniciarAposAtualizacao } from "@/components/pwa/ao-iniciar-apos-atualizacao";
 import { applyThemeColor, branding } from "@/config/branding";
+import { instalarConsumidorDoAtalhoDoIcone } from "@/lib/atalho-do-icone";
 import { esquecerChaveDoPedidoDe } from "@/lib/chave-do-pedido";
 import {
   destinoPosLogin,
@@ -1669,6 +1670,18 @@ const AppContent = () => {
       },
     });
   }, [isAdmin, handleNavigate]);
+
+  // Atalho do ícone (Carrinho, Favoritos) com o app já aberto: o manifesto usa
+  // `focus-existing`, que só traz a janela para a frente e entrega o destino
+  // pela fila `launchQueue`. Consumimos aqui, pelo roteador (sem recarregar:
+  // recarregar apagaria o que a lojista digitou e não salvou).
+  useEffect(() => {
+    return instalarConsumidorDoAtalhoDoIcone({
+      navegar: (view) => {
+        void handleNavigate(view);
+      },
+    });
+  }, [handleNavigate]);
 
   const handleProductClick = useCallback(
     (productId: string) => {
