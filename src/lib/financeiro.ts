@@ -1758,23 +1758,33 @@ export interface FormularioDaCategoria {
 
 type CampoDaCategoria = "nome" | "grupoDre";
 
-// `sistema`: "Vendas" e "Devoluções e estornos" recebem os movimentos derivados, e
-// `fin_categoria_salvar` recusa a PRESENÇA de `natureza`/`grupo_dre` (e `ativa=false`)
-// nelas, mesmo com o valor de hoje. Ali só o nome muda: o corpo leva `id`, `nome` e
-// `ativa` só quando verdadeiro.
+/** "Vendas" e "Devoluções e estornos": recebem os movimentos derivados, e
+ * `fin_categoria_salvar` (20261199000000) recusa nelas, por ESTES dois ids, a PRESENÇA de
+ * `natureza`/`grupo_dre` (e `ativa=false`), mesmo com o valor de hoje. As outras categorias
+ * `sistema` (taxas, aluguel...) aceitam trocar a linha do resultado: não entram aqui. */
+export const CATEGORIAS_SO_NOME: ReadonlySet<string> = new Set([
+  "f2000000-0000-4000-8000-000000000001",
+  "f2000000-0000-4000-8000-000000000010",
+]);
+
+// `somenteNome`: nas categorias de CATEGORIAS_SO_NOME o corpo leva `id`, `nome` e `ativa`
+// só quando verdadeiro.
 export function validarCategoria(
   form: FormularioDaCategoria,
-  sistema = false,
+  somenteNome = false,
 ): ResultadoDaValidacao<PayloadDaCategoria, CampoDaCategoria> {
   const erros: ErrosDoFormulario<CampoDaCategoria> = {};
   const nome = form.nome.trim();
   if (nome === "") erros.nome = "Dê um nome para a categoria.";
   else if (nome.length > 60) erros.nome = "Use no máximo 60 caracteres.";
-  if (!sistema && !gruposDaNatureza(form.natureza).includes(form.grupoDre)) {
+  if (
+    !somenteNome &&
+    !gruposDaNatureza(form.natureza).includes(form.grupoDre)
+  ) {
     erros.grupoDre = "Esse grupo não combina com a natureza escolhida.";
   }
   if (Object.keys(erros).length > 0) return { ok: false, erros };
-  if (sistema) {
+  if (somenteNome) {
     return {
       ok: true,
       payload: {

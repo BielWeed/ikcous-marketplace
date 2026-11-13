@@ -25,7 +25,11 @@ import {
   CategoriaFolha,
   ContaFolha,
 } from "@/components/admin/financeiro/FolhasDeCadastro";
-import { validarCategoria, validarConta } from "@/lib/financeiro";
+import {
+  CATEGORIAS_SO_NOME,
+  validarCategoria,
+  validarConta,
+} from "@/lib/financeiro";
 import type { CategoriaFinanceira, ContaFinanceira } from "@/types/financeiro";
 
 const ID_VENDAS = "f2000000-0000-4000-8000-000000000001";
@@ -35,6 +39,18 @@ const VENDAS: CategoriaFinanceira = {
   nome: "Vendas",
   natureza: "receita",
   grupoDre: "receita",
+  ativa: true,
+  sistema: true,
+};
+
+const ID_DEVOLUCOES = "f2000000-0000-4000-8000-000000000010";
+
+// Categoria `sistema` que o banco deixa reclassificar (Taxas de cartão e Mercado Pago).
+const TAXAS: CategoriaFinanceira = {
+  id: "f2000000-0000-4000-8000-000000000012",
+  nome: "Taxas de cartão e Mercado Pago",
+  natureza: "despesa",
+  grupoDre: "despesa_fixa",
   ativa: true,
   sistema: true,
 };
@@ -85,6 +101,12 @@ function bancoFalso(_nome: string, args: { p: Record<string, unknown> }) {
   return Promise.resolve({ data: { id: p.id ?? "novo" }, error: null });
 }
 
+describe("CATEGORIAS_SO_NOME — só os dois ids que o banco protege", () => {
+  it("são exatamente Vendas e Devoluções e estornos", () => {
+    expect([...CATEGORIAS_SO_NOME].sort()).toEqual([ID_VENDAS, ID_DEVOLUCOES]);
+  });
+});
+
 describe("validarCategoria — categoria do sistema manda só o que a RPC aceita", () => {
   const form = {
     id: ID_VENDAS,
@@ -119,6 +141,27 @@ describe("validarCategoria — categoria do sistema manda só o que a RPC aceita
     expect(validarCategoria({ ...form, nome: "x".repeat(61) }, true).ok).toBe(
       false,
     );
+  });
+
+  it("categoria sistema fora dos dois ids: validarCategoria sem somenteNome manda o corpo completo", () => {
+    expect(
+      validarCategoria({
+        id: TAXAS.id,
+        nome: TAXAS.nome,
+        natureza: "despesa",
+        grupoDre: "financeiro",
+        ativa: true,
+      }),
+    ).toEqual({
+      ok: true,
+      payload: {
+        id: TAXAS.id,
+        nome: TAXAS.nome,
+        natureza: "despesa",
+        grupo_dre: "financeiro",
+        ativa: true,
+      },
+    });
   });
 
   it("categoria comum: o corpo é o de sempre, com natureza e grupo_dre", () => {
@@ -271,6 +314,47 @@ describe("Folhas do financeiro — renomear o que é do sistema", () => {
     ];
     expect(radios.length).toBeGreaterThan(0);
     expect(radios.every((r) => r.disabled)).toBe(true);
+  });
+
+  it("Devoluções e estornos também manda só o nome", async () => {
+    await abrirCategoria({
+      ...VENDAS,
+      id: ID_DEVOLUCOES,
+      nome: "Devoluções e estornos",
+      natureza: "despesa",
+      grupoDre: "deducao",
+    });
+    await digitar("fin-categoria-nome", "Estornos");
+    await act(async () => botao("Salvar").click());
+    expect(rpcFalso).toHaveBeenCalledExactlyOnceWith("fin_categoria_salvar", {
+      p: { id: ID_DEVOLUCOES, nome: "Estornos", ativa: true },
+    });
+  });
+
+  it("outra categoria do sistema (Taxas): a linha do resultado segue livre e viaja", async () => {
+    const aoSalvar = await abrirCategoria(TAXAS);
+    const radios = [
+      ...folha().querySelectorAll<HTMLInputElement>(
+        'input[name="fin-categoria-grupo"]',
+      ),
+    ];
+    expect(radios.length).toBeGreaterThan(0);
+    expect(radios.some((r) => r.disabled)).toBe(false);
+    const outro = radios.find((r) => !r.checked);
+    if (!outro) throw new Error("devia haver outra linha para escolher");
+    await act(async () => outro.click());
+    await act(async () => botao("Salvar").click());
+
+    expect(rpcFalso).toHaveBeenCalledTimes(1);
+    const [nomeRpc, args] = rpcFalso.mock.calls[0] ?? [];
+    expect(nomeRpc).toBe("fin_categoria_salvar");
+    expect(args.p).toMatchObject({
+      id: TAXAS.id,
+      natureza: "despesa",
+      grupo_dre: outro.value,
+      ativa: true,
+    });
+    expect(aoSalvar).toHaveBeenCalledExactlyOnceWith("Categoria atualizada.");
   });
 
   it("categoria comum: o corpo enviado é o de sempre", async () => {

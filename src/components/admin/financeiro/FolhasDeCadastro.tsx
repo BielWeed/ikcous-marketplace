@@ -5,6 +5,7 @@ import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { Switch } from "@/components/ui/switch";
 import { salvarCategoria, salvarConta } from "@/hooks/useFinanceiro";
 import {
+  CATEGORIAS_SO_NOME,
   ErroDePrazoFinanceiro,
   type FormularioDaCategoria,
   type FormularioDaConta,
@@ -365,6 +366,9 @@ export function CategoriaFolha({
   // outro. O Salvar fica parado até a lojista fechar e conferir a lista.
   const [semResposta, setSemResposta] = useState(false);
   const sistema = categoria?.sistema ?? false;
+  // Só estas duas o banco deixa mudar apenas o nome; as outras `sistema` ainda trocam a linha.
+  const somenteNome =
+    categoria !== null && CATEGORIAS_SO_NOME.has(categoria.id);
   // Trocar Receita↔Despesa de categoria que já tem lançamentos os tira do
   // resultado: a natureza só é livre na criação.
   const naturezaTravada = categoria !== null;
@@ -375,8 +379,8 @@ export function CategoriaFolha({
   }, [sujo, aoMudarSujo]);
 
   const validacao = useMemo(
-    () => validarCategoria(form, sistema),
-    [form, sistema],
+    () => validarCategoria(form, somenteNome),
+    [form, somenteNome],
   );
   const erros = tentou && !validacao.ok ? validacao.erros : {};
   const grupos = gruposDaNatureza(form.natureza);
@@ -399,7 +403,7 @@ export function CategoriaFolha({
   async function salvar(nome = form.nome) {
     if (trava.current || semResposta) return;
     setTentou(true);
-    const resultado = validarCategoria({ ...form, nome }, sistema);
+    const resultado = validarCategoria({ ...form, nome }, somenteNome);
     if (!resultado.ok) return;
     trava.current = true;
     aoMudarEnviando?.(true);
@@ -535,7 +539,7 @@ export function CategoriaFolha({
               >
                 <input
                   type="radio"
-                  disabled={sistema || enviando}
+                  disabled={somenteNome || enviando}
                   name="fin-categoria-grupo"
                   value={grupo}
                   checked={escolhido}
