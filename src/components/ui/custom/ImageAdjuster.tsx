@@ -13,6 +13,7 @@ import {
 } from "@/lib/geometria-do-recorte";
 import { comMarcaDeTentativa } from "@/lib/imageUrl";
 import { cn } from "@/lib/utils";
+import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import { motion } from "framer-motion";
 import {
   AlertCircle,
@@ -27,6 +28,9 @@ import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
+
+/** Quanto o recorte espera a foto ser baixada de novo antes de desistir. */
+const PRAZO_RECARGA_DA_FOTO_MS = 15_000;
 
 export type AspectRatioPreset = "4:5" | "1:1" | "2:1" | "4:1" | "free";
 
@@ -1011,7 +1015,14 @@ export function ImageAdjuster({
           reject(new Error("Falha ao recarregar imagem para corte"));
       });
       img.src = corsImageUrl;
-      await loadPromise;
+      // Com a rede pendurada o onload/onerror nunca chegava e o recorte ficava
+      // preso para sempre (os toques seguintes caíam na trava acima). Estourou:
+      // a foto pendurada é solta e o `catch` avisa e libera a trava.
+      await comPrazo(loadPromise, PRAZO_RECARGA_DA_FOTO_MS, () => {
+        img.onload = null;
+        img.onerror = null;
+        img.src = "";
+      });
 
       // Draw the image onto canvas using rotation, scale and offset.
       // Matemática movida para src/lib/geometria-do-recorte.ts
@@ -1119,6 +1130,12 @@ export function ImageAdjuster({
         toast.error("Erro ao processar imagem final");
       }
     } catch (error) {
+      if (error instanceof PrazoEsgotado) {
+        toast.error(
+          "Não deu para carregar a foto agora. Tente salvar de novo.",
+        );
+        return;
+      }
       console.error("Error cropping image:", error);
       toast.error("Erro ao recortar a imagem. Tente novamente.");
     } finally {

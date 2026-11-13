@@ -17,9 +17,12 @@
       "Loja, Checkout: o endereço novo não perde o que a cliente digitou, nome comprido não estoura o cartão, e há foco, aviso de busca vazia e toque maior.",
       "Loja, Vitrine: ofertas escolhidas à mão seguem a ordem da lojista e escolher só parte da variação não mostra preço que ninguém paga.",
       "Loja e Painel: se a leitura do carrinho salvo falha, não diz que está vazio; o catálogo velho se atualiza quando a rede volta em até um minuto; o voto Útil não trava com conexão pendurada.",
-      "Painel, Pedidos: pedido pago não fica aguardando, pedido aberto por link não carrega para sempre, a planilha separa retirada, entrega própria e envio, e excluir produto não prende a lista.",
-      "Painel, Devolução: o rastreio acompanha a etiqueta, Cancelar só aparece quando vale e as fotos respeitam o limite de 6; fila de privacidade, política de devolução e ajuste de foto não ficam mudos nem carregando para sempre.",
-      "Balcão e Painel: o primeiro toque no cliente da lista vincula a pessoa, o WhatsApp da loja recusa DDD que não existe, o gráfico de saldo usa só contas ativas e renomear categoria do sistema no financeiro funciona."
+      "Painel, Pedidos: pedido pago não fica aguardando, pedido aberto por link não carrega para sempre e a planilha separa retirada, entrega própria e envio.",
+      "Painel, Produtos: excluir produto não prende a lista.",
+      "Loja, Devolução: as fotos respeitam o limite de 6.",
+      "Painel, Devolução: o rastreio acompanha a etiqueta e Cancelar só aparece quando vale.",
+      "Painel: a fila de privacidade, a política de devolução e o ajuste de foto não ficam mudos nem carregando para sempre.",
+      "Balcão e Painel: o primeiro toque no cliente da lista vincula a pessoa, o WhatsApp da loja recusa DDD que não existe e renomear categoria do sistema no financeiro funciona."
     ]
   },
   "1.5.175": {
