@@ -484,8 +484,6 @@ export function OrderDetailsView({
   } = useOrders(true, false);
   const { config } = useStore();
   const { user, loading: authLoading } = useAuth();
-  // Abrir o pedido apaga do sino os avisos dele.
-  useMarcarAvisosDoPedidoComoLidos(orderId);
   const [order, setOrder] = useState<Order | null>(null);
   // O pedido na tela veio do RETRATO do rastreio sem conta (sessionStorage), e
   // não do servidor: o status é o de quando a pessoa consultou e não atualiza
@@ -1104,6 +1102,9 @@ export function OrderDetailsView({
   // não tem. Mesma regra do hook de cima: chamado sempre, ligado por flag.
   const podeUsarDevolucao = order?.status === "delivered" && !!user;
   const devolucaoDoProduto = useDevolucaoCliente(orderId, podeUsarDevolucao);
+  // Abrir o pedido apaga do sino os avisos dele — depois de a devolução já
+  // estar relida por causa deles (senão a pista some antes de a tela mudar).
+  useMarcarAvisosDoPedidoComoLidos(orderId, devolucaoDoProduto.aguardandoAviso);
   const [pedindoDevolucao, setPedindoDevolucao] = useState(false);
 
   // Sessão ainda sendo verificada e nenhum pedido na tela: não é "sem conta"

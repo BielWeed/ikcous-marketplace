@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 
+import { NotificationContext } from "@/contexts/NotificationContextCore";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
 import {
   TAMANHO_MAXIMO_DA_FOTO,
@@ -48,6 +49,11 @@ export interface DevolucaoDoCliente {
   carregando: boolean;
   /** A última leitura falhou (rede, RPC ou forma inesperada). */
   erro: boolean;
+  /**
+   * Há aviso novo e não lido DESTE pedido que a leitura ainda não cobriu: quem
+   * marca avisos como lidos espera, para a pista não sumir antes da tela mudar.
+   */
+  aguardandoAviso: boolean;
   recarregar: () => Promise<void>;
   solicitar: (
     dados: DadosDaSolicitacao,
@@ -77,11 +83,12 @@ const SEM_RESPOSTA =
  * convidado não tem `auth.uid()` e as RPCs recusam). O hook é chamado sempre
  * (regra do React) e, desligado, não busca nada.
  *
- * Sem realtime: a mudança de status já chega ao cliente como aviso em
+ * Sem realtime próprio: a mudança de status já chega ao cliente como aviso em
  * `notificacoes` (gatilho da migration); a tela relê ao abrir, após cada
  * ação dela (inclusive quando o servidor a recusa: a recusa quase sempre
- * quer dizer que o cartão na tela está velho) e ao voltar ao app (aba
- * visível de novo ou conexão de volta).
+ * quer dizer que o cartão na tela está velho), ao voltar ao app (aba
+ * visível de novo ou conexão de volta) e quando chega aviso novo não lido
+ * deste pedido no sino (tela deixada aberta enquanto a loja aprova).
  */
 export function useDevolucaoCliente(
   orderId: string,
@@ -102,6 +109,17 @@ export function useDevolucaoCliente(
   // Rodada da leitura: a resposta velha que chega depois da nova não pinta
   // a tela (mesmo padrão de useAvisosDoLojista).
   const rodadaRef = useRef(0);
+  // Avisos não lidos deste pedido (sino) que uma leitura já cobriu (`vistos`,
+  // estado: destrava a marcação) ou já começou (`iniciados`, ref: não relê duas
+  // vezes pelo mesmo aviso). `pendentesRef` é o espelho de agora para o `carregar`.
+  const [vistos, setVistos] = useState<ReadonlySet<string>>(new Set());
+  const iniciadosRef = useRef<ReadonlySet<string>>(new Set());
+  const pendentesRef = useRef<readonly string[]>([]);
+  const notificacoes = useContext(NotificationContext)?.notifications;
+  const chaveDosPendentes = (notificacoes ?? [])
+    .filter((n) => !n.read && n.order_id === orderId)
+    .map((n) => n.id)
+    .join("|");
   // A RPC não tem chave de idempotência. O banco recusa duas devoluções
   // ativas; após resposta perdida, até uma nova já encerrada impede reenviar.
   const solicitacaoIncertaRef = useRef<{
@@ -115,6 +133,8 @@ export function useDevolucaoCliente(
     }
     const rodada = ++rodadaRef.current;
     const valeAinda = () => ativoRef.current && rodada === rodadaRef.current;
+    const cobertos = new Set(pendentesRef.current);
+    iniciadosRef.current = new Set([...iniciadosRef.current, ...cobertos]);
     setCarregando(true);
     try {
       // Um único prazo cobre a lista E o detalhe. A leitura atrasada não
@@ -167,9 +187,20 @@ export function useDevolucaoCliente(
         setErro(true);
       }
     } finally {
-      if (valeAinda()) setCarregando(false);
+      if (valeAinda()) {
+        setCarregando(false);
+        // Falha também destrava: sem laço, e a tela já mostra o aviso de erro.
+        setVistos((antes) => new Set([...antes, ...cobertos]));
+      }
     }
   }, [orderId, habilitado]);
+
+  // Antes dos efeitos de leitura: eles leem o espelho no mesmo ciclo.
+  useEffect(() => {
+    pendentesRef.current = chaveDosPendentes
+      ? chaveDosPendentes.split("|")
+      : [];
+  }, [chaveDosPendentes]);
 
   useEffect(() => {
     ativoRef.current = true;
@@ -188,6 +219,15 @@ export function useDevolucaoCliente(
       rodadaRef.current += 1;
     };
   }, [orderId, habilitado, carregar]);
+
+  // Aviso novo deste pedido que nenhuma leitura cobriu: a loja mexeu na
+  // devolução com a tela aberta. Na abertura o efeito de cima já cobriu.
+  useEffect(() => {
+    if (!habilitado) return;
+    if (pendentesRef.current.some((id) => !iniciadosRef.current.has(id))) {
+      void carregar();
+    }
+  }, [habilitado, chaveDosPendentes, carregar]);
 
   // Ficha aberta por muito tempo: a loja pode ter aprovado, recebido ou
   // cancelado sem a tela saber. Ao voltar ao app, relê (a guarda de rodada de
@@ -460,7 +500,12 @@ export function useDevolucaoCliente(
   );
 
   const dadosSaoDesteId = idDosDados === orderId;
+  const aguardandoAviso =
+    habilitado &&
+    chaveDosPendentes !== "" &&
+    chaveDosPendentes.split("|").some((id) => !vistos.has(id));
   return {
+    aguardandoAviso,
     elegibilidade: dadosSaoDesteId ? elegibilidade : null,
     devolucoes: dadosSaoDesteId ? devolucoes : [],
     atual: dadosSaoDesteId ? atual : null,
