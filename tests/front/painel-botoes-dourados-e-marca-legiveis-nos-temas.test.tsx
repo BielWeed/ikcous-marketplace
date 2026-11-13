@@ -80,7 +80,7 @@ describe("botão dourado de pedidos: o texto escuro não divide a cor com o rema
           registrandoPagamento={false}
           onStatusChange={async () => {}}
           onReceberAntesDeAvancar={async () => {}}
-          onAnularVenda={async () => {}}
+          onAnularVenda={async (orderId) => ({ orderId, jaAnulada: false })}
           isOffline={false}
           destaquePrimario
         />,
