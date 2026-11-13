@@ -26,6 +26,10 @@ describe("tentativas em aberto do lançamento", () => {
   });
 
   it("não grava descrição nem valor em texto puro", async () => {
+    // O registro guarda `Date.now()` em milissegundos; com o relógio real, os
+    // dígitos do instante às vezes contêm "120" e o teste falhava por acaso.
+    vi.useFakeTimers();
+    vi.setSystemTime(1_700_000_000_000);
     const m = await import(MODULO);
     m.guardarChaveEmAberto(CONTEUDO, "chave-1");
     const bruto = JSON.stringify({ ...sessionStorage });
