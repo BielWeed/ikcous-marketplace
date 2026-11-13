@@ -34,6 +34,12 @@ export function numeroComPais(valor: string | null | undefined): string {
 // DDD brasileiro válido + fixo de 8 dígitos ou celular de 9; país só Brasil.
 const DDD_BR =
   /^(?:1[1-9]|2[12478]|3[1-578]|4[1-9]|5[13-5]|6[1-9]|7[134579]|8[1-9]|9[1-9])$/;
+
+/** Os dois primeiros dígitos são um DDD que existe no Brasil. */
+export function dddBrasileiroValido(ddd: string): boolean {
+  return DDD_BR.test(ddd);
+}
+
 export function normalizarNumeroMototaxi(
   valor: string | null | undefined,
 ): string | null {
@@ -120,7 +126,9 @@ export function whatsappParaGravar(
   if (
     digitos.length > 11 ||
     (digitos.length > 0 && digitos.length < 10) ||
-    (digitos.length === 10 && digitos[2] === "9")
+    (digitos.length === 10 && digitos[2] === "9") ||
+    // DDD que não existe: o número gravado seria impossível de atender.
+    (digitos.length > 0 && !dddBrasileiroValido(digitos.slice(0, 2)))
   )
     return { valido: false };
   return { valido: true, valor: numeroComPais(digitos) || null };

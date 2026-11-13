@@ -2,6 +2,8 @@ import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { Label } from "@/components/ui/label";
 
+import { dddBrasileiroValido } from "./contato";
+
 // Bloco "WhatsApp da loja" de Minha loja › Contato (painel simples, D9):
 // extraído do bloco 1 da antiga tela "Atendimento", com o mesmo
 // comportamento. O número é a porta de fechamento de pedido da loja, por isso
@@ -28,6 +30,9 @@ function validarWhatsapp(digitado: string): string | null {
   }
   if (digitos.length < 10 || digitos.length > 11) {
     return "Informe DDD + número (10 ou 11 dígitos)";
+  }
+  if (!dddBrasileiroValido(digitos.slice(0, 2))) {
+    return "Confira o DDD: esse DDD não existe.";
   }
   return null;
 }
