@@ -52,6 +52,20 @@ export function chaveDoRascunhoDoProduto(
   );
 }
 
+/**
+ * Apaga o rascunho desta chave. Nunca lança: navegador com "bloquear dados de
+ * sites" faz o próprio acesso ao `localStorage` lançar, e quem apaga o rascunho
+ * depois de SALVAR o produto não pode transformar um salvamento que deu certo
+ * em erro (o produto já está no banco).
+ */
+export function apagarRascunhoDoProdutoPelaChave(chave: string): void {
+  try {
+    localStorage.removeItem(chave);
+  } catch (erro) {
+    console.warn("[rascunho-do-produto] Não consegui apagar o rascunho:", erro);
+  }
+}
+
 /** Apaga o rascunho (o do produto novo, se `productId` não vier). */
 export function descartarRascunhoDoProduto(
   userId: string | undefined,
@@ -59,11 +73,7 @@ export function descartarRascunhoDoProduto(
 ): void {
   const chave = chaveDoRascunhoDoProduto(userId, productId);
   if (!chave) return;
-  try {
-    localStorage.removeItem(chave);
-  } catch (erro) {
-    console.warn("[rascunho-do-produto] Não consegui apagar o rascunho:", erro);
-  }
+  apagarRascunhoDoProdutoPelaChave(chave);
 }
 
 /**
@@ -97,16 +107,23 @@ export function rascunhoVenceu(
  * (quem chama faz o `JSON.parse` dentro do próprio try/catch, como sempre) ou
  * `null` se não há rascunho ou ele venceu — e neste caso a chave sai do
  * `localStorage`. Texto que não é JSON volta como está: o erro é de quem lê.
+ * Armazenamento bloqueado pelo navegador (o acesso lança) = "sem rascunho":
+ * nunca lança, para "Novo produto" e "Editar produto" abrirem.
  */
 export function lerRascunhoVigenteDoProduto(
   chave: string,
   agora: number = Date.now(),
 ): string | null {
-  const bruto = localStorage.getItem(chave);
+  let bruto: string | null;
+  try {
+    bruto = localStorage.getItem(chave);
+  } catch {
+    return null;
+  }
   if (!bruto) return null;
   try {
     if (rascunhoVenceu(JSON.parse(bruto), agora)) {
-      localStorage.removeItem(chave);
+      apagarRascunhoDoProdutoPelaChave(chave);
       return null;
     }
   } catch {
