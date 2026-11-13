@@ -57,9 +57,16 @@ describe("TopProductsList — o lucro desconta devolução e estorno", () => {
     act(() => botao.click());
     const texto = SEM_NBSP(document.body.textContent);
     expect(texto).toContain(
-      "É o que a loja ganhou com cada produto: o que a cliente pagou, menos o dinheiro devolvido, menos o custo das peças que não voltaram para a prateleira. Conta no dia da venda e sem frete — por isso o total não é o mesmo do Financeiro do mês.",
+      "É o que a loja ganhou com cada produto: o que a cliente pagou pela peça (já com o cupom), menos todo dinheiro devolvido, menos o custo das peças que não voltaram para a prateleira.",
     );
-    expect(texto).toContain("Produto sem custo cadastrado não entra.");
+    // As duas regras do ranking: reembolso total não tira o pedido; só o cancelado com estoque de volta sai.
+    expect(texto).toContain(
+      "Reembolso total não tira o pedido da lista; só sai o cancelado com a peça de volta no estoque.",
+    );
+    expect(texto).toContain(
+      "Conta no dia da venda e sem frete, por isso difere do Financeiro do mês.",
+    );
+    expect(texto).toContain("Produto sem custo não entra.");
     // A frase antiga lida ao pé da letra tirava o custo duas vezes ("preço menos o custo, menos ... o custo da peça").
     expect(texto).not.toContain("o preço pago menos o custo");
     // As frases antigas: a que prometia só preço menos custo e a que só falava de devoluções e estornos.
