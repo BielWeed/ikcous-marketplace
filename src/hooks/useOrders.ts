@@ -1824,6 +1824,25 @@ export async function desfechoDoReenvio(
   return { ok: false, motivo: "envio_falhou" };
 }
 
+/**
+ * Põe `novo` na lista na posição da data de criação (mais novo primeiro, como
+ * `created_at DESC` da RPC e da consulta da cliente). Sem isto, dois INSERTs
+ * cuja consulta responde fora de ordem davam [A, B] com B mais novo, e o corte
+ * da página (`slice`) podia tirar o mais novo. Empate (ou data ilegível) fica
+ * no topo, como antes: `novo` entra antes do primeiro que NÃO seja
+ * estritamente mais novo que ele.
+ */
+function inserirPedidoPorData(prev: Order[], novo: Order): Order[] {
+  const tNovo = Date.parse(novo.createdAt);
+  if (!Number.isFinite(tNovo)) return [novo, ...prev];
+  const posicao = prev.findIndex((pedido) => {
+    const t = Date.parse(pedido.createdAt);
+    return !Number.isFinite(t) || t <= tNovo;
+  });
+  if (posicao === -1) return [...prev, novo];
+  return [...prev.slice(0, posicao), novo, ...prev.slice(posicao)];
+}
+
 /** O que `handleRealtimeInsert` deve fazer com um pedido novo, no painel. */
 export type DecisaoRealtimeInsertAdmin = "inserir" | "recarregar" | "ignorar";
 
@@ -3037,8 +3056,8 @@ export function useOrders(
   const DEBOUNCE_RECARREGAR_INSERT_MS = 400;
 
   /**
-   * Pedidos da cliente cujo INSERT ainda está consultando o banco (id ->
-   * última linha de UPDATE que chegou nesse meio-tempo, ou `null`). Sem isto o
+   * Pedidos (da cliente ou do painel) cujo INSERT ainda está consultando o banco
+   * (id -> última linha de UPDATE que chegou nesse meio-tempo, ou `null`). Sem isto o
    * UPDATE de um pedido AINDA AUSENTE da lista era descartado, e a consulta —
    * um retrato anterior a ele — entrava velha (o PIX confirmado no meio do
    * voo ficava "aguardando"). Entrada nasce no início do INSERT e sai logo
@@ -3081,11 +3100,12 @@ export function useOrders(
         if (!isAdmin && data.user_id !== user?.id) return;
         const newOrderDaConsulta = mapOrderFromDB(data as any);
         // O UPDATE que chegou durante o voo (o pedido ainda não estava na
-        // lista para recebê-lo) vale se for mais novo que a consulta.
-        const newOrder =
-          !isAdmin && updateDoMeioDoVoo
-            ? mesclarAtualizacaoRealtime(newOrderDaConsulta, updateDoMeioDoVoo)
-            : newOrderDaConsulta;
+        // lista para recebê-lo) vale se for mais novo que a consulta. Vale
+        // também no painel, ANTES da decisão abaixo: status/pagamento do
+        // pedido já mesclado é que dizem se ele entra na visão da lojista.
+        const newOrder = updateDoMeioDoVoo
+          ? mesclarAtualizacaoRealtime(newOrderDaConsulta, updateDoMeioDoVoo)
+          : newOrderDaConsulta;
 
         if (isAdmin) {
           // useOrders-1508: NÃO existe mais um único "insere sempre" pra
@@ -3122,7 +3142,7 @@ export function useOrders(
               // que o fetch traz. O estado EM MEMÓRIA continua sendo
               // atualizado; o cache só se renova no fetch, que roda no
               // mount.
-              const lista = [newOrder, ...prev];
+              const lista = inserirPedidoPorData(prev, newOrder);
               return typeof tamanhoDaPagina === "number" && tamanhoDaPagina > 0
                 ? lista.slice(0, tamanhoDaPagina)
                 : lista;
@@ -3165,7 +3185,7 @@ export function useOrders(
         if (data.user_id) consultasDoClienteEmVoo.delete(data.user_id);
         setOrders((prev) => {
           if (prev.some((o) => o.id === newOrder.id)) return prev;
-          return [newOrder, ...prev];
+          return inserirPedidoPorData(prev, newOrder);
         });
         if (!onRealtimeEventRef.current) {
           // Id estável por pedido: o canal é compartilhado entre telas e cada
@@ -3193,14 +3213,12 @@ export function useOrders(
       const jaNaLista = ordersRef.current.some(
         (pedido) => pedido.id === updatedOrder.id,
       );
-      // Pedido da cliente que o INSERT ainda está consultando: guarda a linha
-      // mais nova para o INSERT aplicar quando o pedido entrar (ver
-      // `insertsEmVooRef`). Só guarda o que há de mais recente.
-      if (
-        !isAdmin &&
-        !jaNaLista &&
-        insertsEmVooRef.current.has(updatedOrder.id)
-      ) {
+      // Pedido que o INSERT ainda está consultando (da cliente ou do painel):
+      // guarda a linha mais nova para o INSERT aplicar quando o pedido entrar
+      // (ver `insertsEmVooRef`). Só guarda o que há de mais recente. Só pedido
+      // com INSERT em voo é guardado: UPDATE de pedido fora da lista e sem
+      // consulta em andamento continua sendo ignorado, no painel também.
+      if (!jaNaLista && insertsEmVooRef.current.has(updatedOrder.id)) {
         const guardado = insertsEmVooRef.current.get(updatedOrder.id);
         const tGuardado = Date.parse(guardado?.updated_at);
         const tChegou = Date.parse(updatedOrder.updated_at);
