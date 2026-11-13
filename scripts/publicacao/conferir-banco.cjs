@@ -3098,7 +3098,20 @@ const ROL_DA_143B = [
   "order_refund__pode_ter_saido e pedido__saldo_a_estornar: corpo da 20261241000000 (md5), o que a funcao nova chama",
   "is_admin() e is_admin_atual() existem; order_refund_prova existe e devolucoes tem refund_id (uuid)",
 ];
+// Lote 145 (20261399993000, o CRM e a lista de clientes nao contam a mesma pessoa duas vezes: o corpo de DUAS funcoes muda, nenhuma ACL, nenhuma tabela). A 145a prova o estado novo (o md5 exato dos
+// dois corpos e atributos/ACL conhecidos); a 145b prova a base vigente (os corpos da 20261183000000 e da 20261392000000). So catalogo: nenhuma le perfil, endereco, pedido ou cliente e nenhuma chama as funcoes.
+const ROL_DA_145 = [
+  "controle: funcoes de public visiveis a este papel",
+  "crm__nunca_comprou: corpo exato (md5)",
+  "get_admin_customers_paged: corpo exato (md5)",
+  "crm__nunca_comprou: uma so, atributos conhecidos (sql, STABLE, SECURITY INVOKER, search_path=public) e sem EXECUTE para PUBLIC, anon ou authenticated",
+  "get_admin_customers_paged: uma so, atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, extensions) e EXECUTE so de authenticated e service_role (nem PUBLIC nem anon)",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado":
+    ROL_DA_145,
+  "145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente":
+    ROL_DA_145,
   "143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado":
     ROL_DA_143A,
   "143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente":

@@ -19,6 +19,8 @@
 --                depois deste lote. Cada linha de md5 aceita o corpo deste lote OU o da sucessora dele e, aceito o
 --                da sucessora, o `vivo` mostra o `esperado` (quem distingue os dois e a 101a/102a). O rol e os
 --                rotulos nao mudam; os marcadores seguem no corpo das sucessoras. Corpo estranho segue mostrando o md5.
+--                20261399993000 (lote 429; a lista toma UM endereco principal por cliente) e a TERCEIRA sucessora de
+--                get_admin_customers_paged: o md5 dela tambem e aceito na linha da busca (a 145a distingue).
 --   * marcador -- 'sim' se o corpo traz a regra nova: na tela Clientes, o calculo dos digitos (`v_search_digitos`)
 --                e o corte do 55 (`IN (12, 13)`); no CRM, o `f_unaccent` sobre o nome. Leitura humana do
 --                mesmo fato do md5.
@@ -74,7 +76,8 @@ WITH alvo(chave, assinatura) AS (
   UNION ALL
   SELECT 'get_admin_customers_paged: corpo e o da 20261230000000, com a busca por digitos do WhatsApp (md5)',
          'd6c092c3e0d8069891af795147d65e9e',
-         COALESCE((SELECT CASE WHEN f.m = '1c71829d75e3d8f17bf7fb01019c05ec' THEN 'd6c092c3e0d8069891af795147d65e9e' ELSE f.m END
+         COALESCE((SELECT CASE WHEN f.m = '1c71829d75e3d8f17bf7fb01019c05ec' THEN 'd6c092c3e0d8069891af795147d65e9e'
+                       WHEN f.m = '35212d373895b2a9ede613198fc4c794' THEN 'd6c092c3e0d8069891af795147d65e9e' ELSE f.m END
                      FROM fn f WHERE f.chave = 'clientes'), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_customers_paged: o corpo traz os digitos do termo e o corte do 55',

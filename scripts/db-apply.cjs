@@ -385,6 +385,49 @@ const VERIFICACOES = {
       { texto: "'ja_repetida', false,", vezes: 1 },
     ],
   },
+  // 20261399993000: o CRM e a lista de clientes nao contam a mesma pessoa duas vezes. DUAS funcoes, uma checagem cada. crm__nunca_comprou ganha SO a
+  // CTE wa_nao_pagos (le crm__pedidos_nao_pagos, user_id nulo, o 55 cortado como em wa_pagos) e o terceiro NOT EXISTS; get_admin_customers_paged troca SO
+  // o LEFT JOIN de user_addresses por UM endereco principal (LATERAL ... LIMIT 1) antes de juntar os pedidos. As travas de admin, a busca, o GROUP BY e o
+  // ORDER BY seguem como estavam. A consulta 145a confere o corpo exato (md5), os atributos e a ACL das duas.
+  "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql":
+    [
+      {
+        funcao: "crm__nunca_comprou",
+        esperado: [
+          { texto: "wa_nao_pagos AS (", vezes: 1 },
+          {
+            texto: "FROM public.crm__pedidos_nao_pagos(p_ate) np",
+            vezes: 1,
+          },
+          {
+            texto: "WHERE np.user_id IS NULL AND np.whatsapp IS NOT NULL",
+            vezes: 1,
+          },
+          { texto: "SELECT 1 FROM wa_nao_pagos wn", vezes: 1 },
+          { texto: "SELECT 1 FROM wa_pagos wp", vezes: 1 },
+          { texto: "FROM public.crm__vendas(p_ate) v", vezes: 1 },
+        ],
+      },
+      {
+        funcao: "get_admin_customers_paged",
+        esperado: [
+          { texto: "LEFT JOIN LATERAL (", vezes: 1 },
+          {
+            texto: "ORDER BY a.created_at DESC NULLS LAST, a.id",
+            vezes: 1,
+          },
+          { texto: "LIMIT 1\n        ) addr ON true", vezes: 1 },
+          {
+            texto:
+              "GROUP BY p.id, u.email, u.phone, p.whatsapp, addr.city, addr.state",
+            vezes: 1,
+          },
+          { texto: "END DESC,", vezes: 3 },
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        ],
+      },
+    ],
   // 20261386: o preco do produto deixa historico. A tabela, a politica, o ACL e o gatilho nao sao conferiveis aqui (so corpo de funcao): a
   // consulta 91a e a prova viva fazem isso. Aqui: a funcao do gatilho grava 'cadastro' no INSERT e 'mudanca' so quando o preco muda.
   "20261386000000_o_preco_do_produto_deixa_historico.sql": {

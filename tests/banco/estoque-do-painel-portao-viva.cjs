@@ -1405,6 +1405,16 @@ async function main() {
         "20261399985000_o_grafico_do_financeiro_soma_so_as_contas_ativas.sql",
         "public.fin_resumo(date,date)",
       ],
+      // A 20261399993000 (o CRM e a lista de clientes nao contam a mesma pessoa duas vezes): UMA migration, DUAS entradas (crm__nunca_comprou, da 183, e get_admin_customers_paged sobre o corpo da
+      // 392), funcoes de fora destas tres, o mesmo caso da 392 acima. O rollback dela devolve os dois corpos de uma vez (o molde, abaixo, desfaz e mede; a segunda entrada ja o encontra devolvido).
+      [
+        "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql",
+        "public.crm__nunca_comprou(timestamptz)",
+      ],
+      [
+        "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql",
+        "public.get_admin_customers_paged(text,text,text,integer,integer)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

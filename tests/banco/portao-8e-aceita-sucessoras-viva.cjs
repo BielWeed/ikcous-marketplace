@@ -145,6 +145,11 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     s.nome !==
       "20261392000000_a_lista_de_clientes_nao_repete_nem_esconde_ninguem_entre_as_paginas.sql" &&
     s.nome !== "20261392100000_a_busca_do_crm_acha_o_numero_com_mais_55.sql" &&
+    // A 20261399993000 (o CRM e a lista de clientes nao contam a mesma pessoa duas vezes) e a TERCEIRA sucessora de get_admin_customers_paged (99 -> 230 -> 392 -> 3993) e tambem
+    // redefine crm__nunca_comprou (que nao e da 8e): UMA migration, uma funcao da 8e, com a PROVA PROPRIA em
+    // tests/banco/o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-viva.cjs; `noEstado` a desfaz antes (a-busca-de-clientes-posterior.cjs, o rollback dela devolve as duas).
+    s.nome !==
+      "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql" &&
     // A 20261394000000 (o pedido de visitante na entrega tem freio) so redefine a v23 e a v24, em cima da 350 e da 384; nenhuma das duas e' funcao
     // da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 384 (pedido-pelo-app-exige-conta-posterior.cjs chama
     // o-pedido-de-visitante-na-entrega-posterior.cjs); aqui sai do rol pela mesma razao da 384 e da 350.
@@ -389,7 +394,8 @@ async function noEstado(montar, textos = [SQL_8E]) {
     await require("./o-lucro-do-inicio-posterior.cjs").desfazerLucroDoInicioNaTransacao(
       C,
     );
-    // A 20261392000000 e a 20261392100000 sucedem a 230 e a 231: saem antes de qualquer montagem desta prova.
+    // A 20261399993000 sucede a 392 em get_admin_customers_paged (e troca crm__nunca_comprou): sai junto com a 392 e a 3921, a mais nova antes (a-busca-de-clientes-posterior.cjs).
+    // Depois dela, a 20261392000000 e a 20261392100000 sucedem a 230 e a 231: saem antes de qualquer montagem desta prova.
     await require("./a-busca-de-clientes-posterior.cjs").desfazerBuscaDeClientesPosteriorNaTransacao(
       C,
     );

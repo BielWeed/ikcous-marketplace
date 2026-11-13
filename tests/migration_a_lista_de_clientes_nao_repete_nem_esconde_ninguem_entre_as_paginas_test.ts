@@ -318,5 +318,16 @@ Deno.test("depois da 20261230000000 so este par redefine get_admin_customers_pag
       )
     )
       posteriores.push(n);
-  assert.deepEqual(posteriores.sort(), [NOME, `rollback-manual-${NOME}`]);
+  // A sucessora (20261399993000: um endereco principal por cliente) tem o proprio teste: tests/migration_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes_test.ts.
+  const SUCESSORA =
+    "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql";
+  assert.deepEqual(
+    posteriores.sort(),
+    [
+      NOME,
+      SUCESSORA,
+      `rollback-manual-${NOME}`,
+      `rollback-manual-${SUCESSORA}`,
+    ].sort(),
+  );
 });

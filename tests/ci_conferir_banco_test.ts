@@ -2422,6 +2422,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "1c71829d75e3d8f17bf7fb01019c05ec",
           versao: "20261392000000",
         },
+        // 13/11/2026 (lote 429): a lista de clientes toma UM endereco principal por cliente (99 -> 230 -> 392 -> 3993).
+        {
+          fn: "get_admin_customers_paged",
+          h: "35212d373895b2a9ede613198fc4c794",
+          versao: "20261399993000",
+        },
         // 22/10/2026: o aviso de cancelados antigos conta só pendência real (só o bloco do fora_da_janela muda).
         {
           fn: "get_admin_orders_cancelados_recentes",

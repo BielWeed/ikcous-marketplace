@@ -150,6 +150,10 @@ const NOMES = [
   // O grafico do Financeiro soma so as contas ativas: fin_resumo sucede o corpo da 3993 (a CADEIA 99 -> 3993 -> 39985: o `hashVigente` da 39985 e o `hashDesta` da 3993). O rollback da 3993 recusa
   // com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
   "20261399985000_o_grafico_do_financeiro_soma_so_as_contas_ativas.sql",
+  // O CRM e a lista de clientes nao contam a mesma pessoa duas vezes: UMA migration, DUAS funcoes. get_admin_customers_paged sucede o corpo da 392 (a
+  // CADEIA 99 -> 230 -> 392 -> 3993: o `hashVigente` da 3993 e o `hashDesta` da 392); crm__nunca_comprou nao e uma das 42 (vem da 183) mas entra porque o
+  // rollback-manual dela desfaz as duas de uma vez. O rollback da 392 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
@@ -167,6 +171,10 @@ const PARES_POR_MIGRATION = new Map([
   [
     "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql",
     3,
+  ],
+  [
+    "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql",
+    2,
   ],
 ]);
 
