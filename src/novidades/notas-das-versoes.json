@@ -1,4 +1,19 @@
 {
+  "1.5.180": {
+    "titulo": "Balcão que não esconde a dúvida da venda, Ajustes que descarta de verdade e busca do topo com a foto certa",
+    "novidades": [],
+    "melhorias": [
+      "Loja, Busca do topo: a sugestão de produto mostra a foto real mesmo em cadastros antigos com um marcador \"Sem foto\" na frente, e tocar numa sugestão logo depois de digitar deixa o campo e a lista concordando.",
+      "Painel, Pedidos: a bolinha de pedidos novos acende assim que a conexão em tempo real confirma, mesmo se um pedido entrou enquanto ela abria.",
+      "Painel, Ajustes: confirmar \"Descartar e Sair\" numa tela de Ajustes mexida devolve o valor salvo e a tela deixa de pedir para salvar (os grupos voltam fechados)."
+    ],
+    "correcoes": [
+      "Painel, Balcão: se a resposta de uma venda se perde e a nova tentativa falha por outro motivo, a tela continua dizendo que não sabe se a venda foi registrada, em vez de afirmar que nada foi gravado; depois de recarregar, o Cancelar e o \"Começar uma venda nova\" mandam conferir em Pedidos.",
+      "Painel, Balcão: a busca manual enxerga o estoque reposto em outro aparelho, e a segunda unidade entra na venda.",
+      "Painel, Avaliações: excluir a única avaliação da 2ª página enquanto se troca o filtro deixa a lista na página 1, em vez de uma página inválida.",
+      "Painel, Produtos: se a exclusão de um produto falha depois de trocar de categoria, a lista da categoria nova continua na tela."
+    ]
+  },
   "1.5.179": {
     "titulo": "Pagamento por PIX que não se perde ao recarregar, painel que não desfaz o trabalho de outro aparelho e cupom que não vira ilimitado por engano",
     "novidades": [
@@ -13,13 +28,18 @@
       "Painel, Categorias e banners: a categoria recém-criada não some da lista, uma criação sem resposta relê o servidor, e excluir um banner não desfaz a troca de ordem feita logo depois.",
       "Loja, Pedido e endereços: a devolução aprovada aparece antes do aviso sumir, editar um endereço com a tela velha não desfaz a correção de outro aparelho, e a data da compra usa o dia de Brasília.",
       "Loja, Banner e avaliações: o banner ao vivo não volta à versão antiga e o catálogo e a ficha pintam as mesmas estrelas.",
-      "Painel, Avaliações: a fila de moderação não fica pendurada."
+      "Painel, Avaliações: a fila de moderação não fica pendurada.",
+      "Loja, Banner: tocar em \"Toque para tentar de novo\" na foto do banner recarrega a foto em vez de abrir o link do banner.",
+      "Loja, Privacidade: o detalhe de um pedido consultado sem conta sai da tela depois de 1 hora de segurança e a cópia guardada no aparelho é apagada.",
+      "Painel, Pedidos: o total \"X–Y de Z\" da lista não fica uma página a menos quando pedidos novos entram durante a leitura."
     ],
     "correcoes": [
       "Loja, Checkout: um PIX pago depois do vencimento volta ao aviso ao recarregar a página, e o vencimento ao vivo tira o QR vencido.",
       "Loja, Carrinho: reabrir o app não devolve o produto que outro aparelho tirou.",
       "Loja, Minha conta: conferir o perfil depois de salvar não apaga o que a cliente digitou.",
-      "Loja, Avisos: abrir o sino no meio de \"Quero Receber!\" não desliga o aviso recém-ligado."
+      "Loja, Avisos: abrir o sino no meio de \"Quero Receber!\" não desliga o aviso recém-ligado.",
+      "Painel, Imprimir pedido: o recibo traz o nome corrigido da variação depois de 60 segundos.",
+      "Loja, Minha conta: o CPF cadastrado não aparece vazio quando só a consulta dele falha (o formulário trava com \"Tentar de novo\"), e uma resposta antiga do perfil não sobrescreve a nova."
     ]
   },
   "1.5.178": {
