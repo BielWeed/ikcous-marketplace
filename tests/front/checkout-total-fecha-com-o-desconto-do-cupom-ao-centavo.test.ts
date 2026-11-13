@@ -6,6 +6,10 @@ import { describe, expect, it } from "vitest";
  * (round(subtotal * valor / 100, 2), metade para cima) e a gravar o total a partir dele. A tela le o `discount_value` do
  * servidor (useCoupons) e faz `arredondarParaCentavos(total - discount)` (CheckoutView): com o desconto em centavos
  * inteiros a conta fecha com o que o servidor grava. Estas provas fixam esse lado da conta.
+ *
+ * ATENCAO: este arquivo exercita so o `arredondarParaCentavos` e o desconto do servidor (a conta e' refeita aqui);
+ * NAO exercita o `finalTotal` do CheckoutView. Quem prova o total que a tela mostra (com numeros escritos a mao, e
+ * reprova se `total - discount` virar `total + discount`) e' tests/front/checkout-total-nunca-negativo-com-cupom-velho.
  */
 
 /** O desconto como o servidor o devolve agora: inteiro de centavos, metade para cima (numeric round(.., 2)). */
