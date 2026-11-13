@@ -764,6 +764,14 @@ const AppContent = () => {
     viaPopstate?: boolean;
   } | null>(null);
 
+  // Quantas vezes "Descartar e Sair" foi confirmado por tela. As abas do painel
+  // ficam montadas por baixo (AdminArea), então só desligar a guarda deixava o
+  // formulário sujo de pé; a AdminArea usa isto como `key` e a tela volta ao
+  // valor salvo.
+  const [descarteDaTela, setDescarteDaTela] = useState<
+    ReadonlyMap<View, number>
+  >(() => new Map());
+
   const isAdminDirtyRef = useRef(false);
   useEffect(() => {
     isAdminDirtyRef.current = isAdminDirty;
@@ -3642,6 +3650,7 @@ const AppContent = () => {
                   backOverride={backOverride}
                   isTransitionSupported={isTransitionSupported}
                   userId={user?.id}
+                  descarteDaTela={descarteDaTela}
                   fallback={<AdminRouteLoading />}
                 />
               ) : (
@@ -3723,6 +3732,14 @@ const AppContent = () => {
             <AlertDialogAction
               onClick={() => {
                 setIsAdminDirty(false);
+                // A tela que ela está deixando (a atual, que o aviso segurou)
+                // pode ficar montada por baixo: manda-a de volta ao salvo.
+                setDescarteDaTela((antes) =>
+                  new Map(antes).set(
+                    currentView,
+                    (antes.get(currentView) ?? 0) + 1,
+                  ),
+                );
                 // "Descartar" é descartar: o rascunho do produto que ela está
                 // deixando sai do aparelho, senão voltaria como "Restaurar?".
                 if (currentView === "admin-product-form") {
