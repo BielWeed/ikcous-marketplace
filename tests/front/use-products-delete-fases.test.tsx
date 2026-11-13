@@ -131,22 +131,26 @@ vi.mock("@/lib/supabase", () => ({
     },
     from: (tabela: string) => ({
       update: (payload: any) => ({
-        eq: async (_col: string, id: string) => {
-          if (tabela === "produtos") {
-            mock.ordem.push({ tipo: "update", tabela, payload, id });
-            if (mock.updateDeMidiaRejeita && payload.imagem_urls)
-              throw new Error("rede caiu no UPDATE de mídia");
-            if (mock.updateProdutosPendurado)
-              return new Promise<never>(() => {});
-            const proximo = mock.resultadoUpdateProdutos.shift();
-            return proximo ?? { error: null };
-          }
-          if (tabela === "product_variants") {
-            mock.ordem.push({ tipo: "update", tabela, payload, id });
-            return mock.resultadoUpdateVariant;
-          }
-          return { error: null };
-        },
+        eq: (_col: string, id: string) =>
+          comSelect(
+            (async () => {
+              if (tabela === "produtos") {
+                mock.ordem.push({ tipo: "update", tabela, payload, id });
+                if (mock.updateDeMidiaRejeita && payload.imagem_urls)
+                  throw new Error("rede caiu no UPDATE de mídia");
+                if (mock.updateProdutosPendurado)
+                  return new Promise<never>(() => {});
+                const proximo = mock.resultadoUpdateProdutos.shift();
+                return proximo ?? { error: null };
+              }
+              if (tabela === "product_variants") {
+                mock.ordem.push({ tipo: "update", tabela, payload, id });
+                return mock.resultadoUpdateVariant;
+              }
+              return { error: null };
+            })(),
+            id,
+          ),
       }),
     }),
     storage: {
@@ -169,6 +173,17 @@ vi.mock("@/lib/supabase", () => ({
 // @ts-expect-error flag interna do React, sem tipo público — mesmo padrão já
 // usado em address-form-cep-race.test.tsx.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+/**
+ * O `.eq()` do PostgREST: o `await` direto devolve `{ error }`; com
+ * `.select("id")` devolve também as linhas que o banco de fato mexeu.
+ */
+function comSelect<T extends { error: any }>(resposta: Promise<T>, id: string) {
+  return Object.assign(resposta, {
+    select: (_colunas: string) =>
+      resposta.then((r) => ({ ...r, data: r.error ? null : [{ id }] })),
+  });
+}
 
 type ApiUseProducts = ReturnType<typeof useProducts>;
 
