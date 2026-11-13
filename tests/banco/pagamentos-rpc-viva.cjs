@@ -101,6 +101,7 @@ const {
 const { DEFINIR_CARGO } = require("./definir-cargo-posterior.cjs");
 const { LIMITES_DE_ABUSO } = require("./limites-de-abuso-posterior.cjs");
 const { AS_VISITAS } = require("./as-visitas-da-loja-posterior.cjs");
+const { REPETIR_A_DEVOLUCAO } = require("./repetir-a-devolucao-que-falhou-posterior.cjs");
 const {
   PRECO_HISTORICO,
 } = require("./o-preco-do-produto-deixa-historico-posterior.cjs");
@@ -1858,6 +1859,9 @@ const POSTERIORES_A_97 = [
   // 20261399000000: a RPC crm_visitas usa is_admin_atual(); sem esta entrada o rollback da 97 recusa.
   // Definicao unica em tests/banco/as-visitas-da-loja-posterior.cjs. No FIM da lista de proposito.
   AS_VISITAS,
+  // 20261399991000: a RPC solicitar_estorno_repetindo usa is_admin_atual(); sem esta entrada o rollback da 97 recusa.
+  // Definicao unica em tests/banco/repetir-a-devolucao-que-falhou-posterior.cjs. No FIM da lista de proposito.
+  REPETIR_A_DEVOLUCAO,
 ];
 
 async function desfazerPosterioresNaTransacao(c) {
