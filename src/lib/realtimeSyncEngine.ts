@@ -24,6 +24,7 @@ import {
   catalogoEmVoo,
   esperarCatalogoEmVoo,
 } from "@/lib/deposito-do-catalogo";
+import { estoqueDasAtivas } from "@/lib/estoque-das-ativas";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import {
   geracaoDoCofre,
@@ -237,20 +238,6 @@ export const TABLE_CONFIGS: TableConfig[] = [
     mapRecord: (raw: any) => mapVariantFromDB(raw),
   },
 ];
-
-// Espelha `mapProductFromDB`: com ao menos uma variação ATIVA o estoque do
-// produto é a soma das ativas; sem nenhuma ativa o produto vende pelo estoque
-// de base (é assim que o servidor vende), nunca por uma soma que daria 0.
-function estoqueDasAtivas(
-  variants: NonNullable<Product["variants"]>,
-  estoqueDeBase: number,
-): number {
-  if (!variants.some((v) => v.active)) return estoqueDeBase;
-  return variants.reduce(
-    (acc, v) => acc + (v.active ? Number(v.stockIncrement) || 0 : 0),
-    0,
-  );
-}
 
 // ─── Singleton ───────────────────────────────────────────────────────────────
 
