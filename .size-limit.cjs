@@ -341,7 +341,8 @@ module.exports = [
     // 07/11/2026 (mesma regra): 519 -> 522 kB na 1.5.153 (mediu 520,37 kB local: prazos e avisos honestos de cupons, devolucao, Mercado Pago e configuracoes). Regra do dono: o teto sobe.
     // 08/11/2026 (1.5.158): 526 -> 530 kB (prazos e avisos honestos do Inicio, CRM, Pedidos, banners e categorias; o painel media 525,62 kB, sem folga para os lotes de rede ruim). Regra do dono: o teto sobe.
     // 12/11/2026 (1.5.173): 530 -> 534 kB (aviso de numeracao esgotada no Inicio, lista de cupons e textos do painel; a base ficou a ~0,03 kB do teto e cada PR novo reprovava; subo 4 kB, mesmo passo do vitrine). Regra do dono: o teto sobe.
-    limit: "534 kB",
+    // 13/11/2026 (1.5.181): 534 -> 538 kB (a etiqueta gerada em outro aparelho aparece na ficha: o painel mediu 534,003 kB no CI, 3 B acima do teto; subo 4 kB, o mesmo passo de sempre). Regra do dono: o teto sobe.
+    limit: "538 kB",
     webpack: false,
   },
   { path: `${output}/assets/*.css`, limit: "100 kB", webpack: false },

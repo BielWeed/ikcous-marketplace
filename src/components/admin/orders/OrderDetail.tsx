@@ -2642,6 +2642,10 @@ export const OrderDetail = memo(function OrderDetail({
               // cartão: sem isto ele seguia oferecendo "Gerar etiqueta".
               status={order.status}
               paymentStatus={order.paymentStatus}
+              // Etiqueta gerada em outro aparelho: o id/url novos chegam pela
+              // lista ao vivo sem mexer em status nem pagamento.
+              shippingLabelIdDaFicha={order.shippingLabelId}
+              shippingLabelUrlDaFicha={order.shippingLabelUrl}
               trackingCodeDaFicha={localTrackingCode}
               onTrackingAtualizado={(orderIdDaResposta, codigo) => {
                 // A resposta pode ser de um pedido que este componente não

@@ -97,6 +97,16 @@ interface EtiquetaDoPedidoCardProps {
    */
   status?: string | null;
   paymentStatus?: string | null;
+  /**
+   * Vínculo da etiqueta que a FICHA mostra agora (`Order.shippingLabelId`/
+   * `shippingLabelUrl`, vindos da lista ao vivo). A edge grava o id e depois a
+   * url sem mexer em status nem pagamento: com a ficha do mesmo pedido aberta
+   * em dois aparelhos, o que não gerou seguia oferecendo "Gerar etiqueta".
+   * Uma MUDANÇA deles relê o pedido em silêncio, como a de status/pagamento.
+   * `undefined` e `null` valem "sem etiqueta"; ausentes: nunca relê.
+   */
+  shippingLabelIdDaFicha?: string | null;
+  shippingLabelUrlDaFicha?: string | null;
 }
 
 /**
@@ -194,6 +204,8 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
   trackingCodeDaFicha,
   status,
   paymentStatus,
+  shippingLabelIdDaFicha,
+  shippingLabelUrlDaFicha,
 }: Readonly<EtiquetaDoPedidoCardProps>) {
   const [cargaFase, setCargaFase] = useState<CargaFase>("carregando");
   const [pedido, setPedido] = useState<PedidoParaEtiqueta | null>(null);
@@ -332,23 +344,57 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
     fetchPedido();
   }, [fetchPedido]);
 
-  // Cancelar/concluir o pedido na ficha (ou o pagamento mudar): relê, para o
-  // cartão parar de oferecer a etiqueta que a edge vai recusar. A 1ª leitura
-  // (e a troca de pedido) já é feita pelo efeito acima -- aqui só entra uma
-  // MUDANÇA de status/pagamento do MESMO pedido.
-  const ultimaLeituraDaFichaRef = useRef({ orderId, status, paymentStatus });
+  // Cancelar/concluir o pedido na ficha (ou o pagamento mudar), ou a etiqueta
+  // sair em OUTRO aparelho (id/url novos na lista ao vivo): relê, para o cartão
+  // parar de oferecer a etiqueta que a edge vai recusar -- ou o botão de
+  // compra de uma etiqueta que já existe. A 1ª leitura (e a troca de pedido)
+  // já é feita pelo efeito acima -- aqui só entra uma MUDANÇA do MESMO pedido.
+  //
+  // COMPRA DESTE APARELHO EM VOO: a edge grava o id na reivindicação (antes de
+  // pagar) e a url só no fim, então o id chega pela lista ao vivo no meio da
+  // compra. Reler aí derrubava o quadro "Gerando…" (o pedido já parece
+  // "emitido") e a leitura antiga podia terminar depois do resultado da compra
+  // e apagar a url/o rastreio. Durante o voo o id/url NÃO avançam no
+  // "último visto": quando a compra termina (`emVoo` muda, o efeito reavalia) a
+  // diferença ainda está lá e a releitura sai uma vez, sem perder a mudança.
+  // Status/pagamento seguem relendo em voo (a resposta da compra não se perde).
+  const etiquetaId = shippingLabelIdDaFicha ?? null;
+  const etiquetaUrl = shippingLabelUrlDaFicha ?? null;
+  const emVoo = compraFase === "gerando";
+  const ultimaLeituraDaFichaRef = useRef({
+    orderId,
+    status,
+    paymentStatus,
+    etiquetaId,
+    etiquetaUrl,
+  });
   useEffect(() => {
     const anterior = ultimaLeituraDaFichaRef.current;
-    ultimaLeituraDaFichaRef.current = { orderId, status, paymentStatus };
-    if (anterior.orderId !== orderId) return;
-    if (
-      anterior.status === status &&
-      anterior.paymentStatus === paymentStatus
-    ) {
-      return;
-    }
+    const mesmoPedido = anterior.orderId === orderId;
+    ultimaLeituraDaFichaRef.current = {
+      orderId,
+      status,
+      paymentStatus,
+      etiquetaId: emVoo && mesmoPedido ? anterior.etiquetaId : etiquetaId,
+      etiquetaUrl: emVoo && mesmoPedido ? anterior.etiquetaUrl : etiquetaUrl,
+    };
+    if (!mesmoPedido) return;
+    const mudouStatus =
+      anterior.status !== status || anterior.paymentStatus !== paymentStatus;
+    const mudouEtiqueta =
+      anterior.etiquetaId !== etiquetaId ||
+      anterior.etiquetaUrl !== etiquetaUrl;
+    if (!mudouStatus && !(mudouEtiqueta && !emVoo)) return;
     void fetchPedido({ silencioso: true });
-  }, [orderId, status, paymentStatus, fetchPedido]);
+  }, [
+    orderId,
+    status,
+    paymentStatus,
+    etiquetaId,
+    etiquetaUrl,
+    emVoo,
+    fetchPedido,
+  ]);
 
   // O código salvo/apagado na linha da ficha chega aqui. Pedido ainda não lido
   // (`null`): nada a aplicar, a leitura que vem já traz o código gravado.
