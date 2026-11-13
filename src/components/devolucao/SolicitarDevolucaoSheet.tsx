@@ -51,6 +51,7 @@ import {
   rotuloMetodo,
   rotuloMotivo,
   rotuloResolucao,
+  selecaoPossivel,
   tipoPrevisto,
   valorDaSelecao,
 } from "@/lib/devolucao";
@@ -311,13 +312,17 @@ function FluxoDaDevolucao({
   const itensDisponiveis = itens.filter((item) => item.disponivel > 0);
 
   const [passo, setPasso] = useState<Passo>(1);
-  const [selecao, setSelecao] = useState<ReadonlyMap<string, number>>(() => {
+  const [marcados, setMarcados] = useState<ReadonlyMap<string, number>>(() => {
     // Um item só, com uma unidade: já vem marcado — é o caso mais comum.
     const unico = itensDisponiveis.length === 1 ? itensDisponiveis[0] : null;
     return new Map(
       unico && unico.disponivel === 1 ? [[unico.order_item_id, 1]] : [],
     );
   });
+  // O que vale é o marcado conferido com a disponibilidade de AGORA: item que
+  // sumiu da lista (outra devolução consumiu) não fica preso, invisível, no
+  // resumo e no envio — é o que a cliente vê que vai.
+  const selecao = selecaoPossivel(itens, marcados);
   const [motivo, setMotivo] = useState<MotivoDevolucao | null>(null);
   const [detalhe, setDetalhe] = useState("");
   const [fotos, setFotos] = useState<FotoEscolhida[]>([]);
@@ -495,8 +500,8 @@ function FluxoDaDevolucao({
   }
 
   function mudarQuantidade(orderItemId: string, qtd: number) {
-    setSelecao((antes) => {
-      const proxima = new Map(antes);
+    setMarcados((antes) => {
+      const proxima = new Map(selecaoPossivel(itens, antes));
       if (qtd <= 0) proxima.delete(orderItemId);
       else proxima.set(orderItemId, qtd);
       return proxima;
