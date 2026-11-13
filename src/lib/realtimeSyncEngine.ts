@@ -414,18 +414,30 @@ export const RealtimeSyncEngine = {
         // nada ter mudado no servidor. Os dois gatilhos passam agora pela
         // mesma janela: disparou há menos de um minuto, adia — o dado que
         // mudou de verdade não depende da janela (chega pelo websocket, que
-        // não passa por aqui) e o catchUp do fim da janela cobre o resto.
+        // não passa por aqui) e UMA rodada final, agendada para o fim da
+        // janela, cobre o resto (a rede que volta dentro da janela não
+        // fica sem rodada). Um só timer: gatilhos seguintes não o empilham.
+        let rodadaFinal: ReturnType<typeof setTimeout> | null = null;
         const rodadaPorGatilho = (motivo: string) => {
           const agora = Date.now();
-          if (
-            agora - _ultimoGatilhoDeRodada <
-            JANELA_MINIMA_ENTRE_GATILHOS_MS
-          ) {
+          const falta =
+            JANELA_MINIMA_ENTRE_GATILHOS_MS - (agora - _ultimoGatilhoDeRodada);
+          if (falta > 0) {
             console.log(
               `[RealtimeSyncEngine] ${motivo}: última rodada há menos de ${JANELA_MINIMA_ENTRE_GATILHOS_MS / 1000}s — catchUp adiado.`,
             );
+            rodadaFinal ??= setTimeout(() => {
+              rodadaFinal = null;
+              // Aba escondida: o visibilitychange seguinte cuida da rodada.
+              if (document.visibilityState === "visible") {
+                _ultimoGatilhoDeRodada = Date.now();
+                this.catchUp(vault, isAdmin).catch(() => {});
+              }
+            }, falta);
             return;
           }
+          if (rodadaFinal) clearTimeout(rodadaFinal);
+          rodadaFinal = null;
           _ultimoGatilhoDeRodada = agora;
           this.catchUp(vault, isAdmin).catch(() => {});
         };
@@ -450,6 +462,8 @@ export const RealtimeSyncEngine = {
         document.addEventListener("visibilitychange", handleVisibilityChange);
 
         _connectivityListeners = () => {
+          if (rodadaFinal) clearTimeout(rodadaFinal);
+          rodadaFinal = null;
           window.removeEventListener("online", handleOnline);
           document.removeEventListener(
             "visibilitychange",
