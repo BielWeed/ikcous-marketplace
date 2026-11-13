@@ -1057,3 +1057,26 @@
     padding-bottom: 12px;
   }
 }
+/* Troco na tela (Dinheiro): campo + valores redondos + resultado. */
+.pdv-change {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+.pdv-change-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 140px);
+  align-items: center;
+  gap: 8px;
+}
+.pdv-change-notes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.pdv-change-result {
+  min-height: 1.5em;
+  font-size: 18px;
+  font-weight: 750;
+}

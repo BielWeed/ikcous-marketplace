@@ -35,6 +35,11 @@ import {
   mensagemDaFalhaDaVenda,
 } from "@/lib/erro-da-venda-presencial";
 import {
+  calcularTroco,
+  centavosDoTextoEmReais,
+  sugerirNotas,
+} from "@/lib/troco-do-balcao";
+import {
   AlertTriangle,
   Banknote,
   Check,
@@ -155,6 +160,22 @@ export function FechamentoDaVenda({
   // "Começar uma venda nova" (chave nova) ou entrar de novo na conta.
   const podeTentarDeNovo = ultimaFalha?.podeTentarDeNovo ?? true;
   const faltaConferir = pedeConferencia && !conferiu;
+
+  // TROCO NA TELA (decisão do sócio, 12/11/2026): com Dinheiro, a lojista pode
+  // digitar quanto a cliente deu e ver o troco. É só conta na tela: o texto
+  // fica em estado local, NADA daqui vai ao rascunho nem ao servidor, e o
+  // botão Registrar não olha para ele. O troco NÃO é guardado: sai do total
+  // vivo a cada render, então mexer no desconto o refaz sozinho.
+  const [recebidoTexto, setRecebidoTexto] = useState("");
+  // Tocar num valor sugerido troca o texto por fora do campo; o campo só relê
+  // a prop quando não está em foco, então a versão na `key` o refaz do zero.
+  const [versaoDoCampoRecebido, setVersaoDoCampoRecebido] = useState(0);
+  const totalEmCentavos = Math.round(total * 100);
+  const mostraTroco = estado.pagamento === "cash" && temValorAPagar;
+  const troco = calcularTroco(
+    totalEmCentavos,
+    centavosDoTextoEmReais(recebidoTexto),
+  );
   const desabilitado =
     !validacao.ok ||
     estado.enviando ||
@@ -379,6 +400,58 @@ export function FechamentoDaVenda({
             ))}
           </div>
         </div>
+
+        {mostraTroco && (
+          <div className="pdv-card pdv-change">
+            <div className="pdv-change-row">
+              <label htmlFor="dinheiro-recebido" className="pdv-muted">
+                Quanto a cliente deu?
+              </label>
+              <LocalBufferedInput
+                key={versaoDoCampoRecebido}
+                id="dinheiro-recebido"
+                disabled={estado.enviando}
+                value={recebidoTexto}
+                mask="currency"
+                zeroVazio
+                delay={0}
+                placeholder="0,00"
+                aria-describedby="troco-da-venda"
+                onFlush={setRecebidoTexto}
+                className="pdv-field"
+              />
+            </div>
+            <div className="pdv-change-notes">
+              {sugerirNotas(totalEmCentavos).map((centavos) => {
+                const nota = (centavos / 100).toLocaleString("pt-BR");
+                return (
+                  <Button
+                    key={centavos}
+                    type="button"
+                    variant="outline"
+                    disabled={estado.enviando}
+                    aria-label={`A cliente deu R$ ${nota}`}
+                    onClick={() => {
+                      setRecebidoTexto((centavos / 100).toFixed(2));
+                      setVersaoDoCampoRecebido((v) => v + 1);
+                    }}
+                    className="pdv-secondary"
+                  >
+                    R$ {nota}
+                  </Button>
+                );
+              })}
+            </div>
+            <p
+              id="troco-da-venda"
+              aria-live="polite"
+              className={`pdv-change-result${troco?.tipo === "faltam" ? " pdv-red" : ""}`}
+            >
+              {troco &&
+                `${troco.tipo === "faltam" ? "Faltam" : "Troco:"} R$ ${reais(troco.centavos / 100)}`}
+            </p>
+          </div>
+        )}
 
         {pedeConferencia && estado.pagamento !== null && (
           <div className="pdv-stack pdv-conference">
