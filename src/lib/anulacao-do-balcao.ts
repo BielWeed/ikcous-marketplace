@@ -12,6 +12,7 @@
 //     e a tela diz como, conforme a forma que o cliente pagou.
 
 import { hojeEmSaoPaulo } from "@/lib/financeiro";
+import { fraseEscritaPelaCasa } from "@/lib/frase-escrita-pela-casa";
 import { formatCurrency } from "@/lib/utils";
 import type { Order } from "@/types";
 
@@ -61,7 +62,9 @@ function codigoDoErro(erro: unknown): string | null {
     return null;
   }
   const codigo = (erro as { code: unknown }).code;
-  return typeof codigo === "string" ? codigo : null;
+  // `code: ""` é o que o postgrest-js devolve quando o `fetch` falhou: não veio
+  // resposta do servidor, então não há código (e a mensagem é texto de rede).
+  return typeof codigo === "string" && codigo !== "" ? codigo : null;
 }
 
 function mensagemDoErro(erro: unknown): string | null {
@@ -76,8 +79,10 @@ function mensagemDoErro(erro: unknown): string | null {
 
 const FRASE_ANULACAO_NAO_LIBERADA =
   "A anulação ainda não está liberada neste servidor. Avise quem cuida do app.";
-const FRASE_SEM_CONEXAO =
+export const FRASE_SEM_CONEXAO_DA_ANULACAO =
   "Não consegui confirmar com o servidor. Confira a venda antes de tentar de novo: se ela já foi anulada, o app avisa.";
+const FRASE_SESSAO_EXPIRADA =
+  "A sua sessão expirou. Saia e entre de novo na conta e tente anular de novo.";
 const FRASE_GENERICA = "Não consegui anular agora. Tente de novo.";
 
 // F7 do painel simples — venda do balcão não se CANCELA (nasce entregue, e
@@ -121,13 +126,17 @@ function semPedidoDeDevolucao(frase: string, clienteComConta: boolean): string {
 }
 
 /**
- * Traduz a falha de `anular_venda_presencial`. As frases do banco (22023 e
- * 42501) já são em português e escritas para o lojista, então são repassadas
- * — com uma exceção: o "registre uma devolução" do fim das recusas do dia e
- * do recebimento refeito vira o que resta de verdade (ver
- * `semPedidoDeDevolucao`; `clienteComConta` escolhe a frase). O que o banco
- * NÃO escreve (função inexistente no servidor, rede) vira frase daqui. Nunca
- * mostra código, nome de função nem stack.
+ * Traduz a falha de `anular_venda_presencial`. A frase do banco só chega à
+ * tela quando a CASA a escreveu (`fraseEscritaPelaCasa`: os `RAISE` em
+ * português das migrations, com 22023/42501, ou sem código, com P0001/P0002) —
+ * com uma exceção: o "registre uma devolução" do fim das recusas do dia e do
+ * recebimento refeito vira o que resta de verdade (ver `semPedidoDeDevolucao`;
+ * `clienteComConta` escolhe a frase). Texto técnico do Postgres/PostgREST
+ * ("canceling statement due to statement timeout", "JWT expired", "permission
+ * denied for function ...") nunca aparece, nem sob um código que a casa
+ * também usa: vira frase daqui. Estouro do servidor (57014) e conexão caindo
+ * (08, 57P) não provam que NÃO anulou, e a tela não afirma nem uma coisa nem
+ * outra: manda conferir. Nunca mostra código, nome de função nem stack.
  */
 export function mensagemDaFalhaDaAnulacao(
   erro: unknown,
@@ -144,16 +153,29 @@ export function mensagemDaFalhaDaAnulacao(
     return FRASE_ANULACAO_NAO_LIBERADA;
   }
   // Sem código = não veio do Postgres (rede caindo, fetch abortado).
-  if (codigo === null) return FRASE_SEM_CONEXAO;
+  if (codigo === null) return FRASE_SEM_CONEXAO_DA_ANULACAO;
+  // Sessão vencida no PostgREST: a chamada nem chegou à função.
+  if (codigo === "PGRST301" || codigo === "PGRST302" || codigo === "PGRST303") {
+    return FRASE_SESSAO_EXPIRADA;
+  }
+  // Estouro de tempo do banco ou conexão/servidor caindo: pode ter anulado.
+  if (
+    codigo === "57014" ||
+    codigo.startsWith("08") ||
+    codigo.startsWith("57P")
+  ) {
+    return FRASE_SEM_CONEXAO_DA_ANULACAO;
+  }
+  const daCasa = fraseEscritaPelaCasa(codigo, doBanco);
   if (codigo === "42501") {
-    return doBanco ?? "Só quem é da loja pode anular uma venda.";
+    return daCasa ?? "Só quem é da loja pode anular uma venda.";
   }
   if (codigo === "22023") {
-    return doBanco
-      ? semPedidoDeDevolucao(doBanco, clienteComConta)
+    return daCasa
+      ? semPedidoDeDevolucao(daCasa, clienteComConta)
       : "Esta venda não pode ser anulada aqui.";
   }
-  return doBanco ?? FRASE_GENERICA;
+  return daCasa ?? FRASE_GENERICA;
 }
 
 /** Começo da frase quando outro aparelho pode já ter devolvido o dinheiro. */
