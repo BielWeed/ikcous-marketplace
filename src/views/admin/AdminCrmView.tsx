@@ -111,12 +111,15 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
     erro,
     atualizar: atualizarVisao,
   } = useCrmVisao(intervalo, ativo);
-  const { visitas } = useCrmVisitas(intervalo, ativo && aba === "funil");
+  const { visitas, atualizar: atualizarVisitas } = useCrmVisitas(
+    intervalo,
+    ativo && aba === "funil",
+  );
   const atualizarPorMudancaNoBanco = useCallback(() => {
     atualizarVisao();
     setSinalDeAtualizacao((n) => n + 1);
   }, [atualizarVisao]);
-  const classico = useDashboardClassico(ativo, atualizarPorMudancaNoBanco);
+  const classico = useDashboardClassico(ativo, atualizarPorMudancaNoBanco, dia);
   const { carregar: carregarClassico } = classico;
   const sincronizando = carregando || classico.carregando;
 
@@ -137,9 +140,10 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
 
   const sincronizar = useCallback(() => {
     atualizarVisao();
+    atualizarVisitas();
     void carregarClassico(true);
     setSinalDeAtualizacao((n) => n + 1);
-  }, [atualizarVisao, carregarClassico]);
+  }, [atualizarVisao, atualizarVisitas, carregarClassico]);
 
   // Voltou a conexão com a tela aberta: busca tudo de novo.
   const estavaOfflineRef = useRef(isOffline);
@@ -409,6 +413,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
                     active={ativo && visivel}
                     onNavigate={onNavigate}
                     sinalDeAtualizacao={sinalDeAtualizacao}
+                    dia={dia}
                   />
                 ) : item.id === "canais" ? (
                   <CanaisDoCrm

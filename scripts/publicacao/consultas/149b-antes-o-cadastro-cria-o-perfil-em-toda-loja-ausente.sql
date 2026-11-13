@@ -1,6 +1,6 @@
--- 129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente: ANTES da 20261399940000 (ou depois do rollback-manual dela). SO LEITURA, somente catalogo,
+-- 149b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente: ANTES da 20261399940000 (ou depois do rollback-manual dela). SO LEITURA, somente catalogo,
 -- rol fechado de 3 linhas. Nao le nenhum usuario nem perfil. Numa loja SEM o gatilho tudo "sim"; depois do apply (ou onde o gatilho ja existe) a linha do gatilho fica "nao" de proposito.
--- ATENCAO: a IKCOUS e a Savy JA TEM o gatilho (a Savy ganhou a mao em 07/11/2026), entao nas duas a 129b sai NEGATIVA (a migration e' no-op la); so uma loja futura, clonada do baseline, a teria POSITIVA.
+-- ATENCAO: a IKCOUS e a Savy JA TEM o gatilho (a Savy ganhou a mao em 07/11/2026), entao nas duas a 149b sai NEGATIVA (a migration e' no-op la); so uma loja futura, clonada do baseline, a teria POSITIVA.
 WITH itens(item, esperado, vivo) AS (
   SELECT 'controle: catalogo publico visivel', 'sim', CASE WHEN EXISTS (SELECT 1 FROM pg_class WHERE relnamespace = 'public'::regnamespace) THEN 'sim' ELSE 'nao' END
   UNION ALL SELECT 'auth.users tem id, raw_user_meta_data e raw_app_meta_data; profiles tem id, full_name, whatsapp, cpf e role; handle_new_user() existe (trigger, SECURITY DEFINER)', 'sim', CASE WHEN

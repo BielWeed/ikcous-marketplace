@@ -35,10 +35,20 @@ export interface Aviso {
     /** A tela guarda filtro/busca/página: ao chegar por este aviso, zera. */
     limparFiltros?: true;
     /**
+     * Depois de zerar, a tela Avaliações abre só com as "Sem resposta" (a
+     * avaliação que o aviso cita está publicada e espera a resposta da loja).
+     */
+    soSemResposta?: true;
+    /**
      * Depois de zerar, a tela Avaliações abre só com a fila "Em moderação"
      * (a avaliação que o aviso cita ainda não está publicada).
      */
     soEmModeracao?: true;
+    /**
+     * A tela Devoluções abre só em "Solicitadas": o aviso conta só essas, e a
+     * lista nasce em "Todas" (as concluídas, mais novas, vêm na frente).
+     */
+    soSolicitadas?: true;
   };
   contaNoCracha: boolean;
 }
@@ -372,7 +382,7 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
         : `${devolucoes} devoluções esperando sua resposta`,
       detalhe: "Clientes pediram para devolver ou trocar produtos",
       quando: "",
-      destino: { view: "admin-devolucoes" },
+      destino: { view: "admin-devolucoes", soSolicitadas: true },
       contaNoCracha: true,
     });
   }
@@ -432,7 +442,10 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
   for (const avaliacao of entrada.avaliacoes) {
     // Avaliacao `pendente` ainda nao esta no produto: o ato que falta e' o
     // Aprovar, nao a resposta. Responder nao a publica, entao o titulo diz
-    // "aguardando aprovacao" e a tela abre ja em "Em moderacao".
+    // "aguardando aprovacao" e a tela abre ja em "Em moderacao". A ja
+    // publicada abre em "Sem resposta": em "Todas" (10 por pagina, as mais
+    // novas primeiro) ela ficaria na pagina 2 ou 3 se chegassem mais de 10
+    // avaliacoes depois, e o aviso mentiria.
     const aguardaAprovacao = avaliacao.status === "pendente";
     avisos.push({
       id: `avaliacao:${avaliacao.id}`,
@@ -442,7 +455,7 @@ export function montarAvisos(entrada: EntradaDeAvisos): Aviso[] {
       quando: avaliacao.created_at,
       destino: aguardaAprovacao
         ? { view: "admin-reviews", limparFiltros: true, soEmModeracao: true }
-        : { view: "admin-reviews", limparFiltros: true },
+        : { view: "admin-reviews", limparFiltros: true, soSemResposta: true },
       contaNoCracha: true,
     });
   }

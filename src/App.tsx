@@ -11,6 +11,8 @@ import { TelaDeVerificacaoFalhou } from "@/components/layouts/TelaDeVerificacaoF
 import { MaintenanceView } from "@/components/pwa/MaintenanceView";
 import { aoIniciarAposAtualizacao } from "@/components/pwa/ao-iniciar-apos-atualizacao";
 import { applyThemeColor, branding } from "@/config/branding";
+import { sessionStorageSeguro } from "@/lib/armazenamento-seguro";
+import { instalarConsumidorDoAtalhoDoIcone } from "@/lib/atalho-do-icone";
 import { esquecerChaveDoPedidoDe } from "@/lib/chave-do-pedido";
 import {
   destinoPosLogin,
@@ -76,6 +78,7 @@ import { useAppBadge } from "@/hooks/useAppBadge";
 import { useBehavioralPrefetch } from "@/hooks/useBehavioralPrefetch";
 import { useCacheWarmer } from "@/hooks/useCacheWarmer";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
+import { useDescartarCodigoParaCadastro } from "@/hooks/useDescartarCodigoParaCadastro";
 import { useFavorites } from "@/hooks/useFavorites";
 import { useNetworkAdaptive } from "@/hooks/useNetworkAdaptive";
 import { usePredictiveNavigation } from "@/hooks/usePredictiveNavigation";
@@ -470,7 +473,7 @@ export default function App() {
   useEffect(() => {
     if (
       globalThis.window !== undefined &&
-      sessionStorage.getItem("splash_shown")
+      sessionStorageSeguro().getItem("splash_shown")
     ) {
       const loader = document.getElementById("silent-guardian-loader");
       if (loader) loader.remove();
@@ -646,6 +649,7 @@ const AppContent = () => {
   const { config, incluirProduto } = useStore();
 
   const [currentView, setCurrentView] = useState<View>("home");
+  useDescartarCodigoParaCadastro(currentView);
   const [isStandalone, setIsStandalone] = useState(false);
   const [, setVisualBottomOffset] = useState(0);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
@@ -762,6 +766,14 @@ const AppContent = () => {
     // formulário descartado) — consome a entrada de guarda com um Voltar.
     viaPopstate?: boolean;
   } | null>(null);
+
+  // Quantas vezes "Descartar e Sair" foi confirmado por tela. As abas do painel
+  // ficam montadas por baixo (AdminArea), então só desligar a guarda deixava o
+  // formulário sujo de pé; a AdminArea usa isto como `key` e a tela volta ao
+  // valor salvo.
+  const [descarteDaTela, setDescarteDaTela] = useState<
+    ReadonlyMap<View, number>
+  >(() => new Map());
 
   const isAdminDirtyRef = useRef(false);
   useEffect(() => {
@@ -959,11 +971,17 @@ const AppContent = () => {
   // Troca de tela: o foco vai para o <main> (a tela antiga some e o foco
   // cairia no <body>), exceto se a pessoa está digitando, está na barra de
   // baixo ou há diálogo aberto. O nome da tela é falado pela região de aviso.
-  const vistaAnteriorRef = useRef(currentView);
+  // Produto -> outro produto pela faixa de relacionados também é troca de tela:
+  // o ProductView remonta (a `key` é o id) e o card focado some com ele.
+  const chaveDaTela =
+    currentView === "product-detail"
+      ? `product-detail:${selectedProductId ?? ""}`
+      : currentView;
+  const vistaAnteriorRef = useRef(chaveDaTela);
   useEffect(() => {
-    if (vistaAnteriorRef.current === currentView) return;
+    if (vistaAnteriorRef.current === chaveDaTela) return;
     const veioDoPainel = vistaAnteriorRef.current.startsWith("admin");
-    vistaAnteriorRef.current = currentView;
+    vistaAnteriorRef.current = chaveDaTela;
     if (currentView.startsWith("admin") && !veioDoPainel) return;
     // Abrir o app direto num endereço (/cart, /orders...) também "troca de
     // tela" na montagem, sem a pessoa ter tocado em nada: não puxar o foco,
@@ -981,7 +999,7 @@ const AppContent = () => {
       ? mainRef.current?.querySelector<HTMLElement>("#conteudo-do-painel")
       : mainRef.current;
     destino?.focus({ preventScroll: true });
-  }, [currentView]);
+  }, [chaveDaTela, currentView]);
   const scrollSentinelRef = useRef<HTMLDivElement>(null);
   const backOverrideRef = useRef<(() => void) | null>(null);
   const isTransitioningRef = useRef(false);
@@ -1379,6 +1397,9 @@ const AppContent = () => {
             "admin-orders",
             "admin-devolucoes",
             "admin-push",
+            // Editar endereço: o id na URL é o que faz o link aberto em outra
+            // aba editar o endereço, em vez de abrir "Novo endereço".
+            "address-form",
           ].includes(targetView) &&
           id
         ) {
@@ -1666,6 +1687,18 @@ const AppContent = () => {
       },
     });
   }, [isAdmin, handleNavigate]);
+
+  // Atalho do ícone (Carrinho, Favoritos) com o app já aberto: o manifesto usa
+  // `focus-existing`, que só traz a janela para a frente e entrega o destino
+  // pela fila `launchQueue`. Consumimos aqui, pelo roteador (sem recarregar:
+  // recarregar apagaria o que a lojista digitou e não salvou).
+  useEffect(() => {
+    return instalarConsumidorDoAtalhoDoIcone({
+      navegar: (view) => {
+        void handleNavigate(view);
+      },
+    });
+  }, [handleNavigate]);
 
   const handleProductClick = useCallback(
     (productId: string) => {
@@ -2483,6 +2516,7 @@ const AppContent = () => {
                     "admin-orders",
                     "admin-devolucoes",
                     "admin-push",
+                    "address-form",
                   ].includes(currentViewRef.current) &&
                   selectedProductIdRef.current
                 ? `/${currentViewRef.current}?id=${selectedProductIdRef.current}`
@@ -2526,6 +2560,7 @@ const AppContent = () => {
                     "admin-orders",
                     "admin-devolucoes",
                     "admin-push",
+                    "address-form",
                   ].includes(currentView) && selectedProductId
                 ? `/${currentView}?id=${selectedProductId}`
                 : `/${currentView}`;
@@ -2796,7 +2831,7 @@ const AppContent = () => {
       removeLoader();
       // Mark splash as shown for the session to prevent it on every nav
       if (globalThis.window !== undefined) {
-        sessionStorage.setItem("splash_shown", "true");
+        sessionStorageSeguro().setItem("splash_shown", "true");
       }
     }
 
@@ -3624,6 +3659,7 @@ const AppContent = () => {
                   backOverride={backOverride}
                   isTransitionSupported={isTransitionSupported}
                   userId={user?.id}
+                  descarteDaTela={descarteDaTela}
                   fallback={<AdminRouteLoading />}
                 />
               ) : (
@@ -3705,6 +3741,14 @@ const AppContent = () => {
             <AlertDialogAction
               onClick={() => {
                 setIsAdminDirty(false);
+                // A tela que ela está deixando (a atual, que o aviso segurou)
+                // pode ficar montada por baixo: manda-a de volta ao salvo.
+                setDescarteDaTela((antes) =>
+                  new Map(antes).set(
+                    currentView,
+                    (antes.get(currentView) ?? 0) + 1,
+                  ),
+                );
                 // "Descartar" é descartar: o rascunho do produto que ela está
                 // deixando sai do aparelho, senão voltaria como "Restaurar?".
                 if (currentView === "admin-product-form") {

@@ -32,15 +32,19 @@
 --   * `get_admin_analytics_v2` → 20261214000000 (o lucro do estoque só conta produto com custo)
 --                                e, DEPOIS dela, 20261234000000 (o lucro só conta produto com custo)
 --                                e, DEPOIS dela, 20261242000000 (o lucro usa o custo do dia da venda)
---                                e, DEPOIS dela, 20261399970000 (o ranking de lucro desconta a devolucao e o estorno);
+--                                e, DEPOIS dela, 20261399970000 (o ranking de lucro desconta a devolucao e o estorno)
+--                                e, DEPOIS dela, 20261399994000 (o item "Nao veio" fica com a cliente no ranking de lucro)
+--                                e, DEPOIS dela, 20261399995000 (o lucro do ranking casa com o Financeiro, pedido a pedido);
 --   * `fin_dre`                → 20261242000000 (a DRE usa o custo do dia da venda; parte do corpo da 99);
 --                                e, DEPOIS dela, 20261382000000 (o resultado mostra tarifa, juro e quebra como despesa)
 --                                e, DEPOIS dela, 20261399600000 (o resultado credita o custo da devolucao de outro mes);
---   * `fin_resumo`            → 20261399300000 (o estorno em andamento não é conta vencida: sai de a_pagar.vencido; parte do corpo da 99);
+--   * `fin_resumo`            → 20261399300000 (o estorno em andamento não é conta vencida: sai de a_pagar.vencido; parte do corpo da 99)
+--                                e, DEPOIS dela, 20261399985000 (o gráfico do Financeiro soma só as contas ativas: serie[].variacao_saldo);
 --   * `crm_visao`              → 20261227000000 (o CRM compara o que é comparável)
 --                                e, DEPOIS dela, 20261232000000 (a grade do CRM mede a recência do mesmo instante da lista);
 --   * `get_admin_customers_paged` → 20261230000000 (a busca de clientes acha pelo número do WhatsApp)
---                                e, DEPOIS dela, 20261392000000 (a lista de clientes não repete ninguém entre as páginas);
+--                                e, DEPOIS dela, 20261392000000 (a lista de clientes não repete ninguém entre as páginas)
+--                                e, DEPOIS dela, 20261399993000 (a lista toma UM endereço principal por cliente: o pedido não conta em dobro);
 --   * `get_admin_orders_paged`  → 20261387000000 (a busca de pedido pelo número não vira busca de telefone)
 --                                e, DEPOIS dela, 20261399900000 (a busca de Pedidos acha o telefone colado com o +55)
 --                                e, DEPOIS dela, 20261399980000 (as listas do painel desempatam por id);
@@ -167,9 +171,11 @@ WITH corpos AS (
     ('painel_inicio', '01d29aedf98b7f95851c1a1001b5c7ca', '20261398000000'),
     ('painel_inicio', '8d58e15e7410afe0d254f37f38251df4', '20261399300000'),
     ('fin_resumo', 'a10e7f301eaf6b3edfac50bc87ff74bc', '20261399300000'),
+    ('fin_resumo', '9e711b03cc63f610461915b850f2eb70', '20261399985000'),
     ('get_admin_customers_paged', 'd6c092c3e0d8069891af795147d65e9e', '20261230000000'),
     ('crm_clientes', '9c4268178a50729b5f7b256b77882585', '20261231000000'),
     ('get_admin_customers_paged', '1c71829d75e3d8f17bf7fb01019c05ec', '20261392000000'),
+    ('get_admin_customers_paged', '35212d373895b2a9ede613198fc4c794', '20261399993000'),
     ('crm_clientes', '39a2a6de59041e09b6f1e466a6782dca', '20261392100000'),
     ('crm_visao', '0dfda3ea5129c6f8aabfcf0052fd2936', '20261232000000'),
     ('get_admin_analytics_v2', '05eac70f6bd4360c1f71fd373747ad0e', '20261234000000'),
@@ -189,12 +195,16 @@ WITH corpos AS (
     ('get_admin_analytics_v2', '5746d8a1df216ca4a5569901c45a2a07', '20261250000000'),
     ('get_admin_analytics_v2', '060c9ab5b1505dc375b41e4436e9d3a8', '20261251000000'),
     ('get_admin_analytics_v2', '0ea0841208f326971e4f92241929e088', '20261399970000'),
+    ('get_admin_analytics_v2', 'de8648a7783c12f1be7abd7986c8a2fc', '20261399994000'),
+    ('get_admin_analytics_v2', '4f8fb94f6cb0018e10d0ef71541f1cbf', '20261399995000'),
     ('fin_dre', 'afc3e13805ce37819cfdcd094043087c', '20261242000000'),
     ('fin_dre', '2d191bc8120a9b188c04eeaaa0263110', '20261382000000'),
     ('fin_dre', 'eafc6a2c4663e33f5459791c6601b848', '20261399600000'),
     ('registrar_pagamento_recebido', '88270bb1e228c90be73acca03a3cee4e', '20261243000000'),
     ('upsert_store_config', '391e8e1064400df5aea579f3472b203c', '20261244000000'),
-    ('fin_lancamento_salvar', '1356dbfc037a9202ef163ba598854891', '20261246000000')), colunas(tabela, coluna) AS (VALUES
+    ('fin_lancamento_salvar', '1356dbfc037a9202ef163ba598854891', '20261246000000'),
+    ('devolucao_elegibilidade', 'bedd211bba45261dfbf962241ca3c9dd', '20261399992000'),
+    ('devolucao_detalhe', 'a439e320641d553e3a21883c6606c6f2', '20261399992000')), colunas(tabela, coluna) AS (VALUES
     ('order_refunds', 'mp_chargeback_id'),
     ('order_refunds', 'mp_chargeback_case_id'),
     ('order_refunds', 'mp_chargeback_valor_do_caso'),

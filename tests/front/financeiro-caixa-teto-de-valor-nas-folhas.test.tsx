@@ -6,8 +6,9 @@
 // registrar sangria/suprimento ou fechar com a contagem de R$ 100 milhões. A
 // folha diz 'Valor acima do limite.' e NÃO chama abrirCaixa / movimentarCaixa /
 // fecharCaixa. O teto exato (R$ 99.999.999,99) é o controle: grava normalmente.
-// Sangria sem o esperado conhecido (`esperado={null}`): com o esperado na mão o
-// botão já fica travado por "maior que o esperado", que é outra guarda.
+// Sangria sem o esperado conhecido (`esperado={null}`): o esperado da folha só
+// avisa (nunca trava o botão, o servidor confere o saldo de agora), então o
+// teto é a guarda que fica na tela.
 import { type ReactElement, act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

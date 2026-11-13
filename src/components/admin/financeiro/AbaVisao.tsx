@@ -403,9 +403,10 @@ export function AbaVisao({
             janela,
             fonteDoGrafico.dados.saldoTotal,
             marco,
+            hoje,
           )
         : [],
-    [fonteDoGrafico.dados, janela, marco],
+    [fonteDoGrafico.dados, janela, marco, hoje],
   );
 
   if (resumo.erro && !resumo.dados) {

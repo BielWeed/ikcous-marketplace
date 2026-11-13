@@ -397,7 +397,7 @@ Deno.test("a cadeia esta declarada: a 8e, a 17a, a 30a, a 97a e a 116a aceitam o
   assert.ok(i < posterior398.indexOf("rollback-manual-"));
 });
 
-Deno.test("so a baseline, a 20261199 (e o par que a redefine) e esta migration definem fin_resumo; depois da 20261199 so esta a redefine", () => {
+Deno.test("so a baseline, a 20261199 (e o par que a redefine), esta migration e a sucessora dela (20261399985000) definem fin_resumo; depois da 20261199 so elas a redefinem", () => {
   const todas = [...Deno.readDirSync(new URL("supabase/migrations/", DIR))]
     .map((e) => e.name)
     .filter((n) => n.endsWith(".sql") && !n.startsWith("_"));
@@ -410,7 +410,15 @@ Deno.test("so a baseline, a 20261199 (e o par que a redefine) e esta migration d
       )
     )
       posteriores.push(n);
-  assert.deepEqual(posteriores.sort(), [NOME, `rollback-manual-${NOME}`]);
+  // A 20261399985000 (o grafico do Financeiro soma so as contas ativas) e a sucessora declarada (prova propria em tests/banco/o-grafico-do-financeiro-soma-so-as-contas-ativas-viva.cjs).
+  const NOME_SUCESSORA =
+    "20261399985000_o_grafico_do_financeiro_soma_so_as_contas_ativas.sql";
+  assert.deepEqual(posteriores.sort(), [
+    NOME,
+    NOME_SUCESSORA,
+    `rollback-manual-${NOME}`,
+    `rollback-manual-${NOME_SUCESSORA}`,
+  ]);
 });
 
 Deno.test("publicacao: lote de apply normal 119a/119b (junto com a 20261399200000), rol fechado de 10 linhas, consultas so leem catalogo e citam os md5 certos, registrado nos dois workflows e na lista de rol fechado", () => {

@@ -27,7 +27,7 @@
  *  MIGRATION   reaplicar (2x) e CRLF = mesmo estado e 0 perfis novos; gatilho desligado de antes e' aceito e nao e' religado; rollback tira
  *              so o gatilho (perfis ficam), 2x no-op, ida e volta igual; o pre-voo recusa SEM escrever (gatilho homonimo diferente, funcao
  *              sem SECURITY DEFINER, coluna ausente); a conferencia final recusa cada estrago; o pre-voo do rollback recusa o que nao
- *              e' dele; consultas 129a/129b.
+ *              e' dele; consultas 149a/149b.
  *  ATOMICIDADE conexao SEM BEGIN: a conferencia sabotada derruba o arquivo inteiro (sem gatilho e sem perfil reparado); gravacao em voo em
  *              auth.users faz a migration FALHAR LIMPA no lock_timeout e depois aplica.
  *
@@ -769,26 +769,26 @@ prova(
   },
 );
 
-const A129 = "129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado";
-const B129 = "129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente";
+const A149 = "149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado";
+const B149 = "149b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente";
 prova(
-  "consultas 129a/129b nos dois sentidos, com o rol fechado, e cada linha reprova no estrago certo",
+  "consultas 149a/149b nos dois sentidos, com o rol fechado, e cada linha reprova no estrago certo",
   async () => {
     await P.emTransacao(
       async () => {
-        assert.deepEqual(await P.consulta(A129), [], "129a no estado DEPOIS");
+        assert.deepEqual(await P.consulta(A149), [], "149a no estado DEPOIS");
         assert.equal(
-          (await P.consulta(B129)).length,
+          (await P.consulta(B149)).length,
           1,
-          "129b depois do apply devia reprovar so a linha do gatilho ausente",
+          "149b depois do apply devia reprovar so a linha do gatilho ausente",
         );
         await antes();
-        assert.deepEqual(await P.consulta(B129), [], "129b no estado ANTES");
-        const naoAplicado = await P.consulta(A129);
+        assert.deepEqual(await P.consulta(B149), [], "149b no estado ANTES");
+        const naoAplicado = await P.consulta(A149);
         assert.equal(
           naoAplicado.length,
           3,
-          `129a no estado ANTES: ${JSON.stringify(naoAplicado)}`,
+          `149a no estado ANTES: ${JSON.stringify(naoAplicado)}`,
         );
         await depois();
         for (const [estrago, linha] of [
@@ -821,21 +821,21 @@ prova(
         ]) {
           await q("SAVEPOINT estrago");
           await q(estrago);
-          const reprovadas = await P.consulta(A129);
+          const reprovadas = await P.consulta(A149);
           assert.ok(
             reprovadas.some((i) => linha.test(i)),
-            `a 129a nao reprovou a linha certa para '${estrago.slice(0, 70)}': ${JSON.stringify(reprovadas)}`,
+            `a 149a nao reprovou a linha certa para '${estrago.slice(0, 70)}': ${JSON.stringify(reprovadas)}`,
           );
           await q("ROLLBACK TO SAVEPOINT estrago");
         }
-        // admin sem perfil, de fora do reparo, NAO reprova a 129a
+        // admin sem perfil, de fora do reparo, NAO reprova a 149a
         await q(
           `SET LOCAL session_replication_role = replica;
          INSERT INTO auth.users (id, email, raw_app_meta_data, raw_user_meta_data) VALUES ('${U.u4}'::uuid, 'adm@399930.teste', '{"role":"admin"}'::jsonb, '{"full_name":"Admin"}'::jsonb);
          SET LOCAL session_replication_role = origin`,
         );
         assert.deepEqual(
-          await P.consulta(A129),
+          await P.consulta(A149),
           [],
           "admin sem perfil nao e' cliente",
         );

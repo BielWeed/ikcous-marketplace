@@ -3175,9 +3175,17 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "126a-conferir-a-busca-de-devolucao-ignora-o-acento-aplicado",
     "127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado",
     "128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado",
-    "129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado",
+    "149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado",
     "135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado",
     "140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado",
+    "141a-conferir-o-grafico-do-financeiro-soma-so-as-contas-ativas-aplicado",
+    "142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado",
+    "143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado",
+    "144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado",
+    "145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado",
+    "146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado",
+    "147a-conferir-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-aplicado",
+    "148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado",
   ]);
 });
 

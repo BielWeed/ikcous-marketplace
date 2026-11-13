@@ -45,6 +45,8 @@ export interface PremiumOffersProps {
   onAddToCart?: (product: Product) => unknown;
   onQuickBuy?: (product: Product) => void;
   title?: string;
+  /** Vitrine escolhida à mão: mantém a ordem da lojista, sem reordenar por desconto. */
+  ordemDaLojista?: boolean;
 }
 
 const OfertasCompactas = React.lazy(() => import("./OfertasCompactas"));
@@ -90,6 +92,7 @@ const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
   onAddToCart,
   onQuickBuy,
   title = "Super Descontos",
+  ordemDaLojista,
 }: PremiumOffersProps) {
   const { config } = useStore();
   // B3 do item 2 da fila (19/09) + T3 (23/09): o selo "Frete Grátis" do
@@ -239,7 +242,7 @@ const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
 
   if (products.length === 0) return null;
 
-  const sortedOffers = ordenarOfertas(products);
+  const sortedOffers = ordenarOfertas(products, ordemDaLojista);
 
   return (
     <div
@@ -341,7 +344,7 @@ const PremiumOffersPadrao = React.memo(function PremiumOffersPadrao({
 /* ==========================================================================
    SUB-COMPONENT: HEROOFFERCARD
    ========================================================================== */
-export function ordenarOfertas(products: Product[]) {
+export function ordenarOfertas(products: Product[], ordemDaLojista = false) {
   // Determine the Hero Deal: product with the highest percentage discount
   // UI-191 (G3): o desconto sai do preço de VITRINE (o menor entre as opções à
   // venda), não do preço-base: uma variação esgotada ou com preço próprio não
@@ -355,12 +358,13 @@ export function ordenarOfertas(products: Product[]) {
   // desfazer: uma oferta esgotada com desconto maior abriria a faixa antes
   // das que a cliente consegue comprar); dentro de cada grupo, maior desconto
   // primeiro. `Array.prototype.sort` é estável: empate mantém a ordem recebida
-  // (a que a lojista escolheu à mão no painel).
+  // (a que a lojista escolheu à mão no painel); `ordemDaLojista` (vitrine
+  // escolhida à mão) mantém essa ordem também entre descontos diferentes.
   return [...offerItems].sort((a, b) => {
     const aDisponivel = produtoDisponivel(a.product) ? 1 : 0;
     const bDisponivel = produtoDisponivel(b.product) ? 1 : 0;
     if (aDisponivel !== bDisponivel) return bDisponivel - aDisponivel;
-    return b.discount - a.discount;
+    return ordemDaLojista ? 0 : b.discount - a.discount;
   });
 }
 

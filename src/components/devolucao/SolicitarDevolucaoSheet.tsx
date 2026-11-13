@@ -51,6 +51,7 @@ import {
   rotuloMetodo,
   rotuloMotivo,
   rotuloResolucao,
+  selecaoPossivel,
   tipoPrevisto,
   valorDaSelecao,
 } from "@/lib/devolucao";
@@ -311,13 +312,17 @@ function FluxoDaDevolucao({
   const itensDisponiveis = itens.filter((item) => item.disponivel > 0);
 
   const [passo, setPasso] = useState<Passo>(1);
-  const [selecao, setSelecao] = useState<ReadonlyMap<string, number>>(() => {
+  const [marcados, setMarcados] = useState<ReadonlyMap<string, number>>(() => {
     // Um item só, com uma unidade: já vem marcado — é o caso mais comum.
     const unico = itensDisponiveis.length === 1 ? itensDisponiveis[0] : null;
     return new Map(
       unico && unico.disponivel === 1 ? [[unico.order_item_id, 1]] : [],
     );
   });
+  // O que vale é o marcado conferido com a disponibilidade de AGORA: item que
+  // sumiu da lista (outra devolução consumiu) não fica preso, invisível, no
+  // resumo e no envio — é o que a cliente vê que vai.
+  const selecao = selecaoPossivel(itens, marcados);
   const [motivo, setMotivo] = useState<MotivoDevolucao | null>(null);
   const [detalhe, setDetalhe] = useState("");
   const [fotos, setFotos] = useState<FotoEscolhida[]>([]);
@@ -495,8 +500,8 @@ function FluxoDaDevolucao({
   }
 
   function mudarQuantidade(orderItemId: string, qtd: number) {
-    setSelecao((antes) => {
-      const proxima = new Map(antes);
+    setMarcados((antes) => {
+      const proxima = new Map(selecaoPossivel(itens, antes));
       if (qtd <= 0) proxima.delete(orderItemId);
       else proxima.set(orderItemId, qtd);
       return proxima;
@@ -526,15 +531,21 @@ function FluxoDaDevolucao({
         else aceitas.push(arquivo);
       }
       if (desmontadaRef.current) return;
-      setFotos((antes) => [
-        ...antes,
-        ...aceitas.map((arquivo) => ({
-          chave: `${arquivo.name}-${arquivo.size}-${Math.random()}`,
-          arquivo,
-          previa: previaDe(arquivo),
-          caminho: null,
-        })),
-      ]);
+      const novas = aceitas.map((arquivo) => ({
+        chave: `${arquivo.name}-${arquivo.size}-${Math.random()}`,
+        arquivo,
+        previa: previaDe(arquivo),
+        caminho: null,
+      }));
+      // Duas escolhas em preparo ao mesmo tempo calcularam as `vagas` lá em
+      // cima com a MESMA lista velha (4 + 4 = 8). Só o `antes` do atualizador é
+      // a lista de verdade: o teto é aplicado aqui, e a sobra solta a prévia
+      // (soltar duas vezes é inofensivo — o React pode rodar o atualizador de novo).
+      setFotos((antes) => {
+        const cabem = Math.max(MAXIMO_DE_FOTOS - antes.length, 0);
+        for (const sobra of novas.slice(cabem)) soltarPrevia(sobra.previa);
+        return [...antes, ...novas.slice(0, cabem)];
+      });
       setErro(null);
     } finally {
       preparandoRef.current -= 1;
@@ -557,6 +568,12 @@ function FluxoDaDevolucao({
   async function confirmar() {
     if (enviando || preparandoRef.current > 0) return;
     if (!motivo || !resolucaoValida || !metodo) return;
+    // Cinto e suspensório: o teto já é aplicado ao entrar na lista, mas o que
+    // vai ao servidor é conferido de novo aqui (ele recusa mais de 6).
+    if (fotos.length > MAXIMO_DE_FOTOS) {
+      setErro(`Envie no máximo ${MAXIMO_DE_FOTOS} fotos.`);
+      return;
+    }
     setEnviando(true);
     enviandoRef.current = true;
     setErro(null);

@@ -127,6 +127,54 @@ export const PRAZO_DE_GRAVAR_O_CARRINHO_MS = 20_000;
 // ESPERA da tela, a consulta não grava nada.
 export const PRAZO_DAS_RECOMENDACOES_DO_PRODUTO_MS = 15_000;
 
+// PRAZO DA CONSULTA DOS BANNERS DA HOME (13/11/2026): rede que conecta e não
+// responde deixava `isLoaded` falso e a faixa de banners em esqueleto para
+// sempre, sem aviso. É uma leitura só, no mesmo boot da configuração da loja:
+// 20 s, o mesmo de `PRAZO_DA_LEITURA_DA_CONFIG_MS`. Estourou = o mesmo caminho
+// da falha comum (a home segue sem a faixa e a próxima tentativa pede de novo);
+// só encerra a ESPERA da tela, a consulta não grava nada, e a resposta tardia
+// é descartada.
+export const PRAZO_DA_CONSULTA_DOS_BANNERS_MS = 20_000;
+
+// PRAZO DE CADA CONSULTA DA RODADA DE SINCRONIZAÇÃO (13/11/2026): o `catchUp` do
+// motor de tempo real pede configuração, categorias, banners e o resumo dos
+// produtos juntos. Rede que conecta e não responde deixava UMA delas sem
+// resposta, a rodada parada e a trava de "rodada em andamento" ligada: a volta
+// da conexão caía na trava e o preço antigo ficava na vitrine. 20 s por
+// consulta (o mesmo da leitura da configuração). Estourou = só aquela consulta
+// falha, as outras seguem e a próxima rodada tenta de novo; só encerra a ESPERA
+// (a consulta não grava nada) e a resposta tardia é descartada.
+export const PRAZO_DA_CONSULTA_DA_SINCRONIZACAO_MS = 20_000;
+
+// PRAZOS DA ETIQUETA DE ENVIO NA FICHA DO PEDIDO (13/11/2026). Rede "pendurada"
+// conecta e não responde: "Confirmar e gerar" e "Cancelar" ficavam apagados em
+// "Gerando…" para sempre (a trava é por pedido e sobrevive a sair e voltar) e
+// "Atualizar rastreio" ficava desativado. Só encerram a ESPERA DA TELA.
+//
+// - 30 s: COMPRAR a etiqueta. É a edge com o provedor externo por trás (Melhor
+//   Envio, até seis chamadas encadeadas) e gasta SALDO real: o maior prazo que o
+//   projeto já pratica para uma operação de gravação externa, o mesmo da edge de
+//   devolução (`PRAZO_DA_EDGE_MS`) e do cancelamento. Estourou, a etiqueta PODE
+//   ter sido comprada: a tela não diz que deu certo nem que falhou, relê o
+//   pedido e deixa tentar de novo — o servidor reivindica o pedido e a 2ª
+//   chamada devolve `already: true`, então não há compra dupla.
+// - 15 s: consultar o rastreio (leitura no provedor; a edge só grava o código).
+//   Estourou: solta o botão e diz que não deu para consultar.
+export const PRAZO_DA_COMPRA_DA_ETIQUETA_MS = 30_000;
+export const PRAZO_DA_CONSULTA_DO_RASTREIO_MS = 15_000;
+export const MENSAGEM_COMPRA_DA_ETIQUETA_SEM_RESPOSTA =
+  "Sem resposta da rede. Não dá para saber se a etiqueta foi gerada. Confira o pedido e a sua conta do Melhor Envio (Meus envios) antes de tentar de novo.";
+
+// PRAZO DE LER O TAMANHO E A COR DOS ITENS NA FICHA DO PEDIDO (13/11/2026): a
+// ficha lê o código e o rótulo das variações (duas consultas em sequência, sob
+// UM prazo só) e o botão Imprimir espera essa leitura. Rede "pendurada"
+// conecta e não responde: o botão ficava desligado em "Carregando o tamanho e
+// a cor…" para sempre, sem aviso e sem "Tentar de novo". 15 s, o mesmo de abrir
+// um produto. Estourou = a falha comum da leitura (aviso na ficha, Imprimir
+// desligado com o motivo e "Tentar de novo"); só encerra a ESPERA da tela, a
+// consulta não grava nada, e a resposta tardia é descartada.
+export const PRAZO_DA_LEITURA_DO_TAMANHO_E_COR_MS = 15_000;
+
 /** Frase para quem está na tela: o que aconteceu e o que fazer. */
 export const MENSAGEM_CONEXAO_LENTA =
   "A conexão está lenta. Toque em Tentar de novo.";

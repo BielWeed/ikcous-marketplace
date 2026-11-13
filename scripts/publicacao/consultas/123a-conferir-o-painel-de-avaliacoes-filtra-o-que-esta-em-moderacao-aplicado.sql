@@ -25,7 +25,9 @@ WITH fn AS (
     CASE WHEN (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace) > 0 THEN 'sim' ELSE 'nao' END
   UNION ALL
   SELECT 'get_admin_reviews_paged: corpo exato (md5)', 'af5d21345d167ca44dd327a93f949ea6',
-    COALESCE((SELECT h FROM fn), 'AUSENTE')
+    -- A 20261399996000 (o painel de avaliacoes filtra o que esta sem resposta) sucede este corpo na MESMA assinatura e so acrescenta o terceiro valor de p_status:
+    -- aceita os dois corpos EXATOS; normaliza ao esperado historico do rol (a 148a distingue).
+    COALESCE((SELECT CASE WHEN h IN ('af5d21345d167ca44dd327a93f949ea6', '75f5c48de4eb4005a2516e54b3d33135') THEN 'af5d21345d167ca44dd327a93f949ea6' ELSE h END FROM fn), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_reviews_paged: assinatura e atributos conhecidos', 'sim',
     CASE WHEN COALESCE((SELECT atributos FROM fn), false) THEN 'sim' ELSE 'nao' END

@@ -260,12 +260,28 @@ on:
       - "scripts/publicacao/consultas/127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente.sql"
       - "scripts/publicacao/consultas/128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado.sql"
       - "scripts/publicacao/consultas/128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente.sql"
-      - "scripts/publicacao/consultas/129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado.sql"
-      - "scripts/publicacao/consultas/129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente.sql"
+      - "scripts/publicacao/consultas/149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado.sql"
+      - "scripts/publicacao/consultas/149b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente.sql"
       - "scripts/publicacao/consultas/135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado.sql"
       - "scripts/publicacao/consultas/135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente.sql"
       - "scripts/publicacao/consultas/140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado.sql"
       - "scripts/publicacao/consultas/140b-antes-as-listas-do-painel-nao-repetem-ninguem-base-vigente.sql"
+      - "scripts/publicacao/consultas/141a-conferir-o-grafico-do-financeiro-soma-so-as-contas-ativas-aplicado.sql"
+      - "scripts/publicacao/consultas/141b-antes-o-grafico-do-financeiro-soma-so-as-contas-ativas-base-vigente.sql"
+      - "scripts/publicacao/consultas/142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado.sql"
+      - "scripts/publicacao/consultas/142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql"
+      - "scripts/publicacao/consultas/143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado.sql"
+      - "scripts/publicacao/consultas/143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente.sql"
+      - "scripts/publicacao/consultas/146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado.sql"
+      - "scripts/publicacao/consultas/146b-antes-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-base-vigente.sql"
+      - "scripts/publicacao/consultas/147a-conferir-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-aplicado.sql"
+      - "scripts/publicacao/consultas/147b-antes-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-base-vigente.sql"
+      - "scripts/publicacao/consultas/148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado.sql"
+      - "scripts/publicacao/consultas/148b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-base-vigente.sql"
+      - "scripts/publicacao/consultas/145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado.sql"
+      - "scripts/publicacao/consultas/145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente.sql"
+      - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
+      - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
       - "scripts/publicacao/consultas/129m-medir-corrida-e-avanco-com-estorno.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
@@ -497,12 +513,28 @@ on:
       - "scripts/publicacao/consultas/127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente.sql"
       - "scripts/publicacao/consultas/128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado.sql"
       - "scripts/publicacao/consultas/128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente.sql"
-      - "scripts/publicacao/consultas/129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado.sql"
-      - "scripts/publicacao/consultas/129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente.sql"
+      - "scripts/publicacao/consultas/149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado.sql"
+      - "scripts/publicacao/consultas/149b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente.sql"
       - "scripts/publicacao/consultas/135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado.sql"
       - "scripts/publicacao/consultas/135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente.sql"
       - "scripts/publicacao/consultas/140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado.sql"
       - "scripts/publicacao/consultas/140b-antes-as-listas-do-painel-nao-repetem-ninguem-base-vigente.sql"
+      - "scripts/publicacao/consultas/141a-conferir-o-grafico-do-financeiro-soma-so-as-contas-ativas-aplicado.sql"
+      - "scripts/publicacao/consultas/141b-antes-o-grafico-do-financeiro-soma-so-as-contas-ativas-base-vigente.sql"
+      - "scripts/publicacao/consultas/142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado.sql"
+      - "scripts/publicacao/consultas/142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql"
+      - "scripts/publicacao/consultas/143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado.sql"
+      - "scripts/publicacao/consultas/143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente.sql"
+      - "scripts/publicacao/consultas/146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado.sql"
+      - "scripts/publicacao/consultas/146b-antes-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-base-vigente.sql"
+      - "scripts/publicacao/consultas/147a-conferir-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-aplicado.sql"
+      - "scripts/publicacao/consultas/147b-antes-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-base-vigente.sql"
+      - "scripts/publicacao/consultas/148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado.sql"
+      - "scripts/publicacao/consultas/148b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-base-vigente.sql"
+      - "scripts/publicacao/consultas/145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado.sql"
+      - "scripts/publicacao/consultas/145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente.sql"
+      - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
+      - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
       - "scripts/publicacao/consultas/129m-medir-corrida-e-avanco-com-estorno.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
@@ -1137,6 +1169,57 @@ jobs:
       - name: Prova viva das listas do painel que nao repetem nem escondem ninguem entre as paginas (20261399980000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/as-listas-do-painel-nao-repetem-ninguem-viva.cjs
+      # Migration 20261399985000 (o grafico do Financeiro soma so as contas ativas): fin_resumo ganha SO a chave serie[].variacao_saldo (quanto o saldo das contas ATIVAS mudou em cada dia, pela mesma conta de
+      # fin__saldos). Fixture COMMITADA no clone (contas ativas, desativada com movimento, conta de saldo inicial tardio, transferencias entre ativa e desativada, vendas, estorno, movimento de data futura, previsto e
+      # cancelado): o saldo ao fim de cada dia reconstruido de saldo_total bate com fin__saldos no mesmo dia; controle com o corpo anterior (o grafico mostra o que nunca existiu), mutantes (sem o filtro de ativas, filtro
+      # invertido, desativada so no saldo, sem saldo_inicial_em, sem o teto de hoje, transferencia, sinais, arredondamento, previsto), resto do JSON identico ao corpo anterior, guarda de admin, reaplicar, rollback byte a
+      # byte, conexao sem BEGIN com conferencia sabotada, pre-voo, consultas 141a/141b e as vizinhas (8e, 119a). CLONE proprio.
+      - name: Prova viva do grafico do Financeiro que soma so as contas ativas (20261399985000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-grafico-do-financeiro-soma-so-as-contas-ativas-viva.cjs
+      # Migration 20261399990000 (o CRM nao duplica o comprador quando o WhatsApp vem com e sem o 55): crm__vendas compara o numero SEM o 55 (12 ou 13 digitos comecando por 55) na chave do balcao e na
+      # fusao com a conta, a mesma expressao de crm__pedidos_nao_pagos e crm__nunca_comprou (20261183000000, N4). Controle com o corpo da 20261178000000 na MESMA fixture (o defeito), bordas (numeros
+      # diferentes, DDD 55, 12 digitos, sem numero, cancelada, duas contas), crm__clientes_rfm/crm_clientes/crm_visao/crm__nunca_comprou/crm__pedidos_nao_pagos, mutantes, linhas sem 55 iguais as do corpo
+      # anterior, ACL/atributos/dono iguais, reaplicar, rollback byte a byte, pre-voo, conexao sem BEGIN com conferencia sabotada e consultas 142a/142b. CLONE proprio.
+      - name: Prova viva do CRM que nao duplica o comprador com e sem o 55 (20261399990000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-crm-nao-duplica-o-comprador-com-e-sem-55-viva.cjs
+      # Migration 20261399994000 (o item que a lojista marcou "Nao veio" fica com a cliente no ranking de lucro): get_admin_analytics_v2 trata a peca "Nao veio" como peca que FICOU com a cliente (a venda vale; nao e devolvida nem perdida)
+      # e o dinheiro que a loja devolveu ALEM do valor das pecas que voltaram vira perda do item, proporcional ao devolvido (reembolso pelo MP e pelo caminho manual), no ranking (topProducts) e no lucro do grafico diario.
+      # Controle com o corpo da 20261399970000 na MESMA fixture (pedido sem "Nao veio" = numeros identicos), 34 cenarios (so o que voltou, reembolso cheio, parcial, frete, cupom, cortesia, pedida de novo, vale/troca, condicao nula),
+      # JSON inteiro igual ao da 3997 sem item "Nao veio", 21 mutantes, ACL/atributos/dono iguais, reaplicar (LF e CRLF), rollback byte a byte, pre-voo, conexao sem BEGIN com conferencia sabotada e consultas 146a/146b (mais 8e, 35a, 45a, 48a, 53a, 54a e 135a). CLONE proprio.
+      - name: Prova viva do item "Nao veio" que fica com a cliente no ranking de lucro (20261399994000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs
+      # Migration 20261399995000 (o lucro do ranking casa com o Financeiro, pedido a pedido): get_admin_analytics_v2 passa a calcular o lucro por produto como o Financeiro (o que a cliente pagou menos TODO o dinheiro
+      # devolvido menos o custo das pecas que nao voltaram a prateleira, sem frete); o pedido 'estornado' entra; o dinheiro devolvido pelo site do Mercado Pago depois da devolucao nao some. Ranking e grafico diario.
+      # Cada cenario contra fin_dre (oraculo), os 6 casos do dono de produto, controle com o corpo da 20261399994000 na MESMA fixture (JSON inteiro igual sem devolucao nem estorno), mutantes, reaplicar (LF e CRLF),
+      # rollback byte a byte, pre-voo, conexao sem BEGIN com conferencia sabotada e consultas 147a/147b (mais 8e, 35a, 45a, 48a, 53a, 54a, 135a e 146a). CLONE proprio.
+      - name: Prova viva do lucro do ranking que casa com o Financeiro (20261399995000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-lucro-do-ranking-casa-com-o-financeiro-viva.cjs
+      # Migration 20261399996000 (o painel de avaliacoes filtra o que esta sem resposta): get_admin_reviews_paged (a MESMA assinatura de 5 argumentos da 20261399700000) ganha o terceiro valor de p_status,
+      # 'sem_resposta' = so merchant_reply IS NULL (a regra do sino), na lista E no total_count; o resto (NULL, 'todas', 'pendente', texto desconhecido) e o JSON de antes. Sem DROP, sem objeto novo.
+      # Controle com o corpo da 3997 na MESMA fixture (o defeito: a avaliacao do aviso afunda na pagina 3), resposta nula/vazia/so espaco/preenchida, paginacao e total, contagem do chip == regra do sino,
+      # mutantes (sem o ramo, so na lista, so no total, regra diferente do sino, filtro de moderacao quebrado, globais filtrados, sem gate), ACL/atributos/dono/OID iguais, reaplicar (LF e CRLF),
+      # rollback byte a byte, pre-voo, conexao sem BEGIN com conferencia sabotada e consultas 148a/148b (mais 86a e 123a, que aceitam o corpo novo). CLONE proprio.
+      - name: Prova viva do painel de avaliacoes que filtra o que esta sem resposta (20261399996000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-viva.cjs
+      # Migration 20261399993000 (o CRM e a lista de clientes nao contam a mesma pessoa duas vezes): crm__nunca_comprou tambem tira a conta cujo WhatsApp (com ou sem o 55) e o de um pedido do grupo "pediu e nao pagou"
+      # (venda avulsa anulada, devolvida ou sem pagar) e get_admin_customers_paged toma UM endereco principal por cliente (o mais novo, desempate pelo menor id) antes de juntar os pedidos (a corrida dos dois
+      # primeiros enderecos dobrava pedidos e total). Controle com os corpos da 20261183000000 e da 20261392000000 na MESMA fixture (o defeito), bordas (numero diferente, DDD 55, outra conta, sem WhatsApp, sem endereco,
+      # empate de data, data nula), 12 mutantes, ACL/atributos/dono iguais, reaplicar, rollback byte a byte, pre-voo, conexao sem BEGIN com conferencia sabotada (as duas trocas caem juntas) e consultas 145a/145b. CLONE proprio.
+      - name: Prova viva do CRM e da lista de clientes que nao contam a mesma pessoa duas vezes (20261399993000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-viva.cjs
+      # Migration 20261399991000 (repetir a devolucao que falhou nao paga duas vezes): solicitar_estorno_repetindo(p_refund_id, p_motivo) repete UMA linha falhada (o valor sai da linha, a 2a chamada devolve a MESMA
+      # repeticao com ja_repetida em vez de criar outra) e a tabela order_refund_repeticao (PK + UNIQUE) e a marca do servidor. Controle com o caminho antigo (duas linhas de R$ 30), DUAS conexoes reais na mesma falhada,
+      # bordas (17 recusas sem escrever nada), permissao (anon, service_role, cliente, admin rebaixado), 15 mutantes, reaplicar, pre-voo, rollback que recusa com marca, conexao sem BEGIN com conferencia sabotada e
+      # consultas 143a/143b. CLONE proprio.
+      - name: Prova viva de repetir a devolucao que falhou sem pagar duas vezes (20261399991000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-viva.cjs
       # Onda 150 (SEM migration): registrar_venda_presencial recusa p_itens vazio, que nao e lista (objeto, null, escalar, NULL) e com mais de 200 linhas, com 22023 e a frase da loja, sem escrever pedido, item,
       # historico, financeiro nem estoque; 200 (o limite) entra. Mutantes por MUTANTE_R150E. CLONE proprio.
       - name: Prova viva do balcao que recusa venda sem item e com itens demais
@@ -1146,7 +1229,7 @@ jobs:
       # nunca teve, so se ausente, e o reparo de quem ja se cadastrou sem perfil (ganha a mesma linha que o gatilho criaria; quem ja tem perfil, quem tem papel admin/gerente/vendedor e quem tem nome
       # ou telefone acima do teto NAO sao tocados). Este passo LIGA o gatilho no clone dele: o efemero das outras provas o deixa DESLIGADO (aplicar-migrations.cjs). Controle sem o gatilho (o defeito),
       # cadastro com e sem metadado, teto de nome/telefone recusado, papel sem EXECUTE na funcao ainda cria o perfil, mutantes, reaplicar 2x e CRLF, rollback sem tocar dado, pre-voo, conferencia,
-      # atomicidade, lock_timeout em auth.users e consultas 129a/129b. CLONE proprio.
+      # atomicidade, lock_timeout em auth.users e consultas 149a/149b. CLONE proprio.
       - name: Prova viva do cadastro que cria o perfil em toda loja (20261399940000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-cadastro-cria-o-perfil-em-toda-loja-viva.cjs

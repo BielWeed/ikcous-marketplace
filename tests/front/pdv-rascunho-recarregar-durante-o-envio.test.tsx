@@ -308,6 +308,7 @@ describe("useVendaPresencial — recarregar durante o envio (ciclo do hook)", ()
       ultimo(aoAtualizar).despachar({
         tipo: "envio_falhou",
         mensagem: "Estoque insuficiente (Disponível: 1, Solicitado: 3)",
+        efeito: "fecha",
       });
     });
     await act(async () => {
@@ -327,6 +328,7 @@ describe("useVendaPresencial — recarregar durante o envio (ciclo do hook)", ()
       ultimo(aoAtualizar).despachar({
         tipo: "envio_falhou",
         mensagem: MENSAGEM_DE_REDE_DA_VENDA,
+        efeito: "abre",
       });
     });
     await act(async () => {

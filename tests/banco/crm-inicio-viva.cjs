@@ -35,6 +35,12 @@ const C4 = "61111111-1111-1111-1111-000000000004";
 const WA_C2 = "5534988887777";
 const WA_C3 = "5534911112222";
 const P_BAIXO = "6aaaaaaa-0000-0000-0000-000000000001";
+// A chave do comprador de balcao sem conta e 'wa:' + o numero SEM o 55 quando ele tem DDI (12 ou 13 digitos comecando por 55), a mesma
+// expressao de crm__pedidos_nao_pagos e crm__nunca_comprou (20261399990000: a crm__vendas passou a comparar assim).
+const chaveWa = (wa) => {
+  const d = String(wa).replace(/\D/g, "");
+  return `wa:${(d.length === 12 || d.length === 13) && d.startsWith("55") ? d.slice(2) : d}`;
+};
 
 async function logar(cliente, userId) {
   await cliente.query("SELECT set_config('app.rpc.user_id', $1, false)", [
@@ -179,7 +185,7 @@ PROVAS.push({
     assert.equal(porChave.get(C1).pedidos, 7);
     assert.equal(porChave.get(C2).segmento, "novos");
     assert.equal(porChave.get(C2).pedidos, 2, "app + balcão do mesmo cliente");
-    assert.equal(porChave.get(`wa:${WA_C3}`).segmento, "quase_dormindo");
+    assert.equal(porChave.get(chaveWa(WA_C3)).segmento, "quase_dormindo");
     assert.equal(porChave.get(C4).segmento, "em_risco");
     assert.equal(lista.clientes[0].chave, C4, "ordenado por receita");
 
@@ -197,7 +203,7 @@ PROVAS.push({
     );
     assert.deepEqual(
       busca.clientes.map((c) => c.chave),
-      [`wa:${WA_C3}`],
+      [chaveWa(WA_C3)],
       "busca pelo WhatsApp",
     );
   },

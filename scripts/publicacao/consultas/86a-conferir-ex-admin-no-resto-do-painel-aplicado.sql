@@ -94,7 +94,7 @@ WITH alvo(tabela, politica, comando, papeis, qual, chk) AS (VALUES
              AND md5(replace(p.prosrc,chr(13),''))='3e2276ae97a7f2aef487e55d259ba7a3')
          OR (a.assinatura='public.get_admin_reviews_paged(text,text,integer,integer)'
              AND p.oid=to_regprocedure('public.get_admin_reviews_paged(text,text,integer,integer,text)')
-             AND md5(replace(p.prosrc,chr(13),''))='af5d21345d167ca44dd327a93f949ea6'))
+             AND md5(replace(p.prosrc,chr(13),'')) IN ('af5d21345d167ca44dd327a93f949ea6','75f5c48de4eb4005a2516e54b3d33135')))
     AND (SELECT count(*)=1 FROM pg_proc x WHERE x.pronamespace='public'::regnamespace AND x.proname=p.proname)
     AND has_function_privilege('authenticated',p.oid,'EXECUTE') AND has_function_privilege('service_role',p.oid,'EXECUTE')
     AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
@@ -103,6 +103,7 @@ WITH alvo(tabela, politica, comando, papeis, qual, chk) AS (VALUES
     -- get_admin_reviews_paged tem uma SUCESSORA que TROCA a assinatura (20261399700000, o painel de avaliacoes filtra o que esta em moderacao: ganha
     -- p_status, 5 argumentos, e a de 4 e' apagada; so acrescenta o filtro, o gate e o desta migration): quando a de 4 nao existe mais, a linha mede a de 5
     -- (so com o corpo exato dela, abaixo). Com as duas ou nenhuma a linha reprova (a contagem de assinaturas por nome tem de dar 1).
+    -- A 20261399996000 (o painel de avaliacoes filtra o que esta sem resposta) sucede o corpo da 3997 na MESMA assinatura de 5 argumentos: os dois corpos exatos valem.
     FROM funcoes a LEFT JOIN pg_proc p ON p.oid=COALESCE(to_regprocedure(a.assinatura),
       CASE WHEN a.assinatura='public.get_admin_reviews_paged(text,text,integer,integer)' THEN to_regprocedure('public.get_admin_reviews_paged(text,text,integer,integer,text)') END)
       LEFT JOIN pg_language l ON l.oid=p.prolang

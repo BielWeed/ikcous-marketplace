@@ -125,6 +125,28 @@ const ID_DA_REGIAO_DE_CLIENTES = "coupon-quem-pode-usar";
 
 const idDoErro = (campo: CampoDoCupom) => `${idDoCampo(campo)}-erro`;
 
+const AVISO_NUMERO_INCOMPLETO =
+  "Número incompleto: termine de digitar ou apague o campo.";
+
+/**
+ * Os três campos de número, na ordem da tela. Texto pela metade ("1e", "-")
+ * deixa o value do navegador vazio, com `validity.badInput`; o buffer do campo
+ * entrega "" e o Number("") dava 0, que em "Limite de uso" quer dizer
+ * ilimitado e em "Mínimo de compra", sem mínimo. Como na validade, vale o que o
+ * campo diz NA HORA de salvar: o salvar barra e avisa no campo, em vez de
+ * gravar um zero que ela não digitou. Zero digitado e campo apagado de
+ * propósito (sem `badInput`) seguem valendo.
+ */
+const CAMPOS_DE_NUMERO: readonly CampoDoCupom[] = [
+  "value",
+  "minPurchase",
+  "usageLimit",
+];
+
+const numeroDigitadoIncompleto = (campo: CampoDoCupom): boolean =>
+  (document.getElementById(idDoCampo(campo)) as HTMLInputElement | null)
+    ?.validity?.badInput === true;
+
 function ErroDoCampo({
   id,
   mensagem,
@@ -315,9 +337,14 @@ function FormularioDoCupom({
     };
     lidoAoAbrirRef.current = carregado;
     setFormData(mesclado);
-    // `initialData` recebe o MESCLADO: "sujo" tem que significar mudança do
-    // lojista DEPOIS da carga, nunca a mesclagem em si.
-    setInitialData(mesclado);
+    // `initialData` recebe o que o BANCO tinha (`carregado`), nunca o
+    // MESCLADO: tudo que o compara com o formulário (o alcance a enviar, a
+    // validade que pede confirmação, o código que não se renomeia, o aviso de
+    // "descartar") pergunta "o que ela mudou em relação ao banco?". Com o
+    // mesclado, o que ela escolheu ANTES de a carga chegar virava "estado
+    // inicial" e sumia dessas perguntas: o cupom público seguia público
+    // enquanto a lista de clientes era gravada.
+    setInitialData(carregado);
     cupomInicializadoRef.current = couponId;
     // `formData` entra de propósito: a mesclagem precisa do que o lojista
     // já digitou nesta tela antes da carga chegar.
@@ -417,6 +444,13 @@ function FormularioDoCupom({
     if (!cleanCode) {
       recusarCampo("code", "O código do cupom é obrigatório.");
       return;
+    }
+
+    for (const campo of CAMPOS_DE_NUMERO) {
+      if (numeroDigitadoIncompleto(campo)) {
+        recusarCampo(campo, AVISO_NUMERO_INCOMPLETO);
+        return;
+      }
     }
 
     const value = formData.value ?? 0;
@@ -1237,7 +1271,7 @@ function FormularioDoCupom({
                 />
               </div>
               <p id="coupon-valid-until-dica" className="text-xs text-zinc-400">
-                Até 23:59 do dia escolhido, no seu fuso.
+                Até 23:59 do dia escolhido, no horário de Brasília.
               </p>
               {avisarValidade && (
                 <p

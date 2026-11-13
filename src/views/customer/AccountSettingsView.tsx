@@ -71,6 +71,12 @@ const MENSAGEM_WHATSAPP_INVALIDO =
 const CAMPO =
   "h-[52px] rounded-[14px] border border-input bg-muted/40 px-3.5 text-base font-medium text-foreground shadow-none transition-colors placeholder:text-muted-foreground/60 focus-visible:bg-background disabled:cursor-not-allowed disabled:opacity-60 md:text-[15px]";
 
+// `preservarDigitado`: releitura automática depois de um salvamento sem
+// resposta. Campo que a pessoa mexeu depois do clique fica como ela deixou (e
+// continua rascunho); só o banco manda no resto. A carga de abertura e os
+// botões "tentar de novo"/"conferir" não passam nada: o banco manda em tudo.
+type OpcoesDeCarga = { preservarDigitado?: boolean };
+
 // Iniciais do cartão de identidade (primeira e última palavra do nome).
 function iniciaisDoNome(nome: string): string {
   const palavras = nome.trim().split(/\s+/).filter(Boolean);
@@ -485,6 +491,18 @@ export function AccountSettingsView() {
   const [cpfOriginal, setCpfOriginal] = useState("");
   const [cpfErro, setCpfErro] = useState(false);
 
+  // O que a tela mostrou por último SEM digitação da pessoa: o cadastro que a
+  // leitura trouxe do banco, ou o que foi enviado no clique de Salvar. As
+  // releituras automáticas (depois de um salvamento sem resposta) usam isto
+  // para separar o que a pessoa digitou DEPOIS do clique — os campos seguem
+  // editáveis enquanto o envio espera — do que ela não tocou: só este último
+  // recebe o valor do banco, como o caminho de sucesso já faz.
+  const ultimoMostradoRef = useRef<{
+    name: string;
+    phone: string;
+    cpf: string;
+  } | null>(null);
+
   // Nome em branco não salva (14/10/2026): o `COALESCE(p_full_name, full_name)`
   // do banco só protege contra NULL — '' passa e apagava o nome público dela
   // com "sucesso". A recusa mora aqui, junto do campo.
@@ -516,81 +534,129 @@ export function AccountSettingsView() {
 
   const userId = user?.id;
   const userEmail = user?.email;
-  const carregarPerfil = useCallback(async () => {
-    if (!userId) return;
-    const rodada = ++cargaRef.current;
-    const atual = () =>
-      rodada === cargaRef.current && contaAtualIdRef.current === userId;
-    setProfileLoadState("loading");
-    try {
-      const { data, error } = await comPrazo(
-        Promise.resolve((supabase as any).rpc("get_my_complete_profile")),
-        15_000,
-      );
-      if (!atual()) return;
-
-      if (error || !data) {
-        console.error("Error fetching profile:", error);
-        setProfileLoadState("error");
-        return;
-      }
-
-      const profile = (data as any)[0];
-      if (!profile) {
-        setProfileLoadState("error");
-        return;
-      }
-
-      const dadosCarregados = {
-        name: profile.full_name || "",
-        phone: formatarWhatsAppParaExibicao(profile.whatsapp || ""),
-        email: userEmail || "",
-      };
-      setProfileData(dadosCarregados);
-      setProfileDataOriginal(dadosCarregados);
-      // Toda carga é um cadastro "não editado" de novo — inclusive ao
-      // tentar de novo depois de um erro.
-      setWhatsappEditado(false);
-
-      // CPF é lido À PARTE, por RPC própria (`get_my_cpf`) e em try/catch
-      // PRÓPRIO — nunca no mesmo bloco do perfil principal: uma resposta
-      // inesperada aqui (rede, formato) não pode reprovar a carga de
-      // nome/WhatsApp, que já chegou com sucesso. `lerCpfDaConta` já é
-      // best-effort (nunca lança), mas o `typeof` abaixo é a mesma cautela
-      // para o formato do valor — campo só fica vazio nesses casos (e
-      // "salvar" sem mexer nele não grava nada, então não há risco de
-      // apagar um CPF real por causa de uma leitura que falhou).
+  // O e-mail da sessão pode mudar com a MESMA conta aberta (a loja corrige o
+  // cadastro): ele não pode recriar `carregarPerfil`, senão a releitura do
+  // cadastro apagaria nome, WhatsApp e CPF que a cliente já digitou. A carga lê
+  // por aqui, e o efeito logo abaixo só atualiza o campo de e-mail.
+  const emailDaSessaoRef = useRef(userEmail);
+  useEffect(() => {
+    emailDaSessaoRef.current = userEmail;
+  });
+  const carregarPerfil = useCallback(
+    async (opcoes?: OpcoesDeCarga) => {
+      if (!userId) return;
+      const rodada = ++cargaRef.current;
+      const atual = () =>
+        rodada === cargaRef.current && contaAtualIdRef.current === userId;
+      setProfileLoadState("loading");
       try {
-        const resultadoCpf = await lerCpfDaConta();
+        const { data, error } = await comPrazo(
+          Promise.resolve((supabase as any).rpc("get_my_complete_profile")),
+          15_000,
+        );
         if (!atual()) return;
-        if (!resultadoCpf.ok && resultadoCpf.motivo === "prazo_esgotado") {
+
+        if (error || !data) {
+          console.error("Error fetching profile:", error);
           setProfileLoadState("error");
           return;
         }
-        const digitosCpf =
-          resultadoCpf.ok && typeof resultadoCpf.cpf === "string"
-            ? resultadoCpf.cpf
-            : "";
-        setCpf(digitosCpf ? formatarCpf(digitosCpf).formatado : "");
+
+        const profile = (data as any)[0];
+        if (!profile) {
+          setProfileLoadState("error");
+          return;
+        }
+
+        const dadosCarregados = {
+          name: profile.full_name || "",
+          phone: formatarWhatsAppParaExibicao(profile.whatsapp || ""),
+          email: emailDaSessaoRef.current || "",
+        };
+        // Só a releitura automática preserva o digitado depois do clique.
+        const base = opcoes?.preservarDigitado
+          ? ultimoMostradoRef.current
+          : null;
+        const telefonePreservado =
+          !!base && telefoneAtualRef.current !== base.phone;
+        setProfileData((p) => ({
+          ...dadosCarregados,
+          name: base && p.name !== base.name ? p.name : dadosCarregados.name,
+          phone: telefonePreservado ? p.phone : dadosCarregados.phone,
+        }));
+        setProfileDataOriginal(dadosCarregados);
+        // Toda carga é um cadastro "não editado" de novo — inclusive ao
+        // tentar de novo depois de um erro. Exceto o número que a pessoa digitou
+        // depois do clique: ele ainda não foi enviado e segue como "editado".
+        if (!telefonePreservado) setWhatsappEditado(false);
+
+        // CPF é lido À PARTE, por RPC própria (`get_my_cpf`) e em try/catch
+        // PRÓPRIO — nunca no mesmo bloco do perfil principal: uma resposta
+        // inesperada aqui (rede, formato) não pode reprovar a carga de
+        // nome/WhatsApp, que já chegou com sucesso. `lerCpfDaConta` já é
+        // best-effort (nunca lança), mas o `typeof` abaixo é a mesma cautela
+        // para o formato do valor.
+        //
+        // Consulta do CPF que FALHA (prazo, rede, recusa) não é "conta sem CPF":
+        // tratá-la como vazio mostrava o campo em branco e liberado, e o Salvar
+        // comparava o CPF com esse vazio inventado (mostrava sucesso sem gravar
+        // CPF, ou deixava digitar por cima do real sem a pessoa saber). Falha
+        // vira o mesmo estado de erro do prazo esgotado: formulário travado,
+        // aviso e "Tentar de novo". Só `ok: true` diz o que a conta tem.
+        let digitosCpf: string;
+        try {
+          const resultadoCpf = await lerCpfDaConta();
+          if (!atual()) return;
+          if (
+            !resultadoCpf.ok ||
+            (resultadoCpf.cpf !== null && typeof resultadoCpf.cpf !== "string")
+          ) {
+            setProfileLoadState("error");
+            return;
+          }
+          digitosCpf = resultadoCpf.cpf ?? "";
+        } catch (erroCpf) {
+          if (!atual()) return;
+          console.error("Error fetching CPF:", erroCpf);
+          setProfileLoadState("error");
+          return;
+        }
+        const baseCpf = base?.cpf;
+        setCpf((c) =>
+          baseCpf !== undefined && somenteDigitosDoCpf(c) !== baseCpf
+            ? c
+            : digitosCpf
+              ? formatarCpf(digitosCpf).formatado
+              : "",
+        );
         setCpfOriginal(digitosCpf);
         setCpfErro(false);
-      } catch (erroCpf) {
-        if (!atual()) return;
-        console.error("Error fetching CPF:", erroCpf);
-        setCpf("");
-        setCpfOriginal("");
-        setCpfErro(false);
-      }
+        ultimoMostradoRef.current = {
+          name: dadosCarregados.name,
+          phone: dadosCarregados.phone,
+          cpf: digitosCpf,
+        };
 
-      setProfileLoadState("loaded");
-    } catch {
-      if (atual()) setProfileLoadState("error");
-    }
-  }, [userId, userEmail]);
+        setProfileLoadState("loaded");
+      } catch {
+        if (atual()) setProfileLoadState("error");
+      }
+    },
+    [userId],
+  );
 
   useEffect(() => {
     carregarPerfil();
   }, [carregarPerfil]);
+
+  // E-mail novo da mesma conta: troca só o e-mail, sem tocar no que foi digitado.
+  useEffect(() => {
+    const email = userEmail || "";
+    const comEmail = (p: { name: string; phone: string; email: string }) =>
+      p.email === email ? p : { ...p, email };
+    setProfileData(comEmail);
+    setProfileDataOriginal(comEmail);
+  }, [userEmail]);
 
   const relerDepoisDoPrazo = (
     contaDonaId: string | null,
@@ -616,7 +682,7 @@ export function AccountSettingsView() {
       return;
     }
     // Foto/capa não alteram nome, telefone ou CPF: preserva o rascunho deles.
-    if (relerCampos) void carregarPerfil();
+    if (relerCampos) void carregarPerfil({ preservarDigitado: true });
     // O contexto também pode estar aguardando a rede. Nunca prende os controles.
     void comPrazo(Promise.resolve(fetchProfile()), 15_000).catch(() => {});
   };
@@ -709,6 +775,11 @@ export function AccountSettingsView() {
     const nomeMudou = nomeAparado !== profileDataOriginal.name.trim();
 
     const perfilEnviado = profileData;
+    ultimoMostradoRef.current = {
+      name: profileData.name,
+      phone: profileData.phone,
+      cpf: digitosCpfAtual,
+    };
     const rodadaSalvar = ++rodadaSalvarRef.current;
     // A leitura que já estava no ar também perde a vez para o novo salvamento.
     ++cargaRef.current;
@@ -812,7 +883,9 @@ export function AccountSettingsView() {
           releitura.rodada === rodadaSalvar &&
           rodadaSalvar === rodadaSalvarRef.current
         ) {
-          if (releitura.relerCampos) void carregarPerfil();
+          if (releitura.relerCampos) {
+            void carregarPerfil({ preservarDigitado: true });
+          }
           void comPrazo(Promise.resolve(fetchProfile()), 15_000).catch(
             () => {},
           );
@@ -1064,7 +1137,7 @@ export function AccountSettingsView() {
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={carregarPerfil}
+                        onClick={() => void carregarPerfil()}
                       >
                         Conferir dados de novo
                       </Button>
@@ -1091,7 +1164,7 @@ export function AccountSettingsView() {
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={carregarPerfil}
+                        onClick={() => void carregarPerfil()}
                         className="h-11 rounded-xl border-solid px-4 text-[13px] font-semibold"
                       >
                         Tentar de novo

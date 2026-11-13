@@ -589,6 +589,7 @@ describe("AdminPdvView — a venda registrada não segura mais como venda em and
       aviso: null,
       enviando: false,
       erro: null,
+      talvezGravada: false,
       recibo: reciboPreenchido,
     };
 

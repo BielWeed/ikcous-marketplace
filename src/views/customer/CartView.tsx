@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/alert-dialog";
 // Sub-components
 import { AddressList } from "@/components/ui/custom/AddressList";
+import { CarrinhoSalvoNaoLido } from "@/components/ui/custom/CarrinhoSalvoNaoLido";
 import { CartFooterSummary } from "@/components/ui/custom/CartFooterSummary";
 import { CartItemsList } from "@/components/ui/custom/CartItemsList";
 import { EmptyCart } from "@/components/ui/custom/EmptyCart";
@@ -252,6 +253,8 @@ export function CartView({
   const {
     cart: ctxCart,
     isLoading: lendoOCarrinhoSalvo,
+    carrinhoSalvoNaoLido,
+    relerCarrinhoSalvo,
     shippingFee: ctxShippingFee,
     freteIndefinido,
     freteGratis,
@@ -873,7 +876,15 @@ export function CartView({
   useVoltarFechaAFolha(confirmandoEsvaziar, () =>
     setConfirmandoEsvaziar(false),
   );
-  const handleClearCart = () => setConfirmandoEsvaziar(true);
+  // A caixa abre por ESTADO (sem AlertDialogTrigger): o Radix não tem gatilho
+  // para devolver o foco e ele cairia no body. Guardamos quem estava focado ao
+  // abrir (o botão "Esvaziar carrinho") e o devolvemos em `onCloseAutoFocus`.
+  const focoAoEsvaziarRef = useRef<HTMLElement | null>(null);
+  const handleClearCart = () => {
+    const ativo = document.activeElement;
+    focoAoEsvaziarRef.current = ativo instanceof HTMLElement ? ativo : null;
+    setConfirmandoEsvaziar(true);
+  };
 
   const handleRemove = useCallback(
     (productId: string, variantId?: string) => {
@@ -997,6 +1008,19 @@ export function CartView({
                         Carregando seu carrinho…
                       </p>
                     </div>
+                  ) : carrinhoSalvoNaoLido && !propCart ? (
+                    // A leitura destravou sem conseguir ler o carrinho da
+                    // conta: lista vazia NÃO é "carrinho vazio" (a cliente
+                    // acharia que perdeu o que salvou). Cai sozinha quando a
+                    // releitura (automática ou o botão) dá certo.
+                    <CarrinhoSalvoNaoLido
+                      onTentarDeNovo={relerCarrinhoSalvo}
+                      onSair={() => {
+                        haptic.medium();
+                        onNavigate("home");
+                      }}
+                      rotuloDoSair="Explorar Produtos"
+                    />
                   ) : (
                     <EmptyCart onNavigate={onNavigate} />
                   )}
@@ -1445,7 +1469,14 @@ export function CartView({
                         <span className="mb-1 block font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
                           Total
                         </span>
-                        <span className="text-2xl font-bold tracking-tight text-foreground">
+                        {/* Região viva SÓ no valor (o rodapé do celular faz o
+                            mesmo): este painel e o rodapé se escondem com
+                            `display: none`, então só um fala por vez. */}
+                        <span
+                          role="status"
+                          aria-atomic="true"
+                          className="text-2xl font-bold tracking-tight text-foreground"
+                        >
                           {total === null
                             ? "A calcular"
                             : formatCurrency(total)}
@@ -1683,6 +1714,13 @@ export function CartView({
         <AlertDialogContent
           overlayClassName="z-[130]"
           className="z-[130] sm:max-w-sm"
+          onCloseAutoFocus={(evento) => {
+            evento.preventDefault();
+            // Confirmou: o botão saiu junto com os itens (desconectado), e o
+            // foco não é forçado em elemento que não existe mais.
+            const botao = focoAoEsvaziarRef.current;
+            if (botao?.isConnected) botao.focus();
+          }}
         >
           <AlertDialogHeader>
             <AlertDialogTitle>Esvaziar o carrinho?</AlertDialogTitle>

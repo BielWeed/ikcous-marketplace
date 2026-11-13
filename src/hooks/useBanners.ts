@@ -1,6 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useSyncListener } from "@/hooks/useDataVault";
 import {
+  acompanharBannersDoRealtime,
   bannersEmCache,
   consultaDeBannersEmVoo,
   geracaoDasMutacoesDeBanners,
@@ -37,10 +38,49 @@ const TEXTO_SEM_RESPOSTA_AO_EDITAR = `${SEM_RESPOSTA_DO_BANNER} a mudança foi s
 const TEXTO_SEM_RESPOSTA_AO_REORDENAR = `${SEM_RESPOSTA_DO_BANNER} a nova ordem foi salva. ${CONFIRA_A_LISTA}`;
 const TEXTO_SEM_RESPOSTA_AO_EXCLUIR = `${SEM_RESPOSTA_DO_BANNER} o banner foi excluído. ${CONFIRA_A_LISTA}`;
 
-export async function normalizeBannersOrder(
+// FILA DA ORDEM NO BANCO. Arrumar as posições (`normalizeBannersOrder`) LÊ a
+// ordem e depois grava cada posição numa gravação separada; a troca de dois
+// banners (`reorder_banners_atomic`) é uma RPC só. As duas mexem na mesma
+// coluna, e a tela não espera pela arrumação (excluir, criar e editar a
+// disparam em segundo plano): com rede lenta, a troca feita logo em seguida
+// era desfeita quando a arrumação antiga terminava por último, e a lista
+// voltava à ordem de antes na próxima leitura.
+//
+// Um contador de geração não resolve aqui: as gravações da arrumação saem de
+// uma vez e, depois de enviadas, não dá para recolher. O que resolve é uma
+// operação de ordem começar só quando a anterior terminou — e cada vaga é
+// limitada pelo mesmo prazo das gravações do painel, para uma rede pendurada
+// não prender a troca para sempre (estourou: solta a vaga e segue, como as
+// demais gravações da tela fazem com a trava local).
+let vagaAnteriorDaOrdem: Promise<unknown> = Promise.resolve();
+
+function naFilaDaOrdem<T>(operacao: () => Promise<T>): Promise<T> {
+  const anterior = vagaAnteriorDaOrdem;
+  const execucao = anterior.then(operacao);
+  vagaAnteriorDaOrdem = anterior
+    .then(() =>
+      aguardarComPrazo(execucao, PRAZO_DA_GRAVACAO_DO_BANNER_MS, () =>
+        erroDeConsultaSemResposta(),
+      ),
+    )
+    .catch(() => {});
+  return execucao;
+}
+
+export function normalizeBannersOrder(
   pos: "home_top" | "home_middle" | "home_bottom",
   prioritarioId?: string,
   salvoDepoisDoEmpate = false,
+): Promise<void> {
+  return naFilaDaOrdem(() =>
+    arrumarAOrdemNoBanco(pos, prioritarioId, salvoDepoisDoEmpate),
+  );
+}
+
+async function arrumarAOrdemNoBanco(
+  pos: "home_top" | "home_middle" | "home_bottom",
+  prioritarioId: string | undefined,
+  salvoDepoisDoEmpate: boolean,
 ) {
   try {
     const { data, error } = await supabase
@@ -687,16 +727,20 @@ export function useBanners(adminMode = false) {
         applyLocalBanners(cachedBanners);
       }
 
-      const { error } = await aguardarComPrazo(
-        Promise.resolve(
-          supabase.rpc("reorder_banners_atomic", {
-            p_position: activePosition,
-            p_banner_id_1: activeBannerId,
-            p_banner_id_2: overBannerId,
-          }),
+      // Na fila da ordem: se uma arrumação de posições ainda está gravando,
+      // a troca espera por ela (o prazo conta só a partir da RPC).
+      const { error } = await naFilaDaOrdem(() =>
+        aguardarComPrazo(
+          Promise.resolve(
+            supabase.rpc("reorder_banners_atomic", {
+              p_position: activePosition,
+              p_banner_id_1: activeBannerId,
+              p_banner_id_2: overBannerId,
+            }),
+          ),
+          PRAZO_DA_GRAVACAO_DO_BANNER_MS,
+          () => erroDeConsultaSemResposta(TEXTO_SEM_RESPOSTA_AO_REORDENAR),
         ),
-        PRAZO_DA_GRAVACAO_DO_BANNER_MS,
-        () => erroDeConsultaSemResposta(TEXTO_SEM_RESPOSTA_AO_REORDENAR),
       );
 
       if (error) throw error;
@@ -766,6 +810,7 @@ export function useBanners(adminMode = false) {
             vaultRef.current = await DataVault.init();
           }
           const fresh = await vaultRef.current.getAllOrThrow<Banner>("banners");
+          acompanharBannersDoRealtime(fresh);
           setBanners(fresh);
         } catch (err) {
           // Leitura do cofre falhou -- manter o que já está na tela é

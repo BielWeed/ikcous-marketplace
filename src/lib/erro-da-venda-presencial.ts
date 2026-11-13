@@ -17,6 +17,7 @@
 // escreve (mesmas linhas citadas no comentário de cada `if`) — reescrevê-las
 // aqui criaria DUAS verdades sobre a mesma recusa (risco medido na tarefa).
 
+import { fraseEscritaPelaCasa } from "@/lib/frase-escrita-pela-casa";
 import { ehConsultaSemResposta } from "@/lib/prazo-da-requisicao";
 
 /** O que a tela precisa para decidir o que mostrar e se vale oferecer um
@@ -37,6 +38,15 @@ export interface FalhaDaVendaTraduzida {
  * um erro que não vai se resolver sozinho, e nunca "deu erro" seco. */
 export const MENSAGEM_DE_REDE_DA_VENDA =
   "Não consegui falar com o servidor. O cupom está salvo aqui; tente de novo quando a conexão voltar.";
+
+/** O banco estourou o tempo (57014): não sabemos se a venda entrou. A tela não
+ * afirma que falhou nem que gravou — manda CONFERIR e só então repetir (a
+ * mesma chave devolve o recibo se ela já existir). */
+export const MENSAGEM_DE_DEMORA_DA_VENDA =
+  "O servidor demorou demais para responder. Confira em Pedidos, nas vendas do balcão, se esta venda já aparece antes de tentar de novo.";
+
+const FRASE_ACESSO_NEGADO =
+  "Acesso negado: só a loja registra venda no balcão.";
 
 const FALHA_DE_REDE: FalhaDaVendaTraduzida = {
   mensagem: MENSAGEM_DE_REDE_DA_VENDA,
@@ -169,8 +179,15 @@ export function precosDaVendaRecusada(erro: unknown): {
  *    de rede (a tela diz "talvez tenha entrado").
  *  · Qualquer outro `code` — desconhecido: frase genérica em português, NUNCA
  *    o texto cru do banco (vem em inglês); repetir é seguro pela chave.
+ *
+ * `haDuvidaDaTentativaAnterior`: uma resposta perdida antes, com esta mesma
+ * chave, deixou a venda "talvez gravada". Só muda a frase do "ocupado" (53xx e
+ * cia.), que sem isso negaria uma venda que pode existir.
  */
-export function mensagemDaFalhaDaVenda(erro: unknown): FalhaDaVendaTraduzida {
+export function mensagemDaFalhaDaVenda(
+  erro: unknown,
+  haDuvidaDaTentativaAnterior = false,
+): FalhaDaVendaTraduzida {
   const codigo = codigoDoErro(erro);
   const mensagemDoBanco = mensagemDoErro(erro);
 
@@ -186,10 +203,12 @@ export function mensagemDaFalhaDaVenda(erro: unknown): FalhaDaVendaTraduzida {
   }
 
   if (codigo === "42501") {
-    // migration :220 ('Acesso negado…') e :227 ('Não autorizado…').
+    // migration :220 ('Acesso negado…') e :227 ('Não autorizado…'). Só passa a
+    // frase que a casa escreveu: o 42501 NATIVO do Postgres ("permission
+    // denied for function registrar_venda_presencial") cai na frase da casa.
     return {
       mensagem:
-        mensagemDoBanco ?? "Acesso negado: só a loja registra venda no balcão.",
+        fraseEscritaPelaCasa(codigo, mensagemDoBanco) ?? FRASE_ACESSO_NEGADO,
       podeTentarDeNovo: false,
       precisaEntrarDeNovo: true,
     };
@@ -228,7 +247,8 @@ export function mensagemDaFalhaDaVenda(erro: unknown): FalhaDaVendaTraduzida {
     // vazio e a frase sai "Produto não encontrado não disponível." (migration
     // 20261280000000, perto de "não disponível"). Convida a tirar a peça e
     // registrar de novo — sem travar o botão e sem mandar apagar a venda.
-    const peca = mensagemDoBanco?.match(/^Produto (.+) não disponível\.$/);
+    const daCasa = fraseEscritaPelaCasa(codigo, mensagemDoBanco);
+    const peca = daCasa?.match(/^Produto (.+) não disponível\.$/);
     if (peca) {
       const qual =
         peca[1] === "não encontrado"
@@ -241,9 +261,8 @@ export function mensagemDaFalhaDaVenda(erro: unknown): FalhaDaVendaTraduzida {
       };
     }
     return {
-      mensagem: mensagemDoBanco ?? "Não foi possível registrar a venda.",
-      podeTentarDeNovo:
-        mensagemDoBanco?.includes("Estoque insuficiente") ?? false,
+      mensagem: daCasa ?? "Não foi possível registrar a venda.",
+      podeTentarDeNovo: daCasa?.includes("Estoque insuficiente") ?? false,
       precisaEntrarDeNovo: false,
     };
   }
@@ -269,15 +288,25 @@ export function mensagemDaFalhaDaVenda(erro: unknown): FalhaDaVendaTraduzida {
       precisaEntrarDeNovo: false,
     };
   }
-  if (
-    codigo === "40001" ||
-    codigo === "57014" ||
-    codigo === "55P03" ||
-    codigo.startsWith("53")
-  ) {
+  // Estouro de tempo do banco: o servidor cancelou o comando, mas a tela não
+  // tem como PROVAR que a venda não entrou (a resposta pode ter ficado para
+  // trás). Como no "sem rede": nem sucesso nem falha — conferir e repetir.
+  if (codigo === "57014") {
     return {
-      mensagem:
-        "O sistema estava ocupado e a venda não foi registrada. Toque em Registrar venda de novo — o estoque não foi descontado.",
+      mensagem: MENSAGEM_DE_DEMORA_DA_VENDA,
+      podeTentarDeNovo: true,
+      precisaEntrarDeNovo: false,
+    };
+  }
+  if (codigo === "40001" || codigo === "55P03" || codigo.startsWith("53")) {
+    return {
+      // "Ocupado" prova que ESTA tentativa foi desfeita, nada sobre a anterior:
+      // com uma resposta perdida antes (`haDuvidaDaTentativaAnterior`), afirmar
+      // "não foi registrada" / "o estoque não foi descontado" seria falso se a
+      // primeira já tinha gravado. A tela acrescenta a frase da dúvida.
+      mensagem: haDuvidaDaTentativaAnterior
+        ? "O sistema estava ocupado e esta tentativa não foi concluída. Toque em Registrar venda de novo."
+        : "O sistema estava ocupado e a venda não foi registrada. Toque em Registrar venda de novo — o estoque não foi descontado.",
       podeTentarDeNovo: true,
       precisaEntrarDeNovo: false,
     };
@@ -301,4 +330,39 @@ export function mensagemDaFalhaDaVenda(erro: unknown): FalhaDaVendaTraduzida {
     podeTentarDeNovo: true,
     precisaEntrarDeNovo: false,
   };
+}
+
+/**
+ * O que uma falha do envio diz sobre a DÚVIDA "esta venda pode já ter sido
+ * gravada com esta chave" (o `talvezGravada` do estado da venda):
+ *
+ *  · `abre` — a resposta se perdeu (sem `code`, 08xxx, 57Pxx): a venda pode
+ *    ter entrado depois do commit. É exatamente o que `mensagemDaFalhaDaVenda`
+ *    traduz como a frase de rede, e por isso é derivado dela.
+ *  · `fecha` — recusa de NEGÓCIO: 22023 (as recusas de validação e de estoque)
+ *    e PDV01 (o total mudou). A RPC confere a chave de idempotência ANTES de
+ *    validar qualquer coisa (migration 20261280000000, passo 2) e, se a venda
+ *    já existisse, devolveria `ja_existia`. Uma recusa destas só sai quando a
+ *    venda NÃO existe. (A recusa 22023 "já foi anulada", montada pela própria
+ *    tela, também fecha: ali a venda é CONHECIDA, não há dúvida.)
+ *  · `mantem` — todo o resto: não diz nada sobre a tentativa anterior. 53xx,
+ *    40001, 40P01, 57014 e 55P03 desfazem SÓ esta tentativa; 42501 e
+ *    PGRST301/302/303 voltam do portão de sessão, que vem ANTES da conferência
+ *    da chave; PGRST202 e 23505 e os códigos desconhecidos idem. Na dúvida,
+ *    mantém: perder a dúvida custa uma venda em dobro, mantê-la custa só um
+ *    aviso a mais.
+ */
+export type EfeitoDaFalhaNaDuvida = "abre" | "fecha" | "mantem";
+
+export function efeitoDaFalhaNaDuvida(erro: unknown): EfeitoDaFalhaNaDuvida {
+  const traduzida = mensagemDaFalhaDaVenda(erro).mensagem;
+  if (
+    traduzida === MENSAGEM_DE_REDE_DA_VENDA ||
+    traduzida === MENSAGEM_DE_DEMORA_DA_VENDA
+  ) {
+    return "abre";
+  }
+  const codigo = codigoDoErro(erro);
+  if (codigo === "22023" || codigo === "PDV01") return "fecha";
+  return "mantem";
 }

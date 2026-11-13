@@ -1,7 +1,7 @@
 // @ts-nocheck
 // O CADASTRO CRIA O PERFIL EM TODA LOJA — prova offline do par 20261399940000 + rollback (07/11/2026).
 // O COMPORTAMENTO (o gatilho cria o perfil; o reparo de quem ja se cadastrou sem perfil; admin e cadastro acima do teto de fora; mutantes;
-// reaplicar; rollback; pre-voo; consultas 129a/129b; lock_timeout em auth.users) e' provado em
+// reaplicar; rollback; pre-voo; consultas 149a/149b; lock_timeout em auth.users) e' provado em
 // tests/banco/o-cadastro-cria-o-perfil-em-toda-loja-viva.cjs. Aqui fica o que se prova so lendo o texto.
 //
 // Riscos: a migration cria UM gatilho em auth.users (so se ausente) e INSERE perfis de quem nao tem; o reparo tem de usar a MESMA
@@ -18,8 +18,8 @@ const {
 
 const DIR = new URL("../", import.meta.url);
 const NOME = "20261399940000_o_cadastro_cria_o_perfil_em_toda_loja.sql";
-const A = "129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado";
-const B = "129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente";
+const A = "149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado";
+const B = "149b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente";
 const lerBruto = (n) =>
   Deno.readTextFileSync(new URL(`supabase/migrations/${n}`, DIR));
 const ler = (n) => lerBruto(n).replace(/\r\n/g, "\n");
@@ -233,7 +233,7 @@ Deno.test("1399940: o efemero das outras provas deixa o gatilho DESLIGADO e tem 
   );
 });
 
-Deno.test("1399940: publicacao — lote unico (129a/129b), rol fechado de 6 e 3 linhas, consultas so de leitura e sem dado pessoal, workflows, release e prova viva; sem entrada no db-apply (nao ha funcao)", () => {
+Deno.test("1399940: publicacao — lote unico (149a/149b), rol fechado de 6 e 3 linhas, consultas so de leitura e sem dado pessoal, workflows, release e prova viva; sem entrada no db-apply (nao ha funcao)", () => {
   const canais = JSON.parse(lerRepo("scripts/frota/canais-de-backend.json"));
   const lote = canais.provasDeObjetos.filter((p) =>
     p.versoes.includes("20261399940000"),
@@ -257,7 +257,7 @@ Deno.test("1399940: publicacao — lote unico (129a/129b), rol fechado de 6 e 3 
     "esperado 0 nas duas lojas",
   ])
     assert.ok(c.includes(frase), frase);
-  // a Savy ganhou o gatilho a mao em 07/11/2026: nenhum texto pode mais dizer que a 129a sai negativa la
+  // a Savy ganhou o gatilho a mao em 07/11/2026: nenhum texto pode mais dizer que a 149a sai negativa la
   assert.doesNotMatch(c, /na Savy esperado 1|esperado na Savy/);
   const {
     ROL_FECHADO_POR_CONSULTA,

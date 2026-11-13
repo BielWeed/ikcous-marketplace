@@ -74,7 +74,10 @@ export function OrderSearch({
   whatsappDaLoja,
   abrirNoRastreio = false,
 }: OrderSearchProps) {
-  const { generateOrderOtp, fetchOrdersByOtp } = useOrders(true, false);
+  const { generateOrderOtp, fetchOrdersByOtp, idDaConta } = useOrders(
+    true,
+    false,
+  );
   const [tab, setTab] = useState<"login" | "guest">(
     abrirNoRastreio ? "guest" : "login",
   );
@@ -101,10 +104,38 @@ export function OrderSearch({
   const [isLoading, setIsLoading] = useState(false);
   const envioOtpEmCurso = useRef(false);
   const campoCodigo = useRef<HTMLInputElement>(null);
+  // Número da consulta de código vigente. "Voltar", um novo envio ou verificação,
+  // a saída da tela e a troca de conta na sessão (abaixo) o avançam: a resposta
+  // de uma consulta antiga, ao chegar, vê que não é mais a vigente e não publica
+  // pedido, não grava o retrato nem mexe no estado (o "carregando" agora é da
+  // rodada nova, não da velha).
+  const rodadaDaConsulta = useRef(0);
 
   useEffect(() => {
     if (step === "verify") campoCodigo.current?.focus();
   }, [step]);
+
+  useEffect(
+    () => () => {
+      rodadaDaConsulta.current += 1;
+    },
+    [],
+  );
+
+  // Quem está na sessão (id da conta; `null` = sem conta). Se ele MUDA com a
+  // consulta ainda voltando (outra pessoa entrou na conta dela em outra aba, ou
+  // a conta saiu), a resposta é do pedido de quem consultou ANTES: a entrada da
+  // outra conta já apagou o rastreio do aparelho, e gravar o retrato agora o
+  // traria de volta, com nome e endereço, para a tela da conta nova. Avança a
+  // rodada (a resposta velha não publica nem grava) e solta o "carregando" que
+  // ela mantinha. Só o id conta: o mesmo usuário reemitido não descarta nada.
+  const idDaContaVista = useRef(idDaConta);
+  useEffect(() => {
+    if (idDaContaVista.current === idDaConta) return;
+    idDaContaVista.current = idDaConta;
+    rodadaDaConsulta.current += 1;
+    if (!envioOtpEmCurso.current) setIsLoading(false);
+  }, [idDaConta]);
 
   const handleWhatsappChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = mascaraWhatsappBr(e.target.value, whatsapp);
@@ -166,6 +197,8 @@ export function OrderSearch({
       fragmento,
     };
     envioOtpEmCurso.current = true;
+    // Um novo envio também abandona a verificação que ainda estivesse voltando.
+    rodadaDaConsulta.current += 1;
     setIsLoading(true);
     try {
       const success = await generateOrderOtp(
@@ -195,6 +228,8 @@ export function OrderSearch({
       return;
     }
 
+    const rodada = ++rodadaDaConsulta.current;
+    const vigente = () => rodada === rodadaDaConsulta.current;
     setIsLoading(true);
     try {
       // O mesmo trio que pediu o código: a verificação só alcança o código
@@ -209,6 +244,9 @@ export function OrderSearch({
         whatsapp: trio.whatsapp,
         fragmento: trio.fragmento,
       });
+      // A cliente tocou em "Voltar" (ou pediu outro código, ou saiu da tela)
+      // enquanto a rede respondia: a consulta foi abandonada.
+      if (!vigente()) return;
       if (foundOrders && foundOrders.length > 0) {
         toast.success(
           foundOrders.length === 1
@@ -252,7 +290,7 @@ export function OrderSearch({
     } catch (error) {
       console.error(error);
     } finally {
-      setIsLoading(false);
+      if (vigente()) setIsLoading(false);
     }
   };
 
@@ -507,6 +545,11 @@ export function OrderSearch({
                       type="button"
                       onClick={() => {
                         haptic.light();
+                        // Abandona a verificação em andamento e solta o botão
+                        // que ela mantinha em "carregando" (a menos que um envio
+                        // de código, que tem o próprio fim, ainda esteja no ar).
+                        rodadaDaConsulta.current += 1;
+                        if (!envioOtpEmCurso.current) setIsLoading(false);
                         setStep("request");
                         setOtp("");
                         setTrioEnviado(null);

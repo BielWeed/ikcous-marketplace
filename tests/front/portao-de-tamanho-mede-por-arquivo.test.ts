@@ -74,9 +74,10 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     expect(trechoCss).toContain("webpack: false");
   });
 
-  it("os tetos de JS são os fixados: cliente 660 kB, painel 534 kB", () => {
+  it("os tetos de JS são os fixados: cliente 668 kB, painel 538 kB", () => {
     // Se algum PR precisar mexer num teto, que seja explícito AQUI: mudar o
     // número quebra este teste de propósito. cliente 652 -> 656 e painel 530 -> 534 em 12/11/2026 (1.5.173; a base ficou sem folga e cada PR novo reprovava; regra do dono: o teto sobe).
+    // Painel 534 -> 538 em 13/11/2026 (1.5.181; mediu 534,003 kB no CI, 3 B acima; regra do dono: o teto sobe).
     // Painel 450 -> 455 em 15/10/2026
     // (lote da noite: 39 ajustes de tela juntos) e 455 -> 460 no mesmo dia
     // (integração dos lotes de banco 36 a 41, PR #885) e 460 -> 464,5 ao juntar
@@ -117,6 +118,8 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     // cliente 615 -> 617 em 06/11/2026 (1.5.140; medido 616,35 kB no build local; regra do dono; painel segue 509);
     // cliente 617 -> 619 e painel 509 -> 511 em 06/11/2026 (1.5.141; medidos 617,94 e 509,17 kB no build local; regra do dono);
     // cliente 619 -> 622 em 06/11/2026 (1.5.143; medido 620,64 kB no build local; regra do dono; painel segue 511, medido 510,35);
+    // cliente 664 -> 668 em 13/11/2026 (1.5.180; a release mediu 664,10 kB no CI, 100 B acima; regra do dono: o teto sobe);
+    // cliente 660 -> 664 em 13/11/2026 (1.5.178; o PR de produtos mediu 660,14 kB no CI, 139 B acima; regra do dono: o teto sobe);
     // cliente 656 -> 660 em 12/11/2026 (1.5.174; a margem do build era 0,04 kB; regra do dono: o teto sobe);
     // ver comentário no `.size-limit.cjs`.
     // cliente 622 -> 625 e painel 511 -> 513 em 06/11/2026 (1.5.144; medidos 623,12 e 511,45 kB no build local; regra do dono);
@@ -133,8 +136,8 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     // cliente 641 -> 643 e painel 522 -> 526 em 07/11/2026 (1.5.156; medidos 642,05 e 524,49 kB no build local; regra do dono);
     // cliente 639 -> 641 em 07/11/2026 (1.5.155; medido 639,61 kB no build local; regra do dono; painel segue 522, medido 520,70);
     // cliente 638 -> 639 em 07/11/2026 (1.5.154; medido 638,01 kB no build local; regra do dono; painel segue 522, medido 520,28);
-    expect(entrada("cliente.map(")).toContain('limit: "660 kB"');
-    expect(entrada("painel.map(")).toContain('limit: "534 kB"');
+    expect(entrada("cliente.map(")).toContain('limit: "668 kB"');
+    expect(entrada("painel.map(")).toContain('limit: "538 kB"');
     expect(configTexto).not.toContain('limit: "800 kB"');
   });
 });

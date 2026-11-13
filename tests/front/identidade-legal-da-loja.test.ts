@@ -71,6 +71,19 @@ describe("formatarDocumento — máscara para mostrar", () => {
     expect(formatarDocumento("12ABC")).toBe("12.ABC");
   });
   it("vazio continua vazio", () => expect(formatarDocumento("")).toBe(""));
+  // A máscara não pode ESCONDER excesso: 15 dígitos cortados em 14 viravam um
+  // CNPJ válido que a lojista nunca digitou e que seguia para o banco.
+  it("passou de 14 caracteres: mostra TUDO sem máscara, nada é cortado", () => {
+    expect(formatarDocumento("112223330001819")).toBe("112223330001819");
+    expect(formatarDocumento("11.222.333/0001-81-9")).toBe("112223330001819");
+    expect(formatarDocumento("11222333000181234567")).toBe(
+      "11222333000181234567",
+    );
+  });
+  it("o que a máscara devolve para excesso NÃO vira documento válido", () => {
+    const mostrado = formatarDocumento("112223330001819");
+    expect(documentoValido(mostrado)).toBeNull();
+  });
 });
 
 describe("emailDeAtendimentoValido", () => {

@@ -200,6 +200,22 @@ function idDaEntradaLocal(entrada: EntradaFavoritoLocal): string {
   return typeof entrada === "string" ? entrada : entrada.id;
 }
 
+// A chave anônima é lida do disco como ele estiver (versão velha, edição à
+// mão) e a recuperação do app a preserva (prefixo `ikcous_`): uma entrada
+// `null`, número ou objeto sem `id` fazia `idDaEntradaLocal` lançar dentro do
+// provedor que envolve a loja inteira. Só vale string não vazia ou objeto com
+// `id` string não vazio; o resto é descartado sem lançar.
+function entradaLocalValida(entrada: unknown): entrada is EntradaFavoritoLocal {
+  if (typeof entrada === "string") return entrada !== "";
+  if (typeof entrada !== "object" || entrada === null) return false;
+  const id = (entrada as { id?: unknown }).id;
+  return typeof id === "string" && id !== "";
+}
+
+function normalizarEntradasLocais(lista: unknown): EntradaFavoritoLocal[] {
+  return Array.isArray(lista) ? lista.filter(entradaLocalValida) : [];
+}
+
 interface FavoritesContextType {
   favorites: Product[];
   toggleFavorite: (product: Product) => void;
@@ -258,9 +274,29 @@ export function FavoritesProvider({
   // `entreAbas`: o visitante pode ter duas abas abertas; sem isso uma apaga o
   // favorito da outra, e o login subiria para a conta o que o aparelho já
   // não tem (o login lê esta lista, que o evento `storage` mantém em dia).
-  const [localFavoritesRaw, setLocalFavoritesRaw] = useLocalStorage<
+  const [favoritosGuardados, setFavoritosGuardados] = useLocalStorage<
     EntradaFavoritoLocal[]
   >(FAVORITES_KEY, [], { entreAbas: true });
+  // O que o disco trouxe passa pelo filtro ANTES de qualquer uso (ver
+  // `entradaLocalValida`); o setter normaliza o `prev` pelo mesmo motivo, e a
+  // primeira gravação já deixa o disco limpo.
+  const localFavoritesRaw = React.useMemo(
+    () => normalizarEntradasLocais(favoritosGuardados),
+    [favoritosGuardados],
+  );
+  const setLocalFavoritesRaw = useCallback(
+    (
+      valor:
+        | EntradaFavoritoLocal[]
+        | ((prev: EntradaFavoritoLocal[]) => EntradaFavoritoLocal[]),
+    ) =>
+      setFavoritosGuardados((prev) =>
+        valor instanceof Function
+          ? valor(normalizarEntradasLocais(prev))
+          : valor,
+      ),
+    [setFavoritosGuardados],
+  );
   // Cache EM MEMÓRIA (nunca em disco — o disco só guarda id, de propósito)
   // do último retrato conhecido de cada favorito do visitante. Ela só entra
   // em jogo quando o id não bate com NENHUM produto de `allProducts` — ou
@@ -796,6 +832,28 @@ export function FavoritesProvider({
     [user, tentarSincronizarComServidor, fetchDbFavorites],
   );
 
+  // RELER A LISTA AO RECONECTAR (13/11/2026): `retentarPendentes` sai na hora
+  // quando a fila está vazia (o caso comum), então quem ficava sem rede e voltava
+  // seguia com o retrato de antes: favorito removido em outro aparelho continuava
+  // marcado e o novo não aparecia. `online` e a VOLTA do canal de tempo real
+  // (`SUBSCRIBED` outra vez, abaixo) agora relêem a lista da conta pelo mesmo
+  // `fetchDbFavorites`, que já descarta resposta velha (número de rodada) e
+  // resposta que atravessa uma gravação em voo (toque ainda não confirmado não é
+  // pisado; a fila de pendentes em disco só sai quando o servidor confirma).
+  // UMA releitura de reconexão por vez e por conta: enquanto a anterior não
+  // termina (no máximo `PRAZO_DA_LEITURA_MS`), outro gatilho não abre uma segunda
+  // -- `online` e a reconexão do canal costumam vir juntos.
+  const releituraDeReconexaoEmVooRef = useRef<string | null>(null);
+  const relerAoReconectar = useCallback(() => {
+    if (!userId || releituraDeReconexaoEmVooRef.current === userId) return;
+    releituraDeReconexaoEmVooRef.current = userId;
+    void fetchDbFavorites().finally(() => {
+      if (releituraDeReconexaoEmVooRef.current === userId) {
+        releituraDeReconexaoEmVooRef.current = null;
+      }
+    });
+  }, [userId, fetchDbFavorites]);
+
   // Retentativa da fila pendente: a promessa que o toast do login faz
   // ("vamos tentar de novo quando a conexão voltar") só é verdadeira se algo
   // de fato tentar de novo nesta mesma sessão. `online` é o sinal mais direto
@@ -805,10 +863,11 @@ export function FavoritesProvider({
     if (!user || typeof window === "undefined") return;
     const aoVoltarARede = () => {
       void retentarPendentes();
+      relerAoReconectar();
     };
     window.addEventListener("online", aoVoltarARede);
     return () => window.removeEventListener("online", aoVoltarARede);
-  }, [user, retentarPendentes]);
+  }, [user, retentarPendentes, relerAoReconectar]);
 
   // Voltar ao app (aba volta a ficar visível): outro aparelho pode ter mudado
   // os favoritos enquanto este estava em segundo plano, e `online` só cobre
@@ -835,6 +894,10 @@ export function FavoritesProvider({
     const bc = criarCanalDeAbas("ikcous_favorites_sync");
     let channel: any = null;
     let bcListener: ((event: MessageEvent) => void) | null = null;
+    // O `SUBSCRIBED` da PRIMEIRA inscrição não relê (a lista acabou de ser lida);
+    // os seguintes são o canal voltando de uma queda, e o que mudou enquanto ele
+    // esteve fora não chega por evento nenhum.
+    let jaFoiInscrito = false;
 
     if (user) {
       if (isLeader) {
@@ -860,6 +923,15 @@ export function FavoritesProvider({
             },
           )
           .subscribe((status: any, err?: any) => {
+            if (status === "SUBSCRIBED") {
+              if (jaFoiInscrito) {
+                relerAoReconectar();
+                // As outras abas não têm canal (só a líder): avisa para
+                // relerem também, como no evento de mudança acima.
+                bc?.postMessage({ type: "favorites_update" });
+              }
+              jaFoiInscrito = true;
+            }
             if (status === "CHANNEL_ERROR") {
               const errMessage =
                 err?.message || (typeof err === "string" ? err : "");
@@ -910,7 +982,7 @@ export function FavoritesProvider({
       }
       bc?.close();
     };
-  }, [user, isLeader, fetchDbFavorites]);
+  }, [user, isLeader, fetchDbFavorites, relerAoReconectar]);
 
   // 2. Computed Favorites List
   //

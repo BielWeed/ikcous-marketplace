@@ -32,6 +32,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useBanners } from "@/hooks/useBanners";
 import { useCategories } from "@/hooks/useCategories";
+import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import { useFocoAposExcluir } from "@/hooks/useFocoAposExcluir";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -115,6 +116,17 @@ import { toast } from "sonner";
 
 const ORDEM_MAXIMA_DO_BANNER = 9999;
 const AVISO_DE_ORDEM_RECUSADA = `A ordem de exibição precisa ser um número inteiro de 1 a ${ORDEM_MAXIMA_DO_BANNER}.`;
+
+/** Apaga o rascunho do banner. Nunca lança: navegador com "bloquear dados de
+ * sites" faz o próprio acesso ao `localStorage` lançar, e apagar o rascunho
+ * não pode virar erro de quem acabou de salvar. */
+function apagarRascunhoDoBanner(chave: string): void {
+  try {
+    localStorage.removeItem(chave);
+  } catch (erro) {
+    console.warn("[AdminBannersView] Não consegui apagar o rascunho:", erro);
+  }
+}
 
 const getLuminance = (hex: string): number => {
   if (!hex) return 0;
@@ -1290,7 +1302,15 @@ export const AdminBannersView = memo(function AdminBannersView({
     return { titles: titleSuggestions, subtitles: subtitleSuggestions };
   }, [selectedProduct]);
 
+  // No painel o relógio de programação fica desligado (`adminMode`): sem o dia
+  // da loja, o filtro "Agendados"/"Expirados" e a contagem de "ligados" ficavam
+  // com a situação de ontem numa tela deixada aberta de um dia para o outro.
+  // A virada do dia redesenha (sem ler o banco) e refaz o filtro abaixo.
+  const dia = useDiaDeSaoPaulo(active);
   const filteredBannersList = useMemo(() => {
+    // `dia` não entra na conta: só invalida o memo na virada (o `now` abaixo
+    // é lido de novo junto).
+    void dia;
     const now = new Date();
     return banners.filter((b) => {
       // Busca sem acento acha banner acentuado — mesma regra (normalizeText)
@@ -1317,7 +1337,7 @@ export const AdminBannersView = memo(function AdminBannersView({
 
       return matchesSearch && matchesStatus;
     });
-  }, [banners, searchQueryList, statusFilter]);
+  }, [banners, searchQueryList, statusFilter, dia]);
 
   const computedTitleRatio = useMemo(() => {
     const textHex = formData.titleColor || "#FFFFFF";
@@ -1614,7 +1634,14 @@ export const AdminBannersView = memo(function AdminBannersView({
   // Check for drafts when dialog opens
   useEffect(() => {
     if (isDialogOpen && chaveDoRascunho) {
-      const savedDraft = localStorage.getItem(chaveDoRascunho);
+      // Navegador com "bloquear dados de sites": o próprio acesso ao
+      // `localStorage` lança. Rascunho indisponível = "sem rascunho".
+      let savedDraft: string | null = null;
+      try {
+        savedDraft = localStorage.getItem(chaveDoRascunho);
+      } catch {
+        savedDraft = null;
+      }
       if (savedDraft) {
         try {
           const parsed = JSON.parse(savedDraft);
@@ -1623,7 +1650,7 @@ export const AdminBannersView = memo(function AdminBannersView({
           // regra) sai do aparelho; de outro banner fica quieto onde está.
           const situacao = situacaoDoRascunhoDoBanner(parsed, currentId);
           if (situacao === "descartar") {
-            localStorage.removeItem(chaveDoRascunho);
+            apagarRascunhoDoBanner(chaveDoRascunho);
           }
           setDraftToRecover(situacao === "usar" ? parsed : null);
         } catch {
@@ -1667,7 +1694,16 @@ export const AdminBannersView = memo(function AdminBannersView({
         imagemEnviadaNaoSalva: imagemEnviadaNaoSalvaRef.current,
         savedAt: new Date().toISOString(),
       };
-      localStorage.setItem(chaveDoRascunho, JSON.stringify(draftData));
+      // Armazenamento cheio ou bloqueado não pode estourar do temporizador:
+      // ela segue editando, só o rascunho em disco fica para trás.
+      try {
+        localStorage.setItem(chaveDoRascunho, JSON.stringify(draftData));
+      } catch (erro) {
+        console.warn(
+          "[AdminBannersView] Não consegui guardar o rascunho:",
+          erro,
+        );
+      }
     }, 1000);
 
     return () => clearTimeout(timer);
@@ -2192,7 +2228,9 @@ export const AdminBannersView = memo(function AdminBannersView({
       isSavedRef.current = true;
       geracaoDoEditor.current += 1;
       setEdicaoPendenteAposSalvar(false);
-      if (chaveDoRascunho) localStorage.removeItem(chaveDoRascunho);
+      // Depois de o banner estar salvo: apagar o rascunho nunca vira "erro ao
+      // salvar" (o armazenamento pode estar bloqueado).
+      if (chaveDoRascunho) apagarRascunhoDoBanner(chaveDoRascunho);
       setIsDialogOpen(false);
     } catch (error) {
       console.error("Erro ao salvar banner:", error);

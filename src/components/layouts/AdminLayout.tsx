@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { useConnectionDiagnostics } from "@/hooks/useOnlineStatus";
 import { useOrders } from "@/hooks/useOrders";
@@ -118,13 +119,20 @@ interface AdminLayoutProps {
   onBack?: () => void;
 }
 
-/** Como nas notificações: só a assinatura DEPOIS de uma queda pede releitura. */
+/**
+ * A leitura da contagem sai ANTES de a assinatura confirmar (a conexão ainda
+ * está abrindo). Um pedido que entra entre a leitura e a confirmação não chega
+ * nem pela consulta nem pelo tempo real: a bolinha ficava apagada até outro
+ * gatilho. Por isso a PRIMEIRA confirmação (`SUBSCRIBED`) de cada canal, e a de
+ * cada reconexão depois de uma queda, pedem UMA releitura. Confirmação
+ * repetida sem queda no meio não pede nada.
+ */
 function aoMudarOStatusDoCanal(nome: string, reler: () => void) {
-  let canalJaCaiu = false;
+  let leituraAnteriorAConfirmacao = true;
   return (status: string, err?: any) => {
     if (status === "SUBSCRIBED") {
-      if (canalJaCaiu) {
-        canalJaCaiu = false;
+      if (leituraAnteriorAConfirmacao) {
+        leituraAnteriorAConfirmacao = false;
         reler();
       }
     } else if (
@@ -132,7 +140,7 @@ function aoMudarOStatusDoCanal(nome: string, reler: () => void) {
       status === "TIMED_OUT" ||
       status === "CLOSED"
     ) {
-      canalJaCaiu = true;
+      leituraAnteriorAConfirmacao = true;
     }
     if (status !== "CHANNEL_ERROR") return;
     const errMessage = err?.message || (typeof err === "string" ? err : "");
@@ -202,6 +210,22 @@ export function AdminLayout({
   const [naoConseguiuConferirAvisos, setNaoConseguiuConferirAvisos] =
     React.useState(false);
 
+  // O corte dos recebimentos por marcar (janela do prazo de devolução, em dias
+  // de calendário da loja) avança à meia-noite e nada pedia a recontagem por
+  // passagem do tempo: a bolinha seguia com o pedido que acabou de sair da
+  // janela. A virada do dia pede o mesmo `admin:recontar-avisos` que a lista de
+  // Notificações e o sino já ouvem (um só, agrupado pelo sino). Aba escondida
+  // não bate na rede: a volta ao foco já reconta tudo com o corte novo.
+  const diaDeHoje = useDiaDeSaoPaulo();
+  const diaDaUltimaContagem = React.useRef(diaDeHoje);
+  React.useEffect(() => {
+    if (diaDaUltimaContagem.current === diaDeHoje) return;
+    diaDaUltimaContagem.current = diaDeHoje;
+    if (document.visibilityState === "visible") {
+      window.dispatchEvent(new Event("admin:recontar-avisos"));
+    }
+  }, [diaDeHoje]);
+
   React.useEffect(() => {
     let isMounted = true;
     let ordersChannel: any = null;
@@ -247,6 +271,17 @@ export function AdminLayout({
     // diz "Tudo em dia" com a bolinha acesa. A primeira leitura de cada fonte so
     // grava (a lista acabou de nascer e le sozinha).
     const ultimasContagens = new Map<string, number>();
+    // Um pulso do tempo real (pedido/pergunta/resposta mudou no banco) pede a
+    // releitura da lista mesmo que os NUMEROS fiquem iguais: trocar uma
+    // pendencia por outra (A foi para entrega, B entrou antes da recontagem)
+    // mantem o sino em 1 e a lista velha, sem o B. Segue o agrupamento de 1 s:
+    // a rajada toda vira UMA conferencia e UMA releitura. Quem consome e' o
+    // fim da conferencia que vale (a rodada atropelada nao perde o pedido).
+    let relerListaNaProximaConferencia = false;
+    const aoChegarPulsoDoTempoReal = () => {
+      relerListaNaProximaConferencia = true;
+      pedirConferenciaDeAvisos();
+    };
 
     const fetchInitialCounts = async () => {
       const rodada = ++rodadaAtual;
@@ -416,7 +451,8 @@ export function AdminLayout({
         if (podeGravar()) {
           setNaoConseguiuConferirAvisos(falhouAlgumaConsulta);
           // A lista de Notificacoes (`useAvisosDoLojista`) ouve este aviso.
-          if (algumNumeroMudou) {
+          if (algumNumeroMudou || relerListaNaProximaConferencia) {
+            relerListaNaProximaConferencia = false;
             window.dispatchEvent(new Event("admin:sino-mudou"));
           }
 
@@ -480,7 +516,7 @@ export function AdminLayout({
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "marketplace_orders" },
-          pedirConferenciaDeAvisos,
+          aoChegarPulsoDoTempoReal,
         )
         .subscribe(aoMudarOStatusDoCanal("Orders", aoReconectar));
 
@@ -489,12 +525,12 @@ export function AdminLayout({
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "questions" },
-          pedirConferenciaDeAvisos,
+          aoChegarPulsoDoTempoReal,
         )
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "answers" },
-          pedirConferenciaDeAvisos,
+          aoChegarPulsoDoTempoReal,
         )
         .subscribe(aoMudarOStatusDoCanal("Questions", aoReconectar));
     };
@@ -528,6 +564,8 @@ export function AdminLayout({
           clearTimeout(timerDeConferencia);
           timerDeConferencia = null;
         }
+        // A lista relê sozinha quando a aba volta ao foco.
+        relerListaNaProximaConferencia = false;
       }
     };
 

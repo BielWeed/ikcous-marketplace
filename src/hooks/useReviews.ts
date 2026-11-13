@@ -10,11 +10,13 @@ import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { EVENTO_AVALIACAO_EXCLUIDA } from "@/lib/evento-avaliacao-excluida";
 import {
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
+import { TETO_DA_RESPOSTA_DA_LOJA } from "@/lib/teto-da-resposta-da-loja";
 import type { Review } from "@/types";
 import {
   cachedReviewsData,
@@ -128,6 +130,11 @@ export function useReviews() {
   const [erroDaListagemProduto, setErroDaListagemProduto] = useState<
     string | null
   >(null);
+  // Produto cuja lista a rede JÁ devolveu (vazia ou não): só então a contagem
+  // da tela vem da lista, não da contagem guardada no produto.
+  const [produtoRespondido, setProdutoRespondido] = useState<string | null>(
+    null,
+  );
   const latestProductIdRef = useRef<string | null>(null);
   const rodadaAdminRef = useRef(0);
   const consultaDoProdutoRef = useRef(0);
@@ -144,6 +151,7 @@ export function useReviews() {
     setAdminReviews([]);
     setErroDaListagemAdmin(null);
     setErroDaListagemProduto(null);
+    setProdutoRespondido(null);
     setLoading(false);
     setDonoDasAvaliacoes(user?.id);
   }, [user?.id]);
@@ -241,6 +249,7 @@ export function useReviews() {
         if (latestProductIdRef.current === productId) {
           setReviews(formattedReviews);
           setErroDaListagemProduto(null);
+          setProdutoRespondido(productId);
         }
         updateReviewsCacheSeMesmaGeracao(productId, formattedReviews, geracao);
         // A lista já chegou: o "Carregando" não espera a leitura dos votos.
@@ -435,9 +444,19 @@ export function useReviews() {
         return false;
       votosEmVooRef.current.add(chave);
       try {
-        const { error } = await supabase.rpc("increment_helpful" as any, {
-          review_id: reviewId,
-        });
+        // Rede "pendurada" conecta e não responde: sem prazo o botão Útil
+        // ficava travado para sempre. Estourou = a espera da tela acaba, o
+        // servidor pode ter gravado; repetir o toque é seguro (a RPC aceita
+        // voto repetido sem somar) e o contador só muda pela releitura.
+        const { error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase.rpc("increment_helpful" as any, {
+              review_id: reviewId,
+            }),
+          ),
+          15000,
+          erroDeConsultaSemResposta,
+        );
         if (!atual()) return false;
         if (error) throw error;
         setVotosUteis((atuais) =>
@@ -447,11 +466,19 @@ export function useReviews() {
         // Sucesso void também significa "já votou". Persistir local + 1
         // inventava um voto; o contador confirmado vem sempre do servidor.
         try {
-          const { data, error: erroDaReleitura } = await supabase
-            .from("reviews")
-            .select("helpful")
-            .eq("id", reviewId)
-            .single();
+          // Sem prazo, a releitura segurava a espera do card mesmo com o voto
+          // já gravado. Estourou cai no catch abaixo: o voto vale.
+          const { data, error: erroDaReleitura } = await aguardarComPrazo(
+            Promise.resolve(
+              supabase
+                .from("reviews")
+                .select("helpful")
+                .eq("id", reviewId)
+                .single(),
+            ),
+            15000,
+            erroDeConsultaSemResposta,
+          );
           if (!atual()) return false;
           if (erroDaReleitura) throw erroDaReleitura;
           if (!data) throw new Error("Avaliação indisponível na releitura.");
@@ -475,7 +502,11 @@ export function useReviews() {
       } catch (error) {
         if (!atual()) return false;
         console.error("Error marking helpful:", error);
-        toast.error("Erro ao marcar como útil.");
+        if (ehConsultaSemResposta(error)) {
+          toast.error("Não deu para confirmar seu voto. Tente de novo.");
+        } else {
+          toast.error("Erro ao marcar como útil.");
+        }
         return false;
       } finally {
         votosEmVooRef.current.delete(chave);
@@ -491,8 +522,9 @@ export function useReviews() {
       filters?: {
         rating?: number | "all";
         search?: string;
-        // "pendente" = só a fila de moderação (20261399700000); "todas" ou ausente = sem filtro de situação.
-        status?: "todas" | "pendente";
+        // "pendente" = só a fila de moderação (20261399700000); "sem_resposta" = só as sem resposta da loja
+        // (20261399996000); "todas" ou ausente = sem filtro de situação.
+        status?: "todas" | "pendente" | "sem_resposta";
         silent?: boolean;
       },
     ) => {
@@ -512,22 +544,29 @@ export function useReviews() {
 
         // High Optimization: If Admin, run single unified RPC on Supabase
         if (isAdmin) {
-          const { data, error } = await (supabase.rpc as any)(
-            "get_admin_reviews_paged",
-            {
-              p_search: filters?.search || "",
-              p_rating:
-                filters?.rating !== undefined
-                  ? filters.rating.toString()
-                  : "all",
-              p_page: page,
-              p_page_size: pageSize,
-              // Só manda p_status com o filtro de moderação LIGADO: a lista sem filtro segue chamando com os 4
-              // parâmetros de sempre, então a loja que ainda não recebeu a migration 20261399700000 continua abrindo.
-              ...(filters?.status === "pendente"
-                ? { p_status: "pendente" }
-                : {}),
-            },
+          // Prazo (13/11/2026): rede que conecta e não responde deixava o
+          // `loading` ligado para sempre. Estourou = cai no `catch` abaixo
+          // (erro + "Tentar de novo"); só encerra a ESPERA, a leitura não grava.
+          const { data, error } = await aguardarComPrazo(
+            Promise.resolve(
+              (supabase.rpc as any)("get_admin_reviews_paged", {
+                p_search: filters?.search || "",
+                p_rating:
+                  filters?.rating !== undefined
+                    ? filters.rating.toString()
+                    : "all",
+                p_page: page,
+                p_page_size: pageSize,
+                // Só manda p_status com um filtro de situação LIGADO: a lista sem filtro segue chamando com os 4
+                // parâmetros de sempre, então a loja que ainda não recebeu a migration 20261399700000 continua abrindo.
+                ...(filters?.status === "pendente" ||
+                filters?.status === "sem_resposta"
+                  ? { p_status: filters.status }
+                  : {}),
+              }),
+            ) as Promise<{ data: unknown; error: unknown }>,
+            PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+            erroDeConsultaSemResposta,
           );
 
           if (rodada !== rodadaAdminRef.current) return;
@@ -840,6 +879,16 @@ export function useReviews() {
           return false;
         }
 
+        // A resposta vira texto público: o teto vale aqui também, porque o
+        // `maxLength` do campo não segura texto colado. Recusa sem chamar o
+        // servidor; o problema é o texto, não a rede.
+        if (reply.length > TETO_DA_RESPOSTA_DA_LOJA) {
+          toast.error(
+            `A resposta passou de ${TETO_DA_RESPOSTA_DA_LOJA} caracteres. Encurte o texto e envie de novo.`,
+          );
+          return false;
+        }
+
         // 1. Execute Atomic Reply & Log via RPC
         const { error } = await aguardarComPrazo(
           Promise.resolve(
@@ -985,9 +1034,13 @@ export function useReviews() {
         );
         if (bc) {
           listener = (event: MessageEvent) => {
+            // Sem produto = painel (todas as avaliações): aceita o aviso de
+            // QUALQUER produto, porque o líder pode ser a aba de um produto e
+            // o aviso dele carrega só o id desse produto. Com produto, só o
+            // aviso do próprio produto acorda a página.
             if (
               event.data?.type === "reviews_change" &&
-              event.data?.productId === productId
+              (!productId || event.data?.productId === productId)
             ) {
               console.log(
                 "[Realtime-Reviews-Secondary] Received change signal from Leader tab",
@@ -1030,6 +1083,7 @@ export function useReviews() {
     loading,
     erroDaListagemAdmin,
     erroDaListagemProduto,
+    produtoRespondido,
     getReviewsByProduct,
     addReview,
     markHelpful,

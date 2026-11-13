@@ -1,4 +1,162 @@
 {
+  "1.5.182": {
+    "titulo": "Lucro por produto que fecha com o Financeiro, balcão sem texto técnico e painel que abre com o armazenamento bloqueado",
+    "novidades": [
+      "Balcão: ao bipar um código que não está cadastrado e tocar em \"Cadastrar produto\", o formulário já abre com o \"Código de barras\" preenchido."
+    ],
+    "melhorias": [
+      "Painel, Início: o lucro de cada produto no ranking e no gráfico diário agora fecha com o Financeiro, pedido a pedido: conta o que foi pago pela peça (já com cupom), tira todo o dinheiro devolvido (devolução, estorno ou devolução pelo site do Mercado Pago) e o custo das peças que não voltaram para a prateleira. Conta no dia da venda e sem frete, por isso o total não é o mesmo do Financeiro do mês. Faturamento e número de pedidos não mudam.",
+      "Painel, Avisos: ao tocar em \"devolução esperando sua resposta\", a tela Devoluções abre em \"Solicitadas\" e sem a busca antiga, mostrando a devolução que o aviso contou.",
+      "Cliente, Novo endereço: o campo \"Quem vai receber\" já vem com o nome do cadastro."
+    ],
+    "correcoes": [
+      "Painel, Início: o item marcado \"Não veio\" fica com a cliente no ranking de lucro: a venda vale e o dinheiro devolvido por ele sai do lucro do produto, em vez de o item aparecer como peça perdida sem ter vindo.",
+      "Painel, Balcão e Produtos: o painel, o balcão, o cadastro de produto e o editor de banners abrem e salvam mesmo com o navegador bloqueando o armazenamento do site.",
+      "Balcão: ao registrar ou anular uma venda, a lojista não vê mais texto técnico; quando a conexão cai ou o tempo estoura, a tela manda conferir a venda em Pedidos antes de tentar de novo.",
+      "Painel, Cupons: escolher \"Clientes escolhidos\" (ou \"Todos os clientes\") antes de a leitura do cupom terminar vale ao salvar; antes o cupom podia seguir aberto a todos mesmo com a tela dizendo \"Cupom atualizado\".",
+      "Painel, Produtos: trocar tipo e valor de uma variação ao mesmo tempo não cria mais duas variações iguais, e a janela de variação com algo digitado segura a atualização do app em vez de apagar o que foi escrito.",
+      "Painel, Devoluções: abrir o pedido a partir de uma devolução com texto escrito pergunta uma vez só se quer descartar as alterações, e a data \"Solicitada em\" mostra o dia de Brasília.",
+      "Vitrine: um produto que esgota enquanto a loja ainda lê o catálogo não volta a aparecer disponível para a cliente."
+    ]
+  },
+  "1.5.181": {
+    "titulo": "Loja que abre com o armazenamento bloqueado, devolução do item que não veio e clientes sem duplicar",
+    "novidades": [],
+    "melhorias": [
+      "Painel, Pedidos: com a ficha do mesmo pedido aberta em dois aparelhos, a etiqueta gerada em um aparece no outro sozinha (\"Gerar etiqueta\" some e \"Abrir etiqueta\" aparece), sem piscar e sem perder o que estava digitado.",
+      "Painel, Início: a venda confirmada enquanto o \"Ao vivo\" ainda estava conectando aparece sozinha, sem esperar outro evento.",
+      "Painel, Virada do dia: com a tela aberta na meia-noite (horário de Brasília), o gráfico de 30 dias do CRM, o Financeiro, o sino e os Avisos, as Campanhas, os Clientes, os Cupons e os Banners passam a mostrar sozinhos o dia novo.",
+      "Checkout: o foco do teclado e do leitor de tela vai para o título da tela \"Novo/Editar endereço\" ao abrir e volta ao botão \"Novo\" ao sair.",
+      "Carrinho e produto: o aviso \"Produto removido do carrinho\" com Desfazer não some enquanto o foco ou o mouse estão nele, cancelar \"Esvaziar carrinho\" devolve o foco ao botão que abriu a caixa, e abrir um produto relacionado leva o foco ao conteúdo do produto novo."
+    ],
+    "correcoes": [
+      "Loja e Checkout: com o navegador bloqueando o armazenamento (\"Bloquear todos os cookies\", certos modos privados), a loja e o checkout abrem normalmente em vez de tela em branco; só não lembram o CEP nem o rascunho.",
+      "Devolução: o item que a lojista marcou \"Não veio\" pode ser pedido de novo dentro do prazo original, em vez de a cliente ler \"Todos os itens deste pedido já foram devolvidos\"; a lojista vê o aviso \"Este item já foi pedido antes e não veio\" e continua aprovando tudo.",
+      "Painel, Clientes e CRM: quem tem conta e uma venda avulsa não paga com o mesmo WhatsApp aparece em um grupo só, e quem tem dois endereços principais não tem as compras somadas duas vezes na lista de Clientes e no ranking.",
+      "Painel, Pedidos: um pedido finalizado em outro aparelho não volta para \"Em Trânsito\" ao tocar em Avançar com a tela velha, e o total e o \"Próximo\" acompanham o filtro quando um pedido sai do recorte.",
+      "Painel, Produtos: \"Repor em Produtos\" abre sempre na página 1, sem busca nem categoria antigas, e mostra todos os produtos que o cartão anunciava.",
+      "Checkout: colar um CEP com 9 dígitos por cima de um CEP já buscado mostra o endereço do CEP novo, em vez de manter a rua e o bairro do antigo.",
+      "Avisos (push): um aviso atrasado (\"Saiu para entrega\") não troca o mais novo (\"Entregue\"), e desligar os avisos em uma aba não é desfeito por uma aba antiga."
+    ]
+  },
+  "1.5.180": {
+    "titulo": "Balcão que não esconde a dúvida da venda, Ajustes que descarta de verdade e busca do topo com a foto certa",
+    "novidades": [],
+    "melhorias": [
+      "Loja, Busca do topo: a sugestão de produto mostra a foto real mesmo em cadastros antigos com um marcador \"Sem foto\" na frente, e tocar numa sugestão logo depois de digitar deixa o campo e a lista concordando.",
+      "Painel, Pedidos: a bolinha de pedidos novos acende assim que a conexão em tempo real confirma, mesmo se um pedido entrou enquanto ela abria.",
+      "Painel, Ajustes: confirmar \"Descartar e Sair\" numa tela de Ajustes mexida devolve o valor salvo e a tela deixa de pedir para salvar (os grupos voltam fechados)."
+    ],
+    "correcoes": [
+      "Painel, Balcão: se a resposta de uma venda se perde e a nova tentativa falha por outro motivo, a tela continua dizendo que não sabe se a venda foi registrada, em vez de afirmar que nada foi gravado; depois de recarregar, o Cancelar e o \"Começar uma venda nova\" mandam conferir em Pedidos.",
+      "Painel, Balcão: a busca manual enxerga o estoque reposto em outro aparelho, e a segunda unidade entra na venda.",
+      "Painel, Avaliações: excluir a única avaliação da 2ª página enquanto se troca o filtro deixa a lista na página 1, em vez de uma página inválida.",
+      "Painel, Produtos: se a exclusão de um produto falha depois de trocar de categoria, a lista da categoria nova continua na tela."
+    ]
+  },
+  "1.5.179": {
+    "titulo": "Pagamento por PIX que não se perde ao recarregar, painel que não desfaz o trabalho de outro aparelho e cupom que não vira ilimitado por engano",
+    "novidades": [
+      "Painel, Cupons: um número digitado pela metade (como \"1e\") em Valor, Mínimo de compra ou Limite de uso não é mais salvo como zero; o salvar para e avisa no campo.",
+      "Loja, Atalhos: o atalho Carrinho ou Favoritos do ícone do app instalado leva direto à tela certa, mesmo com o app já aberto."
+    ],
+    "melhorias": [
+      "Painel, Relatórios: o selo \"vs. 30 dias antes\" concorda com o gráfico e só compara dias fechados, e o valor médio por pedido fecha ao centavo.",
+      "Painel, Produtos: restaurar um rascunho não apaga uma variação que outro aparelho alterou, uma variação excluída que outro aparelho mexeu volta para a lista, e excluir variação confere a versão do produto.",
+      "Painel, Minha loja: salvar os dados da empresa grava só o que mudou, e um CEP novo cuja busca falhou não mistura o endereço.",
+      "Painel, Pedidos e avisos: a busca de pedidos acompanha o rastreio que muda, a contagem de aparelhos inscritos e a lista de avisos não ficam velhas com a tela aberta, e imprimir o pedido não espera para sempre.",
+      "Painel, Categorias e banners: a categoria recém-criada não some da lista, uma criação sem resposta relê o servidor, e excluir um banner não desfaz a troca de ordem feita logo depois.",
+      "Loja, Pedido e endereços: a devolução aprovada aparece antes do aviso sumir, editar um endereço com a tela velha não desfaz a correção de outro aparelho, e a data da compra usa o dia de Brasília.",
+      "Loja, Banner e avaliações: o banner ao vivo não volta à versão antiga e o catálogo e a ficha pintam as mesmas estrelas.",
+      "Painel, Avaliações: a fila de moderação não fica pendurada.",
+      "Loja, Banner: tocar em \"Toque para tentar de novo\" na foto do banner recarrega a foto em vez de abrir o link do banner.",
+      "Loja, Privacidade: o detalhe de um pedido consultado sem conta sai da tela depois de 1 hora de segurança e a cópia guardada no aparelho é apagada.",
+      "Painel, Pedidos: o total \"X–Y de Z\" da lista não fica uma página a menos quando pedidos novos entram durante a leitura."
+    ],
+    "correcoes": [
+      "Loja, Checkout: um PIX pago depois do vencimento volta ao aviso ao recarregar a página, e o vencimento ao vivo tira o QR vencido.",
+      "Loja, Carrinho: reabrir o app não devolve o produto que outro aparelho tirou.",
+      "Loja, Minha conta: conferir o perfil depois de salvar não apaga o que a cliente digitou.",
+      "Loja, Avisos: abrir o sino no meio de \"Quero Receber!\" não desliga o aviso recém-ligado.",
+      "Painel, Imprimir pedido: o recibo traz o nome corrigido da variação depois de 60 segundos.",
+      "Loja, Minha conta: o CPF cadastrado não aparece vazio quando só a consulta dele falha (o formulário trava com \"Tentar de novo\"), e uma resposta antiga do perfil não sobrescreve a nova."
+    ]
+  },
+  "1.5.178": {
+    "titulo": "Painel que não desfaz o que a lojista acabou de fazer, loja que abre o app guardado com rede ruim e devolução que não paga duas vezes",
+    "novidades": [
+      "Painel, Devoluções: tentar de novo numa devolução que falhou não paga duas vezes, nem com o painel aberto em duas abas.",
+      "Loja, Avisos: desligar os avisos neste aparelho vale para todas as telas e não religa sozinho; se o servidor não confirmar, a tela mostra o estado real."
+    ],
+    "melhorias": [
+      "Painel, Produtos, Pedidos e Recebimento: uma resposta lenta da internet que chega atrasada não desfaz mais pausar produto, avançar o pedido nem marcar como recebido.",
+      "Painel, Etiqueta de envio: sem resposta da rede, a tela não prende mais em \"Gerando…\", não afirma que comprou nem que falhou e relê o pedido; \"Atualizar rastreio\" também solta o botão.",
+      "Painel, CRM: a devolução total aparece como 100%, a lista de clientes atualiza na virada do dia e o botão Sincronizar também atualiza as visitas do funil.",
+      "Painel: avisar um grupo de clientes e apagar uma venda do balcão agora pedem confirmação.",
+      "Painel: os botões Avançar e Recebi (tema confortável), Salvar nome e o ✓ da cor preta (tema claro) ficam legíveis.",
+      "Loja: com rede que conecta e não responde, a loja abre o app guardado no aparelho em vez de ficar parada; uma consulta pendurada não segura mais a atualização de preços, e os favoritos são relidos quando a internet volta."
+    ],
+    "correcoes": [
+      "Loja, Pedido: num pedido pago online, cancelar manda a etapa que a cliente viu, então não cancela um pedido que a loja já enviou; uma devolução não prende mais um item que sumiu.",
+      "Loja, Produto: se a lojista pausa o produto, a ficha aberta mostra produto indisponível e trava a compra ao voltar para ela; a foto da cor única abre na foto da cor; e a contagem de opiniões acompanha a consulta.",
+      "Loja, Minha conta: se o e-mail da sessão mudar enquanto a cliente digita, o que ela escreveu não é apagado.",
+      "Loja, Cartão: um e-mail muito longo ou malformado não trava mais a entrada do cartão.",
+      "Painel, Produtos: excluir sem permissão não diz que removeu, e salvar não grava em outra conta.",
+      "Painel, Minha loja: salvar só o endereço não apaga a descrição gravada em outro aparelho."
+    ]
+  },
+  "1.5.177": {
+    "titulo": "Telas que não ficam carregando para sempre, caixa que não troca o sinal do valor e endereço que abre no lugar certo",
+    "novidades": [
+      "Loja, Endereço: o link de editar um endereço abre o endereço certo, inclusive em outra aba.",
+      "Painel, Caixa e Financeiro: o valor digitado com sinal de menos não vira positivo, e o saldo desatualizado ganha um aviso."
+    ],
+    "melhorias": [
+      "Painel e Loja: avaliações, perguntas, ficha do cliente e busca do balcão avisam e deixam tentar de novo quando a internet pendura; a faixa de banners da página inicial não fica em esqueleto para sempre.",
+      "Painel, Caixa: a sangria confere o saldo de agora, e o aviso de que passou do esperado não bloqueia o botão.",
+      "Painel, Financeiro: o gráfico soma só as contas ativas.",
+      "Painel, CRM: o comprador com e sem o 55 do telefone não aparece duas vezes.",
+      "Loja, Carrinho: o leitor de tela anuncia o novo total quando a quantidade muda."
+    ],
+    "correcoes": [
+      "Loja, Checkout: não dá para trocar entrega por retirada (ou o contrário) enquanto o pedido está sendo enviado, e o pedido não sai com o frete da escolha antiga.",
+      "Loja, Endereço: trocar o CEP com a consulta fora do ar não salva endereço misturado.",
+      "Loja, Busca: uma busca nova vinda da barra do topo não herda a categoria escolhida antes.",
+      "Loja, Pedido por código: a consulta que volta depois de outra conta entrar no aparelho não grava o pedido da pessoa anterior.",
+      "Loja: um dado guardado no aparelho com formato ruim não derruba mais a loja nem a página do produto.",
+      "Painel, Minha loja: não salva documento cortado nem CEP que não existe.",
+      "Painel, Avaliações: o aviso de avaliação nova vindo da aba do produto chega ao painel.",
+      "Painel, Produtos: um preço muito alto não invade a coluna de estoque no celular."
+    ]
+  },
+  "1.5.176": {
+    "titulo": "Balcão com troco na tela, frete que chama a loja no WhatsApp e telas do painel que não travam mais",
+    "novidades": [
+      "Balcão: o troco aparece na tela quando o pagamento é em dinheiro.",
+      "Painel, Financeiro: o resultado com custo estimado leva direto ao cadastro de custos.",
+      "Loja, Frete: sem opção de entrega, a cliente chama a loja no WhatsApp, se a loja tiver o número cadastrado."
+    ],
+    "melhorias": [
+      "Painel, Relatórios: o ranking de produtos que mais dão lucro desconta devolução e estorno.",
+      "Painel: as listas de produtos, pedidos e cancelados não repetem nem escondem ninguém entre as páginas.",
+      "Painel, Frete e Transportadoras: o frete grátis e o desconto em R$ entendem \"1.234,50\", e o teste mostra mensagem simples.",
+      "Painel e Loja: o Voltar do celular fecha filtros e perguntas abertas, sem sair da tela."
+    ],
+    "correcoes": [
+      "Painel e Balcão, Cupom: a validade vai até 23:59 de Brasília e o recibo usa o horário de Brasília; na Loja, a falha de conexão no cupom diz o que fazer.",
+      "Loja, Checkout: o endereço novo não perde o que a cliente digitou, nome comprido não estoura o cartão, e o foco e o toque do frete ficam mais fáceis.",
+      "Loja, Vitrine: ofertas escolhidas à mão seguem a ordem da lojista.",
+      "Loja, Produto: escolher só parte da variação não mostra preço que ninguém paga.",
+      "Loja, Busca: a busca sem resultado é anunciada para quem usa leitor de tela.",
+      "Loja e Painel: se a leitura do carrinho salvo falha, não diz que está vazio; o catálogo velho se atualiza quando a rede volta em até um minuto; o voto Útil não trava com conexão pendurada.",
+      "Painel, Pedidos: pedido pago não fica aguardando, pedido aberto por link não carrega para sempre e a planilha separa retirada, entrega própria e envio.",
+      "Painel, Produtos: excluir produto não prende a lista.",
+      "Loja, Devolução: as fotos respeitam o limite de 6 e Cancelar só aparece quando vale.",
+      "Painel, Devolução: o rastreio acompanha a etiqueta.",
+      "Painel: a fila de privacidade, a política de devolução e o ajuste de foto não ficam mudos nem carregando para sempre.",
+      "Balcão e Painel: o primeiro toque no cliente da lista vincula a pessoa, o WhatsApp da loja recusa DDD que não existe e renomear categoria do sistema no financeiro funciona."
+    ]
+  },
   "1.5.175": {
     "titulo": "Enter salva no cadastro financeiro e de categoria, Voltar do celular fecha só a folha da vitrine e retirada termina em Retirado",
     "novidades": [],

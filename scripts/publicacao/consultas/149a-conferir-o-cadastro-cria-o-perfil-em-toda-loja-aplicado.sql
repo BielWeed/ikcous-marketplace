@@ -1,6 +1,6 @@
--- 129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado: DEPOIS da 20261399940000 (o gatilho on_auth_user_created de auth.users, que cria o perfil no cadastro, existe, esta ligado e e' o desenhado).
+-- 149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado: DEPOIS da 20261399940000 (o gatilho on_auth_user_created de auth.users, que cria o perfil no cadastro, existe, esta ligado e e' o desenhado).
 -- SO LEITURA, rol fechado de 6 linhas. Nao le nome, telefone, CPF nem e-mail: so catalogo e uma CONTAGEM (a ultima linha conta usuario de cliente sem perfil, sem devolver quem e').
--- ATENCAO: a IKCOUS e a Savy JA TEM o gatilho (a Savy ganhou a mao em 07/11/2026), entao nas duas a 129a sai POSITIVA ANTES do apply; so uma loja futura, clonada do baseline, a teria NEGATIVA
+-- ATENCAO: a IKCOUS e a Savy JA TEM o gatilho (a Savy ganhou a mao em 07/11/2026), entao nas duas a 149a sai POSITIVA ANTES do apply; so uma loja futura, clonada do baseline, a teria NEGATIVA
 -- antes ("nao" nas linhas do gatilho, nunca erro). Nas duas lojas de hoje o apply e' no-op idempotente que grava o ledger (o portao PARA ate o dono decidir: sem backfillLedger).
 -- O gatilho e' comparado pela ESTRUTURA do catalogo (funcao, momento, por linha, sem WHEN, sem lista de colunas), nao pelo texto de pg_get_triggerdef, que muda com o search_path da sessao.
 WITH itens(item, esperado, vivo) AS (

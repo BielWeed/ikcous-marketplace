@@ -87,10 +87,11 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
     if (email === anterior.email) setEmail(baseEmail);
   }, [baseRazao, baseDocumento, baseEmail, razao, documento, email]);
 
-  const alterado =
-    semEspacoSobrando(razao) !== semEspacoSobrando(baseRazao) ||
-    soAlfanumerico(documento) !== soAlfanumerico(baseDocumento) ||
-    email.trim() !== baseEmail.trim();
+  const razaoMudou = semEspacoSobrando(razao) !== semEspacoSobrando(baseRazao);
+  const documentoMudou =
+    soAlfanumerico(documento) !== soAlfanumerico(baseDocumento);
+  const emailMudou = email.trim() !== baseEmail.trim();
+  const alterado = razaoMudou || documentoMudou || emailMudou;
 
   // O sinal que liga a guarda do App: com alteração não salva (ou salvando) o
   // App sabe que há trabalho em aberto antes de a lojista sair da tela.
@@ -136,14 +137,24 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
       // O toast de erro sai de dentro do `updateConfig`; aqui só não se segue em
       // frente. `silentSuccess` cala só o "Configurações salvas" genérico: sai
       // um único aviso, o "Dados da empresa salvos" daqui.
-      const salvou = await updateConfig(conferido.valores, {
-        silentSuccess: true,
-      });
+      // Só vai o que a lojista alterou nesta tela: campo intocado carrega a
+      // cópia que a tela abriu, e outro aparelho pode já ter gravado coisa
+      // mais nova (o e-mail recém-cadastrado não pode ser apagado por quem só
+      // mexeu na razão social).
+      const { valores } = conferido;
+      const pacote: { -readonly [K in keyof typeof valores]?: string | null } =
+        {};
+      if (razaoMudou) pacote.storeLegalName = valores.storeLegalName;
+      if (documentoMudou)
+        pacote.storeLegalDocument = valores.storeLegalDocument;
+      if (emailMudou) pacote.storeSupportEmail = valores.storeSupportEmail;
+      const salvou = await updateConfig(pacote, { silentSuccess: true });
       if (!salvou) return false;
       // Mostra o que ficou gravado (documento com máscara, espaços aparados).
-      setRazao(conferido.valores.storeLegalName ?? "");
-      setDocumento(formatarDocumento(conferido.valores.storeLegalDocument));
-      setEmail(conferido.valores.storeSupportEmail ?? "");
+      if (razaoMudou) setRazao(valores.storeLegalName ?? "");
+      if (documentoMudou)
+        setDocumento(formatarDocumento(valores.storeLegalDocument));
+      if (emailMudou) setEmail(valores.storeSupportEmail ?? "");
       toast.success("Dados da empresa salvos");
       return true;
     } catch (erro) {
@@ -209,7 +220,6 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
           autoComplete="off"
           autoCapitalize="characters"
           spellCheck={false}
-          maxLength={18}
           value={documento}
           disabled={bloqueado}
           onChange={(e) => {
@@ -217,7 +227,9 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
             if (erros.documento) setErros({ ...erros, documento: undefined });
           }}
           // A máscara entra ao sair do campo: assim ela não pula o cursor
-          // enquanto a lojista digita.
+          // enquanto a lojista digita. Sem `maxLength` de propósito: o navegador
+          // cortaria o texto colado ANTES da conferência (o último caractere
+          // sumia em silêncio); quem recusa documento grande é o salvar.
           onBlur={() => setDocumento(formatarDocumento(documento))}
           placeholder="Só os números (ou letras do CNPJ novo)"
           aria-invalid={erros.documento ? true : undefined}

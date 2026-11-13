@@ -147,6 +147,23 @@ const NOMES = [
   // 3992, get_admin_orders_paged o da 3999 e get_admin_orders_cancelados_recentes o da 380: as CADEIAS 99 -> 213 -> 381 -> 385 -> 3992 -> 3998, 99 -> 387 -> 3999 -> 3998 e 99 -> 380 -> 3998; o
   // `hashVigente` de cada par e o `hashDesta` da anterior). Tres entradas: o rollback-manual dela desfaz as tres de uma vez. Os rollbacks da 3992, da 3999 e da 380 recusam com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
   "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql",
+  // O grafico do Financeiro soma so as contas ativas: fin_resumo sucede o corpo da 3993 (a CADEIA 99 -> 3993 -> 39985: o `hashVigente` da 39985 e o `hashDesta` da 3993). O rollback da 3993 recusa
+  // com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261399985000_o_grafico_do_financeiro_soma_so_as_contas_ativas.sql",
+  // O item que a lojista marcou "Nao veio" pode ser devolvido de novo: UMA migration, TRES funcoes (devolucao_elegibilidade e devolucao_detalhe sucedem os corpos
+  // da 99, solicitar_devolucao o da 175; as duas primeiras sao das 42). O `hashVigente` de cada uma e o corpo da 99 (da 175 na solicitacao); o rollback-manual dela
+  // desfaz as tres de uma vez e o da 99 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql",
+  // O CRM e a lista de clientes nao contam a mesma pessoa duas vezes: UMA migration, DUAS funcoes. get_admin_customers_paged sucede o corpo da 392 (a
+  // CADEIA 99 -> 230 -> 392 -> 3993: o `hashVigente` da 3993 e o `hashDesta` da 392); crm__nunca_comprou nao e uma das 42 (vem da 183) mas entra porque o
+  // rollback-manual dela desfaz as duas de uma vez. O rollback da 392 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql",
+  // O item "Nao veio" fica com a cliente no ranking de lucro: get_admin_analytics_v2 sucede o corpo da 3997 (a CADEIA 99 -> 214 -> 234 -> 242 -> 245 -> 250 -> 251 -> 3997 -> 3994:
+  // o `hashVigente` da 3994 e o `hashDesta` da 3997). O rollback da 3997 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql",
+  // O lucro do ranking casa com o Financeiro, pedido a pedido: get_admin_analytics_v2 sucede o corpo da 3994 (a CADEIA 99 -> 214 -> 234 -> 242 -> 245 -> 250 -> 251 -> 3997 -> 3994 -> 3995:
+  // o `hashVigente` da 3995 e o `hashDesta` da 3994). O rollback da 3994 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).
@@ -164,6 +181,11 @@ const PARES_POR_MIGRATION = new Map([
   [
     "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql",
     3,
+  ],
+  ["20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql", 3],
+  [
+    "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql",
+    2,
   ],
 ]);
 

@@ -115,14 +115,15 @@ describe("rascunho do balcão — incerteza de rede sobrevive ao recarregamento"
     expect(comTexto?.erro).toBeNull();
   });
 
-  it("o campo gravado não vaza para dentro do estado restaurado", () => {
+  it("o fato gravado volta como o booleano do estado (a dúvida pegajosa), e o carimbo não vaza", () => {
     const disco = serializarRascunho(
       cupomComUmItem(MENSAGEM_DE_REDE_DA_VENDA),
       AGORA,
     );
     const lido = lerRascunho(disco, AGORA);
     expect(lido).not.toBeNull();
-    expect("talvezGravada" in (lido as object)).toBe(false);
+    expect(lido?.talvezGravada).toBe(true);
+    expect("salvoEm" in (lido as object)).toBe(false);
   });
 
   it("cupom velho (outro dia) também volta com a incerteza: continua sem jurar 'nada registrado'", () => {

@@ -694,7 +694,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // mutantes, rollback byte a byte, pre/pos-voo, atomicidade e lock_timeout nas duas tabelas).
     "tests/banco/o-nome-do-perfil-tem-teto-no-banco-viva.cjs",
     // 20261399940000: o cadastro cria o perfil em toda loja (gatilho on_auth_user_created so se ausente; reparo de quem ficou sem perfil sem rebaixar admin nem violar os tetos de nome e WhatsApp;
-    // controle sem o gatilho, papel sem EXECUTE, mutantes, rollback, pre-voo, atomicidade e consultas 129a/129b).
+    // controle sem o gatilho, papel sem EXECUTE, mutantes, rollback, pre-voo, atomicidade e consultas 149a/149b).
     "tests/banco/o-cadastro-cria-o-perfil-em-toda-loja-viva.cjs",
     // 20261399200000: a busca de produtos do painel e do balcao acha por palavras (todas as palavras, qualquer ordem, nome/codigo/SKU/nome e valor das variacoes ativas; codigo de barras por
     // igualdade; % _ e barra valem como letras; controle com o corpo da 385; mutantes, rollback byte a byte, pre/pos-voo, atomicidade e consultas 119a/119b).
@@ -858,6 +858,27 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399980000: as listas de Produtos, Pedidos e Cancelados do painel nao repetem nem escondem ninguem entre as paginas (desempate pelo id; controle com os corpos anteriores, mutantes,
     // rollback byte a byte, conexao sem BEGIN, pre/pos-voo, admin e consultas 140a/140b).
     "tests/banco/as-listas-do-painel-nao-repetem-ninguem-viva.cjs",
+    // 20261399985000: o grafico do Financeiro soma so as contas ativas (fin_resumo ganha serie[].variacao_saldo; controle com o corpo anterior, saldo de cada dia = fin__saldos, mutantes,
+    // rollback byte a byte, conexao sem BEGIN, pre/pos-voo, admin e consultas 141a/141b).
+    "tests/banco/o-grafico-do-financeiro-soma-so-as-contas-ativas-viva.cjs",
+    // 20261399990000: o CRM nao duplica o comprador quando o WhatsApp vem com e sem o 55 (crm__vendas: chave e fusao pelo numero sem o 55; controle com o corpo da 20261178000000 na mesma fixture, bordas,
+    // mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 142a/142b).
+    "tests/banco/o-crm-nao-duplica-o-comprador-com-e-sem-55-viva.cjs",
+    // 20261399993000: o CRM e a lista de clientes nao contam a mesma pessoa duas vezes (crm__nunca_comprou sem quem ja esta em "pediu e nao pagou"; get_admin_customers_paged com UM endereco principal;
+    // controle com os corpos da 183 e da 392, 12 mutantes, rollback byte a byte, conexao sem BEGIN e consultas 145a/145b).
+    "tests/banco/o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-viva.cjs",
+    // 20261399994000: o item que a lojista marcou "Nao veio" fica com a cliente no ranking de lucro (get_admin_analytics_v2: topProducts e o lucro do grafico diario; controle com o corpo da 3997 na mesma fixture,
+    // JSON inteiro igual sem item "Nao veio", 10 mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 146a/146b).
+    "tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs",
+    // 20261399995000: o lucro do ranking casa com o Financeiro, pedido a pedido (get_admin_analytics_v2: topProducts e o lucro do grafico diario; cada cenario contra fin_dre, os 6 casos do dono de produto,
+    // controle com o corpo da 3994, JSON inteiro igual sem devolucao nem estorno, 19 mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 147a/147b).
+    "tests/banco/o-lucro-do-ranking-casa-com-o-financeiro-viva.cjs",
+    // 20261399996000: o painel de avaliacoes filtra o que esta sem resposta (get_admin_reviews_paged, a mesma assinatura de 5 argumentos, ganha p_status = 'sem_resposta' = merchant_reply IS NULL, a regra do sino;
+    // controle com o corpo da 3997 na mesma fixture, nula/vazia/so espaco/preenchida, paginacao, mutantes, rollback byte a byte, conexao sem BEGIN e consultas 148a/148b).
+    "tests/banco/o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-viva.cjs",
+    // 20261399991000: repetir a devolucao que falhou nao paga duas vezes (solicitar_estorno_repetindo e order_refund_repeticao; controle com o caminho antigo, duas conexoes reais na mesma falhada, 17 recusas,
+    // permissao, 15 mutantes, reaplicar, pre-voo, rollback que recusa com marca, conexao sem BEGIN e consultas 143a/143b).
+    "tests/banco/repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
     "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
   ];

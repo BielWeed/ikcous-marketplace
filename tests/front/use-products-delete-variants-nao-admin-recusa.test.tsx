@@ -67,7 +67,10 @@ describe("deleteVariants exige administrador antes de acessar o Supabase", () =>
     vi.clearAllMocks();
     h.admin = false;
     h.filtroIds.mockResolvedValue({ data: [], error: null });
-    h.filtroId.mockResolvedValue({ error: null });
+    // `.select("id")` depois do `.eq()`: devolve a linha que o banco apagou.
+    h.filtroId.mockReturnValue({
+      select: vi.fn().mockResolvedValue({ data: [{ id: "v-1" }], error: null }),
+    });
     h.select.mockReturnValue({ in: h.filtroIds });
     h.delete.mockReturnValue({ eq: h.filtroId });
     h.from.mockReturnValue({ select: h.select, delete: h.delete });

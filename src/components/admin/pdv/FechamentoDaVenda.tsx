@@ -20,6 +20,7 @@
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { Button } from "@/components/ui/button";
+import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
   type AcaoDaVenda,
@@ -32,8 +33,14 @@ import {
 import {
   type FalhaDaVendaTraduzida,
   MENSAGEM_DE_REDE_DA_VENDA,
+  efeitoDaFalhaNaDuvida,
   mensagemDaFalhaDaVenda,
 } from "@/lib/erro-da-venda-presencial";
+import {
+  calcularTroco,
+  centavosDoTextoEmReais,
+  sugerirNotas,
+} from "@/lib/troco-do-balcao";
 import {
   AlertTriangle,
   Banknote,
@@ -155,6 +162,22 @@ export function FechamentoDaVenda({
   // "Começar uma venda nova" (chave nova) ou entrar de novo na conta.
   const podeTentarDeNovo = ultimaFalha?.podeTentarDeNovo ?? true;
   const faltaConferir = pedeConferencia && !conferiu;
+
+  // TROCO NA TELA (decisão do sócio, 12/11/2026): com Dinheiro, a lojista pode
+  // digitar quanto a cliente deu e ver o troco. É só conta na tela: o texto
+  // fica em estado local, NADA daqui vai ao rascunho nem ao servidor, e o
+  // botão Registrar não olha para ele. O troco NÃO é guardado: sai do total
+  // vivo a cada render, então mexer no desconto o refaz sozinho.
+  const [recebidoTexto, setRecebidoTexto] = useState("");
+  // Tocar num valor sugerido troca o texto por fora do campo; o campo só relê
+  // a prop quando não está em foco, então a versão na `key` o refaz do zero.
+  const [versaoDoCampoRecebido, setVersaoDoCampoRecebido] = useState(0);
+  const totalEmCentavos = Math.round(total * 100);
+  const mostraTroco = estado.pagamento === "cash" && temValorAPagar;
+  const troco = calcularTroco(
+    totalEmCentavos,
+    centavosDoTextoEmReais(recebidoTexto),
+  );
   const desabilitado =
     !validacao.ok ||
     estado.enviando ||
@@ -171,6 +194,21 @@ export function FechamentoDaVenda({
     });
   }
 
+  // "Começar uma venda nova" só aparece depois de uma falha que repetir não
+  // resolve, e `limparCupom` apaga itens, cliente, pagamento, desconto e o
+  // rascunho salvo, sem desfazer. Um toque acidental perdia a venda inteira:
+  // pergunta antes, dizendo o que se perde. Voltar é o padrão.
+  const { confirmar, dialogo } = useConfirmarAcao();
+  async function aoClicarComecarVendaNova(): Promise<void> {
+    const confirmado = await confirmar({
+      titulo: "Apagar a venda em andamento?",
+      texto: `Isso apaga a venda em andamento: ${estado.itens.length} ${estado.itens.length === 1 ? "item" : "itens"}, R$ ${reais(total)}.${estado.talvezGravada ? " Ela pode já ter sido registrada: confira em Pedidos antes de refazer." : ""} Apagar e começar outra?`,
+      verbo: "Apagar e começar outra",
+      voltar: "Cancelar",
+    });
+    if (confirmado) limparCupom();
+  }
+
   async function aoClicarRegistrar(): Promise<void> {
     if (desabilitado) return;
     despachar({ tipo: "envio_iniciado" });
@@ -182,17 +220,26 @@ export function FechamentoDaVenda({
       // intactos: só o `enviando`/`erro` mudam. `mensagemDaFalhaDaVenda`
       // (C3.4) é o ÚNICO lugar que traduz `erro` para português — nunca
       // `erro.message` cru aqui, que vazaria `DOMException`/stack na tela.
-      const falha = mensagemDaFalhaDaVenda(erro);
+      //
+      // A DÚVIDA de uma resposta perdida antes (`estado.talvezGravada`) não cai
+      // por falha passageira: `efeito` diz à máquina o que esta falha prova.
+      const falha = mensagemDaFalhaDaVenda(erro, estado.talvezGravada);
       setUltimaFalha(falha);
-      despachar({ tipo: "envio_falhou", mensagem: falha.mensagem });
+      despachar({
+        tipo: "envio_falhou",
+        mensagem: falha.mensagem,
+        efeito: efeitoDaFalhaNaDuvida(erro),
+      });
     }
   }
 
   // Falha de rede ou prazo estourado (erro sem código): a resposta pode ter
   // se perdido DEPOIS de o banco gravar. A mesma chave de idempotência faz a
   // nova tentativa devolver o recibo da venda que já entrou, então a frase
-  // não pode afirmar que ela não foi registrada.
-  const talvezTenhaEntrado = estado.erro === MENSAGEM_DE_REDE_DA_VENDA;
+  // não pode afirmar que ela não foi registrada. A dúvida é pegajosa: uma falha
+  // passageira DEPOIS da resposta perdida não a apaga (`estado.talvezGravada`).
+  const talvezTenhaEntrado =
+    estado.talvezGravada || estado.erro === MENSAGEM_DE_REDE_DA_VENDA;
 
   const corpoRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -224,13 +271,14 @@ export function FechamentoDaVenda({
           <Button
             type="button"
             variant="outline"
-            onClick={limparCupom}
+            onClick={aoClicarComecarVendaNova}
             className="pdv-secondary"
           >
             <ShoppingCart aria-hidden="true" className="pdv-purple size-5" />
             Começar uma venda nova
           </Button>
         )}
+        {dialogo}
         {isOffline && (
           <div role="alert" className="pdv-notice">
             <p className="pdv-heading">
@@ -379,6 +427,58 @@ export function FechamentoDaVenda({
             ))}
           </div>
         </div>
+
+        {mostraTroco && (
+          <div className="pdv-card pdv-change">
+            <div className="pdv-change-row">
+              <label htmlFor="dinheiro-recebido" className="pdv-muted">
+                Quanto a cliente deu?
+              </label>
+              <LocalBufferedInput
+                key={versaoDoCampoRecebido}
+                id="dinheiro-recebido"
+                disabled={estado.enviando}
+                value={recebidoTexto}
+                mask="currency"
+                zeroVazio
+                delay={0}
+                placeholder="0,00"
+                aria-describedby="troco-da-venda"
+                onFlush={setRecebidoTexto}
+                className="pdv-field"
+              />
+            </div>
+            <div className="pdv-change-notes">
+              {sugerirNotas(totalEmCentavos).map((centavos) => {
+                const nota = (centavos / 100).toLocaleString("pt-BR");
+                return (
+                  <Button
+                    key={centavos}
+                    type="button"
+                    variant="outline"
+                    disabled={estado.enviando}
+                    aria-label={`A cliente deu R$ ${nota}`}
+                    onClick={() => {
+                      setRecebidoTexto((centavos / 100).toFixed(2));
+                      setVersaoDoCampoRecebido((v) => v + 1);
+                    }}
+                    className="pdv-secondary"
+                  >
+                    R$ {nota}
+                  </Button>
+                );
+              })}
+            </div>
+            <p
+              id="troco-da-venda"
+              aria-live="polite"
+              className={`pdv-change-result${troco?.tipo === "faltam" ? " pdv-red" : ""}`}
+            >
+              {troco &&
+                `${troco.tipo === "faltam" ? "Faltam" : "Troco:"} R$ ${reais(troco.centavos / 100)}`}
+            </p>
+          </div>
+        )}
 
         {pedeConferencia && estado.pagamento !== null && (
           <div className="pdv-stack pdv-conference">

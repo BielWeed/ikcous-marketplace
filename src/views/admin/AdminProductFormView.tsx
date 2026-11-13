@@ -50,7 +50,11 @@ import { useProducts } from "@/hooks/useProducts";
 import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
-import { normalizarCodigoBarras } from "@/lib/codigo-de-barras";
+import {
+  REGEX_CODIGO_BARRAS,
+  normalizarCodigoBarras,
+} from "@/lib/codigo-de-barras";
+import { tomarCodigoParaCadastro } from "@/lib/codigo-para-cadastro";
 import { CLASSE_PRECO_PROMOCIONAL_FUNDO_ESCURO } from "@/lib/cor-do-preco-promocional";
 import { descartarFotosDoProduto } from "@/lib/descartar-fotos-do-produto";
 import {
@@ -69,6 +73,8 @@ import { precoDeVitrine } from "@/lib/preco-de-vitrine";
 import {
   AVISO_ESTOQUE_NAO_RESTAURADO,
   AVISO_PRODUTO_ALTERADO_DEPOIS,
+  apagarRascunhoDoProdutoPelaChave,
+  avisoDeVariacoesAlteradasEmOutroAparelho,
   chaveDoRascunhoDoProduto,
   estoqueDoRascunhoDifereDoBanco,
   lerRascunhoVigenteDoProduto,
@@ -84,6 +90,7 @@ import type { Product, ProductVariant, View } from "@/types";
 import {
   camposQueMudaram,
   fotosAposConflito,
+  variacaoMudou,
   variacoesAposConflito,
   variacoesQueMudaram,
 } from "@/utils/campos-mexidos-do-produto";
@@ -169,8 +176,8 @@ import { toast } from "sonner";
 // §5.6): depois de aparar e remover espaços INTERNOS, só letras, números e
 // hífen, de 4 a 64 caracteres. EAN/UPC/GTIN são dígitos, mas Code 128/39 têm
 // letras — por isso não restringe a dígitos, e não valida dígito
-// verificador (fora do escopo deste lote).
-const REGEX_CODIGO_BARRAS = /^[A-Za-z0-9-]{4,64}$/;
+// verificador (fora do escopo deste lote). A regex mora em
+// `@/lib/codigo-de-barras`: o recado do balcão usa a mesma.
 const MSG_CODIGO_BARRAS_FORMATO_INVALIDO =
   "Só letras, números e hífen, de 4 a 64 caracteres.";
 const MSG_CODIGO_BARRAS_DUPLICADO_NA_TELA =
@@ -408,6 +415,24 @@ const parNovo = (): ParNoForm => {
 /** Pares que vieram de fora (edição de linha gravada) ganham chave de render. */
 const comChaveDeRender = (pares: ParDeAtributo[]): ParNoForm[] =>
   pares.map((par) => ({ ...parNovo(), ...par }));
+
+/**
+ * O que a janela de variação guarda, sem a chave de render dos pares: serve para
+ * saber se a lojista MEXEU na janela desde que ela abriu.
+ */
+const assinaturaDaVariacao = (dados: {
+  pares: ParNoForm[];
+  sku: string;
+  codigoBarras: string;
+  stockIncrement: string;
+  priceOverride: string;
+  active: boolean;
+  imageUrl: string;
+}): string =>
+  JSON.stringify({
+    ...dados,
+    pares: dados.pares.map(({ name, value }) => ({ name, value })),
+  });
 
 interface AdminProductFormViewProps {
   productId?: string;
@@ -750,6 +775,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     // `= []`: consumidor que não expõe a lista (testes de contrato da tela)
     // deixa a checagem de SKU global degenerar para o produto atual.
     products = [],
+    // Quem está na conta AGORA, para quem espera algo no meio do salvar (ver
+    // `handleSubmit`): o `isAdmin` e o `user` que o handler enxerga ficam
+    // presos à renderização em que ele nasceu, e outra aba pode ter trocado de
+    // conta nesse meio-tempo. `= () => undefined`: consumidor que não expõe a
+    // leitura (testes de contrato da tela) fica sem a trava, como antes.
+    idDaContaViva = () => undefined,
   } = useProducts({ autoFetch: false });
 
   // O SKU da variação é UNIQUE na loja INTEIRA, não por produto. A grade gera
@@ -1488,6 +1519,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   }, [productId, fetchProduct, onNavigate]);
   // Draft recovery on mount for new products
   useEffect(() => {
+    // O código que o balcão leu e não achou ("Cadastrar produto" no aviso).
+    // Toda abertura o toma, para um toque antigo não sobrar para a seguinte;
+    // só o produto NOVO sem rascunho o usa (rascunho começado vale mais).
+    const codigoDoBalcao = tomarCodigoParaCadastro();
     if (!productId) {
       const chaveDoRascunho = chaveDoRascunhoDoProduto(userId);
       // Rascunho com mais de 7 dias já sai daqui descartado (vira `null`).
@@ -1572,6 +1607,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         } catch (e) {
           console.error("[AdminProductFormView] Failed to parse draft:", e);
         }
+      } else if (codigoDoBalcao) {
+        setFormData((prev) => ({ ...prev, codigoBarras: codigoDoBalcao }));
       }
       setDraftChecked(true);
     }
@@ -1623,9 +1660,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           // depois de "Restaurar" + "Salvar" (e o estoque gravado seria a soma
           // sem ela). O produto-base do rascunho diz o que foi exclusão DELA
           // (`apagar`) e o que veio de outro aparelho e ela nunca viu
-          // (`manter`: volta ao formulário, nunca é apagada em silêncio).
-          const { apagar: exclusoesDaLojista, manter: criadasEmOutroAparelho } =
-            variacoesExcluidasNoRascunho(parsed, initialData.variants);
+          // (`manter`: volta ao formulário, nunca é apagada em silêncio). A
+          // que ela excluiu e outro aparelho mexeu depois (`alteradas`) também
+          // volta: o salvar confere a versão da abertura, que já inclui a
+          // mudança, e a apagaria sem conflito.
+          const {
+            apagar: exclusoesDaLojista,
+            manter: voltamDoBanco,
+            alteradas: alteradasEmOutroAparelho,
+          } = variacoesExcluidasNoRascunho(parsed, initialData.variants);
           const gradeRestaurada = juntarVariacoesDeOutroAparelho(
             Array.isArray(parsed.variants)
               ? variacoesDoRascunhoComEstoqueDoBanco(
@@ -1633,11 +1676,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   initialData.variants,
                 )
               : initialData.variants,
-            Array.isArray(parsed.variants) ? criadasEmOutroAparelho : [],
+            Array.isArray(parsed.variants) ? voltamDoBanco : [],
           );
           const variacoesRestauradas = gradeRestaurada.variants;
           const gradeMudouPelaBase =
-            exclusoesDaLojista.length > 0 || criadasEmOutroAparelho.length > 0;
+            exclusoesDaLojista.length > 0 || voltamDoBanco.length > 0;
 
           // Only prompt if the draft actually contains modified data compared to DB (initialData)
           const draftFields = {
@@ -1680,7 +1723,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
           const isDraftDifferent = isProductFormDirty(draftFields, initialData);
 
-          if (isDraftDifferent || gradeRestaurada.repetidas) {
+          // A exclusão que não valeu (a variação mudou em outro aparelho) deixa
+          // o formulário igual ao banco, mas o rascunho tem de ser oferecido
+          // para o aviso sair: apagá-lo aqui seria perder a exclusão dela em
+          // silêncio, com a variação seguindo à venda.
+          if (
+            isDraftDifferent ||
+            gradeRestaurada.repetidas ||
+            alteradasEmOutroAparelho.length > 0
+          ) {
             // Grade que só existe neste rascunho (o produto foi criado e as
             // variações não gravaram): o aviso fica até ela decidir.
             const pendente = parsed.variacoesPendentes === true;
@@ -1698,6 +1749,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               if (gradeRestaurada.repetidas) {
                 toast.warning(AVISO_COMBINACAO_JA_CRIADA);
               }
+              const avisoDasAlteradas =
+                avisoDeVariacoesAlteradasEmOutroAparelho(
+                  alteradasEmOutroAparelho,
+                );
+              if (avisoDasAlteradas) toast.warning(avisoDasAlteradas);
               // As que ela excluiu saem do banco quando ela salvar (a RPC só
               // apaga o que vem em `p_apagar`).
               if (exclusoesDaLojista.length > 0) {
@@ -1736,7 +1792,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 estoqueDoRascunhoDiferia
                   ? ` ${AVISO_ESTOQUE_NAO_RESTAURADO}`
                   : ""
-              }${bancoMudou || criadasEmOutroAparelho.length > 0 ? ` ${AVISO_PRODUTO_ALTERADO_DEPOIS}` : ""}`,
+              }${bancoMudou || voltamDoBanco.length > 0 ? ` ${AVISO_PRODUTO_ALTERADO_DEPOIS}` : ""}`,
               action: { label: "Restaurar", onClick: restaurar },
               cancel: {
                 label: "Descartar",
@@ -1793,15 +1849,33 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     [],
   );
 
+  // O que a janela de variação tinha ao ABRIR (nova, herdando o estoque, ou a
+  // linha carregada para edição). Abrir e fechar a janela zera. Sem isto, o que
+  // a lojista digita na janela e ainda não salvou não contava como alteração, e
+  // uma atualização do app podia recarregar a página por cima dele.
+  const [variacaoAoAbrir, setVariacaoAoAbrir] = useState<string | null>(null);
+  useEffect(() => {
+    setVariacaoAoAbrir(
+      showVariantForm ? assinaturaDaVariacao(variantFormData) : null,
+    );
+    // Só a abertura/fechamento da janela tira a foto: o que se digita depois
+    // é justamente o que se compara com ela.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showVariantForm]);
+  const variacaoMexida =
+    showVariantForm &&
+    variacaoAoAbrir !== null &&
+    assinaturaDaVariacao(variantFormData) !== variacaoAoAbrir;
+
   // Prevent leaving with unsaved changes
   useEffect(() => {
     if (!onSetDirty) return;
-    const isDirty = isProductFormDirty(formData, initialData);
+    const isDirty = isProductFormDirty(formData, initialData) || variacaoMexida;
     onSetDirty(isDirty);
     return () => {
       onSetDirty(false);
     };
-  }, [formData, initialData, onSetDirty]);
+  }, [formData, initialData, onSetDirty, variacaoMexida]);
 
   useEffect(() => {
     // Validar SKU
@@ -2195,38 +2269,47 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       if (ofertaDeRascunhoPendente) return;
       const isDirty = isProductFormDirty(formData, initialData);
       const draftKey = chaveDoRascunhoDoProduto(userId, productId);
-      if (isDirty && draftKey) {
-        // Com o carimbo de quando foi guardado: o rascunho vence em 7 dias. Na
-        // edição, com o produto-base: restaurar depois só usa o que ela editou.
-        const gradePendente =
-          gradeDoRascunhoPendenteRef.current &&
-          formData.variants.some((v) => v.id.startsWith("temp-"));
-        localStorage.setItem(
-          draftKey,
-          serializarRascunhoDoProduto({
-            ...formData,
-            ...(productId ? { baseDoRascunho: initialData } : {}),
-            ...(gradePendente ? { variacoesPendentes: true } : {}),
-          }),
-        );
-        gravouRascunhoRef.current = draftKey;
-      } else if (draftKey && gravouRascunhoRef.current === draftKey) {
-        // Voltou a ser igual ao banco: o rascunho que ESTA abertura gravou não
-        // tem mais o que oferecer.
-        gravouRascunhoRef.current = null;
-        if (
-          rascunhoRecuperadoRef.current === draftKey &&
-          localStorage.getItem(draftKey) !== null
-        ) {
-          // ...exceto o recuperado que ainda não foi salvo nem descartado
-          // (salvar e Descartar já apagaram a chave: aí não há o que guardar).
+      // Armazenamento cheio (QuotaExceededError: descrição enorme, fotos em
+      // rascunho) ou bloqueado não pode estourar do temporizador: ela segue
+      // editando, só o rascunho em disco fica para trás — e, sem gravar,
+      // `gravouRascunhoRef` não afirma que gravou. A próxima edição tenta de
+      // novo. Mesmo cuidado de src/hooks/useVendaPresencial.ts.
+      try {
+        if (isDirty && draftKey) {
+          // Com o carimbo de quando foi guardado: o rascunho vence em 7 dias. Na
+          // edição, com o produto-base: restaurar depois só usa o que ela editou.
+          const gradePendente =
+            gradeDoRascunhoPendenteRef.current &&
+            formData.variants.some((v) => v.id.startsWith("temp-"));
           localStorage.setItem(
             draftKey,
-            serializarRascunhoDoProduto({ ...formData }),
+            serializarRascunhoDoProduto({
+              ...formData,
+              ...(productId ? { baseDoRascunho: initialData } : {}),
+              ...(gradePendente ? { variacoesPendentes: true } : {}),
+            }),
           );
-        } else {
-          localStorage.removeItem(draftKey);
+          gravouRascunhoRef.current = draftKey;
+        } else if (draftKey && gravouRascunhoRef.current === draftKey) {
+          // Voltou a ser igual ao banco: o rascunho que ESTA abertura gravou não
+          // tem mais o que oferecer.
+          gravouRascunhoRef.current = null;
+          if (
+            rascunhoRecuperadoRef.current === draftKey &&
+            localStorage.getItem(draftKey) !== null
+          ) {
+            // ...exceto o recuperado que ainda não foi salvo nem descartado
+            // (salvar e Descartar já apagaram a chave: aí não há o que guardar).
+            localStorage.setItem(
+              draftKey,
+              serializarRascunhoDoProduto({ ...formData }),
+            );
+          } else {
+            localStorage.removeItem(draftKey);
+          }
         }
+      } catch (erro) {
+        console.error("Erro ao guardar o rascunho do produto:", erro);
       }
     }, 1000);
 
@@ -2621,12 +2704,25 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     const combinacaoMudou =
       !editingVariant ||
       chaveDaIdentidade(editingVariant) !== chaveDaIdentidade(identidadeNova);
+    // O nome do tipo antigo, para achar as outras opções do grupo quando a
+    // edição o renomeia por inteiro (ver `renomeiaGrupoInteiro`).
+    const chaveDoGrupoAntigo = editingVariant
+      ? chaveDoGrupo(editingVariant.name)
+      : "";
+    // As irmãs são conferidas COMO FICAM: renomear o tipo e o valor juntos
+    // (Cor/P -> Cores/Pequeno) leva o tipo novo às irmãs, e a que já tinha
+    // "Pequeno" viraria gêmea da editada.
+    const comoFicaria = (v: { name: string; value: string }) =>
+      trava.renomeiaGrupoInteiro && chaveDoGrupo(v.name) === chaveDoGrupoAntigo
+        ? { name: nomeComposto, value: v.value }
+        : v;
     if (
       combinacaoMudou &&
       formData.variants.some(
         (v) =>
           v.id !== editingVariant?.id &&
-          chaveDaIdentidade(v) === chaveDaIdentidade(identidadeNova),
+          chaveDaIdentidade(comoFicaria(v)) ===
+            chaveDaIdentidade(identidadeNova),
       )
     ) {
       toast.error("Essa combinação já existe.", {
@@ -2746,11 +2842,6 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       imageUrl: variantFormData.imageUrl || undefined,
     };
 
-    // O nome do tipo antigo, para achar as outras opções do grupo quando a
-    // edição o renomeia por inteiro (ver `renomeiaGrupoInteiro`).
-    const chaveDoGrupoAntigo = editingVariant
-      ? chaveDoGrupo(editingVariant.name)
-      : "";
     const outrasDoGrupo = trava.renomeiaGrupoInteiro
       ? formData.variants.filter(
           (v) =>
@@ -3115,6 +3206,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       return;
     }
     setIsSubmitting(true);
+    // Quem tocou em Salvar. Depois de qualquer espera (a conferência dos
+    // códigos abaixo), só se grava se a conta viva ainda é esta.
+    const contaQueComecouOSalvar = idDaContaViva();
 
     // Ressalva da revisão da C5.2: o salvar ESPERA a checagem de duplicidade.
     // Sem este trecho, um clique durante uma checagem em voo (o blur do campo
@@ -3174,6 +3268,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         ),
       ),
     );
+    // A conta mudou (outra aba entrou em outra conta, ou saiu) enquanto o banco
+    // conferia: o hook gravaria com a sessão de AGORA uma edição que a conta
+    // anterior começou. Nada é gravado; ela confere a conta e salva de novo.
+    if (idDaContaViva() !== contaQueComecouOSalvar) {
+      toast.error(
+        "A conta do painel mudou enquanto você salvava. Nada foi salvo. Confira em qual conta você está e salve de novo.",
+      );
+      setIsSubmitting(false);
+      return;
+    }
     const recusa = mensagens.find((m) => m);
     if (recusa) {
       toast.error(recusa);
@@ -3275,8 +3379,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         const mexeuNaGradeExistente = variantesAMandar.some(
           (v) => !v.id.startsWith("temp-"),
         );
+        // Excluir variação também confere: outro aparelho pode ter ligado a
+        // que esta tela vai apagar, com estoque novo (o gatilho do banco avança
+        // a versão do produto a cada mudança de variação).
+        const excluiuVariacao = deletedVariantIds.length > 0;
         const conferencia =
-          mexeuNoEstoque || mexeuNasFotos || mexeuNaGradeExistente
+          mexeuNoEstoque ||
+          mexeuNasFotos ||
+          mexeuNaGradeExistente ||
+          excluiuVariacao
             ? { baseUpdatedAt: currentProduct?.updatedAt }
             : undefined;
         let naoApagadas: string[] = [];
@@ -3388,7 +3499,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           // espera, com a variação nova ainda como `temp-…` (restaurá-lo
           // inseriria a variação de novo).
           const chaveDoRascunho = chaveDoRascunhoDoProduto(userId, productId);
-          if (chaveDoRascunho) localStorage.removeItem(chaveDoRascunho);
+          if (chaveDoRascunho) {
+            apagarRascunhoDoProdutoPelaChave(chaveDoRascunho);
+          }
           const quais =
             devolvidas.length > 0
               ? devolvidas.map((v) => `${v.name}: ${v.value}`).join(", ")
@@ -3476,7 +3589,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             );
           }
           const chaveDoNovo = chaveDoRascunhoDoProduto(userId);
-          if (chaveDoNovo) localStorage.removeItem(chaveDoNovo);
+          if (chaveDoNovo) apagarRascunhoDoProdutoPelaChave(chaveDoNovo);
           const motivo = criado.variantesNaoSalvas.motivo;
           // Sem resposta da rede o hook já avisou, com a frase certa (não se
           // sabe se as variações entraram: conferir antes de restaurar).
@@ -3505,7 +3618,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       // rascunho de volta ~1s depois.
       setInitialData(formData);
       const chaveParaApagar = chaveDoRascunhoDoProduto(userId, productId);
-      if (chaveParaApagar) localStorage.removeItem(chaveParaApagar);
+      if (chaveParaApagar) apagarRascunhoDoProdutoPelaChave(chaveParaApagar);
 
       // #98 (ADMIN-060): guardado em ref e cancelado no unmount (efeito
       // logo abaixo) — sem isto, sair da tela na janela de "Salvo" ainda
@@ -3520,7 +3633,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       if ((error as { gradeGravada?: boolean })?.gradeGravada) {
         setPrecisaRecarregar(true);
         const chaveDoRascunho = chaveDoRascunhoDoProduto(userId, productId);
-        if (chaveDoRascunho) localStorage.removeItem(chaveDoRascunho);
+        if (chaveDoRascunho) apagarRascunhoDoProdutoPelaChave(chaveDoRascunho);
       }
       const atual = (error as { produtoAtual?: Product })?.produtoAtual;
       if (atual) {
@@ -3553,7 +3666,30 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         // o rascunho gravado a seguir faria Restaurar + Salvar apagá-la
         // (ver `variacoesExcluidasNoRascunho`).
         const idsNoFormulario = new Set(formData.variants.map((v) => v.id));
-        const idsExcluidosAqui = new Set(deletedVariantIds);
+        // A excluída aqui que o outro aparelho MEXEU (ligou, mudou estoque...)
+        // sai da fila e volta à lista com os dados novos: com a base já em
+        // dia, o próximo Salvar a apagaria sem a lojista ter visto a mudança.
+        // A que ninguém mexeu segue na fila (exclusão intencional).
+        const aberturaPorId = new Map(
+          initialData.variants.map((v) => [v.id, v]),
+        );
+        const voltaramDaExclusao = variants.filter((hoje) => {
+          const antes = aberturaPorId.get(hoje.id);
+          return (
+            deletedVariantIds.includes(hoje.id) &&
+            antes !== undefined &&
+            variacaoMudou(hoje, antes)
+          );
+        });
+        const idsQueVoltaram = new Set(voltaramDaExclusao.map((v) => v.id));
+        if (idsQueVoltaram.size > 0) {
+          setDeletedVariantIds((fila) =>
+            fila.filter((id) => !idsQueVoltaram.has(id)),
+          );
+        }
+        const idsExcluidosAqui = new Set(
+          deletedVariantIds.filter((id) => !idsQueVoltaram.has(id)),
+        );
         const criadasEmOutroAparelho = variants.filter(
           (v) => !idsNoFormulario.has(v.id) && !idsExcluidosAqui.has(v.id),
         );
@@ -3577,6 +3713,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         if (gradeRecarregada.repetidas) {
           toast.warning(AVISO_COMBINACAO_JA_CRIADA);
         }
+        const avisoDasVoltadas =
+          avisoDeVariacoesAlteradasEmOutroAparelho(voltaramDaExclusao);
+        if (avisoDasVoltadas) toast.warning(avisoDasVoltadas);
       }
       setIsSubmitting(false);
       console.error("Erro ao salvar produto:", error);

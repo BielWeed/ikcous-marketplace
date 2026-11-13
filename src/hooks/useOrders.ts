@@ -42,6 +42,7 @@ import {
   PRAZO_DA_TRAVA_DA_FILA_MS,
   comTravaEntreAbas,
 } from "@/lib/trava-entre-abas";
+import { normalizeText } from "@/lib/utils";
 import type { DashboardSummary, Order, OrderStatus } from "@/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -1470,19 +1471,24 @@ function mesclarPedidosDaConsulta(
 // pedidos que o realtime inseriu durante a leitura e que a resposta (um
 // retrato anterior a eles) não contém já foram somados ao total na hora da
 // inserção — a contagem velha da resposta não pode apagá-los.
+//
+// Quem conta é o REGISTRO de ids inseridos, NÃO a lista da tela: a lista guarda
+// só uma página (o 13º pedido novo empurra o mais velho para fora), então
+// contar pelos pedidos visíveis perdia tudo o que passasse do tamanho da
+// página — o total encolhia (25 virava 24; com 24 novos, 36 virava 24). O
+// retrato `inseridosNoInicio` separa o que entrou ANTES desta leitura (a
+// resposta já o conta) do que chegou durante ela.
 function contarInseridosNoVoo(
-  atuais: Order[],
   resposta: Order[],
-  idsNoInicio: Set<string>,
+  inseridosNoInicio: Set<string>,
   idsInseridosPeloRealtime: Set<string>,
 ): number {
   const idsDaResposta = new Set(resposta.map((pedido) => pedido.id));
-  return atuais.filter(
-    (pedido) =>
-      !idsNoInicio.has(pedido.id) &&
-      !idsDaResposta.has(pedido.id) &&
-      idsInseridosPeloRealtime.has(pedido.id),
-  ).length;
+  let contados = 0;
+  for (const id of idsInseridosPeloRealtime) {
+    if (!inseridosNoInicio.has(id) && !idsDaResposta.has(id)) contados += 1;
+  }
+  return contados;
 }
 
 /**
@@ -1824,6 +1830,25 @@ export async function desfechoDoReenvio(
   return { ok: false, motivo: "envio_falhou" };
 }
 
+/**
+ * Põe `novo` na lista na posição da data de criação (mais novo primeiro, como
+ * `created_at DESC` da RPC e da consulta da cliente). Sem isto, dois INSERTs
+ * cuja consulta responde fora de ordem davam [A, B] com B mais novo, e o corte
+ * da página (`slice`) podia tirar o mais novo. Empate (ou data ilegível) fica
+ * no topo, como antes: `novo` entra antes do primeiro que NÃO seja
+ * estritamente mais novo que ele.
+ */
+function inserirPedidoPorData(prev: Order[], novo: Order): Order[] {
+  const tNovo = Date.parse(novo.createdAt);
+  if (!Number.isFinite(tNovo)) return [novo, ...prev];
+  const posicao = prev.findIndex((pedido) => {
+    const t = Date.parse(pedido.createdAt);
+    return !Number.isFinite(t) || t <= tNovo;
+  });
+  if (posicao === -1) return [...prev, novo];
+  return [...prev.slice(0, posicao), novo, ...prev.slice(posicao)];
+}
+
 /** O que `handleRealtimeInsert` deve fazer com um pedido novo, no painel. */
 export type DecisaoRealtimeInsertAdmin = "inserir" | "recarregar" | "ignorar";
 
@@ -1934,6 +1959,69 @@ export function decidirRealtimeInsertAdmin(
   if (filtroDePagamentoAtivo || filtroDeCanalAtivo) return "recarregar";
 
   return (page ?? 0) === 0 ? "inserir" : "recarregar";
+}
+
+/** Os campos que a busca do painel olha e que MUDAM depois da criação. */
+type CamposDaBuscaQueMudam = {
+  tracking_code?: string | null;
+  coupon_code?: string | null;
+};
+
+/**
+ * Um UPDATE do realtime pode mudar o que a BUSCA do painel mostra? (achado
+ * de 13/11/2026.) A busca do servidor (`get_admin_orders_paged`) casa o texto
+ * com rastreio e cupom, e os dois são gravados DEPOIS de o pedido existir —
+ * o rastreio é o caso do dia a dia: a lojista o salva na ficha, em outro
+ * aparelho. Sem reler, a lista da tela ficava velha nos dois sentidos: a
+ * busca por um rastreio que ainda não existia seguia vazia, e a busca pelo
+ * rastreio antigo seguia mostrando o pedido depois que ele mudou.
+ *
+ * O `old` do evento só traz a chave primária (RLS ligada), então o "antes" vem
+ * dele só quando o campo está lá; senão, do pedido que a tela já tinha. Pedido
+ * que a tela não tem (e `old` sem o campo) não tem "antes" conhecido: relê se
+ * o valor novo casa com a busca, porque ele pode ter acabado de entrar.
+ *
+ * Relê só quando o campo MUDOU e o texto casa com o valor de antes ou de
+ * depois — mudar um rastreio que não tem a ver com a busca não custa leitura.
+ * A comparação local é sem acento e sem diferença de maiúscula, como a do
+ * banco; só cobre rastreio e cupom. Nome, telefone, número e itens do pedido
+ * não mudam depois da criação (ver `mesclarAtualizacaoRealtime`).
+ */
+export function atualizacaoPodeMudarOResultadoDaBusca(
+  busca: string | undefined,
+  linhaNova: CamposDaBuscaQueMudam,
+  linhaAntiga: CamposDaBuscaQueMudam | null | undefined,
+  pedidoEmMemoria: Pick<Order, "trackingCode" | "couponCode"> | undefined,
+): boolean {
+  const termo = normalizeText(busca);
+  if (!termo) return false;
+  const casa = (valor: string) => normalizeText(valor).includes(termo);
+  const campos: [
+    novo: string | null | undefined,
+    velho: string | null | undefined,
+    memoria: string | undefined,
+  ][] = [
+    [
+      linhaNova.tracking_code,
+      linhaAntiga?.tracking_code,
+      pedidoEmMemoria?.trackingCode,
+    ],
+    [
+      linhaNova.coupon_code,
+      linhaAntiga?.coupon_code,
+      pedidoEmMemoria?.couponCode,
+    ],
+  ];
+  return campos.some(([novo, velho, memoria]) => {
+    // Evento sem o campo não decide nada.
+    if (novo === undefined) return false;
+    const depois = novo ?? "";
+    let antes: string | undefined;
+    if (velho !== undefined) antes = velho ?? "";
+    else if (pedidoEmMemoria) antes = memoria ?? "";
+    if (antes === depois) return false;
+    return casa(depois) || (antes !== undefined && casa(antes));
+  });
 }
 
 /**
@@ -2346,6 +2434,9 @@ export function useOrders(
       recarregarAdminDepoisDoVooRef.current = false;
       const signal = controlador.signal;
       const idsNoInicio = new Set(ordersRef.current.map((pedido) => pedido.id));
+      // Quem o realtime já tinha inserido quando esta leitura saiu: a resposta
+      // o conta; só os que entrarem DEPOIS precisam ser somados ao total.
+      const inseridosNoInicio = new Set(idsInseridosPeloRealtimeRef.current);
 
       try {
         if (!silent) {
@@ -2388,9 +2479,8 @@ export function useOrders(
           const totalCount =
             (Number(data.total_count) || 0) +
             contarInseridosNoVoo(
-              ordersRef.current,
               respostaMapeada,
-              idsNoInicio,
+              inseridosNoInicio,
               idsInseridosPeloRealtimeRef.current,
             );
 
@@ -3037,8 +3127,18 @@ export function useOrders(
   const DEBOUNCE_RECARREGAR_INSERT_MS = 400;
 
   /**
-   * Pedidos da cliente cujo INSERT ainda está consultando o banco (id ->
-   * última linha de UPDATE que chegou nesse meio-tempo, ou `null`). Sem isto o
+   * Geração do que o tempo real JÁ APLICOU por pedido (id -> quantos UPDATEs
+   * não-atrasados chegaram). `updateOrderStatus` anota a geração antes de reler
+   * o status no servidor e, na volta, só pinta o status relido se ela não
+   * andou: a releitura é um retrato anterior a qualquer evento que chegou
+   * enquanto ela estava no ar, e aplicá-la por cima fazia o pedido já
+   * "Finalizado" voltar a "Em Trânsito" na tela (o banco estava certo).
+   */
+  const geracaoDoPedidoNoRealtimeRef = useRef(new Map<string, number>());
+
+  /**
+   * Pedidos (da cliente ou do painel) cujo INSERT ainda está consultando o banco
+   * (id -> última linha de UPDATE que chegou nesse meio-tempo, ou `null`). Sem isto o
    * UPDATE de um pedido AINDA AUSENTE da lista era descartado, e a consulta —
    * um retrato anterior a ele — entrava velha (o PIX confirmado no meio do
    * voo ficava "aguardando"). Entrada nasce no início do INSERT e sai logo
@@ -3081,11 +3181,12 @@ export function useOrders(
         if (!isAdmin && data.user_id !== user?.id) return;
         const newOrderDaConsulta = mapOrderFromDB(data as any);
         // O UPDATE que chegou durante o voo (o pedido ainda não estava na
-        // lista para recebê-lo) vale se for mais novo que a consulta.
-        const newOrder =
-          !isAdmin && updateDoMeioDoVoo
-            ? mesclarAtualizacaoRealtime(newOrderDaConsulta, updateDoMeioDoVoo)
-            : newOrderDaConsulta;
+        // lista para recebê-lo) vale se for mais novo que a consulta. Vale
+        // também no painel, ANTES da decisão abaixo: status/pagamento do
+        // pedido já mesclado é que dizem se ele entra na visão da lojista.
+        const newOrder = updateDoMeioDoVoo
+          ? mesclarAtualizacaoRealtime(newOrderDaConsulta, updateDoMeioDoVoo)
+          : newOrderDaConsulta;
 
         if (isAdmin) {
           // useOrders-1508: NÃO existe mais um único "insere sempre" pra
@@ -3122,7 +3223,7 @@ export function useOrders(
               // que o fetch traz. O estado EM MEMÓRIA continua sendo
               // atualizado; o cache só se renova no fetch, que roda no
               // mount.
-              const lista = [newOrder, ...prev];
+              const lista = inserirPedidoPorData(prev, newOrder);
               return typeof tamanhoDaPagina === "number" && tamanhoDaPagina > 0
                 ? lista.slice(0, tamanhoDaPagina)
                 : lista;
@@ -3165,7 +3266,7 @@ export function useOrders(
         if (data.user_id) consultasDoClienteEmVoo.delete(data.user_id);
         setOrders((prev) => {
           if (prev.some((o) => o.id === newOrder.id)) return prev;
-          return [newOrder, ...prev];
+          return inserirPedidoPorData(prev, newOrder);
         });
         if (!onRealtimeEventRef.current) {
           // Id estável por pedido: o canal é compartilhado entre telas e cada
@@ -3182,6 +3283,23 @@ export function useOrders(
   const handleRealtimeUpdate = useCallback(
     (updatedOrder: any, oldOrder: any) => {
       if (!updatedOrder.id) return;
+      // Mesma regra de `mesclarAtualizacaoRealtime`: versão ESTRITAMENTE mais
+      // velha que a da tela é descartada e não conta como "chegou mais novo".
+      const naTela = ordersRef.current.find(
+        (pedido) => pedido.id === updatedOrder.id,
+      );
+      const tNaTela = Date.parse(naTela?.updatedAt ?? "");
+      const tDoEvento = Date.parse(updatedOrder.updated_at);
+      const eventoAtrasado =
+        Number.isFinite(tNaTela) &&
+        Number.isFinite(tDoEvento) &&
+        tDoEvento < tNaTela;
+      if (!eventoAtrasado) {
+        geracaoDoPedidoNoRealtimeRef.current.set(
+          updatedOrder.id,
+          (geracaoDoPedidoNoRealtimeRef.current.get(updatedOrder.id) ?? 0) + 1,
+        );
+      }
       const filtro = isAdmin ? ultimaConsultaAdminRef.current?.[2] : undefined;
       const filtroConhecido =
         filtro === "open" || statusConfigByKey.has(filtro as OrderStatus);
@@ -3193,14 +3311,12 @@ export function useOrders(
       const jaNaLista = ordersRef.current.some(
         (pedido) => pedido.id === updatedOrder.id,
       );
-      // Pedido da cliente que o INSERT ainda está consultando: guarda a linha
-      // mais nova para o INSERT aplicar quando o pedido entrar (ver
-      // `insertsEmVooRef`). Só guarda o que há de mais recente.
-      if (
-        !isAdmin &&
-        !jaNaLista &&
-        insertsEmVooRef.current.has(updatedOrder.id)
-      ) {
+      // Pedido que o INSERT ainda está consultando (da cliente ou do painel):
+      // guarda a linha mais nova para o INSERT aplicar quando o pedido entrar
+      // (ver `insertsEmVooRef`). Só guarda o que há de mais recente. Só pedido
+      // com INSERT em voo é guardado: UPDATE de pedido fora da lista e sem
+      // consulta em andamento continua sendo ignorado, no painel também.
+      if (!jaNaLista && insertsEmVooRef.current.has(updatedOrder.id)) {
         const guardado = insertsEmVooRef.current.get(updatedOrder.id);
         const tGuardado = Date.parse(guardado?.updated_at);
         const tChegou = Date.parse(updatedOrder.updated_at);
@@ -3252,12 +3368,55 @@ export function useOrders(
         updatedOrder.payment_status !== undefined &&
         (updatedOrder.payment_status ?? "sem_cobranca") === filtroDePagamento &&
         oldOrder?.payment_status !== updatedOrder.payment_status;
+      // BUSCA ativa e rastreio/cupom (campos que ela olha) mudou: o pedido pode
+      // ter entrado ou saído do resultado. Ver o docstring de
+      // `atualizacaoPodeMudarOResultadoDaBusca`. Pedido fora da lista só conta
+      // se casa o status da visão (como `entrouNoFiltroDePagamento`).
+      const buscaPodeTerMudado =
+        isAdmin &&
+        (jaNaLista || casaStatus) &&
+        atualizacaoPodeMudarOResultadoDaBusca(
+          ultimaConsultaAdminRef.current?.[3],
+          updatedOrder,
+          oldOrder,
+          ordersRef.current.find((pedido) => pedido.id === updatedOrder.id),
+        );
+      // Filtro de STATUS específico e um pedido que NÃO está na página carregada
+      // (está em outra) passou a outro status: ele sai do recorte sem que a
+      // lista o veja, e o total e o "Próximo" ficavam 1 acima até recarregar.
+      // O `old` do UPDATE chega só com a chave primária (RLS ligada): quando
+      // ele traz o status anterior, vale só quem estava no recorte; sem ele,
+      // não há como saber, e o fallback relê para filtro de status sem busca
+      // nem pagamento (com eles, o pedido podia nunca ter estado no recorte).
+      // O debounce abaixo absorve a rajada. Filtro "todos" nunca entra aqui
+      // (`filtroConhecido` falso).
+      const statusAnterior: unknown = oldOrder?.status;
+      const casavaOFiltroAntes =
+        typeof statusAnterior === "string"
+          ? filtro === "open"
+            ? !["cancelled", "delivered"].includes(statusAnterior)
+            : statusAnterior === filtro
+          : undefined;
+      // Com leitura em voo quem cuida é `recarregarAdminDepoisDoVooRef`, acima
+      // (invalida o retrato e relê depois do voo): um segundo agendamento aqui
+      // dispararia no meio dela.
+      const saiuDoRecorteDeStatusFora =
+        isAdmin &&
+        filtroConhecido &&
+        !casaStatus &&
+        !jaNaLista &&
+        adminOrdersAbortControllerRef.current?.signal.aborted !== false &&
+        (casavaOFiltroAntes ??
+          (!ultimaConsultaAdminRef.current?.[3] &&
+            (!filtroDePagamento || filtroDePagamento === "all")));
       // A RPC existente recompõe página e total quando alguém entra ou sai
       // do recorte. O mesmo debounce do INSERT absorve rajadas de eventos.
       if (
         (filtroConhecido && (casaStatus ? !jaNaLista : jaNaLista)) ||
+        saiuDoRecorteDeStatusFora ||
         entrouNoFiltroDePagamento ||
-        saiuDoFiltroDePagamento
+        saiuDoFiltroDePagamento ||
+        buscaPodeTerMudado
       ) {
         if (debounceRecarregarInsertRef.current) {
           clearTimeout(debounceRecarregarInsertRef.current);
@@ -3915,14 +4074,20 @@ export function useOrders(
           // r43-e: a etapa que a lojista VIA ao confirmar. A edge compara com a
           // do servidor e devolve "mudou" se o pedido já andou (tela velha:
           // conexão em tempo real caída, app voltando do segundo plano) — o
-          // avanço sempre conferiu isso, o cancelamento não. Só o painel
-          // manda: o cliente cancelando o próprio pedido já é barrado pelo
-          // servidor em pedido entregue, e o checkout trata o desfecho dele.
-          // Sem etapa conhecida (pedido fora da memória), vai sem: edge antiga
-          // e etapa desconhecida seguem como sempre.
+          // avanço sempre conferiu isso, o cancelamento não. O painel manda a
+          // que capturou (ou a da memória). A CLIENTE só manda a que a tela
+          // dela passou de forma explícita (`statusEsperado`): a frase do
+          // diálogo "o dinheiro volta sozinho" vale para a etapa que ela leu —
+          // se a loja marcou como enviado em outro aparelho, a edge responde
+          // "mudou" em vez de cancelar com as regras de pedido enviado. Só
+          // pode RECUSAR mais, nunca permitir mais. Sem a etapa explícita
+          // (o checkout cancela assim e trata o desfecho dele por releitura)
+          // ela não vai: a lista em memória pode estar mais velha que a
+          // tela. Sem etapa conhecida, vai sem: edge antiga e etapa
+          // desconhecida seguem como sempre.
           const etapaQueATelaViu = isAdmin
             ? (statusEsperado ?? order?.status)
-            : undefined;
+            : statusEsperado;
 
           // r43-e: o aviso do realtime ("Pedido #N atualizado para Cancelado")
           // não repete o que a própria lojista acaba de pedir. A edge grava o
@@ -4087,6 +4252,11 @@ export function useOrders(
             throw new ErroStatusEsperadoDesconhecido();
           }
 
+          // Geração do que o tempo real já aplicou deste pedido, ANTES de
+          // perguntar ao servidor (ver `geracaoDoPedidoNoRealtimeRef`).
+          const geracaoAntesDaReleitura =
+            geracaoDoPedidoNoRealtimeRef.current.get(orderId) ?? 0;
+
           // Nada foi gravado ainda: se a releitura pendurar (rede "pendurada"),
           // o prazo a trata como qualquer falha de releitura, que já falha
           // FECHADO (sem otimista e sem RPC), e a ficha sai de "Processando".
@@ -4129,14 +4299,24 @@ export function useOrders(
             // no-op — quem corrige a ficha nesse caso é o chamador, a
             // partir de `ErroPedidoMudou.statusVerdadeiro` (ver
             // AdminOrdersView.handleStatusChange).
-            cachedAdminOrders = (cachedAdminOrders || []).map((o) =>
-              o.id === orderId ? { ...o, status: statusVerdadeiro } : o,
-            );
-            setOrders((prev) =>
-              prev.map((o) =>
+            //
+            // Só se nenhum UPDATE deste pedido foi aplicado enquanto a
+            // releitura estava no ar: o que chegou por tempo real é mais novo
+            // que ela, e o status relido o desfaria. O aviso e o erro abaixo
+            // seguem iguais (o toque foi mesmo recusado).
+            const chegouMaisNovoDuranteAReleitura =
+              (geracaoDoPedidoNoRealtimeRef.current.get(orderId) ?? 0) !==
+              geracaoAntesDaReleitura;
+            if (!chegouMaisNovoDuranteAReleitura) {
+              cachedAdminOrders = (cachedAdminOrders || []).map((o) =>
                 o.id === orderId ? { ...o, status: statusVerdadeiro } : o,
-              ),
-            );
+              );
+              setOrders((prev) =>
+                prev.map((o) =>
+                  o.id === orderId ? { ...o, status: statusVerdadeiro } : o,
+                ),
+              );
+            }
             if (!silent) {
               toast.warning(
                 `Este pedido mudou há instantes: agora está "${rotulo}". A ficha foi atualizada.`,
@@ -4523,6 +4703,16 @@ export function useOrders(
   const registrarPagamentoRecebido = useCallback(
     async (orderId: string, recebido: boolean) => {
       const fim = marcarOperacaoSensivel("registrar-pagamento-manual");
+      // Versão de cada lista quando o toque partiu: a resposta só vale sobre o
+      // pedido que ainda é esse. Chegou versão mais nova (outro aparelho, evento
+      // ao vivo)? A mais nova vale e a resposta antiga não é espalhada por cima.
+      const naLista = ordersRef.current.find((o) => o.id === orderId);
+      const nosCancelados = pedidosCanceladosRef.current.find(
+        (o) => o.id === orderId,
+      );
+      const maisNovo = (atual?: Order, partida?: Order) =>
+        Date.parse(atual?.updatedAt ?? "") >
+        Date.parse(partida?.updatedAt ?? "");
       try {
         // Prazo só da espera da tela (rede "pendurada"): estourou, o `catch`
         // abaixo conta que NÃO se sabe se gravou, o `finally` solta a marca
@@ -4562,13 +4752,22 @@ export function useOrders(
           pagamentoRecebidoPor,
         };
 
+        // A cópia guardada não recebe o evento ao vivo: se a lista da tela
+        // já tem versão mais nova, a cópia recebe ESSA, não a resposta antiga.
+        const naTela = ordersRef.current.find((o) => o.id === orderId);
         cachedAdminOrders = (cachedAdminOrders || []).map((o) =>
-          o.id === orderId ? { ...o, ...camposDoRecebimento } : o,
+          o.id !== orderId
+            ? o
+            : naTela && maisNovo(naTela, naLista)
+              ? naTela
+              : { ...o, ...camposDoRecebimento },
         );
 
         setOrders((prev) =>
           prev.map((o) =>
-            o.id === orderId ? { ...o, ...camposDoRecebimento } : o,
+            o.id === orderId && !maisNovo(o, naLista)
+              ? { ...o, ...camposDoRecebimento }
+              : o,
           ),
         );
 
@@ -4578,7 +4777,9 @@ export function useOrders(
         // AdminOrdersView.tsx desde o BLOQUEIA 1 da revisão de 26/08/2026.
         setPedidosCancelados((prev) =>
           prev.map((o) =>
-            o.id === orderId ? { ...o, ...camposDoRecebimento } : o,
+            o.id === orderId && !maisNovo(o, nosCancelados)
+              ? { ...o, ...camposDoRecebimento }
+              : o,
           ),
         );
 
@@ -5436,6 +5637,11 @@ export function useOrders(
     fetchOrdersByWhatsapp,
     generateOrderOtp,
     fetchOrdersByOtp,
+    // Quem está na sessão agora (`null` = sem conta). Campo ACRESCENTADO para
+    // OrderSearch: a consulta por código que volta DEPOIS de outra conta entrar
+    // no aparelho não pode regravar o retrato do convidado. Vem daqui, e não de
+    // um `useAuth` na tela, para a tela continuar dependendo só deste hook.
+    idDaConta: user?.id ?? null,
     createOrder,
     criarPagamento,
     reenviarComprovante,

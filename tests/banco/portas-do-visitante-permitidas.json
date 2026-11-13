@@ -883,6 +883,14 @@
       "porque": "Devolucao do pedido pelo cliente logado (ou pelo admin): precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige quem esta logado (auth.uid()); o visitante nao a executa."
     },
     {
+      "funcao": "public.solicitar_estorno_repetindo(p_refund_id uuid, p_motivo text)",
+      "executa": ["authenticated"],
+      "tipo": "volatil",
+      "secdef": true,
+      "situacao": "logado",
+      "porque": "Repetir a devolucao que falhou, pelo painel do lojista: precisa do EXECUTE do authenticated para o app logado chegar ao corpo; o corpo exige o admin ATUAL; a 2a chamada na mesma linha devolve a repeticao que ja existe; o visitante nao a executa."
+    },
+    {
       "funcao": "public.solicitar_estorno(p_order_id uuid, p_amount numeric, p_motivo text)",
       "executa": ["authenticated"],
       "tipo": "volatil",

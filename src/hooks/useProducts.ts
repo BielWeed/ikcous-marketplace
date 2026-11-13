@@ -144,6 +144,10 @@ let cachedAdminProductsTotal = 0;
 // com o rótulo trocado).
 let cachedAdminProductsPagina = -1;
 let cachedAdminProductsTamanho = -1;
+// Sobe a cada gravação que mexe na lista (pausar, editar, excluir...). Uma
+// leitura que saiu antes dela pode chegar depois e desfaria o que foi gravado:
+// ao aplicar, `loadProducts` compara com o valor de quando partiu.
+let versaoDaLista = 0;
 
 /**
  * O que a exclusão precisa de um produto que não está na página carregada de
@@ -689,6 +693,19 @@ const MSG_SESSAO_OU_PERMISSAO =
 const MSG_PRODUTO_EXCLUIDO =
   "Este produto foi excluído em outro aparelho. Recarregue a lista.";
 
+/**
+ * O banco respondeu SEM erro mas não mexeu em linha nenhuma. É o que a regra de
+ * segurança (RLS) faz quando a conta deixou de ser admin (rebaixada em outro
+ * aparelho com o painel aberto): não recusa, só não toca em nada. Olhar só o
+ * `error` dava "removido" para um produto que seguia à venda.
+ */
+const MSG_PRODUTO_NAO_EXCLUIDO =
+  "O produto não foi excluído: o banco não alterou nada. Sua conta pode ter perdido a permissão de administradora. Saia da conta, entre de novo e confira a lista de Produtos.";
+const MSG_PRODUTOS_NAO_ALTERADOS =
+  "Nada foi alterado: o banco não mexeu em nenhum produto. Sua conta pode ter perdido a permissão de administradora. Saia da conta, entre de novo e confira a lista de Produtos.";
+const MSG_VARIACAO_NAO_EXCLUIDA =
+  "A variação não foi excluída: o banco não alterou nada. Sua conta pode ter perdido a permissão de administradora. Saia da conta, entre de novo e confira o produto.";
+
 const MSG_SEM_CONEXAO =
   "Sem conexão com a internet. Confira a conexão e tente salvar de novo.";
 
@@ -987,7 +1004,21 @@ export function useProducts({
       ouvintesDaSincronizacao.delete(avisar);
     };
   }, [user?.id]);
+  // A conta VIVA, lida de forma síncrona por quem espera algo no meio de um
+  // salvar: o `user` de cima fica preso ao render em que o handler nasceu, e
+  // outra aba pode ter trocado de conta enquanto ele esperava. Mesmo padrão do
+  // `usuarioAtualRef` de `useAddresses`/`useReviews`.
+  const usuarioAtualRef = useRef(user?.id);
+  useEffect(() => {
+    usuarioAtualRef.current = user?.id;
+  }, [user?.id]);
+  const idDaContaViva = useCallback(() => usuarioAtualRef.current, []);
   const lastLoadId = useRef(0);
+  // Quantas listas esta tela já recebeu de uma leitura. A exclusão que falha
+  // compara com o valor de quando partiu: se subiu, a lista que está na tela
+  // é mais nova (outra categoria, busca ou página) e o retrato guardado antes
+  // da exclusão não pode ser posto por cima dela.
+  const listasRecebidasRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Return context products if we are just doing a standard fetch
@@ -1135,7 +1166,11 @@ export function useProducts({
 
   // Load products with pagination and filtering (Admin focus)
   const loadProducts = useCallback(
-    async (page = 0, pageSize = 10, filters?: any) => {
+    async function lerAPagina(
+      page = 0,
+      pageSize = 10,
+      filters?: any,
+    ): Promise<{ products: Product[]; total: number } | null> {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
@@ -1143,6 +1178,7 @@ export function useProducts({
       const signal = abortControllerRef.current.signal;
 
       const loadId = ++lastLoadId.current;
+      const versaoNaPartida = versaoDaLista;
 
       try {
         if (!filters?.silent) {
@@ -1259,9 +1295,15 @@ export function useProducts({
 
         if (data) {
           if (loadId !== lastLoadId.current) return null;
+          // Uma gravação mexeu na lista com esta leitura no ar: a resposta pode
+          // ser anterior a ela e desfaria o que ela gravou. Descarta e relê.
+          if (versaoNaPartida !== versaoDaLista) {
+            return lerAPagina(page, pageSize, filters);
+          }
           const mappedProducts = (data as any[]).map((item: any) =>
             mapProductFromDB(item),
           );
+          listasRecebidasRef.current++;
           setLocalProducts(mappedProducts);
           // Leitura filtrada (estoque, situação, busca ou categoria) não vira a
           // cópia que a tela Produtos desenha enquanto carrega e usa sem rede:
@@ -1317,6 +1359,7 @@ export function useProducts({
             page === cachedAdminProductsPagina &&
             pageSize === cachedAdminProductsTamanho
           ) {
+            listasRecebidasRef.current++;
             setLocalProducts(cachedAdminProducts);
             return {
               products: cachedAdminProducts,
@@ -1719,6 +1762,7 @@ export function useProducts({
             }
           }
 
+          versaoDaLista++;
           cachedAdminProducts = [newProduct, ...(cachedAdminProducts || [])];
           cachedAdminProductsTotal += 1;
           setLocalProducts((prev) => [newProduct, ...prev]);
@@ -1830,6 +1874,7 @@ export function useProducts({
 
         try {
           if (optimisticProduct) {
+            versaoDaLista++;
             cachedAdminProducts = (cachedAdminProducts || []).map((p) =>
               p.id === id ? optimisticProduct : p,
             );
@@ -1963,6 +2008,7 @@ export function useProducts({
         if (data) {
           const updatedProduct = mapProductFromDB(data);
 
+          versaoDaLista++;
           cachedAdminProducts = (cachedAdminProducts || []).map((p) =>
             p.id === id ? updatedProduct : p,
           );
@@ -2132,6 +2178,7 @@ export function useProducts({
         const produto = await fetchProduct(id);
         if (!produto)
           throw new Error("Produto não encontrado após salvar a grade.");
+        versaoDaLista++;
         cachedAdminProducts = (cachedAdminProducts || []).map((p) =>
           p.id === id ? produto : p,
         );
@@ -2248,10 +2295,13 @@ export function useProducts({
         ? [...cachedAdminProducts]
         : null;
       const originalTotal = cachedAdminProductsTotal;
+      const listasNaPartida = listasRecebidasRef.current;
 
+      versaoDaLista++;
       cachedAdminProducts = (cachedAdminProducts || []).filter(
         (p) => p.id !== id,
       );
+      const cacheSemOProduto = cachedAdminProducts;
       cachedAdminProductsTotal = Math.max(0, cachedAdminProductsTotal - 1);
       setLocalProducts((prev) => prev.filter((p) => p.id !== id));
 
@@ -2277,7 +2327,11 @@ export function useProducts({
         // sempre, sem dizer se excluiu. Estourou: não se sabe se excluiu (cai
         // no `catch`: o produto volta à lista e a frase manda conferir). Repetir
         // é seguro: é o mesmo UPDATE de `deleted_at`.
-        const { error } = await aguardarComPrazo(
+        //
+        // `.select("id")`: com a conta já sem o cargo de admin o RLS não dá
+        // erro, só não mexe em linha nenhuma — e sem pedir as linhas de volta
+        // isso passava por "excluído".
+        const { data: excluidas, error } = await aguardarComPrazo(
           Promise.resolve(
             supabase
               .from("produtos")
@@ -2285,15 +2339,20 @@ export function useProducts({
                 deleted_at: new Date().toISOString(),
                 ativo: false,
               })
-              .eq("id", id),
-          ) as Promise<{ error: any }>,
+              .eq("id", id)
+              .select("id"),
+          ) as Promise<{ data: any; error: any }>,
           PRAZO_DE_GRAVAR_O_PRODUTO_MS,
           () =>
             erroDeConsultaSemResposta(MENSAGEM_PRODUTO_EXCLUSAO_SEM_RESPOSTA),
         );
 
         if (error) throw error;
+        if (!excluidas?.length) {
+          throw new RecusaDoCadastroDeProduto(MSG_PRODUTO_NAO_EXCLUIDO);
+        }
 
+        versaoDaLista++;
         clearAnalyticsCache();
         await refreshContext();
         toast.success("Produto removido");
@@ -2301,16 +2360,31 @@ export function useProducts({
         // Mídia depois, best-effort: o soft-delete já foi confirmado, então
         // uma falha aqui NÃO desfaz a exclusão nem devolve "Erro ao excluir
         // produto" para o admin — só fica logada (try/catch próprio dentro
-        // de `backupProductMediaAfterDelete`).
-        await backupProductMediaAfterDelete(product);
+        // de `backupProductMediaAfterDelete`, de onde nenhum erro escapa como
+        // promessa rejeitada). NÃO se espera: o backup chama Storage e UPDATEs
+        // sem prazo, e uma resposta que nunca vem deixava esta função sem
+        // devolver — a tela ficava em "atualizando" e, ao excluir o último
+        // produto, nunca chegava ao estado vazio.
+        void backupProductMediaAfterDelete(product);
 
         return true;
       } catch (err: any) {
         console.error("Error deleting product:", err);
-        cachedAdminProducts = originalCache;
-        cachedAdminProductsTotal = originalTotal;
-        setLocalProducts(originalProducts);
+        // Enquanto a exclusão esperava, uma leitura pode ter trazido outra
+        // lista (a lojista trocou de categoria): ela é a verdade da tela e o
+        // retrato de antes não a pisa. A cópia sem filtro só é devolvida se
+        // ninguém a trocou nesse intervalo.
+        const outraListaChegou = listasRecebidasRef.current !== listasNaPartida;
+        if (!outraListaChegou || cachedAdminProducts === cacheSemOProduto) {
+          cachedAdminProducts = originalCache;
+          cachedAdminProductsTotal = originalTotal;
+        }
+        if (!outraListaChegou) setLocalProducts(originalProducts);
         if (ehConsultaSemResposta(err)) {
+          toast.error(err.message, {
+            duration: DURACAO_DO_AVISO_SEM_RESPOSTA_MS,
+          });
+        } else if (err instanceof RecusaDoCadastroDeProduto) {
           toast.error(err.message, {
             duration: DURACAO_DO_AVISO_SEM_RESPOSTA_MS,
           });
@@ -2336,6 +2410,7 @@ export function useProducts({
         : null;
       const originalTotal = cachedAdminProductsTotal;
 
+      versaoDaLista++;
       cachedAdminProducts = (cachedAdminProducts || []).filter(
         (p) => !ids.includes(p.id),
       );
@@ -2358,22 +2433,31 @@ export function useProducts({
           const product = originalProducts.find((p) => p.id === id);
           if (!product) continue;
 
-          const { error } = await supabase
+          // `.select("id")`: sem o cargo de admin o RLS não dá erro, só não
+          // mexe em linha nenhuma (ver `MSG_PRODUTO_NAO_EXCLUIDO`).
+          const { data: excluidas, error } = await supabase
             .from("produtos")
             .update({
               deleted_at: new Date().toISOString(),
               ativo: false,
             })
-            .eq("id", id);
+            .eq("id", id)
+            .select("id");
 
           if (error) throw error;
+          if (!excluidas?.length) {
+            throw new RecusaDoCadastroDeProduto(MSG_PRODUTO_NAO_EXCLUIDO);
+          }
           excluidos.push(id);
 
           // Mídia best-effort, depois do soft-delete confirmado deste
-          // produto — mesma função usada por `deleteProduct`.
-          await backupProductMediaAfterDelete(product);
+          // produto — mesma função usada por `deleteProduct`, e também sem
+          // esperar: um backup pendurado parava o lote no meio e a lista
+          // nunca era atualizada.
+          void backupProductMediaAfterDelete(product);
         }
 
+        versaoDaLista++;
         await refreshContext();
         toast.success(
           ids.length === 1
@@ -2390,7 +2474,11 @@ export function useProducts({
           originalTotal - excluidos.length,
         );
         setLocalProducts(originalProducts.filter(aindaExiste));
-        toast.error("Erro ao excluir produtos");
+        toast.error(
+          err instanceof RecusaDoCadastroDeProduto
+            ? err.message
+            : "Erro ao excluir produtos",
+        );
         return false;
       }
     },
@@ -2409,6 +2497,7 @@ export function useProducts({
         ? [...cachedAdminProducts]
         : null;
 
+      versaoDaLista++;
       cachedAdminProducts = (cachedAdminProducts || []).map((p) => {
         if (ids.includes(p.id)) {
           const updated = Object.assign({}, p);
@@ -2429,13 +2518,20 @@ export function useProducts({
       );
 
       try {
-        const { error } = await supabase
+        // `.select("id")`: sem o cargo de admin o RLS não dá erro, só não mexe
+        // em linha nenhuma (ver `MSG_PRODUTO_NAO_EXCLUIDO`).
+        const { data: alteradas, error } = await supabase
           .from("produtos")
           .update({ ativo: isActive })
-          .in("id", ids);
+          .in("id", ids)
+          .select("id");
 
         if (error) throw error;
+        if (!alteradas?.length) {
+          throw new RecusaDoCadastroDeProduto(MSG_PRODUTOS_NAO_ALTERADOS);
+        }
 
+        versaoDaLista++;
         await refreshContext();
         toast.success("Status atualizado");
         return true;
@@ -2443,7 +2539,11 @@ export function useProducts({
         console.error("Error updating products status:", err);
         cachedAdminProducts = originalCache;
         setLocalProducts(originalProducts);
-        toast.error("Erro ao atualizar status");
+        toast.error(
+          err instanceof RecusaDoCadastroDeProduto
+            ? err.message
+            : "Erro ao atualizar status",
+        );
         return false;
       }
     },
@@ -2455,6 +2555,7 @@ export function useProducts({
     async (id: string, currentStatus: boolean) => {
       if (statusEmGravacao.current.has(id)) return false;
       statusEmGravacao.current.add(id);
+      versaoDaLista++;
       cachedAdminProducts = (cachedAdminProducts || []).map((p) => {
         if (p.id === id) {
           const updated = Object.assign({}, p);
@@ -2862,12 +2963,18 @@ export function useProducts({
           .eq("id", id)
           .single()) as any;
 
-        const { error } = await supabase
+        // `.select("id")`: sem o cargo de admin o RLS não dá erro, só não
+        // apaga linha nenhuma (ver `MSG_PRODUTO_NAO_EXCLUIDO`).
+        const { data: apagadas, error } = await supabase
           .from("product_variants")
           .delete()
-          .eq("id", id);
+          .eq("id", id)
+          .select("id");
 
         if (error) throw error;
+        if (!apagadas?.length) {
+          throw new RecusaDoCadastroDeProduto(MSG_VARIACAO_NAO_EXCLUIDA);
+        }
 
         if (variant?.image_url) {
           await backupStorageFile(variant.image_url);
@@ -2913,12 +3020,20 @@ export function useProducts({
         const apagadas: string[] = [];
         let primeiraRecusa: unknown = null;
         for (const id of ids) {
-          const { error } = await supabase
+          // `.select("id")`: sem o cargo de admin o RLS não dá erro, só não
+          // apaga linha nenhuma — essa também é recusa (ver
+          // `MSG_PRODUTO_NAO_EXCLUIDO`).
+          const { data: linhasApagadas, error } = await supabase
             .from("product_variants")
             .delete()
-            .eq("id", id);
-          if (error) {
-            if (primeiraRecusa === null) primeiraRecusa = error;
+            .eq("id", id)
+            .select("id");
+          if (error || !linhasApagadas?.length) {
+            if (primeiraRecusa === null) {
+              primeiraRecusa =
+                error ??
+                new RecusaDoCadastroDeProduto(MSG_VARIACAO_NAO_EXCLUIDA);
+            }
             recusadas.push(id);
           } else {
             apagadas.push(id);
@@ -3072,5 +3187,6 @@ export function useProducts({
     fetchProduct,
     getFreeShippingEligibleProducts,
     toggleProductStatus,
+    idDaContaViva,
   };
 }

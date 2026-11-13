@@ -163,6 +163,7 @@ describe("erro de recusa antiga some quando o cupom muda de verdade", () => {
     return reducerDaVenda(comItem, {
       tipo: "envio_falhou",
       mensagem: "Estoque insuficiente",
+      efeito: "fecha",
     });
   }
 
@@ -231,6 +232,7 @@ describe("o erro de rede (a venda pode ter sido gravada) sobrevive a mexer no cu
     return reducerDaVenda(comItem, {
       tipo: "envio_falhou",
       mensagem: MENSAGEM_DE_REDE_DA_VENDA,
+      efeito: "abre",
     });
   }
 

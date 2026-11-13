@@ -15,7 +15,7 @@ const { auth, addAddress, updateAddress } = vi.hoisted(() => ({
   auth: {
     user: { id: "u1", user_metadata: { name: "Nome do Login" } } as {
       id: string;
-      user_metadata: { name?: string };
+      user_metadata: { name?: string; full_name?: unknown };
     } | null,
     profile: { full_name: "Mariana Lopes" } as { full_name?: string } | null,
   },
@@ -158,6 +158,47 @@ describe("AddressFormView — nome da conta e salvar", () => {
 
   it("perfil ainda não carregado: usa o nome do metadado do login", async () => {
     auth.profile = null;
+    await abrir();
+    await preencherCepENumero();
+    expect(
+      (document.getElementById("recipient_name") as HTMLInputElement).value,
+    ).toBe("Nome do Login");
+  });
+
+  it("perfil indisponível: usa o full_name que o CADASTRO grava na conta", async () => {
+    auth.profile = null;
+    auth.user = {
+      id: "u1",
+      user_metadata: { full_name: "Nome do Cadastro" },
+    };
+    await abrir();
+    await preencherCepENumero();
+    expect(
+      (document.getElementById("recipient_name") as HTMLInputElement).value,
+    ).toBe("Nome do Cadastro");
+  });
+
+  it("CONTROLE: o perfil com nome continua ganhando do que está na conta", async () => {
+    auth.user = {
+      id: "u1",
+      user_metadata: { full_name: "Nome do Cadastro", name: "Nome do Login" },
+    };
+    await abrir();
+    await preencherCepENumero();
+    expect(
+      (document.getElementById("recipient_name") as HTMLInputElement).value,
+    ).toBe("Mariana Lopes");
+  });
+
+  it.each([
+    ["que não é texto", 42],
+    ["só com espaços", "   "],
+  ])("LIMITE: full_name da conta %s cai no próximo", async (_, ruim) => {
+    auth.profile = null;
+    auth.user = {
+      id: "u1",
+      user_metadata: { full_name: ruim, name: "Nome do Login" },
+    };
     await abrir();
     await preencherCepENumero();
     expect(

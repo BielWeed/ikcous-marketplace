@@ -74,6 +74,12 @@ export interface DiaDaSerie {
   readonly dia: DataIso;
   readonly entradas: number;
   readonly saidas: number;
+  /**
+   * Quanto o saldo das contas ATIVAS mudou no dia (`fin_resumo` -> `serie[]`,
+   * migration 20261399985000): pode ser negativo. `null` ou ausente = a loja
+   * ainda não recebeu essa migration; aí o gráfico usa entradas − saídas.
+   */
+  readonly variacaoSaldo?: number | null;
 }
 
 export interface CaixaAbertoResumo {
@@ -263,13 +269,14 @@ export interface PayloadDaConta {
   readonly ativa: boolean;
 }
 
-/** Corpo de `fin_categoria_salvar(p jsonb)`. */
+/** Corpo de `fin_categoria_salvar(p jsonb)`. Nas categorias do sistema só `id`, `nome` e
+ * `ativa=true` viajam: o banco recusa a PRESENÇA de `natureza`/`grupo_dre` ali. */
 export interface PayloadDaCategoria {
   readonly id?: string;
   readonly nome: string;
-  readonly natureza: NaturezaDaCategoria;
-  readonly grupo_dre: GrupoDaDre;
-  readonly ativa: boolean;
+  readonly natureza?: NaturezaDaCategoria;
+  readonly grupo_dre?: GrupoDaDre;
+  readonly ativa?: boolean;
 }
 
 export type PresetDePeriodo =

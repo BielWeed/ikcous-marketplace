@@ -198,18 +198,22 @@ Deno.test("3997: sem BEGIN/COMMIT; pre-voo antes do DROP; DROP so da assinatura 
   );
 });
 
-Deno.test("3997: a vigente e' a ULTIMA redefinicao de get_admin_reviews_paged da arvore (sucede a 381 direto); db-apply exige as guardas", () => {
+Deno.test("3997: sucede a 381 direto e e' sucedida pela 3996 (mesma assinatura); db-apply exige as guardas", () => {
   const fontes = [...Deno.readDirSync(dir)]
     .map((e) => e.name)
     .filter((n) => /^\d{14}_.*\.sql$/.test(n))
     .sort()
     .filter((n) => ler(`supabase/migrations/${n}`).includes(ABRE));
+  const i = fontes.indexOf(nome);
+  assert.ok(i > 0, "a 3997 nao esta entre as redefinicoes");
+  // A 20261399996000 (o painel filtra o que esta sem resposta) e' a sucessora direta, na MESMA assinatura de 5 argumentos:
+  // quem redefinir depois dela reabre as consultas 123a/86a e esta prova (a prova da 3996 guarda o fim da cadeia).
   assert.equal(
-    fontes.at(-1),
-    nome,
-    "outra migration redefine get_admin_reviews_paged depois da 3997",
+    fontes[i + 1],
+    "20261399996000_o_painel_de_avaliacoes_filtra_o_que_esta_sem_resposta.sql",
+    "outra migration redefine get_admin_reviews_paged logo depois da 3997",
   );
-  assert.equal(fontes.at(-2), nome381, "a 3997 sucede a 381 direto");
+  assert.equal(fontes[i - 1], nome381, "a 3997 sucede a 381 direto");
   const { VERIFICACOES, avaliarChecagem } = require("../scripts/db-apply.cjs");
   // eslint-disable-next-line security/detect-object-injection -- Nome literal desta migration, nunca entrada externa.
   const checagem = VERIFICACOES[nome];
@@ -258,7 +262,12 @@ Deno.test("3997: a 86a aceita a funcao nova como sucessora da 381; as consultas 
     c86a.includes(`'8571a56a9b21e90ebdcf941d762870ac'`),
     "a 86a segue aceitando o corpo da 381",
   );
-  assert.ok(c86a.includes(`md5(replace(p.prosrc,chr(13),''))='${H_NOVO}'`));
+  // A 20261399996000 sucede o corpo da 3997 na MESMA assinatura de 5 argumentos: a 86a aceita os dois corpos exatos.
+  assert.ok(
+    c86a.includes(
+      `md5(replace(p.prosrc,chr(13),'')) IN ('${H_NOVO}','75f5c48de4eb4005a2516e54b3d33135')`,
+    ),
+  );
   assert.ok(
     c86a.includes(
       "to_regprocedure('public.get_admin_reviews_paged(text,text,integer,integer,text)')",
@@ -350,6 +359,12 @@ Deno.test("3997: toda prova que desfaz a 381 desfaz esta ANTES (o modulo posteri
   assert.ok(posterior.includes(nome));
   assert.ok(posterior.includes(H_NOVO));
   assert.ok(posterior.includes(SIG_NOVA));
+  // A 3996 cai antes de qualquer rollback da 3997 (a cadeia e' 381 -> 3997 -> 3996): o modulo chama o dela primeiro.
+  assert.ok(
+    posterior.indexOf("desfazerFiltroSemRespostaNaTransacao") > 0 &&
+      posterior.indexOf("desfazerFiltroSemRespostaNaTransacao") <
+        posterior.indexOf("FILTRO_DE_MODERACAO.noAr"),
+  );
   const {
     FILTRO_DE_MODERACAO,
   } = require("./banco/o-painel-de-avaliacoes-filtra-posterior.cjs");

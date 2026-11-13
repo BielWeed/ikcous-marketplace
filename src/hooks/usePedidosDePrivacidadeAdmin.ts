@@ -4,6 +4,12 @@ import {
   classificarFalhaDoPedido,
   lerPedidosDePrivacidade,
 } from "@/lib/pedidos-de-privacidade";
+import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -83,19 +89,36 @@ export function usePedidosDePrivacidadeAdmin(): UsePedidosDePrivacidadeAdmin {
       // mais antigo, o mais urgente, ao mais novo) e só os RESPONDIDOS têm
       // limite (do mais novo ao mais antigo). Com uma lista só, ordenada do
       // mais antigo e cortada, o pedido aberto NOVO era justamente o que sumia.
+      //
+      // Rede que conecta e não responde: sem prazo a primeira leitura ficava em
+      // "Carregando…" para sempre e a lojista não via os pedidos nem os prazos
+      // da LGPD. Estourou: cai no `catch` abaixo (erro com "Tentar de novo", ou
+      // a lista que já estava na tela é mantida).
       const [rAbertos, rRespondidos] = await Promise.all([
-        supabase
-          .from("pedidos_de_privacidade")
-          .select(COLUNAS_DO_PEDIDO_DE_PRIVACIDADE)
-          .eq("situacao", "aberto")
-          .order("criado_em", { ascending: true })
-          .limit(TETO_DE_ABERTOS),
-        supabase
-          .from("pedidos_de_privacidade")
-          .select(COLUNAS_DO_PEDIDO_DE_PRIVACIDADE)
-          .neq("situacao", "aberto")
-          .order("atendido_em", { ascending: false })
-          .limit(TETO_DE_RESPONDIDOS + 1),
+        aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("pedidos_de_privacidade")
+              .select(COLUNAS_DO_PEDIDO_DE_PRIVACIDADE)
+              .eq("situacao", "aberto")
+              .order("criado_em", { ascending: true })
+              .limit(TETO_DE_ABERTOS),
+          ),
+          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          () => erroDeConsultaSemResposta(),
+        ),
+        aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("pedidos_de_privacidade")
+              .select(COLUNAS_DO_PEDIDO_DE_PRIVACIDADE)
+              .neq("situacao", "aberto")
+              .order("atendido_em", { ascending: false })
+              .limit(TETO_DE_RESPONDIDOS + 1),
+          ),
+          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          () => erroDeConsultaSemResposta(),
+        ),
       ]);
       if (!ativoRef.current || rodada !== rodadaRef.current) return;
       if (rAbertos.error || rRespondidos.error) {
@@ -120,10 +143,16 @@ export function usePedidosDePrivacidadeAdmin(): UsePedidosDePrivacidadeAdmin {
       const ids = [...new Set(mostrados.map((p) => p.user_id))];
       for (let i = 0; i < ids.length; i += IDS_POR_CONSULTA_DE_NOMES) {
         try {
-          const { data: perfis } = await supabase
-            .from("profiles")
-            .select("id, full_name")
-            .in("id", ids.slice(i, i + IDS_POR_CONSULTA_DE_NOMES));
+          const { data: perfis } = await aguardarComPrazo(
+            Promise.resolve(
+              supabase
+                .from("profiles")
+                .select("id, full_name")
+                .in("id", ids.slice(i, i + IDS_POR_CONSULTA_DE_NOMES)),
+            ),
+            PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+            () => erroDeConsultaSemResposta(),
+          );
           for (const perfil of (perfis ?? []) as Array<{
             id: string;
             full_name: string | null;
@@ -131,8 +160,10 @@ export function usePedidosDePrivacidadeAdmin(): UsePedidosDePrivacidadeAdmin {
             const nome = (perfil.full_name ?? "").trim();
             if (nome) mapa.set(perfil.id, nome);
           }
-        } catch {
-          // sem os nomes deste pedaço nesta rodada
+        } catch (erro) {
+          // sem os nomes deste pedaço nesta rodada. Sem resposta da rede: os
+          // pedaços seguintes pendurariam também, cada um com o seu prazo.
+          if (ehConsultaSemResposta(erro)) break;
         }
       }
       if (!ativoRef.current || rodada !== rodadaRef.current) return;
@@ -182,21 +213,25 @@ export function usePedidosDePrivacidadeAdmin(): UsePedidosDePrivacidadeAdmin {
           ),
           15_000,
         );
+        // Daqui em diante a decisão JÁ está no banco (ou já era de outra
+        // pessoa): a releitura da lista corre em segundo plano, porque as
+        // consultas dela não têm prazo e esperar por elas prendia os botões em
+        // "Salvando…" com a rede travada.
         if (error) {
           // 55000 = o gatilho do banco recusou: o pedido já tinha sido decidido.
           const falha = classificarFalhaDaDecisao(error);
           if (falha === "ja_decidido") {
-            await recarregar();
+            void recarregar();
             pedirRecontagemDoSino();
           }
           return { ok: false, falha };
         }
         if (!data || data.length === 0) {
-          await recarregar();
+          void recarregar();
           pedirRecontagemDoSino();
           return { ok: false, falha: "ja_decidido" };
         }
-        await recarregar();
+        void recarregar();
         pedirRecontagemDoSino();
         return { ok: true };
       } catch (erro) {

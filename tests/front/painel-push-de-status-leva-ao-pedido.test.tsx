@@ -234,17 +234,27 @@ describe("Painel — o push de 'status atualizado' abre o pedido, não a vitrine
       (b) => b.textContent?.includes("Avançar"),
     );
     expect(avancar).toBeTruthy();
+    const antes = Date.now();
     await act(async () => {
       avancar?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await esperar(20);
     });
 
+    const depois = Date.now();
     const chamada = invoke.mock.calls.find(([nome]) => nome === "send-push");
     expect(chamada).toBeTruthy();
     const corpo = chamada?.[1].body;
     expect(corpo.url).toBe(`/order-details?id=${ID_DO_PEDIDO}`);
     // O resto do aviso segue como estava.
     expect(corpo.targetUserId).toBe("cliente-1");
-    expect(corpo.data).toEqual({ orderId: ID_DO_PEDIDO, type: "order_status" });
+    expect(corpo.data).toEqual({
+      orderId: ID_DO_PEDIDO,
+      type: "order_status",
+      emitidoEm: expect.any(Number),
+    });
+    // Carimbo de ordem: o instante em que o status foi gravado (ms), para o
+    // aparelho manter o aviso mais novo se os avisos chegarem trocados.
+    expect(corpo.data.emitidoEm).toBeGreaterThanOrEqual(antes);
+    expect(corpo.data.emitidoEm).toBeLessThanOrEqual(depois);
   });
 });

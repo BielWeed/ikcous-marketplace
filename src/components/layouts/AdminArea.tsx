@@ -129,6 +129,8 @@ const AdminNotifications = lazyWithPreload(() =>
   })),
 );
 
+const SEM_DESCARTES: ReadonlyMap<View, number> = new Map();
+
 function DeferredTabContent({
   active,
   children,
@@ -281,6 +283,10 @@ interface AdminAreaProps {
   /** L10 — uid de quem está no painel: os rascunhos de formulário (produto)
    *  são por usuário. Ausente = a tela não lê nem grava rascunho. */
   readonly userId?: string;
+  /** Contador de descartes por tela: cada "Descartar e Sair" numa tela suja
+   *  soma 1 à dela. Serve de `key` das abas que continuam montadas, para
+   *  voltarem ao valor salvo. Ausente = nenhum descarte. */
+  readonly descarteDaTela?: ReadonlyMap<View, number>;
 }
 
 export function AdminArea({
@@ -293,6 +299,7 @@ export function AdminArea({
   backOverride,
   isTransitionSupported,
   userId,
+  descarteDaTela = SEM_DESCARTES,
 }: AdminAreaProps) {
   // A ficha é uma pausa na visita ao CRM, não uma abertura nova da tela.
   const [visitaCrm, setVisitaCrm] = useState(currentView === "admin-crm");
@@ -317,6 +324,37 @@ export function AdminArea({
   else if (currentView === "admin-products") activeTabIdx = 2;
   else if (currentView === "admin-customers") activeTabIdx = 3;
   else if (currentView === "admin-settings") activeTabIdx = 4;
+
+  // A aba Ajustes fica montada (escondida) quando a lojista vai para outra aba,
+  // com os formulários dela de pé. "Descartar e Sair" no aviso de alterações
+  // não salvas conta um descarte para esta tela (`descarteDaTela`); a chave
+  // nova remonta SÓ o conteúdo dela, que relê o valor salvo — as outras abas
+  // montadas (Pedidos, Produtos, Clientes) não são tocadas. Mora num lugar só
+  // porque os dois ramos abaixo (com e sem View Transitions) a repetiam igual.
+  // Só Ajustes entra aqui: é a única aba montada que avisa de pendência (as
+  // telas de formulário/PDV/etc. são desmontadas ao sair, e já voltam limpas).
+  const abaDeAjustes = (
+    <TabWrapper
+      active={currentView === "admin-settings"}
+      isTransitionSupported={isTransitionSupported}
+      index={4}
+      activeIndex={activeTabIdx}
+    >
+      <LocalErrorBoundary>
+        <DeferredTabContent active={currentView === "admin-settings"}>
+          <PreloadedOrLazy
+            key={descarteDaTela.get("admin-settings") ?? 0}
+            component={AdminSettings}
+            props={{
+              onNavigate: onNavigate,
+              active: currentView === "admin-settings",
+              onSetDirty: setIsAdminDirty,
+            }}
+          />
+        </DeferredTabContent>
+      </LocalErrorBoundary>
+    </TabWrapper>
+  );
 
   const renderAdminContent = () => {
     return (
@@ -415,25 +453,7 @@ export function AdminArea({
                 </DeferredTabContent>
               </LocalErrorBoundary>
             </TabWrapper>
-            <TabWrapper
-              active={currentView === "admin-settings"}
-              isTransitionSupported={isTransitionSupported}
-              index={4}
-              activeIndex={activeTabIdx}
-            >
-              <LocalErrorBoundary>
-                <DeferredTabContent active={currentView === "admin-settings"}>
-                  <PreloadedOrLazy
-                    component={AdminSettings}
-                    props={{
-                      onNavigate: onNavigate,
-                      active: currentView === "admin-settings",
-                      onSetDirty: setIsAdminDirty,
-                    }}
-                  />
-                </DeferredTabContent>
-              </LocalErrorBoundary>
-            </TabWrapper>
+            {abaDeAjustes}
           </div>
         ) : (
           <motion.div
@@ -541,25 +561,7 @@ export function AdminArea({
                 </DeferredTabContent>
               </LocalErrorBoundary>
             </TabWrapper>
-            <TabWrapper
-              active={currentView === "admin-settings"}
-              isTransitionSupported={isTransitionSupported}
-              index={4}
-              activeIndex={activeTabIdx}
-            >
-              <LocalErrorBoundary>
-                <DeferredTabContent active={currentView === "admin-settings"}>
-                  <PreloadedOrLazy
-                    component={AdminSettings}
-                    props={{
-                      onNavigate: onNavigate,
-                      active: currentView === "admin-settings",
-                      onSetDirty: setIsAdminDirty,
-                    }}
-                  />
-                </DeferredTabContent>
-              </LocalErrorBoundary>
-            </TabWrapper>
+            {abaDeAjustes}
           </motion.div>
         )}
 

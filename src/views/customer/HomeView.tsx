@@ -659,6 +659,7 @@ export const HomeView = React.memo(function HomeView({
                 layout={layoutOfertas}
                 title={section.title}
                 products={secProducts}
+                ordemDaLojista={secaoCurada}
                 favorites={favorites}
                 onToggleFavorite={onToggleFavorite}
                 onProductClick={onProductClick}

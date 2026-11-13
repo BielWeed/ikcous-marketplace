@@ -245,6 +245,27 @@ function esquecerRastreioDeConvidado() {
   }
 }
 
+// O atalho "é lojista?" (`ikcous_is_admin_<uid>`) no `localStorage`. Navegador
+// com "bloquear dados de sites" ou política de empresa faz o próprio ACESSO ao
+// `localStorage` lançar: lido, vale "sem atalho" (a pergunta vai ao servidor,
+// que continua sendo a única fonte do "sim"); gravado, o atalho só não fica.
+// Nenhuma dessas falhas pode parar a checagem de lojista.
+function lerAtalhoDeLojista(chave: string): string | null {
+  try {
+    return localStorage.getItem(chave);
+  } catch {
+    return null;
+  }
+}
+
+function gravarAtalhoDeLojista(chave: string, valor: string): void {
+  try {
+    localStorage.setItem(chave, valor);
+  } catch {
+    // Sem armazenamento (bloqueado ou cheio): sem atalho na próxima abertura.
+  }
+}
+
 function clearLocalUserData() {
   // admin_cache-17 — os quatro caches de admin (customers/coupons/reviews/
   // questions) são variáveis de módulo em src/utils/admin_cache.ts, fora do
@@ -298,7 +319,19 @@ function clearLocalUserData() {
 // `clearLocalUserData` para a TROCA DIRETA de conta (A -> B sem SIGNED_OUT)
 // aplicar exatamente esta limpeza, sem cópia: o "Sair" apagava o CEP e os
 // pedidos da A, a troca direta deixava os dois para a B.
+//
+// Armazenamento bloqueado pelo navegador (o ACESSO lança SecurityError): não há
+// o que apagar que se possa alcançar, e a exceção não pode abortar o "Sair" nem
+// a troca de conta (a tela ficava presa no carregamento).
 function esquecerDadosLocaisDaConta() {
+  try {
+    apagarDadosLocaisDaConta();
+  } catch (erro) {
+    console.warn("[Auth] armazenamento do aparelho indisponível:", erro);
+  }
+}
+
+function apagarDadosLocaisDaConta() {
   if (typeof window === "undefined") return;
   // L10 — as FILAS offline (`orders_`/`products_offline_updates_queue:<uid>`)
   // e os RASCUNHOS do admin (`admin_banner_form_draft:<uid>`,
@@ -314,6 +347,8 @@ function esquecerDadosLocaisDaConta() {
   // As lápides (CartContext) dizem "esta linha foi tirada às T" por até 7 dias:
   // se ficam, a conta que entra tem a linha dela escondida por um tirar da outra.
   localStorage.removeItem("marketplace_cart_tombstones_v1");
+  // As linhas que o banco confirmou ter no carrinho da conta que saiu.
+  localStorage.removeItem("marketplace_cart_confirmado_v1");
   localStorage.removeItem("ikcous_recently_viewed");
   localStorage.removeItem("ikcous_is_admin");
   // Revisão de contexto limpo do diff (achado 2) — o CEP também é PII do
@@ -558,7 +593,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // reinicia como não-admin.
       if (
         !isAdminResult &&
-        (localStorage.getItem(cacheKey) === "true" ||
+        (lerAtalhoDeLojista(cacheKey) === "true" ||
           adminConfirmadoRef.current === userId)
       ) {
         limparCachesDeAdmin();
@@ -566,7 +601,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       setAdminStatus(isAdminResult ? "admin" : "not-admin");
       setAdminVerificacaoFalhou(false);
-      localStorage.setItem(cacheKey, isAdminResult ? "true" : "false");
+      gravarAtalhoDeLojista(cacheKey, isAdminResult ? "true" : "false");
       // Só um VEREDITO do servidor confirma — e só ele rebaixa: um "não" real
       // esquece a confirmação.
       adminConfirmadoRef.current = isAdminResult ? userId : null;
@@ -585,7 +620,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // `profiles`), verificada pelo servidor nesta carga de página, decide.
 
     // Fast Path 2: Local Cache (Immediate return for confirmed customers, keyed by user ID)
-    const cachedAdmin = localStorage.getItem(cacheKey);
+    const cachedAdmin = lerAtalhoDeLojista(cacheKey);
     // Quem o servidor já confirmou nesta sessão não toma o atalho: um "false"
     // no aparelho (de outra aba, de antes) não rebaixa antes de a rede falar.
     //
@@ -716,6 +751,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => clearTimeout(safetyTimeout);
   }, []);
 
+  // Ordem das consultas do perfil: cada uma leva um número ao sair, e o maior
+  // número já aplicado barra a resposta antiga que chega depois (a consulta
+  // atrasada de um aparelho não recoloca o nome que outro aparelho trocou).
+  const consultaDoPerfilRef = useRef(0);
+  const perfilAplicadoRef = useRef(0);
   const fetchProfile = useCallback(async (passedUser?: User | null) => {
     const currentUser =
       passedUser || (await supabase.auth.getSession()).data.session?.user;
@@ -725,10 +765,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
+      const consulta = ++consultaDoPerfilRef.current;
       const { data, error } = await supabase.rpc("get_my_complete_profile");
       // A resposta pertence à conta que iniciou a leitura, mesmo chegando após a troca.
       if (activeUserIdRef.current !== currentUser.id) return;
       if (!error && data) {
+        // Resposta de uma consulta mais velha que a já aplicada: descarta.
+        if (consulta < perfilAplicadoRef.current) return;
+        perfilAplicadoRef.current = consulta;
         const profileData = Array.isArray(data) ? data[0] : data;
         setProfile((prev: any) => {
           // Impede mudança de referência se os dados forem idênticos (previne re-renderização em cascata)
@@ -1525,11 +1569,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsPasswordRecovery(false);
       clearLocalUserData();
       if (typeof window !== "undefined") {
-        for (let i = localStorage.length - 1; i >= 0; i--) {
-          const key = localStorage.key(i);
-          if (key?.includes("-auth-token") || key?.includes("-code-verifier")) {
-            localStorage.removeItem(key);
+        try {
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const key = localStorage.key(i);
+            if (
+              key?.includes("-auth-token") ||
+              key?.includes("-code-verifier")
+            ) {
+              localStorage.removeItem(key);
+            }
           }
+        } catch {
+          // Armazenamento bloqueado: não há token local que se alcance.
         }
       }
     } else {

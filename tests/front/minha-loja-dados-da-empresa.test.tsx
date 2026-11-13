@@ -207,6 +207,48 @@ describe("Minha loja › Dados da empresa", () => {
     expect(email().value).toBe("oi@loja.com");
   });
 
+  it("aparelho com a cópia velha: editar só a razão social NÃO manda o e-mail (não apaga o que outro aparelho cadastrou)", async () => {
+    // Este aparelho abriu Minha loja sem e-mail; outro aparelho já cadastrou.
+    estado.config = { storeLegalName: "Loja antiga" };
+    await abrir();
+    await digitar(razao(), "Loja nova Ltda");
+    await salvar();
+
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    const [enviado] = updateConfig.mock.calls[0] as unknown as [
+      Record<string, unknown>,
+    ];
+    expect(enviado).toEqual({ storeLegalName: "Loja nova Ltda" });
+    expect(enviado).not.toHaveProperty("storeSupportEmail");
+    expect(enviado).not.toHaveProperty("storeLegalDocument");
+  });
+
+  it("editar só o e-mail manda só o e-mail", async () => {
+    estado.config = {
+      storeLegalName: "Loja da Ana Ltda",
+      storeLegalDocument: "11222333000181",
+    };
+    await abrir();
+    await digitar(email(), "oi@loja.com");
+    await salvar();
+    expect(updateConfig.mock.calls[0]?.[0]).toEqual({
+      storeSupportEmail: "oi@loja.com",
+    });
+  });
+
+  it("editar só o documento manda só o documento", async () => {
+    estado.config = {
+      storeLegalName: "Loja da Ana Ltda",
+      storeSupportEmail: "oi@loja.com",
+    };
+    await abrir();
+    await digitar(documento(), "529.982.247-25");
+    await salvar();
+    expect(updateConfig.mock.calls[0]?.[0]).toEqual({
+      storeLegalDocument: "52998224725",
+    });
+  });
+
   it("CPF também vale", async () => {
     await abrir();
     await digitar(documento(), "529.982.247-25");
@@ -295,6 +337,56 @@ describe("Minha loja › Dados da empresa", () => {
       documento().dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
     });
     expect(documento().value).toBe("11.222.333/0001-81");
+  });
+
+  // Defeito medido: 15 dígitos cabiam nos 18 caracteres do campo, a máscara de
+  // saída cortava em 14 e o CNPJ "novo" (válido) era gravado como se ela o
+  // tivesse digitado.
+  async function sairDoDocumento() {
+    await act(async () => {
+      documento().dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    });
+  }
+
+  it("documento com dígito a mais: a máscara NÃO corta, o aviso aparece e nada é gravado", async () => {
+    await abrir();
+    await digitar(documento(), "112223330001819");
+    await sairDoDocumento();
+    expect(documento().value).toBe("112223330001819");
+
+    await salvar();
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(
+      hospedeiro.querySelector("#empresa-documento-erro")?.textContent,
+    ).toContain("não confere");
+    expect(toastSuccess).not.toHaveBeenCalled();
+  });
+
+  it("colar CNPJ com máscara e um caractere sobrando também é recusado, não cortado", async () => {
+    await abrir();
+    await digitar(documento(), "11.222.333/0001-81X");
+    await sairDoDocumento();
+    expect(documento().value).toBe("11222333000181X");
+    await salvar();
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(hospedeiro.querySelector("#empresa-documento-erro")).not.toBeNull();
+  });
+
+  it("o campo de documento não tem maxlength (o corte do navegador vem antes da máscara e da conferência)", async () => {
+    await abrir();
+    expect(documento().hasAttribute("maxlength")).toBe(false);
+  });
+
+  it("CPF e CNPJ certos continuam sendo mascarados e gravados ao sair do campo", async () => {
+    await abrir();
+    await digitar(documento(), "52998224725");
+    await sairDoDocumento();
+    expect(documento().value).toBe("529.982.247-25");
+    await salvar();
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(
+      (updateConfig.mock.calls[0] as unknown as [Record<string, unknown>])[0],
+    ).toMatchObject({ storeLegalDocument: "52998224725" });
   });
 
   it("falha ao gravar: não anuncia sucesso e o que ela digitou fica", async () => {

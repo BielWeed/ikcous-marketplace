@@ -3,9 +3,11 @@ import {
   LogoDaTransportadora,
   SeloDoAgregador,
 } from "@/components/shipping/MarcaDoFrete";
+import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
 import { useContextoDoFreteDaLoja } from "@/contexts/ContextoDoFreteDaLoja";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import {
   type OrigemDaEscolhaDoFrete,
   resolverEscolhaDoFrete,
@@ -13,6 +15,7 @@ import {
 import { destaquesDoFrete } from "@/lib/destaques-do-frete";
 import { precoFinalDaOpcao } from "@/lib/estrategias-de-frete";
 import { ehModalidadeDaLoja, ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
+import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { marcaDoFrete } from "@/lib/marca-do-frete";
 import {
   codigoDoErroDeEdgeFunction,
@@ -368,6 +371,15 @@ interface ShippingCalculatorProps {
    * já com a opção nova.
    */
   modoResumo?: boolean;
+  /**
+   * PEDIDO EM ENVIO (13/11/2026): só o checkout passa (`isSubmitting`). Com
+   * `true`, o "Trocar", os cartões de opção e o "Tentar de novo" ficam
+   * desabilitados — nada que possa trocar a modalidade (entrega x retirada)
+   * ou o frete chega ao `onSelectOption` enquanto o envio carrega o valor
+   * capturado no clique de "Finalizar". Sem a prop (carrinho): tudo como
+   * sempre.
+   */
+  bloqueado?: boolean;
 }
 
 /**
@@ -416,6 +428,7 @@ export function ShippingCalculator({
   onStatusChange,
   forcarNovaCotacaoEm,
   modoResumo,
+  bloqueado = false,
 }: ShippingCalculatorProps) {
   // Fora do StoreProvider (peça montada sozinha em teste/storybook) o
   // `useStore` real quebraria — mas todo chamador de produção (CartView,
@@ -451,6 +464,9 @@ export function ShippingCalculator({
   // chega a aparecer. `Trocar` abre; escolher uma opção nova na lista
   // aberta fecha de novo (ver o onClick de `renderizarCartaoDeOpcao`).
   const [detalhesAbertosNoResumo, setDetalhesAbertosNoResumo] = useState(false);
+  // A lista some ao escolher (o botão focado some junto): o foco vai para o
+  // "Trocar" que reaparece — só quando a escolha veio da lista aberta.
+  const focarTrocarRef = useRef(false);
 
   // Lacre de sequência: cada `calculateShipping` tira um número; só quem tem
   // o número MAIS RECENTE pode escrever o resultado na tela. Sem isso, duas
@@ -936,6 +952,15 @@ export function ShippingCalculator({
   }, [isOffline]);
 
   const destinoValido = soDigitosDoCep(cepDestino).length === 8;
+  // Cotação sem nenhuma opção: a conversa já nasce com o CEP (wa.me com DDI 55
+  // para número de 10/11 dígitos, mesmo mecanismo do checkout).
+  const combinarEntregaPeloWhatsapp = () => {
+    const cep = soDigitosDoCep(cepDestino);
+    let fone = (config.whatsappNumber || "").replace(/\D/g, "");
+    if (fone.length === 10 || fone.length === 11) fone = `55${fone}`;
+    const mensagem = `Olá! Quero combinar a entrega para o CEP ${cep.slice(0, 5)}-${cep.slice(5)}.`;
+    abrirWhatsapp(`https://wa.me/${fone}?text=${encodeURIComponent(mensagem)}`);
+  };
   // Derivado EM RENDER: no primeiro pintar depois de o destino aparecer,
   // antes de o efeito de adoção rodar, o status já é "cotando" — nunca
   // "pronto" com opções que não são deste destino.
@@ -1097,7 +1122,12 @@ export function ShippingCalculator({
         // Laudo de acessibilidade 05/09, A1 (ALTA): a escolha é
         // anunciada por `aria-pressed`.
         aria-pressed={isSelected}
+        // Pedido em envio: a escolha de agora não vale mais para o pedido
+        // que já está saindo — ver a prop `bloqueado`.
+        disabled={bloqueado}
+        aria-disabled={bloqueado || undefined}
         onClick={() => {
+          if (bloqueado) return;
           haptic.light();
           selecaoVivaRef.current = option;
           idTocadoNestaMontagemRef.current = option.id;
@@ -1107,9 +1137,12 @@ export function ShippingCalculator({
           // MODO RESUMO: escolher uma opção na lista aberta volta ao
           // resumo compacto, já com a nova opção — a pessoa não precisa
           // recolher manualmente depois de decidir.
-          if (modoResumo) setDetalhesAbertosNoResumo(false);
+          if (modoResumo) {
+            focarTrocarRef.current = detalhesAbertosNoResumo;
+            setDetalhesAbertosNoResumo(false);
+          }
         }}
-        className={`flex w-full select-none items-center justify-between rounded-2xl p-3 text-left transition-all duration-200 ${
+        className={`flex w-full select-none items-center justify-between rounded-2xl p-3 text-left transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 ${
           neutro
             ? isSelected
               ? "border-2 border-solid border-zinc-900 bg-white text-zinc-900"
@@ -1425,11 +1458,20 @@ export function ShippingCalculator({
               // projeto.
               <button
                 type="button"
+                ref={(el) => {
+                  if (el && focarTrocarRef.current) {
+                    focarTrocarRef.current = false;
+                    el.focus();
+                  }
+                }}
+                disabled={bloqueado}
+                aria-disabled={bloqueado || undefined}
                 onClick={() => {
+                  if (bloqueado) return;
                   haptic.light();
                   setDetalhesAbertosNoResumo(true);
                 }}
-                className="min-h-11 min-w-11 shrink-0 rounded-xl bg-zinc-100 px-3 text-sm font-semibold text-zinc-700 transition-colors hover:bg-zinc-200"
+                className="min-h-11 min-w-11 shrink-0 rounded-xl bg-zinc-100 px-3 text-sm font-semibold text-zinc-700 transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-zinc-100"
               >
                 Trocar
               </button>
@@ -1506,8 +1548,8 @@ export function ShippingCalculator({
                 <button
                   type="button"
                   onClick={tentarDeNovo}
-                  disabled={loading}
-                  className="flex shrink-0 select-none items-center gap-1 rounded-xl bg-white px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-800 shadow-sm disabled:opacity-40"
+                  disabled={loading || bloqueado}
+                  className="flex min-h-10 shrink-0 select-none items-center gap-1 rounded-xl bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-800 shadow-sm disabled:opacity-40"
                 >
                   <RefreshCw className="size-3" />
                   Tentar de novo
@@ -1560,12 +1602,23 @@ export function ShippingCalculator({
             !loading &&
             !error &&
             options.length === 0 && (
-              <div className="flex items-start gap-1.5 rounded-2xl border border-zinc-100 bg-white p-2.5 text-[11px] font-medium text-zinc-500">
-                <Truck className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
-                <span>
-                  A calcular: nenhuma opção de entrega para este endereço —
-                  combine a entrega com a loja.
-                </span>
+              <div className="space-y-2">
+                <div className="flex items-start gap-1.5 rounded-2xl border border-zinc-100 bg-white p-2.5 text-[11px] font-medium text-zinc-500">
+                  <Truck className="mt-0.5 size-3.5 shrink-0 text-zinc-400" />
+                  <span>
+                    A calcular: nenhuma opção de entrega para este endereço —
+                    combine a entrega com a loja.
+                  </span>
+                </div>
+                {/* "Combine com a loja" precisa de um jeito de combinar: com
+                    WhatsApp cadastrado (mesma régua do checkout), o botão abre
+                    a conversa com o CEP dela. Só contato — não libera
+                    finalizar sem frete. */}
+                {lojaTemWhatsapp(config.whatsappNumber) && (
+                  <BotaoWhatsapp onClick={combinarEntregaPeloWhatsapp}>
+                    Combinar entrega pelo WhatsApp
+                  </BotaoWhatsapp>
+                )}
               </div>
             )}
         </>

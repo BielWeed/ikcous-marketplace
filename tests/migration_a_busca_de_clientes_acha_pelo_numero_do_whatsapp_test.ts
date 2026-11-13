@@ -363,6 +363,9 @@ Deno.test("so a baseline, a 20261199000000 e este par definem get_admin_customer
       )
     )
       posteriores.push(n);
+  // A 20261399993000 (um endereco principal por cliente na lista) tem o proprio teste: tests/migration_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes_test.ts.
+  const SUCESSORA_3993 =
+    "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql";
   // A sucessora (lote 204) tem o proprio teste: tests/migration_a_lista_de_clientes_nao_repete_nem_esconde_ninguem_entre_as_paginas_test.ts.
   const SUCESSORA =
     "20261392000000_a_lista_de_clientes_nao_repete_nem_esconde_ninguem_entre_as_paginas.sql";
@@ -371,8 +374,10 @@ Deno.test("so a baseline, a 20261199000000 e este par definem get_admin_customer
     [
       NOME,
       SUCESSORA,
+      SUCESSORA_3993,
       `rollback-manual-${NOME}`,
       `rollback-manual-${SUCESSORA}`,
+      `rollback-manual-${SUCESSORA_3993}`,
     ].sort(),
   );
 });

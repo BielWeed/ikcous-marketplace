@@ -324,12 +324,28 @@ on:
           - 127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente
           - 128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado
           - 128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente
-          - 129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado
-          - 129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente
+          - 149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado
+          - 149b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente
           - 135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado
           - 135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente
           - 140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado
           - 140b-antes-as-listas-do-painel-nao-repetem-ninguem-base-vigente
+          - 141a-conferir-o-grafico-do-financeiro-soma-so-as-contas-ativas-aplicado
+          - 141b-antes-o-grafico-do-financeiro-soma-so-as-contas-ativas-base-vigente
+          - 142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado
+          - 142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente
+          - 143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado
+          - 143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente
+          - 146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado
+          - 146b-antes-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-base-vigente
+          - 147a-conferir-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-aplicado
+          - 147b-antes-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-base-vigente
+          - 148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado
+          - 148b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-base-vigente
+          - 145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado
+          - 145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente
+          - 144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado
+          - 144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente
           - 129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente
           - 129m-medir-corrida-e-avanco-com-estorno
           - 9a-conferir-60-a-66-aplicado

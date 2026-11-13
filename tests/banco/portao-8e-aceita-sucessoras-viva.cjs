@@ -145,6 +145,11 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     s.nome !==
       "20261392000000_a_lista_de_clientes_nao_repete_nem_esconde_ninguem_entre_as_paginas.sql" &&
     s.nome !== "20261392100000_a_busca_do_crm_acha_o_numero_com_mais_55.sql" &&
+    // A 20261399993000 (o CRM e a lista de clientes nao contam a mesma pessoa duas vezes) e a TERCEIRA sucessora de get_admin_customers_paged (99 -> 230 -> 392 -> 3993) e tambem
+    // redefine crm__nunca_comprou (que nao e da 8e): UMA migration, uma funcao da 8e, com a PROVA PROPRIA em
+    // tests/banco/o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-viva.cjs; `noEstado` a desfaz antes (a-busca-de-clientes-posterior.cjs, o rollback dela devolve as duas).
+    s.nome !==
+      "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql" &&
     // A 20261394000000 (o pedido de visitante na entrega tem freio) so redefine a v23 e a v24, em cima da 350 e da 384; nenhuma das duas e' funcao
     // da 8e. Entra em sucessoras-da-99.cjs so para cair antes da 384 (pedido-pelo-app-exige-conta-posterior.cjs chama
     // o-pedido-de-visitante-na-entrega-posterior.cjs); aqui sai do rol pela mesma razao da 384 e da 350.
@@ -194,7 +199,26 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // get_admin_orders_paged (99 -> 387 -> 3999 -> 3998) e de get_admin_orders_cancelados_recentes (99 -> 380 -> 3998): UMA migration, tres funcoes da 8e, com a PROVA PROPRIA em
     // tests/banco/as-listas-do-painel-nao-repetem-ninguem-viva.cjs; `noEstado` a desfaz antes (as-listas-do-painel-posterior.cjs, o rollback dela devolve as tres de uma vez).
     s.nome !==
-      "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql",
+      "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql" &&
+    // A 20261399985000 (o grafico do Financeiro soma so as contas ativas) e a SEGUNDA sucessora de fin_resumo (99 -> 3993 -> 39985): tem a PROVA PROPRIA em
+    // tests/banco/o-grafico-do-financeiro-soma-so-as-contas-ativas-viva.cjs; `noEstado` a desfaz antes (o-grafico-do-financeiro-posterior.cjs), como a 3993.
+    s.nome !==
+      "20261399985000_o_grafico_do_financeiro_soma_so_as_contas_ativas.sql" &&
+    // A 20261399992000 (o item que a lojista marcou "Nao veio" pode ser devolvido de novo) e a SEGUNDA sucessora de devolucao_elegibilidade e de devolucao_detalhe
+    // (99 -> 39992) e a de solicitar_devolucao (175 -> 39992): UMA migration, duas funcoes da 8e (a terceira, solicitar_devolucao, nao e' da 8e). A 8e ja a aceita
+    // (consulta 8e, CTE sucessoras); `noEstado` a desfaz antes (o-item-que-nao-veio-posterior.cjs, o rollback dela devolve as tres de uma vez), como a 3980.
+    s.nome !==
+      "20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql" &&
+    // A 20261399994000 (o item "Nao veio" fica com a cliente no ranking de lucro) e a OITAVA sucessora de get_admin_analytics_v2 (... -> 251 -> 3997 -> 3994): tem a PROVA PROPRIA do que a 8e, a 35a,
+    // a 45a, a 48a, a 53a, a 54a e a 135a fazem com ela em tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs; `noEstado` a desfaz antes (lucro-do-estoque-posterior.cjs
+    // chama o-ranking-de-lucro-posterior.cjs, que chama o-item-que-nao-veio-fica-com-a-cliente-posterior.cjs primeiro), como faz com a 3997 e a 251.
+    s.nome !==
+      "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql" &&
+    // A 20261399995000 (o lucro do ranking casa com o Financeiro) e a NONA sucessora de get_admin_analytics_v2 (... -> 251 -> 3997 -> 3994 -> 3995): tem a PROVA PROPRIA do que a 8e, a 35a,
+    // a 45a, a 48a, a 53a, a 54a, a 135a e a 146a fazem com ela em tests/banco/o-lucro-do-ranking-casa-com-o-financeiro-viva.cjs; `noEstado` a desfaz antes (lucro-do-estoque-posterior.cjs chama
+    // o-ranking-de-lucro-posterior.cjs, que chama o-item-que-nao-veio-fica-com-a-cliente-posterior.cjs, que chama o-lucro-do-ranking-casa-com-o-financeiro-posterior.cjs primeiro).
+    s.nome !==
+      "20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");
@@ -360,8 +384,16 @@ let C; // a conexão única com o clone do rodar-isolado
 async function noEstado(montar, textos = [SQL_8E]) {
   await C.query("BEGIN");
   try {
+    // A 20261399992000 (o item que nao veio pode ser devolvido de novo) sucede os corpos da 99 (devolucao_elegibilidade, devolucao_detalhe) e da 175 (solicitar_devolucao): sai PRIMEIRO (so se no ar).
+    await require("./o-item-que-nao-veio-posterior.cjs").desfazerOItemQueNaoVeioNaTransacao(
+      C,
+    );
     // A 20261399980000 (as listas do painel desempatam por id) sucede os corpos da 3992, da 3999 e da 380: sai PRIMEIRO (ordem inversa da aplicacao; so se no ar).
     await require("./as-listas-do-painel-posterior.cjs").desfazerListasDoPainelNaTransacao(
+      C,
+    );
+    // A 20261399985000 (o grafico do Financeiro soma so as contas ativas) sucede o fin_resumo da 3993: sai PRIMEIRO (so se no ar).
+    await require("./o-grafico-do-financeiro-posterior.cjs").desfazerGraficoDoFinanceiroNaTransacao(
       C,
     );
     // A 20261399930000 (o caixa e a conta recusam valor que nao e numero) sucede a 370 em fin_caixa_abrir e a 99 em fin_conta_salvar: sai PRIMEIRO (ordem inversa da aplicacao; so se no ar).
@@ -381,7 +413,8 @@ async function noEstado(montar, textos = [SQL_8E]) {
     await require("./o-lucro-do-inicio-posterior.cjs").desfazerLucroDoInicioNaTransacao(
       C,
     );
-    // A 20261392000000 e a 20261392100000 sucedem a 230 e a 231: saem antes de qualquer montagem desta prova.
+    // A 20261399993000 sucede a 392 em get_admin_customers_paged (e troca crm__nunca_comprou): sai junto com a 392 e a 3921, a mais nova antes (a-busca-de-clientes-posterior.cjs).
+    // Depois dela, a 20261392000000 e a 20261392100000 sucedem a 230 e a 231: saem antes de qualquer montagem desta prova.
     await require("./a-busca-de-clientes-posterior.cjs").desfazerBuscaDeClientesPosteriorNaTransacao(
       C,
     );

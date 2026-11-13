@@ -87,15 +87,28 @@ export function ClienteDaVenda({
   );
 
   const rodadaRef = useRef(0);
+  // O termo (já aparado) cuja busca está na tela ou a caminho. `null` = nenhuma
+  // busca de pé (começo, termo curto demais, ou busca que falhou).
+  const termoBuscadoRef = useRef<string | null>(null);
 
   async function aoDigitarBusca(valor: string): Promise<void> {
+    const termoLimpo = valor.trim();
+    // O campo entrega o texto de novo quando PERDE O FOCO — e tocar num cliente
+    // da lista tira o foco antes do clique. Refazer a busca do termo que já
+    // está na tela limpava a lista no meio do toque e o primeiro toque morria
+    // (mesma guarda da busca de produto). Termo que falhou, ou ficou curto
+    // demais, zera o ref e pode ser buscado de novo.
+    if (termoLimpo.length >= 2 && termoLimpo === termoBuscadoRef.current) {
+      setTermoDeBusca(valor);
+      return;
+    }
+    termoBuscadoRef.current = termoLimpo.length >= 2 ? termoLimpo : null;
     const rodada = ++rodadaRef.current;
     setTermoDeBusca(valor);
     setErroDeBusca(false);
     setBuscaConcluida(false);
     setResultados([]);
     setTotalDaBusca(0);
-    const termoLimpo = valor.trim();
     if (termoLimpo.length < 2) {
       setBuscando(false);
       return;
@@ -110,6 +123,7 @@ export function ClienteDaVenda({
     } catch (erro) {
       if (rodada !== rodadaRef.current) return;
       console.error("Erro ao buscar cliente no balcão:", erro);
+      termoBuscadoRef.current = null;
       setResultados([]);
       setErroDeBusca(true);
     } finally {

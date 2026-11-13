@@ -27,6 +27,7 @@ import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import {
   acoesDoCliente,
+  cancelamentoDependeDaLoja,
   etapasDaDevolucao,
   formatarDia,
   formatarReais,
@@ -184,8 +185,10 @@ export function DevolucaoDoPedidoCard({
   }
 
   async function cancelar() {
-    if (enviando) return;
     setConfirmandoCancelar(false);
+    // A ficha pode reler com o vínculo já preso depois que a confirmação abriu:
+    // o servidor recusaria, então nem chama.
+    if (enviando || !acoes.includes("cancelar")) return;
     setEnviando("cancelar");
     setErro(null);
     const r = await onCancelar(atual.id);
@@ -509,6 +512,15 @@ export function DevolucaoDoPedidoCard({
           )}
           Cancelar devolução
         </button>
+      )}
+
+      {cancelamentoDependeDaLoja(atual) && (
+        <p
+          data-testid="cancelar-devolucao-fale-com-a-loja"
+          className="mt-3 text-center text-xs leading-relaxed text-zinc-600"
+        >
+          Se precisar cancelar, fale com a loja.
+        </p>
       )}
 
       <AlertDialog

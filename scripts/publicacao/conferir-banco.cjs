@@ -3049,10 +3049,10 @@ const ROL_DA_135 = [
   "get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)",
   "get_admin_analytics_v2: EXECUTE so de authenticated e service_role (PUBLIC e anon nao)",
 ];
-// Lote 129 (20261399940000, o cadastro cria o perfil em toda loja: o gatilho on_auth_user_created de auth.users, que a Savy clonada do baseline nunca teve, mais o reparo de quem se cadastrou sem perfil).
-// A 129a (6 linhas) prova o gatilho como desenhado (estrutura do catalogo), ligado, sem concorrente, a funcao SECURITY DEFINER e que nenhum usuario de cliente de tamanho valido esta sem perfil (so uma
-// CONTAGEM); a 129b (3 linhas) prova o estado de antes (gatilho ausente). Nenhuma devolve nome, telefone, CPF ou e-mail.
-const ROL_DA_129A_PERFIL = [
+// Lote 149 (20261399940000, o cadastro cria o perfil em toda loja: o gatilho on_auth_user_created de auth.users, que a Savy clonada do baseline nunca teve, mais o reparo de quem se cadastrou sem perfil).
+// A 149a (6 linhas) prova o gatilho como desenhado (estrutura do catalogo), ligado, sem concorrente, a funcao SECURITY DEFINER e que nenhum usuario de cliente de tamanho valido esta sem perfil (so uma
+// CONTAGEM); a 149b (3 linhas) prova o estado de antes (gatilho ausente). Nenhuma devolve nome, telefone, CPF ou e-mail.
+const ROL_DA_149A_PERFIL = [
   "controle: catalogo publico visivel",
   "auth.users: gatilho on_auth_user_created existe, AFTER INSERT por linha, chama public.handle_new_user(), sem condicao nem lista de colunas",
   "auth.users: o gatilho on_auth_user_created esta LIGADO (nao desabilitado)",
@@ -3060,7 +3060,7 @@ const ROL_DA_129A_PERFIL = [
   "so existe UM gatilho em auth.users que chama handle_new_user: nenhum concorrente",
   "nenhum usuario de cliente (papel customer ou sem papel, nome ate 120 e telefone ate 20) esta sem perfil",
 ];
-const ROL_DA_129B_PERFIL = [
+const ROL_DA_149B_PERFIL = [
   "controle: catalogo publico visivel",
   "auth.users tem id, raw_user_meta_data e raw_app_meta_data; profiles tem id, full_name, whatsapp, cpf e role; handle_new_user() existe (trigger, SECURITY DEFINER)",
   "nenhum gatilho on_auth_user_created existe ainda em auth.users",
@@ -3080,11 +3080,105 @@ const ROL_DA_140 = [
     `${fn}: EXECUTE so authenticated e service_role (sem PUBLIC nem anon)`,
   ]),
 ];
+// Lote 141 (20261399985000, o grafico do Financeiro soma so as contas ativas: fin_resumo redefinida, sem objeto novo). A 141a e a 141b tem o MESMO rol de 5 linhas (controle; de fin_resumo, corpo exato (md5), atributos
+// e ACL; e o corpo exato de fin__saldos, cuja conta o corpo novo repete); a 141a espera o corpo da migration nova e a 141b o vigente de antes (o da 20261399300000). So catalogo: nenhuma le conta, lancamento ou
+// pedido e nenhuma chama as funcoes.
+const ROL_DA_141 = [
+  "controle: funcoes de public visiveis a este papel",
+  "fin_resumo: corpo exato (md5)",
+  "fin_resumo: assinatura e atributos conhecidos (plpgsql, SECURITY DEFINER, STABLE, search_path=public, uma so)",
+  "fin_resumo: EXECUTE authenticated, sem PUBLIC ou anon",
+  "fin__saldos: corpo exato (md5)",
+];
+// Lote 142 (20261399990000, o CRM nao duplica o comprador quando o WhatsApp vem com e sem o 55: crm__vendas redefinida, sem objeto novo). A 142a e a 142b tem o MESMO rol de 4 linhas (controle,
+// corpo exato (md5), atributos e ACL); a 142a espera o corpo da migration nova e a 142b o vigente de antes (o da 20261178000000). So catalogo: nenhuma le pedido, perfil ou cliente e nenhuma chama a funcao.
+const ROL_DA_142 = [
+  "controle: funcoes de public visiveis a este papel",
+  "crm__vendas: corpo exato (md5)",
+  "crm__vendas: assinatura e atributos conhecidos (sql, STABLE, SECURITY INVOKER, search_path=public, uma so)",
+  "crm__vendas: sem EXECUTE para PUBLIC, anon ou authenticated",
+];
+// Lote 143 (20261399991000, repetir a devolucao que falhou nao paga duas vezes: funcao solicitar_estorno_repetindo e tabela order_refund_repeticao, objetos NOVOS). A 143a prova o estado novo
+// (corpo exato, atributos, EXECUTE so do authenticated, tabela so do servidor com PK/UNIQUE/CASCADE); a 143b prova a ausencia dos dois e o que a funcao nova chama (as duas portas de admin, a regra
+// unica "pode ter saido" e a conta do saldo, com o corpo da 20261241000000). So catalogo: nenhuma le devolucao, pedido ou marca e nenhuma chama a funcao.
+const ROL_DA_143A = [
+  "controle: funcoes de public visiveis a este papel",
+  "solicitar_estorno_repetindo: corpo exato (md5)",
+  "solicitar_estorno_repetindo: uma so, atributos conhecidos (SECURITY DEFINER, plpgsql, VOLATILE, retorno jsonb, search_path=public) e EXECUTE so do authenticated (nem PUBLIC, anon ou service_role)",
+  "order_refund_repeticao: so do servidor (RLS ligada, nenhuma policy, nenhum acesso de PUBLIC, anon, authenticated e service_role)",
+  "order_refund_repeticao: tres colunas (refund_id, nova_refund_id, created_at), PK em refund_id, UNIQUE em nova_refund_id e duas chaves estrangeiras ON DELETE CASCADE",
+];
+const ROL_DA_143B = [
+  "controle: catalogo publico visivel",
+  "solicitar_estorno_repetindo e order_refund_repeticao: ainda NAO existem",
+  "order_refund__pode_ter_saido e pedido__saldo_a_estornar: corpo da 20261241000000 (md5), o que a funcao nova chama",
+  "is_admin() e is_admin_atual() existem; order_refund_prova existe e devolucoes tem refund_id (uuid)",
+];
+// Lote 144 (20261399992000, o item que a lojista marcou "Nao veio" pode ser devolvido de novo: o corpo de TRES funcoes muda, nenhuma ACL, nenhuma tabela). A 144a prova o estado novo (o md5 exato dos tres
+// corpos e atributos/ACL conhecidos); a 144b prova a base vigente (os corpos da 20261199000000 e da 20261175000000). So catalogo: nenhuma le devolucao, pedido ou item e nenhuma chama as funcoes.
+const ROL_DA_144A = [
+  "controle: funcoes de public visiveis a este papel",
+  "devolucao_elegibilidade: corpo exato (md5)",
+  "solicitar_devolucao: corpo exato (md5)",
+  "devolucao_detalhe: corpo exato (md5)",
+  "as tres: uma so de cada nome, atributos conhecidos (SECURITY DEFINER, plpgsql, volatilidade, retorno jsonb, search_path=public) e EXECUTE so do authenticated (nem PUBLIC nem anon)",
+];
+const ROL_DA_144B = [...ROL_DA_144A];
+// Lote 145 (20261399993000, o CRM e a lista de clientes nao contam a mesma pessoa duas vezes: o corpo de DUAS funcoes muda, nenhuma ACL, nenhuma tabela). A 145a prova o estado novo (o md5 exato dos
+// dois corpos e atributos/ACL conhecidos); a 145b prova a base vigente (os corpos da 20261183000000 e da 20261392000000). So catalogo: nenhuma le perfil, endereco, pedido ou cliente e nenhuma chama as funcoes.
+const ROL_DA_145 = [
+  "controle: funcoes de public visiveis a este papel",
+  "crm__nunca_comprou: corpo exato (md5)",
+  "get_admin_customers_paged: corpo exato (md5)",
+  "crm__nunca_comprou: uma so, atributos conhecidos (sql, STABLE, SECURITY INVOKER, search_path=public) e sem EXECUTE para PUBLIC, anon ou authenticated",
+  "get_admin_customers_paged: uma so, atributos conhecidos (plpgsql, SECURITY DEFINER, VOLATILE, search_path=public, extensions) e EXECUTE so de authenticated e service_role (nem PUBLIC nem anon)",
+];
+// Lote 146 (20261399994000, o item "Nao veio" fica com a cliente no ranking de lucro: get_admin_analytics_v2 redefinida pela segunda vez, sem objeto novo). A 146a e a 146b tem o MESMO rol de 4 linhas
+// da 135 (controle, corpo exato (md5), atributos e ACL); a 146a espera o corpo desta migration e a 146b o vigente de antes (o da 20261399970000). So catalogo: nenhuma le pedido, devolucao ou estorno e nenhuma chama a funcao.
+const ROL_DA_146 = [...ROL_DA_135];
+// Lote 147 (20261399995000, o lucro do ranking casa com o Financeiro, pedido a pedido: get_admin_analytics_v2 redefinida pela terceira vez, sem objeto novo). A 147a e a 147b tem o MESMO rol de 4 linhas
+// da 135 e da 146; a 147a espera o corpo desta migration e a 147b o vigente de antes (o da 20261399994000). So catalogo: nenhuma le pedido, devolucao ou estorno e nenhuma chama a funcao.
+const ROL_DA_147 = [...ROL_DA_135];
+// Lote 148 (20261399996000, o painel de avaliacoes filtra o que esta sem resposta: get_admin_reviews_paged, a MESMA assinatura de 5 argumentos, ganha o terceiro valor de p_status; sem objeto novo).
+// A 148a e a 148b tem o MESMO rol de 4 linhas da 123; a 148a espera o corpo desta migration e a 148b o vigente de antes (o da 20261399700000). So catalogo: nenhuma le avaliacao nem chama a funcao.
+const ROL_DA_148 = [...ROL_DA_123];
 const ROL_FECHADO_POR_CONSULTA = {
-  "129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado":
-    ROL_DA_129A_PERFIL,
-  "129b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente":
-    ROL_DA_129B_PERFIL,
+  "149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado":
+    ROL_DA_149A_PERFIL,
+  "149b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente":
+    ROL_DA_149B_PERFIL,
+  "148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado":
+    ROL_DA_148,
+  "148b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-base-vigente":
+    ROL_DA_148,
+  "147a-conferir-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-aplicado":
+    ROL_DA_147,
+  "147b-antes-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-base-vigente":
+    ROL_DA_147,
+  "146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado":
+    ROL_DA_146,
+  "146b-antes-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-base-vigente":
+    ROL_DA_146,
+  "145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado":
+    ROL_DA_145,
+  "145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente":
+    ROL_DA_145,
+  "144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado":
+    ROL_DA_144A,
+  "144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente":
+    ROL_DA_144B,
+  "143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado":
+    ROL_DA_143A,
+  "143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente":
+    ROL_DA_143B,
+  "142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado":
+    ROL_DA_142,
+  "142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente":
+    ROL_DA_142,
+  "141a-conferir-o-grafico-do-financeiro-soma-so-as-contas-ativas-aplicado":
+    ROL_DA_141,
+  "141b-antes-o-grafico-do-financeiro-soma-so-as-contas-ativas-base-vigente":
+    ROL_DA_141,
   "140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado": ROL_DA_140,
   "140b-antes-as-listas-do-painel-nao-repetem-ninguem-base-vigente": ROL_DA_140,
   "135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado": ROL_DA_135,

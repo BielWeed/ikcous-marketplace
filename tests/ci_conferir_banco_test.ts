@@ -2326,6 +2326,18 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "0dfda3ea5129c6f8aabfcf0052fd2936",
           versao: "20261232000000",
         },
+        // 13/11/2026: o item que a lojista marcou "Não veio" pode ser devolvido de novo (20261399992000): a elegibilidade
+        // e o detalhe da devolução ganham a sua sucessora (o solicitar_devolucao não é uma das 61).
+        {
+          fn: "devolucao_detalhe",
+          h: "a439e320641d553e3a21883c6606c6f2",
+          versao: "20261399992000",
+        },
+        {
+          fn: "devolucao_elegibilidade",
+          h: "bedd211bba45261dfbf962241ca3c9dd",
+          versao: "20261399992000",
+        },
         {
           fn: "fin_caixa_abrir",
           h: "28ab512e291378a01d110e298af7a402",
@@ -2369,6 +2381,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "a10e7f301eaf6b3edfac50bc87ff74bc",
           versao: "20261399300000",
         },
+        // 12/11/2026 (lote 141): o grafico do Financeiro soma so as contas ativas (a serie ganha variacao_saldo; 99 -> 3993 -> 39985).
+        {
+          fn: "fin_resumo",
+          h: "9e711b03cc63f610461915b850f2eb70",
+          versao: "20261399985000",
+        },
         {
           fn: "get_admin_analytics_v2",
           h: "0a5f8c75bbeeda3777a6a7326a0e281c",
@@ -2405,6 +2423,18 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           h: "0ea0841208f326971e4f92241929e088",
           versao: "20261399970000",
         },
+        // 13/11/2026 (lote 436): o item que a lojista marcou "Nao veio" fica com a cliente no ranking de lucro (... -> 251 -> 3997 -> 3994).
+        {
+          fn: "get_admin_analytics_v2",
+          h: "de8648a7783c12f1be7abd7986c8a2fc",
+          versao: "20261399994000",
+        },
+        // 13/11/2026 (lote 447): o lucro do ranking casa com o Financeiro, pedido a pedido (... -> 251 -> 3997 -> 3994 -> 3995).
+        {
+          fn: "get_admin_analytics_v2",
+          h: "4f8fb94f6cb0018e10d0ef71541f1cbf",
+          versao: "20261399995000",
+        },
         {
           fn: "get_admin_customers_paged",
           h: "d6c092c3e0d8069891af795147d65e9e",
@@ -2415,6 +2445,12 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           fn: "get_admin_customers_paged",
           h: "1c71829d75e3d8f17bf7fb01019c05ec",
           versao: "20261392000000",
+        },
+        // 13/11/2026 (lote 429): a lista de clientes toma UM endereco principal por cliente (99 -> 230 -> 392 -> 3993).
+        {
+          fn: "get_admin_customers_paged",
+          h: "35212d373895b2a9ede613198fc4c794",
+          versao: "20261399993000",
         },
         // 22/10/2026: o aviso de cancelados antigos conta só pendência real (só o bloco do fora_da_janela muda).
         {
@@ -8250,6 +8286,48 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       .update(corpo3997.replace(/\n/g, "\r\n"))
       .digest("hex"),
   };
+  // A 20261399994000 (o item "Nao veio" fica com a cliente no ranking de lucro) sucede a 3997 em get_admin_analytics_v2.
+  const texto3994 = (
+    await Deno.readTextFile(
+      `${MIGRATIONS_DIR}/20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql`,
+    )
+  ).replace(/\r/g, "");
+  const ini3994 = texto3994.indexOf(
+    cabecalhoDepois17("get_admin_analytics_v2"),
+  );
+  assert(ini3994 >= 0);
+  const abre3994 = texto3994.indexOf("AS $$", ini3994) + 5;
+  const corpo3994 = texto3994.slice(
+    abre3994,
+    texto3994.indexOf("$$;", abre3994),
+  );
+  const shaSucessora3994 = {
+    lf: criarHash("sha256").update(corpo3994).digest("hex"),
+    crlf: criarHash("sha256")
+      .update(corpo3994.replace(/\n/g, "\r\n"))
+      .digest("hex"),
+  };
+  // A 20261399995000 (o lucro do ranking casa com o Financeiro) sucede a 3994 em get_admin_analytics_v2.
+  const texto3995 = (
+    await Deno.readTextFile(
+      `${MIGRATIONS_DIR}/20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql`,
+    )
+  ).replace(/\r/g, "");
+  const ini3995 = texto3995.indexOf(
+    cabecalhoDepois17("get_admin_analytics_v2"),
+  );
+  assert(ini3995 >= 0);
+  const abre3995 = texto3995.indexOf("AS $$", ini3995) + 5;
+  const corpo3995 = texto3995.slice(
+    abre3995,
+    texto3995.indexOf("$$;", abre3995),
+  );
+  const shaSucessora3995 = {
+    lf: criarHash("sha256").update(corpo3995).digest("hex"),
+    crlf: criarHash("sha256")
+      .update(corpo3995.replace(/\n/g, "\r\n"))
+      .digest("hex"),
+  };
   const shaSucessora50 = {
     lf: criarHash("sha256").update(corpo50).digest("hex"),
     crlf: criarHash("sha256")
@@ -8374,6 +8452,10 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                 shaSucessora51.crlf,
                 shaSucessora3997.lf,
                 shaSucessora3997.crlf,
+                shaSucessora3994.lf,
+                shaSucessora3994.crlf,
+                shaSucessora3995.lf,
+                shaSucessora3995.crlf,
                 shaSucessora81.lf,
                 shaSucessora81.crlf,
                 shaSucessora85.lf,
@@ -8431,6 +8513,10 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
                     shaSucessora51.crlf,
                     shaSucessora3997.lf,
                     shaSucessora3997.crlf,
+                    shaSucessora3994.lf,
+                    shaSucessora3994.crlf,
+                    shaSucessora3995.lf,
+                    shaSucessora3995.crlf,
                     x.lf,
                   ]
                 : lado === "depois" && f.nome === "get_admin_products_paged"
@@ -8477,6 +8563,10 @@ Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos d
               shaSucessora45.crlf,
               shaSucessora3997.lf,
               shaSucessora3997.crlf,
+              shaSucessora3994.lf,
+              shaSucessora3994.crlf,
+              shaSucessora3995.lf,
+              shaSucessora3995.crlf,
               shaSucessora81.lf,
               shaSucessora81.crlf,
               shaSucessora85.lf,
@@ -14808,6 +14898,7 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
         "item",
         "painel",
         "base",
+        "base_chave",
         "wa_da_conta",
         "crm",
         "cliente",
@@ -14867,12 +14958,15 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
       // retirando exatamente as duas fórmulas declaradas, antes de comparar a regra histórica à 44m.
       assertEquals(
         vigente,
-        "20261399970000_o_ranking_de_lucro_desconta_a_devolucao.sql",
+        "20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql",
         "o painel mudou de corpo: refaca a regra da 44m contra o corpo novo",
       );
       // A 3997 (o ranking de lucro desconta a devolucao e o estorno) so troca a conta do lucro das vendas COM devolucao concluida ou
       // estorno: sem elas o numero e o da 251 (provado no CI por tests/banco/o-ranking-de-lucro-desconta-a-devolucao-viva.cjs, JSON inteiro
       // igual). A 44m mede a regra historica SEM devolucao, entao segue comparada ao corpo da 251, o ultimo antes dela.
+      // A 3994 (o item "Nao veio" fica com a cliente) so muda a conta das vendas COM item "Nao veio" numa devolucao: tambem nao muda
+      // o numero sem devolucao (tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs, JSON inteiro igual).
+      // A 3995 (o lucro do ranking casa com o Financeiro) tambem nao muda o numero sem devolucao nem estorno (tests/banco/o-lucro-do-ranking-casa-com-o-financeiro-viva.cjs, JSON inteiro igual).
       const corpoDaRegraHistorica =
         "20261251000000_o_lucro_do_estoque_usa_o_preco_da_variante.sql";
       const funcao = (sql: string) => {
@@ -15001,14 +15095,18 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
     },
   );
   await t.step(
-    "a venda reconhecida e a chave da cliente sao IDENTICAS a crm__vendas (20261178000000, corpo vigente)",
+    "a venda reconhecida e a chave da cliente sao IDENTICAS a crm__vendas (20261399990000, corpo vigente: o da 20261178000000 mais a chave sem o 55)",
     async () => {
       const vigente = await ultimaQueDefine("FUNCTION public.crm__vendas");
-      assertEquals(vigente, "20261178000000_o_crm_e_o_inicio_leem_a_loja.sql");
+      assertEquals(
+        vigente,
+        "20261399990000_o_crm_nao_duplica_o_comprador_com_e_sem_55.sql",
+        "a crm__vendas mudou de corpo: refaca a regra de cliente da 44m contra o corpo novo",
+      );
       const mig = normal(
         await Deno.readTextFile(`${MIGRATIONS_DIR}/${vigente}`),
       );
-      const base = bloco("base AS (", "), wa_da_conta AS (");
+      const base = bloco("base AS (", "), base_chave AS (");
       const venda =
         "WHERE o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega') AND o.status NOT IN ('cancelled', 'returned') AND COALESCE(o.pagamento_recebido_em, o.paid_at) IS NOT NULL AND COALESCE(o.pagamento_recebido_em, o.paid_at) <=";
       assertStringIncludes(mig, `${venda} p_ate`);
@@ -15019,27 +15117,32 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
       assertStringIncludes(base, `${wa} AS wa`);
       // a chave: a migration usa user_id, a 44m o apelido `conta` (o resto do texto e o mesmo)
       const chave =
-        "COALESCE(b.user_id::text, w.user_id::text, CASE WHEN b.wa IS NOT NULL THEN 'wa:' || b.wa END)";
+        "COALESCE(b.user_id::text, w.user_id::text, CASE WHEN b.wa_chave IS NOT NULL THEN 'wa:' || b.wa_chave END)";
       assertStringIncludes(mig, chave);
       assertStringIncludes(
         normal(limpo),
         `${chave.replaceAll("user_id", "conta")} AS chave`,
       );
+      // o numero SEM o 55 (12 ou 13 digitos comecando por 55): a mesma expressao nos dois textos
+      const semOCinquentaECinco =
+        "SELECT b.*, CASE WHEN length(b.wa) IN (12, 13) AND left(b.wa, 2) = '55' THEN substring(b.wa FROM 3) ELSE b.wa END AS wa_chave FROM base b";
+      assertStringIncludes(mig, semOCinquentaECinco);
+      assertStringIncludes(normal(limpo), semOCinquentaECinco);
       assertStringIncludes(
         mig,
-        "LEFT JOIN wa_da_conta w ON w.wa = b.wa AND b.user_id IS NULL",
+        "LEFT JOIN wa_da_conta w ON w.wa_chave = b.wa_chave AND b.user_id IS NULL",
       );
       assertStringIncludes(
         normal(limpo),
-        "LEFT JOIN wa_da_conta w ON w.wa = b.wa AND b.conta IS NULL",
+        "LEFT JOIN wa_da_conta w ON w.wa_chave = b.wa_chave AND b.conta IS NULL",
       );
       assertStringIncludes(
         mig,
-        "SELECT DISTINCT ON (b.wa) b.wa, b.user_id FROM base b WHERE b.wa IS NOT NULL AND b.user_id IS NOT NULL ORDER BY b.wa, b.pago_em DESC",
+        "SELECT DISTINCT ON (b.wa_chave) b.wa_chave, b.user_id FROM base_chave b WHERE b.wa_chave IS NOT NULL AND b.user_id IS NOT NULL ORDER BY b.wa_chave, b.pago_em DESC",
       );
       assertStringIncludes(
         normal(limpo),
-        "SELECT DISTINCT ON (b.wa) b.wa, b.conta FROM base b WHERE b.wa IS NOT NULL AND b.conta IS NOT NULL ORDER BY b.wa, b.pago_em DESC",
+        "SELECT DISTINCT ON (b.wa_chave) b.wa_chave, b.conta FROM base_chave b WHERE b.wa_chave IS NOT NULL AND b.conta IS NOT NULL ORDER BY b.wa_chave, b.pago_em DESC",
       );
     },
   );

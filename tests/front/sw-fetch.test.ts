@@ -61,11 +61,16 @@ function criarCachesFalso() {
   return { cachesFalso, cacheFalso };
 }
 
-/** Monta um `event` de fetch falso, do jeito que o listener de sw.ts espera. */
+/**
+ * Monta um `event` de fetch falso, do jeito que o listener de sw.ts espera.
+ * Um FetchEvent de verdade sempre tem `waitUntil`: a navegação sem cache usa
+ * para deixar a rede lenta terminar de popular o cache em segundo plano.
+ */
 function criarFetchEvent(request: Request) {
   return {
     request,
     respondWith: vi.fn(),
+    waitUntil: vi.fn(),
   };
 }
 

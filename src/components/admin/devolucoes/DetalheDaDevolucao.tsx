@@ -320,6 +320,14 @@ export function DetalheDaDevolucao({
                         {item.condicao && ` · ${rotuloCondicao(item.condicao)}`}
                         {item.reestocado_em && " · voltou ao estoque"}
                       </p>
+                      {item.ja_pedido_e_nao_veio && (
+                        <p
+                          data-testid="item-ja-pedido-e-nao-veio"
+                          className="text-[11px] font-semibold text-amber-200"
+                        >
+                          Este item já foi pedido antes e não veio.
+                        </p>
+                      )}
                     </div>
                   </li>
                 ))}

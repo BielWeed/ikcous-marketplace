@@ -175,13 +175,22 @@ describe("AdminShippingView: valores de frete grátis em centavos", () => {
     expect(updateConfig.mock.calls[0][0].freeShippingMin).toBe(199.9);
   });
 
-  it("o mínimo do frete nacional também vai em centavos e limitado", async () => {
+  // Desde que o mínimo nacional virou TEXTO (como o local), "79.996" é setenta
+  // e nove mil (ponto = milhar) e "79,996" (3 casas) não é dinheiro: recusa.
+  it("o mínimo do frete nacional lê ponto de milhar e recusa 3 casas", async () => {
     await abrir();
     await digitar("frete-nacional-minimo", "79.996");
     await salvar();
-    expect(updateConfig.mock.calls[0][0].nationalShippingMin).toBe(80);
+    expect(updateConfig.mock.calls[0][0].nationalShippingMin).toBe(79996);
 
     updateConfig.mockClear();
+    await digitar("frete-nacional-minimo", "79,996");
+    await salvar();
+    expect(updateConfig).not.toHaveBeenCalled();
+  });
+
+  it("o mínimo do frete nacional vai limitado ao máximo da coluna", async () => {
+    await abrir();
     await digitar("frete-nacional-minimo", "5000000000");
     await salvar();
     expect(updateConfig.mock.calls[0][0].nationalShippingMin).toBe(99999999.99);

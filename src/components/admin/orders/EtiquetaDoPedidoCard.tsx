@@ -14,6 +14,14 @@ import {
   motivoDoStatusSemEtiqueta,
 } from "@/lib/elegibilidade-da-etiqueta";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
+import {
+  MENSAGEM_COMPRA_DA_ETIQUETA_SEM_RESPOSTA,
+  PRAZO_DA_COMPRA_DA_ETIQUETA_MS,
+  PRAZO_DA_CONSULTA_DO_RASTREIO_MS,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency } from "@/lib/utils";
 import { haptic } from "@/utils/haptic";
@@ -51,7 +59,9 @@ type CargaFase = "carregando" | "erro" | "vazio" | "ok";
 type CompraFase = "ocioso" | "confirmar" | "gerando";
 
 interface MensagemResultado {
-  tipo: "sucesso" | "already" | "erro";
+  // `sem_resposta`: a rede não respondeu à compra dentro do prazo. NÃO é erro e
+  // NÃO é sucesso: a etiqueta pode ter sido comprada (ver handleGerarEtiqueta).
+  tipo: "sucesso" | "already" | "erro" | "sem_resposta";
   texto: string;
 }
 
@@ -87,6 +97,16 @@ interface EtiquetaDoPedidoCardProps {
    */
   status?: string | null;
   paymentStatus?: string | null;
+  /**
+   * Vínculo da etiqueta que a FICHA mostra agora (`Order.shippingLabelId`/
+   * `shippingLabelUrl`, vindos da lista ao vivo). A edge grava o id e depois a
+   * url sem mexer em status nem pagamento: com a ficha do mesmo pedido aberta
+   * em dois aparelhos, o que não gerou seguia oferecendo "Gerar etiqueta".
+   * Uma MUDANÇA deles relê o pedido em silêncio, como a de status/pagamento.
+   * `undefined` e `null` valem "sem etiqueta"; ausentes: nunca relê.
+   */
+  shippingLabelIdDaFicha?: string | null;
+  shippingLabelUrlDaFicha?: string | null;
 }
 
 /**
@@ -184,6 +204,8 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
   trackingCodeDaFicha,
   status,
   paymentStatus,
+  shippingLabelIdDaFicha,
+  shippingLabelUrlDaFicha,
 }: Readonly<EtiquetaDoPedidoCardProps>) {
   const [cargaFase, setCargaFase] = useState<CargaFase>("carregando");
   const [pedido, setPedido] = useState<PedidoParaEtiqueta | null>(null);
@@ -322,23 +344,57 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
     fetchPedido();
   }, [fetchPedido]);
 
-  // Cancelar/concluir o pedido na ficha (ou o pagamento mudar): relê, para o
-  // cartão parar de oferecer a etiqueta que a edge vai recusar. A 1ª leitura
-  // (e a troca de pedido) já é feita pelo efeito acima -- aqui só entra uma
-  // MUDANÇA de status/pagamento do MESMO pedido.
-  const ultimaLeituraDaFichaRef = useRef({ orderId, status, paymentStatus });
+  // Cancelar/concluir o pedido na ficha (ou o pagamento mudar), ou a etiqueta
+  // sair em OUTRO aparelho (id/url novos na lista ao vivo): relê, para o cartão
+  // parar de oferecer a etiqueta que a edge vai recusar -- ou o botão de
+  // compra de uma etiqueta que já existe. A 1ª leitura (e a troca de pedido)
+  // já é feita pelo efeito acima -- aqui só entra uma MUDANÇA do MESMO pedido.
+  //
+  // COMPRA DESTE APARELHO EM VOO: a edge grava o id na reivindicação (antes de
+  // pagar) e a url só no fim, então o id chega pela lista ao vivo no meio da
+  // compra. Reler aí derrubava o quadro "Gerando…" (o pedido já parece
+  // "emitido") e a leitura antiga podia terminar depois do resultado da compra
+  // e apagar a url/o rastreio. Durante o voo o id/url NÃO avançam no
+  // "último visto": quando a compra termina (`emVoo` muda, o efeito reavalia) a
+  // diferença ainda está lá e a releitura sai uma vez, sem perder a mudança.
+  // Status/pagamento seguem relendo em voo (a resposta da compra não se perde).
+  const etiquetaId = shippingLabelIdDaFicha ?? null;
+  const etiquetaUrl = shippingLabelUrlDaFicha ?? null;
+  const emVoo = compraFase === "gerando";
+  const ultimaLeituraDaFichaRef = useRef({
+    orderId,
+    status,
+    paymentStatus,
+    etiquetaId,
+    etiquetaUrl,
+  });
   useEffect(() => {
     const anterior = ultimaLeituraDaFichaRef.current;
-    ultimaLeituraDaFichaRef.current = { orderId, status, paymentStatus };
-    if (anterior.orderId !== orderId) return;
-    if (
-      anterior.status === status &&
-      anterior.paymentStatus === paymentStatus
-    ) {
-      return;
-    }
+    const mesmoPedido = anterior.orderId === orderId;
+    ultimaLeituraDaFichaRef.current = {
+      orderId,
+      status,
+      paymentStatus,
+      etiquetaId: emVoo && mesmoPedido ? anterior.etiquetaId : etiquetaId,
+      etiquetaUrl: emVoo && mesmoPedido ? anterior.etiquetaUrl : etiquetaUrl,
+    };
+    if (!mesmoPedido) return;
+    const mudouStatus =
+      anterior.status !== status || anterior.paymentStatus !== paymentStatus;
+    const mudouEtiqueta =
+      anterior.etiquetaId !== etiquetaId ||
+      anterior.etiquetaUrl !== etiquetaUrl;
+    if (!mudouStatus && !(mudouEtiqueta && !emVoo)) return;
     void fetchPedido({ silencioso: true });
-  }, [orderId, status, paymentStatus, fetchPedido]);
+  }, [
+    orderId,
+    status,
+    paymentStatus,
+    etiquetaId,
+    etiquetaUrl,
+    emVoo,
+    fetchPedido,
+  ]);
 
   // O código salvo/apagado na linha da ficha chega aqui. Pedido ainda não lido
   // (`null`): nada a aplicar, a leitura que vem já traz o código gravado.
@@ -371,10 +427,24 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
     setCompraFase("gerando");
     setMensagemResultado(null);
     haptic.medium();
+    // A chamada de compra, guardada fora do `try` para o `catch` do estouro
+    // poder ouvir a resposta TARDIA dela (só para reler, nunca para aplicar).
+    let invocacao: Promise<unknown> | undefined;
     try {
-      const { data, error } = await supabase.functions.invoke(
+      // PRAZO DA ESPERA DA TELA (não da compra): rede que conecta e não
+      // responde deixava "Gerando…" para sempre, com a trava do pedido presa.
+      const pedidoDeCompra = supabase.functions.invoke(
         "melhor-envio-etiqueta",
-        { body: { action: "gerar_etiqueta", orderId: orderIdDoClique } },
+        {
+          body: { action: "gerar_etiqueta", orderId: orderIdDoClique },
+        },
+      );
+      invocacao = pedidoDeCompra;
+      const { data, error } = await aguardarComPrazo(
+        pedidoDeCompra,
+        PRAZO_DA_COMPRA_DA_ETIQUETA_MS,
+        () =>
+          erroDeConsultaSemResposta(MENSAGEM_COMPRA_DA_ETIQUETA_SEM_RESPOSTA),
       );
       // A ficha pode ter trocado de pedido enquanto a compra estava em voo
       // (5-20 s) — a resposta de A não pode aparecer sobre B, nem sucesso
@@ -413,6 +483,37 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       }
     } catch (err) {
       if (orderIdAtualRef.current !== orderIdDoClique) return;
+      if (ehConsultaSemResposta(err)) {
+        // REGRA DE OURO DA COMPRA: estourou o prazo, a etiqueta PODE ter sido
+        // comprada (e o saldo gasto). A tela NÃO diz que deu certo nem que
+        // falhou. Solta o que era só da tela (a confirmação e a trava, no
+        // `finally`) e relê o pedido no servidor: se a etiqueta existe, o card
+        // cai em "emitida"/"conferindo"; se não, a lojista pode tentar de novo
+        // -- sem compra dupla, porque a edge reivindica o pedido
+        // (`shipping_label_id` NULL -> id, uma linha só vence) e a 2ª chamada
+        // devolve `already: true`.
+        // A resposta TARDIA da chamada abandonada nunca é aplicada (nem
+        // "gerada!", nem rastreio, nem erro): ela só dispara outra releitura,
+        // e quem mostra o estado é o servidor.
+        console.error("[EtiquetaDoPedido] Compra sem resposta no prazo:", err);
+        setMensagemResultado({
+          tipo: "sem_resposta",
+          texto: MENSAGEM_COMPRA_DA_ETIQUETA_SEM_RESPOSTA,
+        });
+        setCompraFase("ocioso");
+        haptic.error();
+        toast.warning(MENSAGEM_COMPRA_DA_ETIQUETA_SEM_RESPOSTA, {
+          duration: 15_000,
+        });
+        void fetchPedido({ silencioso: true });
+        const reler = () => {
+          if (orderIdAtualRef.current === orderIdDoClique) {
+            void fetchPedido({ silencioso: true });
+          }
+        };
+        void invocacao?.then(reler, reler);
+        return;
+      }
       console.error("[EtiquetaDoPedido] Erro na geração:", err);
       const {
         mensagem: mensagemDoServidor,
@@ -530,9 +631,15 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       rastreioEmVoo.add(orderIdDoClique);
       setConsultandoRastreio(true);
       try {
-        const { data, error } = await supabase.functions.invoke(
-          "melhor-envio-etiqueta",
-          { body: { action: "consultar_rastreio", orderId: orderIdDoClique } },
+        // Leitura: com a rede pendurada o botão nunca soltava. Estourou, a resposta
+        // tardia é descartada (o servidor pode até ter gravado o código; o
+        // próximo toque ou a próxima leitura do pedido o traz).
+        const { data, error } = await aguardarComPrazo(
+          supabase.functions.invoke("melhor-envio-etiqueta", {
+            body: { action: "consultar_rastreio", orderId: orderIdDoClique },
+          }),
+          PRAZO_DA_CONSULTA_DO_RASTREIO_MS,
+          () => erroDeConsultaSemResposta(),
         );
         // Ficha trocou de pedido durante a consulta — o rastreio de A não
         // pode pintar B. `onTrackingAtualizado` agora leva o `orderIdDoClique`
@@ -568,6 +675,14 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
         }
       } catch (err) {
         if (orderIdAtualRef.current !== orderIdDoClique) return;
+        if (ehConsultaSemResposta(err)) {
+          toast.error(
+            modo === "conferencia"
+              ? "Não deu para conferir a etiqueta agora: a rede não respondeu. Toque em Conferir de novo daqui a pouco."
+              : "Não deu para atualizar o rastreio: a rede não respondeu. Tente de novo em instantes.",
+          );
+          return;
+        }
         console.error("[EtiquetaDoPedido] Erro ao consultar rastreio:", err);
         const { mensagem } = await mensagemDeErroInvocacao(err, {
           mensagemGenerica:
@@ -670,6 +785,17 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
               {mensagemResultado.texto}
             </p>
           )}
+
+          {mensagemResultado?.tipo === "sem_resposta" &&
+            elegibilidade.estado === "disponivel" && (
+              <p
+                data-testid="etiqueta-sem-resposta"
+                role="status"
+                className="rounded-xl border border-admin-border bg-admin-surface px-3 py-2 text-sm font-medium leading-snug text-amber-400 duration-200 animate-in fade-in"
+              >
+                {mensagemResultado.texto}
+              </p>
+            )}
 
           {elegibilidade.estado === "emitida" && (
             <div className="space-y-3 rounded-xl border border-admin-border bg-admin-surface p-3 duration-200 animate-in fade-in">

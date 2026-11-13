@@ -26,7 +26,9 @@ WITH fn AS (
   UNION ALL
   SELECT 'get_admin_analytics_v2: corpo exato (md5)',
          '0ea0841208f326971e4f92241929e088',
-         COALESCE((SELECT f.m FROM fn f), 'AUSENTE')
+         -- A 20261399994000 (o item "Nao veio" fica com a cliente) sucede esta e so troca a conta do "Nao veio" (fica com a cliente; o dinheiro devolvido sem a peca vira perda): aceita os dois corpos EXATOS;
+         -- normaliza ao esperado historico do rol (a 146a distingue).
+         COALESCE((SELECT CASE WHEN f.m IN ('0ea0841208f326971e4f92241929e088', 'de8648a7783c12f1be7abd7986c8a2fc', '4f8fb94f6cb0018e10d0ef71541f1cbf') THEN '0ea0841208f326971e4f92241929e088' ELSE f.m END FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)',
          'atributos de sempre',

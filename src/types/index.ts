@@ -216,6 +216,8 @@ export interface Order {
   trackingCode?: string;
   /** Id da etiqueta de envio comprada no Melhor Envio; ausente = ainda sem etiqueta. */
   shippingLabelId?: string;
+  /** Link de impressão da etiqueta; a edge o grava DEPOIS do id. Ausente = ainda sem link. */
+  shippingLabelUrl?: string;
   /** true quando o pedido já estava enviado no momento do cancelamento. */
   cancelledAfterShipping: boolean;
   /** quando o lojista confirmou que o produto voltou. null = ainda não voltou. */

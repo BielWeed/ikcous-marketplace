@@ -55,7 +55,7 @@
 -- `on_auth_user_created` em `auth.users`, ele tem de ser EXATAMENTE o desenhado, comparado pela estrutura do catálogo (não pelo texto
 -- de `pg_get_triggerdef`, que muda com o `search_path` da sessão): função `public.handle_new_user()`, AFTER INSERT, por linha, sem
 -- condição WHEN, sem lista de colunas, sem argumentos. Um gatilho homônimo diferente (outra função, BEFORE, com WHEN) NÃO passa em
--- silêncio: a migration recusa e nada muda. O estado ligado/desligado do gatilho existente não é julgado aqui (a ficha 129a o mostra).
+-- silêncio: a migration recusa e nada muda. O estado ligado/desligado do gatilho existente não é julgado aqui (a ficha 149a o mostra).
 --
 -- 6. IDEMPOTÊNCIA, TRANSAÇÃO E TRAVA
 --
@@ -83,7 +83,7 @@
 -- `role = customer` gravado em `raw_app_meta_data` desses usuários ficam (dado legítimo). ⚠️ NUNCA rodar o rollback na IKCOUS: o
 -- gatilho dela já existia ANTES desta migration (ela não o criou lá) e tirá-lo quebraria o cadastro da loja principal.
 --
--- 9. FICHA DE VERIFICAÇÃO: consultas 129a (depois) / 129b (antes).
+-- 9. FICHA DE VERIFICAÇÃO: consultas 149a (depois) / 149b (antes).
 --   PROVA VIVA: tests/banco/o-cadastro-cria-o-perfil-em-toda-loja-viva.cjs (rpc-ci).
 -- ============================================================================
 

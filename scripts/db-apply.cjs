@@ -333,6 +333,101 @@ const VERIFICACOES = {
       { texto: "v_origem := 'variante';", vezes: 2 },
     ],
   },
+  // 20261399990000: o CRM nao duplica o comprador quando o WhatsApp vem com e sem o 55. crm__vendas ganha SO a CTE base_chave (o numero sem o 55, a
+  // mesma expressao da 20261183000000) e a chave do balcao e a fusao com a conta passam a usar wa_chave no lugar de wa. A venda que conta (a CTE
+  // base, com o status fora de cancelled/returned) segue UMA vez. A consulta 142a confere o corpo exato (md5), os atributos e a ACL.
+  "20261399990000_o_crm_nao_duplica_o_comprador_com_e_sem_55.sql": {
+    funcao: "crm__vendas",
+    esperado: [
+      {
+        texto: "CASE WHEN length(b.wa) IN (12, 13) AND left(b.wa, 2) = '55'",
+        vezes: 1,
+      },
+      {
+        texto: "THEN substring(b.wa FROM 3) ELSE b.wa END AS wa_chave",
+        vezes: 1,
+      },
+      {
+        texto: "SELECT DISTINCT ON (b.wa_chave) b.wa_chave, b.user_id",
+        vezes: 1,
+      },
+      {
+        texto: "CASE WHEN b.wa_chave IS NOT NULL THEN 'wa:' || b.wa_chave END",
+        vezes: 1,
+      },
+      {
+        texto:
+          "LEFT JOIN wa_da_conta w ON w.wa_chave = b.wa_chave AND b.user_id IS NULL",
+        vezes: 1,
+      },
+      { texto: "AND o.status NOT IN ('cancelled', 'returned')", vezes: 1 },
+    ],
+  },
+  // 20261399991000: repetir a devolucao que falhou nao paga duas vezes. A funcao NOVA solicitar_estorno_repetindo repete UMA linha falhada: o valor sai da
+  // linha, a segunda chamada devolve a MESMA repeticao (ja_repetida) em vez de criar outra, e as portas sao as de solicitar_estorno mais a regra unica
+  // "pode ter saido". A tabela nova order_refund_repeticao (PK + UNIQUE) e a consulta 143a conferem o resto (corpo exato, ACL, colunas); a prova viva mede o comportamento.
+  "20261399991000_repetir_a_devolucao_que_falhou_nao_paga_duas_vezes.sql": {
+    funcao: "solicitar_estorno_repetindo",
+    esperado: [
+      { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      { texto: "ORDER BY r.id", vezes: 1 },
+      {
+        texto: "IF public.order_refund__pode_ter_saido(v_r.id) THEN",
+        vezes: 1,
+      },
+      { texto: "IF v_r.amount > v_saldo THEN", vezes: 1 },
+      {
+        texto:
+          "INSERT INTO public.order_refund_repeticao (refund_id, nova_refund_id)",
+        vezes: 1,
+      },
+      { texto: "'ja_repetida', true,", vezes: 1 },
+      { texto: "'ja_repetida', false,", vezes: 1 },
+    ],
+  },
+  // 20261399993000: o CRM e a lista de clientes nao contam a mesma pessoa duas vezes. DUAS funcoes, uma checagem cada. crm__nunca_comprou ganha SO a
+  // CTE wa_nao_pagos (le crm__pedidos_nao_pagos, user_id nulo, o 55 cortado como em wa_pagos) e o terceiro NOT EXISTS; get_admin_customers_paged troca SO
+  // o LEFT JOIN de user_addresses por UM endereco principal (LATERAL ... LIMIT 1) antes de juntar os pedidos. As travas de admin, a busca, o GROUP BY e o
+  // ORDER BY seguem como estavam. A consulta 145a confere o corpo exato (md5), os atributos e a ACL das duas.
+  "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql":
+    [
+      {
+        funcao: "crm__nunca_comprou",
+        esperado: [
+          { texto: "wa_nao_pagos AS (", vezes: 1 },
+          {
+            texto: "FROM public.crm__pedidos_nao_pagos(p_ate) np",
+            vezes: 1,
+          },
+          {
+            texto: "WHERE np.user_id IS NULL AND np.whatsapp IS NOT NULL",
+            vezes: 1,
+          },
+          { texto: "SELECT 1 FROM wa_nao_pagos wn", vezes: 1 },
+          { texto: "SELECT 1 FROM wa_pagos wp", vezes: 1 },
+          { texto: "FROM public.crm__vendas(p_ate) v", vezes: 1 },
+        ],
+      },
+      {
+        funcao: "get_admin_customers_paged",
+        esperado: [
+          { texto: "LEFT JOIN LATERAL (", vezes: 1 },
+          {
+            texto: "ORDER BY a.created_at DESC NULLS LAST, a.id",
+            vezes: 1,
+          },
+          { texto: "LIMIT 1\n        ) addr ON true", vezes: 1 },
+          {
+            texto:
+              "GROUP BY p.id, u.email, u.phone, p.whatsapp, addr.city, addr.state",
+            vezes: 1,
+          },
+          { texto: "END DESC,", vezes: 3 },
+          { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+          { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+        ],
+      },
+    ],
   // 20261386: o preco do produto deixa historico. A tabela, a politica, o ACL e o gatilho nao sao conferiveis aqui (so corpo de funcao): a
   // consulta 91a e a prova viva fazem isso. Aqui: a funcao do gatilho grava 'cadastro' no INSERT e 'mudanca' so quando o preco muda.
   "20261386000000_o_preco_do_produto_deixa_historico.sql": {
@@ -730,6 +825,98 @@ const VERIFICACOES = {
       { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
     ],
   },
+  // 20261399994000: o item que a lojista marcou "Nao veio" (condicao 'ausente') FICA COM A CLIENTE no ranking "Produtos que mais dao lucro" e no lucro do grafico diario (get_admin_analytics_v2): a venda vale (nao e devolvida nem perdida) e so o
+  // dinheiro devolvido ALEM das pecas que voltaram vira perda do item (reembolso_sem_peca, fator f). O corpo e o da 20261399970000 com esses trechos trocados, nos DOIS lugares (o ranking e o grafico diario) e no resto da cortesia (sobra).
+  // Cada marcador e' contado no corpo da propria migration. A consulta 146a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
+  "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql":
+    {
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        {
+          texto:
+            "FILTER (WHERE di.reestocado_em IS NULL AND di.condicao IS DISTINCT FROM 'ausente')",
+          vezes: 2,
+        },
+        { texto: "- dev.perdidas * COALESCE(oic.custo, p.custo)", vezes: 2 },
+        { texto: "- dev.reembolso_sem_peca)", vezes: 2 },
+        { texto: "AS reembolso_sem_peca", vezes: 2 },
+        {
+          texto:
+            "SUM(di.quantidade) FILTER (WHERE di.condicao IS DISTINCT FROM 'ausente'), 0))::int AS devolvidas",
+          vezes: 2,
+        },
+        {
+          texto:
+            "THEN LEAST(1, GREATEST(0, COALESCE(dv.valor_reembolso, 0) - x.vv - COALESCE(dv.valor_frete_ida, 0)) / x.va)",
+          vezes: 2,
+        },
+        { texto: "resolucao_final IN ('reembolso', 'vale')", vezes: 4 },
+        { texto: "SUM(oi.quantity - dev.devolvidas)::int", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  // 20261399995000: o lucro por produto (ranking "Produtos que mais dao lucro" e lucro do grafico diario, get_admin_analytics_v2) CASA COM O FINANCEIRO, pedido a pedido: o que a cliente pagou menos TODO o dinheiro
+  // devolvido (devolucao, estorno ou site do Mercado Pago, sem frete) menos o custo das pecas que nao voltaram a prateleira; o pedido 'estornado' entra. So os blocos 4 e 5 do corpo mudam (nos DOIS lugares: o ranking e o
+  // grafico diario). Cada marcador e' contado no corpo da propria migration. A consulta 147a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento contra o Financeiro.
+  "20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql":
+    {
+      funcao: "get_admin_analytics_v2",
+      esperado: [
+        {
+          texto:
+            "pc.q * (pc.pago - COALESCE(oic.custo, p.custo)) + COALESCE(oic.custo, p.custo) * pc.reestocadas - pc.dinheiro_dev",
+          vezes: 2,
+        },
+        {
+          texto:
+            "CASE WHEN x.vv > 0 THEN LEAST(m.pm, x.vv) / x.vv ELSE 0 END AS fv",
+          vezes: 2,
+        },
+        {
+          texto:
+            "CASE WHEN x.va > 0 THEN LEAST(GREATEST(m.pm - x.vv, 0), x.va) / x.va ELSE 0 END AS fa",
+          vezes: 2,
+        },
+        { texto: "GREATEST(0, m.pm - x.vv - x.va) AS excesso", vezes: 2 },
+        {
+          texto:
+            "LEAST(oi.quantity * pg.pago, COALESCE(dv.dinheiro, 0)) AS dinheiro_dev",
+          vezes: 2,
+        },
+        { texto: "(t.residual + t.excesso)", vezes: 2 },
+        { texto: "CASE WHEN t.estornado THEN 1", vezes: 2 },
+        { texto: "'recebido_na_entrega', 'estornado')", vezes: 4 },
+        { texto: "resolucao_final IN ('reembolso', 'vale')", vezes: 2 },
+        { texto: "FILTER (WHERE pc.pst <> 'estornado')", vezes: 1 },
+        { texto: "SUM(pc.q - pc.devolvidas)::int", vezes: 1 },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  // 20261399996000: o painel de avaliacoes filtra o que esta sem resposta. get_admin_reviews_paged (a MESMA assinatura de 5 argumentos da 20261399700000) ganha o terceiro valor de p_status:
+  // 'sem_resposta' liga SO o predicado merchant_reply IS NULL (a regra do sino), na contagem e na consulta paginada; o filtro de moderacao e o gate ficam como estao. Cada marcador aparece no corpo as
+  // vezes abaixo. A consulta 148a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
+  "20261399996000_o_painel_de_avaliacoes_filtra_o_que_esta_sem_resposta.sql": {
+    funcao: "get_admin_reviews_paged",
+    esperado: [
+      { texto: "p_status text DEFAULT 'todas'::text", vezes: 1 },
+      {
+        texto:
+          "v_so_sem_resposta := COALESCE(p_status = 'sem_resposta', false);",
+        vezes: 1,
+      },
+      {
+        texto: "AND (NOT v_so_sem_resposta OR r.merchant_reply IS NULL)",
+        vezes: 2,
+      },
+      {
+        texto: "AND (NOT v_so_pendentes OR r.status = 'pendente')",
+        vezes: 2,
+      },
+      { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+    ],
+  },
   // 20261399980000: as listas de Produtos, Pedidos e Cancelados do painel nao repetem nem escondem ninguem entre as paginas. As TRES funcoes (get_admin_products_paged, get_admin_orders_paged e
   // get_admin_orders_cancelados_recentes) ganham SO o desempate pelo id no fim do ORDER BY (o marcador do ORDER BY aparece UMA vez em cada e a frase do comentario do desempate tambem). As duas travas de
   // admin (is_admin e is_admin_atual; a de produtos so tem a is_admin_atual) seguem UMA vez em cada corpo. A consulta 140a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
@@ -773,6 +960,37 @@ const VERIFICACOES = {
         ],
       },
     ],
+  // 20261399985000: o grafico do Financeiro soma so as contas ativas. fin_resumo ganha SO a chave serie[].variacao_saldo (a CTE variacao: quanto o saldo das contas ATIVAS mudou em cada dia, pela mesma conta de
+  // fin__saldos: so a partir do saldo_inicial_em de cada conta, ate hoje, transferencia sai de uma e entra na outra); serie[].entradas e saidas, o vencido sem estorno (20261399300000), as duas travas de admin e o
+  // resto do JSON ficam como estao (corpo da 20261399300000). A consulta 141a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
+  "20261399985000_o_grafico_do_financeiro_soma_so_as_contas_ativas.sql": [
+    {
+      funcao: "fin_resumo",
+      esperado: [
+        {
+          texto:
+            "JOIN public.fin_contas c ON c.ativa AND (m.conta_id = c.id OR m.conta_destino_id = c.id)",
+          vezes: 1,
+        },
+        {
+          texto: "WHERE m.data >= c.saldo_inicial_em AND m.data <= v_hoje",
+          vezes: 1,
+        },
+        {
+          texto:
+            "'variacao_saldo', COALESCE((SELECT sum(v.valor) FROM variacao v WHERE v.dia = d.dia::date), 0)",
+          vezes: 1,
+        },
+        {
+          texto:
+            "'vencido', COALESCE((SELECT sum(valor) FROM previstos WHERE tipo = 'saida' AND venc < v_hoje AND origem <> 'estorno'), 0),",
+          vezes: 1,
+        },
+        { texto: "IF NOT public.is_admin() THEN", vezes: 1 },
+        { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      ],
+    },
+  ],
   // 20261397000000: o desconto do cupom de porcentagem e' arredondado ao centavo. As TRES funcoes (create_marketplace_order_v23/v24 e
   // validate_coupon_secure_v2) trocam SO a linha da conta do desconto percentual: `round(<subtotal * valor / 100>, 2)` no lugar da conta crua.
   // Cada marcador aparece UMA vez no corpo (o marcador nao admite "zero vezes": a ausencia da conta antiga e' do pos-voo da migration e da

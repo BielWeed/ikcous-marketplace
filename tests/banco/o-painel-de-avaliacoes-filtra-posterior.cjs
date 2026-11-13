@@ -17,6 +17,10 @@ const FILTRO_DE_MODERACAO = Object.freeze({
     = 'af5d21345d167ca44dd327a93f949ea6', false) AS sim`,
 });
 async function desfazerFiltroDeModeracaoNaTransacao(c) {
+  // A 20261399996000 (o painel filtra o que está sem resposta) sucede o corpo desta migration na mesma assinatura: cai antes de qualquer rollback da 3997.
+  await require("./o-painel-de-avaliacoes-filtra-sem-resposta-posterior.cjs").desfazerFiltroSemRespostaNaTransacao(
+    c,
+  );
   if ((await c.query(FILTRO_DE_MODERACAO.noAr)).rows[0]?.sim !== true)
     return false;
   await c.query(

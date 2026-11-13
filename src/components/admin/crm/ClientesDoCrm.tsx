@@ -581,6 +581,7 @@ export function ClientesDoCrm({
   active,
   onNavigate,
   sinalDeAtualizacao,
+  dia,
   offline = false,
   segmentosDisponiveis = true,
   erro: erroDosSegmentos,
@@ -594,6 +595,8 @@ export function ClientesDoCrm({
   onNavigate: (view: View, id?: string) => void;
   /** Muda quando o lojista toca em "Sincronizar" no topo do CRM. */
   sinalDeAtualizacao: number;
+  /** O dia de hoje da loja: na virada, a lista é lida de novo. */
+  dia?: string;
   offline?: boolean;
   segmentosDisponiveis?: boolean;
   erro?: string | null;
@@ -620,6 +623,7 @@ export function ClientesDoCrm({
     pagina,
     porPagina: POR_PAGINA,
     active,
+    dia,
   });
 
   useEffect(() => {

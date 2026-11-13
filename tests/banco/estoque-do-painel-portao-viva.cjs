@@ -1399,6 +1399,49 @@ async function main() {
         "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql",
         "public.get_admin_products_paged(text,text,text,text,integer,integer)",
       ],
+      // A 20261399985000 (o grafico do Financeiro soma so as contas ativas): fin_resumo sobre o corpo da 3993, funcao de fora destas tres, o mesmo caso da 3993 acima.
+      // O rollback dela devolve o corpo da 3993 (o molde, abaixo, desfaz e mede).
+      [
+        "20261399985000_o_grafico_do_financeiro_soma_so_as_contas_ativas.sql",
+        "public.fin_resumo(date,date)",
+      ],
+      // A 20261399992000 (o item que a lojista marcou "Nao veio" pode ser devolvido de novo): UMA migration, tres funcoes de fora destas tres
+      // (devolucao_elegibilidade e devolucao_detalhe sobre o corpo da 20261199, solicitar_devolucao sobre o da 20261175). So muda a conta de
+      // 'ausente' na devolucao, nao mexe no estoque do painel; a 17a nao as le. O rollback dela devolve os tres corpos de uma vez.
+      [
+        "20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql",
+        "public.devolucao_detalhe(uuid)",
+      ],
+      [
+        "20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql",
+        "public.devolucao_elegibilidade(uuid)",
+      ],
+      [
+        "20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql",
+        "public.solicitar_devolucao(uuid,jsonb,text,text,text,text,text[])",
+      ],
+      // A 20261399993000 (o CRM e a lista de clientes nao contam a mesma pessoa duas vezes): UMA migration, DUAS entradas (crm__nunca_comprou, da 183, e get_admin_customers_paged sobre o corpo da
+      // 392), funcoes de fora destas tres, o mesmo caso da 392 acima. O rollback dela devolve os dois corpos de uma vez (o molde, abaixo, desfaz e mede; a segunda entrada ja o encontra devolvido).
+      [
+        "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql",
+        "public.crm__nunca_comprou(timestamptz)",
+      ],
+      [
+        "20261399993000_o_crm_e_a_lista_de_clientes_nao_contam_a_mesma_pessoa_duas_vezes.sql",
+        "public.get_admin_customers_paged(text,text,text,integer,integer)",
+      ],
+      // A 20261399994000 (o item "Nao veio" fica com a cliente no ranking de lucro): get_admin_analytics_v2 sobre o corpo da 3997 (a mesma funcao da 14/34/42/45/50/51/3997 acima).
+      // O rollback dela devolve o corpo da 3997 (o molde, abaixo, desfaz e mede; a 3997 so cai depois dela, pela cadeia de posteriores).
+      [
+        "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql",
+        "public.get_admin_analytics_v2(integer)",
+      ],
+      // A 20261399995000 (o lucro do ranking casa com o Financeiro): get_admin_analytics_v2 sobre o corpo da 3994 (a mesma funcao da 14/34/42/45/50/51/3997/3994 acima).
+      // O rollback dela devolve o corpo da 3994 (o molde, abaixo, desfaz e mede; a 3994 so cai depois dela, pela cadeia de posteriores).
+      [
+        "20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql",
+        "public.get_admin_analytics_v2(integer)",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );

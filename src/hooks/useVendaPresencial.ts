@@ -22,6 +22,7 @@
 // tratado como ausência de preço).
 
 import {
+  type EfeitoDaFalhaNaDuvida,
   MENSAGEM_DE_REDE_DA_VENDA,
   type PrecoAtualDaVenda,
 } from "@/lib/erro-da-venda-presencial";
@@ -94,6 +95,15 @@ export interface ItemDoCupom {
   /** Estoque efetivo no momento em que o item entrou/foi atualizado no
    * cupom (ver `estoqueEfetivo`, PASSO 4) — é o teto do `+`. */
   readonly estoque: number;
+  /** O instante (ms) em que esse `estoque` foi LIDO no servidor: o do bipe (a
+   * resposta chegando), o da busca manual (a consulta da lista PARTINDO) ou o da
+   * escolha de variação. Cada lado erra para o lado seguro: a lista, para mais
+   * velha; o cupom, para mais novo.
+   * É o que deixa uma leitura MAIS NOVA subir o teto (reposição em outro
+   * aparelho) sem que uma lista antiga, esquecida na tela, desfaça o freio.
+   * Ausente = desconhecido (rascunho de antes do campo): conta como o mais
+   * antigo possível, e vale o menor estoque. */
+  readonly estoqueLidoEm?: number;
   readonly imagem: string;
 }
 
@@ -277,6 +287,15 @@ export interface EstadoDaVenda {
   readonly aviso: AvisoDaVenda | null;
   readonly enviando: boolean;
   readonly erro: string | null;
+  /** A DÚVIDA do envio, PEGAJOSA: `true` desde que uma tentativa com a chave
+   * deste cupom perdeu a resposta (rede, prazo, queda de conexão) — a venda pode
+   * já estar no banco. Só cai por uma resposta DEFINITIVA com a MESMA chave: o
+   * recibo (venda registrada ou `ja_existia`) ou uma recusa de negócio, que prova
+   * que nada foi gravado (ver `efeitoDaFalhaNaDuvida`). Falha passageira do banco
+   * (53300, timeout, sessão…) NÃO a limpa — era assim que a 2ª falha apagava a
+   * dúvida da 1ª e a lojista refazia uma venda que existia. É a única parte do
+   * envio que vai ao rascunho (como o fato `talvezGravada`). */
+  readonly talvezGravada: boolean;
   readonly recibo: ReciboDaVendaRegistrada | null;
 }
 
@@ -338,7 +357,14 @@ export type AcaoDaVenda =
   | { readonly tipo: "etapa_pedida"; readonly etapa: EtapaDaVenda }
   | { readonly tipo: "aviso_limpo" }
   | { readonly tipo: "envio_iniciado" }
-  | { readonly tipo: "envio_falhou"; readonly mensagem: string }
+  /** `efeito` diz o que esta falha prova sobre a dúvida (ver
+   * `efeitoDaFalhaNaDuvida`): quem despacha classifica o ERRO original, e o
+   * reducer aplica — assim nenhuma falha pode esquecer de decidir. */
+  | {
+      readonly tipo: "envio_falhou";
+      readonly mensagem: string;
+      readonly efeito: EfeitoDaFalhaNaDuvida;
+    }
   | {
       readonly tipo: "precos_atualizados";
       readonly chaveDeIdempotencia: string;
@@ -372,10 +398,15 @@ export type AcaoDaVenda =
  * alterada). Uma recusa antiga ("Estoque insuficiente") deixa de valer, mas o
  * erro de REDE não: ele quer dizer "a venda pode ter sido gravada", e apagá-lo
  * faz o balcão tratar o cancelamento como "nada foi registrado" e refazer a
- * venda do zero — pedido em dobro e estoque baixado duas vezes.
+ * venda do zero — pedido em dobro e estoque baixado duas vezes. Com a dúvida
+ * pegajosa (`talvezGravada`) o aviso que estava na tela vira a frase de rede:
+ * o texto da última falha passageira falava só da tentativa dela.
  */
-function erroQueSobreviveAoCupom(erro: string | null): string | null {
-  return erro === MENSAGEM_DE_REDE_DA_VENDA ? erro : null;
+function erroQueSobreviveAoCupom(estado: EstadoDaVenda): string | null {
+  if (estado.erro === MENSAGEM_DE_REDE_DA_VENDA) return estado.erro;
+  return estado.talvezGravada && estado.erro !== null
+    ? MENSAGEM_DE_REDE_DA_VENDA
+    : null;
 }
 
 /**
@@ -401,6 +432,7 @@ export function estadoInicialDaVenda(
     aviso: null,
     enviando: false,
     erro: null,
+    talvezGravada: false,
     recibo: null,
   };
 }
@@ -685,7 +717,15 @@ function entrarItemNoCupom(
     // é ele o teto do próximo "+" (ressalva da revisão r3).
     const itens = existente
       ? estado.itens.map((i) =>
-          i.chave === item.chave ? { ...i, estoque: item.estoque } : i,
+          i.chave === item.chave
+            ? {
+                ...i,
+                estoque: item.estoque,
+                ...(item.estoqueLidoEm === undefined
+                  ? {}
+                  : { estoqueLidoEm: item.estoqueLidoEm }),
+              }
+            : i,
         )
       : estado.itens;
     const aviso: AvisoDaVenda =
@@ -715,16 +755,39 @@ function entrarItemNoCupom(
   };
 }
 
-/** Item vindo da LISTA da aba Buscar (que pode estar velha): se a mesma peça
- * já está no cupom, o estoque que vale é o MENOR dos dois, nunca o da lista
- * por cima do mais novo. Sem a peça no cupom, o item segue como veio. */
+/** Item vindo da LISTA da aba Buscar: se a mesma peça já está no cupom, quem
+ * decide o teto é a IDADE das duas leituras (`estoqueLidoEm`).
+ *
+ *  · A lista foi lida DEPOIS do estoque que o cupom guarda → ela é a leitura
+ *    mais recente que existe, e SUBSTITUI o teto, para cima ou para baixo (o
+ *    estoque pode ter sido reposto em outro aparelho; o bipe já se comportava
+ *    assim).
+ *  · Lida antes, no mesmo instante ou sem instante conhecido (de um dos lados)
+ *    → pode ser uma lista velha esquecida na tela: vale o MENOR dos dois, e o
+ *    instante do item no cupom fica como estava.
+ *
+ * Sem a peça no cupom, o item segue como veio. */
 function itemComEstoqueSeguro(
   estado: EstadoDaVenda,
   item: ItemDoCupom,
 ): ItemDoCupom {
   const existente = estado.itens.find((i) => i.chave === item.chave);
   if (!existente) return item;
-  return { ...item, estoque: Math.min(existente.estoque, item.estoque) };
+  if (
+    item.estoqueLidoEm !== undefined &&
+    existente.estoqueLidoEm !== undefined &&
+    item.estoqueLidoEm > existente.estoqueLidoEm
+  ) {
+    return item;
+  }
+  const { estoqueLidoEm: _daLista, ...semInstante } = item;
+  return {
+    ...semInstante,
+    estoque: Math.min(existente.estoque, item.estoque),
+    ...(existente.estoqueLidoEm === undefined
+      ? {}
+      : { estoqueLidoEm: existente.estoqueLidoEm }),
+  };
 }
 
 /** O que muda o conteúdo da venda. Com o envio pendente o cupom já foi
@@ -856,6 +919,7 @@ export function reducerDaVenda(
         preco: resposta.preco ?? 0,
         quantidade: 1,
         estoque,
+        estoqueLidoEm: acao.em,
         imagem:
           (resposta.origem === "variante"
             ? resposta.variante?.imagem
@@ -887,6 +951,10 @@ export function reducerDaVenda(
         preco: opcao.preco,
         quantidade: 1,
         estoque: opcao.estoque,
+        // Lido quando a folha abriu, um pouco antes da escolha: dizer "agora" só
+        // pode errar para o lado seguro (uma lista lida no meio passa a valer
+        // como mais antiga e não sobe o teto).
+        estoqueLidoEm: acao.em,
         imagem: opcao.imagem ?? "",
       };
       return entrarItemNoCupom(
@@ -942,7 +1010,7 @@ export function reducerDaVenda(
           itens: estado.itens.filter((i) => i.chave !== acao.chave),
           aviso: null,
           // O cupom mudou de verdade: o erro da recusa antiga não vale mais.
-          erro: erroQueSobreviveAoCupom(estado.erro),
+          erro: erroQueSobreviveAoCupom(estado),
           ultimaEntrada:
             estado.ultimaEntrada?.chave === acao.chave
               ? null
@@ -972,7 +1040,7 @@ export function reducerDaVenda(
           i.chave === acao.chave ? { ...i, quantidade: novaQuantidade } : i,
         ),
         aviso: null,
-        erro: erroQueSobreviveAoCupom(estado.erro),
+        erro: erroQueSobreviveAoCupom(estado),
       };
     }
 
@@ -985,7 +1053,7 @@ export function reducerDaVenda(
         ...estado,
         itens: estado.itens.filter((i) => i.chave !== acao.chave),
         aviso: null,
-        erro: erroQueSobreviveAoCupom(estado.erro),
+        erro: erroQueSobreviveAoCupom(estado),
         ultimaEntrada:
           estado.ultimaEntrada?.chave === acao.chave
             ? null
@@ -1011,6 +1079,8 @@ export function reducerDaVenda(
         aviso: null,
         recibo: null,
         erro: null,
+        // A chave gira: a dúvida era da chave velha.
+        talvezGravada: false,
         // Achado ANOTADO: era o único campo de sessão que sobrevivia à
         // limpeza do cupom — se a RPC de um envio anterior ficasse pendurada
         // (rede caindo, o mesmo cenário que justifica a idempotência) e o
@@ -1064,13 +1134,27 @@ export function reducerDaVenda(
       return { ...estado, enviando: true, erro: null };
 
     case "envio_falhou":
-      return { ...estado, enviando: false, erro: acao.mensagem };
+      return {
+        ...estado,
+        enviando: false,
+        erro: acao.mensagem,
+        // `mantem` é o caso que importa: a falha passageira NÃO apaga a dúvida
+        // deixada por uma resposta perdida antes, com a mesma chave.
+        talvezGravada:
+          acao.efeito === "abre"
+            ? true
+            : acao.efeito === "fecha"
+              ? false
+              : estado.talvezGravada,
+      };
 
     case "venda_registrada":
       return {
         ...estado,
         enviando: false,
         erro: null,
+        // O recibo É a resposta definitiva: a venda existe e está na tela.
+        talvezGravada: false,
         recibo: acao.recibo.jaExistia
           ? {
               ...acao.recibo,
@@ -1116,6 +1200,7 @@ export function reducerDaVenda(
         aviso: null,
         recibo: null,
         erro: null,
+        talvezGravada: false,
         enviando: false,
       };
     }
@@ -1141,7 +1226,7 @@ export const CHAVE_DO_RASCUNHO_DA_VENDA = "admin_pdv_venda_draft";
 
 type EstadoPersistidoNoRascunho = Omit<
   EstadoDaVenda,
-  "recibo" | "enviando" | "erro"
+  "recibo" | "enviando" | "erro" | "talvezGravada"
 >;
 
 /**
@@ -1149,21 +1234,29 @@ type EstadoPersistidoNoRascunho = Omit<
  * faria um F5 depois de uma venda registrada reabrir a tela de recibo como
  * se a venda ainda estivesse em curso (risco medido na tarefa).
  *
- * Única exceção, e só como FATO: se `erro` é exatamente a frase de rede
- * (`MENSAGEM_DE_REDE_DA_VENDA` — "a venda pode ter sido gravada") OU se o
- * envio está no ar (`enviando`: a resposta ainda não chegou, a venda pode já
- * estar no banco), grava `talvezGravada: true`. Sem isso o F5 apagava o aviso
- * e o Cancelar passava a dizer "Nada é registrado", levando a refazer uma
- * venda que já existia. O texto nunca vai ao disco; recusa antiga (estoque,
- * permissão) também não.
+ * Única exceção, e só como FATO: se a dúvida do envio está aberta
+ * (`estado.talvezGravada` — a resposta de uma tentativa com esta chave se
+ * perdeu e nenhuma resposta definitiva veio depois), OU `erro` é exatamente a
+ * frase de rede (`MENSAGEM_DE_REDE_DA_VENDA`), OU o envio está no ar
+ * (`enviando`: a resposta ainda não chegou, a venda pode já estar no banco),
+ * grava `talvezGravada: true`. Sem isso o F5 apagava o aviso e o Cancelar
+ * passava a dizer "Nada é registrado", levando a refazer uma venda que já
+ * existia. O texto nunca vai ao disco; recusa antiga (estoque, permissão)
+ * também não.
  */
 export function serializarRascunho(
   estado: EstadoDaVenda,
   salvoEm: number | null = Date.now(),
 ): string {
-  const { recibo: _recibo, enviando, erro, ...persistido } = estado;
+  const {
+    recibo: _recibo,
+    enviando,
+    erro,
+    talvezGravada,
+    ...persistido
+  } = estado;
   const comIncerteza =
-    enviando || erro === MENSAGEM_DE_REDE_DA_VENDA
+    enviando || talvezGravada || erro === MENSAGEM_DE_REDE_DA_VENDA
       ? { ...persistido, talvezGravada: true }
       : persistido;
   // O carimbo (`salvoEm`, ISO) mora SÓ no disco: `lerRascunhoComIdade` o tira
@@ -1219,6 +1312,13 @@ function pareceRascunhoValido(
     if (typeof i.quantidade !== "number" || !Number.isFinite(i.quantidade))
       return false;
     if (typeof i.estoque !== "number" || !Number.isFinite(i.estoque))
+      return false;
+    // Opcional (rascunho antigo não tem): se veio, é um instante de verdade —
+    // texto aqui viraria um teto de estoque decidido por lixo.
+    if (
+      i.estoqueLidoEm !== undefined &&
+      (typeof i.estoqueLidoEm !== "number" || !Number.isFinite(i.estoqueLidoEm))
+    )
       return false;
   }
 
@@ -1307,6 +1407,7 @@ export function lerRascunhoComIdade(
       // Só o fato `true` exato volta, e volta como a constante do código —
       // nunca texto lido do disco.
       erro: talvezGravada === true ? MENSAGEM_DE_REDE_DA_VENDA : null,
+      talvezGravada: talvezGravada === true,
     };
     const etapaConhecida = ETAPAS_DA_VENDA.includes(restaurado.etapa)
       ? restaurado.etapa
@@ -1368,7 +1469,15 @@ function armazenamentoPadrao(): ArmazenamentoDoRascunho | null {
   // existe — a ausência de armazenamento vira "sem rascunho", não um
   // `throw` na primeira renderização.
   if (typeof window === "undefined") return null;
-  return window.localStorage;
+  // Navegador com "bloquear dados de sites" (ou política de empresa): o próprio
+  // ACESSO a `window.localStorage` lança SecurityError, e esta função roda no
+  // render. Mesma saída da ausência de DOM: sem rascunho, a venda segue em
+  // memória.
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
 }
 
 export interface VendaPresencialEmUso {

@@ -204,7 +204,11 @@ describe("gravação de avisos pendurada", () => {
     expect(terminou).toBe(true);
     expect(atual.subscription).toBeNull();
     expect(botao().textContent).toBe("Ligar avisos neste aparelho");
-    expect(toast.error).toHaveBeenCalledWith("Erro ao cancelar inscrição");
+    // O navegador já cancelou e o banco não respondeu: o aviso diz isso.
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining("não deu para confirmar no servidor"),
+      expect.anything(),
+    );
     const leituras = getSubscription.mock.calls.length;
     await act(async () => {
       window.dispatchEvent(new Event("focus"));

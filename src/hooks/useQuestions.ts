@@ -8,11 +8,13 @@ import {
 } from "@/lib/copias-por-produto";
 import {
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
+import { TETO_DA_RESPOSTA_DA_LOJA } from "@/lib/teto-da-resposta-da-loja";
 import type { Database } from "@/types/database.types";
 import {
   cachedQuestionsData,
@@ -142,6 +144,16 @@ const respostaAcordaAPagina = (
   if (questionId === undefined) return true;
   if (perguntasDoProduto === null) return true;
   return perguntasDoProduto.has(questionId);
+};
+
+/** Uma das duas contagens de `getQAStats`: todas, ou só as sem resposta. */
+const contarPerguntas = (soPendentes: boolean) => {
+  const consulta = supabase
+    .from("vw_questions_with_answers_count" as any)
+    .select("*", { count: "exact", head: true });
+  return Promise.resolve(
+    soPendentes ? consulta.eq("answers_count", 0) : consulta,
+  ) as Promise<{ count: number | null; error: unknown }>;
 };
 
 export function useQuestions() {
@@ -595,6 +607,18 @@ export function useQuestions() {
           return false;
         }
 
+        // A resposta vira texto público: o teto vale aqui também, porque o
+        // `maxLength` do campo não segura texto colado nem resposta antiga
+        // maior. Recusa sem chamar o servidor — e avisa até no modo
+        // silencioso, onde a tela só diria "confira na lista" (o problema é o
+        // texto, não a rede).
+        if (answer.answer.length > TETO_DA_RESPOSTA_DA_LOJA) {
+          toast.error(
+            `A resposta passou de ${TETO_DA_RESPOSTA_DA_LOJA} caracteres. Encurte o texto e envie de novo.`,
+          );
+          return false;
+        }
+
         // Execute Atomic Answer & Log via RPC. A mesma chamada serve para
         // responder E para "editar": desde a migration 20260812000000
         // (issue #100) a RPC faz upsert por question_id no banco, então não
@@ -640,8 +664,9 @@ export function useQuestions() {
       if (allQuestionsAbortControllerRef.current) {
         allQuestionsAbortControllerRef.current.abort();
       }
-      allQuestionsAbortControllerRef.current = new AbortController();
-      const signal = allQuestionsAbortControllerRef.current.signal;
+      const controlador = new AbortController();
+      allQuestionsAbortControllerRef.current = controlador;
+      const signal = controlador.signal;
       const geracao = lerGeracaoDosCachesDeAdmin();
 
       try {
@@ -651,15 +676,22 @@ export function useQuestions() {
 
         // High Optimization: If Admin, run single unified RPC on Supabase
         if (isAdmin) {
-          const { data, error } = await (supabase.rpc as any)(
-            "get_admin_questions_paged",
-            {
-              p_search: search || "",
-              p_filter: filter,
-              p_page: page,
-              p_page_size: pageSize,
-            },
-          ).abortSignal(signal);
+          // Prazo (13/11/2026): rede que conecta e não responde deixava o
+          // `loading` ligado para sempre. Estourou = cai no `catch` abaixo
+          // (erro + "Tentar de novo"); só encerra a ESPERA, a leitura não grava.
+          // O `abortSignal` segue valendo: a carga seguinte ainda cancela esta.
+          const { data, error } = await aguardarComPrazo(
+            Promise.resolve(
+              (supabase.rpc as any)("get_admin_questions_paged", {
+                p_search: search || "",
+                p_filter: filter,
+                p_page: page,
+                p_page_size: pageSize,
+              }).abortSignal(signal),
+            ) as Promise<{ data: unknown; error: unknown }>,
+            PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+            erroDeConsultaSemResposta,
+          );
 
           if (geracao !== lerGeracaoDosCachesDeAdmin()) return;
           if (error) throw error;
@@ -820,6 +852,14 @@ export function useQuestions() {
         setErroDaListagemAdmin(null);
         return { questions: formatted, total: count || 0 };
       } catch (error: any) {
+        if (ehConsultaSemResposta(error)) {
+          // Prazo vencido numa carga que a próxima já havia superado: é só
+          // cancelamento, quem decide a tela é a nova. Vencido sem ninguém ter
+          // superado: cancela a requisição abandonada e segue para o erro.
+          const superada = signal.aborted;
+          controlador.abort();
+          if (superada) return { questions: [], total: 0, falhou: true };
+        }
         // Carga cancelada (a próxima já saiu) não é falha: a que a substituiu
         // é quem decide o que a tela mostra.
         if (
@@ -1072,15 +1112,21 @@ export function useQuestions() {
   }, []);
 
   const getQAStats = useCallback(async (): Promise<QAStatsResult> => {
-    const [totalRes, pendingRes] = await Promise.all([
-      supabase
-        .from("vw_questions_with_answers_count" as any)
-        .select("*", { count: "exact", head: true }),
-      supabase
-        .from("vw_questions_with_answers_count" as any)
-        .select("*", { count: "exact", head: true })
-        .eq("answers_count", 0),
-    ]);
+    // Prazo (13/11/2026): uma contagem pendurada segurava a tela em "Nenhuma
+    // pergunta ainda" e mantinha a leitura em voo para sempre. Estourou = erro,
+    // nunca zero: a tela marca "números indisponíveis".
+    let totalRes: Awaited<ReturnType<typeof contarPerguntas>>;
+    let pendingRes: Awaited<ReturnType<typeof contarPerguntas>>;
+    try {
+      [totalRes, pendingRes] = await aguardarComPrazo(
+        Promise.all([contarPerguntas(false), contarPerguntas(true)]),
+        PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+        erroDeConsultaSemResposta,
+      );
+    } catch (error) {
+      if (ehConsultaSemResposta(error)) return { status: "error", error };
+      throw error;
+    }
 
     // Falha de consulta NÃO é zero: sem este guarda, `{ count: null, error }`
     // virava `total = 0` e `pending = 0` — "Fila Limpa" mentirosa na tela.

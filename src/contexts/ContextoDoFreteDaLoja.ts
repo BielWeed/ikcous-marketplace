@@ -23,6 +23,17 @@ import { createContext, useContext } from "react";
  */
 export const VERSAO_DO_CONTRATO_DE_COTACAO = "cotacao-3";
 
+const TAXA_DA_ENTREGA_PROPRIA_PADRAO = 10;
+
+/** Número finito (ou texto numérico do banco); o resto lê como a taxa padrão. */
+function taxaDaEntregaPropria(valor: unknown): number {
+  const n =
+    typeof valor === "string" && valor.trim() !== "" ? Number(valor) : valor;
+  return typeof n === "number" && Number.isFinite(n)
+    ? n
+    : TAXA_DA_ENTREGA_PROPRIA_PADRAO;
+}
+
 /**
  * O CONTEXTO DA LOJA que uma cotação de frete responde (release 1.5.3 —
  * retirada na loja): provedor, transportadoras habilitadas, retirada ligada
@@ -40,6 +51,13 @@ export const VERSAO_DO_CONTRATO_DE_COTACAO = "cotacao-3";
  * invalida o cache de ninguém que não mudou nada. O trecho vai DEPOIS da
  * versão do contrato, para a posição dos campos antigos não andar. A troca
  * entre "Entrego" e "Entrego e retiro" já muda o carimbo pela retirada.
+ *
+ * A TAXA da entrega própria (12/11/2026) é o preço da "Entrega Local": a
+ * lojista muda de R$ 10 para R$ 20 e a cliente com o carrinho aberto seguia
+ * vendo R$ 10 até o cache vencer. Entra no fim, num trecho próprio, SÓ com a
+ * entrega ligada e a taxa diferente de R$ 10 (a que a edge assume quando a
+ * coluna é nula): ausente, inválida ou igual à padrão = texto de antes.
+ * R$ 0 é taxa de verdade (entrega grátis) e entra.
  */
 export function contextoDaLojaParaFrete(
   config:
@@ -50,6 +68,7 @@ export function contextoDaLojaParaFrete(
         | "storeAddress"
         | "localDeliveryEnabled"
         | "localDeliveryDays"
+        | "localDeliveryFee"
       >
     | null
     | undefined,
@@ -66,6 +85,10 @@ export function contextoDaLojaParaFrete(
   const dias = diasDaEntregaPropria(config?.localDeliveryDays);
   if (!entregaLigada || dias !== DIAS_DA_ENTREGA_PROPRIA_PADRAO) {
     carimbo.push(["entrega-propria", entregaLigada, dias]);
+  }
+  const taxa = taxaDaEntregaPropria(config?.localDeliveryFee);
+  if (entregaLigada && taxa !== TAXA_DA_ENTREGA_PROPRIA_PADRAO) {
+    carimbo.push(["taxa-da-entrega-propria", taxa]);
   }
   return JSON.stringify(carimbo);
 }

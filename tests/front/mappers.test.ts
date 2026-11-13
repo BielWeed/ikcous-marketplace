@@ -420,6 +420,20 @@ describe("mapOrderFromDB", () => {
     ).toBeUndefined();
   });
 
+  it("o link da etiqueta também chega ao pedido (a ficha aberta em outro aparelho relê quando ele aparece); sem link fica ausente", () => {
+    expect(
+      mapOrderFromDB(
+        pedido({ shipping_label_url: "https://melhorenvio.com.br/x" }),
+      ).shippingLabelUrl,
+    ).toBe("https://melhorenvio.com.br/x");
+    expect(
+      mapOrderFromDB(pedido({ shipping_label_url: null })).shippingLabelUrl,
+    ).toBeUndefined();
+    expect(
+      mapOrderFromDB(pedido({ shipping_label_url: "" })).shippingLabelUrl,
+    ).toBeUndefined();
+  });
+
   it("o snapshot do customer_data vence ao endereço do join (laudo #4, onda 2)", () => {
     // Era "prefere o endereço do join" — e era o defeito: o JOIN traz o
     // endereço ATUAL do perfil; deixá-lo vencer fazia editar/apagar endereço
@@ -581,6 +595,12 @@ describe("mapOrderFromDB", () => {
       pedido({ total: null as unknown as number, total_amount: 250 }),
     );
     expect(o.total).toBe(250);
+  });
+
+  it("total 0 (pedido gratuito) não cai para total_amount", () => {
+    // `0 ?? x` fica em 0; trocar por `||` faria o brinde virar R$ 250.
+    const o = mapOrderFromDB(pedido({ total: 0, total_amount: 250 }));
+    expect(o.total).toBe(0);
   });
 
   it("copia payment_status quando o webhook já confirmou o pagamento", () => {

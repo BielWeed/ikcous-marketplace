@@ -1,5 +1,6 @@
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { cn } from "@/lib/utils";
 import {
   Check,
@@ -140,6 +141,9 @@ export function BarraDeBusca({
   children,
 }: BarraDeBuscaProps) {
   const [aberta, setAberta] = useState(false);
+  // O Voltar do aparelho fecha só a janela de filtros, em vez de tirar o lojista
+  // da tela (Produtos e Clientes ficam montados, inativos, atrás das outras abas).
+  useVoltarFechaAFolha(aberta, () => setAberta(false));
   const botaoFiltros = useRef<HTMLButtonElement>(null);
   const faixaDeOpcoes = useRef<HTMLDivElement>(null);
   const escolhida = opcoes.find((opcao) => opcao.selecionada)?.valor;

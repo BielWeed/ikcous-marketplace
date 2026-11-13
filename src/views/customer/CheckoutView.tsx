@@ -24,10 +24,12 @@ import { FraseDeAceite } from "@/components/politicas/LinksDasPoliticas";
 import { Button } from "@/components/ui/button";
 import {
   AddressForm,
+  type AlteracoesDoEndereco,
   type DadosDoFormularioDeEndereco,
 } from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
 import { BotaoWhatsapp } from "@/components/ui/custom/BotaoWhatsapp";
+import { CarrinhoSalvoNaoLido } from "@/components/ui/custom/CarrinhoSalvoNaoLido";
 import { HEADER_CENTER_SLOT_ID } from "@/components/ui/custom/Header";
 import { SaidaDaRecusa } from "@/components/ui/custom/SaidaDaRecusa";
 import {
@@ -54,6 +56,10 @@ import {
   useOrders,
 } from "@/hooks/useOrders";
 import { useReleituraDosEnderecosAoVoltar } from "@/hooks/useReleituraDosEnderecosAoVoltar";
+import {
+  localStorageSeguro,
+  sessionStorageSeguro,
+} from "@/lib/armazenamento-seguro";
 import { cepEhLocal } from "@/lib/cep-local";
 import {
   type GerenciadorDeChaveDaCompra,
@@ -853,9 +859,9 @@ function GatilhoDoResumoDoPedido({
  * exclusivo não fica esperando no armazenamento da aba (frente B).
  */
 function esquecerCupomDoRascunho(): void {
-  const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
+  const rascunho = lerRascunhoDoCheckout(sessionStorageSeguro());
   if (!rascunho?.cupom) return;
-  salvarRascunhoDoCheckout(globalThis.sessionStorage, {
+  salvarRascunhoDoCheckout(sessionStorageSeguro(), {
     ...rascunho,
     cupom: null,
     contaDoCupom: null,
@@ -918,6 +924,8 @@ export function CheckoutViewDaConta({
   const {
     cart: ctxCart,
     isLoading: lendoOCarrinhoSalvo,
+    carrinhoSalvoNaoLido,
+    relerCarrinhoSalvo,
     cartTotal: ctxSubtotal,
     shippingFee: ctxShipping,
     clearCart: ctxClearCart,
@@ -1025,17 +1033,32 @@ export function CheckoutViewDaConta({
         pedidoAtualizado.payment_status === "estornado"
       ) {
         setStatusPagamentoPix("nao-concluido");
-      } else if (
-        pedidoAtualizado.gateway_payment_id === null &&
-        (cartaoEmCursoRef.current?.orderId === pedidoAtualizado.id ||
-          cartaoEncerradoRef.current?.orderId === pedidoAtualizado.id)
-      ) {
-        // C6 (P1): a vaga vazia no realtime é só uma DICA — o evento pode
-        // ser a soltura de uma tentativa ANTERIOR chegando atrasada. Quem
-        // decide é uma leitura NOVA da vaga (`verificarPagamento`).
-        // Lacuna L1b: a tentativa que o C6 já encerrou também pede a leitura
-        // — é ela que descobre o pedido fechado depois da recusa.
-        lerAVagaAgoraRef.current?.();
+      } else {
+        // O pedido venceu e o aviso chegou pelo canal ao vivo: a tela do PIX
+        // encerra pela MESMA transição da consulta periódica
+        // (`verificarPagamento`: o pedido morto no servidor), sem esperar a
+        // consulta — que pode estar lenta ou falhando. Só quando nenhum
+        // estado final (pago, tardio, recusado) já ocupa a tela, e a
+        // verificação continua: o pagamento tardio ainda vira "pago fora do
+        // prazo".
+        if (
+          pedidoAtualizado.payment_status === "expirado" &&
+          statusPagamentoPix === null
+        ) {
+          setPedidoMortoNoServidorId(orderId);
+        }
+        if (
+          pedidoAtualizado.gateway_payment_id === null &&
+          (cartaoEmCursoRef.current?.orderId === pedidoAtualizado.id ||
+            cartaoEncerradoRef.current?.orderId === pedidoAtualizado.id)
+        ) {
+          // C6 (P1): a vaga vazia no realtime é só uma DICA — o evento pode
+          // ser a soltura de uma tentativa ANTERIOR chegando atrasada. Quem
+          // decide é uma leitura NOVA da vaga (`verificarPagamento`).
+          // Lacuna L1b: a tentativa que o C6 já encerrou também pede a
+          // leitura — é ela que descobre o pedido fechado depois da recusa.
+          lerAVagaAgoraRef.current?.();
+        }
       }
     },
   });
@@ -1228,7 +1251,7 @@ export function CheckoutViewDaConta({
       cpf: "",
       name: perfilDaConta?.full_name || "",
       whatsapp: getDefaultWhatsApp(),
-      cep: localStorage.getItem("ikcous_last_shipping_cep") || "",
+      cep: localStorageSeguro().getItem("ikcous_last_shipping_cep") || "",
       city: "",
       state: "",
     },
@@ -1381,7 +1404,7 @@ export function CheckoutViewDaConta({
       // com IndexedDB lento). Lendo primeiro na memória, qualquer gravação
       // transitória dos resets é substituída, logo depois, pela gravação dos
       // valores restaurados.
-      const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
+      const rascunho = lerRascunhoDoCheckout(sessionStorageSeguro());
       // Revisão de segurança (23/09/2026): quando a config da loja chega
       // DEPOIS de `get_my_cpf`, os resets abaixo apagavam o CPF que a conta
       // acabou de preencher. O valor atual do campo (nunca o rascunho — CPF
@@ -1403,7 +1426,7 @@ export function CheckoutViewDaConta({
           cpf: cpfJaCarregado,
           name: perfilDaConta?.full_name || "",
           whatsapp: getDefaultWhatsApp(),
-          cep: localStorage.getItem("ikcous_last_shipping_cep") || "",
+          cep: localStorageSeguro().getItem("ikcous_last_shipping_cep") || "",
           city: "",
           state: "",
         });
@@ -1459,7 +1482,7 @@ export function CheckoutViewDaConta({
             whatsapp: doRascunho.whatsapp || getDefaultWhatsApp(),
             cep:
               doRascunho.cep ||
-              localStorage.getItem("ikcous_last_shipping_cep") ||
+              localStorageSeguro().getItem("ikcous_last_shipping_cep") ||
               "",
             street: doRascunho.rua,
             number: doRascunho.numero,
@@ -1551,7 +1574,7 @@ export function CheckoutViewDaConta({
   // 25/08/2026).
   const cepAssociadoRef = useRef<string | null>(
     (() => {
-      const cepDaVisitaAnterior = localStorage.getItem(
+      const cepDaVisitaAnterior = localStorageSeguro().getItem(
         "ikcous_last_shipping_cep",
       );
       return cepDaVisitaAnterior
@@ -1683,6 +1706,12 @@ export function CheckoutViewDaConta({
       : "pix";
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // A opção de frete VIVA, atualizada a cada render. O envio roda numa
+  // closure do clique em "Finalizar" (modalidade e frete de ANTES dos
+  // `await`s): antes de a RPC sair, `handleSubmitEvent` compara com esta —
+  // trocar entrega x retirada durante a espera não pode gravar o pedido antigo.
+  const freteVivoRef = useRef(selectedShippingOption);
+  freteVivoRef.current = selectedShippingOption;
   // A recusa que o banco deu no último clique, quando deu. `null` é o estado
   // normal — o painel só existe depois de uma recusa e some assim que a pessoa
   // age ou fecha.
@@ -2404,20 +2433,33 @@ export function CheckoutViewDaConta({
   // Recarga (04/10/2026): o registro da aba (SÓ o id do pedido — ver
   // pedido-pendente-do-checkout.ts) acompanha o pedido que ESTA tela está
   // pagando ou retomando, para a recarga voltar a ele. Some quando o pedido
-  // sai de pendente (pago, pago fora do prazo, morto no servidor, não aguarda
-  // mais) e quando não há pedido em pagamento na tela (checkout de carrinho,
-  // pedido descartado). A recusa do cartão NÃO tira o pedido de pendente: ele
+  // sai de pendente (pago, morto no servidor, não aguarda mais — o pago FORA
+  // DO PRAZO é a exceção, abaixo) e quando não há pedido em pagamento na
+  // tela (checkout de carrinho, pedido descartado). A recusa do cartão NÃO tira o pedido de pendente: ele
   // continua retomável (a mesma regra do "Retomar pagamento" do card).
   // Nada é limpo ao desmontar de propósito: a recarga não desmonta, e a
   // saída do checkout é limpa pelo App (handleNavigate).
   const pedidoEmPagamentoNaTela =
     aguardandoPagamento && orderId !== "" ? orderId : (retomarPedidoId ?? null);
+  // EXCEÇÃO — o pagamento recebido FORA DO PRAZO (`pago_apos_expirar`): o
+  // dinheiro entrou, o pedido está sem desfecho (a loja decide) e é a recarga
+  // que precisa voltar ao aviso. Com o registro apagado, o F5 caía em "Seu
+  // carrinho está vazio" (o recibo exclui esta tela de propósito: o pedido pode
+  // estar cancelado, e "pedido recebido" seria promessa). Por isso este estado
+  // MANTÉM (ou devolve, se o vencimento já o tinha apagado) o registro: a
+  // leitura da retomada confere o dono e o estado no servidor e mostra o aviso;
+  // se a loja reativar o pedido, a mesma leitura vê `pago` e limpa. Sai com a
+  // saída do checkout (App) e com o logout, como todo registro.
+  const pagoForaDoPrazoNaTela =
+    statusPagamentoPix === "fora-do-prazo" ||
+    (retomadaJaPaga && confirmacaoDaRecarga?.foraDoPrazo === true);
   const pedidoSaiuDePendente =
-    statusPagamentoPix !== null ||
-    (pedidoEmPagamentoNaTela !== null &&
-      pedidoMortoNoServidorId === pedidoEmPagamentoNaTela) ||
-    retomadaSemPagamentoPendente ||
-    retomadaJaPaga;
+    !pagoForaDoPrazoNaTela &&
+    (statusPagamentoPix !== null ||
+      (pedidoEmPagamentoNaTela !== null &&
+        pedidoMortoNoServidorId === pedidoEmPagamentoNaTela) ||
+      retomadaSemPagamentoPendente ||
+      retomadaJaPaga);
   const pedidoParaARecarga = pedidoSaiuDePendente
     ? null
     : pedidoEmPagamentoNaTela;
@@ -2828,9 +2870,9 @@ export function CheckoutViewDaConta({
     setCupomTiradoPelaLoja(cupomGuardado.code);
     setAppliedCoupon(null);
     setCouponError("");
-    const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
+    const rascunho = lerRascunhoDoCheckout(sessionStorageSeguro());
     if (rascunho?.cupom) {
-      salvarRascunhoDoCheckout(globalThis.sessionStorage, {
+      salvarRascunhoDoCheckout(sessionStorageSeguro(), {
         ...rascunho,
         cupom: null,
       });
@@ -2906,7 +2948,7 @@ export function CheckoutViewDaConta({
           : (cupomPendenteDoRascunhoRef.current?.conta ?? null),
       };
       if (!rascunhoTemConteudo(rascunho)) return;
-      salvarRascunhoDoCheckout(globalThis.sessionStorage, rascunho);
+      salvarRascunhoDoCheckout(sessionStorageSeguro(), rascunho);
     };
     const subscription = form.watch((valores) =>
       gravarRascunho(valores as CheckoutFormValues),
@@ -2939,7 +2981,7 @@ export function CheckoutViewDaConta({
         : (cupomPendenteDoRascunhoRef.current?.conta ?? null),
     };
     if (!rascunhoTemConteudo(rascunho)) return;
-    salvarRascunhoDoCheckout(globalThis.sessionStorage, rascunho);
+    salvarRascunhoDoCheckout(sessionStorageSeguro(), rascunho);
   }, [notes, appliedCoupon, form]);
   // Achado 8 da revisão (17/08/2026): o painel precisa devolver o foco ao
   // botão que o abriu quando fecha (teclado) — `wasOpenRef` evita focar o
@@ -3002,6 +3044,22 @@ export function CheckoutViewDaConta({
       globalThis.scrollTo(0, 0);
     }
   }, [isAddressModalOpen, showSuccess]);
+
+  // Fechou a tela do endereço (Cancelar, Voltar ou salvar: todos desligam
+  // `isAddressModalOpen`) depois de aberta por "Novo": o foco volta ao "Novo".
+  // O botão sumiu junto com o formulário e voltou como elemento novo, então a
+  // busca é por id; se a seção recolheu no meio (endereço escolhido), cai no
+  // botão que assume o lugar dele, como em `focoAposAlternarRef`.
+  const focoDeVoltaAoNovoEnderecoRef = useRef(false);
+  useEffect(() => {
+    if (isAddressModalOpen || !focoDeVoltaAoNovoEnderecoRef.current) return;
+    focoDeVoltaAoNovoEnderecoRef.current = false;
+    (
+      document.getElementById("checkout-novo-endereco") ??
+      document.getElementById("resumo-trocar-endereco") ??
+      document.getElementById("resumo-editar-dados")
+    )?.focus();
+  }, [isAddressModalOpen]);
 
   // Cada abertura da janela do endereço ganha uma identidade; fechar (ou
   // desmontar a tela) a zera. Ver `janelaDoEnderecoRef`.
@@ -3503,7 +3561,8 @@ export function CheckoutViewDaConta({
       // Endereço e CEP: só onde a pessoa ainda não escreveu nada nesse meio
       // tempo (o CEP nasce da semente do aparelho, que também conta como
       // "ainda não escreveu").
-      const semente = localStorage.getItem("ikcous_last_shipping_cep") || "";
+      const semente =
+        localStorageSeguro().getItem("ikcous_last_shipping_cep") || "";
       const cepAtual = form.getValues("cep") ?? "";
       if (r.cep && (cepAtual === "" || cepAtual === semente)) {
         form.setValue("cep", r.cep);
@@ -4329,6 +4388,7 @@ export function CheckoutViewDaConta({
 
   const handleNewAddressSubmit = async (
     data: DadosDoFormularioDeEndereco,
+    alteracoes?: AlteracoesDoEndereco,
   ): Promise<void> => {
     // A janela em que a cliente tocou em Salvar. O salvamento espera a rede
     // por até 15 s e o Voltar do aparelho fecha a janela nesse meio-tempo (só
@@ -4337,7 +4397,8 @@ export function CheckoutViewDaConta({
     const minhaJanela = janelaDoEnderecoRef.current;
     let result;
     if (editingAddressId) {
-      const success = await updateAddress(editingAddressId, data);
+      // Só o que a cliente mudou (a tela pode estar velha).
+      const success = await updateAddress(editingAddressId, alteracoes ?? data);
       if (success) {
         result = addresses.find((a) => a.id === editingAddressId);
       }
@@ -4774,6 +4835,30 @@ export function CheckoutViewDaConta({
       }
     }
 
+    // A MODALIDADE DO CLIQUE × A ESCOLHA DE AGORA (13/11/2026): `orderData`
+    // carrega o frete capturado no clique, e até aqui o envio esperou a revisão
+    // do frete e a sessão. Se a cliente trocou entrega x retirada (ou o preço
+    // cotado mudou, ou a seleção caiu) nesse intervalo, a tela já mostra outra
+    // coisa — o servidor aceitaria, porque compara o total TAMBÉM antigo, e o
+    // pedido nasceria com a modalidade e o frete que ela já desfez. Último
+    // ponto antes da RPC (e antes de a chave do pedido nascer): nada saiu.
+    // Cobre o que `bloqueado` na calculadora não cobre — a janela do
+    // `form.trigger()` (antes de `isSubmitting` chegar à tela), a recotação
+    // automática e a troca de endereço. Compara id e preço, não o objeto: o
+    // contexto devolve objeto fresco da mesma opção sem que nada tenha mudado.
+    const freteVivo = freteVivoRef.current;
+    if (
+      (freteVivo?.id ?? null) !== (selectedShippingOption?.id ?? null) ||
+      (freteVivo?.price ?? null) !== (selectedShippingOption?.price ?? null)
+    ) {
+      toast.error(
+        "A forma de entrega mudou enquanto o pedido era enviado. Confira o total e finalize.",
+      );
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      return;
+    }
+
     // 🔴 A chave só nasce DEPOIS da conferência da sessão (r60-b): quem sai
     // dali não enviou nada, e uma chave gravada contaria como "pedido em
     // curso" por 30 min — o carrinho pararia de reler preço e estoque
@@ -4842,7 +4927,7 @@ export function CheckoutViewDaConta({
       gerenteDaChaveDe(pedido.contaEsperada).esquecer();
       pedidoCongeladoRef.current = null;
       limparPedidoSemResposta();
-      limparRascunhoDoCheckout(globalThis.sessionStorage);
+      limparRascunhoDoCheckout(sessionStorageSeguro());
       // Cancelar devolve só o que realmente saiu do carrinho.
       itensDoPedidoParaRestaurarRef.current = [];
       const carrinhoAtual = carrinhoAtualRef.current;
@@ -6106,6 +6191,14 @@ export function CheckoutViewDaConta({
             orderId={pedidoDoRecibo}
             onNavigate={onNavigate}
           />
+        ) : carrinhoSalvoNaoLido && !propCart ? (
+          // A leitura do carrinho salvo da conta falhou: lista vazia NÃO é
+          // "vazio" (o recibo, acima, é a única prova de pedido já feito).
+          <CarrinhoSalvoNaoLido
+            onTentarDeNovo={relerCarrinhoSalvo}
+            onSair={() => onNavigate("cart")}
+            rotuloDoSair="Voltar ao carrinho"
+          />
         ) : (
           <>
             <h1 className="text-lg font-bold text-zinc-900">
@@ -6838,9 +6931,15 @@ export function CheckoutViewDaConta({
                         }
                         className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-base font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white md:text-sm"
                         onChange={async (e) => {
-                          const { limpo, formatado } = formatarCep(
+                          const { limpo: digitos, formatado } = formatarCep(
                             e.target.value,
                           );
+                          // Sem o maxLength do campo, um 9º dígito colado não
+                          // pode deixar o CEP novo sem busca (rua e bairro do
+                          // CEP anterior ficariam com ele): vale o que o
+                          // campo mostra, os 8 primeiros. Mesmo corte do
+                          // AddressForm.tsx.
+                          const limpo = digitos.slice(0, 8);
                           form.setValue("cep", formatado, {
                             shouldValidate: true,
                           });
@@ -6848,7 +6947,7 @@ export function CheckoutViewDaConta({
                           // gravar a cada tecla deixava o pedaço ("0131")
                           // como semente da próxima visita.
                           if (limpo.length === 8)
-                            localStorage.setItem(
+                            localStorageSeguro().setItem(
                               "ikcous_last_shipping_cep",
                               formatado,
                             );
@@ -7106,10 +7205,12 @@ export function CheckoutViewDaConta({
                     </span>
                   </div>
                   <Button
+                    id="checkout-novo-endereco"
                     variant="ghost"
                     size="sm"
                     onClick={() => {
                       setEditingAddressId(null);
+                      focoDeVoltaAoNovoEnderecoRef.current = true;
                       setIsAddressModalOpen(true);
                     }}
                     className="flex h-11 items-center gap-1 rounded-xl bg-zinc-900 px-3 text-[11px] font-bold uppercase tracking-wider text-white transition-all hover:bg-black"
@@ -7208,6 +7309,9 @@ export function CheckoutViewDaConta({
             }
             onStatusChange={setStatusDoFrete}
             forcarNovaCotacaoEm={forcarNovaCotacaoEm}
+            // Pedido em envio: trocar modalidade/opção agora mudaria a tela,
+            // mas o pedido já leva o frete do clique (13/11/2026).
+            bloqueado={isSubmitting}
             // CHECKOUT COMPACTO (23/09/2026): só o CHECKOUT resume a opção
             // escolhida atrás de "Trocar" — o carrinho (outro consumidor
             // deste MESMO componente) não passa a prop e continua mostrando
@@ -8655,7 +8759,10 @@ function PagamentoForaDoPrazoView({
 interface AddressSelectionViewProps {
   editingAddressId: string | null;
   addresses: Address[];
-  onNewAddressSubmit: (data: DadosDoFormularioDeEndereco) => Promise<void>;
+  onNewAddressSubmit: (
+    data: DadosDoFormularioDeEndereco,
+    alteracoes?: AlteracoesDoEndereco,
+  ) => Promise<void>;
   onCancel: () => void;
   /** Nome da conta: já vem em "Quem vai receber" do endereço novo. */
   nomeDaConta?: string;
@@ -8676,10 +8783,16 @@ function AddressSelectionView({
           <div className="absolute bottom-0 left-0 -mb-12 -ml-12 size-24 rounded-full bg-white/5 blur-xl" />
 
           <div className="relative z-10 flex flex-col">
-            <h2 className="mb-1 flex items-center gap-2 text-2xl font-bold tracking-tight text-primary-foreground">
+            {/* A tela do endereço SUBSTITUI o checkout e o botão que tinha o
+                foco some junto: o título recebe o foco ao abrir, como nas
+                telas de sucesso (`TituloQueRecebeOFoco`). */}
+            <TituloQueRecebeOFoco
+              nivel={2}
+              className="mb-1 flex items-center gap-2 text-2xl font-bold tracking-tight text-primary-foreground"
+            >
               {editingAddressId ? "Editar Endereço" : "Novo Endereço"}
               <Sparkles className="size-4.5 animate-pulse text-amber-400" />
-            </h2>
+            </TituloQueRecebeOFoco>
             <p className="text-[10px] font-bold uppercase leading-tight tracking-wider text-primary-foreground/80">
               {editingAddressId
                 ? "Atualize os dados para entrega"

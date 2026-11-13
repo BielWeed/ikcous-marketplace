@@ -15,7 +15,9 @@ import type { Product } from "@/types";
 const FOTO_ORIGINAL =
   "https://abc123.supabase.co/storage/v1/object/public/products/aliança-grande.jpg";
 
-const catalogo: Product[] = [
+const MARCADOR = "https://placehold.co/600x600?text=Sem+Imagem";
+
+let catalogo: Product[] = [
   {
     id: "p1",
     name: "Aliança Luxo",
@@ -121,6 +123,20 @@ describe("SearchBar — a miniatura da sugestão não baixa a foto original", ()
   it("se o redimensionamento falhar, volta para a foto original", async () => {
     const miniatura = await digitarEPegarAMiniatura();
     expect(decodeURI(miniatura.src)).not.toBe(decodeURI(FOTO_ORIGINAL));
+
+    await act(async () => {
+      miniatura.dispatchEvent(new Event("error"));
+    });
+
+    expect(decodeURI(miniatura.src)).toBe(decodeURI(FOTO_ORIGINAL));
+  });
+
+  it("lista [marcador, foto real]: a miniatura e a volta ao original usam a foto REAL", async () => {
+    catalogo = [{ ...catalogo[0], images: [MARCADOR, FOTO_ORIGINAL] }];
+    const miniatura = await digitarEPegarAMiniatura();
+    expect(new URL(miniatura.src).pathname).toContain(
+      "/storage/v1/render/image/public/",
+    );
 
     await act(async () => {
       miniatura.dispatchEvent(new Event("error"));

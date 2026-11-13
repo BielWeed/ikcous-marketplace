@@ -24,6 +24,7 @@ import {
   catalogoEmVoo,
   esperarCatalogoEmVoo,
 } from "@/lib/deposito-do-catalogo";
+import { estoqueDasAtivas } from "@/lib/estoque-das-ativas";
 import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import {
   geracaoDoCofre,
@@ -31,6 +32,12 @@ import {
 } from "@/lib/geracao-do-cofre";
 import { MAXIMO_DE_PAGINAS, TAMANHO_DA_PAGINA } from "@/lib/ler-em-paginas";
 import { mapProductFromDB, mapVariantFromDB } from "@/lib/mappers";
+import {
+  PRAZO_DA_CONSULTA_DA_SINCRONIZACAO_MS,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types";
 import type {
@@ -232,20 +239,6 @@ export const TABLE_CONFIGS: TableConfig[] = [
   },
 ];
 
-// Espelha `mapProductFromDB`: com ao menos uma variação ATIVA o estoque do
-// produto é a soma das ativas; sem nenhuma ativa o produto vende pelo estoque
-// de base (é assim que o servidor vende), nunca por uma soma que daria 0.
-function estoqueDasAtivas(
-  variants: NonNullable<Product["variants"]>,
-  estoqueDeBase: number,
-): number {
-  if (!variants.some((v) => v.active)) return estoqueDeBase;
-  return variants.reduce(
-    (acc, v) => acc + (v.active ? Number(v.stockIncrement) || 0 : 0),
-    0,
-  );
-}
-
 // ─── Singleton ───────────────────────────────────────────────────────────────
 
 let _channel: RealtimeChannel | null = null;
@@ -297,6 +290,35 @@ export async function cofreVivo(instancia: DataVault): Promise<DataVault> {
     return DataVault.init();
   }
   return instancia;
+}
+
+/**
+ * Prazo POR CONSULTA da rodada de sincronização (13/11/2026). Rede "pendurada"
+ * conecta e não responde: sem prazo, UMA consulta sem resposta segurava a rodada
+ * inteira e a trava `_isCatchingUp`, e toda retomada seguinte (voltar à aba,
+ * `online`) caía na trava e saía na hora -- o preço antigo ficava na vitrine
+ * mesmo com a conexão boa. Estourou = a consulta vira a falha comum
+ * `{ data: null, error }`, que o `catchUp` já sabe pular (as outras seguem e a
+ * próxima rodada tenta de novo). A resposta tardia da consulta abandonada é
+ * descartada: nada a aplica, então ela nunca sobrescreve o que outra rodada
+ * gravou depois. Qualquer OUTRA rejeição (a rede lança) segue subindo como
+ * sempre subiu.
+ */
+async function lerComPrazo<T extends { data: unknown; error: unknown }>(
+  consulta: PromiseLike<T>,
+): Promise<T | { data: null; error: Error }> {
+  try {
+    return await aguardarComPrazo(
+      Promise.resolve(consulta),
+      PRAZO_DA_CONSULTA_DA_SINCRONIZACAO_MS,
+      () => erroDeConsultaSemResposta(),
+    );
+  } catch (erro) {
+    if (erro instanceof Error && ehConsultaSemResposta(erro)) {
+      return { data: null, error: erro };
+    }
+    throw erro;
+  }
 }
 
 export const RealtimeSyncEngine = {
@@ -414,18 +436,30 @@ export const RealtimeSyncEngine = {
         // nada ter mudado no servidor. Os dois gatilhos passam agora pela
         // mesma janela: disparou há menos de um minuto, adia — o dado que
         // mudou de verdade não depende da janela (chega pelo websocket, que
-        // não passa por aqui) e o catchUp do fim da janela cobre o resto.
+        // não passa por aqui) e UMA rodada final, agendada para o fim da
+        // janela, cobre o resto (a rede que volta dentro da janela não
+        // fica sem rodada). Um só timer: gatilhos seguintes não o empilham.
+        let rodadaFinal: ReturnType<typeof setTimeout> | null = null;
         const rodadaPorGatilho = (motivo: string) => {
           const agora = Date.now();
-          if (
-            agora - _ultimoGatilhoDeRodada <
-            JANELA_MINIMA_ENTRE_GATILHOS_MS
-          ) {
+          const falta =
+            JANELA_MINIMA_ENTRE_GATILHOS_MS - (agora - _ultimoGatilhoDeRodada);
+          if (falta > 0) {
             console.log(
               `[RealtimeSyncEngine] ${motivo}: última rodada há menos de ${JANELA_MINIMA_ENTRE_GATILHOS_MS / 1000}s — catchUp adiado.`,
             );
+            rodadaFinal ??= setTimeout(() => {
+              rodadaFinal = null;
+              // Aba escondida: o visibilitychange seguinte cuida da rodada.
+              if (document.visibilityState === "visible") {
+                _ultimoGatilhoDeRodada = Date.now();
+                this.catchUp(vault, isAdmin).catch(() => {});
+              }
+            }, falta);
             return;
           }
+          if (rodadaFinal) clearTimeout(rodadaFinal);
+          rodadaFinal = null;
           _ultimoGatilhoDeRodada = agora;
           this.catchUp(vault, isAdmin).catch(() => {});
         };
@@ -450,6 +484,8 @@ export const RealtimeSyncEngine = {
         document.addEventListener("visibilitychange", handleVisibilityChange);
 
         _connectivityListeners = () => {
+          if (rodadaFinal) clearTimeout(rodadaFinal);
+          rodadaFinal = null;
           window.removeEventListener("online", handleOnline);
           document.removeEventListener(
             "visibilitychange",
@@ -888,9 +924,11 @@ export const RealtimeSyncEngine = {
           if (depoisDoId !== null) {
             productsQuery = productsQuery.gt("id", depoisDoId);
           }
-          const { data, error } = await productsQuery
-            .order("id")
-            .limit(TAMANHO_DA_PAGINA);
+          // Prazo POR PÁGINA: a página pendurada devolve a falha comum abaixo
+          // (resumo incompleto = nenhuma exclusão nesta rodada).
+          const { data, error } = await lerComPrazo(
+            productsQuery.order("id").limit(TAMANHO_DA_PAGINA),
+          );
           if (error) return { data: null, error };
           const linhas = (data ?? []) as any[];
           todas.push(...linhas);
@@ -916,15 +954,18 @@ export const RealtimeSyncEngine = {
         };
       };
 
-      // Execute queries in parallel
+      // Execute queries in parallel, cada uma com o seu prazo (`lerComPrazo`):
+      // uma consulta pendurada não segura as outras nem a trava da rodada.
       const [configResult, categoriesResult, bannersResult, summaryResult] =
         await Promise.all([
-          supabase
-            .from(tableSourceConfig as any)
-            .select("*")
-            .single(),
-          supabase.from("categorias").select("*").order("nome"),
-          supabase.from("banners").select("*").order("order"),
+          lerComPrazo(
+            supabase
+              .from(tableSourceConfig as any)
+              .select("*")
+              .single(),
+          ),
+          lerComPrazo(supabase.from("categorias").select("*").order("nome")),
+          lerComPrazo(supabase.from("banners").select("*").order("order")),
           lerResumoDosProdutos(),
         ]);
       if (caducou()) return;
@@ -1219,7 +1260,10 @@ export const RealtimeSyncEngine = {
             if (isAdmin) {
               detailQuery = detailQuery.is("deleted_at", null);
             }
-            const { data: rawDoLote, error: erroDoLote } = await detailQuery;
+            // Prazo por lote: o lote sem resposta conta como perdido (o `continue`
+            // abaixo) e a rodada segue, em vez de prender a trava.
+            const { data: rawDoLote, error: erroDoLote } =
+              await lerComPrazo(detailQuery);
             // K1: a resposta (com custo, no ramo admin) chegou depois do Sair
             // ou da parada do motor -- nenhum lote dela vai ao cofre.
             if (caducou()) return;

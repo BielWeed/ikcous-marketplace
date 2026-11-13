@@ -25,6 +25,7 @@ import { useRotulosDasVariacoes } from "@/hooks/useRotulosDasVariacoes";
 import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { abrirWhatsapp } from "@/lib/abrir-whatsapp";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import { enderecoParaDevolver } from "@/lib/devolucao";
 import {
   pedidoSemValorAPagar,
@@ -46,8 +47,10 @@ import {
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import {
+  PRAZO_DO_RETRATO_MS,
   lerRetratoDoConvidado,
   limparRetratoDoConvidado,
+  retratoVenceu,
   textoDoRetrato,
 } from "@/lib/retrato-do-convidado";
 import {
@@ -484,8 +487,6 @@ export function OrderDetailsView({
   } = useOrders(true, false);
   const { config } = useStore();
   const { user, loading: authLoading } = useAuth();
-  // Abrir o pedido apaga do sino os avisos dele.
-  useMarcarAvisosDoPedidoComoLidos(orderId);
   const [order, setOrder] = useState<Order | null>(null);
   // O pedido na tela veio do RETRATO do rastreio sem conta (sessionStorage), e
   // não do servidor: o status é o de quando a pessoa consultou e não atualiza
@@ -702,7 +703,17 @@ export function OrderDetailsView({
     setIsCancelling(true);
     haptic.medium();
     try {
-      await updateOrderStatus(order.id, "cancelled");
+      // A etapa que a tela mostrava (a mesma da frase de dinheiro da caixa)
+      // vai junto: se a loja já andou com o pedido em outro aparelho, o
+      // servidor responde "mudou" e nada é cancelado com regras que a cliente
+      // não leu (ex.: pedido enviado, que pede devolver o produto).
+      await updateOrderStatus(
+        order.id,
+        "cancelled",
+        undefined,
+        false,
+        order.status,
+      );
       setOrder((prev) => (prev ? { ...prev, status: "cancelled" } : null));
     } catch (error) {
       console.error("Failed to cancel order:", error);
@@ -837,6 +848,44 @@ export function OrderDetailsView({
   useEffect(() => {
     loadOrder();
   }, [loadOrder]);
+
+  // O retrato venceu (60 min) com o detalhe aberto: o pedido está nesta tela em
+  // estado, então endereço e dados da compra seguiam à vista de quem usar o
+  // aparelho depois. Mesma régua e mesmos gatilhos da lista na CartView
+  // (`retratoVenceu`; o relógio sozinho não basta, ele dorme com o aparelho):
+  // o pedido sai da memória, a leitura apaga o retrato vencido do aparelho e a
+  // tela volta para a lista, que manda consultar de novo.
+  const consultadoEm = retratoDoConvidado?.consultadoEm ?? null;
+  useEffect(() => {
+    if (consultadoEm === null) return;
+    const soltar = () => {
+      setOrder(null);
+      setRetratoDoConvidado(null);
+      lerRetratoDoConvidado();
+      onBack();
+    };
+    if (retratoVenceu(consultadoEm)) {
+      soltar();
+      return;
+    }
+    const aoVoltarAoPrimeiroPlano = () => {
+      if (
+        document.visibilityState === "visible" &&
+        retratoVenceu(consultadoEm)
+      ) {
+        soltar();
+      }
+    };
+    document.addEventListener("visibilitychange", aoVoltarAoPrimeiroPlano);
+    const relogio = setTimeout(
+      soltar,
+      consultadoEm + PRAZO_DO_RETRATO_MS - Date.now() + 1,
+    );
+    return () => {
+      clearTimeout(relogio);
+      document.removeEventListener("visibilitychange", aoVoltarAoPrimeiroPlano);
+    };
+  }, [consultadoEm, onBack]);
 
   // A tela acompanha o pedido enquanto ele está aberto. A cliente paga o PIX
   // no app do banco e volta aqui: o tempo real já atualizou o pedido na lista
@@ -1094,6 +1143,9 @@ export function OrderDetailsView({
   // não tem. Mesma regra do hook de cima: chamado sempre, ligado por flag.
   const podeUsarDevolucao = order?.status === "delivered" && !!user;
   const devolucaoDoProduto = useDevolucaoCliente(orderId, podeUsarDevolucao);
+  // Abrir o pedido apaga do sino os avisos dele — depois de a devolução já
+  // estar relida por causa deles (senão a pista some antes de a tela mudar).
+  useMarcarAvisosDoPedidoComoLidos(orderId, devolucaoDoProduto.aguardandoAviso);
   const [pedindoDevolucao, setPedindoDevolucao] = useState(false);
 
   // Sessão ainda sendo verificada e nenhum pedido na tela: não é "sem conta"
@@ -1377,7 +1429,7 @@ export function OrderDetailsView({
             <Copy className="size-3 text-zinc-550" />
           </div>
           <span className="rounded-full border border-zinc-100 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-600 shadow-sm">
-            {new Date(order.createdAt).toLocaleDateString("pt-BR", {
+            {dataNoFusoDaLoja(new Date(order.createdAt), {
               day: "numeric",
               month: "short",
               year: "numeric",

@@ -234,6 +234,8 @@ describe("dinheiro em pt-BR", () => {
   it("divide parcelas em centavos e diz quando não fecha", () => {
     expect(valorDaParcela(90, 3)).toEqual({ parcela: 30, exata: true });
     expect(valorDaParcela(100, 3)).toEqual({ parcela: 33.33, exata: false });
+    // 10001 / 3 = 3333,67: a parcela arredonda PARA BAIXO (33,33, nunca 33,34).
+    expect(valorDaParcela(100.01, 3)).toEqual({ parcela: 33.33, exata: false });
     expect(valorDaParcela(1234.56, 3)).toEqual({
       parcela: 411.52,
       exata: true,
@@ -352,6 +354,34 @@ describe("parsers defensivos", () => {
     expect(resumo.caixaAberto).toBeNull();
     expect(() => parseResumo(null)).toThrow(ErroDeFormatoFinanceiro);
     expect(() => parseResumo({ contas: "x" })).toThrow(ErroDeFormatoFinanceiro);
+  });
+
+  // `variacao_saldo` (migration 20261399985000, PR #1612) é a variação do saldo
+  // das contas ativas no dia: pode ser negativa (por isso sem valor absoluto) e
+  // NÃO existe nas lojas onde a migration ainda não foi aplicada.
+  it("resumo: variacao_saldo por dia — número, texto, negativa; ausente ou inválida vira null", () => {
+    const resumo = parseResumo({
+      serie: [
+        { dia: "2026-09-01", entradas: 5, saidas: 2, variacao_saldo: 3 },
+        { dia: "2026-09-02", entradas: 0, saidas: 40, variacao_saldo: -40.25 },
+        { dia: "2026-09-03", entradas: 1, saidas: 1, variacao_saldo: "7.5" },
+        { dia: "2026-09-04", entradas: 1, saidas: 1, variacao_saldo: 0 },
+        { dia: "2026-09-05", entradas: 1, saidas: 1 },
+        { dia: "2026-09-06", entradas: 1, saidas: 1, variacao_saldo: null },
+        { dia: "2026-09-07", entradas: 1, saidas: 1, variacao_saldo: "lixo" },
+      ],
+    });
+    expect(resumo.serie.map((d) => d.variacaoSaldo)).toEqual([
+      3,
+      -40.25,
+      7.5,
+      0,
+      null,
+      null,
+      null,
+    ]);
+    // As outras chaves da série seguem como antes.
+    expect(resumo.serie[1]).toMatchObject({ entradas: 0, saidas: 40 });
   });
 
   it("extrato: descarta linha sem id, valor sempre positivo, tipo pelo sinal quando falta", () => {
@@ -779,6 +809,149 @@ describe("extrato por dia e saldo corrente", () => {
       null,
     );
     expect(comMarcoNulo.every((p) => p.saldo !== null)).toBe(true);
+  });
+
+  // O defeito que motivou o PR #1612: o gráfico partia do saldo de hoje (só
+  // contas ATIVAS) e voltava descontando entradas e saídas de TODAS as contas,
+  // inclusive de uma conta desativada — mostrando em dias passados um saldo
+  // que nunca existiu. Agora o banco manda `variacao_saldo` por dia (só contas
+  // ativas) e o saldo de cada dia é `saldo de hoje − Σ variação dos dias
+  // seguintes`. Os números abaixo foram contados à mão.
+  //
+  // Cenário (hoje = 27/09, saldo total das contas ativas = 100):
+  //   24/09  nada
+  //   25/09  entrou 50 numa conta ativa e saíram 300 de uma conta DESATIVADA
+  //          (entradas 50, saídas 300 — todas as contas; variação das ativas +50)
+  //   26/09  nada
+  //   27/09  entradas 20,50 e saídas 10 (variação das ativas +10,50)
+  // Saldo de verdade ao fim de cada dia: 24/09 = 39,50 · 25/09 = 89,50 ·
+  // 26/09 = 89,50 · 27/09 = 100. O método antigo (entradas − saídas) dava
+  // 339,50 em 24/09, porque tirava a saída de 300 da conta desativada.
+  describe("serieDoFluxoDeCaixa com a variação do saldo só das contas ativas", () => {
+    const janela = { inicio: "2026-09-24", fim: "2026-09-27" } as const;
+    const HOJE = "2026-09-27";
+    const comVariacao = [
+      { dia: "2026-09-24", entradas: 0, saidas: 0, variacaoSaldo: 0 },
+      { dia: "2026-09-25", entradas: 50, saidas: 300, variacaoSaldo: 50 },
+      { dia: "2026-09-26", entradas: 0, saidas: 0, variacaoSaldo: 0 },
+      { dia: "2026-09-27", entradas: 20.5, saidas: 10, variacaoSaldo: 10.5 },
+    ] as const;
+    const semVariacao = comVariacao.map(({ dia, entradas, saidas }) => ({
+      dia,
+      entradas,
+      saidas,
+    }));
+    const saldos = (pontos: ReturnType<typeof serieDoFluxoDeCaixa>) =>
+      pontos.map((p) => p.saldo);
+
+    it("com a variação em todos os dias: o saldo de cada dia ignora a conta desativada", () => {
+      const pontos = serieDoFluxoDeCaixa(comVariacao, janela, 100, null, HOJE);
+      expect(saldos(pontos)).toEqual([39.5, 89.5, 89.5, 100]);
+    });
+
+    it("as barras de entradas e saídas e o resultado do dia não mudam", () => {
+      const pontos = serieDoFluxoDeCaixa(comVariacao, janela, 100, null, HOJE);
+      expect(pontos.map((p) => [p.entradas, p.saidas, p.resultado])).toEqual([
+        [0, 0, 0],
+        [50, 300, -250],
+        [0, 0, 0],
+        [20.5, 10, 10.5],
+      ]);
+    });
+
+    it("variação negativa (saída de conta ativa) devolve o dinheiro para trás", () => {
+      // Hoje 60; em 26/09 saíram 40 de uma conta ativa; 27/09 sem variação.
+      const pontos = serieDoFluxoDeCaixa(
+        [
+          { dia: "2026-09-25", entradas: 0, saidas: 0, variacaoSaldo: 0 },
+          { dia: "2026-09-26", entradas: 0, saidas: 40, variacaoSaldo: -40 },
+          { dia: "2026-09-27", entradas: 0, saidas: 0, variacaoSaldo: 0 },
+        ],
+        { inicio: "2026-09-25", fim: "2026-09-27" },
+        60,
+        null,
+        HOJE,
+      );
+      expect(saldos(pontos)).toEqual([100, 60, 60]);
+    });
+
+    it("sem a chave (loja sem a migration): idêntico ao método de sempre", () => {
+      const pontos = serieDoFluxoDeCaixa(semVariacao, janela, 100, null, HOJE);
+      expect(saldos(pontos)).toEqual([339.5, 89.5, 89.5, 100]);
+      // E igual a não passar `hoje` nenhum (a chamada de antes do PR).
+      expect(serieDoFluxoDeCaixa(semVariacao, janela, 100)).toEqual(pontos);
+    });
+
+    it("um único dia sem a chave: o gráfico inteiro volta ao método de sempre (sem misturar)", () => {
+      const quase = comVariacao.map((d, i) =>
+        i === 2 ? { dia: d.dia, entradas: d.entradas, saidas: d.saidas } : d,
+      );
+      const pontos = serieDoFluxoDeCaixa(quase, janela, 100, null, HOJE);
+      expect(saldos(pontos)).toEqual([339.5, 89.5, 89.5, 100]);
+    });
+
+    it("variacaoSaldo null num dia conta como ausente: volta ao método de sempre", () => {
+      const comNulo = comVariacao.map((d, i) =>
+        i === 0 ? { ...d, variacaoSaldo: null } : d,
+      );
+      const pontos = serieDoFluxoDeCaixa(comNulo, janela, 100, null, HOJE);
+      expect(saldos(pontos)).toEqual([339.5, 89.5, 89.5, 100]);
+    });
+
+    it("dia do período sem ponto na série: não dá para fechar a conta, volta ao método de sempre", () => {
+      const semOMeio = comVariacao.filter((d) => d.dia !== "2026-09-26");
+      const pontos = serieDoFluxoDeCaixa(semOMeio, janela, 100, null, HOJE);
+      expect(saldos(pontos)).toEqual([339.5, 89.5, 89.5, 100]);
+    });
+
+    it("série vazia: nada de variação, nenhum erro, saldo parado no de hoje", () => {
+      const pontos = serieDoFluxoDeCaixa([], janela, 100, null, HOJE);
+      expect(saldos(pontos)).toEqual([100, 100, 100, 100]);
+    });
+
+    it("período que termina ANTES de hoje: o saldo de hoje não é o do último dia, volta ao método de sempre", () => {
+      // Janela até 27/09, mas hoje já é 28/09: o saldo de hoje (100) inclui o
+      // que aconteceu em 28/09, que esta série não traz. Não se inventa número.
+      const pontos = serieDoFluxoDeCaixa(
+        comVariacao,
+        janela,
+        100,
+        null,
+        "2026-09-28",
+      );
+      expect(saldos(pontos)).toEqual([339.5, 89.5, 89.5, 100]);
+    });
+
+    it("sem saber o dia de hoje: não arrisca, volta ao método de sempre", () => {
+      const pontos = serieDoFluxoDeCaixa(comVariacao, janela, 100, null, null);
+      expect(saldos(pontos)).toEqual([339.5, 89.5, 89.5, 100]);
+    });
+
+    it("período que passa de hoje: os dias futuros valem 0 e ficam no saldo de hoje", () => {
+      const pontos = serieDoFluxoDeCaixa(
+        [
+          ...comVariacao,
+          { dia: "2026-09-28", entradas: 0, saidas: 0, variacaoSaldo: 0 },
+          { dia: "2026-09-29", entradas: 0, saidas: 0, variacaoSaldo: 0 },
+        ],
+        { inicio: "2026-09-24", fim: "2026-09-29" },
+        100,
+        null,
+        HOJE,
+      );
+      expect(saldos(pontos)).toEqual([39.5, 89.5, 89.5, 100, 100, 100]);
+    });
+
+    it("o marco do saldo inicial continua cortando os dias antes dele", () => {
+      const pontos = serieDoFluxoDeCaixa(
+        comVariacao,
+        janela,
+        100,
+        "2026-09-25",
+        HOJE,
+      );
+      expect(saldos(pontos)).toEqual([null, 89.5, 89.5, 100]);
+    });
   });
 
   it("marcoDoSaldoInicial: a MAIOR saldoInicialEm entre as contas ATIVAS; conta inativa não conta; sem conta com data é null", () => {

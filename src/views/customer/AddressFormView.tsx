@@ -1,5 +1,6 @@
 import {
   AddressForm,
+  type AlteracoesDoEndereco,
   type DadosDoFormularioDeEndereco,
 } from "@/components/ui/custom/AddressForm";
 import { useStore } from "@/contexts/StoreContext";
@@ -13,6 +14,12 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 interface AddressFormViewProps {
   addressId?: string | null;
   onBack: () => void;
+}
+
+// Texto guardado na conta (`user_metadata`): só vale string com conteúdo;
+// qualquer outra coisa vira "sem valor" e a tela cai no próximo plano.
+function textoDaConta(valor: unknown): string {
+  return typeof valor === "string" ? valor.trim() : "";
 }
 
 export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
@@ -40,9 +47,13 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
     ? addresses.find((a) => a.id === addressId)
     : undefined;
 
-  // "Quem vai receber" já nasce com o nome da conta (mesma fonte que o
-  // checkout usa para o nome do comprador).
-  const nomeDaConta = profile?.full_name || user?.user_metadata?.name || "";
+  // "Quem vai receber" já nasce com o nome da conta. O cadastro grava o nome em
+  // `user_metadata.full_name` (não `name`): é de lá que ele vem quando o perfil
+  // ainda não chegou (mesma ordem do Perfil: perfil, cadastro, `name`).
+  const nomeDaConta =
+    profile?.full_name ||
+    textoDaConta(user?.user_metadata?.full_name) ||
+    textoDaConta(user?.user_metadata?.name);
 
   // A saída animada mantém esta tela montada, mas o histórico já é de outra.
   // Cada presença ativa ganha uma permissão própria: sair a invalida já no
@@ -56,11 +67,16 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
     };
   }, [presente]);
 
-  const handleSubmit = async (data: DadosDoFormularioDeEndereco) => {
+  const handleSubmit = async (
+    data: DadosDoFormularioDeEndereco,
+    alteracoes?: AlteracoesDoEndereco,
+  ) => {
     const permissao = permissaoDeVoltarRef.current;
     let success;
     if (addressId) {
-      success = await updateAddress(addressId, data);
+      // Só o que a cliente mudou: a tela pode estar velha, e reenviar o resto
+      // desfaria a correção feita em outro aparelho.
+      success = await updateAddress(addressId, alteracoes ?? data);
     } else {
       // Endereço novo: o formulário sempre manda `is_default`.
       const newAddr = await addAddress({

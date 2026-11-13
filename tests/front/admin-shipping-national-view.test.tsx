@@ -391,7 +391,9 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
     const minimo = hospedeiro.querySelector(
       "#frete-nacional-minimo",
     ) as HTMLInputElement;
-    await digitar(minimo, "0.001");
+    // Texto em reais (vírgula): 3 casas não é dinheiro. Com ponto, "0.001"
+    // seria lido como milhar (R$ 1) — a leitura brasileira do `parseValorBR`.
+    await digitar(minimo, "0,001");
 
     expect(botaoSalvar()?.disabled).toBe(true);
   });
@@ -403,7 +405,7 @@ describe("AdminShippingNationalView — CONTRATO (casca da tela unificada)", () 
     const valor = hospedeiro.querySelector(
       "#frete-nacional-valor-desconto",
     ) as HTMLInputElement;
-    await digitar(valor, "0.004");
+    await digitar(valor, "0,004");
 
     expect(botaoSalvar()?.disabled).toBe(true);
   });

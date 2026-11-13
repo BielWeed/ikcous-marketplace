@@ -70,13 +70,15 @@ vi.mock("@/hooks/useReviews", () => ({
 }));
 
 // Laudo 0109 (A-4): a view importa o supabase para a contagem da fila de
-// moderação — sem este dublê, o cliente REAL estoura no jsdom. Estes testes
-// não olham a fila, então count 0 basta.
+// moderação (`.eq`) e para a do chip "Sem resposta" (`.or`) — sem este dublê, o
+// cliente REAL estoura no jsdom. Estes testes não olham a fila nem o chip, então
+// count 0 basta (e count nulo desenharia "—" nos chips, que estes testes contam).
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
       select: () => ({
         eq: () => Promise.resolve({ count: 0, error: null }),
+        or: () => Promise.resolve({ count: 0, error: null }),
       }),
     }),
   },

@@ -335,6 +335,9 @@ function Marca({ clara }: { clara: boolean }) {
   return (
     <Check
       data-marca="selecionado"
+      // O tema Claro remapeia `.text-white` para quase preto: o check branco sobre
+      // a bolinha escura sumiria. `data-tema-fixo` mantém a cor da classe.
+      data-tema-fixo=""
       strokeWidth={3}
       className={cn("size-5", clara ? "text-zinc-900" : "text-white")}
     />

@@ -261,6 +261,7 @@ describe("(b) cupom_refeito_com_a_tela", () => {
     estado = reducerDaVenda(estado, {
       tipo: "envio_falhou",
       mensagem: "Não sabemos se a venda foi registrada",
+      efeito: "abre",
     });
     estado = reducerDaVenda(estado, {
       tipo: "item_adicionado_manualmente",

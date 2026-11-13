@@ -53,7 +53,7 @@ describe("aviso de avaliacao aguardando aprovacao", () => {
     });
   });
 
-  it("avaliacao ja publicada sem resposta continua 'sem resposta', na tela sem filtro", () => {
+  it("avaliacao ja publicada sem resposta continua 'sem resposta' e leva a tela ja filtrada por 'Sem resposta'", () => {
     for (const status of ["publicada", undefined]) {
       const [aviso] = avisosDe(avaliacao({ status }));
 
@@ -61,8 +61,17 @@ describe("aviso de avaliacao aguardando aprovacao", () => {
       expect(aviso.destino).toEqual({
         view: "admin-reviews",
         limparFiltros: true,
+        soSemResposta: true,
       });
     }
+  });
+
+  it("os dois filtros nunca se misturam: o de moderacao nao pede 'Sem resposta' e o de 'Sem resposta' nao pede moderacao", () => {
+    const [pendente] = avisosDe(avaliacao({ status: "pendente" }));
+    const [publicada] = avisosDe(avaliacao({ status: "publicada" }));
+
+    expect(pendente.destino.soSemResposta).toBeUndefined();
+    expect(publicada.destino.soEmModeracao).toBeUndefined();
   });
 
   it("pendente e publicada convivem na lista, cada uma com o seu titulo", () => {

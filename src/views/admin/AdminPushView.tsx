@@ -18,6 +18,7 @@ import { TELAS_DE_ENTRADA } from "@/config/rotas";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
+import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useVOR } from "@/hooks/useVOR";
@@ -219,6 +220,19 @@ function SecaoColapsavel({
     </div>
   );
 }
+
+// Nome de cada público, o mesmo nos botões do carrossel e na pergunta de
+// "tem certeza?" antes do envio. Cliente específico (vindo da ficha) não está
+// aqui: `segment` vira o id dele.
+const NOME_DO_PUBLICO = {
+  all: "Todos os clientes",
+  inactive: "Inativos há 30 dias",
+  vip: "Gastaram R$ 150+",
+  new: "Novos em 7 dias",
+};
+const NOME_DO_PUBLICO_POR_ID = new Map<string, string>(
+  Object.entries(NOME_DO_PUBLICO),
+);
 
 interface AdminPushViewProps {
   onNavigate: (view: View, id?: string) => void;
@@ -508,6 +522,7 @@ export const AdminPushView = memo(function AdminPushView({
   // consegui".
   const [predictedReach, setPredictedReach] = useState<ContagemMedida>(null);
   const rodadaDoAlcanceRef = useRef(0);
+  const rodadaDosAparelhosRef = useRef(0);
   const [history, setHistory] = useState<any[] | null>(null);
   const [targetUserName, setTargetUserName] = useState<{
     id: string;
@@ -662,9 +677,15 @@ export const AdminPushView = memo(function AdminPushView({
   }, [targetUserId]);
 
   const fetchSubscribers = useCallback(async () => {
+    // Leituras sobrepostas (montagem, foco, fim de envio): a que COMEÇOU por
+    // último é a que vale. Sem isto, a resposta antiga que chega depois
+    // repunha um total velho (0) e travava o envio para todos. Mesmo padrão
+    // de `rodadaDoAlcanceRef`.
+    const rodada = ++rodadaDosAparelhosRef.current;
     const { count, error } = await supabase
       .from("push_subscriptions")
       .select("*", { count: "exact", head: true });
+    if (rodada !== rodadaDosAparelhosRef.current) return;
 
     // Consulta falhou: `null`, nunca `0` — zero é a afirmação de que a loja
     // não tem ninguém cadastrado, e isso só se pode dizer depois de medir.
@@ -815,6 +836,22 @@ export const AdminPushView = memo(function AdminPushView({
     };
   }, [fetchSubscribers, fetchSegmentCounts, calculateReach, segment]);
 
+  // "Novos em 7 dias" e "Inativos há 30 dias" são medidos pelo servidor com o
+  // dia de HOJE dele: com a tela aberta de um dia para o outro os grupos
+  // seguiam com a janela de ontem. A virada do dia mede de novo, só na virada
+  // (a tela só existe montada enquanto é a atual; aba escondida deixa para a
+  // volta ao foco, que já mede).
+  const dia = useDiaDeSaoPaulo();
+  const diaMedido = useRef(dia);
+  useEffect(() => {
+    if (diaMedido.current === dia) return;
+    diaMedido.current = dia;
+    if (document.visibilityState !== "visible") return;
+    fetchSegmentCounts();
+    fetchSubscribers();
+    if (segment !== "all") calculateReach();
+  }, [dia, fetchSubscribers, fetchSegmentCounts, calculateReach, segment]);
+
   // Rascunho não enviado = pendência para o APP (onSetDirty): é guarda de
   // navegação — sair da tela com texto não enviado avisa antes de perder.
   // A composição é cartão fixo (nada desmonta o formulário), então o
@@ -907,17 +944,27 @@ export const AdminPushView = memo(function AdminPushView({
       return;
     }
 
-    // Para TODOS os clientes: depois de enviar não dá para desfazer, e o
-    // público "Todos" já vem marcado — então pergunta antes, com o número de
-    // aparelhos. Fica DEPOIS das travas acima (o lojista é avisado do que falta
-    // antes de ser perguntado) e ANTES de `setLoading`/de qualquer leitura do
-    // banco: "Voltar" não deixa rastro. Segmento e cliente específico não
-    // perguntam: o alcance é menor e foi escolhido de propósito.
+    // Para TODOS os clientes ou para um GRUPO: depois de enviar não dá para
+    // desfazer, e o público "Todos" já vem marcado — então pergunta antes, com
+    // o número de aparelhos. Fica DEPOIS das travas acima (o lojista é avisado
+    // do que falta antes de ser perguntado) e ANTES de `setLoading`/de qualquer
+    // leitura do banco: "Voltar" não deixa rastro. Grupo também pergunta: uma
+    // loja nova pode ter quase toda a base em "Novos em 7 dias". Só o cliente
+    // específico não pergunta: é uma pessoa, escolhida de propósito.
     if (segment === "all") {
       const confirmado = await confirmar({
         titulo: "Enviar para todos os clientes?",
         valor: textoDeAlcanceEmAparelhos(subCount),
         texto: `O aviso "${notification.title.trim()}" vai agora para todos os clientes que ativaram os avisos.\n\nDepois de enviar, não dá para desfazer.`,
+        verbo: "Enviar agora",
+      });
+      if (!confirmado) return;
+    } else if (NOME_DO_PUBLICO_POR_ID.has(segment)) {
+      const nomeDoGrupo = NOME_DO_PUBLICO_POR_ID.get(segment);
+      const confirmado = await confirmar({
+        titulo: `Enviar para "${nomeDoGrupo}"?`,
+        valor: textoDeAlcanceEmAparelhos(predictedReach),
+        texto: `O aviso "${notification.title.trim()}" vai agora para o grupo "${nomeDoGrupo}".\n\nDepois de enviar, não dá para desfazer.`,
         verbo: "Enviar agora",
       });
       if (!confirmado) return;
@@ -1630,14 +1677,14 @@ export const AdminPushView = memo(function AdminPushView({
                     {[
                       {
                         id: "all",
-                        label: "Todos os clientes",
+                        label: NOME_DO_PUBLICO.all,
                         detalhe: "Quem aceitou receber avisos",
                         count: subCount,
                         motivoDoZero: "nenhum aparelho cadastrado ainda",
                       },
                       {
                         id: "inactive",
-                        label: "Inativos há 30 dias",
+                        label: NOME_DO_PUBLICO.inactive,
                         detalhe: "Sem pedidos de qualquer status",
                         count: (segment === "inactive"
                           ? reachExibido
@@ -1647,7 +1694,7 @@ export const AdminPushView = memo(function AdminPushView({
                       },
                       {
                         id: "vip",
-                        label: "Gastaram R$ 150+",
+                        label: NOME_DO_PUBLICO.vip,
                         detalhe: "Só compras pagas",
                         count: (segment === "vip"
                           ? reachExibido
@@ -1657,7 +1704,7 @@ export const AdminPushView = memo(function AdminPushView({
                       },
                       {
                         id: "new",
-                        label: "Novos em 7 dias",
+                        label: NOME_DO_PUBLICO.new,
                         detalhe: "Cadastros dos últimos 7 dias",
                         count: (segment === "new"
                           ? reachExibido

@@ -6,6 +6,10 @@ import {
   type FormaDoPedido,
   rotuloDaFormaDoPedido,
 } from "@/lib/forma-de-pagamento";
+import {
+  type TipoDeEntregaDoPedido,
+  tipoDeEntregaDoPedido,
+} from "@/lib/tipo-de-entrega-do-pedido";
 import type { Order as Pedido } from "@/types";
 
 /** A forma do pedido na lista e na planilha — o MESMO rótulo para as duas
@@ -16,11 +20,21 @@ export function rotuloDaFormaDePagamento(pedido: FormaDoPedido): string {
   return rotuloDaFormaDoPedido(pedido);
 }
 
-// "Canal" entra NO FIM, nunca no meio: quem já tem planilha salva com
-// fórmula por posição de coluna perde tudo se as colunas antigas andarem
-// de lugar (lote C4, item 15).
+// "Canal" e "Entrega" entram NO FIM, nunca no meio: quem já tem planilha
+// salva com fórmula por posição de coluna perde tudo se as colunas antigas
+// andarem de lugar (lote C4, item 15).
 const CABECALHO =
-  "Número do pedido;Data;Cliente;Telefone;Status;Forma de pagamento;Status do pagamento;Total;Cidade;UF;Itens;Subtotal;Frete;Desconto;Canal";
+  "Número do pedido;Data;Cliente;Telefone;Status;Forma de pagamento;Status do pagamento;Total;Cidade;UF;Itens;Subtotal;Frete;Desconto;Canal;Entrega";
+
+// Mesma classificação da ficha do pedido (`tipoDeEntregaDoPedido`), em
+// português para quem abre a planilha. Balcão repete "Balcão": a venda
+// presencial não tem entrega, e célula vazia pareceria dado perdido.
+const ROTULO_DA_ENTREGA: Record<TipoDeEntregaDoPedido, string> = {
+  balcao: "Balcão",
+  retirada: "Retirada na loja",
+  "entrega-local": "Entrega própria",
+  envio: "Envio",
+};
 
 function escaparCampo(valor: string): string {
   // Aspas CSV não impedem fórmulas: texto vindo do cliente precisa continuar texto.
@@ -88,6 +102,7 @@ export function pedidosParaCsv(
       // um parser. "Site" (não "Online") porque é a palavra que o resto do
       // painel usa para o mesmo canal (OrderDetail.tsx, "Pago no site").
       escaparCampo(pedido.canal === "presencial" ? "Balcão" : "Site"),
+      escaparCampo(ROTULO_DA_ENTREGA[tipoDeEntregaDoPedido(pedido)]),
     ].join(";"),
   );
   return `\uFEFF${[CABECALHO, ...linhas].join("\r\n")}`;

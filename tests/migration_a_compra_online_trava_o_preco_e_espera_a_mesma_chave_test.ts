@@ -300,7 +300,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
     "a 81a entra uma vez",
   );
   assertEquals(
-    canais.provasDeObjetos.slice(-47).map((p) => p.consulta),
+    canais.provasDeObjetos.slice(-55).map((p) => p.consulta),
     [
       A81,
       "82a-conferir-ex-admin-sem-acesso-nas-demais-tabelas",
@@ -346,9 +346,17 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "126a-conferir-a-busca-de-devolucao-ignora-o-acento-aplicado",
       "127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado",
       "128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado",
-      "129a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado",
+      "149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado",
       "135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado",
       "140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado",
+      "141a-conferir-o-grafico-do-financeiro-soma-so-as-contas-ativas-aplicado",
+      "142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado",
+      "143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado",
+      "144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado",
+      "145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado",
+      "146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado",
+      "147a-conferir-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-aplicado",
+      "148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado",
     ],
     "a 82a, a 83a, a 84a, a 85a, a 86a, a 87a, a 88a, a 89a, a 90a, a 91a, a 92a, a 95a, a 96a, a 97a, a 98a, a 100a, a 101a, a 102a, a 103a, a 104a, a 106a, a 107a, a 108a, a 109a, a 110a, a 111a, a 112a, a 113a, a 114a, a 115a, a 116a, a 117a, a 118a, a 119a, a 120a, a 121a, a 122a, a 123a, a 124a, a 125a, a 126a, a 127a, a 128a, a 129a e a 135a (a 99 reservada para a migration de analytics_events, guardada no ramo fix-199-abuso-do-banco ate o dono aprovar) sucedem a 81a no fim, sem reordenar lotes anteriores",
   );

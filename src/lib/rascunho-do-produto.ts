@@ -16,7 +16,12 @@
 //    rascunho de semanas atrás não é "onde ela parou", é um formulário de outra
 //    época (preço, fotos e grade já podem ter mudado por outro caminho).
 import { chaveDoUsuario } from "@/lib/fila-offline-por-usuario";
+import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import type { ProductVariant } from "@/types";
+import {
+  type VariacaoComparavel,
+  variacaoMudou,
+} from "@/utils/campos-mexidos-do-produto";
 
 /**
  * Validade do rascunho: 7 dias, contados do ÚLTIMO salvamento automático (a
@@ -47,6 +52,20 @@ export function chaveDoRascunhoDoProduto(
   );
 }
 
+/**
+ * Apaga o rascunho desta chave. Nunca lança: navegador com "bloquear dados de
+ * sites" faz o próprio acesso ao `localStorage` lançar, e quem apaga o rascunho
+ * depois de SALVAR o produto não pode transformar um salvamento que deu certo
+ * em erro (o produto já está no banco).
+ */
+export function apagarRascunhoDoProdutoPelaChave(chave: string): void {
+  try {
+    localStorage.removeItem(chave);
+  } catch (erro) {
+    console.warn("[rascunho-do-produto] Não consegui apagar o rascunho:", erro);
+  }
+}
+
 /** Apaga o rascunho (o do produto novo, se `productId` não vier). */
 export function descartarRascunhoDoProduto(
   userId: string | undefined,
@@ -54,11 +73,7 @@ export function descartarRascunhoDoProduto(
 ): void {
   const chave = chaveDoRascunhoDoProduto(userId, productId);
   if (!chave) return;
-  try {
-    localStorage.removeItem(chave);
-  } catch (erro) {
-    console.warn("[rascunho-do-produto] Não consegui apagar o rascunho:", erro);
-  }
+  apagarRascunhoDoProdutoPelaChave(chave);
 }
 
 /**
@@ -92,16 +107,23 @@ export function rascunhoVenceu(
  * (quem chama faz o `JSON.parse` dentro do próprio try/catch, como sempre) ou
  * `null` se não há rascunho ou ele venceu — e neste caso a chave sai do
  * `localStorage`. Texto que não é JSON volta como está: o erro é de quem lê.
+ * Armazenamento bloqueado pelo navegador (o acesso lança) = "sem rascunho":
+ * nunca lança, para "Novo produto" e "Editar produto" abrirem.
  */
 export function lerRascunhoVigenteDoProduto(
   chave: string,
   agora: number = Date.now(),
 ): string | null {
-  const bruto = localStorage.getItem(chave);
+  let bruto: string | null;
+  try {
+    bruto = localStorage.getItem(chave);
+  } catch {
+    return null;
+  }
   if (!bruto) return null;
   try {
     if (rascunhoVenceu(JSON.parse(bruto), agora)) {
-      localStorage.removeItem(chave);
+      apagarRascunhoDoProdutoPelaChave(chave);
       return null;
     }
   } catch {
@@ -145,8 +167,8 @@ export function variacoesDoRascunhoComEstoqueDoBanco(
 }
 
 /**
- * A grade do rascunho contra o banco de hoje: o que a lojista EXCLUIU e o que
- * ela nunca viu.
+ * A grade do rascunho contra o banco de hoje: o que a lojista EXCLUIU, o que
+ * ela nunca viu e o que ela excluiu mas outro aparelho mexeu depois.
  *
  * A lista de exclusões da tela é só memória e não entra no rascunho. Rascunho
  * [A, B] com o banco ainda em [A, B, C], restaurado e salvo, não apagava a C:
@@ -154,11 +176,19 @@ export function variacoesDoRascunhoComEstoqueDoBanco(
  * ausência é exclusão dela, e não coisa de outro aparelho, é o produto-base
  * que o próprio rascunho guarda (`baseDoRascunho`):
  *
- *  - `apagar`: id de verdade que estava na base, NÃO está no rascunho e AINDA
- *    existe no banco — ela a excluiu antes de sair. Vai para a lista de
+ *  - `apagar`: id de verdade que estava na base, NÃO está no rascunho, AINDA
+ *    existe no banco e continua IGUAL ao que a base tinha — ela a excluiu
+ *    antes de sair e ninguém mexeu nela desde então. Vai para a lista de
  *    exclusões ao restaurar, e só sai do banco quando ela apertar Salvar com a
  *    variação já fora da tela;
- *  - `manter`: variação do banco que nunca esteve na base nem no rascunho
+ *  - `alteradas`: a mesma exclusão, mas a linha do banco já não é a da base
+ *    (outro aparelho a ligou, mexeu no estoque, no preço...). NÃO se apaga: a
+ *    versão conferida no salvar é a da abertura, que já inclui a mudança, e a
+ *    exclusão passaria sem conflito levando junto o que ela nunca viu. Volta
+ *    ao formulário (com a linha do banco) e a tela avisa. Linha da base sem os
+ *    campos de comparação (rascunho antigo) cai aqui: na dúvida, não apaga;
+ *  - `manter`: tudo o que volta ao formulário vindo do banco, a saber as
+ *    `alteradas` mais a variação que nunca esteve na base nem no rascunho
  *    (criada em outro aparelho depois dele). Ela nunca a viu: volta ao
  *    formulário em vez de ser apagada em silêncio nem ficar fora da soma.
  *
@@ -170,30 +200,65 @@ export function variacoesDoRascunhoComEstoqueDoBanco(
 export function variacoesExcluidasNoRascunho(
   rascunho: { variants?: unknown; baseDoRascunho?: unknown },
   bancoDeHoje: ProductVariant[],
-): { apagar: string[]; manter: ProductVariant[] } {
-  const nada = { apagar: [], manter: [] };
+): {
+  apagar: string[];
+  manter: ProductVariant[];
+  alteradas: ProductVariant[];
+} {
+  const nada = { apagar: [], manter: [], alteradas: [] };
   const base = rascunho.baseDoRascunho;
   if (!base || typeof base !== "object") return nada;
   const daBase = new Map(Object.entries(base)).get("variants");
   if (!Array.isArray(daBase) || !Array.isArray(rascunho.variants)) return nada;
-  const idsDaBase = new Set(
-    daBase.map((v: { id?: unknown }) => v?.id).filter((id) => id != null),
+  const linhasDaBase = new Map<unknown, VariacaoComparavel>(
+    daBase
+      .filter((v: { id?: unknown } | null) => v?.id != null)
+      .map((v: VariacaoComparavel) => [v.id, v]),
   );
   const idsDoRascunho = new Set(
     rascunho.variants.map((v: { id?: unknown }) => v?.id),
   );
-  const idsDoBanco = new Set(bancoDeHoje.map((v) => v.id));
-  const apagar = [...idsDaBase].filter(
-    (id): id is string =>
-      typeof id === "string" &&
-      !id.startsWith("temp-") &&
-      !idsDoRascunho.has(id) &&
-      idsDoBanco.has(id),
-  );
+  const bancoPorId = new Map(bancoDeHoje.map((v) => [v.id, v]));
+  const apagar: string[] = [];
+  const alteradas: ProductVariant[] = [];
+  for (const [id, linhaDaBase] of linhasDaBase) {
+    if (
+      typeof id !== "string" ||
+      id.startsWith("temp-") ||
+      idsDoRascunho.has(id)
+    ) {
+      continue;
+    }
+    const noBanco = bancoPorId.get(id);
+    if (!noBanco) continue;
+    if (variacaoMudou(linhaDaBase, noBanco)) alteradas.push(noBanco);
+    else apagar.push(id);
+  }
+  const idsAlteradas = new Set(alteradas.map((v) => v.id));
   const manter = bancoDeHoje.filter(
-    (v) => !idsDaBase.has(v.id) && !idsDoRascunho.has(v.id),
+    (v) =>
+      idsAlteradas.has(v.id) ||
+      (!linhasDaBase.has(v.id) && !idsDoRascunho.has(v.id)),
   );
-  return { apagar, manter };
+  return { apagar, manter, alteradas };
+}
+
+/**
+ * O recado de que variação que ela excluiu foi mexida em outro aparelho e, por
+ * isso, voltou para a lista em vez de ir para a exclusão. `null` sem nenhuma.
+ */
+export function avisoDeVariacoesAlteradasEmOutroAparelho(
+  alteradas: Array<Pick<ProductVariant, "name" | "value">>,
+): string | null {
+  if (alteradas.length === 0) return null;
+  const nomes = alteradas.map(
+    (v) => rotuloDaVariacao(v.name, v.value) || `${v.name} ${v.value}`.trim(),
+  );
+  if (nomes.length === 1) {
+    return `A variação ${nomes[0]} foi alterada em outro aparelho e voltou para a lista; revise antes de excluir.`;
+  }
+  const lista = `${nomes.slice(0, -1).join(", ")} e ${nomes[nomes.length - 1]}`;
+  return `As variações ${lista} foram alteradas em outro aparelho e voltaram para a lista; revise antes de excluir.`;
 }
 
 /**

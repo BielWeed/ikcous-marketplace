@@ -652,7 +652,24 @@ export const AdminProductsView = memo(function AdminProductsView({
   }, [active, pedeVisaoSemCusto]);
   // Vindo do Início (card "N produtos com estoque baixo"): mesma ideia, com
   // a lista do servidor já filtrada. Começa na página 1 e sem busca/categoria.
+  // Produtos fica montada atrás do Início: com a visão JÁ aberta e uma busca,
+  // categoria ou página mexida dentro dela, o toque repetido também recomeça —
+  // senão a tela mostra menos do que o card anunciou. `filtrosAntesDaVisao`
+  // continua guardando os filtros de ANTES da visão ("Ver todos" os devolve).
   const abrirVisaoEstoqueBaixo = () => {
+    const mexidaDentroDaVisao =
+      modoEstoqueBaixo &&
+      (termoDeBusca !== "" || filterCategory !== "all" || currentPage !== 0);
+    if (mexidaDentroDaVisao) {
+      // Uma leitura com a busca/página de antes ainda em voo não pode gravar
+      // a lista errada. O efeito da lista relê UMA vez com os valores novos.
+      geracaoDaRecarga.current += 1;
+      setSearchTerm("");
+      setFilterCategory("all");
+      setCurrentPage(0);
+      setEstoqueBaixoPronto(false);
+      setLoadError(false);
+    }
     if (!modoEstoqueBaixo) {
       geracaoDaRecarga.current += 1;
       filtrosAntesDaVisao.current ??= {
@@ -2910,6 +2927,14 @@ const AdminProductCard = memo(function AdminProductCard({
         : ((precoMedio - product.costPrice) / product.costPrice) * 100;
 
     const custoSuspeito = hasCost && product.costPrice <= 0.1;
+    const precoFormatado = product.price.toLocaleString("pt-BR", {
+      minimumFractionDigits: 2,
+    });
+    // O resumo é uma grade de 3 colunas e o teto de preço é R$ 9.999.999,99:
+    // de R$ 100.000,00 para cima, "R$ …" numa linha só passa da coluna e cai em
+    // cima do Estoque. Aí o preço pode quebrar (dinheiro não se corta) e a
+    // letra fica no menor tamanho; até R$ 99.999,99 nada muda.
+    const precoLongo = precoFormatado.length > 9;
     return (
       <motion.div
         layout
@@ -2974,11 +2999,15 @@ const AdminProductCard = memo(function AdminProductCard({
           <div className="produto-resumo mt-3 grid grid-cols-3 gap-2">
             <div className="min-w-0">
               <p className="text-[11px] text-zinc-400">Preço de Venda</p>
-              <p className="mt-1 whitespace-nowrap text-sm font-bold tabular-nums tracking-tighter min-[360px]:text-base min-[400px]:text-lg">
-                R${" "}
-                {product.price.toLocaleString("pt-BR", {
-                  minimumFractionDigits: 2,
-                })}
+              <p
+                className={cn(
+                  "mt-1 text-sm font-bold tabular-nums tracking-tighter",
+                  precoLongo
+                    ? "break-words"
+                    : "whitespace-nowrap min-[360px]:text-base min-[400px]:text-lg",
+                )}
+              >
+                R$ {precoFormatado}
               </p>
             </div>
             <div className="min-w-0">

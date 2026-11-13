@@ -81,6 +81,7 @@ import {
 } from "@/lib/mensagem-do-status-no-whatsapp";
 import { motivoDaFalhaEmPortugues } from "@/lib/motivo-da-falha-de-push";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { CAMPO_DO_CARIMBO_DO_AVISO } from "@/lib/ordem-do-aviso-do-pedido";
 import { pedidosParaCsv } from "@/lib/pedidos-csv";
 import { STATUS_PARA_PREPARAR } from "@/lib/pedidos-para-preparar";
 import {
@@ -105,6 +106,7 @@ import type {
   PaymentStatus,
   View,
 } from "@/types";
+import { comPrazo } from "@/utils/com-prazo";
 import { haptic } from "@/utils/haptic";
 import { AlertasCancelados } from "@/views/admin/AlertasCancelados";
 import {
@@ -740,6 +742,35 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     [registrarPagamentoRecebido],
   );
 
+  // A função do hook atualiza só os pedidos que estão em `orders`; a ficha
+  // aberta por link/sino de um pedido fora da página carregada vive em
+  // `selectedOrder`, um estado à parte que só o evento ao vivo atualizava. Sem
+  // o tempo real a lojista registrava o "Recebi" e a ficha seguia oferecendo
+  // "Marcar como recebido". Aqui a resposta da gravação (a verdade do banco)
+  // é copiada para a ficha — mesmos campos que o hook copia para `orders`, e
+  // atualização funcional para não apagar um status que mudou no meio.
+  // Falha lança e deixa a ficha como está.
+  const registrarPagamentoNaFicha = useCallback(
+    async (orderId: string, recebido: boolean) => {
+      const data = await registrarPagamentoRecebido(orderId, recebido);
+      setSelectedOrder((prev) =>
+        prev?.id === orderId
+          ? {
+              ...prev,
+              // Desfazer: a RPC devolve `payment_status` NULO. Manter o valor
+              // anterior deixaria o selo "Recebido na entrega" (e o texto de
+              // cancelar "está PAGO") com o recebimento já desfeito.
+              paymentStatus: data?.payment_status ?? null,
+              pagamentoRecebidoEm: data?.pagamento_recebido_em ?? null,
+              pagamentoRecebidoPor: data?.pagamento_recebido_por ?? null,
+            }
+          : prev,
+      );
+      return data;
+    },
+    [registrarPagamentoRecebido],
+  );
+
   // PAINEL-05: número que não se sabe é "—", nunca "0" — um `0` afirma
   // "nenhum pedido" quando a consulta simplesmente falhou.
   const kpiCards = useMemo<readonly KpiCardConfig[]>(
@@ -944,15 +975,23 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       setDetailError(false);
       setDetailNaoExiste(false);
       try {
-        const { data, error } = await supabase
-          .from("marketplace_orders")
-          .select(`
+        // Com 15 s sem resposta (conexão pendurada) a busca cai no catch
+        // abaixo: aviso + tela de erro com "Voltar". Sem prazo, o spinner de
+        // "Carregando Pedido" ficava para sempre, sem saída.
+        const { data, error } = await comPrazo(
+          Promise.resolve(
+            supabase
+              .from("marketplace_orders")
+              .select(`
             *,
             items:marketplace_order_items(*, product:produtos(imagem_url, imagem_urls)),
             address:user_addresses(*)
           `)
-          .eq("id", selectedOrderId)
-          .single();
+              .eq("id", selectedOrderId)
+              .single(),
+          ),
+          15_000,
+        );
 
         if (error) throw error;
         if (data && isCurrent) {
@@ -1652,6 +1691,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     newStatus: OrderStatus,
     alvo: Order,
   ) => {
+    // Carimbo de ordem do aviso, tirado AGORA (status já gravado), antes de
+    // qualquer espera de rede: os avisos de status do mesmo pedido são
+    // disparados sem esperar um pelo outro e podem chegar trocados. O aparelho
+    // mantém na bandeja o de carimbo maior (`ordem-do-aviso-do-pedido.ts`).
+    const emitidoEm = Date.now();
     try {
       const title = "Status do Pedido Atualizado";
       const body = `Seu pedido #${numeroDoPedido(orderId)} agora está: ${rotuloDoStatusParaACliente(newStatus, alvo.retiradaNaLoja)}`;
@@ -1669,7 +1713,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             body,
             // Sem `url` o toque no aviso caía na vitrine ("/").
             url: caminhoDoPedidoNoAviso(orderId),
-            data: { orderId, type: "order_status" },
+            data: {
+              orderId,
+              type: "order_status",
+              [CAMPO_DO_CARIMBO_DO_AVISO]: emitidoEm,
+            },
           },
           headers: token
             ? {
@@ -1732,6 +1780,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     statusEsperado?: OrderStatus,
     silent = false,
   ) => {
+    // Etapa que a ficha tinha quando o toque partiu: o resultado só é aplicado
+    // se ela ainda está nela (ver o `setSelectedOrder` abaixo).
+    const etapaDePartida =
+      selectedOrder?.id === orderId ? selectedOrder.status : undefined;
     // A RPC VEM PRIMEIRO (PEDIDO-090, #87).
     //
     // Até aqui o push saía ANTES da gravação. Se a RPC falhasse — 401, sessão
@@ -1764,8 +1816,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // funcional lê o estado CORRENTE, nunca o capturado, e imuniza este
       // ponto contra qualquer `await` que venha a ser inserido antes dele
       // no futuro.
+      // Só se a ficha ainda está na etapa de onde o toque partiu: durante a
+      // espera pode ter chegado versão mais nova (outro aparelho avançou ou
+      // cancelou; ou o eco deste mesmo toque), e a resposta antiga a desfaria.
       setSelectedOrder((prev) =>
-        prev?.id === orderId ? { ...prev, status: newStatus } : prev,
+        prev?.id === orderId && prev.status === etapaDePartida
+          ? { ...prev, status: newStatus }
+          : prev,
       );
 
       loadStats();
@@ -1784,8 +1841,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // contra o segundo aviso: admin-orders-status-erro-cru-nao-duplica-
       // toast.test.tsx). Continua relançando o erro, como antes.
       if (err instanceof ErroPedidoMudou) {
+        // Só se a ficha ainda está na etapa de onde o toque partiu: o status
+        // do erro é o da releitura, e durante ela pode ter chegado versão mais
+        // nova (outro aparelho avançou, finalizou ou cancelou) — aplicá-lo
+        // faria a ficha regredir. Mesma regra do caminho de sucesso acima.
         setSelectedOrder((prev) =>
-          prev?.id === orderId
+          prev?.id === orderId && prev.status === etapaDePartida
             ? { ...prev, status: err.statusVerdadeiro }
             : prev,
         );
@@ -1983,7 +2044,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             order={selectedOrder}
             onStatusChange={handleStatusChange}
             isOffline={isOffline}
-            onRegistrarPagamento={registrarPagamentoRecebido}
+            onRegistrarPagamento={registrarPagamentoNaFicha}
             storeName={storeNameDaLoja}
             onAbrirDevolucoes={abrirDevolucoes}
             onRascunhoPendente={aoMudarRascunhoDaFicha}

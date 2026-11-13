@@ -6,8 +6,11 @@
 // "Enviar agora" do público "Todos" abre a janela do app (a mesma dos fluxos de
 // dinheiro do painel) dizendo para quantos aparelhos vai e que não dá para
 // desfazer. Só o botão da janela envia; voltar, Esc e a tela que some não
-// enviam nada. Segmento específico e cliente específico seguem sem a pergunta
-// extra (o alcance deles é pequeno e escolhido de propósito).
+// enviam nada. A mesma pergunta vale para QUALQUER grupo (Inativos, Gastaram
+// R$ 150+, Novos em 7 dias): uma loja nova pode ter quase toda a base em
+// "Novos", e mensagem em massa não se desfaz — a pergunta nomeia o grupo e o
+// número de aparelhos. Só o cliente específico (vindo da ficha) segue sem a
+// pergunta extra: é uma pessoa, escolhida de propósito.
 //
 // Mesmo andaime de admin-push-envio-honesto.test.tsx.
 import { act } from "react";
@@ -374,12 +377,9 @@ describe("AdminPushView — enviar para TODOS os clientes pede confirmação", (
     expect(invokeSendPush).not.toHaveBeenCalled();
   });
 
-  it("segmento específico (Inativos): envia direto, sem a pergunta extra", async () => {
-    estadoDoBanco.porSegmento.inactive = [alvo(1), alvo(2)];
-    await abrirTela();
-    await preencherMensagem("Sentimos sua falta", "Volte a nos visitar!");
+  async function escolherGrupo(rotulo: string) {
     const chip = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
-      (b.textContent ?? "").includes("Inativos há 30 dias"),
+      (b.textContent ?? "").includes(rotulo),
     );
     await act(async () => {
       chip!.click();
@@ -387,11 +387,44 @@ describe("AdminPushView — enviar para TODOS os clientes pede confirmação", (
     await act(async () => {
       await esperar(80);
     });
+  }
+
+  it("grupo (Novos em 7 dias): 'Enviar agora' abre a pergunta com o nome do grupo e o número de aparelhos, e NADA é enviado ainda", async () => {
+    estadoDoBanco.porSegmento.new = [alvo(1), alvo(2), alvo(3)];
+    await abrirTela();
+    await preencherMensagem("Bem-vinda!", "Seu primeiro cupom chegou.");
+    await escolherGrupo("Novos em 7 dias");
 
     await tocarEnviar();
 
+    expect(janela()).not.toBeNull();
+    const texto = janela()?.textContent ?? "";
+    expect(texto).toContain("Novos em 7 dias");
+    expect(texto).toContain("3 aparelhos");
+    expect(texto).toMatch(/não dá para desfazer/i);
+    expect(texto).not.toContain("todos os clientes");
+    expect(invokeSendPush).not.toHaveBeenCalled();
+    expect(inserts.pushLog).toHaveLength(0);
+    expect(inserts.notificacoes).toHaveLength(0);
+  });
+
+  it("grupo (Inativos): Voltar na pergunta não envia nada; confirmar envia UMA vez", async () => {
+    estadoDoBanco.porSegmento.inactive = [alvo(1), alvo(2)];
+    await abrirTela();
+    await preencherMensagem("Sentimos sua falta", "Volte a nos visitar!");
+    await escolherGrupo("Inativos há 30 dias");
+
+    await tocarEnviar();
+    expect(janela()?.textContent ?? "").toContain("Inativos há 30 dias");
+    await tocarNaJanela("Voltar");
+    expect(invokeSendPush).not.toHaveBeenCalled();
+    expect(inserts.pushLog).toHaveLength(0);
     expect(janela()).toBeNull();
+
+    await tocarEnviar();
+    await tocarNaJanela("Enviar agora");
     expect(invokeSendPush).toHaveBeenCalledTimes(1);
+    expect(inserts.pushLog).toHaveLength(1);
   });
 
   it("cliente específico (vindo da ficha): envia direto, sem a pergunta extra", async () => {

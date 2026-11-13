@@ -10,6 +10,11 @@
 // ainda sendo lido da conta (não é "vazio" ainda), pagamento a retomar
 // (`retomarPedidoId`) e a compra sem resposta guardada para reenviar (o
 // painel "Tentar de novo" mora no formulário e precisa continuar alcançável).
+//
+// Carrinho SALVO da conta que não foi lido (a leitura falhou ou passou de 8 s):
+// lista vazia aqui também NÃO é "vazio" -- a tela avisa e oferece "Tentar de
+// novo" (o mesmo sinal `carrinhoSalvoNaoLido` da tela do carrinho).
+import { guardarReciboDoCheckout } from "@/lib/recibo-do-checkout";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -49,9 +54,13 @@ const { usuario, estado } = vi.hoisted(() => {
     estado: {
       user: usuario as { id: string } | null,
       lendoOCarrinho: false,
+      carrinhoSalvoNaoLido: false,
     },
   };
 });
+const { relerCarrinhoSalvo } = vi.hoisted(() => ({
+  relerCarrinhoSalvo: vi.fn(),
+}));
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: estado.user, profile: null, loading: false }),
 }));
@@ -62,6 +71,8 @@ vi.mock("@/hooks/useCart", async () => {
     useCart: criarUseCartDeTeste(() => ({
       cart: [],
       isLoading: estado.lendoOCarrinho,
+      carrinhoSalvoNaoLido: estado.carrinhoSalvoNaoLido,
+      relerCarrinhoSalvo,
       cartTotal: 0,
       shippingFee: 0,
       clearCart: () => {},
@@ -123,6 +134,8 @@ vi.mock("@/hooks/useConfigDoCartao", async () => {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const FRASE_DO_CARRINHO_VAZIO = "Seu carrinho está vazio";
+const FRASE_DO_CARRINHO_NAO_LIDO =
+  "Não conseguimos carregar seu carrinho salvo agora. Estamos tentando de novo.";
 const ITEM = {
   product: {
     id: "prod-1",
@@ -149,6 +162,9 @@ describe("CheckoutView — carrinho vazio e nada a retomar", () => {
   beforeEach(() => {
     estado.user = usuario;
     estado.lendoOCarrinho = false;
+    estado.carrinhoSalvoNaoLido = false;
+    relerCarrinhoSalvo.mockReset();
+    relerCarrinhoSalvo.mockResolvedValue(undefined);
     lerPedido.mockReset();
     onNavigate.mockReset();
     sessionStorage.clear();
@@ -246,6 +262,37 @@ describe("CheckoutView — carrinho vazio e nada a retomar", () => {
     expect(texto()).not.toContain(FRASE_DO_CARRINHO_VAZIO);
     expect(botoes()).not.toContain("Voltar ao carrinho");
     expect(texto()).toContain("Carregando seu carrinho");
+  });
+
+  it("carrinho salvo da conta que não carregou: avisa em vez de dizer 'vazio', e o 'Tentar de novo' relê", async () => {
+    estado.carrinhoSalvoNaoLido = true;
+    await renderizar();
+
+    expect(texto()).not.toContain(FRASE_DO_CARRINHO_VAZIO);
+    expect(texto()).toContain(FRASE_DO_CARRINHO_NAO_LIDO);
+    // Nada do formulário de compra sem item: nem campos, nem o Finalizar.
+    expect(hospedeiro.querySelector("form, input")).toBeNull();
+    expect(botoes()).toEqual(["Tentar de novo", "Voltar ao carrinho"]);
+
+    await act(async () => {
+      botao("Tentar de novo")?.click();
+    });
+    expect(relerCarrinhoSalvo).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      botao("Voltar ao carrinho")?.click();
+    });
+    expect(onNavigate).toHaveBeenCalledWith("cart");
+  });
+
+  it("carrinho salvo não lido, mas há recibo do pedido desta conta: o recibo manda (o pedido JÁ foi feito)", async () => {
+    estado.carrinhoSalvoNaoLido = true;
+    guardarReciboDoCheckout("user-1", "0f8fad5b-d9cb-469f-a165-70867728950e");
+    await renderizar();
+
+    expect(texto()).not.toContain(FRASE_DO_CARRINHO_NAO_LIDO);
+    expect(texto()).not.toContain(FRASE_DO_CARRINHO_VAZIO);
+    expect(botoes()).not.toContain("Tentar de novo");
   });
 
   it("carrinho com item: nada de 'vazio' — o formulário de compra monta", async () => {

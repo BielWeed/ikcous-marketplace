@@ -249,6 +249,74 @@ describe("carrinho: produto com cor e tamanho em escolhas separadas", () => {
     expect(mundo.erro).toHaveBeenCalledWith("Este produto está esgotado.");
   });
 
+  // O azul (5) é dividido entre as linhas. Azul-P leva 4 e, depois, a vitrine
+  // relê o produto com o azul em `azulAgora`: a sobra para Azul-M é
+  // `azulAgora - 4` (o M, com 2, não limita). Mostra o que acontece quando a
+  // sobra é negativa, zero ou 1.
+  async function azulP4DepoisAzulCaiPara(azulAgora: number) {
+    const comAzulMenor = mapProductFromDB({
+      ...linha,
+      product_variants: variantes.map((v) =>
+        v.id === AZUL ? { ...v, stock_increment: azulAgora } : v,
+      ),
+    });
+    await montar();
+    await act(async () => {
+      atual.addToCart(produto(), 4, AZUL_P, NOME_AZUL_P);
+    });
+    expect(resumo(atual.cart)).toEqual([[AZUL, [P], 4]]);
+    return comAzulMenor;
+  }
+
+  it("sobra NEGATIVA (o azul caiu abaixo do que o carrinho já leva) recusa: nada entra, nem linha com quantidade negativa", async () => {
+    const comAzulMenor = await azulP4DepoisAzulCaiPara(2); // 2 - 4 = -2
+    expect(estoqueDaLinha(comAzulMenor, AZUL, [M], atual.cart)).toBe(-2);
+    const antes = atual.cart;
+    let entrou = -1;
+    await act(async () => {
+      entrou = atual.addToCart(comAzulMenor, 1, AZUL_M, NOME_AZUL_M);
+    });
+    expect(entrou).toBe(0);
+    expect(mundo.erro).toHaveBeenCalledTimes(1);
+    expect(mundo.erro).toHaveBeenCalledWith("Este produto está esgotado.");
+    // O MESMO array: nenhuma linha nova e a de Azul-P intocada.
+    expect(atual.cart).toBe(antes);
+    expect(resumo(atual.cart)).toEqual([[AZUL, [P], 4]]);
+    expect(atual.cart.every((i) => i.quantity > 0)).toBe(true);
+    expect(atual.cartCount).toBe(4);
+  });
+
+  it("sobra exatamente ZERO também recusa, com o mesmo aviso", async () => {
+    const comAzulMenor = await azulP4DepoisAzulCaiPara(4); // 4 - 4 = 0
+    expect(estoqueDaLinha(comAzulMenor, AZUL, [M], atual.cart)).toBe(0);
+    const antes = atual.cart;
+    let entrou = -1;
+    await act(async () => {
+      entrou = atual.addToCart(comAzulMenor, 1, AZUL_M, NOME_AZUL_M);
+    });
+    expect(entrou).toBe(0);
+    expect(mundo.erro).toHaveBeenCalledTimes(1);
+    expect(mundo.erro).toHaveBeenCalledWith("Este produto está esgotado.");
+    expect(atual.cart).toBe(antes);
+  });
+
+  it("sobra de UMA unidade ainda entra (a recusa não pega o saldo pequeno positivo)", async () => {
+    const comAzulMenor = await azulP4DepoisAzulCaiPara(5); // 5 - 4 = 1
+    expect(estoqueDaLinha(comAzulMenor, AZUL, [M], atual.cart)).toBe(1);
+    let entrou = -1;
+    await act(async () => {
+      entrou = atual.addToCart(comAzulMenor, 3, AZUL_M, NOME_AZUL_M);
+    });
+    // Pediu 3, sobrava 1: entra 1, com o aviso de estoque e não o de esgotado.
+    expect(entrou).toBe(1);
+    expect(mundo.erro).toHaveBeenCalledTimes(1);
+    expect(mundo.erro).not.toHaveBeenCalledWith("Este produto está esgotado.");
+    expect(resumo(atual.cart)).toEqual([
+      [AZUL, [P], 4],
+      [AZUL, [M], 1],
+    ]);
+  });
+
   it("tirar ou mudar uma combinação não mexe na outra", async () => {
     await montar();
     await act(async () => {
