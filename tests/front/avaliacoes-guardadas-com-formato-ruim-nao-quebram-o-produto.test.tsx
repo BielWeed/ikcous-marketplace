@@ -97,7 +97,7 @@ const AVALIACAO = {
   date: "2026-08-21T09:30:00.000Z",
   helpful: 0,
   verified: true,
-  status: "aprovada",
+  status: "publicada",
 } as unknown as Review;
 
 const FORMATOS_RUINS: [string, unknown][] = [
@@ -204,7 +204,7 @@ describe("avaliações guardadas com formato ruim não quebram a página do prod
 
         expect(Array.isArray(ultimo?.reviews)).toBe(true);
         expect(() =>
-          ultimo?.reviews.filter((r) => r.status === "aprovada"),
+          ultimo?.reviews.filter((r) => r.status === "publicada"),
         ).not.toThrow();
         expect(ultimo?.reviews).toEqual([]);
       },
