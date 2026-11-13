@@ -53,6 +53,9 @@ const FILTROS_DO_HISTORICO: Array<[string, ...unknown[]]> = [];
 // Setima fonte (14/10/2026): quantos pedidos de privacidade seguem abertos —
 // uma consulta `head` que so devolve `count`.
 let RESPOSTA_PRIVACIDADE: unknown = { data: null, count: 0, error: null };
+// Os `.eq` pedidos a `pedidos_de_privacidade`: o dible devolve a resposta sem
+// olhar o filtro, entao e por aqui que se prova que a contagem e so dos ABERTOS.
+const FILTROS_DA_PRIVACIDADE: Array<[string, unknown]> = [];
 // Setima fonte (14/10/2026): pedidos entregues, pagos na entrega, sem
 // recebimento marcado. Lidos de `marketplace_orders` (a mesma tabela dos
 // pedidos pendentes), distinguidos pelo `.eq("status", "delivered")`.
@@ -134,7 +137,16 @@ function criarBuilder(tabela: string) {
       }
       return builder;
     });
-  builder.eq = registrar("eq");
+  builder.eq = vi.fn((coluna: string, valor: unknown) => {
+    calls.push(["eq", coluna, valor]);
+    if (tabela === "marketplace_order_history") {
+      FILTROS_DO_HISTORICO.push(["eq", coluna, valor]);
+    }
+    if (tabela === "pedidos_de_privacidade") {
+      FILTROS_DA_PRIVACIDADE.push([coluna, valor]);
+    }
+    return builder;
+  });
   builder.not = registrar("not");
   builder.gte = registrar("gte");
   builder.order = registrar("order");
@@ -277,6 +289,7 @@ beforeEach(() => {
   PIX_AGUARDANDO_NO_BANCO = [];
   tabelasConsultadas = [];
   FILTROS_DO_HISTORICO.length = 0;
+  FILTROS_DA_PRIVACIDADE.length = 0;
   CONSULTAS_DE_PEDIDOS.length = 0;
   CONSULTAS_DE_AVALIACOES.length = 0;
   RESPOSTA_RECEBIMENTOS = { data: [], error: null };
@@ -420,6 +433,29 @@ describe("useAvisosDoLojista", () => {
     expect(aviso?.titulo).toContain("2");
     expect(tabelasConsultadas).toContain("pedidos_de_privacidade");
     expect(atual().fontesComFalha).toEqual([]);
+  });
+
+  it("a contagem de privacidade filtra exatamente os pedidos ABERTOS", async () => {
+    await montarSonda();
+
+    // O dible devolve `count` sem olhar o filtro: sem esta asserção, trocar
+    // "aberto" por "atendido" deixaria o sino contando pedido já respondido.
+    expect(FILTROS_DA_PRIVACIDADE).toEqual([["situacao", "aberto"]]);
+  });
+
+  it("a contagem de perguntas pede so as PENDENTES, e so o total (pagina de 1)", async () => {
+    const { supabase } = await import("@/lib/supabase");
+
+    await montarSonda();
+
+    // O dible de `rpc` ignora os argumentos: com `p_filter: "all"` o sino
+    // acenderia por toda pergunta ja respondida e nenhum caso caia.
+    expect(supabase.rpc).toHaveBeenCalledWith("get_admin_questions_paged", {
+      p_search: "",
+      p_filter: "pending",
+      p_page: 0,
+      p_page_size: 1,
+    });
   });
 
   it("sem pedido de privacidade aberto nao ha aviso, e a fonte nao falha", async () => {
