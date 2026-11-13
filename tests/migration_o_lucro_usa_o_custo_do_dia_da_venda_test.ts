@@ -83,9 +83,17 @@ Deno.test("20261242 — a 45 sucede só o analytics: a 45a aceita o novo hash ex
       ANALYTICS,
     ),
   );
+  const h3994 = md5(
+    corpoDe(
+      ler(
+        "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql",
+      ),
+      ANALYTICS,
+    ),
+  );
   assert.ok(
     a45.includes(
-      `f.m IN ('${DESTA[ANALYTICS]}', '${h45}', '${h50}', '${h51}', '${h3997}')`,
+      `f.m IN ('${DESTA[ANALYTICS]}', '${h45}', '${h50}', '${h51}', '${h3997}', '${h3994}')`,
     ),
   );
   assert.ok(a45.includes(`'${DESTA[DRE]}'`));

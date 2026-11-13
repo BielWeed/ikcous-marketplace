@@ -27,6 +27,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera } = require("./efemero.cjs");
+const {
+  desfazerItemQueNaoVeioNoLucroNaTransacao: desfazerItemQueNaoVeio,
+  ITEM_NAO_VEIO_NO_LUCRO,
+} = require("./o-item-que-nao-veio-fica-com-a-cliente-posterior.cjs");
 
 const NOME = "20261399970000_o_ranking_de_lucro_desconta_a_devolucao.sql";
 const NOME_251 =
@@ -630,7 +634,9 @@ async function main() {
   await c.connect();
   try {
     await c.query("BEGIN");
-    // O topo instalado pelo CI (todas as migrations do zero) e o desta migration.
+    // A 20261399994000 (o item "Nao veio" fica com a cliente) sucede esta: cai antes, na transacao, e o topo volta a ser o desta migration.
+    await desfazerItemQueNaoVeio(c);
+    // O topo instalado pelo CI (todas as migrations do zero, menos a 3994 desfeita acima) e o desta migration.
     const topo = await funcao(c);
     assert.equal(
       topo.prosrc,
@@ -1261,6 +1267,8 @@ async function main() {
   const d = new Client({ connectionString: lerDatabaseUrlEfemera() });
   await d.connect();
   try {
+    // A 3994 (sem BEGIN, gravada) cai antes: o rollback desta migration so aceita o corpo desta ou o da 251.
+    await desfazerItemQueNaoVeio(d);
     await d.query(rollback);
     assert.equal(
       md5((await funcao(d)).prosrc),
@@ -1303,13 +1311,16 @@ async function main() {
       "  PASSOU conexao sem BEGIN: a conferencia sabotada e o pre-voo que recusa nao gravam nada; sem sabotagem o arquivo inteiro grava o corpo novo",
     );
   } finally {
-    // Deixa o clone como o CI o montou: com o corpo novo.
+    // Deixa o clone como o CI o montou: com o corpo da 3997 e, por cima, o da 20261399994000 (a ultima da cadeia).
     await d
       .query(
         `CREATE OR REPLACE FUNCTION public.get_admin_analytics_v2(p_limit_days integer DEFAULT 90)
        RETURNS json LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
        AS $corpo$${CORPO_NOVO}$corpo$`,
       )
+      .catch(() => {});
+    await d
+      .query(ler(`supabase/migrations/${ITEM_NAO_VEIO_NO_LUCRO.nome}`))
       .catch(() => {});
     await d.end();
   }
