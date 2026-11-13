@@ -412,6 +412,24 @@ const parNovo = (): ParNoForm => {
 const comChaveDeRender = (pares: ParDeAtributo[]): ParNoForm[] =>
   pares.map((par) => ({ ...parNovo(), ...par }));
 
+/**
+ * O que a janela de variação guarda, sem a chave de render dos pares: serve para
+ * saber se a lojista MEXEU na janela desde que ela abriu.
+ */
+const assinaturaDaVariacao = (dados: {
+  pares: ParNoForm[];
+  sku: string;
+  codigoBarras: string;
+  stockIncrement: string;
+  priceOverride: string;
+  active: boolean;
+  imageUrl: string;
+}): string =>
+  JSON.stringify({
+    ...dados,
+    pares: dados.pares.map(({ name, value }) => ({ name, value })),
+  });
+
 interface AdminProductFormViewProps {
   productId?: string;
   onNavigate: (view: View, id?: string, bypassDirtyCheck?: boolean) => void;
@@ -1821,15 +1839,33 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     [],
   );
 
+  // O que a janela de variação tinha ao ABRIR (nova, herdando o estoque, ou a
+  // linha carregada para edição). Abrir e fechar a janela zera. Sem isto, o que
+  // a lojista digita na janela e ainda não salvou não contava como alteração, e
+  // uma atualização do app podia recarregar a página por cima dele.
+  const [variacaoAoAbrir, setVariacaoAoAbrir] = useState<string | null>(null);
+  useEffect(() => {
+    setVariacaoAoAbrir(
+      showVariantForm ? assinaturaDaVariacao(variantFormData) : null,
+    );
+    // Só a abertura/fechamento da janela tira a foto: o que se digita depois
+    // é justamente o que se compara com ela.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showVariantForm]);
+  const variacaoMexida =
+    showVariantForm &&
+    variacaoAoAbrir !== null &&
+    assinaturaDaVariacao(variantFormData) !== variacaoAoAbrir;
+
   // Prevent leaving with unsaved changes
   useEffect(() => {
     if (!onSetDirty) return;
-    const isDirty = isProductFormDirty(formData, initialData);
+    const isDirty = isProductFormDirty(formData, initialData) || variacaoMexida;
     onSetDirty(isDirty);
     return () => {
       onSetDirty(false);
     };
-  }, [formData, initialData, onSetDirty]);
+  }, [formData, initialData, onSetDirty, variacaoMexida]);
 
   useEffect(() => {
     // Validar SKU
