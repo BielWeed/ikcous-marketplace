@@ -1,4 +1,27 @@
 {
+  "1.5.178": {
+    "titulo": "Painel que não desfaz o que a lojista acabou de fazer, loja que abre mesmo com rede ruim e devolução que não paga duas vezes",
+    "novidades": [
+      "Painel, Devoluções: tentar de novo numa devolução que falhou não paga duas vezes, nem com o painel aberto em duas abas.",
+      "Loja, Avisos: desligar os avisos neste aparelho vale para todas as telas e não religa sozinho; se o servidor não confirmar, a tela mostra o estado real."
+    ],
+    "melhorias": [
+      "Painel, Produtos, Pedidos e Recebimento: uma resposta lenta da internet que chega atrasada não desfaz mais pausar produto, avançar o pedido nem marcar como recebido.",
+      "Painel, Etiqueta de envio: sem resposta da rede, a tela não prende mais em \"Gerando…\", não afirma que comprou nem que falhou e relê o pedido; \"Atualizar rastreio\" também solta o botão.",
+      "Painel, CRM: a devolução total aparece como 100%, a lista de clientes atualiza na virada do dia e o botão Sincronizar também atualiza as visitas do funil.",
+      "Painel: avisar um grupo de clientes e apagar uma venda do balcão agora pedem confirmação.",
+      "Painel: os botões dourados e o ícone de cor ficam legíveis nos temas claro e confortável.",
+      "Loja: com rede que conecta e não responde, a loja abre o app guardado no aparelho em vez de ficar parada; uma consulta pendurada não segura mais a atualização de preços, e os favoritos são relidos quando a internet volta."
+    ],
+    "correcoes": [
+      "Loja, Pedido: cancelar manda a etapa que a cliente viu, então não cancela um pedido que a loja já enviou; uma devolução não prende mais um item que sumiu.",
+      "Loja, Produto: a ficha do produto pausado, a foto da cor única e a contagem de opiniões ficam certas.",
+      "Loja, Minha conta: se o e-mail da sessão mudar enquanto a cliente digita, o que ela escreveu não é apagado.",
+      "Loja, Cartão: um e-mail muito longo ou malformado não trava mais a entrada do cartão.",
+      "Painel, Produtos: excluir sem permissão não diz que removeu, e salvar não grava em outra conta.",
+      "Painel, Minha loja: salvar só o endereço não apaga a descrição gravada em outro aparelho."
+    ]
+  },
   "1.5.177": {
     "titulo": "Telas que não ficam carregando para sempre, caixa que não troca o sinal do valor e endereço que abre no lugar certo",
     "novidades": [
