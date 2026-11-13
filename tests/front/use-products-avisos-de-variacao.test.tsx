@@ -52,17 +52,22 @@ const LINHA = {
   codigo_barras: null,
   image_url: null,
 };
-function cadeia(): any {
+// Depois de `.delete()` o banco devolve as LINHAS apagadas (o hook pede com
+// `.select("id")` e trata lista vazia como "não apagou").
+function cadeia(apagando = false): any {
   const alvo = () => {};
   return new Proxy(alvo, {
     get: (_, prop) => {
       if (prop === "then") {
         return (ok: (v: unknown) => unknown) =>
-          Promise.resolve({ data: LINHA, error: null }).then(ok);
+          Promise.resolve({
+            data: apagando ? [LINHA] : LINHA,
+            error: null,
+          }).then(ok);
       }
-      return () => cadeia();
+      return () => cadeia(apagando || prop === "delete");
     },
-    apply: () => cadeia(),
+    apply: () => cadeia(apagando),
   });
 }
 
