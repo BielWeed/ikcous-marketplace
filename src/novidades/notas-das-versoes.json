@@ -8,11 +8,12 @@
     "melhorias": [
       "Painel, Relatórios: o selo \"vs. 30 dias antes\" concorda com o gráfico e só compara dias fechados, e o valor médio por pedido fecha ao centavo.",
       "Painel, Produtos: restaurar um rascunho não apaga uma variação que outro aparelho alterou, uma variação excluída que outro aparelho mexeu volta para a lista, e excluir variação confere a versão do produto.",
-      "Painel, Minha loja: salvar os dados da empresa grava só o que mudou, e um CEP novo sem busca não mistura o endereço.",
-      "Painel, Pedidos e avisos: a busca de pedidos acompanha o rastreio que muda, a lista de aparelhos e de avisos não fica velha com a tela aberta, e imprimir o pedido não espera para sempre.",
+      "Painel, Minha loja: salvar os dados da empresa grava só o que mudou, e um CEP novo cuja busca falhou não mistura o endereço.",
+      "Painel, Pedidos e avisos: a busca de pedidos acompanha o rastreio que muda, a contagem de aparelhos inscritos e a lista de avisos não ficam velhas com a tela aberta, e imprimir o pedido não espera para sempre.",
       "Painel, Categorias e banners: a categoria recém-criada não some da lista, uma criação sem resposta relê o servidor, e excluir um banner não desfaz a troca de ordem feita logo depois.",
       "Loja, Pedido e endereços: a devolução aprovada aparece antes do aviso sumir, editar um endereço com a tela velha não desfaz a correção de outro aparelho, e a data da compra usa o dia de Brasília.",
-      "Loja, Banner e avaliações: o banner ao vivo não volta à versão antiga, a fila de moderação não fica pendurada e o catálogo e a ficha pintam as mesmas estrelas."
+      "Loja, Banner e avaliações: o banner ao vivo não volta à versão antiga e o catálogo e a ficha pintam as mesmas estrelas.",
+      "Painel, Avaliações: a fila de moderação não fica pendurada."
     ],
     "correcoes": [
       "Loja, Checkout: um PIX pago depois do vencimento volta ao aviso ao recarregar a página, e o vencimento ao vivo tira o QR vencido.",
