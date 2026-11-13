@@ -428,7 +428,7 @@ export function CupomDaVenda({
           <p className="pdv-muted">
             Os itens e o cliente escolhido serão limpos, e o caixa volta ao
             começo.{" "}
-            {estado.erro
+            {estado.erro || estado.talvezGravada
               ? "Se a venda chegou a ser gravada, ela está em Pedidos."
               : "Nada é registrado."}
           </p>

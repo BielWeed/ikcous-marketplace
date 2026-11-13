@@ -85,6 +85,7 @@ function estoqueDoProdutoEncontrado(produto: ProdutoEncontradoNaBusca): number {
 
 function itemDoProdutoSemVariacao(
   produto: ProdutoEncontradoNaBusca,
+  lidoEm: number | undefined,
 ): ItemDoCupom {
   return {
     chave: chaveDoItemDoCupom(produto.id, null),
@@ -95,6 +96,7 @@ function itemDoProdutoSemVariacao(
     preco: produto.preco_venda,
     quantidade: 1,
     estoque: estoqueDoProdutoEncontrado(produto),
+    ...(lidoEm === undefined ? {} : { estoqueLidoEm: lidoEm }),
     imagem: imagemDoProduto(produto),
   };
 }
@@ -102,6 +104,7 @@ function itemDoProdutoSemVariacao(
 function itemDaVarianteEncontrada(
   produto: ProdutoEncontradoNaBusca,
   variante: VarianteEncontradaNaBusca,
+  lidoEm: number | undefined,
 ): ItemDoCupom {
   return {
     chave: chaveDoItemDoCupom(produto.id, variante.id),
@@ -115,6 +118,7 @@ function itemDaVarianteEncontrada(
     preco: variante.price_override ?? produto.preco_venda,
     quantidade: 1,
     estoque: variante.stock_increment,
+    ...(lidoEm === undefined ? {} : { estoqueLidoEm: lidoEm }),
     imagem: variante.image_url || imagemDoProduto(produto),
   };
 }
@@ -147,6 +151,20 @@ export function BuscaDeProduto({
   // uma busca antiga não pode gravar por cima da busca mais nova.
   const rodadaRef = useRef(0);
 
+  // QUANDO cada produto da lista foi lido no servidor (o instante em que a
+  // consulta da página dele PARTIU). Vai junto com o estoque para o cupom
+  // (`estoqueLidoEm`): é a idade que deixa uma busca NOVA subir o teto depois de
+  // uma reposição em outro aparelho, sem que a lista antiga que ficou na tela
+  // faça o mesmo. Produto que já estava na tela e volta numa página seguinte
+  // mantém o instante antigo, como os dados antigos que a lista manteve.
+  const lidoEmPorProdutoRef = useRef(new Map<string, number>());
+  // `agora` tem identidade nova a cada render (o padrão é uma seta): o ref evita
+  // recriar `buscarPagina` por causa dele (molde de `useVendaPresencial`).
+  const agoraRef = useRef(agora);
+  useEffect(() => {
+    agoraRef.current = agora;
+  });
+
   // Busca UMA página do termo. Página 0 recomeça a lista; as seguintes
   // ("Mostrar mais") somam à que já está na tela, sem repetir produto (um
   // cadastro novo entre duas páginas empurra a fila e o mesmo produto
@@ -154,6 +172,10 @@ export function BuscaDeProduto({
   const buscarPagina = useCallback(
     async (termo: string, pagina: number): Promise<void> => {
       const rodada = ++rodadaRef.current;
+      // A idade da leitura é a de quando a consulta PARTIU, não a de quando a
+      // resposta chegou: o servidor leu o estoque entre as duas, e uma resposta
+      // lenta que chega depois do bipe seria tomada por mais nova do que é.
+      const consultadoEm = agoraRef.current();
       setTermoBuscado(termo);
       setBuscando(true);
       setFalhaDaBusca(null);
@@ -163,6 +185,10 @@ export function BuscaDeProduto({
         const jaNaTela = pagina === 0 ? [] : resultadosDaBusca;
         const ids = new Set(jaNaTela.map((p) => p.id));
         const novos = resposta.produtos.filter((p) => !ids.has(p.id));
+        if (pagina === 0) lidoEmPorProdutoRef.current = new Map();
+        for (const produto of novos) {
+          lidoEmPorProdutoRef.current.set(produto.id, consultadoEm);
+        }
         const todos = [...jaNaTela, ...novos];
         setResultadosDaBusca(todos);
         // Página seguinte vazia com a lista ainda "incompleta" = o catálogo
@@ -233,7 +259,10 @@ export function BuscaDeProduto({
     if (ativas.length === 0) {
       despachar({
         tipo: "item_adicionado_manualmente",
-        item: itemDoProdutoSemVariacao(produto),
+        item: itemDoProdutoSemVariacao(
+          produto,
+          lidoEmPorProdutoRef.current.get(produto.id),
+        ),
         em: agora(),
       });
       return;
@@ -249,7 +278,11 @@ export function BuscaDeProduto({
   ): void {
     despachar({
       tipo: "item_adicionado_manualmente",
-      item: itemDaVarianteEncontrada(produto, variante),
+      item: itemDaVarianteEncontrada(
+        produto,
+        variante,
+        lidoEmPorProdutoRef.current.get(produto.id),
+      ),
       em: agora(),
     });
   }

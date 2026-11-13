@@ -92,7 +92,11 @@ describe("balcão — com o envio pendente o cupom não muda", () => {
       reducerDaVenda(enviando, { tipo: "cupom_limpo", novaChave: "k2" }),
     ).toMatchObject({ enviando: false, itens: [], chaveDeIdempotencia: "k2" });
     expect(
-      reducerDaVenda(enviando, { tipo: "envio_falhou", mensagem: "x" }),
+      reducerDaVenda(enviando, {
+        tipo: "envio_falhou",
+        mensagem: "x",
+        efeito: "fecha",
+      }),
     ).toMatchObject({ enviando: false, erro: "x" });
   });
 

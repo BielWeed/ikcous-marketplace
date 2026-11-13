@@ -33,6 +33,7 @@ import {
 import {
   type FalhaDaVendaTraduzida,
   MENSAGEM_DE_REDE_DA_VENDA,
+  efeitoDaFalhaNaDuvida,
   mensagemDaFalhaDaVenda,
 } from "@/lib/erro-da-venda-presencial";
 import {
@@ -201,7 +202,7 @@ export function FechamentoDaVenda({
   async function aoClicarComecarVendaNova(): Promise<void> {
     const confirmado = await confirmar({
       titulo: "Apagar a venda em andamento?",
-      texto: `Isso apaga a venda em andamento: ${estado.itens.length} ${estado.itens.length === 1 ? "item" : "itens"}, R$ ${reais(total)}. Apagar e começar outra?`,
+      texto: `Isso apaga a venda em andamento: ${estado.itens.length} ${estado.itens.length === 1 ? "item" : "itens"}, R$ ${reais(total)}.${estado.talvezGravada ? " Ela pode já ter sido registrada: confira em Pedidos antes de refazer." : ""} Apagar e começar outra?`,
       verbo: "Apagar e começar outra",
       voltar: "Cancelar",
     });
@@ -219,17 +220,26 @@ export function FechamentoDaVenda({
       // intactos: só o `enviando`/`erro` mudam. `mensagemDaFalhaDaVenda`
       // (C3.4) é o ÚNICO lugar que traduz `erro` para português — nunca
       // `erro.message` cru aqui, que vazaria `DOMException`/stack na tela.
-      const falha = mensagemDaFalhaDaVenda(erro);
+      //
+      // A DÚVIDA de uma resposta perdida antes (`estado.talvezGravada`) não cai
+      // por falha passageira: `efeito` diz à máquina o que esta falha prova.
+      const falha = mensagemDaFalhaDaVenda(erro, estado.talvezGravada);
       setUltimaFalha(falha);
-      despachar({ tipo: "envio_falhou", mensagem: falha.mensagem });
+      despachar({
+        tipo: "envio_falhou",
+        mensagem: falha.mensagem,
+        efeito: efeitoDaFalhaNaDuvida(erro),
+      });
     }
   }
 
   // Falha de rede ou prazo estourado (erro sem código): a resposta pode ter
   // se perdido DEPOIS de o banco gravar. A mesma chave de idempotência faz a
   // nova tentativa devolver o recibo da venda que já entrou, então a frase
-  // não pode afirmar que ela não foi registrada.
-  const talvezTenhaEntrado = estado.erro === MENSAGEM_DE_REDE_DA_VENDA;
+  // não pode afirmar que ela não foi registrada. A dúvida é pegajosa: uma falha
+  // passageira DEPOIS da resposta perdida não a apaga (`estado.talvezGravada`).
+  const talvezTenhaEntrado =
+    estado.talvezGravada || estado.erro === MENSAGEM_DE_REDE_DA_VENDA;
 
   const corpoRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
