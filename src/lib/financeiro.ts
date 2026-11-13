@@ -778,6 +778,9 @@ export function parseResumo(json: unknown): ResumoFinanceiro {
         dia,
         entradas: Math.abs(numero(d.entradas)),
         saidas: Math.abs(numero(d.saidas)),
+        // Sem valor absoluto: a variação do saldo pode ser negativa. Chave
+        // ausente (loja sem a migration) ou inválida vira `null`.
+        variacaoSaldo: numeroOuNulo(d.variacao_saldo),
       };
     }),
   );
@@ -1208,6 +1211,28 @@ export interface PontoDoFluxo {
 }
 
 /**
+ * A variação diária do saldo das contas ativas, na ordem de `dias`, ou `null`
+ * quando não dá para usá-la com segurança (ver `serieDoFluxoDeCaixa`): `hoje`
+ * desconhecido, intervalo vazio ou que termina antes de hoje, ou algum dia sem
+ * ponto na série ou sem `variacaoSaldo`.
+ */
+function variacoesDasContasAtivas(
+  dias: readonly DataIso[],
+  porDia: ReadonlyMap<DataIso, DiaDaSerie>,
+  hoje: DataIso | null,
+): number[] | null {
+  const ultimo = dias.at(-1);
+  if (hoje === null || ultimo === undefined || ultimo < hoje) return null;
+  const variacoes: number[] = [];
+  for (const dia of dias) {
+    const variacao = porDia.get(dia)?.variacaoSaldo;
+    if (variacao === null || variacao === undefined) return null;
+    variacoes.push(variacao);
+  }
+  return variacoes;
+}
+
+/**
  * Série diária completa do intervalo (dia sem movimento vale zero), com o
  * saldo ao fim de cada dia reconstruído a partir do saldo de hoje.
  *
@@ -1219,12 +1244,26 @@ export interface PontoDoFluxo {
  * Sem `marco` (ou com ele antes do início do intervalo), o dia mais antigo
  * do intervalo já é ≥ marco e nada muda — mesmo cálculo de sempre. Dias
  * `< marco` recebem `saldo: null`.
+ *
+ * Quem desce de um dia para o anterior é, de preferência, `variacaoSaldo`
+ * (a variação do saldo só das contas ATIVAS, que o banco calcula pela mesma
+ * conta do saldo de hoje — migration 20261399985000). O método de sempre
+ * (entradas − saídas) soma TODAS as contas, inclusive as desativadas, e por
+ * isso podia mostrar em dias passados um saldo que nunca existiu. A variação
+ * só entra quando TODOS os dias do intervalo a trazem E o intervalo chega até
+ * `hoje` (o saldo de hoje é a âncora: só é o saldo do último dia se o último
+ * dia for hoje ou depois — os dias futuros valem 0 no banco). Faltando
+ * qualquer uma dessas condições (loja sem a migration, dia sem ponto, `hoje`
+ * desconhecido, intervalo que acaba antes de hoje) o gráfico INTEIRO usa o
+ * método de sempre: nunca mistura os dois métodos, nunca inventa número.
+ * `resultado` e as barras seguem sendo entradas e saídas de todas as contas.
  */
 export function serieDoFluxoDeCaixa(
   serie: readonly DiaDaSerie[],
   intervalo: IntervaloDeDatas,
   saldoAtual: number,
   marco: DataIso | null = null,
+  hoje: DataIso | null = null,
 ): PontoDoFluxo[] {
   const porDia = new Map<DataIso, DiaDaSerie>();
   for (const dia of serie) porDia.set(dia.dia, dia);
@@ -1242,7 +1281,8 @@ export function serieDoFluxoDeCaixa(
       ? deCentavos(paraCentavos(d.entradas) - paraCentavos(d.saidas))
       : 0;
   });
-  const saldos = saldoCorrenteRetroativo(saldoAtual, deltas);
+  const variacoes = variacoesDasContasAtivas(dias, porDia, hoje);
+  const saldos = saldoCorrenteRetroativo(saldoAtual, variacoes ?? deltas);
   return dias.map((dia, i) => {
     const d = porDia.get(dia);
     return {
