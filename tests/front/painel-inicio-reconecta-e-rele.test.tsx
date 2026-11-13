@@ -95,12 +95,12 @@ describe("Início relê os pedidos perdidos na queda do canal", () => {
     expect(h.estado?.desatualizado).toBe(false);
   });
 
-  it("controle: a primeira assinatura e status repetido não duplicam a abertura", async () => {
+  it("controle: a primeira assinatura relê uma vez (a abertura saiu antes dela) e status repetido não duplica", async () => {
     expect(h.chamadas).toBe(1);
     await emitir("SUBSCRIBED");
     await emitir("SUBSCRIBED");
     await passar();
-    expect(h.chamadas).toBe(1);
+    expect(h.chamadas).toBe(2);
     expect(h.estado?.desatualizado).toBe(false);
   });
 
@@ -123,6 +123,9 @@ describe("Início relê os pedidos perdidos na queda do canal", () => {
 
   it("reconexão escondida espera a tela voltar e então relê", async () => {
     await emitir("SUBSCRIBED");
+    // A releitura da primeira confirmação sai antes de a tela esconder.
+    await passar();
+    expect(h.chamadas).toBe(2);
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
       value: "hidden",
@@ -130,7 +133,7 @@ describe("Início relê os pedidos perdidos na queda do canal", () => {
     await emitir("CLOSED");
     await emitir("SUBSCRIBED");
     await passar();
-    expect(h.chamadas).toBe(1);
+    expect(h.chamadas).toBe(2);
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
       value: "visible",
@@ -139,7 +142,7 @@ describe("Início relê os pedidos perdidos na queda do canal", () => {
       document.dispatchEvent(new Event("visibilitychange")),
     );
     await passar();
-    expect(h.chamadas).toBe(2);
+    expect(h.chamadas).toBe(3);
   });
 
   it("o callback antigo não busca depois de desmontar", async () => {
