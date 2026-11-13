@@ -234,6 +234,8 @@ describe("dinheiro em pt-BR", () => {
   it("divide parcelas em centavos e diz quando não fecha", () => {
     expect(valorDaParcela(90, 3)).toEqual({ parcela: 30, exata: true });
     expect(valorDaParcela(100, 3)).toEqual({ parcela: 33.33, exata: false });
+    // 10001 / 3 = 3333,67: a parcela arredonda PARA BAIXO (33,33, nunca 33,34).
+    expect(valorDaParcela(100.01, 3)).toEqual({ parcela: 33.33, exata: false });
     expect(valorDaParcela(1234.56, 3)).toEqual({
       parcela: 411.52,
       exata: true,
