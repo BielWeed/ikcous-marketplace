@@ -488,9 +488,13 @@ export function emailDoToken(authorization: string | null): string | null {
 }
 
 /** Formato mínimo de e-mail (com ponto no domínio) — a MESMA regra que
- * `emailDoToken` já usava, agora também para o e-mail do corpo do cartão. */
+ * `emailDoToken` já usava, agora também para o e-mail do corpo do cartão.
+ * Teto de 254 caracteres (máximo do formato de e-mail) ANTES da regex: com
+ * "@" repetido e sem ponto, `\S+@\S+\.\S+` faz backtracking QUADRÁTICO
+ * (100.000 "@" ≈ 7 s de CPU), e esta validação roda antes de ler o pedido —
+ * a chave pública bastaria para queimar a função. Mesma regra de formato. */
 function emailValido(email: unknown): email is string {
-  return typeof email === "string" && /^\S+@\S+\.\S+$/.test(email);
+  return typeof email === "string" && email.length <= 254 && /^\S+@\S+\.\S+$/.test(email);
 }
 
 /** As colunas do pedido que esta função lê — UMA lista para a leitura
