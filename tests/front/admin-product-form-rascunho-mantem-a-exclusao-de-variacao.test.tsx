@@ -398,6 +398,159 @@ describe("AdminProductFormView — restaurar rascunho mantém a exclusão de var
     );
   });
 
+  it("a C excluída foi LIGADA com 10 peças em outro aparelho: não é apagada, volta ao formulário com aviso", async () => {
+    // O defeito: a C estava desligada e sem estoque quando ela a excluiu
+    // (rascunho [A,B], base [A,B,C]). Outro aparelho a ligou com 10 peças. O
+    // "Salvar" conferia a versão da ABERTURA (que já inclui a mudança), não
+    // via conflito e apagava a C com o estoque novo, sem ela ver.
+    const CdaBase = { ...C, active: false, stockIncrement: 0 };
+    const CdeHoje = { ...C, active: true, stockIncrement: 10 };
+    fetchProduct.mockResolvedValue(produtoDoBanco([A, B, CdeHoje]));
+    armazem.set(
+      CHAVE_EDICAO,
+      JSON.stringify(
+        campos({
+          name: "Camiseta de algodão",
+          stock: "3",
+          variants: [A, B],
+          baseDoRascunho: campos({ variants: [A, B, CdaBase] }),
+        }),
+      ),
+    );
+    await montar();
+    await restaurar();
+
+    expect(toast.warning).toHaveBeenCalledWith(
+      "A variação Cor C foi alterada em outro aparelho e voltou para a lista; revise antes de excluir.",
+    );
+    expect(
+      hospedeiro.querySelectorAll('[data-testid="variante-cadastrada"]'),
+    ).toHaveLength(3);
+
+    await salvar();
+
+    expect(salvarProdutoComGrade).toHaveBeenCalledTimes(1);
+    expect(argumentosDaRpc()?.apagar).toEqual([]);
+    // A soma do que fica (A 1 + B 2 + C de hoje 10 = 13) é o que o banco já
+    // tem: o estoque não viaja, e a C não é regravada.
+    expect(remendoDaRpc().stock).toBeUndefined();
+    expect(argumentosDaRpc()?.variantes).toEqual([]);
+  });
+
+  it("limite: duas alteradas em outro aparelho voltam, a que ninguém mexeu continua excluída, aviso no plural", async () => {
+    const CmudouDeNome = { ...C, value: "C2" };
+    const DligadaDepois = { ...D, stockIncrement: 9 };
+    fetchProduct.mockResolvedValue(
+      produtoDoBanco([A, CmudouDeNome, DligadaDepois, B]),
+    );
+    armazem.set(
+      CHAVE_EDICAO,
+      JSON.stringify(
+        campos({
+          name: "Camiseta de algodão",
+          stock: "1",
+          variants: [A],
+          baseDoRascunho: campos({ variants: [A, B, C, D] }),
+        }),
+      ),
+    );
+    await montar();
+    await restaurar();
+
+    expect(toast.warning).toHaveBeenCalledWith(
+      "As variações Cor C2 e Cor D foram alteradas em outro aparelho e voltaram para a lista; revise antes de excluir.",
+    );
+    await salvar();
+
+    // Só a B (que ninguém mexeu) segue a decisão dela.
+    expect(argumentosDaRpc()?.apagar).toEqual(["vb"]);
+    // A (1) + C de hoje (3) + D de hoje (9).
+    expect(remendoDaRpc().stock).toBe(13);
+  });
+
+  it("a exclusão é a ÚNICA mudança do rascunho e a C foi vendida em outro lugar: a oferta aparece e o aviso sai ao restaurar", async () => {
+    // O defeito: com a C de volta (dados do banco), o formulário montado ficava
+    // idêntico ao banco, o rascunho era tratado como "igual ao banco" e apagado
+    // em silêncio: sem oferta, sem aviso, e a C seguia à venda sem ela saber
+    // que a exclusão dela não valeu. Nenhum outro campo muda aqui.
+    const CvendidaDepois = { ...C, stockIncrement: 2 };
+    fetchProduct.mockResolvedValue(produtoDoBanco([A, B, CvendidaDepois]));
+    armazem.set(
+      CHAVE_EDICAO,
+      JSON.stringify(
+        campos({
+          stock: "6",
+          variants: [A, B],
+          baseDoRascunho: campos({ variants: [A, B, C] }),
+        }),
+      ),
+    );
+    await montar();
+
+    // O rascunho NÃO some em silêncio: a oferta aparece e a chave continua.
+    expect(armazem.has(CHAVE_EDICAO)).toBe(true);
+    expect(toast.info).toHaveBeenCalledWith(
+      expect.stringContaining("Rascunho não salvo"),
+      expect.anything(),
+    );
+    await restaurar();
+
+    expect(toast.warning).toHaveBeenCalledWith(
+      "A variação Cor C foi alterada em outro aparelho e voltou para a lista; revise antes de excluir.",
+    );
+    expect(
+      hospedeiro.querySelectorAll('[data-testid="variante-cadastrada"]'),
+    ).toHaveLength(3);
+    await salvar();
+
+    expect(deleteVariants).not.toHaveBeenCalled();
+    expect(
+      salvarProdutoComGrade.mock.calls.flatMap(
+        ([, , grade]) => (grade as { apagar: string[] }).apagar,
+      ),
+    ).toEqual([]);
+  });
+
+  it("controle: a exclusão é a ÚNICA mudança e a C não mudou: a oferta aparece como antes e a C vai em `apagar`", async () => {
+    fetchProduct.mockResolvedValue(produtoDoBanco([A, B, C]));
+    armazem.set(
+      CHAVE_EDICAO,
+      JSON.stringify(
+        campos({
+          stock: "3",
+          variants: [A, B],
+          baseDoRascunho: campos({ variants: [A, B, C] }),
+        }),
+      ),
+    );
+    await montar();
+    await restaurar();
+    await salvar();
+
+    expect(argumentosDaRpc()?.apagar).toEqual(["vc"]);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it("limite: variação excluída que ninguém mexeu continua indo em `apagar` e não avisa", async () => {
+    fetchProduct.mockResolvedValue(produtoDoBanco([A, B, C]));
+    armazem.set(
+      CHAVE_EDICAO,
+      JSON.stringify(
+        campos({
+          name: "Camiseta de algodão",
+          variants: [A, B],
+          baseDoRascunho: campos({ variants: [A, B, C] }),
+        }),
+      ),
+    );
+    await montar();
+    await restaurar();
+    await salvar();
+
+    expect(argumentosDaRpc()?.apagar).toEqual(["vc"]);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
   it("limite: rascunho sem base (antigo) não apaga nada ao salvar", async () => {
     fetchProduct.mockResolvedValue(produtoDoBanco([A, B, C]));
     armazem.set(
