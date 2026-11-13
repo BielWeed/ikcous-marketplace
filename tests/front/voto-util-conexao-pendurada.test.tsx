@@ -94,8 +94,10 @@ let metodosAtuais: ReturnType<typeof useReviews>;
 
 function Sonda() {
   const metodos = useReviews();
-  metodosAtuais = metodos;
   const { getReviewsByProduct } = metodos;
+  useEffect(() => {
+    metodosAtuais = metodos;
+  }, [metodos]);
   useEffect(() => {
     void getReviewsByProduct(PRODUTO);
   }, [getReviewsByProduct]);
