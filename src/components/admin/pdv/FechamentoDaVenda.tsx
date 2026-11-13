@@ -20,6 +20,7 @@
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { Button } from "@/components/ui/button";
+import { useConfirmarAcao } from "@/hooks/useConfirmarAcao";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
   type AcaoDaVenda,
@@ -192,6 +193,21 @@ export function FechamentoDaVenda({
     });
   }
 
+  // "Começar uma venda nova" só aparece depois de uma falha que repetir não
+  // resolve, e `limparCupom` apaga itens, cliente, pagamento, desconto e o
+  // rascunho salvo, sem desfazer. Um toque acidental perdia a venda inteira:
+  // pergunta antes, dizendo o que se perde. Voltar é o padrão.
+  const { confirmar, dialogo } = useConfirmarAcao();
+  async function aoClicarComecarVendaNova(): Promise<void> {
+    const confirmado = await confirmar({
+      titulo: "Apagar a venda em andamento?",
+      texto: `Isso apaga a venda em andamento: ${estado.itens.length} ${estado.itens.length === 1 ? "item" : "itens"}, R$ ${reais(total)}. Apagar e começar outra?`,
+      verbo: "Apagar e começar outra",
+      voltar: "Cancelar",
+    });
+    if (confirmado) limparCupom();
+  }
+
   async function aoClicarRegistrar(): Promise<void> {
     if (desabilitado) return;
     despachar({ tipo: "envio_iniciado" });
@@ -245,13 +261,14 @@ export function FechamentoDaVenda({
           <Button
             type="button"
             variant="outline"
-            onClick={limparCupom}
+            onClick={aoClicarComecarVendaNova}
             className="pdv-secondary"
           >
             <ShoppingCart aria-hidden="true" className="pdv-purple size-5" />
             Começar uma venda nova
           </Button>
         )}
+        {dialogo}
         {isOffline && (
           <div role="alert" className="pdv-notice">
             <p className="pdv-heading">
