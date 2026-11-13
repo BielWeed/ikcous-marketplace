@@ -172,6 +172,15 @@ export const Header = memo(function Header({
     },
   };
 
+  // A cápsula pode sair do DOM com o foco/mouse nela, sem `blur` nem
+  // `mouseleave` (a ilha de atualização assume, ou o Header desmonta na ida ao
+  // painel): sem isto o aviso ficaria guardado sem relógio e voltaria preso.
+  // `retomar` não faz nada se o relógio não estava parado.
+  useEffect(() => {
+    if (atualizacaoAtiva) retomarToast();
+  }, [atualizacaoAtiva, retomarToast]);
+  useEffect(() => () => retomarToast(), [retomarToast]);
+
   // Helper to render type icon inside dynamic island toast
   const renderToastIcon = (type: HeaderToastData["type"]) => {
     switch (type) {
@@ -498,6 +507,9 @@ export const Header = memo(function Header({
                   </button>
                   <button
                     type="button"
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") dispensarToast();
+                    }}
                     onClick={() => {
                       haptic.light();
                       // Dispensa ANTES: a ação pode avisar na hora por que não deu

@@ -27,6 +27,7 @@ vi.mock("@/components/ui/custom/SearchBar", () => ({
   SearchBar: () => null,
 }));
 
+import { definirEstadoDaAtualizacao } from "@/lib/atualizacao/estado-da-atualizacao";
 import {
   dispensarToastDoHeader,
   initHeaderToastInterceptor,
@@ -70,6 +71,9 @@ describe("Header — o aviso com Desfazer espera quem está nele", () => {
   });
 
   afterEach(() => {
+    act(() =>
+      definirEstadoDaAtualizacao({ fase: "nenhuma", versaoNova: null }),
+    );
     act(() => dispensarToastDoHeader());
     vi.useRealTimers();
     act(() => raiz.unmount());
@@ -201,6 +205,61 @@ describe("Header — o aviso com Desfazer espera quem está nele", () => {
       (document.activeElement as HTMLElement).blur();
     });
     await passar(1_100);
+    expect(falado()).toBe("");
+  });
+
+  it("a ilha de atualização entra com o foco no aviso: o relógio volta a correr e o aviso expira", async () => {
+    await avisarComDesfazer();
+    await act(async () => {
+      botaoCom("Desfazer").focus();
+    });
+    await passar(30_000);
+    // A cápsula sai do DOM sem `blur` nem `mouseleave`: sem o efeito do Header
+    // o aviso ficaria guardado no módulo, sem relógio, e voltaria depois.
+    act(() => definirEstadoDaAtualizacao({ fase: "instalando" }));
+    await passar(PRAZO_DO_DESFAZER + 100);
+    act(() =>
+      definirEstadoDaAtualizacao({ fase: "nenhuma", versaoNova: null }),
+    );
+    expect(falado()).toBe("");
+  });
+
+  it("o Header desmonta com o foco no aviso: o relógio volta a correr e o aviso expira", async () => {
+    await avisarComDesfazer();
+    await mouse(botaoCom("Desfazer"), "mouseover");
+    await passar(30_000);
+    // Ida ao painel admin: o Header sai sem `mouseleave`.
+    act(() => raiz.render(null));
+    await passar(PRAZO_DO_DESFAZER + 100);
+    const { Header } = await import("@/components/ui/custom/Header");
+    await act(async () => {
+      raiz.render(<Header onNavigate={() => {}} />);
+    });
+    expect(falado()).toBe("");
+  });
+
+  it("controle: a ilha entra e sai SEM pausa anterior: o aviso segue o prazo normal", async () => {
+    await avisarComDesfazer();
+    await passar(1_000);
+    act(() => definirEstadoDaAtualizacao({ fase: "instalando" }));
+    act(() =>
+      definirEstadoDaAtualizacao({ fase: "nenhuma", versaoNova: null }),
+    );
+    expect(falado()).toContain("Produto removido");
+    await passar(PRAZO_DO_DESFAZER);
+    expect(falado()).toBe("");
+  });
+
+  it("Esc no botão Desfazer dispensa o aviso, como no botão de texto", async () => {
+    await avisarComDesfazer();
+    await act(async () => {
+      botaoCom("Desfazer").focus();
+    });
+    await act(async () => {
+      botaoCom("Desfazer").dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
     expect(falado()).toBe("");
   });
 
