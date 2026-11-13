@@ -256,6 +256,27 @@ describe("AdminAboutStoreView — salvar endereço/descrição sem apagar os out
     );
   });
 
+  it("mudar só o endereço NÃO manda a descrição: outro aparelho pode ter gravado uma nova", async () => {
+    configAtual = {
+      ...BASE_CONFIG,
+      storeDescription: "<p>Descrição antiga desta tela</p>",
+    };
+    instalarCepDeSaoPaulo();
+    await renderizarTela();
+    await digitarNoEndereco("endereco-cep", "01310100");
+    await digitarNoEndereco("endereco-numero", "1578");
+    await clicarSalvar();
+
+    expect(updateConfigMock).toHaveBeenCalledTimes(1);
+    const updates = updateConfigMock.mock.calls[0][0] as Record<
+      string,
+      unknown
+    >;
+    expect("storeDescription" in updates).toBe(false);
+    expect(updates.originCep).toBe("01310-100");
+    expect(updates.storeCity).toBe("São Paulo");
+  });
+
   it("CEP digitado sem número: o Salvar recusa o bloco, com o motivo à vista; nada é gravado", async () => {
     instalarCepDeSaoPaulo();
     await renderizarTela();
