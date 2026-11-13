@@ -716,6 +716,20 @@ describe("CheckoutView — gatilho do resumo no topo, painel e barra de baixo co
     expect(texto).not.toContain("2 × R$ 99,00");
     expect(texto).toContain("1 × R$ 12,30");
     expect(texto).toContain("R$ 101,30");
+
+    // "R$ 101,30" também vem da barra de baixo; a prova do painel é a LINHA
+    // do rótulo "Subtotal" lá dentro (e não o Total, 111,30, no lugar dele).
+    const painel = document.body.querySelector(
+      '[role="dialog"][aria-label="Resumo do pedido"]',
+    );
+    expect(painel).not.toBeNull();
+    const linhaDoSubtotal = Array.from(painel!.querySelectorAll("div")).find(
+      (d) =>
+        d.children.length === 2 &&
+        d.children[0].textContent?.trim() === "Subtotal",
+    );
+    expect(linhaDoSubtotal, 'linha "Subtotal" no painel').toBeDefined();
+    expect(linhaDoSubtotal!.children[1].textContent?.trim()).toBe("R$ 101,30");
   });
 
   it("com cupom aplicado, o painel mostra a linha de Desconto e o Total abate o valor", async () => {
