@@ -8,7 +8,15 @@
  */
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  type Mock,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 const generateOrderOtp = vi.fn();
 const fetchOrdersByOtp = vi.fn();
@@ -54,7 +62,7 @@ function botaoPorTexto(host: HTMLElement, texto: string) {
 describe("OrderSearch — Voltar descarta a verificação em andamento", () => {
   let host: HTMLDivElement;
   let raiz: Root;
-  let onOrdersFound: ReturnType<typeof vi.fn>;
+  let onOrdersFound: Mock<(pedidos: unknown[]) => void>;
   let concluirConsulta!: (pedidos: unknown) => void;
 
   /** Chega à etapa do código, digita e dispara a verificação (pendente). */
@@ -96,7 +104,7 @@ describe("OrderSearch — Voltar descarta a verificação em andamento", () => {
     gravarRetratoDoConvidado.mockReset();
     toastSuccess.mockReset();
     generateOrderOtp.mockResolvedValue(true);
-    onOrdersFound = vi.fn();
+    onOrdersFound = vi.fn<(pedidos: unknown[]) => void>();
     host = document.createElement("div");
     document.body.appendChild(host);
     raiz = createRoot(host);
