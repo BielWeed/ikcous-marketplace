@@ -1,3 +1,4 @@
+import { estoqueDasAtivas } from "@/lib/estoque-das-ativas";
 import type { Product } from "@/types";
 
 // ─── Merge fino do evento de realtime na lista de produtos ──────────────────
@@ -45,4 +46,34 @@ export function mesclarProdutoNaLista(
   const nova = lista.slice();
   nova[indice] = evento.registro;
   return nova;
+}
+
+/**
+ * Registro que o tempo real tocou DURANTE a consulta do catálogo, posto por
+ * cima do mesmo produto vindo na resposta. A grade do registro NUNCA é tomada
+ * por inteira: o evento de `produtos` traz a linha PURA (sem variações), e
+ * quando o cofre não tinha o produto o motor monta a grade variação por
+ * variação, a cada evento (dois pedidos em sequência deixam só uma). Por isso
+ * a grade é a UNIÃO por id: parte da resposta, as variações do registro
+ * substituem as de mesmo id e as que só ele tem entram no fim. O estoque é
+ * recalculado sobre a união (mesma regra do motor, `estoqueDeBase` do evento).
+ * Custo aceito: variação apagada durante a consulta aparece até a próxima.
+ */
+export function registroTocadoSobreARespostaDoProduto(
+  registro: Product,
+  daResposta: Product | undefined,
+): Product {
+  if (!daResposta?.variants?.length) return registro;
+  const doRegistro = registro.variants ?? [];
+  const doRegistroPorId = new Map(doRegistro.map((v) => [v.id, v]));
+  const idsDaResposta = new Set(daResposta.variants.map((v) => v.id));
+  const uniao = [
+    ...daResposta.variants.map((v) => doRegistroPorId.get(v.id) ?? v),
+    ...doRegistro.filter((v) => !idsDaResposta.has(v.id)),
+  ];
+  return {
+    ...registro,
+    variants: uniao,
+    stock: estoqueDasAtivas(uniao, registro.estoqueDeBase ?? registro.stock),
+  };
 }
