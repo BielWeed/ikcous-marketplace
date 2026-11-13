@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   sincronizar: undefined as undefined | (() => Promise<void>),
 }));
 vi.mock("@/lib/banners-da-vitrine", () => ({
+  acompanharBannersDoRealtime: vi.fn(),
   bannersEmCache: () => h.banners,
   horaDaUltimaConsultaDeBanners: () => Date.now(),
   consultaDeBannersEmVoo: () => null,
