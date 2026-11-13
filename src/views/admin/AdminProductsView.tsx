@@ -652,7 +652,24 @@ export const AdminProductsView = memo(function AdminProductsView({
   }, [active, pedeVisaoSemCusto]);
   // Vindo do Início (card "N produtos com estoque baixo"): mesma ideia, com
   // a lista do servidor já filtrada. Começa na página 1 e sem busca/categoria.
+  // Produtos fica montada atrás do Início: com a visão JÁ aberta e uma busca,
+  // categoria ou página mexida dentro dela, o toque repetido também recomeça —
+  // senão a tela mostra menos do que o card anunciou. `filtrosAntesDaVisao`
+  // continua guardando os filtros de ANTES da visão ("Ver todos" os devolve).
   const abrirVisaoEstoqueBaixo = () => {
+    const mexidaDentroDaVisao =
+      modoEstoqueBaixo &&
+      (termoDeBusca !== "" || filterCategory !== "all" || currentPage !== 0);
+    if (mexidaDentroDaVisao) {
+      // Uma leitura com a busca/página de antes ainda em voo não pode gravar
+      // a lista errada. O efeito da lista relê UMA vez com os valores novos.
+      geracaoDaRecarga.current += 1;
+      setSearchTerm("");
+      setFilterCategory("all");
+      setCurrentPage(0);
+      setEstoqueBaixoPronto(false);
+      setLoadError(false);
+    }
     if (!modoEstoqueBaixo) {
       geracaoDaRecarga.current += 1;
       filtrosAntesDaVisao.current ??= {

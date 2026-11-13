@@ -22,6 +22,7 @@ const h = vi.hoisted(() => ({
   pagina: [] as any[],
   loadProducts: vi.fn(),
   loadProductsSemCusto: vi.fn(),
+  categorias: [] as Array<{ name: string }>,
 }));
 const onNavigate = vi.fn();
 
@@ -44,7 +45,7 @@ vi.mock("@/hooks/useAnalytics", () => ({
   }),
 }));
 vi.mock("@/hooks/useCategories", () => ({
-  useCategories: () => ({ categories: [], addCategory: vi.fn() }),
+  useCategories: () => ({ categories: h.categorias, addCategory: vi.fn() }),
 }));
 vi.mock("@/hooks/useOnlineStatus", () => ({
   useOnlineStatus: () => false,
@@ -150,6 +151,7 @@ describe("Produtos: a visão 'estoque baixo'", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    h.categorias = [];
     localStorage.setItem("admin_products_view_mode", "detailed");
     h.pagina = TODOS;
     h.loadProducts.mockImplementation(
@@ -307,6 +309,242 @@ describe("Produtos: a visão 'estoque baixo'", () => {
       }
     },
   );
+
+  // A visão fica montada atrás do Início: a lojista busca um nome DENTRO dela,
+  // volta ao Início e toca de novo no card. O destino tem de recomeçar na página
+  // 1, sem busca nem categoria, com tudo o que o card anunciou.
+  const campoDeBusca = () =>
+    hospedeiro.querySelector<HTMLInputElement>('input[name="search-assets"]')!;
+  const digitar = (campo: HTMLInputElement, texto: string) =>
+    act(async () => {
+      const escrever = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!;
+      escrever.call(campo, texto);
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  // A busca tem 400 ms de espera para digitar e a lista mais 320 ms: espera a
+  // consulta com o texto chegar em vez de apostar num tempo fixo.
+  const buscarDentro = async (texto: string) => {
+    await digitar(campoDeBusca(), texto);
+    for (let i = 0; i < 60; i++) {
+      if (h.loadProducts.mock.lastCall?.[2]?.search === texto) break;
+      await esperar(100);
+    }
+    await esperar(50);
+  };
+  const servidorComBusca = () =>
+    h.loadProducts.mockImplementation(
+      async (_pagina: number, _tamanho: number, filtros?: any) => {
+        const base = filtros?.stock === "low" ? BAIXOS : TODOS;
+        const busca = String(filtros?.search ?? "").toLowerCase();
+        h.pagina = base.filter((p) => p.name.toLowerCase().includes(busca));
+        return { products: h.pagina, total: h.pagina.length };
+      },
+    );
+
+  it("tocar de novo no card com a visão já aberta limpa a busca feita dentro dela", async () => {
+    servidorComBusca();
+    await renderizar(true, "estoque-baixo");
+    await buscarDentro("Produto d");
+    expect(nomesNaLista()).toEqual(["Produto d"]);
+    await renderizar(false, null);
+    await renderizar(true, "estoque-baixo");
+    expect(h.loadProducts.mock.lastCall![2]?.search).toBeUndefined();
+    expect(h.loadProducts.mock.lastCall![2]).toMatchObject({ stock: "low" });
+    expect(campoDeBusca().value).toBe("");
+    expect(nomesNaLista()).toEqual(["Produto b", "Produto d"]);
+    expect(faixa()?.querySelector('[role="status"]')?.textContent).toBe(
+      "Mostrando só produtos com estoque baixo · 2",
+    );
+  });
+
+  it("tocar de novo no card com a visão já aberta volta à página 1", async () => {
+    h.loadProducts.mockImplementation(
+      async (_pagina: number, _tamanho: number, filtros?: any) => {
+        h.pagina = filtros?.stock === "low" ? BAIXOS : TODOS;
+        return {
+          products: h.pagina,
+          total: filtros?.stock === "low" ? 30 : 40,
+        };
+      },
+    );
+    await renderizar(true, "estoque-baixo");
+    const proxima = [
+      ...hospedeiro.querySelectorAll<HTMLButtonElement>("button"),
+    ].find((b) => b.textContent?.includes("Próximo"));
+    expect(proxima).toBeDefined();
+    await act(async () => proxima!.click());
+    await esperar(360);
+    expect(h.loadProducts.mock.lastCall![0]).toBe(1);
+    await renderizar(false, null);
+    await renderizar(true, "estoque-baixo");
+    expect(h.loadProducts.mock.lastCall![0]).toBe(0);
+  });
+
+  it("tocar de novo no card com a visão já aberta tira a categoria escolhida dentro dela", async () => {
+    h.categorias = [{ name: "Geral" }];
+    h.loadProducts.mockImplementation(
+      async (_pagina: number, _tamanho: number, filtros?: any) => {
+        const base = filtros?.stock === "low" ? BAIXOS : TODOS;
+        h.pagina = filtros?.category ? base.slice(0, 1) : base;
+        return { products: h.pagina, total: h.pagina.length };
+      },
+    );
+    await renderizar(true, "estoque-baixo");
+    const chip = [
+      ...hospedeiro.querySelectorAll<HTMLButtonElement>("button[aria-pressed]"),
+    ].find((b) => b.textContent?.includes("Geral"));
+    expect(chip).toBeDefined();
+    await act(async () => chip!.click());
+    await esperar(360);
+    expect(h.loadProducts.mock.lastCall![2]).toMatchObject({
+      category: "Geral",
+    });
+    await renderizar(false, null);
+    await renderizar(true, "estoque-baixo");
+    expect(h.loadProducts.mock.lastCall![2]?.category).toBeUndefined();
+    expect(h.loadProducts.mock.lastCall![2]).toMatchObject({ stock: "low" });
+    expect(nomesNaLista()).toEqual(["Produto b", "Produto d"]);
+  });
+
+  it("enquanto relê no toque repetido, a faixa não afirma a contagem da lista velha", async () => {
+    servidorComBusca();
+    await renderizar(true, "estoque-baixo");
+    await buscarDentro("Produto d");
+    expect(faixa()?.querySelector('[role="status"]')?.textContent).toBe(
+      "Mostrando só produtos com estoque baixo · 1",
+    );
+    let liberar: () => void = () => {};
+    h.loadProducts.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          liberar = () => {
+            h.pagina = BAIXOS;
+            resolve({ products: BAIXOS, total: BAIXOS.length });
+          };
+        }),
+    );
+    await renderizar(false, null);
+    await renderizar(true, "estoque-baixo");
+    expect(faixa()?.querySelector('[role="status"]')?.textContent).toBe(
+      "Procurando os produtos com estoque baixo…",
+    );
+    await act(async () => liberar());
+    expect(faixa()?.querySelector('[role="status"]')?.textContent).toBe(
+      "Mostrando só produtos com estoque baixo · 2",
+    );
+  });
+
+  it("com a tela já ativa e a visão intacta, o toque repetido não pede nada nem trava a faixa em 'Procurando'", async () => {
+    servidorComBusca();
+    await renderizar(true, "estoque-baixo");
+    const antes = h.loadProducts.mock.calls.length;
+    await renderizar(true, null);
+    await renderizar(true, "estoque-baixo");
+    await esperar(360);
+    expect(h.loadProducts).toHaveBeenCalledTimes(antes);
+    expect(faixa()?.querySelector('[role="status"]')?.textContent).toBe(
+      "Mostrando só produtos com estoque baixo · 2",
+    );
+  });
+
+  it("leitura de outra página ainda em voo, ao tocar de novo no card, não fecha o 'Procurando' com a lista velha", async () => {
+    h.loadProducts.mockImplementation(
+      async (_pagina: number, _tamanho: number, filtros?: any) => {
+        h.pagina = filtros?.stock === "low" ? BAIXOS : TODOS;
+        return {
+          products: h.pagina,
+          total: filtros?.stock === "low" ? 30 : 40,
+        };
+      },
+    );
+    await renderizar(true, "estoque-baixo");
+    const proxima = [
+      ...hospedeiro.querySelectorAll<HTMLButtonElement>("button"),
+    ].find((b) => b.textContent?.includes("Próximo"));
+    let liberarVelha: () => void = () => {};
+    h.loadProducts.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          liberarVelha = () =>
+            resolve({ products: BAIXOS, total: BAIXOS.length });
+        }),
+    );
+    await act(async () => proxima!.click());
+    await esperar(360);
+    expect(h.loadProducts.mock.lastCall![0]).toBe(1);
+    // A leitura da página 2 segue pendente quando a lojista volta pelo card.
+    await act(async () => {
+      raiz.render(
+        <Tela onNavigate={onNavigate} active={false} visaoInicial={null} />,
+      );
+    });
+    await act(async () => {
+      raiz.render(
+        <Tela onNavigate={onNavigate} active visaoInicial="estoque-baixo" />,
+      );
+    });
+    h.loadProducts.mockImplementation(
+      async (_pagina: number, _tamanho: number, filtros?: any) => {
+        h.pagina = filtros?.stock === "low" ? BAIXOS : TODOS;
+        return { products: h.pagina, total: 30 };
+      },
+    );
+    await act(async () => liberarVelha());
+    expect(faixa()?.querySelector('[role="status"]')?.textContent).toBe(
+      "Procurando os produtos com estoque baixo…",
+    );
+    await esperar(360);
+    expect(h.loadProducts.mock.lastCall![0]).toBe(0);
+    expect(faixa()?.querySelector('[role="status"]')?.textContent).toBe(
+      "Mostrando só produtos com estoque baixo · 30",
+    );
+  });
+
+  it("o toque repetido não apaga os filtros de antes da visão: 'Ver todos' os devolve", async () => {
+    localStorage.setItem(
+      "admin_products_search_term",
+      JSON.stringify("Produto"),
+    );
+    localStorage.setItem(
+      "admin_products_filter_category",
+      JSON.stringify("Geral"),
+    );
+    servidorComBusca();
+    await renderizar(true, "estoque-baixo");
+    await buscarDentro("Produto d");
+    await renderizar(false, null);
+    await renderizar(true, "estoque-baixo");
+    await act(async () => botaoVerTodos()!.click());
+    await esperar(360);
+    expect(h.loadProducts.mock.lastCall![2]).toMatchObject({
+      search: "Produto",
+      category: "Geral",
+    });
+    expect(h.loadProducts.mock.lastCall![2]?.stock).toBeUndefined();
+  });
+
+  it("o toque repetido pede a lista uma só vez, com a visão intacta ou com busca feita dentro dela", async () => {
+    servidorComBusca();
+    await renderizar(true, "estoque-baixo");
+    const intacta = h.loadProducts.mock.calls.length;
+    await renderizar(false, null);
+    await renderizar(true, "estoque-baixo");
+    await esperar(360);
+    expect(h.loadProducts).toHaveBeenCalledTimes(intacta + 1);
+    // Visão intacta: nada a refazer, e a faixa não fica em "Procurando…".
+    expect(faixa()?.querySelector('[role="status"]')?.textContent).toBe(
+      "Mostrando só produtos com estoque baixo · 2",
+    );
+    await buscarDentro("Produto d");
+    const comBusca = h.loadProducts.mock.calls.length;
+    await renderizar(false, null);
+    await renderizar(true, "estoque-baixo");
+    await esperar(360);
+    expect(h.loadProducts).toHaveBeenCalledTimes(comBusca + 1);
+  });
 
   it("sem pedido (ou com valor qualquer) a lista abre normal, sem filtro", async () => {
     await renderizar(true, null);
