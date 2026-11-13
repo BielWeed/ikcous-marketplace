@@ -422,7 +422,7 @@ describe("S1 — cancelar pedido online vai pela edge e só a resposta `cancelad
 // conferiu a etapa de origem; o cancelamento (a ação mais destrutiva) ia sem
 // ela, e a edge cancelava um pedido já entregue. Agora o painel manda a etapa
 // que a lojista VIA (`statusEsperado`) e a edge compara com a do servidor.
-describe("r43-e — o painel manda a etapa que a lojista via ao cancelar pela edge", () => {
+describe("r43-e — o painel e a cliente mandam a etapa que viam ao cancelar pela edge", () => {
   it("ADMIN com a etapa capturada pela ficha: o corpo leva `statusEsperado` (a captura da ficha prevalece sobre a memória)", async () => {
     invoke.mockResolvedValue({
       data: { cancelamento: "cancelado" },
@@ -479,7 +479,7 @@ describe("r43-e — o painel manda a etapa que a lojista via ao cancelar pela ed
     });
   });
 
-  it("CLIENTE cancelando o próprio pedido: o corpo NÃO leva `statusEsperado` (o servidor já barra o cliente em pedido entregue)", async () => {
+  it("CLIENTE com a etapa que a tela dele mostrava: o corpo leva `statusEsperado` (a edge recusa se o pedido já andou)", async () => {
     invoke.mockResolvedValue({
       data: { cancelamento: "cancelado" },
       error: null,
@@ -491,8 +491,66 @@ describe("r43-e — o painel manda a etapa que a lojista via ao cancelar pela ed
     expect(await cancelar(atualizar, "processing")).toBeNull();
 
     expect(invoke).toHaveBeenCalledWith("criar-pagamento", {
+      body: {
+        orderId: "pedido-1",
+        metodo: "cancelar",
+        statusEsperado: "processing",
+      },
+    });
+  });
+
+  it("borda: CLIENTE sem etapa explícita (o checkout cancela assim) segue sem `statusEsperado`, mesmo com o pedido na memória", async () => {
+    invoke.mockResolvedValue({
+      data: { cancelamento: "cancelado" },
+      error: null,
+    });
+    const { atualizar } = await montarSonda(
+      pedidoOnline({ status: "pending", paymentStatus: "aguardando" }),
+    );
+
+    expect(await cancelar(atualizar)).toBeNull();
+
+    expect(invoke).toHaveBeenCalledWith("criar-pagamento", {
       body: { orderId: "pedido-1", metodo: "cancelar" },
     });
+  });
+
+  it("CLIENTE em tela velha (viu 'processing', a loja já enviou): a edge diz 'mudou', NADA é cancelado, a frase sai uma vez e a lista passa a mostrar 'shipping'", async () => {
+    const FRASE =
+      "O pedido mudou de situação enquanto você olhava. Confira o pedido e tente de novo.";
+    invoke.mockResolvedValue({
+      data: {
+        cancelamento: "mudou",
+        mensagem: FRASE,
+        pedido: { status: "shipping", paymentStatus: "pago" },
+      },
+      error: null,
+    });
+    const { ErroCancelamentoNaoConcluido } = await import("@/hooks/useOrders");
+    const { pegarOrders, atualizar } = await montarSonda(
+      pedidoOnline({ status: "processing", paymentStatus: "pago" }),
+    );
+
+    const erro = await cancelar(atualizar, "processing");
+
+    expect(invoke).toHaveBeenCalledWith("criar-pagamento", {
+      body: {
+        orderId: "pedido-1",
+        metodo: "cancelar",
+        statusEsperado: "processing",
+      },
+    });
+    expect(erro).toBeInstanceOf(ErroCancelamentoNaoConcluido);
+    expect(
+      (erro as InstanceType<typeof ErroCancelamentoNaoConcluido>).desfecho,
+    ).toBe("mudou");
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(toast.warning).toHaveBeenCalledWith(FRASE);
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+    expect(pegarOrders().find((o) => o.id === "pedido-1")?.status).toBe(
+      "shipping",
+    );
   });
 
   it("a edge diz que o pedido JÁ MUDOU de etapa: não cancela, mostra a frase UMA vez e a tela passa a mostrar a etapa verdadeira", async () => {

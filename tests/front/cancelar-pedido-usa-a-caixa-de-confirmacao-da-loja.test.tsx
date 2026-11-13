@@ -173,9 +173,14 @@ describe("OrderDetailsView — cancelar pedido pela caixa de confirmação da lo
     });
 
     expect(updateOrderStatusMock).toHaveBeenCalledTimes(1);
+    // Quinto argumento: a etapa que a tela mostrava no "sim" (ver o teste do
+    // pedido que a loja adiantou com a caixa aberta, mais abaixo).
     expect(updateOrderStatusMock).toHaveBeenCalledWith(
       "pedido-cancelar",
       "cancelled",
+      undefined,
+      false,
+      "pending",
     );
     expect(caixa()).toBeNull();
     expect(confirmSpy).not.toHaveBeenCalled();
@@ -287,6 +292,31 @@ describe("OrderDetailsView — cancelar pedido pela caixa de confirmação da lo
       await Promise.resolve();
     });
   }
+
+  it("o 'sim' manda a etapa que a tela mostrava NA HORA (a da frase de dinheiro que ela leu), não a do primeiro desenho", async () => {
+    // A loja adiantou o pedido para "Em separação" antes da cliente abrir a
+    // caixa: a frase e o pedido ao servidor falam da MESMA etapa.
+    pedidoAtual = {
+      ...pedido,
+      status: "processing",
+      updatedAt: new Date(30_000).toISOString(),
+    };
+    await renderizarDeNovo();
+    await abrirACaixa();
+    await act(async () => {
+      botao(caixa()!, "Cancelar pedido")!.click();
+      await Promise.resolve();
+    });
+
+    expect(updateOrderStatusMock).toHaveBeenCalledTimes(1);
+    expect(updateOrderStatusMock).toHaveBeenCalledWith(
+      "pedido-cancelar",
+      "cancelled",
+      undefined,
+      false,
+      "processing",
+    );
+  });
 
   it("pedido que deixa de ser cancelável fecha a caixa, sem frase falsa de dinheiro", async () => {
     // Pago e já enviado; com a caixa aberta a loja marca como entregue.

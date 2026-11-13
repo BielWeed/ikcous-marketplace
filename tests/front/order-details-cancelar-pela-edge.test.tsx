@@ -175,9 +175,14 @@ describe("OrderDetailsView — cancelar pedido online pela edge (S1)", () => {
 
       await clicarCancelar();
 
+      // A cliente manda a etapa que a TELA dela mostrava ("pending"): se o
+      // pedido já andou em outro aparelho, a edge responde "mudou".
       expect(updateOrderStatusMock).toHaveBeenCalledWith(
         "pedido-online",
         "cancelled",
+        undefined,
+        false,
+        "pending",
       );
       expect(fetchUserOrdersMock.mock.calls.length).toBe(leiturasAntes + 1);
       // Nada de "cancelado" pintado: o botão continua lá (pedido pending).

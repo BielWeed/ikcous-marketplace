@@ -3933,14 +3933,20 @@ export function useOrders(
           // r43-e: a etapa que a lojista VIA ao confirmar. A edge compara com a
           // do servidor e devolve "mudou" se o pedido já andou (tela velha:
           // conexão em tempo real caída, app voltando do segundo plano) — o
-          // avanço sempre conferiu isso, o cancelamento não. Só o painel
-          // manda: o cliente cancelando o próprio pedido já é barrado pelo
-          // servidor em pedido entregue, e o checkout trata o desfecho dele.
-          // Sem etapa conhecida (pedido fora da memória), vai sem: edge antiga
-          // e etapa desconhecida seguem como sempre.
+          // avanço sempre conferiu isso, o cancelamento não. O painel manda a
+          // que capturou (ou a da memória). A CLIENTE só manda a que a tela
+          // dela passou de forma explícita (`statusEsperado`): a frase do
+          // diálogo "o dinheiro volta sozinho" vale para a etapa que ela leu —
+          // se a loja marcou como enviado em outro aparelho, a edge responde
+          // "mudou" em vez de cancelar com as regras de pedido enviado. Só
+          // pode RECUSAR mais, nunca permitir mais. Sem a etapa explícita
+          // (o checkout cancela assim e trata o desfecho dele por releitura)
+          // ela não vai: a lista em memória pode estar mais velha que a
+          // tela. Sem etapa conhecida, vai sem: edge antiga e etapa
+          // desconhecida seguem como sempre.
           const etapaQueATelaViu = isAdmin
             ? (statusEsperado ?? order?.status)
-            : undefined;
+            : statusEsperado;
 
           // r43-e: o aviso do realtime ("Pedido #N atualizado para Cancelado")
           // não repete o que a própria lojista acaba de pedir. A edge grava o

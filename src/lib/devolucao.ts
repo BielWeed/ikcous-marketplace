@@ -486,6 +486,32 @@ export function fotosObrigatorias(
 /** Quantidades escolhidas por `order_item_id` (só as maiores que zero). */
 export type SelecaoDeItens = ReadonlyMap<string, number>;
 
+/**
+ * A seleção que a cliente marcou, conferida com a disponibilidade de AGORA:
+ * item que já não está na lista ou já não tem o que devolver sai, e a
+ * quantidade nunca passa do que ainda pode voltar. A lista da folha só mostra
+ * item com `disponivel > 0`; sem esta conferência o item que sumiu continuava
+ * preso na seleção, invisível e sem como desmarcar, e o servidor recusava o
+ * envio inteiro por causa dele. Devolve a MESMA referência quando nada muda.
+ */
+export function selecaoPossivel(
+  itens: readonly ItemElegivel[],
+  selecao: SelecaoDeItens,
+): SelecaoDeItens {
+  const disponivelPorItem = new Map(
+    itens.map((item) => [item.order_item_id, item.disponivel]),
+  );
+  let mudou = false;
+  const conferida = new Map<string, number>();
+  for (const [id, qtd] of selecao) {
+    const disponivel = disponivelPorItem.get(id) ?? 0;
+    const limitada = Math.min(qtd, disponivel);
+    if (limitada !== qtd) mudou = true;
+    if (limitada > 0) conferida.set(id, limitada);
+  }
+  return mudou ? conferida : selecao;
+}
+
 export function valorDaSelecao(
   itens: readonly ItemElegivel[],
   selecao: SelecaoDeItens,

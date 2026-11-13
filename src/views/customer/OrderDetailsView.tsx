@@ -702,7 +702,17 @@ export function OrderDetailsView({
     setIsCancelling(true);
     haptic.medium();
     try {
-      await updateOrderStatus(order.id, "cancelled");
+      // A etapa que a tela mostrava (a mesma da frase de dinheiro da caixa)
+      // vai junto: se a loja já andou com o pedido em outro aparelho, o
+      // servidor responde "mudou" e nada é cancelado com regras que a cliente
+      // não leu (ex.: pedido enviado, que pede devolver o produto).
+      await updateOrderStatus(
+        order.id,
+        "cancelled",
+        undefined,
+        false,
+        order.status,
+      );
       setOrder((prev) => (prev ? { ...prev, status: "cancelled" } : null));
     } catch (error) {
       console.error("Failed to cancel order:", error);
