@@ -363,6 +363,25 @@ const VERIFICACOES = {
       { texto: "AND o.status NOT IN ('cancelled', 'returned')", vezes: 1 },
     ],
   },
+  // 20261399991000: repetir a devolucao que falhou nao paga duas vezes. A funcao NOVA solicitar_estorno_repetindo repete UMA linha falhada: o valor sai da
+  // linha, a segunda chamada devolve a MESMA repeticao (ja_repetida) em vez de criar outra, e as portas sao as de solicitar_estorno mais a regra unica
+  // "pode ter saido". A tabela nova order_refund_repeticao (PK + UNIQUE) e a consulta 143a conferem o resto (corpo exato, ACL, colunas); a prova viva mede o comportamento.
+  "20261399991000_repetir_a_devolucao_que_falhou_nao_paga_duas_vezes.sql": {
+    funcao: "solicitar_estorno_repetindo",
+    esperado: [
+      { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+      { texto: "ORDER BY r.id", vezes: 1 },
+      { texto: "IF public.order_refund__pode_ter_saido(v_r.id) THEN", vezes: 1 },
+      { texto: "IF v_r.amount > v_saldo THEN", vezes: 1 },
+      {
+        texto:
+          "INSERT INTO public.order_refund_repeticao (refund_id, nova_refund_id)",
+        vezes: 1,
+      },
+      { texto: "'ja_repetida', true,", vezes: 1 },
+      { texto: "'ja_repetida', false,", vezes: 1 },
+    ],
+  },
   // 20261386: o preco do produto deixa historico. A tabela, a politica, o ACL e o gatilho nao sao conferiveis aqui (so corpo de funcao): a
   // consulta 91a e a prova viva fazem isso. Aqui: a funcao do gatilho grava 'cadastro' no INSERT e 'mudanca' so quando o preco muda.
   "20261386000000_o_preco_do_produto_deixa_historico.sql": {
