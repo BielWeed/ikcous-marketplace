@@ -202,6 +202,11 @@
   aspect-ratio: auto;
   border-radius: 0;
 }
+/* Só texto aqui: sem isto o toque no aviso de foto que falhou caía nesta camada
+   e abria o destino em vez de tentar de novo. */
+[data-modelo="foto"] .banner-pronto-conteudo {
+  pointer-events: none;
+}
 [data-modelo="foto"] .banner-pronto-texto {
   flex: 0 1 65%;
   align-self: flex-end;
