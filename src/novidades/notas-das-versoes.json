@@ -6,14 +6,14 @@
       "Painel, Caixa e Financeiro: o valor digitado com sinal de menos não vira positivo, e o saldo desatualizado ganha um aviso."
     ],
     "melhorias": [
-      "Painel e Loja: avaliações, perguntas, ficha do cliente, busca do balcão e banners da vitrine avisam e deixam tentar de novo quando a internet pendura.",
+      "Painel e Loja: avaliações, perguntas, ficha do cliente e busca do balcão avisam e deixam tentar de novo quando a internet pendura; a faixa de banners da página inicial não fica em esqueleto para sempre.",
       "Painel, Caixa: a sangria confere o saldo de agora, e o aviso de que passou do esperado não bloqueia o botão.",
       "Painel, Financeiro: o gráfico soma só as contas ativas.",
       "Painel, CRM: o comprador com e sem o 55 do telefone não aparece duas vezes.",
       "Loja, Carrinho: o leitor de tela anuncia o novo total quando a quantidade muda."
     ],
     "correcoes": [
-      "Loja, Checkout: não dá para trocar entrega por retirada (ou o contrário) enquanto o pedido está sendo enviado, e o pedido nunca sai com o frete da escolha antiga.",
+      "Loja, Checkout: não dá para trocar entrega por retirada (ou o contrário) enquanto o pedido está sendo enviado, e o pedido não sai com o frete da escolha antiga.",
       "Loja, Endereço: trocar o CEP com a consulta fora do ar não salva endereço misturado.",
       "Loja, Busca: uma busca nova vinda da barra do topo não herda a categoria escolhida antes.",
       "Loja, Pedido por código: a consulta que volta depois de outra conta entrar no aparelho não grava o pedido da pessoa anterior.",
