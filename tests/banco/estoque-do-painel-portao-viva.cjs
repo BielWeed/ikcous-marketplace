@@ -1405,6 +1405,21 @@ async function main() {
         "20261399985000_o_grafico_do_financeiro_soma_so_as_contas_ativas.sql",
         "public.fin_resumo(date,date)",
       ],
+      // A 20261399992000 (o item que a lojista marcou "Nao veio" pode ser devolvido de novo): UMA migration, tres funcoes de fora destas tres
+      // (devolucao_elegibilidade e devolucao_detalhe sobre o corpo da 20261199, solicitar_devolucao sobre o da 20261175). So muda a conta de
+      // 'ausente' na devolucao, nao mexe no estoque do painel; a 17a nao as le. O rollback dela devolve os tres corpos de uma vez.
+      [
+        "20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql",
+        "public.devolucao_detalhe(uuid)",
+      ],
+      [
+        "20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql",
+        "public.devolucao_elegibilidade(uuid)",
+      ],
+      [
+        "20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql",
+        "public.solicitar_devolucao(uuid,jsonb,text,text,text,text,text[])",
+      ],
     ],
     "as migrations posteriores ao lote 17 mudaram: reveja esta prova e a 17a",
   );
