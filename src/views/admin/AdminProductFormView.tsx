@@ -1694,7 +1694,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
           const isDraftDifferent = isProductFormDirty(draftFields, initialData);
 
-          if (isDraftDifferent || gradeRestaurada.repetidas) {
+          // A exclusão que não valeu (a variação mudou em outro aparelho) deixa
+          // o formulário igual ao banco, mas o rascunho tem de ser oferecido
+          // para o aviso sair: apagá-lo aqui seria perder a exclusão dela em
+          // silêncio, com a variação seguindo à venda.
+          if (
+            isDraftDifferent ||
+            gradeRestaurada.repetidas ||
+            alteradasEmOutroAparelho.length > 0
+          ) {
             // Grade que só existe neste rascunho (o produto foi criado e as
             // variações não gravaram): o aviso fica até ela decidir.
             const pendente = parsed.variacoesPendentes === true;
@@ -3648,16 +3656,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         if (gradeRecarregada.repetidas) {
           toast.warning(AVISO_COMBINACAO_JA_CRIADA);
         }
-        if (voltaramDaExclusao.length > 0) {
-          const quais = voltaramDaExclusao
-            .map((v) => `${v.name}: ${v.value}`)
-            .join(", ");
-          toast.warning(
-            voltaramDaExclusao.length === 1
-              ? `A variação ${quais} foi alterada em outro aparelho e voltou para a lista; revise antes de excluir.`
-              : `As variações ${quais} foram alteradas em outro aparelho e voltaram para a lista; revise antes de excluir.`,
-          );
-        }
+        const avisoDasVoltadas =
+          avisoDeVariacoesAlteradasEmOutroAparelho(voltaramDaExclusao);
+        if (avisoDasVoltadas) toast.warning(avisoDasVoltadas);
       }
       setIsSubmitting(false);
       console.error("Erro ao salvar produto:", error);
