@@ -40,6 +40,9 @@ const { estado, produto } = vi.hoisted(() => {
     produto,
     estado: {
       enderecos: [] as unknown[],
+      // O 2º argumento que o formulário de verdade entrega ao editar: só o que
+      // a cliente mudou (ver address-form-edicao-manda-so-o-que-mudou).
+      alteracoes: undefined as Record<string, unknown> | undefined,
     },
   };
 });
@@ -62,24 +65,30 @@ vi.mock("@/components/ui/custom/AddressForm", () => ({
     onSubmit,
     initialData,
   }: {
-    onSubmit: (data: Record<string, unknown>) => Promise<void>;
+    onSubmit: (
+      data: Record<string, unknown>,
+      alteracoes?: Record<string, unknown>,
+    ) => Promise<void>;
     initialData?: { id: string };
   }) => (
     <button
       type="button"
       data-testid="salvar-endereco-teste"
       onClick={() => {
-        void onSubmit({
-          name: initialData ? "Editado" : "Novo",
-          recipient_name: "Cliente Teste",
-          cep: "01310-200",
-          street: "Rua Nova",
-          number: "200",
-          neighborhood: "Centro",
-          city: "Cidade Teste",
-          state: "SP",
-          is_default: false,
-        });
+        void onSubmit(
+          {
+            name: initialData ? "Editado" : "Novo",
+            recipient_name: "Cliente Teste",
+            cep: "01310-200",
+            street: "Rua Nova",
+            number: "200",
+            neighborhood: "Centro",
+            city: "Cidade Teste",
+            state: "SP",
+            is_default: false,
+          },
+          initialData ? estado.alteracoes : undefined,
+        );
       }}
     >
       Salvar endereço (teste)
@@ -276,6 +285,7 @@ describe("CheckoutView — Voltar do aparelho enquanto o endereço é salvo", ()
     onSetBackOverride.mockReset();
     escolherEndereco.mockReset();
     estado.enderecos = [ENDERECO_DA_CONTA];
+    estado.alteracoes = undefined;
     sessionStorage.clear();
     pararABuscaDeCep();
     vi.stubGlobal("localStorage", {
@@ -410,6 +420,26 @@ describe("CheckoutView — Voltar do aparelho enquanto o endereço é salvo", ()
 
     expect(updateAddress).toHaveBeenCalledTimes(1);
     expect(voltarDoNavegador).not.toHaveBeenCalled();
+  });
+
+  it("editar um endereço: o checkout grava só o que a cliente mudou, não o formulário inteiro", async () => {
+    updateAddress.mockResolvedValueOnce(true);
+    estado.alteracoes = { complement: "Apto 3" };
+    await abrirOApp();
+    await act(async () => {
+      const editar = document.querySelector(
+        'button[aria-label="Editar endereço Casa"]',
+      ) as HTMLButtonElement | null;
+      expect(editar).not.toBeNull();
+      editar!.click();
+      await esperarMicrotarefas();
+    });
+    await tocarEmSalvar();
+
+    expect(updateAddress).toHaveBeenCalledTimes(1);
+    expect(updateAddress).toHaveBeenCalledWith("addr-1", {
+      complement: "Apto 3",
+    });
   });
 
   it("o salvamento FALHA e a cliente já tinha apertado Voltar: nada acontece (nem passo para trás, nem escolha)", async () => {

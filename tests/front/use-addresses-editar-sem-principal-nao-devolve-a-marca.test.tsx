@@ -253,6 +253,37 @@ describe("useAddresses — edição sem is_default e a marca de outro aparelho",
     expect(principalNaTela()).toEqual(["Trabalho"]);
   });
 
+  it("tablet velho: edição só com o complemento NÃO desfaz o número que o celular corrigiu no banco", async () => {
+    semear(["Casa", true]);
+    await celularLeAListaDoServidor();
+    // O celular corrige o número (o tablet ainda acha que é 1).
+    banco.linhas[0].number = "100";
+    banco.operacoes.length = 0;
+
+    await act(async () => {
+      await hook.updateAddress("end-Casa", { complement: "Apto 3" });
+    });
+
+    expect(atualizacoes()[0].payload).toEqual({ complement: "Apto 3" });
+    expect(banco.linhas[0].number).toBe("100");
+    expect(banco.linhas[0].complement).toBe("Apto 3");
+  });
+
+  it("edição SEM nenhum campo alterado: não grava nada, e a cliente segue (sucesso)", async () => {
+    semear(["Casa", true]);
+    await celularLeAListaDoServidor();
+    banco.operacoes.length = 0;
+
+    let ok: boolean | undefined;
+    await act(async () => {
+      ok = await hook.updateAddress("end-Casa", {});
+    });
+
+    expect(ok).toBe(true);
+    expect(banco.operacoes).toHaveLength(0);
+    expect(avisos.error).not.toHaveBeenCalled();
+  });
+
   it("a releitura de acerto falha: a edição vale, sem aviso de erro (a lista guardada segue como antes)", async () => {
     semear(["Casa", true], ["Mãe", false]);
     await celularLeAListaDoServidor();
