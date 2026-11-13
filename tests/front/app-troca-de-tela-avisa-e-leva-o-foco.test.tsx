@@ -164,7 +164,22 @@ vi.mock("@/views/customer/CartView", () => ({
   CartView: () => <div data-testid="tela-carrinho" />,
 }));
 vi.mock("@/views/customer/ProductView", () => ({
-  ProductView: () => <div data-testid="tela-produto" />,
+  // O botão "relacionado" é o card da faixa "você também pode gostar": abre
+  // OUTRO produto sem sair da tela de produto (e, no App real, o ProductView
+  // remonta por causa da `key`, levando o botão focado junto).
+  ProductView: ({
+    onProductClick,
+  }: { readonly onProductClick: (id: string) => void }) => (
+    <div data-testid="tela-produto">
+      <button
+        type="button"
+        data-testid="relacionado"
+        onClick={() => onProductClick("produto-B")}
+      >
+        Relacionado
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock("@/components/debug/DebugPanel", () => ({ DebugPanel: () => null }));
@@ -655,6 +670,29 @@ describe("App — trocar de tela avisa em voz alta e leva o foco", () => {
         ?.getAttribute("data-view"),
     ).toBe("admin-products");
     expect(aviso()?.textContent).toBe("Produtos");
+  });
+
+  it("produto -> outro produto pela faixa de relacionados: o foco vai para o <main>, não fica no botão antigo", async () => {
+    catalogo.products = [{ id: "produto-A" }, { id: "produto-B" }];
+    await abrir();
+    await tocar("produto");
+    expect(
+      container?.querySelector('[data-testid="tela-produto"]'),
+    ).not.toBeNull();
+    await tocar("relacionado", true);
+    expect(document.activeElement).toBe(principal());
+  });
+
+  it("produto -> outro produto: quem está digitando na busca do topo não perde o foco", async () => {
+    catalogo.products = [{ id: "produto-A" }, { id: "produto-B" }];
+    await abrir();
+    await tocar("produto");
+    const busca = container?.querySelector<HTMLInputElement>(
+      '[data-testid="busca-do-topo"]',
+    );
+    busca?.focus();
+    await tocar("relacionado");
+    expect(document.activeElement).toBe(busca);
   });
 
   it("tela sem nome na lista (produto) esvazia o aviso", async () => {

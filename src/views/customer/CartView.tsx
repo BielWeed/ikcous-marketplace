@@ -876,7 +876,15 @@ export function CartView({
   useVoltarFechaAFolha(confirmandoEsvaziar, () =>
     setConfirmandoEsvaziar(false),
   );
-  const handleClearCart = () => setConfirmandoEsvaziar(true);
+  // A caixa abre por ESTADO (sem AlertDialogTrigger): o Radix não tem gatilho
+  // para devolver o foco e ele cairia no body. Guardamos quem estava focado ao
+  // abrir (o botão "Esvaziar carrinho") e o devolvemos em `onCloseAutoFocus`.
+  const focoAoEsvaziarRef = useRef<HTMLElement | null>(null);
+  const handleClearCart = () => {
+    const ativo = document.activeElement;
+    focoAoEsvaziarRef.current = ativo instanceof HTMLElement ? ativo : null;
+    setConfirmandoEsvaziar(true);
+  };
 
   const handleRemove = useCallback(
     (productId: string, variantId?: string) => {
@@ -1706,6 +1714,13 @@ export function CartView({
         <AlertDialogContent
           overlayClassName="z-[130]"
           className="z-[130] sm:max-w-sm"
+          onCloseAutoFocus={(evento) => {
+            evento.preventDefault();
+            // Confirmou: o botão saiu junto com os itens (desconectado), e o
+            // foco não é forçado em elemento que não existe mais.
+            const botao = focoAoEsvaziarRef.current;
+            if (botao?.isConnected) botao.focus();
+          }}
         >
           <AlertDialogHeader>
             <AlertDialogTitle>Esvaziar o carrinho?</AlertDialogTitle>

@@ -968,11 +968,17 @@ const AppContent = () => {
   // Troca de tela: o foco vai para o <main> (a tela antiga some e o foco
   // cairia no <body>), exceto se a pessoa está digitando, está na barra de
   // baixo ou há diálogo aberto. O nome da tela é falado pela região de aviso.
-  const vistaAnteriorRef = useRef(currentView);
+  // Produto -> outro produto pela faixa de relacionados também é troca de tela:
+  // o ProductView remonta (a `key` é o id) e o card focado some com ele.
+  const chaveDaTela =
+    currentView === "product-detail"
+      ? `product-detail:${selectedProductId ?? ""}`
+      : currentView;
+  const vistaAnteriorRef = useRef(chaveDaTela);
   useEffect(() => {
-    if (vistaAnteriorRef.current === currentView) return;
+    if (vistaAnteriorRef.current === chaveDaTela) return;
     const veioDoPainel = vistaAnteriorRef.current.startsWith("admin");
-    vistaAnteriorRef.current = currentView;
+    vistaAnteriorRef.current = chaveDaTela;
     if (currentView.startsWith("admin") && !veioDoPainel) return;
     // Abrir o app direto num endereço (/cart, /orders...) também "troca de
     // tela" na montagem, sem a pessoa ter tocado em nada: não puxar o foco,
@@ -990,7 +996,7 @@ const AppContent = () => {
       ? mainRef.current?.querySelector<HTMLElement>("#conteudo-do-painel")
       : mainRef.current;
     destino?.focus({ preventScroll: true });
-  }, [currentView]);
+  }, [chaveDaTela, currentView]);
   const scrollSentinelRef = useRef<HTMLDivElement>(null);
   const backOverrideRef = useRef<(() => void) | null>(null);
   const isTransitioningRef = useRef(false);
