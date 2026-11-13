@@ -421,6 +421,12 @@ export function useAddresses() {
       toast.error("Estado inválido");
       return false;
     }
+    // Nada mudou (o formulário manda só o que a cliente alterou): não há o que
+    // gravar, e um UPDATE sem campo nenhum não é uma consulta válida.
+    if (Object.keys(updates).length === 0) {
+      toast.success("Endereço atualizado");
+      return true;
+    }
     const idDaConta = user.id;
     try {
       const { data, error } = await comPrazo(
