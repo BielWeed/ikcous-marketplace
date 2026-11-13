@@ -390,6 +390,16 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
     // inteira, e o lojista fica com pergunta esperando e o sino apagado.
     await esperarAte(() => sino.querySelector("span") !== null);
     expect(sino.querySelector("span")).toBeTruthy();
+
+    // O dible de `rpc` ignora os argumentos: com `p_filter: "all"` a bolinha
+    // acenderia por toda pergunta ja respondida e o caso acima seguiria verde.
+    const { supabase } = await import("@/lib/supabase");
+    expect(supabase.rpc).toHaveBeenCalledWith("get_admin_questions_paged", {
+      p_search: "",
+      p_filter: "pending",
+      p_page: 0,
+      p_page_size: 1,
+    });
   });
 
   it("só com pedido entregue sem recebimento marcado, a bolinha acende — e a consulta é a mesma regra da lista", async () => {

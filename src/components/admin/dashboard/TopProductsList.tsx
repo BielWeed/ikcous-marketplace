@@ -34,10 +34,12 @@ export const TopProductsList = memo(function TopProductsList({
       className="relative min-h-[282px] overflow-hidden"
       acao={
         <ExplicacaoDoRelatorio titulo="Produtos que mais dão lucro">
-          É o que a loja ganhou com cada produto: o que a cliente pagou, menos o
-          dinheiro devolvido, menos o custo das peças que não voltaram para a
-          prateleira. Conta no dia da venda e sem frete — por isso o total não é
-          o mesmo do Financeiro do mês. Produto sem custo cadastrado não entra.
+          É o que a loja ganhou com cada produto: o que a cliente pagou pela
+          peça (já com o cupom), menos todo dinheiro devolvido, menos o custo
+          das peças que não voltaram para a prateleira. Reembolso total não tira
+          o pedido da lista; só sai o pedido cancelado. Conta no dia da venda e
+          sem frete, por isso difere do Financeiro do mês. Produto sem custo não
+          entra.
         </ExplicacaoDoRelatorio>
       }
     >
