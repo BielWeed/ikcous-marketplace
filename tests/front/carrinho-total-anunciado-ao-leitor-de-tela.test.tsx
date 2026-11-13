@@ -123,7 +123,7 @@ vi.mock("@/components/ui/custom/EmptyCart", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const SEM_ESPACO_DURO = / /g;
+const SEM_ESPACO_DURO = /\u00a0/g;
 
 /** O elemento do valor: o irmão que vem logo depois do rótulo "Total". */
 function valorDoTotalEm(escopo: ParentNode): HTMLElement {
