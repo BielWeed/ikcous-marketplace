@@ -1,4 +1,15 @@
 {
+  "1.5.183": {
+    "titulo": "Avaliações: filtro \"Sem resposta\" e explicação mais completa do lucro por produto",
+    "novidades": [
+      "Painel, Avaliações: a tela ganhou o filtro \"Sem resposta\", com a contagem ao lado de \"Em moderação\", para a lojista ver de uma vez as avaliações publicadas que ainda não receberam resposta."
+    ],
+    "correcoes": [],
+    "melhorias": [
+      "Painel, Avisos: o aviso \"avaliação publicada sem resposta\" agora abre a tela Avaliações já filtrada em \"Sem resposta\". Antes ele abria em \"Todas\" e, se tivessem chegado mais de 10 avaliações depois daquela, ela ficava em outra página e o aviso parecia errado.",
+      "Painel, Início: o \"?\" de \"Produtos que mais dão lucro\" agora explica que o valor já considera o cupom, que reembolso total não tira o pedido da lista e que só sai o pedido cancelado."
+    ]
+  },
   "1.5.182": {
     "titulo": "Lucro por produto que fecha com o Financeiro, balcão sem texto técnico e painel que abre com o armazenamento bloqueado",
     "novidades": [
