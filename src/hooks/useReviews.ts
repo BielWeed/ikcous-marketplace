@@ -10,6 +10,7 @@ import { criarCanalDeAbas } from "@/lib/canal-de-abas";
 import { EVENTO_AVALIACAO_EXCLUIDA } from "@/lib/evento-avaliacao-excluida";
 import {
   PRAZO_DAS_ACOES_DO_PEDIDO_MS,
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
   aguardarComPrazo,
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
@@ -535,22 +536,28 @@ export function useReviews() {
 
         // High Optimization: If Admin, run single unified RPC on Supabase
         if (isAdmin) {
-          const { data, error } = await (supabase.rpc as any)(
-            "get_admin_reviews_paged",
-            {
-              p_search: filters?.search || "",
-              p_rating:
-                filters?.rating !== undefined
-                  ? filters.rating.toString()
-                  : "all",
-              p_page: page,
-              p_page_size: pageSize,
-              // Só manda p_status com o filtro de moderação LIGADO: a lista sem filtro segue chamando com os 4
-              // parâmetros de sempre, então a loja que ainda não recebeu a migration 20261399700000 continua abrindo.
-              ...(filters?.status === "pendente"
-                ? { p_status: "pendente" }
-                : {}),
-            },
+          // Prazo (13/11/2026): rede que conecta e não responde deixava o
+          // `loading` ligado para sempre. Estourou = cai no `catch` abaixo
+          // (erro + "Tentar de novo"); só encerra a ESPERA, a leitura não grava.
+          const { data, error } = await aguardarComPrazo(
+            Promise.resolve(
+              (supabase.rpc as any)("get_admin_reviews_paged", {
+                p_search: filters?.search || "",
+                p_rating:
+                  filters?.rating !== undefined
+                    ? filters.rating.toString()
+                    : "all",
+                p_page: page,
+                p_page_size: pageSize,
+                // Só manda p_status com o filtro de moderação LIGADO: a lista sem filtro segue chamando com os 4
+                // parâmetros de sempre, então a loja que ainda não recebeu a migration 20261399700000 continua abrindo.
+                ...(filters?.status === "pendente"
+                  ? { p_status: "pendente" }
+                  : {}),
+              }),
+            ) as Promise<{ data: unknown; error: unknown }>,
+            PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+            erroDeConsultaSemResposta,
           );
 
           if (rodada !== rodadaAdminRef.current) return;
