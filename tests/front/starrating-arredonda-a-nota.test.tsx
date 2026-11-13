@@ -54,6 +54,33 @@ describe("StarRating — a nota arredonda ao inteiro mais próximo", () => {
     expect(pintadas(0)).toBe(0);
   });
 
+  // 13/11/2026: o catálogo recebe a média JÁ arredondada a 1 casa pela view
+  // (`round(avg, 1)`) e a ficha do produto recebe a média cheia. Com 5 notas 5
+  // e 6 notas 4 (4,4545...) o catálogo mostrava 5 estrelas e a ficha, que diz
+  // "4,5", pintava 4. As estrelas saem do MESMO número que a tela exibe: a
+  // média arredondada a 1 casa.
+  it("média cheia 4,4545 (a ficha) pinta as mesmas 5 estrelas que o 4,5 do catálogo", () => {
+    const media = (5 * 5 + 6 * 4) / 11;
+    expect(media).toBeCloseTo(4.4545, 3);
+    expect(pintadas(media)).toBe(5);
+    expect(hospedeiro.querySelector(".sr-only")?.textContent).toBe("4,5 de 5");
+    expect(pintadas(Math.round(media * 10) / 10)).toBe(5);
+  });
+
+  it("valores limite da média: 4,44 pinta 4; 4,45, 4,5 e 4,95 pintam 5; 0 e 5 não mudam", () => {
+    expect(pintadas(4.44)).toBe(4);
+    expect(pintadas(4.45)).toBe(5);
+    expect(pintadas(4.5)).toBe(5);
+    expect(pintadas(4.95)).toBe(5);
+    expect(pintadas(0)).toBe(0);
+    expect(pintadas(5)).toBe(5);
+  });
+
+  it("3,45 (arredonda a 3,5 na tela) pinta 4; 3,44 (3,4) pinta 3", () => {
+    expect(pintadas(3.45)).toBe(4);
+    expect(pintadas(3.44)).toBe(3);
+  });
+
   it("a nota falada segue exata (4,9 de 5), sem arredondar", () => {
     pintadas(4.9);
     expect(hospedeiro.querySelector(".sr-only")?.textContent).toBe("4,9 de 5");
