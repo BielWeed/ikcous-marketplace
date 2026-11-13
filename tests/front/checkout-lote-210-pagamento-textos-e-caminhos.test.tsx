@@ -381,6 +381,90 @@ describe("CheckoutView — lote 210: textos e caminhos do pagamento", () => {
       expect(botaoPorTexto(hospedeiro, "Voltar ao carrinho")).toBeDefined();
     });
 
+    // O AVISO AO VIVO (Realtime) de 'expirado': a consulta periódica pode estar
+    // lenta ou falhando (o servidor responde devagar, a rede oscila) e o canal
+    // ao vivo é quem avisa que o pedido venceu. A tela do PIX encerra do MESMO
+    // jeito que a consulta (mesma transição: o pedido morto no servidor), sem
+    // esperar a consulta que pode nunca voltar.
+    async function avisoAoVivo(
+      dados: Record<string, unknown>,
+      tipo = "UPDATE",
+    ) {
+      await act(async () => {
+        onRealtimeEventCapturado?.({ eventType: tipo, new: dados });
+      });
+    }
+
+    it("aviso ao vivo 'expirado' com a consulta periódica sem resposta: a tela do PIX sai do ar, igual à consulta", async () => {
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await fecharPedidoCom(CheckoutView, "Pagar agora com PIX");
+      // A consulta periódica NÃO traz nada (lenta/falhando): só o canal ao vivo.
+      mockRespostaPoll = { data: null, error: { message: "timeout" } };
+      expect(texto()).toContain("Seu pedido está reservado");
+      expect(texto()).toContain("000201CODIGOCOPIAECOLA");
+
+      await avisoAoVivo({ id: "ped-999", payment_status: "expirado" });
+
+      expect(texto()).not.toContain("Seu pedido está reservado");
+      expect(texto()).not.toContain("Finalize o pagamento");
+      expect(texto()).not.toContain("000201CODIGOCOPIAECOLA");
+      expect(texto()).toContain("Este código não vale mais");
+      // A mesma saída da consulta: devolve os itens ao carrinho.
+      await act(async () => {
+        botaoPorTexto(hospedeiro, "Voltar ao carrinho")!.click();
+      });
+      expect(addToCart).toHaveBeenCalledTimes(1);
+      expect(onNavigate).toHaveBeenCalledWith("cart");
+    });
+
+    it("aviso ao vivo 'expirado' de OUTRO pedido: a tela do PIX deste pedido não muda", async () => {
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await fecharPedidoCom(CheckoutView, "Pagar agora com PIX");
+
+      await avisoAoVivo({ id: "ped-outro", payment_status: "expirado" });
+
+      expect(texto()).toContain("Seu pedido está reservado");
+      expect(texto()).toContain("Finalize o pagamento");
+      expect(botaoPorTexto(hospedeiro, "Voltar ao carrinho")).toBeUndefined();
+    });
+
+    it("aviso ao vivo 'expirado' que chega DEPOIS do pago: a tela segue em 'Pagamento Confirmado!'", async () => {
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await fecharPedidoCom(CheckoutView, "Pagar agora com PIX");
+      await avisoAoVivo({ id: "ped-999", payment_status: "pago" });
+      expect(texto()).toContain("Pagamento Confirmado");
+
+      await avisoAoVivo({ id: "ped-999", payment_status: "expirado" });
+
+      expect(texto()).toContain("Pagamento Confirmado");
+      expect(texto()).not.toContain("Este código não vale mais");
+      expect(botaoPorTexto(hospedeiro, "Voltar ao carrinho")).toBeUndefined();
+    });
+
+    it("aviso ao vivo 'expirado' que não é UPDATE (INSERT/DELETE): a tela do PIX não muda", async () => {
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await fecharPedidoCom(CheckoutView, "Pagar agora com PIX");
+
+      await avisoAoVivo(
+        { id: "ped-999", payment_status: "expirado" },
+        "DELETE",
+      );
+
+      expect(texto()).toContain("Seu pedido está reservado");
+    });
+
+    it("depois do 'expirado' ao vivo, o pagamento tardio ainda troca a tela (a espera não acabou)", async () => {
+      const { CheckoutView } = await import("@/views/customer/CheckoutView");
+      await fecharPedidoCom(CheckoutView, "Pagar agora com PIX");
+      await avisoAoVivo({ id: "ped-999", payment_status: "expirado" });
+      expect(texto()).toContain("Este código não vale mais");
+
+      await avisoAoVivo({ id: "ped-999", payment_status: "pago_apos_expirar" });
+
+      expect(texto()).toContain("Pagamento Recebido");
+      expect(texto()).not.toContain("Este código não vale mais");
+    });
+
     it("voltar ao carrinho só devolve UMA vez (a lista de itens é consumida)", async () => {
       const { CheckoutView } = await import("@/views/customer/CheckoutView");
       await fecharPedidoCom(CheckoutView, "Pagar agora com PIX");
