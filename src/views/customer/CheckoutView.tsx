@@ -1686,6 +1686,12 @@ export function CheckoutViewDaConta({
       : "pix";
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // A opção de frete VIVA, atualizada a cada render. O envio roda numa
+  // closure do clique em "Finalizar" (modalidade e frete de ANTES dos
+  // `await`s): antes de a RPC sair, `handleSubmitEvent` compara com esta —
+  // trocar entrega x retirada durante a espera não pode gravar o pedido antigo.
+  const freteVivoRef = useRef(selectedShippingOption);
+  freteVivoRef.current = selectedShippingOption;
   // A recusa que o banco deu no último clique, quando deu. `null` é o estado
   // normal — o painel só existe depois de uma recusa e some assim que a pessoa
   // age ou fecha.
@@ -4777,6 +4783,30 @@ export function CheckoutViewDaConta({
       }
     }
 
+    // A MODALIDADE DO CLIQUE × A ESCOLHA DE AGORA (13/11/2026): `orderData`
+    // carrega o frete capturado no clique, e até aqui o envio esperou a revisão
+    // do frete e a sessão. Se a cliente trocou entrega x retirada (ou o preço
+    // cotado mudou, ou a seleção caiu) nesse intervalo, a tela já mostra outra
+    // coisa — o servidor aceitaria, porque compara o total TAMBÉM antigo, e o
+    // pedido nasceria com a modalidade e o frete que ela já desfez. Último
+    // ponto antes da RPC (e antes de a chave do pedido nascer): nada saiu.
+    // Cobre o que `bloqueado` na calculadora não cobre — a janela do
+    // `form.trigger()` (antes de `isSubmitting` chegar à tela), a recotação
+    // automática e a troca de endereço. Compara id e preço, não o objeto: o
+    // contexto devolve objeto fresco da mesma opção sem que nada tenha mudado.
+    const freteVivo = freteVivoRef.current;
+    if (
+      (freteVivo?.id ?? null) !== (selectedShippingOption?.id ?? null) ||
+      (freteVivo?.price ?? null) !== (selectedShippingOption?.price ?? null)
+    ) {
+      toast.error(
+        "A forma de entrega mudou enquanto o pedido era enviado. Confira o total e finalize.",
+      );
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      return;
+    }
+
     // 🔴 A chave só nasce DEPOIS da conferência da sessão (r60-b): quem sai
     // dali não enviou nada, e uma chave gravada contaria como "pedido em
     // curso" por 30 min — o carrinho pararia de reler preço e estoque
@@ -7219,6 +7249,9 @@ export function CheckoutViewDaConta({
             }
             onStatusChange={setStatusDoFrete}
             forcarNovaCotacaoEm={forcarNovaCotacaoEm}
+            // Pedido em envio: trocar modalidade/opção agora mudaria a tela,
+            // mas o pedido já leva o frete do clique (13/11/2026).
+            bloqueado={isSubmitting}
             // CHECKOUT COMPACTO (23/09/2026): só o CHECKOUT resume a opção
             // escolhida atrás de "Trocar" — o carrinho (outro consumidor
             // deste MESMO componente) não passa a prop e continua mostrando
