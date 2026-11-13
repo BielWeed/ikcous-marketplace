@@ -861,6 +861,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399990000: o CRM nao duplica o comprador quando o WhatsApp vem com e sem o 55 (crm__vendas: chave e fusao pelo numero sem o 55; controle com o corpo da 20261178000000 na mesma fixture, bordas,
     // mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 142a/142b).
     "tests/banco/o-crm-nao-duplica-o-comprador-com-e-sem-55-viva.cjs",
+    // 20261399991000: repetir a devolucao que falhou nao paga duas vezes (solicitar_estorno_repetindo e order_refund_repeticao; controle com o caminho antigo, duas conexoes reais na mesma falhada, 17 recusas,
+    // permissao, 15 mutantes, reaplicar, pre-voo, rollback que recusa com marca, conexao sem BEGIN e consultas 143a/143b).
+    "tests/banco/repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
     "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
   ];

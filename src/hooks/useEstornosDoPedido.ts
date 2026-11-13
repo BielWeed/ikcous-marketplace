@@ -96,6 +96,9 @@ interface EstornosDoPedido {
   solicitarEstorno: (args: {
     amount: number;
     motivo: string;
+    /** Id da linha falhada que este toque REPETE ("Tentar de novo"): o servidor
+     * repete ESSA linha uma vez só e quem chega depois recebe a mesma repetição. */
+    repetindo?: string;
   }) => Promise<void>;
   /** Saída dos 7 dias da linha `refundId` (frase já conferida na tela). */
   registrarPorForaAposEspera: (refundId: string) => Promise<boolean>;
@@ -270,17 +273,34 @@ export function useEstornosDoPedido(
   }, [temLinhaAtiva, carregar]);
 
   const solicitarEstorno = useCallback(
-    async ({ amount, motivo }: { amount: number; motivo: string }) => {
+    async ({
+      amount,
+      motivo,
+      repetindo,
+    }: {
+      amount: number;
+      motivo: string;
+      repetindo?: string;
+    }) => {
       if (enviandoRef.current) return;
       enviandoRef.current = true;
       setEnviando(true);
       const numero = numeroDoPedido(orderId);
       try {
-        const { data, error } = await supabase.rpc("solicitar_estorno", {
-          p_order_id: orderId,
-          p_amount: amount,
-          p_motivo: motivo,
-        });
+        // "Tentar de novo" manda o id da linha falhada: o servidor repete ESSA linha uma vez só (o valor sai
+        // dela) e a segunda chamada (outra aba, outra pessoa da loja, o botão que sobrou depois do sucesso)
+        // volta com `ja_repetida` e a MESMA repetição. `solicitar_estorno` não sabe qual linha se repete: cria
+        // uma linha nova a cada chamada, e duas abas mandariam dois pedidos de devolução ao Mercado Pago.
+        const { data, error } = repetindo
+          ? await supabase.rpc("solicitar_estorno_repetindo", {
+              p_refund_id: repetindo,
+              p_motivo: motivo,
+            })
+          : await supabase.rpc("solicitar_estorno", {
+              p_order_id: orderId,
+              p_amount: amount,
+              p_motivo: motivo,
+            });
 
         // A RPC já devolve mensagem leiga e ela passa como veio; só a falha de
         // rede, que o navegador entrega em inglês ("Failed to fetch"), vira frase.
@@ -300,6 +320,19 @@ export function useEstornosDoPedido(
           toast.error(
             `Não consegui registrar a devolução do pedido #${numero}.`,
           );
+          return;
+        }
+
+        // Já repetida por outra aba (ou outra pessoa): quem criou a repetição é quem aciona o Mercado Pago.
+        // Aqui não há nada a enviar, só a lista a mostrar.
+        const jaRepetida =
+          (data as unknown as { ja_repetida?: boolean } | null)?.ja_repetida ===
+          true;
+        if (jaRepetida) {
+          toast.info(
+            `Pedido #${numero}: esta devolução já foi repetida (por outra aba ou por outra pessoa da loja). Acompanhe a linha mais nova.`,
+          );
+          await carregar();
           return;
         }
 
