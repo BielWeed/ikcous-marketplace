@@ -1,5 +1,6 @@
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import { dataNoFusoDaLoja } from "@/lib/data-da-loja";
 import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
 import { usarImagemOriginal } from "@/lib/imageUrl";
 import { normalizarCodigoDeRastreio } from "@/lib/link-de-rastreio";
@@ -680,7 +681,7 @@ export const OrderList = memo(function OrderList({
                     )}
                   </button>
                   <span aria-hidden="true">·</span>
-                  <span>{date.toLocaleDateString("pt-BR")}</span>
+                  <span>{dataNoFusoDaLoja(date)}</span>
                 </div>
 
                 <button
