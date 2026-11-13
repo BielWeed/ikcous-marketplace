@@ -270,6 +270,8 @@ on:
       - "scripts/publicacao/consultas/142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql"
       - "scripts/publicacao/consultas/143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente.sql"
+      - "scripts/publicacao/consultas/145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado.sql"
+      - "scripts/publicacao/consultas/145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -513,6 +515,8 @@ on:
       - "scripts/publicacao/consultas/142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql"
       - "scripts/publicacao/consultas/143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente.sql"
+      - "scripts/publicacao/consultas/145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado.sql"
+      - "scripts/publicacao/consultas/145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
       - "scripts/publicacao/consultas/144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
@@ -1164,6 +1168,13 @@ jobs:
       - name: Prova viva do CRM que nao duplica o comprador com e sem o 55 (20261399990000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-crm-nao-duplica-o-comprador-com-e-sem-55-viva.cjs
+      # Migration 20261399993000 (o CRM e a lista de clientes nao contam a mesma pessoa duas vezes): crm__nunca_comprou tambem tira a conta cujo WhatsApp (com ou sem o 55) e o de um pedido do grupo "pediu e nao pagou"
+      # (venda avulsa anulada, devolvida ou sem pagar) e get_admin_customers_paged toma UM endereco principal por cliente (o mais novo, desempate pelo menor id) antes de juntar os pedidos (a corrida dos dois
+      # primeiros enderecos dobrava pedidos e total). Controle com os corpos da 20261183000000 e da 20261392000000 na MESMA fixture (o defeito), bordas (numero diferente, DDD 55, outra conta, sem WhatsApp, sem endereco,
+      # empate de data, data nula), 12 mutantes, ACL/atributos/dono iguais, reaplicar, rollback byte a byte, pre-voo, conexao sem BEGIN com conferencia sabotada (as duas trocas caem juntas) e consultas 145a/145b. CLONE proprio.
+      - name: Prova viva do CRM e da lista de clientes que nao contam a mesma pessoa duas vezes (20261399993000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-viva.cjs
       # Migration 20261399991000 (repetir a devolucao que falhou nao paga duas vezes): solicitar_estorno_repetindo(p_refund_id, p_motivo) repete UMA linha falhada (o valor sai da linha, a 2a chamada devolve a MESMA
       # repeticao com ja_repetida em vez de criar outra) e a tabela order_refund_repeticao (PK + UNIQUE) e a marca do servidor. Controle com o caminho antigo (duas linhas de R$ 30), DUAS conexoes reais na mesma falhada,
       # bordas (17 recusas sem escrever nada), permissao (anon, service_role, cliente, admin rebaixado), 15 mutantes, reaplicar, pre-voo, rollback que recusa com marca, conexao sem BEGIN com conferencia sabotada e

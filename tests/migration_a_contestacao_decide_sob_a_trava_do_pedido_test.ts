@@ -861,6 +861,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399990000: o CRM nao duplica o comprador quando o WhatsApp vem com e sem o 55 (crm__vendas: chave e fusao pelo numero sem o 55; controle com o corpo da 20261178000000 na mesma fixture, bordas,
     // mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 142a/142b).
     "tests/banco/o-crm-nao-duplica-o-comprador-com-e-sem-55-viva.cjs",
+    // 20261399993000: o CRM e a lista de clientes nao contam a mesma pessoa duas vezes (crm__nunca_comprou sem quem ja esta em "pediu e nao pagou"; get_admin_customers_paged com UM endereco principal;
+    // controle com os corpos da 183 e da 392, 12 mutantes, rollback byte a byte, conexao sem BEGIN e consultas 145a/145b).
+    "tests/banco/o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-viva.cjs",
     // 20261399991000: repetir a devolucao que falhou nao paga duas vezes (solicitar_estorno_repetindo e order_refund_repeticao; controle com o caminho antigo, duas conexoes reais na mesma falhada, 17 recusas,
     // permissao, 15 mutantes, reaplicar, pre-voo, rollback que recusa com marca, conexao sem BEGIN e consultas 143a/143b).
     "tests/banco/repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-viva.cjs",
