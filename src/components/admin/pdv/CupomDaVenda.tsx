@@ -12,6 +12,7 @@
 import { AcaoDaBarra } from "@/components/layouts/AcaoDaBarra";
 import { Button } from "@/components/ui/button";
 import type { AcaoDaVenda, EstadoDaVenda } from "@/hooks/useVendaPresencial";
+import { guardarCodigoParaCadastro } from "@/lib/codigo-para-cadastro";
 import {
   type FeedbackDoLeitor,
   criarFeedbackDoLeitor,
@@ -97,6 +98,11 @@ export function CupomDaVenda({
   }, [estado.aviso, feedback]);
 
   const escolha = estado.escolhaDeVariacao;
+  // O número do aviso "não cadastrado", para o toque em "Cadastrar produto"
+  // levá-lo ao cadastro (o TS não mantém o estreitamento de `estado.aviso`
+  // dentro do onClick).
+  const codigoNaoCadastrado =
+    estado.aviso?.tipo === "nao_cadastrado" ? estado.aviso.codigo : "";
 
   // "Cancelar venda": só há o que cancelar quando o cupom guarda ALGUMA coisa
   // da venda (item, desconto, cliente ou forma de pagamento — os dois últimos
@@ -195,14 +201,19 @@ export function CupomDaVenda({
             ou cadastre o produto.
           </p>
           <p className="pdv-muted">
-            O atalho abaixo só abre o cadastro — digitar o código lá é manual
-            por enquanto.
+            O cadastro abre com esse código já preenchido — é só completar o
+            resto.
           </p>
           <Button
             type="button"
             variant="outline"
             className="pdv-secondary"
-            onClick={() => onNavigate("admin-product-form")}
+            onClick={() => {
+              // Quem abre o cadastro (produto novo) o põe no campo "Código de
+              // barras" — ver `@/lib/codigo-para-cadastro`.
+              guardarCodigoParaCadastro(codigoNaoCadastrado, agora());
+              onNavigate("admin-product-form");
+            }}
           >
             <PackagePlus aria-hidden="true" className="pdv-cyan size-5" />
             Cadastrar produto

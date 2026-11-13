@@ -50,7 +50,11 @@ import { useProducts } from "@/hooks/useProducts";
 import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { marcarOperacaoSensivel } from "@/lib/atualizacao/operacao-sensivel";
-import { normalizarCodigoBarras } from "@/lib/codigo-de-barras";
+import {
+  REGEX_CODIGO_BARRAS,
+  normalizarCodigoBarras,
+} from "@/lib/codigo-de-barras";
+import { tomarCodigoParaCadastro } from "@/lib/codigo-para-cadastro";
 import { CLASSE_PRECO_PROMOCIONAL_FUNDO_ESCURO } from "@/lib/cor-do-preco-promocional";
 import { descartarFotosDoProduto } from "@/lib/descartar-fotos-do-produto";
 import {
@@ -172,8 +176,8 @@ import { toast } from "sonner";
 // §5.6): depois de aparar e remover espaços INTERNOS, só letras, números e
 // hífen, de 4 a 64 caracteres. EAN/UPC/GTIN são dígitos, mas Code 128/39 têm
 // letras — por isso não restringe a dígitos, e não valida dígito
-// verificador (fora do escopo deste lote).
-const REGEX_CODIGO_BARRAS = /^[A-Za-z0-9-]{4,64}$/;
+// verificador (fora do escopo deste lote). A regex mora em
+// `@/lib/codigo-de-barras`: o recado do balcão usa a mesma.
 const MSG_CODIGO_BARRAS_FORMATO_INVALIDO =
   "Só letras, números e hífen, de 4 a 64 caracteres.";
 const MSG_CODIGO_BARRAS_DUPLICADO_NA_TELA =
@@ -1515,6 +1519,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   }, [productId, fetchProduct, onNavigate]);
   // Draft recovery on mount for new products
   useEffect(() => {
+    // O código que o balcão leu e não achou ("Cadastrar produto" no aviso).
+    // Toda abertura o toma, para um toque antigo não sobrar para a seguinte;
+    // só o produto NOVO sem rascunho o usa (rascunho começado vale mais).
+    const codigoDoBalcao = tomarCodigoParaCadastro();
     if (!productId) {
       const chaveDoRascunho = chaveDoRascunhoDoProduto(userId);
       // Rascunho com mais de 7 dias já sai daqui descartado (vira `null`).
@@ -1599,6 +1607,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         } catch (e) {
           console.error("[AdminProductFormView] Failed to parse draft:", e);
         }
+      } else if (codigoDoBalcao) {
+        setFormData((prev) => ({ ...prev, codigoBarras: codigoDoBalcao }));
       }
       setDraftChecked(true);
     }
