@@ -294,6 +294,8 @@ describe("ShippingCalculator — sinal aceitaRetirada e cache v2 com o contexto 
     ["provedor ME -> SuperFrete", { shippingProvider: "superfrete" }],
     ["retirada desligada", { enabledShippingMethods: ["sedex", "pac"] }],
     ["endereço da loja", { storeAddress: OUTRO_ENDERECO_FICTICIO }],
+    // 12/11/2026: a taxa da entrega própria é o PREÇO da "Entrega Local".
+    ["taxa da entrega própria", { localDeliveryFee: 20 }],
   ])(
     "contexto mudou (%s): o cache v2 não serve mais e a tela recota sozinha",
     async (_nome, mudanca) => {
@@ -310,6 +312,62 @@ describe("ShippingCalculator — sinal aceitaRetirada e cache v2 com o contexto 
       expect(invoke).toHaveBeenCalledTimes(3);
     },
   );
+
+  it("a lojista muda a taxa da entrega própria de R$ 10 para R$ 20: a tela passa a mostrar R$ 20, e a controle (taxa igual) continua em R$ 10", async () => {
+    // A edge cobra a taxa ATUAL da loja: o dublê devolve a taxa do config.
+    invoke.mockImplementation((_nome: string, opts: any) => {
+      if (opts?.body?.action === "revisao_config_frete") {
+        return Promise.resolve({
+          data: { revisaoConfig: REVISAO_FIXA_DO_TESTE },
+          error: null,
+        });
+      }
+      return Promise.resolve({
+        data: {
+          options: [
+            { ...LOCAL, price: loja.config.localDeliveryFee ?? 10 },
+            retirada(),
+          ],
+          cotacaoIncompleta: false,
+          revisaoConfig: REVISAO_FIXA_DO_TESTE,
+        },
+        error: null,
+      });
+    });
+    loja.config = { ...LOJA_COM_RETIRADA, localDeliveryFee: 10 };
+    await pintar(0);
+    expect(hospedeiro.textContent).toContain("10,00");
+    expect(hospedeiro.textContent).not.toContain("20,00");
+
+    // Controle: config repintado com a MESMA taxa não recota.
+    loja.config = { ...LOJA_COM_RETIRADA, localDeliveryFee: 10 };
+    await pintar(1);
+    expect(invoke).toHaveBeenCalledTimes(1);
+
+    loja.config = { ...LOJA_COM_RETIRADA, localDeliveryFee: 20 };
+    await pintar(2);
+    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(hospedeiro.textContent).toContain("20,00");
+    expect(hospedeiro.textContent).not.toContain("10,00");
+  });
+
+  it("entrega própria DESLIGADA: mexer na taxa guardada não recota (ela não é cobrada)", async () => {
+    loja.config = {
+      ...LOJA_COM_RETIRADA,
+      localDeliveryEnabled: false,
+      localDeliveryFee: 10,
+    };
+    await pintar(0);
+    expect(invoke).toHaveBeenCalledTimes(1);
+
+    loja.config = {
+      ...LOJA_COM_RETIRADA,
+      localDeliveryEnabled: false,
+      localDeliveryFee: 20,
+    };
+    await pintar(1);
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
 
   it("endereço trocou: a retirada escolhida volta com o endereço NOVO (a nota do pedido não leva o velho)", async () => {
     await pintar(0);
