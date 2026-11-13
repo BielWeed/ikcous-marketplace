@@ -46,8 +46,10 @@ import {
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
 import {
+  PRAZO_DO_RETRATO_MS,
   lerRetratoDoConvidado,
   limparRetratoDoConvidado,
+  retratoVenceu,
   textoDoRetrato,
 } from "@/lib/retrato-do-convidado";
 import {
@@ -847,6 +849,44 @@ export function OrderDetailsView({
   useEffect(() => {
     loadOrder();
   }, [loadOrder]);
+
+  // O retrato venceu (60 min) com o detalhe aberto: o pedido está nesta tela em
+  // estado, então endereço e dados da compra seguiam à vista de quem usar o
+  // aparelho depois. Mesma régua e mesmos gatilhos da lista na CartView
+  // (`retratoVenceu`; o relógio sozinho não basta, ele dorme com o aparelho):
+  // o pedido sai da memória, a leitura apaga o retrato vencido do aparelho e a
+  // tela volta para a lista, que manda consultar de novo.
+  const consultadoEm = retratoDoConvidado?.consultadoEm ?? null;
+  useEffect(() => {
+    if (consultadoEm === null) return;
+    const soltar = () => {
+      setOrder(null);
+      setRetratoDoConvidado(null);
+      lerRetratoDoConvidado();
+      onBack();
+    };
+    if (retratoVenceu(consultadoEm)) {
+      soltar();
+      return;
+    }
+    const aoVoltarAoPrimeiroPlano = () => {
+      if (
+        document.visibilityState === "visible" &&
+        retratoVenceu(consultadoEm)
+      ) {
+        soltar();
+      }
+    };
+    document.addEventListener("visibilitychange", aoVoltarAoPrimeiroPlano);
+    const relogio = setTimeout(
+      soltar,
+      consultadoEm + PRAZO_DO_RETRATO_MS - Date.now() + 1,
+    );
+    return () => {
+      clearTimeout(relogio);
+      document.removeEventListener("visibilitychange", aoVoltarAoPrimeiroPlano);
+    };
+  }, [consultadoEm, onBack]);
 
   // A tela acompanha o pedido enquanto ele está aberto. A cliente paga o PIX
   // no app do banco e volta aqui: o tempo real já atualizou o pedido na lista
