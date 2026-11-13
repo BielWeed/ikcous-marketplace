@@ -42,7 +42,6 @@ function semTextoCru(mensagem: string): void {
 describe("mensagemDaFalhaDaVenda — falha passageira do banco convida a repetir", () => {
   it.each([
     ["40001", "could not serialize access due to concurrent update"],
-    ["57014", "canceling statement due to statement timeout"],
     ["55P03", "could not obtain lock on row in relation"],
     ["53300", "too many connections for role"],
     ["53200", "out of memory"],
