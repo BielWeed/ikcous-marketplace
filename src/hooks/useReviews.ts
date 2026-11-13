@@ -435,9 +435,19 @@ export function useReviews() {
         return false;
       votosEmVooRef.current.add(chave);
       try {
-        const { error } = await supabase.rpc("increment_helpful" as any, {
-          review_id: reviewId,
-        });
+        // Rede "pendurada" conecta e não responde: sem prazo o botão Útil
+        // ficava travado para sempre. Estourou = a espera da tela acaba, o
+        // servidor pode ter gravado; repetir o toque é seguro (a RPC aceita
+        // voto repetido sem somar) e o contador só muda pela releitura.
+        const { error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase.rpc("increment_helpful" as any, {
+              review_id: reviewId,
+            }),
+          ),
+          15000,
+          erroDeConsultaSemResposta,
+        );
         if (!atual()) return false;
         if (error) throw error;
         setVotosUteis((atuais) =>
@@ -447,11 +457,19 @@ export function useReviews() {
         // Sucesso void também significa "já votou". Persistir local + 1
         // inventava um voto; o contador confirmado vem sempre do servidor.
         try {
-          const { data, error: erroDaReleitura } = await supabase
-            .from("reviews")
-            .select("helpful")
-            .eq("id", reviewId)
-            .single();
+          // Sem prazo, a releitura segurava a espera do card mesmo com o voto
+          // já gravado. Estourou cai no catch abaixo: o voto vale.
+          const { data, error: erroDaReleitura } = await aguardarComPrazo(
+            Promise.resolve(
+              supabase
+                .from("reviews")
+                .select("helpful")
+                .eq("id", reviewId)
+                .single(),
+            ),
+            15000,
+            erroDeConsultaSemResposta,
+          );
           if (!atual()) return false;
           if (erroDaReleitura) throw erroDaReleitura;
           if (!data) throw new Error("Avaliação indisponível na releitura.");
@@ -475,7 +493,11 @@ export function useReviews() {
       } catch (error) {
         if (!atual()) return false;
         console.error("Error marking helpful:", error);
-        toast.error("Erro ao marcar como útil.");
+        toast.error(
+          ehConsultaSemResposta(error)
+            ? "Não deu para confirmar seu voto. Tente de novo."
+            : "Erro ao marcar como útil.",
+        );
         return false;
       } finally {
         votosEmVooRef.current.delete(chave);
