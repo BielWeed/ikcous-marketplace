@@ -7,7 +7,7 @@
       "Loja, Frete: sem opção de entrega, a cliente chama a loja no WhatsApp, se a loja tiver o número cadastrado."
     ],
     "melhorias": [
-      "Painel, Início: o ranking de produtos que mais dão lucro desconta devolução e estorno.",
+      "Painel, Relatórios: o ranking de produtos que mais dão lucro desconta devolução e estorno.",
       "Painel: as listas de produtos, pedidos e cancelados não repetem nem escondem ninguém entre as páginas.",
       "Painel, Frete e Transportadoras: o frete grátis e o desconto em R$ entendem \"1.234,50\", e o teste mostra mensagem simples.",
       "Painel e Loja: o Voltar do celular fecha filtros e perguntas abertas, sem sair da tela."
