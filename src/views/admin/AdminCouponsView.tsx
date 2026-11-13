@@ -754,6 +754,9 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                               Expira em:{" "}
                               {new Date(coupon.validUntil).toLocaleDateString(
                                 "pt-BR",
+                                // Dia da LOJA (Brasília): o mesmo que o
+                                // formulário grava e o checkout considera.
+                                { timeZone: "America/Sao_Paulo" },
                               )}
                             </>
                           ) : (
