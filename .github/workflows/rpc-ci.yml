@@ -260,6 +260,8 @@ on:
       - "scripts/publicacao/consultas/127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente.sql"
       - "scripts/publicacao/consultas/128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado.sql"
       - "scripts/publicacao/consultas/128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente.sql"
+      - "scripts/publicacao/consultas/149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado.sql"
+      - "scripts/publicacao/consultas/149b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente.sql"
       - "scripts/publicacao/consultas/135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado.sql"
       - "scripts/publicacao/consultas/135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente.sql"
       - "scripts/publicacao/consultas/140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado.sql"
@@ -511,6 +513,8 @@ on:
       - "scripts/publicacao/consultas/127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente.sql"
       - "scripts/publicacao/consultas/128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado.sql"
       - "scripts/publicacao/consultas/128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente.sql"
+      - "scripts/publicacao/consultas/149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado.sql"
+      - "scripts/publicacao/consultas/149b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente.sql"
       - "scripts/publicacao/consultas/135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado.sql"
       - "scripts/publicacao/consultas/135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente.sql"
       - "scripts/publicacao/consultas/140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado.sql"
@@ -1221,6 +1225,14 @@ jobs:
       - name: Prova viva do balcao que recusa venda sem item e com itens demais
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs
+      # Migration 20261399940000 (o cadastro cria o perfil em toda loja): o gatilho on_auth_user_created de auth.users (AFTER INSERT por linha, chama handle_new_user), que a loja clonada do baseline
+      # nunca teve, so se ausente, e o reparo de quem ja se cadastrou sem perfil (ganha a mesma linha que o gatilho criaria; quem ja tem perfil, quem tem papel admin/gerente/vendedor e quem tem nome
+      # ou telefone acima do teto NAO sao tocados). Este passo LIGA o gatilho no clone dele: o efemero das outras provas o deixa DESLIGADO (aplicar-migrations.cjs). Controle sem o gatilho (o defeito),
+      # cadastro com e sem metadado, teto de nome/telefone recusado, papel sem EXECUTE na funcao ainda cria o perfil, mutantes, reaplicar 2x e CRLF, rollback sem tocar dado, pre-voo, conferencia,
+      # atomicidade, lock_timeout em auth.users e consultas 149a/149b. CLONE proprio.
+      - name: Prova viva do cadastro que cria o perfil em toda loja (20261399940000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-cadastro-cria-o-perfil-em-toda-loja-viva.cjs
       - name: Prova viva do Financeiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs
