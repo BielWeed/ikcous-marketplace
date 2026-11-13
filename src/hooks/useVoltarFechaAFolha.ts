@@ -162,7 +162,9 @@ function engolirOProximoPopState(): void {
     armado = false;
     retornosPendentes -= 1;
     clearTimeout(timer);
-    globalThis.removeEventListener("popstate", engolir, true);
+    // O temporizador pode vencer depois de a janela (jsdom) ser desmontada: sem
+    // o método na janela não há o que desarmar.
+    globalThis.removeEventListener?.("popstate", engolir, true);
   }
   globalThis.addEventListener("popstate", engolir, true);
 }
