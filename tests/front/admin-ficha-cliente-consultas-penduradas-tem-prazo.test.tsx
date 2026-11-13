@@ -23,6 +23,13 @@ import {
 
 import type { AdminUserDetailView as TipoTelaFicha } from "@/views/admin/AdminUserDetailView";
 
+/** A consulta dublada do Supabase: uma promessa que também encadeia filtros. */
+interface ConsultaDublada extends Promise<unknown> {
+  select: () => ConsultaDublada;
+  eq: () => ConsultaDublada;
+  is: () => ConsultaDublada;
+}
+
 const h = vi.hoisted(() => ({
   linhas: [] as {
     id: string;
@@ -77,17 +84,16 @@ vi.mock("@/lib/supabase", () => ({
           delete: () => {
             // O servidor apagou, mas a resposta nunca chega à tela.
             if (h.exclusaoPendurada) h.linhas = [];
-            const consulta: Promise<unknown> & Record<string, unknown> =
-              Object.assign(
-                h.exclusaoPendurada
-                  ? new Promise(() => undefined)
-                  : Promise.resolve({ data: [{ id: "x" }], error: null }),
-                {
-                  select: () => consulta,
-                  eq: () => consulta,
-                  is: () => consulta,
-                },
-              );
+            const consulta: ConsultaDublada = Object.assign(
+              h.exclusaoPendurada
+                ? new Promise(() => undefined)
+                : Promise.resolve({ data: [{ id: "x" }], error: null }),
+              {
+                select: () => consulta,
+                eq: () => consulta,
+                is: () => consulta,
+              },
+            );
             return consulta;
           },
         };
