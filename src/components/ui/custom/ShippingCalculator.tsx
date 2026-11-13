@@ -454,6 +454,9 @@ export function ShippingCalculator({
   // chega a aparecer. `Trocar` abre; escolher uma opção nova na lista
   // aberta fecha de novo (ver o onClick de `renderizarCartaoDeOpcao`).
   const [detalhesAbertosNoResumo, setDetalhesAbertosNoResumo] = useState(false);
+  // A lista some ao escolher (o botão focado some junto): o foco vai para o
+  // "Trocar" que reaparece — só quando a escolha veio da lista aberta.
+  const focarTrocarRef = useRef(false);
 
   // Lacre de sequência: cada `calculateShipping` tira um número; só quem tem
   // o número MAIS RECENTE pode escrever o resultado na tela. Sem isso, duas
@@ -1119,7 +1122,10 @@ export function ShippingCalculator({
           // MODO RESUMO: escolher uma opção na lista aberta volta ao
           // resumo compacto, já com a nova opção — a pessoa não precisa
           // recolher manualmente depois de decidir.
-          if (modoResumo) setDetalhesAbertosNoResumo(false);
+          if (modoResumo) {
+            focarTrocarRef.current = detalhesAbertosNoResumo;
+            setDetalhesAbertosNoResumo(false);
+          }
         }}
         className={`flex w-full select-none items-center justify-between rounded-2xl p-3 text-left transition-all duration-200 ${
           neutro
@@ -1437,6 +1443,12 @@ export function ShippingCalculator({
               // projeto.
               <button
                 type="button"
+                ref={(el) => {
+                  if (el && focarTrocarRef.current) {
+                    focarTrocarRef.current = false;
+                    el.focus();
+                  }
+                }}
                 onClick={() => {
                   haptic.light();
                   setDetalhesAbertosNoResumo(true);
@@ -1519,7 +1531,7 @@ export function ShippingCalculator({
                   type="button"
                   onClick={tentarDeNovo}
                   disabled={loading}
-                  className="flex shrink-0 select-none items-center gap-1 rounded-xl bg-white px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-800 shadow-sm disabled:opacity-40"
+                  className="flex min-h-10 shrink-0 select-none items-center gap-1 rounded-xl bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-800 shadow-sm disabled:opacity-40"
                 >
                   <RefreshCw className="size-3" />
                   Tentar de novo

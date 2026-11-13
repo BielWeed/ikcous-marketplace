@@ -531,6 +531,17 @@ export const SearchView = React.memo(function SearchView({
 
       {/* Content Area */}
       <div ref={resultadosRef} className="mx-auto max-w-7xl px-4 py-8">
+        {/* Região viva SEMPRE montada: só o texto muda, então o leitor de tela
+            anuncia o "nada encontrado" sem tirar o foco do campo. */}
+        <p role="status" className="sr-only">
+          {!(loadingProducts || tentandoBusca) &&
+          !(catalogoErro && allProducts.length === 0) &&
+          filteredProducts.length === 0
+            ? produtosAVenda.length === 0
+              ? "A loja ainda não tem produtos."
+              : "Nenhum resultado para essa busca."
+            : ""}
+        </p>
         {loadingProducts || tentandoBusca ? (
           <p role="status" className="py-20 text-center text-sm text-zinc-500">
             Carregando busca…
