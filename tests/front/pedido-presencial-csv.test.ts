@@ -31,33 +31,33 @@ function pedido(alteracoes: Partial<Pedido> = {}): Pedido {
 }
 
 describe("pedidosParaCsv com a coluna Canal", () => {
-  it("venda presencial vira 'Balcão' na última célula e 'Recebido no balcão' na coluna de pagamento", () => {
+  // Canal é a coluna 15 (índice 14); "Entrega" vem depois dela.
+  const canalDaLinha = (csv: string) => csv.split("\r\n")[1].split(";")[14];
+
+  it("venda presencial vira 'Balcão' na coluna Canal e 'Recebido no balcão' na coluna de pagamento", () => {
     const csv = pedidosParaCsv([pedido({ canal: "presencial" })]);
-    const linha = csv.split("\r\n")[1];
-    expect(linha.endsWith(";Balcão")).toBe(true);
+    expect(canalDaLinha(csv)).toBe("Balcão");
     expect(csv).toContain(";Recebido no balcão;");
   });
 
-  it("venda online vira 'Site' na última célula e 'Recebido na entrega' na coluna de pagamento", () => {
+  it("venda online vira 'Site' na coluna Canal e 'Recebido na entrega' na coluna de pagamento", () => {
     const csv = pedidosParaCsv([pedido({ canal: "online" })]);
-    const linha = csv.split("\r\n")[1];
-    expect(linha.endsWith(";Site")).toBe(true);
+    expect(canalDaLinha(csv)).toBe("Site");
     expect(csv).toContain(";Recebido na entrega;");
   });
 
   it("pedido sem `canal` (dado velho de fixture) vira 'Site' — nada quebra para trás", () => {
     const csv = pedidosParaCsv([pedido()]);
-    const linha = csv.split("\r\n")[1];
-    expect(linha.endsWith(";Site")).toBe(true);
+    expect(canalDaLinha(csv)).toBe("Site");
   });
 
-  it("o cabeçalho e a linha têm o mesmo número de separadores (14 ';', 15 colunas)", () => {
+  it("o cabeçalho e a linha têm o mesmo número de separadores (15 ';', 16 colunas)", () => {
     const csv = pedidosParaCsv([pedido({ canal: "presencial" })]);
     const [cabecalho, linha] = csv.split("\r\n");
     const separadoresDoCabecalho = cabecalho.split(";").length - 1;
     const separadoresDaLinha = linha.split(";").length - 1;
-    expect(separadoresDoCabecalho).toBe(14);
-    expect(separadoresDaLinha).toBe(14);
+    expect(separadoresDoCabecalho).toBe(15);
+    expect(separadoresDaLinha).toBe(15);
   });
 
   it("'Balcão' com acento não quebra o escape CSV nem o BOM", () => {

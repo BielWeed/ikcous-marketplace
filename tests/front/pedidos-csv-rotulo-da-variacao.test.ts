@@ -56,14 +56,14 @@ describe("pedidosParaCsv com o rótulo da variação", () => {
     );
   });
 
-  it("combinação 'Cor Azul · Tamanho M' entra inteira e as 15 colunas seguem iguais", () => {
+  it("combinação 'Cor Azul · Tamanho M' entra inteira e as 16 colunas seguem iguais", () => {
     const csv = pedidosParaCsv([pedido("var-c")], {
       "var-c": "Cor Azul · Tamanho M",
     });
     expect(itensDa(csv)).toBe(
       "Camiseta Básica - Cor Azul · Tamanho M (1 x 49,90)",
     );
-    expect(csv.split("\r\n")[1].split(";")).toHaveLength(15);
+    expect(csv.split("\r\n")[1].split(";")).toHaveLength(16);
   });
 
   it("o rótulo também passa pela proteção contra fórmula e pelo escape de ponto e vírgula", () => {
