@@ -1,5 +1,9 @@
 import { FolhaDoPainel } from "@/components/admin/primitivos/FolhaDoPainel";
 import { GuiaDaChaveDoProvedor } from "@/components/admin/settings/GuiaDaChaveDoProvedor";
+import {
+  registrarServicosQueNaoCotaram,
+  textoDoServicoQueNaoCotou,
+} from "@/components/admin/settings/transportadoras-conteudo";
 import { Chave } from "@/components/admin/shipping/primitivas-direcao-d";
 import { LogoDaTransportadora } from "@/components/shipping/MarcaDoFrete";
 import { Switch } from "@/components/ui/switch";
@@ -351,7 +355,7 @@ function resumoServicosTestados(
           s.ok
             ? "cotou certo"
             : s.motivo === "erro_do_servico"
-              ? `não cotou (${s.detalhe ?? "erro do serviço"})`
+              ? textoDoServicoQueNaoCotou(s.detalhe)
               : "não retornou"
         }`,
     )
@@ -832,6 +836,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
       try {
         const { data, error } = await chamarEdgeDeFrete(corpo);
         if (error) throw error;
+        registrarServicosQueNaoCotaram(provider, data?.servicosTestados);
         if (data?.success) {
           atualizarRascunho(provider, {
             testando: false,
@@ -861,7 +866,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
             sucesso: false,
             mensagem: mensagemAmigavelErroEdgeFunction(err as Error, {
               mensagemGenerica:
-                "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
+                "Não deu para falar com o servidor agora. Tente de novo em instantes.",
             }),
           },
         });
@@ -1571,7 +1576,7 @@ function CartaoDoProvedor({
                           {s.ok
                             ? "cotou certo"
                             : s.motivo === "erro_do_servico"
-                              ? `não cotou (${s.detalhe ?? "erro do serviço"})`
+                              ? textoDoServicoQueNaoCotou(s.detalhe)
                               : "não retornou"}
                         </li>
                       );
