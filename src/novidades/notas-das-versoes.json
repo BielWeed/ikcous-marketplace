@@ -10,7 +10,7 @@
       "Cliente, Novo endereço: o campo \"Quem vai receber\" já vem com o nome do cadastro."
     ],
     "correcoes": [
-      "Painel, Início: o item marcado \"Não veio\" fica com a cliente no ranking de lucro (a venda vale); o dinheiro devolvido além do valor das peças que voltaram vira perda desse item, na proporção do que foi devolvido.",
+      "Painel, Início: o item marcado \"Não veio\" fica com a cliente no ranking de lucro: a venda vale e o dinheiro devolvido por ele sai do lucro do produto, em vez de o item aparecer como peça perdida sem ter vindo.",
       "Painel, Balcão e Produtos: o painel, o balcão, o cadastro de produto e o editor de banners abrem e salvam mesmo com o navegador bloqueando o armazenamento do site.",
       "Balcão: ao registrar ou anular uma venda, a lojista não vê mais texto técnico; quando a conexão cai ou o tempo estoura, a tela manda conferir a venda em Pedidos antes de tentar de novo.",
       "Painel, Cupons: escolher \"Clientes escolhidos\" (ou \"Todos os clientes\") antes de a leitura do cupom terminar vale ao salvar; antes o cupom podia seguir aberto a todos mesmo com a tela dizendo \"Cupom atualizado\".",
