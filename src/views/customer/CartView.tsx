@@ -1461,7 +1461,14 @@ export function CartView({
                         <span className="mb-1 block font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
                           Total
                         </span>
-                        <span className="text-2xl font-bold tracking-tight text-foreground">
+                        {/* Região viva SÓ no valor (o rodapé do celular faz o
+                            mesmo): este painel e o rodapé se escondem com
+                            `display: none`, então só um fala por vez. */}
+                        <span
+                          role="status"
+                          aria-atomic="true"
+                          className="text-2xl font-bold tracking-tight text-foreground"
+                        >
                           {total === null
                             ? "A calcular"
                             : formatCurrency(total)}

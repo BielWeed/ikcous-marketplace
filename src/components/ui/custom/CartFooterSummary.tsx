@@ -101,7 +101,14 @@ export function CartFooterSummary({
             <span className="font-mono text-[11px] uppercase leading-none tracking-[0.12em] text-muted-foreground">
               Total
             </span>
-            <p className="mt-1.5 text-2xl font-bold leading-none tracking-tight text-foreground">
+            {/* Região viva SÓ no valor: o leitor de tela lê o total novo
+                inteiro quando a quantidade muda, sem repetir o rótulo nem o
+                frete. `role="status"` já é aria-live="polite". */}
+            <p
+              role="status"
+              aria-atomic="true"
+              className="mt-1.5 text-2xl font-bold leading-none tracking-tight text-foreground"
+            >
               {total === null ? "A calcular" : formatCurrency(total)}
             </p>
             <p
