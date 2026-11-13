@@ -64,10 +64,15 @@ const ESTRATEGIAS: readonly {
 
 const PREVIEW_EXEMPLOS = [24.9, 41.3] as const;
 
-// Vazio é sem mínimo; texto que não é dinheiro chega ao pai como NaN,
-// para o Salvar recusar em vez de transformar o mínimo em zero.
-function minimoDoTexto(texto: string): number {
+// Dinheiro como a lojista escreve ("1.234,50"). Vazio é zero; texto que não é
+// dinheiro chega ao pai como NaN, para o Salvar recusar em vez de transformar
+// o valor em zero. Vale para o mínimo e para o desconto em R$.
+function reaisDoTexto(texto: string): number {
   return texto.trim() === "" ? 0 : (parseValorBR(texto) ?? Number.NaN);
+}
+
+function textoDeReais(valor: number): string {
+  return valor === 0 ? "" : String(valor);
 }
 
 /** Dinheiro como a pessoa escreve, sempre com centavos: "R$ 24,90". */
@@ -106,23 +111,37 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
   readonly mostrarCabecalho?: boolean;
 }) {
   const [textoDoMinimo, setTextoDoMinimo] = useState(() =>
-    minimo === 0 ? "" : String(minimo),
+    textoDeReais(minimo),
+  );
+  const [textoDoDesconto, setTextoDoDesconto] = useState(() =>
+    textoDeReais(valorDesconto),
   );
   // Preserve a escrita (inclusive inválida); sincronize apenas mudanças
   // externas, como a configuração carregada ou a resposta do Salvar.
   useEffect(() => {
     setTextoDoMinimo((atual) =>
-      Object.is(minimoDoTexto(atual), minimo)
-        ? atual
-        : minimo === 0
-          ? ""
-          : String(minimo),
+      Object.is(reaisDoTexto(atual), minimo) ? atual : textoDeReais(minimo),
     );
   }, [minimo]);
+  useEffect(() => {
+    setTextoDoDesconto((atual) =>
+      Object.is(reaisDoTexto(atual), valorDesconto)
+        ? atual
+        : textoDeReais(valorDesconto),
+    );
+  }, [valorDesconto]);
   const ehDesconto = estrategia === "desconto_na_mais_barata";
-  const minimoInvalido = ehDesconto
-    ? !Number.isFinite(minimo) || minimo < 0
-    : minimo <= 0;
+  const minimoNaoEDinheiro = !Number.isFinite(minimo) || minimo < 0;
+  const minimoInvalido = ehDesconto ? minimoNaoEDinheiro : !(minimo > 0);
+  // Fora do desconto, o campo vazio/zero já é explicado pelo erro da tela
+  // ("maior que R$ 0"); aqui só o texto que não é dinheiro ganha aviso próprio.
+  const idAvisoMinimo = ehDesconto
+    ? "erro-minimo-desconto"
+    : "erro-minimo-frete-gratis";
+  const mostraAvisoMinimo = ehDesconto ? minimoInvalido : minimoNaoEDinheiro;
+  const descontoEmReais = tipoDesconto === "fixo";
+  const descontoInvalido =
+    descontoEmReais && (!Number.isFinite(valorDesconto) || valorDesconto < 0);
   const mostraMinimo = estrategia === "acima_de_valor" || ehDesconto;
   const mostraAlcance = estrategiaTemAlcanceEditavel(estrategia);
 
@@ -249,19 +268,35 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
               {tipoDesconto === "fixo" && (
                 <span className="text-xs font-semibold text-zinc-500">R$</span>
               )}
+              {/* Em R$ é TEXTO (como o mínimo): "1.234,50" é dinheiro.
+                  O percentual segue número inteiro simples. */}
               <input
                 aria-label="Desconto"
-                id="frete-nacional-valor-desconto"
-                type="number"
-                min="0"
-                step={tipoDesconto === "percentual" ? "1" : "0.5"}
-                inputMode={tipoDesconto === "fixo" ? "decimal" : "numeric"}
-                value={valorDesconto === 0 ? "" : valorDesconto}
-                onChange={(ev) =>
-                  onValorDesconto(
-                    ev.target.value === "" ? 0 : Number(ev.target.value),
-                  )
+                aria-invalid={descontoEmReais ? descontoInvalido : undefined}
+                aria-describedby={
+                  descontoInvalido ? "erro-valor-desconto" : undefined
                 }
+                id="frete-nacional-valor-desconto"
+                type={descontoEmReais ? "text" : "number"}
+                min={descontoEmReais ? undefined : "0"}
+                step={descontoEmReais ? undefined : "1"}
+                inputMode={descontoEmReais ? "decimal" : "numeric"}
+                value={
+                  descontoEmReais
+                    ? textoDoDesconto
+                    : valorDesconto === 0 || !Number.isFinite(valorDesconto)
+                      ? ""
+                      : valorDesconto
+                }
+                onChange={(ev) => {
+                  const texto = ev.target.value;
+                  if (descontoEmReais) {
+                    setTextoDoDesconto(texto);
+                    onValorDesconto(reaisDoTexto(texto));
+                  } else {
+                    onValorDesconto(texto === "" ? 0 : Number(texto));
+                  }
+                }}
                 placeholder={tipoDesconto === "percentual" ? "15" : "5"}
                 disabled={desabilitado || tipoDesconto === null}
                 className="w-24 bg-transparent text-center text-xl font-bold tabular-nums text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-0 disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none"
@@ -273,6 +308,15 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
             <span className="text-[13px] text-zinc-500">
               o desconto que a cliente ganha na cotação mais barata
             </span>
+            {descontoInvalido && (
+              <p
+                id="erro-valor-desconto"
+                role="alert"
+                className="w-full text-xs text-red-300"
+              >
+                Escreva o valor do desconto em reais, como 5 ou 12,50.
+              </p>
+            )}
           </div>
 
           {tipoDesconto !== null && valorDesconto > 0 && (
@@ -312,27 +356,15 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
             <input
               aria-label={ehDesconto ? "Pedido mínimo" : "A partir de"}
               aria-invalid={minimoInvalido}
-              aria-describedby={
-                ehDesconto && minimoInvalido
-                  ? "erro-minimo-desconto"
-                  : undefined
-              }
+              aria-describedby={mostraAvisoMinimo ? idAvisoMinimo : undefined}
               id="frete-nacional-minimo"
-              type={ehDesconto ? "text" : "number"}
-              min={ehDesconto ? "0" : "0.01"}
-              step="5"
+              type="text"
               inputMode="decimal"
-              value={ehDesconto ? textoDoMinimo : minimo === 0 ? "" : minimo}
+              value={textoDoMinimo}
               onChange={(ev) => {
                 const texto = ev.target.value;
                 setTextoDoMinimo(texto);
-                onMinimo(
-                  ehDesconto
-                    ? minimoDoTexto(texto)
-                    : texto === ""
-                      ? 0
-                      : Number(texto),
-                );
+                onMinimo(reaisDoTexto(texto));
               }}
               placeholder={ehDesconto ? "opcional" : "199"}
               disabled={desabilitado}
@@ -344,13 +376,15 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
               ? "mínimo de compra para o desconto valer — vazio é sem mínimo"
               : "a partir deste valor, o frete nacional sai grátis"}
           </span>
-          {ehDesconto && minimoInvalido && (
+          {mostraAvisoMinimo && (
             <p
-              id="erro-minimo-desconto"
+              id={idAvisoMinimo}
               role="alert"
               className="w-full text-xs text-red-300"
             >
-              Informe um pedido mínimo válido, de R$ 0 ou mais, para o desconto.
+              {ehDesconto
+                ? "Informe um pedido mínimo válido, de R$ 0 ou mais, para o desconto."
+                : "Escreva o valor em reais, como 199 ou 1.234,50."}
             </p>
           )}
         </div>
