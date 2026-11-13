@@ -756,7 +756,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         prev?.id === orderId
           ? {
               ...prev,
-              paymentStatus: data?.payment_status ?? prev.paymentStatus,
+              // Desfazer: a RPC devolve `payment_status` NULO. Manter o valor
+              // anterior deixaria o selo "Recebido na entrega" (e o texto de
+              // cancelar "está PAGO") com o recebimento já desfeito.
+              paymentStatus: data?.payment_status ?? null,
               pagamentoRecebidoEm: data?.pagamento_recebido_em ?? null,
               pagamentoRecebidoPor: data?.pagamento_recebido_por ?? null,
             }

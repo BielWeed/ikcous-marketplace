@@ -58,10 +58,11 @@ vi.mock("@/components/ui/alert-dialog", () => ({
     open,
     children,
   }: {
-    open: boolean;
+    open?: boolean;
     children: ReactNode;
-  }) => (open ? <div>{children}</div> : null),
-  // `DesfazerRecebimento` (que a ficha monta depois do "Recebi") importa o gatilho.
+  }) => (open === false ? null : <div>{children}</div>),
+  // `DesfazerRecebimento` (que a ficha monta depois do "Recebi") usa o
+  // AlertDialog sem `open` (não controlado): aqui ele fica sempre aberto.
   AlertDialogTrigger: ({ children }: { children: ReactNode }) => (
     <>{children}</>
   ),
@@ -243,7 +244,8 @@ describe("AdminOrdersView — Recebi na ficha aberta por link", () => {
 
   it("depois de 'Recebi', a ficha mostra 'Recebido em' e some o 'Marcar como recebido' (sem depender do tempo real)", async () => {
     registrarPagamentoRecebido.mockResolvedValue({
-      payment_status: "pago",
+      // O valor que a RPC realmente devolve no "Recebi".
+      payment_status: "recebido_na_entrega",
       pagamento_recebido_em: "2026-11-10T15:00:00Z",
       pagamento_recebido_por: "usuario-1",
     });
@@ -266,5 +268,39 @@ describe("AdminOrdersView — Recebi na ficha aberta por link", () => {
     expect(registrarPagamentoRecebido).toHaveBeenCalledTimes(1);
     expect(hospedeiro.textContent).not.toContain("Recebido em");
     expect(botao("Marcar como recebido")).toBeTruthy();
+  });
+
+  it("'Recebi' e depois 'Desfazer': a RPC devolve payment_status nulo e a ficha volta a ser de pedido NÃO pago (sem selo verde, sem 'está PAGO' ao cancelar)", async () => {
+    registrarPagamentoRecebido
+      .mockResolvedValueOnce({
+        payment_status: "recebido_na_entrega",
+        pagamento_recebido_em: "2026-11-10T15:00:00Z",
+        pagamento_recebido_por: "usuario-1",
+      })
+      // O que a RPC vigente devolve ao desfazer: tudo nulo.
+      .mockResolvedValueOnce({
+        payment_status: null,
+        pagamento_recebido_em: null,
+        pagamento_recebido_por: null,
+      });
+    await abrirPedido();
+    await marcarComoRecebido();
+    expect(hospedeiro.textContent).toContain("Recebido na entrega");
+
+    await act(async () => botao("Desfazer recebimento")?.click());
+    await assentar();
+
+    expect(registrarPagamentoRecebido).toHaveBeenLastCalledWith(
+      PEDIDO_ID,
+      false,
+    );
+    expect(hospedeiro.textContent).not.toContain("Recebido na entrega");
+    expect(hospedeiro.textContent).toContain("Falta receber na entrega");
+    expect(botao("Marcar como recebido")).toBeTruthy();
+
+    await act(async () => botao("Cancelar pedido")?.click());
+    await assentar();
+    expect(document.body.textContent).toContain("Cancelar este pedido?");
+    expect(document.body.textContent).not.toContain("PAGO");
   });
 });
