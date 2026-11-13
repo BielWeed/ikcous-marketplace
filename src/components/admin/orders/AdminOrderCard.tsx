@@ -18,6 +18,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAgoraDoPainel } from "@/hooks/useAgoraDoPainel";
 import type { ResultadoDaAnulacao } from "@/hooks/useAnularVendaDoBalcao";
+import { useVoltarFechaAFolha } from "@/hooks/useVoltarFechaAFolha";
 import { podeAnularVendaDoBalcao } from "@/lib/anulacao-do-balcao";
 import { pedidoSemValorAPagar } from "@/lib/forma-de-pagamento";
 import { horarioRelativo } from "@/lib/horario-relativo";
@@ -104,6 +105,13 @@ export const AdminOrderCard = memo(function AdminOrderCard({
   const [painel, setPainel] = useState<
     "acoes" | "cancelar" | "receber" | "avancar" | "entregar" | null
   >(null);
+  // O Voltar do aparelho fecha só a pergunta de dinheiro/cancelar e a lista de
+  // Pedidos fica. O menu "Ações do pedido" fica de fora: "Ver detalhes" navega
+  // para a ficha de dentro dele, e a entrada de histórico da janela sobraria
+  // atrás da ficha (um Voltar "sem efeito").
+  useVoltarFechaAFolha(painel !== null && painel !== "acoes", () =>
+    setPainel(null),
+  );
   const [processando, setProcessando] = useState(false);
   const [destinoConfirmado, setDestinoConfirmado] = useState<{
     status: OrderStatus;
