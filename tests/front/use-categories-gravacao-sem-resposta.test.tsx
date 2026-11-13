@@ -19,26 +19,36 @@ const h = vi.hoisted(() => ({
   inserir: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
+  // O que o "servidor" devolve na leitura, e quantas leituras já fez.
+  linhas: [] as Record<string, unknown>[],
+  leituras: 0,
 }));
+const BRINQUEDO = {
+  id: "c1",
+  nome: "Brinquedo",
+  slug: "brinquedo",
+  descricao: "",
+  ativo: true,
+  created_at: "2026-01-01T00:00:00Z",
+};
+const JOGOS = {
+  id: "c2",
+  nome: "Jogos",
+  slug: "jogos",
+  descricao: "",
+  ativo: true,
+  created_at: "2026-01-02T00:00:00Z",
+};
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc: h.rpc,
     from: () => ({
       select: () => ({
-        order: async () => ({
-          data: [
-            {
-              id: "c1",
-              nome: "Brinquedo",
-              slug: "brinquedo",
-              descricao: "",
-              ativo: true,
-              created_at: "2026-01-01T00:00:00Z",
-            },
-          ],
-          error: null,
-        }),
+        order: async () => {
+          h.leituras += 1;
+          return { data: h.linhas, error: null };
+        },
       }),
       insert: (valores: unknown) => ({
         select: () => ({ single: () => h.inserir(valores) }),
@@ -84,6 +94,8 @@ describe("useCategories — gravação que nunca responde", () => {
     h.inserir.mockReset().mockImplementation(pendurada);
     h.toastSuccess.mockReset();
     h.toastError.mockReset();
+    h.linhas = [BRINQUEDO];
+    h.leituras = 0;
     vi.spyOn(console, "error").mockImplementation(() => {});
 
     const { useCategories } = await import("@/hooks/useCategories");
@@ -203,6 +215,60 @@ describe("useCategories — gravação que nunca responde", () => {
       expect(h.inserir).toHaveBeenCalledTimes(1);
     },
   );
+
+  // Estourou o prazo da CRIAÇÃO: o servidor pode ter gravado. A tela não diz
+  // "criada" nem "falhou": solta a espera e RELÊ a lista real.
+  async function estourarACriacao() {
+    h.inserir.mockReturnValue(pendurada());
+    let erro: unknown;
+    await act(async () => {
+      void hook()
+        .addCategory({ name: "Jogos", description: "", isActive: true }, true)
+        .catch((e) => {
+          erro = e;
+        });
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    return erro;
+  }
+
+  it("criar sem resposta: relê a lista e mostra a categoria que o servidor gravou", async () => {
+    expect(h.leituras).toBe(1);
+    h.linhas = [BRINQUEDO, JOGOS]; // gravou, mas a resposta nunca chegou
+    const erro = await estourarACriacao();
+
+    confereFraseDeQueNaoSeSabe(erro, "a categoria foi criada");
+    expect(h.leituras).toBe(2);
+    expect(hospedeiro.textContent).toBe("Brinquedo|trueJogos|true");
+    expect(h.toastSuccess).not.toHaveBeenCalled();
+    expect(h.toastError).not.toHaveBeenCalled();
+  });
+
+  it("criar sem resposta: se o servidor não gravou, a lista continua sem ela", async () => {
+    const erro = await estourarACriacao();
+
+    confereFraseDeQueNaoSeSabe(erro, "a categoria foi criada");
+    expect(h.leituras).toBe(2);
+    expect(hospedeiro.textContent).toBe("Brinquedo|true");
+    expect(h.toastSuccess).not.toHaveBeenCalled();
+  });
+
+  it("criar que o banco recusa de verdade não relê a lista", async () => {
+    h.inserir.mockResolvedValue({
+      data: null,
+      error: { code: "08006", message: "connection failure" },
+    });
+    await act(async () => {
+      await hook()
+        .addCategory({ name: "Jogos", description: "", isActive: true }, true)
+        .catch(() => {});
+    });
+    expect(h.leituras).toBe(1);
+    expect(hospedeiro.textContent).toBe("Brinquedo|true");
+  });
 
   it("renomear: solta a espera com a frase de não saber se trocou", async () => {
     const r = await esperarOPrazo(() => hook().renameCategory("c1", "Jogos"));
