@@ -118,13 +118,20 @@ interface AdminLayoutProps {
   onBack?: () => void;
 }
 
-/** Como nas notificações: só a assinatura DEPOIS de uma queda pede releitura. */
+/**
+ * A leitura da contagem sai ANTES de a assinatura confirmar (a conexão ainda
+ * está abrindo). Um pedido que entra entre a leitura e a confirmação não chega
+ * nem pela consulta nem pelo tempo real: a bolinha ficava apagada até outro
+ * gatilho. Por isso a PRIMEIRA confirmação (`SUBSCRIBED`) de cada canal, e a de
+ * cada reconexão depois de uma queda, pedem UMA releitura. Confirmação
+ * repetida sem queda no meio não pede nada.
+ */
 function aoMudarOStatusDoCanal(nome: string, reler: () => void) {
-  let canalJaCaiu = false;
+  let leituraAnteriorAConfirmacao = true;
   return (status: string, err?: any) => {
     if (status === "SUBSCRIBED") {
-      if (canalJaCaiu) {
-        canalJaCaiu = false;
+      if (leituraAnteriorAConfirmacao) {
+        leituraAnteriorAConfirmacao = false;
         reler();
       }
     } else if (
@@ -132,7 +139,7 @@ function aoMudarOStatusDoCanal(nome: string, reler: () => void) {
       status === "TIMED_OUT" ||
       status === "CLOSED"
     ) {
-      canalJaCaiu = true;
+      leituraAnteriorAConfirmacao = true;
     }
     if (status !== "CHANNEL_ERROR") return;
     const errMessage = err?.message || (typeof err === "string" ? err : "");
