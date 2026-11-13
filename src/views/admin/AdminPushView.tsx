@@ -521,6 +521,7 @@ export const AdminPushView = memo(function AdminPushView({
   // consegui".
   const [predictedReach, setPredictedReach] = useState<ContagemMedida>(null);
   const rodadaDoAlcanceRef = useRef(0);
+  const rodadaDosAparelhosRef = useRef(0);
   const [history, setHistory] = useState<any[] | null>(null);
   const [targetUserName, setTargetUserName] = useState<{
     id: string;
@@ -675,9 +676,15 @@ export const AdminPushView = memo(function AdminPushView({
   }, [targetUserId]);
 
   const fetchSubscribers = useCallback(async () => {
+    // Leituras sobrepostas (montagem, foco, fim de envio): a que COMEÇOU por
+    // último é a que vale. Sem isto, a resposta antiga que chega depois
+    // repunha um total velho (0) e travava o envio para todos. Mesmo padrão
+    // de `rodadaDoAlcanceRef`.
+    const rodada = ++rodadaDosAparelhosRef.current;
     const { count, error } = await supabase
       .from("push_subscriptions")
       .select("*", { count: "exact", head: true });
+    if (rodada !== rodadaDosAparelhosRef.current) return;
 
     // Consulta falhou: `null`, nunca `0` — zero é a afirmação de que a loja
     // não tem ninguém cadastrado, e isso só se pode dizer depois de medir.
