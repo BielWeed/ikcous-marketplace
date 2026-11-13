@@ -3074,7 +3074,19 @@ const ROL_DA_141 = [
   "fin_resumo: EXECUTE authenticated, sem PUBLIC ou anon",
   "fin__saldos: corpo exato (md5)",
 ];
+// Lote 142 (20261399990000, o CRM nao duplica o comprador quando o WhatsApp vem com e sem o 55: crm__vendas redefinida, sem objeto novo). A 142a e a 142b tem o MESMO rol de 4 linhas (controle,
+// corpo exato (md5), atributos e ACL); a 142a espera o corpo da migration nova e a 142b o vigente de antes (o da 20261178000000). So catalogo: nenhuma le pedido, perfil ou cliente e nenhuma chama a funcao.
+const ROL_DA_142 = [
+  "controle: funcoes de public visiveis a este papel",
+  "crm__vendas: corpo exato (md5)",
+  "crm__vendas: assinatura e atributos conhecidos (sql, STABLE, SECURITY INVOKER, search_path=public, uma so)",
+  "crm__vendas: sem EXECUTE para PUBLIC, anon ou authenticated",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado":
+    ROL_DA_142,
+  "142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente":
+    ROL_DA_142,
   "141a-conferir-o-grafico-do-financeiro-soma-so-as-contas-ativas-aplicado":
     ROL_DA_141,
   "141b-antes-o-grafico-do-financeiro-soma-so-as-contas-ativas-base-vigente":

@@ -333,6 +333,36 @@ const VERIFICACOES = {
       { texto: "v_origem := 'variante';", vezes: 2 },
     ],
   },
+  // 20261399990000: o CRM nao duplica o comprador quando o WhatsApp vem com e sem o 55. crm__vendas ganha SO a CTE base_chave (o numero sem o 55, a
+  // mesma expressao da 20261183000000) e a chave do balcao e a fusao com a conta passam a usar wa_chave no lugar de wa. A venda que conta (a CTE
+  // base, com o status fora de cancelled/returned) segue UMA vez. A consulta 142a confere o corpo exato (md5), os atributos e a ACL.
+  "20261399990000_o_crm_nao_duplica_o_comprador_com_e_sem_55.sql": {
+    funcao: "crm__vendas",
+    esperado: [
+      {
+        texto: "CASE WHEN length(b.wa) IN (12, 13) AND left(b.wa, 2) = '55'",
+        vezes: 1,
+      },
+      {
+        texto: "THEN substring(b.wa FROM 3) ELSE b.wa END AS wa_chave",
+        vezes: 1,
+      },
+      {
+        texto: "SELECT DISTINCT ON (b.wa_chave) b.wa_chave, b.user_id",
+        vezes: 1,
+      },
+      {
+        texto: "CASE WHEN b.wa_chave IS NOT NULL THEN 'wa:' || b.wa_chave END",
+        vezes: 1,
+      },
+      {
+        texto:
+          "LEFT JOIN wa_da_conta w ON w.wa_chave = b.wa_chave AND b.user_id IS NULL",
+        vezes: 1,
+      },
+      { texto: "AND o.status NOT IN ('cancelled', 'returned')", vezes: 1 },
+    ],
+  },
   // 20261386: o preco do produto deixa historico. A tabela, a politica, o ACL e o gatilho nao sao conferiveis aqui (so corpo de funcao): a
   // consulta 91a e a prova viva fazem isso. Aqui: a funcao do gatilho grava 'cadastro' no INSERT e 'mudanca' so quando o preco muda.
   "20261386000000_o_preco_do_produto_deixa_historico.sql": {

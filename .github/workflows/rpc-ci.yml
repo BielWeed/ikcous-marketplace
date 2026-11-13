@@ -266,6 +266,8 @@ on:
       - "scripts/publicacao/consultas/140b-antes-as-listas-do-painel-nao-repetem-ninguem-base-vigente.sql"
       - "scripts/publicacao/consultas/141a-conferir-o-grafico-do-financeiro-soma-so-as-contas-ativas-aplicado.sql"
       - "scripts/publicacao/consultas/141b-antes-o-grafico-do-financeiro-soma-so-as-contas-ativas-base-vigente.sql"
+      - "scripts/publicacao/consultas/142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado.sql"
+      - "scripts/publicacao/consultas/142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
       - "scripts/publicacao/consultas/129m-medir-corrida-e-avanco-com-estorno.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
@@ -503,6 +505,8 @@ on:
       - "scripts/publicacao/consultas/140b-antes-as-listas-do-painel-nao-repetem-ninguem-base-vigente.sql"
       - "scripts/publicacao/consultas/141a-conferir-o-grafico-do-financeiro-soma-so-as-contas-ativas-aplicado.sql"
       - "scripts/publicacao/consultas/141b-antes-o-grafico-do-financeiro-soma-so-as-contas-ativas-base-vigente.sql"
+      - "scripts/publicacao/consultas/142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado.sql"
+      - "scripts/publicacao/consultas/142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql"
       - "scripts/publicacao/consultas/129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente.sql"
       - "scripts/publicacao/consultas/129m-medir-corrida-e-avanco-com-estorno.sql"
       - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
@@ -1145,6 +1149,13 @@ jobs:
       - name: Prova viva do grafico do Financeiro que soma so as contas ativas (20261399985000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-grafico-do-financeiro-soma-so-as-contas-ativas-viva.cjs
+      # Migration 20261399990000 (o CRM nao duplica o comprador quando o WhatsApp vem com e sem o 55): crm__vendas compara o numero SEM o 55 (12 ou 13 digitos comecando por 55) na chave do balcao e na
+      # fusao com a conta, a mesma expressao de crm__pedidos_nao_pagos e crm__nunca_comprou (20261183000000, N4). Controle com o corpo da 20261178000000 na MESMA fixture (o defeito), bordas (numeros
+      # diferentes, DDD 55, 12 digitos, sem numero, cancelada, duas contas), crm__clientes_rfm/crm_clientes/crm_visao/crm__nunca_comprou/crm__pedidos_nao_pagos, mutantes, linhas sem 55 iguais as do corpo
+      # anterior, ACL/atributos/dono iguais, reaplicar, rollback byte a byte, pre-voo, conexao sem BEGIN com conferencia sabotada e consultas 142a/142b. CLONE proprio.
+      - name: Prova viva do CRM que nao duplica o comprador com e sem o 55 (20261399990000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-crm-nao-duplica-o-comprador-com-e-sem-55-viva.cjs
       # Onda 150 (SEM migration): registrar_venda_presencial recusa p_itens vazio, que nao e lista (objeto, null, escalar, NULL) e com mais de 200 linhas, com 22023 e a frase da loja, sem escrever pedido, item,
       # historico, financeiro nem estoque; 200 (o limite) entra. Mutantes por MUTANTE_R150E. CLONE proprio.
       - name: Prova viva do balcao que recusa venda sem item e com itens demais

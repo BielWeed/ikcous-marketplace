@@ -698,6 +698,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "140b-antes-as-listas-do-painel-nao-repetem-ninguem-base-vigente",
   "141a-conferir-o-grafico-do-financeiro-soma-so-as-contas-ativas-aplicado",
   "141b-antes-o-grafico-do-financeiro-soma-so-as-contas-ativas-base-vigente",
+  "142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado",
+  "142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente",
   "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente",
 ]);
 

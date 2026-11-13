@@ -858,6 +858,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399985000: o grafico do Financeiro soma so as contas ativas (fin_resumo ganha serie[].variacao_saldo; controle com o corpo anterior, saldo de cada dia = fin__saldos, mutantes,
     // rollback byte a byte, conexao sem BEGIN, pre/pos-voo, admin e consultas 141a/141b).
     "tests/banco/o-grafico-do-financeiro-soma-so-as-contas-ativas-viva.cjs",
+    // 20261399990000: o CRM nao duplica o comprador quando o WhatsApp vem com e sem o 55 (crm__vendas: chave e fusao pelo numero sem o 55; controle com o corpo da 20261178000000 na mesma fixture, bordas,
+    // mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 142a/142b).
+    "tests/banco/o-crm-nao-duplica-o-comprador-com-e-sem-55-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
     "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
   ];

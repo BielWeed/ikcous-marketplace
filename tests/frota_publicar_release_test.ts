@@ -3178,6 +3178,7 @@ Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como 
     "135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado",
     "140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado",
     "141a-conferir-o-grafico-do-financeiro-soma-so-as-contas-ativas-aplicado",
+    "142a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado",
   ]);
 });
 

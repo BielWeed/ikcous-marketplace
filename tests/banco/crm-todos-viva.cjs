@@ -132,6 +132,13 @@ const WA_FUSAO_COM_DDI = "5534988880017";
 // resolvem o mesmo WhatsApp para contas DIFERENTES.
 const WA_PRIORIDADE = "5534988880018";
 
+// A chave do comprador de balcao sem conta e 'wa:' + o numero SEM o 55 quando ele tem DDI (12 ou 13 digitos comecando por 55), a mesma
+// expressao de crm__pedidos_nao_pagos e crm__nunca_comprou (20261399990000: a crm__vendas passou a comparar assim).
+const chaveWa = (wa) => {
+  const d = String(wa).replace(/\D/g, "");
+  return `wa:${(d.length === 12 || d.length === 13) && d.startsWith("55") ? d.slice(2) : d}`;
+};
+
 async function logar(cliente, userId) {
   await cliente.query("SELECT set_config('app.rpc.user_id', $1, false)", [
     userId,
@@ -741,7 +748,7 @@ PROVAS.push({
       "os DOIS pedidos (conta + balcão) contam para a MESMA pessoa",
     );
     assert.equal(
-      porChave.has(`wa:${WA_FUSAO}`),
+      porChave.has(chaveWa(WA_FUSAO)),
       false,
       "não pode sobrar um SEGUNDO registro pela chave wa: — teria duplicado a pessoa",
     );
@@ -799,7 +806,7 @@ PROVAS.push({
     );
     // E essa pessoa CONTINUA aparecendo como compradora (pela chave wa:).
     assert.ok(
-      porChave.has(`wa:${WA_COMPRADOR_BALCAO}`),
+      porChave.has(chaveWa(WA_COMPRADOR_BALCAO)),
       "a compradora de balcão continua na lista, como comprador (grupo 0)",
     );
 
@@ -826,10 +833,10 @@ PROVAS.push({
       "N1: quem tem uma venda de balcão PAGA fundida no grupo não pode aparecer em pediu_nao_pagou",
     );
     assert.ok(
-      porChave.has(`wa:${WA_BALCAO_PAGO}`),
+      porChave.has(chaveWa(WA_BALCAO_PAGO)),
       "N1: a pessoa continua aparecendo como compradora, pela chave da venda paga",
     );
-    const compradorBalcaoPago = porChave.get(`wa:${WA_BALCAO_PAGO}`);
+    const compradorBalcaoPago = porChave.get(chaveWa(WA_BALCAO_PAGO));
     assert.equal(
       num(compradorBalcaoPago.pedidos),
       1,
@@ -844,8 +851,8 @@ PROVAS.push({
       "N4: perfil sem '55' e venda de balcão paga com '55' têm de normalizar para a mesma chave — não pode virar nunca_comprou",
     );
     assert.ok(
-      porChave.has(`wa:${WA_BALCAO_COM_DDI.replace(/\D/g, "")}`),
-      "N4: a pessoa continua aparecendo como compradora, pela chave (com DDI, em dígitos) da venda paga",
+      porChave.has(chaveWa(WA_BALCAO_COM_DDI)),
+      "N4: a pessoa continua aparecendo como compradora, pela chave (em dígitos, sem o 55: 20261399990000) da venda paga",
     );
 
     // --- M20p/M20m: staff com pedido não pago também não aparece em pediu_nao_pagou ---
