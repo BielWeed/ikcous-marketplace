@@ -17,6 +17,7 @@
 // escreve (mesmas linhas citadas no comentário de cada `if`) — reescrevê-las
 // aqui criaria DUAS verdades sobre a mesma recusa (risco medido na tarefa).
 
+import { fraseEscritaPelaCasa } from "@/lib/frase-escrita-pela-casa";
 import { ehConsultaSemResposta } from "@/lib/prazo-da-requisicao";
 
 /** O que a tela precisa para decidir o que mostrar e se vale oferecer um
@@ -37,6 +38,15 @@ export interface FalhaDaVendaTraduzida {
  * um erro que não vai se resolver sozinho, e nunca "deu erro" seco. */
 export const MENSAGEM_DE_REDE_DA_VENDA =
   "Não consegui falar com o servidor. O cupom está salvo aqui; tente de novo quando a conexão voltar.";
+
+/** O banco estourou o tempo (57014): não sabemos se a venda entrou. A tela não
+ * afirma que falhou nem que gravou — manda CONFERIR e só então repetir (a
+ * mesma chave devolve o recibo se ela já existir). */
+export const MENSAGEM_DE_DEMORA_DA_VENDA =
+  "O servidor demorou demais para responder. Confira em Pedidos, nas vendas do balcão, se esta venda já aparece antes de tentar de novo.";
+
+const FRASE_ACESSO_NEGADO =
+  "Acesso negado: só a loja registra venda no balcão.";
 
 const FALHA_DE_REDE: FalhaDaVendaTraduzida = {
   mensagem: MENSAGEM_DE_REDE_DA_VENDA,
@@ -193,10 +203,12 @@ export function mensagemDaFalhaDaVenda(
   }
 
   if (codigo === "42501") {
-    // migration :220 ('Acesso negado…') e :227 ('Não autorizado…').
+    // migration :220 ('Acesso negado…') e :227 ('Não autorizado…'). Só passa a
+    // frase que a casa escreveu: o 42501 NATIVO do Postgres ("permission
+    // denied for function registrar_venda_presencial") cai na frase da casa.
     return {
       mensagem:
-        mensagemDoBanco ?? "Acesso negado: só a loja registra venda no balcão.",
+        fraseEscritaPelaCasa(codigo, mensagemDoBanco) ?? FRASE_ACESSO_NEGADO,
       podeTentarDeNovo: false,
       precisaEntrarDeNovo: true,
     };
@@ -235,7 +247,8 @@ export function mensagemDaFalhaDaVenda(
     // vazio e a frase sai "Produto não encontrado não disponível." (migration
     // 20261280000000, perto de "não disponível"). Convida a tirar a peça e
     // registrar de novo — sem travar o botão e sem mandar apagar a venda.
-    const peca = mensagemDoBanco?.match(/^Produto (.+) não disponível\.$/);
+    const daCasa = fraseEscritaPelaCasa(codigo, mensagemDoBanco);
+    const peca = daCasa?.match(/^Produto (.+) não disponível\.$/);
     if (peca) {
       const qual =
         peca[1] === "não encontrado"
@@ -248,9 +261,8 @@ export function mensagemDaFalhaDaVenda(
       };
     }
     return {
-      mensagem: mensagemDoBanco ?? "Não foi possível registrar a venda.",
-      podeTentarDeNovo:
-        mensagemDoBanco?.includes("Estoque insuficiente") ?? false,
+      mensagem: daCasa ?? "Não foi possível registrar a venda.",
+      podeTentarDeNovo: daCasa?.includes("Estoque insuficiente") ?? false,
       precisaEntrarDeNovo: false,
     };
   }
@@ -276,12 +288,17 @@ export function mensagemDaFalhaDaVenda(
       precisaEntrarDeNovo: false,
     };
   }
-  if (
-    codigo === "40001" ||
-    codigo === "57014" ||
-    codigo === "55P03" ||
-    codigo.startsWith("53")
-  ) {
+  // Estouro de tempo do banco: o servidor cancelou o comando, mas a tela não
+  // tem como PROVAR que a venda não entrou (a resposta pode ter ficado para
+  // trás). Como no "sem rede": nem sucesso nem falha — conferir e repetir.
+  if (codigo === "57014") {
+    return {
+      mensagem: MENSAGEM_DE_DEMORA_DA_VENDA,
+      podeTentarDeNovo: true,
+      precisaEntrarDeNovo: false,
+    };
+  }
+  if (codigo === "40001" || codigo === "55P03" || codigo.startsWith("53")) {
     return {
       // "Ocupado" prova que ESTA tentativa foi desfeita, nada sobre a anterior:
       // com uma resposta perdida antes (`haDuvidaDaTentativaAnterior`), afirmar
@@ -338,7 +355,11 @@ export function mensagemDaFalhaDaVenda(
 export type EfeitoDaFalhaNaDuvida = "abre" | "fecha" | "mantem";
 
 export function efeitoDaFalhaNaDuvida(erro: unknown): EfeitoDaFalhaNaDuvida {
-  if (mensagemDaFalhaDaVenda(erro).mensagem === MENSAGEM_DE_REDE_DA_VENDA) {
+  const traduzida = mensagemDaFalhaDaVenda(erro).mensagem;
+  if (
+    traduzida === MENSAGEM_DE_REDE_DA_VENDA ||
+    traduzida === MENSAGEM_DE_DEMORA_DA_VENDA
+  ) {
     return "abre";
   }
   const codigo = codigoDoErro(erro);

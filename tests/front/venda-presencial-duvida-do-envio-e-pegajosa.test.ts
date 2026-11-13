@@ -13,8 +13,10 @@
 //   · uma recusa de NEGÓCIO (22023, PDV01). A RPC confere a chave ANTES de
 //     validar qualquer coisa (migration 20261280000000, passo 2): se a venda
 //     existisse, devolveria `ja_existia`; a recusa só vem quando ela NÃO existe.
-// Erro passageiro/de infraestrutura (53xx, 40001, 57014, 55P03, 40P01, sessão,
+// Erro passageiro/de infraestrutura (53xx, 40001, 55P03, 40P01, sessão,
 // 42501, código desconhecido) NÃO prova nada sobre a tentativa anterior.
+// O estouro de tempo do banco (57014) é o contrário: a tela manda CONFERIR se a
+// venda entrou, então ABRE a dúvida em vez de afirmar que nada foi gravado.
 import { describe, expect, it } from "vitest";
 
 import {
@@ -27,6 +29,7 @@ import {
   serializarRascunho,
 } from "@/hooks/useVendaPresencial";
 import {
+  MENSAGEM_DE_DEMORA_DA_VENDA,
   MENSAGEM_DE_REDE_DA_VENDA,
   efeitoDaFalhaNaDuvida,
   mensagemDaFalhaDaVenda,
@@ -103,6 +106,7 @@ describe("efeitoDaFalhaNaDuvida — quais respostas abrem, fecham ou deixam a d�
     ["08001", { code: "08001", message: "unable to connect" }],
     ["57P01 servidor desligando", { code: "57P01", message: "terminating" }],
     ["57P03", { code: "57P03", message: "starting up" }],
+    ["57014 servidor demorou", { code: "57014", message: "statement timeout" }],
     ["code vazio do postgrest-js", { code: "", message: "TypeError: fetch" }],
   ])("ABRE a dúvida: %s", (_nome, erro) => {
     expect(efeitoDaFalhaNaDuvida(erro)).toBe("abre");
@@ -142,7 +146,6 @@ describe("efeitoDaFalhaNaDuvida — quais respostas abrem, fecham ou deixam a d�
     ["53300 conexões esgotadas", CONEXOES_ESGOTADAS],
     ["53200 sem memória", { code: "53200", message: "out of memory" }],
     ["40001 serialização", { code: "40001", message: "could not serialize" }],
-    ["57014 tempo do banco", { code: "57014", message: "statement timeout" }],
     ["55P03 trava", { code: "55P03", message: "could not obtain lock" }],
     ["40P01 deadlock", { code: "40P01", message: "deadlock detected" }],
     [
@@ -168,6 +171,7 @@ describe("efeitoDaFalhaNaDuvida — quais respostas abrem, fecham ou deixam a d�
       SEM_ESTOQUE,
       { code: "08006" },
       { code: "57P01" },
+      { code: "57014" },
       { code: "42501" },
       { code: "PGRST301" },
       { code: "PDV01" },
@@ -177,8 +181,10 @@ describe("efeitoDaFalhaNaDuvida — quais respostas abrem, fecham ou deixam a d�
       { code: "55P03" },
     ];
     for (const erro of amostras) {
+      const mensagem = mensagemDaFalhaDaVenda(erro).mensagem;
       const ehRede =
-        mensagemDaFalhaDaVenda(erro).mensagem === MENSAGEM_DE_REDE_DA_VENDA;
+        mensagem === MENSAGEM_DE_REDE_DA_VENDA ||
+        mensagem === MENSAGEM_DE_DEMORA_DA_VENDA;
       expect(efeitoDaFalhaNaDuvida(erro) === "abre", JSON.stringify(erro)).toBe(
         ehRede,
       );
