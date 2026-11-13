@@ -266,6 +266,15 @@ export function AddressForm({
   // CEP a resposta corrente descreve (o hook já garante, pela guarda de
   // sequência de #184, que só a busca mais nova chama este callback).
   const cepEmBuscaRef = useRef<string>("");
+  // CEP que estava no campo quando a pessoa preencheu rua, bairro, cidade ou UF
+  // À MÃO (a busca não deu o endereço, e `cepAssociadoRef` só aprende CEP de
+  // busca que achou). É o "dono" do que ela digitou: sem ele, trocar o CEP com
+  // a busca falhando de novo salvava o endereço do CEP antigo no CEP novo.
+  const cepDoPreenchimentoAMaoRef = useRef<string | null>(null);
+  const marcarPreenchimentoAMao = () => {
+    const limpo = formatarCep(form.getValues("cep")).limpo;
+    if (limpo.length === 8) cepDoPreenchimentoAMaoRef.current = limpo;
+  };
   // Rua e bairro que a pessoa digitou à mão para o CEP atual. Apagar e digitar
   // de novo o MESMO CEP refaz a busca, e a resposta não pode escrever por cima
   // do que ela corrigiu (o checkout de convidado faz igual). Esvazia quando o
@@ -349,6 +358,7 @@ export function AddressForm({
       cepAssociadoRef.current = initialData?.cep
         ? formatarCep(initialData.cep).limpo
         : null;
+      cepDoPreenchimentoAMaoRef.current = null;
       if (initialData) {
         form.reset(valoresDoEndereco(initialData));
       } else {
@@ -387,6 +397,7 @@ export function AddressForm({
       cepAssociadoRef.current = initialData.cep
         ? formatarCep(initialData.cep).limpo
         : null;
+      cepDoPreenchimentoAMaoRef.current = null;
       setReferenciaAberta(!!initialData.reference);
       setApelidoOutro(false);
       form.reset(valoresDoEndereco(initialData));
@@ -498,19 +509,19 @@ export function AddressForm({
   }, [mostrarCampos]);
 
   // A busca não achou o CEP: o que estava nos campos pertencia a OUTRO CEP
-  // (o da busca anterior, ou o do endereço em edição) e não pode seguir
-  // misturado com o CEP novo. Cadastro novo sem busca aplicada (`null`): o
-  // que a pessoa digitou à mão fica — o mesmo critério do callback acima.
+  // (o da busca anterior, o do endereço em edição, ou aquele em que a pessoa
+  // preencheu à mão) e não pode seguir misturado com o CEP novo. Sem dono
+  // nenhum (`null` nos dois): o que ela digitou antes de qualquer CEP fica —
+  // o mesmo critério do callback acima.
   useEffect(() => {
     if (!resultadoCep || resultadoCep.tipo === "achou") return;
     const cepDaBusca = cepEmBuscaRef.current;
     // Mesma guarda da resposta "achou": o aviso de uma busca que já não
     // descreve o CEP do campo não limpa o endereço de outro CEP.
     if (formatarCep(form.getValues("cep")).limpo !== cepDaBusca) return;
-    if (
-      cepAssociadoRef.current !== null &&
-      cepAssociadoRef.current !== cepDaBusca
-    ) {
+    const donoDosCampos =
+      cepAssociadoRef.current ?? cepDoPreenchimentoAMaoRef.current;
+    if (donoDosCampos !== null && donoDosCampos !== cepDaBusca) {
       for (const campo of [
         "street",
         "neighborhood",
@@ -520,6 +531,7 @@ export function AddressForm({
         form.setValue(campo, "");
       }
       cepAssociadoRef.current = null;
+      cepDoPreenchimentoAMaoRef.current = null;
     }
   }, [resultadoCep, form]);
 
@@ -821,7 +833,10 @@ export function AddressForm({
               <input
                 id="street"
                 {...form.register("street", {
-                  onChange: () => camposEditadosAMaoRef.current.add("street"),
+                  onChange: () => {
+                    camposEditadosAMaoRef.current.add("street");
+                    marcarPreenchimentoAMao();
+                  },
                 })}
                 placeholder="Ex: Rua Tiradentes"
                 disabled={loading}
@@ -972,8 +987,10 @@ export function AddressForm({
                 <input
                   id="neighborhood"
                   {...form.register("neighborhood", {
-                    onChange: () =>
-                      camposEditadosAMaoRef.current.add("neighborhood"),
+                    onChange: () => {
+                      camposEditadosAMaoRef.current.add("neighborhood");
+                      marcarPreenchimentoAMao();
+                    },
                   })}
                   placeholder="Seu bairro"
                   disabled={loading}
@@ -999,7 +1016,9 @@ export function AddressForm({
                   </label>
                   <input
                     id="city"
-                    {...form.register("city")}
+                    {...form.register("city", {
+                      onChange: marcarPreenchimentoAMao,
+                    })}
                     placeholder="Cidade"
                     disabled={loading}
                     aria-invalid={!!erros.city}
@@ -1024,6 +1043,7 @@ export function AddressForm({
                       // A classe `uppercase` só muda o desenho; o valor
                       // digitado ("mg") seguia minúsculo até o envio.
                       e.target.value = e.target.value.toUpperCase();
+                      marcarPreenchimentoAMao();
                       return form.register("state").onChange(e);
                     }}
                     placeholder="UF"
