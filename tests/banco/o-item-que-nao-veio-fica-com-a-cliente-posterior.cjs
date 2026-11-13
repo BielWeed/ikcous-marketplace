@@ -4,7 +4,8 @@
  * A 20261399994000 sucede o get_admin_analytics_v2 da 20261399970000 (o item que a lojista marcou "Não veio" deixa de
  * contar como perda no ranking de lucro e no lucro do gráfico diário). Toda prova que mede a 3997 isolada (apply,
  * rollback ou comparação de corpos) tem de desfazer a 3994 PRIMEIRO, na própria transação/clone. Nunca se afrouxa o
- * pré-voo da migration anterior. A cadeia é ... -> 251 -> 3997 -> 3994: `o-ranking-de-lucro-posterior.cjs` chama este
+ * pré-voo da migration anterior. A cadeia é ... -> 251 -> 3997 -> 3994 -> 3995 (a 3995 cai antes:
+ * `o-lucro-do-ranking-casa-com-o-financeiro-posterior.cjs`): `o-ranking-de-lucro-posterior.cjs` chama este
  * módulo antes de desfazer a 3997, e `lucro-do-estoque-posterior.cjs` chama aquele antes de desfazer a 251.
  */
 const fs = require("node:fs");
@@ -16,6 +17,10 @@ const ITEM_NAO_VEIO_NO_LUCRO = Object.freeze({
     = 'de8648a7783c12f1be7abd7986c8a2fc', false) AS sim`,
 });
 async function desfazerItemQueNaoVeioNoLucroNaTransacao(c) {
+  // A 20261399995000 (o lucro do ranking casa com o Financeiro) sucede o analytics da 3994: cai antes de qualquer rollback da 3994.
+  await require("./o-lucro-do-ranking-casa-com-o-financeiro-posterior.cjs").desfazerLucroCasaComOFinanceiroNaTransacao(
+    c,
+  );
   if ((await c.query(ITEM_NAO_VEIO_NO_LUCRO.noAr)).rows[0]?.sim !== true)
     return false;
   await c.query(

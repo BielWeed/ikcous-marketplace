@@ -3120,6 +3120,9 @@ const ROL_DA_145 = [
 // Lote 146 (20261399994000, o item "Nao veio" fica com a cliente no ranking de lucro: get_admin_analytics_v2 redefinida pela segunda vez, sem objeto novo). A 146a e a 146b tem o MESMO rol de 4 linhas
 // da 135 (controle, corpo exato (md5), atributos e ACL); a 146a espera o corpo desta migration e a 146b o vigente de antes (o da 20261399970000). So catalogo: nenhuma le pedido, devolucao ou estorno e nenhuma chama a funcao.
 const ROL_DA_146 = [...ROL_DA_135];
+// Lote 147 (20261399995000, o lucro do ranking casa com o Financeiro, pedido a pedido: get_admin_analytics_v2 redefinida pela terceira vez, sem objeto novo). A 147a e a 147b tem o MESMO rol de 4 linhas
+// da 135 e da 146; a 147a espera o corpo desta migration e a 147b o vigente de antes (o da 20261399994000). So catalogo: nenhuma le pedido, devolucao ou estorno e nenhuma chama a funcao.
+const ROL_DA_147 = [...ROL_DA_135];
 // Lote 148 (20261399996000, o painel de avaliacoes filtra o que esta sem resposta: get_admin_reviews_paged, a MESMA assinatura de 5 argumentos, ganha o terceiro valor de p_status; sem objeto novo).
 // A 148a e a 148b tem o MESMO rol de 4 linhas da 123; a 148a espera o corpo desta migration e a 148b o vigente de antes (o da 20261399700000). So catalogo: nenhuma le avaliacao nem chama a funcao.
 const ROL_DA_148 = [...ROL_DA_123];
@@ -3128,6 +3131,10 @@ const ROL_FECHADO_POR_CONSULTA = {
     ROL_DA_148,
   "148b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-base-vigente":
     ROL_DA_148,
+  "147a-conferir-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-aplicado":
+    ROL_DA_147,
+  "147b-antes-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-base-vigente":
+    ROL_DA_147,
   "146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado":
     ROL_DA_146,
   "146b-antes-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-base-vigente":

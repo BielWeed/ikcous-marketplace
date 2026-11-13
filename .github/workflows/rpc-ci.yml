@@ -270,10 +270,12 @@ on:
       - "scripts/publicacao/consultas/142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql"
       - "scripts/publicacao/consultas/143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente.sql"
-      - "scripts/publicacao/consultas/148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado.sql"
-      - "scripts/publicacao/consultas/148b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-base-vigente.sql"
       - "scripts/publicacao/consultas/146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado.sql"
       - "scripts/publicacao/consultas/146b-antes-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-base-vigente.sql"
+      - "scripts/publicacao/consultas/147a-conferir-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-aplicado.sql"
+      - "scripts/publicacao/consultas/147b-antes-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-base-vigente.sql"
+      - "scripts/publicacao/consultas/148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado.sql"
+      - "scripts/publicacao/consultas/148b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-base-vigente.sql"
       - "scripts/publicacao/consultas/145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -519,10 +521,12 @@ on:
       - "scripts/publicacao/consultas/142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql"
       - "scripts/publicacao/consultas/143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente.sql"
-      - "scripts/publicacao/consultas/148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado.sql"
-      - "scripts/publicacao/consultas/148b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-base-vigente.sql"
       - "scripts/publicacao/consultas/146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado.sql"
       - "scripts/publicacao/consultas/146b-antes-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-base-vigente.sql"
+      - "scripts/publicacao/consultas/147a-conferir-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-aplicado.sql"
+      - "scripts/publicacao/consultas/147b-antes-o-lucro-do-ranking-casa-com-o-financeiro-pedido-a-pedido-base-vigente.sql"
+      - "scripts/publicacao/consultas/148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado.sql"
+      - "scripts/publicacao/consultas/148b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-base-vigente.sql"
       - "scripts/publicacao/consultas/145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/145b-antes-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-base-vigente.sql"
       - "scripts/publicacao/consultas/144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado.sql"
@@ -1176,6 +1180,20 @@ jobs:
       - name: Prova viva do CRM que nao duplica o comprador com e sem o 55 (20261399990000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-crm-nao-duplica-o-comprador-com-e-sem-55-viva.cjs
+      # Migration 20261399994000 (o item que a lojista marcou "Nao veio" fica com a cliente no ranking de lucro): get_admin_analytics_v2 trata a peca "Nao veio" como peca que FICOU com a cliente (a venda vale; nao e devolvida nem perdida)
+      # e o dinheiro que a loja devolveu ALEM do valor das pecas que voltaram vira perda do item, proporcional ao devolvido (reembolso pelo MP e pelo caminho manual), no ranking (topProducts) e no lucro do grafico diario.
+      # Controle com o corpo da 20261399970000 na MESMA fixture (pedido sem "Nao veio" = numeros identicos), 34 cenarios (so o que voltou, reembolso cheio, parcial, frete, cupom, cortesia, pedida de novo, vale/troca, condicao nula),
+      # JSON inteiro igual ao da 3997 sem item "Nao veio", 21 mutantes, ACL/atributos/dono iguais, reaplicar (LF e CRLF), rollback byte a byte, pre-voo, conexao sem BEGIN com conferencia sabotada e consultas 146a/146b (mais 8e, 35a, 45a, 48a, 53a, 54a e 135a). CLONE proprio.
+      - name: Prova viva do item "Nao veio" que fica com a cliente no ranking de lucro (20261399994000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs
+      # Migration 20261399995000 (o lucro do ranking casa com o Financeiro, pedido a pedido): get_admin_analytics_v2 passa a calcular o lucro por produto como o Financeiro (o que a cliente pagou menos TODO o dinheiro
+      # devolvido menos o custo das pecas que nao voltaram a prateleira, sem frete); o pedido 'estornado' entra; o dinheiro devolvido pelo site do Mercado Pago depois da devolucao nao some. Ranking e grafico diario.
+      # Cada cenario contra fin_dre (oraculo), os 6 casos do dono de produto, controle com o corpo da 20261399994000 na MESMA fixture (JSON inteiro igual sem devolucao nem estorno), mutantes, reaplicar (LF e CRLF),
+      # rollback byte a byte, pre-voo, conexao sem BEGIN com conferencia sabotada e consultas 147a/147b (mais 8e, 35a, 45a, 48a, 53a, 54a, 135a e 146a). CLONE proprio.
+      - name: Prova viva do lucro do ranking que casa com o Financeiro (20261399995000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-lucro-do-ranking-casa-com-o-financeiro-viva.cjs
       # Migration 20261399996000 (o painel de avaliacoes filtra o que esta sem resposta): get_admin_reviews_paged (a MESMA assinatura de 5 argumentos da 20261399700000) ganha o terceiro valor de p_status,
       # 'sem_resposta' = so merchant_reply IS NULL (a regra do sino), na lista E no total_count; o resto (NULL, 'todas', 'pendente', texto desconhecido) e o JSON de antes. Sem DROP, sem objeto novo.
       # Controle com o corpo da 3997 na MESMA fixture (o defeito: a avaliacao do aviso afunda na pagina 3), resposta nula/vazia/so espaco/preenchida, paginacao e total, contagem do chip == regra do sino,
@@ -1184,13 +1202,6 @@ jobs:
       - name: Prova viva do painel de avaliacoes que filtra o que esta sem resposta (20261399996000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-viva.cjs
-      # Migration 20261399994000 (o item que a lojista marcou "Nao veio" fica com a cliente no ranking de lucro): get_admin_analytics_v2 trata a peca "Nao veio" como peca que FICOU com a cliente (a venda vale; nao e devolvida nem perdida)
-      # e o dinheiro que a loja devolveu ALEM do valor das pecas que voltaram vira perda do item, proporcional ao devolvido (reembolso pelo MP e pelo caminho manual), no ranking (topProducts) e no lucro do grafico diario.
-      # Controle com o corpo da 20261399970000 na MESMA fixture (pedido sem "Nao veio" = numeros identicos), 34 cenarios (so o que voltou, reembolso cheio, parcial, frete, cupom, cortesia, pedida de novo, vale/troca, condicao nula),
-      # JSON inteiro igual ao da 3997 sem item "Nao veio", 21 mutantes, ACL/atributos/dono iguais, reaplicar (LF e CRLF), rollback byte a byte, pre-voo, conexao sem BEGIN com conferencia sabotada e consultas 146a/146b (mais 8e, 35a, 45a, 48a, 53a, 54a e 135a). CLONE proprio.
-      - name: Prova viva do item "Nao veio" que fica com a cliente no ranking de lucro (20261399994000)
-        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
-        run: node tests/banco/rodar-isolado.cjs tests/banco/o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-viva.cjs
       # Migration 20261399993000 (o CRM e a lista de clientes nao contam a mesma pessoa duas vezes): crm__nunca_comprou tambem tira a conta cujo WhatsApp (com ou sem o 55) e o de um pedido do grupo "pediu e nao pagou"
       # (venda avulsa anulada, devolvida ou sem pagar) e get_admin_customers_paged toma UM endereco principal por cliente (o mais novo, desempate pelo menor id) antes de juntar os pedidos (a corrida dos dois
       # primeiros enderecos dobrava pedidos e total). Controle com os corpos da 20261183000000 e da 20261392000000 na MESMA fixture (o defeito), bordas (numero diferente, DDD 55, outra conta, sem WhatsApp, sem endereco,

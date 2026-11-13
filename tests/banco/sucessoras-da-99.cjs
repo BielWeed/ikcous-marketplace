@@ -161,6 +161,9 @@ const NOMES = [
   // O item "Nao veio" fica com a cliente no ranking de lucro: get_admin_analytics_v2 sucede o corpo da 3997 (a CADEIA 99 -> 214 -> 234 -> 242 -> 245 -> 250 -> 251 -> 3997 -> 3994:
   // o `hashVigente` da 3994 e o `hashDesta` da 3997). O rollback da 3997 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
   "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql",
+  // O lucro do ranking casa com o Financeiro, pedido a pedido: get_admin_analytics_v2 sucede o corpo da 3994 (a CADEIA 99 -> 214 -> 234 -> 242 -> 245 -> 250 -> 251 -> 3997 -> 3994 -> 3995:
+  // o `hashVigente` da 3995 e o `hashDesta` da 3994). O rollback da 3994 recusa com o corpo novo no ar: ela cai antes (e, na ordem inversa, primeiro).
+  "20261399995000_o_lucro_do_ranking_casa_com_o_financeiro_pedido_a_pedido.sql",
 ];
 // Quantos pares (vigente, desta) o preflight de cada migration cita: UM, salvo as que redefinem mais de uma
 // função (a mesma migration vira uma entrada por função; o rollback-manual dela desfaz todas de uma vez).

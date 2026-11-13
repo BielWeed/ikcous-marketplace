@@ -247,7 +247,8 @@ Deno.test("3994: a 135a (da 3997) e as consultas das antecessoras aceitam o corp
     "scripts/publicacao/consultas/135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado.sql",
   );
   assert.ok(
-    a135.includes(`f.m IN ('${H.antes}', '${H.depois}')`),
+    // sem o parentese de fechamento: a 20261399995000 acrescenta o corpo dela depois do da 3994 (a lista cresce no fim)
+    a135.includes(`f.m IN ('${H.antes}', '${H.depois}'`),
     "a 135a tem de aceitar o corpo da 3994 como sucessor",
   );
   for (const arq of [
@@ -259,7 +260,7 @@ Deno.test("3994: a 135a (da 3997) e as consultas das antecessoras aceitam o corp
   ]) {
     const consulta = ler(`scripts/publicacao/consultas/${arq}.sql`);
     assert.ok(
-      consulta.includes(`'${H.antes}', '${H.depois}')`),
+      consulta.includes(`'${H.antes}', '${H.depois}'`),
       `${arq}: tem de aceitar o corpo da 3994 depois do da 3997`,
     );
   }

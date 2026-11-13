@@ -30,6 +30,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera } = require("./efemero.cjs");
+const {
+  desfazerLucroCasaComOFinanceiroNaTransacao: desfazerLucroCasa,
+  LUCRO_CASA_COM_O_FINANCEIRO,
+} = require("./o-lucro-do-ranking-casa-com-o-financeiro-posterior.cjs");
 
 const NOME =
   "20261399994000_o_item_que_nao_veio_fica_com_a_cliente_no_ranking_de_lucro.sql";
@@ -680,7 +684,9 @@ async function main() {
   await c.connect();
   try {
     await c.query("BEGIN");
-    // O topo instalado pelo CI (todas as migrations do zero) e o desta migration.
+    // A 20261399995000 (o lucro do ranking casa com o Financeiro) sucede esta: cai antes, na transacao, e o topo volta a ser o desta migration.
+    await desfazerLucroCasa(c);
+    // O topo instalado pelo CI (todas as migrations do zero, menos a 3995 desfeita acima) e o desta migration.
     const topo = await funcao(c);
     assert.equal(
       topo.prosrc,
@@ -1433,6 +1439,8 @@ async function main() {
   const d = new Client({ connectionString: lerDatabaseUrlEfemera() });
   await d.connect();
   try {
+    // A 3995 (sem BEGIN, gravada) cai antes: o rollback desta migration so aceita o corpo desta ou o da 3997.
+    await desfazerLucroCasa(d);
     await d.query(rollback);
     assert.equal(
       md5((await funcao(d)).prosrc),
@@ -1483,8 +1491,11 @@ async function main() {
       "  PASSOU conexao sem BEGIN: a conferencia sabotada e o pre-voo que recusa nao gravam nada; sem sabotagem o arquivo inteiro grava o corpo novo",
     );
   } finally {
-    // Deixa o clone como o CI o montou: com o corpo novo.
+    // Deixa o clone como o CI o montou: com o corpo desta migration e, por cima, o da 20261399995000 (a ultima da cadeia).
     await instalar(d, CORPO_NOVO).catch(() => {});
+    await d
+      .query(ler(`supabase/migrations/${LUCRO_CASA_COM_O_FINANCEIRO.nome}`))
+      .catch(() => {});
     await d.end();
   }
   console.log(
