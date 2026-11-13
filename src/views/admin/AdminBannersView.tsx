@@ -32,6 +32,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useBanners } from "@/hooks/useBanners";
 import { useCategories } from "@/hooks/useCategories";
+import { useDiaDeSaoPaulo } from "@/hooks/useDiaDeSaoPaulo";
 import { useFocoAposExcluir } from "@/hooks/useFocoAposExcluir";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -1290,7 +1291,15 @@ export const AdminBannersView = memo(function AdminBannersView({
     return { titles: titleSuggestions, subtitles: subtitleSuggestions };
   }, [selectedProduct]);
 
+  // No painel o relógio de programação fica desligado (`adminMode`): sem o dia
+  // da loja, o filtro "Agendados"/"Expirados" e a contagem de "ligados" ficavam
+  // com a situação de ontem numa tela deixada aberta de um dia para o outro.
+  // A virada do dia redesenha (sem ler o banco) e refaz o filtro abaixo.
+  const dia = useDiaDeSaoPaulo(active);
   const filteredBannersList = useMemo(() => {
+    // `dia` não entra na conta: só invalida o memo na virada (o `now` abaixo
+    // é lido de novo junto).
+    void dia;
     const now = new Date();
     return banners.filter((b) => {
       // Busca sem acento acha banner acentuado — mesma regra (normalizeText)
@@ -1317,7 +1326,7 @@ export const AdminBannersView = memo(function AdminBannersView({
 
       return matchesSearch && matchesStatus;
     });
-  }, [banners, searchQueryList, statusFilter]);
+  }, [banners, searchQueryList, statusFilter, dia]);
 
   const computedTitleRatio = useMemo(() => {
     const textHex = formData.titleColor || "#FFFFFF";

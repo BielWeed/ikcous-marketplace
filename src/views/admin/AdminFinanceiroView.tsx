@@ -71,7 +71,11 @@ import {
   useContasFinanceiras,
   useValoresOcultos,
 } from "@/hooks/useFinanceiro";
-import { intervaloDoPeriodo, rotuloDoPeriodo } from "@/lib/financeiro";
+import {
+  hojeEmSaoPaulo,
+  intervaloDoPeriodo,
+  rotuloDoPeriodo,
+} from "@/lib/financeiro";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import type { PeriodoEscolhido } from "@/types/financeiro";
@@ -299,6 +303,28 @@ export function AdminFinanceiroView({
       window.removeEventListener("focus", aoVoltar);
     };
   }, [ativo, invalidar]);
+  // Painel deixado aberto de um dia para o outro: o servidor calcula vencidos,
+  // próximos 7 dias, saldo e o que já virou "realizado" com o HOJE dele, mas a
+  // chave de cada consulta é só o período — o "Mês atual" não muda na virada, e
+  // nada relia. A virada (`hoje` mudou com a tela ativa) relê tudo, em silêncio
+  // (a consulta mantém o dado na tela). Com folha aberta espera, como o foco: o
+  // fechamento já relê quando `gravouSemConfirmar` está de pé. Ao ABRIR a tela a
+  // leitura de abertura já é a de agora, então não há segunda (sem rajada).
+  const diaLido = useRef<string | null>(null);
+  useEffect(() => {
+    if (!ativo) {
+      diaLido.current = null;
+      return;
+    }
+    if (diaLido.current === null) {
+      diaLido.current = hojeEmSaoPaulo();
+      return;
+    }
+    if (diaLido.current === hoje) return;
+    diaLido.current = hoje;
+    if (abertaRef.current) gravouSemConfirmar.current = true;
+    else setVersao((v) => v + 1);
+  }, [ativo, hoje]);
   const aoSalvar = useCallback(
     (mensagem: string, tom: "sucesso" | "informacao" = "sucesso") => {
       invalidar();
