@@ -334,6 +334,8 @@ on:
           - 142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente
           - 143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado
           - 143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente
+          - 148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado
+          - 148b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-base-vigente
           - 146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado
           - 146b-antes-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-base-vigente
           - 145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado

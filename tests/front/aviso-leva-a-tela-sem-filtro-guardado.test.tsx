@@ -125,6 +125,7 @@ describe("avisos de pergunta e avaliação pedem a tela sem filtro guardado", ()
     expect(porTipo("avaliacao").destino).toEqual({
       view: "admin-reviews",
       limparFiltros: true,
+      soSemResposta: true,
     });
     expect(porTipo("pedido").destino.limparFiltros).toBeUndefined();
   });
@@ -413,7 +414,7 @@ describe("tocar no aviso na tela de Avisos", () => {
     expect(navegar).toHaveBeenCalledWith("admin-reviews", undefined);
   });
 
-  it("aviso de avaliação já publicada sem resposta chega sem pedir moderação", async () => {
+  it("aviso de avaliação já publicada sem resposta chega pedindo só 'Sem resposta' (nunca moderação)", async () => {
     AVISOS = montarAvisos({
       pedidos: [],
       perguntasPendentes: 0,
@@ -434,7 +435,7 @@ describe("tocar no aviso na tela de Avisos", () => {
     util.aoChegarPorAviso("admin-reviews", ouvinte);
     await tocar("avaliacao");
     expect(ouvinte).toHaveBeenCalledTimes(1);
-    expect(ouvinte).toHaveBeenCalledWith({});
+    expect(ouvinte).toHaveBeenCalledWith({ soSemResposta: true });
   });
 
   it("aviso de pedido não mexe em filtro nenhum", async () => {

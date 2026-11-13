@@ -270,6 +270,8 @@ on:
       - "scripts/publicacao/consultas/142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql"
       - "scripts/publicacao/consultas/143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente.sql"
+      - "scripts/publicacao/consultas/148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado.sql"
+      - "scripts/publicacao/consultas/148b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-base-vigente.sql"
       - "scripts/publicacao/consultas/146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado.sql"
       - "scripts/publicacao/consultas/146b-antes-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-base-vigente.sql"
       - "scripts/publicacao/consultas/145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado.sql"
@@ -517,6 +519,8 @@ on:
       - "scripts/publicacao/consultas/142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente.sql"
       - "scripts/publicacao/consultas/143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado.sql"
       - "scripts/publicacao/consultas/143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente.sql"
+      - "scripts/publicacao/consultas/148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado.sql"
+      - "scripts/publicacao/consultas/148b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-base-vigente.sql"
       - "scripts/publicacao/consultas/146a-conferir-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-aplicado.sql"
       - "scripts/publicacao/consultas/146b-antes-o-item-que-nao-veio-fica-com-a-cliente-no-ranking-de-lucro-base-vigente.sql"
       - "scripts/publicacao/consultas/145a-conferir-o-crm-e-a-lista-de-clientes-nao-contam-a-mesma-pessoa-duas-vezes-aplicado.sql"
@@ -1172,6 +1176,14 @@ jobs:
       - name: Prova viva do CRM que nao duplica o comprador com e sem o 55 (20261399990000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-crm-nao-duplica-o-comprador-com-e-sem-55-viva.cjs
+      # Migration 20261399996000 (o painel de avaliacoes filtra o que esta sem resposta): get_admin_reviews_paged (a MESMA assinatura de 5 argumentos da 20261399700000) ganha o terceiro valor de p_status,
+      # 'sem_resposta' = so merchant_reply IS NULL (a regra do sino), na lista E no total_count; o resto (NULL, 'todas', 'pendente', texto desconhecido) e o JSON de antes. Sem DROP, sem objeto novo.
+      # Controle com o corpo da 3997 na MESMA fixture (o defeito: a avaliacao do aviso afunda na pagina 3), resposta nula/vazia/so espaco/preenchida, paginacao e total, contagem do chip == regra do sino,
+      # mutantes (sem o ramo, so na lista, so no total, regra diferente do sino, filtro de moderacao quebrado, globais filtrados, sem gate), ACL/atributos/dono/OID iguais, reaplicar (LF e CRLF),
+      # rollback byte a byte, pre-voo, conexao sem BEGIN com conferencia sabotada e consultas 148a/148b (mais 86a e 123a, que aceitam o corpo novo). CLONE proprio.
+      - name: Prova viva do painel de avaliacoes que filtra o que esta sem resposta (20261399996000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-viva.cjs
       # Migration 20261399994000 (o item que a lojista marcou "Nao veio" fica com a cliente no ranking de lucro): get_admin_analytics_v2 trata a peca "Nao veio" como peca que FICOU com a cliente (a venda vale; nao e devolvida nem perdida)
       # e o dinheiro que a loja devolveu ALEM do valor das pecas que voltaram vira perda do item, proporcional ao devolvido (reembolso pelo MP e pelo caminho manual), no ranking (topProducts) e no lucro do grafico diario.
       # Controle com o corpo da 20261399970000 na MESMA fixture (pedido sem "Nao veio" = numeros identicos), 34 cenarios (so o que voltou, reembolso cheio, parcial, frete, cupom, cortesia, pedida de novo, vale/troca, condicao nula),

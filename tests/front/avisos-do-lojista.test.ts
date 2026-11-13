@@ -154,9 +154,12 @@ describe("montarAvisos", () => {
 
     expect(avisos).toHaveLength(1);
     expect(avisos[0].tipo).toBe("avaliacao");
+    // Sem status = publicada: a tela abre só com as "Sem resposta" (em "Todas" a avaliação do aviso
+    // podia ficar na página 2 ou 3).
     expect(avisos[0].destino).toEqual({
       view: "admin-reviews",
       limparFiltros: true,
+      soSemResposta: true,
     });
   });
 

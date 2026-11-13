@@ -23,6 +23,10 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { Client } = require("pg");
 const { lerDatabaseUrlEfemera } = require("./efemero.cjs");
+const {
+  FILTRO_SEM_RESPOSTA,
+  desfazerFiltroSemRespostaNaTransacao: desfazerSemResposta,
+} = require("./o-painel-de-avaliacoes-filtra-sem-resposta-posterior.cjs");
 
 const NOME =
   "20261399700000_o_painel_de_avaliacoes_filtra_o_que_esta_em_moderacao.sql";
@@ -395,7 +399,10 @@ async function main() {
   const c = new Client({ connectionString: lerDatabaseUrlEfemera() });
   await c.connect();
   try {
-    // ---- 0. O topo instalado pelo CI e' o desta migration; o corpo anterior e' o vivo da 381. ----
+    // A 20261399996000 (o painel filtra o que esta sem resposta) sucede o corpo desta migration na MESMA assinatura: cai antes (sem BEGIN, gravada),
+    // e o topo volta a ser o desta migration. O finally a reaplica: o clone fica como o CI o montou.
+    await desfazerSemResposta(c);
+    // ---- 0. O topo instalado pelo CI (todas as migrations do zero, menos a 3996 desfeita acima) e' o desta migration; o corpo anterior e' o vivo da 381. ----
     const topo0 = await umaSo(c);
     assert.equal(
       topo0.sig,
@@ -1016,6 +1023,10 @@ async function main() {
     );
   } finally {
     await c.query("ROLLBACK").catch(() => {});
+    // Deixa o clone como o CI o montou: com o corpo da 3997 e, por cima, o da 20261399996000 (a ultima da cadeia).
+    await c
+      .query(ler(`supabase/migrations/${FILTRO_SEM_RESPOSTA.nome}`))
+      .catch(() => {});
     await c.end();
   }
   console.log(

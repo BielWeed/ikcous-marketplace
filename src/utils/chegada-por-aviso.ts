@@ -25,9 +25,13 @@ const CHAVES_GUARDADAS = new Map<View, readonly string[]>([
 
 const EVENTO = "ikcous:chegada-por-aviso";
 
-/** O que o aviso pede além de zerar: hoje, só a fila "Em moderação" das Avaliações. */
+/**
+ * O que o aviso pede além de zerar: a fila "Em moderação" ou só as "Sem resposta"
+ * das Avaliações (um dos dois; se vierem os dois, vale a moderação).
+ */
 export interface OpcoesDeChegada {
   soEmModeracao?: true;
+  soSemResposta?: true;
 }
 
 interface DetalheDaChegada {
@@ -49,11 +53,14 @@ export function limparGuardadosAoChegarPorAviso(
   }
   // Tela ainda por abrir: o filtro de moderação nasce do armazenamento (mesma
   // chave e formato do `useLocalStorage` da tela).
-  if (view === "admin-reviews" && opcoes.soEmModeracao) {
+  if (
+    view === "admin-reviews" &&
+    (opcoes.soEmModeracao || opcoes.soSemResposta)
+  ) {
     try {
       window.localStorage.setItem(
         "admin_reviews_status_filter",
-        JSON.stringify("pendente"),
+        JSON.stringify(opcoes.soEmModeracao ? "pendente" : "sem_resposta"),
       );
     } catch {
       // Sem armazenamento: abre em "todas", com a avaliação na lista.

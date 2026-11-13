@@ -26,6 +26,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useRevalidarAoVoltar } from "@/hooks/useRevalidarAoVoltar";
 import { useReviews } from "@/hooks/useReviews";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { FILTRO_POSTGREST_AVALIACAO_SEM_RESPOSTA } from "@/lib/avaliacoes-para-atender";
 import { EVENTO_AVALIACAO_EXCLUIDA } from "@/lib/evento-avaliacao-excluida";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { pluralizar } from "@/lib/pluralizar";
@@ -95,6 +96,29 @@ function formatRate(
   return { text: `${percent}%`, width: percent };
 }
 
+// Contagem do chip "Sem resposta": as avaliações sem resposta da loja, TODAS (não as da página), pela MESMA regra
+// do sino (`@/lib/avaliacoes-para-atender`). null = não deu para contar; nunca derruba a leitura da lista e nunca
+// vira zero (zero confiante mentiria): o chip mostra "—".
+async function contarAvaliacoesSemResposta(): Promise<number | null> {
+  try {
+    const { count, error } = await aguardarComPrazo(
+      Promise.resolve(
+        supabase
+          .from("reviews" as any)
+          .select("*", { count: "exact", head: true })
+          .or(FILTRO_POSTGREST_AVALIACAO_SEM_RESPOSTA),
+      ),
+      PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+      erroDeConsultaSemResposta,
+    );
+    return !error && typeof count === "number" ? count : null;
+  } catch {
+    return null;
+  }
+}
+
+type SituacaoDoFiltro = "todas" | "pendente" | "sem_resposta";
+
 export const AdminReviewsView = memo(function AdminReviewsView({
   active = true,
   onNavigate,
@@ -163,11 +187,17 @@ export const AdminReviewsView = memo(function AdminReviewsView({
     "all",
   );
   // "Em moderação" mostra só a fila (a RPC filtra no banco, na lista e no total): sem isto uma avaliação pendente
-  // antiga afunda na paginação e a lojista pagina procurando o selo.
-  const [statusFilter, setStatusFilter] = useLocalStorage<"todas" | "pendente">(
+  // antiga afunda na paginação e a lojista pagina procurando o selo. "Sem resposta" faz o mesmo para o aviso de
+  // avaliação publicada que espera resposta (migration 20261399996000).
+  const [situacaoGuardada, setStatusFilter] = useLocalStorage<SituacaoDoFiltro>(
     "admin_reviews_status_filter",
     "todas",
   );
+  // Valor guardado que este app não conhece (aparelho de versão antiga, lixo no armazenamento) vale "todas".
+  const statusFilter: SituacaoDoFiltro =
+    situacaoGuardada === "pendente" || situacaoGuardada === "sem_resposta"
+      ? situacaoGuardada
+      : "todas";
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const campoRespostaRef = useRef<HTMLTextAreaElement>(null);
@@ -222,6 +252,10 @@ export const AdminReviewsView = memo(function AdminReviewsView({
   // null = ainda não contou (ou a contagem falhou e não há valor anterior).
   const [pendentesNoBanco, setPendentesNoBanco] = useState<number | null>(null);
   const [filaFalhou, setFilaFalhou] = useState(false);
+  // Contagem inteira das sem resposta, para o chip. null = ainda não contou (ou a contagem falhou e não há valor anterior).
+  const [semRespostaNoBanco, setSemRespostaNoBanco] = useState<number | null>(
+    null,
+  );
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [viewMode, setViewMode] = useLocalStorage<"detailed" | "compact">(
     "admin_reviews_view_mode",
@@ -332,16 +366,23 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
   // Removed ref tracking for filter changes in favor of direct state resets
 
-  // Chegou pelo aviso "avaliação sem resposta": lista inteira, sem filtro,
-  // busca nem página guardados (mesmos setters do "limpar"). O aviso de
+  // Chegou pelo aviso "avaliação sem resposta": sem busca, nota nem página
+  // guardadas (mesmos setters do "limpar") e só com as "Sem resposta" (a
+  // avaliação do aviso ficaria na página 2 ou 3 de "Todas"). O aviso de
   // avaliação aguardando aprovação chega com "Em moderação" ligado.
   useEffect(
     () =>
       aoChegarPorAviso("admin-reviews", (opcoes) => {
         setSearchQuery("");
         setRatingFilter("all");
-        // Aviso de avaliação aguardando aprovação: abre só a fila.
-        setStatusFilter(opcoes.soEmModeracao ? "pendente" : "todas");
+        // Aviso de avaliação aguardando aprovação: abre só a fila; o de avaliação publicada: só as sem resposta.
+        setStatusFilter(
+          opcoes.soEmModeracao
+            ? "pendente"
+            : opcoes.soSemResposta
+              ? "sem_resposta"
+              : "todas",
+        );
         setPage(0);
       }),
     [setSearchQuery, setRatingFilter, setStatusFilter, setPage],
@@ -409,6 +450,8 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         // cartão em "Conferindo a fila…" e a leitura "em andamento" para
         // sempre. Estourou = cai no `catch` (aviso + "Tentar de novo") e o
         // `finally` solta a marca; só encerra a ESPERA, a contagem não grava.
+        // A contagem do chip "Sem resposta" sai junto, em paralelo (não soma espera) e sem poder derrubar a outra.
+        const contagemSemResposta = contarAvaliacoesSemResposta();
         const { count, error } = await aguardarComPrazo(
           Promise.resolve(
             supabase
@@ -423,6 +466,10 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         const contou = !error && typeof count === "number";
         if (contou) setPendentesNoBanco(count);
         setFilaFalhou(!contou);
+        const semResposta = await contagemSemResposta;
+        if (rodada !== rodadaRef.current) return;
+        // Erro na contagem mantém o valor anterior: zero confiante mentiria.
+        if (semResposta !== null) setSemRespostaNoBanco(semResposta);
       } catch (err) {
         console.error("[AdminReviewsView] Failed to load reviews:", err);
         if (rodada === rodadaRef.current) setFilaFalhou(true);
@@ -642,8 +689,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
   const detalhado = viewMode === "detailed";
   const soEmModeracao = statusFilter === "pendente";
+  const soSemResposta = statusFilter === "sem_resposta";
   const filtroAtivo =
-    searchQuery.trim().length > 0 || ratingFilter !== "all" || soEmModeracao;
+    searchQuery.trim().length > 0 ||
+    ratingFilter !== "all" ||
+    soEmModeracao ||
+    soSemResposta;
   const corDaNotaBaixa = classeDoTexto("negativo");
   const corDoSelo = classeDoTexto("positivo");
 
@@ -729,6 +780,21 @@ export const AdminReviewsView = memo(function AdminReviewsView({
           },
         }}
       />
+    ) : soSemResposta &&
+      searchQuery.trim().length === 0 &&
+      ratingFilter === "all" ? (
+      <VazioDaLista
+        icone={Check}
+        titulo="Nenhuma avaliação sem resposta"
+        frase="Todas as avaliações que chegaram já foram respondidas."
+        acao={{
+          rotulo: "Ver todas as avaliações",
+          aoClicar: () => {
+            setStatusFilter("todas");
+            setPage(0);
+          },
+        }}
+      />
     ) : filtroAtivo ? (
       <VazioDaLista
         icone={Star}
@@ -736,7 +802,9 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         frase={
           soEmModeracao
             ? "Nada em moderação com essa busca ou essa nota. Tente outra ou limpe os filtros."
-            : "Nada com essa busca ou essa nota. Tente outra ou limpe os filtros."
+            : soSemResposta
+              ? "Nada sem resposta com essa busca ou essa nota. Tente outra ou limpe os filtros."
+              : "Nada com essa busca ou essa nota. Tente outra ou limpe os filtros."
         }
         acao={{
           rotulo: "Limpar busca e filtros",
@@ -1130,6 +1198,16 @@ export const AdminReviewsView = memo(function AdminReviewsView({
               contagem: pendentesNoBanco ?? "—",
               tomDaContagem:
                 pendentesNoBanco !== null && pendentesNoBanco > 0
+                  ? "atencao"
+                  : undefined,
+            },
+            {
+              valor: "sem_resposta",
+              rotulo: "Sem resposta",
+              // A contagem é a de todas as sem resposta no banco (a mesma regra do sino), não a da página.
+              contagem: semRespostaNoBanco ?? "—",
+              tomDaContagem:
+                semRespostaNoBanco !== null && semRespostaNoBanco > 0
                   ? "atencao"
                   : undefined,
             },

@@ -825,6 +825,29 @@ const VERIFICACOES = {
       { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
     ],
   },
+  // 20261399996000: o painel de avaliacoes filtra o que esta sem resposta. get_admin_reviews_paged (a MESMA assinatura de 5 argumentos da 20261399700000) ganha o terceiro valor de p_status:
+  // 'sem_resposta' liga SO o predicado merchant_reply IS NULL (a regra do sino), na contagem e na consulta paginada; o filtro de moderacao e o gate ficam como estao. Cada marcador aparece no corpo as
+  // vezes abaixo. A consulta 148a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
+  "20261399996000_o_painel_de_avaliacoes_filtra_o_que_esta_sem_resposta.sql": {
+    funcao: "get_admin_reviews_paged",
+    esperado: [
+      { texto: "p_status text DEFAULT 'todas'::text", vezes: 1 },
+      {
+        texto:
+          "v_so_sem_resposta := COALESCE(p_status = 'sem_resposta', false);",
+        vezes: 1,
+      },
+      {
+        texto: "AND (NOT v_so_sem_resposta OR r.merchant_reply IS NULL)",
+        vezes: 2,
+      },
+      {
+        texto: "AND (NOT v_so_pendentes OR r.status = 'pendente')",
+        vezes: 2,
+      },
+      { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
+    ],
+  },
   // 20261399994000: o item que a lojista marcou "Nao veio" (condicao 'ausente') FICA COM A CLIENTE no ranking "Produtos que mais dao lucro" e no lucro do grafico diario (get_admin_analytics_v2): a venda vale (nao e devolvida nem perdida) e so o
   // dinheiro devolvido ALEM das pecas que voltaram vira perda do item (reembolso_sem_peca, fator f). O corpo e o da 20261399970000 com esses trechos trocados, nos DOIS lugares (o ranking e o grafico diario) e no resto da cortesia (sobra).
   // Cada marcador e' contado no corpo da propria migration. A consulta 146a confere o corpo exato (md5), os atributos e a ACL; a prova viva mede o comportamento.
