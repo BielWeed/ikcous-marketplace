@@ -3303,8 +3303,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         const mexeuNaGradeExistente = variantesAMandar.some(
           (v) => !v.id.startsWith("temp-"),
         );
+        // Excluir variação também confere: outro aparelho pode ter ligado a
+        // que esta tela vai apagar, com estoque novo (o gatilho do banco avança
+        // a versão do produto a cada mudança de variação).
+        const excluiuVariacao = deletedVariantIds.length > 0;
         const conferencia =
-          mexeuNoEstoque || mexeuNasFotos || mexeuNaGradeExistente
+          mexeuNoEstoque ||
+          mexeuNasFotos ||
+          mexeuNaGradeExistente ||
+          excluiuVariacao
             ? { baseUpdatedAt: currentProduct?.updatedAt }
             : undefined;
         let naoApagadas: string[] = [];

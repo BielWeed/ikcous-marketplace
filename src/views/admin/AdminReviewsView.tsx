@@ -29,6 +29,11 @@ import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { EVENTO_AVALIACAO_EXCLUIDA } from "@/lib/evento-avaliacao-excluida";
 import { nomeTemConteudoVisivel } from "@/lib/nome-visivel";
 import { pluralizar } from "@/lib/pluralizar";
+import {
+  PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import {
   TETO_DA_RESPOSTA_DA_LOJA,
@@ -389,10 +394,20 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         // aqui (triggerRefresh), então a contagem do cartão acompanha. Erro
         // na contagem mantém o valor anterior — zero confiante mentiria — e,
         // sem valor anterior, o cartão avisa que a fila não foi conferida.
-        const { count, error } = await supabase
-          .from("reviews" as any)
-          .select("*", { count: "exact", head: true })
-          .eq("status", "pendente");
+        // Prazo (13/11/2026): rede que conecta e não responde deixava o
+        // cartão em "Conferindo a fila…" e a leitura "em andamento" para
+        // sempre. Estourou = cai no `catch` (aviso + "Tentar de novo") e o
+        // `finally` solta a marca; só encerra a ESPERA, a contagem não grava.
+        const { count, error } = await aguardarComPrazo(
+          Promise.resolve(
+            supabase
+              .from("reviews" as any)
+              .select("*", { count: "exact", head: true })
+              .eq("status", "pendente"),
+          ),
+          PRAZO_DA_CONSULTA_DO_PAINEL_MS,
+          erroDeConsultaSemResposta,
+        );
         if (rodada !== rodadaRef.current) return;
         const contou = !error && typeof count === "number";
         if (contou) setPendentesNoBanco(count);

@@ -38,7 +38,10 @@ export const StarRating = memo(function StarRating({
 
   // Caça 30 (06/11): 4,6 a 4,9 pintavam só 4 estrelas (comparava com a nota
   // crua). Pinta o inteiro mais próximo; a nota falada acima segue exata.
-  const preenchidas = Math.round(rating);
+  // 13/11: o inteiro sai da nota JÁ arredondada a 1 casa, a mesma que a tela
+  // mostra e que a view do catálogo entrega (`round(avg, 1)`): a média cheia
+  // 4,4545 diz "4,5" e pinta 5, igual ao catálogo (antes pintava 4).
+  const preenchidas = Math.round(Number(rating.toFixed(1)));
 
   return (
     <div className={cn("flex space-x-1", className)}>
