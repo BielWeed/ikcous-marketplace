@@ -42,7 +42,8 @@
 --   * `get_admin_customers_paged` → 20261230000000 (a busca de clientes acha pelo número do WhatsApp)
 --                                e, DEPOIS dela, 20261392000000 (a lista de clientes não repete ninguém entre as páginas);
 --   * `get_admin_orders_paged`  → 20261387000000 (a busca de pedido pelo número não vira busca de telefone)
---                                e, DEPOIS dela, 20261399900000 (a busca de Pedidos acha o telefone colado com o +55);
+--                                e, DEPOIS dela, 20261399900000 (a busca de Pedidos acha o telefone colado com o +55)
+--                                e, DEPOIS dela, 20261399980000 (as listas do painel desempatam por id);
 --   * `admin_devolucoes_listar` → 20261395000000 (a busca de devolução acha o número do pedido; ramo novo no filtro)
 --                                e, DEPOIS dela, 20261399910000 (a busca de devolução ignora o acento);
 --   * `admin_devolucao_concluir` → ..., 20261343000000 e, DEPOIS dela, 20261395200000 (a conclusão da devolução tranca o estoque na mesma ordem da compra);
@@ -150,9 +151,11 @@ WITH corpos AS (
 ), sucessoras(fn, h, versao) AS (VALUES
     ('get_admin_orders_paged', 'f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6', '20261387000000'),
     ('get_admin_orders_paged', 'bf08545275eaa451a65e15feceb0ed8d', '20261399900000'),
+    ('get_admin_orders_paged', 'b404a8397a6490c86fb192d85fd5b6c9', '20261399980000'),
     ('admin_devolucoes_listar', '989a6c6151eb35efc7c834c6cce20f01', '20261395000000'),
     ('admin_devolucoes_listar', '82d381944fb7b3337e7272a258b65260', '20261399910000'),
     ('get_admin_orders_cancelados_recentes', '9567454f17698f3f0624cca0b06458cd', '20261380000000'),
+    ('get_admin_orders_cancelados_recentes', '80ec13f92e224b21d5308a063e88fb6e', '20261399980000'),
     ('fin_caixa_abrir', '28ab512e291378a01d110e298af7a402', '20261370000000'),
     ('fin_caixa_abrir', '367d298dcc78bc2829fc4e0048005a0c', '20261399930000'),
     ('fin_conta_salvar', '1dc6cfdb075e3a1a0882398e1220d0f1', '20261399930000'),

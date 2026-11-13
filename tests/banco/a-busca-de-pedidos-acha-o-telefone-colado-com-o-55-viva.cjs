@@ -318,6 +318,11 @@ async function main() {
   await c.connect();
   try {
     await c.query("BEGIN");
+    // A 20261399980000 (as listas do painel desempatam por id) sucede esta no MESMO get_admin_orders_paged: sai PRIMEIRO
+    // (so se no ar, so nesta transacao), para medir o corpo desta migration. Definicao em as-listas-do-painel-posterior.cjs.
+    await require("./as-listas-do-painel-posterior.cjs").desfazerListasDoPainelNaTransacao(
+      c,
+    );
     const topo = await funcao(c);
     assert.equal(
       await hashVivo(c),
@@ -632,6 +637,11 @@ async function atomicidade() {
         "    -- um byte a mais\n    IF length(v_search_digitos) IN (12, 13)",
     );
     assert.notEqual(sabotada, migration);
+    // A 20261399980000 (desempate por id) sucede esta no mesmo corpo: sai primeiro, nesta conexao propria, no clone descartavel.
+    await require("./as-listas-do-painel-posterior.cjs").desfazerListasDoPainelNaTransacao(
+      solto,
+    );
+    assert.equal(await hashVivo(solto), HASH_DEPOIS);
     await solto.query(rollback); // estado ANTES, de verdade: o corpo da 20261387000000
     assert.equal(await hashVivo(solto), HASH_ANTES);
     await assert.rejects(

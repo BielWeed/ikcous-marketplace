@@ -302,6 +302,11 @@ async function main() {
   await c.connect();
   try {
     await c.query("BEGIN");
+    // A 20261399980000 (as listas do painel desempatam por id) sucede o corpo da 380 em get_admin_orders_cancelados_recentes: sai PRIMEIRO (so se no ar;
+    // o rollback da 380 recusa com o corpo novo por cima). Tudo isto roda numa transacao desfeita no fim.
+    await require("./as-listas-do-painel-posterior.cjs").desfazerListasDoPainelNaTransacao(
+      c,
+    );
     const topo = await funcao(c);
     await conferir(c, depois, true);
     await conferir(c, antes, false);

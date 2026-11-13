@@ -189,7 +189,12 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // A 20261399970000 (o ranking de lucro desconta a devolucao) e a SETIMA sucessora de get_admin_analytics_v2 (99 -> 214 -> 234 -> 242 -> 245 -> 250 -> 251 -> 3997): tem a PROVA PROPRIA
     // do que a 8e, a 35a, a 45a, a 48a, a 53a e a 54a fazem com ela em tests/banco/o-ranking-de-lucro-desconta-a-devolucao-viva.cjs; `noEstado` a desfaz antes
     // (lucro-do-estoque-posterior.cjs chama o-ranking-de-lucro-posterior.cjs primeiro), como faz com a 251.
-    s.nome !== "20261399970000_o_ranking_de_lucro_desconta_a_devolucao.sql",
+    s.nome !== "20261399970000_o_ranking_de_lucro_desconta_a_devolucao.sql" &&
+    // A 20261399980000 (as listas de Produtos, Pedidos e Cancelados do painel desempatam por id) e a ULTIMA sucessora de get_admin_products_paged (99 -> 213 -> 381 -> 385 -> 3992 -> 3998), de
+    // get_admin_orders_paged (99 -> 387 -> 3999 -> 3998) e de get_admin_orders_cancelados_recentes (99 -> 380 -> 3998): UMA migration, tres funcoes da 8e, com a PROVA PROPRIA em
+    // tests/banco/as-listas-do-painel-nao-repetem-ninguem-viva.cjs; `noEstado` a desfaz antes (as-listas-do-painel-posterior.cjs, o rollback dela devolve as tres de uma vez).
+    s.nome !==
+      "20261399980000_as_listas_do_painel_nao_repetem_nem_escondem_ninguem_entre_as_paginas.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");
@@ -355,6 +360,10 @@ let C; // a conexão única com o clone do rodar-isolado
 async function noEstado(montar, textos = [SQL_8E]) {
   await C.query("BEGIN");
   try {
+    // A 20261399980000 (as listas do painel desempatam por id) sucede os corpos da 3992, da 3999 e da 380: sai PRIMEIRO (ordem inversa da aplicacao; so se no ar).
+    await require("./as-listas-do-painel-posterior.cjs").desfazerListasDoPainelNaTransacao(
+      C,
+    );
     // A 20261399930000 (o caixa e a conta recusam valor que nao e numero) sucede a 370 em fin_caixa_abrir e a 99 em fin_conta_salvar: sai PRIMEIRO (ordem inversa da aplicacao; so se no ar).
     await require("./o-caixa-e-a-conta-recusam-nan-posterior.cjs").desfazerCaixaEContaSemNanNaTransacao(
       C,

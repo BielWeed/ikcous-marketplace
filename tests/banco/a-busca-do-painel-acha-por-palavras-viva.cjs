@@ -476,7 +476,12 @@ async function main() {
   try {
     await c.query("BEGIN");
 
-    // O topo instalado pelo CI e o desta migration.
+    // A 20261399980000 (as listas do painel desempatam por id) sucede esta no MESMO get_admin_products_paged: sai PRIMEIRO
+    // (so se no ar, so nesta transacao). Definicao em as-listas-do-painel-posterior.cjs.
+    await require("./as-listas-do-painel-posterior.cjs").desfazerListasDoPainelNaTransacao(
+      c,
+    );
+    // O topo instalado pelo CI (sem a 3998) e o desta migration.
     const topo = await funcao(c);
     assert.equal(md5(topo.prosrc), HASH_NOVO, "o topo nao e o corpo da 3992");
     assert.equal(topo.prosrc, corpoDe(DEF_NOVA));
@@ -1288,6 +1293,10 @@ async function main() {
           `SELECT md5(replace(prosrc, chr(13), '')) AS h FROM pg_proc WHERE oid = '${ASSINATURA}'::regprocedure`,
         )
       ).rows[0].h;
+    // A 20261399980000 (desempate por id) sucede esta no mesmo corpo: sai primeiro, nesta conexao propria, no clone descartavel.
+    await require("./as-listas-do-painel-posterior.cjs").desfazerListasDoPainelNaTransacao(
+      d,
+    );
     assert.equal(await hash(), HASH_NOVO);
     await d.query(rollback);
     assert.equal(await hash(), HASH_ANTES);

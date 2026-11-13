@@ -128,8 +128,8 @@ WITH corpos AS (
    GROUP BY p.proname
 ), final(fn, h) AS (VALUES
     ('buscar_por_codigo_barras', '3e2276ae97a7f2aef487e55d259ba7a3'),
-    ('get_admin_orders_cancelados_recentes', '9567454f17698f3f0624cca0b06458cd'),
-    ('get_admin_orders_paged', 'bf08545275eaa451a65e15feceb0ed8d'),
+    ('get_admin_orders_cancelados_recentes', '80ec13f92e224b21d5308a063e88fb6e'),
+    ('get_admin_orders_paged', 'b404a8397a6490c86fb192d85fd5b6c9'),
     ('get_product_recommendations', '9b9fa184eb3984e8afd3ec0f80a086e7'),
     ('limpar_cotacoes_fora_da_janela', '4d398faddf7d697d539a77b8fd04d8ba'),
     ('registrar_venda_presencial', '79b779b98a5d6f6205a31309d5593eb9'),
@@ -295,11 +295,14 @@ WITH corpos AS (
   SELECT 'corpo final ' || f.fn, f.h,
          CASE WHEN f.fn = 'upsert_store_config' AND c.h = '391e8e1064400df5aea579f3472b203c'
               THEN 'aa4ed730ac6ad3d3c2644b4285ff39a9'
-              WHEN f.fn = 'get_admin_orders_cancelados_recentes' AND c.h = '99a9e4cb232aef020bf297ddcd1901f0'
-              THEN '9567454f17698f3f0624cca0b06458cd'
+              WHEN f.fn = 'get_admin_orders_cancelados_recentes'
+                   AND (c.h = '99a9e4cb232aef020bf297ddcd1901f0' OR c.h = '9567454f17698f3f0624cca0b06458cd')
+              THEN '80ec13f92e224b21d5308a063e88fb6e'
+              WHEN f.fn = 'get_admin_orders_paged' AND c.h = 'bf08545275eaa451a65e15feceb0ed8d'
+              THEN 'b404a8397a6490c86fb192d85fd5b6c9'
               WHEN f.fn = 'get_admin_orders_paged'
                    AND (c.h = '5861dbbe0e9c007a4196f5308c17d763' OR c.h = 'f06b1bc03cf7bcf1fbb9d7b2f7ff4fe6')
-              THEN 'bf08545275eaa451a65e15feceb0ed8d'
+              THEN 'b404a8397a6490c86fb192d85fd5b6c9'
               WHEN f.fn = 'buscar_por_codigo_barras'
                    AND (c.h = '8762faab7f7efaf4bfd183499408d8df' OR c.h = 'e1b93114cd9deee7eda6801ef37ff1f9')
               THEN '3e2276ae97a7f2aef487e55d259ba7a3'
