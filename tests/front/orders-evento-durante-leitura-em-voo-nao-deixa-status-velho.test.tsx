@@ -259,12 +259,26 @@ describe("Pedidos — UPDATE durante a leitura de outra página", () => {
     expect(consultasDaLista()).toHaveLength(2);
   });
 
-  it("sem leitura em voo, cancelamento de pedido ausente mantém o comportamento atual", async () => {
+  it("sem leitura em voo, cancelamento de pedido ausente da página agenda UMA recarga e a lista visível não muda", async () => {
+    // Ele estava em outra página do filtro "pending": ao sair, o total
+    // anunciado (14) fica 1 acima até a recarga.
+    total = 13;
+    linhas = Array.from({ length: 12 }, (_, i) => linha(`pagina-1-${i}`));
     await atualizar("x");
-    await avancar(2000);
     expect(atuais.orders.map((pedido) => pedido.id)).toEqual(
       Array.from({ length: 12 }, (_, i) => `pagina-1-${i}`),
     );
+    await avancar(399);
     expect(consultasDaLista()).toHaveLength(0);
+    await avancar(1);
+    expect(consultasDaLista()).toHaveLength(1);
+    expect(consultasDaLista()[0]?.[1]).toMatchObject({
+      p_page: 0,
+      p_page_size: 12,
+      p_status: "pending",
+    });
+    expect(atuais.totalOrders).toBe(13);
+    await avancar(2000);
+    expect(consultasDaLista()).toHaveLength(1);
   });
 });
