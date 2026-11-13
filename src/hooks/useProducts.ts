@@ -2301,8 +2301,12 @@ export function useProducts({
         // Mídia depois, best-effort: o soft-delete já foi confirmado, então
         // uma falha aqui NÃO desfaz a exclusão nem devolve "Erro ao excluir
         // produto" para o admin — só fica logada (try/catch próprio dentro
-        // de `backupProductMediaAfterDelete`).
-        await backupProductMediaAfterDelete(product);
+        // de `backupProductMediaAfterDelete`, de onde nenhum erro escapa como
+        // promessa rejeitada). NÃO se espera: o backup chama Storage e UPDATEs
+        // sem prazo, e uma resposta que nunca vem deixava esta função sem
+        // devolver — a tela ficava em "atualizando" e, ao excluir o último
+        // produto, nunca chegava ao estado vazio.
+        void backupProductMediaAfterDelete(product);
 
         return true;
       } catch (err: any) {
@@ -2370,8 +2374,10 @@ export function useProducts({
           excluidos.push(id);
 
           // Mídia best-effort, depois do soft-delete confirmado deste
-          // produto — mesma função usada por `deleteProduct`.
-          await backupProductMediaAfterDelete(product);
+          // produto — mesma função usada por `deleteProduct`, e também sem
+          // esperar: um backup pendurado parava o lote no meio e a lista
+          // nunca era atualizada.
+          void backupProductMediaAfterDelete(product);
         }
 
         await refreshContext();
