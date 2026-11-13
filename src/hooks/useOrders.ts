@@ -5454,6 +5454,11 @@ export function useOrders(
     fetchOrdersByWhatsapp,
     generateOrderOtp,
     fetchOrdersByOtp,
+    // Quem está na sessão agora (`null` = sem conta). Campo ACRESCENTADO para
+    // OrderSearch: a consulta por código que volta DEPOIS de outra conta entrar
+    // no aparelho não pode regravar o retrato do convidado. Vem daqui, e não de
+    // um `useAuth` na tela, para a tela continuar dependendo só deste hook.
+    idDaConta: user?.id ?? null,
     createOrder,
     criarPagamento,
     reenviarComprovante,
