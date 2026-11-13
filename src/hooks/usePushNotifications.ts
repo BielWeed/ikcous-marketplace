@@ -246,9 +246,18 @@ function comecarAMexerNaInscricao() {
   versaoDeEscrita += 1;
 }
 
+// Avisa TODAS as telas, sempre (deu certo, falhou ou estourou o prazo), que um
+// ligar/desligar acabou: quem adiou a conferência de dono por causa dele a refaz
+// agora, com o servidor já em dia. Diferente de `EVENTO_INSCRICAO_MUDOU`, não
+// manda ninguém reler o navegador.
+const EVENTO_MEXIDA_TERMINOU = "ikcous:push-mexida-terminou";
+
 function terminarDeMexerNaInscricao(mudou: boolean, origem: symbol) {
   mexendoNaInscricao -= 1;
   if (mudou) avisarQueAInscricaoMudou(origem);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(EVENTO_MEXIDA_TERMINOU));
+  }
 }
 
 function esperarServiceWorker(
@@ -511,6 +520,27 @@ export function usePushNotifications() {
   // Só roda com conta, e nunca sobre a inscrição que ESTA instância acabou de
   // criar (a de agora é desta conta). Consulta que falha = dono desconhecido =
   // não se destrói nada.
+  //
+  // E nunca no meio de um ligar/desligar (de QUALQUER tela): enquanto o
+  // navegador já tem a inscrição e o servidor ainda não gravou a linha, "não
+  // achei linha minha" é o estado normal de uma ativação em andamento, não prova
+  // de que a inscrição é alheia — cancelar ali desligava o que a cliente acabou
+  // de ligar, e a ativação ainda anunciava sucesso. Nesse caso a conferência é
+  // adiada (e refeita quando o ligar/desligar termina, qualquer que seja o
+  // resultado); se a resposta chega depois de um ter começado, ela é velha e a
+  // conferência também é refeita.
+  const conferenciaAdiada = useRef(false);
+  const [refazerConferencia, setRefazerConferencia] = useState(0);
+  useEffect(() => {
+    const aoTerminarDeMexer = () => {
+      if (mexendoNaInscricao > 0 || !conferenciaAdiada.current) return;
+      conferenciaAdiada.current = false;
+      setRefazerConferencia((n) => n + 1);
+    };
+    window.addEventListener(EVENTO_MEXIDA_TERMINOU, aoTerminarDeMexer);
+    return () =>
+      window.removeEventListener(EVENTO_MEXIDA_TERMINOU, aoTerminarDeMexer);
+  }, []);
   useEffect(() => {
     if (!userId || !subscription) return;
     const criada = inscricaoCriadaAqui.current;
@@ -522,9 +552,17 @@ export function usePushNotifications() {
       return;
     }
 
+    // Um ligar/desligar no ar: nem se pergunta ao servidor (a resposta agora não
+    // vale). O fim dele (`EVENTO_MEXIDA_TERMINOU`) refaz esta conferência.
+    if (mexendoNaInscricao > 0) {
+      conferenciaAdiada.current = true;
+      return;
+    }
+
     let cancelado = false;
     const geracaoDaVerificacao = geracaoDaInscricao.current;
     const desligamentosNoInicio = desligamentosDoAparelho;
+    const escritaNoInicio = versaoDeEscrita;
     const verificar = async () => {
       const dono = await dequemEAInscricao(subscription.endpoint, userId);
       // Inscrição CONFIRMADA como desta conta = ela tem os avisos ligados neste
@@ -543,6 +581,14 @@ export function usePushNotifications() {
         marcarAvisosLigados(userId);
       }
       if (cancelado || dono !== "outra-conta") return;
+      // Um ligar/desligar começou (e talvez já acabou) depois da consulta:
+      // "sem linha minha" pode ser só a gravação que ainda não tinha chegado.
+      // Não se cancela; refaz-se a conferência — que, se ele ainda está no ar,
+      // se adia pela guarda do começo e espera o fim dele.
+      if (versaoDeEscrita !== escritaNoInicio) {
+        setRefazerConferencia((n) => n + 1);
+        return;
+      }
       geracaoDaInscricao.current += 1;
       try {
         await subscription.unsubscribe();
@@ -558,7 +604,7 @@ export function usePushNotifications() {
     return () => {
       cancelado = true;
     };
-  }, [userId, subscription]);
+  }, [userId, subscription, refazerConferencia]);
 
   // `silencioso` é o religar automático depois de uma limpeza do app: NUNCA
   // pede permissão (só segue com a que já é "granted"), não mostra aviso nem
