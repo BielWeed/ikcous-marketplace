@@ -660,6 +660,27 @@ describe("a busca do topo nao apaga o que a cliente digita fora da Home", () => 
     await aguardarNaHomeCom("vestido");
   });
 
+  it("tocar na sugestao ANTES dos 150 ms e voltar: campo e lista concordam", async () => {
+    await abrir();
+    await digitarEEsperar("vestido");
+    // Acrescenta uma palavra e toca na sugestao sem esperar o envio: o App
+    // continua com "vestido" e o texto novo nunca chega a ele.
+    await digitar("vestido azul");
+    const sugestao = container
+      ?.querySelector<HTMLButtonElement>("button img")
+      ?.closest("button");
+    expect(sugestao).not.toBeNull();
+    await act(async () => sugestao?.click());
+    await aguardar(() => expect(caminho()).toBe("/product-detail"));
+
+    await act(async () => globalThis.history.back());
+    await aguardarNaHomeCom("vestido");
+    await esperarQueNadaAconteca(250);
+
+    expect(campo().value).toBe("vestido");
+    expect(termoDaHome()).toBe("vestido");
+  });
+
   it("abrir o produto e voltar preserva a busca e o campo do topo", async () => {
     await abrir();
     await digitarEEsperar("vestido");
