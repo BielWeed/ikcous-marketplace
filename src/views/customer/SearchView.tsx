@@ -375,8 +375,14 @@ export const SearchView = React.memo(function SearchView({
   );
 
   // Initialize query from props if needed. Termo que já é o desta caixa (o eco
-  // do que foi digitada aqui) não mexe nos filtros: só o topo esvaziar o termo
-  // zera os filtros, como sempre.
+  // do que foi digitada aqui, ou o mesmo termo de novo) não mexe nos filtros:
+  // a cliente refina dentro da categoria de propósito.
+  //
+  // Termo NOVO vindo de fora (a barra do topo): a caixinha de sugestões olha a
+  // loja INTEIRA, então categoria e faixa de preço escolhidas antes voltam ao
+  // padrão — senão "Ver todos os resultados" mostrava "nenhum resultado" para um
+  // produto que a caixinha acabou de anunciar. Mesmo padrão da Home. A ordenação
+  // não esconde nada e fica. Termo vazio limpa tudo, como sempre.
   const queryRef = useRef(query);
   queryRef.current = query;
   useEffect(() => {
@@ -384,9 +390,20 @@ export const SearchView = React.memo(function SearchView({
       setQuery(initialQuery);
       if (!initialQuery) {
         handleClearFilters();
+      } else {
+        setCategory("Todas");
+        setMinPrice("");
+        setMaxPrice("");
       }
     }
-  }, [initialQuery, setQuery, handleClearFilters]);
+  }, [
+    initialQuery,
+    setQuery,
+    handleClearFilters,
+    setCategory,
+    setMinPrice,
+    setMaxPrice,
+  ]);
 
   const activeFiltersCount =
     (category !== "Todas" ? 1 : 0) +
