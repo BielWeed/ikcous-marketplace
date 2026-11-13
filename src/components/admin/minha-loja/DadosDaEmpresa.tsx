@@ -209,7 +209,6 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
           autoComplete="off"
           autoCapitalize="characters"
           spellCheck={false}
-          maxLength={18}
           value={documento}
           disabled={bloqueado}
           onChange={(e) => {
@@ -217,7 +216,9 @@ export const DadosDaEmpresa = memo(function DadosDaEmpresa({
             if (erros.documento) setErros({ ...erros, documento: undefined });
           }}
           // A máscara entra ao sair do campo: assim ela não pula o cursor
-          // enquanto a lojista digita.
+          // enquanto a lojista digita. Sem `maxLength` de propósito: o navegador
+          // cortaria o texto colado ANTES da conferência (o último caractere
+          // sumia em silêncio); quem recusa documento grande é o salvar.
           onBlur={() => setDocumento(formatarDocumento(documento))}
           placeholder="Só os números (ou letras do CNPJ novo)"
           aria-invalid={erros.documento ? true : undefined}

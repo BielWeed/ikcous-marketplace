@@ -165,6 +165,11 @@ export const EnderecoDaLoja = memo(function EnderecoDaLoja({
     useState<ModoDaBusca>("preencher");
   // O que cada CEP respondeu nesta tela: não pergunta de novo.
   const enderecosDoCep = useRef(new Map<string, EnderecoDoCep>());
+  // O endereço que estava na tela quando a lojista TROCOU o CEP. Se esse CEP
+  // novo for "não encontrado", rua/número/cidade/UF continuam sendo os do CEP
+  // de antes: enquanto ela não os tocar, o par CEP+endereço é uma mistura.
+  const [enderecoDeAntesDoCep, setEnderecoDeAntesDoCep] =
+    useState<PartesDoEndereco | null>(null);
   const [cidadeDoCep, setCidadeDoCep] = useState<{
     cep: string;
     cidade: string;
@@ -234,6 +239,7 @@ export const EnderecoDaLoja = memo(function EnderecoDaLoja({
       return;
     }
     if (mudou) {
+      setEnderecoDeAntesDoCep({ ...partes, cep: formatado });
       iniciarBusca("preencher", limpo);
       return;
     }
@@ -260,14 +266,31 @@ export const EnderecoDaLoja = memo(function EnderecoDaLoja({
   // são os do CEP de antes — não vale gravar até a busca responder. (Só a
   // busca que REFAZ o endereço: conferir/completar não trocam o que está salvo.)
   const refazendoPeloCep = buscando && modoDoResultado === "preencher";
+  const alterado = !mesmasPartes(partes, salvo.partes);
+  // CEP trocado que NENHUM provedor conhece, com o endereço ainda igual ao de
+  // antes dele: gravar levaria o CEP novo junto da rua do CEP velho. Mexer em
+  // qualquer campo do endereço desfaz a trava (ela afirma que aquele endereço é
+  // daquele CEP, que pode ser novo demais para os provedores). Só "não
+  // encontrado" de verdade conta: rede fora ou demora (`indisponivel`,
+  // `demorou`) não é prova de CEP inexistente e não trava. Sem alteração não
+  // há o que gravar, então também não há trava.
+  const cepNaoExisteComEnderecoDeAntes =
+    alterado &&
+    resultado?.tipo === "naoEncontrado" &&
+    modoDoResultado === "preencher" &&
+    enderecoDeAntesDoCep !== null &&
+    mesmasPartes(partes, enderecoDeAntesDoCep);
   const motivo =
     motivoDoEnderecoIncompleto(partes) ??
-    (refazendoPeloCep ? "aguarde a busca do CEP terminar." : null);
+    (refazendoPeloCep
+      ? "aguarde a busca do CEP terminar."
+      : cepNaoExisteComEnderecoDeAntes
+        ? "esse CEP não foi encontrado. Confira os números do CEP ou corrija o endereço aqui embaixo."
+        : null);
   const valores = useMemo(
     () => (motivo ? null : montarEnderecoDaLoja(partes)),
     [motivo, partes],
   );
-  const alterado = !mesmasPartes(partes, salvo.partes);
 
   // Quem chama pode passar uma função nova a cada render; ela fica numa ref
   // (atualizada antes do aviso) para o aviso sair só quando algo MUDA.
