@@ -92,6 +92,13 @@ export function VisaoGeralDoCrm({
     k?.pedidos === 0 &&
     !!stats &&
     stats.revenueHistory?.every((d) => !d.orders && !d.revenue);
+  // O banco conta os pedidos estornados na taxa, mas não em `pedidos`: quem
+  // devolveu tudo o que vendeu tem `pedidos` 0 e taxa 100 — isso é medido.
+  const temDevolucao =
+    k?.taxaDevolucao != null &&
+    Number.isFinite(k.taxaDevolucao) &&
+    k.taxaDevolucao > 0;
+  const semVendaNemDevolucao = k?.pedidos === 0 && !temDevolucao;
   const cards: KpiCardConfig[] = [
     {
       label: "Valor médio por venda",
@@ -163,12 +170,12 @@ export function VisaoGeralDoCrm({
     },
     {
       label: "Taxa de devolução",
-      value: formatarPercentual(k?.pedidos === 0 ? null : k?.taxaDevolucao),
+      value: formatarPercentual(semVendaNemDevolucao ? null : k?.taxaDevolucao),
       icon: RotateCcw,
       accent: "text-rose-400",
       footer: falha
         ? "Sem dado agora"
-        : k?.pedidos === 0
+        : semVendaNemDevolucao
           ? "Sem venda neste período"
           : "Do valor vendido no período",
     },

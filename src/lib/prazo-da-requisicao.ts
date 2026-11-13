@@ -146,6 +146,25 @@ export const PRAZO_DA_CONSULTA_DOS_BANNERS_MS = 20_000;
 // (a consulta não grava nada) e a resposta tardia é descartada.
 export const PRAZO_DA_CONSULTA_DA_SINCRONIZACAO_MS = 20_000;
 
+// PRAZOS DA ETIQUETA DE ENVIO NA FICHA DO PEDIDO (13/11/2026). Rede "pendurada"
+// conecta e não responde: "Confirmar e gerar" e "Cancelar" ficavam apagados em
+// "Gerando…" para sempre (a trava é por pedido e sobrevive a sair e voltar) e
+// "Atualizar rastreio" ficava desativado. Só encerram a ESPERA DA TELA.
+//
+// - 30 s: COMPRAR a etiqueta. É a edge com o provedor externo por trás (Melhor
+//   Envio, até seis chamadas encadeadas) e gasta SALDO real: o maior prazo que o
+//   projeto já pratica para uma operação de gravação externa, o mesmo da edge de
+//   devolução (`PRAZO_DA_EDGE_MS`) e do cancelamento. Estourou, a etiqueta PODE
+//   ter sido comprada: a tela não diz que deu certo nem que falhou, relê o
+//   pedido e deixa tentar de novo — o servidor reivindica o pedido e a 2ª
+//   chamada devolve `already: true`, então não há compra dupla.
+// - 15 s: consultar o rastreio (leitura no provedor; a edge só grava o código).
+//   Estourou: solta o botão e diz que não deu para consultar.
+export const PRAZO_DA_COMPRA_DA_ETIQUETA_MS = 30_000;
+export const PRAZO_DA_CONSULTA_DO_RASTREIO_MS = 15_000;
+export const MENSAGEM_COMPRA_DA_ETIQUETA_SEM_RESPOSTA =
+  "Sem resposta da rede. Não dá para saber se a etiqueta foi gerada. Confira o pedido e a sua conta do Melhor Envio (Meus envios) antes de tentar de novo.";
+
 /** Frase para quem está na tela: o que aconteceu e o que fazer. */
 export const MENSAGEM_CONEXAO_LENTA =
   "A conexão está lenta. Toque em Tentar de novo.";

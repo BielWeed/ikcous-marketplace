@@ -144,6 +144,10 @@ let cachedAdminProductsTotal = 0;
 // com o rótulo trocado).
 let cachedAdminProductsPagina = -1;
 let cachedAdminProductsTamanho = -1;
+// Sobe a cada gravação que mexe na lista (pausar, editar, excluir...). Uma
+// leitura que saiu antes dela pode chegar depois e desfaria o que foi gravado:
+// ao aplicar, `loadProducts` compara com o valor de quando partiu.
+let versaoDaLista = 0;
 
 /**
  * O que a exclusão precisa de um produto que não está na página carregada de
@@ -1157,7 +1161,11 @@ export function useProducts({
 
   // Load products with pagination and filtering (Admin focus)
   const loadProducts = useCallback(
-    async (page = 0, pageSize = 10, filters?: any) => {
+    async function lerAPagina(
+      page = 0,
+      pageSize = 10,
+      filters?: any,
+    ): Promise<{ products: Product[]; total: number } | null> {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
@@ -1165,6 +1173,7 @@ export function useProducts({
       const signal = abortControllerRef.current.signal;
 
       const loadId = ++lastLoadId.current;
+      const versaoNaPartida = versaoDaLista;
 
       try {
         if (!filters?.silent) {
@@ -1281,6 +1290,11 @@ export function useProducts({
 
         if (data) {
           if (loadId !== lastLoadId.current) return null;
+          // Uma gravação mexeu na lista com esta leitura no ar: a resposta pode
+          // ser anterior a ela e desfaria o que ela gravou. Descarta e relê.
+          if (versaoNaPartida !== versaoDaLista) {
+            return lerAPagina(page, pageSize, filters);
+          }
           const mappedProducts = (data as any[]).map((item: any) =>
             mapProductFromDB(item),
           );
@@ -1741,6 +1755,7 @@ export function useProducts({
             }
           }
 
+          versaoDaLista++;
           cachedAdminProducts = [newProduct, ...(cachedAdminProducts || [])];
           cachedAdminProductsTotal += 1;
           setLocalProducts((prev) => [newProduct, ...prev]);
@@ -1852,6 +1867,7 @@ export function useProducts({
 
         try {
           if (optimisticProduct) {
+            versaoDaLista++;
             cachedAdminProducts = (cachedAdminProducts || []).map((p) =>
               p.id === id ? optimisticProduct : p,
             );
@@ -1985,6 +2001,7 @@ export function useProducts({
         if (data) {
           const updatedProduct = mapProductFromDB(data);
 
+          versaoDaLista++;
           cachedAdminProducts = (cachedAdminProducts || []).map((p) =>
             p.id === id ? updatedProduct : p,
           );
@@ -2154,6 +2171,7 @@ export function useProducts({
         const produto = await fetchProduct(id);
         if (!produto)
           throw new Error("Produto não encontrado após salvar a grade.");
+        versaoDaLista++;
         cachedAdminProducts = (cachedAdminProducts || []).map((p) =>
           p.id === id ? produto : p,
         );
@@ -2271,6 +2289,7 @@ export function useProducts({
         : null;
       const originalTotal = cachedAdminProductsTotal;
 
+      versaoDaLista++;
       cachedAdminProducts = (cachedAdminProducts || []).filter(
         (p) => p.id !== id,
       );
@@ -2324,6 +2343,7 @@ export function useProducts({
           throw new RecusaDoCadastroDeProduto(MSG_PRODUTO_NAO_EXCLUIDO);
         }
 
+        versaoDaLista++;
         clearAnalyticsCache();
         await refreshContext();
         toast.success("Produto removido");
@@ -2374,6 +2394,7 @@ export function useProducts({
         : null;
       const originalTotal = cachedAdminProductsTotal;
 
+      versaoDaLista++;
       cachedAdminProducts = (cachedAdminProducts || []).filter(
         (p) => !ids.includes(p.id),
       );
@@ -2420,6 +2441,7 @@ export function useProducts({
           void backupProductMediaAfterDelete(product);
         }
 
+        versaoDaLista++;
         await refreshContext();
         toast.success(
           ids.length === 1
@@ -2459,6 +2481,7 @@ export function useProducts({
         ? [...cachedAdminProducts]
         : null;
 
+      versaoDaLista++;
       cachedAdminProducts = (cachedAdminProducts || []).map((p) => {
         if (ids.includes(p.id)) {
           const updated = Object.assign({}, p);
@@ -2492,6 +2515,7 @@ export function useProducts({
           throw new RecusaDoCadastroDeProduto(MSG_PRODUTOS_NAO_ALTERADOS);
         }
 
+        versaoDaLista++;
         await refreshContext();
         toast.success("Status atualizado");
         return true;
@@ -2515,6 +2539,7 @@ export function useProducts({
     async (id: string, currentStatus: boolean) => {
       if (statusEmGravacao.current.has(id)) return false;
       statusEmGravacao.current.add(id);
+      versaoDaLista++;
       cachedAdminProducts = (cachedAdminProducts || []).map((p) => {
         if (p.id === id) {
           const updated = Object.assign({}, p);

@@ -51,7 +51,13 @@ afterEach(() => {
   host.remove();
 });
 
-function Sonda({ pedidos = 0 }: { pedidos?: number }) {
+function Sonda({
+  pedidos = 0,
+  devolucao = 0,
+}: {
+  pedidos?: number;
+  devolucao?: number;
+}) {
   const classico = useDashboardClassico(false);
   return (
     <VisaoGeralDoCrm
@@ -61,7 +67,7 @@ function Sonda({ pedidos = 0 }: { pedidos?: number }) {
           ticket_medio: pedidos > 0 ? 25 : 0,
           taxa_recompra: 0.5,
           receita_recorrente_pct: 0,
-          taxa_devolucao: 0,
+          taxa_devolucao: devolucao,
         },
         segmentos: [],
         canais: [],
@@ -77,8 +83,10 @@ function Sonda({ pedidos = 0 }: { pedidos?: number }) {
     />
   );
 }
-async function montar(pedidos = 0) {
-  await act(async () => root.render(<Sonda pedidos={pedidos} />));
+async function montar(pedidos = 0, devolucao = 0) {
+  await act(async () =>
+    root.render(<Sonda pedidos={pedidos} devolucao={devolucao} />),
+  );
 }
 function cartao(rotulo: string) {
   const tile = host.querySelector(`article[aria-label="${rotulo}"]`);
@@ -148,4 +156,18 @@ it("com venda: zero de devolução é medido e recompra histórica continua", as
   );
   expect(cartao("Taxa de recompra").textContent).toContain("50%");
   expect(host.textContent).toContain("0% da receita vem de quem volta");
+});
+
+it("devolveu tudo o que vendeu (pedidos 0, devolução 100%): mostra 100%, não 'Sem venda'", async () => {
+  // O banco conta os estornados na taxa, mas não em `pedidos`.
+  await montar(0, 1);
+  const texto = cartao("Taxa de devolução").textContent;
+  expect(texto).toContain("100%");
+  expect(texto).toContain("Do valor vendido no período");
+  expect(texto).not.toContain("Sem venda neste período");
+});
+
+it("devolução parcial sem pedido restante também aparece", async () => {
+  await montar(0, 0.4);
+  expect(cartao("Taxa de devolução").textContent).toContain("40%");
 });

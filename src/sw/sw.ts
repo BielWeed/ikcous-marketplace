@@ -110,7 +110,9 @@ const precacheManifest = self.__WB_MANIFEST || [];
 console.log("[SW] Precache Manifest received:", precacheManifest.length);
 
 /** Prazo dos pedidos de rede feitos no `activate`: enquanto ele não termina, o
- * navegador segura as requisições da página (a recarga incluída). */
+ * navegador segura as requisições da página (a recarga incluída). Também é o
+ * prazo da navegação a uma rota nunca visitada antes de abrir o app guardado
+ * (`redeOuAppGuardado`). */
 const PRAZO_DA_REDE_NO_SW_MS = 5000;
 
 /** `AbortSignal.timeout` só existe a partir do iOS 16 / Safari 16. */
@@ -442,6 +444,56 @@ async function paginaSemInternet(): Promise<Response | null> {
   }
 }
 
+/**
+ * A melhor página GUARDADA para abrir quando a rede não entregou: a da própria
+ * rota, depois o `/index.html` e a `/` — esses dois só com a ficha da loja
+ * (`respostaTemFichaDaLoja`). Devolve `null` quando nada serve; quem chama
+ * decide o que fazer sem página (página "sem internet" ou continuar esperando).
+ */
+async function paginaGuardadaParaNavegacao(
+  request: Request,
+): Promise<Response | null> {
+  const exata = await caches.match(request);
+  if (exata) return exata;
+  const indice = await caches.match("/index.html");
+  if (indice && (await respostaTemFichaDaLoja(indice))) return indice;
+  const raiz = await caches.match("/");
+  if (raiz && (await respostaTemFichaDaLoja(raiz))) return raiz;
+  return null;
+}
+
+/**
+ * Rota nunca visitada: a rede tem `PRAZO_DA_REDE_NO_SW_MS` para responder.
+ * Estourou E há página guardada útil -> abre o app guardado, sem a cliente
+ * olhar tela parada (rede que conecta e não responde NÃO rejeita o `fetch`, e
+ * o `.catch` de quem chama nunca roda). O `fetch` original segue vivo
+ * (`waitUntil`) e, se chegar depois, a rotina de quem chama o guarda para a
+ * próxima visita. SEM página guardada útil (primeira visita) nada abre por
+ * lentidão: a rede continua sendo esperada, como sempre foi; só a REJEIÇÃO
+ * dela leva à página "sem internet".
+ */
+function redeOuAppGuardado(
+  rede: Promise<Response>,
+  request: Request,
+  event: any,
+): Promise<Response> {
+  let prazo: ReturnType<typeof setTimeout> | undefined;
+  const appGuardado = new Promise<Response>((resolve) => {
+    prazo = setTimeout(() => {
+      paginaGuardadaParaNavegacao(request).then(
+        (pagina) => {
+          if (pagina) resolve(pagina);
+        },
+        () => {},
+      );
+    }, PRAZO_DA_REDE_NO_SW_MS);
+  });
+  const desarmar = () => clearTimeout(prazo);
+  // Nunca rejeita: a rejeição da rede é tratada por quem recebe a corrida.
+  event.waitUntil(rede.then(desarmar, desarmar));
+  return Promise.race([rede, appGuardado]);
+}
+
 sw.addEventListener("fetch", (event: any) => {
   const url = new URL(event.request.url);
 
@@ -545,51 +597,42 @@ sw.addEventListener("fetch", (event: any) => {
           );
           return cached;
         }
-        return fetch(event.request)
-          .then((response) => {
-            if (response.ok && response.status === 200) {
-              try {
-                const copy = response.clone();
-                // Mesma razão do .catch da revalidação acima: o try/catch
-                // síncrono não alcança a rejeição da promessa do put.
-                caches
-                  .open(CACHE_NAME)
-                  .then((cache) => cache.put(event.request, copy))
-                  .catch((err) =>
-                    console.warn(
-                      "[SW] Failed to cache navigation response:",
-                      err,
-                    ),
-                  );
-              } catch (e) {
-                console.warn("[SW] Failed to clone navigation response:", e);
-              }
+        const rede = fetch(event.request).then((response) => {
+          if (response.ok && response.status === 200) {
+            try {
+              const copy = response.clone();
+              // Mesma razão do .catch da revalidação acima: o try/catch
+              // síncrono não alcança a rejeição da promessa do put.
+              caches
+                .open(CACHE_NAME)
+                .then((cache) => cache.put(event.request, copy))
+                .catch((err) =>
+                  console.warn(
+                    "[SW] Failed to cache navigation response:",
+                    err,
+                  ),
+                );
+            } catch (e) {
+              console.warn("[SW] Failed to clone navigation response:", e);
             }
-            return response;
-          })
-          .catch((err) => {
+          }
+          return response;
+        });
+        return redeOuAppGuardado(rede, event.request, event).catch(
+          async (err) => {
             console.log(
               "[SW] Navigation fetch failed, attempting cache/SPA fallback:",
               err,
             );
-            return caches.match(event.request).then((response) => {
-              if (response) return response;
-              return caches.match("/index.html").then(async (fallback) => {
-                if (fallback && (await respostaTemFichaDaLoja(fallback))) {
-                  return fallback;
-                }
-                const raiz = await caches.match("/");
-                if (raiz && (await respostaTemFichaDaLoja(raiz))) {
-                  return raiz;
-                }
-                // Chegou até aqui por REDE FORA DO AR (o `fetch` lançou) e
-                // nenhuma página guardada serve: a cliente está sem
-                // internet, não a loja sem ficha. "Em manutenção" aqui
-                // fazia a cliente achar que a loja fechou.
-                return (await paginaSemInternet()) ?? respostaEmManutencao();
-              });
-            });
-          });
+            const guardada = await paginaGuardadaParaNavegacao(event.request);
+            if (guardada) return guardada;
+            // Chegou até aqui por REDE FORA DO AR (o `fetch` lançou) e
+            // nenhuma página guardada serve: a cliente está sem
+            // internet, não a loja sem ficha. "Em manutenção" aqui
+            // fazia a cliente achar que a loja fechou.
+            return (await paginaSemInternet()) ?? respostaEmManutencao();
+          },
+        );
       }),
     );
     return;
