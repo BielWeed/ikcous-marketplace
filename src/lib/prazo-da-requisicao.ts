@@ -127,6 +127,15 @@ export const PRAZO_DE_GRAVAR_O_CARRINHO_MS = 20_000;
 // ESPERA da tela, a consulta não grava nada.
 export const PRAZO_DAS_RECOMENDACOES_DO_PRODUTO_MS = 15_000;
 
+// PRAZO DA CONSULTA DOS BANNERS DA HOME (13/11/2026): rede que conecta e não
+// responde deixava `isLoaded` falso e a faixa de banners em esqueleto para
+// sempre, sem aviso. É uma leitura só, no mesmo boot da configuração da loja:
+// 20 s, o mesmo de `PRAZO_DA_LEITURA_DA_CONFIG_MS`. Estourou = o mesmo caminho
+// da falha comum (a home segue sem a faixa e a próxima tentativa pede de novo);
+// só encerra a ESPERA da tela, a consulta não grava nada, e a resposta tardia
+// é descartada.
+export const PRAZO_DA_CONSULTA_DOS_BANNERS_MS = 20_000;
+
 /** Frase para quem está na tela: o que aconteceu e o que fazer. */
 export const MENSAGEM_CONEXAO_LENTA =
   "A conexão está lenta. Toque em Tentar de novo.";

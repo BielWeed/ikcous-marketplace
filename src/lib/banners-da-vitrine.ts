@@ -1,6 +1,11 @@
 import { DataVault } from "@/lib/dataVault";
 import { atributosDeImagem } from "@/lib/imageUrl";
 import { IMAGEM_DO_BANNER } from "@/lib/imagem-do-banner";
+import {
+  PRAZO_DA_CONSULTA_DOS_BANNERS_MS,
+  aguardarComPrazo,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { Banner } from "@/types";
 
@@ -157,10 +162,20 @@ export function pedirBanners(
   const geracao = geracaoDasMutacoes;
   const consulta: Promise<Banner[]> = (async () => {
     console.log("[Banners] Fetching banners...");
-    const { data, error } = await supabase
-      .from("banners")
-      .select("*")
-      .order("order", { ascending: true });
+    // Rede pendurada conecta e não responde: sem prazo a consulta ficava em voo
+    // para sempre (esqueleto eterno e nova tentativa pegando carona nela). Estourou
+    // = rejeita como "sem resposta", o `finally` abaixo solta a consulta em voo e
+    // a resposta tardia é descartada (a corrida já foi decidida).
+    const { data, error } = await aguardarComPrazo(
+      Promise.resolve(
+        supabase
+          .from("banners")
+          .select("*")
+          .order("order", { ascending: true }),
+      ),
+      PRAZO_DA_CONSULTA_DOS_BANNERS_MS,
+      () => erroDeConsultaSemResposta(),
+    );
 
     // Uma edição local vence a leitura que já estava em voo.
     if (geracao !== geracaoDasMutacoes) return cacheDeBanners || [];
