@@ -11,7 +11,15 @@
 // (address-form-rua-manual-sobrevive-cep-sem-logradouro, address-form-cep-race).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  type Mock,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
@@ -48,10 +56,12 @@ async function esvaziar() {
 describe("AddressForm — trocar o CEP com a busca fora do ar não salva endereço misturado", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
-  let onSubmit: ReturnType<typeof vi.fn>;
+  let onSubmit: Mock<(endereco: unknown) => Promise<void>>;
 
   beforeEach(() => {
-    onSubmit = vi.fn().mockResolvedValue(undefined);
+    onSubmit = vi
+      .fn<(endereco: unknown) => Promise<void>>()
+      .mockResolvedValue(undefined);
     vi.stubGlobal(
       "ResizeObserver",
       class {
