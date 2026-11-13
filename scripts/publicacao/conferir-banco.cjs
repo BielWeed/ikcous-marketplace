@@ -3049,6 +3049,22 @@ const ROL_DA_135 = [
   "get_admin_analytics_v2: uma assinatura so e atributos de sempre (SECURITY DEFINER, search_path=public, plpgsql, VOLATILE, retorno json, um argumento)",
   "get_admin_analytics_v2: EXECUTE so de authenticated e service_role (PUBLIC e anon nao)",
 ];
+// Lote 149 (20261399940000, o cadastro cria o perfil em toda loja: o gatilho on_auth_user_created de auth.users, que a Savy clonada do baseline nunca teve, mais o reparo de quem se cadastrou sem perfil).
+// A 149a (6 linhas) prova o gatilho como desenhado (estrutura do catalogo), ligado, sem concorrente, a funcao SECURITY DEFINER e que nenhum usuario de cliente de tamanho valido esta sem perfil (so uma
+// CONTAGEM); a 149b (3 linhas) prova o estado de antes (gatilho ausente). Nenhuma devolve nome, telefone, CPF ou e-mail.
+const ROL_DA_149A_PERFIL = [
+  "controle: catalogo publico visivel",
+  "auth.users: gatilho on_auth_user_created existe, AFTER INSERT por linha, chama public.handle_new_user(), sem condicao nem lista de colunas",
+  "auth.users: o gatilho on_auth_user_created esta LIGADO (nao desabilitado)",
+  "public.handle_new_user() existe, devolve trigger e e SECURITY DEFINER",
+  "so existe UM gatilho em auth.users que chama handle_new_user: nenhum concorrente",
+  "nenhum usuario de cliente (papel customer ou sem papel, nome ate 120 e telefone ate 20) esta sem perfil",
+];
+const ROL_DA_149B_PERFIL = [
+  "controle: catalogo publico visivel",
+  "auth.users tem id, raw_user_meta_data e raw_app_meta_data; profiles tem id, full_name, whatsapp, cpf e role; handle_new_user() existe (trigger, SECURITY DEFINER)",
+  "nenhum gatilho on_auth_user_created existe ainda em auth.users",
+];
 // Lote 140 (20261399980000, as listas de Produtos, Pedidos e Cancelados do painel nao repetem nem escondem ninguem entre as paginas: get_admin_products_paged, get_admin_orders_paged e
 // get_admin_orders_cancelados_recentes redefinidas, sem objeto novo). A 140a e a 140b tem o MESMO rol de 10 linhas (controle e, para cada funcao, corpo exato (md5), atributos e ACL); a 140a espera os
 // corpos da migration nova e a 140b os vigentes de antes (os da 20261399200000, 20261399900000 e 20261380000000). So catalogo: nenhuma le produto, pedido ou cliente e nenhuma chama as funcoes.
@@ -3127,6 +3143,10 @@ const ROL_DA_147 = [...ROL_DA_135];
 // A 148a e a 148b tem o MESMO rol de 4 linhas da 123; a 148a espera o corpo desta migration e a 148b o vigente de antes (o da 20261399700000). So catalogo: nenhuma le avaliacao nem chama a funcao.
 const ROL_DA_148 = [...ROL_DA_123];
 const ROL_FECHADO_POR_CONSULTA = {
+  "149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado":
+    ROL_DA_149A_PERFIL,
+  "149b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente":
+    ROL_DA_149B_PERFIL,
   "148a-conferir-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-aplicado":
     ROL_DA_148,
   "148b-antes-o-painel-de-avaliacoes-filtra-o-que-esta-sem-resposta-base-vigente":

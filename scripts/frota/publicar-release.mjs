@@ -692,6 +692,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "127b-antes-o-sino-do-pedido-vencido-fala-do-vencimento-base-vigente",
   "128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado",
   "128b-antes-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-base-vigente",
+  "149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado",
+  "149b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente",
   "135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado",
   "135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente",
   "140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado",

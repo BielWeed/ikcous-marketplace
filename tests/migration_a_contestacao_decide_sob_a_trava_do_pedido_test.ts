@@ -693,6 +693,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // recusados para todos e a vitrine nunca devolve nome acima de 120; a migration se recusa se ja houver perfil acima do teto (o CHECK travaria foto, CPF e cargo da conta);
     // mutantes, rollback byte a byte, pre/pos-voo, atomicidade e lock_timeout nas duas tabelas).
     "tests/banco/o-nome-do-perfil-tem-teto-no-banco-viva.cjs",
+    // 20261399940000: o cadastro cria o perfil em toda loja (gatilho on_auth_user_created so se ausente; reparo de quem ficou sem perfil sem rebaixar admin nem violar os tetos de nome e WhatsApp;
+    // controle sem o gatilho, papel sem EXECUTE, mutantes, rollback, pre-voo, atomicidade e consultas 149a/149b).
+    "tests/banco/o-cadastro-cria-o-perfil-em-toda-loja-viva.cjs",
     // 20261399200000: a busca de produtos do painel e do balcao acha por palavras (todas as palavras, qualquer ordem, nome/codigo/SKU/nome e valor das variacoes ativas; codigo de barras por
     // igualdade; % _ e barra valem como letras; controle com o corpo da 385; mutantes, rollback byte a byte, pre/pos-voo, atomicidade e consultas 119a/119b).
     "tests/banco/a-busca-do-painel-acha-por-palavras-viva.cjs",
