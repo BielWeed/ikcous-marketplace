@@ -371,6 +371,15 @@ interface ShippingCalculatorProps {
    * já com a opção nova.
    */
   modoResumo?: boolean;
+  /**
+   * PEDIDO EM ENVIO (13/11/2026): só o checkout passa (`isSubmitting`). Com
+   * `true`, o "Trocar", os cartões de opção e o "Tentar de novo" ficam
+   * desabilitados — nada que possa trocar a modalidade (entrega x retirada)
+   * ou o frete chega ao `onSelectOption` enquanto o envio carrega o valor
+   * capturado no clique de "Finalizar". Sem a prop (carrinho): tudo como
+   * sempre.
+   */
+  bloqueado?: boolean;
 }
 
 /**
@@ -419,6 +428,7 @@ export function ShippingCalculator({
   onStatusChange,
   forcarNovaCotacaoEm,
   modoResumo,
+  bloqueado = false,
 }: ShippingCalculatorProps) {
   // Fora do StoreProvider (peça montada sozinha em teste/storybook) o
   // `useStore` real quebraria — mas todo chamador de produção (CartView,
@@ -1112,7 +1122,12 @@ export function ShippingCalculator({
         // Laudo de acessibilidade 05/09, A1 (ALTA): a escolha é
         // anunciada por `aria-pressed`.
         aria-pressed={isSelected}
+        // Pedido em envio: a escolha de agora não vale mais para o pedido
+        // que já está saindo — ver a prop `bloqueado`.
+        disabled={bloqueado}
+        aria-disabled={bloqueado || undefined}
         onClick={() => {
+          if (bloqueado) return;
           haptic.light();
           selecaoVivaRef.current = option;
           idTocadoNestaMontagemRef.current = option.id;
@@ -1127,7 +1142,7 @@ export function ShippingCalculator({
             setDetalhesAbertosNoResumo(false);
           }
         }}
-        className={`flex w-full select-none items-center justify-between rounded-2xl p-3 text-left transition-all duration-200 ${
+        className={`flex w-full select-none items-center justify-between rounded-2xl p-3 text-left transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60 ${
           neutro
             ? isSelected
               ? "border-2 border-solid border-zinc-900 bg-white text-zinc-900"
@@ -1449,11 +1464,14 @@ export function ShippingCalculator({
                     el.focus();
                   }
                 }}
+                disabled={bloqueado}
+                aria-disabled={bloqueado || undefined}
                 onClick={() => {
+                  if (bloqueado) return;
                   haptic.light();
                   setDetalhesAbertosNoResumo(true);
                 }}
-                className="min-h-11 min-w-11 shrink-0 rounded-xl bg-zinc-100 px-3 text-sm font-semibold text-zinc-700 transition-colors hover:bg-zinc-200"
+                className="min-h-11 min-w-11 shrink-0 rounded-xl bg-zinc-100 px-3 text-sm font-semibold text-zinc-700 transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-zinc-100"
               >
                 Trocar
               </button>
@@ -1530,7 +1548,7 @@ export function ShippingCalculator({
                 <button
                   type="button"
                   onClick={tentarDeNovo}
-                  disabled={loading}
+                  disabled={loading || bloqueado}
                   className="flex min-h-10 shrink-0 select-none items-center gap-1 rounded-xl bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-amber-800 shadow-sm disabled:opacity-40"
                 >
                   <RefreshCw className="size-3" />
