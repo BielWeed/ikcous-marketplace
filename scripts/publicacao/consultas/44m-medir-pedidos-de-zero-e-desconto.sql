@@ -27,10 +27,11 @@
 -- dia >= hoje - (N - 1). "total" = o botao "Tudo" (JANELA_TUDO_DIAS = 3650 de src/hooks/useAnalytics.ts, que cobre a
 -- vida da loja). A mesma fronteira vale para a_*, d_* (por dia de created_at) e c_novo (por dia da primeira compra,
 -- o mesmo balde de fin__dia que o CRM usa nos clientes novos).
--- REGRA DE CLIENTE (texto IDENTICO a `crm__vendas`, 20261178000000:52-75): venda reconhecida = payment_status
--- reconhecido, status fora de cancelled/returned e COALESCE(pagamento_recebido_em, paid_at) preenchido; a chave da
--- cliente = conta, senao a conta dona do mesmo WhatsApp, senao 'wa:' + digitos do WhatsApp. Venda sem chave fica fora
--- do CRM (a linha `c_sem_chave` conta quantas de R$ 0 ficam assim).
+-- REGRA DE CLIENTE (texto IDENTICO a `crm__vendas`, 20261399990000: o corpo da 20261178000000 mais a CTE base_chave): venda
+-- reconhecida = payment_status reconhecido, status fora de cancelled/returned e COALESCE(pagamento_recebido_em, paid_at)
+-- preenchido; a chave da cliente = conta, senao a conta dona do mesmo WhatsApp, senao 'wa:' + digitos do WhatsApp, e o
+-- WhatsApp conta SEM o 55 do pais (12 ou 13 digitos comecando por 55): o mesmo numero com e sem o 55 e UMA cliente. Venda
+-- sem chave fica fora do CRM (a linha `c_sem_chave` conta quantas de R$ 0 ficam assim).
 --
 -- Saida: tipo | objeto | detalhe (detalhe = `chave=valor`, separado por `|`). Tipos, na ordem:
 --   controle    quem leu (superusuario?, BYPASSRLS?) e se a RLS VALE para quem leu nas 3 tabelas lidas (com a RLS
@@ -51,7 +52,7 @@
 --   d_nulo      pedidos de R$ 0 ENTREGUES com payment_status nulo (fora de todo numero do painel e no sino de
 --               recebimentos por marcar), por janela.
 -- NENHUM DADO PESSOAL: so contagens, somas e porcentagens; nenhum id de pedido, de conta ou de produto, nenhum nome,
--- e-mail, telefone ou WhatsApp sai no log. A conta e o WhatsApp so entram no bloco `base` para montar a chave da
+-- e-mail, telefone ou WhatsApp sai no log. A conta e o WhatsApp so entram nos blocos `base` e `base_chave` para montar a chave da
 -- cliente, que so aparece dentro de count(). O log do run e legivel por quem le o repositorio.
 -- tests/ci_conferir_banco_test.ts prende essas regras no texto desta consulta.
 WITH janelas AS (
@@ -103,18 +104,23 @@ WITH janelas AS (
      AND o.status NOT IN ('cancelled', 'returned')
      AND COALESCE(o.pagamento_recebido_em, o.paid_at) IS NOT NULL
      AND COALESCE(o.pagamento_recebido_em, o.paid_at) <= now()
-), wa_da_conta AS (
-  SELECT DISTINCT ON (b.wa) b.wa, b.conta
+), base_chave AS (
+  SELECT b.*,
+         CASE WHEN length(b.wa) IN (12, 13) AND left(b.wa, 2) = '55'
+              THEN substring(b.wa FROM 3) ELSE b.wa END AS wa_chave
     FROM base b
-   WHERE b.wa IS NOT NULL AND b.conta IS NOT NULL
-   ORDER BY b.wa, b.pago_em DESC
+), wa_da_conta AS (
+  SELECT DISTINCT ON (b.wa_chave) b.wa_chave, b.conta
+    FROM base_chave b
+   WHERE b.wa_chave IS NOT NULL AND b.conta IS NOT NULL
+   ORDER BY b.wa_chave, b.pago_em DESC
 ), crm AS (
   SELECT b.pedido,
          b.total,
          b.pago_em,
-         COALESCE(b.conta::text, w.conta::text, CASE WHEN b.wa IS NOT NULL THEN 'wa:' || b.wa END) AS chave
-    FROM base b
-    LEFT JOIN wa_da_conta w ON w.wa = b.wa AND b.conta IS NULL
+         COALESCE(b.conta::text, w.conta::text, CASE WHEN b.wa_chave IS NOT NULL THEN 'wa:' || b.wa_chave END) AS chave
+    FROM base_chave b
+    LEFT JOIN wa_da_conta w ON w.wa_chave = b.wa_chave AND b.conta IS NULL
 ), cliente AS (
   SELECT c.chave,
          count(*) AS compras,

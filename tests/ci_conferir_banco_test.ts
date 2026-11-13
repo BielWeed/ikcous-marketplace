@@ -14808,6 +14808,7 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
         "item",
         "painel",
         "base",
+        "base_chave",
         "wa_da_conta",
         "crm",
         "cliente",
@@ -15001,14 +15002,18 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
     },
   );
   await t.step(
-    "a venda reconhecida e a chave da cliente sao IDENTICAS a crm__vendas (20261178000000, corpo vigente)",
+    "a venda reconhecida e a chave da cliente sao IDENTICAS a crm__vendas (20261399990000, corpo vigente: o da 20261178000000 mais a chave sem o 55)",
     async () => {
       const vigente = await ultimaQueDefine("FUNCTION public.crm__vendas");
-      assertEquals(vigente, "20261178000000_o_crm_e_o_inicio_leem_a_loja.sql");
+      assertEquals(
+        vigente,
+        "20261399990000_o_crm_nao_duplica_o_comprador_com_e_sem_55.sql",
+        "a crm__vendas mudou de corpo: refaca a regra de cliente da 44m contra o corpo novo",
+      );
       const mig = normal(
         await Deno.readTextFile(`${MIGRATIONS_DIR}/${vigente}`),
       );
-      const base = bloco("base AS (", "), wa_da_conta AS (");
+      const base = bloco("base AS (", "), base_chave AS (");
       const venda =
         "WHERE o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega') AND o.status NOT IN ('cancelled', 'returned') AND COALESCE(o.pagamento_recebido_em, o.paid_at) IS NOT NULL AND COALESCE(o.pagamento_recebido_em, o.paid_at) <=";
       assertStringIncludes(mig, `${venda} p_ate`);
@@ -15019,27 +15024,32 @@ Deno.test(`${NOME_44M} — no menu, UM SELECT so leitura de rol aberto, filtro e
       assertStringIncludes(base, `${wa} AS wa`);
       // a chave: a migration usa user_id, a 44m o apelido `conta` (o resto do texto e o mesmo)
       const chave =
-        "COALESCE(b.user_id::text, w.user_id::text, CASE WHEN b.wa IS NOT NULL THEN 'wa:' || b.wa END)";
+        "COALESCE(b.user_id::text, w.user_id::text, CASE WHEN b.wa_chave IS NOT NULL THEN 'wa:' || b.wa_chave END)";
       assertStringIncludes(mig, chave);
       assertStringIncludes(
         normal(limpo),
         `${chave.replaceAll("user_id", "conta")} AS chave`,
       );
+      // o numero SEM o 55 (12 ou 13 digitos comecando por 55): a mesma expressao nos dois textos
+      const semOCinquentaECinco =
+        "SELECT b.*, CASE WHEN length(b.wa) IN (12, 13) AND left(b.wa, 2) = '55' THEN substring(b.wa FROM 3) ELSE b.wa END AS wa_chave FROM base b";
+      assertStringIncludes(mig, semOCinquentaECinco);
+      assertStringIncludes(normal(limpo), semOCinquentaECinco);
       assertStringIncludes(
         mig,
-        "LEFT JOIN wa_da_conta w ON w.wa = b.wa AND b.user_id IS NULL",
+        "LEFT JOIN wa_da_conta w ON w.wa_chave = b.wa_chave AND b.user_id IS NULL",
       );
       assertStringIncludes(
         normal(limpo),
-        "LEFT JOIN wa_da_conta w ON w.wa = b.wa AND b.conta IS NULL",
+        "LEFT JOIN wa_da_conta w ON w.wa_chave = b.wa_chave AND b.conta IS NULL",
       );
       assertStringIncludes(
         mig,
-        "SELECT DISTINCT ON (b.wa) b.wa, b.user_id FROM base b WHERE b.wa IS NOT NULL AND b.user_id IS NOT NULL ORDER BY b.wa, b.pago_em DESC",
+        "SELECT DISTINCT ON (b.wa_chave) b.wa_chave, b.user_id FROM base_chave b WHERE b.wa_chave IS NOT NULL AND b.user_id IS NOT NULL ORDER BY b.wa_chave, b.pago_em DESC",
       );
       assertStringIncludes(
         normal(limpo),
-        "SELECT DISTINCT ON (b.wa) b.wa, b.conta FROM base b WHERE b.wa IS NOT NULL AND b.conta IS NOT NULL ORDER BY b.wa, b.pago_em DESC",
+        "SELECT DISTINCT ON (b.wa_chave) b.wa_chave, b.conta FROM base_chave b WHERE b.wa_chave IS NOT NULL AND b.conta IS NOT NULL ORDER BY b.wa_chave, b.pago_em DESC",
       );
     },
   );

@@ -3064,7 +3064,19 @@ const ROL_DA_140 = [
     `${fn}: EXECUTE so authenticated e service_role (sem PUBLIC nem anon)`,
   ]),
 ];
+// Lote 141 (20261399990000, o CRM nao duplica o comprador quando o WhatsApp vem com e sem o 55: crm__vendas redefinida, sem objeto novo). A 141a e a 141b tem o MESMO rol de 4 linhas (controle,
+// corpo exato (md5), atributos e ACL); a 141a espera o corpo da migration nova e a 141b o vigente de antes (o da 20261178000000). So catalogo: nenhuma le pedido, perfil ou cliente e nenhuma chama a funcao.
+const ROL_DA_141 = [
+  "controle: funcoes de public visiveis a este papel",
+  "crm__vendas: corpo exato (md5)",
+  "crm__vendas: assinatura e atributos conhecidos (sql, STABLE, SECURITY INVOKER, search_path=public, uma so)",
+  "crm__vendas: sem EXECUTE para PUBLIC, anon ou authenticated",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "141a-conferir-o-crm-nao-duplica-o-comprador-com-e-sem-55-aplicado":
+    ROL_DA_141,
+  "141b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente":
+    ROL_DA_141,
   "140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado": ROL_DA_140,
   "140b-antes-as-listas-do-painel-nao-repetem-ninguem-base-vigente": ROL_DA_140,
   "135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado": ROL_DA_135,

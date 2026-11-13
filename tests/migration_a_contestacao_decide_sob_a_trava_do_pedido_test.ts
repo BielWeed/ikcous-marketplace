@@ -855,6 +855,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399980000: as listas de Produtos, Pedidos e Cancelados do painel nao repetem nem escondem ninguem entre as paginas (desempate pelo id; controle com os corpos anteriores, mutantes,
     // rollback byte a byte, conexao sem BEGIN, pre/pos-voo, admin e consultas 140a/140b).
     "tests/banco/as-listas-do-painel-nao-repetem-ninguem-viva.cjs",
+    // 20261399990000: o CRM nao duplica o comprador quando o WhatsApp vem com e sem o 55 (crm__vendas: chave e fusao pelo numero sem o 55; controle com o corpo da 20261178000000 na mesma fixture, bordas,
+    // mutantes, rollback byte a byte, conexao sem BEGIN, pre/pos-voo e consultas 141a/141b).
+    "tests/banco/o-crm-nao-duplica-o-comprador-com-e-sem-55-viva.cjs",
     // Onda 150 (sem migration): o balcao recusa venda sem item e com itens demais (22023, frase exata, nada escrito; 200 entra; mutantes por MUTANTE_R150E).
     "tests/banco/o-balcao-recusa-venda-sem-item-e-com-itens-demais-viva.cjs",
   ];
