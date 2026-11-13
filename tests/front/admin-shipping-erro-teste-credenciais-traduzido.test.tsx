@@ -143,8 +143,9 @@ describe("TransportadorasSection — erro ao testar credenciais de frete sai tra
 
     expect(texto()).not.toContain("non-2xx");
     expect(texto()).not.toContain("FunctionsHttpError");
+    expect(texto()).not.toContain("Edge Function");
     expect(texto()).toContain(
-      "Erro de comunicação com a Edge Function. Tente novamente em instantes.",
+      "Não deu para falar com o servidor agora. Tente de novo em instantes.",
     );
   });
 
