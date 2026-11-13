@@ -11,9 +11,15 @@
 // use-avisos-do-lojista.test.ts.
 //
 // Controles: a primeira leitura (0 -> N ao abrir o painel) nao avisa, porque a
-// lista acabou de nascer e le por conta propria; e releitura com os mesmos
-// numeros tambem nao avisa, senao cada pulso do tempo real releria a lista a
-// toa.
+// lista acabou de nascer e le por conta propria; e uma recontagem que NAO veio
+// do tempo real (volta da internet, foco) e trouxe os mesmos numeros tambem nao
+// avisa, senao cada recontagem releria a lista a toa.
+//
+// Pulso do tempo real com o MESMO numero avisa (13/11/2026): trocar uma
+// pendencia por outra (o pedido A foi para entrega pelo celular e o B entrou
+// antes da recontagem) deixa o sino em 1 e a lista velha, sem o B. Um pulso e'
+// uma mudanca de verdade em pedidos/perguntas; a releitura continua agrupada na
+// mesma janela de 1 s, entao uma rajada custa UMA releitura.
 //
 // Mesmo dublê do query builder de sino-do-painel-acende-quando-consulta-falha.
 import { act } from "react";
@@ -208,10 +214,59 @@ describe("AdminLayout — o sino avisa a lista quando o numero muda", () => {
     expect(avisos).toBe(1);
   });
 
-  it("controle: pulso do tempo real sem mudar o numero NAO avisa", async () => {
+  it("trocou uma pendencia por outra (o numero NAO mudou): o pulso do tempo real avisa a lista", async () => {
     PEDIDOS_PENDENTES = 0;
 
     await pulsoDePedidos();
+    await esperarAte(() => avisos > 0);
+    await passarAJanelaDeAgrupamento();
+
+    expect(avisos).toBe(1);
+  });
+
+  it.each(["questions", "answers"])(
+    "pulso de %s com o mesmo numero tambem avisa a lista",
+    async (tabela) => {
+      await act(async () => {
+        handlersDoTempoReal.get(`admin-layout-questions-badge#${tabela}`)?.();
+      });
+      await esperarAte(() => avisos > 0);
+      await passarAJanelaDeAgrupamento();
+
+      expect(avisos).toBe(1);
+    },
+  );
+
+  it("rajada de pulsos sem mudar o numero: avisa a lista UMA vez", async () => {
+    await pulsoDePedidos();
+    await pulsoDePedidos();
+    await pulsoDePedidos();
+    await esperarAte(() => avisos > 0);
+    await passarAJanelaDeAgrupamento();
+
+    expect(avisos).toBe(1);
+  });
+
+  it("o pedido de releitura do pulso e' gasto: a recontagem seguinte, sem pulso, nao avisa de novo", async () => {
+    await pulsoDePedidos();
+    await esperarAte(() => avisos > 0);
+    await passarAJanelaDeAgrupamento();
+    expect(avisos).toBe(1);
+
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+    });
+    await passarAJanelaDeAgrupamento();
+
+    expect(avisos).toBe(1);
+  });
+
+  it("controle: recontagem que nao veio do tempo real (volta da internet) com o mesmo numero NAO avisa", async () => {
+    PEDIDOS_PENDENTES = 0;
+
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+    });
     await passarAJanelaDeAgrupamento();
 
     expect(avisos).toBe(0);
