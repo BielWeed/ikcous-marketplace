@@ -1029,17 +1029,32 @@ export function CheckoutViewDaConta({
         pedidoAtualizado.payment_status === "estornado"
       ) {
         setStatusPagamentoPix("nao-concluido");
-      } else if (
-        pedidoAtualizado.gateway_payment_id === null &&
-        (cartaoEmCursoRef.current?.orderId === pedidoAtualizado.id ||
-          cartaoEncerradoRef.current?.orderId === pedidoAtualizado.id)
-      ) {
-        // C6 (P1): a vaga vazia no realtime é só uma DICA — o evento pode
-        // ser a soltura de uma tentativa ANTERIOR chegando atrasada. Quem
-        // decide é uma leitura NOVA da vaga (`verificarPagamento`).
-        // Lacuna L1b: a tentativa que o C6 já encerrou também pede a leitura
-        // — é ela que descobre o pedido fechado depois da recusa.
-        lerAVagaAgoraRef.current?.();
+      } else {
+        // O pedido venceu e o aviso chegou pelo canal ao vivo: a tela do PIX
+        // encerra pela MESMA transição da consulta periódica
+        // (`verificarPagamento`: o pedido morto no servidor), sem esperar a
+        // consulta — que pode estar lenta ou falhando. Só quando nenhum
+        // estado final (pago, tardio, recusado) já ocupa a tela, e a
+        // verificação continua: o pagamento tardio ainda vira "pago fora do
+        // prazo".
+        if (
+          pedidoAtualizado.payment_status === "expirado" &&
+          statusPagamentoPix === null
+        ) {
+          setPedidoMortoNoServidorId(orderId);
+        }
+        if (
+          pedidoAtualizado.gateway_payment_id === null &&
+          (cartaoEmCursoRef.current?.orderId === pedidoAtualizado.id ||
+            cartaoEncerradoRef.current?.orderId === pedidoAtualizado.id)
+        ) {
+          // C6 (P1): a vaga vazia no realtime é só uma DICA — o evento pode
+          // ser a soltura de uma tentativa ANTERIOR chegando atrasada. Quem
+          // decide é uma leitura NOVA da vaga (`verificarPagamento`).
+          // Lacuna L1b: a tentativa que o C6 já encerrou também pede a
+          // leitura — é ela que descobre o pedido fechado depois da recusa.
+          lerAVagaAgoraRef.current?.();
+        }
       }
     },
   });
@@ -2414,20 +2429,33 @@ export function CheckoutViewDaConta({
   // Recarga (04/10/2026): o registro da aba (SÓ o id do pedido — ver
   // pedido-pendente-do-checkout.ts) acompanha o pedido que ESTA tela está
   // pagando ou retomando, para a recarga voltar a ele. Some quando o pedido
-  // sai de pendente (pago, pago fora do prazo, morto no servidor, não aguarda
-  // mais) e quando não há pedido em pagamento na tela (checkout de carrinho,
-  // pedido descartado). A recusa do cartão NÃO tira o pedido de pendente: ele
+  // sai de pendente (pago, morto no servidor, não aguarda mais — o pago FORA
+  // DO PRAZO é a exceção, abaixo) e quando não há pedido em pagamento na
+  // tela (checkout de carrinho, pedido descartado). A recusa do cartão NÃO tira o pedido de pendente: ele
   // continua retomável (a mesma regra do "Retomar pagamento" do card).
   // Nada é limpo ao desmontar de propósito: a recarga não desmonta, e a
   // saída do checkout é limpa pelo App (handleNavigate).
   const pedidoEmPagamentoNaTela =
     aguardandoPagamento && orderId !== "" ? orderId : (retomarPedidoId ?? null);
+  // EXCEÇÃO — o pagamento recebido FORA DO PRAZO (`pago_apos_expirar`): o
+  // dinheiro entrou, o pedido está sem desfecho (a loja decide) e é a recarga
+  // que precisa voltar ao aviso. Com o registro apagado, o F5 caía em "Seu
+  // carrinho está vazio" (o recibo exclui esta tela de propósito: o pedido pode
+  // estar cancelado, e "pedido recebido" seria promessa). Por isso este estado
+  // MANTÉM (ou devolve, se o vencimento já o tinha apagado) o registro: a
+  // leitura da retomada confere o dono e o estado no servidor e mostra o aviso;
+  // se a loja reativar o pedido, a mesma leitura vê `pago` e limpa. Sai com a
+  // saída do checkout (App) e com o logout, como todo registro.
+  const pagoForaDoPrazoNaTela =
+    statusPagamentoPix === "fora-do-prazo" ||
+    (retomadaJaPaga && confirmacaoDaRecarga?.foraDoPrazo === true);
   const pedidoSaiuDePendente =
-    statusPagamentoPix !== null ||
-    (pedidoEmPagamentoNaTela !== null &&
-      pedidoMortoNoServidorId === pedidoEmPagamentoNaTela) ||
-    retomadaSemPagamentoPendente ||
-    retomadaJaPaga;
+    !pagoForaDoPrazoNaTela &&
+    (statusPagamentoPix !== null ||
+      (pedidoEmPagamentoNaTela !== null &&
+        pedidoMortoNoServidorId === pedidoEmPagamentoNaTela) ||
+      retomadaSemPagamentoPendente ||
+      retomadaJaPaga);
   const pedidoParaARecarga = pedidoSaiuDePendente
     ? null
     : pedidoEmPagamentoNaTela;

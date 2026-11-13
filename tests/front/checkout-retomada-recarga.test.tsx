@@ -810,10 +810,111 @@ describe("CheckoutView — o pagamento pendente sobrevive à recarga da página"
     );
     expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado!");
     expect(hospedeiro.textContent).not.toContain(FINALIZE);
-    // Nada cobra, nada monta o PIX; o registro sai (o pedido deixou de ser pendente).
+    // Nada cobra, nada monta o PIX. O registro FICA: é ele que faz a próxima
+    // recarga voltar a este aviso (o dinheiro entrou; o pedido segue sem
+    // desfecho até a loja decidir), em vez de cair no carrinho vazio.
     expect(criarPagamento).not.toHaveBeenCalled();
     expect(createOrder).not.toHaveBeenCalled();
+    expect(lerPedidoPendenteDoCheckout(USUARIO.id)).toBe(PEDIDO);
+  });
+
+  // ── Pagou DEPOIS do prazo com a tela aberta e recarregou (r415) ───────────
+  // O aviso ao vivo ("pagamento recebido, a loja vai te contatar") apagava o
+  // registro da recarga e, diferente do pago normal, não deixava nada no lugar:
+  // o F5 caía em "Seu carrinho está vazio" com o dinheiro da cliente já na loja.
+  // O pedido NÃO some do banco; o que faltava era a tela saber voltar a ele.
+
+  async function pixMudaNaSessao(campos: Record<string, unknown>) {
+    linhaDoPedido(campos);
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await esvaziar();
+  }
+
+  function avisoDoPagamentoRecebidoNaTela() {
+    expect(hospedeiro.textContent).toContain("Pagamento Recebido");
+    expect(hospedeiro.textContent).toContain(AVISO_DA_LOJA_VAI_CONTATAR);
+    expect(hospedeiro.textContent?.replace(/\s/g, " ")).toContain(
+      "R$ 120,00 recebido",
+    );
+    expect(hospedeiro.textContent).not.toContain("Seu carrinho está vazio");
+    expect(hospedeiro.textContent).not.toContain("Seu pedido já foi feito");
+    semPagamentoNaTela();
+  }
+
+  it("pagou depois do prazo COM A TELA ABERTA e recarregou: o aviso volta (nunca o carrinho vazio nem um QR vencido), recarga após recarga", async () => {
+    linhaDoPedido();
+    await comprarComPix();
+    expect(hospedeiro.textContent).toContain(QR_DO_PEDIDO);
+
+    await pixMudaNaSessao({
+      payment_status: "pago_apos_expirar",
+      status: "cancelled",
+    });
+    expect(hospedeiro.textContent).toContain("Pagamento Recebido");
+    // O registro acompanha o aviso: sem ele a recarga não acha o pedido.
+    expect(lerPedidoPendenteDoCheckout(USUARIO.id)).toBe(PEDIDO);
+
+    createOrder.mockClear();
+    criarPagamento.mockClear();
+    expect(await recarregar()).toBe(PEDIDO);
+    avisoDoPagamentoRecebidoNaTela();
+    expect(lerPedidoPendenteDoCheckout(USUARIO.id)).toBe(PEDIDO);
+
+    // A segunda recarga (e a terceira) também: o aviso não é de uma vez só.
+    expect(await recarregar()).toBe(PEDIDO);
+    avisoDoPagamentoRecebidoNaTela();
+    // Nunca cobra, nunca cria pedido.
+    expect(criarPagamento).not.toHaveBeenCalled();
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it("o PIX venceu primeiro (registro some) e o pagamento chegou depois: o registro VOLTA e a recarga mostra o aviso", async () => {
+    linhaDoPedido();
+    await comprarComPix();
+
+    // 1º: venceu sem pagamento — o pedido está morto, nada a retomar.
+    await pixMudaNaSessao({ payment_status: "expirado", status: "cancelled" });
+    expect(hospedeiro.textContent).toContain("Este código não vale mais");
     expect(lerPedidoPendenteDoCheckout(USUARIO.id)).toBeNull();
+
+    // 2º: o dinheiro entrou depois — agora há o que mostrar na recarga.
+    await pixMudaNaSessao({
+      payment_status: "pago_apos_expirar",
+      status: "cancelled",
+    });
+    expect(hospedeiro.textContent).toContain("Pagamento Recebido");
+    expect(lerPedidoPendenteDoCheckout(USUARIO.id)).toBe(PEDIDO);
+
+    expect(await recarregar()).toBe(PEDIDO);
+    avisoDoPagamentoRecebidoNaTela();
+  });
+
+  it("a loja reativou o pedido depois do aviso: a recarga mostra a verdade do servidor (confirmado) e o registro sai", async () => {
+    linhaDoPedido();
+    await comprarComPix();
+    await pixMudaNaSessao({
+      payment_status: "pago_apos_expirar",
+      status: "cancelled",
+    });
+    expect(lerPedidoPendenteDoCheckout(USUARIO.id)).toBe(PEDIDO);
+
+    linhaDoPedido({ payment_status: "pago", status: "processing" });
+    await recarregar();
+
+    expect(hospedeiro.textContent).toContain("Pagamento Confirmado!");
+    expect(hospedeiro.textContent).not.toContain("Pagamento Recebido");
+    expect(lerPedidoPendenteDoCheckout(USUARIO.id)).toBeNull();
+  });
+
+  it("CONTROLE: o PIX só vencido (sem pagamento) continua sem registro depois do aviso", async () => {
+    linhaDoPedido();
+    await comprarComPix();
+    await pixMudaNaSessao({ payment_status: "expirado", status: "cancelled" });
+    expect(lerPedidoPendenteDoCheckout(USUARIO.id)).toBeNull();
+    await recarregar();
+    expect(hospedeiro.textContent).not.toContain("Pagamento Recebido");
   });
 
   it("pago depois do prazo, mas de OUTRA conta: descartado calado (o dono é conferido antes do status)", async () => {
