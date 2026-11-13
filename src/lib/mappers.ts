@@ -255,6 +255,17 @@ export function mapOrderFromDB(
     customerData ||
     {};
 
+  // QUEM VAI RECEBER (migration 20261399997000): o nome que a cliente digitou no endereço da compra. Só o RETRATO do
+  // pedido conta (`addressData` ou `address`-objeto), nunca o JOIN `row.address`: no pedido sem retrato o endereço vivo
+  // da conta pode ter sido editado depois da compra, e não há como saber que nome estava lá NA compra.
+  const retrato =
+    customerData.addressData ||
+    (typeof customerData.address === "object" ? customerData.address : null);
+  const recipientName =
+    typeof retrato?.recipient_name === "string"
+      ? retrato.recipient_name.trim()
+      : "";
+
   return {
     id: row.id,
     userId: row.user_id || undefined,
@@ -282,6 +293,7 @@ export function mapOrderFromDB(
       state: addressSource.state || customerData.state || "",
       cep: addressSource.cep || customerData.cep || "",
       reference: addressSource.reference || customerData.reference || "",
+      ...(recipientName ? { recipientName } : {}),
     },
     items:
       row.items?.map((item) => {

@@ -50,6 +50,7 @@ import {
   ehConsultaSemResposta,
   erroDeConsultaSemResposta,
 } from "@/lib/prazo-da-requisicao";
+import { quemVaiReceberSeForOutro } from "@/lib/quem-vai-receber";
 import { buscaDoMapaDoEndereco } from "@/lib/query-maps-do-endereco";
 import { rotuloDaVariacao } from "@/lib/rotulo-da-variacao";
 import { supabase } from "@/lib/supabase";
@@ -791,6 +792,12 @@ function OrderDeliveryCard({
       .map((parte) => (parte ?? "").trim())
       .every((parte) => parte === "");
 
+  // "Recebe: X" só quando a cliente digitou OUTRA pessoa no endereço (presente, portaria): o nome de quem comprou já está no topo.
+  const quemRecebe = quemVaiReceberSeForOutro(
+    order.customer.name,
+    order.customer.recipientName,
+  );
+
   return (
     <section
       data-testid="bloco-entrega"
@@ -875,6 +882,14 @@ function OrderDeliveryCard({
                 : ""}
             </span>
           </p>
+          {quemRecebe && (
+            <p
+              data-testid="pedido-quem-recebe"
+              className="break-words text-sm font-medium text-white"
+            >
+              Recebe: {quemRecebe}
+            </p>
+          )}
           <div className="flex items-center gap-2 pt-1">
             <button
               onClick={onCopyAddress}
