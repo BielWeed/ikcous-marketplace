@@ -24,7 +24,7 @@ function pedido(alteracoes: Partial<Pedido> = {}): Pedido {
     total: 100,
     paymentMethod: "pix",
     status: "pending",
-    paymentStatus: "aguardando_pagamento",
+    paymentStatus: "aguardando",
     createdAt: new Date(2026, 8, 8, 9, 7).toISOString(),
     updatedAt: new Date(2026, 8, 8, 9, 7).toISOString(),
     cancelledAfterShipping: false,
