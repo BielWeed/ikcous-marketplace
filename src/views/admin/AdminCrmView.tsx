@@ -119,7 +119,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
     atualizarVisao();
     setSinalDeAtualizacao((n) => n + 1);
   }, [atualizarVisao]);
-  const classico = useDashboardClassico(ativo, atualizarPorMudancaNoBanco);
+  const classico = useDashboardClassico(ativo, atualizarPorMudancaNoBanco, dia);
   const { carregar: carregarClassico } = classico;
   const sincronizando = carregando || classico.carregando;
 
