@@ -263,6 +263,24 @@ describe('FechamentoDaVenda — passo "Conferi o pagamento no app do banco" (D1)
     expect(botaoPorTexto(hospedeiro, "Registrar venda").disabled).toBe(true);
   });
 
+  it("a instrução mostra o TOTAL com desconto (R$ 74,80), não o subtotal (R$ 79,80)", async () => {
+    await montar("pix");
+    await act(async () => {
+      digitarInput("desconto-da-venda", "500"); // R$ 5,00 de 2 x R$ 39,90
+    });
+    await avancar(300);
+    await act(async () => {
+      digitarInput("motivo-do-desconto", "cliente fidelidade");
+    });
+    await avancar(300);
+
+    const ajuda = document.getElementById("conferi-o-pagamento-ajuda");
+    const detalhe = ajuda?.querySelector(".pdv-detail");
+    expect(detalhe?.textContent).toBe(
+      "Abra o app do banco e veja o PIX de R$ 74,80 entrar antes de registrar.",
+    );
+  });
+
   it("desmarcar de novo trava de novo (a caixinha liga e desliga)", async () => {
     await montar("pix");
     await marcarCaixinha();
