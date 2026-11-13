@@ -136,6 +136,16 @@ export const PRAZO_DAS_RECOMENDACOES_DO_PRODUTO_MS = 15_000;
 // é descartada.
 export const PRAZO_DA_CONSULTA_DOS_BANNERS_MS = 20_000;
 
+// PRAZO DE CADA CONSULTA DA RODADA DE SINCRONIZAÇÃO (13/11/2026): o `catchUp` do
+// motor de tempo real pede configuração, categorias, banners e o resumo dos
+// produtos juntos. Rede que conecta e não responde deixava UMA delas sem
+// resposta, a rodada parada e a trava de "rodada em andamento" ligada: a volta
+// da conexão caía na trava e o preço antigo ficava na vitrine. 20 s por
+// consulta (o mesmo da leitura da configuração). Estourou = só aquela consulta
+// falha, as outras seguem e a próxima rodada tenta de novo; só encerra a ESPERA
+// (a consulta não grava nada) e a resposta tardia é descartada.
+export const PRAZO_DA_CONSULTA_DA_SINCRONIZACAO_MS = 20_000;
+
 /** Frase para quem está na tela: o que aconteceu e o que fazer. */
 export const MENSAGEM_CONEXAO_LENTA =
   "A conexão está lenta. Toque em Tentar de novo.";

@@ -31,6 +31,12 @@ import {
 } from "@/lib/geracao-do-cofre";
 import { MAXIMO_DE_PAGINAS, TAMANHO_DA_PAGINA } from "@/lib/ler-em-paginas";
 import { mapProductFromDB, mapVariantFromDB } from "@/lib/mappers";
+import {
+  PRAZO_DA_CONSULTA_DA_SINCRONIZACAO_MS,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types";
 import type {
@@ -297,6 +303,35 @@ export async function cofreVivo(instancia: DataVault): Promise<DataVault> {
     return DataVault.init();
   }
   return instancia;
+}
+
+/**
+ * Prazo POR CONSULTA da rodada de sincronização (13/11/2026). Rede "pendurada"
+ * conecta e não responde: sem prazo, UMA consulta sem resposta segurava a rodada
+ * inteira e a trava `_isCatchingUp`, e toda retomada seguinte (voltar à aba,
+ * `online`) caía na trava e saía na hora -- o preço antigo ficava na vitrine
+ * mesmo com a conexão boa. Estourou = a consulta vira a falha comum
+ * `{ data: null, error }`, que o `catchUp` já sabe pular (as outras seguem e a
+ * próxima rodada tenta de novo). A resposta tardia da consulta abandonada é
+ * descartada: nada a aplica, então ela nunca sobrescreve o que outra rodada
+ * gravou depois. Qualquer OUTRA rejeição (a rede lança) segue subindo como
+ * sempre subiu.
+ */
+async function lerComPrazo<T extends { data: unknown; error: unknown }>(
+  consulta: PromiseLike<T>,
+): Promise<T | { data: null; error: Error }> {
+  try {
+    return await aguardarComPrazo(
+      Promise.resolve(consulta),
+      PRAZO_DA_CONSULTA_DA_SINCRONIZACAO_MS,
+      () => erroDeConsultaSemResposta(),
+    );
+  } catch (erro) {
+    if (erro instanceof Error && ehConsultaSemResposta(erro)) {
+      return { data: null, error: erro };
+    }
+    throw erro;
+  }
 }
 
 export const RealtimeSyncEngine = {
@@ -902,9 +937,11 @@ export const RealtimeSyncEngine = {
           if (depoisDoId !== null) {
             productsQuery = productsQuery.gt("id", depoisDoId);
           }
-          const { data, error } = await productsQuery
-            .order("id")
-            .limit(TAMANHO_DA_PAGINA);
+          // Prazo POR PÁGINA: a página pendurada devolve a falha comum abaixo
+          // (resumo incompleto = nenhuma exclusão nesta rodada).
+          const { data, error } = await lerComPrazo(
+            productsQuery.order("id").limit(TAMANHO_DA_PAGINA),
+          );
           if (error) return { data: null, error };
           const linhas = (data ?? []) as any[];
           todas.push(...linhas);
@@ -930,15 +967,18 @@ export const RealtimeSyncEngine = {
         };
       };
 
-      // Execute queries in parallel
+      // Execute queries in parallel, cada uma com o seu prazo (`lerComPrazo`):
+      // uma consulta pendurada não segura as outras nem a trava da rodada.
       const [configResult, categoriesResult, bannersResult, summaryResult] =
         await Promise.all([
-          supabase
-            .from(tableSourceConfig as any)
-            .select("*")
-            .single(),
-          supabase.from("categorias").select("*").order("nome"),
-          supabase.from("banners").select("*").order("order"),
+          lerComPrazo(
+            supabase
+              .from(tableSourceConfig as any)
+              .select("*")
+              .single(),
+          ),
+          lerComPrazo(supabase.from("categorias").select("*").order("nome")),
+          lerComPrazo(supabase.from("banners").select("*").order("order")),
           lerResumoDosProdutos(),
         ]);
       if (caducou()) return;
@@ -1233,7 +1273,10 @@ export const RealtimeSyncEngine = {
             if (isAdmin) {
               detailQuery = detailQuery.is("deleted_at", null);
             }
-            const { data: rawDoLote, error: erroDoLote } = await detailQuery;
+            // Prazo por lote: o lote sem resposta conta como perdido (o `continue`
+            // abaixo) e a rodada segue, em vez de prender a trava.
+            const { data: rawDoLote, error: erroDoLote } =
+              await lerComPrazo(detailQuery);
             // K1: a resposta (com custo, no ramo admin) chegou depois do Sair
             // ou da parada do motor -- nenhum lote dela vai ao cofre.
             if (caducou()) return;
