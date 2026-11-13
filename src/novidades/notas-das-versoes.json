@@ -1,4 +1,32 @@
 {
+  "1.5.176": {
+    "titulo": "Balcão com troco na tela, frete que chama a loja no WhatsApp e telas do painel que não travam mais",
+    "novidades": [
+      "Balcão: o troco aparece na tela quando o pagamento é em dinheiro.",
+      "Painel, Financeiro: o resultado com custo estimado leva direto ao cadastro de custos.",
+      "Loja, Frete: sem opção de entrega, a cliente chama a loja no WhatsApp, se a loja tiver o número cadastrado."
+    ],
+    "melhorias": [
+      "Painel, Relatórios: o ranking de produtos que mais dão lucro desconta devolução e estorno.",
+      "Painel: as listas de produtos, pedidos e cancelados não repetem nem escondem ninguém entre as páginas.",
+      "Painel, Frete e Transportadoras: o frete grátis e o desconto em R$ entendem \"1.234,50\", e o teste mostra mensagem simples.",
+      "Painel e Loja: o Voltar do celular fecha filtros e perguntas abertas, sem sair da tela."
+    ],
+    "correcoes": [
+      "Painel e Balcão, Cupom: a validade vai até 23:59 de Brasília e o recibo usa o horário de Brasília; na Loja, a falha de conexão no cupom diz o que fazer.",
+      "Loja, Checkout: o endereço novo não perde o que a cliente digitou, nome comprido não estoura o cartão, e o foco e o toque do frete ficam mais fáceis.",
+      "Loja, Vitrine: ofertas escolhidas à mão seguem a ordem da lojista.",
+      "Loja, Produto: escolher só parte da variação não mostra preço que ninguém paga.",
+      "Loja, Busca: a busca sem resultado é anunciada para quem usa leitor de tela.",
+      "Loja e Painel: se a leitura do carrinho salvo falha, não diz que está vazio; o catálogo velho se atualiza quando a rede volta em até um minuto; o voto Útil não trava com conexão pendurada.",
+      "Painel, Pedidos: pedido pago não fica aguardando, pedido aberto por link não carrega para sempre e a planilha separa retirada, entrega própria e envio.",
+      "Painel, Produtos: excluir produto não prende a lista.",
+      "Loja, Devolução: as fotos respeitam o limite de 6 e Cancelar só aparece quando vale.",
+      "Painel, Devolução: o rastreio acompanha a etiqueta.",
+      "Painel: a fila de privacidade, a política de devolução e o ajuste de foto não ficam mudos nem carregando para sempre.",
+      "Balcão e Painel: o primeiro toque no cliente da lista vincula a pessoa, o WhatsApp da loja recusa DDD que não existe e renomear categoria do sistema no financeiro funciona."
+    ]
+  },
   "1.5.175": {
     "titulo": "Enter salva no cadastro financeiro e de categoria, Voltar do celular fecha só a folha da vitrine e retirada termina em Retirado",
     "novidades": [],
