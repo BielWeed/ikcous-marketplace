@@ -1127,6 +1127,7 @@ function lerItemDevolvido(v: unknown): ItemDevolvido | null {
     condicao: umDe(CONDICOES, campo(v, "condicao")),
     reestocar: typeof reestocar === "boolean" ? reestocar : null,
     reestocado_em: texto(campo(v, "reestocado_em")),
+    ja_pedido_e_nao_veio: campo(v, "ja_pedido_e_nao_veio") === true,
   };
 }
 

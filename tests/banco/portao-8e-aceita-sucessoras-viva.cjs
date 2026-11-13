@@ -198,7 +198,12 @@ const SUCESSORAS_DA_99 = TODAS_AS_SUCESSORAS_DA_99.filter(
     // A 20261399985000 (o grafico do Financeiro soma so as contas ativas) e a SEGUNDA sucessora de fin_resumo (99 -> 3993 -> 39985): tem a PROVA PROPRIA em
     // tests/banco/o-grafico-do-financeiro-soma-so-as-contas-ativas-viva.cjs; `noEstado` a desfaz antes (o-grafico-do-financeiro-posterior.cjs), como a 3993.
     s.nome !==
-      "20261399985000_o_grafico_do_financeiro_soma_so_as_contas_ativas.sql",
+      "20261399985000_o_grafico_do_financeiro_soma_so_as_contas_ativas.sql" &&
+    // A 20261399992000 (o item que a lojista marcou "Nao veio" pode ser devolvido de novo) e a SEGUNDA sucessora de devolucao_elegibilidade e de devolucao_detalhe
+    // (99 -> 39992) e a de solicitar_devolucao (175 -> 39992): UMA migration, duas funcoes da 8e (a terceira, solicitar_devolucao, nao e' da 8e). A 8e ja a aceita
+    // (consulta 8e, CTE sucessoras); `noEstado` a desfaz antes (o-item-que-nao-veio-posterior.cjs, o rollback dela devolve as tres de uma vez), como a 3980.
+    s.nome !==
+      "20261399992000_o_item_que_nao_veio_pode_ser_devolvido_de_novo.sql",
 );
 
 const REPO = path.resolve(__dirname, "..", "..");
@@ -364,6 +369,10 @@ let C; // a conexão única com o clone do rodar-isolado
 async function noEstado(montar, textos = [SQL_8E]) {
   await C.query("BEGIN");
   try {
+    // A 20261399992000 (o item que nao veio pode ser devolvido de novo) sucede os corpos da 99 (devolucao_elegibilidade, devolucao_detalhe) e da 175 (solicitar_devolucao): sai PRIMEIRO (so se no ar).
+    await require("./o-item-que-nao-veio-posterior.cjs").desfazerOItemQueNaoVeioNaTransacao(
+      C,
+    );
     // A 20261399980000 (as listas do painel desempatam por id) sucede os corpos da 3992, da 3999 e da 380: sai PRIMEIRO (ordem inversa da aplicacao; so se no ar).
     await require("./as-listas-do-painel-posterior.cjs").desfazerListasDoPainelNaTransacao(
       C,

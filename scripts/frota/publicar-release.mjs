@@ -702,6 +702,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "142b-antes-o-crm-nao-duplica-o-comprador-com-e-sem-55-base-vigente",
   "143a-conferir-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-aplicado",
   "143b-antes-repetir-a-devolucao-que-falhou-nao-paga-duas-vezes-ausente",
+  "144a-conferir-o-item-que-nao-veio-pode-ser-devolvido-de-novo-aplicado",
+  "144b-antes-o-item-que-nao-veio-pode-ser-devolvido-de-novo-base-vigente",
   "129b-antes-o-cancelamento-e-o-avanco-conferem-base-vigente",
 ]);
 
