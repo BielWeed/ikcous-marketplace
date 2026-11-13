@@ -493,11 +493,11 @@ export function useReviews() {
       } catch (error) {
         if (!atual()) return false;
         console.error("Error marking helpful:", error);
-        toast.error(
-          ehConsultaSemResposta(error)
-            ? "Não deu para confirmar seu voto. Tente de novo."
-            : "Erro ao marcar como útil.",
-        );
+        if (ehConsultaSemResposta(error)) {
+          toast.error("Não deu para confirmar seu voto. Tente de novo.");
+        } else {
+          toast.error("Erro ao marcar como útil.");
+        }
         return false;
       } finally {
         votosEmVooRef.current.delete(chave);
