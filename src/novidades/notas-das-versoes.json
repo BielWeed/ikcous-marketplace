@@ -1,4 +1,24 @@
 {
+  "1.5.182": {
+    "titulo": "Lucro por produto que fecha com o Financeiro, balcão sem texto técnico e painel que abre com o armazenamento bloqueado",
+    "novidades": [
+      "Balcão: ao bipar um código que não está cadastrado e tocar em \"Cadastrar produto\", o formulário já abre com o \"Código de barras\" preenchido."
+    ],
+    "melhorias": [
+      "Painel, Início: o lucro de cada produto no ranking e no gráfico diário agora fecha com o Financeiro, pedido a pedido: conta o que foi pago pela peça (já com cupom), tira todo o dinheiro devolvido (devolução, estorno ou devolução pelo site do Mercado Pago) e o custo das peças que não voltaram para a prateleira. Conta no dia da venda e sem frete, por isso o total não é o mesmo do Financeiro do mês. Faturamento e número de pedidos não mudam.",
+      "Painel, Avisos: ao tocar em \"devolução esperando sua resposta\", a tela Devoluções abre em \"Solicitadas\" e sem a busca antiga, mostrando a devolução que o aviso contou.",
+      "Cliente, Novo endereço: o campo \"Quem vai receber\" já vem com o nome do cadastro."
+    ],
+    "correcoes": [
+      "Painel, Início: o item marcado \"Não veio\" fica com a cliente no ranking de lucro (a venda vale); o dinheiro devolvido além do valor das peças que voltaram vira perda desse item, na proporção do que foi devolvido.",
+      "Painel, Balcão e Produtos: o painel, o balcão, o cadastro de produto e o editor de banners abrem e salvam mesmo com o navegador bloqueando o armazenamento do site.",
+      "Balcão: ao registrar ou anular uma venda, a lojista não vê mais texto técnico; quando a conexão cai ou o tempo estoura, a tela manda conferir a venda em Pedidos antes de tentar de novo.",
+      "Painel, Cupons: escolher \"Clientes escolhidos\" (ou \"Todos os clientes\") antes de a leitura do cupom terminar vale ao salvar; antes o cupom podia seguir aberto a todos mesmo com a tela dizendo \"Cupom atualizado\".",
+      "Painel, Produtos: trocar tipo e valor de uma variação ao mesmo tempo não cria mais duas variações iguais, e a janela de variação com algo digitado segura a atualização do app em vez de apagar o que foi escrito.",
+      "Painel, Devoluções: abrir o pedido a partir de uma devolução com texto escrito pergunta uma vez só se quer descartar as alterações, e a data \"Solicitada em\" mostra o dia de Brasília.",
+      "Vitrine: um produto que esgota enquanto a loja ainda lê o catálogo não volta a aparecer disponível para a cliente."
+    ]
+  },
   "1.5.181": {
     "titulo": "Loja que abre com o armazenamento bloqueado, devolução do item que não veio e clientes sem duplicar",
     "novidades": [],
