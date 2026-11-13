@@ -597,6 +597,12 @@ describe("mapOrderFromDB", () => {
     expect(o.total).toBe(250);
   });
 
+  it("total 0 (pedido gratuito) não cai para total_amount", () => {
+    // `0 ?? x` fica em 0; trocar por `||` faria o brinde virar R$ 250.
+    const o = mapOrderFromDB(pedido({ total: 0, total_amount: 250 }));
+    expect(o.total).toBe(0);
+  });
+
   it("copia payment_status quando o webhook já confirmou o pagamento", () => {
     // Task 9 (Fase 3): o mapper é fiel, não traduz — quem transforma `null`
     // em "sem cobrança online" é o PaymentStatusBadge, não este mapper.
