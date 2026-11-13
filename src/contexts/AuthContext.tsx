@@ -718,6 +718,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => clearTimeout(safetyTimeout);
   }, []);
 
+  // Ordem das consultas do perfil: cada uma leva um número ao sair, e o maior
+  // número já aplicado barra a resposta antiga que chega depois (a consulta
+  // atrasada de um aparelho não recoloca o nome que outro aparelho trocou).
+  const consultaDoPerfilRef = useRef(0);
+  const perfilAplicadoRef = useRef(0);
   const fetchProfile = useCallback(async (passedUser?: User | null) => {
     const currentUser =
       passedUser || (await supabase.auth.getSession()).data.session?.user;
@@ -727,10 +732,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
+      const consulta = ++consultaDoPerfilRef.current;
       const { data, error } = await supabase.rpc("get_my_complete_profile");
       // A resposta pertence à conta que iniciou a leitura, mesmo chegando após a troca.
       if (activeUserIdRef.current !== currentUser.id) return;
       if (!error && data) {
+        // Resposta de uma consulta mais velha que a já aplicada: descarta.
+        if (consulta < perfilAplicadoRef.current) return;
+        perfilAplicadoRef.current = consulta;
         const profileData = Array.isArray(data) ? data[0] : data;
         setProfile((prev: any) => {
           // Impede mudança de referência se os dados forem idênticos (previne re-renderização em cascata)
