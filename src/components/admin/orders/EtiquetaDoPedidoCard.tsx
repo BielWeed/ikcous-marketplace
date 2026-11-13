@@ -14,6 +14,14 @@ import {
   motivoDoStatusSemEtiqueta,
 } from "@/lib/elegibilidade-da-etiqueta";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
+import {
+  MENSAGEM_COMPRA_DA_ETIQUETA_SEM_RESPOSTA,
+  PRAZO_DA_COMPRA_DA_ETIQUETA_MS,
+  PRAZO_DA_CONSULTA_DO_RASTREIO_MS,
+  aguardarComPrazo,
+  ehConsultaSemResposta,
+  erroDeConsultaSemResposta,
+} from "@/lib/prazo-da-requisicao";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency } from "@/lib/utils";
 import { haptic } from "@/utils/haptic";
@@ -51,7 +59,9 @@ type CargaFase = "carregando" | "erro" | "vazio" | "ok";
 type CompraFase = "ocioso" | "confirmar" | "gerando";
 
 interface MensagemResultado {
-  tipo: "sucesso" | "already" | "erro";
+  // `sem_resposta`: a rede não respondeu à compra dentro do prazo. NÃO é erro e
+  // NÃO é sucesso: a etiqueta pode ter sido comprada (ver handleGerarEtiqueta).
+  tipo: "sucesso" | "already" | "erro" | "sem_resposta";
   texto: string;
 }
 
@@ -371,10 +381,24 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
     setCompraFase("gerando");
     setMensagemResultado(null);
     haptic.medium();
+    // A chamada de compra, guardada fora do `try` para o `catch` do estouro
+    // poder ouvir a resposta TARDIA dela (só para reler, nunca para aplicar).
+    let invocacao: Promise<unknown> | undefined;
     try {
-      const { data, error } = await supabase.functions.invoke(
+      // PRAZO DA ESPERA DA TELA (não da compra): rede que conecta e não
+      // responde deixava "Gerando…" para sempre, com a trava do pedido presa.
+      const pedidoDeCompra = supabase.functions.invoke(
         "melhor-envio-etiqueta",
-        { body: { action: "gerar_etiqueta", orderId: orderIdDoClique } },
+        {
+          body: { action: "gerar_etiqueta", orderId: orderIdDoClique },
+        },
+      );
+      invocacao = pedidoDeCompra;
+      const { data, error } = await aguardarComPrazo(
+        pedidoDeCompra,
+        PRAZO_DA_COMPRA_DA_ETIQUETA_MS,
+        () =>
+          erroDeConsultaSemResposta(MENSAGEM_COMPRA_DA_ETIQUETA_SEM_RESPOSTA),
       );
       // A ficha pode ter trocado de pedido enquanto a compra estava em voo
       // (5-20 s) — a resposta de A não pode aparecer sobre B, nem sucesso
@@ -413,6 +437,37 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       }
     } catch (err) {
       if (orderIdAtualRef.current !== orderIdDoClique) return;
+      if (ehConsultaSemResposta(err)) {
+        // REGRA DE OURO DA COMPRA: estourou o prazo, a etiqueta PODE ter sido
+        // comprada (e o saldo gasto). A tela NÃO diz que deu certo nem que
+        // falhou. Solta o que era só da tela (a confirmação e a trava, no
+        // `finally`) e relê o pedido no servidor: se a etiqueta existe, o card
+        // cai em "emitida"/"conferindo"; se não, a lojista pode tentar de novo
+        // -- sem compra dupla, porque a edge reivindica o pedido
+        // (`shipping_label_id` NULL -> id, uma linha só vence) e a 2ª chamada
+        // devolve `already: true`.
+        // A resposta TARDIA da chamada abandonada nunca é aplicada (nem
+        // "gerada!", nem rastreio, nem erro): ela só dispara outra releitura,
+        // e quem mostra o estado é o servidor.
+        console.error("[EtiquetaDoPedido] Compra sem resposta no prazo:", err);
+        setMensagemResultado({
+          tipo: "sem_resposta",
+          texto: MENSAGEM_COMPRA_DA_ETIQUETA_SEM_RESPOSTA,
+        });
+        setCompraFase("ocioso");
+        haptic.error();
+        toast.warning(MENSAGEM_COMPRA_DA_ETIQUETA_SEM_RESPOSTA, {
+          duration: 15_000,
+        });
+        void fetchPedido({ silencioso: true });
+        const reler = () => {
+          if (orderIdAtualRef.current === orderIdDoClique) {
+            void fetchPedido({ silencioso: true });
+          }
+        };
+        void invocacao?.then(reler, reler);
+        return;
+      }
       console.error("[EtiquetaDoPedido] Erro na geração:", err);
       const {
         mensagem: mensagemDoServidor,
@@ -530,9 +585,15 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       rastreioEmVoo.add(orderIdDoClique);
       setConsultandoRastreio(true);
       try {
-        const { data, error } = await supabase.functions.invoke(
-          "melhor-envio-etiqueta",
-          { body: { action: "consultar_rastreio", orderId: orderIdDoClique } },
+        // Leitura: com a rede pendurada o botão nunca soltava. Estourou, a resposta
+        // tardia é descartada (o servidor pode até ter gravado o código; o
+        // próximo toque ou a próxima leitura do pedido o traz).
+        const { data, error } = await aguardarComPrazo(
+          supabase.functions.invoke("melhor-envio-etiqueta", {
+            body: { action: "consultar_rastreio", orderId: orderIdDoClique },
+          }),
+          PRAZO_DA_CONSULTA_DO_RASTREIO_MS,
+          () => erroDeConsultaSemResposta(),
         );
         // Ficha trocou de pedido durante a consulta — o rastreio de A não
         // pode pintar B. `onTrackingAtualizado` agora leva o `orderIdDoClique`
@@ -568,6 +629,14 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
         }
       } catch (err) {
         if (orderIdAtualRef.current !== orderIdDoClique) return;
+        if (ehConsultaSemResposta(err)) {
+          toast.error(
+            modo === "conferencia"
+              ? "Não deu para conferir a etiqueta agora: a rede não respondeu. Toque em Conferir de novo daqui a pouco."
+              : "Não deu para atualizar o rastreio: a rede não respondeu. Tente de novo em instantes.",
+          );
+          return;
+        }
         console.error("[EtiquetaDoPedido] Erro ao consultar rastreio:", err);
         const { mensagem } = await mensagemDeErroInvocacao(err, {
           mensagemGenerica:
@@ -670,6 +739,17 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
               {mensagemResultado.texto}
             </p>
           )}
+
+          {mensagemResultado?.tipo === "sem_resposta" &&
+            elegibilidade.estado === "disponivel" && (
+              <p
+                data-testid="etiqueta-sem-resposta"
+                role="status"
+                className="rounded-xl border border-admin-border bg-admin-surface px-3 py-2 text-sm font-medium leading-snug text-amber-400 duration-200 animate-in fade-in"
+              >
+                {mensagemResultado.texto}
+              </p>
+            )}
 
           {elegibilidade.estado === "emitida" && (
             <div className="space-y-3 rounded-xl border border-admin-border bg-admin-surface p-3 duration-200 animate-in fade-in">
