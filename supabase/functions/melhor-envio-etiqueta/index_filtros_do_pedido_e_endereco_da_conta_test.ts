@@ -306,6 +306,9 @@ function buscarMeFalso(opcoes: { aoCriarCarrinho?: () => void } = {}) {
         ultimoProducts: null as any[] | null,
         ultimoVolumes: null as any[] | null,
         ultimoTo: null as Record<string, unknown> | null,
+        // O que o ME RECEBEU em cada passo que compra/gera: o corpo, não só "foi chamado".
+        corposDoCheckout: [] as any[],
+        corposDaGeracao: [] as any[],
     }
     const json = (corpo: unknown, status = 200) =>
         new Response(JSON.stringify(corpo), { status, headers: { 'Content-Type': 'application/json' } })
@@ -328,10 +331,12 @@ function buscarMeFalso(opcoes: { aoCriarCarrinho?: () => void } = {}) {
         }
         if (url.endsWith('/api/v2/me/shipment/checkout')) {
             registro.checkouts++
+            registro.corposDoCheckout.push(JSON.parse(String(init?.body || '{}')))
             return json({ purchase: { id: 'pur-1', status: 'paid' } })
         }
         if (url.endsWith('/api/v2/me/shipment/generate')) {
             registro.geracoes++
+            registro.corposDaGeracao.push(JSON.parse(String(init?.body || '{}')))
             return json({})
         }
         if (url.endsWith('/api/v2/me/shipment/print')) return json({ url: 'https://imprimir.teste/etiqueta' })
@@ -453,6 +458,27 @@ Deno.test('reivindicação e conclusão - CONTROLE com 2 pedidos na tabela: só 
         assertEquals(rastreios[0].idsAfetados, ['pedido-1'])
 
         assertEquals(supa.registro.atualizacoes.filter(ehLiberacao).length, 0)
+    })
+})
+
+// A compra paga o id da ETIQUETA que o /cart devolveu, nunca o id do pedido do
+// app. O dublê de cima responde `paid` a qualquer corpo; sem olhar o que chegou,
+// trocar `orders: [labelId]` por `orders: [orderId]` não deixava nada vermelho
+// (e na vida real o ME pagaria — ou recusaria — uma etiqueta que não é a do pedido).
+Deno.test('compra - o checkout e a geração recebem orders = [id da etiqueta devolvido pelo /cart], e não o id do pedido do app', async () => {
+    await comEnvAdmin(async () => {
+        const supa = clienteComTabelas({ pedidos: [PEDIDO_1, PEDIDO_2] })
+        const me = buscarMeFalso()
+        const res = await comAdminFalso(() => handler(requisicaoGerar(), { supabase: supa.cliente, buscar: me.buscar }))
+        const corpo = await res.json()
+
+        assertEquals(res.status, 200)
+        assertEquals(corpo.success, true)
+        // Os dois ids do fixture são de fato diferentes: senão o teste não distingue nada.
+        assertEquals(LABEL_ID !== 'pedido-1', true)
+
+        assertEquals(me.registro.corposDoCheckout, [{ orders: [LABEL_ID] }])
+        assertEquals(me.registro.corposDaGeracao, [{ orders: [LABEL_ID] }])
     })
 })
 
