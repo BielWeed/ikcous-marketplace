@@ -1,4 +1,16 @@
 {
+  "1.5.185": {
+    "titulo": "Sua assinatura: o painel mostra desde quando a mensalidade está em aberto",
+    "novidades": [
+      "Painel, Sua assinatura: quando a mensalidade está atrasada, o cartão mostra \"Em aberto desde\" com a data da mensalidade mais antiga que ainda não foi paga."
+    ],
+    "correcoes": [
+      "Painel, Sua assinatura: um plano ativo cuja data de cobrança já passou deixa de mostrar essa data velha; a linha some até a próxima cobrança ser calculada."
+    ],
+    "melhorias": [
+      "Painel, Sua assinatura: enquanto o seu plano ainda não chegou ao painel, aparece \"Seu plano vai aparecer aqui\", sem nada mudar na sua loja."
+    ]
+  },
   "1.5.184": {
     "titulo": "Pedido para presente: o nome de quem vai receber chega à etiqueta e à ficha do pedido",
     "novidades": [
