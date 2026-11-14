@@ -1,4 +1,16 @@
 {
+  "1.5.184": {
+    "titulo": "Pedido para presente: o nome de quem vai receber chega à etiqueta e à ficha do pedido",
+    "novidades": [
+      "Painel, Pedidos: quando a cliente compra para outra pessoa e escreve \"Quem vai receber\" no endereço salvo, a ficha do pedido mostra \"Recebe: nome\" logo abaixo do comprador. Só aparece quando o nome é de outra pessoa."
+    ],
+    "correcoes": [
+      "Etiqueta de envio (Melhor Envio): o destinatário da etiqueta agora é o nome de quem vai receber, em vez do nome de quem comprou. Se a cliente não escreveu esse nome, a etiqueta sai no nome do comprador, como antes. O CPF continua sendo o de quem comprou."
+    ],
+    "melhorias": [
+      "Pedidos novos passam a guardar o nome de quem vai receber. Pedidos antigos, compras sem conta, retirada na loja e endereços digitados na hora continuam como antes."
+    ]
+  },
   "1.5.183": {
     "titulo": "Avaliações: filtro \"Sem resposta\" e explicação mais completa do lucro por produto",
     "novidades": [
