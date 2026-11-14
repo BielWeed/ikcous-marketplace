@@ -821,6 +821,14 @@ describe("linhasDeDatasDaAssinatura", () => {
         agora,
       ),
     ).toHaveLength(1);
+    // 14/11 00:30 em Brasília (03:30Z): o mesmo instante já é "ontem" em Brasília (13/11),
+    // embora no calendário UTC fosse o dia 14 (hoje). Só a conversão certa faz a linha sumir.
+    expect(
+      linhasDeDatasDaAssinatura(
+        { ...ativa, proximaCobrancaEm: "2026-11-14T01:00:00Z" },
+        new Date("2026-11-14T03:30:00Z"),
+      ),
+    ).toEqual([]);
   });
 
   it("'Teste até' e 'Cliente desde' seguem na ordem, e só quando preenchidos", () => {
