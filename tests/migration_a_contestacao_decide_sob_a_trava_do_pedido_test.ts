@@ -884,6 +884,9 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261399997000: o pedido guarda quem vai receber (v23 e v24 copiam o nome do endereco salvo para customer_data.address.recipient_name; so conta com endereco salvo, sem nome/retirada/
     // visitante/endereco digitado como antes, pedido antigo intacto, controle com o corpo da 397, mutantes, rollback byte a byte, aplicar duas vezes, pre/pos-voo e consultas 150a/150b).
     "tests/banco/o-pedido-guarda-quem-vai-receber-viva.cjs",
+    // 20261399998000: a loja recebe o plano por uma porta unica (tabela assinatura_da_loja_chave selada com o hash da chave da loja, definir_chave so do service_role e a PORTA assinatura_da_loja_gravar para anon e
+    // authenticated: autentica pelo hash ANTES de olhar os dados, lista branca de 10 campos, recursos e observacao nunca, mais velho ignorado, simular sem gravar; corrida de duas conexoes, 18 mutantes, rollback, pre/pos-voo e consultas 150c/150d).
+    "tests/banco/a-loja-recebe-o-plano-por-porta-unica-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

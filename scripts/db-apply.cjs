@@ -894,6 +894,58 @@ const VERIFICACOES = {
         { texto: "IF NOT public.is_admin_atual() THEN", vezes: 1 },
       ],
     },
+  // 20261399998000: a loja recebe o plano por uma porta unica. DUAS funcoes NOVAS: assinatura_da_loja_definir_chave (guarda o hash SHA-256 da chave da loja; so service_role) e assinatura_da_loja_gravar (a porta: autentica o
+  // hash da chave ANTES de olhar p_dados, lista branca de 10 campos, grava a linha 1 por um INSERT ... ON CONFLICT que ignora a gravacao mais velha e nunca toca recursos nem observacao). A tabela da chave, a RLS e a ACL nao sao
+  // conferiveis aqui (so corpo de funcao): a consulta 150c e a prova viva fazem isso (corpo exato por md5, atributos, EXECUTE por papel e o fechamento da tabela). O marcador nao admite "zero vezes": a ausencia de recursos
+  // e observacao no UPDATE e' provada pela prova viva e pelo teste da migration.
+  "20261399998000_a_loja_recebe_o_plano_por_porta_unica.sql": [
+    {
+      funcao: "assinatura_da_loja_definir_chave",
+      esperado: [
+        {
+          texto: "IF p_hash IS NULL OR p_hash !~ '^[0-9a-f]{64}$' THEN",
+          vezes: 1,
+        },
+        { texto: "ON CONFLICT (id) DO NOTHING;", vezes: 1 },
+        {
+          texto: "RAISE EXCEPTION 'chave_ja_definida' USING ERRCODE = '23505';",
+          vezes: 1,
+        },
+      ],
+    },
+    {
+      funcao: "assinatura_da_loja_gravar",
+      esperado: [
+        {
+          texto:
+            "v_enviado := encode(sha256(convert_to(COALESCE(p_chave, ''), 'UTF8')), 'hex');",
+          vezes: 1,
+        },
+        {
+          texto:
+            "IF v_guardado IS NULL OR p_chave IS NULL OR p_chave = '' OR v_enviado <> v_guardado THEN",
+          vezes: 1,
+        },
+        {
+          texto: "RAISE EXCEPTION 'nao_autorizado' USING ERRCODE = '42501';",
+          vezes: 1,
+        },
+        {
+          texto:
+            "RAISE EXCEPTION 'campo_nao_permitido' USING ERRCODE = '22023', DETAIL = 'campo: ' || left(v_campo, 40);",
+          vezes: 1,
+        },
+        {
+          texto: "IF v_instante > clock_timestamp() + interval '1 day' THEN",
+          vezes: 1,
+        },
+        {
+          texto: "WHERE a.atualizado_em <= EXCLUDED.atualizado_em;",
+          vezes: 1,
+        },
+      ],
+    },
+  ],
   // 20261399997000: o pedido guarda quem vai receber. create_marketplace_order_v23 e v24 ganham UMA chave na copia do endereco salvo para dentro do pedido (bloco 6-bis): o nome que a cliente
   // digitou em "Quem vai receber" (user_addresses.recipient_name, aparado; vazio vira NULL e some). Cada marcador aparece UMA vez em cada corpo. A consulta 150a confere o corpo exato (md5), os
   // atributos e a ACL; a prova viva faz o comportamento (com nome, sem nome, sem conta, retirada, endereco digitado, pedido antigo).

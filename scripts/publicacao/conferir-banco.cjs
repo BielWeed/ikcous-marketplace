@@ -3156,7 +3156,28 @@ const ROL_DA_150 = [
     ],
   ),
 ];
+// Lote 150c/150d (20261399998000, a loja recebe o plano por uma porta unica: a tabela da chave assinatura_da_loja_chave, a porta assinatura_da_loja_gravar e a guarda do hash assinatura_da_loja_definir_chave).
+// A 150c prova o que ficou (so catalogo: NENHUMA linha da chave nem do cartao e' lida e nenhuma funcao e' chamada); a 150d prova a ausencia e as premissas. A 150c negativa (antes do apply) responde "nao"
+// em tudo menos no controle, nunca erro.
+const ROL_DA_150C = [
+  "controle: catalogo publico visivel",
+  "assinatura_da_loja_definir_chave: uma so, com o corpo da 20261399998000 (md5)",
+  "assinatura_da_loja_definir_chave: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path public e pg_temp, retorna void) e EXECUTE so para service_role (anon, authenticated e PUBLIC nada)",
+  "assinatura_da_loja_gravar: uma so, com o corpo da 20261399998000 (md5)",
+  "assinatura_da_loja_gravar: atributos de sempre (SECURITY DEFINER, plpgsql, VOLATILE, search_path public e pg_temp, retorna jsonb) e EXECUTE so para anon e authenticated (service_role e PUBLIC nada)",
+  "assinatura_da_loja_chave: tabela comum com RLS ligada sem FORCE e nenhuma politica",
+  "assinatura_da_loja_chave: nenhum privilegio para anon, authenticated, service_role e PUBLIC (tabela e coluna)",
+  "assinatura_da_loja_chave: as 3 colunas com o tipo certo, defaults, chave primaria (id) e os dois CHECK (id = 1 e hash de 64 hex minusculos)",
+];
+const ROL_DA_150D = [
+  "controle: catalogo publico visivel",
+  "assinatura_da_loja_chave, assinatura_da_loja_definir_chave e assinatura_da_loja_gravar: ainda NAO existem",
+  "assinatura_da_loja tem a forma da 20261177000000 (13 colunas) e store_config tem id bigint e store_name text",
+  "os papeis anon, authenticated e service_role existem",
+];
 const ROL_FECHADO_POR_CONSULTA = {
+  "150c-conferir-a-loja-recebe-o-plano-por-porta-unica-aplicado": ROL_DA_150C,
+  "150d-antes-a-loja-recebe-o-plano-por-porta-unica-ausente": ROL_DA_150D,
   "150a-conferir-o-pedido-guarda-quem-vai-receber-aplicado": ROL_DA_150,
   "150b-antes-o-pedido-guarda-quem-vai-receber-base-vigente": ROL_DA_150,
   "149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado":

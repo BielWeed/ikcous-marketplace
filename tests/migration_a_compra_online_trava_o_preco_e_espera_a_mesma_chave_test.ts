@@ -300,7 +300,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
     "a 81a entra uma vez",
   );
   assertEquals(
-    canais.provasDeObjetos.slice(-56).map((p) => p.consulta),
+    canais.provasDeObjetos.slice(-57).map((p) => p.consulta),
     [
       A81,
       "82a-conferir-ex-admin-sem-acesso-nas-demais-tabelas",
@@ -347,6 +347,7 @@ Deno.test("20261350 publicacao: lote unico de apply normal, DEPOIS da 244, vale 
       "127a-conferir-o-sino-do-pedido-vencido-fala-do-vencimento-aplicado",
       "128a-conferir-o-caixa-e-a-conta-recusam-valor-que-nao-e-numero-aplicado",
       "150a-conferir-o-pedido-guarda-quem-vai-receber-aplicado",
+      "150c-conferir-a-loja-recebe-o-plano-por-porta-unica-aplicado",
       "149a-conferir-o-cadastro-cria-o-perfil-em-toda-loja-aplicado",
       "135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado",
       "140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado",
