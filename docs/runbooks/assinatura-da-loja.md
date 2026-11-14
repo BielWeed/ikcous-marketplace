@@ -76,17 +76,78 @@ continua abrindo o upsert direto até uma decisão posterior retirá-lo.
 
 ## Como o hash da chave entra no banco de cada loja
 
-Não existe, no repositório, caminho pronto: `aplicar-migrations.yml` aplica
-**arquivos de `supabase/migrations/`** (a mesma lista vai para qualquer loja, e o
-ledger recusa reaplicar) e `conferir-banco-da-loja.yml` só roda **consultas fixas
-de leitura**. Nenhum aceita SQL com parâmetro. O hash é **por loja**, então não
-cabe em migration. O menor caminho, ainda NÃO construído (decisão pendente): um
-`workflow_dispatch` fechado com `projeto` em lista fechada (as mesmas lojas dos
-workflows acima, com `expected_sha` nas lojas reais), `hash` validado por regex
-`^[0-9a-f]{64}$` e `substituir` booleano, que usa o segredo da loja **dentro** da
-Action (como `aplicar-migrations.yml` já faz) para rodar só
-`select public.assinatura_da_loja_definir_chave('<hash>', <substituir>)` pela
-API de gestão. A chave em si nunca passa por lá: só o hash.
+O hash é **por loja**, então não cabe em migration (a mesma lista de arquivos vai
+para qualquer loja e o ledger recusa reaplicar), e nem `aplicar-migrations.yml` nem
+`conferir-banco-da-loja.yml` aceitam SQL com parâmetro. O caminho é o workflow
+[`instalar-chave-da-loja.yml`](../../.github/workflows/instalar-chave-da-loja.yml)
+(`workflow_dispatch`, script
+[`instalar-chave-da-loja.cjs`](../../scripts/publicacao/instalar-chave-da-loja.cjs),
+teste `tests/ci_instalar_chave_da_loja_test.ts`). **A chave em texto puro nunca passa
+por ele**: o app de gestão gera a chave dentro dele e mostra só o **hash**
+(SHA-256, 64 hex minúsculos); é esse hash que se cola.
+
+**Pré-condição:** a migration `20261399998000` já aplicada na loja (sem ela a função
+não existe e o run falha na leitura prévia, sem gravar nada).
+
+**Entradas:**
+
+| entrada | o que é |
+|---|---|
+| `projeto` | `ikcous-publicada` (a CAF) ou `savy` — só as duas lojas reais; nunca Almeida, Brand Meliz, Space, `loja` nem `sandbox` |
+| `hash` | só o hash, 64 hex **minúsculos** (maiúscula, espaço ou quebra de linha são recusados antes de qualquer rede; o valor recusado não é impresso) |
+| `substituir` | desmarcado (padrão): recusa se já há chave. Marcado: **rotação** (troca a chave que já existe) |
+| `expected_sha` | o SHA completo (40 hex) do commit do run, como nos outros workflows de loja real |
+
+**Rodar** (uma loja por vez; o 2º pedido na mesma loja espera a vez, não cancela o
+primeiro):
+
+```powershell
+gh workflow run instalar-chave-da-loja.yml --repo BielWeed/ikcous-marketplace --ref <ramo> -f projeto=savy -f hash=<64 hex minúsculos> -f expected_sha=<SHA completo do topo do ramo>
+```
+
+Rotação: acrescente `-f substituir=true`. O título do run é `instalar chave em
+<projeto> (nova|rotacao)` (o hash não entra no título).
+
+**O que o run faz, em ordem** (só o passo 3 grava):
+
+1. valida projeto, `expected_sha` e hash antes do checkout e de qualquer segredo;
+2. lê se já existe chave (só para o veredito dizer a verdade);
+3. executa exatamente `select public.assinatura_da_loja_definir_chave('<hash>', <true|false>)`;
+4. confere por leitura: a tabela tem exatamente 1 linha e o hash guardado é o enviado
+   (só um booleano volta; o log não mostra o hash).
+
+O run termina com
+`VEREDITO-INSTALAR-CHAVE projeto=<x> sha=<y> definida=<true|false> substituiu=<true|false>`:
+`definida=true` só quando a conferência bateu; `definida=false` quando o banco recusou
+por já haver chave (nada mudou); `substituiu=true` só se havia chave antes **e** o
+pedido foi de substituição. Sem essa linha o run falhou — leia a mensagem.
+
+**Se algo sair diferente:**
+
+- **"já existe chave nesta loja: use substituir=true para rotacionar"**: a loja já tem
+  hash. Se o objetivo é trocar a chave, rode de novo com `substituir=true`; se não, não
+  faça nada (nada foi alterado).
+- **"sem acesso legítimo … bloqueio concreto"** (401/403): o segredo da loja
+  (`SUPABASE_ACCESS_TOKEN_IKCOUS` ou `SUPABASE_ACCESS_TOKEN_SAVY`) não vale ou falta;
+  o run para sem tentar outro. Nada foi gravado.
+- **"ESTADO DESCONHECIDO"** (rede, timeout, 5xx na gravação, ou a conferência não
+  pôde ser lida): o banco pode ter gravado. Repetir com `substituir=true` é seguro
+  (a mesma gravação; só `criada_em` é renovada). Não repita sem `substituir`: se a
+  primeira já tinha gravado, ela recusa e confunde.
+- **"a conferência por leitura não confirmou o hash"**: outro hash ficou gravado (ou
+  alguém gravou ao mesmo tempo). Confira no SQL Editor da loja o `chave_hash` e rode de
+  novo com `substituir=true`.
+
+**Rotação de chave** (a antiga **deixa de abrir a porta no mesmo instante** em que o
+hash novo é gravado): gere a chave nova no app de gestão, instale o hash novo aqui com
+`substituir=true` e só então troque a chave que o app usa. Entre uma coisa e outra o
+app de gestão falha com `nao_autorizado` — rode as duas coisas juntas.
+
+**Limites assumidos:** a gravação é uma instrução só (atômica); as três consultas são
+requisições separadas, então a leitura prévia pode ficar velha se duas pessoas
+instalarem na mesma loja ao mesmo tempo (a fila por loja serializa os runs desta
+Action, não alguém que grave por outro caminho). O hash não abre a porta, mas o campo
+`hash` aparece no painel do run; se colar o valor errado, apague o run.
 
 ## Conferir na loja
 
