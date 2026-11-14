@@ -22,6 +22,7 @@ import {
   lerClientesDoCrm,
   lerPainelInicio,
   lerVisaoDoCrm,
+  linhasDeDatasDaAssinatura,
   linkWhatsappDoCrm,
   mensagemDeErroDoPainel,
   mensagemDoSegmento,
@@ -129,7 +130,7 @@ describe("lerPainelInicio", () => {
 });
 
 describe("lerAssinaturaDaLoja", () => {
-  it("sem linha (null) continua null — o card diz 'não sincronizado'", () => {
+  it("sem linha (null) continua null — o card mostra 'Seu plano vai aparecer aqui'", () => {
     expect(lerAssinaturaDaLoja(null)).toBeNull();
   });
 
@@ -759,5 +760,104 @@ describe("segmentos RFM e WhatsApp", () => {
     });
     expect(texto).not.toMatch(/pagamento|pagou|pago/i);
     expect(texto).toMatch(/pedido/i);
+  });
+});
+
+describe("linhasDeDatasDaAssinatura", () => {
+  // 13/11/2026, meio-dia em Brasília.
+  const agora = new Date("2026-11-13T15:00:00Z");
+  const base = { proximaCobrancaEm: null, testeAte: null, inicioEm: null };
+
+  it("atrasada: a data é 'Em aberto desde' e a data passada continua", () => {
+    expect(
+      linhasDeDatasDaAssinatura(
+        { ...base, status: "atrasada", proximaCobrancaEm: "2026-09-10" },
+        agora,
+      ),
+    ).toEqual([{ rotulo: "Em aberto desde", data: "2026-09-10" }]);
+  });
+
+  it("nos demais status continua 'Próxima cobrança' quando a data não passou", () => {
+    for (const status of ["ativa", "teste", "pendente", "suspensa"] as const) {
+      expect(
+        linhasDeDatasDaAssinatura(
+          { ...base, status, proximaCobrancaEm: "2026-12-01" },
+          agora,
+        ),
+      ).toEqual([{ rotulo: "Próxima cobrança", data: "2026-12-01" }]);
+    }
+  });
+
+  it("ativa ou pendente com a data já passada: a linha some", () => {
+    for (const status of ["ativa", "pendente"] as const) {
+      expect(
+        linhasDeDatasDaAssinatura(
+          { ...base, status, proximaCobrancaEm: "2026-11-12" },
+          agora,
+        ),
+      ).toEqual([]);
+    }
+  });
+
+  it("a data de hoje em Brasília ainda aparece; a de ontem não", () => {
+    const ativa = { ...base, status: "ativa" as const };
+    const dia13 = { ...ativa, proximaCobrancaEm: "2026-11-13" };
+    // 13/11 23:30 em Brasília: ainda é hoje.
+    expect(
+      linhasDeDatasDaAssinatura(dia13, new Date("2026-11-14T02:30:00Z")),
+    ).toHaveLength(1);
+    // 14/11 00:30 em Brasília: o dia 13 já passou.
+    expect(
+      linhasDeDatasDaAssinatura(dia13, new Date("2026-11-14T03:30:00Z")),
+    ).toEqual([]);
+  });
+
+  it("instante ISO é comparado pelo dia em São Paulo", () => {
+    const ativa = { ...base, status: "ativa" as const };
+    // 14/11 01:00Z = 13/11 22:00 em Brasília: ainda é hoje.
+    expect(
+      linhasDeDatasDaAssinatura(
+        { ...ativa, proximaCobrancaEm: "2026-11-14T01:00:00Z" },
+        agora,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("'Teste até' e 'Cliente desde' seguem na ordem, e só quando preenchidos", () => {
+    expect(
+      linhasDeDatasDaAssinatura(
+        {
+          status: "teste",
+          proximaCobrancaEm: null,
+          testeAte: "2026-11-20",
+          inicioEm: "2026-11-01",
+        },
+        agora,
+      ),
+    ).toEqual([
+      { rotulo: "Teste até", data: "2026-11-20" },
+      { rotulo: "Cliente desde", data: "2026-11-01" },
+    ]);
+    expect(
+      linhasDeDatasDaAssinatura({ ...base, status: "ativa" }, agora),
+    ).toEqual([]);
+  });
+
+  it("data ilegível não derruba nem esconde a linha", () => {
+    expect(
+      linhasDeDatasDaAssinatura(
+        { ...base, status: "ativa", proximaCobrancaEm: "amanhã" },
+        agora,
+      ),
+    ).toEqual([{ rotulo: "Próxima cobrança", data: "amanhã" }]);
+  });
+
+  it("sem status conhecido, não esconde nada", () => {
+    expect(
+      linhasDeDatasDaAssinatura(
+        { ...base, status: null, proximaCobrancaEm: "2026-01-01" },
+        agora,
+      ),
+    ).toEqual([{ rotulo: "Próxima cobrança", data: "2026-01-01" }]);
   });
 });

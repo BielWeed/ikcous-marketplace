@@ -819,6 +819,53 @@ export function formatarData(valor: string | null | undefined): string {
   return `${dia}/${mes}/${ano}`;
 }
 
+/**
+ * As datas do cartão "Sua assinatura", na ordem em que aparecem.
+ * - `atrasada`: a data enviada é a da mensalidade mais antiga em aberto, então
+ *   o rótulo é "Em aberto desde" e a data passada continua visível.
+ * - `ativa`/`pendente` com a próxima cobrança já passada (dia em São Paulo): a
+ *   linha some — data velha ali só confunde o lojista.
+ */
+export function linhasDeDatasDaAssinatura(
+  assinatura: Pick<
+    AssinaturaDaLoja,
+    "status" | "proximaCobrancaEm" | "testeAte" | "inicioEm"
+  >,
+  agora: Date = new Date(),
+): { rotulo: string; data: string }[] {
+  const { status, proximaCobrancaEm } = assinatura;
+  let principal: { rotulo: string; data: string } | null = null;
+  if (proximaCobrancaEm) {
+    if (status === "atrasada") {
+      principal = { rotulo: "Em aberto desde", data: proximaCobrancaEm };
+    } else {
+      // Data ilegível (nem `YYYY-MM-DD` nem instante) não se esconde: o
+      // formatador mostra "—" e o lojista não perde a linha por um parse.
+      const instante = new Date(proximaCobrancaEm);
+      const dia = PADRAO_DIA.test(proximaCobrancaEm)
+        ? proximaCobrancaEm
+        : Number.isNaN(instante.getTime())
+          ? null
+          : diaEmSaoPaulo(instante);
+      const jaPassou = dia !== null && dia < diaEmSaoPaulo(agora);
+      const escondeVelha = status === "ativa" || status === "pendente";
+      if (!(escondeVelha && jaPassou)) {
+        principal = { rotulo: "Próxima cobrança", data: proximaCobrancaEm };
+      }
+    }
+  }
+  const linhas = [
+    principal,
+    assinatura.testeAte
+      ? { rotulo: "Teste até", data: assinatura.testeAte }
+      : null,
+    assinatura.inicioEm
+      ? { rotulo: "Cliente desde", data: assinatura.inicioEm }
+      : null,
+  ];
+  return linhas.filter((linha) => linha !== null);
+}
+
 // ─── Erro ────────────────────────────────────────────────────────────────
 
 // A fonte única da frase de erro mora em `erro-do-painel.ts`; os hooks do

@@ -6,7 +6,7 @@
 // com o Supabase dublado e prova:
 //   - as duas RPCs do contrato (`painel_inicio` e `assinatura_da_loja_ler`)
 //     são chamadas e os 4 KPIs do mês aparecem com os valores do banco;
-//   - sem linha de assinatura, o card diz a verdade ("não sincronizado");
+//   - sem linha de assinatura, o card diz que o plano vai aparecer ali;
 //   - os botões grandes e o "Para fazer" levam às telas certas;
 //   - o tempo real escuta `marketplace_orders` e é desligado ao desmontar.
 import { act } from "react";
@@ -236,14 +236,12 @@ describe("Início do painel", () => {
     expect(pagina).toContain("Gabriel Dono");
   });
 
-  it("sem linha de assinatura, o card diz que o plano não foi sincronizado", async () => {
+  it("sem linha de assinatura, o card diz que o plano vai aparecer ali", async () => {
     h.respostas.set("painel_inicio", { data: PAINEL, error: null });
     h.respostas.set("assinatura_da_loja_ler", { data: null, error: null });
     await montar();
     await esperarAte(() =>
-      texto(hospedeiro).includes(
-        "Plano ainda não sincronizado com a sua conta",
-      ),
+      texto(hospedeiro).includes("Seu plano vai aparecer aqui"),
     );
     expect(hospedeiro.querySelector('a[href^="https://cobranca"]')).toBeNull();
   });
@@ -269,6 +267,8 @@ describe("Início do painel", () => {
     const pagina = texto(hospedeiro);
     expect(pagina).toContain("Atrasada");
     expect(pagina).toContain("R$ 99,90/mês");
+    // Atrasada: a data é a da mensalidade mais antiga em aberto.
+    expect(pagina).toContain("Em aberto desde");
     expect(pagina).toContain("01/10/2026");
     const gerenciar = hospedeiro.querySelector(
       'a[href="https://cobranca.exemplo.com/loja"]',
