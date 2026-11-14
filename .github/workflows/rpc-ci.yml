@@ -264,6 +264,8 @@ on:
       - "scripts/publicacao/consultas/149b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente.sql"
       - "scripts/publicacao/consultas/150a-conferir-o-pedido-guarda-quem-vai-receber-aplicado.sql"
       - "scripts/publicacao/consultas/150b-antes-o-pedido-guarda-quem-vai-receber-base-vigente.sql"
+      - "scripts/publicacao/consultas/150c-conferir-a-loja-recebe-o-plano-por-porta-unica-aplicado.sql"
+      - "scripts/publicacao/consultas/150d-antes-a-loja-recebe-o-plano-por-porta-unica-ausente.sql"
       - "scripts/publicacao/consultas/135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado.sql"
       - "scripts/publicacao/consultas/135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente.sql"
       - "scripts/publicacao/consultas/140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado.sql"
@@ -519,6 +521,8 @@ on:
       - "scripts/publicacao/consultas/149b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente.sql"
       - "scripts/publicacao/consultas/150a-conferir-o-pedido-guarda-quem-vai-receber-aplicado.sql"
       - "scripts/publicacao/consultas/150b-antes-o-pedido-guarda-quem-vai-receber-base-vigente.sql"
+      - "scripts/publicacao/consultas/150c-conferir-a-loja-recebe-o-plano-por-porta-unica-aplicado.sql"
+      - "scripts/publicacao/consultas/150d-antes-a-loja-recebe-o-plano-por-porta-unica-ausente.sql"
       - "scripts/publicacao/consultas/135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado.sql"
       - "scripts/publicacao/consultas/135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente.sql"
       - "scripts/publicacao/consultas/140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado.sql"
@@ -1217,6 +1221,12 @@ jobs:
       - name: Prova viva do pedido que guarda quem vai receber (20261399997000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/o-pedido-guarda-quem-vai-receber-viva.cjs
+      # Migration 20261399998000 (a loja recebe o plano por uma porta unica): a tabela assinatura_da_loja_chave (hash da chave da loja; selada, sem politica), assinatura_da_loja_definir_chave (so service_role) e a PORTA
+      # assinatura_da_loja_gravar (anon e authenticated, com a chave da loja; lista branca de 10 campos, recursos e observacao nunca, mais velho ignorado, simular sem gravar, hash comparado e nao texto, nao_autorizado
+      # uniforme e ANTES de olhar os dados, corrida de duas conexoes reais); mutantes, rollback, pre/pos-voo com estados estranhos, reaplicar e consultas 150c/150d. CLONE proprio.
+      - name: Prova viva da porta unica que grava o plano da loja (20261399998000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/a-loja-recebe-o-plano-por-porta-unica-viva.cjs
       # Migration 20261399993000 (o CRM e a lista de clientes nao contam a mesma pessoa duas vezes): crm__nunca_comprou tambem tira a conta cujo WhatsApp (com ou sem o 55) e o de um pedido do grupo "pediu e nao pagou"
       # (venda avulsa anulada, devolvida ou sem pagar) e get_admin_customers_paged toma UM endereco principal por cliente (o mais novo, desempate pelo menor id) antes de juntar os pedidos (a corrida dos dois
       # primeiros enderecos dobrava pedidos e total). Controle com os corpos da 20261183000000 e da 20261392000000 na MESMA fixture (o defeito), bordas (numero diferente, DDD 55, outra conta, sem WhatsApp, sem endereco,

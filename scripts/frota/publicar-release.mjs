@@ -696,6 +696,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "149b-antes-o-cadastro-cria-o-perfil-em-toda-loja-ausente",
   "150a-conferir-o-pedido-guarda-quem-vai-receber-aplicado",
   "150b-antes-o-pedido-guarda-quem-vai-receber-base-vigente",
+  "150c-conferir-a-loja-recebe-o-plano-por-porta-unica-aplicado",
+  "150d-antes-a-loja-recebe-o-plano-por-porta-unica-ausente",
   "135a-conferir-o-ranking-de-lucro-desconta-a-devolucao-aplicado",
   "135b-antes-o-ranking-de-lucro-desconta-a-devolucao-base-vigente",
   "140a-conferir-as-listas-do-painel-nao-repetem-ninguem-aplicado",
