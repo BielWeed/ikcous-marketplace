@@ -94,7 +94,7 @@ não existe e o run falha na leitura prévia, sem gravar nada).
 | entrada | o que é |
 |---|---|
 | `projeto` | `ikcous-publicada` (a CAF) ou `savy` — só as duas lojas reais; nunca Almeida, Brand Meliz, Space, `loja` nem `sandbox` |
-| `hash` | só o hash, 64 hex **minúsculos** (maiúscula, espaço ou quebra de linha são recusados antes de qualquer rede; o valor recusado não é impresso) |
+| `hash` | só o hash, 64 hex **minúsculos** (maiúscula, espaço ou quebra de linha são recusados antes de qualquer rede; o valor, certo ou errado, é mascarado no log antes da validação e a mensagem de recusa não o repete) |
 | `substituir` | desmarcado (padrão): recusa se já há chave. Marcado: **rotação** (troca a chave que já existe) |
 | `expected_sha` | o SHA completo (40 hex) do commit do run, como nos outros workflows de loja real |
 
@@ -114,7 +114,10 @@ Rotação: acrescente `-f substituir=true`. O título do run é `instalar chave 
 2. lê se já existe chave (só para o veredito dizer a verdade);
 3. executa exatamente `select public.assinatura_da_loja_definir_chave('<hash>', <true|false>)`;
 4. confere por leitura: a tabela tem exatamente 1 linha e o hash guardado é o enviado
-   (só um booleano volta; o log não mostra o hash).
+   (só um booleano volta). O hash **não** passa por `env:` (o GitHub imprime esse bloco
+   no log de cada passo): vem do arquivo do evento, é **mascarado** (`::add-mask::`,
+   aparece como `***` no log) antes mesmo da validação, e o resumo do run mostra só os 8
+   primeiros caracteres.
 
 O run termina com
 `VEREDITO-INSTALAR-CHAVE projeto=<x> sha=<y> definida=<true|false> substituiu=<true|false>`:

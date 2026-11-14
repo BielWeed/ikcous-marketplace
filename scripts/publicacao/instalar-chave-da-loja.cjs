@@ -33,6 +33,10 @@
  *  - O CORPO CRU E O TOKEN NUNCA VÃO PARA O LOG, nem em erro (só o status HTTP e o
  *    nome do tipo do erro de rede). O hash inteiro também não é impresso: o resumo
  *    mostra só os 8 primeiros caracteres.
+ *  - O HASH NÃO VEM DE VARIÁVEL DE AMBIENTE: o GitHub imprime o bloco env: de cada
+ *    passo no log (repositório público), e um valor passado por lá ficaria em claro.
+ *    `main` o lê do arquivo do evento (GITHUB_EVENT_PATH, campo inputs.hash), e o
+ *    passo "Valida o hash" do workflow já o mascarou (::add-mask::) antes de tudo.
  *
  * O QUE ACONTECE, EM ORDEM (nada é gravado antes do passo 3):
  *  1. valida projeto, hash, `substituir` e sha — antes de qualquer rede;
@@ -184,7 +188,8 @@ async function instalar({
     );
     return 1;
   }
-  // O valor recusado NUNCA é ecoado: quem errou o campo pode ter colado a chave.
+  // O valor recusado não é repetido na mensagem: quem errou o campo pode ter colado a
+  // chave (o passo do workflow já a mascarou no log, mas aqui nem tentamos imprimir).
   if (typeof hash !== "string" || !HASH_VALIDO.test(hash)) {
     saida.erro(
       "FALHOU: hash inválido: precisa ter exatamente 64 caracteres hexadecimais minúsculos (0-9 e a-f)",
@@ -342,10 +347,24 @@ function saidaDoProcesso() {
   };
 }
 
+/** O hash digitado no disparo, lido do arquivo do evento (nunca de env:). Qualquer
+ * coisa que não seja texto vira `undefined`, e `instalar` recusa. */
+function lerHashDoEvento(caminho) {
+  if (typeof caminho !== "string" || caminho === "") return undefined;
+  try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho vem do runner do GitHub Actions (GITHUB_EVENT_PATH), não de entrada de usuário.
+    const evento = JSON.parse(fs.readFileSync(caminho, "utf8"));
+    const hash = evento?.inputs?.hash;
+    return typeof hash === "string" ? hash : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function main() {
   process.exitCode = await instalar({
     projeto: process.env.PROJETO,
-    hash: process.env.HASH,
+    hash: lerHashDoEvento(process.env.GITHUB_EVENT_PATH),
     substituir: process.env.SUBSTITUIR,
     sha: process.env.GITHUB_SHA,
     env: process.env,
@@ -362,5 +381,6 @@ module.exports = {
   ALVOS,
   API_BASE,
   instalar,
+  lerHashDoEvento,
   main,
 };

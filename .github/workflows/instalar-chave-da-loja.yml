@@ -16,9 +16,17 @@
 # A CHAVE EM TEXTO PURO NUNCA PASSA POR AQUI: o app de gestao gera a chave dentro
 # dele e mostra so o HASH (SHA-256, 64 hex minusculos). Cole so o hash. Um hash nao
 # abre a porta (a porta compara o hash do que chega), mas o campo `hash` aparece no
-# painel do run: se colar o valor errado, apague o run. O titulo do run NAO leva o
-# hash (as expressoes do Actions nao tem funcao de recorte); o resumo do run mostra
-# so os 8 primeiros caracteres.
+# painel do run (a pagina do run lista as entradas): se colar o valor errado, apague
+# o run. O titulo do run NAO leva o hash (as expressoes do Actions nao tem funcao de
+# recorte).
+#
+# O HASH NUNCA VAI EM `env:` NEM EM `run:`: o GitHub imprime o bloco env: de cada passo
+# no log (repositorio publico), entao um valor passado por la ficaria em claro no
+# cabecalho do passo, inclusive se alguem colasse a CHAVE por engano. O hash e lido do
+# arquivo do evento ($GITHUB_EVENT_PATH, campo inputs.hash) e MASCARADO
+# (`::add-mask::`) antes de qualquer outra coisa, ate da validacao: mascarado, o valor
+# aparece como *** no log dos passos seguintes. O resumo do run mostra so os 8
+# primeiros caracteres do hash.
 #
 # PROJETO: fechado em "ikcous-publicada" | "savy" (as duas lojas reais; nunca um ref
 # de texto livre, nunca Almeida, Brand Meliz nem Space). O ref e resolvido DENTRO do
@@ -114,16 +122,23 @@ jobs:
           fi
 
       # Passo PROPRIO: o hash (64 hex minusculos, nada alem) e o booleano, antes do
-      # checkout e do segredo. O valor recusado NUNCA e ecoado: quem errou o campo
-      # pode ter colado a chave em texto puro. LC_ALL=C fecha o intervalo [0-9a-f]
-      # em ASCII (em alguns locales ele casaria maiusculas).
+      # checkout e do segredo. O hash vem do ARQUIVO DO EVENTO (nunca de env:) e e
+      # mascarado ANTES da validacao, linha a linha: quem errou o campo pode ter
+      # colado a chave em texto puro, e ela fica *** no log. A mensagem de erro nao
+      # repete o valor. O sufixo `x` preserva quebras de linha finais (a substituicao
+      # de comando as apagaria e um hash com quebra de linha no fim passaria). LC_ALL=C fecha o
+      # intervalo [0-9a-f] em ASCII (em alguns locales ele casaria maiusculas).
       - name: Valida o hash antes de checkout e segredos
         env:
-          HASH: ${{ inputs.hash }}
           SUBSTITUIR: ${{ inputs.substituir }}
         run: |
           set -euo pipefail
           export LC_ALL=C
+          HASH="$(jq -j '.inputs.hash // ""' "$GITHUB_EVENT_PATH"; printf x)"
+          HASH="${HASH%x}"
+          while IFS= read -r linha || [ -n "$linha" ]; do
+            if [ -n "$linha" ]; then echo "::add-mask::$linha"; fi
+          done <<< "$HASH"
           if ! [[ "$HASH" =~ ^[0-9a-f]{64}$ ]]; then
             echo "::error::hash inválido: precisa ter exatamente 64 caracteres hexadecimais minúsculos (0-9 e a-f), sem espaço nem maiúsculas"; exit 1
           fi
@@ -141,12 +156,12 @@ jobs:
           node-version: "24"
 
       # Cada alvo enxerga SO o seu segredo: segredo vazio da '', nunca o do vizinho.
-      # E o UNICO passo com segredo; o script PARA sem o do proprio alvo.
+      # E o UNICO passo com segredo; o script PARA sem o do proprio alvo. O hash NAO
+      # vem em env: o script o le do arquivo do evento (GITHUB_EVENT_PATH).
       - name: Instala o hash da chave (uma escrita, conferida por leitura)
         env:
           SUPABASE_ACCESS_TOKEN_IKCOUS: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}
           SUPABASE_ACCESS_TOKEN_SAVY: ${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
           PROJETO: ${{ inputs.projeto }}
-          HASH: ${{ inputs.hash }}
           SUBSTITUIR: ${{ inputs.substituir }}
         run: node scripts/publicacao/instalar-chave-da-loja.cjs

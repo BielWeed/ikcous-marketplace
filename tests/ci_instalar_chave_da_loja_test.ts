@@ -101,6 +101,14 @@ async function rodarBash(script: string, env: Record<string, string>) {
   return { codigo: r.code, saida: dec.decode(r.stdout) + dec.decode(r.stderr) };
 }
 
+/** O arquivo do evento do disparo (o que o runner do GitHub grava em
+ * GITHUB_EVENT_PATH): é de onde o hash é lido, nunca de `env:`. */
+function arquivoDoEvento(hash: unknown, dir: string): string {
+  const arquivo = join(dir, "evento.json");
+  Deno.writeTextFileSync(arquivo, JSON.stringify({ inputs: { hash } }));
+  return arquivo;
+}
+
 /** Carrega o script a partir de um TEXTO (o real ou um mutante), numa cópia
  * temporária cujo `require("./conferir-banco.cjs")` aponta para o arquivo real. */
 function carregarScript(fonte: string) {
@@ -307,10 +315,29 @@ async function verificarWorkflow(yamlCru: string) {
   // 2º passo, PRÓPRIO: valida o hash (e o booleano) antes de checkout e de segredo
   const segundo = passos[1];
   assert(segundo.run && !segundo.uses, "o 2º passo é a validação do hash");
-  assertEquals(segundo.env, {
-    HASH: "${{ inputs.hash }}",
-    SUBSTITUIR: "${{ inputs.substituir }}",
-  });
+  assertEquals(segundo.env, { SUBSTITUIR: "${{ inputs.substituir }}" });
+  // O HASH NUNCA entra por `env:` nem por `run:` em passo nenhum: o GitHub imprime o
+  // bloco env: de cada passo no log (repo público), e o valor sairia em claro.
+  for (const p of passos) {
+    assert(!("HASH" in (p.env ?? {})), `HASH em env: no passo ${p.name}`);
+    // (ler `.inputs.hash` do arquivo do evento é o caminho certo; expressão
+    // `${{ inputs.hash }}` em env:/run:/with: é o que não pode existir)
+    assert(
+      !/\$\{\{[^}]*inputs\.hash/.test(JSON.stringify(p)),
+      `\${{ inputs.hash }} dentro do passo ${p.name}`,
+    );
+  }
+  assert(!/\$\{\{[^}]*inputs\.hash/.test(yaml), "inputs.hash em expressão");
+  // o mascaramento vem ANTES da validação e de qualquer saída de erro
+  const iMascara = segundo.run.indexOf("::add-mask::");
+  assert(iMascara > 0, "o passo do hash mascara o valor");
+  assert(
+    iMascara < segundo.run.indexOf("=~") &&
+      iMascara < segundo.run.indexOf("exit 1") &&
+      iMascara < segundo.run.indexOf("::error::"),
+    "add-mask antes da validação",
+  );
+  assertStringIncludes(segundo.run, "$GITHUB_EVENT_PATH");
   assert(
     !/curl|fetch|api\.supabase|secrets\./.test(JSON.stringify(segundo)),
     "a validação não toca rede nem segredo",
@@ -357,13 +384,32 @@ async function verificarWorkflow(yamlCru: string) {
   }
 
   // o bloco do 2º passo, RODADO: só 64 hex MINÚSCULOS passam, e o valor nunca é ecoado
+  const dirEvento = Deno.makeTempDirSync({ prefix: "evento-" });
   const validar = (hash: string, substituir = "false") =>
     rodarBash(segundo.run, {
       PATH: Deno.env.get("PATH") ?? "",
-      HASH: hash,
+      GITHUB_EVENT_PATH: arquivoDoEvento(hash, dirEvento),
       SUBSTITUIR: substituir,
     });
-  assertEquals((await validar(HASH)).codigo, 0, "hash válido passa");
+  /** O que o runner veria: tira os comandos `::add-mask::` (consumidos por ele). */
+  const semMascaras = (saida: string) =>
+    saida
+      .split("\n")
+      .filter((l) => !l.startsWith("::add-mask::"))
+      .join("\n");
+  {
+    const r = await validar(HASH);
+    assertEquals(r.codigo, 0, "hash válido passa");
+    assertEquals(
+      r.saida.split("\n")[0].trim(),
+      `::add-mask::${HASH}`,
+      "o hash é mascarado já na primeira linha",
+    );
+    assert(
+      !semMascaras(r.saida).includes(HASH),
+      "e não aparece fora da máscara",
+    );
+  }
   assertEquals(
     (await validar(HASH, "true")).codigo,
     0,
@@ -389,16 +435,27 @@ async function verificarWorkflow(yamlCru: string) {
     const r = await validar(hash);
     assertEquals(r.codigo, 1, `hash ${caso} devia ser recusado: ${r.saida}`);
     assertStringIncludes(r.saida, "hash inválido");
-    assert(
-      !r.saida.includes("UMA-CHAVE-QUALQUER") &&
-        !r.saida.includes("drop table"),
-      `o valor recusado não pode ser ecoado (${caso})`,
-    );
+    // o valor recusado (a chave colada por engano, por exemplo) é MASCARADO, linha
+    // a linha, ANTES da mensagem de erro, e a mensagem não o repete
+    const linhas = r.saida.split("\n").map((l) => l.replace(/\r$/, ""));
+    const iErro = linhas.findIndex((l) => l.includes("hash inválido"));
+    for (const linhaDoHash of hash.split("\n").filter((l) => l !== "")) {
+      const iMask = linhas.indexOf(`::add-mask::${linhaDoHash}`);
+      assert(
+        iMask >= 0 && iMask < iErro,
+        `sem máscara antes do erro (${caso})`,
+      );
+      assert(
+        !semMascaras(r.saida).includes(linhaDoHash),
+        `o valor recusado não pode ser ecoado (${caso})`,
+      );
+    }
   }
   for (const substituir of ["TRUE", "1", "", "sim", "true ", "false\n"]) {
     const r = await validar(HASH, substituir);
     assertEquals(r.codigo, 1, `substituir "${substituir}" devia ser recusado`);
   }
+  Deno.removeSync(dirEvento, { recursive: true });
 
   // checkout sem credencial gravada; ações PINADAS por SHA; o passo final
   const checkout = passos[iCheckout];
@@ -435,7 +492,6 @@ async function verificarWorkflow(yamlCru: string) {
     SUPABASE_ACCESS_TOKEN_SAVY:
       "${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}",
     PROJETO: "${{ inputs.projeto }}",
-    HASH: "${{ inputs.hash }}",
     SUBSTITUIR: "${{ inputs.substituir }}",
   });
   const usos = yaml.match(/secrets[.[]/g) ?? [];
@@ -468,6 +524,9 @@ function verificarScript(fonte: string) {
   );
   assertStringIncludes(js, 'require("./conferir-banco.cjs")');
   assertStringIncludes(js, "resolverRef(");
+  // o hash vem do arquivo do evento, nunca de variável de ambiente
+  assertStringIncludes(js, "process.env.GITHUB_EVENT_PATH");
+  assert(!/process\.env\.HASH/.test(js), "hash lido de process.env");
   // a ÚNICA escrita é a função, e só ela: nenhum verbo de escrita solto no código
   assertEquals(
     (js.match(/assinatura_da_loja_definir_chave/g) ?? []).length,
@@ -783,6 +842,35 @@ async function verificarComportamento(mod) {
     assert(!s.tudo().includes("definida=true"), "sem veredito verdadeiro");
     assert(!s.tudo().includes("VEREDITO"), "sem veredito sem prova");
   }
+
+  // (m) o hash é lido do ARQUIVO DO EVENTO, só se for texto; o resto vira undefined
+  {
+    const dir = Deno.makeTempDirSync({ prefix: "evento-ler-" });
+    assertEquals(mod.lerHashDoEvento(arquivoDoEvento(HASH, dir)), HASH);
+    assertEquals(
+      mod.lerHashDoEvento(arquivoDoEvento(`${HASH}\n`, dir)),
+      `${HASH}\n`,
+      "a quebra de linha final é preservada (a validação a recusa)",
+    );
+    for (const valor of [123, null, undefined, ["a"], { a: 1 }, true]) {
+      assertEquals(
+        mod.lerHashDoEvento(arquivoDoEvento(valor, dir)),
+        undefined,
+        `valor ${JSON.stringify(valor)} não é texto`,
+      );
+    }
+    const torto = join(dir, "torto.json");
+    Deno.writeTextFileSync(torto, "isto não é json");
+    for (const caminho of [
+      undefined,
+      "",
+      join(dir, "nao-existe.json"),
+      torto,
+    ]) {
+      assertEquals(mod.lerHashDoEvento(caminho), undefined);
+    }
+    Deno.removeSync(dir, { recursive: true });
+  }
 }
 
 // --------------------------------------------------------------- os testes reais
@@ -814,6 +902,7 @@ Deno.test("o script exporta o necessário e não roda ao ser importado", () => {
   const mod = carregarScript(FONTE_SCRIPT());
   assertEquals(typeof mod.instalar, "function");
   assertEquals(typeof mod.main, "function");
+  assertEquals(typeof mod.lerHashDoEvento, "function");
   assertEquals(Object.keys(mod.ALVOS).sort(), ["ikcous-publicada", "savy"]);
 });
 
@@ -821,6 +910,7 @@ Deno.test({
   name: "o main() real, sem nenhum token: sai 1 (nos dois alvos e em loja) sem tocar a rede",
   ...SEM_SANITIZAR,
   fn: async () => {
+    const dirEvento = Deno.makeTempDirSync({ prefix: "evento-main-" });
     for (const projeto of ["savy", "ikcous-publicada", "loja"]) {
       const r = await new Deno.Command("node", {
         args: [SCRIPT],
@@ -828,7 +918,7 @@ Deno.test({
         env: {
           PATH: Deno.env.get("PATH") ?? "",
           PROJETO: projeto,
-          HASH,
+          GITHUB_EVENT_PATH: arquivoDoEvento(HASH, dirEvento),
           SUBSTITUIR: "false",
           GITHUB_SHA: SHA,
         },
@@ -838,6 +928,7 @@ Deno.test({
       const dec = new TextDecoder();
       assertEquals(r.code, 1, dec.decode(r.stderr));
     }
+    Deno.removeSync(dirEvento, { recursive: true });
   },
 });
 
@@ -865,7 +956,10 @@ globalThis.fetch = async (url, init) => {
           PATH: Deno.env.get("PATH") ?? "",
           GITHUB_STEP_SUMMARY: resumo,
           GITHUB_SHA: SHA,
-          HASH,
+          // o hash vem do arquivo do evento; o HASH do ambiente é um ISCA que o
+          // script não pode ler (a SQL esperada usa o do arquivo)
+          GITHUB_EVENT_PATH: arquivoDoEvento(HASH, dir),
+          HASH: "f".repeat(64),
           SUBSTITUIR: "false",
           STUB_RESPOSTAS: JSON.stringify(respostas),
           ...env,
@@ -992,6 +1086,16 @@ Deno.test({
         real,
         "`select public.assinatura_da_loja_definir_chave(",
         "`insert into public.assinatura_da_loja_chave values (1, '${hash}') -- (",
+      ),
+      "hash lido de process.env.HASH em vez do evento": mutar(
+        real,
+        "hash: lerHashDoEvento(process.env.GITHUB_EVENT_PATH),",
+        "hash: process.env.HASH,",
+      ),
+      "lerHashDoEvento devolve o que vier (sem exigir texto)": mutar(
+        real,
+        'return typeof hash === "string" ? hash : undefined;',
+        "return hash;",
       ),
       "método de escrita (PATCH)": mutar(
         real,
@@ -1172,7 +1276,7 @@ Deno.test({
       ),
       "segredo legado no passo": mutar(
         real,
-        /(\n\s+PROJETO: \$\{\{ inputs\.projeto \}\}\n\s+HASH: [^\n]*\n[^\n]*\n\s+run: node)/,
+        /(\n\s+PROJETO: \$\{\{ inputs\.projeto \}\}\n\s+SUBSTITUIR: [^\n]*\n\s+run: node)/,
         "\n          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}$1",
       ),
       "permissão de escrita": mutar(real, /contents: read/, "contents: write"),
@@ -1208,8 +1312,38 @@ Deno.test({
       ),
       "função inexistente no Actions (substr) numa variável": mutar(
         real,
-        "HASH: ${{ inputs.hash }}",
-        "HASH: ${{ substr(inputs.hash, 0, 64) }}",
+        "SUBSTITUIR: ${{ inputs.substituir }}",
+        "SUBSTITUIR: ${{ substr(inputs.substituir, 0, 4) }}",
+      ),
+      "hash volta a passar por env: no passo da validação": mutar(
+        real,
+        "SUBSTITUIR: ${{ inputs.substituir }}",
+        "SUBSTITUIR: ${{ inputs.substituir }}\n          HASH: ${{ inputs.hash }}",
+      ),
+      "hash por env: no passo do script": mutar(
+        real,
+        /(\n\s+SUBSTITUIR: [^\n]*\n)(\s+run: node)/,
+        "$1          HASH: ${{ inputs.hash }}\n$2",
+      ),
+      "sem o add-mask do hash": mutar(
+        real,
+        /\n\s+while IFS=[\s\S]*?done <<< "\$HASH"/,
+        "",
+      ),
+      "add-mask só depois da validação": mutar(
+        mutar(real, /\n\s+while IFS=[\s\S]*?done <<< "\$HASH"/, ""),
+        /(sem espaço nem maiúsculas"; exit 1\n\s+fi\n)/,
+        '$1          echo "::add-mask::$HASH"\n',
+      ),
+      "hash lido sem preservar a quebra de linha final": mutar(
+        real,
+        "; printf x)",
+        ")",
+      ),
+      "hash não lido do arquivo do evento": mutar(
+        real,
+        '"$GITHUB_EVENT_PATH"',
+        "/dev/null",
       ),
       "run-name sem o projeto": mutar(
         real,
