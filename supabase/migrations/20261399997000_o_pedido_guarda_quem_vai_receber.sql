@@ -33,7 +33,8 @@
 --   * Cliente COM conta, p_address_id informado e p_address_data vazio ou só {cpf}: COPIA o endereço, e agora o nome de
 --     quem recebe junto. Nome vazio ou só espaços não entra (NULLIF(btrim(...), '') e jsonb_strip_nulls).
 --   * Cliente com conta que mandou um endereço digitado de verdade em p_address_data: o que ela mandou fica, como antes
---     (o bloco não troca o que o chamador enviou; não existe chave de nome aí).
+--     (o bloco não troca o que o chamador enviou; a RPC não filtra chaves de p_address_data, então uma chave de nome
+--     mandada direto na chamada vale só para o PRÓPRIO pedido dela, como já valia p_customer_name).
 --   * RETIRADA NA LOJA (store-pickup): sem cópia nenhuma, como antes (o pedido guarda o endereço da LOJA em pickup_address).
 --   * COMPRA SEM CONTA (convidada): nunca dispara a cópia, nem mandando o id do endereço de outra pessoa.
 --   * Endereço de OUTRA pessoa: o passo 1 (inalterado) recusa antes de qualquer escrita, e a leitura do bloco repete o

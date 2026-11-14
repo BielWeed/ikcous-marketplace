@@ -62,6 +62,7 @@ Deno.test("3997: os corpos de antes sao os da 397 (hash), o novo so ACRESCENTA a
     // O novo, sem as linhas acrescentadas, e o vigente: nada mais mudou.
     // A unica diferenca: a virgula depois de 'reference', tres linhas de comentario e a linha da chave nova.
     const semAsNovas = novo.replace(
+      // eslint-disable-next-line security/detect-unsafe-regex -- Regex literal fixa sobre o texto da nossa migration, nunca entrada externa.
       /(\n[ \t]*'reference', ua\.reference),\n(?:[ \t]*--[^\n]*\n){3}[ \t]*'recipient_name', NULLIF\(btrim\(ua\.recipient_name\), ''\)/,
       "$1",
     );
@@ -251,7 +252,9 @@ Deno.test("3997: o lote esta registrado em todos os lugares da cadeia (rol fecha
   const A = "150a-conferir-o-pedido-guarda-quem-vai-receber-aplicado";
   const B = "150b-antes-o-pedido-guarda-quem-vai-receber-base-vigente";
   assert.ok(A in ROL_FECHADO_POR_CONSULTA && B in ROL_FECHADO_POR_CONSULTA);
+  // eslint-disable-next-line security/detect-object-injection -- Nome literal desta migration, nunca entrada externa.
   assert.equal(ROL_FECHADO_POR_CONSULTA[A].length, 9);
+  // eslint-disable-next-line security/detect-object-injection -- Nome literal desta migration, nunca entrada externa.
   assert.equal(ROL_FECHADO_POR_CONSULTA[B].length, 9);
   assert.ok(CONSULTAS_DE_ROL_FECHADO.has(A) && CONSULTAS_DE_ROL_FECHADO.has(B));
   const canais = JSON.parse(ler("scripts/frota/canais-de-backend.json"));
