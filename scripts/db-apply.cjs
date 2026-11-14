@@ -902,7 +902,10 @@ const VERIFICACOES = {
     {
       funcao: "assinatura_da_loja_definir_chave",
       esperado: [
-        { texto: "IF p_hash IS NULL OR p_hash !~ '^[0-9a-f]{64}$' THEN", vezes: 1 },
+        {
+          texto: "IF p_hash IS NULL OR p_hash !~ '^[0-9a-f]{64}$' THEN",
+          vezes: 1,
+        },
         { texto: "ON CONFLICT (id) DO NOTHING;", vezes: 1 },
         {
           texto: "RAISE EXCEPTION 'chave_ja_definida' USING ERRCODE = '23505';",
